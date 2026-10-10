@@ -9,7 +9,7 @@
 //! | Installed as | Swap |
 //! |---|---|
 //! | macOS `.app` | copy the new bundle from the DMG over this one (fine while running), reopen it |
-//! | Windows MSI (per-user) | after exit, run the new MSI, then start the exe |
+//! | Windows MSI (per-user, any folder) | after exit, run the new MSI (it reinstalls into the same folder), then start the exe |
 //! | Windows portable zip | after exit, unzip over this folder (settings in `ArtCraftLauncherData` stay) |
 //! | Linux AppImage | rename the new AppImage over this one (fine while running), start it |
 //! | Linux `.deb` / `.rpm` | the system package manager, with the password prompt; then restart |
@@ -106,10 +106,23 @@ fn detect(exe: &Path) -> Option<Install> {
     if dir.join("portable.txt").is_file() {
         return Some(Install::Portable(exe.to_path_buf()));
     }
-    // The MSI installs per user into %LOCALAPPDATA%\Programs\ArtCraft Launcher.
-    let programs = dirs::data_local_dir()?.join("Programs").join(LAUNCHER.name);
-    let programs = programs.canonicalize().unwrap_or(programs);
-    (dir == programs).then(|| Install::Msi(exe.to_path_buf()))
+    // The MSI installs per user, into the folder chosen in its wizard (which it records in the
+    // registry) or by default %LOCALAPPDATA%\Programs\ArtCraft Launcher.
+    let canonical = |p: PathBuf| p.canonicalize().unwrap_or(p);
+    let recorded = msi_install_dir().map(canonical);
+    let default = dirs::data_local_dir().map(|d| canonical(d.join("Programs").join(LAUNCHER.name)));
+    [recorded, default].into_iter().flatten().any(|d| d == dir).then(|| Install::Msi(exe.to_path_buf()))
+}
+
+/// The folder the MSI installed into, as it records it (`packaging/windows/artcraft-launcher.wxs`).
+#[cfg(windows)]
+fn msi_install_dir() -> Option<PathBuf> {
+    use winreg::RegKey;
+    use winreg::enums::HKEY_CURRENT_USER;
+    let key = RegKey::predef(HKEY_CURRENT_USER).open_subkey(r"Software\Learning Machines LLC\ArtCraft Launcher").ok()?;
+    let dir: String = key.get_value("InstallDir").ok()?;
+    let dir = dir.trim();
+    (!dir.is_empty()).then(|| PathBuf::from(dir))
 }
 
 #[cfg(target_os = "linux")]

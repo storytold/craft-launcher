@@ -1,7 +1,8 @@
 # Windows on ARM: package the ARM64 release the way release.yml does (cross-compiled on an x64
-# runner, unsigned here), then install that per-user MSI on a Windows 11 ARM64 runner, check the
-# installed binary is ARM64 and the Start Menu shortcut exists, and uninstall. The launcher is a
-# GUI app, so it isn't run here.
+# runner, unsigned here), then install that per-user MSI on a Windows 11 ARM64 runner: once with
+# the defaults (default folder, Start Menu and desktop shortcuts) and once into a chosen folder
+# without the desktop shortcut, checking the binary is ARM64 and that each uninstall removes
+# everything. The launcher is a GUI app, so it isn't run here.
 name: Windows ARM64
 
 # Nightly on main (dependency and runner-image drift shows up within a day), and on PRs that
@@ -71,21 +72,43 @@ jobs:
         run: |
           $ErrorActionPreference = 'Stop'
           $msi = (Get-ChildItem dist/*.msi | Select-Object -First 1).FullName
-          $p = Start-Process msiexec.exe -ArgumentList '/i', "`"$msi`"", '/qn', '/l*v', 'install.log' -Wait -PassThru
-          if ($p.ExitCode -ne 0) { Get-Content install.log -Tail 60; throw "msiexec /i exited $($p.ExitCode)" }
-          # Per-user install: %LOCALAPPDATA%\Programs\ArtCraft Launcher.
-          $dir = Join-Path $env:LOCALAPPDATA 'Programs\ArtCraft Launcher'
-          $path = Join-Path $dir 'artcraft-launcher.exe'
-          if (-not (Test-Path $path)) { Get-Content install.log -Tail 60; throw "artcraft-launcher.exe not installed in $dir" }
-          $bytes = [System.IO.File]::ReadAllBytes($path)
+          $startLnk = Join-Path ([Environment]::GetFolderPath('Programs')) 'ArtCraft Launcher.lnk'
+          $deskLnk = Join-Path ([Environment]::GetFolderPath('Desktop')) 'ArtCraft Launcher.lnk'
+          $key = 'HKCU:\Software\Learning Machines LLC\ArtCraft Launcher'
+          function Install([string[]] $props) {
+            $p = Start-Process msiexec.exe -ArgumentList (@('/i', "`"$msi`"", '/qn', '/l*v', 'install.log') + $props) -Wait -PassThru
+            if ($p.ExitCode -ne 0) { Get-Content install.log -Tail 60; throw "msiexec /i exited $($p.ExitCode)" }
+          }
+          function Uninstall([string] $exe) {
+            $p = Start-Process msiexec.exe -ArgumentList '/x', "`"$msi`"", '/qn' -Wait -PassThru
+            if ($p.ExitCode -ne 0) { throw "msiexec /x exited $($p.ExitCode)" }
+            foreach ($left in $exe, $startLnk, $deskLnk) { if (Test-Path $left) { throw "uninstall left $left behind" } }
+            if ((Get-ItemProperty $key -ErrorAction SilentlyContinue).InstallDir) { throw "uninstall left InstallDir in $key" }
+            Write-Output 'ok uninstalled'
+          }
+          function Expect([bool] $ok, [string] $what) { if (-not $ok) { Get-Content install.log -Tail 60; throw $what }; Write-Output "ok $what" }
+
+          # 1. A first install with the defaults, as the wizard's Next, Next, Install does:
+          #    %LOCALAPPDATA%\Programs\ArtCraft Launcher, with the Start Menu and desktop shortcuts.
+          Install @()
+          $exe = Join-Path $env:LOCALAPPDATA 'Programs\ArtCraft Launcher\artcraft-launcher.exe'
+          Expect (Test-Path $exe) "installed in the default folder: $exe"
+          $bytes = [System.IO.File]::ReadAllBytes($exe)
           $machine = [BitConverter]::ToUInt16($bytes, [BitConverter]::ToInt32($bytes, 0x3C) + 4)
-          if ($machine -ne 0xAA64) { throw "artcraft-launcher.exe is for machine 0x$('{0:X}' -f $machine), not ARM64" }
-          Write-Output "ok $path (ARM64)"
-          $lnk = Join-Path ([Environment]::GetFolderPath('Programs')) 'ArtCraft Launcher.lnk'
-          if (-not (Test-Path $lnk)) { throw "Start Menu shortcut missing: $lnk" }
-          Write-Output "ok $lnk"
-          $p = Start-Process msiexec.exe -ArgumentList '/x', "`"$msi`"", '/qn' -Wait -PassThru
-          if ($p.ExitCode -ne 0) { throw "msiexec /x exited $($p.ExitCode)" }
-          if (Test-Path $path) { throw 'uninstall left artcraft-launcher.exe behind' }
-          if (Test-Path $lnk) { throw 'uninstall left the Start Menu shortcut behind' }
-          Write-Output 'ok uninstalled'
+          Expect ($machine -eq 0xAA64) "the exe is ARM64 (machine 0x$('{0:X}' -f $machine))"
+          Expect (Test-Path $startLnk) "Start Menu shortcut: $startLnk"
+          Expect (Test-Path $deskLnk) "desktop shortcut (ticked by default): $deskLnk"
+          Expect ((Get-ItemProperty $key).DesktopShortcutChoice -eq '1') 'the desktop-shortcut choice is recorded as 1'
+          Uninstall $exe
+
+          # 2. A folder of the user's choosing, without the desktop shortcut.
+          $dir = Join-Path $env:LOCALAPPDATA 'ArtCraft Launcher Test Folder'
+          Install @("INSTALLFOLDER=`"$dir\`"", 'INSTALLDESKTOPSHORTCUT=0')
+          $exe = Join-Path $dir 'artcraft-launcher.exe'
+          Expect (Test-Path $exe) "installed in the chosen folder: $exe"
+          Expect ((Get-ItemProperty $key).InstallDir.TrimEnd('\') -eq $dir) 'the chosen folder is recorded for updates and self-update'
+          Expect (Test-Path $startLnk) "Start Menu shortcut: $startLnk"
+          Expect (-not (Test-Path $deskLnk)) 'no desktop shortcut when it is not wanted'
+          Expect ((Get-ItemProperty $key).DesktopShortcutChoice -eq '0') 'the desktop-shortcut choice is recorded as 0'
+          Uninstall $exe
+          Expect (-not (Test-Path $dir)) 'uninstall removed the chosen folder'

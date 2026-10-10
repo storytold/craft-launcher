@@ -276,7 +276,7 @@ checksum = "d3fb67a6e08acf24fdeccbac2cb6ac4305825bd1f117462e0e6f2f193345ad56"
 
 [[package]]
 name = "artcraft-launcher"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "artcraft-launcher-core",
  "artcraft-launcher-native",
@@ -296,7 +296,7 @@ dependencies = [
 
 [[package]]
 name = "artcraft-launcher-core"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "semver",
  "serde",
@@ -305,7 +305,7 @@ dependencies = [
 
 [[package]]
 name = "artcraft-launcher-native"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "artcraft-launcher-core",
  "dirs 6.0.0",
@@ -324,7 +324,7 @@ dependencies = [
 
 [[package]]
 name = "artcraft-launcher-ui-egui"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "artcraft-launcher-core",
  "egui",
@@ -337,7 +337,7 @@ dependencies = [
 
 [[package]]
 name = "artcraft-launcher-web"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "artcraft-launcher-core",
  "artcraft-launcher-ui-egui",
@@ -5749,7 +5749,7 @@ checksum = "ec7a2a501ed189703dba8b08142f057e887dfc4b2cc4db2d343ac6376ba3e0b9"
 
 [[package]]
 name = "xtask"
-version = "0.1.1"
+version = "0.1.2"
 
 [[package]]
 name = "yoke"

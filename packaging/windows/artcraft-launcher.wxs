@@ -8,15 +8,18 @@
       -culture en-US -loc artcraft-launcher.en-us.wxl -d Version=1.2.3 -d DisplayVersion=1.2.3-rc.1
       -d BinDir=... -d IconPath=... -d BannerBmp=... -d DialogBmp=... -o out.msi
 
-  Per-user install (no UAC prompt) into %LOCALAPPDATA%\Programs\ArtCraft Launcher, so the
-  launcher can update itself without elevation, plus a Start Menu shortcut. The shortcut carries
-  the AppUserModelID ai.storyteller.artcraft-launcher, which Windows needs to show toast
+  Per-user install (no UAC prompt), by default into %LOCALAPPDATA%\Programs\ArtCraft Launcher, so
+  the launcher can update itself without elevation, plus a Start Menu shortcut. The shortcut
+  carries the AppUserModelID ai.storyteller.artcraft-launcher, which Windows needs to show toast
   notifications from an unpackaged app and to group the taskbar button. No file associations.
 
-  Double-clicked, it opens a setup wizard that names the version: Welcome, Ready, a progress page
-  and a Finish page with a ticked "Launch ArtCraft Launcher" box. There is no licence page (the
-  code is MIT OR Apache-2.0; nothing to accept) and no folder page (self-update needs the per-user
-  folder). The launcher's own self-update runs it with /passive, which skips the wizard.
+  Double-clicked, it opens a setup wizard that names the version: Welcome; a folder page to pick
+  where it goes, with a "Create a desktop shortcut" box; Ready; a progress page; and a Finish page
+  with a ticked "Launch ArtCraft Launcher" box. There is no licence page (the code is MIT OR
+  Apache-2.0; nothing to accept). The install folder and the desktop-shortcut choice are recorded
+  under HKCU and reused by later versions, so an update (the launcher's own self-update runs this
+  with /passive, which skips the wizard) lands in the same folder and keeps the user's choice; the
+  launcher reads the recorded folder to know it was installed by this MSI.
 
   Per-user packages can't use a file as a component's KeyPath (ICE38), so each component is
   keyed on an HKCU value, and the folders we create are removed on uninstall (ICE64).
@@ -51,19 +54,74 @@
       </Directory>
     </StandardDirectory>
     <StandardDirectory Id="ProgramMenuFolder" />
+    <StandardDirectory Id="DesktopFolder" />
+
+    <!-- An update installs where the user put the previous version (recorded by
+         ArtCraftLauncherApp below; every version since 0.1.0 records it). -->
+    <Property Id="INSTALLFOLDER">
+      <RegistrySearch Id="PreviousInstallFolder" Root="HKCU" Key="Software\Learning Machines LLC\ArtCraft Launcher" Name="InstallDir" Type="raw" />
+    </Property>
+
+    <!-- The desktop shortcut: the folder page's box sets INSTALLDESKTOPSHORTCUT to 1. It starts
+         ticked on a first install; an update keeps what the user chose last time, and an update
+         from a version that never asked (0.1.0, 0.1.1) adds none. A value given on the command
+         line (msiexec ... INSTALLDESKTOPSHORTCUT=0 or 1) wins. -->
+    <Property Id="PREVIOUSDESKTOPSHORTCUT">
+      <RegistrySearch Id="PreviousDesktopShortcut" Root="HKCU" Key="Software\Learning Machines LLC\ArtCraft Launcher" Name="DesktopShortcutChoice" Type="raw" />
+    </Property>
+    <SetProperty Id="INSTALLDESKTOPSHORTCUT" Value="1" After="AppSearch" Sequence="first"
+        Condition="NOT INSTALLDESKTOPSHORTCUT AND ((NOT Installed AND NOT WIX_UPGRADE_DETECTED AND NOT PREVIOUSDESKTOPSHORTCUT) OR PREVIOUSDESKTOPSHORTCUT = &quot;1&quot;)" />
+    <!-- Recorded as 1 or 0 (an unticked box leaves the property empty), for the next update. -->
+    <SetProperty Id="DESKTOPSHORTCUTCHOICE" Action="RememberNoDesktopShortcut" Value="0" Before="InstallInitialize" Sequence="execute"
+        Condition="NOT (INSTALLDESKTOPSHORTCUT = &quot;1&quot;)" />
+    <SetProperty Id="DESKTOPSHORTCUTCHOICE" Action="RememberDesktopShortcut" Value="1" Before="InstallInitialize" Sequence="execute"
+        Condition="INSTALLDESKTOPSHORTCUT = &quot;1&quot;" />
 
     <Feature Id="Main" Title="ArtCraft Launcher" Level="1">
       <ComponentGroupRef Id="ArtCraftLauncherFiles" />
     </Feature>
 
-    <!-- The setup wizard: WixUI_InstallDir without its licence and folder pages. A later
-         NewDialog on the same button wins. -->
+    <!-- The setup wizard: WixUI_InstallDir without its licence page, and with our folder page
+         (ArtCraftInstallDirDlg: the stock one plus the desktop-shortcut box) in place of the stock
+         one. A later NewDialog on the same button wins. -->
     <ui:WixUI Id="WixUI_InstallDir" InstallDirectory="INSTALLFOLDER" />
     <UI>
-      <Publish Dialog="WelcomeDlg" Control="Next" Event="NewDialog" Value="VerifyReadyDlg" Order="2" Condition="NOT Installed" />
-      <Publish Dialog="VerifyReadyDlg" Control="Back" Event="NewDialog" Value="WelcomeDlg" Order="2" Condition="NOT Installed" />
+      <Publish Dialog="WelcomeDlg" Control="Next" Event="NewDialog" Value="ArtCraftInstallDirDlg" Order="2" Condition="NOT Installed" />
+      <Publish Dialog="VerifyReadyDlg" Control="Back" Event="NewDialog" Value="ArtCraftInstallDirDlg" Order="2" Condition="NOT Installed" />
       <Publish Dialog="ExitDialog" Control="Finish" Event="DoAction" Value="LaunchArtCraftLauncher"
           Condition="WIXUI_EXITDIALOGOPTIONALCHECKBOX = 1 AND NOT Installed" />
+
+      <Dialog Id="ArtCraftInstallDirDlg" Width="370" Height="270" Title="!(loc.InstallDirDlg_Title)">
+        <Control Id="Next" Type="PushButton" X="236" Y="243" Width="56" Height="17" Default="yes" Text="!(loc.WixUINext)">
+          <!-- As WixUI_InstallDir does for its own folder page: take the folder, check it, go on. -->
+          <Publish Event="SetTargetPath" Value="[WIXUI_INSTALLDIR]" Order="1" />
+          <Publish Event="DoAction" Value="WixUIValidatePath_$(sys.BUILDARCHSHORT)" Order="2" Condition="NOT WIXUI_DONTVALIDATEPATH" />
+          <Publish Event="SpawnDialog" Value="InvalidDirDlg" Order="3" Condition="NOT WIXUI_DONTVALIDATEPATH AND WIXUI_INSTALLDIR_VALID&lt;&gt;&quot;1&quot;" />
+          <Publish Event="NewDialog" Value="VerifyReadyDlg" Order="4" Condition="WIXUI_DONTVALIDATEPATH OR WIXUI_INSTALLDIR_VALID=&quot;1&quot;" />
+        </Control>
+        <Control Id="Back" Type="PushButton" X="180" Y="243" Width="56" Height="17" Text="!(loc.WixUIBack)">
+          <Publish Event="NewDialog" Value="WelcomeDlg" />
+        </Control>
+        <Control Id="Cancel" Type="PushButton" X="304" Y="243" Width="56" Height="17" Cancel="yes" Text="!(loc.WixUICancel)">
+          <Publish Event="SpawnDialog" Value="CancelDlg" />
+        </Control>
+
+        <Control Id="Description" Type="Text" X="25" Y="23" Width="280" Height="15" Transparent="yes" NoPrefix="yes" Text="!(loc.InstallDirDlgDescription)" />
+        <Control Id="Title" Type="Text" X="15" Y="6" Width="200" Height="15" Transparent="yes" NoPrefix="yes" Text="!(loc.InstallDirDlgTitle)" />
+        <Control Id="BannerBitmap" Type="Bitmap" X="0" Y="0" Width="370" Height="44" TabSkip="no" Text="!(loc.InstallDirDlgBannerBitmap)" />
+        <Control Id="BannerLine" Type="Line" X="0" Y="44" Width="370" Height="0" />
+        <Control Id="BottomLine" Type="Line" X="0" Y="234" Width="370" Height="0" />
+
+        <Control Id="FolderLabel" Type="Text" X="20" Y="60" Width="290" Height="30" NoPrefix="yes" Text="!(loc.InstallDirDlgFolderLabel)" />
+        <Control Id="Folder" Type="PathEdit" X="20" Y="100" Width="320" Height="18" Property="WIXUI_INSTALLDIR" Indirect="yes" />
+        <Control Id="ChangeFolder" Type="PushButton" X="20" Y="120" Width="56" Height="17" Text="!(loc.InstallDirDlgChange)">
+          <Publish Property="_BrowseProperty" Value="[WIXUI_INSTALLDIR]" Order="1" />
+          <Publish Event="SpawnDialog" Value="BrowseDlg" Order="2" />
+        </Control>
+        <Control Id="PerUserNote" Type="Text" X="20" Y="146" Width="330" Height="24" NoPrefix="yes" Text="!(loc.ArtCraftInstallDirNote)" />
+
+        <Control Id="DesktopShortcut" Type="CheckBox" X="20" Y="186" Width="330" Height="17" Property="INSTALLDESKTOPSHORTCUT" CheckBoxValue="1" Text="!(loc.ArtCraftDesktopShortcut)" />
+      </Dialog>
     </UI>
     <!-- Our own art, drawn by package.ps1 from the ArtCraft mark and the Craft apps' icons. -->
     <WixVariable Id="WixUIBannerBmp" Value="$(var.BannerBmp)" />
@@ -86,7 +144,9 @@
     <ComponentGroup Id="ArtCraftLauncherFiles">
       <Component Id="ArtCraftLauncherApp" Directory="INSTALLFOLDER" Guid="55DCC431-EBEF-4C11-BABB-6D78CE0ECF4E">
         <File Id="ArtCraftLauncherExe" Source="$(var.BinDir)\artcraft-launcher.exe" KeyPath="no" />
+        <!-- Read back by the next version's installer and by the launcher (self_update.rs). -->
         <RegistryValue Root="HKCU" Key="Software\Learning Machines LLC\ArtCraft Launcher" Name="InstallDir" Value="[INSTALLFOLDER]" Type="string" KeyPath="yes" />
+        <RegistryValue Root="HKCU" Key="Software\Learning Machines LLC\ArtCraft Launcher" Name="DesktopShortcutChoice" Value="[DESKTOPSHORTCUTCHOICE]" Type="string" />
         <!-- Win+R "artcraft-launcher". -->
         <RegistryValue Root="HKCU" Key="Software\Microsoft\Windows\CurrentVersion\App Paths\artcraft-launcher.exe" Value="[#ArtCraftLauncherExe]" Type="string" />
         <RemoveFolder Id="RemoveInstallFolder" Directory="INSTALLFOLDER" On="uninstall" />
@@ -101,6 +161,18 @@
           <ShortcutProperty Key="System.AppUserModel.ID" Value="ai.storyteller.artcraft-launcher" />
         </Shortcut>
         <RegistryValue Root="HKCU" Key="Software\Learning Machines LLC\ArtCraft Launcher" Name="StartMenuShortcut" Value="1" Type="integer" KeyPath="yes" />
+      </Component>
+
+      <!-- Only when the folder page's box is ticked; removed on uninstall like everything else. -->
+      <Component Id="ArtCraftLauncherDesktopShortcut" Directory="DesktopFolder" Guid="CF06DCF3-BE5A-4A2B-B3BF-F553CC6E5D60"
+          Condition="INSTALLDESKTOPSHORTCUT = &quot;1&quot;">
+        <Shortcut Id="DesktopShortcut" Name="ArtCraft Launcher"
+            Description="Install and update the Craft App Suite"
+            Target="[#ArtCraftLauncherExe]" WorkingDirectory="INSTALLFOLDER"
+            Icon="ArtCraftLauncherIcon.exe" IconIndex="0">
+          <ShortcutProperty Key="System.AppUserModel.ID" Value="ai.storyteller.artcraft-launcher" />
+        </Shortcut>
+        <RegistryValue Root="HKCU" Key="Software\Learning Machines LLC\ArtCraft Launcher" Name="DesktopShortcut" Value="1" Type="integer" KeyPath="yes" />
       </Component>
     </ComponentGroup>
   </Fragment>

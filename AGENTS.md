@@ -116,11 +116,15 @@ Release assets (keep these names exact; the launcher's own self-update and the R
 
 Packaging facts the code relies on:
 
-- The Windows MSI is **per-user** (`%LOCALAPPDATA%\Programs\ArtCraft Launcher`, no UAC prompt).
-  Double-clicked it opens a WixUI setup wizard (Welcome, Ready, progress, Finish with "Launch"),
-  whose art `package.ps1` draws at build time; self-update runs it with `/passive`, no wizard.
-  Its Start Menu shortcut sets AppUserModelID `ai.storyteller.artcraft-launcher`, which toast
-  notifications need. `portable.txt` beside the exe switches on portable mode
+- The Windows MSI is **per-user** (no UAC prompt), by default into
+  `%LOCALAPPDATA%\Programs\ArtCraft Launcher`. Double-clicked it opens a WixUI setup wizard
+  (Welcome; a folder page with a "Create a desktop shortcut" box; Ready; progress; Finish with
+  "Launch"), whose art `package.ps1` draws at build time; self-update runs it with `/passive`, no
+  wizard. The folder and the shortcut choice are recorded under
+  `HKCU\Software\Learning Machines LLC\ArtCraft Launcher` (`InstallDir`,
+  `DesktopShortcutChoice`) and reused by the next version, and `self_update.rs` reads `InstallDir`
+  to know the running copy came from the MSI. Its shortcuts set AppUserModelID
+  `ai.storyteller.artcraft-launcher`, which toast notifications need. `portable.txt` beside the exe switches on portable mode
   (`ArtCraftLauncherData\` next to the exe).
 - The macOS bundle is `ArtCraft Launcher.app` (executable `Contents/MacOS/ArtCraft Launcher`), a
   normal Dock app that can also sit in the menu bar: `LSUIElement` must never be set.
