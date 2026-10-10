@@ -9,11 +9,13 @@
 
 pub mod backend;
 pub mod detect;
+pub mod elevated;
 pub mod feed_throttle;
 pub mod http;
 pub mod install;
 pub mod login;
 pub mod manifest;
+pub mod msi_batch;
 pub mod packages;
 pub mod paths;
 pub mod process;

@@ -105,7 +105,7 @@ installed by hand (and the launcher finds apps you installed yourself):
 | System | Where | How |
 |---|---|---|
 | macOS | `/Applications/<App>.app` | Copied from the signed, notarized release DMG |
-| Windows | `C:\Program Files\<App>` | The release MSI, through Windows Installer (with Start menu entry and Apps & features entry) |
+| Windows | `C:\Program Files\<App>` | The release MSI, through Windows Installer (with Start menu entry and Apps & features entry). Apps installed or updated together ask for permission once, then install in the background |
 | Linux | `/usr/bin`, `/usr/share/applications` | The release `.deb` (apt) or `.rpm` (dnf, zypper), with your system's password prompt. Without those, a Flatpak, or an AppImage in `~/Applications` |
 | FreeBSD | `/usr/local` | The release tree, with a password prompt (polkit); `~/.local` when polkit isn't installed |
 

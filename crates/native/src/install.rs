@@ -3,7 +3,8 @@
 //! Apps go where their platform keeps applications, installed the platform's own way:
 //!
 //! - macOS: the signed `.app` from the release DMG into `/Applications`.
-//! - Windows: the release MSI (Windows Installer) into `C:\Program Files\<App>`.
+//! - Windows: the release MSI (Windows Installer) into `C:\Program Files\<App>`. MSIs downloaded
+//!   together install together and silently, after one permission prompt (`msi_batch`, `elevated`).
 //! - Linux: the distro's package (`.deb` through apt, `.rpm` through dnf/zypper/rpm) with the
 //!   system's polkit password prompt; otherwise a Flatpak, otherwise an AppImage in
 //!   `~/Applications` (the AppImage convention).
@@ -47,6 +48,9 @@ pub fn install(
     {
         return Err(format!("{} is running. Quit it, then try again.", app.name));
     }
+    // MSIs that download together install together, with one permission prompt.
+    #[cfg(windows)]
+    let ticket = (kind == PackageKind::Msi).then(|| windows::BATCH.join());
     let (file, verified) = download(release, asset, job)?;
     // Past this point the install can't be interrupted halfway.
     (job.phase)(JobPhase::Installing);
@@ -56,7 +60,7 @@ pub fn install(
         #[cfg(target_os = "macos")]
         PackageKind::Dmg => macos::install_dmg(app, &file, existing, job.paths).map(|_| None),
         #[cfg(windows)]
-        PackageKind::Msi => windows::run_msi(&file, job.stop, &mut *job.phase).map(|_| None),
+        PackageKind::Msi => windows::run_msi(app, &file, existing, ticket, job.paths, job.stop, &mut *job.phase).map(|_| None),
         #[cfg(target_os = "linux")]
         PackageKind::Deb | PackageKind::Rpm | PackageKind::Flatpak => linux::install_package(kind, &file, job.stop, &mut *job.phase).map(|_| None),
         #[cfg(target_os = "linux")]
@@ -725,32 +729,43 @@ pub mod windows {
     use artcraft_launcher_core::protocol::CANCELLED;
 
     use super::*;
+    use crate::msi_batch::{Batch, Item, Ticket};
 
     fn msiexec() -> PathBuf {
         std::env::var_os("SystemRoot").map_or_else(|| PathBuf::from(r"C:\Windows"), PathBuf::from).join(r"System32\msiexec.exe")
     }
 
     fn explain(code: Option<i32>) -> Result<(), String> {
-        match code {
-            Some(0 | 3010 | 1641) => Ok(()),
-            Some(1602) => Err("cancelled".into()),
-            Some(1618) => Err("another installation is in progress. Wait for it to finish, then try again.".into()),
-            Some(1925 | 1303) => Err("Windows didn't allow the install (administrator permission is needed)".into()),
-            Some(c) => Err(format!("the Windows Installer stopped with error {c}")),
-            None => Err("the Windows Installer was interrupted".into()),
-        }
+        crate::elevated::msi_outcome(code)
     }
 
-    /// Runs an MSI with a progress window and no restart. Windows asks for permission itself.
-    pub fn run_msi(msi: &Path, stop: &Stop, phase: &mut dyn FnMut(JobPhase)) -> Result<(), String> {
-        in_turn(stop, phase, JobPhase::Installing, || {
-            let status = process::command(msiexec())
-                .arg("/i")
-                .arg(msi)
-                .args(["/passive", "/norestart"])
-                .status()
-                .map_err(|e| format!("couldn't start the Windows Installer ({e})"))?;
-            explain(status.code())
+    /// MSI installs waiting to go in together (see [`crate::msi_batch`]).
+    pub static BATCH: Batch = Batch::new();
+
+    /// Installs a downloaded MSI along with every other MSI ready at the same time: once no other
+    /// MSI is still downloading, one elevated helper installs them all silently, after a single
+    /// UAC prompt (see [`crate::elevated`]).
+    pub fn run_msi(
+        app: &CraftApp,
+        msi: &Path,
+        existing: Option<&Installed>,
+        ticket: Option<Ticket<'static>>,
+        paths: &Paths,
+        stop: &Stop,
+        phase: &mut dyn FnMut(JobPhase),
+    ) -> Result<(), String> {
+        let ticket = ticket.unwrap_or_else(|| BATCH.join());
+        // The download may have taken a while: the app could have been opened since, and a silent
+        // install would then leave its files for after a restart.
+        if existing.is_some_and(|inst| process::is_running(Path::new(&inst.location))) {
+            return Err(format!("{} is running. Quit it, then try again.", app.name));
+        }
+        // What the elevated helper checks the file against: exactly what was downloaded and checked.
+        let sha256 = crate::http::sha256_file(msi)?;
+        let item = Item { msi: msi.to_path_buf(), sha256 };
+        ticket.install(item, &cancelled(stop), phase, &|items, report| {
+            // Uninstalls take turns with batches. One job's cancel mustn't call off the others'.
+            let _ = INSTALLER.alone(&|| false, &mut |_| {}, || crate::elevated::install(items, paths, report));
         })
     }
 

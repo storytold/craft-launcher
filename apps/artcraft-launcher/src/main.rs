@@ -29,6 +29,18 @@ const SETTINGS_KEY: &str = "settings";
 type Wake = Arc<OnceLock<Box<dyn Fn() + Send + Sync>>>;
 
 fn main() -> ExitCode {
+    // Started with administrator rights to install a batch of MSIs (see
+    // `artcraft_launcher_native::elevated`): no window, no single-instance lock, then exit.
+    #[cfg(windows)]
+    {
+        use artcraft_launcher_native::elevated;
+        let args: Vec<std::ffi::OsString> = std::env::args_os().skip(1).collect();
+        if let Some((first, rest)) = args.split_first()
+            && first == elevated::FLAG
+        {
+            return ExitCode::from(elevated::helper_main(rest));
+        }
+    }
     env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("warn")).init();
     // Detect system language in the background so the first frame can use it.
     artcraft_launcher_ui_egui::i18n::detect_system_lang_in_background();
