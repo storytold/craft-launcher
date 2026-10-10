@@ -85,8 +85,13 @@ fn marker(paths: &Paths) -> PathBuf {
     paths.data.join("self-update.txt")
 }
 
-/// How this copy is installed, if it's one the launcher knows how to replace.
+/// How this copy is installed, if it's one the launcher knows how to replace. Never for a build
+/// made with `ARTCRAFT_LAUNCHER_NO_SELF_UPDATE` set (a renamed build, `packaging/windows/build-renamed.ps1`):
+/// the official release would replace it and bring the original name back.
 pub fn current() -> Option<Install> {
+    if option_env!("ARTCRAFT_LAUNCHER_NO_SELF_UPDATE").is_some() {
+        return None;
+    }
     let exe = std::env::current_exe().ok()?;
     let exe = exe.canonicalize().unwrap_or(exe);
     detect(&exe)

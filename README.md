@@ -187,6 +187,23 @@ cd apps/artcraft-launcher-web && trunk serve
 New contributors and AI agents: start with [`AGENTS.md`](AGENTS.md). Release packaging lives in
 [`packaging/`](packaging/) and [`.github/workflows/release.yml`](.github/workflows/release.yml).
 
+### Build it under another name
+
+To give the launcher a name of your own, build its Windows installers with
+[`packaging/windows/build-renamed.ps1`](packaging/windows/build-renamed.ps1):
+
+```powershell
+pwsh packaging/windows/build-renamed.ps1 -Name 'My Launcher'   # -Arch x64 (default), x86 or arm64
+```
+
+It stages a renamed copy in `target/renamed/src` (your checkout isn't changed) and builds
+`mylauncher-<ver>-windows-x64.msi` and `mylauncher-<ver>-windows-x64-portable.zip` in `dist/renamed/`.
+The new name shows in the window title, the tray menu, Settings, notifications, every interface
+language, the exe and the installer. A renamed build doesn't update itself, since the official
+release would bring the original name back; run the script again to update it. It keeps the
+ArtCraft icon and logo, which are trademarks: replace them before you share a renamed build
+([`docs/brand/LICENSE-brand.txt`](docs/brand/LICENSE-brand.txt)).
+
 > [!IMPORTANT]
 > **Status:** ArtCraft Launcher is new and in early alpha. Expect rough edges, and please file
 > issues (include your OS and which app you were installing) or tell us on

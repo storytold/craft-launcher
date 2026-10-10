@@ -4,6 +4,8 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 publish = false
+# `cargo xtask`; src/bin/rename-launcher.rs is run by packaging/windows/build-renamed.ps1.
+default-run = "xtask"
 
 [lints]
 workspace = true
