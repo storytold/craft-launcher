@@ -413,22 +413,50 @@ pub(crate) mod linux {
         }
     }
 
-    /// What this system can install: Flatpak first if available (sandboxed, per-user, full desktop
-    /// integration), then its own package format (when polkit can ask for permission), then
-    /// AppImage, which works everywhere.
+    /// What this system can install, ordered with the best default first.
+    ///
+    /// The default package format aligns with how the user installed the launcher itself:
+    /// - Running as a Flatpak: prefers Flatpak (per-user, desktop integration).
+    /// - Running as an AppImage: prefers AppImage.
+    /// - Otherwise (system install): prefers native distro packages (`.deb` / `.rpm`),
+    ///   then Flatpak if available, then AppImage.
     pub fn available_kinds() -> Vec<PackageKind> {
-        let mut kinds = Vec::new();
-        if process::is_flatpak_available() {
-            kinds.push(PackageKind::Flatpak);
-        }
+        let flatpak = process::is_flatpak_available();
+        let is_flatpak = process::in_sandbox();
+        let is_appimage = std::env::var_os("APPIMAGE").is_some();
         let root = which("pkexec").is_some();
-        if root && which("apt-get").is_some() && which("dpkg").is_some() {
+        let can_deb = root && which("apt-get").is_some() && which("dpkg").is_some();
+        let can_rpm = root && which("rpm").is_some() && which("dpkg").is_none();
+        order_available_kinds(is_flatpak, is_appimage, flatpak, can_deb, can_rpm)
+    }
+
+    pub(crate) fn order_available_kinds(
+        is_flatpak: bool,
+        is_appimage: bool,
+        flatpak_available: bool,
+        can_deb: bool,
+        can_rpm: bool,
+    ) -> Vec<PackageKind> {
+        let mut kinds = Vec::new();
+        if is_flatpak && flatpak_available {
+            kinds.push(PackageKind::Flatpak);
+        } else if is_appimage {
+            kinds.push(PackageKind::AppImage);
+        }
+
+        if can_deb {
             kinds.push(PackageKind::Deb);
         }
-        if root && which("rpm").is_some() && which("dpkg").is_none() {
+        if can_rpm {
             kinds.push(PackageKind::Rpm);
         }
-        kinds.push(PackageKind::AppImage);
+
+        if flatpak_available && !kinds.contains(&PackageKind::Flatpak) {
+            kinds.push(PackageKind::Flatpak);
+        }
+        if !kinds.contains(&PackageKind::AppImage) {
+            kinds.push(PackageKind::AppImage);
+        }
         kinds
     }
 
@@ -1005,10 +1033,31 @@ mod tests {
 
     #[cfg(target_os = "linux")]
     #[test]
-    fn flatpak_is_first_choice_when_available() {
-        let available = available_kinds();
-        if process::is_flatpak_available() {
-            assert_eq!(available.first(), Some(&PackageKind::Flatpak));
-        }
+    fn package_kinds_order_matches_launcher_format() {
+        use super::linux::order_available_kinds;
+
+        // Flatpak launcher defaults to Flatpak if available
+        let kinds = order_available_kinds(true, false, true, true, false);
+        assert_eq!(kinds.first(), Some(&PackageKind::Flatpak));
+        assert!(kinds.contains(&PackageKind::Deb));
+        assert!(kinds.contains(&PackageKind::AppImage));
+
+        // AppImage launcher defaults to AppImage
+        let kinds = order_available_kinds(false, true, true, true, false);
+        assert_eq!(kinds.first(), Some(&PackageKind::AppImage));
+        assert!(kinds.contains(&PackageKind::Deb));
+        assert!(kinds.contains(&PackageKind::Flatpak));
+
+        // Base Linux launcher defaults to native package format (deb or rpm) if available
+        let kinds = order_available_kinds(false, false, true, true, false);
+        assert_eq!(kinds.first(), Some(&PackageKind::Deb));
+
+        let kinds = order_available_kinds(false, false, true, false, true);
+        assert_eq!(kinds.first(), Some(&PackageKind::Rpm));
+
+        // Base Linux launcher without root/distro packaging falls back to Flatpak then AppImage
+        let kinds = order_available_kinds(false, false, true, false, false);
+        assert_eq!(kinds.first(), Some(&PackageKind::Flatpak));
+        assert_eq!(kinds.get(1), Some(&PackageKind::AppImage));
     }
 }
