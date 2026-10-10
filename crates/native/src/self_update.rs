@@ -127,7 +127,7 @@ fn msi_install_dir() -> Option<PathBuf> {
 
 #[cfg(target_os = "linux")]
 fn detect(exe: &Path) -> Option<Install> {
-    if std::env::var_os("FLATPAK_ID").is_some() {
+    if process::in_sandbox() {
         return None;
     }
     if let Some(appimage) = std::env::var_os("APPIMAGE") {

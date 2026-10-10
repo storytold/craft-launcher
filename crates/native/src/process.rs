@@ -77,9 +77,56 @@ pub fn spawn_detached(mut cmd: Command) -> Result<(), String> {
     Ok(())
 }
 
+/// Whether this process is running inside a Flatpak container sandbox.
+pub fn in_sandbox() -> bool {
+    std::env::var_os("FLATPAK_ID").is_some() || Path::new("/.flatpak-info").exists()
+}
+
+/// A command to run `flatpak`, delegating to the host via `flatpak-spawn --host` if inside a sandbox.
+pub fn flatpak_command() -> Command {
+    if in_sandbox() {
+        let mut cmd = command("flatpak-spawn");
+        cmd.args(["--host", "flatpak"]);
+        cmd
+    } else {
+        command("flatpak")
+    }
+}
+
+/// Runs a flatpak command and captures its standard output.
+pub fn capture_flatpak(args: &[&str], timeout: Duration) -> Option<String> {
+    if in_sandbox() {
+        let mut spawn_args = vec!["--host", "flatpak"];
+        spawn_args.extend_from_slice(args);
+        capture("flatpak-spawn", &spawn_args, timeout)
+    } else {
+        capture("flatpak", args, timeout)
+    }
+}
+
+/// Whether Flatpak is available on the machine (or on the host when sandboxed).
+pub fn is_flatpak_available() -> bool {
+    if in_sandbox() {
+        capture("flatpak-spawn", &["--host", "flatpak", "--version"], Duration::from_secs(3)).is_some()
+    } else {
+        which_on_path("flatpak").is_some()
+    }
+}
+
+fn which_on_path(name: &str) -> Option<std::path::PathBuf> {
+    let path = std::env::var_os("PATH")?;
+    std::env::split_paths(&path).map(|d| d.join(name)).find(|p| p.is_file())
+}
+
 /// Starts an app binary from its own folder.
 pub fn launch_binary(exe: &Path, args: &[&str]) -> Result<(), String> {
-    let mut cmd = command(exe);
+    let mut cmd = if in_sandbox() {
+        let mut c = command("flatpak-spawn");
+        c.arg("--host").arg(exe);
+        c
+    } else {
+        command(exe)
+    };
     cmd.args(args);
     if let Some(dir) = exe.parent() {
         cmd.current_dir(dir);
@@ -95,6 +142,10 @@ pub fn open(target: &std::ffi::OsStr) -> Result<(), String> {
         let mut c = command("explorer");
         c.arg(target);
         return spawn_detached(c);
+    } else if in_sandbox() {
+        let mut c = command("flatpak-spawn");
+        c.arg("--host").arg("xdg-open");
+        c
     } else {
         command("xdg-open")
     };
@@ -130,7 +181,11 @@ pub fn is_running(path: &Path) -> bool {
         let Some(p) = path.to_str() else { return false };
         let pattern = pgrep_pattern(p);
         // pgrep exits 0 when something matches; it never matches itself.
-        capture("pgrep", &["-f", "--", &pattern], Duration::from_secs(5)).is_some()
+        if in_sandbox() {
+            capture("flatpak-spawn", &["--host", "pgrep", "-f", "--", &pattern], Duration::from_secs(5)).is_some()
+        } else {
+            capture("pgrep", &["-f", "--", &pattern], Duration::from_secs(5)).is_some()
+        }
     }
 }
 

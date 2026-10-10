@@ -245,7 +245,7 @@ pub fn launch(app: &CraftApp, installed: &Installed) -> Result<(), String> {
     let path = Path::new(&installed.location);
     match installed.source {
         InstallSource::Flatpak => {
-            let mut cmd = process::command("flatpak");
+            let mut cmd = process::flatpak_command();
             cmd.args(["run", &app.bundle_id()]);
             process::spawn_detached(cmd)
         }
@@ -413,19 +413,20 @@ pub(crate) mod linux {
         }
     }
 
-    /// What this system can install: its own package format first (when polkit can ask for
-    /// permission), then Flatpak, then AppImage, which works everywhere.
+    /// What this system can install: Flatpak first if available (sandboxed, per-user, full desktop
+    /// integration), then its own package format (when polkit can ask for permission), then
+    /// AppImage, which works everywhere.
     pub fn available_kinds() -> Vec<PackageKind> {
         let mut kinds = Vec::new();
+        if process::is_flatpak_available() {
+            kinds.push(PackageKind::Flatpak);
+        }
         let root = which("pkexec").is_some();
         if root && which("apt-get").is_some() && which("dpkg").is_some() {
             kinds.push(PackageKind::Deb);
         }
         if root && which("rpm").is_some() && which("dpkg").is_none() {
             kinds.push(PackageKind::Rpm);
-        }
-        if which("flatpak").is_some() {
-            kinds.push(PackageKind::Flatpak);
         }
         kinds.push(PackageKind::AppImage);
         kinds
@@ -443,7 +444,7 @@ pub(crate) mod linux {
         }
         match kind {
             PackageKind::Flatpak => {
-                let status = process::command("flatpak")
+                let status = process::flatpak_command()
                     .args(["install", "--user", "-y", "--noninteractive", "--bundle"])
                     .arg(f)
                     .status()
@@ -473,9 +474,16 @@ pub(crate) mod linux {
             InstallSource::Pacman => remove(&["pacman", "-R", "--noconfirm"], installed.package.as_deref().unwrap_or(app.id)),
             InstallSource::Flatpak => {
                 let id = app.bundle_id();
-                let user = process::command("flatpak").args(["uninstall", "--user", "-y", "--noninteractive", &id]).status();
+                let user = process::flatpak_command().args(["uninstall", "--user", "-y", "--noninteractive", &id]).status();
                 if user.is_ok_and(|s| s.success()) {
                     return Ok(());
+                }
+                if process::in_sandbox() {
+                    let system = process::flatpak_command().args(["uninstall", "--system", "-y", "--noninteractive", &id]).status();
+                    if system.is_ok_and(|s| s.success()) {
+                        return Ok(());
+                    }
+                    return Err(format!("couldn't uninstall {id}"));
                 }
                 remove(&["flatpak", "uninstall", "--system", "-y", "--noninteractive"], &id)
             }
@@ -993,5 +1001,14 @@ mod tests {
         #[cfg(target_os = "linux")]
         assert_eq!(choose_kinds(Some(&inst(InstallSource::AppImage)), None, &[]), [PackageKind::AppImage]);
         let _ = inst;
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn flatpak_is_first_choice_when_available() {
+        let available = available_kinds();
+        if process::is_flatpak_available() {
+            assert_eq!(available.first(), Some(&PackageKind::Flatpak));
+        }
     }
 }

@@ -217,11 +217,11 @@ pub mod linux {
         if let Some(list) = capture("pacman", &["-Q"], t) {
             add(InstallSource::Pacman, packages::parse_pacman(&list));
         }
-        if let Some(list) = capture("flatpak", &["list", "--app", "--columns=application,version"], t) {
+        if let Some(list) = crate::process::capture_flatpak(&["list", "--app", "--columns=application,version"], t) {
             let mut flatpaks = packages::parse_flatpak_list(&list);
             // Bundles built from a release tarball often list no version: ask Flatpak directly.
             for (id, version) in flatpaks.iter_mut().filter(|(id, v)| v.is_empty() && id.starts_with("ai.storyteller.")) {
-                if let Some(v) = capture("flatpak", &["info", id], t).as_deref().and_then(packages::parse_flatpak_info) {
+                if let Some(v) = crate::process::capture_flatpak(&["info", id], t).as_deref().and_then(packages::parse_flatpak_info) {
                     *version = v;
                 }
             }
