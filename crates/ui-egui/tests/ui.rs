@@ -1,5 +1,7 @@
 //! Drives the launcher UI against a fake backend: what's shown for each status, and which
-//! commands the buttons send. `ARTCRAFT_LAUNCHER_SNAPSHOTS=<dir>` also saves screenshots.
+//! commands the buttons send. `ARTCRAFT_LAUNCHER_SNAPSHOTS=<dir>` also saves screenshots; run that
+//! with `-- --test-threads=1`, as rendering on several threads at once can crash Vulkan loaders
+//! older than 1.4.350 (KhronosGroup/Vulkan-Loader#1863).
 
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
@@ -108,7 +110,9 @@ fn harness(view: ViewMode, theme: egui::Theme, manage: bool) -> (Harness<'static
     let sent2 = sent.clone();
     let mut backend = Some(Fake { events: events(), sent: sent2, manage, clock: Rc::new(Cell::new(NOW)) });
     let settings = Settings { view, notify: false, ..Settings::default() };
-    let harness = Harness::builder().with_size(egui::vec2(1180.0, 900.0)).with_theme(theme).wgpu().build_ui_state(
+    // No `.wgpu()`: it gives every test its own GPU device, and those segfault on parallel test threads (see above).
+    // The default renderer creates one only when a test renders.
+    let harness = Harness::builder().with_size(egui::vec2(1180.0, 900.0)).with_theme(theme).build_ui_state(
         move |ui, state: &mut Option<LauncherUi>| {
             if state.is_none()
                 && let Some(b) = backend.take()
