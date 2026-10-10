@@ -5,7 +5,7 @@ use artcraft_launcher_core::platform::pick_asset;
 use artcraft_launcher_core::protocol::{Command, JobPhase};
 use artcraft_launcher_core::status::AppStatus;
 use artcraft_launcher_core::{AppGroup, SUITE, time};
-use egui::{Color32, CornerRadius, Rect, RichText, Sense, Stroke, Ui, vec2};
+use egui::{Color32, CornerRadius, FontId, Rect, RichText, Sense, Stroke, Ui, vec2};
 
 use crate::app::{Dialog, LauncherUi, TitleBar};
 use crate::model::{self, AppEntry};
@@ -366,9 +366,14 @@ impl LauncherUi {
         let ui = &mut child;
         ui.horizontal(|ui| {
             const ICON: f32 = 56.0;
-            let (slot, _) = ui.allocate_exact_size(vec2(ICON, ICON), Sense::hover());
+            let [name, tagline, like] = [FontId::new(22.0, theme::display()), FontId::proportional(13.5), FontId::proportional(12.0)];
+            const GAP: f32 = 4.0;
+            // The slot is as tall as the text beside it when that is taller, so the two share a centre.
+            let block = lines_height(ui, &[&name, &tagline, &like], GAP);
+            let (slot, icon_response) = ui.allocate_exact_size(vec2(ICON, block.max(ICON)), Sense::hover());
+            icon_response.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Image, true, format!("{} icon", app.name)));
             // The icon rises a little on hover, over a soft drop shadow (the site's only shadow).
-            let icon_rect = slot.translate(vec2(0.0, -4.0 * lift));
+            let icon_rect = Rect::from_center_size(slot.center(), vec2(ICON, ICON)).translate(vec2(0.0, -4.0 * lift));
             ui.painter().add(
                 egui::epaint::Shadow { offset: [0, 6], blur: 14, spread: 0, color: Color32::from_black_alpha(71) }
                     .as_shape(icon_rect.shrink(4.0), CornerRadius::same(12)),
@@ -377,16 +382,17 @@ impl LauncherUi {
                 egui::Image::new(icon).paint_at(ui, icon_rect);
             }
             ui.add_space(6.0);
-            ui.vertical(|ui| {
-                ui.spacing_mut().item_spacing.y = 4.0;
+            centered_lines(ui, &[&name, &tagline, &like], GAP, |ui| {
+                // The name's row is as tall as its text, not as a button.
+                ui.spacing_mut().interact_size.y = 0.0;
                 ui.horizontal(|ui| {
                     widgets::wordmark(ui, app, 22.0);
                     if app.group == AppGroup::New {
                         widgets::badge(ui, "New", t.app_ink(app));
                     }
                 });
-                ui.add(egui::Label::new(RichText::new(app.tagline).size(13.5).color(t.muted)).truncate());
-                ui.add(egui::Label::new(RichText::new(format!("Like {}", app.inspired_by())).size(12.0).color(t.faint)).truncate());
+                ui.add(egui::Label::new(RichText::new(app.tagline).font(tagline.clone()).color(t.muted)).truncate());
+                ui.add(egui::Label::new(RichText::new(format!("Like {}", app.inspired_by())).font(like.clone()).color(t.faint)).truncate());
             });
         });
         ui.add_space(14.0);
@@ -794,4 +800,21 @@ fn launcher_download(r: &artcraft_launcher_core::Release, p: artcraft_launcher_c
         _ => p.default_kinds(),
     };
     pick_asset(r, &[artcraft_launcher_core::catalog::LAUNCHER_ID], p, kinds).map(|(a, _)| a.url.clone())
+}
+
+/// A column of single-line texts, one per font and `gap` apart, centred across the row it is in.
+/// `ui.vertical` starts at the top of the row instead: a row only centres what it knows the height of.
+/// Each line is measured as an empty galley, which is rounded to the pixel like a label, unlike `Fonts::row_height`.
+fn centered_lines(ui: &mut Ui, fonts: &[&FontId], gap: f32, add_contents: impl FnOnce(&mut Ui)) {
+    let height = lines_height(ui, fonts, gap);
+    ui.allocate_ui_with_layout(vec2(ui.available_width(), height), egui::Layout::top_down(egui::Align::Min), |ui| {
+        ui.spacing_mut().item_spacing.y = gap;
+        add_contents(ui);
+    });
+}
+
+/// The height of [`centered_lines`] with these fonts.
+fn lines_height(ui: &Ui, fonts: &[&FontId], gap: f32) -> f32 {
+    let line = |font: &FontId| ui.fonts_mut(|f| f.layout_no_wrap(String::new(), font.clone(), Color32::PLACEHOLDER)).size().y;
+    (fonts.iter().map(|font| line(font) + gap).sum::<f32>() - gap).max(0.0)
 }

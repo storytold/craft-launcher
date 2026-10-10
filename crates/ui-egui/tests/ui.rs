@@ -106,13 +106,17 @@ fn events() -> Vec<Event> {
 }
 
 fn harness(view: ViewMode, theme: egui::Theme, manage: bool) -> (Harness<'static, Option<LauncherUi>>, Rc<RefCell<Vec<Command>>>) {
+    harness_at(view, theme, manage, 1.0)
+}
+
+fn harness_at(view: ViewMode, theme: egui::Theme, manage: bool, scale: f32) -> (Harness<'static, Option<LauncherUi>>, Rc<RefCell<Vec<Command>>>) {
     let sent = Rc::new(RefCell::new(Vec::new()));
     let sent2 = sent.clone();
     let mut backend = Some(Fake { events: events(), sent: sent2, manage, clock: Rc::new(Cell::new(NOW)) });
     let settings = Settings { view, notify: false, ..Settings::default() };
     // No `.wgpu()`: it gives every test its own GPU device, and those segfault on parallel test threads (see above).
     // The default renderer creates one only when a test renders.
-    let harness = Harness::builder().with_size(egui::vec2(1180.0, 900.0)).with_theme(theme).build_ui_state(
+    let harness = Harness::builder().with_size(egui::vec2(1180.0, 900.0)).with_pixels_per_point(scale).with_theme(theme).build_ui_state(
         move |ui, state: &mut Option<LauncherUi>| {
             if state.is_none()
                 && let Some(b) = backend.take()
@@ -217,6 +221,35 @@ fn switching_views_and_filters() {
     snapshot(&mut h, "table-updates-dark");
     assert!(h.query_by_label("WordCraft").is_none());
     h.get_by_label("PhotoCraft");
+}
+
+/// How far the middle of these lines of text is below the middle of the app icon beside them, in points.
+fn below_icon_centre(h: &Harness<'_, Option<LauncherUi>>, lines: &[&str]) -> f32 {
+    let text = lines.iter().map(|l| h.get_by_label(l).rect()).reduce(|a, b| a.union(b)).unwrap();
+    let icon = h
+        .query_all(egui_kittest::kittest::by().role(egui::accesskit::Role::Image))
+        .map(|n| n.rect())
+        .filter(|r| r.right() <= text.left() && r.top() < text.bottom() && r.bottom() > text.top())
+        .max_by(|a, b| a.right().total_cmp(&b.right()))
+        .unwrap();
+    assert!(text.left() - icon.right() < 24.0, "no icon beside {lines:?}");
+    text.center().y - icon.center().y
+}
+
+#[test]
+fn name_and_tagline_are_centred_on_the_icon() {
+    for (scale, suffix) in [(1.0, "-1x"), (1.5, "-1.5x"), (2.0, "-2x")] {
+        let (mut h, _) = harness_at(ViewMode::Grid, egui::Theme::Dark, true, scale);
+        h.run_steps(8);
+        snapshot(&mut h, &format!("grid-dark{suffix}"));
+        let off = below_icon_centre(&h, &["PhotoCraft", "Image editing", "Like Adobe Photoshop®"]);
+        assert!(off.abs() < 0.25, "grid at {scale}x: {off}");
+        let (mut h, _) = harness_at(ViewMode::Table, egui::Theme::Light, true, scale);
+        h.run_steps(8);
+        snapshot(&mut h, &format!("table-light{suffix}"));
+        let off = below_icon_centre(&h, &["PhotoCraft", "Image editing"]);
+        assert!(off.abs() < 0.25, "table at {scale}x: {off}");
+    }
 }
 
 /// The app names in the order the table shows them.
