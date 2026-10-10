@@ -3,7 +3,7 @@
 use std::time::Duration;
 
 use artcraft_launcher_core::protocol::{
-    Backend, BackendOptions, CANCELLED, Capabilities, Command, Event, INSTALL_CANCELLED, LatestRelease, PAUSED, Source,
+    Backend, BackendOptions, CANCELLED, Capabilities, Command, Event, INSTALL_CANCELLED, JobPhase, LatestRelease, PAUSED, Source,
 };
 use artcraft_launcher_core::release::Release;
 use artcraft_launcher_core::status::AppStatus;
@@ -276,9 +276,9 @@ impl LauncherUi {
                 false
             }
             Event::JobFinished { app, result } => {
-                if app == artcraft_launcher_core::catalog::LAUNCHER_ID {
-                    self.launcher_job = None;
-                }
+                let launcher = app == artcraft_launcher_core::catalog::LAUNCHER_ID;
+                // What the job was doing when it ended says what a cancellation called off.
+                let last = if launcher { self.launcher_job.take() } else { self.entry(&app).and_then(|e| e.job) };
                 if let Some(e) = self.entry_mut(&app) {
                     e.job = None;
                 }
@@ -287,6 +287,12 @@ impl LauncherUi {
                     Ok(msg) => self.toast(ctx, msg, false),
                     // The paused card says it all.
                     Err(e) if e == PAUSED => {}
+                    Err(e) if e == CANCELLED && launcher => self.toast(ctx, "Update cancelled", false),
+                    // An install's own cancellations end as INSTALL_CANCELLED, so past the
+                    // download this is a removal called off while it waited for the installer.
+                    Err(e) if e == CANCELLED && matches!(last, Some(JobPhase::Waiting | JobPhase::Removing)) => {
+                        self.toast(ctx, "Uninstall cancelled", false);
+                    }
                     Err(e) if e == CANCELLED => self.toast(ctx, "Download cancelled", false),
                     Err(e) if e == INSTALL_CANCELLED && kept => {
                         self.toast(ctx, "Install cancelled. The download is kept for the next try.", false);

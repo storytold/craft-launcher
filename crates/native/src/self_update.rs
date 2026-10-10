@@ -152,7 +152,9 @@ fn detect(_exe: &Path) -> Option<Install> {
 }
 
 /// Downloads `release` for `platform`, puts it in place and starts the helper that relaunches
-/// it once this process has exited. On success the caller must quit promptly.
+/// it once this process has exited. On success the caller must quit promptly. `last` is called
+/// once the download is ready and returns when the launcher may replace itself and restart.
+#[allow(clippy::too_many_arguments)]
 pub fn update(
     install: &Install,
     release: &Release,
@@ -161,12 +163,15 @@ pub fn update(
     paths: &Paths,
     stop: &Stop,
     phase: &mut dyn FnMut(JobPhase),
+    last: &dyn Fn() -> Result<(), String>,
 ) -> Result<(), String> {
     let (asset, _) = pick_asset(release, &[LAUNCHER.id], platform, &[install.kind()])
         .ok_or_else(|| format!("ArtCraft Launcher {} has no {} for {}", release.version_label(), install.kind().label(), platform.label()))?;
     let asset = asset.clone();
     let mut job = Job { http, paths, stop, phase };
     let (file, _) = install::download(release, &asset, &mut job)?;
+    // The restart ends this process: nothing else may be under way.
+    last()?;
     phase(JobPhase::Installing);
     if let Err(e) = crate::paths::write_atomic(&marker(paths), format!("{}\n{}\n", release.tag, crate::now()).as_bytes()) {
         log::warn!("couldn't record the self-update: {e}");
@@ -189,7 +194,7 @@ pub fn update(
         }
         #[cfg(target_os = "linux")]
         Install::Package(kind, exe) => {
-            let result = install::linux::install_package(*kind, &file);
+            let result = install::linux::install_package(*kind, &file, stop, phase);
             let _ = std::fs::remove_file(&file);
             result?;
             relaunch_after_exit(pid, &[exe.as_os_str()])

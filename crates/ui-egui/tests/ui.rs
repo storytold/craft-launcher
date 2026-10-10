@@ -306,6 +306,60 @@ fn a_kept_update_names_its_version_and_an_up_to_date_app_is_not_downloaded_again
 }
 
 #[test]
+fn an_install_waiting_for_another_says_so_and_can_be_cancelled() {
+    let mut events = events();
+    // Two updates reached the system's installer together: one runs, the other waits its turn.
+    events.push(Event::Progress { app: "photocraft".into(), phase: JobPhase::Installing });
+    events.push(Event::Progress { app: "effectcraft".into(), phase: JobPhase::Waiting });
+    let (mut h, sent) = harness_with(events, ViewMode::Grid, egui::Theme::Dark, true, 1.0);
+    h.run_steps(6);
+    snapshot(&mut h, "grid-waiting-dark");
+    h.get_by_label("Installing…");
+    h.get_by_label("Waiting for another app…");
+    // Only the waiting one: the install that is running can't be called off.
+    h.get_by_label("Cancel").click();
+    h.run_steps(2);
+    let cancels: Vec<_> = sent.borrow().iter().filter(|c| matches!(c, Command::Cancel { .. })).cloned().collect();
+    assert_eq!(cancels, [Command::Cancel { app: "effectcraft".into() }]);
+}
+
+#[test]
+fn the_launcher_update_waiting_for_other_installs_can_be_cancelled() {
+    let mut ev = events();
+    ev.push(Event::LauncherUpdate(release("artcraft-launcher", "0.2.0", NOW)));
+    ev.push(Event::Progress { app: "artcraft-launcher".into(), phase: JobPhase::Waiting });
+    let (mut h, sent) = harness_with(ev, ViewMode::Grid, egui::Theme::Dark, true, 1.0);
+    h.run_steps(6);
+    snapshot(&mut h, "grid-launcher-waiting-dark");
+    h.get_by_label("Waiting for other installs…");
+    sent.borrow_mut().clear();
+    h.get_by_label("Cancel update").click();
+    h.run_steps(2);
+    assert_eq!(*sent.borrow(), [Command::Cancel { app: "artcraft-launcher".into() }]);
+}
+
+#[test]
+fn each_cancellation_says_what_it_called_off() {
+    let finished = |app: &str, why: &str| Event::JobFinished { app: app.into(), result: Err(why.into()) };
+    let mut ev = events();
+    // An uninstall called off while it waited for the installer.
+    ev.push(Event::Progress { app: "lightcraft".into(), phase: JobPhase::Removing });
+    ev.push(Event::Progress { app: "lightcraft".into(), phase: JobPhase::Waiting });
+    ev.push(finished("lightcraft", CANCELLED));
+    // The launcher's own update, cancelled while it waited.
+    ev.push(Event::LauncherUpdate(release("artcraft-launcher", "0.2.0", NOW)));
+    ev.push(Event::Progress { app: "artcraft-launcher".into(), phase: JobPhase::Waiting });
+    ev.push(finished("artcraft-launcher", CANCELLED));
+    // A download cancelled mid-way.
+    ev.push(finished("filmcraft", CANCELLED));
+    let (mut h, _) = harness_with(ev, ViewMode::Grid, egui::Theme::Dark, true, 1.0);
+    h.run_steps(6);
+    for toast in ["Uninstall cancelled", "Update cancelled", "Download cancelled"] {
+        assert_eq!(h.query_all_by_label(toast).count(), 1, "{toast}");
+    }
+}
+
+#[test]
 fn table_view_and_light_theme() {
     let (mut h, sent) = harness(ViewMode::Table, egui::Theme::Light, true);
     h.run_steps(8);

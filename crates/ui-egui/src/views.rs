@@ -116,8 +116,17 @@ impl LauncherUi {
                                     ),
                                     JobPhase::Downloading { .. } | JobPhase::Reconnecting { .. } => (None, "Downloading…".to_string()),
                                     JobPhase::Verifying => (None, "Verifying…".to_string()),
+                                    JobPhase::Waiting => (None, "Waiting for other installs…".to_string()),
                                     JobPhase::Installing | JobPhase::Removing => (None, "Installing, then restarting…".to_string()),
                                 };
+                                // Another app's install can hang on a password prompt: the wait can be called off.
+                                if phase == JobPhase::Waiting
+                                    && widgets::glyph_button(ui, widgets::Glyph::Close, "Cancel update")
+                                        .on_hover_text("Stop waiting; the update can be started again later")
+                                        .clicked()
+                                {
+                                    self.send(Command::Cancel { app: artcraft_launcher_core::catalog::LAUNCHER_ID.to_string() });
+                                }
                                 widgets::progress(ui, fraction, &caption, t.accent, 220.0);
                                 return;
                             }
@@ -630,18 +639,22 @@ impl LauncherUi {
                     (f, if short { "Reconnecting…".into() } else { format!("Reconnecting… {}", amount(done, total)) }, t.warn)
                 }
                 JobPhase::Verifying => (None, "Verifying checksum…".into(), rgb(entry.app.color)),
+                JobPhase::Waiting => (None, "Waiting for another app…".into(), rgb(entry.app.color)),
                 JobPhase::Installing => (None, "Installing…".into(), rgb(entry.app.color)),
                 JobPhase::Removing => (None, "Removing…".into(), rgb(entry.app.color)),
             };
             let downloading = matches!(phase, JobPhase::Downloading { .. } | JobPhase::Reconnecting { .. });
+            // A job waiting for the installer hasn't started it yet, so it can still be called off.
+            let waiting = phase == JobPhase::Waiting;
+            // Waiting has one square button beside the bar, like the menu otherwise.
             widgets::progress(ui, fraction, &caption, color, if downloading { bar_w } else { main_w });
-            if downloading {
-                if widgets::glyph_button(ui, widgets::Glyph::Pause, "Pause download").clicked() {
-                    self.send(Command::Pause { app: id.clone() });
-                }
-                if widgets::glyph_button(ui, widgets::Glyph::Close, "Cancel download").clicked() {
-                    self.send(Command::Cancel { app: id });
-                }
+            if downloading && widgets::glyph_button(ui, widgets::Glyph::Pause, "Pause download").clicked() {
+                self.send(Command::Pause { app: id.clone() });
+            }
+            if (downloading || waiting)
+                && widgets::glyph_button(ui, widgets::Glyph::Close, if waiting { "Cancel" } else { "Cancel download" }).clicked()
+            {
+                self.send(Command::Cancel { app: id });
             }
             return;
         }

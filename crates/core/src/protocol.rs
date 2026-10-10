@@ -79,6 +79,8 @@ pub enum JobPhase {
         total: u64,
     },
     Verifying,
+    /// The system's installer is busy with another app; this one goes next.
+    Waiting,
     /// Waiting on the OS installer (MSI) or copying files.
     Installing,
     Removing,

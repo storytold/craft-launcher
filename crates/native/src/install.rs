@@ -56,9 +56,9 @@ pub fn install(
         #[cfg(target_os = "macos")]
         PackageKind::Dmg => macos::install_dmg(app, &file, existing, job.paths).map(|_| None),
         #[cfg(windows)]
-        PackageKind::Msi => windows::run_msi(&file).map(|_| None),
+        PackageKind::Msi => windows::run_msi(&file, job.stop, &mut *job.phase).map(|_| None),
         #[cfg(target_os = "linux")]
-        PackageKind::Deb | PackageKind::Rpm | PackageKind::Flatpak => linux::install_package(kind, &file).map(|_| None),
+        PackageKind::Deb | PackageKind::Rpm | PackageKind::Flatpak => linux::install_package(kind, &file, job.stop, &mut *job.phase).map(|_| None),
         #[cfg(target_os = "linux")]
         PackageKind::AppImage => {
             linux::install_appimage(app, &file, &asset.name, existing).map(|path| Some(record(&version, kind, path, Vec::new(), false)))
@@ -191,9 +191,10 @@ pub fn managed_elsewhere(app: &CraftApp, installed: &Installed, uninstall: bool)
     }
 }
 
-/// Removes an installed copy.
-pub fn uninstall(app: &CraftApp, installed: &Installed, record: Option<&Record>) -> Result<(), String> {
-    let _ = record;
+/// Removes an installed copy. `phase` hears when the removal has to wait for another install;
+/// `stop` cancels it while it waits.
+pub fn uninstall(app: &CraftApp, installed: &Installed, record: Option<&Record>, stop: &Stop, phase: &mut dyn FnMut(JobPhase)) -> Result<(), String> {
+    let _ = (record, stop, &phase);
     let path = PathBuf::from(&installed.location);
     if let Some(msg) = managed_elsewhere(app, installed, true) {
         return Err(msg);
@@ -205,11 +206,13 @@ pub fn uninstall(app: &CraftApp, installed: &Installed, record: Option<&Record>)
     }
     match installed.source {
         #[cfg(windows)]
-        InstallSource::Msi => windows::uninstall_msi(app),
+        InstallSource::Msi => windows::uninstall_msi(app, stop, phase),
         #[cfg(target_os = "macos")]
         InstallSource::MacApp | InstallSource::Launcher => macos::move_to_trash(&path),
         #[cfg(target_os = "linux")]
-        InstallSource::Deb | InstallSource::Rpm | InstallSource::Pacman | InstallSource::Flatpak => linux::remove_package(app, installed),
+        InstallSource::Deb | InstallSource::Rpm | InstallSource::Pacman | InstallSource::Flatpak => {
+            linux::remove_package(app, installed, stop, phase)
+        }
         #[cfg(target_os = "freebsd")]
         InstallSource::Launcher => match record {
             Some(r) => freebsd::remove_files(&r.files, r.needs_root),
@@ -310,7 +313,13 @@ fn which(name: &str) -> Option<PathBuf> {
 fn run_as_root(args: &[&std::ffi::OsStr]) -> Result<(), String> {
     let pkexec = which("pkexec").ok_or("installing system-wide needs polkit (pkexec), which isn't installed")?;
     let status = process::command(pkexec).args(args).status().map_err(|e| format!("couldn't ask for permission ({e})"))?;
-    match status.code() {
+    root_outcome(status.code())
+}
+
+/// What `pkexec`'s exit code says about the command it ran.
+#[cfg(any(target_os = "linux", target_os = "freebsd"))]
+fn root_outcome(code: Option<i32>) -> Result<(), String> {
+    match code {
         Some(0) => Ok(()),
         // pkexec: 126 = the password prompt was dismissed, 127 = not authorized.
         Some(126 | 127) => Err("cancelled".into()),
@@ -319,12 +328,90 @@ fn run_as_root(args: &[&std::ffi::OsStr]) -> Result<(), String> {
     }
 }
 
+/// How the error of an installer call shared by several apps ends (see `linux::shared_outcome`).
+const SHARED_CALL: &str = "apps together. Try them one at a time.";
+
+/// Whether an install failed in one installer call shared with other apps (Linux packages
+/// installed together). Such a call can fail after it has installed some of its apps; any other
+/// failure is the app's own.
+pub fn failed_in_shared_call(error: &str) -> bool {
+    cfg!(target_os = "linux") && error.ends_with(SHARED_CALL)
+}
+
+/// The system's installer runs one job at a time; the others wait their turn here.
+#[cfg(any(target_os = "linux", windows))]
+static INSTALLER: crate::queue::Queue = crate::queue::Queue::new();
+
+/// For [`INSTALLER`]: reports [`JobPhase::Waiting`] while a job waits, then `working` again.
+#[cfg(any(target_os = "linux", windows))]
+fn turn<'a>(phase: &'a mut dyn FnMut(JobPhase), working: JobPhase) -> impl FnMut(bool) + 'a {
+    move |waiting| phase(if waiting { JobPhase::Waiting } else { working })
+}
+
+/// For [`INSTALLER`]: whether the user cancelled the job while it waits.
+#[cfg(any(target_os = "linux", windows))]
+fn cancelled(stop: &Stop) -> impl Fn() -> bool + '_ {
+    || stop.check().is_err_and(|e| e == artcraft_launcher_core::protocol::CANCELLED)
+}
+
 #[cfg(target_os = "linux")]
 pub(crate) mod linux {
-    use std::ffi::OsStr;
+    use std::ffi::{OsStr, OsString};
     use std::os::unix::fs::PermissionsExt;
 
+    use artcraft_launcher_core::protocol::CANCELLED;
+
     use super::*;
+
+    /// apt waits this long for another package tool (a software centre, automatic updates) to
+    /// let go of its lock, instead of failing at once.
+    const APT_WAITS: &str = "DPkg::Lock::Timeout=60";
+
+    /// Where commands that need root go: the installer's queue, then `pkexec`.
+    pub struct Root<'a> {
+        pub queue: &'a crate::queue::Queue,
+        pub run: &'a (dyn Fn(&[&OsStr]) -> Result<(), String> + Sync),
+    }
+
+    const SYSTEM: Root<'static> = Root { queue: &INSTALLER, run: &run_as_root };
+
+    /// Runs `command target` as root. Jobs waiting for the same command go into one call
+    /// (`apt-get install a.deb b.deb`), so the password is asked for once.
+    fn as_root(
+        root: &Root<'_>,
+        command: &[&str],
+        target: &OsStr,
+        stop: &Stop,
+        phase: &mut dyn FnMut(JobPhase),
+        working: JobPhase,
+    ) -> Result<(), String> {
+        let command = command.iter().map(OsString::from).collect();
+        root.queue.batched(command, target.to_os_string(), &cancelled(stop), &mut turn(phase, working), &|command, targets| {
+            let args: Vec<&OsStr> = command.iter().chain(targets).map(OsString::as_os_str).collect();
+            shared_outcome((root.run)(&args), targets.len())
+        })
+    }
+
+    /// What one call's result means for each of the `count` apps it handled: a failure can't be
+    /// pinned on one of them, and trying each again by itself would ask for the password each time.
+    pub fn shared_outcome(result: Result<(), String>, count: usize) -> Result<(), String> {
+        match result {
+            Err(e) if count > 1 && e != CANCELLED => Err(format!("{e} while handling {count} {SHARED_CALL}")),
+            other => other,
+        }
+    }
+
+    /// The command that installs (or upgrades) a downloaded system package.
+    pub fn install_command(kind: PackageKind) -> Option<&'static [&'static str]> {
+        match kind {
+            // apt resolves dependencies and records the package like any other.
+            PackageKind::Deb => Some(&["apt-get", "-o", APT_WAITS, "install", "-y", "--allow-downgrades"]),
+            PackageKind::Rpm if which("dnf").is_some() => Some(&["dnf", "install", "-y"]),
+            PackageKind::Rpm if which("zypper").is_some() => Some(&["zypper", "--non-interactive", "install", "--allow-unsigned-rpm"]),
+            PackageKind::Rpm => Some(&["rpm", "-U", "--replacepkgs"]),
+            _ => None,
+        }
+    }
 
     /// What this system can install: its own package format first (when polkit can ask for
     /// permission), then Flatpak, then AppImage, which works everywhere.
@@ -345,26 +432,16 @@ pub(crate) mod linux {
     }
 
     /// Installs (or upgrades) a downloaded package with the system's own tools.
-    pub fn install_package(kind: PackageKind, file: &Path) -> Result<(), String> {
+    pub fn install_package(kind: PackageKind, file: &Path, stop: &Stop, phase: &mut dyn FnMut(JobPhase)) -> Result<(), String> {
+        install_package_via(&SYSTEM, kind, file, stop, phase)
+    }
+
+    pub fn install_package_via(root: &Root<'_>, kind: PackageKind, file: &Path, stop: &Stop, phase: &mut dyn FnMut(JobPhase)) -> Result<(), String> {
         let f = file.as_os_str();
+        if let Some(command) = install_command(kind) {
+            return as_root(root, command, f, stop, phase, JobPhase::Installing);
+        }
         match kind {
-            // apt resolves dependencies and records the package like any other.
-            PackageKind::Deb => run_as_root(&[OsStr::new("apt-get"), OsStr::new("install"), OsStr::new("-y"), OsStr::new("--allow-downgrades"), f]),
-            PackageKind::Rpm => {
-                if which("dnf").is_some() {
-                    run_as_root(&[OsStr::new("dnf"), OsStr::new("install"), OsStr::new("-y"), f])
-                } else if which("zypper").is_some() {
-                    run_as_root(&[
-                        OsStr::new("zypper"),
-                        OsStr::new("--non-interactive"),
-                        OsStr::new("install"),
-                        OsStr::new("--allow-unsigned-rpm"),
-                        f,
-                    ])
-                } else {
-                    run_as_root(&[OsStr::new("rpm"), OsStr::new("-U"), OsStr::new("--replacepkgs"), f])
-                }
-            }
             PackageKind::Flatpak => {
                 let status = process::command("flatpak")
                     .args(["install", "--user", "-y", "--noninteractive", "--bundle"])
@@ -381,35 +458,26 @@ pub(crate) mod linux {
         }
     }
 
-    pub fn remove_package(app: &CraftApp, installed: &Installed) -> Result<(), String> {
+    pub fn remove_package(app: &CraftApp, installed: &Installed, stop: &Stop, phase: &mut dyn FnMut(JobPhase)) -> Result<(), String> {
+        let mut remove = |command: &[&str], package: &str| as_root(&SYSTEM, command, OsStr::new(package), stop, phase, JobPhase::Removing);
         match installed.source {
-            InstallSource::Deb => run_as_root(&[OsStr::new("apt-get"), OsStr::new("remove"), OsStr::new("-y"), OsStr::new(app.id)]),
+            InstallSource::Deb => remove(&["apt-get", "-o", APT_WAITS, "remove", "-y"], app.id),
             InstallSource::Rpm => {
                 if which("dnf").is_some() {
-                    run_as_root(&[OsStr::new("dnf"), OsStr::new("remove"), OsStr::new("-y"), OsStr::new(app.id)])
+                    remove(&["dnf", "remove", "-y"], app.id)
                 } else {
-                    run_as_root(&[OsStr::new("rpm"), OsStr::new("-e"), OsStr::new(app.id)])
+                    remove(&["rpm", "-e"], app.id)
                 }
             }
             // The package detected (photocraft, photocraft-bin or photocraft-git).
-            InstallSource::Pacman => {
-                let pkg = installed.package.as_deref().unwrap_or(app.id);
-                run_as_root(&[OsStr::new("pacman"), OsStr::new("-R"), OsStr::new("--noconfirm"), OsStr::new(pkg)])
-            }
+            InstallSource::Pacman => remove(&["pacman", "-R", "--noconfirm"], installed.package.as_deref().unwrap_or(app.id)),
             InstallSource::Flatpak => {
                 let id = app.bundle_id();
                 let user = process::command("flatpak").args(["uninstall", "--user", "-y", "--noninteractive", &id]).status();
                 if user.is_ok_and(|s| s.success()) {
                     return Ok(());
                 }
-                run_as_root(&[
-                    OsStr::new("flatpak"),
-                    OsStr::new("uninstall"),
-                    OsStr::new("--system"),
-                    OsStr::new("-y"),
-                    OsStr::new("--noninteractive"),
-                    OsStr::new(&id),
-                ])
+                remove(&["flatpak", "uninstall", "--system", "-y", "--noninteractive"], &id)
             }
             other => Err(format!("{} isn't a system package", other.label())),
         }
@@ -654,6 +722,8 @@ mod freebsd {
 
 #[cfg(windows)]
 pub mod windows {
+    use artcraft_launcher_core::protocol::CANCELLED;
+
     use super::*;
 
     fn msiexec() -> PathBuf {
@@ -672,29 +742,39 @@ pub mod windows {
     }
 
     /// Runs an MSI with a progress window and no restart. Windows asks for permission itself.
-    pub fn run_msi(msi: &Path) -> Result<(), String> {
-        let status = process::command(msiexec())
-            .arg("/i")
-            .arg(msi)
-            .args(["/passive", "/norestart"])
-            .status()
-            .map_err(|e| format!("couldn't start the Windows Installer ({e})"))?;
-        explain(status.code())
+    pub fn run_msi(msi: &Path, stop: &Stop, phase: &mut dyn FnMut(JobPhase)) -> Result<(), String> {
+        in_turn(stop, phase, JobPhase::Installing, || {
+            let status = process::command(msiexec())
+                .arg("/i")
+                .arg(msi)
+                .args(["/passive", "/norestart"])
+                .status()
+                .map_err(|e| format!("couldn't start the Windows Installer ({e})"))?;
+            explain(status.code())
+        })
     }
 
-    pub fn uninstall_msi(app: &CraftApp) -> Result<(), String> {
+    /// Runs `work` once no other Windows Installer job of ours is running (a second one would
+    /// stop with error 1618). Cancelled while it waits, it never runs.
+    fn in_turn(stop: &Stop, phase: &mut dyn FnMut(JobPhase), working: JobPhase, work: impl FnOnce() -> Result<(), String>) -> Result<(), String> {
+        INSTALLER.alone(&cancelled(stop), &mut turn(phase, working), work).unwrap_or_else(|| Err(CANCELLED.into()))
+    }
+
+    pub fn uninstall_msi(app: &CraftApp, stop: &Stop, phase: &mut dyn FnMut(JobPhase)) -> Result<(), String> {
         let installs = crate::detect::windows::msi_installs(app);
         if installs.is_empty() {
             return Err(format!("{} isn't registered with the Windows Installer", app.name));
         }
-        for m in installs {
-            let status = process::command(msiexec())
-                .args(["/x", &m.product_code, "/passive", "/norestart"])
-                .status()
-                .map_err(|e| format!("couldn't start the Windows Installer ({e})"))?;
-            explain(status.code())?;
-        }
-        Ok(())
+        in_turn(stop, phase, JobPhase::Removing, || {
+            for m in installs {
+                let status = process::command(msiexec())
+                    .args(["/x", &m.product_code, "/passive", "/norestart"])
+                    .status()
+                    .map_err(|e| format!("couldn't start the Windows Installer ({e})"))?;
+                explain(status.code())?;
+            }
+            Ok(())
+        })
     }
 }
 
@@ -809,6 +889,94 @@ mod tests {
         let bad = dir.path().join("bad.tar.gz");
         tarball(&bad, &["x/README.md"]);
         assert!(tree::unpack(app, &bad, &dir.path().join("staging")).is_err());
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn several_debs_fit_one_apt_call_and_share_its_result() {
+        // The files are appended to this, so it must end where apt expects packages.
+        assert_eq!(
+            linux::install_command(PackageKind::Deb),
+            Some(&["apt-get", "-o", "DPkg::Lock::Timeout=60", "install", "-y", "--allow-downgrades"][..])
+        );
+        assert_eq!(linux::install_command(PackageKind::Flatpak), None);
+        let failed = || Err("the system installer stopped with error 100".to_string());
+        assert_eq!(linux::shared_outcome(Ok(()), 3), Ok(()));
+        assert_eq!(linux::shared_outcome(failed(), 1), failed());
+        assert_eq!(
+            linux::shared_outcome(failed(), 3),
+            Err("the system installer stopped with error 100 while handling 3 apps together. Try them one at a time.".into())
+        );
+        // A dismissed password prompt stays a cancellation for every app, not an error.
+        assert_eq!(linux::shared_outcome(Err("cancelled".into()), 3), Err("cancelled".into()));
+    }
+
+    /// Installs two `.deb` files that reach the installer together (both wait behind a running
+    /// install), with a stand-in for `pkexec` that exits with `code`. Returns every argument
+    /// list that reached it, and each job's result.
+    #[cfg(target_os = "linux")]
+    fn two_debs_through_pkexec(code: i32) -> (Vec<Vec<String>>, Vec<Result<(), String>>) {
+        use std::sync::{Mutex, mpsc};
+        let queue = crate::queue::Queue::new();
+        let ran = Mutex::new(Vec::new());
+        let run = |args: &[&std::ffi::OsStr]| {
+            ran.lock().unwrap().push(args.iter().map(|a| a.to_string_lossy().into_owned()).collect::<Vec<_>>());
+            root_outcome(Some(code))
+        };
+        let root = linux::Root { queue: &queue, run: &run };
+        let (started, has_started) = mpsc::channel();
+        let (release, released) = mpsc::channel::<()>();
+        let (waiting, waits) = mpsc::channel();
+        let results = std::thread::scope(|scope| {
+            let (queue, root) = (&queue, &root);
+            scope.spawn(move || {
+                queue.alone(&|| false, &mut |_| {}, || {
+                    started.send(()).unwrap();
+                    released.recv().unwrap();
+                });
+            });
+            has_started.recv().unwrap();
+            let jobs = ["/downloads/a.deb", "/downloads/b.deb"].map(|file| {
+                let waiting = waiting.clone();
+                scope.spawn(move || {
+                    let mut phase = |p: JobPhase| {
+                        if p == JobPhase::Waiting {
+                            waiting.send(()).unwrap();
+                        }
+                    };
+                    linux::install_package_via(root, PackageKind::Deb, Path::new(file), &Stop::default(), &mut phase)
+                })
+            });
+            waits.recv().unwrap();
+            waits.recv().unwrap();
+            release.send(()).unwrap();
+            jobs.map(|j| j.join().unwrap()).to_vec()
+        });
+        (ran.into_inner().unwrap(), results)
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn two_debs_reach_root_as_one_apt_call() {
+        let (ran, results) = two_debs_through_pkexec(0);
+        assert_eq!(ran.len(), 1, "{ran:?}");
+        let (command, files) = ran[0].split_at(6);
+        assert_eq!(command, ["apt-get", "-o", "DPkg::Lock::Timeout=60", "install", "-y", "--allow-downgrades"]);
+        let mut files = files.to_vec();
+        files.sort();
+        assert_eq!(files, ["/downloads/a.deb", "/downloads/b.deb"]);
+        assert_eq!(results, [Ok(()), Ok(())]);
+
+        // The password prompt was dismissed: one call, and both apps are cancelled, not failed.
+        let (ran, results) = two_debs_through_pkexec(126);
+        assert_eq!(ran.len(), 1, "{ran:?}");
+        assert_eq!(results, vec![Err("cancelled".to_string()); 2]);
+
+        // apt failed: both apps say so, and how to find the one at fault.
+        let (ran, results) = two_debs_through_pkexec(100);
+        assert_eq!(ran.len(), 1, "{ran:?}");
+        let error = "the system installer stopped with error 100 while handling 2 apps together. Try them one at a time.";
+        assert_eq!(results, vec![Err(error.to_string()); 2]);
     }
 
     #[test]
