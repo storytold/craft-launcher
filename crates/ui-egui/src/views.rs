@@ -16,6 +16,8 @@ use crate::widgets::{self, Cell, Kind};
 /// What the main button of an app does.
 enum Primary {
     Install,
+    /// The download is already here; only the install step is left. Carries the button's label.
+    Retry(String),
     Update(String),
     Open,
     Download(String),
@@ -582,6 +584,8 @@ impl LauncherUi {
             };
         }
         match status {
+            AppStatus::Available if entry.ready => Primary::Retry("Retry install".into()),
+            AppStatus::UpdateAvailable if entry.ready => Primary::Retry(format!("Retry update to {}", entry.latest_label().unwrap_or_default())),
             AppStatus::Available => Primary::Install,
             AppStatus::UpdateAvailable => Primary::Update(entry.latest_label().unwrap_or_default()),
             AppStatus::UpToDate | AppStatus::Installed => Primary::Open,
@@ -674,6 +678,12 @@ impl LauncherUi {
                     self.send(Command::Install { app: id.clone() });
                 }
             }
+            Primary::Retry(label) => {
+                let tip = "The download is still here. It's checked again, then installed.";
+                if widgets::button(ui, &label, Kind::Primary, main_w).on_hover_text(tip).clicked() {
+                    self.send(Command::Install { app: id.clone() });
+                }
+            }
             Primary::Update(v) => {
                 if widgets::button(ui, &format!("Update to {v}"), Kind::Primary, main_w).clicked() {
                     self.send(Command::Install { app: id.clone() });
@@ -707,6 +717,14 @@ impl LauncherUi {
         widgets::more_menu(ui, |ui| {
             if entry.release().is_some() && ui.button("Release notes").clicked() {
                 self.dialog = Some(Dialog::Notes(id.clone()));
+                ui.close();
+            }
+            // Only where Install would download: an up-to-date app would be reinstalled.
+            let can_download_again =
+                manage && entry.ready && entry.paused.is_none() && matches!(status, AppStatus::Available | AppStatus::UpdateAvailable);
+            if can_download_again && ui.button("Download again").clicked() {
+                self.send(Command::Cancel { app: id.clone() });
+                self.send(Command::Install { app: id.clone() });
                 ui.close();
             }
             if manage && status.is_installed() {

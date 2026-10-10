@@ -169,8 +169,9 @@ impl NativeBackend {
         let platform = self.platform;
         let options = self.options();
         std::thread::spawn(move || {
-            // Leftovers from interrupted installs or older versions of the launcher.
-            http::clean_downloads(&paths.downloads(), Duration::from_secs(30 * 86_400));
+            // Leftovers from interrupted installs or older versions of the launcher. A paused
+            // download stays a month; a finished one kept after a failed install, a week.
+            http::clean_downloads(&paths.downloads(), Duration::from_secs(30 * 86_400), Duration::from_secs(7 * 86_400));
             let snapshot = crate::detect::Snapshot::take();
             let manifest = shared.manifest.lock().unwrap_or_else(PoisonError::into_inner).clone();
             for app in &SUITE {
@@ -213,6 +214,7 @@ impl NativeBackend {
         }
         let shared = self.shared.clone();
         let paths = self.paths.clone();
+        let platform = self.platform;
         let pre = self.options().prereleases;
         std::thread::spawn(move || {
             shared.emit(Event::CheckStarted);
@@ -267,6 +269,11 @@ impl NativeBackend {
                 if SUITE.iter().all(|a| answered.contains(a.id)) {
                     shared.loaded.store(true, Ordering::SeqCst);
                 }
+            }
+            // A newer release changes which file an install would use.
+            let options = shared.options.lock().unwrap_or_else(PoisonError::into_inner).clone();
+            for app in &SUITE {
+                report_partial(app, &shared, &paths, platform, &options);
             }
             let sources = sources.into_inner().unwrap_or_else(PoisonError::into_inner);
             let source_used = if sources.contains(&Source::Cache) {
@@ -463,20 +470,28 @@ fn planned_asset(
     pick_asset(release, &stems, platform, &kinds).map(|(a, k)| (a.clone(), k))
 }
 
-/// Tells the UI whether `app` has a paused download waiting.
+/// Tells the UI whether `app` has a paused download waiting, or a finished one to install.
 fn report_partial(app: &CraftApp, shared: &Shared, paths: &Paths, platform: Option<Platform>, options: &BackendOptions) {
-    let download = partial_for(app, shared, paths, platform, options).map(|(asset, done)| PausedDownload { done, total: asset.size });
+    let planned = planned_download(app, shared, paths, platform, options);
+    let download = planned.as_ref().and_then(|(dest, size)| Some(PausedDownload { done: http::partial_bytes(dest, *size)?, total: *size }));
     shared.emit(Event::Paused { app: app.id.to_string(), download });
+    let ready = planned.is_some_and(|(dest, size)| http::finished(&dest, size));
+    shared.emit(Event::ReadyToInstall { app: app.id.to_string(), ready });
 }
 
-/// The planned download of `app` and how many bytes of it are already on disk.
-fn partial_for(app: &CraftApp, shared: &Shared, paths: &Paths, platform: Option<Platform>, options: &BackendOptions) -> Option<(Asset, u64)> {
+/// Where the planned download of `app` is kept, and its size.
+fn planned_download(
+    app: &CraftApp,
+    shared: &Shared,
+    paths: &Paths,
+    platform: Option<Platform>,
+    options: &BackendOptions,
+) -> Option<(std::path::PathBuf, u64)> {
     let release = shared.latest.lock().unwrap_or_else(PoisonError::into_inner).get(app.id).cloned()?;
     let existing = shared.installed.lock().unwrap_or_else(PoisonError::into_inner).get(app.id).cloned();
     let record = shared.manifest.lock().unwrap_or_else(PoisonError::into_inner).apps.get(app.id).cloned();
     let (asset, _) = planned_asset(app, &release, platform?, options, existing.as_ref(), record.as_ref())?;
-    let done = http::partial_bytes(&install::download_path(paths, &asset), asset.size)?;
-    Some((asset, done))
+    artcraft_launcher_core::release::valid_file_name(&asset.name).then(|| (install::download_path(paths, &asset), asset.size))
 }
 
 /// How much the feed is trusted in one check, and how freely GitHub may be asked.
@@ -686,14 +701,15 @@ impl Backend for NativeBackend {
                 let running = self.shared.jobs.lock().unwrap_or_else(PoisonError::into_inner).get(&app).cloned();
                 match running {
                     Some(stop) => stop.cancel(),
-                    // A paused download: throw its partial file away.
+                    // A paused download, or one kept after a failed install: throw the file away.
                     None => {
                         if let Some(def) = CraftApp::by_id(&app)
-                            && let Some((asset, _)) = partial_for(def, &self.shared, &self.paths, self.platform, &self.options())
+                            && let Some((dest, size)) = planned_download(def, &self.shared, &self.paths, self.platform, &self.options())
                         {
-                            http::discard_partial(&install::download_path(&self.paths, &asset), asset.size);
+                            http::discard(&dest, size);
                         }
-                        self.shared.emit(Event::Paused { app, download: None });
+                        self.shared.emit(Event::Paused { app: app.clone(), download: None });
+                        self.shared.emit(Event::ReadyToInstall { app, ready: false });
                     }
                 }
             }
@@ -724,6 +740,11 @@ impl Backend for NativeBackend {
                     *o = options;
                     changed
                 };
+                // Another package format means another file to download.
+                let options = self.options();
+                for app in &SUITE {
+                    report_partial(app, &self.shared, &self.paths, self.platform, &options);
+                }
                 if changed_pre {
                     self.check(true);
                 }
@@ -944,5 +965,115 @@ mod tests {
         let fresh_shared = super::tests::shared();
         let (_, _, used) = latest_for(photo, Some(&feed), LOADED, &github, &fresh_shared, false, false, NOW + 2 * 86_400);
         assert_eq!(used, Some(Source::GitHubApi));
+    }
+
+    const APP: &str = "photocraft";
+
+    /// A PhotoCraft release with one file per platform and format, so whichever this machine
+    /// installs is there.
+    fn release(version: &str) -> Release {
+        let suffixes = ["-portable.zip", ".tar.gz", ".msi", ".dmg", ".AppImage", ".deb", ".rpm", ".flatpak"];
+        let tokens = ["windows-x64", "windows-x86", "windows-arm64", "macos-universal", "linux-x86_64", "linux-aarch64", "freebsd-x86_64"];
+        let assets = tokens
+            .iter()
+            .flat_map(|t| suffixes.iter().map(move |s| format!("{APP}-{version}-{t}{s}")))
+            .map(|name| Asset { url: format!("https://example.invalid/{name}"), name, size: 3, sha256: None })
+            .collect();
+        Release { assets, ..Release::default() }
+    }
+
+    /// A backend that knows `release("0.5.0")` and keeps its files under `root`.
+    fn backend(root: &std::path::Path, platform: Platform, source: Option<Arc<dyn ReleaseSource>>) -> NativeBackend {
+        let shared = shared();
+        shared.latest.lock().unwrap().insert(APP.to_string(), release("0.5.0"));
+        let shared = Arc::new(shared);
+        NativeBackend { shared, paths: Paths::under(root), http: None, source, platform: Some(platform), self_install: None }
+    }
+
+    /// Reports again, and returns what the UI was last told about a kept download.
+    fn ready(backend: &mut NativeBackend) -> Option<bool> {
+        let app = CraftApp::by_id(APP).unwrap();
+        report_partial(app, &backend.shared, &backend.paths, backend.platform, &BackendOptions::default());
+        last_ready(backend.poll())
+    }
+
+    fn last_ready(events: Vec<Event>) -> Option<bool> {
+        events.into_iter().rev().find_map(|e| match e {
+            Event::ReadyToInstall { app, ready } if app == APP => Some(ready),
+            _ => None,
+        })
+    }
+
+    /// Puts the planned download on disk, as a failed install leaves it.
+    fn keep_file(backend: &NativeBackend) -> std::path::PathBuf {
+        let app = CraftApp::by_id(APP).unwrap();
+        let (dest, size) = planned_download(app, &backend.shared, &backend.paths, backend.platform, &BackendOptions::default()).unwrap();
+        std::fs::create_dir_all(backend.paths.downloads()).unwrap();
+        std::fs::write(&dest, vec![0u8; size as usize]).unwrap();
+        dest
+    }
+
+    #[test]
+    fn a_kept_download_is_reported_and_can_be_thrown_away() {
+        let Some(platform) = native_platform() else { return };
+        let dir = tempfile::tempdir().unwrap();
+        let mut backend = backend(dir.path(), platform, None);
+        assert_eq!(ready(&mut backend), Some(false));
+        let dest = keep_file(&backend);
+        assert_eq!(ready(&mut backend), Some(true));
+
+        backend.send(Command::Cancel { app: APP.to_string() });
+        assert!(!dest.exists());
+        assert_eq!(last_ready(backend.poll()), Some(false));
+    }
+
+    #[test]
+    fn changing_the_settings_reports_kept_downloads_again() {
+        let Some(platform) = native_platform() else { return };
+        let dir = tempfile::tempdir().unwrap();
+        let mut backend = backend(dir.path(), platform, None);
+        keep_file(&backend);
+        assert_eq!(ready(&mut backend), Some(true));
+        // The planned file changed under the UI; only a new report can tell it.
+        backend.shared.latest.lock().unwrap().insert(APP.to_string(), release("0.6.0"));
+        backend.send(Command::Configure(BackendOptions::default()));
+        assert_eq!(last_ready(backend.poll()), Some(false));
+    }
+
+    #[test]
+    fn a_check_that_finds_a_newer_release_ends_the_retry_offer() {
+        struct Newer;
+        impl ReleaseSource for Newer {
+            fn latest(&self, repo: &str, _prereleases: bool) -> crate::source::Answer {
+                let found = CraftApp::by_id(APP).is_some_and(|a| a.repo == repo);
+                let latest = if found { LatestRelease::Found(release("0.6.0")) } else { LatestRelease::None };
+                crate::source::Answer { latest, source: Source::GitHubApi }
+            }
+            fn cached(&self, _repo: &str, _prereleases: bool) -> Option<LatestRelease> {
+                None
+            }
+            fn rate_limited_until(&self) -> Option<i64> {
+                None
+            }
+            fn save(&self) {}
+        }
+        let Some(platform) = native_platform() else { return };
+        let dir = tempfile::tempdir().unwrap();
+        let mut backend = backend(dir.path(), platform, Some(Arc::new(Newer)));
+        // A check needs a client; with pre-releases on it asks only `Newer`, never ArtCraft's API.
+        backend.http = Some(Http::new().unwrap());
+        backend.shared.options.lock().unwrap().prereleases = true;
+        keep_file(&backend);
+        assert_eq!(ready(&mut backend), Some(true));
+
+        backend.send(Command::CheckForUpdates { force: true });
+        let mut events = Vec::new();
+        let deadline = Instant::now() + Duration::from_secs(20);
+        while !events.iter().any(|e| matches!(e, Event::CheckFinished { .. })) {
+            assert!(Instant::now() < deadline, "the check never finished");
+            std::thread::sleep(Duration::from_millis(10));
+            events.extend(backend.poll());
+        }
+        assert_eq!(last_ready(events), Some(false));
     }
 }

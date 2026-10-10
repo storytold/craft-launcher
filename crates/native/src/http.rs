@@ -186,8 +186,9 @@ impl Http {
             std::fs::create_dir_all(dir).map_err(|e| format!("couldn't create {} ({e})", dir.display()))?;
         }
         let verified = if sha256.is_some() { Verified::Checksum } else { Verified::SizeOnly };
-        // A finished copy from an earlier attempt that never got installed.
-        if dest.is_file() && matches_published(dest, size, sha256) {
+        // A finished copy from an earlier attempt that never got installed. Marking it as just
+        // used, before checking it, keeps `clean_downloads` away from it while it's installed.
+        if dest.is_file() && touch(dest) && matches_published(dest, size, sha256) {
             progress(Transfer::Bytes { done: size, total: size });
             return Ok(verified);
         }
@@ -402,10 +403,22 @@ pub fn partial_bytes(dest: &Path, size: u64) -> Option<u64> {
     std::fs::metadata(part_path(dest, size)).ok().map(|m| m.len()).filter(|n| *n > 0)
 }
 
-/// Removes leftovers from the download folder: files in an old or unknown naming scheme, and
-/// paused downloads untouched for `max_age` (they're for releases long since replaced). Files
-/// written within the last minute are always kept, so a running download is never touched.
-pub fn clean_downloads(dir: &Path, max_age: Duration) {
+/// Sets a file's modification time to now.
+fn touch(path: &Path) -> bool {
+    std::fs::File::options().write(true).open(path).and_then(|f| f.set_modified(std::time::SystemTime::now())).is_ok()
+}
+
+/// Whether a finished download is waiting at `dest`. Judged by size alone: `download` checks it
+/// against the published checksum before anything uses it.
+pub fn finished(dest: &Path, size: u64) -> bool {
+    std::fs::metadata(dest).is_ok_and(|m| m.is_file() && m.len() == size)
+}
+
+/// Removes leftovers from the download folder: partial files in an old naming scheme, paused
+/// downloads untouched for `partial_max_age`, and finished ones (kept after a failed install)
+/// untouched for `finished_max_age` (they're for releases long since replaced, or given up on).
+/// Files written within the last minute are always kept, so a running download is never touched.
+pub fn clean_downloads(dir: &Path, partial_max_age: Duration, finished_max_age: Duration) {
     let Ok(entries) = std::fs::read_dir(dir) else { return };
     let now = std::time::SystemTime::now();
     for entry in entries.flatten() {
@@ -424,16 +437,19 @@ pub fn clean_downloads(dir: &Path, max_age: Duration) {
             .strip_suffix(".part")
             .and_then(|stem| stem.rsplit_once('.'))
             .is_some_and(|(_, size)| !size.is_empty() && size.bytes().all(|b| b.is_ascii_digit()));
-        if !current_part || age > max_age {
+        let legacy_part = name.ends_with(".part") && !current_part;
+        let max_age = if name.ends_with(".part") { partial_max_age } else { finished_max_age };
+        if legacy_part || age > max_age {
             log::info!("removing stale download {}", path.display());
             let _ = std::fs::remove_file(&path);
         }
     }
 }
 
-/// Throws away a paused download.
-pub fn discard_partial(dest: &Path, size: u64) {
+/// Throws away a paused download, and a finished one kept for another try at installing.
+pub fn discard(dest: &Path, size: u64) {
     let _ = std::fs::remove_file(part_path(dest, size));
+    let _ = std::fs::remove_file(dest);
 }
 
 enum AttemptError {
@@ -485,8 +501,11 @@ fn host(url: &str) -> &str {
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
+
+    const DAYS_30: Duration = Duration::from_secs(30 * 86_400);
+    const DAYS_7: Duration = Duration::from_secs(7 * 86_400);
 
     #[test]
     fn cleaning_keeps_current_partial_files_and_removes_leftovers() {
@@ -503,11 +522,59 @@ mod tests {
         let finished = make("photocraft-0.5.0-macos-universal.dmg");
         let fresh = dir.path().join("x.part");
         std::fs::write(&fresh, b"x").unwrap();
-        clean_downloads(dir.path(), Duration::from_secs(30 * 86_400));
-        assert!(keep.exists() && fresh.exists());
-        assert!(!legacy.exists() && !finished.exists());
-        clean_downloads(dir.path(), Duration::from_secs(60));
+        clean_downloads(dir.path(), DAYS_30, DAYS_7);
+        assert!(keep.exists() && fresh.exists() && finished.exists());
+        assert!(!legacy.exists());
+        // A finished file goes sooner than a paused one.
+        clean_downloads(dir.path(), DAYS_30, Duration::from_secs(60));
+        assert!(keep.exists() && !finished.exists());
+        clean_downloads(dir.path(), Duration::from_secs(60), DAYS_7);
         assert!(!keep.exists());
+    }
+
+    #[test]
+    fn a_kept_file_that_still_matches_is_not_fetched_again() {
+        let (body, sha) = body();
+        let len = body.len() as u64;
+        let (url, requests) = serve(body.clone(), vec![Reply::Full, Reply::Full]);
+        let dir = tempfile::tempdir().unwrap();
+        let dest = dir.path().join("file.bin");
+        let http = Http::new().unwrap();
+        http.download(&url, &dest, len, Some(&sha), &Stop::default(), &mut |_| {}).unwrap();
+        assert!(finished(&dest, len) && !finished(&dest, 0));
+        // Old enough to be cleaned up, were it not about to be used.
+        let old = std::time::SystemTime::now() - Duration::from_secs(40 * 86_400);
+        std::fs::File::options().write(true).open(&dest).unwrap().set_modified(old).unwrap();
+        let mut last = (0, 0);
+        let again = http.download(&url, &dest, len, Some(&sha), &Stop::default(), &mut |t| {
+            if let Transfer::Bytes { done, total } = t {
+                last = (done, total);
+            }
+        });
+        assert_eq!(again, Ok(Verified::Checksum));
+        assert_eq!(last, (len, len));
+        assert_eq!(requests.lock().unwrap().len(), 1);
+        // A cleanup while the installer runs leaves the reused file alone.
+        clean_downloads(dir.path(), DAYS_30, DAYS_7);
+        assert_eq!(std::fs::read(&dest).unwrap(), body);
+        discard(&dest, len);
+        assert!(!finished(&dest, len));
+    }
+
+    #[test]
+    fn a_kept_file_that_no_longer_matches_is_fetched_again() {
+        let (body, sha) = body();
+        let len = body.len() as u64;
+        let (url, requests) = serve(body.clone(), vec![Reply::Full, Reply::Full]);
+        let dir = tempfile::tempdir().unwrap();
+        let dest = dir.path().join("file.bin");
+        let http = Http::new().unwrap();
+        http.download(&url, &dest, len, Some(&sha), &Stop::default(), &mut |_| {}).unwrap();
+        // The same size, so only the checksum can tell.
+        std::fs::write(&dest, vec![b'x'; body.len()]).unwrap();
+        http.download(&url, &dest, len, Some(&sha), &Stop::default(), &mut |_| {}).unwrap();
+        assert_eq!(std::fs::read(&dest).unwrap(), body);
+        assert_eq!(requests.lock().unwrap().len(), 2);
     }
 
     #[test]
@@ -524,7 +591,7 @@ mod tests {
 
     /// How the fake server answers one request.
     #[derive(Clone, Copy, Debug)]
-    enum Reply {
+    pub(crate) enum Reply {
         /// The whole file.
         Full,
         /// Promise the whole file, send `n` bytes, hang up.
@@ -539,7 +606,7 @@ mod tests {
 
     /// Serves `body` over plain HTTP following `script`, one reply per connection; records the
     /// `Range` header each request carried.
-    fn serve(body: Vec<u8>, script: Vec<Reply>) -> (String, Arc<Mutex<Vec<Option<String>>>>) {
+    pub(crate) fn serve(body: Vec<u8>, script: Vec<Reply>) -> (String, Arc<Mutex<Vec<Option<String>>>>) {
         let listener = TcpListener::bind("127.0.0.1:0").unwrap();
         let url = format!("http://{}/file.bin", listener.local_addr().unwrap());
         let ranges = Arc::new(Mutex::new(Vec::new()));
@@ -585,7 +652,7 @@ mod tests {
         (url, ranges)
     }
 
-    fn body() -> (Vec<u8>, String) {
+    pub(crate) fn body() -> (Vec<u8>, String) {
         let body: Vec<u8> = (0..700_000u32).map(|i| (i % 251) as u8).collect();
         let sha = hex(&Sha256::digest(&body));
         (body, sha)

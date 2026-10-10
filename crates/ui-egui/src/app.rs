@@ -2,7 +2,9 @@
 
 use std::time::Duration;
 
-use artcraft_launcher_core::protocol::{Backend, BackendOptions, CANCELLED, Capabilities, Command, Event, LatestRelease, PAUSED, Source};
+use artcraft_launcher_core::protocol::{
+    Backend, BackendOptions, CANCELLED, Capabilities, Command, Event, INSTALL_CANCELLED, LatestRelease, PAUSED, Source,
+};
 use artcraft_launcher_core::release::Release;
 use artcraft_launcher_core::status::AppStatus;
 use artcraft_launcher_core::{Platform, SUITE};
@@ -267,6 +269,12 @@ impl LauncherUi {
                 }
                 false
             }
+            Event::ReadyToInstall { app, ready } => {
+                if let Some(e) = self.entry_mut(&app) {
+                    e.ready = ready;
+                }
+                false
+            }
             Event::JobFinished { app, result } => {
                 if app == artcraft_launcher_core::catalog::LAUNCHER_ID {
                     self.launcher_job = None;
@@ -274,11 +282,16 @@ impl LauncherUi {
                 if let Some(e) = self.entry_mut(&app) {
                     e.job = None;
                 }
+                let kept = self.entry(&app).is_some_and(|e| e.ready);
                 match result {
                     Ok(msg) => self.toast(ctx, msg, false),
                     // The paused card says it all.
                     Err(e) if e == PAUSED => {}
                     Err(e) if e == CANCELLED => self.toast(ctx, "Download cancelled", false),
+                    Err(e) if e == INSTALL_CANCELLED && kept => {
+                        self.toast(ctx, "Install cancelled. The download is kept for the next try.", false);
+                    }
+                    Err(e) if e == INSTALL_CANCELLED => self.toast(ctx, "Install cancelled", false),
                     Err(e) => self.toast(ctx, e, true),
                 }
                 true

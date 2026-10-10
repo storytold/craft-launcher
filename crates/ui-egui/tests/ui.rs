@@ -6,7 +6,9 @@
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 
-use artcraft_launcher_core::protocol::{Backend, Capabilities, Command, Event, JobPhase, LatestRelease, Origin, PausedDownload, Source};
+use artcraft_launcher_core::protocol::{
+    Backend, CANCELLED, Capabilities, Command, Event, INSTALL_CANCELLED, JobPhase, LatestRelease, Origin, PausedDownload, Source,
+};
 use artcraft_launcher_core::release::{Asset, Release};
 use artcraft_launcher_core::status::InstallSource;
 use artcraft_launcher_core::{Arch, Installed, Os, Platform, SUITE, version};
@@ -101,6 +103,7 @@ fn events() -> Vec<Event> {
     ev.push(Event::Progress { app: "filmcraft".into(), phase: JobPhase::Downloading { done: 48 << 20, total: 131 << 20 } });
     ev.push(Event::Paused { app: "deckcraft".into(), download: Some(PausedDownload { done: 30 << 20, total: 120 << 20 }) });
     ev.push(Event::Progress { app: "gridcraft".into(), phase: JobPhase::Reconnecting { done: 10 << 20, total: 90 << 20 } });
+    ev.push(Event::ReadyToInstall { app: "cadcraft".into(), ready: true });
     ev.push(Event::CheckFinished { at: NOW - 180, source: Source::GitHubApi, rate_limited_until: None });
     ev
 }
@@ -110,9 +113,19 @@ fn harness(view: ViewMode, theme: egui::Theme, manage: bool) -> (Harness<'static
 }
 
 fn harness_at(view: ViewMode, theme: egui::Theme, manage: bool, scale: f32) -> (Harness<'static, Option<LauncherUi>>, Rc<RefCell<Vec<Command>>>) {
+    harness_with(events(), view, theme, manage, scale)
+}
+
+fn harness_with(
+    events: Vec<Event>,
+    view: ViewMode,
+    theme: egui::Theme,
+    manage: bool,
+    scale: f32,
+) -> (Harness<'static, Option<LauncherUi>>, Rc<RefCell<Vec<Command>>>) {
     let sent = Rc::new(RefCell::new(Vec::new()));
     let sent2 = sent.clone();
-    let mut backend = Some(Fake { events: events(), sent: sent2, manage, clock: Rc::new(Cell::new(NOW)) });
+    let mut backend = Some(Fake { events, sent: sent2, manage, clock: Rc::new(Cell::new(NOW)) });
     let settings = Settings { view, notify: false, ..Settings::default() };
     // No `.wgpu()`: it gives every test its own GPU device, and those segfault on parallel test threads (see above).
     // The default renderer creates one only when a test renders.
@@ -220,6 +233,76 @@ fn downloads_can_be_paused_resumed_and_discarded() {
     h.get_all_by_label("Pause download").next().unwrap().click();
     h.run_steps(2);
     assert!(sent.borrow().iter().any(|c| matches!(c, Command::Pause { .. })));
+}
+
+#[test]
+fn a_kept_download_offers_retry_install_and_download_again() {
+    let (mut h, sent) = harness(ViewMode::Grid, egui::Theme::Dark, true);
+    h.run_steps(4);
+    if let Some(l) = h.state_mut().as_mut() {
+        l.settings.filter = artcraft_launcher_ui_egui::settings::Filter::NotInstalled;
+    }
+    h.run_steps(6);
+    // Below the fold in the restyled grid: bring the card on screen first.
+    h.get_by_label("Retry install").scroll_to_me();
+    h.run_steps(4);
+    snapshot(&mut h, "grid-retry-install-dark");
+    sent.borrow_mut().clear();
+    let retry = h.get_by_label("Retry install");
+    let row = retry.rect();
+    retry.click();
+    h.run_steps(2);
+    assert_eq!(*sent.borrow(), [Command::Install { app: "cadcraft".into() }]);
+    sent.borrow_mut().clear();
+    // The … menu beside it.
+    let beside = |r: egui::Rect| row.y_range().contains(r.center().y) && (row.right()..row.right() + 60.0).contains(&r.left());
+    h.get_all_by_label("…").find(|n| beside(n.rect())).unwrap().click();
+    h.run_steps(3);
+    snapshot(&mut h, "grid-retry-install-menu-dark");
+    h.get_by_label("Download again").click();
+    h.run_steps(2);
+    assert_eq!(*sent.borrow(), [Command::Cancel { app: "cadcraft".into() }, Command::Install { app: "cadcraft".into() }]);
+    // Apps without a kept download don't offer it.
+    assert_eq!(h.query_all_by_label("Retry install").count(), 1);
+}
+
+#[test]
+fn a_dismissed_install_prompt_is_not_called_a_cancelled_download() {
+    let finished = |app: &str, why: &str| Event::JobFinished { app: app.into(), result: Err(why.into()) };
+    // The password prompt was dismissed with the download kept (cadcraft) and without (pdfcraft);
+    // a download was cancelled (vectorcraft).
+    let mut ev = events();
+    ev.push(finished("cadcraft", INSTALL_CANCELLED));
+    ev.push(finished("pdfcraft", INSTALL_CANCELLED));
+    ev.push(finished("vectorcraft", CANCELLED));
+    let (mut h, _) = harness_with(ev, ViewMode::Grid, egui::Theme::Dark, true, 1.0);
+    h.run_steps(6);
+    snapshot(&mut h, "grid-install-cancelled-dark");
+    for toast in ["Install cancelled. The download is kept for the next try.", "Install cancelled", "Download cancelled"] {
+        assert_eq!(h.query_all_by_label(toast).count(), 1, "{toast}");
+    }
+}
+
+#[test]
+fn a_kept_update_names_its_version_and_an_up_to_date_app_is_not_downloaded_again() {
+    let mut ev = events();
+    for app in ["effectcraft", "wordcraft"] {
+        ev.push(Event::ReadyToInstall { app: app.into(), ready: true });
+    }
+    let (mut h, sent) = harness_with(ev, ViewMode::Table, egui::Theme::Dark, true, 1.0);
+    h.run_steps(8);
+    snapshot(&mut h, "table-retry-update-dark");
+    sent.borrow_mut().clear();
+    assert!(h.query_by_label("Update to 0.6.0").is_none());
+    h.get_by_label("Retry update to 0.6.0").click();
+    h.run_steps(2);
+    assert_eq!(*sent.borrow(), [Command::Install { app: "effectcraft".into() }]);
+    // WordCraft is up to date: its menu offers Reinstall, which uses the kept file.
+    let row = h.get_all_by_label("WordCraft").next().unwrap().rect().center().y;
+    h.get_all_by_label("…").find(|n| (n.rect().center().y - row).abs() < 25.0).unwrap().click();
+    h.run_steps(3);
+    h.get_by_label("Reinstall");
+    assert!(h.query_by_label("Download again").is_none());
 }
 
 #[test]

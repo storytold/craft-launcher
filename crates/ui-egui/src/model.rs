@@ -18,11 +18,13 @@ pub struct AppEntry {
     pub origin: Option<artcraft_launcher_core::protocol::Origin>,
     /// A download waiting to be resumed.
     pub paused: Option<PausedDownload>,
+    /// A finished download waiting for another try at installing it.
+    pub ready: bool,
 }
 
 impl AppEntry {
     pub fn new(app: &'static CraftApp) -> Self {
-        Self { app, latest: None, installed: None, detected: false, job: None, origin: None, paused: None }
+        Self { app, latest: None, installed: None, detected: false, job: None, origin: None, paused: None, ready: false }
     }
 
     pub fn release(&self) -> Option<&Release> {

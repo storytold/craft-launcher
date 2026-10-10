@@ -37,7 +37,7 @@ pub enum Command {
     Pause {
         app: String,
     },
-    /// Stop a running download, or throw away a paused one.
+    /// Stop a running download, or throw away a paused one or one kept after a failed install.
     Cancel {
         app: String,
     },
@@ -96,6 +96,9 @@ pub struct PausedDownload {
 pub const PAUSED: &str = "paused";
 /// The `JobFinished` error a cancelled job ends with (not a failure).
 pub const CANCELLED: &str = "cancelled";
+/// The `JobFinished` error of an install whose system prompt (password, Windows Installer) the
+/// user dismissed after the download finished (not a failure).
+pub const INSTALL_CANCELLED: &str = "install cancelled";
 
 /// Which service an app's release information came from (the footer names them).
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -170,6 +173,12 @@ pub enum Event {
     Paused {
         app: String,
         download: Option<PausedDownload>,
+    },
+    /// Whether a finished download is waiting because its install step failed; `Install` checks
+    /// it again and goes straight to installing.
+    ReadyToInstall {
+        app: String,
+        ready: bool,
     },
     /// A job ended: `Ok` carries a short success message, `Err` what went wrong.
     JobFinished {

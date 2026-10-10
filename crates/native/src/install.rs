@@ -14,7 +14,7 @@
 
 use std::path::{Path, PathBuf};
 
-use artcraft_launcher_core::protocol::JobPhase;
+use artcraft_launcher_core::protocol::{CANCELLED, INSTALL_CANCELLED, JobPhase};
 use artcraft_launcher_core::release::{self, Asset, Release};
 use artcraft_launcher_core::{CraftApp, InstallSource, Installed, PackageKind};
 
@@ -67,9 +67,18 @@ pub fn install(
         PackageKind::TarGz => freebsd::install_tree(app, &file, job.paths).map(|(bin, files, root)| Some(record(&version, kind, bin, files, root))),
         other => Err(format!("{} isn't supported on this system", other.label())),
     };
-    // The download has served its purpose either way; a failed install starts fresh next time.
-    let _ = std::fs::remove_file(&file);
-    result.map(|r| (r, verified))
+    if !keep_download(result.is_ok(), verified) {
+        let _ = std::fs::remove_file(&file);
+    }
+    // The system's own prompt was dismissed: the download itself wasn't cancelled.
+    result.map(|r| (r, verified)).map_err(|e| if e == CANCELLED { INSTALL_CANCELLED.to_string() } else { e })
+}
+
+/// Whether the download stays on disk once the install step has ended. A failed install keeps it:
+/// the next try checks it against its published checksum again and skips the transfer. Without a
+/// checksum there's nothing to check it against later, so it goes.
+fn keep_download(installed: bool, verified: Verified) -> bool {
+    !installed && verified == Verified::Checksum
 }
 
 /// Where `asset` is downloaded to (and its partial file kept while unfinished).
@@ -708,6 +717,51 @@ mod tests {
         // A missing staged copy leaves the installed one alone.
         assert!(swap_into_place(&staged, &dest).is_err());
         assert_eq!(std::fs::read_to_string(dest.join("v")).unwrap(), "new");
+    }
+
+    #[test]
+    fn only_a_failed_install_of_a_checksummed_download_keeps_it() {
+        for (installed, verified, keep) in [
+            (false, Verified::Checksum, true),
+            (false, Verified::SizeOnly, false),
+            (true, Verified::Checksum, false),
+            (true, Verified::SizeOnly, false),
+        ] {
+            assert_eq!(keep_download(installed, verified), keep, "installed: {installed}, {verified:?}");
+        }
+    }
+
+    #[test]
+    fn a_failed_install_keeps_the_download_for_the_next_try() {
+        use crate::http::tests::{Reply, body, serve};
+        let app = CraftApp::by_id("wordcraft").unwrap();
+        let (body, sha) = body();
+        let (url, requests) = serve(body.clone(), vec![Reply::Full, Reply::Full]);
+        let asset = Asset { name: "wordcraft-0.3.0-test.pkg".into(), size: body.len() as u64, url, sha256: Some(sha) };
+        let release = Release { assets: vec![asset.clone()], ..Release::default() };
+        let dir = tempfile::tempdir().unwrap();
+        let paths = Paths::under(dir.path());
+        let http = Http::new().unwrap();
+        // A format no build of the launcher installs here stands in for any failing install step.
+        let kind = if cfg!(windows) { PackageKind::Dmg } else { PackageKind::Msi };
+        let mut phases = Vec::new();
+        for _ in 0..2 {
+            let mut phase = |p: JobPhase| phases.push(p);
+            let mut job = Job { http: &http, paths: &paths, stop: &Stop::default(), phase: &mut phase };
+            let err = install(app, &release, &asset, kind, None, &mut job).unwrap_err();
+            assert!(err.contains("isn't supported"), "{err}");
+            assert_eq!(std::fs::read(download_path(&paths, &asset)).unwrap(), body);
+        }
+        assert_eq!(requests.lock().unwrap().len(), 1, "the second try reuses the kept file");
+        assert_eq!(phases.iter().filter(|p| **p == JobPhase::Installing).count(), 2);
+
+        // Checked by size only: not kept.
+        let unchecked = Asset { name: "wordcraft-0.3.1-test.pkg".into(), sha256: None, ..asset };
+        let mut phase = |_: JobPhase| {};
+        let mut job = Job { http: &http, paths: &paths, stop: &Stop::default(), phase: &mut phase };
+        install(app, &release, &unchecked, kind, None, &mut job).unwrap_err();
+        assert!(!download_path(&paths, &unchecked).exists());
+        assert_eq!(requests.lock().unwrap().len(), 2);
     }
 
     #[cfg(unix)]
