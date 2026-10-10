@@ -55,7 +55,7 @@ fn main() -> ExitCode {
     if let Some(icon) = icon {
         viewport = viewport.with_icon(icon);
     }
-    let options = eframe::NativeOptions { viewport, persist_window: true, ..Default::default() };
+    let options = eframe::NativeOptions { viewport, persist_window: true, wgpu_options: wgpu_options(), ..Default::default() };
     let result = eframe::run_native(
         "ArtCraft Launcher",
         options,
@@ -72,6 +72,26 @@ fn main() -> ExitCode {
             ExitCode::FAILURE
         }
     }
+}
+
+/// wgpu's backend list. On Windows that is Direct3D 12 with GL as the fallback, not Vulkan:
+/// Vulkan goes through vendor ICDs and third-party overlay layers, and on hybrid AMD laptops whose
+/// integrated and discrete GPUs run different driver packages (common on OEM machines, where the
+/// Adrenalin installer leaves the integrated GPU on the OEM driver) it crashes inside
+/// `amdvlk64.dll` before the first frame. `WGPU_BACKEND` still overrides the default.
+#[cfg(windows)]
+fn wgpu_options() -> eframe::WgpuConfiguration {
+    use eframe::wgpu::Backends;
+    let mut config = eframe::WgpuConfiguration::default();
+    if let eframe::egui_wgpu::WgpuSetup::CreateNew(setup) = &mut config.wgpu_setup {
+        setup.instance_descriptor.backends = Backends::from_env().unwrap_or(Backends::DX12 | Backends::GL);
+    }
+    config
+}
+
+#[cfg(not(windows))]
+fn wgpu_options() -> eframe::WgpuConfiguration {
+    eframe::WgpuConfiguration::default()
 }
 
 struct DesktopHost {
