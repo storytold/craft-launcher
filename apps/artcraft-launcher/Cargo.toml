@@ -22,6 +22,10 @@ log = { workspace = true }
 env_logger = { version = "0.11", default-features = false, features = ["auto-color", "humantime"] }
 image = { version = "0.25", default-features = false, features = ["png"] }
 notify-rust = "4"
+# Read and write eframe's settings file while there is no window (settings_file.rs). Already in
+# Cargo.lock through eframe's "persistence" feature.
+ron = "0.12.2"
+serde = { workspace = true }
 
 # The tray (menu bar) icon. On Linux and the BSDs the StatusNotifierItem backend talks D-Bus
 # directly, so no GTK or libappindicator is needed.

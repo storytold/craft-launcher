@@ -137,6 +137,16 @@ impl LauncherUi {
         }
     }
 
+    /// Moves the UI to another window's context: fonts, image loaders and the theme belong to a
+    /// context, and toasts are timed on its clock.
+    pub fn attach(&mut self, ctx: &egui::Context) {
+        theme::install_fonts(ctx);
+        egui_extras::install_image_loaders(ctx);
+        self.fonts_ready = false;
+        self.applied_theme = None;
+        self.toasts.clear();
+    }
+
     /// Installed apps with an update waiting (the tray shows the count).
     pub fn update_count(&self) -> usize {
         self.entries.iter().filter(|e| e.status(self.platform, self.caps.manage_apps) == AppStatus::UpdateAvailable).count()

@@ -146,6 +146,35 @@ fn snapshot(h: &mut Harness<'_, Option<LauncherUi>>, name: &str) {
 }
 
 #[test]
+fn keeps_working_with_no_window_then_draws_in_a_new_one() {
+    let sent = Rc::new(RefCell::new(Vec::new()));
+    let backend = Fake { events: events(), sent: sent.clone(), manage: true, clock: Rc::new(Cell::new(NOW)) };
+    let windowless = egui::Context::default();
+    let mut ui = LauncherUi::new(&windowless, Box::new(backend), Settings { notify: false, ..Settings::default() });
+    // No window: the backend's news is still taken in.
+    ui.logic(&windowless, &mut NoHost);
+    assert!(sent.borrow().contains(&Command::CheckForUpdates { force: false }));
+    assert_eq!(ui.update_count(), 2);
+    assert_eq!(ui.settings.last_check, Some(NOW - 180));
+
+    let mut attached = false;
+    let mut h = Harness::builder().with_size(egui::vec2(1180.0, 900.0)).build_ui_state(
+        move |egui_ui, state: &mut LauncherUi| {
+            if !attached {
+                attached = true;
+                state.attach(egui_ui.ctx());
+            }
+            state.logic(&egui_ui.ctx().clone(), &mut NoHost);
+            state.ui(egui_ui, &mut NoHost);
+        },
+        ui,
+    );
+    h.run_steps(4);
+    h.get_by_label("Update to 0.5.0");
+    h.get_by_label("Update to 0.6.0");
+}
+
+#[test]
 fn grid_shows_every_status_and_installs_on_click() {
     let (mut h, sent) = harness(ViewMode::Grid, egui::Theme::Dark, true);
     h.run_steps(8);
