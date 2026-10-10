@@ -224,9 +224,29 @@ fn locale_tags_resolve() {
     assert_eq!(lang_from_tag("C"), Some(Lang::EN));
     assert_eq!(lang_from_tag("C.UTF-8"), Some(Lang::EN));
     assert_eq!(lang_from_tag("POSIX"), Some(Lang::EN));
-    assert_eq!(lang_from_tag("de-DE"), None);
+    assert_eq!(lang_from_tag("fr-FR"), None);
     assert_eq!(lang_from_tag(""), None);
-    assert_eq!(super::detect::first_supported(["de-DE", "ru-RU", "en-US"]), Some(Lang::RU));
+    assert_eq!(super::detect::first_supported(["fr-FR", "ru-RU", "en-US"]), Some(Lang::RU));
+}
+
+#[test]
+fn german_locales_resolve() {
+    for tag in ["de", "de-DE", "de_DE.UTF-8", "de-AT", "de-CH", "de_CH.UTF-8", "DE_de"] {
+        assert_eq!(lang_from_tag(tag), Some(Lang::DE), "{tag}");
+    }
+    assert_eq!(super::detect::first_supported(["fr-FR", "de-DE", "en-US"]), Some(Lang::DE));
+}
+
+#[test]
+fn german_counts_dates_and_messages_work() {
+    assert_eq!(trn(Lang::DE, 1, "{n} app", "{n} apps"), "1 App");
+    assert_eq!(trn(Lang::DE, 0, "{n} app", "{n} apps"), "0 Apps");
+    assert_eq!(trn(Lang::DE, 21, "{n} day ago", "{n} days ago"), "vor 21 Tagen");
+    assert_eq!(trn(Lang::DE, 1, "{n} day ago", "{n} days ago"), "vor 1 Tag");
+    assert_eq!(super::tr_ctx(Lang::DE, "month", "Mar"), "März");
+    assert_eq!(tr(Lang::DE, "{month} {day}, {year}"), "{day}. {month} {year}");
+    assert_eq!(message(Lang::DE, "PhotoCraft updated to 0.5.0"), "PhotoCraft auf 0.5.0 aktualisiert");
+    assert_eq!(tr(Lang::DE, "Untranslated diagnostic"), "Untranslated diagnostic");
 }
 
 #[test]

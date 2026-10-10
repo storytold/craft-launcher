@@ -73,8 +73,8 @@ colour tokens by name (`theme::Tokens`). Build new UI from `widgets.rs`; never h
 
 Every user-facing string goes through `crates/ui-egui/src/i18n` (`tl!("…")` for literals, `fmt`
 for `{placeholders}`, `tn` for counts). English in the code is the lookup key; adding a string
-means adding its row to every catalog marked `complete_menus` (`ru.tsv`), which the i18n tests
-check. Product and app names (ArtCraft Launcher, Craft App Suite, PhotoCraft…) stay in English.
+means adding its row to every catalog marked `complete_menus` (`ru.tsv`, `zh-CN.tsv`, `de.tsv`),
+which the i18n tests check. Product and app names (ArtCraft Launcher, Craft App Suite, PhotoCraft…) stay in English.
 Chinese is drawn with the system's own CJK font (`crates/ui-egui/src/cjk_font.rs`, desktop only;
 English where there is none): never bundle a CJK font, they are 10 MB and more.
 

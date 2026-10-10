@@ -89,7 +89,7 @@ pub struct Settings {
     pub sort_descending: bool,
     pub theme: ThemeChoice,
     /// Interface language: `auto` (follow the system) or a language code from the registry
-    /// (`en`, `ru`, `zh-CN`).
+    /// (`en`, `ru`, `zh-CN`, `de`).
     pub language: String,
     /// Closing the window keeps the launcher in the tray (menu bar) instead of quitting.
     pub close_to_tray: bool,
