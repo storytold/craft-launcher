@@ -18,5 +18,5 @@ pub mod theme;
 mod views;
 mod widgets;
 
-pub use app::{Host, LauncherUi};
+pub use app::{Host, LauncherUi, TitleBar};
 pub use settings::Settings;

@@ -1,8 +1,11 @@
-//! Colours, type and shapes. Widgets read [`Tokens::get`]; nothing hard-codes a colour.
+//! Colours, type and shapes, matching getartcraft.com: hard edges, hairline rules, Archivo
+//! display type, Inter body text and Geist Mono labels. Widgets read [`Tokens::get`]; nothing
+//! hard-codes a colour.
 
 use std::sync::Arc;
 
-use egui::{Color32, CornerRadius, FontData, FontDefinitions, FontFamily, FontId, Stroke, TextStyle, Visuals};
+use egui::epaint::text::VariationCoords;
+use egui::{Color32, CornerRadius, FontData, FontDefinitions, FontFamily, FontId, FontTweak, Stroke, TextStyle, Visuals};
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -26,75 +29,103 @@ impl ThemeChoice {
     }
 }
 
-/// Colour tokens for one appearance.
+/// Colour tokens for one appearance: the website's (`globals.css`), by the same names.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Tokens {
     pub dark: bool,
+    /// Page and card surface.
     pub bg: Color32,
-    pub surface: Color32,
-    pub card: Color32,
-    pub card_hover: Color32,
-    pub border: Color32,
-    pub border_strong: Color32,
-    pub text: Color32,
-    pub text_muted: Color32,
-    pub text_faint: Color32,
+    /// Badges, wells and row hovers.
+    pub sunken: Color32,
+    /// Body text.
+    pub ink: Color32,
+    /// Headings.
+    pub ink_strong: Color32,
+    /// Secondary text.
+    pub muted: Color32,
+    /// Labels and tertiary text.
+    pub faint: Color32,
+    /// Hairlines.
+    pub line: Color32,
+    /// Outlined buttons and stronger rules.
+    pub line_strong: Color32,
+    /// The brand blue, for surfaces.
     pub accent: Color32,
-    pub accent_text: Color32,
+    /// The brand blue, for text and icons.
+    pub accent_ink: Color32,
+    /// Primary buttons and hover inversion.
+    pub invert_bg: Color32,
+    pub invert_fg: Color32,
     pub good: Color32,
     pub warn: Color32,
     pub bad: Color32,
-    pub info: Color32,
+}
+
+const fn ink_alpha(rgb: u32, alpha: u8) -> Color32 {
+    let [_, r, g, b] = rgb.to_be_bytes();
+    Color32::from_rgba_unmultiplied_const(r, g, b, alpha)
+}
+
+const fn hex(rgb: u32) -> Color32 {
+    let [_, r, g, b] = rgb.to_be_bytes();
+    Color32::from_rgb(r, g, b)
 }
 
 impl Tokens {
     pub const DARK: Self = Self {
         dark: true,
-        bg: Color32::from_rgb(0x0e, 0x10, 0x14),
-        surface: Color32::from_rgb(0x14, 0x17, 0x1d),
-        card: Color32::from_rgb(0x19, 0x1c, 0x24),
-        card_hover: Color32::from_rgb(0x1f, 0x23, 0x2d),
-        border: Color32::from_rgb(0x26, 0x2a, 0x35),
-        border_strong: Color32::from_rgb(0x36, 0x3c, 0x4a),
-        text: Color32::from_rgb(0xec, 0xee, 0xf2),
-        text_muted: Color32::from_rgb(0x9a, 0xa1, 0xb0),
-        text_faint: Color32::from_rgb(0x67, 0x6e, 0x7d),
-        accent: Color32::from_rgb(0x7c, 0x6c, 0xff),
-        accent_text: Color32::WHITE,
-        good: Color32::from_rgb(0x3d, 0xd6, 0x8c),
-        warn: Color32::from_rgb(0xff, 0xb5, 0x47),
-        bad: Color32::from_rgb(0xff, 0x6b, 0x6b),
-        info: Color32::from_rgb(0x6c, 0xb4, 0xff),
+        bg: hex(0x121316),
+        sunken: hex(0x060607),
+        ink: hex(0xf2f1ee),
+        ink_strong: hex(0xffffff),
+        muted: ink_alpha(0xf2f1ee, 153),
+        faint: ink_alpha(0xf2f1ee, 97),
+        line: ink_alpha(0xf2f1ee, 38),
+        line_strong: ink_alpha(0xf2f1ee, 102),
+        accent: hex(0x2d81ff),
+        accent_ink: hex(0x74aaff),
+        invert_bg: hex(0xffffff),
+        invert_fg: hex(0x0b0b0c),
+        // PdfCraft's and LightCraft's inks, so status colours come from the site's palette.
+        good: hex(0x3fd6b8),
+        warn: hex(0xffc14d),
+        bad: hex(0xff6259),
     };
 
     pub const LIGHT: Self = Self {
         dark: false,
-        bg: Color32::from_rgb(0xf4, 0xf5, 0xf8),
-        surface: Color32::from_rgb(0xff, 0xff, 0xff),
-        card: Color32::from_rgb(0xff, 0xff, 0xff),
-        card_hover: Color32::from_rgb(0xfa, 0xfa, 0xfd),
-        border: Color32::from_rgb(0xe3, 0xe5, 0xeb),
-        border_strong: Color32::from_rgb(0xc9, 0xcd, 0xd6),
-        text: Color32::from_rgb(0x15, 0x17, 0x1c),
-        text_muted: Color32::from_rgb(0x5b, 0x62, 0x70),
-        text_faint: Color32::from_rgb(0x8b, 0x91, 0x9d),
-        accent: Color32::from_rgb(0x5b, 0x4b, 0xf0),
-        accent_text: Color32::WHITE,
-        good: Color32::from_rgb(0x12, 0x8a, 0x52),
-        warn: Color32::from_rgb(0xb8, 0x6e, 0x00),
-        bad: Color32::from_rgb(0xc8, 0x2b, 0x2b),
-        info: Color32::from_rgb(0x1f, 0x6f, 0xd6),
+        bg: hex(0xf2f1ee),
+        sunken: hex(0xe9e8e4),
+        ink: hex(0x101014),
+        ink_strong: hex(0x000000),
+        muted: ink_alpha(0x101014, 158),
+        faint: ink_alpha(0x101014, 107),
+        line: ink_alpha(0x101014, 41),
+        line_strong: ink_alpha(0x101014, 102),
+        accent: hex(0x2d81ff),
+        accent_ink: hex(0x1659c4),
+        invert_bg: hex(0x101014),
+        invert_fg: hex(0xf2f1ee),
+        good: hex(0x0a7563),
+        warn: hex(0x8a5800),
+        bad: hex(0xb3261e),
     };
 
     pub fn get(ctx: &egui::Context) -> Self {
         if ctx.theme() == egui::Theme::Dark { Self::DARK } else { Self::LIGHT }
     }
+
+    pub fn hairline(&self) -> Stroke {
+        Stroke::new(1.0, self.line)
+    }
+
+    /// An app's text colour (`--app-ink`): readable on this appearance's background.
+    pub fn app_ink(&self, app: &artcraft_launcher_core::CraftApp) -> Color32 {
+        rgb(if self.dark { app.ink_dark } else { app.ink_light })
+    }
 }
 
-pub const RADIUS: u8 = 12;
-pub const RADIUS_SMALL: u8 = 8;
-
-/// Mixes `c` into the background at `alpha` (0–1): tinted chips and glows.
+/// Mixes `c` into the background at `alpha` (0â€“1): tinted washes.
 pub fn tint(c: Color32, alpha: f32) -> Color32 {
     let a = (alpha.clamp(0.0, 1.0) * 255.0).round() as u8;
     Color32::from_rgba_unmultiplied(c.r(), c.g(), c.b(), a)
@@ -104,35 +135,44 @@ pub fn rgb(c: [u8; 3]) -> Color32 {
     Color32::from_rgb(c[0], c[1], c[2])
 }
 
+/// The shadow under menus, dialogs and toasts.
+pub fn shadow(t: &Tokens) -> egui::epaint::Shadow {
+    egui::epaint::Shadow { offset: [0, 8], blur: 24, spread: 0, color: Color32::from_black_alpha(if t.dark { 140 } else { 36 }) }
+}
+
 fn visuals(t: &Tokens) -> Visuals {
     let mut v = if t.dark { Visuals::dark() } else { Visuals::light() };
     v.panel_fill = t.bg;
-    v.window_fill = t.surface;
-    v.extreme_bg_color = if t.dark { Color32::from_rgb(0x0b, 0x0d, 0x11) } else { Color32::from_rgb(0xee, 0xf0, 0xf4) };
-    v.faint_bg_color = t.card;
-    v.window_stroke = Stroke::new(1.0, t.border);
-    v.window_corner_radius = CornerRadius::same(RADIUS + 2);
-    v.menu_corner_radius = CornerRadius::same(RADIUS_SMALL + 2);
-    v.override_text_color = Some(t.text);
-    v.hyperlink_color = t.accent;
-    v.selection.bg_fill = tint(t.accent, 0.35);
-    v.selection.stroke = Stroke::new(1.0, t.accent);
-    let r = CornerRadius::same(RADIUS_SMALL);
-    for (w, fill, stroke) in [
-        (&mut v.widgets.noninteractive, t.card, t.border),
-        (&mut v.widgets.inactive, if t.dark { Color32::from_rgb(0x23, 0x27, 0x31) } else { Color32::from_rgb(0xee, 0xf0, 0xf4) }, t.border),
-        (&mut v.widgets.hovered, if t.dark { Color32::from_rgb(0x2b, 0x30, 0x3c) } else { Color32::from_rgb(0xe4, 0xe7, 0xee) }, t.border_strong),
-        (&mut v.widgets.active, if t.dark { Color32::from_rgb(0x33, 0x39, 0x47) } else { Color32::from_rgb(0xda, 0xde, 0xe7) }, t.border_strong),
-        (&mut v.widgets.open, if t.dark { Color32::from_rgb(0x2b, 0x30, 0x3c) } else { Color32::from_rgb(0xe4, 0xe7, 0xee) }, t.border_strong),
+    v.window_fill = t.bg;
+    v.extreme_bg_color = t.sunken;
+    v.text_edit_bg_color = Some(t.sunken);
+    v.faint_bg_color = t.sunken;
+    v.code_bg_color = t.sunken;
+    v.window_stroke = Stroke::new(1.0, t.line_strong);
+    v.window_corner_radius = CornerRadius::ZERO;
+    v.menu_corner_radius = CornerRadius::ZERO;
+    v.window_shadow = shadow(t);
+    v.popup_shadow = shadow(t);
+    v.override_text_color = Some(t.ink);
+    v.hyperlink_color = t.accent_ink;
+    v.selection.bg_fill = t.accent;
+    v.selection.stroke = Stroke::new(1.0, Color32::WHITE);
+    v.warn_fg_color = t.warn;
+    v.error_fg_color = t.bad;
+    for (w, fill, stroke, fg) in [
+        (&mut v.widgets.noninteractive, t.bg, t.line, t.muted),
+        (&mut v.widgets.inactive, t.bg, t.line, t.ink),
+        (&mut v.widgets.hovered, t.sunken, t.line_strong, t.ink_strong),
+        (&mut v.widgets.active, t.sunken, t.line_strong, t.ink_strong),
+        (&mut v.widgets.open, t.sunken, t.line_strong, t.ink_strong),
     ] {
         w.bg_fill = fill;
         w.weak_bg_fill = fill;
         w.bg_stroke = Stroke::new(1.0, stroke);
-        w.corner_radius = r;
-        w.fg_stroke = Stroke::new(1.0, t.text);
+        w.corner_radius = CornerRadius::ZERO;
+        w.fg_stroke = Stroke::new(1.0, fg);
+        w.expansion = 0.0;
     }
-    v.widgets.noninteractive.fg_stroke = Stroke::new(1.0, t.text_muted);
-    v.widgets.noninteractive.bg_stroke = Stroke::new(1.0, t.border);
     v
 }
 
@@ -147,13 +187,16 @@ pub fn apply(ctx: &egui::Context, choice: ThemeChoice) {
     });
     ctx.all_styles_mut(|style| {
         style.spacing.item_spacing = egui::vec2(8.0, 6.0);
+        // Between a checkbox (or radio button) and its label.
+        style.spacing.icon_spacing = 10.0;
         style.spacing.button_padding = egui::vec2(12.0, 6.0);
-        style.spacing.interact_size.y = 30.0;
-        style.spacing.menu_margin = egui::Margin::same(6);
+        style.spacing.interact_size.y = CONTROL_H;
+        style.spacing.menu_margin = egui::Margin::same(4);
+        style.spacing.window_margin = egui::Margin::same(4);
         style.text_styles = [
-            (TextStyle::Heading, FontId::new(22.0, semibold())),
+            (TextStyle::Heading, FontId::new(24.0, display())),
             (TextStyle::Body, FontId::new(14.0, FontFamily::Proportional)),
-            (TextStyle::Button, FontId::new(14.0, medium())),
+            (TextStyle::Button, FontId::new(13.5, medium())),
             (TextStyle::Small, FontId::new(12.0, FontFamily::Proportional)),
             (TextStyle::Monospace, FontId::new(13.0, FontFamily::Monospace)),
         ]
@@ -161,29 +204,66 @@ pub fn apply(ctx: &egui::Context, choice: ThemeChoice) {
     });
 }
 
+/// Height of buttons, inputs and filter cells (the site's medium button).
+pub const CONTROL_H: f32 = 34.0;
+
+/// The site's `.hud-label`: 11 px Geist Mono 500, upper case, 0.15 em apart.
+pub const HUD_SIZE: f32 = 11.0;
+pub const HUD_SPACING: f32 = HUD_SIZE * 0.15;
+/// Buttons: 11 px Geist Mono 700, upper case, 0.12 em apart.
+pub const BUTTON_SPACING: f32 = HUD_SIZE * 0.12;
+
+/// Inter 500.
 pub fn medium() -> FontFamily {
     FontFamily::Name("medium".into())
 }
 
+/// Inter 600.
 pub fn semibold() -> FontFamily {
     FontFamily::Name("semibold".into())
 }
 
-/// Registers Inter with named weights.
+/// Archivo 620 at 118 % width: the site's `.font-display` headings and app wordmarks.
+pub fn display() -> FontFamily {
+    FontFamily::Name("display".into())
+}
+
+/// Geist Mono 500: labels and badges.
+pub fn mono() -> FontFamily {
+    FontFamily::Name("mono".into())
+}
+
+/// Geist Mono 700: buttons and app number tabs.
+pub fn mono_bold() -> FontFamily {
+    FontFamily::Name("mono-bold".into())
+}
+
+/// A font registered under `name`: its file, its variation coordinates and its family.
+type Face<'a> = (&'a str, &'static [u8], &'a [([u8; 4], f32)], FontFamily);
+
+/// Registers the site's three variable fonts, each at the weights (and width) it uses there.
 pub fn install_fonts(ctx: &egui::Context) {
+    const INTER: &[u8] = include_bytes!("../../../assets/fonts/Inter-Variable.ttf");
+    const ARCHIVO: &[u8] = include_bytes!("../../../assets/fonts/Archivo-Variable.ttf");
+    const GEIST_MONO: &[u8] = include_bytes!("../../../assets/fonts/GeistMono-Variable.ttf");
     let mut fonts = FontDefinitions::default();
-    let add = |fonts: &mut FontDefinitions, name: &str, bytes: &'static [u8]| {
-        fonts.font_data.insert(name.to_owned(), Arc::new(FontData::from_static(bytes)));
-    };
-    add(&mut fonts, "Inter", include_bytes!("../../../assets/fonts/Inter-Regular.ttf"));
-    add(&mut fonts, "Inter-Medium", include_bytes!("../../../assets/fonts/Inter-Medium.ttf"));
-    add(&mut fonts, "Inter-SemiBold", include_bytes!("../../../assets/fonts/Inter-SemiBold.ttf"));
-    fonts.families.entry(FontFamily::Proportional).or_default().insert(0, "Inter".to_owned());
+    // egui's own fonts stay behind ours, for symbols and emoji ours don't have.
     let fallback: Vec<String> = fonts.families.get(&FontFamily::Proportional).cloned().unwrap_or_default();
-    for (family, primary) in [("medium", "Inter-Medium"), ("semibold", "Inter-SemiBold")] {
-        let mut stack = vec![primary.to_owned()];
+    let faces: [Face<'_>; 7] = [
+        ("Inter", INTER, &[(*b"wght", 400.0), (*b"opsz", 14.0)], FontFamily::Proportional),
+        ("Inter-Medium", INTER, &[(*b"wght", 500.0), (*b"opsz", 14.0)], medium()),
+        ("Inter-SemiBold", INTER, &[(*b"wght", 600.0), (*b"opsz", 14.0)], semibold()),
+        ("Archivo-Display", ARCHIVO, &[(*b"wght", 620.0), (*b"wdth", 118.0)], display()),
+        ("GeistMono", GEIST_MONO, &[(*b"wght", 400.0)], FontFamily::Monospace),
+        ("GeistMono-Medium", GEIST_MONO, &[(*b"wght", 500.0)], mono()),
+        ("GeistMono-Bold", GEIST_MONO, &[(*b"wght", 700.0)], mono_bold()),
+    ];
+    for (name, bytes, coords, family) in faces {
+        let tweak = FontTweak { coords: VariationCoords::new(coords.iter().copied()), ..Default::default() };
+        fonts.font_data.insert(name.to_owned(), Arc::new(FontData::from_static(bytes).tweak(tweak)));
+        let mut stack = vec![name.to_owned()];
         stack.extend(fallback.iter().cloned());
-        fonts.families.insert(FontFamily::Name(family.into()), stack);
+        fonts.families.insert(family, stack);
     }
     ctx.set_fonts(fonts);
 }

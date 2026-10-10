@@ -1,7 +1,7 @@
 # ArtCraft Launcher app icon
 
-The app icon is the **ArtCraft "A" mark in black**, exactly as supplied in
-[`docs/brand/artcraft-mark-black.svg`](../../docs/brand/artcraft-mark-black.svg). Every file in this
+The app icon is the **ArtCraft "A" mark in blue** (getartcraft.com's favicon), exactly as supplied in
+[`docs/brand/artcraft-mark.svg`](../../docs/brand/artcraft-mark.svg). Every file in this
 directory is rendered from it by `packaging/icons.sh`.
 
 **These files are an ArtCraft trademark. They are not open source and not covered by ArtCraft
@@ -12,7 +12,7 @@ versions.
 
 ## Files
 
-- `artcraft-launcher.svg`: a copy of `docs/brand/artcraft-mark-black.svg`; also the hicolor scalable icon.
+- `artcraft-launcher.svg`: a copy of `docs/brand/artcraft-mark.svg`; also the hicolor scalable icon.
 - `artcraft-launcher-1024.png`: 1024 px render, with extra transparent margin for Apple's icon grid.
 - `artcraft-launcher.icns`: macOS bundle icon (`CFBundleIconFile`).
 - `artcraft-launcher.ico`: Windows icon, 16–256 px, embedded in the `.exe` by
@@ -24,6 +24,6 @@ versions.
 
 ## Regenerate
 
-Run `packaging/icons.sh`. It needs `resvg`, plus `iconutil` on macOS; the `.ico` is packed by
+Run `packaging/icons.sh` on any OS. It needs `resvg`; the `.ico` and `.icns` are packed by
 `cargo xtask ico`. Never edit these files by hand: change the source only if the ArtCraft Team
 supplies a new mark in `docs/brand/`.

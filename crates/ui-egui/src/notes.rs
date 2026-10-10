@@ -2,7 +2,7 @@
 
 use egui::{RichText, Ui};
 
-use crate::theme::{self, Tokens};
+use crate::theme::Tokens;
 
 /// One line of notes, classified.
 #[derive(Debug, PartialEq, Eq)]
@@ -37,20 +37,20 @@ pub(crate) fn classify(line: &str) -> Line<'_> {
 pub(crate) fn show(ui: &mut Ui, notes: &str) {
     let t = Tokens::get(ui.ctx());
     if notes.trim().is_empty() {
-        ui.label(RichText::new("No notes were published with this release.").color(t.text_muted));
+        ui.label(RichText::new("No notes were published with this release.").color(t.muted));
         return;
     }
     for line in notes.lines() {
         match classify(line) {
             Line::Heading(h) => {
                 ui.add_space(6.0);
-                ui.label(RichText::new(h).size(15.0).family(theme::semibold()).color(t.text));
+                ui.label(crate::widgets::heading(h, 16.0, t.ink_strong));
             }
             Line::Bullet(text, link) => {
                 ui.horizontal_wrapped(|ui| {
                     ui.spacing_mut().item_spacing.x = 4.0;
-                    ui.label(RichText::new("•").color(t.text_faint));
-                    ui.label(RichText::new(text).color(t.text));
+                    ui.label(RichText::new("•").color(t.faint));
+                    ui.label(RichText::new(text).color(t.ink));
                     if let Some(url) = link {
                         let short = url.rsplit('/').next().map_or_else(|| "link".to_string(), |n| format!("#{n}"));
                         ui.hyperlink_to(RichText::new(short).size(12.0), url);
@@ -62,7 +62,7 @@ pub(crate) fn show(ui: &mut Ui, notes: &str) {
                     ui.add_space(6.0);
                     ui.hyperlink_to("Full changelog", url.trim());
                 } else {
-                    ui.label(RichText::new(text).color(t.text_muted));
+                    ui.label(RichText::new(text).color(t.muted));
                 }
             }
             Line::Blank => {

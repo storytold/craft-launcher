@@ -215,7 +215,7 @@ pub fn uninstall(app: &CraftApp, installed: &Installed, record: Option<&Record>)
 #[allow(dead_code)]
 /// Deletes an AppImage, and the menu entry it created for itself on first run.
 fn remove_appimage(app: &CraftApp, path: &Path) -> Result<(), String> {
-    if !path.extension().is_some_and(|e| e == "AppImage") || !path.is_file() {
+    if path.extension().is_none_or(|e| e != "AppImage") || !path.is_file() {
         return Err(format!("{} isn't an AppImage, so it was left alone", path.display()));
     }
     std::fs::remove_file(path).map_err(|e| format!("couldn't remove {} ({e})", path.display()))?;

@@ -11,8 +11,26 @@ use crate::model::AppEntry;
 use crate::settings::{Filter, Settings, SortKey, ViewMode};
 use crate::theme::{self, Tokens};
 
+/// Who draws the window's title bar.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum TitleBar {
+    /// Nothing to draw: the OS draws one, or there's no window (the web build).
+    #[default]
+    Native,
+    /// The window has no OS title bar: the header is the title bar (drag it to move the window,
+    /// double-click to maximize), with minimize, maximize and close at its right end, and the
+    /// window's edges resize it.
+    Custom,
+    /// macOS: the header runs under a transparent title bar, with the traffic lights at its left.
+    MacOs,
+}
+
 /// What only the shell can do. Every method has a do-nothing default (the web build).
 pub trait Host {
+    /// Who draws the title bar.
+    fn title_bar(&self) -> TitleBar {
+        TitleBar::Native
+    }
     /// Shows a system notification.
     fn notify(&mut self, _title: &str, _body: &str) {}
     /// A tray (menu bar) icon exists, so closing the window can keep the launcher running.
@@ -307,19 +325,22 @@ impl LauncherUi {
             ctx.request_repaint_after(Duration::from_millis(50));
         }
 
+        // The bars' separator lines are the hairlines under the header and over the footer.
         egui::Panel::top("header")
-            .frame(
-                egui::Frame::new().fill(t.surface).inner_margin(egui::Margin { left: 20, right: 20, top: 14, bottom: 12 }).stroke(egui::Stroke::NONE),
-            )
-            .show(ui, |ui| self.header(ui));
+            .frame(egui::Frame::new().fill(t.bg))
+            .exact_size(crate::views::HEADER_H)
+            .resizable(false)
+            .show(ui, |ui| self.header(ui, host.title_bar()));
         egui::Panel::bottom("footer")
-            .frame(egui::Frame::new().fill(t.surface).inner_margin(egui::Margin::symmetric(20, 7)))
+            .frame(egui::Frame::new().fill(t.bg).inner_margin(egui::Margin::symmetric(20, 0)))
+            .exact_size(crate::views::FOOTER_H)
+            .resizable(false)
             .show(ui, |ui| self.footer(ui));
         egui::CentralPanel::default()
-            .frame(egui::Frame::new().fill(t.bg).inner_margin(egui::Margin { left: 20, right: 20, top: 14, bottom: 0 }))
+            .frame(egui::Frame::new().fill(t.bg).inner_margin(egui::Margin { left: 20, right: 20, top: 18, bottom: 0 }))
             .show(ui, |ui| {
                 self.toolbar(ui);
-                ui.add_space(6.0);
+                ui.add_space(18.0);
                 let ids = self.visible_ids();
                 // The table is wider than a narrow window: let it scroll sideways too.
                 let scroll = match self.settings.view {
@@ -330,7 +351,7 @@ impl LauncherUi {
                     if ids.is_empty() {
                         ui.add_space(40.0);
                         ui.vertical_centered(|ui| {
-                            ui.label(egui::RichText::new("No apps match").size(16.0).color(t.text_muted));
+                            crate::widgets::hud(ui, "No apps match", t.muted);
                         });
                     } else {
                         match self.settings.view {
@@ -344,6 +365,9 @@ impl LauncherUi {
             });
         self.dialogs(&ctx, host);
         self.draw_toasts(&ctx);
+        if host.title_bar() == TitleBar::Custom {
+            crate::widgets::window_edges(&ctx);
+        }
     }
 
     /// The ids to show, filtered and sorted.
@@ -431,40 +455,32 @@ impl LauncherUi {
         }
         ctx.request_repaint_after(Duration::from_millis(250));
         let t = Tokens::get(ctx);
-        egui::Area::new(egui::Id::new("toasts")).anchor(egui::Align2::RIGHT_BOTTOM, egui::vec2(-20.0, -44.0)).order(egui::Order::Foreground).show(
-            ctx,
-            |ui| {
-                ui.set_max_width(380.0);
-                let mut dismiss = None;
-                for (i, toast) in self.toasts.iter().enumerate() {
-                    let accent = if toast.error { t.bad } else { t.good };
-                    let r = egui::Frame::new()
-                        .fill(t.surface)
-                        .stroke(egui::Stroke::new(1.0, t.border_strong))
-                        .corner_radius(theme::RADIUS)
-                        .shadow(egui::epaint::Shadow {
-                            offset: [0, 6],
-                            blur: 24,
-                            spread: 0,
-                            color: egui::Color32::from_black_alpha(if t.dark { 120 } else { 40 }),
-                        })
-                        .inner_margin(egui::Margin::symmetric(14, 10))
-                        .show(ui, |ui| {
-                            ui.horizontal(|ui| {
-                                let (rect, _) = ui.allocate_exact_size(egui::vec2(8.0, 8.0), egui::Sense::hover());
-                                ui.painter().circle_filled(rect.center(), 4.0, accent);
-                                ui.add(egui::Label::new(egui::RichText::new(&toast.text).color(t.text)).wrap());
-                            });
+        let anchor = egui::vec2(-20.0, -(crate::views::FOOTER_H + 12.0));
+        egui::Area::new(egui::Id::new("toasts")).anchor(egui::Align2::RIGHT_BOTTOM, anchor).order(egui::Order::Foreground).show(ctx, |ui| {
+            ui.set_max_width(380.0);
+            let mut dismiss = None;
+            for (i, toast) in self.toasts.iter().enumerate() {
+                let accent = if toast.error { t.bad } else { t.good };
+                let r = egui::Frame::new()
+                    .fill(t.bg)
+                    .stroke(egui::Stroke::new(1.0, t.line_strong))
+                    .shadow(theme::shadow(&t))
+                    .inner_margin(egui::Margin::symmetric(14, 10))
+                    .show(ui, |ui| {
+                        ui.horizontal(|ui| {
+                            let (rect, _) = ui.allocate_exact_size(egui::vec2(6.0, 6.0), egui::Sense::hover());
+                            ui.painter().rect_filled(rect, egui::CornerRadius::ZERO, accent);
+                            ui.add(egui::Label::new(egui::RichText::new(&toast.text).color(t.ink)).wrap());
                         });
-                    if r.response.interact(egui::Sense::click()).clicked() {
-                        dismiss = Some(i);
-                    }
-                    ui.add_space(6.0);
+                    });
+                if r.response.interact(egui::Sense::click()).clicked() {
+                    dismiss = Some(i);
                 }
-                if let Some(i) = dismiss {
-                    self.toasts.remove(i);
-                }
-            },
-        );
+                ui.add_space(6.0);
+            }
+            if let Some(i) = dismiss {
+                self.toasts.remove(i);
+            }
+        });
     }
 }

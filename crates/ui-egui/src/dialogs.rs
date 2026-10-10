@@ -7,15 +7,14 @@ use egui::{RichText, vec2};
 use crate::app::{Dialog, Host, LauncherUi};
 use crate::settings::CheckEvery;
 use crate::theme::{self, ThemeChoice, Tokens};
-use crate::widgets;
+use crate::widgets::{self, Cell, Kind};
 
 impl LauncherUi {
     pub(crate) fn dialogs(&mut self, ctx: &egui::Context, host: &mut dyn Host) {
         let Some(dialog) = self.dialog.clone() else { return };
         let t = Tokens::get(ctx);
-        let modal = egui::Modal::new(egui::Id::new("dialog")).frame(
-            egui::Frame::new().fill(t.surface).stroke(egui::Stroke::new(1.0, t.border_strong)).corner_radius(theme::RADIUS + 4).inner_margin(22),
-        );
+        let modal = egui::Modal::new(egui::Id::new("dialog"))
+            .frame(egui::Frame::new().fill(t.bg).stroke(egui::Stroke::new(1.0, t.line_strong)).shadow(theme::shadow(&t)).inner_margin(24));
         let mut close = false;
         let response = match &dialog {
             Dialog::Notes(id) => modal.show(ctx, |ui| close = self.notes_dialog(ui, id)),
@@ -33,15 +32,16 @@ impl LauncherUi {
             if let Some(icon) = icon {
                 ui.add(egui::Image::new(icon).fit_to_exact_size(vec2(40.0, 40.0)));
             }
+            ui.add_space(4.0);
             ui.vertical(|ui| {
-                ui.spacing_mut().item_spacing.y = 0.0;
-                ui.label(RichText::new(title).size(18.0).family(theme::semibold()).color(t.text));
+                ui.spacing_mut().item_spacing.y = 4.0;
+                ui.label(widgets::heading(title, 22.0, t.ink_strong));
                 if !subtitle.is_empty() {
-                    ui.label(RichText::new(subtitle).size(12.5).color(t.text_muted));
+                    widgets::hud(ui, subtitle, t.faint);
                 }
             });
         });
-        ui.add_space(8.0);
+        ui.add_space(14.0);
     }
 
     fn notes_dialog(&mut self, ui: &mut egui::Ui, id: &str) -> bool {
@@ -60,11 +60,9 @@ impl LauncherUi {
         ui.add_space(12.0);
         let mut close = false;
         ui.horizontal(|ui| {
-            if ui.link("Open on GitHub").clicked() {
-                ui.ctx().open_url(egui::OpenUrl::new_tab(release.html_url.clone()));
-            }
+            widgets::hud_link(ui, "Open on GitHub", &release.html_url);
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                close = widgets::secondary(ui, "Close", 90.0).clicked();
+                close = widgets::button(ui, "Close", Kind::Secondary, 90.0).clicked();
             });
         });
         close
@@ -87,15 +85,15 @@ impl LauncherUi {
             ) => "Your system's package manager will remove it, and may ask for your password. Your documents and settings stay.",
             _ => "The app will be removed. Your documents and settings stay.",
         };
-        ui.label(RichText::new(how).color(t.text_muted));
-        ui.add_space(16.0);
+        ui.label(RichText::new(how).color(t.muted));
+        ui.add_space(20.0);
         let mut close = false;
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-            if widgets::primary(ui, "Uninstall", t.bad, 110.0).clicked() {
+            if widgets::button(ui, "Uninstall", Kind::Danger, 110.0).clicked() {
                 self.send(Command::Uninstall { app: id.to_string() });
                 close = true;
             }
-            if widgets::secondary(ui, "Cancel", 90.0).clicked() {
+            if widgets::button(ui, "Cancel", Kind::Secondary, 90.0).clicked() {
                 close = true;
             }
         });
@@ -104,13 +102,13 @@ impl LauncherUi {
 
     fn settings_dialog(&mut self, ui: &mut egui::Ui, host: &mut dyn Host) -> bool {
         let t = Tokens::get(ui.ctx());
-        ui.set_width(460.0);
-        // The app icon is the black mark; on a dark dialog show the blue one.
-        Self::title(ui, Some(crate::icons::artcraft_mark(t.dark)), "Settings", &format!("ArtCraft Launcher {}", env!("CARGO_PKG_VERSION")));
+        // Wide enough for the community buttons and every social icon on one row.
+        ui.set_width(520.0);
+        Self::title(ui, Some(crate::icons::artcraft_mark()), "Settings", &format!("ArtCraft Launcher {}", env!("CARGO_PKG_VERSION")));
         let section = |ui: &mut egui::Ui, s: &str| {
-            ui.add_space(10.0);
-            ui.label(RichText::new(s.to_uppercase()).size(11.0).family(theme::semibold()).color(t.text_faint));
-            ui.add_space(2.0);
+            ui.add_space(14.0);
+            widgets::hud(ui, s, t.faint);
+            ui.add_space(6.0);
         };
         let row = |ui: &mut egui::Ui, label: &str, add: &mut dyn FnMut(&mut egui::Ui)| {
             ui.horizontal(|ui| {
@@ -145,7 +143,7 @@ impl LauncherUi {
                 });
             });
             self.settings.preferred_kinds = choice.into_iter().collect();
-            ui.label(RichText::new("Updates always use the format an app was installed with.").size(12.0).color(t.text_muted));
+            ui.label(RichText::new("Updates always use the format an app was installed with.").size(12.0).color(t.muted));
         }
 
         if self.caps.manage_apps {
@@ -167,17 +165,17 @@ impl LauncherUi {
         }
 
         section(ui, "Community");
-        ui.label(RichText::new("Questions, ideas and news from the ArtCraft team").color(t.text_muted));
-        ui.add_space(4.0);
+        ui.label(RichText::new("Questions, ideas and news from the ArtCraft team").color(t.muted));
+        ui.add_space(6.0);
         ui.horizontal(|ui| {
             use artcraft_launcher_core::catalog::{DISCORD_URL, GITHUB_URL, WEBSITE_URL};
-            if widgets::discord_button(ui).clicked() {
+            if widgets::button(ui, "Join the Discord", Kind::Primary, 0.0).on_hover_text(DISCORD_URL).clicked() {
                 ui.ctx().open_url(egui::OpenUrl::new_tab(DISCORD_URL));
             }
-            if widgets::secondary(ui, "Website", 0.0).on_hover_text(WEBSITE_URL).clicked() {
+            if widgets::button(ui, "Website", Kind::Secondary, 0.0).on_hover_text(WEBSITE_URL).clicked() {
                 ui.ctx().open_url(egui::OpenUrl::new_tab(WEBSITE_URL));
             }
-            if widgets::secondary(ui, "GitHub", 0.0).on_hover_text(GITHUB_URL).clicked() {
+            if widgets::button(ui, "GitHub", Kind::Secondary, 0.0).on_hover_text(GITHUB_URL).clicked() {
                 ui.ctx().open_url(egui::OpenUrl::new_tab(GITHUB_URL));
             }
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
@@ -189,18 +187,18 @@ impl LauncherUi {
         section(ui, "Appearance");
         let mut theme_choice = self.settings.theme;
         ui.horizontal(|ui| {
-            widgets::segmented(ui, &mut theme_choice, &ThemeChoice::ALL.map(|c| (c, c.label(), c.label())));
+            widgets::cells(ui, &mut theme_choice, &ThemeChoice::ALL.map(|c| (c, Cell { label: c.label(), tip: c.label(), count: None })));
         });
         self.settings.theme = theme_choice;
 
-        ui.add_space(18.0);
+        ui.add_space(24.0);
         let mut close = false;
         ui.horizontal(|ui| {
-            if self.caps.manage_apps && widgets::secondary(ui, "Quit ArtCraft Launcher", 0.0).clicked() {
+            if self.caps.manage_apps && widgets::button(ui, "Quit ArtCraft Launcher", Kind::Secondary, 0.0).clicked() {
                 host.quit();
             }
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                close = widgets::primary(ui, "Done", t.accent, 90.0).clicked();
+                close = widgets::button(ui, "Done", Kind::Primary, 90.0).clicked();
             });
         });
         close

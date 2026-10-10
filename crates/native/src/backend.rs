@@ -349,7 +349,10 @@ fn run_install(
     {
         let mut m = shared.manifest.lock().unwrap_or_else(PoisonError::into_inner);
         let changed = match new_record {
-            Some(r) => m.apps.insert(app.id.to_string(), r).is_some() || true,
+            Some(r) => {
+                m.apps.insert(app.id.to_string(), r);
+                true
+            }
             // Installed the platform's own way: any old launcher record is stale.
             None => m.apps.remove(app.id).is_some(),
         };

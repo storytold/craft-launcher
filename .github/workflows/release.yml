@@ -143,7 +143,9 @@ jobs:
         run: cargo xtask version set "$ARTCRAFT_LAUNCHER_VERSION"
       - name: Install WiX
         shell: pwsh
-        run: dotnet tool install --global wix --version 5.0.2
+        run: |
+          dotnet tool install --global wix --version 5.0.2
+          wix extension add -g WixToolset.UI.wixext/5.0.2 WixToolset.Util.wixext/5.0.2
       - name: Build, sign, package
         shell: pwsh
         env:

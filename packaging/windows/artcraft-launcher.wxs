@@ -1,18 +1,28 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  ArtCraft Launcher MSI (WiX Toolset v5: `dotnet tool install -g wix`). Built by package.ps1:
+  ArtCraft Launcher MSI (WiX Toolset v5: `dotnet tool install -g wix`, plus the UI and Util
+  extensions: `wix extension add -g WixToolset.UI.wixext/5.0.2 WixToolset.Util.wixext/5.0.2`).
+  Built by package.ps1:
 
-    wix build artcraft-launcher.wxs -arch x64 -d Version=1.2.3 -d BinDir=... -d IconPath=... -o out.msi
+    wix build artcraft-launcher.wxs -arch x64 -ext WixToolset.UI.wixext -ext WixToolset.Util.wixext
+      -culture en-US -loc artcraft-launcher.en-us.wxl -d Version=1.2.3 -d DisplayVersion=1.2.3-rc.1
+      -d BinDir=... -d IconPath=... -d BannerBmp=... -d DialogBmp=... -o out.msi
 
   Per-user install (no UAC prompt) into %LOCALAPPDATA%\Programs\ArtCraft Launcher, so the
   launcher can update itself without elevation, plus a Start Menu shortcut. The shortcut carries
   the AppUserModelID ai.storyteller.artcraft-launcher, which Windows needs to show toast
   notifications from an unpackaged app and to group the taskbar button. No file associations.
 
+  Double-clicked, it opens a setup wizard that names the version: Welcome, Ready, a progress page
+  and a Finish page with a ticked "Launch ArtCraft Launcher" box. There is no licence page (the
+  code is MIT OR Apache-2.0; nothing to accept) and no folder page (self-update needs the per-user
+  folder). The launcher's own self-update runs it with /passive, which skips the wizard.
+
   Per-user packages can't use a file as a component's KeyPath (ICE38), so each component is
   keyed on an HKCU value, and the folders we create are removed on uninstall (ICE64).
 -->
-<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs"
+     xmlns:ui="http://wixtoolset.org/schemas/v4/wxs/ui">
   <Package
       Name="ArtCraft Launcher"
       Manufacturer="Learning Machines LLC"
@@ -31,7 +41,7 @@
     <!-- MSI caches this icon using its Id as the filename; keep the .exe extension (ICE50). -->
     <Icon Id="ArtCraftLauncherIcon.exe" SourceFile="$(var.IconPath)" />
     <Property Id="ARPPRODUCTICON" Value="ArtCraftLauncherIcon.exe" />
-    <Property Id="ARPURLINFOABOUT" Value="https://github.com/storytold/craft-launcher" />
+    <Property Id="ARPURLINFOABOUT" Value="https://getartcraft.com/apps" />
     <Property Id="ARPURLUPDATEINFO" Value="https://github.com/storytold/craft-launcher/releases" />
     <Property Id="ARPHELPLINK" Value="https://discord.gg/artcraft" />
 
@@ -45,6 +55,31 @@
     <Feature Id="Main" Title="ArtCraft Launcher" Level="1">
       <ComponentGroupRef Id="ArtCraftLauncherFiles" />
     </Feature>
+
+    <!-- The setup wizard: WixUI_InstallDir without its licence and folder pages. A later
+         NewDialog on the same button wins. -->
+    <ui:WixUI Id="WixUI_InstallDir" InstallDirectory="INSTALLFOLDER" />
+    <UI>
+      <Publish Dialog="WelcomeDlg" Control="Next" Event="NewDialog" Value="VerifyReadyDlg" Order="2" Condition="NOT Installed" />
+      <Publish Dialog="VerifyReadyDlg" Control="Back" Event="NewDialog" Value="WelcomeDlg" Order="2" Condition="NOT Installed" />
+      <Publish Dialog="ExitDialog" Control="Finish" Event="DoAction" Value="LaunchArtCraftLauncher"
+          Condition="WIXUI_EXITDIALOGOPTIONALCHECKBOX = 1 AND NOT Installed" />
+    </UI>
+    <!-- Our own art, drawn by package.ps1 from the ArtCraft mark and the Craft apps' icons. -->
+    <WixVariable Id="WixUIBannerBmp" Value="$(var.BannerBmp)" />
+    <WixVariable Id="WixUIDialogBmp" Value="$(var.DialogBmp)" />
+
+    <!-- The full version (Version is numeric, so it drops a pre-release tag), shown on the wizard's
+         pages through artcraft-launcher.en-us.wxl. -->
+    <Property Id="ArtCraftLauncherVersion" Value="$(var.DisplayVersion)" />
+
+    <!-- Finish page: say where to find the launcher, and offer to start it (ticked by default). -->
+    <Property Id="WIXUI_EXITDIALOGOPTIONALTEXT" Value="ArtCraft Launcher $(var.DisplayVersion) is installed. Start it any time from the Start menu to install and update the Craft App Suite." />
+    <Property Id="WIXUI_EXITDIALOGOPTIONALCHECKBOXTEXT" Value="Launch ArtCraft Launcher" />
+    <Property Id="WIXUI_EXITDIALOGOPTIONALCHECKBOX" Value="1" />
+    <Property Id="WixShellExecTarget" Value="[#ArtCraftLauncherExe]" />
+    <!-- Runs in the wizard's own process, so the launcher starts as the user. -->
+    <CustomAction Id="LaunchArtCraftLauncher" BinaryRef="Wix4UtilCA_$(sys.BUILDARCHSHORT)" DllEntry="WixShellExec" Impersonate="yes" Return="ignore" />
   </Package>
 
   <Fragment>

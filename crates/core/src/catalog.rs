@@ -34,8 +34,12 @@ pub struct CraftApp {
     /// The familiar app it reimplements, for orientation.
     pub like: &'static str,
     pub group: AppGroup,
-    /// Brand colour (sRGB).
+    /// Brand colour (sRGB), for surfaces: getartcraft.com's `--app`.
     pub color: [u8; 3],
+    /// The brand colour for text on a light background (the site's light `--app-ink`).
+    pub ink_light: [u8; 3],
+    /// The brand colour for text on a dark background (the site's dark `--app-ink`).
+    pub ink_dark: [u8; 3],
     /// GitHub `owner/repo`.
     pub repo: &'static str,
     /// Older names its release assets may carry (PdfCraft shipped as PrintCraft until 0.2.1).
@@ -82,23 +86,39 @@ const fn app(
     tagline: &'static str,
     like: &'static str,
     group: AppGroup,
-    color: [u8; 3],
+    [color, ink_light, ink_dark]: [[u8; 3]; 3],
     repo: &'static str,
 ) -> CraftApp {
-    CraftApp { id, name, tagline, like, group, color, repo, former_ids: &[] }
+    CraftApp { id, name, tagline, like, group, color, ink_light, ink_dark, repo, former_ids: &[] }
 }
 
 /// The Craft App Suite, in display order: the seven classic apps, then the five new ones.
 pub const SUITE: [CraftApp; 12] = [
-    app("photocraft", "PhotoCraft", "Image editing", "Adobe Photoshop", AppGroup::Classic, [0x2f, 0x7b, 0xf5], "storytold/photocraft"),
-    app("vectorcraft", "VectorCraft", "Vector illustration", "Adobe Illustrator", AppGroup::Classic, [0xe8, 0x57, 0x3f], "storytold/vectorcraft"),
+    app(
+        "photocraft",
+        "PhotoCraft",
+        "Image editing",
+        "Adobe Photoshop",
+        AppGroup::Classic,
+        [[0x2f, 0x7b, 0xf5], [0x1a, 0x5b, 0xc4], [0x7f, 0xb0, 0xff]],
+        "storytold/photocraft",
+    ),
+    app(
+        "vectorcraft",
+        "VectorCraft",
+        "Vector illustration",
+        "Adobe Illustrator",
+        AppGroup::Classic,
+        [[0xe8, 0x57, 0x3f], [0xb8, 0x3a, 0x24], [0xff, 0x8a, 0x70]],
+        "storytold/vectorcraft",
+    ),
     app(
         "filmcraft",
         "FilmCraft",
         "Video editing, color and sound",
         "Adobe Premiere Pro",
         AppGroup::Classic,
-        [0x8b, 0x5c, 0xf6],
+        [[0x8b, 0x5c, 0xf6], [0x6a, 0x3f, 0xd6], [0xb6, 0x9c, 0xff]],
         "storytold/filmcraft",
     ),
     app(
@@ -107,7 +127,7 @@ pub const SUITE: [CraftApp; 12] = [
         "Photo library and raw development",
         "Adobe Lightroom",
         AppGroup::Classic,
-        [0xf2, 0xa5, 0x16],
+        [[0xf2, 0xa5, 0x16], [0x8a, 0x58, 0x00], [0xff, 0xc1, 0x4d]],
         "storytold/lightcraft",
     ),
     CraftApp {
@@ -118,7 +138,7 @@ pub const SUITE: [CraftApp; 12] = [
             "Reading, organizing and protecting PDFs",
             "Adobe Acrobat",
             AppGroup::Classic,
-            [0x12, 0xa5, 0x8a],
+            [[0x12, 0xa5, 0x8a], [0x0a, 0x75, 0x63], [0x3f, 0xd6, 0xb8]],
             "storytold/pdfcraft",
         )
     },
@@ -128,21 +148,61 @@ pub const SUITE: [CraftApp; 12] = [
         "Motion graphics and visual effects",
         "Adobe After Effects",
         AppGroup::Classic,
-        [0xe0, 0x36, 0x8f],
+        [[0xe0, 0x36, 0x8f], [0xb0, 0x20, 0x6c], [0xff, 0x7a, 0xb8]],
         "storytold/effectcraft",
     ),
-    app("designcraft", "DesignCraft", "Page layout and publishing", "Adobe InDesign", AppGroup::Classic, [0x7b, 0xb5, 0x1c], "storytold/designcraft"),
-    app("wordcraft", "WordCraft", "Writing and document design", "Microsoft Word", AppGroup::New, [0x3f, 0x5f, 0xe0], "storytold/wordcraft"),
-    app("deckcraft", "DeckCraft", "Presentations and slide shows", "Microsoft PowerPoint", AppGroup::New, [0xf0, 0x7a, 0x1e], "storytold/deckcraft"),
-    app("gridcraft", "GridCraft", "Spreadsheets and data", "Microsoft Excel", AppGroup::New, [0x1f, 0x9d, 0x55], "storytold/gridcraft"),
-    app("cadcraft", "CADCraft", "Computer-aided design and drafting", "Autodesk AutoCAD", AppGroup::New, [0x3e, 0xa6, 0xe8], "storytold/cadcraft"),
+    app(
+        "designcraft",
+        "DesignCraft",
+        "Page layout and publishing",
+        "Adobe InDesign",
+        AppGroup::Classic,
+        [[0x7b, 0xb5, 0x1c], [0x45, 0x70, 0x08], [0xa6, 0xe0, 0x4a]],
+        "storytold/designcraft",
+    ),
+    app(
+        "wordcraft",
+        "WordCraft",
+        "Writing and document design",
+        "Microsoft Word",
+        AppGroup::New,
+        [[0x3f, 0x5f, 0xe0], [0x2a, 0x44, 0xb8], [0x8e, 0xa2, 0xff]],
+        "storytold/wordcraft",
+    ),
+    app(
+        "deckcraft",
+        "DeckCraft",
+        "Presentations and slide shows",
+        "Microsoft PowerPoint",
+        AppGroup::New,
+        [[0xf0, 0x7a, 0x1e], [0xa8, 0x4f, 0x0a], [0xff, 0xa0, 0x60]],
+        "storytold/deckcraft",
+    ),
+    app(
+        "gridcraft",
+        "GridCraft",
+        "Spreadsheets and data",
+        "Microsoft Excel",
+        AppGroup::New,
+        [[0x1f, 0x9d, 0x55], [0x12, 0x70, 0x3a], [0x4f, 0xd6, 0x8a]],
+        "storytold/gridcraft",
+    ),
+    app(
+        "cadcraft",
+        "CADCraft",
+        "Computer-aided design and drafting",
+        "Autodesk AutoCAD",
+        AppGroup::New,
+        [[0x3e, 0xa6, 0xe8], [0x1a, 0x6f, 0xa8], [0x7c, 0xc8, 0xff]],
+        "storytold/cadcraft",
+    ),
     app(
         "soundcraft",
         "SoundCraft",
         "Recording, editing and mixing audio",
         "Avid Pro Tools",
         AppGroup::New,
-        [0x1f, 0xa5, 0xc9],
+        [[0x1f, 0xa5, 0xc9], [0x0e, 0x72, 0x90], [0x5f, 0xd0, 0xee]],
         "storytold/soundcraft",
     ),
 ];
@@ -180,7 +240,7 @@ pub const LAUNCHER: CraftApp = app(
     "Installs and updates the Craft App Suite",
     "",
     AppGroup::New,
-    [0x0b, 0x0b, 0x0c],
+    [[0x0b, 0x0b, 0x0c], [0x0b, 0x0b, 0x0c], [0xf2, 0xf1, 0xee]],
     "storytold/craft-launcher",
 );
 

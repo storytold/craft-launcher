@@ -3,6 +3,7 @@
 //! Pure Rust (std only). External tools (`cargo`) are invoked through `std::process::Command`.
 #![deny(clippy::unwrap_used, clippy::expect_used, clippy::panic, clippy::unimplemented, clippy::todo, clippy::unreachable)]
 
+mod icns;
 mod ico;
 mod version;
 
@@ -19,6 +20,8 @@ commands:
                   print the workspace version, or set it (Cargo.toml + Cargo.lock)
   ico <out.ico> <in.png>...
                   pack square PNGs (<= 256 px) into a Windows .ico (see packaging/icons.sh)
+  icns <out.icns> <in.png>...
+                  pack square PNGs (16-1024 px) into a macOS .icns, on any OS
 ";
 
 /// Packages that must build for wasm32-unknown-unknown: the pure core and the web app (which
@@ -33,6 +36,7 @@ fn main() -> ExitCode {
         Some("wasm") => cmd_wasm(),
         Some("version") => version::run(&root(), &rest),
         Some("ico") => ico::run(&rest),
+        Some("icns") => icns::run(&rest),
         Some("-h" | "--help" | "help") | None => {
             print!("{USAGE}");
             Ok(())

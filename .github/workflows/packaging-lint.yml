@@ -51,7 +51,7 @@ jobs:
           ./packaging/windows/check-icons.ps1
       - name: XML, desktop entry, AppStream, Flatpak manifest
         run: |
-          xmllint --noout packaging/windows/artcraft-launcher.wxs packaging/macos/*.plist* packaging/linux/*.xml*
+          xmllint --noout packaging/windows/artcraft-launcher.wxs packaging/windows/artcraft-launcher.en-us.wxl packaging/macos/*.plist* packaging/linux/*.xml*
           if grep -q "<key>LSUIElement</key>" packaging/macos/Info.plist.in; then echo "::error::Info.plist.in must not set LSUIElement"; exit 1; fi
           desktop-file-validate packaging/linux/ai.storyteller.artcraft-launcher.desktop
           sed -e 's/@VERSION@/0.0.0/' -e 's/@DATE@/2026-01-01/' packaging/linux/ai.storyteller.artcraft-launcher.metainfo.xml.in >"$RUNNER_TEMP/ai.storyteller.artcraft-launcher.metainfo.xml"

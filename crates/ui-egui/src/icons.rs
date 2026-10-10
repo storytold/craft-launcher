@@ -46,11 +46,7 @@ pub fn social(service: &str) -> Option<ImageSource<'static>> {
     })
 }
 
-/// The ArtCraft "A" mark as supplied: black for light backgrounds, the blue mark for dark ones.
-pub fn artcraft_mark(dark_background: bool) -> ImageSource<'static> {
-    if dark_background {
-        egui::include_image!("../../../docs/brand/artcraft-mark.svg")
-    } else {
-        egui::include_image!("../../../docs/brand/artcraft-mark-black.svg")
-    }
+/// The ArtCraft "A" mark in blue, as supplied: the launcher's app icon and getartcraft.com's favicon.
+pub fn artcraft_mark() -> ImageSource<'static> {
+    egui::include_image!("../../../docs/brand/artcraft-mark.svg")
 }

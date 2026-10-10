@@ -15,7 +15,8 @@ use std::sync::{Arc, OnceLock};
 
 use artcraft_launcher_native::single_instance::{self, Instance};
 use artcraft_launcher_native::{NativeBackend, login};
-use artcraft_launcher_ui_egui::{Host, LauncherUi, Settings};
+use artcraft_launcher_ui_egui::theme::Tokens;
+use artcraft_launcher_ui_egui::{Host, LauncherUi, Settings, TitleBar};
 
 const APP_ID: &str = "ai.storyteller.artcraft-launcher";
 const SETTINGS_KEY: &str = "settings";
@@ -45,6 +46,12 @@ fn main() -> ExitCode {
         .with_inner_size([1120.0, 760.0])
         .with_min_inner_size([720.0, 500.0])
         .with_visible(!hidden);
+    // The header is the title bar (see `DesktopHost::title_bar`).
+    viewport = if cfg!(target_os = "macos") {
+        viewport.with_fullsize_content_view(true).with_titlebar_shown(false).with_title_shown(false)
+    } else {
+        viewport.with_decorations(false)
+    };
     if let Some(icon) = icon {
         viewport = viewport.with_icon(icon);
     }
@@ -73,6 +80,10 @@ struct DesktopHost {
 }
 
 impl Host for DesktopHost {
+    fn title_bar(&self) -> TitleBar {
+        if cfg!(target_os = "macos") { TitleBar::MacOs } else { TitleBar::Custom }
+    }
+
     fn notify(&mut self, title: &str, body: &str) {
         let (title, body) = (title.to_string(), body.to_string());
         // Some platforms block while the notification is delivered.
@@ -222,7 +233,7 @@ impl eframe::App for Shell {
         eframe::set_value(storage, SETTINGS_KEY, &self.ui.settings);
     }
 
-    fn clear_color(&self, _visuals: &egui::Visuals) -> [f32; 4] {
-        egui::Color32::from_rgb(0x0e, 0x10, 0x14).to_normalized_gamma_f32()
+    fn clear_color(&self, visuals: &egui::Visuals) -> [f32; 4] {
+        (if visuals.dark_mode { Tokens::DARK.bg } else { Tokens::LIGHT.bg }).to_normalized_gamma_f32()
     }
 }

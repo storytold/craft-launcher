@@ -2,19 +2,20 @@
 # Regenerate every app and tray icon from the ArtCraft "A" mark in docs/brand/, rendered exactly as
 # supplied. The mark is an ArtCraft trademark, NOT MIT/Apache: docs/brand/LICENSE-brand.txt.
 #
-# - App icon (Dock, taskbar, Start menu, Linux menus, installers): the black mark.
+# - App icon (Dock, taskbar, Start menu, Linux menus, installers): the blue mark, which is also
+#   getartcraft.com's favicon.
 # - Tray: the black mark as the macOS menu-bar template; the blue mark on Windows, Linux and BSD.
 #
-# Needs: resvg (brew install resvg / cargo install resvg). On macOS, iconutil also writes the
-# .icns. The outputs are committed, so packaging (and the Rust build, which include_bytes!s some
-# of them) never needs these tools.
+# Needs: resvg (brew install resvg / cargo install resvg). The .ico and .icns are packed by
+# `cargo xtask ico` / `cargo xtask icns`, so this runs on any OS. The outputs are committed, so
+# packaging (and the Rust build, which include_bytes!s some of them) never needs these tools.
 #
 #   packaging/icons.sh
 set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 DIR="$ROOT/assets/app-icon"
 BRAND="$ROOT/docs/brand"
-SVG="$BRAND/artcraft-mark-black.svg"
+SVG="$BRAND/artcraft-mark.svg"
 ID="ai.storyteller.artcraft-launcher"
 TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
@@ -51,17 +52,12 @@ done
 (cd "$ROOT" && cargo run -q -p xtask -- ico "$DIR/artcraft-launcher.ico" "${ICO_PNGS[@]}")
 
 # macOS .icns.
-if command -v iconutil >/dev/null; then
-  SET="$TMP/artcraft-launcher.iconset"
-  mkdir -p "$SET"
-  for s in 16 32 128 256 512; do
-    render "$MAC" "$s" "$SET/icon_${s}x${s}.png"
-    render "$MAC" $((s * 2)) "$SET/icon_${s}x${s}@2x.png"
-  done
-  iconutil -c icns -o "$DIR/artcraft-launcher.icns" "$SET"
-else
-  echo "warning: iconutil not found (macOS only); artcraft-launcher.icns not regenerated" >&2
-fi
+ICNS_PNGS=()
+for s in 16 32 64 128 256 512 1024; do
+  render "$MAC" "$s" "$TMP/icns-$s.png"
+  ICNS_PNGS+=("$TMP/icns-$s.png")
+done
+(cd "$ROOT" && cargo run -q -p xtask -- icns "$DIR/artcraft-launcher.icns" "${ICNS_PNGS[@]}")
 
 # Tray icons: the black mark is the macOS menu-bar template (44 px = 22 pt @2x; macOS tints it);
 # the blue one is for the Windows notification area and Linux/BSD status notifiers.

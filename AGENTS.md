@@ -31,7 +31,7 @@ xtask/                                  cargo xtask ci | wasm | version | ico
 packaging/                              macOS, Windows, Linux, FreeBSD and web packaging scripts
 assets/app-icon/                        the launcher's own icon (master SVG, renders, tray icons)
 assets/app-icons/                       the Craft apps' icons, copied from each app's repo
-assets/fonts/                           Inter (OFL-1.1)
+assets/fonts/                           Archivo, Inter, Geist Mono (OFL-1.1): getartcraft.com's faces
 ```
 
 Layering: `core` depends on no other workspace crate and must build for `wasm32-unknown-unknown`.
@@ -62,6 +62,13 @@ settings file must produce an error the user can act on, never a panic. Shared s
 - Never run an installer with elevated rights silently; tell the user what is about to happen.
 - Never delete a user's files outside what the launcher itself installed.
 
+### Look and feel
+
+The UI matches the apps page on getartcraft.com (`artcraft-website-next` in `artcraft-services`):
+hard square corners, 1 px hairlines instead of shadows, Archivo (620, 118 % width) for headings
+and app names, Inter for body text, upper-case Geist Mono labels and buttons, and the site's
+colour tokens by name (`theme::Tokens`). Build new UI from `widgets.rs`; never hard-code a colour.
+
 ### Other rules
 
 1. **Assets need attribution.** Every bundled asset gets a row in `ATTRIBUTION.md` (path, title,
@@ -69,7 +76,7 @@ settings file must produce an error the user can act on, never a panic. Shared s
    `docs/brand/` (the header logo and the tray icon) are trademarks, **not MIT/Apache**
    (`docs/brand/LICENSE-brand.txt`): use them exactly as supplied, never redraw or recolor them.
 2. **Icons are generated.** The app icon and the tray icon are the supplied ArtCraft "A" mark from
-   `docs/brand/` (a trademark, not MIT/Apache); never edit the renders by hand. Run `packaging/icons.sh` (needs `resvg`; `iconutil` on macOS) and commit the outputs.
+   `docs/brand/` (a trademark, not MIT/Apache); never edit the renders by hand. Run `packaging/icons.sh` (needs `resvg`; runs on any OS) and commit the outputs.
    `assets/app-icons/` is copied verbatim from each app's repo (`assets/app-icon/hicolor/128x128/apps/ai.storyteller.<app>.png`);
    refresh it from there, never redraw.
 3. **Never break wasm.** `cargo xtask wasm` must pass. File-system, process and OS code is
@@ -110,6 +117,8 @@ Release assets (keep these names exact; the launcher's own self-update and the R
 Packaging facts the code relies on:
 
 - The Windows MSI is **per-user** (`%LOCALAPPDATA%\Programs\ArtCraft Launcher`, no UAC prompt).
+  Double-clicked it opens a WixUI setup wizard (Welcome, Ready, progress, Finish with "Launch"),
+  whose art `package.ps1` draws at build time; self-update runs it with `/passive`, no wizard.
   Its Start Menu shortcut sets AppUserModelID `ai.storyteller.artcraft-launcher`, which toast
   notifications need. `portable.txt` beside the exe switches on portable mode
   (`ArtCraftLauncherData\` next to the exe).

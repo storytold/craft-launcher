@@ -145,8 +145,9 @@ fn grid_shows_every_status_and_installs_on_click() {
     h.get_by_label("Update to 0.6.0");
     h.get_by_label_contains("0.4.1 installed → 0.5.0 released");
     h.get_by_label("Like Adobe Photoshop®");
-    h.get_by_label("Open Source Tools for Creatives, Makers, and Builders");
-    assert!(h.query_all_by_label_contains("Discord").count() >= 2); // header button and footer link
+    // The window has no title bar of its own here (the web build, and the tests).
+    assert!(h.query_by_label("Close").is_none());
+    assert!(h.query_all_by_label_contains("Discord").count() >= 2); // header link and footer link
     h.get_by_label_contains("Adobe, Photoshop, Illustrator");
     assert!(h.query_all_by_label("Coming soon").count() >= 1);
     h.get_by_label_contains("48 MB of 131 MB");
@@ -266,7 +267,7 @@ fn every_table_column_sorts_both_ways() {
 fn settings_link_to_discord() {
     let (mut h, _) = harness(ViewMode::Grid, egui::Theme::Dark, true);
     h.run_steps(6);
-    h.get_by_label("⚙").click();
+    h.get_by_label("Settings").click();
     h.run_steps(4);
     snapshot(&mut h, "settings-dark");
     h.get_by_label("Questions, ideas and news from the ArtCraft team");
@@ -326,7 +327,7 @@ fn all_opened(h: &mut Harness<'_, Option<LauncherUi>>, label: &str) -> Vec<Strin
 fn links_open_the_right_pages() {
     let (mut h, _) = harness(ViewMode::Grid, egui::Theme::Dark, true);
     h.run_steps(6);
-    assert_eq!(click_opens(&mut h, "💬  Discord").as_deref(), Some("https://discord.gg/artcraft"));
+    assert_eq!(click_opens(&mut h, "Discord").as_deref(), Some("https://discord.gg/artcraft"));
     // The footer's ArtCraft links and each card's own pages.
     let github = all_opened(&mut h, "GitHub");
     assert!(github.contains(&"https://github.com/storytold".to_string()), "{github:?}");
@@ -452,7 +453,7 @@ fn the_current_desktop_setting_is_only_offered_where_the_os_has_desktops() {
     // NoHost has no desktops (Windows, Linux, web): no setting.
     let (mut h, _) = harness(ViewMode::Grid, egui::Theme::Dark, true);
     h.run_steps(6);
-    h.get_by_label("⚙").click();
+    h.get_by_label("Settings").click();
     h.run_steps(4);
     assert!(h.query_by_label("Show the window on the current desktop").is_none());
     // On by default for everyone; macOS shows it in Settings (DesktopHost::has_desktops).
@@ -466,4 +467,37 @@ fn web_build_offers_downloads() {
     snapshot(&mut h, "web-grid-dark");
     assert!(h.query_all_by_label("Download for macOS").count() >= 8);
     assert!(h.query_by_label("Install").is_none());
+}
+
+#[test]
+fn custom_title_bar_has_window_buttons() {
+    struct FramelessHost;
+    impl Host for FramelessHost {
+        fn title_bar(&self) -> artcraft_launcher_ui_egui::TitleBar {
+            artcraft_launcher_ui_egui::TitleBar::Custom
+        }
+    }
+    let mut backend = Some(Fake { events: events(), sent: Rc::new(RefCell::new(Vec::new())), manage: true, clock: Rc::new(Cell::new(NOW)) });
+    let mut h = Harness::builder().with_size(egui::vec2(1180.0, 900.0)).wgpu().build_ui_state(
+        move |ui, state: &mut Option<LauncherUi>| {
+            if state.is_none()
+                && let Some(b) = backend.take()
+            {
+                *state = Some(LauncherUi::new(ui.ctx(), Box::new(b), Settings { notify: false, ..Settings::default() }));
+            }
+            if let Some(l) = state.as_mut() {
+                l.logic(&ui.ctx().clone(), &mut FramelessHost);
+                l.ui(ui, &mut FramelessHost);
+            }
+        },
+        None,
+    );
+    h.run_steps(6);
+    snapshot(&mut h, "grid-title-bar-dark");
+    h.get_by_label("Minimize");
+    h.get_by_label("Maximize");
+    h.get_by_label("Close").click();
+    h.step();
+    let closes = h.output().viewport_output.values().any(|v| v.commands.contains(&egui::ViewportCommand::Close));
+    assert!(closes, "the close button asks the window to close (the shell decides whether that hides it to the tray)");
 }
