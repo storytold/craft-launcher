@@ -189,11 +189,12 @@ New contributors and AI agents: start with [`AGENTS.md`](AGENTS.md). Release pac
 
 ### Build it under another name
 
-To give the launcher a name of your own, build its Windows installers with
-[`packaging/windows/build-renamed.ps1`](packaging/windows/build-renamed.ps1):
+To give the launcher a name of your own, double-click
+[`packaging/windows/build-renamed.cmd`](packaging/windows/build-renamed.cmd): click the app name
+to change it, tick the architectures and click **Build**. Without the window:
 
 ```powershell
-pwsh packaging/windows/build-renamed.ps1 -Name 'My Launcher'   # -Arch x64 (default), x86 or arm64
+pwsh packaging/windows/build-renamed.ps1 -Name 'My Launcher'   # -Arch x64 (default), x86, arm64 or a list
 ```
 
 It stages a renamed copy in `target/renamed/src` (your checkout isn't changed) and builds
