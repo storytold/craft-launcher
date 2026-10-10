@@ -186,7 +186,7 @@ month	Dec	Dez.
 	ArtCraft on {name}	ArtCraft auf {name}
 	Couldn't open {name}: {e}	{name} konnte nicht geöffnet werden: {e}
 	Download cancelled	Download abgebrochen
-	Available to install	Zur Installation verfügbar
+	Available to install	Installierbar
 	Available	Verfügbar
 	Installed · up to date	Installiert · aktuell
 	Update available	Update verfügbar
@@ -246,9 +246,9 @@ month	Dec	Dez.
 
 # Contextual: table column headers
 column	App	App
-column	Installed	Installiert
+column	Installed	Lokal
 column	Latest	Neueste
-column	Released	Veröffentlicht
+column	Released	Datum
 
 # Contextual: the filter tab names a group (the status pill says "Installed")
 filter	Installed	Installiert
