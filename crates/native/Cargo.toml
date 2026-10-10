@@ -17,10 +17,9 @@ serde_json = { workspace = true }
 log = { workspace = true }
 dirs = "6"
 sha2 = "0.10"
-# HTTPS over rustls with the OS's trusted roots, like PdfCraft's update check (webpki-roots and
-# webpki-root-certs are CDLA-licensed, so no bundled root list).
-ureq = { version = "3.4", default-features = false, features = ["rustls-no-provider", "_ring", "gzip"] }
-rustls-native-certs = "0.8"
+# HTTPS over rustls, with the OS verifying certificates (rustls-platform-verifier). No bundled
+# root list: webpki-roots and webpki-root-certs are CDLA-licensed.
+ureq = { version = "3.4", default-features = false, features = ["rustls-no-provider", "_ring", "gzip", "platform-verifier"] }
 
 [target.'cfg(unix)'.dependencies]
 flate2 = "1"

@@ -51,8 +51,10 @@ pub struct FeedError {
 
 impl Http {
     pub fn new() -> Result<Self, String> {
-        let roots = os_roots()?;
-        let tls = || ureq::tls::TlsConfig::builder().root_certs(roots.clone()).build();
+        // The OS checks each certificate chain itself: Windows fetches roots it hasn't stored yet
+        // and trusts what antivirus HTTPS scanning installs. Reading the store ourselves missed
+        // both ("invalid peer certificate: UnknownIssuer").
+        let tls = || ureq::tls::TlsConfig::builder().root_certs(ureq::tls::RootCerts::PlatformVerifier).build();
         let small = ureq::Agent::config_builder()
             .tls_config(tls())
             .timeout_global(Some(Duration::from_secs(20)))
@@ -460,16 +462,6 @@ fn parse_content_range(v: &str) -> Option<(u64, Option<u64>)> {
     let start = range.split_once('-')?.0.trim().parse().ok()?;
     let total = if total.trim() == "*" { None } else { Some(total.trim().parse().ok()?) };
     Some((start, total))
-}
-
-/// The certificate authorities the operating system trusts.
-fn os_roots() -> Result<ureq::tls::RootCerts, String> {
-    let found = rustls_native_certs::load_native_certs();
-    let certs: Vec<ureq::tls::Certificate<'static>> = found.certs.iter().map(|c| ureq::tls::Certificate::from_der(c.as_ref()).to_owned()).collect();
-    if certs.is_empty() {
-        return Err("no trusted certificates found on this system".into());
-    }
-    Ok(ureq::tls::RootCerts::new_with_certs(&certs))
 }
 
 pub fn hex(bytes: &[u8]) -> String {
