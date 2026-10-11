@@ -132,6 +132,37 @@ impl Settings {
     }
 }
 
+/// Whether this process is running inside a Flatpak container sandbox.
+pub fn is_flatpak_sandbox() -> bool {
+    #[cfg(target_os = "linux")]
+    {
+        std::env::var_os("FLATPAK_ID").is_some() || std::path::Path::new("/.flatpak-info").exists()
+    }
+    #[cfg(not(target_os = "linux"))]
+    false
+}
+
+/// Whether this process was launched from an AppImage.
+pub fn is_appimage() -> bool {
+    #[cfg(target_os = "linux")]
+    {
+        std::env::var_os("APPIMAGE").is_some()
+    }
+    #[cfg(not(target_os = "linux"))]
+    false
+}
+
+/// Default package kinds preferred on Linux based on how the launcher itself was installed.
+pub fn default_preferred_kinds() -> Vec<PackageKind> {
+    if is_flatpak_sandbox() {
+        vec![PackageKind::Flatpak]
+    } else if is_appimage() {
+        vec![PackageKind::AppImage]
+    } else {
+        Vec::new()
+    }
+}
+
 impl Default for Settings {
     fn default() -> Self {
         Self {
@@ -147,7 +178,7 @@ impl Default for Settings {
             auto_update: false,
             notify: true,
             prereleases: false,
-            preferred_kinds: Vec::new(),
+            preferred_kinds: default_preferred_kinds(),
             dismissed_notices: std::collections::BTreeSet::new(),
             notified: BTreeMap::new(),
             last_check: None,
