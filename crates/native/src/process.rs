@@ -45,13 +45,21 @@ pub fn clean_appimage_env(cmd: &mut Command) {
 
 /// Runs a helper and returns its standard output when it succeeds within `timeout`.
 pub fn capture(program: &str, args: &[&str], timeout: Duration) -> Option<String> {
-    let mut child = command(program).args(args).stdin(Stdio::null()).stdout(Stdio::piped()).stderr(Stdio::null()).spawn().ok()?;
-    let mut stdout = child.stdout.take()?;
-    let reader = std::thread::spawn(move || {
-        let mut out = Vec::new();
-        let _ = std::io::Read::read_to_end(&mut std::io::Read::take(&mut stdout, 8 << 20), &mut out);
-        out
-    });
+    run(program, args, timeout).ok()
+}
+
+/// Runs a helper and returns its standard output when it succeeds within `timeout`; otherwise
+/// the reason, in the helper's own words (its standard error) where it gave one.
+pub fn run(program: &str, args: &[&str], timeout: Duration) -> Result<String, String> {
+    let mut child = command(program)
+        .args(args)
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .map_err(|e| format!("couldn't start {program} ({e})"))?;
+    // Read both pipes while it runs, so a chatty helper can't block on a full one.
+    let (stdout, stderr) = (read_all(child.stdout.take()), read_all(child.stderr.take()));
     let start = Instant::now();
     let status = loop {
         match child.try_wait() {
@@ -60,12 +68,28 @@ pub fn capture(program: &str, args: &[&str], timeout: Duration) -> Option<String
             _ => {
                 let _ = child.kill();
                 let _ = child.wait();
-                return None;
+                return Err(format!("{program} didn't finish within {} seconds", timeout.as_secs()));
             }
         }
     };
-    let out = reader.join().ok()?;
-    status.success().then(|| String::from_utf8_lossy(&out).into_owned())
+    let text = |pipe: std::thread::JoinHandle<Vec<u8>>| String::from_utf8_lossy(&pipe.join().unwrap_or_default()).into_owned();
+    let (out, err) = (text(stdout), text(stderr));
+    if status.success() {
+        return Ok(out);
+    }
+    let reason = err.trim();
+    Err(if reason.is_empty() { format!("{program} failed ({status})") } else { reason.to_string() })
+}
+
+/// Reads a child's pipe to the end (at most 8 MB) on its own thread.
+fn read_all<R: std::io::Read + Send + 'static>(pipe: Option<R>) -> std::thread::JoinHandle<Vec<u8>> {
+    std::thread::spawn(move || {
+        let mut out = Vec::new();
+        if let Some(pipe) = pipe {
+            let _ = std::io::Read::read_to_end(&mut std::io::Read::take(pipe, 8 << 20), &mut out);
+        }
+        out
+    })
 }
 
 /// Starts `cmd` without waiting for it, and reaps it when it exits.
@@ -279,6 +303,32 @@ mod tests {
             let _probe = RunningProbe::start(&actual);
             assert_eq!(is_running(Path::new(&requested)), expected, "{requested}");
         }
+    }
+}
+
+#[cfg(test)]
+mod run_tests {
+    use super::*;
+
+    /// A shell command line, for the platform's shell.
+    fn shell(script: &str) -> (&'static str, [&str; 2]) {
+        if cfg!(windows) { ("cmd", ["/C", script]) } else { ("/bin/sh", ["-c", script]) }
+    }
+
+    #[test]
+    fn a_failing_helper_reports_its_own_error() {
+        let (program, args) = shell(if cfg!(windows) { "echo no such image 1>&2 & exit /b 3" } else { "echo no such image >&2; exit 3" });
+        assert_eq!(run(program, &args, Duration::from_secs(30)), Err("no such image".into()));
+        assert_eq!(capture(program, &args, Duration::from_secs(30)), None);
+    }
+
+    #[test]
+    fn a_silent_failure_and_a_success() {
+        let (program, args) = shell("exit 4");
+        let err = run(program, &args, Duration::from_secs(30)).unwrap_err();
+        assert!(err.starts_with(&format!("{program} failed")), "{err}");
+        let (program, args) = shell("echo hello");
+        assert_eq!(run(program, &args, Duration::from_secs(30)).map(|out| out.trim().to_string()), Ok("hello".into()));
     }
 }
 

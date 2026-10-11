@@ -736,26 +736,39 @@ pub mod macos {
     /// `hdiutil create` too), since it turns concurrent requests away.
     pub(crate) static DISK_IMAGES: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
+    /// Apple's tools, by full path: a launcher started from Finder or at login gets a minimal
+    /// `PATH`, and nothing earlier on it should stand in for these.
+    const HDIUTIL: &str = "/usr/bin/hdiutil";
+    const DITTO: &str = "/usr/bin/ditto";
+    const CODESIGN: &str = "/usr/bin/codesign";
+
     pub fn install_dmg(app: &CraftApp, dmg: &Path, existing: Option<&Installed>, paths: &Paths, expect: &Expect<'_>) -> Result<PathBuf, String> {
-        let mount = paths.cache.join(format!("mount-{}", app.id));
-        let _ = detach(&mount);
-        std::fs::create_dir_all(&mount).map_err(|e| e.to_string())?;
-        let (Some(dmg_s), Some(mount_s)) = (dmg.to_str(), mount.to_str()) else { return Err("unusual characters in the cache folder's path".into()) };
+        // A new, empty mount point for every install. A fixed one can still hold an image from an
+        // attach that was interrupted or timed out, and hdiutil won't mount another over it.
+        let attempt = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_nanos()).unwrap_or_default();
+        let mount = paths.cache.join(format!("mount-{}-{}-{attempt}", app.id, std::process::id()));
+        std::fs::create_dir_all(&mount).map_err(|e| format!("couldn't create a folder to open the disk image in ({e})"))?;
+        let (Some(dmg_s), Some(mount_s)) = (dmg.to_str(), mount.to_str()) else {
+            let _ = std::fs::remove_dir(&mount);
+            return Err("unusual characters in the cache folder's path".into());
+        };
         // diskimages-helper refuses an attach while it is busy with another image ("Resource
         // temporarily unavailable"): attach one image at a time (several apps may be updating at
         // once), and wait a little and try again when something outside the launcher holds it.
+        // The download's SHA-256 is already checked, so hdiutil's own checksum pass (-noverify)
+        // would only add minutes on a large image.
         let attached = {
             let _one_at_a_time = DISK_IMAGES.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
             let attach = || {
-                process::capture(
-                    "hdiutil",
-                    &["attach", "-nobrowse", "-readonly", "-noautoopen", "-mountpoint", mount_s, dmg_s],
-                    Duration::from_secs(120),
+                process::run(
+                    HDIUTIL,
+                    &["attach", "-nobrowse", "-readonly", "-noautoopen", "-noverify", "-mountpoint", mount_s, dmg_s],
+                    Duration::from_secs(300),
                 )
             };
             let mut attached = attach();
             for wait in [1, 2, 4, 8] {
-                if attached.is_some() {
+                if attached.is_ok() {
                     break;
                 }
                 let _ = detach(&mount);
@@ -764,7 +777,10 @@ pub mod macos {
             }
             attached
         };
-        attached.ok_or("couldn't open the disk image")?;
+        if let Err(reason) = attached {
+            let _ = std::fs::remove_dir(&mount);
+            return Err(format!("couldn't open the disk image: {reason}"));
+        }
         let result = copy_app(app, &mount, existing, expect);
         let _ = detach(&mount);
         let _ = std::fs::remove_dir(&mount);
@@ -784,8 +800,8 @@ pub mod macos {
         // metadata (com.apple.FinderInfo) to the files; leave it and the extended attributes
         // behind, or `codesign --verify --strict` rejects the bundle as carrying "detritus". A
         // bundle's signature lives in its files, not in extended attributes.
-        process::capture("ditto", &["--norsrc", "--noextattr", "--noacl", src_s, staged_s], Duration::from_secs(600))
-            .ok_or("couldn't copy the app")?;
+        process::run(DITTO, &["--norsrc", "--noextattr", "--noacl", src_s, staged_s], Duration::from_secs(600))
+            .map_err(|reason| format!("couldn't copy the app: {reason}"))?;
         let checked = crate::detect::macos::read_bundle(app, &staged)
             .ok_or_else(|| "the copied app is incomplete".to_string())
             .and_then(|found| check(&staged, &found, expect));
@@ -821,7 +837,7 @@ pub mod macos {
             return false;
         }
         let requirement = format!("=anchor apple generic and certificate leaf[subject.OU] = \"{team}\"");
-        process::capture("codesign", &["--verify", "--deep", "-R", &requirement, path], Duration::from_secs(120)).is_some()
+        process::capture(CODESIGN, &["--verify", "--deep", "-R", &requirement, path], Duration::from_secs(120)).is_some()
     }
 
     /// Whether a bundle's version is the release's. A bundle that reports only the numbers
@@ -835,8 +851,8 @@ pub mod macos {
         if !mount.join(".").exists() {
             return None;
         }
-        process::capture("hdiutil", &["detach", m, "-quiet"], Duration::from_secs(60))
-            .or_else(|| process::capture("hdiutil", &["detach", m, "-force", "-quiet"], Duration::from_secs(60)))
+        process::capture(HDIUTIL, &["detach", m, "-quiet"], Duration::from_secs(60))
+            .or_else(|| process::capture(HDIUTIL, &["detach", m, "-force", "-quiet"], Duration::from_secs(60)))
     }
 
     /// Moves an app to the user's Trash (so it can be put back).
