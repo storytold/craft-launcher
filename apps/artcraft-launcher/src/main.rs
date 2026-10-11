@@ -133,12 +133,18 @@ fn wgpu_options() -> eframe::WgpuConfiguration {
             setup.instance_descriptor.backends = Backends::DX12 | Backends::GL;
             let integrated = setup.power_preference == PowerPreference::LowPower;
             setup.native_adapter_selector = Some(Arc::new(move |adapters, surface| {
+                let has_intel_d3d12 = adapters.iter().any(|a| {
+                    let info = a.get_info();
+                    info.vendor == INTEL_VENDOR
+                        && info.backend == eframe::wgpu::Backend::Dx12
+                        && info.device_type == eframe::wgpu::DeviceType::IntegratedGpu
+                });
                 adapters
                     .iter()
                     .filter(|a| surface.is_none_or(|s| a.is_surface_supported(s)))
                     .min_by_key(|a| {
                         let info = a.get_info();
-                        adapter_rank(info.backend, info.device_type, integrated)
+                        adapter_rank(info.backend, info.device_type, info.vendor, has_intel_d3d12, integrated)
                     })
                     .cloned()
                     .ok_or_else(|| "no graphics adapter can draw to the window".to_owned())
@@ -148,13 +154,49 @@ fn wgpu_options() -> eframe::WgpuConfiguration {
     config
 }
 
-/// wgpu's own adapter order (by device type, then enumeration order), except that any Direct3D 12
-/// adapter, the WARP software one included, comes before GL. wgpu ranks WARP last, so on GPUs with
-/// no D3D12 driver (Intel HD 4000, Radeon TeraScale) it picked the GL one, whose legacy driver
-/// failed `Surface::configure` and wgpu panicked before the window opened.
+const INTEL_VENDOR: u32 = 0x8086;
+
+/// wgpu's own adapter order (by device type, then enumeration order), except:
+/// - On Intel integrated GPUs with a D3D12 driver (Gen 9/9.5, HD/UHD 500/600 series): the D3D12 driver
+///   fails shader translation with 0x80070057 ("The parameter is incorrect") under FXC, but OpenGL 4.6
+///   is fully functional and hardware-accelerated. GL ranks ahead of D3D12 and WARP.
+/// - Any Direct3D 12 adapter, WARP included, ranks before GL on GPUs with no D3D12 driver (Intel HD 4000,
+///   Radeon TeraScale) where legacy GL drivers fail `Surface::configure`.
 #[cfg(any(windows, test))]
-fn adapter_rank(backend: eframe::wgpu::Backend, device_type: eframe::wgpu::DeviceType, integrated: bool) -> (bool, u8) {
+fn adapter_rank(
+    backend: eframe::wgpu::Backend,
+    device_type: eframe::wgpu::DeviceType,
+    vendor: u32,
+    has_intel_d3d12: bool,
+    integrated: bool,
+) -> (u8, u8) {
     use eframe::wgpu::{Backend, DeviceType};
+
+    let is_intel_integrated = vendor == INTEL_VENDOR && device_type == DeviceType::IntegratedGpu;
+
+    let tier = match (backend, device_type) {
+        // Hardware D3D12 discrete GPU: preferred when not prioritizing low power.
+        (Backend::Dx12, DeviceType::DiscreteGpu) => if integrated { 2 } else { 0 },
+        // Intel Integrated GPU with OpenGL (when Intel D3D12 is available on the system):
+        // hardware-accelerated OpenGL 4.6 bypasses the D3D12 FXC shader translation error (0x80070057).
+        (Backend::Gl, DeviceType::IntegratedGpu) if is_intel_integrated && has_intel_d3d12 => {
+            if integrated { 0 } else { 1 }
+        }
+        // Non-Intel hardware D3D12 integrated GPU (e.g. AMD):
+        (Backend::Dx12, DeviceType::IntegratedGpu) if !is_intel_integrated => if integrated { 0 } else { 1 },
+        // Hardware D3D12 discrete GPU when low-power is requested:
+        (Backend::Dx12, DeviceType::DiscreteGpu) if integrated => 2,
+        // Other hardware OpenGL adapters:
+        (Backend::Gl, DeviceType::DiscreteGpu) => 3,
+        // WARP software rasterizer (Direct3D 12 on CPU): reliable fallback that beats legacy GL.
+        (Backend::Dx12, DeviceType::Cpu) => 4,
+        // Intel Integrated GPU with D3D12: demoted behind Intel GL and WARP due to shader translation failure.
+        (Backend::Dx12, DeviceType::IntegratedGpu) if is_intel_integrated => 5,
+        // Legacy GL on GPUs without D3D12 driver (e.g. Intel HD 4000): ranked after WARP.
+        (Backend::Gl, _) => 6,
+        _ => 7,
+    };
+
     let device = match device_type {
         DeviceType::DiscreteGpu => 1 + u8::from(integrated),
         DeviceType::IntegratedGpu => 2 - u8::from(integrated),
@@ -162,7 +204,8 @@ fn adapter_rank(backend: eframe::wgpu::Backend, device_type: eframe::wgpu::Devic
         DeviceType::VirtualGpu => 4,
         DeviceType::Cpu => 5,
     };
-    (backend != Backend::Dx12, device)
+
+    (tier, device)
 }
 
 #[cfg(not(windows))]
@@ -847,13 +890,26 @@ mod tests {
     fn warp_beats_a_gl_gpu_but_not_a_d3d12_gpu() {
         use eframe::wgpu::{Backend, DeviceType};
         // Intel HD 4000 + Radeon HD 7600M have no D3D12 driver; their GL one fails to configure.
-        let warp = adapter_rank(Backend::Dx12, DeviceType::Cpu, false);
-        assert!(warp < adapter_rank(Backend::Gl, DeviceType::IntegratedGpu, false));
-        assert!(warp < adapter_rank(Backend::Gl, DeviceType::Other, false));
+        let warp = adapter_rank(Backend::Dx12, DeviceType::Cpu, 0x1414, false, false);
+        assert!(warp < adapter_rank(Backend::Gl, DeviceType::IntegratedGpu, INTEL_VENDOR, false, false));
+        assert!(warp < adapter_rank(Backend::Gl, DeviceType::Other, 0, false, false));
         // Hardware D3D12 still wins, in wgpu's order for the power preference.
         let (discrete, integrated) = (DeviceType::DiscreteGpu, DeviceType::IntegratedGpu);
-        assert!(adapter_rank(Backend::Dx12, integrated, false) < warp);
-        assert!(adapter_rank(Backend::Dx12, discrete, false) < adapter_rank(Backend::Dx12, integrated, false));
-        assert!(adapter_rank(Backend::Dx12, integrated, true) < adapter_rank(Backend::Dx12, discrete, true));
+        assert!(adapter_rank(Backend::Dx12, integrated, 0x1002, false, false) < warp);
+        assert!(adapter_rank(Backend::Dx12, discrete, 0x10de, false, false) < adapter_rank(Backend::Dx12, integrated, 0x1002, false, false));
+        assert!(adapter_rank(Backend::Dx12, integrated, 0x1002, false, true) < adapter_rank(Backend::Dx12, discrete, 0x10de, false, true));
+    }
+
+    #[test]
+    fn intel_gl_beats_intel_d3d12_and_warp_when_d3d12_driver_exists() {
+        use eframe::wgpu::{Backend, DeviceType};
+        // Intel Gen 9/9.5 (HD/UHD 500/600 series) have D3D12 drivers, but D3D12 shader translation
+        // fails with 0x80070057. Their OpenGL 4.6 driver is rock-solid and hardware-accelerated.
+        let intel_gl = adapter_rank(Backend::Gl, DeviceType::IntegratedGpu, INTEL_VENDOR, true, false);
+        let intel_d3d12 = adapter_rank(Backend::Dx12, DeviceType::IntegratedGpu, INTEL_VENDOR, true, false);
+        let warp = adapter_rank(Backend::Dx12, DeviceType::Cpu, 0x1414, true, false);
+
+        assert!(intel_gl < intel_d3d12);
+        assert!(intel_gl < warp);
     }
 }
