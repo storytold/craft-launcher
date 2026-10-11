@@ -110,7 +110,12 @@ fn native_options(hidden: bool) -> eframe::NativeOptions {
     } else {
         viewport.with_decorations(false)
     };
-    if let Some(icon) = icon {
+    // On macOS the bundle's .icns is the icon. Any icon given to eframe (its egui logo when none
+    // is) replaces it in the Dock at runtime with a raw bitmap, which skips the system's icon
+    // treatment, so pass the empty icon, which eframe takes as "leave it alone".
+    if cfg!(target_os = "macos") {
+        viewport = viewport.with_icon(egui::IconData::default());
+    } else if let Some(icon) = icon {
         viewport = viewport.with_icon(icon);
     }
     eframe::NativeOptions { viewport, persist_window: true, wgpu_options: wgpu_options(), ..Default::default() }
