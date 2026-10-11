@@ -7,7 +7,7 @@
 #   $DIST/artcraft-launcher-<version>-linux-<arch>.rpm       Fedora, openSUSE, RHEL, ...
 #   $DIST/artcraft-launcher-<version>-linux-<arch>.tar.gz    plain FHS-style tree (bin/, share/)
 #
-# Usage: packaging/linux/package.sh [--skip-build] [--formats "appimage deb rpm tar"]
+# Usage: packaging/linux/package.sh [--skip-build] [--formats "appimage deb rpm tar" or appimage,deb,rpm,tar]
 #
 # Needs: cargo; nfpm for deb/rpm (https://nfpm.goreleaser.com); appimagetool for the AppImage
 # (downloaded into $CARGO_TARGET_DIR if missing). Build on an old distro (CI: Ubuntu 22.04,
@@ -32,6 +32,14 @@ while [ $# -gt 0 ]; do
     --formats) FORMATS="$2"; shift 2 ;;
     -h | --help) sed -n '2,19p' "$0"; exit 0 ;;
     *) echo "unknown argument: $1" >&2; exit 2 ;;
+  esac
+done
+# Accept "deb,rpm,tar" as well as "deb rpm tar" (craft-common-actions passes commas).
+FORMATS="$(printf %s "$FORMATS" | tr ',' ' ')"
+for fmt in $FORMATS; do
+  case "$fmt" in
+    appimage | deb | rpm | tar) ;;
+    *) echo "unknown format: $fmt (expected appimage, deb, rpm or tar)" >&2; exit 2 ;;
   esac
 done
 
