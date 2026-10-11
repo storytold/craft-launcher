@@ -105,7 +105,7 @@ fn portuguese_ui_translates_labels_dates_and_messages() {
     h.get_by_label("Craft App Suite");
     h.get_by_label("Edição de imagens");
     h.get_by_label("Atualizar para 0.5.0");
-    h.get_by_label_contains("Verificando soma de verificação…");
+    h.get_by_label_contains("Conferindo a soma de verificação…");
     h.get_by_label_contains("Verificado há 3 min · via ArtCraft API");
     h.get_by_label("LightCraft atualizado para 0.5.0");
 
