@@ -71,7 +71,16 @@ fn ours() -> Option<Version> {
 
 /// Claims the instance; `wake` is set later (the UI context doesn't exist yet).
 pub fn claim(wake: Wake) -> Instance {
-    let addr = SocketAddr::from((Ipv4Addr::LOCALHOST, PORT));
+    claim_on_port(wake, PORT)
+}
+
+/// Local development builds can run beside the installed launcher.
+pub fn claim_development(wake: Wake) -> Instance {
+    claim_on_port(wake, PORT + 1)
+}
+
+fn claim_on_port(wake: Wake, port: u16) -> Instance {
+    let addr = SocketAddr::from((Ipv4Addr::LOCALHOST, port));
     let ours = ours();
     if let Ok(listener) = TcpListener::bind(addr) {
         return Instance::Primary(listen(listener, ours, wake));

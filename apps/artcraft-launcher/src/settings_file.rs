@@ -13,6 +13,13 @@ pub fn path(app_id: &str) -> Option<PathBuf> {
     eframe::storage_dir(app_id).map(|dir| dir.join("app.ron"))
 }
 
+/// Local builds keep preferences beside the portable executable, independent of the installed app.
+pub fn development_path() -> Option<PathBuf> {
+    artcraft_launcher_native::paths::portable_root()
+        .or_else(|| eframe::storage_dir("ai.storyteller.artcraft-launcher.dev"))
+        .map(|root| root.join("app.ron"))
+}
+
 /// The value stored under `key`, if the file has one that still reads.
 pub fn load<T: serde::de::DeserializeOwned>(path: &Path, key: &str) -> Option<T> {
     eframe::get_value(&RonFile::read(path), key)

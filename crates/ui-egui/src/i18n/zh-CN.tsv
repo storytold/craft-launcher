@@ -296,3 +296,83 @@ soundcraft	Recording, editing and mixing audio	音频录制、编辑与混音
 @msg	{name} installed: {version} (this release publishes no checksum, so only its size was checked)	{name} 已安装：{version}（此版本未发布校验和，因此只检查了文件大小）
 @msg	{name} was removed	{name} 已卸载
 @msg	{name} is running. Quit it, then try again.	{name} 正在运行。请先退出，然后重试。
+
+# Per-app version and installation settings.
+	App settings	应用设置
+	App settings…	应用设置…
+	Installation	安装
+	Version	版本
+	Installed: {version}	已安装：{version}
+	Version is kept	版本已固定
+	Selected release	所选发行版本
+	Select a release	选择发行版本
+	Show pre-releases	显示预发布版本
+	Loading releases…	正在加载发行版本…
+	Refresh releases	刷新发行版本
+	Load older releases	加载更早的发行版本
+	No published releases are available.	没有可用的已发布版本。
+	This package cannot downgrade here. Use a portable installation instead.	此软件包不支持在此降级。请使用便携式安装。
+	No compatible download for this release.	此版本没有兼容的下载。
+	This release has no published checksum.	此版本未发布校验和。
+	This release's version cannot be verified.	无法验证此发行版本的版本号。
+	An older version will replace the installed program.	旧版本将替换已安装的程序。
+	Keep the selected version	保留所选版本
+	Automatic updates and Update all will leave this version unchanged.	自动更新和“全部更新”不会更改此版本。
+	Follow the latest release using the global update settings.	按照全局更新设置跟随最新版本。
+	Switch to {version}	切换至 {version}
+	Current installation folder	当前安装文件夹
+	Open installation folder	打开安装文件夹
+	Version changes keep the existing installation folder and package format.	切换版本会保留现有安装文件夹和软件包格式。
+	Package format	软件包格式
+	System default	系统默认
+	Choose a folder for a new installation	为新安装选择文件夹
+	Browse…	浏览…
+	Custom folders are available for portable ZIP and AppImage packages.	便携式 ZIP 和 AppImage 软件包支持自定义文件夹。
+	Installation in progress. You can close this window.	正在安装。您可以关闭此窗口。
+	Save update preferences	保存更新偏好
+
+# Version management messages.
+@msg	GitHub's request limit was reached. Try again later.	已达到 GitHub 请求上限。请稍后重试。
+@msg	Reload the release list before selecting a version.	选择版本前请重新加载发行版本列表。
+@msg	This app is pinned to a selected version. Open its settings to change versions.	此应用已固定到所选版本。请打开其设置以更换版本。
+@msg	This release has no published checksum for this download.	此下载没有已发布的校验和。
+@msg	This package format cannot safely downgrade here. Use a portable installation instead.	此软件包格式不支持在此安全降级。请使用便携式安装。
+@msg	The installer finished, but the selected version could not be confirmed. Check the installed version before retrying.	安装程序已完成，但无法确认所选版本。重试前请检查已安装版本。
+@msg	Custom folders are supported for portable ZIP and AppImage installations only.	仅便携式 ZIP 和 AppImage 安装支持自定义文件夹。
+@msg	The installation would overwrite an unrecorded file.	安装将覆盖未记录的文件。
+@msg	Choose an absolute installation folder without parent-directory components.	请选择不含父目录组件的绝对安装路径。
+
+# Version management messages.
+@msg	The portable executable does not match the selected version. The installation was rolled back.	便携式可执行文件与所选版本不符。安装已回滚。
+
+# Confirmed MSI version changes.
+	MSI downgrade requires removing the current version first. You will confirm before it starts.	MSI 降级需要先卸载当前版本。开始前将请您确认。
+	Downgrade {name} to {version}?	将 {name} 降级至 {version}？
+	Both MSI installers are downloaded and verified before anything is removed.	卸载前会下载并验证两个 MSI 安装程序。
+	Windows will uninstall the current version, then install the selected version in the same folder. Administrator permission may be required.	Windows 将卸载当前版本，然后把所选版本安装到同一文件夹。可能需要管理员权限。
+	If installation fails, the launcher will try to restore the original version. If recovery fails, it keeps the installers and shows their location.	如果安装失败，启动器会尝试恢复原版本。如果恢复失败，将保留安装程序并显示其位置。
+	Uninstall and switch	卸载并切换
+	Load the installed release before downgrading its MSI package.	降级 MSI 软件包前，请先加载已安装版本的发行版。
+@msg	Load the installed release before downgrading its MSI package.	降级 MSI 软件包前，请先加载已安装版本的发行版。
+	MSI downgrades require stable releases.	MSI 降级需要稳定发行版。
+@msg	Choose an older MSI release in App settings and confirm the downgrade.	请在应用设置中选择旧版 MSI 发行版并确认降级。
+@msg	The installed release has no compatible recovery MSI.	已安装版本没有兼容的恢复 MSI。
+@msg	Could not inspect the MSI package. Nothing was removed.	无法检查 MSI 软件包。未卸载任何内容。
+@msg	The MSI packages do not match the installed app. Nothing was removed.	MSI 软件包与已安装应用不匹配。未卸载任何内容。
+@msg	The installed MSI folder could not be verified. Nothing was removed.	无法验证已安装 MSI 的文件夹。未卸载任何内容。
+@msg	Both MSI releases need published checksums before downgrading.	降级前，两个 MSI 发行版都需要公开的校验和。
+@msg	The recovery MSI copy could not be verified. Nothing was removed.	无法验证恢复 MSI 的副本。未卸载任何内容。
+@msg	The installed MSI version or folder does not match the expected app.	已安装 MSI 的版本或文件夹与预期应用不匹配。
+@msg	MSI downgrade failed; the original version was restored. {details}	MSI 降级失败；已恢复原版本。{details}
+@msg	MSI downgrade failed; recovery also failed. {details}	MSI 降级和恢复均失败。{details}
+	Retrying automatically in {seconds}s…	{seconds} 秒后自动重试…
+	Keep this version after switching	切换后锁定此版本
+	MSI installation runs in the background. Windows may ask for administrator permission.	MSI 安装在后台运行。Windows 可能会请求管理员权限。
+@msg	Could not save the launcher update state. Update was not started.	无法保存启动器更新状态。更新未启动。
+	Launcher version	启动器版本
+	Choose launcher version…	选择启动器版本…
+	Launcher MSI downgrades require a portable copy. This installation can upgrade only.	MSI 启动器降级需要便携版本。此安装仅支持升级。
+@msg	Launcher MSI downgrades require a portable copy. This installation can upgrade only.	MSI 启动器降级需要便携版本。此安装仅支持升级。
+	The launcher will wait for other installs, switch versions and restart.	启动器将等待其他安装完成，然后切换版本并重启。
+	Older launcher releases may not support version preferences.	旧版启动器可能不支持版本偏好设置。
+	This development or externally managed launcher cannot switch versions in place.	此开发版或由外部管理的启动器无法直接切换版本。

@@ -325,3 +325,83 @@ filter	Installed	Installiert
 	ArtCraft on GitHub	ArtCraft auf GitHub
 	Join the ArtCraft Discord	Dem ArtCraft-Discord beitreten
 @plural	ArtCraft Launcher · {n} update available|ArtCraft Launcher · {n} updates available	ArtCraft Launcher · {n} Update verfügbar|ArtCraft Launcher · {n} Updates verfügbar
+
+# Per-app version and installation settings.
+	App settings	App-Einstellungen
+	App settings…	App-Einstellungen…
+	Installation	Installation
+	Version	Version
+	Installed: {version}	Installiert: {version}
+	Version is kept	Version wird beibehalten
+	Selected release	Gewähltes Release
+	Select a release	Release auswählen
+	Show pre-releases	Vorabversionen anzeigen
+	Loading releases…	Releases werden geladen…
+	Refresh releases	Releases aktualisieren
+	Load older releases	Ältere Releases laden
+	No published releases are available.	Keine veröffentlichten Releases verfügbar.
+	This package cannot downgrade here. Use a portable installation instead.	Dieses Paket unterstützt hier kein Downgrade. Verwende eine portable Installation.
+	No compatible download for this release.	Kein kompatibler Download für dieses Release.
+	This release has no published checksum.	Für dieses Release ist keine Prüfsumme veröffentlicht.
+	This release's version cannot be verified.	Versionsnummer dieses Releases lässt sich nicht überprüfen.
+	An older version will replace the installed program.	Eine ältere Version ersetzt das installierte Programm.
+	Keep the selected version	Gewählte Version beibehalten
+	Automatic updates and Update all will leave this version unchanged.	Automatische Updates und „Alle aktualisieren“ behalten diese Version bei.
+	Follow the latest release using the global update settings.	Neuester Version gemäß globalen Update-Einstellungen folgen.
+	Switch to {version}	Zu {version} wechseln
+	Current installation folder	Aktueller Installationsort
+	Open installation folder	Installationsordner öffnen
+	Version changes keep the existing installation folder and package format.	Versionswechsel behalten Installationsort und Paketformat bei.
+	Package format	Paketformat
+	System default	Systemstandard
+	Choose a folder for a new installation	Ordner für neue Installation auswählen
+	Browse…	Durchsuchen…
+	Custom folders are available for portable ZIP and AppImage packages.	Eigene Ordner sind für portable ZIP- und AppImage-Pakete verfügbar.
+	Installation in progress. You can close this window.	Installation läuft. Du kannst dieses Fenster schließen.
+	Save update preferences	Update-Einstellungen speichern
+
+# Version management messages.
+@msg	GitHub's request limit was reached. Try again later.	GitHubs Anfragelimit wurde erreicht. Versuche es später erneut.
+@msg	Reload the release list before selecting a version.	Lade die Release-Liste erneut, bevor du eine Version auswählst.
+@msg	This app is pinned to a selected version. Open its settings to change versions.	Dieses Tool behält eine gewählte Version bei. Öffne seine Einstellungen zum Versionswechsel.
+@msg	This release has no published checksum for this download.	Für diesen Download ist keine Prüfsumme veröffentlicht.
+@msg	This package format cannot safely downgrade here. Use a portable installation instead.	Dieses Paketformat unterstützt hier kein sicheres Downgrade. Verwende eine portable Installation.
+@msg	The installer finished, but the selected version could not be confirmed. Check the installed version before retrying.	Installation beendet, gewählte Version aber nicht bestätigt. Prüfe vor einem neuen Versuch die installierte Version.
+@msg	Custom folders are supported for portable ZIP and AppImage installations only.	Eigene Ordner werden nur für portable ZIP- und AppImage-Installationen unterstützt.
+@msg	The installation would overwrite an unrecorded file.	Installation würde eine persönliche oder fremde Datei überschreiben.
+@msg	Choose an absolute installation folder without parent-directory components.	Wähle einen absoluten Installationspfad ohne übergeordnete Pfadbestandteile.
+
+# Version management messages.
+@msg	The portable executable does not match the selected version. The installation was rolled back.	Die portable EXE entspricht nicht der gewählten Version. Installation wurde zurückgerollt.
+
+# Confirmed MSI version changes.
+	MSI downgrade requires removing the current version first. You will confirm before it starts.	MSI-Downgrade erfordert zuerst das Entfernen der aktuellen Version. Du bestätigst den Wechsel vor dem Start.
+	Downgrade {name} to {version}?	{name} auf {version} zurückstufen?
+	Both MSI installers are downloaded and verified before anything is removed.	Beide MSI-Pakete werden vor dem Entfernen heruntergeladen und geprüft.
+	Windows will uninstall the current version, then install the selected version in the same folder. Administrator permission may be required.	Windows deinstalliert die aktuelle Version und installiert danach die gewählte Version im selben Ordner. Administratorrechte können erforderlich sein.
+	If installation fails, the launcher will try to restore the original version. If recovery fails, it keeps the installers and shows their location.	Schlägt die Installation fehl, versucht der Launcher die ursprüngliche Version wiederherzustellen. Bei fehlgeschlagener Wiederherstellung bleiben die Pakete erhalten; ihr Speicherort wird angezeigt.
+	Uninstall and switch	Deinstallieren und wechseln
+	Load the installed release before downgrading its MSI package.	Lade vor dem MSI-Downgrade das Release der installierten Version.
+@msg	Load the installed release before downgrading its MSI package.	Lade vor dem MSI-Downgrade das Release der installierten Version.
+	MSI downgrades require stable releases.	MSI-Downgrades erfordern stabile Releases.
+@msg	Choose an older MSI release in App settings and confirm the downgrade.	Wähle ein älteres MSI-Release in den App-Einstellungen und bestätige den Downgrade.
+@msg	The installed release has no compatible recovery MSI.	Für die installierte Version fehlt ein passendes MSI zur Wiederherstellung.
+@msg	Could not inspect the MSI package. Nothing was removed.	MSI-Paket konnte nicht geprüft werden. Nichts wurde entfernt.
+@msg	The MSI packages do not match the installed app. Nothing was removed.	MSI-Pakete passen nicht zur installierten App. Nichts wurde entfernt.
+@msg	The installed MSI folder could not be verified. Nothing was removed.	Installierter MSI-Ordner konnte nicht bestätigt werden. Nichts wurde entfernt.
+@msg	Both MSI releases need published checksums before downgrading.	Für den Downgrade benötigen beide MSI-Releases veröffentlichte Prüfsummen.
+@msg	The recovery MSI copy could not be verified. Nothing was removed.	MSI-Kopie zur Wiederherstellung konnte nicht bestätigt werden. Nichts wurde entfernt.
+@msg	The installed MSI version or folder does not match the expected app.	Installierte MSI-Version oder Ordner entspricht nicht der erwarteten App.
+@msg	MSI downgrade failed; the original version was restored. {details}	MSI-Downgrade fehlgeschlagen; ursprüngliche Version wurde wiederhergestellt. {details}
+@msg	MSI downgrade failed; recovery also failed. {details}	MSI-Downgrade und Wiederherstellung fehlgeschlagen. {details}
+	Retrying automatically in {seconds}s…	Automatischer neuer Versuch in {seconds}s…
+	Keep this version after switching	Version nach Wechsel festhalten
+	MSI installation runs in the background. Windows may ask for administrator permission.	MSI-Installation läuft im Hintergrund. Windows fragt eventuell nach Administratorrechten.
+@msg	Could not save the launcher update state. Update was not started.	Launcher-Update-Status konnte nicht gespeichert werden. Update wurde nicht gestartet.
+	Launcher version	Launcher-Version
+	Choose launcher version…	Launcher-Version auswählen…
+	Launcher MSI downgrades require a portable copy. This installation can upgrade only.	Für Launcher-MSI-Downgrades ist eine portable Kopie erforderlich. Diese Installation unterstützt nur Upgrades.
+@msg	Launcher MSI downgrades require a portable copy. This installation can upgrade only.	Für Launcher-MSI-Downgrades ist eine portable Kopie erforderlich. Diese Installation unterstützt nur Upgrades.
+	The launcher will wait for other installs, switch versions and restart.	Der Launcher wartet auf andere Installationen, wechselt die Version und startet neu.
+	Older launcher releases may not support version preferences.	Ältere Launcher-Releases unterstützen die Versionseinstellungen möglicherweise noch nicht.
+	This development or externally managed launcher cannot switch versions in place.	Diese Entwicklungsinstanz oder extern verwaltete Launcher-Installation kann ihre Version nicht direkt wechseln.

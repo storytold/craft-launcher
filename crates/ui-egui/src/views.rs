@@ -122,6 +122,7 @@ impl LauncherUi {
     pub(crate) fn toolbar(&mut self, ui: &mut Ui) {
         let t = Tokens::get(ui.ctx());
         if self.dialog.is_none()
+            && (!self.launcher_pinned() || self.launcher_job.is_some())
             && let Some(r) = self.launcher_update.clone()
         {
             egui::Frame::new()
@@ -528,16 +529,28 @@ impl LauncherUi {
             ui.ctx().layer_painter(ui.layer_id()).with_clip_rect(clip).hline(span, y, t.hairline());
         };
         egui::Frame::new().fill(t.bg).stroke(t.hairline()).inner_margin(egui::Margin::symmetric(16, 0)).show(ui, |ui| {
-            TableBuilder::new(ui)
+            // Keep actions visible at the native window's minimum width. Less essential
+            // columns return as the window grows, rather than pushing the menu off-screen.
+            let available = ui.available_width();
+            let show_inspired = available >= 1060.0;
+            let show_released = available >= 900.0;
+            let show_versions = available >= 780.0;
+            let mut table = TableBuilder::new(ui)
                 .striped(false)
                 .vscroll(false)
                 .cell_layout(egui::Layout::left_to_right(egui::Align::Center))
-                .column(Column::remainder().at_least(220.0).clip(true))
-                .column(Column::exact(172.0).clip(true))
-                .column(Column::exact(176.0))
-                .column(Column::exact(84.0))
-                .column(Column::exact(84.0))
-                .column(Column::exact(104.0))
+                .column(Column::remainder().at_least(180.0).clip(true));
+            if show_inspired {
+                table = table.column(Column::exact(172.0).clip(true));
+            }
+            table = table.column(Column::exact(176.0).clip(true));
+            if show_versions {
+                table = table.column(Column::exact(84.0)).column(Column::exact(84.0));
+            }
+            if show_released {
+                table = table.column(Column::exact(104.0));
+            }
+            table
                 .column(Column::exact(206.0))
                 .header(42.0, |mut header| {
                     for (key, label) in [
@@ -549,6 +562,12 @@ impl LauncherUi {
                         (Some(SortKey::Released), tr_ctx(current(), "column", "Released")),
                         (None, ""),
                     ] {
+                        if (key == Some(SortKey::InspiredBy) && !show_inspired)
+                            || (matches!(key, Some(SortKey::Installed | SortKey::Latest)) && !show_versions)
+                            || (key == Some(SortKey::Released) && !show_released)
+                        {
+                            continue;
+                        }
                         header.col(|ui| {
                             if key == Some(SortKey::Name) {
                                 rule(ui);
@@ -616,9 +635,11 @@ impl LauncherUi {
                                     );
                                 });
                             });
-                            row.col(|ui| {
-                                ui.add(egui::Label::new(RichText::new(entry.app.inspired_by()).size(13.0).color(t.muted)).truncate());
-                            });
+                            if show_inspired {
+                                row.col(|ui| {
+                                    ui.add(egui::Label::new(RichText::new(entry.app.inspired_by()).size(13.0).color(t.muted)).truncate());
+                                });
+                            }
                             row.col(|ui| {
                                 let (text, tone) = model::entry_status_text(&entry, &status, self.caps.manage_apps);
                                 let r = widgets::badge(ui, &text, widgets::tone_color(&t, tone));
@@ -626,24 +647,30 @@ impl LauncherUi {
                                     r.on_hover_text(fmt(tl!("Couldn't check for updates: {f}"), &[("f", f)]));
                                 }
                             });
-                            row.col(|ui| {
-                                let installed = entry.installed_label();
-                                let color = if installed.is_some() { t.ink } else { t.faint };
-                                ui.label(RichText::new(installed.unwrap_or_else(|| "—".into())).family(egui::FontFamily::Monospace).color(color));
-                            });
-                            row.col(|ui| {
-                                let c = if status == AppStatus::UpdateAvailable { t.warn } else { t.ink };
-                                ui.label(
-                                    RichText::new(entry.latest_label().unwrap_or_else(|| "—".into())).family(egui::FontFamily::Monospace).color(c),
-                                );
-                            });
-                            row.col(|ui| {
-                                let when = entry.release().and_then(|r| r.published_at);
-                                let r = ui.label(RichText::new(when.map_or_else(|| "—".into(), date_text)).color(t.muted));
-                                if let Some(w) = when {
-                                    r.on_hover_text(ago_text(w, now));
-                                }
-                            });
+                            if show_versions {
+                                row.col(|ui| {
+                                    let installed = entry.installed_label();
+                                    let color = if installed.is_some() { t.ink } else { t.faint };
+                                    ui.label(RichText::new(installed.unwrap_or_else(|| "—".into())).family(egui::FontFamily::Monospace).color(color));
+                                });
+                                row.col(|ui| {
+                                    let c = if status == AppStatus::UpdateAvailable { t.warn } else { t.ink };
+                                    ui.label(
+                                        RichText::new(entry.latest_label().unwrap_or_else(|| "—".into()))
+                                            .family(egui::FontFamily::Monospace)
+                                            .color(c),
+                                    );
+                                });
+                            }
+                            if show_released {
+                                row.col(|ui| {
+                                    let when = entry.release().and_then(|r| r.published_at);
+                                    let r = ui.label(RichText::new(when.map_or_else(|| "—".into(), date_text)).color(t.muted));
+                                    if let Some(w) = when {
+                                        r.on_hover_text(ago_text(w, now));
+                                    }
+                                });
+                            }
                             row.col(|ui| self.actions(ui, &entry, &status, 204.0));
                         });
                     }
@@ -696,7 +723,7 @@ impl LauncherUi {
         }
     }
 
-    /// The main button (or progress) and the … menu, within `width`.
+    /// The main button (or progress) and the ⋮ menu, within `width`.
     fn actions(&mut self, ui: &mut Ui, entry: &AppEntry, status: &AppStatus, width: f32) {
         let t = Tokens::get(ui.ctx());
         let id = entry.app.id.to_string();
@@ -826,6 +853,10 @@ impl LauncherUi {
         let manage = self.caps.manage_apps;
         let reveal = self.caps.reveal_label;
         widgets::more_menu(ui, |ui| {
+            if manage && ui.button(tl!("App settings…")).clicked() {
+                self.open_app_settings(&id);
+                ui.close();
+            }
             if entry.release().is_some() && ui.button(tl!("Release notes")).clicked() {
                 self.dialog = Some(Dialog::Notes(id.clone()));
                 ui.close();

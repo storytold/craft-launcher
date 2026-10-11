@@ -323,3 +323,83 @@ filter	Installed	Installées
 	ArtCraft on GitHub	ArtCraft sur GitHub
 	Join the ArtCraft Discord	Rejoindre le Discord d'ArtCraft
 @plural	ArtCraft Launcher · {n} update available|ArtCraft Launcher · {n} updates available	ArtCraft Launcher · {n} mise à jour disponible|ArtCraft Launcher · {n} mises à jour disponibles
+
+# Per-app version and installation settings.
+	App settings	Paramètres de l’application
+	App settings…	Paramètres de l’application…
+	Installation	Installation
+	Version	Version
+	Installed: {version}	Version installée : {version}
+	Version is kept	Version conservée
+	Selected release	Version sélectionnée
+	Select a release	Sélectionner une version
+	Show pre-releases	Afficher les préversions
+	Loading releases…	Chargement des versions…
+	Refresh releases	Actualiser les versions
+	Load older releases	Charger les versions précédentes
+	No published releases are available.	Aucune version publiée disponible.
+	This package cannot downgrade here. Use a portable installation instead.	Ce paquet ne permet pas de rétrograder ici. Utilisez une installation portable.
+	No compatible download for this release.	Aucun téléchargement compatible pour cette version.
+	This release has no published checksum.	Aucune somme de contrôle publiée pour cette version.
+	This release's version cannot be verified.	Le numéro de cette version ne peut pas être vérifié.
+	An older version will replace the installed program.	Une version antérieure remplacera le programme installé.
+	Keep the selected version	Conserver la version sélectionnée
+	Automatic updates and Update all will leave this version unchanged.	Les mises à jour automatiques et « Tout mettre à jour » conserveront cette version.
+	Follow the latest release using the global update settings.	Suivre la dernière version selon les paramètres globaux de mise à jour.
+	Switch to {version}	Passer à {version}
+	Current installation folder	Dossier d’installation actuel
+	Open installation folder	Ouvrir le dossier d’installation
+	Version changes keep the existing installation folder and package format.	Changer de version conserve le dossier d’installation et le format du paquet.
+	Package format	Format du paquet
+	System default	Valeur par défaut du système
+	Choose a folder for a new installation	Choisir un dossier pour une nouvelle installation
+	Browse…	Parcourir…
+	Custom folders are available for portable ZIP and AppImage packages.	Les dossiers personnalisés sont disponibles pour les paquets ZIP portables et AppImage.
+	Installation in progress. You can close this window.	Installation en cours. Vous pouvez fermer cette fenêtre.
+	Save update preferences	Enregistrer les préférences de mise à jour
+
+# Version management messages.
+@msg	GitHub's request limit was reached. Try again later.	La limite de requêtes GitHub est atteinte. Réessayez plus tard.
+@msg	Reload the release list before selecting a version.	Rechargez la liste avant de sélectionner une version.
+@msg	This app is pinned to a selected version. Open its settings to change versions.	Une version est conservée pour cette application. Ouvrez ses paramètres pour la changer.
+@msg	This release has no published checksum for this download.	Aucune somme de contrôle n’est publiée pour ce téléchargement.
+@msg	This package format cannot safely downgrade here. Use a portable installation instead.	Ce format ne permet pas de rétrograder en sécurité ici. Utilisez une installation portable.
+@msg	The installer finished, but the selected version could not be confirmed. Check the installed version before retrying.	L’installation est terminée, mais la version choisie n’a pas pu être confirmée. Vérifiez la version installée avant de réessayer.
+@msg	Custom folders are supported for portable ZIP and AppImage installations only.	Les dossiers personnalisés sont réservés aux installations ZIP portables et AppImage.
+@msg	The installation would overwrite an unrecorded file.	L’installation écraserait un fichier qui ne lui appartient pas.
+@msg	Choose an absolute installation folder without parent-directory components.	Choisissez un chemin d’installation absolu sans remontée vers un dossier parent.
+
+# Version management messages.
+@msg	The portable executable does not match the selected version. The installation was rolled back.	L’exécutable portable ne correspond pas à la version choisie. L’installation a été annulée et les fichiers restaurés.
+
+# Confirmed MSI version changes.
+	MSI downgrade requires removing the current version first. You will confirm before it starts.	La rétrogradation MSI nécessite de supprimer la version actuelle. Vous confirmerez avant le démarrage.
+	Downgrade {name} to {version}?	Rétrograder {name} vers {version} ?
+	Both MSI installers are downloaded and verified before anything is removed.	Les deux installateurs MSI sont téléchargés et vérifiés avant toute suppression.
+	Windows will uninstall the current version, then install the selected version in the same folder. Administrator permission may be required.	Windows désinstallera la version actuelle, puis installera la version choisie dans le même dossier. Des droits administrateur peuvent être nécessaires.
+	If installation fails, the launcher will try to restore the original version. If recovery fails, it keeps the installers and shows their location.	Si l’installation échoue, le lanceur tentera de restaurer la version initiale. Si la restauration échoue, les installateurs sont conservés et leur emplacement est affiché.
+	Uninstall and switch	Désinstaller et changer
+	Load the installed release before downgrading its MSI package.	Chargez la version installée avant de rétrograder son paquet MSI.
+@msg	Load the installed release before downgrading its MSI package.	Chargez la version installée avant de rétrograder son paquet MSI.
+	MSI downgrades require stable releases.	Les rétrogradations MSI nécessitent des versions stables.
+@msg	Choose an older MSI release in App settings and confirm the downgrade.	Choisissez une ancienne version MSI dans les paramètres de l’application et confirmez la rétrogradation.
+@msg	The installed release has no compatible recovery MSI.	La version installée ne dispose pas de MSI compatible pour la restauration.
+@msg	Could not inspect the MSI package. Nothing was removed.	Impossible de vérifier le paquet MSI. Aucune suppression.
+@msg	The MSI packages do not match the installed app. Nothing was removed.	Les paquets MSI ne correspondent pas à l’application installée. Aucune suppression.
+@msg	The installed MSI folder could not be verified. Nothing was removed.	Impossible de vérifier le dossier MSI installé. Aucune suppression.
+@msg	Both MSI releases need published checksums before downgrading.	Les deux versions MSI nécessitent des sommes de contrôle publiées pour la rétrogradation.
+@msg	The recovery MSI copy could not be verified. Nothing was removed.	Impossible de vérifier la copie MSI de restauration. Aucune suppression.
+@msg	The installed MSI version or folder does not match the expected app.	La version ou le dossier MSI installé ne correspond pas à l’application attendue.
+@msg	MSI downgrade failed; the original version was restored. {details}	La rétrogradation MSI a échoué ; la version initiale a été restaurée. {details}
+@msg	MSI downgrade failed; recovery also failed. {details}	La rétrogradation MSI et la restauration ont échoué. {details}
+	Retrying automatically in {seconds}s…	Nouvelle tentative automatique dans {seconds}s…
+	Keep this version after switching	Conserver cette version après le changement
+	MSI installation runs in the background. Windows may ask for administrator permission.	L’installation MSI s’exécute en arrière-plan. Windows peut demander une autorisation administrateur.
+@msg	Could not save the launcher update state. Update was not started.	Impossible d’enregistrer l’état de mise à jour du lanceur. La mise à jour n’a pas démarré.
+	Launcher version	Version du lanceur
+	Choose launcher version…	Choisir la version du lanceur…
+	Launcher MSI downgrades require a portable copy. This installation can upgrade only.	Pour rétrograder le lanceur MSI, utilisez une copie portable. Cette installation permet uniquement les mises à niveau.
+@msg	Launcher MSI downgrades require a portable copy. This installation can upgrade only.	Pour rétrograder le lanceur MSI, utilisez une copie portable. Cette installation permet uniquement les mises à niveau.
+	The launcher will wait for other installs, switch versions and restart.	Le lanceur attendra les autres installations, changera de version et redémarrera.
+	Older launcher releases may not support version preferences.	Les anciennes versions du lanceur peuvent ne pas prendre en charge les préférences de version.
+	This development or externally managed launcher cannot switch versions in place.	Ce lanceur de développement ou géré extérieurement ne peut pas changer de version sur place.

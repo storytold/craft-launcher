@@ -475,15 +475,20 @@ pub fn glyph_button(ui: &mut Ui, glyph: Glyph, tip: &str) -> Response {
     resp.on_hover_text(tip).on_hover_cursor(egui::CursorIcon::PointingHand)
 }
 
-/// The "…" button that opens an app's menu: an outlined square like [`glyph_button`].
+/// The "⋮" button that opens an app's menu: an outlined square like [`glyph_button`].
 pub fn more_menu<R>(ui: &mut Ui, add_contents: impl FnOnce(&mut Ui) -> R) {
     let t = Tokens::get(ui.ctx());
-    let btn =
-        egui::Button::new(RichText::new("…").size(15.0).color(t.muted)).fill(Color32::TRANSPARENT).min_size(vec2(theme::CONTROL_H, theme::CONTROL_H));
-    egui::containers::menu::MenuButton::from_button(btn).ui(ui, |ui| {
+    let btn = egui::Button::new("").fill(t.bg).stroke(Stroke::new(1.0, t.line_strong)).min_size(vec2(theme::CONTROL_H, theme::CONTROL_H));
+    let (response, _) = egui::containers::menu::MenuButton::from_button(btn).ui(ui, |ui| {
         ui.set_min_width(200.0);
         add_contents(ui)
     });
+    // Draw the dots directly: the bundled fonts do not contain the vertical ellipsis.
+    let color = if response.hovered() { t.ink_strong } else { t.muted };
+    for dy in [-5.0, 0.0, 5.0] {
+        ui.painter().circle_filled(response.rect.center() + vec2(0.0, dy), 1.5, color);
+    }
+    response.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Button, true, "⋮"));
 }
 
 /// ArtCraft's social accounts as a row of small monochrome icons (faint, brighter on hover).

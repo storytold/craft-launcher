@@ -39,9 +39,10 @@ fn main() -> ExitCode {
         return ExitCode::SUCCESS;
     }
     let mut hidden = args.iter().any(|a| a == login::HIDDEN_FLAG);
+    let development = args.iter().any(|a| a == "--dev-instance");
 
     let wake: Wake = Arc::new(OnceLock::new());
-    let starts = match single_instance::claim(wake.clone()) {
+    let starts = match if development { single_instance::claim_development(wake.clone()) } else { single_instance::claim(wake.clone()) } {
         Instance::Secondary => return ExitCode::SUCCESS,
         Instance::Primary(rx) => rx,
     };
@@ -53,8 +54,10 @@ fn main() -> ExitCode {
     }
 
     let backend_waker = waker.clone();
-    let settings_path = settings_file::path(APP_ID);
-    let mut launcher = Launcher::new(Box::new(NativeBackend::new(move || backend_waker.wake())), starts, settings_path.clone());
+    let settings_path = if development { settings_file::development_path() } else { settings_file::path(APP_ID) };
+    let backend =
+        if development { NativeBackend::development(move || backend_waker.wake()) } else { NativeBackend::new(move || backend_waker.wake()) };
+    let mut launcher = Launcher::new(Box::new(backend), starts, settings_path.clone());
     // Started hidden at login where a window can't hide: start in the tray without mapping one,
     // so no window flashes up. Without a tray to come back from, the window opens after all.
     let mut window = true;
@@ -71,7 +74,7 @@ fn main() -> ExitCode {
                 let (waker, launcher) = (waker.clone(), &mut launcher);
                 eframe::run_native(
                     "ArtCraft Launcher",
-                    native_options(hidden),
+                    native_options(hidden, development),
                     Box::new(move |cc| {
                         launcher.open(cc, &waker);
                         Ok(Box::new(Shell::new(cc, launcher, hidden)))
@@ -95,7 +98,7 @@ fn main() -> ExitCode {
     }
 }
 
-fn native_options(hidden: bool) -> eframe::NativeOptions {
+fn native_options(hidden: bool, development: bool) -> eframe::NativeOptions {
     let icon =
         eframe::icon_data::from_png_bytes(include_bytes!("../../../assets/app-icon/hicolor/256x256/apps/ai.storyteller.artcraft-launcher.png")).ok();
     let mut viewport = egui::ViewportBuilder::default()
@@ -113,7 +116,13 @@ fn native_options(hidden: bool) -> eframe::NativeOptions {
     if let Some(icon) = icon {
         viewport = viewport.with_icon(icon);
     }
-    eframe::NativeOptions { viewport, persist_window: true, wgpu_options: wgpu_options(), ..Default::default() }
+    eframe::NativeOptions {
+        viewport,
+        persist_window: true,
+        persistence_path: if development { settings_file::development_path() } else { None },
+        wgpu_options: wgpu_options(),
+        ..Default::default()
+    }
 }
 
 /// wgpu's backend list. On Windows that is Direct3D 12 with GL as the fallback, not Vulkan:
@@ -601,6 +610,16 @@ impl eframe::App for Shell<'_> {
 
 #[cfg(test)]
 mod tests {
+    #[cfg(windows)]
+    #[test]
+    fn the_windows_resource_reports_the_executable_version_without_launching_it() {
+        let executable = std::env::current_exe().unwrap();
+        assert_eq!(
+            artcraft_launcher_native::detect::windows::executable_version(&executable),
+            artcraft_launcher_core::version::parse(env!("CARGO_PKG_VERSION"))
+        );
+        assert!(artcraft_launcher_native::detect::windows::executable_version(&executable.with_extension("absent")).is_none());
+    }
     use std::ptr::NonNull;
     use std::sync::atomic::{AtomicI64, AtomicUsize, Ordering};
     use std::sync::mpsc::Sender;

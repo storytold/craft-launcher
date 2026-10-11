@@ -15,14 +15,19 @@ pub mod http;
 pub mod install;
 pub mod login;
 pub mod manifest;
+#[cfg(windows)]
+mod msi_switch;
 pub mod packages;
 pub mod paths;
+pub mod portable;
 pub mod process;
 pub mod proxy;
 pub mod queue;
 pub mod self_update;
 pub mod single_instance;
 pub mod source;
+#[cfg(windows)]
+mod windows_msi;
 
 pub use backend::NativeBackend;
 
