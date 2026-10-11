@@ -218,6 +218,9 @@ fn untranslated_plurals_fall_back_to_english_by_count() {
 
 #[test]
 fn locale_tags_resolve() {
+    assert_eq!(lang_from_tag("pt_BR.UTF-8"), Some(Lang::PT_BR));
+    assert_eq!(lang_from_tag("pt-BR"), Some(Lang::PT_BR));
+    assert_eq!(lang_from_tag("pt"), Some(Lang::PT_BR));
     assert_eq!(lang_from_tag("ru_RU.UTF-8"), Some(Lang::RU));
     assert_eq!(lang_from_tag("ru-RU"), Some(Lang::RU));
     assert_eq!(lang_from_tag("en-US"), Some(Lang::EN));

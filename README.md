@@ -84,13 +84,15 @@ The web version shows the same catalog in the browser, with the latest download 
 
 ## Interface languages
 
-The interface is in English, French (Français), German (Deutsch), Russian (Русский) or Simplified Chinese
-(简体中文). **Auto**, the default, follows the system or browser language; **Settings → Language**
-picks one and switches at once, and the choice is kept between runs. German locales (`de-DE`,
-`de-AT`, `de-CH`, `de_DE.UTF-8`…) select German, and French ones (`fr-FR`, `fr-CA`…) French. Simplified Chinese locales (`zh-CN`, `zh-SG`,
-`zh-Hans`, and POSIX forms such as `zh_CN.UTF-8`) select Chinese; Traditional Chinese ones don't.
-To try a language without changing the setting, start the desktop app with
-`ARTCRAFT_LAUNCHER_LOCALE=zh-CN`, or add `?lang=ru` to the web address.
+The interface is in English, Brazilian Portuguese (Português (Brasil)), French (Français), German
+(Deutsch), Russian (Русский) or Simplified Chinese (简体中文). **Auto**, the default, follows the
+system or browser language; **Settings → Language** picks one and switches at once, and the choice
+is kept between runs. German locales (`de-DE`, `de-AT`, `de-CH`, `de_DE.UTF-8`…) select German,
+French ones (`fr-FR`, `fr-CA`…) French, and Portuguese ones (`pt-BR`, and `pt-PT` too, for now)
+Brazilian Portuguese. Simplified Chinese locales (`zh-CN`, `zh-SG`, `zh-Hans`, and POSIX forms such
+as `zh_CN.UTF-8`) select Chinese; Traditional Chinese ones don't. To try a language without changing
+the setting, start the desktop app with `ARTCRAFT_LAUNCHER_LOCALE=pt-BR`, or add `?lang=ru` to the
+web address.
 
 Chinese is drawn with the system's own Chinese font (PingFang on macOS, Microsoft YaHei on
 Windows, Noto Sans CJK or WenQuanYi on Linux and FreeBSD). Where there is none, and in the web

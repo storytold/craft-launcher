@@ -56,7 +56,7 @@ pub(super) fn plural_east_slavic(n: u64) -> usize {
 }
 
 /// The registry. English first: it is the fallback and the source language.
-pub static LANGUAGES: [LangInfo; 5] = [
+pub static LANGUAGES: [LangInfo; 6] = [
     LangInfo {
         code: "en",
         name: "English",
@@ -112,6 +112,17 @@ pub static LANGUAGES: [LangInfo; 5] = [
         complete_menus: true,
         catalog: OnceLock::new(),
     },
+    LangInfo {
+        code: "pt-BR",
+        name: "Português (Brasil)",
+        english_name: "Portuguese (Brazil)",
+        cjk: false,
+        source: include_str!("pt-BR.tsv"),
+        plural: plural_one_other,
+        plural_forms: 2,
+        complete_menus: true,
+        catalog: OnceLock::new(),
+    },
 ];
 
 impl LangInfo {
@@ -144,6 +155,7 @@ impl Lang {
     pub const ZH_CN: Lang = Lang(&LANGUAGES[2]);
     pub const DE: Lang = Lang(&LANGUAGES[3]);
     pub const FR: Lang = Lang(&LANGUAGES[4]);
+    pub const PT_BR: Lang = Lang(&LANGUAGES[5]);
 
     pub fn code(self) -> &'static str {
         self.0.code
@@ -209,6 +221,7 @@ pub fn lang_from_tag(tag: &str) -> Option<Lang> {
     match cands.last().map(String::as_str) {
         Some("c" | "posix") => Some(Lang::EN),
         Some("zh") => chinese(cands.first().map_or("zh", String::as_str)),
+        Some("pt") => Some(Lang::PT_BR),
         _ => cands.iter().find_map(|c| Lang::from_code(c)),
     }
 }
