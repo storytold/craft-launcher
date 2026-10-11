@@ -76,6 +76,8 @@
 	ArtCraft Launcher {version} is available.	ArtCraft Launcher {version} ist verfügbar.
 	Dismiss	Ausblenden
 	Update and restart	Aktualisieren und neu starten
+	A new version is available. Would you like to relaunch with the updated version?	Eine neue Version ist verfügbar. Mit der neuen Version neu starten?
+	Later	Später
 	What's new	Neuigkeiten
 	No notes were published with this release.	Zu dieser Version wurden keine Hinweise veröffentlicht.
 	Released {date}	Veröffentlicht am {date}
@@ -83,6 +85,7 @@
 	Close	Schließen
 	ArtCraft Launcher {version}	ArtCraft Launcher {version}
 	Only when I ask	Nur manuell
+	Automatically download and install updates	Updates automatisch herunterladen und installieren
 	Notify me when an installed app has an update	Benachrichtigen, wenn es für eine installierte App ein Update gibt
 	Include pre-releases (betas and release candidates)	Vorabversionen einbeziehen (Betas und Release Candidates)
 	Installing on Linux	Installation unter Linux

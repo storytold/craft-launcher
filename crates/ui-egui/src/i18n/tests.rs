@@ -224,9 +224,9 @@ fn locale_tags_resolve() {
     assert_eq!(lang_from_tag("C"), Some(Lang::EN));
     assert_eq!(lang_from_tag("C.UTF-8"), Some(Lang::EN));
     assert_eq!(lang_from_tag("POSIX"), Some(Lang::EN));
-    assert_eq!(lang_from_tag("fr-FR"), None);
+    assert_eq!(lang_from_tag("xx-XX"), None);
     assert_eq!(lang_from_tag(""), None);
-    assert_eq!(super::detect::first_supported(["fr-FR", "ru-RU", "en-US"]), Some(Lang::RU));
+    assert_eq!(super::detect::first_supported(["xx-XX", "ru-RU", "en-US"]), Some(Lang::RU));
 }
 
 #[test]
@@ -234,7 +234,7 @@ fn german_locales_resolve() {
     for tag in ["de", "de-DE", "de_DE.UTF-8", "de-AT", "de-CH", "de_CH.UTF-8", "DE_de"] {
         assert_eq!(lang_from_tag(tag), Some(Lang::DE), "{tag}");
     }
-    assert_eq!(super::detect::first_supported(["fr-FR", "de-DE", "en-US"]), Some(Lang::DE));
+    assert_eq!(super::detect::first_supported(["xx-XX", "de-DE", "en-US"]), Some(Lang::DE));
 }
 
 #[test]
