@@ -80,6 +80,12 @@
 	Install new apps as	Instalar novos aplicativos como
 	System package (recommended)	Pacote do sistema (recomendado)
 	Updates always use the format an app was installed with.	As atualizações sempre usam o formato com o qual o aplicativo foi instalado.
+	Installing on Windows	Instalação no Windows
+	Use portable apps instead of the installer	Usar aplicativos portáteis em vez do instalador
+	Architecture	Arquitetura
+	System ({arch})	Sistema ({arch})
+	Portable apps go into the apps folder next to ArtCraft Launcher. Apps installed with the Windows Installer aren't shown while this is on. A new architecture applies the next time an app is installed or updated.	Os aplicativos portáteis ficam na pasta "apps" ao lado do ArtCraft Launcher. Aplicativos instalados com o Windows Installer não aparecem enquanto esta opção estiver ativada. Uma nova arquitetura vale a partir da próxima instalação ou atualização de um aplicativo.
+	This deletes the app's whole folder ({path}), including any settings and files the app saved there.	Isso exclui a pasta inteira do aplicativo ({path}), incluindo as configurações e os arquivos que o aplicativo salvou nela.
 	Running in the background	Execução em segundo plano
 	Keep running in the tray when the window is closed	Continuar na bandeja do sistema ao fechar a janela
 	Show the window on the current desktop	Mostrar a janela na área de trabalho atual

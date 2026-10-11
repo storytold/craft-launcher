@@ -7,7 +7,7 @@ use std::time::{Duration, Instant};
 
 use artcraft_launcher_core::catalog::{LAUNCHER, LAUNCHER_ID};
 use artcraft_launcher_core::feed::{Feed, FeedAnswer};
-use artcraft_launcher_core::platform::{Arch, Os, Platform, pick_asset};
+use artcraft_launcher_core::platform::{Arch, Os, Platform, pick_asset, pick_asset_exact};
 use artcraft_launcher_core::protocol::{
     Backend, BackendOptions, CANCELLED, Capabilities, Command, Event, INSTALL_CANCELLED, JobPhase, LatestRelease, Origin, PAUSED, PausedDownload,
     Source,
@@ -62,6 +62,9 @@ struct Shared {
     checking: AtomicBool,
     /// A detection pass is running; another request waits for the next one.
     detecting: AtomicBool,
+    /// What to look for changed during a detection pass (portable mode on or off): look again
+    /// once it ends.
+    redetect: AtomicBool,
     last_check: Mutex<Option<i64>>,
     /// The newer ArtCraft Launcher release, once a check has found one.
     launcher_release: Mutex<Option<Release>>,
@@ -126,6 +129,7 @@ impl NativeBackend {
             options: Mutex::new(BackendOptions::default()),
             checking: AtomicBool::new(false),
             detecting: AtomicBool::new(false),
+            redetect: AtomicBool::new(false),
             launcher_release: Mutex::new(None),
             github_asked: Mutex::new(HashMap::new()),
             answered: Mutex::new(std::collections::HashSet::new()),
@@ -177,30 +181,43 @@ impl NativeBackend {
         let shared = self.shared.clone();
         let paths = self.paths.clone();
         let platform = self.platform;
-        let options = self.options();
         std::thread::spawn(move || {
             // Leftovers from interrupted installs or older versions of the launcher. A paused
             // download stays a month; a finished one kept after a failed install, a week.
             http::clean_downloads(&paths.downloads(), Duration::from_secs(30 * 86_400), Duration::from_secs(7 * 86_400));
-            let snapshot = crate::detect::Snapshot::take();
-            let manifest = shared.manifest.lock().unwrap_or_else(PoisonError::into_inner).clone();
-            for app in &SUITE {
-                let found = crate::detect::detect(app, &manifest, &snapshot);
-                {
-                    let mut map = shared.installed.lock().unwrap_or_else(PoisonError::into_inner);
-                    match &found {
-                        Some(i) => map.insert(app.id.to_string(), i.clone()),
-                        None => map.remove(app.id),
-                    };
+            loop {
+                shared.redetect.store(false, Ordering::SeqCst);
+                let options = shared.options.lock().unwrap_or_else(PoisonError::into_inner).clone();
+                let snapshot = crate::detect::Snapshot::take();
+                let manifest = shared.manifest.lock().unwrap_or_else(PoisonError::into_inner).clone();
+                for app in &SUITE {
+                    let found = crate::detect::detect(app, &manifest, &snapshot, options.portable);
+                    {
+                        let mut map = shared.installed.lock().unwrap_or_else(PoisonError::into_inner);
+                        match &found {
+                            Some(i) => map.insert(app.id.to_string(), i.clone()),
+                            None => map.remove(app.id),
+                        };
+                    }
+                    shared.emit(Event::Detected { app: app.id.to_string(), installed: found });
                 }
-                shared.emit(Event::Detected { app: app.id.to_string(), installed: found });
+                // Downloads paused (or cut off by quitting) in an earlier run.
+                for app in &SUITE {
+                    report_partial(app, &shared, &paths, platform, &options);
+                }
+                shared.detecting.store(false, Ordering::SeqCst);
+                // Asked to look again meanwhile, and no other pass has taken over: once more.
+                if !shared.redetect.load(Ordering::SeqCst) || shared.detecting.swap(true, Ordering::SeqCst) {
+                    break;
+                }
             }
-            // Downloads paused (or cut off by quitting) in an earlier run.
-            for app in &SUITE {
-                report_partial(app, &shared, &paths, platform, &options);
-            }
-            shared.detecting.store(false, Ordering::SeqCst);
         });
+    }
+
+    /// [`Self::detect_all`], and once more after a pass that's running now ends.
+    fn redetect(&self) {
+        self.shared.redetect.store(true, Ordering::SeqCst);
+        self.detect_all();
     }
 
     /// Looks up the latest releases: ArtCraft's release feed first (one request for every app),
@@ -364,7 +381,8 @@ impl NativeBackend {
             report_partial(app, &shared, &paths, platform, &options);
             // Look again: the result is whatever is on disk now.
             let manifest = shared.manifest.lock().unwrap_or_else(PoisonError::into_inner).clone();
-            let found = crate::detect::detect(app, &manifest, &crate::detect::Snapshot::take());
+            let portable = shared.options.lock().unwrap_or_else(PoisonError::into_inner).portable;
+            let found = crate::detect::detect(app, &manifest, &crate::detect::Snapshot::take(), portable);
             // One installer call can cover several apps, and fail after some of them went in.
             let latest = shared.latest.lock().unwrap_or_else(PoisonError::into_inner).get(app.id).cloned();
             let result = match (result, latest) {
@@ -567,7 +585,8 @@ fn restart_blocked(mut busy: Vec<&str>) -> String {
 }
 
 /// The file an install of `app` would download now: same format as the installed copy, else
-/// the user's preference, else the best this system supports.
+/// the user's preference, else the best this system supports. In portable mode (Windows): the
+/// portable zip, for the chosen architecture or else this system's.
 fn planned_asset(
     app: &CraftApp,
     release: &Release,
@@ -577,6 +596,14 @@ fn planned_asset(
     record: Option<&crate::manifest::Record>,
 ) -> Option<(Asset, PackageKind)> {
     let stems: Vec<&str> = app.stems().collect();
+    if options.portable {
+        // Portable mode ignores any installed copy that isn't portable, and its format.
+        let kind = PackageKind::PortableZip;
+        return match options.portable_arch {
+            Some(arch) => pick_asset_exact(release, &stems, Platform { arch, ..platform }, kind).map(|a| (a.clone(), kind)),
+            None => pick_asset(release, &stems, platform, &[kind]).map(|(a, k)| (a.clone(), k)),
+        };
+    }
     let kinds = install::choose_kinds(existing, record, &options.kinds);
     pick_asset(release, &stems, platform, &kinds).map(|(a, k)| (a.clone(), k))
 }
@@ -941,16 +968,20 @@ impl Backend for NativeBackend {
             Command::UpdateLauncher => self.update_launcher(),
             Command::FetchScreenshots { app } => self.fetch_screenshots(&app),
             Command::Configure(options) => {
-                let changed_pre = {
+                let (changed_pre, changed_portable) = {
                     let mut o = self.shared.options.lock().unwrap_or_else(PoisonError::into_inner);
-                    let changed = o.prereleases != options.prereleases;
+                    let changed = (o.prereleases != options.prereleases, o.portable != options.portable);
                     *o = options;
                     changed
                 };
-                // Another package format means another file to download.
+                // Another package format or architecture means another file to download.
                 let options = self.options();
                 for app in &SUITE {
                     report_partial(app, &self.shared, &self.paths, self.platform, &options);
+                }
+                // Portable mode looks at other copies of the apps.
+                if changed_portable {
+                    self.redetect();
                 }
                 if changed_pre {
                     self.check(true);
@@ -1032,6 +1063,7 @@ mod tests {
             options: Mutex::new(BackendOptions::default()),
             checking: AtomicBool::new(false),
             detecting: AtomicBool::new(false),
+            redetect: AtomicBool::new(false),
             last_check: Mutex::new(None),
             launcher_release: Mutex::new(None),
             github_asked: Mutex::new(HashMap::new()),
@@ -1224,6 +1256,29 @@ mod tests {
             .map(|name| Asset { url: format!("https://example.invalid/{name}"), name, size: 3, sha256: None })
             .collect();
         Release { assets, ..Release::default() }
+    }
+
+    #[test]
+    fn portable_mode_plans_the_portable_zip_for_the_chosen_architecture() {
+        let app = CraftApp::by_id(APP).unwrap();
+        let x64 = Platform { os: Os::Windows, arch: Arch::X64 };
+        let msi = Installed { version: version::parse("0.4.0"), source: InstallSource::Msi, location: String::new(), package: None };
+        let plan = |release: &Release, platform, portable_arch| {
+            let options = BackendOptions { portable: true, portable_arch, ..BackendOptions::default() };
+            planned_asset(app, release, platform, &options, Some(&msi), None).map(|(a, k)| (a.name, k))
+        };
+        let r = release("0.5.0");
+        // An MSI install doesn't count in portable mode: the portable zip, native first.
+        assert_eq!(plan(&r, x64, None), Some(("photocraft-0.5.0-windows-x64-portable.zip".into(), PackageKind::PortableZip)));
+        assert_eq!(plan(&r, x64, Some(Arch::X86)).map(|p| p.0).as_deref(), Some("photocraft-0.5.0-windows-x86-portable.zip"));
+        // No ARM64 zip: "system" falls back to the emulated build, a chosen ARM64 doesn't.
+        let arm = Platform { os: Os::Windows, arch: Arch::Arm64 };
+        let no_arm = Release { assets: r.assets.iter().filter(|a| !a.name.contains("arm64")).cloned().collect(), ..r.clone() };
+        assert_eq!(plan(&no_arm, arm, None).map(|p| p.0).as_deref(), Some("photocraft-0.5.0-windows-x64-portable.zip"));
+        assert_eq!(plan(&no_arm, arm, Some(Arch::Arm64)), None);
+        // Off: the MSI install is updated with an MSI, as before.
+        #[cfg(windows)]
+        assert_eq!(planned_asset(app, &r, x64, &BackendOptions::default(), Some(&msi), None).map(|(_, k)| k), Some(PackageKind::Msi));
     }
 
     /// A backend that knows `release("0.5.0")` and keeps its files under `root`.

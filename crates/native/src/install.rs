@@ -3,7 +3,8 @@
 //! Apps go where their platform keeps applications, installed the platform's own way:
 //!
 //! - macOS: the signed `.app` from the release DMG into `/Applications`.
-//! - Windows: the release MSI (Windows Installer) into `C:\Program Files\<App>`.
+//! - Windows: the release MSI (Windows Installer) into `C:\Program Files\<App>`; in portable mode
+//!   the release's portable zip, unpacked into `apps\<app>` beside the launcher (see `portable`).
 //! - Linux: the distro's own package (`.deb` through apt on the Debian family, `.rpm` through
 //!   dnf/zypper/rpm on the Fedora, Red Hat and SUSE families, read from `os-release`) with the
 //!   system's polkit password prompt; otherwise a Flatpak, otherwise an AppImage in
@@ -69,6 +70,9 @@ pub fn install(
         PackageKind::Dmg => macos::install_dmg(app, &file, existing, job.paths, &macos::Expect::release(release)).map(|_| None),
         #[cfg(windows)]
         PackageKind::Msi => windows::run_msi(&file, job.stop, &mut *job.phase).map(|_| None),
+        // Found again by detection, from the folder and the file it records itself in.
+        #[cfg(windows)]
+        PackageKind::PortableZip => windows::install_portable(app, release, asset, &file).map(|_| None),
         #[cfg(target_os = "linux")]
         PackageKind::Deb | PackageKind::Rpm | PackageKind::Flatpak => linux::install_package(kind, &file, job.stop, &mut *job.phase).map(|_| None),
         #[cfg(target_os = "linux")]
@@ -232,6 +236,8 @@ pub fn uninstall(
     match installed.source {
         #[cfg(windows)]
         InstallSource::Msi => windows::uninstall_msi(app, stop, phase),
+        #[cfg(windows)]
+        InstallSource::Launcher => windows::remove_portable(app, &path),
         #[cfg(target_os = "macos")]
         InstallSource::MacApp | InstallSource::Launcher => macos::move_to_trash(&path),
         #[cfg(target_os = "linux")]
@@ -1208,6 +1214,57 @@ pub mod windows {
         INSTALLER.alone(&cancelled(stop), &mut turn(phase, working), work).unwrap_or_else(|| Err(CANCELLED.into()))
     }
 
+    /// Unpacks a portable zip into `apps\<app>` beside the launcher, through a staging folder
+    /// next to it, with the launcher's [`crate::portable::FILE`] saying what it is. Returns the exe.
+    pub fn install_portable(app: &CraftApp, release: &Release, asset: &Asset, zip: &Path) -> Result<PathBuf, String> {
+        let apps = crate::paths::portable_apps_dir().ok_or("couldn't find ArtCraft Launcher's own folder")?;
+        install_portable_into(&apps, app, release, asset, zip)
+    }
+
+    /// [`install_portable`] into the folder `apps`.
+    pub(crate) fn install_portable_into(apps: &Path, app: &CraftApp, release: &Release, asset: &Asset, zip: &Path) -> Result<PathBuf, String> {
+        std::fs::create_dir_all(apps).map_err(|e| format!("couldn't create {} ({e})", apps.display()))?;
+        let dest = apps.join(app.id);
+        let staging = crate::portable::sibling(&dest, "partial").ok_or("unusual characters in the app's folder name")?;
+        let _ = std::fs::remove_dir_all(&staging);
+        let result = stage_portable(app, release, asset, zip, &staging, &dest);
+        let _ = std::fs::remove_dir_all(&staging);
+        result.map(|()| crate::portable::exe_path(apps, app))
+    }
+
+    fn stage_portable(app: &CraftApp, release: &Release, asset: &Asset, zip: &Path, staging: &Path, dest: &Path) -> Result<(), String> {
+        crate::portable::unzip(zip, staging)?;
+        // The zip holds the app's folder, or its files at the top level.
+        let top = single_top_folder(staging)?;
+        if !top.join(format!("{}.exe", app.id)).is_file() {
+            return Err("the download doesn't contain the app".into());
+        }
+        let stems: Vec<&str> = app.stems().collect();
+        let arch = artcraft_launcher_core::platform::parse_asset_name(&asset.name, &stems)
+            .map(|n| n.token.strip_prefix("windows-").map_or_else(|| n.token.clone(), str::to_string))
+            .unwrap_or_default();
+        let record = crate::portable::InstallFile {
+            app: app.id.to_string(),
+            version: release.version_label(),
+            tag: release.tag.clone(),
+            arch,
+            asset: asset.name.clone(),
+            installed_at: crate::now(),
+        };
+        crate::portable::write(&top, &record)?;
+        crate::portable::replace_folder(&top, dest)
+    }
+
+    /// Deletes a portable copy's whole folder, settings and data saved in it included. Only
+    /// `apps\<app>` beside the launcher, never anything else.
+    pub fn remove_portable(app: &CraftApp, exe: &Path) -> Result<(), String> {
+        let apps = crate::paths::portable_apps_dir().ok_or("couldn't find ArtCraft Launcher's own folder")?;
+        let Some(folder) = crate::portable::owned_folder(&apps, app, exe) else {
+            return Err(format!("{} isn't a portable copy the launcher unpacked, so it was left alone", exe.display()));
+        };
+        std::fs::remove_dir_all(&folder).map_err(|e| format!("couldn't remove {} ({e})", folder.display()))
+    }
+
     pub fn uninstall_msi(app: &CraftApp, stop: &Stop, phase: &mut dyn FnMut(JobPhase)) -> Result<(), String> {
         let installs = crate::detect::windows::msi_installs(app);
         if installs.is_empty() {
@@ -1816,6 +1873,63 @@ mod tests {
         fn a_real_craft_app_carries_the_teams_signature() {
             let app = std::env::var("CRAFT_APP").expect("set CRAFT_APP to a Craft App bundle");
             assert!(signed_by(Path::new(&app), TEAM_ID), "{app} isn't signed by {TEAM_ID}");
+        }
+    }
+
+    #[cfg(windows)]
+    mod windows_tests {
+        use std::io::Write;
+
+        use artcraft_launcher_core::version;
+
+        use super::super::windows::install_portable_into;
+        use super::*;
+
+        fn zip_of(path: &Path, files: &[(&str, &str)]) {
+            let mut zip = zip::ZipWriter::new(std::fs::File::create(path).unwrap());
+            for (name, body) in files {
+                zip.start_file(*name, zip::write::SimpleFileOptions::default()).unwrap();
+                zip.write_all(body.as_bytes()).unwrap();
+            }
+            zip.finish().unwrap();
+        }
+
+        #[test]
+        fn a_portable_install_unpacks_records_and_updates_in_place() {
+            let app = CraftApp::by_id("photocraft").unwrap();
+            let dir = tempfile::tempdir().unwrap();
+            let apps = dir.path().join("apps");
+            let release = |v: &str| Release { tag: format!("v{v}"), version: version::parse(v), ..Release::default() };
+            let asset = |v: &str| Asset { name: format!("photocraft-{v}-windows-x64-portable.zip"), ..Asset::default() };
+
+            // The release's folder inside the zip goes away; its contents land in apps\photocraft.
+            let first = dir.path().join("first.zip");
+            zip_of(&first, &[("PhotoCraft-0.5.0/photocraft.exe", "0.5.0"), ("PhotoCraft-0.5.0/lib/old.dll", "x")]);
+            let exe = install_portable_into(&apps, app, &release("0.5.0"), &asset("0.5.0"), &first).unwrap();
+            assert_eq!(exe, apps.join("photocraft").join("photocraft.exe"));
+            assert_eq!(std::fs::read_to_string(&exe).unwrap(), "0.5.0");
+            let found = crate::portable::find(&apps, app).unwrap();
+            assert_eq!(found.version, version::parse("0.5.0"));
+            let record = crate::portable::read(&apps.join("photocraft"), "photocraft").unwrap();
+            assert_eq!((record.arch.as_str(), record.tag.as_str()), ("x64", "v0.5.0"));
+
+            // An update with the files at the top level keeps what the app saved beside itself.
+            std::fs::write(apps.join("photocraft").join("settings.ini"), "mine").unwrap();
+            let second = dir.path().join("second.zip");
+            zip_of(&second, &[("photocraft.exe", "0.6.0"), ("lib/new.dll", "y")]);
+            install_portable_into(&apps, app, &release("0.6.0"), &asset("0.6.0"), &second).unwrap();
+            assert_eq!(std::fs::read_to_string(&exe).unwrap(), "0.6.0");
+            assert_eq!(std::fs::read_to_string(apps.join("photocraft").join("settings.ini")).unwrap(), "mine");
+            assert_eq!(crate::portable::find(&apps, app).unwrap().version, version::parse("0.6.0"));
+            assert!(!apps.join(".photocraft.partial").exists() && !apps.join(".photocraft.old").exists());
+
+            // A zip without the app changes nothing.
+            let wrong = dir.path().join("wrong.zip");
+            zip_of(&wrong, &[("readme.txt", "hi")]);
+            let err = install_portable_into(&apps, app, &release("0.7.0"), &asset("0.7.0"), &wrong).unwrap_err();
+            assert_eq!(err, "the download doesn't contain the app");
+            assert_eq!(std::fs::read_to_string(&exe).unwrap(), "0.6.0");
+            assert!(!apps.join(".photocraft.partial").exists());
         }
     }
 }

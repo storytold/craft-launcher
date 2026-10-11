@@ -1,8 +1,8 @@
 //! Finding Craft Apps that are already installed, however they got there.
 //!
 //! - macOS: `<App>.app` in `/Applications` or `~/Applications`, read from its `Info.plist`.
-//! - Windows: the Windows Installer's uninstall entries (`Learning Machines LLC`), and portable
-//!   copies the launcher unpacked.
+//! - Windows: the Windows Installer's uninstall entries (`Learning Machines LLC`); in portable
+//!   mode only the portable copies the launcher unpacked into `apps\<app>` beside itself.
 //! - Linux: AppImages in `~/Applications` (where the launcher and AppImageLauncher put them),
 //!   `~/AppImages` (Gear Lever) and `~/.local/bin`, Debian/RPM packages, Flatpaks, and tarball
 //!   installs.
@@ -34,9 +34,14 @@ impl Snapshot {
     }
 }
 
-/// What's installed of `app`, best source first.
-pub fn detect(app: &CraftApp, manifest: &Manifest, snapshot: &Snapshot) -> Option<Installed> {
-    let _ = snapshot;
+/// What's installed of `app`, best source first. `portable` (Windows portable mode) looks only at
+/// the launcher's portable copies, and ignores Windows Installer installs.
+pub fn detect(app: &CraftApp, manifest: &Manifest, snapshot: &Snapshot, portable: bool) -> Option<Installed> {
+    let _ = (snapshot, portable);
+    #[cfg(windows)]
+    if portable {
+        return windows::portable(app);
+    }
     if let Some(found) = from_manifest(app, manifest) {
         return Some(found);
     }
@@ -240,6 +245,11 @@ pub mod windows {
             }
         }
         exe_candidates(app, location.as_deref(), &roots).into_iter().find(|p| p.exists())
+    }
+
+    /// The portable copy in `apps\<app>` beside the launcher.
+    pub fn portable(app: &CraftApp) -> Option<Installed> {
+        crate::portable::find(&crate::paths::portable_apps_dir()?, app)
     }
 
     pub fn detect(app: &CraftApp) -> Option<Installed> {

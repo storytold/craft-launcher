@@ -113,6 +113,7 @@ installed by hand (and the launcher finds apps you installed yourself):
 |---|---|---|
 | macOS | `/Applications/<App>.app` | Copied from the signed, notarized release DMG |
 | Windows | `C:\Program Files\<App>` | The release MSI, through Windows Installer (with Start menu entry and Apps & features entry) |
+| Windows, portable apps | `<launcher folder>\apps\<app>` | Settings → *Use portable apps instead of the installer*: the release's portable zip, unpacked beside the launcher, for this PC's architecture or one you choose. Updates keep what the app saved in its folder; uninstalling deletes the folder. While this is on, the launcher shows only these copies |
 | Linux | `/usr/bin`, `/usr/share/applications` | The release `.deb` (apt) or `.rpm` (dnf, zypper), with your system's password prompt. Without those, a Flatpak, or an AppImage in `~/Applications` |
 | Linux, inside the launcher's Flatpak, with no Flatpak on the host | `~/.var/app/ai.storyteller.artcraft-launcher/data/artcraft-launcher/apps/<app>` | The release tarball, unpacked into the launcher's own folder and run inside the same sandbox, with its settings in a `home/` folder beside it. Nothing is installed on the host, and each app's configuration stays in the sandbox |
 | FreeBSD | `/usr/local` | The release tree, with a password prompt (polkit); `~/.local` when polkit isn't installed |
