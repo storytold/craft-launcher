@@ -620,6 +620,9 @@ pub(crate) mod linux {
     pub(crate) fn integrate_into(data: &Path, app: &CraftApp, appimage: &Path, replaced: &[PathBuf], previous: Option<&Record>) -> Vec<PathBuf> {
         let ours_before = |p: &Path| previous.is_some_and(|r| r.files.iter().any(|f| f == p));
         let mut written = Vec::new();
+        // The icon is decoration: a failure writing it must not cost the menu entry below, and
+        // it must not stop a later update from writing the entry either (`previous.files` stays
+        // empty, but `replace` trusts an absent entry regardless).
         let icon = icon_path(data, app);
         let has_icon = match icon_png(app) {
             Some(png) if !icon.exists() || ours_before(&icon) => match crate::paths::write_atomic(&icon, png) {
@@ -635,6 +638,14 @@ pub(crate) mod linux {
             // Someone else's icon under the app's id (the app's own AppImage puts one there).
             _ => icon.is_file(),
         };
+        written.extend(menu_entry(data, app, appimage, replaced, has_icon));
+        written
+    }
+
+    /// The `.desktop` file half of [`integrate_into`], split out so a rescan can fill in an
+    /// entry an earlier install never got (#118).
+    fn menu_entry(data: &Path, app: &CraftApp, appimage: &Path, replaced: &[PathBuf], has_icon: bool) -> Vec<PathBuf> {
+        let mut written = Vec::new();
         let Some(text) = crate::desktop_entry::render(app, appimage, has_icon) else {
             log::warn!("{}: {} can't be written into a menu entry; skipping it", app.name, appimage.display());
             return written;
@@ -657,6 +668,17 @@ pub(crate) mod linux {
             Err(e) => log::warn!("{}: couldn't add the menu entry: {e}", app.name),
         }
         written
+    }
+
+    /// Whether a menu entry for `app` already exists in `data`'s applications folder (for the
+    /// rescan self-heal, #118).
+    pub(crate) fn menu_entry_exists_in(data: &Path, app: &CraftApp) -> bool {
+        desktop_path(data, app).is_file()
+    }
+
+    /// Whether a menu entry for `app` exists in the desktop's data folder.
+    pub fn menu_entry_exists(app: &CraftApp) -> bool {
+        host_data_dir().is_some_and(|data| menu_entry_exists_in(&data, app))
     }
 
     /// Takes away what [`integrate`] added for the removed AppImage `appimage`.

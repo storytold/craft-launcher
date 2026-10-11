@@ -1,6 +1,7 @@
 //! [`NativeBackend`]: the desktop implementation of the UI's [`Backend`].
 
 use std::collections::HashMap;
+use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, PoisonError};
 use std::time::{Duration, Instant};
@@ -191,6 +192,31 @@ impl NativeBackend {
                     };
                 }
                 shared.emit(Event::Detected { app: app.id.to_string(), installed: found });
+            }
+            // An install that once failed (or predates menu integration) leaves an AppImage in
+            // ~/Applications but no menu entry; the manifest's empty `files` says so. Offer the
+            // missing entry on the next launch instead of leaving the app invisible (#118).
+            #[cfg(target_os = "linux")]
+            for app in &SUITE {
+                let Some(record) = manifest.apps.get(app.id) else { continue };
+                if record.kind != PackageKind::AppImage || !record.files.is_empty() {
+                    continue;
+                }
+                let path = PathBuf::from(&record.path);
+                if !path.is_file() || crate::install::linux::menu_entry_exists(app) {
+                    continue;
+                }
+                log::info!("{}: the AppImage has no menu entry; adding one now", app.name);
+                if let Some(data) = crate::install::linux::host_data_dir() {
+                    let files = crate::install::linux::integrate_into(&data, app, &path, &[], Some(record));
+                    if !files.is_empty() {
+                        let mut m = shared.manifest.lock().unwrap_or_else(PoisonError::into_inner);
+                        if let Some(r) = m.apps.get_mut(app.id) {
+                            r.files = files;
+                            let _ = m.save(&paths.manifest());
+                        }
+                    }
+                }
             }
             // Downloads paused (or cut off by quitting) in an earlier run.
             for app in &SUITE {
