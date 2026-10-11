@@ -1117,6 +1117,7 @@ mod tests {
         let kinds = order_available_kinds(false, false, true, false, false);
         assert_eq!(kinds.first(), Some(&PackageKind::Flatpak));
         assert_eq!(kinds.get(1), Some(&PackageKind::AppImage));
+    }
 
     #[cfg(target_os = "macos")]
     mod macos_checks {
