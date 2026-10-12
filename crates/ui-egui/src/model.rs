@@ -57,7 +57,7 @@ impl AppEntry {
     }
 
     pub fn installed_label(&self) -> Option<String> {
-        self.installed.as_ref().map(|i| i.version.as_ref().map_or_else(|| t("installed").to_string(), ToString::to_string))
+        self.installed.as_ref().map(|i| i.version.as_ref().map(ToString::to_string).unwrap_or_else(|| t("Installed").to_string()))
     }
 
     pub fn latest_label(&self) -> Option<String> {

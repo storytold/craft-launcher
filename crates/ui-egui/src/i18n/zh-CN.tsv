@@ -127,6 +127,7 @@ month	Dec	12月
 	{version} installed → {latest} released	已安装 {version} → 最新 {latest}
 	Version {version}	版本 {version}
 	{installed} installed · latest {latest}	已安装 {installed} · 最新 {latest}
+	Installed · latest {latest}	已安装 · 最新 {latest}
 	Version {version} installed	已安装版本 {version}
 	Version {latest}	版本 {latest}
 	No release published yet	尚未发布版本

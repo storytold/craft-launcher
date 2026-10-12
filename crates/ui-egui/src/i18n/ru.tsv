@@ -202,6 +202,7 @@ month	Dec	дек.
 	{version} installed → {latest} released	{version} установлено → {latest} выпущено
 	Version {version}	Версия {version}
 	{installed} installed · latest {latest}	{installed} установлено · последняя {latest}
+	Installed · latest {latest}	Установлено · последняя {latest}
 	Version {version} installed	Версия {version} установлена
 	Version {latest}	Версия {latest}
 	No release published yet	Релиз ещё не опубликован

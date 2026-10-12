@@ -203,6 +203,7 @@ month	Dec	Dez.
 	{version} installed → {latest} released	{version} installiert → {latest} veröffentlicht
 	Version {version}	Version {version}
 	{installed} installed · latest {latest}	{installed} installiert · neueste {latest}
+	Installed · latest {latest}	Installiert · neueste {latest}
 	Version {version} installed	Version {version} installiert
 	Version {latest}	Version {latest}
 	No release published yet	Noch keine Version veröffentlicht
