@@ -17,7 +17,9 @@ impl LauncherUi {
             return;
         };
         let t = Tokens::get(ctx);
-        let modal = egui::Modal::new(egui::Id::new("dialog"))
+        // An area is laid out in the size it had last frame, so dialogs can't share one id: the
+        // uninstall prompt would open as tall as Settings and never shrink (#88).
+        let modal = egui::Modal::new(egui::Id::new("dialog").with(dialog.key()))
             .frame(egui::Frame::new().fill(t.bg).stroke(egui::Stroke::new(1.0, t.line_strong)).shadow(theme::shadow(&t)).inner_margin(24));
         let mut close = false;
         let response = match &dialog {
@@ -35,7 +37,7 @@ impl LauncherUi {
     fn alert_popup(&mut self, ctx: &egui::Context) {
         let Some(alert) = self.alerts.iter().find(|a| !self.settings.dismissed_notices.contains(&a.id)).cloned() else { return };
         let t = Tokens::get(ctx);
-        let modal = egui::Modal::new(egui::Id::new("feed_alert"))
+        let modal = egui::Modal::new(egui::Id::new("feed_alert").with(&alert.id))
             .frame(egui::Frame::new().fill(t.bg).stroke(egui::Stroke::new(1.0, t.line_strong)).shadow(theme::shadow(&t)).inner_margin(24));
         let mut ok = false;
         modal.show(ctx, |ui| {
@@ -46,13 +48,16 @@ impl LauncherUi {
                 ui.add(egui::Label::new(RichText::new(&alert.body).color(t.muted)).wrap());
             });
             ui.add_space(14.0);
-            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                ok = widgets::button(ui, tl!("OK"), Kind::Primary, 90.0).clicked();
-                if let Some(link) = &alert.link
-                    && widgets::button(ui, tl!("Open link"), Kind::Secondary, 110.0).on_hover_text(link.as_str()).clicked()
-                {
-                    ui.ctx().open_url(egui::OpenUrl::new_tab(link.clone()));
-                }
+            // A row: a right-to-left layout straight in the column would fill the height left.
+            ui.horizontal(|ui| {
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    ok = widgets::button(ui, tl!("OK"), Kind::Primary, 90.0).clicked();
+                    if let Some(link) = &alert.link
+                        && widgets::button(ui, tl!("Open link"), Kind::Secondary, 110.0).on_hover_text(link.as_str()).clicked()
+                    {
+                        ui.ctx().open_url(egui::OpenUrl::new_tab(link.clone()));
+                    }
+                });
             });
         });
         // Only OK acknowledges it: Escape or a click outside leaves it for later.
@@ -157,14 +162,17 @@ impl LauncherUi {
         ui.label(RichText::new(how).color(t.muted));
         ui.add_space(20.0);
         let mut close = false;
-        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-            if widgets::button(ui, tl!("Uninstall"), Kind::Danger, 110.0).clicked() {
-                self.send(Command::Uninstall { app: id.to_string() });
-                close = true;
-            }
-            if widgets::button(ui, tl!("Cancel"), Kind::Secondary, 90.0).clicked() {
-                close = true;
-            }
+        // A row: a right-to-left layout straight in the column would fill the height left.
+        ui.horizontal(|ui| {
+            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                if widgets::button(ui, tl!("Uninstall"), Kind::Danger, 110.0).clicked() {
+                    self.send(Command::Uninstall { app: id.to_string() });
+                    close = true;
+                }
+                if widgets::button(ui, tl!("Cancel"), Kind::Secondary, 90.0).clicked() {
+                    close = true;
+                }
+            });
         });
         close
     }
@@ -249,6 +257,11 @@ impl LauncherUi {
                     }
                     for k in [PackageKind::Deb, PackageKind::Rpm, PackageKind::Flatpak, PackageKind::AppImage] {
                         ui.selectable_value(&mut choice, Some(k), crate::i18n::t(k.label()));
+                    }
+                    // The tarball is unpacked and run inside the launcher's own sandbox, so it
+                    // is only ever on offer there (as the fallback when the host has no Flatpak).
+                    if is_flatpak {
+                        ui.selectable_value(&mut choice, Some(PackageKind::TarGz), crate::i18n::t(PackageKind::TarGz.label()));
                     }
                 });
             });

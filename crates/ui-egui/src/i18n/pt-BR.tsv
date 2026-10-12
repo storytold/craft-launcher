@@ -191,6 +191,7 @@ month	Dec	dez.
 	{version} installed → {latest} released	{version} instalado → {latest} lançado
 	Version {version}	Versão {version}
 	{installed} installed · latest {latest}	{installed} instalado · última {latest}
+	Installed · latest {latest}	Instalado · última {latest}
 	Version {version} installed	Versão {version} instalada
 	Version {latest}	Versão {latest}
 	No release published yet	Nenhum lançamento publicado ainda
@@ -214,7 +215,6 @@ month	Dec	dez.
 	Checking for updates…	Verificando atualizações…
 	Downloads the new version, replaces this one and opens it again	Baixa a nova versão, substitui a atual e abre novamente
 	Couldn't check for updates: {f}	Não foi possível verificar atualizações: {f}
-	Website (coming soon)	Site (em breve)
 	GitHub repository	Repositório no GitHub
 	ArtCraft	ArtCraft
 	Update 1 app	Atualizar 1 aplicativo

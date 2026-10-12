@@ -70,17 +70,6 @@ pub fn hud_elided(ui: &mut Ui, text: &str, color: Color32, max_width: f32) -> Re
     if elided { resp.on_hover_text(text) } else { resp }
 }
 
-/// "01 / Classic apps": a section eyebrow, the index faint.
-pub fn eyebrow(ui: &mut Ui, index: &str, label: &str) {
-    let t = Tokens::get(ui.ctx());
-    ui.horizontal(|ui| {
-        ui.spacing_mut().item_spacing.x = 0.0;
-        hud(ui, index, t.faint);
-        hud(ui, " / ", t.faint);
-        hud(ui, label, t.muted);
-    });
-}
-
 /// A solid chip with a bold mono label: an app's number tab (the site's `AppTab`).
 pub fn tag(ui: &mut Ui, text: &str, fill: Color32, ink: Color32) -> Response {
     let galley = caps(ui, text, theme::HUD_SIZE, theme::mono_bold(), theme::HUD_SPACING, ink);

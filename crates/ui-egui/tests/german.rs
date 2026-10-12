@@ -184,4 +184,17 @@ fn german_switches_persists_and_keeps_install_actions() {
     let (mut web, _) = harness_language(ViewMode::Grid, egui::Theme::Dark, false, &restored.language);
     web.run_steps(6);
     assert!(web.query_all_by_label("Für macOS herunterladen").count() >= 3);
+    for width in [720.0, 800.0, 1180.0] {
+        web.set_size(egui::vec2(width, 900.0));
+        web.run_steps(6);
+        for label in ["Grid", "Table", "Settings", "Check for updates"] {
+            let rect = web.get_by_label(artcraft_launcher_ui_egui::i18n::t(label)).rect();
+            assert!(rect.left() >= 0.0 && rect.right() <= width, "{width}: {label} {rect:?}");
+            for label in ["Launcher", "Craft App Suite"] {
+                if let Some(text) = web.query_by_label(label) {
+                    assert!(!rect.intersects(text.rect()), "{width}: {label} overlaps {rect:?}");
+                }
+            }
+        }
+    }
 }

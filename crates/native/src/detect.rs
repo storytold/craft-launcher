@@ -86,6 +86,34 @@ pub(crate) fn appimage_version(name: &str, stems: &[&str]) -> Option<Option<Stri
     (parsed.kind == artcraft_launcher_core::PackageKind::AppImage && parsed.token.starts_with("linux-")).then_some(Some(parsed.version))
 }
 
+/// Version from `<app> --version` output. Binaries print the machine id (`photocraft 0.7.0`),
+/// the display name (`SoundCraft 0.5.0`), or a former id (`printcraft 0.2.1` for PdfCraft).
+#[cfg_attr(not(any(target_os = "linux", target_os = "freebsd")), allow(dead_code))]
+fn parse_cli_version(line: &str, app: &CraftApp) -> Option<version::Version> {
+    let line = line.trim();
+    for prefix in app.stems().chain(std::iter::once(app.name)) {
+        if let Some(rest) = strip_cli_prefix(line, prefix)
+            && let Some(tok) = rest.split_whitespace().next()
+            && let Some(v) = version::parse(tok)
+        {
+            return Some(v);
+        }
+    }
+    version::parse_package(line)
+}
+
+fn strip_cli_prefix<'a>(line: &'a str, prefix: &str) -> Option<&'a str> {
+    let (head, rest) = line.split_at_checked(prefix.len())?;
+    if !head.eq_ignore_ascii_case(prefix) {
+        return None;
+    }
+    match rest.chars().next() {
+        None => Some(rest),
+        Some(c) if c.is_ascii_whitespace() => Some(rest),
+        _ => None,
+    }
+}
+
 #[cfg(target_os = "macos")]
 pub mod macos {
     use std::path::{Path, PathBuf};
@@ -232,7 +260,11 @@ pub mod linux {
         if let Some(list) = capture("rpm", &["-qa", "--qf", "%{NAME}|%{VERSION}\n"], t) {
             add(InstallSource::Rpm, packages::parse_rpm(&list));
         }
-        if let Some(list) = capture("pacman", &["-Q"], t) {
+        // Only run `pacman` where its database exists: elsewhere `pacman` on PATH may be an unrelated program
+        // (the Pac-Man game in /usr/games on Debian-family systems).
+        if pacman_db_present(Path::new(PACMAN_DB))
+            && let Some(list) = capture("pacman", &["-Q"], t)
+        {
             add(InstallSource::Pacman, packages::parse_pacman(&list));
         }
         let arch = format!("--arch={}", std::env::consts::ARCH);
@@ -247,6 +279,14 @@ pub mod linux {
             add(InstallSource::Flatpak, flatpaks);
         }
         out
+    }
+
+    /// The local package database of Arch's pacman.
+    const PACMAN_DB: &str = "/var/lib/pacman/local";
+
+    /// True when `db` is a directory, i.e. this system really uses pacman.
+    pub(crate) fn pacman_db_present(db: &Path) -> bool {
+        db.is_dir()
     }
 
     /// Where a package put the app's binary: on `PATH`, else `/usr/bin/<id>`.
@@ -327,7 +367,7 @@ pub mod linux {
     /// to whatever installed it, since it can't tell which package manager that was.
     fn detect_system_install(app: &CraftApp) -> Option<Installed> {
         let bin = find_binary(app.id)?;
-        Some(Installed { version: binary_version(&bin, app.id), source: InstallSource::Binary, location: bin.display().to_string(), package: None })
+        Some(Installed { version: binary_version(&bin, app), source: InstallSource::Binary, location: bin.display().to_string(), package: None })
     }
 
     fn find_binary(id: &str) -> Option<PathBuf> {
@@ -336,10 +376,9 @@ pub mod linux {
         on_path.or_else(|| usual.map(|d| d.join(id)).find(|p| p.is_file()))
     }
 
-    pub(crate) fn binary_version(bin: &Path, id: &str) -> Option<version::Version> {
+    pub(crate) fn binary_version(bin: &Path, app: &CraftApp) -> Option<version::Version> {
         let out = crate::process::capture(bin.to_str()?, &["--version"], Duration::from_secs(5))?;
-        let rest = out.trim().strip_prefix(id)?.trim_start();
-        version::parse(rest.split_whitespace().next()?)
+        parse_cli_version(out.trim(), app)
     }
 }
 
@@ -355,14 +394,13 @@ pub mod freebsd {
         if !bin.exists() {
             return None;
         }
-        Some(Installed { version: binary_version(&bin, app.id), source: InstallSource::Binary, location: bin.display().to_string(), package: None })
+        Some(Installed { version: binary_version(&bin, app), source: InstallSource::Binary, location: bin.display().to_string(), package: None })
     }
 
     /// `<app> --version` prints `<app> 0.5.0 (sha, date)`.
-    fn binary_version(bin: &Path, id: &str) -> Option<version::Version> {
+    fn binary_version(bin: &Path, app: &CraftApp) -> Option<version::Version> {
         let out = crate::process::capture(bin.to_str()?, &["--version"], Duration::from_secs(5))?;
-        let rest = out.trim().strip_prefix(id)?.trim_start();
-        version::parse(rest.split_whitespace().next()?)
+        parse_cli_version(out.trim(), app)
     }
 }
 
@@ -385,6 +423,14 @@ mod linux_tests {
     }
 
     #[test]
+    fn pacman_is_only_queried_where_its_database_exists() {
+        let root = tempfile::tempdir().unwrap();
+        assert!(!linux::pacman_db_present(&root.path().join("local")));
+        std::fs::create_dir(root.path().join("local")).unwrap();
+        assert!(linux::pacman_db_present(&root.path().join("local")));
+    }
+
+    #[test]
     fn reads_binary_version_from_cli() {
         let photo = CraftApp::by_id("photocraft").unwrap();
         let temp_dir = tempfile::tempdir().unwrap();
@@ -392,8 +438,24 @@ mod linux_tests {
         std::fs::write(&bin, "#!/bin/sh\necho 'photocraft 0.6.0 (0c72d9542, 2026-10-10)'\n").unwrap();
         use std::os::unix::fs::PermissionsExt;
         std::fs::set_permissions(&bin, std::fs::Permissions::from_mode(0o755)).unwrap();
-        let ver = linux::binary_version(&bin, photo.id);
+        let ver = linux::binary_version(&bin, photo);
         assert_eq!(ver.unwrap().to_string(), "0.6.0");
+    }
+
+    #[test]
+    fn reads_binary_version_when_the_cli_uses_the_display_name_or_a_former_id() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        use std::os::unix::fs::PermissionsExt;
+        let write = |name: &str, script: &str| {
+            let bin = temp_dir.path().join(name);
+            std::fs::write(&bin, script).unwrap();
+            std::fs::set_permissions(&bin, std::fs::Permissions::from_mode(0o755)).unwrap();
+            bin
+        };
+        let sound = write("soundcraft", "#!/bin/sh\necho 'SoundCraft 0.5.0'\n");
+        assert_eq!(linux::binary_version(&sound, CraftApp::by_id("soundcraft").unwrap()).unwrap().to_string(), "0.5.0");
+        let pdf = write("pdfcraft", "#!/bin/sh\necho 'printcraft 0.2.1'\n");
+        assert_eq!(linux::binary_version(&pdf, CraftApp::by_id("pdfcraft").unwrap()).unwrap().to_string(), "0.2.1");
     }
 }
 
@@ -424,6 +486,18 @@ mod tests {
         ] {
             assert_eq!(v(other), None, "{other}");
         }
+    }
+
+    #[test]
+    fn parse_cli_version_accepts_id_display_name_and_former_id() {
+        let photo = CraftApp::by_id("photocraft").unwrap();
+        let sound = CraftApp::by_id("soundcraft").unwrap();
+        let pdf = CraftApp::by_id("pdfcraft").unwrap();
+        assert_eq!(parse_cli_version("photocraft 0.7.0 (dev build)", photo).unwrap().to_string(), "0.7.0");
+        assert_eq!(parse_cli_version("SoundCraft 0.5.0", sound).unwrap().to_string(), "0.5.0");
+        assert_eq!(parse_cli_version("printcraft 0.2.1", pdf).unwrap().to_string(), "0.2.1");
+        assert_eq!(parse_cli_version("PdfCraft 0.6.0", pdf).unwrap().to_string(), "0.6.0");
+        assert!(strip_cli_prefix("photocraft-cli 1.0.0", "photocraft").is_none());
     }
 
     #[cfg(target_os = "linux")]
