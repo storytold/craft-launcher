@@ -1,0 +1,348 @@
+# Lao (lo) catalog for ArtCraft Launcher.
+# Format: context<TAB>source<TAB>translation
+# Empty context = plain UI string (tl!, t).
+# @id = command-id keyed (tr_id).
+# @plural = plural forms: one|other in English, one form for Lao.
+# @msg = status/error message template (message, msg).
+# Other context = disambiguation for tr_ctx.
+#
+# Clean-room: written from the meaning of ArtCraft Launcher's English labels in plain, neutral
+# Lao, using the terms Lao-speaking users of software know (many are Lao spellings of English
+# computer words: ອັບເດດ, ແອັບ, ແພັກເກັດ). NOT yet reviewed by a native speaker.
+#
+# Coverage: the whole interface — every menu string and tl! literal (complete_menus = true).
+# Left in English on purpose: product name "ArtCraft Launcher" (and its "Launcher" tag), suite
+# name "Craft App Suite",
+# app names (PhotoCraft, LightCraft, FilmCraft, DesignCraft, VectorCraft, PdfCraft, EffectCraft,
+# WordCraft, DeckCraft, GridCraft, CADCraft, SoundCraft), "GitHub", "Discord".
+# Shortcut keys keep their key-cap names (Shift, Alt, Ctrl, Cmd, Esc).
+# Trailing "…" (U+2026) must be preserved. Placeholders {name}, {n}, {version}, {count}, {v},
+# {what}, {unit}, {real}, {e} must appear in translation.
+# Lao has one plural form. Shown with the system's Lao font (see cjk_font.rs); where the system
+# has none, the interface stays in English.
+
+	Launcher	Launcher
+	Craft App Suite	Craft App Suite
+	Open Source Tools for Creatives, Makers, and Builders	ເຄື່ອງມືໂອເພັນຊອດສຳລັບນັກສ້າງສັນ, ນັກປະດິດ ແລະ ນັກສ້າງ
+	Settings	ການຕັ້ງຄ່າ
+	Check for updates	ກວດຫາອັບເດດ
+	Grid	ຕາຂ່າຍ
+	Table	ຕາຕະລາງ
+	Show apps as cards	ສະແດງແອັບເປັນບັດ
+	Show apps as a table	ສະແດງແອັບເປັນຕາຕະລາງ
+	All	ທັງໝົດ
+	Updates	ອັບເດດ
+	Not installed	ຍັງບໍ່ໄດ້ຕິດຕັ້ງ
+	Search apps	ຄົ້ນຫາແອັບ
+	Sort	ຮຽງລຳດັບ
+	Suite order	ລຳດັບຕາມຊຸດ
+	Name	ຊື່
+	Inspired by	ໄດ້ແຮງບັນດານໃຈຈາກ
+	Status	ສະຖານະ
+	Installed version	ເວີຊັນທີ່ຕິດຕັ້ງ
+	Latest version	ເວີຊັນຫຼ້າສຸດ
+	Newest release	ເວີຊັນທີ່ປ່ອຍຫຼ້າສຸດ
+	Discord	Discord
+	GitHub	GitHub
+	Website	ເວັບໄຊ
+	Classic apps	ແອັບຄລາສສິກ
+	New apps	ແອັບໃໝ່
+	NEW	ໃໝ່
+	Install	ຕິດຕັ້ງ
+	Update to {v}	ອັບເດດເປັນ {v}
+	Open	ເປີດ
+	Download for {os}	ດາວໂຫຼດສຳລັບ {os}
+	Download	ດາວໂຫຼດ
+	Coming soon	ເປີດໃຫ້ໃຊ້ໄວໆນີ້
+	Checking…	ກຳລັງກວດ…
+	Not available	ບໍ່ມີໃຫ້ໃຊ້
+	Offline	ອອບລາຍ
+	Downloading {done} of {total}	ກຳລັງດາວໂຫຼດ {done} ຈາກ {total}
+	Downloading…	ກຳລັງດາວໂຫຼດ…
+	Reconnecting…	ກຳລັງເຊື່ອມຕໍ່ຄືນໃໝ່…
+	Verifying…	ກຳລັງກວດສອບ…
+	Installing, then restarting…	ກຳລັງຕິດຕັ້ງ ແລ້ວເລີ່ມຄືນໃໝ່…
+	Installing…	ກຳລັງຕິດຕັ້ງ…
+	Removing…	ກຳລັງລຶບອອກ…
+	Pause download	ຢຸດດາວໂຫຼດຊົ່ວຄາວ
+	Cancel download	ຍົກເລີກການດາວໂຫຼດ
+	Resume download	ດາວໂຫຼດຕໍ່
+	Discard download	ຖິ້ມໄຟລ໌ທີ່ດາວໂຫຼດ
+	Release notes	ບັນທຶກການອອກເວີຊັນ
+	Show in Finder	ສະແດງໃນ Finder
+	Show in Explorer	ສະແດງໃນ Explorer
+	Show in Files	ສະແດງໃນ Files
+	Reinstall	ຕິດຕັ້ງຄືນໃໝ່
+	Uninstall…	ຖອນການຕິດຕັ້ງ…
+	All releases	ທຸກເວີຊັນທີ່ປ່ອຍ
+	ArtCraft Launcher {version} is available.	ມີ ArtCraft Launcher {version} ໃຫ້ໃຊ້ແລ້ວ.
+	Dismiss	ປິດ
+	Update and restart	ອັບເດດ ແລະ ເລີ່ມຄືນໃໝ່
+	A new version is available. Would you like to relaunch with the updated version?	ມີເວີຊັນໃໝ່ແລ້ວ. ທ່ານຕ້ອງການເປີດໃໝ່ດ້ວຍເວີຊັນທີ່ອັບເດດບໍ?
+	Later	ພາຍຫຼັງ
+	What's new	ມີຫຍັງໃໝ່
+	No notes were published with this release.	ເວີຊັນນີ້ບໍ່ມີບັນທຶກທີ່ເຜີຍແຜ່.
+	Released {date}	ປ່ອຍເມື່ອ {date}
+	Open on GitHub	ເປີດໃນ GitHub
+	Close	ປິດ
+	ArtCraft Launcher {version}	ArtCraft Launcher {version}
+	Only when I ask	ສະເພາະເມື່ອຂ້ອຍສັ່ງ
+	Automatically download and install updates	ດາວໂຫຼດ ແລະ ຕິດຕັ້ງອັບເດດໂດຍອັດຕະໂນມັດ
+	Notify me when an installed app has an update	ແຈ້ງຂ້ອຍເມື່ອແອັບທີ່ຕິດຕັ້ງແລ້ວມີອັບເດດ
+	Include pre-releases (betas and release candidates)	ລວມເວີຊັນກ່ອນປ່ອຍຈິງ (ເບຕ້າ ແລະ ເວີຊັນທົດລອງກ່ອນປ່ອຍ)
+	Installing on Linux	ການຕິດຕັ້ງໃນ Linux
+	Install new apps as	ຕິດຕັ້ງແອັບໃໝ່ເປັນ
+	System package (recommended)	ແພັກເກັດຂອງລະບົບ (ແນະນຳ)
+	Updates always use the format an app was installed with.	ການອັບເດດຈະໃຊ້ຮູບແບບດຽວກັບທີ່ແອັບຖືກຕິດຕັ້ງມາສະເໝີ.
+	Running in the background	ເຮັດວຽກຢູ່ເບື້ອງຫຼັງ
+	Keep running in the tray when the window is closed	ໃຫ້ເຮັດວຽກຕໍ່ໃນຖາດລະບົບເມື່ອປິດໜ້າຕ່າງ
+	Show the window on the current desktop	ສະແດງໜ້າຕ່າງໃນເດສທັອບປັດຈຸບັນ
+	Start ArtCraft Launcher when I log in	ເປີດ ArtCraft Launcher ເມື່ອຂ້ອຍເຂົ້າສູ່ລະບົບ
+	Community	ຊຸມຊົນ
+	Questions, ideas and news from the ArtCraft team	ຄຳຖາມ, ແນວຄິດ ແລະ ຂ່າວຈາກທີມ ArtCraft
+	Appearance	ຮູບລັກສະນະ
+	Quit ArtCraft Launcher	ອອກຈາກ ArtCraft Launcher
+	Done	ສຳເລັດ
+	Uninstall {name}?	ຖອນການຕິດຕັ້ງ {name} ບໍ?
+	The app will be moved to the Trash. Your documents and settings stay.	ແອັບຈະຖືກຍ້າຍໄປຖັງຂີ້ເຫຍື້ອ. ເອກະສານ ແລະ ການຕັ້ງຄ່າຂອງທ່ານຍັງຢູ່ຄືເກົ່າ.
+	Windows will remove it like any installed program. Your documents and settings stay.	Windows ຈະລຶບມັນອອກຄືກັບໂປຣແກຣມທີ່ຕິດຕັ້ງອື່ນໆ. ເອກະສານ ແລະ ການຕັ້ງຄ່າຂອງທ່ານຍັງຢູ່ຄືເກົ່າ.
+	Your system's package manager will remove it, and may ask for your password. Your documents and settings stay.	ຕົວຈັດການແພັກເກັດຂອງລະບົບຈະລຶບມັນອອກ ແລະ ອາດຈະຖາມລະຫັດຜ່ານຂອງທ່ານ. ເອກະສານ ແລະ ການຕັ້ງຄ່າຂອງທ່ານຍັງຢູ່ຄືເກົ່າ.
+	The app will be removed. Your documents and settings stay.	ແອັບຈະຖືກລຶບອອກ. ເອກະສານ ແລະ ການຕັ້ງຄ່າຂອງທ່ານຍັງຢູ່ຄືເກົ່າ.
+	Uninstall	ຖອນການຕິດຕັ້ງ
+	Cancel	ຍົກເລີກ
+	Checked {ago}	ກວດເມື່ອ {ago}
+	just now	ເມື່ອກີ້ນີ້
+	yesterday	ມື້ວານນີ້
+	{month} {day}, {year}	{day} {month} {year}
+
+	Automatically	ອັດຕະໂນມັດ
+	Every Craft app	ທຸກແອັບ Craft
+	Apps on this computer	ແອັບໃນຄອມພິວເຕີເຄື່ອງນີ້
+	Installed apps with a newer version	ແອັບທີ່ຕິດຕັ້ງແລ້ວ ແລະ ມີເວີຊັນໃໝ່ກວ່າ
+	Apps you can install	ແອັບທີ່ທ່ານຕິດຕັ້ງໄດ້
+	Hide App	ເຊື່ອງແອັບ
+	Unhide App	ສະແດງແອັບ
+	Hidden Apps	ແອັບທີ່ເຊື່ອງໄວ້
+	Apps you hid	ແອັບທີ່ທ່ານເຊື່ອງໄວ້
+	Checked {ago} · using {sources}	ກວດເມື່ອ {ago} · ໃຊ້ {sources}
+	{a} and {b}	{a} ແລະ {b}
+	Join the Discord	ເຂົ້າຮ່ວມ Discord
+	Learn more	ຮຽນຮູ້ເພີ່ມເຕີມ
+	Minimize	ຫຍໍ້ລົງ
+	Maximize	ຂະຫຍາຍໃຫຍ່ສຸດ
+	Restore	ຄືນຂະໜາດເດີມ
+	New	ໃໝ່
+	OK	ຕົກລົງ
+	Open link	ເປີດລິ້ງ
+	Update	ອັບເດດ
+	{name} icon	ໄອຄອນ {name}
+	Loading ArtCraft Launcher…	ກຳລັງໂຫຼດ ArtCraft Launcher…
+	Cancel update	ຍົກເລີກການອັບເດດ
+	Stop waiting; the update can be started again later	ຢຸດລໍຖ້າ; ສາມາດເລີ່ມອັບເດດໃໝ່ໄດ້ພາຍຫຼັງ
+	Download again	ດາວໂຫຼດອີກຄັ້ງ
+	Install cancelled	ຍົກເລີກການຕິດຕັ້ງແລ້ວ
+	Install cancelled. The download is kept for the next try.	ຍົກເລີກການຕິດຕັ້ງແລ້ວ. ໄຟລ໌ທີ່ດາວໂຫຼດຖືກເກັບໄວ້ສຳລັບການລອງຄັ້ງຕໍ່ໄປ.
+	Update cancelled	ຍົກເລີກການອັບເດດແລ້ວ
+	Uninstall cancelled	ຍົກເລີກການຖອນການຕິດຕັ້ງແລ້ວ
+	Retry install	ລອງຕິດຕັ້ງອີກຄັ້ງ
+	Retry update to {version}	ລອງອັບເດດເປັນ {version} ອີກຄັ້ງ
+	The download is still here. It's checked again, then installed.	ໄຟລ໌ທີ່ດາວໂຫຼດຍັງຢູ່. ຈະກວດສອບອີກຄັ້ງ ແລ້ວຈຶ່ງຕິດຕັ້ງ.
+	Waiting for another app…	ກຳລັງລໍຖ້າແອັບອື່ນ…
+	Waiting for other installs…	ກຳລັງລໍຖ້າການຕິດຕັ້ງອື່ນ…
+
+# Package formats offered for download (PackageKind::label)
+	Installer (.msi)	ຕົວຕິດຕັ້ງ (.msi)
+	Portable (.zip)	ແບບພົກພາ (.zip)
+	Disk image (.dmg)	ໄຟລ໌ອິມເມດດິສກ໌ (.dmg)
+	Debian package (.deb)	ແພັກເກັດ Debian (.deb)
+	RPM package (.rpm)	ແພັກເກັດ RPM (.rpm)
+	Flatpak bundle	ຊຸດ Flatpak
+	Tarball (.tar.gz)	ໄຟລ໌ບີບອັດ (.tar.gz)
+
+# Contextual: each app's tagline, keyed by app id
+photocraft	Image editing	ການແກ້ໄຂຮູບພາບ
+vectorcraft	Vector illustration	ການແຕ້ມພາບປະກອບແບບເວັກເຕີ
+filmcraft	Video editing, color and sound	ການຕັດຕໍ່ວິດີໂອ, ສີ ແລະ ສຽງ
+lightcraft	Photo library and raw development	ຄັງຮູບພາບ ແລະ ການປັບແຕ່ງໄຟລ໌ RAW
+pdfcraft	Reading, organizing and protecting PDFs	ການອ່ານ, ຈັດລະບຽບ ແລະ ປົກປ້ອງ PDF
+effectcraft	Motion graphics and visual effects	ໂມຊັນກຣາຟິກ ແລະ ເອັບເຟັກພາບ
+designcraft	Page layout and publishing	ການຈັດໜ້າ ແລະ ການພິມເຜີຍແຜ່
+wordcraft	Writing and document design	ການຂຽນ ແລະ ການອອກແບບເອກະສານ
+deckcraft	Presentations and slide shows	ການນຳສະເໜີ ແລະ ສະໄລດ໌ໂຊ
+gridcraft	Spreadsheets and data	ຕາຕະລາງຄຳນວນ ແລະ ຂໍ້ມູນ
+cadcraft	Computer-aided design and drafting	ການອອກແບບ ແລະ ແຕ້ມແບບດ້ວຍຄອມພິວເຕີ
+soundcraft	Recording, editing and mixing audio	ການບັນທຶກ, ຕັດຕໍ່ ແລະ ມິກສຽງ
+
+# Contextual: month abbreviations for date rendering
+month	Jan	ມ.ກ.
+month	Feb	ກ.ພ.
+month	Mar	ມ.ນ.
+month	Apr	ມ.ສ.
+month	May	ພ.ພ.
+month	Jun	ມິ.ຖ.
+month	Jul	ກ.ລ.
+month	Aug	ສ.ຫ.
+month	Sep	ກ.ຍ.
+month	Oct	ຕ.ລ.
+month	Nov	ພ.ຈ.
+month	Dec	ທ.ວ.
+	Not checked yet	ຍັງບໍ່ໄດ້ກວດ
+	GitHub's hourly limit was reached; full details return in {min} min	ຮອດຂີດຈຳກັດຕໍ່ຊົ່ວໂມງຂອງ GitHub ແລ້ວ; ລາຍລະອຽດເຕັມຈະກັບມາໃນ {min} ນາທີ
+	GitHub limit hit; back in {min} min	ຮອດຂີດຈຳກັດ GitHub; ກັບມາໃນ {min} ນາທີ
+	Installing for {platform}	ກຳລັງຕິດຕັ້ງສຳລັບ {platform}
+	Downloads for {platform}	ດາວໂຫຼດສຳລັບ {platform}
+	No downloads for this system	ບໍ່ມີໄຟລ໌ດາວໂຫຼດສຳລັບລະບົບນີ້
+	Join the ArtCraft community on Discord	ເຂົ້າຮ່ວມຊຸມຊົນ ArtCraft ໃນ Discord
+	ArtCraft on {name}	ArtCraft ໃນ {name}
+	Couldn't open {name}: {e}	ບໍ່ສາມາດເປີດ {name} ໄດ້: {e}
+	Download cancelled	ຍົກເລີກການດາວໂຫຼດແລ້ວ
+	Available to install	ພ້ອມໃຫ້ຕິດຕັ້ງ
+	Available	ມີໃຫ້ໃຊ້
+	Installed · up to date	ຕິດຕັ້ງແລ້ວ · ເປັນເວີຊັນຫຼ້າສຸດ
+	Update available	ມີອັບເດດ
+	Installed	ຕິດຕັ້ງແລ້ວ
+	installed	ຕິດຕັ້ງແລ້ວ
+	Not available here	ບໍ່ມີໃຫ້ໃຊ້ທີ່ນີ້
+	Updating…	ກຳລັງອັບເດດ…
+	Update paused	ຢຸດອັບເດດຊົ່ວຄາວ
+	Download paused	ຢຸດດາວໂຫຼດຊົ່ວຄາວ
+	{version} installed → {latest} released	ຕິດຕັ້ງ {version} → ປ່ອຍ {latest}
+	Version {version}	ເວີຊັນ {version}
+	{installed} installed · latest {latest}	ຕິດຕັ້ງ {installed} · ຫຼ້າສຸດ {latest}
+	Installed · latest {latest}	ຕິດຕັ້ງແລ້ວ · ຫຼ້າສຸດ {latest}
+	Version {version} installed	ຕິດຕັ້ງເວີຊັນ {version} ແລ້ວ
+	Version {latest}	ເວີຊັນ {latest}
+	No release published yet	ຍັງບໍ່ມີການປ່ອຍເວີຊັນ
+	ArtCraft Launcher	ArtCraft Launcher
+	App	ແອັບ
+	Latest	ຫຼ້າສຸດ
+	Released	ປ່ອຍເມື່ອ
+	Auto	ອັດຕະໂນມັດ
+	Language	ພາສາ
+	Ascending	ນ້ອຍຫາໃຫຍ່
+	Descending	ໃຫຍ່ຫານ້ອຍ
+	Click to reverse the order	ກົດເພື່ອສະຫຼັບລຳດັບ
+	Click to sort by this column	ກົດເພື່ອຮຽງຕາມຖັນນີ້
+	Like {name}	ຄ້າຍຄື {name}
+	{done} of {total}	{done} ຈາກ {total}
+	Downloading	ກຳລັງດາວໂຫຼດ
+	Verifying checksum…	ກຳລັງກວດສອບຄ່າ checksum…
+	Resume	ດຳເນີນການຕໍ່
+	{done} of {total} downloaded	ດາວໂຫຼດແລ້ວ {done} ຈາກ {total}
+	{done} downloaded	ດາວໂຫຼດແລ້ວ {done}
+	Checking for updates…	ກຳລັງກວດຫາອັບເດດ…
+	Downloads the new version, replaces this one and opens it again	ດາວໂຫຼດເວີຊັນໃໝ່ ແທນທີ່ເວີຊັນນີ້ ແລ້ວເປີດອີກຄັ້ງ
+	Couldn't check for updates: {f}	ບໍ່ສາມາດກວດຫາອັບເດດໄດ້: {f}
+	Website (coming soon)	ເວັບໄຊ (ໄວໆນີ້)
+	GitHub repository	ບ່ອນເກັບຂໍ້ມູນ GitHub
+	ArtCraft	ArtCraft
+	Update 1 app	ອັບເດດ 1 ແອັບ
+	Update all ({count})	ອັບເດດທັງໝົດ ({count})
+	⊞  Grid	⊞  ຕາຂ່າຍ
+	☰  Table	☰  ຕາຕະລາງ
+	🔍  Search apps	🔍  ຄົ້ນຫາແອັບ
+	{name} {version}	{name} {version}
+	Match system	ຕາມລະບົບ
+	Dark	ມືດ
+	Light	ສະຫວ່າງ
+	Full changelog	ບັນທຶກການປ່ຽນແປງທັງໝົດ
+	link	ລິ້ງ
+	No apps match	ບໍ່ມີແອັບທີ່ກົງກັນ
+	Open ArtCraft Launcher to update.	ເປີດ ArtCraft Launcher ເພື່ອອັບເດດ.
+	{name} {v} is available	ມີ {name} {v} ໃຫ້ໃຊ້ແລ້ວ
+	{count} updates are available	ມີ {count} ອັບເດດ
+	These notes weren't fetched (GitHub's request limit was reached). They're on the release page.	ບໍ່ໄດ້ດຶງບັນທຶກເຫຼົ່ານີ້ (ຮອດຂີດຈຳກັດການຮ້ອງຂໍຂອງ GitHub). ບັນທຶກຢູ່ໃນໜ້າເວີຊັນທີ່ປ່ອຍ.
+	When on, opening the launcher from the menu bar brings its window to the desktop you're on. When off, macOS switches you to the desktop the window was on.	ເມື່ອເປີດ, ການເປີດ launcher ຈາກແຖບເມນູຈະນຳໜ້າຕ່າງມາຢູ່ເດສທັອບທີ່ທ່ານຢູ່. ເມື່ອປິດ, macOS ຈະພາທ່ານໄປຍັງເດສທັອບທີ່ໜ້າຕ່າງຢູ່.
+	Couldn't change the login item: {e}	ບໍ່ສາມາດປ່ຽນລາຍການເຂົ້າສູ່ລະບົບໄດ້: {e}
+
+# Contextual: table column headers
+column	App	ແອັບ
+column	Installed	ຕິດຕັ້ງແລ້ວ
+column	Latest	ຫຼ້າສຸດ
+column	Released	ປ່ອຍເມື່ອ
+
+# Contextual: the filter tab names a group (the status pill says "Installed")
+filter	Installed	ຕິດຕັ້ງແລ້ວ
+	App details	ລາຍລະອຽດແອັບ
+	Close (Esc)	ປິດ (Esc)
+	Features	ຄຸນສົມບັດ
+	Latest release	ເວີຊັນຫຼ້າສຸດທີ່ປ່ອຍ
+	Version	ເວີຊັນ
+	Platforms	ແພລັດຟອມ
+	Releases	ເວີຊັນທີ່ປ່ອຍ
+	Enlarge picture	ຂະຫຍາຍຮູບ
+	Click to enlarge	ກົດເພື່ອຂະຫຍາຍ
+	Previous picture (←)	ຮູບກ່ອນໜ້າ (←)
+	Next picture (→)	ຮູບຖັດໄປ (→)
+	Loading pictures…	ກຳລັງໂຫຼດຮູບ…
+	Pictures couldn't be loaded. Reopen this page to try again.	ບໍ່ສາມາດໂຫຼດຮູບໄດ້. ເປີດໜ້ານີ້ໃໝ່ເພື່ອລອງອີກຄັ້ງ.
+	{name} details	ລາຍລະອຽດ {name}
+
+# Plural forms for Lao (one form: Lao nouns don't inflect for number)
+@plural	{n} app|{n} apps	{n} ແອັບ
+@plural	{n} min ago|{n} min ago	{n} ນາທີກ່ອນ
+@plural	{n} h ago|{n} h ago	{n} ຊົ່ວໂມງກ່ອນ
+@plural	{n} day ago|{n} days ago	{n} ມື້ກ່ອນ
+
+# Message templates (@msg): toasts from the backend. {placeholders} match any text.
+@msg	Couldn't open {name}: {e}	ບໍ່ສາມາດເປີດ {name} ໄດ້: {e}
+@msg	Download cancelled	ຍົກເລີກການດາວໂຫຼດແລ້ວ
+@msg	{name} updated to {version}	ອັບເດດ {name} ເປັນ {version} ແລ້ວ
+@msg	{name} installed: {version}	ຕິດຕັ້ງ {name} ແລ້ວ: {version}
+@msg	{name} updated to {version} (this release publishes no checksum, so only its size was checked)	ອັບເດດ {name} ເປັນ {version} ແລ້ວ (ເວີຊັນນີ້ບໍ່ມີ checksum ຈຶ່ງກວດສອບສະເພາະຂະໜາດ)
+@msg	{name} installed: {version} (this release publishes no checksum, so only its size was checked)	ຕິດຕັ້ງ {name} ແລ້ວ: {version} (ເວີຊັນນີ້ບໍ່ມີ checksum ຈຶ່ງກວດສອບສະເພາະຂະໜາດ)
+@msg	{name} was removed	ລຶບ {name} ອອກແລ້ວ
+@msg	{name} is running. Quit it, then try again.	{name} ກຳລັງເຮັດວຽກຢູ່. ອອກຈາກມັນກ່ອນ ແລ້ວລອງໃໝ່.
+
+# Command IDs for menu items (@id)
+# Format: @id<TAB>command_id<TAB>translation
+@id	app.install	ຕິດຕັ້ງ
+@id	app.update	ອັບເດດ
+@id	app.open	ເປີດ
+@id	app.download	ດາວໂຫຼດ
+@id	app.reveal	ສະແດງໃນໂຟນເດີ
+@id	app.reinstall	ຕິດຕັ້ງຄືນໃໝ່
+@id	app.uninstall	ຖອນການຕິດຕັ້ງ
+@id	app.notes	ບັນທຶກການອອກເວີຊັນ
+@id	app.website	ເວັບໄຊ
+@id	app.github	GitHub
+@id	app.releases	ທຸກເວີຊັນທີ່ປ່ອຍ
+@id	launcher.update	ອັບເດດ ແລະ ເລີ່ມຄືນໃໝ່
+@id	launcher.download	ດາວໂຫຼດ
+@id	launcher.notes	ບັນທຶກການອອກເວີຊັນ
+@id	launcher.dismiss	ປິດ
+@id	settings.open	ການຕັ້ງຄ່າ
+@id	settings.quit	ອອກຈາກ ArtCraft Launcher
+@id	view.grid	ຕາຂ່າຍ
+@id	view.table	ຕາຕະລາງ
+@id	filter.all	ທັງໝົດ
+@id	filter.installed	ຕິດຕັ້ງແລ້ວ
+@id	filter.updates	ອັບເດດ
+@id	filter.notinstalled	ຍັງບໍ່ໄດ້ຕິດຕັ້ງ
+@id	sort.suite	ລຳດັບຕາມຊຸດ
+@id	sort.name	ຊື່
+@id	sort.inspired	ໄດ້ແຮງບັນດານໃຈຈາກ
+@id	sort.status	ສະຖານະ
+@id	sort.installed	ເວີຊັນທີ່ຕິດຕັ້ງ
+@id	sort.latest	ເວີຊັນຫຼ້າສຸດ
+@id	sort.released	ວັນທີ່ປ່ອຍ
+@id	help.discord	Discord
+@id	help.github	GitHub
+@id	help.website	ເວັບໄຊ
+@id	update.check	ກວດຫາອັບເດດ
+@id	update.check_auto	ດາວໂຫຼດ ແລະ ຕິດຕັ້ງອັບເດດໂດຍອັດຕະໂນມັດ
+@id	update.notify	ແຈ້ງຂ້ອຍເມື່ອແອັບທີ່ຕິດຕັ້ງແລ້ວມີອັບເດດ
+@id	update.prereleases	ລວມເວີຊັນກ່ອນປ່ອຍຈິງ
+@id	linux.preferred_kind	ຕິດຕັ້ງແອັບໃໝ່ເປັນ
+@id	tray.close_to_tray	ໃຫ້ເຮັດວຽກຕໍ່ໃນຖາດລະບົບເມື່ອປິດໜ້າຕ່າງ
+@id	tray.show_on_current_desktop	ສະແດງໜ້າຕ່າງໃນເດສທັອບປັດຈຸບັນ
+@id	tray.login_item	ເປີດ ArtCraft Launcher ເມື່ອຂ້ອຍເຂົ້າສູ່ລະບົບ
+@id	appearance.theme	ຮູບລັກສະນະ
+
+# Tray (menu bar) menu and tooltip
+	Show ArtCraft Launcher	ສະແດງ ArtCraft Launcher
+	Check for Updates	ກວດຫາອັບເດດ
+	Visit getartcraft.com	ເຂົ້າເບິ່ງ getartcraft.com
+	ArtCraft on GitHub	ArtCraft ໃນ GitHub
+	Join the ArtCraft Discord	ເຂົ້າຮ່ວມ ArtCraft Discord
+@plural	ArtCraft Launcher · {n} update available|ArtCraft Launcher · {n} updates available	ArtCraft Launcher · ມີ {n} ອັບເດດ
