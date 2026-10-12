@@ -31,6 +31,7 @@
 	Website	网站
 	Classic apps	经典应用
 	New apps	新应用
+	Community apps	社区应用
 	NEW	新
 	Install	安装
 	Update to {v}	更新至 {v}
@@ -249,6 +250,7 @@ deckcraft	Presentations and slide shows	演示文稿与幻灯片
 gridcraft	Spreadsheets and data	电子表格与数据处理
 cadcraft	Computer-aided design and drafting	计算机辅助设计与制图
 soundcraft	Recording, editing and mixing audio	音频录制、编辑与混音
+markupcraft	PDF markup, measurement and takeoff	PDF 批注、测量与工程量计算
 
 	Show in Files	在文件管理器中显示
 	Loading ArtCraft Launcher…	正在加载 ArtCraft Launcher…

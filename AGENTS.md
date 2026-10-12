@@ -2,9 +2,10 @@
 
 ArtCraft Launcher installs, updates and launches the **Craft App Suite** (PhotoCraft, LightCraft,
 FilmCraft, DesignCraft, VectorCraft, PdfCraft, EffectCraft, WordCraft, DeckCraft, GridCraft,
-CADCraft, SoundCraft). It is written in **Rust only** (no JavaScript or TypeScript): the desktop
-app is native egui/eframe, and the web build is the same Rust compiled to WebAssembly (trunk +
-wasm-bindgen). **No Tauri, Electron or webview shells**, ever.
+CADCraft, SoundCraft), plus community apps that ship releases the same way (MarkupCraft). It
+is written in **Rust only** (no JavaScript or TypeScript): the desktop app is native
+egui/eframe, and the web build is the same Rust compiled to WebAssembly (trunk + wasm-bindgen).
+**No Tauri, Electron or webview shells**, ever.
 
 The product name is always **ArtCraft Launcher** in user-facing text: UI, window titles, About,
 tray menu, notifications, installers, release names, docs prose. The suite is the **Craft App
@@ -57,7 +58,8 @@ settings file must produce an error the user can act on, never a panic. Shared s
 
 ### Installing other people's software safely
 
-- Download only from `https://github.com/storytold/<app>/releases` (and GitHub's asset CDN).
+- Download only from `https://github.com/storytold/<app>/releases` (and GitHub's asset CDN), or,
+  for a community app (`AppGroup::Community`), from the releases of the repo its catalog row names.
   The one exception is a developer's own loopback mirror (`ARTCRAFT_LAUNCHER_DOWNLOAD_BASE`,
   `cargo xtask local`); keep it loopback-only and behind the `local-mirror` cargo feature, which
   release builds never enable.

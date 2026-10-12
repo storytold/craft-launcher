@@ -1,4 +1,5 @@
-//! The Craft App Suite: the twelve apps the launcher knows about.
+//! The Craft App Suite: the twelve apps the launcher knows about, and the community apps listed
+//! beside them.
 //!
 //! The list is data so a later version can fetch it from an API; [`SUITE`] is the built-in copy.
 //!
@@ -14,6 +15,9 @@ pub enum AppGroup {
     Classic,
     /// The five apps added after them.
     New,
+    /// Apps made outside the ArtCraft team that ship releases the Craft apps' way (same asset
+    /// names, `SHA256SUMS.txt`, packaging), listed after the suite.
+    Community,
 }
 
 impl AppGroup {
@@ -21,6 +25,7 @@ impl AppGroup {
         match self {
             Self::Classic => "Classic",
             Self::New => "New",
+            Self::Community => "Community",
         }
     }
 }
@@ -47,7 +52,17 @@ pub struct CraftApp {
     pub repo: &'static str,
     /// Older names its release assets may carry (PdfCraft shipped as PrintCraft until 0.2.1).
     pub former_ids: &'static [&'static str],
+    /// Its reverse-DNS id when that isn't `ai.storyteller.<id>` (community apps use their own).
+    pub reverse_dns: Option<&'static str>,
+    /// The publisher its Windows installer registers (Apps & features).
+    pub publisher: &'static str,
+    /// Its macOS `CFBundleIdentifier` when that differs from [`CraftApp::bundle_id`] (Apple
+    /// allows no underscore there, so `io.github.engr_software.*` is `io.github.engr-software.*`).
+    pub mac_bundle_id: Option<&'static str>,
 }
+
+/// The publisher of the ArtCraft team's apps.
+pub const PUBLISHER: &str = "Learning Machines LLC";
 
 impl CraftApp {
     /// The product it's inspired by, with its registered-trademark sign (`Adobe Photoshop®`).
@@ -55,9 +70,15 @@ impl CraftApp {
         format!("{}®", self.like)
     }
 
-    /// `ai.storyteller.<id>`: macOS bundle id, Flatpak id and Linux desktop-file id.
+    /// `ai.storyteller.<id>` (or the app's own [`CraftApp::reverse_dns`]): macOS bundle id,
+    /// Flatpak id and Linux desktop-file id.
     pub fn bundle_id(&self) -> String {
-        format!("ai.storyteller.{}", self.id)
+        self.reverse_dns.map_or_else(|| format!("ai.storyteller.{}", self.id), str::to_string)
+    }
+
+    /// The `CFBundleIdentifier` of its macOS app.
+    pub fn mac_bundle_id(&self) -> String {
+        self.mac_bundle_id.map_or_else(|| self.bundle_id(), str::to_string)
     }
 
     pub fn releases_url(&self) -> String {
@@ -92,11 +113,26 @@ const fn app(
     [color, ink_light, ink_dark]: [[u8; 3]; 3],
     repo: &'static str,
 ) -> CraftApp {
-    CraftApp { id, name, tagline, like, group, color, ink_light, ink_dark, repo, former_ids: &[] }
+    CraftApp {
+        id,
+        name,
+        tagline,
+        like,
+        group,
+        color,
+        ink_light,
+        ink_dark,
+        repo,
+        former_ids: &[],
+        reverse_dns: None,
+        publisher: PUBLISHER,
+        mac_bundle_id: None,
+    }
 }
 
-/// The Craft App Suite, in display order: the seven classic apps, then the five new ones.
-pub const SUITE: [CraftApp; 12] = [
+/// The Craft App Suite, in display order: the seven classic apps, the five new ones, then the
+/// community apps.
+pub const SUITE: [CraftApp; 13] = [
     app(
         "photocraft",
         "PhotoCraft",
@@ -208,13 +244,28 @@ pub const SUITE: [CraftApp; 12] = [
         [[0x1f, 0xa5, 0xc9], [0x0e, 0x72, 0x90], [0x5f, 0xd0, 0xee]],
         "storytold/soundcraft",
     ),
+    CraftApp {
+        reverse_dns: Some("io.github.engr_software.markupcraft"),
+        mac_bundle_id: Some("io.github.engr-software.markupcraft"),
+        publisher: "engr-software",
+        ..app(
+            "markupcraft",
+            "MarkupCraft",
+            "PDF markup, measurement and takeoff",
+            "Bluebeam Revu",
+            AppGroup::Community,
+            [[0xe9, 0x77, 0x2e], [0xa8, 0x4c, 0x12], [0xff, 0xa2, 0x66]],
+            "engr-software/markupcraft",
+        )
+    },
 ];
 
 /// Shown wherever the products the apps are inspired by are named.
 pub const TRADEMARK_NOTICE: &str = "Adobe, Photoshop, Illustrator, Premiere Pro, Lightroom, Acrobat, After Effects and InDesign are either \
 registered trademarks or trademarks of Adobe in the United States and/or other countries. Microsoft, Word, PowerPoint and Excel are \
 trademarks of the Microsoft group of companies. Autodesk and AutoCAD are registered trademarks or trademarks of Autodesk, Inc. Avid \
-and Pro Tools are trademarks or registered trademarks of Avid Technology, Inc. All other trademarks are the property of their \
+and Pro Tools are trademarks or registered trademarks of Avid Technology, Inc. Bluebeam and Revu are registered trademarks of Bluebeam, Inc. \
+All other trademarks are the property of their \
 respective owners. These names are used only to describe what each Craft App is for; the Craft App Suite is independent and is not \
 affiliated with, sponsored by or endorsed by any of these companies.";
 
@@ -265,9 +316,31 @@ mod tests {
         ids.dedup();
         assert_eq!(ids.len(), SUITE.len());
         for a in &SUITE {
-            assert_eq!(a.repo, format!("storytold/{}", a.id));
             assert_eq!(a.name.to_lowercase(), a.id);
+            if a.group == AppGroup::Community {
+                // A community app keeps its own repo, reverse-DNS id and publisher.
+                assert!(!a.repo.starts_with("storytold/") && a.repo.ends_with(&format!("/{}", a.id)), "{}", a.repo);
+                assert!(a.reverse_dns.is_some_and(|r| !r.starts_with("ai.storyteller.")), "{}", a.id);
+                assert_ne!(a.publisher, PUBLISHER, "{}", a.id);
+                assert_eq!(a.website(), None);
+            } else {
+                assert_eq!(a.repo, format!("storytold/{}", a.id));
+                assert_eq!((a.reverse_dns, a.publisher), (None, PUBLISHER));
+            }
         }
+        // Community apps come after the suite.
+        let first = SUITE.iter().position(|a| a.group == AppGroup::Community).unwrap_or(SUITE.len());
+        assert!(SUITE[first..].iter().all(|a| a.group == AppGroup::Community));
+    }
+
+    #[test]
+    fn markupcraft_uses_its_own_ids() {
+        let m = CraftApp::by_id("markupcraft").unwrap();
+        assert_eq!(m.bundle_id(), "io.github.engr_software.markupcraft");
+        assert_eq!(m.mac_bundle_id(), "io.github.engr-software.markupcraft");
+        assert_eq!(m.releases_url(), "https://github.com/engr-software/markupcraft/releases");
+        assert_eq!(m.inspired_by(), "Bluebeam Revu®");
+        assert_eq!(CraftApp::by_id("photocraft").unwrap().bundle_id(), "ai.storyteller.photocraft");
     }
 
     #[test]

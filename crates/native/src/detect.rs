@@ -110,7 +110,7 @@ pub mod macos {
     pub fn read_bundle(app: &CraftApp, path: &Path) -> Option<Installed> {
         let plist = plist::Value::from_file(path.join("Contents/Info.plist")).ok()?;
         let dict = plist.as_dictionary()?;
-        if dict.get("CFBundleIdentifier")?.as_string()? != app.bundle_id() {
+        if dict.get("CFBundleIdentifier")?.as_string()? != app.mac_bundle_id() {
             return None;
         }
         // `<App>Version` carries the full version including a pre-release suffix;
@@ -132,7 +132,6 @@ pub mod windows {
     use super::*;
 
     const UNINSTALL: &str = r"SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall";
-    const PUBLISHER: &str = "Learning Machines LLC";
 
     /// An MSI install found in the registry.
     pub struct MsiInstall {
@@ -150,7 +149,7 @@ pub mod windows {
                 let Ok(key) = root.open_subkey_with_flags(&code, KEY_READ | flags) else { continue };
                 let name: String = key.get_value("DisplayName").unwrap_or_default();
                 let publisher: String = key.get_value("Publisher").unwrap_or_default();
-                if name != app.name || publisher != PUBLISHER || out.iter().any(|m: &MsiInstall| m.product_code == code) {
+                if name != app.name || publisher != app.publisher || out.iter().any(|m: &MsiInstall| m.product_code == code) {
                     continue;
                 }
                 let version = key.get_value::<String, _>("DisplayVersion").ok().and_then(|v| version::parse(&v));

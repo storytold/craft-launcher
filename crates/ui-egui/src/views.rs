@@ -379,16 +379,20 @@ impl LauncherUi {
         // Neighbouring cards share their 1 px hairline, like the site's `gap-px` grid.
         let cols = ((width / CARD_MIN_W).floor() as usize).max(1);
         let card_w = (width + (cols as f32 - 1.0)) / cols as f32;
-        // In suite order, split into the classic apps and the new ones.
+        // In suite order, split into the classic apps, the new ones and the community apps.
         let grouped = self.settings.sort == SortKey::Suite && self.settings.filter == Filter::All && self.search.trim().is_empty();
         let sections: Vec<Section> = if grouped {
-            [(AppGroup::Classic, "01", tl!("Classic apps")), (AppGroup::New, "02", tl!("New apps"))]
-                .iter()
-                .map(|(g, index, title)| {
-                    let list = ids.iter().copied().filter(|id| self.entry(id).is_some_and(|e| e.app.group == *g)).collect();
-                    (Some((*index, *title)), list)
-                })
-                .collect()
+            [
+                (AppGroup::Classic, "01", tl!("Classic apps")),
+                (AppGroup::New, "02", tl!("New apps")),
+                (AppGroup::Community, "03", tl!("Community apps")),
+            ]
+            .iter()
+            .map(|(g, index, title)| {
+                let list = ids.iter().copied().filter(|id| self.entry(id).is_some_and(|e| e.app.group == *g)).collect();
+                (Some((*index, *title)), list)
+            })
+            .collect()
         } else {
             vec![(None, ids.to_vec())]
         };

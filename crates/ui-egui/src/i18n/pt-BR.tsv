@@ -32,6 +32,7 @@
 	Website	Site
 	Classic apps	Aplicativos clássicos
 	New apps	Novos aplicativos
+	Community apps	Aplicativos da comunidade
 	Classic	Clássico
 	NEW	NOVO
 	Install	Instalar
@@ -154,6 +155,7 @@ deckcraft	Presentations and slide shows	Apresentações e slides
 gridcraft	Spreadsheets and data	Planilhas e dados
 cadcraft	Computer-aided design and drafting	Desenho técnico e projeto assistido por computador (CAD)
 soundcraft	Recording, editing and mixing audio	Gravação, edição e mixagem de áudio
+markupcraft	PDF markup, measurement and takeoff	Marcação, medição e levantamento de quantitativos em PDF
 
 # Contextual: month abbreviations for date rendering
 month	Jan	jan.

@@ -13,7 +13,7 @@
 # Left in English on purpose: product name "ArtCraft Launcher" (and its "Launcher" tag), suite
 # name "Craft App Suite",
 # app names (PhotoCraft, LightCraft, FilmCraft, DesignCraft, VectorCraft, PdfCraft, EffectCraft,
-# WordCraft, DeckCraft, GridCraft, CADCraft, SoundCraft), "GitHub", "Discord", "Website".
+# WordCraft, DeckCraft, GridCraft, CADCraft, SoundCraft, MarkupCraft), "GitHub", "Discord", "Website".
 # Shortcut keys keep their key-cap names (Shift, Alt, Ctrl, Cmd, Esc).
 # Trailing "…" (U+2026) must be preserved. Placeholders {name}, {n}, {version}, {count}, {v},
 # {what}, {unit}, {real}, {e} must appear in translation.
@@ -44,6 +44,7 @@
 	Website	Веб-сайт
 	Classic apps	Классические приложения
 	New apps	Новые приложения
+	Community apps	Приложения сообщества
 	NEW	НОВОЕ
 	Install	Установить
 	Update to {v}	Обновить до {v}
@@ -165,6 +166,7 @@ deckcraft	Presentations and slide shows	Презентации и слайд-ш�
 gridcraft	Spreadsheets and data	Электронные таблицы и данные
 cadcraft	Computer-aided design and drafting	Автоматизированное проектирование и черчение
 soundcraft	Recording, editing and mixing audio	Запись, редактирование и сведение звука
+markupcraft	PDF markup, measurement and takeoff	Разметка, измерения и подсчёт объёмов в PDF
 
 # Contextual: month abbreviations for date rendering
 month	Jan	янв.

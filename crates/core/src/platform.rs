@@ -301,6 +301,109 @@ mod tests {
         );
     }
 
+    /// MarkupCraft 0.6.0's release files (a community app with the suite's naming).
+    const MARKUP: &[&str] = &[
+        "markupcraft-0.6.0-freebsd-x86_64.tar.gz",
+        "markupcraft-0.6.0-linux-aarch64.AppImage",
+        "markupcraft-0.6.0-linux-aarch64.AppImage.zsync",
+        "markupcraft-0.6.0-linux-aarch64.deb",
+        "markupcraft-0.6.0-linux-aarch64.flatpak",
+        "markupcraft-0.6.0-linux-aarch64.rpm",
+        "markupcraft-0.6.0-linux-aarch64.tar.gz",
+        "markupcraft-0.6.0-linux-x86_64.AppImage",
+        "markupcraft-0.6.0-linux-x86_64.AppImage.zsync",
+        "markupcraft-0.6.0-linux-x86_64.deb",
+        "markupcraft-0.6.0-linux-x86_64.flatpak",
+        "markupcraft-0.6.0-linux-x86_64.rpm",
+        "markupcraft-0.6.0-linux-x86_64.tar.gz",
+        "markupcraft-0.6.0-macos-universal.dmg",
+        "markupcraft-0.6.0-windows-arm64-portable.zip",
+        "markupcraft-0.6.0-windows-arm64.msi",
+        "markupcraft-0.6.0-windows-x64-portable.zip",
+        "markupcraft-0.6.0-windows-x64.msi",
+        "markupcraft-0.6.0-windows-x86-portable.zip",
+        "markupcraft-0.6.0-windows-x86.msi",
+        "markupcraft-cli-0.6.0-linux-aarch64.tar.gz",
+        "markupcraft-cli-0.6.0-linux-x86_64.tar.gz",
+        "markupcraft-cli-0.6.0-macos-universal.zip",
+        "markupcraft-web-0.6.0.zip",
+        "SHA256SUMS.txt",
+    ];
+
+    /// The quota-free route on a real MarkupCraft `SHA256SUMS.txt` (path in `MARKUPCRAFT_SUMS`):
+    /// the release is rebuilt from the sums alone, every platform gets its default package,
+    /// and every Linux format and the Windows portable zip are found.
+    #[test]
+    fn markupcraft_release_from_its_own_sums() {
+        let Ok(path) = std::env::var("MARKUPCRAFT_SUMS") else { return };
+        let text = std::fs::read_to_string(path).unwrap();
+        let sums = crate::release::parse_sha256sums(&text);
+        assert!(sums.len() >= 24, "{} entries", sums.len());
+        let r = crate::release::release_from_sums("engr-software/markupcraft", "v0.6.0", &sums);
+        assert_eq!(r.version_label(), "0.6.0");
+        let app = crate::catalog::CraftApp::by_id("markupcraft").unwrap();
+        let stems: Vec<&str> = app.stems().collect();
+        for (os, arch, want) in [
+            (Os::Windows, Arch::X64, "markupcraft-0.6.0-windows-x64.msi"),
+            (Os::Windows, Arch::X86, "markupcraft-0.6.0-windows-x86.msi"),
+            (Os::Windows, Arch::Arm64, "markupcraft-0.6.0-windows-arm64.msi"),
+            (Os::MacOs, Arch::Arm64, "markupcraft-0.6.0-macos-universal.dmg"),
+            (Os::MacOs, Arch::X64, "markupcraft-0.6.0-macos-universal.dmg"),
+            (Os::Linux, Arch::X64, "markupcraft-0.6.0-linux-x86_64.AppImage"),
+            (Os::Linux, Arch::Arm64, "markupcraft-0.6.0-linux-aarch64.AppImage"),
+            (Os::FreeBsd, Arch::X64, "markupcraft-0.6.0-freebsd-x86_64.tar.gz"),
+        ] {
+            let p = Platform { os, arch };
+            let (asset, _) = pick_asset(&r, &stems, p, p.default_kinds()).unwrap_or_else(|| panic!("nothing for {os:?} {arch:?}"));
+            assert_eq!(asset.name, want);
+            assert!(asset.url.starts_with("https://github.com/engr-software/markupcraft/releases/download/v0.6.0/"));
+            assert_eq!(asset.sha256.as_ref().map(String::len), Some(64));
+            eprintln!("{os:?} {arch:?}: {}", asset.name);
+        }
+        for arch in [Arch::X64, Arch::Arm64] {
+            let linux = Platform { os: Os::Linux, arch };
+            for kind in linux.download_kinds() {
+                let (a, _) = pick_asset(&r, &stems, linux, &[*kind]).unwrap_or_else(|| panic!("no {kind:?} for {arch:?}"));
+                eprintln!("Linux {arch:?} {kind:?}: {}", a.name);
+            }
+        }
+        for arch in [Arch::X64, Arch::X86, Arch::Arm64] {
+            let win = Platform { os: Os::Windows, arch };
+            let (a, _) = pick_asset(&r, &stems, win, &[PackageKind::PortableZip]).unwrap();
+            assert!(a.name.ends_with("-portable.zip"), "{}", a.name);
+        }
+        // Nothing for riscv64: MarkupCraft doesn't ship it.
+        assert!(pick_asset(&r, &stems, Platform { os: Os::Linux, arch: Arch::Riscv64 }, &[PackageKind::TarGz]).is_none());
+    }
+
+    #[test]
+    fn picks_markupcraft_assets_on_every_platform() {
+        let r = release(MARKUP);
+        let stems: Vec<&str> = crate::catalog::CraftApp::by_id("markupcraft").unwrap().stems().collect();
+        let best = |os, arch| {
+            let p = Platform { os, arch };
+            pick_asset(&r, &stems, p, p.default_kinds()).map(|(a, _)| a.name.clone())
+        };
+        assert_eq!(best(Os::Windows, Arch::X64).as_deref(), Some("markupcraft-0.6.0-windows-x64.msi"));
+        assert_eq!(best(Os::Windows, Arch::X86).as_deref(), Some("markupcraft-0.6.0-windows-x86.msi"));
+        assert_eq!(best(Os::Windows, Arch::Arm64).as_deref(), Some("markupcraft-0.6.0-windows-arm64.msi"));
+        assert_eq!(best(Os::MacOs, Arch::Arm64).as_deref(), Some("markupcraft-0.6.0-macos-universal.dmg"));
+        assert_eq!(best(Os::MacOs, Arch::X64).as_deref(), Some("markupcraft-0.6.0-macos-universal.dmg"));
+        assert_eq!(best(Os::Linux, Arch::X64).as_deref(), Some("markupcraft-0.6.0-linux-x86_64.AppImage"));
+        assert_eq!(best(Os::Linux, Arch::Arm64).as_deref(), Some("markupcraft-0.6.0-linux-aarch64.AppImage"));
+        assert_eq!(best(Os::FreeBsd, Arch::X64).as_deref(), Some("markupcraft-0.6.0-freebsd-x86_64.tar.gz"));
+        assert_eq!(best(Os::Linux, Arch::Riscv64), None);
+        let linux = Platform { os: Os::Linux, arch: Arch::X64 };
+        for kind in linux.download_kinds() {
+            assert!(pick_asset(&r, &stems, linux, &[*kind]).is_some(), "{kind:?}");
+        }
+        let win = Platform { os: Os::Windows, arch: Arch::X64 };
+        assert_eq!(
+            pick_asset(&r, &stems, win, &[PackageKind::PortableZip]).map(|(a, _)| a.name.clone()).as_deref(),
+            Some("markupcraft-0.6.0-windows-x64-portable.zip")
+        );
+    }
+
     #[test]
     fn strictly_matches_architecture_for_all_linux_package_formats() {
         let multi_arch_release = release(&[

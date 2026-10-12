@@ -237,6 +237,12 @@ stand on its own.
 | <img src="https://raw.githubusercontent.com/storytold/cadcraft/main/assets/app-icon/hicolor/64x64/apps/ai.storyteller.cadcraft.png" alt="" width="32" height="32"> | **CADCraft** | Computer-aided design | [GitHub](https://github.com/storytold/cadcraft) | [Releases](https://github.com/storytold/cadcraft/releases) |
 | <img src="https://raw.githubusercontent.com/storytold/soundcraft/main/assets/app-icon/hicolor/64x64/apps/ai.storyteller.soundcraft.png" alt="" width="32" height="32"> | **SoundCraft** | Audio recording and editing | [GitHub](https://github.com/storytold/soundcraft) | [Releases](https://github.com/storytold/soundcraft/releases) |
 
+Community apps, made outside the ArtCraft team, that ship their releases the same way:
+
+| | App | What it's for | Code | Learn more |
+|:-:|---|---|---|---|
+| <img src="https://raw.githubusercontent.com/engr-software/markupcraft/main/assets/app-icon/hicolor/64x64/apps/io.github.engr_software.markupcraft.png" alt="" width="32" height="32"> | **MarkupCraft** | PDF markup, measurement and takeoff | [GitHub](https://github.com/engr-software/markupcraft) | [Releases](https://github.com/engr-software/markupcraft/releases) |
+
 And [**ArtCraft**](https://getartcraft.com/) itself, our AI image and video studio for artists who want real control.
 
 <br>
