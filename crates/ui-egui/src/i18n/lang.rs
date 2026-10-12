@@ -22,7 +22,7 @@ impl Script {
 
 /// One supported UI language.
 pub struct LangInfo {
-    /// Canonical BCP 47 code (`en`, `ru`, `zh-CN`, `de`, `fr`, `pt-BR`, `es`, `cs`, `pl`, `hu`, `ja`).
+    /// Canonical BCP 47 code (`en`, `ru`, `zh-CN`, `de`, `fr`, `pt-BR`, `es`, `cs`, `pl`, `hu`, `ja`, `id`).
     /// Also the `interfaceLanguage` value.
     pub code: &'static str,
     /// The language's name in itself, shown in the Preferences dropdown.
@@ -94,7 +94,7 @@ pub(super) fn plural_polish(n: u64) -> usize {
 }
 
 /// The registry. English first: it is the fallback and the source language.
-pub static LANGUAGES: [LangInfo; 11] = [
+pub static LANGUAGES: [LangInfo; 12] = [
     LangInfo {
         code: "en",
         name: "English",
@@ -216,6 +216,17 @@ pub static LANGUAGES: [LangInfo; 11] = [
         complete_menus: true,
         catalog: OnceLock::new(),
     },
+    LangInfo {
+        code: "id",
+        name: "Bahasa Indonesia",
+        english_name: "Indonesian",
+        script: None,
+        source: include_str!("id.tsv"),
+        plural: plural_none,
+        plural_forms: 1,
+        complete_menus: true,
+        catalog: OnceLock::new(),
+    },
 ];
 
 impl LangInfo {
@@ -254,6 +265,7 @@ impl Lang {
     pub const PL: Lang = Lang(&LANGUAGES[8]);
     pub const HU: Lang = Lang(&LANGUAGES[9]);
     pub const JA: Lang = Lang(&LANGUAGES[10]);
+    pub const ID: Lang = Lang(&LANGUAGES[11]);
 
     pub fn code(self) -> &'static str {
         self.0.code
@@ -325,6 +337,7 @@ pub fn lang_from_tag(tag: &str) -> Option<Lang> {
         Some("c" | "posix") => Some(Lang::EN),
         Some("zh") => chinese(cands.first().map_or("zh", String::as_str)),
         Some("pt") => Some(Lang::PT_BR),
+        Some("in") => Some(Lang::ID),
         _ => cands.iter().find_map(|c| Lang::from_code(c)),
     }
 }

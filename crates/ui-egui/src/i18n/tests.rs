@@ -383,6 +383,24 @@ fn japanese_locales_and_counts_work() {
     assert_eq!(message(Lang::JA, "PhotoCraft updated to 0.5.0"), "PhotoCraft を 0.5.0 に更新しました");
 }
 
+#[test]
+fn indonesian_locales_and_counts_work() {
+    for tag in ["id", "id-ID", "id_ID.UTF-8", "ID_id", "in", "in-ID", "in_ID.UTF-8"] {
+        assert_eq!(lang_from_tag(tag), Some(Lang::ID), "{tag}");
+    }
+    assert_eq!(super::detect::first_supported(["xx-XX", "id-ID", "en-US"]), Some(Lang::ID));
+    // Indonesian has one plural form.
+    for n in [0, 1, 2, 11, 100] {
+        assert_eq!(trn(Lang::ID, n, "{n} app", "{n} apps"), format!("{n} aplikasi"));
+        assert_eq!(trn(Lang::ID, n, "{n} day ago", "{n} days ago"), format!("{n} hari lalu"));
+    }
+    assert_eq!(trn(Lang::ID, 2, "{n} unknown item", "{n} unknown items"), "2 unknown items");
+    assert_eq!(tr(Lang::ID, "Untranslated diagnostic"), "Untranslated diagnostic");
+    assert_eq!(super::tr_ctx(Lang::ID, "month", "Mar"), "Mar");
+    assert_eq!(tr(Lang::ID, "{month} {day}, {year}"), "{day} {month} {year}");
+    assert_eq!(message(Lang::ID, "PhotoCraft updated to 0.5.0"), "PhotoCraft diperbarui ke 0.5.0");
+}
+
 /// With the system's Chinese font installed, every UI family can draw the whole Chinese catalog.
 /// Machines without one (CI, the web) skip this; the UI then stays in English.
 #[test]
