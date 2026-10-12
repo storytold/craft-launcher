@@ -492,10 +492,20 @@ fn run_install(
         }
     }
     let note = match verified {
-        http::Verified::Checksum => "",
+        http::Verified::Checksum | http::Verified::NoDownload => "",
         http::Verified::SizeOnly => " (this release publishes no checksum, so only its size was checked)",
     };
-    Ok(format!("{}{note}", installed_text(app, existing.is_some(), &release)))
+    // PackageKit installs whatever version the distro carries, which the release doesn't
+    // name: claiming its version here would contradict the card that detection reports right
+    // after, so this path names no version.
+    let text = match verified {
+        http::Verified::NoDownload => {
+            let verb = if existing.is_some() { "updated" } else { "installed" };
+            format!("{} {verb} from your distribution's packages", app.name)
+        }
+        _ => installed_text(app, existing.is_some(), &release),
+    };
+    Ok(format!("{text}{note}"))
 }
 
 /// What a finished install tells the user.

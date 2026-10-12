@@ -4,9 +4,11 @@
 //!
 //! - macOS: the signed `.app` from the release DMG into `/Applications`.
 //! - Windows: the release MSI (Windows Installer) into `C:\Program Files\<App>`.
-//! - Linux: the distro's own package (`.deb` through apt on the Debian family, `.rpm` through
-//!   dnf/zypper/rpm on the Fedora, Red Hat and SUSE families, read from `os-release`) with the
-//!   system's polkit password prompt; otherwise a Flatpak, otherwise an AppImage in
+//! - Linux: the distro's own package through PackageKit (`pkcon`) wherever it is available
+//!   and the distro carries the app — keeping the distro's signature, dependency resolution,
+//!   system-wide updates and security process — else `.deb` through apt on the Debian family,
+//!   `.rpm` through dnf/zypper/rpm on the Fedora, Red Hat and SUSE families (read from
+//!   `os-release`) with the system's polkit password prompt; otherwise a Flatpak, otherwise an
 //!   `~/Applications` (the AppImage convention), with a menu entry and icon in
 //!   `~/.local/share` so it shows up like any other app. A Flatpak or AppImage launcher prefers
 //!   its own format.
@@ -54,6 +56,19 @@ pub fn install(
         return Err(format!("{} is running. Quit it, then try again.", app.name));
     }
     log::info!("{}: starting {} to {} ({})", app.name, if existing.is_some() { "update" } else { "install" }, release.version_label(), kind.label());
+    // PackageKit: the distro's own package, installed, upgraded and removed with the distro's
+    // signature, dependencies and authentication. A distro carrying no such package resolves to
+    // a miss and gets the download below, unchanged.
+    // Only when a system package is what's planned: a Flatpak/AppImage choice is user-local
+    // and privilege-free, and must not turn into a system-wide pkcon install behind a polkit
+    // prompt.
+    #[cfg(target_os = "linux")]
+    if matches!(kind, PackageKind::Deb | PackageKind::Rpm)
+        && linux::install_via_pkcon(app, existing, job.stop, &mut *job.phase)
+            .map_err(|e| if e == CANCELLED { INSTALL_CANCELLED.to_string() } else { e })?
+    {
+        return Ok((None, Verified::NoDownload));
+    }
     let (file, verified) = download(release, asset, job)?;
     log::info!("{}: download ready ({}), running installer...", app.name, file.display());
     // Past this point the install can't be interrupted halfway.
@@ -375,6 +390,7 @@ fn cancelled(stop: &Stop) -> impl Fn() -> bool + '_ {
 pub(crate) mod linux {
     use std::ffi::{OsStr, OsString};
     use std::os::unix::fs::PermissionsExt;
+    use std::time::Duration;
 
     use artcraft_launcher_core::distro;
     use artcraft_launcher_core::protocol::CANCELLED;
@@ -392,6 +408,11 @@ pub(crate) mod linux {
     }
 
     const SYSTEM: Root<'static> = Root { queue: &INSTALLER, run: &run_as_root };
+
+    /// PackageKit authenticates its transactions through polkit itself, so there is no
+    /// `pkexec` to prepend and nothing here but the queue that keeps one installer call at a
+    /// time.
+    const PKCON: Root<'static> = Root { queue: &INSTALLER, run: &run_pkcon };
 
     /// Runs `command target` as root. Jobs waiting for the same command go into one call
     /// (`apt-get install a.deb b.deb`), so the password is asked for once.
@@ -443,6 +464,10 @@ pub(crate) mod linux {
         let flatpak = process::is_flatpak_available();
         let is_flatpak = process::in_sandbox();
         let is_appimage = std::env::var_os("APPIMAGE").is_some();
+        // Deliberately pkexec only, not pkcon: these kinds pick the downloaded file, whose
+        // fallback install needs pkexec. A pkcon-only system keeps its Flatpak/AppImage offers
+        // instead of downloading a file it then can't install; the pkcon fast path in
+        // `install()` still fires for it regardless of what's advertised here.
         let root = which("pkexec").is_some();
         let os = ["/etc/os-release", "/usr/lib/os-release"].iter().find_map(|p| std::fs::read_to_string(p).ok()).unwrap_or_default();
         let native = distro::native_package(&distro::parse_os_release(&os));
@@ -524,8 +549,179 @@ pub(crate) mod linux {
         }
     }
 
+    /// What PackageKit does about this install.
+    pub(crate) enum PkconPlan {
+        /// The distro put a package of this app there: upgrade that, never download the
+        /// release's own package over it.
+        Upgrade(String),
+        /// The distro carries the app: install its package.
+        Install(String),
+        /// PackageKit has nothing to do with this app: download the release's file instead.
+        Download,
+    }
+
+    /// What PackageKit does about this install, with `resolved` what `pkcon resolve` finds for
+    /// the app (see [`resolve`]) and `pkcon` whether it's installed at all.
+    pub(crate) fn pkcon_plan(pkcon: bool, existing: Option<&Installed>, resolved: Option<String>, app: &CraftApp) -> PkconPlan {
+        if !pkcon {
+            return PkconPlan::Download;
+        }
+        match existing {
+            // Reported by the dpkg or rpm databases: the distro owns the copy, and so does its
+            // update. A package the launcher installed from a file lands here too, since the
+            // package manager records it like any other (and the launcher keeps no record of
+            // it). A launcher record can't outlive this, whichever way the package got there.
+            Some(inst) if matches!(inst.source, InstallSource::Deb | InstallSource::Rpm) => {
+                PkconPlan::Upgrade(inst.package.clone().unwrap_or_else(|| app.id.to_string()))
+            }
+            // Anything else already installed (an AppImage, a Flatpak) is updated in place by
+            // the flow below: a distro package next to it would be a second copy, and detection
+            // keeps reporting the old one first.
+            Some(_) => PkconPlan::Download,
+            None => resolved.map(PkconPlan::Install).unwrap_or(PkconPlan::Download),
+        }
+    }
+
+    /// Whether PackageKit's console client is there. It talks to the daemon over D-Bus, which
+    /// does the polkit authentication of whatever it's asked.
+    fn pkcon_available() -> bool {
+        which("pkcon").is_some()
+    }
+
+    /// Installs or upgrades `app` through PackageKit. `Ok(false)`: no PackageKit here, or it
+    /// neither carries the app nor holds a package of it, so the caller downloads the release's
+    /// own file and installs that instead.
+    pub fn install_via_pkcon(app: &CraftApp, existing: Option<&Installed>, stop: &Stop, phase: &mut dyn FnMut(JobPhase)) -> Result<bool, String> {
+        if !pkcon_available() {
+            return Ok(false);
+        }
+        if cancelled(stop)() {
+            return Err(CANCELLED.into());
+        }
+        // A copy the package managers report (Deb/Rpm) still needs the lookup: when the
+        // distro carries no package for the app — a file install on a repo-less distro, or a
+        // dropped package — `pkcon update` can only no-op, so the download flow below has to
+        // deliver the release instead of a false success. Other installed copies update in
+        // place below and never need PackageKit: resolving for them only burns D-Bus latency.
+        let system = matches!(existing, Some(inst) if matches!(inst.source, InstallSource::Deb | InstallSource::Rpm));
+        let resolved = if existing.is_none() || system { resolve(app) } else { None };
+        if cancelled(stop)() {
+            return Err(CANCELLED.into());
+        }
+        if system && resolved.is_none() {
+            return Ok(false);
+        }
+        let (command, name) = match pkcon_plan(true, existing, resolved, app) {
+            PkconPlan::Upgrade(name) => (vec!["-y", "update"], name),
+            PkconPlan::Install(name) => (vec!["-y", "install"], name),
+            PkconPlan::Download => return Ok(false),
+        };
+        log::info!("{}: PackageKit {} {}", app.name, command.join(" "), name);
+        phase(JobPhase::Installing);
+        as_root(&PKCON, &command, OsStr::new(&name), stop, phase, JobPhase::Installing)?;
+        Ok(true)
+    }
+
+    /// Asks PackageKit which package of `app` the distro carries. Nothing when it carries none,
+    /// and nothing when the daemon can't be reached, which the download flow copes with.
+    fn resolve(app: &CraftApp) -> Option<String> {
+        let names = pkcon_names(app);
+        let args: Vec<&str> = std::iter::once("resolve").chain(names.iter().map(String::as_str)).collect();
+        // A miss and a dead daemon look the same to the caller (both fall back to the
+        // download); the reason only goes to the log so an operator can tell a distro
+        // without the app from a PackageKit that never answered.
+        let out = match process::run("pkcon", &args, Duration::from_secs(30)) {
+            Ok(out) => out,
+            Err(e) => {
+                log::debug!("{}: pkcon resolve missed ({e})", app.name);
+                return None;
+            }
+        };
+        resolved_name(&out, &names).map(str::to_string)
+    }
+
+    /// The names a distro package of `app` may carry. The Debian and RPM families use the same
+    /// set, and PackageKit resolves either.
+    fn pkcon_names(app: &CraftApp) -> Vec<String> {
+        crate::packages::candidate_names(app, InstallSource::Deb)
+    }
+
+    /// The first of `names` `pkcon resolve` printed a package for. Its lines carry a state word
+    /// (which is translated), then the package as `name-version.arch`, then where it's from;
+    /// only the first two columns can name a package, so a summary mentioning one of the names
+    /// never passes for it.
+    pub(crate) fn resolved_name<'a>(out: &str, names: &'a [String]) -> Option<&'a str> {
+        names.iter().find(|name| out.lines().any(|line| line.split_whitespace().take(2).any(|word| is_package_name(word, name)))).map(String::as_str)
+    }
+
+    /// Whether `word` is a package printed as `name-version.arch` (or bare, for a client that
+    /// puts the version in its own column). A `-suffix` only counts when a version follows it:
+    /// `photocraft-data-1.0` is a sibling package, not this app, and matching it would install
+    /// the wrong thing (or fail loudly) instead of falling back to the download.
+    fn is_package_name(word: &str, name: &str) -> bool {
+        !name.is_empty()
+            && word.strip_prefix(name).is_some_and(|rest| {
+                rest.is_empty()
+                    || rest.starts_with('.')
+                    || rest.strip_prefix('-').is_some_and(|v| v.chars().next().is_some_and(|c| c.is_ascii_digit()))
+            })
+    }
+
+    /// Runs `pkcon` with the arguments of one installer call, which `as_root` may have shared
+    /// with other apps so the password is asked for once. PackageKit authenticates the
+    /// transaction itself, so nothing wraps this in `pkexec`.
+    fn run_pkcon(args: &[&OsStr]) -> Result<(), String> {
+        let output = process::command("pkcon").args(args).output().map_err(|e| format!("couldn't start PackageKit ({e})"))?;
+        let mut text = String::from_utf8_lossy(&output.stdout).into_owned();
+        if !text.is_empty() && !text.ends_with('\n') {
+            text.push('\n');
+        }
+        text.push_str(&String::from_utf8_lossy(&output.stderr));
+        pkcon_outcome(output.status.code(), &text)
+    }
+
+    /// What `pkcon`'s exit status and output say about the transaction it ran. PackageKit's
+    /// failure names (`not-authorized`) are its machine-readable ones; the rest it prints is
+    /// translated, so it's only shown, never matched.
+    pub(crate) fn pkcon_outcome(code: Option<i32>, out: &str) -> Result<(), String> {
+        if code == Some(0) {
+            return Ok(());
+        }
+        // A dismissed password prompt is a cancellation, like pkexec's 126 and 127.
+        if out.contains("not-authorized") {
+            return Err(CANCELLED.into());
+        }
+        match code {
+            // Nothing to do: the package is installed already, or the distro has nothing newer
+            // for it. What was asked for is true either way.
+            Some(5) => Ok(()),
+            Some(c) => {
+                let reason = pkcon_reason(out);
+                if reason.is_empty() {
+                    Err(format!("PackageKit stopped with error {c}"))
+                } else {
+                    Err(format!("PackageKit stopped with error {c}: {reason}"))
+                }
+            }
+            None => Err("the system installer was interrupted".into()),
+        }
+    }
+
+    /// `pkcon`'s last line, which is where its failures put the reason. A long one would take
+    /// the message over.
+    fn pkcon_reason(out: &str) -> String {
+        out.lines().map(str::trim).rev().find(|line| !line.is_empty()).unwrap_or_default().chars().take(120).collect()
+    }
+
     pub fn remove_package(app: &CraftApp, installed: &Installed, stop: &Stop, phase: &mut dyn FnMut(JobPhase)) -> Result<(), String> {
         let mut remove = |command: &[&str], package: &str| as_root(&SYSTEM, command, OsStr::new(package), stop, phase, JobPhase::Removing);
+        // PackageKit removes whatever put the package there — the launcher from a file, an
+        // older launcher, the distro itself or the user's own `rpm -i` — under the name the
+        // package manager gave it, and asks for permission itself.
+        if pkcon_available() && matches!(installed.source, InstallSource::Deb | InstallSource::Rpm) {
+            let package = installed.package.as_deref().unwrap_or(app.id);
+            return as_root(&PKCON, &["-y", "remove"], OsStr::new(package), stop, phase, JobPhase::Removing);
+        }
         match installed.source {
             InstallSource::Deb if which("apt-get").is_some() => remove(&["apt-get", "-o", APT_WAITS, "remove", "-y"], app.id),
             InstallSource::Deb => remove(&["dpkg", "-r"], app.id),
@@ -1397,6 +1593,104 @@ mod tests {
         let kinds = order_available_kinds(false, false, true, false, false);
         assert_eq!(kinds.first(), Some(&PackageKind::Flatpak));
         assert_eq!(kinds.get(1), Some(&PackageKind::AppImage));
+    }
+
+    #[cfg(target_os = "linux")]
+    mod pkcon {
+        use artcraft_launcher_core::InstallSource;
+
+        use super::linux::{PkconPlan, pkcon_outcome, pkcon_plan, resolved_name};
+        use super::*;
+
+        fn installed(source: InstallSource, package: Option<&str>) -> Installed {
+            Installed { version: None, source, location: String::new(), package: package.map(str::to_string) }
+        }
+
+        #[test]
+        fn resolve_reads_the_package_name_out_of_pkcons_output() {
+            let photo = CraftApp::by_id("photocraft").unwrap();
+            let names = crate::packages::candidate_names(photo, InstallSource::Deb);
+            for hit in [
+                // pkcon 1.2 with its output piped: state word, then name-version.arch, then origin.
+                "Results:\ninstalled    photocraft-0.6.0-1.x86_64 (fedora)\n",
+                // On a terminal it keeps name-version.arch in its own column, the summary after it.
+                "Results:\ninstalled\tphotocraft-0.6.0-1.x86_64 (fedora)\tPhotoCraft\n",
+                // Newer clients: a state symbol, then the name, then the version.
+                "Results:\ni photocraft 0.6.0-1.x86_64 [fedora]\n",
+            ] {
+                assert_eq!(resolved_name(hit, &names), Some("photocraft"), "{hit}");
+            }
+            // The bundle id is a candidate of its own, and a translated state word is never one.
+            let bundle = "Results:\navailable   ai.storyteller.photocraft-0.6.0-1.noarch (updates)\n";
+            assert_eq!(resolved_name(bundle, &names), Some("ai.storyteller.photocraft"));
+            // A miss: the header, and nothing that names a package.
+            for miss in ["", "Results:\n", "Querying\nFinished\n"] {
+                assert_eq!(resolved_name(miss, &names), None, "{miss}");
+            }
+            // A sibling package shares the stem but is not the app: only a version may
+            // follow the dash.
+            assert_eq!(resolved_name("Results:\navailable   photocraft-data-1.0.x86_64 (repo)\n", &names), None);
+            assert_eq!(resolved_name("Results:\navailable   otherpkg-1.0 (repo) Pdf tools, once photocraft\n", &["photocraft".to_string()]), None);
+            // A summary that names another candidate of the same app is not a package line.
+            let pdf = vec!["pdfcraft".to_string(), "ai.storyteller.pdfcraft".to_string()];
+            let summary = "Results:\navailable   ai.storyteller.pdfcraft 0.3.0-1 (updates) Pdf tools, once printcraft\n";
+            assert_eq!(resolved_name(summary, &pdf), Some("ai.storyteller.pdfcraft"));
+            // Both candidates there: the first one, so the install names a single package.
+            let both = "Results:\navailable   ai.storyteller.photocraft-1 (updates)\ninstalled   photocraft-0.6.0 (fedora)\n";
+            assert_eq!(resolved_name(both, &names), Some("photocraft"));
+        }
+
+        #[test]
+        fn packagekit_takes_the_distros_package_and_otherwise_steps_aside() {
+            let app = CraftApp::by_id("photocraft").unwrap();
+            let plan = |pkcon, installed: Option<&Installed>, resolved: Option<String>| match pkcon_plan(pkcon, installed, resolved, app) {
+                PkconPlan::Upgrade(name) => format!("upgrade {name}"),
+                PkconPlan::Install(name) => format!("install {name}"),
+                PkconPlan::Download => "download".to_string(),
+            };
+            // Without PackageKit nothing changes, distro package or not.
+            let deb = installed(InstallSource::Deb, Some("photocraft"));
+            assert_eq!(plan(false, Some(&deb), Some("photocraft".into())), "download");
+            // The distro's own copy is upgraded, never replaced by the release's own package:
+            // whatever put it there, and whether or not PackageKit lists a newer version.
+            let rpm = installed(InstallSource::Rpm, Some("photocraft"));
+            let unnamed = installed(InstallSource::Deb, None);
+            assert_eq!(plan(true, Some(&deb), None), "upgrade photocraft");
+            assert_eq!(plan(true, Some(&rpm), None), "upgrade photocraft");
+            assert_eq!(plan(true, Some(&unnamed), Some("photocraft".into())), "upgrade photocraft");
+            // Nothing installed and the distro carries the app: its package, not the download.
+            assert_eq!(plan(true, None, Some("photocraft".into())), "install photocraft");
+            // A distro carrying the app neither installed nor available: the old flow.
+            assert_eq!(plan(true, None, None), "download");
+            // An AppImage or Flatpak is updated in place, never doubled by a distro
+            // package beside it (detection keeps reporting the old copy first).
+            let appimage = installed(InstallSource::AppImage, None);
+            assert_eq!(plan(true, Some(&appimage), Some("photocraft".into())), "download");
+            let flatpak = installed(InstallSource::Flatpak, None);
+            assert_eq!(plan(true, Some(&flatpak), Some("photocraft".into())), "download");
+        }
+
+        #[test]
+        fn pkcons_exit_status_and_output_say_what_happened() {
+            // 0, and 5 ("nothing useful was done": already installed, or no newer version).
+            assert_eq!(pkcon_outcome(Some(0), "Results:\ninstalled   photocraft-1 (fedora)\n"), Ok(()));
+            assert_eq!(pkcon_outcome(Some(5), "There are no packages to update.\n"), Ok(()));
+            // A dismissed password prompt is a cancellation, like pkexec's 126 and 127.
+            let dismissed = "The transaction failed: not-authorized, Authorization failed: install packages\n";
+            assert_eq!(pkcon_outcome(Some(7), dismissed), Err("cancelled".into()));
+            // A failed transaction says so, with pkcon's reason in its own words.
+            let failed = "Results:\nThe transaction failed: no-network, Cannot resolve host\n";
+            assert_eq!(
+                pkcon_outcome(Some(7), failed),
+                Err("PackageKit stopped with error 7: The transaction failed: no-network, Cannot resolve host".into())
+            );
+            // Killed before it finished.
+            assert_eq!(pkcon_outcome(None, ""), Err("the system installer was interrupted".into()));
+            // Only the last line is the reason, and it never takes the message over.
+            let long = format!("{}\n{}\n", "x".repeat(200), "y".repeat(200));
+            let err = pkcon_outcome(Some(7), &long).unwrap_err();
+            assert_eq!(err.matches('y').count(), 120, "{err}");
+        }
     }
 
     #[cfg(target_os = "macos")]

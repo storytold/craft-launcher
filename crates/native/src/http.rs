@@ -366,6 +366,8 @@ pub enum Verified {
     Checksum,
     /// The release publishes no checksum: only its size could be checked.
     SizeOnly,
+    /// Nothing was downloaded: PackageKit installed the distro's own package.
+    NoDownload,
 }
 
 /// Asks a running download to pause (keeping its partial file) or cancel (deleting it).
