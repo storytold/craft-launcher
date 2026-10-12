@@ -45,6 +45,14 @@ pub enum Command {
     UpdateLauncher,
     /// Change how the backend behaves.
     Configure(BackendOptions),
+    /// Look at which AI tools are here and which apps' MCP servers they start ([`Event::Mcp`]).
+    McpScan,
+    /// Add (`connect`) or remove the MCP servers of `apps` in the settings of AI tool `tool`.
+    McpConnect {
+        tool: String,
+        apps: Vec<String>,
+        connect: bool,
+    },
 }
 
 /// Settings the backend needs.
@@ -187,6 +195,10 @@ pub enum Event {
         app: String,
         result: Result<String, String>,
     },
+    /// The AI tools and the apps' MCP servers, after [`Command::McpScan`] or a change.
+    Mcp(crate::mcp::McpReport),
+    /// A change to an AI tool's settings ended: `Ok` says what changed, `Err` what went wrong.
+    McpChanged(Result<String, String>),
     CheckStarted,
     CheckFinished {
         /// Unix seconds.

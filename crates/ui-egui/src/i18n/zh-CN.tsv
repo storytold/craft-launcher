@@ -287,6 +287,27 @@ soundcraft	Recording, editing and mixing audio	音频录制、编辑与混音
 	Flatpak bundle	Flatpak 包
 	Tarball (.tar.gz)	压缩包 (.tar.gz)
 
+# AI tools: connecting the apps' MCP servers (ai_tools.rs).
+	Connect to AI tools…	连接到 AI 工具…
+	AI tools	AI 工具
+	Let AI assistants such as Claude, Codex or Cursor work in the Craft apps. ArtCraft Launcher adds each app's MCP server to the settings the AI tool uses for all your projects. Restart the AI tool after a change.	让 Claude、Codex 或 Cursor 等 AI 助手在 Craft 应用中工作。ArtCraft Launcher 会把每个应用的 MCP 服务器添加到该 AI 工具用于你所有项目的设置中。更改后请重新启动该 AI 工具。
+	Let AI assistants such as Claude, Codex or Cursor work in the Craft apps through MCP.	让 Claude、Codex 或 Cursor 等 AI 助手通过 MCP 在 Craft 应用中工作。
+	Apps	应用
+	All installed apps	所有已安装的应用
+	Looking for AI tools…	正在查找 AI 工具…
+	Not found on this computer	未在此电脑上找到
+	Connected	已连接
+	{n} of {m} connected	已连接 {n}/{m}
+	Can't read	无法读取
+	Add	添加
+	Remove	移除
+	Its settings can't be read: {e}	无法读取其设置：{e}
+	It has its own settings for {apps}, which stay as they are.	它已有 {apps} 的自定义设置，这些设置将保持不变。
+	Install an app first to use it with AI tools.	请先安装一个应用，才能在 AI 工具中使用它。
+	Copy configuration	复制配置
+	Copies the MCP settings of these apps, for an AI tool that isn't listed	复制这些应用的 MCP 设置，用于未列出的 AI 工具
+	Copied to the clipboard	已复制到剪贴板
+
 # Message templates (@msg): toasts from the backend. {placeholders} match any text.
 @msg	Couldn't open {name}: {e}	无法打开 {name}：{e}
 @msg	Download cancelled	下载已取消
@@ -296,3 +317,14 @@ soundcraft	Recording, editing and mixing audio	音频录制、编辑与混音
 @msg	{name} installed: {version} (this release publishes no checksum, so only its size was checked)	{name} 已安装：{version}（此版本未发布校验和，因此只检查了文件大小）
 @msg	{name} was removed	{name} 已卸载
 @msg	{name} is running. Quit it, then try again.	{name} 正在运行。请先退出，然后重试。
+@msg	{tool} can now use {apps}. Restart it to load the change.	{tool} 现在可以使用 {apps}。请重新启动它以加载更改。
+@msg	{tool} already uses {apps}.	{tool} 已在使用 {apps}。
+@msg	Nothing was added to {tool}.	未向 {tool} 添加任何内容。
+@msg	Removed {apps} from {tool}. Restart it to load the change.	{tool} 不再使用 {apps}。请重新启动它以加载更改。
+@msg	{tool} doesn't use these apps.	{tool} 未使用这些应用。
+@msg	{tool} has its own settings for {apps}, which were left as they are.	{tool} 已有 {apps} 的自定义设置，已保持不变。
+@msg	Couldn't change the settings of {tool}: {e}	无法更改 {tool} 的设置：{e}
+@msg	Couldn't find your home folder, where AI tools keep their settings.	找不到你的主文件夹，AI 工具的设置保存在那里。
+@msg	The {name} AppImage can't start its MCP server on its own. Install its .deb, .rpm or Flatpak to use it with AI tools.	{name} 的 AppImage 无法自行启动其 MCP 服务器。请安装 .deb、.rpm 或 Flatpak 版本，以便在 AI 工具中使用它。
+@msg	On macOS, the command-line tool of {name} is a separate download ({id}-cli-<version>-macos-universal.zip on its release page). Unzip it into a folder on your PATH, such as /usr/local/bin.	在 macOS 上，{name} 的命令行工具需要单独下载（发布页面上的 {id}-cli-<version>-macos-universal.zip）。请将其解压到 PATH 中的文件夹，例如 /usr/local/bin。
+@msg	The command-line tool of {name} ({cli}) wasn't found next to the app. Reinstalling the app puts it back.	在应用旁边找不到 {name} 的命令行工具（{cli}）。重新安装该应用即可恢复。

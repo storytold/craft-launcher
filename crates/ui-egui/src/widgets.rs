@@ -70,6 +70,37 @@ pub fn hud_elided(ui: &mut Ui, text: &str, color: Color32, max_width: f32) -> Re
     if elided { resp.on_hover_text(text) } else { resp }
 }
 
+/// A file path on one line in small mono type. Where it is wider than `max_width` its middle is
+/// cut (`C:\Users\me\…\Claude\config.json`), so the folder it starts in and the file's name both
+/// stay; the whole path shows on hover and is what screen readers read.
+pub fn path(ui: &mut Ui, path: &str, color: Color32, max_width: f32) -> Response {
+    let font = egui::FontId::new(theme::HUD_SIZE, theme::mono());
+    let layout = |text: String| ui.painter().layout_no_wrap(text, font.clone(), color);
+    let mut galley = layout(path.to_string());
+    let elided = galley.size().x > max_width;
+    if elided {
+        let chars: Vec<char> = path.chars().collect();
+        // Mono type: every character is about as wide as the next. Then shorten until it fits.
+        let per_char = galley.size().x / chars.len().max(1) as f32;
+        let mut keep = ((max_width / per_char) as usize).saturating_sub(1).min(chars.len());
+        loop {
+            // More of the end than of the start: the file's name says the most.
+            let head = keep / 3;
+            let tail = chars.len() - (keep - head);
+            let text: String = chars.iter().take(head).chain(std::iter::once(&'…')).chain(chars.iter().skip(tail)).collect();
+            galley = layout(text);
+            if keep == 0 || galley.size().x <= max_width {
+                break;
+            }
+            keep -= 1;
+        }
+    }
+    let (rect, resp) = ui.allocate_exact_size(galley.size(), Sense::hover());
+    paint_left(ui, rect, galley, color);
+    resp.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Label, true, path));
+    if elided { resp.on_hover_text(path) } else { resp }
+}
+
 /// "01 / Classic apps": a section eyebrow, the index faint.
 pub fn eyebrow(ui: &mut Ui, index: &str, label: &str) {
     let t = Tokens::get(ui.ctx());

@@ -1,12 +1,13 @@
 //! [`NativeBackend`]: the desktop implementation of the UI's [`Backend`].
 
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, PoisonError};
 use std::time::{Duration, Instant};
 
 use artcraft_launcher_core::catalog::{LAUNCHER, LAUNCHER_ID};
 use artcraft_launcher_core::feed::{Feed, FeedAnswer};
+use artcraft_launcher_core::mcp::{McpReport, McpServer};
 use artcraft_launcher_core::platform::{Arch, Os, Platform, pick_asset};
 use artcraft_launcher_core::protocol::{
     Backend, BackendOptions, CANCELLED, Capabilities, Command, Event, INSTALL_CANCELLED, JobPhase, LatestRelease, Origin, PAUSED, PausedDownload,
@@ -77,6 +78,8 @@ struct Shared {
     feed_ok_at: Mutex<Option<i64>>,
     /// How often ArtCraft's API may be called.
     feed_throttle: Mutex<FeedThrottle>,
+    /// Held while AI tools' settings are read or changed, so two changes never interleave.
+    mcp: Mutex<()>,
 }
 
 impl Shared {
@@ -132,6 +135,7 @@ impl NativeBackend {
             feed_ok_at: Mutex::new(None),
             feed_throttle: Mutex::new(FeedThrottle::load(&paths.feed_throttle(), crate::now())),
             last_check: Mutex::new(None),
+            mcp: Mutex::new(()),
         });
         let backend = Self { shared, paths, http, source, platform: native_platform(), self_install: crate::self_update::current() };
         backend.replay_cache();
@@ -383,6 +387,39 @@ impl NativeBackend {
             shared.emit(Event::Detected { app: app.id.to_string(), installed: found });
             shared.jobs.lock().unwrap_or_else(PoisonError::into_inner).remove(app.id);
             shared.emit(Event::JobFinished { app: app.id.to_string(), result });
+        });
+    }
+
+    /// Changes an AI tool's settings first when asked (`(tool, apps, connect)`), then reports
+    /// every AI tool and how each installed app's MCP server starts.
+    fn mcp(&self, change: Option<(String, Vec<String>, bool)>) {
+        let shared = self.shared.clone();
+        let backups = self.paths.mcp_backups();
+        std::thread::spawn(move || {
+            let _turn = shared.mcp.lock().unwrap_or_else(PoisonError::into_inner);
+            let Some(bases) = crate::mcp::Bases::current() else {
+                shared.emit(Event::McpChanged(Err("Couldn't find your home folder, where AI tools keep their settings.".into())));
+                shared.emit(Event::Mcp(McpReport::default()));
+                return;
+            };
+            let installed = shared.installed.lock().unwrap_or_else(PoisonError::into_inner).clone();
+            let servers: BTreeMap<String, Result<McpServer, String>> =
+                SUITE.iter().filter_map(|app| installed.get(app.id).map(|i| (app.id.to_string(), crate::mcp::server_for(app, i)))).collect();
+            if let Some((tool, apps, connect)) = change {
+                let apps: Vec<_> =
+                    apps.iter().filter_map(|id| CraftApp::by_id(id)).map(|a| (a, servers.get(a.id).and_then(|s| s.clone().ok()))).collect();
+                match crate::mcp::change(&bases, &backups, &tool, &apps, connect) {
+                    Ok(done) => {
+                        shared.emit(Event::McpChanged(Ok(done.message)));
+                        if let Some(kept) = done.kept {
+                            shared.emit(Event::McpChanged(Err(kept)));
+                        }
+                    }
+                    Err(e) => shared.emit(Event::McpChanged(Err(e))),
+                }
+            }
+            let tools = crate::mcp::scan(&bases, &servers);
+            shared.emit(Event::Mcp(McpReport { servers, tools }));
         });
     }
 
@@ -910,6 +947,8 @@ impl Backend for NativeBackend {
                 }
             }
             Command::UpdateLauncher => self.update_launcher(),
+            Command::McpScan => self.mcp(None),
+            Command::McpConnect { tool, apps, connect } => self.mcp(Some((tool, apps, connect))),
             Command::Configure(options) => {
                 let changed_pre = {
                     let mut o = self.shared.options.lock().unwrap_or_else(PoisonError::into_inner);
@@ -1010,6 +1049,7 @@ mod tests {
             feed_failures: Mutex::new(0),
             feed_ok_at: Mutex::new(None),
             feed_throttle: Mutex::new(FeedThrottle::new()),
+            mcp: Mutex::new(()),
         }
     }
 

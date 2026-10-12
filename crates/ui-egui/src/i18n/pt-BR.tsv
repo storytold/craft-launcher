@@ -251,6 +251,27 @@ filter	Installed	Instalados
 @plural	{n} h ago|{n} h ago	há {n} h|há {n} h
 @plural	{n} day ago|{n} days ago	há {n} dia|há {n} dias
 
+# AI tools: connecting the apps' MCP servers (ai_tools.rs). "IA" is the Portuguese for AI.
+	Connect to AI tools…	Conectar a ferramentas de IA…
+	AI tools	Ferramentas de IA
+	Let AI assistants such as Claude, Codex or Cursor work in the Craft apps. ArtCraft Launcher adds each app's MCP server to the settings the AI tool uses for all your projects. Restart the AI tool after a change.	Deixe assistentes de IA como Claude, Codex ou Cursor trabalharem nos aplicativos Craft. O ArtCraft Launcher adiciona o servidor MCP de cada aplicativo às configurações que a ferramenta de IA usa em todos os seus projetos. Reinicie a ferramenta de IA depois de uma alteração.
+	Let AI assistants such as Claude, Codex or Cursor work in the Craft apps through MCP.	Deixe assistentes de IA como Claude, Codex ou Cursor trabalharem nos aplicativos Craft via MCP.
+	Apps	Aplicativos
+	All installed apps	Todos os aplicativos instalados
+	Looking for AI tools…	Procurando ferramentas de IA…
+	Not found on this computer	Não encontradas neste computador
+	Connected	Conectado
+	{n} of {m} connected	{n} de {m} conectados
+	Can't read	Ilegível
+	Add	Adicionar
+	Remove	Remover
+	Its settings can't be read: {e}	Não é possível ler as configurações: {e}
+	It has its own settings for {apps}, which stay as they are.	Ela tem configurações próprias para {apps}, que continuam como estão.
+	Install an app first to use it with AI tools.	Instale um aplicativo primeiro para usá-lo com ferramentas de IA.
+	Copy configuration	Copiar configuração
+	Copies the MCP settings of these apps, for an AI tool that isn't listed	Copia as configurações MCP destes aplicativos para uma ferramenta de IA que não está na lista
+	Copied to the clipboard	Copiado para a área de transferência
+
 # Message templates (@msg): toasts from the backend. {placeholders} match any text.
 @msg	Couldn't open {name}: {e}	Não foi possível abrir {name}: {e}
 @msg	Download cancelled	Download cancelado
@@ -260,6 +281,17 @@ filter	Installed	Instalados
 @msg	{name} installed: {version} (this release publishes no checksum, so only its size was checked)	{name} instalado: {version} (este lançamento não publica soma de verificação, então apenas o tamanho foi verificado)
 @msg	{name} was removed	{name} foi removido
 @msg	{name} is running. Quit it, then try again.	{name} está em execução. Feche-o e tente novamente.
+@msg	{tool} can now use {apps}. Restart it to load the change.	{tool} agora pode usar {apps}. Reinicie-o para carregar a alteração.
+@msg	{tool} already uses {apps}.	{tool} já usa {apps}.
+@msg	Nothing was added to {tool}.	Nada foi adicionado em {tool}.
+@msg	Removed {apps} from {tool}. Restart it to load the change.	{tool} não usa mais {apps}. Reinicie-o para carregar a alteração.
+@msg	{tool} doesn't use these apps.	{tool} não usa estes aplicativos.
+@msg	{tool} has its own settings for {apps}, which were left as they are.	{tool} tem configurações próprias para {apps}, que foram mantidas como estão.
+@msg	Couldn't change the settings of {tool}: {e}	Não foi possível alterar as configurações de {tool}: {e}
+@msg	Couldn't find your home folder, where AI tools keep their settings.	Não foi possível encontrar sua pasta pessoal, onde as ferramentas de IA guardam as configurações.
+@msg	The {name} AppImage can't start its MCP server on its own. Install its .deb, .rpm or Flatpak to use it with AI tools.	O AppImage do {name} não consegue iniciar o servidor MCP sozinho. Instale o .deb, .rpm ou Flatpak para usá-lo com ferramentas de IA.
+@msg	On macOS, the command-line tool of {name} is a separate download ({id}-cli-<version>-macos-universal.zip on its release page). Unzip it into a folder on your PATH, such as /usr/local/bin.	No macOS, a ferramenta de linha de comando do {name} é um download separado ({id}-cli-<version>-macos-universal.zip na página da versão). Descompacte-a em uma pasta do seu PATH, como /usr/local/bin.
+@msg	The command-line tool of {name} ({cli}) wasn't found next to the app. Reinstalling the app puts it back.	A ferramenta de linha de comando do {name} ({cli}) não foi encontrada ao lado do aplicativo. Reinstalar o aplicativo a coloca de volta.
 
 # Command IDs for menu items (@id)
 # Format: @id<TAB>command_id<TAB>translation

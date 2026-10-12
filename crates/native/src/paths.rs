@@ -50,6 +50,11 @@ impl Paths {
         self.data.join("installed.json")
     }
 
+    /// Copies of AI tools' settings files as they were before the launcher last changed them.
+    pub fn mcp_backups(&self) -> PathBuf {
+        self.data.join("mcp-backups")
+    }
+
     /// Where tarball installs (FreeBSD, Linux without AppImage) are unpacked: `<data>/apps/<app>`.
     pub fn apps(&self) -> PathBuf {
         self.data.join("apps")

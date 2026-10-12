@@ -137,7 +137,8 @@ pub fn is_flatpak_available() -> bool {
     }
 }
 
-fn which_on_path(name: &str) -> Option<std::path::PathBuf> {
+/// A program on `PATH`.
+pub(crate) fn which_on_path(name: &str) -> Option<std::path::PathBuf> {
     let path = std::env::var_os("PATH")?;
     std::env::split_paths(&path).map(|d| d.join(name)).find(|p| p.is_file())
 }

@@ -263,6 +263,27 @@ filter	Installed	Installiert
 @plural	{n} h ago|{n} h ago	vor {n} Std.|vor {n} Std.
 @plural	{n} day ago|{n} days ago	vor {n} Tag|vor {n} Tagen
 
+# AI tools: connecting the apps' MCP servers (ai_tools.rs). "KI" is the German for AI.
+	Connect to AI tools…	Mit KI-Tools verbinden…
+	AI tools	KI-Tools
+	Let AI assistants such as Claude, Codex or Cursor work in the Craft apps. ArtCraft Launcher adds each app's MCP server to the settings the AI tool uses for all your projects. Restart the AI tool after a change.	Lass KI-Assistenten wie Claude, Codex oder Cursor in den Craft-Apps arbeiten. ArtCraft Launcher trägt den MCP-Server jeder App in die Einstellungen ein, die das KI-Tool für alle deine Projekte nutzt. Starte das KI-Tool nach einer Änderung neu.
+	Let AI assistants such as Claude, Codex or Cursor work in the Craft apps through MCP.	Lass KI-Assistenten wie Claude, Codex oder Cursor über MCP in den Craft-Apps arbeiten.
+	Apps	Apps
+	All installed apps	Alle installierten Apps
+	Looking for AI tools…	Suche nach KI-Tools…
+	Not found on this computer	Nicht auf diesem Computer gefunden
+	Connected	Verbunden
+	{n} of {m} connected	{n} von {m} verbunden
+	Can't read	Nicht lesbar
+	Add	Hinzufügen
+	Remove	Entfernen
+	Its settings can't be read: {e}	Die Einstellungen sind nicht lesbar: {e}
+	It has its own settings for {apps}, which stay as they are.	Es hat eigene Einstellungen für {apps}, die unverändert bleiben.
+	Install an app first to use it with AI tools.	Installiere zuerst eine App, um sie mit KI-Tools zu nutzen.
+	Copy configuration	Konfiguration kopieren
+	Copies the MCP settings of these apps, for an AI tool that isn't listed	Kopiert die MCP-Einstellungen dieser Apps für ein KI-Tool, das hier fehlt
+	Copied to the clipboard	In die Zwischenablage kopiert
+
 # Message templates (@msg): toasts from the backend. {placeholders} match any text.
 @msg	Couldn't open {name}: {e}	{name} konnte nicht geöffnet werden: {e}
 @msg	Download cancelled	Download abgebrochen
@@ -272,6 +293,17 @@ filter	Installed	Installiert
 @msg	{name} installed: {version} (this release publishes no checksum, so only its size was checked)	{name} installiert: {version} (diese Version veröffentlicht keine Prüfsumme, daher wurde nur die Größe geprüft)
 @msg	{name} was removed	{name} wurde entfernt
 @msg	{name} is running. Quit it, then try again.	{name} läuft. Beende die App und versuche es erneut.
+@msg	{tool} can now use {apps}. Restart it to load the change.	{tool} kann jetzt {apps} nutzen. Starte es neu, damit die Änderung wirkt.
+@msg	{tool} already uses {apps}.	{tool} nutzt {apps} bereits.
+@msg	Nothing was added to {tool}.	Zu {tool} wurde nichts hinzugefügt.
+@msg	Removed {apps} from {tool}. Restart it to load the change.	{tool} nutzt {apps} nicht mehr. Starte es neu, damit die Änderung wirkt.
+@msg	{tool} doesn't use these apps.	{tool} nutzt diese Apps nicht.
+@msg	{tool} has its own settings for {apps}, which were left as they are.	{tool} hat eigene Einstellungen für {apps}; sie wurden nicht verändert.
+@msg	Couldn't change the settings of {tool}: {e}	Die Einstellungen von {tool} konnten nicht geändert werden: {e}
+@msg	Couldn't find your home folder, where AI tools keep their settings.	Dein Benutzerordner, in dem KI-Tools ihre Einstellungen speichern, wurde nicht gefunden.
+@msg	The {name} AppImage can't start its MCP server on its own. Install its .deb, .rpm or Flatpak to use it with AI tools.	Das AppImage von {name} kann seinen MCP-Server nicht selbst starten. Installiere das .deb-, .rpm- oder Flatpak-Paket, um die App mit KI-Tools zu nutzen.
+@msg	On macOS, the command-line tool of {name} is a separate download ({id}-cli-<version>-macos-universal.zip on its release page). Unzip it into a folder on your PATH, such as /usr/local/bin.	Unter macOS ist das Kommandozeilen-Tool von {name} ein separater Download ({id}-cli-<version>-macos-universal.zip auf der Release-Seite). Entpacke es in einen Ordner in deinem PATH, etwa /usr/local/bin.
+@msg	The command-line tool of {name} ({cli}) wasn't found next to the app. Reinstalling the app puts it back.	Das Kommandozeilen-Tool von {name} ({cli}) wurde neben der App nicht gefunden. Eine Neuinstallation der App stellt es wieder her.
 
 # Command IDs for menu items (@id)
 # Format: @id<TAB>command_id<TAB>translation

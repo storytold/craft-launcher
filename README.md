@@ -119,6 +119,48 @@ package or portable folder, the AppImage, or the `.deb`/`.rpm`) and reopens it.
 Updates use the same format an app was installed with. Every download is checked against the
 release's published SHA-256 before it is installed, and a running app is never replaced.
 
+## Using the apps with AI tools
+
+Every Craft app ships a command-line tool (`photocraft-cli`, `wordcraft-cli`…) whose `mcp`
+subcommand is a [Model Context Protocol](https://modelcontextprotocol.io) server, so an AI
+assistant can work in the app: open and edit documents, run commands, look at the result.
+**Settings → Connect to AI tools…** (or **Connect to AI tools…** in an installed app's **…** menu)
+adds those servers to an AI tool's settings for all your projects, and takes them out again:
+
+| AI tool | Settings file the servers go in |
+|---|---|
+| Claude Desktop | `claude_desktop_config.json` (on Windows, the Microsoft Store version's own copy when that's the one installed) |
+| Claude Code | `~/.claude.json` |
+| Codex | `~/.codex/config.toml` |
+| Cursor | `~/.cursor/mcp.json` |
+| VS Code, VS Code Insiders | `mcp.json` in the user settings folder |
+| Windsurf | `~/.codeium/windsurf/mcp_config.json` |
+| Gemini CLI | `~/.gemini/settings.json` |
+| GitHub Copilot CLI | `~/.copilot/mcp-config.json` |
+| Antigravity | `~/.gemini/config/mcp_config.json` (or `~/.gemini/antigravity/`) |
+| Zed | `settings.json` |
+| Cline, Roo Code | their `mcp_settings.json` in VS Code's extension storage |
+| Kiro | `~/.kiro/settings/mcp.json` |
+| Junie | `~/.junie/mcp/mcp.json` |
+| Amazon Q Developer | `~/.aws/amazonq/mcp.json` |
+| LM Studio | `~/.lmstudio/mcp.json` |
+| opencode | `~/.config/opencode/opencode.json` |
+
+Tools found on your computer are listed first; **Copy configuration** gives you the same servers
+as an `mcpServers` block for anything that isn't listed. Restart the AI tool after a change.
+
+The launcher changes only its own entries, each named after its app (`photocraft`): the rest of
+the file, including other servers, comments and formatting, stays exactly as it was, and an entry
+of yours under an app's name is left alone. The file as it was before the last change is kept in
+the launcher's data folder (`mcp-backups`). A settings file with a syntax error is not touched;
+the dialog says where the error is.
+
+The server runs from where the app is installed: next to the app on Windows and FreeBSD,
+`/usr/bin` for a `.deb` or `.rpm`, and through `flatpak run` for a Flatpak. An AppImage can't
+start its server on its own, and on macOS the command-line tool is a separate download from the
+app's release page (`<app>-cli-<ver>-macos-universal.zip`): unzip it into a folder on your `PATH`
+and the launcher finds it.
+
 ## Downloads
 
 Download the build for your computer from the [latest release](https://github.com/storytold/craft-launcher/releases/latest), or browse [all releases](https://github.com/storytold/craft-launcher/releases). Every release has a `SHA256SUMS.txt` to check the files against. `<ver>` is the version number, for example `0.1.0`.

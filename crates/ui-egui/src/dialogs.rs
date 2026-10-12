@@ -25,6 +25,7 @@ impl LauncherUi {
             Dialog::ConfirmUninstall(id) => modal.show(ctx, |ui| close = self.uninstall_dialog(ui, id)),
             Dialog::Settings => modal.show(ctx, |ui| close = self.settings_dialog(ui, host)),
             Dialog::LauncherUpdate(r) => modal.show(ctx, |ui| close = self.launcher_update_dialog(ui, r)),
+            Dialog::AiTools(app) => modal.show(ctx, |ui| close = self.ai_tools_dialog(ui, app.as_deref())),
         };
         if close || response.should_close() {
             self.dialog = None;
@@ -61,7 +62,7 @@ impl LauncherUi {
         }
     }
 
-    fn title(ui: &mut egui::Ui, icon: Option<egui::ImageSource<'static>>, title: &str, subtitle: &str) {
+    pub(crate) fn title(ui: &mut egui::Ui, icon: Option<egui::ImageSource<'static>>, title: &str, subtitle: &str) {
         let t = Tokens::get(ui.ctx());
         ui.horizontal(|ui| {
             if let Some(icon) = icon {
@@ -271,6 +272,15 @@ impl LauncherUi {
             {
                 let ctx = ui.ctx().clone();
                 self.toast(&ctx, fmt(tl!("Couldn't change the login item: {e}"), &[("e", &e)]), true);
+            }
+        }
+
+        if self.caps.manage_apps {
+            section(ui, tl!("AI tools"));
+            ui.label(RichText::new(tl!("Let AI assistants such as Claude, Codex or Cursor work in the Craft apps through MCP.")).color(t.muted));
+            ui.add_space(6.0);
+            if widgets::button(ui, tl!("Connect to AI tools…"), Kind::Secondary, 0.0).clicked() {
+                self.open_ai_tools(None);
             }
         }
 

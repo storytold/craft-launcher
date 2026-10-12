@@ -123,6 +123,7 @@ fn ellipsis_preserved() {
 #[test]
 fn complete_catalogs_cover_every_ui_literal() {
     let sources = [
+        include_str!("../ai_tools.rs"),
         include_str!("../app.rs"),
         include_str!("../dialogs.rs"),
         include_str!("../model.rs"),
@@ -145,10 +146,12 @@ fn complete_catalogs_cover_every_ui_literal() {
                 keys.insert(&source[start..start + len]);
             }
         }
-        for (i, _) in source.match_indices("tl!(\"") {
-            let start = i + 5;
-            if let Some(len) = source[start..].find('"') {
-                keys.insert(&source[start..start + len]);
+        // `tl!("…")`, also where rustfmt puts a long literal on a line of its own.
+        for (i, call) in source.match_indices("tl!(") {
+            if let Some(literal) = source[i + call.len()..].trim_start().strip_prefix('"')
+                && let Some(len) = literal.find('"')
+            {
+                keys.insert(&literal[..len]);
             }
         }
     }

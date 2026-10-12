@@ -847,6 +847,10 @@ impl LauncherUi {
                     self.send(Command::Reveal { app: id.clone() });
                     ui.close();
                 }
+                if ui.button(tl!("Connect to AI tools…")).clicked() {
+                    self.open_ai_tools(Some(id.clone()));
+                    ui.close();
+                }
                 if *status == AppStatus::UpToDate && ui.button(tl!("Reinstall")).clicked() {
                     self.send(Command::Install { app: id.clone() });
                     ui.close();

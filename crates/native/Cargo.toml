@@ -23,6 +23,9 @@ serde_json = { workspace = true }
 log = { workspace = true }
 dirs = "6"
 sha2 = "0.10"
+# Adding the apps' MCP servers to Codex's config.toml without disturbing the rest of it. Already in
+# Cargo.lock through proc-macro-crate.
+toml_edit = { version = "0.25", default-features = false, features = ["parse", "display"] }
 # HTTPS over rustls, with the OS verifying certificates (rustls-platform-verifier). No bundled
 # root list: webpki-roots and webpki-root-certs are CDLA-licensed.
 ureq = { version = "3.4", default-features = false, features = ["rustls-no-provider", "_ring", "gzip", "platform-verifier"] }

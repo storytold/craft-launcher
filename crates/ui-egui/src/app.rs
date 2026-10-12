@@ -68,6 +68,8 @@ pub(crate) enum Dialog {
     ConfirmUninstall(String),
     Settings,
     LauncherUpdate(artcraft_launcher_core::Release),
+    /// Connecting apps to AI tools: one app's MCP server, or (`None`) every installed app's.
+    AiTools(Option<String>),
 }
 
 pub struct LauncherUi {
@@ -91,6 +93,10 @@ pub struct LauncherUi {
     pub(crate) search: String,
     pub(crate) toasts: Vec<Toast>,
     pub(crate) dialog: Option<Dialog>,
+    /// The AI tools and the apps' MCP servers, once the backend has looked.
+    pub(crate) mcp: Option<artcraft_launcher_core::mcp::McpReport>,
+    /// The backend is looking at or changing AI tools' settings; their buttons wait.
+    pub(crate) mcp_busy: bool,
     started: bool,
     applied_theme: Option<theme::ThemeChoice>,
     /// Fonts registered with `set_fonts` only exist from the next frame on; drawing with the named
@@ -147,6 +153,8 @@ impl LauncherUi {
             search: String::new(),
             toasts: Vec::new(),
             dialog: None,
+            mcp: None,
+            mcp_busy: false,
             started: false,
             applied_theme: None,
             fonts_ready: false,
@@ -344,6 +352,20 @@ impl LauncherUi {
                     self.dialog = Some(Dialog::LauncherUpdate(r));
                 }
                 fresh
+            }
+            Event::Mcp(mut report) => {
+                // Listed with the installed tools first.
+                report.tools.sort_by_key(|tool| !tool.found);
+                self.mcp = Some(report);
+                self.mcp_busy = false;
+                false
+            }
+            Event::McpChanged(result) => {
+                match result {
+                    Ok(text) => self.toast(ctx, text, false),
+                    Err(text) => self.toast(ctx, text, true),
+                }
+                false
             }
             Event::CheckStarted => {
                 self.checking = true;

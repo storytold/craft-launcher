@@ -6,6 +6,7 @@
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 
+use artcraft_launcher_core::mcp::{AiTool, Entry, McpReport, McpServer};
 use artcraft_launcher_core::protocol::{
     Backend, CANCELLED, Capabilities, Command, Event, INSTALL_CANCELLED, JobPhase, LatestRelease, Origin, PausedDownload, Source,
 };
@@ -28,6 +29,9 @@ struct Fake {
 
 impl Backend for Fake {
     fn send(&mut self, command: Command) {
+        if command == Command::McpScan {
+            self.events.push(Event::Mcp(mcp_report()));
+        }
         self.sent.borrow_mut().push(command);
     }
     fn poll(&mut self) -> Vec<Event> {
@@ -108,6 +112,63 @@ fn events() -> Vec<Event> {
     ev
 }
 
+/// Three installed apps can start their MCP server; WordCraft's command-line tool is missing.
+/// The AI tools are a Windows machine's: Claude Code already starts PhotoCraft's server, Codex's
+/// settings are broken, Zed and others aren't installed, and the Microsoft Store's Claude Desktop
+/// keeps its settings down a very long path.
+fn mcp_report() -> McpReport {
+    let server = |id: &str| Ok(McpServer { command: format!("/usr/local/bin/{id}-cli"), args: vec!["mcp".into()] });
+    let tool = |id: &str, name: &str, found: bool, path: &str, entries: &[(&str, Entry)], error: Option<&str>| AiTool {
+        id: id.into(),
+        name: name.into(),
+        path: format!(r"C:\Users\Jeremy\{path}"),
+        found,
+        entries: entries.iter().map(|(a, e)| ((*a).to_string(), *e)).collect(),
+        error: error.map(str::to_string),
+    };
+    McpReport {
+        servers: [
+            ("photocraft", server("photocraft")),
+            ("lightcraft", server("lightcraft")),
+            ("effectcraft", server("effectcraft")),
+            (
+                "wordcraft",
+                Err("The command-line tool of WordCraft (wordcraft-cli) wasn't found next to the app. Reinstalling the app puts it back.".into()),
+            ),
+        ]
+        .into_iter()
+        .map(|(id, s)| (id.to_string(), s))
+        .collect(),
+        tools: vec![
+            tool("zed", "Zed", false, r"AppData\Roaming\Zed\settings.json", &[], None),
+            tool("claude-desktop", "Claude Desktop", true, CLAUDE_DESKTOP_PATH, &[], None),
+            tool("claude-code", "Claude Code", true, ".claude.json", &[("photocraft", Entry::Current), ("vectorcraft", Entry::Different)], None),
+            tool("cursor", "Cursor", true, r".cursor\mcp.json", &[("lightcraft", Entry::Foreign)], None),
+            tool("codex", "Codex", true, r".codex\config.toml", &[], Some("TOML parse error at line 3, column 1")),
+            tool("vscode", "VS Code", true, r"AppData\Roaming\Code\User\mcp.json", &[], None),
+            tool("vscode-insiders", "VS Code Insiders", false, r"AppData\Roaming\Code - Insiders\User\mcp.json", &[], None),
+            tool("windsurf", "Windsurf", false, r".codeium\windsurf\mcp_config.json", &[], None),
+            tool("gemini-cli", "Gemini CLI", true, r".gemini\settings.json", &[], None),
+            tool("copilot-cli", "GitHub Copilot CLI", true, r".copilot\mcp-config.json", &[], None),
+            tool("antigravity", "Antigravity", true, r".gemini\config\mcp_config.json", &[], None),
+            tool(
+                "cline",
+                "Cline",
+                false,
+                r"AppData\Roaming\Code\User\globalStorage\saoudrizwan.claude-dev\settings\cline_mcp_settings.json",
+                &[],
+                None,
+            ),
+            tool("kiro", "Kiro", false, r".kiro\settings\mcp.json", &[], None),
+            tool("lm-studio", "LM Studio", true, r".lmstudio\mcp.json", &[], None),
+            tool("opencode", "opencode", false, r".config\opencode\opencode.jsonc", &[], None),
+        ],
+    }
+}
+
+/// Where the Microsoft Store's Claude Desktop keeps its settings, under the home folder.
+const CLAUDE_DESKTOP_PATH: &str = r"AppData\Local\Packages\Claude_pzs8sxrjxfjjc\LocalCache\Roaming\Claude\claude_desktop_config.json";
+
 fn harness(view: ViewMode, theme: egui::Theme, manage: bool) -> (Harness<'static, Option<LauncherUi>>, Rc<RefCell<Vec<Command>>>) {
     harness_at(view, theme, manage, 1.0)
 }
@@ -123,6 +184,18 @@ fn harness_with(
     manage: bool,
     scale: f32,
 ) -> (Harness<'static, Option<LauncherUi>>, Rc<RefCell<Vec<Command>>>) {
+    harness_sized(events, view, theme, manage, scale, egui::vec2(1180.0, 900.0))
+}
+
+/// [`harness_with`] in a window of `size` points.
+fn harness_sized(
+    events: Vec<Event>,
+    view: ViewMode,
+    theme: egui::Theme,
+    manage: bool,
+    scale: f32,
+    size: egui::Vec2,
+) -> (Harness<'static, Option<LauncherUi>>, Rc<RefCell<Vec<Command>>>) {
     // Integration tests compile without cfg!(test), so system_lang() picks up the
     // developer's locale. Force English so labels match the assertions.
     artcraft_launcher_ui_egui::i18n::set_test_lang(artcraft_launcher_ui_egui::i18n::Lang::EN);
@@ -132,7 +205,7 @@ fn harness_with(
     let settings = Settings { view, notify: false, ..Settings::default() };
     // No `.wgpu()`: it gives every test its own GPU device, and those segfault on parallel test threads (see above).
     // The default renderer creates one only when a test renders.
-    let harness = Harness::builder().with_size(egui::vec2(1180.0, 900.0)).with_pixels_per_point(scale).with_theme(theme).build_ui_state(
+    let harness = Harness::builder().with_size(size).with_pixels_per_point(scale).with_theme(theme).build_ui_state(
         move |ui, state: &mut Option<LauncherUi>| {
             if state.is_none()
                 && let Some(b) = backend.take()
@@ -915,5 +988,113 @@ fn the_rate_limit_notice_never_runs_under_the_footer_links() {
             assert!(!r.intersects(notice), "{width}: notice {notice:?} overlaps {r:?}");
             assert!(!r.intersects(checked), "{width}: check time {checked:?} overlaps {r:?}");
         }
+    }
+}
+
+/// The button labelled `label` on the same row as the text `row`.
+fn on_row<'a>(h: &'a Harness<'_, Option<LauncherUi>>, label: &'a str, row: &str) -> egui_kittest::Node<'a> {
+    let y = h.get_by_label(row).rect().center().y;
+    h.get_all_by_label(label).find(|n| (n.rect().center().y - y).abs() < 20.0).unwrap()
+}
+
+#[test]
+fn settings_connect_every_installed_app_to_an_ai_tool() {
+    let (mut h, sent) = harness(ViewMode::Grid, egui::Theme::Dark, true);
+    h.run_steps(6);
+    h.get_by_label("Settings").click();
+    h.run_steps(3);
+    h.get_by_label("Connect to AI tools…").click();
+    h.run_steps(4);
+    assert!(sent.borrow().contains(&Command::McpScan));
+    snapshot(&mut h, "ai-tools-dark");
+    h.get_by_label("Apps");
+    h.get_by_label_contains("WordCraft: The command-line tool of WordCraft");
+    // Installed tools first, then the rest.
+    let y = |label: &str| h.get_by_label(label).rect().center().y;
+    assert!(y("Claude Code") < y("Not found on this computer") && y("Not found on this computer") < y("Zed"));
+    // Claude Code starts PhotoCraft's server of the three that can start; VectorCraft's entry is
+    // from an older install and can be removed.
+    h.get_by_label("1 of 3 connected");
+    h.get_by_label("Can't read");
+    h.get_by_label("Its settings can't be read: TOML parse error at line 3, column 1");
+    h.get_by_label("It has its own settings for LightCraft, which stay as they are.");
+    on_row(&h, "Add", "Cursor").click();
+    h.run_steps(2);
+    let connect = Command::McpConnect { tool: "cursor".into(), apps: vec!["photocraft".into(), "effectcraft".into()], connect: true };
+    assert!(sent.borrow().contains(&connect), "{:?}", sent.borrow());
+    on_row(&h, "Remove", "Claude Code").click();
+    h.run_steps(2);
+    // Busy until the backend answers: one change at a time.
+    assert!(!sent.borrow().iter().any(|c| matches!(c, Command::McpConnect { connect: false, .. })));
+}
+
+#[test]
+fn an_apps_menu_connects_just_that_app() {
+    let (mut h, sent) = harness(ViewMode::Grid, egui::Theme::Light, true);
+    h.run_steps(6);
+    h.get_all_by_label("…").next().unwrap().click(); // PhotoCraft
+    h.run_steps(3);
+    h.get_by_label("Connect to AI tools…").click();
+    h.run_steps(4);
+    snapshot(&mut h, "ai-tools-photocraft-light");
+    h.get_by_label("Connected");
+    assert!(h.query_by_label_contains("WordCraft: ").is_none(), "only PhotoCraft's notes");
+    on_row(&h, "Remove", "Claude Code").click();
+    h.run_steps(2);
+    let remove = Command::McpConnect { tool: "claude-code".into(), apps: vec!["photocraft".into()], connect: false };
+    assert!(sent.borrow().contains(&remove), "{:?}", sent.borrow());
+    // Copying the configuration needs no AI tool at all.
+    h.get_by_label("Copy configuration").click();
+    let mut copied = None;
+    for _ in 0..3 {
+        h.step();
+        copied = copied.or_else(|| {
+            h.output().platform_output.commands.iter().find_map(|c| match c {
+                egui::OutputCommand::CopyText(t) => Some(t.clone()),
+                _ => None,
+            })
+        });
+    }
+    assert!(copied.is_some_and(|t| t.contains("\"photocraft\"") && t.contains("/usr/local/bin/photocraft-cli")), "nothing copied");
+    h.get_by_label("Copied to the clipboard");
+}
+
+/// The right edge of the widget with `role` on the same row as the text `row`.
+fn right_of_role(h: &Harness<'_, Option<LauncherUi>>, role: egui::accesskit::Role, row: &str) -> f32 {
+    let y = h.get_by_label(row).rect().center().y;
+    h.get_all_by_role(role).find(|n| (n.rect().center().y - y).abs() < 20.0).unwrap().rect().right()
+}
+
+/// Every row's buttons end where the apps box and Done end, a path too long for its row is cut
+/// short of the buttons instead of running under them, and the dialog keeps its size: in a wide
+/// window, a narrow one, and at 150 % scale.
+#[test]
+fn the_ai_tools_dialog_lines_up_and_long_paths_stay_clear_of_the_buttons() {
+    for (name, size, scale) in
+        [("wide", egui::vec2(1180.0, 900.0), 1.0), ("narrow", egui::vec2(735.0, 1028.0), 1.0), ("scaled", egui::vec2(900.0, 700.0), 1.5)]
+    {
+        let (mut h, _) = harness_sized(events(), ViewMode::Grid, egui::Theme::Dark, true, scale, size);
+        h.run_steps(6);
+        h.get_all_by_label("…").next().unwrap().click(); // PhotoCraft
+        h.run_steps(3);
+        h.get_by_label("Connect to AI tools…").click();
+        h.run_steps(4);
+        snapshot(&mut h, &format!("ai-tools-{name}"));
+        let done = h.get_by_label("Done").rect();
+        let edge = done.right();
+        let near = |a: f32, b: f32| (a - b).abs() < 1.0;
+        assert!(near(right_of_role(&h, egui::accesskit::Role::ComboBox, "Apps"), edge), "{name}: the apps box");
+        // The first rows are in view: Claude Desktop (to add), Claude Code (connected, to remove).
+        let add = on_row(&h, "Add", "Claude Desktop").rect();
+        assert!(near(add.right(), edge), "{name}: Add ends at {}, Done at {edge}", add.right());
+        assert!(near(on_row(&h, "Remove", "Claude Code").rect().right(), edge), "{name}: Remove");
+        let path = h.get_by_label(&format!(r"C:\Users\Jeremy\{CLAUDE_DESKTOP_PATH}")).rect();
+        assert!(path.right() <= add.left() - 8.0, "{name}: the path ends at {}, the button starts at {}", path.right(), add.left());
+        assert!(near(path.left(), h.get_by_label("Claude Desktop").rect().left()), "{name}: name and path start together");
+        let badge = on_row(&h, "Connected", "Claude Code").rect();
+        assert!(badge.right() < on_row(&h, "Remove", "Claude Code").rect().left(), "{name}: the badge sits left of the button");
+        // Nothing drifts: the dialog is the same a few frames on.
+        h.run_steps(8);
+        assert_eq!(h.get_by_label("Done").rect(), done, "{name}: the dialog moved or grew");
     }
 }

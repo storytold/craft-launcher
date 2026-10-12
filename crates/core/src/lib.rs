@@ -9,6 +9,7 @@
 pub mod catalog;
 pub mod distro;
 pub mod feed;
+pub mod mcp;
 pub mod platform;
 pub mod protocol;
 pub mod release;

@@ -262,6 +262,27 @@ filter	Installed	Установлены
 @plural	{n} h ago|{n} h ago	{n} час назад|{n} часа назад|{n} часов назад
 @plural	{n} day ago|{n} days ago	{n} день назад|{n} дня назад|{n} дней назад
 
+# AI tools: connecting the apps' MCP servers (ai_tools.rs).
+	Connect to AI tools…	Подключить к ИИ-инструментам…
+	AI tools	ИИ-инструменты
+	Let AI assistants such as Claude, Codex or Cursor work in the Craft apps. ArtCraft Launcher adds each app's MCP server to the settings the AI tool uses for all your projects. Restart the AI tool after a change.	Позвольте ИИ-ассистентам, таким как Claude, Codex или Cursor, работать в приложениях Craft. ArtCraft Launcher добавляет MCP-сервер каждого приложения в настройки, которые ИИ-инструмент использует для всех ваших проектов. После изменения перезапустите ИИ-инструмент.
+	Let AI assistants such as Claude, Codex or Cursor work in the Craft apps through MCP.	Позвольте ИИ-ассистентам, таким как Claude, Codex или Cursor, работать в приложениях Craft через MCP.
+	Apps	Приложения
+	All installed apps	Все установленные приложения
+	Looking for AI tools…	Поиск ИИ-инструментов…
+	Not found on this computer	Не найдены на этом компьютере
+	Connected	Подключено
+	{n} of {m} connected	Подключено {n} из {m}
+	Can't read	Не читается
+	Add	Добавить
+	Remove	Удалить
+	Its settings can't be read: {e}	Не удаётся прочитать настройки: {e}
+	It has its own settings for {apps}, which stay as they are.	У него есть собственные настройки для {apps}, они останутся без изменений.
+	Install an app first to use it with AI tools.	Сначала установите приложение, чтобы использовать его с ИИ-инструментами.
+	Copy configuration	Скопировать конфигурацию
+	Copies the MCP settings of these apps, for an AI tool that isn't listed	Копирует MCP-настройки этих приложений для ИИ-инструмента, которого нет в списке
+	Copied to the clipboard	Скопировано в буфер обмена
+
 # Message templates (@msg): toasts from the backend. {placeholders} match any text.
 @msg	Couldn't open {name}: {e}	Не удалось открыть {name}: {e}
 @msg	Download cancelled	Скачивание отменено
@@ -271,6 +292,17 @@ filter	Installed	Установлены
 @msg	{name} installed: {version} (this release publishes no checksum, so only its size was checked)	Приложение {name} установлено: {version} (в этом релизе нет контрольных сумм, поэтому проверен только размер)
 @msg	{name} was removed	Приложение {name} удалено
 @msg	{name} is running. Quit it, then try again.	Приложение {name} запущено. Закройте его и попробуйте снова.
+@msg	{tool} can now use {apps}. Restart it to load the change.	{tool} теперь может использовать {apps}. Перезапустите его, чтобы применить изменение.
+@msg	{tool} already uses {apps}.	{tool} уже использует {apps}.
+@msg	Nothing was added to {tool}.	В {tool} ничего не добавлено.
+@msg	Removed {apps} from {tool}. Restart it to load the change.	{tool} больше не использует {apps}. Перезапустите его, чтобы применить изменение.
+@msg	{tool} doesn't use these apps.	{tool} не использует эти приложения.
+@msg	{tool} has its own settings for {apps}, which were left as they are.	В {tool} есть собственные настройки для {apps}; они оставлены без изменений.
+@msg	Couldn't change the settings of {tool}: {e}	Не удалось изменить настройки {tool}: {e}
+@msg	Couldn't find your home folder, where AI tools keep their settings.	Не найдена домашняя папка, где ИИ-инструменты хранят свои настройки.
+@msg	The {name} AppImage can't start its MCP server on its own. Install its .deb, .rpm or Flatpak to use it with AI tools.	AppImage {name} не может сам запустить свой MCP-сервер. Установите пакет .deb, .rpm или Flatpak, чтобы использовать приложение с ИИ-инструментами.
+@msg	On macOS, the command-line tool of {name} is a separate download ({id}-cli-<version>-macos-universal.zip on its release page). Unzip it into a folder on your PATH, such as /usr/local/bin.	В macOS инструмент командной строки {name} скачивается отдельно ({id}-cli-<version>-macos-universal.zip на странице релиза). Распакуйте его в папку из PATH, например /usr/local/bin.
+@msg	The command-line tool of {name} ({cli}) wasn't found next to the app. Reinstalling the app puts it back.	Инструмент командной строки {name} ({cli}) не найден рядом с приложением. Переустановка приложения вернёт его.
 
 # Command IDs for menu items (@id)
 # Format: @id<TAB>command_id<TAB>translation

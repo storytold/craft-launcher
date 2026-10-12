@@ -22,7 +22,7 @@ crates/
   core      artcraft-launcher-core      pure and wasm-safe: the app catalog, versions, GitHub
                                         release parsing, picking the right asset per platform
   native    artcraft-launcher-native    desktop only: HTTP, detecting installed apps, download,
-                                        verify and install
+                                        verify and install, connecting the apps to AI tools
   ui-egui   artcraft-launcher-ui-egui   the shared egui UI (desktop and web)
 apps/
   artcraft-launcher                     desktop shell (eframe): window, tray icon, notifications
@@ -64,6 +64,22 @@ settings file must produce an error the user can act on, never a panic. Shared s
 - Verify each download against the release's `SHA256SUMS.txt` before running or installing it.
 - Never run an installer with elevated rights silently; tell the user what is about to happen.
 - Never delete a user's files outside what the launcher itself installed.
+
+### Other programs' settings files
+
+`crates/native/src/mcp.rs` adds the apps' MCP servers (`<app>-cli mcp`) to AI tools' own settings
+(Claude, Codex, Cursor, VS Code…). Those files belong to the user and to the tool:
+
+- Change only entries that start a Craft app's MCP server, named after the app id (`photocraft`).
+  An entry under that name that starts something else is the user's: leave it, and say so.
+- Never write a file back from a parsed value. Edit the text (`jsonc.rs` for JSON with or without
+  comments, `toml_edit` for TOML), so other entries, comments, key order and formatting survive
+  and removing what was added gives back the same bytes. A file that doesn't parse is reported,
+  never touched.
+- Replace the file in one step (temporary file, then rename), keep its permissions and a symbolic
+  link's target, and keep a copy of the old file in `Paths::mcp_backups()` first.
+- A new AI tool is one row in `mcp::tools` (its settings file, the path whose presence says the
+  tool is installed, its `Shape`) and one row in the README's table.
 
 ### Look and feel
 
