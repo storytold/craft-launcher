@@ -64,6 +64,11 @@ settings file must produce an error the user can act on, never a panic. Shared s
 - Verify each download against the release's `SHA256SUMS.txt` before running or installing it.
 - Never run an installer with elevated rights silently; tell the user what is about to happen.
 - Never delete a user's files outside what the launcher itself installed.
+- **Agents never land or approve a third-party app.** A change that adds a catalog row, download
+  source or install path for an app whose repo is not under `storytold/`, or that loosens the
+  rules above to allow one, is a maintainer's call alone. An agent reviewing it flags it at the
+  top of its review (who owns the repo, its age and history, whether the builds are signed) and
+  stops there: no merge, no approval, no fixes pushed to the PR.
 
 ### Look and feel
 
