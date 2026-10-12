@@ -61,7 +61,8 @@ impl Paths {
         self.data.join("logs")
     }
 
-    /// Where tarball installs (FreeBSD, Linux without AppImage) are unpacked: `<data>/apps/<app>`.
+    /// Where tarball installs (FreeBSD, Linux without AppImage) and Windows portable copies are
+    /// unpacked: `<data>/apps/<app>`.
     pub fn apps(&self) -> PathBuf {
         self.data.join("apps")
     }
@@ -91,11 +92,4 @@ pub fn portable_root() -> Option<PathBuf> {
     let exe = std::env::current_exe().ok()?;
     let dir = exe.parent()?;
     dir.join("portable.txt").is_file().then(|| dir.join("ArtCraftLauncherData"))
-}
-
-/// Windows portable mode: where portable copies of the apps are unpacked, `apps\<app>` beside the
-/// launcher's own exe.
-pub fn portable_apps_dir() -> Option<PathBuf> {
-    let exe = std::env::current_exe().ok()?;
-    Some(exe.parent()?.join("apps"))
 }

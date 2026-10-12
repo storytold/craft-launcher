@@ -96,8 +96,7 @@
 	Use portable apps instead of the installer	Portable Apps statt des Installationsprogramms verwenden
 	Architecture	Architektur
 	System ({arch})	System ({arch})
-	Portable apps go into the apps folder next to ArtCraft Launcher. Apps installed with the Windows Installer aren't shown while this is on. A new architecture applies the next time an app is installed or updated.	Portable Apps landen im Ordner „apps“ neben ArtCraft Launcher. Mit dem Windows Installer installierte Apps werden nicht angezeigt, solange dies aktiviert ist. Eine neue Architektur gilt ab der nächsten Installation oder dem nächsten Update einer App.
-	This deletes the app's whole folder ({path}), including any settings and files the app saved there.	Dabei wird der gesamte Ordner der App ({path}) gelöscht, einschließlich aller Einstellungen und Dateien, die die App dort gespeichert hat.
+	Portable apps go into the apps folder in ArtCraft Launcher's data folder. Apps already installed with the Windows Installer stay as they are. A new architecture applies the next time an app is installed or updated.	Portable Apps landen im Ordner „apps“ im Datenordner von ArtCraft Launcher. Bereits mit dem Windows Installer installierte Apps bleiben, wie sie sind. Eine neue Architektur gilt ab der nächsten Installation oder dem nächsten Update einer App.
 	Running in the background	Im Hintergrund ausführen
 	Keep running in the tray when the window is closed	Beim Schließen des Fensters im Infobereich weiterlaufen
 	Show the window on the current desktop	Fenster auf dem aktuellen Schreibtisch zeigen

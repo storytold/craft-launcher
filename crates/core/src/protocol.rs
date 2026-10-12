@@ -60,8 +60,9 @@ pub struct BackendOptions {
     pub kinds: Vec<PackageKind>,
     /// Offer pre-releases (`0.6.0-rc.1`) as updates.
     pub prereleases: bool,
-    /// Windows: install apps from their portable zip into `<launcher folder>\apps\<app>` instead
-    /// of the MSI, and look only at those copies (Windows Installer installs are ignored).
+    /// Windows: install new apps from their portable zip into the launcher's `<data>\apps\<app>`
+    /// instead of the MSI, and show a portable copy ahead of an MSI install of the same app. Apps
+    /// already installed keep their format.
     #[serde(default)]
     pub portable: bool,
     /// Windows, portable mode: the architecture to download, exactly; `None` for this system's own

@@ -13,7 +13,7 @@ use artcraft_launcher_core::protocol::{
     Source,
 };
 use artcraft_launcher_core::release::{Asset, Release};
-use artcraft_launcher_core::{CraftApp, Installed, PackageKind, SUITE, version};
+use artcraft_launcher_core::{CraftApp, InstallSource, Installed, PackageKind, SUITE, version};
 
 use crate::feed_throttle::{self, FeedThrottle, Outcome};
 use crate::http::{self, Http, Stop};
@@ -191,7 +191,7 @@ impl NativeBackend {
                 let snapshot = crate::detect::Snapshot::take();
                 let manifest = shared.manifest.lock().unwrap_or_else(PoisonError::into_inner).clone();
                 for app in &SUITE {
-                    let found = crate::detect::detect(app, &manifest, &snapshot, options.portable);
+                    let found = crate::detect::detect(app, &manifest, &snapshot, &paths, options.portable);
                     {
                         let mut map = shared.installed.lock().unwrap_or_else(PoisonError::into_inner);
                         match &found {
@@ -382,7 +382,7 @@ impl NativeBackend {
             // Look again: the result is whatever is on disk now.
             let manifest = shared.manifest.lock().unwrap_or_else(PoisonError::into_inner).clone();
             let portable = shared.options.lock().unwrap_or_else(PoisonError::into_inner).portable;
-            let found = crate::detect::detect(app, &manifest, &crate::detect::Snapshot::take(), portable);
+            let found = crate::detect::detect(app, &manifest, &crate::detect::Snapshot::take(), &paths, portable);
             // One installer call can cover several apps, and fail after some of them went in.
             let latest = shared.latest.lock().unwrap_or_else(PoisonError::into_inner).get(app.id).cloned();
             let result = match (result, latest) {
@@ -585,8 +585,9 @@ fn restart_blocked(mut busy: Vec<&str>) -> String {
 }
 
 /// The file an install of `app` would download now: same format as the installed copy, else
-/// the user's preference, else the best this system supports. In portable mode (Windows): the
-/// portable zip, for the chosen architecture or else this system's.
+/// the user's preference, else the best this system supports. On Windows a portable copy updates
+/// from the portable zip, and so does a new install in portable mode (an MSI install stays MSI):
+/// for the chosen architecture, or else this system's.
 fn planned_asset(
     app: &CraftApp,
     release: &Release,
@@ -596,8 +597,11 @@ fn planned_asset(
     record: Option<&crate::manifest::Record>,
 ) -> Option<(Asset, PackageKind)> {
     let stems: Vec<&str> = app.stems().collect();
-    if options.portable {
-        // Portable mode ignores any installed copy that isn't portable, and its format.
+    let portable = match existing {
+        Some(i) => i.source == InstallSource::Launcher,
+        None => options.portable,
+    };
+    if platform.os == Os::Windows && portable {
         let kind = PackageKind::PortableZip;
         return match options.portable_arch {
             Some(arch) => pick_asset_exact(release, &stems, Platform { arch, ..platform }, kind).map(|a| (a.clone(), kind)),
@@ -1259,26 +1263,38 @@ mod tests {
     }
 
     #[test]
-    fn portable_mode_plans_the_portable_zip_for_the_chosen_architecture() {
+    fn portable_zips_are_planned_for_portable_copies_and_new_installs_in_portable_mode() {
         let app = CraftApp::by_id(APP).unwrap();
         let x64 = Platform { os: Os::Windows, arch: Arch::X64 };
-        let msi = Installed { version: version::parse("0.4.0"), source: InstallSource::Msi, location: String::new(), package: None };
-        let plan = |release: &Release, platform, portable_arch| {
-            let options = BackendOptions { portable: true, portable_arch, ..BackendOptions::default() };
-            planned_asset(app, release, platform, &options, Some(&msi), None).map(|(a, k)| (a.name, k))
+        let copy = |source| Installed { version: version::parse("0.4.0"), source, location: String::new(), package: None };
+        let (msi, portable) = (copy(InstallSource::Msi), copy(InstallSource::Launcher));
+        let plan = |release: &Release, platform, mode, portable_arch, existing: Option<&Installed>| {
+            let options = BackendOptions { portable: mode, portable_arch, ..BackendOptions::default() };
+            planned_asset(app, release, platform, &options, existing, None).map(|(a, k)| (a.name, k))
         };
         let r = release("0.5.0");
-        // An MSI install doesn't count in portable mode: the portable zip, native first.
-        assert_eq!(plan(&r, x64, None), Some(("photocraft-0.5.0-windows-x64-portable.zip".into(), PackageKind::PortableZip)));
-        assert_eq!(plan(&r, x64, Some(Arch::X86)).map(|p| p.0).as_deref(), Some("photocraft-0.5.0-windows-x86-portable.zip"));
+        // A new install in portable mode: the portable zip, native first, or the chosen build.
+        assert_eq!(plan(&r, x64, true, None, None), Some(("photocraft-0.5.0-windows-x64-portable.zip".into(), PackageKind::PortableZip)));
+        assert_eq!(plan(&r, x64, true, Some(Arch::X86), None).map(|p| p.0).as_deref(), Some("photocraft-0.5.0-windows-x86-portable.zip"));
         // No ARM64 zip: "system" falls back to the emulated build, a chosen ARM64 doesn't.
         let arm = Platform { os: Os::Windows, arch: Arch::Arm64 };
         let no_arm = Release { assets: r.assets.iter().filter(|a| !a.name.contains("arm64")).cloned().collect(), ..r.clone() };
-        assert_eq!(plan(&no_arm, arm, None).map(|p| p.0).as_deref(), Some("photocraft-0.5.0-windows-x64-portable.zip"));
-        assert_eq!(plan(&no_arm, arm, Some(Arch::Arm64)), None);
-        // Off: the MSI install is updated with an MSI, as before.
+        assert_eq!(plan(&no_arm, arm, true, None, None).map(|p| p.0).as_deref(), Some("photocraft-0.5.0-windows-x64-portable.zip"));
+        assert_eq!(plan(&no_arm, arm, true, Some(Arch::Arm64), None), None);
+        // A portable copy updates from the zip whether or not the mode is on.
+        for mode in [true, false] {
+            assert_eq!(plan(&r, x64, mode, None, Some(&portable)).map(|p| p.1), Some(PackageKind::PortableZip));
+        }
+        // An MSI install stays an MSI install, in portable mode too, and so does a new one with
+        // the mode off.
         #[cfg(windows)]
-        assert_eq!(planned_asset(app, &r, x64, &BackendOptions::default(), Some(&msi), None).map(|(_, k)| k), Some(PackageKind::Msi));
+        {
+            for mode in [true, false] {
+                assert_eq!(plan(&r, x64, mode, None, Some(&msi)).map(|p| p.1), Some(PackageKind::Msi));
+            }
+            assert_eq!(plan(&r, x64, false, None, None).map(|p| p.1), Some(PackageKind::Msi));
+        }
+        let _ = &msi;
     }
 
     /// A backend that knows `release("0.5.0")` and keeps its files under `root`.

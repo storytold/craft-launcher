@@ -78,8 +78,7 @@
 	Use portable apps instead of the installer	使用便携版应用而非安装程序
 	Architecture	架构
 	System ({arch})	系统默认 ({arch})
-	Portable apps go into the apps folder next to ArtCraft Launcher. Apps installed with the Windows Installer aren't shown while this is on. A new architecture applies the next time an app is installed or updated.	便携版应用将放在 ArtCraft Launcher 旁边的 apps 文件夹中。开启此选项时，不会显示通过 Windows Installer 安装的应用。更改架构将在下次安装或更新应用时生效。
-	This deletes the app's whole folder ({path}), including any settings and files the app saved there.	这将删除应用的整个文件夹 ({path})，包括应用保存在其中的所有设置和文件。
+	Portable apps go into the apps folder in ArtCraft Launcher's data folder. Apps already installed with the Windows Installer stay as they are. A new architecture applies the next time an app is installed or updated.	便携版应用会放在 ArtCraft Launcher 数据文件夹中的 apps 文件夹里。已通过 Windows Installer 安装的应用保持不变。新的架构将在下次安装或更新应用时生效。
 	Running in the background	后台运行
 	Keep running in the tray when the window is closed	关闭窗口后继续在系统托盘中运行
 	Show the window on the current desktop	在当前桌面显示窗口

@@ -93,6 +93,11 @@
 	Install new apps as	Instaluj nowe aplikacje jako
 	System package (recommended)	Pakiet systemowy (zalecany)
 	Updates always use the format an app was installed with.	Aktualizacje zawsze używają formatu, w jakim pierwotnie zainstalowano aplikację.
+	Installing on Windows	Instalacja w systemie Windows
+	Use portable apps instead of the installer	Używaj aplikacji przenośnych zamiast instalatora
+	Architecture	Architektura
+	System ({arch})	System ({arch})
+	Portable apps go into the apps folder in ArtCraft Launcher's data folder. Apps already installed with the Windows Installer stay as they are. A new architecture applies the next time an app is installed or updated.	Aplikacje przenośne trafiają do folderu apps w folderze danych ArtCraft Launcher. Aplikacje zainstalowane już za pomocą Instalatora Windows pozostają bez zmian. Nowa architektura zostanie zastosowana przy następnej instalacji lub aktualizacji aplikacji.
 	Running in the background	Działanie w tle
 	Keep running in the tray when the window is closed	Po zamknięciu okna działaj w zasobniku systemowym
 	Show the window on the current desktop	Pokaż okno na bieżącym pulpicie

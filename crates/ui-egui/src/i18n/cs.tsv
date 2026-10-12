@@ -79,6 +79,11 @@
 	Install new apps as	Instalovat nové aplikace jako
 	System package (recommended)	Systémový balíček (doporučeno)
 	Updates always use the format an app was installed with.	Aktualizace vždy použijí formát, ve kterém byla aplikace nainstalována.
+	Installing on Windows	Instalace ve Windows
+	Use portable apps instead of the installer	Používat přenosné aplikace místo instalačního programu
+	Architecture	Architektura
+	System ({arch})	Systém ({arch})
+	Portable apps go into the apps folder in ArtCraft Launcher's data folder. Apps already installed with the Windows Installer stay as they are. A new architecture applies the next time an app is installed or updated.	Přenosné aplikace se ukládají do složky apps v datové složce ArtCraft Launcher. Aplikace již nainstalované pomocí Instalační služby systému Windows zůstanou, jak jsou. Nová architektura se použije při příští instalaci nebo aktualizaci aplikace.
 	Running in the background	Běh na pozadí
 	Keep running in the tray when the window is closed	Po zavření okna ponechat spuštěné v oznamovací oblasti
 	Show the window on the current desktop	Zobrazit okno na aktuální ploše

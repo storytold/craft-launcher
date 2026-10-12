@@ -106,8 +106,8 @@ pub struct Settings {
     pub prereleases: bool,
     /// Linux: the package format to prefer for new installs (empty: the system's own).
     pub preferred_kinds: Vec<PackageKind>,
-    /// Windows: install portable copies into `apps\<app>` beside the launcher instead of using the
-    /// MSI, and show only those.
+    /// Windows: install new apps as portable copies in the launcher's data folder instead of with
+    /// the MSI. Apps already installed with the MSI stay as they are.
     pub portable_apps: bool,
     /// Windows, portable apps: the architecture to download (`None`: this system's).
     pub portable_arch: Option<Arch>,
