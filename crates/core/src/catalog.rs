@@ -10,7 +10,7 @@ use serde::{Deserialize, Serialize};
 /// Which generation of the suite an app belongs to.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum AppGroup {
-    /// The seven original apps, each with a page on getartcraft.com.
+    /// The seven original apps.
     Classic,
     /// The five apps added after them.
     New,
@@ -34,8 +34,6 @@ pub struct CraftApp {
     pub name: &'static str,
     /// What it's for, in a few words (English; the UI translates it by app id).
     pub tagline: &'static str,
-    /// The familiar app it reimplements, for orientation.
-    pub like: &'static str,
     pub group: AppGroup,
     /// Brand colour (sRGB), for surfaces: getartcraft.com's `--app`.
     pub color: [u8; 3],
@@ -47,14 +45,11 @@ pub struct CraftApp {
     pub repo: &'static str,
     /// Older names its release assets may carry (PdfCraft shipped as PrintCraft until 0.2.1).
     pub former_ids: &'static [&'static str],
+    /// Older display names its installers registered (PdfCraft's MSI said PrintCraft until 0.2.1).
+    pub former_names: &'static [&'static str],
 }
 
 impl CraftApp {
-    /// The product it's inspired by, with its registered-trademark sign (`Adobe Photoshop®`).
-    pub fn inspired_by(&self) -> String {
-        format!("{}®", self.like)
-    }
-
     /// `ai.storyteller.<id>`: macOS bundle id, Flatpak id and Linux desktop-file id.
     pub fn bundle_id(&self) -> String {
         format!("ai.storyteller.{}", self.id)
@@ -68,14 +63,19 @@ impl CraftApp {
         format!("https://github.com/{}", self.repo)
     }
 
-    /// The app's page on getartcraft.com (classic apps only).
-    pub fn website(&self) -> Option<String> {
-        (self.group == AppGroup::Classic).then(|| format!("https://getartcraft.com/apps/{}", self.id))
+    /// The app's page on getartcraft.com.
+    pub fn website(&self) -> String {
+        format!("https://getartcraft.com/apps/{}", self.id)
     }
 
     /// Asset stems this app's releases may use, current first.
     pub fn stems(&self) -> impl Iterator<Item = &'static str> + '_ {
         std::iter::once(self.id).chain(self.former_ids.iter().copied())
+    }
+
+    /// Display names this app's installers may have registered, current first.
+    pub fn names(&self) -> impl Iterator<Item = &'static str> + '_ {
+        std::iter::once(self.name).chain(self.former_names.iter().copied())
     }
 
     pub fn by_id(id: &str) -> Option<&'static CraftApp> {
@@ -87,12 +87,11 @@ const fn app(
     id: &'static str,
     name: &'static str,
     tagline: &'static str,
-    like: &'static str,
     group: AppGroup,
     [color, ink_light, ink_dark]: [[u8; 3]; 3],
     repo: &'static str,
 ) -> CraftApp {
-    CraftApp { id, name, tagline, like, group, color, ink_light, ink_dark, repo, former_ids: &[] }
+    CraftApp { id, name, tagline, group, color, ink_light, ink_dark, repo, former_ids: &[], former_names: &[] }
 }
 
 /// The Craft App Suite, in display order: the seven classic apps, then the five new ones.
@@ -101,7 +100,6 @@ pub const SUITE: [CraftApp; 12] = [
         "photocraft",
         "PhotoCraft",
         "Image editing",
-        "Adobe Photoshop",
         AppGroup::Classic,
         [[0x2f, 0x7b, 0xf5], [0x1a, 0x5b, 0xc4], [0x7f, 0xb0, 0xff]],
         "storytold/photocraft",
@@ -110,7 +108,6 @@ pub const SUITE: [CraftApp; 12] = [
         "vectorcraft",
         "VectorCraft",
         "Vector illustration",
-        "Adobe Illustrator",
         AppGroup::Classic,
         [[0xe8, 0x57, 0x3f], [0xb8, 0x3a, 0x24], [0xff, 0x8a, 0x70]],
         "storytold/vectorcraft",
@@ -119,7 +116,6 @@ pub const SUITE: [CraftApp; 12] = [
         "filmcraft",
         "FilmCraft",
         "Video editing, color and sound",
-        "Adobe Premiere Pro",
         AppGroup::Classic,
         [[0x8b, 0x5c, 0xf6], [0x6a, 0x3f, 0xd6], [0xb6, 0x9c, 0xff]],
         "storytold/filmcraft",
@@ -128,18 +124,17 @@ pub const SUITE: [CraftApp; 12] = [
         "lightcraft",
         "LightCraft",
         "Photo library and raw development",
-        "Adobe Lightroom",
         AppGroup::Classic,
         [[0xf2, 0xa5, 0x16], [0x8a, 0x58, 0x00], [0xff, 0xc1, 0x4d]],
         "storytold/lightcraft",
     ),
     CraftApp {
         former_ids: &["printcraft"],
+        former_names: &["PrintCraft"],
         ..app(
             "pdfcraft",
             "PdfCraft",
             "Reading, organizing and protecting PDFs",
-            "Adobe Acrobat",
             AppGroup::Classic,
             [[0x12, 0xa5, 0x8a], [0x0a, 0x75, 0x63], [0x3f, 0xd6, 0xb8]],
             "storytold/pdfcraft",
@@ -149,7 +144,6 @@ pub const SUITE: [CraftApp; 12] = [
         "effectcraft",
         "EffectCraft",
         "Motion graphics and visual effects",
-        "Adobe After Effects",
         AppGroup::Classic,
         [[0xe0, 0x36, 0x8f], [0xb0, 0x20, 0x6c], [0xff, 0x7a, 0xb8]],
         "storytold/effectcraft",
@@ -158,7 +152,6 @@ pub const SUITE: [CraftApp; 12] = [
         "designcraft",
         "DesignCraft",
         "Page layout and publishing",
-        "Adobe InDesign",
         AppGroup::Classic,
         [[0x7b, 0xb5, 0x1c], [0x45, 0x70, 0x08], [0xa6, 0xe0, 0x4a]],
         "storytold/designcraft",
@@ -167,7 +160,6 @@ pub const SUITE: [CraftApp; 12] = [
         "wordcraft",
         "WordCraft",
         "Writing and document design",
-        "Microsoft Word",
         AppGroup::New,
         [[0x3f, 0x5f, 0xe0], [0x2a, 0x44, 0xb8], [0x8e, 0xa2, 0xff]],
         "storytold/wordcraft",
@@ -176,7 +168,6 @@ pub const SUITE: [CraftApp; 12] = [
         "deckcraft",
         "DeckCraft",
         "Presentations and slide shows",
-        "Microsoft PowerPoint",
         AppGroup::New,
         [[0xf0, 0x7a, 0x1e], [0xa8, 0x4f, 0x0a], [0xff, 0xa0, 0x60]],
         "storytold/deckcraft",
@@ -185,7 +176,6 @@ pub const SUITE: [CraftApp; 12] = [
         "gridcraft",
         "GridCraft",
         "Spreadsheets and data",
-        "Microsoft Excel",
         AppGroup::New,
         [[0x1f, 0x9d, 0x55], [0x12, 0x70, 0x3a], [0x4f, 0xd6, 0x8a]],
         "storytold/gridcraft",
@@ -194,7 +184,6 @@ pub const SUITE: [CraftApp; 12] = [
         "cadcraft",
         "CADCraft",
         "Computer-aided design and drafting",
-        "Autodesk AutoCAD",
         AppGroup::New,
         [[0x3e, 0xa6, 0xe8], [0x1a, 0x6f, 0xa8], [0x7c, 0xc8, 0xff]],
         "storytold/cadcraft",
@@ -203,23 +192,17 @@ pub const SUITE: [CraftApp; 12] = [
         "soundcraft",
         "SoundCraft",
         "Recording, editing and mixing audio",
-        "Avid Pro Tools",
         AppGroup::New,
         [[0x1f, 0xa5, 0xc9], [0x0e, 0x72, 0x90], [0x5f, 0xd0, 0xee]],
         "storytold/soundcraft",
     ),
 ];
 
-/// Shown wherever the products the apps are inspired by are named.
-pub const TRADEMARK_NOTICE: &str = "Adobe, Photoshop, Illustrator, Premiere Pro, Lightroom, Acrobat, After Effects and InDesign are either \
-registered trademarks or trademarks of Adobe in the United States and/or other countries. Microsoft, Word, PowerPoint and Excel are \
-trademarks of the Microsoft group of companies. Autodesk and AutoCAD are registered trademarks or trademarks of Autodesk, Inc. Avid \
-and Pro Tools are trademarks or registered trademarks of Avid Technology, Inc. All other trademarks are the property of their \
-respective owners. These names are used only to describe what each Craft App is for; the Craft App Suite is independent and is not \
-affiliated with, sponsored by or endorsed by any of these companies.";
-
 /// ArtCraft's website.
 pub const WEBSITE_URL: &str = "https://getartcraft.com";
+/// The GitHub account every Craft App's repository lives under: the only one the launcher
+/// installs from, whatever the release feed says.
+pub const GITHUB_OWNER: &str = "storytold";
 /// ArtCraft on GitHub: every Craft App's source.
 pub const GITHUB_URL: &str = "https://github.com/storytold";
 /// ArtCraft's social accounts: (service, URL). Shown as small icons, less prominent than Discord.
@@ -241,7 +224,6 @@ pub const LAUNCHER: CraftApp = app(
     "artcraft-launcher",
     "ArtCraft Launcher",
     "Installs and updates the Craft App Suite",
-    "",
     AppGroup::New,
     [[0x0b, 0x0b, 0x0c], [0x0b, 0x0b, 0x0c], [0xf2, 0xf1, 0xee]],
     "storytold/craft-launcher",
@@ -271,21 +253,11 @@ mod tests {
     }
 
     #[test]
-    fn every_inspiring_product_is_covered_by_the_trademark_notice() {
-        for a in &SUITE {
-            assert!(a.inspired_by().ends_with('®'));
-            // The company and the product name both appear in the notice.
-            let (company, product) = a.like.split_once(' ').unwrap();
-            assert!(TRADEMARK_NOTICE.contains(company), "{company}");
-            assert!(TRADEMARK_NOTICE.contains(product), "{product}");
-        }
-    }
-
-    #[test]
     fn pdfcraft_also_answers_to_printcraft() {
         let pdf = CraftApp::by_id("pdfcraft").unwrap();
         assert_eq!(pdf.stems().collect::<Vec<_>>(), ["pdfcraft", "printcraft"]);
-        assert_eq!(pdf.website().as_deref(), Some("https://getartcraft.com/apps/pdfcraft"));
-        assert_eq!(CraftApp::by_id("wordcraft").unwrap().website(), None);
+        assert_eq!(pdf.names().collect::<Vec<_>>(), ["PdfCraft", "PrintCraft"]);
+        assert_eq!(pdf.website(), "https://getartcraft.com/apps/pdfcraft");
+        assert_eq!(CraftApp::by_id("wordcraft").unwrap().website(), "https://getartcraft.com/apps/wordcraft");
     }
 }

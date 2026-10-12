@@ -183,6 +183,7 @@ month	Dec	12.
 	{version} installed → {latest} released	Nainstalována verze {version} → vydána {latest}
 	Version {version}	Verze {version}
 	{installed} installed · latest {latest}	Nainstalována verze {installed} · nejnovější {latest}
+	Installed · latest {latest}	Nainstalováno · nejnovější {latest}
 	Version {version} installed	Nainstalována verze {version}
 	Version {latest}	Verze {latest}
 	No release published yet	Zatím nebylo zveřejněno žádné vydání

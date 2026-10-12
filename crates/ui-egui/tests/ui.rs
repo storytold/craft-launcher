@@ -123,6 +123,23 @@ fn harness_with(
     manage: bool,
     scale: f32,
 ) -> (Harness<'static, Option<LauncherUi>>, Rc<RefCell<Vec<Command>>>) {
+    harness_with_title_bar(events, view, theme, manage, scale, artcraft_launcher_ui_egui::TitleBar::Native)
+}
+
+fn harness_with_title_bar(
+    events: Vec<Event>,
+    view: ViewMode,
+    theme: egui::Theme,
+    manage: bool,
+    scale: f32,
+    bar: artcraft_launcher_ui_egui::TitleBar,
+) -> (Harness<'static, Option<LauncherUi>>, Rc<RefCell<Vec<Command>>>) {
+    struct HeaderHost(artcraft_launcher_ui_egui::TitleBar);
+    impl Host for HeaderHost {
+        fn title_bar(&self) -> artcraft_launcher_ui_egui::TitleBar {
+            self.0
+        }
+    }
     // Integration tests compile without cfg!(test), so system_lang() picks up the
     // developer's locale. Force English so labels match the assertions.
     artcraft_launcher_ui_egui::i18n::set_test_lang(artcraft_launcher_ui_egui::i18n::Lang::EN);
@@ -146,8 +163,8 @@ fn harness_with(
                 *state = Some(LauncherUi::new(ui.ctx(), Box::new(b), s));
             }
             if let Some(l) = state.as_mut() {
-                l.logic(&ui.ctx().clone(), &mut NoHost);
-                l.ui(ui, &mut NoHost);
+                l.logic(&ui.ctx().clone(), &mut HeaderHost(bar));
+                l.ui(ui, &mut HeaderHost(bar));
             }
         },
         None,
@@ -201,11 +218,9 @@ fn grid_shows_every_status_and_installs_on_click() {
     h.get_by_label("Update to 0.5.0");
     h.get_by_label("Update to 0.6.0");
     h.get_by_label_contains("0.4.1 installed → 0.5.0 released");
-    h.get_by_label("Like Adobe Photoshop®");
     // The window has no title bar of its own here (the web build, and the tests).
     assert!(h.query_by_label("Close").is_none());
     assert!(h.query_all_by_label_contains("Discord").count() >= 2); // header link and footer link
-    h.get_by_label_contains("Adobe, Photoshop, Illustrator");
     assert!(h.query_all_by_label("Coming soon").count() >= 1);
     h.get_by_label_contains("48 MB of 131 MB");
     h.get_by_label("Update all (2)").click();
@@ -367,9 +382,6 @@ fn table_view_and_light_theme() {
     let (mut h, sent) = harness(ViewMode::Table, egui::Theme::Light, true);
     h.run_steps(8);
     snapshot(&mut h, "table-light");
-    h.get_by_label("Adobe Photoshop®");
-    h.get_by_label("Microsoft Excel®");
-    h.get_by_label_contains("Avid and Pro Tools are trademarks");
     h.get_by_label("Update to 0.5.0").click();
     h.run_steps(2);
     assert!(sent.borrow().contains(&Command::Install { app: "photocraft".into() }));
@@ -411,7 +423,7 @@ fn name_and_tagline_are_centred_on_the_icon() {
         let (mut h, _) = harness_at(ViewMode::Grid, egui::Theme::Dark, true, scale);
         h.run_steps(8);
         snapshot(&mut h, &format!("grid-dark{suffix}"));
-        let off = below_icon_centre(&h, &["PhotoCraft", "Image editing", "Like Adobe Photoshop®"]);
+        let off = below_icon_centre(&h, &["PhotoCraft", "Image editing"]);
         assert!(off.abs() < 0.25, "grid at {scale}x: {off}");
         let (mut h, _) = harness_at(ViewMode::Table, egui::Theme::Light, true, scale);
         h.run_steps(8);
@@ -453,11 +465,6 @@ fn every_table_column_sorts_both_ways() {
     h.run_steps(3);
     let o = order(&h);
     assert_eq!(&o[..4], ["WordCraft", "LightCraft", "PhotoCraft", "EffectCraft"], "{o:?}");
-    // Inspired by: A to Z.
-    h.get_by_label("Inspired by").click();
-    h.run_steps(3);
-    let o = order(&h);
-    assert_eq!(o.first().map(String::as_str), Some("PdfCraft"), "{o:?}"); // Adobe Acrobat
     // Latest: highest version first, SoundCraft (no release) last.
     h.get_by_label("Latest").click();
     h.run_steps(3);
@@ -486,6 +493,31 @@ fn settings_link_to_discord() {
 }
 
 #[test]
+fn the_uninstall_prompt_keeps_its_own_size_after_a_taller_dialog() {
+    let (mut h, _) = harness(ViewMode::Grid, egui::Theme::Dark, true);
+    h.run_steps(6);
+    // Settings is the tallest dialog: open it and close it again.
+    h.get_by_label("Settings").click();
+    h.run_steps(4);
+    h.get_by_label("Done").click();
+    h.run_steps(3);
+    // PhotoCraft is installed, so its … menu offers Uninstall.
+    h.get_all_by_label("…").next().unwrap().click();
+    h.run_steps(3);
+    h.get_by_label("Uninstall…").click();
+    h.run_steps(4);
+    snapshot(&mut h, "uninstall-prompt-dark");
+    // The buttons follow the text closely, not somewhere down the height Settings had (#88).
+    let text = h.get_by_label("The app will be moved to the Trash. Your documents and settings stay.").rect();
+    let button = h.get_by_label("Uninstall").rect();
+    let gap = button.top() - text.bottom();
+    assert!((0.0..48.0).contains(&gap), "the buttons sit {gap} px below the text");
+    h.get_by_label("Cancel").click();
+    h.run_steps(3);
+    assert!(h.query_by_label("Uninstall").is_none());
+}
+
+#[test]
 fn links_to_the_website_github_and_each_apps_pages() {
     let (mut h, _) = harness(ViewMode::Grid, egui::Theme::Dark, true);
     h.run_steps(6);
@@ -493,18 +525,19 @@ fn links_to_the_website_github_and_each_apps_pages() {
     for label in ["Website", "GitHub", "Discord"] {
         assert!(h.query_all_by_label(label).count() >= 1, "{label}");
     }
-    // Cards: every app links to its repo; only the seven classic apps have a website (plus the footer's).
+    // Cards: every app links to its repo and to its own page on getartcraft.com (plus the footer's).
     let shown_cards = h.query_all_by_label("GitHub").count() - 1;
     let shown_sites = h.query_all_by_label("Website").count() - 1;
-    assert!(shown_cards >= 7, "{shown_cards}");
-    assert_eq!(shown_sites, 7, "only classic apps have website pages");
-    // The table's … menu has the app's GitHub repo and, for a new app, no website yet.
+    assert!(shown_cards >= 12, "{shown_cards}");
+    assert_eq!(shown_sites, 12, "every app has a website page");
+    // The table's … menu has the app's website and GitHub repo.
     let (mut h, _) = harness(ViewMode::Table, egui::Theme::Dark, true);
     h.run_steps(6);
     h.get_all_by_label("…").nth(7).unwrap().click(); // WordCraft
     h.run_steps(3);
     h.get_by_label("GitHub repository");
-    h.get_by_label("Website (coming soon)");
+    // The footer's Website link and WordCraft's now-live one in the menu.
+    assert!(h.query_all_by_label_contains("Website").count() >= 2);
 }
 
 /// Clicks the `n`th widget labelled `label` and returns the URL the app asked to open.
@@ -914,6 +947,45 @@ fn the_rate_limit_notice_never_runs_under_the_footer_links() {
         for r in right {
             assert!(!r.intersects(notice), "{width}: notice {notice:?} overlaps {r:?}");
             assert!(!r.intersects(checked), "{width}: check time {checked:?} overlaps {r:?}");
+        }
+    }
+}
+
+#[test]
+fn narrow_header_keeps_the_view_switch_clear_of_brand_text() {
+    use artcraft_launcher_ui_egui::TitleBar;
+    for theme in [egui::Theme::Dark, egui::Theme::Light] {
+        for bar in [TitleBar::Native, TitleBar::MacOs, TitleBar::Custom] {
+            let (mut h, _) = harness_with_title_bar(events(), ViewMode::Grid, theme, true, 1.0, bar);
+            for width in (720..=1180).step_by(10).chain([720, 1180]).map(|w| w as f32) {
+                h.set_size(egui::vec2(width, 900.0));
+                h.run_steps(6);
+                for label in ["Grid", "Table", "Settings", "Check for updates"] {
+                    let rect = h.get_by_label(label).rect();
+                    assert!(rect.left() >= 0.0 && rect.right() <= width, "{bar:?} {width}: {label} {rect:?}");
+                    for label in ["Launcher", "Craft App Suite"] {
+                        if let Some(text) = h.query_by_label(label) {
+                            assert!(!rect.intersects(text.rect()), "{bar:?} {width}: {label} overlaps {rect:?}");
+                        }
+                    }
+                }
+                if bar == TitleBar::Custom {
+                    for label in ["Minimize", "Maximize", "Close"] {
+                        let rect = h.get_by_label(label).rect();
+                        assert!(rect.left() >= 0.0 && rect.right() <= width, "{width}: {label} {rect:?}");
+                    }
+                }
+                if width == 1180.0 {
+                    h.get_by_label("Launcher");
+                    h.get_by_label("Craft App Suite");
+                }
+                if [720.0, 800.0, 1180.0].contains(&width) {
+                    snapshot(&mut h, &format!("header-{theme:?}-{bar:?}-{width}"));
+                }
+            }
+            h.get_by_label("Table").click();
+            h.run_steps(2);
+            assert_eq!(h.state().as_ref().unwrap().settings.view, ViewMode::Table);
         }
     }
 }

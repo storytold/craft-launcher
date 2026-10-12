@@ -27,7 +27,7 @@ jobs:
         # are kept for release builds, and release.yml builds and checks macOS.
         os: [ubuntu-latest, windows-latest]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       # egui/winit/wgpu headers. The tray (ksni) and notifications (notify-rust over zbus) are
       # pure-Rust D-Bus clients, so no GTK, appindicator, xdo or libdbus packages are needed.
@@ -42,7 +42,7 @@ jobs:
         with:
           components: clippy, rustfmt
 
-      - uses: Swatinem/rust-cache@v2
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
 
       - name: Format
         if: runner.os == 'Linux'
@@ -60,12 +60,12 @@ jobs:
     env:
       TRUNK_VERSION: 0.21.14
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: wasm32-unknown-unknown
           components: clippy
-      - uses: Swatinem/rust-cache@v2
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
         with:
           key: wasm32
       - name: Check wasm-safe crates

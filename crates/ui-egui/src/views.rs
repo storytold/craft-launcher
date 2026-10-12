@@ -63,9 +63,6 @@ const CARD_PAD: f32 = 20.0;
 /// Room macOS's traffic lights take at the left of the header.
 const TRAFFIC_LIGHTS_W: f32 = 72.0;
 
-/// A run of cards, under an optional (number, title) eyebrow.
-type Section = (Option<(&'static str, &'static str)>, Vec<&'static str>);
-
 impl LauncherUi {
     /// The header bar; with a custom or macOS title bar it is also the window's title bar.
     pub(crate) fn header(&mut self, ui: &mut Ui, bar: TitleBar) {
@@ -83,11 +80,6 @@ impl LauncherUi {
             let logo = vec2(14.0 * crate::icons::ARTCRAFT_LOGO_ASPECT, 14.0);
             let (cell, _) = ui.allocate_exact_size(vec2(logo.x + 40.0, h), Sense::hover());
             egui::Image::new(crate::icons::artcraft_logo(t.dark)).alt_text(tl!("ArtCraft")).paint_at(ui, Rect::from_center_size(cell.center(), logo));
-            widgets::rule(ui, h);
-            ui.add_space(16.0);
-            widgets::tag(ui, tl!("Launcher"), t.invert_bg, t.invert_fg);
-            ui.add_space(12.0);
-            widgets::hud(ui, tl!("Craft App Suite"), t.muted);
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 if bar == TitleBar::Custom {
                     widgets::window_buttons(ui, h);
@@ -115,6 +107,20 @@ impl LauncherUi {
                 }
                 ui.add_space(6.0);
                 widgets::rule(ui, h);
+                // The controls reserve their actual widths before the secondary text gets space.
+                ui.with_layout(egui::Layout::left_to_right(egui::Align::Center), |ui| {
+                    let tag_width =
+                        widgets::caps(ui, tl!("Launcher"), theme::HUD_SIZE, theme::mono_bold(), theme::HUD_SPACING, t.ink).size().x + 16.0;
+                    if ui.available_width() >= 17.0 + tag_width {
+                        widgets::rule(ui, h);
+                        ui.add_space(16.0);
+                        widgets::tag(ui, tl!("Launcher"), t.invert_bg, t.invert_fg);
+                    }
+                    if ui.available_width() >= 12.0 + widgets::hud_galley(ui, tl!("Craft App Suite"), t.muted).size().x {
+                        ui.add_space(12.0);
+                        widgets::hud(ui, tl!("Craft App Suite"), t.muted);
+                    }
+                });
             });
         });
     }
@@ -234,15 +240,7 @@ impl LauncherUi {
                         .selected_text(RichText::new(sort_label(self.settings.sort)).size(13.0))
                         .width(140.0)
                         .show_ui(ui, |ui| {
-                            for key in [
-                                SortKey::Suite,
-                                SortKey::Name,
-                                SortKey::InspiredBy,
-                                SortKey::Status,
-                                SortKey::Installed,
-                                SortKey::Latest,
-                                SortKey::Released,
-                            ] {
+                            for key in [SortKey::Suite, SortKey::Name, SortKey::Status, SortKey::Installed, SortKey::Latest, SortKey::Released] {
                                 if ui.selectable_label(self.settings.sort == key, sort_label(key)).clicked() {
                                     self.settings.sort = key;
                                     self.settings.sort_descending = key.starts_descending();
@@ -379,44 +377,15 @@ impl LauncherUi {
         // Neighbouring cards share their 1 px hairline, like the site's `gap-px` grid.
         let cols = ((width / CARD_MIN_W).floor() as usize).max(1);
         let card_w = (width + (cols as f32 - 1.0)) / cols as f32;
-        // In suite order, split into the classic apps and the new ones.
-        let grouped = self.settings.sort == SortKey::Suite && self.settings.filter == Filter::All && self.search.trim().is_empty();
-        let sections: Vec<Section> = if grouped {
-            [(AppGroup::Classic, "01", tl!("Classic apps")), (AppGroup::New, "02", tl!("New apps"))]
-                .iter()
-                .map(|(g, index, title)| {
-                    let list = ids.iter().copied().filter(|id| self.entry(id).is_some_and(|e| e.app.group == *g)).collect();
-                    (Some((*index, *title)), list)
-                })
-                .collect()
-        } else {
-            vec![(None, ids.to_vec())]
-        };
-        let t = Tokens::get(ui.ctx());
-        for (title, list) in sections {
-            if list.is_empty() {
-                continue;
-            }
-            if let Some((index, title)) = title {
-                ui.add_space(4.0);
-                ui.horizontal(|ui| {
-                    widgets::eyebrow(ui, index, title);
-                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        widgets::hud(ui, &tn(list.len() as u64, "{n} app", "{n} apps"), t.faint);
-                    });
-                });
-                ui.add_space(10.0);
-            }
-            let rows = list.len().div_ceil(cols);
-            let height = rows as f32 * (CARD_H - 1.0) + 1.0;
-            let (area, _) = ui.allocate_exact_size(vec2(width, height), Sense::hover());
-            for (i, id) in list.iter().enumerate() {
-                let (row, col) = (i / cols, i % cols);
-                let min = area.min + vec2(col as f32 * (card_w - 1.0), row as f32 * (CARD_H - 1.0));
-                self.card(ui, id, Rect::from_min_size(min, vec2(card_w, CARD_H)));
-            }
-            ui.add_space(24.0);
+        let rows = ids.len().div_ceil(cols);
+        let height = rows as f32 * (CARD_H - 1.0) + 1.0;
+        let (area, _) = ui.allocate_exact_size(vec2(width, height), Sense::hover());
+        for (i, id) in ids.iter().enumerate() {
+            let (row, col) = (i / cols, i % cols);
+            let min = area.min + vec2(col as f32 * (card_w - 1.0), row as f32 * (CARD_H - 1.0));
+            self.card(ui, id, Rect::from_min_size(min, vec2(card_w, CARD_H)));
         }
+        ui.add_space(24.0);
     }
 
     fn card(&mut self, ui: &mut Ui, id: &str, rect: Rect) {
@@ -445,9 +414,7 @@ impl LauncherUi {
             strip_ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 ui.spacing_mut().item_spacing.x = 16.0;
                 widgets::hud_link(ui, tl!("GitHub"), &app.repo_url());
-                if let Some(site) = app.website() {
-                    widgets::hud_link(ui, tl!("Website"), &site);
-                }
+                widgets::hud_link(ui, tl!("Website"), &app.website());
             });
         }
 
@@ -459,10 +426,10 @@ impl LauncherUi {
         let ui = &mut child;
         ui.horizontal(|ui| {
             const ICON: f32 = 56.0;
-            let [name, tagline, like] = [FontId::new(22.0, theme::display()), FontId::proportional(13.5), FontId::proportional(12.0)];
+            let [name, tagline] = [FontId::new(22.0, theme::display()), FontId::proportional(13.5)];
             const GAP: f32 = 4.0;
             // The slot is as tall as the text beside it when that is taller, so the two share a centre.
-            let block = lines_height(ui, &[&name, &tagline, &like], GAP);
+            let block = lines_height(ui, &[&name, &tagline], GAP);
             let (slot, icon_response) = ui.allocate_exact_size(vec2(ICON, block.max(ICON)), Sense::hover());
             icon_response.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Image, true, fmt(tl!("{name} icon"), &[("name", app.name)])));
             // The icon rises a little on hover, over a soft drop shadow (the site's only shadow).
@@ -475,7 +442,7 @@ impl LauncherUi {
                 egui::Image::new(icon).paint_at(ui, icon_rect);
             }
             ui.add_space(6.0);
-            centered_lines(ui, &[&name, &tagline, &like], GAP, |ui| {
+            centered_lines(ui, &[&name, &tagline], GAP, |ui| {
                 // The name's row is as tall as its text, not as a button.
                 ui.spacing_mut().interact_size.y = 0.0;
                 ui.horizontal(|ui| {
@@ -485,10 +452,6 @@ impl LauncherUi {
                     }
                 });
                 ui.add(egui::Label::new(RichText::new(tr_ctx(current(), app.id, app.tagline)).font(tagline.clone()).color(t.muted)).truncate());
-                ui.add(
-                    egui::Label::new(RichText::new(fmt(tl!("Like {name}"), &[("name", &app.inspired_by())])).font(like.clone()).color(t.faint))
-                        .truncate(),
-                );
             });
         });
         ui.add_space(14.0);
@@ -533,7 +496,6 @@ impl LauncherUi {
                 .vscroll(false)
                 .cell_layout(egui::Layout::left_to_right(egui::Align::Center))
                 .column(Column::remainder().at_least(220.0).clip(true))
-                .column(Column::exact(172.0).clip(true))
                 .column(Column::exact(176.0))
                 .column(Column::exact(84.0))
                 .column(Column::exact(84.0))
@@ -542,7 +504,6 @@ impl LauncherUi {
                 .header(42.0, |mut header| {
                     for (key, label) in [
                         (Some(SortKey::Name), tl!("App")),
-                        (Some(SortKey::InspiredBy), tl!("Inspired by")),
                         (Some(SortKey::Status), tl!("Status")),
                         (Some(SortKey::Installed), tr_ctx(current(), "column", "Installed")),
                         (Some(SortKey::Latest), tr_ctx(current(), "column", "Latest")),
@@ -617,9 +578,6 @@ impl LauncherUi {
                                 });
                             });
                             row.col(|ui| {
-                                ui.add(egui::Label::new(RichText::new(entry.app.inspired_by()).size(13.0).color(t.muted)).truncate());
-                            });
-                            row.col(|ui| {
                                 let (text, tone) = model::entry_status_text(&entry, &status, self.caps.manage_apps);
                                 let r = widgets::badge(ui, &text, widgets::tone_color(&t, tone));
                                 if let Some(f) = entry.failure() {
@@ -657,13 +615,6 @@ impl LauncherUi {
                 self.settings.sort_descending = k.starts_descending();
             }
         }
-    }
-
-    /// The trademark notice under the grid and the table.
-    pub(crate) fn trademark_notice(&self, ui: &mut Ui) {
-        let t = Tokens::get(ui.ctx());
-        ui.add_space(8.0);
-        ui.add(egui::Label::new(RichText::new(artcraft_launcher_core::catalog::TRADEMARK_NOTICE).size(11.0).color(t.faint)).wrap());
     }
 
     // ---- actions -------------------------------------------------------------------------
@@ -884,12 +835,7 @@ impl LauncherUi {
                     ui.close();
                 }
             };
-            match entry.app.website() {
-                Some(site) => link(ui, tl!("Website"), site),
-                None => {
-                    ui.add_enabled(false, egui::Button::new(tl!("Website (coming soon)")));
-                }
-            }
+            link(ui, tl!("Website"), entry.app.website());
             link(ui, tl!("GitHub repository"), entry.app.repo_url());
             link(ui, tl!("All releases"), entry.app.releases_url());
         });
@@ -900,7 +846,6 @@ fn sort_label(k: SortKey) -> &'static str {
     match k {
         SortKey::Suite => tl!("Suite order"),
         SortKey::Name => tl!("Name"),
-        SortKey::InspiredBy => tl!("Inspired by"),
         SortKey::Status => tl!("Status"),
         SortKey::Installed => tl!("Installed version"),
         SortKey::Latest => tl!("Latest version"),
@@ -911,14 +856,18 @@ fn sort_label(k: SortKey) -> &'static str {
 /// "0.4.1 installed → 0.5.0 released · Oct 8, 2026" and friends.
 fn version_line(e: &AppEntry, status: &AppStatus) -> String {
     let released = e.release().and_then(|r| r.published_at).map(|at| format!(" · {}", date_text(at))).unwrap_or_default();
-    match (status, e.installed_label(), e.latest_label()) {
+    let inst_ver = e.installed.as_ref().and_then(|i| i.version.as_ref().map(ToString::to_string));
+    let latest = e.latest_label();
+    match (status, inst_ver.as_deref(), latest.as_deref()) {
         (AppStatus::UpdateAvailable, Some(i), Some(l)) => {
-            format!("{}{released}", fmt(tl!("{version} installed → {latest} released"), &[("version", i.as_str()), ("latest", l.as_str())]))
+            format!("{}{released}", fmt(tl!("{version} installed → {latest} released"), &[("version", i), ("latest", l)]))
         }
-        (AppStatus::UpToDate, Some(i), _) => format!("{}{released}", fmt(tl!("Version {version}"), &[("version", i.as_str())])),
-        (_, Some(i), Some(l)) => fmt(tl!("{installed} installed · latest {latest}"), &[("installed", i.as_str()), ("latest", l.as_str())]),
-        (_, Some(i), None) => fmt(tl!("Version {version} installed"), &[("version", i.as_str())]),
-        (_, None, Some(l)) => format!("{}{released}", fmt(tl!("Version {latest}"), &[("latest", l.as_str())])),
+        (AppStatus::UpToDate, Some(i), _) => format!("{}{released}", fmt(tl!("Version {version}"), &[("version", i)])),
+        (_, Some(i), Some(l)) => fmt(tl!("{installed} installed · latest {latest}"), &[("installed", i), ("latest", l)]),
+        (_, None, Some(l)) if e.installed.is_some() => fmt(tl!("Installed · latest {latest}"), &[("latest", l)]),
+        (_, Some(i), None) => fmt(tl!("Version {version} installed"), &[("version", i)]),
+        (_, None, None) if e.installed.is_some() => tl!("Installed").to_string(),
+        (_, None, Some(l)) => format!("{}{released}", fmt(tl!("Version {latest}"), &[("latest", l)])),
         (AppStatus::NoRelease, None, None) => tl!("No release published yet").to_string(),
         _ => " ".to_string(),
     }

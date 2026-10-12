@@ -26,12 +26,11 @@ pub enum Filter {
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub enum SortKey {
-    /// Suite order: classic apps, then new.
+    /// Suite order: classic apps, then new. Settings saved with the removed "Inspired by" sort load as this.
     #[default]
+    #[serde(alias = "InspiredBy")]
     Suite,
     Name,
-    /// The product an app is inspired by.
-    InspiredBy,
     Status,
     /// Installed version.
     Installed,

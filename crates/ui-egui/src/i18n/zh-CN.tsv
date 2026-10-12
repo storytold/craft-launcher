@@ -21,7 +21,6 @@
 	Sort	排序
 	Suite order	默认顺序
 	Name	名称
-	Inspired by	参考软件
 	Status	状态
 	Installed version	已安装版本
 	Latest version	最新版本
@@ -127,6 +126,7 @@ month	Dec	12月
 	{version} installed → {latest} released	已安装 {version} → 最新 {latest}
 	Version {version}	版本 {version}
 	{installed} installed · latest {latest}	已安装 {installed} · 最新 {latest}
+	Installed · latest {latest}	已安装 · 最新 {latest}
 	Version {version} installed	已安装版本 {version}
 	Version {latest}	版本 {latest}
 	No release published yet	尚未发布版本
@@ -140,7 +140,6 @@ month	Dec	12月
 	Descending	降序
 	Click to reverse the order	点击切换排序方向
 	Click to sort by this column	点击按此列排序
-	Like {name}	类似 {name}
 	{done} of {total}	{done} / {total}
 	Downloading	正在下载
 	Verifying checksum…	正在验证校验和…
@@ -150,7 +149,6 @@ month	Dec	12月
 	Checking for updates…	正在检查更新…
 	Downloads the new version, replaces this one and opens it again	下载新版本，替换当前版本并重新打开
 	Couldn't check for updates: {f}	无法检查更新：{f}
-	Website (coming soon)	网站（即将上线）
 	GitHub repository	GitHub 仓库
 	ArtCraft	ArtCraft
 	Update 1 app	更新 1 个应用
@@ -204,7 +202,6 @@ filter	Installed	已安装
 @id	filter.notinstalled	未安装
 @id	sort.suite	默认顺序
 @id	sort.name	名称
-@id	sort.inspired	参考软件
 @id	sort.status	状态
 @id	sort.installed	已安装版本
 @id	sort.latest	最新版本

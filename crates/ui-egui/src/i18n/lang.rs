@@ -18,7 +18,7 @@ pub struct LangInfo {
     pub cjk: bool,
     /// Catalog file contents (empty for the built-in English).
     pub source: &'static str,
-    /// Plural form index for a count (English and German: 0 = one, 1 = other; Russian: 0 = one,
+    /// Plural form index for a count (English, German and Spanish: 0 = one, 1 = other; Russian: 0 = one,
     /// 1 = few, 2 = many; Czech: 0 = one, 1 = few, 2 = other; French: 0 = one for 0 and 1;
     /// Chinese: always 0).
     pub plural: fn(u64) -> usize,
@@ -66,7 +66,7 @@ pub(super) fn plural_czech(n: u64) -> usize {
 }
 
 /// The registry. English first: it is the fallback and the source language.
-pub static LANGUAGES: [LangInfo; 7] = [
+pub static LANGUAGES: [LangInfo; 8] = [
     LangInfo {
         code: "en",
         name: "English",
@@ -134,6 +134,17 @@ pub static LANGUAGES: [LangInfo; 7] = [
         catalog: OnceLock::new(),
     },
     LangInfo {
+        code: "es",
+        name: "Español",
+        english_name: "Spanish",
+        cjk: false,
+        source: include_str!("es.tsv"),
+        plural: plural_one_other,
+        plural_forms: 2,
+        complete_menus: true,
+        catalog: OnceLock::new(),
+    },
+    LangInfo {
         code: "cs",
         name: "Čeština",
         english_name: "Czech",
@@ -177,7 +188,8 @@ impl Lang {
     pub const DE: Lang = Lang(&LANGUAGES[3]);
     pub const FR: Lang = Lang(&LANGUAGES[4]);
     pub const PT_BR: Lang = Lang(&LANGUAGES[5]);
-    pub const CS: Lang = Lang(&LANGUAGES[6]);
+    pub const ES: Lang = Lang(&LANGUAGES[6]);
+    pub const CS: Lang = Lang(&LANGUAGES[7]);
 
     pub fn code(self) -> &'static str {
         self.0.code

@@ -70,17 +70,6 @@ pub fn hud_elided(ui: &mut Ui, text: &str, color: Color32, max_width: f32) -> Re
     if elided { resp.on_hover_text(text) } else { resp }
 }
 
-/// "01 / Classic apps": a section eyebrow, the index faint.
-pub fn eyebrow(ui: &mut Ui, index: &str, label: &str) {
-    let t = Tokens::get(ui.ctx());
-    ui.horizontal(|ui| {
-        ui.spacing_mut().item_spacing.x = 0.0;
-        hud(ui, index, t.faint);
-        hud(ui, " / ", t.faint);
-        hud(ui, label, t.muted);
-    });
-}
-
 /// A solid chip with a bold mono label: an app's number tab (the site's `AppTab`).
 pub fn tag(ui: &mut Ui, text: &str, fill: Color32, ink: Color32) -> Response {
     let galley = caps(ui, text, theme::HUD_SIZE, theme::mono_bold(), theme::HUD_SPACING, ink);
@@ -411,14 +400,16 @@ pub fn progress(ui: &mut Ui, fraction: Option<f32>, caption: &str, color: Color3
             p.rect_filled(Rect::from_min_size(bar.min, vec2(bar.width() * f.clamp(0.0, 1.0), bar.height())), CornerRadius::ZERO, color);
         }
         None => {
-            // Indeterminate: a sweeping segment.
-            let x = (ui.input(|i| i.time) as f32 * 0.8).fract();
-            let seg = Rect::from_min_size(
-                egui::pos2(bar.left() + bar.width() * (x * 1.3 - 0.3).max(0.0), bar.top()),
-                vec2(bar.width() * 0.3, bar.height()),
-            )
-            .intersect(bar);
-            p.rect_filled(seg, CornerRadius::ZERO, color);
+            // Keep the segment moving through the track boundary without resetting visibly.
+            let width = bar.width();
+            let segment_width = width * 0.3;
+            let x = (ui.input(|i| i.time) * 0.8).fract() as f32 * width;
+            for left in [x, x - width] {
+                let seg = Rect::from_min_size(egui::pos2(bar.left() + left, bar.top()), vec2(segment_width, bar.height())).intersect(bar);
+                if seg.is_positive() {
+                    p.rect_filled(seg, CornerRadius::ZERO, color);
+                }
+            }
             ui.ctx().request_repaint();
         }
     }

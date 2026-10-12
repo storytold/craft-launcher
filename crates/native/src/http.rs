@@ -178,24 +178,15 @@ impl Http {
     /// its partial file; a file that fails its checksum is fetched once more from scratch before
     /// giving up. When the connection stays down, the download ends paused (`PAUSED`), never
     /// losing what it has. `stop` pauses or cancels it between reads.
-    pub fn download(
-        &self,
-        url: &str,
-        dest: &Path,
-        size: u64,
-        sha256: Option<&str>,
-        stop: &Stop,
-        progress: &mut dyn FnMut(Transfer),
-    ) -> Result<Verified, String> {
+    pub fn download(&self, url: &str, dest: &Path, size: u64, sha256: &str, stop: &Stop, progress: &mut dyn FnMut(Transfer)) -> Result<(), String> {
         if let Some(dir) = dest.parent() {
             std::fs::create_dir_all(dir).map_err(|e| format!("couldn't create {} ({e})", dir.display()))?;
         }
-        let verified = if sha256.is_some() { Verified::Checksum } else { Verified::SizeOnly };
         // A finished copy from an earlier attempt that never got installed. Marking it as just
         // used, before checking it, keeps `clean_downloads` away from it while it's installed.
-        if dest.is_file() && touch(dest) && matches_published(dest, size, sha256) {
+        if dest.is_file() && touch(dest) && matches_published(dest, sha256) {
             progress(Transfer::Bytes { done: size, total: size });
-            return Ok(verified);
+            return Ok(());
         }
         // The partial file is named after the release file and its size; if it still turns out
         // to belong to something else, the checksum catches it and the download starts over.
@@ -210,9 +201,9 @@ impl Http {
                 }
                 return Err(e);
             }
-            if matches_published(&part, size, sha256) {
+            if matches_published(&part, sha256) {
                 std::fs::rename(&part, dest).map_err(|e| format!("couldn't save the download ({e})"))?;
-                return Ok(verified);
+                return Ok(());
             }
             let _ = std::fs::remove_file(&part);
             if fresh_start_used {
@@ -359,15 +350,6 @@ pub enum Transfer {
     },
 }
 
-/// How a finished download was checked.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum Verified {
-    /// Against the release's published SHA-256.
-    Checksum,
-    /// The release publishes no checksum: only its size could be checked.
-    SizeOnly,
-}
-
 /// Asks a running download to pause (keeping its partial file) or cancel (deleting it).
 #[derive(Debug, Default)]
 pub struct Stop(AtomicU8);
@@ -395,12 +377,9 @@ impl Stop {
     }
 }
 
-/// Whether a file on disk is the published one: its checksum when there is one, else its size.
-fn matches_published(path: &Path, size: u64, sha256: Option<&str>) -> bool {
-    match sha256 {
-        Some(sha) => sha256_file(path).is_ok_and(|h| h.eq_ignore_ascii_case(sha)),
-        None => size > 0 && std::fs::metadata(path).is_ok_and(|m| m.len() == size),
-    }
+/// Whether a file on disk is the published one: its SHA-256 matches.
+fn matches_published(path: &Path, sha256: &str) -> bool {
+    sha256_file(path).is_ok_and(|h| h.eq_ignore_ascii_case(sha256))
 }
 
 /// How much of a download is already on disk (a paused or interrupted one).
@@ -564,18 +543,18 @@ pub(crate) mod tests {
         let dir = tempfile::tempdir().unwrap();
         let dest = dir.path().join("file.bin");
         let http = Http::new().unwrap();
-        http.download(&url, &dest, len, Some(&sha), &Stop::default(), &mut |_| {}).unwrap();
+        http.download(&url, &dest, len, &sha, &Stop::default(), &mut |_| {}).unwrap();
         assert!(finished(&dest, len) && !finished(&dest, 0));
         // Old enough to be cleaned up, were it not about to be used.
         let old = std::time::SystemTime::now() - Duration::from_secs(40 * 86_400);
         std::fs::File::options().write(true).open(&dest).unwrap().set_modified(old).unwrap();
         let mut last = (0, 0);
-        let again = http.download(&url, &dest, len, Some(&sha), &Stop::default(), &mut |t| {
+        let again = http.download(&url, &dest, len, &sha, &Stop::default(), &mut |t| {
             if let Transfer::Bytes { done, total } = t {
                 last = (done, total);
             }
         });
-        assert_eq!(again, Ok(Verified::Checksum));
+        assert_eq!(again, Ok(()));
         assert_eq!(last, (len, len));
         assert_eq!(requests.lock().unwrap().len(), 1);
         // A cleanup while the installer runs leaves the reused file alone.
@@ -593,10 +572,10 @@ pub(crate) mod tests {
         let dir = tempfile::tempdir().unwrap();
         let dest = dir.path().join("file.bin");
         let http = Http::new().unwrap();
-        http.download(&url, &dest, len, Some(&sha), &Stop::default(), &mut |_| {}).unwrap();
+        http.download(&url, &dest, len, &sha, &Stop::default(), &mut |_| {}).unwrap();
         // The same size, so only the checksum can tell.
         std::fs::write(&dest, vec![b'x'; body.len()]).unwrap();
-        http.download(&url, &dest, len, Some(&sha), &Stop::default(), &mut |_| {}).unwrap();
+        http.download(&url, &dest, len, &sha, &Stop::default(), &mut |_| {}).unwrap();
         assert_eq!(std::fs::read(&dest).unwrap(), body);
         assert_eq!(requests.lock().unwrap().len(), 2);
     }
@@ -689,15 +668,12 @@ pub(crate) mod tests {
         let dest = dir.path().join("file.bin");
         let http = Http::new().unwrap();
         let mut last = (0, 0);
-        let result = http.download(&url, &dest, body.len() as u64, Some(&sha), &Stop::default(), &mut |t| {
+        let result = http.download(&url, &dest, body.len() as u64, &sha, &Stop::default(), &mut |t| {
             if let Transfer::Bytes { done, total } = t {
                 last = (done, total);
             }
         });
-        let result = result.map(|v| {
-            assert_eq!(v, Verified::Checksum);
-            std::fs::read(&dest).unwrap()
-        });
+        let result = result.map(|()| std::fs::read(&dest).unwrap());
         if result.is_ok() {
             assert_eq!(last, (body.len() as u64, body.len() as u64));
         }
@@ -734,17 +710,6 @@ pub(crate) mod tests {
     }
 
     #[test]
-    fn without_a_checksum_the_size_is_still_checked() {
-        let (body, _) = body();
-        let (url, _) = serve(body.clone(), vec![Reply::Full]);
-        let dir = tempfile::tempdir().unwrap();
-        let dest = dir.path().join("file.bin");
-        let v = Http::new().unwrap().download(&url, &dest, body.len() as u64, None, &Stop::default(), &mut |_| {}).unwrap();
-        assert_eq!(v, Verified::SizeOnly);
-        assert_eq!(std::fs::read(&dest).unwrap(), body);
-    }
-
-    #[test]
     fn pausing_keeps_the_partial_file_and_resuming_continues_it() {
         let (body, sha) = body();
         let len = body.len() as u64;
@@ -755,7 +720,7 @@ pub(crate) mod tests {
         let stop = Stop::default();
         // Pause as soon as the first bytes arrive.
         let err = http
-            .download(&url, &dest, len, Some(&sha), &stop, &mut |t| {
+            .download(&url, &dest, len, &sha, &stop, &mut |t| {
                 if matches!(t, Transfer::Bytes { done, .. } if done > 0) {
                     stop.pause();
                 }
@@ -764,7 +729,7 @@ pub(crate) mod tests {
         assert_eq!(err, PAUSED);
         let kept = partial_bytes(&dest, len).unwrap();
         assert!(kept > 0 && kept < len, "{kept}");
-        http.download(&url, &dest, len, Some(&sha), &Stop::default(), &mut |_| {}).unwrap();
+        http.download(&url, &dest, len, &sha, &Stop::default(), &mut |_| {}).unwrap();
         assert_eq!(std::fs::read(&dest).unwrap(), body);
         assert_eq!(ranges.lock().unwrap()[1], Some(kept.to_string()));
     }
@@ -779,7 +744,7 @@ pub(crate) mod tests {
         let stop = Stop::default();
         let err = Http::new()
             .unwrap()
-            .download(&url, &dest, len, Some(&sha), &stop, &mut |t| {
+            .download(&url, &dest, len, &sha, &stop, &mut |t| {
                 if matches!(t, Transfer::Bytes { done, .. } if done > 0) {
                     stop.cancel();
                 }
@@ -804,7 +769,7 @@ pub(crate) mod tests {
         let dest = dir.path().join("file.bin");
         std::fs::write(part_path(&dest, body.len() as u64), &body[..500_000]).unwrap();
         assert_eq!(partial_bytes(&dest, body.len() as u64), Some(500_000));
-        Http::new().unwrap().download(&url, &dest, body.len() as u64, Some(&sha), &Stop::default(), &mut |_| {}).unwrap();
+        Http::new().unwrap().download(&url, &dest, body.len() as u64, &sha, &Stop::default(), &mut |_| {}).unwrap();
         assert_eq!(std::fs::read(&dest).unwrap(), body);
         assert_eq!(*ranges.lock().unwrap(), [Some("500000".to_string())]);
         assert!(!part_path(&dest, body.len() as u64).exists());
@@ -825,7 +790,7 @@ pub(crate) mod tests {
         let sha = asset.sha256.clone().or_else(|| sums.iter().find(|(_, n)| *n == asset.name).map(|(h, _)| h.clone())).unwrap();
         let dir = tempfile::tempdir().unwrap();
         let dest = dir.path().join(&asset.name);
-        http.download(&asset.url, &dest, asset.size, Some(&sha), &Stop::default(), &mut |_| {}).unwrap();
+        http.download(&asset.url, &dest, asset.size, &sha, &Stop::default(), &mut |_| {}).unwrap();
         assert_eq!(std::fs::metadata(&dest).unwrap().len(), asset.size);
     }
 

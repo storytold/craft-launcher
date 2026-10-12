@@ -24,18 +24,27 @@ finish-args:
   - --share=ipc
   # GPU access for egui's wgpu renderer (Vulkan, or GL as a fallback).
   - --device=dri
+  # SoundCraft's audio, for the case where it runs inside this sandbox rather than on the host
+  # (the launcher falls back to its release tarball when the host has no usable Flatpak): its
+  # ALSA goes through the runtime's PulseAudio plugin to this socket, which PipeWire's pulse
+  # server provides on modern desktops. Note this socket also covers the microphone (SoundCraft
+  # records, so it needs it); it grants recording, not raw hardware access.
+  - --socket=pulseaudio
   # The launcher reads the Craft apps' GitHub releases and downloads them.
   - --share=network
   # Tray icon (StatusNotifierItem) and desktop notifications, both over the session bus.
   - --talk-name=org.kde.StatusNotifierWatcher
   - --talk-name=org.freedesktop.Notifications
-  # LIMITATION: a launcher inside a Flatpak sandbox cannot install software on the host by
-  # itself. It may run `flatpak-spawn --host` (org.freedesktop.Flatpak) to start installed apps
-  # and host installers, and it gets the home directory so downloaded AppImages and tarballs land
-  # where the host can run them (~/Applications, ~/.local). Distro packages (.deb/.rpm) and
-  # anything needing root still have to be installed by the user. org.freedesktop.Flatpak is a
-  # sandbox escape that Flathub reviews case by case; the AppImage, .deb and .rpm builds are the
-  # recommended way to run the launcher on Linux.
+  # Apps normally install as Flatpaks and run on the host: `flatpak-spawn --host` (below) starts
+  # them, and the home directory is granted so files opened by path work. When the host has no
+  # usable Flatpak the launcher falls back to the release tarball, which it unpacks into its own
+  # folder (~/.var/app/ai.storyteller.artcraft-launcher/data/artcraft-launcher/apps/<app>) and
+  # runs in the same sandbox with HOME pointed at a home/ folder beside it, so each app's
+  # settings stay in the sandbox too.
+  # LIMITATION: installing software on the host still needs `flatpak-spawn --host`. Distro
+  # packages (.deb/.rpm) or anything needing root still have to be installed by the user.
+  # org.freedesktop.Flatpak is a sandbox escape that Flathub reviews case by case; the AppImage,
+  # .deb and .rpm builds are the recommended way to run the launcher on Linux.
   - --talk-name=org.freedesktop.Flatpak
   - --filesystem=home
 modules:

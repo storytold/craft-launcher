@@ -70,6 +70,19 @@ pub(crate) enum Dialog {
     LauncherUpdate(artcraft_launcher_core::Release),
 }
 
+impl Dialog {
+    /// What sets this dialog apart from the others, for egui's memory: each one keeps its own
+    /// size there, so a small prompt never opens at the height of the last dialog shown (#88).
+    pub(crate) fn key(&self) -> (&'static str, &str) {
+        match self {
+            Dialog::Notes(id) => ("notes", id),
+            Dialog::ConfirmUninstall(id) => ("uninstall", id),
+            Dialog::Settings => ("settings", ""),
+            Dialog::LauncherUpdate(r) => ("launcher-update", &r.tag),
+        }
+    }
+}
+
 pub struct LauncherUi {
     pub(crate) backend: Box<dyn Backend>,
     pub settings: Settings,
@@ -485,7 +498,6 @@ impl LauncherUi {
                             ViewMode::Table => self.table(ui, &ids),
                         }
                     }
-                    self.trademark_notice(ui);
                     ui.add_space(16.0);
                 });
             });
@@ -511,10 +523,7 @@ impl LauncherUi {
                     Filter::Updates => s == AppStatus::UpdateAvailable,
                     Filter::NotInstalled => !s.is_installed(),
                 };
-                keep && (needle.is_empty()
-                    || e.app.name.to_lowercase().contains(&needle)
-                    || e.app.tagline.to_lowercase().contains(&needle)
-                    || e.app.like.to_lowercase().contains(&needle))
+                keep && (needle.is_empty() || e.app.name.to_lowercase().contains(&needle) || e.app.tagline.to_lowercase().contains(&needle))
             })
             .collect();
         let platform = self.platform;
@@ -534,7 +543,6 @@ impl LauncherUi {
             let ord = match self.settings.sort {
                 SortKey::Suite => dir(ia.cmp(ib)),
                 SortKey::Name => dir(a.app.name.cmp(b.app.name)),
-                SortKey::InspiredBy => dir(a.app.like.cmp(b.app.like)),
                 SortKey::Status => {
                     dir(crate::model::status_rank(&a.status(platform, manage)).cmp(&crate::model::status_rank(&b.status(platform, manage))))
                 }

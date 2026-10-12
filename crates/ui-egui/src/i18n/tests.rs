@@ -284,6 +284,20 @@ fn french_locales_and_plurals_work() {
 }
 
 #[test]
+fn spanish_locales_and_plurals_work() {
+    for tag in ["es", "es-ES", "es_MX.UTF-8", "es-419", "es-PA", "ES_ar"] {
+        assert_eq!(lang_from_tag(tag), Some(Lang::ES), "{tag}");
+    }
+    assert_eq!(super::detect::first_supported(["xx-XX", "es-PA", "en-US"]), Some(Lang::ES));
+    // Only 1 is singular in Spanish, as in English.
+    assert_eq!(trn(Lang::ES, 0, "{n} app", "{n} apps"), "0 aplicaciones");
+    assert_eq!(trn(Lang::ES, 1, "{n} app", "{n} apps"), "1 aplicación");
+    assert_eq!(trn(Lang::ES, 3, "{n} day ago", "{n} days ago"), "hace 3 días");
+    assert_eq!(tr(Lang::ES, "{month} {day}, {year}"), "{day} {month} {year}");
+    assert_eq!(message(Lang::ES, "PhotoCraft updated to 0.5.0"), "PhotoCraft actualizada a 0.5.0");
+}
+
+#[test]
 fn simplified_chinese_locales_respect_the_script() {
     for tag in ["zh", "zh-CN", "zh_CN.UTF-8", "zh-SG", "zh-Hans", "zh-Hans-CN", "zh-Hans-HK", "ZH_cn"] {
         assert_eq!(lang_from_tag(tag), Some(Lang::ZH_CN), "{tag}");

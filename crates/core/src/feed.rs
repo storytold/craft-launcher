@@ -17,7 +17,7 @@ use std::collections::BTreeMap;
 use serde::Deserialize;
 use serde::de::{DeserializeOwned, Deserializer};
 
-use crate::catalog::CraftApp;
+use crate::catalog::{CraftApp, GITHUB_OWNER};
 use crate::release::{self, Asset, Release};
 use crate::time::parse_rfc3339;
 use crate::version;
@@ -36,6 +36,7 @@ pub struct Feed {
     /// When the least recently fetched app was fetched (Unix seconds).
     pub last_fetched: Option<i64>,
     pub app_renames: Vec<AppRename>,
+    /// Repositories that moved, both under [`GITHUB_OWNER`]: a rename anywhere else is dropped.
     pub repo_renames: Vec<RepoRename>,
     pub announcements: Vec<Notice>,
     pub alerts: Vec<Notice>,
@@ -140,7 +141,8 @@ impl Feed {
         self
     }
 
-    /// The repo to ask GitHub about for `app`, following the feed's repo renames.
+    /// The repo to ask GitHub about for `app`, following the feed's repo renames. Always under
+    /// [`GITHUB_OWNER`]: the feed can move an app within ArtCraft's account, never out of it.
     pub fn repo_for(&self, app: &CraftApp) -> String {
         let mut repo = app.repo.to_string();
         // Follow a chain of moves (a → b → c), without looping forever.
@@ -364,10 +366,12 @@ struct RawRepoRename {
 }
 
 impl RawRepoRename {
+    /// `None` unless both names are `owner/name` under [`GITHUB_OWNER`]. A feed that could send
+    /// an app's downloads to someone else's repository would make its checksums worthless (#90).
     fn into_rename(self) -> Option<RepoRename> {
         let ok = |r: &str| {
             let mut parts = r.split('/');
-            matches!((parts.next(), parts.next(), parts.next()), (Some(a), Some(b), None) if !a.is_empty() && !b.is_empty()
+            matches!((parts.next(), parts.next(), parts.next()), (Some(a), Some(b), None) if a.eq_ignore_ascii_case(GITHUB_OWNER) && !b.is_empty()
           && r.bytes().all(|c| c.is_ascii_alphanumeric() || b"-_./".contains(&c)))
         };
         (ok(&self.old_name) && ok(&self.new_name)).then(|| RepoRename {
@@ -524,17 +528,39 @@ mod tests {
         let moved = sample()
             .replace(
                 "\"repo_renames\": []",
-                r#""repo_renames": [{"old_name": "storytold/photocraft", "new_name": "art/photocraft", "renamed_at": null}]"#,
+                r#""repo_renames": [{"old_name": "Storytold/photocraft", "new_name": "storytold/photocraft-app", "renamed_at": null}]"#,
+            )
+            .replace(
+                "\"name\": \"PhotoCraft\", \"repo\": \"storytold/photocraft\"",
+                "\"name\": \"PhotoCraft\", \"repo\": \"storytold/photocraft-app\"",
+            )
+            .replace("github.com/storytold/photocraft/releases", "github.com/storytold/photocraft-app/releases");
+        let feed = Feed::parse(&moved).unwrap();
+        assert_eq!(feed.repo_for(app("photocraft")), "storytold/photocraft-app");
+        let FeedAnswer::Fresh(Some(r)) = feed.answer(app("photocraft"), NOW) else { panic!() };
+        assert!(r.assets[0].url.starts_with("https://github.com/storytold/photocraft-app/releases/download/"));
+        // The same entry without the rename: the repo doesn't match, so GitHub decides.
+        let unannounced = moved.replace(r#"{"old_name": "Storytold/photocraft", "new_name": "storytold/photocraft-app", "renamed_at": null}"#, "");
+        let feed = Feed::parse(&unannounced).unwrap();
+        assert_eq!(feed.answer(app("photocraft"), NOW), FeedAnswer::AskGitHub);
+    }
+
+    #[test]
+    fn a_rename_out_of_storytold_is_dropped() {
+        // Even a feed that vouches for the new repository, with matching links and checksums,
+        // can't send an app's downloads to another account (#90).
+        let moved = sample()
+            .replace(
+                "\"repo_renames\": []",
+                r#""repo_renames": [{"old_name": "storytold/photocraft", "new_name": "art/photocraft", "renamed_at": null},
+                                  {"old_name": "art/photocraft", "new_name": "storytold/photocraft", "renamed_at": null},
+                                  {"old_name": "storytold/photocraft", "new_name": "storytold.evil.example/photocraft", "renamed_at": null}]"#,
             )
             .replace("\"name\": \"PhotoCraft\", \"repo\": \"storytold/photocraft\"", "\"name\": \"PhotoCraft\", \"repo\": \"art/photocraft\"")
             .replace("github.com/storytold/photocraft/releases", "github.com/art/photocraft/releases");
         let feed = Feed::parse(&moved).unwrap();
-        assert_eq!(feed.repo_for(app("photocraft")), "art/photocraft");
-        let FeedAnswer::Fresh(Some(r)) = feed.answer(app("photocraft"), NOW) else { panic!() };
-        assert!(r.assets[0].url.starts_with("https://github.com/art/photocraft/releases/download/"));
-        // The same entry without the rename: the repo doesn't match, so GitHub decides.
-        let unannounced = moved.replace(r#"{"old_name": "storytold/photocraft", "new_name": "art/photocraft", "renamed_at": null}"#, "");
-        let feed = Feed::parse(&unannounced).unwrap();
+        assert!(feed.repo_renames.is_empty(), "{:?}", feed.repo_renames);
+        assert_eq!(feed.repo_for(app("photocraft")), "storytold/photocraft");
         assert_eq!(feed.answer(app("photocraft"), NOW), FeedAnswer::AskGitHub);
     }
 
