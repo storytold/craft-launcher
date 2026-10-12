@@ -8,6 +8,7 @@
 
 pub mod catalog;
 pub mod distro;
+pub mod document;
 pub mod feed;
 pub mod platform;
 pub mod protocol;

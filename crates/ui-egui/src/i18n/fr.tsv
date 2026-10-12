@@ -323,3 +323,90 @@ filter	Installed	Installées
 	ArtCraft on GitHub	ArtCraft sur GitHub
 	Join the ArtCraft Discord	Rejoindre le Discord d'ArtCraft
 @plural	ArtCraft Launcher · {n} update available|ArtCraft Launcher · {n} updates available	ArtCraft Launcher · {n} mise à jour disponible|ArtCraft Launcher · {n} mises à jour disponibles
+
+# Document workspace
+	Apps	Applications
+	Documents	Documents
+	Document workspace	Espace du document
+	Open files	Ouvrir des fichiers
+	Open pages as binder	Ouvrir les pages en dossier
+	Recovery folder	Dossier de récupération
+	Node graph	Graphe de nœuds
+	Evaluating; last completed result shown	Calcul en cours ; dernier résultat terminé affiché
+	Experimental · four replayable tools · 8-bit sRGB PNG/JPEG · native app menus are not captured	Expérimental · quatre outils rejouables · PNG/JPEG sRGB 8 bits · menus des applications non enregistrés
+	Close document; recovery copy is retained	Fermer le document ; copie de récupération conservée
+	One document. An editable recipe.	Un document. Une recette modifiable.
+	Open an image, choose your first toolset, then add operations in any program column.	Ouvrez une image, choisissez vos premiers outils, puis ajoutez des opérations dans les colonnes.
+	Replacing an earlier operation reevaluates its dependants. Save an ArtCraft document to keep the source and history.	Remplacer une opération antérieure recalcule ses dépendances. Enregistrez un document ArtCraft pour conserver source et historique.
+	Binder opening applies one toolset choice to the selected image pages. PDF editing is not supported in this build.	Un seul choix d’outils s’applique aux pages sélectionnées. Cette version ne permet pas de modifier les PDF.
+	Undo	Annuler
+	Redo	Rétablir
+	Save document	Enregistrer le document
+	Export flat PNG…	Exporter un PNG aplati…
+	PNG keeps the visible image only; save the document for editable history	Le PNG conserve uniquement l’image visible ; enregistrez le document pour garder l’historique
+	Add operation:	Ajouter une opération :
+	Hue / Saturation	Teinte / Saturation
+	Levels	Niveaux
+	Rectangle	Rectangle
+	Exposure	Exposition
+	Enabled	Activé
+	Source	Source
+	Replace with Levels	Remplacer par Niveaux
+	Replace with Hue / Saturation	Remplacer par Teinte / Saturation
+	Use as output	Utiliser comme sortie
+	Apply edit	Appliquer la modification
+	Discard pending edit	Abandonner la modification en attente
+	Pending edit; preview shows the committed revision	Modification en attente ; aperçu de la révision validée
+	Choose the first toolset	Choisir les premiers outils
+	This choice applies to all pages in this binder.	Ce choix s’applique à toutes les pages de ce dossier.
+	This choice applies only to this open file.	Ce choix s’applique uniquement à ce fichier ouvert.
+	Hue	Teinte
+	Saturation	Saturation
+	Black	Noir
+	White	Blanc
+	Gamma	Gamma
+	Width	Largeur
+	Height	Hauteur
+	Document and history saved	Document et historique enregistrés
+	PNG preview exported; save the ArtCraft document to retain edit history	Aperçu PNG exporté ; enregistrez le document ArtCraft pour conserver l’historique
+
+# Document workspace
+	Page {page} of {count}	Page {page} sur {count}
+
+# Document workspace
+	Wait for the current operation before dropping another file	Attendez la fin de l’opération avant de déposer un autre fichier
+	{ms} ms · {evaluated} evaluated · {cached} cached · revision {revision}	{ms} ms · {evaluated} calculées · {cached} en cache · révision {revision}
+
+	Save project…	Enregistrer le projet…
+	Shared viewport preview	Aperçu de la vue partagée
+	Unsaved shared document	Document partagé non enregistré
+	Keep editing	Continuer la modification
+	Discard and close	Abandonner et fermer
+	Choose an editor for this file	Choisissez un éditeur pour ce fichier
+	PhotoCraft and VectorCraft share this project's canvas and native contents.	PhotoCraft et VectorCraft partagent le canevas et les données natives de ce projet.
+
+	Finish the current tool or dialog before switching editors.	Terminez l’outil ou la boîte de dialogue avant de changer d’éditeur.
+	Finish the current tool or dialog before saving the project.	Terminez l’outil ou la boîte de dialogue avant d’enregistrer le projet.
+
+	Open…	Ouvrir…
+	This shared viewport preview opens PNG, JPEG, and .pcraft files.	Cet aperçu ouvre les fichiers PNG, JPEG et .pcraft.
+
+	Native app cycle test — each app retains its own edits; shared transfer is not enabled here.	Test de changement d’application : chacune conserve ses modifications ; le transfert partagé est désactivé.
+	Close the native app test?	Fermer le test des applications ?
+	This test keeps native sessions in memory. Closing discards any unsaved test edits.	Ce test conserve les sessions en mémoire. La fermeture abandonne les modifications de test non enregistrées.
+	Choose an app to test.	Choisissez une application à tester.
+	First open	Première ouverture
+	Retained session	Session conservée
+
+	CADCraft: native drawing test; this version cannot attach raster images or PDF underlays.	CADCraft : test de dessin ; cette version ne peut pas joindre d’images ni de fonds PDF.
+	SoundCraft: native track test; a still image has no audio to edit.	SoundCraft : test de pistes ; une image fixe ne contient pas de son à modifier.
+
+	Shared document: PhotoCraft, VectorCraft and LightCraft. Other apps keep separate test documents.	Document partagé : PhotoCraft, VectorCraft et LightCraft. Les autres applications conservent des documents de test séparés.
+	Shared look: Exposure, white balance, color, curves, mixer, grading and calibration. Other LightCraft tools are not connected yet.	Aspect partagé : exposition, balance des blancs, couleur, courbes, mélangeur, étalonnage et calibration. Les autres outils LightCraft ne sont pas encore connectés.
+
+	One project: shared artwork and editable native companions. Save project keeps them together.	Un projet : illustration partagée et documents natifs modifiables. Enregistrer le projet les conserve ensemble.
+	CADCraft: draft beside the live artwork reference. Native geometry is saved with this project.	CADCraft : dessinez à côté de la référence actualisée. La géométrie native est enregistrée dans ce projet.
+	SoundCraft: create a soundtrack beside the live artwork. Tracks and embedded audio are saved with this project.	SoundCraft : créez une bande-son à côté de l’illustration. Les pistes et l’audio intégré sont enregistrés dans ce projet.
+	Shared artwork	Illustration partagée
+	The reference updates when you return from another editor.	La référence est actualisée au retour d’un autre éditeur.
+	Native companion: artwork updates on return; this app's edits stay editable here and are saved with the project.	Document natif : l’illustration est actualisée au retour ; les modifications restent éditables ici et sont enregistrées dans le projet.

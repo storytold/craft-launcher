@@ -5,9 +5,22 @@
 #![cfg_attr(windows, windows_subsystem = "windows")]
 #![deny(clippy::unwrap_used, clippy::expect_used, clippy::panic, clippy::unimplemented, clippy::todo, clippy::unreachable)]
 
+mod document_shell;
 mod settings_file;
 #[cfg(target_os = "macos")]
 mod spaces;
+#[cfg(feature = "studio-editors")]
+mod studio;
+#[cfg(feature = "studio-editors")]
+mod studio_document;
+#[cfg(feature = "studio-suite")]
+mod studio_light;
+#[cfg(feature = "studio-editors")]
+mod studio_preview;
+#[cfg(feature = "studio-editors")]
+mod studio_services;
+#[cfg(feature = "studio-suite")]
+mod suite_cycle;
 mod tray;
 
 use std::path::PathBuf;
@@ -34,6 +47,26 @@ fn main() -> ExitCode {
     // Detect system language in the background so the first frame can use it.
     artcraft_launcher_ui_egui::i18n::detect_system_lang_in_background();
     let args: Vec<String> = std::env::args().skip(1).collect();
+    #[cfg(feature = "studio-suite")]
+    if args.iter().any(|a| a == "--suite-cycle-test") {
+        return match suite_cycle::run(&args) {
+            Ok(()) => ExitCode::SUCCESS,
+            Err(e) => {
+                log::error!("{e}");
+                ExitCode::FAILURE
+            }
+        };
+    }
+    #[cfg(feature = "studio-editors")]
+    if args.iter().any(|a| a == "--studio-editors") {
+        return match studio::run(&args) {
+            Ok(()) => ExitCode::SUCCESS,
+            Err(e) => {
+                log::error!("{e}");
+                ExitCode::FAILURE
+            }
+        };
+    }
     if args.iter().any(|a| a == "--version" || a == "-V") {
         println!("artcraft-launcher {}", env!("CARGO_PKG_VERSION"));
         return ExitCode::SUCCESS;
@@ -41,7 +74,10 @@ fn main() -> ExitCode {
     let mut hidden = args.iter().any(|a| a == login::HIDDEN_FLAG);
 
     let wake: Wake = Arc::new(OnceLock::new());
-    let starts = match single_instance::claim(wake.clone()) {
+    // A document-shell preview uses its own window and cannot be swallowed by an
+    // already-running stock launcher that has no document request protocol.
+    let document_mode = args.iter().any(|a| a == "--document-shell");
+    let starts = match if document_mode { Instance::Primary(channel().1) } else { single_instance::claim(wake.clone()) } {
         Instance::Secondary => return ExitCode::SUCCESS,
         Instance::Primary(rx) => rx,
     };
@@ -55,6 +91,8 @@ fn main() -> ExitCode {
     let backend_waker = waker.clone();
     let settings_path = settings_file::path(APP_ID);
     let mut launcher = Launcher::new(Box::new(NativeBackend::new(move || backend_waker.wake())), starts, settings_path.clone());
+    let document_files = args.iter().map(PathBuf::from).filter(|p| document_shell::is_document_path(p) && p.is_file()).collect();
+    launcher.documents = Some(document_shell::Workspace::new(document_shell::data_root(), document_files, document_mode));
     // Started hidden at login where a window can't hide: start in the tray without mapping one,
     // so no window flashes up. Without a tray to come back from, the window opens after all.
     let mut window = true;
@@ -113,7 +151,13 @@ fn native_options(hidden: bool) -> eframe::NativeOptions {
     if let Some(icon) = icon {
         viewport = viewport.with_icon(icon);
     }
-    eframe::NativeOptions { viewport, persist_window: true, wgpu_options: wgpu_options(), ..Default::default() }
+    eframe::NativeOptions {
+        viewport,
+        persist_window: true,
+        persistence_path: artcraft_launcher_native::paths::portable_root().map(|p| p.join("app.ron")),
+        wgpu_options: wgpu_options(),
+        ..Default::default()
+    }
 }
 
 /// wgpu's backend list. On Windows that is Direct3D 12 with GL as the fallback, not Vulkan:
@@ -333,6 +377,7 @@ impl Host for DesktopHost {
 /// that goes on with or without a window.
 struct Launcher {
     ui: LauncherUi,
+    documents: Option<document_shell::Workspace>,
     tray: Option<tray::Tray>,
     host: DesktopHost,
     /// Requests from later starts of the launcher.
@@ -360,6 +405,7 @@ impl Launcher {
         });
         Self {
             ui: LauncherUi::new(&windowless, backend, Settings::default()),
+            documents: None,
             tray: None,
             host: DesktopHost { tray: false, quit: false },
             starts,
@@ -587,6 +633,33 @@ impl eframe::App for Shell<'_> {
     }
 
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
+        if !self.launcher.ui.prepare_frame(ui.ctx()) {
+            return;
+        }
+        if let Some(documents) = &mut self.launcher.documents {
+            egui::Panel::top("workspace-navigation").show(ui, |ui| {
+                artcraft_launcher_ui_egui::widgets::title_bar_drag(ui);
+                ui.horizontal(|ui| {
+                    ui.strong("ArtCraft Launcher");
+                    if ui.selectable_label(!documents.visible, artcraft_launcher_ui_egui::tl!("Apps")).clicked() {
+                        documents.visible = false;
+                    }
+                    if ui.selectable_label(documents.visible, artcraft_launcher_ui_egui::tl!("Documents")).clicked() {
+                        documents.visible = true;
+                    }
+                    if documents.visible {
+                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                            artcraft_launcher_ui_egui::widgets::window_buttons(ui, 26.)
+                        });
+                    }
+                });
+            });
+            if documents.visible {
+                egui::CentralPanel::default().show(ui, |ui| documents.ui(ui));
+                return;
+            }
+            documents.poll(ui.ctx());
+        }
         self.launcher.ui.ui(ui, &mut self.launcher.host);
     }
 

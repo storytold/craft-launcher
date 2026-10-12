@@ -1,0 +1,90 @@
+{
+  "schema": 1,
+  "scope": "Contribution prototype; statically linked editors, not independent updates",
+  "repositories": [
+    {
+      "directory": "photocraft-mixer",
+      "repository": "https://github.com/durtyrobbin/photocraft.git",
+      "revision": "12abe500e33083de5100630558e1dee7028e2cbc",
+      "upstream": "https://github.com/storytold/photocraft.git",
+      "tested_base": "8879dd0568ab9413489f89951987f901ef70fad6"
+    },
+    {
+      "directory": "vectorcraft-shell",
+      "repository": "https://github.com/durtyrobbin/vectorcraft.git",
+      "revision": "55fdac71fe84a87f08db6625df6ce6c2da556a56",
+      "upstream": "https://github.com/storytold/vectorcraft.git",
+      "tested_base": "2ac3ba2b866ad9d34b2252dd8024f73e34f4b2b8"
+    },
+    {
+      "directory": "lightcraft-shell",
+      "repository": "https://github.com/storytold/lightcraft.git",
+      "revision": "76b5377868d912db69a777bda253a5b1b96b22bd",
+      "upstream": "https://github.com/storytold/lightcraft.git",
+      "tested_base": "76b5377868d912db69a777bda253a5b1b96b22bd"
+    },
+    {
+      "directory": "filmcraft-shell",
+      "repository": "https://github.com/storytold/filmcraft.git",
+      "revision": "0800a8b0aa4a703ba42172f415b45a61f8d8a5e1",
+      "upstream": "https://github.com/storytold/filmcraft.git",
+      "tested_base": "0800a8b0aa4a703ba42172f415b45a61f8d8a5e1"
+    },
+    {
+      "directory": "pdfcraft-shell",
+      "repository": "https://github.com/storytold/pdfcraft.git",
+      "revision": "3d2bdfe71ada10f6bc39afc680dce61bbf080cbc",
+      "upstream": "https://github.com/storytold/pdfcraft.git",
+      "tested_base": "3d2bdfe71ada10f6bc39afc680dce61bbf080cbc"
+    },
+    {
+      "directory": "effectcraft-shell",
+      "repository": "https://github.com/storytold/effectcraft.git",
+      "revision": "67434e90388b6dca4417555346fa6850b6f96033",
+      "upstream": "https://github.com/storytold/effectcraft.git",
+      "tested_base": "67434e90388b6dca4417555346fa6850b6f96033"
+    },
+    {
+      "directory": "designcraft-shell",
+      "repository": "https://github.com/storytold/designcraft.git",
+      "revision": "ca343e8985dc4d92dd65cf77a8198723b5f8a9eb",
+      "upstream": "https://github.com/storytold/designcraft.git",
+      "tested_base": "ca343e8985dc4d92dd65cf77a8198723b5f8a9eb"
+    },
+    {
+      "directory": "wordcraft-shell",
+      "repository": "https://github.com/storytold/wordcraft.git",
+      "revision": "2ffba93b5189410a415970be179dcf481092d756",
+      "upstream": "https://github.com/storytold/wordcraft.git",
+      "tested_base": "2ffba93b5189410a415970be179dcf481092d756"
+    },
+    {
+      "directory": "deckcraft-shell",
+      "repository": "https://github.com/storytold/deckcraft.git",
+      "revision": "be14248577b92059eb2b8c0c9460cceffbc1f01d",
+      "upstream": "https://github.com/storytold/deckcraft.git",
+      "tested_base": "be14248577b92059eb2b8c0c9460cceffbc1f01d"
+    },
+    {
+      "directory": "gridcraft-shell",
+      "repository": "https://github.com/durtyrobbin/gridcraft.git",
+      "revision": "48593cdd5084f8ec32afcf4b47f8513aa6643528",
+      "upstream": "https://github.com/storytold/gridcraft.git",
+      "tested_base": "a5137872c15fac7bf260fa2d25ea8f7e66b19dc2"
+    },
+    {
+      "directory": "cadcraft-shell",
+      "repository": "https://github.com/durtyrobbin/cadcraft.git",
+      "revision": "a749c51c1a398246c0d2d0a3e027010cc9b9a780",
+      "upstream": "https://github.com/storytold/cadcraft.git",
+      "tested_base": "54ea5e743a29acd8f3178cfaa82fb74a38c2de72"
+    },
+    {
+      "directory": "soundcraft-shell",
+      "repository": "https://github.com/storytold/soundcraft.git",
+      "revision": "240aa848a04811ffff75cf193e69d9d4c404ae68",
+      "upstream": "https://github.com/storytold/soundcraft.git",
+      "tested_base": "240aa848a04811ffff75cf193e69d9d4c404ae68"
+    }
+  ]
+}

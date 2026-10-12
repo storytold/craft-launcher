@@ -15,8 +15,12 @@ workspace = true
 [features]
 # Development only: install from `cargo xtask local serve` (see the README).
 local-mirror = ["artcraft-launcher-native/local-mirror"]
+studio-editors = ["dep:photocraft-ui-egui", "dep:photocraft-engine", "dep:photocraft-doc", "dep:photocraft-io", "dep:photocraft-format", "dep:photocraft-compose", "dep:photocraft-raster", "dep:photocraft-color", "dep:photocraft-cms", "dep:photocraft-geom", "dep:vectorcraft-ui-egui", "dep:vectorcraft-engine", "dep:vectorcraft-doc", "dep:vectorcraft-format", "dep:vectorcraft-render", "dep:vectorcraft-geom"]
+
+studio-suite = ["dep:cadcraft-io", "dep:designcraft-doc", "dep:effectcraft-project", "dep:filmcraft-project", "dep:soundcraft-audio-io", "dep:soundcraft-model", "dep:lightcraft-raster", "dep:lightcraft-color", "studio-editors", "dep:effectcraft-host", "dep:lightcraft-ui-egui", "dep:lightcraft-engine", "dep:filmcraft-ui-egui", "dep:filmcraft-engine", "dep:pdfcraft-ui-egui", "dep:pdfcraft-engine", "dep:effectcraft-ui-egui", "dep:effectcraft-engine", "dep:designcraft-ui-egui", "dep:designcraft-engine", "dep:wordcraft-ui-egui", "dep:wordcraft-engine", "dep:deckcraft-ui-egui", "dep:deckcraft-engine", "dep:gridcraft-ui-egui", "dep:gridcraft-engine", "dep:cadcraft-ui-egui", "dep:cadcraft-engine", "dep:soundcraft-ui-egui", "dep:soundcraft-engine", "dep:wordcraft-doc"]
 
 [dependencies]
+artcraft-canvas = { path = "../../crates/canvas" }
 artcraft-launcher-core = { workspace = true }
 artcraft-launcher-ui-egui = { workspace = true }
 artcraft-launcher-native = { workspace = true }
@@ -30,6 +34,61 @@ notify-rust = "4"
 # Cargo.lock through eframe's "persistence" feature.
 ron = "0.12.2"
 serde = { workspace = true }
+serde_json = { workspace = true }
+rfd = "0.17"
+photocraft-ui-egui = { path = "../../../photocraft-mixer/crates/ui-egui", optional = true }
+photocraft-engine = { path = "../../../photocraft-mixer/crates/engine", optional = true }
+photocraft-doc = { path = "../../../photocraft-mixer/crates/doc", optional = true }
+photocraft-io = { path = "../../../photocraft-mixer/crates/io", optional = true }
+photocraft-format = { path = "../../../photocraft-mixer/crates/format", optional = true }
+photocraft-compose = { path = "../../../photocraft-mixer/crates/compose", optional = true }
+photocraft-raster = { path = "../../../photocraft-mixer/crates/raster", optional = true }
+photocraft-color = { path = "../../../photocraft-mixer/crates/color", optional = true }
+photocraft-cms = { path = "../../../photocraft-mixer/crates/cms", optional = true }
+photocraft-geom = { path = "../../../photocraft-mixer/crates/geom", optional = true }
+vectorcraft-ui-egui = { path = "../../../vectorcraft-shell/crates/ui-egui", optional = true }
+vectorcraft-engine = { path = "../../../vectorcraft-shell/crates/engine", optional = true }
+vectorcraft-doc = { path = "../../../vectorcraft-shell/crates/doc", optional = true }
+vectorcraft-format = { path = "../../../vectorcraft-shell/crates/format", optional = true }
+vectorcraft-render = { path = "../../../vectorcraft-shell/crates/render", optional = true }
+vectorcraft-geom = { path = "../../../vectorcraft-shell/crates/geom", optional = true }
+
+lightcraft-ui-egui = { path = "../../../lightcraft-shell/crates/ui-egui", optional = true }
+lightcraft-raster = { path = "../../../lightcraft-shell/crates/raster", optional = true }
+lightcraft-color = { path = "../../../lightcraft-shell/crates/color", optional = true }
+lightcraft-engine = { path = "../../../lightcraft-shell/crates/engine", optional = true }
+filmcraft-ui-egui = { path = "../../../filmcraft-shell/crates/ui-egui", optional = true }
+filmcraft-engine = { path = "../../../filmcraft-shell/crates/engine", optional = true }
+pdfcraft-ui-egui = { path = "../../../pdfcraft-shell/crates/ui-egui", optional = true }
+pdfcraft-engine = { path = "../../../pdfcraft-shell/crates/engine", optional = true }
+effectcraft-ui-egui = { path = "../../../effectcraft-shell/crates/ui-egui", optional = true }
+effectcraft-engine = { path = "../../../effectcraft-shell/crates/engine", optional = true }
+designcraft-ui-egui = { path = "../../../designcraft-shell/crates/ui-egui", optional = true }
+designcraft-engine = { path = "../../../designcraft-shell/crates/engine", optional = true }
+wordcraft-ui-egui = { path = "../../../wordcraft-shell/crates/ui-egui", optional = true }
+wordcraft-engine = { path = "../../../wordcraft-shell/crates/engine", optional = true }
+deckcraft-ui-egui = { path = "../../../deckcraft-shell/crates/ui-egui", optional = true }
+deckcraft-engine = { path = "../../../deckcraft-shell/crates/engine", optional = true }
+gridcraft-ui-egui = { path = "../../../gridcraft-shell/crates/ui-egui", optional = true }
+gridcraft-engine = { path = "../../../gridcraft-shell/crates/engine", optional = true }
+cadcraft-ui-egui = { path = "../../../cadcraft-shell/crates/ui-egui", optional = true }
+cadcraft-engine = { path = "../../../cadcraft-shell/crates/engine", optional = true }
+soundcraft-ui-egui = { path = "../../../soundcraft-shell/crates/ui-egui", optional = true }
+soundcraft-engine = { path = "../../../soundcraft-shell/crates/engine", optional = true }
+wordcraft-doc = { path = "../../../wordcraft-shell/crates/doc", optional = true }
+
+effectcraft-host = { path = "../../../effectcraft-shell/crates/host", optional = true }
+
+soundcraft-model = { path = "../../../soundcraft-shell/crates/model", optional = true }
+
+soundcraft-audio-io = { path = "../../../soundcraft-shell/crates/audio-io", optional = true }
+
+filmcraft-project = { path = "../../../filmcraft-shell/crates/project", optional = true }
+
+effectcraft-project = { path = "../../../effectcraft-shell/crates/project", optional = true }
+
+cadcraft-io = { path = "../../../cadcraft-shell/crates/io", default-features = false, optional = true }
+designcraft-doc = { path = "../../../designcraft-shell/crates/doc", optional = true }
 
 # The tray (menu bar) icon. On Linux and the BSDs the StatusNotifierItem backend talks D-Bus
 # directly, so no GTK or libappindicator is needed.
@@ -49,3 +108,6 @@ tray-icon = { version = "0.25", default-features = false, features = ["ksni"] }
 [build-dependencies]
 # Icon + VERSIONINFO for artcraft-launcher.exe; build.rs only uses it when targeting Windows.
 winresource = "0.1"
+
+[dev-dependencies]
+egui_kittest = { workspace = true, features = ["wgpu", "snapshot", "eframe"] }

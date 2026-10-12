@@ -1,0 +1,41 @@
+ArtCraft Launcher — All Apps Studio test results
+
+231 workspace tests passed; 6 ignored/manual tests excluded from that count.
+Nine-app native source-update and project save/reopen: PASS.
+Original shared PhotoCraft/VectorCraft/LightCraft regression: PASS.
+Twelve editors rendered in three phases: first open, changed artwork, unchanged return. 36 passes.
+Changed-artwork screenshots required the new red brush stroke; accepting an import command alone was not sufficient.
+Clippy with warnings denied, WebAssembly check, executable build, formatting: PASS.
+Both previously accepted executables have unchanged SHA-256 hashes. Existing windows were not closed.
+
+CPU handoff timings for retained return (not total display latency):
+  PhotoCraft: 0.245 ms
+  VectorCraft: 0.229 ms
+  LightCraft: 0.188 ms
+  DesignCraft: 0.165 ms
+  PdfCraft: 0.135 ms
+  EffectCraft: 6.187 ms
+  FilmCraft: 0.166 ms
+  WordCraft: 0.220 ms
+  DeckCraft: 0.101 ms
+  GridCraft: 21.115 ms
+  CADCraft: 0.398 ms
+  SoundCraft: 0.770 ms
+
+Cold-open CPU handoff + first six UI frames (does not include all asynchronous decoding):
+  PhotoCraft: 2879.5 ms
+  VectorCraft: 125.0 ms
+  LightCraft: 956.8 ms
+  DesignCraft: 48.6 ms
+  PdfCraft: 29.3 ms
+  EffectCraft: 40533.9 ms
+  FilmCraft: 689.6 ms
+  WordCraft: 104.8 ms
+  DeckCraft: 85.8 ms
+  GridCraft: 109.9 ms
+  CADCraft: 49.6 ms
+  SoundCraft: 18.5 ms
+
+See ArtCraft-All-Apps-Studio-Quickstart.txt for precise behavior and limits.
+Evidence includes native-cycle-results.json, shared-three-cycle.json, screenshots, logs,
+and Twelve-app-project.pcraft.

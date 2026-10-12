@@ -132,6 +132,10 @@ fn complete_catalogs_cover_every_ui_literal() {
         include_str!("../widgets.rs"),
         // The desktop shell's tray menu and tooltip.
         include_str!("../../../../apps/artcraft-launcher/src/tray.rs"),
+        include_str!("../../../../apps/artcraft-launcher/src/document_shell.rs"),
+        include_str!("../../../../apps/artcraft-launcher/src/studio.rs"),
+        include_str!("../../../../apps/artcraft-launcher/src/suite_cycle.rs"),
+        include_str!("../../../../apps/artcraft-launcher/src/main.rs"),
     ];
     let mut keys = BTreeSet::new();
     for source in sources {
