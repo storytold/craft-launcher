@@ -63,7 +63,7 @@ settings file must produce an error the user can act on, never a panic. Shared s
   release builds never enable.
 - Verify each download against the release's `SHA256SUMS.txt` before running or installing it.
 - The details drawer's pictures are the one other download: JPEGs only, from a pinned tag of
-  `https://raw.githubusercontent.com/storytold/artcraft-launcher-assets/` (`core::details`),
+  `https://raw.githubusercontent.com/storytold/craft-launcher-assets/` (`core::details`),
   capped at 2 MB each, cached, and never run. Pictures are not bundled in this repo.
 - Never run an installer with elevated rights silently; tell the user what is about to happen.
 - Never delete a user's files outside what the launcher itself installed.

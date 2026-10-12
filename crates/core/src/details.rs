@@ -50,7 +50,7 @@ const fn feature(title: &'static str, text: &'static str) -> Feature {
 /// Pinned to a tag (`SCREENSHOTS_REV`) so that what a launcher fetches never changes under it, and
 /// so that a saved copy never goes stale. To change a picture, publish a new tag and bump the
 /// revision: older launchers keep working from the tag they know.
-pub const SCREENSHOTS_BASE: &str = "https://raw.githubusercontent.com/storytold/artcraft-launcher-assets";
+pub const SCREENSHOTS_BASE: &str = "https://raw.githubusercontent.com/storytold/craft-launcher-assets";
 
 /// The tag of the pictures repository the launcher reads. Also part of the saved copies' path.
 pub const SCREENSHOTS_REV: &str = "v1";
@@ -417,7 +417,7 @@ mod tests {
         let page = AppDetails::by_id("photocraft").unwrap();
         assert_eq!(
             page.screenshot_url("demo").as_deref(),
-            Some("https://raw.githubusercontent.com/storytold/artcraft-launcher-assets/v1/photocraft/demo.jpg")
+            Some("https://raw.githubusercontent.com/storytold/craft-launcher-assets/v1/photocraft/demo.jpg")
         );
         for key in ["", "nope", "../vectorcraft/neon", "demo/../masks", "demo.jpg", "/etc/passwd", "demo?x=1", "demo#"] {
             assert_eq!(page.screenshot_url(key), None, "{key:?}");
