@@ -416,12 +416,10 @@ pub fn progress(ui: &mut Ui, fraction: Option<f32>, caption: &str, color: Color3
             let segment_width = width * 0.3;
             let x = (ui.input(|i| i.time) * 0.8).fract() as f32 * width;
             for left in [x, x - width] {
-                let seg = Rect::from_min_size(
-                    egui::pos2(bar.left() + left, bar.top()),
-                    vec2(segment_width, bar.height()),
-                )
-                .intersect(bar);
-                p.rect_filled(seg, CornerRadius::ZERO, color);
+                let seg = Rect::from_min_size(egui::pos2(bar.left() + left, bar.top()), vec2(segment_width, bar.height())).intersect(bar);
+                if seg.is_positive() {
+                    p.rect_filled(seg, CornerRadius::ZERO, color);
+                }
             }
             ui.ctx().request_repaint();
         }
