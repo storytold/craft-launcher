@@ -1,0 +1,290 @@
+[
+  {
+    "app": "PhotoCraft",
+    "error": null,
+    "gpu_render_readback_ms": 27.6549,
+    "pass": 0,
+    "six_ui_frames_ms": 2873.9054,
+    "switch_ms": 5.590000000000001
+  },
+  {
+    "app": "VectorCraft",
+    "error": null,
+    "gpu_render_readback_ms": 23.0933,
+    "pass": 0,
+    "six_ui_frames_ms": 57.2277,
+    "switch_ms": 67.7696
+  },
+  {
+    "app": "LightCraft",
+    "error": null,
+    "gpu_render_readback_ms": 34.8698,
+    "pass": 0,
+    "six_ui_frames_ms": 941.5879,
+    "switch_ms": 15.233699999999999
+  },
+  {
+    "app": "DesignCraft",
+    "error": null,
+    "gpu_render_readback_ms": 33.6955,
+    "pass": 0,
+    "six_ui_frames_ms": 37.943200000000004,
+    "switch_ms": 10.629299999999999
+  },
+  {
+    "app": "PdfCraft",
+    "error": null,
+    "gpu_render_readback_ms": 30.5171,
+    "pass": 0,
+    "six_ui_frames_ms": 24.8126,
+    "switch_ms": 4.4758000000000004
+  },
+  {
+    "app": "EffectCraft",
+    "error": null,
+    "gpu_render_readback_ms": 35.3133,
+    "pass": 0,
+    "six_ui_frames_ms": 40458.568,
+    "switch_ms": 75.3246
+  },
+  {
+    "app": "FilmCraft",
+    "error": null,
+    "gpu_render_readback_ms": 28.2192,
+    "pass": 0,
+    "six_ui_frames_ms": 39.6154,
+    "switch_ms": 649.9641
+  },
+  {
+    "app": "WordCraft",
+    "error": null,
+    "gpu_render_readback_ms": 32.0258,
+    "pass": 0,
+    "six_ui_frames_ms": 103.76100000000001,
+    "switch_ms": 1.0383
+  },
+  {
+    "app": "DeckCraft",
+    "error": null,
+    "gpu_render_readback_ms": 44.067,
+    "pass": 0,
+    "six_ui_frames_ms": 84.3204,
+    "switch_ms": 1.5021
+  },
+  {
+    "app": "GridCraft",
+    "error": null,
+    "gpu_render_readback_ms": 36.519999999999996,
+    "pass": 0,
+    "six_ui_frames_ms": 86.0263,
+    "switch_ms": 23.8689
+  },
+  {
+    "app": "CADCraft",
+    "error": null,
+    "gpu_render_readback_ms": 37.190099999999994,
+    "pass": 0,
+    "six_ui_frames_ms": 25.9219,
+    "switch_ms": 23.6565
+  },
+  {
+    "app": "SoundCraft",
+    "error": null,
+    "gpu_render_readback_ms": 39.8429,
+    "pass": 0,
+    "six_ui_frames_ms": 17.377299999999998,
+    "switch_ms": 1.1444
+  },
+  {
+    "app": "PhotoCraft",
+    "error": null,
+    "gpu_render_readback_ms": 28.7049,
+    "pass": 1,
+    "six_ui_frames_ms": 31.3277,
+    "switch_ms": 0.0003
+  },
+  {
+    "app": "VectorCraft",
+    "error": null,
+    "gpu_render_readback_ms": 36.7121,
+    "pass": 1,
+    "six_ui_frames_ms": 28.93,
+    "switch_ms": 0.2493
+  },
+  {
+    "app": "LightCraft",
+    "error": null,
+    "gpu_render_readback_ms": 45.1108,
+    "pass": 1,
+    "six_ui_frames_ms": 18.6796,
+    "switch_ms": 16.7619
+  },
+  {
+    "app": "DesignCraft",
+    "error": null,
+    "gpu_render_readback_ms": 36.4738,
+    "pass": 1,
+    "six_ui_frames_ms": 29.2257,
+    "switch_ms": 9.091
+  },
+  {
+    "app": "PdfCraft",
+    "error": null,
+    "gpu_render_readback_ms": 31.536,
+    "pass": 1,
+    "six_ui_frames_ms": 12.776900000000001,
+    "switch_ms": 3.8622
+  },
+  {
+    "app": "EffectCraft",
+    "error": null,
+    "gpu_render_readback_ms": 41.7263,
+    "pass": 1,
+    "six_ui_frames_ms": 36.7851,
+    "switch_ms": 5.9894
+  },
+  {
+    "app": "FilmCraft",
+    "error": null,
+    "gpu_render_readback_ms": 31.102500000000003,
+    "pass": 1,
+    "six_ui_frames_ms": 33.5991,
+    "switch_ms": 0.16670000000000001
+  },
+  {
+    "app": "WordCraft",
+    "error": null,
+    "gpu_render_readback_ms": 31.2871,
+    "pass": 1,
+    "six_ui_frames_ms": 32.7136,
+    "switch_ms": 0.2743
+  },
+  {
+    "app": "DeckCraft",
+    "error": null,
+    "gpu_render_readback_ms": 35.0954,
+    "pass": 1,
+    "six_ui_frames_ms": 19.143,
+    "switch_ms": 0.2115
+  },
+  {
+    "app": "GridCraft",
+    "error": null,
+    "gpu_render_readback_ms": 36.183800000000005,
+    "pass": 1,
+    "six_ui_frames_ms": 47.6055,
+    "switch_ms": 20.6828
+  },
+  {
+    "app": "CADCraft",
+    "error": null,
+    "gpu_render_readback_ms": 30.7792,
+    "pass": 1,
+    "six_ui_frames_ms": 20.8292,
+    "switch_ms": 0.3879
+  },
+  {
+    "app": "SoundCraft",
+    "error": null,
+    "gpu_render_readback_ms": 37.6001,
+    "pass": 1,
+    "six_ui_frames_ms": 14.9825,
+    "switch_ms": 0.8331999999999999
+  },
+  {
+    "app": "PhotoCraft",
+    "error": null,
+    "gpu_render_readback_ms": 31.337600000000002,
+    "pass": 2,
+    "six_ui_frames_ms": 27.0766,
+    "switch_ms": 0.24469999999999997
+  },
+  {
+    "app": "VectorCraft",
+    "error": null,
+    "gpu_render_readback_ms": 29.727300000000003,
+    "pass": 2,
+    "six_ui_frames_ms": 27.8836,
+    "switch_ms": 0.22890000000000002
+  },
+  {
+    "app": "LightCraft",
+    "error": null,
+    "gpu_render_readback_ms": 29.014000000000003,
+    "pass": 2,
+    "six_ui_frames_ms": 16.558699999999998,
+    "switch_ms": 0.1877
+  },
+  {
+    "app": "DesignCraft",
+    "error": null,
+    "gpu_render_readback_ms": 27.2953,
+    "pass": 2,
+    "six_ui_frames_ms": 21.575799999999997,
+    "switch_ms": 0.1651
+  },
+  {
+    "app": "PdfCraft",
+    "error": null,
+    "gpu_render_readback_ms": 30.095299999999998,
+    "pass": 2,
+    "six_ui_frames_ms": 12.4244,
+    "switch_ms": 0.13520000000000001
+  },
+  {
+    "app": "EffectCraft",
+    "error": null,
+    "gpu_render_readback_ms": 37.8615,
+    "pass": 2,
+    "six_ui_frames_ms": 31.302200000000003,
+    "switch_ms": 6.1868
+  },
+  {
+    "app": "FilmCraft",
+    "error": null,
+    "gpu_render_readback_ms": 31.0049,
+    "pass": 2,
+    "six_ui_frames_ms": 32.9114,
+    "switch_ms": 0.1664
+  },
+  {
+    "app": "WordCraft",
+    "error": null,
+    "gpu_render_readback_ms": 29.010399999999997,
+    "pass": 2,
+    "six_ui_frames_ms": 26.9272,
+    "switch_ms": 0.2203
+  },
+  {
+    "app": "DeckCraft",
+    "error": null,
+    "gpu_render_readback_ms": 40.033699999999996,
+    "pass": 2,
+    "six_ui_frames_ms": 10.573300000000001,
+    "switch_ms": 0.101
+  },
+  {
+    "app": "GridCraft",
+    "error": null,
+    "gpu_render_readback_ms": 32.479099999999995,
+    "pass": 2,
+    "six_ui_frames_ms": 45.1395,
+    "switch_ms": 21.1149
+  },
+  {
+    "app": "CADCraft",
+    "error": null,
+    "gpu_render_readback_ms": 36.8772,
+    "pass": 2,
+    "six_ui_frames_ms": 21.388299999999997,
+    "switch_ms": 0.39780000000000004
+  },
+  {
+    "app": "SoundCraft",
+    "error": null,
+    "gpu_render_readback_ms": 29.2622,
+    "pass": 2,
+    "six_ui_frames_ms": 15.3842,
+    "switch_ms": 0.7702
+  }
+]

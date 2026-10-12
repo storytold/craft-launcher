@@ -1,0 +1,15 @@
+Additional publication qualification
+
+The tested application source is unchanged by the pictorial guide, source pins and setup script.
+CI workflow validation with actionlint: PASS.
+Pinned sibling checkout verification (all twelve clean repositories): PASS.
+
+gridcraft-shell: 836 standalone test passes; fmt, clippy, test, assets, layers and wasm passed.
+cadcraft-shell: 1571 standalone test passes; fmt, clippy, test, assets, layers and wasm passed.
+
+GridCraft parity initially failed because its generated file used Windows line endings.
+Regeneration produced identical Git content. A focused .gitattributes rule now keeps
+that generated file LF on checkout; parity --check passes. The initial failure log
+is retained in the local publication evidence.
+
+No claim is made that all standalone suites or non-Windows native hosts are qualified.

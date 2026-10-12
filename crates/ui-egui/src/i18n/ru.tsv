@@ -324,3 +324,90 @@ filter	Installed	Установлены
 	ArtCraft on GitHub	ArtCraft на GitHub
 	Join the ArtCraft Discord	Присоединиться к Discord ArtCraft
 @plural	ArtCraft Launcher · {n} update available|ArtCraft Launcher · {n} updates available	ArtCraft Launcher · {n} обновление|ArtCraft Launcher · {n} обновления|ArtCraft Launcher · {n} обновлений
+
+# Document workspace
+	Apps	Приложения
+	Documents	Документы
+	Document workspace	Рабочая область документа
+	Open files	Открыть файлы
+	Open pages as binder	Открыть страницы как подборку
+	Recovery folder	Папка восстановления
+	Node graph	Граф узлов
+	Evaluating; last completed result shown	Вычисление; показан последний готовый результат
+	Experimental · four replayable tools · 8-bit sRGB PNG/JPEG · native app menus are not captured	Экспериментально · четыре повторяемых инструмента · PNG/JPEG sRGB 8 бит · меню приложений не записываются
+	Close document; recovery copy is retained	Закрыть документ; копия для восстановления сохранится
+	One document. An editable recipe.	Один документ. Редактируемая последовательность.
+	Open an image, choose your first toolset, then add operations in any program column.	Откройте изображение, выберите инструменты и добавляйте операции в столбцах программ.
+	Replacing an earlier operation reevaluates its dependants. Save an ArtCraft document to keep the source and history.	Замена ранней операции пересчитывает зависимые. Сохраните документ ArtCraft, чтобы оставить исходник и историю.
+	Binder opening applies one toolset choice to the selected image pages. PDF editing is not supported in this build.	Для подборки выбранных изображений инструменты выбираются один раз. Редактирование PDF в этой сборке не поддерживается.
+	Undo	Отменить
+	Redo	Повторить
+	Save document	Сохранить документ
+	Export flat PNG…	Экспортировать сведённый PNG…
+	PNG keeps the visible image only; save the document for editable history	PNG сохраняет только видимое изображение; для истории сохраните документ
+	Add operation:	Добавить операцию:
+	Hue / Saturation	Цветовой тон / насыщенность
+	Levels	Уровни
+	Rectangle	Прямоугольник
+	Exposure	Экспозиция
+	Enabled	Включено
+	Source	Исходник
+	Replace with Levels	Заменить на уровни
+	Replace with Hue / Saturation	Заменить на тон / насыщенность
+	Use as output	Использовать как результат
+	Apply edit	Применить изменение
+	Discard pending edit	Отменить неприменённое изменение
+	Pending edit; preview shows the committed revision	Изменение не применено; показана сохранённая версия
+	Choose the first toolset	Выберите первые инструменты
+	This choice applies to all pages in this binder.	Выбор применяется ко всем страницам подборки.
+	This choice applies only to this open file.	Выбор применяется только к этому открытому файлу.
+	Hue	Цветовой тон
+	Saturation	Насыщенность
+	Black	Чёрный
+	White	Белый
+	Gamma	Гамма
+	Width	Ширина
+	Height	Высота
+	Document and history saved	Документ и история сохранены
+	PNG preview exported; save the ArtCraft document to retain edit history	Предпросмотр PNG экспортирован; сохраните документ ArtCraft для истории
+
+# Document workspace
+	Page {page} of {count}	Страница {page} из {count}
+
+# Document workspace
+	Wait for the current operation before dropping another file	Дождитесь завершения операции перед добавлением файла
+	{ms} ms · {evaluated} evaluated · {cached} cached · revision {revision}	{ms} мс · {evaluated} вычислено · {cached} из кэша · версия {revision}
+
+	Save project…	Сохранить проект…
+	Shared viewport preview	Предпросмотр общего холста
+	Unsaved shared document	Несохранённый общий документ
+	Keep editing	Продолжить редактирование
+	Discard and close	Отменить изменения и закрыть
+	Choose an editor for this file	Выберите редактор для этого файла
+	PhotoCraft and VectorCraft share this project's canvas and native contents.	PhotoCraft и VectorCraft используют общий холст и исходные данные этого проекта.
+
+	Finish the current tool or dialog before switching editors.	Завершите работу с текущим инструментом или диалогом перед сменой редактора.
+	Finish the current tool or dialog before saving the project.	Завершите работу с текущим инструментом или диалогом перед сохранением проекта.
+
+	Open…	Открыть…
+	This shared viewport preview opens PNG, JPEG, and .pcraft files.	Этот предпросмотр общего холста открывает файлы PNG, JPEG и .pcraft.
+
+	Native app cycle test — each app retains its own edits; shared transfer is not enabled here.	Тест переключения приложений — каждое сохраняет свои правки; общий обмен здесь не включён.
+	Close the native app test?	Закрыть тест приложений?
+	This test keeps native sessions in memory. Closing discards any unsaved test edits.	Этот тест хранит сеансы в памяти. При закрытии несохранённые тестовые правки будут потеряны.
+	Choose an app to test.	Выберите приложение для тестирования.
+	First open	Первое открытие
+	Retained session	Сохранённый сеанс
+
+	CADCraft: native drawing test; this version cannot attach raster images or PDF underlays.	CADCraft: тест чертежа; эта версия не поддерживает растровые изображения и подложки PDF.
+	SoundCraft: native track test; a still image has no audio to edit.	SoundCraft: тест дорожек; в неподвижном изображении нет звука для редактирования.
+
+	Shared document: PhotoCraft, VectorCraft and LightCraft. Other apps keep separate test documents.	Общий документ: PhotoCraft, VectorCraft и LightCraft. Остальные приложения используют отдельные тестовые документы.
+	Shared look: Exposure, white balance, color, curves, mixer, grading and calibration. Other LightCraft tools are not connected yet.	Общий вид: экспозиция, баланс белого, цвет, кривые, микшер, цветокоррекция и калибровка. Остальные инструменты LightCraft ещё не подключены.
+
+	One project: shared artwork and editable native companions. Save project keeps them together.	Один проект: общий рисунок и редактируемые документы приложений. Сохранение проекта сохраняет их вместе.
+	CADCraft: draft beside the live artwork reference. Native geometry is saved with this project.	CADCraft: чертите рядом с актуальным рисунком. Геометрия сохраняется в проекте.
+	SoundCraft: create a soundtrack beside the live artwork. Tracks and embedded audio are saved with this project.	SoundCraft: создавайте звуковое сопровождение рядом с рисунком. Дорожки и встроенное аудио сохраняются в проекте.
+	Shared artwork	Общий рисунок
+	The reference updates when you return from another editor.	Рисунок обновляется при возвращении из другого редактора.
+	Native companion: artwork updates on return; this app's edits stay editable here and are saved with the project.	Документ приложения: рисунок обновляется при возвращении; правки остаются редактируемыми здесь и сохраняются в проекте.

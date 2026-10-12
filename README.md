@@ -9,6 +9,11 @@
 
 <h1 align="center">ArtCraft Launcher</h1>
 
+> **Experimental shared studio contribution:** [Pictorial walkthrough, build instructions and current limits](docs/shared-studio/README.md).
+> Twelve native workspaces can retain their edits in one project. Embedded editors
+> are pinned and compiled together; independent module updates are not implemented.
+> This branch is a proposal for upstream review, not an official release.
+
 <p align="center">
   <b>One place to install, update and open every app in the Craft App Suite, rebuilt in pure Rust.</b><br>
   PhotoCraft, LightCraft, FilmCraft, DesignCraft, VectorCraft, PdfCraft, EffectCraft, WordCraft,<br>
@@ -282,6 +287,32 @@ lot from them. Thank you to their authors:
 | [Craft Apps Manager](https://github.com/CryptoKey98/craft-apps-manager) | [@CryptoKey98](https://github.com/CryptoKey98) | Scheduled background update checks and per-app launch options |
 | [ArtCraft Hub Launcher](https://github.com/tinyplayerss/artcraft-hub-launcher) | [@tinyplayerss](https://github.com/tinyplayerss) | A friendly, one-window hub for the whole suite |
 | [CraftHub](https://github.com/MegaTheLEGEND/CraftHub) | [@MegaTheLEGEND](https://github.com/MegaTheLEGEND) | Serving the apps' web builds from a self-hosted launcher |
+
+## Local shared-document experiment
+
+The development-only `studio-suite` feature embeds the twelve native editors.
+Run `artcraft-launcher --suite-cycle-test <image-or-pcraft>`, then choose an app.
+PhotoCraft, VectorCraft and LightCraft share the layered painting. The other
+nine editors keep native companion documents linked to its current composite:
+layouts, PDF proofs, compositions, sequences, documents, slides, workbooks,
+drawings and soundtracks. CADCraft and SoundCraft display the artwork beside
+their native workspaces. Companion edits do not automatically become painting
+layers. Internal revision-specific PNG references require no manual transfers.
+
+The top **Save project** button embeds opened companion documents in `.pcraft`;
+an editor's own Save/Export only covers its native document. Reopening restores
+editable models, not undo stacks. Extra imported external media remains linked
+to its original files. Current bounds are 4 megapixels for the source reference,
+128 MiB for the companion archive, and one companion document per editor. The
+LightCraft adapter remains limited to its supported global tone/color controls.
+Imported GridCraft preserved parts that cannot be represented in the archive
+cause an explicit save error. Existing native export fidelity limits apply.
+
+Qualification lives in `suite_cycle::links::tests` (native edits, source update,
+project round trip) and the ignored rendered `suite_cycle` tests (three-editor
+regression; all twelve first-open, changed-artwork, and retained-return passes).
+This is a local integration experiment, not an upstream release or replacement
+for the launcher's existing independent installer/update workflow.
 
 ## License and credits
 

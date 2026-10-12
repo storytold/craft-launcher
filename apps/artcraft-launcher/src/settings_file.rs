@@ -10,7 +10,9 @@ use std::path::{Path, PathBuf};
 
 /// Where eframe keeps its state for `app_id`, as it picks it for a window with that app id.
 pub fn path(app_id: &str) -> Option<PathBuf> {
-    eframe::storage_dir(app_id).map(|dir| dir.join("app.ron"))
+    artcraft_launcher_native::paths::portable_root()
+        .map(|dir| dir.join("app.ron"))
+        .or_else(|| eframe::storage_dir(app_id).map(|dir| dir.join("app.ron")))
 }
 
 /// The value stored under `key`, if the file has one that still reads.

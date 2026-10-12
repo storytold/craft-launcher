@@ -44,3 +44,10 @@ inherits = "release"
 opt-level = "s"
 lto = "fat"
 strip = "debuginfo"
+
+# Preserve PdfCraft's upstream renderer fixes when it is hosted as a dependency.
+[patch.crates-io]
+hayro = { path = "../pdfcraft-shell/vendor/hayro" }
+hayro-interpret = { path = "../pdfcraft-shell/vendor/hayro-interpret" }
+hayro-syntax = { path = "../pdfcraft-shell/vendor/hayro-syntax" }
+hayro-jbig2 = { path = "../pdfcraft-shell/vendor/hayro-jbig2" }

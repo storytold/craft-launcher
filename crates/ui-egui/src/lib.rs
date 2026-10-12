@@ -27,7 +27,7 @@ mod notes;
 pub mod settings;
 pub mod theme;
 mod views;
-mod widgets;
+pub mod widgets;
 
 pub use app::{Host, LauncherUi, TitleBar};
 pub use i18n::{

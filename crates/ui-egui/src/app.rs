@@ -423,26 +423,34 @@ impl LauncherUi {
         }
     }
 
-    /// Draws the launcher.
-    pub fn ui(&mut self, ui: &mut egui::Ui, host: &mut dyn Host) {
-        let ctx = ui.ctx().clone();
+    /// Prepares shared fonts, language and theme before any launcher workspace draws.
+    pub fn prepare_frame(&mut self, ctx: &egui::Context) -> bool {
         // Set the current language for this frame based on settings.
         let lang = effective_lang(&self.settings.language);
         set_current(lang);
         // `effective_lang` only picks Chinese once its font has loaded.
         if lang.needs_cjk_font() && !self.cjk_fonts {
-            theme::install_fonts(&ctx, true);
+            theme::install_fonts(ctx, true);
             self.cjk_fonts = true;
             self.fonts_ready = false;
         }
         if !self.fonts_ready {
             self.fonts_ready = true;
             ctx.request_repaint();
-            return;
+            return false;
         }
         if self.applied_theme != Some(self.settings.theme) {
-            theme::apply(&ctx, self.settings.theme);
+            theme::apply(ctx, self.settings.theme);
             self.applied_theme = Some(self.settings.theme);
+        }
+        true
+    }
+
+    /// Draws the launcher.
+    pub fn ui(&mut self, ui: &mut egui::Ui, host: &mut dyn Host) {
+        let ctx = ui.ctx().clone();
+        if !self.prepare_frame(&ctx) {
+            return;
         }
         let tokens = Tokens::get(&ctx);
         if self.entries.iter().any(|e| e.job.is_some()) || self.checking {

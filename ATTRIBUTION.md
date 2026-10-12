@@ -43,6 +43,13 @@ licensed like those apps. Refresh them from the source path, never redraw them.
 
 ## Documentation and README
 
+### Shared studio contribution evidence
+
+| Path | Title | Author | Source | License |
+|---|---|---|---|---|
+| `docs/shared-studio/sample.png` | Synthetic blue jacket test fixture | durtyrobbin contribution, generated with Codex | Original procedural test artwork created for this experiment | MIT OR Apache-2.0 |
+| `docs/shared-studio/images/*.png` | Twelve native workspace pictorials | durtyrobbin contribution; UI by the ArtCraft Team and the respective Craft app contributors | Unmodified local egui test-harness captures from the recorded shared-studio source revisions | Original test artwork and contribution documentation: MIT OR Apache-2.0; depicted UI retains each source project's notices; ArtCraft marks retain `docs/brand/LICENSE-brand.txt`, unchanged for an upstream contribution proposal |
+
 | Path | Title | Author | Source | License |
 |---|---|---|---|---|
 | `docs/brand/` (all files) | ArtCraft name, wordmark and mark | ArtCraft Team | getartcraft.com (via `craftrules/assets/brand/`) | Not open source; trademarks of the ArtCraft Team, [`docs/brand/LICENSE-brand.txt`](docs/brand/LICENSE-brand.txt) |

@@ -1,0 +1,17 @@
+{
+  "screenshots": {
+    "images/cadcraft.png": "ad46ca592aca14cb93b9232a30e40ed8f9ad72c9419fff1281745be9fbb549df",
+    "images/deckcraft.png": "938d7ada776d8f133702950308bc24586f84ca29760af72c78c164c87d44b49c",
+    "images/designcraft.png": "f41e4cbe11bc4bb1e44d8237755a98d16765424c66b7d9e806810ae1c59159d4",
+    "images/effectcraft.png": "e70871b20ae3252dbb52c095ab2304366fb15bd4e0c9926d40c5c147aed526fd",
+    "images/filmcraft.png": "fc2f9cfc7f1e2e5e60a198086fd65a79026a9484f1d5ac266e1c0d80b773f4f1",
+    "images/gridcraft.png": "e100e5ec8a3333b76e26b94d3cf040cacc4a18611523c8cce5485872bbaf8eb7",
+    "images/lightcraft.png": "2e88ecf013181a22e48a4a7027d058bd1b8e6aa7e8cd8b455d8c824817c52ffb",
+    "images/pdfcraft.png": "351b6a4bab5f4795bd814221c31ddf4e2dc6c477ee207e57df4e54aab49a54e6",
+    "images/photocraft.png": "2023188617ef695fd12e9cff670b95de36f878f46ada7c8fe2c8ba307b086cf4",
+    "images/shared-vectorcraft.png": "c9ae05aac95b65b7e55a5fb4126204ddc653bdbdcf6e1e252be6a0fc1c0974a0",
+    "images/soundcraft.png": "db92561adc9b392ad785c2f811bbe1c9112d819c425cba283a766caacd30998b",
+    "images/wordcraft.png": "1553e29bbf22a723f45b3ff96bbb951beb4ffbed5e2034761bf4c3fec47ca9ea"
+  },
+  "sample_sha256": "466e70f9effeb33a4d1864d1f09184da68b34125f616c33bcde3f8e4cb7c09e0"
+}

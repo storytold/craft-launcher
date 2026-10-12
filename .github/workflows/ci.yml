@@ -29,6 +29,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # Experimental studio path dependencies are pinned, including when Cargo
+      # resolves the default launcher build. Never follow moving sibling heads.
+      - name: Prepare pinned studio sources
+        run: python scripts/prepare-studio.py
+
       # egui/winit/wgpu headers. The tray (ksni) and notifications (notify-rust over zbus) are
       # pure-Rust D-Bus clients, so no GTK, appindicator, xdo or libdbus packages are needed.
       - name: Install Linux system dependencies (egui/winit)
@@ -46,7 +51,10 @@ jobs:
 
       - name: Format
         if: runner.os == 'Linux'
-        run: cargo fmt --all -- --check
+        run: |
+          for package in artcraft-launcher artcraft-launcher-core artcraft-launcher-native artcraft-launcher-ui-egui artcraft-launcher-web artcraft-canvas xtask; do
+            cargo fmt -p "$package" -- --check
+          done
 
       - name: Clippy
         run: cargo clippy --workspace --all-targets --locked -- -D warnings
@@ -61,6 +69,8 @@ jobs:
       TRUNK_VERSION: 0.21.14
     steps:
       - uses: actions/checkout@v4
+      - name: Prepare pinned studio sources
+        run: python scripts/prepare-studio.py
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: wasm32-unknown-unknown

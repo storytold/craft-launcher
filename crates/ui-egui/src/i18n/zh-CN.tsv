@@ -296,3 +296,90 @@ soundcraft	Recording, editing and mixing audio	音频录制、编辑与混音
 @msg	{name} installed: {version} (this release publishes no checksum, so only its size was checked)	{name} 已安装：{version}（此版本未发布校验和，因此只检查了文件大小）
 @msg	{name} was removed	{name} 已卸载
 @msg	{name} is running. Quit it, then try again.	{name} 正在运行。请先退出，然后重试。
+
+# Document workspace
+	Apps	应用
+	Documents	文档
+	Document workspace	文档工作区
+	Open files	打开文件
+	Open pages as binder	将页面作为合订本打开
+	Recovery folder	恢复文件夹
+	Node graph	节点图
+	Evaluating; last completed result shown	正在计算；显示上次完成的结果
+	Experimental · four replayable tools · 8-bit sRGB PNG/JPEG · native app menus are not captured	实验版 · 四种可重放工具 · 8位 sRGB PNG/JPEG · 不记录原生应用菜单操作
+	Close document; recovery copy is retained	关闭文档；保留恢复副本
+	One document. An editable recipe.	一个文档，一套可编辑流程。
+	Open an image, choose your first toolset, then add operations in any program column.	打开图像，选择初始工具集，然后在任意程序列中添加操作。
+	Replacing an earlier operation reevaluates its dependants. Save an ArtCraft document to keep the source and history.	替换先前操作会重新计算依赖它的操作。保存 ArtCraft 文档以保留源文件和历史。
+	Binder opening applies one toolset choice to the selected image pages. PDF editing is not supported in this build.	合订本中的图像页面共用一次工具集选择。此版本不支持 PDF 编辑。
+	Undo	撤销
+	Redo	重做
+	Save document	保存文档
+	Export flat PNG…	导出扁平化 PNG…
+	PNG keeps the visible image only; save the document for editable history	PNG 只保留可见图像；请保存文档以保留可编辑历史
+	Add operation:	添加操作：
+	Hue / Saturation	色相 / 饱和度
+	Levels	色阶
+	Rectangle	矩形
+	Exposure	曝光
+	Enabled	启用
+	Source	源
+	Replace with Levels	替换为色阶
+	Replace with Hue / Saturation	替换为色相 / 饱和度
+	Use as output	用作输出
+	Apply edit	应用编辑
+	Discard pending edit	放弃待处理编辑
+	Pending edit; preview shows the committed revision	编辑尚未应用；预览显示已提交的版本
+	Choose the first toolset	选择初始工具集
+	This choice applies to all pages in this binder.	此选择适用于此合订本中的所有页面。
+	This choice applies only to this open file.	此选择仅适用于当前打开的文件。
+	Hue	色相
+	Saturation	饱和度
+	Black	黑场
+	White	白场
+	Gamma	伽马
+	Width	宽度
+	Height	高度
+	Document and history saved	文档和历史已保存
+	PNG preview exported; save the ArtCraft document to retain edit history	PNG 预览已导出；请保存 ArtCraft 文档以保留编辑历史
+
+# Document workspace
+	Page {page} of {count}	第 {page} 页，共 {count} 页
+
+# Document workspace
+	Wait for the current operation before dropping another file	请等待当前操作完成后再拖入文件
+	{ms} ms · {evaluated} evaluated · {cached} cached · revision {revision}	{ms} 毫秒 · 已计算 {evaluated} · 已缓存 {cached} · 版本 {revision}
+
+	Save project…	保存项目…
+	Shared viewport preview	共享视口预览
+	Unsaved shared document	未保存的共享文档
+	Keep editing	继续编辑
+	Discard and close	放弃并关闭
+	Choose an editor for this file	为此文件选择编辑器
+	PhotoCraft and VectorCraft share this project's canvas and native contents.	PhotoCraft 和 VectorCraft 共享此项目的画布和原生内容。
+
+	Finish the current tool or dialog before switching editors.	切换编辑器前，请完成当前工具操作或关闭对话框。
+	Finish the current tool or dialog before saving the project.	保存项目前，请完成当前工具操作或关闭对话框。
+
+	Open…	打开…
+	This shared viewport preview opens PNG, JPEG, and .pcraft files.	此共享视口预览支持打开 PNG、JPEG 和 .pcraft 文件。
+
+	Native app cycle test — each app retains its own edits; shared transfer is not enabled here.	原生应用切换测试：各应用保留自己的编辑，此处未启用共享传递。
+	Close the native app test?	关闭原生应用测试？
+	This test keeps native sessions in memory. Closing discards any unsaved test edits.	此测试将原生会话保留在内存中。关闭会丢弃未保存的测试编辑。
+	Choose an app to test.	选择要测试的应用。
+	First open	首次打开
+	Retained session	保留的会话
+
+	CADCraft: native drawing test; this version cannot attach raster images or PDF underlays.	CADCraft：原生绘图测试；此版本无法附加位图或 PDF 底图。
+	SoundCraft: native track test; a still image has no audio to edit.	SoundCraft：原生音轨测试；静态图像没有可编辑音频。
+
+	Shared document: PhotoCraft, VectorCraft and LightCraft. Other apps keep separate test documents.	共享文档：PhotoCraft、VectorCraft 和 LightCraft。其他应用使用独立的测试文档。
+	Shared look: Exposure, white balance, color, curves, mixer, grading and calibration. Other LightCraft tools are not connected yet.	共享外观：曝光、白平衡、颜色、曲线、混色器、调色和校准。其他 LightCraft 工具尚未连接。
+
+	One project: shared artwork and editable native companions. Save project keeps them together.	一个项目：共享画作和可编辑的应用文档。保存项目会将它们一起保存。
+	CADCraft: draft beside the live artwork reference. Native geometry is saved with this project.	CADCraft：在实时画作参考旁绘图。原生几何图形随项目保存。
+	SoundCraft: create a soundtrack beside the live artwork. Tracks and embedded audio are saved with this project.	SoundCraft：在实时画作旁创作配乐。音轨和嵌入音频随项目保存。
+	Shared artwork	共享画作
+	The reference updates when you return from another editor.	从其他编辑器返回时，参考画作会更新。
+	Native companion: artwork updates on return; this app's edits stay editable here and are saved with the project.	应用文档：返回时画作会更新；此应用中的编辑保留为可编辑状态，并随项目保存。

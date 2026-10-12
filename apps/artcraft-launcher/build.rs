@@ -11,6 +11,11 @@ fn main() {
     if std::env::var("CARGO_CFG_TARGET_OS").as_deref() != Ok("windows") {
         return;
     }
+    // This experimental host combines twelve native engines. Avoid generating
+    // one enormous MSVC debug database; ordinary builds retain their symbols.
+    if std::env::var_os("CARGO_FEATURE_STUDIO_SUITE").is_some() && std::env::var("CARGO_CFG_TARGET_ENV").as_deref() == Ok("msvc") {
+        println!("cargo:rustc-link-arg=/DEBUG:NONE");
+    }
     let mut res = winresource::WindowsResource::new();
     res.set_icon("../../assets/app-icon/artcraft-launcher.ico")
         .set("ProductName", "ArtCraft Launcher")
