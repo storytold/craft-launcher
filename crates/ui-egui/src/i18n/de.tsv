@@ -120,6 +120,14 @@
 	Apps you can install	Apps, die du installieren kannst
 	Hide App	App ausblenden
 	Unhide App	App einblenden
+	Agent control	Agentensteuerung
+	Open with the control channel on	Mit eingeschaltetem Steuerkanal öffnen
+	{name} opens with --control, so an agent can drive its window over a local JSON connection while you watch. It applies the next time {name} opens.	{name} startet mit --control, damit ein Agent sein Fenster über eine lokale JSON-Verbindung steuern kann, während du zusiehst. Das gilt ab dem nächsten Öffnen von {name}.
+	Port	Port
+	{name} picks a free port and writes it, with a token, to {file}	{name} wählt einen freien Port und schreibt ihn mit einem Token in {file}
+	Agents connect to {address} with the token in {file}	Agenten verbinden sich mit {address}, mit dem Token aus {file}
+	Agents connect to {address}	Agenten verbinden sich mit {address}
+	{name} picks its own port	{name} wählt den Port selbst
 	Hidden Apps	Ausgeblendete Apps
 	Apps you hid	Apps, die du ausgeblendet hast
 	Checked {ago} · using {sources}	Zuletzt geprüft: {ago} · über {sources}

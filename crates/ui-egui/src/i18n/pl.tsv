@@ -121,6 +121,14 @@
 	Apps you can install	Aplikacje, które możesz zainstalować
 	Hide App	Ukryj aplikację
 	Unhide App	Pokaż aplikację
+	Agent control	Sterowanie przez agenta
+	Open with the control channel on	Otwieraj z włączonym kanałem sterowania
+	{name} opens with --control, so an agent can drive its window over a local JSON connection while you watch. It applies the next time {name} opens.	{name} uruchamia się z --control, więc agent może sterować jego oknem przez lokalne połączenie JSON, a ty widzisz, co robi. Zmiana obowiązuje od następnego otwarcia {name}.
+	Port	Port
+	{name} picks a free port and writes it, with a token, to {file}	{name} wybiera wolny port i zapisuje go wraz z tokenem w {file}
+	Agents connect to {address} with the token in {file}	Agenci łączą się z {address}, używając tokenu z {file}
+	Agents connect to {address}	Agenci łączą się z {address}
+	{name} picks its own port	{name} sam wybiera port
 	Hidden Apps	Ukryte aplikacje
 	Apps you hid	Aplikacje ukryte przez ciebie
 	Checked {ago} · using {sources}	Ostatnio sprawdzono {ago} · przy użyciu {sources}

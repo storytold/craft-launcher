@@ -28,6 +28,9 @@ pub enum Command {
     },
     Launch {
         app: String,
+        /// Open it with its control channel on this port, for an agent to drive it
+        /// ([`crate::control`]); PdfCraft picks its own port. `None`: open it as usual.
+        control: Option<u16>,
     },
     /// Show the installed app in the file manager.
     Reveal {
@@ -232,4 +235,9 @@ pub trait Backend {
     fn platform(&self) -> Option<Platform>;
     /// Unix seconds now.
     fn now(&self) -> i64;
+    /// Where `app`, opened with its control channel, keeps the token or the connection details an
+    /// agent needs ([`crate::control::file_name`]); `None` where it keeps none, or isn't installed.
+    fn control_file(&self, _app: &str) -> Option<String> {
+        None
+    }
 }

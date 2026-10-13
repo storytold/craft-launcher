@@ -787,7 +787,7 @@ impl LauncherUi {
             }
             Primary::Open => {
                 if widgets::button(ui, tl!("Open"), Kind::Secondary, main_w).clicked() {
-                    self.send(Command::Launch { app: id.clone() });
+                    self.send(Command::Launch { app: id.clone(), control: self.settings.control_port(&id) });
                 }
             }
             Primary::Download(url) => {
@@ -825,7 +825,7 @@ impl LauncherUi {
             }
             if manage && status.is_installed() {
                 if ui.button(tl!("Open")).clicked() {
-                    self.send(Command::Launch { app: id.clone() });
+                    self.send(Command::Launch { app: id.clone(), control: self.settings.control_port(&id) });
                     ui.close();
                 }
                 if ui.button(t(reveal)).clicked() {
@@ -874,6 +874,12 @@ impl LauncherUi {
                 link(ui, tl!("Website"), entry.app.website());
                 link(ui, tl!("GitHub repository"), entry.app.repo_url());
                 link(ui, tl!("All releases"), entry.app.releases_url());
+            }
+            // Whether it opens for an agent to drive. The drawer has a box of its own for that
+            // (with the port to change), so its menu leaves it out, like the links.
+            if manage && links {
+                ui.separator();
+                self.agent_control_item(ui, entry.app);
             }
             ui.separator();
             let hidden = self.settings.hidden.contains(entry.app.id);

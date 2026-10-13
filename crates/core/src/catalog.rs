@@ -47,6 +47,8 @@ pub struct CraftApp {
     pub former_ids: &'static [&'static str],
     /// Older display names its installers registered (PdfCraft's MSI said PrintCraft until 0.2.1).
     pub former_names: &'static [&'static str],
+    /// How it switches on its control channel, for agents (`--control`).
+    pub control: crate::control::Style,
 }
 
 impl CraftApp {
@@ -91,19 +93,22 @@ const fn app(
     [color, ink_light, ink_dark]: [[u8; 3]; 3],
     repo: &'static str,
 ) -> CraftApp {
-    CraftApp { id, name, tagline, group, color, ink_light, ink_dark, repo, former_ids: &[], former_names: &[] }
+    CraftApp { id, name, tagline, group, color, ink_light, ink_dark, repo, former_ids: &[], former_names: &[], control: crate::control::Style::Port }
 }
 
 /// The Craft App Suite, in display order: the seven classic apps, then the five new ones.
 pub const SUITE: [CraftApp; 12] = [
-    app(
-        "photocraft",
-        "PhotoCraft",
-        "Image editing",
-        AppGroup::Classic,
-        [[0x2f, 0x7b, 0xf5], [0x1a, 0x5b, 0xc4], [0x7f, 0xb0, 0xff]],
-        "storytold/photocraft",
-    ),
+    CraftApp {
+        control: crate::control::Style::PortAndTokenFile,
+        ..app(
+            "photocraft",
+            "PhotoCraft",
+            "Image editing",
+            AppGroup::Classic,
+            [[0x2f, 0x7b, 0xf5], [0x1a, 0x5b, 0xc4], [0x7f, 0xb0, 0xff]],
+            "storytold/photocraft",
+        )
+    },
     app(
         "vectorcraft",
         "VectorCraft",
@@ -131,6 +136,7 @@ pub const SUITE: [CraftApp; 12] = [
     CraftApp {
         former_ids: &["printcraft"],
         former_names: &["PrintCraft"],
+        control: crate::control::Style::File,
         ..app(
             "pdfcraft",
             "PdfCraft",

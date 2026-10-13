@@ -483,12 +483,58 @@ pub fn glyph_button(ui: &mut Ui, glyph: Glyph, tip: &str) -> Response {
     resp.on_hover_text(tip).on_hover_cursor(egui::CursorIcon::PointingHand)
 }
 
-/// The "…" button that opens an app's menu: an outlined square like [`glyph_button`].
+/// A row that reads `label` and ends in an on/off switch, as wide as the menu or panel it is in: a
+/// square track with a square knob, filled with ink when on. A click anywhere on the row flips it.
+pub fn switch(ui: &mut Ui, on: &mut bool, label: &str) -> Response {
+    let t = Tokens::get(ui.ctx());
+    let track = vec2(26.0, 14.0);
+    let pad = ui.spacing().button_padding.x;
+    let font = egui::TextStyle::Button.resolve(ui.style());
+    let galley = ui.painter().layout_no_wrap(label.to_string(), font, t.ink);
+    // Only as wide as itself while a menu measures its contents, or the menu would grow to fill
+    // the screen; then as wide as the menu, like its buttons.
+    let fill = if ui.is_sizing_pass() { 0.0 } else { ui.available_width() };
+    let width = fill.max(galley.size().x + track.x + 3.0 * pad);
+    let height = ui.spacing().interact_size.y.max(galley.size().y + 2.0 * ui.spacing().button_padding.y);
+    let (rect, mut resp) = ui.allocate_exact_size(vec2(width, height), Sense::click());
+    if resp.clicked() {
+        *on = !*on;
+        resp.mark_changed();
+    }
+    resp.widget_info(|| egui::WidgetInfo::selected(egui::WidgetType::Checkbox, ui.is_enabled(), *on, label));
+    let visuals = ui.style().interact(&resp);
+    let p = ui.painter();
+    if resp.hovered() {
+        p.rect_filled(rect, CornerRadius::ZERO, visuals.weak_bg_fill);
+    }
+    p.galley(egui::pos2(rect.left() + pad, rect.center().y - galley.size().y / 2.0), galley, visuals.text_color());
+    let track = Rect::from_center_size(egui::pos2(rect.right() - pad - track.x / 2.0, rect.center().y), track);
+    // Slides with the style's animation time, which is zero when the OS asks for less motion.
+    let k = ui.ctx().animate_bool_responsive(resp.id, *on);
+    if *on {
+        p.rect_filled(track, CornerRadius::ZERO, t.invert_bg);
+    } else {
+        p.rect_stroke(track, CornerRadius::ZERO, Stroke::new(1.0, t.line_strong), egui::StrokeKind::Inside);
+    }
+    let knob = track.height() - 6.0;
+    let x = egui::lerp(track.left() + 3.0 + knob / 2.0..=track.right() - 3.0 - knob / 2.0, k);
+    p.rect_filled(
+        Rect::from_center_size(egui::pos2(x, track.center().y), vec2(knob, knob)),
+        CornerRadius::ZERO,
+        if *on { t.invert_fg } else { t.muted },
+    );
+    resp.on_hover_cursor(egui::CursorIcon::PointingHand)
+}
+
+/// The "…" button that opens an app's menu: an outlined square like [`glyph_button`]. A click
+/// inside leaves it open, so a checkbox in it can show what it changed; an item that should close
+/// it calls `ui.close()`.
 pub fn more_menu<R>(ui: &mut Ui, add_contents: impl FnOnce(&mut Ui) -> R) {
     let t = Tokens::get(ui.ctx());
     let btn =
         egui::Button::new(RichText::new("…").size(15.0).color(t.muted)).fill(Color32::TRANSPARENT).min_size(vec2(theme::CONTROL_H, theme::CONTROL_H));
-    egui::containers::menu::MenuButton::from_button(btn).ui(ui, |ui| {
+    let config = egui::containers::menu::MenuConfig::find(ui).close_behavior(egui::PopupCloseBehavior::CloseOnClickOutside);
+    egui::containers::menu::MenuButton::from_button(btn).config(config).ui(ui, |ui| {
         ui.set_min_width(200.0);
         add_contents(ui)
     });

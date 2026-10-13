@@ -106,6 +106,14 @@
 	Apps you can install	Aplikace, které lze nainstalovat
 	Hide App	Skrýt aplikaci
 	Unhide App	Zobrazit aplikaci
+	Agent control	Ovládání agentem
+	Open with the control channel on	Otevírat se zapnutým řídicím kanálem
+	{name} opens with --control, so an agent can drive its window over a local JSON connection while you watch. It applies the next time {name} opens.	{name} se otevře s přepínačem --control, takže agent může ovládat jeho okno přes místní spojení JSON, zatímco vy jen sledujete. Změna se projeví při příštím otevření aplikace {name}.
+	Port	Port
+	{name} picks a free port and writes it, with a token, to {file}	{name} si vybere volný port a zapíše ho spolu s tokenem do souboru {file}
+	Agents connect to {address} with the token in {file}	Agenti se připojují k {address} pomocí tokenu ze souboru {file}
+	Agents connect to {address}	Agenti se připojují k {address}
+	{name} picks its own port	{name} si vybere port sám
 	Hidden Apps	Skryté aplikace
 	Apps you hid	Aplikace, které jste skryli
 	Checked {ago} · using {sources}	Zkontrolováno {ago} · zdroje: {sources}

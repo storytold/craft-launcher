@@ -130,6 +130,30 @@ on macOS, `%LOCALAPPDATA%\ArtCraft Launcher` on Windows, `ArtCraftLauncherData` 
 portable zip's executable) and keeps the previous two runs as `artcraft-launcher.1.log` and
 `artcraft-launcher.2.log`. `RUST_LOG` changes what it records (`debug`, `info,zbus=warn`, …).
 
+## Letting an agent drive an app
+
+Every Craft App has a control channel: opened with `--control`, it serves JSON lines on
+`127.0.0.1`, so an agent can drive its window while you watch. It is off for every app until you
+switch it on: turn on **Agent control** in the app's **…** menu, which then shows the port it will
+listen on (hover it for the full address). To change the port, click the app's card and use the
+**Agent control** box in its details. The choice is kept per app and applies the next time the app
+opens.
+
+Each app gets a port of its own, so they can all be open for agents at once: PhotoCraft 7878, then
+one each in suite order (VectorCraft 7879, FilmCraft 7880, LightCraft 7881, EffectCraft 7883,
+DesignCraft 7884, WordCraft 7885, DeckCraft 7886, GridCraft 7887, CADCraft 7888, SoundCraft 7889).
+
+| App | Opened with | What an agent needs |
+|---|---|---|
+| PhotoCraft | `--control <port> --control-token-file <file>` | The token PhotoCraft writes to `control/photocraft-control.token` in the launcher's data folder |
+| PdfCraft | `--control <file>` | The port and token PdfCraft writes to `control/pdfcraft-control.json` in the launcher's data folder |
+| The others | `--control <port>` | The port (WordCraft also writes a key to its own settings folder) |
+
+The app's details show the address and the file. A Flatpak app is also given `--share=network`
+(otherwise its loopback is its own, out of the agents' reach) and keeps its file in
+`~/.var/app/<app id>/`, the one folder of yours its sandbox sees. On macOS an app that is already
+open can't be given the channel: quit it, then open it again from the launcher.
+
 ## Downloads
 
 Download the build for your computer from the [latest release](https://github.com/storytold/craft-launcher/releases/latest), or browse [all releases](https://github.com/storytold/craft-launcher/releases). Every release has a `SHA256SUMS.txt` to check the files against. `<ver>` is the version number, for example `0.1.0`.

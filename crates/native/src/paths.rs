@@ -66,6 +66,12 @@ impl Paths {
         self.data.join("apps")
     }
 
+    /// Where apps opened with their control channel keep the token or connection details an agent
+    /// needs (`core::control::file_name`), except Flatpak apps, which can't see it.
+    pub fn control(&self) -> PathBuf {
+        self.data.join("control")
+    }
+
     /// The folder an app unpacked in [`Self::apps`] sees as its home: `<data>/apps/<app>/home`.
     /// A Craft App keeps its settings in the XDG folders (`~/.config`, `~/.local/share`,
     /// `~/.cache`), so pointing `HOME` and those variables here keeps every app's configuration

@@ -465,6 +465,75 @@ fn table_view_and_light_theme() {
 }
 
 #[test]
+fn an_app_set_for_agent_control_opens_with_its_control_channel() {
+    let (mut h, sent) = harness(ViewMode::Grid, egui::Theme::Dark, true);
+    h.run_steps(8);
+    h.get_by_label("LightCraft details").click();
+    h.run_steps(10);
+    assert!(h.query_by_label_contains("Agents connect to").is_none(), "off until switched on");
+    h.get_by_label("Open with the control channel on").click();
+    h.run_steps(3);
+    snapshot(&mut h, "details-agent-control-dark");
+    // LightCraft's own port, after PhotoCraft's 7878 and the two apps between them.
+    h.get_by_label_contains("Agents connect to 127.0.0.1:7881");
+    assert_eq!(h.state().as_ref().unwrap().settings.control_port("lightcraft"), Some(7881));
+    h.key_press(egui::Key::Escape);
+    h.run_steps(10);
+    // LightCraft's is the first Open button: the installed, up-to-date app that comes first.
+    let launches = |sent: &Rc<RefCell<Vec<Command>>>| -> Vec<Command> {
+        sent.borrow().iter().filter(|c| matches!(c, Command::Launch { .. })).cloned().collect()
+    };
+    h.get_all_by_label("Open").next().unwrap().click();
+    h.run_steps(2);
+    assert_eq!(launches(&sent), [Command::Launch { app: "lightcraft".into(), control: Some(7881) }]);
+    // Switched off, it opens as usual, and the port is kept for next time.
+    h.get_by_label("LightCraft details").click();
+    h.run_steps(10);
+    h.get_by_label("Open with the control channel on").click();
+    h.run_steps(3);
+    assert!(h.query_by_label_contains("Agents connect to").is_none());
+    h.key_press(egui::Key::Escape);
+    h.run_steps(10);
+    h.get_all_by_label("Open").next().unwrap().click();
+    h.run_steps(2);
+    assert_eq!(launches(&sent).last(), Some(&Command::Launch { app: "lightcraft".into(), control: None }));
+    let kept = h.state().as_ref().unwrap().settings.agent_control.get("lightcraft").copied();
+    assert_eq!(kept, Some(artcraft_launcher_ui_egui::settings::AgentControl { on: false, port: 7881 }));
+}
+
+#[test]
+fn the_app_menu_switches_agent_control_and_shows_the_port() {
+    let (mut h, sent) = harness(ViewMode::Table, egui::Theme::Dark, true);
+    h.run_steps(6);
+    let open_menu = |h: &mut Harness<'static, Option<LauncherUi>>, app: &str| {
+        let row = h.get_all_by_label(app).next().unwrap().rect().center().y;
+        h.get_all_by_label("…").find(|n| (n.rect().center().y - row).abs() < 25.0).unwrap().click();
+        h.run_steps(3);
+    };
+    open_menu(&mut h, "LightCraft");
+    assert!(h.query_by_label("Port 7881").is_none(), "off by default");
+    snapshot(&mut h, "menu-agent-control-off-dark");
+    h.get_by_label("Agent control").click();
+    h.run_steps(3);
+    // The menu stays open, now showing the port.
+    snapshot(&mut h, "menu-agent-control-dark");
+    h.get_by_label("Port 7881");
+    assert_eq!(h.state().as_ref().unwrap().settings.control_port("lightcraft"), Some(7881));
+    h.key_press(egui::Key::Escape);
+    h.run_steps(3);
+    assert!(h.query_by_label("Port 7881").is_none());
+    let row = h.get_all_by_label("LightCraft").next().unwrap().rect().center().y;
+    h.get_all_by_label("Open").find(|n| (n.rect().center().y - row).abs() < 25.0).unwrap().click();
+    h.run_steps(2);
+    assert!(sent.borrow().contains(&Command::Launch { app: "lightcraft".into(), control: Some(7881) }));
+    // PdfCraft picks its own port, so its menu says so instead of a number.
+    open_menu(&mut h, "PdfCraft");
+    h.get_by_label("Agent control").click();
+    h.run_steps(3);
+    h.get_by_label("PdfCraft picks its own port");
+}
+
+#[test]
 fn hiding_an_app_removes_it_until_it_is_unhidden() {
     let (mut h, _) = harness(ViewMode::Table, egui::Theme::Dark, true);
     h.run_steps(6);

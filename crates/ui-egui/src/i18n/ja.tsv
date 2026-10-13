@@ -122,6 +122,14 @@
 	Apps you can install	インストールできるアプリ
 	Hide App	アプリを非表示
 	Unhide App	アプリを再表示
+	Agent control	エージェント制御
+	Open with the control channel on	制御チャンネルを有効にして開く
+	{name} opens with --control, so an agent can drive its window over a local JSON connection while you watch. It applies the next time {name} opens.	{name} を --control 付きで起動します。エージェントがローカルの JSON 接続でウィンドウを操作する様子を、そのまま見ていられます。次に {name} を開いたときから適用されます。
+	Port	ポート
+	{name} picks a free port and writes it, with a token, to {file}	{name} は空いているポートを選び、トークンと一緒に {file} に書き込みます
+	Agents connect to {address} with the token in {file}	エージェントは {file} のトークンを使って {address} に接続します
+	Agents connect to {address}	エージェントは {address} に接続します
+	{name} picks its own port	{name} がポートを自分で選びます
 	Hidden Apps	非表示のアプリ
 	Apps you hid	非表示にしたアプリ
 	Checked {ago} · using {sources}	最終確認: {ago} · 取得元: {sources}

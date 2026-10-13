@@ -265,6 +265,14 @@ soundcraft	Recording, editing and mixing audio	音频录制、编辑与混音
 	Apps you can install	可安装的应用
 	Hide App	隐藏应用
 	Unhide App	取消隐藏应用
+	Agent control	智能体控制
+	Open with the control channel on	打开时启用控制通道
+	{name} opens with --control, so an agent can drive its window over a local JSON connection while you watch. It applies the next time {name} opens.	{name} 将带 --control 启动，智能体可以通过本地 JSON 连接操作它的窗口，你可以在一旁看着。下次打开 {name} 时生效。
+	Port	端口
+	{name} picks a free port and writes it, with a token, to {file}	{name} 会选择一个空闲端口，并将它和令牌一起写入 {file}
+	Agents connect to {address} with the token in {file}	智能体使用 {file} 中的令牌连接到 {address}
+	Agents connect to {address}	智能体连接到 {address}
+	{name} picks its own port	{name} 会自行选择端口
 	Hidden Apps	已隐藏的应用
 	Apps you hid	你隐藏的应用
 	Cancel update	取消更新

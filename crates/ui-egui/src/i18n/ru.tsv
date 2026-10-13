@@ -118,6 +118,14 @@
 	Apps you can install	Приложения, которые можно установить
 	Hide App	Скрыть приложение
 	Unhide App	Показать приложение
+	Agent control	Управление агентом
+	Open with the control channel on	Открывать с включённым каналом управления
+	{name} opens with --control, so an agent can drive its window over a local JSON connection while you watch. It applies the next time {name} opens.	{name} запускается с --control, и агент может управлять его окном через локальное JSON-соединение, пока вы наблюдаете. Вступает в силу при следующем открытии {name}.
+	Port	Порт
+	{name} picks a free port and writes it, with a token, to {file}	{name} выбирает свободный порт и записывает его вместе с токеном в {file}
+	Agents connect to {address} with the token in {file}	Агенты подключаются к {address} с токеном из {file}
+	Agents connect to {address}	Агенты подключаются к {address}
+	{name} picks its own port	{name} выбирает порт сам
 	Hidden Apps	Скрытые приложения
 	Apps you hid	Приложения, которые вы скрыли
 	Checked {ago} · using {sources}	Проверено {ago} · через {sources}

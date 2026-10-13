@@ -143,7 +143,7 @@ fn which_on_path(name: &str) -> Option<std::path::PathBuf> {
 }
 
 /// Starts an app binary from its own folder.
-pub fn launch_binary(exe: &Path, args: &[&str]) -> Result<(), String> {
+pub fn launch_binary(exe: &Path, args: &[String]) -> Result<(), String> {
     let mut cmd = if in_sandbox() {
         let mut c = command("flatpak-spawn");
         c.arg("--host").arg(exe);
@@ -175,6 +175,23 @@ pub fn open(target: &std::ffi::OsStr) -> Result<(), String> {
     };
     cmd.arg(target);
     spawn_detached(cmd)
+}
+
+/// macOS: opens an app bundle, handing it `args`. Launch Services passes them only to a copy it
+/// starts: one already running is just brought forward.
+pub fn open_app(bundle: &Path, args: &[String]) -> Result<(), String> {
+    let mut cmd = command("open");
+    cmd.arg(bundle);
+    if !args.is_empty() {
+        cmd.arg("--args").args(args);
+    }
+    spawn_detached(cmd)
+}
+
+/// Whether something accepts connections on `127.0.0.1:port`, asked for at most a quarter second.
+pub fn port_answers(port: u16) -> bool {
+    let addr = std::net::SocketAddr::from(([127, 0, 0, 1], port));
+    std::net::TcpStream::connect_timeout(&addr, Duration::from_millis(250)).is_ok()
 }
 
 /// Shows `path` selected in the file manager.

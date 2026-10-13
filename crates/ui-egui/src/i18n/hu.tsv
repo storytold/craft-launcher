@@ -120,6 +120,14 @@
 	Apps you can install	Telepíthető alkalmazások
 	Hide App	Alkalmazás elrejtése
 	Unhide App	Alkalmazás megjelenítése
+	Agent control	Ügynöki vezérlés
+	Open with the control channel on	Megnyitás bekapcsolt vezérlőcsatornával
+	{name} opens with --control, so an agent can drive its window over a local JSON connection while you watch. It applies the next time {name} opens.	{name} a --control kapcsolóval indul, így egy ügynök helyi JSON-kapcsolaton át vezérelheti az ablakát, miközben minden látható marad. A beállítás {name} következő megnyitásakor lép életbe.
+	Port	Port
+	{name} picks a free port and writes it, with a token, to {file}	{name} kiválaszt egy szabad portot, és egy tokennel együtt ebbe a fájlba írja: {file}
+	Agents connect to {address} with the token in {file}	Az ügynökök ide csatlakoznak: {address}, a token helye: {file}
+	Agents connect to {address}	Az ügynökök ide csatlakoznak: {address}
+	{name} picks its own port	{name} maga választ portot
 	Hidden Apps	Rejtett alkalmazások
 	Apps you hid	Az általad elrejtett alkalmazások
 	Checked {ago} · using {sources}	Ellenőrizve: {ago} · {sources}

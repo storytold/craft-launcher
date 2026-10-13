@@ -919,10 +919,10 @@ impl Backend for NativeBackend {
                     }
                 }
             }
-            Command::Launch { app } => {
+            Command::Launch { app, control } => {
                 let Some(def) = CraftApp::by_id(&app) else { return };
                 let result = match self.installed(&app) {
-                    Some(inst) => install::launch(def, &inst, &self.paths),
+                    Some(inst) => install::launch(def, &inst, &self.paths, control),
                     None => Err(format!("{} isn't installed", def.name)),
                 };
                 if let Err(e) = result {
@@ -978,6 +978,12 @@ impl Backend for NativeBackend {
 
     fn now(&self) -> i64 {
         crate::now()
+    }
+
+    fn control_file(&self, app: &str) -> Option<String> {
+        let def = CraftApp::by_id(app)?;
+        let file = install::control_file(def, &self.installed(app)?, &self.paths)?;
+        Some(file.display().to_string())
     }
 }
 

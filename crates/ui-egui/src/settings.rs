@@ -81,6 +81,23 @@ impl CheckEvery {
     }
 }
 
+/// An app's control channel: opened with it, the app lets an agent drive its window over a
+/// loopback connection (`core::control`).
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct AgentControl {
+    /// Open the app with it.
+    pub on: bool,
+    /// The port it listens on, `127.0.0.1:<port>` (PdfCraft picks its own).
+    pub port: u16,
+}
+
+impl AgentControl {
+    /// Off, on the app's own port.
+    pub fn default_for(app: &artcraft_launcher_core::CraftApp) -> Self {
+        Self { on: false, port: artcraft_launcher_core::control::default_port(app) }
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Settings {
@@ -114,11 +131,23 @@ pub struct Settings {
     pub last_check: Option<i64>,
     /// Catalog ids of apps hidden from the main lists (`photocraft`, …).
     pub hidden: std::collections::BTreeSet<String>,
+    /// Apps' control channels, by catalog id: the ones set to open with it, and ports picked.
+    pub agent_control: BTreeMap<String, AgentControl>,
 }
 
 impl Settings {
     /// Machine-readable code for "follow the system language".
     pub const LANGUAGE_AUTO: &'static str = "auto";
+
+    /// `app`'s control channel as set, or off on its own port.
+    pub fn agent_control(&self, app: &artcraft_launcher_core::CraftApp) -> AgentControl {
+        self.agent_control.get(app.id).copied().unwrap_or_else(|| AgentControl::default_for(app))
+    }
+
+    /// The port to open `app` with its control channel on, when it's set to open with it.
+    pub fn control_port(&self, app: &str) -> Option<u16> {
+        self.agent_control.get(app).filter(|c| c.on).map(|c| c.port)
+    }
 
     /// Display name for a language `code`: a language's name in itself, from the registry
     /// ([`LANGUAGES`](crate::i18n::LANGUAGES)). A language needing a CJK font is named in English,
@@ -186,6 +215,7 @@ impl Default for Settings {
             notified: BTreeMap::new(),
             last_check: None,
             hidden: std::collections::BTreeSet::new(),
+            agent_control: BTreeMap::new(),
         }
     }
 }

@@ -3,6 +3,7 @@
 //! notes) from the app's latest GitHub release.
 
 use artcraft_launcher_core::CraftApp;
+use artcraft_launcher_core::control::Style;
 use std::sync::Arc;
 
 use artcraft_launcher_core::details::AppDetails;
@@ -11,7 +12,9 @@ use artcraft_launcher_core::protocol::Command;
 use egui::{Color32, CornerRadius, Id, Margin, Order, Rect, RichText, Sense, Stroke, Ui, emath::easing, pos2, vec2};
 
 use crate::app::LauncherUi;
+use crate::i18n::fmt;
 use crate::model::AppEntry;
+use crate::settings::AgentControl;
 use crate::theme::{self, Tokens, rgb, tint};
 use crate::views::{FOOTER_H, HEADER_H, date_text};
 use crate::widgets::{self, Glyph, Kind};
@@ -237,10 +240,89 @@ impl LauncherUi {
             let row_w = ui.available_width();
             ui.horizontal(|ui| self.actions_in(ui, entry, &status, row_w, false));
             link_buttons(ui, app, row_w);
+            // Only where the launcher opens apps: the web build hands out downloads.
+            if self.caps.manage_apps {
+                ui.add_space(6.0);
+                self.agent_control(ui, app, t);
+            }
         });
         let r = hero.response.rect;
         ui.painter().rect_filled(Rect::from_min_size(r.min, vec2(r.width(), 2.0)), CornerRadius::ZERO, app_color);
         ui.painter().hline(r.x_range(), r.bottom() - 0.5, t.hairline());
+    }
+
+    /// Whether to open the app with its control channel, and on which port, then how an agent
+    /// connects to it.
+    fn agent_control(&mut self, ui: &mut Ui, app: &CraftApp, t: &Tokens) {
+        let mut control = self.settings.agent_control(app);
+        let before = control;
+        egui::Frame::new().stroke(t.hairline()).inner_margin(Margin::symmetric(14, 12)).show(ui, |ui| {
+            ui.set_width(ui.available_width());
+            ui.spacing_mut().item_spacing.y = 6.0;
+            widgets::hud(ui, tl!("Agent control"), t.faint);
+            ui.horizontal(|ui| {
+                ui.checkbox(&mut control.on, tl!("Open with the control channel on")).on_hover_text(agent_tip(app));
+                if app.control != Style::File {
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        let port = egui::DragValue::new(&mut control.port).range(1024..=65535).speed(0.0).update_while_editing(false);
+                        ui.add_enabled(control.on, port);
+                        ui.label(RichText::new(tl!("Port")).color(t.muted));
+                    });
+                }
+            });
+            if !control.on {
+                return;
+            }
+            if let Some(text) = self.agent_hint(app, control) {
+                ui.add(egui::Label::new(RichText::new(text).size(13.5).color(t.muted)).wrap().selectable(true));
+            }
+        });
+        if control != before {
+            self.settings.agent_control.insert(app.id.to_string(), control);
+        }
+    }
+
+    /// The app menu's switch for the control channel and, switched on, the port the app listens
+    /// on (how an agent connects, on hover). The port is changed in the details drawer.
+    pub(crate) fn agent_control_item(&mut self, ui: &mut Ui, app: &CraftApp) {
+        let mut control = self.settings.agent_control(app);
+        if widgets::switch(ui, &mut control.on, tl!("Agent control")).on_hover_text(agent_tip(app)).changed() {
+            self.settings.agent_control.insert(app.id.to_string(), control);
+        }
+        if !control.on {
+            return;
+        }
+        let port = match app.control {
+            Style::File => fmt(tl!("{name} picks its own port"), &[("name", app.name)]),
+            _ => format!("{} {}", tl!("Port"), control.port),
+        };
+        let muted = Tokens::get(ui.ctx()).muted;
+        // In line with the switch's label.
+        let indent = ui.spacing().button_padding.x;
+        ui.horizontal(|ui| {
+            ui.add_space(indent);
+            let label = ui.label(RichText::new(port).size(12.5).color(muted));
+            if let Some(hint) = self.agent_hint(app, control) {
+                label.on_hover_text(hint);
+            }
+        });
+    }
+
+    /// How an agent connects to `app` opened with `control`: the address, and the file holding the
+    /// token or connection details where the app keeps one. `None` for PdfCraft before the
+    /// backend knows where its file goes (it isn't installed).
+    fn agent_hint(&self, app: &CraftApp, control: AgentControl) -> Option<String> {
+        let address = format!("127.0.0.1:{}", control.port);
+        Some(match (app.control, self.backend.control_file(app.id)) {
+            (Style::File, Some(file)) => {
+                fmt(tl!("{name} picks a free port and writes it, with a token, to {file}"), &[("name", app.name), ("file", &file)])
+            }
+            (Style::File, None) => return None,
+            (Style::PortAndTokenFile, Some(file)) => {
+                fmt(tl!("Agents connect to {address} with the token in {file}"), &[("address", &address), ("file", &file)])
+            }
+            _ => fmt(tl!("Agents connect to {address}"), &[("address", &address)]),
+        })
     }
 
     /// The facts of the latest release in cells, then its notes.
@@ -403,6 +485,16 @@ impl LauncherUi {
             }
         });
     }
+}
+
+/// What switching an app's control channel on does.
+fn agent_tip(app: &CraftApp) -> String {
+    fmt(
+        tl!(
+            "{name} opens with --control, so an agent can drive its window over a local JSON connection while you watch. It applies the next time {name} opens."
+        ),
+        &[("name", app.name)],
+    )
 }
 
 /// What stands in for a picture that isn't here: a frame of the picture's size saying why. `failed`

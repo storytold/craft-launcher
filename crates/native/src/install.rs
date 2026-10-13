@@ -274,17 +274,29 @@ fn remove_appimage(app: &CraftApp, path: &Path, record: Option<&Record>) -> Resu
     Ok(())
 }
 
-/// Starts an installed app.
-pub fn launch(app: &CraftApp, installed: &Installed, paths: &Paths) -> Result<(), String> {
-    let _ = paths;
+/// Starts an installed app; with `control`, with its control channel on that port, for an agent
+/// to drive it (`core::control`).
+pub fn launch(app: &CraftApp, installed: &Installed, paths: &Paths, control: Option<u16>) -> Result<(), String> {
     let path = Path::new(&installed.location);
+    let file = control_file(app, installed, paths);
+    let args = match control {
+        Some(port) => control_args(app, installed, port, file.as_deref())?,
+        None => Vec::new(),
+    };
+    let control = control.map(|port| Control { app, port, file: file.as_deref() });
     match installed.source {
         InstallSource::Flatpak => {
             let mut cmd = process::flatpak_command();
-            cmd.args(["run", &app.bundle_id()]);
+            cmd.arg("run");
+            // A Flatpak app has a loopback of its own unless it shares the host's network, and
+            // PhotoCraft's, for one, doesn't by default: agents on this computer couldn't reach it.
+            if control.is_some() {
+                cmd.arg("--share=network");
+            }
+            cmd.arg(app.bundle_id()).args(&args);
             process::spawn_detached(cmd)
         }
-        InstallSource::MacApp => process::open(path.as_os_str()),
+        InstallSource::MacApp => open_bundle(path, control, &args),
         // A tarball the launcher unpacked into its own folder: run it here, against its own
         // home, rather than on the host through `flatpak-spawn` (which is what `launch_binary`
         // would do inside the sandbox). Its settings then land beside it instead of in the
@@ -294,6 +306,7 @@ pub fn launch(app: &CraftApp, installed: &Installed, paths: &Paths) -> Result<()
             let home = paths.app_home(app.id);
             prepare_home(&home);
             let mut cmd = process::command(path);
+            cmd.args(&args);
             for (name, value) in home_env(&home) {
                 cmd.env(name, value);
             }
@@ -302,15 +315,79 @@ pub fn launch(app: &CraftApp, installed: &Installed, paths: &Paths) -> Result<()
             }
             process::spawn_detached(cmd)
         }
-        _ if cfg!(target_os = "macos") && path.extension().is_some_and(|e| e == "app") => process::open(path.as_os_str()),
+        _ if cfg!(target_os = "macos") && path.extension().is_some_and(|e| e == "app") => open_bundle(path, control, &args),
         _ => {
             if !path.exists() {
                 return Err(format!("{} isn't where it was installed ({})", app.name, path.display()));
             }
-            process::launch_binary(path, &[])
+            process::launch_binary(path, &args)
         }
     }
     .map_err(|e| format!("Couldn't open {}: {e}", app.name))
+}
+
+/// Where `app`, opened with its control channel, keeps its token or connection details
+/// (`core::control::file_name`): in the launcher's folder, or for a Flatpak app in its own
+/// `~/.var/app/<id>`, the one folder of the host's its sandbox always sees (at the same path).
+pub fn control_file(app: &CraftApp, installed: &Installed, paths: &Paths) -> Option<PathBuf> {
+    let name = artcraft_launcher_core::control::file_name(app)?;
+    if installed.source == InstallSource::Flatpak {
+        return Some(dirs::home_dir()?.join(".var").join("app").join(app.bundle_id()).join(name));
+    }
+    Some(paths.control().join(name))
+}
+
+/// The arguments that switch `app`'s control channel on, with the folder of its control `file`
+/// made (PdfCraft doesn't make it). A Flatpak app's folder is made by Flatpak as it starts.
+fn control_args(app: &CraftApp, installed: &Installed, port: u16, file: Option<&Path>) -> Result<Vec<String>, String> {
+    let Some(file) = file else { return Ok(artcraft_launcher_core::control::args(app, port, "")) };
+    if installed.source != InstallSource::Flatpak
+        && let Some(dir) = file.parent()
+    {
+        std::fs::create_dir_all(dir).map_err(|e| format!("couldn't create {} ({e})", dir.display()))?;
+    }
+    let file = file.to_str().ok_or_else(|| format!("{} isn't a path it can be handed", file.display()))?;
+    Ok(artcraft_launcher_core::control::args(app, port, file))
+}
+
+/// The control channel an app is being opened with.
+#[derive(Clone, Copy)]
+struct Control<'a> {
+    app: &'a CraftApp,
+    port: u16,
+    file: Option<&'a Path>,
+}
+
+impl Control<'_> {
+    /// Whether the control channel of the app, already running, answers: on its port, or for
+    /// PdfCraft on the one it wrote to its control file.
+    fn answers(&self) -> bool {
+        let port = match self.app.control {
+            artcraft_launcher_core::control::Style::File => {
+                let text = self.file.and_then(|f| std::fs::read_to_string(f).ok()).unwrap_or_default();
+                let port = serde_json::from_str::<serde_json::Value>(&text).ok().and_then(|v| v.get("port")?.as_u64());
+                match port.and_then(|p| u16::try_from(p).ok()) {
+                    Some(port) => port,
+                    None => return false,
+                }
+            }
+            _ => self.port,
+        };
+        process::port_answers(port)
+    }
+}
+
+/// Opens a macOS app bundle. Launch Services hands the arguments only to a copy it starts, so an
+/// app already running without its control channel can't get one this way: say so, rather than
+/// bring it forward and leave the agent nothing to connect to.
+fn open_bundle(bundle: &Path, control: Option<Control<'_>>, args: &[String]) -> Result<(), String> {
+    if let Some(control) = control
+        && process::is_running(bundle)
+        && !control.answers()
+    {
+        return Err("it's already open without agent control. Quit it, then open it again.".into());
+    }
+    process::open_app(bundle, args)
 }
 
 /// The environment a Craft App unpacked by the launcher runs with: its own `HOME` and the XDG
@@ -1215,6 +1292,38 @@ pub mod windows {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn installed(source: InstallSource) -> Installed {
+        Installed { version: None, source, location: String::new(), package: None }
+    }
+
+    #[test]
+    fn control_files_live_where_the_app_can_see_them() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = Paths::under(dir.path());
+        let photocraft = CraftApp::by_id("photocraft").unwrap();
+        let ours = control_file(photocraft, &installed(InstallSource::MacApp), &paths).unwrap();
+        assert_eq!(ours, paths.control().join("photocraft-control.token"));
+        // A Flatpak app sees none of the launcher's folders, only its own.
+        let flatpak = control_file(photocraft, &installed(InstallSource::Flatpak), &paths).unwrap();
+        assert!(flatpak.ends_with(".var/app/ai.storyteller.photocraft/photocraft-control.token"), "{}", flatpak.display());
+        // An app that keeps no token has no file.
+        assert_eq!(control_file(CraftApp::by_id("wordcraft").unwrap(), &installed(InstallSource::MacApp), &paths), None);
+    }
+
+    #[test]
+    fn control_arguments_come_with_the_folder_for_the_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = Paths::under(dir.path());
+        let pdfcraft = CraftApp::by_id("pdfcraft").unwrap();
+        let file = control_file(pdfcraft, &installed(InstallSource::Launcher), &paths).unwrap();
+        let args = control_args(pdfcraft, &installed(InstallSource::Launcher), 7882, Some(&file)).unwrap();
+        assert_eq!(args, ["--control".to_string(), file.display().to_string()]);
+        // PdfCraft writes its file but doesn't make the folder for it.
+        assert!(paths.control().is_dir());
+        let wordcraft = CraftApp::by_id("wordcraft").unwrap();
+        assert_eq!(control_args(wordcraft, &installed(InstallSource::Launcher), 7885, None).unwrap(), ["--control", "7885"]);
+    }
 
     #[test]
     fn swap_keeps_the_old_copy_until_the_new_one_is_in_place() {
