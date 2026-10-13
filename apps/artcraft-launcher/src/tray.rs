@@ -24,6 +24,9 @@ pub struct Tray {
     tooltip: String,
     language: String,
     labels: Vec<(MenuItem, &'static str)>,
+    /// Where a desktop shows the icon from: the session bus its StatusNotifierWatcher is on.
+    #[cfg(all(unix, not(target_os = "macos")))]
+    bus: Option<zbus::blocking::Connection>,
 }
 
 fn load_icon() -> Result<tray_icon::Icon, String> {
@@ -49,6 +52,18 @@ fn identity(builder: TrayIconBuilder) -> TrayIconBuilder {
     if cfg!(any(target_os = "macos", target_os = "windows")) { builder } else { builder.with_id("artcraft-launcher").with_title("ArtCraft Launcher") }
 }
 
+/// macOS draws the black mark as a template image, recoloured to the menu bar; elsewhere the icon
+/// is shown as supplied.
+#[cfg(target_os = "macos")]
+fn with_icon(builder: TrayIconBuilder, icon: tray_icon::Icon) -> TrayIconBuilder {
+    builder.with_icon_templated(icon)
+}
+
+#[cfg(not(target_os = "macos"))]
+fn with_icon(builder: TrayIconBuilder, icon: tray_icon::Icon) -> TrayIconBuilder {
+    builder.with_icon(icon)
+}
+
 impl Tray {
     /// Creates the tray icon. `wake` repaints the UI so it sees the action, even when hidden.
     /// `on_quit` runs when Quit is picked, before the UI can see it: the UI may never get to.
@@ -64,10 +79,8 @@ impl Tray {
         menu.append_items(&[&show, &check, &PredefinedMenuItem::separator(), &website, &github, &discord, &PredefinedMenuItem::separator(), &quit])
             .map_err(|e| e.to_string())?;
         let links = [(website.id().clone(), WEBSITE_URL), (github.id().clone(), GITHUB_URL), (discord.id().clone(), DISCORD_URL)];
-        let icon = identity(TrayIconBuilder::new())
+        let icon = with_icon(identity(TrayIconBuilder::new()), load_icon()?)
             .with_menu(Box::new(menu))
-            .with_icon(load_icon()?)
-            .with_icon_as_template(cfg!(target_os = "macos"))
             .with_menu_on_left_click(cfg!(target_os = "macos"))
             .with_tooltip("ArtCraft Launcher")
             .build()
@@ -111,7 +124,37 @@ impl Tray {
             (discord, "Join the ArtCraft Discord"),
             (quit, "Quit ArtCraft Launcher"),
         ];
-        Ok(Self { icon, show: show_id, check: check_id, quit: quit_id, rx, tooltip: String::new(), language: String::new(), labels })
+        Ok(Self {
+            icon,
+            show: show_id,
+            check: check_id,
+            quit: quit_id,
+            rx,
+            tooltip: String::new(),
+            language: String::new(),
+            labels,
+            #[cfg(all(unix, not(target_os = "macos")))]
+            bus: zbus::blocking::Connection::session().inspect_err(|e| log::warn!("tray: no session bus: {e}")).ok(),
+        })
+    }
+
+    /// Whether a desktop is showing the icon, so there is a tray to come back from. On Linux and
+    /// the BSDs the icon exists even with no StatusNotifierWatcher on the session bus (plain GNOME,
+    /// without the AppIndicator extension, has none): tray-icon registers it if one appears later.
+    /// So ask the bus whether a watcher is there now.
+    #[cfg(all(unix, not(target_os = "macos")))]
+    pub fn shown(&self) -> bool {
+        let Some(bus) = &self.bus else { return false };
+        let owned = zbus::blocking::fdo::DBusProxy::new(bus)
+            .map_err(zbus::fdo::Error::from)
+            .and_then(|dbus| dbus.name_has_owner(zbus::names::WellKnownName::from_static_str_unchecked("org.kde.StatusNotifierWatcher").into()));
+        owned.inspect_err(|e| log::debug!("tray: can't ask for the StatusNotifierWatcher: {e}")).unwrap_or(false)
+    }
+
+    /// Windows and macOS always show the icon.
+    #[cfg(not(all(unix, not(target_os = "macos"))))]
+    pub fn shown(&self) -> bool {
+        true
     }
 
     pub fn actions(&self) -> Vec<TrayAction> {

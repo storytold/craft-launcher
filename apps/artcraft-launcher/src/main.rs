@@ -95,7 +95,7 @@ fn main() -> ExitCode {
     if hidden && !window_can_hide_here(|name| std::env::var_os(name)) {
         let settings = settings_path.as_deref().and_then(|p| settings_file::load(p, SETTINGS_KEY));
         launcher.start(settings, &waker);
-        window = launcher.tray.is_none();
+        window = !launcher.tray_shown();
     }
     // One pass per window: where a window can't hide, closing to the tray ends its pass and the
     // launcher carries on without one until the window is asked for again.
@@ -497,6 +497,11 @@ impl Launcher {
         self.host.tray = self.tray.is_some();
     }
 
+    /// Whether there's a tray icon the user can see, to come back to the launcher from.
+    fn tray_shown(&self) -> bool {
+        self.tray.as_ref().is_some_and(tray::Tray::shown)
+    }
+
     /// Readies the launcher for a new window. Unless the launcher started in the tray, the first
     /// one brings the saved settings and the tray icon.
     fn open(&mut self, cc: &eframe::CreationContext<'_>, waker: &Arc<Waker>) {
@@ -616,7 +621,7 @@ impl<'a> Shell<'a> {
     fn new(cc: &eframe::CreationContext<'_>, launcher: &'a mut Launcher, hidden: bool) -> Self {
         let window_hides = window_can_hide(cc.display_handle().ok().map(|d| d.as_raw()));
         // Started hidden at login but there's no tray to come back from: show the window.
-        let visible = !hidden || launcher.tray.is_none();
+        let visible = !hidden || !launcher.tray_shown();
         let mut shell = Self { launcher, window_hides, visible: true, quitting: false, applied_follow: None };
         if !visible {
             shell.put_away(&cc.egui_ctx);
@@ -684,7 +689,7 @@ impl eframe::App for Shell<'_> {
         // the window manager's button or the header's own (no decorations), which asks to close
         // with `ViewportCommand::Close` and arrives here the same way.
         if ctx.input(|i| i.viewport().close_requested()) && !self.quitting && !self.launcher.closed_to_tray {
-            match on_close(self.launcher.tray.is_some(), self.launcher.ui.settings.close_to_tray, self.window_hides) {
+            match on_close(self.launcher.tray_shown(), self.launcher.ui.settings.close_to_tray, self.window_hides) {
                 OnClose::Hide => {
                     ctx.send_viewport_cmd(egui::ViewportCommand::CancelClose);
                     self.put_away(ctx);
