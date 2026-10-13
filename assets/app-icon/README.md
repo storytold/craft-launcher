@@ -13,7 +13,8 @@ versions.
 ## Files
 
 - `artcraft-launcher.svg`: a copy of `docs/brand/artcraft-mark.svg`; also the hicolor scalable icon.
-- `artcraft-launcher-1024.png`: 1024 px render, with extra transparent margin for Apple's icon grid.
+- `artcraft-launcher-1024.png`: 1024 px macOS render: the mark on a light squircle tile on Apple's
+  icon grid (the `.icns` uses the same artwork), so macOS 26 never puts it on a grey tile of its own.
 - `artcraft-launcher.icns`: macOS bundle icon (`CFBundleIconFile`).
 - `artcraft-launcher.ico`: Windows icon, 16–256 px, embedded in the `.exe` by
   `apps/artcraft-launcher/build.rs` and used by the MSI.

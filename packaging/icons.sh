@@ -22,12 +22,19 @@ trap 'rm -rf "$TMP"' EXIT
 
 command -v resvg >/dev/null || { echo "error: resvg not found (brew install resvg)" >&2; exit 1; }
 
-# The mark's artwork is untouched. macOS icons get a little more transparent margin (Apple's
-# 824/1024 icon grid) by widening the view box around it; everything else uses the file as is.
+# The mark's artwork is untouched. On macOS it sits on a light squircle tile drawn on Apple's
+# 1024 icon grid (824 px tile, ~185 px corners). A bare mark is a "legacy" icon to macOS 26, which
+# puts it on a grey tile in the Dock while the app is closed but shows it bare while it runs
+# (issue #293); a tile of our own looks the same in both states. Everything else uses the file as is.
 BOX='viewBox="-10 -19.42 136.34 136.34"'
 grep -q "$BOX" "$SVG" || { echo "error: expected $BOX in $SVG" >&2; exit 1; }
 MAC="$TMP/mac.svg"
-sed "s/$BOX/viewBox=\"-17.5 -26.92 151.34 151.34\"/" "$SVG" >"$MAC"
+{
+  echo '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024">'
+  echo '  <rect x="100" y="100" width="824" height="824" rx="185.4" fill="#ffffff"/>'
+  sed -e '/^<?xml/d' -e "s/<svg /<svg x=\"232\" y=\"232\" width=\"560\" height=\"560\" /" "$SVG"
+  echo '</svg>'
+} >"$MAC"
 FLAT="$SVG"
 
 render() { resvg -w "$2" -h "$2" "$1" "$3" </dev/null; }
