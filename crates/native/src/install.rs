@@ -66,7 +66,7 @@ pub fn install(
     let version = release.version_label();
     let result = match kind {
         #[cfg(target_os = "macos")]
-        PackageKind::Dmg => macos::install_dmg(app, &file, existing, job.paths, &macos::Expect::release(release)).map(|_| None),
+        PackageKind::Dmg => macos::install_dmg(app, &file, existing, &macos::Expect::release(release)).map(|_| None),
         #[cfg(windows)]
         PackageKind::Msi => windows::run_msi(&file, job.stop, &mut *job.phase).map(|_| None),
         #[cfg(target_os = "linux")]
@@ -896,49 +896,116 @@ pub mod macos {
     const DITTO: &str = "/usr/bin/ditto";
     const CODESIGN: &str = "/usr/bin/codesign";
 
-    pub fn install_dmg(app: &CraftApp, dmg: &Path, existing: Option<&Installed>, paths: &Paths, expect: &Expect<'_>) -> Result<PathBuf, String> {
+    /// Installs the app from a release disk image: attaches it read-only, copies the bundle out,
+    /// checks it, and detaches.
+    ///
+    /// The image is attached at a fresh folder under the per-user temporary directory
+    /// (`$TMPDIR`, on the boot volume). Not under the launcher's cache folder: that lives in
+    /// `~/Library/Caches`, and when the home folder is on an external drive hdiutil refuses a
+    /// mount point there ("attach failed - Permission denied"). Should a custom mount point still
+    /// be refused, the image is attached where hdiutil puts it by default (`/Volumes`) and the
+    /// mount point read back from hdiutil's property-list output.
+    pub fn install_dmg(app: &CraftApp, dmg: &Path, existing: Option<&Installed>, expect: &Expect<'_>) -> Result<PathBuf, String> {
         // A new, empty mount point for every install. A fixed one can still hold an image from an
         // attach that was interrupted or timed out, and hdiutil won't mount another over it.
         let attempt = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_nanos()).unwrap_or_default();
-        let mount = paths.cache.join(format!("mount-{}-{}-{attempt}", app.id, std::process::id()));
+        let mount = std::env::temp_dir().join(format!("mount-{}-{}-{attempt}", app.id, std::process::id()));
         std::fs::create_dir_all(&mount).map_err(|e| format!("couldn't create a folder to open the disk image in ({e})"))?;
+        install_dmg_at(app, dmg, existing, expect, &mount)
+    }
+
+    /// `install_dmg` with the mount point chosen by the caller (and created by it; this removes it
+    /// afterwards).
+    pub(crate) fn install_dmg_at(
+        app: &CraftApp,
+        dmg: &Path,
+        existing: Option<&Installed>,
+        expect: &Expect<'_>,
+        mount: &Path,
+    ) -> Result<PathBuf, String> {
         let (Some(dmg_s), Some(mount_s)) = (dmg.to_str(), mount.to_str()) else {
-            let _ = std::fs::remove_dir(&mount);
-            return Err("unusual characters in the cache folder's path".into());
+            let _ = std::fs::remove_dir(mount);
+            return Err("unusual characters in the temporary folder's path".into());
         };
-        // diskimages-helper refuses an attach while it is busy with another image ("Resource
-        // temporarily unavailable"): attach one image at a time (several apps may be updating at
-        // once), and wait a little and try again when something outside the launcher holds it.
-        // The download's SHA-256 is already checked, so hdiutil's own checksum pass (-noverify)
-        // would only add minutes on a large image.
-        let attached = {
-            let _one_at_a_time = DISK_IMAGES.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
-            let attach = || {
-                process::run(
-                    HDIUTIL,
-                    &["attach", "-nobrowse", "-readonly", "-noautoopen", "-noverify", "-mountpoint", mount_s, dmg_s],
-                    Duration::from_secs(300),
-                )
-            };
+        let mounted = match attach(dmg_s, mount_s, mount) {
+            Ok(mounted) => mounted,
+            Err(reason) => {
+                let _ = std::fs::remove_dir(mount);
+                return Err(format!("couldn't open the disk image: {reason}"));
+            }
+        };
+        let result = copy_app(app, &mounted, existing, expect);
+        let _ = detach(&mounted);
+        let _ = std::fs::remove_dir(mount);
+        result
+    }
+
+    /// Attaches `dmg` and returns where its volume is mounted: at `mount` when hdiutil accepts
+    /// that mount point, otherwise wherever hdiutil chose.
+    ///
+    /// diskimages-helper refuses an attach while it is busy with another image ("Resource
+    /// temporarily unavailable"): attach one image at a time (several apps may be updating at
+    /// once), and wait a little and try again when something outside the launcher holds it. The
+    /// download's SHA-256 is already checked, so hdiutil's own checksum pass (-noverify) would
+    /// only add minutes on a large image.
+    fn attach(dmg: &str, mount_s: &str, mount: &Path) -> Result<PathBuf, String> {
+        const OPTIONS: [&str; 5] = ["attach", "-nobrowse", "-readonly", "-noautoopen", "-noverify"];
+        let run = |extra: &[&str]| {
+            let mut args = OPTIONS.to_vec();
+            args.extend_from_slice(extra);
+            args.push(dmg);
+            process::run(HDIUTIL, &args, Duration::from_secs(300))
+        };
+        let _one_at_a_time = DISK_IMAGES.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+        let with_retries = |attach: &dyn Fn() -> Result<String, String>, clear: &dyn Fn()| {
             let mut attached = attach();
             for wait in [1, 2, 4, 8] {
                 if attached.is_ok() {
                     break;
                 }
-                let _ = detach(&mount);
+                clear();
                 std::thread::sleep(Duration::from_secs(wait));
                 attached = attach();
             }
             attached
         };
-        if let Err(reason) = attached {
-            let _ = std::fs::remove_dir(&mount);
-            return Err(format!("couldn't open the disk image: {reason}"));
+        let at_mount = || run(&["-mountpoint", mount_s]);
+        let refused = match with_retries(&at_mount, &|| {
+            let _ = detach(mount);
+        }) {
+            Ok(_) => return Ok(mount.to_path_buf()),
+            Err(reason) => reason,
+        };
+        log::warn!("hdiutil refused the mount point {mount_s} ({refused}); attaching at the default location instead");
+        let by_default = || run(&["-plist"]);
+        let output = with_retries(&by_default, &|| {})?;
+        match mount_point(&output) {
+            Some(found) => Ok(found),
+            None => {
+                // Attached, but nowhere we can name: let go of it again by device.
+                for dev in dev_entries(&output) {
+                    let _ = process::capture(HDIUTIL, &["detach", &dev, "-quiet"], Duration::from_secs(60));
+                }
+                Err("hdiutil didn't say where it mounted the image".into())
+            }
         }
-        let result = copy_app(app, &mount, existing, expect);
-        let _ = detach(&mount);
-        let _ = std::fs::remove_dir(&mount);
-        result
+    }
+
+    /// Where `hdiutil attach -plist` says it mounted the image's volume.
+    pub(crate) fn mount_point(output: &str) -> Option<PathBuf> {
+        system_entities(output)?.iter().find_map(|e| e.as_dictionary()?.get("mount-point")?.as_string().map(PathBuf::from))
+    }
+
+    /// Every device `hdiutil attach -plist` reports (`/dev/diskN`, `/dev/diskNsM`).
+    pub(crate) fn dev_entries(output: &str) -> Vec<String> {
+        system_entities(output)
+            .map(|entities| entities.iter().filter_map(|e| e.as_dictionary()?.get("dev-entry")?.as_string().map(str::to_owned)).collect())
+            .unwrap_or_default()
+    }
+
+    fn system_entities(output: &str) -> Option<Vec<plist::Value>> {
+        let value = plist::Value::from_reader(std::io::Cursor::new(output.as_bytes())).ok()?;
+        value.as_dictionary()?.get("system-entities")?.as_array().cloned()
     }
 
     fn copy_app(app: &CraftApp, mount: &Path, existing: Option<&Installed>, expect: &Expect<'_>) -> Result<PathBuf, String> {
@@ -1615,7 +1682,7 @@ mod tests {
     mod macos_checks {
         use artcraft_launcher_core::{SUITE, version};
 
-        use super::macos::{Expect, TEAM_ID, install_dmg, signed_by};
+        use super::macos::{Expect, TEAM_ID, dev_entries, install_dmg, mount_point, signed_by};
         use super::*;
 
         fn photocraft() -> &'static CraftApp {
@@ -1680,14 +1747,13 @@ mod tests {
             let apps = dir.path().join("Applications");
             let current = bundle(&apps, "0.5.0");
             let existing = Installed { version: None, source: InstallSource::MacApp, location: current.display().to_string(), package: None };
-            let paths = Paths::under(dir.path());
             let image = dmg(dir.path(), "0.6.0");
 
             for (release, ok) in [("0.6.0", true), ("0.7.0", false), ("0.6.0-rc.1", true), ("0.5.0", false)] {
                 std::fs::write(current.join("Contents/MacOS/PhotoCraft"), "0.5.0").unwrap();
                 let want = version::parse(release).unwrap();
                 let expect = Expect { team: None, version: Some(&want) };
-                let result = install_dmg(photocraft(), &image, Some(&existing), &paths, &expect);
+                let result = install_dmg(photocraft(), &image, Some(&existing), &expect);
                 assert_eq!(result.is_ok(), ok, "release {release}: {result:?}");
                 let now = std::fs::read_to_string(current.join("Contents/MacOS/PhotoCraft")).unwrap();
                 assert_eq!(now, if ok { "0.6.0" } else { "0.5.0" }, "release {release}");
@@ -1701,7 +1767,7 @@ mod tests {
             let rc = dmg(dir.path(), "0.8.0-rc.2");
             let want = version::parse("0.8.0-rc.1").unwrap();
             let expect = Expect { team: None, version: Some(&want) };
-            assert!(install_dmg(photocraft(), &rc, Some(&existing), &paths, &expect).is_err());
+            assert!(install_dmg(photocraft(), &rc, Some(&existing), &expect).is_err());
         }
 
         #[test]
@@ -1713,10 +1779,59 @@ mod tests {
             let image = dmg(dir.path(), "0.6.0");
             let release = Release { tag: "v0.6.0".into(), version: version::parse("0.6.0"), ..Release::default() };
 
-            let result = install_dmg(photocraft(), &image, Some(&existing), &Paths::under(dir.path()), &Expect::release(&release));
+            let result = install_dmg(photocraft(), &image, Some(&existing), &Expect::release(&release));
             assert_eq!(result, Err("the app isn't signed by its developer, so it wasn't installed".into()));
             assert_eq!(std::fs::read_to_string(current.join("Contents/MacOS/PhotoCraft")).unwrap(), "0.5.0");
             assert!(!apps.join(".PhotoCraft.app.partial").exists());
+        }
+
+        /// What `hdiutil attach -plist` prints for a release image: the volume is the one entity
+        /// with a mount point.
+        const ATTACH_PLIST: &str = "<?xml version=\"1.0\" encoding=\"UTF-8\"?><plist version=\"1.0\"><dict>\
+             <key>system-entities</key><array>\
+             <dict><key>content-hint</key><string>GUID_partition_scheme</string><key>dev-entry</key><string>/dev/disk15</string>\
+             <key>potentially-mountable</key><false/></dict>\
+             <dict><key>content-hint</key><string>Apple_APFS</string><key>dev-entry</key><string>/dev/disk15s1</string>\
+             <key>potentially-mountable</key><false/></dict>\
+             <dict><key>dev-entry</key><string>/dev/disk16s1</string><key>mount-point</key><string>/Volumes/PhotoCraft</string>\
+             <key>potentially-mountable</key><true/><key>volume-kind</key><string>apfs</string></dict>\
+             </array></dict></plist>";
+
+        #[test]
+        fn the_mount_point_is_read_from_hdiutils_plist() {
+            assert_eq!(mount_point(ATTACH_PLIST), Some(PathBuf::from("/Volumes/PhotoCraft")));
+            assert_eq!(dev_entries(ATTACH_PLIST), ["/dev/disk15", "/dev/disk15s1", "/dev/disk16s1"]);
+
+            // Output without a volume, or not a plist at all, names nothing (and never panics).
+            let none = "<?xml version=\"1.0\"?><plist version=\"1.0\"><dict><key>system-entities</key><array/></dict></plist>";
+            assert_eq!(mount_point(none), None);
+            assert!(dev_entries(none).is_empty());
+            for junk in ["", "/dev/disk4\t\t\t/Volumes/PhotoCraft\n", "<plist>"] {
+                assert_eq!(mount_point(junk), None, "{junk:?}");
+                assert!(dev_entries(junk).is_empty(), "{junk:?}");
+            }
+        }
+
+        /// When hdiutil refuses the launcher's own mount point (a home folder on an external
+        /// drive), the image is attached where hdiutil chooses and still installs.
+        #[test]
+        fn a_refused_mount_point_falls_back_to_the_default_location() {
+            let dir = tempfile::tempdir().unwrap();
+            let apps = dir.path().join("Applications");
+            let current = bundle(&apps, "0.5.0");
+            let existing = Installed { version: None, source: InstallSource::MacApp, location: current.display().to_string(), package: None };
+            let image = dmg(dir.path(), "0.6.0");
+            // A mount point hdiutil can't use: a file, not a folder.
+            let refused = dir.path().join("not-a-folder");
+            std::fs::write(&refused, "").unwrap();
+            let want = version::parse("0.6.0").unwrap();
+            let expect = Expect { team: None, version: Some(&want) };
+
+            let placed = super::macos::install_dmg_at(photocraft(), &image, Some(&existing), &expect, &refused).unwrap();
+            assert_eq!(placed, current);
+            assert_eq!(std::fs::read_to_string(current.join("Contents/MacOS/PhotoCraft")).unwrap(), "0.6.0");
+            assert!(refused.is_file(), "the refused mount point was replaced");
+            assert!(!Path::new("/Volumes/PhotoCraft").exists(), "the image is still attached");
         }
 
         /// A real release passes. Run with `CRAFT_APP=/path/to/PhotoCraft.app cargo test -p
