@@ -194,7 +194,8 @@ pub fn update(
         }
         #[cfg(target_os = "linux")]
         Install::Package(kind, exe) => {
-            let result = install::linux::install_package(*kind, &file, stop, phase);
+            // No bundle id: the launcher never uninstalls the copy that's running it.
+            let result = install::linux::install_package(*kind, &file, None, stop, phase);
             let _ = std::fs::remove_file(&file);
             result?;
             relaunch_after_exit(pid, &[exe.as_os_str()])

@@ -63,6 +63,14 @@ pub fn parse_flatpak_info(text: &str) -> Option<String> {
     text.lines().find_map(|l| l.trim().strip_prefix("Version:").map(|v| v.trim().to_string())).filter(|v| !v.is_empty())
 }
 
+/// Whether an installed bundle's origin (`flatpak info --show-origin`) is missing from the
+/// remotes (`flatpak remotes --columns=name`). Only a bundle's own `<name>-origin` remote counts:
+/// a real repository the user removed (Flathub) is theirs to add back.
+pub fn origin_remote_missing(origin: &str, remotes: &str) -> bool {
+    let origin = origin.trim();
+    origin.ends_with("-origin") && !remotes.lines().any(|r| r.trim() == origin)
+}
+
 /// The package names a Craft App may be installed under with `manager`. On Arch the AUR carries
 /// each app three ways: built from source (`photocraft`), the release binary (`photocraft-bin`)
 /// and the latest commit (`photocraft-git`). Debian and RPM packages may use either the short stem
@@ -114,6 +122,16 @@ mod tests {
         let info = "\nWordCraft - Word processor\n\n          ID: ai.storyteller.wordcraft\n     Version: 0.3.0\n      Branch: master\n";
         assert_eq!(parse_flatpak_info(info).as_deref(), Some("0.3.0"));
         assert_eq!(parse_flatpak_info("Version: \n"), None);
+    }
+
+    #[test]
+    fn spots_a_bundle_whose_origin_remote_is_gone() {
+        let remotes = "flathub\nvectorcraft-origin\n";
+        assert!(origin_remote_missing("photocraft-origin\n", remotes));
+        assert!(!origin_remote_missing("vectorcraft-origin\n", remotes));
+        // Not a bundle's remote: left alone even when it's gone.
+        assert!(!origin_remote_missing("flathub\n", "vectorcraft-origin\n"));
+        assert!(!origin_remote_missing("", remotes));
     }
 
     #[test]

@@ -70,7 +70,9 @@ pub fn install(
         #[cfg(windows)]
         PackageKind::Msi => windows::run_msi(&file, job.stop, &mut *job.phase).map(|_| None),
         #[cfg(target_os = "linux")]
-        PackageKind::Deb | PackageKind::Rpm | PackageKind::Flatpak => linux::install_package(kind, &file, job.stop, &mut *job.phase).map(|_| None),
+        PackageKind::Deb | PackageKind::Rpm | PackageKind::Flatpak => {
+            linux::install_package(kind, &file, Some(&app.bundle_id()), job.stop, &mut *job.phase).map(|_| None)
+        }
         #[cfg(target_os = "linux")]
         PackageKind::AppImage => linux::install_appimage(app, &file, &asset.name, existing).map(|(path, replaced)| {
             let files = linux::integrate(app, &path, &replaced, previous);
@@ -571,15 +573,29 @@ pub(crate) mod linux {
         kinds
     }
 
-    /// Installs (or upgrades) a downloaded package with the system's own tools.
-    pub fn install_package(kind: PackageKind, file: &Path, stop: &Stop, phase: &mut dyn FnMut(JobPhase)) -> Result<(), String> {
+    /// Installs (or upgrades) a downloaded package with the system's own tools. `bundle_id` is
+    /// the Flatpak app a bundle installs, when it may be repaired first ([`drop_orphaned_bundle`]).
+    pub fn install_package(
+        kind: PackageKind,
+        file: &Path,
+        bundle_id: Option<&str>,
+        stop: &Stop,
+        phase: &mut dyn FnMut(JobPhase),
+    ) -> Result<(), String> {
         if kind == PackageKind::Deb && which("apt-get").is_none() {
             return Err("this system has no apt-get to install a Debian package with".into());
         }
-        install_package_via(&SYSTEM, kind, file, stop, phase)
+        install_package_via(&SYSTEM, kind, file, bundle_id, stop, phase)
     }
 
-    pub fn install_package_via(root: &Root<'_>, kind: PackageKind, file: &Path, stop: &Stop, phase: &mut dyn FnMut(JobPhase)) -> Result<(), String> {
+    pub fn install_package_via(
+        root: &Root<'_>,
+        kind: PackageKind,
+        file: &Path,
+        bundle_id: Option<&str>,
+        stop: &Stop,
+        phase: &mut dyn FnMut(JobPhase),
+    ) -> Result<(), String> {
         let f = file.as_os_str();
         if let Some(command) = install_command(kind) {
             return as_root(root, command, f, stop, phase, JobPhase::Installing);
@@ -587,6 +603,9 @@ pub(crate) mod linux {
         match kind {
             PackageKind::Flatpak => {
                 let install_one = || {
+                    if let Some(id) = bundle_id {
+                        drop_orphaned_bundle(id);
+                    }
                     log::info!("executing flatpak install --reinstall --bundle for {}", file.display());
                     let output = process::flatpak_command()
                         .args(["install", "--user", "-y", "--noninteractive", "--reinstall", "--bundle"])
@@ -611,6 +630,31 @@ pub(crate) mod linux {
                 root.queue.alone(&cancelled(stop), &mut turn(phase, JobPhase::Installing), install_one).unwrap_or(Err(CANCELLED.into()))
             }
             other => Err(format!("{} isn't a system package", other.label())),
+        }
+    }
+
+    /// Uninstalls `id` when its bundle's `<name>-origin` remote is gone from the user's Flatpak
+    /// config, so the bundle that follows installs fresh: over such a copy, `flatpak install
+    /// --bundle` fails with `Remote "<name>-origin" not found` every time (#326). Bundle installs
+    /// that ran at the same time, as they did before the installer queue (#149), can drop each
+    /// other's remote. The app's settings and data in `~/.var/app` stay.
+    fn drop_orphaned_bundle(id: &str) {
+        let t = std::time::Duration::from_secs(10);
+        let arch = format!("--arch={}", std::env::consts::ARCH);
+        let Some(origin) = process::capture_flatpak(&["info", "--user", &arch, "--show-origin", id], t) else {
+            return;
+        };
+        let Some(remotes) = process::capture_flatpak(&["remotes", "--user", "--show-disabled", "--columns=name"], t) else {
+            return;
+        };
+        if !crate::packages::origin_remote_missing(&origin, &remotes) {
+            return;
+        }
+        log::warn!("{id}: its Flatpak remote {} is gone, uninstalling it so the bundle installs fresh", origin.trim());
+        match process::flatpak_command().args(["uninstall", "--user", "-y", "--noninteractive", &arch, id]).output() {
+            Ok(out) if out.status.success() => log::info!("{id}: uninstalled"),
+            Ok(out) => log::warn!("{id}: flatpak uninstall failed: {}", String::from_utf8_lossy(&out.stderr).trim()),
+            Err(e) => log::warn!("{id}: couldn't start Flatpak ({e})"),
         }
     }
 
@@ -1433,7 +1477,7 @@ mod tests {
                             waiting.send(()).unwrap();
                         }
                     };
-                    linux::install_package_via(root, PackageKind::Deb, Path::new(file), &Stop::default(), &mut phase)
+                    linux::install_package_via(root, PackageKind::Deb, Path::new(file), None, &Stop::default(), &mut phase)
                 })
             });
             waits.recv().unwrap();
@@ -1476,7 +1520,8 @@ mod tests {
         }
         let queue = crate::queue::Queue::new();
         let root = linux::Root { queue: &queue, run: &|_| Ok(()) };
-        let result = linux::install_package_via(&root, PackageKind::Flatpak, Path::new("/nonexistent/file.flatpak"), &Stop::default(), &mut |_| ());
+        let result =
+            linux::install_package_via(&root, PackageKind::Flatpak, Path::new("/nonexistent/file.flatpak"), None, &Stop::default(), &mut |_| ());
         assert!(result.is_err());
         let err = result.unwrap_err();
         assert!(err.starts_with("Flatpak couldn't install the bundle: "), "unexpected error: {err}");
