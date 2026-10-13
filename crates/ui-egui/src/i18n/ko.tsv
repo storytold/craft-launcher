@@ -1,0 +1,316 @@
+# Korean (ko) catalog for ArtCraft Launcher.
+# Format: context<TAB>English source<TAB>translation (UTF-8).
+# Empty context = plain lookup; a named context disambiguates a label.
+# @id = command-id keyed (tr_id); @plural = one Korean form for all counts.
+# @msg = backend message template; placeholders keep their English names.
+#
+# Clean-room translations from the meaning of the English source. Use familiar Korean
+# software terms, concise labels and polite sentences. Product and app names stay in English.
+# Korean uses one plural form. Desktop rendering uses a system Korean font (cjk_font.rs);
+# where none is available, and on the web, the interface falls back to English.
+
+	Launcher	Launcher
+	Craft App Suite	Craft App Suite
+	Open Source Tools for Creatives, Makers, and Builders	창작자, 메이커, 개발자를 위한 오픈 소스 도구
+	Settings	설정
+	Check for updates	업데이트 확인
+	Grid	격자
+	Table	표
+	Show apps as cards	앱을 카드로 표시
+	Show apps as a table	앱을 표로 표시
+	All	전체
+	Updates	업데이트
+	Not installed	미설치
+	Search apps	앱 검색
+	Sort	정렬
+	Suite order	제품군 순서
+	Name	이름
+	Inspired by	참고 앱
+	Status	상태
+	Installed version	설치된 버전
+	Latest version	최신 버전
+	Newest release	최신 릴리스
+	Discord	Discord
+	GitHub	GitHub
+	Website	웹사이트
+	Classic apps	기존 앱
+	New apps	새 앱
+	NEW	신규
+	Install	설치
+	Update to {v}	{v} 버전으로 업데이트
+	Open	열기
+	Download for {os}	{os}용 다운로드
+	Download	다운로드
+	Coming soon	출시 예정
+	Checking…	확인 중…
+	Not available	사용할 수 없음
+	Offline	오프라인
+	Downloading {done} of {total}	{total} 중 {done} 다운로드 중
+	Downloading…	다운로드 중…
+	Reconnecting…	다시 연결 중…
+	Verifying…	검증 중…
+	Installing, then restarting…	설치 후 다시 시작하는 중…
+	Installing…	설치 중…
+	Removing…	제거 중…
+	Pause download	다운로드 일시 중지
+	Cancel download	다운로드 취소
+	Resume download	다운로드 재개
+	Discard download	다운로드 파일 삭제
+	Release notes	릴리스 노트
+	Show in Finder	Finder에서 보기
+	Show in Explorer	탐색기에서 보기
+	Show in Files	파일 관리자에서 보기
+	Reinstall	다시 설치
+	Uninstall…	제거…
+	All releases	모든 릴리스
+	ArtCraft Launcher {version} is available.	ArtCraft Launcher {version} 버전을 사용할 수 있습니다.
+	Dismiss	닫기
+	Update and restart	업데이트 후 다시 시작
+	A new version is available. Would you like to relaunch with the updated version?	새 버전을 사용할 수 있습니다. 업데이트된 버전으로 다시 시작하시겠습니까?
+	Later	나중에
+	What's new	새로운 기능
+	No notes were published with this release.	이 릴리스에는 릴리스 노트가 없습니다.
+	Released {date}	{date} 출시
+	Open on GitHub	GitHub에서 열기
+	Close	닫기
+	ArtCraft Launcher {version}	ArtCraft Launcher {version}
+	Only when I ask	직접 요청할 때만
+	Automatically download and install updates	업데이트 자동 다운로드 및 설치
+	Notify me when an installed app has an update	설치된 앱에 업데이트가 있으면 알림
+	Include pre-releases (betas and release candidates)	시험판 포함(베타 및 릴리스 후보)
+	Installing on Linux	Linux에서 설치
+	Install new apps as	새 앱 설치 형식
+	System package (recommended)	시스템 패키지(권장)
+	Updates always use the format an app was installed with.	업데이트에는 항상 앱을 설치할 때 사용한 형식이 적용됩니다.
+	Running in the background	백그라운드 실행
+	Keep running in the tray when the window is closed	창을 닫아도 트레이에서 계속 실행
+	Show the window on the current desktop	현재 데스크톱에 창 표시
+	Start ArtCraft Launcher when I log in	로그인 시 ArtCraft Launcher 시작
+	Community	커뮤니티
+	Questions, ideas and news from the ArtCraft team	ArtCraft 팀과 나누는 질문, 아이디어 및 소식
+	Appearance	화면 설정
+	Quit ArtCraft Launcher	ArtCraft Launcher 종료
+	Done	완료
+	Uninstall {name}?	{name} 앱을 제거하시겠습니까?
+	The app will be moved to the Trash. Your documents and settings stay.	앱이 휴지통으로 이동됩니다. 문서와 설정은 유지됩니다.
+	Windows will remove it like any installed program. Your documents and settings stay.	Windows에서 다른 설치 프로그램과 같은 방식으로 제거합니다. 문서와 설정은 유지됩니다.
+	Your system's package manager will remove it, and may ask for your password. Your documents and settings stay.	시스템 패키지 관리자로 제거하며, 비밀번호를 요청할 수 있습니다. 문서와 설정은 유지됩니다.
+	The app will be removed. Your documents and settings stay.	앱이 제거됩니다. 문서와 설정은 유지됩니다.
+	Uninstall	제거
+	Cancel	취소
+	Checked {ago}	{ago} 확인
+	just now	방금
+	yesterday	어제
+	{month} {day}, {year}	{year}년 {month} {day}일
+	Automatically	자동
+	Every Craft app	모든 Craft 앱
+	Apps on this computer	이 컴퓨터의 앱
+	Installed apps with a newer version	새 버전이 있는 설치된 앱
+	Apps you can install	설치할 수 있는 앱
+	Hide App	앱 숨기기
+	Unhide App	앱 숨기기 해제
+	Hidden Apps	숨긴 앱
+	Apps you hid	숨긴 앱 목록
+	Checked {ago} · using {sources}	{ago} 확인 · {sources} 사용
+	{a} and {b}	{a} 및 {b}
+	Join the Discord	Discord 참여
+	Learn more	자세히 알아보기
+	Minimize	최소화
+	Maximize	최대화
+	Restore	이전 크기로
+	New	신규
+	OK	확인
+	Open link	링크 열기
+	Update	업데이트
+	{name} icon	{name} 아이콘
+	Loading ArtCraft Launcher…	ArtCraft Launcher 불러오는 중…
+	Cancel update	업데이트 취소
+	Stop waiting; the update can be started again later	대기를 중단합니다. 나중에 업데이트를 다시 시작할 수 있습니다
+	Download again	다시 다운로드
+	Install cancelled	설치 취소됨
+	Install cancelled. The download is kept for the next try.	설치가 취소되었습니다. 다음 시도를 위해 다운로드 파일을 보관합니다.
+	Update cancelled	업데이트 취소됨
+	Uninstall cancelled	제거 취소됨
+	Retry install	설치 재시도
+	Retry update to {version}	{version} 버전으로 업데이트 재시도
+	The download is still here. It's checked again, then installed.	다운로드 파일이 남아 있습니다. 다시 검증한 후 설치합니다.
+	Waiting for another app…	다른 앱을 기다리는 중…
+	Waiting for other installs…	다른 설치를 기다리는 중…
+	Installer (.msi)	설치 프로그램(.msi)
+	Portable (.zip)	포터블(.zip)
+	Disk image (.dmg)	디스크 이미지(.dmg)
+	Debian package (.deb)	Debian 패키지(.deb)
+	RPM package (.rpm)	RPM 패키지(.rpm)
+	Flatpak bundle	Flatpak 번들
+	Tarball (.tar.gz)	압축 파일(.tar.gz)
+photocraft	Image editing	이미지 편집
+vectorcraft	Vector illustration	벡터 일러스트레이션
+filmcraft	Video editing, color and sound	영상 편집, 색 보정 및 사운드
+lightcraft	Photo library and raw development	사진 라이브러리 및 RAW 현상
+pdfcraft	Reading, organizing and protecting PDFs	PDF 읽기, 정리 및 보호
+effectcraft	Motion graphics and visual effects	모션 그래픽 및 시각 효과
+designcraft	Page layout and publishing	페이지 레이아웃 및 출판
+wordcraft	Writing and document design	글쓰기 및 문서 디자인
+deckcraft	Presentations and slide shows	프레젠테이션 및 슬라이드 쇼
+gridcraft	Spreadsheets and data	스프레드시트 및 데이터
+cadcraft	Computer-aided design and drafting	컴퓨터 지원 설계 및 도면 작성
+soundcraft	Recording, editing and mixing audio	오디오 녹음, 편집 및 믹싱
+month	Jan	1월
+month	Feb	2월
+month	Mar	3월
+month	Apr	4월
+month	May	5월
+month	Jun	6월
+month	Jul	7월
+month	Aug	8월
+month	Sep	9월
+month	Oct	10월
+month	Nov	11월
+month	Dec	12월
+	Not checked yet	아직 확인하지 않음
+	GitHub's hourly limit was reached; full details return in {min} min	GitHub의 시간당 요청 한도에 도달했습니다. {min}분 후 전체 정보를 다시 볼 수 있습니다
+	GitHub limit hit; back in {min} min	GitHub 요청 한도 초과 · {min}분 후 재개
+	Installing for {platform}	{platform}용 설치
+	Downloads for {platform}	{platform}용 다운로드
+	No downloads for this system	이 시스템용 다운로드 없음
+	Join the ArtCraft community on Discord	Discord에서 ArtCraft 커뮤니티에 참여하세요
+	ArtCraft on {name}	{name}의 ArtCraft
+	Couldn't open {name}: {e}	{name} 열기 실패: {e}
+	Download cancelled	다운로드 취소됨
+	Available to install	설치 가능
+	Available	사용 가능
+	Installed · up to date	설치됨 · 최신 상태
+	Update available	업데이트 가능
+	Installed	설치됨
+	installed	설치됨
+	Not available here	이 시스템에서 사용할 수 없음
+	Updating…	업데이트 중…
+	Update paused	업데이트 일시 중지됨
+	Download paused	다운로드 일시 중지됨
+	{version} installed → {latest} released	설치된 버전 {version} → 출시된 버전 {latest}
+	Version {version}	버전 {version}
+	{installed} installed · latest {latest}	설치된 버전 {installed} · 최신 버전 {latest}
+	Installed · latest {latest}	설치됨 · 최신 버전 {latest}
+	Version {version} installed	버전 {version} 설치됨
+	Version {latest}	버전 {latest}
+	No release published yet	아직 릴리스 없음
+	ArtCraft Launcher	ArtCraft Launcher
+	App	앱
+	Latest	최신
+	Released	출시일
+	Auto	자동
+	Language	언어
+	Ascending	오름차순
+	Descending	내림차순
+	Click to reverse the order	클릭하여 정렬 방향 전환
+	Click to sort by this column	클릭하여 이 열 기준으로 정렬
+	Like {name}	{name} 계열
+	{done} of {total}	{total} 중 {done}
+	Downloading	다운로드 중
+	Verifying checksum…	체크섬 검증 중…
+	Resume	재개
+	{done} of {total} downloaded	{total} 중 {done} 다운로드됨
+	{done} downloaded	{done} 다운로드됨
+	Checking for updates…	업데이트 확인 중…
+	Downloads the new version, replaces this one and opens it again	새 버전을 다운로드하여 현재 버전을 교체하고 다시 실행합니다
+	Couldn't check for updates: {f}	업데이트를 확인할 수 없습니다: {f}
+	Website (coming soon)	웹사이트(준비 중)
+	GitHub repository	GitHub 저장소
+	ArtCraft	ArtCraft
+	Update 1 app	앱 1개 업데이트
+	Update all ({count})	모두 업데이트({count}개)
+	⊞  Grid	⊞  격자
+	☰  Table	☰  표
+	🔍  Search apps	🔍  앱 검색
+	{name} {version}	{name} {version}
+	Match system	시스템 설정 따르기
+	Dark	어둡게
+	Light	밝게
+	Full changelog	전체 변경 내역
+	link	링크
+	No apps match	일치하는 앱 없음
+	Open ArtCraft Launcher to update.	ArtCraft Launcher를 열어 업데이트하세요.
+	{name} {v} is available	{name} {v} 버전을 사용할 수 있습니다
+	{count} updates are available	업데이트 {count}개를 사용할 수 있습니다
+	These notes weren't fetched (GitHub's request limit was reached). They're on the release page.	GitHub 요청 한도에 도달하여 릴리스 노트를 가져오지 못했습니다. 릴리스 페이지에서 볼 수 있습니다.
+	When on, opening the launcher from the menu bar brings its window to the desktop you're on. When off, macOS switches you to the desktop the window was on.	켜면 메뉴 막대에서 실행할 때 현재 데스크톱에 창이 표시됩니다. 끄면 macOS가 창이 있는 데스크톱으로 전환합니다.
+	Couldn't change the login item: {e}	로그인 항목을 변경할 수 없습니다: {e}
+column	App	앱
+column	Installed	설치됨
+column	Latest	최신
+column	Released	출시일
+filter	Installed	설치됨
+	App details	앱 정보
+	Close (Esc)	닫기(Esc)
+	Features	기능
+	Latest release	최신 릴리스
+	Version	버전
+	Platforms	플랫폼
+	Releases	릴리스
+	Enlarge picture	이미지 확대
+	Click to enlarge	클릭하여 확대
+	Previous picture (←)	이전 이미지(←)
+	Next picture (→)	다음 이미지(→)
+	Loading pictures…	이미지 불러오는 중…
+	Pictures couldn't be loaded. Reopen this page to try again.	이미지를 불러올 수 없습니다. 이 페이지를 다시 열어 재시도하세요.
+	{name} details	{name} 정보
+@plural	{n} app|{n} apps	앱 {n}개
+@plural	{n} min ago|{n} min ago	{n}분 전
+@plural	{n} h ago|{n} h ago	{n}시간 전
+@plural	{n} day ago|{n} days ago	{n}일 전
+@msg	Couldn't open {name}: {e}	{name} 열기 실패: {e}
+@msg	Download cancelled	다운로드 취소됨
+@msg	{name} updated to {version}	{name} 업데이트 완료: {version}
+@msg	{name} installed: {version}	{name} 설치 완료: {version}
+@msg	{name} updated to {version} (this release publishes no checksum, so only its size was checked)	{name} 업데이트 완료: {version}(이 릴리스는 체크섬을 제공하지 않아 파일 크기만 확인했습니다)
+@msg	{name} installed: {version} (this release publishes no checksum, so only its size was checked)	{name} 설치 완료: {version}(이 릴리스는 체크섬을 제공하지 않아 파일 크기만 확인했습니다)
+@msg	{name} was removed	{name} 제거 완료
+@msg	{name} is running. Quit it, then try again.	{name} 앱이 실행 중입니다. 앱을 종료한 후 다시 시도하세요.
+@id	app.install	설치
+@id	app.update	{v} 버전으로 업데이트
+@id	app.open	열기
+@id	app.download	{os}용 다운로드
+@id	app.reveal	Finder에서 보기
+@id	app.reinstall	다시 설치
+@id	app.uninstall	제거…
+@id	app.notes	릴리스 노트
+@id	app.website	웹사이트
+@id	app.github	GitHub 저장소
+@id	app.releases	모든 릴리스
+@id	launcher.update	업데이트 후 다시 시작
+@id	launcher.download	다운로드
+@id	launcher.notes	새로운 기능
+@id	launcher.dismiss	닫기
+@id	settings.open	설정
+@id	settings.quit	ArtCraft Launcher 종료
+@id	view.grid	격자
+@id	view.table	표
+@id	filter.all	전체
+@id	filter.installed	설치됨
+@id	filter.updates	업데이트
+@id	filter.notinstalled	미설치
+@id	sort.suite	제품군 순서
+@id	sort.name	이름
+@id	sort.inspired	참고 앱
+@id	sort.status	상태
+@id	sort.installed	설치된 버전
+@id	sort.latest	최신 버전
+@id	sort.released	최신 릴리스
+@id	help.discord	Discord
+@id	help.github	GitHub
+@id	help.website	웹사이트
+@id	update.check	업데이트 확인
+@id	update.check_auto	업데이트 자동 확인
+@id	update.notify	설치된 앱에 업데이트가 있으면 알림
+@id	update.prereleases	시험판 포함(베타 및 릴리스 후보)
+@id	linux.preferred_kind	새 앱 설치 형식
+@id	tray.close_to_tray	창을 닫아도 트레이에서 계속 실행
+@id	tray.show_on_current_desktop	현재 데스크톱에 창 표시
+@id	tray.login_item	로그인 시 ArtCraft Launcher 시작
+@id	appearance.theme	화면 설정
+	Show ArtCraft Launcher	ArtCraft Launcher 표시
+	Check for Updates	업데이트 확인
+	Visit getartcraft.com	getartcraft.com 방문
+	ArtCraft on GitHub	GitHub의 ArtCraft
+	Join the ArtCraft Discord	ArtCraft Discord 참여
+@plural	ArtCraft Launcher · {n} update available|ArtCraft Launcher · {n} updates available	ArtCraft Launcher · 업데이트 {n}개 사용 가능

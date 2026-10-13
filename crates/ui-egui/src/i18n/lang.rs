@@ -15,17 +15,18 @@ pub enum Script {
     TraditionalChinese,
     Japanese,
     Georgian,
+    Korean,
 }
 
 impl Script {
     /// Every script a language can be written in.
-    pub const ALL: [Script; 4] = [Script::Chinese, Script::TraditionalChinese, Script::Japanese, Script::Georgian];
+    pub const ALL: [Script; 5] = [Script::Chinese, Script::TraditionalChinese, Script::Japanese, Script::Georgian, Script::Korean];
 }
 
 /// One supported UI language.
 pub struct LangInfo {
     /// Canonical BCP 47 code (`en`, `ru`, `zh-CN`, `zh-TW`, `de`, `fr`, `pt-BR`, `es`, `cs`, `pl`, `hu`, `ja`,
-    /// `ka`). Also the `interfaceLanguage` value.
+    /// `ka`, `ko`). Also the `interfaceLanguage` value.
     pub code: &'static str,
     /// The language's name in itself, shown in the Preferences dropdown.
     pub name: &'static str,
@@ -97,7 +98,7 @@ pub(super) fn plural_polish(n: u64) -> usize {
 }
 
 /// The registry. English first: it is the fallback and the source language.
-pub static LANGUAGES: [LangInfo; 13] = [
+pub static LANGUAGES: [LangInfo; 14] = [
     LangInfo {
         code: "en",
         name: "English",
@@ -241,6 +242,17 @@ pub static LANGUAGES: [LangInfo; 13] = [
         complete_menus: true,
         catalog: OnceLock::new(),
     },
+    LangInfo {
+        code: "ko",
+        name: "한국어",
+        english_name: "Korean",
+        script: Some(Script::Korean),
+        source: include_str!("ko.tsv"),
+        plural: plural_none,
+        plural_forms: 1,
+        complete_menus: true,
+        catalog: OnceLock::new(),
+    },
 ];
 
 impl LangInfo {
@@ -281,6 +293,7 @@ impl Lang {
     pub const HU: Lang = Lang(&LANGUAGES[10]);
     pub const JA: Lang = Lang(&LANGUAGES[11]);
     pub const KA: Lang = Lang(&LANGUAGES[12]);
+    pub const KO: Lang = Lang(&LANGUAGES[13]);
 
     pub fn code(self) -> &'static str {
         self.0.code

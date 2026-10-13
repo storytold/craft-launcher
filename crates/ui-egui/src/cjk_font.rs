@@ -47,6 +47,7 @@ fn script_name(script: Script) -> &'static str {
         Script::TraditionalChinese => "Traditional Chinese",
         Script::Japanese => "Japanese",
         Script::Georgian => "Georgian",
+        Script::Korean => "Korean",
     }
 }
 
@@ -57,6 +58,7 @@ fn script_families(script: Script) -> &'static str {
         Script::TraditionalChinese => "Noto Sans CJK TC, Noto Sans TC, PingFang TC, Heiti TC, Microsoft JhengHei and MingLiU",
         Script::Japanese => "Hiragino Sans, Yu Gothic, Meiryo, MS Gothic, Noto Sans CJK JP, Noto Sans JP, IPAGothic and TakaoGothic",
         Script::Georgian => "SF Georgian, Arial Unicode MS, Sylfaen, Noto Sans Georgian and DejaVu Sans",
+        Script::Korean => "Apple SD Gothic Neo, AppleGothic, Malgun Gothic, Gulim, Noto Sans CJK KR, Noto Sans KR and NanumGothic",
     }
 }
 
@@ -154,6 +156,7 @@ fn candidates(script: Script) -> Vec<Candidate> {
         Script::TraditionalChinese => traditional_chinese_candidates(),
         Script::Japanese => japanese_candidates(),
         Script::Georgian => georgian_candidates(),
+        Script::Korean => korean_candidates(),
     };
     let mut out = Vec::with_capacity(found.len() * 2);
     for candidate in found {
@@ -424,6 +427,65 @@ fn japanese_candidates() -> Vec<Candidate> {
     out
 }
 
+/// Where each system keeps a Korean font, best first.
+fn korean_candidates() -> Vec<Candidate> {
+    let mut out = Vec::new();
+    let mut add = |path: PathBuf, family: &'static str| out.push(Candidate { path, family });
+    #[cfg(target_os = "macos")]
+    {
+        add("/System/Library/Fonts/AppleSDGothicNeo.ttc".into(), "Apple SD Gothic Neo");
+        for path in mac_font_assets("AppleSDGothicNeo.ttc") {
+            add(path, "Apple SD Gothic Neo");
+        }
+        add("/System/Library/Fonts/Supplemental/AppleGothic.ttf".into(), "AppleGothic");
+    }
+    #[cfg(target_os = "windows")]
+    {
+        let root = std::env::var_os("SystemRoot").map_or_else(|| PathBuf::from(r"C:\Windows"), PathBuf::from);
+        add(root.join("Fonts").join("malgun.ttf"), "Malgun Gothic");
+        add(root.join("Fonts").join("gulim.ttc"), "Gulim");
+    }
+    #[cfg(all(unix, not(target_os = "macos")))]
+    {
+        // Debian/Ubuntu, Arch, Fedora (static and variable) and FreeBSD's ports.
+        const NOTO_DIRS: [&str; 8] = [
+            "/usr/share/fonts/opentype/noto",
+            "/usr/share/fonts/noto-cjk",
+            "/usr/share/fonts/google-noto-cjk",
+            "/usr/share/fonts/google-noto-sans-cjk-fonts",
+            "/usr/share/fonts/google-noto-sans-cjk-vf-fonts",
+            "/usr/share/fonts/noto",
+            "/usr/local/share/fonts/noto",
+            "/usr/local/share/fonts/noto-cjk",
+        ];
+        for file in ["NotoSansCJK-Regular.ttc", "NotoSansCJKkr-Regular.otf", "NotoSansCJK-VF.ttc"] {
+            for dir in NOTO_DIRS {
+                add(Path::new(dir).join(file), "Noto Sans CJK KR");
+            }
+        }
+        const KR_DIRS: [&str; 9] = [
+            "/usr/share/fonts/opentype/noto",
+            "/usr/share/fonts/truetype/noto",
+            "/usr/share/fonts/noto",
+            "/usr/share/fonts/google-noto-sans-kr-fonts",
+            "/usr/share/fonts/google-noto-sans-kr-vf-fonts",
+            "/usr/share/fonts/truetype/nanum",
+            "/usr/share/fonts/nanum",
+            "/usr/local/share/fonts/noto",
+            "/usr/local/share/fonts",
+        ];
+        for file in ["NotoSansKR-Regular.otf", "NotoSansKR-Regular.ttf", "NotoSansKR-VF.ttf"] {
+            for dir in KR_DIRS {
+                add(Path::new(dir).join(file), "Noto Sans KR");
+            }
+        }
+        for dir in KR_DIRS {
+            add(Path::new(dir).join("NanumGothic.ttf"), "NanumGothic");
+        }
+    }
+    out
+}
+
 /// Where each system keeps a Georgian font, best first. These faces are small (about 0.1–1 MB),
 /// except Arial Unicode MS, which macOS ships too.
 fn georgian_candidates() -> Vec<Candidate> {
@@ -634,9 +696,12 @@ mod tests {
         ] {
             assert_eq!(flatpak_host_path(Path::new(path)), host.map(PathBuf::from), "{path}");
         }
-        for (script, family) in
-            [(Script::Chinese, "Noto Sans CJK SC"), (Script::TraditionalChinese, "Noto Sans CJK TC"), (Script::Japanese, "Noto Sans CJK JP")]
-        {
+        for (script, family) in [
+            (Script::Chinese, "Noto Sans CJK SC"),
+            (Script::TraditionalChinese, "Noto Sans CJK TC"),
+            (Script::Japanese, "Noto Sans CJK JP"),
+            (Script::Korean, "Noto Sans CJK KR"),
+        ] {
             let found = candidates(script);
             let at = found.iter().position(|c| c.path == Path::new("/usr/share/fonts/noto-cjk/NotoSansCJK-Regular.ttc")).unwrap();
             assert_eq!(found[at + 1].path, Path::new("/run/host/fonts/noto-cjk/NotoSansCJK-Regular.ttc"));
