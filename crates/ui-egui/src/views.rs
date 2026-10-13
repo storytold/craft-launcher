@@ -411,9 +411,10 @@ impl LauncherUi {
         // A faint wash in the app's colour fades in under the pointer.
         let fill = t.bg.lerp_to_gamma(app_color, 0.05 * lift);
         painter.rect(rect, CornerRadius::ZERO, fill, t.hairline(), egui::StrokeKind::Inside);
-        // On hover, a 2 px rule in the app's colour wipes in from the left along the top.
+        // On hover, a 2 px rule in the app's colour grows out from the centre along the top.
         if lift > 0.0 {
-            painter.rect_filled(Rect::from_min_size(rect.min, vec2(rect.width() * lift, 2.0)), CornerRadius::ZERO, app_color);
+            let rule = Rect::from_center_size(egui::pos2(rect.center().x, rect.min.y + 1.0), vec2(rect.width() * lift, 2.0));
+            painter.rect_filled(rule, CornerRadius::ZERO, app_color);
         }
 
         // The top strip: the app's number in its colour, and its pages.
