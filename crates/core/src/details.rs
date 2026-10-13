@@ -67,7 +67,7 @@ pub fn looks_like_jpeg(bytes: &[u8]) -> bool {
 /// Where every Craft App runs (getartcraft.com lists the same for each of them).
 const PLATFORMS: &str = "macOS, Windows, Linux, FreeBSD, web";
 
-pub const DETAILS: [AppDetails; 12] = [
+pub const DETAILS: [AppDetails; 13] = [
     AppDetails {
         id: "photocraft",
         headline: "The image editor you already know how to use.",
@@ -368,6 +368,40 @@ pub const DETAILS: [AppDetails; 12] = [
             shot("mix", "The Mix window"),
             shot("automation", "Automation and memory locations"),
             shot("score", "The Score Editor"),
+        ],
+        platforms: PLATFORMS,
+    },
+    AppDetails {
+        id: "figcraft",
+        headline: "Interface design and prototyping, in Rust.",
+        about: "A collaborative vector design tool built for UI and UX work: frames, auto-layout, \
+                components, variants and a prototype canvas, all in a fast native app with no subscription.\n\n\
+                FigCraft reads and writes the open FigCraft format and imports Figma files, so your \
+                existing work moves over without a redraw.",
+        features: &[
+            feature(
+                "Auto-layout",
+                "Stacks and grids with padding, gap, alignment and wrapping that mirror the CSS flexbox and grid properties your engineers use.",
+            ),
+            feature(
+                "Components and variants",
+                "A single component tree with variant properties, Boolean layers, interactive states and nested instances that swap cleanly.",
+            ),
+            feature(
+                "Prototype canvas",
+                "Connections, overlays, scroll containers, smart-animate transitions and a device frame — all previewed in the app without exporting.",
+            ),
+            feature(
+                "Dev mode",
+                "One-click CSS, Swift and Kotlin snippets, asset export at any scale, and an MCP server so design tokens flow straight into your editor.",
+            ),
+            feature("Real-time collaboration", "Shared cursors and presence over a self-hosted or cloud server with conflict-free editing."),
+        ],
+        shots: &[
+            shot("canvas", "The design canvas with auto-layout frames"),
+            shot("components", "The component panel and variant editor"),
+            shot("prototype", "A prototype flow with transitions"),
+            shot("devmode", "Dev mode with code snippets"),
         ],
         platforms: PLATFORMS,
     },
