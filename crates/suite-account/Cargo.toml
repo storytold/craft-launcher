@@ -1,0 +1,33 @@
+[package]
+name = "artcraft-suite-account"
+description = "The Craft App Suite's shared account store: who is signed in, kept once for the whole suite, with the token in the operating system's keychain"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+publish = false
+
+[lints]
+workspace = true
+
+[dependencies]
+serde = { workspace = true }
+serde_json = { workspace = true }
+log = { workspace = true }
+dirs = "6"
+# The account handle is a digest of the service and the user, so the same account always lands on
+# the same keychain entry and a second sign-in replaces it instead of leaving one behind.
+sha2 = "0.10"
+# Overwrites a token's bytes when the value is dropped. Pure Rust, and a safe API, so the
+# workspace's `unsafe_code = "forbid"` still holds.
+zeroize = { version = "1", features = ["alloc"] }
+# Windows Credential Manager, the macOS Keychain and the Secret Service, behind one API. The `v1`
+# default feature picks the right one per platform and pins `crypto-rust` for the Secret Service,
+# so no OpenSSL and no C toolchain comes in.
+keyring = "4.2"
+# The entry constructor that takes store modifiers, which is how a Windows credential asks for
+# machine-local persistence. `keyring` installs the platform store; this reads it.
+keyring-core = "1"
+
+[dev-dependencies]
+tempfile = "3"

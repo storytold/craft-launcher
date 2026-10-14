@@ -1,7 +1,7 @@
 //! Modal dialogs: release notes, uninstall confirmation, settings.
 
 use crate::i18n::fmt;
-use artcraft_launcher_core::protocol::Command;
+use artcraft_launcher_core::protocol::{Command, SuiteAccount};
 use artcraft_launcher_core::{Os, PackageKind};
 use egui::{RichText, vec2};
 
@@ -301,6 +301,81 @@ impl LauncherUi {
         close
     }
 
+    /// The suite's shared sign-in.
+    ///
+    /// The launcher is where somebody signs in once for the whole Craft App Suite. The account
+    /// goes in one suite-level folder and the token goes in the operating system's keychain. Every
+    /// Craft App then finds the same session. One sign-out ends it everywhere.
+    ///
+    /// Optional. It stays silent until somebody names a deployment. With the address empty the
+    /// launcher offers nothing further here and makes no request about an account.
+    fn account_settings(&mut self, ui: &mut egui::Ui) {
+        let t = Tokens::get(ui.ctx());
+        ui.add_space(14.0);
+        widgets::hud(ui, tl!("Account"), t.faint);
+        ui.add_space(6.0);
+        ui.label(RichText::new(tl!("Sign in here once. Every Craft app then uses it.")).size(12.0).color(t.muted));
+        ui.add_space(6.0);
+
+        let mut address = self.account_edit.clone().unwrap_or_else(|| self.settings.account_service.clone());
+        ui.label(tl!("CollabCraft address"));
+        let field = egui::TextEdit::singleline(&mut address).hint_text("https://craft.example.com").desired_width(f32::INFINITY);
+        let typing = ui.add(field);
+        if typing.changed() {
+            self.account_edit = Some(address);
+        }
+        // Committed when the field is done with, never per keystroke. Each commit asks the backend
+        // about an account. A half-typed URL is no account.
+        if typing.lost_focus() {
+            self.commit_account_address();
+        }
+
+        let sign_in = |ui: &mut egui::Ui| widgets::button(ui, tl!("Sign in"), Kind::Primary, 0.0).clicked();
+        match self.account.clone() {
+            // Unconfigured has nothing to sign in to. Failed never reaches here: the event handler
+            // reports it and asks the backend again.
+            SuiteAccount::Unconfigured | SuiteAccount::Failed(_) => {}
+            SuiteAccount::SignedOut => {
+                ui.add_space(8.0);
+                if sign_in(ui) {
+                    self.send(Command::AccountSignIn);
+                }
+            }
+            SuiteAccount::Waiting { .. } => {
+                ui.add_space(8.0);
+                ui.label(RichText::new(tl!("Your browser is open. Finish signing in there.")).color(t.warn));
+            }
+            SuiteAccount::Unreadable { display, why } => {
+                ui.add_space(8.0);
+                ui.label(RichText::new(display.as_str()).family(theme::medium()).color(t.ink_strong));
+                ui.label(RichText::new(tl!("The shared sign-in couldn't be read.")).size(12.0).color(t.warn));
+                ui.label(RichText::new(why.as_str()).size(12.0).color(t.muted));
+                ui.add_space(6.0);
+                if sign_in(ui) {
+                    self.send(Command::AccountSignIn);
+                }
+            }
+            SuiteAccount::SignedIn(who) => {
+                ui.add_space(8.0);
+                ui.label(RichText::new(who.display.as_str()).family(theme::medium()).color(t.ink_strong));
+                if let Some(email) = &who.email {
+                    ui.label(RichText::new(email.as_str()).size(12.0).color(t.muted));
+                }
+                ui.label(RichText::new(who.service.as_str()).size(12.0).color(t.faint));
+                // Said here. The alternative is discovering it at the moment of saving.
+                if let Some(linked) = who.linked {
+                    let (text, color) = if linked { (tl!("Storage connected"), t.good) } else { (tl!("No storage connected"), t.warn) };
+                    ui.label(RichText::new(text).size(12.0).color(color));
+                }
+                ui.add_space(6.0);
+                if widgets::button(ui, tl!("Sign out"), Kind::Secondary, 0.0).clicked() {
+                    self.send(Command::AccountSignOut);
+                }
+                ui.label(RichText::new(tl!("Signing out ends the session for every Craft app.")).size(12.0).color(t.muted));
+            }
+        }
+    }
+
     fn settings_contents(&mut self, ui: &mut egui::Ui, host: &mut dyn Host) {
         let t = Tokens::get(ui.ctx());
         let section = |ui: &mut egui::Ui, s: &str| {
@@ -451,6 +526,10 @@ impl LauncherUi {
                 let ctx = ui.ctx().clone();
                 self.toast(&ctx, fmt(tl!("Couldn't change the login item: {e}"), &[("e", &e)]), true);
             }
+        }
+
+        if self.caps.manage_apps {
+            self.account_settings(ui);
         }
 
         section(ui, tl!("Community"));

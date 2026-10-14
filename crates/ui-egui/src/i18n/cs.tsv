@@ -330,3 +330,14 @@ filter	Installed	Nainstalováno
 	Replace what's there?	Nahradit, co tam je?
 	{path} already exists. Installing {name} will overwrite it.	{path} už existuje. Instalace aplikace {name} ho přepíše.
 	Replace	Nahradit
+# The suite's shared sign-in (the launcher is where somebody signs in once for every Craft app)
+	Account	Účet
+	Sign in here once. Every Craft app then uses it.	Přihlas se zde jednou. Každá aplikace Craft potom použije toto přihlášení.
+	CollabCraft address	Adresa CollabCraft
+	Sign in	Přihlásit se
+	Sign out	Odhlásit se
+	Your browser is open. Finish signing in there.	Tvůj prohlížeč je otevřený. Dokonči přihlášení tam.
+	Storage connected	Úložiště připojeno
+	No storage connected	Žádné připojené úložiště
+	Signing out ends the session for every Craft app.	Odhlášení ukončí sezení ve všech aplikacích Craft.
+	The shared sign-in couldn't be read.	Společné přihlášení se nepodařilo přečíst.

@@ -363,3 +363,14 @@ filter	Installed	Telepítve
 	Replace what's there?	Lecseréli, ami ott van?
 	{path} already exists. Installing {name} will overwrite it.	{path} már létezik. A(z) {name} telepítése felülírja.
 	Replace	Csere
+# The suite's shared sign-in (the launcher is where somebody signs in once for every Craft app)
+	Account	Fiók
+	Sign in here once. Every Craft app then uses it.	Jelentkezz be itt egyszer. Ezután minden Craft alkalmazás ezt használja.
+	CollabCraft address	CollabCraft címe
+	Sign in	Bejelentkezés
+	Sign out	Kijelentkezés
+	Your browser is open. Finish signing in there.	A böngésződ megnyílt. Fejezd be ott a bejelentkezést.
+	Storage connected	Tároló csatlakoztatva
+	No storage connected	Nincs csatlakoztatott tároló
+	Signing out ends the session for every Craft app.	A kijelentkezés minden Craft alkalmazásban lezárja a munkamenetet.
+	The shared sign-in couldn't be read.	A megosztott bejelentkezést nem sikerült beolvasni.

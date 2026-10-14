@@ -150,6 +150,35 @@ impl Http {
         }
     }
 
+    /// GET a small JSON resource, with an optional bearer token. Returns the status and the body,
+    /// because a refusal from a CollabCraft deployment is an answer carrying a reason.
+    ///
+    /// `bearer` goes into one header and is never logged. Nothing here formats it into a message.
+    pub fn get_json(&self, url: &str, bearer: Option<&str>) -> Result<(u16, String), String> {
+        let mut req = self.small.get(url).header("Accept", "application/json");
+        if let Some(token) = bearer {
+            req = req.header("Authorization", &format!("Bearer {token}"));
+        }
+        let mut resp = req.call().map_err(|e| format!("couldn't reach {} ({e})", host(url)))?;
+        let status = resp.status().as_u16();
+        let body = resp.body_mut().with_config().limit(MAX_SMALL).read_to_string().map_err(|e| format!("unreadable answer ({e})"))?;
+        Ok((status, body))
+    }
+
+    /// POST a small JSON body, with an optional bearer token. Returns the status and the body.
+    ///
+    /// `bearer` goes into one header and is never logged.
+    pub fn post_json(&self, url: &str, body: &str, bearer: Option<&str>) -> Result<(u16, String), String> {
+        let mut req = self.small.post(url).header("Content-Type", "application/json").header("Accept", "application/json");
+        if let Some(token) = bearer {
+            req = req.header("Authorization", &format!("Bearer {token}"));
+        }
+        let mut resp = req.send(body).map_err(|e| format!("couldn't reach {} ({e})", host(url)))?;
+        let status = resp.status().as_u16();
+        let answer = resp.body_mut().with_config().limit(MAX_SMALL).read_to_string().map_err(|e| format!("unreadable answer ({e})"))?;
+        Ok((status, answer))
+    }
+
     /// GET a small text file (following redirects).
     pub fn get_text(&self, url: &str) -> Result<Option<String>, String> {
         let mut resp = self.small.get(url).call().map_err(|e| format!("couldn't reach {} ({e})", host(url)))?;

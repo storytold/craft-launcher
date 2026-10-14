@@ -364,3 +364,14 @@ filter	Installed	Zainstalowane
 	Replace what's there?	Zastąpić to, co tam jest?
 	{path} already exists. Installing {name} will overwrite it.	{path} już istnieje. Instalacja {name} go nadpisze.
 	Replace	Zastąp
+# The suite's shared sign-in (the launcher is where somebody signs in once for every Craft app)
+	Account	Konto
+	Sign in here once. Every Craft app then uses it.	Zaloguj się tutaj raz. Każda aplikacja Craft użyje potem tego logowania.
+	CollabCraft address	Adres CollabCraft
+	Sign in	Zaloguj się
+	Sign out	Wyloguj się
+	Your browser is open. Finish signing in there.	Twoja przeglądarka jest otwarta. Dokończ tam logowanie.
+	Storage connected	Magazyn połączony
+	No storage connected	Brak połączonego magazynu
+	Signing out ends the session for every Craft app.	Wylogowanie kończy sesję we wszystkich aplikacjach Craft.
+	The shared sign-in couldn't be read.	Nie udało się odczytać wspólnego logowania.
