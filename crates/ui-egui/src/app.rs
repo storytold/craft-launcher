@@ -173,6 +173,8 @@ pub struct LauncherUi {
     /// Set when such a language comes into use, then kept for the session.
     pub(crate) cjk_font: Option<crate::i18n::Lang>,
     sent_options: Option<BackendOptions>,
+    /// The order of the apps on screen, as last told to the backend (queued downloads go in it).
+    sent_order: Vec<&'static str>,
     /// Unix seconds of the last look at what's installed (startup counts).
     last_detect: i64,
     /// Whether the window had focus last frame, to re-check when the user comes back to it.
@@ -262,6 +264,7 @@ impl LauncherUi {
             fonts_ready: false,
             cjk_font,
             sent_options: None,
+            sent_order: Vec::new(),
             last_detect: 0,
             was_focused: true,
             auto_update_attempted: std::collections::BTreeSet::new(),
@@ -424,6 +427,11 @@ impl LauncherUi {
         if self.sent_options.as_ref() != Some(&options) {
             self.backend.send(Command::Configure(options.clone()));
             self.sent_options = Some(options);
+        }
+        let order = self.sorted_ids(false);
+        if order != self.sent_order {
+            self.backend.send(Command::DownloadOrder(order.iter().map(|id| id.to_string()).collect()));
+            self.sent_order = order;
         }
     }
 
@@ -822,14 +830,21 @@ impl LauncherUi {
 
     /// The ids to show, filtered and sorted.
     pub(crate) fn visible_ids(&self) -> Vec<&'static str> {
+        self.sorted_ids(true)
+    }
+
+    /// Every id in the order the list shows them; `filtered` leaves out what the filter and the
+    /// search hide.
+    fn sorted_ids(&self, filtered: bool) -> Vec<&'static str> {
         let needle = self.search.trim().to_lowercase();
         let mut list: Vec<(usize, &AppEntry)> = self
             .entries
             .iter()
             .enumerate()
             .filter(|(_, e)| {
-                self.in_filter(e, self.settings.filter)
-                    && (needle.is_empty() || e.app.name.to_lowercase().contains(&needle) || e.app.tagline.to_lowercase().contains(&needle))
+                !filtered
+                    || (self.in_filter(e, self.settings.filter)
+                        && (needle.is_empty() || e.app.name.to_lowercase().contains(&needle) || e.app.tagline.to_lowercase().contains(&needle)))
             })
             .collect();
         let platform = self.platform;

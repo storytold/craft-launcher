@@ -1084,6 +1084,7 @@ impl Backend for NativeBackend {
             }
             Command::UpdateLauncher => self.update_launcher(),
             Command::FetchScreenshots { app } => self.fetch_screenshots(&app),
+            Command::DownloadOrder(order) => install::DOWNLOADS.set_order(order),
             Command::Configure(options) => {
                 let changed_pre = {
                     let mut o = self.shared.options.lock().unwrap_or_else(PoisonError::into_inner);
