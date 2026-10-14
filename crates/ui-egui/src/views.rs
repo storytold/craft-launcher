@@ -184,7 +184,10 @@ impl LauncherUi {
                                     self.send(Command::UpdateLauncher);
                                 }
                             } else {
-                                let url = self.platform.and_then(|p| launcher_download(&r, p)).unwrap_or_else(|| r.html_url.clone());
+                                let url = self
+                                    .platform
+                                    .and_then(|p| launcher_download(&r, p, crate::settings::is_flatpak_sandbox()))
+                                    .unwrap_or_else(|| r.html_url.clone());
                                 if widgets::button(ui, tl!("Download"), Kind::Primary, 0.0).clicked() {
                                     ui.ctx().open_url(egui::OpenUrl::new_tab(url));
                                 }
@@ -923,10 +926,13 @@ pub(crate) fn version_line(e: &AppEntry, status: &AppStatus) -> String {
     }
 }
 
-/// The launcher's own download for this platform.
-pub(crate) fn launcher_download(r: &artcraft_launcher_core::Release, p: artcraft_launcher_core::Platform) -> Option<String> {
+/// The launcher's own download for this platform. `flatpak` is whether this copy runs as a
+/// Flatpak; such a copy's download stays the `.flatpak` bundle — offering it an AppImage (or a
+/// `.deb`) would point at replacing the sandboxed install with a different one.
+pub(crate) fn launcher_download(r: &artcraft_launcher_core::Release, p: artcraft_launcher_core::Platform, flatpak: bool) -> Option<String> {
     use artcraft_launcher_core::PackageKind;
     let kinds: &[PackageKind] = match p.os {
+        artcraft_launcher_core::Os::Linux if flatpak => &[PackageKind::Flatpak],
         artcraft_launcher_core::Os::Linux => &[PackageKind::AppImage, PackageKind::Deb],
         _ => p.default_kinds(),
     };
@@ -948,4 +954,45 @@ fn centered_lines(ui: &mut Ui, fonts: &[&FontId], gap: f32, add_contents: impl F
 fn lines_height(ui: &Ui, fonts: &[&FontId], gap: f32) -> f32 {
     let line = |font: &FontId| ui.fonts_mut(|f| f.layout_no_wrap(String::new(), font.clone(), Color32::PLACEHOLDER)).size().y;
     (fonts.iter().map(|font| line(font) + gap).sum::<f32>() - gap).max(0.0)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use artcraft_launcher_core::catalog::LAUNCHER_ID;
+    use artcraft_launcher_core::{Arch, Asset, Platform, Release};
+
+    fn release() -> Release {
+        let asset = |name: &str| Asset { name: name.into(), size: 0, url: format!("https://dl.example/{name}"), sha256: None };
+        Release {
+            tag: "v0.4.1".into(),
+            version: None,
+            name: "ArtCraft Launcher v0.4.1".into(),
+            published_at: None,
+            html_url: "https://github.com/storytold/craft-launcher/releases/tag/v0.4.1".into(),
+            notes: String::new(),
+            prerelease: false,
+            assets: vec![
+                asset(&format!("{LAUNCHER_ID}-0.4.1-linux-x86_64.flatpak")),
+                asset(&format!("{LAUNCHER_ID}-0.4.1-linux-x86_64.AppImage")),
+                asset(&format!("{LAUNCHER_ID}-0.4.1-linux-x86_64.deb")),
+            ],
+        }
+    }
+
+    fn platform() -> Platform {
+        Platform { os: artcraft_launcher_core::Os::Linux, arch: Arch::X64 }
+    }
+
+    #[test]
+    fn a_flatpak_copy_of_the_launcher_gets_the_bundle() {
+        let url = launcher_download(&release(), platform(), true).unwrap();
+        assert_eq!(url, format!("https://dl.example/{LAUNCHER_ID}-0.4.1-linux-x86_64.flatpak"));
+    }
+
+    #[test]
+    fn a_plain_linux_copy_still_gets_the_appimage() {
+        let url = launcher_download(&release(), platform(), false).unwrap();
+        assert_eq!(url, format!("https://dl.example/{LAUNCHER_ID}-0.4.1-linux-x86_64.AppImage"));
+    }
 }

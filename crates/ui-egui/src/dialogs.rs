@@ -128,7 +128,10 @@ impl LauncherUi {
                         close = true;
                     }
                 } else {
-                    let url = self.platform.and_then(|p| crate::views::launcher_download(r, p)).unwrap_or_else(|| r.html_url.clone());
+                    let url = self
+                        .platform
+                        .and_then(|p| crate::views::launcher_download(r, p, crate::settings::is_flatpak_sandbox()))
+                        .unwrap_or_else(|| r.html_url.clone());
                     if widgets::button(ui, tl!("Download"), Kind::Primary, 0.0).clicked() {
                         ui.ctx().open_url(egui::OpenUrl::new_tab(url));
                         close = true;
