@@ -105,6 +105,30 @@ The crate uses [`keyring`](https://crates.io/crates/keyring) 4 with its default 
 feature picks the right store per platform. It also pins `crypto-rust` for the Secret Service. That
 keeps OpenSSL and any C toolchain out of the build.
 
+## Taking over a per-application session file
+
+An application upgrading from its own session file calls `migrate::adopt` once at startup. What it
+writes is four keys:
+
+```json
+{"token": "…", "service": "https://craft.example.com", "subject": "…", "display": "Ada Lovelace"}
+```
+
+`service` is the deployment base URL with any trailing slash trimmed. `subject` is the deployment's
+own identifier for the account. That is the subject the handle is keyed on. The service and the
+token are known the moment the device flow completes. The subject and the display name arrive when
+`/api/v1/me` first answers.
+
+`adopt` deletes the file only after the suite store holds the session. It leaves the file exactly
+where it is in two cases. The first is a suite store that can keep nothing, such as a machine with
+no keychain. The second is a file that does not yet name both the deployment and the subject: the
+earliest of these files held `{"token": "…"}` alone. Both cases answer `Adopted::Kept` with a `why`.
+
+A token-only file is never keyed on a stand-in. The handle is a digest of the deployment and the
+subject. A made-up handle would file the token under something nothing ever looks up again. That
+reads as a silent sign-out. The application rewrites the file with all four keys the first time
+`/api/v1/me` answers. The next startup adopts it. Adopting one launch late costs nothing.
+
 ## What an application does
 
 ```rust
@@ -112,8 +136,8 @@ use artcraft_suite_account::{Shared, Store};
 
 let store = Store::open();
 
-// Once, for an application upgrading from its own session file. The file is removed only after the
-// suite store holds the session. It is left alone where the suite store can keep nothing.
+// Once, for an application upgrading from its own session file. See the section above for when the
+// file is removed and when it is left alone.
 let _ = artcraft_suite_account::migrate::adopt(&store, &own_session_path, now);
 
 match store.shared() {

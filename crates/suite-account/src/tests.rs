@@ -374,11 +374,98 @@ fn migration_in_an_isolated_process_leaves_the_file_alone() {
 }
 
 #[test]
-fn a_session_file_naming_no_deployment_is_refused() {
+fn a_session_file_carrying_no_session_is_refused() {
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("collabcraft-session.json");
-    std::fs::write(&path, br#"{"service":"","token":"x"}"#).unwrap();
+    std::fs::write(&path, br#"{"service":"https://craft.example.com","token":"  "}"#).unwrap();
     assert!(matches!(crate::migrate::read(&path), Err(Error::Malformed(_))));
+}
+
+/// The four keys an application writes today, spelled exactly as it writes them.
+#[test]
+fn the_four_keys_an_application_writes_today_adopt_cleanly() {
+    let suite = tempfile::tempdir().unwrap();
+    let app = tempfile::tempdir().unwrap();
+    let keychain = Memory::new();
+    let store = Store::at(Some(suite.path().to_path_buf()), keychain.clone());
+    let path = app.path().join("collabcraft-session.json");
+    let body = format!(r#"{{"token":"{TOKEN}","service":"{SERVICE}","subject":"{USER}","display":"Ada Lovelace"}}"#);
+    std::fs::write(&path, body.as_bytes()).unwrap();
+
+    match crate::migrate::adopt(&store, &path, NOW).unwrap() {
+        Adopted::Taken(account) => {
+            assert_eq!(account.service, SERVICE);
+            assert_eq!(account.user, USER, "`subject` is the subject the handle is keyed on");
+            assert_eq!(account.display, "Ada Lovelace");
+            assert_eq!(account.id, accounts::handle(SERVICE, USER));
+            assert!(keychain.has(&account.id));
+        }
+        other => panic!("expected the session to be taken over, got {other:?}"),
+    }
+    assert!(!path.exists());
+}
+
+/// What is on every machine that signed in before the application recorded anything else.
+#[test]
+fn a_token_only_session_file_is_left_alone_until_the_application_records_more() {
+    let suite = tempfile::tempdir().unwrap();
+    let app = tempfile::tempdir().unwrap();
+    let keychain = Memory::new();
+    let store = Store::at(Some(suite.path().to_path_buf()), keychain.clone());
+    let path = app.path().join("collabcraft-session.json");
+    std::fs::write(&path, format!(r#"{{"token":"{TOKEN}"}}"#).as_bytes()).unwrap();
+
+    // It parses, and it says nothing to key an account on.
+    let legacy = crate::migrate::read(&path).unwrap().unwrap();
+    assert_eq!(legacy.token, Secret::new(TOKEN));
+    assert_eq!(legacy.service, "");
+    assert_eq!(legacy.user, "", "the subject is never stood in for");
+    assert_eq!(legacy.incomplete(), Some("which deployment it belongs to"));
+
+    match crate::migrate::adopt(&store, &path, NOW).unwrap() {
+        Adopted::Kept { why } => assert!(why.contains("does not say"), "{why}"),
+        other => panic!("expected the file to be kept, got {other:?}"),
+    }
+    assert!(path.exists(), "removing it would have signed the user out");
+    assert_eq!(keychain.count(), 0, "nothing should be filed under a made-up handle");
+    assert!(store.accounts().unwrap().accounts.is_empty());
+    assert!(matches!(store.shared(), Shared::None));
+
+    // The application rewrites the file once it knows the rest. The next startup adopts it.
+    let body = format!(r#"{{"token":"{TOKEN}","service":"{SERVICE}","subject":"{USER}","display":"Ada Lovelace"}}"#);
+    std::fs::write(&path, body.as_bytes()).unwrap();
+    assert!(matches!(crate::migrate::adopt(&store, &path, NOW).unwrap(), Adopted::Taken(_)));
+    assert!(!path.exists());
+    match store.shared() {
+        Shared::Session { account, token } => {
+            assert_eq!(account.id, accounts::handle(SERVICE, USER));
+            assert_eq!(token, Secret::new(TOKEN));
+        }
+        other => panic!("expected a session, got {other:?}"),
+    }
+}
+
+/// The deployment is recorded the moment the device flow completes. The subject only arrives when
+/// `/api/v1/me` first answers, so a file can hold one without the other.
+#[test]
+fn a_session_file_with_no_subject_is_left_alone() {
+    let suite = tempfile::tempdir().unwrap();
+    let app = tempfile::tempdir().unwrap();
+    let keychain = Memory::new();
+    let store = Store::at(Some(suite.path().to_path_buf()), keychain.clone());
+    let path = app.path().join("collabcraft-session.json");
+    std::fs::write(&path, format!(r#"{{"token":"{TOKEN}","service":"{SERVICE}"}}"#).as_bytes()).unwrap();
+
+    let legacy = crate::migrate::read(&path).unwrap().unwrap();
+    assert_eq!(legacy.service, SERVICE);
+    assert_eq!(legacy.incomplete(), Some("whose account it is"));
+
+    match crate::migrate::adopt(&store, &path, NOW).unwrap() {
+        Adopted::Kept { why } => assert!(why.contains("whose account it is"), "{why}"),
+        other => panic!("expected the file to be kept, got {other:?}"),
+    }
+    assert!(path.exists());
+    assert_eq!(keychain.count(), 0);
 }
 
 #[test]

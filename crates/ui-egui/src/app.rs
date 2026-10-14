@@ -307,12 +307,6 @@ impl LauncherUi {
             self.sent_options = Some(options);
         }
     }
-        };
-        if self.sent_options.as_ref() != Some(&options) {
-            self.backend.send(Command::Configure(options.clone()));
-            self.sent_options = Some(options);
-        }
-    }
 
     pub(crate) fn custom_install_folders(&self) -> bool {
         self.caps.manage_apps

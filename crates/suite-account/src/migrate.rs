@@ -11,6 +11,12 @@
 //! The file is only deleted once the suite store holds the session. Where the suite store can keep
 //! nothing (no keychain on this machine, or this process is isolated) the file stays exactly where
 //! it is. Removing it would sign the user out. That is the one thing migration must not do.
+//!
+//! The earliest of these files held one key: `{"token": "…"}`. It names no deployment and no
+//! subject. There is nothing to key an account on. Such a file is left exactly where it is too. A
+//! made-up handle would file the token under something nothing ever looks up again. That reads as
+//! a silent sign-out. An application that rewrites the file with the deployment and the subject is
+//! adopted on the next startup. Adopting one launch late costs nothing.
 
 use std::path::Path;
 
@@ -25,11 +31,31 @@ use crate::{NewAccount, Store};
 /// What a legacy session file said.
 #[derive(Debug)]
 pub struct Legacy {
+    /// The deployment's base URL, with any trailing slash trimmed. Empty where the file predates
+    /// the application recording it.
     pub service: String,
+    /// The deployment's own identifier for the account: the OIDC subject. Empty where the file
+    /// predates the application recording it.
     pub user: String,
     pub display: String,
     pub email: Option<String>,
     pub token: Secret,
+}
+
+impl Legacy {
+    /// What the file does not say yet, when it cannot be keyed to an account.
+    ///
+    /// The account handle is a digest of the deployment and the subject. Both are therefore
+    /// needed. A session written before the application recorded them carries a token alone.
+    pub fn incomplete(&self) -> Option<&'static str> {
+        if self.service.is_empty() {
+            return Some("which deployment it belongs to");
+        }
+        if self.user.is_empty() {
+            return Some("whose account it is");
+        }
+        None
+    }
 }
 
 /// What happened.
@@ -39,23 +65,26 @@ pub enum Adopted {
     Nothing,
     /// The session is in the suite store now. The file is gone.
     Taken(Account),
-    /// The suite store can keep nothing here. The file was left alone and the application goes on
-    /// reading it. `why` says what the keychain reported.
+    /// The file was left exactly where it is. The application goes on reading it. `why` says
+    /// which case it was: the suite store can keep nothing here, or the file does not yet say
+    /// enough to key an account on.
     Kept { why: String },
 }
 
 /// The shape on disk.
 ///
-/// Read with aliases because the file predates this crate and several spellings are plausible. A
-/// missing field is not fatal. Carrying a session over needs the deployment URL and the token. The
-/// rest is re-read from the deployment on the next call to
-/// [`crate::service::Service::identity`].
+/// What an application writes today is `token`, `service`, `subject` and `display`. The file
+/// predates this crate. The aliases therefore cover the other plausible spellings.
+///
+/// The token is the only key that has to be there: a file without one carries no session at all.
+/// Everything else defaults. That is what lets the earliest `{"token": "…"}` file still parse.
+/// [`adopt`] then leaves such a file alone. Keying an account on nothing is the alternative.
 #[derive(Deserialize)]
 struct Stored {
-    #[serde(alias = "base", alias = "base_url", alias = "url", alias = "service_url", alias = "collabcraft")]
-    service: String,
     #[serde(alias = "session", alias = "session_token", alias = "bearer", alias = "access_token")]
     token: String,
+    #[serde(default, alias = "base", alias = "base_url", alias = "url", alias = "service_url", alias = "collabcraft")]
+    service: String,
     #[serde(default, alias = "id", alias = "sub", alias = "subject", alias = "user_id")]
     user: String,
     #[serde(default, alias = "name", alias = "display_name")]
@@ -79,12 +108,14 @@ pub fn read(path: &Path) -> Result<Option<Legacy>, Error> {
     }
     let bytes = std::fs::read(path).map_err(|e| Error::Io(format!("couldn't read {} ({e})", path.display())))?;
     let stored: Stored = serde_json::from_slice(&bytes).map_err(|e| Error::Malformed(format!("{} didn't parse ({e})", path.display())))?;
-    let service = accounts::normalise(&stored.service);
-    if service.is_empty() || stored.token.trim().is_empty() {
-        return Err(Error::Malformed(format!("{} names no deployment or carries no session", path.display())));
+    if stored.token.trim().is_empty() {
+        return Err(Error::Malformed(format!("{} carries no session", path.display())));
     }
-    let user = if stored.user.is_empty() { service.clone() } else { stored.user };
-    let display = if stored.display.is_empty() { user.clone() } else { stored.display };
+    let service = accounts::normalise(&stored.service);
+    // The subject is never stood in for. A handle built on anything else would file the token
+    // where nothing looks for it. See [`Legacy::incomplete`].
+    let user = stored.user.trim().to_owned();
+    let display = if stored.display.trim().is_empty() { user.clone() } else { stored.display };
     Ok(Some(Legacy { service, user, display, email: stored.email, token: Secret::new(stored.token.trim()) }))
 }
 
@@ -94,6 +125,9 @@ pub fn read(path: &Path) -> Result<Option<Legacy>, Error> {
 /// there is no file. Safe to call again after it has run.
 pub fn adopt<S: TokenStore>(store: &Store<S>, path: &Path, now: i64) -> Result<Adopted, Error> {
     let Some(legacy) = read(path)? else { return Ok(Adopted::Nothing) };
+    if let Some(unsaid) = legacy.incomplete() {
+        return Ok(Adopted::Kept { why: format!("{} does not say {unsaid} yet", path.display()) });
+    }
     if let Err(why) = store.usable() {
         return Ok(Adopted::Kept { why: why.to_string() });
     }
