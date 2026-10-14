@@ -114,6 +114,7 @@ pub(crate) enum Dialog {
     Install { app: String, folder: String },
     Replace { app: String, path: String },
     Settings,
+    Diagnostics,
     LauncherUpdate(artcraft_launcher_core::Release),
     Versions(String),
 }
@@ -128,6 +129,7 @@ impl Dialog {
             Dialog::Install { app, .. } => ("install", app),
             Dialog::Replace { app, .. } => ("replace", app),
             Dialog::Settings => ("settings", ""),
+            Dialog::Diagnostics => ("diagnostics", ""),
             Dialog::LauncherUpdate(r) => ("launcher-update", &r.tag),
             Dialog::Versions(id) => ("versions", id),
         }
@@ -135,6 +137,7 @@ impl Dialog {
 }
 
 pub struct LauncherUi {
+    pub(crate) diagnostics: crate::diagnostics::State,
     pub(crate) backend: Box<dyn Backend>,
     pub settings: Settings,
     pub(crate) entries: Vec<AppEntry>,
@@ -256,6 +259,7 @@ impl LauncherUi {
         let mut settings = settings;
         settings.migrate();
         Self {
+            diagnostics: crate::diagnostics::State::default(),
             backend,
             settings,
             entries: SUITE.iter().map(AppEntry::new).collect(),
@@ -543,6 +547,14 @@ impl LauncherUi {
     /// Returns whether app state changed.
     fn handle(&mut self, event: Event) -> bool {
         match event {
+            Event::DiagnosticsGenerated { request, result } => {
+                self.diagnostics.generated(request, result);
+                false
+            }
+            Event::DiagnosticsSaved { request, result } => {
+                self.diagnostics.saved(request, result);
+                false
+            }
             Event::Latest { app, latest, from } => {
                 self.on_latest(app, latest, from);
                 true

@@ -122,9 +122,23 @@ impl LauncherUi {
                 let (this, host) = &mut *state;
                 this.settings_install(ui, &mut **host);
                 this.settings_background(ui, &mut **host);
+                this.settings_troubleshooting(ui);
                 this.settings_community(ui);
             },
         );
+    }
+
+    /// The local diagnostic report (Settings › Troubleshooting): what maintainers ask for
+    /// when an installation or startup problem needs more than a screenshot. Local-only and
+    /// opt-in; see `docs/diagnostics.md` for the contents and the privacy limits.
+    fn settings_troubleshooting(&mut self, ui: &mut Ui) {
+        let t = Tokens::get(ui.ctx());
+        sheet::panel(ui, tl!("Troubleshooting"), |ui| {
+            ui.label(RichText::new(tl!("Prepare a report to help maintainers investigate installation and startup problems.")).color(t.muted));
+            if widgets::button(ui, tl!("Diagnostic report"), Kind::Secondary, 0.0).clicked() {
+                self.open_diagnostics();
+            }
+        });
     }
 
     /// The language picker. It changes the preference immediately but keeps this pass on a language
