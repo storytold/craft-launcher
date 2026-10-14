@@ -113,7 +113,29 @@ if has deb || has rpm || has arch; then
     sed "s|^name: $PKG\$|name: $APP_ID|" "$WORK/nfpm.yaml" >"$WORK/nfpm-arch.yaml"
     grep -qx "name: $APP_ID" "$WORK/nfpm-arch.yaml" || { echo "error: couldn't rename the Arch package" >&2; exit 1; }
     printf 'archlinux:\n  packager: "%s"\n' "$ARTCRAFT_LAUNCHER_MAINTAINER" >>"$WORK/nfpm-arch.yaml"
-    (cd "$ROOT" && nfpm package -f "$WORK/nfpm-arch.yaml" -p archlinux -t "$DIST/$BASENAME.pkg.tar.zst")
+    # nfpm (2.47, 2.48) writes Go's directory bit into the mode of each directory a `type: tree`
+    # entry walks (0o20000000755), and pacman then warns "directory permissions differ" on every
+    # shared directory under /usr/share. List the tree's files one by one instead: nfpm gives their
+    # parent directories a plain 0755.
+    if find "$STAGE/usr/share" ! -type d ! -type f | grep -q .; then
+      echo "error: only plain files can be listed in the Arch package's usr/share" >&2; exit 1
+    fi
+    find "$STAGE/usr/share" -type f | LC_ALL=C sort | while IFS= read -r f; do
+      printf '  - src: "%s"\n    dst: "%s"\n' "$f" "${f#"$STAGE"}"
+    done >"$WORK/arch-share.yaml"
+    awk -v files="$WORK/arch-share.yaml" -v tree="  - src: $STAGE/usr/share/" '
+      $0 == tree { while ((getline line < files) > 0) print line; skip = 2; next }
+      skip > 0 { skip--; next }
+      { print }
+    ' "$WORK/nfpm-arch.yaml" >"$WORK/nfpm-arch.yaml.new"
+    mv "$WORK/nfpm-arch.yaml.new" "$WORK/nfpm-arch.yaml"
+    if grep -q 'type: tree' "$WORK/nfpm-arch.yaml"; then
+      echo "error: couldn't list the Arch package's files" >&2; exit 1
+    fi
+    # Without a fixed time nfpm stamps the files and .MTREE a moment apart, and `pacman -Qkk`
+    # reports every file as modified. The commit time also makes the package reproducible.
+    epoch="${SOURCE_DATE_EPOCH:-$(git -C "$ROOT" log -1 --format=%ct 2>/dev/null || date +%s)}"
+    (cd "$ROOT" && SOURCE_DATE_EPOCH="$epoch" nfpm package -f "$WORK/nfpm-arch.yaml" -p archlinux -t "$DIST/$BASENAME.pkg.tar.zst")
   fi
 fi
 
