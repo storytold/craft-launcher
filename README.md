@@ -124,6 +124,10 @@ package or portable folder, the AppImage, or the `.deb`/`.rpm`) and reopens it.
 Updates use the same format an app was installed with. Every download is checked against the
 release's published SHA-256 before it is installed, and a running app is never replaced.
 
+On macOS, app and launcher DMGs are saved in your Downloads folder and kept after installation.
+Disk images mount temporarily in a private folder under `/private/tmp` on the boot volume, so
+installation also works when your home folder is on an external drive with ownership disabled.
+
 The launcher writes its log to `logs/artcraft-launcher.log` in its data folder
 (`~/.local/share/artcraft-launcher` on Linux, `~/Library/Application Support/ArtCraft Launcher`
 on macOS, `%LOCALAPPDATA%\ArtCraft Launcher` on Windows, `ArtCraftLauncherData` beside the

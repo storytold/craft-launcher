@@ -9,6 +9,9 @@ pub struct Paths {
     pub data: PathBuf,
     /// Saved release answers and in-progress downloads.
     pub cache: PathBuf,
+    /// DMGs and their partial downloads live in the user's Downloads folder on macOS.
+    #[cfg(target_os = "macos")]
+    download_dir: PathBuf,
 }
 
 const DIR: &str = if cfg!(any(target_os = "macos", target_os = "windows")) { "ArtCraft Launcher" } else { "artcraft-launcher" };
@@ -20,15 +23,28 @@ impl Paths {
         }
         let data = dirs::data_local_dir().ok_or("no per-user data folder on this system")?.join(DIR);
         let cache = dirs::cache_dir().ok_or("no per-user cache folder on this system")?.join(DIR);
-        Ok(Self { data, cache })
+        Ok(Self {
+            data,
+            cache,
+            #[cfg(target_os = "macos")]
+            download_dir: dirs::download_dir().ok_or("no Downloads folder on this system")?,
+        })
     }
 
     /// For tests: everything under one folder.
     pub fn under(root: &std::path::Path) -> Self {
-        Self { data: root.join("data"), cache: root.join("cache") }
+        Self {
+            data: root.join("data"),
+            cache: root.join("cache"),
+            #[cfg(target_os = "macos")]
+            download_dir: root.join("Downloads"),
+        }
     }
 
     pub fn downloads(&self) -> PathBuf {
+        #[cfg(target_os = "macos")]
+        return self.download_dir.clone();
+        #[cfg(not(target_os = "macos"))]
         self.cache.join("downloads")
     }
 
@@ -91,4 +107,19 @@ pub fn portable_root() -> Option<PathBuf> {
     let exe = std::env::current_exe().ok()?;
     let dir = exe.parent()?;
     dir.join("portable.txt").is_file().then(|| dir.join("ArtCraftLauncherData"))
+}
+
+#[cfg(all(test, target_os = "macos"))]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn macos_downloads_use_the_users_downloads_folder() {
+        let paths = Paths::new().unwrap();
+        assert_eq!(paths.downloads(), dirs::download_dir().unwrap());
+        assert_ne!(paths.downloads(), paths.cache.join("downloads"));
+        // Tests never write to the real user's Downloads folder.
+        let dir = tempfile::tempdir().unwrap();
+        assert_eq!(Paths::under(dir.path()).downloads(), dir.path().join("Downloads"));
+    }
 }

@@ -66,7 +66,7 @@ pub fn install(
     let version = release.version_label();
     let result = match kind {
         #[cfg(target_os = "macos")]
-        PackageKind::Dmg => macos::install_dmg(app, &file, existing, job.paths, &macos::Expect::release(release)).map(|_| None),
+        PackageKind::Dmg => macos::install_dmg(app, &file, existing, &macos::Expect::release(release)).map(|_| None),
         #[cfg(windows)]
         PackageKind::Msi => windows::run_msi(&file, job.stop, &mut *job.phase).map(|_| None),
         #[cfg(target_os = "linux")]
@@ -88,8 +88,9 @@ pub fn install(
         Err(e) => log::error!("{}: installation failed: {e}", app.name),
     }
     // A failed install keeps the download: the next try checks it against its published checksum
-    // again and skips the transfer.
-    if result.is_ok() {
+    // again and skips the transfer. On macOS the DMG belongs in the user's Downloads folder
+    // and stays there after installation, too.
+    if result.is_ok() && !cfg!(target_os = "macos") {
         let _ = std::fs::remove_file(&file);
     }
     // The system's own prompt was dismissed: the download itself wasn't cancelled.
@@ -842,6 +843,7 @@ pub(crate) mod linux {
 
 #[cfg(target_os = "macos")]
 pub mod macos {
+    use std::os::unix::fs::DirBuilderExt;
     use std::time::Duration;
 
     use artcraft_launcher_core::version::Version;
@@ -893,32 +895,49 @@ pub mod macos {
     /// Apple's tools, by full path: a launcher started from Finder or at login gets a minimal
     /// `PATH`, and nothing earlier on it should stand in for these.
     const HDIUTIL: &str = "/usr/bin/hdiutil";
+    const DISKUTIL: &str = "/usr/sbin/diskutil";
     const DITTO: &str = "/usr/bin/ditto";
     const CODESIGN: &str = "/usr/bin/codesign";
 
-    pub fn install_dmg(app: &CraftApp, dmg: &Path, existing: Option<&Installed>, paths: &Paths, expect: &Expect<'_>) -> Result<PathBuf, String> {
-        // A new, empty mount point for every install. A fixed one can still hold an image from an
-        // attach that was interrupted or timed out, and hdiutil won't mount another over it.
+    fn mount_point(app: &CraftApp) -> Result<PathBuf, String> {
+        // A home/cache volume can have ownership disabled (noowners), which macOS refuses to
+        // mount an image onto. Use the boot volume's temporary folder, even when TMPDIR points
+        // elsewhere. Create a private, new directory so no other process can supply its contents.
         let attempt = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_nanos()).unwrap_or_default();
-        let mount = paths.cache.join(format!("mount-{}-{}-{attempt}", app.id, std::process::id()));
-        std::fs::create_dir_all(&mount).map_err(|e| format!("couldn't create a folder to open the disk image in ({e})"))?;
+        let mount = Path::new("/private/tmp").join(format!("artcraft-mount-{}-{}-{attempt}", app.id, std::process::id()));
+        std::fs::DirBuilder::new().mode(0o700).create(&mount).map_err(|e| format!("couldn't create a folder to open the disk image in ({e})"))?;
+        Ok(mount)
+    }
+
+    pub fn install_dmg(app: &CraftApp, dmg: &Path, existing: Option<&Installed>, expect: &Expect<'_>) -> Result<PathBuf, String> {
+        let mount = mount_point(app)?;
         let (Some(dmg_s), Some(mount_s)) = (dmg.to_str(), mount.to_str()) else {
             let _ = std::fs::remove_dir(&mount);
-            return Err("unusual characters in the cache folder's path".into());
+            return Err("unusual characters in a path".into());
         };
         // diskimages-helper refuses an attach while it is busy with another image ("Resource
         // temporarily unavailable"): attach one image at a time (several apps may be updating at
         // once), and wait a little and try again when something outside the launcher holds it.
-        // The download's SHA-256 is already checked, so hdiutil's own checksum pass (-noverify)
-        // would only add minutes on a large image.
         let attached = {
             let _one_at_a_time = DISK_IMAGES.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+            // diskutil's image verb is available from macOS 13. Keep Big Sur/Monterey support,
+            // but do not hide real diskutil attach errors by falling back to another tool.
+            let diskutil = process::capture(DISKUTIL, &["image", "attach", "--help"], Duration::from_secs(10)).is_some();
             let attach = || {
-                process::run(
-                    HDIUTIL,
-                    &["attach", "-nobrowse", "-readonly", "-noautoopen", "-noverify", "-mountpoint", mount_s, dmg_s],
-                    Duration::from_secs(300),
-                )
+                if diskutil {
+                    process::run(
+                        DISKUTIL,
+                        &["image", "attach", "--mountOptions", "nobrowse", "--readOnly", "--mountPoint", mount_s, dmg_s],
+                        Duration::from_secs(300),
+                    )
+                } else {
+                    // The download's SHA-256 is already checked; skip the legacy checksum pass.
+                    process::run(
+                        HDIUTIL,
+                        &["attach", "-nobrowse", "-readonly", "-noautoopen", "-noverify", "-mountpoint", mount_s, dmg_s],
+                        Duration::from_secs(300),
+                    )
+                }
             };
             let mut attached = attach();
             for wait in [1, 2, 4, 8] {
@@ -932,6 +951,7 @@ pub mod macos {
             attached
         };
         if let Err(reason) = attached {
+            let _ = detach(&mount);
             let _ = std::fs::remove_dir(&mount);
             return Err(format!("couldn't open the disk image: {reason}"));
         }
@@ -1021,6 +1041,26 @@ pub mod macos {
             return Ok(());
         }
         std::fs::remove_dir_all(path).map_err(|e| format!("couldn't remove {} ({e})", path.display()))
+    }
+
+    #[cfg(test)]
+    mod tests {
+        use std::os::unix::fs::PermissionsExt;
+
+        use super::*;
+
+        #[test]
+        fn mount_points_are_private_unique_and_on_the_boot_volume() {
+            let app = CraftApp::by_id("photocraft").unwrap();
+            let first = mount_point(app).unwrap();
+            let second = mount_point(app).unwrap();
+            assert_ne!(first, second);
+            for mount in [first, second] {
+                assert_eq!(mount.parent(), Some(Path::new("/private/tmp")));
+                assert_eq!(std::fs::metadata(&mount).unwrap().permissions().mode() & 0o777, 0o700);
+                std::fs::remove_dir(mount).unwrap();
+            }
+        }
     }
 }
 
@@ -1659,6 +1699,21 @@ mod tests {
         }
 
         #[test]
+        fn a_disk_image_and_apps_on_an_external_home_volume_can_be_updated() {
+            // Keep the image and apps beside the checkout, which may be on a noowners
+            // external home volume. Only the mount point needs to be on the boot volume.
+            let dir = tempfile::tempdir_in(env!("CARGO_MANIFEST_DIR")).unwrap();
+            let current = bundle(&dir.path().join("Applications"), "0.5.0");
+            let existing = Installed { version: None, source: InstallSource::MacApp, location: current.display().to_string(), package: None };
+            let image = dmg(dir.path(), "0.6.0");
+            let expect = Expect { team: None, version: None };
+            let placed = install_dmg(photocraft(), &image, Some(&existing), &expect).unwrap();
+            assert_eq!(placed, current);
+            assert_eq!(std::fs::read_to_string(current.join("Contents/MacOS/PhotoCraft")).unwrap(), "0.6.0");
+            assert!(!dir.path().join("Applications/.PhotoCraft.app.partial").exists());
+        }
+
+        #[test]
         fn only_the_teams_signature_passes() {
             let dir = tempfile::tempdir().unwrap();
             let app = bundle(dir.path(), "0.6.0");
@@ -1680,14 +1735,13 @@ mod tests {
             let apps = dir.path().join("Applications");
             let current = bundle(&apps, "0.5.0");
             let existing = Installed { version: None, source: InstallSource::MacApp, location: current.display().to_string(), package: None };
-            let paths = Paths::under(dir.path());
             let image = dmg(dir.path(), "0.6.0");
 
             for (release, ok) in [("0.6.0", true), ("0.7.0", false), ("0.6.0-rc.1", true), ("0.5.0", false)] {
                 std::fs::write(current.join("Contents/MacOS/PhotoCraft"), "0.5.0").unwrap();
                 let want = version::parse(release).unwrap();
                 let expect = Expect { team: None, version: Some(&want) };
-                let result = install_dmg(photocraft(), &image, Some(&existing), &paths, &expect);
+                let result = install_dmg(photocraft(), &image, Some(&existing), &expect);
                 assert_eq!(result.is_ok(), ok, "release {release}: {result:?}");
                 let now = std::fs::read_to_string(current.join("Contents/MacOS/PhotoCraft")).unwrap();
                 assert_eq!(now, if ok { "0.6.0" } else { "0.5.0" }, "release {release}");
@@ -1701,7 +1755,7 @@ mod tests {
             let rc = dmg(dir.path(), "0.8.0-rc.2");
             let want = version::parse("0.8.0-rc.1").unwrap();
             let expect = Expect { team: None, version: Some(&want) };
-            assert!(install_dmg(photocraft(), &rc, Some(&existing), &paths, &expect).is_err());
+            assert!(install_dmg(photocraft(), &rc, Some(&existing), &expect).is_err());
         }
 
         #[test]
@@ -1713,7 +1767,7 @@ mod tests {
             let image = dmg(dir.path(), "0.6.0");
             let release = Release { tag: "v0.6.0".into(), version: version::parse("0.6.0"), ..Release::default() };
 
-            let result = install_dmg(photocraft(), &image, Some(&existing), &Paths::under(dir.path()), &Expect::release(&release));
+            let result = install_dmg(photocraft(), &image, Some(&existing), &Expect::release(&release));
             assert_eq!(result, Err("the app isn't signed by its developer, so it wasn't installed".into()));
             assert_eq!(std::fs::read_to_string(current.join("Contents/MacOS/PhotoCraft")).unwrap(), "0.5.0");
             assert!(!apps.join(".PhotoCraft.app.partial").exists());

@@ -180,8 +180,9 @@ impl NativeBackend {
         let options = self.options();
         std::thread::spawn(move || {
             // Leftovers from interrupted installs or older versions of the launcher. A paused
-            // download stays a month; a finished one kept after a failed install, a week.
-            http::clean_downloads(&paths.downloads(), Duration::from_secs(30 * 86_400), Duration::from_secs(7 * 86_400));
+            // download stays a month; a finished one kept after a failed install, a week. Only
+            // clean the launcher's cache, never the user's Downloads folder on macOS.
+            http::clean_downloads(&paths.cache.join("downloads"), Duration::from_secs(30 * 86_400), Duration::from_secs(7 * 86_400));
             let snapshot = crate::detect::Snapshot::take();
             let manifest = shared.manifest.lock().unwrap_or_else(PoisonError::into_inner).clone();
             for app in &SUITE {
