@@ -130,6 +130,26 @@ on macOS, `%LOCALAPPDATA%\ArtCraft Launcher` on Windows, `ArtCraftLauncherData` 
 portable zip's executable) and keeps the previous two runs as `artcraft-launcher.1.log` and
 `artcraft-launcher.2.log`. `RUST_LOG` changes what it records (`debug`, `info,zbus=warn`, …).
 
+## App icons
+
+Each Craft App's icon can be changed, one app at a time or all together, from **Settings → App
+icons** (and from an installed app's `…` menu). Several apps ship an ArtCraft alternate — the app's
+mark on a flat dark or light square — and the picker appears for exactly the apps that have one;
+any other keeps its own icon. Adding an alternate is a matter of adding files; see
+[`assets/app-icons/alternate_icons/README.md`](assets/app-icons/alternate_icons/README.md).
+
+The change reaches outside the launcher too, so the Dock, the taskbar, the Start menu, the desktop
+and the application menu all show it:
+
+| System | How the icon is changed |
+|---|---|
+| macOS | The bundle's Finder icon (`NSWorkspace`) — the same thing as pasting a picture into Get Info. The `.app` is not touched, so its signature stays valid |
+| Windows | The icon each of the app's shortcuts points at: Start menu, desktop, taskbar pin. The exe's own embedded icon is never written to |
+| Linux, FreeBSD | A user-level copy of the app's icon in `~/.local/share/icons/hicolor/`, which every desktop reads before the system's |
+
+An installed app picks up the choice at once, an app installed later gets it as it lands, and
+removing an app takes the launcher's icon away with it. **Default** puts each app's own icon back.
+
 ## Downloads
 
 Download the build for your computer from the [latest release](https://github.com/storytold/craft-launcher/releases/latest), or browse [all releases](https://github.com/storytold/craft-launcher/releases). Every release has a `SHA256SUMS.txt` to check the files against. `<ver>` is the version number, for example `0.1.0`.

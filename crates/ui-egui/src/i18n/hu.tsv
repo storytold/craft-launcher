@@ -99,6 +99,17 @@
 	Community	Közösség
 	Questions, ideas and news from the ArtCraft team	Kérdések, ötletek és hírek az ArtCraft csapatától
 	Appearance	Megjelenés
+# "Initial" is the name of the icon family and stays in English.
+	Default	Alapértelmezett
+	Initial dark	Initial sötét
+	Initial light	Initial világos
+	App icon	Alkalmazás ikonja
+	Follow the default	Az alapértelmezett követése
+	App icons	Alkalmazásikonok
+	Use for every app	Használat minden alkalmazásnál
+	Apps without an ArtCraft alternate keep their own icon.	Az ArtCraft alternatívával nem rendelkező alkalmazások megtartják saját ikonjukat.
+	Couldn't change the icon of {name}: {e}	Nem sikerült megváltoztatni a(z) {name} ikonját: {e}
+	Couldn't change some app icons: {e}	Néhány alkalmazásikon megváltoztatása nem sikerült: {e}
 	Quit ArtCraft Launcher	Kilépés az ArtCraft Launcherből
 	Done	Kész
 	Uninstall {name}?	{name} eltávolítása?

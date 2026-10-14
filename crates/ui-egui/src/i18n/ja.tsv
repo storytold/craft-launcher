@@ -101,6 +101,17 @@
 	Community	コミュニティ
 	Questions, ideas and news from the ArtCraft team	ArtCraft チームからの質問、アイデア、ニュース
 	Appearance	外観
+# "Initial" is the name of the icon family and stays in English.
+	Default	既定
+	Initial dark	Initial ダーク
+	Initial light	Initial ライト
+	App icon	アプリのアイコン
+	Follow the default	既定に従う
+	App icons	アプリのアイコン
+	Use for every app	すべてのアプリに適用
+	Apps without an ArtCraft alternate keep their own icon.	ArtCraft の代替アイコンがないアプリは、元のアイコンのままです。
+	Couldn't change the icon of {name}: {e}	{name} のアイコンを変更できませんでした: {e}
+	Couldn't change some app icons: {e}	一部のアプリのアイコンを変更できませんでした: {e}
 	Quit ArtCraft Launcher	ArtCraft Launcher を終了
 	Done	完了
 	Uninstall {name}?	{name} をアンインストールしますか？

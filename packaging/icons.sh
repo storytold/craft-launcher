@@ -63,4 +63,15 @@ done
 # the blue one is for the Windows notification area and Linux/BSD status notifiers.
 render "$BRAND/artcraft-mark-black.svg" 44 "$BRAND/artcraft-mark-black-44.png"
 render "$BRAND/artcraft-mark.svg" 64 "$BRAND/artcraft-mark-64.png"
+
+# The Craft Apps' alternate icon packs (Settings → App icons): every `<app>.svg` under
+# assets/app-icons/alternate_icons/, rendered to the 512 px master PNG that sits beside it. The
+# SVGs are the supplied design files and stay exactly as given; `crates/core/build.rs` bundles the
+# renders, and `crates/native/src/app_icons.rs` derives the sizes each OS asks for from them.
+# See assets/app-icons/alternate_icons/README.md for how to add a pack.
+ALT="$ROOT/assets/app-icons/alternate_icons"
+find "$ALT" -mindepth 2 -name '*.svg' -print0 | while IFS= read -r -d '' svg; do
+  render "$svg" 512 "${svg%.svg}.png"
+done
+
 echo "icons written to $DIR"

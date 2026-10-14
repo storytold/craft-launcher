@@ -99,6 +99,17 @@
 	Community	Comunidad
 	Questions, ideas and news from the ArtCraft team	Preguntas, ideas y noticias del equipo de ArtCraft
 	Appearance	Apariencia
+# "Initial" is the name of the icon family and stays in English.
+	Default	Predeterminado
+	Initial dark	Initial oscuro
+	Initial light	Initial claro
+	App icon	Icono de la app
+	Follow the default	Seguir el predeterminado
+	App icons	Iconos de las apps
+	Use for every app	Usar en todas las apps
+	Apps without an ArtCraft alternate keep their own icon.	Las apps sin una alternativa de ArtCraft conservan su propio icono.
+	Couldn't change the icon of {name}: {e}	No se pudo cambiar el icono de {name}: {e}
+	Couldn't change some app icons: {e}	No se pudieron cambiar algunos iconos de apps: {e}
 	Quit ArtCraft Launcher	Salir de ArtCraft Launcher
 	Done	Listo
 	Uninstall {name}?	¿Desinstalar {name}?

@@ -217,7 +217,7 @@ impl LauncherUi {
             });
             ui.add_space(10.0);
             ui.horizontal(|ui| {
-                if let Some(icon) = crate::icons::app(app.id) {
+                if let Some(icon) = crate::icons::app(app.id, self.settings.icon_for(app)) {
                     ui.add(egui::Image::new(icon).fit_to_exact_size(vec2(ICON, ICON)));
                 }
                 ui.add_space(8.0);

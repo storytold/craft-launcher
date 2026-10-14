@@ -1,0 +1,16 @@
+# The Craft Apps' alternate icon packs, in the order the launcher offers them.
+#
+# Format: folder<TAB>English label   (see README.md in this folder)
+#
+#   * `folder` is the pack's directory here. It is also the pack's id: what is saved in the
+#     user's settings and what `crates/core/src/icons.rs` looks a pack up by. Never rename one
+#     after a release, or a saved choice goes back to Default.
+#   * `label` is shown in Settings → App icons. It is a translation key: the same English text
+#     needs a row in every catalog under `crates/ui-egui/src/i18n/` (the tests check).
+#
+# Every directory here that holds `<app>.svg` files must have a row, and every row must name a
+# directory: `crates/core/build.rs` fails the build otherwise, so a forgotten line is caught
+# before anything is compiled.
+#
+initial-icons/dark	Initial dark
+initial-icons/light	Initial light

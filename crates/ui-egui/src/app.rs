@@ -7,9 +7,9 @@ use artcraft_launcher_core::protocol::{
 };
 use artcraft_launcher_core::release::Release;
 use artcraft_launcher_core::status::AppStatus;
-use artcraft_launcher_core::{Platform, SUITE};
+use artcraft_launcher_core::{CraftApp, Platform, SUITE};
 
-use crate::i18n::set_current;
+use crate::i18n::{fmt, set_current};
 use crate::model::AppEntry;
 use crate::motion;
 use crate::settings::{Filter, Settings, SortKey, ViewMode};
@@ -266,9 +266,22 @@ impl LauncherUi {
     /// Non-drawing work: runs every frame and also while the window is hidden in the tray.
     pub fn logic(&mut self, ctx: &egui::Context, host: &mut dyn Host) {
         set_current(crate::i18n::Lang::from_pref(&self.settings.language));
-        let options = BackendOptions { kinds: self.settings.preferred_kinds.clone(), prereleases: self.settings.prereleases };
+        let icons = self.settings.icon_styles();
+        let options =
+            BackendOptions { kinds: self.settings.preferred_kinds.clone(), prereleases: self.settings.prereleases, icon_styles: icons.clone() };
         if self.sent_options.as_ref() != Some(&options) {
+            // A style the user just picked belongs on the desktop too, not only in this grid.
+            let changed: Vec<String> = match &self.sent_options {
+                Some(old) => {
+                    icons.iter().filter(|(id, style)| old.icon_styles.get(*id).copied() != Some(**style)).map(|(id, _)| id.to_string()).collect()
+                }
+                None => Vec::new(),
+            };
+            // Configure first: the styles the backend is about to apply come with it.
             self.backend.send(Command::Configure(options.clone()));
+            if !changed.is_empty() {
+                self.backend.send(Command::ApplyIcons { apps: changed });
+            }
             self.sent_options = Some(options);
         }
         if !self.started {
@@ -327,6 +340,17 @@ impl LauncherUi {
             }
             Event::Screenshot { app, key, result } => {
                 self.pictures.insert((app, key), crate::details::Picture::from_result(result));
+                true
+            }
+            Event::IconsApplied { app, result } => {
+                if let Err(why) = result {
+                    let text = match app.as_deref().and_then(CraftApp::by_id) {
+                        Some(a) => fmt(tl!("Couldn't change the icon of {name}: {e}"), &[("name", a.name), ("e", &why)]),
+                        None => fmt(tl!("Couldn't change some app icons: {e}"), &[("e", &why)]),
+                    };
+                    let ctx = ctx.clone();
+                    self.toast(&ctx, text, true);
+                }
                 true
             }
             Event::Detected { app, installed } => {

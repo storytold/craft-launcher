@@ -2,7 +2,7 @@
 
 use std::collections::BTreeMap;
 
-use artcraft_launcher_core::PackageKind;
+use artcraft_launcher_core::{CraftApp, IconStyle, PackageKind, SUITE};
 use serde::{Deserialize, Serialize};
 
 use crate::i18n::t;
@@ -114,11 +114,44 @@ pub struct Settings {
     pub last_check: Option<i64>,
     /// Catalog ids of apps hidden from the main lists (`photocraft`, …).
     pub hidden: std::collections::BTreeSet<String>,
+    /// The icon style given to every app that has no entry of its own in `app_icons`.
+    #[serde(default)]
+    pub icon_style: IconStyle,
+    /// The apps the user gave an icon style of their own, by app id.
+    #[serde(default)]
+    pub app_icons: BTreeMap<String, IconStyle>,
 }
 
 impl Settings {
     /// Machine-readable code for "follow the system language".
     pub const LANGUAGE_AUTO: &'static str = "auto";
+
+    /// The icon style to draw and install for `app`: the app's own entry if it has one, else the
+    /// suite-wide choice — falling back to the app's own icon for a style no pack was drawn for
+    /// that app in.
+    pub fn icon_for(&self, app: &CraftApp) -> IconStyle {
+        let style = self.app_icons.get(app.id).copied().unwrap_or(self.icon_style);
+        if app.supports_icon_style(style) { style } else { IconStyle::Default }
+    }
+
+    /// Every app's icon style, as the backend wants them (`BackendOptions::icon_styles`).
+    pub fn icon_styles(&self) -> BTreeMap<String, IconStyle> {
+        SUITE.iter().map(|app| (app.id.to_string(), self.icon_for(app))).collect()
+    }
+
+    /// Whether any app is drawn differently from the suite-wide choice.
+    pub fn has_icon_overrides(&self) -> bool {
+        SUITE.iter().any(|app| self.app_icons.get(app.id).copied().is_some_and(|s| s != self.icon_style))
+    }
+
+    /// Set `app`'s icon style: the suite-wide one (dropping any entry of its own) or a choice.
+    pub fn set_app_icon(&mut self, app: &CraftApp, style: IconStyle) {
+        if style == self.icon_style {
+            self.app_icons.remove(app.id);
+        } else {
+            self.app_icons.insert(app.id.to_string(), style);
+        }
+    }
 
     /// Display name for a language `code`: a language's name in itself, from the registry
     /// ([`LANGUAGES`](crate::i18n::LANGUAGES)). A language needing a CJK font is named in English,
@@ -186,6 +219,47 @@ impl Default for Settings {
             notified: BTreeMap::new(),
             last_check: None,
             hidden: std::collections::BTreeSet::new(),
+            icon_style: IconStyle::Default,
+            app_icons: BTreeMap::new(),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use artcraft_launcher_core::{CraftApp, IconStyle, SUITE};
+
+    use super::Settings;
+
+    /// The first pack that was drawn for `app`, so the test never names one that may be renamed.
+    fn a_pack_for(app: &str) -> IconStyle {
+        IconStyle::Pack(artcraft_launcher_core::icons::packs_for(app).next().unwrap().id)
+    }
+
+    #[test]
+    fn the_suite_wide_choice_applies_wherever_an_app_has_no_choice_of_its_own() {
+        let photo = CraftApp::by_id("photocraft").unwrap();
+        let word = CraftApp::by_id("wordcraft").unwrap();
+        let (dark, light) = (a_pack_for(photo.id), IconStyle::Pack(artcraft_launcher_core::icons::PACKS[1].id));
+        let mut settings = Settings::default();
+        assert_eq!(settings.icon_for(photo), IconStyle::Default);
+        settings.icon_style = dark;
+        // Every app the pack was drawn for follows the suite-wide choice…
+        assert_eq!(settings.icon_for(photo), dark);
+        // …and an app without artwork keeps its own icon, rather than a style it has none for.
+        assert_eq!(settings.icon_for(word), IconStyle::Default);
+        // An app set apart from the rest keeps its own choice.
+        settings.app_icons.insert("photocraft".into(), light);
+        assert_eq!(settings.icon_for(photo), light);
+        assert!(settings.has_icon_overrides());
+        // Going back to the suite-wide choice drops the entry rather than storing it.
+        settings.set_app_icon(photo, dark);
+        assert!(settings.app_icons.is_empty());
+        assert!(!settings.has_icon_overrides());
+        // What the backend is told is what the grid draws.
+        let styles = settings.icon_styles();
+        assert_eq!(styles.len(), SUITE.len());
+        assert_eq!(styles.get("photocraft"), Some(&dark));
+        assert_eq!(styles.get("wordcraft"), Some(&IconStyle::Default));
     }
 }
