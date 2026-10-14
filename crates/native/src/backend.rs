@@ -49,11 +49,67 @@ const WORKERS: usize = 4;
 
 type Waker = Arc<dyn Fn() + Send + Sync>;
 
+/// Invalidates detections whose package-manager snapshot predates an install/uninstall job.
+/// The lock is also held while publishing a detection event, so an older event cannot be queued
+/// after a newer job result.
+fn bump_detection_generation(shared: &Shared, app_id: &str) {
+    let mut generations = shared.detection_generations.lock().unwrap_or_else(PoisonError::into_inner);
+    let generation = generations.entry(app_id.to_string()).or_default();
+    *generation = generation.wrapping_add(1);
+}
+
+/// Publishes a background detection only when no install/uninstall job has superseded its
+/// snapshot. `expected_generation` is captured before reading package-manager state.
+fn publish_detection_if_current(shared: &Shared, app_id: &str, expected_generation: u64, installed: Option<Installed>) -> bool {
+    let generations = shared.detection_generations.lock().unwrap_or_else(PoisonError::into_inner);
+    if generations.get(app_id).copied().unwrap_or_default() != expected_generation {
+        return false;
+    }
+    {
+        let mut map = shared.installed.lock().unwrap_or_else(PoisonError::into_inner);
+        match &installed {
+            Some(found) => {
+                map.insert(app_id.to_string(), found.clone());
+            }
+            None => {
+                map.remove(app_id);
+            }
+        }
+    }
+    shared.events.lock().unwrap_or_else(PoisonError::into_inner).push(Event::Detected { app: app_id.to_string(), installed });
+    drop(generations);
+    (shared.waker)();
+    true
+}
+
+/// Publishes the fresh detection performed when a job ends, invalidating every older snapshot.
+fn publish_job_detection(shared: &Shared, app_id: &str, installed: Option<Installed>) {
+    let mut generations = shared.detection_generations.lock().unwrap_or_else(PoisonError::into_inner);
+    let generation = generations.entry(app_id.to_string()).or_default();
+    *generation = generation.wrapping_add(1);
+    {
+        let mut map = shared.installed.lock().unwrap_or_else(PoisonError::into_inner);
+        match &installed {
+            Some(found) => {
+                map.insert(app_id.to_string(), found.clone());
+            }
+            None => {
+                map.remove(app_id);
+            }
+        }
+    }
+    shared.events.lock().unwrap_or_else(PoisonError::into_inner).push(Event::Detected { app: app_id.to_string(), installed });
+    drop(generations);
+    (shared.waker)();
+}
+
 struct Shared {
     events: Mutex<Vec<Event>>,
     waker: Waker,
     latest: Mutex<HashMap<String, Release>>,
     installed: Mutex<HashMap<String, Installed>>,
+    /// Per-app generations invalidate background detections made stale by install/uninstall jobs.
+    detection_generations: Mutex<HashMap<String, u64>>,
     jobs: Mutex<HashMap<String, Arc<Stop>>>,
     /// The launcher is replacing itself and will restart: no new job starts.
     restarting: AtomicBool,
@@ -120,6 +176,7 @@ impl NativeBackend {
             waker,
             latest: Mutex::new(HashMap::new()),
             installed: Mutex::new(HashMap::new()),
+            detection_generations: Mutex::new(HashMap::new()),
             jobs: Mutex::new(HashMap::new()),
             restarting: AtomicBool::new(false),
             manifest: Mutex::new(Manifest::load(&paths.manifest())),
@@ -182,18 +239,15 @@ impl NativeBackend {
             // Leftovers from interrupted installs or older versions of the launcher. A paused
             // download stays a month; a finished one kept after a failed install, a week.
             http::clean_downloads(&paths.downloads(), Duration::from_secs(30 * 86_400), Duration::from_secs(7 * 86_400));
+            // Capture before the package-manager snapshot: a job that changes state while the
+            // snapshot or this loop runs must prevent that older result from being published.
+            let generations = shared.detection_generations.lock().unwrap_or_else(PoisonError::into_inner).clone();
             let snapshot = crate::detect::Snapshot::take();
             let manifest = shared.manifest.lock().unwrap_or_else(PoisonError::into_inner).clone();
             for app in &SUITE {
                 let found = crate::detect::detect(app, &manifest, &snapshot);
-                {
-                    let mut map = shared.installed.lock().unwrap_or_else(PoisonError::into_inner);
-                    match &found {
-                        Some(i) => map.insert(app.id.to_string(), i.clone()),
-                        None => map.remove(app.id),
-                    };
-                }
-                shared.emit(Event::Detected { app: app.id.to_string(), installed: found });
+                let generation = generations.get(app.id).copied().unwrap_or_default();
+                publish_detection_if_current(&shared, app.id, generation, found);
             }
             // Downloads paused (or cut off by quitting) in an earlier run.
             for app in &SUITE {
@@ -330,6 +384,8 @@ impl NativeBackend {
             self.shared.emit(Event::JobFinished { app: app.id.to_string(), result });
             return;
         }
+        // Invalidate any detection whose system snapshot overlaps this install/uninstall.
+        bump_detection_generation(&self.shared, app_id);
         let shared = self.shared.clone();
         let paths = self.paths.clone();
         let http = self.http.clone();
@@ -376,14 +432,7 @@ impl NativeBackend {
                 }
                 (result, _) => result,
             };
-            {
-                let mut map = shared.installed.lock().unwrap_or_else(PoisonError::into_inner);
-                match &found {
-                    Some(i) => map.insert(app.id.to_string(), i.clone()),
-                    None => map.remove(app.id),
-                };
-            }
-            shared.emit(Event::Detected { app: app.id.to_string(), installed: found });
+            publish_job_detection(&shared, app.id, found);
             shared.jobs.lock().unwrap_or_else(PoisonError::into_inner).remove(app.id);
             shared.emit(Event::JobFinished { app: app.id.to_string(), result });
         });
@@ -1026,6 +1075,7 @@ mod tests {
             waker: Arc::new(|| {}),
             latest: Mutex::new(HashMap::new()),
             installed: Mutex::new(HashMap::new()),
+            detection_generations: Mutex::new(HashMap::new()),
             jobs: Mutex::new(HashMap::new()),
             restarting: AtomicBool::new(false),
             manifest: Mutex::new(Manifest::default()),
@@ -1041,6 +1091,68 @@ mod tests {
             feed_ok_at: Mutex::new(None),
             feed_throttle: Mutex::new(FeedThrottle::new()),
             pictures_busy: Mutex::new(std::collections::HashSet::new()),
+        }
+    }
+
+    fn flatpak_installed(version_text: &str) -> Installed {
+        Installed {
+            version: artcraft_launcher_core::version::parse(version_text),
+            source: InstallSource::Flatpak,
+            location: "ai.storyteller.photocraft".into(),
+            package: Some("ai.storyteller.photocraft".into()),
+        }
+    }
+
+    #[test]
+    fn stale_detection_is_discarded_after_an_app_job_changes_its_generation() {
+        let state = shared();
+        let old = flatpak_installed("0.6.0");
+        let fresh = flatpak_installed("0.7.0");
+        state.installed.lock().unwrap_or_else(PoisonError::into_inner).insert("photocraft".into(), old);
+        let snapshot_generation =
+            state.detection_generations.lock().unwrap_or_else(PoisonError::into_inner).get("photocraft").copied().unwrap_or_default();
+
+        // The scan snapshots the old generation before the job starts. A later job result must
+        // win even when the older scan tries to publish after that result.
+        bump_detection_generation(&state, "photocraft");
+        publish_job_detection(&state, "photocraft", Some(fresh.clone()));
+        assert!(!publish_detection_if_current(&state, "photocraft", snapshot_generation, None));
+
+        assert_eq!(state.installed.lock().unwrap_or_else(PoisonError::into_inner).get("photocraft"), Some(&fresh));
+        let events = state.events.lock().unwrap_or_else(PoisonError::into_inner);
+        assert_eq!(events.len(), 1);
+        match &events[0] {
+            Event::Detected { app, installed } => {
+                assert_eq!(app, "photocraft");
+                assert_eq!(installed.as_ref(), Some(&fresh));
+            }
+            other => panic!("expected a detection event, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn detection_started_during_an_app_job_is_discarded_after_the_job_finishes() {
+        let state = shared();
+        let stale = flatpak_installed("0.6.0");
+        let fresh = flatpak_installed("0.7.0");
+
+        // The job has started, so a concurrent scan captures the post-start generation. The
+        // job's final publication must invalidate that scan too.
+        bump_detection_generation(&state, "photocraft");
+        let snapshot_generation =
+            state.detection_generations.lock().unwrap_or_else(PoisonError::into_inner).get("photocraft").copied().unwrap_or_default();
+        publish_job_detection(&state, "photocraft", Some(fresh.clone()));
+        assert!(!publish_detection_if_current(&state, "photocraft", snapshot_generation, Some(stale)));
+
+        assert_eq!(state.installed.lock().unwrap_or_else(PoisonError::into_inner).get("photocraft"), Some(&fresh));
+        let events = state.events.lock().unwrap_or_else(PoisonError::into_inner);
+        assert_eq!(events.len(), 1);
+        match &events[0] {
+            Event::Detected { app, installed } => {
+                assert_eq!(app, "photocraft");
+                assert_eq!(installed.as_ref(), Some(&fresh));
+            }
+            other => panic!("expected a detection event, got {other:?}"),
         }
     }
 
