@@ -1,8 +1,9 @@
 //! Finding Craft Apps that are already installed, however they got there.
 //!
 //! - macOS: `<App>.app` in `/Applications` or `~/Applications`, read from its `Info.plist`.
-//! - Windows: the Windows Installer's uninstall entries (`Learning Machines LLC`), and portable
-//!   copies the launcher unpacked.
+//! - Windows: the Windows Installer's uninstall entries (`Learning Machines LLC`), and the
+//!   portable copies the launcher unpacked into `<data>\apps\<app>`. With both there, portable
+//!   mode shows the portable copy and otherwise the MSI install; neither is ever hidden.
 //! - Linux: AppImages in `~/Applications` (where the launcher and AppImageLauncher put them),
 //!   `~/AppImages` (Gear Lever) and `~/.local/bin`, Debian/RPM packages, Flatpaks, and tarball
 //!   installs.
@@ -13,6 +14,7 @@ use std::path::{Path, PathBuf};
 use artcraft_launcher_core::{CraftApp, InstallSource, Installed, version};
 
 use crate::manifest::Manifest;
+use crate::paths::Paths;
 
 /// One look at the system, shared by every app's detection (package lists are read once).
 #[derive(Default)]
@@ -34,22 +36,29 @@ impl Snapshot {
     }
 }
 
-/// What's installed of `app`, best source first.
-pub fn detect(app: &CraftApp, manifest: &Manifest, snapshot: &Snapshot) -> Option<Installed> {
-    let _ = snapshot;
+/// What's installed of `app`, best source first. `portable` (Windows portable mode) puts the
+/// launcher's portable copy ahead of a Windows Installer install.
+pub fn detect(app: &CraftApp, manifest: &Manifest, snapshot: &Snapshot, paths: &Paths, portable: bool) -> Option<Installed> {
+    let _ = (snapshot, paths, portable);
     if let Some(found) = from_manifest(app, manifest) {
         return Some(found);
     }
     #[cfg(target_os = "macos")]
     return macos::detect(app);
     #[cfg(windows)]
-    return windows::detect(app);
+    return prefer(portable, windows::portable(app, &paths.apps()), windows::detect(app));
     #[cfg(target_os = "linux")]
     return linux::detect(app, snapshot);
     #[cfg(target_os = "freebsd")]
     return freebsd::detect(app);
     #[allow(unreachable_code)]
     None
+}
+
+/// Windows: of a portable copy and an MSI install of one app, the one the mode prefers, else the
+/// other, so neither mode hides an app that is there (and offers to install it a second time).
+pub fn prefer(prefer_portable: bool, portable: Option<Installed>, msi: Option<Installed>) -> Option<Installed> {
+    if prefer_portable { portable.or(msi) } else { msi.or(portable) }
 }
 
 fn from_manifest(app: &CraftApp, manifest: &Manifest) -> Option<Installed> {
@@ -240,6 +249,11 @@ pub mod windows {
             }
         }
         exe_candidates(app, location.as_deref(), &roots).into_iter().find(|p| p.exists())
+    }
+
+    /// The portable copy in `<apps>\<app>` ([`crate::paths::Paths::apps`]).
+    pub fn portable(app: &CraftApp, apps: &Path) -> Option<Installed> {
+        crate::portable::find(apps, app)
     }
 
     pub fn detect(app: &CraftApp) -> Option<Installed> {
@@ -487,6 +501,18 @@ mod tests {
     use artcraft_launcher_core::SUITE;
 
     use super::*;
+
+    #[test]
+    fn each_mode_shows_its_own_copy_first_and_hides_neither() {
+        let copy = |source| Some(Installed { version: None, source, location: String::new(), package: None });
+        let (portable, msi) = (copy(InstallSource::Launcher), copy(InstallSource::Msi));
+        let source = |p: bool, a: &Option<Installed>, b: &Option<Installed>| prefer(p, a.clone(), b.clone()).map(|i| i.source);
+        assert_eq!(source(true, &portable, &msi), Some(InstallSource::Launcher));
+        assert_eq!(source(false, &portable, &msi), Some(InstallSource::Msi));
+        assert_eq!(source(true, &None, &msi), Some(InstallSource::Msi));
+        assert_eq!(source(false, &portable, &None), Some(InstallSource::Launcher));
+        assert_eq!(source(true, &None, &None), None);
+    }
 
     #[test]
     fn recognises_appimage_names_conservatively() {

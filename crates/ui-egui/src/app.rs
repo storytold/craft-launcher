@@ -266,7 +266,12 @@ impl LauncherUi {
     /// Non-drawing work: runs every frame and also while the window is hidden in the tray.
     pub fn logic(&mut self, ctx: &egui::Context, host: &mut dyn Host) {
         set_current(crate::i18n::Lang::from_pref(&self.settings.language));
-        let options = BackendOptions { kinds: self.settings.preferred_kinds.clone(), prereleases: self.settings.prereleases };
+        let options = BackendOptions {
+            kinds: self.settings.preferred_kinds.clone(),
+            prereleases: self.settings.prereleases,
+            portable: self.settings.portable_apps,
+            portable_arch: self.settings.portable_arch,
+        };
         if self.sent_options.as_ref() != Some(&options) {
             self.backend.send(Command::Configure(options.clone()));
             self.sent_options = Some(options);

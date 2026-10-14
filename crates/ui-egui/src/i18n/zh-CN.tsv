@@ -74,6 +74,11 @@
 	Install new apps as	新应用安装格式
 	System package (recommended)	系统软件包（推荐）
 	Updates always use the format an app was installed with.	更新时始终使用应用原来的安装格式。
+	Installing on Windows	Windows 安装设置
+	Use portable apps instead of the installer	使用便携版应用而非安装程序
+	Architecture	架构
+	System ({arch})	系统默认 ({arch})
+	Portable apps go into the apps folder in ArtCraft Launcher's data folder. Apps already installed with the Windows Installer stay as they are. A new architecture applies the next time an app is installed or updated.	便携版应用会放在 ArtCraft Launcher 数据文件夹中的 apps 文件夹里。已通过 Windows Installer 安装的应用保持不变。新的架构将在下次安装或更新应用时生效。
 	Running in the background	后台运行
 	Keep running in the tray when the window is closed	关闭窗口后继续在系统托盘中运行
 	Show the window on the current desktop	在当前桌面显示窗口

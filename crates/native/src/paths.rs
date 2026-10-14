@@ -61,7 +61,8 @@ impl Paths {
         self.data.join("logs")
     }
 
-    /// Where tarball installs (FreeBSD, Linux without AppImage) are unpacked: `<data>/apps/<app>`.
+    /// Where tarball installs (FreeBSD, Linux without AppImage) and Windows portable copies are
+    /// unpacked: `<data>/apps/<app>`.
     pub fn apps(&self) -> PathBuf {
         self.data.join("apps")
     }

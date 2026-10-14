@@ -318,6 +318,28 @@ impl LauncherUi {
             ui.label(RichText::new(tl!("Updates always use the format an app was installed with.")).size(12.0).color(t.muted));
         }
 
+        if self.caps.manage_apps
+            && let Some(platform) = self.platform.filter(|p| p.os == Os::Windows)
+        {
+            section(ui, tl!("Installing on Windows"));
+            ui.checkbox(&mut self.settings.portable_apps, tl!("Use portable apps instead of the installer"));
+            if self.settings.portable_apps {
+                let mut arch = self.settings.portable_arch;
+                let system = fmt(tl!("System ({arch})"), &[("arch", platform.arch.label())]);
+                row(ui, tl!("Architecture"), 150.0, &mut |ui| {
+                    let label = arch.map_or_else(|| system.clone(), |a| a.label().to_string());
+                    egui::ComboBox::from_id_salt("portable_arch").selected_text(label).width(150.0).show_ui(ui, |ui| {
+                        ui.selectable_value(&mut arch, None, system.as_str());
+                        for a in platform.runnable_arches() {
+                            ui.selectable_value(&mut arch, Some(*a), a.label());
+                        }
+                    });
+                });
+                self.settings.portable_arch = arch;
+            }
+            ui.add(egui::Label::new(RichText::new(tl!("Portable apps go into the apps folder in ArtCraft Launcher's data folder. Apps already installed with the Windows Installer stay as they are. A new architecture applies the next time an app is installed or updated.")).size(12.0).color(t.muted)).wrap());
+        }
+
         if self.caps.manage_apps {
             section(ui, tl!("Running in the background"));
             if host.has_tray() {

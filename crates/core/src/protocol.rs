@@ -6,7 +6,7 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::platform::{PackageKind, Platform};
+use crate::platform::{Arch, PackageKind, Platform};
 use crate::release::Release;
 use crate::status::Installed;
 
@@ -60,6 +60,15 @@ pub struct BackendOptions {
     pub kinds: Vec<PackageKind>,
     /// Offer pre-releases (`0.6.0-rc.1`) as updates.
     pub prereleases: bool,
+    /// Windows: install new apps from their portable zip into the launcher's `<data>\apps\<app>`
+    /// instead of the MSI, and show a portable copy ahead of an MSI install of the same app. Apps
+    /// already installed keep their format.
+    #[serde(default)]
+    pub portable: bool,
+    /// Windows, portable mode: the architecture to download, exactly; `None` for this system's own
+    /// (native first, then what it can emulate).
+    #[serde(default)]
+    pub portable_arch: Option<Arch>,
 }
 
 /// The answer to "what's the latest release of this app?".

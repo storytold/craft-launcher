@@ -153,6 +153,17 @@ impl Platform {
         }
     }
 
+    /// Windows: the architectures whose builds this machine runs, native first (the same order as
+    /// the asset tokens it tries). Empty on other systems.
+    pub fn runnable_arches(self) -> &'static [Arch] {
+        match (self.os, self.arch) {
+            (Os::Windows, Arch::X64) => &[Arch::X64, Arch::X86],
+            (Os::Windows, Arch::X86) => &[Arch::X86],
+            (Os::Windows, Arch::Arm64) => &[Arch::Arm64, Arch::X64, Arch::X86],
+            _ => &[],
+        }
+    }
+
     /// Package formats the launcher installs on this OS, in order of preference.
     pub fn default_kinds(self) -> &'static [PackageKind] {
         match self.os {
@@ -222,6 +233,13 @@ pub fn pick_asset<'a>(release: &'a Release, stems: &[&str], platform: Platform, 
         }
     }
     None
+}
+
+/// The asset of `release` built for exactly `platform` (its native token only, no emulated
+/// fallback), in format `kind`: for a user who chose the architecture themselves.
+pub fn pick_asset_exact<'a>(release: &'a Release, stems: &[&str], platform: Platform, kind: PackageKind) -> Option<&'a Asset> {
+    let token = platform.tokens().first()?;
+    release.assets.iter().find(|a| parse_asset_name(&a.name, stems).is_some_and(|n| n.kind == kind && n.token == *token))
 }
 
 #[cfg(test)]
@@ -340,6 +358,31 @@ mod tests {
         ]);
         for kind in [PackageKind::AppImage, PackageKind::Deb, PackageKind::Rpm, PackageKind::Flatpak, PackageKind::TarGz] {
             assert_eq!(pick_asset(&arm_only_release, &["photocraft"], p_x64, &[kind]), None, "x86_64 must never match an aarch64 asset for {kind:?}");
+        }
+    }
+
+    #[test]
+    fn an_exact_pick_never_falls_back_to_another_architecture() {
+        let r = release(PHOTO);
+        let exact = |arch, kind| pick_asset_exact(&r, &["photocraft"], Platform { os: Os::Windows, arch }, kind).map(|a| a.name.clone());
+        assert_eq!(exact(Arch::X64, PackageKind::PortableZip).as_deref(), Some("photocraft-0.5.0-windows-x64-portable.zip"));
+        assert_eq!(exact(Arch::X86, PackageKind::Msi).as_deref(), Some("photocraft-0.5.0-windows-x86.msi"));
+        // No x86 portable zip and no arm64 build: nothing, rather than another architecture.
+        assert_eq!(exact(Arch::X86, PackageKind::PortableZip), None);
+        assert_eq!(exact(Arch::Arm64, PackageKind::PortableZip), None);
+    }
+
+    #[test]
+    fn windows_runs_its_own_and_emulated_architectures() {
+        let runs = |os, arch| Platform { os, arch }.runnable_arches();
+        assert_eq!(runs(Os::Windows, Arch::X64), [Arch::X64, Arch::X86]);
+        assert_eq!(runs(Os::Windows, Arch::Arm64), [Arch::Arm64, Arch::X64, Arch::X86]);
+        assert_eq!(runs(Os::Windows, Arch::X86), [Arch::X86]);
+        assert!(runs(Os::Linux, Arch::X64).is_empty());
+        // Each runnable architecture's native token is one the platform tries.
+        for arch in runs(Os::Windows, Arch::Arm64) {
+            let token = Platform { os: Os::Windows, arch: *arch }.tokens()[0];
+            assert!(Platform { os: Os::Windows, arch: Arch::Arm64 }.tokens().contains(&token));
         }
     }
 }

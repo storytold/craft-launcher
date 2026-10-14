@@ -92,6 +92,11 @@
 	Install new apps as	Új alkalmazások csomagformátuma
 	System package (recommended)	Rendszercsomag (ajánlott)
 	Updates always use the format an app was installed with.	A frissítések mindig az eredeti telepítés csomagformátumát használják.
+	Installing on Windows	Telepítés Windowson
+	Use portable apps instead of the installer	Hordozható alkalmazások használata a telepítő helyett
+	Architecture	Architektúra
+	System ({arch})	Rendszer ({arch})
+	Portable apps go into the apps folder in ArtCraft Launcher's data folder. Apps already installed with the Windows Installer stay as they are. A new architecture applies the next time an app is installed or updated.	A hordozható alkalmazások az ArtCraft Launcher adatmappáján belüli apps mappába kerülnek. A Windows Installerrel már telepített alkalmazások változatlanok maradnak. Az új architektúra az alkalmazás következő telepítésekor vagy frissítésekor lép életbe.
 	Running in the background	Futtatás a háttérben
 	Keep running in the tray when the window is closed	Az ablak bezárásakor kerüljön a tálcára
 	Show the window on the current desktop	Ablak megjelenítése az aktuális asztalon
