@@ -156,6 +156,7 @@
 	Disk image (.dmg)	ディスクイメージ (.dmg)
 	Debian package (.deb)	Debian パッケージ (.deb)
 	RPM package (.rpm)	RPM パッケージ (.rpm)
+	Arch package (.pkg.tar.zst)	Arch パッケージ (.pkg.tar.zst)
 	Flatpak bundle	Flatpak バンドル
 	Tarball (.tar.gz)	tarball (.tar.gz)
 
@@ -293,6 +294,7 @@ filter	Installed	インストール済み
 @msg	{name} installed: {version} (this release publishes no checksum, so only its size was checked)	{name} をインストールしました: {version}（このリリースはチェックサムを公開していないため、サイズのみ確認しました）
 @msg	{name} was removed	{name} をアンインストールしました
 @msg	{name} is running. Quit it, then try again.	{name} が実行中です。終了してから再試行してください。
+@msg	{name} was installed from the {repo} repository ({pkg}). Update it with sudo pacman -Syu	{name} は {repo} リポジトリからインストールされています ({pkg})。sudo pacman -Syu で更新してください。
 
 # Command IDs for menu items (@id)
 # Format: @id<TAB>command_id<TAB>translation

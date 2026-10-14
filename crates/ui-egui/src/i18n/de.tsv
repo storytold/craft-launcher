@@ -154,6 +154,7 @@
 	Disk image (.dmg)	Disk-Image (.dmg)
 	Debian package (.deb)	Debian-Paket (.deb)
 	RPM package (.rpm)	RPM-Paket (.rpm)
+	Arch package (.pkg.tar.zst)	Arch-Paket (.pkg.tar.zst)
 	Flatpak bundle	Flatpak-Bundle
 	Tarball (.tar.gz)	Tar-Archiv (.tar.gz)
 
@@ -277,6 +278,7 @@ filter	Installed	Installiert
 @msg	{name} installed: {version} (this release publishes no checksum, so only its size was checked)	{name} installiert: {version} (diese Version veröffentlicht keine Prüfsumme, daher wurde nur die Größe geprüft)
 @msg	{name} was removed	{name} wurde entfernt
 @msg	{name} is running. Quit it, then try again.	{name} läuft. Beende die App und versuche es erneut.
+@msg	{name} was installed from the {repo} repository ({pkg}). Update it with sudo pacman -Syu	{name} wurde aus dem Repository {repo} installiert ({pkg}). Aktualisiere die App mit sudo pacman -Syu
 
 # Command IDs for menu items (@id)
 # Format: @id<TAB>command_id<TAB>translation

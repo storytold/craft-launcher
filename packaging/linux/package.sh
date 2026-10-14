@@ -5,11 +5,12 @@
 #   $DIST/artcraft-launcher-<version>-linux-<arch>.AppImage.zsync  delta updates (needs zsyncmake)
 #   $DIST/artcraft-launcher-<version>-linux-<arch>.deb       Debian, Ubuntu, Mint, Pop!_OS, ...
 #   $DIST/artcraft-launcher-<version>-linux-<arch>.rpm       Fedora, openSUSE, RHEL, ...
+#   $DIST/artcraft-launcher-<version>-linux-<arch>.pkg.tar.zst  Arch, Manjaro, EndeavourOS, ...
 #   $DIST/artcraft-launcher-<version>-linux-<arch>.tar.gz    plain FHS-style tree (bin/, share/)
 #
-# Usage: packaging/linux/package.sh [--skip-build] [--formats "appimage deb rpm tar" or appimage,deb,rpm,tar]
+# Usage: packaging/linux/package.sh [--skip-build] [--formats "appimage deb rpm arch tar" or appimage,deb,rpm,arch,tar]
 #
-# Needs: cargo; nfpm for deb/rpm (https://nfpm.goreleaser.com); appimagetool for the AppImage
+# Needs: cargo; nfpm for deb/rpm/arch (https://nfpm.goreleaser.com); appimagetool for the AppImage
 # (downloaded into $CARGO_TARGET_DIR if missing). Build on an old distro (CI: Ubuntu 22.04,
 # glibc 2.35) so the binaries run on newer ones. Optional: desktop-file-validate, appstreamcli,
 # zsyncmake (the zsync package) for the AppImage's .zsync.
@@ -25,7 +26,7 @@ APP_ID=ai.storyteller.artcraft-launcher
 PKG=artcraft-launcher
 
 SKIP_BUILD=0
-FORMATS="appimage deb rpm tar"
+FORMATS="appimage deb rpm arch tar"
 while [ $# -gt 0 ]; do
   case "$1" in
     --skip-build) SKIP_BUILD=1; shift ;;
@@ -38,8 +39,8 @@ done
 FORMATS="$(printf %s "$FORMATS" | tr ',' ' ')"
 for fmt in $FORMATS; do
   case "$fmt" in
-    appimage | deb | rpm | tar) ;;
-    *) echo "unknown format: $fmt (expected appimage, deb, rpm or tar)" >&2; exit 2 ;;
+    appimage | deb | rpm | arch | tar) ;;
+    *) echo "unknown format: $fmt (expected appimage, deb, rpm, arch or tar)" >&2; exit 2 ;;
   esac
 done
 
@@ -96,8 +97,8 @@ if has tar; then
   echo "wrote $DIST/$BASENAME.tar.gz"
 fi
 
-# ---- .deb / .rpm --------------------------------------------------------------------------------
-if has deb || has rpm; then
+# ---- .deb / .rpm / .pkg.tar.zst -----------------------------------------------------------------
+if has deb || has rpm || has arch; then
   command -v nfpm >/dev/null || { echo "error: nfpm not found (https://nfpm.goreleaser.com/install/)" >&2; exit 1; }
   export VERSION
   export NFPM_ARCH="$DEB_ARCH"
@@ -106,6 +107,14 @@ if has deb || has rpm; then
   for fmt in deb rpm; do
     if has "$fmt"; then (cd "$ROOT" && nfpm package -f "$WORK/nfpm.yaml" -p "$fmt" -t "$DIST/$BASENAME.$fmt"); fi
   done
+  # The Arch package is named by the bundle id, which nfpm can't override per format, and
+  # `archlinux.packager` isn't env-expanded, so both are written here.
+  if has arch; then
+    sed "s|^name: $PKG\$|name: $APP_ID|" "$WORK/nfpm.yaml" >"$WORK/nfpm-arch.yaml"
+    grep -qx "name: $APP_ID" "$WORK/nfpm-arch.yaml" || { echo "error: couldn't rename the Arch package" >&2; exit 1; }
+    printf 'archlinux:\n  packager: "%s"\n' "$ARTCRAFT_LAUNCHER_MAINTAINER" >>"$WORK/nfpm-arch.yaml"
+    (cd "$ROOT" && nfpm package -f "$WORK/nfpm-arch.yaml" -p archlinux -t "$DIST/$BASENAME.pkg.tar.zst")
+  fi
 fi
 
 # ---- AppImage -----------------------------------------------------------------------------------

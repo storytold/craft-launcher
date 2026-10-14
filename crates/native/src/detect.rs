@@ -305,7 +305,7 @@ pub mod linux {
     }
 
     /// The local package database of Arch's pacman.
-    const PACMAN_DB: &str = "/var/lib/pacman/local";
+    pub(crate) const PACMAN_DB: &str = "/var/lib/pacman/local";
 
     /// True when `db` is a directory, i.e. this system really uses pacman.
     pub(crate) fn pacman_db_present(db: &Path) -> bool {
