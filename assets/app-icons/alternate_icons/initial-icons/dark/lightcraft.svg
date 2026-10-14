@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="0 0 1024 1024">
+  <defs>
+    <style>
+      .cls-1{fill:#130d01}
+      .cls-2{fill:#f2a516}
+    </style>
+  </defs>
+  <title>Untitled-1</title>
+  <g id="Layer_1" data-name="Layer 1">
+  </g>
+  <g id="Layer_2" data-name="Layer 2">
+  </g>
+  <g id="Layer_3" data-name="Layer 3">
+    <g>
+      <path d="M0 0 L1024 0 L1024 1024 L0 1024 Z" class="cls-1"/>
+      <path d="M96.281 686.117 L343.134 163.959 L510.608 163.959 L512.724 167.299 L258.385 705.293 L927.719 705.293 L829.755 860.041 L270.204 860.041 L96.281 686.117 Z" class="cls-2"/>
+    </g>
+  </g>
+</svg>

@@ -10,6 +10,8 @@ use crate::settings::{CheckEvery, Settings};
 use crate::theme::{self, ThemeChoice, Tokens};
 use crate::widgets::{self, Cell, Kind};
 
+use artcraft_launcher_core::IconStyle;
+
 impl LauncherUi {
     pub(crate) fn dialogs(&mut self, ctx: &egui::Context, host: &mut dyn Host) {
         let Some(dialog) = self.dialog.clone() else {
@@ -89,7 +91,7 @@ impl LauncherUi {
         let Some(release) = entry.release().cloned() else { return true };
         ui.set_width(560.0f32.min(ui.ctx().content_rect().width() - 80.0));
         let date = release.published_at.map(|d| fmt(tl!("Released {date}"), &[("date", &crate::views::date_text(d))])).unwrap_or_default();
-        Self::title(ui, crate::icons::app(id), &format!("{} {}", entry.app.name, release.version_label()), &date);
+        Self::title(ui, crate::icons::app(id, self.settings.icon_for(entry.app)), &format!("{} {}", entry.app.name, release.version_label()), &date);
         egui::ScrollArea::vertical().max_height(ui.ctx().content_rect().height() * 0.6).show(ui, |ui| {
             if release.notes.is_empty() {
                 ui.label(tl!("These notes weren't fetched (GitHub's request limit was reached). They're on the release page."));
@@ -146,7 +148,7 @@ impl LauncherUi {
         let Some(entry) = self.entry(id).cloned() else { return true };
         let t = Tokens::get(ui.ctx());
         ui.set_width(420.0);
-        Self::title(ui, crate::icons::app(id), &fmt(tl!("Uninstall {name}?"), &[("name", entry.app.name)]), "");
+        Self::title(ui, crate::icons::app(id, self.settings.icon_for(entry.app)), &fmt(tl!("Uninstall {name}?"), &[("name", entry.app.name)]), "");
         let how = match entry.installed.as_ref().map(|i| i.source) {
             Some(artcraft_launcher_core::InstallSource::MacApp) => tl!("The app will be moved to the Trash. Your documents and settings stay."),
             Some(artcraft_launcher_core::InstallSource::Msi) => {
@@ -365,5 +367,23 @@ impl LauncherUi {
             widgets::cells(ui, &mut theme_choice, &ThemeChoice::ALL.map(|c| (c, Cell { label: c.label(), tip: c.label(), count: None })));
         });
         self.settings.theme = theme_choice;
+
+        // The Craft Apps' icons, in the launcher and on the desktop alike.
+        section(ui, tl!("App icons"));
+        let mut icon_choice = self.settings.icon_style;
+        let styles: Vec<(IconStyle, Cell)> = IconStyle::all()
+            .map(|style| (style, Cell { label: crate::icons::icon_style_label(style), tip: crate::icons::icon_style_label(style), count: None }))
+            .collect();
+        ui.horizontal(|ui| {
+            widgets::cells(ui, &mut icon_choice, &styles);
+        });
+        self.settings.icon_style = icon_choice;
+        if self.settings.has_icon_overrides() {
+            ui.add_space(6.0);
+            if widgets::button(ui, tl!("Use for every app"), Kind::Secondary, 0.0).clicked() {
+                self.settings.app_icons.clear();
+            }
+        }
+        ui.label(RichText::new(tl!("Apps without an ArtCraft alternate keep their own icon.")).size(12.0).color(t.muted));
     }
 }

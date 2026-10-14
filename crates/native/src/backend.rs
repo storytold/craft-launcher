@@ -13,7 +13,7 @@ use artcraft_launcher_core::protocol::{
     Source,
 };
 use artcraft_launcher_core::release::{Asset, Release};
-use artcraft_launcher_core::{CraftApp, Installed, PackageKind, SUITE, version};
+use artcraft_launcher_core::{CraftApp, IconStyle, Installed, PackageKind, SUITE, version};
 
 use crate::feed_throttle::{self, FeedThrottle, Outcome};
 use crate::http::{self, Http, Stop};
@@ -342,13 +342,19 @@ impl NativeBackend {
                 shared.emit(Event::Progress { app: app.id.to_string(), phase: JobPhase::Removing });
                 let mut phase = |phase| shared.emit(Event::Progress { app: app.id.to_string(), phase });
                 match &existing {
-                    Some(inst) => install::uninstall(app, inst, record.as_ref(), &paths, &stop, &mut phase).map(|()| {
-                        let mut m = shared.manifest.lock().unwrap_or_else(PoisonError::into_inner);
-                        if m.apps.remove(app.id).is_some() {
-                            let _ = m.save(&paths.manifest());
+                    Some(inst) => {
+                        // Our icon goes away with the app: nothing of ours is left behind.
+                        if let Err(e) = crate::app_icons::apply(app, IconStyle::Default, Some(inst), &paths) {
+                            log::warn!("{}: couldn't take the icon away: {e}", app.name);
                         }
-                        format!("{} was removed", app.name)
-                    }),
+                        install::uninstall(app, inst, record.as_ref(), &paths, &stop, &mut phase).map(|()| {
+                            let mut m = shared.manifest.lock().unwrap_or_else(PoisonError::into_inner);
+                            if m.apps.remove(app.id).is_some() {
+                                let _ = m.save(&paths.manifest());
+                            }
+                            format!("{} was removed", app.name)
+                        })
+                    }
                     None => Err(format!("{} isn't installed", app.name)),
                 }
             } else {
@@ -376,6 +382,15 @@ impl NativeBackend {
                 }
                 (result, _) => result,
             };
+            // Give the app the icon the user picked for it — on the desktop as well as in the
+            // launcher. This never fails the job: a machine that won't take the icon still has
+            // the app.
+            if !uninstall && let Some(found) = &found {
+                let style = options.icon_styles.get(app.id).copied().unwrap_or_default();
+                if let Err(e) = crate::app_icons::apply(app, style, Some(found), &paths) {
+                    log::warn!("{}: couldn't change the icon: {e}", app.name);
+                }
+            }
             {
                 let mut map = shared.installed.lock().unwrap_or_else(PoisonError::into_inner);
                 match &found {
@@ -386,6 +401,51 @@ impl NativeBackend {
             shared.emit(Event::Detected { app: app.id.to_string(), installed: found });
             shared.jobs.lock().unwrap_or_else(PoisonError::into_inner).remove(app.id);
             shared.emit(Event::JobFinished { app: app.id.to_string(), result });
+        });
+    }
+
+    /// Give the apps the icon style the user picked, on the desktop as well as in the launcher.
+    /// `apps` is empty for "every app the user chose a style for". Runs on its own thread: the
+    /// platform work (a PowerShell run on Windows) can take a moment, and a frame must never wait
+    /// for it.
+    fn apply_icons(&self, apps: Vec<String>) {
+        let shared = self.shared.clone();
+        let paths = self.paths.clone();
+        let options = self.options();
+        let single = match apps.as_slice() {
+            [one] => Some(one.clone()),
+            _ => None,
+        };
+        std::thread::spawn(move || {
+            let wanted: Vec<&CraftApp> =
+                if apps.is_empty() { SUITE.iter().collect() } else { apps.iter().filter_map(|id| CraftApp::by_id(id)).collect() };
+            let mut failed: Option<String> = None;
+            // Only built if detection hasn't reached an app yet, so the usual pass costs nothing.
+            let mut snapshot: Option<crate::detect::Snapshot> = None;
+            for app in wanted {
+                let installed = {
+                    let known = shared.installed.lock().unwrap_or_else(PoisonError::into_inner).get(app.id).cloned();
+                    match known {
+                        Some(inst) => Some(inst),
+                        None => {
+                            let snapshot = snapshot.get_or_insert_with(crate::detect::Snapshot::take);
+                            let manifest = shared.manifest.lock().unwrap_or_else(PoisonError::into_inner).clone();
+                            crate::detect::detect(app, &manifest, snapshot)
+                        }
+                    }
+                };
+                // Nothing on the desktop to change for an app that isn't there. The icon theme is
+                // the exception: writing it now means the app looks right the moment it lands.
+                if installed.is_none() && !cfg!(any(target_os = "linux", target_os = "freebsd")) {
+                    continue;
+                }
+                let style = options.icon_styles.get(app.id).copied().unwrap_or_default();
+                if let Err(e) = crate::app_icons::apply(app, style, installed.as_ref(), &paths) {
+                    log::warn!("{}: couldn't change the icon: {e}", app.name);
+                    failed.get_or_insert(e);
+                }
+            }
+            shared.emit(Event::IconsApplied { app: single, result: failed.map_or(Ok(()), Err) });
         });
     }
 
@@ -940,6 +1000,7 @@ impl Backend for NativeBackend {
             }
             Command::UpdateLauncher => self.update_launcher(),
             Command::FetchScreenshots { app } => self.fetch_screenshots(&app),
+            Command::ApplyIcons { apps } => self.apply_icons(apps),
             Command::Configure(options) => {
                 let changed_pre = {
                     let mut o = self.shared.options.lock().unwrap_or_else(PoisonError::into_inner);

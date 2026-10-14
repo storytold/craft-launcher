@@ -25,6 +25,67 @@ impl AppGroup {
     }
 }
 
+/// How a Craft App's icon is drawn and installed: the app's own, or one of the bundled packs.
+///
+/// A pack is a folder of `<app>.svg` files under `assets/app-icons/alternate_icons/`
+/// ([`crate::icons`]). Picking one changes the icon everywhere — the launcher's own grid, and the
+/// app's icon on the desktop, in the taskbar or Dock and in the menu
+/// (`crates/native/src/app_icons.rs`).
+///
+/// It is saved as the pack's id, and read back through [`crate::icons`], so a saved choice naming
+/// a pack this build doesn't have comes back as [`Self::Default`] rather than an error.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
+pub enum IconStyle {
+    /// The app's own icon, exactly as its release ships it.
+    #[default]
+    Default,
+    /// A bundled pack, by its id. Always one of [`crate::icons::PACKS`], which is why it can be
+    /// `'static`.
+    Pack(&'static str),
+}
+
+impl IconStyle {
+    /// Every style the UI offers, [`Self::Default`] first.
+    pub fn all() -> impl Iterator<Item = Self> {
+        std::iter::once(Self::Default).chain(crate::icons::packs().map(|pack| Self::Pack(pack.id)))
+    }
+
+    /// The pack's id, or `None` for [`Self::Default`] (whose icon belongs to the app, not to us).
+    pub fn pack(self) -> Option<&'static str> {
+        match self {
+            Self::Default => None,
+            Self::Pack(id) => Some(id),
+        }
+    }
+}
+
+/// The id a [`IconStyle::Default`] is saved as. Also what a pack may never be called.
+pub const ICON_STYLE_DEFAULT: &str = "default";
+
+impl From<String> for IconStyle {
+    fn from(id: String) -> Self {
+        crate::icons::pack(&id).map_or(Self::Default, |pack| Self::Pack(pack.id))
+    }
+}
+
+impl From<IconStyle> for String {
+    fn from(style: IconStyle) -> Self {
+        style.pack().unwrap_or(ICON_STYLE_DEFAULT).to_string()
+    }
+}
+
+impl Serialize for IconStyle {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        serializer.serialize_str(&String::from(*self))
+    }
+}
+
+impl<'de> Deserialize<'de> for IconStyle {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        Ok(Self::from(String::deserialize(deserializer)?))
+    }
+}
+
 /// One app in the suite.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct CraftApp {
@@ -53,6 +114,25 @@ impl CraftApp {
     /// `ai.storyteller.<id>`: macOS bundle id, Flatpak id and Linux desktop-file id.
     pub fn bundle_id(&self) -> String {
         format!("ai.storyteller.{}", self.id)
+    }
+
+    /// The packs this app's icon was drawn for, in the order the launcher offers them.
+    pub fn icon_styles(&self) -> impl Iterator<Item = IconStyle> + '_ {
+        crate::icons::packs_for(self.id).map(|pack| IconStyle::Pack(pack.id))
+    }
+
+    /// Whether any pack holds artwork for this app. The style picker only appears where there is
+    /// a choice, so an app no pack was drawn for keeps its own icon and is never offered one.
+    pub fn has_alternate_icons(&self) -> bool {
+        crate::icons::has_packs(self.id)
+    }
+
+    /// Whether `style` is one this app can be drawn and installed with.
+    pub fn supports_icon_style(&self, style: IconStyle) -> bool {
+        match style {
+            IconStyle::Default => true,
+            IconStyle::Pack(id) => crate::icons::has_artwork(self.id, id),
+        }
     }
 
     pub fn releases_url(&self) -> String {
@@ -267,5 +347,30 @@ mod tests {
         assert_eq!(pdf.names().collect::<Vec<_>>(), ["PdfCraft", "PrintCraft"]);
         assert_eq!(pdf.website(), "https://getartcraft.com/apps/pdfcraft");
         assert_eq!(CraftApp::by_id("wordcraft").unwrap().website(), "https://getartcraft.com/apps/wordcraft");
+    }
+
+    #[test]
+    fn every_style_an_app_offers_is_one_it_has_artwork_for() {
+        for app in &SUITE {
+            assert!(app.supports_icon_style(IconStyle::Default), "{}", app.id);
+            assert_eq!(app.icon_styles().count(), crate::icons::packs_for(app.id).count(), "{}", app.id);
+            assert_eq!(app.has_alternate_icons(), app.icon_styles().next().is_some(), "{}", app.id);
+            for style in app.icon_styles() {
+                assert!(app.supports_icon_style(style), "{} {style:?}", app.id);
+                assert!(style.pack().is_some_and(|id| crate::icons::pack(id).is_some()), "{style:?}");
+            }
+        }
+        assert!(IconStyle::Default.pack().is_none());
+        assert_eq!(IconStyle::all().next(), Some(IconStyle::Default));
+    }
+
+    #[test]
+    fn a_saved_style_naming_a_pack_this_build_lacks_falls_back_to_the_apps_own_icon() {
+        let dark = IconStyle::Pack(crate::icons::PACKS[0].id);
+        assert_eq!(IconStyle::from(String::from(dark)), dark);
+        assert_eq!(String::from(dark), crate::icons::PACKS[0].id);
+        // A pack that was removed, or one written by a newer launcher.
+        assert_eq!(IconStyle::from("no-such-pack".to_string()), IconStyle::Default);
+        assert_eq!(IconStyle::from(ICON_STYLE_DEFAULT.to_string()), IconStyle::Default);
     }
 }

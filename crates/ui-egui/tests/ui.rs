@@ -4,6 +4,7 @@
 //! older than 1.4.350 (KhronosGroup/Vulkan-Loader#1863).
 
 use std::cell::{Cell, RefCell};
+use std::collections::BTreeMap;
 use std::rc::Rc;
 use std::sync::OnceLock;
 
@@ -13,7 +14,7 @@ use artcraft_launcher_core::protocol::{
 };
 use artcraft_launcher_core::release::{Asset, Release};
 use artcraft_launcher_core::status::InstallSource;
-use artcraft_launcher_core::{Arch, Installed, Os, Platform, SUITE, version};
+use artcraft_launcher_core::{Arch, IconStyle, Installed, Os, Platform, SUITE, version};
 use artcraft_launcher_ui_egui::settings::ViewMode;
 use artcraft_launcher_ui_egui::{Host, LauncherUi, Settings};
 use egui_kittest::Harness;
@@ -1495,4 +1496,63 @@ fn with_animations_on_hovering_a_card_animates() {
     // The rule wipes in and the icon rises over 0.3 s, at 60 frames a second.
     let frames = frames_to_hover_the_next_card(&mut h);
     assert!(frames >= 10, "{frames} frames");
+}
+
+/// Picking an icon style has to reach the backend — that is what changes the icon on the desktop,
+/// outside the launcher — and it has to be told once, not once a frame.
+#[test]
+fn picking_an_icon_style_reaches_the_backend_for_the_apps_that_have_one() {
+    let sent = Rc::new(RefCell::new(Vec::new()));
+    let clock = Rc::new(Cell::new(NOW));
+    let mut backend =
+        Some(Fake { events: events(), sent: sent.clone(), manage: true, pictures: Rc::default(), asked: Vec::new(), clock: clock.clone() });
+    let mut h = Harness::builder().with_size(egui::vec2(1180.0, 900.0)).build_ui_state(
+        move |ui, state: &mut Option<LauncherUi>| {
+            if state.is_none()
+                && let Some(b) = backend.take()
+            {
+                *state = Some(LauncherUi::new(ui.ctx(), Box::new(b), Settings { notify: false, ..Settings::default() }));
+            }
+            if let Some(l) = state.as_mut() {
+                l.logic(&ui.ctx().clone(), &mut NoHost);
+                l.ui(ui, &mut NoHost);
+            }
+        },
+        None,
+    );
+    let applied = |sent: &Rc<RefCell<Vec<Command>>>| -> Vec<Vec<String>> {
+        sent.borrow().iter().filter_map(|c| if let Command::ApplyIcons { apps } = c { Some(apps.clone()) } else { None }).collect()
+    };
+    let told = |sent: &Rc<RefCell<Vec<Command>>>| -> Option<BTreeMap<String, IconStyle>> {
+        sent.borrow().iter().rev().find_map(|c| if let Command::Configure(o) = c { Some(o.icon_styles.clone()) } else { None })
+    };
+
+    // Nothing has been chosen yet: the backend is configured, but there is nothing to apply.
+    h.run_steps(2);
+    assert!(applied(&sent).is_empty(), "nothing to apply before a choice is made");
+    assert!(told(&sent).is_some(), "the backend is configured on the first frame");
+
+    // FigCraft has artwork in both packs, so it follows a suite-wide choice like the classic apps.
+    let pack = IconStyle::Pack(artcraft_launcher_core::icons::packs_for("figcraft").next().expect("FigCraft has an alternate").id);
+    h.state_mut().as_mut().unwrap().settings.icon_style = pack;
+    h.run_steps(3);
+
+    let calls = applied(&sent);
+    assert_eq!(calls.len(), 1, "applied once, not once a frame: {calls:?}");
+    // Exactly the apps that pack was drawn for: an app with no artwork keeps its own icon, so it
+    // is not touched and not reported as changed.
+    let drawn_for: Vec<String> = SUITE
+        .iter()
+        .filter(|app| artcraft_launcher_core::icons::has_artwork(app.id, pack.pack().expect("a pack")))
+        .map(|app| app.id.to_string())
+        .collect();
+    assert!(drawn_for.contains(&"figcraft".to_string()), "the fixture assumes FigCraft has artwork");
+    // The styles travel in a `BTreeMap`, so the apps arrive sorted; compare the two as sets.
+    let (mut sorted, mut expected) = (calls[0].clone(), drawn_for);
+    sorted.sort();
+    expected.sort();
+    assert_eq!(sorted, expected);
+    // The styles themselves travel with the command that applies them, not after it.
+    assert_eq!(told(&sent).and_then(|s| s.get("figcraft").copied()), Some(pack), "the style reaches the backend with it");
+    assert_eq!(told(&sent).and_then(|s| s.get("wordcraft").copied()), Some(IconStyle::Default), "an app with no artwork is untouched");
 }

@@ -5,7 +5,7 @@ use artcraft_launcher_core::details::AppDetails;
 use artcraft_launcher_core::platform::pick_asset;
 use artcraft_launcher_core::protocol::{Command, JobPhase};
 use artcraft_launcher_core::status::AppStatus;
-use artcraft_launcher_core::{AppGroup, SUITE, time};
+use artcraft_launcher_core::{AppGroup, IconStyle, SUITE, time};
 use egui::{Color32, CornerRadius, FontId, Rect, RichText, Sense, Stroke, Ui, vec2};
 
 use crate::app::{Dialog, LauncherUi, TitleBar};
@@ -454,7 +454,7 @@ impl LauncherUi {
                 egui::epaint::Shadow { offset: [0, 6], blur: 14, spread: 0, color: Color32::from_black_alpha(71) }
                     .as_shape(icon_rect.shrink(4.0), CornerRadius::same(12)),
             );
-            if let Some(icon) = crate::icons::app(app.id) {
+            if let Some(icon) = crate::icons::app(app.id, self.settings.icon_for(app)) {
                 egui::Image::new(icon).paint_at(ui, icon_rect);
             }
             ui.add_space(6.0);
@@ -588,7 +588,7 @@ impl LauncherUi {
                                         self.detail = Some(id.to_string());
                                     }
                                 }
-                                if let Some(icon) = crate::icons::app(entry.app.id) {
+                                if let Some(icon) = crate::icons::app(entry.app.id, self.settings.icon_for(entry.app)) {
                                     ui.add(egui::Image::new(icon).fit_to_exact_size(vec2(38.0, 38.0)));
                                 }
                                 ui.add_space(4.0);
@@ -837,6 +837,27 @@ impl LauncherUi {
                 if *status == AppStatus::UpToDate && ui.button(tl!("Reinstall")).clicked() {
                     self.send(Command::Install { app: id.clone() });
                     ui.close();
+                }
+                // The icon the app wears outside the launcher too. Only the apps a pack was
+                // drawn for have a choice.
+                if entry.app.has_alternate_icons() {
+                    let current = self.settings.icon_for(entry.app);
+                    ui.menu_button(tl!("App icon"), |ui| {
+                        // Only means something while the app is set apart from the rest.
+                        if self.settings.app_icons.contains_key(entry.app.id) {
+                            if ui.selectable_label(false, tl!("Follow the default")).clicked() {
+                                self.settings.app_icons.remove(entry.app.id);
+                                ui.close();
+                            }
+                            ui.separator();
+                        }
+                        for style in IconStyle::all() {
+                            if ui.selectable_label(current == style, crate::icons::icon_style_label(style)).clicked() && current != style {
+                                self.settings.set_app_icon(entry.app, style);
+                                ui.close();
+                            }
+                        }
+                    });
                 }
                 ui.separator();
                 if ui.button(RichText::new(tl!("Uninstall…")).color(Tokens::get(ui.ctx()).bad)).clicked() {

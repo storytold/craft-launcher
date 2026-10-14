@@ -523,3 +523,14 @@ fn complete_catalogs_translate_package_formats() {
         }
     }
 }
+
+/// The icon packs' labels come from `assets/app-icons/alternate_icons/packs.tsv`, so the scan in
+/// [`complete_catalogs_cover_every_ui_literal`] never sees them. Checked here instead.
+#[test]
+fn complete_catalogs_translate_every_icon_pack() {
+    for lang in Lang::all().filter(|l| l.complete_menus()) {
+        for pack in artcraft_launcher_core::icons::packs() {
+            assert!(super::has(lang, pack.label), "{}: {} ({})", lang.code(), pack.label, pack.id);
+        }
+    }
+}

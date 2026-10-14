@@ -97,6 +97,17 @@
 	Community	Сообщество
 	Questions, ideas and news from the ArtCraft team	Вопросы, идеи и новости от команды ArtCraft
 	Appearance	Внешний вид
+# "Initial" is the name of the icon family and stays in English.
+	Default	По умолчанию
+	Initial dark	Initial тёмная
+	Initial light	Initial светлая
+	App icon	Значок приложения
+	Follow the default	Как по умолчанию
+	App icons	Значки приложений
+	Use for every app	Применить ко всем приложениям
+	Apps without an ArtCraft alternate keep their own icon.	Приложения без альтернативы ArtCraft сохраняют свой значок.
+	Couldn't change the icon of {name}: {e}	Не удалось изменить значок {name}: {e}
+	Couldn't change some app icons: {e}	Не удалось изменить некоторые значки приложений: {e}
 	Quit ArtCraft Launcher	Выйти из ArtCraft Launcher
 	Done	Готово
 	Uninstall {name}?	Удалить {name}?

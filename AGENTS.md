@@ -106,7 +106,10 @@ only; English where there is none): never bundle a CJK font, they are 10 MB and 
 2. **Icons are generated.** The app icon and the tray icon are the supplied ArtCraft "A" mark from
    `docs/brand/` (a trademark, not MIT/Apache); never edit the renders by hand. Run `packaging/icons.sh` (needs `resvg`; runs on any OS) and commit the outputs.
    `assets/app-icons/` is copied verbatim from each app's repo (`assets/app-icon/hicolor/128x128/apps/ai.storyteller.<app>.png`);
-   refresh it from there, never redraw.
+   refresh it from there, never redraw. The alternate icon packs under
+   `assets/app-icons/alternate_icons/` are data too: a folder of `<app>.svg` files plus one row in
+   `packs.tsv`, turned into the pack registry by `crates/core/build.rs`. Add a pack by adding
+   files — see that folder's `README.md` — never by editing the generated table.
 3. **Never break wasm.** `cargo xtask wasm` must pass. File-system, process and OS code is
    `cfg(not(target_arch = "wasm32"))`.
 4. **Tests are the gate.** Release parsing and asset picking in `core` get unit tests with real

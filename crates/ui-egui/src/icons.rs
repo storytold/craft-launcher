@@ -1,9 +1,18 @@
-//! Bundled images: each Craft App's icon and the launcher's own.
+//! Bundled images: each Craft App's icon (in the style the user picked) and the launcher's own.
 
+use artcraft_launcher_core::IconStyle;
 use egui::ImageSource;
 
-/// The 128 px icon of a Craft App.
-pub fn app(id: &str) -> Option<ImageSource<'static>> {
+/// A Craft App's icon: [`IconStyle::Default`] is the app's own 128 px icon (copied from its
+/// repository), a pack is the bundled artwork `assets/app-icons/alternate_icons/` holds.
+pub fn app(id: &str, style: IconStyle) -> Option<ImageSource<'static>> {
+    let Some(pack) = style.pack() else { return own(id) };
+    let art = artcraft_launcher_core::icons::artwork(id, pack)?;
+    Some(ImageSource::Bytes { uri: format!("bytes://app-icons/{pack}/{id}.png").into(), bytes: egui::load::Bytes::Static(art.png) })
+}
+
+/// The app's own icon, as its release ships it.
+fn own(id: &str) -> Option<ImageSource<'static>> {
     Some(match id {
         "photocraft" => egui::include_image!("../../../assets/app-icons/photocraft.png"),
         "vectorcraft" => egui::include_image!("../../../assets/app-icons/vectorcraft.png"),
@@ -20,6 +29,15 @@ pub fn app(id: &str) -> Option<ImageSource<'static>> {
         "figcraft" => egui::include_image!("../../../assets/app-icons/figcraft.png"),
         _ => return None,
     })
+}
+
+/// The label of an icon style, in the language the UI is drawn in: `Default`, or a pack's English
+/// label from `packs.tsv`, translated like any other string.
+pub fn icon_style_label(style: IconStyle) -> &'static str {
+    match style.pack().and_then(artcraft_launcher_core::icons::pack) {
+        Some(pack) => crate::i18n::t(pack.label),
+        None => crate::i18n::t("Default"),
+    }
 }
 
 /// The ArtCraft wordmark, as supplied: dark ink for light backgrounds, white for dark ones.

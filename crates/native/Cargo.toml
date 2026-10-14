@@ -24,6 +24,9 @@ log = { workspace = true }
 dirs = "6"
 tempfile = "3"
 sha2 = "0.10"
+# Resizing a bundled icon to the sizes an OS asks for (the icon theme's folders, a Windows .ico).
+# Already in Cargo.lock through the desktop shell.
+image = { version = "0.25", default-features = false, features = ["png", "ico"] }
 # HTTPS over rustls, with the OS verifying certificates (rustls-platform-verifier). No bundled
 # root list: webpki-roots and webpki-root-certs are CDLA-licensed.
 ureq = { version = "3.4", default-features = false, features = ["rustls-no-provider", "_ring", "gzip", "platform-verifier"] }
@@ -34,6 +37,11 @@ tar = { version = "0.4", default-features = false }
 
 [target.'cfg(target_os = "macos")'.dependencies]
 plist = "1"
+# Setting an app's custom Finder icon (app_icons.rs). Safe AppKit calls only, pinned exactly to the
+# versions the desktop shell already uses.
+objc2 = "=0.6.5"
+objc2-foundation = { version = "=0.3.2", default-features = false, features = ["std", "NSData", "NSObject", "NSString"] }
+objc2-app-kit = { version = "=0.3.2", default-features = false, features = ["std", "NSImage", "NSWorkspace"] }
 
 [target.'cfg(target_os = "windows")'.dependencies]
 winreg = "0.55"

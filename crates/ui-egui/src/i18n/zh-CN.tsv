@@ -81,6 +81,17 @@
 	Community	社区
 	Questions, ideas and news from the ArtCraft team	与 ArtCraft 团队交流问题、想法和动态
 	Appearance	外观
+# "Initial" is the name of the icon family and stays in English.
+	Default	默认
+	Initial dark	Initial 深色
+	Initial light	Initial 浅色
+	App icon	应用图标
+	Follow the default	跟随默认
+	App icons	应用图标
+	Use for every app	应用到所有应用
+	Apps without an ArtCraft alternate keep their own icon.	没有 ArtCraft 替代图标的应用会保留自己的图标。
+	Couldn't change the icon of {name}: {e}	无法更改 {name} 的图标：{e}
+	Couldn't change some app icons: {e}	无法更改部分应用的图标：{e}
 	Quit ArtCraft Launcher	退出 ArtCraft Launcher
 	Done	完成
 	Uninstall {name}?	卸载 {name}？

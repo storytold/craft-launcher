@@ -86,6 +86,17 @@
 	Community	Komunita
 	Questions, ideas and news from the ArtCraft team	Dotazy, nápady a novinky od týmu ArtCraft
 	Appearance	Vzhled
+# "Initial" is the name of the icon family and stays in English.
+	Default	Výchozí
+	Initial dark	Initial tmavá
+	Initial light	Initial světlá
+	App icon	Ikona aplikace
+	Follow the default	Podle výchozího
+	App icons	Ikony aplikací
+	Use for every app	Použít pro všechny aplikace
+	Apps without an ArtCraft alternate keep their own icon.	Aplikace bez alternativy ArtCraft si ponechají vlastní ikonu.
+	Couldn't change the icon of {name}: {e}	Ikonu aplikace {name} se nepodařilo změnit: {e}
+	Couldn't change some app icons: {e}	Některé ikony aplikací se nepodařilo změnit: {e}
 	Quit ArtCraft Launcher	Ukončit ArtCraft Launcher
 	Done	Hotovo
 	Uninstall {name}?	Odinstalovat {name}?

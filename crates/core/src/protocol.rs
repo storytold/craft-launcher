@@ -6,6 +6,7 @@
 
 use serde::{Deserialize, Serialize};
 
+use crate::catalog::IconStyle;
 use crate::platform::{PackageKind, Platform};
 use crate::release::Release;
 use crate::status::Installed;
@@ -49,6 +50,12 @@ pub enum Command {
     FetchScreenshots {
         app: String,
     },
+    /// Give every installed app the icon style the user picked, on the desktop as well as in the
+    /// launcher. `apps` is empty for "every app"; the styles themselves come from
+    /// [`BackendOptions::icon_styles`], so this is just the "do it now" trigger.
+    ApplyIcons {
+        apps: Vec<String>,
+    },
     /// Change how the backend behaves.
     Configure(BackendOptions),
 }
@@ -60,6 +67,10 @@ pub struct BackendOptions {
     pub kinds: Vec<PackageKind>,
     /// Offer pre-releases (`0.6.0-rc.1`) as updates.
     pub prereleases: bool,
+    /// The icon style to give each app (app id → style). An app missing from the map keeps its
+    /// own icon; a style an app has no artwork for is ignored.
+    #[serde(default)]
+    pub icon_styles: std::collections::BTreeMap<String, IconStyle>,
 }
 
 /// The answer to "what's the latest release of this app?".
@@ -199,6 +210,12 @@ pub enum Event {
         app: String,
         key: String,
         result: Result<Vec<u8>, String>,
+    },
+    /// Icons were changed on this machine, for `app` or (with `None`) for every app the user
+    /// picked a style for. `Err` carries why it couldn't be done, in the user's words.
+    IconsApplied {
+        app: Option<String>,
+        result: Result<(), String>,
     },
     CheckStarted,
     CheckFinished {
