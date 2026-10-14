@@ -93,7 +93,7 @@
 	Done	완료
 	Uninstall {name}?	{name} 앱을 제거하시겠습니까?
 	The app will be moved to the Trash. Your documents and settings stay.	앱이 휴지통으로 이동됩니다. 문서와 설정은 유지됩니다.
-	Windows will remove it like any installed program. Your documents and settings stay.	Windows에서 다른 설치 프로그램과 같은 방식으로 제거합니다. 문서와 설정은 유지됩니다.
+	Windows will remove it like any installed program. Your documents and settings stay.	Windows에서 다른 설치된 프로그램과 같은 방식으로 제거합니다. 문서와 설정은 유지됩니다.
 	Your system's package manager will remove it, and may ask for your password. Your documents and settings stay.	시스템 패키지 관리자로 제거하며, 비밀번호를 요청할 수 있습니다. 문서와 설정은 유지됩니다.
 	The app will be removed. Your documents and settings stay.	앱이 제거됩니다. 문서와 설정은 유지됩니다.
 	Uninstall	제거
@@ -155,6 +155,7 @@ deckcraft	Presentations and slide shows	프레젠테이션 및 슬라이드 쇼
 gridcraft	Spreadsheets and data	스프레드시트 및 데이터
 cadcraft	Computer-aided design and drafting	컴퓨터 지원 설계 및 도면 작성
 soundcraft	Recording, editing and mixing audio	오디오 녹음, 편집 및 믹싱
+figcraft	Interface design and prototyping	인터페이스 디자인 및 프로토타이핑
 month	Jan	1월
 month	Feb	2월
 month	Mar	3월
