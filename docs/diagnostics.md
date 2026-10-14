@@ -40,11 +40,11 @@ or inaccessible are `null`; only a confirmed missing path is `false`.
 
 ## Acceptance checks
 
-The UI is checked with synthetic app data in English and German:
+The UI is checked with synthetic app data in English and German. Published screenshots use English:
 
 ![Diagnostic preview in English](screenshots/diagnostics-desktop.png)
 
-![German preview at the minimum desktop window size](screenshots/diagnostics-desktop-de.png)
+![English preview at the minimum desktop window size](screenshots/diagnostics-desktop-small.png)
 
 - The report can be opened and closed while generation is in progress.
 - Refresh invalidates the old preview; copy/save are disabled until a new report is ready.
