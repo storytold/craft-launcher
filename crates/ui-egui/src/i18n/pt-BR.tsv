@@ -332,3 +332,20 @@ filter	Installed	Instalados
 	Loading pictures…	Carregando imagens…
 	Pictures couldn't be loaded. Reopen this page to try again.	Não foi possível carregar as imagens. Abra a página novamente para tentar de novo.
 @plural	ArtCraft Launcher · {n} update available|ArtCraft Launcher · {n} updates available	ArtCraft Launcher · {n} atualização disponível|ArtCraft Launcher · {n} atualizações disponíveis
+	Offline suite	Suíte offline
+	Create portable suite…	Criar suíte portátil…
+	This is an offline snapshot. Export a new suite to update it.	Este é um retrato offline. Exporte uma nova suíte para atualizá-lo.
+	Bundle ArtCraft Launcher and selected apps for use without an internet connection.	Reúna ArtCraft Launcher e os apps selecionados para usar sem conexão com a internet.
+	Target: {platform}. Create each suite on its target operating system.	Destino: {platform}. Crie cada suíte no sistema operacional de destino.
+	Select all	Selecionar todos
+	Select none	Desmarcar todos
+	New suite folder (absolute path)	Nova pasta da suíte (caminho absoluto)
+	The parent folder must exist. Existing folders are never replaced.	A pasta superior deve existir. Pastas existentes nunca são substituídas.
+	Official stable releases are verified. Your settings and projects are not copied.	As versões estáveis oficiais são verificadas. Suas configurações e projetos não são copiados.
+	Checking portable releases…	Verificando versões portáteis…
+	Preparing suite…	Preparando suíte…
+	Suite ready. Move the entire folder to keep apps and data together.	Suíte pronta. Mova a pasta inteira para manter apps e dados juntos.
+	Export cancelled	Exportação cancelada
+	Cancel export	Cancelar exportação
+	Create suite	Criar suíte
+	Show suite folder	Mostrar pasta da suíte

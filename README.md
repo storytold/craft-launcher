@@ -63,6 +63,10 @@ you when an update is out. It is a small native app that can sit in your menu ba
 
 ## Features
 
+**Portable offline suite:** bundle this ArtCraft Launcher and selected Craft apps into a
+movable folder for Windows, Linux or macOS. Downloads are verified, apps launch without
+installers, and the exported launcher works offline. See [Offline suite](docs/offline-suite.md).
+
 <table>
   <tr>
     <td width="33%" valign="top">

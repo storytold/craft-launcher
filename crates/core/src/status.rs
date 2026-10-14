@@ -7,6 +7,8 @@ use crate::version::{self, Version};
 /// How an installed copy got onto the machine, which decides how to update and remove it.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum InstallSource {
+    /// A fixed, relocatable offline suite snapshot.
+    OfflineSuite,
     /// Installed by this launcher (it keeps a record and can update or remove it).
     Launcher,
     /// A macOS `.app` the user put in Applications.
@@ -30,6 +32,7 @@ pub enum InstallSource {
 impl InstallSource {
     pub fn label(self) -> &'static str {
         match self {
+            Self::OfflineSuite => "Offline suite",
             Self::Launcher => "ArtCraft Launcher",
             Self::MacApp => "Applications folder",
             Self::Msi => "Windows Installer",

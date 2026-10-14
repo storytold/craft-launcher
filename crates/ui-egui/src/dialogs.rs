@@ -23,6 +23,7 @@ impl LauncherUi {
             .frame(egui::Frame::new().fill(t.bg).stroke(egui::Stroke::new(1.0, t.line_strong)).shadow(theme::shadow(&t)).inner_margin(24));
         let mut close = false;
         let response = match &dialog {
+            Dialog::SuiteExport => modal.show(ctx, |ui| close = self.suite_export_dialog(ui)),
             Dialog::Notes(id) => modal.show(ctx, |ui| close = self.notes_dialog(ui, id)),
             Dialog::ConfirmUninstall(id) => modal.show(ctx, |ui| close = self.uninstall_dialog(ui, id)),
             Dialog::Settings => modal.show(ctx, |ui| close = self.settings_dialog(ui, host)),
@@ -221,6 +222,16 @@ impl LauncherUi {
     }
 
     fn settings_contents(&mut self, ui: &mut egui::Ui, host: &mut dyn Host) {
+        if self.caps.manage_apps {
+            widgets::hud(ui, tl!("Offline suite"), Tokens::get(ui.ctx()).faint);
+            if self.backend.offline_suite() {
+                ui.label(tl!("This is an offline snapshot. Export a new suite to update it."));
+            } else if self.platform.is_some_and(|p| p.os != Os::FreeBsd)
+                && widgets::button(ui, tl!("Create portable suite…"), Kind::Secondary, 0.0).clicked()
+            {
+                self.dialog = Some(Dialog::SuiteExport);
+            }
+        }
         let t = Tokens::get(ui.ctx());
         let section = |ui: &mut egui::Ui, s: &str| {
             ui.add_space(14.0);

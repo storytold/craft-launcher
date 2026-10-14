@@ -89,6 +89,9 @@ impl Shared {
 }
 
 pub struct NativeBackend {
+    suite_root: Option<std::path::PathBuf>,
+    suite_stop: Arc<Mutex<Option<Arc<Stop>>>>,
+    suite_file: Arc<Mutex<Option<std::path::PathBuf>>>,
     shared: Arc<Shared>,
     paths: Paths,
     http: Option<Http>,
@@ -136,8 +139,22 @@ impl NativeBackend {
             pictures_busy: Mutex::new(std::collections::HashSet::new()),
             last_check: Mutex::new(None),
         });
-        let backend = Self { shared, paths, http, source, platform: native_platform(), self_install: crate::self_update::current() };
-        backend.replay_cache();
+        let suite_root = crate::suite::root();
+        let self_install = if suite_root.is_none() { crate::self_update::current() } else { None };
+        let backend = Self {
+            shared,
+            paths,
+            http,
+            source,
+            platform: native_platform(),
+            self_install,
+            suite_root,
+            suite_stop: Arc::new(Mutex::new(None)),
+            suite_file: Arc::new(Mutex::new(None)),
+        };
+        if !backend.offline_suite() {
+            backend.replay_cache();
+        }
         backend.detect_all();
         backend
     }
@@ -171,6 +188,32 @@ impl NativeBackend {
     }
 
     fn detect_all(&self) {
+        if let (Some(root), Some(platform)) = (&self.suite_root, self.platform) {
+            let root = root.clone();
+            let shared = self.shared.clone();
+            std::thread::spawn(move || {
+                let suite = crate::suite::load(&root, platform);
+                for app in &SUITE {
+                    let installed = suite.as_ref().ok().and_then(|s| crate::suite::installed(&root, s, app.id));
+                    let mut map = shared.installed.lock().unwrap_or_else(PoisonError::into_inner);
+                    match &installed {
+                        Some(i) => {
+                            map.insert(app.id.into(), i.clone());
+                        }
+                        None => {
+                            map.remove(app.id);
+                        }
+                    }
+                    drop(map);
+                    shared.emit(Event::Detected { app: app.id.into(), installed });
+                    shared.emit(Event::Latest { app: app.id.into(), latest: LatestRelease::None, from: Origin::GitHub });
+                }
+                if let Err(e) = suite {
+                    shared.emit(Event::JobFinished { app: LAUNCHER_ID.into(), result: Err(e) });
+                }
+            });
+            return;
+        }
         if self.shared.detecting.swap(true, Ordering::SeqCst) {
             return;
         }
@@ -207,6 +250,9 @@ impl NativeBackend {
     /// GitHub for anything the feed can't vouch for (apps it doesn't list, entries more than a
     /// day old, or no answer at all), at most once an hour per app unless `force`.
     fn check(&self, force: bool) {
+        if self.offline_suite() {
+            return;
+        }
         let (Some(source), Some(http)) = (self.source.clone(), self.http.clone()) else {
             for app in &SUITE {
                 self.shared.emit(Event::Latest {
@@ -311,6 +357,10 @@ impl NativeBackend {
     }
 
     fn start_job(&self, app_id: &str, uninstall: bool) {
+        if self.offline_suite() {
+            self.shared.emit(Event::JobFinished { app: app_id.into(), result: Err("export a new suite to change this offline snapshot".into()) });
+            return;
+        }
         let Some(app) = CraftApp::by_id(app_id) else { return };
         log::info!("{}: starting {} job", app.name, if uninstall { "uninstall" } else { "install/update" });
         let stop = Arc::new(Stop::default());
@@ -391,6 +441,9 @@ impl NativeBackend {
 
     /// Downloads the newer launcher, puts it in place and asks the UI to quit so it can start.
     fn update_launcher(&self) {
+        if self.offline_suite() {
+            return;
+        }
         let id = LAUNCHER_ID.to_string();
         let (Some(install), Some(platform)) = (self.self_install.clone(), self.platform) else {
             self.shared.emit(Event::JobFinished {
@@ -891,9 +944,62 @@ impl NativeBackend {
     }
 }
 
+impl NativeBackend {
+    fn export_suite(&self, destination: String, apps: Vec<String>) {
+        if self.offline_suite() {
+            return;
+        }
+        let (Some(http), Some(source), Some(platform)) = (self.http.clone(), self.source.clone(), self.platform) else {
+            self.shared.emit(Event::SuiteExportFinished { result: Err("secure downloads aren't available".into()) });
+            return;
+        };
+        let stop = Arc::new(Stop::default());
+        {
+            let mut running = self.suite_stop.lock().unwrap_or_else(PoisonError::into_inner);
+            if running.is_some() {
+                return;
+            }
+            *running = Some(stop.clone());
+        }
+        *self.suite_file.lock().unwrap_or_else(PoisonError::into_inner) = None;
+        let shared = self.shared.clone();
+        let running = self.suite_stop.clone();
+        let saved = self.suite_file.clone();
+        std::thread::spawn(move || {
+            let mut last = Instant::now();
+            let result =
+                crate::suite::export(std::path::Path::new(&destination), &apps, platform, source.as_ref(), &http, &stop, &mut |app, phase| {
+                    if !matches!(phase, JobPhase::Downloading { .. }) || last.elapsed() >= Duration::from_millis(100) {
+                        shared.emit(Event::SuiteExportProgress { app: app.into(), phase });
+                        last = Instant::now();
+                    }
+                });
+            if let Ok(path) = &result {
+                *saved.lock().unwrap_or_else(PoisonError::into_inner) = Some(path.clone());
+            }
+            *running.lock().unwrap_or_else(PoisonError::into_inner) = None;
+            shared.emit(Event::SuiteExportFinished { result: result.map(|p| p.display().to_string()) });
+        });
+    }
+}
+
 impl Backend for NativeBackend {
+    fn offline_suite(&self) -> bool {
+        self.suite_root.is_some()
+    }
     fn send(&mut self, command: Command) {
         match command {
+            Command::ExportSuite { destination, apps } => self.export_suite(destination, apps),
+            Command::CancelSuiteExport => {
+                if let Some(stop) = self.suite_stop.lock().unwrap_or_else(PoisonError::into_inner).as_ref() {
+                    stop.cancel();
+                }
+            }
+            Command::RevealSuiteExport => {
+                if let Some(path) = self.suite_file.lock().unwrap_or_else(PoisonError::into_inner).as_ref() {
+                    let _ = crate::process::reveal(path);
+                }
+            }
             Command::CheckForUpdates { force } => self.check(force),
             Command::Detect => self.detect_all(),
             Command::Install { app } => self.start_job(&app, false),
@@ -921,6 +1027,16 @@ impl Backend for NativeBackend {
             }
             Command::Launch { app } => {
                 let Some(def) = CraftApp::by_id(&app) else { return };
+                if let (Some(root), Some(platform)) = (&self.suite_root, self.platform) {
+                    let root = root.clone();
+                    let shared = self.shared.clone();
+                    std::thread::spawn(move || {
+                        if let Err(e) = crate::suite::launch(&root, platform, def) {
+                            shared.emit(Event::JobFinished { app, result: Err(e) });
+                        }
+                    });
+                    return;
+                }
                 let result = match self.installed(&app) {
                     Some(inst) => install::launch(def, &inst, &self.paths),
                     None => Err(format!("{} isn't installed", def.name)),
@@ -939,7 +1055,11 @@ impl Backend for NativeBackend {
                 }
             }
             Command::UpdateLauncher => self.update_launcher(),
-            Command::FetchScreenshots { app } => self.fetch_screenshots(&app),
+            Command::FetchScreenshots { app } => {
+                if !self.offline_suite() {
+                    self.fetch_screenshots(&app);
+                }
+            }
             Command::Configure(options) => {
                 let changed_pre = {
                     let mut o = self.shared.options.lock().unwrap_or_else(PoisonError::into_inner);
@@ -1231,7 +1351,17 @@ mod tests {
         let shared = shared();
         shared.latest.lock().unwrap().insert(APP.to_string(), release("0.5.0"));
         let shared = Arc::new(shared);
-        NativeBackend { shared, paths: Paths::under(root), http: None, source, platform: Some(platform), self_install: None }
+        NativeBackend {
+            shared,
+            paths: Paths::under(root),
+            http: None,
+            source,
+            platform: Some(platform),
+            self_install: None,
+            suite_root: None,
+            suite_stop: Arc::new(Mutex::new(None)),
+            suite_file: Arc::new(Mutex::new(None)),
+        }
     }
 
     /// Reports again, and returns what the UI was last told about a kept download.

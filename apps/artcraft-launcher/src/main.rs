@@ -10,6 +10,7 @@ mod motion;
 mod settings_file;
 #[cfg(target_os = "macos")]
 mod spaces;
+mod suite_cli;
 #[cfg(target_os = "linux")]
 mod system_theme;
 mod tray;
@@ -45,6 +46,9 @@ fn main() -> ExitCode {
         return ExitCode::SUCCESS;
     }
     let mut hidden = args.iter().any(|a| a == login::HIDDEN_FLAG);
+    if let Some(code) = suite_cli::run(&args) {
+        return code;
+    }
 
     let wake: Wake = Arc::new(OnceLock::new());
     let starts = match single_instance::claim(wake.clone()) {
@@ -152,7 +156,8 @@ fn native_options(hidden: bool) -> eframe::NativeOptions {
     } else if let Some(icon) = icon {
         viewport = viewport.with_icon(icon);
     }
-    eframe::NativeOptions { viewport, persist_window: true, wgpu_options: wgpu_options(), ..Default::default() }
+    let persistence_path = artcraft_launcher_native::suite::root().map(|root| root.join("ArtCraftLauncherData/app.ron"));
+    eframe::NativeOptions { viewport, persistence_path, persist_window: true, wgpu_options: wgpu_options(), ..Default::default() }
 }
 
 /// wgpu's backend list. On Windows that is Direct3D 12 with GL as the fallback, not Vulkan:

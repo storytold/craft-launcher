@@ -312,3 +312,20 @@ figcraft	Interface design and prototyping	界面设计与原型制作
 @msg	{name} installed: {version} (this release publishes no checksum, so only its size was checked)	{name} 已安装：{version}（此版本未发布校验和，因此只检查了文件大小）
 @msg	{name} was removed	{name} 已卸载
 @msg	{name} is running. Quit it, then try again.	{name} 正在运行。请先退出，然后重试。
+	Offline suite	离线套件
+	Create portable suite…	创建便携套件…
+	This is an offline snapshot. Export a new suite to update it.	这是离线快照。要更新，请导出新套件。
+	Bundle ArtCraft Launcher and selected apps for use without an internet connection.	将 ArtCraft Launcher 和选定应用打包，以便在没有网络连接时使用。
+	Target: {platform}. Create each suite on its target operating system.	目标：{platform}。请在目标操作系统上创建对应套件。
+	Select all	全选
+	Select none	全部取消
+	New suite folder (absolute path)	新套件文件夹（绝对路径）
+	The parent folder must exist. Existing folders are never replaced.	父文件夹必须存在。不会替换已有文件夹。
+	Official stable releases are verified. Your settings and projects are not copied.	会验证官方稳定版本。不会复制你的设置和项目。
+	Checking portable releases…	正在检查便携版本…
+	Preparing suite…	正在准备套件…
+	Suite ready. Move the entire folder to keep apps and data together.	套件已就绪。请移动整个文件夹，以保留应用和数据。
+	Export cancelled	导出已取消
+	Cancel export	取消导出
+	Create suite	创建套件
+	Show suite folder	显示套件文件夹

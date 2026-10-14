@@ -312,3 +312,20 @@ filter	Installed	Nainstalováno
 	ArtCraft on GitHub	ArtCraft na GitHubu
 	Join the ArtCraft Discord	Připojit se na ArtCraft Discord
 @plural	ArtCraft Launcher · {n} update available|ArtCraft Launcher · {n} updates available	ArtCraft Launcher · {n} dostupná aktualizace|ArtCraft Launcher · {n} dostupné aktualizace|ArtCraft Launcher · {n} dostupných aktualizací
+	Offline suite	Offline sada
+	Create portable suite…	Vytvořit přenosnou sadu…
+	This is an offline snapshot. Export a new suite to update it.	Toto je offline snímek. Pro aktualizaci exportujte novou sadu.
+	Bundle ArtCraft Launcher and selected apps for use without an internet connection.	Zabalte ArtCraft Launcher a vybrané aplikace pro použití bez internetu.
+	Target: {platform}. Create each suite on its target operating system.	Cíl: {platform}. Každou sadu vytvořte v cílovém operačním systému.
+	Select all	Vybrat vše
+	Select none	Zrušit výběr
+	New suite folder (absolute path)	Nová složka sady (absolutní cesta)
+	The parent folder must exist. Existing folders are never replaced.	Nadřazená složka musí existovat. Existující složky se nikdy nenahrazují.
+	Official stable releases are verified. Your settings and projects are not copied.	Oficiální stabilní vydání jsou ověřena. Nastavení ani projekty se nekopírují.
+	Checking portable releases…	Kontrola přenosných vydání…
+	Preparing suite…	Příprava sady…
+	Suite ready. Move the entire folder to keep apps and data together.	Sada je připravena. Přesuňte celou složku, aby aplikace a data zůstaly pohromadě.
+	Export cancelled	Export zrušen
+	Cancel export	Zrušit export
+	Create suite	Vytvořit sadu
+	Show suite folder	Zobrazit složku sady

@@ -347,3 +347,20 @@ filter	Installed	インストール済み
 	ArtCraft on GitHub	GitHub の ArtCraft
 	Join the ArtCraft Discord	ArtCraft Discord に参加
 @plural	ArtCraft Launcher · {n} update available|ArtCraft Launcher · {n} updates available	ArtCraft Launcher · {n} 件の更新があります
+	Offline suite	オフラインスイート
+	Create portable suite…	ポータブルスイートを作成…
+	This is an offline snapshot. Export a new suite to update it.	これはオフラインのスナップショットです。更新するには新しいスイートを書き出してください。
+	Bundle ArtCraft Launcher and selected apps for use without an internet connection.	ArtCraft Launcherと選択したアプリをまとめて、インターネット接続なしで使用できます。
+	Target: {platform}. Create each suite on its target operating system.	対象：{platform}。各スイートは対象のOS上で作成してください。
+	Select all	すべて選択
+	Select none	選択を解除
+	New suite folder (absolute path)	新しいスイートフォルダー（絶対パス）
+	The parent folder must exist. Existing folders are never replaced.	親フォルダーが必要です。既存のフォルダーは置き換えません。
+	Official stable releases are verified. Your settings and projects are not copied.	公式の安定版を検証します。設定やプロジェクトはコピーしません。
+	Checking portable releases…	ポータブル版を確認中…
+	Preparing suite…	スイートを準備中…
+	Suite ready. Move the entire folder to keep apps and data together.	スイートの準備ができました。アプリとデータを保つため、フォルダー全体を移動してください。
+	Export cancelled	書き出しをキャンセルしました
+	Cancel export	書き出しをキャンセル
+	Create suite	スイートを作成
+	Show suite folder	スイートフォルダーを表示

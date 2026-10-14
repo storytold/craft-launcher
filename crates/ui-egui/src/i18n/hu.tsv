@@ -345,3 +345,20 @@ filter	Installed	Telepítve
 	ArtCraft on GitHub	ArtCraft a GitHubon
 	Join the ArtCraft Discord	Csatlakozás az ArtCraft Discord-közösségéhez
 @plural	ArtCraft Launcher · {n} update available|ArtCraft Launcher · {n} updates available	ArtCraft Launcher · {n} frissítés elérhető|ArtCraft Launcher · {n} frissítés elérhető
+	Offline suite	Offline csomag
+	Create portable suite…	Hordozható csomag létrehozása…
+	This is an offline snapshot. Export a new suite to update it.	Ez egy offline pillanatkép. Frissítéséhez exportálj új csomagot.
+	Bundle ArtCraft Launcher and selected apps for use without an internet connection.	Csomagold össze az ArtCraft Launcher alkalmazást és a kiválasztott appokat internet nélküli használatra.
+	Target: {platform}. Create each suite on its target operating system.	Cél: {platform}. Minden csomagot a cél operációs rendszeren hozz létre.
+	Select all	Összes kijelölése
+	Select none	Kijelölés törlése
+	New suite folder (absolute path)	Új csomagmappa (abszolút útvonal)
+	The parent folder must exist. Existing folders are never replaced.	A szülőmappának léteznie kell. A meglévő mappákat nem írjuk felül.
+	Official stable releases are verified. Your settings and projects are not copied.	A hivatalos stabil kiadásokat ellenőrizzük. A beállításaid és projektjeid nem kerülnek át.
+	Checking portable releases…	Hordozható kiadások ellenőrzése…
+	Preparing suite…	Csomag előkészítése…
+	Suite ready. Move the entire folder to keep apps and data together.	A csomag kész. Az egész mappát mozgasd, hogy az appok és adatok együtt maradjanak.
+	Export cancelled	Exportálás megszakítva
+	Cancel export	Exportálás megszakítása
+	Create suite	Csomag létrehozása
+	Show suite folder	Csomagmappa megnyitása

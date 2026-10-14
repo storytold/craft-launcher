@@ -71,6 +71,10 @@ fn ours() -> Option<Version> {
 
 /// Claims the instance; `wake` is set later (the UI context doesn't exist yet).
 pub fn claim(wake: Wake) -> Instance {
+    // A suite must never hand its start over to an installed launcher from another folder.
+    if crate::suite::root().is_some() {
+        return Instance::Primary(channel().1);
+    }
     let addr = SocketAddr::from((Ipv4Addr::LOCALHOST, PORT));
     let ours = ours();
     if let Ok(listener) = TcpListener::bind(addr) {

@@ -27,6 +27,7 @@ pub mod model;
 mod motion;
 mod notes;
 pub mod settings;
+mod suite;
 pub mod theme;
 mod views;
 mod widgets;

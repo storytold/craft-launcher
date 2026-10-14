@@ -70,6 +70,7 @@ pub(crate) struct Toast {
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) enum Dialog {
+    SuiteExport,
     Notes(String),
     ConfirmUninstall(String),
     Settings,
@@ -81,6 +82,7 @@ impl Dialog {
     /// size there, so a small prompt never opens at the height of the last dialog shown (#88).
     pub(crate) fn key(&self) -> (&'static str, &str) {
         match self {
+            Dialog::SuiteExport => ("suite-export", ""),
             Dialog::Notes(id) => ("notes", id),
             Dialog::ConfirmUninstall(id) => ("uninstall", id),
             Dialog::Settings => ("settings", ""),
@@ -90,6 +92,7 @@ impl Dialog {
 }
 
 pub struct LauncherUi {
+    pub(crate) suite_export: crate::suite::ExportState,
     pub(crate) backend: Box<dyn Backend>,
     pub settings: Settings,
     pub(crate) entries: Vec<AppEntry>,
@@ -167,6 +170,7 @@ impl LauncherUi {
         let caps = backend.capabilities();
         let platform = backend.platform();
         Self {
+            suite_export: crate::suite::ExportState::default(),
             backend,
             settings,
             entries: SUITE.iter().map(AppEntry::new).collect(),
@@ -232,7 +236,7 @@ impl LauncherUi {
     /// Something is downloading or installing, the launcher's own update included: quitting now
     /// would cut it short.
     pub fn busy(&self) -> bool {
-        self.launcher_job.is_some() || self.entries.iter().any(|e| e.job.is_some())
+        self.suite_export.busy || self.launcher_job.is_some() || self.entries.iter().any(|e| e.job.is_some())
     }
 
     /// Looks for updates now (the tray's "Check for Updates").
@@ -315,6 +319,16 @@ impl LauncherUi {
     /// Returns whether app state changed.
     fn handle(&mut self, ctx: &egui::Context, event: Event) -> bool {
         match event {
+            Event::SuiteExportProgress { app, phase } => {
+                self.suite_export.progress = Some((app, phase));
+                false
+            }
+            Event::SuiteExportFinished { result } => {
+                self.suite_export.busy = false;
+                self.suite_export.progress = None;
+                self.suite_export.result = Some(result);
+                false
+            }
             Event::Latest { app, latest, from } => {
                 if let Some(e) = self.entry_mut(&app) {
                     // A failed check keeps the release we already know about (and where it came from).
@@ -646,6 +660,9 @@ impl LauncherUi {
 
     /// Whether `entry` belongs in `filter`. Hidden apps stay out of every list except Hidden.
     pub(crate) fn in_filter(&self, entry: &AppEntry, filter: Filter) -> bool {
+        if self.backend.offline_suite() && entry.installed.is_none() {
+            return false;
+        }
         let hidden = self.settings.hidden.contains(entry.app.id);
         let status = entry.status(self.platform, self.caps.manage_apps);
         match filter {

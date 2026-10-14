@@ -119,7 +119,7 @@ pub fn choose_kinds(existing: Option<&Installed>, record: Option<&Record>, prefe
             InstallSource::Rpm => Some(PackageKind::Rpm),
             // Arch/AUR installs are owned by pacman and updated by the user's AUR helper (see
             // `managed_elsewhere`); the launcher opens and removes them but never replaces them.
-            InstallSource::Pacman => None,
+            InstallSource::Pacman | InstallSource::OfflineSuite => None,
             InstallSource::Flatpak => Some(PackageKind::Flatpak),
             InstallSource::AppImage => Some(PackageKind::AppImage),
             InstallSource::Binary => Some(PackageKind::TarGz),

@@ -596,6 +596,47 @@ fn settings_link_to_discord() {
 }
 
 #[test]
+fn offline_export_selects_apps_sends_destination_and_can_cancel_after_reopening() {
+    let (mut h, sent) = harness(ViewMode::Grid, egui::Theme::Dark, true);
+    h.run_steps(6);
+    h.get_by_label("Settings").click();
+    h.run_steps(4);
+    h.get_by_label("Create portable suite…").click();
+    h.run_steps(4);
+    h.get_by_label("Select none").click_accesskit();
+    h.run_steps(2);
+    h.get_by_role_and_label(egui::accesskit::Role::CheckBox, "PhotoCraft").click_accesskit();
+    h.run_steps(2);
+    h.get_by_role_and_label(egui::accesskit::Role::TextInput, "New suite folder (absolute path)").focus();
+    h.run_steps(2);
+    h.get_by_role_and_label(egui::accesskit::Role::TextInput, "New suite folder (absolute path)").type_text("C:\\OfflineSuite");
+    h.run_steps(2);
+    snapshot(&mut h, "offline-suite-export");
+    h.get_by_label("Create suite").click();
+    h.run_steps(3);
+    assert!(
+        sent.borrow().contains(&Command::ExportSuite { destination: "C:\\OfflineSuite".into(), apps: vec!["photocraft".into()] }),
+        "{:?}",
+        sent.borrow()
+    );
+    assert!(h.state().as_ref().unwrap().busy());
+    h.get_by_label("Close").click();
+    h.run_steps(3);
+    h.get_by_label("Settings").click();
+    h.run_steps(3);
+    h.get_by_label("Create portable suite…").click();
+    h.run_steps(3);
+    h.get_by_label("Cancel export").click();
+    h.run_steps(2);
+    assert!(sent.borrow().contains(&Command::CancelSuiteExport));
+    h.set_size(egui::vec2(720.0, 500.0));
+    h.run_steps(8);
+    let close = h.get_by_label("Close").rect();
+    assert!(close.bottom() <= 500.0 && close.top() >= 0.0, "{close:?}");
+    snapshot(&mut h, "offline-suite-export-small");
+}
+
+#[test]
 fn the_uninstall_prompt_keeps_its_own_size_after_a_taller_dialog() {
     let (mut h, _) = harness(ViewMode::Grid, egui::Theme::Dark, true);
     h.run_steps(6);

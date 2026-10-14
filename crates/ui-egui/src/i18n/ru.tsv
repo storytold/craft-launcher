@@ -340,3 +340,20 @@ filter	Installed	Установлены
 	Loading pictures…	Загрузка изображений…
 	Pictures couldn't be loaded. Reopen this page to try again.	Не удалось загрузить изображения. Откройте страницу снова, чтобы повторить попытку.
 @plural	ArtCraft Launcher · {n} update available|ArtCraft Launcher · {n} updates available	ArtCraft Launcher · {n} обновление|ArtCraft Launcher · {n} обновления|ArtCraft Launcher · {n} обновлений
+	Offline suite	Офлайн-набор
+	Create portable suite…	Создать переносной набор…
+	This is an offline snapshot. Export a new suite to update it.	Это офлайн-снимок. Для обновления экспортируйте новый набор.
+	Bundle ArtCraft Launcher and selected apps for use without an internet connection.	Объедините ArtCraft Launcher и выбранные приложения для работы без интернета.
+	Target: {platform}. Create each suite on its target operating system.	Платформа: {platform}. Создавайте каждый набор на целевой операционной системе.
+	Select all	Выбрать все
+	Select none	Снять выбор
+	New suite folder (absolute path)	Новая папка набора (абсолютный путь)
+	The parent folder must exist. Existing folders are never replaced.	Родительская папка должна существовать. Существующие папки не заменяются.
+	Official stable releases are verified. Your settings and projects are not copied.	Официальные стабильные выпуски проверяются. Настройки и проекты не копируются.
+	Checking portable releases…	Проверка переносных выпусков…
+	Preparing suite…	Подготовка набора…
+	Suite ready. Move the entire folder to keep apps and data together.	Набор готов. Переносите всю папку, чтобы приложения и данные оставались вместе.
+	Export cancelled	Экспорт отменён
+	Cancel export	Отменить экспорт
+	Create suite	Создать набор
+	Show suite folder	Показать папку набора

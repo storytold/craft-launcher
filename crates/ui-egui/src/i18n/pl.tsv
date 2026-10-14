@@ -346,3 +346,20 @@ filter	Installed	Zainstalowane
 	ArtCraft on GitHub	ArtCraft na GitHubie
 	Join the ArtCraft Discord	Dołącz do Discorda ArtCraft
 @plural	ArtCraft Launcher · {n} update available|ArtCraft Launcher · {n} updates available	ArtCraft Launcher · {n} dostępna aktualizacja|ArtCraft Launcher · {n} dostępne aktualizacje|ArtCraft Launcher · {n} dostępnych aktualizacji
+	Offline suite	Pakiet offline
+	Create portable suite…	Utwórz przenośny pakiet…
+	This is an offline snapshot. Export a new suite to update it.	To migawka offline. Wyeksportuj nowy pakiet, aby ją zaktualizować.
+	Bundle ArtCraft Launcher and selected apps for use without an internet connection.	Spakuj ArtCraft Launcher i wybrane aplikacje do użytku bez internetu.
+	Target: {platform}. Create each suite on its target operating system.	Cel: {platform}. Twórz każdy pakiet w docelowym systemie operacyjnym.
+	Select all	Zaznacz wszystkie
+	Select none	Odznacz wszystkie
+	New suite folder (absolute path)	Nowy folder pakietu (ścieżka bezwzględna)
+	The parent folder must exist. Existing folders are never replaced.	Folder nadrzędny musi istnieć. Istniejące foldery nie są zastępowane.
+	Official stable releases are verified. Your settings and projects are not copied.	Oficjalne stabilne wydania są weryfikowane. Ustawienia i projekty nie są kopiowane.
+	Checking portable releases…	Sprawdzanie przenośnych wydań…
+	Preparing suite…	Przygotowywanie pakietu…
+	Suite ready. Move the entire folder to keep apps and data together.	Pakiet gotowy. Przenieś cały folder, aby aplikacje i dane pozostały razem.
+	Export cancelled	Eksport anulowany
+	Cancel export	Anuluj eksport
+	Create suite	Utwórz pakiet
+	Show suite folder	Pokaż folder pakietu

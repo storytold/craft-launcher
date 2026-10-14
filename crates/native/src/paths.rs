@@ -15,6 +15,9 @@ const DIR: &str = if cfg!(any(target_os = "macos", target_os = "windows")) { "Ar
 
 impl Paths {
     pub fn new() -> Result<Self, String> {
+        if let Some(root) = crate::suite::root() {
+            return Ok(Self::under(&root.join("ArtCraftLauncherData")));
+        }
         if let Some(root) = portable_root() {
             return Ok(Self::under(&root));
         }

@@ -10,6 +10,9 @@ use std::path::{Path, PathBuf};
 
 /// Where eframe keeps its state for `app_id`, as it picks it for a window with that app id.
 pub fn path(app_id: &str) -> Option<PathBuf> {
+    if let Some(root) = artcraft_launcher_native::suite::root() {
+        return Some(root.join("ArtCraftLauncherData/app.ron"));
+    }
     eframe::storage_dir(app_id).map(|dir| dir.join("app.ron"))
 }
 
