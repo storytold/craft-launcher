@@ -1,8 +1,8 @@
 //! Finding Craft Apps that are already installed, however they got there.
 //!
 //! - macOS: `<App>.app` in `/Applications` or `~/Applications`, read from its `Info.plist`.
-//! - Windows: the Windows Installer's uninstall entries (`Learning Machines LLC`), and portable
-//!   copies the launcher unpacked.
+//! - Windows: the Windows Installer's uninstall entries (`Learning Machines LLC`), portable
+//!   copies the launcher unpacked, and explicitly registered external executables.
 //! - Linux: AppImages in `~/Applications` (where the launcher and AppImageLauncher put them),
 //!   `~/AppImages` (Gear Lever) and `~/.local/bin`, Debian/RPM packages, Flatpaks, and tarball
 //!   installs.
@@ -14,23 +14,36 @@ use artcraft_launcher_core::{CraftApp, InstallSource, Installed, version};
 
 use crate::manifest::Manifest;
 
-/// One look at the system, shared by every app's detection (package lists are read once).
+/// One look at the system, shared by every app's detection (package lists and optional external
+/// app registrations are read once).
 #[derive(Default)]
 pub struct Snapshot {
     #[allow(dead_code)]
     packages: Vec<crate::packages::Package>,
+    #[cfg(windows)]
+    external_apps: external_windows::Apps,
 }
 
 impl Snapshot {
-    pub fn take() -> Self {
+    pub fn take(paths: &crate::paths::Paths) -> Self {
+        let _ = paths;
         #[cfg(target_os = "linux")]
         {
             Self { packages: linux::packages() }
         }
-        #[cfg(not(target_os = "linux"))]
+        #[cfg(windows)]
+        {
+            Self { external_apps: external_windows::Apps::load(&paths.external_apps()), ..Self::default() }
+        }
+        #[cfg(not(any(target_os = "linux", windows)))]
         {
             Self::default()
         }
+    }
+
+    #[cfg(windows)]
+    fn external(&self, app: &CraftApp) -> Option<Installed> {
+        self.external_apps.detect(app)
     }
 }
 
@@ -43,13 +56,87 @@ pub fn detect(app: &CraftApp, manifest: &Manifest, snapshot: &Snapshot) -> Optio
     #[cfg(target_os = "macos")]
     return macos::detect(app);
     #[cfg(windows)]
-    return windows::detect(app);
+    return windows::detect(app).or_else(|| snapshot.external(app));
     #[cfg(target_os = "linux")]
     return linux::detect(app, snapshot);
     #[cfg(target_os = "freebsd")]
     return freebsd::detect(app);
     #[allow(unreachable_code)]
     None
+}
+
+/// Explicitly selected executables remain owned by the user, separate from `installed.json`.
+#[cfg(windows)]
+mod external_windows {
+    use std::collections::BTreeMap;
+    use std::io::{ErrorKind, Read};
+
+    use serde::Deserialize;
+
+    use super::*;
+
+    const MAX_BYTES: u64 = 64 * 1024;
+
+    #[derive(Default, Deserialize)]
+    pub(super) struct Apps {
+        apps: BTreeMap<String, App>,
+    }
+
+    #[derive(Deserialize)]
+    struct App {
+        path: PathBuf,
+        #[serde(default)]
+        version: Option<String>,
+    }
+
+    impl Apps {
+        pub(super) fn load(path: &Path) -> Self {
+            match Self::read(path) {
+                Ok(apps) => apps,
+                Err(e) => {
+                    log::warn!("ignoring external-apps.json ({e}); check the file's format, size and permissions");
+                    Self::default()
+                }
+            }
+        }
+
+        fn read(path: &Path) -> Result<Self, String> {
+            let file = match std::fs::File::open(path) {
+                Ok(file) => file,
+                Err(e) if e.kind() == ErrorKind::NotFound => return Ok(Self::default()),
+                Err(e) => return Err(e.to_string()),
+            };
+            let metadata = file.metadata().map_err(|e| e.to_string())?;
+            if !metadata.is_file() || metadata.len() > MAX_BYTES {
+                return Err("expected a regular file no larger than 64 KiB".into());
+            }
+            // Bound the read too: the file can grow after the metadata check.
+            let mut bytes = Vec::new();
+            file.take(MAX_BYTES + 1).read_to_end(&mut bytes).map_err(|e| e.to_string())?;
+            if bytes.len() as u64 > MAX_BYTES {
+                return Err("the file is larger than 64 KiB".into());
+            }
+            serde_json::from_slice(&bytes).map_err(|e| format!("invalid JSON or app registration at line {}, column {}", e.line(), e.column()))
+        }
+
+        pub(super) fn detect(&self, app: &CraftApp) -> Option<Installed> {
+            let rec = self.apps.get(app.id)?;
+            let path = &rec.path;
+            if !path.is_absolute() || !path.is_file() || !path.extension()?.eq_ignore_ascii_case("exe") {
+                return None;
+            }
+            let stem = path.file_stem()?.to_str()?;
+            if !app.stems().any(|s| s.eq_ignore_ascii_case(stem)) {
+                return None;
+            }
+            Some(Installed {
+                version: rec.version.as_deref().and_then(version::parse),
+                source: InstallSource::Binary,
+                location: path.display().to_string(),
+                package: None,
+            })
+        }
+    }
 }
 
 fn from_manifest(app: &CraftApp, manifest: &Manifest) -> Option<Installed> {
@@ -608,5 +695,185 @@ mod tests {
             let with_location: Vec<PathBuf> = std::iter::once(location.join(&exe)).chain(in_program_files).collect();
             assert_eq!(exe_candidates(a, Some(&location), &roots), with_location);
         }
+    }
+}
+
+#[cfg(all(test, windows))]
+#[allow(clippy::unwrap_used)]
+mod external_windows_tests {
+    use std::collections::BTreeMap;
+
+    use super::*;
+    use crate::paths::Paths;
+
+    fn create_exe(root: &Path, name: &str) -> PathBuf {
+        let exe = root.join("Creative Apps").join(name);
+        std::fs::create_dir_all(exe.parent().unwrap()).unwrap();
+        // Detection must not run an external executable to learn its version.
+        std::fs::write(&exe, b"not executable").unwrap();
+        exe
+    }
+
+    fn register(paths: &Paths, id: &str, path: &Path, version: Option<&str>) {
+        let mut rec = serde_json::json!({ "path": path });
+        if let Some(version) = version {
+            rec["version"] = version.into();
+        }
+        let apps = BTreeMap::from([(id, rec)]);
+        std::fs::create_dir_all(&paths.data).unwrap();
+        std::fs::write(paths.external_apps(), serde_json::to_vec(&serde_json::json!({ "apps": apps })).unwrap()).unwrap();
+    }
+
+    fn external(paths: &Paths, id: &str) -> Option<Installed> {
+        Snapshot::take(paths).external(CraftApp::by_id(id).unwrap())
+    }
+
+    #[test]
+    fn registered_custom_exe_can_be_detected() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = Paths::under(dir.path());
+        let exe = create_exe(dir.path(), "photocraft.exe");
+        register(&paths, "photocraft", &exe, Some("0.7.0"));
+
+        let installed = external(&paths, "photocraft").unwrap();
+        assert_eq!(installed.source, InstallSource::Binary);
+        assert_eq!(installed.location, exe.display().to_string());
+        assert_eq!(installed.version.unwrap().to_string(), "0.7.0");
+        assert_eq!(installed.package, None);
+    }
+
+    #[test]
+    fn external_detection_is_disabled_without_registration() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = Paths::under(dir.path());
+        create_exe(dir.path(), "photocraft.exe");
+        assert!(external(&paths, "photocraft").is_none());
+        assert!(!paths.data.exists(), "detection must not create a configuration or adopt a copy");
+    }
+
+    #[test]
+    fn absent_or_invalid_versions_are_unknown() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = Paths::under(dir.path());
+        let exe = create_exe(dir.path(), "photocraft.exe");
+        for v in [None, Some("not a version"), Some("")] {
+            register(&paths, "photocraft", &exe, v);
+            assert!(external(&paths, "photocraft").unwrap().version.is_none());
+        }
+    }
+
+    #[test]
+    fn registration_accepts_case_insensitive_and_former_executable_names() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = Paths::under(dir.path());
+        for (id, name) in [("photocraft", "PhotoCraft.EXE"), ("pdfcraft", "PrintCraft.EXE")] {
+            let exe = create_exe(dir.path(), name);
+            register(&paths, id, &exe, Some("0.7.0"));
+            assert_eq!(external(&paths, id).unwrap().location, exe.display().to_string());
+        }
+    }
+
+    #[test]
+    fn registration_rejects_missing_relative_directory_or_other_app_paths() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = Paths::under(dir.path());
+        let folder = dir.path().join("directory").join("photocraft.exe");
+        std::fs::create_dir_all(&folder).unwrap();
+        let other = create_exe(dir.path(), "wordcraft.exe");
+        let cli = create_exe(dir.path(), "photocraft-cli.exe");
+        let wrong_extension = create_exe(dir.path(), "photocraft.txt");
+        let candidates = [
+            dir.path().join("missing").join("photocraft.exe"),
+            "photocraft.exe".into(),
+            "C:photocraft.exe".into(),
+            folder,
+            other,
+            cli,
+            wrong_extension,
+        ];
+        for path in candidates {
+            register(&paths, "photocraft", &path, Some("0.7.0"));
+            assert!(external(&paths, "photocraft").is_none(), "{}", path.display());
+        }
+        let exe = create_exe(dir.path(), "photocraft.exe");
+        register(&paths, "unknown-app", &exe, None);
+        assert!(external(&paths, "photocraft").is_none());
+    }
+
+    #[test]
+    fn malformed_and_oversized_registrations_are_ignored() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = Paths::under(dir.path());
+        std::fs::create_dir_all(&paths.data).unwrap();
+        for bytes in [b"{not json".to_vec(), br#"{"apps":{"photocraft":{"version":"0.7.0"}}}"#.to_vec(), vec![b' '; 64 * 1024 + 1]] {
+            std::fs::write(paths.external_apps(), bytes).unwrap();
+            assert!(external(&paths, "photocraft").is_none());
+        }
+        let exe = create_exe(dir.path(), "photocraft.exe");
+        register(&paths, "photocraft", &exe, Some("0.7.0"));
+        let mut bytes = std::fs::read(paths.external_apps()).unwrap();
+        bytes.resize(64 * 1024, b' ');
+        std::fs::write(paths.external_apps(), &bytes).unwrap();
+        assert!(external(&paths, "photocraft").is_some(), "a valid file exactly at the cap is accepted");
+        bytes.push(b' ');
+        std::fs::write(paths.external_apps(), bytes).unwrap();
+        assert!(external(&paths, "photocraft").is_none(), "even valid JSON is ignored beyond the cap");
+    }
+
+    #[test]
+    fn registrations_are_read_once_per_pass_and_refresh_on_the_next_pass() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = Paths::under(dir.path());
+        let exe = create_exe(dir.path(), "photocraft.exe");
+        let app = CraftApp::by_id("photocraft").unwrap();
+        register(&paths, app.id, &exe, Some("0.7.0"));
+        let snapshot = Snapshot::take(&paths);
+        register(&paths, app.id, &exe, Some("0.8.0"));
+        assert_eq!(snapshot.external(app).unwrap().version.unwrap().to_string(), "0.7.0");
+        assert_eq!(external(&paths, app.id).unwrap().version.unwrap().to_string(), "0.8.0");
+        std::fs::remove_file(paths.external_apps()).unwrap();
+        assert!(external(&paths, app.id).is_none());
+    }
+
+    #[test]
+    fn launcher_owned_installation_keeps_precedence() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = Paths::under(dir.path());
+        let exe = create_exe(dir.path(), "photocraft.exe");
+        register(&paths, "photocraft", &exe, Some("0.7.0"));
+        let managed = create_exe(&dir.path().join("managed"), "photocraft.exe");
+        let manifest = Manifest {
+            apps: BTreeMap::from([(
+                "photocraft".into(),
+                crate::manifest::Record {
+                    version: "0.8.0".into(),
+                    kind: artcraft_launcher_core::PackageKind::PortableZip,
+                    path: managed.clone(),
+                    installed_at: 1,
+                    files: vec![],
+                    needs_root: false,
+                },
+            )]),
+        };
+        let installed = detect(CraftApp::by_id("photocraft").unwrap(), &manifest, &Snapshot::take(&paths)).unwrap();
+        assert_eq!(installed.source, InstallSource::Launcher);
+        assert_eq!(installed.location, managed.display().to_string());
+        assert_eq!(installed.version.unwrap().to_string(), "0.8.0");
+    }
+
+    #[test]
+    fn registered_apps_cannot_be_updated_or_removed_by_the_launcher() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = Paths::under(dir.path());
+        let app = CraftApp::by_id("photocraft").unwrap();
+        let exe = create_exe(dir.path(), "photocraft.exe");
+        register(&paths, app.id, &exe, None);
+        let installed = external(&paths, app.id).unwrap();
+        assert!(crate::install::managed_elsewhere(app, &installed, false).is_some());
+        let result = crate::install::uninstall(app, &installed, None, &paths, &crate::http::Stop::default(), &mut |_| {});
+        assert!(result.is_err());
+        assert!(exe.is_file());
+        assert!(!paths.manifest().exists());
+        assert_eq!(external(&paths, app.id), Some(installed));
     }
 }

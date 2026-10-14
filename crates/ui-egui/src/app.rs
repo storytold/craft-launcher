@@ -423,7 +423,7 @@ impl LauncherUi {
     fn announce_updates(&mut self, host: &mut dyn Host) {
         let mut fresh = Vec::new();
         for e in &self.entries {
-            if !self.in_filter(e, Filter::Updates) {
+            if !self.in_filter(e, Filter::Updates) || e.external_windows_copy(self.platform) {
                 continue;
             }
             let Some(v) = e.latest_label() else { continue };
@@ -460,7 +460,7 @@ impl LauncherUi {
         let to_update: Vec<(String, String)> = self
             .entries
             .iter()
-            .filter(|e| self.in_filter(e, Filter::Updates) && e.job.is_none() && !e.ready)
+            .filter(|e| self.in_filter(e, Filter::Updates) && !e.external_windows_copy(self.platform) && e.job.is_none() && !e.ready)
             .filter_map(|e| {
                 let v = e.latest_label()?;
                 if self.auto_update_attempted.contains(&(e.app.id.to_string(), v.clone())) { None } else { Some((e.app.id.to_string(), v)) }

@@ -4,7 +4,7 @@ use artcraft_launcher_core::platform::{Platform, pick_asset};
 use artcraft_launcher_core::protocol::{JobPhase, LatestRelease, PausedDownload};
 use artcraft_launcher_core::release::Release;
 use artcraft_launcher_core::status::{self, AppStatus, Latest};
-use artcraft_launcher_core::{CraftApp, Installed};
+use artcraft_launcher_core::{CraftApp, InstallSource, Installed, Os};
 
 use crate::i18n::t;
 
@@ -34,6 +34,11 @@ impl AppEntry {
             Some(LatestRelease::Found(r)) => Some(r),
             _ => None,
         }
+    }
+
+    /// Explicitly registered Windows executables are opened here, but managed by their owner.
+    pub fn external_windows_copy(&self, platform: Option<Platform>) -> bool {
+        platform.is_some_and(|p| p.os == Os::Windows) && self.installed.as_ref().is_some_and(|i| i.source == InstallSource::Binary)
     }
 
     /// Whether the latest release has something for `platform`.

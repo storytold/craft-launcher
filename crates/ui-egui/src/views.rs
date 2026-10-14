@@ -198,7 +198,7 @@ impl LauncherUi {
         }
         self.announcements(ui);
         ui.horizontal(|ui| {
-            let updates = self.count(Filter::Updates);
+            let updates = self.entries.iter().filter(|e| self.in_filter(e, Filter::Updates) && !e.external_windows_copy(self.platform)).count();
             let mut filters = vec![
                 (Filter::All, tl!("All"), tl!("Every Craft app"), None),
                 // The tab names a group ("installed ones"); the status pill says "Installed".
@@ -221,8 +221,12 @@ impl LauncherUi {
                         fmt(tl!("Update all ({count})"), &[("count", &updates.to_string())])
                     };
                     if widgets::button(ui, &label, Kind::Primary, 0.0).clicked() {
-                        let ids: Vec<&str> =
-                            self.entries.iter().filter(|e| self.in_filter(e, Filter::Updates) && e.job.is_none()).map(|e| e.app.id).collect();
+                        let ids: Vec<&str> = self
+                            .entries
+                            .iter()
+                            .filter(|e| self.in_filter(e, Filter::Updates) && !e.external_windows_copy(self.platform) && e.job.is_none())
+                            .map(|e| e.app.id)
+                            .collect();
                         for id in ids {
                             self.send(Command::Install { app: id.to_string() });
                         }
@@ -663,6 +667,9 @@ impl LauncherUi {
                 (_, None) => Primary::Unavailable(tl!("Not available")),
             };
         }
+        if status.is_installed() && entry.external_windows_copy(self.platform) {
+            return Primary::Open;
+        }
         match status {
             AppStatus::Available if entry.ready => Primary::Retry(tl!("Retry install").into()),
             AppStatus::UpdateAvailable if entry.ready => {
@@ -745,6 +752,7 @@ impl LauncherUi {
         }
         if let Some(p) = entry.paused
             && self.caps.manage_apps
+            && !entry.external_windows_copy(self.platform)
         {
             let pct = if p.total > 0 { format!(" · {:.0}%", p.done as f32 / p.total as f32 * 100.0) } else { String::new() };
             // Resume, then discard and the menu (two squares).
@@ -811,6 +819,7 @@ impl LauncherUi {
     fn menu(&mut self, ui: &mut Ui, entry: &AppEntry, status: &AppStatus, links: bool) {
         let id = entry.app.id.to_string();
         let manage = self.caps.manage_apps;
+        let external = entry.external_windows_copy(self.platform);
         let reveal = self.caps.reveal_label;
         widgets::more_menu(ui, |ui| {
             if entry.release().is_some() && ui.button(tl!("Release notes")).clicked() {
@@ -819,7 +828,7 @@ impl LauncherUi {
             }
             // Only where Install would download: an up-to-date app would be reinstalled.
             let can_download_again =
-                manage && entry.ready && entry.paused.is_none() && matches!(status, AppStatus::Available | AppStatus::UpdateAvailable);
+                manage && !external && entry.ready && entry.paused.is_none() && matches!(status, AppStatus::Available | AppStatus::UpdateAvailable);
             if can_download_again && ui.button(tl!("Download again")).clicked() {
                 self.send(Command::Cancel { app: id.clone() });
                 self.send(Command::Install { app: id.clone() });
@@ -834,14 +843,16 @@ impl LauncherUi {
                     self.send(Command::Reveal { app: id.clone() });
                     ui.close();
                 }
-                if *status == AppStatus::UpToDate && ui.button(tl!("Reinstall")).clicked() {
+                if !external && *status == AppStatus::UpToDate && ui.button(tl!("Reinstall")).clicked() {
                     self.send(Command::Install { app: id.clone() });
                     ui.close();
                 }
-                ui.separator();
-                if ui.button(RichText::new(tl!("Uninstall…")).color(Tokens::get(ui.ctx()).bad)).clicked() {
-                    self.dialog = Some(Dialog::ConfirmUninstall(id.clone()));
-                    ui.close();
+                if !external {
+                    ui.separator();
+                    if ui.button(RichText::new(tl!("Uninstall…")).color(Tokens::get(ui.ctx()).bad)).clicked() {
+                        self.dialog = Some(Dialog::ConfirmUninstall(id.clone()));
+                        ui.close();
+                    }
                 }
             }
             if !manage && let (Some(r), Some(p)) = (entry.release(), self.platform) {

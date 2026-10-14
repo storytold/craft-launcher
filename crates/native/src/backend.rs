@@ -182,7 +182,7 @@ impl NativeBackend {
             // Leftovers from interrupted installs or older versions of the launcher. A paused
             // download stays a month; a finished one kept after a failed install, a week.
             http::clean_downloads(&paths.downloads(), Duration::from_secs(30 * 86_400), Duration::from_secs(7 * 86_400));
-            let snapshot = crate::detect::Snapshot::take();
+            let snapshot = crate::detect::Snapshot::take(&paths);
             let manifest = shared.manifest.lock().unwrap_or_else(PoisonError::into_inner).clone();
             for app in &SUITE {
                 let found = crate::detect::detect(app, &manifest, &snapshot);
@@ -364,7 +364,7 @@ impl NativeBackend {
             report_partial(app, &shared, &paths, platform, &options);
             // Look again: the result is whatever is on disk now.
             let manifest = shared.manifest.lock().unwrap_or_else(PoisonError::into_inner).clone();
-            let found = crate::detect::detect(app, &manifest, &crate::detect::Snapshot::take());
+            let found = crate::detect::detect(app, &manifest, &crate::detect::Snapshot::take(&paths));
             // One installer call can cover several apps, and fail after some of them went in.
             let latest = shared.latest.lock().unwrap_or_else(PoisonError::into_inner).get(app.id).cloned();
             let result = match (result, latest) {
