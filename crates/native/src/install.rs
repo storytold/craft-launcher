@@ -187,17 +187,22 @@ pub fn install_at(
     } else {
         None
     };
-    // The package to put back comes first: without it, nothing is removed.
+    // One turn to download covers everything this install fetches, and ends when the files are here.
     #[cfg_attr(not(windows), allow(unused_variables))]
-    let rollback = match job.downgrade {
-        Some(Downgrade::Reinstall { previous, asset }) => {
-            let (file, sha256) = download(previous, asset, job)?;
-            Some((file, sha256, previous.version_label()))
-        }
-        Some(Downgrade::KeepOldCopy) | None => None,
+    let (rollback, file, sha256) = {
+        let _turn = download_turn(app, asset, job)?;
+        // The package to put back comes first: without it, nothing is removed.
+        let rollback = match job.downgrade {
+            Some(Downgrade::Reinstall { previous, asset }) => {
+                let (file, sha256) = download(previous, asset, job)?;
+                Some((file, sha256, previous.version_label()))
+            }
+            Some(Downgrade::KeepOldCopy) | None => None,
+        };
+        // The checksum is kept for the Windows all-users route, which checks the held package again.
+        let (file, sha256) = download(release, asset, job)?;
+        (rollback, file, sha256)
     };
-    #[cfg_attr(not(windows), allow(unused_variables))]
-    let (file, sha256) = download(release, asset, job)?;
     log::info!("{}: download ready ({}), running installer...", app.name, file.display());
     // Past this point the install can't be interrupted halfway.
     (job.phase)(JobPhase::Installing);
@@ -662,6 +667,33 @@ pub fn available_kinds() -> Vec<PackageKind> {
     Vec::new()
 }
 
+/// Waits for this job's turn to download ([`DOWNLOADS`]), unless every file it needs is already
+/// here from an earlier try (that only needs checking). `asset` is the file being installed; a
+/// downgrade that puts back the installed version also fetches that version's package.
+fn download_turn(app: &CraftApp, asset: &Asset, job: &mut Job<'_>) -> Result<Option<crate::downloads::Turn<'static>>, String> {
+    let here = |asset: &Asset| crate::http::finished(&download_path(job.paths, asset), asset.size);
+    let put_back_here = match job.downgrade {
+        Some(Downgrade::Reinstall { asset, .. }) => here(asset),
+        Some(Downgrade::KeepOldCopy) | None => true,
+    };
+    if here(asset) && put_back_here {
+        return Ok(None);
+    }
+    let dest = download_path(job.paths, asset);
+    let phase = &mut *job.phase;
+    let mut queued = false;
+    let turn = DOWNLOADS.turn(app.id, &|| job.stop.check(), &mut || {
+        queued = true;
+        phase(JobPhase::Queued);
+    })?;
+    if queued {
+        log::info!("{}: its turn to download came", app.name);
+        let done = crate::http::partial_bytes(&dest, asset.size).unwrap_or(0);
+        phase(JobPhase::Downloading { done, total: asset.size });
+    }
+    Ok(Some(turn))
+}
+
 /// Fetches `asset` into the download folder, checked against its published SHA-256: the feed's
 /// or GitHub's per-file digest, else the release's `SHA256SUMS.txt`. A release with neither is
 /// refused before anything is fetched: a file nothing vouches for is never installed (#90).
@@ -1080,6 +1112,9 @@ const SHARED_CALL: &str = "apps together. Try them one at a time.";
 pub fn failed_in_shared_call(error: &str) -> bool {
     cfg!(target_os = "linux") && error.ends_with(SHARED_CALL)
 }
+
+/// Apps download one at a time, in the order they are on screen; the others wait their turn here.
+pub static DOWNLOADS: crate::downloads::Downloads = crate::downloads::Downloads::new();
 
 /// The system's installer runs one job at a time; the others wait their turn here. The backend
 /// starts each batch of installs (an "update all") with [`Queue::gather`] on it.
