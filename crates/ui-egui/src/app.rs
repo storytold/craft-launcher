@@ -60,6 +60,15 @@ pub trait Host {
     }
     /// Quit the launcher for real (not just hide to the tray).
     fn quit(&mut self) {}
+    /// Opens an OS folder picker. Returns immediately: the picker runs off the UI thread so a
+    /// hidden dialog can never hang the app; [`Host::poll_browse_folder`] collects the answer.
+    /// Does nothing where unsupported. A second call while one runs is ignored.
+    fn start_browse_folder(&mut self) {}
+    /// A finished picker, if any: `Some(dir)` chosen, `Some(None)` cancelled or failed, `None`
+    /// when nothing is pending. Each answer is reported once.
+    fn poll_browse_folder(&mut self) -> Option<Option<std::path::PathBuf>> {
+        None
+    }
 }
 
 pub(crate) struct Toast {
@@ -266,7 +275,11 @@ impl LauncherUi {
     /// Non-drawing work: runs every frame and also while the window is hidden in the tray.
     pub fn logic(&mut self, ctx: &egui::Context, host: &mut dyn Host) {
         set_current(crate::i18n::Lang::from_pref(&self.settings.language));
-        let options = BackendOptions { kinds: self.settings.preferred_kinds.clone(), prereleases: self.settings.prereleases };
+        let options = BackendOptions {
+            kinds: self.settings.preferred_kinds.clone(),
+            prereleases: self.settings.prereleases,
+            install_root: self.settings.install_root.clone(),
+        };
         if self.sent_options.as_ref() != Some(&options) {
             self.backend.send(Command::Configure(options.clone()));
             self.sent_options = Some(options);

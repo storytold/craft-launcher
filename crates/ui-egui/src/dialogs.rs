@@ -1,5 +1,7 @@
 //! Modal dialogs: release notes, uninstall confirmation, settings.
 
+use std::path::PathBuf;
+
 use crate::i18n::fmt;
 use artcraft_launcher_core::protocol::Command;
 use artcraft_launcher_core::{Os, PackageKind};
@@ -316,6 +318,81 @@ impl LauncherUi {
             });
             self.settings.preferred_kinds = choice.into_iter().collect();
             ui.label(RichText::new(tl!("Updates always use the format an app was installed with.")).size(12.0).color(t.muted));
+        }
+
+        if self.caps.manage_apps && self.platform.is_some_and(|p| p.os == Os::Windows) {
+            section(ui, tl!("Installing on Windows"));
+            let mut choice = self.settings.preferred_kinds.first().copied();
+            row(ui, tl!("Install new apps as"), 210.0, &mut |ui| {
+                let label = choice.map_or(tl!("Installer (recommended)"), |k| crate::i18n::t(k.label()));
+                egui::ComboBox::from_id_salt("kind").selected_text(label).width(210.0).show_ui(ui, |ui| {
+                    ui.selectable_value(&mut choice, None, tl!("Installer (recommended)"));
+                    for k in [PackageKind::Msi, PackageKind::PortableZip] {
+                        ui.selectable_value(&mut choice, Some(k), crate::i18n::t(k.label()));
+                    }
+                });
+            });
+            self.settings.preferred_kinds = choice.into_iter().collect();
+            ui.label(RichText::new(tl!("Updates always use the format an app was installed with.")).size(12.0).color(t.muted));
+            // The location only matters for portable installs: an MSI goes where the
+            // Windows Installer puts it, whatever is chosen here.
+            if choice == Some(PackageKind::PortableZip) {
+                use artcraft_launcher_core::protocol::InstallRoot;
+                let mut tag = match self.settings.install_root {
+                    InstallRoot::Default => 0,
+                    InstallRoot::NextToLauncher => 1,
+                    InstallRoot::Custom(_) => 2,
+                };
+                let mut custom = match &self.settings.install_root {
+                    InstallRoot::Custom(p) => p.display().to_string(),
+                    _ => String::new(),
+                };
+                row(ui, tl!("Install location"), 210.0, &mut |ui| {
+                    egui::ComboBox::from_id_salt("install-root")
+                        .selected_text(match tag {
+                            1 => tl!("Next to the launcher"),
+                            2 => tl!("Custom folder"),
+                            _ => tl!("Default location"),
+                        })
+                        .width(210.0)
+                        .show_ui(ui, |ui| {
+                            ui.selectable_value(&mut tag, 0, tl!("Default location"));
+                            ui.selectable_value(&mut tag, 1, tl!("Next to the launcher"));
+                            ui.selectable_value(&mut tag, 2, tl!("Custom folder"));
+                        });
+                });
+                if tag == 2 {
+                    // A finished picker applies once; it ran off the UI thread, so even a
+                    // hidden dialog can never hang the app.
+                    if let Some(picked) = host.poll_browse_folder()
+                        && let Some(dir) = picked
+                    {
+                        custom = dir.display().to_string();
+                        self.settings.install_root = InstallRoot::Custom(dir);
+                    }
+                    ui.horizontal(|ui| {
+                        let browse = widgets::button_width(ui, tl!("Browse"), 0.0);
+                        let field = (ui.available_width() - browse - ui.spacing().item_spacing.x).max(60.0);
+                        ui.add(
+                            egui::TextEdit::singleline(&mut custom)
+                                .hint_text(r"F:\CraftApps")
+                                .desired_width(field)
+                                .min_size(egui::vec2(0.0, theme::CONTROL_H))
+                                .vertical_align(egui::Align::Center)
+                                .margin(egui::vec2(10.0, 0.0)),
+                        );
+                        #[cfg(windows)]
+                        if widgets::button(ui, tl!("Browse"), Kind::Primary, 0.0).clicked() {
+                            host.start_browse_folder();
+                        }
+                    });
+                }
+                self.settings.install_root = match tag {
+                    1 => InstallRoot::NextToLauncher,
+                    2 => InstallRoot::Custom(PathBuf::from(custom)),
+                    _ => InstallRoot::Default,
+                };
+            }
         }
 
         if self.caps.manage_apps {

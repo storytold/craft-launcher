@@ -21,7 +21,8 @@
 
 use std::path::{Path, PathBuf};
 
-use artcraft_launcher_core::protocol::{CANCELLED, INSTALL_CANCELLED, JobPhase};
+use artcraft_launcher_core::protocol::InstallRoot;
+use artcraft_launcher_core::protocol::{CANCELLED, INSTALL_CANCELLED, JobPhase, PAUSED};
 use artcraft_launcher_core::release::{self, Asset, Release};
 use artcraft_launcher_core::{CraftApp, InstallSource, Installed, PackageKind};
 
@@ -29,6 +30,7 @@ use crate::http::{Http, Stop, Transfer};
 use crate::manifest::Record;
 use crate::paths::Paths;
 use crate::process;
+use crate::zip_fetch::{self, ZipJob};
 
 /// What an install needs from the backend.
 pub struct Job<'a> {
@@ -36,6 +38,7 @@ pub struct Job<'a> {
     pub paths: &'a Paths,
     pub stop: &'a Stop,
     pub phase: &'a mut dyn FnMut(JobPhase),
+    pub install_root: InstallRoot,
 }
 
 /// Downloads and installs `asset` of `release`. Returns a record when the launcher owns the
@@ -50,7 +53,6 @@ pub fn install(
     previous: Option<&Record>,
     job: &mut Job<'_>,
 ) -> Result<Option<Record>, String> {
-    let _ = previous;
     if let Some(inst) = existing
         && inst.source.launcher_can_update()
         && process::is_running(Path::new(&inst.location))
@@ -58,7 +60,7 @@ pub fn install(
         return Err(format!("{} is running. Quit it, then try again.", app.name));
     }
     log::info!("{}: starting {} to {} ({})", app.name, if existing.is_some() { "update" } else { "install" }, release.version_label(), kind.label());
-    let file = download(release, asset, job)?;
+    let file = download(release, asset, kind, app.id, job)?;
     log::info!("{}: download ready ({}), running installer...", app.name, file.display());
     // Past this point the install can't be interrupted halfway.
     (job.phase)(JobPhase::Installing);
@@ -69,6 +71,16 @@ pub fn install(
         PackageKind::Dmg => macos::install_dmg(app, &file, existing, job.paths, &macos::Expect::release(release)).map(|_| None),
         #[cfg(windows)]
         PackageKind::Msi => windows::run_msi(&file, job.stop, &mut *job.phase).map(|_| None),
+        #[cfg(windows)]
+        PackageKind::PortableZip => windows::install_portable(app, &file, &job.install_root, previous, job.stop).map(|exe| {
+            let dir = match exe.parent() {
+                Some(p) => p.to_path_buf(),
+                None => PathBuf::new(),
+            };
+            let mut rec = record(&version, kind, exe, windows::walk_files(&dir), false);
+            rec.root = Some(dir);
+            Some(rec)
+        }),
         #[cfg(target_os = "linux")]
         PackageKind::Deb | PackageKind::Rpm | PackageKind::Flatpak => linux::install_package(kind, &file, job.stop, &mut *job.phase).map(|_| None),
         #[cfg(target_os = "linux")]
@@ -88,9 +100,14 @@ pub fn install(
         Err(e) => log::error!("{}: installation failed: {e}", app.name),
     }
     // A failed install keeps the download: the next try checks it against its published checksum
-    // again and skips the transfer.
+    // again and skips the transfer. A successful portable install keeps it instead as the next
+    // delta's base (one per app, beside the downloads); every other format deletes it.
     if result.is_ok() {
-        let _ = std::fs::remove_file(&file);
+        if kind == PackageKind::PortableZip {
+            zip_fetch::retain_installer(job.paths, app.id, &file);
+        } else {
+            let _ = std::fs::remove_file(&file);
+        }
     }
     // The system's own prompt was dismissed: the download itself wasn't cancelled.
     result.map_err(|e| if e == CANCELLED { INSTALL_CANCELLED.to_string() } else { e })
@@ -103,7 +120,7 @@ pub fn download_path(paths: &Paths, asset: &Asset) -> PathBuf {
 
 #[allow(dead_code)]
 fn record(version: &str, kind: PackageKind, path: PathBuf, files: Vec<PathBuf>, needs_root: bool) -> Record {
-    Record { version: version.to_string(), kind, path, installed_at: crate::now(), files, needs_root }
+    Record { version: version.to_string(), kind, path, installed_at: crate::now(), files, needs_root, root: None }
 }
 
 /// The package format to install `app` with: the format of the copy that's there (an update
@@ -137,12 +154,13 @@ pub fn choose_kinds(existing: Option<&Installed>, record: Option<&Record>, prefe
     kinds
 }
 
-/// Package formats this machine can install, best first.
+/// Package formats this machine can install, best first. Windows offers the system
+/// installer and, for users who prefer no admin prompts, the portable zip.
 pub fn available_kinds() -> Vec<PackageKind> {
     #[cfg(target_os = "macos")]
     return vec![PackageKind::Dmg];
     #[cfg(windows)]
-    return vec![PackageKind::Msi];
+    return vec![PackageKind::Msi, PackageKind::PortableZip];
     #[cfg(target_os = "linux")]
     return linux::available_kinds();
     #[cfg(target_os = "freebsd")]
@@ -154,7 +172,7 @@ pub fn available_kinds() -> Vec<PackageKind> {
 /// Fetches `asset` into the download folder, checked against its published SHA-256: the feed's
 /// or GitHub's per-file digest, else the release's `SHA256SUMS.txt`. A release with neither is
 /// refused before anything is fetched: a file nothing vouches for is never installed (#90).
-pub(crate) fn download(release: &Release, asset: &Asset, job: &mut Job<'_>) -> Result<PathBuf, String> {
+pub(crate) fn download(release: &Release, asset: &Asset, kind: PackageKind, app_id: &str, job: &mut Job<'_>) -> Result<PathBuf, String> {
     if !release::valid_file_name(&asset.name) {
         return Err("the release has an unexpected file name".into());
     }
@@ -168,6 +186,10 @@ pub(crate) fn download(release: &Release, asset: &Asset, job: &mut Job<'_>) -> R
             asset.name
         ));
     };
+    if let Some(ready) = zip_delta_update(asset, kind, app_id, &sha, job)? {
+        (job.phase)(JobPhase::Verifying);
+        return Ok(ready);
+    }
     let dest = download_path(job.paths, asset);
     let phase = &mut *job.phase;
     job.http.download(&asset.url, &dest, asset.size, &sha, job.stop, &mut |t| match t {
@@ -176,6 +198,50 @@ pub(crate) fn download(release: &Release, asset: &Asset, job: &mut Job<'_>) -> R
     })?;
     (job.phase)(JobPhase::Verifying);
     Ok(dest)
+}
+
+/// Tries a portable-zip delta of the retained previous installer: `Ok(Some(path))` when
+/// only the changed entries travelled and the assembly verified; `Ok(None)` when a delta
+/// isn't applicable (other formats, no retained copy, unknown size), so the caller does the
+/// full download instead. Pause and cancel propagate as `Err` unchanged.
+fn zip_delta_update(asset: &Asset, kind: PackageKind, app_id: &str, sha: &str, job: &mut Job<'_>) -> Result<Option<PathBuf>, String> {
+    if kind != PackageKind::PortableZip || asset.size == 0 {
+        return Ok(None);
+    }
+    let Some(kept) = zip_fetch::find_kept(job.paths, app_id) else { return Ok(None) };
+    let tmp = job.paths.downloads().join(format!(".{}.delta.tmp", asset.name));
+    let result = zip_fetch::fetch_zip_delta(ZipJob {
+        http: job.http,
+        base_url: &asset.url,
+        file_size: asset.size,
+        old_path: &kept,
+        tmp_path: &tmp,
+        expected_sha256: sha,
+        stop: job.stop,
+        progress: &mut |done, total| (job.phase)(JobPhase::Downloading { done, total }),
+    });
+    match result {
+        Ok(()) => {
+            let dest = download_path(job.paths, asset);
+            match std::fs::rename(&tmp, &dest) {
+                Ok(()) => {
+                    log::info!("delta update assembled {}", asset.name);
+                    Ok(Some(dest))
+                }
+                Err(e) => {
+                    log::info!("delta update couldn't be put in place ({e}); falling back to a full download");
+                    let _ = std::fs::remove_file(&tmp);
+                    Ok(None)
+                }
+            }
+        }
+        Err(e) if e == PAUSED || e == CANCELLED => Err(e),
+        Err(e) => {
+            log::info!("delta update failed ({e}); falling back to a full download");
+            let _ = std::fs::remove_file(&tmp);
+            Ok(None)
+        }
+    }
 }
 
 /// The file's line in the release's `SHA256SUMS.txt`. `Ok(None)` only when the release really
@@ -232,6 +298,11 @@ pub fn uninstall(
     match installed.source {
         #[cfg(windows)]
         InstallSource::Msi => windows::uninstall_msi(app, stop, phase),
+        #[cfg(windows)]
+        InstallSource::Launcher => match record {
+            Some(r) if r.kind == PackageKind::PortableZip => windows::remove_portable(app, r),
+            _ => Err(format!("{} can't be removed from here", installed.source.label())),
+        },
         #[cfg(target_os = "macos")]
         InstallSource::MacApp | InstallSource::Launcher => macos::move_to_trash(&path),
         #[cfg(target_os = "linux")]
@@ -1224,6 +1295,233 @@ pub mod windows {
             Ok(())
         })
     }
+
+    /// Portable installs live here, per user with no admin rights (where the per-user MSI
+    /// puts the launcher itself): `%LOCALAPPDATA%\Programs`.
+    #[cfg_attr(not(windows), allow(dead_code))]
+    pub fn programs_dir() -> Option<PathBuf> {
+        let root = std::env::var_os("LOCALAPPDATA").map(PathBuf::from).or_else(dirs::data_local_dir)?;
+        Some(root.join("Programs"))
+    }
+
+    /// Resolves an install root choice to a folder. `None` (no folder configured, a
+    /// relative custom path, no launcher exe to sit beside) means the install fails with a
+    /// clear message: an explicit location choice is never silently replaced.
+    #[cfg_attr(not(windows), allow(dead_code))]
+    pub fn resolve_root(root: &InstallRoot) -> Option<PathBuf> {
+        match root {
+            InstallRoot::Default => programs_dir(),
+            InstallRoot::NextToLauncher => std::env::current_exe().ok()?.parent().map(Path::to_path_buf),
+            InstallRoot::Custom(dir) => (!dir.as_os_str().is_empty() && dir.is_absolute()).then(|| dir.clone()),
+        }
+    }
+
+    /// Where `app`'s portable copy lives. Stable across versions (the zip's own top folder
+    /// is versioned and is flattened away on install).
+    #[cfg_attr(not(windows), allow(dead_code))]
+    pub fn portable_dir(app: &CraftApp, root: &InstallRoot) -> Option<PathBuf> {
+        resolve_root(root).map(|base| base.join(app.name))
+    }
+
+    /// The app's exe inside its portable folder (`<stem>.exe`, current stem first).
+    #[cfg_attr(not(windows), allow(dead_code))]
+    pub fn portable_exe(app: &CraftApp, dir: &Path) -> Option<PathBuf> {
+        app.stems().map(|s| dir.join(format!("{s}.exe"))).find(|p| p.is_file())
+    }
+
+    /// The Start Menu shortcut for a portable install.
+    #[cfg_attr(not(windows), allow(dead_code))]
+    pub fn shortcut_path(app: &CraftApp) -> Option<PathBuf> {
+        std::env::var_os("APPDATA").map(|root| PathBuf::from(root).join(r"Microsoft\Windows\Start Menu\Programs").join(format!("{}.lnk", app.name)))
+    }
+
+    /// Folder-picker script: the modern file-manager dialog in folder mode, owned by an
+    /// invisible topmost window (no extra window, no taskbar entry), so it can never hide
+    /// behind other apps and strand the user. Prints the chosen folder, or nothing when
+    /// cancelled. No new dependency.
+    #[cfg_attr(not(windows), allow(dead_code))]
+    pub(crate) fn browse_script() -> String {
+        "Add-Type -AssemblyName System.Windows.Forms; $f = New-Object System.Windows.Forms.Form; $f.TopMost = $true; $f.ShowInTaskbar = $false; $f.Opacity = 0; $f.Show(); $d = New-Object System.Windows.Forms.OpenFileDialog; $d.ValidateNames = $false; $d.CheckFileExists = $false; $d.CheckPathExists = $true; $d.FileName = 'Folder Selection.'; if ($d.ShowDialog($f) -eq 'OK') { Split-Path $d.FileName }; $f.Close()".to_string()
+    }
+
+    /// Keeps a picker answer only when it names a real folder.
+    #[cfg_attr(not(windows), allow(dead_code))]
+    pub(crate) fn parse_browse_output(out: &str) -> Option<PathBuf> {
+        let path = PathBuf::from(out.trim());
+        (!out.trim().is_empty() && path.is_dir()).then_some(path)
+    }
+
+    /// Asks Windows for a folder. Blocks while the picker is open (like the MSI installer
+    /// does); `None` anywhere else or on cancel.
+    pub fn browse_for_folder() -> Option<PathBuf> {
+        #[cfg(windows)]
+        {
+            crate::process::capture(
+                "powershell.exe",
+                &["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-WindowStyle", "Hidden", "-Command", &browse_script()],
+                std::time::Duration::from_secs(600),
+            )
+            .and_then(|out| parse_browse_output(&out))
+        }
+        #[cfg(not(windows))]
+        {
+            None
+        }
+    }
+
+    /// A PowerShell single-quoted literal.
+    #[cfg_attr(not(windows), allow(dead_code))]
+    pub(crate) fn ps_quote(path: &Path) -> String {
+        format!("'{}'", path.display().to_string().replace('\'', "''"))
+    }
+
+    #[cfg_attr(not(windows), allow(dead_code))]
+    pub(crate) fn powershell(script: &str) -> Result<std::process::ExitStatus, String> {
+        process::command("powershell.exe")
+            .args(["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-WindowStyle", "Hidden", "-Command", script])
+            .status()
+            .map_err(|e| format!("couldn't run PowerShell ({e})"))
+    }
+
+    /// `Expand-Archive` script: unpacks `zip` into a fresh `dest`.
+    #[cfg_attr(not(windows), allow(dead_code))]
+    pub(crate) fn expand_script(zip: &Path, dest: &Path) -> String {
+        format!(
+            "Remove-Item -LiteralPath {} -Recurse -Force -ErrorAction SilentlyContinue; New-Item -ItemType Directory -Path {} -Force | Out-Null; Expand-Archive -LiteralPath {} -DestinationPath {} -Force",
+            ps_quote(dest),
+            ps_quote(dest),
+            ps_quote(zip),
+            ps_quote(dest)
+        )
+    }
+
+    /// Shortcut-writing script (WScript.Shell, built into Windows: no new dependency).
+    #[cfg_attr(not(windows), allow(dead_code))]
+    pub(crate) fn shortcut_script(lnk: &Path, exe: &Path, dir: &Path) -> String {
+        format!(
+            "$ws = New-Object -ComObject WScript.Shell; $sc = $ws.CreateShortcut({lnk}); $sc.TargetPath = {exe}; $sc.WorkingDirectory = {dir}; $sc.Save()",
+            lnk = ps_quote(lnk),
+            exe = ps_quote(exe),
+            dir = ps_quote(dir)
+        )
+    }
+
+    /// Every file under `root`, relative to it (mirrors `tree::files`, which lives in the
+    /// unix-gated `tree` module).
+    #[cfg_attr(not(windows), allow(dead_code))]
+    pub(crate) fn walk_files(root: &Path) -> Vec<PathBuf> {
+        let mut out = Vec::new();
+        let mut stack = vec![root.to_path_buf()];
+        while let Some(dir) = stack.pop() {
+            for entry in std::fs::read_dir(&dir).into_iter().flatten().flatten() {
+                let p = entry.path();
+                if p.is_dir() {
+                    stack.push(p);
+                } else if let Ok(rel) = p.strip_prefix(root) {
+                    out.push(rel.to_path_buf());
+                }
+            }
+        }
+        out.sort();
+        out
+    }
+
+    /// The single top-level folder of an unpacked portable zip, if it has exactly one.
+    #[cfg_attr(not(windows), allow(dead_code))]
+    pub(crate) fn single_child_dir(dir: &Path) -> Option<PathBuf> {
+        let mut dirs: Vec<PathBuf> = std::fs::read_dir(dir).ok()?.filter_map(|e| e.ok().map(|e| e.path())).filter(|p| p.is_dir()).collect();
+        if dirs.len() == 1 { dirs.pop() } else { None }
+    }
+
+    /// A destination the launcher didn't install into is never overwritten: an update
+    /// proceeds only when `dest` is missing, empty, or exactly the previous install's root,
+    /// so switching folders can't wipe an MSI-owned copy or user files (the swap below
+    /// deletes whatever the old folder holds).
+    #[cfg_attr(not(windows), allow(dead_code))]
+    pub(crate) fn dest_is_ours(dest: &Path, previous_root: Option<&Path>) -> bool {
+        if previous_root == Some(dest) {
+            return true;
+        }
+        std::fs::read_dir(dest).map(|mut d| d.next().is_none()).unwrap_or(true)
+    }
+
+    /// The published zips ship a `portable.txt` marker for manual installs; the launcher's
+    /// own record tracks the install instead, so a stale marker is never left to confuse
+    /// detection. Only that exact top-level name goes: anything else stays untouched.
+    #[cfg_attr(not(windows), allow(dead_code))]
+    pub(crate) fn drop_portable_marker(staging: &Path) {
+        let marker = staging.join("portable.txt");
+        if let Err(e) = std::fs::remove_file(&marker)
+            && e.kind() != std::io::ErrorKind::NotFound
+        {
+            log::warn!("couldn't remove {} ({e}); leaving it in place", marker.display());
+        }
+    }
+
+    /// Installs a portable zip. New install path (MSI stays the default): the zip's
+    /// directory is validated before anything is unpacked, then it unpacks to staging,
+    /// flattens the zip's single versioned top folder away, swaps the result into
+    /// `%LOCALAPPDATA%\Programs\<App>` (the new copy fully in place before the old one goes),
+    /// and writes a Start Menu shortcut (a shortcut failure only warns: the app runs fine
+    /// without it). A folder holding files the launcher didn't install is refused, unless
+    /// it is the previous install's own root. Returns the installed exe.
+    #[cfg_attr(not(windows), allow(dead_code))]
+    pub fn install_portable(app: &CraftApp, file: &Path, root: &InstallRoot, previous: Option<&Record>, stop: &Stop) -> Result<PathBuf, String> {
+        let dest = portable_dir(app, root).ok_or("can't use that folder for installs: pick an absolute path that exists or can be created")?;
+        if !dest_is_ours(&dest, previous.and_then(|r| r.root.as_deref())) {
+            return Err(format!("{} already has files the launcher didn't install; pick an empty folder", dest.display()));
+        }
+        // The checksum already passed: this rejects a hostile or broken zip before it can
+        // write outside its folder (a delta-assembled file is checked here too).
+        zip_fetch::read_local_cd(file).map_err(|e| format!("the download isn't a usable portable zip ({e})"))?;
+        let staging = dest.parent().map(|p| p.join(format!("{}.new", app.name))).ok_or("no local app-data folder")?;
+        let _ = std::fs::remove_dir_all(&staging);
+        powershell(&expand_script(file, &staging)).map_err(|e| format!("couldn't unpack the download ({e})"))?;
+        stop.check()?;
+        // The zip holds one versioned top folder; the install dir stays stable across updates.
+        if let Some(top) = single_child_dir(&staging) {
+            for child in std::fs::read_dir(&top).map_err(|e| format!("couldn't read the unpacked download ({e})"))?.flatten() {
+                let to = staging.join(child.file_name());
+                std::fs::rename(child.path(), &to).map_err(|e| format!("couldn't arrange the unpacked download ({e})"))?;
+            }
+            std::fs::remove_dir_all(&top).map_err(|e| format!("couldn't arrange the unpacked download ({e})"))?;
+        }
+        drop_portable_marker(&staging);
+        let staged_exe = portable_exe(app, &staging).ok_or_else(|| format!("the download has no {} executable", app.name))?;
+        let rel = staged_exe.strip_prefix(&staging).map_err(|_| "the download escaped its folder".to_string())?.to_path_buf();
+        stop.check()?;
+        super::swap_into_place(&staging, &dest)?;
+        let exe = dest.join(&rel);
+        if let Some(lnk) = shortcut_path(app) {
+            let dir = exe.parent().map(Path::to_path_buf).unwrap_or_else(|| dest.clone());
+            if powershell(&shortcut_script(&lnk, &exe, &dir)).is_err() {
+                log::warn!("couldn't write the Start Menu shortcut; {} still runs from {}", app.name, exe.display());
+            }
+        }
+        Ok(exe)
+    }
+
+    /// Removes a portable install the launcher owns: the Start Menu shortcut and the install
+    /// folder. Only the folder the install record pins (or, for records from before the
+    /// install location was choosable, the default one): anything else is left alone, so a
+    /// stray record can never delete user files.
+    #[cfg_attr(not(windows), allow(dead_code))]
+    pub fn remove_portable(app: &CraftApp, record: &Record) -> Result<(), String> {
+        if record.kind != PackageKind::PortableZip {
+            return Err(format!("{} isn't a portable install", app.name));
+        }
+        let allowed = record.root.clone().or_else(|| portable_dir(app, &InstallRoot::Default));
+        let exe = PathBuf::from(&record.path);
+        if allowed.as_deref() != exe.parent() || !allowed.as_deref().is_some_and(|d| d.is_dir()) {
+            return Err(format!("{} isn't where its portable install should be; it was left alone", app.name));
+        }
+        if let Some(lnk) = shortcut_path(app) {
+            let _ = std::fs::remove_file(&lnk);
+        }
+        let dir = allowed.ok_or_else(|| format!("{} isn't where its portable install should be; it was left alone", app.name))?;
+        std::fs::remove_dir_all(&dir).map_err(|e| format!("couldn't remove {} ({e})", dir.display()))?;
+        Ok(())
+    }
 }
 
 #[cfg(test)]
@@ -1340,7 +1638,7 @@ mod tests {
         let mut phases = Vec::new();
         for _ in 0..2 {
             let mut phase = |p: JobPhase| phases.push(p);
-            let mut job = Job { http: &http, paths: &paths, stop: &Stop::default(), phase: &mut phase };
+            let mut job = Job { http: &http, paths: &paths, stop: &Stop::default(), phase: &mut phase, install_root: InstallRoot::default() };
             let err = install(app, &release, &asset, kind, None, None, &mut job).unwrap_err();
             assert!(err.contains("isn't supported"), "{err}");
             assert_eq!(std::fs::read(download_path(&paths, &asset)).unwrap(), body);
@@ -1364,7 +1662,7 @@ mod tests {
         let kind = if cfg!(windows) { PackageKind::Dmg } else { PackageKind::Msi };
         let mut phases = Vec::new();
         let mut phase = |p: JobPhase| phases.push(p);
-        let mut job = Job { http: &http, paths: &paths, stop: &Stop::default(), phase: &mut phase };
+        let mut job = Job { http: &http, paths: &paths, stop: &Stop::default(), phase: &mut phase, install_root: InstallRoot::default() };
         let err = install(app, &release, &asset, kind, None, None, &mut job).unwrap_err();
         assert!(err.contains("publishes no checksum"), "{err}");
         assert!(!download_path(&paths, &asset).exists());
@@ -1657,6 +1955,142 @@ mod tests {
         #[cfg(target_os = "linux")]
         assert_eq!(choose_kinds(Some(&inst(InstallSource::AppImage)), None, &[]), [PackageKind::AppImage]);
         let _ = inst;
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn windows_offers_the_installer_first_and_portable_second() {
+        let kinds = available_kinds();
+        assert_eq!(kinds.first(), Some(&PackageKind::Msi));
+        assert!(kinds.contains(&PackageKind::PortableZip));
+    }
+
+    #[test]
+    fn portable_updates_stay_portable() {
+        use crate::manifest::Record;
+        let inst = Installed { version: None, source: InstallSource::Launcher, location: String::new(), package: None };
+        let record = Record {
+            version: "0.5.0".into(),
+            kind: PackageKind::PortableZip,
+            path: "x".into(),
+            installed_at: 1,
+            files: vec![],
+            needs_root: false,
+            root: None,
+        };
+        let kinds = choose_kinds(Some(&inst), Some(&record), &[]);
+        if available_kinds().contains(&PackageKind::PortableZip) {
+            assert_eq!(kinds, [PackageKind::PortableZip]);
+        }
+    }
+
+    #[test]
+    fn powershell_quoting_survives_apostrophes() {
+        let quoted = windows::ps_quote(Path::new(r"C:\Users\O'Brien\app.exe"));
+        assert_eq!(quoted, "'C:\\Users\\O''Brien\\app.exe'");
+    }
+
+    #[test]
+    fn shortcut_script_points_at_the_exe() {
+        let script = windows::shortcut_script(Path::new("C:\\s\\A.lnk"), Path::new("C:\\p\\a.exe"), Path::new("C:\\p"));
+        assert!(script.contains("'C:\\s\\A.lnk'") && script.contains("'C:\\p\\a.exe'"), "{script}");
+    }
+
+    #[test]
+    fn folder_picker_answers_only_real_folders() {
+        assert!(windows::browse_script().contains("OpenFileDialog"));
+        assert!(windows::browse_script().contains("ShowDialog($f)"));
+        assert!(!windows::browse_script().contains("FolderBrowserDialog"));
+        let dir = tempfile::tempdir().unwrap();
+        assert_eq!(windows::parse_browse_output(&format!("{}\r\n", dir.path().display())), Some(dir.path().to_path_buf()));
+        assert_eq!(windows::parse_browse_output(""), None);
+        assert_eq!(windows::parse_browse_output("   \r\n"), None);
+        assert_eq!(windows::parse_browse_output("C:\\no\\such\\dir"), None);
+    }
+
+    #[test]
+    fn single_child_dir_needs_exactly_one_folder() {
+        let dir = tempfile::tempdir().unwrap();
+        assert_eq!(windows::single_child_dir(dir.path()), None);
+        std::fs::create_dir(dir.path().join("v1")).unwrap();
+        std::fs::write(dir.path().join("note.txt"), "x").unwrap();
+        assert_eq!(windows::single_child_dir(dir.path()), Some(dir.path().join("v1")));
+        std::fs::create_dir(dir.path().join("v2")).unwrap();
+        assert_eq!(windows::single_child_dir(dir.path()), None);
+    }
+
+    #[test]
+    fn install_roots_resolve_safely() {
+        use artcraft_launcher_core::protocol::InstallRoot;
+        let def = windows::resolve_root(&InstallRoot::Default).unwrap();
+        assert!(def.ends_with("Programs"), "{}", def.display());
+        let exe_dir = windows::resolve_root(&InstallRoot::NextToLauncher).unwrap();
+        assert!(exe_dir.is_dir());
+        let custom = std::env::temp_dir().join("craft-root-test");
+        assert_eq!(windows::resolve_root(&InstallRoot::Custom(custom.clone())), Some(custom));
+        assert_eq!(windows::resolve_root(&InstallRoot::Custom(PathBuf::from("relative/dir"))), None);
+        assert_eq!(windows::resolve_root(&InstallRoot::Custom(PathBuf::new())), None);
+    }
+
+    #[test]
+    fn portable_removal_stays_inside_its_record() {
+        use crate::manifest::Record;
+        let app = CraftApp::by_id("wordcraft").unwrap();
+        let dir = tempfile::tempdir().unwrap();
+        let home = dir.path().join("WordCraft");
+        std::fs::create_dir(&home).unwrap();
+        std::fs::write(home.join("wordcraft.exe"), "x").unwrap();
+        let record = Record {
+            version: "0.5.0".into(),
+            kind: PackageKind::PortableZip,
+            path: home.join("wordcraft.exe"),
+            installed_at: 1,
+            files: vec![],
+            needs_root: false,
+            root: Some(home.clone()),
+        };
+        windows::remove_portable(app, &record).unwrap();
+        assert!(!home.exists());
+        // A record pointing elsewhere never deletes user files.
+        let elsewhere = dir.path().join("elsewhere");
+        std::fs::create_dir(&elsewhere).unwrap();
+        std::fs::write(elsewhere.join("wordcraft.exe"), "x").unwrap();
+        let stray = Record { path: elsewhere.join("wordcraft.exe"), ..record.clone() };
+        assert!(windows::remove_portable(app, &stray).is_err());
+        assert!(elsewhere.exists());
+    }
+
+    #[test]
+    fn portable_installs_refuse_unmanaged_folders() {
+        let dir = tempfile::tempdir().unwrap();
+        let missing = dir.path().join("missing");
+        assert!(windows::dest_is_ours(&missing, None), "fresh folder");
+        let empty = dir.path().join("empty");
+        std::fs::create_dir(&empty).unwrap();
+        assert!(windows::dest_is_ours(&empty, None), "empty folder");
+        // A folder with files the launcher didn't install is refused...
+        let lived_in = dir.path().join("lived-in");
+        std::fs::create_dir(&lived_in).unwrap();
+        std::fs::write(lived_in.join("mine.txt"), "x").unwrap();
+        assert!(!windows::dest_is_ours(&lived_in, None));
+        // ...unless it is the previous install's own root being updated.
+        assert!(windows::dest_is_ours(&lived_in, Some(&lived_in)));
+        let other = dir.path().join("other");
+        assert!(!windows::dest_is_ours(&lived_in, Some(&other)));
+    }
+
+    #[test]
+    fn portable_marker_drop_keeps_everything_else() {
+        let dir = tempfile::tempdir().unwrap();
+        let staging = dir.path().join("staging");
+        std::fs::create_dir(&staging).unwrap();
+        // Missing marker is fine: nothing to drop.
+        windows::drop_portable_marker(&staging);
+        std::fs::write(staging.join("portable.txt"), "x").unwrap();
+        std::fs::write(staging.join("app.exe"), "x").unwrap();
+        windows::drop_portable_marker(&staging);
+        assert!(!staging.join("portable.txt").exists());
+        assert!(staging.join("app.exe").exists(), "only the marker goes");
     }
 
     #[cfg(target_os = "linux")]

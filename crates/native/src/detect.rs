@@ -111,7 +111,7 @@ fn exe_candidates(app: &CraftApp, location: Option<&Path>, program_files: &[Path
 
 /// Version from `<app> --version` output. Binaries print the machine id (`photocraft 0.7.0`),
 /// the display name (`SoundCraft 0.5.0`), or a former id (`printcraft 0.2.1` for PdfCraft).
-#[cfg_attr(not(any(target_os = "linux", target_os = "freebsd")), allow(dead_code))]
+#[cfg_attr(not(any(target_os = "linux", target_os = "freebsd", windows)), allow(dead_code))]
 fn parse_cli_version(line: &str, app: &CraftApp) -> Option<version::Version> {
     let line = line.trim();
     for prefix in app.stems().chain(std::iter::once(app.name)) {
@@ -243,13 +243,25 @@ pub mod windows {
     }
 
     pub fn detect(app: &CraftApp) -> Option<Installed> {
-        let m = msi_installs(app).into_iter().next()?;
-        Some(Installed {
-            version: m.version,
-            source: InstallSource::Msi,
-            location: m.exe.map_or_else(|| app.name.to_string(), |p| p.display().to_string()),
-            package: Some(m.product_code),
-        })
+        if let Some(m) = msi_installs(app).into_iter().next() {
+            return Some(Installed {
+                version: m.version,
+                source: InstallSource::Msi,
+                location: m.exe.map_or_else(|| app.name.to_string(), |p| p.display().to_string()),
+                package: Some(m.product_code),
+            });
+        }
+        // A portable copy the launcher unpacked into its own per-user folder.
+        if let Some(dir) = crate::install::windows::portable_dir(app, &artcraft_launcher_core::protocol::InstallRoot::Default)
+            && let Some(exe) = crate::install::windows::portable_exe(app, &dir)
+            && let Some(exe_str) = exe.to_str()
+        {
+            let version = crate::process::capture(exe_str, &["--version"], std::time::Duration::from_secs(5))
+                .and_then(|out| out.lines().next().map(|l| parse_cli_version(l, app)))
+                .flatten();
+            return Some(Installed { version, source: InstallSource::Launcher, location: exe.display().to_string(), package: None });
+        }
+        None
     }
 }
 

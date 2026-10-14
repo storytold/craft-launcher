@@ -18,6 +18,10 @@ pub struct Record {
     /// Every file installed, for tree installs (FreeBSD), so removal takes exactly those.
     #[serde(default)]
     pub files: Vec<PathBuf>,
+    /// The folder a portable install went into, so removal takes exactly it even after the
+    /// install location changes. Older records leave this empty and fall back to the default.
+    #[serde(default)]
+    pub root: Option<PathBuf>,
     /// The files are in a system prefix and removing them needs root.
     #[serde(default)]
     pub needs_root: bool,
@@ -51,7 +55,15 @@ mod tests {
         let mut m = Manifest::default();
         m.apps.insert(
             "photocraft".into(),
-            Record { version: "0.5.0".into(), kind: PackageKind::AppImage, path: "/x/y".into(), installed_at: 1, files: vec![], needs_root: false },
+            Record {
+                version: "0.5.0".into(),
+                kind: PackageKind::AppImage,
+                path: "/x/y".into(),
+                installed_at: 1,
+                files: vec![],
+                needs_root: false,
+                root: None,
+            },
         );
         m.save(&path).unwrap();
         assert_eq!(Manifest::load(&path), m);

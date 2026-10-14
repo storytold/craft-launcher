@@ -3,6 +3,7 @@
 use std::collections::BTreeMap;
 
 use artcraft_launcher_core::PackageKind;
+use artcraft_launcher_core::protocol::InstallRoot;
 use serde::{Deserialize, Serialize};
 
 use crate::i18n::t;
@@ -106,6 +107,8 @@ pub struct Settings {
     pub prereleases: bool,
     /// Linux: the package format to prefer for new installs (empty: the system's own).
     pub preferred_kinds: Vec<PackageKind>,
+    /// Windows: where portable installs go (MSI keeps its fixed location).
+    pub install_root: InstallRoot,
     /// Announcements and alerts from the release feed the user dismissed (by notice id).
     pub dismissed_notices: std::collections::BTreeSet<String>,
     /// Updates already announced, so each version is announced once: app id → version.
@@ -182,6 +185,7 @@ impl Default for Settings {
             notify: true,
             prereleases: false,
             preferred_kinds: default_preferred_kinds(),
+            install_root: InstallRoot::default(),
             dismissed_notices: std::collections::BTreeSet::new(),
             notified: BTreeMap::new(),
             last_check: None,
