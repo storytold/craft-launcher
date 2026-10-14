@@ -56,6 +56,14 @@ pub(crate) const FOOTER_H: f32 = 34.0;
 /// The footer drops its platform label rather than leave the status less room than this.
 const FOOTER_MIN_STATUS_W: f32 = 300.0;
 
+/// The table's App column never gets narrower than this.
+const TABLE_APP_MIN_W: f32 = 220.0;
+const TABLE_STATUS_W: f32 = 176.0;
+const TABLE_ACTIONS_W: f32 = 206.0;
+/// The columns a narrow table can do without, with their widths, kept in this order: Released goes
+/// first, then Latest, so the action buttons stay in the window.
+const TABLE_OPTIONAL: [(SortKey, f32); 3] = [(SortKey::Installed, 84.0), (SortKey::Latest, 84.0), (SortKey::Released, 104.0)];
+
 const CARD_MIN_W: f32 = 320.0;
 const CARD_H: f32 = 280.0;
 /// The card's top strip: number tab and links.
@@ -507,25 +515,43 @@ impl LauncherUi {
             ui.ctx().layer_painter(ui.layer_id()).with_clip_rect(clip).hline(span, y, t.hairline());
         };
         egui::Frame::new().fill(t.bg).stroke(t.hairline()).inner_margin(egui::Margin::symmetric(16, 0)).show(ui, |ui| {
-            TableBuilder::new(ui)
+            // A narrow window drops the optional columns that don't fit, rather than push the
+            // buttons out of view.
+            let spacing = ui.spacing().item_spacing.x;
+            let mut room = ui.available_width() - TABLE_APP_MIN_W - TABLE_STATUS_W - TABLE_ACTIONS_W - 2.0 * spacing;
+            let shown: Vec<SortKey> = TABLE_OPTIONAL
+                .iter()
+                .take_while(|(_, w)| {
+                    room -= w + spacing;
+                    room >= 0.0
+                })
+                .map(|(k, _)| *k)
+                .collect();
+            let mut table = TableBuilder::new(ui)
                 .striped(false)
                 .vscroll(false)
                 .cell_layout(egui::Layout::left_to_right(egui::Align::Center))
-                .column(Column::remainder().at_least(220.0).clip(true))
-                .column(Column::exact(176.0))
-                .column(Column::exact(84.0))
-                .column(Column::exact(84.0))
-                .column(Column::exact(104.0))
-                .column(Column::exact(206.0))
+                .column(Column::remainder().at_least(TABLE_APP_MIN_W).clip(true))
+                .column(Column::exact(TABLE_STATUS_W));
+            for (k, w) in TABLE_OPTIONAL {
+                if shown.contains(&k) {
+                    table = table.column(Column::exact(w));
+                }
+            }
+            table
+                .column(Column::exact(TABLE_ACTIONS_W))
                 .header(42.0, |mut header| {
-                    for (key, label) in [
-                        (Some(SortKey::Name), tl!("App")),
-                        (Some(SortKey::Status), tl!("Status")),
-                        (Some(SortKey::Installed), tr_ctx(current(), "column", "Installed")),
-                        (Some(SortKey::Latest), tr_ctx(current(), "column", "Latest")),
-                        (Some(SortKey::Released), tr_ctx(current(), "column", "Released")),
-                        (None, ""),
-                    ] {
+                    let optional = shown.iter().map(|&k| {
+                        let label = match k {
+                            SortKey::Installed => tr_ctx(current(), "column", "Installed"),
+                            SortKey::Latest => tr_ctx(current(), "column", "Latest"),
+                            _ => tr_ctx(current(), "column", "Released"),
+                        };
+                        (Some(k), label)
+                    });
+                    let columns =
+                        [(Some(SortKey::Name), tl!("App")), (Some(SortKey::Status), tl!("Status"))].into_iter().chain(optional).chain([(None, "")]);
+                    for (key, label) in columns {
                         header.col(|ui| {
                             if key == Some(SortKey::Name) {
                                 rule(ui);
@@ -614,25 +640,33 @@ impl LauncherUi {
                                     r.on_hover_text(fmt(tl!("Couldn't check for updates: {f}"), &[("f", f)]));
                                 }
                             });
-                            row.col(|ui| {
-                                let installed = entry.installed_label();
-                                let color = if installed.is_some() { t.ink } else { t.faint };
-                                ui.label(RichText::new(installed.unwrap_or_else(|| "—".into())).family(egui::FontFamily::Monospace).color(color));
-                            });
-                            row.col(|ui| {
-                                let c = if status == AppStatus::UpdateAvailable { t.warn } else { t.ink };
-                                ui.label(
-                                    RichText::new(entry.latest_label().unwrap_or_else(|| "—".into())).family(egui::FontFamily::Monospace).color(c),
-                                );
-                            });
-                            row.col(|ui| {
-                                let when = entry.release().and_then(|r| r.published_at);
-                                let r = ui.label(RichText::new(when.map_or_else(|| "—".into(), date_text)).color(t.muted));
-                                if let Some(w) = when {
-                                    r.on_hover_text(ago_text(w, now));
-                                }
-                            });
-                            row.col(|ui| self.actions(ui, &entry, &status, 204.0));
+                            for &k in &shown {
+                                row.col(|ui| match k {
+                                    SortKey::Installed => {
+                                        let installed = entry.installed_label();
+                                        let color = if installed.is_some() { t.ink } else { t.faint };
+                                        ui.label(
+                                            RichText::new(installed.unwrap_or_else(|| "—".into())).family(egui::FontFamily::Monospace).color(color),
+                                        );
+                                    }
+                                    SortKey::Latest => {
+                                        let c = if status == AppStatus::UpdateAvailable { t.warn } else { t.ink };
+                                        ui.label(
+                                            RichText::new(entry.latest_label().unwrap_or_else(|| "—".into()))
+                                                .family(egui::FontFamily::Monospace)
+                                                .color(c),
+                                        );
+                                    }
+                                    _ => {
+                                        let when = entry.release().and_then(|r| r.published_at);
+                                        let r = ui.label(RichText::new(when.map_or_else(|| "—".into(), date_text)).color(t.muted));
+                                        if let Some(w) = when {
+                                            r.on_hover_text(ago_text(w, now));
+                                        }
+                                    }
+                                });
+                            }
+                            row.col(|ui| self.actions(ui, &entry, &status, TABLE_ACTIONS_W - 2.0));
                         });
                     }
                 });
