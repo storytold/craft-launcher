@@ -98,6 +98,8 @@ pub(super) fn plural_polish(n: u64) -> usize {
 
 /// The registry. English first: it is the fallback and the source language.
 pub static LANGUAGES: [LangInfo; 13] = [
+pub static LANGUAGES: [LangInfo; 12] = [
+
     LangInfo {
         code: "en",
         name: "English",
@@ -236,6 +238,12 @@ pub static LANGUAGES: [LangInfo; 13] = [
         english_name: "Georgian",
         script: Some(Script::Georgian),
         source: include_str!("ka.tsv"),
+        code: "it",
+        name: "Italiano",
+        english_name: "Italian",
+        script: None,
+        source: include_str!("it.tsv"),
+
         plural: plural_one_other,
         plural_forms: 2,
         complete_menus: true,
@@ -281,6 +289,16 @@ impl Lang {
     pub const HU: Lang = Lang(&LANGUAGES[10]);
     pub const JA: Lang = Lang(&LANGUAGES[11]);
     pub const KA: Lang = Lang(&LANGUAGES[12]);
+    pub const DE: Lang = Lang(&LANGUAGES[3]);
+    pub const FR: Lang = Lang(&LANGUAGES[4]);
+    pub const PT_BR: Lang = Lang(&LANGUAGES[5]);
+    pub const ES: Lang = Lang(&LANGUAGES[6]);
+    pub const CS: Lang = Lang(&LANGUAGES[7]);
+    pub const PL: Lang = Lang(&LANGUAGES[8]);
+    pub const HU: Lang = Lang(&LANGUAGES[9]);
+    pub const JA: Lang = Lang(&LANGUAGES[10]);
+    pub const IT: Lang = Lang(&LANGUAGES[11]);
+
 
     pub fn code(self) -> &'static str {
         self.0.code
