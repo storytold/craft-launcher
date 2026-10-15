@@ -222,6 +222,14 @@ mirror, never GitHub. Only builds with the `local-mirror` feature read it; relea
 New contributors and AI agents: start with [`AGENTS.md`](AGENTS.md). Release packaging lives in
 [`packaging/`](packaging/) and [`.github/workflows/release.yml`](.github/workflows/release.yml).
 
+### Use installed apps from Codex or another MCP client
+
+The opt-in `artcraft-launcher-mcp` development gateway gives an MCP client one connection for
+discovering installed Craft Apps and using their native tools. Its first live adapters cover
+FigCraft, DesignCraft and VectorCraft; other reachable CLIs can be used in explicit headless
+mode. It is built separately and is not yet included in release installers. See
+[`docs/mcp.md`](docs/mcp.md) for setup, capabilities and validation.
+
 > [!IMPORTANT]
 > **Status:** ArtCraft Launcher is new and in early alpha. Expect rough edges, and please file
 > issues (include your OS, which app you were installing and the launcher's log file) or tell us on
