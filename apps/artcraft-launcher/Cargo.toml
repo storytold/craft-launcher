@@ -51,6 +51,9 @@ objc2-app-kit = { version = "=0.3.2", default-features = false, features = ["std
 # artcraft-launcher-native.
 [target.'cfg(target_os = "windows")'.dependencies]
 winreg = "0.55"
+# Waits on wgpu's adapter list in the Direct3D 12 probe (main.rs, `dx12_has_adapter`). Already in
+# Cargo.lock through eframe.
+pollster = "1"
 
 # Linux and the BSDs: the desktop's animations setting, from its settings portal (motion.rs).
 # Already in Cargo.lock through tray-icon and notify-rust.
