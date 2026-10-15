@@ -155,12 +155,15 @@ fn native_options(hidden: bool) -> eframe::NativeOptions {
     eframe::NativeOptions { viewport, persist_window: true, wgpu_options: wgpu_options(), ..Default::default() }
 }
 
-/// wgpu's backend list. On Windows that is Direct3D 12 with GL as the fallback, not Vulkan:
-/// Vulkan goes through vendor ICDs and third-party overlay layers, and on hybrid AMD laptops whose
-/// integrated and discrete GPUs run different driver packages (common on OEM machines, where the
-/// Adrenalin installer leaves the integrated GPU on the OEM driver) it crashes inside
-/// `amdvlk64.dll` before the first frame. `WGPU_BACKEND` still overrides the default, and then
-/// wgpu picks the adapter itself. Direct3D 12 shaders compile with FXC ([`pin_dx12_compiler`]).
+/// wgpu's backend list. On Windows that is Direct3D 12, not Vulkan: Vulkan goes through vendor
+/// ICDs and third-party overlay layers, and on hybrid AMD laptops whose integrated and discrete
+/// GPUs run different driver packages (common on OEM machines, where the Adrenalin installer
+/// leaves the integrated GPU on the OEM driver) it crashes inside `amdvlk64.dll` before the first
+/// frame. GL is only added when Direct3D 12 lists no adapter at all ([`dx12_has_adapter`]): wgpu's
+/// GL backend makes a WGL context while it enumerates, which loads every GPU's OpenGL driver, and
+/// on such laptops an old AMD one (`atio6axx.dll`) crashes the launcher even though Direct3D 12
+/// would draw fine. `WGPU_BACKEND` still overrides the default, and then wgpu picks the adapter
+/// itself. Direct3D 12 shaders compile with FXC ([`pin_dx12_compiler`]).
 ///
 /// Direct3D 12 presents through DirectComposition rather than straight to the window. The
 /// borderless window's drop shadow moves its client area down a pixel, and a swapchain made from
@@ -177,7 +180,8 @@ fn wgpu_options() -> eframe::WgpuConfiguration {
         if let Some(backends) = Backends::from_env() {
             setup.instance_descriptor.backends = backends;
         } else {
-            setup.instance_descriptor.backends = Backends::DX12 | Backends::GL;
+            setup.instance_descriptor.backends =
+                if dx12_has_adapter(&setup.instance_descriptor) { Backends::DX12 } else { Backends::DX12 | Backends::GL };
             let integrated = setup.power_preference == PowerPreference::LowPower;
             setup.native_adapter_selector = Some(Arc::new(move |adapters, surface| {
                 adapters
@@ -193,6 +197,26 @@ fn wgpu_options() -> eframe::WgpuConfiguration {
         }
     }
     config
+}
+
+/// Whether Direct3D 12 lists any adapter with `desc`'s settings. Windows 10 and later always have
+/// WARP, the software one, so this is false only where Direct3D 12 itself is missing or broken.
+/// Asked once; Direct3D 12 alone never loads an OpenGL driver.
+#[cfg(windows)]
+fn dx12_has_adapter(desc: &eframe::wgpu::InstanceDescriptor) -> bool {
+    use eframe::wgpu::{Backends, Instance, InstanceDescriptor};
+    static HAS_ADAPTER: OnceLock<bool> = OnceLock::new();
+    *HAS_ADAPTER.get_or_init(|| {
+        let mut probe = InstanceDescriptor::new_without_display_handle();
+        probe.backends = Backends::DX12;
+        probe.flags = desc.flags;
+        probe.backend_options = desc.backend_options.clone();
+        let adapters = pollster::block_on(Instance::new(probe).enumerate_adapters(Backends::DX12));
+        if adapters.is_empty() {
+            log::warn!("Direct3D 12 lists no graphics adapter, trying OpenGL");
+        }
+        !adapters.is_empty()
+    })
 }
 
 /// Compiles Direct3D 12 shaders with FXC (`d3dcompiler_47.dll`, part of Windows) unless
