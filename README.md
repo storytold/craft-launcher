@@ -130,6 +130,36 @@ on macOS, `%LOCALAPPDATA%\ArtCraft Launcher` on Windows, `ArtCraftLauncherData` 
 portable zip's executable) and keeps the previous two runs as `artcraft-launcher.1.log` and
 `artcraft-launcher.2.log`. `RUST_LOG` changes what it records (`debug`, `info,zbus=warn`, …).
 
+### Windows apps in custom folders
+
+If you unpack Craft apps yourself into another folder or drive, you can opt in to detecting
+those copies by creating `%LOCALAPPDATA%\ArtCraft Launcher\external-apps.json`. For a portable
+copy of ArtCraft Launcher, the file goes in `ArtCraftLauncherData\data\external-apps.json`
+beside the launcher's executable instead.
+
+```json
+{
+  "apps": {
+    "photocraft": {
+      "path": "D:\\CreativeApps\\PhotoCraft\\photocraft.exe",
+      "version": "0.7.0"
+    }
+  }
+}
+```
+
+Use the app's lowercase catalog id and an absolute path to its existing executable. The file
+name must be one of that app's release names, such as `photocraft.exe` (`printcraft.exe` also
+works for PdfCraft). `version` is optional; omit it if you do not know the installed version,
+and keep it current when updating the app yourself. Restart ArtCraft Launcher after editing
+the file.
+
+These copies can be opened from the launcher, but are updated and removed with the tool or
+method you used to install them. The launcher does not scan custom folders or run binaries to
+discover versions. Its own installation records and Windows Installer entries take priority.
+Without this optional file, detection is unchanged. Malformed files and files larger than
+64 KiB are ignored; the log explains why. Remove an entry to stop detecting that copy.
+
 ## Downloads
 
 Download the build for your computer from the [latest release](https://github.com/storytold/craft-launcher/releases/latest), or browse [all releases](https://github.com/storytold/craft-launcher/releases). Every release has a `SHA256SUMS.txt` to check the files against. `<ver>` is the version number, for example `0.1.0`.

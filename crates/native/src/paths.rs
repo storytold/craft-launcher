@@ -56,6 +56,11 @@ impl Paths {
         self.data.join("installed.json")
     }
 
+    /// Optional Windows executables the user registered, without giving the launcher ownership.
+    pub fn external_apps(&self) -> PathBuf {
+        self.data.join("external-apps.json")
+    }
+
     /// The launcher's own log files (`artcraft-launcher.log` and the previous runs').
     pub fn logs(&self) -> PathBuf {
         self.data.join("logs")
