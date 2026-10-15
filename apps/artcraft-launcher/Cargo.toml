@@ -48,9 +48,11 @@ objc2-foundation = { version = "=0.3.2", default-features = false, features = ["
 objc2-app-kit = { version = "=0.3.2", default-features = false, features = ["std", "NSAccessibility", "NSApplication", "NSResponder", "NSWindow", "NSWorkspace"] }
 
 # Windows only: the "Animation effects" setting (motion.rs). Already in Cargo.lock through
-# artcraft-launcher-native.
+# artcraft-launcher-native. rfd: the system folder picker for Settings' "Install new apps in"
+# (Windows' own IFileOpenDialog; no GTK or portal features).
 [target.'cfg(target_os = "windows")'.dependencies]
 winreg = "0.55"
+rfd = { version = "0.17", default-features = false }
 
 # Linux and the BSDs: the desktop's animations setting, from its settings portal (motion.rs).
 # Already in Cargo.lock through tray-icon and notify-rust.

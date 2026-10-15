@@ -74,6 +74,13 @@
 	Install new apps as	新应用安装格式
 	System package (recommended)	系统软件包（推荐）
 	Updates always use the format an app was installed with.	更新时始终使用应用原来的安装格式。
+	Installing on Windows	在 Windows 上安装
+	Install new apps in	新应用的安装位置
+	Default (Program Files)	默认 (Program Files)
+	Choose folder…	选择文件夹…
+	Use default	使用默认位置
+	Enter a full path, like {example}. Until then, new apps install in the default folder.	请输入完整路径，例如 {example}。在此之前，新应用会安装到默认文件夹。
+	Each app gets a folder of its own inside this one. Apps already installed stay where they are.	每个应用会在其中获得自己的文件夹。已安装的应用保持原位置不变。
 	Running in the background	后台运行
 	Keep running in the tray when the window is closed	关闭窗口后继续在系统托盘中运行
 	Show the window on the current desktop	在当前桌面显示窗口

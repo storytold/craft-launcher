@@ -92,6 +92,13 @@
 	Install new apps as	Új alkalmazások csomagformátuma
 	System package (recommended)	Rendszercsomag (ajánlott)
 	Updates always use the format an app was installed with.	A frissítések mindig az eredeti telepítés csomagformátumát használják.
+	Installing on Windows	Telepítés Windowson
+	Install new apps in	Új alkalmazások telepítési helye
+	Default (Program Files)	Alapértelmezett (Program Files)
+	Choose folder…	Mappa kiválasztása…
+	Use default	Alapértelmezett használata
+	Enter a full path, like {example}. Until then, new apps install in the default folder.	Adjon meg teljes elérési utat, például: {example}. Addig az új alkalmazások az alapértelmezett mappába kerülnek.
+	Each app gets a folder of its own inside this one. Apps already installed stay where they are.	Minden alkalmazás saját mappát kap ezen belül. A már telepített alkalmazások a helyükön maradnak.
 	Running in the background	Futtatás a háttérben
 	Keep running in the tray when the window is closed	Az ablak bezárásakor kerüljön a tálcára
 	Show the window on the current desktop	Ablak megjelenítése az aktuális asztalon

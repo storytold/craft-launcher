@@ -60,6 +60,11 @@ pub struct BackendOptions {
     pub kinds: Vec<PackageKind>,
     /// Offer pre-releases (`0.6.0-rc.1`) as updates.
     pub prereleases: bool,
+    /// Windows: the folder new apps install into, each in a folder of its own named after the
+    /// app (`D:\Apps` → `D:\Apps\PhotoCraft`). `None`: the installer's own default (Program
+    /// Files). Updates stay where the app already is.
+    #[serde(default)]
+    pub apps_folder: Option<String>,
 }
 
 /// The answer to "what's the latest release of this app?".

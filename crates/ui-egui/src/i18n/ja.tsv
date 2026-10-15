@@ -94,6 +94,13 @@
 	Install new apps as	新しいアプリのインストール形式
 	System package (recommended)	システムパッケージ（推奨）
 	Updates always use the format an app was installed with.	更新は常に、アプリをインストールしたときの形式で行われます。
+	Installing on Windows	Windows でのインストール
+	Install new apps in	新しいアプリのインストール先
+	Default (Program Files)	既定 (Program Files)
+	Choose folder…	フォルダーを選択…
+	Use default	既定に戻す
+	Enter a full path, like {example}. Until then, new apps install in the default folder.	{example} のような完全なパスを入力してください。それまでは、新しいアプリは既定のフォルダーにインストールされます。
+	Each app gets a folder of its own inside this one. Apps already installed stay where they are.	各アプリはこのフォルダー内に専用のフォルダーを持ちます。インストール済みのアプリは今の場所のままです。
 	Running in the background	バックグラウンドで実行
 	Keep running in the tray when the window is closed	ウィンドウを閉じてもトレイで実行し続ける
 	Show the window on the current desktop	現在のデスクトップにウィンドウを表示

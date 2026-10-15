@@ -321,6 +321,44 @@ impl LauncherUi {
             ui.label(RichText::new(tl!("Updates always use the format an app was installed with.")).size(12.0).color(t.muted));
         }
 
+        if self.caps.manage_apps && self.platform.is_some_and(|p| p.os == Os::Windows) {
+            section(ui, tl!("Installing on Windows"));
+            ui.label(tl!("Install new apps in"));
+            ui.add_space(4.0);
+            ui.add(egui::TextEdit::singleline(&mut self.settings.apps_folder).hint_text(tl!("Default (Program Files)")).desired_width(f32::INFINITY));
+            ui.add_space(6.0);
+            let mut pick = false;
+            let mut reset = false;
+            ui.horizontal(|ui| {
+                if host.can_pick_folder() {
+                    pick = widgets::button(ui, tl!("Choose folder…"), Kind::Secondary, 0.0).clicked();
+                }
+                if !self.settings.apps_folder.is_empty() {
+                    reset = widgets::button(ui, tl!("Use default"), Kind::Secondary, 0.0).clicked();
+                }
+            });
+            if pick {
+                let start = (!self.settings.apps_folder.trim().is_empty()).then(|| self.settings.apps_folder.trim().to_string());
+                if let Some(folder) = host.pick_folder(tl!("Install new apps in"), start.as_deref()) {
+                    self.settings.apps_folder = folder;
+                }
+            }
+            if reset {
+                self.settings.apps_folder.clear();
+            }
+            let typed = self.settings.apps_folder.trim();
+            if !typed.is_empty() && !crate::settings::apps_folder_usable(typed) {
+                let note =
+                    fmt(tl!("Enter a full path, like {example}. Until then, new apps install in the default folder."), &[("example", r"D:\Apps")]);
+                ui.label(RichText::new(note).size(12.0).color(t.warn));
+            }
+            ui.label(
+                RichText::new(tl!("Each app gets a folder of its own inside this one. Apps already installed stay where they are."))
+                    .size(12.0)
+                    .color(t.muted),
+            );
+        }
+
         if self.caps.manage_apps {
             section(ui, tl!("Running in the background"));
             if host.has_tray() {

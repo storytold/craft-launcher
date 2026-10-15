@@ -92,6 +92,13 @@
 	Install new apps as	Instalar las aplicaciones nuevas como
 	System package (recommended)	Paquete del sistema (recomendado)
 	Updates always use the format an app was installed with.	Las actualizaciones siempre usan el formato con el que se instaló cada aplicación.
+	Installing on Windows	Instalación en Windows
+	Install new apps in	Instalar las aplicaciones nuevas en
+	Default (Program Files)	Predeterminada (Program Files)
+	Choose folder…	Elegir carpeta…
+	Use default	Usar la predeterminada
+	Enter a full path, like {example}. Until then, new apps install in the default folder.	Escribe una ruta completa, como {example}. Mientras tanto, las aplicaciones nuevas se instalan en la carpeta predeterminada.
+	Each app gets a folder of its own inside this one. Apps already installed stay where they are.	Cada aplicación tendrá su propia carpeta dentro de esta. Las aplicaciones ya instaladas se quedan donde están.
 	Running in the background	En segundo plano
 	Keep running in the tray when the window is closed	Seguir abierto en la bandeja del sistema al cerrar la ventana
 	Show the window on the current desktop	Mostrar la ventana en el escritorio actual

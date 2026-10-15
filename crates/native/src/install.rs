@@ -3,7 +3,9 @@
 //! Apps go where their platform keeps applications, installed the platform's own way:
 //!
 //! - macOS: the signed `.app` from the release DMG into `/Applications`.
-//! - Windows: the release MSI (Windows Installer) into `C:\Program Files\<App>`.
+//! - Windows: the release MSI (Windows Installer) into `C:\Program Files\<App>`, or into
+//!   `<folder>\<App>` when the user picked a folder for apps in Settings. An update stays in the
+//!   folder the installed copy is in.
 //! - Linux: the distro's own package (`.deb` through apt on the Debian family, `.rpm` through
 //!   dnf/zypper/rpm on the Fedora, Red Hat and SUSE families, read from `os-release`) with the
 //!   system's polkit password prompt; otherwise a Flatpak, otherwise an AppImage in
@@ -36,6 +38,9 @@ pub struct Job<'a> {
     pub paths: &'a Paths,
     pub stop: &'a Stop,
     pub phase: &'a mut dyn FnMut(JobPhase),
+    /// Windows: the folder the user picked for new apps (`None`: the installer's default).
+    #[cfg_attr(not(windows), allow(dead_code))]
+    pub apps_folder: Option<&'a Path>,
 }
 
 /// Downloads and installs `asset` of `release`. Returns a record when the launcher owns the
@@ -68,7 +73,10 @@ pub fn install(
         #[cfg(target_os = "macos")]
         PackageKind::Dmg => macos::install_dmg(app, &file, existing, job.paths, &macos::Expect::release(release)).map(|_| None),
         #[cfg(windows)]
-        PackageKind::Msi => windows::run_msi(&file, job.stop, &mut *job.phase).map(|_| None),
+        PackageKind::Msi => {
+            let folder = msi_install_folder(app, existing, job.apps_folder);
+            windows::run_msi(&file, folder.as_deref(), job.stop, &mut *job.phase).map(|_| None)
+        }
         #[cfg(target_os = "linux")]
         PackageKind::Deb | PackageKind::Rpm | PackageKind::Flatpak => linux::install_package(kind, &file, job.stop, &mut *job.phase).map(|_| None),
         #[cfg(target_os = "linux")]
@@ -94,6 +102,21 @@ pub fn install(
     }
     // The system's own prompt was dismissed: the download itself wasn't cancelled.
     result.map_err(|e| if e == CANCELLED { INSTALL_CANCELLED.to_string() } else { e })
+}
+
+/// Windows: the folder an app's MSI installs into, passed as its `INSTALLFOLDER` property
+/// (every Craft App's MSI names its folder that, with the exe at its root).
+///
+/// An update goes where the installed copy is: an MSI that doesn't remember its folder would
+/// otherwise move the app back to Program Files. A new install goes into `<apps_folder>\<App>`
+/// when the user picked a folder. `None` leaves the choice to the MSI.
+#[cfg_attr(not(windows), allow(dead_code))]
+pub(crate) fn msi_install_folder(app: &CraftApp, existing: Option<&Installed>, apps_folder: Option<&Path>) -> Option<PathBuf> {
+    if let Some(inst) = existing {
+        let exe = Path::new(&inst.location);
+        return if exe.is_absolute() { exe.parent().filter(|dir| dir.is_dir()).map(Path::to_path_buf) } else { None };
+    }
+    apps_folder.filter(|dir| dir.is_absolute()).map(|dir| dir.join(app.name))
 }
 
 /// Where `asset` is downloaded to (and its partial file kept while unfinished).
@@ -1168,6 +1191,18 @@ mod freebsd {
     }
 }
 
+/// The `INSTALLFOLDER="<folder>"` argument for msiexec. Refuses a folder msiexec couldn't be
+/// given safely: one with a quote in it (no Windows path has one) or a trailing backslash (which
+/// would escape the closing quote).
+#[cfg_attr(not(windows), allow(dead_code))]
+pub(crate) fn install_folder_arg(folder: &Path) -> Result<String, String> {
+    let text = folder.to_str().ok_or("the folder for apps has characters Windows Installer can't take")?;
+    if text.is_empty() || text.contains('"') || text.ends_with('\\') || text.chars().any(char::is_control) {
+        return Err(format!("{text} can't be used as an install folder"));
+    }
+    Ok(format!("INSTALLFOLDER=\"{text}\""))
+}
+
 #[cfg(windows)]
 pub mod windows {
     use artcraft_launcher_core::protocol::CANCELLED;
@@ -1189,15 +1224,22 @@ pub mod windows {
         }
     }
 
-    /// Runs an MSI with a progress window and no restart. Windows asks for permission itself.
-    pub fn run_msi(msi: &Path, stop: &Stop, phase: &mut dyn FnMut(JobPhase)) -> Result<(), String> {
+    /// Runs an MSI with a progress window and no restart, into `folder` when given (its
+    /// `INSTALLFOLDER` property). Windows asks for permission itself.
+    pub fn run_msi(msi: &Path, folder: Option<&Path>, stop: &Stop, phase: &mut dyn FnMut(JobPhase)) -> Result<(), String> {
+        use std::os::windows::process::CommandExt;
+
+        let property = folder.map(install_folder_arg).transpose()?;
         in_turn(stop, phase, JobPhase::Installing, || {
-            let status = process::command(msiexec())
-                .arg("/i")
-                .arg(msi)
-                .args(["/passive", "/norestart"])
-                .status()
-                .map_err(|e| format!("couldn't start the Windows Installer ({e})"))?;
+            let mut cmd = process::command(msiexec());
+            cmd.arg("/i").arg(msi).args(["/passive", "/norestart"]);
+            if let (Some(property), Some(folder)) = (&property, folder) {
+                log::info!("installing into {}", folder.display());
+                // msiexec reads `NAME="value"` itself; Rust's own quoting would wrap the whole
+                // argument in quotes, which msiexec doesn't take as a property.
+                cmd.raw_arg(property);
+            }
+            let status = cmd.status().map_err(|e| format!("couldn't start the Windows Installer ({e})"))?;
             explain(status.code())
         })
     }
@@ -1340,7 +1382,7 @@ mod tests {
         let mut phases = Vec::new();
         for _ in 0..2 {
             let mut phase = |p: JobPhase| phases.push(p);
-            let mut job = Job { http: &http, paths: &paths, stop: &Stop::default(), phase: &mut phase };
+            let mut job = Job { http: &http, paths: &paths, stop: &Stop::default(), phase: &mut phase, apps_folder: None };
             let err = install(app, &release, &asset, kind, None, None, &mut job).unwrap_err();
             assert!(err.contains("isn't supported"), "{err}");
             assert_eq!(std::fs::read(download_path(&paths, &asset)).unwrap(), body);
@@ -1364,7 +1406,7 @@ mod tests {
         let kind = if cfg!(windows) { PackageKind::Dmg } else { PackageKind::Msi };
         let mut phases = Vec::new();
         let mut phase = |p: JobPhase| phases.push(p);
-        let mut job = Job { http: &http, paths: &paths, stop: &Stop::default(), phase: &mut phase };
+        let mut job = Job { http: &http, paths: &paths, stop: &Stop::default(), phase: &mut phase, apps_folder: None };
         let err = install(app, &release, &asset, kind, None, None, &mut job).unwrap_err();
         assert!(err.contains("publishes no checksum"), "{err}");
         assert!(!download_path(&paths, &asset).exists());
@@ -1641,6 +1683,48 @@ mod tests {
         assert!(!kinds.contains(&PackageKind::Rpm), "{kinds:?}");
         assert!(!kinds.contains(&PackageKind::Deb), "{kinds:?}");
         assert!(kinds.contains(&PackageKind::AppImage), "{kinds:?}");
+    }
+
+    fn msi_copy(location: &Path) -> Installed {
+        Installed { version: None, source: InstallSource::Msi, location: location.display().to_string(), package: None }
+    }
+
+    #[test]
+    fn a_new_msi_install_goes_into_its_own_folder_inside_the_chosen_one() {
+        let app = CraftApp::by_id("photocraft").unwrap();
+        let apps = std::env::temp_dir().join("Craft Apps");
+        assert_eq!(msi_install_folder(app, None, Some(&apps)), Some(apps.join("PhotoCraft")));
+        assert_eq!(msi_install_folder(app, None, None), None, "no folder chosen: the MSI's own default");
+        assert_eq!(msi_install_folder(app, None, Some(Path::new("relative/folder"))), None, "only a full path is used");
+    }
+
+    #[test]
+    fn an_msi_update_stays_where_the_installed_copy_is() {
+        let app = CraftApp::by_id("photocraft").unwrap();
+        let dir = tempfile::tempdir().unwrap();
+        let existing = msi_copy(&dir.path().join("photocraft.exe"));
+        let elsewhere = std::env::temp_dir().join("Somewhere Else");
+        assert_eq!(msi_install_folder(app, Some(&existing), Some(&elsewhere)), Some(dir.path().to_path_buf()));
+        assert_eq!(msi_install_folder(app, Some(&existing), None), Some(dir.path().to_path_buf()));
+    }
+
+    #[test]
+    fn an_msi_update_with_no_known_folder_is_left_to_the_installer() {
+        let app = CraftApp::by_id("photocraft").unwrap();
+        let apps = std::env::temp_dir().join("Craft Apps");
+        // Detection names the app when it can't find its exe.
+        let unknown = msi_copy(Path::new("PhotoCraft"));
+        assert_eq!(msi_install_folder(app, Some(&unknown), Some(&apps)), None);
+        let gone = msi_copy(&apps.join("no-such-folder-artcraft").join("photocraft.exe"));
+        assert_eq!(msi_install_folder(app, Some(&gone), Some(&apps)), None);
+    }
+
+    #[test]
+    fn the_install_folder_reaches_msiexec_quoted_as_one_property() {
+        assert_eq!(install_folder_arg(Path::new(r"D:\Craft Apps\PhotoCraft")).as_deref(), Ok(r#"INSTALLFOLDER="D:\Craft Apps\PhotoCraft""#));
+        for bad in [r#"D:\Apps" /qn ADDLOCAL="ALL"#, r"D:\Apps\", "", "D:\\Apps\n"] {
+            assert!(install_folder_arg(Path::new(bad)).is_err(), "{bad:?} should be refused");
+        }
     }
 
     #[test]

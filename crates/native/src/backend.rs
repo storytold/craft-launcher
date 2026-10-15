@@ -478,7 +478,8 @@ fn run_install(
         last_emit = Instant::now();
         shared.emit(Event::Progress { app: app.id.to_string(), phase: p });
     };
-    let mut job = Job { http, paths, stop, phase: &mut phase };
+    let apps_folder = options.apps_folder.as_deref().map(std::path::Path::new);
+    let mut job = Job { http, paths, stop, phase: &mut phase, apps_folder };
     let new_record = install::install(app, &release, &asset, kind, existing, record, &mut job)?;
     {
         let mut m = shared.manifest.lock().unwrap_or_else(PoisonError::into_inner);

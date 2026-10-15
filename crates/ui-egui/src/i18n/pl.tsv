@@ -93,6 +93,13 @@
 	Install new apps as	Instaluj nowe aplikacje jako
 	System package (recommended)	Pakiet systemowy (zalecany)
 	Updates always use the format an app was installed with.	Aktualizacje zawsze używają formatu, w jakim pierwotnie zainstalowano aplikację.
+	Installing on Windows	Instalowanie w systemie Windows
+	Install new apps in	Instaluj nowe aplikacje w
+	Default (Program Files)	Domyślnie (Program Files)
+	Choose folder…	Wybierz folder…
+	Use default	Użyj domyślnego
+	Enter a full path, like {example}. Until then, new apps install in the default folder.	Wpisz pełną ścieżkę, na przykład {example}. Do tego czasu nowe aplikacje są instalowane w folderze domyślnym.
+	Each app gets a folder of its own inside this one. Apps already installed stay where they are.	Każda aplikacja dostaje w nim własny folder. Już zainstalowane aplikacje zostają tam, gdzie są.
 	Running in the background	Działanie w tle
 	Keep running in the tray when the window is closed	Po zamknięciu okna działaj w zasobniku systemowym
 	Show the window on the current desktop	Pokaż okno na bieżącym pulpicie

@@ -79,6 +79,13 @@
 	Install new apps as	Instalovat nové aplikace jako
 	System package (recommended)	Systémový balíček (doporučeno)
 	Updates always use the format an app was installed with.	Aktualizace vždy použijí formát, ve kterém byla aplikace nainstalována.
+	Installing on Windows	Instalace ve Windows
+	Install new apps in	Nové aplikace instalovat do
+	Default (Program Files)	Výchozí (Program Files)
+	Choose folder…	Vybrat složku…
+	Use default	Použít výchozí
+	Enter a full path, like {example}. Until then, new apps install in the default folder.	Zadejte úplnou cestu, například {example}. Do té doby se nové aplikace instalují do výchozí složky.
+	Each app gets a folder of its own inside this one. Apps already installed stay where they are.	Každá aplikace dostane uvnitř vlastní složku. Již nainstalované aplikace zůstanou tam, kde jsou.
 	Running in the background	Běh na pozadí
 	Keep running in the tray when the window is closed	Po zavření okna ponechat spuštěné v oznamovací oblasti
 	Show the window on the current desktop	Zobrazit okno na aktuální ploše

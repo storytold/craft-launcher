@@ -58,6 +58,15 @@ pub trait Host {
     fn reduce_motion(&self) -> bool {
         false
     }
+    /// Asks the user for a folder with the system's own folder picker, starting in `start`.
+    /// `None` when they cancel or there is no picker here.
+    fn pick_folder(&mut self, _title: &str, _start: Option<&str>) -> Option<String> {
+        None
+    }
+    /// Whether [`Host::pick_folder`] can show a picker.
+    fn can_pick_folder(&self) -> bool {
+        false
+    }
     /// Quit the launcher for real (not just hide to the tray).
     fn quit(&mut self) {}
 }
@@ -266,7 +275,11 @@ impl LauncherUi {
     /// Non-drawing work: runs every frame and also while the window is hidden in the tray.
     pub fn logic(&mut self, ctx: &egui::Context, host: &mut dyn Host) {
         set_current(crate::i18n::Lang::from_pref(&self.settings.language));
-        let options = BackendOptions { kinds: self.settings.preferred_kinds.clone(), prereleases: self.settings.prereleases };
+        let options = BackendOptions {
+            kinds: self.settings.preferred_kinds.clone(),
+            prereleases: self.settings.prereleases,
+            apps_folder: self.settings.apps_folder(),
+        };
         if self.sent_options.as_ref() != Some(&options) {
             self.backend.send(Command::Configure(options.clone()));
             self.sent_options = Some(options);

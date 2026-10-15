@@ -436,6 +436,26 @@ impl Host for DesktopHost {
         motion::reduced()
     }
 
+    fn pick_folder(&mut self, title: &str, start: Option<&str>) -> Option<String> {
+        #[cfg(windows)]
+        {
+            let mut dialog = rfd::FileDialog::new().set_title(title);
+            if let Some(start) = start.filter(|s| std::path::Path::new(s).is_dir()) {
+                dialog = dialog.set_directory(start);
+            }
+            dialog.pick_folder().map(|p| p.display().to_string())
+        }
+        #[cfg(not(windows))]
+        {
+            let _ = (title, start);
+            None
+        }
+    }
+
+    fn can_pick_folder(&self) -> bool {
+        cfg!(windows)
+    }
+
     fn quit(&mut self) {
         self.quit = true;
     }

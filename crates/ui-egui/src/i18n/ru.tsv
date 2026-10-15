@@ -90,6 +90,13 @@
 	Install new apps as	Устанавливать новые приложения как
 	System package (recommended)	Системный пакет (рек.)
 	Updates always use the format an app was installed with.	Обновления всегда используют формат, с которым приложение было установлено.
+	Installing on Windows	Установка в Windows
+	Install new apps in	Устанавливать новые приложения в
+	Default (Program Files)	По умолчанию (Program Files)
+	Choose folder…	Выбрать папку…
+	Use default	По умолчанию
+	Enter a full path, like {example}. Until then, new apps install in the default folder.	Введите полный путь, например {example}. Пока его нет, новые приложения устанавливаются в папку по умолчанию.
+	Each app gets a folder of its own inside this one. Apps already installed stay where they are.	Каждое приложение получает внутри свою папку. Уже установленные приложения остаются на своих местах.
 	Running in the background	Работа в фоне
 	Keep running in the tray when the window is closed	Оставаться в трее при закрытии окна
 	Show the window on the current desktop	Показывать окно на текущем рабочем столе

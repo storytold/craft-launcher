@@ -106,6 +106,9 @@ pub struct Settings {
     pub prereleases: bool,
     /// Linux: the package format to prefer for new installs (empty: the system's own).
     pub preferred_kinds: Vec<PackageKind>,
+    /// Windows: the folder new apps install into, each in a folder named after the app (empty:
+    /// the installer's default, Program Files).
+    pub apps_folder: String,
     /// Announcements and alerts from the release feed the user dismissed (by notice id).
     pub dismissed_notices: std::collections::BTreeSet<String>,
     /// Updates already announced, so each version is announced once: app id → version.
@@ -117,6 +120,11 @@ pub struct Settings {
 }
 
 impl Settings {
+    /// The folder new apps install into, as the backend takes it: only a full path counts.
+    pub fn apps_folder(&self) -> Option<String> {
+        apps_folder_usable(&self.apps_folder).then(|| self.apps_folder.trim().to_string())
+    }
+
     /// Machine-readable code for "follow the system language".
     pub const LANGUAGE_AUTO: &'static str = "auto";
 
@@ -133,6 +141,13 @@ impl Settings {
             None => t("Auto").to_string(),
         }
     }
+}
+
+/// Whether `folder` (as typed in Settings) is a full path the installer can take: `D:\Apps`,
+/// `\\server\share\Apps`. Empty means "the default" and isn't a folder.
+pub fn apps_folder_usable(folder: &str) -> bool {
+    let folder = folder.trim();
+    !folder.is_empty() && std::path::Path::new(folder).is_absolute() && !folder.contains('"') && !folder.ends_with(['\\', '/'])
 }
 
 /// Whether this process is running inside a Flatpak container sandbox.
@@ -182,6 +197,7 @@ impl Default for Settings {
             notify: true,
             prereleases: false,
             preferred_kinds: default_preferred_kinds(),
+            apps_folder: String::new(),
             dismissed_notices: std::collections::BTreeSet::new(),
             notified: BTreeMap::new(),
             last_check: None,
