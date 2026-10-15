@@ -50,6 +50,9 @@ const WORKERS: usize = 4;
 type Waker = Arc<dyn Fn() + Send + Sync>;
 
 struct Shared {
+    diagnostic_failures: Mutex<std::collections::VecDeque<crate::diagnostics::Failure>>,
+    diagnostic_file: Mutex<Option<std::path::PathBuf>>,
+    detection_complete: AtomicBool,
     events: Mutex<Vec<Event>>,
     waker: Waker,
     latest: Mutex<HashMap<String, Release>>,
@@ -83,6 +86,20 @@ struct Shared {
 
 impl Shared {
     fn emit(&self, event: Event) {
+        let failure = match &event {
+            Event::JobFinished { app, result: Err(error) } if error != PAUSED && error != CANCELLED && error != INSTALL_CANCELLED => {
+                Some(crate::diagnostics::Failure::new(app, "job", error))
+            }
+            Event::Latest { app, latest: LatestRelease::Failed(error), .. } => Some(crate::diagnostics::Failure::new(app, "release_check", error)),
+            _ => None,
+        };
+        if let Some(failure) = failure {
+            let mut failures = self.diagnostic_failures.lock().unwrap_or_else(PoisonError::into_inner);
+            if failures.len() >= crate::diagnostics::MAX_FAILURES {
+                failures.pop_front();
+            }
+            failures.push_back(failure);
+        }
         self.events.lock().unwrap_or_else(PoisonError::into_inner).push(event);
         (self.waker)();
     }
@@ -116,6 +133,9 @@ impl NativeBackend {
         let source: Option<Arc<dyn ReleaseSource>> =
             http.clone().map(|h| Arc::new(GitHubSource::new(h, paths.release_cache())) as Arc<dyn ReleaseSource>);
         let shared = Arc::new(Shared {
+            diagnostic_failures: Mutex::new(std::collections::VecDeque::new()),
+            diagnostic_file: Mutex::new(None),
+            detection_complete: AtomicBool::new(false),
             events: Mutex::new(Vec::new()),
             waker,
             latest: Mutex::new(HashMap::new()),
@@ -199,6 +219,7 @@ impl NativeBackend {
             for app in &SUITE {
                 report_partial(app, &shared, &paths, platform, &options);
             }
+            shared.detection_complete.store(true, Ordering::SeqCst);
             shared.detecting.store(false, Ordering::SeqCst);
         });
     }
@@ -894,6 +915,49 @@ impl NativeBackend {
 impl Backend for NativeBackend {
     fn send(&mut self, command: Command) {
         match command {
+            Command::GenerateDiagnostics { request, context } => {
+                let shared = self.shared.clone();
+                let paths = self.paths.clone();
+                let secure_connections_available = self.http.is_some();
+                std::thread::spawn(move || {
+                    let snapshot = crate::diagnostics::Snapshot {
+                        manifest: shared.manifest.lock().unwrap_or_else(PoisonError::into_inner).clone(),
+                        installed: shared.installed.lock().unwrap_or_else(PoisonError::into_inner).clone(),
+                        latest: shared.latest.lock().unwrap_or_else(PoisonError::into_inner).clone(),
+                        failures: shared.diagnostic_failures.lock().unwrap_or_else(PoisonError::into_inner).iter().cloned().collect(),
+                        jobs: shared.jobs.lock().unwrap_or_else(PoisonError::into_inner).keys().cloned().collect(),
+                        detection_complete: shared.detection_complete.load(Ordering::SeqCst),
+                        detection_in_progress: shared.detecting.load(Ordering::SeqCst),
+                        secure_connections_available,
+                        portable: crate::paths::portable_root().is_some(),
+                        sandbox: crate::process::in_sandbox(),
+                    };
+                    shared.emit(Event::DiagnosticsGenerated { request, result: crate::diagnostics::collect(&paths, &snapshot, &context) });
+                });
+            }
+            Command::SaveDiagnostics { request, report } => {
+                let shared = self.shared.clone();
+                let paths = self.paths.clone();
+                std::thread::spawn(move || {
+                    let result = crate::diagnostics::save(&paths, &report).map(|path| {
+                        let display = path.to_string_lossy().into_owned();
+                        *shared.diagnostic_file.lock().unwrap_or_else(PoisonError::into_inner) = Some(path);
+                        display
+                    });
+                    shared.emit(Event::DiagnosticsSaved { request, result });
+                });
+            }
+            Command::RevealDiagnostics => {
+                let shared = self.shared.clone();
+                std::thread::spawn(move || {
+                    let path = shared.diagnostic_file.lock().unwrap_or_else(PoisonError::into_inner).clone();
+                    if let Some(path) = path
+                        && let Err(error) = crate::process::reveal(&path)
+                    {
+                        shared.emit(Event::JobFinished { app: "diagnostics".into(), result: Err(format!("Couldn't show it: {error}")) });
+                    }
+                });
+            }
             Command::CheckForUpdates { force } => self.check(force),
             Command::Detect => self.detect_all(),
             Command::Install { app } => self.start_job(&app, false),
@@ -1013,6 +1077,9 @@ mod tests {
 
     fn shared() -> Shared {
         Shared {
+            diagnostic_failures: Mutex::new(std::collections::VecDeque::new()),
+            diagnostic_file: Mutex::new(None),
+            detection_complete: AtomicBool::new(false),
             events: Mutex::new(Vec::new()),
             waker: Arc::new(|| {}),
             latest: Mutex::new(HashMap::new()),
@@ -1230,6 +1297,55 @@ mod tests {
         let app = CraftApp::by_id(APP).unwrap();
         report_partial(app, &backend.shared, &backend.paths, backend.platform, &BackendOptions::default());
         last_ready(backend.poll())
+    }
+
+    #[test]
+    fn diagnostics_work_offline_and_save_the_reviewed_snapshot_without_starting_jobs() {
+        use artcraft_launcher_core::diagnostics::DiagnosticContext;
+        let Some(platform) = native_platform() else { return };
+        let dir = tempfile::tempdir().unwrap();
+        let mut backend = backend(dir.path(), platform, None);
+        for n in 0..40 {
+            backend.shared.emit(Event::JobFinished { app: APP.into(), result: Err(format!("failed with error {n}")) });
+        }
+        for control in [PAUSED, CANCELLED, INSTALL_CANCELLED] {
+            backend.shared.emit(Event::JobFinished { app: APP.into(), result: Err(control.into()) });
+        }
+        assert_eq!(backend.shared.diagnostic_failures.lock().unwrap().len(), crate::diagnostics::MAX_FAILURES);
+        backend.poll();
+        backend.send(Command::GenerateDiagnostics { request: 7, context: DiagnosticContext::default() });
+        let wait = |backend: &mut NativeBackend| {
+            let started = Instant::now();
+            loop {
+                let events = backend.poll();
+                if !events.is_empty() {
+                    break events;
+                }
+                assert!(started.elapsed() < Duration::from_secs(10));
+                std::thread::sleep(Duration::from_millis(10));
+            }
+        };
+        let report = wait(&mut backend)
+            .into_iter()
+            .find_map(|e| match e {
+                Event::DiagnosticsGenerated { request: 7, result: Ok(report) } => Some(report),
+                _ => None,
+            })
+            .expect("report ready even without HTTPS");
+        let parsed: serde_json::Value = serde_json::from_str(&report).unwrap();
+        assert_eq!(parsed["launcher"]["secure_connections_available"], false);
+        assert_eq!(parsed["recent_failures"].as_array().unwrap().len(), crate::diagnostics::MAX_FAILURES);
+        assert!(backend.shared.jobs.lock().unwrap().is_empty());
+        assert!(!backend.shared.checking.load(Ordering::SeqCst));
+        backend.send(Command::SaveDiagnostics { request: 7, report: report.clone() });
+        let path = wait(&mut backend)
+            .into_iter()
+            .find_map(|e| match e {
+                Event::DiagnosticsSaved { request: 7, result: Ok(path) } => Some(path),
+                _ => None,
+            })
+            .expect("report saved");
+        assert_eq!(std::fs::read_to_string(path).unwrap(), report);
     }
 
     fn last_ready(events: Vec<Event>) -> Option<bool> {

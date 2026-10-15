@@ -58,8 +58,35 @@ struct Fake {
     clock: Rc<Cell<i64>>,
 }
 
+fn test_diagnostic_report() -> String {
+    let apps: Vec<_> = SUITE
+        .iter()
+        .map(|app| {
+            serde_json::json!({
+                "app": app.id, "installed_version": "0.8.2", "install_source": "Msi", "location": "[path]",
+                "local_location_exists": true, "latest_known_version": "0.8.3", "job_in_progress": false,
+            })
+        })
+        .collect();
+    format!(
+        "{{\n  \"schema\": \"artcraft-launcher.diagnostics/v1\",\n  \"launcher\": {{\"version\": \"0.4.1\"}},\n  \"apps\": {}\n}}",
+        serde_json::to_string_pretty(&apps).unwrap()
+    )
+}
+
 impl Backend for Fake {
     fn send(&mut self, command: Command) {
+        if self.pictures.get() != Pictures::Silent {
+            match &command {
+                Command::GenerateDiagnostics { request, .. } => {
+                    self.events.push(Event::DiagnosticsGenerated { request: *request, result: Ok(test_diagnostic_report()) })
+                }
+                Command::SaveDiagnostics { request, .. } => self
+                    .events
+                    .push(Event::DiagnosticsSaved { request: *request, result: Ok("/reports/artcraft-launcher-diagnostics-test.json".into()) }),
+                _ => {}
+            }
+        }
         if let Command::FetchScreenshots { app } = &command {
             self.asked.push(app.clone());
         }
@@ -593,6 +620,82 @@ fn settings_link_to_discord() {
     h.get_by_label("Questions, ideas and news from the ArtCraft team");
     // The header button and the one in Settings.
     assert!(h.query_all_by_label_contains("Discord").count() >= 2);
+}
+
+#[test]
+fn diagnostic_report_is_previewed_before_copy_and_save() {
+    let (mut h, sent) = harness(ViewMode::Grid, egui::Theme::Dark, true);
+    h.run_steps(6);
+    h.get_by_label("Settings").click();
+    h.run_steps(4);
+    h.get_by_label("Diagnostic report").scroll_to_me();
+    h.run_steps(3);
+    h.get_by_label("Diagnostic report").click();
+    h.run_steps(5);
+    assert!(sent.borrow().iter().any(|c| matches!(c, Command::GenerateDiagnostics { context, .. } if !context.include_logs)));
+    assert!(!sent.borrow().iter().any(|c| matches!(c, Command::SaveDiagnostics { .. })));
+    h.get_by_label("Review this local report before sharing it. Nothing is uploaded automatically.");
+    snapshot(&mut h, "diagnostics-dark");
+    h.set_size(egui::vec2(720.0, 500.0));
+    h.run_steps(4);
+    for label in ["Copy report", "Save report", "Refresh report", "Close"] {
+        let rect = h.get_by_label(label).rect();
+        assert!(rect.left() >= 0.0 && rect.right() <= 720.0 && rect.top() >= 0.0 && rect.bottom() <= 500.0, "{label}: {rect:?}");
+    }
+    snapshot(&mut h, "diagnostics-small-dark");
+    h.set_size(egui::vec2(1180.0, 900.0));
+    h.run_steps(4);
+    h.get_by_label("Copy report").click();
+    let mut copied = None;
+    for _ in 0..3 {
+        h.step();
+        if let Some(text) = h.output().platform_output.commands.iter().find_map(|c| match c {
+            egui::OutputCommand::CopyText(text) => Some(text.clone()),
+            _ => None,
+        }) {
+            copied = Some(text);
+        }
+    }
+    let copied = copied.expect("copy command");
+    assert!(copied.contains("diagnostics/v1"));
+    h.get_by_label("Save report").click();
+    h.run_steps(4);
+    assert!(sent.borrow().iter().any(|c| matches!(c, Command::SaveDiagnostics { report, .. } if report == &copied)));
+    h.get_by_label("Show in Finder").click();
+    h.run_steps(2);
+    assert!(sent.borrow().contains(&Command::RevealDiagnostics));
+    h.get_by_label("Include recent warning and error logs").click();
+    h.run_steps(4);
+    assert!(sent.borrow().iter().any(|c| matches!(c, Command::GenerateDiagnostics { context, .. } if context.include_logs)));
+    assert!(h.query_by_label_contains("Saved to").is_none());
+    h.get_by_label("Close").click();
+    h.run_steps(3);
+    assert!(h.query_by_label("Copy report").is_none());
+}
+
+#[test]
+fn diagnostic_collection_can_be_closed_and_is_not_offered_on_web() {
+    let (mut h, sent) = harness_pictures(events(), ViewMode::Grid, egui::Theme::Light, true, 1.0, Rc::new(Cell::new(Pictures::Silent)));
+    h.run_steps(6);
+    h.get_by_label("Settings").click();
+    h.run_steps(4);
+    h.get_by_label("Diagnostic report").scroll_to_me();
+    h.run_steps(3);
+    h.get_by_label("Diagnostic report").click();
+    h.run_steps(4);
+    h.get_by_label("Preparing report…");
+    assert!(sent.borrow().iter().any(|c| matches!(c, Command::GenerateDiagnostics { .. })));
+    assert!(!sent.borrow().iter().any(|c| matches!(c, Command::SaveDiagnostics { .. })));
+    snapshot(&mut h, "diagnostics-collecting-light");
+    h.get_by_label("Close").click();
+    h.run_steps(3);
+    assert!(h.query_by_label("Preparing report…").is_none());
+
+    let (mut web, _) = harness(ViewMode::Grid, egui::Theme::Light, false);
+    web.run_steps(6);
+    web.get_by_label("Settings").click();
+    web.run_steps(4);
+    assert!(web.query_by_label("Diagnostic report").is_none());
 }
 
 #[test]

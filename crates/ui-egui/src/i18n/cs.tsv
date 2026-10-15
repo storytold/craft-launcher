@@ -312,3 +312,20 @@ filter	Installed	Nainstalováno
 	ArtCraft on GitHub	ArtCraft na GitHubu
 	Join the ArtCraft Discord	Připojit se na ArtCraft Discord
 @plural	ArtCraft Launcher · {n} update available|ArtCraft Launcher · {n} updates available	ArtCraft Launcher · {n} dostupná aktualizace|ArtCraft Launcher · {n} dostupné aktualizace|ArtCraft Launcher · {n} dostupných aktualizací
+
+# Diagnostic reports
+	Diagnostic report	Diagnostická zpráva
+	Review this local report before sharing it. Nothing is uploaded automatically.	Před sdílením tuto místní zprávu zkontrolujte. Nic se automaticky neodesílá.
+	Paths, URLs and recognizable secrets are removed. Other personal details may remain in error messages.	Cesty, adresy URL a rozpoznatelné tajné údaje se odstraní. V chybových zprávách mohou zůstat další osobní údaje.
+	Include recent warning and error logs	Zahrnout nedávná varování a chyby z protokolů
+	Preparing report…	Připravuje se zpráva…
+	Couldn't prepare the report. Try again.	Zprávu se nepodařilo připravit. Zkuste to znovu.
+	Couldn't save the report. Check disk space and folder permissions.	Zprávu se nepodařilo uložit. Zkontrolujte místo na disku a oprávnění složky.
+	Saving report…	Ukládá se zpráva…
+	Saved to {path}	Uloženo do {path}
+	Copy report	Kopírovat zprávu
+	Save report	Uložit zprávu
+	Refresh report	Obnovit zprávu
+	Report copied	Zpráva zkopírována
+	Troubleshooting	Řešení problémů
+	Prepare a report to help maintainers investigate installation and startup problems.	Připravte zprávu, která pomůže správcům projektu prozkoumat problémy s instalací a spouštěním.

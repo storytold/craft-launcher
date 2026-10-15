@@ -346,3 +346,20 @@ filter	Installed	Zainstalowane
 	ArtCraft on GitHub	ArtCraft na GitHubie
 	Join the ArtCraft Discord	Dołącz do Discorda ArtCraft
 @plural	ArtCraft Launcher · {n} update available|ArtCraft Launcher · {n} updates available	ArtCraft Launcher · {n} dostępna aktualizacja|ArtCraft Launcher · {n} dostępne aktualizacje|ArtCraft Launcher · {n} dostępnych aktualizacji
+
+# Diagnostic reports
+	Diagnostic report	Raport diagnostyczny
+	Review this local report before sharing it. Nothing is uploaded automatically.	Sprawdź ten lokalny raport przed udostępnieniem. Nic nie jest wysyłane automatycznie.
+	Paths, URLs and recognizable secrets are removed. Other personal details may remain in error messages.	Ścieżki, adresy URL i rozpoznawalne dane poufne są usuwane. Komunikaty o błędach mogą nadal zawierać inne dane osobowe.
+	Include recent warning and error logs	Dołącz ostatnie ostrzeżenia i błędy z dzienników
+	Preparing report…	Przygotowywanie raportu…
+	Couldn't prepare the report. Try again.	Nie udało się przygotować raportu. Spróbuj ponownie.
+	Couldn't save the report. Check disk space and folder permissions.	Nie udało się zapisać raportu. Sprawdź miejsce na dysku i uprawnienia folderu.
+	Saving report…	Zapisywanie raportu…
+	Saved to {path}	Zapisano w {path}
+	Copy report	Kopiuj raport
+	Save report	Zapisz raport
+	Refresh report	Odśwież raport
+	Report copied	Raport skopiowany
+	Troubleshooting	Rozwiązywanie problemów
+	Prepare a report to help maintainers investigate installation and startup problems.	Przygotuj raport, aby pomóc opiekunom projektu zbadać problemy z instalacją i uruchamianiem.

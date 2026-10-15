@@ -181,6 +181,13 @@ artcraft-launcher
 |---|---|
 | `artcraft-launcher-web-<ver>.zip` | The catalog as a static site you can host anywhere; see [`packaging/web/README.md`](packaging/web/README.md) |
 
+## Diagnostic reports
+
+For installation or startup problems, open **Settings → Diagnostic report** on desktop.
+Review the local report, then copy it into your bug report or save it as JSON. Recent warning
+and error log excerpts are optional. Nothing is uploaded automatically; see
+[diagnostic reports](docs/diagnostics.md) for the contents and privacy limits.
+
 ## Build from source
 
 You need a recent stable Rust (1.90 or newer). On Linux, install the windowing headers first

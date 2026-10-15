@@ -73,6 +73,7 @@ pub(crate) enum Dialog {
     Notes(String),
     ConfirmUninstall(String),
     Settings,
+    Diagnostics,
     LauncherUpdate(artcraft_launcher_core::Release),
 }
 
@@ -84,12 +85,14 @@ impl Dialog {
             Dialog::Notes(id) => ("notes", id),
             Dialog::ConfirmUninstall(id) => ("uninstall", id),
             Dialog::Settings => ("settings", ""),
+            Dialog::Diagnostics => ("diagnostics", ""),
             Dialog::LauncherUpdate(r) => ("launcher-update", &r.tag),
         }
     }
 }
 
 pub struct LauncherUi {
+    pub(crate) diagnostics: crate::diagnostics::State,
     pub(crate) backend: Box<dyn Backend>,
     pub settings: Settings,
     pub(crate) entries: Vec<AppEntry>,
@@ -167,6 +170,7 @@ impl LauncherUi {
         let caps = backend.capabilities();
         let platform = backend.platform();
         Self {
+            diagnostics: crate::diagnostics::State::default(),
             backend,
             settings,
             entries: SUITE.iter().map(AppEntry::new).collect(),
@@ -315,6 +319,14 @@ impl LauncherUi {
     /// Returns whether app state changed.
     fn handle(&mut self, ctx: &egui::Context, event: Event) -> bool {
         match event {
+            Event::DiagnosticsGenerated { request, result } => {
+                self.diagnostics.generated(request, result);
+                false
+            }
+            Event::DiagnosticsSaved { request, result } => {
+                self.diagnostics.saved(request, result);
+                false
+            }
             Event::Latest { app, latest, from } => {
                 if let Some(e) = self.entry_mut(&app) {
                     // A failed check keeps the release we already know about (and where it came from).

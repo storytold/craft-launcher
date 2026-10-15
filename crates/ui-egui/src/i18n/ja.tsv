@@ -347,3 +347,20 @@ filter	Installed	インストール済み
 	ArtCraft on GitHub	GitHub の ArtCraft
 	Join the ArtCraft Discord	ArtCraft Discord に参加
 @plural	ArtCraft Launcher · {n} update available|ArtCraft Launcher · {n} updates available	ArtCraft Launcher · {n} 件の更新があります
+
+# Diagnostic reports
+	Diagnostic report	診断レポート
+	Review this local report before sharing it. Nothing is uploaded automatically.	共有する前に、このローカルレポートを確認してください。自動アップロードは行われません。
+	Paths, URLs and recognizable secrets are removed. Other personal details may remain in error messages.	パス、URL、識別可能な機密情報は削除されます。エラーメッセージにその他の個人情報が残る場合があります。
+	Include recent warning and error logs	最近の警告とエラーのログを含める
+	Preparing report…	レポートを作成中…
+	Couldn't prepare the report. Try again.	レポートを作成できませんでした。もう一度お試しください。
+	Couldn't save the report. Check disk space and folder permissions.	レポートを保存できませんでした。ディスクの空き容量とフォルダーのアクセス権を確認してください。
+	Saving report…	レポートを保存中…
+	Saved to {path}	保存先: {path}
+	Copy report	レポートをコピー
+	Save report	レポートを保存
+	Refresh report	レポートを更新
+	Report copied	レポートをコピーしました
+	Troubleshooting	トラブルシューティング
+	Prepare a report to help maintainers investigate installation and startup problems.	インストールや起動の問題を調査する開発者のためにレポートを作成します。

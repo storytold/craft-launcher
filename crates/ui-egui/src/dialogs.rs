@@ -26,6 +26,7 @@ impl LauncherUi {
             Dialog::Notes(id) => modal.show(ctx, |ui| close = self.notes_dialog(ui, id)),
             Dialog::ConfirmUninstall(id) => modal.show(ctx, |ui| close = self.uninstall_dialog(ui, id)),
             Dialog::Settings => modal.show(ctx, |ui| close = self.settings_dialog(ui, host)),
+            Dialog::Diagnostics => modal.show(ctx, |ui| close = self.diagnostics_dialog(ui)),
             Dialog::LauncherUpdate(r) => modal.show(ctx, |ui| close = self.launcher_update_dialog(ui, r)),
         };
         if close || response.should_close() {
@@ -336,6 +337,14 @@ impl LauncherUi {
             {
                 let ctx = ui.ctx().clone();
                 self.toast(&ctx, fmt(tl!("Couldn't change the login item: {e}"), &[("e", &e)]), true);
+            }
+        }
+
+        if self.caps.manage_apps {
+            section(ui, tl!("Troubleshooting"));
+            ui.label(RichText::new(tl!("Prepare a report to help maintainers investigate installation and startup problems.")).color(t.muted));
+            if widgets::button(ui, tl!("Diagnostic report"), Kind::Secondary, 0.0).clicked() {
+                self.open_diagnostics();
             }
         }
 

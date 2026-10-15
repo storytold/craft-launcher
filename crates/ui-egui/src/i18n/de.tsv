@@ -344,3 +344,20 @@ filter	Installed	Installiert
 	Loading pictures…	Bilder werden geladen…
 	Pictures couldn't be loaded. Reopen this page to try again.	Die Bilder konnten nicht geladen werden. Beim erneuten Öffnen der Seite wird es noch einmal versucht.
 @plural	ArtCraft Launcher · {n} update available|ArtCraft Launcher · {n} updates available	ArtCraft Launcher · {n} Update verfügbar|ArtCraft Launcher · {n} Updates verfügbar
+
+# Diagnostic reports
+	Diagnostic report	Diagnosebericht
+	Review this local report before sharing it. Nothing is uploaded automatically.	Prüfe diesen lokalen Bericht, bevor du ihn teilst. Es wird nichts automatisch hochgeladen.
+	Paths, URLs and recognizable secrets are removed. Other personal details may remain in error messages.	Pfade, URLs und erkennbare Zugangsdaten werden entfernt. Fehlermeldungen können weitere persönliche Angaben enthalten.
+	Include recent warning and error logs	Letzte Warnungen und Fehler aus den Logs einschließen
+	Preparing report…	Bericht wird erstellt…
+	Couldn't prepare the report. Try again.	Der Bericht konnte nicht erstellt werden. Versuche es erneut.
+	Couldn't save the report. Check disk space and folder permissions.	Der Bericht konnte nicht gespeichert werden. Prüfe Speicherplatz und Ordnerberechtigungen.
+	Saving report…	Bericht wird gespeichert…
+	Saved to {path}	Gespeichert unter {path}
+	Copy report	Bericht kopieren
+	Save report	Bericht speichern
+	Refresh report	Bericht aktualisieren
+	Report copied	Bericht kopiert
+	Troubleshooting	Fehlerdiagnose
+	Prepare a report to help maintainers investigate installation and startup problems.	Erstelle einen Bericht, damit die Maintainer Installations- und Startprobleme untersuchen können.

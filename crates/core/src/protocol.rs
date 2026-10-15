@@ -13,6 +13,18 @@ use crate::status::Installed;
 /// Asks the backend to do something. Results arrive later as [`Event`]s.
 #[derive(Clone, Debug, PartialEq)]
 pub enum Command {
+    /// Prepare a local report on a worker. The id prevents late results replacing a new preview.
+    GenerateDiagnostics {
+        request: u64,
+        context: crate::diagnostics::DiagnosticContext,
+    },
+    /// Save exactly the report reviewed by the user, without collecting it again.
+    SaveDiagnostics {
+        request: u64,
+        report: String,
+    },
+    /// Reveal the last report saved by this backend, never an arbitrary caller-supplied path.
+    RevealDiagnostics,
     /// Look up the latest releases. `force` skips the freshness window (the user pressed Refresh).
     CheckForUpdates {
         force: bool,
@@ -153,6 +165,14 @@ impl Source {
 /// Something the backend wants the UI to know.
 #[derive(Clone, Debug, PartialEq)]
 pub enum Event {
+    DiagnosticsGenerated {
+        request: u64,
+        result: Result<String, String>,
+    },
+    DiagnosticsSaved {
+        request: u64,
+        result: Result<String, String>,
+    },
     Latest {
         app: String,
         latest: LatestRelease,

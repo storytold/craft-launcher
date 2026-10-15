@@ -340,3 +340,20 @@ filter	Installed	Установлены
 	Loading pictures…	Загрузка изображений…
 	Pictures couldn't be loaded. Reopen this page to try again.	Не удалось загрузить изображения. Откройте страницу снова, чтобы повторить попытку.
 @plural	ArtCraft Launcher · {n} update available|ArtCraft Launcher · {n} updates available	ArtCraft Launcher · {n} обновление|ArtCraft Launcher · {n} обновления|ArtCraft Launcher · {n} обновлений
+
+# Diagnostic reports
+	Diagnostic report	Диагностический отчёт
+	Review this local report before sharing it. Nothing is uploaded automatically.	Просмотрите этот локальный отчёт перед отправкой. Ничего не загружается автоматически.
+	Paths, URLs and recognizable secrets are removed. Other personal details may remain in error messages.	Пути, URL и распознаваемые секретные данные удаляются. В сообщениях об ошибках могут остаться другие личные сведения.
+	Include recent warning and error logs	Включить последние предупреждения и ошибки из журналов
+	Preparing report…	Подготовка отчёта…
+	Couldn't prepare the report. Try again.	Не удалось подготовить отчёт. Попробуйте ещё раз.
+	Couldn't save the report. Check disk space and folder permissions.	Не удалось сохранить отчёт. Проверьте свободное место и права доступа к папке.
+	Saving report…	Сохранение отчёта…
+	Saved to {path}	Сохранено в {path}
+	Copy report	Копировать отчёт
+	Save report	Сохранить отчёт
+	Refresh report	Обновить отчёт
+	Report copied	Отчёт скопирован
+	Troubleshooting	Диагностика проблем
+	Prepare a report to help maintainers investigate installation and startup problems.	Подготовьте отчёт, чтобы помочь разработчикам разобраться с проблемами установки и запуска.

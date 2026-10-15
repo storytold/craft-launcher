@@ -312,3 +312,20 @@ figcraft	Interface design and prototyping	界面设计与原型制作
 @msg	{name} installed: {version} (this release publishes no checksum, so only its size was checked)	{name} 已安装：{version}（此版本未发布校验和，因此只检查了文件大小）
 @msg	{name} was removed	{name} 已卸载
 @msg	{name} is running. Quit it, then try again.	{name} 正在运行。请先退出，然后重试。
+
+# Diagnostic reports
+	Diagnostic report	诊断报告
+	Review this local report before sharing it. Nothing is uploaded automatically.	分享前请检查此本地报告。不会自动上传任何内容。
+	Paths, URLs and recognizable secrets are removed. Other personal details may remain in error messages.	路径、URL 和可识别的机密信息会被移除。错误消息中可能仍有其他个人信息。
+	Include recent warning and error logs	包含最近的警告和错误日志
+	Preparing report…	正在生成报告…
+	Couldn't prepare the report. Try again.	无法生成报告。请重试。
+	Couldn't save the report. Check disk space and folder permissions.	无法保存报告。请检查磁盘空间和文件夹权限。
+	Saving report…	正在保存报告…
+	Saved to {path}	已保存到 {path}
+	Copy report	复制报告
+	Save report	保存报告
+	Refresh report	刷新报告
+	Report copied	报告已复制
+	Troubleshooting	故障排查
+	Prepare a report to help maintainers investigate installation and startup problems.	生成报告，帮助维护者调查安装和启动问题。

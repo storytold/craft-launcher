@@ -345,3 +345,20 @@ filter	Installed	Telepítve
 	ArtCraft on GitHub	ArtCraft a GitHubon
 	Join the ArtCraft Discord	Csatlakozás az ArtCraft Discord-közösségéhez
 @plural	ArtCraft Launcher · {n} update available|ArtCraft Launcher · {n} updates available	ArtCraft Launcher · {n} frissítés elérhető|ArtCraft Launcher · {n} frissítés elérhető
+
+# Diagnostic reports
+	Diagnostic report	Diagnosztikai jelentés
+	Review this local report before sharing it. Nothing is uploaded automatically.	Megosztás előtt nézd át ezt a helyi jelentést. Semmi sem töltődik fel automatikusan.
+	Paths, URLs and recognizable secrets are removed. Other personal details may remain in error messages.	Az útvonalak, URL-ek és felismerhető titkos adatok eltávolításra kerülnek. A hibaüzenetekben más személyes adatok megmaradhatnak.
+	Include recent warning and error logs	Legutóbbi figyelmeztetések és hibák hozzáadása a naplókból
+	Preparing report…	Jelentés készítése…
+	Couldn't prepare the report. Try again.	Nem sikerült elkészíteni a jelentést. Próbáld újra.
+	Couldn't save the report. Check disk space and folder permissions.	Nem sikerült menteni a jelentést. Ellenőrizd a lemezterületet és a mappa jogosultságait.
+	Saving report…	Jelentés mentése…
+	Saved to {path}	Mentve ide: {path}
+	Copy report	Jelentés másolása
+	Save report	Jelentés mentése
+	Refresh report	Jelentés frissítése
+	Report copied	Jelentés másolva
+	Troubleshooting	Hibaelhárítás
+	Prepare a report to help maintainers investigate installation and startup problems.	Készíts jelentést, hogy segíts a karbantartóknak kivizsgálni a telepítési és indítási problémákat.
