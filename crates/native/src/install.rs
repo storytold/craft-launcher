@@ -461,6 +461,7 @@ fn cancelled(stop: &Stop) -> impl Fn() -> bool + '_ {
 pub(crate) mod linux {
     use std::ffi::{OsStr, OsString};
     use std::os::unix::fs::PermissionsExt;
+    use std::time::Duration;
 
     use artcraft_launcher_core::distro;
     use artcraft_launcher_core::protocol::CANCELLED;
@@ -772,6 +773,23 @@ pub(crate) mod linux {
         data.join("icons/hicolor/128x128/apps").join(format!("{}.png", app.bundle_id()))
     }
 
+    /// Tells the desktop's MIME database that a menu entry under this path was written or removed.
+    ///
+    /// What the entries say isn't enough on its own: GLib-based desktops (GTK file managers, most
+    /// desktops' "Open with") read the `mimeinfo.cache` sitting beside them, so without this the
+    /// app's file types stay unknown — GridCraft is installed, its entry lists `.xlsx`, and no
+    /// click can reach it — and an entry that's gone keeps being offered until the next refresh.
+    /// Best effort: a failure here never fails the install, and `desktop-file-utils` (the package
+    /// holding `update-desktop-database`) may not be installed at all.
+    fn refresh_mime_database(desktop: &Path) {
+        let Some(dir) = desktop.parent().and_then(Path::to_str) else {
+            return;
+        };
+        if let Err(e) = crate::process::run("update-desktop-database", &[dir], Duration::from_secs(10)) {
+            log::debug!("couldn't refresh the desktop's MIME database: {e}");
+        }
+    }
+
     /// Adds `appimage` to the desktop's menu. Best effort: a failure here never fails the
     /// install. Returns the files written, for the record.
     pub fn integrate(app: &CraftApp, appimage: &Path, replaced: &[PathBuf], previous: Option<&Record>) -> Vec<PathBuf> {
@@ -820,7 +838,10 @@ pub(crate) mod linux {
             return written;
         }
         match crate::paths::write_atomic(&desktop, text.as_bytes()) {
-            Ok(()) => written.push(desktop),
+            Ok(()) => {
+                refresh_mime_database(&desktop);
+                written.push(desktop);
+            }
             Err(e) => log::warn!("{}: couldn't add the menu entry: {e}", app.name),
         }
         written
@@ -844,6 +865,7 @@ pub(crate) mod linux {
             let ours_and_dangling = crate::desktop_entry::is_ours(&text) && program.is_none_or(|p| !p.exists());
             if runs_removed || ours_and_dangling {
                 let _ = std::fs::remove_file(&desktop);
+                refresh_mime_database(&desktop);
             }
         }
         let icon = icon_path(data, app);
@@ -1591,6 +1613,7 @@ mod tests {
         let text = std::fs::read_to_string(&desktop).unwrap();
         assert!(text.contains("Exec=\"") && text.contains("My Apps/wordcraft-0.3.0-linux-x86_64.AppImage\" %F\n"), "{text}");
         assert!(text.contains("Icon=ai.storyteller.wordcraft\n"));
+        assert!(text.contains(";text/plain;\n"), "{text}");
         assert!(std::fs::read(&icon).unwrap().starts_with(b"\x89PNG"));
         let rec = record("0.3.0", PackageKind::AppImage, new.clone(), files, false);
 
