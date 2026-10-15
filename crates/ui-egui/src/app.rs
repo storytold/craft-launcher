@@ -108,6 +108,8 @@ pub struct LauncherUi {
     /// Alerts from the feed, shown as popups until acknowledged.
     pub(crate) alerts: Vec<artcraft_launcher_core::feed::Notice>,
     pub(crate) search: String,
+    last_view: ViewMode,
+    view_transition_at: Option<f64>,
     pub(crate) toasts: Vec<Toast>,
     pub(crate) dialog: Option<Dialog>,
     /// The app whose details drawer is open (or closing: see `detail_shown`).
@@ -160,6 +162,7 @@ const RESCAN_ON_FOCUS_AFTER: i64 = 30;
 
 impl LauncherUi {
     pub fn new(ctx: &egui::Context, backend: Box<dyn Backend>, settings: Settings) -> Self {
+        let initial_view = settings.view;
         let lang = effective_lang(&settings.language);
         let cjk_font = lang.needs_cjk_font().then_some(lang);
         theme::install_fonts(ctx, cjk_font);
@@ -181,6 +184,8 @@ impl LauncherUi {
             announcements: Vec::new(),
             alerts: Vec::new(),
             search: String::new(),
+            last_view: initial_view,
+            view_transition_at: None,
             toasts: Vec::new(),
             dialog: None,
             detail: None,
@@ -342,8 +347,11 @@ impl LauncherUi {
                     if matches!(self.dialog, Some(Dialog::LauncherUpdate(_))) {
                         self.dialog = None;
                     }
-                } else if let Some(e) = self.entry_mut(&app) {
-                    e.job = Some(phase);
+                } else {
+                    crate::widgets::clear_button_fade(ctx, &app);
+                    if let Some(e) = self.entry_mut(&app) {
+                        e.job = Some(phase);
+                    }
                 }
                 false
             }
@@ -370,6 +378,9 @@ impl LauncherUi {
             }
             Event::JobFinished { app, result } => {
                 let launcher = app == artcraft_launcher_core::catalog::LAUNCHER_ID;
+                if !launcher {
+                    crate::widgets::clear_button_fade(ctx, &app);
+                }
                 // What the job was doing when it ended says what a cancellation called off.
                 let last = if launcher { self.launcher_job.take() } else { self.entry(&app).and_then(|e| e.job) };
                 if let Some(e) = self.entry_mut(&app) {
@@ -515,6 +526,10 @@ impl LauncherUi {
             motion::apply(&ctx, self.reduce_motion);
             self.applied_motion = Some(self.reduce_motion);
         }
+        if self.settings.view != self.last_view {
+            self.last_view = self.settings.view;
+            self.view_transition_at = Some(now);
+        }
         let tokens = Tokens::get(&ctx);
         if self.entries.iter().any(|e| e.job.is_some()) || self.checking {
             ctx.request_repaint_after(Duration::from_millis(50));
@@ -543,6 +558,18 @@ impl LauncherUi {
                     ViewMode::Table => egui::ScrollArea::both(),
                 };
                 scroll.auto_shrink(false).show(ui, |ui| {
+                    if self.reduce_motion {
+                        self.view_transition_at = None;
+                    } else if let Some(started) = self.view_transition_at {
+                        let progress = ((now - started) / 0.14).clamp(0.0, 1.0) as f32;
+                        let eased = progress * progress * (3.0 - 2.0 * progress);
+                        ui.set_opacity(0.9 + 0.1 * eased);
+                        if progress < 1.0 {
+                            ctx.request_repaint_after(Duration::from_millis(16));
+                        } else {
+                            self.view_transition_at = None;
+                        }
+                    }
                     if ids.is_empty() {
                         ui.add_space(40.0);
                         ui.vertical_centered(|ui| {

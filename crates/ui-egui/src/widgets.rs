@@ -103,12 +103,14 @@ pub fn nav_link(ui: &mut Ui, text: &str, tip: &str, height: f32, active: bool) -
     let t = Tokens::get(ui.ctx());
     let galley = hud_galley(ui, text, t.muted);
     let (rect, resp) = ui.allocate_exact_size(vec2(galley.size().x + 20.0, height), Sense::click());
-    let on = active || resp.hovered();
+    let selected = ui.ctx().animate_bool(ui.id().with(("nav-selected", text)), active);
+    let hovered = ui.ctx().animate_bool(ui.id().with(("nav-hovered", text)), resp.hovered());
+    let on = selected.max(hovered);
     let span = Rect::from_center_size(rect.center(), galley.size() + vec2(12.0, 6.0));
-    if on {
-        ui.painter().rect_filled(span, CornerRadius::ZERO, t.invert_bg);
+    if on > 0.0 {
+        ui.painter().rect_filled(span, CornerRadius::ZERO, Color32::TRANSPARENT.lerp_to_gamma(t.invert_bg, on));
     }
-    paint_centred(ui, rect, galley, if on { t.invert_fg } else { t.muted });
+    paint_centred(ui, rect, galley, t.muted.lerp_to_gamma(t.invert_fg, on));
     resp.widget_info(|| egui::WidgetInfo::selected(egui::WidgetType::Button, true, active, text));
     resp.on_hover_text(tip).on_hover_cursor(egui::CursorIcon::PointingHand)
 }
@@ -319,12 +321,53 @@ pub fn button_width(ui: &Ui, text: &str, minimum: f32) -> f32 {
 
 /// A square button with a mono upper-case label, at least `width` wide.
 pub fn button(ui: &mut Ui, text: &str, kind: Kind, width: f32) -> Response {
+    button_impl(ui, text, kind, width, None)
+}
+
+/// A primary action that fades out after activation while its work starts.
+pub fn button_fade_out(ui: &mut Ui, text: &str, width: f32, fade_key: &str) -> Response {
+    button_impl(ui, text, Kind::Primary, width, Some(fade_key))
+}
+
+/// Clears a fading action when its backend job starts or ends.
+pub(crate) fn clear_button_fade(ctx: &egui::Context, fade_key: &str) {
+    let id = egui::Id::new(("action-button-fade", fade_key));
+    ctx.data_mut(|data| data.remove_temp::<f64>(id));
+}
+
+fn button_impl(ui: &mut Ui, text: &str, kind: Kind, width: f32, fade_key: Option<&str>) -> Response {
     let t = Tokens::get(ui.ctx());
     let galley = caps(ui, text, theme::HUD_SIZE, theme::mono_bold(), theme::BUTTON_SPACING, t.ink);
     let size = vec2((galley.size().x + 32.0).max(width), theme::CONTROL_H);
     let (rect, resp) = ui.allocate_exact_size(size, Sense::click());
     let enabled = ui.is_enabled();
     let hovered = resp.hovered() && enabled;
+    let reduce_motion = ui.style().animation_time == 0.0;
+    let fade_id = fade_key.map(|key| egui::Id::new(("action-button-fade", key)));
+    if resp.clicked()
+        && let Some(fade_id) = fade_id
+    {
+        let now = ui.input(|input| input.time);
+        ui.ctx().data_mut(|data| data.insert_temp(fade_id, now));
+    }
+    let started = fade_id.and_then(|id| ui.ctx().data(|data| data.get_temp::<f64>(id)));
+    let opacity = if let Some(started) = started {
+        if reduce_motion {
+            0.0
+        } else {
+            const FADE_SECS: f64 = 0.14;
+            let elapsed = ui.input(|input| input.time) - started;
+            if elapsed >= FADE_SECS {
+                0.0
+            } else {
+                let progress = (elapsed / FADE_SECS).clamp(0.0, 1.0) as f32;
+                ui.ctx().request_repaint_after(std::time::Duration::from_millis(16));
+                1.0 - progress * progress * (3.0 - 2.0 * progress)
+            }
+        }
+    } else {
+        1.0
+    };
     let (fill, stroke, color) = match kind {
         Kind::Primary => (t.invert_bg.gamma_multiply(if hovered { 0.8 } else { 1.0 }), Stroke::NONE, t.invert_fg),
         Kind::Danger => (t.bad.gamma_multiply(if hovered { 0.8 } else { 1.0 }), Stroke::NONE, Color32::WHITE),
@@ -333,8 +376,18 @@ pub fn button(ui: &mut Ui, text: &str, kind: Kind, width: f32) -> Response {
     };
     // Disabled: the whole button at half strength, like the site's `opacity-50`.
     let fade = |c: Color32| if enabled { c } else { c.gamma_multiply(0.5) };
-    ui.painter().rect(rect, CornerRadius::ZERO, fade(fill), Stroke::new(stroke.width, fade(stroke.color)), egui::StrokeKind::Inside);
-    paint_centred(ui, rect, galley, fade(color));
+    let mut painter = ui.painter().clone();
+    painter.set_opacity(opacity);
+    painter.rect(rect, CornerRadius::ZERO, fade(fill), Stroke::new(stroke.width, fade(stroke.color)), egui::StrokeKind::Inside);
+    painter.galley_with_override_text_color(rect.center() - galley.size() / 2.0, galley, fade(color));
+    let spinner_opacity = 1.0 - opacity;
+    if spinner_opacity > 0.0 {
+        ui.ctx().request_repaint_after(std::time::Duration::from_millis(50));
+        egui::Spinner::new()
+            .size(16.0)
+            .color(t.ink_strong.gamma_multiply(spinner_opacity))
+            .paint_at(ui, Rect::from_center_size(rect.center(), vec2(16.0, 16.0)));
+    }
     resp.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Button, enabled, text));
     if enabled { resp.on_hover_cursor(egui::CursorIcon::PointingHand) } else { resp }
 }
@@ -368,11 +421,10 @@ pub fn cells<T: PartialEq + Copy>(ui: &mut Ui, value: &mut T, options: &[(T, Cel
             let w = label.size().x + count.as_ref().map_or(0.0, |(g, _)| g.size().x + 8.0) + 24.0;
             let (rect, resp) = ui.allocate_exact_size(vec2(w, theme::CONTROL_H), Sense::click());
             let hovered = resp.hovered();
-            let (fill, ink) = match (on, hovered) {
-                (true, _) => (t.invert_bg, t.invert_fg),
-                (false, true) => (t.sunken, t.ink_strong),
-                (false, false) => (Color32::TRANSPARENT, t.muted),
-            };
+            let selected = ui.ctx().animate_bool(ui.id().with(("cell-selected", cell.label)), on);
+            let hover = ui.ctx().animate_bool(ui.id().with(("cell-hovered", cell.label)), hovered && !on);
+            let fill = Color32::TRANSPARENT.lerp_to_gamma(t.sunken, hover).lerp_to_gamma(t.invert_bg, selected);
+            let ink = t.muted.lerp_to_gamma(t.ink_strong, hover).lerp_to_gamma(t.invert_fg, selected);
             ui.painter().rect_filled(rect, CornerRadius::ZERO, fill);
             let text_rect = rect.shrink2(vec2(12.0, 0.0));
             let label_w = label.size().x;

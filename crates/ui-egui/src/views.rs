@@ -758,7 +758,7 @@ impl LauncherUi {
                 w if w < 220.0 => format!("{}{pct}", tl!("Resume")),
                 _ => format!("{}{pct}", tl!("Resume download")),
             };
-            let resp = widgets::button(ui, &label, Kind::Primary, resume_w);
+            let resp = widgets::button_fade_out(ui, &label, resume_w, &id);
             let tip = if p.total > 0 {
                 fmt(tl!("{done} of {total} downloaded"), &[("done", &widgets::human_bytes(p.done)), ("total", &widgets::human_bytes(p.total))])
             } else {
@@ -775,18 +775,18 @@ impl LauncherUi {
         }
         match self.primary_action(entry, status) {
             Primary::Install => {
-                if widgets::button(ui, tl!("Install"), Kind::Primary, main_w).clicked() {
+                if widgets::button_fade_out(ui, tl!("Install"), main_w, &id).clicked() {
                     self.send(Command::Install { app: id.clone() });
                 }
             }
             Primary::Retry(label) => {
                 let tip = tl!("The download is still here. It's checked again, then installed.");
-                if widgets::button(ui, &label, Kind::Primary, main_w).on_hover_text(tip).clicked() {
+                if widgets::button_fade_out(ui, &label, main_w, &id).on_hover_text(tip).clicked() {
                     self.send(Command::Install { app: id.clone() });
                 }
             }
             Primary::Update(v) => {
-                if widgets::button(ui, &fmt(tl!("Update to {v}"), &[("v", &v)]), Kind::Primary, main_w).clicked() {
+                if widgets::button_fade_out(ui, &fmt(tl!("Update to {v}"), &[("v", &v)]), main_w, &id).clicked() {
                     self.send(Command::Install { app: id.clone() });
                 }
             }

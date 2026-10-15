@@ -81,7 +81,8 @@ pub fn start() {
                 eframe::WebOptions::default(),
                 Box::new(|cc| {
                     let ctx = cc.egui_ctx.clone();
-                    let settings: Settings = cc.storage.and_then(|s| eframe::get_value(s, SETTINGS_KEY)).unwrap_or_default();
+                    let mut settings: Settings = cc.storage.and_then(|s| eframe::get_value(s, SETTINGS_KEY)).unwrap_or_default();
+                    settings.view = Default::default();
                     let backend = WebBackend::new(ctx.clone());
                     Ok(Box::new(WebApp { ui: LauncherUi::new(&ctx, Box::new(backend), settings) }))
                 }),

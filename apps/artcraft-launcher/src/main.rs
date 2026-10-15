@@ -492,9 +492,9 @@ impl Launcher {
     /// event loop running, so this waits for the first window there.
     fn start(&mut self, settings: Option<Settings>, waker: &Arc<Waker>) {
         self.started = true;
-        if let Some(settings) = settings {
-            self.ui.settings = settings;
-        }
+        let mut settings = settings.unwrap_or_default();
+        settings.view = Default::default();
+        self.ui.settings = settings;
         self.waker = Some(waker.clone());
         let (wake, on_quit) = (waker.clone(), waker.clone());
         match tray::Tray::new(move || wake.wake(), move || on_quit.quit_from_tray()) {
