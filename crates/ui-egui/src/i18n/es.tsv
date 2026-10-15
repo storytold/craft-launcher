@@ -151,6 +151,7 @@
 	Disk image (.dmg)	Imagen de disco (.dmg)
 	Debian package (.deb)	Paquete Debian (.deb)
 	RPM package (.rpm)	Paquete RPM (.rpm)
+	Arch package (.pkg.tar.zst)	Paquete Arch (.pkg.tar.zst)
 	Flatpak bundle	Paquete Flatpak
 	Tarball (.tar.gz)	Archivo tar (.tar.gz)
 photocraft	Image editing	Edición de imágenes
@@ -277,6 +278,7 @@ filter	Installed	Instaladas
 @msg	{name} installed: {version} (this release publishes no checksum, so only its size was checked)	{name} instalada: {version} (esta versión no publica la suma de comprobación, así que solo se comprobó su tamaño)
 @msg	{name} was removed	Se quitó {name}
 @msg	{name} is running. Quit it, then try again.	{name} está abierta. Ciérrala y vuelve a intentarlo.
+@msg	{name} was installed from the {repo} repository ({pkg}). Update it with sudo pacman -Syu	{name} se instaló desde el repositorio {repo} ({pkg}). Actualízala con sudo pacman -Syu
 @id	app.install	Instalar
 @id	app.update	Actualizar a {v}
 @id	app.open	Abrir

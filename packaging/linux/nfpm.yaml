@@ -1,6 +1,7 @@
-# .deb and .rpm packages (nfpm: https://nfpm.goreleaser.com). Run by package.sh, which stages
-# the file tree, substitutes its path for ${STAGE} (nfpm doesn't expand env vars in `src`) and
-# exports VERSION and NFPM_ARCH.
+# .deb, .rpm and Arch (.pkg.tar.zst) packages (nfpm: https://nfpm.goreleaser.com). Run by
+# package.sh, which stages the file tree, substitutes its path for ${STAGE} (nfpm doesn't expand
+# env vars in `src`) and exports VERSION and NFPM_ARCH. For the Arch package it also renames the
+# package to the bundle id (see `archlinux` below).
 #
 #   nfpm package -f packaging/linux/nfpm.yaml -p deb -t dist/release/
 name: artcraft-launcher
@@ -63,6 +64,29 @@ overrides:
     recommends:
       - mesa-vulkan-drivers
       - xdg-desktop-portal
+  # Named ai.storyteller.artcraft-launcher, not artcraft-launcher: the AUR already has
+  # artcraft-launcher (built from source) and artcraft-launcher-git, and an AUR helper treats any
+  # installed package with an AUR name as its own and rebuilds it from source on the next update.
+  # The bundle id is also how the launcher tells this package (which it updates with `pacman -U`)
+  # from an AUR build (which it leaves to the AUR helper).
+  archlinux:
+    depends:
+      - glibc
+      - gcc-libs
+      - hicolor-icon-theme
+      - wayland
+      - libxkbcommon
+      - libxkbcommon-x11
+      - libx11
+      - libxcursor
+      - libxi
+      - libglvnd
+    provides:
+      - artcraft-launcher
+    conflicts:
+      - artcraft-launcher
+      - artcraft-launcher-bin
+      - artcraft-launcher-git
 
 contents:
   - src: ${STAGE}/usr/bin/artcraft-launcher

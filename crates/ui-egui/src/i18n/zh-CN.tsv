@@ -287,6 +287,7 @@ figcraft	Interface design and prototyping	界面设计与原型制作
 	Disk image (.dmg)	磁盘映像 (.dmg)
 	Debian package (.deb)	Debian 软件包 (.deb)
 	RPM package (.rpm)	RPM 软件包 (.rpm)
+	Arch package (.pkg.tar.zst)	Arch 软件包 (.pkg.tar.zst)
 	Flatpak bundle	Flatpak 包
 	Tarball (.tar.gz)	压缩包 (.tar.gz)
 	App details	应用详情
@@ -312,3 +313,4 @@ figcraft	Interface design and prototyping	界面设计与原型制作
 @msg	{name} installed: {version} (this release publishes no checksum, so only its size was checked)	{name} 已安装：{version}（此版本未发布校验和，因此只检查了文件大小）
 @msg	{name} was removed	{name} 已卸载
 @msg	{name} is running. Quit it, then try again.	{name} 正在运行。请先退出，然后重试。
+@msg	{name} was installed from the {repo} repository ({pkg}). Update it with sudo pacman -Syu	{name} 是从 {repo} 软件仓库安装的（{pkg}）。请使用 sudo pacman -Syu 更新。

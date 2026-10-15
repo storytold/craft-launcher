@@ -143,6 +143,13 @@ fn detect(exe: &Path) -> Option<Install> {
     if process::capture("rpm", &["-q", LAUNCHER.id], t).is_some() {
         return Some(Install::Package(PackageKind::Rpm, exe.to_path_buf()));
     }
+    // The release's own Arch package (named by the bundle id). An AUR or repository package
+    // (`artcraft-launcher`, `artcraft-launcher-bin`) is left to pacman and the AUR helper.
+    if crate::detect::linux::pacman_db_present(Path::new(crate::detect::linux::PACMAN_DB))
+        && process::capture("pacman", &["-Q", &LAUNCHER.bundle_id()], t).is_some()
+    {
+        return Some(Install::Package(PackageKind::ArchPkg, exe.to_path_buf()));
+    }
     None
 }
 

@@ -60,6 +60,8 @@ pub enum PackageKind {
     AppImage,
     Deb,
     Rpm,
+    /// Arch Linux package (`pacman -U`), for Arch and the distros built on it.
+    ArchPkg,
     Flatpak,
     /// Linux or FreeBSD tarball (`bin/<app>`, `share/…`).
     TarGz,
@@ -74,6 +76,7 @@ impl PackageKind {
             Self::AppImage => "AppImage",
             Self::Deb => "Debian package (.deb)",
             Self::Rpm => "RPM package (.rpm)",
+            Self::ArchPkg => "Arch package (.pkg.tar.zst)",
             Self::Flatpak => "Flatpak bundle",
             Self::TarGz => "Tarball (.tar.gz)",
         }
@@ -87,6 +90,7 @@ impl PackageKind {
             Self::AppImage => ".AppImage",
             Self::Deb => ".deb",
             Self::Rpm => ".rpm",
+            Self::ArchPkg => ".pkg.tar.zst",
             Self::Flatpak => ".flatpak",
             Self::TarGz => ".tar.gz",
         }
@@ -168,7 +172,7 @@ impl Platform {
         match self.os {
             Os::Windows => &[PackageKind::Msi, PackageKind::PortableZip],
             Os::MacOs => &[PackageKind::Dmg],
-            Os::Linux => &[PackageKind::AppImage, PackageKind::Deb, PackageKind::Rpm, PackageKind::Flatpak, PackageKind::TarGz],
+            Os::Linux => &[PackageKind::AppImage, PackageKind::Deb, PackageKind::Rpm, PackageKind::ArchPkg, PackageKind::Flatpak, PackageKind::TarGz],
             Os::FreeBsd => &[PackageKind::TarGz],
         }
     }
@@ -186,7 +190,7 @@ pub struct AssetName {
 /// Reads `<stem>-<version>-<os>-<arch>[-portable].<ext>`; `None` for checksums, zsync files, CLI
 /// and web bundles, or anything else.
 pub fn parse_asset_name(name: &str, stems: &[&str]) -> Option<AssetName> {
-    const KINDS: [PackageKind; 8] = [
+    const KINDS: [PackageKind; 9] = [
         PackageKind::PortableZip,
         PackageKind::TarGz,
         PackageKind::Msi,
@@ -194,6 +198,7 @@ pub fn parse_asset_name(name: &str, stems: &[&str]) -> Option<AssetName> {
         PackageKind::AppImage,
         PackageKind::Deb,
         PackageKind::Rpm,
+        PackageKind::ArchPkg,
         PackageKind::Flatpak,
     ];
     let (kind, base) = KINDS.iter().find_map(|k| name.strip_suffix(k.suffix()).map(|b| (*k, b)))?;
@@ -256,6 +261,8 @@ mod tests {
     fn reads_asset_names() {
         let n = parse_asset_name("photocraft-0.2.0-rc.1-windows-arm64-portable.zip", &["photocraft"]).unwrap();
         assert_eq!((n.version.as_str(), n.token.as_str(), n.kind), ("0.2.0-rc.1", "windows-arm64", PackageKind::PortableZip));
+        let n = parse_asset_name("wordcraft-0.6.1-linux-x86_64.pkg.tar.zst", &["wordcraft"]).unwrap();
+        assert_eq!((n.version.as_str(), n.token.as_str(), n.kind), ("0.6.1", "linux-x86_64", PackageKind::ArchPkg));
         let n = parse_asset_name("printcraft-0.2.1-linux-x86_64.tar.gz", &["pdfcraft", "printcraft"]).unwrap();
         assert_eq!((n.stem.as_str(), n.kind), ("printcraft", PackageKind::TarGz));
         for other in
@@ -313,6 +320,8 @@ mod tests {
             "photocraft-0.5.0-linux-x86_64.deb",
             "photocraft-0.5.0-linux-aarch64.rpm",
             "photocraft-0.5.0-linux-x86_64.rpm",
+            "photocraft-0.5.0-linux-aarch64.pkg.tar.zst",
+            "photocraft-0.5.0-linux-x86_64.pkg.tar.zst",
             "photocraft-0.5.0-linux-aarch64.flatpak",
             "photocraft-0.5.0-linux-x86_64.flatpak",
             "photocraft-0.5.0-linux-aarch64.tar.gz",
@@ -322,7 +331,7 @@ mod tests {
         let p_x64 = Platform { os: Os::Linux, arch: Arch::X64 };
         let p_arm64 = Platform { os: Os::Linux, arch: Arch::Arm64 };
 
-        for kind in [PackageKind::AppImage, PackageKind::Deb, PackageKind::Rpm, PackageKind::Flatpak, PackageKind::TarGz] {
+        for kind in [PackageKind::AppImage, PackageKind::Deb, PackageKind::Rpm, PackageKind::ArchPkg, PackageKind::Flatpak, PackageKind::TarGz] {
             let pick_x64 = pick_asset(&multi_arch_release, &["photocraft"], p_x64, &[kind]).map(|(a, _)| a.name.clone());
             assert!(pick_x64.as_deref().unwrap().contains("linux-x86_64"), "Expected x86_64 asset for {kind:?}, got {pick_x64:?}");
 
@@ -335,10 +344,11 @@ mod tests {
             "photocraft-0.5.0-linux-aarch64.AppImage",
             "photocraft-0.5.0-linux-aarch64.deb",
             "photocraft-0.5.0-linux-aarch64.rpm",
+            "photocraft-0.5.0-linux-aarch64.pkg.tar.zst",
             "photocraft-0.5.0-linux-aarch64.flatpak",
             "photocraft-0.5.0-linux-aarch64.tar.gz",
         ]);
-        for kind in [PackageKind::AppImage, PackageKind::Deb, PackageKind::Rpm, PackageKind::Flatpak, PackageKind::TarGz] {
+        for kind in [PackageKind::AppImage, PackageKind::Deb, PackageKind::Rpm, PackageKind::ArchPkg, PackageKind::Flatpak, PackageKind::TarGz] {
             assert_eq!(pick_asset(&arm_only_release, &["photocraft"], p_x64, &[kind]), None, "x86_64 must never match an aarch64 asset for {kind:?}");
         }
     }

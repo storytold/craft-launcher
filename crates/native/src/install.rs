@@ -5,7 +5,8 @@
 //! - macOS: the signed `.app` from the release DMG into `/Applications`.
 //! - Windows: the release MSI (Windows Installer) into `C:\Program Files\<App>`.
 //! - Linux: the distro's own package (`.deb` through apt on the Debian family, `.rpm` through
-//!   dnf/zypper/rpm on the Fedora, Red Hat and SUSE families, read from `os-release`) with the
+//!   dnf/zypper/rpm on the Fedora, Red Hat and SUSE families, `.pkg.tar.zst` through pacman on
+//!   Arch and the distros built on it, read from `os-release`) with the
 //!   system's polkit password prompt; otherwise a Flatpak, otherwise an AppImage in
 //!   `~/Applications` (the AppImage convention), with a menu entry and icon in
 //!   `~/.local/share` so it shows up like any other app. A Flatpak or AppImage launcher prefers
@@ -70,7 +71,9 @@ pub fn install(
         #[cfg(windows)]
         PackageKind::Msi => windows::run_msi(&file, job.stop, &mut *job.phase).map(|_| None),
         #[cfg(target_os = "linux")]
-        PackageKind::Deb | PackageKind::Rpm | PackageKind::Flatpak => linux::install_package(kind, &file, job.stop, &mut *job.phase).map(|_| None),
+        PackageKind::Deb | PackageKind::Rpm | PackageKind::ArchPkg | PackageKind::Flatpak => {
+            linux::install_package(kind, &file, job.stop, &mut *job.phase).map(|_| None)
+        }
         #[cfg(target_os = "linux")]
         PackageKind::AppImage => linux::install_appimage(app, &file, &asset.name, existing).map(|(path, replaced)| {
             let files = linux::integrate(app, &path, &replaced, previous);
@@ -117,8 +120,10 @@ pub fn choose_kinds(existing: Option<&Installed>, record: Option<&Record>, prefe
             InstallSource::Msi => Some(PackageKind::Msi),
             InstallSource::Deb => Some(PackageKind::Deb),
             InstallSource::Rpm => Some(PackageKind::Rpm),
-            // Arch/AUR installs are owned by pacman and updated by the user's AUR helper (see
-            // `managed_elsewhere`); the launcher opens and removes them but never replaces them.
+            // The release's own Arch package is updated like a .deb. AUR builds are updated by the
+            // user's AUR helper (see `managed_elsewhere`); the launcher opens and removes them but
+            // never replaces them.
+            InstallSource::Pacman if is_release_arch_package(inst) => Some(PackageKind::ArchPkg),
             InstallSource::Pacman => None,
             InstallSource::Flatpak => Some(PackageKind::Flatpak),
             InstallSource::AppImage => Some(PackageKind::AppImage),
@@ -135,6 +140,14 @@ pub fn choose_kinds(existing: Option<&Installed>, record: Option<&Record>, prefe
         }
     }
     kinds
+}
+
+/// Whether a pacman install is the release's own Arch package rather than an AUR build. The
+/// release names it by the bundle id (`ai.storyteller.wordcraft`), which no AUR package uses
+/// (they are `wordcraft`, `wordcraft-bin` and `wordcraft-git`), so an AUR helper never mistakes it
+/// for one of its own and rebuilds it from source.
+pub fn is_release_arch_package(installed: &Installed) -> bool {
+    installed.source == InstallSource::Pacman && installed.package.as_deref().is_some_and(|p| p.starts_with("ai.storyteller."))
 }
 
 /// Package formats this machine can install, best first.
@@ -190,23 +203,55 @@ fn published_checksum(release: &Release, asset: &Asset, http: &Http) -> Result<O
 }
 
 /// When `installed` is owned by something the launcher doesn't drive, what to tell the user
-/// instead of installing a second copy. AUR packages are removed through pacman like any system
-/// package, but updated by the user's AUR helper, which builds as the user and can't run behind
-/// the password prompt.
+/// instead of installing a second copy. Arch packages other than the release's own are removed
+/// through pacman like any system package, but updated by whatever they came from: a system
+/// update for a repository package (Omarchy's, Chaotic-AUR, ...), the user's AUR helper (which
+/// builds as the user and can't run behind the password prompt) for anything else.
 pub fn managed_elsewhere(app: &CraftApp, installed: &Installed, uninstall: bool) -> Option<String> {
     match installed.source {
-        InstallSource::Pacman if !uninstall => {
+        InstallSource::Pacman if !uninstall && !is_release_arch_package(installed) => {
             let pkg = installed.package.clone().unwrap_or_else(|| app.id.to_string());
-            let helper = ["paru", "yay"].into_iter().find(|h| which(h).is_some());
-            let cmd = match helper {
-                Some(h) => format!("{h} -S {pkg}"),
-                None => format!("your AUR helper (for example: yay -S {pkg})"),
-            };
-            Some(format!("{} was installed from the AUR ({pkg}). Update it with {cmd}", app.name))
+            Some(pacman_update_hint(app, &pkg, pacman_repo(&pkg).as_deref()))
         }
         InstallSource::Binary => Some(format!("{} was installed outside the launcher. Update or remove it the way it was installed.", app.name)),
         _ => None,
     }
+}
+
+/// How to update an Arch package the launcher doesn't own: `repo` is the sync repository it
+/// comes from, or `None` for a foreign (AUR) package.
+fn pacman_update_hint(app: &CraftApp, pkg: &str, repo: Option<&str>) -> String {
+    if let Some(repo) = repo {
+        return format!("{} was installed from the {repo} repository ({pkg}). Update it with sudo pacman -Syu", app.name);
+    }
+    let helper = ["paru", "yay"].into_iter().find(|h| which(h).is_some());
+    let cmd = match helper {
+        Some(h) => format!("{h} -S {pkg}"),
+        None => format!("your AUR helper (for example: yay -S {pkg})"),
+    };
+    format!("{} was installed from the AUR ({pkg}). Update it with {cmd}", app.name)
+}
+
+/// The sync repository (`extra`, `omarchy`, ...) that carries the installed package `pkg`, or
+/// `None` when no configured repository does (an AUR or locally built package) or pacman can't
+/// be asked.
+fn pacman_repo(pkg: &str) -> Option<String> {
+    let pacman = which("pacman")?;
+    // pacman translates its field names; the C locale keeps "Repository" parseable.
+    let out = process::command(pacman).args(["-Si", "--", pkg]).env("LC_ALL", "C").output().ok()?;
+    if !out.status.success() {
+        return None;
+    }
+    parse_pacman_repo(&String::from_utf8_lossy(&out.stdout))
+}
+
+/// The `Repository` field of `pacman -Si` output (the first one, when several repos carry it:
+/// that is the one pacman installs from).
+fn parse_pacman_repo(si: &str) -> Option<String> {
+    si.lines().find_map(|l| {
+        let (key, value) = l.split_once(':')?;
+        (key.trim() == "Repository").then(|| value.trim().to_string()).filter(|r| !r.is_empty())
+    })
 }
 
 /// Removes an installed copy. `phase` hears when the removal has to wait for another install;
@@ -513,6 +558,8 @@ pub(crate) mod linux {
             PackageKind::Rpm if which("dnf").is_some() => Some(&["dnf", "install", "-y"]),
             PackageKind::Rpm if which("zypper").is_some() => Some(&["zypper", "--non-interactive", "install", "--allow-unsigned-rpm"]),
             PackageKind::Rpm => Some(&["rpm", "-U", "--replacepkgs"]),
+            // A local package file: pacman checks its dependencies against the sync databases.
+            PackageKind::ArchPkg => Some(&["pacman", "-U", "--noconfirm"]),
             _ => None,
         }
     }
@@ -532,8 +579,9 @@ pub(crate) mod linux {
     ///   AppImage cannot mount there and a distro package needs root, so both are dead ends.
     /// - Running as an AppImage: prefers AppImage.
     /// - Otherwise (system install): prefers the distro's own package format (`.deb` on the
-    ///   Debian family, `.rpm` on the Fedora, Red Hat and SUSE families, read from `os-release`
-    ///   rather than from whichever tools are on `PATH`), then Flatpak if available, then AppImage.
+    ///   Debian family, `.rpm` on the Fedora, Red Hat and SUSE families, `.pkg.tar.zst` on Arch
+    ///   and its derivatives, read from `os-release` rather than from whichever tools are on
+    ///   `PATH`), then Flatpak if available, then AppImage.
     pub fn available_kinds() -> Vec<PackageKind> {
         let flatpak = process::is_flatpak_available();
         let is_flatpak = process::in_sandbox();
@@ -545,15 +593,21 @@ pub(crate) mod linux {
         let root = root && !immutable_ostree();
         let can_deb = root && native == Some(PackageKind::Deb) && which("apt-get").is_some() && which("dpkg").is_some();
         let can_rpm = root && native == Some(PackageKind::Rpm) && which("rpm").is_some();
-        order_available_kinds(is_flatpak, is_appimage, flatpak, can_deb, can_rpm)
+        let can_pacman = root
+            && native == Some(PackageKind::ArchPkg)
+            && which("pacman").is_some()
+            && crate::detect::linux::pacman_db_present(Path::new(crate::detect::linux::PACMAN_DB));
+        let system = [(can_deb, PackageKind::Deb), (can_rpm, PackageKind::Rpm), (can_pacman, PackageKind::ArchPkg)]
+            .into_iter()
+            .find_map(|(can, kind)| can.then_some(kind));
+        order_available_kinds(is_flatpak, is_appimage, flatpak, system)
     }
 
     pub(crate) fn order_available_kinds(
         is_flatpak: bool,
         is_appimage: bool,
         flatpak_available: bool,
-        can_deb: bool,
-        can_rpm: bool,
+        system: Option<PackageKind>,
     ) -> Vec<PackageKind> {
         let mut kinds = Vec::new();
         if is_flatpak && flatpak_available {
@@ -564,11 +618,9 @@ pub(crate) mod linux {
             kinds.push(PackageKind::AppImage);
         }
 
-        if can_deb {
-            kinds.push(PackageKind::Deb);
-        }
-        if can_rpm {
-            kinds.push(PackageKind::Rpm);
+        // The distro's own format (.deb, .rpm or .pkg.tar.zst), when it can be installed here.
+        if let Some(kind) = system {
+            kinds.push(kind);
         }
 
         if flatpak_available && !kinds.contains(&PackageKind::Flatpak) {
@@ -1659,45 +1711,75 @@ mod tests {
         let _ = inst;
     }
 
+    #[test]
+    fn only_the_release_arch_package_is_updated_by_the_launcher() {
+        let pacman = |name: &str| Installed { version: None, source: InstallSource::Pacman, location: String::new(), package: Some(name.into()) };
+        assert!(is_release_arch_package(&pacman("ai.storyteller.wordcraft")));
+        for aur in ["wordcraft", "wordcraft-bin", "wordcraft-git"] {
+            assert!(!is_release_arch_package(&pacman(aur)), "{aur}");
+        }
+        let app = artcraft_launcher_core::CraftApp::by_id("wordcraft").unwrap();
+        assert_eq!(managed_elsewhere(app, &pacman("ai.storyteller.wordcraft"), false), None);
+        assert_eq!(managed_elsewhere(app, &pacman("wordcraft-bin"), true), None);
+    }
+
+    #[test]
+    fn arch_packages_from_a_repository_are_updated_with_the_system() {
+        let app = artcraft_launcher_core::CraftApp::by_id("wordcraft").unwrap();
+        assert_eq!(
+            pacman_update_hint(app, "wordcraft-bin", Some("omarchy")),
+            "WordCraft was installed from the omarchy repository (wordcraft-bin). Update it with sudo pacman -Syu"
+        );
+        assert!(pacman_update_hint(app, "wordcraft-bin", None).starts_with("WordCraft was installed from the AUR (wordcraft-bin)."));
+
+        let si = "Repository      : omarchy\nName            : wordcraft-bin\nVersion         : 0.6.1-1\n";
+        assert_eq!(parse_pacman_repo(si).as_deref(), Some("omarchy"));
+        assert_eq!(parse_pacman_repo("Name : wordcraft-bin\n"), None);
+        assert_eq!(parse_pacman_repo("Repository :\n"), None);
+    }
+
     #[cfg(target_os = "linux")]
     #[test]
     fn package_kinds_order_matches_launcher_format() {
         use super::linux::order_available_kinds;
 
         // Flatpak launcher defaults to Flatpak if available
-        let kinds = order_available_kinds(true, false, true, true, false);
+        let kinds = order_available_kinds(true, false, true, Some(PackageKind::Deb));
         assert_eq!(kinds.first(), Some(&PackageKind::Flatpak));
         assert!(kinds.contains(&PackageKind::Deb));
         assert!(kinds.contains(&PackageKind::AppImage));
 
         // AppImage launcher defaults to AppImage
-        let kinds = order_available_kinds(false, true, true, true, false);
+        let kinds = order_available_kinds(false, true, true, Some(PackageKind::Deb));
         assert_eq!(kinds.first(), Some(&PackageKind::AppImage));
         assert!(kinds.contains(&PackageKind::Deb));
         assert!(kinds.contains(&PackageKind::Flatpak));
 
         // Base Linux launcher defaults to native package format (deb or rpm) if available
-        let kinds = order_available_kinds(false, false, true, true, false);
+        let kinds = order_available_kinds(false, false, true, Some(PackageKind::Deb));
         assert_eq!(kinds.first(), Some(&PackageKind::Deb));
 
-        let kinds = order_available_kinds(false, false, true, false, true);
+        let kinds = order_available_kinds(false, false, true, Some(PackageKind::Rpm));
         assert_eq!(kinds.first(), Some(&PackageKind::Rpm));
 
+        let kinds = order_available_kinds(false, false, true, Some(PackageKind::ArchPkg));
+        assert_eq!(kinds, [PackageKind::ArchPkg, PackageKind::Flatpak, PackageKind::AppImage]);
+
         // Base Linux launcher without root/distro packaging falls back to Flatpak then AppImage
-        let kinds = order_available_kinds(false, false, true, false, false);
+        let kinds = order_available_kinds(false, false, true, None);
         assert_eq!(kinds.first(), Some(&PackageKind::Flatpak));
         assert_eq!(kinds.get(1), Some(&PackageKind::AppImage));
 
         // The tarball runs inside the sandbox, so it is only offered there: with a usable host
         // Flatpak it stays an alternative, without one it is the default (an AppImage cannot
         // mount in a sandbox, and a distro package needs root).
-        let kinds = order_available_kinds(true, false, true, false, false);
+        let kinds = order_available_kinds(true, false, true, None);
         assert_eq!(kinds.first(), Some(&PackageKind::Flatpak));
         assert_eq!(kinds.get(1), Some(&PackageKind::TarGz));
-        let kinds = order_available_kinds(true, false, false, false, false);
+        let kinds = order_available_kinds(true, false, false, None);
         assert_eq!(kinds, [PackageKind::TarGz, PackageKind::AppImage]);
         for (appimage, flatpak) in [(true, true), (false, false), (false, true)] {
-            assert!(!order_available_kinds(false, appimage, flatpak, true, true).contains(&PackageKind::TarGz));
+            assert!(!order_available_kinds(false, appimage, flatpak, Some(PackageKind::Deb)).contains(&PackageKind::TarGz));
         }
     }
 
