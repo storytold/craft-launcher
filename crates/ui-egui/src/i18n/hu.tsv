@@ -90,8 +90,8 @@
 	Include pre-releases (betas and release candidates)	Előzetes kiadások engedélyezése (béta- és kiadásra jelölt verziók)
 	Installing on Linux	Telepítés Linuxon
 	Install new apps as	Új alkalmazások csomagformátuma
-	System package (recommended)	Rendszercsomag (ajánlott)
 	Updates always use the format an app was installed with.	A frissítések mindig az eredeti telepítés csomagformátumát használják.
+	Your saved choice, {saved}, can't be installed on this system, so {used} is used.	A mentett választás ({saved}) nem telepíthető ezen a rendszeren, ezért ezt használjuk: {used}.
 	Running in the background	Futtatás a háttérben
 	Keep running in the tray when the window is closed	Az ablak bezárásakor kerüljön a tálcára
 	Show the window on the current desktop	Ablak megjelenítése az aktuális asztalon

@@ -972,6 +972,10 @@ impl Backend for NativeBackend {
         Capabilities { manage_apps: true, reveal_label, self_update: self.self_install.is_some() }
     }
 
+    fn install_kinds(&self) -> Vec<PackageKind> {
+        install::available_kinds()
+    }
+
     fn platform(&self) -> Option<Platform> {
         self.platform
     }

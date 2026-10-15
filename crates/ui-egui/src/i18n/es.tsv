@@ -90,8 +90,8 @@
 	Include pre-releases (betas and release candidates)	Incluir versiones preliminares (betas y versiones candidatas)
 	Installing on Linux	Instalación en Linux
 	Install new apps as	Instalar las aplicaciones nuevas como
-	System package (recommended)	Paquete del sistema (recomendado)
 	Updates always use the format an app was installed with.	Las actualizaciones siempre usan el formato con el que se instaló cada aplicación.
+	Your saved choice, {saved}, can't be installed on this system, so {used} is used.	La opción guardada, {saved}, no se puede instalar en este sistema, así que se usa {used}.
 	Running in the background	En segundo plano
 	Keep running in the tray when the window is closed	Seguir abierto en la bandeja del sistema al cerrar la ventana
 	Show the window on the current desktop	Mostrar la ventana en el escritorio actual

@@ -77,8 +77,8 @@
 	Include pre-releases (betas and release candidates)	Zahrnout předběžná vydání (beta verze a kandidáty na vydání)
 	Installing on Linux	Instalace v Linuxu
 	Install new apps as	Instalovat nové aplikace jako
-	System package (recommended)	Systémový balíček (doporučeno)
 	Updates always use the format an app was installed with.	Aktualizace vždy použijí formát, ve kterém byla aplikace nainstalována.
+	Your saved choice, {saved}, can't be installed on this system, so {used} is used.	Uložená volba {saved} se v tomto systému nedá nainstalovat, proto se použije {used}.
 	Running in the background	Běh na pozadí
 	Keep running in the tray when the window is closed	Po zavření okna ponechat spuštěné v oznamovací oblasti
 	Show the window on the current desktop	Zobrazit okno na aktuální ploše

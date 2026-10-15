@@ -92,8 +92,8 @@
 	Include pre-releases (betas and release candidates)	プレリリース（ベータ版とリリース候補）を含める
 	Installing on Linux	Linux へのインストール
 	Install new apps as	新しいアプリのインストール形式
-	System package (recommended)	システムパッケージ（推奨）
 	Updates always use the format an app was installed with.	更新は常に、アプリをインストールしたときの形式で行われます。
+	Your saved choice, {saved}, can't be installed on this system, so {used} is used.	保存した選択（{saved}）はこのシステムにインストールできないため、{used} を使います。
 	Running in the background	バックグラウンドで実行
 	Keep running in the tray when the window is closed	ウィンドウを閉じてもトレイで実行し続ける
 	Show the window on the current desktop	現在のデスクトップにウィンドウを表示

@@ -228,6 +228,10 @@ pub trait Backend {
     /// Events since the last call, oldest first.
     fn poll(&mut self) -> Vec<Event>;
     fn capabilities(&self) -> Capabilities;
+    /// Package formats this machine can install, best first (empty where there is no choice).
+    fn install_kinds(&self) -> Vec<PackageKind> {
+        Vec::new()
+    }
     /// The machine apps would be installed on (on the web: the visitor's, best guess).
     fn platform(&self) -> Option<Platform>;
     /// Unix seconds now.

@@ -72,8 +72,8 @@
 	Include pre-releases (betas and release candidates)	包含预发布版本（测试版和候选版）
 	Installing on Linux	Linux 安装设置
 	Install new apps as	新应用安装格式
-	System package (recommended)	系统软件包（推荐）
 	Updates always use the format an app was installed with.	更新时始终使用应用原来的安装格式。
+	Your saved choice, {saved}, can't be installed on this system, so {used} is used.	已保存的选择（{saved}）无法在此系统上安装，因此改用 {used}。
 	Running in the background	后台运行
 	Keep running in the tray when the window is closed	关闭窗口后继续在系统托盘中运行
 	Show the window on the current desktop	在当前桌面显示窗口

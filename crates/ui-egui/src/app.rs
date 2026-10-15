@@ -7,7 +7,7 @@ use artcraft_launcher_core::protocol::{
 };
 use artcraft_launcher_core::release::Release;
 use artcraft_launcher_core::status::AppStatus;
-use artcraft_launcher_core::{Platform, SUITE};
+use artcraft_launcher_core::{PackageKind, Platform, SUITE};
 
 use crate::i18n::set_current;
 use crate::model::AppEntry;
@@ -95,6 +95,8 @@ pub struct LauncherUi {
     pub(crate) entries: Vec<AppEntry>,
     pub(crate) caps: Capabilities,
     pub(crate) platform: Option<Platform>,
+    /// What this machine can install (Settings -> Installing on Linux), read once at startup.
+    pub(crate) install_kinds: Vec<PackageKind>,
     pub(crate) checking: bool,
     pub(crate) last_source: Option<Source>,
     pub(crate) rate_limited_until: Option<i64>,
@@ -166,12 +168,14 @@ impl LauncherUi {
         egui_extras::install_image_loaders(ctx);
         let caps = backend.capabilities();
         let platform = backend.platform();
+        let install_kinds = backend.install_kinds();
         Self {
             backend,
             settings,
             entries: SUITE.iter().map(AppEntry::new).collect(),
             caps,
             platform,
+            install_kinds,
             checking: false,
             last_source: None,
             rate_limited_until: None,

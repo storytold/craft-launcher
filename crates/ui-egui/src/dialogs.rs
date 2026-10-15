@@ -285,39 +285,31 @@ impl LauncherUi {
         ui.checkbox(&mut self.settings.notify, tl!("Notify me when an installed app has an update"));
         ui.checkbox(&mut self.settings.prereleases, tl!("Include pre-releases (betas and release candidates)"));
 
-        if self.caps.manage_apps && self.platform.is_some_and(|p| p.os == Os::Linux) {
+        if self.caps.manage_apps && self.platform.is_some_and(|p| p.os == Os::Linux) && !self.install_kinds.is_empty() {
             section(ui, tl!("Installing on Linux"));
-            let is_flatpak = crate::settings::is_flatpak_sandbox();
-            let is_appimage = crate::settings::is_appimage();
-            let default_kind = if is_flatpak {
-                Some(PackageKind::Flatpak)
-            } else if is_appimage {
-                Some(PackageKind::AppImage)
-            } else {
-                None
-            };
-            let mut choice = self.settings.preferred_kinds.first().copied().or(default_kind);
+            let offered = self.install_kinds.clone();
+            let stale = stale_pick(&self.settings.preferred_kinds, &offered);
+            // A saved pick this system can't install is shown as what will really be used.
+            let mut choice = self.settings.preferred_kinds.first().copied().filter(|k| offered.contains(k)).or(offered.first().copied());
+            let mut picked = false;
             row(ui, tl!("Install new apps as"), 210.0, &mut |ui| {
-                let default_label = match default_kind {
-                    Some(k) => crate::i18n::t(k.label()),
-                    None => tl!("System package (recommended)"),
-                };
-                let label = choice.map_or(default_label, |k| crate::i18n::t(k.label()));
+                let label = choice.map_or("", |k| crate::i18n::t(k.label()));
                 egui::ComboBox::from_id_salt("kind").selected_text(label).width(210.0).show_ui(ui, |ui| {
-                    if !is_flatpak && !is_appimage {
-                        ui.selectable_value(&mut choice, None, tl!("System package (recommended)"));
-                    }
-                    for k in [PackageKind::Deb, PackageKind::Rpm, PackageKind::Flatpak, PackageKind::AppImage] {
-                        ui.selectable_value(&mut choice, Some(k), crate::i18n::t(k.label()));
-                    }
-                    // The tarball is unpacked and run inside the launcher's own sandbox, so it
-                    // is only ever on offer there (as the fallback when the host has no Flatpak).
-                    if is_flatpak {
-                        ui.selectable_value(&mut choice, Some(PackageKind::TarGz), crate::i18n::t(PackageKind::TarGz.label()));
+                    for k in &offered {
+                        // A click saves even when it picks the format already shown (the stale pick's fallback).
+                        picked |= ui.selectable_value(&mut choice, Some(*k), crate::i18n::t(k.label())).clicked();
                     }
                 });
             });
-            self.settings.preferred_kinds = choice.into_iter().collect();
+            if picked {
+                self.settings.preferred_kinds = choice.into_iter().collect();
+            } else if let (Some(bad), Some(used)) = (stale, choice) {
+                let note = fmt(
+                    tl!("Your saved choice, {saved}, can't be installed on this system, so {used} is used."),
+                    &[("saved", crate::i18n::t(bad.label())), ("used", crate::i18n::t(used.label()))],
+                );
+                ui.add(egui::Label::new(RichText::new(note).size(12.0).color(t.warn)).wrap());
+            }
             ui.label(RichText::new(tl!("Updates always use the format an app was installed with.")).size(12.0).color(t.muted));
         }
 
@@ -368,5 +360,23 @@ impl LauncherUi {
             widgets::cells(ui, &mut theme_choice, &ThemeChoice::ALL.map(|c| (c, Cell { label: c.label(), tip: c.label(), count: None })));
         });
         self.settings.theme = theme_choice;
+    }
+}
+
+/// The saved format, when this system can't install it (so it is ignored at install time).
+fn stale_pick(saved: &[PackageKind], offered: &[PackageKind]) -> Option<PackageKind> {
+    saved.first().copied().filter(|k| !offered.contains(k))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn saved_pick_the_system_cant_install_is_stale() {
+        let offered = [PackageKind::Flatpak, PackageKind::AppImage];
+        assert_eq!(stale_pick(&[PackageKind::Rpm], &offered), Some(PackageKind::Rpm));
+        assert_eq!(stale_pick(&[PackageKind::Flatpak], &offered), None);
+        assert_eq!(stale_pick(&[], &offered), None);
     }
 }

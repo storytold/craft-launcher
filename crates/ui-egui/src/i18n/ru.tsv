@@ -88,8 +88,8 @@
 	Include pre-releases (betas and release candidates)	Включать предварительные релизы (бета и RC)
 	Installing on Linux	Установка в Linux
 	Install new apps as	Устанавливать новые приложения как
-	System package (recommended)	Системный пакет (рек.)
 	Updates always use the format an app was installed with.	Обновления всегда используют формат, с которым приложение было установлено.
+	Your saved choice, {saved}, can't be installed on this system, so {used} is used.	Сохранённый выбор ({saved}) нельзя установить в этой системе, поэтому используется {used}.
 	Running in the background	Работа в фоне
 	Keep running in the tray when the window is closed	Оставаться в трее при закрытии окна
 	Show the window on the current desktop	Показывать окно на текущем рабочем столе
