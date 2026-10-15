@@ -173,6 +173,7 @@ column	App	应用
 column	Installed	已安装版本
 column	Latest	最新版本
 column	Released	发布日期
+column	Format	格式
 filter	Installed	已安装
 	{name} details	{name} 详情
 @plural	{n} min ago|{n} min ago	{n} 分钟前

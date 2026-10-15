@@ -67,6 +67,7 @@ fn from_manifest(app: &CraftApp, manifest: &Manifest) -> Option<Installed> {
         source: InstallSource::Launcher,
         location: rec.path.display().to_string(),
         package: None,
+        kind: Some(rec.kind),
     })
 }
 
@@ -169,7 +170,13 @@ pub mod macos {
         let full_key = format!("{}Version", app.name);
         let text =
             [full_key.as_str(), "CFBundleShortVersionString", "CFBundleVersion"].iter().find_map(|k| dict.get(k).and_then(plist::Value::as_string));
-        Some(Installed { version: text.and_then(version::parse), source: InstallSource::MacApp, location: path.display().to_string(), package: None })
+        Some(Installed {
+            version: text.and_then(version::parse),
+            source: InstallSource::MacApp,
+            location: path.display().to_string(),
+            package: None,
+            kind: InstallSource::MacApp.package_kind(),
+        })
     }
 }
 
@@ -249,6 +256,7 @@ pub mod windows {
             source: InstallSource::Msi,
             location: m.exe.map_or_else(|| app.name.to_string(), |p| p.display().to_string()),
             package: Some(m.product_code),
+            kind: InstallSource::Msi.package_kind(),
         })
     }
 }
@@ -374,12 +382,24 @@ pub mod linux {
 
     pub fn detect(app: &CraftApp, snapshot: &Snapshot) -> Option<Installed> {
         if let Some((path, version)) = appimages(app).into_iter().next() {
-            return Some(Installed { version, source: InstallSource::AppImage, location: path.display().to_string(), package: None });
+            return Some(Installed {
+                version,
+                source: InstallSource::AppImage,
+                location: path.display().to_string(),
+                package: None,
+                kind: InstallSource::AppImage.package_kind(),
+            });
         }
         let order = [InstallSource::Deb, InstallSource::Rpm, InstallSource::Pacman, InstallSource::Flatpak];
         if let Some(p) = packages::find(app, &snapshot.packages, &order) {
             let location = if p.manager == InstallSource::Flatpak { app.bundle_id() } else { binary_on_path(app.id) };
-            return Some(Installed { version: packages::version_of(p), source: p.manager, location, package: Some(p.name.clone()) });
+            return Some(Installed {
+                version: packages::version_of(p),
+                source: p.manager,
+                location,
+                package: Some(p.name.clone()),
+                kind: p.manager.package_kind(),
+            });
         }
         detect_system_install(app)
     }
@@ -390,7 +410,13 @@ pub mod linux {
     /// to whatever installed it, since it can't tell which package manager that was.
     fn detect_system_install(app: &CraftApp) -> Option<Installed> {
         let bin = find_binary(app.id)?;
-        Some(Installed { version: binary_version(&bin, app), source: InstallSource::Binary, location: bin.display().to_string(), package: None })
+        Some(Installed {
+            version: binary_version(&bin, app),
+            source: InstallSource::Binary,
+            location: bin.display().to_string(),
+            package: None,
+            kind: InstallSource::Binary.package_kind(),
+        })
     }
 
     fn find_binary(id: &str) -> Option<PathBuf> {
@@ -417,7 +443,13 @@ pub mod freebsd {
         if !bin.exists() {
             return None;
         }
-        Some(Installed { version: binary_version(&bin, app), source: InstallSource::Binary, location: bin.display().to_string(), package: None })
+        Some(Installed {
+            version: binary_version(&bin, app),
+            source: InstallSource::Binary,
+            location: bin.display().to_string(),
+            package: None,
+            kind: InstallSource::Binary.package_kind(),
+        })
     }
 
     /// `<app> --version` prints `<app> 0.5.0 (sha, date)`.
@@ -523,6 +555,24 @@ mod tests {
         assert_eq!(parse_cli_version("printcraft 0.2.1", pdf).unwrap().to_string(), "0.2.1");
         assert_eq!(parse_cli_version("PdfCraft 0.6.0", pdf).unwrap().to_string(), "0.6.0");
         assert!(strip_cli_prefix("photocraft-cli 1.0.0", "photocraft").is_none());
+    }
+
+    #[test]
+    fn manifest_records_carry_their_package_format() {
+        use crate::manifest::{Manifest, Record};
+        use artcraft_launcher_core::PackageKind;
+        let dir = tempfile::tempdir().unwrap();
+        let exe = dir.path().join("wordcraft.exe");
+        std::fs::write(&exe, "x").unwrap();
+        let app = CraftApp::by_id("wordcraft").unwrap();
+        let mut manifest = Manifest::default();
+        manifest.apps.insert(
+            app.id.into(),
+            Record { version: "0.5.0".into(), kind: PackageKind::PortableZip, path: exe, installed_at: 0, files: Vec::new(), needs_root: false },
+        );
+        let found = from_manifest(app, &manifest).unwrap();
+        assert_eq!(found.source, InstallSource::Launcher);
+        assert_eq!(found.kind, Some(PackageKind::PortableZip));
     }
 
     #[cfg(target_os = "linux")]

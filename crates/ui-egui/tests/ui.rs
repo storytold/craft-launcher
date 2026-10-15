@@ -13,7 +13,7 @@ use artcraft_launcher_core::protocol::{
 };
 use artcraft_launcher_core::release::{Asset, Release};
 use artcraft_launcher_core::status::InstallSource;
-use artcraft_launcher_core::{Arch, Installed, Os, Platform, SUITE, version};
+use artcraft_launcher_core::{Arch, Installed, Os, PackageKind, Platform, SUITE, version};
 use artcraft_launcher_ui_egui::settings::ViewMode;
 use artcraft_launcher_ui_egui::{Host, LauncherUi, Settings};
 use egui_kittest::Harness;
@@ -83,7 +83,12 @@ impl Backend for Fake {
         out
     }
     fn capabilities(&self) -> Capabilities {
-        Capabilities { manage_apps: self.manage, reveal_label: "Show in Finder", self_update: self.manage }
+        Capabilities {
+            manage_apps: self.manage,
+            reveal_label: "Show in Finder",
+            self_update: self.manage,
+            install_kinds: vec![artcraft_launcher_core::PackageKind::Dmg],
+        }
     }
     fn platform(&self) -> Option<Platform> {
         Some(Platform { os: Os::MacOs, arch: Arch::Arm64 })
@@ -146,6 +151,7 @@ fn events() -> Vec<Event> {
             source: InstallSource::MacApp,
             location: format!("/Applications/{}.app", app.name),
             package: None,
+            kind: None,
         });
         ev.push(Event::Detected { app: app.id.into(), installed: inst });
     }
@@ -302,6 +308,33 @@ fn grid_shows_every_status_and_installs_on_click() {
     let installs: Vec<_> = sent.borrow().iter().filter_map(|c| if let Command::Install { app } = c { Some(app.clone()) } else { None }).collect();
     assert_eq!(installs.len(), 2, "{installs:?}");
     assert!(installs.contains(&"photocraft".to_string()) && installs.contains(&"effectcraft".to_string()));
+}
+
+#[test]
+fn cards_and_rows_name_the_install_format() {
+    // Fixtures: MacApp installs of unknown format, dmg releases on this (mac) platform.
+    for view in [ViewMode::Grid, ViewMode::Table] {
+        let (mut h, _) = harness(view, egui::Theme::Dark, true);
+        h.run_steps(8);
+        // Installed: where the copy came from (the source, the record kind unknown).
+        assert!(h.query_all_by_label_contains("Applications folder").count() >= 1);
+        // Not installed: what Install would download (the release format for this platform).
+        assert!(h.query_all_by_label_contains("Disk image (.dmg)").count() >= 1);
+    }
+}
+
+#[test]
+fn an_uninstallable_preference_never_labels_the_download() {
+    // The user's exact bug: preferring a format this machine cannot install must not
+    // leak into labels; the installable format still shows.
+    let (mut h, _) = harness(ViewMode::Grid, egui::Theme::Dark, true);
+    h.run_steps(2);
+    if let Some(l) = h.state_mut().as_mut() {
+        l.settings.preferred_kinds = vec![PackageKind::PortableZip];
+    }
+    h.run_steps(8);
+    assert!(h.query_all_by_label_contains("Disk image (.dmg)").count() >= 1);
+    assert_eq!(h.query_all_by_label_contains("Portable (.zip)").count(), 0);
 }
 
 #[test]

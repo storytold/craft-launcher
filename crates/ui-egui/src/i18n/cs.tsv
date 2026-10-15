@@ -237,6 +237,7 @@ column	App	Aplikace
 column	Installed	Nainstalováno
 column	Latest	Nejnovější
 column	Released	Vydáno
+column	Format	Formát
 filter	Installed	Nainstalováno
 	App details	Podrobnosti o aplikaci
 	Close (Esc)	Zavřít (Esc)

@@ -329,7 +329,7 @@ impl Backend for WebBackend {
     }
 
     fn capabilities(&self) -> Capabilities {
-        Capabilities { manage_apps: false, reveal_label: "", self_update: false }
+        Capabilities { manage_apps: false, reveal_label: "", self_update: false, install_kinds: Vec::new() }
     }
 
     fn platform(&self) -> Option<Platform> {

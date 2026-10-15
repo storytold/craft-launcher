@@ -211,7 +211,7 @@ pub enum Event {
 }
 
 /// What a backend can do on this platform.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Capabilities {
     /// Install, update, remove and launch apps (desktop). Without it the UI offers downloads.
     pub manage_apps: bool,
@@ -220,6 +220,9 @@ pub struct Capabilities {
     /// The launcher can update itself in place and restart (an installed build, not a dev build or
     /// a Flatpak). Without it the UI offers the download instead.
     pub self_update: bool,
+    /// Package formats this backend can install, best first (probed once). Empty means
+    /// unknown: the UI falls back to the platform's download list.
+    pub install_kinds: Vec<PackageKind>,
 }
 
 /// The UI's view of a backend.

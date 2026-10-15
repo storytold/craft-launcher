@@ -1,6 +1,6 @@
 //! What the UI knows about each app.
 
-use artcraft_launcher_core::platform::{Platform, pick_asset};
+use artcraft_launcher_core::platform::{PackageKind, Platform, pick_asset};
 use artcraft_launcher_core::protocol::{JobPhase, LatestRelease, PausedDownload};
 use artcraft_launcher_core::release::Release;
 use artcraft_launcher_core::status::{self, AppStatus, Latest};
@@ -58,6 +58,27 @@ impl AppEntry {
 
     pub fn installed_label(&self) -> Option<String> {
         self.installed.as_ref().map(|i| i.version.as_ref().map(ToString::to_string).unwrap_or_else(|| t("Installed").to_string()))
+    }
+
+    /// How the installed copy arrived, for the badge: the release format when known,
+    /// else where it was found (`None` when nothing is installed).
+    pub fn installed_kind_label(&self) -> Option<&'static str> {
+        let installed = self.installed.as_ref()?;
+        Some(installed.kind.map(|k| k.label()).unwrap_or(installed.source.label()))
+    }
+
+    /// What `Install` would download now: the preferred formats the backend can install,
+    /// then what it can install, first published asset wins. Empty `installable` (an old
+    /// backend) falls back to the platform's download list. A label only; the backend
+    /// decides the real one at install time.
+    pub fn planned_kind_label(&self, platform: Option<Platform>, preferred: &[PackageKind], installable: &[PackageKind]) -> Option<&'static str> {
+        let (release, platform) = (self.release()?, platform?);
+        let stems: Vec<&str> = self.app.stems().collect();
+        let base: &[PackageKind] = if installable.is_empty() { platform.download_kinds() } else { installable };
+        let mut kinds: Vec<PackageKind> = preferred.iter().copied().filter(|k| base.contains(k)).collect();
+        let rest: Vec<PackageKind> = base.iter().copied().filter(|k| !kinds.contains(k)).collect();
+        kinds.extend(rest);
+        kinds.into_iter().find_map(|k| pick_asset(release, &stems, platform, &[k]).map(|(_, kind)| kind.label()))
     }
 
     pub fn latest_label(&self) -> Option<String> {

@@ -260,6 +260,7 @@ column	App	Aplikacja
 column	Installed	Zainstalowana
 column	Latest	Najnowsza
 column	Released	Data wydania
+column	Format	Format
 
 # Contextual: the filter tab names a group (the status pill says "Installed")
 filter	Installed	Zainstalowane

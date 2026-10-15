@@ -1645,7 +1645,7 @@ mod tests {
 
     #[test]
     fn updates_keep_the_installed_format() {
-        let inst = |source| Installed { version: None, source, location: String::new(), package: None };
+        let inst = |source| Installed { version: None, source, location: String::new(), package: None, kind: None };
         let available = available_kinds();
         if let Some(first) = available.first() {
             assert_eq!(choose_kinds(None, None, &[]).first(), Some(first));
@@ -1769,7 +1769,8 @@ mod tests {
             let dir = tempfile::tempdir().unwrap();
             let apps = dir.path().join("Applications");
             let current = bundle(&apps, "0.5.0");
-            let existing = Installed { version: None, source: InstallSource::MacApp, location: current.display().to_string(), package: None };
+            let existing =
+                Installed { version: None, source: InstallSource::MacApp, location: current.display().to_string(), package: None, kind: None };
             let paths = Paths::under(dir.path());
             let image = dmg(dir.path(), "0.6.0");
 
@@ -1799,7 +1800,8 @@ mod tests {
             let dir = tempfile::tempdir().unwrap();
             let apps = dir.path().join("Applications");
             let current = bundle(&apps, "0.5.0");
-            let existing = Installed { version: None, source: InstallSource::MacApp, location: current.display().to_string(), package: None };
+            let existing =
+                Installed { version: None, source: InstallSource::MacApp, location: current.display().to_string(), package: None, kind: None };
             let image = dmg(dir.path(), "0.6.0");
             let release = Release { tag: "v0.6.0".into(), version: version::parse("0.6.0"), ..Release::default() };
 

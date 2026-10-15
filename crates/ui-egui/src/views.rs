@@ -480,6 +480,15 @@ impl LauncherUi {
             if let Some(f) = entry.failure() {
                 r.on_hover_text(fmt(tl!("Couldn't check for updates: {f}"), &[("f", f)]));
             }
+            // What it is: the installed format, else what Install would download.
+            let format = match &entry.installed {
+                Some(_) => entry.installed_kind_label(),
+                None => entry.planned_kind_label(self.platform, &self.settings.preferred_kinds, &self.caps.install_kinds),
+            };
+            if let Some(format) = format {
+                ui.add_space(6.0);
+                widgets::badge(ui, format, widgets::tone_color(&t, tone));
+            }
         });
         ui.add_space(4.0);
         ui.label(RichText::new(version_line(&entry, &status)).size(12.5).color(t.muted));
@@ -516,6 +525,7 @@ impl LauncherUi {
                 .cell_layout(egui::Layout::left_to_right(egui::Align::Center))
                 .column(Column::remainder().at_least(220.0).clip(true))
                 .column(Column::exact(176.0))
+                .column(Column::exact(150.0))
                 .column(Column::exact(84.0))
                 .column(Column::exact(84.0))
                 .column(Column::exact(104.0))
@@ -524,6 +534,7 @@ impl LauncherUi {
                     for (key, label) in [
                         (Some(SortKey::Name), tl!("App")),
                         (Some(SortKey::Status), tl!("Status")),
+                        (None, tr_ctx(current(), "column", "Format")),
                         (Some(SortKey::Installed), tr_ctx(current(), "column", "Installed")),
                         (Some(SortKey::Latest), tr_ctx(current(), "column", "Latest")),
                         (Some(SortKey::Released), tr_ctx(current(), "column", "Released")),
@@ -533,7 +544,17 @@ impl LauncherUi {
                             if key == Some(SortKey::Name) {
                                 rule(ui);
                             }
-                            let Some(k) = key else { return };
+                            let Some(k) = key else {
+                                // A titled column without sorting: paint the label and stop.
+                                if !label.is_empty() {
+                                    let (rect, resp) = ui.allocate_exact_size(ui.available_size(), Sense::hover());
+                                    let galley = widgets::hud_galley(ui, label, t.faint);
+                                    let at = egui::pos2(rect.left(), rect.center().y - galley.size().y / 2.0);
+                                    ui.painter().galley(at, galley, t.faint);
+                                    resp.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Label, true, label));
+                                }
+                                return;
+                            };
                             let active = k == self.settings.sort;
                             let tip = if active { tl!("Click to reverse the order") } else { tl!("Click to sort by this column") };
                             // Measure first so the whole header cell (label + arrow) is the target.
@@ -615,6 +636,22 @@ impl LauncherUi {
                                 let r = widgets::badge(ui, &text, widgets::tone_color(&t, tone));
                                 if let Some(f) = entry.failure() {
                                     r.on_hover_text(fmt(tl!("Couldn't check for updates: {f}"), &[("f", f)]));
+                                }
+                            });
+                            row.col(|ui| {
+                                // What it is: the installed format, else what Install would download.
+                                let format = match &entry.installed {
+                                    Some(_) => entry.installed_kind_label(),
+                                    None => entry.planned_kind_label(self.platform, &self.settings.preferred_kinds, &self.caps.install_kinds),
+                                };
+                                match format {
+                                    Some(format) => {
+                                        let (_, tone) = model::entry_status_text(&entry, &status, self.caps.manage_apps);
+                                        widgets::badge(ui, format, widgets::tone_color(&t, tone));
+                                    }
+                                    None => {
+                                        ui.label(RichText::new("—").color(t.faint));
+                                    }
                                 }
                             });
                             row.col(|ui| {

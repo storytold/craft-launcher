@@ -255,6 +255,7 @@ column	App	Приложение
 column	Installed	Текущая
 column	Latest	Последняя
 column	Released	Дата релиза
+column	Format	Формат
 
 # Contextual: the filter tab names a group (the status pill says "Installed")
 filter	Installed	Установлены

@@ -261,6 +261,7 @@ column	App	アプリ
 column	Installed	インストール済みバージョン
 column	Latest	最新バージョン
 column	Released	公開日
+column	Format	形式
 
 # Contextual: the filter tab names a group (the status pill says "Installed")
 filter	Installed	インストール済み

@@ -230,6 +230,17 @@ impl LauncherUi {
                     if !version.trim().is_empty() {
                         ui.label(RichText::new(version).size(12.5).color(t.muted));
                     }
+                    // What it is, like the grid and table badges.
+                    if let Some(format) = match &entry.installed {
+                        Some(_) => entry.installed_kind_label(),
+                        None => entry.planned_kind_label(self.platform, &self.settings.preferred_kinds, &self.caps.install_kinds),
+                    } {
+                        ui.add_space(4.0);
+                        ui.horizontal(|ui| {
+                            let (_, tone) = crate::model::entry_status_text(entry, &status, self.caps.manage_apps);
+                            crate::widgets::badge(ui, format, crate::widgets::tone_color(t, tone));
+                        });
+                    }
                 });
             });
             ui.add_space(14.0);

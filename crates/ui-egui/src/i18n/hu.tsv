@@ -259,6 +259,7 @@ column	App	Alkalmazás
 column	Installed	Telepített
 column	Latest	Legújabb
 column	Released	Dátum
+column	Format	Formátum
 
 # Contextual: the filter tab names a group (the status pill says "Installed")
 filter	Installed	Telepítve

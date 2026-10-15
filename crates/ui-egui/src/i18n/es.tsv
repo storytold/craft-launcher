@@ -250,6 +250,7 @@ column	App	Aplicación
 column	Installed	Instalada
 column	Latest	Última
 column	Released	Publicada
+column	Format	Formato
 filter	Installed	Instaladas
 	App details	Detalles de la app
 	Close (Esc)	Cerrar (Esc)

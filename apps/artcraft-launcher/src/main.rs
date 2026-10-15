@@ -768,7 +768,7 @@ mod tests {
             std::mem::take(&mut *self.0.news.lock().unwrap_or_else(PoisonError::into_inner))
         }
         fn capabilities(&self) -> Capabilities {
-            Capabilities { manage_apps: true, reveal_label: "Show in Files", self_update: false }
+            Capabilities { manage_apps: true, reveal_label: "Show in Files", self_update: false, install_kinds: Vec::new() }
         }
         fn platform(&self) -> Option<artcraft_launcher_core::Platform> {
             None

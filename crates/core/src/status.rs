@@ -2,6 +2,7 @@
 
 use serde::{Deserialize, Serialize};
 
+use crate::platform::PackageKind;
 use crate::version::{self, Version};
 
 /// How an installed copy got onto the machine, which decides how to update and remove it.
@@ -47,6 +48,21 @@ impl InstallSource {
     pub fn launcher_can_update(self) -> bool {
         matches!(self, Self::Launcher | Self::MacApp | Self::Msi | Self::AppImage)
     }
+
+    /// The release package format this source corresponds to, if any: a launcher-managed
+    /// copy reports its record's kind instead, and a system package or stray binary has
+    /// no release asset behind it.
+    pub fn package_kind(self) -> Option<PackageKind> {
+        match self {
+            Self::Msi => Some(PackageKind::Msi),
+            Self::Deb => Some(PackageKind::Deb),
+            Self::Rpm => Some(PackageKind::Rpm),
+            Self::Flatpak => Some(PackageKind::Flatpak),
+            Self::AppImage => Some(PackageKind::AppImage),
+            Self::MacApp => Some(PackageKind::Dmg),
+            Self::Launcher | Self::Pacman | Self::Binary => None,
+        }
+    }
 }
 
 /// An installed copy of an app.
@@ -60,6 +76,10 @@ pub struct Installed {
     /// The package that installed it, for package-manager installs (`photocraft-bin`).
     #[serde(default)]
     pub package: Option<String>,
+    /// The package format, when the copy came from a release asset (`None` for copies
+    /// found outside any install the launcher knows: system binaries, AUR packages).
+    #[serde(default)]
+    pub kind: Option<PackageKind>,
 }
 
 /// The status shown on an app's card or row.
@@ -123,7 +143,7 @@ mod tests {
     use super::*;
 
     fn inst(v: &str) -> Installed {
-        Installed { version: version::parse(v), source: InstallSource::Launcher, location: String::new(), package: None }
+        Installed { version: version::parse(v), source: InstallSource::Launcher, location: String::new(), package: None, kind: None }
     }
 
     #[test]
@@ -141,5 +161,19 @@ mod tests {
         assert_eq!(status(Some(&inst("0.4.0")), Latest::Failed), AppStatus::Installed);
         assert_eq!(status(Some(&inst("garbage")), found(true)), AppStatus::Installed);
         assert!(AppStatus::UpdateAvailable.is_installed() && !AppStatus::Available.is_installed());
+    }
+
+    #[test]
+    fn sources_map_to_their_release_format() {
+        use InstallSource::*;
+        assert_eq!(Msi.package_kind(), Some(PackageKind::Msi));
+        assert_eq!(Deb.package_kind(), Some(PackageKind::Deb));
+        assert_eq!(Rpm.package_kind(), Some(PackageKind::Rpm));
+        assert_eq!(Flatpak.package_kind(), Some(PackageKind::Flatpak));
+        assert_eq!(AppImage.package_kind(), Some(PackageKind::AppImage));
+        assert_eq!(MacApp.package_kind(), Some(PackageKind::Dmg));
+        assert_eq!(Launcher.package_kind(), None, "the record decides");
+        assert_eq!(Pacman.package_kind(), None, "no release asset behind it");
+        assert_eq!(Binary.package_kind(), None, "no release asset behind it");
     }
 }
