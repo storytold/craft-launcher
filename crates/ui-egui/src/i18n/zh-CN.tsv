@@ -312,3 +312,52 @@ figcraft	Interface design and prototyping	界面设计与原型制作
 @msg	{name} installed: {version} (this release publishes no checksum, so only its size was checked)	{name} 已安装：{version}（此版本未发布校验和，因此只检查了文件大小）
 @msg	{name} was removed	{name} 已卸载
 @msg	{name} is running. Quit it, then try again.	{name} 正在运行。请先退出，然后重试。
+
+# Per-app version and installation settings.
+	App settings	应用设置
+	App settings…	应用设置…
+	Installation	安装
+	Installed: {version}	已安装：{version}
+	Version is kept	版本已固定
+	Selected release	所选发行版本
+	Select a release	选择发行版本
+	Show pre-releases	显示预发布版本
+	Loading releases…	正在加载发行版本…
+	Refresh releases	刷新发行版本
+	Load older releases	加载更早的发行版本
+	No published releases are available.	没有可用的已发布版本。
+	This package cannot downgrade here. Use a portable installation instead.	此软件包不支持在此降级。请使用便携式安装。
+	No compatible download for this release.	此版本没有兼容的下载。
+	This release has no published checksum.	此版本未发布校验和。
+	This release's version cannot be verified.	无法验证此发行版本的版本号。
+	An older version will replace the installed program.	旧版本将替换已安装的程序。
+	Automatic updates and Update all will leave this version unchanged.	自动更新和“全部更新”不会更改此版本。
+	Follow the latest release using the global update settings.	按照全局更新设置跟随最新版本。
+	Switch to {version}	切换至 {version}
+	Current installation folder	当前安装文件夹
+	Open installation folder	打开安装文件夹
+	Version changes keep the existing installation folder and package format.	切换版本会保留现有安装文件夹和软件包格式。
+	Package format	软件包格式
+	Installation in progress. You can close this window.	正在安装。您可以关闭此窗口。
+	Save update preferences	保存更新偏好
+
+# Version management messages.
+@msg	GitHub's request limit was reached. Try again later.	已达到 GitHub 请求上限。请稍后重试。
+@msg	Reload the release list before selecting a version.	选择版本前请重新加载发行版本列表。
+@msg	This app is pinned to a selected version. Open its settings to change versions.	此应用已固定到所选版本。请打开其设置以更换版本。
+@msg	This release has no published checksum for this download.	此下载没有已发布的校验和。
+@msg	This package format cannot safely downgrade here. Use a portable installation instead.	此软件包格式不支持在此安全降级。请使用便携式安装。
+@msg	The installer finished, but the selected version could not be confirmed. Check the installed version before retrying.	安装程序已完成，但无法确认所选版本。重试前请检查已安装版本。
+
+# Version management messages.
+
+# Confirmed MSI version changes.
+	Retrying automatically in {seconds}s…	{seconds} 秒后自动重试…
+	Keep this version after switching	切换后锁定此版本
+	Launcher version	启动器版本
+	Choose launcher version…	选择启动器版本…
+	Launcher MSI downgrades require a portable copy. This installation can upgrade only.	MSI 启动器降级需要便携版本。此安装仅支持升级。
+@msg	Launcher MSI downgrades require a portable copy. This installation can upgrade only.	MSI 启动器降级需要便携版本。此安装仅支持升级。
+	The launcher will wait for other installs, switch versions and restart.	启动器将等待其他安装完成，然后切换版本并重启。
+	Older launcher releases may not support version preferences.	旧版启动器可能不支持版本偏好设置。
+	This development or externally managed launcher cannot switch versions in place.	此开发版或由外部管理的启动器无法直接切换版本。

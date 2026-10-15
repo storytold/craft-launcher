@@ -23,6 +23,18 @@ pub enum Command {
     Install {
         app: String,
     },
+    /// Fetch one page of published releases without blocking the UI.
+    LoadReleases {
+        app: String,
+        page: u32,
+        force: bool,
+    },
+    /// Install an exact release offered by the backend, then commit its preferences on success.
+    InstallRelease {
+        app: String,
+        tag: String,
+        preferences: AppPreferences,
+    },
     Uninstall {
         app: String,
     },
@@ -60,6 +72,21 @@ pub struct BackendOptions {
     pub kinds: Vec<PackageKind>,
     /// Offer pre-releases (`0.6.0-rc.1`) as updates.
     pub prereleases: bool,
+    #[serde(default)]
+    pub apps: std::collections::BTreeMap<String, AppPreferences>,
+}
+
+/// Per-app choices, independent of the detected installation.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct AppPreferences {
+    pub pinned_tag: Option<String>,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ReleasePage {
+    pub releases: Vec<Release>,
+    pub more: bool,
 }
 
 /// The answer to "what's the latest release of this app?".
@@ -150,9 +177,39 @@ impl Source {
     }
 }
 
+/// A release-history failure, optionally eligible for an automatic retry.
+#[derive(Clone, Debug, PartialEq)]
+pub struct ReleaseError {
+    pub message: String,
+    /// A transient failure may be retried, after at least this many seconds.
+    pub retry_after: Option<u64>,
+}
+
+impl From<String> for ReleaseError {
+    fn from(message: String) -> Self {
+        Self { message, retry_after: None }
+    }
+}
+
+impl From<&str> for ReleaseError {
+    fn from(message: &str) -> Self {
+        message.to_string().into()
+    }
+}
+
 /// Something the backend wants the UI to know.
 #[derive(Clone, Debug, PartialEq)]
 pub enum Event {
+    Releases {
+        app: String,
+        page: u32,
+        result: Result<ReleasePage, ReleaseError>,
+    },
+    /// Sent only once the exact requested version has been detected on disk.
+    VersionInstalled {
+        app: String,
+        preferences: AppPreferences,
+    },
     Latest {
         app: String,
         latest: LatestRelease,
@@ -163,6 +220,12 @@ pub enum Event {
     LauncherUpdate(Release),
     /// The new launcher is in place (or will be, once this one exits): quit now so it can start.
     LauncherRestarting,
+    /// A verified launcher download has been scheduled. Commit preferences only after restart
+    /// into the selected version; the exit helper may still fail to install it.
+    LauncherSwitchScheduled {
+        tag: String,
+        preferences: AppPreferences,
+    },
     /// News and alerts from ArtCraft's release feed (replaces any earlier set).
     Notices {
         announcements: Vec<crate::feed::Notice>,
@@ -228,6 +291,14 @@ pub trait Backend {
     /// Events since the last call, oldest first.
     fn poll(&mut self) -> Vec<Event>;
     fn capabilities(&self) -> Capabilities;
+    /// The running launcher, including its installation format.
+    fn launcher_installation(&self) -> Option<Installed> {
+        None
+    }
+    /// Formats this backend can install, in preference order.
+    fn install_kinds(&self) -> Vec<PackageKind> {
+        self.platform().map(|platform| platform.default_kinds().to_vec()).unwrap_or_default()
+    }
     /// The machine apps would be installed on (on the web: the visitor's, best guess).
     fn platform(&self) -> Option<Platform>;
     /// Unix seconds now.

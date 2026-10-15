@@ -7,7 +7,10 @@ use artcraft_launcher_core::protocol::{
 };
 use artcraft_launcher_core::release::Release;
 use artcraft_launcher_core::status::AppStatus;
-use artcraft_launcher_core::{Platform, SUITE};
+use artcraft_launcher_core::{
+    Platform, SUITE,
+    catalog::{LAUNCHER, LAUNCHER_ID},
+};
 
 use crate::i18n::set_current;
 use crate::model::AppEntry;
@@ -73,6 +76,7 @@ pub(crate) enum Dialog {
     Notes(String),
     ConfirmUninstall(String),
     Settings,
+    AppSettings(String),
     LauncherUpdate(artcraft_launcher_core::Release),
 }
 
@@ -83,6 +87,7 @@ impl Dialog {
         match self {
             Dialog::Notes(id) => ("notes", id),
             Dialog::ConfirmUninstall(id) => ("uninstall", id),
+            Dialog::AppSettings(id) => ("app-settings", id),
             Dialog::Settings => ("settings", ""),
             Dialog::LauncherUpdate(r) => ("launcher-update", &r.tag),
         }
@@ -90,9 +95,11 @@ impl Dialog {
 }
 
 pub struct LauncherUi {
+    pub(crate) install_kinds: Vec<artcraft_launcher_core::PackageKind>,
     pub(crate) backend: Box<dyn Backend>,
     pub settings: Settings,
     pub(crate) entries: Vec<AppEntry>,
+    pub(crate) launcher_entry: AppEntry,
     pub(crate) caps: Capabilities,
     pub(crate) platform: Option<Platform>,
     pub(crate) checking: bool,
@@ -120,6 +127,7 @@ pub struct LauncherUi {
     pub(crate) detail_zoom: bool,
     /// The details pictures the backend has sent (or been asked for), by app and picture key.
     pub(crate) pictures: std::collections::HashMap<(String, String), crate::details::Picture>,
+    pub(crate) app_settings: Option<crate::app_settings::Draft>,
     started: bool,
     applied_theme: Option<theme::ThemeChoice>,
     /// The OS asks for fewer animations: what the host last said, and the context's time to ask
@@ -159,17 +167,29 @@ const RESCAN_EVERY: i64 = 5 * 60;
 const RESCAN_ON_FOCUS_AFTER: i64 = 30;
 
 impl LauncherUi {
-    pub fn new(ctx: &egui::Context, backend: Box<dyn Backend>, settings: Settings) -> Self {
+    pub fn new(ctx: &egui::Context, backend: Box<dyn Backend>, mut settings: Settings) -> Self {
         let lang = effective_lang(&settings.language);
         let cjk_font = lang.needs_cjk_font().then_some(lang);
         theme::install_fonts(ctx, cjk_font);
         egui_extras::install_image_loaders(ctx);
         let caps = backend.capabilities();
         let platform = backend.platform();
+        let install_kinds = backend.install_kinds();
+        let mut launcher_entry = AppEntry::new(&LAUNCHER);
+        launcher_entry.installed = Some(backend.launcher_installation().unwrap_or_else(|| artcraft_launcher_core::Installed {
+            version: artcraft_launcher_core::version::parse(env!("CARGO_PKG_VERSION")),
+            source: artcraft_launcher_core::InstallSource::Binary,
+            location: String::new(),
+            package: None,
+        }));
+        launcher_entry.detected = true;
+        settings.finish_launcher_switch(launcher_entry.installed.as_ref().and_then(|i| i.version.as_ref()));
         Self {
+            install_kinds,
             backend,
             settings,
             entries: SUITE.iter().map(AppEntry::new).collect(),
+            launcher_entry,
             caps,
             platform,
             checking: false,
@@ -188,6 +208,7 @@ impl LauncherUi {
             detail_shot: 0,
             detail_zoom: false,
             pictures: std::collections::HashMap::new(),
+            app_settings: None,
             started: false,
             applied_theme: None,
             reduce_motion: false,
@@ -256,17 +277,24 @@ impl LauncherUi {
     }
 
     pub(crate) fn entry(&self, id: &str) -> Option<&AppEntry> {
-        self.entries.iter().find(|e| e.app.id == id)
+        self.entries.iter().chain(std::iter::once(&self.launcher_entry)).find(|e| e.app.id == id)
     }
 
-    fn entry_mut(&mut self, id: &str) -> Option<&mut AppEntry> {
-        self.entries.iter_mut().find(|e| e.app.id == id)
+    pub(crate) fn entry_mut(&mut self, id: &str) -> Option<&mut AppEntry> {
+        self.entries.iter_mut().chain(std::iter::once(&mut self.launcher_entry)).find(|e| e.app.id == id)
     }
 
     /// Non-drawing work: runs every frame and also while the window is hidden in the tray.
     pub fn logic(&mut self, ctx: &egui::Context, host: &mut dyn Host) {
         set_current(crate::i18n::Lang::from_pref(&self.settings.language));
-        let options = BackendOptions { kinds: self.settings.preferred_kinds.clone(), prereleases: self.settings.prereleases };
+        if !self.started {
+            self.settings.finish_launcher_switch(self.launcher_entry.installed.as_ref().and_then(|i| i.version.as_ref()));
+        }
+        for entry in self.entries.iter_mut().chain(std::iter::once(&mut self.launcher_entry)) {
+            entry.pinned = self.settings.apps.get(entry.app.id).is_some_and(|p| p.pinned_tag.is_some());
+        }
+        let options =
+            BackendOptions { kinds: self.settings.preferred_kinds.clone(), prereleases: self.settings.prereleases, apps: self.settings.apps.clone() };
         if self.sent_options.as_ref() != Some(&options) {
             self.backend.send(Command::Configure(options.clone()));
             self.sent_options = Some(options);
@@ -297,6 +325,7 @@ impl LauncherUi {
         for event in self.backend.poll() {
             changed |= self.handle(ctx, event);
         }
+        self.retry_app_releases(ctx);
         if changed {
             self.announce_updates(host);
             if self.settings.auto_update {
@@ -315,6 +344,54 @@ impl LauncherUi {
     /// Returns whether app state changed.
     fn handle(&mut self, ctx: &egui::Context, event: Event) -> bool {
         match event {
+            Event::Releases { app, page, result } => {
+                let active = matches!(&self.dialog, Some(Dialog::AppSettings(id)) if id == &app);
+                let now = ctx.input(|i| i.time);
+                if let Some(entry) = self.entry_mut(&app) {
+                    if entry.history_loading != Some(page) {
+                        return false;
+                    }
+                    entry.history_loading = None;
+                    match result {
+                        Ok(history) => {
+                            if page == 1 {
+                                entry.releases.clear();
+                            }
+                            for release in history.releases {
+                                if !entry.releases.iter().any(|r| r.tag == release.tag) {
+                                    entry.releases.push(release);
+                                }
+                            }
+                            entry.releases.sort_by(|a, b| b.version.cmp(&a.version).then_with(|| b.published_at.cmp(&a.published_at)));
+                            entry.history_page = page;
+                            entry.history_more = history.more && page < 20;
+                            entry.history_error = None;
+                            entry.history_retry = None;
+                            entry.history_failures = 0;
+                        }
+                        Err(error) => {
+                            entry.history_error = Some(error.message);
+                            entry.history_retry = if active && let Some(minimum) = error.retry_after {
+                                entry.history_failures = entry.history_failures.saturating_add(1);
+                                Some(crate::model::ReleaseRetry {
+                                    page,
+                                    at: now + crate::app_settings::release_retry_delay(entry.history_failures, minimum) as f64,
+                                })
+                            } else {
+                                None
+                            };
+                        }
+                    }
+                }
+                false
+            }
+            Event::VersionInstalled { app, preferences } => {
+                if let Some(entry) = self.entry_mut(&app) {
+                    entry.pinned = preferences.pinned_tag.is_some();
+                }
+                self.settings.apps.insert(app, preferences);
+                true
+            }
             Event::Latest { app, latest, from } => {
                 if let Some(e) = self.entry_mut(&app) {
                     // A failed check keeps the release we already know about (and where it came from).
@@ -339,12 +416,17 @@ impl LauncherUi {
             Event::Progress { app, phase } => {
                 if app == artcraft_launcher_core::catalog::LAUNCHER_ID {
                     self.launcher_job = Some(phase);
+                    self.launcher_entry.job = Some(phase);
                     if matches!(self.dialog, Some(Dialog::LauncherUpdate(_))) {
                         self.dialog = None;
                     }
                 } else if let Some(e) = self.entry_mut(&app) {
                     e.job = Some(phase);
                 }
+                false
+            }
+            Event::LauncherSwitchScheduled { tag, preferences } => {
+                self.settings.pending_launcher_switch = Some((tag, preferences));
                 false
             }
             Event::LauncherRestarting => {
@@ -398,9 +480,10 @@ impl LauncherUi {
             Event::LauncherUpdate(r) => {
                 let fresh = self.launcher_update.as_ref().is_none_or(|cur| cur.version != r.version);
                 self.launcher_update = Some(r.clone());
+                self.launcher_entry.latest = Some(LatestRelease::Found(r.clone()));
                 // Ask once per new version, unless automatic updates will install it anyway.
                 let automatic = self.settings.auto_update && self.caps.self_update;
-                if fresh && !automatic && self.dialog.is_none() && self.launcher_job.is_none() {
+                if fresh && !automatic && !self.launcher_pinned() && self.dialog.is_none() && self.launcher_job.is_none() {
                     self.dialog = Some(Dialog::LauncherUpdate(r));
                 }
                 fresh
@@ -452,6 +535,10 @@ impl LauncherUi {
         }
     }
 
+    pub(crate) fn launcher_pinned(&self) -> bool {
+        self.settings.apps.get(LAUNCHER_ID).is_some_and(|p| p.pinned_tag.is_some())
+    }
+
     /// When auto-updates are enabled, automatically downloads and installs pending updates.
     pub(crate) fn trigger_auto_updates(&mut self) {
         if !self.caps.manage_apps || !self.settings.auto_update {
@@ -472,6 +559,7 @@ impl LauncherUi {
             self.send(Command::Install { app: id });
         }
         if self.caps.self_update
+            && !self.launcher_pinned()
             && let Some(r) = &self.launcher_update
             && self.launcher_job.is_none()
         {

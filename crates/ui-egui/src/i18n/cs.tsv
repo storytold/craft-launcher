@@ -312,3 +312,46 @@ filter	Installed	Nainstalováno
 	ArtCraft on GitHub	ArtCraft na GitHubu
 	Join the ArtCraft Discord	Připojit se na ArtCraft Discord
 @plural	ArtCraft Launcher · {n} update available|ArtCraft Launcher · {n} updates available	ArtCraft Launcher · {n} dostupná aktualizace|ArtCraft Launcher · {n} dostupné aktualizace|ArtCraft Launcher · {n} dostupných aktualizací
+
+# Version history, pinning and installation settings
+	App settings	Nastavení aplikace
+	App settings…	Nastavení aplikace…
+	Installation	Instalace
+	Installed: {version}	Nainstalováno: {version}
+	Version is kept	Verze je připnutá
+	Selected release	Vybrané vydání
+	Select a release	Vybrat vydání
+	Show pre-releases	Zobrazit předběžná vydání
+	Loading releases…	Načítání vydání…
+	Refresh releases	Obnovit seznam vydání
+	Load older releases	Načíst starší vydání
+	No published releases are available.	Nejsou dostupná žádná zveřejněná vydání.
+	This package cannot downgrade here. Use a portable installation instead.	Tento balíček zde nelze vrátit na starší verzi. Použijte přenosnou instalaci.
+	No compatible download for this release.	Pro toto vydání není dostupné kompatibilní stažení.
+	This release has no published checksum.	Toto vydání nemá zveřejněný kontrolní součet.
+	This release's version cannot be verified.	Verzi tohoto vydání nelze ověřit.
+	An older version will replace the installed program.	Starší verze nahradí nainstalovaný program.
+	Automatic updates and Update all will leave this version unchanged.	Automatické aktualizace ani „Aktualizovat vše“ tuto verzi nezmění.
+	Follow the latest release using the global update settings.	Používat nejnovější vydání podle globálního nastavení aktualizací.
+	Switch to {version}	Přejít na {version}
+	Current installation folder	Aktuální instalační složka
+	Open installation folder	Otevřít instalační složku
+	Version changes keep the existing installation folder and package format.	Změny verze zachovají stávající instalační složku a formát balíčku.
+	Package format	Formát balíčku
+	Installation in progress. You can close this window.	Probíhá instalace. Toto okno můžete zavřít.
+	Save update preferences	Uložit předvolby aktualizací
+@msg	GitHub's request limit was reached. Try again later.	Byl dosažen limit požadavků GitHubu. Zkuste to později.
+@msg	Reload the release list before selecting a version.	Před výběrem verze znovu načtěte seznam vydání.
+@msg	This app is pinned to a selected version. Open its settings to change versions.	Tato aplikace je připnutá k vybrané verzi. Pro změnu verze otevřete její nastavení.
+@msg	This release has no published checksum for this download.	Toto vydání nemá pro toto stažení zveřejněný kontrolní součet.
+@msg	This package format cannot safely downgrade here. Use a portable installation instead.	Tento formát balíčku zde nelze bezpečně vrátit na starší verzi. Použijte přenosnou instalaci.
+@msg	The installer finished, but the selected version could not be confirmed. Check the installed version before retrying.	Instalátor dokončil práci, ale vybranou verzi se nepodařilo potvrdit. Před dalším pokusem zkontrolujte nainstalovanou verzi.
+	Retrying automatically in {seconds}s…	Automatický další pokus za {seconds} s…
+	Keep this version after switching	Po změně připnout tuto verzi
+	Launcher version	Verze spouštěče
+	Choose launcher version…	Vybrat verzi spouštěče…
+	Launcher MSI downgrades require a portable copy. This installation can upgrade only.	Návrat MSI spouštěče na starší verzi vyžaduje přenosnou kopii. Tato instalace umožňuje pouze přechod na novější verzi.
+@msg	Launcher MSI downgrades require a portable copy. This installation can upgrade only.	Návrat MSI spouštěče na starší verzi vyžaduje přenosnou kopii. Tato instalace umožňuje pouze přechod na novější verzi.
+	The launcher will wait for other installs, switch versions and restart.	Spouštěč počká na dokončení ostatních instalací, změní verzi a restartuje se.
+	Older launcher releases may not support version preferences.	Starší vydání spouštěče nemusí podporovat předvolby verzí.
+	This development or externally managed launcher cannot switch versions in place.	Tento vývojový nebo externě spravovaný spouštěč nemůže změnit verzi ve stávajícím umístění.

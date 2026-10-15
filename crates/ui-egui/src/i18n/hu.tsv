@@ -345,3 +345,45 @@ filter	Installed	Telepítve
 	ArtCraft on GitHub	ArtCraft a GitHubon
 	Join the ArtCraft Discord	Csatlakozás az ArtCraft Discord-közösségéhez
 @plural	ArtCraft Launcher · {n} update available|ArtCraft Launcher · {n} updates available	ArtCraft Launcher · {n} frissítés elérhető|ArtCraft Launcher · {n} frissítés elérhető
+
+	App settings	Alkalmazásbeállítások
+	App settings…	Alkalmazásbeállítások…
+	Installation	Telepítés
+	Installed: {version}	Telepített verzió: {version}
+	Version is kept	Verzió rögzítve
+	Selected release	Kiválasztott kiadás
+	Select a release	Kiadás kiválasztása
+	Show pre-releases	Előzetes kiadások megjelenítése
+	Loading releases…	Kiadások betöltése…
+	Refresh releases	Kiadások frissítése
+	Load older releases	Régebbi kiadások betöltése
+	No published releases are available.	Nincs elérhető közzétett kiadás.
+	This package cannot downgrade here. Use a portable installation instead.	Ezzel a csomaggal itt nem lehet régebbi verzióra váltani. Használj hordozható telepítést.
+	No compatible download for this release.	Ehhez a kiadáshoz nincs kompatibilis letöltés.
+	This release has no published checksum.	Ehhez a kiadáshoz nincs közzétett ellenőrzőösszeg.
+	This release's version cannot be verified.	Ennek a kiadásnak a verziója nem ellenőrizhető.
+	An older version will replace the installed program.	A régebbi verzió felülírja a telepített programot.
+	Automatic updates and Update all will leave this version unchanged.	Az automatikus frissítések és az Összes frissítése változatlanul hagyják ezt a verziót.
+	Follow the latest release using the global update settings.	A legújabb kiadás követése a globális frissítési beállítások szerint.
+	Switch to {version}	Váltás erre: {version}
+	Current installation folder	Jelenlegi telepítési mappa
+	Open installation folder	Telepítési mappa megnyitása
+	Version changes keep the existing installation folder and package format.	Verzióváltáskor megmarad a jelenlegi telepítési mappa és csomagformátum.
+	Package format	Csomagformátum
+	Installation in progress. You can close this window.	Telepítés folyamatban. Bezárhatod ezt az ablakot.
+	Save update preferences	Frissítési beállítások mentése
+@msg	GitHub's request limit was reached. Try again later.	Elérted a GitHub kérési korlátját. Próbáld újra később.
+@msg	Reload the release list before selecting a version.	Verzióválasztás előtt töltsd újra a kiadások listáját.
+@msg	This app is pinned to a selected version. Open its settings to change versions.	Ez az alkalmazás egy kiválasztott verzióhoz van rögzítve. Verzióváltáshoz nyisd meg a beállításait.
+@msg	This release has no published checksum for this download.	Ehhez a letöltéshez nincs közzétett ellenőrzőösszeg ebben a kiadásban.
+@msg	This package format cannot safely downgrade here. Use a portable installation instead.	Ezzel a csomagformátummal itt nem lehet biztonságosan régebbi verzióra váltani. Használj hordozható telepítést.
+@msg	The installer finished, but the selected version could not be confirmed. Check the installed version before retrying.	A telepítő befejeződött, de a kiválasztott verziót nem sikerült megerősíteni. Újrapróbálkozás előtt ellenőrizd a telepített verziót.
+	Retrying automatically in {seconds}s…	Automatikus újrapróbálkozás {seconds} másodperc múlva…
+	Keep this version after switching	Verzió megtartása váltás után
+	Launcher version	Indító verziója
+	Choose launcher version…	Indító verziójának kiválasztása…
+	Launcher MSI downgrades require a portable copy. This installation can upgrade only.	Az indító régebbi MSI-verziójára váltáshoz hordozható példány szükséges. Ez a telepítés csak újabb verzióra frissíthető.
+@msg	Launcher MSI downgrades require a portable copy. This installation can upgrade only.	Az indító régebbi MSI-verziójára váltáshoz hordozható példány szükséges. Ez a telepítés csak újabb verzióra frissíthető.
+	The launcher will wait for other installs, switch versions and restart.	Az indító megvárja a többi telepítést, verziót vált és újraindul.
+	Older launcher releases may not support version preferences.	Az indító régebbi kiadásai nem feltétlenül támogatják a verzióbeállításokat.
+	This development or externally managed launcher cannot switch versions in place.	Ez a fejlesztői vagy külsőleg kezelt indító nem tudja helyben lecserélni a saját verzióját.

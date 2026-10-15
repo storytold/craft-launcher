@@ -26,10 +26,12 @@ impl LauncherUi {
             Dialog::Notes(id) => modal.show(ctx, |ui| close = self.notes_dialog(ui, id)),
             Dialog::ConfirmUninstall(id) => modal.show(ctx, |ui| close = self.uninstall_dialog(ui, id)),
             Dialog::Settings => modal.show(ctx, |ui| close = self.settings_dialog(ui, host)),
+            Dialog::AppSettings(id) => modal.show(ctx, |ui| close = self.app_settings_dialog(ui, id)),
             Dialog::LauncherUpdate(r) => modal.show(ctx, |ui| close = self.launcher_update_dialog(ui, r)),
         };
         if close || response.should_close() {
             self.dialog = None;
+            self.app_settings = None;
         }
     }
 
@@ -264,6 +266,16 @@ impl LauncherUi {
             let note = "No font for this language was found on this system, so the interface stays in English. \
                         Installing one (for example Noto Sans CJK) and restarting fixes it.";
             ui.add(egui::Label::new(RichText::new(note).size(12.0).color(t.warn)).wrap());
+        }
+
+        if self.caps.manage_apps {
+            section(ui, tl!("Launcher version"));
+            if widgets::button(ui, tl!("Choose launcher version…"), Kind::Secondary, 0.0).clicked() {
+                self.open_app_settings(artcraft_launcher_core::catalog::LAUNCHER_ID);
+            }
+            if self.launcher_pinned() {
+                ui.label(tl!("Version is kept"));
+            }
         }
 
         section(ui, tl!("Updates"));

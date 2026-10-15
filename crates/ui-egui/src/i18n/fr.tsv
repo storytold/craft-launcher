@@ -342,3 +342,52 @@ filter	Installed	Installées
 	Loading pictures…	Chargement des images…
 	Pictures couldn't be loaded. Reopen this page to try again.	Impossible de charger les images. Rouvrir la page permet de réessayer.
 @plural	ArtCraft Launcher · {n} update available|ArtCraft Launcher · {n} updates available	ArtCraft Launcher · {n} mise à jour disponible|ArtCraft Launcher · {n} mises à jour disponibles
+
+# Per-app version and installation settings.
+	App settings	Paramètres de l’application
+	App settings…	Paramètres de l’application…
+	Installation	Installation
+	Installed: {version}	Version installée : {version}
+	Version is kept	Version conservée
+	Selected release	Version sélectionnée
+	Select a release	Sélectionner une version
+	Show pre-releases	Afficher les préversions
+	Loading releases…	Chargement des versions…
+	Refresh releases	Actualiser les versions
+	Load older releases	Charger les versions précédentes
+	No published releases are available.	Aucune version publiée disponible.
+	This package cannot downgrade here. Use a portable installation instead.	Ce paquet ne permet pas de rétrograder ici. Utilisez une installation portable.
+	No compatible download for this release.	Aucun téléchargement compatible pour cette version.
+	This release has no published checksum.	Aucune somme de contrôle publiée pour cette version.
+	This release's version cannot be verified.	Le numéro de cette version ne peut pas être vérifié.
+	An older version will replace the installed program.	Une version antérieure remplacera le programme installé.
+	Automatic updates and Update all will leave this version unchanged.	Les mises à jour automatiques et « Tout mettre à jour » conserveront cette version.
+	Follow the latest release using the global update settings.	Suivre la dernière version selon les paramètres globaux de mise à jour.
+	Switch to {version}	Passer à {version}
+	Current installation folder	Dossier d’installation actuel
+	Open installation folder	Ouvrir le dossier d’installation
+	Version changes keep the existing installation folder and package format.	Changer de version conserve le dossier d’installation et le format du paquet.
+	Package format	Format du paquet
+	Installation in progress. You can close this window.	Installation en cours. Vous pouvez fermer cette fenêtre.
+	Save update preferences	Enregistrer les préférences de mise à jour
+
+# Version management messages.
+@msg	GitHub's request limit was reached. Try again later.	La limite de requêtes GitHub est atteinte. Réessayez plus tard.
+@msg	Reload the release list before selecting a version.	Rechargez la liste avant de sélectionner une version.
+@msg	This app is pinned to a selected version. Open its settings to change versions.	Une version est conservée pour cette application. Ouvrez ses paramètres pour la changer.
+@msg	This release has no published checksum for this download.	Aucune somme de contrôle n’est publiée pour ce téléchargement.
+@msg	This package format cannot safely downgrade here. Use a portable installation instead.	Ce format ne permet pas de rétrograder en sécurité ici. Utilisez une installation portable.
+@msg	The installer finished, but the selected version could not be confirmed. Check the installed version before retrying.	L’installation est terminée, mais la version choisie n’a pas pu être confirmée. Vérifiez la version installée avant de réessayer.
+
+# Version management messages.
+
+# Confirmed MSI version changes.
+	Retrying automatically in {seconds}s…	Nouvelle tentative automatique dans {seconds}s…
+	Keep this version after switching	Conserver cette version après le changement
+	Launcher version	Version du lanceur
+	Choose launcher version…	Choisir la version du lanceur…
+	Launcher MSI downgrades require a portable copy. This installation can upgrade only.	Pour rétrograder le lanceur MSI, utilisez une copie portable. Cette installation permet uniquement les mises à niveau.
+@msg	Launcher MSI downgrades require a portable copy. This installation can upgrade only.	Pour rétrograder le lanceur MSI, utilisez une copie portable. Cette installation permet uniquement les mises à niveau.
+	The launcher will wait for other installs, switch versions and restart.	Le lanceur attendra les autres installations, changera de version et redémarrera.
+	Older launcher releases may not support version preferences.	Les anciennes versions du lanceur peuvent ne pas prendre en charge les préférences de version.
+	This development or externally managed launcher cannot switch versions in place.	Ce lanceur de développement ou géré extérieurement ne peut pas changer de version sur place.

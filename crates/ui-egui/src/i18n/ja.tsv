@@ -347,3 +347,46 @@ filter	Installed	インストール済み
 	ArtCraft on GitHub	GitHub の ArtCraft
 	Join the ArtCraft Discord	ArtCraft Discord に参加
 @plural	ArtCraft Launcher · {n} update available|ArtCraft Launcher · {n} updates available	ArtCraft Launcher · {n} 件の更新があります
+
+# Version history, pinning and installation settings
+	App settings	アプリの設定
+	App settings…	アプリの設定…
+	Installation	インストール
+	Installed: {version}	インストール済み: {version}
+	Version is kept	バージョンを固定中
+	Selected release	選択したリリース
+	Select a release	リリースを選択
+	Show pre-releases	プレリリースを表示
+	Loading releases…	リリースを読み込み中…
+	Refresh releases	リリースを再読み込み
+	Load older releases	古いリリースを読み込む
+	No published releases are available.	公開済みのリリースがありません。
+	This package cannot downgrade here. Use a portable installation instead.	このパッケージはこの環境ではダウングレードできません。ポータブル版を使用してください。
+	No compatible download for this release.	このリリースに対応するダウンロードがありません。
+	This release has no published checksum.	このリリースには公開されたチェックサムがありません。
+	This release's version cannot be verified.	このリリースのバージョンを確認できません。
+	An older version will replace the installed program.	インストール済みのプログラムを古いバージョンで置き換えます。
+	Automatic updates and Update all will leave this version unchanged.	自動更新と「すべて更新」では、このバージョンは変更されません。
+	Follow the latest release using the global update settings.	全体の更新設定に従って最新リリースに更新します。
+	Switch to {version}	{version} に切り替え
+	Current installation folder	現在のインストール先フォルダー
+	Open installation folder	インストール先フォルダーを開く
+	Version changes keep the existing installation folder and package format.	バージョンを変更しても、インストール先フォルダーとパッケージ形式は維持されます。
+	Package format	パッケージ形式
+	Installation in progress. You can close this window.	インストール中です。このウィンドウは閉じてもかまいません。
+	Save update preferences	更新設定を保存
+@msg	GitHub's request limit was reached. Try again later.	GitHub のリクエスト上限に達しました。しばらくしてから再試行してください。
+@msg	Reload the release list before selecting a version.	バージョンを選択する前に、リリース一覧を再読み込みしてください。
+@msg	This app is pinned to a selected version. Open its settings to change versions.	このアプリは選択したバージョンに固定されています。バージョンを変更するにはアプリの設定を開いてください。
+@msg	This release has no published checksum for this download.	このダウンロードには公開されたチェックサムがありません。
+@msg	This package format cannot safely downgrade here. Use a portable installation instead.	このパッケージ形式はこの環境では安全にダウングレードできません。ポータブル版を使用してください。
+@msg	The installer finished, but the selected version could not be confirmed. Check the installed version before retrying.	インストールは完了しましたが、選択したバージョンを確認できませんでした。再試行する前にインストール済みのバージョンを確認してください。
+	Retrying automatically in {seconds}s…	{seconds} 秒後に自動で再試行…
+	Keep this version after switching	切り替え後、このバージョンを固定
+	Launcher version	ランチャーのバージョン
+	Choose launcher version…	ランチャーのバージョンを選択…
+	Launcher MSI downgrades require a portable copy. This installation can upgrade only.	ランチャーの MSI をダウングレードするにはポータブル版が必要です。このインストールではアップグレードのみ可能です。
+@msg	Launcher MSI downgrades require a portable copy. This installation can upgrade only.	ランチャーの MSI をダウングレードするにはポータブル版が必要です。このインストールではアップグレードのみ可能です。
+	The launcher will wait for other installs, switch versions and restart.	ランチャーは他のインストールが完了するまで待機し、バージョンを切り替えて再起動します。
+	Older launcher releases may not support version preferences.	古いランチャーのリリースは、バージョン設定に対応していない場合があります。
+	This development or externally managed launcher cannot switch versions in place.	この開発用または外部で管理されているランチャーは、その場でバージョンを切り替えられません。

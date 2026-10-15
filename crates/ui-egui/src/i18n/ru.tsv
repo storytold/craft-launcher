@@ -340,3 +340,52 @@ filter	Installed	Установлены
 	Loading pictures…	Загрузка изображений…
 	Pictures couldn't be loaded. Reopen this page to try again.	Не удалось загрузить изображения. Откройте страницу снова, чтобы повторить попытку.
 @plural	ArtCraft Launcher · {n} update available|ArtCraft Launcher · {n} updates available	ArtCraft Launcher · {n} обновление|ArtCraft Launcher · {n} обновления|ArtCraft Launcher · {n} обновлений
+
+# Per-app version and installation settings.
+	App settings	Настройки приложения
+	App settings…	Настройки приложения…
+	Installation	Установка
+	Installed: {version}	Установлено: {version}
+	Version is kept	Версия закреплена
+	Selected release	Выбранный выпуск
+	Select a release	Выберите выпуск
+	Show pre-releases	Показывать предварительные выпуски
+	Loading releases…	Загрузка выпусков…
+	Refresh releases	Обновить список выпусков
+	Load older releases	Загрузить более старые выпуски
+	No published releases are available.	Нет опубликованных выпусков.
+	This package cannot downgrade here. Use a portable installation instead.	Этот пакет не поддерживает откат здесь. Используйте портативную установку.
+	No compatible download for this release.	Нет совместимой загрузки для этого выпуска.
+	This release has no published checksum.	Для этого выпуска не опубликована контрольная сумма.
+	This release's version cannot be verified.	Невозможно проверить номер версии этого выпуска.
+	An older version will replace the installed program.	Более старая версия заменит установленную программу.
+	Automatic updates and Update all will leave this version unchanged.	Автообновления и «Обновить всё» не изменят эту версию.
+	Follow the latest release using the global update settings.	Следовать последнему выпуску согласно общим настройкам обновлений.
+	Switch to {version}	Перейти на {version}
+	Current installation folder	Текущая папка установки
+	Open installation folder	Открыть папку установки
+	Version changes keep the existing installation folder and package format.	При смене версии сохраняются папка установки и формат пакета.
+	Package format	Формат пакета
+	Installation in progress. You can close this window.	Идёт установка. Это окно можно закрыть.
+	Save update preferences	Сохранить настройки обновлений
+
+# Version management messages.
+@msg	GitHub's request limit was reached. Try again later.	Достигнут лимит запросов GitHub. Повторите позже.
+@msg	Reload the release list before selecting a version.	Обновите список выпусков перед выбором версии.
+@msg	This app is pinned to a selected version. Open its settings to change versions.	Версия приложения закреплена. Откройте его настройки для смены версии.
+@msg	This release has no published checksum for this download.	Для этой загрузки не опубликована контрольная сумма.
+@msg	This package format cannot safely downgrade here. Use a portable installation instead.	Этот формат пакета не поддерживает безопасный откат здесь. Используйте портативную установку.
+@msg	The installer finished, but the selected version could not be confirmed. Check the installed version before retrying.	Установка завершена, но выбранная версия не подтверждена. Проверьте установленную версию перед повтором.
+
+# Version management messages.
+
+# Confirmed MSI version changes.
+	Retrying automatically in {seconds}s…	Автоматическая повторная попытка через {seconds} с…
+	Keep this version after switching	Закрепить эту версию после переключения
+	Launcher version	Версия лаунчера
+	Choose launcher version…	Выбрать версию лаунчера…
+	Launcher MSI downgrades require a portable copy. This installation can upgrade only.	Для понижения версии MSI лаунчера нужна переносная копия. Эта установка поддерживает только обновление.
+@msg	Launcher MSI downgrades require a portable copy. This installation can upgrade only.	Для понижения версии MSI лаунчера нужна переносная копия. Эта установка поддерживает только обновление.
+	The launcher will wait for other installs, switch versions and restart.	Лаунчер дождётся других установок, сменит версию и перезапустится.
+	Older launcher releases may not support version preferences.	Старые версии лаунчера могут не поддерживать настройки версий.
+	This development or externally managed launcher cannot switch versions in place.	Эта сборка для разработки или внешне управляемый лаунчер не может сменить версию на месте.
