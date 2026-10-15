@@ -345,3 +345,75 @@ filter	Installed	Telepítve
 	ArtCraft on GitHub	ArtCraft a GitHubon
 	Join the ArtCraft Discord	Csatlakozás az ArtCraft Discord-közösségéhez
 @plural	ArtCraft Launcher · {n} update available|ArtCraft Launcher · {n} updates available	ArtCraft Launcher · {n} frissítés elérhető|ArtCraft Launcher · {n} frissítés elérhető
+
+	App settings	Alkalmazásbeállítások
+	App settings…	Alkalmazásbeállítások…
+	Installation	Telepítés
+	Installed: {version}	Telepített verzió: {version}
+	Version is kept	Verzió rögzítve
+	Selected release	Kiválasztott kiadás
+	Select a release	Kiadás kiválasztása
+	Show pre-releases	Előzetes kiadások megjelenítése
+	Loading releases…	Kiadások betöltése…
+	Refresh releases	Kiadások frissítése
+	Load older releases	Régebbi kiadások betöltése
+	No published releases are available.	Nincs elérhető közzétett kiadás.
+	This package cannot downgrade here. Use a portable installation instead.	Ezzel a csomaggal itt nem lehet régebbi verzióra váltani. Használj hordozható telepítést.
+	No compatible download for this release.	Ehhez a kiadáshoz nincs kompatibilis letöltés.
+	This release has no published checksum.	Ehhez a kiadáshoz nincs közzétett ellenőrzőösszeg.
+	This release's version cannot be verified.	Ennek a kiadásnak a verziója nem ellenőrizhető.
+	An older version will replace the installed program.	A régebbi verzió felülírja a telepített programot.
+	Keep the selected version	Kiválasztott verzió megtartása
+	Automatic updates and Update all will leave this version unchanged.	Az automatikus frissítések és az Összes frissítése változatlanul hagyják ezt a verziót.
+	Follow the latest release using the global update settings.	A legújabb kiadás követése a globális frissítési beállítások szerint.
+	Switch to {version}	Váltás erre: {version}
+	Current installation folder	Jelenlegi telepítési mappa
+	Open installation folder	Telepítési mappa megnyitása
+	Version changes keep the existing installation folder and package format.	Verzióváltáskor megmarad a jelenlegi telepítési mappa és csomagformátum.
+	Package format	Csomagformátum
+	System default	Rendszer alapértelmezése
+	Choose a folder for a new installation	Mappa kiválasztása új telepítéshez
+	Browse…	Tallózás…
+	Custom folders are available for portable ZIP packages.	Egyéni mappa hordozható ZIP-csomagokhoz használható.
+	Installation in progress. You can close this window.	Telepítés folyamatban. Bezárhatod ezt az ablakot.
+	Save update preferences	Frissítési beállítások mentése
+@msg	GitHub's request limit was reached. Try again later.	Elérted a GitHub kérési korlátját. Próbáld újra később.
+@msg	Reload the release list before selecting a version.	Verzióválasztás előtt töltsd újra a kiadások listáját.
+@msg	This app is pinned to a selected version. Open its settings to change versions.	Ez az alkalmazás egy kiválasztott verzióhoz van rögzítve. Verzióváltáshoz nyisd meg a beállításait.
+@msg	This release has no published checksum for this download.	Ehhez a letöltéshez nincs közzétett ellenőrzőösszeg ebben a kiadásban.
+@msg	This package format cannot safely downgrade here. Use a portable installation instead.	Ezzel a csomagformátummal itt nem lehet biztonságosan régebbi verzióra váltani. Használj hordozható telepítést.
+@msg	The installer finished, but the selected version could not be confirmed. Check the installed version before retrying.	A telepítő befejeződött, de a kiválasztott verziót nem sikerült megerősíteni. Újrapróbálkozás előtt ellenőrizd a telepített verziót.
+@msg	Custom folders are supported for portable ZIP installations only.	Egyéni mappa csak hordozható ZIP-telepítéshez használható.
+@msg	The installation would overwrite an unrecorded file.	A telepítés felülírna egy nem nyilvántartott fájlt.
+@msg	Choose an absolute installation folder without parent-directory components.	Válassz abszolút telepítési mappaútvonalat, szülőmappára utaló elemek nélkül.
+@msg	The portable executable does not match the selected version. The installation was rolled back.	A hordozható futtatható fájl nem egyezik a kiválasztott verzióval. A telepítést visszavontuk.
+	MSI downgrade requires removing the current version first. You will confirm before it starts.	Régebbi MSI-verzió telepítéséhez előbb el kell távolítani a jelenlegi verziót. Indítás előtt megerősítést kérünk.
+	Downgrade {name} to {version}?	Visszaállítod a(z) {name} alkalmazást a(z) {version} verzióra?
+	Both MSI installers are downloaded and verified before anything is removed.	Mindkét MSI-telepítőt letöltjük és ellenőrizzük, mielőtt bármit eltávolítanánk.
+	Windows will uninstall the current version, then install the selected version in the same folder. Administrator permission may be required.	A Windows eltávolítja a jelenlegi verziót, majd ugyanabba a mappába telepíti a kiválasztott verziót. Rendszergazdai jogosultságra lehet szükség.
+	If installation fails, the launcher will try to restore the original version. If recovery fails, it keeps the installers and shows their location.	Ha a telepítés sikertelen, az indító megpróbálja visszaállítani az eredeti verziót. Ha a helyreállítás is sikertelen, megtartja a telepítőket és megmutatja a helyüket.
+	Uninstall and switch	Eltávolítás és verzióváltás
+	Load the installed release before downgrading its MSI package.	Régebbi MSI-verzióra váltás előtt töltsd be a telepített kiadást.
+@msg	Load the installed release before downgrading its MSI package.	Régebbi MSI-verzióra váltás előtt töltsd be a telepített kiadást.
+	MSI downgrades require stable releases.	Régebbi MSI-verzióra váltáshoz stabil kiadások szükségesek.
+@msg	Choose an older MSI release in App settings and confirm the downgrade.	Válassz régebbi MSI-kiadást az alkalmazásbeállításokban, és erősítsd meg a visszaállítást.
+@msg	The installed release has no compatible recovery MSI.	A telepített kiadáshoz nincs kompatibilis helyreállító MSI.
+@msg	Could not inspect the MSI package. Nothing was removed.	Nem sikerült megvizsgálni az MSI-csomagot. Semmit sem távolítottunk el.
+@msg	The MSI packages do not match the installed app. Nothing was removed.	Az MSI-csomagok nem egyeznek a telepített alkalmazással. Semmit sem távolítottunk el.
+@msg	The installed MSI folder could not be verified. Nothing was removed.	A telepített MSI mappáját nem sikerült ellenőrizni. Semmit sem távolítottunk el.
+@msg	Both MSI releases need published checksums before downgrading.	Régebbi verzióra váltás előtt mindkét MSI-kiadáshoz közzétett ellenőrzőösszeg szükséges.
+@msg	The recovery MSI copy could not be verified. Nothing was removed.	A helyreállító MSI másolatát nem sikerült ellenőrizni. Semmit sem távolítottunk el.
+@msg	The installed MSI version or folder does not match the expected app.	A telepített MSI verziója vagy mappája nem egyezik a várt alkalmazással.
+@msg	MSI downgrade failed; the original version was restored. {details}	A régebbi MSI-verzió telepítése sikertelen; az eredeti verziót visszaállítottuk. {details}
+@msg	MSI downgrade failed; recovery also failed. {details}	A régebbi MSI-verzió telepítése sikertelen; a helyreállítás is sikertelen. {details}
+	Retrying automatically in {seconds}s…	Automatikus újrapróbálkozás {seconds} másodperc múlva…
+	Keep this version after switching	Verzió megtartása váltás után
+	MSI installation runs in the background. Windows may ask for administrator permission.	Az MSI-telepítés a háttérben fut. A Windows rendszergazdai jogosultságot kérhet.
+@msg	Could not save the launcher update state. Update was not started.	Az indító frissítési állapotát nem sikerült menteni. A frissítés nem indult el.
+	Launcher version	Indító verziója
+	Choose launcher version…	Indító verziójának kiválasztása…
+	Launcher MSI downgrades require a portable copy. This installation can upgrade only.	Az indító régebbi MSI-verziójára váltáshoz hordozható példány szükséges. Ez a telepítés csak újabb verzióra frissíthető.
+@msg	Launcher MSI downgrades require a portable copy. This installation can upgrade only.	Az indító régebbi MSI-verziójára váltáshoz hordozható példány szükséges. Ez a telepítés csak újabb verzióra frissíthető.
+	The launcher will wait for other installs, switch versions and restart.	Az indító megvárja a többi telepítést, verziót vált és újraindul.
+	Older launcher releases may not support version preferences.	Az indító régebbi kiadásai nem feltétlenül támogatják a verzióbeállításokat.
+	This development or externally managed launcher cannot switch versions in place.	Ez a fejlesztői vagy külsőleg kezelt indító nem tudja helyben lecserélni a saját verzióját.

@@ -38,6 +38,8 @@ pub struct Job<'a> {
     pub phase: &'a mut dyn FnMut(JobPhase),
 }
 
+pub type RecordCommit<'a> = &'a mut dyn FnMut(&Record) -> Result<(), String>;
+
 /// Downloads and installs `asset` of `release`. Returns a record when the launcher owns the
 /// result (portable zip, AppImage, tarball); MSI and macOS installs are found by detection.
 /// `previous` is the launcher's record of the copy being replaced, if it installed it.
@@ -50,6 +52,29 @@ pub fn install(
     previous: Option<&Record>,
     job: &mut Job<'_>,
 ) -> Result<Option<Record>, String> {
+    install_at(app, release, asset, kind, existing, previous, job, None, None)
+}
+
+#[allow(clippy::too_many_arguments)]
+pub fn install_at(
+    app: &CraftApp,
+    release: &Release,
+    asset: &Asset,
+    kind: PackageKind,
+    existing: Option<&Installed>,
+    previous: Option<&Record>,
+    job: &mut Job<'_>,
+    directory: Option<&Path>,
+    #[allow(unused_variables, unused_mut)] mut commit: Option<RecordCommit<'_>>,
+) -> Result<Option<Record>, String> {
+    if existing.is_none() && directory.is_some() && kind != PackageKind::PortableZip {
+        return Err("Custom folders are supported for portable ZIP installations only.".into());
+    }
+    if existing.is_none()
+        && let Some(directory) = directory
+    {
+        crate::portable::validate_directory(directory)?;
+    }
     let _ = previous;
     if let Some(inst) = existing
         && inst.source.launcher_can_update()
@@ -69,6 +94,17 @@ pub fn install(
         PackageKind::Dmg => macos::install_dmg(app, &file, existing, job.paths, &macos::Expect::release(release)).map(|_| None),
         #[cfg(windows)]
         PackageKind::Msi => windows::run_msi(&file, job.stop, &mut *job.phase).map(|_| None),
+        #[cfg(windows)]
+        PackageKind::PortableZip => crate::portable::install(app, &file, &version, previous, job.paths, directory, &mut |record| {
+            if release.version.is_some() && crate::detect::windows::executable_version(&record.path).as_ref() != release.version.as_ref() {
+                return Err("The portable executable does not match the selected version. The installation was rolled back.".into());
+            }
+            match &mut commit {
+                Some(commit) => commit(record),
+                None => Ok(()),
+            }
+        })
+        .map(Some),
         #[cfg(target_os = "linux")]
         PackageKind::Deb | PackageKind::Rpm | PackageKind::Flatpak => linux::install_package(kind, &file, job.stop, &mut *job.phase).map(|_| None),
         #[cfg(target_os = "linux")]
@@ -142,7 +178,7 @@ pub fn available_kinds() -> Vec<PackageKind> {
     #[cfg(target_os = "macos")]
     return vec![PackageKind::Dmg];
     #[cfg(windows)]
-    return vec![PackageKind::Msi];
+    return vec![PackageKind::Msi, PackageKind::PortableZip];
     #[cfg(target_os = "linux")]
     return linux::available_kinds();
     #[cfg(target_os = "freebsd")]
@@ -230,6 +266,10 @@ pub fn uninstall(
         return Err(format!("{} is running. Quit it, then try again.", app.name));
     }
     match installed.source {
+        #[cfg(windows)]
+        InstallSource::Launcher if record.is_some_and(|r| r.kind == PackageKind::PortableZip) => {
+            crate::portable::remove(app, record.ok_or("the launcher has no record of these files")?)
+        }
         #[cfg(windows)]
         InstallSource::Msi => windows::uninstall_msi(app, stop, phase),
         #[cfg(target_os = "macos")]
@@ -1178,7 +1218,7 @@ pub mod windows {
         std::env::var_os("SystemRoot").map_or_else(|| PathBuf::from(r"C:\Windows"), PathBuf::from).join(r"System32\msiexec.exe")
     }
 
-    fn explain(code: Option<i32>) -> Result<(), String> {
+    pub(crate) fn explain(code: Option<i32>) -> Result<(), String> {
         match code {
             Some(0 | 3010 | 1641) => Ok(()),
             Some(1602) => Err("cancelled".into()),
@@ -1189,22 +1229,19 @@ pub mod windows {
         }
     }
 
-    /// Runs an MSI with a progress window and no restart. Windows asks for permission itself.
+    /// Runs an MSI without an installer window or restart. Per-machine packages ask for elevation.
     pub fn run_msi(msi: &Path, stop: &Stop, phase: &mut dyn FnMut(JobPhase)) -> Result<(), String> {
-        in_turn(stop, phase, JobPhase::Installing, || {
-            let status = process::command(msiexec())
-                .arg("/i")
-                .arg(msi)
-                .args(["/passive", "/norestart"])
-                .status()
-                .map_err(|e| format!("couldn't start the Windows Installer ({e})"))?;
-            explain(status.code())
-        })
+        in_turn(stop, phase, JobPhase::Installing, || crate::windows_msi::run("/i", msi.as_os_str(), &msi.with_extension("msi.log"), None))
     }
 
     /// Runs `work` once no other Windows Installer job of ours is running (a second one would
     /// stop with error 1618). Cancelled while it waits, it never runs.
-    fn in_turn(stop: &Stop, phase: &mut dyn FnMut(JobPhase), working: JobPhase, work: impl FnOnce() -> Result<(), String>) -> Result<(), String> {
+    pub(crate) fn in_turn(
+        stop: &Stop,
+        phase: &mut dyn FnMut(JobPhase),
+        working: JobPhase,
+        work: impl FnOnce() -> Result<(), String>,
+    ) -> Result<(), String> {
         INSTALLER.alone(&cancelled(stop), &mut turn(phase, working), work).unwrap_or_else(|| Err(CANCELLED.into()))
     }
 

@@ -24,6 +24,13 @@ pub struct Answer {
 
 /// Looks up latest releases. Called from worker threads.
 pub trait ReleaseSource: Send + Sync {
+    fn history(
+        &self,
+        _repo: &str,
+        _page: u32,
+    ) -> Result<artcraft_launcher_core::protocol::ReleasePage, artcraft_launcher_core::protocol::ReleaseError> {
+        Err("release history is unavailable".into())
+    }
     fn latest(&self, repo: &str, prereleases: bool) -> Answer;
     /// The last answer saved for `repo`, for an instant first paint.
     fn cached(&self, repo: &str, prereleases: bool) -> Option<LatestRelease>;
@@ -55,6 +62,14 @@ pub struct GitHubSource {
 }
 
 impl GitHubSource {
+    fn history_limit_error(&self) -> artcraft_launcher_core::protocol::ReleaseError {
+        let until = self.rate_limited_until().unwrap_or_else(|| crate::now() + 60);
+        artcraft_launcher_core::protocol::ReleaseError {
+            message: "GitHub's request limit was reached. Try again later.".into(),
+            retry_after: Some(until.saturating_sub(crate::now()).max(1) as u64),
+        }
+    }
+
     pub fn new(http: Http, cache_path: std::path::PathBuf) -> Self {
         let cache = std::fs::read(&cache_path).ok().and_then(|b| serde_json::from_slice::<CacheFile>(&b).ok()).unwrap_or_default();
         Self { http, cache: Mutex::new(cache), cache_path, limited_until: Mutex::new(None) }
@@ -132,6 +147,29 @@ impl GitHubSource {
 }
 
 impl ReleaseSource for GitHubSource {
+    fn history(
+        &self,
+        repo: &str,
+        page: u32,
+    ) -> Result<artcraft_launcher_core::protocol::ReleasePage, artcraft_launcher_core::protocol::ReleaseError> {
+        if !(1..=20).contains(&page) {
+            return Err("release history page is out of range".into());
+        }
+        if self.limited() {
+            return Err(self.history_limit_error());
+        }
+        let url = format!("https://api.github.com/repos/{repo}/releases?per_page=30&page={page}");
+        match self.http.get_api_detailed(&url, None)? {
+            Fetched::Body { text, .. } => release::parse_github_history(&text, repo).map_err(Into::into),
+            Fetched::NotFound => Ok(Default::default()),
+            Fetched::RateLimited { reset } => {
+                *self.limited_until.lock().unwrap_or_else(PoisonError::into_inner) =
+                    Some(reset.unwrap_or_else(|| crate::now() + 15 * 60).max(crate::now() + 1));
+                Err(self.history_limit_error())
+            }
+            Fetched::NotModified => Err("GitHub returned no release history".into()),
+        }
+    }
     fn latest(&self, repo: &str, prereleases: bool) -> Answer {
         let api_error = if self.limited() {
             None
@@ -177,5 +215,21 @@ impl ReleaseSource for GitHubSource {
             }
             Err(e) => log::warn!("release cache: {e}"),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn release_history_returns_remaining_rate_limit_delay_without_requesting() {
+        let dir = tempfile::tempdir().unwrap();
+        let source = GitHubSource::new(Http::new().unwrap(), dir.path().join("cache.json"));
+        *source.limited_until.lock().unwrap() = Some(crate::now() + 120);
+        let error = source.history("invalid/repo", 1).unwrap_err();
+        assert!(error.message.contains("request limit"));
+        assert!((115..=120).contains(&error.retry_after.unwrap()));
+        assert_eq!(source.history("invalid/repo", 21).unwrap_err().retry_after, None);
     }
 }

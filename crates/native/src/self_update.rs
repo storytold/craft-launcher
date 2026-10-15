@@ -48,6 +48,20 @@ pub enum Install {
 }
 
 impl Install {
+    /// Refuse unsupported version changes before downloading or starting an exit helper.
+    pub(crate) fn validate_release(&self, release: &Release, current: Option<&Version>) -> Result<(), String> {
+        let target = release.version.as_ref().ok_or("This release's version cannot be verified.")?;
+        let current = current.ok_or("This release's version cannot be verified.")?;
+        if target < current {
+            match self {
+                Self::Msi(_) => return Err("Launcher MSI downgrades require a portable copy. This installation can upgrade only.".into()),
+                Self::Package(PackageKind::Rpm, _) => return Err("This package cannot downgrade here. Use a portable installation instead.".into()),
+                _ => {}
+            }
+        }
+        Ok(())
+    }
+
     fn kind(&self) -> PackageKind {
         match self {
             Self::MacApp(_) => PackageKind::Dmg,
@@ -70,6 +84,7 @@ pub fn current_version() -> Option<Version> {
 
 /// How long a just-installed version stays exempt from being offered again.
 const JUST_UPDATED_FOR: i64 = 24 * 3600;
+const FAILED_UPDATE_RETRY_FOR: i64 = 10 * 60;
 
 /// Whether `release` is the version this launcher just updated itself to. Offering it again would
 /// loop: update, restart, "update available", … That happens if a release's binary reports a
@@ -78,7 +93,8 @@ pub fn just_updated_to(paths: &Paths, release: &Release) -> bool {
     let Ok(text) = std::fs::read_to_string(marker(paths)) else { return false };
     let mut lines = text.lines();
     let (Some(tag), Some(at)) = (lines.next(), lines.next().and_then(|a| a.parse::<i64>().ok())) else { return false };
-    tag == release.tag && crate::now() - at < JUST_UPDATED_FOR
+    let delay = if lines.next() == Some("failed") { FAILED_UPDATE_RETRY_FOR } else { JUST_UPDATED_FOR };
+    tag == release.tag && crate::now() - at < delay
 }
 
 fn marker(paths: &Paths) -> PathBuf {
@@ -165,6 +181,7 @@ pub fn update(
     phase: &mut dyn FnMut(JobPhase),
     last: &dyn Fn() -> Result<(), String>,
 ) -> Result<(), String> {
+    install.validate_release(release, current_version().as_ref())?;
     let (asset, _) = pick_asset(release, &[LAUNCHER.id], platform, &[install.kind()])
         .ok_or_else(|| format!("ArtCraft Launcher {} has no {} for {}", release.version_label(), install.kind().label(), platform.label()))?;
     let asset = asset.clone();
@@ -173,11 +190,12 @@ pub fn update(
     // The restart ends this process: nothing else may be under way.
     last()?;
     phase(JobPhase::Installing);
-    if let Err(e) = crate::paths::write_atomic(&marker(paths), format!("{}\n{}\n", release.tag, crate::now()).as_bytes()) {
+    crate::paths::write_atomic(&marker(paths), format!("{}\n{}\n", release.tag, crate::now()).as_bytes()).map_err(|e| {
         log::warn!("couldn't record the self-update: {e}");
-    }
+        "Could not save the launcher update state. Update was not started.".to_string()
+    })?;
     let pid = std::process::id();
-    match install {
+    let result = match install {
         #[cfg(target_os = "macos")]
         Install::MacApp(bundle) => {
             let existing = Installed { version: None, source: InstallSource::MacApp, location: bundle.display().to_string(), package: None };
@@ -200,15 +218,7 @@ pub fn update(
             relaunch_after_exit(pid, &[exe.as_os_str()])
         }
         #[cfg(windows)]
-        Install::Msi(exe) => windows_helper(
-            pid,
-            &format!(
-                "Start-Process -FilePath (Join-Path $env:SystemRoot 'System32\\msiexec.exe') -ArgumentList '/i',{},'/passive','/norestart' -Wait; Remove-Item -LiteralPath {} -ErrorAction SilentlyContinue",
-                ps_quote_arg(&file),
-                ps_quote(&file)
-            ),
-            exe,
-        ),
+        Install::Msi(exe) => msi_step(&file, &paths.cache.join("launcher-self-update.log")).and_then(|step| windows_helper(pid, &step, exe, paths)),
         #[cfg(windows)]
         Install::Portable(exe) => {
             let dir = exe.parent().ok_or("the launcher isn't in a folder")?;
@@ -224,6 +234,7 @@ pub fn update(
                     dir = ps_quote(dir),
                 ),
                 exe,
+                paths,
             )
         }
         #[allow(unreachable_patterns)]
@@ -231,7 +242,11 @@ pub fn update(
             let _ = (pid, &file);
             Err("this copy of ArtCraft Launcher can't update itself; download the new version instead".into())
         }
+    };
+    if result.is_err() {
+        let _ = std::fs::remove_file(marker(paths));
     }
+    result
 }
 
 /// Copies the new AppImage beside the running one and renames it over it. The running copy is
@@ -270,28 +285,170 @@ fn helper_command(pid: u32, command: &[&std::ffi::OsStr]) -> std::process::Comma
 
 /// Starts a hidden PowerShell that waits for `pid` to exit, runs `step`, then starts `exe`.
 #[cfg(windows)]
-fn windows_helper(pid: u32, step: &str, exe: &Path) -> Result<(), String> {
-    let script = format!("Wait-Process -Id {pid} -Timeout 60 -ErrorAction SilentlyContinue; {step}; Start-Process -FilePath {}", ps_quote(exe));
+fn windows_helper(pid: u32, step: &str, exe: &Path, paths: &Paths) -> Result<(), String> {
+    let script = windows_script(pid, step, exe, &marker(paths), &paths.cache.join("launcher-self-update.log"), 60_000);
     let mut cmd = process::command("powershell.exe");
     cmd.args(["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-WindowStyle", "Hidden", "-Command", &script]).env_remove(PRETEND_VAR);
     process::spawn_detached(cmd).map_err(|e| format!("couldn't schedule the update ({e})"))
 }
 
+#[cfg(windows)]
+fn msi_step(file: &Path, log: &Path) -> Result<String, String> {
+    let arguments = crate::windows_msi::command_line("/i", file.as_os_str(), log, None)?;
+    Ok(format!(
+        "$msi = Start-Process -FilePath {msiexec} -ArgumentList {arguments} -WindowStyle Hidden -Wait -PassThru; \
+         if ($msi.ExitCode -notin @(0, 3010, 1641)) {{ throw ('Windows Installer failed with exit code ' + $msi.ExitCode) }}; \
+         Remove-Item -LiteralPath {file} -ErrorAction SilentlyContinue",
+        msiexec = ps_quote(&crate::windows_msi::system_msiexec()),
+        arguments = ps_literal(&arguments),
+        file = ps_quote(file),
+    ))
+}
+
+#[cfg(windows)]
+fn windows_script(pid: u32, step: &str, exe: &Path, marker: &Path, log: &Path, wait_ms: u32) -> String {
+    format!(
+        "$ErrorActionPreference = 'Stop'; \
+         $old = Get-Process -Id {pid} -ErrorAction SilentlyContinue; \
+         if ($null -ne $old -and -not $old.WaitForExit({wait_ms})) {{ \
+             Add-Content -LiteralPath {marker} -Value 'failed' -ErrorAction SilentlyContinue; \
+             Add-Content -LiteralPath {log} -Value 'The old launcher did not exit; self-update was not started.' -ErrorAction SilentlyContinue; exit 1 \
+         }}; \
+         try {{ {step} }} catch {{ \
+             Add-Content -LiteralPath {marker} -Value 'failed' -ErrorAction SilentlyContinue; \
+             Add-Content -LiteralPath {log} -Value $_.Exception.Message -ErrorAction SilentlyContinue \
+         }}; Start-Process -FilePath {exe} -WindowStyle Hidden",
+        marker = ps_quote(marker),
+        log = ps_quote(log),
+        exe = ps_quote(exe),
+    )
+}
+
 /// A PowerShell single-quoted literal.
 #[cfg_attr(not(windows), allow(dead_code))]
 fn ps_quote(path: &Path) -> String {
-    format!("'{}'", path.display().to_string().replace('\'', "''"))
+    ps_literal(path.as_os_str())
 }
 
-/// A PowerShell literal for an msiexec argument: the path in double quotes, as msiexec expects.
 #[cfg_attr(not(windows), allow(dead_code))]
-fn ps_quote_arg(path: &Path) -> String {
-    format!("'\"{}\"'", path.display().to_string().replace('\'', "''"))
+fn ps_literal(value: &std::ffi::OsStr) -> String {
+    // PowerShell also ends a single-quoted string at the curly quotes U+2018 to U+201B; any of
+    // them doubled stays inside the literal.
+    let mut literal = String::from("'");
+    for c in value.to_string_lossy().chars() {
+        if matches!(c, '\'' | '\u{2018}' | '\u{2019}' | '\u{201A}' | '\u{201B}') {
+            literal.push(c);
+        }
+        literal.push(c);
+    }
+    literal.push('\'');
+    literal
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn launcher_version_switches_respect_installation_format_before_downloading() {
+        let current = version::parse("0.2.1").unwrap();
+        let older = Release { tag: "v0.1.0".into(), version: version::parse("0.1.0"), ..Release::default() };
+        let newer = Release { tag: "v0.3.0".into(), version: version::parse("0.3.0"), ..Release::default() };
+        for install in [Install::Msi("launcher.exe".into()), Install::Package(PackageKind::Rpm, "launcher".into())] {
+            assert!(install.validate_release(&older, Some(&current)).is_err());
+            assert!(install.validate_release(&newer, Some(&current)).is_ok());
+        }
+        for install in [
+            Install::Portable("launcher.exe".into()),
+            Install::MacApp("launcher.app".into()),
+            Install::AppImage("launcher.AppImage".into()),
+            Install::Package(PackageKind::Deb, "launcher".into()),
+        ] {
+            assert!(install.validate_release(&older, Some(&current)).is_ok());
+            assert!(install.validate_release(&newer, Some(&current)).is_ok());
+            assert!(install.validate_release(&Release::default(), Some(&current)).is_err());
+            assert!(install.validate_release(&older, None).is_err());
+        }
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn quiet_msi_self_update_restarts_and_retains_recovery_data_on_failure() {
+        // Run the real PowerShell orchestration with a fake installer/relauncher. No installed
+        // software or running launcher is changed. The MSI parser has its own Windows test.
+        const FAKE: &str = r#"
+function Start-Process {
+    param($FilePath, $ArgumentList, $WindowStyle, [switch]$Wait, [switch]$PassThru)
+    if ($FilePath -like '*msiexec.exe') {
+        if ($WindowStyle -ne 'Hidden' -or -not $Wait -or -not $PassThru) { throw 'unexpected installer options' }
+        Set-Content -LiteralPath $env:TEST_MSI_ARGUMENTS -Value $ArgumentList
+        if ($env:TEST_MSI_CODE -eq 'throw') { throw 'installer could not start' }
+        return [pscustomobject]@{ExitCode = [int]$env:TEST_MSI_CODE}
+    }
+    Set-Content -LiteralPath $env:TEST_RESTARTED -Value $FilePath
+}
+"#;
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path().join("O'Brien's tools");
+        std::fs::create_dir(&root).unwrap();
+        for (code, success) in [("0", true), ("3010", true), ("1603", false), ("1602", false), ("throw", false)] {
+            let file = root.join("launcher package.msi");
+            let marker = root.join("self-update.txt");
+            let log = root.join(format!("result-{code}.log"));
+            let args = root.join(format!("args-{code}.txt"));
+            let restarted = root.join(format!("restart-{code}.txt"));
+            std::fs::write(&file, b"not a real installer").unwrap();
+            std::fs::write(&marker, b"v0.2.1\n123456\n").unwrap();
+            let step = msi_step(&file, &log).unwrap();
+            let script = format!("{FAKE}\n{}", windows_script(2_000_000_000, &step, &root.join("launcher.exe"), &marker, &log, 100));
+            let mut command = process::command("powershell.exe");
+            command
+                .args(["-NoProfile", "-NonInteractive", "-Command", &script])
+                .env("TEST_MSI_CODE", code)
+                .env("TEST_MSI_ARGUMENTS", &args)
+                .env("TEST_RESTARTED", &restarted);
+            assert!(process::capture_command(command, std::time::Duration::from_secs(10)).is_some(), "helper failed for {code}");
+            let arguments = std::fs::read_to_string(args).unwrap();
+            assert!(arguments.contains("/qn /norestart"));
+            assert!(arguments.contains(&format!("\"{}\"", file.display())));
+            assert!(restarted.exists(), "did not relaunch after {code}");
+            assert_eq!(file.exists(), !success, "installer retention for {code}");
+            let guard = std::fs::read_to_string(&marker).unwrap();
+            assert_eq!(guard.lines().nth(2), (!success).then_some("failed"), "update guard for {code}");
+            if !success {
+                assert!(std::fs::metadata(log).unwrap().len() > 0);
+            }
+        }
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn self_update_never_installs_or_restarts_while_old_launcher_is_alive() {
+        let dir = tempfile::tempdir().unwrap();
+        let changed = dir.path().join("changed.txt");
+        let marker = dir.path().join("self-update.txt");
+        let log = dir.path().join("self-update.log");
+        std::fs::write(&marker, b"v0.2.1\n123456\n").unwrap();
+        let mut old =
+            process::command("powershell.exe").args(["-NoProfile", "-NonInteractive", "-Command", "Start-Sleep -Seconds 10"]).spawn().unwrap();
+        let script = windows_script(
+            old.id(),
+            &format!("Set-Content -LiteralPath {} -Value changed", ps_quote(&changed)),
+            &dir.path().join("missing.exe"),
+            &marker,
+            &log,
+            100,
+        );
+        let result = process::capture("powershell.exe", &["-NoProfile", "-NonInteractive", "-Command", &script], std::time::Duration::from_secs(5));
+        let still_running = old.try_wait().unwrap().is_none();
+        let _ = old.kill();
+        let _ = old.wait();
+        assert!(result.is_none());
+        assert!(still_running);
+        assert!(!changed.exists());
+        assert_eq!(std::fs::read_to_string(marker).unwrap().lines().nth(2), Some("failed"));
+        assert!(std::fs::metadata(log).unwrap().len() > 0);
+    }
 
     #[test]
     fn a_version_just_installed_is_not_offered_again() {
@@ -305,6 +462,17 @@ mod tests {
         // A day later the guard lapses.
         crate::paths::write_atomic(&marker(&paths), format!("v0.2.0\n{}\n", crate::now() - JUST_UPDATED_FOR - 1).as_bytes()).unwrap();
         assert!(!just_updated_to(&paths, &r));
+    }
+
+    #[test]
+    fn a_failed_self_update_does_not_restart_in_a_loop_and_can_retry_after_cooldown() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = Paths::under(dir.path());
+        let release = Release { tag: "v0.2.1".into(), ..Release::default() };
+        crate::paths::write_atomic(&marker(&paths), format!("v0.2.1\n{}\nfailed\n", crate::now()).as_bytes()).unwrap();
+        assert!(just_updated_to(&paths, &release));
+        crate::paths::write_atomic(&marker(&paths), format!("v0.2.1\n{}\nfailed\n", crate::now() - FAILED_UPDATE_RETRY_FOR - 1).as_bytes()).unwrap();
+        assert!(!just_updated_to(&paths, &release));
     }
 
     /// The restart helper doesn't pass a pretend version on to the new launcher.
@@ -381,7 +549,25 @@ mod tests {
     fn powershell_quoting_survives_apostrophes() {
         let p = Path::new(r"C:\Users\O'Brien\AppData\Local\ArtCraft Launcher\x.msi");
         assert_eq!(ps_quote(p), r"'C:\Users\O''Brien\AppData\Local\ArtCraft Launcher\x.msi'");
-        assert_eq!(ps_quote_arg(p), r#"'"C:\Users\O''Brien\AppData\Local\ArtCraft Launcher\x.msi"'"#);
+        assert_eq!(
+            ps_literal(std::ffi::OsStr::new(r#""C:\Users\O'Brien\AppData\Local\ArtCraft Launcher\x.msi""#)),
+            r#"'"C:\Users\O''Brien\AppData\Local\ArtCraft Launcher\x.msi"'"#
+        );
+        for quote in ['\u{2018}', '\u{2019}', '\u{201A}', '\u{201B}'] {
+            let p = format!(r"C:\Users\O{quote}Brien\x.msi");
+            assert_eq!(ps_quote(Path::new(&p)), format!(r"'C:\Users\O{quote}{quote}Brien\x.msi'"));
+        }
+    }
+
+    /// PowerShell reads every quote character back as part of the path, not as the literal's end.
+    #[cfg(windows)]
+    #[test]
+    fn powershell_literals_round_trip_curly_quotes() {
+        let value = "C:\\Users\\O'B\u{2018}r\u{2019}i\u{201A}e\u{201B}n'; Write-Output injected; '";
+        let script =
+            format!("[Console]::OutputEncoding = [System.Text.Encoding]::UTF8; [Console]::Write({})", ps_literal(std::ffi::OsStr::new(value)));
+        let output = process::capture("powershell.exe", &["-NoProfile", "-NonInteractive", "-Command", &script], std::time::Duration::from_secs(10));
+        assert_eq!(output.as_deref().map(str::trim_end), Some(value));
     }
 
     #[test]

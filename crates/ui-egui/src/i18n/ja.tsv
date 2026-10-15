@@ -347,3 +347,76 @@ filter	Installed	インストール済み
 	ArtCraft on GitHub	GitHub の ArtCraft
 	Join the ArtCraft Discord	ArtCraft Discord に参加
 @plural	ArtCraft Launcher · {n} update available|ArtCraft Launcher · {n} updates available	ArtCraft Launcher · {n} 件の更新があります
+
+# Version history, pinning and installation settings
+	App settings	アプリの設定
+	App settings…	アプリの設定…
+	Installation	インストール
+	Installed: {version}	インストール済み: {version}
+	Version is kept	バージョンを固定中
+	Selected release	選択したリリース
+	Select a release	リリースを選択
+	Show pre-releases	プレリリースを表示
+	Loading releases…	リリースを読み込み中…
+	Refresh releases	リリースを再読み込み
+	Load older releases	古いリリースを読み込む
+	No published releases are available.	公開済みのリリースがありません。
+	This package cannot downgrade here. Use a portable installation instead.	このパッケージはこの環境ではダウングレードできません。ポータブル版を使用してください。
+	No compatible download for this release.	このリリースに対応するダウンロードがありません。
+	This release has no published checksum.	このリリースには公開されたチェックサムがありません。
+	This release's version cannot be verified.	このリリースのバージョンを確認できません。
+	An older version will replace the installed program.	インストール済みのプログラムを古いバージョンで置き換えます。
+	Keep the selected version	選択したバージョンを固定
+	Automatic updates and Update all will leave this version unchanged.	自動更新と「すべて更新」では、このバージョンは変更されません。
+	Follow the latest release using the global update settings.	全体の更新設定に従って最新リリースに更新します。
+	Switch to {version}	{version} に切り替え
+	Current installation folder	現在のインストール先フォルダー
+	Open installation folder	インストール先フォルダーを開く
+	Version changes keep the existing installation folder and package format.	バージョンを変更しても、インストール先フォルダーとパッケージ形式は維持されます。
+	Package format	パッケージ形式
+	System default	システムの既定
+	Choose a folder for a new installation	新規インストール先のフォルダーを選択
+	Browse…	参照…
+	Custom folders are available for portable ZIP packages.	ポータブル ZIP パッケージではカスタムフォルダーを使用できます。
+	Installation in progress. You can close this window.	インストール中です。このウィンドウは閉じてもかまいません。
+	Save update preferences	更新設定を保存
+@msg	GitHub's request limit was reached. Try again later.	GitHub のリクエスト上限に達しました。しばらくしてから再試行してください。
+@msg	Reload the release list before selecting a version.	バージョンを選択する前に、リリース一覧を再読み込みしてください。
+@msg	This app is pinned to a selected version. Open its settings to change versions.	このアプリは選択したバージョンに固定されています。バージョンを変更するにはアプリの設定を開いてください。
+@msg	This release has no published checksum for this download.	このダウンロードには公開されたチェックサムがありません。
+@msg	This package format cannot safely downgrade here. Use a portable installation instead.	このパッケージ形式はこの環境では安全にダウングレードできません。ポータブル版を使用してください。
+@msg	The installer finished, but the selected version could not be confirmed. Check the installed version before retrying.	インストールは完了しましたが、選択したバージョンを確認できませんでした。再試行する前にインストール済みのバージョンを確認してください。
+@msg	Custom folders are supported for portable ZIP installations only.	カスタムフォルダーはポータブル ZIP のインストールでのみ使用できます。
+@msg	The installation would overwrite an unrecorded file.	インストールすると、記録されていないファイルが上書きされます。
+@msg	Choose an absolute installation folder without parent-directory components.	親ディレクトリを示す要素を含まない、絶対パスのインストール先フォルダーを選択してください。
+@msg	The portable executable does not match the selected version. The installation was rolled back.	ポータブル版の実行ファイルが選択したバージョンと一致しません。インストールを元に戻しました。
+	MSI downgrade requires removing the current version first. You will confirm before it starts.	MSI のダウングレードには、まず現在のバージョンを削除する必要があります。開始前に確認を求めます。
+	Downgrade {name} to {version}?	{name} を {version} にダウングレードしますか？
+	Both MSI installers are downloaded and verified before anything is removed.	何かを削除する前に、両方の MSI インストーラーをダウンロードして検証します。
+	Windows will uninstall the current version, then install the selected version in the same folder. Administrator permission may be required.	Windows が現在のバージョンをアンインストールし、選択したバージョンを同じフォルダーにインストールします。管理者の許可が必要な場合があります。
+	If installation fails, the launcher will try to restore the original version. If recovery fails, it keeps the installers and shows their location.	インストールに失敗した場合、ランチャーは元のバージョンの復元を試みます。復元にも失敗した場合は、インストーラーを保持して保存先を表示します。
+	Uninstall and switch	アンインストールして切り替え
+	Load the installed release before downgrading its MSI package.	MSI パッケージをダウングレードする前に、インストール済みバージョンのリリースを読み込んでください。
+@msg	Load the installed release before downgrading its MSI package.	MSI パッケージをダウングレードする前に、インストール済みバージョンのリリースを読み込んでください。
+	MSI downgrades require stable releases.	MSI のダウングレードには安定版リリースが必要です。
+@msg	Choose an older MSI release in App settings and confirm the downgrade.	アプリの設定で古い MSI リリースを選択し、ダウングレードを確認してください。
+@msg	The installed release has no compatible recovery MSI.	インストール済みのリリースには、対応する復元用 MSI がありません。
+@msg	Could not inspect the MSI package. Nothing was removed.	MSI パッケージを検査できませんでした。何も削除していません。
+@msg	The MSI packages do not match the installed app. Nothing was removed.	MSI パッケージがインストール済みのアプリと一致しません。何も削除していません。
+@msg	The installed MSI folder could not be verified. Nothing was removed.	インストール済みの MSI フォルダーを確認できませんでした。何も削除していません。
+@msg	Both MSI releases need published checksums before downgrading.	ダウングレードには、両方の MSI リリースの公開済みチェックサムが必要です。
+@msg	The recovery MSI copy could not be verified. Nothing was removed.	復元用 MSI のコピーを検証できませんでした。何も削除していません。
+@msg	The installed MSI version or folder does not match the expected app.	インストール済みの MSI のバージョンまたはフォルダーが、対象のアプリと一致しません。
+@msg	MSI downgrade failed; the original version was restored. {details}	MSI のダウングレードに失敗しました。元のバージョンを復元しました。{details}
+@msg	MSI downgrade failed; recovery also failed. {details}	MSI のダウングレードと復元に失敗しました。{details}
+	Retrying automatically in {seconds}s…	{seconds} 秒後に自動で再試行…
+	Keep this version after switching	切り替え後、このバージョンを固定
+	MSI installation runs in the background. Windows may ask for administrator permission.	MSI のインストールはバックグラウンドで実行されます。Windows が管理者の許可を求める場合があります。
+@msg	Could not save the launcher update state. Update was not started.	ランチャーの更新状態を保存できませんでした。更新は開始していません。
+	Launcher version	ランチャーのバージョン
+	Choose launcher version…	ランチャーのバージョンを選択…
+	Launcher MSI downgrades require a portable copy. This installation can upgrade only.	ランチャーの MSI をダウングレードするにはポータブル版が必要です。このインストールではアップグレードのみ可能です。
+@msg	Launcher MSI downgrades require a portable copy. This installation can upgrade only.	ランチャーの MSI をダウングレードするにはポータブル版が必要です。このインストールではアップグレードのみ可能です。
+	The launcher will wait for other installs, switch versions and restart.	ランチャーは他のインストールが完了するまで待機し、バージョンを切り替えて再起動します。
+	Older launcher releases may not support version preferences.	古いランチャーのリリースは、バージョン設定に対応していない場合があります。
+	This development or externally managed launcher cannot switch versions in place.	この開発用または外部で管理されているランチャーは、その場でバージョンを切り替えられません。

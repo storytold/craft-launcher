@@ -9,6 +9,12 @@ use artcraft_launcher_core::{CraftApp, Installed};
 use crate::i18n::t;
 
 #[derive(Clone, Debug)]
+pub struct ReleaseRetry {
+    pub page: u32,
+    pub at: f64,
+}
+
+#[derive(Clone, Debug)]
 pub struct AppEntry {
     pub app: &'static CraftApp,
     pub latest: Option<LatestRelease>,
@@ -22,11 +28,36 @@ pub struct AppEntry {
     pub paused: Option<PausedDownload>,
     /// A finished download waiting for another try at installing it.
     pub ready: bool,
+    pub pinned: bool,
+    pub releases: Vec<Release>,
+    pub history_page: u32,
+    pub history_loading: Option<u32>,
+    pub history_more: bool,
+    pub history_error: Option<String>,
+    pub history_retry: Option<ReleaseRetry>,
+    pub history_failures: u32,
 }
 
 impl AppEntry {
     pub fn new(app: &'static CraftApp) -> Self {
-        Self { app, latest: None, installed: None, detected: false, job: None, origin: None, paused: None, ready: false }
+        Self {
+            app,
+            latest: None,
+            installed: None,
+            detected: false,
+            job: None,
+            origin: None,
+            paused: None,
+            ready: false,
+            pinned: false,
+            releases: Vec::new(),
+            history_page: 0,
+            history_loading: None,
+            history_more: false,
+            history_error: None,
+            history_retry: None,
+            history_failures: 0,
+        }
     }
 
     pub fn release(&self) -> Option<&Release> {
@@ -53,7 +84,8 @@ impl AppEntry {
             Some(LatestRelease::None) => Latest::NoRelease,
             Some(LatestRelease::Found(r)) => Latest::Found { version: r.version.as_ref(), has_asset: self.has_download(platform) },
         };
-        status::status(self.installed.as_ref(), latest)
+        let status = status::status(self.installed.as_ref(), latest);
+        if self.pinned && status == AppStatus::UpdateAvailable { AppStatus::UpToDate } else { status }
     }
 
     pub fn installed_label(&self) -> Option<String> {
@@ -97,6 +129,9 @@ pub fn status_text(status: &AppStatus, manage_apps: bool) -> (String, Tone) {
 
 /// [`status_text`], but saying so when a download is paused or reconnecting.
 pub fn entry_status_text(e: &AppEntry, status: &AppStatus, manage_apps: bool) -> (String, Tone) {
+    if e.pinned && *status == AppStatus::UpToDate && e.job.is_none() && e.paused.is_none() {
+        return (t("Version is kept").to_string(), Tone::Neutral);
+    }
     match (e.job, e.paused) {
         (Some(JobPhase::Reconnecting { .. }), _) => (t("Reconnecting…").to_string(), Tone::Warn),
         (Some(JobPhase::Downloading { .. }), _) if status.is_installed() => (t("Updating…").to_string(), Tone::Info),

@@ -147,8 +147,14 @@ Packaging facts the code relies on:
 - The Windows MSI is **per-user** (no UAC prompt), by default into
   `%LOCALAPPDATA%\Programs\ArtCraft Launcher`. Double-clicked it opens a WixUI setup wizard
   (Welcome; a folder page with a "Create a desktop shortcut" box; Ready; progress; Finish with
-  "Launch"), whose art `package.ps1` draws at build time; self-update runs it with `/passive`, no
-  wizard. The folder and the shortcut choice are recorded under
+  "Launch"), whose art `package.ps1` draws at build time; self-update runs it with `/qn /norestart`, no
+  wizard, and restarts the launcher after the old process exits. Quiet Craft app MSI operations
+  use `msiexec /qn`; machine-wide installs request elevation through `Start-Process -Verb RunAs`.
+  This changes the UAC identity to Windows Installer rather than the signed app MSI. App settings
+  and downgrade confirmation explain administrator permission; ordinary card installs and
+  automatic updates retain the standard job UI. The prompt identity and permission explanation
+  for those paths require separate review before landing quiet MSI changes.
+  The folder and the shortcut choice are recorded under
   `HKCU\Software\Learning Machines LLC\ArtCraft Launcher` (`InstallDir`,
   `DesktopShortcutChoice`) and reused by the next version, and `self_update.rs` reads `InstallDir`
   to know the running copy came from the MSI. Its shortcuts set AppUserModelID

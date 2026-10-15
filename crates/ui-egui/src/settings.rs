@@ -84,6 +84,10 @@ impl CheckEvery {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Settings {
+    #[serde(default)]
+    pub apps: BTreeMap<String, artcraft_launcher_core::protocol::AppPreferences>,
+    /// Checked against the actual running version on restart before committing its preferences.
+    pub pending_launcher_switch: Option<(String, artcraft_launcher_core::protocol::AppPreferences)>,
     pub view: ViewMode,
     pub filter: Filter,
     pub sort: SortKey,
@@ -117,6 +121,14 @@ pub struct Settings {
 }
 
 impl Settings {
+    pub(crate) fn finish_launcher_switch(&mut self, current: Option<&artcraft_launcher_core::version::Version>) {
+        if let Some((tag, preferences)) = self.pending_launcher_switch.take()
+            && artcraft_launcher_core::version::parse(&tag).as_ref().is_some_and(|v| Some(v) == current)
+        {
+            self.apps.insert(artcraft_launcher_core::catalog::LAUNCHER_ID.to_string(), preferences);
+        }
+    }
+
     /// Machine-readable code for "follow the system language".
     pub const LANGUAGE_AUTO: &'static str = "auto";
 
@@ -169,6 +181,8 @@ pub fn default_preferred_kinds() -> Vec<PackageKind> {
 impl Default for Settings {
     fn default() -> Self {
         Self {
+            apps: BTreeMap::new(),
+            pending_launcher_switch: None,
             view: ViewMode::Grid,
             filter: Filter::All,
             sort: SortKey::Suite,
