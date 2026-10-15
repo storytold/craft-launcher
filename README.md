@@ -71,7 +71,7 @@ you when an update is out. It is a small native app that can sit in your menu ba
     </td>
     <td width="33%" valign="top">
       <h3>🔄 Stay up to date</h3>
-      Checks each app's GitHub releases and updates the ones you have. A notification tells you when there's something new.
+      Checks each app's GitHub releases and updates the ones you have. A notification tells you when there's something new. On Linux, AppImage updates fetch only the blocks that changed (through the release's `.zsync` file), falling back to the full download when needed.
     </td>
     <td width="33%" valign="top">
       <h3>🧭 Always at hand</h3>

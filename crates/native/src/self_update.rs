@@ -169,7 +169,9 @@ pub fn update(
         .ok_or_else(|| format!("ArtCraft Launcher {} has no {} for {}", release.version_label(), install.kind().label(), platform.label()))?;
     let asset = asset.clone();
     let mut job = Job { http, paths, stop, phase };
-    let file = install::download(release, &asset, &mut job)?;
+    // Self-updates stay full downloads: replacing the running binary goes through the restart
+    // helper, which a delta would only complicate. App updates take the delta path instead.
+    let file = install::download(release, &asset, install.kind(), None, &mut job)?;
     // The restart ends this process: nothing else may be under way.
     last()?;
     phase(JobPhase::Installing);

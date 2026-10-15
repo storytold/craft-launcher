@@ -315,6 +315,7 @@ dependencies = [
  "dirs 6.0.0",
  "flate2",
  "log",
+ "md4",
  "plist",
  "serde",
  "serde_json",
@@ -2689,6 +2690,15 @@ dependencies = [
  "objc2-foundation 0.3.2",
  "time",
  "uuid",
+]
+
+[[package]]
+name = "md4"
+version = "0.10.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7da5ac363534dce5fabf69949225e174fbf111a498bf0ff794c8ea1fba9f3dda"
+dependencies = [
+ "digest",
 ]
 
 [[package]]

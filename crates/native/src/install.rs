@@ -21,10 +21,11 @@
 
 use std::path::{Path, PathBuf};
 
-use artcraft_launcher_core::protocol::{CANCELLED, INSTALL_CANCELLED, JobPhase};
+use artcraft_launcher_core::protocol::{CANCELLED, INSTALL_CANCELLED, JobPhase, PAUSED};
 use artcraft_launcher_core::release::{self, Asset, Release};
-use artcraft_launcher_core::{CraftApp, InstallSource, Installed, PackageKind};
+use artcraft_launcher_core::{CraftApp, InstallSource, Installed, PackageKind, Platform, delta};
 
+use crate::delta_fetch::{self, DeltaJob};
 use crate::http::{Http, Stop, Transfer};
 use crate::manifest::Record;
 use crate::paths::Paths;
@@ -58,7 +59,8 @@ pub fn install(
         return Err(format!("{} is running. Quit it, then try again.", app.name));
     }
     log::info!("{}: starting {} to {} ({})", app.name, if existing.is_some() { "update" } else { "install" }, release.version_label(), kind.label());
-    let file = download(release, asset, job)?;
+    let existing_path = existing.map(|inst| Path::new(inst.location.as_str()));
+    let file = download(release, asset, kind, existing_path, job)?;
     log::info!("{}: download ready ({}), running installer...", app.name, file.display());
     // Past this point the install can't be interrupted halfway.
     (job.phase)(JobPhase::Installing);
@@ -154,7 +156,9 @@ pub fn available_kinds() -> Vec<PackageKind> {
 /// Fetches `asset` into the download folder, checked against its published SHA-256: the feed's
 /// or GitHub's per-file digest, else the release's `SHA256SUMS.txt`. A release with neither is
 /// refused before anything is fetched: a file nothing vouches for is never installed (#90).
-pub(crate) fn download(release: &Release, asset: &Asset, job: &mut Job<'_>) -> Result<PathBuf, String> {
+/// On Linux an AppImage update first tries a delta (only its changed blocks travel); anything
+/// the delta can't do falls back to the full download below, so the result is identical.
+pub(crate) fn download(release: &Release, asset: &Asset, kind: PackageKind, existing: Option<&Path>, job: &mut Job<'_>) -> Result<PathBuf, String> {
     if !release::valid_file_name(&asset.name) {
         return Err("the release has an unexpected file name".into());
     }
@@ -168,6 +172,10 @@ pub(crate) fn download(release: &Release, asset: &Asset, job: &mut Job<'_>) -> R
             asset.name
         ));
     };
+    if let Some(ready) = delta_update(release, asset, kind, existing, &sha, job)? {
+        (job.phase)(JobPhase::Verifying);
+        return Ok(ready);
+    }
     let dest = download_path(job.paths, asset);
     let phase = &mut *job.phase;
     job.http.download(&asset.url, &dest, asset.size, &sha, job.stop, &mut |t| match t {
@@ -176,6 +184,75 @@ pub(crate) fn download(release: &Release, asset: &Asset, job: &mut Job<'_>) -> R
     })?;
     (job.phase)(JobPhase::Verifying);
     Ok(dest)
+}
+
+/// Largest `.zsync` control file accepted (covers about a gigabyte of target at 2 KiB blocks).
+const MAX_ZSYNC: usize = 8 << 20;
+
+/// Tries a delta update of the installed copy: `Ok(Some(path))` when only the changed blocks
+/// were fetched and the assembled file verified; `Ok(None)` when a delta isn't applicable, so
+/// the caller does the full download instead. Pause and cancel propagate as `Err` unchanged:
+/// an explicit stop must never turn into a full download behind the user's back.
+fn delta_update(
+    release: &Release,
+    asset: &Asset,
+    kind: PackageKind,
+    existing: Option<&Path>,
+    sha: &str,
+    job: &mut Job<'_>,
+) -> Result<Option<PathBuf>, String> {
+    let Some(old_path) = existing.filter(|p| p.is_file()) else { return Ok(None) };
+    let Some(zsync) = release.zsync_asset_for(&asset.name) else { return Ok(None) };
+    let is_appimage_delta = Platform::current().is_some_and(|p| delta::update_method(p.os, kind, true, true) == delta::UpdateMethod::DeltaZsync);
+    if !is_appimage_delta {
+        return Ok(None);
+    }
+    let control_bytes = match job.http.get_bytes(&zsync.url, MAX_ZSYNC) {
+        Ok(Some(b)) => b,
+        Ok(None) => return Ok(None),
+        Err(e) => {
+            log::info!("delta update unavailable ({e}); falling back to a full download");
+            return Ok(None);
+        }
+    };
+    let control = match delta_fetch::parse_zsync(&control_bytes) {
+        Ok(c) => c,
+        Err(e) => {
+            log::info!("delta update unavailable ({e}); falling back to a full download");
+            return Ok(None);
+        }
+    };
+    let dest = download_path(job.paths, asset);
+    let tmp = job.paths.downloads().join(format!(".{}.delta.tmp", asset.name));
+    let result = delta_fetch::fetch_delta(DeltaJob {
+        http: job.http,
+        target_url: &asset.url,
+        control: &control,
+        old_path,
+        tmp_path: &tmp,
+        expected_sha256: sha,
+        stop: job.stop,
+        progress: &mut |done, total| (job.phase)(JobPhase::Downloading { done, total }),
+    });
+    match result {
+        Ok(()) => match std::fs::rename(&tmp, &dest) {
+            Ok(()) => {
+                log::info!("delta update assembled {}", dest.display());
+                Ok(Some(dest))
+            }
+            Err(e) => {
+                log::info!("delta update couldn't be put in place ({e}); falling back to a full download");
+                let _ = std::fs::remove_file(&tmp);
+                Ok(None)
+            }
+        },
+        Err(e) if e == PAUSED || e == CANCELLED => Err(e),
+        Err(e) => {
+            log::info!("delta update failed ({e}); falling back to a full download");
+            let _ = std::fs::remove_file(&tmp);
+            Ok(None)
+        }
+    }
 }
 
 /// The file's line in the release's `SHA256SUMS.txt`. `Ok(None)` only when the release really

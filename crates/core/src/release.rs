@@ -52,6 +52,15 @@ impl Release {
     pub fn sums_asset(&self) -> Option<&Asset> {
         self.assets.iter().find(|a| a.name == "SHA256SUMS.txt")
     }
+
+    /// The `.zsync` file published next to `asset_name` (`foo.AppImage` → `foo.AppImage.zsync`),
+    /// when this release lists it. The delta fetcher asks for it before choosing a delta update;
+    /// like every other asset here, its URL was already checked against the release's own
+    /// downloads, so finding it vouches for where it comes from but never for its contents.
+    pub fn zsync_asset_for(&self, asset_name: &str) -> Option<&Asset> {
+        let want = crate::delta::zsync_asset_name(asset_name)?;
+        self.assets.iter().find(|a| a.name == want)
+    }
 }
 
 const MAX_NOTES: usize = 64 * 1024;
@@ -260,5 +269,45 @@ mod tests {
             assert!(!valid_file_name(bad), "{bad:?}");
         }
         assert!(valid_file_name("photocraft-0.5.0-linux-x86_64.AppImage"));
+    }
+
+    fn release_with_names(names: &[&str]) -> Release {
+        Release {
+            tag: "v0.5.0".into(),
+            assets: names
+                .iter()
+                .map(|n| Asset {
+                    name: (*n).into(),
+                    size: 1,
+                    url: format!("https://github.com/storytold/photocraft/releases/download/v0.5.0/{n}"),
+                    sha256: None,
+                })
+                .collect(),
+            ..Release::default()
+        }
+    }
+
+    #[test]
+    fn zsync_sibling_is_found_only_by_exact_name() {
+        let r = release_with_names(&[
+            "photocraft-0.5.0-linux-x86_64.AppImage",
+            "photocraft-0.5.0-linux-x86_64.AppImage.zsync",
+            "photocraft-0.5.0-linux-aarch64.AppImage",
+            "SHA256SUMS.txt",
+        ]);
+        let zsync = r.zsync_asset_for("photocraft-0.5.0-linux-x86_64.AppImage").unwrap();
+        assert_eq!(zsync.name, "photocraft-0.5.0-linux-x86_64.AppImage.zsync");
+        // The aarch64 AppImage has no .zsync listed: no delta from a neighbour's file.
+        assert_eq!(r.zsync_asset_for("photocraft-0.5.0-linux-aarch64.AppImage"), None);
+        // Not an AppImage, and not listed: never a delta.
+        assert_eq!(r.zsync_asset_for("photocraft-0.5.0-windows-x64.msi"), None);
+        assert_eq!(r.zsync_asset_for("SHA256SUMS.txt"), None);
+        assert_eq!(r.zsync_asset_for("no-such-file.AppImage"), None);
+    }
+
+    #[test]
+    fn release_without_zsync_offers_no_delta() {
+        let r = release_with_names(&["photocraft-0.5.0-linux-x86_64.AppImage", "SHA256SUMS.txt"]);
+        assert_eq!(r.zsync_asset_for("photocraft-0.5.0-linux-x86_64.AppImage"), None);
     }
 }
