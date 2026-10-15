@@ -173,9 +173,6 @@ pub fn update(
     // The restart ends this process: nothing else may be under way.
     last()?;
     phase(JobPhase::Installing);
-    if let Err(e) = crate::paths::write_atomic(&marker(paths), format!("{}\n{}\n", release.tag, crate::now()).as_bytes()) {
-        log::warn!("couldn't record the self-update: {e}");
-    }
     let pid = std::process::id();
     match install {
         #[cfg(target_os = "macos")]
@@ -231,7 +228,12 @@ pub fn update(
             let _ = (pid, &file);
             Err("this copy of ArtCraft Launcher can't update itself; download the new version instead".into())
         }
+    }?;
+    // A dismissed administrator prompt must not hide the update for the next 24 hours.
+    if let Err(e) = crate::paths::write_atomic(&marker(paths), format!("{}\n{}\n", release.tag, crate::now()).as_bytes()) {
+        log::warn!("couldn't record the self-update: {e}");
     }
+    Ok(())
 }
 
 /// Copies the new AppImage beside the running one and renames it over it. The running copy is
@@ -307,6 +309,41 @@ mod tests {
         assert!(!just_updated_to(&paths, &r));
     }
 
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn a_failed_install_does_not_suppress_the_next_update_attempt() {
+        use artcraft_launcher_core::release::Asset;
+        use artcraft_launcher_core::{Arch, Os};
+        use sha2::{Digest, Sha256};
+
+        let dir = tempfile::tempdir().unwrap();
+        let paths = Paths::under(dir.path());
+        let bytes = b"cached test package";
+        let asset = Asset {
+            name: "artcraft-launcher-0.2.0-windows-x64-portable.zip".into(),
+            size: bytes.len() as u64,
+            url: "https://github.com/storytold/craft-launcher/releases/download/v0.2.0/test.zip".into(),
+            sha256: Some(format!("{:x}", Sha256::digest(bytes))),
+        };
+        std::fs::create_dir_all(paths.downloads()).unwrap();
+        std::fs::write(install::download_path(&paths, &asset), bytes).unwrap();
+        let release = Release { tag: "v0.2.0".into(), version: version::parse("0.2.0"), assets: vec![asset], ..Release::default() };
+        // The verified cached package reaches installation, but a Windows copy cannot install on macOS.
+        let result = update(
+            &Install::Portable(dir.path().join("launcher.exe")),
+            &release,
+            Platform { os: Os::Windows, arch: Arch::X64 },
+            &Http::new().unwrap(),
+            &paths,
+            &Stop::default(),
+            &mut |_| {},
+            &|| Ok(()),
+        );
+        assert!(result.unwrap_err().contains("can't update itself"));
+        assert!(!marker(&paths).exists());
+        assert!(!just_updated_to(&paths, &release));
+    }
+
     /// The restart helper doesn't pass a pretend version on to the new launcher.
     #[cfg(unix)]
     #[test]
@@ -359,7 +396,7 @@ mod tests {
         let dmg = dir.path().join("artcraft-launcher-0.2.0-macos-universal.dmg");
         let one_at_a_time = install::macos::DISK_IMAGES.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
         let ok = std::process::Command::new("hdiutil")
-            .args(["create", "-quiet", "-format", "UDZO", "-volname", "ArtCraft Launcher 0.2.0", "-srcfolder"])
+            .args(["create", "-quiet", "-format", "UDZO", "-fs", "HFS+", "-volname", "ArtCraft Launcher 0.2.0", "-srcfolder"])
             .arg(&src)
             .arg(&dmg)
             .status()

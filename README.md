@@ -111,7 +111,7 @@ installed by hand (and the launcher finds apps you installed yourself):
 
 | System | Where | How |
 |---|---|---|
-| macOS | `/Applications/<App>.app` | Copied from the signed, notarized release DMG |
+| macOS | `/Applications/<App>.app`, or `~/Applications/<App>.app` for new installs without write access | Copied from the signed, notarized release DMG |
 | Windows | `C:\Program Files\<App>` | The release MSI, through Windows Installer (with Start menu entry and Apps & features entry) |
 | Linux | `/usr/bin`, `/usr/share/applications` | The release `.deb` (apt) or `.rpm` (dnf, zypper), with your system's password prompt. Without those, a Flatpak, or an AppImage in `~/Applications` |
 | Linux, inside the launcher's Flatpak, with no Flatpak on the host | `~/.var/app/ai.storyteller.artcraft-launcher/data/artcraft-launcher/apps/<app>` | The release tarball, unpacked into the launcher's own folder and run inside the same sandbox, with its settings in a `home/` folder beside it. Nothing is installed on the host, and each app's configuration stays in the sandbox |
@@ -120,6 +120,11 @@ installed by hand (and the launcher finds apps you installed yourself):
 ArtCraft Launcher keeps itself current too: when a new version is out, **Update and restart**
 downloads it, verifies it, puts it where this copy is installed (the `.app`, the Windows Installer
 package or portable folder, the AppImage, or the `.deb`/`.rpm`) and reopens it.
+
+On a shared Mac, updates stay in the app's existing folder. If an update in `/Applications`
+needs administrator permission, macOS asks for an administrator's username and password.
+Cancelling leaves the installed app in place. Personal copies in `~/Applications` update without
+administrator permission; new installs use that folder when `/Applications` is not writable.
 
 Updates use the same format an app was installed with. Every download is checked against the
 release's published SHA-256 before it is installed, and a running app is never replaced.

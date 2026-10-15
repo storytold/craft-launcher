@@ -855,8 +855,11 @@ pub(crate) mod linux {
 
 #[cfg(target_os = "macos")]
 pub mod macos {
+    use std::io::ErrorKind;
+    use std::os::unix::fs::MetadataExt;
     use std::time::Duration;
 
+    use artcraft_launcher_core::catalog::{LAUNCHER, SUITE};
     use artcraft_launcher_core::version::Version;
 
     use super::*;
@@ -908,6 +911,31 @@ pub mod macos {
     const HDIUTIL: &str = "/usr/bin/hdiutil";
     const DITTO: &str = "/usr/bin/ditto";
     const CODESIGN: &str = "/usr/bin/codesign";
+    const OSASCRIPT: &str = "/usr/bin/osascript";
+    const STAT: &str = "/usr/bin/stat";
+    const CUT: &str = "/usr/bin/cut";
+    const LS: &str = "/bin/ls";
+    const WC: &str = "/usr/bin/wc";
+    const MKTEMP: &str = "/usr/bin/mktemp";
+    const CHOWN: &str = "/usr/sbin/chown";
+    const CHMOD: &str = "/bin/chmod";
+    const MV: &str = "/bin/mv";
+    const RM: &str = "/bin/rm";
+    const SED: &str = "/usr/bin/sed";
+    const PLIST_BUDDY: &str = "/usr/libexec/PlistBuddy";
+    const AUTHORIZED: &str = "ARTCRAFT_INSTALL_AUTHORIZED";
+    const AUTH_CANCELLED: &str = "ARTCRAFT_INSTALL_CANCELLED";
+    const AUTH_SCRIPT: &str = r#"on run argv
+    set shellScript to item 1 of argv
+    set promptText to item 2 of argv
+    try
+        do shell script shellScript with administrator privileges with prompt promptText
+        return "ARTCRAFT_INSTALL_AUTHORIZED"
+    on error errorText number errorNumber
+        if errorNumber is -128 then return "ARTCRAFT_INSTALL_CANCELLED"
+        error errorText number errorNumber
+    end try
+end run"#;
 
     pub fn install_dmg(app: &CraftApp, dmg: &Path, existing: Option<&Installed>, paths: &Paths, expect: &Expect<'_>) -> Result<PathBuf, String> {
         // A new, empty mount point for every install. A fixed one can still hold an image from an
@@ -957,9 +985,23 @@ pub mod macos {
     fn copy_app(app: &CraftApp, mount: &Path, existing: Option<&Installed>, expect: &Expect<'_>) -> Result<PathBuf, String> {
         let bundle = format!("{}.app", app.name);
         let src = mount.join(&bundle);
+        let source_metadata = std::fs::symlink_metadata(&src).map_err(|e| format!("the disk image doesn't contain the app ({e})"))?;
+        if source_metadata.file_type().is_symlink() || !source_metadata.is_dir() {
+            return Err("the disk image app isn't a real folder".into());
+        }
         crate::detect::macos::read_bundle(app, &src).ok_or("the disk image doesn't contain the app")?;
         let dir = applications_dir(existing)?;
         let dest = dir.join(&bundle);
+
+        // A new install keeps the existing /Applications-or-~/Applications choice. Only an
+        // existing shared install asks macOS when its destination can't be written by this user.
+        if existing.is_some_and(|i| i.source == InstallSource::MacApp) && dir == Path::new("/Applications") && !write_probe(&dir)? {
+            let found = crate::detect::macos::read_bundle(app, &src).ok_or("the disk image doesn't contain the app")?;
+            check(&src, &found, expect)?;
+            install_authorized(app, &src, &dest, &found, expect)?;
+            return Ok(dest);
+        }
+
         let staged = dir.join(format!(".{bundle}.partial"));
         let _ = std::fs::remove_dir_all(&staged);
         let (Some(src_s), Some(staged_s)) = (src.to_str(), staged.to_str()) else { return Err("unusual characters in a path".into()) };
@@ -978,6 +1020,281 @@ pub mod macos {
         }
         swap_into_place(&staged, &dest)?;
         Ok(dest)
+    }
+
+    /// Creates and removes a unique file to distinguish missing write permission from other I/O
+    /// errors. The caller only treats `PermissionDenied` as a reason to request administrator access.
+    fn write_probe(dir: &Path) -> Result<bool, String> {
+        let nonce = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_nanos()).unwrap_or_default();
+        for attempt in 0..8 {
+            let path = dir.join(format!(".artcraft-launcher-write-{}-{nonce}-{attempt}", std::process::id()));
+            match std::fs::OpenOptions::new().write(true).create_new(true).open(&path) {
+                Ok(file) => {
+                    drop(file);
+                    std::fs::remove_file(&path).map_err(|e| format!("couldn't remove the write check {} ({e})", path.display()))?;
+                    return Ok(true);
+                }
+                Err(e) if e.kind() == ErrorKind::AlreadyExists => continue,
+                Err(e) if e.kind() == ErrorKind::PermissionDenied => return Ok(false),
+                Err(e) => return Err(format!("couldn't check write access to {} ({e})", dir.display())),
+            }
+        }
+        Err(format!("couldn't find a free write-check name in {}", dir.display()))
+    }
+
+    fn install_authorized(app: &CraftApp, src: &Path, dest: &Path, found: &Installed, expect: &Expect<'_>) -> Result<(), String> {
+        validate_authorized_paths(app, src, dest)?;
+        let team = expect.team.ok_or("an app must have a verified Developer ID signature before a shared install")?;
+        if !team.bytes().all(|b| b.is_ascii_alphanumeric()) {
+            return Err("the app has an invalid Developer ID team".into());
+        }
+        let script = privileged_install_script(app, src, dest, team, found.version.as_ref())?;
+        let prompt = format!("ArtCraft Launcher: {} → /Applications", app.name);
+        let output = crate::process::command(OSASCRIPT)
+            .args(["-e", AUTH_SCRIPT])
+            .arg(script)
+            .arg(prompt)
+            // Do not time out an authorization prompt or detach while it is copying the mounted image.
+            .output()
+            .map_err(|e| format!("couldn't open the macOS administrator prompt ({e})"))?;
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        authorization_result(output.status.success(), &stdout, &stderr)
+    }
+
+    /// The privileged path is intentionally limited to a catalog bundle directly in the shared
+    /// Applications folder. A stale manifest or symlink must never choose an arbitrary root path.
+    fn validate_authorized_paths(app: &CraftApp, src: &Path, dest: &Path) -> Result<(), String> {
+        let known_app = SUITE
+            .iter()
+            .chain(std::iter::once(&LAUNCHER))
+            .any(|known| known.id == app.id && known.name == app.name && known.bundle_id() == app.bundle_id());
+        let expected = Path::new("/Applications").join(format!("{}.app", app.name));
+        if !known_app || dest != expected {
+            return Err("administrator installs are limited to known apps directly in /Applications".into());
+        }
+        let source = std::fs::symlink_metadata(src).map_err(|e| format!("couldn't inspect the app from the disk image ({e})"))?;
+        if source.file_type().is_symlink() || !source.is_dir() {
+            return Err("the disk image app isn't a real folder".into());
+        }
+        let apps = std::fs::symlink_metadata("/Applications").map_err(|e| format!("couldn't inspect /Applications ({e})"))?;
+        if apps.file_type().is_symlink() || !apps.is_dir() {
+            return Err("/Applications isn't a safe shared install folder".into());
+        }
+        let acl_listing = crate::process::capture(LS, &["-lde", "/Applications"], Duration::from_secs(3))
+            .ok_or("couldn't verify the /Applications access control list")?;
+        let group = if apps.mode() & 0o020 != 0 {
+            crate::process::capture(STAT, &["-f", "%Sg", "/Applications"], Duration::from_secs(3)).ok_or("couldn't verify the /Applications group")?
+        } else {
+            String::new()
+        };
+        if !safe_shared_apps_dir(apps.uid(), apps.mode(), group.trim(), acl_listing.lines().count() != 1) {
+            return Err("/Applications isn't a safe shared install folder".into());
+        }
+        match std::fs::symlink_metadata(dest) {
+            Ok(metadata) if metadata.file_type().is_symlink() => Err("the installed app path is a symlink, so it was left alone".into()),
+            Ok(metadata) if !metadata.is_dir() => Err("the installed app path isn't a folder, so it was left alone".into()),
+            Ok(_) => Ok(()),
+            Err(e) if e.kind() == ErrorKind::NotFound => Ok(()),
+            Err(e) => Err(format!("couldn't inspect {} ({e})", dest.display())),
+        }
+    }
+
+    fn safe_shared_apps_dir(owner: u32, mode: u32, group: &str, has_acl: bool) -> bool {
+        owner == 0 && mode & 0o002 == 0 && (mode & 0o020 == 0 || group == "admin") && !has_acl
+    }
+
+    fn privileged_install_script(app: &CraftApp, src: &Path, dest: &Path, team: &str, found: Option<&Version>) -> Result<String, String> {
+        let (Some(src), Some(dest)) = (src.to_str(), dest.to_str()) else { return Err("unusual characters in a path".into()) };
+        let bundle = format!("{}.app", app.name);
+        let version_key = format!("{}Version", app.name);
+        let (check_version, full_version, base_version, short_version) = match found {
+            Some(v) => (
+                "1",
+                format!("{}.{}.{}{}", v.major, v.minor, v.patch, if v.pre.is_empty() { String::new() } else { format!("-{}", v.pre) }),
+                format!("{}.{}.{}", v.major, v.minor, v.patch),
+                if v.patch == 0 { format!("{}.{}", v.major, v.minor) } else { String::new() },
+            ),
+            None => ("0", String::new(), String::new(), String::new()),
+        };
+        let version_command = shell_quote(&format!("Print :\"{version_key}\""));
+        Ok(format!(
+            r#"set -eu
+umask 077
+apps='/Applications'
+source={src}
+dest={dest}
+bundle={bundle}
+bundle_id={bundle_id}
+team={team}
+version_key={version_key}
+check_version={check_version}
+full_version={full_version}
+base_version={base_version}
+short_version={short_version}
+if [ -L "$apps" ] || [ ! -d "$apps" ] || [ "$({stat} -f %u "$apps")" != 0 ]; then
+  echo '/Applications is not a root-owned folder' >&2
+  exit 1
+fi
+mode=$({stat} -f %Lp "$apps")
+case "$mode" in *2|*3|*6|*7) echo '/Applications is world-writable' >&2; exit 1;; esac
+apps_group=$({stat} -f %Sg "$apps")
+apps_group_write=$({stat} -f %Sp "$apps" | {cut} -c6)
+apps_acl_lines=$({ls} -lde "$apps" | {wc} -l | {sed} 's/[[:space:]]//g')
+if [ "$apps_acl_lines" != 1 ]; then
+  echo '/Applications has an access control list' >&2
+  exit 1
+fi
+if [ "$apps_group_write" = w ] && [ "$apps_group" != admin ]; then
+  echo '/Applications has an unsafe writable group' >&2
+  exit 1
+fi
+if [ "$dest" != "/Applications/$bundle" ] || [ -L "$dest" ]; then
+  echo 'the shared app destination is unsafe' >&2
+  exit 1
+fi
+if [ -e "$dest" ] && [ ! -d "$dest" ]; then
+  echo 'the shared app destination is not a folder' >&2
+  exit 1
+fi
+if [ -L "$source" ] || [ ! -d "$source" ]; then
+  echo 'the disk image app is not a real folder' >&2
+  exit 1
+fi
+work=$({mktemp} -d /Applications/.artcraft-launcher-install.XXXXXXXXXX)
+backup="$work/old.app"
+new="$work/$bundle"
+had_old=0
+cleanup() {{
+  cleanup_status=$?
+  trap - EXIT
+  if [ "$had_old" = 1 ] && [ -e "$backup" ]; then
+    if [ -e "$dest" ] || [ -L "$dest" ]; then
+      echo "the previous app remains at $backup because the destination is occupied" >&2
+      [ "$cleanup_status" -ne 0 ] || cleanup_status=1
+      exit "$cleanup_status"
+    fi
+    if ! {mv} "$backup" "$dest"; then
+      echo "the previous app remains at $backup because rollback failed" >&2
+      [ "$cleanup_status" -ne 0 ] || cleanup_status=1
+      exit "$cleanup_status"
+    fi
+  fi
+  if ! {rm} -rf "$work"; then
+    echo "couldn't remove the private staging folder $work" >&2
+    [ "$cleanup_status" -ne 0 ] || cleanup_status=1
+  fi
+  exit "$cleanup_status"
+}}
+trap cleanup EXIT
+trap 'exit 1' HUP INT TERM
+{chmod} -N "$work"
+{chmod} 700 "$work"
+work_owner=$({stat} -f %u "$work")
+work_mode=$({stat} -f %Lp "$work")
+if [ "$work_owner" != 0 ] || [ "$work_mode" != 700 ]; then
+  echo 'the private staging folder is unsafe' >&2
+  exit 1
+fi
+{ditto} --norsrc --noextattr --noacl "$source" "$new"
+{chown} -R -P root:wheel "$new"
+{chmod} -R -P u-s,g-s,go-w "$new"
+if [ -L "$new" ] || [ ! -d "$new" ]; then
+  echo 'the copied app is not a real folder' >&2
+  exit 1
+fi
+stage_owner=$({stat} -f %u:%Sg "$new")
+stage_mode=$({stat} -f %Lp "$new")
+stage_group_write=$({stat} -f %Sp "$new" | {cut} -c6)
+case "$stage_mode" in *2|*3|*6|*7) echo 'the copied app is world-writable' >&2; exit 1;; esac
+if [ "$stage_owner" != '0:wheel' ] || [ "$stage_group_write" = w ]; then
+  echo 'the copied app ownership or permissions are unsafe' >&2
+  exit 1
+fi
+requirement="=anchor apple generic and certificate leaf[subject.OU] = \"$team\""
+{codesign} --verify --deep -R "$requirement" "$new"
+plist="$new/Contents/Info.plist"
+copied_id=$({plistbuddy} -c 'Print :CFBundleIdentifier' "$plist")
+if [ "$copied_id" != "$bundle_id" ]; then
+  echo 'the copied app identifier changed' >&2
+  exit 1
+fi
+if [ "$check_version" = 1 ]; then
+  if copied_version=$({plistbuddy} -c {version_command} "$plist" 2>/dev/null); then :
+  elif copied_version=$({plistbuddy} -c 'Print :CFBundleShortVersionString' "$plist" 2>/dev/null); then :
+  elif copied_version=$({plistbuddy} -c 'Print :CFBundleVersion' "$plist" 2>/dev/null); then :
+  else echo 'the copied app has no readable version' >&2; exit 1
+  fi
+  copied_version=$(printf '%s' "$copied_version" | {sed} 's/^[[:space:]]*//;s/[[:space:]]*$//')
+  copied_version=${{copied_version#v}}
+  copied_version=${{copied_version#V}}
+  copied_version=${{copied_version%%+*}}
+  version_matches=0
+  if [ "$copied_version" = "$full_version" ] || [ "$copied_version" = "$base_version" ]; then version_matches=1; fi
+  if [ -n "$short_version" ] && [ "$copied_version" = "$short_version" ]; then version_matches=1; fi
+  if [ "$version_matches" != 1 ]; then echo 'the copied app version changed' >&2; exit 1; fi
+fi
+new_identity=$({stat} -f %d:%i "$new")
+if [ -d "$dest" ]; then
+  had_old=1
+  {mv} "$dest" "$backup"
+fi
+if [ -e "$dest" ] || [ -L "$dest" ]; then
+  echo 'the shared app destination changed during installation' >&2
+  exit 1
+fi
+{mv} "$new" "$dest"
+if [ -L "$dest" ] || [ ! -d "$dest" ] || ! dest_identity=$({stat} -f %d:%i "$dest") || [ "$dest_identity" != "$new_identity" ]; then
+  if nested_identity=$({stat} -f %d:%i "$dest/$bundle" 2>/dev/null) && [ "$nested_identity" = "$new_identity" ]; then
+    {mv} "$dest/$bundle" "$new"
+  fi
+  echo 'the shared app destination changed during activation' >&2
+  exit 1
+fi
+had_old=0
+if [ -e "$backup" ]; then {rm} -rf "$backup"; fi
+echo installed"#,
+            src = shell_quote(src),
+            dest = shell_quote(dest),
+            bundle = shell_quote(&bundle),
+            bundle_id = shell_quote(&app.bundle_id()),
+            team = shell_quote(team),
+            version_key = shell_quote(&version_key),
+            check_version = shell_quote(check_version),
+            full_version = shell_quote(&full_version),
+            base_version = shell_quote(&base_version),
+            short_version = shell_quote(&short_version),
+            ditto = DITTO,
+            chown = CHOWN,
+            chmod = CHMOD,
+            codesign = CODESIGN,
+            stat = STAT,
+            cut = CUT,
+            ls = LS,
+            wc = WC,
+            mktemp = MKTEMP,
+            mv = MV,
+            rm = RM,
+            sed = SED,
+            plistbuddy = PLIST_BUDDY,
+            version_command = version_command,
+        ))
+    }
+
+    fn shell_quote(text: &str) -> String {
+        format!("'{}'", text.replace('\'', "'\\''"))
+    }
+
+    fn authorization_result(success: bool, stdout: &str, stderr: &str) -> Result<(), String> {
+        if !success {
+            let reason = stderr.trim();
+            return Err(if reason.is_empty() { "the macOS administrator helper failed".into() } else { reason.to_string() });
+        }
+        match stdout.trim() {
+            AUTHORIZED => Ok(()),
+            AUTH_CANCELLED => Err(CANCELLED.into()),
+            _ => Err("the macOS administrator helper returned an unexpected result".into()),
+        }
     }
 
     /// Checks a copied bundle against what its release promises, before it replaces anything.
@@ -1034,6 +1351,346 @@ pub mod macos {
             return Ok(());
         }
         std::fs::remove_dir_all(path).map_err(|e| format!("couldn't remove {} ({e})", path.display()))
+    }
+    #[cfg(test)]
+    mod authorization_tests {
+        use std::os::unix::fs::PermissionsExt;
+
+        use super::*;
+
+        #[test]
+        fn shared_applications_permissions_allow_only_root_or_admin_group_writes() {
+            assert!(safe_shared_apps_dir(0, 0o40755, "wheel", false));
+            assert!(safe_shared_apps_dir(0, 0o40775, "admin", false));
+            assert!(!safe_shared_apps_dir(501, 0o40755, "wheel", false));
+            assert!(!safe_shared_apps_dir(0, 0o40775, "staff", false));
+            assert!(!safe_shared_apps_dir(0, 0o40777, "admin", false));
+            assert!(!safe_shared_apps_dir(0, 0o40755, "wheel", true));
+        }
+
+        #[test]
+        fn authorization_results_keep_cancel_distinct_from_failure() {
+            assert_eq!(authorization_result(true, AUTHORIZED, ""), Ok(()));
+            assert_eq!(authorization_result(true, AUTH_CANCELLED, ""), Err(CANCELLED.into()));
+            assert_eq!(authorization_result(false, "", "denied"), Err("denied".into()));
+            assert!(authorization_result(true, "unexpected", "").is_err());
+        }
+
+        #[test]
+        fn generated_helper_quotes_paths_and_preserves_transaction_checks() {
+            let app = SUITE.iter().find(|a| a.id == "photocraft").expect("PhotoCraft is in the catalog");
+            let source = Path::new("/Volumes/PhotoCraft'; /usr/bin/touch /tmp/unsafe; '/PhotoCraft.app");
+            let destination = Path::new("/Applications/PhotoCraft.app");
+            let version = artcraft_launcher_core::version::parse("1.2.3").expect("valid test version");
+            let script = privileged_install_script(app, source, destination, TEAM_ID, Some(&version)).expect("script paths are UTF-8");
+
+            assert!(script.contains(&format!("source={}", shell_quote(source.to_str().expect("test path is UTF-8")))));
+            assert!(!script.contains("source=/Volumes/PhotoCraft'; /usr/bin/touch"));
+            assert!(script.contains("/usr/bin/ditto --norsrc --noextattr --noacl"));
+            assert!(script.contains("/usr/sbin/chown -R -P root:wheel"));
+            assert!(script.contains("/bin/chmod -R -P u-s,g-s,go-w"));
+            assert!(script.contains("/bin/chmod -N \"$work\""));
+            assert!(script.contains("/usr/libexec/PlistBuddy"));
+            assert!(script.contains("/usr/bin/codesign --verify --deep"));
+            assert!(script.contains("/bin/ls -lde \"$apps\""));
+            assert!(script.contains("apps_acl_lines"));
+            assert!(script.contains("short_version=''"));
+            assert!(script.find("/usr/bin/codesign --verify").unwrap() < script.find("\"$dest\" \"$backup\"").unwrap());
+
+            let parsed = std::process::Command::new("/bin/sh").args(["-n", "-c", &script]).status().expect("start shell parser");
+            assert!(parsed.success(), "generated privileged shell helper did not parse");
+        }
+
+        #[test]
+        fn two_part_short_versions_are_only_allowed_for_zero_patch_releases() {
+            let app = SUITE.iter().find(|a| a.id == "photocraft").expect("PhotoCraft is in the catalog");
+            let source = Path::new("/Volumes/PhotoCraft/PhotoCraft.app");
+            let destination = Path::new("/Applications/PhotoCraft.app");
+            let patch_release = artcraft_launcher_core::version::parse("1.2.3").expect("valid test version");
+            let zero_patch_release = artcraft_launcher_core::version::parse("1.2.0").expect("valid test version");
+
+            let patch_script = privileged_install_script(app, source, destination, TEAM_ID, Some(&patch_release)).unwrap();
+            let zero_patch_script = privileged_install_script(app, source, destination, TEAM_ID, Some(&zero_patch_release)).unwrap();
+            assert!(patch_script.contains("short_version=''"));
+            assert!(zero_patch_script.contains("short_version='1.2'"));
+        }
+
+        #[test]
+        fn generated_helper_replaces_only_a_verified_bundle_and_rolls_back_failures() {
+            let fixture = TransactionFixture::new("Source ' ; touch PWNED ; $(touch PWNED2) ; #", "1.2.3");
+            let result = fixture.run(&[]);
+            assert!(result.status.success(), "{}", String::from_utf8_lossy(&result.stderr));
+            assert_eq!(fixture.payload(&fixture.dest), "new");
+            assert!(!fixture.root.path().join("PWNED").exists());
+            assert!(!fixture.root.path().join("PWNED2").exists());
+            assert!(fixture.workdirs().is_empty());
+            let helper = fixture.dest.join("Contents/UnsafeHelper");
+            assert_eq!(std::fs::metadata(helper).unwrap().mode() & 0o6000, 0, "special privilege bits must be stripped");
+
+            for (name, version, overrides) in [
+                ("signature", "1.2.3", vec![("TEST_CODESIGN_FAIL", "1")]),
+                ("version", "1.2.0", vec![]),
+                ("activation", "1.2.3", vec![("TEST_FAIL_MV_AT", "2")]),
+            ] {
+                let fixture = TransactionFixture::new(name, version);
+                let result = fixture.run(&overrides);
+                assert!(!result.status.success(), "{name} unexpectedly succeeded");
+                assert_eq!(fixture.payload(&fixture.dest), "old", "{name} replaced the prior app");
+                assert!(fixture.workdirs().is_empty(), "{name} left private staging behind");
+            }
+
+            let fixture = TransactionFixture::new("Source", "1.2.3");
+            write_fixture_app(&fixture.source, "attacker.example", "1.2.3", "new");
+            let result = fixture.run(&[]);
+            assert!(!result.status.success(), "wrong bundle id unexpectedly succeeded");
+            assert_eq!(fixture.payload(&fixture.dest), "old", "an identifier mismatch replaced the prior app");
+        }
+
+        #[test]
+        fn generated_helper_rejects_symlinks_and_acl_but_preserves_failed_rollback_backup() {
+            let fixture = TransactionFixture::new("Source", "1.2.3");
+            let real_source = fixture.root.path().join("real-source.app");
+            write_fixture_app(&real_source, "ai.storyteller.photocraft", "1.2.3", "new");
+            std::fs::remove_dir_all(&fixture.source).unwrap();
+            std::os::unix::fs::symlink(&real_source, &fixture.source).unwrap();
+            let result = fixture.run(&[]);
+            assert!(!result.status.success());
+            assert_eq!(fixture.payload(&fixture.dest), "old");
+
+            let fixture = TransactionFixture::new("Source", "1.2.3");
+            let result = fixture.run(&[("TEST_APPS_ACL", "1")]);
+            assert!(!result.status.success());
+            assert_eq!(fixture.payload(&fixture.dest), "old");
+            assert!(fixture.workdirs().is_empty());
+
+            let fixture = TransactionFixture::new("Source", "1.2.3");
+            let outside = fixture.root.path().join("outside.app");
+            write_fixture_app(&outside, "ai.storyteller.photocraft", "0.8.0", "outside");
+            std::fs::remove_dir_all(&fixture.dest).unwrap();
+            std::os::unix::fs::symlink(&outside, &fixture.dest).unwrap();
+            let result = fixture.run(&[]);
+            assert!(!result.status.success());
+            assert!(fixture.dest.is_symlink());
+            assert_eq!(fixture.payload(&outside), "outside");
+
+            let fixture = TransactionFixture::new("Source", "1.2.3");
+            let result = fixture.run(&[("TEST_FAIL_MV_AT", "2,3")]);
+            assert!(!result.status.success());
+            let backup = fixture
+                .workdirs()
+                .into_iter()
+                .map(|work| work.join("old.app"))
+                .find(|p| p.exists())
+                .expect("failed rollback must retain the old bundle");
+            assert_eq!(fixture.payload(&backup), "old");
+        }
+
+        #[test]
+        fn generated_helper_keeps_the_old_app_if_another_installer_claims_destination() {
+            let fixture = TransactionFixture::new("Source", "1.2.3");
+            let result = fixture.run(&[("TEST_OCCUPY_AFTER_MV_AT", "1")]);
+            assert!(!result.status.success());
+            assert!(fixture.dest.is_dir(), "the simulated concurrent destination should remain");
+            let backup =
+                fixture.workdirs().into_iter().map(|work| work.join("old.app")).find(|p| p.exists()).expect("old app backup must be retained");
+            assert_eq!(fixture.payload(&backup), "old");
+
+            let fixture = TransactionFixture::new("Source", "1.2.3");
+            let result = fixture.run(&[("TEST_RACE_DURING_MV_AT", "2")]);
+            assert!(!result.status.success());
+            assert!(fixture.dest.is_dir());
+            assert!(!fixture.dest.join("PhotoCraft.app").exists(), "the staged app should be taken back out of a raced destination");
+            let work = fixture.workdirs().into_iter().next().expect("private transaction state must be retained");
+            assert_eq!(fixture.payload(&work.join("old.app")), "old");
+            assert_eq!(fixture.payload(&work.join("PhotoCraft.app")), "new");
+        }
+
+        #[test]
+        fn write_probe_only_converts_permission_denied_to_a_prompt_decision() {
+            let dir = tempfile::tempdir().unwrap();
+            assert!(write_probe(dir.path()).unwrap());
+            assert_eq!(std::fs::read_dir(dir.path()).unwrap().count(), 0, "the successful probe should be removed");
+
+            let blocked = dir.path().join("blocked");
+            std::fs::create_dir(&blocked).unwrap();
+            std::fs::set_permissions(&blocked, std::fs::Permissions::from_mode(0o555)).unwrap();
+            assert_eq!(write_probe(&blocked), Ok(false));
+            assert!(write_probe(&dir.path().join("missing")).is_err(), "missing-folder errors must not trigger admin authorization");
+        }
+
+        struct TransactionFixture {
+            root: tempfile::TempDir,
+            apps: PathBuf,
+            source: PathBuf,
+            dest: PathBuf,
+            state: PathBuf,
+            script: PathBuf,
+        }
+
+        impl TransactionFixture {
+            fn new(source_name: &str, source_version: &str) -> Self {
+                let app = SUITE.iter().find(|a| a.id == "photocraft").expect("PhotoCraft is in the catalog");
+                let version = artcraft_launcher_core::version::parse("1.2.3").expect("valid test version");
+                let root = tempfile::tempdir().expect("temporary install fixture");
+                let apps = root.path().join("Applications");
+                std::fs::create_dir(&apps).unwrap();
+                let source = root.path().join(source_name).join("PhotoCraft.app");
+                write_fixture_app(&source, &app.bundle_id(), source_version, "new");
+                let dest = apps.join("PhotoCraft.app");
+                write_fixture_app(&dest, &app.bundle_id(), "0.9.0", "old");
+                let state = root.path().join("state");
+                std::fs::create_dir(&state).unwrap();
+
+                let tools = root.path().join("tools");
+                std::fs::create_dir(&tools).unwrap();
+                write_test_tool(&tools.join("chown"), "#!/bin/sh\n[ \"$1\" = -R ] && [ \"$2\" = -P ] && [ \"$3\" = root:wheel ]\n");
+                write_test_tool(
+                    &tools.join("codesign"),
+                    "#!/bin/sh\n[ \"${TEST_CODESIGN_FAIL:-0}\" != 1 ] || { echo 'signature rejected by fixture' >&2; exit 1; }\nexit 0\n",
+                );
+                write_test_tool(
+                    &tools.join("stat"),
+                    r#"#!/bin/sh
+format=$2
+path=$3
+case "$path" in
+  "$TEST_APPS") kind=apps ;;
+  "$TEST_APPS/PhotoCraft.app") kind=dest ;;
+  "$TEST_APPS/PhotoCraft.app/PhotoCraft.app") kind=nested ;;
+  "$TEST_APPS"/.artcraft-launcher-install.*/PhotoCraft.app) kind=stage ;;
+  "$TEST_APPS"/.artcraft-launcher-install.*) kind=work ;;
+  *) kind=stage ;;
+esac
+case "$format:$kind" in
+  %u:apps|%u:work|%u:stage) echo 0 ;;
+  %Lp:apps) echo 775 ;;
+  %Lp:work) echo 700 ;;
+  %Lp:stage) echo 555 ;;
+  %Sg:apps) echo admin ;;
+  %Sg:work) echo root ;;
+  %Sg:stage) echo wheel ;;
+  %Sp:apps) echo drwxrwxr-x ;;
+  %Sp:work) echo drwx------ ;;
+  %Sp:dest) echo drwxr-xr-x ;;
+  %Sp:nested) echo dr-xr-xr-x ;;
+  %Sp:stage) echo dr-xr-xr-x ;;
+  %u:%Sg:stage) echo 0:wheel ;;
+  %d:%i:dest)
+    if [ "${TEST_RACE_DURING_MV_AT:-0}" = 2 ]; then echo 0:2; else echo 0:3; fi
+    ;;
+  %d:%i:nested)
+    [ -e "$path" ] || exit 1
+    echo 0:3
+    ;;
+  %d:%i:stage) echo 0:3 ;;
+  *) echo "unexpected stat query: $format $path" >&2; exit 80 ;;
+esac
+"#,
+                );
+                write_test_tool(
+                    &tools.join("ls"),
+                    "#!/bin/sh\nprintf '%s\\n' 'drwxrwxr-x  2 root admin Applications'\nif [ \"${TEST_APPS_ACL:-0}\" = 1 ]; then echo '0: user:other deny write'; fi\n",
+                );
+                write_test_tool(
+                    &tools.join("mv"),
+                    r#"#!/bin/sh
+count_file="$TEST_STATE/mv-count"
+count=0
+[ ! -f "$count_file" ] || count=$(cat "$count_file")
+count=$((count + 1))
+printf '%s' "$count" > "$count_file"
+case ",${TEST_FAIL_MV_AT:-}," in *,"$count",*) echo 'move failed by fixture' >&2; exit 1;; esac
+if [ "${TEST_RACE_DURING_MV_AT:-0}" = "$count" ]; then mkdir "$TEST_APPS/PhotoCraft.app"; fi
+/bin/mv "$@"
+status=$?
+if [ "$status" -eq 0 ] && [ "${TEST_OCCUPY_AFTER_MV_AT:-0}" = "$count" ]; then
+  mkdir "$TEST_APPS/PhotoCraft.app"
+fi
+exit "$status"
+"#,
+                );
+
+                let mut script = privileged_install_script(app, &source, Path::new("/Applications/PhotoCraft.app"), TEAM_ID, Some(&version)).unwrap();
+                script = script.replace("/Applications", apps.to_str().unwrap());
+                for (system_tool, fixture_tool) in [
+                    (CHOWN, tools.join("chown")),
+                    (CODESIGN, tools.join("codesign")),
+                    (STAT, tools.join("stat")),
+                    (LS, tools.join("ls")),
+                    (MV, tools.join("mv")),
+                ] {
+                    script = script.replace(system_tool, &shell_quote(fixture_tool.to_str().unwrap()));
+                }
+                let script_path = root.path().join("install.sh");
+                std::fs::write(&script_path, script).unwrap();
+                std::fs::set_permissions(&script_path, std::fs::Permissions::from_mode(0o700)).unwrap();
+                Self { root, apps, source, dest, state, script: script_path }
+            }
+
+            fn run(&self, overrides: &[(&str, &str)]) -> std::process::Output {
+                let mut command = std::process::Command::new("/bin/sh");
+                command.arg(&self.script).current_dir(self.root.path()).env("TEST_APPS", &self.apps).env("TEST_STATE", &self.state);
+                for (key, value) in [
+                    ("TEST_CODESIGN_FAIL", "0"),
+                    ("TEST_APPS_ACL", "0"),
+                    ("TEST_FAIL_MV_AT", ""),
+                    ("TEST_OCCUPY_AFTER_MV_AT", "0"),
+                    ("TEST_RACE_DURING_MV_AT", "0"),
+                ] {
+                    command.env(key, value);
+                }
+                for (key, value) in overrides {
+                    command.env(key, value);
+                }
+                command.output().expect("run fixture install transaction")
+            }
+
+            fn payload(&self, app: &Path) -> String {
+                std::fs::read_to_string(app.join("Contents/payload.txt")).expect("app payload")
+            }
+
+            fn workdirs(&self) -> Vec<PathBuf> {
+                std::fs::read_dir(&self.apps)
+                    .unwrap()
+                    .flatten()
+                    .map(|entry| entry.path())
+                    .filter(|path| path.file_name().is_some_and(|name| name.to_string_lossy().starts_with(".artcraft-launcher-install.")))
+                    .collect()
+            }
+        }
+
+        fn write_fixture_app(path: &Path, bundle_id: &str, version: &str, payload: &str) {
+            let contents = path.join("Contents");
+            std::fs::create_dir_all(&contents).unwrap();
+            let plist = format!(
+                "<?xml version=\"1.0\" encoding=\"UTF-8\"?><plist version=\"1.0\"><dict>\
+                 <key>CFBundleIdentifier</key><string>{bundle_id}</string>\
+                 <key>CFBundleShortVersionString</key><string>{version}</string>\
+                 <key>PhotoCraftVersion</key><string>{version}</string></dict></plist>"
+            );
+            std::fs::write(contents.join("Info.plist"), plist).unwrap();
+            std::fs::write(contents.join("payload.txt"), payload).unwrap();
+            let helper = contents.join("UnsafeHelper");
+            std::fs::write(&helper, "fixture").unwrap();
+            std::fs::set_permissions(&helper, std::fs::Permissions::from_mode(0o6755)).unwrap();
+        }
+
+        fn write_test_tool(path: &Path, body: &str) {
+            std::fs::write(path, body).unwrap();
+            std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o755)).unwrap();
+        }
+
+        #[test]
+        fn apple_script_authorization_wrapper_compiles_without_running_it() {
+            let dir = tempfile::tempdir().expect("temporary compile folder");
+            let output = dir.path().join("authorization.scpt");
+            let result = std::process::Command::new("/usr/bin/osacompile")
+                .args(["-e", AUTH_SCRIPT, "-o"])
+                .arg(output)
+                .output()
+                .expect("start AppleScript compiler");
+            assert!(result.status.success(), "AppleScript did not compile: {}", String::from_utf8_lossy(&result.stderr));
+        }
     }
 }
 
@@ -1738,7 +2395,7 @@ mod tests {
             let dmg = dir.join(format!("photocraft-{version}-macos-universal.dmg"));
             let _one_at_a_time = super::macos::DISK_IMAGES.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
             let ok = std::process::Command::new("hdiutil")
-                .args(["create", "-quiet", "-format", "UDZO", "-volname", "PhotoCraft", "-srcfolder"])
+                .args(["create", "-quiet", "-format", "UDZO", "-fs", "HFS+", "-volname", "PhotoCraft", "-srcfolder"])
                 .arg(&src)
                 .arg(&dmg)
                 .status()
