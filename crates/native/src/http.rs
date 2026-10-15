@@ -4,6 +4,7 @@ use std::io::{Read, Write};
 use std::path::Path;
 use std::sync::atomic::{AtomicU8, Ordering};
 
+use artcraft_launcher_core::protocol::ReleaseError;
 use artcraft_launcher_core::protocol::{CANCELLED, PAUSED};
 use std::time::Duration;
 
@@ -12,6 +13,25 @@ use sha2::{Digest, Sha256};
 const USER_AGENT: &str = concat!("ArtCraftLauncher/", env!("CARGO_PKG_VERSION"));
 /// Largest JSON or text answer we read.
 const MAX_SMALL: u64 = 4 << 20;
+
+fn api_failure(error: ureq::Error, description: &str) -> ReleaseError {
+    let transient = match &error {
+        ureq::Error::Timeout(_) | ureq::Error::HostNotFound | ureq::Error::ConnectionFailed => true,
+        ureq::Error::Io(error) => matches!(
+            error.kind(),
+            std::io::ErrorKind::ConnectionRefused
+                | std::io::ErrorKind::ConnectionReset
+                | std::io::ErrorKind::ConnectionAborted
+                | std::io::ErrorKind::NotConnected
+                | std::io::ErrorKind::BrokenPipe
+                | std::io::ErrorKind::TimedOut
+                | std::io::ErrorKind::UnexpectedEof
+                | std::io::ErrorKind::Interrupted
+        ),
+        _ => false,
+    };
+    ReleaseError { message: format!("{description} ({error})"), retry_after: transient.then_some(0) }
+}
 
 /// What a GET of a small resource produced.
 #[derive(Debug, PartialEq, Eq)]
@@ -103,6 +123,11 @@ impl Http {
 
     /// GET a GitHub API resource, revalidating with `etag` when given.
     pub fn get_api(&self, url: &str, etag: Option<&str>) -> Result<Fetched, String> {
+        self.get_api_detailed(url, etag).map_err(|error| error.message)
+    }
+
+    /// Release-history requests also need structured retry timing for transient failures.
+    pub(crate) fn get_api_detailed(&self, url: &str, etag: Option<&str>) -> Result<Fetched, ReleaseError> {
         let mut req = self.small.get(url).header("Accept", "application/vnd.github+json").header("X-GitHub-Api-Version", "2022-11-28");
         if let Some(tag) = etag {
             req = req.header("If-None-Match", tag);
@@ -112,14 +137,14 @@ impl Http {
         {
             req = req.header("Authorization", &format!("Bearer {token}"));
         }
-        let mut resp = req.call().map_err(|e| format!("couldn't reach GitHub ({e})"))?;
+        let mut resp = req.call().map_err(|e| api_failure(e, "couldn't reach GitHub"))?;
         let header = |name: &str| resp.headers().get(name).and_then(|v| v.to_str().ok()).map(str::to_string);
         let status = resp.status().as_u16();
         match status {
             200 => {
                 let etag = header("etag");
                 let text =
-                    resp.body_mut().with_config().limit(MAX_SMALL).read_to_string().map_err(|e| format!("unreadable answer from GitHub ({e})"))?;
+                    resp.body_mut().with_config().limit(MAX_SMALL).read_to_string().map_err(|e| api_failure(e, "unreadable answer from GitHub"))?;
                 Ok(Fetched::Body { text, etag })
             }
             304 => Ok(Fetched::NotModified),
@@ -130,10 +155,14 @@ impl Http {
                 let retry_after = header("retry-after").and_then(|r| r.trim().parse::<i64>().ok());
                 match refused_until(status, remaining.as_deref(), reset, retry_after, crate::now()) {
                     Some(reset) => Ok(Fetched::RateLimited { reset }),
-                    None => Err(format!("GitHub refused the request (HTTP {status})")),
+                    None => Err(format!("GitHub refused the request (HTTP {status})").into()),
                 }
             }
-            s => Err(format!("GitHub answered HTTP {s}")),
+            s => Err(ReleaseError {
+                message: format!("GitHub answered HTTP {s}"),
+                retry_after: matches!(s, 500 | 502 | 503 | 504)
+                    .then(|| header("retry-after").and_then(|r| r.trim().parse::<u64>().ok()).unwrap_or(0)),
+            }),
         }
     }
 
@@ -850,6 +879,42 @@ pub(crate) mod tests {
             let _ = write!(stream, "{head}Content-Length: 0\r\nConnection: close\r\n\r\n");
         });
         url
+    }
+
+    #[test]
+    fn release_history_retries_network_timeouts_but_not_tls_or_request_errors() {
+        for error in [
+            ureq::Error::Timeout(ureq::Timeout::Global),
+            ureq::Error::HostNotFound,
+            ureq::Error::ConnectionFailed,
+            ureq::Error::Io(std::io::ErrorKind::TimedOut.into()),
+            ureq::Error::Io(std::io::ErrorKind::ConnectionReset.into()),
+        ] {
+            assert_eq!(api_failure(error, "couldn't reach GitHub").retry_after, Some(0));
+        }
+        for error in [
+            ureq::Error::Tls("invalid certificate"),
+            ureq::Error::BadUri("invalid URI".into()),
+            ureq::Error::Io(std::io::ErrorKind::InvalidData.into()),
+        ] {
+            assert_eq!(api_failure(error, "couldn't reach GitHub").retry_after, None);
+        }
+    }
+
+    #[test]
+    fn release_history_retries_transient_statuses_and_preserves_retry_after() {
+        for status in [500, 502, 503, 504] {
+            let url = answer_once(format!("HTTP/1.1 {status} Server Error\r\nretry-after: 120\r\n"));
+            let error = Http::new().unwrap().get_api_detailed(&url, None).unwrap_err();
+            assert_eq!(error.message, format!("GitHub answered HTTP {status}"));
+            assert_eq!(error.retry_after, Some(120));
+        }
+        let url = answer_once("HTTP/1.1 504 Gateway Timeout\r\n".into());
+        assert_eq!(Http::new().unwrap().get_api_detailed(&url, None).unwrap_err().retry_after, Some(0));
+        let url = answer_once("HTTP/1.1 403 Forbidden\r\n".into());
+        assert_eq!(Http::new().unwrap().get_api_detailed(&url, None).unwrap_err().retry_after, None);
+        let url = answer_once("HTTP/1.1 501 Not Implemented\r\n".into());
+        assert_eq!(Http::new().unwrap().get_api_detailed(&url, None).unwrap_err().retry_after, None);
     }
 
     #[test]

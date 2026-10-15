@@ -184,6 +184,19 @@ pub mod windows {
 
     const UNINSTALL: &str = r"SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall";
 
+    /// Reads VERSIONINFO without executing the downloaded application. The path is data in
+    /// a child-only environment variable, never interpolated into PowerShell source.
+    pub fn executable_version(path: &std::path::Path) -> Option<artcraft_launcher_core::version::Version> {
+        let path = std::fs::canonicalize(path).ok()?;
+        let mut command = crate::process::command("powershell.exe");
+        command.args([
+            "-NoLogo", "-NoProfile", "-NonInteractive", "-Command",
+            "[Console]::OutputEncoding = [System.Text.Encoding]::UTF8; [System.Diagnostics.FileVersionInfo]::GetVersionInfo($env:ARTCRAFT_VERSION_FILE).ProductVersion",
+        ]).env("ARTCRAFT_VERSION_FILE", path);
+        let output = crate::process::capture_command(command, std::time::Duration::from_secs(5))?;
+        version::parse(output.trim())
+    }
+
     /// An MSI install found in the registry.
     pub struct MsiInstall {
         pub product_code: String,

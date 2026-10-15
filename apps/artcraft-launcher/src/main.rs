@@ -723,6 +723,16 @@ impl eframe::App for Shell<'_> {
 
 #[cfg(test)]
 mod tests {
+    #[cfg(windows)]
+    #[test]
+    fn the_windows_resource_reports_the_executable_version_without_launching_it() {
+        let executable = std::env::current_exe().unwrap();
+        assert_eq!(
+            artcraft_launcher_native::detect::windows::executable_version(&executable),
+            artcraft_launcher_core::version::parse(env!("CARGO_PKG_VERSION"))
+        );
+        assert!(artcraft_launcher_native::detect::windows::executable_version(&executable.with_extension("absent")).is_none());
+    }
     use std::ptr::NonNull;
     use std::sync::atomic::{AtomicI64, AtomicUsize, Ordering};
     use std::sync::mpsc::Sender;

@@ -48,6 +48,20 @@ pub enum Install {
 }
 
 impl Install {
+    /// Refuse unsupported version changes before downloading or starting an exit helper.
+    pub(crate) fn validate_release(&self, release: &Release, current: Option<&Version>) -> Result<(), String> {
+        let target = release.version.as_ref().ok_or("This release's version cannot be verified.")?;
+        let current = current.ok_or("This release's version cannot be verified.")?;
+        if target < current {
+            match self {
+                Self::Msi(_) => return Err("Launcher MSI downgrades require a portable copy. This installation can upgrade only.".into()),
+                Self::Package(PackageKind::Rpm, _) => return Err("This package cannot downgrade here. Use a portable installation instead.".into()),
+                _ => {}
+            }
+        }
+        Ok(())
+    }
+
     fn kind(&self) -> PackageKind {
         match self {
             Self::MacApp(_) => PackageKind::Dmg,
@@ -165,6 +179,7 @@ pub fn update(
     phase: &mut dyn FnMut(JobPhase),
     last: &dyn Fn() -> Result<(), String>,
 ) -> Result<(), String> {
+    install.validate_release(release, current_version().as_ref())?;
     let (asset, _) = pick_asset(release, &[LAUNCHER.id], platform, &[install.kind()])
         .ok_or_else(|| format!("ArtCraft Launcher {} has no {} for {}", release.version_label(), install.kind().label(), platform.label()))?;
     let asset = asset.clone();
@@ -292,6 +307,28 @@ fn ps_quote_arg(path: &Path) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn launcher_version_switches_respect_installation_format_before_downloading() {
+        let current = version::parse("0.2.1").unwrap();
+        let older = Release { tag: "v0.1.0".into(), version: version::parse("0.1.0"), ..Release::default() };
+        let newer = Release { tag: "v0.3.0".into(), version: version::parse("0.3.0"), ..Release::default() };
+        for install in [Install::Msi("launcher.exe".into()), Install::Package(PackageKind::Rpm, "launcher".into())] {
+            assert!(install.validate_release(&older, Some(&current)).is_err());
+            assert!(install.validate_release(&newer, Some(&current)).is_ok());
+        }
+        for install in [
+            Install::Portable("launcher.exe".into()),
+            Install::MacApp("launcher.app".into()),
+            Install::AppImage("launcher.AppImage".into()),
+            Install::Package(PackageKind::Deb, "launcher".into()),
+        ] {
+            assert!(install.validate_release(&older, Some(&current)).is_ok());
+            assert!(install.validate_release(&newer, Some(&current)).is_ok());
+            assert!(install.validate_release(&Release::default(), Some(&current)).is_err());
+            assert!(install.validate_release(&older, None).is_err());
+        }
+    }
 
     #[test]
     fn a_version_just_installed_is_not_offered_again() {

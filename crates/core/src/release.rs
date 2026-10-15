@@ -56,6 +56,22 @@ impl Release {
 
 const MAX_NOTES: usize = 64 * 1024;
 
+/// A bounded page of release history, retaining unusual tags while excluding drafts.
+pub fn parse_github_history(json: &str, repo: &str) -> Result<crate::protocol::ReleasePage, String> {
+    let value: serde_json::Value = serde_json::from_str(json).map_err(|e| format!("unreadable answer from GitHub ({e})"))?;
+    let list = value.as_array().ok_or("unexpected answer from GitHub")?;
+    if list.len() > 30 {
+        return Err("GitHub returned too many releases".into());
+    }
+    let mut releases: Vec<Release> = list
+        .iter()
+        .filter(|item| item.get("draft").and_then(|d| d.as_bool()) != Some(true))
+        .filter_map(|item| release_from_value(item, repo).ok())
+        .collect();
+    releases.sort_by(|a, b| b.version.cmp(&a.version).then_with(|| b.published_at.cmp(&a.published_at)));
+    Ok(crate::protocol::ReleasePage { releases, more: list.len() == 30 })
+}
+
 fn is_hex64(s: &str) -> bool {
     s.len() == 64 && s.bytes().all(|b| b.is_ascii_hexdigit())
 }
@@ -195,6 +211,42 @@ mod tests {
 
     const REPO: &str = "storytold/photocraft";
     const HASH: &str = "8a5edab282632443219e051e4ade2d1d5bbc671c781051bf1437897cbdfea0f1";
+
+    #[test]
+    fn real_history_fixture_picks_only_matching_windows_assets() {
+        let history = parse_github_history(include_str!("../tests/fixtures/photocraft-history.json"), REPO).unwrap();
+        assert_eq!(history.releases.iter().map(|r| r.tag.as_str()).collect::<Vec<_>>(), ["v0.7.0", "v0.6.0"]);
+        let platform = crate::Platform { os: crate::Os::Windows, arch: crate::Arch::X64 };
+        for release in &history.releases {
+            let (asset, kind) = crate::platform::pick_asset(release, &["photocraft"], platform, &[crate::PackageKind::PortableZip]).unwrap();
+            assert_eq!(kind, crate::PackageKind::PortableZip);
+            assert!(asset.name.ends_with("-windows-x64-portable.zip"));
+            assert!(asset.sha256.is_some());
+            assert!(release.sums_asset().is_some());
+            assert!(crate::platform::pick_asset(release, &["vectorcraft"], platform, &[crate::PackageKind::PortableZip]).is_none());
+        }
+    }
+
+    #[test]
+    fn history_keeps_pre_releases_and_non_semver_but_never_drafts() {
+        let page = parse_github_history(
+            r#"[{"tag_name":"nightly","published_at":"2026-10-10T00:00:00Z","assets":[]},
+                {"tag_name":"v0.4.0","assets":[]},
+                {"tag_name":"v0.6.0-rc.1","prerelease":true,"assets":[]},
+                {"tag_name":"v9.0.0","draft":true,"assets":[]},
+                {"tag_name":"v0.5.0","assets":[{"name":"photocraft-0.5.0-windows-x64.msi","browser_download_url":"https://evil.example/app.msi"}]}]"#,
+            REPO,
+        )
+        .unwrap();
+        assert_eq!(page.releases.iter().map(|r| r.tag.as_str()).collect::<Vec<_>>(), ["v0.6.0-rc.1", "v0.5.0", "v0.4.0", "nightly"]);
+        assert!(page.releases[0].prerelease);
+        assert!(page.releases[1].assets.is_empty());
+        assert!(!page.more);
+        assert_eq!(parse_github_history("[]", REPO).unwrap(), crate::protocol::ReleasePage::default());
+        let rows = vec![serde_json::json!({"tag_name":"v0.5.0","assets":[]}); 30];
+        assert!(parse_github_history(&serde_json::to_string(&rows).unwrap(), REPO).unwrap().more);
+        assert!(parse_github_history("{}", REPO).is_err());
+    }
 
     fn api_json(url: &str) -> String {
         format!(

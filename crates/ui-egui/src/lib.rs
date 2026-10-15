@@ -17,6 +17,7 @@ macro_rules! tl {
 }
 
 mod app;
+mod app_settings;
 #[cfg(not(target_arch = "wasm32"))]
 mod cjk_font;
 mod details;

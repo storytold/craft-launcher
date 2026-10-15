@@ -348,7 +348,7 @@ fn a_kept_download_offers_retry_install_and_download_again() {
     sent.borrow_mut().clear();
     // The … menu beside it.
     let beside = |r: egui::Rect| row.y_range().contains(r.center().y) && (row.right()..row.right() + 60.0).contains(&r.left());
-    h.get_all_by_label("…").find(|n| beside(n.rect())).unwrap().click();
+    h.get_all_by_label("⋮").find(|n| beside(n.rect())).unwrap().click();
     h.run_steps(3);
     snapshot(&mut h, "grid-retry-install-menu-dark");
     h.get_by_label("Download again").click();
@@ -391,7 +391,7 @@ fn a_kept_update_names_its_version_and_an_up_to_date_app_is_not_downloaded_again
     assert_eq!(*sent.borrow(), [Command::Install { app: "effectcraft".into() }]);
     // WordCraft is up to date: its menu offers Reinstall, which uses the kept file.
     let row = h.get_all_by_label("WordCraft").next().unwrap().rect().center().y;
-    h.get_all_by_label("…").find(|n| (n.rect().center().y - row).abs() < 25.0).unwrap().click();
+    h.get_all_by_label("⋮").find(|n| (n.rect().center().y - row).abs() < 25.0).unwrap().click();
     h.run_steps(3);
     h.get_by_label("Reinstall");
     assert!(h.query_by_label("Download again").is_none());
@@ -471,7 +471,7 @@ fn hiding_an_app_removes_it_until_it_is_unhidden() {
     // PhotoCraft has an update, so hiding it also drops the Updates count.
     h.get_by_label_contains("Updates 2");
     let row = h.get_all_by_label("PhotoCraft").next().unwrap().rect().center().y;
-    h.get_all_by_label("…").find(|n| (n.rect().center().y - row).abs() < 25.0).unwrap().click();
+    h.get_all_by_label("⋮").find(|n| (n.rect().center().y - row).abs() < 25.0).unwrap().click();
     h.run_steps(3);
     h.get_by_label("Hide App").click();
     h.run_steps(4);
@@ -483,7 +483,7 @@ fn hiding_an_app_removes_it_until_it_is_unhidden() {
     h.get_by_label("PhotoCraft");
     assert!(h.query_by_label("WordCraft").is_none());
     let row = h.get_all_by_label("PhotoCraft").next().unwrap().rect().center().y;
-    h.get_all_by_label("…").find(|n| (n.rect().center().y - row).abs() < 25.0).unwrap().click();
+    h.get_all_by_label("⋮").find(|n| (n.rect().center().y - row).abs() < 25.0).unwrap().click();
     h.run_steps(3);
     h.get_by_label("Unhide App").click();
     h.run_steps(4);
@@ -605,7 +605,7 @@ fn the_uninstall_prompt_keeps_its_own_size_after_a_taller_dialog() {
     h.get_by_label("Done").click();
     h.run_steps(3);
     // PhotoCraft is installed, so its … menu offers Uninstall.
-    h.get_all_by_label("…").next().unwrap().click();
+    h.get_all_by_label("⋮").next().unwrap().click();
     h.run_steps(3);
     h.get_by_label("Uninstall…").click();
     h.run_steps(4);
@@ -636,7 +636,7 @@ fn links_to_the_website_github_and_each_apps_pages() {
     // The table's … menu has the app's website and GitHub repo.
     let (mut h, _) = harness(ViewMode::Table, egui::Theme::Dark, true);
     h.run_steps(6);
-    h.get_all_by_label("…").nth(7).unwrap().click(); // WordCraft
+    h.get_all_by_label("⋮").nth(7).unwrap().click(); // WordCraft
     h.run_steps(3);
     h.get_by_label("GitHub repository");
     // The footer's Website link and WordCraft's now-live one in the menu.
@@ -688,7 +688,7 @@ fn links_open_the_right_pages() {
     assert_eq!(click_opens(&mut h, "Instagram").as_deref(), Some("https://www.instagram.com/officialartcraftstudios"));
     assert_eq!(click_opens(&mut h, "LinkedIn").as_deref(), Some("https://www.linkedin.com/company/artcraft-ai"));
     // The … menu.
-    h.get_all_by_label("…").next().unwrap().click();
+    h.get_all_by_label("⋮").next().unwrap().click();
     h.run_steps(3);
     assert_eq!(click_opens(&mut h, "All releases").as_deref(), Some("https://github.com/storytold/photocraft/releases"));
 }
