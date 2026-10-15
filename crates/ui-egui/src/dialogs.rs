@@ -27,6 +27,7 @@ impl LauncherUi {
             Dialog::ConfirmUninstall(id) => modal.show(ctx, |ui| close = self.uninstall_dialog(ui, id)),
             Dialog::Settings => modal.show(ctx, |ui| close = self.settings_dialog(ui, host)),
             Dialog::LauncherUpdate(r) => modal.show(ctx, |ui| close = self.launcher_update_dialog(ui, r)),
+            Dialog::CraftAi => modal.show(ctx, |ui| close = self.craft_ai_dialog(ui)),
         };
         if close || response.should_close() {
             self.dialog = None;
@@ -218,6 +219,20 @@ impl LauncherUi {
             });
         }
         close
+    }
+
+    /// Craft AI: the ArtCraft family's built-in local assistant — a local Gemma model of the
+    /// user's choosing, never a cloud service. See `crate::craft_ai`.
+    fn craft_ai_dialog(&mut self, ui: &mut egui::Ui) -> bool {
+        ui.set_min_width(520.0);
+        egui::ScrollArea::vertical().max_height(560.0).show(ui, |ui| crate::craft_ai::show(self, ui));
+        ui.add_space(8.0);
+        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+            if ui.button(tl!("Close")).clicked() {
+                return true;
+            }
+            false
+        }).inner
     }
 
     fn settings_contents(&mut self, ui: &mut egui::Ui, host: &mut dyn Host) {

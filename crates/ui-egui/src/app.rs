@@ -74,6 +74,8 @@ pub(crate) enum Dialog {
     ConfirmUninstall(String),
     Settings,
     LauncherUpdate(artcraft_launcher_core::Release),
+    /// Craft AI: the ArtCraft family's built-in local assistant (see `crate::craft_ai`).
+    CraftAi,
 }
 
 impl Dialog {
@@ -84,6 +86,7 @@ impl Dialog {
             Dialog::Notes(id) => ("notes", id),
             Dialog::ConfirmUninstall(id) => ("uninstall", id),
             Dialog::Settings => ("settings", ""),
+            Dialog::CraftAi => ("craft-ai", ""),
             Dialog::LauncherUpdate(r) => ("launcher-update", &r.tag),
         }
     }

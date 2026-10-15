@@ -4,11 +4,12 @@
 //! # Adding a language
 //! 1. Add `xx.tsv` next to `ru.tsv` (copy its header; translate from the *meaning* of the
 //!    English text, clean-room).
-//! 2. Add one row to [`LANGUAGES`] (code, native name, catalog, plural rule). For a complete
-//!    catalog, cover every UI literal and plural key; the tests enforce that claim. A translation
-//!    that isn't finished yet starts with `complete_menus: false`: it still shows in
-//!    Preferences, strings without a row fall back to English, and the completeness tests
-//!    skip it until every row is done. A CJK language also sets `script` and takes its system
+//! 2. Add one row to [`LANGUAGES`] (code, native name, catalog, plural rule, script). For a
+//!    complete catalog, cover every UI literal and plural key; the
+//!    tests enforce that claim. A translation that isn't finished yet starts with
+//!    `complete_menus: false`: it still shows in Preferences, strings without a row fall back to
+//!    English, and the completeness tests skip it until every row is done. A language written in
+//!    a script the bundled faces can't draw (CJK, Arabic) also sets `script` and takes its system
 //!    font from `crate::cjk_font`.
 //!
 //! That is all: the Preferences dropdown, the system-locale match and the catalog tests
@@ -26,6 +27,7 @@
 //!   rows hold whole messages or templates such as `Couldn't open {name}: {e}`, whose
 //!   placeholders match any text and are carried over into the translation.
 
+pub(crate) mod bidi;
 mod catalog;
 mod detect;
 mod lang;

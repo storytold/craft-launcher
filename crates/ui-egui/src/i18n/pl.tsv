@@ -346,3 +346,54 @@ filter	Installed	Zainstalowane
 	ArtCraft on GitHub	ArtCraft na GitHubie
 	Join the ArtCraft Discord	Dołącz do Discorda ArtCraft
 @plural	ArtCraft Launcher · {n} update available|ArtCraft Launcher · {n} updates available	ArtCraft Launcher · {n} dostępna aktualizacja|ArtCraft Launcher · {n} dostępne aktualizacje|ArtCraft Launcher · {n} dostępnych aktualizacji
+
+# Craft AI: the built-in local assistant dialog, its models and tasks.
+	A local model is not a frontier cloud model: it can be wrong, and a long answer takes its time on CPU. Check anything critical, and mind a model's size against this machine before downloading it.	Lokalny model to nie czołowy model z chmury: może się mylić, a długa odpowiedź na procesorze zajmuje chwilkę. Sprawdzaj wszystko krytyczne i przed pobraniem porównaj rozmiar modelu z tym komputerem.
+	About	O programie
+	Ask	Zapytaj
+	Ask anything	Zapytaj o cokolwiek
+	Ask in any language	Pytaj w dowolnym języku
+	Assistant	Asystent
+	Best for: a step up in quality, still light	Najlepszy do: o stopień lepszej jakości, wciąż lekki
+	Best for: balanced everyday and technical work	Najlepszy do: równowagi codziennej i technicznej pracy
+	Best for: everyday help on the lightest machines	Najlepszy do: codziennej pomocy na najlżejszych maszynach
+	Best for: near-flagship answers at MoE speed	Najlepszy do: odpowiedzi blisko flagowych z prędkością MoE
+	Best for: the deepest reasoning this family has	Najlepszy do: najgłębszego rozumowania w tej rodzinie
+	Clear	Wyczyść
+	Copy	Kopiuj
+	Craft AI runs a local Gemma model on this machine. Nothing you write here leaves it: no account, no cloud service, no telemetry — the panel talks to a model runtime on 127.0.0.1.	Craft AI uruchamia lokalny model Gemma na tym komputerze. Nic, co tu napiszesz, nie opuszcza tej maszyny: bez konta, bez usługi chmurowej, bez telemetrii — panel rozmawia ze środowiskiem modeli na 127.0.0.1.
+	Craft AI runs in the native app — it needs a local model runtime.	Craft AI działa w aplikacji natywnej — potrzebuje lokalnego środowiska modeli.
+	Craft AI talks to a model runtime on this machine — Ollama, LM Studio or llama.cpp's server — and never to a cloud service. Start one, then Refresh.	Craft AI rozmawia ze środowiskiem modeli na tym komputerze — Ollama, LM Studio lub serwerem llama.cpp — i nigdy z usługą chmurową. Uruchom jedno i kliknij Odśwież.
+	Delete file	Usuń plik
+	Disk {size}	Dysk {size}
+	Download with Ollama	Pobierz przez Ollama
+	Downloading… {pct}% — {note}	Pobieranie… {pct}% — {note}
+	Family overview	Przegląd rodziny
+	Fits this machine	Pasuje do tego komputera
+	Limits	Ograniczenia
+	Local and private	Lokalnie i prywatnie
+	Looking for a local model runtime…	Szukanie lokalnego środowiska modeli…
+	Model	Model
+	Model advice for my machine	Porada dotycząca modelu dla mojego komputera
+	Models	Modele
+	Needs {disk} GB of disk	Potrzebuje {disk} GB na dysku
+	Needs {ram} GB of RAM	Potrzebuje {ram} GB RAM
+	No local model runtime found.	Nie znaleziono lokalnego środowiska modeli.
+	No model installed yet — see the Models tab.	Nie ma jeszcze zainstalowanego modelu — zobacz kartę Modele.
+	One download serves every ArtCraft app: the model lands in a shared folder all of them read.	Jedno pobranie obsługuje wszystkie aplikacje ArtCraft: model trafia do folderu współdzielonego, który wszystkie czytają.
+	Prompting tips	Wskazówki do promptów
+	RAM {gb} GB	RAM {gb} GB
+	Refresh	Odśwież
+	Runtime	Środowisko
+	Save model file	Zapisz plik modelu
+	Saved in the shared folder	Zapisano w folderze współdzielonym
+	Saving… {pct}%	Zapisywanie… {pct}%
+	Task	Zadanie
+	The shared folder:	Folder współdzielony:
+	Thinking… {s}s	Myśli… {s} s
+	This machine: {ram} GB RAM, {disk} GB free	Ten komputer: {ram} GB RAM, wolne {disk} GB
+	What each Crafting App is for	Do czego jest każda aplikacja
+	What this machine has (RAM, disk), and what you do with it	Co ma twój komputer (RAM, dysk) i do czego go używasz
+	What you are trying to get from the model	Co chcesz uzyskać od modelu
+	What you want to make or do	Co chcesz stworzyć lub zrobić
+	Which app for this?	Która aplikacja do tego?

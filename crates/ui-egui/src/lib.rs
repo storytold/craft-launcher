@@ -20,6 +20,7 @@ mod app;
 #[cfg(not(target_arch = "wasm32"))]
 mod cjk_font;
 mod details;
+pub mod craft_ai;
 mod dialogs;
 pub mod i18n;
 pub mod icons;

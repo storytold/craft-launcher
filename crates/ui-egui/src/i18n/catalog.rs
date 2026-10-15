@@ -5,8 +5,8 @@
 //! - Empty context = plain UI string (`tl!`, `t`).
 //! - `@id` context = keyed by command id (`tr_id`).
 //! - `@plural` context = plural forms: the English `one|other` key, and the language's forms
-//!   separated by `|` (one form for a language whose nouns don't inflect for number, up to
-//!   three: `one|few|many` for Russian, Ukrainian and Polish).
+//!   separated by `|` (one form for a language whose nouns don't inflect for number, up to six:
+//!   `one|few|many` for Russian, Ukrainian and Polish; `zero|one|two|few|many|other` for Arabic).
 //! - `@msg` context = a status/error message, or a template whose `{placeholders}` match any text
 //!   (`message`, `msg`).
 //! - Any other context = disambiguation for `tr_ctx`.
@@ -99,8 +99,10 @@ impl Template {
 }
 
 impl Catalog {
-    /// Parse a catalog from TSV content. Malformed rows are logged and skipped.
-    pub fn parse(source: &str) -> Self {
+    /// Parse a catalog from TSV content. Malformed rows are logged and skipped. A
+    /// right-to-left language's translations are stored in visual order — the order egui draws
+    /// its runs in (`bidi.rs`) — so the lookups read right to left.
+    pub fn parse(source: &str, rtl: bool) -> Self {
         let mut cat = Catalog::default();
         for (line_no, line) in source.lines().enumerate() {
             let line_no = line_no + 1;
@@ -115,13 +117,14 @@ impl Catalog {
                 continue;
             };
             let (context, source_text, translation) = (unescape(context), unescape(source_text), unescape(translation));
+            let translation = if rtl { super::bidi::visual_rtl(&translation) } else { translation };
             let duplicate = match context.as_str() {
                 "" => cat.plain.insert(source_text.clone(), translation).is_some(),
                 "@id" => cat.by_id.insert(source_text.clone(), translation).is_some(),
                 "@plural" => {
                     let forms: Vec<String> = translation.split('|').map(str::to_string).collect();
-                    if forms.len() > 3 {
-                        log::warn!("i18n catalog: line {line_no}: @plural expects 1 to 3 forms separated by '|', got {}", forms.len());
+                    if forms.len() > 6 {
+                        log::warn!("i18n catalog: line {line_no}: @plural expects 1 to 6 forms separated by '|', got {}", forms.len());
                         continue;
                     }
                     cat.plural.insert(source_text.clone(), forms).is_some()

@@ -85,6 +85,9 @@ impl LauncherUi {
                 if bar == TitleBar::Custom {
                     widgets::window_buttons(ui, h);
                 }
+                if widgets::nav_icon(ui, "✦", tl!("Craft AI"), h, false).clicked() {
+                    self.dialog = Some(Dialog::CraftAi);
+                }
                 if widgets::nav_icon(ui, "⚙", tl!("Settings"), h, false).clicked() {
                     self.dialog = Some(Dialog::Settings);
                 }

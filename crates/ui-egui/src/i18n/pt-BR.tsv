@@ -332,3 +332,54 @@ filter	Installed	Instalados
 	Loading pictures…	Carregando imagens…
 	Pictures couldn't be loaded. Reopen this page to try again.	Não foi possível carregar as imagens. Abra a página novamente para tentar de novo.
 @plural	ArtCraft Launcher · {n} update available|ArtCraft Launcher · {n} updates available	ArtCraft Launcher · {n} atualização disponível|ArtCraft Launcher · {n} atualizações disponíveis
+
+# Craft AI: the built-in local assistant dialog, its models and tasks.
+	A local model is not a frontier cloud model: it can be wrong, and a long answer takes its time on CPU. Check anything critical, and mind a model's size against this machine before downloading it.	Um modelo local não é um modelo de nuvem de ponta: ele pode errar, e uma resposta longa demora na CPU. Confira tudo o que for crítico e observe o tamanho do modelo diante desta máquina antes de baixar.
+	About	Sobre
+	Ask	Perguntar
+	Ask anything	Pergunte qualquer coisa
+	Ask in any language	Pergunte em qualquer idioma
+	Assistant	Assistente
+	Best for: a step up in quality, still light	Melhor para: um degrau a mais de qualidade, ainda leve
+	Best for: balanced everyday and technical work	Melhor para: equilibrar o cotidiano e o técnico
+	Best for: everyday help on the lightest machines	Melhor para: ajuda do dia a dia nas máquinas mais leves
+	Best for: near-flagship answers at MoE speed	Melhor para: respostas quase topo de linha na velocidade do MoE
+	Best for: the deepest reasoning this family has	Melhor para: o raciocínio mais profundo que esta família tem
+	Clear	Limpar
+	Copy	Copiar
+	Craft AI runs a local Gemma model on this machine. Nothing you write here leaves it: no account, no cloud service, no telemetry — the panel talks to a model runtime on 127.0.0.1.	O Craft AI roda um modelo Gemma local nesta máquina. Nada do que você escrever aqui sai dela: sem conta, sem serviço de nuvem, sem telemetria — o painel conversa com um runtime de modelos em 127.0.0.1.
+	Craft AI runs in the native app — it needs a local model runtime.	O Craft AI roda no aplicativo nativo — ele precisa de um runtime de modelos local.
+	Craft AI talks to a model runtime on this machine — Ollama, LM Studio or llama.cpp's server — and never to a cloud service. Start one, then Refresh.	O Craft AI conversa com um runtime de modelos nesta máquina — Ollama, LM Studio ou o servidor do llama.cpp — e nunca com um serviço de nuvem. Inicie um deles e clique em Atualizar.
+	Delete file	Excluir arquivo
+	Disk {size}	Disco {size}
+	Download with Ollama	Baixar com o Ollama
+	Downloading… {pct}% — {note}	Baixando… {pct}% — {note}
+	Fits this machine	Cabe nesta máquina
+	Limits	Limites
+	Local and private	Local e privado
+	Looking for a local model runtime…	Procurando um runtime de modelos local…
+	Model	Modelo
+	Models	Modelos
+	Needs {disk} GB of disk	Precisa de {disk} GB de disco
+	Needs {ram} GB of RAM	Precisa de {ram} GB de RAM
+	No local model runtime found.	Nenhum runtime de modelos local encontrado.
+	No model installed yet — see the Models tab.	Nenhum modelo instalado ainda — veja a aba Modelos.
+	One download serves every ArtCraft app: the model lands in a shared folder all of them read.	Um único download serve todos os aplicativos ArtCraft: o modelo vai para uma pasta compartilhada que todos leem.
+	RAM {gb} GB	RAM {gb} GB
+	Refresh	Atualizar
+	Runtime	Runtime
+	Save model file	Salvar o arquivo do modelo
+	Saved in the shared folder	Salvo na pasta compartilhada
+	Saving… {pct}%	Salvando… {pct}%
+	Task	Tarefa
+	The shared folder:	A pasta compartilhada:
+	Thinking… {s}s	Pensando… {s} s
+	This machine: {ram} GB RAM, {disk} GB free	Esta máquina: {ram} GB de RAM, {disk} GB livres
+	Which app for this?	Qual app para isso?
+	What you want to make or do	O que você quer criar ou fazer
+	Family overview	Visão geral da família
+	What each Crafting App is for	Para que serve cada app
+	Model advice for my machine	Conselho de modelo para minha máquina
+	What this machine has (RAM, disk), and what you do with it	O que sua máquina tem (RAM, disco) e como você a usa
+	Prompting tips	Dicas de prompts
+	What you are trying to get from the model	O que você quer obter do modelo

@@ -325,3 +325,54 @@ filter	Installed	Instaladas
 	ArtCraft on GitHub	ArtCraft en GitHub
 	Join the ArtCraft Discord	Únete al Discord de ArtCraft
 @plural	ArtCraft Launcher · {n} update available|ArtCraft Launcher · {n} updates available	ArtCraft Launcher · {n} actualización disponible|ArtCraft Launcher · {n} actualizaciones disponibles
+
+# Craft AI: the built-in local assistant dialog, its models and tasks.
+	A local model is not a frontier cloud model: it can be wrong, and a long answer takes its time on CPU. Check anything critical, and mind a model's size against this machine before downloading it.	Un modelo local no es un modelo puntero en la nube: puede equivocarse, y una respuesta larga tarda lo suyo en la CPU. Compruebe todo lo crítico y valore el tamaño del modelo frente a esta máquina antes de descargarlo.
+	About	Acerca de
+	Ask	Preguntar
+	Ask anything	Pregunte lo que quiera
+	Ask in any language	Pregunte en cualquier idioma
+	Assistant	Asistente
+	Best for: a step up in quality, still light	Ideal para: un escalón más de calidad, sin dejar de ser ligero
+	Best for: balanced everyday and technical work	Ideal para: equilibrar lo cotidiano y lo técnico
+	Best for: everyday help on the lightest machines	Ideal para: ayuda cotidiana en las máquinas más ligeras
+	Best for: near-flagship answers at MoE speed	Ideal para: respuestas casi de gama alta a la velocidad de MoE
+	Best for: the deepest reasoning this family has	Ideal para: el razonamiento más profundo de esta familia
+	Clear	Borrar
+	Copy	Copiar
+	Craft AI runs a local Gemma model on this machine. Nothing you write here leaves it: no account, no cloud service, no telemetry — the panel talks to a model runtime on 127.0.0.1.	Craft AI ejecuta un modelo local de Gemma en esta máquina. Nada de lo que escriba aquí sale de ella: sin cuenta, sin servicio en la nube, sin telemetría — el panel habla con un entorno de modelos en 127.0.0.1.
+	Craft AI runs in the native app — it needs a local model runtime.	Craft AI funciona en la aplicación nativa — necesita un entorno local de modelos.
+	Craft AI talks to a model runtime on this machine — Ollama, LM Studio or llama.cpp's server — and never to a cloud service. Start one, then Refresh.	Craft AI habla con un entorno de modelos en esta máquina — Ollama, LM Studio o el servidor de llama.cpp — y nunca con un servicio en la nube. Inicie uno y actualice.
+	Delete file	Eliminar archivo
+	Disk {size}	Disco {size}
+	Download with Ollama	Descargar con Ollama
+	Downloading… {pct}% — {note}	Descargando… {pct} % — {note}
+	Family overview	Vista general de la familia
+	Fits this machine	Encaja en esta máquina
+	Limits	Límites
+	Local and private	Local y privado
+	Looking for a local model runtime…	Buscando un entorno local de modelos…
+	Model	Modelo
+	Model advice for my machine	Consejo de modelo para mi equipo
+	Models	Modelos
+	Needs {disk} GB of disk	Necesita {disk} GB de disco
+	Needs {ram} GB of RAM	Necesita {ram} GB de RAM
+	No local model runtime found.	No se encontró un entorno local de modelos.
+	No model installed yet — see the Models tab.	Aún no hay ningún modelo instalado — vea la pestaña Modelos.
+	One download serves every ArtCraft app: the model lands in a shared folder all of them read.	Una sola descarga sirve para todas las aplicaciones de ArtCraft: el modelo queda en una carpeta compartida que todas leen.
+	Prompting tips	Consejos para pedir
+	RAM {gb} GB	RAM {gb} GB
+	Refresh	Actualizar
+	Runtime	Entorno
+	Save model file	Guardar el archivo del modelo
+	Saved in the shared folder	Guardado en la carpeta compartida
+	Saving… {pct}%	Guardando… {pct} %
+	Task	Tarea
+	The shared folder:	La carpeta compartida:
+	Thinking… {s}s	Pensando… {s} s
+	This machine: {ram} GB RAM, {disk} GB free	Esta máquina: {ram} GB de RAM, {disk} GB libres
+	What each Crafting App is for	Para qué es cada app
+	What this machine has (RAM, disk), and what you do with it	Lo que tiene tu equipo (RAM, disco) y para qué lo usas
+	What you are trying to get from the model	Lo que intentas conseguir del modelo
+	What you want to make or do	Lo que quieres crear o hacer
+	Which app for this?	¿Qué app para esto?

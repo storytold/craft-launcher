@@ -347,3 +347,54 @@ filter	Installed	インストール済み
 	ArtCraft on GitHub	GitHub の ArtCraft
 	Join the ArtCraft Discord	ArtCraft Discord に参加
 @plural	ArtCraft Launcher · {n} update available|ArtCraft Launcher · {n} updates available	ArtCraft Launcher · {n} 件の更新があります
+
+# Craft AI: the built-in local assistant dialog, its models and tasks.
+	A local model is not a frontier cloud model: it can be wrong, and a long answer takes its time on CPU. Check anything critical, and mind a model's size against this machine before downloading it.	ローカルモデルは最先端のクラウドモデルではありません。間違うことがあり、長い回答には CPU で時間がかかります。重要な事柄は必ず確認し、ダウンロード前にモデルのサイズをこのマシンと比べてください。
+	About	情報
+	Ask	質問
+	Ask anything	何でも質問
+	Ask in any language	どの言語でも質問できます
+	Assistant	アシスタント
+	Best for: a step up in quality, still light	最適な用途: 品質を一段上げたいが、軽さはそのまま
+	Best for: balanced everyday and technical work	最適な用途: 日常と技術的な作業のバランス
+	Best for: everyday help on the lightest machines	最適な用途: 最も軽いマシンでの日常的な助け
+	Best for: near-flagship answers at MoE speed	最適な用途: MoE の速さで旗艦に迫る回答
+	Best for: the deepest reasoning this family has	最適な用途: このファミリーで最も深い推論
+	Clear	消去
+	Copy	コピー
+	Craft AI runs a local Gemma model on this machine. Nothing you write here leaves it: no account, no cloud service, no telemetry — the panel talks to a model runtime on 127.0.0.1.	Craft AI はこのマシン上でローカルの Gemma モデルを実行します。ここに書いた内容が外に出ることはありません。アカウントもクラウドサービスもテレメトリーもなく、パネルは 127.0.0.1 のモデルランタイムとだけ通信します。
+	Craft AI runs in the native app — it needs a local model runtime.	Craft AI はネイティブアプリで動作します — ローカルのモデルランタイムが必要です。
+	Craft AI talks to a model runtime on this machine — Ollama, LM Studio or llama.cpp's server — and never to a cloud service. Start one, then Refresh.	Craft AI はこのマシン上のモデルランタイム（Ollama、LM Studio、llama.cpp のサーバー）とだけ通信し、クラウドサービスとは決して通信しません。どれかを起動してから「更新」してください。
+	Delete file	ファイルを削除
+	Disk {size}	ディスク {size}
+	Download with Ollama	Ollama でダウンロード
+	Downloading… {pct}% — {note}	ダウンロード中… {pct}% — {note}
+	Family overview	ファミリーの概要
+	Fits this machine	このマシンで動作します
+	Limits	制限
+	Local and private	ローカルでプライベート
+	Looking for a local model runtime…	ローカルのモデルランタイムを探しています…
+	Model	モデル
+	Model advice for my machine	このマシンへのモデルの助言
+	Models	モデル
+	Needs {disk} GB of disk	ディスクが {disk} GB 必要です
+	Needs {ram} GB of RAM	RAM が {ram} GB 必要です
+	No local model runtime found.	ローカルのモデルランタイムが見つかりません。
+	No model installed yet — see the Models tab.	モデルがまだインストールされていません — 「モデル」タブを参照してください。
+	One download serves every ArtCraft app: the model lands in a shared folder all of them read.	1 回のダウンロードで ArtCraft アプリすべてに対応します。モデルは共有フォルダーに置かれ、どのアプリからも読めます。
+	Prompting tips	プロンプトのコツ
+	RAM {gb} GB	RAM {gb} GB
+	Refresh	更新
+	Runtime	ランタイム
+	Save model file	モデルファイルを保存
+	Saved in the shared folder	共有フォルダーに保存済み
+	Saving… {pct}%	保存中… {pct}%
+	Task	タスク
+	The shared folder:	共有フォルダー:
+	Thinking… {s}s	考えています… {s}秒
+	This machine: {ram} GB RAM, {disk} GB free	このマシン: RAM {ram} GB、空き {disk} GB
+	What each Crafting App is for	各アプリの用途
+	What this machine has (RAM, disk), and what you do with it	このマシンのスペック（RAM・ディスク）と用途
+	What you are trying to get from the model	モデルから得たいこと
+	What you want to make or do	作りたいもの、やりたいこと
+	Which app for this?	これはどのアプリ？

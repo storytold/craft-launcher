@@ -345,3 +345,54 @@ filter	Installed	Telepítve
 	ArtCraft on GitHub	ArtCraft a GitHubon
 	Join the ArtCraft Discord	Csatlakozás az ArtCraft Discord-közösségéhez
 @plural	ArtCraft Launcher · {n} update available|ArtCraft Launcher · {n} updates available	ArtCraft Launcher · {n} frissítés elérhető|ArtCraft Launcher · {n} frissítés elérhető
+
+# Craft AI: the built-in local assistant dialog, its models and tasks.
+	A local model is not a frontier cloud model: it can be wrong, and a long answer takes its time on CPU. Check anything critical, and mind a model's size against this machine before downloading it.	A helyi modell nem élvonalbeli felhőmodell: tévedhet, és egy hosszú válasz a processzoron időbe telik. Minden kritikus dolgot ellenőrizzen, és a letöltés előtt mérlegelje a modell méretét e géphez képest.
+	About	Névjegy
+	Ask	Kérdezés
+	Ask anything	Kérdezzen bármit
+	Ask in any language	Kérdezzen bármely nyelven
+	Assistant	Asszisztens
+	Best for: a step up in quality, still light	Erre való a leginkább: egy fokkal jobb minőség, még mindig könnyű
+	Best for: balanced everyday and technical work	Erre való a leginkább: hétköznapi és szakmai munka egyensúlyban
+	Best for: everyday help on the lightest machines	Erre való a leginkább: hétköznapi segítség a legkönnyebb gépeken
+	Best for: near-flagship answers at MoE speed	Erre való a leginkább: zászlóshajó közeli válaszok MoE-sebességgel
+	Best for: the deepest reasoning this family has	Erre való a leginkább: a legmélyebb gondolkodás ebben a családban
+	Clear	Kiürítés
+	Copy	Másolás
+	Craft AI runs a local Gemma model on this machine. Nothing you write here leaves it: no account, no cloud service, no telemetry — the panel talks to a model runtime on 127.0.0.1.	A Craft AI egy helyi Gemma modellt futtat ezen a gépen. Amit ide ír, az nem hagyja el a gépet: nincs fiók, nincs felhőszolgáltatás, nincs telemetria — a panel a 127.0.0.1-en futó modelfuttatóval beszél.
+	Craft AI runs in the native app — it needs a local model runtime.	A Craft AI a natív alkalmazásban fut — helyi modelfuttatóra van szüksége.
+	Craft AI talks to a model runtime on this machine — Ollama, LM Studio or llama.cpp's server — and never to a cloud service. Start one, then Refresh.	A Craft AI a gépen futó modelfuttatóval beszél — Ollamával, LM Studioval vagy a llama.cpp szerverével —, és soha felhőszolgáltatással. Indítson el egyet, majd kattintson a Frissítés gombra.
+	Delete file	Fájl törlése
+	Disk {size}	Lemez {size}
+	Download with Ollama	Letöltés Ollamával
+	Downloading… {pct}% — {note}	Letöltés… {pct}% — {note}
+	Family overview	A család áttekintése
+	Fits this machine	Belefér ebbe a gépbe
+	Limits	Határok
+	Local and private	Helyi és privát
+	Looking for a local model runtime…	Helyi modelfuttató keresése…
+	Model	Modell
+	Model advice for my machine	Modelljavaslat a gépemre
+	Models	Modellek
+	Needs {disk} GB of disk	{disk} GB lemezterület kell neki
+	Needs {ram} GB of RAM	{ram} GB RAM kell neki
+	No local model runtime found.	Nem található helyi modelfuttató.
+	No model installed yet — see the Models tab.	Még nincs telepítve modell — lásd a Modellek lapot.
+	One download serves every ArtCraft app: the model lands in a shared folder all of them read.	Egy letöltés az összes ArtCraft-alkalmazásnak elég: a modell egy közös mappába kerül, amelyet mind olvas.
+	Prompting tips	Tippek a kérdezéshez
+	RAM {gb} GB	RAM {gb} GB
+	Refresh	Frissítés
+	Runtime	Futtató
+	Save model file	Modellfájl mentése
+	Saved in the shared folder	Elmentve a közös mappába
+	Saving… {pct}%	Mentés… {pct}%
+	Task	Feladat
+	The shared folder:	A közös mappa:
+	Thinking… {s}s	Gondolkodik… {s} mp
+	This machine: {ram} GB RAM, {disk} GB free	Ez a gép: {ram} GB RAM, {disk} GB szabad
+	What each Crafting App is for	Mire való az egyes appok
+	What this machine has (RAM, disk), and what you do with it	Ami a gépben van (RAM, lemez), és mire használja
+	What you are trying to get from the model	Amit a modelltől szeretnél kapni
+	What you want to make or do	Amit létre akar hozni vagy meg akar tenni
+	Which app for this?	Melyik app ehhez?

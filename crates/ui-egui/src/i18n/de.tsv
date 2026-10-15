@@ -344,3 +344,54 @@ filter	Installed	Installiert
 	Loading pictures…	Bilder werden geladen…
 	Pictures couldn't be loaded. Reopen this page to try again.	Die Bilder konnten nicht geladen werden. Beim erneuten Öffnen der Seite wird es noch einmal versucht.
 @plural	ArtCraft Launcher · {n} update available|ArtCraft Launcher · {n} updates available	ArtCraft Launcher · {n} Update verfügbar|ArtCraft Launcher · {n} Updates verfügbar
+
+# Craft AI: the built-in local assistant dialog, its models and tasks.
+	A local model is not a frontier cloud model: it can be wrong, and a long answer takes its time on CPU. Check anything critical, and mind a model's size against this machine before downloading it.	Ein lokales Modell ist kein Spitzengroßmodell aus der Cloud: Es kann sich irren, und lange Antworten brauchen auf der CPU ihre Zeit. Prüfen Sie alles Entscheidende und bedenken Sie die Modellgröße gegen diesen Rechner vor dem Download.
+	About	Info
+	Ask	Fragen
+	Ask anything	Fragen Sie alles
+	Ask in any language	Fragen Sie in jeder Sprache
+	Assistant	Assistent
+	Best for: a step up in quality, still light	Am besten für: eine Stufe mehr Qualität, weiterhin leicht
+	Best for: balanced everyday and technical work	Am besten für: die Balance aus Alltäglichem und Technischem
+	Best for: everyday help on the lightest machines	Am besten für: alltägliche Hilfe auf den leichtesten Rechnern
+	Best for: near-flagship answers at MoE speed	Am besten für: Antworten nahe der Spitzenklasse, mit MoE-Tempo
+	Best for: the deepest reasoning this family has	Am besten für: das tiefste Abwägen, das diese Familie hat
+	Clear	Löschen
+	Copy	Kopieren
+	Craft AI runs a local Gemma model on this machine. Nothing you write here leaves it: no account, no cloud service, no telemetry — the panel talks to a model runtime on 127.0.0.1.	Craft AI führt ein lokales Gemma-Modell auf diesem Rechner aus. Nichts, was Sie hier schreiben, verlässt ihn: kein Konto, kein Cloud-Dienst, keine Telemetrie — das Panel spricht mit einer Modell-Laufzeit auf 127.0.0.1.
+	Craft AI runs in the native app — it needs a local model runtime.	Craft AI läuft in der nativen App — es braucht eine lokale Modell-Laufzeit.
+	Craft AI talks to a model runtime on this machine — Ollama, LM Studio or llama.cpp's server — and never to a cloud service. Start one, then Refresh.	Craft AI spricht mit einer Modell-Laufzeit auf diesem Rechner — Ollama, LM Studio oder llama.cpps Server — und nie mit einem Cloud-Dienst. Starten Sie eine und klicken Sie auf „Neu laden“.
+	Delete file	Datei löschen
+	Disk {size}	Speicher {size}
+	Download with Ollama	Mit Ollama laden
+	Downloading… {pct}% — {note}	Wird geladen… {pct} % — {note}
+	Family overview	Überblick über die Familie
+	Fits this machine	Passt auf diesen Rechner
+	Limits	Grenzen
+	Local and private	Lokal und privat
+	Looking for a local model runtime…	Suche nach einer lokalen Modell-Laufzeit…
+	Model	Modell
+	Model advice for my machine	Modell-Empfehlung für meinen Rechner
+	Models	Modelle
+	Needs {disk} GB of disk	Braucht {disk} GB Speicher
+	Needs {ram} GB of RAM	Braucht {ram} GB RAM
+	No local model runtime found.	Keine lokale Modell-Laufzeit gefunden.
+	No model installed yet — see the Models tab.	Noch kein Modell installiert — siehe Reiter „Modelle“.
+	One download serves every ArtCraft app: the model lands in a shared folder all of them read.	Ein Download reicht für alle ArtCraft-Apps: Das Modell landet in einem gemeinsamen Ordner, den alle lesen.
+	Prompting tips	Tipps zum Prompts Schreiben
+	RAM {gb} GB	RAM {gb} GB
+	Refresh	Aktualisieren
+	Runtime	Laufzeit
+	Save model file	Modelldatei speichern
+	Saved in the shared folder	Im gemeinsamen Ordner gespeichert
+	Saving… {pct}%	Wird gespeichert… {pct} %
+	Task	Aufgabe
+	The shared folder:	Der gemeinsame Ordner:
+	Thinking… {s}s	Denkt nach… {s} s
+	This machine: {ram} GB RAM, {disk} GB free	Dieser Rechner: {ram} GB RAM, {disk} GB frei
+	What each Crafting App is for	Wofür jede App da ist
+	What this machine has (RAM, disk), and what you do with it	Was Ihr Rechner hat (RAM, Festplatte) und wofür Sie ihn nutzen
+	What you are trying to get from the model	Was Sie vom Modell bekommen wollen
+	What you want to make or do	Was Sie machen oder erreichen wollen
+	Which app for this?	Welche App dafür?

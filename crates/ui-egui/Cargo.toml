@@ -17,6 +17,13 @@ egui_extras = { workspace = true, features = ["image", "svg"] }
 image = { version = "0.25", default-features = false, features = ["png", "jpeg"] }
 serde = { workspace = true }
 log = { workspace = true }
+unicode-bidi = "0.3.18"
+
+# Craft AI's model-runtime bridge (`craft_ai/engine.rs`): the loopback HTTP client. Native only —
+# the web build draws the dialog's note instead, and ureq's TLS stack does not build for wasm32.
+# The native crate keeps its own ureq 3 for updates; two majors in one tree are fine.
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+ureq = { version = "2", features = ["json"] }
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 # The OS's preferred UI languages, without spawning `defaults` or `reg.exe`.

@@ -312,3 +312,54 @@ filter	Installed	Nainstalováno
 	ArtCraft on GitHub	ArtCraft na GitHubu
 	Join the ArtCraft Discord	Připojit se na ArtCraft Discord
 @plural	ArtCraft Launcher · {n} update available|ArtCraft Launcher · {n} updates available	ArtCraft Launcher · {n} dostupná aktualizace|ArtCraft Launcher · {n} dostupné aktualizace|ArtCraft Launcher · {n} dostupných aktualizací
+
+# Craft AI: the built-in local assistant dialog, its models and tasks.
+	A local model is not a frontier cloud model: it can be wrong, and a long answer takes its time on CPU. Check anything critical, and mind a model's size against this machine before downloading it.	Místní model není špičkový cloudový model: může se mýlit a dlouhá odpověď na procesoru chvíli trvá. Důležité si ověřte a před stažením si uvědomte velikost modelu proti tomuto počítači.
+	About	O aplikaci
+	Ask	Zeptat se
+	Ask anything	Zeptejte se na cokoliv
+	Ask in any language	Ptejte se v jakémkoli jazyce
+	Assistant	Asistent
+	Best for: a step up in quality, still light	Nejlepší pro: o stuňek lepší kvalitu, pořád lehčí
+	Best for: balanced everyday and technical work	Nejlepší pro: vyváženou všední i technickou práci
+	Best for: everyday help on the lightest machines	Nejlepší pro: všední pomoc na nejlehčích strojích
+	Best for: near-flagship answers at MoE speed	Nejlepší pro: odpovědi těsně pod vlajkovou lodí, rychlostí MoE
+	Best for: the deepest reasoning this family has	Nejlepší pro: nejhlubší uvažování, jaké tato rodina má
+	Clear	Smazat
+	Copy	Kopírovat
+	Craft AI runs a local Gemma model on this machine. Nothing you write here leaves it: no account, no cloud service, no telemetry — the panel talks to a model runtime on 127.0.0.1.	Craft AI provozuje místní model Gemma přímo na tomto počítači. Nic, co sem napíšete, ho neopustí: žádný účet, žádná cloudová služba, žádná telemetrie — panel mluví jen s běhovým prostředím modelů na 127.0.0.1.
+	Craft AI runs in the native app — it needs a local model runtime.	Craft AI běží v nativní aplikaci — potřebuje místní běhové prostředí modelů.
+	Craft AI talks to a model runtime on this machine — Ollama, LM Studio or llama.cpp's server — and never to a cloud service. Start one, then Refresh.	Craft AI mluví s běhovým prostředím modelů na tomto počítači — s Ollamou, LM Studio nebo serverem llama.cpp — a nikdy s cloudovou službou. Spusťte jedno z nich a obnovte.
+	Delete file	Smazat soubor
+	Disk {size}	Disk {size}
+	Download with Ollama	Stáhnout přes Ollamu
+	Downloading… {pct}% — {note}	Stahuje se… {pct} % — {note}
+	Family overview	Přehled rodiny
+	Fits this machine	Témuto stroji vyhovuje
+	Limits	Meze
+	Local and private	Místní a soukromé
+	Looking for a local model runtime…	Hledá se místní běhové prostředí modelů…
+	Model	Model
+	Model advice for my machine	Rada s modelem pro můj počítač
+	Models	Modely
+	Needs {disk} GB of disk	Potřebuje {disk} GB disku
+	Needs {ram} GB of RAM	Potřebuje {ram} GB RAM
+	No local model runtime found.	Nenašlo se žádné místní běhové prostředí modelů.
+	No model installed yet — see the Models tab.	Zatím není nainstalovaný žádný model — viz karta Modely.
+	One download serves every ArtCraft app: the model lands in a shared folder all of them read.	Jedno stažení obslouží všechny aplikace ArtCraft: model přijde do sdílené složky, kterou všechny čtou.
+	Prompting tips	Tipy pro pokládání dotazů
+	RAM {gb} GB	RAM {gb} GB
+	Refresh	Obnovit
+	Runtime	Prostředí
+	Save model file	Uložit soubor modelu
+	Saved in the shared folder	Uloženo ve sdílené složce
+	Saving… {pct}%	Ukládá se… {pct} %
+	Task	Úloha
+	The shared folder:	Sdílená složka:
+	Thinking… {s}s	Přemýšlí… {s} s
+	This machine: {ram} GB RAM, {disk} GB free	Tento počítač: {ram} GB RAM, volných {disk} GB
+	What each Crafting App is for	K čemu je která aplikace
+	What this machine has (RAM, disk), and what you do with it	Co váš počítač má (RAM, disk) a k čemu ho používáte
+	What you are trying to get from the model	Co od modelu chcete dostat
+	What you want to make or do	Co chcete vytvořit nebo udělat
+	Which app for this?	Která aplikace na tohle?
