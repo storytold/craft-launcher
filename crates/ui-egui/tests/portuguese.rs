@@ -101,7 +101,7 @@ fn harness(view: ViewMode) -> Harness<'static, Option<LauncherUi>> {
 fn portuguese_ui_translates_labels_dates_and_messages() {
     let mut h = harness(ViewMode::Grid);
     h.run_steps(8);
-    h.get_by_label("Launcher");
+    assert!(h.query_by_label("Launcher").is_none());
     h.get_by_label("Craft App Suite");
     h.get_by_label("Edição de imagens");
     h.get_by_label("Atualizar para 0.5.0");
@@ -111,6 +111,6 @@ fn portuguese_ui_translates_labels_dates_and_messages() {
 
     let mut table = harness(ViewMode::Table);
     table.run_steps(8);
-    table.get_by_label("Instalada");
+    table.get_by_label("Versão");
     assert!(table.query_all_by_label_contains("de ago. de 2026").count() >= 1);
 }

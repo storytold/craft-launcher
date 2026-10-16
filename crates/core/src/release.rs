@@ -60,6 +60,14 @@ fn is_hex64(s: &str) -> bool {
     s.len() == 64 && s.bytes().all(|b| b.is_ascii_hexdigit())
 }
 
+/// Whether `url` is safe to hand to the system browser from untrusted text (release notes):
+/// `https` only, a host, no user-info, no spaces or control characters.
+pub fn safe_web_link(url: &str) -> bool {
+    let Some(rest) = url.strip_prefix("https://") else { return false };
+    let authority = rest.split(['/', '?', '#']).next().unwrap_or_default();
+    url.len() <= 2000 && !authority.is_empty() && !authority.contains(['@', '\\']) && !url.chars().any(|c| c.is_control() || c.is_whitespace())
+}
+
 /// The prefix every download of `repo` must start with.
 pub fn download_prefix(repo: &str) -> String {
     format!("https://github.com/{repo}/releases/download/")
@@ -194,6 +202,24 @@ mod tests {
     use super::*;
 
     const REPO: &str = "storytold/photocraft";
+
+    #[test]
+    fn only_plain_https_links_pass() {
+        assert!(safe_web_link("https://github.com/storytold/photocraft/releases/tag/v1"));
+        for bad in [
+            "http://example.com/",
+            "javascript:alert(1)",
+            "file:///C:/Windows/System32/calc.exe",
+            "ms-msdt:/id",
+            "https://",
+            "https://user@evil.example/",
+            "https://example.com/a b",
+            "https://example.com/\nx",
+            "https:///path",
+        ] {
+            assert!(!safe_web_link(bad), "{bad:?}");
+        }
+    }
     const HASH: &str = "8a5edab282632443219e051e4ade2d1d5bbc671c781051bf1437897cbdfea0f1";
 
     fn api_json(url: &str) -> String {

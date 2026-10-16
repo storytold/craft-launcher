@@ -358,3 +358,12 @@ filter	Installed	Установлены
 	Replace what's there?	Заменить существующее?
 	{path} already exists. Installing {name} will overwrite it.	{path} уже существует. Установка {name} перезапишет его.
 	Replace	Заменить
+	Recently updated	Недавно обновлённые
+	Name (A–Z)	Имя (А–Я)
+	Name (Z–A)	Имя (Я–А)
+	Frequently used	Часто используемые
+	Next app	Следующее приложение
+	Previous app	Предыдущее приложение
+	Show {n} more changes	Показать ещё изменений: {n}
+	Last updated: {date}	Последнее обновление: {date}
+column	Version	Версия

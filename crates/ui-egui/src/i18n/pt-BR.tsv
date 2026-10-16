@@ -350,3 +350,12 @@ filter	Installed	Instalados
 	Replace what's there?	Substituir o que já existe?
 	{path} already exists. Installing {name} will overwrite it.	{path} já existe. Instalar o {name} vai substituí-lo.
 	Replace	Substituir
+	Recently updated	Atualizados recentemente
+	Name (A–Z)	Nome (A–Z)
+	Name (Z–A)	Nome (Z–A)
+	Frequently used	Mais usados
+	Next app	Próximo aplicativo
+	Previous app	Aplicativo anterior
+	Show {n} more changes	Mostrar mais {n} alterações
+	Last updated: {date}	Última atualização: {date}
+column	Version	Versão

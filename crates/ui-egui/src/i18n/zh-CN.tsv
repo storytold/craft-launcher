@@ -330,3 +330,12 @@ figcraft	Interface design and prototyping	界面设计与原型制作
 	Replace what's there?	替换现有内容？
 	{path} already exists. Installing {name} will overwrite it.	{path} 已存在。安装 {name} 将覆盖它。
 	Replace	替换
+	Recently updated	最近更新
+	Name (A–Z)	名称 (A–Z)
+	Name (Z–A)	名称 (Z–A)
+	Frequently used	最常使用
+	Next app	下一个应用
+	Previous app	上一个应用
+	Show {n} more changes	显示另外 {n} 项更改
+	Last updated: {date}	最后更新：{date}
+column	Version	版本

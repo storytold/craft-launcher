@@ -173,6 +173,12 @@ impl LauncherUi {
         egui_extras::install_image_loaders(ctx);
         let caps = backend.capabilities();
         let platform = backend.platform();
+        // The page no longer offers Installed, Updates or Not installed, so a saved one would
+        // hide apps with nothing on screen to undo it.
+        let mut settings = settings;
+        if !matches!(settings.filter, Filter::All | Filter::Hidden) {
+            settings.filter = Filter::All;
+        }
         Self {
             backend,
             settings,
@@ -617,7 +623,17 @@ impl LauncherUi {
             .collect();
         let platform = self.platform;
         let manage = self.caps.manage_apps;
-        let desc = self.settings.sort_descending;
+        // The grid offers Name and Recently updated only; a table column's sort (or the old suite
+        // order) reads as Name there.
+        let grid = self.settings.view == ViewMode::Grid;
+        let (sort, desc) = match self.settings.sort {
+            SortKey::Name => (SortKey::Name, self.settings.sort_descending),
+            // Newest and most opened first, whatever the table's columns last did.
+            SortKey::Released | SortKey::Frequent if grid => (self.settings.sort, true),
+            SortKey::Released | SortKey::Frequent => (self.settings.sort, self.settings.sort_descending),
+            _ if grid => (SortKey::Name, false),
+            other => (other, self.settings.sort_descending),
+        };
         let dir = |o: std::cmp::Ordering| if desc { o.reverse() } else { o };
         // Empty cells (not installed, no release) go last whichever way the column sorts.
         let opt = |a: Option<std::cmp::Ordering>, a_some: bool, b_some: bool| match (a_some, b_some) {
@@ -629,7 +645,7 @@ impl LauncherUi {
         let installed = |e: &AppEntry| e.installed.as_ref().and_then(|i| i.version.clone());
         let latest = |e: &AppEntry| e.release().and_then(|r| r.version.clone());
         list.sort_by(|(ia, a), (ib, b)| {
-            let ord = match self.settings.sort {
+            let ord = match sort {
                 SortKey::Suite => dir(ia.cmp(ib)),
                 SortKey::Name => dir(a.app.name.cmp(b.app.name)),
                 SortKey::Status => {
@@ -643,6 +659,10 @@ impl LauncherUi {
                     let (x, y) = (latest(a), latest(b));
                     opt(x.as_ref().zip(y.as_ref()).map(|(x, y)| x.cmp_precedence(y)), x.is_some(), y.is_some())
                 }
+                SortKey::Frequent => {
+                    let opened = |e: &AppEntry| self.settings.launches.get(e.app.id).copied().unwrap_or(0);
+                    dir(opened(a).cmp(&opened(b)))
+                }
                 SortKey::Released => {
                     let at = |e: &AppEntry| e.release().and_then(|r| r.published_at);
                     let (x, y) = (at(a), at(b));
@@ -652,7 +672,21 @@ impl LauncherUi {
             // Ties keep suite order.
             ord.then(ia.cmp(ib))
         });
+        // Installed apps always come first (the sort holds within each group; the sort is stable).
+        list.sort_by_key(|(_, e)| !e.status(platform, manage).is_installed());
         list.into_iter().map(|(_, e)| e.app.id).collect()
+    }
+
+    /// Opens an app, and counts it for "Frequently used".
+    pub(crate) fn launch_app(&mut self, id: &str) {
+        let opened = self.settings.launches.entry(id.to_string()).or_insert(0);
+        *opened = opened.saturating_add(1);
+        self.send(Command::Launch { app: id.to_string() });
+    }
+
+    /// Whether the app on screen under `id` is installed on this computer.
+    pub(crate) fn is_installed(&self, id: &str) -> bool {
+        self.entry(id).is_some_and(|e| e.status(self.platform, self.caps.manage_apps).is_installed())
     }
 
     /// "ArtCraft API", "GitHub" or "ArtCraft API and GitHub": the services behind the releases on
