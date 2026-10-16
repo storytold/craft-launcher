@@ -102,7 +102,7 @@ pub struct BackendOptions {
 ///
 /// The launcher is the suite's keychain: somebody signs in here and every Craft App uses it. The
 /// account list lives in one suite-level folder and the token lives in the operating system's
-/// keychain (`artcraft-suite-account`).
+/// keychain (`craft-suite-account`).
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub enum SuiteAccount {
     /// No deployment is configured. There is nothing to sign in to. The web build never leaves this

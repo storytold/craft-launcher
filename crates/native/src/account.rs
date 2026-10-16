@@ -1,7 +1,7 @@
 //! The suite's shared sign-in, as the launcher drives it.
 //!
 //! The launcher is the one place somebody signs in to the Craft App Suite. The account list and
-//! the keychain entry are [`artcraft_suite_account`]'s. This module is the half that talks to a
+//! the keychain entry are [`craft_suite_account`]'s. This module is the half that talks to a
 //! CollabCraft deployment. It runs the waiting about on a worker thread. The window therefore never
 //! blocks on it.
 //!
@@ -18,8 +18,8 @@ use std::sync::{Arc, Mutex, PoisonError};
 use std::time::{Duration, Instant};
 
 use artcraft_launcher_core::protocol::{SuiteAccount, SuiteIdentity};
-use artcraft_suite_account::service::{Flow, Identity, Polled, Service};
-use artcraft_suite_account::{Account, NewAccount, Secret, Shared, SignedOut, Store};
+use craft_suite_account::service::{Flow, Identity, Polled, Service};
+use craft_suite_account::{Account, NewAccount, Secret, Shared, SignedOut, Store};
 
 use crate::http::Http;
 

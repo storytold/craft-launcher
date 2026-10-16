@@ -1,7 +1,7 @@
 # The suite account store
 
-The contract every Craft App reads. The code is `crates/suite-account`
-(`artcraft-suite-account`). This page is what another implementation has to match.
+The contract every Craft App reads. The code is `craft-suite-account` in
+[craft-libs](https://github.com/storytold/craft-libs/pull/160). This page is what another implementation has to match.
 
 ## Why there is one
 
@@ -132,13 +132,13 @@ reads as a silent sign-out. The application rewrites the file with all four keys
 ## What an application does
 
 ```rust
-use artcraft_suite_account::{Shared, Store};
+use craft_suite_account::{Shared, Store};
 
 let store = Store::open();
 
 // Once, for an application upgrading from its own session file. See the section above for when the
 // file is removed and when it is left alone.
-let _ = artcraft_suite_account::migrate::adopt(&store, &own_session_path, now);
+let _ = craft_suite_account::migrate::adopt(&store, &own_session_path, now);
 
 match store.shared() {
     Shared::Session { account, token } => { /* bearer against account.service */ }
