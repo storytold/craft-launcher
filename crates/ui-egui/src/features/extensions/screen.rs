@@ -293,7 +293,7 @@ fn theme_card(ui: &mut Ui, row: &Row, rect: Rect, actions: &mut Vec<Action>) {
     if worn.is_empty() {
         ui.add(egui::Label::new(RichText::new(tl!("Not used yet")).size(12.5).color(t.faint)).truncate());
     } else {
-        cards::app_chips(ui, &worn);
+        cards::app_chips(ui, &worn, 2);
     }
     ui.with_layout(Layout::bottom_up(Align::Min), |ui| {
         ui.horizontal(|ui| {
@@ -355,8 +355,8 @@ fn installed_row(ui: &mut Ui, row: &Row, confirming: bool, actions: &mut Vec<Act
         ui.add(egui::Label::new(RichText::new(details).size(12.5).color(t.muted)).truncate());
         let worn = plan::worn_names(row);
         if !worn.is_empty() {
-            ui.add_space(4.0);
-            cards::app_chips(ui, &worn);
+            ui.add_space(6.0);
+            cards::app_chips(ui, &worn, 2);
         }
     });
     ui.with_layout(Layout::right_to_left(Align::Center), |ui| {

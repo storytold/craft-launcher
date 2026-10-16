@@ -16,9 +16,9 @@ use crate::widgets;
 
 pub const CARD_MIN_W: f32 = 300.0;
 /// A card with buttons under its details.
-pub const CARD_H: f32 = 304.0;
+pub const CARD_H: f32 = 336.0;
 /// A card with no buttons (the built-in ones).
-pub const CARD_H_SHORT: f32 = 216.0;
+pub const CARD_H_SHORT: f32 = 220.0;
 const PREVIEW_H: f32 = 128.0;
 const CARD_PAD: f32 = 20.0;
 /// Space between neighbouring cards, across and down.
@@ -83,20 +83,84 @@ fn in_use_tag(ui: &mut Ui, picture: Rect) {
 /// Near black: reads on the launcher's blue in both appearances.
 const INK_ON_ACCENT: egui::Color32 = egui::Color32::from_rgb(0x0b, 0x0b, 0x0c);
 
-/// Where a theme is in use: one outlined chip with a dot for each app.
-pub fn app_chips(ui: &mut Ui, names: &[String]) {
-    let t = Tokens::get(ui.ctx());
-    ui.horizontal_wrapped(|ui| {
-        ui.spacing_mut().item_spacing = vec2(6.0, 6.0);
-        for name in names {
-            let galley = ui.painter().layout_no_wrap(name.clone(), egui::FontId::proportional(12.5), t.accent_ink);
-            let (rect, resp) = ui.allocate_exact_size(vec2(galley.size().x + 28.0, 24.0), Sense::hover());
-            ui.painter().rect(rect, CornerRadius::ZERO, t.accent.gamma_multiply(0.16), Stroke::new(1.0, t.accent), StrokeKind::Inside);
-            ui.painter().circle_filled(rect.left_center() + vec2(11.0, 0.0), 3.5, t.accent);
-            ui.painter().galley(pos2(rect.left() + 21.0, rect.center().y - galley.size().y / 2.0), galley, t.accent_ink);
-            resp.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Label, true, name));
+const CHIP_H: f32 = 26.0;
+const CHIP_GAP: f32 = 6.0;
+
+/// Which chips go on which row. Chips fill each row in order; at most `max_rows` rows are used, and
+/// when some do not fit the last row ends with a "+N" chip (`more_w` wide) standing for them. Returns
+/// the rows (indices into `widths`) and how many chips are left out. A chip wider than the row still
+/// gets a row to itself, so every chip is either shown or counted.
+pub fn pack(widths: &[f32], avail: f32, max_rows: usize, more_w: f32) -> (Vec<Vec<usize>>, usize) {
+    let max_rows = max_rows.max(1);
+    let mut rows: Vec<Vec<usize>> = vec![Vec::new()];
+    let mut used = 0.0_f32;
+    for (i, w) in widths.iter().enumerate() {
+        let need = if used == 0.0 { *w } else { used + CHIP_GAP + w };
+        if need > avail && used > 0.0 {
+            rows.push(Vec::new());
+            used = 0.0;
         }
-    });
+        if rows.len() > max_rows {
+            rows.truncate(max_rows);
+            break;
+        }
+        if let Some(row) = rows.last_mut() {
+            used = if row.is_empty() { *w } else { used + CHIP_GAP + w };
+            row.push(i);
+        }
+    }
+    let shown: usize = rows.iter().map(Vec::len).sum();
+    let hidden = widths.len() - shown;
+    if hidden > 0 {
+        // Make room for the "+N" chip at the end of the last row.
+        while let Some(row) = rows.last_mut() {
+            let width: f32 = row.iter().map(|i| widths[*i]).sum::<f32>() + CHIP_GAP * row.len().saturating_sub(1) as f32;
+            if row.len() <= 1 || width + CHIP_GAP + more_w <= avail {
+                break;
+            }
+            row.pop();
+        }
+    }
+    let shown: usize = rows.iter().map(Vec::len).sum();
+    (rows, widths.len() - shown)
+}
+
+/// Where a theme is in use: one outlined chip with a dot for each app, in at most `max_rows` rows,
+/// with "+N" for any that do not fit.
+pub fn app_chips(ui: &mut Ui, names: &[String], max_rows: usize) {
+    let t = Tokens::get(ui.ctx());
+    let font = egui::FontId::proportional(13.0);
+    let galleys: Vec<_> = names.iter().map(|n| ui.painter().layout_no_wrap(n.clone(), font.clone(), t.accent_ink)).collect();
+    let widths: Vec<f32> = galleys.iter().map(|g| g.size().x + 30.0).collect();
+    let painter = ui.painter().clone();
+    let more = |n: usize| painter.layout_no_wrap(format!("+{n}"), font.clone(), t.accent_ink);
+    let (rows, hidden) = pack(&widths, ui.available_width(), max_rows, more(names.len()).size().x + 20.0);
+    let height = rows.len() as f32 * CHIP_H + rows.len().saturating_sub(1) as f32 * CHIP_GAP;
+    let (area, _) = ui.allocate_exact_size(vec2(ui.available_width(), height), Sense::hover());
+    let chip = |ui: &mut Ui, rect: Rect, dot: bool| {
+        ui.painter().rect(rect, CornerRadius::ZERO, t.accent.gamma_multiply(0.16), Stroke::new(1.0, t.accent), StrokeKind::Inside);
+        if dot {
+            ui.painter().circle_filled(rect.left_center() + vec2(12.0, 0.0), 3.5, t.accent);
+        }
+    };
+    for (r, row) in rows.iter().enumerate() {
+        let mut x = area.left();
+        let y = area.top() + r as f32 * (CHIP_H + CHIP_GAP);
+        for i in row {
+            let rect = Rect::from_min_size(pos2(x, y), vec2(widths[*i], CHIP_H));
+            chip(ui, rect, true);
+            ui.painter().galley(pos2(rect.left() + 23.0, rect.center().y - galleys[*i].size().y / 2.0), galleys[*i].clone(), t.accent_ink);
+            ui.interact(rect, ui.id().with(("app-chip", names[*i].as_str(), x as i32, y as i32)), Sense::hover())
+                .widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Label, true, &names[*i]));
+            x += widths[*i] + CHIP_GAP;
+        }
+        if hidden > 0 && r + 1 == rows.len() {
+            let galley = more(hidden);
+            let rect = Rect::from_min_size(pos2(x, y), vec2(galley.size().x + 20.0, CHIP_H));
+            chip(ui, rect, false);
+            ui.painter().galley(pos2(rect.left() + 10.0, rect.center().y - galley.size().y / 2.0), galley, t.accent_ink);
+        }
+    }
 }
 
 /// A theme an app already carries: shown, never changed from here.
@@ -127,5 +191,44 @@ mod tests {
         assert_eq!(columns(2.0 * CARD_MIN_W + GAP), 2);
         assert_eq!(columns(3.0 * CARD_MIN_W + 2.0 * GAP), 3);
         assert_eq!(columns(3.0 * CARD_MIN_W + 2.0 * GAP - 0.5), 2);
+    }
+
+    #[test]
+    fn chips_that_fit_share_a_row_and_none_is_left_out() {
+        assert_eq!(pack(&[], 200.0, 2, 30.0), (vec![vec![]], 0));
+        assert_eq!(pack(&[80.0], 200.0, 2, 30.0), (vec![vec![0]], 0));
+        assert_eq!(pack(&[80.0, 80.0], 200.0, 2, 30.0), (vec![vec![0, 1]], 0));
+        // Two chips and the gap are 166 wide; a third would make 252.
+        assert_eq!(pack(&[80.0, 80.0, 80.0], 200.0, 2, 30.0), (vec![vec![0, 1], vec![2]], 0));
+        // Exactly full is still a fit.
+        assert_eq!(pack(&[97.0, 97.0], 200.0, 1, 30.0), (vec![vec![0, 1]], 0));
+        assert_eq!(pack(&[97.0, 98.0], 200.0, 2, 30.0).0.len(), 2);
+    }
+
+    #[test]
+    fn what_does_not_fit_is_counted_and_the_plus_chip_has_room() {
+        // Five chips, one row of 200: two fit (166); a "+N" chip 20 wide fits beside them (192).
+        assert_eq!(pack(&[80.0; 5], 200.0, 1, 20.0), (vec![vec![0, 1]], 3));
+        // A wider one (40) does not, so one chip steps aside for it.
+        assert_eq!(pack(&[80.0; 5], 200.0, 1, 40.0), (vec![vec![0]], 4));
+        assert_eq!(pack(&[80.0; 5], 200.0, 2, 40.0), (vec![vec![0, 1], vec![2]], 2));
+        // Shown plus hidden is always everything, and rows never exceed the limit.
+        for n in 0..9 {
+            for rows_max in 1..4 {
+                let (rows, hidden) = pack(&vec![90.0; n], 200.0, rows_max, 40.0);
+                assert_eq!(rows.iter().map(Vec::len).sum::<usize>() + hidden, n);
+                assert!(rows.len() <= rows_max);
+                assert!(rows.iter().all(|r| {
+                    let w: f32 = r.len() as f32 * 90.0 + CHIP_GAP * r.len().saturating_sub(1) as f32;
+                    w <= 200.0 || r.len() == 1
+                }));
+            }
+        }
+    }
+
+    #[test]
+    fn a_chip_wider_than_the_row_still_gets_its_own_row() {
+        assert_eq!(pack(&[300.0, 50.0], 200.0, 3, 30.0), (vec![vec![0], vec![1]], 0));
+        assert_eq!(pack(&[300.0], 200.0, 1, 30.0), (vec![vec![0]], 0));
     }
 }

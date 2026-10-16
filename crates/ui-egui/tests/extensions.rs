@@ -370,3 +370,22 @@ fn cards_have_a_gap_between_them_and_do_not_touch() {
     let gap = b.left() - a.right();
     assert!((15.0..=19.0).contains(&gap), "gap between cards is {gap}");
 }
+
+/// Nothing on a card may sit on top of anything else, in the busiest case: a theme worn by three apps.
+#[test]
+fn the_chips_never_touch_the_buttons_below_them() {
+    let store = Shared::default();
+    let mut h = open(&store, None);
+    for app_id in ["photocraft", "lightcraft", "pdfcraft"] {
+        store.0.borrow_mut().wear(&app(app_id), Some(&ExtensionId::new("org.storytold.midnight").unwrap())).unwrap();
+    }
+    h.run_steps(90);
+    let rect = |label: &str| h.query_all_by_label(label).next().unwrap_or_else(|| panic!("no {label}")).rect();
+    let chips = ["PhotoCraft", "LightCraft", "PdfCraft"].map(|n| h.query_all_by_label(n).next().unwrap().rect());
+    let buttons = h.get_all_by_label("USE IN…").next().unwrap().rect();
+    let badge = rect("Dark");
+    for chip in chips {
+        assert!(chip.bottom() + 8.0 <= buttons.top(), "chip {chip:?} is too close to the buttons {buttons:?}");
+        assert!(chip.top() >= badge.bottom() + 6.0, "chip {chip:?} is too close to the badges {badge:?}");
+    }
+}
