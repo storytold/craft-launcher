@@ -29,6 +29,8 @@ impl LauncherUi {
             Dialog::Replace { app, path } => modal.show(ctx, |ui| close = self.replace_dialog(ui, app, path)),
             Dialog::Settings => modal.show(ctx, |ui| close = self.settings_dialog(ui, host)),
             Dialog::LauncherUpdate(r) => modal.show(ctx, |ui| close = self.launcher_update_dialog(ui, r)),
+            Dialog::Connections => modal.show(ctx, |ui| close = self.connections_dialog(ui, host)),
+            Dialog::SetupAi => modal.show(ctx, |ui| close = self.features.show_setup(ui, host, &mut self.connections)),
         };
         if close || response.should_close() {
             self.dialog = None;
@@ -256,6 +258,27 @@ impl LauncherUi {
                 folder.clear();
             }
         });
+    }
+
+    fn connections_dialog(&mut self, ui: &mut egui::Ui, host: &mut dyn Host) -> bool {
+        match host.connections() {
+            Some(port) => {
+                // The service list and the form are long: give them a fixed, scrolling height. (A
+                // modal grows with whatever asks for the space left over, so never ask for it.)
+                if matches!(self.connections.screen, crate::connections::Screen::Pick | crate::connections::Screen::Form(_)) {
+                    let height = ui.ctx().content_rect().height() * 0.7;
+                    let mut closed = false;
+                    ui.allocate_ui_with_layout(egui::vec2(ui.available_width(), height), egui::Layout::top_down(egui::Align::Min), |ui| {
+                        egui::ScrollArea::vertical().auto_shrink([false, false]).show(ui, |ui| closed = self.connections.show(ui, port));
+                    });
+                    closed
+                } else {
+                    self.connections.show(ui, port)
+                }
+            }
+            // The shell lost it (or never had it): nothing to show.
+            None => true,
+        }
     }
 
     fn settings_dialog(&mut self, ui: &mut egui::Ui, host: &mut dyn Host) -> bool {

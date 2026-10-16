@@ -13,6 +13,9 @@ workspace = true
 [dependencies]
 artcraft-launcher-core = { workspace = true }
 craft-ext-core = { workspace = true }
+# Interim: a path dependency until the shared AI layer has a home (craft-libs). Pure data, wasm-safe.
+craft-ai-model = { path = "../../../craft-ai-model/crates/ai-model" }
+craft-ai-features = { path = "../../../craft-ai-model/crates/ai-features" }
 egui = { workspace = true }
 egui_extras = { workspace = true, features = ["image", "svg"] }
 image = { version = "0.25", default-features = false, features = ["png", "jpeg"] }
@@ -26,6 +29,7 @@ sys-locale = "0.3"
 skrifa = { version = "0.44", default-features = false, features = ["std"] }
 
 [dev-dependencies]
+craft-ai-features = { path = "../../../craft-ai-model/crates/ai-features" }
 serde_json = { workspace = true }
 egui_kittest = { workspace = true, features = ["wgpu", "snapshot"] }
 image = { version = "0.25", default-features = false, features = ["png", "jpeg"] }

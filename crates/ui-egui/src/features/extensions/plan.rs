@@ -100,4 +100,5 @@ pub fn kind_label(kind: Kind) -> &'static str {
 }
 
 #[cfg(test)]
+#[path = "plan_tests.rs"]
 mod tests;

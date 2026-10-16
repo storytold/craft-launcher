@@ -397,3 +397,171 @@ filter	Installed	Installiert
 	Theme	Design
 	Plug-in	Plug-in
 	Resource	Ressource
+
+# Set up AI.
+	A hosted video sample can cost noticeably more than an image	Ein Video-Test bei einem gehosteten Dienst kann deutlich mehr kosten als ein Bild
+	AI models for every Craft app	KI-Modelle für jede Craft-App
+	AI models the Craft apps can use	KI-Modelle, die die Craft-Apps nutzen können
+	Add a provider	Anbieter hinzufügen
+	Add another server	Weiteren Server hinzufügen
+	Add another server, or choose which model each tool uses	Weiteren Server hinzufügen oder wählen, welches Modell jedes Werkzeug nutzt
+	Add connection	Verbindung hinzufügen
+	Add one and the Craft apps can use it. Keys are kept in your system keychain, never in a plain file.	Füge eine hinzu, dann können die Craft-Apps sie nutzen. Schlüssel liegen in der Schlüsselverwaltung deines Systems, nie in einer einfachen Datei.
+	Address	Adresse
+	Advanced	Erweitert
+	Also needs the {name} add-on in ComfyUI. Install it with ComfyUI Manager, then come back: {url}	Benötigt außerdem das Add-on {name} in ComfyUI. Installiere es mit dem ComfyUI Manager und komm dann zurück: {url}
+	App settings that use it are cleared as well.	App-Einstellungen, die sie nutzen, werden ebenfalls zurückgesetzt.
+	App settings using it: {n}	App-Einstellungen, die sie nutzen: {n}
+	Automatic (best available)	Automatisch (bestes verfügbares)
+	Back	Zurück
+	Cannot run it here? Use a hosted service	Läuft es hier nicht? Nutze einen gehosteten Dienst
+	Cannot run on this computer	Läuft auf diesem Computer nicht
+	Checking {file}	{file} wird geprüft
+	Choose a model	Modell wählen
+	Choose the one you use	Wähle den, den du nutzt
+	Chosen model unavailable	Gewähltes Modell nicht verfügbar
+	ComfyUI was not found on this computer	ComfyUI wurde auf diesem Computer nicht gefunden
+	Connect	Verbinden
+	Connect a hosted service that can:	Verbinde einen gehosteten Dienst, der Folgendes kann:
+	Connect {name}	{name} verbinden
+	Connected	Verbunden
+	Connected. Models found: {n} ({ms} ms)	Verbunden. Gefundene Modelle: {n} ({ms} ms)
+	Connections	Verbindungen
+	Couldn't load connections: {e}	Verbindungen konnten nicht geladen werden: {e}
+	Data sent to this connection leaves this computer.	Daten, die an diese Verbindung gesendet werden, verlassen diesen Computer.
+	Data sent to this connection stays on this computer.	Daten, die an diese Verbindung gesendet werden, bleiben auf diesem Computer.
+	Details	Details
+	Download {size}	{size} herunterladen
+	Downloading {file}: {done} of {total}	{file} wird heruntergeladen: {done} von {total}
+	Edit	Bearbeiten
+	Edit connection	Verbindung bearbeiten
+	Enabled	Aktiviert
+	File {step} of {of}	Datei {step} von {of}
+	For every Craft app	Für jede Craft-App
+	Free. What you send never leaves this computer.	Kostenlos. Was du sendest, verlässt diesen Computer nie.
+	Hosted services	Gehostete Dienste
+	I have read the licence and accept it	Ich habe die Lizenz gelesen und akzeptiere sie
+	In {apps}	In {apps}
+	Installed. This tool is ready on this computer.	Installiert. Dieses Werkzeug ist auf diesem Computer bereit.
+	It counts against your subscription's allowance.	Es wird auf das Kontingent deines Abonnements angerechnet.
+	It is free.	Es ist kostenlos.
+	Its saved key is deleted too.	Der gespeicherte Schlüssel wird ebenfalls gelöscht.
+	Key	Schlüssel
+	Key missing	Schlüssel fehlt
+	Key saved	Schlüssel gespeichert
+	Key unreadable	Schlüssel nicht lesbar
+	Leave empty to keep the saved key	Leer lassen, um den gespeicherten Schlüssel zu behalten
+	Leaves this computer	Verlässt diesen Computer
+	Licence	Lizenz
+	Model	Modell
+	Models	Modelle
+	Models: {n}	Modelle: {n}
+	Needs {needed} GB of graphics memory; this computer has {have} GB	Benötigt {needed} GB Grafikspeicher; dieser Computer hat {have} GB
+	Needs {needed} of free disk space; {free} is free	Benötigt {needed} freien Speicherplatz; frei sind {free}
+	No connected model can do this yet.	Noch kein verbundenes Modell kann das.
+	No connections yet.	Noch keine Verbindungen.
+	No key needed	Kein Schlüssel nötig
+	No model chosen. Apps will ask, or fall back to their own setting.	Kein Modell gewählt. Die Apps fragen nach oder nutzen ihre eigene Einstellung.
+	No test for this tool yet	Für dieses Werkzeug gibt es noch keinen Test
+	No tool has a connected model yet.	Noch kein Werkzeug hat ein verbundenes Modell.
+	None of the supported services does this yet.	Keiner der unterstützten Dienste kann das bisher.
+	Nothing yet. Set something up below.	Noch nichts. Richte unten etwas ein.
+	Ollama, LM Studio, ComfyUI or any OpenAI-compatible server	Ollama, LM Studio, ComfyUI oder ein beliebiger OpenAI-kompatibler Server
+	On this computer	Auf diesem Computer
+	Other	Andere
+	Other servers	Andere Server
+	Paste the key here	Schlüssel hier einfügen
+	Read the licence	Lizenz lesen
+	Ready	Bereit
+	Ready. Runs on this computer.	Bereit. Läuft auf diesem Computer.
+	Ready. Sends to a hosted service.	Bereit. Sendet an einen gehosteten Dienst.
+	Remove {name}?	{name} entfernen?
+	Runs on this computer through ComfyUI	Läuft auf diesem Computer über ComfyUI
+	Runs on this computer through ComfyUI. Your pictures never leave it.	Läuft auf diesem Computer über ComfyUI. Deine Bilder verlassen ihn nie.
+	Runs one small sample to see whether this model really does the job	Führt eine kleine Probe aus, um zu sehen, ob dieses Modell die Aufgabe wirklich erledigt
+	Save	Speichern
+	Send the test	Test senden
+	Servers, and which model each tool uses	Server und das Modell jedes Werkzeugs
+	Set up	Einrichten
+	Set up AI	KI einrichten
+	Set up one or more of these and the AI tools switch on in every Craft app that has them.	Richte eines oder mehrere davon ein, und die KI-Werkzeuge werden in jeder Craft-App aktiviert, die sie hat.
+	Set up the AI tools for every Craft app	KI-Werkzeuge für jede Craft-App einrichten
+	Set up {name}	{name} einrichten
+	Set up, {size}	Einrichten, {size}
+	Switched on	Aktiviert
+	Switches on	Aktiviert
+	Test	Testen
+	Test failed: {e}	Test fehlgeschlagen: {e}
+	Test it	Ausprobieren
+	Testing…	Wird getestet …
+	The apps cannot run this model yet. You can download it now, and the tool switches on when they can.	Die Apps können dieses Modell noch nicht ausführen. Du kannst es schon herunterladen, das Werkzeug wird aktiviert, sobald sie es können.
+	The download failed: {e}	Der Download ist fehlgeschlagen: {e}
+	The test failed: {e}	Der Test ist fehlgeschlagen: {e}
+	This computer	Dieser Computer
+	This sends a small sample ({items}) to {destination} through {connection}. {cost}	Dies sendet eine kleine Probe ({items}) über {connection} an {destination}. {cost}
+	Tools pick the best model that is connected on their own. Change one here, or test that it works.	Die Werkzeuge wählen selbst das beste verbundene Modell. Ändere eines hier oder teste, ob es funktioniert.
+	Total {size}. It goes into your ComfyUI models folder.	Insgesamt {size}. Es landet in deinem ComfyUI-Modellordner.
+	Try again	Erneut versuchen
+	Turned off	Ausgeschaltet
+	Uses a key	Nutzt einen Schlüssel
+	Whether it costs anything is not known.	Ob es etwas kostet, ist nicht bekannt.
+	Will be downloaded	Wird heruntergeladen
+	Works. {summary}, in {secs} s.	Funktioniert. {summary}, in {secs} s.
+	You are billed for it by the service.	Der Dienst stellt es dir in Rechnung.
+	You use your own key and the service bills you. What you send leaves this computer.	Du nutzt deinen eigenen Schlüssel und der Dienst stellt dir Kosten in Rechnung. Was du sendest, verlässt diesen Computer.
+	Your other connections	Deine anderen Verbindungen
+	a provider	ein Anbieter
+	{file}, {size}, from {host}	{file}, {size}, von {host}
+	{model} (this computer)	{model} (dieser Computer)
+	Files in place	Dateien vorhanden
+	Planned for	Geplant für
+	Model files installed. The app tool is not connected yet.	Modelldateien installiert. Das Werkzeug in der App ist noch nicht verbunden.
+# History page.
+	History	Verlauf
+	AI jobs run by your Craft apps	KI-Aufträge deiner Craft-Apps
+	All time	Gesamte Zeit
+	Today	Heute
+	7 days	7 Tage
+	30 days	30 Tage
+	All models	Alle Modelle
+	No AI jobs yet. They appear here once a Craft app uses AI.	Noch keine KI-Aufträge. Sie erscheinen hier, sobald eine Craft-App KI nutzt.
+	No jobs match these filters.	Keine Aufträge entsprechen diesen Filtern.
+	Jobs	Aufträge
+	By day	Nach Tag
+	By month	Nach Monat
+	Only costs the provider reported are counted.	Es werden nur die vom Anbieter gemeldeten Kosten gezählt.
+	Some lines in the history could not be read and were left out.	Einige Zeilen im Verlauf konnten nicht gelesen werden und wurden ausgelassen.
+	Refresh	Aktualisieren
+	Yes, delete it	Ja, löschen
+	Keep it	Behalten
+	Delete the history for every app?	Den Verlauf für alle Apps löschen?
+	Clear history	Verlauf löschen
+	Export CSV	Als CSV exportieren
+	Saves what is showing as a spreadsheet file in your Downloads folder	Speichert die angezeigten Einträge als Tabellendatei im Ordner „Downloads“
+	Saved to {path}	Gespeichert unter {path}
+	Every AI job your Craft apps have run, and what it cost	Alle KI-Aufträge deiner Craft-Apps und was sie gekostet haben
+	Failed	Fehlgeschlagen
+	Reported cost	Gemeldete Kosten
+	Out of credit	Guthaben aufgebraucht
+	Rate limited	Anfragen begrenzt
+	Sign-in problem	Anmeldeproblem
+	Network problem	Netzwerkproblem
+	Provider error	Anbieterfehler
+	Error	Fehler
+	When	Wann
+	What	Was
+	Result	Ergebnis
+	Took	Dauer
+	Cost	Kosten
+	{model} on {connection}	{model} über {connection}
+	Local	Lokal
+	Remote	Entfernt
+	Cancelled	Abgebrochen
+	Not finished	Nicht beendet
+	Day	Tag
+	Month	Monat
+	The files are in place. The apps cannot run this model yet, and the tool switches on when they can.	Die Dateien sind vorhanden. Die Apps können dieses Modell noch nicht ausführen, das Werkzeug wird aktiviert, sobald sie es können.
+	Jobs per day	Aufträge pro Tag
+	By model	Nach Modell
+	By app	Nach App
+	Average	Durchschnitt

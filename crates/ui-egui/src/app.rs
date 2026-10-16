@@ -71,6 +71,16 @@ pub trait Host {
     }
     /// Quit the launcher for real (not just hide to the tray).
     fn quit(&mut self) {}
+    /// Where AI connections are kept and tested. `None` where this shell cannot (the web build),
+    /// which hides the Connections screen.
+    fn connections(&mut self) -> Option<&mut dyn crate::connections::ConnectionsPort> {
+        None
+    }
+    /// What this computer can run and the install step for it. `None` where this shell cannot,
+    /// in which case the Connections screen opens straight on the provider list.
+    fn features(&mut self) -> Option<&mut dyn crate::features::FeaturesPort> {
+        None
+    }
 }
 
 pub(crate) struct Toast {
@@ -87,6 +97,8 @@ pub(crate) enum Dialog {
     Replace { app: String, path: String },
     Settings,
     LauncherUpdate(artcraft_launcher_core::Release),
+    Connections,
+    SetupAi,
 }
 
 impl Dialog {
@@ -100,6 +112,8 @@ impl Dialog {
             Dialog::Replace { app, .. } => ("replace", app),
             Dialog::Settings => ("settings", ""),
             Dialog::LauncherUpdate(r) => ("launcher-update", &r.tag),
+            Dialog::Connections => ("connections", ""),
+            Dialog::SetupAi => ("setup-ai", ""),
         }
     }
 }
@@ -124,6 +138,12 @@ pub struct LauncherUi {
     pub(crate) alerts: Vec<artcraft_launcher_core::feed::Notice>,
     pub(crate) search: String,
     pub(crate) toasts: Vec<Toast>,
+    /// The Connections screen's state, and whether this shell can show it.
+    pub(crate) connections: crate::connections::ConnectionsUi,
+    pub(crate) connections_available: bool,
+    /// The AI tools screen that the Connections link opens first.
+    pub(crate) features: crate::features::FeaturesUi,
+    pub(crate) features_available: bool,
     pub(crate) dialog: Option<Dialog>,
     /// The app whose details drawer is open (or closing: see `detail_shown`).
     pub(crate) detail: Option<String>,
@@ -199,6 +219,10 @@ impl LauncherUi {
             alerts: Vec::new(),
             search: String::new(),
             toasts: Vec::new(),
+            connections: crate::connections::ConnectionsUi::default(),
+            connections_available: false,
+            features: crate::features::FeaturesUi::default(),
+            features_available: false,
             dialog: None,
             detail: None,
             detail_shown: None,
@@ -565,6 +589,8 @@ impl LauncherUi {
             self.applied_motion = Some(self.reduce_motion);
         }
         let tokens = Tokens::get(&ctx);
+        self.connections_available = host.connections().is_some();
+        self.features_available = host.features().is_some();
         if self.entries.iter().any(|e| e.job.is_some()) || self.checking {
             ctx.request_repaint_after(Duration::from_millis(50));
         }

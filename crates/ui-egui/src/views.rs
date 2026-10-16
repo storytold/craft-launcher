@@ -106,6 +106,25 @@ impl LauncherUi {
                         self.settings.view = mode;
                     }
                 }
+                if self.features_available {
+                    ui.add_space(6.0);
+                    widgets::rule(ui, h);
+                    ui.add_space(6.0);
+                    if widgets::nav_link(ui, tl!("Set up AI"), tl!("Set up the AI tools for every Craft app"), h, false).clicked() {
+                        self.connections.open();
+                        self.features.open();
+                        self.dialog = Some(Dialog::SetupAi);
+                    }
+                } else if self.connections_available {
+                    // A shell that keeps connections but cannot run tools: just the connections.
+                    ui.add_space(6.0);
+                    widgets::rule(ui, h);
+                    ui.add_space(6.0);
+                    if widgets::nav_link(ui, tl!("Connections"), tl!("AI models the Craft apps can use"), h, false).clicked() {
+                        self.connections.open();
+                        self.dialog = Some(Dialog::Connections);
+                    }
+                }
                 ui.add_space(6.0);
                 widgets::rule(ui, h);
                 // The controls reserve their actual widths before the secondary text gets space.

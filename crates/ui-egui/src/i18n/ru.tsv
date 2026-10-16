@@ -393,3 +393,259 @@ filter	Installed	Установлены
 	Theme	Тема
 	Plug-in	Плагин
 	Resource	Ресурс
+# Connections screen.
+	Couldn't load connections: {e}	Не удалось загрузить подключения: {e}
+	Connections	Подключения
+	AI models for every Craft app	Модели ИИ для всех приложений Craft
+	No connections yet.	Подключений пока нет.
+	Add one and the Craft apps can use it. Keys are kept in your system keychain, never in a plain file.	Добавьте подключение, и приложения Craft смогут им пользоваться. Ключи хранятся в системной связке ключей, а не в обычном файле.
+	Add connection	Добавить подключение
+	This computer	Этот компьютер
+	Leaves this computer	Уходит с компьютера
+	Turned off	Выключено
+	Key saved	Ключ сохранён
+	Key missing	Ключа нет
+	No key needed	Ключ не нужен
+	Key unreadable	Ключ не читается
+	Models: {n}	Моделей: {n}
+	App settings using it: {n}	Настроек приложений с ним: {n}
+	Test	Проверить
+	Edit	Изменить
+	Enabled	Включено
+	Remove {name}?	Удалить {name}?
+	Its saved key is deleted too.	Сохранённый ключ тоже будет удалён.
+	App settings that use it are cleared as well.	Настройки приложений, которые его используют, тоже будут сброшены.
+	Testing…	Проверка…
+	Connected. Models found: {n} ({ms} ms)	Подключено. Найдено моделей: {n} ({ms} мс)
+	Test failed: {e}	Проверка не удалась: {e}
+	Edit connection	Изменить подключение
+	Start from	Начать с
+	Address	Адрес
+	Data sent to this connection stays on this computer.	Данные, отправленные через это подключение, остаются на этом компьютере.
+	Data sent to this connection leaves this computer.	Данные, отправленные через это подключение, покидают этот компьютер.
+	Uses a key	Требуется ключ
+	Key	Ключ
+	Paste the key here	Вставьте ключ сюда
+	Leave empty to keep the saved key	Оставьте пустым, чтобы сохранить текущий ключ
+	Save	Сохранить
+	AI models the Craft apps can use	Модели ИИ, доступные приложениям Craft
+	Other (OpenAI compatible)	Другой (совместимый с OpenAI)
+	Your own OpenAI API key. Billed by OpenAI.	Ваш собственный ключ API OpenAI. Оплата идёт в OpenAI.
+	One key for many hosted models.	Один ключ для многих размещённых моделей.
+	Models running on this computer. Nothing leaves it.	Модели работают на этом компьютере. Ничего не уходит наружу.
+	A llama.cpp server on this computer.	Сервер llama.cpp на этом компьютере.
+	Any server that speaks the OpenAI API.	Любой сервер с API, совместимым с OpenAI.
+
+# AI tools screen.
+	Add, test and remove provider connections yourself	Добавляйте, проверяйте и удаляйте подключения к сервисам самостоятельно
+	Advanced	Дополнительно
+	Also needs the {name} add-on in ComfyUI. Install it with ComfyUI Manager, then come back: {url}	Также нужно дополнение {name} для ComfyUI. Установите его через ComfyUI Manager и вернитесь сюда: {url}
+	Available in {apps}	Доступно в: {apps}
+	Back	Назад
+	Cannot run it here? Use a hosted service	Не запускается здесь? Используйте облачный сервис
+	Cannot run on this computer	Не запускается на этом компьютере
+	Checking {file}	Проверка {file}
+	ComfyUI was not found on this computer	ComfyUI на этом компьютере не найден
+	Download {size}	Скачать {size}
+	Downloading {file}: {done} of {total}	Скачивание {file}: {done} из {total}
+	File {step} of {of}	Файл {step} из {of}
+	I have read the licence and accept it	Я прочитал(а) лицензию и принимаю её
+	Installed. This tool is ready on this computer.	Установлено. Инструмент готов к работе на этом компьютере.
+	Licence	Лицензия
+	Looking at this computer…	Проверяем этот компьютер…
+	Needs a {size} download	Нужно скачать {size}
+	Needs an add-on in ComfyUI	Нужно дополнение для ComfyUI
+	Needs {needed} GB of graphics memory; this computer has {have} GB	Нужно {needed} ГБ видеопамяти, на этом компьютере {have} ГБ
+	Needs {needed} of free disk space; {free} is free	Нужно {needed} свободного места на диске, свободно {free}
+	No model for this computer chosen yet	Модель для этого компьютера пока не выбрана
+	Or use a hosted service	Или используйте облачный сервис
+	Planned for {apps}	Запланировано для: {apps}
+	Proposed for {apps}	Предлагается для: {apps}
+	Read the licence	Прочитать лицензию
+	Ready on this computer	Готово к работе на этом компьютере
+	Runs on this computer through ComfyUI	Работает на этом компьютере через ComfyUI
+	Set up	Настроить
+	Set up {name}	Настройка: {name}
+	Set a tool up once and every Craft app that supports it can use it. Models that run on this computer never send your pictures anywhere.	Настройте инструмент один раз, и его смогут использовать все приложения Craft, которые его поддерживают. Модели, работающие на этом компьютере, никуда не отправляют ваши изображения.
+	The download failed: {e}	Не удалось скачать: {e}
+	Total {size}. It goes into your ComfyUI models folder.	Всего {size}. Файлы попадут в папку моделей ComfyUI.
+	What AI can do in your Craft apps	Что ИИ умеет в ваших приложениях Craft
+	Will be downloaded	Будет скачано
+	{file}, {size}, from {host}	{file}, {size}, с {host}
+	Select subject	Выделение объекта
+	Pick out the main subject, or anything you describe in words, and turn it into a selection or a mask.	Выделяет главный объект или всё, что вы опишете словами, и превращает это в выделение или маску.
+	Remove objects	Удаление объектов
+	Mark something and the area fills in to match its surroundings.	Отметьте объект, и область заполнится в соответствии с окружением.
+	Generative fill	Генеративная заливка
+	Select an area, describe what should be there, and get new content that blends in.	Выделите область, опишите, что там должно быть, и получите новое содержимое, которое естественно вписывается.
+	Generative expand	Генеративное расширение
+	Make the canvas bigger and fill the new area to match the picture.	Увеличьте холст, и новая область заполнится в стиле изображения.
+	Extend sequence	Продление последовательности
+	Add frames to the end of a clip so the shot carries on.	Добавляет кадры в конец клипа, чтобы сцена продолжалась.
+	Generate images	Создание изображений
+	Make a picture from a description.	Создаёт изображение по описанию.
+	Generate video	Создание видео
+	Make a clip from a description.	Создаёт клип по описанию.
+	Select Subject and Object Selection	Выделение объекта и Object Selection
+	Subject, sky and people masks	Маски объекта, неба и людей
+	Roto and matte	Ротоскопинг и матирование
+	Remove tool	Инструмент удаления
+	Generative remove	Генеративное удаление
+	Generative Fill	Генеративная заливка
+	Generative Expand	Генеративное расширение
+	Generative video	Генеративное видео
+	Generate Image	Создать изображение
+	Image generation	Создание изображений
+	Slide images	Изображения для слайдов
+	OpenAI image editing	Редактирование изображений в OpenAI
+	Your own OpenAI key, billed by OpenAI. Built and tested offline only.	Ваш собственный ключ OpenAI, оплата через OpenAI. Реализовано и проверено только без подключения к сети.
+	Your own OpenAI key, billed by OpenAI.	Ваш собственный ключ OpenAI, оплата через OpenAI.
+	Black Forest Labs FLUX	Black Forest Labs FLUX
+	Your own BFL key, billed by Black Forest Labs.	Ваш собственный ключ BFL, оплата через Black Forest Labs.
+	Google Gemini image (Nano Banana)	Изображения Google Gemini (Nano Banana)
+	Express-mode API key only. The key cannot be tested without a paid request.	Только ключ API в экспресс-режиме. Ключ нельзя проверить без платного запроса.
+	Staff-enabled API key. Whether a subscription covers it is unverified.	Ключ API, включённый сотрудниками. Покрывает ли его подписка, не проверено.
+	Black Forest Labs	Black Forest Labs
+	Seedance (Volcengine Ark)	Seedance (Volcengine Ark)
+	Text to video with your Ark key.	Текст в видео с вашим ключом Ark.
+	Meta SAM License, community copy	Лицензия Meta SAM, копия сообщества
+	This file is a community copy of Meta's SAM 3 weights and declares no licence of its own. Meta's release is gated behind the SAM License.	Этот файл — копия весов Meta SAM 3, выложенная сообществом, и собственной лицензии не указывает. Оригинальный выпуск Meta доступен только после принятия лицензии SAM.
+
+# Tools tab.
+	A hosted video sample can cost noticeably more than an image	Пробное видео в облачном сервисе может стоить заметно дороже, чем изображение
+	Add the services and models you can use	Добавьте сервисы и модели, которыми можно пользоваться
+	Choose a model	Выберите модель
+	Choose which model does each job	Выберите, какая модель выполняет каждую задачу
+	Choose which model does each job. Every Craft app that uses the tool follows your choice. Add the services themselves on the Providers tab.	Выберите, какая модель выполняет каждую задачу. Все приложения Craft, использующие инструмент, следуют вашему выбору. Сами сервисы добавляются на вкладке «Сервисы».
+	Chosen model unavailable	Выбранная модель недоступна
+	Connect a hosted service that can:	Подключите облачный сервис, который это умеет:
+	It counts against your subscription's allowance.	Расходуется квота вашей подписки.
+	It is free.	Это бесплатно.
+	Model that does this	Модель для этой задачи
+	No connected model can do this yet.	Ни одна из подключённых моделей пока не умеет этого.
+	No model chosen. Apps will ask, or fall back to their own setting.	Модель не выбрана. Приложения спросят сами или используют собственную настройку.
+	No test for this tool yet	Для этого инструмента пока нет проверки
+	None	Нет
+	None of the supported services does this yet.	Ни один из поддерживаемых сервисов пока не умеет этого.
+	On this computer	На этом компьютере
+	Providers	Сервисы
+	Ready. Runs on this computer.	Готово. Работает на этом компьютере.
+	Ready. Sends to a hosted service.	Готово. Данные отправляются в облачный сервис.
+	Runs one small sample to see whether this model really does the job	Запускает один небольшой пример, чтобы проверить, справляется ли модель с задачей
+	Send the test	Отправить проверку
+	Test it	Проверить
+	The test failed: {e}	Проверка не удалась: {e}
+	This sends a small sample ({items}) to {destination} through {connection}. {cost}	Небольшой пример ({items}) будет отправлен на {destination} через «{connection}». {cost}
+	Tools	Инструменты
+	Try again	Повторить
+	Whether it costs anything is not known.	Неизвестно, платно ли это.
+	Works. {summary}, in {secs} s.	Работает. {summary}, за {secs} с.
+	You are billed for it by the service.	Оплата взимается сервисом.
+	{model} (this computer)	{model} (этот компьютер)
+
+# Connections hub.
+	In your apps	В ваших приложениях
+	Model	Модель
+	Needs attention	Требует внимания
+	None connected yet	Пока ничего не подключено
+	Not available yet	Пока недоступно
+	Nothing connected	Ничего не подключено
+	Planned	Запланировано
+	Proposed	Предложено
+	Proposed means the app's team has not confirmed it yet.	«Предложено» означает, что команда приложения ещё не подтвердила это.
+	Providers cannot be managed here.	Здесь нельзя управлять сервисами.
+	Where the models live	Где находятся модели
+	{n} connected	Подключено: {n}
+
+# Connections hub.
+	Add a provider	Добавить сервис
+	Choose the one you use	Выберите тот, которым пользуетесь
+	Connect {name}	Подключить: {name}
+	Details	Подробности
+	Free. What you send never leaves this computer.	Бесплатно. Отправленные данные не покидают этот компьютер.
+	Hosted services	Облачные сервисы
+	Other	Другое
+	You use your own key and the service bills you. What you send leaves this computer.	Вы используете свой ключ, а сервис выставляет вам счёт. Отправленные данные покидают этот компьютер.
+	a provider	сервис
+
+# Set up AI.
+	Add another server	Добавить другой сервер
+	Automatic (best available)	Автоматически (лучшая из доступных)
+	Choose which model each tool uses	Выберите, какую модель использует каждый инструмент
+	Connect	Подключить
+	Connected	Подключено
+	For every Craft app	Для всех приложений Craft
+	In {apps}	В: {apps}
+	No tool has a connected model yet.	Ни у одного инструмента пока нет подключённой модели.
+	Nothing yet. Set something up below.	Пока ничего. Настройте что-нибудь ниже.
+	Ollama, LM Studio, ComfyUI or any OpenAI-compatible server	Ollama, LM Studio, ComfyUI или любой сервер, совместимый с OpenAI
+	Ready	Готово
+	Runs on this computer through ComfyUI. Your pictures never leave it.	Работает на этом компьютере через ComfyUI. Ваши изображения никуда не уходят.
+	Set up AI	Настройка ИИ
+	Set up one or more of these and the AI tools switch on in every Craft app that has them.	Настройте один или несколько вариантов, и ИИ-инструменты включатся во всех приложениях Craft, где они есть.
+	Set up the AI tools for every Craft app	Настройте ИИ-инструменты для всех приложений Craft
+	Set up, {size}	Настроить, {size}
+	Switched on	Включено
+	Switches on	Включает
+	The apps cannot run this model yet. You can download it now, and the tool switches on when they can.	Приложения пока не умеют запускать эту модель. Скачать её можно уже сейчас, и инструмент включится, когда они научатся.
+	Tools pick the best model that is connected on their own. Change one here, or test that it works.	Инструменты сами выбирают лучшую из подключённых моделей. Здесь можно изменить выбор или проверить, что всё работает.
+	Which model each tool uses	Какую модель использует каждый инструмент
+	Your other connections	Ваши другие подключения
+
+# Set up AI.
+	Add another server, or choose which model each tool uses	Добавить другой сервер или выбрать модель для каждого инструмента
+	Models	Модели
+	Other servers	Другие серверы
+	Servers, and which model each tool uses	Серверы и модель каждого инструмента
+	Files in place	Файлы на месте
+	Planned for	Запланировано для
+	Model files installed. The app tool is not connected yet.	Файлы модели установлены. Инструмент в приложении пока не подключён.
+# History page.
+	History	История
+	AI jobs run by your Craft apps	Задачи ИИ, запущенные вашими приложениями Craft
+	All time	За всё время
+	Today	Сегодня
+	7 days	7 дней
+	30 days	30 дней
+	All models	Все модели
+	No AI jobs yet. They appear here once a Craft app uses AI.	Задач ИИ пока нет. Они появятся здесь, когда приложение Craft начнёт использовать ИИ.
+	No jobs match these filters.	Нет задач, подходящих под эти фильтры.
+	Jobs	Задачи
+	By day	По дням
+	By month	По месяцам
+	Only costs the provider reported are counted.	Учитываются только расходы, сообщённые провайдером.
+	Some lines in the history could not be read and were left out.	Некоторые строки истории не удалось прочитать, они пропущены.
+	Refresh	Обновить
+	Yes, delete it	Да, удалить
+	Keep it	Оставить
+	Delete the history for every app?	Удалить историю для всех приложений?
+	Clear history	Очистить историю
+	Export CSV	Экспорт в CSV
+	Saves what is showing as a spreadsheet file in your Downloads folder	Сохраняет показанное как файл таблицы в папке «Загрузки»
+	Saved to {path}	Сохранено: {path}
+	Every AI job your Craft apps have run, and what it cost	Все задачи ИИ ваших приложений Craft и их стоимость
+	Failed	Ошибка
+	Reported cost	Заявленная стоимость
+	Out of credit	Нет средств
+	Rate limited	Превышен лимит запросов
+	Sign-in problem	Проблема со входом
+	Network problem	Проблема с сетью
+	Provider error	Ошибка провайдера
+	Error	Ошибка
+	When	Когда
+	What	Что
+	Result	Результат
+	Took	Длилось
+	Cost	Стоимость
+	{model} on {connection}	{model} через {connection}
+	Local	Локально
+	Remote	Удалённо
+	Cancelled	Отменено
+	Not finished	Не завершено
+	Day	День
+	Month	Месяц
+	The files are in place. The apps cannot run this model yet, and the tool switches on when they can.	Файлы на месте. Приложения пока не умеют запускать эту модель, и инструмент включится, когда они научатся.
+	Jobs per day	Задач в день
+	By model	По моделям
+	By app	По приложениям
+	Average	В среднем

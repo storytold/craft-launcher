@@ -5,7 +5,13 @@
 #![cfg_attr(windows, windows_subsystem = "windows")]
 #![deny(clippy::unwrap_used, clippy::expect_used, clippy::panic, clippy::unimplemented, clippy::todo, clippy::unreachable)]
 
+mod connections;
 mod extensions;
+mod features;
+mod features_tools;
+mod history_port;
+#[cfg(test)]
+mod history_port_tests;
 mod logging;
 mod motion;
 mod settings_file;
@@ -394,6 +400,8 @@ struct DesktopHost {
     quit: bool,
     /// The shared extensions store; `None` when this computer has no place to keep one.
     extensions: Option<extensions::DesktopStore>,
+    connections: connections::DesktopConnections,
+    features: features::DesktopFeatures,
 }
 
 impl Host for DesktopHost {
@@ -458,6 +466,13 @@ impl Host for DesktopHost {
     fn quit(&mut self) {
         self.quit = true;
     }
+
+    fn features(&mut self) -> Option<&mut dyn artcraft_launcher_ui_egui::FeaturesPort> {
+        Some(&mut self.features)
+    }
+    fn connections(&mut self) -> Option<&mut dyn artcraft_launcher_ui_egui::ConnectionsPort> {
+        Some(&mut self.connections)
+    }
 }
 
 /// The shared extensions store, or `None` (with a note in the log) where there is no place for one.
@@ -501,7 +516,13 @@ impl Launcher {
             system_theme: system_theme::Monitor::default(),
             ui: LauncherUi::new(&windowless, backend, Settings::default()),
             tray: None,
-            host: DesktopHost { tray: false, quit: false, extensions: open_extensions() },
+            host: DesktopHost {
+                tray: false,
+                quit: false,
+                extensions: open_extensions(),
+                connections: connections::DesktopConnections::new(),
+                features: features::DesktopFeatures::new(),
+            },
             starts,
             windowless,
             run_again,

@@ -19,9 +19,11 @@ macro_rules! tl {
 mod app;
 #[cfg(not(target_arch = "wasm32"))]
 mod cjk_font;
+pub mod connections;
 mod details;
 mod dialogs;
 pub mod features;
+mod fit;
 pub mod i18n;
 pub mod icons;
 pub mod model;
@@ -33,6 +35,8 @@ mod views;
 mod widgets;
 
 pub use app::{Host, LauncherUi, TitleBar};
+pub use connections::{ConnectionsPort, ConnectionsUi, Failure, KeyView, Row, TestOutcome, TestTarget};
+pub use features::{FeaturesPort, FeaturesUi};
 pub use i18n::{
     Lang, LangInfo, current, detect_system_lang_in_background, fmt, has, lang_from_tag, message, msg, set_current, set_system_locales, system_lang,
     t, t_id, tn, tr, tr_ctx, tr_id, trn,

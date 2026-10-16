@@ -365,3 +365,259 @@ figcraft	Interface design and prototyping	界面设计与原型制作
 	Theme	主题
 	Plug-in	插件
 	Resource	资源
+# Connections screen.
+	Couldn't load connections: {e}	无法加载连接：{e}
+	Connections	连接
+	AI models for every Craft app	适用于所有 Craft 应用的 AI 模型
+	No connections yet.	还没有连接。
+	Add one and the Craft apps can use it. Keys are kept in your system keychain, never in a plain file.	添加一个连接后，Craft 应用就可以使用它。密钥保存在系统钥匙串中，不会写入普通文件。
+	Add connection	添加连接
+	This computer	本机
+	Leaves this computer	数据会离开本机
+	Turned off	已关闭
+	Key saved	密钥已保存
+	Key missing	缺少密钥
+	No key needed	无需密钥
+	Key unreadable	无法读取密钥
+	Models: {n}	模型：{n}
+	App settings using it: {n}	使用它的应用设置：{n}
+	Test	测试
+	Edit	编辑
+	Enabled	已启用
+	Remove {name}?	移除 {name}？
+	Its saved key is deleted too.	已保存的密钥也会一并删除。
+	App settings that use it are cleared as well.	使用它的应用设置也会被清除。
+	Testing…	正在测试…
+	Connected. Models found: {n} ({ms} ms)	已连接。找到的模型：{n}（{ms} 毫秒）
+	Test failed: {e}	测试失败：{e}
+	Edit connection	编辑连接
+	Start from	从以下开始
+	Address	地址
+	Data sent to this connection stays on this computer.	通过此连接发送的数据保留在本机。
+	Data sent to this connection leaves this computer.	通过此连接发送的数据会离开本机。
+	Uses a key	使用密钥
+	Key	密钥
+	Paste the key here	在此粘贴密钥
+	Leave empty to keep the saved key	留空以保留已保存的密钥
+	Save	保存
+	AI models the Craft apps can use	Craft 应用可用的 AI 模型
+	Other (OpenAI compatible)	其他（兼容 OpenAI）
+	Your own OpenAI API key. Billed by OpenAI.	你自己的 OpenAI API 密钥，由 OpenAI 计费。
+	One key for many hosted models.	一个密钥即可使用多种托管模型。
+	Models running on this computer. Nothing leaves it.	模型在本机运行，数据不会外传。
+	A llama.cpp server on this computer.	本机上的 llama.cpp 服务器。
+	Any server that speaks the OpenAI API.	任何兼容 OpenAI API 的服务器。
+
+# AI tools screen.
+	Add, test and remove provider connections yourself	自行添加、测试和删除服务连接
+	Advanced	高级
+	Also needs the {name} add-on in ComfyUI. Install it with ComfyUI Manager, then come back: {url}	还需要 ComfyUI 的 {name} 插件。请先通过 ComfyUI Manager 安装，然后再回来：{url}
+	Available in {apps}	已在以下应用中提供：{apps}
+	Back	返回
+	Cannot run it here? Use a hosted service	无法在本机运行？可使用云端服务
+	Cannot run on this computer	无法在这台电脑上运行
+	Checking {file}	正在校验 {file}
+	ComfyUI was not found on this computer	在这台电脑上未找到 ComfyUI
+	Download {size}	下载 {size}
+	Downloading {file}: {done} of {total}	正在下载 {file}：{done} / {total}
+	File {step} of {of}	第 {step} 个文件，共 {of} 个
+	I have read the licence and accept it	我已阅读并接受该许可
+	Installed. This tool is ready on this computer.	已安装。此工具已可在这台电脑上使用。
+	Licence	许可
+	Looking at this computer…	正在检查这台电脑…
+	Needs a {size} download	需要下载 {size}
+	Needs an add-on in ComfyUI	需要 ComfyUI 插件
+	Needs {needed} GB of graphics memory; this computer has {have} GB	需要 {needed} GB 显存，这台电脑只有 {have} GB
+	Needs {needed} of free disk space; {free} is free	需要 {needed} 可用磁盘空间，当前仅有 {free}
+	No model for this computer chosen yet	尚未选定可在本机运行的模型
+	Or use a hosted service	或使用云端服务
+	Planned for {apps}	计划用于：{apps}
+	Proposed for {apps}	拟用于：{apps}
+	Read the licence	阅读许可
+	Ready on this computer	已可在这台电脑上使用
+	Runs on this computer through ComfyUI	通过 ComfyUI 在这台电脑上运行
+	Set up	设置
+	Set up {name}	设置：{name}
+	Set a tool up once and every Craft app that supports it can use it. Models that run on this computer never send your pictures anywhere.	只需设置一次，所有支持该工具的 Craft 应用都能使用。在这台电脑上运行的模型不会把你的图片发送到任何地方。
+	The download failed: {e}	下载失败：{e}
+	Total {size}. It goes into your ComfyUI models folder.	共 {size}。文件将保存到你的 ComfyUI 模型文件夹。
+	What AI can do in your Craft apps	AI 能在你的 Craft 应用中做什么
+	Will be downloaded	将下载
+	{file}, {size}, from {host}	{file}，{size}，来自 {host}
+	Select subject	选择主体
+	Pick out the main subject, or anything you describe in words, and turn it into a selection or a mask.	找出主体或你用文字描述的任何内容，并将其变成选区或蒙版。
+	Remove objects	移除对象
+	Mark something and the area fills in to match its surroundings.	标出某个对象，该区域会按周围环境自动填补。
+	Generative fill	生成式填充
+	Select an area, describe what should be there, and get new content that blends in.	选中一个区域，描述其中应有的内容，即可得到自然融合的新内容。
+	Generative expand	生成式扩展
+	Make the canvas bigger and fill the new area to match the picture.	扩大画布，并让新增区域与画面相匹配。
+	Extend sequence	延长序列
+	Add frames to the end of a clip so the shot carries on.	在片段末尾添加帧，让镜头继续下去。
+	Generate images	生成图像
+	Make a picture from a description.	根据描述生成图片。
+	Generate video	生成视频
+	Make a clip from a description.	根据描述生成视频片段。
+	Select Subject and Object Selection	选择主体与对象选择
+	Subject, sky and people masks	主体、天空和人物蒙版
+	Roto and matte	转描与抠像
+	Remove tool	移除工具
+	Generative remove	生成式移除
+	Generative Fill	生成式填充
+	Generative Expand	生成式扩展
+	Generative video	生成式视频
+	Generate Image	生成图像
+	Image generation	图像生成
+	Slide images	幻灯片图像
+	OpenAI image editing	OpenAI 图像编辑
+	Your own OpenAI key, billed by OpenAI. Built and tested offline only.	使用你自己的 OpenAI 密钥，由 OpenAI 计费。目前仅完成离线构建与测试。
+	Your own OpenAI key, billed by OpenAI.	使用你自己的 OpenAI 密钥，由 OpenAI 计费。
+	Black Forest Labs FLUX	Black Forest Labs FLUX
+	Your own BFL key, billed by Black Forest Labs.	使用你自己的 BFL 密钥，由 Black Forest Labs 计费。
+	Google Gemini image (Nano Banana)	Google Gemini 图像（Nano Banana）
+	Express-mode API key only. The key cannot be tested without a paid request.	仅支持快速模式的 API 密钥。不发起付费请求就无法测试该密钥。
+	Staff-enabled API key. Whether a subscription covers it is unverified.	由工作人员开通的 API 密钥。订阅是否涵盖尚未核实。
+	Black Forest Labs	Black Forest Labs
+	Seedance (Volcengine Ark)	Seedance（火山引擎方舟）
+	Text to video with your Ark key.	使用你的 Ark 密钥进行文生视频。
+	Meta SAM License, community copy	Meta SAM 许可，社区副本
+	This file is a community copy of Meta's SAM 3 weights and declares no licence of its own. Meta's release is gated behind the SAM License.	该文件是社区上传的 Meta SAM 3 权重副本，自身未声明许可。Meta 的官方版本需先接受 SAM 许可才能获取。
+
+# Tools tab.
+	A hosted video sample can cost noticeably more than an image	云端视频试跑的费用可能明显高于图片
+	Add the services and models you can use	添加你可以使用的服务和模型
+	Choose a model	选择模型
+	Choose which model does each job	为每项任务选择模型
+	Choose which model does each job. Every Craft app that uses the tool follows your choice. Add the services themselves on the Providers tab.	为每项任务选择模型，所有使用该工具的 Craft 应用都会采用你的选择。服务本身请在“服务商”标签页中添加。
+	Chosen model unavailable	所选模型不可用
+	Connect a hosted service that can:	连接可以完成此任务的云端服务：
+	It counts against your subscription's allowance.	会计入你的订阅额度。
+	It is free.	免费。
+	Model that does this	执行此任务的模型
+	No connected model can do this yet.	目前已连接的模型都无法完成此任务。
+	No model chosen. Apps will ask, or fall back to their own setting.	尚未选择模型。应用会自行询问，或使用各自的设置。
+	No test for this tool yet	此工具暂无测试
+	None	无
+	None of the supported services does this yet.	目前支持的服务都还不能完成此任务。
+	On this computer	在这台电脑上
+	Providers	服务商
+	Ready. Runs on this computer.	已就绪，在这台电脑上运行。
+	Ready. Sends to a hosted service.	已就绪，会发送到云端服务。
+	Runs one small sample to see whether this model really does the job	运行一个小样例，检验这个模型是否真的能完成任务
+	Send the test	发送测试
+	Test it	测试
+	The test failed: {e}	测试失败：{e}
+	This sends a small sample ({items}) to {destination} through {connection}. {cost}	将通过“{connection}”向 {destination} 发送一个小样例（{items}）。{cost}
+	Tools	工具
+	Try again	重试
+	Whether it costs anything is not known.	不清楚是否收费。
+	Works. {summary}, in {secs} s.	可用。{summary}，用时 {secs} 秒。
+	You are billed for it by the service.	由该服务向你计费。
+	{model} (this computer)	{model}（本机）
+
+# Connections hub.
+	In your apps	在你的应用中
+	Model	模型
+	Needs attention	需要处理
+	None connected yet	尚未连接
+	Not available yet	暂不可用
+	Nothing connected	未连接任何模型
+	Planned	计划中
+	Proposed	拟议
+	Proposed means the app's team has not confirmed it yet.	“拟议”表示该应用的团队尚未确认。
+	Providers cannot be managed here.	此处无法管理服务商。
+	Where the models live	模型所在之处
+	{n} connected	已连接 {n} 个
+
+# Connections hub.
+	Add a provider	添加服务商
+	Choose the one you use	选择你在用的服务
+	Connect {name}	连接 {name}
+	Details	详细设置
+	Free. What you send never leaves this computer.	免费。你发送的内容不会离开这台电脑。
+	Hosted services	云端服务
+	Other	其他
+	You use your own key and the service bills you. What you send leaves this computer.	使用你自己的密钥，由服务商向你计费。你发送的内容会离开这台电脑。
+	a provider	服务商
+
+# Set up AI.
+	Add another server	添加其他服务器
+	Automatic (best available)	自动（选用最佳）
+	Choose which model each tool uses	为每个工具选择使用的模型
+	Connect	连接
+	Connected	已连接
+	For every Craft app	适用于所有 Craft 应用
+	In {apps}	用于：{apps}
+	No tool has a connected model yet.	目前没有工具连接了模型。
+	Nothing yet. Set something up below.	暂时没有。请在下方设置。
+	Ollama, LM Studio, ComfyUI or any OpenAI-compatible server	Ollama、LM Studio、ComfyUI 或任何兼容 OpenAI 的服务器
+	Ready	就绪
+	Runs on this computer through ComfyUI. Your pictures never leave it.	通过 ComfyUI 在这台电脑上运行，你的图片不会离开这台电脑。
+	Set up AI	设置 AI
+	Set up one or more of these and the AI tools switch on in every Craft app that has them.	设置其中一项或多项，所有带有这些 AI 工具的 Craft 应用就会自动启用它们。
+	Set up the AI tools for every Craft app	为所有 Craft 应用设置 AI 工具
+	Set up, {size}	设置，{size}
+	Switched on	已启用
+	Switches on	将启用
+	The apps cannot run this model yet. You can download it now, and the tool switches on when they can.	应用暂时还无法运行这个模型。你可以先下载，等应用支持后工具会自动启用。
+	Tools pick the best model that is connected on their own. Change one here, or test that it works.	工具会自动选用已连接的最佳模型。你可以在这里更改，或测试它是否可用。
+	Which model each tool uses	每个工具使用的模型
+	Your other connections	你的其他连接
+
+# Set up AI.
+	Add another server, or choose which model each tool uses	添加其他服务器，或为每个工具选择模型
+	Models	模型
+	Other servers	其他服务器
+	Servers, and which model each tool uses	服务器，以及每个工具使用的模型
+	Files in place	文件已就位
+	Planned for	计划用于
+	Model files installed. The app tool is not connected yet.	模型文件已安装，应用内工具尚未接入。
+# History page.
+	History	历史记录
+	AI jobs run by your Craft apps	你的 Craft 应用运行过的 AI 任务
+	All time	全部时间
+	Today	今天
+	7 days	7 天
+	30 days	30 天
+	All models	所有模型
+	No AI jobs yet. They appear here once a Craft app uses AI.	还没有 AI 任务。Craft 应用使用 AI 后会显示在这里。
+	No jobs match these filters.	没有符合这些筛选条件的任务。
+	Jobs	任务
+	By day	按天
+	By month	按月
+	Only costs the provider reported are counted.	仅统计服务商报告的费用。
+	Some lines in the history could not be read and were left out.	历史记录中有些行无法读取，已被略过。
+	Refresh	刷新
+	Yes, delete it	是，删除
+	Keep it	保留
+	Delete the history for every app?	要删除所有应用的历史记录吗？
+	Clear history	清除历史记录
+	Export CSV	导出 CSV
+	Saves what is showing as a spreadsheet file in your Downloads folder	将当前显示的内容保存为电子表格文件，存放在“下载”文件夹
+	Saved to {path}	已保存到 {path}
+	Every AI job your Craft apps have run, and what it cost	你的 Craft 应用运行过的所有 AI 任务及其费用
+	Failed	失败
+	Reported cost	已报告费用
+	Out of credit	额度用完
+	Rate limited	请求受限
+	Sign-in problem	登录问题
+	Network problem	网络问题
+	Provider error	服务商错误
+	Error	错误
+	When	时间
+	What	内容
+	Result	结果
+	Took	耗时
+	Cost	费用
+	{model} on {connection}	{connection} 上的 {model}
+	Local	本地
+	Remote	远程
+	Cancelled	已取消
+	Not finished	未完成
+	Day	日期
+	Month	月份
+	The files are in place. The apps cannot run this model yet, and the tool switches on when they can.	文件已就位。应用暂时还无法运行这个模型，等应用支持后工具会自动启用。
+	Jobs per day	每日任务数
+	By model	按模型
+	By app	按应用
+	Average	平均

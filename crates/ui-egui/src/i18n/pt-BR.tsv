@@ -385,3 +385,171 @@ filter	Installed	Instalados
 	Theme	Tema
 	Plug-in	Plug-in
 	Resource	Recurso
+
+# Set up AI.
+	A hosted video sample can cost noticeably more than an image	Um teste de vídeo em um serviço hospedado pode custar bem mais do que uma imagem
+	AI models for every Craft app	Modelos de IA para cada app Craft
+	AI models the Craft apps can use	Modelos de IA que os apps Craft podem usar
+	Add a provider	Adicionar um provedor
+	Add another server	Adicionar outro servidor
+	Add another server, or choose which model each tool uses	Adicionar outro servidor ou escolher o modelo de cada ferramenta
+	Add connection	Adicionar conexão
+	Add one and the Craft apps can use it. Keys are kept in your system keychain, never in a plain file.	Adicione uma e os apps Craft poderão usá-la. As chaves ficam no chaveiro do seu sistema, nunca em um arquivo simples.
+	Address	Endereço
+	Advanced	Avançado
+	Also needs the {name} add-on in ComfyUI. Install it with ComfyUI Manager, then come back: {url}	Também precisa do complemento {name} no ComfyUI. Instale-o com o ComfyUI Manager e volte depois: {url}
+	App settings that use it are cleared as well.	As configurações de apps que a usam também são apagadas.
+	App settings using it: {n}	Configurações de apps que a usam: {n}
+	Automatic (best available)	Automático (o melhor disponível)
+	Back	Voltar
+	Cannot run it here? Use a hosted service	Não roda aqui? Use um serviço hospedado
+	Cannot run on this computer	Não pode rodar neste computador
+	Checking {file}	Verificando {file}
+	Choose a model	Escolher um modelo
+	Choose the one you use	Escolha o que você usa
+	Chosen model unavailable	O modelo escolhido não está disponível
+	ComfyUI was not found on this computer	O ComfyUI não foi encontrado neste computador
+	Connect	Conectar
+	Connect a hosted service that can:	Conecte um serviço hospedado que consiga:
+	Connect {name}	Conectar {name}
+	Connected	Conectado
+	Connected. Models found: {n} ({ms} ms)	Conectado. Modelos encontrados: {n} ({ms} ms)
+	Connections	Conexões
+	Couldn't load connections: {e}	Não foi possível carregar as conexões: {e}
+	Data sent to this connection leaves this computer.	Os dados enviados a esta conexão saem deste computador.
+	Data sent to this connection stays on this computer.	Os dados enviados a esta conexão ficam neste computador.
+	Details	Detalhes
+	Download {size}	Baixar {size}
+	Downloading {file}: {done} of {total}	Baixando {file}: {done} de {total}
+	Edit	Editar
+	Edit connection	Editar conexão
+	Enabled	Ativada
+	File {step} of {of}	Arquivo {step} de {of}
+	For every Craft app	Para cada app Craft
+	Free. What you send never leaves this computer.	Grátis. O que você envia nunca sai deste computador.
+	Hosted services	Serviços hospedados
+	I have read the licence and accept it	Li a licença e aceito
+	In {apps}	Em {apps}
+	Installed. This tool is ready on this computer.	Instalado. Esta ferramenta está pronta neste computador.
+	It counts against your subscription's allowance.	Conta no limite da sua assinatura.
+	It is free.	É grátis.
+	Its saved key is deleted too.	A chave salva também é apagada.
+	Key	Chave
+	Key missing	Chave ausente
+	Key saved	Chave salva
+	Key unreadable	Chave ilegível
+	Leave empty to keep the saved key	Deixe em branco para manter a chave salva
+	Leaves this computer	Sai deste computador
+	Licence	Licença
+	Model	Modelo
+	Models	Modelos
+	Models: {n}	Modelos: {n}
+	Needs {needed} GB of graphics memory; this computer has {have} GB	Precisa de {needed} GB de memória gráfica; este computador tem {have} GB
+	Needs {needed} of free disk space; {free} is free	Precisa de {needed} de espaço livre em disco; {free} livres
+	No connected model can do this yet.	Nenhum modelo conectado consegue fazer isso ainda.
+	No connections yet.	Nenhuma conexão ainda.
+	No key needed	Nenhuma chave necessária
+	No model chosen. Apps will ask, or fall back to their own setting.	Nenhum modelo escolhido. Os apps vão perguntar ou usar a própria configuração.
+	No test for this tool yet	Ainda não há teste para esta ferramenta
+	No tool has a connected model yet.	Nenhuma ferramenta tem um modelo conectado ainda.
+	None of the supported services does this yet.	Nenhum dos serviços compatíveis faz isso ainda.
+	Nothing yet. Set something up below.	Nada ainda. Configure algo abaixo.
+	Ollama, LM Studio, ComfyUI or any OpenAI-compatible server	Ollama, LM Studio, ComfyUI ou qualquer servidor compatível com a OpenAI
+	On this computer	Neste computador
+	Other	Outro
+	Other servers	Outros servidores
+	Paste the key here	Cole a chave aqui
+	Read the licence	Ler a licença
+	Ready	Pronto
+	Ready. Runs on this computer.	Pronto. Roda neste computador.
+	Ready. Sends to a hosted service.	Pronto. Envia a um serviço hospedado.
+	Remove {name}?	Remover {name}?
+	Runs on this computer through ComfyUI	Roda neste computador pelo ComfyUI
+	Runs on this computer through ComfyUI. Your pictures never leave it.	Roda neste computador pelo ComfyUI. Suas imagens nunca saem dele.
+	Runs one small sample to see whether this model really does the job	Executa uma pequena amostra para ver se este modelo realmente faz o trabalho
+	Save	Salvar
+	Send the test	Enviar o teste
+	Servers, and which model each tool uses	Servidores e o modelo de cada ferramenta
+	Set up	Configurar
+	Set up AI	Configurar a IA
+	Set up one or more of these and the AI tools switch on in every Craft app that has them.	Configure um ou mais destes e as ferramentas de IA são ativadas em cada app Craft que as tem.
+	Set up the AI tools for every Craft app	Configurar as ferramentas de IA para cada app Craft
+	Set up {name}	Configurar {name}
+	Set up, {size}	Configurar, {size}
+	Switched on	Ativadas
+	Switches on	Ativa
+	Test	Testar
+	Test failed: {e}	O teste falhou: {e}
+	Test it	Testar
+	Testing…	Testando…
+	The apps cannot run this model yet. You can download it now, and the tool switches on when they can.	Os apps ainda não conseguem executar este modelo. Você já pode baixá-lo, e a ferramenta é ativada quando eles conseguirem.
+	The download failed: {e}	O download falhou: {e}
+	The test failed: {e}	O teste falhou: {e}
+	This computer	Este computador
+	This sends a small sample ({items}) to {destination} through {connection}. {cost}	Isto envia uma pequena amostra ({items}) para {destination} por {connection}. {cost}
+	Tools pick the best model that is connected on their own. Change one here, or test that it works.	As ferramentas escolhem sozinhas o melhor modelo conectado. Mude uma aqui ou teste se funciona.
+	Total {size}. It goes into your ComfyUI models folder.	Total de {size}. Vai para a pasta de modelos do seu ComfyUI.
+	Try again	Tentar de novo
+	Turned off	Desativada
+	Uses a key	Usa uma chave
+	Whether it costs anything is not known.	Não se sabe se isso tem custo.
+	Will be downloaded	Será baixado
+	Works. {summary}, in {secs} s.	Funciona. {summary}, em {secs} s.
+	You are billed for it by the service.	O serviço cobra você por isso.
+	You use your own key and the service bills you. What you send leaves this computer.	Você usa a sua própria chave e o serviço cobra você. O que você envia sai deste computador.
+	Your other connections	Suas outras conexões
+	a provider	um provedor
+	{file}, {size}, from {host}	{file}, {size}, de {host}
+	{model} (this computer)	{model} (este computador)
+	Files in place	Arquivos no lugar
+	Planned for	Planejado para
+	Model files installed. The app tool is not connected yet.	Arquivos do modelo instalados. A ferramenta no app ainda não está conectada.
+# History page.
+	History	Histórico
+	AI jobs run by your Craft apps	Tarefas de IA executadas pelos seus apps Craft
+	All time	Todo o período
+	Today	Hoje
+	7 days	7 dias
+	30 days	30 dias
+	All models	Todos os modelos
+	No AI jobs yet. They appear here once a Craft app uses AI.	Ainda não há tarefas de IA. Elas aparecem aqui quando um app Craft usar IA.
+	No jobs match these filters.	Nenhuma tarefa corresponde a esses filtros.
+	Jobs	Tarefas
+	By day	Por dia
+	By month	Por mês
+	Only costs the provider reported are counted.	Só são contados os custos informados pelo provedor.
+	Some lines in the history could not be read and were left out.	Algumas linhas do histórico não puderam ser lidas e foram ignoradas.
+	Refresh	Atualizar
+	Yes, delete it	Sim, excluir
+	Keep it	Manter
+	Delete the history for every app?	Excluir o histórico de todos os apps?
+	Clear history	Limpar histórico
+	Export CSV	Exportar CSV
+	Saves what is showing as a spreadsheet file in your Downloads folder	Salva o que está sendo exibido como planilha na sua pasta Downloads
+	Saved to {path}	Salvo em {path}
+	Every AI job your Craft apps have run, and what it cost	Todas as tarefas de IA dos seus apps Craft e quanto custaram
+	Failed	Falhou
+	Reported cost	Custo informado
+	Out of credit	Sem crédito
+	Rate limited	Limite de requisições
+	Sign-in problem	Problema de login
+	Network problem	Problema de rede
+	Provider error	Erro do provedor
+	Error	Erro
+	When	Quando
+	What	O quê
+	Result	Resultado
+	Took	Duração
+	Cost	Custo
+	{model} on {connection}	{model} em {connection}
+	Local	Local
+	Remote	Remoto
+	Cancelled	Cancelado
+	Not finished	Não concluído
+	Day	Dia
+	Month	Mês
+	The files are in place. The apps cannot run this model yet, and the tool switches on when they can.	Os arquivos estão no lugar. Os apps ainda não conseguem executar este modelo, e a ferramenta é ativada quando eles conseguirem.
+	Jobs per day	Tarefas por dia
+	By model	Por modelo
+	By app	Por app
+	Average	Média
