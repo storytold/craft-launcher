@@ -326,6 +326,10 @@ filter	Installed	Instaladas
 	ArtCraft on GitHub	ArtCraft en GitHub
 	Join the ArtCraft Discord	Únete al Discord de ArtCraft
 @plural	ArtCraft Launcher · {n} update available|ArtCraft Launcher · {n} updates available	ArtCraft Launcher · {n} actualización disponible|ArtCraft Launcher · {n} actualizaciones disponibles
+	Install as Portable (.zip)	Instalar como portátil (.zip)
+	Install as Windows Installer (.msi)	Instalar como instalador de Windows (.msi)
+	Switch to Portable (.zip)	Cambiar a portátil (.zip)
+	Switch to Windows Installer (.msi)	Cambiar a instalador de Windows (.msi)
 	Install folder	Carpeta de instalación
 	Default install folder	Carpeta de instalación predeterminada
 	System default	Predeterminada del sistema

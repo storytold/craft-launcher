@@ -348,6 +348,10 @@ filter	Installed	インストール済み
 	ArtCraft on GitHub	GitHub の ArtCraft
 	Join the ArtCraft Discord	ArtCraft Discord に参加
 @plural	ArtCraft Launcher · {n} update available|ArtCraft Launcher · {n} updates available	ArtCraft Launcher · {n} 件の更新があります
+	Install as Portable (.zip)	ポータブル版 (.zip) としてインストール
+	Install as Windows Installer (.msi)	Windows インストーラー (.msi) としてインストール
+	Switch to Portable (.zip)	ポータブル版 (.zip) に切り替え
+	Switch to Windows Installer (.msi)	Windows インストーラー (.msi) に切り替え
 	Install folder	インストール先フォルダー
 	Default install folder	既定のインストール先フォルダー
 	System default	システムの既定

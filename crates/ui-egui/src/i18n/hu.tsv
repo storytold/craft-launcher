@@ -346,6 +346,10 @@ filter	Installed	Telepítve
 	ArtCraft on GitHub	ArtCraft a GitHubon
 	Join the ArtCraft Discord	Csatlakozás az ArtCraft Discord-közösségéhez
 @plural	ArtCraft Launcher · {n} update available|ArtCraft Launcher · {n} updates available	ArtCraft Launcher · {n} frissítés elérhető|ArtCraft Launcher · {n} frissítés elérhető
+	Install as Portable (.zip)	Telepítés hordozható verzióként (.zip)
+	Install as Windows Installer (.msi)	Telepítés Windows-telepítővel (.msi)
+	Switch to Portable (.zip)	Váltás hordozható verzióra (.zip)
+	Switch to Windows Installer (.msi)	Váltás Windows-telepítőre (.msi)
 	Install folder	Telepítési mappa
 	Default install folder	Alapértelmezett telepítési mappa
 	System default	Rendszer alapértelmezése

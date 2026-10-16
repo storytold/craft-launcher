@@ -3,7 +3,8 @@
 //! Apps go where their platform keeps applications, installed the platform's own way:
 //!
 //! - macOS: the signed `.app` from the release DMG into `/Applications`.
-//! - Windows: the release MSI (Windows Installer) into `C:\Program Files\<App>`.
+//! - Windows: the release MSI (Windows Installer) into `C:\Program Files\<App>`, or the release
+//!   portable `.zip` unpacked into `<data>/apps/<app>` (preferred when the launcher itself is portable).
 //! - Linux: the distro's own package (`.deb` through apt on the Debian family, `.rpm` through
 //!   dnf/zypper/rpm on the Fedora, Red Hat and SUSE families, read from `os-release`) with the
 //!   system's polkit password prompt; otherwise a Flatpak, otherwise an AppImage in
@@ -95,9 +96,22 @@ pub fn install_at(
                 .map(|path| Some(record(&version, kind, path, Vec::new(), false)))
         }
         #[cfg(windows)]
-        PackageKind::Msi => windows::run_msi(&file, destination.as_deref(), job.stop, &mut *job.phase).map(|_| None),
+        PackageKind::Msi => {
+            let r = windows::run_msi(&file, destination.as_deref(), job.stop, &mut *job.phase).map(|_| None);
+            if r.is_ok() {
+                if let Some(r) = previous {
+                    let _ = crate::portable::remove(app, r);
+                } else if let Some(inst) = existing.filter(|i| i.source == InstallSource::Launcher) {
+                    let _ = std::fs::remove_dir_all(Path::new(&inst.location).parent().unwrap_or(Path::new(&inst.location)));
+                }
+            }
+            r
+        }
         #[cfg(windows)]
         PackageKind::PortableZip => {
+            if existing.is_some_and(|i| i.source == InstallSource::Msi) {
+                windows::uninstall_msi(app, job.stop, &mut *job.phase)?;
+            }
             crate::portable::install(app, &file, &version, previous, job.paths, destination.as_deref(), job.replace, &mut |record| {
                 if release.version.is_some() && crate::detect::windows::executable_version(&record.path).as_ref() != release.version.as_ref() {
                     return Err("The portable executable does not match the selected version. The installation was rolled back.".into());
@@ -245,10 +259,40 @@ fn record(version: &str, kind: PackageKind, path: PathBuf, files: Vec<PathBuf>, 
 /// The package format to install `app` with: the format of the copy that's there (an update
 /// stays a `.deb` update), else the user's choice, else the best this system supports.
 pub fn choose_kinds(existing: Option<&Installed>, record: Option<&Record>, preferred: &[PackageKind]) -> Vec<PackageKind> {
+    choose_kinds_for(existing, record, preferred, None)
+}
+
+/// Like [`choose_kinds`], with an optional per-app format override `app_override` (used when the
+/// user explicitly chooses a format for an app or switches an installed app between `.msi` and
+/// portable `.zip`).
+pub fn choose_kinds_for(
+    existing: Option<&Installed>,
+    record: Option<&Record>,
+    preferred: &[PackageKind],
+    app_override: Option<PackageKind>,
+) -> Vec<PackageKind> {
     let available = available_kinds();
+    if let Some(k) = app_override.filter(|k| available.contains(k)) {
+        let mut kinds = vec![k];
+        for a in available {
+            if !kinds.contains(&a) {
+                kinds.push(a);
+            }
+        }
+        return kinds;
+    }
     if let Some(inst) = existing {
         let kind = match inst.source {
-            InstallSource::Launcher => record.map(|r| r.kind),
+            InstallSource::Launcher => record.map(|r| r.kind).or({
+                #[cfg(windows)]
+                {
+                    Some(PackageKind::PortableZip)
+                }
+                #[cfg(not(windows))]
+                {
+                    None
+                }
+            }),
             InstallSource::MacApp => Some(PackageKind::Dmg),
             InstallSource::Msi => Some(PackageKind::Msi),
             InstallSource::Deb => Some(PackageKind::Deb),
@@ -372,6 +416,8 @@ pub fn uninstall(
         }
         #[cfg(windows)]
         InstallSource::Msi => windows::uninstall_msi(app, stop, phase),
+        #[cfg(windows)]
+        InstallSource::Launcher => portable::remove_portable(&path, record, paths),
         #[cfg(target_os = "macos")]
         InstallSource::MacApp | InstallSource::Launcher => macos::move_to_trash(&path),
         #[cfg(target_os = "linux")]
@@ -1210,6 +1256,25 @@ pub mod macos {
     }
 }
 
+/// Every file under `root`, relative to it.
+#[allow(dead_code)]
+fn files(root: &Path) -> Vec<PathBuf> {
+    let mut out = Vec::new();
+    let mut stack = vec![root.to_path_buf()];
+    while let Some(dir) = stack.pop() {
+        for entry in std::fs::read_dir(&dir).into_iter().flatten().flatten() {
+            let p = entry.path();
+            if p.is_dir() {
+                stack.push(p);
+            } else if let Ok(rel) = p.strip_prefix(root) {
+                out.push(rel.to_path_buf());
+            }
+        }
+    }
+    out.sort();
+    out
+}
+
 /// FreeBSD: the release tarball holds a `/usr/local`-style tree (`bin/<app>`,
 /// `share/applications`, icons). Older releases had the files flat in one folder; those are laid
 /// out the same way first.
@@ -1252,24 +1317,6 @@ mod tree {
         }
         Ok(tree)
     }
-
-    /// Every file under `root`, relative to it.
-    pub fn files(root: &Path) -> Vec<PathBuf> {
-        let mut out = Vec::new();
-        let mut stack = vec![root.to_path_buf()];
-        while let Some(dir) = stack.pop() {
-            for entry in std::fs::read_dir(&dir).into_iter().flatten().flatten() {
-                let p = entry.path();
-                if p.is_dir() {
-                    stack.push(p);
-                } else if let Ok(rel) = p.strip_prefix(root) {
-                    out.push(rel.to_path_buf());
-                }
-            }
-        }
-        out.sort();
-        out
-    }
 }
 
 #[cfg(target_os = "freebsd")]
@@ -1290,7 +1337,7 @@ mod freebsd {
 
     fn install_from(app: &CraftApp, file: &Path, staging: &Path) -> Result<(PathBuf, Vec<PathBuf>, bool), String> {
         let tree = tree::unpack(app, file, staging)?;
-        let rel = tree::files(&tree);
+        let rel = files(&tree);
         let mut source = tree.into_os_string();
         source.push("/.");
         if which("pkexec").is_some() {
@@ -1347,6 +1394,16 @@ pub mod windows {
 
     use super::*;
 
+    /// What this Windows machine can install, ordered with the best default first:
+    /// a portable launcher prefers `Portable (.zip)`, while an installed launcher prefers `Installer (.msi)`.
+    pub fn available_kinds() -> Vec<PackageKind> {
+        order_windows_kinds(crate::paths::portable_root().is_some())
+    }
+
+    pub(crate) fn order_windows_kinds(is_portable: bool) -> Vec<PackageKind> {
+        if is_portable { vec![PackageKind::PortableZip, PackageKind::Msi] } else { vec![PackageKind::Msi, PackageKind::PortableZip] }
+    }
+
     fn msiexec() -> PathBuf {
         std::env::var_os("SystemRoot").map_or_else(|| PathBuf::from(r"C:\Windows"), PathBuf::from).join(r"System32\msiexec.exe")
     }
@@ -1397,6 +1454,389 @@ pub mod windows {
             }
             Ok(())
         })
+    }
+}
+
+/// Unpacking and managing portable `.zip` app archives on Windows.
+#[allow(dead_code)]
+pub(crate) mod portable {
+    use std::collections::HashSet;
+    use std::io::Read;
+    use std::path::{Component, Path, PathBuf};
+
+    use super::*;
+
+    /// Maximum number of entries allowed in a portable `.zip` archive.
+    const MAX_ZIP_ENTRIES: usize = 50_000;
+    /// Maximum total uncompressed size allowed when unpacking a portable `.zip` (8 GiB).
+    const MAX_UNPACKED_BYTES: u64 = 8 * 1024 * 1024 * 1024;
+
+    /// Finds the app executable (`<id>.exe` or `<id>`) inside an unpacked portable folder.
+    fn find_portable_binary(root: &Path, app: &CraftApp) -> Option<PathBuf> {
+        let exe = format!("{}.exe", app.id);
+        [root.join("bin").join(&exe), root.join(&exe), root.join("bin").join(app.id), root.join(app.id)].into_iter().find(|p| p.is_file())
+    }
+
+    /// Unpacks `zip_path` into `<data>/apps/<app>` (or the existing portable install folder),
+    /// preserving any user data files inside that folder that were not part of the previous
+    /// release's recorded files. Returns the installed executable path and the list of installed
+    /// files so updates and uninstalls only remove what the launcher put there.
+    pub fn install_portable(
+        app: &CraftApp,
+        zip_path: &Path,
+        existing: Option<&Installed>,
+        previous: Option<&Record>,
+        paths: &Paths,
+    ) -> Result<(PathBuf, Vec<PathBuf>), String> {
+        let staging = paths.cache.join(format!("{}.new", app.id));
+        let result = install_portable_from(app, zip_path, existing, previous, paths, &staging);
+        let _ = std::fs::remove_dir_all(&staging);
+        result
+    }
+
+    fn install_portable_from(
+        app: &CraftApp,
+        zip_path: &Path,
+        existing: Option<&Installed>,
+        previous: Option<&Record>,
+        paths: &Paths,
+        staging: &Path,
+    ) -> Result<(PathBuf, Vec<PathBuf>), String> {
+        let _ = std::fs::remove_dir_all(staging);
+        std::fs::create_dir_all(staging).map_err(|e| format!("couldn't create {} ({e})", staging.display()))?;
+        unpack_zip(zip_path, staging)?;
+        let top = single_top_folder(staging)?;
+        if find_portable_binary(&top, app).is_none() {
+            return Err("the download doesn't contain the app".into());
+        }
+        // Ensure `portable.txt` is present so the app stores its own data beside its binary.
+        let marker = top.join("portable.txt");
+        if !marker.exists() {
+            let _ = std::fs::write(&marker, b"");
+        }
+        let rel_files = files(&top);
+
+        let dest_dir = existing
+            .filter(|i| i.source == InstallSource::Launcher)
+            .and_then(|i| Path::new(&i.location).parent().map(Path::to_path_buf))
+            .filter(|dir| dir.starts_with(paths.apps()) || previous.is_some_and(|r| r.path.parent() == Some(dir.as_path())))
+            .unwrap_or_else(|| paths.apps().join(app.id));
+
+        if let Some(parent) = dest_dir.parent() {
+            std::fs::create_dir_all(parent).map_err(|e| format!("couldn't create {} ({e})", parent.display()))?;
+        }
+
+        // Swap the unpacked directory into place while preserving user data from the old copy.
+        let old = dest_dir.with_extension("old");
+        if old.exists() {
+            let _ = if old.is_dir() { std::fs::remove_dir_all(&old) } else { std::fs::remove_file(&old) };
+        }
+        let had_old = dest_dir.exists();
+        if had_old {
+            std::fs::rename(&dest_dir, &old).map_err(|e| format!("couldn't move the old copy aside ({e})"))?;
+        }
+        if let Err(e) = std::fs::rename(&top, &dest_dir) {
+            if had_old {
+                let _ = std::fs::rename(&old, &dest_dir);
+            }
+            return Err(format!("couldn't put the new copy in place ({e})"));
+        }
+        if had_old {
+            carry_over_untracked(&old, &dest_dir, &rel_files, previous);
+            let _ = std::fs::remove_dir_all(&old);
+        }
+
+        let bin = find_portable_binary(&dest_dir, app).ok_or("the installed app is incomplete")?;
+        let installed_files: Vec<PathBuf> = rel_files.into_iter().map(|r| dest_dir.join(r)).collect();
+        Ok((bin, installed_files))
+    }
+
+    /// Moves files from `old_dir` into `new_dir` that were not part of the previous release's
+    /// recorded file list (such as `<App>Data/` or user projects saved beside the binary) and are
+    /// not overwritten by `new_rel_files`.
+    fn carry_over_untracked(old_dir: &Path, new_dir: &Path, new_rel_files: &[PathBuf], previous: Option<&Record>) {
+        let tracked: HashSet<PathBuf> = previous
+            .map(|r| {
+                r.files.iter().filter_map(|p| p.strip_prefix(old_dir).or_else(|_| p.strip_prefix(new_dir)).ok().map(Path::to_path_buf)).collect()
+            })
+            .unwrap_or_default();
+        let new_set: HashSet<&Path> = new_rel_files.iter().map(PathBuf::as_path).collect();
+        for rel in files(old_dir) {
+            if tracked.contains(&rel) || new_set.contains(rel.as_path()) {
+                continue;
+            }
+            // If there was no previous record, avoid carrying over old executables or DLLs.
+            if previous.is_none()
+                && rel.extension().and_then(|e| e.to_str()).is_some_and(|ext| ext.eq_ignore_ascii_case("exe") || ext.eq_ignore_ascii_case("dll"))
+            {
+                continue;
+            }
+            let from = old_dir.join(&rel);
+            let to = new_dir.join(&rel);
+            if to.exists() {
+                continue;
+            }
+            if let Some(parent) = to.parent() {
+                let _ = std::fs::create_dir_all(parent);
+            }
+            let _ = std::fs::rename(&from, &to);
+        }
+    }
+
+    /// Removes a portable app installed by the launcher. Deletes only the files recorded in
+    /// `record.files` and then prunes empty directories, leaving any user data in the folder intact.
+    pub fn remove_portable(bin_path: &Path, record: Option<&Record>, paths: &Paths) -> Result<(), String> {
+        let Some(rec) = record.filter(|r| !r.files.is_empty()) else {
+            return Err("the launcher has no record of these files".into());
+        };
+        let dir = bin_path.parent().ok_or("not a portable install")?;
+        let ours = dir.starts_with(paths.apps()) || rec.path == bin_path;
+        if !ours {
+            return Err(format!("{} wasn't installed by the launcher. Remove it the way it was added.", bin_path.display()));
+        }
+        // Check that no file in `dir` is held open by moving the folder aside and back before
+        // deleting individual files (avoiding a half-deleted install on Windows when a DLL is locked).
+        if dir.is_dir() {
+            let probe = dir.with_extension("removing");
+            if probe.exists() {
+                let _ = if probe.is_dir() { std::fs::remove_dir_all(&probe) } else { std::fs::remove_file(&probe) };
+            }
+            std::fs::rename(dir, &probe).map_err(|e| format!("couldn't remove {} ({e})", dir.display()))?;
+            std::fs::rename(&probe, dir).map_err(|e| format!("couldn't restore {} ({e})", dir.display()))?;
+        }
+        for f in &rec.files {
+            if f.starts_with(dir) && f.is_file() {
+                std::fs::remove_file(f).map_err(|e| format!("couldn't remove {} ({e})", f.display()))?;
+            }
+        }
+        remove_empty_dirs(dir);
+        Ok(())
+    }
+
+    /// Removes empty directories inside `root` bottom-up, and `root` itself if empty.
+    fn remove_empty_dirs(root: &Path) {
+        if !root.is_dir() {
+            return;
+        }
+        let mut dirs = vec![root.to_path_buf()];
+        let mut i = 0;
+        while i < dirs.len() {
+            let current = dirs[i].clone();
+            for entry in std::fs::read_dir(&current).into_iter().flatten().flatten() {
+                let p = entry.path();
+                if p.is_dir() {
+                    dirs.push(p);
+                }
+            }
+            i += 1;
+        }
+        for d in dirs.into_iter().rev() {
+            let _ = std::fs::remove_dir(&d);
+        }
+    }
+
+    fn read_u16(buf: &[u8], offset: usize) -> Option<u16> {
+        let bytes: [u8; 2] = buf.get(offset..offset + 2)?.try_into().ok()?;
+        Some(u16::from_le_bytes(bytes))
+    }
+
+    fn read_u32(buf: &[u8], offset: usize) -> Option<u32> {
+        let bytes: [u8; 4] = buf.get(offset..offset + 4)?.try_into().ok()?;
+        Some(u32::from_le_bytes(bytes))
+    }
+
+    /// Finds the End of Central Directory (EOCD) record at the end of a `.zip` buffer.
+    fn find_eocd(data: &[u8]) -> Option<usize> {
+        if data.len() < 22 {
+            return None;
+        }
+        let min_pos = data.len().saturating_sub(22 + 65_535);
+        for pos in (min_pos..=data.len() - 22).rev() {
+            if read_u32(data, pos) == Some(0x0605_4b50) {
+                let comment_len = usize::from(read_u16(data, pos + 20)?);
+                if pos + 22 + comment_len == data.len() {
+                    return Some(pos);
+                }
+            }
+        }
+        None
+    }
+
+    /// Whether the Central Directory `external_attr` marks a Unix symlink (`S_IFLNK`) or Windows
+    /// reparse point (`FILE_ATTRIBUTE_REPARSE_POINT`).
+    fn is_symlink_attr(external_attr: u32) -> bool {
+        let unix_mode = (external_attr >> 16) & 0o170000;
+        let win_attrs = external_attr & 0xFFFF;
+        unix_mode == 0o120000 || (win_attrs & 0x0400) != 0
+    }
+
+    /// Validates an archive entry name and converts it into a clean relative path.
+    /// Rejects absolute paths, drive prefixes, `..` components, backslashes, and control chars.
+    fn safe_rel_path(raw: &str) -> Result<PathBuf, String> {
+        if raw.is_empty() || raw.contains('\\') || raw.chars().any(|c| c.is_control()) {
+            return Err(format!("unsafe path in archive: {raw}"));
+        }
+        let path = Path::new(raw);
+        let mut clean = PathBuf::new();
+        for comp in path.components() {
+            match comp {
+                Component::Normal(part) => {
+                    let s = part.to_str().ok_or_else(|| format!("invalid path component in archive: {raw}"))?;
+                    if s.is_empty() || s.contains(':') {
+                        return Err(format!("unsafe path component in archive: {raw}"));
+                    }
+                    clean.push(part);
+                }
+                Component::CurDir => {}
+                Component::ParentDir | Component::RootDir | Component::Prefix(_) => {
+                    return Err(format!("unsafe path in archive: {raw}"));
+                }
+            }
+        }
+        if clean.as_os_str().is_empty() {
+            return Err("empty path in archive".into());
+        }
+        Ok(clean)
+    }
+
+    /// Unpacks a standard `.zip` archive (Store or Deflate) into `dest`, checking CRC-32,
+    /// entry/size caps, and rejecting path traversal or symlink entries.
+    pub fn unpack_zip(zip_path: &Path, dest: &Path) -> Result<(), String> {
+        let data = std::fs::read(zip_path).map_err(|e| format!("couldn't read {} ({e})", zip_path.display()))?;
+        let eocd = find_eocd(&data).ok_or("the download isn't a valid .zip archive")?;
+        let total_entries = usize::from(read_u16(&data, eocd + 10).ok_or("corrupt .zip header")?);
+        if total_entries > MAX_ZIP_ENTRIES {
+            return Err("the archive has too many files".into());
+        }
+        let cd_size = read_u32(&data, eocd + 12).ok_or("corrupt .zip header")? as usize;
+        let cd_offset = read_u32(&data, eocd + 16).ok_or("corrupt .zip header")? as usize;
+        if cd_size == 0xFFFF_FFFF || cd_offset == 0xFFFF_FFFF || total_entries == 0xFFFF {
+            return Err("ZIP64 archives aren't supported".into());
+        }
+        let cd_end = cd_offset.checked_add(cd_size).ok_or("corrupt .zip central directory")?;
+        if cd_end > eocd {
+            return Err("corrupt .zip central directory".into());
+        }
+
+        let mut pos = cd_offset;
+        let mut total_unpacked: u64 = 0;
+        let mut seen_paths: HashSet<String> = HashSet::with_capacity(total_entries);
+
+        for _ in 0..total_entries {
+            if pos + 46 > cd_end || read_u32(&data, pos) != Some(0x0201_4b50) {
+                return Err("corrupt .zip central directory entry".into());
+            }
+            let flags = read_u16(&data, pos + 8).ok_or("corrupt .zip entry")?;
+            if (flags & 1) != 0 {
+                return Err("encrypted .zip archives aren't supported".into());
+            }
+            let method = read_u16(&data, pos + 10).ok_or("corrupt .zip entry")?;
+            let expected_crc = read_u32(&data, pos + 16).ok_or("corrupt .zip entry")?;
+            let comp_size = read_u32(&data, pos + 20).ok_or("corrupt .zip entry")? as usize;
+            let uncomp_size = u64::from(read_u32(&data, pos + 24).ok_or("corrupt .zip entry")?);
+            let name_len = usize::from(read_u16(&data, pos + 28).ok_or("corrupt .zip entry")?);
+            let extra_len = usize::from(read_u16(&data, pos + 30).ok_or("corrupt .zip entry")?);
+            let comment_len = usize::from(read_u16(&data, pos + 32).ok_or("corrupt .zip entry")?);
+            let external_attr = read_u32(&data, pos + 38).ok_or("corrupt .zip entry")?;
+            let local_offset = read_u32(&data, pos + 42).ok_or("corrupt .zip entry")? as usize;
+
+            let name_start = pos + 46;
+            let name_end = name_start.checked_add(name_len).ok_or("corrupt .zip entry")?;
+            let next_pos = name_end.checked_add(extra_len).and_then(|n| n.checked_add(comment_len)).ok_or("corrupt .zip entry")?;
+            if next_pos > cd_end {
+                return Err("corrupt .zip entry".into());
+            }
+            pos = next_pos;
+
+            if is_symlink_attr(external_attr) {
+                return Err("symlinks in .zip archives aren't allowed".into());
+            }
+
+            let raw_name = std::str::from_utf8(data.get(name_start..name_end).ok_or("corrupt .zip entry")?)
+                .map_err(|_| "archive contains non-UTF-8 file names".to_string())?;
+            let is_dir = raw_name.ends_with('/');
+            let trimmed = raw_name.trim_end_matches('/');
+            if trimmed.is_empty() {
+                continue;
+            }
+            let rel = safe_rel_path(trimmed)?;
+            let target = dest.join(&rel);
+            if is_dir {
+                std::fs::create_dir_all(&target).map_err(|e| format!("couldn't create {} ({e})", target.display()))?;
+                continue;
+            }
+
+            let key = rel.to_string_lossy().to_ascii_lowercase();
+            if !seen_paths.insert(key) {
+                return Err(format!("duplicate file in archive: {}", rel.display()));
+            }
+
+            if local_offset + 30 > data.len() || read_u32(&data, local_offset) != Some(0x0403_4b50) {
+                return Err("corrupt .zip local file header".into());
+            }
+            let local_name_len = usize::from(read_u16(&data, local_offset + 26).ok_or("corrupt .zip local header")?);
+            let local_extra_len = usize::from(read_u16(&data, local_offset + 28).ok_or("corrupt .zip local header")?);
+            let data_start = local_offset
+                .checked_add(30)
+                .and_then(|n| n.checked_add(local_name_len))
+                .and_then(|n| n.checked_add(local_extra_len))
+                .ok_or("corrupt .zip local header")?;
+            let data_end = data_start.checked_add(comp_size).ok_or("corrupt .zip local header")?;
+            let payload = data.get(data_start..data_end).ok_or("corrupt .zip file data")?;
+
+            total_unpacked = total_unpacked.checked_add(uncomp_size).ok_or("archive is too large")?;
+            if total_unpacked > MAX_UNPACKED_BYTES {
+                return Err("archive exceeds the maximum unpacked size".into());
+            }
+
+            if let Some(parent) = target.parent() {
+                std::fs::create_dir_all(parent).map_err(|e| format!("couldn't create {} ({e})", parent.display()))?;
+            }
+
+            let max_entry_read = uncomp_size.saturating_add(1);
+            let mut crc = flate2::Crc::new();
+            let mut out = std::fs::File::create(&target).map_err(|e| format!("couldn't write {} ({e})", target.display()))?;
+            match method {
+                0 => {
+                    if payload.len() as u64 != uncomp_size {
+                        return Err(format!("size mismatch for {}", rel.display()));
+                    }
+                    crc.update(payload);
+                    std::io::Write::write_all(&mut out, payload).map_err(|e| format!("couldn't write {} ({e})", target.display()))?;
+                }
+                8 => {
+                    let decoder = flate2::read::DeflateDecoder::new(payload);
+                    extract_reader(decoder.take(max_entry_read), &mut out, &mut crc, uncomp_size, &rel)?;
+                }
+                other => return Err(format!("unsupported .zip compression method {other}")),
+            }
+            if u64::from(crc.amount()) != uncomp_size {
+                return Err(format!("size mismatch while unpacking {}", rel.display()));
+            }
+            if crc.sum() != expected_crc {
+                return Err(format!("checksum mismatch while unpacking {}", rel.display()));
+            }
+        }
+        Ok(())
+    }
+
+    fn extract_reader<R: Read>(mut reader: R, out: &mut std::fs::File, crc: &mut flate2::Crc, expected_size: u64, rel: &Path) -> Result<(), String> {
+        let mut buf = [0u8; 64 * 1024];
+        let mut written: u64 = 0;
+        loop {
+            let n = reader.read(&mut buf).map_err(|e| format!("couldn't unpack {} ({e})", rel.display()))?;
+            if n == 0 {
+                break;
+            }
+            written = written.saturating_add(n as u64);
+            if written > expected_size {
+                return Err(format!("size mismatch while unpacking {}", rel.display()));
+            }
+            let chunk = &buf[..n];
+            crc.update(chunk);
+            std::io::Write::write_all(out, chunk).map_err(|e| format!("couldn't write {} ({e})", rel.display()))?;
+        }
+        Ok(())
     }
 }
 
@@ -1756,7 +2196,7 @@ mod tests {
         );
         for file in [tree_style, flat_style] {
             let root = tree::unpack(app, &file, &dir.path().join("staging")).unwrap();
-            let files = tree::files(&root);
+            let files = files(&root);
             assert!(files.contains(&PathBuf::from("bin/wordcraft")), "{files:?}");
             assert!(files.contains(&PathBuf::from("share/applications/ai.storyteller.wordcraft.desktop")), "{files:?}");
             assert!(!files.iter().any(|f| f.ends_with("README.md")), "{files:?}");
@@ -2000,10 +2440,177 @@ mod tests {
         #[cfg(target_os = "macos")]
         assert_eq!(choose_kinds(Some(&inst(InstallSource::MacApp)), None, &[]), [PackageKind::Dmg]);
         #[cfg(windows)]
-        assert_eq!(choose_kinds(Some(&inst(InstallSource::Msi)), None, &[]), [PackageKind::Msi]);
+        {
+            assert_eq!(choose_kinds(Some(&inst(InstallSource::Msi)), None, &[]), [PackageKind::Msi]);
+            assert_eq!(choose_kinds(Some(&inst(InstallSource::Launcher)), None, &[]), [PackageKind::PortableZip]);
+        }
         #[cfg(target_os = "linux")]
         assert_eq!(choose_kinds(Some(&inst(InstallSource::AppImage)), None, &[]), [PackageKind::AppImage]);
         let _ = inst;
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn windows_package_kinds_order_matches_launcher_format() {
+        assert_eq!(windows::order_windows_kinds(false), [PackageKind::Msi, PackageKind::PortableZip]);
+        assert_eq!(windows::order_windows_kinds(true), [PackageKind::PortableZip, PackageKind::Msi]);
+    }
+
+    /// Helper to build a minimal `.zip` archive in tests.
+    fn make_zip(path: &Path, entries: &[(&str, &[u8], u16, u32)]) {
+        use std::io::Write;
+        let mut buf = Vec::new();
+        let mut cd = Vec::new();
+        for &(name, content, method, external_attr) in entries {
+            let local_offset = buf.len() as u32;
+            let mut crc = flate2::Crc::new();
+            crc.update(content);
+            let crc_sum = crc.sum();
+            let payload: Vec<u8> = if method == 8 {
+                let mut enc = flate2::write::DeflateEncoder::new(Vec::new(), flate2::Compression::fast());
+                enc.write_all(content).unwrap();
+                enc.finish().unwrap()
+            } else {
+                content.to_vec()
+            };
+            let comp_size = payload.len() as u32;
+            let uncomp_size = content.len() as u32;
+            let name_bytes = name.as_bytes();
+
+            // Local file header
+            buf.extend_from_slice(&0x0403_4b50u32.to_le_bytes());
+            buf.extend_from_slice(&20u16.to_le_bytes());
+            buf.extend_from_slice(&0u16.to_le_bytes());
+            buf.extend_from_slice(&method.to_le_bytes());
+            buf.extend_from_slice(&0u16.to_le_bytes());
+            buf.extend_from_slice(&0u16.to_le_bytes());
+            buf.extend_from_slice(&crc_sum.to_le_bytes());
+            buf.extend_from_slice(&comp_size.to_le_bytes());
+            buf.extend_from_slice(&uncomp_size.to_le_bytes());
+            buf.extend_from_slice(&(name_bytes.len() as u16).to_le_bytes());
+            buf.extend_from_slice(&0u16.to_le_bytes());
+            buf.extend_from_slice(name_bytes);
+            buf.extend_from_slice(&payload);
+
+            // Central directory header
+            cd.extend_from_slice(&0x0201_4b50u32.to_le_bytes());
+            cd.extend_from_slice(&20u16.to_le_bytes());
+            cd.extend_from_slice(&20u16.to_le_bytes());
+            cd.extend_from_slice(&0u16.to_le_bytes());
+            cd.extend_from_slice(&method.to_le_bytes());
+            cd.extend_from_slice(&0u16.to_le_bytes());
+            cd.extend_from_slice(&0u16.to_le_bytes());
+            cd.extend_from_slice(&crc_sum.to_le_bytes());
+            cd.extend_from_slice(&comp_size.to_le_bytes());
+            cd.extend_from_slice(&uncomp_size.to_le_bytes());
+            cd.extend_from_slice(&(name_bytes.len() as u16).to_le_bytes());
+            cd.extend_from_slice(&0u16.to_le_bytes());
+            cd.extend_from_slice(&0u16.to_le_bytes());
+            cd.extend_from_slice(&0u16.to_le_bytes());
+            cd.extend_from_slice(&0u16.to_le_bytes());
+            cd.extend_from_slice(&external_attr.to_le_bytes());
+            cd.extend_from_slice(&local_offset.to_le_bytes());
+            cd.extend_from_slice(name_bytes);
+        }
+        let cd_offset = buf.len() as u32;
+        let cd_size = cd.len() as u32;
+        buf.extend_from_slice(&cd);
+        // End of central directory
+        buf.extend_from_slice(&0x0605_4b50u32.to_le_bytes());
+        buf.extend_from_slice(&0u16.to_le_bytes());
+        buf.extend_from_slice(&0u16.to_le_bytes());
+        buf.extend_from_slice(&(entries.len() as u16).to_le_bytes());
+        buf.extend_from_slice(&(entries.len() as u16).to_le_bytes());
+        buf.extend_from_slice(&cd_size.to_le_bytes());
+        buf.extend_from_slice(&cd_offset.to_le_bytes());
+        buf.extend_from_slice(&0u16.to_le_bytes());
+        std::fs::write(path, buf).unwrap();
+    }
+
+    #[test]
+    fn portable_zip_install_update_and_uninstall_preserve_user_data() {
+        let app = CraftApp::by_id("wordcraft").unwrap();
+        let dir = tempfile::tempdir().unwrap();
+        let paths = Paths::under(dir.path());
+        let zip_v1 = dir.path().join("wordcraft-0.2.0-windows-x86_64-portable.zip");
+        make_zip(
+            &zip_v1,
+            &[
+                ("wordcraft-0.2.0/wordcraft.exe", b"v0.2.0", 8, 0),
+                ("wordcraft-0.2.0/old_helper.dll", b"old-dll", 0, 0),
+                ("wordcraft-0.2.0/assets/readme.txt", b"hello", 8, 0),
+            ],
+        );
+
+        let (bin, files_v1) = portable::install_portable(app, &zip_v1, None, None, &paths).unwrap();
+        let app_dir = paths.apps().join("wordcraft");
+        assert_eq!(bin, app_dir.join("wordcraft.exe"));
+        assert_eq!(std::fs::read_to_string(&bin).unwrap(), "v0.2.0");
+        assert!(app_dir.join("portable.txt").is_file(), "portable.txt should be created automatically");
+        assert!(app_dir.join("old_helper.dll").is_file());
+        assert!(app_dir.join("assets/readme.txt").is_file());
+
+        // User creates data inside the portable folder.
+        let user_file = app_dir.join("WordCraftData/projects/book.wc");
+        std::fs::create_dir_all(user_file.parent().unwrap()).unwrap();
+        std::fs::write(&user_file, "chapter 1").unwrap();
+
+        // Update to v0.3.0: old_helper.dll is gone, new_helper.dll is added, user data stays.
+        let zip_v2 = dir.path().join("wordcraft-0.3.0-windows-x86_64-portable.zip");
+        make_zip(
+            &zip_v2,
+            &[
+                ("wordcraft-0.3.0/wordcraft.exe", b"v0.3.0", 8, 0),
+                ("wordcraft-0.3.0/new_helper.dll", b"new-dll", 8, 0),
+                ("wordcraft-0.3.0/assets/readme.txt", b"updated", 0, 0),
+            ],
+        );
+        let existing = Installed { version: None, source: InstallSource::Launcher, location: bin.display().to_string(), package: None };
+        let rec_v1 = record("0.2.0", PackageKind::PortableZip, bin.clone(), files_v1, false);
+        let (bin_v2, files_v2) = portable::install_portable(app, &zip_v2, Some(&existing), Some(&rec_v1), &paths).unwrap();
+        assert_eq!(bin_v2, bin);
+        assert_eq!(std::fs::read_to_string(&bin_v2).unwrap(), "v0.3.0");
+        assert!(!app_dir.join("old_helper.dll").exists(), "stale DLL from v0.2.0 should be removed");
+        assert!(app_dir.join("new_helper.dll").is_file());
+        assert_eq!(std::fs::read_to_string(&user_file).unwrap(), "chapter 1", "user data must survive update");
+
+        // Uninstall removes only recorded files and leaves user data untouched.
+        let rec_v2 = record("0.3.0", PackageKind::PortableZip, bin_v2.clone(), files_v2, false);
+        portable::remove_portable(&bin_v2, Some(&rec_v2), &paths).unwrap();
+        assert!(!bin_v2.exists());
+        assert!(!app_dir.join("new_helper.dll").exists());
+        assert!(!app_dir.join("assets").exists());
+        assert_eq!(std::fs::read_to_string(&user_file).unwrap(), "chapter 1", "user data must survive uninstall");
+
+        // Without a record, remove_portable refuses to delete anything.
+        assert!(portable::remove_portable(&bin_v2, None, &paths).is_err());
+    }
+
+    #[test]
+    fn portable_zip_rejects_unsafe_paths_symlinks_and_corrupt_entries() {
+        let dir = tempfile::tempdir().unwrap();
+        let out = dir.path().join("out");
+
+        for bad_name in ["../escape.exe", "sub/../../escape.exe", "/abs/path.exe", "C:/win.exe", "back\\slash.exe"] {
+            let zip = dir.path().join("bad-path.zip");
+            make_zip(&zip, &[(bad_name, b"bad", 0, 0)]);
+            assert!(portable::unpack_zip(&zip, &out).is_err(), "should reject {bad_name}");
+        }
+
+        // Unix symlink external_attr (0o120777 << 16)
+        let sym_zip = dir.path().join("symlink.zip");
+        make_zip(&sym_zip, &[("wordcraft/link", b"target", 0, 0o120777 << 16)]);
+        assert!(portable::unpack_zip(&sym_zip, &out).is_err(), "should reject Unix symlink");
+
+        // Windows reparse point external_attr (0x0400)
+        let reparse_zip = dir.path().join("reparse.zip");
+        make_zip(&reparse_zip, &[("wordcraft/link", b"target", 0, 0x0400)]);
+        assert!(portable::unpack_zip(&reparse_zip, &out).is_err(), "should reject Windows reparse point");
+
+        // Duplicate entries (case-insensitive)
+        let dup_zip = dir.path().join("dup.zip");
+        make_zip(&dup_zip, &[("wordcraft/App.exe", b"one", 0, 0), ("wordcraft/app.exe", b"two", 0, 0)]);
+        assert!(portable::unpack_zip(&dup_zip, &out).is_err(), "should reject duplicate entries");
     }
 
     #[cfg(target_os = "linux")]

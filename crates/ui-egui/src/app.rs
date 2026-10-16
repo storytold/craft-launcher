@@ -251,6 +251,9 @@ impl LauncherUi {
     }
 
     pub(crate) fn send(&mut self, command: Command) {
+        if matches!(command, Command::Install { .. } | Command::Uninstall { .. }) {
+            self.configure();
+        }
         self.backend.send(command);
     }
 
@@ -273,6 +276,7 @@ impl LauncherUi {
     pub(crate) fn configure(&mut self) {
         let options = BackendOptions {
             kinds: self.settings.preferred_kinds.clone(),
+            app_kinds: self.settings.app_kinds.clone(),
             prereleases: self.settings.prereleases,
             install_locations: self.settings.install_locations.clone(),
         };

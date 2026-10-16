@@ -313,6 +313,10 @@ filter	Installed	Nainstalováno
 	ArtCraft on GitHub	ArtCraft na GitHubu
 	Join the ArtCraft Discord	Připojit se na ArtCraft Discord
 @plural	ArtCraft Launcher · {n} update available|ArtCraft Launcher · {n} updates available	ArtCraft Launcher · {n} dostupná aktualizace|ArtCraft Launcher · {n} dostupné aktualizace|ArtCraft Launcher · {n} dostupných aktualizací
+	Install as Portable (.zip)	Nainstalovat jako přenosnou verzi (.zip)
+	Install as Windows Installer (.msi)	Nainstalovat jako instalátor Windows (.msi)
+	Switch to Portable (.zip)	Přepnout na přenosnou verzi (.zip)
+	Switch to Windows Installer (.msi)	Přepnout na instalátor Windows (.msi)
 	Install folder	Instalační složka
 	Default install folder	Výchozí instalační složka
 	System default	Výchozí nastavení systému

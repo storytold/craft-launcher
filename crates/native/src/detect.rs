@@ -264,7 +264,7 @@ pub mod windows {
         exe_candidates(app, location.as_deref(), &roots).into_iter().find(|p| p.exists())
     }
 
-    pub fn detect(app: &CraftApp) -> Option<Installed> {
+    fn detect_msi(app: &CraftApp) -> Option<Installed> {
         let m = msi_installs(app).into_iter().next()?;
         Some(Installed {
             version: m.version,
@@ -272,6 +272,58 @@ pub mod windows {
             location: m.exe.map_or_else(|| app.name.to_string(), |p| p.display().to_string()),
             package: Some(m.product_code),
         })
+    }
+
+    /// Candidate folders where a Windows portable copy of `app` may live (`<data>\apps\<app>`, or
+    /// next to a portable launcher executable).
+    pub(crate) fn portable_dirs(app: &CraftApp) -> Vec<PathBuf> {
+        let mut dirs = Vec::new();
+        if let Ok(paths) = crate::paths::Paths::new() {
+            dirs.push(paths.apps().join(app.id));
+        }
+        if crate::paths::portable_root().is_some()
+            && let Some(launcher_dir) = std::env::current_exe().ok().and_then(|e| e.parent().map(Path::to_path_buf))
+        {
+            dirs.push(launcher_dir.join("apps").join(app.id));
+            for name in app.names() {
+                dirs.push(launcher_dir.join("apps").join(name));
+                dirs.push(launcher_dir.join(name));
+            }
+            dirs.push(launcher_dir.join(app.id));
+        }
+        dirs
+    }
+
+    /// Detects a portable copy of `app` in `dirs` (requiring `portable.txt` unless under `apps\`).
+    pub(crate) fn detect_portable_in(app: &CraftApp, dirs: &[PathBuf]) -> Option<Installed> {
+        for dir in dirs {
+            let in_apps = dir.parent().and_then(|p| p.file_name()).is_some_and(|n| n.eq_ignore_ascii_case("apps"));
+            if !in_apps && !dir.join("portable.txt").is_file() {
+                continue;
+            }
+            if let Some(exe) = app.stems().map(|s| dir.join(format!("{s}.exe"))).find(|p| p.is_file()) {
+                return Some(Installed {
+                    version: binary_version(&exe, app),
+                    source: InstallSource::Launcher,
+                    location: exe.display().to_string(),
+                    package: None,
+                });
+            }
+        }
+        None
+    }
+
+    pub fn detect(app: &CraftApp) -> Option<Installed> {
+        if crate::paths::portable_root().is_some() {
+            detect_portable_in(app, &portable_dirs(app)).or_else(|| detect_msi(app))
+        } else {
+            detect_msi(app).or_else(|| detect_portable_in(app, &portable_dirs(app)))
+        }
+    }
+
+    pub(crate) fn binary_version(bin: &Path, app: &CraftApp) -> Option<version::Version> {
+        let out = crate::process::capture(bin.to_str()?, &["--version"], std::time::Duration::from_secs(5))?;
+        parse_cli_version(out.trim(), app)
     }
 }
 

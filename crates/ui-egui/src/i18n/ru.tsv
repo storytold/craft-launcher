@@ -341,6 +341,10 @@ filter	Installed	Установлены
 	Loading pictures…	Загрузка изображений…
 	Pictures couldn't be loaded. Reopen this page to try again.	Не удалось загрузить изображения. Откройте страницу снова, чтобы повторить попытку.
 @plural	ArtCraft Launcher · {n} update available|ArtCraft Launcher · {n} updates available	ArtCraft Launcher · {n} обновление|ArtCraft Launcher · {n} обновления|ArtCraft Launcher · {n} обновлений
+	Install as Portable (.zip)	Установить портативную версию (.zip)
+	Install as Windows Installer (.msi)	Установить через установщик Windows (.msi)
+	Switch to Portable (.zip)	Переключить на портативную версию (.zip)
+	Switch to Windows Installer (.msi)	Переключить на установщик Windows (.msi)
 	Install folder	Папка установки
 	Default install folder	Папка установки по умолчанию
 	System default	По умолчанию в системе

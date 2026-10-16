@@ -624,12 +624,12 @@ fn planned_asset(
         && existing.is_none()
         && record.is_none()
         && options.install_locations.folder(app.id).is_some();
-    let kinds = if existing.is_none() && record.is_some_and(|r| r.kind == PackageKind::PortableZip) {
+    let kinds = if existing.is_none() && options.app_kinds.get(app.id).is_none() && record.is_some_and(|r| r.kind == PackageKind::PortableZip) {
         vec![PackageKind::PortableZip]
     } else if custom_linux {
         vec![artcraft_launcher_core::PackageKind::AppImage]
     } else {
-        install::choose_kinds(existing, record, &options.kinds)
+        install::choose_kinds_for(existing, record, &options.kinds, options.app_kinds.get(app.id).copied())
     };
     pick_asset(release, &stems, platform, &kinds).map(|(a, k)| (a.clone(), k))
 }
