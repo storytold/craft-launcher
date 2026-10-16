@@ -145,6 +145,7 @@ fn complete_catalogs_cover_every_ui_literal() {
         include_str!("../features/extensions/plan.rs"),
         include_str!("../features/extensions/card.rs"),
         include_str!("../features/extensions/builtin.rs"),
+        include_str!("../features/extensions/cards.rs"),
         // The desktop shell's tray menu and tooltip.
         include_str!("../../../../apps/artcraft-launcher/src/tray.rs"),
     ];

@@ -150,11 +150,14 @@ fn choosing_a_theme_from_the_use_in_menu_makes_that_app_wear_it_and_clicking_aga
     h.get_by_label("PhotoCraft").click();
     h.run();
     assert_eq!(worn_by(&store, "photocraft"), ["Ocean"]);
-    h.get_by_label("In use: PhotoCraft");
+    // The theme is marked in use, and the chip says where.
+    h.get_by_label("In use");
+    h.get_by_label("PhotoCraft");
 
     h.get_all_by_label("USE IN…").nth(1).unwrap().click();
     h.run();
-    h.get_by_label("PhotoCraft").click();
+    // The chip and the menu's tick box share the name; the menu is drawn last.
+    h.get_all_by_label("PhotoCraft").last().unwrap().click();
     h.run();
     assert!(worn_by(&store, "photocraft").is_empty());
 }
@@ -330,4 +333,40 @@ fn the_demo_list_fills_both_tabs() {
     for name in ["High Contrast", "Forest", "Sunset", "Rose Quartz", "Graphite"] {
         assert_eq!(count(&h, name), 1, "{name}");
     }
+}
+
+#[test]
+fn a_theme_in_use_is_tagged_and_says_where_and_one_that_is_not_has_no_tag() {
+    let store = Shared::default();
+    let mut h = open(&store, None);
+    assert_eq!(count(&h, "In use"), 0, "nothing is in use yet");
+    assert_eq!(count(&h, "Not used yet"), 3);
+    store.0.borrow_mut().wear(&app("photocraft"), Some(&ExtensionId::new("org.storytold.midnight").unwrap())).unwrap();
+    store.0.borrow_mut().wear(&app("lightcraft"), Some(&ExtensionId::new("org.storytold.midnight").unwrap())).unwrap();
+    store.0.borrow_mut().wear(&app("pdfcraft"), Some(&ExtensionId::new("org.storytold.paper").unwrap())).unwrap();
+    h.run_steps(90);
+    assert_eq!(count(&h, "In use"), 2, "Midnight and Paper, not Ocean");
+    assert_eq!(count(&h, "Not used yet"), 1, "Ocean");
+    assert_eq!((count(&h, "PhotoCraft"), count(&h, "LightCraft"), count(&h, "PdfCraft")), (1, 1, 1), "one chip per app, on its theme");
+    // The same marks on the Installed list.
+    h.get_by_label("Installed 3").click();
+    h.run_steps(3);
+    assert_eq!((count(&h, "PhotoCraft"), count(&h, "LightCraft"), count(&h, "PdfCraft")), (1, 1, 1));
+    assert_eq!(count(&h, "In use"), 0, "the tag belongs on a picture, the list has chips");
+    // Taking the theme back removes the marks.
+    store.0.borrow_mut().wear(&app("photocraft"), None).unwrap();
+    store.0.borrow_mut().wear(&app("lightcraft"), None).unwrap();
+    store.0.borrow_mut().wear(&app("pdfcraft"), None).unwrap();
+    h.run_steps(90);
+    assert_eq!((count(&h, "PhotoCraft"), count(&h, "LightCraft"), count(&h, "PdfCraft")), (0, 0, 0));
+}
+
+#[test]
+fn cards_have_a_gap_between_them_and_do_not_touch() {
+    let h = open(&Shared::default(), None);
+    let rect = |label: &str| h.query_all_by_label(label).next().unwrap_or_else(|| panic!("no {label}")).rect();
+    let (a, b) = (rect("Preview of Midnight"), rect("Preview of Ocean"));
+    assert!((a.top() - b.top()).abs() < 1.0, "the first two cards share a row");
+    let gap = b.left() - a.right();
+    assert!((15.0..=19.0).contains(&gap), "gap between cards is {gap}");
 }

@@ -6,11 +6,10 @@
 use std::time::Duration;
 
 use craft_ext_core::id::{AppId, ExtensionId};
-use craft_ext_core::palette::Palette;
-use egui::{Align, Layout, Rect, RichText, Sense, Ui, pos2, vec2};
+use egui::{Align, Layout, Rect, RichText, Ui, pos2, vec2};
 
-use super::builtin::{self, BuiltIn};
-use super::card;
+use super::builtin;
+use super::cards::{self, CARD_H, CARD_H_SHORT};
 use super::plan::{self, Step};
 use super::source::{ExtensionSource, Row};
 use super::{Page, State, Tab};
@@ -18,11 +17,6 @@ use crate::app::{Host, LauncherUi};
 use crate::i18n::{current, fmt, tr_ctx};
 use crate::theme::{self, Tokens};
 use crate::widgets::{self, Cell, Kind};
-
-const CARD_MIN_W: f32 = 290.0;
-const CARD_H: f32 = 268.0;
-const PREVIEW_H: f32 = 124.0;
-const CARD_PAD: f32 = 18.0;
 
 /// Something the person asked for while the page was drawn.
 enum Action {
@@ -274,79 +268,32 @@ fn themes_grid(ui: &mut Ui, state: &State, actions: &mut Vec<Action>) {
             ui.label(RichText::new(tl!("Add a theme from a file and it appears here.")).color(t.faint));
         });
     } else {
-        card_grid(ui, themes.len(), |ui, i, rect| theme_card(ui, themes[i], rect, actions));
+        cards::grid(ui, themes.len(), CARD_H, |ui, i, rect| theme_card(ui, themes[i], rect, actions));
     }
     if !built_in.is_empty() {
         ui.add_space(26.0);
         widgets::hud(ui, tl!("Built into your apps"), t.muted);
         ui.add_space(10.0);
-        card_grid(ui, built_in.len(), |ui, i, rect| builtin_card(ui, &built_in[i], rect));
+        cards::grid(ui, built_in.len(), CARD_H_SHORT, |ui, i, rect| cards::builtin(ui, &built_in[i], rect));
     }
-}
-
-/// `count` cards in rows that fill the width; `draw` paints card `i` into its rectangle.
-fn card_grid(ui: &mut Ui, count: usize, mut draw: impl FnMut(&mut Ui, usize, Rect)) {
-    let width = ui.available_width();
-    // Neighbouring cards share their hairline, like the apps grid.
-    let cols = ((width / CARD_MIN_W).floor() as usize).max(1);
-    let card_w = (width + (cols as f32 - 1.0)) / cols as f32;
-    let rows = count.div_ceil(cols);
-    let (area, _) = ui.allocate_exact_size(vec2(width, rows as f32 * (CARD_H - 1.0) + 1.0), Sense::hover());
-    for i in 0..count {
-        let (r, c) = (i / cols, i % cols);
-        let min = area.min + vec2(c as f32 * (card_w - 1.0), r as f32 * (CARD_H - 1.0));
-        draw(ui, i, Rect::from_min_size(min, vec2(card_w, CARD_H)));
-    }
-}
-
-/// The frame, the picture and the name every theme card starts with. Returns the space below the name.
-fn card_top(ui: &mut Ui, rect: Rect, key: &str, name: &str, palette: &Palette) -> Ui {
-    let t = Tokens::get(ui.ctx());
-    ui.painter_at(rect.expand(1.0)).rect(rect, egui::CornerRadius::ZERO, t.bg, t.hairline(), egui::StrokeKind::Inside);
-    let picture = Rect::from_min_size(rect.min + vec2(1.0, 1.0), vec2(rect.width() - 2.0, PREVIEW_H));
-    card::paint_preview(ui, picture, palette);
-    ui.painter().hline(picture.x_range(), picture.bottom(), t.hairline());
-    ui.interact(picture, ui.id().with(("theme-preview", key)), Sense::hover())
-        .widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Image, true, fmt(tl!("Preview of {name}"), &[("name", name)])));
-
-    let inner = Rect::from_min_max(pos2(rect.left() + CARD_PAD, picture.bottom() + 14.0), rect.max - vec2(CARD_PAD, CARD_PAD));
-    let mut child = ui.new_child(egui::UiBuilder::new().max_rect(inner).layout(Layout::top_down(Align::Min)));
-    child.set_clip_rect(rect.intersect(ui.clip_rect()));
-    child.add(egui::Label::new(RichText::new(name).size(16.0).family(theme::semibold()).color(t.ink_strong)).truncate());
-    child
-}
-
-/// A theme an app already carries: shown, never changed from here.
-fn builtin_card(ui: &mut Ui, b: &BuiltIn, rect: Rect) {
-    let t = Tokens::get(ui.ctx());
-    let mut card = card_top(ui, rect, &format!("{}-{}", b.app_name, b.name), b.name, &b.palette);
-    let ui = &mut card;
-    ui.horizontal(|ui| {
-        widgets::badge(ui, if b.palette.dark { tl!("Dark") } else { tl!("Light") }, t.muted);
-        ui.add(egui::Label::new(RichText::new(fmt(tl!("Built into {app}"), &[("app", b.app_name)])).size(12.0).color(t.muted)).truncate());
-    });
-    ui.add_space(2.0);
-    ui.add(egui::Label::new(RichText::new(fmt(tl!("Choose it inside {app}"), &[("app", b.app_name)])).size(12.5).color(t.faint)).truncate());
 }
 
 fn theme_card(ui: &mut Ui, row: &Row, rect: Rect, actions: &mut Vec<Action>) {
     let Some(palette) = &row.palette else { return };
     let t = Tokens::get(ui.ctx());
-    let mut card = card_top(ui, rect, row.id.as_str(), &row.name, palette);
+    let worn = plan::worn_names(row);
+    let mut card = cards::top(ui, rect, row.id.as_str(), &row.name, palette, !worn.is_empty());
     let ui = &mut card;
+    ui.add_space(6.0);
     ui.horizontal(|ui| {
         widgets::badge(ui, if palette.dark { tl!("Dark") } else { tl!("Light") }, t.muted);
         ui.add(egui::Label::new(RichText::new(plan::trust_label(row.tier)).size(12.0).color(t.muted)).truncate());
     });
-    ui.add_space(2.0);
-    match plan::in_use_line(row) {
-        Some(apps) => {
-            let text = fmt(tl!("In use: {apps}"), &[("apps", &apps)]);
-            ui.add(egui::Label::new(RichText::new(text).size(12.5).color(t.accent_ink)).truncate());
-        }
-        None => {
-            ui.add(egui::Label::new(RichText::new(tl!("Not used yet")).size(12.5).color(t.faint)).truncate());
-        }
+    ui.add_space(8.0);
+    if worn.is_empty() {
+        ui.add(egui::Label::new(RichText::new(tl!("Not used yet")).size(12.5).color(t.faint)).truncate());
+    } else {
+        cards::app_chips(ui, &worn);
     }
     ui.with_layout(Layout::bottom_up(Align::Min), |ui| {
         ui.horizontal(|ui| {
@@ -391,6 +338,10 @@ fn installed_list(ui: &mut Ui, state: &State, actions: &mut Vec<Action>) {
                 ui.horizontal(|ui| installed_row(ui, row, confirming, actions));
             });
             ui.painter().hline(line.response.rect.x_range(), line.response.rect.bottom(), t.hairline());
+            if !row.worn.is_empty() {
+                let r = line.response.rect;
+                ui.painter().rect_filled(Rect::from_min_max(r.min, pos2(r.left() + 3.0, r.bottom())), egui::CornerRadius::ZERO, t.accent);
+            }
         }
     });
 }
@@ -402,6 +353,11 @@ fn installed_row(ui: &mut Ui, row: &Row, confirming: bool, actions: &mut Vec<Act
         ui.add(egui::Label::new(RichText::new(&row.name).size(15.0).family(theme::semibold()).color(t.ink_strong)).truncate());
         let details = format!("{} · v{} · {}", plan::kind_label(row.kind), row.version, plan::trust_label(row.tier));
         ui.add(egui::Label::new(RichText::new(details).size(12.5).color(t.muted)).truncate());
+        let worn = plan::worn_names(row);
+        if !worn.is_empty() {
+            ui.add_space(4.0);
+            cards::app_chips(ui, &worn);
+        }
     });
     ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
         if confirming {
