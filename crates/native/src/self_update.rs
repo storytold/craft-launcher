@@ -168,8 +168,10 @@ pub fn update(
     let (asset, _) = pick_asset(release, &[LAUNCHER.id], platform, &[install.kind()])
         .ok_or_else(|| format!("ArtCraft Launcher {} has no {} for {}", release.version_label(), install.kind().label(), platform.label()))?;
     let asset = asset.clone();
-    let mut job = Job { http, paths, stop, phase };
-    let file = install::download(release, &asset, &mut job)?;
+    let mut job = Job { http, paths, stop, phase, install_root: artcraft_launcher_core::protocol::InstallRoot::default() };
+    // Self-updates stay full downloads (the restart helper replaces a running binary; the
+    // portable delta is for apps).
+    let file = install::download(release, &asset, install.kind(), LAUNCHER.id, &mut job)?;
     // The restart ends this process: nothing else may be under way.
     last()?;
     phase(JobPhase::Installing);

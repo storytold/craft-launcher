@@ -16,6 +16,7 @@ pub mod release;
 pub mod status;
 pub mod time;
 pub mod version;
+pub mod zip_cd;
 
 pub use catalog::{AppGroup, CraftApp, SUITE};
 pub use platform::{Arch, Os, PackageKind, Platform};

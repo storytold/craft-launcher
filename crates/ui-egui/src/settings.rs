@@ -3,6 +3,7 @@
 use std::collections::BTreeMap;
 
 use artcraft_launcher_core::PackageKind;
+use artcraft_launcher_core::protocol::InstallRoot;
 use serde::{Deserialize, Serialize};
 
 use crate::i18n::t;
@@ -101,11 +102,17 @@ pub struct Settings {
     /// Automatically download and install updates when found.
     #[serde(default)]
     pub auto_update: bool,
+    /// Adopt existing portable copies without asking, once per session (Windows only).
+    /// On by default: orphans become managed instead of blocking reinstalls.
+    #[serde(default = "default_auto_adopt")]
+    pub auto_adopt: bool,
     /// Show a system notification when an installed app has an update.
     pub notify: bool,
     pub prereleases: bool,
     /// Linux: the package format to prefer for new installs (empty: the system's own).
     pub preferred_kinds: Vec<PackageKind>,
+    /// Windows: where portable installs go (MSI keeps its fixed location).
+    pub install_root: InstallRoot,
     /// Announcements and alerts from the release feed the user dismissed (by notice id).
     pub dismissed_notices: std::collections::BTreeSet<String>,
     /// Updates already announced, so each version is announced once: app id → version.
@@ -155,6 +162,11 @@ pub fn is_appimage() -> bool {
     false
 }
 
+/// Adopting orphans is the default: a missing flag (old settings files) means on.
+fn default_auto_adopt() -> bool {
+    true
+}
+
 /// Default package kinds preferred on Linux based on how the launcher itself was installed.
 pub fn default_preferred_kinds() -> Vec<PackageKind> {
     if is_flatpak_sandbox() {
@@ -179,13 +191,28 @@ impl Default for Settings {
             show_on_current_desktop: true,
             check_every: CheckEvery::Hour,
             auto_update: false,
+            auto_adopt: true,
             notify: true,
             prereleases: false,
             preferred_kinds: default_preferred_kinds(),
+            install_root: InstallRoot::default(),
             dismissed_notices: std::collections::BTreeSet::new(),
             notified: BTreeMap::new(),
             last_check: None,
             hidden: std::collections::BTreeSet::new(),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn adopting_orphans_is_on_by_default() {
+        assert!(Settings::default().auto_adopt);
+        // Old settings files without the flag adopt too, instead of silently opting out.
+        let old: Settings = serde_json::from_str("{}").unwrap();
+        assert!(old.auto_adopt);
     }
 }

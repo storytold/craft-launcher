@@ -4,6 +4,8 @@
 //! The UI sends [`Command`]s and drains [`Event`]s once per frame, so backends do their work on
 //! threads (desktop) or futures (web) and never block a frame.
 
+use std::path::PathBuf;
+
 use serde::{Deserialize, Serialize};
 
 use crate::platform::{PackageKind, Platform};
@@ -25,6 +27,18 @@ pub enum Command {
     },
     Uninstall {
         app: String,
+        /// Also delete the retained installer (a portable install's delta base):
+        /// a complete removal. Off is an ordinary uninstall, keeping it.
+        complete: bool,
+    },
+    /// Look for an existing portable copy without a record (an install from before
+    /// records, or one whose record was lost) in the expected places, and adopt it:
+    /// a record is written so updates and removal work again. Anything else explains
+    /// itself as an error with what to do by hand. Quiet background checks stay
+    /// silent; a manual check gets its toast.
+    Verify {
+        app: String,
+        quiet: bool,
     },
     Launch {
         app: String,
@@ -60,6 +74,22 @@ pub struct BackendOptions {
     pub kinds: Vec<PackageKind>,
     /// Offer pre-releases (`0.6.0-rc.1`) as updates.
     pub prereleases: bool,
+    /// Where portable installs go. System packages keep their fixed locations.
+    #[serde(default)]
+    pub install_root: InstallRoot,
+}
+
+/// Where a portable install lives. Only portable installs honour this: an MSI goes where
+/// the Windows Installer puts it, whatever is chosen here.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub enum InstallRoot {
+    /// The platform convention (`%LOCALAPPDATA%\Programs` on Windows).
+    #[default]
+    Default,
+    /// Beside the launcher's own executable: a fully portable setup on any drive.
+    NextToLauncher,
+    /// Exactly this folder (must be absolute; created on demand at install time).
+    Custom(PathBuf),
 }
 
 /// The answer to "what's the latest release of this app?".
@@ -232,4 +262,22 @@ pub trait Backend {
     fn platform(&self) -> Option<Platform>;
     /// Unix seconds now.
     fn now(&self) -> i64;
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn install_root_defaults_and_round_trips() {
+        assert_eq!(InstallRoot::default(), InstallRoot::Default);
+        assert_eq!(BackendOptions::default().install_root, InstallRoot::Default);
+        for root in [InstallRoot::Default, InstallRoot::NextToLauncher, InstallRoot::Custom(PathBuf::from("F:/CraftApps"))] {
+            let back: InstallRoot = serde_json::from_str(&serde_json::to_string(&root).unwrap()).unwrap();
+            assert_eq!(back, root);
+        }
+        // Old senders omit the field: it reads as the default.
+        let opts: BackendOptions = serde_json::from_str(r#"{"kinds":[],"prereleases":false}"#).unwrap();
+        assert_eq!(opts.install_root, InstallRoot::Default);
+    }
 }

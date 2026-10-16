@@ -310,7 +310,74 @@ impl NativeBackend {
         });
     }
 
-    fn start_job(&self, app_id: &str, uninstall: bool) {
+    /// Looks for an unmanaged portable copy and adopts it (Windows only): the record it
+    /// writes makes updates and removal work again. Runs off the UI thread; the outcome
+    /// arrives as `JobFinished`, and an adoption also refreshes `Detected`.
+    fn verify_existing(&self, app_id: &str, quiet: bool) {
+        let Some(app) = CraftApp::by_id(app_id) else { return };
+        let shared = self.shared.clone();
+        let paths = self.paths.clone();
+        let install_root = self.options().install_root.clone();
+        std::thread::spawn(move || {
+            #[cfg(windows)]
+            let result = Self::adopt_existing(app, &shared, &paths, &install_root);
+            #[cfg(not(windows))]
+            let result = {
+                let _ = (&app, &shared, &paths, &install_root);
+                Err("adoption is for Windows portable copies".to_string())
+            };
+            // Background hygiene stays silent (success already refreshed detection);
+            // a manual check gets its toast.
+            if !quiet {
+                shared.emit(Event::JobFinished { app: app.id.to_string(), result });
+            }
+        });
+    }
+
+    /// Adopts the folder [`install::windows::find_adoptable`] points at: a record with an
+    /// unknown version (reading it would run the app), the files walked fresh, and the
+    /// folder pinned, saved like any install. A failed save rolls the record back out,
+    /// so a half-adoption never lingers.
+    #[cfg(windows)]
+    fn adopt_existing(
+        app: &CraftApp,
+        shared: &Shared,
+        paths: &Paths,
+        install_root: &artcraft_launcher_core::protocol::InstallRoot,
+    ) -> Result<String, String> {
+        if shared.manifest.lock().unwrap_or_else(PoisonError::into_inner).apps.contains_key(app.id) {
+            return Ok(format!("{} is already managed", app.name));
+        }
+        if !crate::detect::windows::msi_installs(app).is_empty() {
+            return Ok(format!("{} is installed via MSI and stays managed by Windows", app.name));
+        }
+        let dir = install::windows::find_adoptable(app, install_root)?;
+        let exe = install::windows::portable_exe(app, &dir).ok_or_else(|| format!("{} moved while verifying; try again", app.name))?;
+        let record = crate::manifest::Record {
+            version: install::windows::cli_version(app, &dir).map(|v| v.to_string()).unwrap_or_default(),
+            kind: PackageKind::PortableZip,
+            path: exe.clone(),
+            installed_at: crate::now(),
+            files: install::windows::walk_files(&dir),
+            needs_root: false,
+            root: Some(dir.clone()),
+        };
+        {
+            let mut manifest = shared.manifest.lock().unwrap_or_else(PoisonError::into_inner);
+            manifest.apps.insert(app.id.to_string(), record);
+            if let Err(e) = save_manifest(paths, &manifest, 3) {
+                manifest.apps.remove(app.id);
+                return Err(format!("found {} at {}, but couldn't save the ownership record ({e})", app.name, dir.display()));
+            }
+        }
+        let installed =
+            Installed { version: None, source: artcraft_launcher_core::InstallSource::Launcher, location: exe.display().to_string(), package: None };
+        shared.installed.lock().unwrap_or_else(PoisonError::into_inner).insert(app.id.to_string(), installed.clone());
+        shared.emit(Event::Detected { app: app.id.to_string(), installed: Some(installed) });
+        Ok(format!("adopted {} from {}", app.name, dir.display()))
+    }
+
+    fn start_job(&self, app_id: &str, uninstall: bool, complete: bool) {
         let Some(app) = CraftApp::by_id(app_id) else { return };
         log::info!("{}: starting {} job", app.name, if uninstall { "uninstall" } else { "install/update" });
         let stop = Arc::new(Stop::default());
@@ -341,16 +408,23 @@ impl NativeBackend {
             let result = if uninstall {
                 shared.emit(Event::Progress { app: app.id.to_string(), phase: JobPhase::Removing });
                 let mut phase = |phase| shared.emit(Event::Progress { app: app.id.to_string(), phase });
-                match &existing {
-                    Some(inst) => install::uninstall(app, inst, record.as_ref(), &paths, &stop, &mut phase).map(|()| {
+                let outcome = match &existing {
+                    Some(inst) => install::uninstall(app, inst, record.as_ref(), &paths, &stop, &mut phase, complete).map(|()| {
                         let mut m = shared.manifest.lock().unwrap_or_else(PoisonError::into_inner);
                         if m.apps.remove(app.id).is_some() {
                             let _ = m.save(&paths.manifest());
                         }
-                        format!("{} was removed", app.name)
+                        if complete { format!("{} was completely removed", app.name) } else { format!("{} was removed", app.name) }
                     }),
                     None => Err(format!("{} isn't installed", app.name)),
-                }
+                };
+                // Uninstalls never logged their outcome: the next "it said an error but
+                // the log shows nothing" mystery ends here.
+                match &outcome {
+                    Ok(msg) => log::info!("{msg}"),
+                    Err(e) => log::error!("couldn't remove {}: {e}", app.name),
+                };
+                outcome
             } else {
                 let r = run_install(app, &shared, &paths, http.as_ref(), platform, &options, existing.as_ref(), record.as_ref(), &stop);
                 // Stopped by the connection rather than by the user: say so, and how to go on.
@@ -443,6 +517,23 @@ impl NativeBackend {
     }
 }
 
+/// Saves the manifest, retrying transient locks (antivirus, indexer). Callers fail loud
+/// on persistent failure for launcher-owned copies: see `run_install`.
+fn save_manifest(paths: &Paths, manifest: &Manifest, tries: u32) -> Result<(), String> {
+    let mut err = String::new();
+    for attempt in 0..tries.max(1) {
+        if attempt > 0 {
+            std::thread::sleep(std::time::Duration::from_millis(100));
+        }
+        match manifest.save(&paths.manifest()) {
+            Ok(()) => return Ok(()),
+            Err(e) => err = e,
+        }
+    }
+    Err(err)
+}
+
+// Pre-existing arity (the whole install job context); newer toolchains lint it.
 #[allow(clippy::too_many_arguments)]
 fn run_install(
     app: &CraftApp,
@@ -478,20 +569,31 @@ fn run_install(
         last_emit = Instant::now();
         shared.emit(Event::Progress { app: app.id.to_string(), phase: p });
     };
-    let mut job = Job { http, paths, stop, phase: &mut phase };
+    let mut job = Job { http, paths, stop, phase: &mut phase, install_root: options.install_root.clone() };
     let new_record = install::install(app, &release, &asset, kind, existing, record, &mut job)?;
     {
         let mut m = shared.manifest.lock().unwrap_or_else(PoisonError::into_inner);
-        let changed = match new_record {
+        let changed = match &new_record {
             Some(r) => {
-                m.apps.insert(app.id.to_string(), r);
+                m.apps.insert(app.id.to_string(), r.clone());
                 true
             }
             // Installed the platform's own way: any old launcher record is stale.
             None => m.apps.remove(app.id).is_some(),
         };
-        if changed && let Err(e) = m.save(&paths.manifest()) {
-            log::warn!("couldn't save the install record: {e}");
+        if changed {
+            // A transient lock (antivirus, indexer) fails the first save: retry before
+            // giving up. A lost record bricks future updates of a launcher-owned copy
+            // (nothing pins its folder), so that failure is loud, with recovery steps.
+            if let Err(e) = save_manifest(paths, &m, 3) {
+                match &new_record {
+                    Some(r) => {
+                        let dir = r.path.parent().map(|p| p.display().to_string()).unwrap_or_else(|| r.path.display().to_string());
+                        return Err(format!("installed, but couldn't save the ownership record ({e}); remove {dir} and install again"));
+                    }
+                    None => log::warn!("couldn't save the install record: {e}"),
+                }
+            }
         }
     }
     Ok(installed_text(app, existing.is_some(), &release))
@@ -896,8 +998,9 @@ impl Backend for NativeBackend {
         match command {
             Command::CheckForUpdates { force } => self.check(force),
             Command::Detect => self.detect_all(),
-            Command::Install { app } => self.start_job(&app, false),
-            Command::Uninstall { app } => self.start_job(&app, true),
+            Command::Install { app } => self.start_job(&app, false, false),
+            Command::Uninstall { app, complete } => self.start_job(&app, true, complete),
+            Command::Verify { app, quiet } => self.verify_existing(&app, quiet),
             Command::Pause { app } => {
                 if let Some(stop) = self.shared.jobs.lock().unwrap_or_else(PoisonError::into_inner).get(&app) {
                     stop.pause();
@@ -1314,6 +1417,41 @@ mod tests {
 
     fn copy(v: &str) -> Installed {
         Installed { version: version::parse(v), source: InstallSource::Deb, location: String::new(), package: None }
+    }
+
+    #[test]
+    fn manifest_save_failure_is_loud() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = Paths::under(dir.path());
+        save_manifest(&paths, &Manifest::default(), 3).unwrap();
+        // A directory where installed.json goes: saving fails persistently.
+        std::fs::remove_file(paths.manifest()).unwrap();
+        std::fs::create_dir(paths.manifest()).unwrap();
+        assert!(save_manifest(&paths, &Manifest::default(), 2).is_err());
+    }
+
+    /// Needs a machine without a WordCraft MSI install (true on CI and here): the
+    /// registry probe would otherwise claim it first, which is also correct behavior.
+    #[cfg(windows)]
+    #[test]
+    fn verify_adopts_an_orphaned_portable_copy() {
+        let app = CraftApp::by_id("wordcraft").unwrap();
+        let dir = tempfile::tempdir().unwrap();
+        let paths = Paths::under(dir.path());
+        let home = dir.path().join("Apps").join("WordCraft");
+        std::fs::create_dir_all(&home).unwrap();
+        std::fs::write(home.join("wordcraft.exe"), "x").unwrap();
+        let shared = shared();
+        let root = artcraft_launcher_core::protocol::InstallRoot::Custom(dir.path().join("Apps"));
+        let msg = NativeBackend::adopt_existing(app, &shared, &paths, &root).unwrap();
+        assert!(msg.contains("adopted"), "{msg}");
+        let record = shared.manifest.lock().unwrap().apps.get(app.id).cloned().unwrap();
+        assert_eq!(record.root, Some(home.clone()));
+        assert!(record.version.is_empty(), "unknown until its update");
+        assert!(shared.installed.lock().unwrap().contains_key(app.id));
+        assert!(crate::manifest::Manifest::load(&paths.manifest()).apps.contains_key(app.id));
+        // Twice: already managed now.
+        assert!(NativeBackend::adopt_existing(app, &shared, &paths, &root).unwrap().contains("already managed"));
     }
 
     #[test]

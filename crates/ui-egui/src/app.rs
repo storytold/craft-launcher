@@ -60,6 +60,15 @@ pub trait Host {
     }
     /// Quit the launcher for real (not just hide to the tray).
     fn quit(&mut self) {}
+    /// Opens an OS folder picker. Returns immediately: the picker runs off the UI thread so a
+    /// hidden dialog can never hang the app; [`Host::poll_browse_folder`] collects the answer.
+    /// Does nothing where unsupported. A second call while one runs is ignored.
+    fn start_browse_folder(&mut self) {}
+    /// A finished picker, if any: `Some(dir)` chosen, `Some(None)` cancelled or failed, `None`
+    /// when nothing is pending. Each answer is reported once.
+    fn poll_browse_folder(&mut self) -> Option<Option<std::path::PathBuf>> {
+        None
+    }
 }
 
 pub(crate) struct Toast {
@@ -110,6 +119,9 @@ pub struct LauncherUi {
     pub(crate) search: String,
     pub(crate) toasts: Vec<Toast>,
     pub(crate) dialog: Option<Dialog>,
+    /// The uninstall dialog's "also delete the saved installer" toggle. Reset every
+    /// time the dialog opens, so a previous choice never leaks into the next removal.
+    pub(crate) uninstall_complete: bool,
     /// The app whose details drawer is open (or closing: see `detail_shown`).
     pub(crate) detail: Option<String>,
     /// The app the drawer is drawn for: it outlives `detail` while the drawer slides out.
@@ -142,6 +154,9 @@ pub struct LauncherUi {
     /// Versions of apps or the launcher already queued for auto-update during this session,
     /// preventing repeated install loops if an update fails or is in progress.
     pub(crate) auto_update_attempted: std::collections::BTreeSet<(String, String)>,
+    /// Apps already checked for orphaned portable copies this session: the automatic
+    /// check runs once per app per launch, a manual check anytime.
+    pub(crate) auto_verify_attempted: std::collections::BTreeSet<String>,
 }
 
 /// The language to draw in: the preference, or English where it needs a CJK font the system
@@ -183,6 +198,7 @@ impl LauncherUi {
             search: String::new(),
             toasts: Vec::new(),
             dialog: None,
+            uninstall_complete: false,
             detail: None,
             detail_shown: None,
             detail_shot: 0,
@@ -199,6 +215,7 @@ impl LauncherUi {
             last_detect: 0,
             was_focused: true,
             auto_update_attempted: std::collections::BTreeSet::new(),
+            auto_verify_attempted: std::collections::BTreeSet::new(),
         }
     }
 
@@ -266,7 +283,11 @@ impl LauncherUi {
     /// Non-drawing work: runs every frame and also while the window is hidden in the tray.
     pub fn logic(&mut self, ctx: &egui::Context, host: &mut dyn Host) {
         set_current(crate::i18n::Lang::from_pref(&self.settings.language));
-        let options = BackendOptions { kinds: self.settings.preferred_kinds.clone(), prereleases: self.settings.prereleases };
+        let options = BackendOptions {
+            kinds: self.settings.preferred_kinds.clone(),
+            prereleases: self.settings.prereleases,
+            install_root: self.settings.install_root.clone(),
+        };
         if self.sent_options.as_ref() != Some(&options) {
             self.backend.send(Command::Configure(options.clone()));
             self.sent_options = Some(options);
@@ -302,6 +323,7 @@ impl LauncherUi {
             if self.settings.auto_update {
                 self.trigger_auto_updates();
             }
+            self.trigger_auto_verify();
         }
         if self.restart_requested {
             // The helper is waiting for this process to exit before it starts the new launcher.
@@ -482,6 +504,25 @@ impl LauncherUi {
                 self.auto_update_attempted.insert((id, v));
                 self.send(Command::UpdateLauncher);
             }
+        }
+    }
+
+    /// Once per session, quietly looks for orphaned portable copies of unmanaged apps.
+    /// Cheap (a couple of folder stats each) and silent unless something is adopted.
+    pub(crate) fn trigger_auto_verify(&mut self) {
+        if !self.caps.manage_apps || !self.settings.auto_adopt || !cfg!(windows) {
+            return;
+        }
+        let fresh: Vec<String> = self
+            .entries
+            .iter()
+            .filter(|e| e.installed.is_none() && e.job.is_none())
+            .map(|e| e.app.id.to_string())
+            .filter(|id| !self.auto_verify_attempted.contains(id))
+            .collect();
+        for id in fresh {
+            self.auto_verify_attempted.insert(id.clone());
+            self.send(Command::Verify { app: id, quiet: true });
         }
     }
 

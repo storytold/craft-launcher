@@ -346,3 +346,13 @@ filter	Installed	Zainstalowane
 	ArtCraft on GitHub	ArtCraft na GitHubie
 	Join the ArtCraft Discord	Dołącz do Discorda ArtCraft
 @plural	ArtCraft Launcher · {n} update available|ArtCraft Launcher · {n} updates available	ArtCraft Launcher · {n} dostępna aktualizacja|ArtCraft Launcher · {n} dostępne aktualizacje|ArtCraft Launcher · {n} dostępnych aktualizacji
+	Installing on Windows	Installing on Windows
+	Installer (recommended)	Installer (recommended)
+	Install location	Install location
+	Default location	Default location
+	Next to the launcher	Next to the launcher
+	Custom folder	Custom folder
+	Browse	Browse
+	Also delete the saved installer	Usuń też zapisany instalator
+	Check for an existing copy	Sprawdź, czy istnieje kopia
+	Automatically adopt existing portable copies	Automatycznie przejmuj istniejące kopie przenośne

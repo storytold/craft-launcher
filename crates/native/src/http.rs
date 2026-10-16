@@ -12,6 +12,8 @@ use sha2::{Digest, Sha256};
 const USER_AGENT: &str = concat!("ArtCraftLauncher/", env!("CARGO_PKG_VERSION"));
 /// Largest JSON or text answer we read.
 const MAX_SMALL: u64 = 4 << 20;
+/// Largest single HTTP range fetch (delta updates split anything bigger into chunks).
+const MAX_RANGE: u64 = 64 << 20;
 
 /// What a GET of a small resource produced.
 #[derive(Debug, PartialEq, Eq)]
@@ -177,6 +179,40 @@ impl Http {
                 if body.len() > max { Err(too_big()) } else { Ok(Some(body)) }
             }
             404 => Ok(None),
+            s => Err(format!("{} answered HTTP {s}", host(url))),
+        }
+    }
+
+    /// GET `bytes=start-end` (following redirects) for delta updates. `Ok` only for a 206 whose
+    /// body is exactly the asked range; a 200 that ignored the range, a short or long body, or
+    /// anything else is an error, so the caller falls back to a full download instead of
+    /// trusting a wrong slice.
+    pub fn get_range(&self, url: &str, start: u64, end: u64) -> Result<Vec<u8>, String> {
+        let want = end.checked_sub(start).and_then(|n| n.checked_add(1)).ok_or("bad byte range")?;
+        if want == 0 || want > MAX_RANGE {
+            return Err("bad byte range".into());
+        }
+        let mut resp = self
+            .download
+            .get(url)
+            .header("Accept-Encoding", "identity")
+            .header("Range", &format!("bytes={start}-{end}"))
+            .call()
+            .map_err(|e| format!("couldn't reach {} ({e})", host(url)))?;
+        match resp.status().as_u16() {
+            206 => {
+                match resp.headers().get("content-range").and_then(|v| v.to_str().ok()).and_then(parse_content_range) {
+                    Some((s, _)) if s == start => {}
+                    _ => return Err("the server sent an unreadable partial response".into()),
+                }
+                let body = resp.body_mut().with_config().limit(want + 1).read_to_vec().map_err(|e| format!("unreadable answer ({e})"))?;
+                if body.len() as u64 != want {
+                    return Err(format!("the server sent {} bytes for a {want}-byte range", body.len()));
+                }
+                Ok(body)
+            }
+            404 | 410 => Err("the file is no longer on the release page".into()),
+            200 => Err("the server ignored the range request".into()),
             s => Err(format!("{} answered HTTP {s}", host(url))),
         }
     }
@@ -646,7 +682,7 @@ pub(crate) mod tests {
                         break;
                     }
                     if let Some(v) = line.to_ascii_lowercase().strip_prefix("range: bytes=") {
-                        range = v.trim().trim_end_matches('-').parse::<usize>().ok();
+                        range = v.trim().split(['-', ' ']).next().and_then(|s| s.parse::<usize>().ok());
                     }
                 }
                 seen.lock().unwrap().push(range.map(|r| r.to_string()));
@@ -739,6 +775,19 @@ pub(crate) mod tests {
     fn a_server_that_ignores_ranges_starts_over() {
         let (result, _) = run(vec![Reply::DropAfter(123_456), Reply::Full]);
         assert_eq!(result.unwrap(), body().0);
+    }
+
+    #[test]
+    fn range_requests_return_exactly_the_asked_slice() {
+        let (body, _) = body();
+        let http = Http::new().unwrap();
+        let (url, ranges) = serve(body.clone(), vec![Reply::Ranged]);
+        assert_eq!(http.get_range(&url, 100, body.len() as u64 - 1).unwrap(), body[100..].to_vec());
+        assert_eq!(ranges.lock().unwrap().as_slice(), [Some("100".to_string())]);
+        // A 200 that ignored the range is an error, never a trusted slice.
+        let (url, _) = serve(body, vec![Reply::Full]);
+        assert!(http.get_range(&url, 0, 10).unwrap_err().contains("ignored"));
+        assert!(http.get_range(&url, 10, 9).unwrap_err().contains("bad byte range"));
     }
 
     #[test]

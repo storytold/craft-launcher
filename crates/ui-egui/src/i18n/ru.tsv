@@ -340,3 +340,13 @@ filter	Installed	Установлены
 	Loading pictures…	Загрузка изображений…
 	Pictures couldn't be loaded. Reopen this page to try again.	Не удалось загрузить изображения. Откройте страницу снова, чтобы повторить попытку.
 @plural	ArtCraft Launcher · {n} update available|ArtCraft Launcher · {n} updates available	ArtCraft Launcher · {n} обновление|ArtCraft Launcher · {n} обновления|ArtCraft Launcher · {n} обновлений
+	Installing on Windows	Installing on Windows
+	Installer (recommended)	Installer (recommended)
+	Install location	Install location
+	Default location	Default location
+	Next to the launcher	Next to the launcher
+	Custom folder	Custom folder
+	Browse	Browse
+	Also delete the saved installer	Также удалить сохранённый установщик
+	Check for an existing copy	Проверить наличие существующей копии
+	Automatically adopt existing portable copies	Автоматически принимать существующие портативные копии

@@ -312,3 +312,13 @@ figcraft	Interface design and prototyping	界面设计与原型制作
 @msg	{name} installed: {version} (this release publishes no checksum, so only its size was checked)	{name} 已安装：{version}（此版本未发布校验和，因此只检查了文件大小）
 @msg	{name} was removed	{name} 已卸载
 @msg	{name} is running. Quit it, then try again.	{name} 正在运行。请先退出，然后重试。
+	Installing on Windows	Installing on Windows
+	Installer (recommended)	Installer (recommended)
+	Install location	Install location
+	Default location	Default location
+	Next to the launcher	Next to the launcher
+	Custom folder	Custom folder
+	Browse	Browse
+	Also delete the saved installer	同时删除已保存的安装程序
+	Check for an existing copy	检查是否存在现有副本
+	Automatically adopt existing portable copies	自动接管现有的便携式副本
