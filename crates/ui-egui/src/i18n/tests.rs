@@ -309,6 +309,22 @@ fn hungarian_locales_and_plurals_work() {
 }
 
 #[test]
+fn turkish_locales_and_counts_work() {
+    for tag in ["tr", "tr-TR", "tr_TR.UTF-8", "TR_tr"] {
+        assert_eq!(lang_from_tag(tag), Some(Lang::TR), "{tag}");
+    }
+    assert_eq!(super::detect::first_supported(["xx-XX", "tr-TR", "en-US"]), Some(Lang::TR));
+    // After a number the noun stays singular: one form serves every count.
+    assert_eq!(trn(Lang::TR, 0, "{n} app", "{n} apps"), "0 uygulama");
+    assert_eq!(trn(Lang::TR, 1, "{n} app", "{n} apps"), "1 uygulama");
+    assert_eq!(trn(Lang::TR, 5, "{n} app", "{n} apps"), "5 uygulama");
+    assert_eq!(super::tr_ctx(Lang::TR, "month", "Aug"), "Ağu");
+    assert_eq!(tr(Lang::TR, "{month} {day}, {year}"), "{day} {month} {year}");
+    assert_eq!(message(Lang::TR, "PhotoCraft updated to 0.5.0"), "PhotoCraft 0.5.0 sürümüne güncellendi");
+    assert_eq!(tr(Lang::TR, "Untranslated diagnostic"), "Untranslated diagnostic");
+}
+
+#[test]
 fn french_locales_and_plurals_work() {
     for tag in ["fr", "fr-FR", "fr_CA.UTF-8", "fr-BE", "FR_ch"] {
         assert_eq!(lang_from_tag(tag), Some(Lang::FR), "{tag}");
