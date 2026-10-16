@@ -55,6 +55,13 @@ pub enum Command {
     FetchScreenshots {
         app: String,
     },
+    /// Change an app's interface language (`auto` or a BCP 47 language code). Writes the app's
+    /// preferences file on disk and, if the app is running with a control channel, applies the
+    /// change immediately in real time.
+    SetAppLanguage {
+        app: String,
+        language: String,
+    },
     /// Change how the backend behaves.
     Configure(BackendOptions),
 }
@@ -82,6 +89,9 @@ pub struct BackendOptions {
     pub kinds: Vec<PackageKind>,
     /// Offer pre-releases (`0.6.0-rc.1`) as updates.
     pub prereleases: bool,
+    /// Per-app interface language overrides (`app.id` -> language code or `auto`).
+    #[serde(default)]
+    pub app_languages: std::collections::BTreeMap<String, String>,
 }
 
 /// The answer to "what's the latest release of this app?".
@@ -236,6 +246,8 @@ pub enum Event {
         /// GitHub refused more API calls until this time (Unix seconds).
         rate_limited_until: Option<i64>,
     },
+    /// Current per-app interface languages read from the apps' preferences files on disk.
+    AppLanguages(std::collections::BTreeMap<String, String>),
 }
 
 /// What a backend can do on this platform.

@@ -196,6 +196,13 @@ impl NativeBackend {
                 }
                 shared.emit(Event::Detected { app: app.id.to_string(), installed: found });
             }
+            {
+                let map = shared.installed.lock().unwrap_or_else(PoisonError::into_inner).clone();
+                let langs = crate::app_language::detect_app_languages(&map, &paths);
+                if !langs.is_empty() {
+                    shared.emit(Event::AppLanguages(langs));
+                }
+            }
             // Downloads paused (or cut off by quitting) in an earlier run.
             for app in &SUITE {
                 report_partial(app, &shared, &paths, platform, &options);
@@ -975,8 +982,9 @@ impl Backend for NativeBackend {
             }
             Command::Launch { app } => {
                 let Some(def) = CraftApp::by_id(&app) else { return };
+                let lang = self.options().app_languages.get(&app).cloned();
                 let result = match self.installed(&app) {
-                    Some(inst) => install::launch(def, &inst, &self.paths),
+                    Some(inst) => install::launch(def, &inst, &self.paths, lang.as_deref()),
                     None => Err(format!("{} isn't installed", def.name)),
                 };
                 if let Err(e) = result {
@@ -991,6 +999,27 @@ impl Backend for NativeBackend {
                         self.shared.emit(Event::JobFinished { app, result: Err(format!("Couldn't show it: {e}")) });
                     }
                 }
+            }
+            Command::SetAppLanguage { app, language } => {
+                let Some(def) = CraftApp::by_id(&app) else { return };
+                {
+                    let mut o = self.shared.options.lock().unwrap_or_else(PoisonError::into_inner);
+                    if language == "auto" || language.is_empty() {
+                        o.app_languages.remove(&app);
+                    } else {
+                        o.app_languages.insert(app.clone(), language.clone());
+                    }
+                }
+                let inst = self.installed(&app);
+                let paths = self.paths.clone();
+                let shared = self.shared.clone();
+                std::thread::spawn(move || {
+                    if let Err(e) = crate::app_language::write_app_language(def, inst.as_ref(), &paths, &language) {
+                        shared.emit(Event::JobFinished { app, result: Err(format!("Couldn't save language for {}: {e}", def.name)) });
+                        return;
+                    }
+                    let _ = crate::app_language::apply_live_language(def, &paths, &language);
+                });
             }
             Command::UpdateLauncher => self.update_launcher(),
             Command::FetchScreenshots { app } => self.fetch_screenshots(&app),

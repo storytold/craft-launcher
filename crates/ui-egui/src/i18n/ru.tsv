@@ -340,6 +340,10 @@ filter	Installed	Установлены
 	Next picture (→)	Следующее изображение (→)
 	Loading pictures…	Загрузка изображений…
 	Pictures couldn't be loaded. Reopen this page to try again.	Не удалось загрузить изображения. Откройте страницу снова, чтобы повторить попытку.
+	Options…	Параметры…
+	Options	Параметры
+	Choose the interface language for this app. If the app is open, it updates immediately.	Выберите язык интерфейса для этого приложения. Если приложение открыто, он изменится сразу же.
+@msg	Couldn't save language for {name}: {e}	Не удалось сохранить язык для {name}: {e}
 @plural	ArtCraft Launcher · {n} update available|ArtCraft Launcher · {n} updates available	ArtCraft Launcher · {n} обновление|ArtCraft Launcher · {n} обновления|ArtCraft Launcher · {n} обновлений
 	Install folder	Папка установки
 	Default install folder	Папка установки по умолчанию

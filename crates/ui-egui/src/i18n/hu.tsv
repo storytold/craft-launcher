@@ -345,6 +345,10 @@ filter	Installed	Telepítve
 	Visit getartcraft.com	getartcraft.com megnyitása
 	ArtCraft on GitHub	ArtCraft a GitHubon
 	Join the ArtCraft Discord	Csatlakozás az ArtCraft Discord-közösségéhez
+	Options…	Beállítások…
+	Options	Beállítások
+	Choose the interface language for this app. If the app is open, it updates immediately.	Válaszd ki az alkalmazás felületének nyelvét. Ha az alkalmazás nyitva van, azonnal frissül.
+@msg	Couldn't save language for {name}: {e}	Nem sikerült menteni a(z) {name} nyelvét: {e}
 @plural	ArtCraft Launcher · {n} update available|ArtCraft Launcher · {n} updates available	ArtCraft Launcher · {n} frissítés elérhető|ArtCraft Launcher · {n} frissítés elérhető
 	Install folder	Telepítési mappa
 	Default install folder	Alapértelmezett telepítési mappa

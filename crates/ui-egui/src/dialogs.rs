@@ -25,6 +25,7 @@ impl LauncherUi {
         let response = match &mut dialog {
             Dialog::Notes(id) => modal.show(ctx, |ui| close = self.notes_dialog(ui, id)),
             Dialog::ConfirmUninstall(id) => modal.show(ctx, |ui| close = self.uninstall_dialog(ui, id)),
+            Dialog::AppOptions(id) => modal.show(ctx, |ui| close = self.app_options_dialog(ui, id)),
             Dialog::Install { app, folder } => modal.show(ctx, |ui| close = self.install_dialog(ui, app, folder, host)),
             Dialog::Replace { app, path } => modal.show(ctx, |ui| close = self.replace_dialog(ui, app, path)),
             Dialog::Settings => modal.show(ctx, |ui| close = self.settings_dialog(ui, host)),
@@ -184,6 +185,48 @@ impl LauncherUi {
         close
     }
 
+    fn app_options_dialog(&mut self, ui: &mut egui::Ui, id: &str) -> bool {
+        let Some(entry) = self.entry(id).cloned() else { return true };
+        let t = Tokens::get(ui.ctx());
+        ui.set_width(420.0f32.min(ui.ctx().content_rect().width() - 80.0));
+        Self::title(ui, crate::icons::app(id), entry.app.name, tl!("Options"));
+        ui.label(RichText::new(tl!("Choose the interface language for this app. If the app is open, it updates immediately.")).color(t.muted));
+        ui.add_space(14.0);
+        let current = self.settings.app_languages.get(id).cloned().unwrap_or_else(|| Settings::LANGUAGE_AUTO.to_string());
+        let mut lang_code = current.clone();
+        let installed = self.cjk_font;
+        ui.horizontal(|ui| {
+            ui.label(tl!("Language"));
+            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                egui::ComboBox::from_id_salt(("app-language", id))
+                    .selected_text(Settings::language_label(&lang_code, installed))
+                    .width(180.0)
+                    .show_ui(ui, |ui| {
+                        ui.selectable_value(&mut lang_code, Settings::LANGUAGE_AUTO.to_string(), tl!("Auto"));
+                        for lang in crate::i18n::Lang::all() {
+                            ui.selectable_value(&mut lang_code, lang.code().to_string(), Settings::language_label(lang.code(), installed));
+                        }
+                    });
+            });
+        });
+        if lang_code != current {
+            if lang_code == Settings::LANGUAGE_AUTO {
+                self.settings.app_languages.remove(id);
+            } else {
+                self.settings.app_languages.insert(id.to_string(), lang_code.clone());
+            }
+            self.send(Command::SetAppLanguage { app: id.to_string(), language: lang_code });
+        }
+        ui.add_space(20.0);
+        let mut close = false;
+        ui.horizontal(|ui| {
+            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                close = widgets::button(ui, tl!("Done"), Kind::Primary, 90.0).clicked();
+            });
+        });
+        close
+    }
+
     fn replace_dialog(&mut self, ui: &mut egui::Ui, id: &str, path: &str) -> bool {
         let Some(app) = self.entry(id).map(|e| e.app) else { return true };
         let t = Tokens::get(ui.ctx());
@@ -208,7 +251,6 @@ impl LauncherUi {
         });
         close
     }
-
     fn install_dialog(&mut self, ui: &mut egui::Ui, id: &str, folder: &mut String, host: &mut dyn Host) -> bool {
         let Some(app) = self.entry(id).map(|e| e.app) else { return true };
         ui.set_width(440.0f32.min(ui.ctx().content_rect().width() - 80.0));

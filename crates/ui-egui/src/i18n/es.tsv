@@ -325,6 +325,10 @@ filter	Installed	Instaladas
 	Visit getartcraft.com	Visitar getartcraft.com
 	ArtCraft on GitHub	ArtCraft en GitHub
 	Join the ArtCraft Discord	Únete al Discord de ArtCraft
+	Options…	Opciones…
+	Options	Opciones
+	Choose the interface language for this app. If the app is open, it updates immediately.	Elige el idioma de la interfaz para esta aplicación. Si la aplicación está abierta, se actualiza de inmediato.
+@msg	Couldn't save language for {name}: {e}	No se pudo guardar el idioma de {name}: {e}
 @plural	ArtCraft Launcher · {n} update available|ArtCraft Launcher · {n} updates available	ArtCraft Launcher · {n} actualización disponible|ArtCraft Launcher · {n} actualizaciones disponibles
 	Install folder	Carpeta de instalación
 	Default install folder	Carpeta de instalación predeterminada

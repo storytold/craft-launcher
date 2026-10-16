@@ -75,6 +75,7 @@ pub(crate) struct Toast {
 pub(crate) enum Dialog {
     Notes(String),
     ConfirmUninstall(String),
+    AppOptions(String),
     Install { app: String, folder: String },
     Replace { app: String, path: String },
     Settings,
@@ -88,6 +89,7 @@ impl Dialog {
         match self {
             Dialog::Notes(id) => ("notes", id),
             Dialog::ConfirmUninstall(id) => ("uninstall", id),
+            Dialog::AppOptions(id) => ("app-options", id),
             Dialog::Install { app, .. } => ("install", app),
             Dialog::Replace { app, .. } => ("replace", app),
             Dialog::Settings => ("settings", ""),
@@ -275,6 +277,7 @@ impl LauncherUi {
             kinds: self.settings.preferred_kinds.clone(),
             prereleases: self.settings.prereleases,
             install_locations: self.settings.install_locations.clone(),
+            app_languages: self.settings.app_languages.clone(),
         };
         if self.sent_options.as_ref() != Some(&options) {
             self.backend.send(Command::Configure(options.clone()));
@@ -367,6 +370,16 @@ impl LauncherUi {
                     e.detected = true;
                 }
                 true
+            }
+            Event::AppLanguages(langs) => {
+                for (app, lang) in langs {
+                    if lang == Settings::LANGUAGE_AUTO || lang.is_empty() {
+                        self.settings.app_languages.remove(&app);
+                    } else {
+                        self.settings.app_languages.insert(app, lang);
+                    }
+                }
+                false
             }
             Event::Progress { app, phase } => {
                 if app == artcraft_launcher_core::catalog::LAUNCHER_ID {

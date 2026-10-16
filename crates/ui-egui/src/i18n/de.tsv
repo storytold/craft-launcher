@@ -344,6 +344,10 @@ filter	Installed	Installiert
 	Next picture (→)	Nächstes Bild (→)
 	Loading pictures…	Bilder werden geladen…
 	Pictures couldn't be loaded. Reopen this page to try again.	Die Bilder konnten nicht geladen werden. Beim erneuten Öffnen der Seite wird es noch einmal versucht.
+	Options…	Optionen…
+	Options	Optionen
+	Choose the interface language for this app. If the app is open, it updates immediately.	Wähle die Oberflächensprache für diese App. Wenn die App geöffnet ist, wird sie sofort aktualisiert.
+@msg	Couldn't save language for {name}: {e}	Sprache für {name} konnte nicht gespeichert werden: {e}
 @plural	ArtCraft Launcher · {n} update available|ArtCraft Launcher · {n} updates available	ArtCraft Launcher · {n} Update verfügbar|ArtCraft Launcher · {n} Updates verfügbar
 	Install folder	Installationsordner
 	Default install folder	Standardordner für Installationen

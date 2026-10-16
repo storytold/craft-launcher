@@ -415,13 +415,17 @@ fn remove_appimage(app: &CraftApp, path: &Path, record: Option<&Record>) -> Resu
 }
 
 /// Starts an installed app.
-pub fn launch(app: &CraftApp, installed: &Installed, paths: &Paths) -> Result<(), String> {
-    let _ = paths;
+pub fn launch(app: &CraftApp, installed: &Installed, paths: &Paths, configured_lang: Option<&str>) -> Result<(), String> {
+    let envs = crate::app_language::prepare_launch_env(app, Some(installed), paths, configured_lang);
     let path = Path::new(&installed.location);
     match installed.source {
         InstallSource::Flatpak => {
             let mut cmd = process::flatpak_command();
-            cmd.args(["run", &app.bundle_id()]);
+            cmd.arg("run");
+            for (k, v) in &envs {
+                cmd.arg(format!("--env={k}={v}"));
+            }
+            cmd.arg(app.bundle_id());
             process::spawn_detached(cmd)
         }
         InstallSource::MacApp => process::open(path.as_os_str()),
@@ -437,6 +441,9 @@ pub fn launch(app: &CraftApp, installed: &Installed, paths: &Paths) -> Result<()
             for (name, value) in home_env(&home) {
                 cmd.env(name, value);
             }
+            for (k, v) in &envs {
+                cmd.env(k, v);
+            }
             if let Some(dir) = path.parent() {
                 cmd.current_dir(dir);
             }
@@ -447,7 +454,7 @@ pub fn launch(app: &CraftApp, installed: &Installed, paths: &Paths) -> Result<()
             if !path.exists() {
                 return Err(format!("{} isn't where it was installed ({})", app.name, path.display()));
             }
-            process::launch_binary(path, &[])
+            process::launch_binary_with_env(path, &[], &envs)
         }
     }
     .map_err(|e| format!("Couldn't open {}: {e}", app.name))

@@ -1689,6 +1689,34 @@ fn with_animations_on_hovering_a_card_animates() {
 }
 
 #[test]
+fn per_app_options_dialog_changes_app_language() {
+    let mut ev = events();
+    let mut detected_langs = std::collections::BTreeMap::new();
+    detected_langs.insert("photocraft".to_string(), "pt-BR".to_string());
+    ev.push(Event::AppLanguages(detected_langs));
+    let (mut h, sent) = harness_with(ev, ViewMode::Table, egui::Theme::Dark, true, 1.0);
+    h.run_steps(6);
+    assert_eq!(h.state().as_ref().unwrap().settings.app_languages.get("photocraft").map(String::as_str), Some("pt-BR"));
+    let row = h.get_all_by_label("PhotoCraft").next().unwrap().rect().center().y;
+    h.get_all_by_label("…").find(|n| (n.rect().center().y - row).abs() < 25.0).unwrap().click();
+    h.run_steps(3);
+    h.get_by_label("Options…").click();
+    h.run_steps(4);
+    h.get_by_label("Choose the interface language for this app. If the app is open, it updates immediately.");
+    sent.borrow_mut().clear();
+    // Open the language ComboBox (currently showing Português (Brasil)) and select English.
+    h.get(egui_kittest::kittest::by().role(egui::accesskit::Role::ComboBox).value("Português (Brasil)")).click();
+    h.run_steps(3);
+    h.get_by_label("English").click();
+    h.run_steps(3);
+    assert_eq!(h.state().as_ref().unwrap().settings.app_languages.get("photocraft").map(String::as_str), Some("en"));
+    assert!(sent.borrow().contains(&Command::SetAppLanguage { app: "photocraft".into(), language: "en".into() }));
+    h.get_by_label("Done").click();
+    h.run_steps(3);
+    assert!(h.query_by_label("Choose the interface language for this app. If the app is open, it updates immediately.").is_none());
+}
+
+#[test]
 fn an_occupied_folder_asks_before_replacing_it() {
     let path = "/Volumes/Craft Apps/PhotoCraft.app";
     let mut ev = events();

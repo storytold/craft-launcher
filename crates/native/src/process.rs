@@ -146,12 +146,25 @@ fn which_on_path(name: &str) -> Option<std::path::PathBuf> {
 
 /// Starts an app binary from its own folder.
 pub fn launch_binary(exe: &Path, args: &[&str]) -> Result<(), String> {
+    launch_binary_with_env(exe, args, &[])
+}
+
+/// Starts an app binary from its own folder with additional environment variables.
+pub fn launch_binary_with_env(exe: &Path, args: &[&str], envs: &[(String, String)]) -> Result<(), String> {
     let mut cmd = if in_sandbox() {
         let mut c = command("flatpak-spawn");
-        c.arg("--host").arg(exe);
+        c.arg("--host");
+        for (k, v) in envs {
+            c.arg(format!("--env={k}={v}"));
+        }
+        c.arg(exe);
         c
     } else {
-        command(exe)
+        let mut c = command(exe);
+        for (k, v) in envs {
+            c.env(k, v);
+        }
+        c
     };
     cmd.args(args);
     if let Some(dir) = exe.parent() {

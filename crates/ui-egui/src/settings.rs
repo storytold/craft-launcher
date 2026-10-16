@@ -115,6 +115,10 @@ pub struct Settings {
     pub last_check: Option<i64>,
     /// Catalog ids of apps hidden from the main lists (`photocraft`, …).
     pub hidden: std::collections::BTreeSet<String>,
+    /// Per-app interface language overrides (`photocraft` → `pt-BR`, …). Empty or omitted entries
+    /// follow the system language (`auto`).
+    #[serde(default)]
+    pub app_languages: BTreeMap<String, String>,
 }
 
 impl Settings {
@@ -188,6 +192,7 @@ impl Default for Settings {
             notified: BTreeMap::new(),
             last_check: None,
             hidden: std::collections::BTreeSet::new(),
+            app_languages: BTreeMap::new(),
         }
     }
 }

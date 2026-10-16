@@ -347,6 +347,10 @@ filter	Installed	インストール済み
 	Visit getartcraft.com	getartcraft.com を開く
 	ArtCraft on GitHub	GitHub の ArtCraft
 	Join the ArtCraft Discord	ArtCraft Discord に参加
+	Options…	オプション…
+	Options	オプション
+	Choose the interface language for this app. If the app is open, it updates immediately.	このアプリの表示言語を選択します。アプリが起動中の場合はすぐに反映されます。
+@msg	Couldn't save language for {name}: {e}	{name} の言語を保存できませんでした: {e}
 @plural	ArtCraft Launcher · {n} update available|ArtCraft Launcher · {n} updates available	ArtCraft Launcher · {n} 件の更新があります
 	Install folder	インストール先フォルダー
 	Default install folder	既定のインストール先フォルダー
