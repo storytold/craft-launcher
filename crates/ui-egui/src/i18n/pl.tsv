@@ -399,3 +399,172 @@ filter	Installed	Zainstalowane
 	Theme	Motyw
 	Plug-in	Wtyczka
 	Resource	Zasób
+# Not yet translated: the English text is shown until a translator fills these in.
+	A hosted video sample can cost noticeably more than an image	A hosted video sample can cost noticeably more than an image
+	AI models for every Craft app	AI models for every Craft app
+	AI models the Craft apps can use	AI models the Craft apps can use
+	Add a provider	Add a provider
+	Add another server	Add another server
+	Add another server, or choose which model each tool uses	Add another server, or choose which model each tool uses
+	Add connection	Add connection
+	Add one and the Craft apps can use it. Keys are kept in your system keychain, never in a plain file.	Add one and the Craft apps can use it. Keys are kept in your system keychain, never in a plain file.
+	Address	Address
+	Advanced	Advanced
+	Also needs the {name} add-on in ComfyUI. Install it with ComfyUI Manager, then come back: {url}	Also needs the {name} add-on in ComfyUI. Install it with ComfyUI Manager, then come back: {url}
+	App settings that use it are cleared as well.	App settings that use it are cleared as well.
+	App settings using it: {n}	App settings using it: {n}
+	Automatic (best available)	Automatic (best available)
+	Back	Back
+	Cannot run it here? Use a hosted service	Cannot run it here? Use a hosted service
+	Cannot run on this computer	Cannot run on this computer
+	Checking {file}	Checking {file}
+	Choose a model	Choose a model
+	Choose the one you use	Choose the one you use
+	Chosen model unavailable	Chosen model unavailable
+	ComfyUI was not found on this computer	ComfyUI was not found on this computer
+	Connect	Connect
+	Connect a hosted service that can:	Connect a hosted service that can:
+	Connect {name}	Connect {name}
+	Connected	Connected
+	Connected. Models found: {n} ({ms} ms)	Connected. Models found: {n} ({ms} ms)
+	Connections	Connections
+	Couldn't load connections: {e}	Couldn't load connections: {e}
+	Data sent to this connection leaves this computer.	Data sent to this connection leaves this computer.
+	Data sent to this connection stays on this computer.	Data sent to this connection stays on this computer.
+	Details	Details
+	Download {size}	Download {size}
+	Downloading {file}: {done} of {total}	Downloading {file}: {done} of {total}
+	Edit	Edit
+	Edit connection	Edit connection
+	Enabled	Enabled
+	File {step} of {of}	File {step} of {of}
+	For every Craft app	For every Craft app
+	Free. What you send never leaves this computer.	Free. What you send never leaves this computer.
+	Hosted services	Hosted services
+	I have read the licence and accept it	I have read the licence and accept it
+	In {apps}	In {apps}
+	Installed. This tool is ready on this computer.	Installed. This tool is ready on this computer.
+	It counts against your subscription's allowance.	It counts against your subscription's allowance.
+	It is free.	It is free.
+	Its saved key is deleted too.	Its saved key is deleted too.
+	Key	Key
+	Key missing	Key missing
+	Key saved	Key saved
+	Key unreadable	Key unreadable
+	Leave empty to keep the saved key	Leave empty to keep the saved key
+	Leaves this computer	Leaves this computer
+	Licence	Licence
+	Model	Model
+	Models	Models
+	Models: {n}	Models: {n}
+	Needs {needed} GB of graphics memory; this computer has {have} GB	Needs {needed} GB of graphics memory; this computer has {have} GB
+	Needs {needed} of free disk space; {free} is free	Needs {needed} of free disk space; {free} is free
+	No connected model can do this yet.	No connected model can do this yet.
+	No connections yet.	No connections yet.
+	No key needed	No key needed
+	No model chosen. Apps will ask, or fall back to their own setting.	No model chosen. Apps will ask, or fall back to their own setting.
+	No test for this tool yet	No test for this tool yet
+	No tool has a connected model yet.	No tool has a connected model yet.
+	None of the supported services does this yet.	None of the supported services does this yet.
+	Nothing yet. Set something up below.	Nothing yet. Set something up below.
+	Ollama, LM Studio, ComfyUI or any OpenAI-compatible server	Ollama, LM Studio, ComfyUI or any OpenAI-compatible server
+	On this computer	On this computer
+	Other	Other
+	Other servers	Other servers
+	Paste the key here	Paste the key here
+	Read the licence	Read the licence
+	Ready	Ready
+	Ready. Runs on this computer.	Ready. Runs on this computer.
+	Ready. Sends to a hosted service.	Ready. Sends to a hosted service.
+	Remove {name}?	Remove {name}?
+	Runs on this computer through ComfyUI	Runs on this computer through ComfyUI
+	Runs on this computer through ComfyUI. Your pictures never leave it.	Runs on this computer through ComfyUI. Your pictures never leave it.
+	Runs one small sample to see whether this model really does the job	Runs one small sample to see whether this model really does the job
+	Save	Save
+	Send the test	Send the test
+	Servers, and which model each tool uses	Servers, and which model each tool uses
+	Set up	Set up
+	Set up AI	Set up AI
+	Set up one or more of these and the AI tools switch on in every Craft app that has them.	Set up one or more of these and the AI tools switch on in every Craft app that has them.
+	Set up the AI tools for every Craft app	Set up the AI tools for every Craft app
+	Set up {name}	Set up {name}
+	Set up, {size}	Set up, {size}
+	Switched on	Switched on
+	Switches on	Switches on
+	Test	Test
+	Test failed: {e}	Test failed: {e}
+	Test it	Test it
+	Testing…	Testing…
+	The apps cannot run this model yet. You can download it now, and the tool switches on when they can.	The apps cannot run this model yet. You can download it now, and the tool switches on when they can.
+	The download failed: {e}	The download failed: {e}
+	The test failed: {e}	The test failed: {e}
+	This computer	This computer
+	This sends a small sample ({items}) to {destination} through {connection}. {cost}	This sends a small sample ({items}) to {destination} through {connection}. {cost}
+	Tools pick the best model that is connected on their own. Change one here, or test that it works.	Tools pick the best model that is connected on their own. Change one here, or test that it works.
+	Total {size}. It goes into your ComfyUI models folder.	Total {size}. It goes into your ComfyUI models folder.
+	Try again	Try again
+	Turned off	Turned off
+	Uses a key	Uses a key
+	Whether it costs anything is not known.	Whether it costs anything is not known.
+	Will be downloaded	Will be downloaded
+	Works. {summary}, in {secs} s.	Works. {summary}, in {secs} s.
+	You are billed for it by the service.	You are billed for it by the service.
+	You use your own key and the service bills you. What you send leaves this computer.	You use your own key and the service bills you. What you send leaves this computer.
+	Your other connections	Your other connections
+	a provider	a provider
+	{file}, {size}, from {host}	{file}, {size}, from {host}
+	{model} (this computer)	{model} (this computer)
+	Files in place	Files in place
+	Planned for	Planned for
+	Model files installed. The app tool is not connected yet.	Model files installed. The app tool is not connected yet.
+	History	History
+	AI jobs run by your Craft apps	AI jobs run by your Craft apps
+	All time	All time
+	Today	Today
+	7 days	7 days
+	30 days	30 days
+	All models	All models
+	No AI jobs yet. They appear here once a Craft app uses AI.	No AI jobs yet. They appear here once a Craft app uses AI.
+	No jobs match these filters.	No jobs match these filters.
+	Jobs	Jobs
+	By day	By day
+	By month	By month
+	Only costs the provider reported are counted.	Only costs the provider reported are counted.
+	Some lines in the history could not be read and were left out.	Some lines in the history could not be read and were left out.
+	Refresh	Refresh
+	Yes, delete it	Yes, delete it
+	Keep it	Keep it
+	Delete the history for every app?	Delete the history for every app?
+	Clear history	Clear history
+	Export CSV	Export CSV
+	Saves what is showing as a spreadsheet file in your Downloads folder	Saves what is showing as a spreadsheet file in your Downloads folder
+	Saved to {path}	Saved to {path}
+	Every AI job your Craft apps have run, and what it cost	Every AI job your Craft apps have run, and what it cost
+	Failed	Failed
+	Reported cost	Reported cost
+	Out of credit	Out of credit
+	Rate limited	Rate limited
+	Sign-in problem	Sign-in problem
+	Network problem	Network problem
+	Provider error	Provider error
+	Error	Error
+	When	When
+	What	What
+	Result	Result
+	Took	Took
+	Cost	Cost
+	{model} on {connection}	{model} on {connection}
+	Local	Local
+	Remote	Remote
+	Cancelled	Cancelled
+	Not finished	Not finished
+	Day	Day
+	Month	Month
+	The files are in place. The apps cannot run this model yet, and the tool switches on when they can.	The files are in place. The apps cannot run this model yet, and the tool switches on when they can.
+	Jobs per day	Jobs per day
+	By model	By model
+	By app	By app
+	Average	Average
+	Runs on this computer	Runs on this computer
+	No models found yet	No models found yet
+@plural	{n} model|{n} models	{n} model|{n} modele|{n} modeli

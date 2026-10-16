@@ -60,6 +60,30 @@ fn is_hex64(s: &str) -> bool {
     s.len() == 64 && s.bytes().all(|b| b.is_ascii_hexdigit())
 }
 
+/// The GitHub owners whose repos the launcher will download from. A feed may move an app to a
+/// different repo, but only inside one of these; moving to a new owner needs a launcher release.
+pub const TRUSTED_OWNERS: &[&str] = &["storytold"];
+
+/// Whether `repo` (`owner/name`) belongs to a trusted owner.
+pub fn trusted_repo(repo: &str) -> bool {
+    repo.split_once('/').is_some_and(|(owner, _)| TRUSTED_OWNERS.iter().any(|t| t.eq_ignore_ascii_case(owner)))
+}
+
+/// Whether `url` is safe to hand to the system browser from untrusted text (release notes, feed
+/// notices): `https` only, a host, no user-info, no spaces or control characters.
+pub fn safe_web_link(url: &str) -> bool {
+    let Some(rest) = url.strip_prefix("https://") else { return false };
+    let authority = rest.split(['/', '?', '#']).next().unwrap_or_default();
+    url.len() <= 2000 && !authority.is_empty() && !authority.contains(['@', '\\']) && !url.chars().any(|c| c.is_control() || c.is_whitespace())
+}
+
+/// Whether a download link contains `..` or an encoded dot or slash, which could walk out of the
+/// release folder once a server normalises it.
+pub fn has_path_trick(url: &str) -> bool {
+    let lower = url.to_ascii_lowercase();
+    lower.contains("..") || lower.contains("%2e") || lower.contains("%2f") || lower.contains("%5c")
+}
+
 /// The prefix every download of `repo` must start with.
 pub fn download_prefix(repo: &str) -> String {
     format!("https://github.com/{repo}/releases/download/")
@@ -111,7 +135,10 @@ fn release_from_value(v: &serde_json::Value, repo: &str) -> Result<Release, Stri
             list.iter()
                 .filter_map(|a| {
                     let name = a["name"].as_str().filter(|n| valid_file_name(n))?.to_string();
-                    let url = a["browser_download_url"].as_str().filter(|u| u.starts_with(&prefix) && !u.contains(['?', '#', '\\']))?.to_string();
+                    let url = a["browser_download_url"]
+                        .as_str()
+                        .filter(|u| u.starts_with(&prefix) && !u.contains(['?', '#', '\\']) && !has_path_trick(u))?
+                        .to_string();
                     let sha256 = a["digest"].as_str().and_then(|d| d.strip_prefix("sha256:")).filter(|h| is_hex64(h)).map(str::to_ascii_lowercase);
                     Some(Asset { name, size: a["size"].as_u64().unwrap_or(0), url, sha256 })
                 })
@@ -194,6 +221,39 @@ mod tests {
     use super::*;
 
     const REPO: &str = "storytold/photocraft";
+
+    #[test]
+    fn only_trusted_owners_and_plain_https_links_pass() {
+        assert!(trusted_repo("storytold/photocraft") && trusted_repo("StoryTold/x"));
+        for bad in ["art/photocraft", "photocraft", "/photocraft", "evil/storytold"] {
+            assert!(!trusted_repo(bad), "{bad}");
+        }
+        assert!(safe_web_link("https://github.com/storytold/photocraft/releases/tag/v1"));
+        for bad in [
+            "http://example.com/",
+            "javascript:alert(1)",
+            "file:///C:/Windows/System32/calc.exe",
+            "ms-msdt:/id",
+            "https://",
+            "https://user@evil.example/",
+            "https://example.com/a b",
+            "https://example.com/\nx",
+            "https:///path",
+        ] {
+            assert!(!safe_web_link(bad), "{bad:?}");
+        }
+    }
+
+    #[test]
+    fn download_links_with_path_tricks_are_dropped() {
+        for trick in ["..", "%2e%2e", "%2E%2e", "%2f", "%5c"] {
+            let url = format!("https://github.com/storytold/photocraft/releases/download/{trick}/x/a.dmg");
+            assert!(has_path_trick(&url), "{trick}");
+        }
+        assert!(!has_path_trick("https://github.com/storytold/photocraft/releases/download/v1.0.0/a-1.0.dmg"));
+        let json = r#"{"tag_name":"v1.0.0","assets":[{"name":"a.dmg","size":1,"browser_download_url":"https://github.com/storytold/photocraft/releases/download/../../../evil/repo/releases/download/v1/a.dmg"}]}"#;
+        assert!(parse_github_release(json, REPO).unwrap().assets.is_empty());
+    }
     const HASH: &str = "8a5edab282632443219e051e4ade2d1d5bbc671c781051bf1437897cbdfea0f1";
 
     fn api_json(url: &str) -> String {
