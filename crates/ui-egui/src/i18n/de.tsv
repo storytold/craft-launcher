@@ -345,6 +345,15 @@ filter	Installed	Installiert
 	Loading pictures…	Bilder werden geladen…
 	Pictures couldn't be loaded. Reopen this page to try again.	Die Bilder konnten nicht geladen werden. Beim erneuten Öffnen der Seite wird es noch einmal versucht.
 @plural	ArtCraft Launcher · {n} update available|ArtCraft Launcher · {n} updates available	ArtCraft Launcher · {n} Update verfügbar|ArtCraft Launcher · {n} Updates verfügbar
+	Shortcuts…	Verknüpfungen…
+	Shortcuts	Verknüpfungen
+	Choose which shortcuts to keep for this app. Changes apply immediately for installed apps and are preserved across updates.	Wähle aus, welche Verknüpfungen für diese App beibehalten werden sollen. Änderungen gelten für installierte Apps sofort und bleiben bei Updates erhalten.
+	Desktop shortcut	Desktop-Verknüpfung
+	Start menu / application menu shortcut	Verknüpfung im Startmenü / Anwendungsmenü
+	Use global defaults	Globale Standardwerte verwenden
+	Create a desktop shortcut when installing apps	Beim Installieren von Apps eine Desktop-Verknüpfung erstellen
+	Create a Start menu / application menu shortcut when installing apps	Beim Installieren von Apps eine Verknüpfung im Startmenü / Anwendungsmenü erstellen
+@msg	Couldn't update shortcuts for {name}: {e}	Verknüpfungen für {name} konnten nicht aktualisiert werden: {e}
 	Install folder	Installationsordner
 	Default install folder	Standardordner für Installationen
 	System default	Systemstandard

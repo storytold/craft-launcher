@@ -341,6 +341,15 @@ filter	Installed	Установлены
 	Loading pictures…	Загрузка изображений…
 	Pictures couldn't be loaded. Reopen this page to try again.	Не удалось загрузить изображения. Откройте страницу снова, чтобы повторить попытку.
 @plural	ArtCraft Launcher · {n} update available|ArtCraft Launcher · {n} updates available	ArtCraft Launcher · {n} обновление|ArtCraft Launcher · {n} обновления|ArtCraft Launcher · {n} обновлений
+	Shortcuts…	Ярлыки…
+	Shortcuts	Ярлыки
+	Choose which shortcuts to keep for this app. Changes apply immediately for installed apps and are preserved across updates.	Выберите, какие ярлыки сохранять для этого приложения. Изменения сразу применяются к установленным приложениям и сохраняются при обновлениях.
+	Desktop shortcut	Ярлык на рабочем столе
+	Start menu / application menu shortcut	Ярлык в меню «Пуск» / меню приложений
+	Use global defaults	Использовать общие настройки по умолчанию
+	Create a desktop shortcut when installing apps	Создавать ярлык на рабочем столе при установке приложений
+	Create a Start menu / application menu shortcut when installing apps	Создавать ярлык в меню «Пуск» / меню приложений при установке
+@msg	Couldn't update shortcuts for {name}: {e}	Не удалось обновить ярлыки для {name}: {e}
 	Install folder	Папка установки
 	Default install folder	Папка установки по умолчанию
 	System default	По умолчанию в системе

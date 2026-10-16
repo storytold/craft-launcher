@@ -333,6 +333,15 @@ filter	Installed	Instalados
 	Loading pictures…	Carregando imagens…
 	Pictures couldn't be loaded. Reopen this page to try again.	Não foi possível carregar as imagens. Abra a página novamente para tentar de novo.
 @plural	ArtCraft Launcher · {n} update available|ArtCraft Launcher · {n} updates available	ArtCraft Launcher · {n} atualização disponível|ArtCraft Launcher · {n} atualizações disponíveis
+	Shortcuts…	Atalhos…
+	Shortcuts	Atalhos
+	Choose which shortcuts to keep for this app. Changes apply immediately for installed apps and are preserved across updates.	Escolha quais atalhos manter para este aplicativo. As alterações são aplicadas imediatamente aos aplicativos instalados e preservadas após atualizações.
+	Desktop shortcut	Atalho na área de trabalho
+	Start menu / application menu shortcut	Atalho no menu Iniciar / menu de aplicativos
+	Use global defaults	Usar padrões globais
+	Create a desktop shortcut when installing apps	Criar um atalho na área de trabalho ao instalar aplicativos
+	Create a Start menu / application menu shortcut when installing apps	Criar um atalho no menu Iniciar / menu de aplicativos ao instalar aplicativos
+@msg	Couldn't update shortcuts for {name}: {e}	Não foi possível atualizar os atalhos de {name}: {e}
 	Install folder	Pasta de instalação
 	Default install folder	Pasta de instalação padrão
 	System default	Padrão do sistema

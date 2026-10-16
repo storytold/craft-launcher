@@ -343,6 +343,15 @@ filter	Installed	Installées
 	Loading pictures…	Chargement des images…
 	Pictures couldn't be loaded. Reopen this page to try again.	Impossible de charger les images. Rouvrir la page permet de réessayer.
 @plural	ArtCraft Launcher · {n} update available|ArtCraft Launcher · {n} updates available	ArtCraft Launcher · {n} mise à jour disponible|ArtCraft Launcher · {n} mises à jour disponibles
+	Shortcuts…	Raccourcis…
+	Shortcuts	Raccourcis
+	Choose which shortcuts to keep for this app. Changes apply immediately for installed apps and are preserved across updates.	Choisissez quels raccourcis conserver pour cette application. Les modifications s'appliquent immédiatement aux applications installées et sont conservées lors des mises à jour.
+	Desktop shortcut	Raccourci sur le bureau
+	Start menu / application menu shortcut	Raccourci dans le menu Démarrer / menu des applications
+	Use global defaults	Utiliser les paramètres globaux par défaut
+	Create a desktop shortcut when installing apps	Créer un raccourci sur le bureau lors de l'installation d'applications
+	Create a Start menu / application menu shortcut when installing apps	Créer un raccourci dans le menu Démarrer / menu des applications lors de l'installation
+@msg	Couldn't update shortcuts for {name}: {e}	Impossible de mettre à jour les raccourcis pour {name} : {e}
 	Install folder	Dossier d’installation
 	Default install folder	Dossier d’installation par défaut
 	System default	Par défaut du système

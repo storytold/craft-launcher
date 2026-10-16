@@ -820,6 +820,10 @@ impl LauncherUi {
                 self.dialog = Some(Dialog::Notes(id.clone()));
                 ui.close();
             }
+            if manage && ui.button(tl!("Shortcuts…")).clicked() {
+                self.dialog = Some(Dialog::AppShortcuts(id.clone()));
+                ui.close();
+            }
             // Only where Install would download: an up-to-date app would be reinstalled.
             let can_download_again =
                 manage && entry.ready && entry.paused.is_none() && matches!(status, AppStatus::Available | AppStatus::UpdateAvailable);

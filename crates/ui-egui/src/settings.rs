@@ -115,6 +115,19 @@ pub struct Settings {
     pub last_check: Option<i64>,
     /// Catalog ids of apps hidden from the main lists (`photocraft`, …).
     pub hidden: std::collections::BTreeSet<String>,
+    /// Global default: create a desktop shortcut when installing or updating an app.
+    #[serde(default)]
+    pub create_desktop_shortcut: bool,
+    /// Global default: create a Start menu / application menu shortcut when installing or updating an app.
+    #[serde(default = "default_true")]
+    pub create_start_menu_shortcut: bool,
+    /// Per-app shortcut overrides (`photocraft` → [`AppShortcutPrefs`]).
+    #[serde(default)]
+    pub app_shortcuts: BTreeMap<String, artcraft_launcher_core::protocol::AppShortcutPrefs>,
+}
+
+fn default_true() -> bool {
+    true
 }
 
 impl Settings {
@@ -133,6 +146,15 @@ impl Settings {
             Some(lang) => lang.name().to_string(),
             None => t("Auto").to_string(),
         }
+    }
+
+    /// Resolves `(desktop, start_menu)` shortcut state for `app_id`, preferring an explicit
+    /// per-app override, then the detected on-disk state for an installed app, then global defaults.
+    pub fn effective_shortcuts(&self, app_id: &str, detected: Option<artcraft_launcher_core::protocol::AppShortcutState>) -> (bool, bool) {
+        let prefs = self.app_shortcuts.get(app_id).copied().unwrap_or_default();
+        let desktop = prefs.desktop.or_else(|| detected.map(|d| d.desktop)).unwrap_or(self.create_desktop_shortcut);
+        let start_menu = prefs.start_menu.or_else(|| detected.map(|d| d.start_menu)).unwrap_or(self.create_start_menu_shortcut);
+        (desktop, start_menu)
     }
 }
 
@@ -188,6 +210,9 @@ impl Default for Settings {
             notified: BTreeMap::new(),
             last_check: None,
             hidden: std::collections::BTreeSet::new(),
+            create_desktop_shortcut: false,
+            create_start_menu_shortcut: true,
+            app_shortcuts: BTreeMap::new(),
         }
     }
 }

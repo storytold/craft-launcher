@@ -347,6 +347,15 @@ filter	Installed	Zainstalowane
 	ArtCraft on GitHub	ArtCraft na GitHubie
 	Join the ArtCraft Discord	Dołącz do Discorda ArtCraft
 @plural	ArtCraft Launcher · {n} update available|ArtCraft Launcher · {n} updates available	ArtCraft Launcher · {n} dostępna aktualizacja|ArtCraft Launcher · {n} dostępne aktualizacje|ArtCraft Launcher · {n} dostępnych aktualizacji
+	Shortcuts…	Skróty…
+	Shortcuts	Skróty
+	Choose which shortcuts to keep for this app. Changes apply immediately for installed apps and are preserved across updates.	Wybierz, które skróty zachować dla tej aplikacji. Zmiany są stosowane natychmiast w przypadku zainstalowanych aplikacji i zachowywane podczas aktualizacji.
+	Desktop shortcut	Skrót na pulpicie
+	Start menu / application menu shortcut	Skrót w menu Start / menu aplikacji
+	Use global defaults	Użyj domyślnych ustawień globalnych
+	Create a desktop shortcut when installing apps	Utwórz skrót na pulpicie podczas instalowania aplikacji
+	Create a Start menu / application menu shortcut when installing apps	Utwórz skrót w menu Start / menu aplikacji podczas instalowania aplikacji
+@msg	Couldn't update shortcuts for {name}: {e}	Nie udało się zaktualizować skrótów dla {name}: {e}
 	Install folder	Folder instalacji
 	Default install folder	Domyślny folder instalacji
 	System default	Domyślny systemowy

@@ -55,8 +55,30 @@ pub enum Command {
     FetchScreenshots {
         app: String,
     },
+    /// Create, update, or remove desktop and Start menu / application menu shortcuts for an app.
+    SyncShortcuts {
+        app: String,
+        desktop: bool,
+        start_menu: bool,
+    },
     /// Change how the backend behaves.
     Configure(BackendOptions),
+}
+
+/// Per-app shortcut overrides. `None` inherits the global default from [`BackendOptions`].
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct AppShortcutPrefs {
+    #[serde(default)]
+    pub desktop: Option<bool>,
+    #[serde(default)]
+    pub start_menu: Option<bool>,
+}
+
+/// Whether desktop and Start menu / application menu shortcuts currently exist on disk for an app.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct AppShortcutState {
+    pub desktop: bool,
+    pub start_menu: bool,
 }
 
 /// Parent folders for new installs. Existing installations keep their recorded location.
@@ -74,7 +96,7 @@ impl InstallLocations {
 }
 
 /// Settings the backend needs.
-#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct BackendOptions {
     pub install_locations: InstallLocations,
@@ -82,6 +104,25 @@ pub struct BackendOptions {
     pub kinds: Vec<PackageKind>,
     /// Offer pre-releases (`0.6.0-rc.1`) as updates.
     pub prereleases: bool,
+    /// Global default: create a desktop shortcut when installing or updating an app.
+    pub create_desktop_shortcut: bool,
+    /// Global default: create a Start menu / application menu shortcut when installing or updating an app.
+    pub create_start_menu_shortcut: bool,
+    /// Per-app shortcut overrides (`photocraft` → [`AppShortcutPrefs`]).
+    pub app_shortcuts: std::collections::BTreeMap<String, AppShortcutPrefs>,
+}
+
+impl Default for BackendOptions {
+    fn default() -> Self {
+        Self {
+            install_locations: InstallLocations::default(),
+            kinds: Vec::new(),
+            prereleases: false,
+            create_desktop_shortcut: false,
+            create_start_menu_shortcut: true,
+            app_shortcuts: std::collections::BTreeMap::new(),
+        }
+    }
 }
 
 /// The answer to "what's the latest release of this app?".
@@ -194,6 +235,8 @@ pub enum Event {
         app: String,
         installed: Option<Installed>,
     },
+    /// Detected shortcut state on disk for each installed app.
+    ShortcutsDetected(std::collections::BTreeMap<String, AppShortcutState>),
     Progress {
         app: String,
         phase: JobPhase,

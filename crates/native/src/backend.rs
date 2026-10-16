@@ -196,6 +196,13 @@ impl NativeBackend {
                 }
                 shared.emit(Event::Detected { app: app.id.to_string(), installed: found });
             }
+            {
+                let map = shared.installed.lock().unwrap_or_else(PoisonError::into_inner).clone();
+                let shortcuts = crate::shortcuts::detect_all(&map);
+                if !shortcuts.is_empty() {
+                    shared.emit(Event::ShortcutsDetected(shortcuts));
+                }
+            }
             // Downloads paused (or cut off by quitting) in an earlier run.
             for app in &SUITE {
                 report_partial(app, &shared, &paths, platform, &options);
@@ -345,6 +352,7 @@ impl NativeBackend {
                 let mut phase = |phase| shared.emit(Event::Progress { app: app.id.to_string(), phase });
                 match &existing {
                     Some(inst) => install::uninstall(app, inst, record.as_ref(), &paths, &stop, &mut phase).map(|()| {
+                        crate::shortcuts::remove_all(app);
                         let mut m = shared.manifest.lock().unwrap_or_else(PoisonError::into_inner);
                         if m.apps.remove(app.id).is_some() {
                             let _ = m.save(&paths.manifest());
@@ -389,6 +397,9 @@ impl NativeBackend {
                 }
                 (result, _) => result,
             };
+            if !uninstall && result.is_ok() {
+                crate::shortcuts::apply_after_install(app, found.as_ref(), &options);
+            }
             {
                 let mut map = shared.installed.lock().unwrap_or_else(PoisonError::into_inner);
                 match &found {
@@ -396,7 +407,12 @@ impl NativeBackend {
                     None => map.remove(app.id),
                 };
             }
-            shared.emit(Event::Detected { app: app.id.to_string(), installed: found });
+            shared.emit(Event::Detected { app: app.id.to_string(), installed: found.clone() });
+            if found.is_some() {
+                let mut map = std::collections::BTreeMap::new();
+                map.insert(app.id.to_string(), crate::shortcuts::detect_one(app));
+                shared.emit(Event::ShortcutsDetected(map));
+            }
             shared.jobs.lock().unwrap_or_else(PoisonError::into_inner).remove(app.id);
             shared.emit(Event::JobFinished { app: app.id.to_string(), result });
         });
@@ -994,6 +1010,21 @@ impl Backend for NativeBackend {
             }
             Command::UpdateLauncher => self.update_launcher(),
             Command::FetchScreenshots { app } => self.fetch_screenshots(&app),
+            Command::SyncShortcuts { app, desktop, start_menu } => {
+                let Some(def) = CraftApp::by_id(&app) else { return };
+                let Some(inst) = self.installed(&app) else { return };
+                let shared = self.shared.clone();
+                std::thread::spawn(move || match crate::shortcuts::sync_shortcuts(def, &inst, desktop, start_menu) {
+                    Ok(state) => {
+                        let mut map = std::collections::BTreeMap::new();
+                        map.insert(app, state);
+                        shared.emit(Event::ShortcutsDetected(map));
+                    }
+                    Err(e) => {
+                        shared.emit(Event::JobFinished { app, result: Err(format!("Couldn't update shortcuts for {}: {e}", def.name)) });
+                    }
+                });
+            }
             Command::Configure(options) => {
                 let changed_pre = {
                     let mut o = self.shared.options.lock().unwrap_or_else(PoisonError::into_inner);

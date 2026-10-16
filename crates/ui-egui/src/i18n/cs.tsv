@@ -313,6 +313,15 @@ filter	Installed	Nainstalováno
 	ArtCraft on GitHub	ArtCraft na GitHubu
 	Join the ArtCraft Discord	Připojit se na ArtCraft Discord
 @plural	ArtCraft Launcher · {n} update available|ArtCraft Launcher · {n} updates available	ArtCraft Launcher · {n} dostupná aktualizace|ArtCraft Launcher · {n} dostupné aktualizace|ArtCraft Launcher · {n} dostupných aktualizací
+	Shortcuts…	Zástupci…
+	Shortcuts	Zástupci
+	Choose which shortcuts to keep for this app. Changes apply immediately for installed apps and are preserved across updates.	Vyberte, které zástupce chcete pro tuto aplikaci ponechat. Změny se u nainstalovaných aplikací projeví okamžitě a zůstanou zachovány i po aktualizacích.
+	Desktop shortcut	Zástupce na ploše
+	Start menu / application menu shortcut	Zástupce v nabídce Start / nabídce aplikací
+	Use global defaults	Použít globální výchozí nastavení
+	Create a desktop shortcut when installing apps	Vytvořit zástupce na ploše při instalaci aplikací
+	Create a Start menu / application menu shortcut when installing apps	Vytvořit zástupce v nabídce Start / nabídce aplikací při instalaci aplikací
+@msg	Couldn't update shortcuts for {name}: {e}	Nepodařilo se aktualizovat zástupce pro {name}: {e}
 	Install folder	Instalační složka
 	Default install folder	Výchozí instalační složka
 	System default	Výchozí nastavení systému

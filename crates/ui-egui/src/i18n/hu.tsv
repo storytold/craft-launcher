@@ -346,6 +346,15 @@ filter	Installed	Telepítve
 	ArtCraft on GitHub	ArtCraft a GitHubon
 	Join the ArtCraft Discord	Csatlakozás az ArtCraft Discord-közösségéhez
 @plural	ArtCraft Launcher · {n} update available|ArtCraft Launcher · {n} updates available	ArtCraft Launcher · {n} frissítés elérhető|ArtCraft Launcher · {n} frissítés elérhető
+	Shortcuts…	Parancsikonok…
+	Shortcuts	Parancsikonok
+	Choose which shortcuts to keep for this app. Changes apply immediately for installed apps and are preserved across updates.	Válassza ki, mely parancsikonokat tartsa meg ehhez az alkalmazáshoz. A módosítások a telepített alkalmazásokra azonnal érvénybe lépnek, és a frissítések során is megmaradnak.
+	Desktop shortcut	Asztali parancsikon
+	Start menu / application menu shortcut	Start menü / alkalmazásmenü parancsikon
+	Use global defaults	Globális alapértelmezések használata
+	Create a desktop shortcut when installing apps	Asztali parancsikon létrehozása alkalmazások telepítésekor
+	Create a Start menu / application menu shortcut when installing apps	Start menü / alkalmazásmenü parancsikon létrehozása alkalmazások telepítésekor
+@msg	Couldn't update shortcuts for {name}: {e}	Nem sikerült frissíteni a(z) {name} parancsikonjait: {e}
 	Install folder	Telepítési mappa
 	Default install folder	Alapértelmezett telepítési mappa
 	System default	Rendszer alapértelmezése

@@ -313,6 +313,15 @@ figcraft	Interface design and prototyping	界面设计与原型制作
 @msg	{name} installed: {version} (this release publishes no checksum, so only its size was checked)	{name} 已安装：{version}（此版本未发布校验和，因此只检查了文件大小）
 @msg	{name} was removed	{name} 已卸载
 @msg	{name} is running. Quit it, then try again.	{name} 正在运行。请先退出，然后重试。
+	Shortcuts…	快捷方式…
+	Shortcuts	快捷方式
+	Choose which shortcuts to keep for this app. Changes apply immediately for installed apps and are preserved across updates.	选择要为此应用保留的快捷方式。更改会立即应用于已安装的应用，并在更新后保留。
+	Desktop shortcut	桌面快捷方式
+	Start menu / application menu shortcut	开始菜单 / 应用程序菜单快捷方式
+	Use global defaults	使用全局默认设置
+	Create a desktop shortcut when installing apps	安装应用时创建桌面快捷方式
+	Create a Start menu / application menu shortcut when installing apps	安装应用时创建开始菜单 / 应用程序菜单快捷方式
+@msg	Couldn't update shortcuts for {name}: {e}	无法更新 {name} 的快捷方式：{e}
 	Install folder	安装文件夹
 	Default install folder	默认安装文件夹
 	System default	系统默认
