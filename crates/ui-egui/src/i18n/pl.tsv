@@ -364,3 +364,38 @@ filter	Installed	Zainstalowane
 	Replace what's there?	Zastąpić to, co tam jest?
 	{path} already exists. Installing {name} will overwrite it.	{path} już istnieje. Instalacja {name} go nadpisze.
 	Replace	Zastąp
+# Extensions screen
+	Apps	Aplikacje
+	Install and update Craft apps	Instaluj i aktualizuj aplikacje Craft
+	Extensions	Rozszerzenia
+	Themes for your Craft apps	Motywy dla twoich aplikacji Craft
+	Add from file	Dodaj z pliku
+	Themes change how your Craft apps look. Only add files from people you trust.	Motywy zmieniają wygląd twoich aplikacji Craft. Dodawaj tylko pliki od osób, którym ufasz.
+	Themes	Motywy
+	Colour themes for your Craft apps	Motywy kolorystyczne dla twoich aplikacji Craft
+	Everything you have added	Wszystko, co zostało dodane
+	Couldn't read the installed extensions: {reason}	Nie udało się odczytać zainstalowanych rozszerzeń: {reason}
+	Add an extension	Dodaj rozszerzenie
+	Added {name}	Dodano: {name}
+	Couldn't add that file: {reason}	Nie udało się dodać tego pliku: {reason}
+	Couldn't change that: {reason}	Nie udało się wprowadzić tej zmiany: {reason}
+	Removed {name}	Usunięto: {name}
+	No themes yet	Brak motywów
+	Add a theme from a file and it appears here.	Dodaj motyw z pliku, a pojawi się tutaj.
+	Preview of {name}	Podgląd: {name}
+	In use: {apps}	Używany w: {apps}
+	Not used yet	Jeszcze nieużywany
+	Use in…	Użyj w…
+	All apps	Wszystkie aplikacje
+	Use this theme in every app it is made for	Użyj tego motywu w każdej aplikacji, dla której jest przeznaczony
+	Nothing added yet	Nic jeszcze nie dodano
+	Remove	Usuń
+	Keep	Zachowaj
+	Remove from every Craft app?	Usunąć ze wszystkich aplikacji Craft?
+	Switched on in…	Włączone w…
+	Made by ArtCraft	Od ArtCraft
+	Added from a file	Dodane z pliku
+	From an outside publisher	Od zewnętrznego wydawcy
+	Theme	Motyw
+	Plug-in	Wtyczka
+	Resource	Zasób

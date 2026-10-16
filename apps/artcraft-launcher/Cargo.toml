@@ -20,6 +20,8 @@ local-mirror = ["artcraft-launcher-native/local-mirror"]
 artcraft-launcher-core = { workspace = true }
 artcraft-launcher-ui-egui = { workspace = true }
 artcraft-launcher-native = { workspace = true }
+craft-ext-core = { workspace = true }
+craft-ext-store = { workspace = true }
 eframe = { workspace = true, features = ["default_fonts", "wgpu", "accesskit", "wayland", "x11", "persistence", "links"] }
 egui = { workspace = true }
 log = { workspace = true }
@@ -62,6 +64,13 @@ tray-icon = { version = "0.25", default-features = false, features = ["ksni"] }
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 rfd = { version = "=0.17.2", default-features = false, features = ["xdg-portal", "wayland"] }
+
+[dev-dependencies]
+# The extensions tests build small packages by hand, with the versions the store itself uses.
+serde_json = { workspace = true }
+sha2 = "0.11.1"
+tempfile = "3.27.0"
+zip = { version = "9.0.4", default-features = false, features = ["deflate"] }
 
 [build-dependencies]
 # Icon + VERSIONINFO for artcraft-launcher.exe; build.rs only uses it when targeting Windows.

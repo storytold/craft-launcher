@@ -330,3 +330,38 @@ filter	Installed	Nainstalováno
 	Replace what's there?	Nahradit, co tam je?
 	{path} already exists. Installing {name} will overwrite it.	{path} už existuje. Instalace aplikace {name} ho přepíše.
 	Replace	Nahradit
+# Extensions screen
+	Apps	Aplikace
+	Install and update Craft apps	Instalace a aktualizace aplikací Craft
+	Extensions	Rozšíření
+	Themes for your Craft apps	Motivy pro vaše aplikace Craft
+	Add from file	Přidat ze souboru
+	Themes change how your Craft apps look. Only add files from people you trust.	Motivy mění vzhled vašich aplikací Craft. Přidávejte jen soubory od lidí, kterým důvěřujete.
+	Themes	Motivy
+	Colour themes for your Craft apps	Barevné motivy pro aplikace Craft
+	Everything you have added	Vše, co jste přidali
+	Couldn't read the installed extensions: {reason}	Nainstalovaná rozšíření se nepodařilo načíst: {reason}
+	Add an extension	Přidat rozšíření
+	Added {name}	Přidáno: {name}
+	Couldn't add that file: {reason}	Tento soubor se nepodařilo přidat: {reason}
+	Couldn't change that: {reason}	Tuto změnu se nepodařilo provést: {reason}
+	Removed {name}	Odebráno: {name}
+	No themes yet	Zatím žádné motivy
+	Add a theme from a file and it appears here.	Přidejte motiv ze souboru a objeví se tady.
+	Preview of {name}	Náhled: {name}
+	In use: {apps}	Používá se v: {apps}
+	Not used yet	Zatím nepoužíváno
+	Use in…	Použít v…
+	All apps	Všechny aplikace
+	Use this theme in every app it is made for	Použít tento motiv ve všech aplikacích, pro které je určen
+	Nothing added yet	Zatím nic nepřidáno
+	Remove	Odebrat
+	Keep	Ponechat
+	Remove from every Craft app?	Odebrat ze všech aplikací Craft?
+	Switched on in…	Zapnuto v…
+	Made by ArtCraft	Od ArtCraft
+	Added from a file	Přidáno ze souboru
+	From an outside publisher	Od externího vydavatele
+	Theme	Motiv
+	Plug-in	Zásuvný modul
+	Resource	Prostředek

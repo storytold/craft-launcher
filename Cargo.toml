@@ -20,6 +20,10 @@ todo = "warn"
 artcraft-launcher-core = { path = "crates/core" }
 artcraft-launcher-ui-egui = { path = "crates/ui-egui" }
 artcraft-launcher-native = { path = "crates/native" }
+# Local path while the extension crates are built beside the launcher. Replace with a pinned git revision of
+# https://github.com/Jeremy8776/craft-extensions before any pull request.
+craft-ext-core = { path = "../craft-extensions/crates/ext-core" }
+craft-ext-store = { path = "../craft-extensions/crates/ext-store" }
 egui = "0.36"
 eframe = { version = "0.36", default-features = false }
 egui_extras = { version = "0.36", default-features = false }

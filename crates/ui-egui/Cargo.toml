@@ -12,6 +12,7 @@ workspace = true
 
 [dependencies]
 artcraft-launcher-core = { workspace = true }
+craft-ext-core = { workspace = true }
 egui = { workspace = true }
 egui_extras = { workspace = true, features = ["image", "svg"] }
 image = { version = "0.25", default-features = false, features = ["png", "jpeg"] }

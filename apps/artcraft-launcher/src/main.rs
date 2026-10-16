@@ -5,6 +5,7 @@
 #![cfg_attr(windows, windows_subsystem = "windows")]
 #![deny(clippy::unwrap_used, clippy::expect_used, clippy::panic, clippy::unimplemented, clippy::todo, clippy::unreachable)]
 
+mod extensions;
 mod logging;
 mod motion;
 mod settings_file;
@@ -391,6 +392,8 @@ fn claim_notification_identity() -> &'static Result<(), String> {
 struct DesktopHost {
     tray: bool,
     quit: bool,
+    /// The shared extensions store; `None` when this computer has no place to keep one.
+    extensions: Option<extensions::DesktopStore>,
 }
 
 impl Host for DesktopHost {
@@ -440,6 +443,14 @@ impl Host for DesktopHost {
         dialog.pick_folder().and_then(|p| p.to_str().map(str::to_string))
     }
 
+    fn pick_file(&mut self, title: &str, extensions: &[&str]) -> Option<PathBuf> {
+        rfd::FileDialog::new().set_title(title).add_filter(title, extensions).pick_file()
+    }
+
+    fn extensions(&mut self) -> Option<&mut dyn artcraft_launcher_ui_egui::features::extensions::ExtensionSource> {
+        self.extensions.as_mut().map(|store| store as &mut dyn artcraft_launcher_ui_egui::features::extensions::ExtensionSource)
+    }
+
     fn reduce_motion(&self) -> bool {
         motion::reduced()
     }
@@ -447,6 +458,11 @@ impl Host for DesktopHost {
     fn quit(&mut self) {
         self.quit = true;
     }
+}
+
+/// The shared extensions store, or `None` (with a note in the log) where there is no place for one.
+fn open_extensions() -> Option<extensions::DesktopStore> {
+    extensions::DesktopStore::open().inspect_err(|e| log::warn!("extensions are unavailable: {e}")).ok()
 }
 
 /// Everything that outlives a window: the UI state and its backend, the tray icon, and the work
@@ -485,7 +501,7 @@ impl Launcher {
             system_theme: system_theme::Monitor::default(),
             ui: LauncherUi::new(&windowless, backend, Settings::default()),
             tray: None,
-            host: DesktopHost { tray: false, quit: false },
+            host: DesktopHost { tray: false, quit: false, extensions: open_extensions() },
             starts,
             windowless,
             run_again,

@@ -363,3 +363,38 @@ filter	Installed	Telepítve
 	Replace what's there?	Lecseréli, ami ott van?
 	{path} already exists. Installing {name} will overwrite it.	{path} már létezik. A(z) {name} telepítése felülírja.
 	Replace	Csere
+# Extensions screen
+	Apps	Alkalmazások
+	Install and update Craft apps	Craft-alkalmazások telepítése és frissítése
+	Extensions	Bővítmények
+	Themes for your Craft apps	Témák a Craft-alkalmazásaidhoz
+	Add from file	Hozzáadás fájlból
+	Themes change how your Craft apps look. Only add files from people you trust.	A témák megváltoztatják a Craft-alkalmazásaid kinézetét. Csak olyan emberektől adj hozzá fájlokat, akikben megbízol.
+	Themes	Témák
+	Colour themes for your Craft apps	Színtémák a Craft-alkalmazásokhoz
+	Everything you have added	Minden, amit hozzáadtál
+	Couldn't read the installed extensions: {reason}	A telepített bővítményeket nem sikerült beolvasni: {reason}
+	Add an extension	Bővítmény hozzáadása
+	Added {name}	Hozzáadva: {name}
+	Couldn't add that file: {reason}	Ezt a fájlt nem sikerült hozzáadni: {reason}
+	Couldn't change that: {reason}	A módosítás nem sikerült: {reason}
+	Removed {name}	Eltávolítva: {name}
+	No themes yet	Még nincs téma
+	Add a theme from a file and it appears here.	Adj hozzá egy témát fájlból, és itt fog megjelenni.
+	Preview of {name}	{name} előnézete
+	In use: {apps}	Használatban: {apps}
+	Not used yet	Még nincs használatban
+	Use in…	Használat itt…
+	All apps	Minden alkalmazás
+	Use this theme in every app it is made for	A téma használata minden olyan alkalmazásban, amelyhez készült
+	Nothing added yet	Még nincs hozzáadva semmi
+	Remove	Eltávolítás
+	Keep	Megtartás
+	Remove from every Craft app?	Eltávolítod az összes Craft-alkalmazásból?
+	Switched on in…	Bekapcsolva itt…
+	Made by ArtCraft	Az ArtCrafttól
+	Added from a file	Fájlból hozzáadva
+	From an outside publisher	Külső kiadótól
+	Theme	Téma
+	Plug-in	Beépülő modul
+	Resource	Erőforrás

@@ -21,6 +21,7 @@ mod app;
 mod cjk_font;
 mod details;
 mod dialogs;
+pub mod features;
 pub mod i18n;
 pub mod icons;
 pub mod model;

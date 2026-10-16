@@ -61,6 +61,14 @@ pub trait Host {
     fn pick_folder(&mut self, _initial: Option<&str>) -> Option<String> {
         None
     }
+    /// Asks the person for a file; `extensions` are the file endings on offer, without the dot.
+    fn pick_file(&mut self, _title: &str, _extensions: &[&str]) -> Option<std::path::PathBuf> {
+        None
+    }
+    /// The shared extensions store, where this build has one (not the web build).
+    fn extensions(&mut self) -> Option<&mut dyn crate::features::extensions::ExtensionSource> {
+        None
+    }
     /// Quit the launcher for real (not just hide to the tray).
     fn quit(&mut self) {}
 }
@@ -128,6 +136,8 @@ pub struct LauncherUi {
     /// The details pictures the backend has sent (or been asked for), by app and picture key.
     pub(crate) pictures: std::collections::HashMap<(String, String), crate::details::Picture>,
     started: bool,
+    /// The Extensions page: what it shows and has read from the shared store.
+    pub(crate) extensions: crate::features::extensions::State,
     applied_theme: Option<theme::ThemeChoice>,
     /// The OS asks for fewer animations: what the host last said, and the context's time to ask
     /// it again at.
@@ -196,6 +206,7 @@ impl LauncherUi {
             detail_zoom: false,
             pictures: std::collections::HashMap::new(),
             started: false,
+            extensions: Default::default(),
             applied_theme: None,
             reduce_motion: false,
             motion_recheck: 0.0,
@@ -572,6 +583,11 @@ impl LauncherUi {
         egui::CentralPanel::default()
             .frame(egui::Frame::new().fill(tokens.bg).inner_margin(egui::Margin { left: 20, right: 20, top: 18, bottom: 0 }))
             .show(ui, |ui| {
+                self.page_switch(ui, host);
+                if self.extensions.open {
+                    self.extensions_page(ui, host);
+                    return;
+                }
                 self.toolbar(ui);
                 ui.add_space(18.0);
                 let ids = self.visible_ids();

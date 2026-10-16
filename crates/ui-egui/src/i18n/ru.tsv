@@ -358,3 +358,38 @@ filter	Installed	Установлены
 	Replace what's there?	Заменить существующее?
 	{path} already exists. Installing {name} will overwrite it.	{path} уже существует. Установка {name} перезапишет его.
 	Replace	Заменить
+# Extensions screen
+	Apps	Приложения
+	Install and update Craft apps	Установка и обновление приложений Craft
+	Extensions	Расширения
+	Themes for your Craft apps	Темы для ваших приложений Craft
+	Add from file	Добавить из файла
+	Themes change how your Craft apps look. Only add files from people you trust.	Темы меняют внешний вид приложений Craft. Добавляйте только файлы от людей, которым вы доверяете.
+	Themes	Темы
+	Colour themes for your Craft apps	Цветовые темы для приложений Craft
+	Everything you have added	Всё, что вы добавили
+	Couldn't read the installed extensions: {reason}	Не удалось прочитать установленные расширения: {reason}
+	Add an extension	Добавить расширение
+	Added {name}	Добавлено: {name}
+	Couldn't add that file: {reason}	Не удалось добавить этот файл: {reason}
+	Couldn't change that: {reason}	Не удалось внести это изменение: {reason}
+	Removed {name}	Удалено: {name}
+	No themes yet	Тем пока нет
+	Add a theme from a file and it appears here.	Добавьте тему из файла, и она появится здесь.
+	Preview of {name}	Предпросмотр: {name}
+	In use: {apps}	Используется в: {apps}
+	Not used yet	Пока не используется
+	Use in…	Использовать в…
+	All apps	Все приложения
+	Use this theme in every app it is made for	Использовать эту тему во всех приложениях, для которых она сделана
+	Nothing added yet	Пока ничего не добавлено
+	Remove	Удалить
+	Keep	Оставить
+	Remove from every Craft app?	Удалить из всех приложений Craft?
+	Switched on in…	Включено в…
+	Made by ArtCraft	Создано ArtCraft
+	Added from a file	Добавлено из файла
+	From an outside publisher	От стороннего издателя
+	Theme	Тема
+	Plug-in	Плагин
+	Resource	Ресурс

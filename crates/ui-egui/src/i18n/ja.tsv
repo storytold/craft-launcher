@@ -365,3 +365,38 @@ filter	Installed	インストール済み
 	Replace what's there?	既存の項目を置き換えますか？
 	{path} already exists. Installing {name} will overwrite it.	{path} は既に存在します。{name} をインストールすると上書きされます。
 	Replace	置き換える
+# Extensions screen
+	Apps	アプリ
+	Install and update Craft apps	Craftアプリのインストールと更新
+	Extensions	拡張機能
+	Themes for your Craft apps	Craftアプリ用のテーマ
+	Add from file	ファイルから追加
+	Themes change how your Craft apps look. Only add files from people you trust.	テーマはCraftアプリの見た目を変えます。信頼できる人のファイルだけを追加してください。
+	Themes	テーマ
+	Colour themes for your Craft apps	Craftアプリ用のカラーテーマ
+	Everything you have added	追加したものすべて
+	Couldn't read the installed extensions: {reason}	インストール済みの拡張機能を読み込めませんでした: {reason}
+	Add an extension	拡張機能を追加
+	Added {name}	{name} を追加しました
+	Couldn't add that file: {reason}	このファイルを追加できませんでした: {reason}
+	Couldn't change that: {reason}	変更できませんでした: {reason}
+	Removed {name}	{name} を削除しました
+	No themes yet	テーマはまだありません
+	Add a theme from a file and it appears here.	ファイルからテーマを追加すると、ここに表示されます。
+	Preview of {name}	{name} のプレビュー
+	In use: {apps}	使用中: {apps}
+	Not used yet	未使用
+	Use in…	使用するアプリ…
+	All apps	すべてのアプリ
+	Use this theme in every app it is made for	このテーマを、対応するすべてのアプリで使用します
+	Nothing added yet	まだ何も追加されていません
+	Remove	削除
+	Keep	残す
+	Remove from every Craft app?	すべてのCraftアプリから削除しますか？
+	Switched on in…	有効にするアプリ…
+	Made by ArtCraft	ArtCraft製
+	Added from a file	ファイル経由で追加
+	From an outside publisher	外部の提供元
+	Theme	テーマ
+	Plug-in	プラグイン
+	Resource	リソース

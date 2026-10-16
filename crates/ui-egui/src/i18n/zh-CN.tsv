@@ -330,3 +330,38 @@ figcraft	Interface design and prototyping	界面设计与原型制作
 	Replace what's there?	替换现有内容？
 	{path} already exists. Installing {name} will overwrite it.	{path} 已存在。安装 {name} 将覆盖它。
 	Replace	替换
+# Extensions screen
+	Apps	应用
+	Install and update Craft apps	安装和更新 Craft 应用
+	Extensions	扩展
+	Themes for your Craft apps	适用于你的 Craft 应用的主题
+	Add from file	从文件添加
+	Themes change how your Craft apps look. Only add files from people you trust.	主题会改变 Craft 应用的外观。只添加来自你信任的人的文件。
+	Themes	主题
+	Colour themes for your Craft apps	Craft 应用的配色主题
+	Everything you have added	你添加的所有内容
+	Couldn't read the installed extensions: {reason}	无法读取已安装的扩展：{reason}
+	Add an extension	添加扩展
+	Added {name}	已添加 {name}
+	Couldn't add that file: {reason}	无法添加该文件：{reason}
+	Couldn't change that: {reason}	无法完成此更改：{reason}
+	Removed {name}	已移除 {name}
+	No themes yet	还没有主题
+	Add a theme from a file and it appears here.	从文件添加主题后，它会显示在这里。
+	Preview of {name}	{name} 预览
+	In use: {apps}	使用中：{apps}
+	Not used yet	尚未使用
+	Use in…	用于…
+	All apps	所有应用
+	Use this theme in every app it is made for	在其适用的每个应用中使用此主题
+	Nothing added yet	还没有添加任何内容
+	Remove	移除
+	Keep	保留
+	Remove from every Craft app?	从所有 Craft 应用中移除？
+	Switched on in…	在这些应用中启用…
+	Made by ArtCraft	由 ArtCraft 制作
+	Added from a file	通过文件添加
+	From an outside publisher	来自外部发布者
+	Theme	主题
+	Plug-in	插件
+	Resource	资源

@@ -343,3 +343,38 @@ filter	Installed	Instaladas
 	Replace what's there?	¿Reemplazar lo que hay?
 	{path} already exists. Installing {name} will overwrite it.	{path} ya existe. Instalar {name} lo sobrescribirá.
 	Replace	Reemplazar
+# Extensions screen
+	Apps	Aplicaciones
+	Install and update Craft apps	Instala y actualiza las aplicaciones de Craft
+	Extensions	Extensiones
+	Themes for your Craft apps	Temas para tus aplicaciones de Craft
+	Add from file	Añadir desde un archivo
+	Themes change how your Craft apps look. Only add files from people you trust.	Los temas cambian el aspecto de tus aplicaciones de Craft. Añade solo archivos de personas de confianza.
+	Themes	Temas
+	Colour themes for your Craft apps	Temas de color para tus aplicaciones de Craft
+	Everything you have added	Todo lo que has añadido
+	Couldn't read the installed extensions: {reason}	No se pudieron leer las extensiones instaladas: {reason}
+	Add an extension	Añadir una extensión
+	Added {name}	Se añadió {name}
+	Couldn't add that file: {reason}	No se pudo añadir ese archivo: {reason}
+	Couldn't change that: {reason}	No se pudo hacer ese cambio: {reason}
+	Removed {name}	Se quitó {name}
+	No themes yet	Aún no hay temas
+	Add a theme from a file and it appears here.	Añade un tema desde un archivo y aparecerá aquí.
+	Preview of {name}	Vista previa de {name}
+	In use: {apps}	En uso: {apps}
+	Not used yet	Aún sin usar
+	Use in…	Usar en…
+	All apps	Todas las aplicaciones
+	Use this theme in every app it is made for	Usar este tema en todas las aplicaciones para las que está hecho
+	Nothing added yet	Aún no has añadido nada
+	Remove	Quitar
+	Keep	Conservar
+	Remove from every Craft app?	¿Quitar de todas las aplicaciones de Craft?
+	Switched on in…	Activado en…
+	Made by ArtCraft	Creado por ArtCraft
+	Added from a file	Añadido desde un archivo
+	From an outside publisher	De un editor externo
+	Theme	Tema
+	Plug-in	Complemento
+	Resource	Recurso
