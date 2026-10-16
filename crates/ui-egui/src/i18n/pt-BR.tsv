@@ -333,10 +333,36 @@ filter	Installed	Instalados
 	Loading pictures…	Carregando imagens…
 	Pictures couldn't be loaded. Reopen this page to try again.	Não foi possível carregar as imagens. Abra a página novamente para tentar de novo.
 @plural	ArtCraft Launcher · {n} update available|ArtCraft Launcher · {n} updates available	ArtCraft Launcher · {n} atualização disponível|ArtCraft Launcher · {n} atualizações disponíveis
+
+# Plugins management UI
+	Apps	Aplicativos
+	Plugins	Plug-ins
+	Browse and manage plugins	Explorar e gerenciar plug-ins
+	Search plugins	Buscar plug-ins
+	Import plugin…	Importar plug-in…
+	Import plugin	Importar plug-in
+	Repair	Reparar
+	Needs repair	Requer reparo
+	No plugins match	Nenhum plug-in encontrado
+	Plugin file path (.wasm, .afs, .8bf, .abr, .grd, .aco, .cube)	Caminho do arquivo de plug-in (.wasm, .afs, .8bf, .abr, .grd, .aco, .cube)
+	Supports native WebAssembly (.wasm ABI v1) plugins, Adobe Photoshop Filter Factory (.afs / .8bf) filters, and preset packs.	Compatível com plug-ins nativos WebAssembly (.wasm ABI v1), filtros do Adobe Photoshop Filter Factory (.afs / .8bf) e pacotes de predefinições.
+	Browse…	Procurar…
+	Choose a plugin file from your computer	Escolher um arquivo de plug-in do seu computador
+	Auto-detected: {app}	Detectado automaticamente: {app}
+@plural	{n} plugin|{n} plugins	{n} plug-in|{n} plug-ins
+
+# Contextual: catalog plugin descriptions, overviews & reviews
+@msg	Repaired {name} {version}	{name} {version} reparado
+@msg	Removed plugin	Plug-in removido
+@msg	Imported {name} ({format})	{name} ({format}) importado
+	Show plugins as a table	Mostrar plug-ins em tabela
+	Show plugins as cards	Mostrar plug-ins em cartões
+	Plugin	Plug-in
+	Format	Formato
+	Author	Autor
 	Install folder	Pasta de instalação
 	Default install folder	Pasta de instalação padrão
 	System default	Padrão do sistema
-	Browse…	Procurar…
 	Use default	Usar padrão
 	New installs use this folder. Updates stay in their current location.	Novas instalações usam esta pasta. As atualizações mantêm o local atual.
 	Custom folders use AppImage on Linux.	Pastas personalizadas usam AppImage no Linux.

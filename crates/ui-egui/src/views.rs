@@ -8,7 +8,7 @@ use artcraft_launcher_core::status::AppStatus;
 use artcraft_launcher_core::{AppGroup, SUITE, time};
 use egui::{Color32, CornerRadius, FontId, Rect, RichText, Sense, Stroke, Ui, vec2};
 
-use crate::app::{Dialog, LauncherUi, TitleBar};
+use crate::app::{Dialog, LauncherUi, Page, TitleBar};
 use crate::i18n::{current, fmt, t, tn, tr_ctx};
 use crate::model::{self, AppEntry};
 use crate::settings::{Filter, SortKey, ViewMode};
@@ -99,12 +99,24 @@ impl LauncherUi {
                 widgets::rule(ui, h);
                 ui.add_space(6.0);
                 // Right to left: Table, then Grid, so they read Grid · Table.
-                for (mode, label, tip) in
-                    [(ViewMode::Table, tl!("Table"), tl!("Show apps as a table")), (ViewMode::Grid, tl!("Grid"), tl!("Show apps as cards"))]
-                {
+                let (table_tip, grid_tip) = match self.page {
+                    Page::Apps => (tl!("Show apps as a table"), tl!("Show apps as cards")),
+                    Page::Plugins => (tl!("Show plugins as a table"), tl!("Show plugins as cards")),
+                };
+                for (mode, label, tip) in [(ViewMode::Table, tl!("Table"), table_tip), (ViewMode::Grid, tl!("Grid"), grid_tip)] {
                     if widgets::nav_link(ui, label, tip, h, self.settings.view == mode).clicked() {
                         self.settings.view = mode;
                     }
+                }
+                ui.add_space(6.0);
+                widgets::rule(ui, h);
+                ui.add_space(6.0);
+                // Right to left: Plugins, then Apps, so they read Apps · Plugins.
+                if widgets::nav_link(ui, tl!("Plugins"), tl!("Browse and manage plugins"), h, self.page == Page::Plugins).clicked() {
+                    self.page = Page::Plugins;
+                }
+                if widgets::nav_link(ui, tl!("Apps"), tl!("Every Craft app"), h, self.page == Page::Apps).clicked() {
+                    self.page = Page::Apps;
                 }
                 ui.add_space(6.0);
                 widgets::rule(ui, h);
@@ -263,7 +275,7 @@ impl LauncherUi {
     }
 
     /// News from ArtCraft's release feed (and app renames), until the user dismisses each.
-    fn announcements(&mut self, ui: &mut Ui) {
+    pub(crate) fn announcements(&mut self, ui: &mut Ui) {
         let t = Tokens::get(ui.ctx());
         let shown: Vec<artcraft_launcher_core::feed::Notice> =
             self.announcements.iter().filter(|n| !self.settings.dismissed_notices.contains(&n.id)).take(3).cloned().collect();
@@ -816,6 +828,10 @@ impl LauncherUi {
         let manage = self.caps.manage_apps;
         let reveal = self.caps.reveal_label;
         widgets::more_menu(ui, |ui| {
+            if ui.button(tl!("Plugins")).clicked() {
+                self.open_plugins_for(&id);
+                ui.close();
+            }
             if entry.release().is_some() && ui.button(tl!("Release notes")).clicked() {
                 self.dialog = Some(Dialog::Notes(id.clone()));
                 ui.close();

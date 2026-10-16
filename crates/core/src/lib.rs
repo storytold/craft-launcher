@@ -11,6 +11,7 @@ pub mod details;
 pub mod distro;
 pub mod feed;
 pub mod platform;
+pub mod plugins;
 pub mod protocol;
 pub mod release;
 pub mod status;
@@ -19,5 +20,6 @@ pub mod version;
 
 pub use catalog::{AppGroup, CraftApp, SUITE};
 pub use platform::{Arch, Os, PackageKind, Platform};
+pub use plugins::{InstalledPlugin, PluginFormat, PluginStatus};
 pub use release::{Asset, Release};
 pub use status::{AppStatus, InstallSource, Installed, Latest};

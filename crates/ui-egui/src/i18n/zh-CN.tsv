@@ -313,10 +313,32 @@ figcraft	Interface design and prototyping	界面设计与原型制作
 @msg	{name} installed: {version} (this release publishes no checksum, so only its size was checked)	{name} 已安装：{version}（此版本未发布校验和，因此只检查了文件大小）
 @msg	{name} was removed	{name} 已卸载
 @msg	{name} is running. Quit it, then try again.	{name} 正在运行。请先退出，然后重试。
+	Apps	应用
+	Plugins	插件
+	Browse and manage plugins	浏览和管理插件
+	Search plugins	搜索插件
+	Import plugin…	导入插件…
+	Import plugin	导入插件
+	Repair	修复
+	Needs repair	需要修复
+	No plugins match	没有匹配的插件
+	Plugin file path (.wasm, .afs, .8bf, .abr, .grd, .aco, .cube)	插件文件路径 (.wasm, .afs, .8bf, .abr, .grd, .aco, .cube)
+	Supports native WebAssembly (.wasm ABI v1) plugins, Adobe Photoshop Filter Factory (.afs / .8bf) filters, and preset packs.	支持原生 WebAssembly (.wasm ABI v1) 插件、Adobe Photoshop Filter Factory (.afs / .8bf) 滤镜和预设包。
+	Browse…	浏览…
+	Choose a plugin file from your computer	从电脑中选择插件文件
+	Auto-detected: {app}	已自动识别：{app}
+@plural	{n} plugin|{n} plugins	{n} 个插件
+@msg	Repaired {name} {version}	已修复 {name} {version}
+@msg	Removed plugin	插件已移除
+@msg	Imported {name} ({format})	已导入 {name} ({format})
+	Show plugins as a table	以表格显示插件
+	Show plugins as cards	以卡片显示插件
+	Plugin	插件
+	Format	格式
+	Author	作者
 	Install folder	安装文件夹
 	Default install folder	默认安装文件夹
 	System default	系统默认
-	Browse…	浏览…
 	Use default	使用默认
 	New installs use this folder. Updates stay in their current location.	新安装的应用使用此文件夹。更新时保留当前位置。
 	Custom folders use AppImage on Linux.	在 Linux 上，自定义文件夹使用 AppImage。

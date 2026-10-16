@@ -111,7 +111,19 @@ fn detect(exe: &Path) -> Option<Install> {
     let canonical = |p: PathBuf| p.canonicalize().unwrap_or(p);
     let recorded = msi_install_dir().map(canonical);
     let default = dirs::data_local_dir().map(|d| canonical(d.join("Programs").join(LAUNCHER.name)));
-    [recorded, default].into_iter().flatten().any(|d| d == dir).then(|| Install::Msi(exe.to_path_buf()))
+    if [recorded, default].into_iter().flatten().any(|d| d == dir) {
+        return Some(Install::Msi(exe.to_path_buf()));
+    }
+    // Standalone .exe outside a Cargo target/ build folder updates itself in place from the portable zip.
+    (!is_cargo_target_build(exe)).then(|| Install::Portable(exe.to_path_buf()))
+}
+
+#[cfg(windows)]
+fn is_cargo_target_build(exe: &Path) -> bool {
+    exe.ancestors().any(|p| {
+        p.file_name().is_some_and(|n| n.eq_ignore_ascii_case("target"))
+            && (p.join("CACHEDIR.TAG").is_file() || p.parent().is_some_and(|root| root.join("Cargo.toml").is_file()))
+    })
 }
 
 /// The folder the MSI installed into, as it records it (`packaging/windows/artcraft-launcher.wxs`).
@@ -213,15 +225,31 @@ pub fn update(
         Install::Portable(exe) => {
             let dir = exe.parent().ok_or("the launcher isn't in a folder")?;
             let tmp = paths.cache.join("launcher-update");
+            let had_portable_marker = dir.join("portable.txt").is_file();
+            let copy_step = if had_portable_marker {
+                format!(
+                    "Copy-Item -Path (Join-Path $top.FullName '*') -Destination {dir} -Recurse -Force; \
+                     $newExe = Join-Path $top.FullName 'artcraft-launcher.exe'; \
+                     if ((Test-Path -LiteralPath $newExe) -and ({exe} -ne (Join-Path {dir} 'artcraft-launcher.exe'))) {{ Copy-Item -LiteralPath $newExe -Destination {exe} -Force }}",
+                    dir = ps_quote(dir),
+                    exe = ps_quote(exe),
+                )
+            } else {
+                format!(
+                    "$newExe = Join-Path $top.FullName 'artcraft-launcher.exe'; \
+                     if (Test-Path -LiteralPath $newExe) {{ Copy-Item -LiteralPath $newExe -Destination {exe} -Force }} \
+                     else {{ Copy-Item -Path (Join-Path $top.FullName '*.exe') -Destination {exe} -Force }}",
+                    exe = ps_quote(exe),
+                )
+            };
             windows_helper(
                 pid,
                 &format!(
                     "$t = {tmp}; Remove-Item -LiteralPath $t -Recurse -Force -ErrorAction SilentlyContinue; Expand-Archive -LiteralPath {zip} -DestinationPath $t -Force; \
-                     $top = Get-ChildItem -LiteralPath $t | Select-Object -First 1; Copy-Item -Path (Join-Path $top.FullName '*') -Destination {dir} -Recurse -Force; \
+                     $top = Get-ChildItem -LiteralPath $t | Select-Object -First 1; {copy_step}; \
                      Remove-Item -LiteralPath $t -Recurse -Force -ErrorAction SilentlyContinue; Remove-Item -LiteralPath {zip} -ErrorAction SilentlyContinue",
                     tmp = ps_quote(&tmp),
                     zip = ps_quote(&file),
-                    dir = ps_quote(dir),
                 ),
                 exe,
             )

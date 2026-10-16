@@ -128,6 +128,7 @@ fn complete_catalogs_cover_every_ui_literal() {
         include_str!("../dialogs.rs"),
         include_str!("../model.rs"),
         include_str!("../notes.rs"),
+        include_str!("../plugins_view.rs"),
         include_str!("../settings.rs"),
         include_str!("../views.rs"),
         include_str!("../widgets.rs"),

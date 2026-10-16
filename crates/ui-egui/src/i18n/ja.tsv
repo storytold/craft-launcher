@@ -348,10 +348,32 @@ filter	Installed	インストール済み
 	ArtCraft on GitHub	GitHub の ArtCraft
 	Join the ArtCraft Discord	ArtCraft Discord に参加
 @plural	ArtCraft Launcher · {n} update available|ArtCraft Launcher · {n} updates available	ArtCraft Launcher · {n} 件の更新があります
+	Apps	アプリ
+	Plugins	プラグイン
+	Browse and manage plugins	プラグインの参照と管理
+	Search plugins	プラグインを検索
+	Import plugin…	プラグインを読み込む…
+	Import plugin	プラグインを読み込む
+	Repair	修復
+	Needs repair	修復が必要
+	No plugins match	一致するプラグインがありません
+	Plugin file path (.wasm, .afs, .8bf, .abr, .grd, .aco, .cube)	プラグインファイルのパス (.wasm, .afs, .8bf, .abr, .grd, .aco, .cube)
+	Supports native WebAssembly (.wasm ABI v1) plugins, Adobe Photoshop Filter Factory (.afs / .8bf) filters, and preset packs.	ネイティブ WebAssembly (.wasm ABI v1) プラグイン、Adobe Photoshop Filter Factory (.afs / .8bf) フィルター、プリセットパックに対応しています。
+	Browse…	参照…
+	Choose a plugin file from your computer	コンピューターからプラグインファイルを選択
+	Auto-detected: {app}	自動検出: {app}
+@plural	{n} plugin|{n} plugins	{n} 個のプラグイン
+@msg	Repaired {name} {version}	{name} {version} を修復しました
+@msg	Removed plugin	プラグインを削除しました
+@msg	Imported {name} ({format})	{name} ({format}) を読み込みました
+	Show plugins as a table	プラグインをテーブルで表示
+	Show plugins as cards	プラグインをカードで表示
+	Plugin	プラグイン
+	Format	形式
+	Author	作成者
 	Install folder	インストール先フォルダー
 	Default install folder	既定のインストール先フォルダー
 	System default	システムの既定
-	Browse…	参照…
 	Use default	既定を使用
 	New installs use this folder. Updates stay in their current location.	新しいインストールにはこのフォルダーを使用します。更新時は現在の場所を維持します。
 	Custom folders use AppImage on Linux.	Linuxで任意のフォルダーにインストールする場合はAppImageを使用します。

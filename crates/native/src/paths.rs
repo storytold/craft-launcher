@@ -74,6 +74,25 @@ impl Paths {
     pub fn app_home(&self, id: &str) -> PathBuf {
         self.apps().join(id).join("home")
     }
+
+    /// Record of installed and imported plugins (`<data>/plugins.json`).
+    pub fn plugins_manifest(&self) -> PathBuf {
+        self.data.join("plugins.json")
+    }
+
+    /// Folder holding installed plugin binaries/presets for a specific Craft app (`<data>/plugins/<app>`).
+    pub fn plugins_dir(&self, app: &str) -> PathBuf {
+        self.data.join("plugins").join(app)
+    }
+
+    /// Where PhotoCraft keeps its `preferences.json` so we can auto-register the `photocraft` plugins folder.
+    pub fn photocraft_prefs(&self) -> Option<PathBuf> {
+        let in_temp = std::env::temp_dir();
+        if cfg!(test) || self.data.starts_with(&in_temp) {
+            return Some(self.data.join("Photocraft").join("preferences.json"));
+        }
+        dirs::config_dir().map(|d| d.join("Photocraft").join("preferences.json"))
+    }
 }
 
 /// Writes `bytes` to `path` via a temporary file and a rename, so a crash never leaves half a file.

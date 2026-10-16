@@ -9,6 +9,7 @@ use std::collections::BTreeMap;
 use serde::{Deserialize, Serialize};
 
 use crate::platform::{PackageKind, Platform};
+use crate::plugins::InstalledPlugin;
 use crate::release::Release;
 use crate::status::Installed;
 
@@ -57,6 +58,27 @@ pub enum Command {
     },
     /// Change how the backend behaves.
     Configure(BackendOptions),
+    /// Rescan installed plugins across all Craft apps.
+    DetectPlugins,
+    /// Repair a plugin's files and host-app registration.
+    RepairPlugin {
+        id: String,
+    },
+    /// Remove an installed plugin.
+    UninstallPlugin {
+        id: String,
+    },
+    /// Import a third-party/Photoshop or WebAssembly plugin file into `app`.
+    ImportPlugin {
+        app: String,
+        path: String,
+    },
+    /// Show an installed plugin file in the file manager.
+    RevealPlugin {
+        id: String,
+    },
+    /// Open a native OS file picker dialog to choose a plugin file for import.
+    PickPluginFile,
 }
 
 /// Parent folders for new installs. Existing installations keep their recorded location.
@@ -235,6 +257,18 @@ pub enum Event {
         source: Source,
         /// GitHub refused more API calls until this time (Unix seconds).
         rate_limited_until: Option<i64>,
+    },
+    /// Full snapshot of installed plugins on disk.
+    PluginsDetected(Vec<InstalledPlugin>),
+    /// A plugin install, update, repair, uninstall or import finished.
+    PluginJobFinished {
+        id: String,
+        result: Result<String, String>,
+    },
+    /// The user chose a plugin file in the native OS file picker dialog.
+    PluginFilePicked {
+        path: String,
+        detected_app: Option<String>,
     },
 }
 

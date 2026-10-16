@@ -343,10 +343,32 @@ filter	Installed	Installées
 	Loading pictures…	Chargement des images…
 	Pictures couldn't be loaded. Reopen this page to try again.	Impossible de charger les images. Rouvrir la page permet de réessayer.
 @plural	ArtCraft Launcher · {n} update available|ArtCraft Launcher · {n} updates available	ArtCraft Launcher · {n} mise à jour disponible|ArtCraft Launcher · {n} mises à jour disponibles
+	Apps	Applications
+	Plugins	Plug-ins
+	Browse and manage plugins	Parcourir et gérer les plug-ins
+	Search plugins	Rechercher des plug-ins
+	Import plugin…	Importer un plug-in…
+	Import plugin	Importer un plug-in
+	Repair	Réparer
+	Needs repair	Réparation requise
+	No plugins match	Aucun plug-in correspondant
+	Plugin file path (.wasm, .afs, .8bf, .abr, .grd, .aco, .cube)	Chemin du fichier de plug-in (.wasm, .afs, .8bf, .abr, .grd, .aco, .cube)
+	Supports native WebAssembly (.wasm ABI v1) plugins, Adobe Photoshop Filter Factory (.afs / .8bf) filters, and preset packs.	Prend en charge les plug-ins WebAssembly natifs (.wasm ABI v1), les filtres Adobe Photoshop Filter Factory (.afs / .8bf) et les packs de paramètres prédéfinis.
+	Browse…	Parcourir…
+	Choose a plugin file from your computer	Choisir un fichier de plug-in sur votre ordinateur
+	Auto-detected: {app}	Détecté automatiquement : {app}
+@plural	{n} plugin|{n} plugins	{n} plug-in|{n} plug-ins
+@msg	Repaired {name} {version}	{name} {version} réparé
+@msg	Removed plugin	Plug-in supprimé
+@msg	Imported {name} ({format})	{name} ({format}) importé
+	Show plugins as a table	Afficher les plug-ins en tableau
+	Show plugins as cards	Afficher les plug-ins en cartes
+	Plugin	Plug-in
+	Format	Format
+	Author	Auteur
 	Install folder	Dossier d’installation
 	Default install folder	Dossier d’installation par défaut
 	System default	Par défaut du système
-	Browse…	Parcourir…
 	Use default	Par défaut
 	New installs use this folder. Updates stay in their current location.	Les nouvelles installations utilisent ce dossier. Les mises à jour conservent leur emplacement actuel.
 	Custom folders use AppImage on Linux.	Les dossiers personnalisés utilisent AppImage sous Linux.

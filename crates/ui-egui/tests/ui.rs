@@ -1689,6 +1689,74 @@ fn with_animations_on_hovering_a_card_animates() {
 }
 
 #[test]
+fn plugins_page_and_app_more_menu_manage_plugins() {
+    use artcraft_launcher_core::plugins::{InstalledPlugin, PluginFormat};
+
+    let mut ev = events();
+    ev.push(Event::PluginsDetected(vec![
+        InstalledPlugin {
+            id: "org.photocraft.example.invert".into(),
+            app: "photocraft".into(),
+            name: "Invert Channels".into(),
+            tagline: "Inverts colour channels".into(),
+            author: "PhotoCraft Contributors".into(),
+            version: "1.0.0".into(),
+            format: PluginFormat::NativeWasm,
+            location: "/tmp/invert.wasm".into(),
+            healthy: false,
+            imported: true,
+        },
+        InstalledPlugin {
+            id: "com.photoshop.filterfactory.sepia_pro".into(),
+            app: "photocraft".into(),
+            name: "Sepia Toning Pro".into(),
+            tagline: "Classic Photoshop sepia filter".into(),
+            author: "Open Filter Factory".into(),
+            version: "1.0.0".into(),
+            format: PluginFormat::PhotoshopFilter,
+            location: "/tmp/sepia.wasm".into(),
+            healthy: true,
+            imported: true,
+        },
+    ]));
+    let (mut h, sent) = harness_with(ev, ViewMode::Grid, egui::Theme::Dark, true, 1.0);
+    h.run_steps(6);
+
+    // Open PhotoCraft's … menu and click "Plugins" to jump straight to PhotoCraft's plugins.
+    let update_btn = h.get_by_label("Update to 0.5.0").rect();
+    let beside = |r: egui::Rect| update_btn.y_range().contains(r.center().y) && (update_btn.right()..update_btn.right() + 60.0).contains(&r.left());
+    h.get_all_by_label("…").find(|n| beside(n.rect())).unwrap().click();
+    h.run_steps(3);
+    h.get_all_by_label("Plugins").last().unwrap().click();
+    h.run_steps(4);
+
+    // PhotoCraft local plugins are shown: Needs repair (Invert Channels) and Installed · up to date (Sepia Toning Pro).
+    h.get_by_label("Invert Channels");
+    h.get_by_label("Sepia Toning Pro");
+    h.get_by_label("Needs repair");
+    h.get_by_label("Installed · up to date");
+
+    sent.borrow_mut().clear();
+    h.get_all_by_label("Repair").next().unwrap().click();
+    h.run_steps(2);
+    assert!(sent.borrow().contains(&Command::RepairPlugin { id: "org.photocraft.example.invert".into() }));
+
+    // Clicking "Table" while on the Plugins tab switches to the plugins table without leaving Plugins.
+    h.get_by_label("Table").click();
+    h.run_steps(4);
+    h.get_by_label("Plugin");
+    h.get_by_label("Format");
+    h.get_by_label("Author");
+    h.get_by_label("Version");
+    h.get_by_label("Invert Channels");
+
+    // Clicking "Grid" switches back to plugin cards while remaining on the Plugins tab.
+    h.get_by_label("Grid").click();
+    h.run_steps(4);
+    h.get_by_label("Invert Channels");
+}
+
+#[test]
 fn an_occupied_folder_asks_before_replacing_it() {
     let path = "/Volumes/Craft Apps/PhotoCraft.app";
     let mut ev = events();

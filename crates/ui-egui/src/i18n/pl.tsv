@@ -347,10 +347,32 @@ filter	Installed	Zainstalowane
 	ArtCraft on GitHub	ArtCraft na GitHubie
 	Join the ArtCraft Discord	Dołącz do Discorda ArtCraft
 @plural	ArtCraft Launcher · {n} update available|ArtCraft Launcher · {n} updates available	ArtCraft Launcher · {n} dostępna aktualizacja|ArtCraft Launcher · {n} dostępne aktualizacje|ArtCraft Launcher · {n} dostępnych aktualizacji
+	Apps	Aplikacje
+	Plugins	Wtyczki
+	Browse and manage plugins	Przeglądaj i zarządzaj wtyczkami
+	Search plugins	Szukaj wtyczek
+	Import plugin…	Importuj wtyczkę…
+	Import plugin	Importuj wtyczkę
+	Repair	Napraw
+	Needs repair	Wymaga naprawy
+	No plugins match	Brak pasujących wtyczek
+	Plugin file path (.wasm, .afs, .8bf, .abr, .grd, .aco, .cube)	Ścieżka do pliku wtyczki (.wasm, .afs, .8bf, .abr, .grd, .aco, .cube)
+	Supports native WebAssembly (.wasm ABI v1) plugins, Adobe Photoshop Filter Factory (.afs / .8bf) filters, and preset packs.	Obsługuje natywne wtyczki WebAssembly (.wasm ABI v1), filtry Adobe Photoshop Filter Factory (.afs / .8bf) oraz pakiety ustawień.
+	Browse…	Przeglądaj…
+	Choose a plugin file from your computer	Wybierz plik wtyczki z komputera
+	Auto-detected: {app}	Wykryto automatycznie: {app}
+@plural	{n} plugin|{n} plugins	{n} wtyczka|{n} wtyczki|{n} wtyczek
+@msg	Repaired {name} {version}	Naprawiono {name} {version}
+@msg	Removed plugin	Usunięto wtyczkę
+@msg	Imported {name} ({format})	Zaimportowano {name} ({format})
+	Show plugins as a table	Pokaż wtyczki jako tabelę
+	Show plugins as cards	Pokaż wtyczki jako karty
+	Plugin	Wtyczka
+	Format	Format
+	Author	Autor
 	Install folder	Folder instalacji
 	Default install folder	Domyślny folder instalacji
 	System default	Domyślny systemowy
-	Browse…	Przeglądaj…
 	Use default	Użyj domyślnego
 	New installs use this folder. Updates stay in their current location.	Nowe instalacje używają tego folderu. Aktualizacje pozostają w obecnej lokalizacji.
 	Custom folders use AppImage on Linux.	W Linuksie własne foldery korzystają z formatu AppImage.

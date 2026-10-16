@@ -341,10 +341,32 @@ filter	Installed	Установлены
 	Loading pictures…	Загрузка изображений…
 	Pictures couldn't be loaded. Reopen this page to try again.	Не удалось загрузить изображения. Откройте страницу снова, чтобы повторить попытку.
 @plural	ArtCraft Launcher · {n} update available|ArtCraft Launcher · {n} updates available	ArtCraft Launcher · {n} обновление|ArtCraft Launcher · {n} обновления|ArtCraft Launcher · {n} обновлений
+	Apps	Приложения
+	Plugins	Плагины
+	Browse and manage plugins	Просмотр и управление плагинами
+	Search plugins	Поиск плагинов
+	Import plugin…	Импортировать плагин…
+	Import plugin	Импортировать плагин
+	Repair	Восстановить
+	Needs repair	Требует восстановления
+	No plugins match	Плагины не найдены
+	Plugin file path (.wasm, .afs, .8bf, .abr, .grd, .aco, .cube)	Путь к файлу плагина (.wasm, .afs, .8bf, .abr, .grd, .aco, .cube)
+	Supports native WebAssembly (.wasm ABI v1) plugins, Adobe Photoshop Filter Factory (.afs / .8bf) filters, and preset packs.	Поддерживает плагины WebAssembly (.wasm ABI v1), фильтры Adobe Photoshop Filter Factory (.afs / .8bf) и наборы пресетов.
+	Browse…	Обзор…
+	Choose a plugin file from your computer	Выберите файл плагина на компьютере
+	Auto-detected: {app}	Автоопределение: {app}
+@plural	{n} plugin|{n} plugins	{n} плагин|{n} плагина|{n} плагинов
+@msg	Repaired {name} {version}	Восстановлен плагин {name} {version}
+@msg	Removed plugin	Плагин удалён
+@msg	Imported {name} ({format})	Импортирован плагин {name} ({format})
+	Show plugins as a table	Показать плагины таблицей
+	Show plugins as cards	Показать плагины карточками
+	Plugin	Плагин
+	Format	Формат
+	Author	Автор
 	Install folder	Папка установки
 	Default install folder	Папка установки по умолчанию
 	System default	По умолчанию в системе
-	Browse…	Обзор…
 	Use default	Использовать по умолчанию
 	New installs use this folder. Updates stay in their current location.	Новые приложения устанавливаются в эту папку. При обновлении текущее расположение сохраняется.
 	Custom folders use AppImage on Linux.	В Linux для установки в выбранную папку используется AppImage.

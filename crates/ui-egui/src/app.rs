@@ -71,6 +71,13 @@ pub(crate) struct Toast {
     pub until: f64,
 }
 
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub(crate) enum Page {
+    #[default]
+    Apps,
+    Plugins,
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) enum Dialog {
     Notes(String),
@@ -79,6 +86,7 @@ pub(crate) enum Dialog {
     Replace { app: String, path: String },
     Settings,
     LauncherUpdate(artcraft_launcher_core::Release),
+    ImportPlugin { app: String, path: String },
 }
 
 impl Dialog {
@@ -92,6 +100,7 @@ impl Dialog {
             Dialog::Replace { app, .. } => ("replace", app),
             Dialog::Settings => ("settings", ""),
             Dialog::LauncherUpdate(r) => ("launcher-update", &r.tag),
+            Dialog::ImportPlugin { app, .. } => ("import-plugin", app),
         }
     }
 }
@@ -115,6 +124,10 @@ pub struct LauncherUi {
     /// Alerts from the feed, shown as popups until acknowledged.
     pub(crate) alerts: Vec<artcraft_launcher_core::feed::Notice>,
     pub(crate) search: String,
+    pub(crate) page: Page,
+    pub(crate) plugin_app_filter: &'static str,
+    pub(crate) plugin_search: String,
+    pub(crate) installed_plugins: Vec<artcraft_launcher_core::InstalledPlugin>,
     pub(crate) toasts: Vec<Toast>,
     pub(crate) dialog: Option<Dialog>,
     /// The app whose details drawer is open (or closing: see `detail_shown`).
@@ -188,6 +201,10 @@ impl LauncherUi {
             announcements: Vec::new(),
             alerts: Vec::new(),
             search: String::new(),
+            page: Page::Apps,
+            plugin_app_filter: "all",
+            plugin_search: String::new(),
+            installed_plugins: Vec::new(),
             toasts: Vec::new(),
             dialog: None,
             detail: None,
@@ -313,6 +330,9 @@ impl LauncherUi {
             self.last_detect = now;
         }
         let focused = ctx.input(|i| i.viewport().focused).unwrap_or(true);
+        if focused && !self.was_focused {
+            self.backend.send(Command::DetectPlugins);
+        }
         let came_back = focused && !self.was_focused && now - self.last_detect >= RESCAN_ON_FOCUS_AFTER;
         self.was_focused = focused;
         if came_back || now - self.last_detect >= RESCAN_EVERY {
@@ -454,6 +474,26 @@ impl LauncherUi {
                 self.rate_limited_until = rate_limited_until;
                 true
             }
+            Event::PluginsDetected(plugins) => {
+                self.installed_plugins = plugins;
+                false
+            }
+            Event::PluginJobFinished { id: _, result } => {
+                match result {
+                    Ok(msg) => self.toast(ctx, msg, false),
+                    Err(e) => self.toast(ctx, e, true),
+                }
+                false
+            }
+            Event::PluginFilePicked { path, detected_app } => {
+                let current_app = match &self.dialog {
+                    Some(Dialog::ImportPlugin { app, .. }) => app.clone(),
+                    _ => "photocraft".to_string(),
+                };
+                let target_app = detected_app.unwrap_or(current_app);
+                self.dialog = Some(Dialog::ImportPlugin { app: target_app, path });
+                false
+            }
         }
     }
 
@@ -572,6 +612,10 @@ impl LauncherUi {
         egui::CentralPanel::default()
             .frame(egui::Frame::new().fill(tokens.bg).inner_margin(egui::Margin { left: 20, right: 20, top: 18, bottom: 0 }))
             .show(ui, |ui| {
+                if self.page == Page::Plugins {
+                    self.plugins_page(ui);
+                    return;
+                }
                 self.toolbar(ui);
                 ui.add_space(18.0);
                 let ids = self.visible_ids();

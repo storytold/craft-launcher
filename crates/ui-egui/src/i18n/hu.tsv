@@ -346,10 +346,32 @@ filter	Installed	Telepítve
 	ArtCraft on GitHub	ArtCraft a GitHubon
 	Join the ArtCraft Discord	Csatlakozás az ArtCraft Discord-közösségéhez
 @plural	ArtCraft Launcher · {n} update available|ArtCraft Launcher · {n} updates available	ArtCraft Launcher · {n} frissítés elérhető|ArtCraft Launcher · {n} frissítés elérhető
+	Apps	Alkalmazások
+	Plugins	Bővítmények
+	Browse and manage plugins	Bővítmények tallózása és kezelése
+	Search plugins	Bővítmények keresése
+	Import plugin…	Bővítmény importálása…
+	Import plugin	Bővítmény importálása
+	Repair	Javítás
+	Needs repair	Javításra szorul
+	No plugins match	Nincs találat a bővítmények között
+	Plugin file path (.wasm, .afs, .8bf, .abr, .grd, .aco, .cube)	Bővítményfájl elérési útja (.wasm, .afs, .8bf, .abr, .grd, .aco, .cube)
+	Supports native WebAssembly (.wasm ABI v1) plugins, Adobe Photoshop Filter Factory (.afs / .8bf) filters, and preset packs.	Támogatja a natív WebAssembly (.wasm ABI v1) bővítményeket, az Adobe Photoshop Filter Factory (.afs / .8bf) szűrőket és az előbeállítás-csomagokat.
+	Browse…	Tallózás…
+	Choose a plugin file from your computer	Válasszon egy bővítményfájlt a számítógépéről
+	Auto-detected: {app}	Automatikusan felismert: {app}
+@plural	{n} plugin|{n} plugins	{n} bővítmény|{n} bővítmény
+@msg	Repaired {name} {version}	{name} {version} megjavítva
+@msg	Removed plugin	Bővítmény eltávolítva
+@msg	Imported {name} ({format})	{name} ({format}) importálva
+	Show plugins as a table	Bővítmények megjelenítése táblázatként
+	Show plugins as cards	Bővítmények megjelenítése kártyákként
+	Plugin	Bővítmény
+	Format	Formátum
+	Author	Szerző
 	Install folder	Telepítési mappa
 	Default install folder	Alapértelmezett telepítési mappa
 	System default	Rendszer alapértelmezése
-	Browse…	Tallózás…
 	Use default	Alapértelmezett használata
 	New installs use this folder. Updates stay in their current location.	Az új telepítések ezt a mappát használják. A frissítések a jelenlegi helyükön maradnak.
 	Custom folders use AppImage on Linux.	Linuxon az egyéni mappákhoz AppImage szükséges.

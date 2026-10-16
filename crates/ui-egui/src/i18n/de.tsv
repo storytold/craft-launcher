@@ -345,10 +345,32 @@ filter	Installed	Installiert
 	Loading pictures…	Bilder werden geladen…
 	Pictures couldn't be loaded. Reopen this page to try again.	Die Bilder konnten nicht geladen werden. Beim erneuten Öffnen der Seite wird es noch einmal versucht.
 @plural	ArtCraft Launcher · {n} update available|ArtCraft Launcher · {n} updates available	ArtCraft Launcher · {n} Update verfügbar|ArtCraft Launcher · {n} Updates verfügbar
+	Apps	Apps
+	Plugins	Plug-ins
+	Browse and manage plugins	Plug-ins durchsuchen und verwalten
+	Search plugins	Plug-ins suchen
+	Import plugin…	Plug-in importieren…
+	Import plugin	Plug-in importieren
+	Repair	Reparieren
+	Needs repair	Reparatur nötig
+	No plugins match	Keine passenden Plug-ins
+	Plugin file path (.wasm, .afs, .8bf, .abr, .grd, .aco, .cube)	Dateipfad des Plug-ins (.wasm, .afs, .8bf, .abr, .grd, .aco, .cube)
+	Supports native WebAssembly (.wasm ABI v1) plugins, Adobe Photoshop Filter Factory (.afs / .8bf) filters, and preset packs.	Unterstützt native WebAssembly-Plug-ins (.wasm ABI v1), Adobe Photoshop Filter Factory-Filter (.afs / .8bf) und Vorgabenpakete.
+	Browse…	Durchsuchen…
+	Choose a plugin file from your computer	Eine Plug-in-Datei auf deinem Computer auswählen
+	Auto-detected: {app}	Automatisch erkannt: {app}
+@plural	{n} plugin|{n} plugins	{n} Plug-in|{n} Plug-ins
+@msg	Repaired {name} {version}	{name} {version} repariert
+@msg	Removed plugin	Plug-in entfernt
+@msg	Imported {name} ({format})	{name} ({format}) importiert
+	Show plugins as a table	Plug-ins als Tabelle anzeigen
+	Show plugins as cards	Plug-ins als Karten anzeigen
+	Plugin	Plug-in
+	Format	Format
+	Author	Autor
 	Install folder	Installationsordner
 	Default install folder	Standardordner für Installationen
 	System default	Systemstandard
-	Browse…	Durchsuchen…
 	Use default	Standard verwenden
 	New installs use this folder. Updates stay in their current location.	Neue Installationen verwenden diesen Ordner. Updates bleiben am bisherigen Speicherort.
 	Custom folders use AppImage on Linux.	Für eigene Ordner wird unter Linux AppImage verwendet.
