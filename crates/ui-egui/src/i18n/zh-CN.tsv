@@ -625,3 +625,9 @@ figcraft	Interface design and prototyping	界面设计与原型制作
 	Runs on this computer	在这台电脑上运行
 	No models found yet	暂未找到模型
 @plural	{n} model|{n} models	{n} 个模型
+	Showing only {what}	仅显示：{what}
+	works with {app}	适用于 {app}
+	themes	主题
+	plug-ins	插件
+	resources	资源
+	Show all	显示全部

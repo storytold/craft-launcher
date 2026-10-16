@@ -205,3 +205,72 @@ fn a_change_made_elsewhere_shows_up_within_a_few_seconds() {
     }
     assert!(h.query_by_label("Ocean").is_none());
 }
+
+fn go_to(h: &mut Harness<'static, Option<LauncherUi>>, app: Option<&str>, kind: Option<&str>) {
+    h.state_mut().as_mut().unwrap().open_extensions(app, kind);
+    h.run_steps(3);
+}
+
+#[test]
+fn another_app_sending_the_person_here_shows_only_what_works_with_it() {
+    let store = Shared::default();
+    let mut h = harness(WithStore { store: store.clone(), picked: None });
+    h.run();
+    assert!(h.query_by_label("Add from file").is_none(), "still on the apps page");
+    go_to(&mut h, Some("lightcraft"), Some("theme"));
+    h.get_by_label("Midnight");
+    h.get_by_label("Paper");
+    assert!(h.query_by_label("Ocean").is_none(), "Ocean is only made for PhotoCraft");
+    h.get_by_label("Showing only works with LightCraft, themes");
+    go_to(&mut h, Some("photocraft"), None);
+    h.get_by_label("Ocean");
+    h.get_by_label("Showing only works with PhotoCraft");
+    assert!(worn_by(&store, "photocraft").is_empty(), "arriving chose nothing");
+}
+
+#[test]
+fn show_all_lifts_the_narrowing_and_the_banner_goes() {
+    let mut h = harness(WithStore { store: Shared::default(), picked: None });
+    h.run();
+    go_to(&mut h, Some("lightcraft"), None);
+    assert!(h.query_by_label("Ocean").is_none());
+    h.get_by_label("Themes 2");
+    h.get_by_label("Installed 2");
+    h.get_by_label("Show all").click();
+    h.run_steps(3);
+    h.get_by_label("Ocean");
+    h.get_by_label("Themes 3");
+    h.get_by_label("Installed 3");
+    assert!(h.query_by_label("Show all").is_none());
+    assert!(h.query_by_label_contains("Showing only").is_none());
+}
+
+#[test]
+fn a_kind_other_than_themes_lands_on_the_installed_list_and_says_so() {
+    let mut h = harness(WithStore { store: Shared::default(), picked: None });
+    h.run();
+    go_to(&mut h, None, Some("plugin"));
+    h.get_by_label("Showing only plug-ins");
+    h.get_by_label("Nothing added yet");
+    assert!(h.query_by_label("Midnight").is_none());
+}
+
+#[test]
+fn a_place_with_nonsense_in_it_opens_the_page_unnarrowed() {
+    let mut h = harness(WithStore { store: Shared::default(), picked: None });
+    h.run();
+    go_to(&mut h, Some("Photo Craft"), Some("nonsense"));
+    for name in ["Midnight", "Ocean", "Paper"] {
+        h.get_by_label(name);
+    }
+    assert!(h.query_by_label_contains("Showing only").is_none());
+}
+
+#[test]
+fn a_build_with_no_store_ignores_a_request_to_open_the_page() {
+    let mut h = harness(NoStore);
+    h.run();
+    go_to(&mut h, Some("photocraft"), None);
+    assert!(h.query_by_label("Add from file").is_none());
+    assert!(h.query_by_label("Extensions").is_none());
+}

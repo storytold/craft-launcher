@@ -153,3 +153,46 @@ fn every_origin_and_kind_has_its_own_words_with_no_developer_terms() {
         }
     }
 }
+
+fn names(rows: &[&Row]) -> Vec<String> {
+    rows.iter().map(|r| r.name.clone()).collect()
+}
+
+fn focus(only: Option<&str>, kind: Option<Kind>) -> Focus {
+    Focus { app: only.map(app), kind }
+}
+
+#[test]
+fn a_focus_keeps_only_what_works_with_the_app_and_is_of_the_kind() {
+    let rows = [row("a.one", "One", &["photocraft", "lightcraft"], &[], &[]), row("a.two", "Two", &["lightcraft"], &[], &[])];
+    let mut plug = row("a.plug", "Plug", &["photocraft"], &[], &[]);
+    plug.kind = Kind::Plugin;
+    plug.palette = None;
+    let rows = [rows[0].clone(), rows[1].clone(), plug];
+    assert_eq!(names(&themes_in(&rows, &Focus::default())), ["One", "Two"]);
+    assert_eq!(names(&themes_in(&rows, &focus(Some("photocraft"), None))), ["One"]);
+    assert_eq!(names(&themes_in(&rows, &focus(Some("lightcraft"), None))), ["One", "Two"]);
+    assert_eq!(names(&themes_in(&rows, &focus(Some("pdfcraft"), None))), Vec::<String>::new());
+    assert_eq!(names(&ordered_in(&rows, &Focus::default())), ["One", "Plug", "Two"]);
+    assert_eq!(names(&ordered_in(&rows, &focus(Some("photocraft"), None))), ["One", "Plug"]);
+    assert_eq!(names(&ordered_in(&rows, &focus(None, Some(Kind::Plugin)))), ["Plug"]);
+    assert_eq!(names(&ordered_in(&rows, &focus(None, Some(Kind::Theme)))), ["One", "Two"]);
+    assert_eq!(names(&ordered_in(&rows, &focus(Some("photocraft"), Some(Kind::Theme)))), ["One"]);
+    assert_eq!(names(&ordered_in(&rows, &focus(Some("photocraft"), Some(Kind::Resource)))), Vec::<String>::new());
+    assert!(Focus::default().is_empty());
+    assert!(!focus(Some("photocraft"), None).is_empty());
+    assert!(!focus(None, Some(Kind::Theme)).is_empty());
+}
+
+#[test]
+fn the_place_another_app_asks_for_becomes_a_focus_and_a_tab() {
+    assert_eq!(focus_for(None, None), (Focus::default(), true));
+    assert_eq!(focus_for(Some("photocraft"), None), (focus(Some("photocraft"), None), true));
+    assert_eq!(focus_for(Some("photocraft"), Some("theme")), (focus(Some("photocraft"), Some(Kind::Theme)), true));
+    assert_eq!(focus_for(None, Some("plugin")), (focus(None, Some(Kind::Plugin)), false));
+    assert_eq!(focus_for(Some("lightcraft"), Some("resource")), (focus(Some("lightcraft"), Some(Kind::Resource)), false));
+    // Not an app id or not a kind: dropped, never repaired.
+    assert_eq!(focus_for(Some("Photo Craft"), Some("nonsense")), (Focus::default(), true));
+    assert_eq!(focus_for(Some(""), Some("")), (Focus::default(), true));
+    assert_eq!(focus_for(Some("../x"), Some("Theme")), (Focus::default(), true));
+}

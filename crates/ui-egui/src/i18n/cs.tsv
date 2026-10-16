@@ -534,3 +534,9 @@ filter	Installed	Nainstalováno
 	Runs on this computer	Runs on this computer
 	No models found yet	No models found yet
 @plural	{n} model|{n} models	{n} model|{n} modely|{n} modelů
+	Showing only {what}	Zobrazeno pouze: {what}
+	works with {app}	funguje s {app}
+	themes	motivy
+	plug-ins	doplňky
+	resources	zdroje
+	Show all	Zobrazit vše

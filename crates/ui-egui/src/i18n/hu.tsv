@@ -567,3 +567,9 @@ filter	Installed	Telepítve
 	Runs on this computer	Runs on this computer
 	No models found yet	No models found yet
 @plural	{n} model|{n} models	{n} modell|{n} modell
+	Showing only {what}	Csak ezek láthatók: {what}
+	works with {app}	működik ezzel: {app}
+	themes	témák
+	plug-ins	bővítmények
+	resources	erőforrások
+	Show all	Összes megjelenítése

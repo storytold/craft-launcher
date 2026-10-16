@@ -29,6 +29,7 @@ enum Action {
     AskRemove(ExtensionId),
     CancelRemove,
     Run(Vec<Step>),
+    ShowAll,
 }
 
 impl LauncherUi {
@@ -52,6 +53,23 @@ impl LauncherUi {
         ui.add_space(14.0);
     }
 
+    /// Goes to the Extensions page, narrowed to what another app asked for: only what works with
+    /// `app`, and/or only one `kind` (`theme`, `plugin` or `resource`). Anything that is not an app
+    /// id or a kind is ignored. Does nothing visible where this build has no extensions store.
+    pub fn open_extensions(&mut self, app: Option<&str>, kind: Option<&str>) {
+        let (focus, themes_tab) = plan::focus_for(app, kind);
+        self.extensions.open = true;
+        self.extensions.loaded = false;
+        self.extensions.confirm_remove = None;
+        self.extensions.tab = if themes_tab { Tab::Themes } else { Tab::Installed };
+        self.extensions.focus = focus;
+    }
+
+    /// Whether the Extensions page is the one showing.
+    pub fn showing_extensions(&self) -> bool {
+        self.extensions.open
+    }
+
     /// The Extensions page.
     pub(crate) fn extensions_page(&mut self, ui: &mut Ui, host: &mut dyn Host) {
         let ctx = ui.ctx().clone();
@@ -73,18 +91,23 @@ impl LauncherUi {
                 .wrap(),
         );
         ui.add_space(14.0);
+        focus_banner(ui, &state.focus, &mut actions);
         let mut tab = state.tab;
         let tabs = [
             (
                 Tab::Themes,
-                Cell { label: tl!("Themes"), tip: tl!("Colour themes for your Craft apps"), count: Some((plan::themes(&state.rows).len(), None)) },
+                Cell {
+                    label: tl!("Themes"),
+                    tip: tl!("Colour themes for your Craft apps"),
+                    count: Some((plan::themes_in(&state.rows, &state.focus).len(), None)),
+                },
             ),
             (
                 Tab::Installed,
                 Cell {
                     label: tr_ctx(current(), "filter", "Installed"),
                     tip: tl!("Everything you have added"),
-                    count: Some((state.rows.len(), None)),
+                    count: Some((plan::ordered_in(&state.rows, &state.focus).len(), None)),
                 },
             ),
         ];
@@ -125,6 +148,7 @@ impl LauncherUi {
         for action in actions {
             match action {
                 Action::Tab(tab) => self.extensions.tab = tab,
+                Action::ShowAll => self.extensions.focus = plan::Focus::default(),
                 Action::AskRemove(id) => self.extensions.confirm_remove = Some(id),
                 Action::CancelRemove => self.extensions.confirm_remove = None,
                 Action::AddFile => self.add_extension_file(ctx, host),
@@ -204,6 +228,31 @@ fn menu_button(ui: &mut Ui, label: &str, add_contents: impl FnOnce(&mut Ui)) {
     });
 }
 
+/// "Showing only works with PhotoCraft" and a way back, when another app narrowed the page.
+fn focus_banner(ui: &mut Ui, focus: &plan::Focus, actions: &mut Vec<Action>) {
+    if focus.is_empty() {
+        return;
+    }
+    let t = Tokens::get(ui.ctx());
+    let mut what = Vec::new();
+    if let Some(app) = &focus.app {
+        what.push(fmt(tl!("works with {app}"), &[("app", &plan::app_name(app))]));
+    }
+    match focus.kind {
+        Some(craft_ext_core::manifest::Kind::Theme) => what.push(tl!("themes").to_string()),
+        Some(craft_ext_core::manifest::Kind::Plugin) => what.push(tl!("plug-ins").to_string()),
+        Some(craft_ext_core::manifest::Kind::Resource) => what.push(tl!("resources").to_string()),
+        None => {}
+    }
+    ui.horizontal(|ui| {
+        ui.label(RichText::new(fmt(tl!("Showing only {what}"), &[("what", &what.join(", "))])).color(t.muted));
+        if widgets::button(ui, tl!("Show all"), Kind::Secondary, 0.0).clicked() {
+            actions.push(Action::ShowAll);
+        }
+    });
+    ui.add_space(10.0);
+}
+
 fn sorted_apps(row: &Row) -> Vec<&AppId> {
     let mut apps: Vec<&AppId> = row.apps.iter().collect();
     apps.sort_by_key(|a| plan::app_name(a).to_lowercase());
@@ -212,7 +261,7 @@ fn sorted_apps(row: &Row) -> Vec<&AppId> {
 
 fn themes_grid(ui: &mut Ui, state: &State, actions: &mut Vec<Action>) {
     let t = Tokens::get(ui.ctx());
-    let themes = plan::themes(&state.rows);
+    let themes = plan::themes_in(&state.rows, &state.focus);
     if themes.is_empty() {
         ui.add_space(40.0);
         ui.vertical_centered(|ui| {
@@ -289,7 +338,8 @@ fn theme_card(ui: &mut Ui, row: &Row, rect: Rect, actions: &mut Vec<Action>) {
 
 fn installed_list(ui: &mut Ui, state: &State, actions: &mut Vec<Action>) {
     let t = Tokens::get(ui.ctx());
-    if state.rows.is_empty() {
+    let shown = plan::ordered_in(&state.rows, &state.focus);
+    if shown.is_empty() {
         ui.add_space(40.0);
         ui.vertical_centered(|ui| {
             widgets::hud(ui, tl!("Nothing added yet"), t.muted);
@@ -299,7 +349,7 @@ fn installed_list(ui: &mut Ui, state: &State, actions: &mut Vec<Action>) {
     egui::Frame::new().stroke(t.hairline()).show(ui, |ui| {
         ui.set_width(ui.available_width());
         ui.spacing_mut().item_spacing.y = 0.0;
-        for row in plan::ordered(&state.rows) {
+        for row in shown {
             let confirming = state.confirm_remove.as_ref() == Some(&row.id);
             let line = egui::Frame::new().inner_margin(egui::Margin::symmetric(16, 12)).show(ui, |ui| {
                 ui.set_width(ui.available_width());

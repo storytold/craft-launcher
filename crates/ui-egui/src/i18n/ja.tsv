@@ -569,3 +569,9 @@ filter	Installed	インストール済み
 	Runs on this computer	Runs on this computer
 	No models found yet	No models found yet
 @plural	{n} model|{n} models	{n} 個のモデル
+	Showing only {what}	表示中: {what}
+	works with {app}	{app} で使えるもの
+	themes	テーマ
+	plug-ins	プラグイン
+	resources	リソース
+	Show all	すべて表示

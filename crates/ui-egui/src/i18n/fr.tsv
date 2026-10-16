@@ -567,3 +567,9 @@ filter	Installed	Installées
 	Runs on this computer	Fonctionne sur cet ordinateur
 	No models found yet	Aucun modèle trouvé pour l’instant
 @plural	{n} model|{n} models	{n} modèle|{n} modèles
+	Showing only {what}	Uniquement {what}
+	works with {app}	compatible avec {app}
+	themes	thèmes
+	plug-ins	modules
+	resources	ressources
+	Show all	Tout afficher

@@ -653,3 +653,9 @@ filter	Installed	Установлены
 	Runs on this computer	Работает на этом компьютере
 	No models found yet	Модели пока не найдены
 @plural	{n} model|{n} models	{n} модель|{n} модели|{n} моделей
+	Showing only {what}	Показано только: {what}
+	works with {app}	работает с {app}
+	themes	темы
+	plug-ins	плагины
+	resources	ресурсы
+	Show all	Показать все

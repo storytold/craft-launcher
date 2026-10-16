@@ -54,18 +54,62 @@ fn by_name(a: &&Row, b: &&Row) -> std::cmp::Ordering {
     a.name.to_lowercase().cmp(&b.name.to_lowercase()).then_with(|| a.id.cmp(&b.id))
 }
 
+/// What the page was asked to narrow to when another app sent the person here ("Browse more" in
+/// PhotoCraft): only what works with that app, and/or only one kind.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct Focus {
+    pub app: Option<AppId>,
+    pub kind: Option<Kind>,
+}
+
+impl Focus {
+    pub fn is_empty(&self) -> bool {
+        self.app.is_none() && self.kind.is_none()
+    }
+
+    /// Whether `row` is within the focus.
+    pub fn keeps(&self, row: &Row) -> bool {
+        self.app.as_ref().is_none_or(|a| row.apps.contains(a)) && self.kind.is_none_or(|k| row.kind == k)
+    }
+}
+
 /// Themes the Themes tab can draw (their colours could be read), in a stable order.
 pub fn themes(rows: &[Row]) -> Vec<&Row> {
-    let mut out: Vec<&Row> = rows.iter().filter(|r| r.kind == Kind::Theme && r.palette.is_some()).collect();
+    themes_in(rows, &Focus::default())
+}
+
+/// [`themes`] within a focus.
+pub fn themes_in<'a>(rows: &'a [Row], focus: &Focus) -> Vec<&'a Row> {
+    let mut out: Vec<&Row> = rows.iter().filter(|r| r.kind == Kind::Theme && r.palette.is_some() && focus.keeps(r)).collect();
     out.sort_by(by_name);
     out
 }
 
 /// All rows, in a stable order.
 pub fn ordered(rows: &[Row]) -> Vec<&Row> {
-    let mut out: Vec<&Row> = rows.iter().collect();
+    ordered_in(rows, &Focus::default())
+}
+
+/// [`ordered`] within a focus.
+pub fn ordered_in<'a>(rows: &'a [Row], focus: &Focus) -> Vec<&'a Row> {
+    let mut out: Vec<&Row> = rows.iter().filter(|r| focus.keeps(r)).collect();
     out.sort_by(by_name);
     out
+}
+
+/// The tab and focus for a place another app asked for. A kind other than themes lands on the
+/// full list; a value that is not an app id or a kind is dropped, and the page opens unfocused.
+/// Returns the focus together with the tab to show.
+pub fn focus_for(app: Option<&str>, kind: Option<&str>) -> (Focus, bool) {
+    let app = app.and_then(|a| AppId::new(a).ok());
+    let kind = match kind {
+        Some("theme") => Some(Kind::Theme),
+        Some("plugin") => Some(Kind::Plugin),
+        Some("resource") => Some(Kind::Resource),
+        _ => None,
+    };
+    let themes_tab = kind.is_none_or(|k| k == Kind::Theme);
+    (Focus { app, kind }, themes_tab)
 }
 
 /// The name of an app for a person: its catalogue name, or the id itself for an app this launcher

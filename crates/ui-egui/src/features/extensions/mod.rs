@@ -19,6 +19,7 @@ mod tests;
 
 use craft_ext_core::id::ExtensionId;
 
+pub use plan::Focus;
 pub use source::{ExtensionSource, Row};
 
 /// Which list the screen shows.
@@ -42,6 +43,8 @@ pub(crate) struct State {
     /// The Extensions page is showing instead of the apps.
     pub open: bool,
     pub tab: Tab,
+    /// What another app asked the page to narrow to; empty when the person opened it themselves.
+    pub focus: Focus,
     pub rows: Vec<Row>,
     /// The store's generation when `rows` was read.
     pub generation: u64,

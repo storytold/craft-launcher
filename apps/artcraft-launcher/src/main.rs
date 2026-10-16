@@ -54,7 +54,8 @@ fn main() -> ExitCode {
     let mut hidden = args.iter().any(|a| a == login::HIDDEN_FLAG);
 
     let wake: Wake = Arc::new(OnceLock::new());
-    let starts = match single_instance::claim(wake.clone()) {
+    // `--open extensions?app=photocraft&kind=theme`: another Craft app sending the person to a place here.
+    let starts = match single_instance::claim(wake.clone(), artcraft_launcher_native::deeplink::from_args(&args)) {
         Instance::Secondary => return ExitCode::SUCCESS,
         Instance::Primary(rx) => rx,
     };
@@ -578,6 +579,11 @@ impl Launcher {
         } else if !starts.is_empty() {
             requests.push(Request::Show);
         }
+        for start in &starts {
+            if let single_instance::Request::Open(place) = start {
+                self.ui.open_extensions(place.app.as_deref(), place.kind.as_deref());
+            }
+        }
         let actions = self.tray.as_ref().map(tray::Tray::actions).unwrap_or_default();
         for action in actions {
             match action {
@@ -890,6 +896,26 @@ mod tests {
         assert_eq!(tray_step(&[Request::Quit]), TrayStep::Quit);
         assert_eq!(tray_step(&[Request::Show, Request::Quit]), TrayStep::Quit);
         assert_eq!(tray_step(&[Request::Quit, Request::Toggle]), TrayStep::Quit);
+    }
+
+    #[test]
+    fn an_open_request_shows_the_window_and_takes_it_to_the_extensions_page() {
+        let (mut launcher, show, _) = launcher();
+        assert!(!launcher.ui.showing_extensions());
+        let place = artcraft_launcher_native::deeplink::Target { app: Some("photocraft".into()), kind: Some("theme".into()) };
+        assert!(show.send(single_instance::Request::Open(place)).is_ok());
+        let requests = launcher.tick(&egui::Context::default());
+        assert!(requests.contains(&Request::Show));
+        assert!(launcher.ui.showing_extensions());
+    }
+
+    #[test]
+    fn a_plain_show_request_leaves_the_page_alone() {
+        let (mut launcher, show, _) = launcher();
+        assert!(show.send(single_instance::Request::Show).is_ok());
+        let requests = launcher.tick(&egui::Context::default());
+        assert!(requests.contains(&Request::Show));
+        assert!(!launcher.ui.showing_extensions());
     }
 
     #[test]
