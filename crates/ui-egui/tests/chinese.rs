@@ -181,7 +181,7 @@ fn simplified_chinese_switches_persists_and_keeps_install_actions() {
     h.get_by_label_contains("上次检查：3 分钟前 · 来源：ArtCraft API");
     h.get_by_label("更新至 0.5.0");
     // Product names stay in English.
-    h.get_by_label("Launcher");
+    assert!(h.query_by_label("Launcher").is_none());
     snapshot(&mut h, "grid-zh-CN-dark");
     h.get_by_label("全部更新（2）").click();
     h.run_steps(2);
@@ -190,7 +190,7 @@ fn simplified_chinese_switches_persists_and_keeps_install_actions() {
 
     let (mut table, _) = harness_language(ViewMode::Table, egui::Theme::Light, true, &restored.language);
     table.run_steps(6);
-    table.get_by_label("已安装版本");
+    table.get_by_label("版本");
     assert!(table.query_all_by_label_contains("年10月").count() >= 1);
     snapshot(&mut table, "table-zh-CN-light");
     let (mut web, _) = harness_language(ViewMode::Grid, egui::Theme::Dark, false, &restored.language);

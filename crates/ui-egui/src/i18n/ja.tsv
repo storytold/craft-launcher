@@ -365,3 +365,12 @@ filter	Installed	インストール済み
 	Replace what's there?	既存の項目を置き換えますか？
 	{path} already exists. Installing {name} will overwrite it.	{path} は既に存在します。{name} をインストールすると上書きされます。
 	Replace	置き換える
+	Recently updated	最近更新
+	Name (A–Z)	名前 (A–Z)
+	Name (Z–A)	名前 (Z–A)
+	Frequently used	よく使う順
+	Next app	次のアプリ
+	Previous app	前のアプリ
+	Show {n} more changes	さらに{n}件の変更を表示
+	Last updated: {date}	最終更新: {date}
+column	Version	バージョン

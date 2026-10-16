@@ -126,9 +126,11 @@ fn complete_catalogs_cover_every_ui_literal() {
         include_str!("../app.rs"),
         include_str!("../details.rs"),
         include_str!("../dialogs.rs"),
+        include_str!("../card_parts.rs"),
         include_str!("../model.rs"),
         include_str!("../notes.rs"),
         include_str!("../settings.rs"),
+        include_str!("../settings_dialog.rs"),
         include_str!("../views.rs"),
         include_str!("../widgets.rs"),
         // The desktop shell's tray menu and tooltip.

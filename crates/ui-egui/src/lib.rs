@@ -17,6 +17,8 @@ macro_rules! tl {
 }
 
 mod app;
+mod bar;
+mod card_parts;
 #[cfg(not(target_arch = "wasm32"))]
 mod cjk_font;
 mod details;
@@ -27,6 +29,8 @@ pub mod model;
 mod motion;
 mod notes;
 pub mod settings;
+mod settings_dialog;
+mod sheet;
 pub mod theme;
 mod views;
 mod widgets;
