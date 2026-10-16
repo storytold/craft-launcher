@@ -573,3 +573,6 @@ filter	Installed	Telepítve
 	plug-ins	bővítmények
 	resources	erőforrások
 	Show all	Összes megjelenítése
+	Built into your apps	Az alkalmazásokba beépítve
+	Built into {app}	Beépítve ebbe: {app}
+	Choose it inside {app}	Válaszd ki itt: {app}

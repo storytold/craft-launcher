@@ -10,8 +10,8 @@
 //! [`FeaturesPort`], so the UI never touches the disk, the keychain or the network (the web build
 //! has no port and the screen never appears there).
 
-pub mod extensions;
 mod advanced;
+pub mod extensions;
 mod history;
 mod history_overview;
 mod history_table;

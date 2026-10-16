@@ -9,6 +9,7 @@
 //! - Drawing is in `screen.rs` and `card.rs`, what a click means is in `plan.rs`, and `sample.rs`
 //!   is an in-memory store for tests.
 
+pub mod builtin;
 pub mod card;
 pub mod plan;
 pub mod sample;

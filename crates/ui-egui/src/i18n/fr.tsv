@@ -573,3 +573,6 @@ filter	Installed	Installées
 	plug-ins	modules
 	resources	ressources
 	Show all	Tout afficher
+	Built into your apps	Intégrés à vos applications
+	Built into {app}	Intégré à {app}
+	Choose it inside {app}	À choisir dans {app}

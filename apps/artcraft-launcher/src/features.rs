@@ -53,7 +53,15 @@ impl DesktopFeatures {
     }
 
     pub(crate) fn with(features: Vec<Feature>, locate: Locator, config: DownloadConfig, tools: Tools) -> Self {
-        Self { features, locate, config, shared: Arc::default(), cancel: Arc::default(), tools, history: DesktopHistory::new() }
+        Self {
+            features,
+            locate,
+            config,
+            shared: Arc::default(),
+            cancel: Arc::default(),
+            tools,
+            history: if crate::DEMO.load(std::sync::atomic::Ordering::Relaxed) { DesktopHistory::demo() } else { DesktopHistory::new() },
+        }
     }
 
     /// Scans on the calling thread and stores the result.

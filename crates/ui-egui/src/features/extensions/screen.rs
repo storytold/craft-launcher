@@ -6,8 +6,10 @@
 use std::time::Duration;
 
 use craft_ext_core::id::{AppId, ExtensionId};
+use craft_ext_core::palette::Palette;
 use egui::{Align, Layout, Rect, RichText, Sense, Ui, pos2, vec2};
 
+use super::builtin::{self, BuiltIn};
 use super::card;
 use super::plan::{self, Step};
 use super::source::{ExtensionSource, Row};
@@ -45,7 +47,8 @@ impl LauncherUi {
             (Page::Apps, Cell { label: tl!("Apps"), tip: tl!("Install and update Craft apps"), count: None }),
             (Page::Extensions, Cell { label: tl!("Extensions"), tip: tl!("Themes for your Craft apps"), count: None }),
         ];
-        if widgets::cells(ui, &mut page, &options) {
+        // `cells` lays out in the parent's direction: a row, so the options sit side by side.
+        if ui.horizontal(|ui| widgets::cells(ui, &mut page, &options)).inner {
             self.extensions.open = page == Page::Extensions;
             self.extensions.loaded = false;
             self.extensions.confirm_remove = None;
@@ -99,7 +102,7 @@ impl LauncherUi {
                 Cell {
                     label: tl!("Themes"),
                     tip: tl!("Colour themes for your Craft apps"),
-                    count: Some((plan::themes_in(&state.rows, &state.focus).len(), None)),
+                    count: Some((plan::themes_in(&state.rows, &state.focus).len() + builtin::shown(&state.focus).len(), None)),
                 },
             ),
             (
@@ -111,7 +114,7 @@ impl LauncherUi {
                 },
             ),
         ];
-        if widgets::cells(ui, &mut tab, &tabs) {
+        if ui.horizontal(|ui| widgets::cells(ui, &mut tab, &tabs)).inner {
             actions.push(Action::Tab(tab));
         }
         ui.add_space(18.0);
@@ -262,43 +265,75 @@ fn sorted_apps(row: &Row) -> Vec<&AppId> {
 fn themes_grid(ui: &mut Ui, state: &State, actions: &mut Vec<Action>) {
     let t = Tokens::get(ui.ctx());
     let themes = plan::themes_in(&state.rows, &state.focus);
+    let built_in = builtin::shown(&state.focus);
     if themes.is_empty() {
-        ui.add_space(40.0);
+        ui.add_space(if built_in.is_empty() { 40.0 } else { 6.0 });
         ui.vertical_centered(|ui| {
             widgets::hud(ui, tl!("No themes yet"), t.muted);
             ui.add_space(6.0);
             ui.label(RichText::new(tl!("Add a theme from a file and it appears here.")).color(t.faint));
         });
-        return;
+    } else {
+        card_grid(ui, themes.len(), |ui, i, rect| theme_card(ui, themes[i], rect, actions));
     }
+    if !built_in.is_empty() {
+        ui.add_space(26.0);
+        widgets::hud(ui, tl!("Built into your apps"), t.muted);
+        ui.add_space(10.0);
+        card_grid(ui, built_in.len(), |ui, i, rect| builtin_card(ui, &built_in[i], rect));
+    }
+}
+
+/// `count` cards in rows that fill the width; `draw` paints card `i` into its rectangle.
+fn card_grid(ui: &mut Ui, count: usize, mut draw: impl FnMut(&mut Ui, usize, Rect)) {
     let width = ui.available_width();
     // Neighbouring cards share their hairline, like the apps grid.
     let cols = ((width / CARD_MIN_W).floor() as usize).max(1);
     let card_w = (width + (cols as f32 - 1.0)) / cols as f32;
-    let rows = themes.len().div_ceil(cols);
+    let rows = count.div_ceil(cols);
     let (area, _) = ui.allocate_exact_size(vec2(width, rows as f32 * (CARD_H - 1.0) + 1.0), Sense::hover());
-    for (i, row) in themes.into_iter().enumerate() {
+    for i in 0..count {
         let (r, c) = (i / cols, i % cols);
         let min = area.min + vec2(c as f32 * (card_w - 1.0), r as f32 * (CARD_H - 1.0));
-        theme_card(ui, row, Rect::from_min_size(min, vec2(card_w, CARD_H)), actions);
+        draw(ui, i, Rect::from_min_size(min, vec2(card_w, CARD_H)));
     }
 }
 
-fn theme_card(ui: &mut Ui, row: &Row, rect: Rect, actions: &mut Vec<Action>) {
-    let Some(palette) = &row.palette else { return };
+/// The frame, the picture and the name every theme card starts with. Returns the space below the name.
+fn card_top(ui: &mut Ui, rect: Rect, key: &str, name: &str, palette: &Palette) -> Ui {
     let t = Tokens::get(ui.ctx());
     ui.painter_at(rect.expand(1.0)).rect(rect, egui::CornerRadius::ZERO, t.bg, t.hairline(), egui::StrokeKind::Inside);
     let picture = Rect::from_min_size(rect.min + vec2(1.0, 1.0), vec2(rect.width() - 2.0, PREVIEW_H));
     card::paint_preview(ui, picture, palette);
     ui.painter().hline(picture.x_range(), picture.bottom(), t.hairline());
-    ui.interact(picture, ui.id().with(("theme-preview", row.id.as_str())), Sense::hover())
-        .widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Image, true, fmt(tl!("Preview of {name}"), &[("name", &row.name)])));
+    ui.interact(picture, ui.id().with(("theme-preview", key)), Sense::hover())
+        .widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Image, true, fmt(tl!("Preview of {name}"), &[("name", name)])));
 
     let inner = Rect::from_min_max(pos2(rect.left() + CARD_PAD, picture.bottom() + 14.0), rect.max - vec2(CARD_PAD, CARD_PAD));
     let mut child = ui.new_child(egui::UiBuilder::new().max_rect(inner).layout(Layout::top_down(Align::Min)));
     child.set_clip_rect(rect.intersect(ui.clip_rect()));
-    let ui = &mut child;
-    ui.add(egui::Label::new(RichText::new(&row.name).size(16.0).family(theme::semibold()).color(t.ink_strong)).truncate());
+    child.add(egui::Label::new(RichText::new(name).size(16.0).family(theme::semibold()).color(t.ink_strong)).truncate());
+    child
+}
+
+/// A theme an app already carries: shown, never changed from here.
+fn builtin_card(ui: &mut Ui, b: &BuiltIn, rect: Rect) {
+    let t = Tokens::get(ui.ctx());
+    let mut card = card_top(ui, rect, &format!("{}-{}", b.app_name, b.name), b.name, &b.palette);
+    let ui = &mut card;
+    ui.horizontal(|ui| {
+        widgets::badge(ui, if b.palette.dark { tl!("Dark") } else { tl!("Light") }, t.muted);
+        ui.add(egui::Label::new(RichText::new(fmt(tl!("Built into {app}"), &[("app", b.app_name)])).size(12.0).color(t.muted)).truncate());
+    });
+    ui.add_space(2.0);
+    ui.add(egui::Label::new(RichText::new(fmt(tl!("Choose it inside {app}"), &[("app", b.app_name)])).size(12.5).color(t.faint)).truncate());
+}
+
+fn theme_card(ui: &mut Ui, row: &Row, rect: Rect, actions: &mut Vec<Action>) {
+    let Some(palette) = &row.palette else { return };
+    let t = Tokens::get(ui.ctx());
+    let mut card = card_top(ui, rect, row.id.as_str(), &row.name, palette);
+    let ui = &mut card;
     ui.horizontal(|ui| {
         widgets::badge(ui, if palette.dark { tl!("Dark") } else { tl!("Light") }, t.muted);
         ui.add(egui::Label::new(RichText::new(plan::trust_label(row.tier)).size(12.0).color(t.muted)).truncate());
