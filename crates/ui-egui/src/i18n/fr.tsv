@@ -360,3 +360,31 @@ filter	Installed	Installées
 	Replace what's there?	Remplacer l’existant ?
 	{path} already exists. Installing {name} will overwrite it.	{path} existe déjà. L’installation de {name} l’écrasera.
 	Replace	Remplacer
+
+# Community sources
+	Add source	Ajouter une source
+	Community apps are not official ArtCraft apps. Only add publishers you trust.	Les applications communautaires ne sont pas des applications ArtCraft officielles. N’ajoutez que des éditeurs de confiance.
+	Community sources	Sources communautaires
+	Confirm that you trust this publisher.	Confirmez que vous faites confiance à cet éditeur.
+	Display name	Nom affiché
+	Enabled	Activée
+	General	Général
+	I trust this publisher and want to add this unofficial source.	Je fais confiance à cet éditeur et souhaite ajouter cette source non officielle.
+	Install / update	Installer / mettre à jour
+	Installed: {version}	Version installée : {version}
+	Latest: {version}	Dernière version : {version}
+	Manage community sources in the desktop launcher.	Gérez les sources communautaires dans le lanceur de bureau.
+	Managed installs require SHA256SUMS.txt and a Windows portable ZIP or Linux AppImage.	Les installations gérées nécessitent SHA256SUMS.txt et une archive ZIP portable Windows ou une AppImage Linux.
+	Official source	Source officielle
+	Package name	Nom du paquet
+	Refresh	Actualiser
+	Remove source	Retirer la source
+	Removing a source keeps its installed files. Community updates are always manual.	Retirer une source conserve ses fichiers installés. Les mises à jour communautaires sont toujours manuelles.
+	Sources	Sources
+	This source is already added.	Cette source a déjà été ajoutée.
+	Unofficial	Non officielle
+	Use the release filename prefix, even if the fork has a different repository name.	Utilisez le préfixe du nom de fichier de la version, même si le dépôt du fork porte un autre nom.
+	You can add up to 32 sources.	Vous pouvez ajouter jusqu’à 32 sources.
+@msg	Use a GitHub owner/repository or repository URL.	Saisissez propriétaire/dépôt GitHub ou l’URL du dépôt.
+@msg	Use a community GitHub repository; official apps already have their own catalog.	Utilisez un dépôt communautaire GitHub ; les applications officielles ont déjà leur catalogue.
+@msg	Enter a display name and a simple package name, such as pdfcraft.	Saisissez un nom affiché et un nom de paquet simple, comme pdfcraft.

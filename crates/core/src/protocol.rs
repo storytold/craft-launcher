@@ -15,6 +15,11 @@ use crate::status::Installed;
 /// Asks the backend to do something. Results arrive later as [`Event`]s.
 #[derive(Clone, Debug, PartialEq)]
 pub enum Command {
+    /// Explicit community actions never enter the official catalog/update pipeline.
+    Community {
+        source: crate::community::CommunitySource,
+        action: crate::community::CommunityAction,
+    },
     /// Look up the latest releases. `force` skips the freshness window (the user pressed Refresh).
     CheckForUpdates {
         force: bool,
@@ -175,6 +180,14 @@ impl Source {
 /// Something the backend wants the UI to know.
 #[derive(Clone, Debug, PartialEq)]
 pub enum Event {
+    CommunityProgress {
+        source: crate::community::CommunitySource,
+        phase: JobPhase,
+    },
+    CommunityFinished {
+        source: crate::community::CommunitySource,
+        status: Box<crate::community::CommunityStatus>,
+    },
     Latest {
         app: String,
         latest: LatestRelease,

@@ -365,3 +365,31 @@ filter	Installed	インストール済み
 	Replace what's there?	既存の項目を置き換えますか？
 	{path} already exists. Installing {name} will overwrite it.	{path} は既に存在します。{name} をインストールすると上書きされます。
 	Replace	置き換える
+
+# Community sources
+	Add source	ソースを追加
+	Community apps are not official ArtCraft apps. Only add publishers you trust.	コミュニティアプリは ArtCraft の公式アプリではありません。信頼できる公開者のみを追加してください。
+	Community sources	コミュニティソース
+	Confirm that you trust this publisher.	この公開者を信頼することを確認してください。
+	Display name	表示名
+	Enabled	有効
+	General	一般
+	I trust this publisher and want to add this unofficial source.	この公開者を信頼し、この非公式ソースを追加します。
+	Install / update	インストール / 更新
+	Installed: {version}	インストール済み：{version}
+	Latest: {version}	最新：{version}
+	Manage community sources in the desktop launcher.	デスクトップ版ランチャーでコミュニティソースを管理してください。
+	Managed installs require SHA256SUMS.txt and a Windows portable ZIP or Linux AppImage.	管理対象のインストールには SHA256SUMS.txt と Windows のポータブル ZIP または Linux AppImage が必要です。
+	Official source	公式ソース
+	Package name	パッケージ名
+	Refresh	再読み込み
+	Remove source	ソースを削除
+	Removing a source keeps its installed files. Community updates are always manual.	ソースを削除してもインストール済みファイルは保持されます。コミュニティアプリの更新は常に手動です。
+	Sources	ソース
+	This source is already added.	このソースは追加済みです。
+	Unofficial	非公式
+	Use the release filename prefix, even if the fork has a different repository name.	フォークのリポジトリ名が異なる場合も、リリースファイル名の接頭辞を指定してください。
+	You can add up to 32 sources.	最大 32 個のソースを追加できます。
+@msg	Use a GitHub owner/repository or repository URL.	GitHub の所有者/リポジトリ名またはリポジトリの URL を入力してください。
+@msg	Use a community GitHub repository; official apps already have their own catalog.	コミュニティの GitHub リポジトリを指定してください。公式アプリには専用のカタログがあります。
+@msg	Enter a display name and a simple package name, such as pdfcraft.	表示名と pdfcraft などの単純なパッケージ名を入力してください。

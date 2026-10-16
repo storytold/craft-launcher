@@ -97,6 +97,8 @@ impl Dialog {
 }
 
 pub struct LauncherUi {
+    pub(crate) community: crate::community::CommunityUi,
+    pub(crate) settings_sources: bool,
     pub(crate) backend: Box<dyn Backend>,
     pub settings: Settings,
     pub(crate) entries: Vec<AppEntry>,
@@ -174,6 +176,8 @@ impl LauncherUi {
         let caps = backend.capabilities();
         let platform = backend.platform();
         Self {
+            community: Default::default(),
+            settings_sources: false,
             backend,
             settings,
             entries: SUITE.iter().map(AppEntry::new).collect(),
@@ -239,7 +243,7 @@ impl LauncherUi {
     /// Something is downloading or installing, the launcher's own update included: quitting now
     /// would cut it short.
     pub fn busy(&self) -> bool {
-        self.launcher_job.is_some() || self.entries.iter().any(|e| e.job.is_some())
+        self.launcher_job.is_some() || self.community_busy() || self.entries.iter().any(|e| e.job.is_some())
     }
 
     /// Looks for updates now (the tray's "Check for Updates").
@@ -329,6 +333,7 @@ impl LauncherUi {
         for event in self.backend.poll() {
             changed |= self.handle(ctx, event);
         }
+        self.community_tick();
         if changed {
             self.announce_updates(host);
             if self.settings.auto_update {
@@ -347,6 +352,14 @@ impl LauncherUi {
     /// Returns whether app state changed.
     fn handle(&mut self, ctx: &egui::Context, event: Event) -> bool {
         match event {
+            Event::CommunityProgress { source, phase } => {
+                self.community_progress(source, phase);
+                false
+            }
+            Event::CommunityFinished { source, status } => {
+                self.community_finished(source, *status);
+                false
+            }
             Event::Latest { app, latest, from } => {
                 if let Some(e) = self.entry_mut(&app) {
                     // A failed check keeps the release we already know about (and where it came from).

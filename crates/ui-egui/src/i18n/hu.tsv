@@ -363,3 +363,31 @@ filter	Installed	Telepítve
 	Replace what's there?	Lecseréli, ami ott van?
 	{path} already exists. Installing {name} will overwrite it.	{path} már létezik. A(z) {name} telepítése felülírja.
 	Replace	Csere
+
+# Community sources
+	Add source	Forrás hozzáadása
+	Community apps are not official ArtCraft apps. Only add publishers you trust.	A közösségi alkalmazások nem hivatalos ArtCraft-alkalmazások. Csak megbízható kiadókat adjon hozzá.
+	Community sources	Közösségi források
+	Confirm that you trust this publisher.	Erősítse meg, hogy megbízik ebben a kiadóban.
+	Display name	Megjelenített név
+	Enabled	Engedélyezve
+	General	Általános
+	I trust this publisher and want to add this unofficial source.	Megbízom ebben a kiadóban, és hozzá szeretném adni ezt a nem hivatalos forrást.
+	Install / update	Telepítés / frissítés
+	Installed: {version}	Telepítve: {version}
+	Latest: {version}	Legújabb: {version}
+	Manage community sources in the desktop launcher.	A közösségi forrásokat az asztali indítóban kezelheti.
+	Managed installs require SHA256SUMS.txt and a Windows portable ZIP or Linux AppImage.	A kezelt telepítéshez SHA256SUMS.txt és hordozható Windows ZIP vagy Linux AppImage szükséges.
+	Official source	Hivatalos forrás
+	Package name	Csomagnév
+	Refresh	Frissítés
+	Remove source	Forrás eltávolítása
+	Removing a source keeps its installed files. Community updates are always manual.	A forrás eltávolításakor a telepített fájlok megmaradnak. A közösségi frissítések mindig kézi indításúak.
+	Sources	Források
+	This source is already added.	Ez a forrás már hozzá lett adva.
+	Unofficial	Nem hivatalos
+	Use the release filename prefix, even if the fork has a different repository name.	A kiadás fájlnevének előtagját használja akkor is, ha a fork tárolójának neve eltér.
+	You can add up to 32 sources.	Legfeljebb 32 forrást adhat hozzá.
+@msg	Use a GitHub owner/repository or repository URL.	Adja meg a GitHub tulajdonos/tároló nevét vagy a tároló URL-címét.
+@msg	Use a community GitHub repository; official apps already have their own catalog.	Közösségi GitHub-tárolót használjon; a hivatalos alkalmazásoknak már van saját katalógusuk.
+@msg	Enter a display name and a simple package name, such as pdfcraft.	Adjon meg egy megjelenített nevet és egy egyszerű csomagnevet, például pdfcraft.

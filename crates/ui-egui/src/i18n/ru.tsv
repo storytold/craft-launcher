@@ -358,3 +358,31 @@ filter	Installed	Установлены
 	Replace what's there?	Заменить существующее?
 	{path} already exists. Installing {name} will overwrite it.	{path} уже существует. Установка {name} перезапишет его.
 	Replace	Заменить
+
+# Community sources
+	Add source	Добавить источник
+	Community apps are not official ArtCraft apps. Only add publishers you trust.	Приложения сообщества не являются официальными приложениями ArtCraft. Добавляйте только издателей, которым доверяете.
+	Community sources	Источники сообщества
+	Confirm that you trust this publisher.	Подтвердите, что доверяете этому издателю.
+	Display name	Отображаемое имя
+	Enabled	Включён
+	General	Общие
+	I trust this publisher and want to add this unofficial source.	Я доверяю этому издателю и хочу добавить этот неофициальный источник.
+	Install / update	Установить / обновить
+	Installed: {version}	Установлено: {version}
+	Latest: {version}	Последняя версия: {version}
+	Manage community sources in the desktop launcher.	Управляйте источниками сообщества в настольном лаунчере.
+	Managed installs require SHA256SUMS.txt and a Windows portable ZIP or Linux AppImage.	Для управляемой установки нужны SHA256SUMS.txt и переносимый ZIP для Windows или AppImage для Linux.
+	Official source	Официальный источник
+	Package name	Имя пакета
+	Refresh	Обновить
+	Remove source	Удалить источник
+	Removing a source keeps its installed files. Community updates are always manual.	При удалении источника установленные файлы сохраняются. Приложения сообщества обновляются только вручную.
+	Sources	Источники
+	This source is already added.	Этот источник уже добавлен.
+	Unofficial	Неофициальное
+	Use the release filename prefix, even if the fork has a different repository name.	Укажите префикс имени файла выпуска, даже если репозиторий форка называется иначе.
+	You can add up to 32 sources.	Можно добавить до 32 источников.
+@msg	Use a GitHub owner/repository or repository URL.	Укажите владельца/репозиторий GitHub или URL репозитория.
+@msg	Use a community GitHub repository; official apps already have their own catalog.	Укажите репозиторий сообщества на GitHub; у официальных приложений уже есть свой каталог.
+@msg	Enter a display name and a simple package name, such as pdfcraft.	Укажите отображаемое имя и простое имя пакета, например pdfcraft.

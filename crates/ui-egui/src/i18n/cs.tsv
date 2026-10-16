@@ -330,3 +330,31 @@ filter	Installed	Nainstalováno
 	Replace what's there?	Nahradit, co tam je?
 	{path} already exists. Installing {name} will overwrite it.	{path} už existuje. Instalace aplikace {name} ho přepíše.
 	Replace	Nahradit
+
+# Community sources
+	Add source	Přidat zdroj
+	Community apps are not official ArtCraft apps. Only add publishers you trust.	Komunitní aplikace nejsou oficiální aplikace ArtCraft. Přidávejte pouze vydavatele, kterým důvěřujete.
+	Community sources	Komunitní zdroje
+	Confirm that you trust this publisher.	Potvrďte, že tomuto vydavateli důvěřujete.
+	Display name	Zobrazovaný název
+	Enabled	Povoleno
+	General	Obecné
+	I trust this publisher and want to add this unofficial source.	Tomuto vydavateli důvěřuji a chci přidat tento neoficiální zdroj.
+	Install / update	Nainstalovat / aktualizovat
+	Installed: {version}	Nainstalováno: {version}
+	Latest: {version}	Nejnovější: {version}
+	Manage community sources in the desktop launcher.	Komunitní zdroje spravujte v desktopovém spouštěči.
+	Managed installs require SHA256SUMS.txt and a Windows portable ZIP or Linux AppImage.	Spravované instalace vyžadují SHA256SUMS.txt a přenosný ZIP pro Windows nebo AppImage pro Linux.
+	Official source	Oficiální zdroj
+	Package name	Název balíčku
+	Refresh	Obnovit
+	Remove source	Odebrat zdroj
+	Removing a source keeps its installed files. Community updates are always manual.	Odebráním zdroje se zachovají nainstalované soubory. Komunitní aplikace se aktualizují vždy ručně.
+	Sources	Zdroje
+	This source is already added.	Tento zdroj je již přidán.
+	Unofficial	Neoficiální
+	Use the release filename prefix, even if the fork has a different repository name.	Použijte předponu názvu souboru vydání, i když má repozitář forku jiný název.
+	You can add up to 32 sources.	Můžete přidat až 32 zdrojů.
+@msg	Use a GitHub owner/repository or repository URL.	Zadejte vlastníka/repozitář na GitHubu nebo URL repozitáře.
+@msg	Use a community GitHub repository; official apps already have their own catalog.	Použijte komunitní repozitář na GitHubu; oficiální aplikace již mají vlastní katalog.
+@msg	Enter a display name and a simple package name, such as pdfcraft.	Zadejte zobrazovaný název a jednoduchý název balíčku, například pdfcraft.

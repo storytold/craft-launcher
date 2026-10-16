@@ -268,6 +268,16 @@ impl LauncherUi {
         ui.spacing_mut().scroll = egui::style::ScrollStyle { foreground_color: true, ..egui::style::ScrollStyle::solid() };
         let title_top = ui.cursor().top();
         Self::title(ui, Some(crate::icons::artcraft_mark()), tl!("Settings"), &format!("ArtCraft Launcher {}", env!("CARGO_PKG_VERSION")));
+        ui.horizontal(|ui| {
+            widgets::cells(
+                ui,
+                &mut self.settings_sources,
+                &[
+                    (false, Cell { label: tl!("General"), tip: tl!("General"), count: None }),
+                    (true, Cell { label: tl!("Sources"), tip: tl!("Sources"), count: None }),
+                ],
+            );
+        });
         let title_height = ui.cursor().top() - title_top;
         let quit_width = widgets::button_width(ui, tl!("Quit ArtCraft Launcher"), 0.0);
         let done_width = widgets::button_width(ui, tl!("Done"), 90.0);
@@ -275,7 +285,11 @@ impl LauncherUi {
         let footer_height = if stack_actions { 2.0 * theme::CONTROL_H + ui.spacing().item_spacing.y } else { theme::CONTROL_H };
         let body_height = (viewport.height() - 80.0 - title_height - footer_height - 24.0 - ui.spacing().item_spacing.y).max(0.0);
         egui::ScrollArea::vertical().id_salt("settings-body").max_height(body_height).auto_shrink([false, true]).show(ui, |ui| {
-            self.settings_contents(ui, host);
+            if self.settings_sources {
+                self.sources_contents(ui);
+            } else {
+                self.settings_contents(ui, host);
+            }
         });
 
         ui.add_space(24.0);

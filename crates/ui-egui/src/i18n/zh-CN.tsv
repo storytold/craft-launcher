@@ -330,3 +330,31 @@ figcraft	Interface design and prototyping	界面设计与原型制作
 	Replace what's there?	替换现有内容？
 	{path} already exists. Installing {name} will overwrite it.	{path} 已存在。安装 {name} 将覆盖它。
 	Replace	替换
+
+# Community sources
+	Add source	添加来源
+	Community apps are not official ArtCraft apps. Only add publishers you trust.	社区应用并非 ArtCraft 官方应用。请仅添加您信任的发布者。
+	Community sources	社区来源
+	Confirm that you trust this publisher.	请确认您信任此发布者。
+	Display name	显示名称
+	Enabled	已启用
+	General	常规
+	I trust this publisher and want to add this unofficial source.	我信任此发布者，并希望添加此非官方来源。
+	Install / update	安装 / 更新
+	Installed: {version}	已安装：{version}
+	Latest: {version}	最新版本：{version}
+	Manage community sources in the desktop launcher.	请在桌面启动器中管理社区来源。
+	Managed installs require SHA256SUMS.txt and a Windows portable ZIP or Linux AppImage.	托管安装需要 SHA256SUMS.txt，以及 Windows 便携 ZIP 或 Linux AppImage。
+	Official source	官方来源
+	Package name	软件包名称
+	Refresh	刷新
+	Remove source	移除来源
+	Removing a source keeps its installed files. Community updates are always manual.	移除来源会保留其已安装的文件。社区应用始终需要手动更新。
+	Sources	来源
+	This source is already added.	此来源已添加。
+	Unofficial	非官方
+	Use the release filename prefix, even if the fork has a different repository name.	请使用发行版文件名的前缀，即使分支仓库的名称不同。
+	You can add up to 32 sources.	最多可添加 32 个来源。
+@msg	Use a GitHub owner/repository or repository URL.	请输入 GitHub 所有者/仓库或仓库网址。
+@msg	Use a community GitHub repository; official apps already have their own catalog.	请使用 GitHub 社区仓库；官方应用已有独立目录。
+@msg	Enter a display name and a simple package name, such as pdfcraft.	请输入显示名称和简单的软件包名称，例如 pdfcraft。

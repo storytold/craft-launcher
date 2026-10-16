@@ -362,3 +362,31 @@ filter	Installed	Installiert
 	Replace what's there?	Vorhandenes ersetzen?
 	{path} already exists. Installing {name} will overwrite it.	{path} existiert bereits. Die Installation von {name} überschreibt es.
 	Replace	Ersetzen
+
+# Community sources
+	Add source	Quelle hinzufügen
+	Community apps are not official ArtCraft apps. Only add publishers you trust.	Community-Apps sind keine offiziellen ArtCraft-Apps. Fügen Sie nur Anbieter hinzu, denen Sie vertrauen.
+	Community sources	Community-Quellen
+	Confirm that you trust this publisher.	Bestätigen Sie, dass Sie diesem Anbieter vertrauen.
+	Display name	Anzeigename
+	Enabled	Aktiviert
+	General	Allgemein
+	I trust this publisher and want to add this unofficial source.	Ich vertraue diesem Anbieter und möchte diese inoffizielle Quelle hinzufügen.
+	Install / update	Installieren / aktualisieren
+	Installed: {version}	Installiert: {version}
+	Latest: {version}	Neueste Version: {version}
+	Manage community sources in the desktop launcher.	Verwalten Sie Community-Quellen im Desktop-Launcher.
+	Managed installs require SHA256SUMS.txt and a Windows portable ZIP or Linux AppImage.	Verwaltete Installationen benötigen SHA256SUMS.txt und ein portables Windows-ZIP oder ein Linux-AppImage.
+	Official source	Offizielle Quelle
+	Package name	Paketname
+	Refresh	Aktualisieren
+	Remove source	Quelle entfernen
+	Removing a source keeps its installed files. Community updates are always manual.	Beim Entfernen einer Quelle bleiben ihre installierten Dateien erhalten. Community-Updates erfolgen immer manuell.
+	Sources	Quellen
+	This source is already added.	Diese Quelle wurde bereits hinzugefügt.
+	Unofficial	Inoffiziell
+	Use the release filename prefix, even if the fork has a different repository name.	Verwenden Sie den Dateinamenpräfix des Releases, auch wenn das Repository des Forks anders heißt.
+	You can add up to 32 sources.	Sie können bis zu 32 Quellen hinzufügen.
+@msg	Use a GitHub owner/repository or repository URL.	Geben Sie einen GitHub-Eigentümer mit Repository oder eine Repository-URL an.
+@msg	Use a community GitHub repository; official apps already have their own catalog.	Verwenden Sie ein Community-Repository auf GitHub; offizielle Apps haben bereits einen eigenen Katalog.
+@msg	Enter a display name and a simple package name, such as pdfcraft.	Geben Sie einen Anzeigenamen und einen einfachen Paketnamen wie pdfcraft ein.

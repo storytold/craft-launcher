@@ -947,6 +947,7 @@ impl NativeBackend {
 impl Backend for NativeBackend {
     fn send(&mut self, command: Command) {
         match command {
+            Command::Community { source, action } => self.community_job(source, action),
             Command::CheckForUpdates { force } => self.check(force),
             Command::Detect => self.detect_all(),
             Command::Install { app } => self.start_job(&app, Work::Install),
@@ -1032,6 +1033,58 @@ impl Backend for NativeBackend {
 
     fn now(&self) -> i64 {
         crate::now()
+    }
+}
+
+impl NativeBackend {
+    fn community_job(&self, source: artcraft_launcher_core::community::CommunitySource, action: artcraft_launcher_core::community::CommunityAction) {
+        use artcraft_launcher_core::community::{CommunityAction, CommunityStatus};
+        let key = format!("community:{}", source.key());
+        let mut jobs = self.shared.jobs.lock().unwrap_or_else(PoisonError::into_inner);
+        if action == CommunityAction::Cancel {
+            if let Some(stop) = jobs.get(&key) {
+                stop.cancel();
+            }
+            return;
+        }
+        let error = source.validate().err().or_else(|| {
+            if !source.enabled {
+                Some("This source is disabled.".into())
+            } else if self.shared.restarting.load(Ordering::SeqCst) {
+                Some("The launcher is restarting.".into())
+            } else if jobs.contains_key(&key) {
+                Some("This source is already busy.".into())
+            } else if jobs.len() >= WORKERS {
+                Some("Other tasks are running. Try again shortly.".into())
+            } else {
+                None
+            }
+        });
+        if let Some(error) = error {
+            drop(jobs);
+            self.shared.emit(Event::CommunityFinished { source, status: Box::new(CommunityStatus { error: Some(error), ..Default::default() }) });
+            return;
+        }
+        let stop = Arc::new(Stop::default());
+        jobs.insert(key.clone(), stop.clone());
+        drop(jobs);
+        let (shared, paths, http) = (self.shared.clone(), self.paths.clone(), self.http.clone());
+        let fallback_source = source.clone();
+        let fallback_key = key.clone();
+        let result = std::thread::Builder::new().name("community-app".into()).spawn(move || {
+            let status = crate::community::run(&paths, http.as_ref(), &source, action, &stop, &mut |phase| {
+                shared.emit(Event::CommunityProgress { source: source.clone(), phase });
+            });
+            shared.jobs.lock().unwrap_or_else(PoisonError::into_inner).remove(&key);
+            shared.emit(Event::CommunityFinished { source, status: Box::new(status) });
+        });
+        if let Err(error) = result {
+            self.shared.jobs.lock().unwrap_or_else(PoisonError::into_inner).remove(&fallback_key);
+            self.shared.emit(Event::CommunityFinished {
+                source: fallback_source,
+                status: Box::new(CommunityStatus { error: Some(error.to_string()), ..Default::default() }),
+            });
+        }
     }
 }
 

@@ -85,6 +85,8 @@ impl CheckEvery {
 #[serde(default)]
 pub struct Settings {
     pub install_locations: artcraft_launcher_core::protocol::InstallLocations,
+    /// Explicitly trusted community repositories; never added by the official feed.
+    pub sources: Vec<artcraft_launcher_core::community::CommunitySource>,
     pub view: ViewMode,
     pub filter: Filter,
     pub sort: SortKey,
@@ -171,6 +173,7 @@ impl Default for Settings {
     fn default() -> Self {
         Self {
             install_locations: Default::default(),
+            sources: Vec::new(),
             view: ViewMode::Grid,
             filter: Filter::All,
             sort: SortKey::Suite,

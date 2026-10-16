@@ -61,6 +61,9 @@ hunting through a dozen release pages: it lists every app in the suite, shows wh
 and which version, installs the right build for your operating system and processor, and tells
 you when an update is out. It is a small native app that can sit in your menu bar or system tray.
 
+Community repositories and forks can be added explicitly in **Settings → Sources**. See
+[Community GitHub sources](docs/community-sources.md) for supported packages and trust boundaries.
+
 ## Features
 
 <table>
