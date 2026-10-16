@@ -12,15 +12,18 @@ use craft_ai_model::{ConnectionId, PRESETS, Preset};
 use egui::{RichText, Ui, vec2};
 
 use super::text::{blocker_text, bytes};
-use super::{FeaturesPort, FeaturesUi, Install, Outcome, Page, Sample, Snapshot, ToolStatus};
+use super::{FeaturesUi, Install, Outcome, Page, Sample, Snapshot, ToolStatus};
 use crate::app::Host;
 use crate::connections::{ConnectionsUi, KeyView, Row, Screen as ConnScreen};
 use crate::i18n::fmt;
 use crate::theme::Tokens;
 use crate::widgets::{self, Kind};
 
+/// Room kept under a pinned page's scrolling body for its footer (rule, notice, buttons).
+const PINNED_FOOTER_H: f32 = 110.0;
+
 /// What a press on the home page asks for.
-enum Act {
+pub(super) enum Act {
     None,
     Local(String),
     Connect(&'static Preset),
@@ -61,9 +64,10 @@ impl FeaturesUi {
         let t = Tokens::get(ui.ctx());
         let screen = ui.ctx().content_rect();
         // The history is a table and a chart: it gets a wider, taller window than the setup cards.
-        let history = self.page == Page::History;
-        let width = (if history { 920.0f32 } else { 760.0 }).min(screen.width() - 80.0);
-        let height = if history { (screen.height() * 0.84).clamp(360.0, 880.0) } else { (screen.height() * 0.74).clamp(320.0, 640.0) };
+        let on_history = self.page == Page::History;
+        let on_advanced = self.page == Page::Advanced;
+        let width = (if on_history { 920.0f32 } else { 760.0 }).min(screen.width() - 80.0);
+        let height = if on_history { (screen.height() * 0.84).clamp(360.0, 880.0) } else { (screen.height() * 0.74).clamp(320.0, 640.0) };
         ui.set_width(width);
 
         let mut close = false;
@@ -95,12 +99,30 @@ impl FeaturesUi {
             self.open_history(port);
         }
 
-        ui.allocate_ui_with_layout(vec2(width, height), egui::Layout::top_down(egui::Align::Min), |ui| {
-            egui::ScrollArea::vertical().id_salt("setup-ai").auto_shrink([false, false]).show(ui, |ui| {
+        if on_history || on_advanced {
+            // These pages size to what they show, up to the height limit, so a short list does
+            // not leave an empty gap under its buttons. The footer sits outside the scroll area,
+            // so it stays in view however long the page.
+            egui::ScrollArea::vertical().id_salt("setup-ai").max_height(height - PINNED_FOOTER_H).auto_shrink([false, true]).show(ui, |ui| {
                 ui.set_width(width - 16.0);
                 self.page_contents(ui, host, conns, &snapshot);
             });
-        });
+            ui.add_space(14.0);
+            super::tool::hline(ui);
+            ui.add_space(12.0);
+            if on_history && let Some(port) = host.features() {
+                self.history_footer(ui, port);
+            } else if on_advanced {
+                self.advanced_footer(ui);
+            }
+        } else {
+            ui.allocate_ui_with_layout(vec2(width, height), egui::Layout::top_down(egui::Align::Min), |ui| {
+                egui::ScrollArea::vertical().id_salt("setup-ai").auto_shrink([false, false]).show(ui, |ui| {
+                    ui.set_width(width - 16.0);
+                    self.page_contents(ui, host, conns, &snapshot);
+                });
+            });
+        }
         close
     }
 
@@ -125,13 +147,12 @@ impl FeaturesUi {
                     conns.show(ui, port);
                 }
             }
-            Page::History => {
-                let Some(port) = host.features() else { return };
-                self.history_page(ui, port);
-            }
+            Page::History => self.history_body(ui),
             Page::Advanced => {
                 let Some(port) = host.features() else { return };
-                match self.advanced(ui, snapshot, port) {
+                let (outcome, act) = self.advanced_body(ui, snapshot, port, &conns.rows);
+                self.apply(act, conns);
+                match outcome {
                     Outcome::AddConnection(preset) => self.begin_connect(conns, Some(preset)),
                     Outcome::AddServer => self.begin_connect(conns, None),
                     Outcome::None | Outcome::Close => {}
@@ -178,6 +199,16 @@ impl FeaturesUi {
         ui.add_space(14.0);
         self.switched_on(ui, snapshot);
         ui.add_space(18.0);
+        let unmatched = self.unmatched(&conns.rows);
+        if !unmatched.is_empty() {
+            // Right under "Switched on": a server you just connected is the first thing to look for.
+            widgets::hud(ui, tl!("Your other connections"), t.faint);
+            ui.add_space(6.0);
+            if let Some(next) = server_rows(ui, &unmatched) {
+                act = next;
+            }
+            ui.add_space(8.0);
+        }
 
         for (heading, local) in [(tl!("On this computer"), true), (tl!("Hosted services"), false)] {
             let options: Vec<&SetupOption> = self.options.iter().filter(|o| matches!(o.route, Route::Local { .. }) == local).collect();
@@ -197,22 +228,12 @@ impl FeaturesUi {
             ui.add_space(8.0);
         }
 
-        let unmatched: Vec<&Row> = conns.rows.iter().filter(|r| !self.is_listed(r)).collect();
-        if !unmatched.is_empty() {
-            widgets::hud(ui, tl!("Your other connections"), t.faint);
-            ui.add_space(6.0);
-            for row in unmatched {
-                ui.push_id(row.id.as_str(), |ui| {
-                    if let Some(next) = other_row(ui, row) {
-                        act = next;
-                    }
-                });
-                ui.add_space(6.0);
-            }
-            ui.add_space(8.0);
-        }
-
         act
+    }
+
+    /// The saved connections that are not one of the hosted services the list has a card for.
+    pub(super) fn unmatched<'a>(&self, rows: &'a [Row]) -> Vec<&'a Row> {
+        rows.iter().filter(|r| !self.is_listed(r)).collect()
     }
 
     /// Whether a saved connection is one of the hosted services the list already shows a card for.
@@ -367,19 +388,48 @@ fn service_status(ui: &mut Ui, preset_key: &str, conns: &ConnectionsUi) -> Optio
     act
 }
 
-/// A saved connection that is not one of the listed services (a local server, a custom address).
+/// Each saved server as a row, with what to do about it. Returns what was pressed, if anything.
+pub(super) fn server_rows(ui: &mut Ui, rows: &[&Row]) -> Option<Act> {
+    let mut act = None;
+    for row in rows {
+        ui.push_id(row.id.as_str(), |ui| {
+            if let Some(next) = other_row(ui, row) {
+                act = Some(next);
+            }
+        });
+        ui.add_space(6.0);
+    }
+    act
+}
+
+/// A saved connection that is not one of the listed services (a local server, a custom address):
+/// its name, whether it works, where its data goes, and how many models it offers.
 fn other_row(ui: &mut Ui, row: &Row) -> Option<Act> {
     let t = Tokens::get(ui.ctx());
     let mut act = None;
-    egui::Frame::new().stroke(t.hairline()).inner_margin(10).show(ui, |ui| {
+    egui::Frame::new().stroke(t.hairline()).inner_margin(12).show(ui, |ui| {
         ui.set_width(ui.available_width());
         ui.horizontal(|ui| {
-            ui.label(RichText::new(&row.label).color(if row.enabled { t.ink_strong } else { t.faint }));
-            if row.local {
-                widgets::badge(ui, tl!("This computer"), t.good);
-            } else {
-                widgets::badge(ui, tl!("Leaves this computer"), t.warn);
-            }
+            ui.vertical(|ui| {
+                ui.spacing_mut().item_spacing.y = 3.0;
+                ui.horizontal(|ui| {
+                    ui.label(widgets::heading(&row.label, 15.0, if row.enabled { t.ink_strong } else { t.faint }));
+                    if working(row) {
+                        widgets::badge(ui, tl!("Connected"), t.good);
+                    } else if !row.enabled {
+                        widgets::badge(ui, tl!("Turned off"), t.faint);
+                    } else {
+                        widgets::badge(ui, tl!("Key missing"), t.bad);
+                    }
+                });
+                let place = if row.local { tl!("Runs on this computer") } else { tl!("Leaves this computer") };
+                let models = if row.models == 0 {
+                    tl!("No models found yet").to_owned()
+                } else {
+                    crate::i18n::tn(row.models as u64, "{n} model", "{n} models")
+                };
+                ui.label(RichText::new(format!("{place} · {models}")).size(12.0).color(if row.local { t.muted } else { t.warn }));
+            });
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 if widgets::button(ui, tl!("Remove"), Kind::Secondary, 0.0).clicked() {
                     act = Some(Act::Remove(row.id.clone()));
@@ -396,60 +446,4 @@ fn other_row(ui: &mut Ui, row: &Row) -> Option<Act> {
 /// Whether a tool is switched on: it has a model that works right now.
 fn ready(snapshot: &Snapshot, feature: &str) -> bool {
     snapshot.tools.iter().any(|t| t.feature == feature && matches!(t.status, ToolStatus::Ready { .. }))
-}
-
-impl FeaturesUi {
-    /// Which model each tool uses, and the test that proves it. Only tools with a connected model.
-    fn advanced(&mut self, ui: &mut Ui, snapshot: &Snapshot, port: &mut dyn FeaturesPort) -> Outcome {
-        let t = Tokens::get(ui.ctx());
-        crate::connections::title(ui, tl!("Advanced"), tl!("Servers, and which model each tool uses"));
-        ui.add(
-            egui::Label::new(
-                RichText::new(tl!("Tools pick the best model that is connected on their own. Change one here, or test that it works."))
-                    .color(t.muted),
-            )
-            .wrap(),
-        );
-        ui.add_space(14.0);
-        let mut outcome = Outcome::None;
-        widgets::hud(ui, tl!("Other servers"), t.faint);
-        ui.add_space(4.0);
-        ui.add(egui::Label::new(RichText::new(tl!("Ollama, LM Studio, ComfyUI or any OpenAI-compatible server")).size(12.0).color(t.muted)).wrap());
-        ui.add_space(6.0);
-        if widgets::button(ui, tl!("Add another server"), Kind::Secondary, 0.0).clicked() {
-            outcome = Outcome::AddServer;
-        }
-        ui.add_space(14.0);
-        super::tool::hline(ui);
-        ui.add_space(14.0);
-        widgets::hud(ui, tl!("Models"), t.faint);
-        ui.add_space(8.0);
-        let mut shown = 0;
-        for feature in self.features.clone() {
-            if !snapshot.tools.iter().any(|s| s.feature == feature.id && !s.choices.is_empty()) {
-                continue;
-            }
-            shown += 1;
-            ui.label(widgets::heading(crate::i18n::t(&feature.title), 16.0, t.ink_strong));
-            ui.add_space(4.0);
-            if let Some(next) = self.tool_block(ui, &feature, snapshot, port) {
-                outcome = next;
-            }
-            ui.add_space(10.0);
-            super::tool::hline(ui);
-            ui.add_space(10.0);
-        }
-        if shown == 0 {
-            ui.label(RichText::new(tl!("No tool has a connected model yet.")).color(t.muted));
-            ui.add_space(8.0);
-        }
-        if let Some((text, error)) = &self.notice {
-            ui.add(egui::Label::new(RichText::new(text).color(if *error { t.bad } else { t.muted })).wrap());
-            ui.add_space(8.0);
-        }
-        if widgets::button(ui, tl!("Back"), Kind::Secondary, 90.0).clicked() {
-            self.back();
-        }
-        outcome
-    }
 }

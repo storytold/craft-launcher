@@ -11,6 +11,7 @@
 //! has no port and the screen never appears there).
 
 pub mod extensions;
+mod advanced;
 mod history;
 mod history_overview;
 mod history_table;

@@ -478,8 +478,8 @@ figcraft	Interface design and prototyping	界面设计与原型制作
 	Express-mode API key only. The key cannot be tested without a paid request.	仅支持快速模式的 API 密钥。不发起付费请求就无法测试该密钥。
 	Staff-enabled API key. Whether a subscription covers it is unverified.	由工作人员开通的 API 密钥。订阅是否涵盖尚未核实。
 	Black Forest Labs	Black Forest Labs
-	Seedance (Volcengine Ark)	Seedance（火山引擎方舟）
-	Text to video with your Ark key.	使用你的 Ark 密钥进行文生视频。
+	Seedance (BytePlus ModelArk)	Seedance（BytePlus ModelArk）
+	Text to video with your BytePlus ModelArk key.	使用你的 BytePlus ModelArk 密钥进行文生视频。
 	Meta SAM License, community copy	Meta SAM 许可，社区副本
 	This file is a community copy of Meta's SAM 3 weights and declares no licence of its own. Meta's release is gated behind the SAM License.	该文件是社区上传的 Meta SAM 3 权重副本，自身未声明许可。Meta 的官方版本需先接受 SAM 许可才能获取。
 
@@ -621,3 +621,7 @@ figcraft	Interface design and prototyping	界面设计与原型制作
 	By model	按模型
 	By app	按应用
 	Average	平均
+
+	Runs on this computer	在这台电脑上运行
+	No models found yet	暂未找到模型
+@plural	{n} model|{n} models	{n} 个模型

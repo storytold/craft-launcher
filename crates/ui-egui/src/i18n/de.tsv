@@ -565,3 +565,7 @@ filter	Installed	Installiert
 	By model	Nach Modell
 	By app	Nach App
 	Average	Durchschnitt
+
+	Runs on this computer	Läuft auf diesem Computer
+	No models found yet	Noch keine Modelle gefunden
+@plural	{n} model|{n} models	{n} Modell|{n} Modelle

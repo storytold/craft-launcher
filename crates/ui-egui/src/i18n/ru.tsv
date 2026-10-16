@@ -506,8 +506,8 @@ filter	Installed	Установлены
 	Express-mode API key only. The key cannot be tested without a paid request.	Только ключ API в экспресс-режиме. Ключ нельзя проверить без платного запроса.
 	Staff-enabled API key. Whether a subscription covers it is unverified.	Ключ API, включённый сотрудниками. Покрывает ли его подписка, не проверено.
 	Black Forest Labs	Black Forest Labs
-	Seedance (Volcengine Ark)	Seedance (Volcengine Ark)
-	Text to video with your Ark key.	Текст в видео с вашим ключом Ark.
+	Seedance (BytePlus ModelArk)	Seedance (BytePlus ModelArk)
+	Text to video with your BytePlus ModelArk key.	Текст в видео с вашим ключом BytePlus ModelArk.
 	Meta SAM License, community copy	Лицензия Meta SAM, копия сообщества
 	This file is a community copy of Meta's SAM 3 weights and declares no licence of its own. Meta's release is gated behind the SAM License.	Этот файл — копия весов Meta SAM 3, выложенная сообществом, и собственной лицензии не указывает. Оригинальный выпуск Meta доступен только после принятия лицензии SAM.
 
@@ -649,3 +649,7 @@ filter	Installed	Установлены
 	By model	По моделям
 	By app	По приложениям
 	Average	В среднем
+
+	Runs on this computer	Работает на этом компьютере
+	No models found yet	Модели пока не найдены
+@plural	{n} model|{n} models	{n} модель|{n} модели|{n} моделей

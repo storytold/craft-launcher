@@ -63,6 +63,7 @@ fn feature(data: &[u8], url: &str, licence: bool) -> Feature {
             }],
             packs: vec![],
             min_vram_mb: None,
+            native: None,
         }),
         cloud: vec![],
     }

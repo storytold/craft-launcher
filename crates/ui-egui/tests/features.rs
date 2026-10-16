@@ -34,8 +34,21 @@ impl Backend for Quiet {
     }
 }
 
+/// The built-in features, with the local model optionally marked as not runnable by any app yet.
+fn catalogue(not_runnable: bool) -> Vec<Feature> {
+    let mut features = builtin();
+    if not_runnable {
+        for recipe in features.iter_mut().filter_map(|f| f.local.as_mut()) {
+            recipe.usable = false;
+        }
+    }
+    features
+}
+
 #[derive(Default)]
 struct World {
+    /// Pretend no app can run the local model yet, to keep the "planned" wording covered.
+    not_runnable: bool,
     inventory: Inventory,
     install: Install,
     scans: usize,
@@ -56,7 +69,7 @@ struct Features(Rc<RefCell<World>>);
 
 impl FeaturesPort for Features {
     fn features(&self) -> Vec<Feature> {
-        builtin()
+        catalogue(self.0.borrow().not_runnable)
     }
     fn rescan(&mut self) {
         self.0.borrow_mut().scans += 1;
@@ -68,7 +81,7 @@ impl FeaturesPort for Features {
         let w = self.0.borrow();
         Snapshot {
             scanning: false,
-            plans: builtin().iter().map(|f| plan(f, &w.inventory)).collect(),
+            plans: catalogue(w.not_runnable).iter().map(|f| plan(f, &w.inventory)).collect(),
             tools: w.tools.clone(),
             install: w.install.clone(),
             sample: w.sample.clone(),
@@ -275,7 +288,7 @@ fn set_up_ai_lists_what_can_be_set_up_not_the_tools() {
     h.get_by_label("Set up one or more of these and the AI tools switch on in every Craft app that has them.");
     h.get_by_label("On this computer");
     h.get_by_label("Hosted services");
-    for name in ["SAM 3", "OpenAI", "Black Forest Labs", "Seedance (Volcengine Ark)"] {
+    for name in ["SAM 3", "OpenAI", "Black Forest Labs", "Seedance (BytePlus ModelArk)"] {
         h.get_by_label(name);
     }
     assert!(h.query_by_label("Start from").is_none() && h.query_by_label("Add a provider").is_none(), "no provider form to start with");
@@ -319,6 +332,7 @@ fn the_local_model_says_what_this_computer_still_needs() {
     h.get_by_label("Set up, 3.4 GB");
 
     let f = Features::default();
+    f.0.borrow_mut().not_runnable = true;
     f.0.borrow_mut().inventory = with_sam3();
     let h = open(&f);
     h.get_by_label("Files in place");
@@ -333,7 +347,7 @@ fn the_local_model_says_what_this_computer_still_needs() {
 
 #[test]
 fn completed_download_does_not_claim_the_tool_can_run() {
-    let (f, mut h) = open_setup();
+    let (f, mut h) = open_setup_with(true);
     {
         let mut w = f.0.borrow_mut();
         w.inventory = with_sam3();
@@ -344,8 +358,21 @@ fn completed_download_does_not_claim_the_tool_can_run() {
 }
 
 #[test]
+fn completed_download_of_a_runnable_model_says_the_tool_is_ready() {
+    let (f, mut h) = open_setup();
+    {
+        let mut w = f.0.borrow_mut();
+        w.inventory = with_sam3();
+        w.install = Install::Done { feature: "select-subject".into() };
+    }
+    settle(&mut h);
+    h.get_by_label("Installed. This tool is ready on this computer.");
+}
+
+#[test]
 fn a_local_model_no_app_can_run_yet_says_so_instead_of_promising_a_tool() {
     let f = Features::default();
+    f.0.borrow_mut().not_runnable = true;
     f.0.borrow_mut().inventory = bare_comfy();
     let h = open(&f);
     h.get_by_label("The apps cannot run this model yet. You can download it now, and the tool switches on when they can.");
@@ -354,6 +381,7 @@ fn a_local_model_no_app_can_run_yet_says_so_instead_of_promising_a_tool() {
 #[test]
 fn a_model_whose_files_are_here_is_not_told_to_download_them() {
     let f = Features::default();
+    f.0.borrow_mut().not_runnable = true;
     f.0.borrow_mut().inventory = with_sam3();
     let h = open(&f);
     h.get_by_label("Files in place");
@@ -364,7 +392,12 @@ fn a_model_whose_files_are_here_is_not_told_to_download_them() {
 // ---- local setup ----
 
 fn open_setup() -> (Features, Harness<'static, State>) {
+    open_setup_with(false)
+}
+
+fn open_setup_with(not_runnable: bool) -> (Features, Harness<'static, State>) {
     let f = Features::default();
+    f.0.borrow_mut().not_runnable = not_runnable;
     f.0.borrow_mut().inventory = bare_comfy();
     let mut h = open(&f);
     press(&mut h, "Set up, 3.4 GB");
@@ -758,4 +791,77 @@ fn a_sample_for_one_tool_does_not_show_on_another() {
     let h = open_advanced(&f);
     assert_eq!(h.query_all_by_label_contains("Works.").count(), 1, "only under its own tool");
     h.get_by_label("A hosted video sample can cost noticeably more than an image");
+}
+
+#[test]
+fn advanced_sizes_to_its_content_with_back_pinned_under_it() {
+    let empty = open_advanced(&Features::default());
+    let f = Features::default();
+    ready_image_tool(&f);
+    let full = open_advanced(&f);
+    let back = |h: &Harness<'static, State>| h.get_by_role_and_label(Role::Button, "Back").rect().bottom();
+    // The window is as tall as what it shows: a page with a tool card ends lower than an empty one.
+    assert!(back(&full) > back(&empty) + 60.0, "empty ends at {}, full at {}", back(&empty), back(&full));
+}
+
+#[test]
+fn a_connected_server_says_so_on_the_list_and_under_advanced() {
+    let f = Features::default();
+    let c = Connections::default();
+    let mut ollama = saved_preset("ollama");
+    ollama.models = 3;
+    c.0.borrow_mut().rows = vec![ollama];
+
+    let h = open_with(&f, &c);
+    h.get_by_label("Ollama");
+    h.get_by_label("Connected");
+    h.get_by_label("Runs on this computer · 3 models");
+
+    let mut h = open_with(&f, &c);
+    press(&mut h, "Advanced");
+    h.get_by_label("Ollama");
+    h.get_by_label("Connected");
+    h.get_by_label("Runs on this computer · 3 models");
+}
+
+#[test]
+fn a_connected_server_with_no_models_yet_says_that_instead_of_a_count() {
+    let f = Features::default();
+    let c = Connections::default();
+    c.0.borrow_mut().rows = vec![saved_preset("ollama")];
+    let h = open_with(&f, &c);
+    h.get_by_label("Runs on this computer · No models found yet");
+}
+
+#[test]
+#[ignore = "writes a picture, for looking at"]
+fn picture_servers() {
+    let f = Features::default();
+    let c = Connections::default();
+    let mut ollama = saved_preset("ollama");
+    ollama.models = 3;
+    c.0.borrow_mut().rows = vec![ollama];
+    let mut h = open_with(&f, &c);
+    settle(&mut h);
+    h.render().expect("render").save("C:/Users/jerem/AppData/Local/hermes/cache/scratch/srv-home.png").expect("save");
+    press(&mut h, "Advanced");
+    settle(&mut h);
+    h.render().expect("render").save("C:/Users/jerem/AppData/Local/hermes/cache/scratch/srv-adv.png").expect("save");
+}
+
+#[test]
+fn sam3_with_its_files_in_place_is_ready_and_carries_no_warning() {
+    let f = Features::default();
+    f.0.borrow_mut().inventory = with_sam3();
+    let h = open(&f);
+    h.get_by_label("Ready");
+    assert!(h.query_all_by_label("Switches on").count() >= 1);
+    assert!(h.query_by_label("Files in place").is_none());
+    assert!(h.query_by_label("Planned for").is_none());
+    for warning in [
+        "The files are in place. The apps cannot run this model yet, and the tool switches on when they can.",
+        "The apps cannot run this model yet. You can download it now, and the tool switches on when they can.",
+    ] {
+        assert!(h.query_by_label(warning).is_none(), "{warning}");
+    }
 }

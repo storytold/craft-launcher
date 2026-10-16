@@ -141,9 +141,9 @@ impl Host for Shell {
 
 type State = (Option<LauncherUi>, Shell);
 
-fn harness(features: Features) -> Harness<'static, State> {
+fn harness_sized(features: Features, height: f32) -> Harness<'static, State> {
     set_test_lang(Lang::EN);
-    Harness::builder().with_size(egui::vec2(1180.0, 1400.0)).build_ui_state(
+    Harness::builder().with_size(egui::vec2(1180.0, height)).build_ui_state(
         |ui, state: &mut State| {
             let (ui_state, shell) = state;
             let l = ui_state.get_or_insert_with(|| {
@@ -219,7 +219,11 @@ fn world(log: HistoryLog) -> Features {
 }
 
 fn open_history(f: &Features) -> Harness<'static, State> {
-    let mut h = harness(f.clone());
+    open_history_sized(f, 1400.0)
+}
+
+fn open_history_sized(f: &Features, height: f32) -> Harness<'static, State> {
+    let mut h = harness_sized(f.clone(), height);
     settle(&mut h);
     h.get_by_label("Set up AI").click();
     settle(&mut h);
@@ -392,4 +396,35 @@ fn nothing_is_drawn_on_top_of_anything_else() {
     let first = h.get_by_label("2025-10-09 08:55, photocraft, Generative Fill, Not finished").rect();
     let second = h.get_by_label("2025-10-09 08:54, wordcraft, Generative Fill, Failed").rect();
     assert!((second.top() - first.top() - 54.0).abs() < 0.6, "rows are {} apart", second.top() - first.top());
+}
+
+#[test]
+fn a_short_history_does_not_leave_a_gap_under_its_buttons() {
+    let mut records = job("a", T0, "photocraft", "flux", Some(Outcome::Done), None);
+    records.extend(job("b", T0 + 60_000, "photocraft", "flux", Some(Outcome::Done), None));
+    let short = open_history(&world(merge(records, 0)));
+    let mut many = Vec::new();
+    for i in 0..30u64 {
+        many.extend(job(&format!("r{i}"), T0 + i * 60_000, "photocraft", "flux", Some(Outcome::Done), None));
+    }
+    let long = open_history(&world(merge(many, 0)));
+    // Two jobs and thirty jobs show the same six rows at most, so the footer of the short page
+    // sits no lower than the long page's: the window is as tall as its content, not a fixed size.
+    let footer = |h: &Harness<'static, State>| h.get_by_role_and_label(Role::Button, "Back").rect().bottom();
+    assert!(footer(&short) < footer(&long) - 100.0, "short footer at {}, long at {}", footer(&short), footer(&long));
+}
+
+#[test]
+fn the_footer_buttons_stay_in_view_however_long_the_list() {
+    let mut many = Vec::new();
+    for i in 0..300u64 {
+        many.extend(job(&format!("r{i}"), T0 + i * 60_000, "photocraft", "flux", Some(Outcome::Done), None));
+    }
+    // A short window, so the body is taller than the room it gets and has to scroll.
+    let screen_bottom = 640.0;
+    let h = open_history_sized(&world(merge(many, 0)), screen_bottom);
+    for label in ["Back", "Refresh", "Export CSV", "Clear history"] {
+        let r = h.get_by_role_and_label(Role::Button, label).rect();
+        assert!(r.bottom() < screen_bottom, "{label} is off the bottom at {}", r.bottom());
+    }
 }

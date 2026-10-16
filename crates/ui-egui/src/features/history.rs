@@ -133,13 +133,10 @@ impl FeaturesUi {
         self.history.reload(port);
     }
 
-    pub(crate) fn history_page(&mut self, ui: &mut Ui, port: &mut dyn FeaturesPort) {
+    /// The scrolling part of the page: title, filters, overview and the tables.
+    pub(crate) fn history_body(&mut self, ui: &mut Ui) {
         let t = Tokens::get(ui.ctx());
         crate::connections::title(ui, tl!("History"), tl!("AI jobs run by your Craft apps"));
-        let mut back = false;
-        let mut refresh = false;
-        let mut export = false;
-        let mut clear = false;
         let h = &mut self.history;
 
         if let Some(message) = &h.error {
@@ -203,12 +200,23 @@ impl FeaturesUi {
                 );
             }
         }
+    }
+
+    /// The footer: what the last export or clear said, and the buttons. It stays put under the
+    /// scrolling body so Back, Export and Clear are always in reach.
+    pub(crate) fn history_footer(&mut self, ui: &mut Ui, port: &mut dyn FeaturesPort) {
+        let t = Tokens::get(ui.ctx());
+        let mut back = false;
+        let mut refresh = false;
+        let mut export = false;
+        let mut clear = false;
+        let h = &mut self.history;
         if let Some((text, error)) = &h.notice {
             ui.add_space(6.0);
             ui.add(egui::Label::new(RichText::new(text).color(if *error { t.bad } else { t.muted })).wrap());
         }
 
-        ui.add_space(22.0);
+        ui.add_space(8.0);
         ui.horizontal(|ui| {
             back = widgets::button(ui, tl!("Back"), Kind::Secondary, 90.0).clicked();
             refresh = widgets::button(ui, tl!("Refresh"), Kind::Secondary, 0.0).clicked();

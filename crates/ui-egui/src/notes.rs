@@ -51,16 +51,18 @@ pub(crate) fn show(ui: &mut Ui, notes: &str) {
                     ui.spacing_mut().item_spacing.x = 4.0;
                     ui.label(RichText::new("•").color(t.faint));
                     ui.label(RichText::new(text).color(t.ink));
-                    if let Some(url) = link {
+                    if let Some(url) = link.filter(|u| artcraft_launcher_core::release::safe_web_link(u)) {
                         let short = url.rsplit('/').next().map_or_else(|| tl!("link").to_string(), |n| format!("#{n}"));
                         ui.hyperlink_to(RichText::new(short).size(12.0), url);
                     }
                 });
             }
             Line::Text(text) => {
-                if let Some(url) = text.strip_prefix("**Full Changelog**: ") {
+                if let Some(url) = text.strip_prefix("**Full Changelog**: ").map(str::trim)
+                    && artcraft_launcher_core::release::safe_web_link(url)
+                {
                     ui.add_space(6.0);
-                    ui.hyperlink_to(tl!("Full changelog"), url.trim());
+                    ui.hyperlink_to(tl!("Full changelog"), url);
                 } else {
                     ui.label(RichText::new(text).color(t.muted));
                 }
