@@ -612,7 +612,10 @@ impl LauncherUi {
             .enumerate()
             .filter(|(_, e)| {
                 self.in_filter(e, self.settings.filter)
-                    && (needle.is_empty() || e.app.name.to_lowercase().contains(&needle) || e.app.tagline.to_lowercase().contains(&needle))
+                    && (needle.is_empty()
+                        || e.app.name.to_lowercase().contains(&needle)
+                        || e.app.tagline.to_lowercase().contains(&needle)
+                        || crate::i18n::tr_ctx(crate::i18n::current(), e.app.id, e.app.tagline).to_lowercase().contains(&needle))
             })
             .collect();
         let platform = self.platform;
@@ -718,7 +721,7 @@ impl LauncherUi {
                         ui.horizontal(|ui| {
                             let (rect, _) = ui.allocate_exact_size(egui::vec2(6.0, 6.0), egui::Sense::hover());
                             ui.painter().rect_filled(rect, egui::CornerRadius::ZERO, accent);
-                            ui.add(egui::Label::new(egui::RichText::new(crate::i18n::msg(&toast.text)).color(t.ink)).wrap());
+                            crate::rtl::paragraph(ui, &crate::i18n::msg(&toast.text), egui::FontId::proportional(14.0), t.ink);
                         });
                     });
                 if r.response.interact(egui::Sense::click()).clicked() {

@@ -8,6 +8,8 @@ use artcraft_launcher_core::status::AppStatus;
 use artcraft_launcher_core::{AppGroup, SUITE, time};
 use egui::{Color32, CornerRadius, FontId, Rect, RichText, Sense, Stroke, Ui, vec2};
 
+use crate::rtl::LocalizedTooltip as _;
+
 use crate::app::{Dialog, LauncherUi, TitleBar};
 use crate::i18n::{current, fmt, t, tn, tr_ctx};
 use crate::model::{self, AppEntry};
@@ -143,11 +145,14 @@ impl LauncherUi {
                         widgets::tag(ui, tl!("Update"), t.accent, Color32::WHITE);
                         ui.add_space(4.0);
                         ui.label(
-                            RichText::new(fmt(tl!("ArtCraft Launcher {version} is available."), &[("version", &r.version_label())]))
-                                .family(theme::medium())
-                                .color(t.ink_strong),
+                            RichText::new(crate::rtl::visual(fmt(
+                                tl!("ArtCraft Launcher {version} is available."),
+                                &[("version", &r.version_label())],
+                            )))
+                            .family(theme::medium())
+                            .color(t.ink_strong),
                         );
-                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        ui.with_layout(crate::rtl::content_trailing(egui::Align::Center), |ui| {
                             if let Some(phase) = self.launcher_job {
                                 let (fraction, caption) = match phase {
                                     JobPhase::Downloading { done, total } if total > 0 => (
@@ -165,7 +170,7 @@ impl LauncherUi {
                                 // Another app's install can hang on a password prompt: the wait can be called off.
                                 if phase == JobPhase::Waiting
                                     && widgets::glyph_button(ui, widgets::Glyph::Close, tl!("Cancel update"))
-                                        .on_hover_text(tl!("Stop waiting; the update can be started again later"))
+                                        .localized_hover_text(tl!("Stop waiting; the update can be started again later"))
                                         .clicked()
                                 {
                                     self.send(Command::Cancel { app: artcraft_launcher_core::catalog::LAUNCHER_ID.to_string() });
@@ -178,7 +183,7 @@ impl LauncherUi {
                             }
                             if self.caps.self_update {
                                 if widgets::button(ui, tl!("Update and restart"), Kind::Primary, 0.0)
-                                    .on_hover_text(tl!("Downloads the new version, replaces this one and opens it again"))
+                                    .localized_hover_text(tl!("Downloads the new version, replaces this one and opens it again"))
                                     .clicked()
                                 {
                                     self.send(Command::UpdateLauncher);
@@ -200,7 +205,11 @@ impl LauncherUi {
             ui.add_space(14.0);
         }
         self.announcements(ui);
-        ui.horizontal(|ui| {
+        // Persian captions need two rows before the filters and search controls collide.
+        let stack_toolbar = current().is_rtl() && ui.available_width() < 1000.0;
+        let toolbar_layout = if stack_toolbar { crate::rtl::content_column() } else { crate::rtl::content_row(egui::Align::Center) };
+        let toolbar_height = if stack_toolbar { 2.0 * theme::CONTROL_H + ui.spacing().item_spacing.y } else { theme::CONTROL_H };
+        ui.allocate_ui_with_layout(vec2(ui.available_width(), toolbar_height), toolbar_layout, |ui| {
             let updates = self.count(Filter::Updates);
             let mut filters = vec![
                 (Filter::All, tl!("All"), tl!("Every Craft app"), None),
@@ -215,8 +224,14 @@ impl LauncherUi {
             }
             let filters: Vec<(Filter, Cell<'_>)> =
                 filters.into_iter().map(|(f, label, tip, highlight)| (f, Cell { label, tip, count: Some((self.count(f), highlight)) })).collect();
-            widgets::cells(ui, &mut self.settings.filter, &filters);
-            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+            if stack_toolbar {
+                ui.horizontal(|ui| {
+                    widgets::cells(ui, &mut self.settings.filter, &filters);
+                });
+            } else {
+                widgets::cells(ui, &mut self.settings.filter, &filters);
+            }
+            ui.with_layout(crate::rtl::content_trailing(egui::Align::Center), |ui| {
                 if self.caps.manage_apps && updates > 0 {
                     let label = if updates == 1 {
                         tl!("Update 1 app").to_string()
@@ -232,26 +247,43 @@ impl LauncherUi {
                     }
                     ui.add_space(4.0);
                 }
-                ui.add(
+                let previous_search = current().is_rtl().then(|| self.search.clone());
+                let search_response = ui.add(
                     egui::TextEdit::singleline(&mut self.search)
-                        .hint_text(tl!("Search apps"))
+                        .hint_text(crate::rtl::visual(tl!("Search apps")))
+                        .horizontal_align(egui::Align::Min)
                         .desired_width(200.0)
                         .min_size(vec2(0.0, theme::CONTROL_H))
                         .vertical_align(egui::Align::Center)
                         .margin(vec2(10.0, 0.0)),
                 );
+                if let Some(previous) = previous_search {
+                    search_response.widget_info(|| egui::WidgetInfo::text_edit(ui.is_enabled(), &previous, &self.search, tl!("Search apps")));
+                }
                 if self.settings.view == ViewMode::Grid {
-                    egui::ComboBox::from_id_salt("sort")
-                        .selected_text(RichText::new(sort_label(self.settings.sort)).size(13.0))
+                    let sort_response = egui::ComboBox::from_id_salt("sort")
+                        .selected_text(RichText::new(crate::rtl::visual(sort_label(self.settings.sort))).size(13.0))
                         .width(140.0)
+                        .height(if current().is_rtl() { 280.0 } else { ui.spacing().combo_height })
+                        .popup_style(widgets::locale_popup_style())
                         .show_ui(ui, |ui| {
-                            for key in [SortKey::Suite, SortKey::Name, SortKey::Status, SortKey::Installed, SortKey::Latest, SortKey::Released] {
-                                if ui.selectable_label(self.settings.sort == key, sort_label(key)).clicked() {
-                                    self.settings.sort = key;
-                                    self.settings.sort_descending = key.starts_descending();
+                            widgets::popup_body(ui, |ui| {
+                                for key in [SortKey::Suite, SortKey::Name, SortKey::Status, SortKey::Installed, SortKey::Latest, SortKey::Released] {
+                                    if widgets::popup_item(ui, sort_label(key), Some(self.settings.sort == key), None).clicked() {
+                                        self.settings.sort = key;
+                                        self.settings.sort_descending = key.starts_descending();
+                                    }
                                 }
-                            }
+                            })
                         });
+                    if current().is_rtl() {
+                        sort_response.response.widget_info(|| {
+                            let text = sort_label(self.settings.sort);
+                            let mut info = egui::WidgetInfo::labeled(egui::WidgetType::ComboBox, ui.is_enabled(), text);
+                            info.current_text_value = Some(text.to_owned());
+                            info
+                        });
+                    }
                     // The caption only where it fits beside the filters (longer in some languages).
                     let sort = tl!("Sort");
                     if widgets::hud_galley(ui, sort, t.faint).size().x + ui.spacing().item_spacing.x <= ui.available_width() {
@@ -280,10 +312,10 @@ impl LauncherUi {
                         ui.with_layout(egui::Layout::top_down(egui::Align::Min), |ui| {
                             ui.spacing_mut().item_spacing.y = 2.0;
                             if !notice.title.is_empty() {
-                                ui.label(RichText::new(&notice.title).family(theme::semibold()).color(t.ink_strong));
+                                crate::rtl::paragraph(ui, &notice.title, FontId::new(14.0, theme::semibold()), t.ink_strong);
                             }
                             if !notice.body.is_empty() {
-                                ui.add(egui::Label::new(RichText::new(&notice.body).color(t.muted)).wrap());
+                                crate::rtl::paragraph(ui, &notice.body, FontId::proportional(14.0), t.muted);
                             }
                         });
                     });
@@ -326,8 +358,7 @@ impl LauncherUi {
         // left and is cut short with "…", never drawn under them. A narrow window drops the
         // platform label first, so the status keeps room to be read.
         let spacing = ui.spacing().item_spacing.x;
-        let links_w: f32 =
-            links.iter().map(|(text, _)| widgets::hud_galley(ui, &format!("{text} ↗"), t.muted).size().x + link_gap).sum::<f32>() - link_gap;
+        let links_w: f32 = links.iter().map(|(text, _)| widgets::external_link_width(ui, text) + link_gap).sum::<f32>() - link_gap;
         let icons_w = SOCIAL.len() as f32 * (icon + 8.0);
         let platform_w = widgets::hud_galley(ui, &platform, t.faint).size().x + 16.0 + spacing;
         let left_w = ui.available_width() - icons_w - 12.0 - links_w - 16.0 - 3.0 * spacing;
@@ -353,7 +384,7 @@ impl LauncherUi {
             ui.with_layout(egui::Layout::left_to_right(egui::Align::Center), |ui| {
                 // While GitHub is rate limited, saying so matters more than when we last checked.
                 let avail = ui.available_width();
-                let text = |s: &str| RichText::new(s).size(12.0).color(t.warn);
+                let text = |s: &str| RichText::new(crate::rtl::visual(s)).size(12.0).color(t.warn);
                 let width = |ui: &Ui, s: &str| {
                     egui::WidgetText::from(text(s)).into_galley(ui, Some(egui::TextWrapMode::Extend), f32::INFINITY, egui::TextStyle::Body).size().x
                         + spacing
@@ -368,7 +399,7 @@ impl LauncherUi {
                 if let Some((shown, full, _)) = notice {
                     let resp = ui.add(egui::Label::new(text(&shown)).truncate());
                     if let Some(full) = full {
-                        resp.on_hover_text(full);
+                        resp.localized_hover_text(full);
                     }
                 }
             });
@@ -386,7 +417,10 @@ impl LauncherUi {
         let height = rows as f32 * (CARD_H - 1.0) + 1.0;
         let (area, _) = ui.allocate_exact_size(vec2(width, height), Sense::hover());
         for (i, id) in ids.iter().enumerate() {
-            let (row, col) = (i / cols, i % cols);
+            let (row, mut col) = (i / cols, i % cols);
+            if current().is_rtl() {
+                col = cols - 1 - col;
+            }
             let min = area.min + vec2(col as f32 * (card_w - 1.0), row as f32 * (CARD_H - 1.0));
             self.card(ui, id, Rect::from_min_size(min, vec2(card_w, CARD_H)));
         }
@@ -426,11 +460,10 @@ impl LauncherUi {
         painter.hline(strip.x_range(), strip.bottom() - 0.5, t.hairline());
         let number = SUITE.iter().position(|a| a.id == app.id).map_or_else(String::new, |i| format!("{:02}", i + 1));
         {
-            let mut strip_ui = ui.new_child(
-                egui::UiBuilder::new().max_rect(strip.shrink2(vec2(CARD_PAD, 0.0))).layout(egui::Layout::left_to_right(egui::Align::Center)),
-            );
+            let mut strip_ui = ui
+                .new_child(egui::UiBuilder::new().max_rect(strip.shrink2(vec2(CARD_PAD, 0.0))).layout(crate::rtl::content_row(egui::Align::Center)));
             widgets::tag(&mut strip_ui, &number, app_color, Color32::BLACK);
-            strip_ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+            strip_ui.with_layout(crate::rtl::content_trailing(egui::Align::Center), |ui| {
                 ui.spacing_mut().item_spacing.x = 16.0;
                 widgets::hud_link(ui, tl!("GitHub"), &app.repo_url());
                 widgets::hud_link(ui, tl!("Website"), &app.website());
@@ -440,7 +473,7 @@ impl LauncherUi {
         let status = entry.status(self.platform, self.caps.manage_apps);
         let inner = Rect::from_min_max(egui::pos2(rect.left() + CARD_PAD, strip.bottom() + 18.0), rect.max - vec2(CARD_PAD, CARD_PAD));
         // A detached child: the card's contents never move the next card along.
-        let mut child = ui.new_child(egui::UiBuilder::new().max_rect(inner).layout(egui::Layout::top_down(egui::Align::Min)));
+        let mut child = ui.new_child(egui::UiBuilder::new().max_rect(inner).layout(crate::rtl::content_column()));
         child.set_clip_rect(rect.intersect(ui.clip_rect()));
         let ui = &mut child;
         ui.horizontal(|ui| {
@@ -470,7 +503,9 @@ impl LauncherUi {
                         widgets::badge(ui, tl!("New"), t.app_ink(app));
                     }
                 });
-                ui.add(egui::Label::new(RichText::new(tr_ctx(current(), app.id, app.tagline)).font(tagline.clone()).color(t.muted)).truncate());
+                let text = tr_ctx(current(), app.id, app.tagline);
+                let response = ui.add(egui::Label::new(RichText::new(crate::rtl::visual(text)).font(tagline.clone()).color(t.muted)).truncate());
+                crate::rtl::accessible(response, text);
             });
         });
         ui.add_space(14.0);
@@ -478,12 +513,12 @@ impl LauncherUi {
             let (text, tone) = model::entry_status_text(&entry, &status, self.caps.manage_apps);
             let r = widgets::badge(ui, &text, widgets::tone_color(&t, tone));
             if let Some(f) = entry.failure() {
-                r.on_hover_text(fmt(tl!("Couldn't check for updates: {f}"), &[("f", f)]));
+                r.localized_hover_text(fmt(tl!("Couldn't check for updates: {f}"), &[("f", f)]));
             }
         });
         ui.add_space(4.0);
-        ui.label(RichText::new(version_line(&entry, &status)).size(12.5).color(t.muted));
-        ui.with_layout(egui::Layout::bottom_up(egui::Align::Min), |ui| {
+        crate::rtl::label(ui, version_line(&entry, &status), FontId::proportional(12.5), t.muted);
+        ui.with_layout(egui::Layout::bottom_up(if current().is_rtl() { egui::Align::Max } else { egui::Align::Min }), |ui| {
             ui.horizontal(|ui| self.actions(ui, &entry, &status, inner.width()));
         });
     }
@@ -561,7 +596,7 @@ impl LauncherUi {
                                 p.add(egui::Shape::convex_polygon(pts, arrow_color, Stroke::NONE));
                             }
                             resp.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Button, true, label));
-                            if resp.on_hover_text(tip).on_hover_cursor(egui::CursorIcon::PointingHand).clicked() {
+                            if resp.localized_hover_text(tip).on_hover_cursor(egui::CursorIcon::PointingHand).clicked() {
                                 sort_clicked = Some(k);
                             }
                         });
@@ -602,19 +637,17 @@ impl LauncherUi {
                                     let block = title_h + GAP + tagline_h;
                                     ui.add_space(((ui.available_height() - block) / 2.0).max(0.0));
                                     widgets::wordmark(ui, entry.app, TITLE_SIZE);
-                                    ui.add(
-                                        egui::Label::new(
-                                            RichText::new(tr_ctx(current(), entry.app.id, entry.app.tagline)).size(TAGLINE_SIZE).color(t.muted),
-                                        )
-                                        .truncate(),
-                                    );
+                                    let text = tr_ctx(current(), entry.app.id, entry.app.tagline);
+                                    let response = ui
+                                        .add(egui::Label::new(RichText::new(crate::rtl::visual(text)).size(TAGLINE_SIZE).color(t.muted)).truncate());
+                                    crate::rtl::accessible(response, text);
                                 });
                             });
                             row.col(|ui| {
                                 let (text, tone) = model::entry_status_text(&entry, &status, self.caps.manage_apps);
                                 let r = widgets::badge(ui, &text, widgets::tone_color(&t, tone));
                                 if let Some(f) = entry.failure() {
-                                    r.on_hover_text(fmt(tl!("Couldn't check for updates: {f}"), &[("f", f)]));
+                                    r.localized_hover_text(fmt(tl!("Couldn't check for updates: {f}"), &[("f", f)]));
                                 }
                             });
                             row.col(|ui| {
@@ -630,9 +663,9 @@ impl LauncherUi {
                             });
                             row.col(|ui| {
                                 let when = entry.release().and_then(|r| r.published_at);
-                                let r = ui.label(RichText::new(when.map_or_else(|| "—".into(), date_text)).color(t.muted));
+                                let r = crate::rtl::label(ui, when.map_or_else(|| "—".into(), date_text), egui::FontId::proportional(14.0), t.muted);
                                 if let Some(w) = when {
-                                    r.on_hover_text(ago_text(w, now));
+                                    r.localized_hover_text(ago_text(w, now));
                                 }
                             });
                             row.col(|ui| self.actions(ui, &entry, &status, 204.0));
@@ -764,7 +797,7 @@ impl LauncherUi {
             } else {
                 fmt(tl!("{done} downloaded"), &[("done", &widgets::human_bytes(p.done))])
             };
-            if resp.on_hover_text(tip).clicked() {
+            if resp.localized_hover_text(tip).clicked() {
                 self.install_app(&id);
             }
             if widgets::glyph_button(ui, widgets::Glyph::Close, tl!("Discard download")).clicked() {
@@ -781,7 +814,7 @@ impl LauncherUi {
             }
             Primary::Retry(label) => {
                 let tip = tl!("The download is still here. It's checked again, then installed.");
-                if widgets::button(ui, &label, Kind::Primary, main_w).on_hover_text(tip).clicked() {
+                if widgets::button(ui, &label, Kind::Primary, main_w).localized_hover_text(tip).clicked() {
                     self.install_app(&id);
                 }
             }
@@ -816,33 +849,33 @@ impl LauncherUi {
         let manage = self.caps.manage_apps;
         let reveal = self.caps.reveal_label;
         widgets::more_menu(ui, |ui| {
-            if entry.release().is_some() && ui.button(tl!("Release notes")).clicked() {
+            if entry.release().is_some() && widgets::popup_item(ui, tl!("Release notes"), None, None).clicked() {
                 self.dialog = Some(Dialog::Notes(id.clone()));
                 ui.close();
             }
             // Only where Install would download: an up-to-date app would be reinstalled.
             let can_download_again =
                 manage && entry.ready && entry.paused.is_none() && matches!(status, AppStatus::Available | AppStatus::UpdateAvailable);
-            if can_download_again && ui.button(tl!("Download again")).clicked() {
+            if can_download_again && widgets::popup_item(ui, tl!("Download again"), None, None).clicked() {
                 self.send(Command::Cancel { app: id.clone() });
                 self.install_app(&id);
                 ui.close();
             }
             if manage && status.is_installed() {
-                if ui.button(tl!("Open")).clicked() {
+                if widgets::popup_item(ui, tl!("Open"), None, None).clicked() {
                     self.send(Command::Launch { app: id.clone() });
                     ui.close();
                 }
-                if ui.button(t(reveal)).clicked() {
+                if widgets::popup_item(ui, t(reveal), None, None).clicked() {
                     self.send(Command::Reveal { app: id.clone() });
                     ui.close();
                 }
-                if *status == AppStatus::UpToDate && ui.button(tl!("Reinstall")).clicked() {
+                if *status == AppStatus::UpToDate && widgets::popup_item(ui, tl!("Reinstall"), None, None).clicked() {
                     self.install_app(&id);
                     ui.close();
                 }
                 ui.separator();
-                if ui.button(RichText::new(tl!("Uninstall…")).color(Tokens::get(ui.ctx()).bad)).clicked() {
+                if widgets::popup_item(ui, tl!("Uninstall…"), None, Some(Tokens::get(ui.ctx()).bad)).clicked() {
                     self.dialog = Some(Dialog::ConfirmUninstall(id.clone()));
                     ui.close();
                 }
@@ -860,7 +893,7 @@ impl LauncherUi {
                 if !options.is_empty() {
                     ui.separator();
                     for (label, url) in options {
-                        if ui.button(label).clicked() {
+                        if widgets::popup_item(ui, &label, None, None).clicked() {
                             ui.ctx().open_url(egui::OpenUrl::new_tab(url));
                             ui.close();
                         }
@@ -871,7 +904,7 @@ impl LauncherUi {
             if links {
                 ui.separator();
                 let link = |ui: &mut Ui, label: &str, url: String| {
-                    if ui.button(label).clicked() {
+                    if widgets::popup_item(ui, label, None, None).clicked() {
                         ui.ctx().open_url(egui::OpenUrl::new_tab(url));
                         ui.close();
                     }
@@ -882,7 +915,7 @@ impl LauncherUi {
             }
             ui.separator();
             let hidden = self.settings.hidden.contains(entry.app.id);
-            if ui.button(if hidden { tl!("Unhide App") } else { tl!("Hide App") }).clicked() {
+            if widgets::popup_item(ui, if hidden { tl!("Unhide App") } else { tl!("Hide App") }, None, None).clicked() {
                 if hidden {
                     self.settings.hidden.remove(entry.app.id);
                     if self.settings.hidden.is_empty() && self.settings.filter == Filter::Hidden {
@@ -946,7 +979,7 @@ pub(crate) fn launcher_download(r: &artcraft_launcher_core::Release, p: artcraft
 /// Each line is measured as an empty galley, which is rounded to the pixel like a label, unlike `Fonts::row_height`.
 fn centered_lines(ui: &mut Ui, fonts: &[&FontId], gap: f32, add_contents: impl FnOnce(&mut Ui)) {
     let height = lines_height(ui, fonts, gap);
-    ui.allocate_ui_with_layout(vec2(ui.available_width(), height), egui::Layout::top_down(egui::Align::Min), |ui| {
+    ui.allocate_ui_with_layout(vec2(ui.available_width(), height), crate::rtl::content_column(), |ui| {
         ui.spacing_mut().item_spacing.y = gap;
         add_contents(ui);
     });

@@ -1,0 +1,509 @@
+# Persian: logical Unicode order; rendering handles bidi at the paint boundary.
+# context<TAB>English source<TAB>Persian translation
+	Launcher	Launcher
+	Craft App Suite	Craft App Suite
+	Settings	تنظیمات
+	Check for updates	بررسی به‌روزرسانی‌ها
+	Check for Updates	بررسی به‌روزرسانی‌ها
+	Grid	کارت‌ها
+	Table	جدول
+	Show apps as cards	نمایش کارتی برنامه‌ها
+	Show apps as a table	نمایش جدولی برنامه‌ها
+	All	همه
+	Installed	نصب‌شده
+	Updates	به‌روزرسانی‌ها
+	Not installed	نصب‌نشده
+	Search apps	جست‌وجوی برنامه‌ها
+	Sort	مرتب‌سازی
+	Suite order	ترتیب مجموعه
+	Name	نام
+	Inspired by	الهام‌گرفته از
+	Status	وضعیت
+	Installed version	نسخهٔ نصب‌شده
+	Latest version	آخرین نسخه
+	Newest release	تازه‌ترین انتشار
+	Discord	Discord
+	GitHub	GitHub
+	Website	وب‌سایت
+	Classic apps	برنامه‌های اصلی
+	New apps	برنامه‌های جدید
+	NEW	جدید
+	New	جدید
+	Install	نصب
+	Update to {v}	به‌روزرسانی به {v}
+	Open	اجرا
+	Download for {os}	دریافت برای {os}
+	Download	دریافت
+	Coming soon	به‌زودی
+	Checking…	در حال بررسی…
+	Not available	در دسترس نیست
+	Offline	آفلاین
+	Downloading {done} of {total}	دریافت {done} از {total}
+	Downloading…	در حال دریافت…
+	Reconnecting…	در حال اتصال دوباره…
+	Verifying…	در حال تأیید…
+	Installing…	در حال نصب…
+	Removing…	در حال حذف…
+	Pause download	توقف موقت دریافت
+	Cancel download	لغو دریافت
+	Resume download	ادامهٔ دریافت
+	Discard download	کنار گذاشتن فایل دریافتی
+	Release notes	یادداشت‌های انتشار
+	Show in Finder	نمایش در Finder
+	Show in Explorer	نمایش در Explorer
+	Show in Files	نمایش در فایل‌ها
+	Reinstall	نصب دوباره
+	Uninstall…	حذف برنامه…
+	All releases	همهٔ نسخه‌ها
+	ArtCraft Launcher {version} is available.	نسخهٔ {version} از ArtCraft Launcher آماده است.
+	Dismiss	بستن
+	Update and restart	به‌روزرسانی و اجرای دوباره
+	Later	بعداً
+	Cancel	انصراف
+	Close	بستن
+	Done	بستن
+	OK	تأیید
+	Update	به‌روزرسانی
+	Uninstall	حذف برنامه
+	Keep	نگه داشتن
+	Quit	خروج
+	About	درباره
+	Preferences	تنظیمات
+	Appearance	ظاهر
+	Theme	پوسته
+	Dark	تیره
+	Light	روشن
+	System	سیستم
+	Auto	خودکار
+	Language	زبان
+	Interface language	زبان رابط کاربری
+	General	عمومی
+	Every Craft app	همهٔ برنامه‌های Craft
+	Apps with a newer version	برنامه‌های دارای نسخهٔ جدید
+	Apps you can install	برنامه‌های قابل نصب
+	Hide App	پنهان کردن برنامه
+	Unhide App	نمایش برنامه
+	Hidden Apps	برنامه‌های پنهان
+	Apps you hid	برنامه‌هایی که پنهان کرده‌اید
+	Checked {ago} · using {sources}	بررسی {ago} · از {sources}
+	{a} and {b}	{a} و {b}
+	Join the Discord	پیوستن به Discord
+	Learn more	بیشتر بدانید
+	Minimize	کوچک کردن
+	Maximize	بزرگ کردن
+	Restore	بازگردانی
+	Open link	باز کردن پیوند
+	{name} icon	نشان {name}
+	{name} details	جزئیات {name}
+	Loading ArtCraft Launcher…	در حال بارگذاری ArtCraft Launcher…
+	Cancel update	لغو به‌روزرسانی
+	Download again	دریافت دوباره
+	Install cancelled	نصب لغو شد
+	Update cancelled	به‌روزرسانی لغو شد
+	Uninstall cancelled	حذف برنامه لغو شد
+	Retry install	تلاش دوباره برای نصب
+	Retry update to {version}	تلاش دوباره برای به‌روزرسانی به {version}
+	Waiting for another app…	در انتظار برنامهٔ دیگر…
+	Waiting for other installs…	در انتظار نصب‌های دیگر…
+	Not checked yet	هنوز بررسی نشده
+	Installing for {platform}	نصب برای {platform}
+	Downloads for {platform}	دریافت برای {platform}
+	No downloads for this system	فایلی برای این سیستم موجود نیست
+	Join the ArtCraft community on Discord	به جامعهٔ ArtCraft در Discord بپیوندید
+	Download cancelled	دریافت لغو شد
+	Available to install	آمادهٔ نصب
+	Available	در دسترس
+	Installed · up to date	نصب‌شده · به‌روز
+	Update available	به‌روزرسانی موجود است
+	No apps match	برنامه‌ای پیدا نشد
+	Update 1 app	به‌روزرسانی یک برنامه
+	Update all ({count})	به‌روزرسانی همه ({count})
+	just now	همین حالا
+	yesterday	دیروز
+	{month} {day}, {year}	{day} {month} {year}
+	App details	جزئیات برنامه
+	Close (Esc)	بستن (Esc)
+	Features	قابلیت‌ها
+	Latest release	آخرین انتشار
+	Version	نسخه
+	Platforms	سیستم‌عامل‌ها
+	Releases	انتشارها
+	Enlarge picture	بزرگ کردن تصویر
+	Click to enlarge	برای بزرگ کردن کلیک کنید
+	Loading pictures…	در حال بارگذاری تصاویر…
+	Install folder	پوشهٔ نصب
+	Default install folder	پوشهٔ پیش‌فرض نصب
+	System default	پیش‌فرض سیستم
+	Browse…	انتخاب پوشه…
+	Use default	بازگشت به پیش‌فرض
+	Apps are placed inside this folder.	برنامه‌ها در این پوشه قرار می‌گیرند.
+	Replace what's there?	جایگزین محتوای موجود شود؟
+	Replace	جایگزینی
+	Show ArtCraft Launcher	نمایش ArtCraft Launcher
+	Visit getartcraft.com	بازدید از getartcraft.com
+	ArtCraft on GitHub	ArtCraft در GitHub
+	Join the ArtCraft Discord	پیوستن به Discord آرت‌کرفت
+	Checking for updates…	در حال بررسی به‌روزرسانی‌ها…
+	Verifying checksum…	در حال تأیید صحت فایل…
+filter	Installed	نصب‌شده‌ها
+photocraft	Image editing	ویرایش تصویر
+vectorcraft	Vector illustration	طراحی وکتور
+filmcraft	Video editing, color and sound	تدوین ویدئو، رنگ و صدا
+lightcraft	Photo library and raw development	مدیریت عکس و پردازش RAW
+pdfcraft	Reading, organizing and protecting PDFs	مطالعه و مدیریت PDF
+effectcraft	Motion graphics and visual effects	موشن‌گرافیک و جلوه‌های بصری
+designcraft	Page layout and publishing	صفحه‌آرایی و نشر
+wordcraft	Writing and document design	نگارش و طراحی سند
+deckcraft	Presentations and slide shows	ارائه و اسلاید
+gridcraft	Spreadsheets and data	صفحه‌گسترده و داده
+cadcraft	Computer-aided design and drafting	طراحی و نقشه‌کشی مهندسی
+soundcraft	Recording, editing and mixing audio	ضبط، ویرایش و میکس صدا
+figcraft	Interface design and prototyping	طراحی رابط و نمونه‌سازی
+month	Jan	ژانویه
+month	Feb	فوریه
+month	Mar	مارس
+month	Apr	آوریل
+month	May	مه
+month	Jun	ژوئن
+month	Jul	ژوئیه
+month	Aug	اوت
+month	Sep	سپتامبر
+month	Oct	اکتبر
+month	Nov	نوامبر
+month	Dec	دسامبر
+@plural	{n} min ago|{n} min ago	{n} دقیقه پیش|{n} دقیقه پیش
+@plural	{n} h ago|{n} h ago	{n} ساعت پیش|{n} ساعت پیش
+@plural	{n} day ago|{n} days ago	{n} روز پیش|{n} روز پیش
+	Automatically	خودکار
+	Only when I ask	فقط با درخواست من
+	Automatically download and install updates	دریافت و نصب خودکار به‌روزرسانی‌ها
+	Notify me when an installed app has an update	اعلان نسخهٔ جدید برنامه‌های نصب‌شده
+	Include pre-releases (betas and release candidates)	نمایش نسخه‌های آزمایشی
+	Running in the background	اجرا در پس‌زمینه
+	Community	جامعهٔ کاربران
+	Questions, ideas and news from the ArtCraft team	پرسش‌ها، ایده‌ها و اخبار تیم ArtCraft
+	Quit ArtCraft Launcher	خروج از ArtCraft Launcher
+	New installs use this folder. Updates stay in their current location.	نصب‌های جدید در این پوشه انجام می‌شوند. محل برنامه‌های موجود تغییر نمی‌کند.
+	Apps on this computer	برنامه‌های این رایانه
+	Installed apps with a newer version	برنامه‌های نصب‌شده با نسخهٔ جدید
+	Open Source Tools for Creatives, Makers, and Builders	ابزارهای متن‌باز برای طراحان و سازندگان
+	App	برنامه
+column	Installed	نصب‌شده
+column	Latest	آخرین نسخه
+column	Released	انتشار
+	Version {version}	نسخهٔ {version}
+	Version {latest}	نسخهٔ {latest}
+	{version} installed → {latest} released	نصب‌شده {version} ← نسخهٔ جدید {latest}
+	Version {version} installed	نسخهٔ {version} نصب‌شده
+	Installed · latest {latest}	نصب‌شده · آخرین نسخه {latest}
+	Match system	هماهنگ با سیستم
+
+# Product details: exact English source keys; changed upstream text falls back to English.
+photocraft	The image editor you already know how to use.	ویرایشگر تصویری که کار با آن را از قبل بلدید.
+photocraft	Layers, masks, adjustment layers, layer styles, type, vectors and brushes in a native app written in Rust. Open source, offline, and yours.	لایه، ماسک، لایه‌های تنظیم، سبک لایه، متن، وکتور و قلم‌مو، در یک برنامهٔ بومی نوشته‌شده با Rust. متن‌باز، آفلاین و در اختیار شما.
+photocraft	PhotoCraft keeps the menus, shortcuts and panels your hands already know, so there is nothing to relearn.	PhotoCraft منوها، میان‌برها و پنل‌های آشنا را حفظ می‌کند تا نیازی به یادگیری دوباره نداشته باشید.
+photocraft	Native GPU canvas	بوم بومی با شتاب GPU
+photocraft	No Electron and no web view: a fast native compositor.	بدون Electron یا نمای وب؛ با موتور ترکیب تصویر سریع و بومی.
+photocraft	Real layered files	فایل‌های لایه‌باز
+photocraft	Opens and saves layered PSD and PSB documents.	باز کردن و ذخیرهٔ سندهای PSD و PSB با حفظ لایه‌ها.
+photocraft	Non-destructive editing	ویرایش غیرمخرب
+photocraft	Adjustment layers, live-preview filters, smart objects and layer styles.	لایه‌های تنظیم، فیلتر با پیش‌نمایش زنده، اشیای هوشمند و سبک‌های لایه.
+photocraft	On-device selection	انتخاب روی دستگاه
+photocraft	Subject and object selection and mask refinement run locally.	انتخاب سوژه و اشیا و اصلاح ماسک، همگی روی دستگاه شما انجام می‌شوند.
+photocraft	Serious color	مدیریت حرفه‌ای رنگ
+photocraft	8-, 16- and 32-bit RGB, CMYK, Lab and Grayscale, with ICC color management and soft proofing.	رنگ‌های RGB، CMYK، Lab و خاکستری با عمق ۸، ۱۶ و ۳۲ بیت؛ همراه با مدیریت رنگ ICC و پیش‌نمایش چاپ.
+photocraft	Curves and type layers	منحنی‌ها و لایه‌های متن
+photocraft	Levels with a live histogram	تنظیم سطوح با هیستوگرام زنده
+photocraft	Layer styles on live type	سبک لایه روی متن ویرایش‌پذیر
+photocraft	Selections and masked adjustments	انتخاب‌ها و تنظیمات ماسک‌شده
+vectorcraft	Vector illustration, reimagined in pure Rust.	تصویرسازی وکتور، بازآفرینی‌شده با Rust.
+vectorcraft	A native vector illustration app with the pen, panels and shortcuts illustrators expect. Open source, and it also runs in a browser.	برنامه‌ای بومی برای تصویرسازی وکتور، با ابزار قلم، پنل‌ها و میان‌برهای مورد انتظار طراحان. متن‌باز است و در مرورگر هم اجرا می‌شود.
+vectorcraft	The workflow you know	روند کاری آشنا
+vectorcraft	Pen, direct selection, shape booleans, snapping guides and an appearance panel, laid out the way you expect.	قلم، انتخاب مستقیم، عملیات ترکیب شکل‌ها، راهنماهای چسبان و پنل ظاهر، با چیدمانی آشنا.
+vectorcraft	Genuinely fast	سرعت بالا
+vectorcraft	Drawings with thousands of shapes stay responsive on a retina display.	طرح‌هایی با هزاران شکل، حتی روی نمایشگر رتینا هم روان می‌مانند.
+vectorcraft	Booleans that don't fail	ترکیب شکل‌ها با دقت بالا
+vectorcraft	Shape booleans work on the exact curves, so there is no "cannot perform operation", and undo is unlimited.	عملیات ترکیب روی خود منحنی‌ها انجام می‌شود؛ بدون خطای «امکان انجام عملیات نیست» و با واگرد نامحدود.
+vectorcraft	Live, editable effects	افکت‌های زنده و ویرایش‌پذیر
+vectorcraft	Blends, envelope distort, gradient mesh, repeats, glows and drop shadows all stay editable.	ترکیب تدریجی، تغییر شکل پوششی، مش گرادیان، تکرار، درخشش و سایه، همگی ویرایش‌پذیر می‌مانند.
+vectorcraft	Image tracing	تبدیل تصویر به وکتور
+vectorcraft	Turn raster images into clean vector paths, with presets for the common cases.	تبدیل تصاویر پیکسلی به مسیرهای وکتور تمیز، با پیش‌تنظیم برای کاربردهای رایج.
+vectorcraft	Open formats	قالب‌های باز
+vectorcraft	Native JSON documents, SVG and PDF import and export, and PNG, JPEG and WebP output.	سند بومی JSON، ورود و خروج SVG و PDF و خروجی PNG، JPEG و WebP.
+vectorcraft	The Neon Drive poster	پوستر Neon Drive
+vectorcraft	Live blends	ترکیب‌های تدریجی زنده
+vectorcraft	A feature sheet and the Layers panel	برگهٔ معرفی قابلیت‌ها و پنل لایه‌ها
+vectorcraft	Pathfinder and exact booleans	Pathfinder و ترکیب دقیق شکل‌ها
+filmcraft	Professional video editing, rebuilt from scratch.	تدوین حرفه‌ای ویدئو، از نو ساخته‌شده.
+filmcraft	A native video editor written in pure Rust, with source and program monitors, a real timeline and every trim mode.	ویرایشگر ویدئوی بومی نوشته‌شده با Rust، با نمایشگرهای منبع و خروجی، تایم‌لاین کامل و همهٔ حالت‌های برش.
+filmcraft	A timeline you already know	تایم‌لاینی آشنا
+filmcraft	Source and program monitors, three-point editing, every trim mode and J/K/L trimming.	نمایشگر منبع و خروجی، تدوین سه‌نقطه‌ای، همهٔ حالت‌های برش و کنترل برش با کلیدهای J/K/L.
+filmcraft	Frame-exact time	دقت تا تک‌فریم
+filmcraft	An integer timebase keeps 23.976 and 29.97 drop-frame footage exact, with no drift.	مبنای زمانِ عدد صحیح، دقت ویدئوی 23.976 و 29.97 با دراپ‌فریم را بدون انحراف حفظ می‌کند.
+filmcraft	Its own codecs	کدک‌های اختصاصی
+filmcraft	No FFmpeg inside: native support for H.264, HEVC, ProRes, VP9, AAC and Opus.	بدون FFmpeg؛ با پشتیبانی بومی از H.264، HEVC، ProRes، VP9، AAC و Opus.
+filmcraft	Color grading	اصلاح و تنظیم رنگ
+filmcraft	Curves, color wheels, HSL secondaries, LUTs and HDR and log workflows, with scopes to check the result.	منحنی‌ها، چرخه‌های رنگ، اصلاح ثانویهٔ HSL، جدول‌های LUT و گردش کار HDR و Log، همراه با ابزارهای سنجش نتیجه.
+filmcraft	Effects and keyframes	افکت‌ها و کی‌فریم‌ها
+filmcraft	Video effects and transitions, keyframes with value and velocity graphs, and a linear-light GPU compositor.	افکت و گذار ویدئو، کی‌فریم با نمودار مقدار و سرعت و ترکیب تصویر با GPU در فضای نور خطی.
+filmcraft	Broadcast-ready audio	صدای آمادهٔ پخش
+filmcraft	EBU R128 loudness meters, a mixer with automation and native audio effects.	سنجش بلندی صدا با استاندارد EBU R128، میکسر با اتوماسیون و افکت‌های صوتی بومی.
+filmcraft	The Color workspace, with scopes	محیط رنگ و ابزارهای سنجش
+filmcraft	The Assembly workspace	محیط تدوین اولیه
+filmcraft	Keyframes in Effect Controls	کی‌فریم‌ها در پنل کنترل افکت
+lightcraft	Your photos. Your pixels. Your machine.	عکس‌های شما. پیکسل‌های شما. دستگاه شما.
+lightcraft	A fast photo library and non-destructive raw developer, written from scratch in pure Rust. No account, no cloud, no telemetry and no subscription.	کتابخانهٔ سریع عکس و پردازشگر غیرمخرب فایل خام، از پایه نوشته‌شده با Rust. بدون حساب کاربری، فضای ابری، ارسال دادهٔ استفاده یا اشتراک.
+lightcraft	Non-destructive by design	ویرایش غیرمخرب از پایه
+lightcraft	A wide-gamut, 32-bit float pipeline that never touches your originals.	پردازش با گسترهٔ رنگ وسیع و دقت اعشاری ۳۲ بیت، بدون دست‌زدن به فایل‌های اصلی.
+lightcraft	Every control you reach for	همهٔ کنترل‌های ضروری
+lightcraft	Light, color, effects, tone curve, a color mixer, color grading wheels and built-in presets.	نور، رنگ، افکت، منحنی تون، میکسر رنگ، چرخه‌های تنظیم رنگ و پیش‌تنظیم‌های داخلی.
+lightcraft	Precise masking	ماسک‌گذاری دقیق
+lightcraft	Brush, gradient and range masks, plus sky, subject and background masks.	ماسک قلم‌مو، گرادیان و محدوده، به‌علاوهٔ ماسک آسمان، سوژه و پس‌زمینه.
+lightcraft	Native raw decoding	خواندن بومی فایل خام
+lightcraft	Pure-Rust decoders for the main camera raw formats: DNG, CR2, ARW, NEF, RAF, RW2, PEF and ORF.	رمزگشاهای نوشته‌شده با Rust برای قالب‌های اصلی دوربین: DNG، CR2، ARW، NEF، RAF، RW2، PEF و ORF.
+lightcraft	A library that keeps up	کتابخانه‌ای روان
+lightcraft	Albums, ratings, flags and search, with grids that stay smooth on large catalogs.	آلبوم، امتیاز، پرچم و جست‌وجو؛ با نمای شبکه‌ای روان حتی در مجموعه‌های بزرگ.
+lightcraft	Instant feedback	بازخورد فوری
+lightcraft	The GPU pipeline updates the preview as you move a slider, even on large raw files.	پردازش GPU با حرکت هر لغزنده پیش‌نمایش را به‌روز می‌کند، حتی برای فایل‌های خام بزرگ.
+lightcraft	The Edit view	نمای ویرایش
+lightcraft	The tone curve	منحنی تون
+lightcraft	Color grading wheels	چرخه‌های تنظیم رنگ
+lightcraft	A radial mask over a sky mask	ماسک شعاعی روی ماسک آسمان
+pdfcraft	The open-source PDF workbench.	میز کار متن‌باز PDF.
+pdfcraft	Read, organize, combine, split and secure PDFs in a fast, native app written in Rust from the ground up. No account, no telemetry and no cloud.	خواندن، مرتب‌سازی، ترکیب، تفکیک و ایمن‌سازی PDF در برنامه‌ای سریع و بومی که از پایه با Rust نوشته شده است. بدون حساب کاربری، ارسال دادهٔ استفاده یا فضای ابری.
+pdfcraft	Faithful rendering	نمایش دقیق سند
+pdfcraft	World scripts, vertical Japanese, color emoji and transparency.	پشتیبانی از خط‌های گوناگون، ژاپنی عمودی، ایموجی رنگی و شفافیت.
+pdfcraft	Search as you type	جست‌وجوی هم‌زمان با تایپ
+pdfcraft	Instant find, and text selection that follows the document's real reading order.	جست‌وجوی فوری و انتخاب متن بر اساس ترتیب واقعی خواندن سند.
+pdfcraft	Organize like cards	مرتب‌سازی مثل کارت‌ها
+pdfcraft	Rotate, delete, insert and reorder pages, with deep undo behind every change.	چرخاندن، حذف، درج و جابه‌جایی صفحات، با سابقهٔ گستردهٔ واگرد برای هر تغییر.
+pdfcraft	Combine, extract, split	ترکیب، استخراج و تفکیک
+pdfcraft	Assemble and break apart documents while keeping links, form fields, layers and bookmarks intact.	ادغام و جدا کردن سندها با حفظ پیوندها، فیلدهای فرم، لایه‌ها و نشانک‌ها.
+pdfcraft	Fearless saves	ذخیره‌سازی مطمئن
+pdfcraft	Incremental, atomic saves with autosave and crash recovery.	ذخیرهٔ افزایشی و اتمی، همراه با ذخیرهٔ خودکار و بازیابی پس از توقف ناگهانی.
+pdfcraft	Built-in security	امنیت داخلی
+pdfcraft	Opens files from RC4 to AES-256 encryption and honors the author's permissions.	باز کردن فایل‌های رمزگذاری‌شده از RC4 تا AES-256، با رعایت مجوزهای تعیین‌شده توسط نویسنده.
+effectcraft	Motion graphics and visual effects, in pure Rust.	موشن‌گرافیک و جلوه‌های بصری، ساخته‌شده با Rust.
+effectcraft	A native compositor with compositions, layers, keyframes, effects, expressions, 3D cameras and lights, and a render queue. Young, moving fast, and already usable.	برنامهٔ بومی ترکیب تصویر، با کامپوزیشن، لایه، کی‌فریم، افکت، اکسپرشن، دوربین و نور سه‌بعدی و صف رندر. پروژه‌ای نوپا با توسعهٔ سریع که همین حالا هم قابل استفاده است.
+effectcraft	Animate the way you know	انیمیشن‌سازی با روشی آشنا
+effectcraft	Familiar panels and keyframes (linear, bezier, hold and eased), with a graph editor for value and speed curves.	پنل‌ها و کی‌فریم‌های آشنا با حالت خطی، بزیه، ثابت و نرم؛ همراه با ویرایشگر نمودار مقدار و سرعت.
+effectcraft	Layers of every kind	انواع لایه‌ها
+effectcraft	Solids, shapes, text, footage, nested compositions, nulls and adjustment layers, with parenting, track mattes and blend modes.	رنگ یک‌دست، شکل، متن، ویدئو، کامپوزیشن تو‌در‌تو، لایهٔ تهی و لایهٔ تنظیم؛ با رابطهٔ والد، ترک‌مت و حالت‌های ترکیب.
+effectcraft	A large effects library	مجموعهٔ گستردهٔ افکت‌ها
+effectcraft	Blur, color correction, distortion, generators, keying, particles and simulation, stylize and time effects.	تاری، اصلاح رنگ، اعوجاج، تولید تصویر، کروماکی، ذرات و شبیه‌سازی، سبک‌دهی و افکت‌های زمان.
+effectcraft	Real 3D	سه‌بعدی واقعی
+effectcraft	3D layers with cameras, depth of field, and lights that cast soft ray-traced shadows.	لایه‌های سه‌بعدی با دوربین، عمق میدان و نورهایی با سایه‌های نرمِ رهگیری پرتو.
+effectcraft	Expressions	اکسپرشن‌ها
+effectcraft	JavaScript expressions with wiggle, loops and layer references, edited inline.	عبارت‌های JavaScript با wiggle، حلقه و ارجاع به لایه‌ها، با امکان ویرایش در همان محل.
+effectcraft	Export anywhere	خروجی‌های متنوع
+effectcraft	H.264 and ProRes with alpha, PNG, TIFF and EXR sequences, GIF, and Lottie import and export.	H.264 و ProRes با کانال آلفا، توالی PNG، TIFF و EXR، فایل GIF و ورود و خروج Lottie.
+effectcraft	An animated composition	یک کامپوزیشن متحرک
+effectcraft	The Graph Editor	ویرایشگر نمودار
+effectcraft	Particles and Effect Controls	ذرات و پنل کنترل افکت
+effectcraft	3D layers with cameras and lights	لایه‌های سه‌بعدی با دوربین و نور
+designcraft	Page layout and publishing, rebuilt in pure Rust.	صفحه‌آرایی و نشر، بازسازی‌شده با Rust.
+designcraft	A native layout app with spreads, parent pages, threaded stories, styles, swatches, text wrap and a paragraph composer. No subscription, no license server and no telemetry.	برنامهٔ بومی صفحه‌آرایی با صفحات روبه‌رو، صفحات مادر، متن‌های پیوسته، سبک‌ها، نمونه‌رنگ‌ها، چیدمان متن دور اشیا و موتور حروف‌چینی پاراگراف. بدون اشتراک، سرور مجوز یا ارسال دادهٔ استفاده.
+designcraft	The layout tools you know	ابزارهای آشنای صفحه‌آرایی
+designcraft	Spreads and parent pages, frames and threaded stories, with paragraph and character styles.	صفحات روبه‌رو و مادر، قاب‌ها و متن‌های پیوسته، همراه با سبک پاراگراف و نویسه.
+designcraft	Beautiful type	حروف‌چینی زیبا
+designcraft	A Knuth–Plass paragraph composer, dictionary hyphenation, optical margin alignment and baseline grids, with line breaks that match on screen and in PDF.	حروف‌چینی پاراگراف با الگوریتم Knuth–Plass، شکستن واژه بر اساس واژه‌نامه، تراز بصری حاشیه و شبکهٔ خط مبنا؛ با شکست خطوط یکسان در نمایشگر و PDF.
+designcraft	Print-ready PDF	PDF آمادهٔ چاپ
+designcraft	Real selectable text with embedded fonts, CMYK and spot colors, bleed, crop marks and PDF/A output.	متن قابل انتخاب با فونت‌های تعبیه‌شده، رنگ‌های CMYK و اسپات، حاشیهٔ برش، علائم برش و خروجی PDF/A.
+designcraft	Fast	سرعت بالا
+designcraft	Multithreaded rendering, instant undo and cached text composition.	رندر چندریسمانی، واگرد فوری و نگهداری نتیجهٔ حروف‌چینی در حافظهٔ موقت.
+designcraft	Open formats	قالب‌های باز
+designcraft	A documented native format, PNG export and layout interchange import and export.	قالب بومی مستند، خروجی PNG و ورود و خروج قالب تبادل صفحه‌آرایی.
+designcraft	Built for automation	آماده برای خودکارسازی
+designcraft	Every menu item, tool, panel and dialog can be driven over a JSON control channel and an MCP server.	کنترل تمام گزینه‌های منو، ابزارها، پنل‌ها و پنجره‌ها از طریق کانال JSON و سرور MCP.
+designcraft	A magazine spread with a threaded story	دو صفحهٔ مجله با متن پیوسته
+wordcraft	The familiar word processor, native and offline.	واژه‌پرداز آشنا، بومی و آفلاین.
+wordcraft	A word processor with the ribbon, shortcuts and behavior you already know, written in Rust. Open source, and built from public specifications.	واژه‌پردازی با نوار ابزار، میان‌برها و رفتار آشنای شما، نوشته‌شده با Rust. متن‌باز و ساخته‌شده بر اساس مشخصات فنی عمومی.
+wordcraft	Familiar	محیط آشنا
+wordcraft	Ribbon tabs and groups, a live Styles gallery and the editing behavior you expect, from list continuation to Format Painter.	زبانه‌ها و گروه‌های نوار ابزار، گالری زندهٔ سبک‌ها و رفتار ویرایشی آشنا، از ادامهٔ فهرست تا قلم‌موی قالب‌بندی.
+wordcraft	Your files	فایل‌های شما
+wordcraft	Opens and saves .docx, and also .odt, .rtf, .html, .md, .tex and .txt. Opens older .doc files and exports PDF with real, selectable text.	باز کردن و ذخیرهٔ .docx، .odt، .rtf، .html، .md، .tex و .txt؛ خواندن فایل‌های قدیمی .doc و خروجی PDF با متن واقعی و قابل انتخاب.
+wordcraft	Fast	سرعت بالا
+wordcraft	Paragraph layout is cached, so typing stays responsive even in long documents.	چیدمان پاراگراف در حافظهٔ موقت نگهداری می‌شود تا تایپ حتی در سندهای بلند روان بماند.
+wordcraft	Private	حریم خصوصی
+wordcraft	Spelling, grammar and everything else work offline.	بررسی املا، دستور زبان و سایر قابلیت‌ها به‌صورت آفلاین کار می‌کنند.
+wordcraft	Everywhere	روی همهٔ دستگاه‌ها
+wordcraft	One Rust codebase for macOS, Windows, Linux, BSD and the web.	یک کدبیس Rust برای macOS، Windows، Linux، BSD و وب.
+wordcraft	Built for agents	آماده برای عامل‌های هوشمند
+wordcraft	Every action is a command, driven from the ribbon, shortcuts, a command-line tool, a JSON control channel or an MCP server.	هر عمل یک فرمان است؛ قابل اجرا از نوار ابزار، میان‌بر، ابزار خط فرمان، کانال JSON یا سرور MCP.
+wordcraft	The Home tab and the Navigation pane	زبانهٔ Home و پنل پیمایش
+wordcraft	Track Changes and comments	ردگیری تغییرات و دیدگاه‌ها
+wordcraft	The Design tab	زبانهٔ Design
+wordcraft	The Layout tab	زبانهٔ Layout
+deckcraft	Presentations, rebuilt in Rust.	ارائهٔ اسلاید، بازسازی‌شده با Rust.
+deckcraft	A presentation app with slide masters, shapes, animations and a presenter view, written in Rust. In alpha, heading for beta.	برنامهٔ ارائه با اسلایدهای مادر، شکل‌ها، انیمیشن و نمای ارائه‌دهنده، نوشته‌شده با Rust. در مرحلهٔ آلفا و در مسیر بتا.
+deckcraft	Make decks	ساخت ارائه
+deckcraft	Slide masters and layouts with placeholders that inherit formatting, themes, sections, notes and comments.	اسلایدهای مادر و چیدمان‌ها با جای‌نگهدارهای دارای قالب‌بندی ارثی، پوسته، بخش‌بندی، یادداشت و دیدگاه.
+deckcraft	Draw	طراحی شکل‌ها
+deckcraft	Preset shapes with adjust handles, connectors that stay glued to shapes, freeform tools, merged shapes, gradients, shadows and glow.	شکل‌های آماده با دستگیرهٔ تنظیم، اتصال‌دهنده‌های متصل به شکل، ابزار طراحی آزاد، ادغام شکل‌ها، گرادیان، سایه و درخشش.
+deckcraft	Write	نوشتن متن
+deckcraft	In-place text editing with full font and paragraph formatting, bullets and numbering, columns and autofit.	ویرایش متن در همان محل، با تنظیم کامل فونت و پاراگراف، فهرست و شماره‌گذاری، ستون و اندازهٔ خودکار.
+deckcraft	Add content	افزودن محتوا
+deckcraft	Pictures with crop and corrections, styled tables, charts, audio and video.	تصویر با برش و اصلاح، جدول سبک‌دار، نمودار، صدا و ویدئو.
+deckcraft	Present	اجرای ارائه
+deckcraft	Transitions including Morph, animations and motion paths, a full-screen slide show, presenter view and rehearsed timings.	گذارهایی مانند Morph، انیمیشن و مسیر حرکت، نمایش تمام‌صفحه، نمای ارائه‌دهنده و زمان‌بندی تمرین‌شده.
+deckcraft	Exchange files	تبادل فایل
+deckcraft	Opens and saves PowerPoint .pptx and exports PDF (slides, notes pages and handouts), PNG and JPEG.	باز کردن و ذخیرهٔ PowerPoint با قالب .pptx و خروجی PDF شامل اسلاید، صفحات یادداشت و جزوه، به‌علاوهٔ PNG و JPEG.
+deckcraft	Editing a slide, with sections and notes	ویرایش اسلاید با بخش‌ها و یادداشت‌ها
+deckcraft	The Shape Format tab	زبانهٔ Shape Format
+deckcraft	The slide sorter	نمای مرتب‌سازی اسلایدها
+deckcraft	The Format Shape pane	پنل قالب‌بندی شکل
+gridcraft	Spreadsheets you already know how to use.	صفحه‌گسترده‌ای که کار با آن را بلدید.
+gridcraft	A spreadsheet with the ribbon, formula bar, sheet tabs and shortcuts you know, on a calculation engine written in Rust. No subscription, no license server and no telemetry.	صفحه‌گسترده‌ای با نوار ابزار، نوار فرمول، زبانه‌های برگه و میان‌برهای آشنا، بر پایهٔ موتور محاسباتی نوشته‌شده با Rust. بدون اشتراک، سرور مجوز یا ارسال دادهٔ استفاده.
+gridcraft	Familiar	محیط آشنا
+gridcraft	The ribbon, formula bar, Name Box, fill handle, point-mode formulas, Format Cells, Paste Special, conditional formatting, tables and charts.	نوار ابزار و فرمول، کادر نام، دستگیرهٔ پرکردن، فرمول‌نویسی با اشاره به سلول، قالب‌بندی سلول، چسباندن ویژه، قالب‌بندی شرطی، جدول و نمودار.
+gridcraft	Compatible	سازگاری با فایل‌ها
+gridcraft	XLSX is the native format, with formulas, tables, conditional formats, charts, pivot tables and print settings round-tripping. CSV and TSV too.	قالب بومی XLSX با حفظ فرمول‌ها، جدول‌ها، قالب‌بندی شرطی، نمودارها، جدول محوری و تنظیمات چاپ هنگام باز کردن و ذخیره؛ همراه با CSV و TSV.
+gridcraft	Capable	توان محاسباتی
+gridcraft	A dependency-graph calculation engine with dynamic arrays, LET and LAMBDA, structured table references, sort, AutoFilter and Flash Fill.	موتور محاسبه با گراف وابستگی، آرایه‌های پویا، LET و LAMBDA، ارجاع ساختاریافته به جدول، مرتب‌سازی، AutoFilter و Flash Fill.
+gridcraft	Fast	سرعت بالا
+gridcraft	Copy-on-write workbooks, incremental recalculation and a grid that only lays out what is on screen.	کارپوشه با کپی هنگام نوشتن، محاسبهٔ مجدد افزایشی و شبکه‌ای که فقط سلول‌های روی نمایشگر را چیدمان می‌کند.
+gridcraft	Agent-native	طراحی‌شده برای عامل‌های هوشمند
+gridcraft	Every ribbon button, menu item, dialog and keystroke is a command, available over a JSON control channel, an MCP server or the CLI.	هر دکمهٔ نوار ابزار، گزینهٔ منو، پنجره و کلید، یک فرمان در دسترس از طریق کانال JSON، سرور MCP یا خط فرمان است.
+gridcraft	Everywhere	روی همهٔ دستگاه‌ها
+gridcraft	One Rust codebase for the desktop and the web.	یک کدبیس Rust برای دسکتاپ و وب.
+gridcraft	A quarterly sales dashboard	داشبورد فروش فصلی
+gridcraft	A household budget	بودجهٔ خانوار
+gridcraft	A pivot table	جدول محوری
+gridcraft	Formatting a chart	قالب‌بندی نمودار
+cadcraft	Computer-aided drafting, in pure Rust.	نقشه‌کشی رایانه‌ای، ساخته‌شده با Rust.
+cadcraft	A drafting app with the command line, object snaps and workflow that drafters already know. Free, with no account and no subscription. In early, fast development.	برنامهٔ نقشه‌کشی با خط فرمان، چسبیدن به نقاط اشیا و روند کاری آشنا برای نقشه‌کشان. رایگان، بدون حساب کاربری و اشتراک. در مراحل اولیهٔ توسعهٔ سریع.
+cadcraft	The workflow you know	روند کاری آشنا
+cadcraft	Type L, click two points, type @5<45 and press Enter. Prompts with clickable keywords, polar tracking, direct distance entry and grips work the way drafting habit expects.	با فرمان L دو نقطه را انتخاب کنید، مقدار @5<45 را وارد کنید و Enter بزنید. پیام‌های دارای کلیدواژهٔ قابل کلیک، ردیابی قطبی، ورود مستقیم فاصله و دستگیره‌ها مطابق عادت نقشه‌کشی کار می‌کنند.
+cadcraft	Open files	باز کردن فایل‌ها
+cadcraft	Reads and writes DXF natively (R12 through 2018) and opens and saves DWG (R13 through 2018) with the open-source acadrust library. Exports SVG and PNG.	خواندن و نوشتن بومی DXF از R12 تا 2018 و باز کردن و ذخیرهٔ DWG از R13 تا 2018 با کتابخانهٔ متن‌باز acadrust؛ همراه با خروجی SVG و PNG.
+cadcraft	Fast and native	سریع و بومی
+cadcraft	Pure Rust and egui, with no Electron and no web view.	ساخته‌شده با Rust و egui، بدون Electron یا نمای وب.
+cadcraft	A full drafting toolset	ابزارهای کامل نقشه‌کشی
+cadcraft	Draw, modify, dimension, hatch and block commands, layers with a properties manager, paper-space layouts and PDF plotting.	فرمان‌های ترسیم، اصلاح، اندازه‌گذاری، هاشور و بلوک؛ لایه‌ها با مدیر ویژگی، چیدمان فضای کاغذ و چاپ PDF.
+cadcraft	Built for agents	آماده برای عامل‌های هوشمند
+cadcraft	Every menu item, tool and prompt is a command, available over MCP, a JSON control channel or the CLI.	هر گزینهٔ منو، ابزار و پیام ورودی یک فرمان است؛ در دسترس از طریق MCP، کانال JSON یا خط فرمان.
+cadcraft	An apartment floor plan	پلان یک آپارتمان
+cadcraft	A mechanical bracket drawing	نقشهٔ یک براکت مکانیکی
+cadcraft	A layout sheet	شیت نقشه
+soundcraft	Recording, editing and mixing, in Rust.	ضبط، ویرایش و میکس، با Rust.
+soundcraft	A digital audio workstation that follows the workflow audio engineers already know: an Edit window for arranging and editing, and a Mix window for balancing. Pre-alpha.	ایستگاه کار صوتی دیجیتال با روند کاری آشنا برای مهندسان صدا: پنجرهٔ Edit برای تنظیم و ویرایش و پنجرهٔ Mix برای بالانس صدا. در مرحلهٔ پیش‌آلفا.
+soundcraft	Editing	ویرایش صدا
+soundcraft	Shuffle, Slip, Spot and Grid modes, Smart, Grabber, Trim and other tools, fades and crossfades, playlists with comping lanes and clip gain.	حالت‌های Shuffle، Slip، Spot و Grid؛ ابزارهای Smart، Grabber، Trim و دیگر ابزارها، فید و کراس‌فید، فهرست برداشت‌ها با مسیرهای ترکیب و گین کلیپ.
+soundcraft	Mixing	میکس
+soundcraft	Faders and pans with automation, sends, busses, aux inputs, VCA masters, routing folders and automatic plugin delay compensation.	فیدر و پن با اتوماسیون، ارسال صدا، باس، ورودی کمکی، مستر VCA، پوشهٔ مسیریابی و جبران خودکار تأخیر پلاگین.
+soundcraft	Automation	اتوماسیون
+soundcraft	Volume, pan, mute, send and every plugin parameter, with Write, Touch, Latch and Trim passes recorded live from the faders.	بلندی، پن، قطع صدا، ارسال و تمام پارامترهای پلاگین؛ با ثبت زندهٔ حالت‌های Write، Touch، Latch و Trim از فیدرها.
+soundcraft	Plugins	پلاگین‌ها
+soundcraft	EQ, dynamics, reverbs, modulation effects, a subtractive synth and a drum synth, all original, and CLAP plugins load too.	اکولایزر، پردازش دینامیک، ریورب، افکت مدولاسیون، سینتی‌سایزر کاهشی و سینتی‌سایزر درام اختصاصی؛ با امکان بارگذاری پلاگین‌های CLAP.
+soundcraft	The Edit window with a nine-track session	پنجرهٔ Edit با پروژه‌ای نه‌ترَکه
+soundcraft	The Mix window	پنجرهٔ Mix
+soundcraft	Automation and memory locations	اتوماسیون و نقاط ذخیره‌شده
+soundcraft	The Score Editor	ویرایشگر نت
+figcraft	Interface design and prototyping, in pure Rust.	طراحی رابط و نمونه‌سازی، با Rust.
+figcraft	Design screens, components and prototypes in a native app that opens instantly and works offline, with no account and no telemetry. Early alpha.	طراحی صفحه‌ها، کامپوننت‌ها و نمونه‌های تعاملی در برنامه‌ای بومی که فوری باز می‌شود و آفلاین کار می‌کند؛ بدون حساب کاربری و ارسال دادهٔ استفاده. در مرحلهٔ آلفای اولیه.
+figcraft	Auto layout	چیدمان خودکار
+figcraft	Rows, columns, wrap and grids with padding, gaps and Hug, Fill or Fixed sizing, plus constraints and layout grids.	ردیف، ستون، شکست و شبکه با فاصلهٔ داخلی و بین آیتم‌ها و اندازه‌گذاری Hug، Fill یا Fixed؛ همراه با قیود و شبکهٔ چیدمان.
+figcraft	Components	کامپوننت‌ها
+figcraft	Instances with overrides, variants and properties, styles, and variables with modes bound to fills, strokes and effects.	نمونه‌ها با بازنویسی ویژگی، گونه‌ها و خصوصیات، سبک‌ها و متغیرهای چندحالتهٔ متصل به رنگ زمینه، خط دور و افکت.
+figcraft	Vectors	وکتورها
+figcraft	Real vector networks, the pen and pencil, the shape builder, editable booleans and variable width strokes.	شبکه‌های وکتور واقعی، قلم و مداد، سازندهٔ شکل، ترکیب‌های ویرایش‌پذیر و خطوط با ضخامت متغیر.
+figcraft	Prototypes	نمونه‌های تعاملی
+figcraft	Connections, triggers and animated transitions, variables with conditionals, flows and a presentation view with device frames.	اتصال‌ها، محرک‌ها و گذارهای متحرک، متغیرهای شرطی، جریان‌ها و نمای ارائه با قاب دستگاه.
+figcraft	Hand off	تحویل به توسعه‌دهنده
+figcraft	Inspect mode with measurements, annotations, ready-for-dev status, and code for CSS, HTML, React, SwiftUI and Compose.	نمای بازرسی با اندازه‌گیری، یادداشت، وضعیت آمادهٔ توسعه و کد CSS، HTML، React، SwiftUI و Compose.
+figcraft	Your files	فایل‌های شما
+figcraft	Plain .figcraft files on your own disk. SVG, PNG, JPEG, WebP and PDF in and out, and .fig files open, best effort.	فایل‌های سادهٔ .figcraft روی دیسک خودتان. ورود و خروج SVG، PNG، JPEG، WebP و PDF و تلاش برای باز کردن فایل‌های .fig.
+	Released	تاریخ انتشار
+	No notes were published with this release.	برای این نسخه یادداشت انتشاری ثبت نشده است.
+	GitHub repository	مخزن GitHub
+
+# Menus, notifications, platform formats and backend message templates.
+	Installing, then restarting…	در حال نصب؛ سپس راه‌اندازی دوباره…
+	A new version is available. Would you like to relaunch with the updated version?	نسخهٔ جدیدی در دسترس است. برنامه با نسخهٔ به‌روزشده دوباره باز شود؟
+	What's new	تازه‌ها
+	Released {date}	منتشرشده در {date}
+	Open on GitHub	باز کردن در GitHub
+	ArtCraft Launcher {version}	ArtCraft Launcher {version}
+	Installing on Linux	نصب در Linux
+	Installing on Windows	نصب در Windows
+	Install new apps as	قالب نصب برنامه‌های جدید
+	System package (recommended)	بستهٔ سیستم (پیشنهادی)
+	Updates always use the format an app was installed with.	به‌روزرسانی‌ها همیشه از قالب نصب فعلی برنامه استفاده می‌کنند.
+	Keep running in the tray when the window is closed	ادامهٔ اجرا در نوار سیستم پس از بستن پنجره
+	Show the window on the current desktop	نمایش پنجره در دسکتاپ فعلی
+	Start ArtCraft Launcher when I log in	اجرای ArtCraft Launcher هنگام ورود به سیستم
+	Uninstall {name}?	{name} حذف شود؟
+	The app will be moved to the Trash. Your documents and settings stay.	برنامه به سطل زباله منتقل می‌شود. سندها و تنظیمات شما باقی می‌مانند.
+	Windows will remove it like any installed program. Your documents and settings stay.	Windows برنامه را مانند سایر برنامه‌های نصب‌شده حذف می‌کند. سندها و تنظیمات شما باقی می‌مانند.
+	Your system's package manager will remove it, and may ask for your password. Your documents and settings stay.	مدیر بستهٔ سیستم برنامه را حذف می‌کند و ممکن است رمز عبور بخواهد. سندها و تنظیمات شما باقی می‌مانند.
+	The app will be removed. Your documents and settings stay.	برنامه حذف می‌شود. سندها و تنظیمات شما باقی می‌مانند.
+	Checked {ago}	بررسی: {ago}
+	Stop waiting; the update can be started again later	توقف انتظار؛ به‌روزرسانی را می‌توان بعداً دوباره شروع کرد
+	Install cancelled. The download is kept for the next try.	نصب لغو شد. فایل دریافت‌شده برای تلاش بعدی نگه داشته می‌شود.
+	The download is still here. It's checked again, then installed.	فایل قبلاً دریافت شده است؛ دوباره بررسی و سپس نصب می‌شود.
+	Installer (.msi)	نصب‌کننده (.msi)
+	Portable (.zip)	نسخهٔ قابل حمل (.zip)
+	Disk image (.dmg)	تصویر دیسک (.dmg)
+	Debian package (.deb)	بستهٔ Debian (.deb)
+	RPM package (.rpm)	بستهٔ RPM (.rpm)
+	Flatpak bundle	بستهٔ Flatpak
+	Tarball (.tar.gz)	آرشیو (.tar.gz)
+	GitHub's hourly limit was reached; full details return in {min} min	سقف درخواست ساعتی GitHub پر شده؛ جزئیات کامل تا {min} دقیقهٔ دیگر برمی‌گردد
+	GitHub limit hit; back in {min} min	محدودیت GitHub؛ تلاش دوباره تا {min} دقیقهٔ دیگر
+	ArtCraft on {name}	ArtCraft در {name}
+	Couldn't open {name}: {e}	باز کردن {name} ناموفق بود: {e}
+	installed	نصب‌شده
+	Not available here	اینجا در دسترس نیست
+	Updating…	در حال به‌روزرسانی…
+	Update paused	به‌روزرسانی متوقف شده
+	Download paused	دریافت متوقف شده
+	{installed} installed · latest {latest}	نصب‌شده {installed} · آخرین نسخه {latest}
+	No release published yet	هنوز نسخه‌ای منتشر نشده است
+	ArtCraft Launcher	ArtCraft Launcher
+	Latest	آخرین نسخه
+	Ascending	صعودی
+	Descending	نزولی
+	Click to reverse the order	برای معکوس کردن ترتیب کلیک کنید
+	Click to sort by this column	برای مرتب‌سازی بر اساس این ستون کلیک کنید
+	{done} of {total}	{done} از {total}
+	Downloading	در حال دریافت
+	Resume	ادامه
+	{done} of {total} downloaded	{done} از {total} دریافت شده
+	{done} downloaded	{done} دریافت شده
+	Downloads the new version, replaces this one and opens it again	نسخهٔ جدید را دریافت و جایگزین می‌کند و برنامه را دوباره باز می‌کند
+	Couldn't check for updates: {f}	بررسی به‌روزرسانی ناموفق بود: {f}
+	ArtCraft	ArtCraft
+	⊞  Grid	⊞  کارت‌ها
+	☰  Table	☰  جدول
+	🔍  Search apps	🔍  جست‌وجوی برنامه‌ها
+	{name} {version}	{name} {version}
+	Full changelog	فهرست کامل تغییرات
+	link	پیوند
+	Open ArtCraft Launcher to update.	برای به‌روزرسانی، ArtCraft Launcher را باز کنید.
+	{name} {v} is available	نسخهٔ {v} از {name} در دسترس است
+	{count} updates are available	{count} به‌روزرسانی در دسترس است
+	These notes weren't fetched (GitHub's request limit was reached). They're on the release page.	یادداشت‌ها به‌دلیل محدودیت درخواست GitHub دریافت نشده‌اند. در صفحهٔ انتشار در دسترس‌اند.
+	When on, opening the launcher from the menu bar brings its window to the desktop you're on. When off, macOS switches you to the desktop the window was on.	اگر روشن باشد، باز کردن لانچر از نوار منو پنجره را به دسکتاپ فعلی می‌آورد. اگر خاموش باشد، macOS به دسکتاپی می‌رود که پنجره در آن است.
+	Couldn't change the login item: {e}	تغییر اجرای خودکار هنگام ورود ناموفق بود: {e}
+column	App	برنامه
+@plural	{n} app|{n} apps	{n} برنامه|{n} برنامه
+@msg	Couldn't open {name}: {e}	باز کردن {name} ناموفق بود: {e}
+@msg	Download cancelled	دریافت لغو شد
+@msg	{name} updated to {version}	{name} به نسخهٔ {version} به‌روزرسانی شد
+@msg	{name} installed: {version}	{name} نصب شد: {version}
+@msg	{name} updated to {version} (this release publishes no checksum, so only its size was checked)	{name} به نسخهٔ {version} به‌روزرسانی شد (این انتشار کد صحت‌سنجی ندارد؛ فقط اندازهٔ فایل بررسی شد)
+@msg	{name} installed: {version} (this release publishes no checksum, so only its size was checked)	{name} نصب شد: {version} (این انتشار کد صحت‌سنجی ندارد؛ فقط اندازهٔ فایل بررسی شد)
+@msg	{name} was removed	{name} حذف شد
+@msg	{name} is running. Quit it, then try again.	{name} در حال اجراست. آن را ببندید و دوباره تلاش کنید.
+	Previous picture (←)	تصویر قبلی (←)
+	Next picture (→)	تصویر بعدی (→)
+	Pictures couldn't be loaded. Reopen this page to try again.	تصاویر بارگذاری نشدند. برای تلاش دوباره این صفحه را باز کنید.
+@plural	ArtCraft Launcher · {n} update available|ArtCraft Launcher · {n} updates available	ArtCraft Launcher · {n} به‌روزرسانی در دسترس|ArtCraft Launcher · {n} به‌روزرسانی در دسترس
+	Custom folders use AppImage on Linux.	پوشه‌های سفارشی در Linux از AppImage استفاده می‌کنند.
+	The system manages install locations here.	محل نصب در این محیط توسط سیستم مدیریت می‌شود.
+@msg	couldn't use install folder {path}: {reason}	استفاده از پوشهٔ نصب {path} ممکن نشد: {reason}
+@msg	this release has no AppImage for a custom install folder	این انتشار برای نصب در پوشهٔ سفارشی، AppImage ندارد
+@msg	custom install folders aren't supported on this system	پوشهٔ نصب سفارشی در این سیستم پشتیبانی نمی‌شود
+@msg	{path} already exists and wasn't installed by ArtCraft Launcher	{path} از قبل وجود دارد و توسط ArtCraft Launcher نصب نشده است
+@msg	couldn't move {path} to Trash ({reason}). Remove it in Finder instead.	انتقال {path} به سطل زباله ناموفق بود ({reason}). آن را در Finder حذف کنید.
+	{path} already exists. Installing {name} will overwrite it.	{path} از قبل وجود دارد. نصب {name} آن را بازنویسی می‌کند.
