@@ -252,6 +252,58 @@ fn snapshot(h: &mut Harness<'_, Option<LauncherUi>>, name: &str) {
 }
 
 #[test]
+fn completion_stays_visible_and_batch_results_are_acknowledged_in_order() {
+    let mut ev = events();
+    ev.extend([
+        Event::Progress { app: "filmcraft".into(), phase: JobPhase::Installing },
+        Event::Detected {
+            app: "filmcraft".into(),
+            installed: Some(Installed {
+                version: version::parse("0.4.0"),
+                source: InstallSource::MacApp,
+                location: "/Applications/FilmCraft.app".into(),
+                package: None,
+            }),
+        },
+        Event::JobFinished { app: "filmcraft".into(), result: Ok("FilmCraft 0.4.0 is installed".into()) },
+        Event::Progress { app: "lightcraft".into(), phase: JobPhase::Removing },
+        Event::Detected { app: "lightcraft".into(), installed: None },
+        Event::JobFinished { app: "lightcraft".into(), result: Ok("LightCraft was removed".into()) },
+    ]);
+    let (mut h, sent) = harness_with(ev, ViewMode::Grid, egui::Theme::Dark, true, 1.0);
+    // Ten seconds at 60 fps: the old 4.5-second toast would already have disappeared.
+    h.run_steps(600);
+    h.get_by_label("Setup complete");
+    h.get_by_label("FilmCraft 0.4.0 is installed");
+    assert!(h.query_by_label("LightCraft was removed").is_none());
+    snapshot(&mut h, "install-complete-dark");
+    h.get_by_label("Done").click();
+    h.run_steps(4);
+    h.get_by_label("LightCraft was removed");
+    snapshot(&mut h, "uninstall-complete-dark");
+    h.get_by_label("Done").click();
+    h.run_steps(4);
+    assert!(h.query_by_label("Setup complete").is_none());
+    assert!(!sent.borrow().iter().any(|cmd| matches!(cmd, Command::Launch { .. })));
+}
+
+#[test]
+fn cancelled_and_failed_jobs_do_not_show_success_completion() {
+    let mut ev = events();
+    ev.extend([
+        Event::Progress { app: "filmcraft".into(), phase: JobPhase::Installing },
+        Event::JobFinished { app: "filmcraft".into(), result: Err(INSTALL_CANCELLED.into()) },
+        Event::Progress { app: "lightcraft".into(), phase: JobPhase::Removing },
+        Event::JobFinished { app: "lightcraft".into(), result: Err("Permission denied".into()) },
+    ]);
+    let (mut h, _) = harness_with(ev, ViewMode::Grid, egui::Theme::Light, true, 1.0);
+    h.run_steps(6);
+    assert!(h.query_by_label("Setup complete").is_none());
+    h.get_by_label("Install cancelled");
+    h.get_by_label("Permission denied");
+}
+
+#[test]
 fn keeps_working_with_no_window_then_draws_in_a_new_one() {
     let sent = Rc::new(RefCell::new(Vec::new()));
     let backend =

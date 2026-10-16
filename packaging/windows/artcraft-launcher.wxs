@@ -4,17 +4,17 @@
   extensions: `wix extension add -g WixToolset.UI.wixext/5.0.2 WixToolset.Util.wixext/5.0.2`).
   Built by package.ps1:
 
-    wix build artcraft-launcher.wxs -arch x64 -ext WixToolset.UI.wixext -ext WixToolset.Util.wixext
+    wix build artcraft-launcher.wxs installer-ui.wxs -arch x64 -ext WixToolset.UI.wixext -ext WixToolset.Util.wixext
       -culture en-US -loc artcraft-launcher.en-us.wxl -d Version=1.2.3 -d DisplayVersion=1.2.3-rc.1
-      -d BinDir=... -d IconPath=... -d BannerBmp=... -d DialogBmp=... -o out.msi
+      -d BinDir=... -d IconPath=... -o out.msi
 
   Per-user install (no UAC prompt), by default into %LOCALAPPDATA%\Programs\ArtCraft Launcher, so
   the launcher can update itself without elevation, plus a Start Menu shortcut. The shortcut
   carries the AppUserModelID ai.storyteller.artcraft-launcher, which Windows needs to show toast
   notifications from an unpackaged app and to group the taskbar button. No file associations.
 
-  Double-clicked, it opens a setup wizard that names the version: Welcome; a folder page to pick
-  where it goes, with a "Create a desktop shortcut" box; Ready; a progress page; and a Finish page
+  Double-clicked, it opens the suite's shared setup wizard: Welcome, with a "Create a desktop
+  shortcut" box; a folder page to pick where it goes; a progress page; and a Finish page
   with a ticked "Launch ArtCraft Launcher" box. There is no licence page (the code is MIT OR
   Apache-2.0; nothing to accept). The install folder and the desktop-shortcut choice are recorded
   under HKCU and reused by later versions, so an update (the launcher's own self-update runs this
@@ -58,7 +58,7 @@
 
     <!-- An update installs where the user put the previous version (recorded by
          ArtCraftLauncherApp below; every version since 0.1.0 records it). -->
-    <Property Id="INSTALLFOLDER">
+    <Property Id="INSTALLFOLDER" Secure="yes">
       <RegistrySearch Id="PreviousInstallFolder" Root="HKCU" Key="Software\Learning Machines LLC\ArtCraft Launcher" Name="InstallDir" Type="raw" />
     </Property>
 
@@ -79,65 +79,25 @@
 
     <Feature Id="Main" Title="ArtCraft Launcher" Level="1">
       <ComponentGroupRef Id="ArtCraftLauncherFiles" />
+      <ComponentGroupRef Id="CraftInstallerSettings" />
     </Feature>
 
-    <!-- The setup wizard: WixUI_InstallDir without its licence page, and with our folder page
-         (ArtCraftInstallDirDlg: the stock one plus the desktop-shortcut box) in place of the stock
-         one. A later NewDialog on the same button wins. -->
-    <ui:WixUI Id="WixUI_InstallDir" InstallDirectory="INSTALLFOLDER" />
-    <UI>
-      <Publish Dialog="WelcomeDlg" Control="Next" Event="NewDialog" Value="ArtCraftInstallDirDlg" Order="2" Condition="NOT Installed" />
-      <Publish Dialog="VerifyReadyDlg" Control="Back" Event="NewDialog" Value="ArtCraftInstallDirDlg" Order="2" Condition="NOT Installed" />
-      <Publish Dialog="ExitDialog" Control="Finish" Event="DoAction" Value="LaunchArtCraftLauncher"
-          Condition="WIXUI_EXITDIALOGOPTIONALCHECKBOX = 1 AND NOT Installed" />
 
-      <Dialog Id="ArtCraftInstallDirDlg" Width="370" Height="270" Title="!(loc.InstallDirDlg_Title)">
-        <Control Id="Next" Type="PushButton" X="236" Y="243" Width="56" Height="17" Default="yes" Text="!(loc.WixUINext)">
-          <!-- As WixUI_InstallDir does for its own folder page: take the folder, check it, go on. -->
-          <Publish Event="SetTargetPath" Value="[WIXUI_INSTALLDIR]" Order="1" />
-          <Publish Event="DoAction" Value="WixUIValidatePath_$(sys.BUILDARCHSHORT)" Order="2" Condition="NOT WIXUI_DONTVALIDATEPATH" />
-          <Publish Event="SpawnDialog" Value="InvalidDirDlg" Order="3" Condition="NOT WIXUI_DONTVALIDATEPATH AND WIXUI_INSTALLDIR_VALID&lt;&gt;&quot;1&quot;" />
-          <Publish Event="NewDialog" Value="VerifyReadyDlg" Order="4" Condition="WIXUI_DONTVALIDATEPATH OR WIXUI_INSTALLDIR_VALID=&quot;1&quot;" />
-        </Control>
-        <Control Id="Back" Type="PushButton" X="180" Y="243" Width="56" Height="17" Text="!(loc.WixUIBack)">
-          <Publish Event="NewDialog" Value="WelcomeDlg" />
-        </Control>
-        <Control Id="Cancel" Type="PushButton" X="304" Y="243" Width="56" Height="17" Cancel="yes" Text="!(loc.WixUICancel)">
-          <Publish Event="SpawnDialog" Value="CancelDlg" />
-        </Control>
 
-        <Control Id="Description" Type="Text" X="25" Y="23" Width="280" Height="15" Transparent="yes" NoPrefix="yes" Text="!(loc.InstallDirDlgDescription)" />
-        <Control Id="Title" Type="Text" X="15" Y="6" Width="200" Height="15" Transparent="yes" NoPrefix="yes" Text="!(loc.InstallDirDlgTitle)" />
-        <Control Id="BannerBitmap" Type="Bitmap" X="0" Y="0" Width="370" Height="44" TabSkip="no" Text="!(loc.InstallDirDlgBannerBitmap)" />
-        <Control Id="BannerLine" Type="Line" X="0" Y="44" Width="370" Height="0" />
-        <Control Id="BottomLine" Type="Line" X="0" Y="234" Width="370" Height="0" />
 
-        <Control Id="FolderLabel" Type="Text" X="20" Y="60" Width="290" Height="30" NoPrefix="yes" Text="!(loc.InstallDirDlgFolderLabel)" />
-        <Control Id="Folder" Type="PathEdit" X="20" Y="100" Width="320" Height="18" Property="WIXUI_INSTALLDIR" Indirect="yes" />
-        <Control Id="ChangeFolder" Type="PushButton" X="20" Y="120" Width="56" Height="17" Text="!(loc.InstallDirDlgChange)">
-          <Publish Property="_BrowseProperty" Value="[WIXUI_INSTALLDIR]" Order="1" />
-          <Publish Event="SpawnDialog" Value="BrowseDlg" Order="2" />
-        </Control>
-        <Control Id="PerUserNote" Type="Text" X="20" Y="146" Width="330" Height="24" NoPrefix="yes" Text="!(loc.ArtCraftInstallDirNote)" />
 
-        <Control Id="DesktopShortcut" Type="CheckBox" X="20" Y="186" Width="330" Height="17" Property="INSTALLDESKTOPSHORTCUT" CheckBoxValue="1" Text="!(loc.ArtCraftDesktopShortcut)" />
-      </Dialog>
-    </UI>
-    <!-- Our own art, drawn by package.ps1 from the ArtCraft mark and the Craft apps' icons. -->
-    <WixVariable Id="WixUIBannerBmp" Value="$(var.BannerBmp)" />
-    <WixVariable Id="WixUIDialogBmp" Value="$(var.DialogBmp)" />
-
-    <!-- The full version (Version is numeric, so it drops a pre-release tag), shown on the wizard's
-         pages through artcraft-launcher.en-us.wxl. -->
     <Property Id="ArtCraftLauncherVersion" Value="$(var.DisplayVersion)" />
 
     <!-- Finish page: say where to find the launcher, and offer to start it (ticked by default). -->
-    <Property Id="WIXUI_EXITDIALOGOPTIONALTEXT" Value="ArtCraft Launcher $(var.DisplayVersion) is installed. Start it any time from the Start menu to install and update the Craft App Suite." />
     <Property Id="WIXUI_EXITDIALOGOPTIONALCHECKBOXTEXT" Value="Launch ArtCraft Launcher" />
     <Property Id="WIXUI_EXITDIALOGOPTIONALCHECKBOX" Value="1" />
     <Property Id="WixShellExecTarget" Value="[#ArtCraftLauncherExe]" />
     <!-- Runs in the wizard's own process, so the launcher starts as the user. -->
     <CustomAction Id="LaunchArtCraftLauncher" BinaryRef="Wix4UtilCA_$(sys.BUILDARCHSHORT)" DllEntry="WixShellExec" Impersonate="yes" Return="ignore" />
+    <!-- Shared full UI; app installation policy remains below. -->
+    <!-- Preserve the previous stock WiX wizard's ARP Modify policy. -->
+    <Property Id="ARPNOMODIFY" Value="1" />
+    <UIRef Id="CraftInstallerUI" />
   </Package>
 
   <Fragment>

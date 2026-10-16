@@ -1,5 +1,6 @@
 //! [`LauncherUi`]: state, event handling and the page layout.
 
+use std::collections::VecDeque;
 use std::time::Duration;
 
 use artcraft_launcher_core::protocol::{
@@ -27,6 +28,67 @@ pub enum TitleBar {
     Custom,
     /// macOS: the header runs under a transparent title bar, with the traffic lights at its left.
     MacOs,
+}
+
+#[cfg(test)]
+mod completion_tests {
+    use super::*;
+
+    struct IdleBackend;
+
+    impl Backend for IdleBackend {
+        fn send(&mut self, _: Command) {}
+        fn poll(&mut self) -> Vec<Event> {
+            Vec::new()
+        }
+        fn capabilities(&self) -> Capabilities {
+            Capabilities { manage_apps: true, reveal_label: "Show in file manager", self_update: false }
+        }
+        fn platform(&self) -> Option<Platform> {
+            None
+        }
+        fn now(&self) -> i64 {
+            1
+        }
+    }
+
+    #[test]
+    fn completion_waits_for_launcher_update_dialog_to_close() {
+        struct NoHost;
+        impl Host for NoHost {}
+
+        let ctx = egui::Context::default();
+        let mut ui = LauncherUi::new(&ctx, Box::new(IdleBackend), Settings::default());
+        let update = Release { tag: "v0.4.0".into(), ..Release::default() };
+        ui.dialog = Some(Dialog::LauncherUpdate(update.clone()));
+        ui.handle(&ctx, Event::Progress { app: "filmcraft".into(), phase: JobPhase::Installing });
+        ui.handle(&ctx, Event::JobFinished { app: "filmcraft".into(), result: Ok("FilmCraft is installed".into()) });
+        let mut host = NoHost;
+        // This headless test observes dialog state without rendering texture updates.
+        ctx.run_ui(egui::RawInput::default(), |root_ui| ui.dialogs(root_ui.ctx(), &mut host)).textures_delta.clear();
+        assert_eq!(ui.dialog, Some(Dialog::LauncherUpdate(update)));
+        assert_eq!(ui.completions.len(), 1);
+        ui.dialog = None;
+        ctx.run_ui(egui::RawInput::default(), |root_ui| ui.dialogs(root_ui.ctx(), &mut host)).textures_delta.clear();
+        assert_eq!(ui.dialog, Some(Dialog::Completion { app: "filmcraft".into(), message: "FilmCraft is installed".into() }));
+        assert!(ui.completions.is_empty());
+    }
+
+    #[test]
+    fn hidden_window_result_survives_attach_and_preserves_an_open_dialog() {
+        let ctx = egui::Context::default();
+        let mut ui = LauncherUi::new(&ctx, Box::new(IdleBackend), Settings::default());
+        ui.dialog = Some(Dialog::Settings);
+        ui.handle(&ctx, Event::Progress { app: "filmcraft".into(), phase: JobPhase::Installing });
+        ui.handle(&ctx, Event::JobFinished { app: "filmcraft".into(), result: Ok("FilmCraft is installed".into()) });
+        assert_eq!(ui.dialog, Some(Dialog::Settings));
+        assert_eq!(ui.completions.front(), Some(&("filmcraft".into(), "FilmCraft is installed".into())));
+        // No UI frames run while the launcher is hidden. Opening a new native window
+        // resets context-bound state, but must retain the pending completion.
+        ui.attach(&egui::Context::default());
+        assert_eq!(ui.completions.len(), 1);
+        assert_eq!(ui.dialog, Some(Dialog::Settings));
+    }
 }
 
 /// What only the shell can do. Every method has a do-nothing default (the web build).
@@ -73,6 +135,7 @@ pub(crate) enum Dialog {
     Notes(String),
     ConfirmUninstall(String),
     Settings,
+    Completion { app: String, message: String },
     LauncherUpdate(artcraft_launcher_core::Release),
 }
 
@@ -84,6 +147,7 @@ impl Dialog {
             Dialog::Notes(id) => ("notes", id),
             Dialog::ConfirmUninstall(id) => ("uninstall", id),
             Dialog::Settings => ("settings", ""),
+            Dialog::Completion { app, .. } => ("completion", app),
             Dialog::LauncherUpdate(r) => ("launcher-update", &r.tag),
         }
     }
@@ -120,6 +184,8 @@ pub struct LauncherUi {
     pub(crate) detail_zoom: bool,
     /// The details pictures the backend has sent (or been asked for), by app and picture key.
     pub(crate) pictures: std::collections::HashMap<(String, String), crate::details::Picture>,
+    /// Finished jobs stay available while the window is hidden or another dialog is open.
+    pub(crate) completions: VecDeque<(String, String)>,
     started: bool,
     applied_theme: Option<theme::ThemeChoice>,
     /// The OS asks for fewer animations: what the host last said, and the context's time to ask
@@ -188,6 +254,7 @@ impl LauncherUi {
             detail_shot: 0,
             detail_zoom: false,
             pictures: std::collections::HashMap::new(),
+            completions: VecDeque::new(),
             started: false,
             applied_theme: None,
             reduce_motion: false,
@@ -377,6 +444,9 @@ impl LauncherUi {
                 }
                 let kept = self.entry(&app).is_some_and(|e| e.ready);
                 match result {
+                    Ok(msg) if !launcher && last.is_some() && self.entry(&app).is_some() => {
+                        self.completions.push_back((app, msg));
+                    }
                     Ok(msg) => self.toast(ctx, msg, false),
                     // The paused card says it all.
                     Err(e) if e == PAUSED => {}

@@ -61,6 +61,10 @@ hunting through a dozen release pages: it lists every app in the suite, shows wh
 and which version, installs the right build for your operating system and processor, and tells
 you when an update is out. It is a small native app that can sit in your menu bar or system tray.
 
+When an installation, update or removal finishes successfully, a completion dialog stays open
+until dismissed. Results from several jobs appear one at a time, including jobs that finished
+while the launcher was hidden in the tray.
+
 ## Features
 
 <table>

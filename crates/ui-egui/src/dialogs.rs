@@ -12,6 +12,13 @@ use crate::widgets::{self, Cell, Kind};
 
 impl LauncherUi {
     pub(crate) fn dialogs(&mut self, ctx: &egui::Context, host: &mut dyn Host) {
+        // A completion must not replace settings or a removal confirmation. Queue batch
+        // results and show them one at a time, including jobs finished while in the tray.
+        if self.dialog.is_none()
+            && let Some((app, message)) = self.completions.pop_front()
+        {
+            self.dialog = Some(Dialog::Completion { app, message });
+        }
         let Some(dialog) = self.dialog.clone() else {
             self.alert_popup(ctx);
             return;
@@ -27,10 +34,22 @@ impl LauncherUi {
             Dialog::ConfirmUninstall(id) => modal.show(ctx, |ui| close = self.uninstall_dialog(ui, id)),
             Dialog::Settings => modal.show(ctx, |ui| close = self.settings_dialog(ui, host)),
             Dialog::LauncherUpdate(r) => modal.show(ctx, |ui| close = self.launcher_update_dialog(ui, r)),
+            Dialog::Completion { app, message } => modal.show(ctx, |ui| close = self.completion_dialog(ui, app, message)),
         };
         if close || response.should_close() {
             self.dialog = None;
         }
+    }
+
+    fn completion_dialog(&self, ui: &mut egui::Ui, app: &str, message: &str) -> bool {
+        let t = Tokens::get(ui.ctx());
+        ui.set_width(420.0f32.min((ui.ctx().content_rect().width() - 80.0).max(120.0)));
+        Self::title(ui, crate::icons::app(app), tl!("Setup complete"), "");
+        egui::ScrollArea::vertical().max_height(ui.ctx().content_rect().height() * 0.5).show(ui, |ui| {
+            ui.add(egui::Label::new(RichText::new(crate::i18n::msg(message)).color(t.ink)).wrap());
+        });
+        ui.add_space(20.0);
+        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| widgets::button(ui, tl!("Done"), Kind::Primary, 90.0).clicked()).inner
     }
 
     /// The first alert from the release feed the user hasn't acknowledged, as a popup.

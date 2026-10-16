@@ -137,6 +137,17 @@ fn strip_cli_prefix<'a>(line: &'a str, prefix: &str) -> Option<&'a str> {
     }
 }
 
+// Settings has a separate, visible command entry. Only native MSI entries are product
+// codes that can be passed to msiexec; hidden SystemComponent entries remain discoverable.
+#[cfg(any(windows, test))]
+fn is_msi_product_key(code: &str, windows_installer: u32) -> bool {
+    if windows_installer != 1 {
+        return false;
+    }
+    let Some(body) = code.strip_prefix('{').and_then(|s| s.strip_suffix('}')) else { return false };
+    body.len() == 36 && body.bytes().enumerate().all(|(i, b)| if matches!(i, 8 | 13 | 18 | 23) { b == b'-' } else { b.is_ascii_hexdigit() })
+}
+
 #[cfg(target_os = "macos")]
 pub mod macos {
     use std::path::{Path, PathBuf};
@@ -198,6 +209,9 @@ pub mod windows {
             let Ok(root) = RegKey::predef(hive).open_subkey_with_flags(UNINSTALL, KEY_READ | flags) else { continue };
             for code in root.enum_keys().flatten() {
                 let Ok(key) = root.open_subkey_with_flags(&code, KEY_READ | flags) else { continue };
+                if !is_msi_product_key(&code, key.get_value::<u32, _>("WindowsInstaller").unwrap_or_default()) {
+                    continue;
+                }
                 let name: String = key.get_value("DisplayName").unwrap_or_default();
                 let publisher: String = key.get_value("Publisher").unwrap_or_default();
                 if !is_installer_entry(app, &name, &publisher) || out.iter().any(|m: &MsiInstall| m.product_code == code) {
@@ -250,6 +264,30 @@ pub mod windows {
             location: m.exe.map_or_else(|| app.name.to_string(), |p| p.display().to_string()),
             package: Some(m.product_code),
         })
+    }
+}
+
+#[cfg(test)]
+mod msi_identity_tests {
+    use super::is_msi_product_key;
+
+    #[test]
+    fn settings_aliases_and_malformed_keys_are_not_msi_product_codes() {
+        let code = "{119D7D76-0167-4A9E-8F37-09DA0235F68E}";
+        assert!(is_msi_product_key(code, 1));
+        assert!(is_msi_product_key(&code.to_lowercase(), 1));
+        assert!(!is_msi_product_key(code, 0));
+        assert!(!is_msi_product_key(code, 2));
+        for key in [
+            "Craft.cadcraft",
+            "",
+            "119D7D76-0167-4A9E-8F37-09DA0235F68E",
+            "{119D7D76-0167-4A9E-8F37-09DA0235F68G}",
+            "{119D7D76_0167-4A9E-8F37-09DA0235F68E}",
+            "{é}",
+        ] {
+            assert!(!is_msi_product_key(key, 1), "{key}");
+        }
     }
 }
 
