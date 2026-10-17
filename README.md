@@ -193,7 +193,7 @@ cargo run --release -p artcraft-launcher   # the desktop app
 cargo xtask ci                             # fmt, clippy, tests and the wasm check
 ```
 
-The web version builds with [trunk](https://trunkrs.dev/):
+The web version builds with [trunk](https://trunk-rs.github.io/trunk/):
 
 ```sh
 rustup target add wasm32-unknown-unknown
