@@ -1,6 +1,7 @@
 //! Finding Craft Apps that are already installed, however they got there.
 //!
-//! - macOS: `<App>.app` in `/Applications` or `~/Applications`, read from its `Info.plist`.
+//! - macOS: `<App>.app` in `/Applications`, `/Applications/CraftSuite` or `~/Applications`, read
+//!   from its `Info.plist`.
 //! - Windows: the Windows Installer's uninstall entries (`Learning Machines LLC`), and portable
 //!   copies the launcher unpacked.
 //! - Linux: AppImages in `~/Applications` (where the launcher and AppImageLauncher put them),
@@ -143,10 +144,10 @@ pub mod macos {
 
     use super::*;
 
-    /// Where a `.app` might be: the system and the user's Applications folders.
+    /// Where a `.app` might be: the system, CraftSuite and the user's Applications folders.
     pub fn candidates(app: &CraftApp) -> Vec<PathBuf> {
         let bundle = format!("{}.app", app.name);
-        let mut out = vec![Path::new("/Applications").join(&bundle)];
+        let mut out = vec![Path::new("/Applications").join(&bundle), Path::new("/Applications/CraftSuite").join(&bundle)];
         if let Some(home) = dirs::home_dir() {
             out.push(home.join("Applications").join(&bundle));
         }
@@ -528,6 +529,13 @@ mod tests {
         ] {
             assert_eq!(v(other), None, "{other}");
         }
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn looks_for_apps_in_the_craft_suite_folder() {
+        let app = CraftApp::by_id("photocraft").unwrap();
+        assert!(macos::candidates(app).contains(&PathBuf::from("/Applications/CraftSuite/PhotoCraft.app")));
     }
 
     #[test]

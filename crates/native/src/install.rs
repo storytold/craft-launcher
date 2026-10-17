@@ -2,7 +2,7 @@
 //!
 //! Apps go where their platform keeps applications, installed the platform's own way:
 //!
-//! - macOS: the signed `.app` from the release DMG into `/Applications`.
+//! - macOS: the signed `.app` from the release DMG into `/Applications` or the selected folder.
 //! - Windows: the release MSI (Windows Installer) into `C:\Program Files\<App>`.
 //! - Linux: the distro's own package (`.deb` through apt on the Debian family, `.rpm` through
 //!   dnf/zypper/rpm on the Fedora, Red Hat and SUSE families, read from `os-release`) with the
@@ -207,9 +207,7 @@ fn selected_folder(folder: &str, writable: bool) -> Result<PathBuf, String> {
     if !path.is_absolute() {
         return Err(invalid("choose an absolute path"));
     }
-    if !path.is_dir() {
-        return Err(invalid("the folder is unavailable. Create it or reconnect its drive first"));
-    }
+    std::fs::create_dir_all(&path).map_err(|e| invalid(&format!("couldn't create the folder ({e})")))?;
     if writable {
         let probe = path.join(format!(
             ".artcraft-launcher-write-test-{}-{}",
@@ -1405,7 +1403,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn selected_folders_must_exist_and_leave_no_probe_files() {
+    fn selected_folders_are_created_and_leave_no_probe_files() {
         let dir = tempfile::tempdir().unwrap();
         assert_eq!(selected_folder(dir.path().to_str().unwrap(), true).unwrap(), dir.path());
         assert_eq!(std::fs::read_dir(dir.path()).unwrap().count(), 0);
@@ -1416,8 +1414,9 @@ mod tests {
             assert_eq!(selected_folder(quoted.to_str().unwrap(), true).unwrap(), quoted);
         }
         let missing = dir.path().join("unavailable/Apps");
-        assert!(selected_folder(missing.to_str().unwrap(), true).is_err());
-        assert!(!missing.exists());
+        assert_eq!(selected_folder(missing.to_str().unwrap(), true).unwrap(), missing);
+        assert!(missing.is_dir());
+        assert_eq!(std::fs::read_dir(&missing).unwrap().count(), 0);
         assert!(selected_folder("relative/folder", true).is_err());
         assert!(selected_folder("bad\nfolder", true).is_err());
         let app = CraftApp::by_id("photocraft").unwrap();

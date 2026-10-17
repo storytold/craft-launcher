@@ -353,6 +353,7 @@ filter	Installed	インストール済み
 	System default	システムの既定
 	Browse…	参照…
 	Use default	既定を使用
+	Install new apps in /Applications/CraftSuite	新しいアプリを /Applications/CraftSuite にインストール
 	New installs use this folder. Updates stay in their current location.	新しいインストールにはこのフォルダーを使用します。更新時は現在の場所を維持します。
 	Custom folders use AppImage on Linux.	Linuxで任意のフォルダーにインストールする場合はAppImageを使用します。
 	The system manages install locations here.	この環境ではシステムがインストール先を管理します。

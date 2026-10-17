@@ -318,6 +318,7 @@ filter	Installed	Nainstalováno
 	System default	Výchozí nastavení systému
 	Browse…	Procházet…
 	Use default	Použít výchozí
+	Install new apps in /Applications/CraftSuite	Instalovat nové aplikace do /Applications/CraftSuite
 	New installs use this folder. Updates stay in their current location.	Nové instalace používají tuto složku. Aktualizace zůstávají v aktuálním umístění.
 	Custom folders use AppImage on Linux.	Vlastní složky používají v Linuxu formát AppImage.
 	The system manages install locations here.	Umístění instalací zde spravuje systém.
