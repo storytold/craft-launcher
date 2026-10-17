@@ -44,7 +44,7 @@ fn main() -> ExitCode {
         println!("artcraft-launcher {}", env!("CARGO_PKG_VERSION"));
         return ExitCode::SUCCESS;
     }
-    let mut hidden = args.iter().any(|a| a == login::HIDDEN_FLAG);
+    let hidden_flag = args.iter().any(|a| a == login::HIDDEN_FLAG);
 
     let wake: Wake = Arc::new(OnceLock::new());
     let starts = match single_instance::claim(wake.clone()) {
@@ -91,9 +91,15 @@ fn main() -> ExitCode {
     }
     // Started hidden at login where a window can't hide: start in the tray without mapping one,
     // so no window flashes up. Without a tray to come back from, the window opens after all.
+    let saved: Option<Settings> = settings_path.as_deref().and_then(|p| settings_file::load(p, SETTINGS_KEY));
+    let (mut hidden, mut minimized) = match start_mode(hidden_flag, saved.as_ref()) {
+        StartMode::Tray => (true, false),
+        StartMode::Minimized => (false, true),
+        StartMode::Normal => (false, false),
+    };
     let mut window = true;
     if hidden && !window_can_hide_here(|name| std::env::var_os(name)) {
-        let settings = settings_path.as_deref().and_then(|p| settings_file::load(p, SETTINGS_KEY));
+        let settings = saved;
         launcher.start(settings, &waker);
         window = launcher.tray.is_none();
     }
@@ -108,7 +114,7 @@ fn main() -> ExitCode {
                     native_options(hidden),
                     Box::new(move |cc| {
                         launcher.open(cc, &waker);
-                        Ok(Box::new(Shell::new(cc, launcher, hidden)))
+                        Ok(Box::new(Shell::new(cc, launcher, hidden, minimized)))
                     }),
                 )
             };
@@ -124,8 +130,30 @@ fn main() -> ExitCode {
         if !launcher.wait_in_tray(&woken) {
             return ExitCode::SUCCESS;
         }
-        hidden = false;
+        (hidden, minimized) = (false, false);
         window = true;
+    }
+}
+
+/// How the launcher's first window opens.
+#[derive(Debug, PartialEq, Eq)]
+enum StartMode {
+    Normal,
+    Minimized,
+    /// No window: in the tray. Without a tray to come back from, the window opens anyway.
+    Tray,
+}
+
+/// The `--hidden` flag (start at login) or the saved settings choose; a missing or unreadable
+/// settings file (`None`) means a normal start. The tray wins over minimized.
+fn start_mode(hidden_flag: bool, saved: Option<&Settings>) -> StartMode {
+    let saved = saved.cloned().unwrap_or_default();
+    if hidden_flag || saved.start_in_tray {
+        StartMode::Tray
+    } else if saved.start_minimized {
+        StartMode::Minimized
+    } else {
+        StartMode::Normal
     }
 }
 
@@ -628,7 +656,7 @@ struct Shell<'a> {
 }
 
 impl<'a> Shell<'a> {
-    fn new(cc: &eframe::CreationContext<'_>, launcher: &'a mut Launcher, hidden: bool) -> Self {
+    fn new(cc: &eframe::CreationContext<'_>, launcher: &'a mut Launcher, hidden: bool, minimized: bool) -> Self {
         let window_hides = window_can_hide(cc.display_handle().ok().map(|d| d.as_raw()));
         // Started hidden at login but there's no tray to come back from: show the window.
         let visible = !hidden || launcher.tray.is_none();
@@ -637,6 +665,8 @@ impl<'a> Shell<'a> {
             shell.put_away(&cc.egui_ctx);
         } else if hidden {
             cc.egui_ctx.send_viewport_cmd(egui::ViewportCommand::Visible(true));
+        } else if minimized {
+            cc.egui_ctx.send_viewport_cmd(egui::ViewportCommand::Minimized(true));
         }
         shell
     }
@@ -820,6 +850,35 @@ mod tests {
         assert!(window_can_hide_here(env(&[("DISPLAY", ":0")])));
         assert!(window_can_hide_here(env(&[("WAYLAND_DISPLAY", ""), ("DISPLAY", ":0")])));
         assert!(window_can_hide_here(env(&[])));
+    }
+
+    #[test]
+    fn startup_settings_choose_how_the_window_opens() {
+        let with = |start_minimized, start_in_tray| Settings { start_minimized, start_in_tray, ..Settings::default() };
+        assert_eq!(start_mode(false, None), StartMode::Normal);
+        assert_eq!(start_mode(false, Some(&with(false, false))), StartMode::Normal);
+        assert_eq!(start_mode(false, Some(&with(true, false))), StartMode::Minimized);
+        assert_eq!(start_mode(false, Some(&with(false, true))), StartMode::Tray);
+        assert_eq!(start_mode(false, Some(&with(true, true))), StartMode::Tray);
+        assert_eq!(start_mode(true, None), StartMode::Tray);
+    }
+
+    #[test]
+    fn startup_settings_load_from_old_and_broken_files() {
+        let read = |text: &'static str| eframe::get_value::<Settings>(&OneKey(text), "k");
+        assert_eq!(read("(notify:false)").map(|s| (s.start_minimized, s.start_in_tray)), Some((false, false)));
+        assert!(read("(start_in_tray:true)").is_some_and(|s| s.start_in_tray));
+        assert!(read("garbage {").is_none());
+    }
+
+    struct OneKey(&'static str);
+    impl eframe::Storage for OneKey {
+        fn get_string(&self, _: &str) -> Option<String> {
+            Some(self.0.to_string())
+        }
+        fn set_string(&mut self, _: &str, _: String) {}
+        fn remove_string(&mut self, _: &str) {}
+        fn flush(&mut self) {}
     }
 
     #[test]
