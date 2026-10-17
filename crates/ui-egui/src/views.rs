@@ -159,7 +159,7 @@ impl LauncherUi {
                                     ),
                                     JobPhase::Downloading { .. } | JobPhase::Reconnecting { .. } => (None, tl!("Downloading…").to_string()),
                                     JobPhase::Verifying => (None, tl!("Verifying…").to_string()),
-                                    JobPhase::Waiting => (None, tl!("Waiting for other installs…").to_string()),
+                                    JobPhase::Waiting | JobPhase::Queued => (None, tl!("Waiting for other installs…").to_string()),
                                     JobPhase::Installing | JobPhase::Removing => (None, tl!("Installing, then restarting…").to_string()),
                                 };
                                 // Another app's install can hang on a password prompt: the wait can be called off.
@@ -725,12 +725,14 @@ impl LauncherUi {
                 }
                 JobPhase::Verifying => (None, tl!("Verifying checksum…").into(), rgb(entry.app.color)),
                 JobPhase::Waiting => (None, tl!("Waiting for another app…").into(), rgb(entry.app.color)),
+                JobPhase::Queued => (None, tl!("Waiting for another download…").into(), rgb(entry.app.color)),
                 JobPhase::Installing => (None, tl!("Installing…").into(), rgb(entry.app.color)),
                 JobPhase::Removing => (None, tl!("Removing…").into(), rgb(entry.app.color)),
             };
             let downloading = matches!(phase, JobPhase::Downloading { .. } | JobPhase::Reconnecting { .. });
-            // A job waiting for the installer hasn't started it yet, so it can still be called off.
-            let waiting = phase == JobPhase::Waiting;
+            // A job waiting for its download or for the installer hasn't started it yet, so it can
+            // still be called off.
+            let waiting = matches!(phase, JobPhase::Queued | JobPhase::Waiting);
             // Waiting has one square button beside the bar, like the menu otherwise.
             widgets::progress(ui, fraction, &caption, color, if downloading { bar_w } else { main_w });
             if downloading && widgets::glyph_button(ui, widgets::Glyph::Pause, tl!("Pause download")).clicked() {

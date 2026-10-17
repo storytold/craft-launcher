@@ -82,7 +82,27 @@ pub fn install_at(
         return Err(format!("{} is running. Quit it, then try again.", app.name));
     }
     log::info!("{}: starting {} to {} ({})", app.name, if existing.is_some() { "update" } else { "install" }, release.version_label(), kind.label());
-    let file = download(release, asset, job)?;
+    let file = {
+        let dest = download_path(job.paths, asset);
+        // A download finished on an earlier try only needs checking: it doesn't wait its turn.
+        let _turn = if crate::http::finished(&dest, asset.size) {
+            None
+        } else {
+            let phase = &mut *job.phase;
+            let mut queued = false;
+            let turn = DOWNLOADS.turn(app.id, &|| job.stop.check(), &mut || {
+                queued = true;
+                phase(JobPhase::Queued);
+            })?;
+            if queued {
+                log::info!("{}: its turn to download came", app.name);
+                let done = crate::http::partial_bytes(&dest, asset.size).unwrap_or(0);
+                phase(JobPhase::Downloading { done, total: asset.size });
+            }
+            Some(turn)
+        };
+        download(release, asset, job)?
+    };
     log::info!("{}: download ready ({}), running installer...", app.name, file.display());
     // Past this point the install can't be interrupted halfway.
     (job.phase)(JobPhase::Installing);
@@ -590,6 +610,9 @@ const SHARED_CALL: &str = "apps together. Try them one at a time.";
 pub fn failed_in_shared_call(error: &str) -> bool {
     cfg!(target_os = "linux") && error.ends_with(SHARED_CALL)
 }
+
+/// Apps download one at a time, in the order they are on screen; the others wait their turn here.
+pub static DOWNLOADS: crate::downloads::Downloads = crate::downloads::Downloads::new();
 
 /// The system's installer runs one job at a time; the others wait their turn here.
 #[cfg(any(target_os = "linux", windows))]
