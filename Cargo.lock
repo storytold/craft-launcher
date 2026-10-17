@@ -296,6 +296,7 @@ dependencies = [
  "tray-icon",
  "winreg",
  "winresource",
+ "x11rb",
  "zbus",
 ]
 
