@@ -83,12 +83,14 @@ impl LauncherUi {
     /// Draws the drawer for `self.detail`, sliding in and out. Call it every frame, after the
     /// main panels, so it covers them.
     pub(crate) fn details_drawer(&mut self, ctx: &egui::Context) {
+        let mut reset_scroll = false;
         if let Some(id) = &self.detail
             && self.detail_shown.as_ref() != Some(id)
         {
             self.detail_shown = Some(id.clone());
             self.detail_shot = 0;
             self.detail_zoom = false;
+            reset_scroll = true;
             let app = id.clone();
             self.request_pictures(&app);
         }
@@ -132,7 +134,11 @@ impl LauncherUi {
             // A bar that stays on screen says there is more below the fold. egui's default one is
             // floating and invisible until the pointer is over it, so the drawer uses the solid style.
             ui.spacing_mut().scroll = egui::style::ScrollStyle::solid();
-            egui::ScrollArea::vertical().auto_shrink([false, false]).show(ui, |ui| {
+            let mut scroll = egui::ScrollArea::vertical().auto_shrink([false, false]);
+            if reset_scroll {
+                scroll = scroll.vertical_scroll_offset(0.0);
+            }
+            scroll.show(ui, |ui| {
                 ui.set_width(ui.available_width());
                 ui.spacing_mut().item_spacing.y = 8.0;
                 self.details_hero(ui, &entry, details, &t);
