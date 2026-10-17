@@ -13,6 +13,7 @@ mod spaces;
 #[cfg(target_os = "linux")]
 mod system_theme;
 mod tray;
+mod window_state;
 
 use std::path::PathBuf;
 use std::process::ExitCode;
@@ -30,6 +31,7 @@ use eframe::wgpu::rwh::{HasDisplayHandle, RawDisplayHandle};
 
 const APP_ID: &str = "ai.storyteller.artcraft-launcher";
 const SETTINGS_KEY: &str = "settings";
+const MIN_WINDOW_SIZE: [f32; 2] = [720.0, 500.0];
 
 type Wake = Arc<OnceLock<Box<dyn Fn() + Send + Sync>>>;
 
@@ -83,6 +85,13 @@ fn main() -> ExitCode {
 
     let backend_waker = waker.clone();
     let settings_path = settings_file::path(APP_ID);
+    if let Some(path) = settings_path.as_deref() {
+        match settings_file::discard_invalid_window(path) {
+            Ok(true) => log::warn!("discarded invalid persisted window geometry; starting with the default window size"),
+            Ok(false) => {}
+            Err(e) => log::warn!("couldn't repair persisted window geometry: {e}"),
+        }
+    }
     let mut launcher = Launcher::new(Box::new(NativeBackend::new(move || backend_waker.wake())), starts, settings_path.clone());
     #[cfg(target_os = "linux")]
     {
@@ -136,7 +145,7 @@ fn native_options(hidden: bool) -> eframe::NativeOptions {
         .with_title("ArtCraft Launcher")
         .with_app_id(APP_ID)
         .with_inner_size([1120.0, 760.0])
-        .with_min_inner_size([720.0, 500.0])
+        .with_min_inner_size(MIN_WINDOW_SIZE)
         .with_visible(!hidden);
     // The header is the title bar (see `DesktopHost::title_bar`).
     viewport = if cfg!(target_os = "macos") {
@@ -622,6 +631,7 @@ struct Shell<'a> {
     window_hides: bool,
     visible: bool,
     quitting: bool,
+    window_state: window_state::WindowState,
     /// The "show on the current desktop" setting last applied to the window (macOS).
     #[cfg_attr(not(target_os = "macos"), allow(dead_code))]
     applied_follow: Option<bool>,
@@ -632,7 +642,14 @@ impl<'a> Shell<'a> {
         let window_hides = window_can_hide(cc.display_handle().ok().map(|d| d.as_raw()));
         // Started hidden at login but there's no tray to come back from: show the window.
         let visible = !hidden || launcher.tray.is_none();
-        let mut shell = Self { launcher, window_hides, visible: true, quitting: false, applied_follow: None };
+        let mut shell = Self {
+            launcher,
+            window_hides,
+            visible: true,
+            quitting: false,
+            window_state: window_state::WindowState::new(cc.storage),
+            applied_follow: None,
+        };
         if !visible {
             shell.put_away(&cc.egui_ctx);
         } else if hidden {
@@ -680,7 +697,10 @@ impl<'a> Shell<'a> {
 }
 
 impl eframe::App for Shell<'_> {
-    fn logic(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+    fn logic(&mut self, ctx: &egui::Context, frame: &mut eframe::Frame) {
+        // eframe saves the native window (even if minimized) before calling App::save.
+        // Remember only sane, visible geometry so save() can replace that snapshot.
+        self.window_state.record(frame, ctx.zoom_factor(), self.visible);
         let requests = self.launcher.tick(ctx);
         #[cfg(target_os = "macos")]
         if self.applied_follow != Some(self.launcher.ui.settings.show_on_current_desktop) {
@@ -722,6 +742,7 @@ impl eframe::App for Shell<'_> {
 
     fn save(&mut self, storage: &mut dyn eframe::Storage) {
         eframe::set_value(storage, SETTINGS_KEY, &self.launcher.ui.settings);
+        self.window_state.save(storage);
     }
 
     fn clear_color(&self, visuals: &egui::Visuals) -> [f32; 4] {
@@ -965,7 +986,14 @@ mod tests {
     fn quitting_overrides_a_close_to_the_tray() {
         let (mut launcher, _show, _) = launcher();
         let ctx = launcher.windowless.clone();
-        let mut shell = Shell { launcher: &mut launcher, window_hides: false, visible: true, quitting: false, applied_follow: None };
+        let mut shell = Shell {
+            launcher: &mut launcher,
+            window_hides: false,
+            visible: true,
+            quitting: false,
+            window_state: window_state::WindowState::default(),
+            applied_follow: None,
+        };
         shell.put_away(&ctx);
         assert!(shell.launcher.closed_to_tray);
         shell.quit(&ctx);
@@ -976,7 +1004,14 @@ mod tests {
     fn a_window_that_hides_is_not_closed_to_the_tray() {
         let (mut launcher, _show, _) = launcher();
         let ctx = launcher.windowless.clone();
-        let mut shell = Shell { launcher: &mut launcher, window_hides: true, visible: true, quitting: false, applied_follow: None };
+        let mut shell = Shell {
+            launcher: &mut launcher,
+            window_hides: true,
+            visible: true,
+            quitting: false,
+            window_state: window_state::WindowState::default(),
+            applied_follow: None,
+        };
         shell.put_away(&ctx);
         assert!(!shell.visible);
         assert!(!shell.launcher.closed_to_tray);

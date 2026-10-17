@@ -8,6 +8,8 @@
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
+use eframe::Storage;
+
 /// Where eframe keeps its state for `app_id`, as it picks it for a window with that app id.
 pub fn path(app_id: &str) -> Option<PathBuf> {
     eframe::storage_dir(app_id).map(|dir| dir.join("app.ron"))
@@ -16,6 +18,23 @@ pub fn path(app_id: &str) -> Option<PathBuf> {
 /// The value stored under `key`, if the file has one that still reads.
 pub fn load<T: serde::de::DeserializeOwned>(path: &Path, key: &str) -> Option<T> {
     eframe::get_value(&RonFile::read(path), key)
+}
+
+/// Remove window geometry that cannot safely be restored by eframe, without touching user
+/// settings or egui memory. Called before eframe opens the window on each launch.
+pub fn discard_invalid_window(path: &Path) -> Result<bool, String> {
+    const WINDOW_KEY: &str = "window";
+    let mut file = RonFile::read(path);
+    if file.get_string(WINDOW_KEY).is_none() {
+        return Ok(false);
+    }
+    let valid = eframe::get_value::<egui_winit::WindowSettings>(&file, WINDOW_KEY).is_some_and(|settings| crate::window_state::is_valid(&settings));
+    if valid {
+        return Ok(false);
+    }
+    file.remove_string(WINDOW_KEY);
+    file.write(path)?;
+    Ok(true)
 }
 
 /// Stores `value` under `key`, keeping what else the file holds.
@@ -125,6 +144,40 @@ mod tests {
         save(&dir.file(), "settings", &settings).unwrap();
         assert_eq!(load::<Settings>(&dir.file(), "settings"), Some(settings));
         assert_eq!(std::fs::read(&tmp).unwrap(), b"another writer's data");
+    }
+
+    #[test]
+    fn discards_minimized_window_but_keeps_other_settings() {
+        let dir = Scratch::new("invalid-window");
+        let window = "(inner_size_points:Some((x:0.0,y:0.0)),outer_position_pixels:Some((x:-32000.0,y:-32000.0)))";
+        let mut file = RonFile::default();
+        file.set_string("window", window.to_owned());
+        file.set_string("settings", "(notify:true)".to_owned());
+        file.set_string("egui", "remember my layout".to_owned());
+        assert_eq!(file.write(&dir.file()), Ok(()));
+        assert_eq!(discard_invalid_window(&dir.file()), Ok(true));
+        let restored = RonFile::read(&dir.file());
+        assert_eq!(restored.get_string("window"), None);
+        assert_eq!(restored.get_string("settings").as_deref(), Some("(notify:true)"));
+        assert_eq!(restored.get_string("egui").as_deref(), Some("remember my layout"));
+    }
+
+    #[test]
+    fn keeps_valid_window_geometry_unchanged() {
+        let dir = Scratch::new("valid-window");
+        let window = "(inner_size_points:Some((x:1120.0,y:760.0)),outer_position_pixels:Some((x:150.0,y:80.0)))";
+        let mut file = RonFile::default();
+        file.set_string("window", window.to_owned());
+        assert_eq!(file.write(&dir.file()), Ok(()));
+        assert_eq!(discard_invalid_window(&dir.file()), Ok(false));
+        assert_eq!(RonFile::read(&dir.file()).get_string("window").as_deref(), Some(window));
+    }
+
+    #[test]
+    fn no_window_state_does_not_create_storage_file() {
+        let dir = Scratch::new("no-window");
+        assert_eq!(discard_invalid_window(&dir.file()), Ok(false));
+        assert!(!dir.0.exists());
     }
 
     #[test]
