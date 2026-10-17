@@ -103,10 +103,8 @@ fn listen(listener: TcpListener, ours: Option<Version>, wake: Wake) -> Receiver<
     let (tx, rx) = channel();
     std::thread::spawn(move || {
         for mut stream in listener.incoming().flatten() {
-            let mut buf = [0u8; 64];
-            let _ = stream.set_read_timeout(Some(Duration::from_secs(1)));
-            let n = stream.read(&mut buf).unwrap_or(0);
-            let Some((request, reply)) = buf.get(..n).and_then(|m| answer(m, ours.as_ref())) else { continue };
+            let message = read_message(&mut stream);
+            let Some((request, reply)) = answer(&message, ours.as_ref()) else { continue };
             if let Some(reply) = reply {
                 let _ = stream.write_all(reply.as_bytes());
             }
@@ -120,6 +118,34 @@ fn listen(listener: TcpListener, ours: Option<Version>, wake: Wake) -> Receiver<
         }
     });
     rx
+}
+
+/// Reads a greeting through EOF, at most 64 bytes and one second in total. New starts close
+/// their write half to delimit the message; older starts keep it open while waiting for a
+/// reply, so a read timeout also ends their greeting.
+fn read_message(stream: &mut TcpStream) -> Vec<u8> {
+    let deadline = Instant::now() + Duration::from_secs(1);
+    let mut message = Vec::new();
+    let mut buf = [0u8; 64];
+    while message.len() < buf.len() {
+        let remaining = deadline.saturating_duration_since(Instant::now());
+        if remaining.is_zero() || stream.set_read_timeout(Some(remaining)).is_err() {
+            break;
+        }
+        let available = buf.len() - message.len();
+        let Some(room) = buf.get_mut(..available) else { break };
+        match stream.read(room) {
+            Ok(0) => break,
+            Ok(n) => {
+                if let Some(bytes) = room.get(..n) {
+                    message.extend_from_slice(bytes);
+                }
+            }
+            Err(e) if e.kind() == ErrorKind::Interrupted => continue,
+            Err(_) => break,
+        }
+    }
+    message
 }
 
 /// The running launcher's side: what `message` asks for, and what to answer.
@@ -145,6 +171,7 @@ fn ask(addr: SocketAddr, ours: Option<&Version>) -> std::io::Result<Answer> {
         return Ok(Answer::Defer);
     };
     stream.write_all(format!("{HELLO}{ours}").as_bytes())?;
+    stream.shutdown(std::net::Shutdown::Write)?;
     let _ = stream.set_read_timeout(Some(Duration::from_secs(2)));
     let mut reply = Vec::new();
     match (&mut stream).take(64).read_to_end(&mut reply) {
@@ -196,6 +223,60 @@ mod tests {
         let (addr, rx) = primary("0.1.0");
         assert_eq!(ask(addr, Some(&v("0.1.2"))).ok(), Some(Answer::TakeOver));
         assert_eq!(next(&rx), Request::Replace);
+    }
+
+    #[test]
+    fn a_fragmented_greeting_waits_for_the_complete_version() {
+        for (running, first, rest, version) in [("0.1.0", "", "0.1.2", "0.1.2"), ("0.1.2", "0.1.1", "0", "0.1.10")] {
+            let (addr, rx) = primary(running);
+            let mut stream = TcpStream::connect(addr).unwrap();
+            stream.set_read_timeout(Some(Duration::from_secs(3))).unwrap();
+            stream.write_all(format!("{HELLO}{first}").as_bytes()).unwrap();
+            assert!(rx.recv_timeout(Duration::from_millis(100)).is_err(), "an incomplete greeting must not show the old launcher");
+            stream.write_all(rest.as_bytes()).unwrap();
+            stream.shutdown(std::net::Shutdown::Write).unwrap();
+            let mut reply = Vec::new();
+            stream.read_to_end(&mut reply).unwrap();
+            assert_eq!(verdict(&reply, &v(version)), Answer::TakeOver);
+            assert_eq!(next(&rx), Request::Replace);
+        }
+    }
+
+    #[test]
+    fn an_older_greeting_without_a_write_shutdown_still_gets_an_answer() {
+        let (addr, rx) = primary("0.1.0");
+        let mut stream = TcpStream::connect(addr).unwrap();
+        stream.set_read_timeout(Some(Duration::from_secs(3))).unwrap();
+        stream.write_all(format!("{HELLO}0.1.2").as_bytes()).unwrap();
+        let mut reply = Vec::new();
+        stream.read_to_end(&mut reply).unwrap();
+        assert_eq!(verdict(&reply, &v("0.1.2")), Answer::TakeOver);
+        assert_eq!(next(&rx), Request::Replace);
+    }
+
+    #[test]
+    fn a_peer_that_keeps_sending_cannot_extend_the_greeting_deadline() {
+        let listener = TcpListener::bind((Ipv4Addr::LOCALHOST, 0)).unwrap();
+        let addr = listener.local_addr().unwrap();
+        let (tx, rx) = channel();
+        let reader = std::thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            tx.send(read_message(&mut stream)).unwrap();
+        });
+        let mut stream = TcpStream::connect(addr).unwrap();
+        let writer = std::thread::spawn(move || {
+            for _ in 0..100 {
+                if stream.write_all(b"x").is_err() {
+                    break;
+                }
+                std::thread::sleep(Duration::from_millis(100));
+            }
+        });
+        let message = rx.recv_timeout(Duration::from_secs(3)).unwrap();
+        assert!(!message.is_empty());
+        assert!(message.len() < 64, "the deadline should stop a slow greeting before the size limit");
+        reader.join().unwrap();
+        writer.join().unwrap();
     }
 
     #[test]
