@@ -590,12 +590,12 @@ impl LauncherUi {
 
         // The bars' separator lines are the hairlines under the header and over the footer.
         egui::Panel::top("header")
-            .frame(egui::Frame::new().fill(tokens.bg))
+            .frame(egui::Frame::new().fill(tokens.chrome))
             .exact_size(crate::views::HEADER_H)
             .resizable(false)
             .show(ui, |ui| self.header(ui, host.title_bar()));
         egui::Panel::bottom("footer")
-            .frame(egui::Frame::new().fill(tokens.bg).inner_margin(egui::Margin::symmetric(20, 0)))
+            .frame(egui::Frame::new().fill(tokens.chrome).inner_margin(egui::Margin::symmetric(20, 0)))
             .exact_size(crate::views::FOOTER_H)
             .resizable(false)
             .show(ui, |ui| self.footer(ui));

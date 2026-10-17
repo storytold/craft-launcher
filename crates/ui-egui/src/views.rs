@@ -140,7 +140,7 @@ impl LauncherUi {
                 .inner_margin(egui::Margin::symmetric(16, 10))
                 .show(ui, |ui| {
                     ui.horizontal(|ui| {
-                        widgets::tag(ui, tl!("Update"), t.accent, Color32::WHITE);
+                        widgets::tag(ui, tl!("Update"), t.accent, t.on_accent);
                         ui.add_space(4.0);
                         ui.label(
                             RichText::new(fmt(tl!("ArtCraft Launcher {version} is available."), &[("version", &r.version_label())]))
@@ -268,7 +268,7 @@ impl LauncherUi {
         let shown: Vec<artcraft_launcher_core::feed::Notice> =
             self.announcements.iter().filter(|n| !self.settings.dismissed_notices.contains(&n.id)).take(3).cloned().collect();
         for notice in shown {
-            egui::Frame::new().fill(t.sunken).stroke(t.hairline()).inner_margin(egui::Margin::symmetric(14, 10)).show(ui, |ui| {
+            egui::Frame::new().fill(t.raised).stroke(t.hairline()).inner_margin(egui::Margin::symmetric(14, 10)).show(ui, |ui| {
                 ui.horizontal(|ui| {
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Min), |ui| {
                         if widgets::glyph_button(ui, widgets::Glyph::Close, tl!("Dismiss")).clicked() {

@@ -20,7 +20,7 @@ impl LauncherUi {
         // An area is laid out in the size it had last frame, so dialogs can't share one id: the
         // uninstall prompt would open as tall as Settings and never shrink (#88).
         let modal = egui::Modal::new(egui::Id::new("dialog").with(dialog.key()))
-            .frame(egui::Frame::new().fill(t.bg).stroke(egui::Stroke::new(1.0, t.line_strong)).shadow(theme::shadow(&t)).inner_margin(24));
+            .frame(egui::Frame::new().fill(t.panel).stroke(egui::Stroke::new(1.0, t.line_strong)).shadow(theme::shadow(&t)).inner_margin(24));
         let mut close = false;
         let response = match &mut dialog {
             Dialog::Notes(id) => modal.show(ctx, |ui| close = self.notes_dialog(ui, id)),
@@ -42,7 +42,7 @@ impl LauncherUi {
         let Some(alert) = self.alerts.iter().find(|a| !self.settings.dismissed_notices.contains(&a.id)).cloned() else { return };
         let t = Tokens::get(ctx);
         let modal = egui::Modal::new(egui::Id::new("feed_alert").with(&alert.id))
-            .frame(egui::Frame::new().fill(t.bg).stroke(egui::Stroke::new(1.0, t.line_strong)).shadow(theme::shadow(&t)).inner_margin(24));
+            .frame(egui::Frame::new().fill(t.panel).stroke(egui::Stroke::new(1.0, t.line_strong)).shadow(theme::shadow(&t)).inner_margin(24));
         let mut ok = false;
         modal.show(ctx, |ui| {
             ui.set_width(440.0f32.min(ctx.content_rect().width() - 80.0));
