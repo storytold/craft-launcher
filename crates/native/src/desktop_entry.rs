@@ -92,6 +92,42 @@ pub fn is_ours(text: &str) -> bool {
     text.lines().any(|l| l.trim() == MARKER)
 }
 
+/// Whether the entry points at a file that no longer exists. An entry whose `Exec=` or
+/// `TryExec=` (absolute paths only; a bare command name is resolved by the desktop shell,
+/// not a file reference) is dangling once the file it names was removed: GNOME hides the
+/// whole app, so the user sees it as gone. Old AppImages wrote unmarked entries like this
+/// before the launcher adopted the menu entry, and an upgrade removes the old AppImage
+/// without re-pointing them, so the only way back to a visible, working entry is for the
+/// launcher to take it over.
+pub fn is_dangling(text: &str) -> bool {
+    text.lines()
+        .filter_map(|l| l.strip_prefix("Exec=").or_else(|| l.strip_prefix("TryExec=")))
+        .map(|rest| rest.trim_start())
+        .filter(|rest| is_abs_path(rest))
+        .any(|rest| !Path::new(abs_path(rest)).exists())
+}
+
+/// Whether a bare `Exec=`/`TryExec=` value is an absolute file path (quoted or not), as
+/// opposed to a command name the desktop shell resolves from `$PATH`.
+fn is_abs_path(rest: &str) -> bool {
+    rest.strip_prefix('"').map_or(rest.starts_with('/'), |inner| inner.starts_with('/'))
+}
+
+/// The absolute path a quoted-or-bare `Exec=`/`TryExec=` value names (its `%`-field-codes and
+/// trailing arguments dropped).
+fn abs_path(rest: &str) -> &str {
+    match rest.strip_prefix('"') {
+        Some(inner) => match inner.rfind('"') {
+            Some(end) => &inner[..end],
+            None => inner,
+        },
+        None => match rest.find(|c: char| c.is_whitespace()) {
+            Some(end) => &rest[..end],
+            None => rest,
+        },
+    }
+}
+
 /// The program an entry's `Exec=` runs: its first argument, unquoted. Reads the launcher's own
 /// quoting and the plain `Exec="<path>" %F` the apps' AppImages write for themselves.
 pub fn exec_program(text: &str) -> Option<String> {
@@ -179,5 +215,42 @@ mod tests {
         assert!(!is_ours(theirs));
         assert_eq!(exec_program("[Desktop Entry]\nExec=photocraft %F\n").as_deref(), Some("photocraft"));
         assert_eq!(exec_program("[Desktop Entry]\nName=x\n"), None);
+    }
+
+    #[test]
+    fn dangling_detection_matches_what_the_upgrade_leaves_behind() {
+        // The real-world shape: an old, unmarked entry whose TryExec points at the removed
+        // AppImage and whose Exec is a wrapper the desktop shell resolves by name.
+        let stale = "\
+[Desktop Entry]\n\
+Type=Application\n\
+Name=CADCraft\n\
+Exec=cadcraft %F\n\
+TryExec=/home/ana/Applications/cadcraft-0.6.2-linux-x86_64.AppImage\n\
+Icon=ai.storyteller.cadcraft\n\
+";
+        assert!(!is_ours(stale));
+        // GNOME hides the app on the dead TryExec even though the wrapper still works.
+        assert!(is_dangling(stale));
+
+        // Only counts dangling when the named file is actually absent.
+        let tmp = std::env::temp_dir().join("ac_dangling_test.AppImage");
+        std::fs::write(&tmp, "").unwrap();
+        assert!(!is_dangling(&format!("[Desktop Entry]\nTryExec={}\n", tmp.display())));
+        std::fs::remove_file(&tmp).unwrap();
+        assert!(is_dangling(&format!("[Desktop Entry]\nTryExec={}\n", tmp.display())));
+
+        // A missing quoted Exec is dangling too (the shape the apps' own AppRun writes).
+        assert!(is_dangling("[Desktop Entry]\nExec=\"/home/ana/Applications/figcraft-0.5.0-linux-x86_64.AppImage\" %F\n"));
+        // A bare command name (resolved by the desktop shell) is not a file reference.
+        assert!(!is_dangling("[Desktop Entry]\nExec=cadcraft %F\n"));
+        assert!(!is_dangling("[Desktop Entry]\nExec=photocraft %F\nTryExec=\n"));
+        // An entry pointing at a file that still exists is not dangling.
+        let present = std::env::temp_dir().join("ac_present_test.AppImage");
+        std::fs::write(&present, "").unwrap();
+        assert!(!is_dangling(&format!("[Desktop Entry]\nExec={}\n", present.display())));
+        // The launcher's own entry (marked, live path) is never dangling.
+        assert!(!is_dangling(&render(app("cadcraft"), &present, true).unwrap()));
+        std::fs::remove_file(&present).unwrap();
     }
 }
