@@ -2141,21 +2141,33 @@ mod tests {
             app
         }
 
-        /// A release-style disk image holding a `PhotoCraft.app` that reports `version`.
+        /// A release-style disk image holding a `PhotoCraft.app` that reports `version`. The
+        /// disk-image helper turns requests away while it is busy (`attach` retries for the same
+        /// reason), so `hdiutil create` is tried a few times, and what it said is kept for the
+        /// failure message.
         fn dmg(dir: &Path, version: &str) -> PathBuf {
             let src = dir.join(format!("src-{version}"));
             bundle(&src, version);
             let dmg = dir.join(format!("photocraft-{version}-macos-universal.dmg"));
             let _one_at_a_time = super::macos::DISK_IMAGES.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
-            let ok = std::process::Command::new("hdiutil")
-                .args(["create", "-quiet", "-format", "UDZO", "-volname", "PhotoCraft", "-srcfolder"])
-                .arg(&src)
-                .arg(&dmg)
-                .status()
-                .unwrap()
-                .success();
-            assert!(ok, "hdiutil create failed");
-            dmg
+            let mut said = String::new();
+            for attempt in 0..5u64 {
+                if attempt > 0 {
+                    std::thread::sleep(std::time::Duration::from_millis(400 * attempt));
+                    let _ = std::fs::remove_file(&dmg);
+                }
+                let output = std::process::Command::new("hdiutil")
+                    .args(["create", "-quiet", "-format", "UDZO", "-volname", "PhotoCraft", "-srcfolder"])
+                    .arg(&src)
+                    .arg(&dmg)
+                    .output()
+                    .unwrap();
+                if output.status.success() {
+                    return dmg;
+                }
+                said = String::from_utf8_lossy(&output.stderr).trim().to_string();
+            }
+            panic!("hdiutil create failed after 5 tries: {said}");
         }
 
         #[test]
