@@ -85,23 +85,24 @@ The web version shows the same catalog in the browser, with the latest download 
 ## Interface languages
 
 The interface is in English, Brazilian Portuguese (Português (Brasil)), Czech (Čeština), French
-(Français), German (Deutsch), Hungarian (Magyar), Japanese (日本語), Polish (Polski), Russian
-(Русский), Simplified Chinese (简体中文) or Spanish (Español). **Auto**, the default, follows the
-system or browser language; **Settings → Language** picks one and switches at once, and the choice
-is kept between runs. Czech locales (`cs-CZ`, `cs_CZ.UTF-8`…) select Czech, German ones (`de-DE`,
-`de-AT`, `de-CH`, `de_DE.UTF-8`…) German, French ones (`fr-FR`, `fr-CA`…) French, Hungarian ones
-(`hu`, `hu-HU`, `hu_HU.UTF-8`…) Hungarian, Japanese ones (`ja`, `ja-JP`, `ja_JP.UTF-8`…) Japanese,
-Polish ones (`pl`, `pl-PL`, `pl_PL.UTF-8`) Polish, Spanish ones (`es-ES`, `es-MX`, `es-419`…)
-Spanish, and Portuguese ones (`pt-BR`, and `pt-PT` too, for now) Brazilian Portuguese. Simplified
-Chinese locales (`zh-CN`, `zh-SG`, `zh-Hans`, and POSIX forms such as `zh_CN.UTF-8`) select
-Chinese; Traditional Chinese ones don't. To try a language without changing the setting, start the
+(Français), German (Deutsch), Hungarian (Magyar), Japanese (日本語), Korean (한국어), Polish (Polski),
+Russian (Русский), Simplified Chinese (简体中文) or Spanish (Español). **Auto**, the default,
+follows the system or browser language; **Settings → Language** picks one and switches at once,
+and the choice is kept between runs. Czech locales (`cs-CZ`, `cs_CZ.UTF-8`…) select Czech,
+German ones (`de-DE`, `de-AT`, `de-CH`, `de_DE.UTF-8`…) German, French ones (`fr-FR`, `fr-CA`…)
+French, Hungarian ones (`hu`, `hu-HU`, `hu_HU.UTF-8`…) Hungarian, Japanese ones (`ja`, `ja-JP`,
+`ja_JP.UTF-8`…) Japanese, Korean ones (`ko`, `ko-KR`, `ko_KR.UTF-8`…) Korean, Polish ones (`pl`,
+`pl-PL`, `pl_PL.UTF-8`) Polish, Spanish ones (`es-ES`, `es-MX`, `es-419`…) Spanish, and
+Portuguese ones (`pt-BR`, and `pt-PT` too, for now) Brazilian Portuguese. Simplified Chinese
+locales (`zh-CN`, `zh-SG`, `zh-Hans`, and POSIX forms such as `zh_CN.UTF-8`) select Chinese;
+Traditional Chinese ones don't. To try a language without changing the setting, start the
 desktop app with `ARTCRAFT_LAUNCHER_LOCALE=pt-BR`, or add `?lang=ru` to the web address.
 
-The CJK languages are drawn with the system's own CJK font (Hiragino Sans or PingFang on macOS,
-Yu Gothic, Meiryo or Microsoft YaHei on Windows, Noto Sans CJK, IPA, Takao or WenQuanYi on Linux and
-FreeBSD). Where the system has no font for one, and in the web version, the interface stays in
-English and Settings says why. Product names and release notes stay as published; text without a
-translation falls back to English.
+The CJK languages are drawn with the system's own CJK font (Hiragino Sans, PingFang or Apple SD
+Gothic Neo on macOS, Yu Gothic, Meiryo, Microsoft YaHei or Malgun Gothic on Windows, Noto Sans
+CJK, IPA, Takao, WenQuanYi or NanumGothic on Linux and FreeBSD). Where the system has no font
+for one, and in the web version, the interface stays in English and Settings says why. Product
+names and release notes stay as published; text without a translation falls back to English.
 
 ## Where apps are installed
 

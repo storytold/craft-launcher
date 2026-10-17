@@ -384,6 +384,58 @@ fn japanese_locales_and_counts_work() {
     assert_eq!(message(Lang::JA, "PhotoCraft updated to 0.5.0"), "PhotoCraft を 0.5.0 に更新しました");
 }
 
+#[test]
+fn korean_locales_counts_dates_and_messages_work() {
+    for tag in ["ko", "ko-KR", "ko_KR.UTF-8", "KO_kr", "ko-KP", "ko-Hang-KR"] {
+        assert_eq!(lang_from_tag(tag), Some(Lang::KO), "{tag}");
+    }
+    assert_eq!(super::detect::first_supported(["xx-XX", "ko-KR", "en-US"]), Some(Lang::KO));
+    assert_eq!(Lang::from_code("KO"), Some(Lang::KO));
+    for n in [0, 1, 2, 11, 100] {
+        assert_eq!(trn(Lang::KO, n, "{n} app", "{n} apps"), format!("앱 {n}개"));
+        assert_eq!(trn(Lang::KO, n, "{n} day ago", "{n} days ago"), format!("{n}일 전"));
+    }
+    assert_eq!(trn(Lang::KO, 2, "{n} unknown item", "{n} unknown items"), "2 unknown items");
+    assert_eq!(tr(Lang::KO, "Untranslated diagnostic"), "Untranslated diagnostic");
+    assert_eq!(super::tr_ctx(Lang::KO, "month", "Mar"), "3월");
+    assert_eq!(tr(Lang::KO, "{month} {day}, {year}"), "{year}년 {month} {day}일");
+    assert_eq!(message(Lang::KO, "PhotoCraft updated to 0.5.0"), "PhotoCraft 업데이트 완료: 0.5.0");
+}
+
+/// With a system Korean font installed, every UI family can draw the whole Korean catalog.
+/// Machines without one (CI, the web) skip this; the UI then stays in English.
+#[test]
+fn system_font_covers_korean_in_every_ui_family() {
+    use egui::{FontFamily, FontId};
+    if !crate::theme::cjk_font_available(Lang::KO) {
+        return;
+    }
+    let ctx = egui::Context::default();
+    crate::theme::install_fonts(&ctx, Some(Lang::KO));
+    let mut output = ctx.run_ui(egui::RawInput::default(), |_| {});
+    output.textures_delta.clear();
+    let text: String = Lang::KO
+        .0
+        .source
+        .lines()
+        .filter_map(|line| line.split('\t').nth(2))
+        .flat_map(str::chars)
+        .filter(|c| ('\u{1100}'..='\u{11ff}').contains(c) || ('\u{3130}'..='\u{318f}').contains(c) || ('\u{ac00}'..='\u{d7af}').contains(c))
+        .collect();
+    assert!(text.chars().count() > 500);
+    for family in [
+        FontFamily::Proportional,
+        FontFamily::Monospace,
+        crate::theme::medium(),
+        crate::theme::semibold(),
+        crate::theme::display(),
+        crate::theme::mono(),
+        crate::theme::mono_bold(),
+    ] {
+        ctx.fonts_mut(|fonts| assert!(fonts.has_glyphs(&FontId::new(14.0, family.clone()), &text), "missing glyph in {family:?}"));
+    }
+}
+
 /// With the system's Chinese font installed, every UI family can draw the whole Chinese catalog.
 /// Machines without one (CI, the web) skip this; the UI then stays in English.
 #[test]
@@ -464,6 +516,9 @@ fn language_labels_come_from_the_registry() {
     assert_eq!(Settings::language_label(Lang::ZH_CN.code(), Some(Lang::ZH_CN)), "Simplified Chinese (简体中文)");
     assert_eq!(Settings::language_label(Lang::JA.code(), Some(Lang::ZH_CN)), "Japanese");
     assert_eq!(Settings::language_label(Lang::JA.code(), Some(Lang::JA)), "Japanese (日本語)");
+    assert_eq!(Settings::language_label(Lang::KO.code(), None), "Korean");
+    assert_eq!(Settings::language_label(Lang::KO.code(), Some(Lang::JA)), "Korean");
+    assert_eq!(Settings::language_label(Lang::KO.code(), Some(Lang::KO)), "Korean (한국어)");
     assert_eq!(Settings::language_label(Settings::LANGUAGE_AUTO, None), "Auto");
     assert_eq!(Settings::language_label("xx", None), "Auto");
 }
