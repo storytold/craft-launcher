@@ -102,7 +102,7 @@ fn release_from_value(v: &serde_json::Value, repo: &str) -> Result<Release, Stri
     let releases = format!("https://github.com/{repo}/releases");
     let html_url = v["html_url"]
         .as_str()
-        .filter(|u| u.strip_prefix(&releases).is_some_and(|rest| rest.starts_with('/') && !rest.contains(['?', '#', '\\'])))
+        .filter(|u| u.strip_prefix(&releases).is_some_and(|rest| rest.starts_with('/') && !rest.contains(['?', '#', '\\'])) && without_traversal(u))
         .map_or_else(|| releases.clone(), str::to_string);
     let prefix = download_prefix(repo);
     let assets = v["assets"]
@@ -111,7 +111,10 @@ fn release_from_value(v: &serde_json::Value, repo: &str) -> Result<Release, Stri
             list.iter()
                 .filter_map(|a| {
                     let name = a["name"].as_str().filter(|n| valid_file_name(n))?.to_string();
-                    let url = a["browser_download_url"].as_str().filter(|u| u.starts_with(&prefix) && !u.contains(['?', '#', '\\']))?.to_string();
+                    let url = a["browser_download_url"]
+                        .as_str()
+                        .filter(|u| u.starts_with(&prefix) && !u.contains(['?', '#', '\\']) && without_traversal(u))?
+                        .to_string();
                     let sha256 = a["digest"].as_str().and_then(|d| d.strip_prefix("sha256:")).filter(|h| is_hex64(h)).map(str::to_ascii_lowercase);
                     Some(Asset { name, size: a["size"].as_u64().unwrap_or(0), url, sha256 })
                 })
@@ -154,7 +157,8 @@ pub fn release_from_sums(repo: &str, tag: &str, sums: &[(String, String)]) -> Re
 /// The tag in a `https://github.com/<repo>/releases/tag/<tag>` redirect target.
 pub fn tag_from_redirect(location: &str, repo: &str) -> Option<String> {
     let rest = location.strip_prefix(&format!("https://github.com/{repo}/releases/tag/"))?;
-    (!rest.is_empty() && rest.len() <= 64 && rest.bytes().all(|b| b.is_ascii_alphanumeric() || b"._-+".contains(&b))).then(|| rest.to_string())
+    (!rest.is_empty() && rest.len() <= 64 && !rest.contains("..") && rest.bytes().all(|b| b.is_ascii_alphanumeric() || b"._-+".contains(&b)))
+        .then(|| rest.to_string())
 }
 
 /// Reads `sha256sum` output: `<hex>  <name>` (or `<hex> *<name>`) per line.
@@ -166,6 +170,17 @@ pub fn parse_sha256sums(text: &str) -> Vec<(String, String)> {
             (is_hex64(hash) && valid_file_name(name)).then(|| (hash.to_ascii_lowercase(), name.to_string()))
         })
         .collect()
+}
+
+/// Rejects a URL carrying a path-traversal sequence, plain or percent-encoded. A GitHub release
+/// link never needs one; rejecting it stops a `starts_with` prefix check being fooled by a path
+/// that a URL parser (a browser, or the server) later resolves back out of the app's repository.
+pub(crate) fn without_traversal(url: &str) -> bool {
+    if url.contains("..") {
+        return false;
+    }
+    let lower = url.to_ascii_lowercase();
+    !["%2e", "%2f", "%5c"].iter().any(|seq| lower.contains(seq))
 }
 
 /// A bare file name we'd be willing to save: no paths, no control characters.
@@ -260,5 +275,19 @@ mod tests {
             assert!(!valid_file_name(bad), "{bad:?}");
         }
         assert!(valid_file_name("photocraft-0.5.0-linux-x86_64.AppImage"));
+    }
+
+    #[test]
+    fn urls_that_climb_out_of_the_repo_with_dot_segments_are_rejected() {
+        let climb = "https://github.com/storytold/photocraft/releases/download/../../../other/evil/releases/download/v0.5.0/x.msi";
+        let json = format!(
+            r#"{{"tag_name":"v0.5.0","html_url":"https://github.com/storytold/photocraft/releases/../../other/x",
+            "assets":[{{"name":"x.msi","browser_download_url":"{climb}","digest":"sha256:{HASH}"}}]}}"#
+        );
+        let r = parse_github_release(&json, REPO).unwrap();
+        assert!(r.assets.is_empty(), "a climbing asset url was kept: {:?}", r.assets);
+        assert_eq!(r.html_url, "https://github.com/storytold/photocraft/releases", "a climbing html_url was kept");
+        assert!(without_traversal("https://github.com/storytold/photocraft/releases/download/v0.5.0/x.msi"));
+        assert!(!without_traversal("https://github.com/storytold/photocraft/releases/download/%2e%2e/evil"));
     }
 }

@@ -37,9 +37,27 @@ pub(crate) enum Picture {
 impl Picture {
     pub(crate) fn from_result(result: Result<Vec<u8>, String>) -> Self {
         match result {
-            Ok(bytes) => Self::Ready(bytes.into()),
+            Ok(bytes) if within_limits(&bytes) => Self::Ready(bytes.into()),
+            Ok(_) => Self::Failed("the picture's dimensions are beyond what we display".into()),
             Err(why) => Self::Failed(why),
         }
+    }
+}
+
+/// Rejects a picture whose declared dimensions would force a huge decode buffer. The bytes are
+/// remote and, before here, gated only by a 2 MiB transfer cap and a JPEG magic-byte check, so a
+/// tiny file could otherwise declare, say, 65535x65535 and make the image decoder allocate
+/// gigabytes up front and abort the launcher. Reading only the header keeps this cheap and never
+/// decodes the pixels.
+fn within_limits(bytes: &[u8]) -> bool {
+    const MAX_SIDE: u32 = 8192;
+    const MAX_PIXELS: u64 = 32 << 20; // 32 million, far above the ~1200px pictures we show
+    match image::ImageReader::new(std::io::Cursor::new(bytes)).with_guessed_format() {
+        Ok(reader) => match reader.into_dimensions() {
+            Ok((w, h)) => w <= MAX_SIDE && h <= MAX_SIDE && u64::from(w) * u64::from(h) <= MAX_PIXELS,
+            Err(_) => false,
+        },
+        Err(_) => false,
     }
 }
 

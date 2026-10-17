@@ -34,6 +34,15 @@ pub(crate) fn classify(line: &str) -> Line<'_> {
     Line::Text(l)
 }
 
+/// The link target of a `**Full Changelog**: <url>` line, but only when it is an `https` URL.
+/// A release body is remote, attacker-influenceable text; without this a line such as
+/// `**Full Changelog**: javascript:…` (or a `data:`/`file:` URL) would be handed straight to the
+/// browser/OS by `hyperlink_to`. GitHub's own changelog line is always an `https://…/compare/…`
+/// URL, so the normal case is unaffected.
+fn changelog_url(text: &str) -> Option<&str> {
+    text.strip_prefix("**Full Changelog**: ").map(str::trim).filter(|u| u.starts_with("https://"))
+}
+
 pub(crate) fn show(ui: &mut Ui, notes: &str) {
     show_scaled(ui, notes, 1.0);
 }
@@ -71,9 +80,9 @@ fn show_lines(ui: &mut Ui, notes: &str, scale: f32) {
                 });
             }
             Line::Text(text) => {
-                if let Some(url) = text.strip_prefix("**Full Changelog**: ") {
+                if let Some(url) = changelog_url(text) {
                     ui.add_space(6.0);
-                    ui.hyperlink_to(tl!("Full changelog"), url.trim());
+                    ui.hyperlink_to(tl!("Full changelog"), url);
                 } else {
                     ui.label(RichText::new(text).color(t.muted));
                 }
@@ -99,5 +108,14 @@ mod tests {
         assert_eq!(classify("- plain bullet"), Line::Bullet("plain bullet", None));
         assert_eq!(classify("   "), Line::Blank);
         assert_eq!(classify("hello"), Line::Text("hello"));
+    }
+
+    #[test]
+    fn full_changelog_link_is_only_made_for_https() {
+        assert_eq!(changelog_url("**Full Changelog**: https://github.com/a/b/compare/v1...v2"), Some("https://github.com/a/b/compare/v1...v2"));
+        assert_eq!(changelog_url("**Full Changelog**: javascript:alert(document.domain)"), None);
+        assert_eq!(changelog_url("**Full Changelog**: http://insecure.example"), None);
+        assert_eq!(changelog_url("**Full Changelog**:  file:///etc/passwd"), None);
+        assert_eq!(changelog_url("an ordinary notes line"), None);
     }
 }
