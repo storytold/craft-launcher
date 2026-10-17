@@ -1,0 +1,348 @@
+# Arabic (ar) catalog for ArtCraft Launcher.
+# Format: context<TAB>source<TAB>translation
+# Empty context = plain UI string (tl!, t).
+# @id = command-id keyed (tr_id).
+# @plural = plural forms: zero|one|two|few|many|other (the six CLDR forms).
+# @msg = status/error message template (message, msg).
+# Other context = disambiguation for tr_ctx.
+#
+# Clean-room: written from the meaning of ArtCraft Launcher's English labels in Modern
+# Standard Arabic, using the terms Arabic-speaking users of creative software know.
+# The user is addressed with the singular second person.
+#
+# Write every entry in logical (typing) order; i18n puts right-to-left text into display
+# order when the catalog loads (bidi::display_rtl).
+#
+# Coverage: the whole interface — every menu string and tl! literal (complete_menus = true).
+# Left in English on purpose: product name "ArtCraft Launcher" (and its "Launcher" tag), suite
+# name "Craft App Suite",
+# app names (PhotoCraft, LightCraft, FilmCraft, DesignCraft, VectorCraft, PdfCraft, EffectCraft,
+# WordCraft, DeckCraft, GridCraft, CADCraft, SoundCraft), "GitHub", "Discord", "Flatpak",
+# package formats and the download sites.
+# Digits are Western (0-9). Trailing "…" (U+2026) must be preserved. Placeholders {name},
+# {n}, {version}, {count}, {v}, {what}, {unit}, {real}, {e} must appear in translation.
+
+	Launcher	Launcher
+	Craft App Suite	Craft App Suite
+	Open Source Tools for Creatives, Makers, and Builders	أدوات مفتوحة المصدر للمبدعين والصنّاع والبنّائين
+	Settings	الإعدادات
+	Check for updates	التحقق من التحديثات
+	Grid	شبكة
+	Table	جدول
+	Show apps as cards	عرض التطبيقات كبطاقات
+	Show apps as a table	عرض التطبيقات كجدول
+	All	الكل
+	Updates	التحديثات
+	Not installed	غير مثبَّتة
+	Search apps	البحث في التطبيقات
+	Sort	فرز
+	Suite order	ترتيب المجموعة
+	Name	الاسم
+	Inspired by	مستوحى من
+	Status	الحالة
+	Installed version	الإصدار المثبَّت
+	Latest version	أحدث إصدار
+	Newest release	الإصدار الأحدث
+	Discord	Discord
+	GitHub	GitHub
+	Website	الموقع
+	Classic apps	التطبيقات الكلاسيكية
+	New apps	التطبيقات الجديدة
+	NEW	جديد
+	Install	تثبيت
+	Update to {v}	التحديث إلى {v}
+	Open	فتح
+	Download for {os}	التنزيل لنظام {os}
+	Download	تنزيل
+	Coming soon	قريبًا
+	Checking…	جارٍ التحقق…
+	Not available	غير متوفر
+	Offline	غير متصل
+	Downloading {done} of {total}	تنزيل {done} من {total}
+	Downloading…	جارٍ التنزيل…
+	Reconnecting…	جارٍ إعادة الاتصال…
+	Verifying…	جارٍ التحقق من الملف…
+	Installing, then restarting…	جارٍ التثبيت ثم إعادة التشغيل…
+	Installing…	جارٍ التثبيت…
+	Removing…	جارٍ الإزالة…
+	Pause download	إيقاف التنزيل مؤقتًا
+	Cancel download	إلغاء التنزيل
+	Resume download	استئناف التنزيل
+	Discard download	تجاهل التنزيل
+	Release notes	ملاحظات الإصدار
+	Show in Finder	إظهار في Finder
+	Show in Explorer	إظهار في مستكشف الملفات
+	Show in Files	إظهار في الملفات
+	Reinstall	إعادة التثبيت
+	Uninstall…	إزالة التثبيت…
+	All releases	جميع الإصدارات
+	ArtCraft Launcher {version} is available.	يتوفر الإصدار {version} من ArtCraft Launcher.
+	Dismiss	تجاهل
+	Update and restart	التحديث وإعادة التشغيل
+	A new version is available. Would you like to relaunch with the updated version?	يتوفر إصدار جديد. هل تريد إعادة التشغيل بالإصدار المحدَّث؟
+	Later	لاحقًا
+	What's new	ما الجديد
+	No notes were published with this release.	لم تُنشر ملاحظات مع هذا الإصدار.
+	Released {date}	صدر في {date}
+	Open on GitHub	فتح على GitHub
+	Close	إغلاق
+	ArtCraft Launcher {version}	ArtCraft Launcher {version}
+	Only when I ask	عند الطلب فقط
+	Automatically download and install updates	تنزيل التحديثات وتثبيتها تلقائيًا
+	Notify me when an installed app has an update	إعلامي عند توفر تحديث لتطبيق مثبَّت
+	Include pre-releases (betas and release candidates)	تضمين الإصدارات الأولية (التجريبية والمرشحة للإصدار)
+	Installing on Linux	التثبيت على Linux
+	Install new apps as	تثبيت التطبيقات الجديدة على هيئة
+	System package (recommended)	حزمة النظام (موصى به)
+	Updates always use the format an app was installed with.	تستخدم التحديثات دائمًا التنسيق الذي ثُبِّت به التطبيق.
+	Running in the background	التشغيل في الخلفية
+	Keep running in the tray when the window is closed	الاستمرار في منطقة الإعلامات عند إغلاق النافذة
+	Show the window on the current desktop	إظهار النافذة على سطح المكتب الحالي
+	Start ArtCraft Launcher when I log in	تشغيل ArtCraft Launcher عند تسجيل الدخول
+	Community	المجتمع
+	Questions, ideas and news from the ArtCraft team	أسئلة وأفكار وأخبار من فريق ArtCraft
+	Appearance	المظهر
+	Quit ArtCraft Launcher	إنهاء ArtCraft Launcher
+	Done	تم
+	Uninstall {name}?	إزالة تثبيت {name}؟
+	The app will be moved to the Trash. Your documents and settings stay.	سيُنقل التطبيق إلى سلة المهملات. تبقى مستنداتك وإعداداتك كما هي.
+	Windows will remove it like any installed program. Your documents and settings stay.	سيزيله Windows كأي برنامج مثبت. تبقى مستنداتك وإعداداتك كما هي.
+	Your system's package manager will remove it, and may ask for your password. Your documents and settings stay.	سيزيله مدير الحزم في نظامك، وقد يطلب كلمة المرور. تبقى مستنداتك وإعداداتك كما هي.
+	The app will be removed. Your documents and settings stay.	سيُزال التطبيق. تبقى مستنداتك وإعداداتك كما هي.
+	Uninstall	إزالة التثبيت
+	Cancel	إلغاء
+	Checked {ago}	تم التحقق {ago}
+	just now	الآن
+	yesterday	أمس
+	{month} {day}, {year}	{day} {month} {year}
+
+	Automatically	تلقائيًا
+	Every Craft app	كل تطبيقات Craft
+	Apps on this computer	التطبيقات على هذا الكمبيوتر
+	Installed apps with a newer version	تطبيقات مثبَّتة لها إصدار أحدث
+	Apps you can install	تطبيقات يمكنك تثبيتها
+	Hide App	إخفاء التطبيق
+	Unhide App	إظهار التطبيق
+	Hidden Apps	التطبيقات المخفية
+	Apps you hid	تطبيقات أخفيتها
+	Checked {ago} · using {sources}	تم التحقق {ago} · عبر {sources}
+	{a} and {b}	{a} و{b}
+	Join the Discord	الانضمام إلى Discord
+	Learn more	مزيد من المعلومات
+	Minimize	تصغير
+	Maximize	تكبير
+	Restore	استعادة
+	New	جديد
+	OK	موافق
+	Open link	فتح الرابط
+	Update	تحديث
+	{name} icon	أيقونة {name}
+	Loading ArtCraft Launcher…	جارٍ تحميل ArtCraft Launcher…
+	Cancel update	إلغاء التحديث
+	Stop waiting; the update can be started again later	التوقف عن الانتظار؛ يمكن بدء التحديث لاحقًا
+	Download again	تنزيل مجددًا
+	Install cancelled	أُلغي التثبيت
+	Install cancelled. The download is kept for the next try.	أُلغي التثبيت. يبقى التنزيل للمحاولة التالية.
+	Update cancelled	أُلغي التحديث
+	Uninstall cancelled	أُلغيت إزالة التثبيت
+	Retry install	إعادة محاولة التثبيت
+	Retry update to {version}	إعادة محاولة التحديث إلى {version}
+	The download is still here. It's checked again, then installed.	التنزيل ما يزال موجودًا. سيُتحقَّق منه مجددًا ثم يُثبَّت.
+	Waiting for another app…	جارٍ انتظار تطبيق آخر…
+	Waiting for other installs…	جارٍ انتظار عمليات تثبيت أخرى…
+
+# Package formats offered for download (PackageKind::label)
+	Installer (.msi)	مثبِّت (.msi)
+	Portable (.zip)	نسخة محمولة (.zip)
+	Disk image (.dmg)	صورة قرص (.dmg)
+	Debian package (.deb)	حزمة Debian ‏(.deb)
+	RPM package (.rpm)	حزمة RPM ‏(.rpm)
+	Flatpak bundle	حزمة Flatpak
+	Tarball (.tar.gz)	أرشيف Tar ‏(.tar.gz)
+
+# Contextual: each app's tagline, keyed by app id
+photocraft	Image editing	تحرير الصور
+vectorcraft	Vector illustration	الرسم المتجهي
+filmcraft	Video editing, color and sound	مونتاج الفيديو والألوان والصوت
+lightcraft	Photo library and raw development	مكتبة الصور ومعالجة ملفات RAW
+pdfcraft	Reading, organizing and protecting PDFs	قراءة ملفات PDF وتنظيمها وحمايتها
+effectcraft	Motion graphics and visual effects	الرسوم المتحركة والمؤثرات البصرية
+designcraft	Page layout and publishing	تخطيط الصفحات والنشر
+wordcraft	Writing and document design	الكتابة وتصميم المستندات
+deckcraft	Presentations and slide shows	العروض التقديمية وعروض الشرائح
+gridcraft	Spreadsheets and data	الجداول الإلكترونية والبيانات
+cadcraft	Computer-aided design and drafting	التصميم والرسم بمساعدة الكمبيوتر
+soundcraft	Recording, editing and mixing audio	تسجيل الصوت وتحريره ومزجه
+
+# Contextual: month abbreviations for date rendering
+month	Jan	يناير
+month	Feb	فبراير
+month	Mar	مارس
+month	Apr	أبريل
+month	May	مايو
+month	Jun	يونيو
+month	Jul	يوليو
+month	Aug	أغسطس
+month	Sep	سبتمبر
+month	Oct	أكتوبر
+month	Nov	نوفمبر
+month	Dec	ديسمبر
+	Not checked yet	لم يُتحقَّق بعد
+	GitHub's hourly limit was reached; full details return in {min} min	بُلغ الحد الأقصى لطلبات GitHub في الساعة؛ تعود التفاصيل الكاملة بعد {min} دقيقة
+	GitHub limit hit; back in {min} min	بُلغ حد GitHub؛ العودة بعد {min} دقيقة
+	Installing for {platform}	التثبيت لـ{platform}
+	Downloads for {platform}	التنزيلات لـ{platform}
+	No downloads for this system	لا توجد تنزيلات لهذا النظام
+	Join the ArtCraft community on Discord	انضم إلى مجتمع ArtCraft على Discord
+	ArtCraft on {name}	ArtCraft على {name}
+	Couldn't open {name}: {e}	تعذّر فتح {name}: {e}
+	Download cancelled	أُلغي التنزيل
+	Available to install	متاح للتثبيت
+	Available	متوفر
+	Installed · up to date	مثبَّت · محدَّث
+	Update available	تحديث متوفر
+	Installed	مثبَّت
+	installed	مثبَّت
+	Not available here	غير متوفر هنا
+	Updating…	جارٍ التحديث…
+	Update paused	التحديث متوقف مؤقتًا
+	Download paused	التنزيل متوقف مؤقتًا
+	{version} installed → {latest} released	{version} مثبَّت · {latest} صدر
+	Version {version}	الإصدار {version}
+	{installed} installed · latest {latest}	{installed} مثبَّت · الأحدث {latest}
+	Installed · latest {latest}	مثبَّت · الأحدث {latest}
+	Version {version} installed	الإصدار {version} مثبَّت
+	Version {latest}	الإصدار {latest}
+	No release published yet	لم يُنشر أي إصدار بعد
+	ArtCraft Launcher	ArtCraft Launcher
+	App	التطبيق
+	Latest	الأحدث
+	Released	صدر
+	Auto	تلقائي
+	Language	اللغة
+	Ascending	تصاعدي
+	Descending	تنازلي
+	Click to reverse the order	انقر لعكس الترتيب
+	Click to sort by this column	انقر للفرز بهذا العمود
+	Like {name}	مثل {name}
+	{done} of {total}	{done} من {total}
+	Downloading	جارٍ التنزيل
+	Verifying checksum…	جارٍ التحقق من المجموع الاختباري…
+	Resume	استئناف
+	{done} of {total} downloaded	تم تنزيل {done} من {total}
+	{done} downloaded	تم تنزيل {done}
+	Checking for updates…	جارٍ البحث عن التحديثات…
+	Downloads the new version, replaces this one and opens it again	ينزّل الإصدار الجديد ويستبدل هذا الإصدار ثم يفتحه مجددًا
+	Couldn't check for updates: {f}	تعذّر التحقق من التحديثات: {f}
+	GitHub repository	مستودع GitHub
+	ArtCraft	ArtCraft
+	Update 1 app	تحديث تطبيق واحد
+	Update all ({count})	تحديث الكل ({count})
+	⊞  Grid	⊞  شبكة
+	☰  Table	☰  جدول
+	🔍  Search apps	🔍  البحث في التطبيقات
+	{name} {version}	{name} {version}
+	Match system	مطابقة النظام
+	Dark	داكن
+	Light	فاتح
+	Full changelog	سجل التغييرات الكامل
+	link	رابط
+	No apps match	لا توجد تطبيقات مطابقة
+	Open ArtCraft Launcher to update.	افتح ArtCraft Launcher للتحديث.
+	{name} {v} is available	يتوفر الإصدار {v} من {name}
+	{count} updates are available	يتوفر {count} من التحديثات
+	These notes weren't fetched (GitHub's request limit was reached). They're on the release page.	لم تُجلب هذه الملاحظات (بُلغ حد طلبات GitHub). تجدها في صفحة الإصدار.
+	When on, opening the launcher from the menu bar brings its window to the desktop you're on. When off, macOS switches you to the desktop the window was on.	عند تفعيلها، يؤدي فتح المشغِّل من شريط القوائم إلى إحضار نافذته إلى سطح المكتب الحالي. وعند إيقافها، ينقلك macOS إلى سطح المكتب الذي كانت النافذة عليه.
+	Couldn't change the login item: {e}	تعذّر تغيير عنصر تسجيل الدخول: {e}
+
+# Contextual: table column headers
+column	App	التطبيق
+column	Installed	المثبَّت
+column	Latest	الأحدث
+column	Released	تاريخ الإصدار
+
+# Contextual: the filter tab names a group (the status pill says "Installed")
+filter	Installed	المثبَّتة
+	{name} details	تفاصيل {name}
+
+# Plural forms for Arabic (zero|one|two|few|many|other)
+@plural	{n} app|{n} apps	{n} تطبيقات|{n} تطبيق|{n} تطبيقان|{n} تطبيقات|{n} تطبيقًا|{n} تطبيق
+@plural	{n} min ago|{n} min ago	منذ {n} دقيقة|منذ {n} دقيقة|منذ {n} دقيقتان|منذ {n} دقائق|منذ {n} دقيقةً|منذ {n} دقيقة
+@plural	{n} h ago|{n} h ago	منذ {n} ساعة|منذ {n} ساعة|منذ {n} ساعتان|منذ {n} ساعات|منذ {n} ساعةً|منذ {n} ساعة
+@plural	{n} day ago|{n} days ago	منذ {n} يوم|منذ {n} يوم|منذ {n} يومان|منذ {n} أيام|منذ {n} يومًا|منذ {n} يوم
+
+# Message templates (@msg): toasts from the backend. {placeholders} match any text.
+@msg	Couldn't open {name}: {e}	تعذّر فتح {name}: {e}
+@msg	Download cancelled	أُلغي التنزيل
+@msg	{name} updated to {version}	{name} حُدِّث إلى {version}
+@msg	{name} installed: {version}	{name} مثبَّت: {version}
+@msg	{name} updated to {version} (this release publishes no checksum, so only its size was checked)	{name} حُدِّث إلى {version} (هذا الإصدار لا ينشر مجموعًا اختباريًا، لذا تم التحقق من حجمه فقط)
+@msg	{name} installed: {version} (this release publishes no checksum, so only its size was checked)	{name} مثبَّت: {version} (هذا الإصدار لا ينشر مجموعًا اختباريًا، لذا تم التحقق من حجمه فقط)
+@msg	{name} was removed	أُزيل {name}
+@msg	{name} is running. Quit it, then try again.	{name} قيد التشغيل. أغلقه ثم أعد المحاولة.
+
+# Command IDs for menu items (@id)
+# Format: @id<TAB>command_id<TAB>translation
+@id	app.install	تثبيت
+@id	app.update	التحديث إلى {v}
+@id	app.open	فتح
+@id	app.download	التنزيل لنظام {os}
+@id	app.reveal	إظهار في Finder
+@id	app.reinstall	إعادة التثبيت
+@id	app.uninstall	إزالة التثبيت…
+@id	app.notes	ملاحظات الإصدار
+@id	app.website	الموقع
+@id	app.github	مستودع GitHub
+@id	app.releases	جميع الإصدارات
+@id	launcher.update	التحديث وإعادة التشغيل
+@id	launcher.download	تنزيل
+@id	launcher.notes	ما الجديد
+@id	launcher.dismiss	تجاهل
+@id	settings.open	الإعدادات
+@id	settings.quit	إنهاء ArtCraft Launcher
+@id	view.grid	شبكة
+@id	view.table	جدول
+@id	filter.all	الكل
+@id	filter.installed	مثبَّت
+@id	filter.updates	التحديثات
+@id	filter.notinstalled	غير مثبَّتة
+@id	sort.suite	ترتيب المجموعة
+@id	sort.name	الاسم
+@id	sort.inspired	مستوحى من
+@id	sort.status	الحالة
+@id	sort.installed	الإصدار المثبَّت
+@id	sort.latest	أحدث إصدار
+@id	sort.released	الإصدار الأحدث
+@id	help.discord	Discord
+@id	help.github	GitHub
+@id	help.website	الموقع
+@id	update.check	التحقق من التحديثات
+@id	update.check_auto	التحقق من التحديثات تلقائيًا
+@id	update.notify	إعلامي عند توفر تحديث لتطبيق مثبَّت
+@id	update.prereleases	تضمين الإصدارات الأولية (التجريبية والمرشحة للإصدار)
+@id	linux.preferred_kind	تثبيت التطبيقات الجديدة على هيئة
+@id	tray.close_to_tray	الاستمرار في منطقة الإعلامات عند إغلاق النافذة
+@id	tray.show_on_current_desktop	إظهار النافذة على سطح المكتب الحالي
+@id	tray.login_item	تشغيل ArtCraft Launcher عند تسجيل الدخول
+@id	appearance.theme	المظهر
+
+# Tray (menu bar) menu and tooltip
+	Show ArtCraft Launcher	إظهار ArtCraft Launcher
+	Check for Updates	التحقق من التحديثات
+	Visit getartcraft.com	زيارة getartcraft.com
+	ArtCraft on GitHub	ArtCraft على GitHub
+	Join the ArtCraft Discord	الانضمام إلى Discord الخاص بـArtCraft
+	App details	تفاصيل التطبيق
+	Close (Esc)	إغلاق (Esc)
+	Features	الميزات
+	Latest release	أحدث إصدار
+	Version	الإصدار
+	Platforms	الأنظمة الأساسية
+	Releases	الإصدارات
+	Enlarge picture	تكبير الصورة
+	Click to enlarge	انقر للتكبير
+	Previous picture (←)	الصورة السابقة (←)
+	Next picture (→)	الصورة التالية (→)
+	Loading pictures…	جارٍ تحميل الصور…
+	Pictures couldn't be loaded. Reopen this page to try again.	تعذّر تحميل الصور. أعد فتح هذه الصفحة للمحاولة مجددًا.
+@plural	ArtCraft Launcher · {n} update available|ArtCraft Launcher · {n} updates available	ArtCraft Launcher · يتوفر {n} تحديثات|ArtCraft Launcher · يتوفر {n} تحديث|ArtCraft Launcher · يتوفر {n} تحديثان|ArtCraft Launcher · يتوفر {n} تحديثات|ArtCraft Launcher · يتوفر {n} تحديثًا|ArtCraft Launcher · يتوفر {n} تحديث

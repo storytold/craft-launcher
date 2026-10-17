@@ -40,6 +40,7 @@ fn script_name(script: Script) -> &'static str {
     match script {
         Script::Chinese => "Chinese",
         Script::Japanese => "Japanese",
+        Script::Arabic => "Arabic",
     }
 }
 
@@ -48,6 +49,7 @@ fn script_families(script: Script) -> &'static str {
     match script {
         Script::Chinese => "PingFang SC, Hiragino Sans GB, Heiti SC, Microsoft YaHei, SimSun, Noto Sans CJK SC and WenQuanYi",
         Script::Japanese => "Hiragino Sans, Yu Gothic, Meiryo, MS Gothic, Noto Sans CJK JP, Noto Sans JP, IPAGothic and TakaoGothic",
+        Script::Arabic => "SF Arabic, Geeza Pro, Segoe UI, Tahoma, Arial, Noto Sans Arabic and DejaVu Sans",
     }
 }
 
@@ -123,7 +125,53 @@ fn candidates(script: Script) -> Vec<Candidate> {
     match script {
         Script::Chinese => chinese_candidates(),
         Script::Japanese => japanese_candidates(),
+        Script::Arabic => arabic_candidates(),
     }
+}
+
+/// Where each system keeps an Arabic font, best first. The faces are small next to a CJK one,
+/// and every desktop ships at least one.
+fn arabic_candidates() -> Vec<Candidate> {
+    let mut out = Vec::new();
+    let mut add = |path: PathBuf, family: &'static str| out.push(Candidate { path, family });
+    #[cfg(target_os = "macos")]
+    {
+        // SF Arabic may be a downloaded font asset on later macOS versions.
+        add("/System/Library/Fonts/SFArabic.ttf".into(), "SF Arabic");
+        for path in mac_font_assets("SFArabic.ttf") {
+            add(path, "SF Arabic");
+        }
+        add("/System/Library/Fonts/GeezaPro.ttc".into(), "Geeza Pro");
+        add("/System/Library/Fonts/Supplemental/Arial.ttf".into(), "Arial");
+    }
+    #[cfg(target_os = "windows")]
+    {
+        let root = std::env::var_os("SystemRoot").map_or_else(|| PathBuf::from(r"C:\Windows"), PathBuf::from);
+        add(root.join("Fonts").join("segoeui.ttf"), "Segoe UI");
+        add(root.join("Fonts").join("tahoma.ttf"), "Tahoma");
+        add(root.join("Fonts").join("arial.ttf"), "Arial");
+    }
+    #[cfg(all(unix, not(target_os = "macos")))]
+    {
+        // Debian/Ubuntu, Arch, Fedora and FreeBSD's ports: Noto Sans Arabic (static and
+        // variable), then DejaVu Sans.
+        const AR_DIRS: [&str; 8] = [
+            "/usr/share/fonts/truetype/noto",
+            "/usr/share/fonts/opentype/noto",
+            "/usr/share/fonts/noto",
+            "/usr/share/fonts/google-noto",
+            "/usr/share/fonts/noto-sans-arabic",
+            "/usr/share/fonts/truetype/dejavu",
+            "/usr/share/fonts/dejavu",
+            "/usr/local/share/fonts/dejavu",
+        ];
+        for file in ["NotoSansArabic-Regular.ttf", "NotoSansArabic-VF.ttf", "DejaVuSans.ttf"] {
+            for dir in AR_DIRS {
+                add(Path::new(dir).join(file), if file.starts_with("Noto") { "Noto Sans Arabic" } else { "DejaVu Sans" });
+            }
+        }
+    }
+    out
 }
 
 /// Where each system keeps a Simplified Chinese font, best first.

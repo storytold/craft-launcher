@@ -5,8 +5,8 @@
 //! - Empty context = plain UI string (`tl!`, `t`).
 //! - `@id` context = keyed by command id (`tr_id`).
 //! - `@plural` context = plural forms: the English `one|other` key, and the language's forms
-//!   separated by `|` (one form for a language whose nouns don't inflect for number, up to
-//!   three: `one|few|many` for Russian, Ukrainian and Polish).
+//!   separated by `|` (one form for a language whose nouns don't inflect for number, up to six:
+//!   `zero|one|two|few|many|other` for Arabic).
 //! - `@msg` context = a status/error message, or a template whose `{placeholders}` match any text
 //!   (`message`, `msg`).
 //! - Any other context = disambiguation for `tr_ctx`.
@@ -120,8 +120,8 @@ impl Catalog {
                 "@id" => cat.by_id.insert(source_text.clone(), translation).is_some(),
                 "@plural" => {
                     let forms: Vec<String> = translation.split('|').map(str::to_string).collect();
-                    if forms.len() > 3 {
-                        log::warn!("i18n catalog: line {line_no}: @plural expects 1 to 3 forms separated by '|', got {}", forms.len());
+                    if forms.len() > 6 {
+                        log::warn!("i18n catalog: line {line_no}: @plural expects 1 to 6 forms separated by '|', got {}", forms.len());
                         continue;
                     }
                     cat.plural.insert(source_text.clone(), forms).is_some()
@@ -144,6 +144,18 @@ impl Catalog {
         // The most specific template first.
         cat.templates.sort_by_key(|t| std::cmp::Reverse(t.specificity()));
         cat
+    }
+
+    /// Rewrite every translation with `f` (a right-to-left catalog's entries go to display
+    /// order). Sources and keys stay as they are.
+    pub fn map_translations(&mut self, f: impl Fn(&str) -> String) {
+        let tables = std::iter::once(&mut self.plain).chain(self.contextual.values_mut()).chain(std::iter::once(&mut self.by_id));
+        for translation in tables.flat_map(HashMap::values_mut).chain(self.plural.values_mut().flatten()).chain(self.messages.values_mut()) {
+            *translation = f(translation);
+        }
+        for template in &mut self.templates {
+            template.translation = f(&template.translation);
+        }
     }
 
     /// Look up a plain string.
