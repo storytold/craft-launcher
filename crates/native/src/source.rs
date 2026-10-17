@@ -27,6 +27,13 @@ pub trait ReleaseSource: Send + Sync {
     fn latest(&self, repo: &str, prereleases: bool) -> Answer;
     /// The last answer saved for `repo`, for an instant first paint.
     fn cached(&self, repo: &str, prereleases: bool) -> Option<LatestRelease>;
+    /// The tag of `repo`'s newest stable release, by a route that costs no API quota (GitHub's
+    /// `releases/latest` redirect), or `None` when it can't be told. Quick: a check pressed by the
+    /// user asks this for every app to see whether the feed has fallen behind.
+    fn newest_tag(&self, repo: &str) -> Option<String> {
+        let _ = repo;
+        None
+    }
     /// API refused until this time (Unix seconds).
     fn rate_limited_until(&self) -> Option<i64>;
     /// Persist anything worth keeping.
@@ -157,6 +164,16 @@ impl ReleaseSource for GitHubSource {
 
     fn cached(&self, repo: &str, prereleases: bool) -> Option<LatestRelease> {
         self.entry(repo, prereleases).map(|e| e.release.map_or(LatestRelease::None, LatestRelease::Found))
+    }
+
+    fn newest_tag(&self, repo: &str) -> Option<String> {
+        match self.http.redirect_target(&format!("https://github.com/{repo}/releases/latest")) {
+            Ok(location) => location.as_deref().and_then(|l| release::tag_from_redirect(l, repo)),
+            Err(e) => {
+                log::debug!("{repo}: couldn't read the latest-release redirect: {e}");
+                None
+            }
+        }
     }
 
     fn rate_limited_until(&self) -> Option<i64> {
