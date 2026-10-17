@@ -93,7 +93,7 @@ impl LauncherUi {
                 }
                 ui.add_space(6.0);
                 if widgets::nav_link(ui, tl!("Discord"), tl!("Join the ArtCraft community on Discord"), h, false).clicked() {
-                    ui.ctx().open_url(egui::OpenUrl::new_tab(artcraft_launcher_core::catalog::DISCORD_URL));
+                    ui.ctx().open_url(egui::OpenUrl::new_tab(self.discord_url));
                 }
                 ui.add_space(6.0);
                 widgets::rule(ui, h);
@@ -319,8 +319,8 @@ impl LauncherUi {
             Some(p) => fmt(tl!("Downloads for {platform}"), &[("platform", &p.label())]),
             None => tl!("No downloads for this system").into(),
         };
-        use artcraft_launcher_core::catalog::{DISCORD_URL, GITHUB_URL, SOCIAL, WEBSITE_URL};
-        let links = [(tl!("Discord"), DISCORD_URL), (tl!("GitHub"), GITHUB_URL), (tl!("Website"), WEBSITE_URL)];
+        use artcraft_launcher_core::catalog::{GITHUB_URL, SOCIAL, WEBSITE_URL};
+        let links = [(tl!("Discord"), self.discord_url), (tl!("GitHub"), GITHUB_URL), (tl!("Website"), WEBSITE_URL)];
         let (icon, link_gap) = (13.0, 16.0);
         // The links and icons on the right keep their size; the status on the left gets what is
         // left and is cut short with "…", never drawn under them. A narrow window drops the

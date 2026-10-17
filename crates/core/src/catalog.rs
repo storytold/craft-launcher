@@ -165,6 +165,8 @@ pub const SOCIAL: [(&str, &str); 5] = [
 
 /// The ArtCraft community on Discord.
 pub const DISCORD_URL: &str = "https://discord.gg/artcraft";
+/// Deep link into the Discord application for the ArtCraft server invite.
+pub const DISCORD_APP_URL: &str = "discord://-/invite/artcraft";
 
 /// ArtCraft Launcher itself, described like a Craft App so it can update itself with the same
 /// machinery (asset names `artcraft-launcher-<ver>-…`, bundle id `ai.storyteller.artcraft-launcher`,

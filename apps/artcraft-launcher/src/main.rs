@@ -39,6 +39,8 @@ fn main() -> ExitCode {
     logging::install_panic_hook();
     // Detect system language in the background so the first frame can use it.
     artcraft_launcher_ui_egui::i18n::detect_system_lang_in_background();
+    // Detect Discord protocol handler in the background without blocking startup.
+    artcraft_launcher_native::process::ensure_discord_detection_started();
     let args: Vec<String> = std::env::args().skip(1).collect();
     if args.iter().any(|a| a == "--version" || a == "-V") {
         println!("artcraft-launcher {}", env!("CARGO_PKG_VERSION"));
@@ -444,6 +446,10 @@ impl Host for DesktopHost {
         motion::reduced()
     }
 
+    fn discord_url(&self) -> &'static str {
+        artcraft_launcher_native::process::discord_url()
+    }
+
     fn quit(&mut self) {
         self.quit = true;
     }
@@ -549,7 +555,9 @@ impl Launcher {
                 tray::TrayAction::Check => self.ui.check_now(),
                 // Straight to the browser: works while the window is hidden in the tray.
                 tray::TrayAction::Open(url) => {
-                    if let Err(e) = artcraft_launcher_native::process::open(std::ffi::OsStr::new(url)) {
+                    if url == artcraft_launcher_core::catalog::DISCORD_APP_URL {
+                        artcraft_launcher_native::process::open_url_with_fallback(url, artcraft_launcher_core::catalog::DISCORD_URL);
+                    } else if let Err(e) = artcraft_launcher_native::process::open(std::ffi::OsStr::new(url)) {
                         log::warn!("couldn't open {url}: {e}");
                     }
                 }
@@ -712,6 +720,23 @@ impl eframe::App for Shell<'_> {
 
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
         self.launcher.ui.ui(ui, &mut self.launcher.host);
+        ui.ctx().output_mut(|o| {
+            o.commands.retain(|cmd| {
+                if let egui::OutputCommand::OpenUrl(open_url) = cmd {
+                    if open_url.url == artcraft_launcher_core::catalog::DISCORD_APP_URL {
+                        artcraft_launcher_native::process::open_url_with_fallback(&open_url.url, artcraft_launcher_core::catalog::DISCORD_URL);
+                        return false;
+                    }
+                    if !open_url.url.starts_with("http://") && !open_url.url.starts_with("https://") {
+                        if let Err(e) = artcraft_launcher_native::process::open(std::ffi::OsStr::new(&open_url.url)) {
+                            log::warn!("couldn't open {}: {e}", open_url.url);
+                        }
+                        return false;
+                    }
+                }
+                true
+            });
+        });
     }
 
     fn raw_input_hook(&mut self, ctx: &egui::Context, raw_input: &mut egui::RawInput) {

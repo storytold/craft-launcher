@@ -194,7 +194,7 @@ fn harness_with(
     manage: bool,
     scale: f32,
 ) -> (Harness<'static, Option<LauncherUi>>, Rc<RefCell<Vec<Command>>>) {
-    harness_full(events, view, theme, manage, scale, artcraft_launcher_ui_egui::TitleBar::Native, Rc::default(), None)
+    harness_full(events, view, theme, manage, scale, artcraft_launcher_ui_egui::TitleBar::Native, Rc::default(), None, None)
 }
 
 /// Like `harness_with`, with the details pictures answered as `pictures` says (changeable during the test).
@@ -206,7 +206,7 @@ fn harness_pictures(
     scale: f32,
     pictures: Rc<Cell<Pictures>>,
 ) -> (Harness<'static, Option<LauncherUi>>, Rc<RefCell<Vec<Command>>>) {
-    harness_full(events, view, theme, manage, scale, artcraft_launcher_ui_egui::TitleBar::Native, pictures, None)
+    harness_full(events, view, theme, manage, scale, artcraft_launcher_ui_egui::TitleBar::Native, pictures, None, None)
 }
 
 fn harness_with_title_bar(
@@ -217,7 +217,21 @@ fn harness_with_title_bar(
     scale: f32,
     bar: artcraft_launcher_ui_egui::TitleBar,
 ) -> (Harness<'static, Option<LauncherUi>>, Rc<RefCell<Vec<Command>>>) {
-    harness_full(events, view, theme, manage, scale, bar, Rc::default(), None)
+    harness_full(events, view, theme, manage, scale, bar, Rc::default(), None, None)
+}
+
+fn harness_with_discord(discord_url: Option<&'static str>) -> (Harness<'static, Option<LauncherUi>>, Rc<RefCell<Vec<Command>>>) {
+    harness_full(
+        events(),
+        ViewMode::Grid,
+        egui::Theme::Dark,
+        true,
+        1.0,
+        artcraft_launcher_ui_egui::TitleBar::Native,
+        Rc::default(),
+        None,
+        discord_url,
+    )
 }
 
 #[allow(clippy::too_many_arguments)] // Test fixture inputs vary independently across existing cases.
@@ -230,11 +244,15 @@ fn harness_full(
     bar: artcraft_launcher_ui_egui::TitleBar,
     pictures: Rc<Cell<Pictures>>,
     platform: Option<Platform>,
+    discord_url: Option<&'static str>,
 ) -> (Harness<'static, Option<LauncherUi>>, Rc<RefCell<Vec<Command>>>) {
-    struct HeaderHost(artcraft_launcher_ui_egui::TitleBar);
+    struct HeaderHost(artcraft_launcher_ui_egui::TitleBar, Option<&'static str>);
     impl Host for HeaderHost {
         fn title_bar(&self) -> artcraft_launcher_ui_egui::TitleBar {
             self.0
+        }
+        fn discord_url(&self) -> &'static str {
+            self.1.unwrap_or(artcraft_launcher_core::catalog::DISCORD_URL)
         }
     }
     // Integration tests compile without cfg!(test), so system_lang() picks up the
@@ -264,8 +282,8 @@ fn harness_full(
                 *state = Some(LauncherUi::new(ui.ctx(), b, s));
             }
             if let Some(l) = state.as_mut() {
-                l.logic(&ui.ctx().clone(), &mut HeaderHost(bar));
-                l.ui(ui, &mut HeaderHost(bar));
+                l.logic(&ui.ctx().clone(), &mut HeaderHost(bar, discord_url));
+                l.ui(ui, &mut HeaderHost(bar, discord_url));
             }
         },
         None,
@@ -405,6 +423,7 @@ fn windows_package_choice_can_select_portable_and_configures_the_backend() {
         artcraft_launcher_ui_egui::TitleBar::Native,
         Rc::default(),
         Some(Platform { os: Os::Windows, arch: Arch::X64 }),
+        None,
     );
     h.run_steps(8);
     h.get_by_label("Settings").click();
@@ -882,6 +901,13 @@ fn links_open_the_right_pages() {
     h.get_all_by_label("…").next().unwrap().click();
     h.run_steps(3);
     assert_eq!(click_opens(&mut h, "All releases").as_deref(), Some("https://github.com/storytold/photocraft/releases"));
+}
+
+#[test]
+fn discord_link_opens_app_when_discord_is_installed() {
+    let (mut h, _) = harness_with_discord(Some(artcraft_launcher_core::catalog::DISCORD_APP_URL));
+    h.run_steps(6);
+    assert_eq!(click_opens(&mut h, "Discord").as_deref(), Some("discord://-/invite/artcraft"));
 }
 
 #[test]
