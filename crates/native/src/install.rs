@@ -927,8 +927,30 @@ pub(crate) mod linux {
         data.join("icons/hicolor/128x128/apps").join(format!("{}.png", app.bundle_id()))
     }
 
+    /// GNOME can keep using an existing cache after icons change. Like the package hooks,
+    /// force a rebuild, even for a user theme without index.theme. This tool is optional.
+    fn refresh_icon_cache(data: &Path, run: &dyn Fn(&mut std::process::Command) -> Result<(), String>) {
+        let theme = data.join("icons/hicolor");
+        let mut command = if process::in_sandbox() {
+            let mut command = process::command("flatpak-spawn");
+            command.args(["--host", "gtk-update-icon-cache"]);
+            command
+        } else {
+            process::command("gtk-update-icon-cache")
+        };
+        command.args(["-q", "-t", "-f"]).arg(&theme);
+        if let Err(e) = run(&mut command) {
+            log::warn!("couldn't refresh {} ({e})", theme.display());
+        }
+    }
+
+    pub(crate) fn run_icon_cache(command: &mut std::process::Command) -> Result<(), String> {
+        let output = command.stdin(std::process::Stdio::null()).output().map_err(|e| e.to_string())?;
+        if output.status.success() { Ok(()) } else { Err(format!("{} ({})", String::from_utf8_lossy(&output.stderr).trim(), output.status)) }
+    }
+
     /// Adds `appimage` to the desktop's menu. Best effort: a failure here never fails the
-    /// install. Returns the files written, for the record.
+    /// install. Returns the files to record as launcher-owned, including unchanged owned icons.
     pub fn integrate(app: &CraftApp, appimage: &Path, replaced: &[PathBuf], previous: Option<&Record>) -> Vec<PathBuf> {
         match host_data_dir() {
             Some(data) => integrate_into(&data, app, appimage, replaced, previous),
@@ -940,13 +962,30 @@ pub(crate) mod linux {
     /// before: its own marked menu entry, an entry pointing at a copy this install replaced, and
     /// an icon listed in `previous`.
     pub(crate) fn integrate_into(data: &Path, app: &CraftApp, appimage: &Path, replaced: &[PathBuf], previous: Option<&Record>) -> Vec<PathBuf> {
+        integrate_into_via(data, app, appimage, replaced, previous, &run_icon_cache)
+    }
+
+    pub(crate) fn integrate_into_via(
+        data: &Path,
+        app: &CraftApp,
+        appimage: &Path,
+        replaced: &[PathBuf],
+        previous: Option<&Record>,
+        run: &dyn Fn(&mut std::process::Command) -> Result<(), String>,
+    ) -> Vec<PathBuf> {
         let ours_before = |p: &Path| previous.is_some_and(|r| r.files.iter().any(|f| f == p));
         let mut written = Vec::new();
         let icon = icon_path(data, app);
         let has_icon = match icon_png(app) {
+            // Keep ownership in the new record even when the bytes need no update.
+            Some(png) if ours_before(&icon) && std::fs::read(&icon).is_ok_and(|bytes| bytes == png) => {
+                written.push(icon.clone());
+                true
+            }
             Some(png) if !icon.exists() || ours_before(&icon) => match crate::paths::write_atomic(&icon, png) {
                 Ok(()) => {
                     written.push(icon.clone());
+                    refresh_icon_cache(data, run);
                     true
                 }
                 Err(e) => {
@@ -992,6 +1031,16 @@ pub(crate) mod linux {
     /// or when the launcher wrote it and what it runs is gone; the icon only when the
     /// launcher's record lists it.
     pub(crate) fn unintegrate_from(data: &Path, app: &CraftApp, appimage: &Path, record: Option<&Record>) {
+        unintegrate_from_via(data, app, appimage, record, &run_icon_cache);
+    }
+
+    pub(crate) fn unintegrate_from_via(
+        data: &Path,
+        app: &CraftApp,
+        appimage: &Path,
+        record: Option<&Record>,
+        run: &dyn Fn(&mut std::process::Command) -> Result<(), String>,
+    ) {
         let desktop = desktop_path(data, app);
         if let Ok(text) = std::fs::read_to_string(&desktop) {
             let program = crate::desktop_entry::exec_program(&text).map(PathBuf::from);
@@ -1002,8 +1051,8 @@ pub(crate) mod linux {
             }
         }
         let icon = icon_path(data, app);
-        if record.is_some_and(|r| r.files.contains(&icon)) {
-            let _ = std::fs::remove_file(&icon);
+        if record.is_some_and(|r| r.files.contains(&icon)) && std::fs::remove_file(&icon).is_ok() {
+            refresh_icon_cache(data, run);
         }
     }
 }
@@ -2034,6 +2083,144 @@ mod tests {
         std::fs::write(&desktop, "[Desktop Entry]\nExec=/usr/bin/wordcraft\n").unwrap();
         linux::unintegrate_from(&data, app, &new, Some(&rec));
         assert!(desktop.exists());
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn appimage_icon_cache_refreshes_only_after_icon_changes() {
+        use std::cell::Cell;
+        use std::ffi::OsString;
+
+        let root = tempfile::tempdir().unwrap();
+        let data = root.path().join("custom data share");
+        let app = CraftApp::by_id("wordcraft").unwrap();
+        let appimage = root.path().join("WordCraft.AppImage");
+        let icon = data.join("icons/hicolor/128x128/apps/ai.storyteller.wordcraft.png");
+        let desktop = data.join("applications/ai.storyteller.wordcraft.desktop");
+        let calls = Cell::new(0);
+        let run = |command: &mut std::process::Command| {
+            let mut expected: Vec<OsString> = Vec::new();
+            if process::in_sandbox() {
+                assert_eq!(command.get_program(), "flatpak-spawn");
+                expected.extend([OsString::from("--host"), OsString::from("gtk-update-icon-cache")]);
+            } else {
+                assert_eq!(command.get_program(), "gtk-update-icon-cache");
+            }
+            expected.extend([OsString::from("-q"), OsString::from("-t"), OsString::from("-f"), data.join("icons/hicolor").into_os_string()]);
+            assert_eq!(command.get_args().collect::<Vec<_>>(), expected);
+            calls.set(calls.get() + 1);
+            Ok(())
+        };
+
+        let files = linux::integrate_into_via(&data, app, &appimage, &[], None, &run);
+        assert_eq!(calls.get(), 1);
+        assert!(icon.is_file() && desktop.is_file());
+        let rec = record("0.3.0", PackageKind::AppImage, appimage.clone(), files.clone(), false);
+
+        // Identical owned icons keep their ownership without rebuilding the cache.
+        assert_eq!(linux::integrate_into_via(&data, app, &appimage, &[], Some(&rec), &run), files);
+        assert_eq!(calls.get(), 1);
+        std::fs::write(&icon, b"previous version's icon").unwrap();
+        linux::integrate_into_via(&data, app, &appimage, &[], Some(&rec), &run);
+        assert_eq!(calls.get(), 2);
+        assert!(std::fs::read(&icon).unwrap().starts_with(b"\x89PNG"));
+
+        linux::unintegrate_from_via(&data, app, &appimage, Some(&rec), &run);
+        assert_eq!(calls.get(), 3);
+        assert!(!icon.exists());
+        linux::unintegrate_from_via(&data, app, &appimage, Some(&rec), &run);
+        assert_eq!(calls.get(), 3);
+
+        // Existing unowned files stay byte-for-byte unchanged, with no refresh.
+        std::fs::write(&icon, b"another application's icon").unwrap();
+        let custom = "[Desktop Entry]\nExec=/usr/bin/wordcraft\n";
+        std::fs::write(&desktop, custom).unwrap();
+        assert!(linux::integrate_into_via(&data, app, &appimage, &[], None, &run).is_empty());
+        linux::unintegrate_from_via(&data, app, &appimage, None, &run);
+        assert_eq!(calls.get(), 3);
+        assert_eq!(std::fs::read(&icon).unwrap(), b"another application's icon");
+        assert_eq!(std::fs::read_to_string(&desktop).unwrap(), custom);
+
+        // An unsuccessful icon write must not request a refresh either.
+        std::fs::remove_file(&icon).unwrap();
+        std::fs::create_dir(&icon).unwrap();
+        linux::integrate_into_via(&data, app, &appimage, &[], Some(&rec), &run);
+        linux::unintegrate_from_via(&data, app, &appimage, Some(&rec), &run);
+        assert_eq!(calls.get(), 3);
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn appimage_integration_tolerates_missing_and_failing_cache_tools() {
+        use std::cell::Cell;
+
+        for missing in [true, false] {
+            let root = tempfile::tempdir().unwrap();
+            let data = root.path().join("share");
+            let app = CraftApp::by_id("vectorcraft").unwrap();
+            let appimage = root.path().join("VectorCraft.AppImage");
+            let icon = data.join("icons/hicolor/128x128/apps/ai.storyteller.vectorcraft.png");
+            let calls = Cell::new(0);
+            let run = |_: &mut std::process::Command| {
+                calls.set(calls.get() + 1);
+                // Exercise the production runner without changing the process-wide PATH.
+                let mut command = if missing { process::command(root.path().join("missing-cache-tool")) } else { process::command("/bin/false") };
+                let result = linux::run_icon_cache(&mut command);
+                assert!(result.is_err());
+                result
+            };
+            let files = linux::integrate_into_via(&data, app, &appimage, &[], None, &run);
+            assert_eq!(files.len(), 2);
+            assert!(icon.is_file());
+            let rec = record("0.3.0", PackageKind::AppImage, appimage.clone(), files, false);
+            std::fs::write(&icon, b"old icon").unwrap();
+            assert_eq!(linux::integrate_into_via(&data, app, &appimage, &[], Some(&rec), &run).len(), 2);
+            assert!(std::fs::read(&icon).unwrap().starts_with(b"\x89PNG"));
+            linux::unintegrate_from_via(&data, app, &appimage, Some(&rec), &run);
+            assert!(!icon.exists());
+            assert_eq!(calls.get(), 3);
+        }
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn appimage_icons_refresh_an_existing_hicolor_cache() {
+        // Exercise the real GTK cache format when the optional host tool is available.
+        if which("gtk-update-icon-cache").is_none() || process::in_sandbox() {
+            return;
+        }
+        let root = tempfile::tempdir().unwrap();
+        let data = root.path().join("custom data share");
+        let cache = data.join("icons/hicolor/icon-theme.cache");
+        let photo = CraftApp::by_id("photocraft").unwrap();
+        let word = CraftApp::by_id("wordcraft").unwrap();
+        let appimage = root.path().join("WordCraft.AppImage");
+        linux::integrate_into(&data, photo, &root.path().join("PhotoCraft.AppImage"), &[], None);
+        let original = std::fs::read(&cache).unwrap();
+        let contains = |bytes: &[u8], id: &str| bytes.windows(id.len()).any(|part| part == id.as_bytes());
+        assert!(contains(&original, photo.bundle_id().as_str()));
+        assert!(!contains(&original, word.bundle_id().as_str()));
+
+        // Install into a theme with an existing cache and no index.theme.
+        let files = linux::integrate_into(&data, word, &appimage, &[], None);
+        let installed = std::fs::read(&cache).unwrap();
+        assert!(contains(&installed, word.bundle_id().as_str()));
+        assert!(contains(&installed, photo.bundle_id().as_str()));
+        let rec = record("0.3.0", PackageKind::AppImage, appimage.clone(), files, false);
+
+        // Updating an owned icon repairs a stale cache too.
+        std::fs::write(&cache, &original).unwrap();
+        std::fs::write(data.join("icons/hicolor/128x128/apps/ai.storyteller.wordcraft.png"), b"old icon").unwrap();
+        linux::integrate_into(&data, word, &appimage, &[], Some(&rec));
+        assert!(contains(&std::fs::read(&cache).unwrap(), word.bundle_id().as_str()));
+
+        // Unowned icons survive removal, along with their cache entries.
+        linux::unintegrate_from(&data, word, &appimage, None);
+        assert!(contains(&std::fs::read(&cache).unwrap(), word.bundle_id().as_str()));
+        linux::unintegrate_from(&data, word, &appimage, Some(&rec));
+        let removed = std::fs::read(&cache).unwrap();
+        assert!(!contains(&removed, word.bundle_id().as_str()));
+        assert!(contains(&removed, photo.bundle_id().as_str()));
     }
 
     #[cfg(target_os = "linux")]
