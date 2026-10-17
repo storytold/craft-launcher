@@ -1213,6 +1213,47 @@ fn custom_title_bar_has_window_buttons() {
     assert!(closes, "the close button asks the window to close (the shell decides whether that hides it to the tray)");
 }
 
+/// Maximized, the window's top-right pixel is the screen's corner: there is no resize band there,
+/// so it belongs to the close button, as it does with Windows' own caption buttons (#374).
+#[test]
+fn maximized_the_close_button_reaches_the_screens_corner() {
+    let (mut h, _) = harness_with_title_bar(events(), ViewMode::Grid, egui::Theme::Dark, true, 1.0, artcraft_launcher_ui_egui::TitleBar::Custom);
+    h.run_steps(6);
+    let set_maximized = |h: &mut Harness<'_, Option<LauncherUi>>, maximized: bool| {
+        h.input_mut().viewports.entry(egui::ViewportId::ROOT).or_default().maximized = Some(maximized);
+        h.run_steps(2);
+    };
+    // Presses and releases at `pos`, and returns what the window was asked to do.
+    let click = |h: &mut Harness<'_, Option<LauncherUi>>, pos: egui::Pos2| -> Vec<egui::ViewportCommand> {
+        let mut asked = Vec::new();
+        for pressed in [true, false] {
+            let input = h.input_mut();
+            input.events.push(egui::Event::PointerMoved(pos));
+            input.events.push(egui::Event::PointerButton { pos, button: egui::PointerButton::Primary, pressed, modifiers: egui::Modifiers::NONE });
+            h.step();
+            asked.extend(h.output().viewport_output.values().flat_map(|v| v.commands.iter().cloned()));
+        }
+        asked
+    };
+    // Windowed, the clickable area stops short of the button's top-right corner by the resize
+    // band; maximized, it reaches it.
+    let windowed = h.get_by_label("Close").rect();
+    set_maximized(&mut h, true);
+    let maximized = h.get_by_label("Close").rect();
+    assert!(maximized.top() < windowed.top() && maximized.right() > windowed.right(), "windowed {windowed:?}, maximized {maximized:?}");
+    // The button's own corner stands in for the screen's: the harness keeps the app 8 px in from
+    // the window. Windowed, it is beyond the band and egui's click tolerance; maximized, it closes.
+    let corner = egui::pos2(maximized.right() - 0.5, maximized.top() + 0.5);
+    let asked = click(&mut h, corner);
+    assert!(asked.contains(&egui::ViewportCommand::Close), "maximized: {asked:?}");
+    set_maximized(&mut h, false);
+    let asked = click(&mut h, corner);
+    assert!(!asked.contains(&egui::ViewportCommand::Close), "windowed: {asked:?}");
+    // And the window's own corner is still for resizing.
+    let asked = click(&mut h, egui::pos2(1180.0 - 0.5, 0.5));
+    assert!(asked.iter().any(|c| matches!(c, egui::ViewportCommand::BeginResize(_))), "{asked:?}");
+}
+
 #[test]
 fn clicking_a_card_opens_its_details_drawer() {
     let (mut h, _sent) = harness(ViewMode::Grid, egui::Theme::Dark, true);

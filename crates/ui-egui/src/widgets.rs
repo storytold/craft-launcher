@@ -138,11 +138,20 @@ pub fn nav_icon(ui: &mut Ui, symbol: &str, tip: &str, height: f32, busy: bool) -
 /// The title bar's own controls leave this band alone.
 const RESIZE_EDGE: f32 = 5.0;
 
+/// How wide the resize band along the window's edges is right now: nothing while the window is
+/// maximized or full screen, when `window_edges` offers no resizing and the edges are the screen's,
+/// so the controls there reach all the way to the corner (#374).
+fn resize_band(ctx: &egui::Context) -> f32 {
+    let (maximized, fullscreen) = ctx.input(|i| (i.viewport().maximized.unwrap_or(false), i.viewport().fullscreen.unwrap_or(false)));
+    if maximized || fullscreen { 0.0 } else { RESIZE_EDGE }
+}
+
 /// Custom title bars: dragging the header's empty space moves the window, and double-clicking it
 /// maximizes or restores it. Call before drawing the header, so its controls stay on top.
 pub fn title_bar_drag(ui: &mut Ui) {
     let r = ui.max_rect();
-    let rect = Rect::from_min_max(r.min + vec2(RESIZE_EDGE, RESIZE_EDGE), r.max - vec2(RESIZE_EDGE, 0.0));
+    let band = resize_band(ui.ctx());
+    let rect = Rect::from_min_max(r.min + vec2(band, band), r.max - vec2(band, 0.0));
     let resp = ui.interact(rect, ui.id().with("title-bar"), Sense::click_and_drag());
     if resp.drag_started_by(egui::PointerButton::Primary) {
         ui.ctx().send_viewport_cmd(egui::ViewportCommand::StartDrag);
@@ -183,9 +192,11 @@ pub fn window_buttons(ui: &mut Ui, height: f32) {
 fn window_button(ui: &mut Ui, button: WindowButton, height: f32) -> Response {
     let t = Tokens::get(ui.ctx());
     let (rect, _) = ui.allocate_exact_size(vec2(46.0, height), Sense::hover());
-    // Clickable below the resize band along the top (and, for close, the right edge).
-    let right = if button == WindowButton::Close { RESIZE_EDGE } else { 0.0 };
-    let hit = Rect::from_min_max(rect.min + vec2(0.0, RESIZE_EDGE), rect.max - vec2(right, 0.0));
+    // Clickable below the resize band along the top (and, for close, the right edge); maximized,
+    // there is no band and the close button takes the screen's corner, as Windows' own does.
+    let band = resize_band(ui.ctx());
+    let right = if button == WindowButton::Close { band } else { 0.0 };
+    let hit = Rect::from_min_max(rect.min + vec2(0.0, band), rect.max - vec2(right, 0.0));
     let resp = ui.interact(hit, ui.id().with(("window-button", button as u8)), Sense::click());
     let (fill, ink) = match (button, resp.hovered()) {
         (WindowButton::Close, true) => (Color32::from_rgb(0xc4, 0x2b, 0x1c), Color32::WHITE),
