@@ -321,8 +321,8 @@ mod tests {
     fn the_restart_waits_for_the_old_process_to_exit() {
         let dir = tempfile::tempdir().unwrap();
         let marker = dir.path().join("started");
-        let mut old = std::process::Command::new("/bin/sleep").arg("1").spawn().unwrap();
-        relaunch_after_exit(old.id(), &[std::ffi::OsStr::new("/usr/bin/touch"), marker.as_os_str()]).unwrap();
+        let mut old = std::process::Command::new("sleep").arg("1").spawn().unwrap();
+        relaunch_after_exit(old.id(), &[std::ffi::OsStr::new("touch"), marker.as_os_str()]).unwrap();
         std::thread::sleep(std::time::Duration::from_millis(400));
         assert!(!marker.exists(), "started while the old launcher was still running");
         old.wait().unwrap();
