@@ -336,6 +336,23 @@ fn spanish_locales_and_plurals_work() {
 }
 
 #[test]
+fn italian_locales_and_plurals_work() {
+    for tag in ["it", "it-IT", "it_IT.UTF-8", "it-CH", "IT"] {
+        assert_eq!(lang_from_tag(tag), Some(Lang::IT), "{tag}");
+    }
+    assert_eq!(super::detect::first_supported(["xx-XX", "it-IT", "en-US"]), Some(Lang::IT));
+    // "app" doesn't inflect in Italian; days do, and only 1 is singular.
+    assert_eq!(trn(Lang::IT, 0, "{n} app", "{n} apps"), "0 app");
+    assert_eq!(trn(Lang::IT, 1, "{n} app", "{n} apps"), "1 app");
+    assert_eq!(trn(Lang::IT, 0, "{n} day ago", "{n} days ago"), "0 giorni fa");
+    assert_eq!(trn(Lang::IT, 1, "{n} day ago", "{n} days ago"), "1 giorno fa");
+    assert_eq!(trn(Lang::IT, 2, "{n} day ago", "{n} days ago"), "2 giorni fa");
+    assert_eq!(super::tr_ctx(Lang::IT, "month", "Aug"), "ago");
+    assert_eq!(tr(Lang::IT, "{month} {day}, {year}"), "{day} {month} {year}");
+    assert_eq!(message(Lang::IT, "PhotoCraft updated to 0.5.0"), "PhotoCraft aggiornata a 0.5.0");
+}
+
+#[test]
 fn polish_locales_resolve() {
     for tag in ["pl", "pl-PL", "pl_PL.UTF-8", "PL_pl"] {
         assert_eq!(lang_from_tag(tag), Some(Lang::PL), "{tag}");
