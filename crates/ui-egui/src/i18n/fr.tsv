@@ -94,6 +94,8 @@
 	Running in the background	Exécution en arrière-plan
 	Keep running in the tray when the window is closed	Rester actif dans la zone de notification à la fermeture de la fenêtre
 	Show the window on the current desktop	Afficher la fenêtre sur le bureau actuel
+	Hide the Dock icon while the window is closed	Masquer l'icône du Dock quand la fenêtre est fermée
+	The launcher stays in the menu bar only. Its Dock icon comes back when you open the window.	Le launcher reste uniquement dans la barre des menus. Son icône revient dans le Dock quand vous ouvrez la fenêtre.
 	Start ArtCraft Launcher when I log in	Lancer ArtCraft Launcher à l'ouverture de session
 	Community	Communauté
 	Questions, ideas and news from the ArtCraft team	Questions, idées et actualités de l'équipe ArtCraft

@@ -439,6 +439,13 @@ impl LauncherUi {
             section(ui, tl!("Running in the background"));
             if host.has_tray() {
                 ui.checkbox(&mut self.settings.close_to_tray, tl!("Keep running in the tray when the window is closed"));
+                if host.has_dock() {
+                    ui.add_enabled(
+                        self.settings.close_to_tray,
+                        egui::Checkbox::new(&mut self.settings.hide_dock_icon, tl!("Hide the Dock icon while the window is closed")),
+                    )
+                    .on_hover_text(tl!("The launcher stays in the menu bar only. Its Dock icon comes back when you open the window."));
+                }
             }
             if host.has_desktops() {
                 ui.checkbox(&mut self.settings.show_on_current_desktop, tl!("Show the window on the current desktop"))

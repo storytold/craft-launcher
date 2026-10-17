@@ -155,7 +155,9 @@ Packaging facts the code relies on:
   `ai.storyteller.artcraft-launcher`, which toast notifications need. `portable.txt` beside the exe switches on portable mode
   (`ArtCraftLauncherData\` next to the exe).
 - The macOS bundle is `ArtCraft Launcher.app` (executable `Contents/MacOS/ArtCraft Launcher`), a
-  normal Dock app that can also sit in the menu bar: `LSUIElement` must never be set.
+  normal Dock app that can also sit in the menu bar: `LSUIElement` must never be set. The user
+  can hide the Dock icon while the window is put away in the menu bar; that switches the
+  activation policy at run time (`apps/artcraft-launcher/src/dock.rs`).
 - Linux: the tray uses StatusNotifierItem over D-Bus and notifications use
   `org.freedesktop.Notifications`, both in pure Rust (no GTK, appindicator or libdbus).
 - Inside the Flatpak launcher (`process::in_sandbox()`), apps normally install as host Flatpaks
