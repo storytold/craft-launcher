@@ -152,7 +152,15 @@ fn native_options(hidden: bool) -> eframe::NativeOptions {
     } else if let Some(icon) = icon {
         viewport = viewport.with_icon(icon);
     }
-    eframe::NativeOptions { viewport, persist_window: true, wgpu_options: wgpu_options(), ..Default::default() }
+    // Persistence goes to the same file `settings_file` uses, so a portable suite keeps its
+    // settings and window state inside itself instead of in the user's profile.
+    eframe::NativeOptions {
+        viewport,
+        persist_window: true,
+        persistence_path: settings_file::path(APP_ID),
+        wgpu_options: wgpu_options(),
+        ..Default::default()
+    }
 }
 
 /// wgpu's backend list. On Windows that is Direct3D 12 with GL as the fallback, not Vulkan:
