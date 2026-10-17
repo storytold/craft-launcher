@@ -1662,6 +1662,62 @@ fn the_current_desktop_setting_is_only_offered_where_the_os_has_desktops() {
 }
 
 #[test]
+fn the_dock_icon_can_be_hidden_while_the_launcher_waits_in_the_menu_bar() {
+    const HIDE: &str = "Hide the Dock icon while the window is closed";
+    // NoHost has no Dock (Windows, Linux, web): no setting. It's off by default, so the Dock icon stays.
+    let (mut h, _) = harness(ViewMode::Grid, egui::Theme::Dark, true);
+    h.run_steps(6);
+    h.get_by_label("Settings").click();
+    h.run_steps(4);
+    assert!(h.query_by_label(HIDE).is_none());
+    assert!(!Settings::default().hide_dock_icon);
+
+    // macOS with a menu bar icon (DesktopHost::has_dock).
+    struct DockHost;
+    impl Host for DockHost {
+        fn has_tray(&self) -> bool {
+            true
+        }
+        fn has_dock(&self) -> bool {
+            true
+        }
+    }
+    let mut backend = Some(Fake {
+        events: events(),
+        sent: Rc::default(),
+        manage: true,
+        pictures: Rc::default(),
+        asked: Vec::new(),
+        clock: Rc::new(Cell::new(NOW)),
+    });
+    let mut h = test_harness_builder(egui::Theme::Dark).with_size(egui::vec2(1180.0, 900.0)).build_ui_state(
+        move |ui, state: &mut Option<LauncherUi>| {
+            if state.is_none()
+                && let Some(b) = backend.take()
+            {
+                *state = Some(LauncherUi::new(ui.ctx(), Box::new(b), Settings { notify: false, ..Settings::default() }));
+            }
+            if let Some(l) = state.as_mut() {
+                l.logic(&ui.ctx().clone(), &mut DockHost);
+                l.ui(ui, &mut DockHost);
+            }
+        },
+        None,
+    );
+    let hide_dock_icon = |h: &Harness<'_, Option<LauncherUi>>| h.state().as_ref().is_some_and(|l| l.settings.hide_dock_icon);
+    h.run_steps(6);
+    h.get_by_label("Settings").click();
+    h.run_steps(4);
+    h.get_by_label(HIDE).click();
+    h.run_steps(2);
+    assert!(hide_dock_icon(&h));
+    // Only meaningful while closing keeps the launcher in the menu bar.
+    h.get_by_label("Keep running in the tray when the window is closed").click();
+    h.run_steps(2);
+    assert!(h.get_by_label(HIDE).accesskit_node().is_disabled());
+}
+
+#[test]
 /// A feed alert is acknowledged only by OK (persisted), while an inline announcement stays until
 /// its own Dismiss is clicked.
 fn feed_announcements_and_alerts_show_until_dismissed() {
