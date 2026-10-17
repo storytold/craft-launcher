@@ -181,7 +181,7 @@ pub fn update(
         #[cfg(target_os = "macos")]
         Install::MacApp(bundle) => {
             let existing = Installed { version: None, source: InstallSource::MacApp, location: bundle.display().to_string(), package: None };
-            let placed = install::macos::install_dmg(&LAUNCHER, &file, Some(&existing), None, paths, &install::macos::Expect::release(release));
+            let placed = install::macos::install_dmg(&LAUNCHER, &file, Some(&existing), None, false, paths, &install::macos::Expect::release(release));
             let _ = std::fs::remove_file(&file);
             let placed = placed?;
             relaunch_after_exit(pid, &[Path::new("/usr/bin/open").as_os_str(), placed.as_os_str()])
@@ -371,7 +371,7 @@ mod tests {
         let existing = Installed { version: None, source: InstallSource::MacApp, location: current.display().to_string(), package: None };
         // An unsigned test bundle: the signature check has its own tests in `install`.
         let expect = install::macos::Expect { team: None, version: None };
-        let placed = install::macos::install_dmg(&LAUNCHER, &dmg, Some(&existing), None, &Paths::under(dir.path()), &expect).unwrap();
+        let placed = install::macos::install_dmg(&LAUNCHER, &dmg, Some(&existing), None, false, &Paths::under(dir.path()), &expect).unwrap();
         assert_eq!(placed, current);
         assert_eq!(std::fs::read_to_string(current.join("Contents/MacOS/ArtCraft Launcher")).unwrap(), "0.2.0");
         assert_eq!(
