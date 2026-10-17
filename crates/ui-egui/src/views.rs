@@ -200,7 +200,7 @@ impl LauncherUi {
             ui.add_space(14.0);
         }
         self.announcements(ui);
-        ui.horizontal(|ui| {
+        {
             let updates = self.count(Filter::Updates);
             let mut filters = vec![
                 (Filter::All, tl!("All"), tl!("Every Craft app"), None),
@@ -215,51 +215,155 @@ impl LauncherUi {
             }
             let filters: Vec<(Filter, Cell<'_>)> =
                 filters.into_iter().map(|(f, label, tip, highlight)| (f, Cell { label, tip, count: Some((self.count(f), highlight)) })).collect();
-            widgets::cells(ui, &mut self.settings.filter, &filters);
-            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                if self.caps.manage_apps && updates > 0 {
-                    let label = if updates == 1 {
-                        tl!("Update 1 app").to_string()
-                    } else {
-                        fmt(tl!("Update all ({count})"), &[("count", &updates.to_string())])
-                    };
-                    if widgets::button(ui, &label, Kind::Primary, 0.0).clicked() {
-                        let ids: Vec<&str> =
-                            self.entries.iter().filter(|e| self.in_filter(e, Filter::Updates) && e.job.is_none()).map(|e| e.app.id).collect();
-                        for id in ids {
-                            self.send(Command::Install { app: id.to_string() });
+            let update_all_label = (self.caps.manage_apps && updates > 0).then(|| {
+                if updates == 1 { tl!("Update 1 app").to_string() } else { fmt(tl!("Update all ({count})"), &[("count", &updates.to_string())]) }
+            });
+            let filters_width: f32 = filters
+                .iter()
+                .map(|(_, cell)| {
+                    widgets::hud_galley(ui, cell.label, t.muted).size().x
+                        + cell.count.map_or(0.0, |(count, _)| widgets::hud_galley(ui, &count.to_string(), t.faint).size().x + 8.0)
+                        + 24.0
+                })
+                .sum();
+            let update_width = update_all_label.as_deref().map_or(0.0, |label| widgets::button_width(ui, label, 0.0) + 4.0);
+            let sort_label_width = if self.settings.view == ViewMode::Grid { widgets::hud_galley(ui, tl!("Sort"), t.faint).size().x } else { 0.0 };
+            let control_gaps = ui.spacing().item_spacing.x
+                * if self.settings.view == ViewMode::Grid {
+                    3.0
+                } else if update_all_label.is_some() {
+                    2.0
+                } else {
+                    1.0
+                };
+            let required_width = filters_width
+                + 200.0
+                + update_width
+                + sort_label_width
+                + control_gaps
+                + if self.settings.view == ViewMode::Grid { 140.0 } else { 0.0 };
+            let compact = required_width > ui.available_width();
+
+            if compact {
+                ui.vertical(|ui| {
+                    widgets::cells_filling(ui, &mut self.settings.filter, &filters);
+                    ui.horizontal(|ui| {
+                        if self.settings.view == ViewMode::Grid {
+                            let gap = ui.spacing().item_spacing.x;
+                            let half_width = (ui.available_width() - gap) / 2.0;
+                            ui.allocate_ui_with_layout(vec2(half_width, theme::CONTROL_H), egui::Layout::left_to_right(egui::Align::Center), |ui| {
+                                widgets::hud(ui, tl!("Sort"), t.faint);
+                                ui.add_space(4.0);
+                                egui::ComboBox::from_id_salt("sort")
+                                    .selected_text(RichText::new(sort_label(self.settings.sort)).size(13.0))
+                                    .width(ui.available_width())
+                                    .show_ui(ui, |ui| {
+                                        for key in
+                                            [SortKey::Suite, SortKey::Name, SortKey::Status, SortKey::Installed, SortKey::Latest, SortKey::Released]
+                                        {
+                                            if ui.selectable_label(self.settings.sort == key, sort_label(key)).clicked() {
+                                                self.settings.sort = key;
+                                                self.settings.sort_descending = key.starts_descending();
+                                            }
+                                        }
+                                    });
+                            });
+                            ui.allocate_ui_with_layout(vec2(half_width, theme::CONTROL_H), egui::Layout::left_to_right(egui::Align::Center), |ui| {
+                                if let Some(label) = &update_all_label {
+                                    if widgets::button(ui, label, Kind::Primary, 0.0).clicked() {
+                                        let ids: Vec<&str> = self
+                                            .entries
+                                            .iter()
+                                            .filter(|e| self.in_filter(e, Filter::Updates) && e.job.is_none())
+                                            .map(|e| e.app.id)
+                                            .collect();
+                                        for id in ids {
+                                            self.send(Command::Install { app: id.to_string() });
+                                        }
+                                    }
+                                    ui.add_space(4.0);
+                                }
+                                ui.add(
+                                    egui::TextEdit::singleline(&mut self.search)
+                                        .hint_text(tl!("Search apps"))
+                                        .desired_width(ui.available_width())
+                                        .min_size(vec2(0.0, theme::CONTROL_H))
+                                        .vertical_align(egui::Align::Center)
+                                        .margin(vec2(10.0, 0.0)),
+                                );
+                            });
+                        } else {
+                            if let Some(label) = &update_all_label {
+                                if widgets::button(ui, label, Kind::Primary, 0.0).clicked() {
+                                    let ids: Vec<&str> = self
+                                        .entries
+                                        .iter()
+                                        .filter(|e| self.in_filter(e, Filter::Updates) && e.job.is_none())
+                                        .map(|e| e.app.id)
+                                        .collect();
+                                    for id in ids {
+                                        self.send(Command::Install { app: id.to_string() });
+                                    }
+                                }
+                                ui.add_space(4.0);
+                            }
+                            ui.add(
+                                egui::TextEdit::singleline(&mut self.search)
+                                    .hint_text(tl!("Search apps"))
+                                    .desired_width(ui.available_width())
+                                    .min_size(vec2(0.0, theme::CONTROL_H))
+                                    .vertical_align(egui::Align::Center)
+                                    .margin(vec2(10.0, 0.0)),
+                            );
                         }
-                    }
-                    ui.add_space(4.0);
-                }
-                ui.add(
-                    egui::TextEdit::singleline(&mut self.search)
-                        .hint_text(tl!("Search apps"))
-                        .desired_width(200.0)
-                        .min_size(vec2(0.0, theme::CONTROL_H))
-                        .vertical_align(egui::Align::Center)
-                        .margin(vec2(10.0, 0.0)),
-                );
-                if self.settings.view == ViewMode::Grid {
-                    egui::ComboBox::from_id_salt("sort")
-                        .selected_text(RichText::new(sort_label(self.settings.sort)).size(13.0))
-                        .width(140.0)
-                        .show_ui(ui, |ui| {
-                            for key in [SortKey::Suite, SortKey::Name, SortKey::Status, SortKey::Installed, SortKey::Latest, SortKey::Released] {
-                                if ui.selectable_label(self.settings.sort == key, sort_label(key)).clicked() {
-                                    self.settings.sort = key;
-                                    self.settings.sort_descending = key.starts_descending();
+                    });
+                });
+            } else {
+                ui.horizontal(|ui| {
+                    widgets::cells(ui, &mut self.settings.filter, &filters);
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        if let Some(label) = &update_all_label {
+                            if widgets::button(ui, label, Kind::Primary, 0.0).clicked() {
+                                let ids: Vec<&str> =
+                                    self.entries.iter().filter(|e| self.in_filter(e, Filter::Updates) && e.job.is_none()).map(|e| e.app.id).collect();
+                                for id in ids {
+                                    self.send(Command::Install { app: id.to_string() });
                                 }
                             }
-                        });
-                    // The caption only where it fits beside the filters (longer in some languages).
-                    let sort = tl!("Sort");
-                    if widgets::hud_galley(ui, sort, t.faint).size().x + ui.spacing().item_spacing.x <= ui.available_width() {
-                        widgets::hud(ui, sort, t.faint);
-                    }
-                }
-            });
-        });
+                            ui.add_space(4.0);
+                        }
+                        ui.add(
+                            egui::TextEdit::singleline(&mut self.search)
+                                .hint_text(tl!("Search apps"))
+                                .desired_width(200.0)
+                                .min_size(vec2(0.0, theme::CONTROL_H))
+                                .vertical_align(egui::Align::Center)
+                                .margin(vec2(10.0, 0.0)),
+                        );
+                        if self.settings.view == ViewMode::Grid {
+                            egui::ComboBox::from_id_salt("sort")
+                                .selected_text(RichText::new(sort_label(self.settings.sort)).size(13.0))
+                                .width(140.0)
+                                .show_ui(ui, |ui| {
+                                    for key in
+                                        [SortKey::Suite, SortKey::Name, SortKey::Status, SortKey::Installed, SortKey::Latest, SortKey::Released]
+                                    {
+                                        if ui.selectable_label(self.settings.sort == key, sort_label(key)).clicked() {
+                                            self.settings.sort = key;
+                                            self.settings.sort_descending = key.starts_descending();
+                                        }
+                                    }
+                                });
+                            // The caption only where it fits beside the filters (longer in some languages).
+                            let sort = tl!("Sort");
+                            if widgets::hud_galley(ui, sort, t.faint).size().x + ui.spacing().item_spacing.x <= ui.available_width() {
+                                widgets::hud(ui, sort, t.faint);
+                            }
+                        }
+                    });
+                });
+            }
+        }
     }
 
     /// News from ArtCraft's release feed (and app renames), until the user dismisses each.

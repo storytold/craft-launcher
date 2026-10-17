@@ -350,22 +350,49 @@ pub struct Cell<'a> {
 /// Mutually exclusive options in a row of hairline cells (the site's share bar); the chosen one
 /// is inverted. Returns whether the choice changed.
 pub fn cells<T: PartialEq + Copy>(ui: &mut Ui, value: &mut T, options: &[(T, Cell<'_>)]) -> bool {
+    cells_inner(ui, value, options, None)
+}
+
+/// Mutually exclusive options in a row of hairline cells that fills the available width.
+pub fn cells_filling<T: PartialEq + Copy>(ui: &mut Ui, value: &mut T, options: &[(T, Cell<'_>)]) -> bool {
+    let width = ui.available_width();
+    let layout = if ui.layout().prefer_right_to_left() {
+        egui::Layout::right_to_left(egui::Align::Center)
+    } else {
+        egui::Layout::left_to_right(egui::Align::Center)
+    };
+    ui.allocate_ui_with_layout(vec2(width, theme::CONTROL_H), layout, |ui| cells_inner(ui, value, options, Some(width))).inner
+}
+
+fn cells_inner<T: PartialEq + Copy>(ui: &mut Ui, value: &mut T, options: &[(T, Cell<'_>)], fill_width: Option<f32>) -> bool {
     let t = Tokens::get(ui.ctx());
     let mut changed = false;
+    let natural_widths: Vec<f32> = options
+        .iter()
+        .map(|(_, cell)| {
+            hud_galley(ui, cell.label, t.ink).size().x
+                + cell.count.map_or(0.0, |(n, _)| hud_galley(ui, &n.to_string(), t.faint).size().x + 8.0)
+                + 24.0
+        })
+        .collect();
+    let extra_width = fill_width.map_or(0.0, |width| ((width - natural_widths.iter().sum::<f32>()) / options.len().max(1) as f32).max(0.0));
     // In a right-to-left parent the row fills from the right: keep the options' order.
     let rtl = ui.layout().prefer_right_to_left();
-    let ordered: Vec<&(T, Cell<'_>)> = if rtl { options.iter().rev().collect() } else { options.iter().collect() };
+    let mut ordered: Vec<(usize, &(T, Cell<'_>))> = options.iter().enumerate().collect();
+    if rtl {
+        ordered.reverse();
+    }
     let mut rects = Vec::with_capacity(options.len());
     ui.scope(|ui| {
         ui.spacing_mut().item_spacing.x = 0.0;
-        for (opt, cell) in ordered {
+        for (index, (opt, cell)) in ordered {
             let on = *value == *opt;
             let label = hud_galley(ui, cell.label, t.ink);
             let count = cell.count.map(|(n, highlight)| {
                 let c = if on { t.invert_fg.gamma_multiply(0.6) } else { highlight.filter(|_| n > 0).unwrap_or(t.faint) };
                 (hud_galley(ui, &n.to_string(), c), c)
             });
-            let w = label.size().x + count.as_ref().map_or(0.0, |(g, _)| g.size().x + 8.0) + 24.0;
+            let w = natural_widths[index] + extra_width;
             let (rect, resp) = ui.allocate_exact_size(vec2(w, theme::CONTROL_H), Sense::click());
             let hovered = resp.hovered();
             let (fill, ink) = match (on, hovered) {
