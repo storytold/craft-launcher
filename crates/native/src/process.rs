@@ -144,11 +144,28 @@ fn which_on_path(name: &str) -> Option<std::path::PathBuf> {
     std::env::split_paths(&path).map(|d| d.join(name)).find(|p| p.is_file())
 }
 
+pub(crate) fn appimage_runner() -> Option<std::ffi::OsString> {
+    std::env::var_os("ARTCRAFT_LAUNCHER_APPIMAGE_RUNNER").filter(|runner| !runner.is_empty())
+}
+
 /// Starts an app binary from its own folder.
-pub fn launch_binary(exe: &Path, args: &[&str]) -> Result<(), String> {
-    let mut cmd = if in_sandbox() {
+pub fn launch_binary(app_id: &str, exe: &Path, args: &[&str]) -> Result<(), String> {
+    let runner = appimage_runner();
+    spawn_detached(binary_command(app_id, exe, args, in_sandbox(), runner.as_deref()))
+}
+
+fn binary_command(app_id: &str, exe: &Path, args: &[&str], sandbox: bool, appimage_runner: Option<&std::ffi::OsStr>) -> Command {
+    let mut cmd = if sandbox {
         let mut c = command("flatpak-spawn");
         c.arg("--host").arg(exe);
+        c
+    } else if let Some(runner) = appimage_runner.filter(|runner| {
+        cfg!(target_os = "linux") && !runner.is_empty() && exe.extension().is_some_and(|extension| extension.eq_ignore_ascii_case("AppImage"))
+    }) {
+        let mut c = command(runner);
+        c.arg(exe);
+        // AppRun must not replace our runner-based menu entry with a direct launch.
+        c.env(format!("{}_NO_DESKTOP_INTEGRATION", app_id.to_ascii_uppercase()), "1");
         c
     } else {
         command(exe)
@@ -157,7 +174,7 @@ pub fn launch_binary(exe: &Path, args: &[&str]) -> Result<(), String> {
     if let Some(dir) = exe.parent() {
         cmd.current_dir(dir);
     }
-    spawn_detached(cmd)
+    cmd
 }
 
 /// Opens a file, folder or URL with the system's default handler.
@@ -305,6 +322,48 @@ mod tests {
             let _probe = RunningProbe::start(&actual);
             assert_eq!(is_running(Path::new(&requested)), expected, "{requested}");
         }
+    }
+}
+
+#[cfg(all(test, target_os = "linux"))]
+mod appimage_launch_tests {
+    use std::ffi::OsStr;
+
+    use super::*;
+
+    #[test]
+    fn appimages_use_the_configured_runner_and_keep_arguments() {
+        let exe = Path::new("/home/user/My Apps/filmcraft.AppImage");
+        let runner = OsStr::new("/nix/store/runner/bin/appimage-run");
+        let cmd = binary_command("filmcraft", exe, &["--control", "7878"], false, Some(runner));
+        assert_eq!(cmd.get_program(), runner);
+        assert_eq!(cmd.get_args().collect::<Vec<_>>(), [exe.as_os_str(), OsStr::new("--control"), OsStr::new("7878")]);
+        assert_eq!(cmd.get_current_dir(), exe.parent());
+        assert!(cmd.get_envs().any(|(key, value)| key == "FILMCRAFT_NO_DESKTOP_INTEGRATION" && value == Some(OsStr::new("1"))));
+    }
+
+    #[test]
+    fn appimages_without_a_runner_launch_directly() {
+        let exe = Path::new("/home/user/Apps/filmcraft.AppImage");
+        let cmd = binary_command("filmcraft", exe, &["--version"], false, None);
+        assert_eq!(cmd.get_program(), exe);
+        assert_eq!(cmd.get_args().collect::<Vec<_>>(), [OsStr::new("--version")]);
+    }
+
+    #[test]
+    fn native_binaries_do_not_use_the_appimage_runner() {
+        let exe = Path::new("/usr/bin/filmcraft");
+        let cmd = binary_command("filmcraft", exe, &[], false, Some(OsStr::new("appimage-run")));
+        assert_eq!(cmd.get_program(), exe);
+        assert_eq!(cmd.get_args().count(), 0);
+    }
+
+    #[test]
+    fn sandboxed_appimages_still_launch_on_the_host() {
+        let exe = Path::new("/home/user/Apps/filmcraft.AppImage");
+        let cmd = binary_command("filmcraft", exe, &["--version"], true, Some(OsStr::new("appimage-run")));
+        assert_eq!(cmd.get_program(), "flatpak-spawn");
+        assert_eq!(cmd.get_args().collect::<Vec<_>>(), [OsStr::new("--host"), exe.as_os_str(), OsStr::new("--version")]);
     }
 }
 
