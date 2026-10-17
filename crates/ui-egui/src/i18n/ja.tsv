@@ -157,6 +157,7 @@
 	Disk image (.dmg)	ディスクイメージ (.dmg)
 	Debian package (.deb)	Debian パッケージ (.deb)
 	RPM package (.rpm)	RPM パッケージ (.rpm)
+	Arch package (.pkg.tar.zst)	Arch パッケージ (.pkg.tar.zst)
 	Flatpak bundle	Flatpak バンドル
 	Tarball (.tar.gz)	tarball (.tar.gz)
 

@@ -288,6 +288,7 @@ figcraft	Interface design and prototyping	界面设计与原型制作
 	Disk image (.dmg)	磁盘映像 (.dmg)
 	Debian package (.deb)	Debian 软件包 (.deb)
 	RPM package (.rpm)	RPM 软件包 (.rpm)
+	Arch package (.pkg.tar.zst)	Arch 软件包 (.pkg.tar.zst)
 	Flatpak bundle	Flatpak 包
 	Tarball (.tar.gz)	压缩包 (.tar.gz)
 	App details	应用详情

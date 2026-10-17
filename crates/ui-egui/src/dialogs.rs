@@ -421,7 +421,7 @@ impl LauncherUi {
                     if !is_flatpak && !is_appimage {
                         ui.selectable_value(&mut choice, None, tl!("System package (recommended)"));
                     }
-                    for k in [PackageKind::Deb, PackageKind::Rpm, PackageKind::Flatpak, PackageKind::AppImage] {
+                    for k in [PackageKind::Deb, PackageKind::Rpm, PackageKind::ArchPkg, PackageKind::Flatpak, PackageKind::AppImage] {
                         ui.selectable_value(&mut choice, Some(k), crate::i18n::t(k.label()));
                     }
                     // The tarball is unpacked and run inside the launcher's own sandbox, so it

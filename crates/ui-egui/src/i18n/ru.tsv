@@ -153,6 +153,7 @@
 	Disk image (.dmg)	Образ диска (.dmg)
 	Debian package (.deb)	Пакет Debian (.deb)
 	RPM package (.rpm)	Пакет RPM (.rpm)
+	Arch package (.pkg.tar.zst)	Пакет Arch (.pkg.tar.zst)
 	Flatpak bundle	Пакет Flatpak
 	Tarball (.tar.gz)	Архив (.tar.gz)
 

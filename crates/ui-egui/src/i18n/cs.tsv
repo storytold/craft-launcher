@@ -139,6 +139,7 @@
 	Disk image (.dmg)	Obraz disku (.dmg)
 	Debian package (.deb)	Balíček Debian (.deb)
 	RPM package (.rpm)	Balíček RPM (.rpm)
+	Arch package (.pkg.tar.zst)	Balíček Arch (.pkg.tar.zst)
 	Flatpak bundle	Balíček Flatpak
 	Tarball (.tar.gz)	Archiv tar (.tar.gz)
 photocraft	Image editing	Úpravy obrázků

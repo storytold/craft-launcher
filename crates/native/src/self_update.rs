@@ -143,6 +143,9 @@ fn detect(exe: &Path) -> Option<Install> {
     if process::capture("rpm", &["-q", LAUNCHER.id], t).is_some() {
         return Some(Install::Package(PackageKind::Rpm, exe.to_path_buf()));
     }
+    if process::capture("pacman", &["-Q", LAUNCHER.id], t).is_some() || process::capture("pacman", &["-Q", &LAUNCHER.bundle_id()], t).is_some() {
+        return Some(Install::Package(PackageKind::ArchPkg, exe.to_path_buf()));
+    }
     None
 }
 
@@ -443,6 +446,7 @@ mod tests {
             "artcraft-launcher-0.2.0-windows-x64-portable.zip",
             "artcraft-launcher-0.2.0-linux-x86_64.AppImage",
             "artcraft-launcher-0.2.0-linux-x86_64.deb",
+            "artcraft-launcher-0.2.0-linux-x86_64.pkg.tar.zst",
             "artcraft-launcher-web-0.2.0.zip",
         ];
         let release = Release {
@@ -459,5 +463,6 @@ mod tests {
         assert_eq!(pick(Os::Windows, Install::Portable(PathBuf::new()).kind()).as_deref(), Some(names[2]));
         assert_eq!(pick(Os::Linux, Install::AppImage(PathBuf::new()).kind()).as_deref(), Some(names[3]));
         assert_eq!(pick(Os::Linux, Install::Package(PackageKind::Deb, PathBuf::new()).kind()).as_deref(), Some(names[4]));
+        assert_eq!(pick(Os::Linux, Install::Package(PackageKind::ArchPkg, PathBuf::new()).kind()).as_deref(), Some(names[5]));
     }
 }

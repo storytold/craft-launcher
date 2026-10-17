@@ -155,6 +155,7 @@
 	Disk image (.dmg)	Lemezkép (.dmg)
 	Debian package (.deb)	Debian-csomag (.deb)
 	RPM package (.rpm)	RPM-csomag (.rpm)
+	Arch package (.pkg.tar.zst)	Arch-csomag (.pkg.tar.zst)
 	Flatpak bundle	Flatpak-csomag
 	Tarball (.tar.gz)	Tömörített archívum (.tar.gz)
 
