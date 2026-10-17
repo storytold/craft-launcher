@@ -32,6 +32,8 @@
   <string>@BUILD_SHA@</string>
   <key>CFBundleIconFile</key>
   <string>ArtCraft Launcher</string>
+  <key>CFBundleIconName</key>
+  <string>ArtCraftLauncher</string>
   <key>LSApplicationCategoryType</key>
   <string>public.app-category.utilities</string>
   <!-- Must match MACOSX_DEPLOYMENT_TARGET in package.sh. -->

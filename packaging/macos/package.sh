@@ -103,6 +103,14 @@ mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 # Executable and icon carry the display name (CFBundleExecutable / CFBundleIconFile).
 cp "$WORK/bin/$PKG" "$APP/Contents/MacOS/$APP_NAME"
 cp "$ROOT/assets/app-icon/$PKG.icns" "$APP/Contents/Resources/$APP_NAME.icns"
+if [ -f "$ROOT/assets/app-icon/Assets.car" ]; then
+  cp "$ROOT/assets/app-icon/Assets.car" "$APP/Contents/Resources/Assets.car"
+elif [ -d "$ROOT/assets/app-icon/ArtCraftLauncher.icon" ] && command -v xcrun >/dev/null 2>&1; then
+  xcrun actool "$ROOT/assets/app-icon/ArtCraftLauncher.icon" --app-icon ArtCraftLauncher \
+    --compile "$APP/Contents/Resources" --output-format human-readable-text \
+    --platform macosx --minimum-deployment-target 26.0 \
+    --output-partial-info-plist "$WORK/icon-partial.plist" >/dev/null
+fi
 sed -e "s/@VERSION@/$VERSION/g" -e "s/@SHORT_VERSION@/$SHORT_VERSION/g" \
   -e "s/@BUILD_SHA@/${ARTCRAFT_LAUNCHER_BUILD_SHA:-unknown}/g" \
   "$HERE/Info.plist.in" >"$APP/Contents/Info.plist"

@@ -59,6 +59,15 @@ for s in 16 32 64 128 256 512 1024; do
 done
 (cd "$ROOT" && cargo run -q -p xtask -- icns "$DIR/artcraft-launcher.icns" "${ICNS_PNGS[@]}")
 
+# macOS Liquid Glass icon (Xcode 26+).
+if command -v xcrun >/dev/null 2>&1 && [ -d "$DIR/ArtCraftLauncher.icon" ]; then
+  xcrun actool "$DIR/ArtCraftLauncher.icon" --app-icon ArtCraftLauncher \
+    --compile "$DIR" --output-format human-readable-text \
+    --platform macosx --minimum-deployment-target 26.0 \
+    --output-partial-info-plist "$TMP/partial.plist" >/dev/null 2>&1 || true
+  rm -f "$DIR/ArtCraftLauncher.icns"
+fi
+
 # Tray icons: the black mark is the macOS menu-bar template (44 px = 22 pt @2x; macOS tints it);
 # the blue one is for the Windows notification area and Linux/BSD status notifiers.
 render "$BRAND/artcraft-mark-black.svg" 44 "$BRAND/artcraft-mark-black-44.png"
