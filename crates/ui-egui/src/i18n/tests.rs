@@ -97,10 +97,12 @@ fn plural_forms_count_matches_language() {
 #[test]
 fn every_msg_row_translates_its_own_text() {
     for lang in catalogs() {
-        let cat = Catalog::parse(lang.source);
+        let cat = Catalog::parse(lang.source, lang.rtl);
         for (line, context, source, translation) in rows(lang) {
             if context == "@msg" {
-                assert_eq!(cat.message(&unescape(source)).as_deref(), Some(unescape(translation).as_str()), "{} line {line}", lang.code);
+                // A right-to-left language's rows are stored in visual order (bidi.rs).
+                let want = if lang.rtl { super::bidi::visual_rtl(&unescape(translation)) } else { unescape(translation) };
+                assert_eq!(cat.message(&unescape(source)).as_deref(), Some(want.as_str()), "{} line {line}", lang.code);
             }
         }
     }
@@ -452,6 +454,35 @@ fn system_font_covers_japanese_in_every_ui_family() {
     }
 }
 
+/// egui lays a label out run by run, left to right, and the bidi pass (`bidi.rs`) orders an
+/// Arabic label's runs for it. This is that combination on a real egui layout, headless: after
+/// the pass the first word of a sentence sits rightmost, and a left-to-right island inside it
+/// keeps its own order — the pass and the shaper must not reverse each other's work.
+#[test]
+fn arabic_labels_lay_out_right_to_left() {
+    let ctx = egui::Context::default();
+    crate::theme::install_fonts(&ctx, Some(Lang::AR));
+    let mut output = ctx.run_ui(egui::RawInput::default(), |ui| {
+        let font = egui::FontId::new(13.0, egui::FontFamily::Proportional);
+        for (label, first, second) in [("ملف جديد", "ملف", "جديد"), ("حفظ كـ PDF…", "حفظ", "PDF")] {
+            let job = egui::text::LayoutJob::single_section(
+                super::bidi::visual_rtl(label),
+                egui::TextFormat { font_id: font.clone(), ..Default::default() },
+            );
+            let galley = ui.painter().layout_job(job);
+            let glyphs = &galley.rows[0].row.glyphs;
+            let x_of = |word: &str| glyphs.iter().filter(|g| word.contains(g.chr)).map(|g| g.pos.x).collect::<Vec<f32>>();
+            let (a, b) = (x_of(first), x_of(second));
+            assert!(!a.is_empty() && !b.is_empty(), "{label}: no glyphs for `{first}`/`{second}`");
+            assert!(
+                a.iter().all(|&x| b.iter().all(|&y| x > y)),
+                "`{label}`: `{first}` must sit right of `{second}` after the pass"
+            );
+        }
+    });
+    output.textures_delta.clear();
+}
+
 #[test]
 fn language_labels_come_from_the_registry() {
     use crate::settings::Settings;
@@ -475,6 +506,7 @@ fn parse_rows_of_every_kind() {
     let cat = Catalog::parse(
         "# comment\n\thello\tworld\nmenu\tOpen\tОткрыть\n@id\tfile.open\tОткрыть файл\n@plural\t{n} file|{n} files\t{n} файл|{n} файла|{n} файлов\n\
          @plural\t{n} app|{n} apps\t{n} 个应用\nbroken row\n",
+        false,
     );
     assert_eq!(cat.plain("hello"), Some("world"));
     assert_eq!(cat.contextual("menu", "Open"), Some("Открыть"));
@@ -500,6 +532,7 @@ fn message_templates_match_real_messages() {
          @msg\t{name} updated to {version}\t{name} обновлено до {version}\n\
          @msg\t{name} updated to {version} (no checksum)\t{name} обновлено до {version} (без суммы)\n\
          @msg\t{a}{b}\tnever\n",
+        false,
     );
     assert_eq!(cat.message("Download cancelled").as_deref(), Some("Скачивание отменено"));
     assert_eq!(cat.message("Couldn't open PhotoCraft: no such file: x").as_deref(), Some("Не удалось открыть PhotoCraft: no such file: x"));
