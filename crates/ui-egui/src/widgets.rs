@@ -23,7 +23,7 @@ pub fn tone_color(t: &Tokens, tone: Tone) -> Color32 {
 /// `text` laid out upper case in `family`, `spacing` points between letters.
 pub fn caps(ui: &Ui, text: &str, size: f32, family: egui::FontFamily, spacing: f32, color: Color32) -> Arc<Galley> {
     let format = egui::TextFormat { font_id: egui::FontId::new(size, family), color, extra_letter_spacing: spacing, ..Default::default() };
-    ui.painter().layout_job(egui::text::LayoutJob::single_section(text.to_uppercase(), format))
+    ui.painter().layout_job(egui::text::LayoutJob::single_section(crate::i18n::upper(crate::i18n::current(), text), format))
 }
 
 /// A `.hud-label`: 11 px Geist Mono, upper case, widely spaced.
@@ -60,7 +60,7 @@ pub fn hud_elided(ui: &mut Ui, text: &str, color: Color32, max_width: f32) -> Re
         extra_letter_spacing: theme::HUD_SPACING,
         ..Default::default()
     };
-    let mut job = egui::text::LayoutJob::single_section(text.to_uppercase(), format);
+    let mut job = egui::text::LayoutJob::single_section(crate::i18n::upper(crate::i18n::current(), text), format);
     job.wrap = egui::text::TextWrapping::truncate_at_width(max_width.min(ui.available_width()).max(0.0));
     let galley = ui.painter().layout_job(job);
     let elided = galley.elided;

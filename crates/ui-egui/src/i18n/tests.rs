@@ -384,6 +384,62 @@ fn japanese_locales_and_counts_work() {
     assert_eq!(message(Lang::JA, "PhotoCraft updated to 0.5.0"), "PhotoCraft を 0.5.0 に更新しました");
 }
 
+#[test]
+fn turkish_locales_counts_and_messages_work() {
+    for tag in ["tr", "tr-TR", "tr_TR.UTF-8", "TR_tr", "tr-CY"] {
+        assert_eq!(lang_from_tag(tag), Some(Lang::TR), "{tag}");
+    }
+    assert_eq!(super::detect::first_supported(["xx-XX", "tr-TR", "en-US"]), Some(Lang::TR));
+    // After a number the noun stays singular: one form.
+    for n in [0, 1, 2, 21, 100] {
+        assert_eq!(trn(Lang::TR, n, "{n} app", "{n} apps"), format!("{n} uygulama"));
+        assert_eq!(trn(Lang::TR, n, "{n} day ago", "{n} days ago"), format!("{n} gün önce"));
+    }
+    assert_eq!(trn(Lang::TR, 2, "{n} unknown item", "{n} unknown items"), "2 unknown items");
+    assert_eq!(super::tr_ctx(Lang::TR, "month", "Aug"), "Ağu");
+    assert_eq!(tr(Lang::TR, "{month} {day}, {year}"), "{day} {month} {year}");
+    assert_eq!(message(Lang::TR, "PhotoCraft updated to 0.5.0"), "PhotoCraft güncellendi: 0.5.0");
+    assert_eq!(tr(Lang::TR, "Untranslated diagnostic"), "Untranslated diagnostic");
+}
+
+#[test]
+fn turkish_upper_case_dots_the_capital_i_but_not_in_english_names() {
+    use super::upper;
+    assert_eq!(upper(Lang::TR, "İndir"), "İNDİR");
+    assert_eq!(upper(Lang::TR, "Yükleniyor… çık, ılık"), "YÜKLENİYOR… ÇIK, ILIK");
+    assert_eq!(upper(Lang::TR, "GitHub'da aç"), "GITHUB'DA AÇ");
+    assert_eq!(upper(Lang::TR, "Craft App Suite"), "CRAFT APP SUITE");
+    assert_eq!(upper(Lang::TR, "DesignCraft 0.4.0 için indir"), "DESIGNCRAFT 0.4.0 İÇİN İNDİR");
+    assert_eq!(upper(Lang::TR, "Linux'ta yükleme"), "LINUX'TA YÜKLEME");
+    // Every other language upper-cases as Rust does.
+    assert_eq!(upper(Lang::EN, "Install via GitHub"), "INSTALL VIA GITHUB");
+    assert_eq!(upper(Lang::DE, "Größe"), "Größe".to_uppercase());
+}
+
+/// The bundled faces draw every Turkish letter, in lower and upper case, in every UI family.
+#[test]
+fn bundled_fonts_cover_turkish_in_every_ui_family() {
+    use egui::{FontFamily, FontId};
+    let ctx = egui::Context::default();
+    crate::theme::install_fonts(&ctx, None);
+    let mut output = ctx.run_ui(egui::RawInput::default(), |_| {});
+    output.textures_delta.clear();
+    let text: String = Lang::TR.0.source.lines().filter_map(|line| line.split('\t').nth(2)).collect();
+    let text = format!("{text}{}çğıöşüÇĞİÖŞÜâ", super::upper(Lang::TR, &text));
+    let text: String = text.chars().filter(|c| c.is_alphabetic()).collect();
+    for family in [
+        FontFamily::Proportional,
+        FontFamily::Monospace,
+        crate::theme::medium(),
+        crate::theme::semibold(),
+        crate::theme::display(),
+        crate::theme::mono(),
+        crate::theme::mono_bold(),
+    ] {
+        ctx.fonts_mut(|fonts| assert!(fonts.has_glyphs(&FontId::new(14.0, family.clone()), &text), "missing glyph in {family:?}"));
+    }
+}
+
 /// With the system's Chinese font installed, every UI family can draw the whole Chinese catalog.
 /// Machines without one (CI, the web) skip this; the UI then stays in English.
 #[test]

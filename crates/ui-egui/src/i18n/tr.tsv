@@ -1,0 +1,342 @@
+# Turkish (tr) catalog for ArtCraft Launcher.
+# Format: context<TAB>source<TAB>translation
+# Empty context = plain UI string (tl!, t).
+# @id = command-id keyed (tr_id).
+# @plural = plural forms: one|other in English, one form for Turkish.
+# @msg = status/error message template (message, msg).
+# Other context = disambiguation for tr_ctx.
+#
+# Clean-room: written from the meaning of ArtCraft Launcher's English labels in neutral Turkish,
+# using the terms Turkish-speaking users of Windows, macOS and creative software know (Yükle,
+# Kaldır, Güncelle, İndir, Sürüm notları). The user is addressed with the polite "siz" form, and
+# buttons are plain imperatives, as in most current Turkish software.
+#
+# Coverage: the whole interface — every menu string and tl! literal (complete_menus = true).
+# Left in English on purpose: product name "ArtCraft Launcher" (and its "Launcher" tag), suite
+# name "Craft App Suite",
+# app names (PhotoCraft, LightCraft, FilmCraft, DesignCraft, VectorCraft, PdfCraft, EffectCraft,
+# WordCraft, DeckCraft, GridCraft, CADCraft, SoundCraft), "GitHub", "Discord", "Finder".
+# Shortcut keys keep their key-cap names (Esc).
+# Trailing "…" (U+2026) must be preserved. Placeholders {name}, {n}, {version}, {count}, {v},
+# {what}, {unit}, {real}, {e} must appear in translation.
+# A placeholder never takes a case suffix: Turkish suffixes follow the vowels of the word they
+# join, which a placeholder doesn't know ("{name} güncellendi: {version}", not "{version}'e").
+# Turkish nouns stay singular after a number ("3 uygulama"), so there is one plural form.
+# Upper-case labels dot the capital i (İNDİR), except in the names that stay in English
+# (i18n::upper).
+
+	Launcher	Launcher
+	Craft App Suite	Craft App Suite
+	Open Source Tools for Creatives, Makers, and Builders	Yaratıcılar, Üreticiler ve Geliştiriciler için Açık Kaynak Araçlar
+	Settings	Ayarlar
+	Check for updates	Güncellemeleri denetle
+	Grid	Izgara
+	Table	Tablo
+	Show apps as cards	Uygulamaları kart olarak göster
+	Show apps as a table	Uygulamaları tablo olarak göster
+	All	Tümü
+	Updates	Güncellemeler
+	Not installed	Yüklü değil
+	Search apps	Uygulama ara
+	Sort	Sırala
+	Suite order	Paket sırası
+	Name	Ad
+	Inspired by	Esin kaynağı
+	Status	Durum
+	Installed version	Yüklü sürüm
+	Latest version	En son sürüm
+	Newest release	En yeni sürüm
+	Discord	Discord
+	GitHub	GitHub
+	Website	Web sitesi
+	Classic apps	Klasik uygulamalar
+	New apps	Yeni uygulamalar
+	Classic	Klasik
+	NEW	YENİ
+	Install	Yükle
+	Update to {v}	{v} sürümüne güncelle
+	Open	Aç
+	Download for {os}	{os} için indir
+	Download	İndir
+	Coming soon	Çok yakında
+	Checking…	Denetleniyor…
+	Not available	Kullanılamıyor
+	Offline	Çevrimdışı
+	Downloading {done} of {total}	İndiriliyor: {done} / {total}
+	Downloading…	İndiriliyor…
+	Reconnecting…	Yeniden bağlanılıyor…
+	Verifying…	Doğrulanıyor…
+	Installing, then restarting…	Yükleniyor, ardından yeniden başlatılacak…
+	Installing…	Yükleniyor…
+	Removing…	Kaldırılıyor…
+	Pause download	İndirmeyi duraklat
+	Cancel download	İndirmeyi iptal et
+	Resume download	İndirmeyi sürdür
+	Discard download	İndirileni sil
+	Release notes	Sürüm notları
+	Show in Finder	Finder'da göster
+	Show in Explorer	Dosya Gezgini'nde göster
+	Show in Files	Dosyalar'da göster
+	Reinstall	Yeniden yükle
+	Uninstall…	Kaldır…
+	All releases	Tüm sürümler
+	ArtCraft Launcher {version} is available.	ArtCraft Launcher {version} kullanıma sunuldu.
+	Dismiss	Kapat
+	Update and restart	Güncelle ve yeniden başlat
+	A new version is available. Would you like to relaunch with the updated version?	Yeni bir sürüm var. Güncel sürümle yeniden başlatmak ister misiniz?
+	Later	Daha sonra
+	What's new	Yenilikler
+	No notes were published with this release.	Bu sürümle birlikte not yayımlanmadı.
+	Released {date}	Yayın tarihi: {date}
+	Open on GitHub	GitHub'da aç
+	Close	Kapat
+	ArtCraft Launcher {version}	ArtCraft Launcher {version}
+	Only when I ask	Yalnızca ben istediğimde
+	Automatically download and install updates	Güncellemeleri otomatik olarak indir ve yükle
+	Notify me when an installed app has an update	Yüklü bir uygulamanın güncellemesi olduğunda bana bildir
+	Include pre-releases (betas and release candidates)	Ön sürümleri de dahil et (beta ve sürüm adayları)
+	Installing on Linux	Linux'ta yükleme
+	Install new apps as	Yeni uygulamaları şu biçimde yükle
+	System package (recommended)	Sistem paketi (önerilen)
+	Updates always use the format an app was installed with.	Güncellemeler her zaman uygulamanın yüklendiği biçimi kullanır.
+	Running in the background	Arka planda çalışma
+	Keep running in the tray when the window is closed	Pencere kapatıldığında sistem tepsisinde çalışmaya devam et
+	Show the window on the current desktop	Pencereyi geçerli masaüstünde göster
+	Start ArtCraft Launcher when I log in	Oturum açtığımda ArtCraft Launcher'ı başlat
+	Community	Topluluk
+	Questions, ideas and news from the ArtCraft team	ArtCraft ekibinden sorular, fikirler ve haberler
+	Appearance	Görünüm
+	Quit ArtCraft Launcher	ArtCraft Launcher'dan çık
+	Done	Bitti
+	Uninstall {name}?	{name} kaldırılsın mı?
+	The app will be moved to the Trash. Your documents and settings stay.	Uygulama Çöp Sepeti'ne taşınacak. Belgeleriniz ve ayarlarınız korunur.
+	Windows will remove it like any installed program. Your documents and settings stay.	Windows, uygulamayı yüklü herhangi bir program gibi kaldıracak. Belgeleriniz ve ayarlarınız korunur.
+	Your system's package manager will remove it, and may ask for your password. Your documents and settings stay.	Uygulamayı sisteminizin paket yöneticisi kaldıracak ve parolanızı sorabilir. Belgeleriniz ve ayarlarınız korunur.
+	The app will be removed. Your documents and settings stay.	Uygulama kaldırılacak. Belgeleriniz ve ayarlarınız korunur.
+	Uninstall	Kaldır
+	Cancel	İptal
+	Checked {ago}	Son denetim: {ago}
+	just now	az önce
+	yesterday	dün
+	{month} {day}, {year}	{day} {month} {year}
+	Automatically	Otomatik olarak
+	Every Craft app	Tüm Craft uygulamaları
+	Apps on this computer	Bu bilgisayardaki uygulamalar
+	Installed apps with a newer version	Daha yeni sürümü olan yüklü uygulamalar
+	Apps you can install	Yükleyebileceğiniz uygulamalar
+	Hide App	Uygulamayı gizle
+	Unhide App	Uygulamayı göster
+	Hidden Apps	Gizli uygulamalar
+	Apps you hid	Gizlediğiniz uygulamalar
+	Checked {ago} · using {sources}	Son denetim: {ago} · kaynak: {sources}
+	{a} and {b}	{a} ve {b}
+	Join the Discord	Discord'a katıl
+	Learn more	Daha fazla bilgi
+	Minimize	Simge durumuna küçült
+	Maximize	Ekranı kapla
+	Restore	Önceki boyutuna getir
+	New	Yeni
+	OK	Tamam
+	Open link	Bağlantıyı aç
+	Update	Güncelleme
+	{name} icon	{name} simgesi
+	Loading ArtCraft Launcher…	ArtCraft Launcher yükleniyor…
+	Cancel update	Güncellemeyi iptal et
+	Stop waiting; the update can be started again later	Beklemeyi bırak; güncelleme daha sonra yeniden başlatılabilir
+	Download again	Yeniden indir
+	Install cancelled	Yükleme iptal edildi
+	Install cancelled. The download is kept for the next try.	Yükleme iptal edildi. İndirilen dosya sonraki deneme için saklanıyor.
+	Update cancelled	Güncelleme iptal edildi
+	Uninstall cancelled	Kaldırma iptal edildi
+	Retry install	Yüklemeyi yeniden dene
+	Retry update to {version}	{version} sürümüne güncellemeyi yeniden dene
+	The download is still here. It's checked again, then installed.	İndirilen dosya hâlâ duruyor. Önce yeniden doğrulanacak, ardından yüklenecek.
+	Waiting for another app…	Başka bir uygulama bekleniyor…
+	Waiting for other installs…	Diğer yüklemeler bekleniyor…
+	Installer (.msi)	Yükleyici (.msi)
+	Portable (.zip)	Taşınabilir (.zip)
+	Disk image (.dmg)	Disk görüntüsü (.dmg)
+	Debian package (.deb)	Debian paketi (.deb)
+	RPM package (.rpm)	RPM paketi (.rpm)
+	Flatpak bundle	Flatpak paketi
+	Tarball (.tar.gz)	Tar arşivi (.tar.gz)
+photocraft	Image editing	Görüntü düzenleme
+vectorcraft	Vector illustration	Vektör çizim
+filmcraft	Video editing, color and sound	Video düzenleme, renk ve ses
+lightcraft	Photo library and raw development	Fotoğraf arşivi ve RAW işleme
+pdfcraft	Reading, organizing and protecting PDFs	PDF okuma, düzenleme ve koruma
+effectcraft	Motion graphics and visual effects	Hareketli grafikler ve görsel efektler
+designcraft	Page layout and publishing	Sayfa düzeni ve yayıncılık
+wordcraft	Writing and document design	Yazı ve belge tasarımı
+deckcraft	Presentations and slide shows	Sunular ve slayt gösterileri
+gridcraft	Spreadsheets and data	Elektronik tablolar ve veri
+cadcraft	Computer-aided design and drafting	Bilgisayar destekli tasarım ve teknik çizim
+soundcraft	Recording, editing and mixing audio	Ses kaydı, düzenleme ve miksaj
+month	Jan	Oca
+month	Feb	Şub
+month	Mar	Mar
+month	Apr	Nis
+month	May	May
+month	Jun	Haz
+month	Jul	Tem
+month	Aug	Ağu
+month	Sep	Eyl
+month	Oct	Eki
+month	Nov	Kas
+month	Dec	Ara
+	Not checked yet	Henüz denetlenmedi
+	GitHub's hourly limit was reached; full details return in {min} min	GitHub'ın saatlik istek sınırına ulaşıldı; tüm ayrıntılar {min} dk sonra geri gelecek
+	GitHub limit hit; back in {min} min	GitHub sınırına ulaşıldı; {min} dk sonra
+	Installing for {platform}	{platform} için yükleme
+	Downloads for {platform}	{platform} için indirmeler
+	No downloads for this system	Bu sistem için indirme yok
+	Join the ArtCraft community on Discord	Discord'daki ArtCraft topluluğuna katılın
+	ArtCraft on {name}	{name} üzerinde ArtCraft
+	Couldn't open {name}: {e}	{name} açılamadı: {e}
+	Download cancelled	İndirme iptal edildi
+	Available to install	Yüklenebilir
+	Available	Mevcut
+	Installed · up to date	Yüklü · güncel
+	Update available	Güncelleme var
+	Installed	Yüklü
+	installed	yüklü
+	Not available here	Burada kullanılamıyor
+	Updating…	Güncelleniyor…
+	Update paused	Güncelleme duraklatıldı
+	Download paused	İndirme duraklatıldı
+	{version} installed → {latest} released	{version} yüklü → {latest} yayımlandı
+	Version {version}	Sürüm {version}
+	{installed} installed · latest {latest}	{installed} yüklü · en son {latest}
+	Installed · latest {latest}	Yüklü · en son {latest}
+	Version {version} installed	Sürüm {version} yüklü
+	Version {latest}	Sürüm {latest}
+	No release published yet	Henüz yayımlanmış sürüm yok
+	ArtCraft Launcher	ArtCraft Launcher
+	App	Uygulama
+	Latest	En son
+	Released	Yayın tarihi
+	Auto	Otomatik
+	Language	Dil
+	Ascending	Artan
+	Descending	Azalan
+	Click to reverse the order	Sırayı tersine çevirmek için tıklayın
+	Click to sort by this column	Bu sütuna göre sıralamak için tıklayın
+	Like {name}	{name} benzeri
+	{done} of {total}	{done} / {total}
+	Downloading	İndiriliyor
+	Verifying checksum…	Sağlama toplamı doğrulanıyor…
+	Resume	Sürdür
+	{done} of {total} downloaded	{done} / {total} indirildi
+	{done} downloaded	{done} indirildi
+	Checking for updates…	Güncellemeler denetleniyor…
+	Downloads the new version, replaces this one and opens it again	Yeni sürümü indirir, bu sürümün yerine koyar ve yeniden açar
+	Couldn't check for updates: {f}	Güncellemeler denetlenemedi: {f}
+	Website (coming soon)	Web sitesi (çok yakında)
+	GitHub repository	GitHub deposu
+	ArtCraft	ArtCraft
+	Update 1 app	1 uygulamayı güncelle
+	Update all ({count})	Tümünü güncelle ({count})
+	⊞  Grid	⊞  Izgara
+	☰  Table	☰  Tablo
+	🔍  Search apps	🔍  Uygulama ara
+	{name} {version}	{name} {version}
+	Match system	Sistemle aynı
+	Dark	Koyu
+	Light	Açık
+	Full changelog	Tüm değişiklik günlüğü
+	link	bağlantı
+	No apps match	Eşleşen uygulama yok
+	Open ArtCraft Launcher to update.	Güncellemek için ArtCraft Launcher'ı açın.
+	{name} {v} is available	{name} {v} kullanıma sunuldu
+	{count} updates are available	{count} güncelleme var
+	These notes weren't fetched (GitHub's request limit was reached). They're on the release page.	Bu notlar alınamadı (GitHub'ın istek sınırına ulaşıldı). Notları sürüm sayfasında bulabilirsiniz.
+	When on, opening the launcher from the menu bar brings its window to the desktop you're on. When off, macOS switches you to the desktop the window was on.	Açıkken, başlatıcıyı menü çubuğundan açtığınızda penceresi bulunduğunuz masaüstüne gelir. Kapalıyken macOS sizi pencerenin bulunduğu masaüstüne geçirir.
+	Couldn't change the login item: {e}	Oturum açma öğesi değiştirilemedi: {e}
+column	App	Uygulama
+column	Installed	Yüklü
+column	Latest	En son
+column	Released	Yayın tarihi
+filter	Installed	Yüklü
+	App details	Uygulama ayrıntıları
+	Close (Esc)	Kapat (Esc)
+	Features	Özellikler
+	Latest release	En son sürüm
+	Version	Sürüm
+	Platforms	Platformlar
+	Releases	Sürümler
+	Enlarge picture	Resmi büyüt
+	Click to enlarge	Büyütmek için tıklayın
+	Previous picture (←)	Önceki resim (←)
+	Next picture (→)	Sonraki resim (→)
+	Loading pictures…	Resimler yükleniyor…
+	Pictures couldn't be loaded. Reopen this page to try again.	Resimler yüklenemedi. Yeniden denemek için bu sayfayı tekrar açın.
+	{name} details	{name} ayrıntıları
+
+# Plurals: after a number Turkish nouns stay singular, so one form.
+@plural	{n} app|{n} apps	{n} uygulama
+@plural	{n} min ago|{n} min ago	{n} dk önce
+@plural	{n} h ago|{n} h ago	{n} sa önce
+@plural	{n} day ago|{n} days ago	{n} gün önce
+
+# Status and error messages (@msg): the backend sends them in English; translated where shown.
+@msg	Couldn't open {name}: {e}	{name} açılamadı: {e}
+@msg	Download cancelled	İndirme iptal edildi
+@msg	{name} updated to {version}	{name} güncellendi: {version}
+@msg	{name} installed: {version}	{name} yüklendi: {version}
+@msg	{name} updated to {version} (this release publishes no checksum, so only its size was checked)	{name} güncellendi: {version} (bu sürüm sağlama toplamı yayımlamadığı için yalnızca boyutu denetlendi)
+@msg	{name} installed: {version} (this release publishes no checksum, so only its size was checked)	{name} yüklendi: {version} (bu sürüm sağlama toplamı yayımlamadığı için yalnızca boyutu denetlendi)
+@msg	{name} was removed	{name} kaldırıldı
+@msg	{name} is running. Quit it, then try again.	{name} çalışıyor. Uygulamadan çıkıp yeniden deneyin.
+
+# Command IDs for menu items (@id)
+# Format: @id<TAB>command_id<TAB>translation
+@id	app.install	Yükle
+@id	app.update	{v} sürümüne güncelle
+@id	app.open	Aç
+@id	app.download	{os} için indir
+@id	app.reveal	Finder'da göster
+@id	app.reinstall	Yeniden yükle
+@id	app.uninstall	Kaldır…
+@id	app.notes	Sürüm notları
+@id	app.website	Web sitesi
+@id	app.github	GitHub deposu
+@id	app.releases	Tüm sürümler
+@id	launcher.update	Güncelle ve yeniden başlat
+@id	launcher.download	İndir
+@id	launcher.notes	Yenilikler
+@id	launcher.dismiss	Kapat
+@id	settings.open	Ayarlar
+@id	settings.quit	ArtCraft Launcher'dan çık
+@id	view.grid	Izgara
+@id	view.table	Tablo
+@id	filter.all	Tümü
+@id	filter.installed	Yüklü
+@id	filter.updates	Güncellemeler
+@id	filter.notinstalled	Yüklü değil
+@id	sort.suite	Paket sırası
+@id	sort.name	Ad
+@id	sort.inspired	Esin kaynağı
+@id	sort.status	Durum
+@id	sort.installed	Yüklü sürüm
+@id	sort.latest	En son sürüm
+@id	sort.released	En yeni sürüm
+@id	help.discord	Discord
+@id	help.github	GitHub
+@id	help.website	Web sitesi
+@id	update.check	Güncellemeleri denetle
+@id	update.check_auto	Güncellemeleri otomatik olarak denetle
+@id	update.notify	Yüklü bir uygulamanın güncellemesi olduğunda bana bildir
+@id	update.prereleases	Ön sürümleri de dahil et (beta ve sürüm adayları)
+@id	linux.preferred_kind	Yeni uygulamaları şu biçimde yükle
+@id	tray.close_to_tray	Pencere kapatıldığında sistem tepsisinde çalışmaya devam et
+@id	tray.show_on_current_desktop	Pencereyi geçerli masaüstünde göster
+@id	tray.login_item	Oturum açtığımda ArtCraft Launcher'ı başlat
+@id	appearance.theme	Görünüm
+
+# Tray menu and tooltip (apps/artcraft-launcher/src/tray.rs)
+	Show ArtCraft Launcher	ArtCraft Launcher'ı göster
+	Check for Updates	Güncellemeleri Denetle
+	Visit getartcraft.com	getartcraft.com'u ziyaret et
+	ArtCraft on GitHub	GitHub'da ArtCraft
+	Join the ArtCraft Discord	ArtCraft Discord sunucusuna katıl
+@plural	ArtCraft Launcher · {n} update available|ArtCraft Launcher · {n} updates available	ArtCraft Launcher · {n} güncelleme var
