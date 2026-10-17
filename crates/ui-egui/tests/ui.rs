@@ -393,6 +393,23 @@ fn use_default_removes_an_app_override_and_settings_can_reset_the_root() {
     assert_eq!(h.state().as_ref().unwrap().settings.install_locations.root, None);
 }
 
+#[test]
+fn macos_setting_selects_the_craft_suite_folder_for_new_installs() {
+    let (mut h, sent) = harness(ViewMode::Grid, egui::Theme::Light, true);
+    h.run_steps(8);
+    h.get_by_label("Settings").click();
+    h.run_steps(4);
+    h.get_by_label("Install new apps in /Applications/CraftSuite").click();
+    h.run_steps(3);
+
+    assert_eq!(h.state().as_ref().unwrap().settings.install_locations.root.as_deref(), Some("/Applications/CraftSuite"));
+    assert!(
+        sent.borrow().iter().any(
+            |command| matches!(command, Command::Configure(options) if options.install_locations.root.as_deref() == Some("/Applications/CraftSuite"))
+        )
+    );
+}
+
 #[cfg(windows)]
 #[test]
 fn windows_package_choice_can_select_portable_and_configures_the_backend() {

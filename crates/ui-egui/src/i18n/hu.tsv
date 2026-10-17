@@ -351,6 +351,7 @@ filter	Installed	Telepítve
 	System default	Rendszer alapértelmezése
 	Browse…	Tallózás…
 	Use default	Alapértelmezett használata
+	Install new apps in /Applications/CraftSuite	Új alkalmazások telepítése ide: /Applications/CraftSuite
 	New installs use this folder. Updates stay in their current location.	Az új telepítések ezt a mappát használják. A frissítések a jelenlegi helyükön maradnak.
 	Custom folders use AppImage on Linux.	Linuxon az egyéni mappákhoz AppImage szükséges.
 	The system manages install locations here.	Itt a rendszer kezeli a telepítési helyeket.

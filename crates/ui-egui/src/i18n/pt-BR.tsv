@@ -338,6 +338,7 @@ filter	Installed	Instalados
 	System default	Padrão do sistema
 	Browse…	Procurar…
 	Use default	Usar padrão
+	Install new apps in /Applications/CraftSuite	Instalar novos aplicativos em /Applications/CraftSuite
 	New installs use this folder. Updates stay in their current location.	Novas instalações usam esta pasta. As atualizações mantêm o local atual.
 	Custom folders use AppImage on Linux.	Pastas personalizadas usam AppImage no Linux.
 	The system manages install locations here.	O sistema gerencia os locais de instalação neste ambiente.

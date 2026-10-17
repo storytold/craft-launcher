@@ -10,6 +10,8 @@ use crate::settings::{CheckEvery, Settings};
 use crate::theme::{self, ThemeChoice, Tokens};
 use crate::widgets::{self, Cell, Kind};
 
+const MACOS_CRAFTSUITE_INSTALL_FOLDER: &str = "/Applications/CraftSuite";
+
 impl LauncherUi {
     pub(crate) fn dialogs(&mut self, ctx: &egui::Context, host: &mut dyn Host) {
         let Some(mut dialog) = self.dialog.clone() else {
@@ -365,6 +367,13 @@ impl LauncherUi {
 
         if self.caps.manage_apps {
             section(ui, tl!("Default install folder"));
+            if self.platform.is_some_and(|p| p.os == Os::MacOs) {
+                let mut install_in_craft_suite = self.settings.install_locations.root.as_deref() == Some(MACOS_CRAFTSUITE_INSTALL_FOLDER);
+                if ui.checkbox(&mut install_in_craft_suite, tl!("Install new apps in /Applications/CraftSuite")).changed() {
+                    self.settings.install_locations.root =
+                        install_in_craft_suite.then(|| MACOS_CRAFTSUITE_INSTALL_FOLDER.to_string());
+                }
+            }
             if self.custom_install_folders() {
                 let mut folder = self.settings.install_locations.root.clone().unwrap_or_default();
                 Self::folder_field(ui, &mut folder, None, host);
