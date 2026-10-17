@@ -85,12 +85,18 @@ pub fn set_enabled(on: bool) -> Result<(), String> {
         if !on {
             return remove(&path);
         }
-        let exe = program()?.display().to_string().replace('"', "\\\"");
-        let entry = format!(
-            "[Desktop Entry]\nType=Application\nName=ArtCraft Launcher\nComment=Install and update the Craft App Suite\nExec=\"{exe}\" {HIDDEN_FLAG}\nIcon={ID}\nTerminal=false\nX-GNOME-Autostart-enabled=true\n"
-        );
+        let entry = autostart_entry(&program()?).ok_or("this program's path cannot be written to an autostart entry")?;
         crate::paths::write_atomic(&path, entry.as_bytes())
     }
+}
+
+/// Render the XDG entry before touching the existing autostart file.
+#[cfg(not(any(target_os = "macos", windows)))]
+fn autostart_entry(program: &std::path::Path) -> Option<String> {
+    let exe = crate::desktop_entry::exec_quote(program)?;
+    Some(format!(
+        "[Desktop Entry]\nType=Application\nName=ArtCraft Launcher\nComment=Install and update the Craft App Suite\nExec={exe} {HIDDEN_FLAG}\nIcon={ID}\nTerminal=false\nX-GNOME-Autostart-enabled=true\n"
+    ))
 }
 
 #[cfg(windows)]
@@ -109,5 +115,40 @@ fn remove(path: &std::path::Path) -> Result<(), String> {
         Ok(()) => Ok(()),
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
         Err(e) => Err(format!("couldn't remove {} ({e})", path.display())),
+    }
+}
+
+#[cfg(all(test, not(any(target_os = "macos", windows))))]
+mod autostart_tests {
+    use std::path::Path;
+
+    use super::*;
+
+    #[test]
+    fn autostart_quotes_the_program_and_preserves_the_hidden_flag() {
+        for program in [
+            "/opt/ArtCraft Launcher/artcraft-launcher",
+            r#"/opt/Apps/\"quotes\" $HOME `command`\\100%/artcraft-launcher"#,
+            "/opt/应用/artcraft-launcher",
+        ] {
+            let entry = autostart_entry(Path::new(program)).unwrap();
+            assert_eq!(crate::desktop_entry::exec_program(&entry).as_deref(), Some(program));
+            let quoted = crate::desktop_entry::exec_quote(Path::new(program)).unwrap();
+            assert!(entry.lines().any(|line| line == format!("Exec={quoted} --hidden")));
+            assert!(entry.contains("\nName=ArtCraft Launcher\n"));
+            assert!(entry.contains("\nIcon=ai.storyteller.artcraft-launcher\n"));
+            assert!(entry.contains("\nX-GNOME-Autostart-enabled=true\n"));
+        }
+    }
+
+    #[test]
+    fn autostart_refuses_control_characters_and_non_utf8_paths() {
+        use std::os::unix::ffi::OsStrExt;
+
+        for program in ["/opt/app\nHidden=false", "/opt/app\rName=other", "/opt/app\tname", "/opt/app\0name"] {
+            assert_eq!(autostart_entry(Path::new(program)), None);
+        }
+        let program = std::ffi::OsStr::from_bytes(b"/opt/app\xff");
+        assert_eq!(autostart_entry(Path::new(program)), None);
     }
 }
