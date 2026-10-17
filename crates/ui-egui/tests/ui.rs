@@ -1689,6 +1689,132 @@ fn with_animations_on_hovering_a_card_animates() {
 }
 
 #[test]
+fn install_and_update_actions_preview_download_sizes() {
+    for view in [ViewMode::Grid, ViewMode::Table] {
+        for label in ["Install", "Update to 0.5.0"] {
+            let (mut h, _) = harness(view, egui::Theme::Dark, true);
+            h.run_steps(4);
+            if view == ViewMode::Grid {
+                assert!(h.query_all_by_label("Download size: 150 MB").count() >= 2);
+            }
+            let pos = h.get_all_by_label(label).next().unwrap().rect().center();
+            h.hover_at(pos);
+            h.run_steps(40);
+            h.get_by_label("Disk image (.dmg) · 150 MB");
+            if label == "Update to 0.5.0" {
+                snapshot(&mut h, if view == ViewMode::Grid { "download-size-grid" } else { "download-size-table" });
+            }
+        }
+    }
+}
+
+#[test]
+fn unknown_download_sizes_are_not_presented_as_one_kilobyte() {
+    let mut ev = events();
+    for event in &mut ev {
+        if let Event::Latest { latest: LatestRelease::Found(r), .. } = event {
+            for asset in &mut r.assets {
+                asset.size = 0;
+            }
+        }
+    }
+    let (mut h, _) = harness_with(ev, ViewMode::Grid, egui::Theme::Dark, true, 1.0);
+    h.run_steps(4);
+    h.hover_at(h.get_by_label("Update to 0.5.0").rect().center());
+    h.run_steps(40);
+    assert!(h.query_by_label("Download size: 1 KB").is_none());
+    assert!(h.query_by_label("Disk image (.dmg) · 1 KB").is_none());
+}
+
+#[test]
+fn download_size_preview_covers_formats_for_the_current_platform() {
+    struct Windows(Fake);
+    impl Backend for Windows {
+        fn send(&mut self, c: Command) {
+            self.0.send(c);
+        }
+        fn poll(&mut self) -> Vec<Event> {
+            self.0.poll()
+        }
+        fn capabilities(&self) -> Capabilities {
+            self.0.capabilities()
+        }
+        fn platform(&self) -> Option<Platform> {
+            Some(Platform { os: Os::Windows, arch: Arch::X64 })
+        }
+        fn now(&self) -> i64 {
+            self.0.now()
+        }
+    }
+    for installer_size in [100 << 20, 0] {
+        let mut r = release("photocraft", "0.5.0", NOW);
+        r.assets = [("windows-x64.msi", installer_size), ("windows-x64-portable.zip", 2 << 30), ("linux-x86_64.AppImage", 3 << 20)]
+            .into_iter()
+            .map(|(suffix, size)| Asset {
+                name: format!("photocraft-0.5.0-{suffix}"),
+                size,
+                url: format!("https://github.com/storytold/photocraft/releases/download/v0.5.0/photocraft-0.5.0-{suffix}"),
+                sha256: None,
+            })
+            .collect();
+        artcraft_launcher_ui_egui::i18n::set_test_lang(artcraft_launcher_ui_egui::i18n::Lang::EN);
+        let mut backend = Some(Windows(Fake {
+            events: vec![
+                Event::Latest { app: "photocraft".into(), latest: LatestRelease::Found(r), from: Origin::ArtCraftApi },
+                Event::Detected { app: "photocraft".into(), installed: None },
+                Event::CheckFinished { at: NOW, source: Source::GitHubApi, rate_limited_until: None },
+            ],
+            sent: Rc::default(),
+            manage: true,
+            pictures: Rc::default(),
+            asked: Vec::new(),
+            clock: Rc::new(Cell::new(NOW)),
+        }));
+        let mut h = Harness::builder().with_size(egui::vec2(1180.0, 900.0)).build_ui_state(
+            move |ui, state: &mut Option<LauncherUi>| {
+                if state.is_none()
+                    && let Some(b) = backend.take()
+                {
+                    *state = Some(LauncherUi::new(ui.ctx(), Box::new(b), Settings { notify: false, ..Settings::default() }));
+                }
+                if let Some(l) = state.as_mut() {
+                    l.logic(&ui.ctx().clone(), &mut NoHost);
+                    l.ui(ui, &mut NoHost);
+                }
+            },
+            None,
+        );
+        h.run_steps(4);
+        if installer_size > 0 {
+            h.get_by_label("Download size: 100 MB – 2.0 GB");
+        } else {
+            assert!(h.query_by_label_contains("Download size:").is_none(), "a partly unknown range must not imply the unknown package fits it");
+        }
+        h.hover_at(h.get_by_label("Install").rect().center());
+        h.run_steps(40);
+        if installer_size > 0 {
+            h.get_by_label_contains("Installer (.msi) · 100 MB");
+        } else {
+            assert!(h.query_by_label_contains("Installer (.msi) ·").is_none());
+        }
+        h.get_by_label_contains("Portable (.zip) · 2.0 GB");
+        assert!(h.query_by_label_contains("AppImage · 3 MB").is_none());
+    }
+}
+
+#[test]
+fn web_download_actions_also_preview_known_sizes() {
+    for view in [ViewMode::Grid, ViewMode::Table] {
+        let (mut h, _) = harness(view, egui::Theme::Dark, false);
+        h.run_steps(4);
+        let pos = h.get_all_by_label("Download for macOS").next().unwrap().rect().center();
+        h.hover_at(pos);
+        h.run_steps(40);
+        h.get_by_label("Disk image (.dmg) · 150 MB");
+    }
+}
+
+#[test]
 fn an_occupied_folder_asks_before_replacing_it() {
     let path = "/Volumes/Craft Apps/PhotoCraft.app";
     let mut ev = events();

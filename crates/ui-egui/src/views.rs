@@ -5,7 +5,7 @@ use artcraft_launcher_core::details::AppDetails;
 use artcraft_launcher_core::platform::pick_asset;
 use artcraft_launcher_core::protocol::{Command, JobPhase};
 use artcraft_launcher_core::status::AppStatus;
-use artcraft_launcher_core::{AppGroup, SUITE, time};
+use artcraft_launcher_core::{AppGroup, PackageKind, SUITE, time};
 use egui::{Color32, CornerRadius, FontId, Rect, RichText, Sense, Stroke, Ui, vec2};
 
 use crate::app::{Dialog, LauncherUi, TitleBar};
@@ -483,6 +483,21 @@ impl LauncherUi {
         });
         ui.add_space(4.0);
         ui.label(RichText::new(version_line(&entry, &status)).size(12.5).color(t.muted));
+        if entry.job.is_none()
+            && entry.paused.is_none()
+            && matches!(self.primary_action(&entry, &status), Primary::Install | Primary::Update(_) | Primary::Download(_))
+        {
+            let sizes = self.download_sizes(&entry);
+            if !sizes.iter().any(|(_, size)| *size == 0)
+                && let Some((_, bytes)) = sizes.first()
+            {
+                let (min, max) = sizes.iter().fold((*bytes, *bytes), |(min, max), (_, size)| (min.min(*size), max.max(*size)));
+                let size =
+                    if min == max { widgets::human_bytes(min) } else { format!("{} – {}", widgets::human_bytes(min), widgets::human_bytes(max)) };
+                ui.add(egui::Label::new(RichText::new(fmt(tl!("Download size: {size}"), &[("size", &size)])).size(12.5).color(t.muted)).truncate())
+                    .on_hover_text(Self::sizes_text(&sizes));
+            }
+        }
         ui.with_layout(egui::Layout::bottom_up(egui::Align::Min), |ui| {
             ui.horizontal(|ui| self.actions(ui, &entry, &status, inner.width()));
         });
@@ -652,6 +667,33 @@ impl LauncherUi {
 
     // ---- actions -------------------------------------------------------------------------
 
+    /// Published sizes for the visitor's platform, by format. Zero means the source didn't
+    /// publish a size (the checksum-only fallback, for example), not a one-kilobyte download.
+    fn download_sizes(&self, entry: &AppEntry) -> Vec<(PackageKind, u64)> {
+        let Some(platform) = self.platform else { return Vec::new() };
+        let Some(release) = entry.release() else { return Vec::new() };
+        let stems: Vec<_> = entry.app.stems().collect();
+        platform
+            .download_kinds()
+            .iter()
+            .filter_map(|kind| pick_asset(release, &stems, platform, &[*kind]).map(|(asset, kind)| (kind, asset.size)))
+            .collect()
+    }
+
+    fn sizes_text(sizes: &[(PackageKind, u64)]) -> String {
+        sizes
+            .iter()
+            .filter(|(_, size)| *size > 0)
+            .map(|(kind, size)| format!("{} · {}", t(kind.label()), widgets::human_bytes(*size)))
+            .collect::<Vec<_>>()
+            .join("\n")
+    }
+
+    fn size_hint(&self, response: egui::Response, entry: &AppEntry) -> egui::Response {
+        let text = Self::sizes_text(&self.download_sizes(entry));
+        if text.is_empty() { response } else { response.on_hover_text(text) }
+    }
+
     fn primary_action(&self, entry: &AppEntry, status: &AppStatus) -> Primary {
         if !self.caps.manage_apps {
             let platform = self.platform;
@@ -775,7 +817,7 @@ impl LauncherUi {
         }
         match self.primary_action(entry, status) {
             Primary::Install => {
-                if widgets::button(ui, tl!("Install"), Kind::Primary, main_w).clicked() {
+                if self.size_hint(widgets::button(ui, tl!("Install"), Kind::Primary, main_w), entry).clicked() {
                     self.install_app(&id);
                 }
             }
@@ -786,7 +828,7 @@ impl LauncherUi {
                 }
             }
             Primary::Update(v) => {
-                if widgets::button(ui, &fmt(tl!("Update to {v}"), &[("v", &v)]), Kind::Primary, main_w).clicked() {
+                if self.size_hint(widgets::button(ui, &fmt(tl!("Update to {v}"), &[("v", &v)]), Kind::Primary, main_w), entry).clicked() {
                     self.install_app(&id);
                 }
             }
@@ -800,7 +842,7 @@ impl LauncherUi {
                     Some(p) => fmt(tl!("Download for {os}"), &[("os", p.os.label())]),
                     None => tl!("Download").into(),
                 };
-                if widgets::button(ui, &label, Kind::Primary, main_w).clicked() {
+                if self.size_hint(widgets::button(ui, &label, Kind::Primary, main_w), entry).clicked() {
                     ui.ctx().open_url(egui::OpenUrl::new_tab(url));
                 }
             }
