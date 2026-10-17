@@ -443,6 +443,9 @@ impl LauncherUi {
             if host.has_desktops() {
                 ui.checkbox(&mut self.settings.show_on_current_desktop, tl!("Show the window on the current desktop"))
                     .on_hover_text(tl!("When on, opening the launcher from the menu bar brings its window to the desktop you're on. When off, macOS switches you to the desktop the window was on."));
+                ui.add_enabled_ui(host.has_tray() && self.settings.close_to_tray, |ui| {
+                    ui.checkbox(&mut self.settings.hide_from_dock_when_hidden, tl!("Hide ArtCraft Launcher from the Dock while in the background"));
+                });
             }
             if let Some(mut on) = host.login_item()
                 && ui.checkbox(&mut on, tl!("Start ArtCraft Launcher when I log in")).changed()

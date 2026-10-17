@@ -77,6 +77,7 @@
 	Updates always use the format an app was installed with.	更新时始终使用应用原来的安装格式。
 	Running in the background	后台运行
 	Keep running in the tray when the window is closed	关闭窗口后继续在系统托盘中运行
+	Hide ArtCraft Launcher from the Dock while in the background	在后台运行时从 Dock 中隐藏 ArtCraft Launcher
 	Show the window on the current desktop	在当前桌面显示窗口
 	Start ArtCraft Launcher when I log in	登录时启动 ArtCraft Launcher
 	Community	社区

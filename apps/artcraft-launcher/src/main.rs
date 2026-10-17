@@ -632,6 +632,13 @@ impl<'a> Shell<'a> {
         let window_hides = window_can_hide(cc.display_handle().ok().map(|d| d.as_raw()));
         // Started hidden at login but there's no tray to come back from: show the window.
         let visible = !hidden || launcher.tray.is_none();
+        #[cfg(target_os = "macos")]
+        spaces::set_dock_visibility(
+            visible,
+            launcher.ui.settings.hide_from_dock_when_hidden,
+            launcher.tray.is_some(),
+            launcher.ui.settings.close_to_tray,
+        );
         let mut shell = Self { launcher, window_hides, visible: true, quitting: false, applied_follow: None };
         if !visible {
             shell.put_away(&cc.egui_ctx);
@@ -647,6 +654,12 @@ impl<'a> Shell<'a> {
         // user to its own (macOS; the setting doesn't exist elsewhere).
         #[cfg(target_os = "macos")]
         {
+            spaces::set_dock_visibility(
+                true,
+                self.launcher.ui.settings.hide_from_dock_when_hidden,
+                self.launcher.tray.is_some(),
+                self.launcher.ui.settings.close_to_tray,
+            );
             let on = self.launcher.ui.settings.show_on_current_desktop;
             spaces::follow_current_desktop(on);
             self.applied_follow = Some(on);
@@ -665,6 +678,13 @@ impl<'a> Shell<'a> {
     fn put_away(&mut self, ctx: &egui::Context) {
         if self.window_hides {
             self.visible = false;
+            #[cfg(target_os = "macos")]
+            spaces::set_dock_visibility(
+                false,
+                self.launcher.ui.settings.hide_from_dock_when_hidden,
+                self.launcher.tray.is_some(),
+                self.launcher.ui.settings.close_to_tray,
+            );
             ctx.send_viewport_cmd(egui::ViewportCommand::Visible(false));
         } else {
             self.launcher.closed_to_tray = true;
@@ -750,6 +770,23 @@ mod tests {
     fn notification_identity_is_claimed_once() {
         let first = claim_notification_identity();
         assert_eq!(claim_notification_identity(), first);
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn dock_icon_hides_only_when_hidden_opted_in_and_tray_mode_is_enabled() {
+        use objc2_app_kit::NSApplicationActivationPolicy;
+
+        assert_eq!(spaces::activation_policy(true, true, true, true), NSApplicationActivationPolicy::Regular);
+        assert_eq!(spaces::activation_policy(false, false, true, true), NSApplicationActivationPolicy::Regular);
+        assert_eq!(spaces::activation_policy(false, true, false, true), NSApplicationActivationPolicy::Regular);
+        assert_eq!(spaces::activation_policy(false, true, true, false), NSApplicationActivationPolicy::Regular);
+        assert_eq!(spaces::activation_policy(false, true, true, true), NSApplicationActivationPolicy::Accessory);
+    }
+
+    #[test]
+    fn hiding_from_the_dock_is_disabled_by_default() {
+        assert!(!Settings::default().hide_from_dock_when_hidden);
     }
 
     /// What the tests can see of a [`Quiet`] backend, and its clock.
