@@ -256,9 +256,29 @@ fn wgpu_options() -> eframe::WgpuConfiguration {
     config
 }
 
+/// Returns wgpu's defaults, except that Intel Macs skip the indirect-call validation shaders
+/// ([`skips_indirect_validation`]).
 #[cfg(target_os = "macos")]
 fn wgpu_options() -> eframe::WgpuConfiguration {
-    eframe::WgpuConfiguration::default()
+    use eframe::wgpu::InstanceFlags;
+    let mut config = eframe::WgpuConfiguration::default();
+    if let eframe::egui_wgpu::WgpuSetup::CreateNew(setup) = &mut config.wgpu_setup
+        && skips_indirect_validation(std::env::consts::OS, cfg!(target_arch = "x86_64"))
+    {
+        setup.instance_descriptor.flags = setup.instance_descriptor.flags.difference(InstanceFlags::VALIDATION_INDIRECT_CALL).with_env();
+    }
+    config
+}
+
+/// wgpu compiles its indirect-call validation shaders inside `request_device`. On old Intel Macs
+/// on Big Sur and Monterey (Iris and Iris Pro among them), Metal's compiler fails on them with an
+/// internal error, the device is lost and the launcher exits at startup (#344). Intel Macs skip
+/// them, and other platforms keep wgpu's default. The launcher issues no indirect draws or
+/// dispatches. `WGPU_VALIDATION_INDIRECT_CALL=1` still turns them back on. PhotoCraft does the same
+/// (storytold/photocraft#3171).
+#[cfg(any(target_os = "macos", test))]
+fn skips_indirect_validation(os: &str, intel: bool) -> bool {
+    os == "macos" && intel
 }
 
 /// Wakes whatever is running the launcher: the window while there is one, the tray loop otherwise.
@@ -980,6 +1000,38 @@ mod tests {
         shell.put_away(&ctx);
         assert!(!shell.visible);
         assert!(!shell.launcher.closed_to_tray);
+    }
+
+    #[test]
+    fn intel_macs_skip_the_indirect_validation_shaders() {
+        // Metal's compiler fails on them on Intel Iris Macs, losing the device (#344).
+        assert!(skips_indirect_validation("macos", true));
+        // Apple silicon, Windows, Linux and the BSDs keep wgpu's validation.
+        for (os, intel) in [("macos", false), ("windows", true), ("windows", false), ("linux", true), ("linux", false), ("freebsd", true)] {
+            assert!(!skips_indirect_validation(os, intel), "{os} intel={intel}");
+        }
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn intel_macs_create_the_device_without_indirect_validation() {
+        use eframe::egui_wgpu::WgpuSetup;
+        use eframe::wgpu::InstanceFlags;
+        fn flags(config: eframe::WgpuConfiguration) -> InstanceFlags {
+            match config.wgpu_setup {
+                WgpuSetup::CreateNew(setup) => setup.instance_descriptor.flags,
+                WgpuSetup::Existing(_) => panic!("the launcher creates its own wgpu instance"),
+            }
+        }
+        let launcher = flags(wgpu_options());
+        if !cfg!(target_arch = "x86_64") {
+            // Apple silicon keeps wgpu's flags.
+            assert_eq!(launcher, flags(eframe::WgpuConfiguration::default()));
+        } else {
+            // The flag is off unless `WGPU_VALIDATION_INDIRECT_CALL` turns it back on.
+            let asked = std::env::var_os("WGPU_VALIDATION_INDIRECT_CALL").is_some_and(|v| v != "0");
+            assert_eq!(launcher.contains(InstanceFlags::VALIDATION_INDIRECT_CALL), asked, "{launcher:?}");
+        }
     }
 
     #[test]
