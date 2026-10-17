@@ -89,6 +89,10 @@ fn marker(paths: &Paths) -> PathBuf {
 pub fn current() -> Option<Install> {
     let exe = std::env::current_exe().ok()?;
     let exe = exe.canonicalize().unwrap_or(exe);
+    #[cfg(unix)]
+    if crate::nix::is_managed(&exe) {
+        return None;
+    }
     detect(&exe)
 }
 

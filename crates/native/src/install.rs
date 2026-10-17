@@ -73,6 +73,9 @@ pub fn install_at(
     let mut commit = commit;
     #[cfg(not(windows))]
     let _ = commit;
+    if let Some(message) = existing.and_then(|installed| managed_elsewhere(app, installed, false)) {
+        return Err(message);
+    }
     #[allow(unused_variables)]
     let destination = destination(app, kind, existing, previous, job.install_locations)?;
     if let Some(inst) = existing
@@ -330,6 +333,11 @@ fn published_checksum(release: &Release, asset: &Asset, http: &Http) -> Result<O
 /// package, but updated by the user's AUR helper, which builds as the user and can't run behind
 /// the password prompt.
 pub fn managed_elsewhere(app: &CraftApp, installed: &Installed, uninstall: bool) -> Option<String> {
+    // Applications-folder links and launcher records do not transfer ownership of a Nix output.
+    #[cfg(unix)]
+    if crate::nix::is_managed(Path::new(&installed.location)) {
+        return Some(format!("{} was installed outside the launcher. Update or remove it the way it was installed.", app.name));
+    }
     match installed.source {
         InstallSource::Pacman if !uninstall => {
             let pkg = installed.package.clone().unwrap_or_else(|| app.id.to_string());
@@ -1403,6 +1411,36 @@ pub mod windows {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[cfg(unix)]
+    #[test]
+    fn nix_store_copies_refuse_reinstall_and_removal_before_starting_work() {
+        let app = CraftApp::by_id("photocraft").unwrap();
+        let dir = tempfile::tempdir().unwrap();
+        let paths = Paths::under(dir.path());
+        let http = Http::new().unwrap();
+        let stop = Stop::default();
+        let mut phases = Vec::new();
+        for source in [InstallSource::MacApp, InstallSource::Launcher, InstallSource::Binary] {
+            let installed =
+                Installed { version: None, source, location: "/nix/store/hash-photocraft/Applications/PhotoCraft.app".into(), package: None };
+            let message = managed_elsewhere(app, &installed, false).unwrap();
+            assert_eq!(managed_elsewhere(app, &installed, true).unwrap(), message);
+            let mut phase = |phase| phases.push(phase);
+            let locations = InstallLocations::default();
+            let mut job = Job { http: &http, paths: &paths, stop: &stop, phase: &mut phase, install_locations: &locations, replace: false };
+            // The deliberately empty release and asset would fail validation if any download
+            // work ran. Ownership must take precedence over either validation or installation.
+            let result = install(app, &Release::default(), &Asset::default(), PackageKind::Dmg, Some(&installed), None, &mut job);
+            assert_eq!(result.unwrap_err(), message);
+            let result = install_at(app, &Release::default(), &Asset::default(), PackageKind::Dmg, Some(&installed), None, &mut job, None);
+            assert_eq!(result.unwrap_err(), message);
+            assert_eq!(uninstall(app, &installed, None, &paths, &stop, &mut phase).unwrap_err(), message);
+            assert_eq!(installed.source, source);
+        }
+        assert!(phases.is_empty());
+        assert!(!paths.downloads().exists());
+    }
 
     #[test]
     fn selected_folders_must_exist_and_leave_no_probe_files() {
