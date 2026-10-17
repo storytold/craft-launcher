@@ -90,6 +90,10 @@ pub struct Settings {
     pub sort: SortKey,
     pub sort_descending: bool,
     pub theme: ThemeChoice,
+    /// Windows and Linux: use the system's title bar instead of the custom header. Read when the
+    /// app starts.
+    #[serde(default)]
+    pub system_title_bar: bool,
     /// Interface language: `auto` (follow the system) or a language code from the registry
     /// (`en`, `ru`, `zh-CN`, `de`, `fr`, `pt-BR`, `pl`).
     pub language: String,
@@ -176,6 +180,7 @@ impl Default for Settings {
             sort: SortKey::Suite,
             sort_descending: false,
             theme: ThemeChoice::System,
+            system_title_bar: false,
             language: "auto".to_string(),
             close_to_tray: true,
             show_on_current_desktop: true,

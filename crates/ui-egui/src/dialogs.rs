@@ -482,5 +482,11 @@ impl LauncherUi {
             widgets::cells(ui, &mut theme_choice, &ThemeChoice::ALL.map(|c| (c, Cell { label: c.label(), tip: c.label(), count: None })));
         });
         self.settings.theme = theme_choice;
+        // Windows and Linux only: macOS already draws its own title bar, and the web build has
+        // no window. The choice applies at the next launch.
+        if self.caps.manage_apps && !cfg!(target_os = "macos") {
+            ui.checkbox(&mut self.settings.system_title_bar, tl!("System title bar"));
+            ui.label(RichText::new(tl!("Applies at next launch.")).size(12.0).color(t.muted));
+        }
     }
 }

@@ -1005,7 +1005,6 @@ fn launcher_update_prompts_to_relaunch_with_updated_version() {
     // Toolbar update banner is now visible with Update and restart
     h.get_by_label("Update and restart");
 }
-
 #[test]
 fn the_current_desktop_setting_is_only_offered_where_the_os_has_desktops() {
     // NoHost has no desktops (Windows, Linux, web): no setting.
@@ -1016,6 +1015,27 @@ fn the_current_desktop_setting_is_only_offered_where_the_os_has_desktops() {
     assert!(h.query_by_label("Show the window on the current desktop").is_none());
     // On by default for everyone; macOS shows it in Settings (DesktopHost::has_desktops).
     assert!(Settings::default().show_on_current_desktop);
+}
+
+#[test]
+fn the_system_title_bar_setting_is_offered_with_a_next_launch_note() {
+    let (mut h, _) = harness(ViewMode::Grid, egui::Theme::Dark, true);
+    h.run_steps(6);
+    h.get_by_label("Settings").click();
+    h.run_steps(4);
+    if cfg!(target_os = "macos") {
+        assert!(h.query_by_label("System title bar").is_none());
+    } else {
+        h.get_by_label("System title bar");
+        h.get_by_label("Applies at next launch.");
+        // Toggling the checkbox flips the saved choice (the window picks it up on restart).
+        assert!(!h.state().as_ref().unwrap().settings.system_title_bar);
+        h.get_by_label("System title bar").click();
+        h.run_steps(3);
+        assert!(h.state().as_ref().unwrap().settings.system_title_bar);
+    }
+    // Off by default: the custom header stays.
+    assert!(!Settings::default().system_title_bar);
 }
 
 #[test]
