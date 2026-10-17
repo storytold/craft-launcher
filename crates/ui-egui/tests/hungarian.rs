@@ -158,12 +158,13 @@ fn check_settings_layout() {
         assert!(!done.intersects(quit));
         let title = h.get_all_by_label("Beállítások").last().unwrap().rect();
         assert!(screen.contains_rect(title), "{width}x{height}: title is clipped: {title:?}");
-        h.get_by_label("Rendszerbeállítás szerint").scroll_to_me();
+        // "Match system" is the theme's first option and, in the row under it, the animations'.
+        h.get_all_by_label("Rendszerbeállítás szerint").next().unwrap().scroll_to_me();
         h.run_steps(8);
         // The footer has the same services, and the cards behind the modal have Webhely and GitHub
         // links as one 14px line of text; keep only the settings body's buttons (34px) and icons (24px).
         let discord = h.get_by_label("Csatlakozás a Discordhoz").rect();
-        let theme = h.get_by_label("Rendszerbeállítás szerint").rect();
+        let theme = h.get_all_by_label("Rendszerbeállítás szerint").next().unwrap().rect();
         assert!(screen.contains_rect(discord), "community links must be reachable by scrolling");
         assert!(theme.bottom() < done.top(), "appearance controls must scroll above the fixed actions");
         let mut links = vec![discord];
@@ -182,6 +183,13 @@ fn check_settings_layout() {
                 assert!(!r.intersects(*other), "{width}x{height}: links overlap: {r:?}, {other:?}");
             }
         }
+        // The animations' options end the body: they too scroll clear of the fixed actions.
+        h.get_all_by_label("Rendszerbeállítás szerint").last().unwrap().scroll_to_me();
+        h.run_steps(8);
+        // "Ki" is "Off", the row's last option.
+        let animations = h.get_by_label("Ki").rect();
+        assert!(screen.contains_rect(animations), "{width}x{height}: the animation options are clipped: {animations:?}");
+        assert!(animations.bottom() < h.get_by_label("Kész").rect().top(), "{width}x{height}: the animation options run under the actions");
         snapshot(&mut h, &format!("settings-hu-{width}x{height}-bottom"));
         h.get_by_label("Nyelv").scroll_to_me();
         h.run_steps(8);

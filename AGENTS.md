@@ -82,9 +82,10 @@ colour tokens by name (`theme::Tokens`). Build new UI from `widgets.rs`; never h
 
 Animations follow the OS: with Windows' "Animation effects" off, macOS' "Reduce motion" on, a Linux
 desktop's animations off or a browser's `prefers-reduced-motion`, nothing fades, wipes or glides
-(`Host::reduce_motion`, `crates/ui-egui/src/motion.rs`). Time a new animation with egui's
-`style.animation_time`, or switch it off on `LauncherUi::reduce_motion`. Progress bars and
-spinners keep moving.
+(`Host::reduce_motion`, `crates/ui-egui/src/motion.rs`). Settings → Appearance → Animation effects
+can overrule the OS either way (`Settings::animations`). `LauncherUi::reduce_motion` holds the
+outcome: time a new animation with egui's `style.animation_time`, or switch it off when that flag
+is set. Progress bars and spinners keep moving.
 
 ### Languages
 

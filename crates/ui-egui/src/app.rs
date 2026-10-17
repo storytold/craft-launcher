@@ -12,7 +12,7 @@ use artcraft_launcher_core::{Platform, SUITE};
 use crate::i18n::set_current;
 use crate::model::AppEntry;
 use crate::motion;
-use crate::settings::{Filter, Settings, SortKey, ViewMode};
+use crate::settings::{AnimationChoice, Filter, Settings, SortKey, ViewMode};
 use crate::theme::{self, Tokens};
 
 /// Who draws the window's title bar.
@@ -54,7 +54,8 @@ pub trait Host {
         Err("not supported here".into())
     }
     /// The OS asks for fewer animations (Windows' "Animation effects" switched off, macOS'
-    /// "Reduce motion"). Asked about once a second while the window draws, so it must be quick.
+    /// "Reduce motion"). Asked about once a second while the window draws and Settings has
+    /// animations on "Match system", so it must be quick.
     fn reduce_motion(&self) -> bool {
         false
     }
@@ -129,11 +130,13 @@ pub struct LauncherUi {
     pub(crate) pictures: std::collections::HashMap<(String, String), crate::details::Picture>,
     started: bool,
     applied_theme: Option<theme::ThemeChoice>,
-    /// The OS asks for fewer animations: what the host last said, and the context's time to ask
-    /// it again at.
-    pub(crate) reduce_motion: bool,
+    /// What the host last said about the OS's animation setting ([`Host::reduce_motion`]).
+    os_reduce_motion: bool,
+    /// When to ask the host again, on the context's clock.
     motion_recheck: f64,
-    /// What the context's styles were last set for.
+    /// Whether to show fewer animations: the choice in Settings, or with "Match system" the OS's.
+    pub(crate) reduce_motion: bool,
+    /// What the context's animation timings were last set for.
     applied_motion: Option<bool>,
     /// Fonts registered with `set_fonts` only exist from the next frame on; drawing with the named
     /// weights before then would abort.
@@ -197,8 +200,9 @@ impl LauncherUi {
             pictures: std::collections::HashMap::new(),
             started: false,
             applied_theme: None,
-            reduce_motion: false,
+            os_reduce_motion: false,
             motion_recheck: 0.0,
+            reduce_motion: false,
             applied_motion: None,
             fonts_ready: false,
             cjk_font,
@@ -222,11 +226,27 @@ impl LauncherUi {
         self.toasts.clear();
     }
 
-    /// Input on its way to egui (the shell's `raw_input_hook`): with fewer animations asked for,
-    /// a mouse wheel scrolls at once instead of gliding.
+    /// Input on its way to egui (the shell's `raw_input_hook`): with fewer animations shown, a
+    /// mouse wheel scrolls at once instead of gliding.
     pub fn raw_input(&self, ctx: &egui::Context, raw: &mut egui::RawInput) {
         if self.reduce_motion {
             motion::unsmooth_wheel(ctx, raw);
+        }
+    }
+
+    /// Settles whether this frame shows fewer animations, and sets egui's timings to match. With
+    /// "Match system" in Settings, the OS is asked again every [`motion::RECHECK_EVERY`] seconds,
+    /// so a change there shows without a restart.
+    fn follow_animation_setting(&mut self, ctx: &egui::Context, host: &dyn Host) {
+        let now = ctx.input(|i| i.time);
+        if self.settings.animations == AnimationChoice::System && now >= self.motion_recheck {
+            self.os_reduce_motion = host.reduce_motion();
+            self.motion_recheck = now + motion::RECHECK_EVERY;
+        }
+        self.reduce_motion = self.settings.animations.reduce_motion(self.os_reduce_motion);
+        if self.applied_motion != Some(self.reduce_motion) {
+            motion::apply(ctx, self.reduce_motion);
+            self.applied_motion = Some(self.reduce_motion);
         }
     }
 
@@ -544,15 +564,7 @@ impl LauncherUi {
             theme::apply(&ctx, self.settings.theme);
             self.applied_theme = Some(self.settings.theme);
         }
-        let now = ctx.input(|i| i.time);
-        if now >= self.motion_recheck {
-            self.reduce_motion = host.reduce_motion();
-            self.motion_recheck = now + motion::RECHECK_EVERY;
-        }
-        if self.applied_motion != Some(self.reduce_motion) {
-            motion::apply(&ctx, self.reduce_motion);
-            self.applied_motion = Some(self.reduce_motion);
-        }
+        self.follow_animation_setting(&ctx, host);
         let tokens = Tokens::get(&ctx);
         if self.entries.iter().any(|e| e.job.is_some()) || self.checking {
             ctx.request_repaint_after(Duration::from_millis(50));

@@ -81,6 +81,40 @@ impl CheckEvery {
     }
 }
 
+/// Whether the interface animates: fades, wipes and a mouse wheel's glide.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub enum AnimationChoice {
+    /// Follow the OS's own animation setting.
+    #[default]
+    System,
+    /// Animate, even on an OS that asks for fewer animations.
+    On,
+    /// Don't animate, even on an OS that animates.
+    Off,
+}
+
+impl AnimationChoice {
+    pub const ALL: [Self; 3] = [Self::System, Self::On, Self::Off];
+
+    /// Translated at draw time, like [`ThemeChoice::label`].
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::System => t("Match system"),
+            Self::On => t("On"),
+            Self::Off => t("Off"),
+        }
+    }
+
+    /// Whether to show fewer animations, given whether the OS asks for that.
+    pub fn reduce_motion(self, os_reduce_motion: bool) -> bool {
+        match self {
+            Self::System => os_reduce_motion,
+            Self::On => false,
+            Self::Off => true,
+        }
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Settings {
@@ -90,6 +124,8 @@ pub struct Settings {
     pub sort: SortKey,
     pub sort_descending: bool,
     pub theme: ThemeChoice,
+    /// Settings → Appearance → Animation effects.
+    pub animations: AnimationChoice,
     /// Interface language: `auto` (follow the system) or a language code from the registry
     /// (`en`, `ru`, `zh-CN`, `de`, `fr`, `pt-BR`, `pl`).
     pub language: String,
@@ -176,6 +212,7 @@ impl Default for Settings {
             sort: SortKey::Suite,
             sort_descending: false,
             theme: ThemeChoice::System,
+            animations: AnimationChoice::System,
             language: "auto".to_string(),
             close_to_tray: true,
             show_on_current_desktop: true,
@@ -189,5 +226,28 @@ impl Default for Settings {
             last_check: None,
             hidden: std::collections::BTreeSet::new(),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn on_and_off_overrule_the_os_and_match_system_follows_it() {
+        for os_reduce_motion in [false, true] {
+            assert_eq!(AnimationChoice::System.reduce_motion(os_reduce_motion), os_reduce_motion);
+            assert!(!AnimationChoice::On.reduce_motion(os_reduce_motion));
+            assert!(AnimationChoice::Off.reduce_motion(os_reduce_motion));
+        }
+    }
+
+    #[test]
+    fn the_animation_choice_is_saved_and_older_settings_match_the_system() {
+        let settings = Settings { animations: AnimationChoice::Off, ..Settings::default() };
+        let saved = serde_json::to_string(&settings).unwrap();
+        assert_eq!(serde_json::from_str::<Settings>(&saved).unwrap().animations, AnimationChoice::Off);
+        // Settings saved before the choice existed.
+        assert_eq!(serde_json::from_str::<Settings>("{}").unwrap().animations, AnimationChoice::System);
     }
 }

@@ -1,6 +1,7 @@
 //! Fewer animations when the OS asks for that: Windows' "Animation effects" switched off, macOS'
 //! "Reduce motion", a Linux desktop's animations setting, a browser's `prefers-reduced-motion`.
-//! The shell says what the OS wants ([`crate::Host::reduce_motion`]); this makes egui follow it.
+//! The shell says what the OS wants ([`crate::Host::reduce_motion`]), Settings can overrule it
+//! either way ([`crate::settings::AnimationChoice`]), and this makes egui follow the outcome.
 //! Progress bars and spinners keep moving: they say that work is going on.
 
 use egui::{Event, MouseWheelUnit, RawInput, TouchPhase};

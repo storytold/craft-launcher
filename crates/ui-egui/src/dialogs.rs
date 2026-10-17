@@ -6,7 +6,7 @@ use artcraft_launcher_core::{Os, PackageKind};
 use egui::{RichText, vec2};
 
 use crate::app::{Dialog, Host, LauncherUi};
-use crate::settings::{CheckEvery, Settings};
+use crate::settings::{AnimationChoice, CheckEvery, Settings};
 use crate::theme::{self, ThemeChoice, Tokens};
 use crate::widgets::{self, Cell, Kind};
 
@@ -482,5 +482,11 @@ impl LauncherUi {
             widgets::cells(ui, &mut theme_choice, &ThemeChoice::ALL.map(|c| (c, Cell { label: c.label(), tip: c.label(), count: None })));
         });
         self.settings.theme = theme_choice;
+        ui.add_space(8.0);
+        ui.label(tl!("Animation effects"));
+        let animation_options = AnimationChoice::ALL.map(|c| (c, Cell { label: c.label(), tip: c.label(), count: None }));
+        ui.horizontal(|ui| {
+            widgets::cells(ui, &mut self.settings.animations, &animation_options);
+        });
     }
 }

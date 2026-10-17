@@ -14,7 +14,7 @@ use artcraft_launcher_core::protocol::{
 use artcraft_launcher_core::release::{Asset, Release};
 use artcraft_launcher_core::status::InstallSource;
 use artcraft_launcher_core::{Arch, Installed, Os, Platform, SUITE, version};
-use artcraft_launcher_ui_egui::settings::ViewMode;
+use artcraft_launcher_ui_egui::settings::{AnimationChoice, ViewMode};
 use artcraft_launcher_ui_egui::{Host, LauncherUi, Settings};
 use egui_kittest::Harness;
 use egui_kittest::kittest::{NodeT, Queryable};
@@ -1569,6 +1569,12 @@ impl Host for OsMotion {
 /// animations (`reduce`) or not. Nothing is downloading, so the window is still unless something
 /// animates.
 fn short_window(reduce: Rc<Cell<bool>>) -> Harness<'static, Option<LauncherUi>> {
+    short_window_with(reduce, AnimationChoice::System)
+}
+
+/// [`short_window`] with the choice made in Settings: animations as the OS has them, or always on
+/// or off.
+fn short_window_with(reduce: Rc<Cell<bool>>, animations: AnimationChoice) -> Harness<'static, Option<LauncherUi>> {
     artcraft_launcher_ui_egui::i18n::set_test_lang(artcraft_launcher_ui_egui::i18n::Lang::EN);
     let events = events().into_iter().filter(|e| !matches!(e, Event::Progress { .. })).collect();
     let mut backend =
@@ -1579,7 +1585,7 @@ fn short_window(reduce: Rc<Cell<bool>>) -> Harness<'static, Option<LauncherUi>> 
             if state.is_none()
                 && let Some(b) = backend.take()
             {
-                let settings = Settings { view: ViewMode::Grid, notify: false, ..Settings::default() };
+                let settings = Settings { view: ViewMode::Grid, notify: false, animations, ..Settings::default() };
                 *state = Some(LauncherUi::new(ui.ctx(), Box::new(b), settings));
             }
             if let Some(l) = state.as_mut() {
@@ -1703,4 +1709,77 @@ fn an_occupied_folder_asks_before_replacing_it() {
     h.run_steps(2);
     assert_eq!(*sent.borrow(), [Command::Replace { app: "photocraft".into() }]);
     assert!(h.query_by_label("Replace").is_none());
+}
+
+/// Turns the wheel three lines down. Returns how far the grid moved over the frame the wheel
+/// turned in and the one that draws where it scrolled to, and how far three lines are.
+fn first_frames_of_a_wheel_turn(h: &mut Harness<'_, Option<LauncherUi>>) -> (f32, f32) {
+    let notch = 3.0 * h.ctx.options(|o| o.input_options.line_scroll_speed);
+    let start = grid_top(h);
+    turn_wheel(h, 3.0);
+    h.run_steps(2);
+    (start - grid_top(h), notch)
+}
+
+#[test]
+fn animations_set_to_off_are_off_on_an_os_that_animates() {
+    let fresh_window = || short_window_with(Rc::new(Cell::new(false)), AnimationChoice::Off);
+    let mut h = fresh_window();
+    assert_eq!(h.ctx.global_style().animation_time, 0.0);
+    let (moved, notch) = first_frames_of_a_wheel_turn(&mut h);
+    assert!((moved - notch).abs() < 0.5, "moved {moved} of {notch}");
+    // In a window not scrolled yet: its first row of cards is all there.
+    let frames = frames_to_hover_the_next_card(&mut fresh_window());
+    assert!(frames <= 5, "{frames} frames");
+}
+
+#[test]
+fn animations_set_to_on_stay_on_an_os_asking_for_fewer() {
+    let fresh_window = || short_window_with(Rc::new(Cell::new(true)), AnimationChoice::On);
+    let mut h = fresh_window();
+    assert_eq!(h.ctx.global_style().animation_time, egui::Style::default().animation_time);
+    let (moved, notch) = first_frames_of_a_wheel_turn(&mut h);
+    assert!(moved > 0.0 && moved < notch / 2.0, "moved {moved} of {notch}");
+    // In a window not scrolled yet: its first row of cards is all there.
+    let frames = frames_to_hover_the_next_card(&mut fresh_window());
+    assert!(frames >= 10, "{frames} frames");
+}
+
+#[test]
+fn settings_offer_animation_effects_under_appearance() {
+    // NoHost: an OS that animates.
+    let (mut h, _) = harness(ViewMode::Grid, egui::Theme::Dark, true);
+    h.run_steps(6);
+    h.get_by_label("Settings").click();
+    h.run_steps(4);
+    snapshot(&mut h, "settings-animation-effects");
+
+    // Under Appearance: a caption, then one row of Match system, On and Off. "Match system" is
+    // also the first option of the theme, in the row above, so the animations' is the second.
+    assert_eq!(h.get_all_by_label("Match system").count(), 2);
+    let appearance = h.get_by_label("Appearance").rect();
+    let caption = h.get_by_label("Animation effects").rect();
+    let row = [h.get_all_by_label("Match system").last().unwrap().rect(), h.get_by_label("On").rect(), h.get_by_label("Off").rect()];
+    assert!(appearance.bottom() < caption.top() && caption.bottom() < row[0].top());
+    for (cell, next) in row.iter().zip(&row[1..]) {
+        assert_eq!(cell.center().y, next.center().y);
+        assert!(cell.right() <= next.left(), "{cell:?} {next:?}");
+    }
+
+    // Each click changes the setting, and egui's fade time with it.
+    let stock = egui::Style::default().animation_time;
+    let choice_and_fade = |h: &Harness<'_, Option<LauncherUi>>| {
+        let settings = &h.state().as_ref().unwrap().settings;
+        (settings.animations, h.ctx.global_style().animation_time)
+    };
+    assert_eq!(choice_and_fade(&h), (AnimationChoice::System, stock));
+    h.get_by_label("Off").click();
+    h.run_steps(3);
+    assert_eq!(choice_and_fade(&h), (AnimationChoice::Off, 0.0));
+    h.get_by_label("On").click();
+    h.run_steps(3);
+    assert_eq!(choice_and_fade(&h), (AnimationChoice::On, stock));
+    h.get_all_by_label("Match system").last().unwrap().click();
+    h.run_steps(3);
+    assert_eq!(choice_and_fade(&h), (AnimationChoice::System, stock));
 }
