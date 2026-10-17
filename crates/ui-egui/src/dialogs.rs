@@ -482,5 +482,28 @@ impl LauncherUi {
             widgets::cells(ui, &mut theme_choice, &ThemeChoice::ALL.map(|c| (c, Cell { label: c.label(), tip: c.label(), count: None })));
         });
         self.settings.theme = theme_choice;
+
+        // The zoom egui keeps (Ctrl +, Ctrl −, Ctrl 0, and Ctrl + wheel through `LauncherUi::ui`),
+        // which eframe remembers between runs, for those who won't find the keys (#25).
+        ui.add_space(10.0);
+        let zoom = ui.ctx().zoom_factor();
+        row(ui, tl!("Interface size"), 36.0 + 72.0 + 36.0 + 2.0 * ui.spacing().item_spacing.x, &mut |ui| {
+            if widgets::button(ui, "+", Kind::Secondary, 36.0).clicked() {
+                egui::gui_zoom::zoom_in(ui.ctx());
+            }
+            let percent = format!("{}%", (zoom * 100.0).round() as i32);
+            if widgets::button(ui, &percent, Kind::Secondary, 72.0).on_hover_text(tl!("Back to 100%")).clicked() {
+                ui.ctx().set_zoom_factor(1.0);
+            }
+            if widgets::button(ui, "−", Kind::Secondary, 36.0).clicked() {
+                egui::gui_zoom::zoom_out(ui.ctx());
+            }
+        });
+        // The web build leaves zooming to the browser, keys and all.
+        if ui.ctx().options(|o| o.zoom_with_keyboard) {
+            let key = if cfg!(target_os = "macos") { "⌘" } else { "Ctrl" };
+            let hint = fmt(tl!("Or press {mod} + or {mod} −, {mod} 0 for 100%, or hold {mod} and scroll."), &[("mod", key)]);
+            ui.label(RichText::new(hint).size(12.0).color(t.muted));
+        }
     }
 }
