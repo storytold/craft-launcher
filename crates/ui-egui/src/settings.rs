@@ -98,6 +98,8 @@ pub struct Settings {
     /// macOS: showing the window brings it to the current desktop (Space) instead of switching to
     /// the desktop it was on.
     pub show_on_current_desktop: bool,
+    /// macOS: while the window is put away in the menu bar, the launcher has no Dock icon.
+    pub hide_dock_icon: bool,
     pub check_every: CheckEvery,
     /// Automatically download and install updates when found.
     #[serde(default)]
@@ -179,6 +181,7 @@ impl Default for Settings {
             language: "auto".to_string(),
             close_to_tray: true,
             show_on_current_desktop: true,
+            hide_dock_icon: false,
             check_every: CheckEvery::Hour,
             auto_update: false,
             notify: true,
