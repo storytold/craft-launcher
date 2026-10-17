@@ -36,4 +36,4 @@ mod tests;
 
 pub use detect::{detect_system_lang_in_background, set_system_locales, set_test_lang, system_lang};
 pub use lang::{LANGUAGES, Lang, LangInfo, Script, lang_from_tag};
-pub use translate::{current, fmt, has, message, msg, set_current, t, t_id, tn, tr, tr_ctx, tr_id, trn};
+pub use translate::{current, fmt, has, message, msg, set_current, t, t_id, tn, tr, tr_ctx, tr_id, trn, upper};
