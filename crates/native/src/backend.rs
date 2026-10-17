@@ -403,7 +403,7 @@ impl NativeBackend {
     }
 
     /// Downloads the newer launcher, puts it in place and asks the UI to quit so it can start.
-    fn update_launcher(&self) {
+    fn update_launcher(&self, restart_hidden: bool) {
         let id = LAUNCHER_ID.to_string();
         let (Some(install), Some(platform)) = (self.self_install.clone(), self.platform) else {
             self.shared.emit(Event::JobFinished {
@@ -437,7 +437,7 @@ impl NativeBackend {
                 claim_restart(&shared.jobs, &shared.restarting, &stop, RESTART_WAIT, &mut waiting)
             };
             let result = match http.as_ref() {
-                Some(http) => crate::self_update::update(&install, &release, platform, http, &paths, &stop, &mut phase, &last),
+                Some(http) => crate::self_update::update(&install, &release, platform, http, &paths, &stop, &mut phase, &last, restart_hidden),
                 None => Err("secure connections aren't available on this system".into()),
             };
             shared.jobs.lock().unwrap_or_else(PoisonError::into_inner).remove(LAUNCHER_ID);
@@ -992,7 +992,7 @@ impl Backend for NativeBackend {
                     }
                 }
             }
-            Command::UpdateLauncher => self.update_launcher(),
+            Command::UpdateLauncher { restart_hidden } => self.update_launcher(restart_hidden),
             Command::FetchScreenshots { app } => self.fetch_screenshots(&app),
             Command::Configure(options) => {
                 let changed_pre = {

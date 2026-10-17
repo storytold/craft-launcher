@@ -154,6 +154,7 @@ fn detect(_exe: &Path) -> Option<Install> {
 /// Downloads `release` for `platform`, puts it in place and starts the helper that relaunches
 /// it once this process has exited. On success the caller must quit promptly. `last` is called
 /// once the download is ready and returns when the launcher may replace itself and restart.
+/// `restart_hidden` starts the new launcher in the tray (`--hidden`), as this one was.
 #[allow(clippy::too_many_arguments)]
 pub fn update(
     install: &Install,
@@ -164,6 +165,7 @@ pub fn update(
     stop: &Stop,
     phase: &mut dyn FnMut(JobPhase),
     last: &dyn Fn() -> Result<(), String>,
+    restart_hidden: bool,
 ) -> Result<(), String> {
     let (asset, _) = pick_asset(release, &[LAUNCHER.id], platform, &[install.kind()])
         .ok_or_else(|| format!("ArtCraft Launcher {} has no {} for {}", release.version_label(), install.kind().label(), platform.label()))?;
@@ -184,20 +186,25 @@ pub fn update(
             let placed = install::macos::install_dmg(&LAUNCHER, &file, Some(&existing), None, paths, &install::macos::Expect::release(release));
             let _ = std::fs::remove_file(&file);
             let placed = placed?;
-            relaunch_after_exit(pid, &[Path::new("/usr/bin/open").as_os_str(), placed.as_os_str()])
+            // `open` hands the app what follows `--args`.
+            let mut command = vec![Path::new("/usr/bin/open").as_os_str(), placed.as_os_str()];
+            if restart_hidden {
+                command.extend([std::ffi::OsStr::new("--args"), std::ffi::OsStr::new(crate::login::HIDDEN_FLAG)]);
+            }
+            relaunch_after_exit(pid, &command)
         }
         #[cfg(target_os = "linux")]
         Install::AppImage(path) => {
             replace_appimage(&file, path)?;
             let _ = std::fs::remove_file(&file);
-            relaunch_after_exit(pid, &[path.as_os_str()])
+            relaunch_after_exit(pid, &restart_command(path, restart_hidden))
         }
         #[cfg(target_os = "linux")]
         Install::Package(kind, exe) => {
             let result = install::linux::install_package(*kind, &file, stop, phase);
             let _ = std::fs::remove_file(&file);
             result?;
-            relaunch_after_exit(pid, &[exe.as_os_str()])
+            relaunch_after_exit(pid, &restart_command(exe, restart_hidden))
         }
         #[cfg(windows)]
         Install::Msi(exe) => windows_helper(
@@ -208,6 +215,7 @@ pub fn update(
                 ps_quote(&file)
             ),
             exe,
+            restart_hidden,
         ),
         #[cfg(windows)]
         Install::Portable(exe) => {
@@ -224,11 +232,12 @@ pub fn update(
                     dir = ps_quote(dir),
                 ),
                 exe,
+                restart_hidden,
             )
         }
         #[allow(unreachable_patterns)]
         _ => {
-            let _ = (pid, &file);
+            let _ = (pid, &file, restart_hidden);
             Err("this copy of ArtCraft Launcher can't update itself; download the new version instead".into())
         }
     }
@@ -247,6 +256,16 @@ fn replace_appimage(new: &Path, path: &Path) -> Result<(), String> {
         let _ = std::fs::remove_file(&staged);
         format!("couldn't replace {} ({e})", path.display())
     })
+}
+
+/// The new launcher's command line: the executable, and `--hidden` to keep it in the tray.
+#[cfg(target_os = "linux")]
+fn restart_command(exe: &Path, restart_hidden: bool) -> Vec<&std::ffi::OsStr> {
+    let mut command = vec![exe.as_os_str()];
+    if restart_hidden {
+        command.push(std::ffi::OsStr::new(crate::login::HIDDEN_FLAG));
+    }
+    command
 }
 
 /// Starts `sh`, which waits for `pid` to exit and then runs `command`. Detached, so it outlives us.
@@ -268,13 +287,21 @@ fn helper_command(pid: u32, command: &[&std::ffi::OsStr]) -> std::process::Comma
     cmd
 }
 
-/// Starts a hidden PowerShell that waits for `pid` to exit, runs `step`, then starts `exe`.
+/// Starts a hidden PowerShell that waits for `pid` to exit, runs `step`, then starts `exe`
+/// (with `--hidden` when `restart_hidden`).
 #[cfg(windows)]
-fn windows_helper(pid: u32, step: &str, exe: &Path) -> Result<(), String> {
-    let script = format!("Wait-Process -Id {pid} -Timeout 60 -ErrorAction SilentlyContinue; {step}; Start-Process -FilePath {}", ps_quote(exe));
+fn windows_helper(pid: u32, step: &str, exe: &Path, restart_hidden: bool) -> Result<(), String> {
+    let script = windows_script(pid, step, exe, restart_hidden);
     let mut cmd = process::command("powershell.exe");
     cmd.args(["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-WindowStyle", "Hidden", "-Command", &script]).env_remove(PRETEND_VAR);
     process::spawn_detached(cmd).map_err(|e| format!("couldn't schedule the update ({e})"))
+}
+
+/// The PowerShell the Windows helper runs: wait for `pid`, do `step`, start `exe` again.
+#[cfg_attr(not(windows), allow(dead_code))]
+fn windows_script(pid: u32, step: &str, exe: &Path, restart_hidden: bool) -> String {
+    let args = if restart_hidden { format!(" -ArgumentList '{}'", crate::login::HIDDEN_FLAG) } else { String::new() };
+    format!("Wait-Process -Id {pid} -Timeout 60 -ErrorAction SilentlyContinue; {step}; Start-Process -FilePath {}{args}", ps_quote(exe))
 }
 
 /// A PowerShell single-quoted literal.
@@ -305,6 +332,22 @@ mod tests {
         // A day later the guard lapses.
         crate::paths::write_atomic(&marker(&paths), format!("v0.2.0\n{}\n", crate::now() - JUST_UPDATED_FOR - 1).as_bytes()).unwrap();
         assert!(!just_updated_to(&paths, &r));
+    }
+
+    /// A launcher that updated while away in the tray comes back there, not in a window (#337).
+    #[test]
+    fn a_restart_from_the_tray_starts_the_new_launcher_hidden() {
+        let exe = Path::new("C:\\Programs\\artcraft-launcher.exe");
+        let shown = windows_script(7, "step", exe, false);
+        let hidden = windows_script(7, "step", exe, true);
+        assert!(shown.ends_with("Start-Process -FilePath 'C:\\Programs\\artcraft-launcher.exe'"), "{shown}");
+        assert!(hidden.ends_with("Start-Process -FilePath 'C:\\Programs\\artcraft-launcher.exe' -ArgumentList '--hidden'"), "{hidden}");
+        #[cfg(target_os = "linux")]
+        {
+            let exe = Path::new("/usr/bin/artcraft-launcher");
+            assert_eq!(restart_command(exe, false), [exe.as_os_str()]);
+            assert_eq!(restart_command(exe, true), [exe.as_os_str(), std::ffi::OsStr::new("--hidden")]);
+        }
     }
 
     /// The restart helper doesn't pass a pretend version on to the new launcher.

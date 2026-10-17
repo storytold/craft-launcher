@@ -48,7 +48,11 @@ pub enum Command {
         app: String,
     },
     /// Download the newer ArtCraft Launcher, put it in place and restart into it.
-    UpdateLauncher,
+    /// `restart_hidden`: the window is away in the tray (or there is none), so the new launcher
+    /// starts there too instead of opening a window.
+    UpdateLauncher {
+        restart_hidden: bool,
+    },
     /// Fetch the pictures of an app's details page (`core::details`), one [`Event::Screenshot`]
     /// each, the lead picture first. Pictures already saved on this machine arrive without
     /// touching the network. Asking again while they are on their way does nothing.

@@ -181,7 +181,7 @@ impl LauncherUi {
                                     .on_hover_text(tl!("Downloads the new version, replaces this one and opens it again"))
                                     .clicked()
                                 {
-                                    self.send(Command::UpdateLauncher);
+                                    self.send(Command::UpdateLauncher { restart_hidden: false });
                                 }
                             } else {
                                 let url = self

@@ -63,6 +63,11 @@ pub trait Host {
     }
     /// Quit the launcher for real (not just hide to the tray).
     fn quit(&mut self) {}
+    /// The window is away in the tray, or there is none: a launcher that restarts now should come
+    /// back the same way, not open a window over whatever the user is doing (#337).
+    fn window_hidden(&self) -> bool {
+        false
+    }
 }
 
 pub(crate) struct Toast {
@@ -332,7 +337,7 @@ impl LauncherUi {
         if changed {
             self.announce_updates(host);
             if self.settings.auto_update {
-                self.trigger_auto_updates();
+                self.trigger_auto_updates(host.window_hidden());
             }
         }
         if self.restart_requested {
@@ -490,8 +495,9 @@ impl LauncherUi {
         }
     }
 
-    /// When auto-updates are enabled, automatically downloads and installs pending updates.
-    pub(crate) fn trigger_auto_updates(&mut self) {
+    /// When auto-updates are enabled, automatically downloads and installs pending updates. A
+    /// launcher update restarts the launcher: `restart_hidden` says whether into the tray.
+    pub(crate) fn trigger_auto_updates(&mut self, restart_hidden: bool) {
         if !self.caps.manage_apps || !self.settings.auto_update {
             return;
         }
@@ -518,7 +524,7 @@ impl LauncherUi {
             if !self.auto_update_attempted.contains(&(id.clone(), v.clone())) {
                 log::info!("auto-update: queuing launcher self-update to {v}");
                 self.auto_update_attempted.insert((id, v));
-                self.send(Command::UpdateLauncher);
+                self.send(Command::UpdateLauncher { restart_hidden });
             }
         }
     }

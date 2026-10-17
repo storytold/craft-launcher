@@ -974,7 +974,7 @@ fn the_launcher_updates_itself_and_quits_to_restart() {
     h.get_by_label_contains("ArtCraft Launcher 0.2.0 is available");
     h.get_by_label("Update and restart").click();
     h.run_steps(2);
-    assert!(sent.borrow().contains(&Command::UpdateLauncher));
+    assert!(sent.borrow().contains(&Command::UpdateLauncher { restart_hidden: false }));
     // Downloading: the banner shows progress instead of the button.
     shared_events
         .borrow_mut()
@@ -1075,6 +1075,41 @@ fn automatic_checks_run_every_five_minutes() {
     assert_eq!(CheckEvery::Never.seconds(), None);
 }
 
+/// A shell whose window is away in the tray.
+struct TrayHost;
+impl Host for TrayHost {
+    fn window_hidden(&self) -> bool {
+        true
+    }
+}
+
+#[test]
+fn a_launcher_update_found_while_in_the_tray_restarts_into_the_tray() {
+    let mut ev = events();
+    ev.push(Event::LauncherUpdate(release("artcraft-launcher", "0.2.0", NOW)));
+    let sent = Rc::new(RefCell::new(Vec::new()));
+    let sent2 = sent.clone();
+    let mut backend =
+        Some(Fake { events: ev, sent: sent2, manage: true, pictures: Rc::default(), asked: Vec::new(), clock: Rc::new(Cell::new(NOW)) });
+    let mut h = Harness::builder().with_size(egui::vec2(1180.0, 900.0)).build_ui_state(
+        move |ui, state: &mut Option<LauncherUi>| {
+            if state.is_none()
+                && let Some(b) = backend.take()
+            {
+                *state = Some(LauncherUi::new(ui.ctx(), Box::new(b), Settings { auto_update: true, notify: false, ..Settings::default() }));
+            }
+            if let Some(l) = state.as_mut() {
+                l.logic(&ui.ctx().clone(), &mut TrayHost);
+                l.ui(ui, &mut TrayHost);
+            }
+        },
+        None,
+    );
+    h.run_steps(4);
+    let commands = sent.borrow().clone();
+    assert!(commands.contains(&Command::UpdateLauncher { restart_hidden: true }), "{commands:?}");
+}
+
 #[test]
 fn automatic_updates_queue_installs_for_outdated_apps_and_launcher() {
     let mut ev = events();
@@ -1101,7 +1136,7 @@ fn automatic_updates_queue_installs_for_outdated_apps_and_launcher() {
     let commands = sent.borrow().clone();
     assert!(commands.contains(&Command::Install { app: "photocraft".into() }), "outdated photocraft should be queued for install: {commands:?}");
     assert!(commands.contains(&Command::Install { app: "effectcraft".into() }), "outdated effectcraft should be queued for install: {commands:?}");
-    assert!(commands.contains(&Command::UpdateLauncher), "launcher update should be queued: {commands:?}");
+    assert!(commands.contains(&Command::UpdateLauncher { restart_hidden: false }), "launcher update should be queued: {commands:?}");
 }
 
 #[test]
@@ -1129,7 +1164,7 @@ fn automatic_updates_are_disabled_by_default() {
     h.run_steps(4);
     let commands = sent.borrow().clone();
     assert!(!commands.contains(&Command::Install { app: "photocraft".into() }), "photocraft should not be auto-installed when auto_update is false");
-    assert!(!commands.contains(&Command::UpdateLauncher), "launcher should not be auto-updated when auto_update is false");
+    assert!(!commands.iter().any(|c| matches!(c, Command::UpdateLauncher { .. })), "launcher should not be auto-updated when auto_update is false");
 }
 
 #[test]

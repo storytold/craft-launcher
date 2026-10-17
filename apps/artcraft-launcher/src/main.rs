@@ -391,6 +391,8 @@ fn claim_notification_identity() -> &'static Result<(), String> {
 struct DesktopHost {
     tray: bool,
     quit: bool,
+    /// The window is hidden in the tray, closed to it, or was never opened (see `Host::window_hidden`).
+    window_hidden: bool,
 }
 
 impl Host for DesktopHost {
@@ -418,6 +420,10 @@ impl Host for DesktopHost {
 
     fn has_tray(&self) -> bool {
         self.tray
+    }
+
+    fn window_hidden(&self) -> bool {
+        self.window_hidden
     }
 
     fn has_desktops(&self) -> bool {
@@ -485,7 +491,7 @@ impl Launcher {
             system_theme: system_theme::Monitor::default(),
             ui: LauncherUi::new(&windowless, backend, Settings::default()),
             tray: None,
-            host: DesktopHost { tray: false, quit: false },
+            host: DesktopHost { tray: false, quit: false, window_hidden: false },
             starts,
             windowless,
             run_again,
@@ -586,6 +592,7 @@ impl Launcher {
     /// as they change, as no window is there to save them.
     fn wait_in_tray(&mut self, woken: &Receiver<()>) -> bool {
         log::debug!("no window: carrying on in the tray");
+        self.host.window_hidden = true;
         // What eframe saved as the window closed, or what was just read in at a start in the tray.
         let mut saved = self.ui.settings.clone();
         loop {
@@ -633,6 +640,7 @@ impl<'a> Shell<'a> {
         // Started hidden at login but there's no tray to come back from: show the window.
         let visible = !hidden || launcher.tray.is_none();
         let mut shell = Self { launcher, window_hides, visible: true, quitting: false, applied_follow: None };
+        shell.launcher.host.window_hidden = false;
         if !visible {
             shell.put_away(&cc.egui_ctx);
         } else if hidden {
@@ -643,6 +651,7 @@ impl<'a> Shell<'a> {
 
     fn show(&mut self, ctx: &egui::Context) {
         self.visible = true;
+        self.launcher.host.window_hidden = false;
         // Before the window is ordered front, so it comes to this desktop rather than taking the
         // user to its own (macOS; the setting doesn't exist elsewhere).
         #[cfg(target_os = "macos")]
@@ -663,6 +672,7 @@ impl<'a> Shell<'a> {
 
     /// Puts the window away in the tray: hidden where it can hide, closed where it can't.
     fn put_away(&mut self, ctx: &egui::Context) {
+        self.launcher.host.window_hidden = true;
         if self.window_hides {
             self.visible = false;
             ctx.send_viewport_cmd(egui::ViewportCommand::Visible(false));
@@ -968,6 +978,7 @@ mod tests {
         let mut shell = Shell { launcher: &mut launcher, window_hides: false, visible: true, quitting: false, applied_follow: None };
         shell.put_away(&ctx);
         assert!(shell.launcher.closed_to_tray);
+        assert!(shell.launcher.host.window_hidden());
         shell.quit(&ctx);
         assert!(!shell.launcher.closed_to_tray);
     }
@@ -980,6 +991,10 @@ mod tests {
         shell.put_away(&ctx);
         assert!(!shell.visible);
         assert!(!shell.launcher.closed_to_tray);
+        // What the UI hears, so a self-update restarts into the tray (#337).
+        assert!(shell.launcher.host.window_hidden());
+        shell.show(&ctx);
+        assert!(!shell.launcher.host.window_hidden());
     }
 
     #[test]

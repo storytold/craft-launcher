@@ -128,7 +128,7 @@ impl LauncherUi {
                         .on_hover_text(tl!("Downloads the new version, replaces this one and opens it again"))
                         .clicked()
                     {
-                        self.send(Command::UpdateLauncher);
+                        self.send(Command::UpdateLauncher { restart_hidden: false });
                         close = true;
                     }
                 } else {
@@ -358,7 +358,8 @@ impl LauncherUi {
             && ui.checkbox(&mut self.settings.auto_update, tl!("Automatically download and install updates")).changed()
             && self.settings.auto_update
         {
-            self.trigger_auto_updates();
+            // The user is in Settings: the window is up, so a restart brings it back up.
+            self.trigger_auto_updates(false);
         }
         ui.checkbox(&mut self.settings.notify, tl!("Notify me when an installed app has an update"));
         ui.checkbox(&mut self.settings.prereleases, tl!("Include pre-releases (betas and release candidates)"));
