@@ -85,7 +85,7 @@ The web version shows the same catalog in the browser, with the latest download 
 ## Interface languages
 
 The interface is in English, Brazilian Portuguese (Português (Brasil)), Czech (Čeština), French
-(Français), German (Deutsch), Hungarian (Magyar), Japanese (日本語), Polish (Polski), Russian
+(Français), German (Deutsch), Hungarian (Magyar), Japanese (日本語), Lao (ລາວ), Polish (Polski), Russian
 (Русский), Simplified Chinese (简体中文) or Spanish (Español). **Auto**, the default, follows the
 system or browser language; **Settings → Language** picks one and switches at once, and the choice
 is kept between runs. Czech locales (`cs-CZ`, `cs_CZ.UTF-8`…) select Czech, German ones (`de-DE`,
@@ -97,9 +97,10 @@ Chinese locales (`zh-CN`, `zh-SG`, `zh-Hans`, and POSIX forms such as `zh_CN.UTF
 Chinese; Traditional Chinese ones don't. To try a language without changing the setting, start the
 desktop app with `ARTCRAFT_LAUNCHER_LOCALE=pt-BR`, or add `?lang=ru` to the web address.
 
-The CJK languages are drawn with the system's own CJK font (Hiragino Sans or PingFang on macOS,
+Lao locales (`lo`, `lo-LA`, `lo_LA.UTF-8`…) select Lao. The CJK languages and Lao are drawn with the
+system's own font (Hiragino Sans or PingFang on macOS,
 Yu Gothic, Meiryo or Microsoft YaHei on Windows, Noto Sans CJK, IPA, Takao or WenQuanYi on Linux and
-FreeBSD). Where the system has no font for one, and in the web version, the interface stays in
+FreeBSD; Lao Sangam MN, Leelawadee UI or Noto Sans Lao). Where the system has no font for one, and in the web version, the interface stays in
 English and Settings says why. Product names and release notes stay as published; text without a
 translation falls back to English.
 

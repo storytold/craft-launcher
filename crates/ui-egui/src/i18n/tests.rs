@@ -367,6 +367,45 @@ fn chinese_counts_and_english_fallback_work() {
 }
 
 #[test]
+fn lao_locales_and_counts_work() {
+    for tag in ["lo", "lo-LA", "lo_LA.UTF-8", "LO_la"] {
+        assert_eq!(lang_from_tag(tag), Some(Lang::LO), "{tag}");
+    }
+    assert_eq!(super::detect::first_supported(["xx-XX", "lo-LA", "en-US"]), Some(Lang::LO));
+    // Lao has one plural form.
+    for n in [0, 1, 2, 11, 100] {
+        assert_eq!(trn(Lang::LO, n, "{n} app", "{n} apps"), format!("{n} ແອັບ"));
+    }
+    assert_eq!(message(Lang::LO, "Download cancelled"), "ຍົກເລີກການດາວໂຫຼດແລ້ວ");
+}
+
+/// With a system Lao font installed, every UI family can draw the whole Lao catalog.
+/// Machines without one (CI, the web) skip this.
+#[test]
+fn system_font_covers_lao_in_every_ui_family() {
+    use egui::{FontFamily, FontId};
+    if !crate::theme::cjk_font_available(Lang::LO) {
+        return;
+    }
+    let ctx = egui::Context::default();
+    crate::theme::install_fonts(&ctx, Some(Lang::LO));
+    let mut output = ctx.run_ui(egui::RawInput::default(), |_| {});
+    output.textures_delta.clear();
+    let text: String = Lang::LO
+        .0
+        .source
+        .lines()
+        .filter_map(|line| line.split('\t').nth(2))
+        .flat_map(str::chars)
+        .filter(|c| ('\u{0e80}'..='\u{0eff}').contains(c))
+        .collect();
+    assert!(text.chars().count() > 200);
+    for family in [FontFamily::Proportional, crate::theme::medium(), crate::theme::semibold(), crate::theme::display(), crate::theme::mono()] {
+        ctx.fonts_mut(|fonts| assert!(fonts.has_glyphs(&FontId::new(14.0, family.clone()), &text), "missing glyph in {family:?}"));
+    }
+}
+
+#[test]
 fn japanese_locales_and_counts_work() {
     for tag in ["ja", "ja-JP", "ja_JP.UTF-8", "JA_jp"] {
         assert_eq!(lang_from_tag(tag), Some(Lang::JA), "{tag}");
@@ -464,6 +503,8 @@ fn language_labels_come_from_the_registry() {
     assert_eq!(Settings::language_label(Lang::ZH_CN.code(), Some(Lang::ZH_CN)), "Simplified Chinese (简体中文)");
     assert_eq!(Settings::language_label(Lang::JA.code(), Some(Lang::ZH_CN)), "Japanese");
     assert_eq!(Settings::language_label(Lang::JA.code(), Some(Lang::JA)), "Japanese (日本語)");
+    assert_eq!(Settings::language_label(Lang::LO.code(), Some(Lang::JA)), "Lao");
+    assert_eq!(Settings::language_label(Lang::LO.code(), Some(Lang::LO)), "Lao (ລາວ)");
     assert_eq!(Settings::language_label(Settings::LANGUAGE_AUTO, None), "Auto");
     assert_eq!(Settings::language_label("xx", None), "Auto");
 }
