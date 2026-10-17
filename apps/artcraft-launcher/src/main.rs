@@ -152,7 +152,29 @@ fn native_options(hidden: bool) -> eframe::NativeOptions {
     } else if let Some(icon) = icon {
         viewport = viewport.with_icon(icon);
     }
-    eframe::NativeOptions { viewport, persist_window: true, wgpu_options: wgpu_options(), ..Default::default() }
+    eframe::NativeOptions { viewport, persist_window: true, wgpu_options: within_adapter_limits(wgpu_options()), ..Default::default() }
+}
+
+/// Asks wgpu for no more than the GPU offers. egui requests wgpu's default limits on every backend
+/// but GL, and creating the device fails when the adapter falls short of any one of them: the
+/// Raspberry Pi 5's V3D driver allows 15 inter-stage shader variables against the default 16, and
+/// the launcher exited before the first frame. egui's own shaders need far less than either.
+fn within_adapter_limits(mut config: eframe::WgpuConfiguration) -> eframe::WgpuConfiguration {
+    if let eframe::egui_wgpu::WgpuSetup::CreateNew(setup) = &mut config.wgpu_setup {
+        let egui_descriptor = Arc::clone(&setup.device_descriptor);
+        setup.device_descriptor = Arc::new(move |adapter| {
+            let mut descriptor = egui_descriptor(adapter);
+            descriptor.required_limits = fit_limits(descriptor.required_limits, &adapter.limits());
+            descriptor
+        });
+    }
+    config
+}
+
+/// `requested`, with each limit the adapter can't meet lowered (or raised, for alignments) to
+/// what it can.
+fn fit_limits(requested: eframe::wgpu::Limits, adapter: &eframe::wgpu::Limits) -> eframe::wgpu::Limits {
+    requested.or_worse_values_from(adapter)
 }
 
 /// wgpu's backend list. On Windows that is Direct3D 12 with GL as the fallback, not Vulkan:
@@ -1015,6 +1037,20 @@ mod tests {
         assert!(adapter_rank(Backend::Dx12, integrated, false) < warp);
         assert!(adapter_rank(Backend::Dx12, discrete, false) < adapter_rank(Backend::Dx12, integrated, false));
         assert!(adapter_rank(Backend::Dx12, integrated, true) < adapter_rank(Backend::Dx12, discrete, true));
+    }
+
+    #[test]
+    fn the_device_asks_for_no_more_than_the_gpu_offers() {
+        use eframe::wgpu::Limits;
+        // Raspberry Pi 5 (V3D 7.1, Mesa V3DV): wgpu's defaults want 16 inter-stage variables.
+        let v3d = Limits { max_inter_stage_shader_variables: 15, ..Limits::default() };
+        assert!(!Limits::default().check_limits(&v3d));
+        let fitted = fit_limits(Limits::default(), &v3d);
+        assert!(fitted.check_limits(&v3d));
+        assert_eq!(fitted.max_inter_stage_shader_variables, 15);
+        // A GPU that offers more still gets egui's request, not everything it has.
+        let generous = Limits { max_inter_stage_shader_variables: 28, ..Limits::default() };
+        assert_eq!(fit_limits(Limits::default(), &generous), Limits::default());
     }
 
     #[cfg(not(any(windows, target_os = "macos")))]
