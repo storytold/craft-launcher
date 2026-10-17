@@ -384,6 +384,24 @@ fn japanese_locales_and_counts_work() {
     assert_eq!(message(Lang::JA, "PhotoCraft updated to 0.5.0"), "PhotoCraft を 0.5.0 に更新しました");
 }
 
+#[test]
+fn korean_locales_and_counts_work() {
+    for tag in ["ko", "ko-KR", "ko_KR.UTF-8", "KO_kr"] {
+        assert_eq!(lang_from_tag(tag), Some(Lang::KO), "{tag}");
+    }
+    assert_eq!(super::detect::first_supported(["xx-XX", "ko-KR", "en-US"]), Some(Lang::KO));
+    // Korean has one plural form.
+    for n in [0, 1, 2, 11, 100] {
+        assert_eq!(trn(Lang::KO, n, "{n} app", "{n} apps"), format!("앱 {n}개"));
+        assert_eq!(trn(Lang::KO, n, "{n} day ago", "{n} days ago"), format!("{n}일 전"));
+    }
+    assert_eq!(trn(Lang::KO, 2, "{n} unknown item", "{n} unknown items"), "2 unknown items");
+    assert_eq!(tr(Lang::KO, "Untranslated diagnostic"), "Untranslated diagnostic");
+    assert_eq!(super::tr_ctx(Lang::KO, "month", "Mar"), "3월");
+    assert_eq!(tr(Lang::KO, "{month} {day}, {year}"), "{year}년 {month} {day}일");
+    assert_eq!(message(Lang::KO, "PhotoCraft updated to 0.5.0"), "PhotoCraft을(를) 0.5.0(으)로 업데이트했습니다");
+}
+
 /// With the system's Chinese font installed, every UI family can draw the whole Chinese catalog.
 /// Machines without one (CI, the web) skip this; the UI then stays in English.
 #[test]
