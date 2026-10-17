@@ -127,6 +127,8 @@ pub struct LauncherUi {
     pub(crate) detail_shot: usize,
     /// The screenshot is enlarged over the whole window.
     pub(crate) detail_zoom: bool,
+    /// The drawer just opened on an app: its page starts at the top, wherever the last one was.
+    pub(crate) detail_scroll_top: bool,
     /// The details pictures the backend has sent (or been asked for), by app and picture key.
     pub(crate) pictures: std::collections::HashMap<(String, String), crate::details::Picture>,
     started: bool,
@@ -197,6 +199,7 @@ impl LauncherUi {
             detail_shown: None,
             detail_shot: 0,
             detail_zoom: false,
+            detail_scroll_top: false,
             pictures: std::collections::HashMap::new(),
             started: false,
             applied_theme: None,

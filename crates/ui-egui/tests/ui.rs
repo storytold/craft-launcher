@@ -1242,6 +1242,39 @@ fn clicking_a_card_opens_its_details_drawer() {
     assert!(h.query_by_label_contains("The image editor you already know").is_none());
 }
 
+/// A page opened after another was scrolled starts at the top (#428).
+#[test]
+fn an_apps_page_opens_at_the_top_however_far_the_last_one_was_scrolled() {
+    let (mut h, _sent) = harness(ViewMode::Grid, egui::Theme::Dark, true);
+    h.run_steps(8);
+    h.get_by_label("PhotoCraft details").click();
+    h.run_steps(10);
+    let top = h.get_by_label("Website ↗").rect().top();
+    // Scroll the page down: the wheel over the drawer, which sits at the right.
+    h.hover_at(egui::pos2(1180.0 - 200.0, 500.0));
+    h.run_steps(2);
+    for _ in 0..3 {
+        h.event(egui::Event::MouseWheel {
+            unit: egui::MouseWheelUnit::Line,
+            delta: egui::vec2(0.0, -20.0),
+            phase: egui::TouchPhase::Move,
+            modifiers: egui::Modifiers::NONE,
+        });
+        h.run_steps(5);
+    }
+    h.run_steps(30);
+    let scrolled = h.get_by_label("Website ↗").rect().top();
+    assert!(scrolled < top - 50.0, "the page didn't scroll: {top} → {scrolled}");
+    // Close it, open another app's page: that one starts at the top.
+    h.key_press(egui::Key::Escape);
+    h.run_steps(12);
+    assert!(h.query_by_label("Website ↗").is_none());
+    h.get_by_label("VectorCraft details").click();
+    h.run_steps(12);
+    let next = h.get_by_label("Website ↗").rect().top();
+    assert!((next - top).abs() < 1.0, "opened scrolled: top {top}, now {next}");
+}
+
 #[test]
 fn details_drawer_in_the_light_theme() {
     let (mut h, _sent) = harness(ViewMode::Grid, egui::Theme::Light, true);
