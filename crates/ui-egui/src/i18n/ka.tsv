@@ -107,6 +107,8 @@
 	ArtCraft Launcher is still running	ArtCraft Launcher კვლავ მუშაობს
 	It's in the tray: open it or quit it from the tray icon, or turn this off in the settings.	ის შეტყობინებების არეშია: გახსენით ან დახურეთ მისი ხატულით, ან გამორთეთ ეს ფუნქცია პარამეტრებში.
 	Show the window on the current desktop	ფანჯრის ჩვენება მიმდინარე სამუშაო მაგიდაზე
+	Hide the Dock icon while the window is closed	Dock-ის ხატულის დამალვა ფანჯრის დახურვისას
+	The launcher stays in the menu bar only. Its Dock icon comes back when you open the window.	ArtCraft Launcher მხოლოდ მენიუს ზოლში რჩება. ფანჯრის გახსნისას Dock-ის ხატულა ისევ გამოჩნდება.
 	Start ArtCraft Launcher when I log in	ArtCraft Launcher-ის გაშვება სისტემაში შესვლისას
 	Community	საზოგადოება
 	Questions, ideas and news from the ArtCraft team	კითხვები, იდეები და სიახლეები ArtCraft-ის გუნდისგან

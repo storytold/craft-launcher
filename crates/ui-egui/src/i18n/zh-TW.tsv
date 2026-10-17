@@ -87,6 +87,8 @@
 	ArtCraft Launcher is still running	ArtCraft Launcher 仍在執行
 	It's in the tray: open it or quit it from the tray icon, or turn this off in the settings.	它位於系統匣中：請從系統匣圖示開啟或結束，或在設定中關閉此功能。
 	Show the window on the current desktop	在目前的桌面顯示視窗
+	Hide the Dock icon while the window is closed	視窗關閉時隱藏 Dock 圖示
+	The launcher stays in the menu bar only. Its Dock icon comes back when you open the window.	啟動器只會保留在選單列中。開啟視窗後，Dock 圖示就會重新出現。
 	Start ArtCraft Launcher when I log in	登入時啟動 ArtCraft Launcher
 	Community	社群
 	Questions, ideas and news from the ArtCraft team	來自 ArtCraft 團隊的提問、想法與最新消息
