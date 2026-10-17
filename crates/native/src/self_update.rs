@@ -13,8 +13,9 @@
 //! | Windows portable zip | after exit, unzip over this folder (settings in `ArtCraftLauncherData` stay) |
 //! | Linux AppImage | rename the new AppImage over this one (fine while running), start it |
 //! | Linux `.deb` / `.rpm` | the system package manager, with the password prompt; then restart |
+//! | Linux Flatpak | reinstall the bundle with `--reinstall` via the host portal; then restart |
 //!
-//! Anything else (a Flatpak, FreeBSD, a development build) gets the download link instead.
+//! Anything else (FreeBSD, a development build) gets the download link instead.
 
 use std::path::{Path, PathBuf};
 
@@ -45,6 +46,8 @@ pub enum Install {
     AppImage(PathBuf),
     /// A Debian or RPM package; the binary.
     Package(PackageKind, PathBuf),
+    /// A Flatpak application.
+    Flatpak,
 }
 
 impl Install {
@@ -55,6 +58,7 @@ impl Install {
             Self::Portable(_) => PackageKind::PortableZip,
             Self::AppImage(_) => PackageKind::AppImage,
             Self::Package(kind, _) => *kind,
+            Self::Flatpak => PackageKind::Flatpak,
         }
     }
 }
@@ -128,6 +132,17 @@ fn msi_install_dir() -> Option<PathBuf> {
 #[cfg(target_os = "linux")]
 fn detect(exe: &Path) -> Option<Install> {
     if process::in_sandbox() {
+        // Only allow self-update for user-level bundle installs. A Flathub or system-wide install
+        // should be updated via its origin (Flathub / the system package manager); running
+        // `flatpak install --user --reinstall --bundle` on such an install would create a second,
+        // user-level copy alongside the original.
+        //
+        // Distinguish the two by inspecting `app-path` in `/.flatpak-info`: a user bundle install
+        // is placed under the user's home Flatpak directory (`~/.local/share/flatpak`), whereas a
+        // Flathub or system-wide install lives under `/var/lib/flatpak` or `/run/host`.
+        if is_user_bundle_install() && process::is_flatpak_available() {
+            return Some(Install::Flatpak);
+        }
         return None;
     }
     if let Some(appimage) = std::env::var_os("APPIMAGE") {
@@ -144,6 +159,55 @@ fn detect(exe: &Path) -> Option<Install> {
         return Some(Install::Package(PackageKind::Rpm, exe.to_path_buf()));
     }
     None
+}
+
+/// Returns `true` when `/.flatpak-info` indicates a user-level bundle install.
+///
+/// A user bundle install places the app under the user's personal Flatpak data directory
+/// (`~/.local/share/flatpak`).  Flathub and system-wide installs use `/var/lib/flatpak` or
+/// expose the app path under `/run/host`.  We check the `app-path` key in the `[Instance]`
+/// section; if the file is absent or malformed we conservatively return `false`.
+#[cfg(target_os = "linux")]
+fn is_user_bundle_install() -> bool {
+    let info = match std::fs::read_to_string("/.flatpak-info") {
+        Ok(s) => s,
+        Err(_) => return false,
+    };
+    parse_is_user_bundle(&info)
+}
+
+/// Pure-function core of [`is_user_bundle_install`], split out for unit-testing.
+#[cfg(target_os = "linux")]
+fn parse_is_user_bundle(info: &str) -> bool {
+    // Look for `app-path=…` in the [Instance] section.
+    let mut in_instance = false;
+    for line in info.lines() {
+        let trimmed = line.trim();
+        if trimmed.starts_with('[') {
+            in_instance = trimmed == "[Instance]";
+            continue;
+        }
+        if !in_instance {
+            continue;
+        }
+        if let Some(path) = trimmed.strip_prefix("app-path=") {
+            // User bundle installs are placed under the user's local share directory
+            // (`~/.local/share/flatpak`). Flathub / system installs use `/var/lib/flatpak`
+            // or are exposed under `/run/host`.
+            let p = path.trim();
+            if p.is_empty() || p.starts_with("/var/lib/flatpak") || p.starts_with("/run/host") {
+                return false;
+            }
+            let user_base = dirs::data_local_dir().or_else(|| dirs::home_dir().map(|h| h.join(".local/share"))).map(|d| d.join("flatpak"));
+            if let Some(base) = user_base
+                && p.starts_with(base.to_string_lossy().as_ref())
+            {
+                return true;
+            }
+            return p.contains("/.local/share/flatpak");
+        }
+    }
+    false
 }
 
 #[cfg(not(any(target_os = "macos", windows, target_os = "linux")))]
@@ -198,6 +262,13 @@ pub fn update(
             let _ = std::fs::remove_file(&file);
             result?;
             relaunch_after_exit(pid, &[exe.as_os_str()])
+        }
+        #[cfg(target_os = "linux")]
+        Install::Flatpak => {
+            let result = install::linux::install_package(PackageKind::Flatpak, &file, stop, phase);
+            let _ = std::fs::remove_file(&file);
+            result?;
+            relaunch_flatpak_after_exit()
         }
         #[cfg(windows)]
         Install::Msi(exe) => windows_helper(pid, &msi_update_step(&file)?, exe),
@@ -258,6 +329,71 @@ fn helper_command(pid: u32, command: &[&std::ffi::OsStr]) -> std::process::Comma
         // The new launcher reports its real version; a pretend one was for this run only.
         .env_remove(PRETEND_VAR);
     cmd
+}
+
+#[cfg(target_os = "linux")]
+fn parse_flatpak_instance_id(info: &str) -> Option<String> {
+    for line in info.lines() {
+        if let Some(id) = line.trim().strip_prefix("instance-id=") {
+            let trimmed = id.trim();
+            if !trimmed.is_empty() {
+                return Some(trimmed.to_string());
+            }
+        }
+    }
+    None
+}
+
+#[cfg(target_os = "linux")]
+fn flatpak_instance_id() -> Option<String> {
+    let info = std::fs::read_to_string("/.flatpak-info").ok()?;
+    parse_flatpak_instance_id(&info)
+}
+
+#[cfg(target_os = "linux")]
+fn parse_flatpak_host_pid(ps_output: &str, target_instance: &str) -> Option<u32> {
+    for line in ps_output.lines() {
+        let mut parts = line.split_whitespace();
+        if let (Some(inst), Some(pid)) = (parts.next(), parts.next())
+            && inst == target_instance
+        {
+            return pid.parse().ok();
+        }
+    }
+    None
+}
+
+#[cfg(target_os = "linux")]
+fn flatpak_host_pid() -> Option<u32> {
+    let instance_id = flatpak_instance_id()?;
+    let out = process::capture_flatpak(&["ps", "--columns=instance,pid"], std::time::Duration::from_secs(3))?;
+    parse_flatpak_host_pid(&out, &instance_id)
+}
+
+/// Starts a host helper that waits for this Flatpak instance to exit, then relaunches it via Flatpak on the host.
+#[cfg(target_os = "linux")]
+fn relaunch_flatpak_after_exit() -> Result<(), String> {
+    let host_pid = flatpak_host_pid();
+    let instance_id = flatpak_instance_id();
+    // Each wait clause polls until the old process is gone, then execs the relaunch command.
+    // If the old process is still alive after 60 s the helper gives up WITHOUT launching a second
+    // copy, which is the safe choice: the user can relaunch manually once the old one exits.
+    let (wait_clause, target_arg) = match (host_pid, instance_id) {
+        (Some(pid), _) => (
+            r#"pid=$1; shift; i=0; while kill -0 "$pid" 2>/dev/null; do [ $i -ge 600 ] && exit 1; sleep 0.1; i=$((i+1)); done; exec "$@""#,
+            pid.to_string(),
+        ),
+        (None, Some(id)) => (
+            r#"id=$1; shift; i=0; while flatpak ps --columns=instance 2>/dev/null | grep -q "^$id$"; do [ $i -ge 600 ] && exit 1; sleep 0.1; i=$((i+1)); done; exec "$@""#,
+            id,
+        ),
+        (None, None) => (r#"shift; sleep 1; exec "$@""#, String::new()),
+    };
+    let script = format!("({wait_clause}) &");
+    let app_id = LAUNCHER.bundle_id();
+    let mut cmd = process::command("flatpak-spawn");
+    cmd.args(["--host", "sh", "-c", &script, "sh", &target_arg, "flatpak", "run", &app_id]).env_remove(PRETEND_VAR);
+    process::spawn_detached(cmd).map_err(|e| format!("couldn't schedule the Flatpak restart ({e})"))
 }
 
 /// Starts a hidden PowerShell that waits for `pid` to exit, runs `step`, then starts `exe`.
@@ -443,6 +579,7 @@ mod tests {
             "artcraft-launcher-0.2.0-windows-x64-portable.zip",
             "artcraft-launcher-0.2.0-linux-x86_64.AppImage",
             "artcraft-launcher-0.2.0-linux-x86_64.deb",
+            "artcraft-launcher-0.2.0-linux-x86_64.flatpak",
             "artcraft-launcher-web-0.2.0.zip",
         ];
         let release = Release {
@@ -459,5 +596,43 @@ mod tests {
         assert_eq!(pick(Os::Windows, Install::Portable(PathBuf::new()).kind()).as_deref(), Some(names[2]));
         assert_eq!(pick(Os::Linux, Install::AppImage(PathBuf::new()).kind()).as_deref(), Some(names[3]));
         assert_eq!(pick(Os::Linux, Install::Package(PackageKind::Deb, PathBuf::new()).kind()).as_deref(), Some(names[4]));
+        assert_eq!(pick(Os::Linux, Install::Flatpak.kind()).as_deref(), Some(names[5]));
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn parses_flatpak_metadata_for_restart() {
+        let info = "[Application]\nname=ai.storyteller.artcraft-launcher\n\n[Instance]\ninstance-id=155661136\n";
+        assert_eq!(parse_flatpak_instance_id(info), Some("155661136".to_string()));
+        assert_eq!(parse_flatpak_instance_id("no instance id here"), None);
+
+        let ps = "Instance   PID    Application\n155661136  842791 ai.storyteller.artcraft-launcher\n";
+        assert_eq!(parse_flatpak_host_pid(ps, "155661136"), Some(842791));
+        assert_eq!(parse_flatpak_host_pid(ps, "999999999"), None);
+    }
+
+    /// Only a user-bundle install (app-path under ~/.local/share/flatpak) should be self-updated;
+    /// Flathub / system-wide installs (/var/lib/flatpak) must be left to their origin.
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn detects_user_bundle_install_from_flatpak_info() {
+        // Typical user bundle install: app-path under ~/.local/share/flatpak.
+        let user_bundle = "[Application]\nname=ai.storyteller.artcraft-launcher\n\n[Instance]\napp-path=/home/alice/.local/share/flatpak/app/ai.storyteller.artcraft-launcher/current/active\n";
+        assert!(parse_is_user_bundle(user_bundle), "user bundle should be updatable");
+
+        // Flathub / system-wide install: app-path under /var/lib/flatpak.
+        let system = "[Application]\nname=ai.storyteller.artcraft-launcher\n\n[Instance]\napp-path=/var/lib/flatpak/app/ai.storyteller.artcraft-launcher/current/active\n";
+        assert!(!parse_is_user_bundle(system), "system install should NOT be self-updated");
+
+        // Exposed under /run/host (another system-install pattern).
+        let run_host = "[Application]\nname=ai.storyteller.artcraft-launcher\n\n[Instance]\napp-path=/run/host/var/lib/flatpak/app/ai.storyteller.artcraft-launcher/current/active\n";
+        assert!(!parse_is_user_bundle(run_host), "/run/host path should NOT be self-updated");
+
+        // No app-path at all (incomplete metadata).
+        let no_path = "[Application]\nname=ai.storyteller.artcraft-launcher\n\n[Instance]\ninstance-id=123\n";
+        assert!(!parse_is_user_bundle(no_path), "missing app-path should not be self-updated");
+
+        // Empty / garbage.
+        assert!(!parse_is_user_bundle(""));
     }
 }

@@ -131,12 +131,19 @@ pub fn capture_flatpak(args: &[&str], timeout: Duration) -> Option<String> {
 }
 
 /// Whether Flatpak is available on the machine (or on the host when sandboxed).
+///
+/// The result is cached after the first call so the blocking `flatpak-spawn` probe (up to 3 s)
+/// never happens twice — and never on the startup path after `detect()` is moved to a thread.
 pub fn is_flatpak_available() -> bool {
-    if in_sandbox() {
-        capture("flatpak-spawn", &["--host", "flatpak", "--version"], Duration::from_secs(3)).is_some()
-    } else {
-        which_on_path("flatpak").is_some()
-    }
+    use std::sync::OnceLock;
+    static AVAILABLE: OnceLock<bool> = OnceLock::new();
+    *AVAILABLE.get_or_init(|| {
+        if in_sandbox() {
+            capture("flatpak-spawn", &["--host", "flatpak", "--version"], Duration::from_secs(3)).is_some()
+        } else {
+            which_on_path("flatpak").is_some()
+        }
+    })
 }
 
 fn which_on_path(name: &str) -> Option<std::path::PathBuf> {
