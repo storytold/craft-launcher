@@ -246,6 +246,10 @@ month	Dec	gru
 	Match system	Zgodnie z systemem
 	Dark	Ciemny
 	Light	Jasny
+	Mouse wheel scroll speed	Szybkość przewijania kółkiem myszy
+scroll speed	Slow	Wolna
+scroll speed	Normal	Normalna
+scroll speed	Fast	Szybka
 	Full changelog	Pełna lista zmian
 	link	link
 	No apps match	Brak pasujących aplikacji

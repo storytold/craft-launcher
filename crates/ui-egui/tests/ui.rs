@@ -14,7 +14,7 @@ use artcraft_launcher_core::protocol::{
 use artcraft_launcher_core::release::{Asset, Release};
 use artcraft_launcher_core::status::InstallSource;
 use artcraft_launcher_core::{Arch, Installed, Os, Platform, SUITE, version};
-use artcraft_launcher_ui_egui::settings::ViewMode;
+use artcraft_launcher_ui_egui::settings::{ScrollSpeed, ViewMode};
 use artcraft_launcher_ui_egui::{Host, LauncherUi, Settings};
 use egui_kittest::Harness;
 use egui_kittest::kittest::{NodeT, Queryable};
@@ -1660,6 +1660,60 @@ fn with_animations_on_the_wheel_glides() {
     h.run_steps(60);
     let moved = start - grid_top(&h);
     assert!((moved - notch).abs() < 0.5, "moved {moved} of {notch}");
+}
+
+// Issue #386: a wheel notch moved egui's 40 points, which felt slow on Windows, where a notch
+// is reported as one line and other programs move about 100 pixels. The Mouse wheel scroll
+// speed setting decides how far a notch goes.
+#[test]
+fn a_wheel_notch_scrolls_as_far_as_the_scroll_speed_setting_says() {
+    let mut h = short_window(Rc::new(Cell::new(true)));
+    for speed in [ScrollSpeed::Normal, ScrollSpeed::Fast, ScrollSpeed::Slow] {
+        if let Some(l) = h.state_mut() {
+            l.settings.scroll_speed = speed;
+        }
+        h.run_steps(2);
+        let start = grid_top(&h);
+        // A notch, or the part of one that moves 100 points: the short window has room for that.
+        let lines = (100.0 / speed.line_points()).min(1.0);
+        let notch = lines * speed.line_points();
+        turn_wheel(&mut h, lines);
+        h.run_steps(2);
+        let moved = start - grid_top(&h);
+        assert!((moved - notch).abs() < 0.5, "{speed:?}: moved {moved} of {notch}");
+        // Back to the top for the next speed.
+        h.hover_at(egui::pos2(590.0, 300.0));
+        for _ in 0..8 {
+            turn_wheel(&mut h, -4.0);
+        }
+        h.run_steps(2);
+    }
+    // At Normal, the platform's own speed: egui's on macOS, faster where a notch is one line.
+    let normal = ScrollSpeed::Normal.line_points();
+    if cfg!(any(target_os = "windows", target_os = "linux")) {
+        assert!(normal > 40.0, "{normal}");
+    } else {
+        assert_eq!(normal, 40.0);
+    }
+    assert_eq!(ScrollSpeed::Fast.line_points(), 2.0 * normal);
+    assert_eq!(ScrollSpeed::Slow.line_points(), 0.5 * normal);
+}
+
+#[test]
+fn the_scroll_speed_is_picked_in_settings() {
+    let (mut h, _) = harness(ViewMode::Grid, egui::Theme::Dark, true);
+    h.run_steps(6);
+    h.get_by_label("Settings").click();
+    h.run_steps(4);
+    h.get_by_label("Mouse wheel scroll speed");
+    h.get_by_label("Fast").click();
+    h.run_steps(2);
+    assert_eq!(h.state().as_ref().unwrap().settings.scroll_speed, ScrollSpeed::Fast);
+    assert_eq!(h.ctx.options(|o| o.input_options.line_scroll_speed), ScrollSpeed::Fast.line_points());
+    h.get_by_label("Slow").click();
+    h.run_steps(2);
+    assert_eq!(h.state().as_ref().unwrap().settings.scroll_speed, ScrollSpeed::Slow);
+    assert_eq!(h.ctx.options(|o| o.input_options.line_scroll_speed), ScrollSpeed::Slow.line_points());
 }
 
 /// Moves the pointer from one card to the next. Returns how many frames are drawn before the

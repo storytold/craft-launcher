@@ -238,6 +238,10 @@ month	Dec	dic.
 	Match system	Igual que el sistema
 	Dark	Oscuro
 	Light	Claro
+	Mouse wheel scroll speed	Velocidad de desplazamiento de la rueda del ratón
+scroll speed	Slow	Lenta
+scroll speed	Normal	Normal
+scroll speed	Fast	Rápida
 	Full changelog	Registro de cambios completo
 	link	enlace
 	No apps match	Ninguna aplicación coincide

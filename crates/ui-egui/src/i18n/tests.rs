@@ -185,6 +185,19 @@ fn complete_catalogs_translate_every_tagline() {
     }
 }
 
+/// The Mouse wheel scroll speed row and the speed names, which qualify "speed" and so have their
+/// own context, in every complete catalog.
+#[test]
+fn complete_catalogs_name_the_scroll_speeds() {
+    for lang in Lang::all().filter(|l| l.complete_menus()) {
+        assert!(super::has(lang, "Mouse wheel scroll speed"), "{}", lang.code());
+        for speed in crate::scroll_speed::ScrollSpeed::ALL {
+            assert!(lang.catalog().contextual("scroll speed", speed.key()).is_some(), "{}: {}", lang.code(), speed.key());
+        }
+    }
+    assert_eq!(super::tr_ctx(Lang::RU, "scroll speed", "Slow"), "Низкая");
+}
+
 #[test]
 fn product_names_stay_in_english() {
     for lang in Lang::all() {

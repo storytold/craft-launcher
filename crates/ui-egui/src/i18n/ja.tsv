@@ -247,6 +247,10 @@ month	Dec	12月
 	Match system	システムに合わせる
 	Dark	ダーク
 	Light	ライト
+	Mouse wheel scroll speed	マウスホイールのスクロール速度
+scroll speed	Slow	遅い
+scroll speed	Normal	標準
+scroll speed	Fast	速い
 	Full changelog	完全な変更履歴
 	link	リンク
 	No apps match	一致するアプリがありません

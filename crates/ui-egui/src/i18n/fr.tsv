@@ -242,6 +242,10 @@ month	Dec	déc.
 	Match system	Comme le système
 	Dark	Sombre
 	Light	Clair
+	Mouse wheel scroll speed	Vitesse de défilement de la molette
+scroll speed	Slow	Lente
+scroll speed	Normal	Normale
+scroll speed	Fast	Rapide
 	Full changelog	Journal des modifications complet
 	link	lien
 	No apps match	Aucune application ne correspond

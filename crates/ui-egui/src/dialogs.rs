@@ -6,7 +6,7 @@ use artcraft_launcher_core::{Os, PackageKind};
 use egui::{RichText, vec2};
 
 use crate::app::{Dialog, Host, LauncherUi};
-use crate::settings::{CheckEvery, Settings};
+use crate::settings::{CheckEvery, ScrollSpeed, Settings};
 use crate::theme::{self, ThemeChoice, Tokens};
 use crate::widgets::{self, Cell, Kind};
 
@@ -482,5 +482,10 @@ impl LauncherUi {
             widgets::cells(ui, &mut theme_choice, &ThemeChoice::ALL.map(|c| (c, Cell { label: c.label(), tip: c.label(), count: None })));
         });
         self.settings.theme = theme_choice;
+        let mut speed = self.settings.scroll_speed;
+        row(ui, tl!("Mouse wheel scroll speed"), 240.0, &mut |ui| {
+            widgets::cells(ui, &mut speed, &ScrollSpeed::ALL.map(|s| (s, Cell { label: s.label(), tip: s.label(), count: None })));
+        });
+        self.settings.scroll_speed = speed;
     }
 }

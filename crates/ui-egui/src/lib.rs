@@ -26,6 +26,7 @@ pub mod icons;
 pub mod model;
 mod motion;
 mod notes;
+mod scroll_speed;
 pub mod settings;
 pub mod theme;
 mod views;

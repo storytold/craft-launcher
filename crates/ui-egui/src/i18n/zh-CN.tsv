@@ -161,6 +161,10 @@ month	Dec	12月
 	Match system	跟随系统
 	Dark	深色
 	Light	浅色
+	Mouse wheel scroll speed	鼠标滚轮滚动速度
+scroll speed	Slow	慢
+scroll speed	Normal	正常
+scroll speed	Fast	快
 	Full changelog	完整更新日志
 	link	链接
 	No apps match	没有匹配的应用

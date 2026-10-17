@@ -225,9 +225,11 @@ impl LauncherUi {
         self.toasts.clear();
     }
 
-    /// Input on its way to egui (the shell's `raw_input_hook`): with fewer animations asked for,
-    /// a mouse wheel scrolls at once instead of gliding.
+    /// Input on its way to egui (the shell's `raw_input_hook`): a mouse wheel notch scrolls as far
+    /// as the Mouse wheel scroll speed setting says, and with fewer animations asked for, it
+    /// scrolls at once instead of gliding.
     pub fn raw_input(&self, ctx: &egui::Context, raw: &mut egui::RawInput) {
+        self.settings.scroll_speed.apply(ctx, raw);
         if self.reduce_motion {
             motion::unsmooth_wheel(ctx, raw);
         }
@@ -583,6 +585,9 @@ impl LauncherUi {
             motion::apply(&ctx, self.reduce_motion);
             self.applied_motion = Some(self.reduce_motion);
         }
+        // For a host without a `raw_input_hook` (the tests' harness); the hook sets it in time
+        // for the frame's own wheel events.
+        self.settings.scroll_speed.set_line_speed(&ctx);
         let tokens = Tokens::get(&ctx);
         if self.entries.iter().any(|e| e.job.is_some()) || self.checking {
             ctx.request_repaint_after(Duration::from_millis(50));

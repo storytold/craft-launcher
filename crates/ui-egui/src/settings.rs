@@ -6,6 +6,7 @@ use artcraft_launcher_core::PackageKind;
 use serde::{Deserialize, Serialize};
 
 use crate::i18n::t;
+pub use crate::scroll_speed::ScrollSpeed;
 use crate::theme::ThemeChoice;
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -115,6 +116,8 @@ pub struct Settings {
     pub last_check: Option<i64>,
     /// Catalog ids of apps hidden from the main lists (`photocraft`, …).
     pub hidden: std::collections::BTreeSet<String>,
+    /// How far a mouse wheel notch scrolls.
+    pub scroll_speed: ScrollSpeed,
 }
 
 impl Settings {
@@ -188,6 +191,7 @@ impl Default for Settings {
             notified: BTreeMap::new(),
             last_check: None,
             hidden: std::collections::BTreeSet::new(),
+            scroll_speed: ScrollSpeed::Normal,
         }
     }
 }

@@ -225,6 +225,10 @@ month	Dec	12.
 	Match system	Podle systému
 	Dark	Tmavý
 	Light	Světlý
+	Mouse wheel scroll speed	Rychlost posouvání kolečkem myši
+scroll speed	Slow	Pomalá
+scroll speed	Normal	Normální
+scroll speed	Fast	Rychlá
 	Full changelog	Úplný přehled změn
 	link	odkaz
 	No apps match	Žádné aplikace neodpovídají hledání

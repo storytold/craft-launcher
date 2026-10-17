@@ -245,6 +245,10 @@ month	Dec	dec.
 	Match system	Rendszerbeállítás szerint
 	Dark	Sötét
 	Light	Világos
+	Mouse wheel scroll speed	Egérgörgő görgetési sebessége
+scroll speed	Slow	Lassú
+scroll speed	Normal	Normál
+scroll speed	Fast	Gyors
 	Full changelog	Teljes változásnapló
 	link	hivatkozás
 	No apps match	Nincs találat

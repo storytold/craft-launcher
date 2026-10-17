@@ -244,6 +244,10 @@ month	Dec	Dez.
 	Match system	Wie das System
 	Dark	Dunkel
 	Light	Hell
+	Mouse wheel scroll speed	Scrollgeschwindigkeit des Mausrads
+scroll speed	Slow	Langsam
+scroll speed	Normal	Normal
+scroll speed	Fast	Schnell
 	Full changelog	Vollständiges Änderungsprotokoll
 	link	Link
 	No apps match	Keine passenden Apps
