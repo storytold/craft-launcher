@@ -129,6 +129,7 @@ fn complete_catalogs_cover_every_ui_literal() {
         include_str!("../model.rs"),
         include_str!("../notes.rs"),
         include_str!("../settings.rs"),
+        include_str!("../theme.rs"),
         include_str!("../views.rs"),
         include_str!("../widgets.rs"),
         // The desktop shell's tray menu and tooltip.
@@ -248,6 +249,79 @@ fn untranslated_plurals_fall_back_to_english_by_count() {
     assert_eq!(trn(Lang::RU, 21, "{n} unknown item", "{n} unknown items"), "21 unknown items");
     assert_eq!(trn(Lang::RU, 1, "{n} unknown item", "{n} unknown items"), "1 unknown item");
     assert_eq!(trn(Lang::EN, 0, "{n} app", "{n} apps"), "0 apps");
+}
+
+#[test]
+fn ukrainian_locales_and_saved_preference_resolve() {
+    for tag in ["uk", "uk-UA", "uk_UA.UTF-8", "UK_ua", "uk-UA@euro"] {
+        assert_eq!(lang_from_tag(tag), Some(Lang::UK), "{tag}");
+    }
+    assert_eq!(super::detect::first_supported(["xx-XX", "uk-UA", "en-US"]), Some(Lang::UK));
+    assert_eq!(Lang::from_pref("uk"), Lang::UK);
+    assert_eq!(Lang::from_code("UK"), Some(Lang::UK));
+    assert!(!Lang::UK.needs_cjk_font());
+    let settings = crate::settings::Settings { language: "uk".into(), ..Default::default() };
+    let saved = serde_json::to_string(&settings).unwrap();
+    let restored: crate::settings::Settings = serde_json::from_str(&saved).unwrap();
+    assert_eq!(Lang::from_pref(&restored.language), Lang::UK);
+    assert_eq!(crate::settings::Settings::language_label(&restored.language, None), "Українська");
+}
+
+#[test]
+fn ukrainian_counts_dates_and_fallback_work() {
+    for (n, app, day) in [
+        (0, "застосунків", "днів"),
+        (1, "застосунок", "день"),
+        (2, "застосунки", "дні"),
+        (4, "застосунки", "дні"),
+        (5, "застосунків", "днів"),
+        (11, "застосунків", "днів"),
+        (12, "застосунків", "днів"),
+        (14, "застосунків", "днів"),
+        (21, "застосунок", "день"),
+        (22, "застосунки", "дні"),
+        (25, "застосунків", "днів"),
+        (101, "застосунок", "день"),
+        (111, "застосунків", "днів"),
+        (112, "застосунків", "днів"),
+    ] {
+        assert_eq!(trn(Lang::UK, n, "{n} app", "{n} apps"), format!("{n} {app}"));
+        assert_eq!(trn(Lang::UK, n, "{n} day ago", "{n} days ago"), format!("{n} {day} тому"));
+    }
+    assert_eq!(tr(Lang::UK, "Settings"), "Налаштування");
+    assert_eq!(super::tr_ctx(Lang::UK, "month", "Mar"), "бер.");
+    assert_eq!(super::tr_ctx(Lang::UK, "month", "Oct"), "жовт.");
+    assert_eq!(super::fmt(tr(Lang::UK, "{month} {day}, {year}"), &[("month", "жовт."), ("day", "16"), ("year", "2026")]), "16 жовт. 2026");
+    // Ukrainian's singular at 21 must not leak into an untranslated English plural.
+    assert_eq!(trn(Lang::UK, 21, "{n} unknown item", "{n} unknown items"), "21 unknown items");
+    assert_eq!(tr(Lang::UK, "Untranslated diagnostic"), "Untranslated diagnostic");
+    assert_eq!(message(Lang::UK, "Untranslated diagnostic"), "Untranslated diagnostic");
+}
+
+#[test]
+fn bundled_fonts_cover_ukrainian_in_every_ui_family() {
+    use egui::{FontFamily, FontId};
+    let ctx = egui::Context::default();
+    crate::theme::install_fonts(&ctx, None);
+    let mut output = ctx.run_ui(egui::RawInput::default(), |_| {});
+    output.textures_delta.clear();
+    // Include the whole alphabet, especially letters absent from Russian and the UI's uppercase labels.
+    let mut text = String::from("АБВГҐДЕЄЖЗИІЇЙКЛМНОПРСТУФХЦЧШЩЬЮЯабвгґдеєжзиіїйклмнопрстуфхцчшщьюя’");
+    for (_, _, _, translation) in rows(Lang::UK.0) {
+        text.extend(translation.chars().filter(|c| ('\u{0400}'..='\u{04ff}').contains(c)));
+    }
+    text.push_str(&text.to_uppercase());
+    for family in [
+        FontFamily::Proportional,
+        FontFamily::Monospace,
+        crate::theme::medium(),
+        crate::theme::semibold(),
+        crate::theme::display(),
+        crate::theme::mono(),
+        crate::theme::mono_bold(),
+    ] {
+        ctx.fonts_mut(|fonts| assert!(fonts.has_glyphs(&FontId::new(14.0, family.clone()), &text), "missing Ukrainian glyph in {family:?}"));
+    }
 }
 
 #[test]
