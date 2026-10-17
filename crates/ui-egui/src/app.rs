@@ -490,6 +490,20 @@ impl LauncherUi {
         }
     }
 
+    /// The user closed the window and it went away in the tray. The first time, a notification
+    /// says so, with where to find it and how to quit: a window that vanishes with nothing to show
+    /// for it looks hung (#45, #215).
+    pub fn hidden_to_tray(&mut self, host: &mut dyn Host) {
+        if self.settings.tray_hint_shown {
+            return;
+        }
+        self.settings.tray_hint_shown = true;
+        host.notify(
+            tl!("ArtCraft Launcher is still running"),
+            tl!("It's in the tray: open it or quit it from the tray icon, or turn this off in the settings."),
+        );
+    }
+
     /// When auto-updates are enabled, automatically downloads and installs pending updates.
     pub(crate) fn trigger_auto_updates(&mut self) {
         if !self.caps.manage_apps || !self.settings.auto_update {

@@ -774,6 +774,28 @@ fn every_table_column_sorts_both_ways() {
     assert_eq!(o.first().map(String::as_str), Some("WordCraft"), "{o:?}");
 }
 
+/// The first close to the tray is explained once, by a system notification (#45, #215).
+#[test]
+fn the_first_close_to_the_tray_is_explained_once() {
+    struct Notices(Vec<(String, String)>);
+    impl Host for Notices {
+        fn notify(&mut self, title: &str, body: &str) {
+            self.0.push((title.to_string(), body.to_string()));
+        }
+    }
+    let (mut h, _) = harness(ViewMode::Grid, egui::Theme::Dark, true);
+    h.run_steps(6);
+    let mut host = Notices(Vec::new());
+    let l = h.state_mut().as_mut().unwrap();
+    assert!(!l.settings.tray_hint_shown);
+    l.hidden_to_tray(&mut host);
+    l.hidden_to_tray(&mut host);
+    assert!(l.settings.tray_hint_shown);
+    assert_eq!(host.0.len(), 1, "{:?}", host.0);
+    assert_eq!(host.0[0].0, "ArtCraft Launcher is still running");
+    assert!(host.0[0].1.contains("tray icon"), "{}", host.0[0].1);
+}
+
 #[test]
 fn settings_link_to_discord() {
     let (mut h, _) = harness(ViewMode::Grid, egui::Theme::Dark, true);

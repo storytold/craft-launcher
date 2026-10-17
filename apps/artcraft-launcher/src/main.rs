@@ -701,10 +701,14 @@ impl eframe::App for Shell<'_> {
         if ctx.input(|i| i.viewport().close_requested()) && !self.quitting && !self.launcher.closed_to_tray {
             match on_close(self.launcher.tray.is_some(), self.launcher.ui.settings.close_to_tray, self.window_hides) {
                 OnClose::Hide => {
+                    self.launcher.ui.hidden_to_tray(&mut self.launcher.host);
                     ctx.send_viewport_cmd(egui::ViewportCommand::CancelClose);
                     self.put_away(ctx);
                 }
-                OnClose::ToTray => self.launcher.closed_to_tray = true,
+                OnClose::ToTray => {
+                    self.launcher.ui.hidden_to_tray(&mut self.launcher.host);
+                    self.launcher.closed_to_tray = true;
+                }
                 OnClose::Quit => {}
             }
         }
