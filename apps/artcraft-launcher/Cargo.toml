@@ -32,6 +32,12 @@ ron = "0.12.2"
 serde = { workspace = true }
 
 [target.'cfg(target_os = "linux")'.dependencies]
+raw-window-handle = "0.6"
+wayland-client = "0.31"
+# GNOME/Wayland needs client decorations. Vector controls require no bundled
+# title font; the launcher's identity remains in its own header.
+winit = { version = "0.30", default-features = false, features = ["wayland-csd-adwaita-notitle"] }
+
 zbus = "5"
 
 # The tray (menu bar) icon. On Linux and the BSDs the StatusNotifierItem backend talks D-Bus

@@ -295,6 +295,18 @@ lot from them. Thank you to their authors:
 | [ArtCraft Hub Launcher](https://github.com/tinyplayerss/artcraft-hub-launcher) | [@tinyplayerss](https://github.com/tinyplayerss) | A friendly, one-window hub for the whole suite |
 | [CraftHub](https://github.com/MegaTheLEGEND/CraftHub) | [@MegaTheLEGEND](https://github.com/MegaTheLEGEND) | Serving the apps' web builds from a self-hosted launcher |
 
+## Linux window controls
+
+For an actual Wayland window whose compositor does not offer server decorations
+(including GNOME), the launcher enables winit's Adwaita client-side frame with
+vector minimize, maximize/restore and close buttons in the desktop's layout.
+X11 and compositors advertising server decorations retain the custom header.
+Failed or slow capability probes retain its working controls.
+
+The frame renders controls without title text, so it embeds no Cantarell. The
+in-app header identifies the launcher, and window titles remain available to
+desktop window switchers. This does not claim full GTK theme parity.
+
 ## License and credits
 
 ArtCraft Launcher is dual-licensed under [MIT](LICENSE-MIT) or [Apache-2.0](LICENSE-APACHE), at your option.

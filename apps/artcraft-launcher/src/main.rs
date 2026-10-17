@@ -5,6 +5,8 @@
 #![cfg_attr(windows, windows_subsystem = "windows")]
 #![deny(clippy::unwrap_used, clippy::expect_used, clippy::panic, clippy::unimplemented, clippy::todo, clippy::unreachable)]
 
+#[cfg(target_os = "linux")]
+mod linux_window;
 mod logging;
 mod motion;
 mod settings_file;
@@ -97,16 +99,27 @@ fn main() -> ExitCode {
         launcher.start(settings, &waker);
         window = launcher.tray.is_none();
     }
+    #[cfg(target_os = "linux")]
+    let decoration_socket = linux_window::display_socket();
+
     // One pass per window: where a window can't hide, closing to the tray ends its pass and the
     // launcher carries on without one until the window is asked for again.
     loop {
         if window {
             let result = {
                 let (waker, launcher) = (waker.clone(), &mut launcher);
+                #[cfg(target_os = "linux")]
+                let decoration_socket = decoration_socket.clone();
                 eframe::run_native(
                     "ArtCraft Launcher",
                     native_options(hidden),
                     Box::new(move |cc| {
+                        #[cfg(target_os = "linux")]
+                        {
+                            launcher.host.title_bar =
+                                if linux_window::needs_native_frame(cc, decoration_socket) { TitleBar::Native } else { TitleBar::Custom };
+                            cc.egui_ctx.send_viewport_cmd(egui::ViewportCommand::Decorations(launcher.host.title_bar == TitleBar::Native));
+                        }
                         launcher.open(cc, &waker);
                         Ok(Box::new(Shell::new(cc, launcher, hidden)))
                     }),
@@ -138,11 +151,11 @@ fn native_options(hidden: bool) -> eframe::NativeOptions {
         .with_inner_size([1120.0, 760.0])
         .with_min_inner_size([720.0, 500.0])
         .with_visible(!hidden);
-    // The header is the title bar (see `DesktopHost::title_bar`).
-    viewport = if cfg!(target_os = "macos") {
-        viewport.with_fullsize_content_view(true).with_titlebar_shown(false).with_title_shown(false)
-    } else {
-        viewport.with_decorations(false)
+    // Keep the native frame and the in-app header in agreement, avoiding duplicate buttons.
+    viewport = match desktop_title_bar() {
+        TitleBar::MacOs => viewport.with_fullsize_content_view(true).with_titlebar_shown(false).with_title_shown(false),
+        TitleBar::Native => viewport.with_decorations(true),
+        TitleBar::Custom => viewport.with_decorations(false),
     };
     // On macOS the bundle's .icns is the icon. Any icon given to eframe (its egui logo when none
     // is) replaces it in the Dock at runtime with a raw bitmap, which skips the system's icon
@@ -389,13 +402,18 @@ fn claim_notification_identity() -> &'static Result<(), String> {
 }
 
 struct DesktopHost {
+    title_bar: TitleBar,
     tray: bool,
     quit: bool,
 }
 
+fn desktop_title_bar() -> TitleBar {
+    if cfg!(target_os = "macos") { TitleBar::MacOs } else { TitleBar::Custom }
+}
+
 impl Host for DesktopHost {
     fn title_bar(&self) -> TitleBar {
-        if cfg!(target_os = "macos") { TitleBar::MacOs } else { TitleBar::Custom }
+        self.title_bar
     }
 
     fn notify(&mut self, title: &str, body: &str) {
@@ -485,7 +503,7 @@ impl Launcher {
             system_theme: system_theme::Monitor::default(),
             ui: LauncherUi::new(&windowless, backend, Settings::default()),
             tray: None,
-            host: DesktopHost { tray: false, quit: false },
+            host: DesktopHost { title_bar: desktop_title_bar(), tray: false, quit: false },
             starts,
             windowless,
             run_again,
@@ -740,6 +758,13 @@ mod tests {
     use eframe::wgpu::rwh::{AppKitDisplayHandle, WaylandDisplayHandle, WindowsDisplayHandle, XcbDisplayHandle, XlibDisplayHandle};
 
     use super::*;
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn linux_starts_custom_until_the_actual_backend_is_known() {
+        assert_eq!(desktop_title_bar(), TitleBar::Custom);
+        assert_eq!(native_options(false).viewport.decorations, Some(false));
+    }
 
     const NOW: i64 = 1_791_500_000;
 
