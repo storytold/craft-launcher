@@ -507,25 +507,37 @@ impl LauncherUi {
             ui.ctx().layer_painter(ui.layer_id()).with_clip_rect(clip).hline(span, y, t.hairline());
         };
         egui::Frame::new().fill(t.bg).stroke(t.hairline()).inner_margin(egui::Margin::symmetric(16, 0)).show(ui, |ui| {
+            // The sort key each header toggles, its label in this language, and the width the
+            // table was designed with. A column is never narrower than that, whatever the
+            // language: a longer localized header (Polish "Zainstalowana") widens its column
+            // instead of being cut off.
+            let headers: [(Option<SortKey>, &str, f32); 6] = [
+                (Some(SortKey::Name), tl!("App"), 220.0),
+                (Some(SortKey::Status), tl!("Status"), 176.0),
+                (Some(SortKey::Installed), tr_ctx(current(), "column", "Installed"), 84.0),
+                (Some(SortKey::Latest), tr_ctx(current(), "column", "Latest"), 84.0),
+                (Some(SortKey::Released), tr_ctx(current(), "column", "Released"), 104.0),
+                (None, "", 206.0),
+            ];
+            // What a header needs in this language: its label plus the sort arrow. The table
+            // opens at this width, and each column then holds at least its widest cell — the
+            // header claiming the same width below, so the two always agree.
+            let header_width = |label: &str, min: f32| {
+                if label.is_empty() { min } else { (widgets::hud_galley(ui, label, Color32::PLACEHOLDER).size().x + theme::HEADER_ARROW_W).max(min) }
+            };
+            let widths: [f32; 6] = headers.map(|(_, label, min)| header_width(label, min));
             TableBuilder::new(ui)
                 .striped(false)
                 .vscroll(false)
                 .cell_layout(egui::Layout::left_to_right(egui::Align::Center))
-                .column(Column::remainder().at_least(220.0).clip(true))
-                .column(Column::exact(176.0))
-                .column(Column::exact(84.0))
-                .column(Column::exact(84.0))
-                .column(Column::exact(104.0))
-                .column(Column::exact(206.0))
+                .column(Column::remainder().at_least(headers[0].2).clip(true))
+                .column(Column::auto_with_initial_suggestion(widths[1]).at_least(headers[1].2))
+                .column(Column::auto_with_initial_suggestion(widths[2]).at_least(headers[2].2))
+                .column(Column::auto_with_initial_suggestion(widths[3]).at_least(headers[3].2))
+                .column(Column::auto_with_initial_suggestion(widths[4]).at_least(headers[4].2))
+                .column(Column::auto_with_initial_suggestion(widths[5]).at_least(headers[5].2))
                 .header(42.0, |mut header| {
-                    for (key, label) in [
-                        (Some(SortKey::Name), tl!("App")),
-                        (Some(SortKey::Status), tl!("Status")),
-                        (Some(SortKey::Installed), tr_ctx(current(), "column", "Installed")),
-                        (Some(SortKey::Latest), tr_ctx(current(), "column", "Latest")),
-                        (Some(SortKey::Released), tr_ctx(current(), "column", "Released")),
-                        (None, ""),
-                    ] {
+                    for (key, label, _) in headers {
                         header.col(|ui| {
                             if key == Some(SortKey::Name) {
                                 rule(ui);
@@ -533,12 +545,17 @@ impl LauncherUi {
                             let Some(k) = key else { return };
                             let active = k == self.settings.sort;
                             let tip = if active { tl!("Click to reverse the order") } else { tl!("Click to sort by this column") };
-                            // Measure first so the whole header cell (label + arrow) is the target.
-                            let (rect, resp) = ui.allocate_exact_size(ui.available_size(), Sense::click());
+                            // The whole cell is the sort target; the label paints at its left.
+                            let cell = ui.max_rect();
+                            let resp = ui.interact(cell, ui.id().with(("header-sort", label)), Sense::click());
                             let hovered = resp.hovered();
                             let color = if active || hovered { t.ink_strong } else { t.faint };
                             let galley = widgets::hud_galley(ui, label, color);
-                            let text_pos = egui::pos2(rect.left(), rect.center().y - galley.size().y / 2.0);
+                            // Claim only the label plus the sort arrow — never the whole cell: an
+                            // auto-sized column then measures exactly what the header draws, so a
+                            // localized header wider than the column widens it instead of clipping.
+                            let _ = ui.allocate_space(vec2(galley.size().x + theme::HEADER_ARROW_W, ui.available_height()));
+                            let text_pos = egui::pos2(cell.left(), cell.center().y - galley.size().y / 2.0);
                             let arrow_x = text_pos.x + galley.size().x + 4.0;
                             let p = ui.painter();
                             p.galley(text_pos, galley, color);
@@ -551,7 +568,7 @@ impl LauncherUi {
                                 None
                             };
                             if let Some(down) = arrow {
-                                let c = egui::pos2(arrow_x + 4.0, rect.center().y);
+                                let c = egui::pos2(arrow_x + 4.0, cell.center().y);
                                 let (tip_y, base_y) = if down { (c.y + 3.0, c.y - 2.0) } else { (c.y - 3.0, c.y + 2.0) };
                                 let pts = vec![egui::pos2(c.x - 3.5, base_y), egui::pos2(c.x + 3.5, base_y), egui::pos2(c.x, tip_y)];
                                 let arrow_color = if active { t.accent_ink } else { t.faint };

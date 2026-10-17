@@ -239,6 +239,10 @@ pub const HUD_SPACING: f32 = HUD_SIZE * 0.15;
 /// Buttons: 11 px Geist Mono 700, upper case, 0.12 em apart.
 pub const BUTTON_SPACING: f32 = HUD_SIZE * 0.12;
 
+/// The room a table header keeps after its label for the sort arrow: the 4 px gap, the arrow and
+/// a little slack.
+pub const HEADER_ARROW_W: f32 = 12.0;
+
 /// Inter 500.
 pub fn medium() -> FontFamily {
     FontFamily::Name("medium".into())
