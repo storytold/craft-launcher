@@ -360,3 +360,5 @@ filter	Installed	Installées
 	Replace what's there?	Remplacer l’existant ?
 	{path} already exists. Installing {name} will overwrite it.	{path} existe déjà. L’installation de {name} l’écrasera.
 	Replace	Remplacer
+
+@msg	Couldn't check whether {name} is running. Try again.	Impossible de vérifier si {name} est en cours d'exécution. Réessayez.

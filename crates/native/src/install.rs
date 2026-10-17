@@ -77,9 +77,8 @@ pub fn install_at(
     let destination = destination(app, kind, existing, previous, job.install_locations)?;
     if let Some(inst) = existing
         && inst.source.launcher_can_update()
-        && process::is_running(Path::new(&inst.location))
     {
-        return Err(format!("{} is running. Quit it, then try again.", app.name));
+        process::ensure_not_running(Path::new(&inst.location), app.name)?;
     }
     log::info!("{}: starting {} to {} ({})", app.name, if existing.is_some() { "update" } else { "install" }, release.version_label(), kind.label());
     let file = download(release, asset, job)?;
@@ -360,10 +359,8 @@ pub fn uninstall(
     if let Some(msg) = managed_elsewhere(app, installed, true) {
         return Err(msg);
     }
-    if matches!(installed.source, InstallSource::MacApp | InstallSource::Msi | InstallSource::AppImage | InstallSource::Launcher)
-        && process::is_running(&path)
-    {
-        return Err(format!("{} is running. Quit it, then try again.", app.name));
+    if matches!(installed.source, InstallSource::MacApp | InstallSource::Msi | InstallSource::AppImage | InstallSource::Launcher) {
+        process::ensure_not_running(&path, app.name)?;
     }
     match installed.source {
         #[cfg(windows)]
@@ -1664,6 +1661,34 @@ mod tests {
         }
         assert_eq!(requests.lock().unwrap().len(), 1, "the second try reuses the kept file");
         assert_eq!(phases.iter().filter(|p| **p == JobPhase::Installing).count(), 2);
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn an_uncheckable_process_blocks_install_and_uninstall() {
+        // This exercises native procfs, not Flatpak's separate host helper.
+        if process::in_sandbox() {
+            eprintln!("native Linux process check requires running outside Flatpak");
+            return;
+        }
+        let app = CraftApp::by_id("wordcraft").unwrap();
+        let existing = Installed { version: None, source: InstallSource::AppImage, location: String::new(), package: None };
+        let dir = tempfile::tempdir().unwrap();
+        let paths = Paths::under(dir.path());
+        let http = Http::new().unwrap();
+        let stop = Stop::default();
+        let mut phases = Vec::new();
+        let mut phase = |p: JobPhase| phases.push(p);
+        let locations = InstallLocations::default();
+        let mut job = Job { http: &http, paths: &paths, stop: &stop, phase: &mut phase, install_locations: &locations, replace: false };
+        let expected = format!("Couldn't check whether {} is running. Try again.", app.name);
+        assert_eq!(
+            install(app, &Release::default(), &Asset::default(), PackageKind::AppImage, Some(&existing), None, &mut job).unwrap_err(),
+            expected
+        );
+        assert_eq!(uninstall(app, &existing, None, &paths, &stop, &mut phase).unwrap_err(), expected);
+        assert!(phases.is_empty(), "neither operation reaches a download or installer phase");
+        assert!(!paths.cache.exists());
     }
 
     #[test]

@@ -363,3 +363,5 @@ filter	Installed	Telepítve
 	Replace what's there?	Lecseréli, ami ott van?
 	{path} already exists. Installing {name} will overwrite it.	{path} már létezik. A(z) {name} telepítése felülírja.
 	Replace	Csere
+
+@msg	Couldn't check whether {name} is running. Try again.	Nem sikerült ellenőrizni, hogy a(z) {name} fut-e. Próbáld újra.

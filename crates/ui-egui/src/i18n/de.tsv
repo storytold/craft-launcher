@@ -362,3 +362,5 @@ filter	Installed	Installiert
 	Replace what's there?	Vorhandenes ersetzen?
 	{path} already exists. Installing {name} will overwrite it.	{path} existiert bereits. Die Installation von {name} überschreibt es.
 	Replace	Ersetzen
+
+@msg	Couldn't check whether {name} is running. Try again.	Es konnte nicht geprüft werden, ob {name} läuft. Versuche es erneut.

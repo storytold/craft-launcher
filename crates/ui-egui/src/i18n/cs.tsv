@@ -330,3 +330,5 @@ filter	Installed	Nainstalováno
 	Replace what's there?	Nahradit, co tam je?
 	{path} already exists. Installing {name} will overwrite it.	{path} už existuje. Instalace aplikace {name} ho přepíše.
 	Replace	Nahradit
+
+@msg	Couldn't check whether {name} is running. Try again.	Nepodařilo se zjistit, zda je aplikace {name} spuštěná. Zkuste to znovu.

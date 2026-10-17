@@ -226,7 +226,30 @@ fn explorer_select_arg(path: &Path) -> Option<std::ffi::OsString> {
 }
 
 /// Whether a process started from inside `path` (an exe, an AppImage, or a `.app`) is running.
-pub fn is_running(path: &Path) -> bool {
+pub fn is_running(path: &Path) -> std::io::Result<bool> {
+    #[cfg(target_os = "linux")]
+    if !in_sandbox() {
+        return linux::is_running(path);
+    }
+    Ok(is_running_with_helper(path))
+}
+
+/// Refuse a replacement or removal if an app is running or its state cannot be checked.
+pub fn ensure_not_running(path: &Path, name: &str) -> Result<(), String> {
+    match is_running(path) {
+        Ok(false) => Ok(()),
+        Ok(true) => Err(format!("{name} is running. Quit it, then try again.")),
+        Err(error) => {
+            log::warn!("couldn't check running application {}: {error}", path.display());
+            Err(format!("Couldn't check whether {name} is running. Try again."))
+        }
+    }
+}
+
+#[cfg(target_os = "linux")]
+mod linux;
+
+fn is_running_with_helper(path: &Path) -> bool {
     if cfg!(windows) {
         let Some(name) = path.file_name().and_then(|n| n.to_str()) else { return false };
         let filter = format!("IMAGENAME eq {name}");
@@ -297,13 +320,15 @@ mod tests {
             ("plain/PhotoCraft.app", "plain/PhotoCraft.app", true),
             ("Apps (work)/PhotoCraft.app", "Apps (work)/PhotoCraft.app", true),
             ("Apps [work]/PhotoCraft.app", "Apps [work]/PhotoCraft.app", true),
+            ("trailing/PhotoCraft.app ", "trailing/PhotoCraft.app ", true),
+            ("trailing/PhotoCraft.app", "trailing/PhotoCraft.app ", false),
             ("other/PhotoCraftXapp", "other/PhotoCraft.app", false),
             ("symbols/应用.^$*+?()[]{}|\\.app", "symbols/应用.^$*+?()[]{}|\\.app", true),
         ] {
             let actual = format!("{root}/{actual}");
             let requested = format!("{root}/{requested}");
             let _probe = RunningProbe::start(&actual);
-            assert_eq!(is_running(Path::new(&requested)), expected, "{requested}");
+            assert_eq!(is_running(Path::new(&requested)).unwrap(), expected, "{requested}");
         }
     }
 }

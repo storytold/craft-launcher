@@ -365,3 +365,5 @@ filter	Installed	インストール済み
 	Replace what's there?	既存の項目を置き換えますか？
 	{path} already exists. Installing {name} will overwrite it.	{path} は既に存在します。{name} をインストールすると上書きされます。
 	Replace	置き換える
+
+@msg	Couldn't check whether {name} is running. Try again.	{name} が実行中かどうか確認できませんでした。もう一度お試しください。

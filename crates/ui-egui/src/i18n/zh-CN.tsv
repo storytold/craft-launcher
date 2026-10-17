@@ -330,3 +330,5 @@ figcraft	Interface design and prototyping	界面设计与原型制作
 	Replace what's there?	替换现有内容？
 	{path} already exists. Installing {name} will overwrite it.	{path} 已存在。安装 {name} 将覆盖它。
 	Replace	替换
+
+@msg	Couldn't check whether {name} is running. Try again.	无法检查 {name} 是否正在运行。请重试。

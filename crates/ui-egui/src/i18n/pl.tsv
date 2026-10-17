@@ -364,3 +364,5 @@ filter	Installed	Zainstalowane
 	Replace what's there?	Zastąpić to, co tam jest?
 	{path} already exists. Installing {name} will overwrite it.	{path} już istnieje. Instalacja {name} go nadpisze.
 	Replace	Zastąp
+
+@msg	Couldn't check whether {name} is running. Try again.	Nie można sprawdzić, czy aplikacja {name} jest uruchomiona. Spróbuj ponownie.

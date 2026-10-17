@@ -343,3 +343,5 @@ filter	Installed	Instaladas
 	Replace what's there?	¿Reemplazar lo que hay?
 	{path} already exists. Installing {name} will overwrite it.	{path} ya existe. Instalar {name} lo sobrescribirá.
 	Replace	Reemplazar
+
+@msg	Couldn't check whether {name} is running. Try again.	No se pudo comprobar si {name} está abierta. Inténtalo de nuevo.

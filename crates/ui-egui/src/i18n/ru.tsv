@@ -358,3 +358,5 @@ filter	Installed	Установлены
 	Replace what's there?	Заменить существующее?
 	{path} already exists. Installing {name} will overwrite it.	{path} уже существует. Установка {name} перезапишет его.
 	Replace	Заменить
+
+@msg	Couldn't check whether {name} is running. Try again.	Не удалось проверить, запущено ли приложение {name}. Повторите попытку.
