@@ -349,10 +349,10 @@ fn simplified_chinese_locales_respect_the_script() {
         assert_eq!(lang_from_tag(tag), Some(Lang::ZH_CN), "{tag}");
     }
     for tag in ["zh-TW", "zh-HK", "zh-MO", "zh-Hant", "zh-Hant-CN", "zh-Hant-SG", "zh_TW.UTF-8"] {
-        assert_eq!(lang_from_tag(tag), None, "{tag}");
+        assert_eq!(lang_from_tag(tag), Some(Lang::ZH_TW), "{tag}");
     }
-    // A Traditional Chinese system that also lists English gets English, not Simplified.
-    assert_eq!(super::detect::first_supported(["zh-Hant-TW", "en-US"]), Some(Lang::EN));
+    // Traditional Chinese is preferred over the secondary English language.
+    assert_eq!(super::detect::first_supported(["zh-Hant-TW", "en-US"]), Some(Lang::ZH_TW));
 }
 
 #[test]
@@ -389,32 +389,34 @@ fn japanese_locales_and_counts_work() {
 #[test]
 fn system_font_covers_chinese_in_every_ui_family() {
     use egui::{FontFamily, FontId};
-    if !crate::theme::cjk_font_available(Lang::ZH_CN) {
-        return;
-    }
-    let ctx = egui::Context::default();
-    crate::theme::install_fonts(&ctx, Some(Lang::ZH_CN));
-    let mut output = ctx.run_ui(egui::RawInput::default(), |_| {});
-    output.textures_delta.clear();
-    let text: String = Lang::ZH_CN
-        .0
-        .source
-        .lines()
-        .filter_map(|line| line.split('\t').nth(2))
-        .flat_map(str::chars)
-        .filter(|c| ('\u{3400}'..='\u{9fff}').contains(c))
-        .collect();
-    assert!(text.chars().count() > 500);
-    for family in [
-        FontFamily::Proportional,
-        FontFamily::Monospace,
-        crate::theme::medium(),
-        crate::theme::semibold(),
-        crate::theme::display(),
-        crate::theme::mono(),
-        crate::theme::mono_bold(),
-    ] {
-        ctx.fonts_mut(|fonts| assert!(fonts.has_glyphs(&FontId::new(14.0, family.clone()), &text), "missing glyph in {family:?}"));
+    for lang in [Lang::ZH_CN, Lang::ZH_TW] {
+        if !crate::theme::cjk_font_available(lang) {
+            continue;
+        }
+        let ctx = egui::Context::default();
+        crate::theme::install_fonts(&ctx, Some(lang));
+        let mut output = ctx.run_ui(egui::RawInput::default(), |_| {});
+        output.textures_delta.clear();
+        let text: String = lang
+            .0
+            .source
+            .lines()
+            .filter_map(|line| line.split('\t').nth(2))
+            .flat_map(str::chars)
+            .filter(|c| ('\u{3400}'..='\u{9fff}').contains(c))
+            .collect();
+        assert!(text.chars().count() > 500);
+        for family in [
+            FontFamily::Proportional,
+            FontFamily::Monospace,
+            crate::theme::medium(),
+            crate::theme::semibold(),
+            crate::theme::display(),
+            crate::theme::mono(),
+            crate::theme::mono_bold(),
+        ] {
+            ctx.fonts_mut(|fonts| assert!(fonts.has_glyphs(&FontId::new(14.0, family.clone()), &text), "missing glyph in {family:?}"));
+        }
     }
 }
 
@@ -464,6 +466,9 @@ fn language_labels_come_from_the_registry() {
     assert_eq!(Settings::language_label(Lang::ZH_CN.code(), Some(Lang::ZH_CN)), "Simplified Chinese (简体中文)");
     assert_eq!(Settings::language_label(Lang::JA.code(), Some(Lang::ZH_CN)), "Japanese");
     assert_eq!(Settings::language_label(Lang::JA.code(), Some(Lang::JA)), "Japanese (日本語)");
+    assert_eq!(Settings::language_label(Lang::ZH_TW.code(), None), "Traditional Chinese (Taiwan)");
+    assert_eq!(Settings::language_label(Lang::ZH_TW.code(), Some(Lang::ZH_CN)), "Traditional Chinese (Taiwan)");
+    assert_eq!(Settings::language_label(Lang::ZH_TW.code(), Some(Lang::ZH_TW)), "Traditional Chinese (Taiwan) (繁體中文（台灣）)");
     assert_eq!(Settings::language_label(Settings::LANGUAGE_AUTO, None), "Auto");
     assert_eq!(Settings::language_label("xx", None), "Auto");
 }
@@ -522,4 +527,34 @@ fn complete_catalogs_translate_package_formats() {
             assert!(super::has(lang, kind.label()), "{}: {}", lang.code(), kind.label());
         }
     }
+}
+
+#[test]
+fn traditional_chinese_locales_respect_the_script() {
+    let lang = Lang::from_code("zh-TW").expect("Traditional Chinese must be registered");
+    for tag in ["zh-TW", "zh-HK", "zh-MO", "zh-Hant", "zh-Hant-TW", "zh-Hant-HK", "zh-Hant-CN", "zh-Hant-SG", "zh_TW.UTF-8", "ZH_hant_tw"] {
+        assert_eq!(lang_from_tag(tag), Some(lang), "{tag}");
+    }
+    for tag in ["zh-Hans-TW", "zh-Hans-HK", "zh-Hans-MO"] {
+        assert_eq!(lang_from_tag(tag), Some(Lang::ZH_CN), "{tag}");
+    }
+    assert_eq!(super::detect::first_supported(["zh-Hant-TW", "en-US"]), Some(lang));
+    assert_eq!(Lang::from_pref("zh-TW"), lang);
+    assert_eq!(lang.script(), Some(super::Script::TraditionalChinese));
+    assert_ne!(lang.script(), Lang::ZH_CN.script());
+    assert_eq!(lang_from_tag("zh-US"), None);
+}
+
+#[test]
+fn traditional_chinese_counts_dates_and_messages_work() {
+    let lang = Lang::from_code("zh-TW").expect("Traditional Chinese must be registered");
+    for n in [0, 1, 2, 11, 100] {
+        assert_eq!(trn(lang, n, "{n} app", "{n} apps"), format!("{n} 個 App"));
+        assert_eq!(trn(lang, n, "{n} min ago", "{n} min ago"), format!("{n} 分鐘前"));
+    }
+    assert_eq!(super::tr_ctx(lang, "month", "Mar"), "3月");
+    assert_eq!(tr(lang, "{month} {day}, {year}"), "{year}年{month}{day}日");
+    assert_eq!(message(lang, "PhotoCraft updated to 0.5.0"), "PhotoCraft 已更新至 0.5.0");
+    assert_eq!(trn(lang, 2, "{n} unknown item", "{n} unknown items"), "2 unknown items");
+    assert_eq!(tr(lang, "Untranslated diagnostic"), "Untranslated diagnostic");
 }
