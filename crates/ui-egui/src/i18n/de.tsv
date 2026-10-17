@@ -368,6 +368,7 @@ filter	Installed	Installiert
 	CollabCraft address	CollabCraft-Adresse
 	Sign in	Anmelden
 	Sign out	Abmelden
+	Open {name}	{name} öffnen
 	Your browser is open. Finish signing in there.	Dein Browser ist offen. Schließe die Anmeldung dort ab.
 	Storage connected	Speicher verbunden
 	No storage connected	Kein Speicher verbunden

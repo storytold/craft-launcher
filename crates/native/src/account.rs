@@ -18,7 +18,7 @@ use std::sync::{Arc, Mutex, PoisonError};
 use std::time::{Duration, Instant};
 
 use artcraft_launcher_core::protocol::{SuiteAccount, SuiteIdentity};
-use craft_suite_account::service::{Flow, Identity, Polled, Service};
+use craft_suite_account::service::{ConversationHome, Flow, Identity, Polled, Service};
 use craft_suite_account::{Account, NewAccount, Secret, Shared, SignedOut, Store};
 
 use crate::http::Http;
@@ -96,14 +96,27 @@ impl Service for CollabCraft {
         match status {
             200 => {
                 #[derive(serde::Deserialize)]
+                struct ConversationHomeWire {
+                    name: String,
+                    url: String,
+                }
+                #[derive(serde::Deserialize)]
                 struct Me {
                     id: String,
                     display: String,
                     email: Option<String>,
                     provider_linked: bool,
+                    #[serde(default)]
+                    conversation: Option<ConversationHomeWire>,
                 }
                 let me: Me = serde_json::from_str(&body).map_err(|e| format!("the service's answer didn't parse ({e})"))?;
-                Ok(Some(Identity { user: me.id, display: me.display, email: me.email, linked: me.provider_linked }))
+                Ok(Some(Identity {
+                    user: me.id,
+                    display: me.display,
+                    email: me.email,
+                    linked: me.provider_linked,
+                    conversation: me.conversation.map(|c| ConversationHome { name: c.name, url: c.url }),
+                }))
             }
             // The deployment no longer honours the token. Nobody is signed in.
             401 | 403 => Ok(None),
@@ -317,5 +330,11 @@ fn signed_in(account: &Account, who: Option<&Identity>) -> SuiteAccount {
         email: who.map_or_else(|| account.email.clone(), |w| w.email.clone()),
         service: account.service.clone(),
         linked: who.map(|w| w.linked),
+        conversation: who.and_then(|w| {
+            w.conversation.as_ref().map(|c| artcraft_launcher_core::protocol::ConversationHome {
+                name: c.name.clone(),
+                url: c.url.clone(),
+            })
+        }),
     })
 }

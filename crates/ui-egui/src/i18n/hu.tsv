@@ -369,6 +369,7 @@ filter	Installed	Telepítve
 	CollabCraft address	CollabCraft címe
 	Sign in	Bejelentkezés
 	Sign out	Kijelentkezés
+	Open {name}	{name} megnyitása
 	Your browser is open. Finish signing in there.	A böngésződ megnyílt. Fejezd be ott a bejelentkezést.
 	Storage connected	Tároló csatlakoztatva
 	No storage connected	Nincs csatlakoztatott tároló

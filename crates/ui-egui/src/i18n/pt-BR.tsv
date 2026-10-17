@@ -356,6 +356,7 @@ filter	Installed	Instalados
 	CollabCraft address	Endereço do CollabCraft
 	Sign in	Entrar
 	Sign out	Sair
+	Open {name}	Abrir {name}
 	Your browser is open. Finish signing in there.	Seu navegador está aberto. Conclua a entrada por lá.
 	Storage connected	Armazenamento conectado
 	No storage connected	Nenhum armazenamento conectado

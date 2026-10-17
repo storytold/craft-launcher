@@ -336,6 +336,7 @@ filter	Installed	Nainstalováno
 	CollabCraft address	Adresa CollabCraft
 	Sign in	Přihlásit se
 	Sign out	Odhlásit se
+	Open {name}	Otevřít {name}
 	Your browser is open. Finish signing in there.	Tvůj prohlížeč je otevřený. Dokonči přihlášení tam.
 	Storage connected	Úložiště připojeno
 	No storage connected	Žádné připojené úložiště

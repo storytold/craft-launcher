@@ -336,6 +336,7 @@ figcraft	Interface design and prototyping	界面设计与原型制作
 	CollabCraft address	CollabCraft 地址
 	Sign in	登录
 	Sign out	退出登录
+	Open {name}	打开 {name}
 	Your browser is open. Finish signing in there.	浏览器已打开。请在那里完成登录。
 	Storage connected	已连接存储
 	No storage connected	未连接存储

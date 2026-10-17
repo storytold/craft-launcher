@@ -807,6 +807,7 @@ fn settings_account_signed_in_dark() {
         email: Some("ada@example.com".into()),
         service: "https://craft.example.com".into(),
         linked: Some(true),
+        conversation: None,
     };
     let (mut h, _) = account_harness(SuiteAccount::SignedIn(who), "https://craft.example.com", egui::Theme::Dark);
     open_settings_account(&mut h);

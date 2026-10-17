@@ -368,6 +368,15 @@ impl LauncherUi {
                     ui.label(RichText::new(text).size(12.0).color(color));
                 }
                 ui.add_space(6.0);
+                // Chat with nothing open: the provider's lobby URL from /me. Absent where the
+                // deployment has no conversation app, so we draw no button rather than a dead one.
+                if let Some(conv) = &who.conversation {
+                    let label = crate::i18n::fmt(&tl!("Open {name}"), &[("name", conv.name.as_str())]);
+                    if widgets::button(ui, &label, Kind::Secondary, 0.0).clicked() {
+                        ui.ctx().open_url(egui::OpenUrl::new_tab(conv.url.clone()));
+                    }
+                    ui.add_space(4.0);
+                }
                 if widgets::button(ui, tl!("Sign out"), Kind::Secondary, 0.0).clicked() {
                     self.send(Command::AccountSignOut);
                 }

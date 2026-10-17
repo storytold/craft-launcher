@@ -128,6 +128,14 @@ pub enum SuiteAccount {
     Failed(String),
 }
 
+/// Where to open the provider's conversation app with no document in hand.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ConversationHome {
+    /// What the provider calls it (Talk, …).
+    pub name: String,
+    pub url: String,
+}
+
 /// Who is signed in to the suite.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SuiteIdentity {
@@ -139,6 +147,8 @@ pub struct SuiteIdentity {
     /// Whether cloud storage is linked, where the deployment has said. `None` while it has not
     /// been asked or could not be reached. An unknown answer is its own state.
     pub linked: Option<bool>,
+    /// The provider's conversation lobby, when the deployment has said it has one.
+    pub conversation: Option<ConversationHome>,
 }
 
 /// The answer to "what's the latest release of this app?".

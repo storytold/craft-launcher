@@ -349,6 +349,7 @@ filter	Installed	Instaladas
 	CollabCraft address	Dirección de CollabCraft
 	Sign in	Iniciar sesión
 	Sign out	Cerrar sesión
+	Open {name}	Abrir {name}
 	Your browser is open. Finish signing in there.	Tu navegador está abierto. Termina de iniciar sesión allí.
 	Storage connected	Almacenamiento conectado
 	No storage connected	Sin almacenamiento conectado

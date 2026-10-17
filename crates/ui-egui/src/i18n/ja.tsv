@@ -371,6 +371,7 @@ filter	Installed	インストール済み
 	CollabCraft address	CollabCraft のアドレス
 	Sign in	サインイン
 	Sign out	サインアウト
+	Open {name}	{name} を開く
 	Your browser is open. Finish signing in there.	ブラウザーが開いています。そちらでサインインを完了してください。
 	Storage connected	ストレージに接続済み
 	No storage connected	ストレージに接続していません

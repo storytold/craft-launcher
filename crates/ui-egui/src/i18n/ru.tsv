@@ -364,6 +364,7 @@ filter	Installed	Установлены
 	CollabCraft address	Адрес CollabCraft
 	Sign in	Войти
 	Sign out	Выйти
+	Open {name}	Открыть {name}
 	Your browser is open. Finish signing in there.	Браузер открыт. Завершите вход в нём.
 	Storage connected	Хранилище подключено
 	No storage connected	Хранилище не подключено
