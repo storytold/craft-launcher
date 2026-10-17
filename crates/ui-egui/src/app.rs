@@ -3,7 +3,7 @@
 use std::time::Duration;
 
 use artcraft_launcher_core::protocol::{
-    Backend, BackendOptions, CANCELLED, Capabilities, Command, Event, INSTALL_CANCELLED, JobPhase, LatestRelease, PAUSED, Source,
+    Backend, BackendOptions, CANCELLED, Capabilities, Command, Event, INSTALL_CANCELLED, JobPhase, LatestRelease, MachineAutoUpdate, PAUSED, Source,
 };
 use artcraft_launcher_core::release::Release;
 use artcraft_launcher_core::status::AppStatus;
@@ -151,6 +151,12 @@ pub struct LauncherUi {
     /// Versions of apps or the launcher already queued for auto-update during this session,
     /// preventing repeated install loops if an update fails or is in progress.
     pub(crate) auto_update_attempted: std::collections::BTreeSet<(String, String)>,
+    /// The update service's background installs (Windows), while there is a service: then
+    /// "Automatically download and install updates" shows and changes them, for everyone on the
+    /// computer, rather than this user's own setting.
+    pub(crate) machine_auto_update: Option<MachineAutoUpdate>,
+    /// A change to `machine_auto_update` is waiting on Windows' permission prompt.
+    pub(crate) machine_auto_update_pending: bool,
 }
 
 /// The language to draw in: the preference, or English where it needs a CJK font the system
@@ -209,6 +215,29 @@ impl LauncherUi {
             last_detect: 0,
             was_focused: true,
             auto_update_attempted: std::collections::BTreeSet::new(),
+            machine_auto_update: None,
+            machine_auto_update_pending: false,
+        }
+    }
+
+    /// "Automatically download and install updates" was ticked or unticked. With the update
+    /// service installed it's the computer's setting, which only an administrator may change: the
+    /// backend asks Windows for permission, and the box shows the setting as it then stands. Set
+    /// by Group Policy, it can't be changed here at all.
+    pub(crate) fn set_auto_update(&mut self, on: bool) {
+        match self.machine_auto_update {
+            Some(machine) if machine.managed || self.machine_auto_update_pending => {}
+            Some(_) => {
+                self.settings.auto_update = on;
+                self.machine_auto_update_pending = true;
+                self.send(Command::SetAutoUpdate { on });
+            }
+            None => {
+                self.settings.auto_update = on;
+                if on {
+                    self.trigger_auto_updates();
+                }
+            }
         }
     }
 
@@ -446,6 +475,19 @@ impl LauncherUi {
                 }
                 fresh
             }
+            Event::MachineAutoUpdate { setting, error } => {
+                self.machine_auto_update_pending = false;
+                self.machine_auto_update = setting;
+                // With a service, the box shows the computer's setting (what an administrator chose).
+                if let Some(machine) = setting {
+                    self.settings.auto_update = machine.on;
+                }
+                if let Some(e) = error {
+                    self.toast(ctx, e, true);
+                }
+                // Turned on: whatever is waiting installs now.
+                setting.is_some_and(|m| m.on)
+            }
             Event::CheckStarted => {
                 self.checking = true;
                 false
@@ -495,7 +537,8 @@ impl LauncherUi {
 
     /// When auto-updates are enabled, automatically downloads and installs pending updates.
     pub(crate) fn trigger_auto_updates(&mut self) {
-        if !self.caps.manage_apps || !self.settings.auto_update {
+        // While Windows asks an administrator, the box shows what was asked for, not what is.
+        if !self.caps.manage_apps || !self.settings.auto_update || self.machine_auto_update_pending {
             return;
         }
         let to_update: Vec<(String, String)> = self

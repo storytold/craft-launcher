@@ -124,6 +124,61 @@ package or portable folder, the AppImage, or the `.deb`/`.rpm`) and reopens it.
 Updates use the same format an app was installed with. Every download is checked against the
 release's published SHA-256 before it is installed, and a running app is never replaced.
 
+## Updates without an administrator prompt (Windows)
+
+On Windows the Craft Apps install for every user, into Program Files, so each update needs
+administrator permission: a UAC prompt every time. The **ArtCraft Launcher Update Service** is the
+opt-in way round it. An administrator installs it once, from
+`artcraft-launcher-updater-<ver>-windows-{x64,arm64,x86}.msi` (Windows asks for permission for
+that install). From then on:
+
+- **Updates install in the background once an administrator turns that on.** It's one setting for
+  the whole computer. In ArtCraft Launcher, **Settings → Updates → Automatically download and
+  install updates** shows it, and changing it there asks for administrator permission (UAC): other
+  people on the computer see it, but can't turn it off, or on, without an administrator's password.
+  Turned on, the service installs the updates of the apps installed for all users as they come out
+  (it checks every 6 hours), even while the launcher is closed, leaving any app that's open until
+  it's closed. An administrator can also set it with `artcraft-launcher-updater set auto-update
+  on|off` in an administrator terminal, when installing the service (`AUTOUPDATE=1`), or by Group
+  Policy, which locks it.
+- **The launcher's Update button needs no prompt.** The launcher hands the update to the service and
+  shows its progress as usual. Without the service, it installs the update itself, with the prompt.
+- **There's a command line**, on the `PATH`: `artcraft-launcher-updater check` looks for updates,
+  `artcraft-launcher-updater update` installs them (all of them, or only the apps named:
+  `artcraft-launcher-updater update photocraft wordcraft`), and `artcraft-launcher-updater status`
+  shows the service's settings, its last check and how each update went. `--json` prints the result
+  for scripts. `check` exits with 100 when updates are available, 0 when there are none, 1 when it
+  couldn't check.
+
+What the service will and won't do, since it runs as LocalSystem:
+
+- It only **updates** Craft Apps an administrator already installed for all users, and only to a
+  **newer** release. Installing a new app still goes through the launcher and its UAC prompt.
+- It downloads only from the apps' own `storytold/<app>` GitHub releases (as the launcher does), into
+  a folder in the system's own profile that users can't write to. Before running a package it checks
+  the release's published SHA-256, that Windows finds the package's Authenticode signature valid and
+  made by Learning Machines Inc (the Craft Apps' publisher), and that the package is that app at
+  that version.
+- The launcher and the command line reach it over a loopback connection (port 47414). Requests name
+  apps by id, nothing else: never a path, a download link or a version. The most another program on
+  the computer can do through it is start a check or a pending update sooner, or postpone one.
+
+Settings live in `HKLM\SOFTWARE\Learning Machines LLC\ArtCraft Launcher Updater`. Give them to the
+installer (`msiexec /i artcraft-launcher-updater-<ver>-windows-x64.msi AUTOUPDATE=1`, kept by later
+versions) or set them by Group Policy as DWORDs under
+`HKLM\SOFTWARE\Policies\Learning Machines LLC\ArtCraft Launcher Updater`, which wins:
+
+| Setting (property / value) | Default | Meaning |
+|---|---|---|
+| `AUTOUPDATE` / `AutoUpdate` | 0 | 1: install updates in the background. 0: only when the launcher or the command line asks. ArtCraft Launcher's "Automatically download and install updates" shows this, and changes it with administrator permission |
+| `ALLOWREQUESTS` / `AllowRequests` | 1 | Let the launcher and the command line ask for checks and updates. 0: the schedule only |
+| `CHECKINTERVALHOURS` / `CheckIntervalHours` | 6 | Hours between checks (1 to 168) |
+| `PRERELEASES` / `Prereleases` | 0 | 1 offers pre-releases as updates |
+
+The service writes its log to `C:\Windows\System32\config\systemprofile\AppData\Local\ArtCraft Launcher Updater\logs\artcraft-launcher-updater.log`,
+and each Windows Installer run's log beside it (`msi-<app>.log`). Uninstall it from
+**Settings → Apps** like any other app; the launcher goes back to asking for permission.
+
 The launcher writes its log to `logs/artcraft-launcher.log` in its data folder
 (`~/.local/share/artcraft-launcher` on Linux, `~/Library/Application Support/ArtCraft Launcher`
 on macOS, `%LOCALAPPDATA%\ArtCraft Launcher` on Windows, `ArtCraftLauncherData` beside the
@@ -142,6 +197,7 @@ Download the build for your computer from the [latest release](https://github.co
 | `artcraft-launcher-<ver>-windows-arm64.msi` | Installer for Windows on Arm (Snapdragon and other Arm PCs) |
 | `artcraft-launcher-<ver>-windows-x86.msi` | Installer for 32-bit Windows |
 | `artcraft-launcher-<ver>-windows-{x64,arm64,x86}-portable.zip` | No install: unzip and run `artcraft-launcher.exe`. Keeps its settings in the folder |
+| `artcraft-launcher-updater-<ver>-windows-{x64,arm64,x86}.msi` | Optional, for administrators: the [ArtCraft Launcher Update Service](#updates-without-an-administrator-prompt-windows), which installs app updates without a UAC prompt each time, and the `artcraft-launcher-updater` command line |
 
 **macOS** (11 Big Sur or later)
 
@@ -190,6 +246,7 @@ You need a recent stable Rust (1.90 or newer). On Linux, install the windowing h
 git clone https://github.com/storytold/craft-launcher
 cd craft-launcher
 cargo run --release -p artcraft-launcher   # the desktop app
+cargo run -p artcraft-launcher-updater -- check   # the command line (the update service is Windows only)
 cargo xtask ci                             # fmt, clippy, tests and the wasm check
 ```
 

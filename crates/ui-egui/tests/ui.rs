@@ -9,7 +9,7 @@ use std::sync::OnceLock;
 
 use artcraft_launcher_core::details::AppDetails;
 use artcraft_launcher_core::protocol::{
-    Backend, CANCELLED, Capabilities, Command, Event, INSTALL_CANCELLED, JobPhase, LatestRelease, Origin, PausedDownload, Source,
+    Backend, CANCELLED, Capabilities, Command, Event, INSTALL_CANCELLED, JobPhase, LatestRelease, MachineAutoUpdate, Origin, PausedDownload, Source,
 };
 use artcraft_launcher_core::release::{Asset, Release};
 use artcraft_launcher_core::status::InstallSource;
@@ -1130,6 +1130,107 @@ fn automatic_updates_are_disabled_by_default() {
     let commands = sent.borrow().clone();
     assert!(!commands.contains(&Command::Install { app: "photocraft".into() }), "photocraft should not be auto-installed when auto_update is false");
     assert!(!commands.contains(&Command::UpdateLauncher), "launcher should not be auto-updated when auto_update is false");
+}
+
+/// A backend that also hands out events pushed to `later` while the test runs.
+struct Scripted {
+    inner: Fake,
+    later: Rc<RefCell<Vec<Event>>>,
+}
+
+impl Backend for Scripted {
+    fn send(&mut self, c: Command) {
+        self.inner.send(c);
+    }
+    fn poll(&mut self) -> Vec<Event> {
+        let mut out = self.inner.poll();
+        out.extend(self.later.borrow_mut().drain(..));
+        out
+    }
+    fn capabilities(&self) -> Capabilities {
+        self.inner.capabilities()
+    }
+    fn platform(&self) -> Option<Platform> {
+        self.inner.platform()
+    }
+    fn now(&self) -> i64 {
+        self.inner.now()
+    }
+}
+
+/// With the update service installed, "Automatically download and install updates" is the
+/// computer's setting: it shows what an administrator chose, not this user's own setting, and
+/// changing it goes to the backend, which asks Windows for an administrator's permission. Nothing
+/// installs by itself until that permission is given.
+#[test]
+fn with_the_update_service_the_box_is_the_computers_and_changing_it_asks_an_administrator() {
+    artcraft_launcher_ui_egui::i18n::set_test_lang(artcraft_launcher_ui_egui::i18n::Lang::EN);
+    let sent = Rc::new(RefCell::new(Vec::new()));
+    let later = Rc::new(RefCell::new(Vec::new()));
+    let off = MachineAutoUpdate { on: false, managed: false };
+    let mut evs = events();
+    evs.push(Event::MachineAutoUpdate { setting: Some(off), error: None });
+    let mut backend = Some(Scripted {
+        inner: Fake { events: evs, sent: sent.clone(), manage: true, pictures: Rc::default(), asked: Vec::new(), clock: Rc::new(Cell::new(NOW)) },
+        later: later.clone(),
+    });
+    // This user's own setting says yes; the computer's says no, and wins.
+    let mut h = Harness::builder().with_size(egui::vec2(1180.0, 900.0)).build_ui_state(
+        move |ui, state: &mut Option<LauncherUi>| {
+            if state.is_none()
+                && let Some(b) = backend.take()
+            {
+                *state = Some(LauncherUi::new(ui.ctx(), Box::new(b), Settings { auto_update: true, notify: false, ..Settings::default() }));
+            }
+            if let Some(l) = state.as_mut() {
+                l.logic(&ui.ctx().clone(), &mut NoHost);
+                l.ui(ui, &mut NoHost);
+            }
+        },
+        None,
+    );
+    let installs = |sent: &Rc<RefCell<Vec<Command>>>| sent.borrow().iter().filter(|c| matches!(c, Command::Install { .. })).count();
+    let asked = |sent: &Rc<RefCell<Vec<Command>>>| sent.borrow().iter().filter(|c| matches!(c, Command::SetAutoUpdate { on: true })).count();
+    h.run_steps(4);
+    assert_eq!(installs(&sent), 0, "the computer's setting is off: nothing installs by itself");
+    h.get_by_label("Settings").click();
+    h.run_steps(4);
+    h.get_by_label("For everyone on this computer. Changing it asks for administrator permission.");
+
+    // Ticked: the backend asks Windows; nothing installs while it does.
+    h.get_by_label("Automatically download and install updates").click();
+    h.run_steps(2);
+    assert_eq!(asked(&sent), 1);
+    assert_eq!(installs(&sent), 0, "nothing installs while Windows asks an administrator");
+    // The change failed: the box shows the setting as it is, and says why.
+    later.borrow_mut().push(Event::MachineAutoUpdate { setting: Some(off), error: Some("automatic updates weren't changed (error 5)".into()) });
+    h.run_steps(3);
+    h.get_by_label_contains("weren't changed");
+    assert_eq!(installs(&sent), 0);
+
+    // Ticked again, and an administrator says yes: what's waiting installs now.
+    h.get_by_label("Automatically download and install updates").click();
+    h.run_steps(2);
+    assert_eq!(asked(&sent), 2);
+    later.borrow_mut().push(Event::MachineAutoUpdate { setting: Some(MachineAutoUpdate { on: true, managed: false }), error: None });
+    h.run_steps(3);
+    assert!(installs(&sent) > 0, "the computer's setting is on: updates install");
+}
+
+/// Set by Group Policy, the computer's setting can't be changed from the launcher at all.
+#[test]
+fn a_setting_from_group_policy_cannot_be_changed_here() {
+    let mut evs = events();
+    evs.push(Event::MachineAutoUpdate { setting: Some(MachineAutoUpdate { on: true, managed: true }), error: None });
+    let (mut h, sent) = harness_with(evs, ViewMode::Grid, egui::Theme::Dark, true, 1.0);
+    h.run_steps(4);
+    h.get_by_label("Settings").click();
+    h.run_steps(4);
+    h.get_by_label("Set by your administrator.");
+    h.get_by_label("Automatically download and install updates").click();
+    h.run_steps(2);
+    assert!(!sent.borrow().iter().any(|c| matches!(c, Command::SetAutoUpdate { .. })), "the box can't be changed");
+    assert!(sent.borrow().iter().any(|c| matches!(c, Command::Install { .. })), "on by policy: updates install");
 }
 
 #[test]

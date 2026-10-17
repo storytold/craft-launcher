@@ -73,6 +73,8 @@
 	ArtCraft Launcher {version}	ArtCraft Launcher {version}
 	Only when I ask	Pouze na vyžádání
 	Automatically download and install updates	Automaticky stahovat a instalovat aktualizace
+	For everyone on this computer. Changing it asks for administrator permission.	Platí pro všechny uživatele tohoto počítače. Změna vyžaduje oprávnění správce.
+	Set by your administrator.	Nastaveno správcem.
 	Notify me when an installed app has an update	Upozornit, když má nainstalovaná aplikace aktualizaci
 	Include pre-releases (betas and release candidates)	Zahrnout předběžná vydání (beta verze a kandidáty na vydání)
 	Installing on Linux	Instalace v Linuxu

@@ -202,12 +202,15 @@ pub mod windows {
         pub product_code: String,
         pub version: Option<artcraft_launcher_core::version::Version>,
         pub exe: Option<PathBuf>,
+        /// Installed for every user (registered under HKLM), not just the current one.
+        pub machine: bool,
     }
 
     /// Every Windows Installer entry for `app`, newest first.
     pub fn msi_installs(app: &CraftApp) -> Vec<MsiInstall> {
         let mut out = Vec::new();
         for (hive, flags) in [(HKEY_LOCAL_MACHINE, KEY_WOW64_64KEY), (HKEY_LOCAL_MACHINE, KEY_WOW64_32KEY), (HKEY_CURRENT_USER, 0)] {
+            let machine = hive == HKEY_LOCAL_MACHINE;
             let Ok(root) = RegKey::predef(hive).open_subkey_with_flags(UNINSTALL, KEY_READ | flags) else { continue };
             for code in root.enum_keys().flatten() {
                 let Ok(key) = root.open_subkey_with_flags(&code, KEY_READ | flags) else { continue };
@@ -219,7 +222,7 @@ pub mod windows {
                 let version = key.get_value::<String, _>("DisplayVersion").ok().and_then(|v| version::parse(&v));
                 let location: String = key.get_value("InstallLocation").unwrap_or_default();
                 let exe = exe_path(app, (!location.is_empty()).then(|| PathBuf::from(location)).or_else(|| install_dir(app)));
-                out.push(MsiInstall { product_code: code, version, exe });
+                out.push(MsiInstall { product_code: code, version, exe, machine });
             }
         }
         out.sort_by(|a, b| match (&b.version, &a.version) {
@@ -265,13 +268,22 @@ pub mod windows {
     }
 
     pub fn detect(app: &CraftApp) -> Option<Installed> {
-        let m = msi_installs(app).into_iter().next()?;
-        Some(Installed {
+        msi_installs(app).into_iter().next().map(|m| installed(app, m))
+    }
+
+    /// The newest Windows Installer copy of `app` installed for every user: what the update
+    /// service (LocalSystem) may replace. A copy only one user installed is theirs to update.
+    pub fn machine_install(app: &CraftApp) -> Option<Installed> {
+        msi_installs(app).into_iter().find(|m| m.machine).map(|m| installed(app, m))
+    }
+
+    fn installed(app: &CraftApp, m: MsiInstall) -> Installed {
+        Installed {
             version: m.version,
             source: InstallSource::Msi,
             location: m.exe.map_or_else(|| app.name.to_string(), |p| p.display().to_string()),
             package: Some(m.product_code),
-        })
+        }
     }
 }
 

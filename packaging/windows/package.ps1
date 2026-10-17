@@ -6,6 +6,8 @@
   Produces, in $env:DIST (default: dist/release):
     artcraft-launcher-<version>-windows-<arch>.msi            per-user installer with a setup wizard (WiX v5)
     artcraft-launcher-<version>-windows-<arch>-portable.zip   artcraft-launcher.exe + portable.txt
+    artcraft-launcher-updater-<version>-windows-<arch>.msi    per-machine ArtCraft Launcher Update Service
+                                                              (Windows service + command line), opt-in
 
   The binary links the C runtime statically (+crt-static), so neither the MSI nor the portable
   zip needs the Visual C++ redistributable. Signing is delegated to sign.ps1 (skipped with a
@@ -30,6 +32,7 @@ $Root = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
 # ---- app-specific values ----------------------------------------------------------------------
 $Pkg = 'artcraft-launcher'          # cargo package and binary
 $AppName = 'ArtCraft Launcher'      # display name
+$Updater = 'artcraft-launcher-updater'  # the update service and its command line: package and binary
 
 function Invoke-Native([string] $What, [scriptblock] $Block) {
   Write-Output "==> $What"
@@ -67,32 +70,37 @@ if (-not $SkipBuild) {
   [Environment]::SetEnvironmentVariable($flagVar, '-C target-feature=+crt-static')
   # Fail the build (rather than warn) if the icon/VERSIONINFO can't be embedded.
   $env:ARTCRAFT_LAUNCHER_REQUIRE_WINRES = '1'
-  Invoke-Native "cargo build ($Target)" { cargo build --release --locked -p $Pkg --target $Target }
+  Invoke-Native "cargo build ($Target)" { cargo build --release --locked -p $Pkg -p $Updater --target $Target }
 }
 
 $Bin = Join-Path $TargetDir "$Target\release"
 $Exe = "$Pkg.exe"
+$UpdaterExe = "$Updater.exe"
 
-# Check the PE header before packaging. Machine (COFF header) must match -Arch, so an x64 build
-# can never ship labelled arm64. Subsystem (optional header) must be 2 = Windows GUI, so no
-# console window opens with the launcher.
+# Check the PE headers before packaging. Machine (COFF header) must match -Arch, so an x64 build
+# can never ship labelled arm64. Subsystem (optional header) must be 2 = Windows GUI for the
+# launcher, so no console window opens with it, and 3 = console for the updater, whose command
+# line prints to the terminal it's run from (a service has no window either way).
 function Get-PeHeader([string] $Path) {
   $bytes = [System.IO.File]::ReadAllBytes($Path)
   $pe = [BitConverter]::ToInt32($bytes, 0x3C)
   return @{ Machine = [BitConverter]::ToUInt16($bytes, $pe + 4); Subsystem = [BitConverter]::ToUInt16($bytes, $pe + 0x5C) }
 }
 $Machine = switch ($Arch) { 'x64' { 0x8664 } 'x86' { 0x14C } 'arm64' { 0xAA64 } }
-$h = Get-PeHeader (Join-Path $Bin $Exe)
-if ($h.Machine -ne $Machine) { throw "$Exe is for machine 0x$('{0:X}' -f $h.Machine), expected 0x$('{0:X}' -f $Machine) ($Arch)" }
-if ($h.Subsystem -ne 2) { throw "$Exe has PE subsystem $($h.Subsystem), expected 2 (Windows GUI)" }
-Write-Output "ok ${Exe}: $Arch, PE subsystem $($h.Subsystem)"
+foreach ($check in @(@($Exe, 2, 'Windows GUI'), @($UpdaterExe, 3, 'console'))) {
+  $h = Get-PeHeader (Join-Path $Bin $check[0])
+  if ($h.Machine -ne $Machine) { throw "$($check[0]) is for machine 0x$('{0:X}' -f $h.Machine), expected 0x$('{0:X}' -f $Machine) ($Arch)" }
+  if ($h.Subsystem -ne $check[1]) { throw "$($check[0]) has PE subsystem $($h.Subsystem), expected $($check[1]) ($($check[2]))" }
+  Write-Output "ok $($check[0]): $Arch, PE subsystem $($h.Subsystem)"
+}
 
 $Stage = Join-Path $TargetDir "windows-package\$Arch"
 Remove-Item -Recurse -Force $Stage -ErrorAction SilentlyContinue
 New-Item -ItemType Directory -Force -Path $Stage | Out-Null
 Copy-Item (Join-Path $Bin $Exe) $Stage
+Copy-Item (Join-Path $Bin $UpdaterExe) $Stage
 
-& (Join-Path $PSScriptRoot 'sign.ps1') (Join-Path $Stage $Exe)
+& (Join-Path $PSScriptRoot 'sign.ps1') (Join-Path $Stage $Exe) (Join-Path $Stage $UpdaterExe)
 
 # ---- MSI ---------------------------------------------------------------------------------------
 # The setup wizard's art, drawn here (System.Drawing) in getartcraft.com's style so the MSI shows
@@ -189,6 +197,23 @@ Invoke-Native 'MSI shortcut icon validation (ICE50)' {
 Remove-Item -Force -ErrorAction SilentlyContinue ([IO.Path]::ChangeExtension($Msi, '.wixpdb'))
 & (Join-Path $PSScriptRoot 'sign.ps1') $Msi
 
+# ---- the update service's MSI ------------------------------------------------------------------
+# Per-machine, no wizard: the ArtCraft Launcher Update Service (a LocalSystem Windows service) and
+# its command line, which an administrator installs once so that users' updates need no UAC
+# prompt. Its own update checks this file's Authenticode signature, product name and version
+# (crates/native/src/msi.rs), so it is signed like everything else.
+$UpdaterMsi = Join-Path $Dist "$Updater-$Version-windows-$Arch.msi"
+Invoke-Native 'wix build (update service)' {
+  wix build (Join-Path $PSScriptRoot "$Updater.wxs") -arch $Arch -ext WixToolset.Util.wixext `
+    -d "Version=$MsiVersion" -d "DisplayVersion=$Version" -d "BinDir=$Stage" -d "IconPath=$(Join-Path $Root "assets\app-icon\$Pkg.ico")" `
+    -o $UpdaterMsi
+}
+Invoke-Native 'MSI validation (update service)' {
+  wix msi validate $UpdaterMsi -intermediateFolder (Join-Path $Stage 'updater-msi-validation')
+}
+Remove-Item -Force -ErrorAction SilentlyContinue ([IO.Path]::ChangeExtension($UpdaterMsi, '.wixpdb'))
+& (Join-Path $PSScriptRoot 'sign.ps1') $UpdaterMsi
+
 # ---- portable zip ------------------------------------------------------------------------------
 $Portable = Join-Path $TargetDir "windows-package\$Pkg-$Version-windows-$Arch-portable"
 Remove-Item -Recurse -Force $Portable -ErrorAction SilentlyContinue
@@ -205,4 +230,4 @@ $Zip = Join-Path $Dist "$Pkg-$Version-windows-$Arch-portable.zip"
 Remove-Item -Force $Zip -ErrorAction SilentlyContinue
 Compress-Archive -Path $Portable -DestinationPath $Zip
 
-Get-Item $Msi, $Zip | Format-Table Name, Length
+Get-Item $Msi, $Zip, $UpdaterMsi | Format-Table Name, Length

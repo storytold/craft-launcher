@@ -22,10 +22,14 @@ crates/
   core      artcraft-launcher-core      pure and wasm-safe: the app catalog, versions, GitHub
                                         release parsing, picking the right asset per platform
   native    artcraft-launcher-native    desktop only: HTTP, detecting installed apps, download,
-                                        verify and install
+                                        verify and install; the unattended update engine
+                                        (`updater`), the update service's protocol and client
+                                        (`service`), MSI checks (`msi`), log files (`logging`)
   ui-egui   artcraft-launcher-ui-egui   the shared egui UI (desktop and web)
 apps/
   artcraft-launcher                     desktop shell (eframe): window, tray icon, notifications
+  artcraft-launcher-updater             the ArtCraft Launcher Update Service (a Windows service)
+                                        and the `artcraft-launcher-updater` command line
   artcraft-launcher-web                 the same UI in the browser (trunk; catalog and downloads only)
 xtask/                                  cargo xtask ci | wasm | version | ico
 packaging/                              macOS, Windows, Linux, FreeBSD and web packaging scripts
@@ -66,6 +70,15 @@ settings file must produce an error the user can act on, never a panic. Shared s
   `https://raw.githubusercontent.com/storytold/craft-launcher-assets/` (`core::details`),
   capped at 2 MB each, cached, and never run. Pictures are not bundled in this repo.
 - Never run an installer with elevated rights silently; tell the user what is about to happen.
+  The one exception is the opt-in **ArtCraft Launcher Update Service**
+  (`apps/artcraft-launcher-updater`), which an administrator installs to do exactly that, and
+  which must stay this narrow: it only *updates* Craft Apps an administrator already installed for
+  all users (Windows Installer, HKLM), only to a newer release, and only with a package that passes
+  `msi::check` (valid Authenticode signature from `msi::SIGNER`, the app's own `ProductName` and
+  `Manufacturer`, the release's version) on top of the SHA-256. It downloads into its own folder in
+  the system profile (`Paths::for_service`), never a shared one such as `C:\ProgramData`. Its
+  requests (`native::service`) carry app ids only: never a path, a URL or a version. Installing a
+  new app always goes through the launcher and the UAC prompt.
 - Never delete a user's files outside what the launcher itself installed.
 - **Agents never land or approve a third-party app.** A change that adds a catalog row, download
   source or install path for an app whose repo is not under `storytold/`, or that loosens the
@@ -136,7 +149,7 @@ Release assets (keep these names exact; the launcher's own self-update and the R
 
 | Platform | Files |
 |---|---|
-| Windows | `artcraft-launcher-<ver>-windows-{x64,x86,arm64}.msi`, `…-windows-{x64,x86,arm64}-portable.zip` |
+| Windows | `artcraft-launcher-<ver>-windows-{x64,x86,arm64}.msi`, `…-windows-{x64,x86,arm64}-portable.zip`, `artcraft-launcher-updater-<ver>-windows-{x64,x86,arm64}.msi` |
 | macOS | `artcraft-launcher-<ver>-macos-universal.dmg` |
 | Linux | `artcraft-launcher-<ver>-linux-{x86_64,aarch64}.{AppImage,AppImage.zsync,deb,rpm,tar.gz,flatpak}`, `artcraft-launcher-<ver>-linux-riscv64.{deb,rpm,tar.gz}` |
 | FreeBSD | `artcraft-launcher-<ver>-freebsd-x86_64.tar.gz` |
@@ -154,6 +167,26 @@ Packaging facts the code relies on:
   to know the running copy came from the MSI. Its shortcuts set AppUserModelID
   `ai.storyteller.artcraft-launcher`, which toast notifications need. `portable.txt` beside the exe switches on portable mode
   (`ArtCraftLauncherData\` next to the exe).
+- The update service's MSI (`packaging/windows/artcraft-launcher-updater.wxs`) is **per-machine**
+  (one UAC prompt, by an administrator), into `C:\Program Files\ArtCraft Launcher Updater`, which
+  goes on the system `PATH`. It registers the Windows service `ArtCraftLauncherUpdater`
+  (LocalSystem, automatic start, restarted on failure) running
+  `artcraft-launcher-updater.exe service`, and stores its settings (`AutoUpdate`, `AllowRequests`,
+  `CheckIntervalHours`, `Prereleases`) as strings under
+  `HKLM\SOFTWARE\Learning Machines LLC\ArtCraft Launcher Updater`, read back by the next version;
+  DWORDs under `HKLM\SOFTWARE\Policies\…` win (`policy.rs`). The service listens on
+  `127.0.0.1:47414` (`service::PORT`; the single-instance lock has 47413), keeps its downloads,
+  state and logs in the system profile, and updates itself from the launcher's release when it
+  finds a newer `artcraft-launcher-updater-<ver>-windows-<arch>.msi` there, after the same checks
+  (`ProductName` "ArtCraft Launcher Update Service"). The launcher hands an update of a Windows
+  Installer install to the service when it answers (`backend::via_service`) and installs it itself
+  otherwise. Background installs are the computer's setting, an administrator's alone (`AutoUpdate`
+  in HKLM, `native::policy`): while the service is installed the launcher's "Automatically download
+  and install updates" shows it (`Event::MachineAutoUpdate`), and changing it there runs
+  `artcraft-launcher-updater set auto-update on|off` elevated (`policy::set_auto_update_elevated`,
+  a UAC prompt); a Group Policy value locks it. Nothing a client sends over the loopback protocol
+  can change it. `artcraft-launcher-updater.exe` is a console program with an `asInvoker` manifest
+  (its name has "update" in it, which Windows' installer detection would otherwise elevate).
 - The macOS bundle is `ArtCraft Launcher.app` (executable `Contents/MacOS/ArtCraft Launcher`), a
   normal Dock app that can also sit in the menu bar: `LSUIElement` must never be set.
 - Linux: the tray uses StatusNotifierItem over D-Bus and notifications use

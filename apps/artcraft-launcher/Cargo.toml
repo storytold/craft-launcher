@@ -23,8 +23,7 @@ artcraft-launcher-native = { workspace = true }
 eframe = { workspace = true, features = ["default_fonts", "wgpu", "accesskit", "wayland", "x11", "persistence", "links"] }
 egui = { workspace = true }
 log = { workspace = true }
-env_logger = { version = "0.11", default-features = false, features = ["auto-color", "humantime"] }
-image = { version = "0.25", default-features = false, features = ["png"] }
+image ={ version = "0.25", default-features = false, features = ["png"] }
 notify-rust = "4"
 # Read and write eframe's settings file while there is no window (settings_file.rs). Already in
 # Cargo.lock through eframe's "persistence" feature.

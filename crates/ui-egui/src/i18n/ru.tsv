@@ -84,6 +84,8 @@
 	ArtCraft Launcher {version}	ArtCraft Launcher {version}
 	Only when I ask	Только по запросу
 	Automatically download and install updates	Автоматически скачивать и устанавливать обновления
+	For everyone on this computer. Changing it asks for administrator permission.	Действует для всех пользователей этого компьютера. Для изменения нужны права администратора.
+	Set by your administrator.	Задано администратором.
 	Notify me when an installed app has an update	Уведомлять, когда у установленного приложения есть обновление
 	Include pre-releases (betas and release candidates)	Включать предварительные релизы (бета и RC)
 	Installing on Linux	Установка в Linux

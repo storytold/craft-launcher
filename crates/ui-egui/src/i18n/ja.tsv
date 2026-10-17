@@ -88,6 +88,8 @@
 	ArtCraft Launcher {version}	ArtCraft Launcher {version}
 	Only when I ask	手動で確認したときのみ
 	Automatically download and install updates	更新を自動でダウンロードしてインストール
+	For everyone on this computer. Changing it asks for administrator permission.	このコンピューターのすべてのユーザーに適用されます。変更するには管理者の許可が必要です。
+	Set by your administrator.	管理者が設定しています。
 	Notify me when an installed app has an update	インストール済みアプリに更新があるときに通知する
 	Include pre-releases (betas and release candidates)	プレリリース（ベータ版とリリース候補）を含める
 	Installing on Linux	Linux へのインストール

@@ -86,6 +86,8 @@
 	ArtCraft Launcher {version}	ArtCraft Launcher {version}
 	Only when I ask	Csak kézi kereséskor
 	Automatically download and install updates	Frissítések automatikus letöltése és telepítése
+	For everyone on this computer. Changing it asks for administrator permission.	A számítógép minden felhasználójára vonatkozik. A módosításhoz rendszergazdai engedély szükséges.
+	Set by your administrator.	A rendszergazda állította be.
 	Notify me when an installed app has an update	Értesítés a telepített alkalmazásokhoz elérhető frissítésekről
 	Include pre-releases (betas and release candidates)	Előzetes kiadások engedélyezése (béta- és kiadásra jelölt verziók)
 	Installing on Linux	Telepítés Linuxon

@@ -86,6 +86,8 @@
 	ArtCraft Launcher {version}	ArtCraft Launcher {version}
 	Only when I ask	Nur manuell
 	Automatically download and install updates	Updates automatisch herunterladen und installieren
+	For everyone on this computer. Changing it asks for administrator permission.	Gilt für alle auf diesem Computer. Zum Ändern sind Administratorrechte nötig.
+	Set by your administrator.	Von deinem Administrator festgelegt.
 	Notify me when an installed app has an update	Benachrichtigen, wenn es für eine installierte App ein Update gibt
 	Include pre-releases (betas and release candidates)	Vorabversionen einbeziehen (Betas und Release Candidates)
 	Installing on Linux	Installation unter Linux

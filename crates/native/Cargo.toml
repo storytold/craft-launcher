@@ -21,6 +21,8 @@ artcraft-launcher-core = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 log = { workspace = true }
+# The launcher's and the updater's log files (logging.rs).
+env_logger = { version = "0.11", default-features = false, features = ["auto-color", "humantime"] }
 dirs = "6"
 tempfile = "3"
 sha2 = "0.10"
