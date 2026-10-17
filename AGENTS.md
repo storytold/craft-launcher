@@ -24,6 +24,10 @@ crates/
   native    artcraft-launcher-native    desktop only: HTTP, detecting installed apps, download,
                                         verify and install
   ui-egui   artcraft-launcher-ui-egui   the shared egui UI (desktop and web)
+  (no suite-account crate here)
+            craft-suite-account         the shared account store lives in craft-libs
+                                        (storytold/craft-libs#160). This repo pins that crate.
+                                        docs/suite-account.md is the contract.
 apps/
   artcraft-launcher                     desktop shell (eframe): window, tray icon, notifications
   artcraft-launcher-web                 the same UI in the browser (trunk; catalog and downloads only)
@@ -34,8 +38,9 @@ assets/app-icons/                       the Craft apps' icons, copied from each 
 assets/fonts/                           Archivo, Inter, Geist Mono (OFL-1.1): getartcraft.com's faces
 ```
 
-Layering: `core` depends on no other workspace crate and must build for `wasm32-unknown-unknown`.
-`native` may use `core`. `ui-egui` may use `core` (and `native` only behind
+Layering: `core` depends on no other workspace crate and must build for
+`wasm32-unknown-unknown`. `craft-suite-account` is the craft-libs crate, desktop only, and nothing in the wasm build links it.
+`native` may use `core` and `craft-suite-account`. `ui-egui` may use `core` (and `native` only behind
 `cfg(not(target_arch = "wasm32"))` or through a trait the desktop shell implements). Nothing below
 the apps opens windows, tray icons or notifications.
 

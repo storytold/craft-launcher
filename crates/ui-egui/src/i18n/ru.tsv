@@ -358,3 +358,15 @@ filter	Installed	Установлены
 	Replace what's there?	Заменить существующее?
 	{path} already exists. Installing {name} will overwrite it.	{path} уже существует. Установка {name} перезапишет его.
 	Replace	Заменить
+# The suite's shared sign-in (the launcher is where somebody signs in once for every Craft app)
+	Account	Аккаунт
+	Sign in here once. Every Craft app then uses it.	Войдите здесь один раз. После этого вход используют все приложения Craft.
+	CollabCraft address	Адрес CollabCraft
+	Sign in	Войти
+	Sign out	Выйти
+	Open {name}	Открыть {name}
+	Your browser is open. Finish signing in there.	Браузер открыт. Завершите вход в нём.
+	Storage connected	Хранилище подключено
+	No storage connected	Хранилище не подключено
+	Signing out ends the session for every Craft app.	Выход завершает сеанс во всех приложениях Craft.
+	The shared sign-in couldn't be read.	Не удалось прочитать общий вход.

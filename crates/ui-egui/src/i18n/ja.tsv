@@ -365,3 +365,15 @@ filter	Installed	インストール済み
 	Replace what's there?	既存の項目を置き換えますか？
 	{path} already exists. Installing {name} will overwrite it.	{path} は既に存在します。{name} をインストールすると上書きされます。
 	Replace	置き換える
+# The suite's shared sign-in (the launcher is where somebody signs in once for every Craft app)
+	Account	アカウント
+	Sign in here once. Every Craft app then uses it.	ここで一度サインインしてください。以降はすべての Craft アプリがこのサインインを使います。
+	CollabCraft address	CollabCraft のアドレス
+	Sign in	サインイン
+	Sign out	サインアウト
+	Open {name}	{name} を開く
+	Your browser is open. Finish signing in there.	ブラウザーが開いています。そちらでサインインを完了してください。
+	Storage connected	ストレージに接続済み
+	No storage connected	ストレージに接続していません
+	Signing out ends the session for every Craft app.	サインアウトすると、すべての Craft アプリのセッションが終了します。
+	The shared sign-in couldn't be read.	共有のサインインを読み取れませんでした。

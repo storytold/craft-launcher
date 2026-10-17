@@ -15,6 +15,7 @@ use artcraft_launcher_core::protocol::{
 use artcraft_launcher_core::release::{Asset, Release};
 use artcraft_launcher_core::{CraftApp, Installed, PackageKind, SUITE, version};
 
+use crate::account::Accounts;
 use crate::feed_throttle::{self, FeedThrottle, Outcome};
 use crate::http::{self, Http, Stop};
 use crate::install::{self, Job};
@@ -93,6 +94,9 @@ pub struct NativeBackend {
     shared: Arc<Shared>,
     paths: Paths,
     http: Option<Http>,
+    /// The suite's shared sign-in. `None` where there is no HTTPS at all, which is the one case
+    /// in which nothing about an account can be offered.
+    accounts: Option<Accounts>,
     source: Option<Arc<dyn ReleaseSource>>,
     platform: Option<Platform>,
     /// How this launcher is installed, when it can replace itself.
@@ -137,7 +141,11 @@ impl NativeBackend {
             pictures_busy: Mutex::new(std::collections::HashSet::new()),
             last_check: Mutex::new(None),
         });
-        let backend = Self { shared, paths, http, source, platform: native_platform(), self_install: crate::self_update::current() };
+        let accounts = http.clone().map(|h| {
+            let shared = shared.clone();
+            Accounts::new(h, move |state| shared.emit(Event::Account(state)))
+        });
+        let backend = Self { shared, paths, http, accounts, source, platform: native_platform(), self_install: crate::self_update::current() };
         backend.replay_cache();
         backend.detect_all();
         backend
@@ -1009,6 +1017,24 @@ impl Backend for NativeBackend {
                 if changed_pre {
                     self.check(true);
                 }
+                if let Some(accounts) = &self.accounts {
+                    accounts.set_base(&options.account_service);
+                }
+            }
+            Command::AccountSignIn => {
+                if let Some(accounts) = &self.accounts {
+                    accounts.sign_in();
+                }
+            }
+            Command::AccountSignOut => {
+                if let Some(accounts) = &self.accounts {
+                    accounts.sign_out();
+                }
+            }
+            Command::AccountRefresh => {
+                if let Some(accounts) = &self.accounts {
+                    accounts.refresh();
+                }
             }
         }
     }
@@ -1336,7 +1362,7 @@ mod tests {
         let shared = shared();
         shared.latest.lock().unwrap().insert(APP.to_string(), release("0.5.0"));
         let shared = Arc::new(shared);
-        NativeBackend { shared, paths: Paths::under(root), http: None, source, platform: Some(platform), self_install: None }
+        NativeBackend { shared, paths: Paths::under(root), http: None, accounts: None, source, platform: Some(platform), self_install: None }
     }
 
     /// Reports again, and returns what the UI was last told about a kept download.

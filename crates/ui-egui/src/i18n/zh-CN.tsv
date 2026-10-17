@@ -330,3 +330,15 @@ figcraft	Interface design and prototyping	界面设计与原型制作
 	Replace what's there?	替换现有内容？
 	{path} already exists. Installing {name} will overwrite it.	{path} 已存在。安装 {name} 将覆盖它。
 	Replace	替换
+# The suite's shared sign-in (the launcher is where somebody signs in once for every Craft app)
+	Account	账户
+	Sign in here once. Every Craft app then uses it.	在此登录一次。之后所有 Craft 应用都会使用该登录。
+	CollabCraft address	CollabCraft 地址
+	Sign in	登录
+	Sign out	退出登录
+	Open {name}	打开 {name}
+	Your browser is open. Finish signing in there.	浏览器已打开。请在那里完成登录。
+	Storage connected	已连接存储
+	No storage connected	未连接存储
+	Signing out ends the session for every Craft app.	退出登录会结束所有 Craft 应用的会话。
+	The shared sign-in couldn't be read.	无法读取共享登录信息。
