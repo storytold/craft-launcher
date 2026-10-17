@@ -708,6 +708,7 @@ impl eframe::App for Shell<'_> {
                 OnClose::Quit => {}
             }
         }
+        craft_quit::on_close_request(ctx);
     }
 
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {

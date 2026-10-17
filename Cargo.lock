@@ -281,6 +281,7 @@ dependencies = [
  "artcraft-launcher-core",
  "artcraft-launcher-native",
  "artcraft-launcher-ui-egui",
+ "craft-quit",
  "eframe",
  "egui",
  "env_logger",
@@ -936,6 +937,17 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "59ed5838eebb26a2bb2e58f6d5b5316989ae9d08bab10e0e6d103e656d1b0280"
 dependencies = [
  "libc",
+]
+
+[[package]]
+name = "craft-quit"
+version = "0.1.0"
+source = "git+https://github.com/storytold/craft-libs?rev=f58bc1a3df490992d633393d0898af0588ce882c#f58bc1a3df490992d633393d0898af0588ce882c"
+dependencies = [
+ "dispatch2",
+ "egui",
+ "objc2 0.6.5",
+ "objc2-app-kit 0.3.2",
 ]
 
 [[package]]
