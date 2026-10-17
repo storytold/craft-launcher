@@ -305,6 +305,31 @@ pub fn install_fonts(ctx: &egui::Context, cjk: Option<Lang>) {
             stack.push("CJK".to_owned());
         }
     }
+    // A small OFL Persian fallback also works offline and in WASM. Keep the Latin faces
+    // first, and map its variable weight to each existing typography role.
+    const PERSIAN: &[u8] = include_bytes!("../../../assets/fonts/Vazirmatn-Variable.ttf");
+    for (family, stack) in &mut fonts.families {
+        let weight = if *family == mono_bold() {
+            700
+        } else if *family == display() {
+            620
+        } else if *family == semibold() {
+            600
+        } else if *family == medium() || *family == mono() {
+            500
+        } else {
+            400
+        };
+        let name = format!("Vazirmatn-{weight}");
+        fonts.font_data.entry(name.clone()).or_insert_with(|| {
+            Arc::new(FontData::from_static(PERSIAN).tweak(FontTweak {
+                coords: VariationCoords::new([(*b"wght", weight as f32)]),
+                subpixel_binning: Some(false),
+                ..Default::default()
+            }))
+        });
+        stack.push(name);
+    }
     ctx.set_fonts(fonts);
 }
 

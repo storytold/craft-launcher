@@ -1360,7 +1360,9 @@ fn a_page_without_pictures_has_no_gallery() {
     h.run_steps(10);
     snapshot(&mut h, "details-no-pictures-dark");
     h.get_by_label_contains("The open-source PDF workbench.");
-    h.get_by_label_contains("Search as you type");
+    let first = h.get_by_label("Faithful rendering").rect();
+    let second = h.get_by_label("Search as you type").rect();
+    assert!(second.top() - first.top() < 130.0, "feature rows must not expand to the remaining drawer height");
     assert!(h.query_by_label("Enlarge picture").is_none());
     assert!(h.query_by_label("Next picture (→)").is_none());
 }

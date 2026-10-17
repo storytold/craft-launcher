@@ -8,13 +8,16 @@ use std::sync::Arc;
 use artcraft_launcher_core::details::AppDetails;
 use artcraft_launcher_core::platform::pick_asset;
 use artcraft_launcher_core::protocol::Command;
-use egui::{Color32, CornerRadius, Id, Margin, Order, Rect, RichText, Sense, Stroke, Ui, emath::easing, pos2, vec2};
+use egui::{Color32, CornerRadius, Id, Margin, Order, Rect, Sense, Stroke, Ui, emath::easing, pos2, vec2};
+
+use crate::rtl::LocalizedTooltip as _;
 
 use crate::app::LauncherUi;
+use crate::i18n::{current, tr_ctx};
 use crate::model::AppEntry;
 use crate::theme::{self, Tokens, rgb, tint};
 use crate::views::{FOOTER_H, HEADER_H, date_text};
-use crate::widgets::{self, Glyph, Kind};
+use crate::widgets::{self, Glyph};
 
 /// Screenshots are 8:5.
 const SHOT_ASPECT: f32 = 0.625;
@@ -132,6 +135,9 @@ impl LauncherUi {
             // A bar that stays on screen says there is more below the fold. egui's default one is
             // floating and invisible until the pointer is over it, so the drawer uses the solid style.
             ui.spacing_mut().scroll = egui::style::ScrollStyle::solid();
+            if current().is_rtl() {
+                ui.spacing_mut().scroll.bar_inner_margin = 10.0;
+            }
             egui::ScrollArea::vertical().auto_shrink([false, false]).show(ui, |ui| {
                 ui.set_width(ui.available_width());
                 ui.spacing_mut().item_spacing.y = 8.0;
@@ -141,7 +147,7 @@ impl LauncherUi {
                     self.gallery(ui, details, &t, rgb(entry.app.color));
                     ui.add_space(8.0);
                     for p in details.paragraphs() {
-                        ui.add(egui::Label::new(RichText::new(p).size(14.5).color(t.ink)).wrap());
+                        crate::rtl::paragraph(ui, copy(details, p), egui::FontId::proportional(14.5), t.ink);
                     }
                     ui.add_space(14.0);
                     features(ui, details, entry.app, &t);
@@ -221,14 +227,14 @@ impl LauncherUi {
                     ui.add(egui::Image::new(icon).fit_to_exact_size(vec2(ICON, ICON)));
                 }
                 ui.add_space(8.0);
-                ui.vertical(|ui| {
+                ui.with_layout(egui::Layout::top_down(egui::Align::Min), |ui| {
                     ui.spacing_mut().item_spacing.y = 5.0;
                     widgets::wordmark(ui, app, 32.0);
-                    ui.add(egui::Label::new(RichText::new(details.headline).size(15.0).color(t.ink)).wrap());
+                    crate::rtl::paragraph(ui, copy(details, details.headline), egui::FontId::proportional(15.0), t.ink);
                     // "Version 0.5.0 · Oct 8, 2026", or the installed-versus-latest line.
                     let version = crate::views::version_line(entry, &status);
                     if !version.trim().is_empty() {
-                        ui.label(RichText::new(version).size(12.5).color(t.muted));
+                        crate::rtl::label(ui, version, egui::FontId::proportional(12.5), t.muted);
                     }
                 });
             });
@@ -245,10 +251,10 @@ impl LauncherUi {
 
     /// The facts of the latest release in cells, then its notes.
     fn release_section(&self, ui: &mut Ui, entry: &AppEntry, details: &AppDetails, t: &Tokens) {
-        widgets::eyebrow(ui, "02", tl!("Latest release"));
+        section_heading(ui, "02", tl!("Latest release"));
         ui.add_space(4.0);
         let Some(r) = entry.release() else {
-            ui.label(RichText::new(tl!("No release published yet")).color(t.muted));
+            crate::rtl::paragraph(ui, tl!("No release published yet"), egui::FontId::proportional(14.0), t.muted);
             return;
         };
         let size = self.platform.and_then(|p| {
@@ -265,19 +271,43 @@ impl LauncherUi {
         .filter_map(|(label, value)| value.map(|v| (label, v)))
         .collect();
         for pair in facts.chunks(2) {
+            let cell_w = (ui.available_width() - ui.spacing().item_spacing.x) / 2.0 - 24.0;
+            let value_h = if current().is_rtl() {
+                pair.iter()
+                    .map(|(_, value)| crate::rtl::paragraph_height(ui, value, &egui::FontId::new(14.0, theme::medium()), t.ink_strong, cell_w))
+                    .fold(0.0_f32, f32::max)
+            } else {
+                0.0
+            };
             ui.columns(2, |cols| {
-                for (col, (label, value)) in cols.iter_mut().zip(pair) {
+                for (i, (label, value)) in pair.iter().enumerate() {
+                    let col = if current().is_rtl() { 1 - i } else { i };
+                    let Some(col) = cols.get_mut(col) else { continue };
                     egui::Frame::new().stroke(t.hairline()).inner_margin(Margin::same(12)).show(col, |ui| {
                         ui.set_width(ui.available_width());
                         ui.spacing_mut().item_spacing.y = 2.0;
-                        widgets::hud(ui, label, t.faint);
-                        ui.add(egui::Label::new(RichText::new(value).size(14.0).color(t.ink_strong)).wrap());
+                        if current().is_rtl() {
+                            ui.set_min_height(value_h + 17.0);
+                        }
+                        ui.with_layout(crate::rtl::content_column(), |ui| {
+                            widgets::hud(ui, label, t.faint);
+                            crate::rtl::paragraph(
+                                ui,
+                                value,
+                                egui::FontId::new(14.0, if current().is_rtl() { theme::medium() } else { egui::FontFamily::Proportional }),
+                                t.ink_strong,
+                            );
+                        });
                     });
                 }
             });
         }
         ui.add_space(8.0);
-        crate::notes::show(ui, &r.notes);
+        if r.notes.trim().is_empty() && current().is_rtl() {
+            crate::rtl::paragraph(ui, tl!("No notes were published with this release."), egui::FontId::proportional(14.0), t.muted);
+        } else {
+            ui.with_layout(egui::Layout::top_down(egui::Align::Min), |ui| crate::notes::show(ui, &r.notes));
+        }
     }
 
     /// The current screenshot, large, over the whole window; ‹ › flip through them, a click or Esc closes it.
@@ -304,7 +334,8 @@ impl LauncherUi {
                 None => placeholder(ui, pic, Id::new("lightbox-placeholder"), failed.as_deref(), t, true),
             }
             ui.painter().rect_stroke(pic, CornerRadius::ZERO, Stroke::new(1.0, theme::backdrop_ink(40)), egui::StrokeKind::Outside);
-            let caption = if count > 1 { format!("{} · {}/{count}", shot.caption, at + 1) } else { shot.caption.to_string() };
+            let caption =
+                if count > 1 { format!("{} · {}/{count}", copy(details, shot.caption), at + 1) } else { copy(details, shot.caption).to_string() };
             let ink = theme::backdrop_ink(190);
             let galley = widgets::hud_galley(ui, &caption, ink);
             let caption_at = pos2(rect.center().x - galley.size().x / 2.0, pic.bottom() + 14.0);
@@ -344,7 +375,7 @@ impl LauncherUi {
                 image.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Button, true, tl!("Enlarge picture")));
                 let rect = image.rect;
                 // The arrows below are added after the picture, so they keep their own clicks.
-                if image.on_hover_cursor(egui::CursorIcon::ZoomIn).on_hover_text(tl!("Click to enlarge")).clicked() {
+                if image.on_hover_cursor(egui::CursorIcon::ZoomIn).localized_hover_text(tl!("Click to enlarge")).clicked() {
                     self.detail_zoom = true;
                 }
                 rect
@@ -359,7 +390,9 @@ impl LauncherUi {
         ui.painter().rect_stroke(pic, CornerRadius::ZERO, t.hairline(), egui::StrokeKind::Inside);
         let count = details.shots.len();
         if count < 2 {
-            widgets::hud(ui, current.caption, t.faint);
+            ui.with_layout(crate::rtl::content_column(), |ui| {
+                widgets::hud(ui, copy(details, current.caption), t.faint);
+            });
             return;
         }
         // Previous and next, over the sides of the picture.
@@ -372,7 +405,9 @@ impl LauncherUi {
         if arrow_button(ui, next, Id::new("shot-next"), false, tl!("Next picture (→)"), t) {
             self.flip_shot(count, true);
         }
-        widgets::hud(ui, &format!("{} · {}/{count}", current.caption, self.detail_shot.min(count - 1) + 1), t.faint);
+        ui.with_layout(crate::rtl::content_column(), |ui| {
+            widgets::hud(ui, &format!("{} · {}/{count}", copy(details, current.caption), self.detail_shot.min(count - 1) + 1), t.faint);
+        });
         let gap = 8.0;
         let thumb_w = ((w - gap * (count as f32 - 1.0)) / count as f32).floor().max(1.0);
         ui.horizontal(|ui| {
@@ -397,7 +432,7 @@ impl LauncherUi {
                 }
                 let stroke = if selected { Stroke::new(2.0, app_color) } else { t.hairline() };
                 ui.painter().rect_stroke(resp.rect, CornerRadius::ZERO, stroke, egui::StrokeKind::Inside);
-                if resp.on_hover_cursor(egui::CursorIcon::PointingHand).on_hover_text(shot.caption).clicked() {
+                if resp.on_hover_cursor(egui::CursorIcon::PointingHand).localized_hover_text(copy(details, shot.caption)).clicked() {
                     self.detail_shot = i;
                 }
             }
@@ -416,7 +451,7 @@ fn placeholder(ui: &mut Ui, rect: Rect, id: Id, failed: Option<&str>, t: &Tokens
     let resp = ui.interact(rect, id, Sense::hover());
     resp.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Label, true, text));
     if let Some(why) = failed {
-        resp.on_hover_text(why);
+        resp.localized_hover_text(why);
     }
 }
 
@@ -436,7 +471,7 @@ fn link_buttons(ui: &mut Ui, app: &CraftApp, row_w: f32) {
     let link_w = ((row_w - gap * (links.len() as f32 - 1.0)) / links.len() as f32).floor();
     ui.horizontal(|ui| {
         for (label, url) in links {
-            if widgets::button(ui, &format!("{label} ↗"), Kind::Secondary, link_w).on_hover_text(url.as_str()).clicked() {
+            if widgets::external_button(ui, label, link_w).localized_hover_text(url.as_str()).clicked() {
                 ui.ctx().open_url(egui::OpenUrl::new_tab(url));
             }
         }
@@ -445,17 +480,25 @@ fn link_buttons(ui: &mut Ui, app: &CraftApp, row_w: f32) {
 
 /// The numbered feature cells.
 fn features(ui: &mut Ui, details: &AppDetails, app: &CraftApp, t: &Tokens) {
-    widgets::eyebrow(ui, "01", tl!("Features"));
+    section_heading(ui, "01", tl!("Features"));
     ui.add_space(4.0);
     for (i, f) in details.features.iter().enumerate() {
         egui::Frame::new().stroke(t.hairline()).inner_margin(Margin::symmetric(14, 12)).show(ui, |ui| {
             ui.set_width(ui.available_width());
             ui.spacing_mut().item_spacing.y = 3.0;
-            ui.horizontal(|ui| {
-                widgets::hud(ui, &format!("{:02}", i + 1), t.app_ink(app));
-                ui.label(RichText::new(f.title).size(15.0).family(theme::semibold()).color(t.ink_strong));
-            });
-            ui.add(egui::Label::new(RichText::new(f.text).size(13.5).color(t.muted)).wrap());
+            if current().is_rtl() {
+                // A detached horizontal layout otherwise fills the remaining drawer height.
+                ui.allocate_ui_with_layout(vec2(ui.available_width(), 22.0), crate::rtl::content_row(egui::Align::Center), |ui| {
+                    widgets::hud(ui, &format!("{:02}", i + 1), t.app_ink(app));
+                    crate::rtl::paragraph(ui, copy(details, f.title), egui::FontId::new(15.0, theme::semibold()), t.ink_strong);
+                });
+            } else {
+                ui.horizontal(|ui| {
+                    widgets::hud(ui, &format!("{:02}", i + 1), t.app_ink(app));
+                    ui.label(egui::RichText::new(copy(details, f.title)).size(15.0).family(theme::semibold()).color(t.ink_strong));
+                });
+            }
+            crate::rtl::paragraph(ui, copy(details, f.text), egui::FontId::proportional(13.5), t.muted);
         });
     }
 }
@@ -471,5 +514,24 @@ fn arrow_button(ui: &mut Ui, rect: Rect, id: Id, left: bool, tip: &str, t: &Toke
     let points = vec![pos2(c.x - s * 3.5, c.y - 6.0), pos2(c.x + s * 3.5, c.y), pos2(c.x - s * 3.5, c.y + 6.0)];
     painter.add(egui::Shape::line(points, Stroke::new(1.75, ink)));
     resp.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Button, true, tip));
-    resp.on_hover_cursor(egui::CursorIcon::PointingHand).on_hover_text(tip).clicked()
+    resp.on_hover_cursor(egui::CursorIcon::PointingHand).localized_hover_text(tip).clicked()
+}
+
+/// Exact source keys intentionally fall back to English when upstream editorial copy changes.
+fn copy<'a>(details: &AppDetails, source: &'a str) -> &'a str {
+    tr_ctx(current(), details.id, source)
+}
+
+fn section_heading(ui: &mut Ui, index: &str, label: &str) {
+    if current().is_rtl() {
+        let t = Tokens::get(ui.ctx());
+        ui.with_layout(crate::rtl::content_row(egui::Align::Center), |ui| {
+            ui.spacing_mut().item_spacing.x = 6.0;
+            widgets::hud(ui, index, t.faint);
+            widgets::hud(ui, "/", t.faint);
+            widgets::hud(ui, label, t.muted);
+        });
+    } else {
+        widgets::eyebrow(ui, index, label);
+    }
 }

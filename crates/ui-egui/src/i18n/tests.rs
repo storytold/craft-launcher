@@ -523,3 +523,39 @@ fn complete_catalogs_translate_package_formats() {
         }
     }
 }
+
+/// Persian does not depend on workstation fonts, including in the browser build.
+#[test]
+fn bundled_font_covers_persian_in_every_ui_family() {
+    use egui::{FontFamily, FontId};
+    let ctx = egui::Context::default();
+    crate::theme::install_fonts(&ctx, None);
+    let mut output = ctx.run_ui(egui::RawInput::default(), |_| {});
+    output.textures_delta.clear();
+    let text: String = Lang::FA
+        .0
+        .source
+        .lines()
+        .filter_map(|line| line.split('\t').nth(2))
+        .flat_map(str::chars)
+        .filter(|c| ('\u{0600}'..='\u{06ff}').contains(c) && c.is_alphabetic())
+        .collect();
+    assert!(text.chars().count() > 500);
+    for (family, weight) in [
+        (FontFamily::Proportional, 400),
+        (FontFamily::Monospace, 400),
+        (crate::theme::medium(), 500),
+        (crate::theme::semibold(), 600),
+        (crate::theme::display(), 620),
+        (crate::theme::mono(), 500),
+        (crate::theme::mono_bold(), 700),
+    ] {
+        ctx.fonts_mut(|f| assert!(f.has_glyphs(&FontId::new(14.0, family.clone()), &text), "missing Persian glyph in {family:?}"));
+        ctx.fonts(|f| {
+            assert!(
+                f.definitions().families.get(&family).is_some_and(|stack| stack.contains(&format!("Vazirmatn-{weight}"))),
+                "wrong Persian weight for {family:?}"
+            )
+        });
+    }
+}

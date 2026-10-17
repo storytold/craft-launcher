@@ -17,6 +17,7 @@ egui_extras = { workspace = true, features = ["image", "svg"] }
 image = { version = "0.25", default-features = false, features = ["png", "jpeg"] }
 serde = { workspace = true }
 log = { workspace = true }
+unicode-bidi = "0.3"
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 # The OS's preferred UI languages, without spawning `defaults` or `reg.exe`.
