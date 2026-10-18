@@ -83,6 +83,8 @@
 	Running in the background	Běh na pozadí
 	Keep running in the tray when the window is closed	Po zavření okna ponechat spuštěné v oznamovací oblasti
 	Show the window on the current desktop	Zobrazit okno na aktuální ploše
+	Hide the Dock icon while the window is closed	Skrýt ikonu v Docku, když je okno zavřené
+	The launcher stays in the menu bar only. Its Dock icon comes back when you open the window.	Launcher zůstane jen v řádku nabídek. Jeho ikona se do Docku vrátí, jakmile otevřete okno.
 	Start ArtCraft Launcher when I log in	Spouštět ArtCraft Launcher po přihlášení
 	Community	Komunita
 	Questions, ideas and news from the ArtCraft team	Dotazy, nápady a novinky od týmu ArtCraft
