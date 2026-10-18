@@ -26,7 +26,7 @@ tempfile = "3"
 sha2 = "0.10"
 # HTTPS over rustls, with the OS verifying certificates (rustls-platform-verifier). No bundled
 # root list: webpki-roots and webpki-root-certs are CDLA-licensed.
-ureq = { version = "3.4", default-features = false, features = ["rustls-no-provider", "_ring", "gzip", "platform-verifier"] }
+ureq = { version = "3.4", default-features = false, features = ["rustls-no-provider", "_ring", "gzip", "platform-verifier", "socks-proxy"] }
 
 [target.'cfg(unix)'.dependencies]
 flate2 = "1"

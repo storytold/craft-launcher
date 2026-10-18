@@ -49,6 +49,25 @@ pub struct FeedError {
     pub retry_after: Option<i64>,
 }
 
+/// Reads a small response body, bounding the DECODED size. ureq's own `.limit()` wraps the
+/// compressed source, so a gzip-encoded reply (the small agents advertise `gzip`) could inflate
+/// far past the cap in memory before it tripped. Capping the decoded reader instead holds the
+/// answer to `max` bytes whatever the `Content-Encoding`.
+fn read_small_bytes(body: &mut ureq::Body, max: usize, who: &str) -> Result<Vec<u8>, String> {
+    let mut buf = Vec::new();
+    body.as_reader().take(max as u64 + 1).read_to_end(&mut buf).map_err(|e| format!("unreadable answer from {who} ({e})"))?;
+    if buf.len() > max {
+        return Err(format!("{who} sent more than {max} bytes"));
+    }
+    Ok(buf)
+}
+
+/// Like [`read_small_bytes`], as UTF-8 text capped at `MAX_SMALL`.
+fn read_small_text(body: &mut ureq::Body, who: &str) -> Result<String, String> {
+    let bytes = read_small_bytes(body, MAX_SMALL as usize, who)?;
+    String::from_utf8(bytes).map_err(|_| format!("{who} sent a non-text answer"))
+}
+
 impl Http {
     pub fn new() -> Result<Self, String> {
         // The OS checks each certificate chain itself: Windows fetches roots it hasn't stored yet
@@ -118,8 +137,7 @@ impl Http {
         match status {
             200 => {
                 let etag = header("etag");
-                let text =
-                    resp.body_mut().with_config().limit(MAX_SMALL).read_to_string().map_err(|e| format!("unreadable answer from GitHub ({e})"))?;
+                let text = read_small_text(resp.body_mut(), "GitHub")?;
                 Ok(Fetched::Body { text, etag })
             }
             304 => Ok(Fetched::NotModified),
@@ -145,7 +163,7 @@ impl Http {
         // Seconds only; an HTTP date falls back to our own backoff.
         let retry_after = resp.headers().get("retry-after").and_then(|v| v.to_str().ok()).and_then(|r| r.trim().parse::<i64>().ok());
         match resp.status().as_u16() {
-            200 => resp.body_mut().with_config().limit(MAX_SMALL).read_to_string().map_err(|e| failed(format!("unreadable answer ({e})"))),
+            200 => read_small_text(resp.body_mut(), host(url)).map_err(failed),
             s => Err(FeedError { why: format!("{} answered HTTP {s}", host(url)), throttled: s == 429, retry_after }),
         }
     }
@@ -154,7 +172,7 @@ impl Http {
     pub fn get_text(&self, url: &str) -> Result<Option<String>, String> {
         let mut resp = self.small.get(url).call().map_err(|e| format!("couldn't reach {} ({e})", host(url)))?;
         match resp.status().as_u16() {
-            200 => resp.body_mut().with_config().limit(MAX_SMALL).read_to_string().map(Some).map_err(|e| format!("unreadable answer ({e})")),
+            200 => read_small_text(resp.body_mut(), host(url)).map(Some),
             404 => Ok(None),
             s => Err(format!("{} answered HTTP {s}", host(url))),
         }
@@ -172,9 +190,8 @@ impl Http {
                 if announced.is_some_and(|n| n > max as u64) {
                     return Err(too_big());
                 }
-                // ureq errors once the limit is reached, so ask for one byte more than we accept.
-                let body = resp.body_mut().with_config().limit(max as u64 + 1).read_to_vec().map_err(|e| format!("unreadable answer ({e})"))?;
-                if body.len() > max { Err(too_big()) } else { Ok(Some(body)) }
+                let body = read_small_bytes(resp.body_mut(), max, host(url))?;
+                Ok(Some(body))
             }
             404 => Ok(None),
             s => Err(format!("{} answered HTTP {s}", host(url))),
@@ -941,5 +958,40 @@ pub(crate) mod tests {
     #[test]
     fn partial_files_are_named_after_the_file_and_size() {
         assert_eq!(part_path(Path::new("/d/photocraft.dmg"), 9), Path::new("/d/photocraft.dmg.9.part"));
+    }
+}
+
+#[cfg(all(test, unix))]
+mod fix_regression {
+    use super::*;
+    use std::io::{BufRead, BufReader, Write};
+    use std::net::TcpListener;
+
+    // A gzip response that inflates past MAX_SMALL must be refused, not buffered whole: the cap
+    // now bounds the DECODED body. Regression test for the compressed-bytes-only cap.
+    #[test]
+    fn a_gzip_answer_cannot_expand_past_the_small_cap() {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let addr = listener.local_addr().unwrap();
+        let mut enc = flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::best());
+        enc.write_all(&vec![0u8; 64 << 20]).unwrap();
+        let gz = enc.finish().unwrap();
+        assert!((gz.len() as u64) < MAX_SMALL, "the compressed body must fit the cap: {}", gz.len());
+        std::thread::spawn(move || {
+            if let Ok((mut s, _)) = listener.accept() {
+                let mut r = BufReader::new(s.try_clone().unwrap());
+                let mut line = String::new();
+                while r.read_line(&mut line).unwrap_or(0) > 0 {
+                    if line == "\r\n" {
+                        break;
+                    }
+                    line.clear();
+                }
+                let _ = write!(s, "HTTP/1.1 200 OK\r\nContent-Encoding: gzip\r\nConnection: close\r\n\r\n");
+                let _ = s.write_all(&gz);
+            }
+        });
+        let err = Http::new().unwrap().get_feed(&format!("http://{addr}/")).unwrap_err();
+        assert!(err.why.contains("more than"), "a gzip bomb was not capped: {}", err.why);
     }
 }

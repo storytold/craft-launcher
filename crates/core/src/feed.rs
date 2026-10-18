@@ -187,7 +187,7 @@ impl FeedRelease {
     fn to_release(&self, repo: &str, mirror: Option<&str>) -> Option<Release> {
         let version = version::parse(&self.tag)?;
         let prefix = release::download_prefix(repo);
-        let allowed = |url: &str| url.starts_with(&prefix) || mirror.is_some_and(|m| url.starts_with(m) && !url.contains(".."));
+        let allowed = |url: &str| release::without_traversal(url) && (url.starts_with(&prefix) || mirror.is_some_and(|m| url.starts_with(m)));
         let releases_page = format!("https://github.com/{repo}/releases/");
         let assets = self
             .assets
@@ -205,7 +205,11 @@ impl FeedRelease {
             name: if self.name.is_empty() { self.tag.clone() } else { truncate(&self.name, 120) },
             tag: self.tag.clone(),
             published_at: self.published_at,
-            html_url: if self.html_url.starts_with(&releases_page) { self.html_url.clone() } else { format!("{releases_page}tag/{}", self.tag) },
+            html_url: if self.html_url.starts_with(&releases_page) && release::without_traversal(&self.html_url) {
+                self.html_url.clone()
+            } else {
+                format!("{releases_page}tag/{}", self.tag)
+            },
             notes: truncate(&self.notes, 64 * 1024),
             prerelease: self.prerelease,
             assets,
@@ -627,5 +631,15 @@ mod tests {
         assert_eq!(titles, ["New: CADCraft 1.0", "PdfCraft is now DocuCraft"]);
         // Ids are stable across parses, so dismissals stick.
         assert_eq!(Feed::parse(&with_notices).unwrap().alerts[0].id, feed.alerts[0].id);
+    }
+
+    #[test]
+    fn feed_download_urls_that_climb_out_of_the_repo_are_dropped() {
+        let json = sample().replace(
+            "/releases/download/v0.6.0/photocraft-0.6.0-macos-universal.dmg",
+            "/releases/download/../../../other/evil/releases/download/v0.6.0/photocraft-0.6.0-macos-universal.dmg",
+        );
+        let FeedAnswer::Fresh(Some(r)) = Feed::parse(&json).unwrap().answer(app("photocraft"), NOW) else { panic!("not fresh") };
+        assert!(r.assets.is_empty(), "a climbing asset url survived: {:?}", r.assets.iter().map(|a| &a.url).collect::<Vec<_>>());
     }
 }
