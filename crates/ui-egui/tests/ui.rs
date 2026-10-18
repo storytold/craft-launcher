@@ -794,6 +794,44 @@ fn every_table_column_sorts_both_ways() {
 }
 
 #[test]
+fn the_interface_size_is_stepped_in_settings_and_zoomed_with_the_wheel() {
+    let (mut h, _) = harness(ViewMode::Grid, egui::Theme::Dark, true);
+    h.run_steps(6);
+    assert_eq!(h.ctx.zoom_factor(), 1.0);
+    h.get_by_label("Settings").click();
+    h.run_steps(4);
+    h.get_by_label("Interface size");
+    h.get_by_label_contains("0 for 100%");
+    // + and − step by a tenth, as egui's own Ctrl + and Ctrl − do; the number goes back to 100%.
+    h.get_by_label("+").click();
+    h.run_steps(3);
+    assert!((h.ctx.zoom_factor() - 1.1).abs() < 1e-3, "{}", h.ctx.zoom_factor());
+    snapshot(&mut h, "settings-interface-size");
+    h.get_by_label("110%").click();
+    h.run_steps(3);
+    assert_eq!(h.ctx.zoom_factor(), 1.0);
+    h.get_by_label("−").click();
+    h.run_steps(3);
+    assert!((h.ctx.zoom_factor() - 0.9).abs() < 1e-3, "{}", h.ctx.zoom_factor());
+    h.get_by_label("90%");
+    // Ctrl + wheel (⌘ on macOS) zooms too, and egui's Ctrl 0 still resets (#302).
+    h.hover_at(egui::pos2(590.0, 300.0));
+    h.run_steps(2);
+    h.input_mut().events.push(egui::Event::MouseWheel {
+        unit: egui::MouseWheelUnit::Line,
+        delta: egui::vec2(0.0, 3.0),
+        phase: egui::TouchPhase::Move,
+        modifiers: egui::Modifiers::COMMAND,
+    });
+    h.run_steps(5);
+    assert!(h.ctx.zoom_factor() > 0.9, "{}", h.ctx.zoom_factor());
+    h.key_press_modifiers(egui::Modifiers::COMMAND, egui::Key::Num0);
+    h.run_steps(3);
+    assert_eq!(h.ctx.zoom_factor(), 1.0);
+    h.get_by_label("100%");
+}
+
+#[test]
 fn settings_link_to_discord() {
     let (mut h, _) = harness(ViewMode::Grid, egui::Theme::Dark, true);
     h.run_steps(6);

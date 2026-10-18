@@ -69,6 +69,9 @@ pub trait Host {
     fn quit(&mut self) {}
 }
 
+/// How far the interface zooms out and in: the bounds egui's own zoom keys keep to.
+pub(crate) const ZOOM_RANGE: (f32, f32) = (0.2, 5.0);
+
 pub(crate) struct Toast {
     pub text: String,
     pub error: bool,
@@ -582,6 +585,15 @@ impl LauncherUi {
         if self.applied_theme != Some(self.settings.theme) {
             theme::apply(&ctx, self.settings.theme);
             self.applied_theme = Some(self.settings.theme);
+        }
+        // Ctrl + mouse wheel (⌘ on macOS) and a trackpad pinch zoom the interface, like egui's own
+        // Ctrl +, Ctrl − and Ctrl 0, and the Interface size row in Settings. eframe remembers the
+        // zoom between runs. Where egui leaves zooming to the browser, so does this (#25, #302).
+        if ctx.options(|o| o.zoom_with_keyboard) {
+            let delta = ctx.input(|i| i.zoom_delta());
+            if delta != 1.0 {
+                ctx.set_zoom_factor((ctx.zoom_factor() * delta).clamp(ZOOM_RANGE.0, ZOOM_RANGE.1));
+            }
         }
         let now = ctx.input(|i| i.time);
         if now >= self.motion_recheck {
