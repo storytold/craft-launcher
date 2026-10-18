@@ -13,11 +13,12 @@ use super::detect::system_lang;
 pub enum Script {
     Chinese,
     Japanese,
+    Arabic,
 }
 
 impl Script {
     /// Every script a language can be written in.
-    pub const ALL: [Script; 2] = [Script::Chinese, Script::Japanese];
+    pub const ALL: [Script; 3] = [Script::Chinese, Script::Japanese, Script::Arabic];
 }
 
 /// One supported UI language.
@@ -42,6 +43,9 @@ pub struct LangInfo {
     pub plural_forms: usize,
     /// Must the catalog cover every `tl!` literal? (checked by tests)
     pub complete_menus: bool,
+    /// Read right to left (Arabic): the catalog's translations are put into display order when
+    /// it loads ([`crate::bidi::display_rtl`]).
+    pub rtl: bool,
     catalog: OnceLock<Catalog>,
 }
 
@@ -81,6 +85,19 @@ pub(super) fn plural_czech(n: u64) -> usize {
     }
 }
 
+/// Arabic (CLDR `ar`, integer counts): zero (0), one (1), two (2), few (3–10, 103–110),
+/// many (11–99, 111–199), other (100–102, 200–202).
+pub(super) fn plural_arabic(n: u64) -> usize {
+    match (n, n % 100) {
+        (0, _) => 0,
+        (1, _) => 1,
+        (2, _) => 2,
+        (_, 3..=10) => 3,
+        (_, 11..=99) => 4,
+        _ => 5,
+    }
+}
+
 /// Polish integer counts: only 1 itself is `one` (21 is "21 aplikacji"), 2–4 in the last digit
 /// (but not 12–14) `few`, everything else `many`.
 pub(super) fn plural_polish(n: u64) -> usize {
@@ -94,7 +111,7 @@ pub(super) fn plural_polish(n: u64) -> usize {
 }
 
 /// The registry. English first: it is the fallback and the source language.
-pub static LANGUAGES: [LangInfo; 11] = [
+pub static LANGUAGES: [LangInfo; 12] = [
     LangInfo {
         code: "en",
         name: "English",
@@ -104,6 +121,7 @@ pub static LANGUAGES: [LangInfo; 11] = [
         plural: plural_one_other,
         plural_forms: 2,
         complete_menus: false,
+        rtl: false,
         catalog: OnceLock::new(),
     },
     LangInfo {
@@ -115,6 +133,7 @@ pub static LANGUAGES: [LangInfo; 11] = [
         plural: plural_east_slavic,
         plural_forms: 3,
         complete_menus: true,
+        rtl: false,
         catalog: OnceLock::new(),
     },
     LangInfo {
@@ -126,6 +145,7 @@ pub static LANGUAGES: [LangInfo; 11] = [
         plural: plural_none,
         plural_forms: 1,
         complete_menus: true,
+        rtl: false,
         catalog: OnceLock::new(),
     },
     LangInfo {
@@ -137,6 +157,7 @@ pub static LANGUAGES: [LangInfo; 11] = [
         plural: plural_one_other,
         plural_forms: 2,
         complete_menus: true,
+        rtl: false,
         catalog: OnceLock::new(),
     },
     LangInfo {
@@ -148,6 +169,7 @@ pub static LANGUAGES: [LangInfo; 11] = [
         plural: plural_zero_one,
         plural_forms: 2,
         complete_menus: true,
+        rtl: false,
         catalog: OnceLock::new(),
     },
     LangInfo {
@@ -159,6 +181,7 @@ pub static LANGUAGES: [LangInfo; 11] = [
         plural: plural_one_other,
         plural_forms: 2,
         complete_menus: true,
+        rtl: false,
         catalog: OnceLock::new(),
     },
     LangInfo {
@@ -170,6 +193,7 @@ pub static LANGUAGES: [LangInfo; 11] = [
         plural: plural_one_other,
         plural_forms: 2,
         complete_menus: true,
+        rtl: false,
         catalog: OnceLock::new(),
     },
     LangInfo {
@@ -181,6 +205,7 @@ pub static LANGUAGES: [LangInfo; 11] = [
         plural: plural_czech,
         plural_forms: 3,
         complete_menus: true,
+        rtl: false,
         catalog: OnceLock::new(),
     },
     LangInfo {
@@ -192,6 +217,7 @@ pub static LANGUAGES: [LangInfo; 11] = [
         plural: plural_polish,
         plural_forms: 3,
         complete_menus: true,
+        rtl: false,
         catalog: OnceLock::new(),
     },
     LangInfo {
@@ -203,6 +229,7 @@ pub static LANGUAGES: [LangInfo; 11] = [
         plural: plural_one_other,
         plural_forms: 2,
         complete_menus: true,
+        rtl: false,
         catalog: OnceLock::new(),
     },
     LangInfo {
@@ -214,13 +241,34 @@ pub static LANGUAGES: [LangInfo; 11] = [
         plural: plural_none,
         plural_forms: 1,
         complete_menus: true,
+        rtl: false,
+        catalog: OnceLock::new(),
+    },
+    // Arabic (Modern Standard, Western digits); every `ar-*` locale (`ar-MA`, `ar-EG`, `ar-SA`…)
+    // resolves here. Drawn with the system's Arabic font and right to left (see `LangInfo::rtl`).
+    LangInfo {
+        code: "ar",
+        name: "العربية",
+        english_name: "Arabic",
+        script: Some(Script::Arabic),
+        source: include_str!("ar.tsv"),
+        plural: plural_arabic,
+        plural_forms: 6,
+        complete_menus: true,
+        rtl: true,
         catalog: OnceLock::new(),
     },
 ];
 
 impl LangInfo {
     pub(super) fn catalog(&self) -> &Catalog {
-        self.catalog.get_or_init(|| Catalog::parse(self.source))
+        self.catalog.get_or_init(|| {
+            let mut catalog = Catalog::parse(self.source);
+            if self.rtl {
+                catalog.map_translations(crate::bidi::display_rtl);
+            }
+            catalog
+        })
     }
 }
 
@@ -254,6 +302,7 @@ impl Lang {
     pub const PL: Lang = Lang(&LANGUAGES[8]);
     pub const HU: Lang = Lang(&LANGUAGES[9]);
     pub const JA: Lang = Lang(&LANGUAGES[10]);
+    pub const AR: Lang = Lang(&LANGUAGES[11]);
 
     pub fn code(self) -> &'static str {
         self.0.code
@@ -282,6 +331,12 @@ impl Lang {
     /// The language's name in English.
     pub fn english_name(self) -> &'static str {
         self.0.english_name
+    }
+
+    /// Read right to left: the catalog's translations come back in display order (see
+    /// [`crate::bidi::display_rtl`]).
+    pub fn rtl(self) -> bool {
+        self.0.rtl
     }
 
     /// Does drawing this language need a CJK font from the system?
