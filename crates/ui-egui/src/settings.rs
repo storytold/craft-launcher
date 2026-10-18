@@ -95,6 +95,10 @@ pub struct Settings {
     pub language: String,
     /// Closing the window keeps the launcher in the tray (menu bar) instead of quitting.
     pub close_to_tray: bool,
+    /// Desktop: start with the window minimized.
+    pub start_minimized: bool,
+    /// Desktop: start in the tray (menu bar) with no window. Wins over `start_minimized`.
+    pub start_in_tray: bool,
     /// macOS: showing the window brings it to the current desktop (Space) instead of switching to
     /// the desktop it was on.
     pub show_on_current_desktop: bool,
@@ -178,6 +182,8 @@ impl Default for Settings {
             theme: ThemeChoice::System,
             language: "auto".to_string(),
             close_to_tray: true,
+            start_minimized: false,
+            start_in_tray: false,
             show_on_current_desktop: true,
             check_every: CheckEvery::Hour,
             auto_update: false,

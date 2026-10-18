@@ -98,6 +98,9 @@
 	Running in the background	バックグラウンドで実行
 	Keep running in the tray when the window is closed	ウィンドウを閉じてもトレイで実行し続ける
 	Show the window on the current desktop	現在のデスクトップにウィンドウを表示
+	Startup	起動
+	Start minimized	最小化して起動
+	Start in the system tray	トレイで起動
 	Start ArtCraft Launcher when I log in	ログイン時に ArtCraft Launcher を起動
 	Community	コミュニティ
 	Questions, ideas and news from the ArtCraft team	ArtCraft チームからの質問、アイデア、ニュース

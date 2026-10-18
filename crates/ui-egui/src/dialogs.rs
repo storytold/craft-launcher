@@ -444,6 +444,14 @@ impl LauncherUi {
                 ui.checkbox(&mut self.settings.show_on_current_desktop, tl!("Show the window on the current desktop"))
                     .on_hover_text(tl!("When on, opening the launcher from the menu bar brings its window to the desktop you're on. When off, macOS switches you to the desktop the window was on."));
             }
+            section(ui, tl!("Startup"));
+            ui.add_enabled(
+                !(host.has_tray() && self.settings.start_in_tray),
+                egui::Checkbox::new(&mut self.settings.start_minimized, tl!("Start minimized")),
+            );
+            if host.has_tray() {
+                ui.checkbox(&mut self.settings.start_in_tray, tl!("Start in the system tray"));
+            }
             if let Some(mut on) = host.login_item()
                 && ui.checkbox(&mut on, tl!("Start ArtCraft Launcher when I log in")).changed()
                 && let Err(e) = host.set_login_item(on)

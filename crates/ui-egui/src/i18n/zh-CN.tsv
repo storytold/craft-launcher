@@ -78,6 +78,9 @@
 	Running in the background	后台运行
 	Keep running in the tray when the window is closed	关闭窗口后继续在系统托盘中运行
 	Show the window on the current desktop	在当前桌面显示窗口
+	Startup	启动
+	Start minimized	启动时最小化
+	Start in the system tray	启动到系统托盘
 	Start ArtCraft Launcher when I log in	登录时启动 ArtCraft Launcher
 	Community	社区
 	Questions, ideas and news from the ArtCraft team	与 ArtCraft 团队交流问题、想法和动态
