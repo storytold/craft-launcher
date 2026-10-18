@@ -124,7 +124,7 @@ impl LauncherUi {
             let panel = Rect::from_min_size(pos2(left, area.top()), vec2(width, area.height()));
             let painter = ui.painter();
             painter.add(theme::shadow(&t).as_shape(panel, CornerRadius::ZERO));
-            painter.rect_filled(panel, CornerRadius::ZERO, t.bg);
+            painter.rect_filled(panel, CornerRadius::ZERO, t.panel);
             painter.vline(panel.left() + 0.5, panel.y_range(), Stroke::new(1.0, t.line_strong));
 
             ui.set_min_size(panel.size());

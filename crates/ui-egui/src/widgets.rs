@@ -189,7 +189,7 @@ fn window_button(ui: &mut Ui, button: WindowButton, height: f32) -> Response {
     let resp = ui.interact(hit, ui.id().with(("window-button", button as u8)), Sense::click());
     let (fill, ink) = match (button, resp.hovered()) {
         (WindowButton::Close, true) => (Color32::from_rgb(0xc4, 0x2b, 0x1c), Color32::WHITE),
-        (_, true) => (t.line, t.ink_strong),
+        (_, true) => (t.hover, t.ink_strong),
         (_, false) => (Color32::TRANSPARENT, t.muted),
     };
     let p = ui.painter();
@@ -370,7 +370,7 @@ pub fn cells<T: PartialEq + Copy>(ui: &mut Ui, value: &mut T, options: &[(T, Cel
             let hovered = resp.hovered();
             let (fill, ink) = match (on, hovered) {
                 (true, _) => (t.invert_bg, t.invert_fg),
-                (false, true) => (t.sunken, t.ink_strong),
+                (false, true) => (t.hover, t.ink_strong),
                 (false, false) => (Color32::TRANSPARENT, t.muted),
             };
             ui.painter().rect_filled(rect, CornerRadius::ZERO, fill);
