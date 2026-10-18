@@ -5,7 +5,6 @@
 //! instead, the shell then draws nothing, closes the window and opens a new one with a fresh
 //! device, at most [`ReopenBudget::MAX`] times in [`ReopenBudget::WINDOW`].
 
-use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
@@ -35,12 +34,12 @@ impl WindowGpu {
 
     /// Whether the device is lost. Polls it (non-blocking) so a loss while the window sat idle is
     /// noticed before the next frame is drawn with it; `Device::poll` panics on a lost device, so
-    /// a panic counts as a loss too.
+    /// a panic counts as a loss too, logged as handled rather than as an internal error.
     pub fn lost(&self) -> bool {
         if self.lost.load(Ordering::Acquire) {
             return true;
         }
-        if catch_unwind(AssertUnwindSafe(|| self.device.poll(wgpu::PollType::Poll))).is_err() {
+        if crate::logging::catch_expected(|| self.device.poll(wgpu::PollType::Poll)).is_err() {
             self.lost.store(true, Ordering::Release);
         }
         self.lost.load(Ordering::Acquire)
