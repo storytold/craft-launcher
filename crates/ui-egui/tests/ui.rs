@@ -93,6 +93,28 @@ impl Backend for Fake {
     }
 }
 
+struct PlatformFake {
+    inner: Fake,
+    platform: Platform,
+}
+impl Backend for PlatformFake {
+    fn send(&mut self, command: Command) {
+        self.inner.send(command);
+    }
+    fn poll(&mut self) -> Vec<Event> {
+        self.inner.poll()
+    }
+    fn capabilities(&self) -> Capabilities {
+        self.inner.capabilities()
+    }
+    fn platform(&self) -> Option<Platform> {
+        Some(self.platform)
+    }
+    fn now(&self) -> i64 {
+        self.inner.now()
+    }
+}
+
 struct NoHost;
 impl Host for NoHost {}
 
@@ -172,7 +194,7 @@ fn harness_with(
     manage: bool,
     scale: f32,
 ) -> (Harness<'static, Option<LauncherUi>>, Rc<RefCell<Vec<Command>>>) {
-    harness_full(events, view, theme, manage, scale, artcraft_launcher_ui_egui::TitleBar::Native, Rc::default())
+    harness_full(events, view, theme, manage, scale, artcraft_launcher_ui_egui::TitleBar::Native, Rc::default(), None, None)
 }
 
 /// Like `harness_with`, with the details pictures answered as `pictures` says (changeable during the test).
@@ -184,7 +206,7 @@ fn harness_pictures(
     scale: f32,
     pictures: Rc<Cell<Pictures>>,
 ) -> (Harness<'static, Option<LauncherUi>>, Rc<RefCell<Vec<Command>>>) {
-    harness_full(events, view, theme, manage, scale, artcraft_launcher_ui_egui::TitleBar::Native, pictures)
+    harness_full(events, view, theme, manage, scale, artcraft_launcher_ui_egui::TitleBar::Native, pictures, None, None)
 }
 
 fn harness_with_title_bar(
@@ -195,9 +217,24 @@ fn harness_with_title_bar(
     scale: f32,
     bar: artcraft_launcher_ui_egui::TitleBar,
 ) -> (Harness<'static, Option<LauncherUi>>, Rc<RefCell<Vec<Command>>>) {
-    harness_full(events, view, theme, manage, scale, bar, Rc::default())
+    harness_full(events, view, theme, manage, scale, bar, Rc::default(), None, None)
 }
 
+fn harness_with_discord(discord_url: Option<&'static str>) -> (Harness<'static, Option<LauncherUi>>, Rc<RefCell<Vec<Command>>>) {
+    harness_full(
+        events(),
+        ViewMode::Grid,
+        egui::Theme::Dark,
+        true,
+        1.0,
+        artcraft_launcher_ui_egui::TitleBar::Native,
+        Rc::default(),
+        None,
+        discord_url,
+    )
+}
+
+#[allow(clippy::too_many_arguments)] // Test fixture inputs vary independently across existing cases.
 fn harness_full(
     events: Vec<Event>,
     view: ViewMode,
@@ -206,11 +243,16 @@ fn harness_full(
     scale: f32,
     bar: artcraft_launcher_ui_egui::TitleBar,
     pictures: Rc<Cell<Pictures>>,
+    platform: Option<Platform>,
+    discord_url: Option<&'static str>,
 ) -> (Harness<'static, Option<LauncherUi>>, Rc<RefCell<Vec<Command>>>) {
-    struct HeaderHost(artcraft_launcher_ui_egui::TitleBar);
+    struct HeaderHost(artcraft_launcher_ui_egui::TitleBar, Option<&'static str>);
     impl Host for HeaderHost {
         fn title_bar(&self) -> artcraft_launcher_ui_egui::TitleBar {
             self.0
+        }
+        fn discord_url(&self) -> &'static str {
+            self.1.unwrap_or(artcraft_launcher_core::catalog::DISCORD_URL)
         }
     }
     // Integration tests compile without cfg!(test), so system_lang() picks up the
@@ -218,11 +260,15 @@ fn harness_full(
     artcraft_launcher_ui_egui::i18n::set_test_lang(artcraft_launcher_ui_egui::i18n::Lang::EN);
     let sent = Rc::new(RefCell::new(Vec::new()));
     let sent2 = sent.clone();
-    let mut backend = Some(Fake { events, sent: sent2, manage, pictures, asked: Vec::new(), clock: Rc::new(Cell::new(NOW)) });
+    let fake = Fake { events, sent: sent2, manage, pictures, asked: Vec::new(), clock: Rc::new(Cell::new(NOW)) };
+    let mut backend: Option<Box<dyn Backend>> = Some(match platform {
+        Some(platform) => Box::new(PlatformFake { inner: fake, platform }),
+        None => Box::new(fake),
+    });
     let settings = Settings { view, notify: false, ..Settings::default() };
     // No `.wgpu()`: it gives every test its own GPU device, and those segfault on parallel test threads (see above).
     // The default renderer creates one only when a test renders.
-    let harness = Harness::builder().with_size(egui::vec2(1180.0, 900.0)).with_pixels_per_point(scale).with_theme(theme).build_ui_state(
+    let harness = Harness::builder().with_size(egui::vec2(1180.0, 1200.0)).with_pixels_per_point(scale).with_theme(theme).build_ui_state(
         move |ui, state: &mut Option<LauncherUi>| {
             if state.is_none()
                 && let Some(b) = backend.take()
@@ -233,11 +279,11 @@ fn harness_full(
                 } else {
                     artcraft_launcher_ui_egui::theme::ThemeChoice::Light
                 };
-                *state = Some(LauncherUi::new(ui.ctx(), Box::new(b), s));
+                *state = Some(LauncherUi::new(ui.ctx(), b, s));
             }
             if let Some(l) = state.as_mut() {
-                l.logic(&ui.ctx().clone(), &mut HeaderHost(bar));
-                l.ui(ui, &mut HeaderHost(bar));
+                l.logic(&ui.ctx().clone(), &mut HeaderHost(bar, discord_url));
+                l.ui(ui, &mut HeaderHost(bar, discord_url));
             }
         },
         None,
@@ -249,6 +295,162 @@ fn snapshot(h: &mut Harness<'_, Option<LauncherUi>>, name: &str) {
     let Some(dir) = std::env::var_os("ARTCRAFT_LAUNCHER_SNAPSHOTS") else { return };
     let img = h.render().unwrap();
     img.save(std::path::Path::new(&dir).join(format!("{name}.png"))).unwrap();
+}
+
+fn folder_harness(picked: Rc<RefCell<Option<String>>>) -> (Harness<'static, Option<LauncherUi>>, Rc<RefCell<Vec<Command>>>) {
+    struct Picker(Rc<RefCell<Option<String>>>);
+    impl Host for Picker {
+        fn pick_folder(&mut self, _initial: Option<&str>) -> Option<String> {
+            self.0.borrow_mut().take()
+        }
+    }
+    artcraft_launcher_ui_egui::i18n::set_test_lang(artcraft_launcher_ui_egui::i18n::Lang::EN);
+    let sent = Rc::new(RefCell::new(Vec::new()));
+    let mut backend = Some(Fake {
+        events: vec![
+            Event::Latest { app: "photocraft".into(), latest: LatestRelease::Found(release("photocraft", "0.6.0", NOW)), from: Origin::GitHub },
+            Event::Detected { app: "photocraft".into(), installed: None },
+        ],
+        sent: sent.clone(),
+        manage: true,
+        pictures: Rc::default(),
+        asked: vec![],
+        clock: Rc::new(Cell::new(NOW)),
+    });
+    let mut host = Picker(picked);
+    let harness = Harness::builder().with_size(egui::vec2(1180.0, 900.0)).build_ui_state(
+        move |ui, state: &mut Option<LauncherUi>| {
+            if let Some(backend) = backend.take() {
+                *state = Some(LauncherUi::new(ui.ctx(), Box::new(backend), Settings { notify: false, ..Default::default() }));
+            }
+            if let Some(launcher) = state {
+                launcher.logic(ui.ctx(), &mut host);
+                launcher.ui(ui, &mut host);
+            }
+        },
+        None,
+    );
+    (harness, sent)
+}
+
+fn install_commands(sent: &RefCell<Vec<Command>>) -> Vec<Command> {
+    sent.borrow().iter().filter(|c| !matches!(c, Command::CheckForUpdates { .. })).cloned().collect()
+}
+
+#[test]
+fn a_fresh_install_confirms_the_folder_and_configures_before_installing() {
+    let picked = Rc::new(RefCell::new(None));
+    let (mut h, sent) = folder_harness(picked.clone());
+    h.run_steps(8);
+    h.get_by_label("Settings").click();
+    h.run_steps(4);
+    h.get_by_label("Browse…").scroll_to_me();
+    h.run_steps(4);
+    *picked.borrow_mut() = Some("/Volumes/Craft Apps".into());
+    h.get_by_label("Browse…").click();
+    h.run_steps(3);
+    assert_eq!(h.state().as_ref().unwrap().settings.install_locations.root.as_deref(), Some("/Volumes/Craft Apps"));
+    h.get_by_label("Done").click();
+    h.run_steps(3);
+    sent.borrow_mut().clear();
+    h.get_by_label("Install").click();
+    h.run_steps(4);
+    assert!(!sent.borrow().iter().any(|c| matches!(c, Command::Install { .. })));
+    h.get_by_label("Apps are placed inside this folder.");
+    snapshot(&mut h, "install-folder-confirmation");
+    *picked.borrow_mut() = Some("/Volumes/Photo".into());
+    h.get_by_label("Browse…").click();
+    h.run_steps(3);
+    assert!(h.state().as_ref().unwrap().settings.install_locations.per_app.is_empty());
+    h.get_by_label("Cancel").click();
+    h.run_steps(3);
+    assert!(h.state().as_ref().unwrap().settings.install_locations.per_app.is_empty());
+    h.get_by_label("Install").click();
+    h.run_steps(3);
+    h.get_by_role_and_label(egui::accesskit::Role::TextInput, "Install folder").click();
+    h.get_by_role_and_label(egui::accesskit::Role::TextInput, "Install folder").type_text("/Volumes/Typed Photo");
+    h.run_steps(3);
+    h.get_by_label("Browse…").click();
+    h.run_steps(3);
+    assert_eq!(h.get_by_role_and_label(egui::accesskit::Role::TextInput, "Install folder").value().as_deref(), Some("/Volumes/Typed Photo"));
+    sent.borrow_mut().clear();
+    h.get_all_by_role_and_label(egui::accesskit::Role::Button, "Install").last().unwrap().click();
+    h.run_steps(2);
+    let commands = install_commands(&sent);
+    assert!(matches!(commands.first(), Some(Command::Configure(options))
+        if options.install_locations.root.as_deref() == Some("/Volumes/Craft Apps")
+        && options.install_locations.folder("photocraft") == Some("/Volumes/Typed Photo")));
+    assert_eq!(commands.get(1), Some(&Command::Install { app: "photocraft".into() }));
+}
+
+#[test]
+fn use_default_removes_an_app_override_and_settings_can_reset_the_root() {
+    let picked = Rc::new(RefCell::new(Some("/Volumes/Photo".into())));
+    let (mut h, sent) = folder_harness(picked);
+    h.run_steps(8);
+    h.state_mut().as_mut().unwrap().settings.install_locations.root = Some("/Volumes/Craft Apps".into());
+    h.state_mut().as_mut().unwrap().settings.install_locations.per_app.insert("photocraft".into(), "/Volumes/Old Photo".into());
+    h.run_steps(2);
+    h.get_by_label("Install").click();
+    h.run_steps(3);
+    h.get_by_label("Use default").click();
+    h.run_steps(2);
+    sent.borrow_mut().clear();
+    h.get_all_by_role_and_label(egui::accesskit::Role::Button, "Install").last().unwrap().click();
+    h.run_steps(2);
+    assert!(h.state().as_ref().unwrap().settings.install_locations.per_app.is_empty());
+    assert!(
+        matches!(install_commands(&sent).first(), Some(Command::Configure(options)) if options.install_locations.folder("photocraft") == Some("/Volumes/Craft Apps"))
+    );
+    h.get_by_label("Settings").click();
+    h.run_steps(3);
+    h.get_by_label("Use default").scroll_to_me();
+    h.run_steps(3);
+    h.get_by_label("Use default").click();
+    h.run_steps(2);
+    assert_eq!(h.state().as_ref().unwrap().settings.install_locations.root, None);
+}
+
+#[cfg(windows)]
+#[test]
+fn windows_package_choice_can_select_portable_and_configures_the_backend() {
+    let (mut h, sent) = harness_full(
+        events(),
+        ViewMode::Grid,
+        egui::Theme::Light,
+        true,
+        1.0,
+        artcraft_launcher_ui_egui::TitleBar::Native,
+        Rc::default(),
+        Some(Platform { os: Os::Windows, arch: Arch::X64 }),
+        None,
+    );
+    h.run_steps(8);
+    h.get_by_label("Settings").click();
+    h.run_steps(4);
+    h.get_by_value("Installer (.msi)").click();
+    h.run_steps(2);
+    h.get_by_label("Portable (.zip)").click();
+    h.run_steps(3);
+    assert_eq!(h.state().as_ref().unwrap().settings.preferred_kinds, [artcraft_launcher_core::PackageKind::PortableZip]);
+    assert!(
+        sent.borrow()
+            .iter()
+            .any(|command| matches!(command, Command::Configure(options) if options.kinds == [artcraft_launcher_core::PackageKind::PortableZip]))
+    );
+}
+
+#[test]
+fn install_locations_survive_settings_save_and_older_settings_use_system_default() {
+    let old: Settings = serde_json::from_str(r#"{"auto_update":true}"#).unwrap();
+    assert!(old.auto_update);
+    assert_eq!(old.install_locations, Default::default());
+    let mut settings = old;
+    settings.install_locations.root = Some("/Volumes/Craft Apps".into());
+    settings.install_locations.per_app.insert("photocraft".into(), "/Volumes/Photo".into());
+    let restored: Settings = serde_json::from_str(&serde_json::to_string(&settings).unwrap()).unwrap();
+    assert_eq!(restored.install_locations.folder("photocraft"), Some("/Volumes/Photo"));
+    assert_eq!(restored.install_locations.folder("filmcraft"), Some("/Volumes/Craft Apps"));
 }
 
 #[test]
@@ -265,7 +467,7 @@ fn keeps_working_with_no_window_then_draws_in_a_new_one() {
     assert_eq!(ui.settings.last_check, Some(NOW - 180));
 
     let mut attached = false;
-    let mut h = Harness::builder().with_size(egui::vec2(1180.0, 900.0)).build_ui_state(
+    let mut h = Harness::builder().with_size(egui::vec2(1180.0, 1200.0)).build_ui_state(
         move |egui_ui, state: &mut LauncherUi| {
             if !attached {
                 attached = true;
@@ -317,6 +519,8 @@ fn downloads_can_be_paused_resumed_and_discarded() {
     h.get_by_label("Download paused");
     h.get_by_label("Reconnecting…");
     h.get_by_label_contains("· 25%").click();
+    h.run_steps(3);
+    h.get_all_by_role_and_label(egui::accesskit::Role::Button, "Install").last().unwrap().click();
     h.run_steps(2);
     assert!(sent.borrow().contains(&Command::Install { app: "deckcraft".into() }));
     h.get_by_label("Discard download").click();
@@ -343,6 +547,9 @@ fn a_kept_download_offers_retry_install_and_download_again() {
     let retry = h.get_by_label("Retry install");
     let row = retry.rect();
     retry.click();
+    h.run_steps(3);
+    assert!(sent.borrow().is_empty());
+    h.get_all_by_role_and_label(egui::accesskit::Role::Button, "Install").last().unwrap().click();
     h.run_steps(2);
     assert_eq!(*sent.borrow(), [Command::Install { app: "cadcraft".into() }]);
     sent.borrow_mut().clear();
@@ -352,6 +559,9 @@ fn a_kept_download_offers_retry_install_and_download_again() {
     h.run_steps(3);
     snapshot(&mut h, "grid-retry-install-menu-dark");
     h.get_by_label("Download again").click();
+    h.run_steps(3);
+    assert_eq!(*sent.borrow(), [Command::Cancel { app: "cadcraft".into() }]);
+    h.get_all_by_role_and_label(egui::accesskit::Role::Button, "Install").last().unwrap().click();
     h.run_steps(2);
     assert_eq!(*sent.borrow(), [Command::Cancel { app: "cadcraft".into() }, Command::Install { app: "cadcraft".into() }]);
     // Apps without a kept download don't offer it.
@@ -636,7 +846,7 @@ fn links_to_the_website_github_and_each_apps_pages() {
     // The table's … menu has the app's website and GitHub repo.
     let (mut h, _) = harness(ViewMode::Table, egui::Theme::Dark, true);
     h.run_steps(6);
-    h.get_all_by_label("…").nth(7).unwrap().click(); // WordCraft
+    h.get_all_by_label("…").nth(8).unwrap().click(); // WordCraft
     h.run_steps(3);
     h.get_by_label("GitHub repository");
     // The footer's Website link and WordCraft's now-live one in the menu.
@@ -694,12 +904,19 @@ fn links_open_the_right_pages() {
 }
 
 #[test]
+fn discord_link_opens_app_when_discord_is_installed() {
+    let (mut h, _) = harness_with_discord(Some(artcraft_launcher_core::catalog::DISCORD_APP_URL));
+    h.run_steps(6);
+    assert_eq!(click_opens(&mut h, "Discord").as_deref(), Some("discord://-/invite/artcraft"));
+}
+
+#[test]
 fn looks_again_at_installed_apps_every_few_minutes_not_every_frame() {
     let sent = Rc::new(RefCell::new(Vec::new()));
     let clock = Rc::new(Cell::new(NOW));
     let mut backend =
         Some(Fake { events: events(), sent: sent.clone(), manage: true, pictures: Rc::default(), asked: Vec::new(), clock: clock.clone() });
-    let mut h = Harness::builder().with_size(egui::vec2(1180.0, 900.0)).build_ui_state(
+    let mut h = Harness::builder().with_size(egui::vec2(1180.0, 1200.0)).build_ui_state(
         move |ui, state: &mut Option<LauncherUi>| {
             if state.is_none()
                 && let Some(b) = backend.take()
@@ -765,7 +982,7 @@ fn the_launcher_updates_itself_and_quits_to_restart() {
         inner: Fake { events, sent: sent.clone(), manage: true, pictures: Rc::default(), asked: Vec::new(), clock: Rc::new(Cell::new(NOW)) },
         later: shared_events.clone(),
     });
-    let mut h = Harness::builder().with_size(egui::vec2(1180.0, 900.0)).build_ui_state(
+    let mut h = Harness::builder().with_size(egui::vec2(1180.0, 1200.0)).build_ui_state(
         move |ui, state: &mut Option<LauncherUi>| {
             if state.is_none()
                 && let Some(b) = backend.take()
@@ -844,7 +1061,7 @@ fn feed_announcements_and_alerts_show_until_dismissed() {
         alerts: vec![notice("x1", "Security update", Some("https://getartcraft.com/security"))],
     });
     let mut backend = Some(Fake { events: evs, sent, manage: true, pictures: Rc::default(), asked: Vec::new(), clock: Rc::new(Cell::new(NOW)) });
-    let mut h = Harness::builder().with_size(egui::vec2(1180.0, 900.0)).build_ui_state(
+    let mut h = Harness::builder().with_size(egui::vec2(1180.0, 1200.0)).build_ui_state(
         move |ui, state: &mut Option<LauncherUi>| {
             if state.is_none()
                 && let Some(b) = backend.take()
@@ -892,7 +1109,7 @@ fn automatic_updates_queue_installs_for_outdated_apps_and_launcher() {
     let sent2 = sent.clone();
     let mut backend =
         Some(Fake { events: ev, sent: sent2, manage: true, pictures: Rc::default(), asked: Vec::new(), clock: Rc::new(Cell::new(NOW)) });
-    let mut h = Harness::builder().with_size(egui::vec2(1180.0, 900.0)).build_ui_state(
+    let mut h = Harness::builder().with_size(egui::vec2(1180.0, 1200.0)).build_ui_state(
         move |ui, state: &mut Option<LauncherUi>| {
             if state.is_none()
                 && let Some(b) = backend.take()
@@ -921,7 +1138,7 @@ fn automatic_updates_are_disabled_by_default() {
     let sent2 = sent.clone();
     let mut backend =
         Some(Fake { events: ev, sent: sent2, manage: true, pictures: Rc::default(), asked: Vec::new(), clock: Rc::new(Cell::new(NOW)) });
-    let mut h = Harness::builder().with_size(egui::vec2(1180.0, 900.0)).build_ui_state(
+    let mut h = Harness::builder().with_size(egui::vec2(1180.0, 1200.0)).build_ui_state(
         move |ui, state: &mut Option<LauncherUi>| {
             if state.is_none()
                 && let Some(b) = backend.take()
@@ -948,7 +1165,7 @@ fn the_footer_names_the_services_behind_what_is_on_screen() {
         evs.extend(extra);
         let sent = Rc::new(RefCell::new(Vec::new()));
         let mut backend = Some(Fake { events: evs, sent, manage: true, pictures: Rc::default(), asked: Vec::new(), clock: Rc::new(Cell::new(NOW)) });
-        let mut h = Harness::builder().with_size(egui::vec2(1180.0, 900.0)).build_ui_state(
+        let mut h = Harness::builder().with_size(egui::vec2(1180.0, 1200.0)).build_ui_state(
             move |ui, state: &mut Option<LauncherUi>| {
                 if state.is_none()
                     && let Some(b) = backend.take()
@@ -998,7 +1215,7 @@ fn custom_title_bar_has_window_buttons() {
         asked: Vec::new(),
         clock: Rc::new(Cell::new(NOW)),
     });
-    let mut h = Harness::builder().with_size(egui::vec2(1180.0, 900.0)).build_ui_state(
+    let mut h = Harness::builder().with_size(egui::vec2(1180.0, 1200.0)).build_ui_state(
         move |ui, state: &mut Option<LauncherUi>| {
             if state.is_none()
                 && let Some(b) = backend.take()
@@ -1495,4 +1712,97 @@ fn with_animations_on_hovering_a_card_animates() {
     // The rule wipes in and the icon rises over 0.3 s, at 60 frames a second.
     let frames = frames_to_hover_the_next_card(&mut h);
     assert!(frames >= 10, "{frames} frames");
+}
+
+#[test]
+fn control_wheel_zooms_the_main_ui() {
+    let (mut h, _) = harness(ViewMode::Grid, egui::Theme::Dark, true);
+    h.run_steps(4);
+    let before = h.ctx.zoom_factor();
+    h.input_mut().events.push(egui::Event::MouseWheel {
+        unit: egui::MouseWheelUnit::Point,
+        phase: egui::TouchPhase::Move,
+        delta: egui::vec2(0.0, 100.0),
+        modifiers: egui::Modifiers::COMMAND,
+    });
+    h.step();
+    h.run_steps(2);
+    assert!(h.ctx.zoom_factor() > before);
+}
+
+#[test]
+fn changelog_shortcuts_zoom_only_the_notes_text() {
+    let (mut h, _) = harness(ViewMode::Grid, egui::Theme::Dark, true);
+    h.run_steps(4);
+    h.get_all_by_label("…").next().unwrap().click();
+    h.run_steps(2);
+    h.get_by_label("Release notes").click();
+    h.run_steps(4);
+    let before = h.get_by_label("What's Changed").rect().height();
+    let global = h.ctx.zoom_factor();
+    h.key_press_modifiers(egui::Modifiers::COMMAND, egui::Key::Plus);
+    h.run_steps(3);
+    assert_eq!(h.ctx.zoom_factor(), global, "zooming notes must not resize the main UI");
+    assert!(h.get_by_label("What's Changed").rect().height() > before);
+
+    h.key_press_modifiers(egui::Modifiers::COMMAND, egui::Key::Num0);
+    h.run_steps(3);
+    assert!((h.get_by_label("What's Changed").rect().height() - before).abs() < 0.5);
+    h.input_mut().events.push(egui::Event::MouseWheel {
+        unit: egui::MouseWheelUnit::Point,
+        phase: egui::TouchPhase::Move,
+        delta: egui::vec2(0.0, 100.0),
+        modifiers: egui::Modifiers::COMMAND,
+    });
+    h.step();
+    h.run_steps(2);
+    assert_eq!(h.ctx.zoom_factor(), global);
+    let larger = h.get_by_label("What's Changed").rect().height();
+    assert!(larger > before);
+    h.key_press_modifiers(egui::Modifiers::COMMAND, egui::Key::Minus);
+    h.run_steps(3);
+    assert!(h.get_by_label("What's Changed").rect().height() < larger);
+    snapshot(&mut h, "notes-zoomed");
+    h.get_by_label("Close").click();
+    h.run_steps(3);
+    assert_eq!(h.ctx.zoom_factor(), global);
+    h.key_press_modifiers(egui::Modifiers::COMMAND, egui::Key::Equals);
+    h.run_steps(3);
+    assert!(h.ctx.zoom_factor() > global, "main-UI keyboard zoom should still work after closing notes");
+}
+
+#[test]
+fn command_m_minimizes_the_mac_window_only() {
+    use artcraft_launcher_ui_egui::TitleBar;
+    for bar in [TitleBar::MacOs, TitleBar::Native, TitleBar::Custom] {
+        let (mut h, _) = harness_with_title_bar(events(), ViewMode::Grid, egui::Theme::Dark, true, 1.0, bar);
+        h.run_steps(4);
+        h.input_mut().events.push(egui::Event::Key {
+            key: egui::Key::M,
+            physical_key: None,
+            pressed: true,
+            repeat: false,
+            modifiers: egui::Modifiers::MAC_CMD,
+        });
+        h.step();
+        let minimized = h.output().viewport_output.values().any(|v| v.commands.iter().any(|c| matches!(c, egui::ViewportCommand::Minimized(true))));
+        assert_eq!(minimized, bar == TitleBar::MacOs, "{bar:?}");
+    }
+}
+
+#[test]
+fn an_occupied_folder_asks_before_replacing_it() {
+    let path = "/Volumes/Craft Apps/PhotoCraft.app";
+    let mut ev = events();
+    ev.push(Event::Occupied { app: "photocraft".into(), path: path.into() });
+    ev.push(Event::JobFinished { app: "photocraft".into(), result: Err(format!("{path} already exists")) });
+    let (mut h, sent) = harness_with(ev, ViewMode::Grid, egui::Theme::Dark, true, 1.0);
+    h.run_steps(6);
+    h.get_by_label(&format!("{path} already exists. Installing PhotoCraft will overwrite it."));
+    assert!(h.query_by_label(&format!("{path} already exists")).is_none());
+    sent.borrow_mut().clear();
+    h.get_by_label("Replace").click();
+    h.run_steps(2);
+    assert_eq!(*sent.borrow(), [Command::Replace { app: "photocraft".into() }]);
+    assert!(h.query_by_label("Replace").is_none());
 }

@@ -5,7 +5,7 @@ use artcraft_launcher_core::details::AppDetails;
 use artcraft_launcher_core::platform::pick_asset;
 use artcraft_launcher_core::protocol::{Command, JobPhase};
 use artcraft_launcher_core::status::AppStatus;
-use artcraft_launcher_core::{AppGroup, SUITE, time};
+use artcraft_launcher_core::{SUITE, time};
 use egui::{Color32, CornerRadius, FontId, Rect, RichText, Sense, Stroke, Ui, vec2};
 
 use crate::app::{Dialog, LauncherUi, TitleBar};
@@ -93,7 +93,7 @@ impl LauncherUi {
                 }
                 ui.add_space(6.0);
                 if widgets::nav_link(ui, tl!("Discord"), tl!("Join the ArtCraft community on Discord"), h, false).clicked() {
-                    ui.ctx().open_url(egui::OpenUrl::new_tab(artcraft_launcher_core::catalog::DISCORD_URL));
+                    ui.ctx().open_url(egui::OpenUrl::new_tab(self.discord_url));
                 }
                 ui.add_space(6.0);
                 widgets::rule(ui, h);
@@ -184,7 +184,10 @@ impl LauncherUi {
                                     self.send(Command::UpdateLauncher);
                                 }
                             } else {
-                                let url = self.platform.and_then(|p| launcher_download(&r, p)).unwrap_or_else(|| r.html_url.clone());
+                                let url = self
+                                    .platform
+                                    .and_then(|p| launcher_download(&r, p, crate::settings::is_flatpak_sandbox()))
+                                    .unwrap_or_else(|| r.html_url.clone());
                                 if widgets::button(ui, tl!("Download"), Kind::Primary, 0.0).clicked() {
                                     ui.ctx().open_url(egui::OpenUrl::new_tab(url));
                                 }
@@ -316,8 +319,8 @@ impl LauncherUi {
             Some(p) => fmt(tl!("Downloads for {platform}"), &[("platform", &p.label())]),
             None => tl!("No downloads for this system").into(),
         };
-        use artcraft_launcher_core::catalog::{DISCORD_URL, GITHUB_URL, SOCIAL, WEBSITE_URL};
-        let links = [(tl!("Discord"), DISCORD_URL), (tl!("GitHub"), GITHUB_URL), (tl!("Website"), WEBSITE_URL)];
+        use artcraft_launcher_core::catalog::{GITHUB_URL, SOCIAL, WEBSITE_URL};
+        let links = [(tl!("Discord"), self.discord_url), (tl!("GitHub"), GITHUB_URL), (tl!("Website"), WEBSITE_URL)];
         let (icon, link_gap) = (13.0, 16.0);
         // The links and icons on the right keep their size; the status on the left gets what is
         // left and is cut short with "…", never drawn under them. A narrow window drops the
@@ -411,9 +414,11 @@ impl LauncherUi {
         // A faint wash in the app's colour fades in under the pointer.
         let fill = t.bg.lerp_to_gamma(app_color, 0.05 * lift);
         painter.rect(rect, CornerRadius::ZERO, fill, t.hairline(), egui::StrokeKind::Inside);
-        // On hover, a 2 px rule in the app's colour wipes in from the left along the top.
+        // On hover, a 2 px rule in the app's colour wipes in from the left along the top, inside the
+        // hairlines the card shares with its neighbours (the site's rule sits within its grid gaps).
         if lift > 0.0 {
-            painter.rect_filled(Rect::from_min_size(rect.min, vec2(rect.width() * lift, 2.0)), CornerRadius::ZERO, app_color);
+            let inside = rect.shrink(1.0);
+            painter.rect_filled(Rect::from_min_size(inside.min, vec2(inside.width() * lift, 2.0)), CornerRadius::ZERO, app_color);
         }
 
         // The top strip: the app's number in its colour, and its pages.
@@ -461,9 +466,6 @@ impl LauncherUi {
                 ui.spacing_mut().interact_size.y = 0.0;
                 ui.horizontal(|ui| {
                     widgets::wordmark(ui, app, 22.0);
-                    if app.group == AppGroup::New {
-                        widgets::badge(ui, tl!("New"), t.app_ink(app));
-                    }
                 });
                 ui.add(egui::Label::new(RichText::new(tr_ctx(current(), app.id, app.tagline)).font(tagline.clone()).color(t.muted)).truncate());
             });
@@ -760,7 +762,7 @@ impl LauncherUi {
                 fmt(tl!("{done} downloaded"), &[("done", &widgets::human_bytes(p.done))])
             };
             if resp.on_hover_text(tip).clicked() {
-                self.send(Command::Install { app: id.clone() });
+                self.install_app(&id);
             }
             if widgets::glyph_button(ui, widgets::Glyph::Close, tl!("Discard download")).clicked() {
                 self.send(Command::Cancel { app: id.clone() });
@@ -771,18 +773,18 @@ impl LauncherUi {
         match self.primary_action(entry, status) {
             Primary::Install => {
                 if widgets::button(ui, tl!("Install"), Kind::Primary, main_w).clicked() {
-                    self.send(Command::Install { app: id.clone() });
+                    self.install_app(&id);
                 }
             }
             Primary::Retry(label) => {
                 let tip = tl!("The download is still here. It's checked again, then installed.");
                 if widgets::button(ui, &label, Kind::Primary, main_w).on_hover_text(tip).clicked() {
-                    self.send(Command::Install { app: id.clone() });
+                    self.install_app(&id);
                 }
             }
             Primary::Update(v) => {
                 if widgets::button(ui, &fmt(tl!("Update to {v}"), &[("v", &v)]), Kind::Primary, main_w).clicked() {
-                    self.send(Command::Install { app: id.clone() });
+                    self.install_app(&id);
                 }
             }
             Primary::Open => {
@@ -820,7 +822,7 @@ impl LauncherUi {
                 manage && entry.ready && entry.paused.is_none() && matches!(status, AppStatus::Available | AppStatus::UpdateAvailable);
             if can_download_again && ui.button(tl!("Download again")).clicked() {
                 self.send(Command::Cancel { app: id.clone() });
-                self.send(Command::Install { app: id.clone() });
+                self.install_app(&id);
                 ui.close();
             }
             if manage && status.is_installed() {
@@ -833,7 +835,7 @@ impl LauncherUi {
                     ui.close();
                 }
                 if *status == AppStatus::UpToDate && ui.button(tl!("Reinstall")).clicked() {
-                    self.send(Command::Install { app: id.clone() });
+                    self.install_app(&id);
                     ui.close();
                 }
                 ui.separator();
@@ -923,10 +925,13 @@ pub(crate) fn version_line(e: &AppEntry, status: &AppStatus) -> String {
     }
 }
 
-/// The launcher's own download for this platform.
-pub(crate) fn launcher_download(r: &artcraft_launcher_core::Release, p: artcraft_launcher_core::Platform) -> Option<String> {
+/// The launcher's own download for this platform. `flatpak` is whether this copy runs as a
+/// Flatpak; such a copy's download stays the `.flatpak` bundle — offering it an AppImage (or a
+/// `.deb`) would point at replacing the sandboxed install with a different one.
+pub(crate) fn launcher_download(r: &artcraft_launcher_core::Release, p: artcraft_launcher_core::Platform, flatpak: bool) -> Option<String> {
     use artcraft_launcher_core::PackageKind;
     let kinds: &[PackageKind] = match p.os {
+        artcraft_launcher_core::Os::Linux if flatpak => &[PackageKind::Flatpak],
         artcraft_launcher_core::Os::Linux => &[PackageKind::AppImage, PackageKind::Deb],
         _ => p.default_kinds(),
     };
@@ -948,4 +953,45 @@ fn centered_lines(ui: &mut Ui, fonts: &[&FontId], gap: f32, add_contents: impl F
 fn lines_height(ui: &Ui, fonts: &[&FontId], gap: f32) -> f32 {
     let line = |font: &FontId| ui.fonts_mut(|f| f.layout_no_wrap(String::new(), font.clone(), Color32::PLACEHOLDER)).size().y;
     (fonts.iter().map(|font| line(font) + gap).sum::<f32>() - gap).max(0.0)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use artcraft_launcher_core::catalog::LAUNCHER_ID;
+    use artcraft_launcher_core::{Arch, Asset, Platform, Release};
+
+    fn release() -> Release {
+        let asset = |name: &str| Asset { name: name.into(), size: 0, url: format!("https://dl.example/{name}"), sha256: None };
+        Release {
+            tag: "v0.4.1".into(),
+            version: None,
+            name: "ArtCraft Launcher v0.4.1".into(),
+            published_at: None,
+            html_url: "https://github.com/storytold/craft-launcher/releases/tag/v0.4.1".into(),
+            notes: String::new(),
+            prerelease: false,
+            assets: vec![
+                asset(&format!("{LAUNCHER_ID}-0.4.1-linux-x86_64.flatpak")),
+                asset(&format!("{LAUNCHER_ID}-0.4.1-linux-x86_64.AppImage")),
+                asset(&format!("{LAUNCHER_ID}-0.4.1-linux-x86_64.deb")),
+            ],
+        }
+    }
+
+    fn platform() -> Platform {
+        Platform { os: artcraft_launcher_core::Os::Linux, arch: Arch::X64 }
+    }
+
+    #[test]
+    fn a_flatpak_copy_of_the_launcher_gets_the_bundle() {
+        let url = launcher_download(&release(), platform(), true).unwrap();
+        assert_eq!(url, format!("https://dl.example/{LAUNCHER_ID}-0.4.1-linux-x86_64.flatpak"));
+    }
+
+    #[test]
+    fn a_plain_linux_copy_still_gets_the_appimage() {
+        let url = launcher_download(&release(), platform(), false).unwrap();
+        assert_eq!(url, format!("https://dl.example/{LAUNCHER_ID}-0.4.1-linux-x86_64.AppImage"));
+    }
 }

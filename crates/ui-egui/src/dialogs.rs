@@ -12,7 +12,7 @@ use crate::widgets::{self, Cell, Kind};
 
 impl LauncherUi {
     pub(crate) fn dialogs(&mut self, ctx: &egui::Context, host: &mut dyn Host) {
-        let Some(dialog) = self.dialog.clone() else {
+        let Some(mut dialog) = self.dialog.clone() else {
             self.alert_popup(ctx);
             return;
         };
@@ -22,14 +22,18 @@ impl LauncherUi {
         let modal = egui::Modal::new(egui::Id::new("dialog").with(dialog.key()))
             .frame(egui::Frame::new().fill(t.bg).stroke(egui::Stroke::new(1.0, t.line_strong)).shadow(theme::shadow(&t)).inner_margin(24));
         let mut close = false;
-        let response = match &dialog {
+        let response = match &mut dialog {
             Dialog::Notes(id) => modal.show(ctx, |ui| close = self.notes_dialog(ui, id)),
             Dialog::ConfirmUninstall(id) => modal.show(ctx, |ui| close = self.uninstall_dialog(ui, id)),
+            Dialog::Install { app, folder } => modal.show(ctx, |ui| close = self.install_dialog(ui, app, folder, host)),
+            Dialog::Replace { app, path } => modal.show(ctx, |ui| close = self.replace_dialog(ui, app, path)),
             Dialog::Settings => modal.show(ctx, |ui| close = self.settings_dialog(ui, host)),
             Dialog::LauncherUpdate(r) => modal.show(ctx, |ui| close = self.launcher_update_dialog(ui, r)),
         };
         if close || response.should_close() {
             self.dialog = None;
+        } else {
+            self.dialog = Some(dialog);
         }
     }
 
@@ -94,7 +98,7 @@ impl LauncherUi {
             if release.notes.is_empty() {
                 ui.label(tl!("These notes weren't fetched (GitHub's request limit was reached). They're on the release page."));
             } else {
-                crate::notes::show(ui, &release.notes);
+                crate::notes::show_scaled(ui, &release.notes, self.notes_zoom);
             }
         });
         ui.add_space(12.0);
@@ -128,7 +132,10 @@ impl LauncherUi {
                         close = true;
                     }
                 } else {
-                    let url = self.platform.and_then(|p| crate::views::launcher_download(r, p)).unwrap_or_else(|| r.html_url.clone());
+                    let url = self
+                        .platform
+                        .and_then(|p| crate::views::launcher_download(r, p, crate::settings::is_flatpak_sandbox()))
+                        .unwrap_or_else(|| r.html_url.clone());
                     if widgets::button(ui, tl!("Download"), Kind::Primary, 0.0).clicked() {
                         ui.ctx().open_url(egui::OpenUrl::new_tab(url));
                         close = true;
@@ -175,6 +182,80 @@ impl LauncherUi {
             });
         });
         close
+    }
+
+    fn replace_dialog(&mut self, ui: &mut egui::Ui, id: &str, path: &str) -> bool {
+        let Some(app) = self.entry(id).map(|e| e.app) else { return true };
+        let t = Tokens::get(ui.ctx());
+        ui.set_width(440.0f32.min(ui.ctx().content_rect().width() - 80.0));
+        Self::title(ui, crate::icons::app(id), tl!("Replace what's there?"), "");
+        ui.label(
+            RichText::new(fmt(tl!("{path} already exists. Installing {name} will overwrite it."), &[("path", path), ("name", app.name)]))
+                .color(t.muted),
+        );
+        ui.add_space(20.0);
+        let mut close = false;
+        ui.horizontal(|ui| {
+            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                if widgets::button(ui, tl!("Replace"), Kind::Danger, 110.0).clicked() {
+                    self.send(Command::Replace { app: id.to_string() });
+                    close = true;
+                }
+                if widgets::button(ui, tl!("Cancel"), Kind::Secondary, 90.0).clicked() {
+                    close = true;
+                }
+            });
+        });
+        close
+    }
+
+    fn install_dialog(&mut self, ui: &mut egui::Ui, id: &str, folder: &mut String, host: &mut dyn Host) -> bool {
+        let Some(app) = self.entry(id).map(|e| e.app) else { return true };
+        ui.set_width(440.0f32.min(ui.ctx().content_rect().width() - 80.0));
+        Self::title(ui, None, app.name, tl!("Install folder"));
+        let default = self.settings.install_locations.root.as_deref().unwrap_or(tl!("System default"));
+        Self::folder_field(ui, folder, Some(default), host);
+        if self.platform.is_some_and(|p| p.os == Os::Linux) {
+            ui.label(tl!("Custom folders use AppImage on Linux."));
+        }
+        ui.add_space(14.0);
+        let mut close = false;
+        ui.horizontal(|ui| {
+            if widgets::button(ui, tl!("Install"), Kind::Primary, 100.0).clicked() {
+                if folder.is_empty() {
+                    self.settings.install_locations.per_app.remove(id);
+                } else {
+                    self.settings.install_locations.per_app.insert(id.to_string(), folder.clone());
+                }
+                self.configure();
+                self.send(Command::Install { app: id.to_string() });
+                close = true;
+            }
+            close |= widgets::button(ui, tl!("Cancel"), Kind::Secondary, 90.0).clicked();
+        });
+        close
+    }
+
+    fn folder_field(ui: &mut egui::Ui, folder: &mut String, default: Option<&str>, host: &mut dyn Host) {
+        let label = ui.label(tl!("Install folder"));
+        ui.add(
+            egui::TextEdit::singleline(folder)
+                .id_salt("install_folder")
+                .hint_text(default.unwrap_or(tl!("System default")))
+                .desired_width(f32::INFINITY),
+        )
+        .labelled_by(label.id);
+        ui.label(tl!("Apps are placed inside this folder."));
+        ui.horizontal(|ui| {
+            if widgets::button(ui, tl!("Browse…"), Kind::Secondary, 100.0).clicked()
+                && let Some(selected) = host.pick_folder(if folder.is_empty() { default } else { Some(folder.as_str()) })
+            {
+                *folder = selected;
+            }
+            if widgets::button(ui, tl!("Use default"), Kind::Secondary, 120.0).clicked() {
+                folder.clear();
+            }
+        });
     }
 
     fn settings_dialog(&mut self, ui: &mut egui::Ui, host: &mut dyn Host) -> bool {
@@ -282,6 +363,42 @@ impl LauncherUi {
         ui.checkbox(&mut self.settings.notify, tl!("Notify me when an installed app has an update"));
         ui.checkbox(&mut self.settings.prereleases, tl!("Include pre-releases (betas and release candidates)"));
 
+        if self.caps.manage_apps {
+            section(ui, tl!("Default install folder"));
+            if self.custom_install_folders() {
+                let mut folder = self.settings.install_locations.root.clone().unwrap_or_default();
+                Self::folder_field(ui, &mut folder, None, host);
+                self.settings.install_locations.root = (!folder.is_empty()).then_some(folder);
+                ui.label(RichText::new(tl!("New installs use this folder. Updates stay in their current location.")).size(12.0).color(t.muted));
+                if self.platform.is_some_and(|p| p.os == Os::Linux) {
+                    ui.label(RichText::new(tl!("Custom folders use AppImage on Linux.")).size(12.0).color(t.muted));
+                }
+            } else {
+                ui.label(tl!("The system manages install locations here."));
+            }
+        }
+
+        if self.caps.manage_apps && self.platform.is_some_and(|p| p.os == Os::Windows) {
+            section(ui, tl!("Installing on Windows"));
+            let mut choice = self
+                .settings
+                .preferred_kinds
+                .first()
+                .copied()
+                .filter(|kind| matches!(kind, PackageKind::Msi | PackageKind::PortableZip))
+                .or(Some(PackageKind::Msi));
+            row(ui, tl!("Install new apps as"), 210.0, &mut |ui| {
+                let label = choice.map_or_else(|| crate::i18n::t(PackageKind::Msi.label()), |kind| crate::i18n::t(kind.label()));
+                egui::ComboBox::from_id_salt("windows-kind").selected_text(label).width(210.0).show_ui(ui, |ui| {
+                    for kind in [PackageKind::Msi, PackageKind::PortableZip] {
+                        ui.selectable_value(&mut choice, Some(kind), crate::i18n::t(kind.label()));
+                    }
+                });
+            });
+            self.settings.preferred_kinds = choice.into_iter().collect();
+            ui.label(RichText::new(tl!("Updates always use the format an app was installed with.")).size(12.0).color(t.muted));
+        }
+
         if self.caps.manage_apps && self.platform.is_some_and(|p| p.os == Os::Linux) {
             section(ui, tl!("Installing on Linux"));
             let is_flatpak = crate::settings::is_flatpak_sandbox();
@@ -304,7 +421,7 @@ impl LauncherUi {
                     if !is_flatpak && !is_appimage {
                         ui.selectable_value(&mut choice, None, tl!("System package (recommended)"));
                     }
-                    for k in [PackageKind::Deb, PackageKind::Rpm, PackageKind::Flatpak, PackageKind::AppImage] {
+                    for k in [PackageKind::Deb, PackageKind::Rpm, PackageKind::ArchPkg, PackageKind::Flatpak, PackageKind::AppImage] {
                         ui.selectable_value(&mut choice, Some(k), crate::i18n::t(k.label()));
                     }
                     // The tarball is unpacked and run inside the launcher's own sandbox, so it
@@ -340,9 +457,9 @@ impl LauncherUi {
         ui.label(RichText::new(tl!("Questions, ideas and news from the ArtCraft team")).color(t.muted));
         ui.add_space(6.0);
         ui.horizontal_wrapped(|ui| {
-            use artcraft_launcher_core::catalog::{DISCORD_URL, GITHUB_URL, WEBSITE_URL};
-            if widgets::button(ui, tl!("Join the Discord"), Kind::Primary, 0.0).on_hover_text(DISCORD_URL).clicked() {
-                ui.ctx().open_url(egui::OpenUrl::new_tab(DISCORD_URL));
+            use artcraft_launcher_core::catalog::{GITHUB_URL, WEBSITE_URL};
+            if widgets::button(ui, tl!("Join the Discord"), Kind::Primary, 0.0).on_hover_text(self.discord_url).clicked() {
+                ui.ctx().open_url(egui::OpenUrl::new_tab(self.discord_url));
             }
             if widgets::button(ui, tl!("Website"), Kind::Secondary, 0.0).on_hover_text(WEBSITE_URL).clicked() {
                 ui.ctx().open_url(egui::OpenUrl::new_tab(WEBSITE_URL));

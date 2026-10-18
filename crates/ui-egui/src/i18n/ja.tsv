@@ -91,6 +91,7 @@
 	Notify me when an installed app has an update	インストール済みアプリに更新があるときに通知する
 	Include pre-releases (betas and release candidates)	プレリリース（ベータ版とリリース候補）を含める
 	Installing on Linux	Linux へのインストール
+	Installing on Windows	Windows へのインストール
 	Install new apps as	新しいアプリのインストール形式
 	System package (recommended)	システムパッケージ（推奨）
 	Updates always use the format an app was installed with.	更新は常に、アプリをインストールしたときの形式で行われます。
@@ -156,6 +157,7 @@
 	Disk image (.dmg)	ディスクイメージ (.dmg)
 	Debian package (.deb)	Debian パッケージ (.deb)
 	RPM package (.rpm)	RPM パッケージ (.rpm)
+	Arch package (.pkg.tar.zst)	Arch パッケージ (.pkg.tar.zst)
 	Flatpak bundle	Flatpak バンドル
 	Tarball (.tar.gz)	tarball (.tar.gz)
 
@@ -347,3 +349,20 @@ filter	Installed	インストール済み
 	ArtCraft on GitHub	GitHub の ArtCraft
 	Join the ArtCraft Discord	ArtCraft Discord に参加
 @plural	ArtCraft Launcher · {n} update available|ArtCraft Launcher · {n} updates available	ArtCraft Launcher · {n} 件の更新があります
+	Install folder	インストール先フォルダー
+	Default install folder	既定のインストール先フォルダー
+	System default	システムの既定
+	Browse…	参照…
+	Use default	既定を使用
+	New installs use this folder. Updates stay in their current location.	新しいインストールにはこのフォルダーを使用します。更新時は現在の場所を維持します。
+	Custom folders use AppImage on Linux.	Linuxで任意のフォルダーにインストールする場合はAppImageを使用します。
+	The system manages install locations here.	この環境ではシステムがインストール先を管理します。
+@msg	couldn't use install folder {path}: {reason}	インストール先フォルダー {path} を使用できませんでした: {reason}
+@msg	this release has no AppImage for a custom install folder	このリリースには任意のインストール先フォルダーで使用できるAppImageがありません
+@msg	custom install folders aren't supported on this system	このシステムではインストール先フォルダーの変更に対応していません
+@msg	{path} already exists and wasn't installed by ArtCraft Launcher	{path} は既に存在し、ArtCraft Launcherでインストールされたものではありません
+@msg	couldn't move {path} to Trash ({reason}). Remove it in Finder instead.	{path} をゴミ箱に移動できませんでした（{reason}）。Finderで削除してください。
+	Apps are placed inside this folder.	アプリはこのフォルダー内に配置されます。
+	Replace what's there?	既存の項目を置き換えますか？
+	{path} already exists. Installing {name} will overwrite it.	{path} は既に存在します。{name} をインストールすると上書きされます。
+	Replace	置き換える

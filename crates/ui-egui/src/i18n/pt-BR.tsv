@@ -77,6 +77,7 @@
 	Notify me when an installed app has an update	Notificar quando um aplicativo instalado tiver atualização
 	Include pre-releases (betas and release candidates)	Incluir versões de pré-lançamento (betas e RC)
 	Installing on Linux	Instalação no Linux
+	Installing on Windows	Instalação no Windows
 	Install new apps as	Instalar novos aplicativos como
 	System package (recommended)	Pacote do sistema (recomendado)
 	Updates always use the format an app was installed with.	As atualizações sempre usam o formato com o qual o aplicativo foi instalado.
@@ -142,6 +143,7 @@
 	Disk image (.dmg)	Imagem de disco (.dmg)
 	Debian package (.deb)	Pacote Debian (.deb)
 	RPM package (.rpm)	Pacote RPM (.rpm)
+	Arch package (.pkg.tar.zst)	Pacote Arch (.pkg.tar.zst)
 	Flatpak bundle	Pacote Flatpak
 	Tarball (.tar.gz)	Arquivo (.tar.gz)
 
@@ -332,3 +334,20 @@ filter	Installed	Instalados
 	Loading pictures…	Carregando imagens…
 	Pictures couldn't be loaded. Reopen this page to try again.	Não foi possível carregar as imagens. Abra a página novamente para tentar de novo.
 @plural	ArtCraft Launcher · {n} update available|ArtCraft Launcher · {n} updates available	ArtCraft Launcher · {n} atualização disponível|ArtCraft Launcher · {n} atualizações disponíveis
+	Install folder	Pasta de instalação
+	Default install folder	Pasta de instalação padrão
+	System default	Padrão do sistema
+	Browse…	Procurar…
+	Use default	Usar padrão
+	New installs use this folder. Updates stay in their current location.	Novas instalações usam esta pasta. As atualizações mantêm o local atual.
+	Custom folders use AppImage on Linux.	Pastas personalizadas usam AppImage no Linux.
+	The system manages install locations here.	O sistema gerencia os locais de instalação neste ambiente.
+@msg	couldn't use install folder {path}: {reason}	não foi possível usar a pasta de instalação {path}: {reason}
+@msg	this release has no AppImage for a custom install folder	esta versão não tem um AppImage para uma pasta de instalação personalizada
+@msg	custom install folders aren't supported on this system	pastas de instalação personalizadas não são compatíveis com este sistema
+@msg	{path} already exists and wasn't installed by ArtCraft Launcher	{path} já existe e não foi instalado pelo ArtCraft Launcher
+@msg	couldn't move {path} to Trash ({reason}). Remove it in Finder instead.	não foi possível mover {path} para o Lixo ({reason}). Remova-o pelo Finder.
+	Apps are placed inside this folder.	Os aplicativos são colocados dentro desta pasta.
+	Replace what's there?	Substituir o que já existe?
+	{path} already exists. Installing {name} will overwrite it.	{path} já existe. Instalar o {name} vai substituí-lo.
+	Replace	Substituir

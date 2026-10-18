@@ -71,6 +71,7 @@
 	Notify me when an installed app has an update	已安装应用有更新时通知我
 	Include pre-releases (betas and release candidates)	包含预发布版本（测试版和候选版）
 	Installing on Linux	Linux 安装设置
+	Installing on Windows	Windows 安装设置
 	Install new apps as	新应用安装格式
 	System package (recommended)	系统软件包（推荐）
 	Updates always use the format an app was installed with.	更新时始终使用应用原来的安装格式。
@@ -287,6 +288,7 @@ figcraft	Interface design and prototyping	界面设计与原型制作
 	Disk image (.dmg)	磁盘映像 (.dmg)
 	Debian package (.deb)	Debian 软件包 (.deb)
 	RPM package (.rpm)	RPM 软件包 (.rpm)
+	Arch package (.pkg.tar.zst)	Arch 软件包 (.pkg.tar.zst)
 	Flatpak bundle	Flatpak 包
 	Tarball (.tar.gz)	压缩包 (.tar.gz)
 	App details	应用详情
@@ -312,3 +314,20 @@ figcraft	Interface design and prototyping	界面设计与原型制作
 @msg	{name} installed: {version} (this release publishes no checksum, so only its size was checked)	{name} 已安装：{version}（此版本未发布校验和，因此只检查了文件大小）
 @msg	{name} was removed	{name} 已卸载
 @msg	{name} is running. Quit it, then try again.	{name} 正在运行。请先退出，然后重试。
+	Install folder	安装文件夹
+	Default install folder	默认安装文件夹
+	System default	系统默认
+	Browse…	浏览…
+	Use default	使用默认
+	New installs use this folder. Updates stay in their current location.	新安装的应用使用此文件夹。更新时保留当前位置。
+	Custom folders use AppImage on Linux.	在 Linux 上，自定义文件夹使用 AppImage。
+	The system manages install locations here.	此环境中的安装位置由系统管理。
+@msg	couldn't use install folder {path}: {reason}	无法使用安装文件夹 {path}：{reason}
+@msg	this release has no AppImage for a custom install folder	此版本没有可用于自定义安装文件夹的 AppImage
+@msg	custom install folders aren't supported on this system	此系统不支持自定义安装文件夹
+@msg	{path} already exists and wasn't installed by ArtCraft Launcher	{path} 已存在，且并非由 ArtCraft Launcher 安装
+@msg	couldn't move {path} to Trash ({reason}). Remove it in Finder instead.	无法将 {path} 移到废纸篓（{reason}）。请在 Finder 中移除。
+	Apps are placed inside this folder.	应用会放置在此文件夹内。
+	Replace what's there?	替换现有内容？
+	{path} already exists. Installing {name} will overwrite it.	{path} 已存在。安装 {name} 将覆盖它。
+	Replace	替换

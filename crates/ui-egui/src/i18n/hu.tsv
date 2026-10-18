@@ -89,6 +89,7 @@
 	Notify me when an installed app has an update	Értesítés a telepített alkalmazásokhoz elérhető frissítésekről
 	Include pre-releases (betas and release candidates)	Előzetes kiadások engedélyezése (béta- és kiadásra jelölt verziók)
 	Installing on Linux	Telepítés Linuxon
+	Installing on Windows	Telepítés Windowson
 	Install new apps as	Új alkalmazások csomagformátuma
 	System package (recommended)	Rendszercsomag (ajánlott)
 	Updates always use the format an app was installed with.	A frissítések mindig az eredeti telepítés csomagformátumát használják.
@@ -154,6 +155,7 @@
 	Disk image (.dmg)	Lemezkép (.dmg)
 	Debian package (.deb)	Debian-csomag (.deb)
 	RPM package (.rpm)	RPM-csomag (.rpm)
+	Arch package (.pkg.tar.zst)	Arch-csomag (.pkg.tar.zst)
 	Flatpak bundle	Flatpak-csomag
 	Tarball (.tar.gz)	Tömörített archívum (.tar.gz)
 
@@ -345,3 +347,20 @@ filter	Installed	Telepítve
 	ArtCraft on GitHub	ArtCraft a GitHubon
 	Join the ArtCraft Discord	Csatlakozás az ArtCraft Discord-közösségéhez
 @plural	ArtCraft Launcher · {n} update available|ArtCraft Launcher · {n} updates available	ArtCraft Launcher · {n} frissítés elérhető|ArtCraft Launcher · {n} frissítés elérhető
+	Install folder	Telepítési mappa
+	Default install folder	Alapértelmezett telepítési mappa
+	System default	Rendszer alapértelmezése
+	Browse…	Tallózás…
+	Use default	Alapértelmezett használata
+	New installs use this folder. Updates stay in their current location.	Az új telepítések ezt a mappát használják. A frissítések a jelenlegi helyükön maradnak.
+	Custom folders use AppImage on Linux.	Linuxon az egyéni mappákhoz AppImage szükséges.
+	The system manages install locations here.	Itt a rendszer kezeli a telepítési helyeket.
+@msg	couldn't use install folder {path}: {reason}	a(z) {path} telepítési mappa nem használható: {reason}
+@msg	this release has no AppImage for a custom install folder	ez a kiadás nem tartalmaz AppImage-fájlt egyéni telepítési mappához
+@msg	custom install folders aren't supported on this system	ezen a rendszeren nem támogatottak az egyéni telepítési mappák
+@msg	{path} already exists and wasn't installed by ArtCraft Launcher	a(z) {path} már létezik, és nem az ArtCraft Launcher telepítette
+@msg	couldn't move {path} to Trash ({reason}). Remove it in Finder instead.	a(z) {path} nem helyezhető a Kukába ({reason}). Távolítsa el a Finderben.
+	Apps are placed inside this folder.	Az alkalmazások ebbe a mappába kerülnek.
+	Replace what's there?	Lecseréli, ami ott van?
+	{path} already exists. Installing {name} will overwrite it.	{path} már létezik. A(z) {name} telepítése felülírja.
+	Replace	Csere

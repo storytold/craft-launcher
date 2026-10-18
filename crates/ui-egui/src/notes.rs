@@ -35,6 +35,19 @@ pub(crate) fn classify(line: &str) -> Line<'_> {
 }
 
 pub(crate) fn show(ui: &mut Ui, notes: &str) {
+    show_scaled(ui, notes, 1.0);
+}
+
+pub(crate) fn show_scaled(ui: &mut Ui, notes: &str, scale: f32) {
+    ui.scope(|ui| {
+        for font in ui.style_mut().text_styles.values_mut() {
+            font.size *= scale;
+        }
+        show_lines(ui, notes, scale);
+    });
+}
+
+fn show_lines(ui: &mut Ui, notes: &str, scale: f32) {
     let t = Tokens::get(ui.ctx());
     if notes.trim().is_empty() {
         ui.label(RichText::new(tl!("No notes were published with this release.")).color(t.muted));
@@ -44,7 +57,7 @@ pub(crate) fn show(ui: &mut Ui, notes: &str) {
         match classify(line) {
             Line::Heading(h) => {
                 ui.add_space(6.0);
-                ui.label(crate::widgets::heading(h, 16.0, t.ink_strong));
+                ui.label(crate::widgets::heading(h, 16.0 * scale, t.ink_strong));
             }
             Line::Bullet(text, link) => {
                 ui.horizontal_wrapped(|ui| {
@@ -53,7 +66,7 @@ pub(crate) fn show(ui: &mut Ui, notes: &str) {
                     ui.label(RichText::new(text).color(t.ink));
                     if let Some(url) = link {
                         let short = url.rsplit('/').next().map_or_else(|| tl!("link").to_string(), |n| format!("#{n}"));
-                        ui.hyperlink_to(RichText::new(short).size(12.0), url);
+                        ui.hyperlink_to(RichText::new(short).size(12.0 * scale), url);
                     }
                 });
             }

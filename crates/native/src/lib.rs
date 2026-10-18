@@ -17,6 +17,8 @@ pub mod login;
 pub mod manifest;
 pub mod packages;
 pub mod paths;
+#[cfg(windows)]
+pub mod portable;
 pub mod process;
 pub mod proxy;
 pub mod queue;

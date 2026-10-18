@@ -84,6 +84,7 @@ impl CheckEvery {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Settings {
+    pub install_locations: artcraft_launcher_core::protocol::InstallLocations,
     pub view: ViewMode,
     pub filter: Filter,
     pub sort: SortKey,
@@ -169,6 +170,7 @@ pub fn default_preferred_kinds() -> Vec<PackageKind> {
 impl Default for Settings {
     fn default() -> Self {
         Self {
+            install_locations: Default::default(),
             view: ViewMode::Grid,
             filter: Filter::All,
             sort: SortKey::Suite,

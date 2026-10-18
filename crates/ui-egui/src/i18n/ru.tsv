@@ -87,6 +87,7 @@
 	Notify me when an installed app has an update	Уведомлять, когда у установленного приложения есть обновление
 	Include pre-releases (betas and release candidates)	Включать предварительные релизы (бета и RC)
 	Installing on Linux	Установка в Linux
+	Installing on Windows	Установка в Windows
 	Install new apps as	Устанавливать новые приложения как
 	System package (recommended)	Системный пакет (рек.)
 	Updates always use the format an app was installed with.	Обновления всегда используют формат, с которым приложение было установлено.
@@ -152,6 +153,7 @@
 	Disk image (.dmg)	Образ диска (.dmg)
 	Debian package (.deb)	Пакет Debian (.deb)
 	RPM package (.rpm)	Пакет RPM (.rpm)
+	Arch package (.pkg.tar.zst)	Пакет Arch (.pkg.tar.zst)
 	Flatpak bundle	Пакет Flatpak
 	Tarball (.tar.gz)	Архив (.tar.gz)
 
@@ -340,3 +342,20 @@ filter	Installed	Установлены
 	Loading pictures…	Загрузка изображений…
 	Pictures couldn't be loaded. Reopen this page to try again.	Не удалось загрузить изображения. Откройте страницу снова, чтобы повторить попытку.
 @plural	ArtCraft Launcher · {n} update available|ArtCraft Launcher · {n} updates available	ArtCraft Launcher · {n} обновление|ArtCraft Launcher · {n} обновления|ArtCraft Launcher · {n} обновлений
+	Install folder	Папка установки
+	Default install folder	Папка установки по умолчанию
+	System default	По умолчанию в системе
+	Browse…	Обзор…
+	Use default	Использовать по умолчанию
+	New installs use this folder. Updates stay in their current location.	Новые приложения устанавливаются в эту папку. При обновлении текущее расположение сохраняется.
+	Custom folders use AppImage on Linux.	В Linux для установки в выбранную папку используется AppImage.
+	The system manages install locations here.	В этой среде расположением приложений управляет система.
+@msg	couldn't use install folder {path}: {reason}	не удалось использовать папку установки {path}: {reason}
+@msg	this release has no AppImage for a custom install folder	в этом выпуске нет AppImage для установки в выбранную папку
+@msg	custom install folders aren't supported on this system	в этой системе выбор папки установки не поддерживается
+@msg	{path} already exists and wasn't installed by ArtCraft Launcher	{path} уже существует и не был установлен через ArtCraft Launcher
+@msg	couldn't move {path} to Trash ({reason}). Remove it in Finder instead.	не удалось переместить {path} в Корзину ({reason}). Удалите его через Finder.
+	Apps are placed inside this folder.	Приложения размещаются внутри этой папки.
+	Replace what's there?	Заменить существующее?
+	{path} already exists. Installing {name} will overwrite it.	{path} уже существует. Установка {name} перезапишет его.
+	Replace	Заменить

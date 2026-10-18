@@ -262,7 +262,7 @@ impl Http {
                 return Ok(());
             }
             if size > 0 && have > size {
-                let _ = std::fs::remove_file(part);
+                std::fs::remove_file(part).map_err(|e| format!("couldn't save the download ({e})"))?;
                 continue;
             }
             match self.attempt(url, part, have, size, stop, progress) {
@@ -813,6 +813,55 @@ pub(crate) mod tests {
         assert_eq!(std::fs::read(&dest).unwrap(), body);
         assert_eq!(*ranges.lock().unwrap(), [Some("500000".to_string())]);
         assert!(!part_path(&dest, body.len() as u64).exists());
+    }
+
+    #[test]
+    fn an_oversized_partial_file_is_restarted_from_zero() {
+        let (body, sha) = body();
+        let (url, ranges) = serve(body.clone(), vec![Reply::Full]);
+        let dir = tempfile::tempdir().unwrap();
+        let dest = dir.path().join("file.bin");
+        let size = body.len() as u64;
+        std::fs::write(part_path(&dest, size), vec![b'x'; body.len() + 1]).unwrap();
+        Http::new().unwrap().download(&url, &dest, size, &sha, &Stop::default(), &mut |_| {}).unwrap();
+        assert_eq!(std::fs::read(dest).unwrap(), body);
+        assert_eq!(*ranges.lock().unwrap(), [None]);
+    }
+
+    #[test]
+    fn an_oversized_partial_file_that_cannot_be_removed_reports_an_error() {
+        let dir = tempfile::tempdir().unwrap();
+        let part = part_path(&dir.path().join("file.bin"), 1);
+        // A directory cannot be removed as a file on Unix. On Windows, hold a file open
+        // without delete sharing: metadata remains readable, but removing it is refused.
+        #[cfg(unix)]
+        std::fs::create_dir(&part).unwrap();
+        #[cfg(windows)]
+        let _locked_partial = {
+            use std::os::windows::fs::OpenOptionsExt;
+            std::fs::write(&part, b"too large").unwrap();
+            // FILE_SHARE_READ | FILE_SHARE_WRITE, without FILE_SHARE_DELETE.
+            std::fs::File::options().read(true).share_mode(0x00000003).open(&part).unwrap()
+        };
+        assert!(std::fs::metadata(&part).unwrap().len() > 1);
+        assert!(std::fs::remove_file(&part).is_err());
+        let http = Http::new().unwrap();
+        let stop = Stop::default();
+        // Bound the regression: the old retry loop spins until Cancel, without a request.
+        let (finished, done) = std::sync::mpsc::channel();
+        let error = std::thread::scope(|scope| {
+            let watchdog_stop = &stop;
+            scope.spawn(move || {
+                if done.recv_timeout(Duration::from_secs(10)).is_err() {
+                    watchdog_stop.cancel();
+                }
+            });
+            let result = http.fetch_resuming("http://127.0.0.1:9/file.bin", &part, 1, &stop, &mut |_| {});
+            let _ = finished.send(());
+            result.unwrap_err()
+        });
+        assert!(error.contains("couldn't save the download"), "{error}");
+        assert!(part.exists(), "a blocked partial file must be left alone");
     }
 
     /// Live: a real Craft App release asset (`cargo test -p artcraft-launcher-native -- --ignored`).

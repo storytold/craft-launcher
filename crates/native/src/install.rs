@@ -21,9 +21,9 @@
 
 use std::path::{Path, PathBuf};
 
-use artcraft_launcher_core::protocol::{CANCELLED, INSTALL_CANCELLED, JobPhase};
+use artcraft_launcher_core::protocol::{CANCELLED, INSTALL_CANCELLED, InstallLocations, JobPhase};
 use artcraft_launcher_core::release::{self, Asset, Release};
-use artcraft_launcher_core::{CraftApp, InstallSource, Installed, PackageKind};
+use artcraft_launcher_core::{CraftApp, InstallSource, Installed, PackageKind, version};
 
 use crate::http::{Http, Stop, Transfer};
 use crate::manifest::Record;
@@ -36,10 +36,13 @@ pub struct Job<'a> {
     pub paths: &'a Paths,
     pub stop: &'a Stop,
     pub phase: &'a mut dyn FnMut(JobPhase),
+    pub install_locations: &'a InstallLocations,
+    /// Write over whatever [`occupied`] found.
+    pub replace: bool,
 }
 
 /// Downloads and installs `asset` of `release`. Returns a record when the launcher owns the
-/// result (portable zip, AppImage, tarball); MSI and macOS installs are found by detection.
+/// result (portable ZIP, AppImage, macOS bundle, tarball); MSI installs are found in the registry.
 /// `previous` is the launcher's record of the copy being replaced, if it installed it.
 pub fn install(
     app: &CraftApp,
@@ -50,12 +53,40 @@ pub fn install(
     previous: Option<&Record>,
     job: &mut Job<'_>,
 ) -> Result<Option<Record>, String> {
-    let _ = previous;
+    install_at(app, release, asset, kind, existing, previous, job, None)
+}
+
+type RecordCommit<'a> = Option<&'a mut dyn FnMut(&Record) -> Result<(), String>>;
+
+#[allow(clippy::too_many_arguments)]
+pub fn install_at(
+    app: &CraftApp,
+    release: &Release,
+    asset: &Asset,
+    kind: PackageKind,
+    existing: Option<&Installed>,
+    previous: Option<&Record>,
+    job: &mut Job<'_>,
+    commit: RecordCommit<'_>,
+) -> Result<Option<Record>, String> {
+    #[cfg(windows)]
+    let mut commit = commit;
+    #[cfg(not(windows))]
+    let _ = commit;
+    #[allow(unused_variables)]
+    let destination = destination(app, kind, existing, previous, job.install_locations)?;
     if let Some(inst) = existing
         && inst.source.launcher_can_update()
         && process::is_running(Path::new(&inst.location))
     {
         return Err(format!("{} is running. Quit it, then try again.", app.name));
+    }
+    if !job.replace
+        && let Some(inst) = existing
+        && let (Some(rel_v), Some(inst_v)) = (release.version.as_ref(), inst.version.as_ref())
+        && version::is_newer(inst_v, rel_v)
+    {
+        return Err(format!("Cannot update {} to {}: installed version {} is newer", app.name, release.version_label(), inst_v));
     }
     log::info!("{}: starting {} to {} ({})", app.name, if existing.is_some() { "update" } else { "install" }, release.version_label(), kind.label());
     let file = download(release, asset, job)?;
@@ -66,16 +97,36 @@ pub fn install(
     let version = release.version_label();
     let result = match kind {
         #[cfg(target_os = "macos")]
-        PackageKind::Dmg => macos::install_dmg(app, &file, existing, job.paths, &macos::Expect::release(release)).map(|_| None),
+        PackageKind::Dmg => {
+            macos::install_dmg(app, &file, existing, destination.as_deref(), job.replace, job.paths, &macos::Expect::release(release))
+                .map(|path| Some(record(&version, kind, path, Vec::new(), false)))
+        }
         #[cfg(windows)]
-        PackageKind::Msi => windows::run_msi(&file, job.stop, &mut *job.phase).map(|_| None),
+        PackageKind::Msi => windows::run_msi(&file, destination.as_deref(), job.stop, &mut *job.phase).map(|_| None),
+        #[cfg(windows)]
+        PackageKind::PortableZip => {
+            crate::portable::install(app, &file, &version, previous, job.paths, destination.as_deref(), job.replace, &mut |record| {
+                if release.version.is_some() && crate::detect::windows::executable_version(&record.path).as_ref() != release.version.as_ref() {
+                    return Err("The portable executable does not match the selected version. The installation was rolled back.".into());
+                }
+                match commit.as_deref_mut() {
+                    Some(commit) => commit(record),
+                    None => Ok(()),
+                }
+            })
+            .map(Some)
+        }
         #[cfg(target_os = "linux")]
-        PackageKind::Deb | PackageKind::Rpm | PackageKind::Flatpak => linux::install_package(kind, &file, job.stop, &mut *job.phase).map(|_| None),
+        PackageKind::Deb | PackageKind::Rpm | PackageKind::ArchPkg | PackageKind::Flatpak => {
+            linux::install_package(kind, &file, job.stop, &mut *job.phase).map(|_| None)
+        }
         #[cfg(target_os = "linux")]
-        PackageKind::AppImage => linux::install_appimage(app, &file, &asset.name, existing).map(|(path, replaced)| {
-            let files = linux::integrate(app, &path, &replaced, previous);
-            Some(record(&version, kind, path, files, false))
-        }),
+        PackageKind::AppImage => {
+            linux::install_appimage(&file, &asset.name, destination.as_deref(), previous, job.replace).map(|(path, replaced)| {
+                let files = linux::integrate(app, &path, &replaced, previous);
+                Some(record(&version, kind, path, files, false))
+            })
+        }
         #[cfg(target_os = "freebsd")]
         PackageKind::TarGz => freebsd::install_tree(app, &file, job.paths).map(|(bin, files, root)| Some(record(&version, kind, bin, files, root))),
         #[cfg(target_os = "linux")]
@@ -96,6 +147,100 @@ pub fn install(
     result.map_err(|e| if e == CANCELLED { INSTALL_CANCELLED.to_string() } else { e })
 }
 
+/// What a new install would write over: something already at its destination that the launcher
+/// didn't put there.
+pub fn occupied(
+    app: &CraftApp,
+    #[cfg_attr(not(target_os = "linux"), allow(unused_variables))] asset: &Asset,
+    kind: PackageKind,
+    existing: Option<&Installed>,
+    previous: Option<&Record>,
+    locations: &InstallLocations,
+    paths: &Paths,
+) -> Result<Option<PathBuf>, String> {
+    if existing.is_some() || previous.is_some() {
+        return Ok(None);
+    }
+    let folder = destination(app, kind, None, None, locations)?;
+    let target = match kind {
+        PackageKind::Msi => folder,
+        PackageKind::PortableZip => Some(folder.unwrap_or_else(|| paths.apps()).join(app.id)),
+        PackageKind::Dmg => folder.map(|f| f.join(format!("{}.app", app.name))),
+        #[cfg(target_os = "linux")]
+        PackageKind::AppImage => folder.or_else(crate::detect::linux::appimage_dir).map(|f| f.join(&asset.name)),
+        _ => None,
+    };
+    Ok(target.filter(|t| std::fs::symlink_metadata(t).is_ok()))
+}
+
+/// The folder a new copy goes in: beside the launcher's copy it replaces, else the user's choice,
+/// else the platform default (`None`). macOS updates find their bundle's folder themselves.
+fn destination(
+    app: &CraftApp,
+    kind: PackageKind,
+    existing: Option<&Installed>,
+    previous: Option<&Record>,
+    locations: &InstallLocations,
+) -> Result<Option<PathBuf>, String> {
+    if kind == PackageKind::PortableZip && previous.is_some_and(|record| record.kind == PackageKind::PortableZip) {
+        return Ok(None);
+    }
+    if let Some(inst) = existing {
+        let exe = Path::new(&inst.location);
+        return Ok(match kind {
+            PackageKind::AppImage => previous.filter(|r| r.kind == kind).and_then(|r| r.path.parent()).map(Path::to_path_buf),
+            PackageKind::Msi => exe.parent().filter(|_| exe.is_absolute()).map(Path::to_path_buf),
+            _ => None,
+        });
+    }
+    let Some(folder) = locations.folder(app.id) else { return Ok(None) };
+    if !matches!(kind, PackageKind::Dmg | PackageKind::AppImage | PackageKind::Msi | PackageKind::PortableZip) || process::in_sandbox() {
+        return Err("custom install folders aren't supported on this system".into());
+    }
+    let parent = selected_folder(folder, kind != PackageKind::Msi)?;
+    Ok(Some(if kind == PackageKind::Msi { parent.join(app.name) } else { parent }))
+}
+
+fn selected_folder(folder: &str, writable: bool) -> Result<PathBuf, String> {
+    let path = if folder == "~" {
+        dirs::home_dir().ok_or("no home folder")?
+    } else if let Some(relative) = folder.strip_prefix("~/") {
+        dirs::home_dir().ok_or("no home folder")?.join(relative)
+    } else {
+        PathBuf::from(folder)
+    };
+    let invalid = |reason: &str| format!("couldn't use install folder {}: {reason}", path.display());
+    if folder.chars().any(|c| c.is_control() || (cfg!(windows) && c == '"')) {
+        return Err(invalid("the path contains invalid characters"));
+    }
+    if !path.is_absolute() {
+        return Err(invalid("choose an absolute path"));
+    }
+    if !path.is_dir() {
+        return Err(invalid("the folder is unavailable. Create it or reconnect its drive first"));
+    }
+    if writable {
+        let probe = path.join(format!(
+            ".artcraft-launcher-write-test-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_nanos())
+        ));
+        let output = std::fs::OpenOptions::new().write(true).create_new(true).open(&probe).map_err(|e| invalid(&e.to_string()))?;
+        drop(output);
+        std::fs::remove_file(&probe).map_err(|e| invalid(&e.to_string()))?;
+    }
+    Ok(path)
+}
+
+#[cfg(any(windows, test))]
+fn msi_folder_argument(path: &Path) -> Result<String, String> {
+    let value = path.to_str().ok_or("unusual characters in a path")?;
+    if value.chars().any(|c| c == '"' || c.is_control()) {
+        return Err(format!("couldn't use install folder {value}: the path contains invalid characters"));
+    }
+    Ok(format!("INSTALLFOLDER=\"{value}\""))
+}
+
 /// Where `asset` is downloaded to (and its partial file kept while unfinished).
 pub fn download_path(paths: &Paths, asset: &Asset) -> PathBuf {
     paths.downloads().join(&asset.name)
@@ -110,6 +255,7 @@ fn record(version: &str, kind: PackageKind, path: PathBuf, files: Vec<PathBuf>, 
 /// stays a `.deb` update), else the user's choice, else the best this system supports.
 pub fn choose_kinds(existing: Option<&Installed>, record: Option<&Record>, preferred: &[PackageKind]) -> Vec<PackageKind> {
     let available = available_kinds();
+    let can_pacman = which("pacman").is_some();
     if let Some(inst) = existing {
         let kind = match inst.source {
             InstallSource::Launcher => record.map(|r| r.kind),
@@ -117,18 +263,17 @@ pub fn choose_kinds(existing: Option<&Installed>, record: Option<&Record>, prefe
             InstallSource::Msi => Some(PackageKind::Msi),
             InstallSource::Deb => Some(PackageKind::Deb),
             InstallSource::Rpm => Some(PackageKind::Rpm),
-            // Arch/AUR installs are owned by pacman and updated by the user's AUR helper (see
-            // `managed_elsewhere`); the launcher opens and removes them but never replaces them.
-            InstallSource::Pacman => None,
+            InstallSource::Pacman => Some(PackageKind::ArchPkg),
             InstallSource::Flatpak => Some(PackageKind::Flatpak),
             InstallSource::AppImage => Some(PackageKind::AppImage),
             InstallSource::Binary => Some(PackageKind::TarGz),
         };
-        if let Some(k) = kind.filter(|k| available.contains(k)) {
+        if let Some(k) = kind.filter(|k| available.contains(k) || (*k == PackageKind::ArchPkg && can_pacman)) {
             return vec![k];
         }
     }
-    let mut kinds: Vec<PackageKind> = preferred.iter().copied().filter(|k| available.contains(k)).collect();
+    let mut kinds: Vec<PackageKind> =
+        preferred.iter().copied().filter(|k| available.contains(k) || (*k == PackageKind::ArchPkg && can_pacman)).collect();
     for k in available {
         if !kinds.contains(&k) {
             kinds.push(k);
@@ -142,7 +287,7 @@ pub fn available_kinds() -> Vec<PackageKind> {
     #[cfg(target_os = "macos")]
     return vec![PackageKind::Dmg];
     #[cfg(windows)]
-    return vec![PackageKind::Msi];
+    return vec![PackageKind::Msi, PackageKind::PortableZip];
     #[cfg(target_os = "linux")]
     return linux::available_kinds();
     #[cfg(target_os = "freebsd")]
@@ -197,12 +342,16 @@ pub fn managed_elsewhere(app: &CraftApp, installed: &Installed, uninstall: bool)
     match installed.source {
         InstallSource::Pacman if !uninstall => {
             let pkg = installed.package.clone().unwrap_or_else(|| app.id.to_string());
-            let helper = ["paru", "yay"].into_iter().find(|h| which(h).is_some());
-            let cmd = match helper {
-                Some(h) => format!("{h} -S {pkg}"),
-                None => format!("your AUR helper (for example: yay -S {pkg})"),
-            };
-            Some(format!("{} was installed from the AUR ({pkg}). Update it with {cmd}", app.name))
+            if pkg.ends_with("-git") || which("pacman").is_none() {
+                let helper = ["paru", "yay"].into_iter().find(|h| which(h).is_some());
+                let cmd = match helper {
+                    Some(h) => format!("{h} -S {pkg}"),
+                    None => format!("your AUR helper (for example: yay -S {pkg})"),
+                };
+                Some(format!("{} was installed from the AUR ({pkg}). Update it with {cmd}", app.name))
+            } else {
+                None
+            }
         }
         InstallSource::Binary => Some(format!("{} was installed outside the launcher. Update or remove it the way it was installed.", app.name)),
         _ => None,
@@ -230,6 +379,10 @@ pub fn uninstall(
         return Err(format!("{} is running. Quit it, then try again.", app.name));
     }
     match installed.source {
+        #[cfg(windows)]
+        InstallSource::Launcher if record.is_some_and(|r| r.kind == PackageKind::PortableZip) => {
+            crate::portable::remove(app, record.ok_or("the launcher has no record of these files")?)
+        }
         #[cfg(windows)]
         InstallSource::Msi => windows::uninstall_msi(app, stop, phase),
         #[cfg(target_os = "macos")]
@@ -351,25 +504,48 @@ fn prepare_home(home: &Path) {
     }
 }
 
+/// A new folder of our own inside `dir`, removed when dropped: a predictable name there may be
+/// the user's.
+#[cfg(any(target_os = "linux", target_os = "macos"))]
+fn staging_dir(dir: &Path) -> Result<tempfile::TempDir, String> {
+    tempfile::Builder::new()
+        .prefix(".artcraft-launcher-")
+        .tempdir_in(dir)
+        .map_err(|e| format!("couldn't create a staging folder in {} ({e})", dir.display()))
+}
+
 /// Moves `staged` into place at `dest`, keeping the old copy until the new one is there.
 #[allow(dead_code)]
 fn swap_into_place(staged: &Path, dest: &Path) -> Result<(), String> {
-    let old = dest.with_extension("old");
-    if old.exists() {
-        let _ = if old.is_dir() { std::fs::remove_dir_all(&old) } else { std::fs::remove_file(&old) };
-    }
-    let had_old = dest.exists();
-    if had_old {
-        std::fs::rename(dest, &old).map_err(|e| format!("couldn't move the old copy aside ({e})"))?;
-    }
-    if let Err(e) = std::fs::rename(staged, dest) {
-        if had_old {
-            let _ = std::fs::rename(&old, dest);
+    swap_into_place_via(staged, dest, |from, to| std::fs::rename(from, to))
+}
+
+fn swap_into_place_via(staged: &Path, dest: &Path, rename: impl Fn(&Path, &Path) -> std::io::Result<()>) -> Result<(), String> {
+    // Reserve a directory of our own beside the destination. A predictable sibling such as
+    // `app.old` may be a user's backup, and must never be removed or overwritten.
+    let backup = if dest.exists() {
+        let parent = dest.parent().ok_or("the installed app has no parent folder")?;
+        let backup = tempfile::Builder::new()
+            .prefix(".artcraft-launcher-backup-")
+            .tempdir_in(parent)
+            .map_err(|e| format!("couldn't create a backup folder in {} ({e})", parent.display()))?;
+        rename(dest, &backup.path().join("old")).map_err(|e| format!("couldn't move the old copy aside ({e})"))?;
+        Some(backup)
+    } else {
+        None
+    };
+    if let Err(e) = rename(staged, dest) {
+        if let Some(backup) = backup
+            && let Err(restore) = rename(&backup.path().join("old"), dest)
+        {
+            // A failed rollback must not let TempDir's cleanup delete the only old copy.
+            let saved = backup.keep().join("old");
+            return Err(format!(
+                "couldn't put the new copy in place ({e}); couldn't restore the old copy ({restore}); it was kept at {}",
+                saved.display()
+            ));
         }
         return Err(format!("couldn't put the new copy in place ({e})"));
-    }
-    if had_old {
-        let _ = if old.is_dir() { std::fs::remove_dir_all(&old) } else { std::fs::remove_file(&old) };
     }
     Ok(())
 }
@@ -500,6 +676,7 @@ pub(crate) mod linux {
             PackageKind::Rpm if which("dnf").is_some() => Some(&["dnf", "install", "-y"]),
             PackageKind::Rpm if which("zypper").is_some() => Some(&["zypper", "--non-interactive", "install", "--allow-unsigned-rpm"]),
             PackageKind::Rpm => Some(&["rpm", "-U", "--replacepkgs"]),
+            PackageKind::ArchPkg => Some(&["pacman", "-U", "--noconfirm"]),
             _ => None,
         }
     }
@@ -519,8 +696,9 @@ pub(crate) mod linux {
     ///   AppImage cannot mount there and a distro package needs root, so both are dead ends.
     /// - Running as an AppImage: prefers AppImage.
     /// - Otherwise (system install): prefers the distro's own package format (`.deb` on the
-    ///   Debian family, `.rpm` on the Fedora, Red Hat and SUSE families, read from `os-release`
-    ///   rather than from whichever tools are on `PATH`), then Flatpak if available, then AppImage.
+    ///   Debian family, `.rpm` on the Fedora, Red Hat and SUSE families, `.pkg.tar.zst` on Arch,
+    ///   read from `os-release` rather than from whichever tools are on `PATH`), then Flatpak if
+    ///   available, then AppImage.
     pub fn available_kinds() -> Vec<PackageKind> {
         let flatpak = process::is_flatpak_available();
         let is_flatpak = process::in_sandbox();
@@ -532,7 +710,8 @@ pub(crate) mod linux {
         let root = root && !immutable_ostree();
         let can_deb = root && native == Some(PackageKind::Deb) && which("apt-get").is_some() && which("dpkg").is_some();
         let can_rpm = root && native == Some(PackageKind::Rpm) && which("rpm").is_some();
-        order_available_kinds(is_flatpak, is_appimage, flatpak, can_deb, can_rpm)
+        let can_arch = root && native == Some(PackageKind::ArchPkg) && which("pacman").is_some();
+        order_available_kinds(is_flatpak, is_appimage, flatpak, can_deb, can_rpm, can_arch)
     }
 
     pub(crate) fn order_available_kinds(
@@ -541,6 +720,7 @@ pub(crate) mod linux {
         flatpak_available: bool,
         can_deb: bool,
         can_rpm: bool,
+        can_arch: bool,
     ) -> Vec<PackageKind> {
         let mut kinds = Vec::new();
         if is_flatpak && flatpak_available {
@@ -556,6 +736,9 @@ pub(crate) mod linux {
         }
         if can_rpm {
             kinds.push(PackageKind::Rpm);
+        }
+        if can_arch {
+            kinds.push(PackageKind::ArchPkg);
         }
 
         if flatpak_available && !kinds.contains(&PackageKind::Flatpak) {
@@ -575,6 +758,9 @@ pub(crate) mod linux {
     pub fn install_package(kind: PackageKind, file: &Path, stop: &Stop, phase: &mut dyn FnMut(JobPhase)) -> Result<(), String> {
         if kind == PackageKind::Deb && which("apt-get").is_none() {
             return Err("this system has no apt-get to install a Debian package with".into());
+        }
+        if kind == PackageKind::ArchPkg && which("pacman").is_none() {
+            return Err("this system has no pacman to install an Arch package with".into());
         }
         install_package_via(&SYSTEM, kind, file, stop, phase)
     }
@@ -647,31 +833,36 @@ pub(crate) mod linux {
         }
     }
 
-    /// Copies an AppImage into `~/Applications` and makes it executable; removes the copy it
-    /// replaces when that one is the launcher's (in `~/Applications`). AppImages the user keeps
-    /// elsewhere (Gear Lever's `~/AppImages`, `~/.local/bin`) are left alone. Returns the new
-    /// path and the old copies removed.
-    pub fn install_appimage(app: &CraftApp, file: &Path, name: &str, existing: Option<&Installed>) -> Result<(PathBuf, Vec<PathBuf>), String> {
-        let dir = crate::detect::linux::appimage_dir().ok_or("no home folder")?;
-        std::fs::create_dir_all(&dir).map_err(|e| format!("couldn't create {} ({e})", dir.display()))?;
+    pub fn install_appimage(
+        file: &Path,
+        name: &str,
+        destination: Option<&Path>,
+        previous: Option<&Record>,
+        replace: bool,
+    ) -> Result<(PathBuf, Vec<PathBuf>), String> {
+        let dir = match destination {
+            Some(dir) => dir.to_path_buf(),
+            None => {
+                let dir = crate::detect::linux::appimage_dir().ok_or("no home folder")?;
+                std::fs::create_dir_all(&dir).map_err(|e| format!("couldn't create {} ({e})", dir.display()))?;
+                dir
+            }
+        };
         let dest = dir.join(name);
-        let partial = dir.join(format!(".{name}.partial"));
+        let ours = previous.is_some_and(|r| r.kind == PackageKind::AppImage && r.path == dest);
+        if std::fs::symlink_metadata(&dest).is_ok_and(|m| m.is_dir() || !(replace || ours && m.is_file())) {
+            return Err(format!("{} already exists and wasn't installed by ArtCraft Launcher", dest.display()));
+        }
+        let staging = super::staging_dir(&dir)?;
+        let partial = staging.path().join(name);
         std::fs::copy(file, &partial).map_err(|e| format!("couldn't copy the AppImage ({e})"))?;
         std::fs::set_permissions(&partial, std::fs::Permissions::from_mode(0o755)).map_err(|e| e.to_string())?;
         std::fs::rename(&partial, &dest).map_err(|e| format!("couldn't put the AppImage in place ({e})"))?;
-        // Older AppImages of this app in the launcher's folder (the one we replaced, or earlier
-        // downloads) go, and the copy the launcher's record pointed at.
-        let mut old = crate::detect::linux::launcher_appimages(app);
-        if let Some(inst) = existing.filter(|i| i.source == InstallSource::Launcher) {
-            old.push(PathBuf::from(&inst.location));
-        }
-        old.sort();
-        old.dedup();
         let mut removed = Vec::new();
-        for p in old.into_iter().filter(|p| *p != dest && p.extension().is_some_and(|e| e.eq_ignore_ascii_case("AppImage"))) {
-            if std::fs::remove_file(&p).is_ok() {
-                removed.push(p);
-            }
+        if let Some(old) = previous.filter(|r| r.kind == PackageKind::AppImage && r.path != dest)
+            && std::fs::remove_file(&old.path).is_ok()
+        {
+            removed.push(old.path.clone());
         }
         Ok((dest, removed))
     }
@@ -849,11 +1040,14 @@ pub mod macos {
     use super::*;
 
     /// `/Applications` when we can write there, else `~/Applications`.
-    fn applications_dir(existing: Option<&Installed>) -> Result<PathBuf, String> {
+    fn applications_dir(existing: Option<&Installed>, destination: Option<&Path>) -> Result<PathBuf, String> {
         if let Some(parent) =
             existing.filter(|i| i.source == InstallSource::MacApp).and_then(|i| Path::new(&i.location).parent().map(Path::to_path_buf))
         {
             return Ok(parent);
+        }
+        if let Some(dir) = destination {
+            return Ok(dir.to_path_buf());
         }
         let system = PathBuf::from("/Applications");
         let probe = system.join(".artcraft-launcher-write-test");
@@ -896,7 +1090,15 @@ pub mod macos {
     const DITTO: &str = "/usr/bin/ditto";
     const CODESIGN: &str = "/usr/bin/codesign";
 
-    pub fn install_dmg(app: &CraftApp, dmg: &Path, existing: Option<&Installed>, paths: &Paths, expect: &Expect<'_>) -> Result<PathBuf, String> {
+    pub fn install_dmg(
+        app: &CraftApp,
+        dmg: &Path,
+        existing: Option<&Installed>,
+        destination: Option<&Path>,
+        replace: bool,
+        paths: &Paths,
+        expect: &Expect<'_>,
+    ) -> Result<PathBuf, String> {
         // A new, empty mount point for every install. A fixed one can still hold an image from an
         // attach that was interrupted or timed out, and hdiutil won't mount another over it.
         let attempt = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_nanos()).unwrap_or_default();
@@ -935,20 +1137,33 @@ pub mod macos {
             let _ = std::fs::remove_dir(&mount);
             return Err(format!("couldn't open the disk image: {reason}"));
         }
-        let result = copy_app(app, &mount, existing, expect);
+        let result = copy_app(app, &mount, existing, destination, replace, expect);
         let _ = detach(&mount);
         let _ = std::fs::remove_dir(&mount);
         result
     }
 
-    fn copy_app(app: &CraftApp, mount: &Path, existing: Option<&Installed>, expect: &Expect<'_>) -> Result<PathBuf, String> {
+    fn copy_app(
+        app: &CraftApp,
+        mount: &Path,
+        existing: Option<&Installed>,
+        destination: Option<&Path>,
+        replace: bool,
+        expect: &Expect<'_>,
+    ) -> Result<PathBuf, String> {
         let bundle = format!("{}.app", app.name);
         let src = mount.join(&bundle);
         crate::detect::macos::read_bundle(app, &src).ok_or("the disk image doesn't contain the app")?;
-        let dir = applications_dir(existing)?;
-        let dest = dir.join(&bundle);
-        let staged = dir.join(format!(".{bundle}.partial"));
-        let _ = std::fs::remove_dir_all(&staged);
+        let dir = applications_dir(existing, destination)?;
+        let dest = existing.filter(|i| i.source == InstallSource::MacApp).map_or_else(|| dir.join(&bundle), |i| PathBuf::from(&i.location));
+        if !replace
+            && std::fs::symlink_metadata(&dest).is_ok()
+            && (std::fs::symlink_metadata(&dest).is_ok_and(|m| m.file_type().is_symlink()) || crate::detect::macos::read_bundle(app, &dest).is_none())
+        {
+            return Err(format!("{} already exists and wasn't installed by ArtCraft Launcher", dest.display()));
+        }
+        let staging = super::staging_dir(&dir)?;
+        let staged = staging.path().join(&bundle);
         let (Some(src_s), Some(staged_s)) = (src.to_str(), staged.to_str()) else { return Err("unusual characters in a path".into()) };
         // ditto keeps the code signature and symlinks intact. The disk image's volume adds Finder
         // metadata (com.apple.FinderInfo) to the files; leave it and the extended attributes
@@ -959,10 +1174,7 @@ pub mod macos {
         let checked = crate::detect::macos::read_bundle(app, &staged)
             .ok_or_else(|| "the copied app is incomplete".to_string())
             .and_then(|found| check(&staged, &found, expect));
-        if let Err(e) = checked {
-            let _ = std::fs::remove_dir_all(&staged);
-            return Err(e);
-        }
+        checked?;
         swap_into_place(&staged, &dest)?;
         Ok(dest)
     }
@@ -1017,10 +1229,7 @@ pub mod macos {
         if dest.exists() {
             dest = trash.join(format!("{} {}", name.to_string_lossy(), crate::now()));
         }
-        if std::fs::rename(path, &dest).is_ok() {
-            return Ok(());
-        }
-        std::fs::remove_dir_all(path).map_err(|e| format!("couldn't remove {} ({e})", path.display()))
+        std::fs::rename(path, &dest).map_err(|e| format!("couldn't move {} to Trash ({e}). Remove it in Finder instead.", path.display()))
     }
 }
 
@@ -1155,6 +1364,28 @@ mod freebsd {
     }
 }
 
+/// Builds the Windows Installer command separately so its package argument can be checked
+/// without starting an installer.
+#[cfg_attr(not(windows), allow(dead_code))]
+fn msi_command(program: &Path, msi: &Path) -> Result<std::process::Command, String> {
+    let msi = msi_path(msi)?;
+    let mut command = process::command(program);
+    command.arg("/i").arg(msi).args(["/passive", "/norestart"]);
+    Ok(command)
+}
+
+/// Windows Installer's storage APIs can fail on paths through junctions or symlinks (#338).
+/// Keep ordinary drive/UNC syntax when possible: Windows canonicalization alone introduces
+/// a `\\?\` prefix that older APIs also cannot handle.
+#[cfg_attr(not(windows), allow(dead_code))]
+pub(crate) fn msi_path(msi: &Path) -> Result<PathBuf, String> {
+    #[cfg(windows)]
+    let resolved = dunce::canonicalize(msi);
+    #[cfg(not(windows))]
+    let resolved = std::fs::canonicalize(msi);
+    resolved.map_err(|e| format!("couldn't resolve the Windows Installer package {} ({e})", msi.display()))
+}
+
 #[cfg(windows)]
 pub mod windows {
     use artcraft_launcher_core::protocol::CANCELLED;
@@ -1177,14 +1408,14 @@ pub mod windows {
     }
 
     /// Runs an MSI with a progress window and no restart. Windows asks for permission itself.
-    pub fn run_msi(msi: &Path, stop: &Stop, phase: &mut dyn FnMut(JobPhase)) -> Result<(), String> {
+    pub fn run_msi(msi: &Path, destination: Option<&Path>, stop: &Stop, phase: &mut dyn FnMut(JobPhase)) -> Result<(), String> {
         in_turn(stop, phase, JobPhase::Installing, || {
-            let status = process::command(msiexec())
-                .arg("/i")
-                .arg(msi)
-                .args(["/passive", "/norestart"])
-                .status()
-                .map_err(|e| format!("couldn't start the Windows Installer ({e})"))?;
+            use std::os::windows::process::CommandExt;
+            let mut command = msi_command(&msiexec(), msi)?;
+            if let Some(dir) = destination {
+                command.raw_arg(msi_folder_argument(dir)?);
+            }
+            let status = command.status().map_err(|e| format!("couldn't start the Windows Installer ({e})"))?;
             explain(status.code())
         })
     }
@@ -1217,6 +1448,184 @@ pub mod windows {
 mod tests {
     use super::*;
 
+    #[cfg(unix)]
+    #[test]
+    fn msi_install_uses_the_package_target_instead_of_a_symlinked_cache() {
+        let dir = tempfile::tempdir().unwrap();
+        let cache = dir.path().join("persistent cache");
+        std::fs::create_dir(&cache).unwrap();
+        let file = cache.join("PhotoCraft.msi");
+        std::fs::write(&file, b"test package").unwrap();
+        let link = dir.path().join("current cache");
+        std::os::unix::fs::symlink(&cache, &link).unwrap();
+        let command = msi_command(Path::new("msiexec.exe"), &link.join("PhotoCraft.msi")).unwrap();
+        let args: Vec<_> = command.get_args().collect();
+        assert_eq!(
+            args,
+            [
+                std::ffi::OsStr::new("/i"),
+                file.canonicalize().unwrap().as_os_str(),
+                std::ffi::OsStr::new("/passive"),
+                std::ffi::OsStr::new("/norestart")
+            ]
+        );
+    }
+
+    #[test]
+    fn an_unavailable_msi_is_refused_before_starting_the_installer() {
+        let dir = tempfile::tempdir().unwrap();
+        let missing = dir.path().join("missing.msi");
+        let error = msi_command(Path::new("msiexec.exe"), &missing).unwrap_err();
+        assert!(error.contains("couldn't resolve the Windows Installer package"), "{error}");
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn a_short_local_msi_path_keeps_ordinary_windows_syntax() {
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join("package.msi");
+        std::fs::write(&file, b"test package").unwrap();
+        let resolved = msi_path(&file).unwrap();
+        assert!(!resolved.as_os_str().to_string_lossy().starts_with(r"\\?\"), "{resolved:?}");
+        assert_eq!(std::fs::read(resolved).unwrap(), b"test package");
+    }
+
+    #[test]
+    fn selected_folders_must_exist_and_leave_no_probe_files() {
+        let dir = tempfile::tempdir().unwrap();
+        assert_eq!(selected_folder(dir.path().to_str().unwrap(), true).unwrap(), dir.path());
+        assert_eq!(std::fs::read_dir(dir.path()).unwrap().count(), 0);
+        #[cfg(unix)]
+        {
+            let quoted = dir.path().join("Craft \"Apps\"");
+            std::fs::create_dir(&quoted).unwrap();
+            assert_eq!(selected_folder(quoted.to_str().unwrap(), true).unwrap(), quoted);
+        }
+        let missing = dir.path().join("unavailable/Apps");
+        assert!(selected_folder(missing.to_str().unwrap(), true).is_err());
+        assert!(!missing.exists());
+        assert!(selected_folder("relative/folder", true).is_err());
+        assert!(selected_folder("bad\nfolder", true).is_err());
+        let app = CraftApp::by_id("photocraft").unwrap();
+        let locations = InstallLocations { root: Some(dir.path().display().to_string()), ..Default::default() };
+        assert_eq!(destination(app, PackageKind::Msi, None, None, &locations).unwrap(), Some(dir.path().join("PhotoCraft")));
+        assert_eq!(destination(app, PackageKind::PortableZip, None, None, &locations).unwrap(), Some(dir.path().to_path_buf()));
+        let old = record("0.5.0", PackageKind::PortableZip, dir.path().join("PhotoCraft/photocraft.exe"), vec![], false);
+        let unavailable = InstallLocations { root: Some(dir.path().join("missing").display().to_string()), ..Default::default() };
+        assert_eq!(destination(app, PackageKind::PortableZip, None, Some(&old), &unavailable).unwrap(), None);
+        let msi = Installed {
+            version: None,
+            source: InstallSource::Msi,
+            location: dir.path().join("MSI/PhotoCraft/photocraft.exe").display().to_string(),
+            package: None,
+        };
+        assert_eq!(destination(app, PackageKind::Msi, Some(&msi), Some(&old), &unavailable).unwrap(), Some(dir.path().join("MSI/PhotoCraft")));
+        assert!(destination(app, PackageKind::TarGz, None, None, &locations).unwrap_err().contains("aren't supported"));
+    }
+
+    #[test]
+    fn updates_stay_beside_the_launchers_copy_and_new_installs_use_the_chosen_folder() {
+        let dir = tempfile::tempdir().unwrap();
+        let app = CraftApp::by_id("photocraft").unwrap();
+        let path = dir.path().join("old.AppImage");
+        let rec = record("0.5.0", PackageKind::AppImage, path.clone(), vec![], false);
+        let launcher = Installed { version: None, source: InstallSource::Launcher, location: path.display().to_string(), package: None };
+        let users = Installed { version: None, source: InstallSource::AppImage, location: "/home/me/AppImages/p.AppImage".into(), package: None };
+        let chosen = dir.path().join("New apps");
+        std::fs::create_dir(&chosen).unwrap();
+        let mut locations = InstallLocations { root: Some(chosen.display().to_string()), ..Default::default() };
+        assert_eq!(destination(app, PackageKind::AppImage, Some(&launcher), Some(&rec), &locations).unwrap(), Some(dir.path().into()));
+        assert_eq!(destination(app, PackageKind::AppImage, Some(&users), None, &locations).unwrap(), None);
+        if !process::in_sandbox() {
+            assert_eq!(destination(app, PackageKind::AppImage, None, None, &locations).unwrap(), Some(chosen.clone()));
+            locations.per_app.insert(app.id.into(), dir.path().display().to_string());
+            assert_eq!(destination(app, PackageKind::Dmg, None, None, &locations).unwrap(), Some(dir.path().into()));
+        }
+    }
+
+    #[test]
+    fn msi_folder_assignment_preserves_spaces_unicode_and_root_separators() {
+        for (value, argument) in [
+            (r"D:\", r#"INSTALLFOLDER="D:\""#),
+            (r"D:\Craft Apps\PhotoCraft", r#"INSTALLFOLDER="D:\Craft Apps\PhotoCraft""#),
+            (r"\\server\apps\绘画", r#"INSTALLFOLDER="\\server\apps\绘画""#),
+            (r"D:\Craft Apps\", r#"INSTALLFOLDER="D:\Craft Apps\""#),
+        ] {
+            assert_eq!(msi_folder_argument(Path::new(value)).unwrap(), argument);
+        }
+        assert!(msi_folder_argument(Path::new("D:\\bad\" TRANSFORMS=evil")).is_err());
+        assert!(msi_folder_argument(Path::new("D:\\bad\nfolder")).is_err());
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn appimage_updates_replace_only_the_recorded_file_in_the_same_folder() {
+        let dir = tempfile::tempdir().unwrap();
+        let folder = dir.path().join("Craft Apps");
+        std::fs::create_dir(&folder).unwrap();
+        let download = dir.path().join("download");
+        std::fs::write(&download, "first").unwrap();
+        let unrelated = folder.join("photocraft-unrelated.AppImage");
+        std::fs::write(&unrelated, "user copy").unwrap();
+        let (old, removed) = linux::install_appimage(&download, "photocraft-0.5.0.AppImage", Some(&folder), None, false).unwrap();
+        assert!(removed.is_empty());
+        assert_eq!(std::fs::read(&old).unwrap(), b"first");
+        let rec = record("0.5.0", PackageKind::AppImage, old.clone(), vec![], false);
+        std::fs::write(&download, "updated").unwrap();
+        let (new, removed) = linux::install_appimage(&download, "photocraft-0.6.0.AppImage", Some(&folder), Some(&rec), false).unwrap();
+        assert_eq!(new, folder.join("photocraft-0.6.0.AppImage"));
+        assert_eq!(std::fs::read(&new).unwrap(), b"updated");
+        assert_eq!(removed.as_slice(), std::slice::from_ref(&old));
+        assert!(!old.exists());
+        assert_eq!(std::fs::read(&unrelated).unwrap(), b"user copy");
+        assert!(linux::install_appimage(&download, "photocraft-unrelated.AppImage", Some(&folder), Some(&rec), false).is_err());
+        assert_eq!(std::fs::read(&unrelated).unwrap(), b"user copy");
+        let new_rec = record("0.6.0", PackageKind::AppImage, new.clone(), vec![], false);
+        assert!(linux::install_appimage(&download, "photocraft-0.6.0.AppImage", Some(&folder), Some(&new_rec), false).is_ok());
+        assert_eq!(std::fs::read_dir(&folder).unwrap().count(), 2);
+        let link = folder.join("linked.AppImage");
+        std::os::unix::fs::symlink(&unrelated, &link).unwrap();
+        let link_rec = record("0.6.0", PackageKind::AppImage, link, vec![], false);
+        assert!(linux::install_appimage(&download, "linked.AppImage", Some(&folder), Some(&link_rec), false).is_err());
+        assert_eq!(std::fs::read(&unrelated).unwrap(), b"user copy");
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn an_appimage_writes_over_a_users_file_only_when_asked_to() {
+        let dir = tempfile::tempdir().unwrap();
+        let download = dir.path().join("download");
+        std::fs::write(&download, "new").unwrap();
+        let folder = dir.path().join("Apps");
+        std::fs::create_dir(&folder).unwrap();
+        let theirs = folder.join("photocraft.AppImage");
+        let personal = dir.path().join("personal.txt");
+        std::fs::write(&theirs, "user copy").unwrap();
+        std::fs::write(&personal, "user file").unwrap();
+        std::os::unix::fs::symlink(&personal, folder.join(".photocraft.AppImage.partial")).unwrap();
+        assert!(linux::install_appimage(&download, "photocraft.AppImage", Some(&folder), None, false).is_err());
+        assert_eq!(std::fs::read(&theirs).unwrap(), b"user copy");
+        linux::install_appimage(&download, "photocraft.AppImage", Some(&folder), None, true).unwrap();
+        assert_eq!(std::fs::read(&theirs).unwrap(), b"new");
+        assert_eq!(std::fs::read(&personal).unwrap(), b"user file");
+        assert_eq!(std::fs::read_dir(&folder).unwrap().count(), 2, "staging was left behind");
+    }
+
+    #[test]
+    fn a_new_install_reports_what_it_would_write_over() {
+        let dir = tempfile::tempdir().unwrap();
+        let app = CraftApp::by_id("photocraft").unwrap();
+        let paths = Paths::under(dir.path());
+        let locations = InstallLocations { root: Some(dir.path().display().to_string()), ..Default::default() };
+        let asset = Asset { name: "photocraft.zip".into(), ..Default::default() };
+        let occupied = |previous| occupied(app, &asset, PackageKind::PortableZip, None, previous, &locations, &paths).unwrap();
+        assert_eq!(occupied(None), None);
+        std::fs::create_dir(dir.path().join("photocraft")).unwrap();
+        assert_eq!(occupied(None), Some(dir.path().join("photocraft")));
+        let old = record("0.5.0", PackageKind::PortableZip, dir.path().join("photocraft/photocraft.exe"), vec![], false);
+        assert_eq!(occupied(Some(&old)), None);
+    }
+
     #[test]
     fn swap_keeps_the_old_copy_until_the_new_one_is_in_place() {
         let dir = tempfile::tempdir().unwrap();
@@ -1229,9 +1638,86 @@ mod tests {
         swap_into_place(&staged, &dest).unwrap();
         assert_eq!(std::fs::read_to_string(dest.join("v")).unwrap(), "new");
         assert!(!staged.exists() && !dir.path().join("app.old").exists());
+        assert_eq!(std::fs::read_dir(dir.path()).unwrap().count(), 1);
         // A missing staged copy leaves the installed one alone.
         assert!(swap_into_place(&staged, &dest).is_err());
         assert_eq!(std::fs::read_to_string(dest.join("v")).unwrap(), "new");
+        assert_eq!(std::fs::read_dir(dir.path()).unwrap().count(), 1);
+    }
+
+    #[test]
+    fn swap_preserves_an_unrelated_backup_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let dest = dir.path().join("app");
+        let staged = dir.path().join("app.new");
+        let unrelated = dest.with_extension("old");
+        std::fs::write(&dest, b"installed app").unwrap();
+        std::fs::write(&staged, b"updated app").unwrap();
+        std::fs::write(&unrelated, b"user backup").unwrap();
+        swap_into_place(&staged, &dest).unwrap();
+        assert_eq!(std::fs::read(&unrelated).unwrap(), b"user backup");
+        assert_eq!(std::fs::read(&dest).unwrap(), b"updated app");
+        assert_eq!(std::fs::read_dir(dir.path()).unwrap().count(), 2);
+    }
+
+    #[test]
+    fn swap_preserves_an_unrelated_backup_directory() {
+        let dir = tempfile::tempdir().unwrap();
+        let dest = dir.path().join("app");
+        let staged = dir.path().join("app.new");
+        let unrelated = dest.with_extension("old");
+        std::fs::create_dir(&dest).unwrap();
+        std::fs::write(dest.join("v"), b"installed app").unwrap();
+        std::fs::create_dir(&staged).unwrap();
+        std::fs::write(staged.join("v"), b"updated app").unwrap();
+        std::fs::create_dir(&unrelated).unwrap();
+        std::fs::write(unrelated.join("keep.txt"), b"user backup").unwrap();
+        swap_into_place(&staged, &dest).unwrap();
+        assert_eq!(std::fs::read(unrelated.join("keep.txt")).unwrap(), b"user backup");
+        assert_eq!(std::fs::read(dest.join("v")).unwrap(), b"updated app");
+        assert_eq!(std::fs::read_dir(dir.path()).unwrap().count(), 2);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn swap_preserves_a_dangling_backup_symlink() {
+        let dir = tempfile::tempdir().unwrap();
+        let dest = dir.path().join("app");
+        let staged = dir.path().join("app.new");
+        let unrelated = dest.with_extension("old");
+        let target = dir.path().join("missing");
+        std::fs::write(&dest, b"installed app").unwrap();
+        std::fs::write(&staged, b"updated app").unwrap();
+        std::os::unix::fs::symlink(&target, &unrelated).unwrap();
+        swap_into_place(&staged, &dest).unwrap();
+        assert_eq!(std::fs::read_link(&unrelated).unwrap(), target);
+        assert_eq!(std::fs::read(&dest).unwrap(), b"updated app");
+    }
+
+    #[test]
+    fn a_failed_rollback_keeps_the_old_app_and_reports_its_backup_path() {
+        let dir = tempfile::tempdir().unwrap();
+        let dest = dir.path().join("app");
+        let staged = dir.path().join("app.new");
+        std::fs::write(&dest, b"installed app").unwrap();
+        std::fs::write(&staged, b"updated app").unwrap();
+        let calls = std::cell::Cell::new(0);
+        let err = swap_into_place_via(&staged, &dest, |from, to| {
+            calls.set(calls.get() + 1);
+            match calls.get() {
+                1 => std::fs::rename(from, to),
+                2 => Err(std::io::Error::other("staged move failed")),
+                _ => Err(std::io::Error::other("restore failed")),
+            }
+        })
+        .unwrap_err();
+        assert_eq!(calls.get(), 3);
+        assert!(err.contains("staged move failed") && err.contains("restore failed"));
+        let backup = std::fs::read_dir(dir.path()).unwrap().map(|e| e.unwrap().path()).find(|p| p.is_dir()).unwrap();
+        let saved = backup.join("old");
+        assert_eq!(std::fs::read(&saved).unwrap(), b"installed app");
+        assert!(err.contains(&saved.display().to_string()));
+        assert_eq!(std::fs::read(&staged).unwrap(), b"updated app");
     }
 
     #[test]
@@ -1250,13 +1736,43 @@ mod tests {
         let mut phases = Vec::new();
         for _ in 0..2 {
             let mut phase = |p: JobPhase| phases.push(p);
-            let mut job = Job { http: &http, paths: &paths, stop: &Stop::default(), phase: &mut phase };
+            let mut job = Job {
+                http: &http,
+                paths: &paths,
+                stop: &Stop::default(),
+                phase: &mut phase,
+                install_locations: &InstallLocations::default(),
+                replace: false,
+            };
             let err = install(app, &release, &asset, kind, None, None, &mut job).unwrap_err();
             assert!(err.contains("isn't supported"), "{err}");
             assert_eq!(std::fs::read(download_path(&paths, &asset)).unwrap(), body);
         }
         assert_eq!(requests.lock().unwrap().len(), 1, "the second try reuses the kept file");
         assert_eq!(phases.iter().filter(|p| **p == JobPhase::Installing).count(), 2);
+    }
+
+    #[test]
+    fn an_unavailable_custom_folder_is_rejected_before_downloading() {
+        use crate::http::tests::{Reply, body, serve};
+        let app = CraftApp::by_id("wordcraft").unwrap();
+        let (body, sha) = body();
+        let (url, requests) = serve(body.clone(), vec![Reply::Full]);
+        let asset = Asset { name: "wordcraft-0.3.0-linux-x86_64.AppImage".into(), size: body.len() as u64, url, sha256: Some(sha) };
+        let release = Release { assets: vec![asset.clone()], ..Release::default() };
+        let dir = tempfile::tempdir().unwrap();
+        let missing = dir.path().join("unavailable/Apps");
+        let locations = InstallLocations { root: Some(missing.display().to_string()), ..Default::default() };
+        let paths = Paths::under(dir.path());
+        let http = Http::new().unwrap();
+        let mut phases = vec![];
+        let mut phase = |p| phases.push(p);
+        let mut job = Job { http: &http, paths: &paths, stop: &Stop::default(), phase: &mut phase, install_locations: &locations, replace: false };
+        let error = install(app, &release, &asset, PackageKind::AppImage, None, None, &mut job).unwrap_err();
+        assert!(error.contains("folder is unavailable") || (process::in_sandbox() && error.contains("aren't supported")), "{error}");
+        assert!(requests.lock().unwrap().is_empty());
+        assert!(phases.is_empty());
+        assert!(!missing.exists());
     }
 
     #[test]
@@ -1274,7 +1790,14 @@ mod tests {
         let kind = if cfg!(windows) { PackageKind::Dmg } else { PackageKind::Msi };
         let mut phases = Vec::new();
         let mut phase = |p: JobPhase| phases.push(p);
-        let mut job = Job { http: &http, paths: &paths, stop: &Stop::default(), phase: &mut phase };
+        let mut job = Job {
+            http: &http,
+            paths: &paths,
+            stop: &Stop::default(),
+            phase: &mut phase,
+            install_locations: &InstallLocations::default(),
+            replace: false,
+        };
         let err = install(app, &release, &asset, kind, None, None, &mut job).unwrap_err();
         assert!(err.contains("publishes no checksum"), "{err}");
         assert!(!download_path(&paths, &asset).exists());
@@ -1569,45 +2092,71 @@ mod tests {
         let _ = inst;
     }
 
+    #[test]
+    fn install_refuses_to_downgrade_when_target_release_is_older() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = Paths::under(dir.path());
+        let http = Http::new().unwrap();
+        let phase = &mut |_| ();
+        let locations = InstallLocations::default();
+        let app = CraftApp::by_id("photocraft").unwrap();
+        let release = Release { version: version::parse("0.4.0"), tag: "v0.4.0".into(), ..Release::default() };
+        let asset = Asset { name: "photocraft-0.4.0-linux-x86_64.AppImage".into(), ..Asset::default() };
+        let installed = Installed {
+            version: version::parse("0.5.0"),
+            source: InstallSource::Launcher,
+            location: dir.path().join("PhotoCraft.AppImage").display().to_string(),
+            package: None,
+        };
+        let stop = Stop::default();
+        let mut job = Job { http: &http, paths: &paths, stop: &stop, phase, install_locations: &locations, replace: false };
+        let result = install_at(app, &release, &asset, PackageKind::AppImage, Some(&installed), None, &mut job, None);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("installed version 0.5.0 is newer"));
+    }
+
     #[cfg(target_os = "linux")]
     #[test]
     fn package_kinds_order_matches_launcher_format() {
         use super::linux::order_available_kinds;
 
         // Flatpak launcher defaults to Flatpak if available
-        let kinds = order_available_kinds(true, false, true, true, false);
+        let kinds = order_available_kinds(true, false, true, true, false, false);
         assert_eq!(kinds.first(), Some(&PackageKind::Flatpak));
         assert!(kinds.contains(&PackageKind::Deb));
         assert!(kinds.contains(&PackageKind::AppImage));
 
         // AppImage launcher defaults to AppImage
-        let kinds = order_available_kinds(false, true, true, true, false);
+        let kinds = order_available_kinds(false, true, true, true, false, false);
         assert_eq!(kinds.first(), Some(&PackageKind::AppImage));
         assert!(kinds.contains(&PackageKind::Deb));
         assert!(kinds.contains(&PackageKind::Flatpak));
 
-        // Base Linux launcher defaults to native package format (deb or rpm) if available
-        let kinds = order_available_kinds(false, false, true, true, false);
+        // Base Linux launcher defaults to native package format (deb, rpm, or arch) if available
+        let kinds = order_available_kinds(false, false, true, true, false, false);
         assert_eq!(kinds.first(), Some(&PackageKind::Deb));
 
-        let kinds = order_available_kinds(false, false, true, false, true);
+        let kinds = order_available_kinds(false, false, true, false, true, false);
         assert_eq!(kinds.first(), Some(&PackageKind::Rpm));
 
+        let kinds = order_available_kinds(false, false, true, false, false, true);
+        assert_eq!(kinds.first(), Some(&PackageKind::ArchPkg));
+
         // Base Linux launcher without root/distro packaging falls back to Flatpak then AppImage
-        let kinds = order_available_kinds(false, false, true, false, false);
+        let kinds = order_available_kinds(false, false, true, false, false, false);
         assert_eq!(kinds.first(), Some(&PackageKind::Flatpak));
         assert_eq!(kinds.get(1), Some(&PackageKind::AppImage));
 
         // The tarball runs inside the sandbox, so it is only offered there: with a usable host
         // Flatpak it stays an alternative, without one it is the default (an AppImage cannot
         // mount in a sandbox, and a distro package needs root).
-        let kinds = order_available_kinds(true, false, true, false, false);
+        let kinds = order_available_kinds(true, false, true, false, false, false);
         assert_eq!(kinds.first(), Some(&PackageKind::Flatpak));
         assert_eq!(kinds.get(1), Some(&PackageKind::TarGz));
-        let kinds = order_available_kinds(true, false, false, false, false);
+        let kinds = order_available_kinds(true, false, false, false, false, false);
         assert_eq!(kinds, [PackageKind::TarGz, PackageKind::AppImage]);
         for (appimage, flatpak) in [(true, true), (false, false), (false, true)] {
-            assert!(!order_available_kinds(false, appimage, flatpak, true, true).contains(&PackageKind::TarGz));
+            assert!(!order_available_kinds(false, appimage, flatpak, true, true, false).contains(&PackageKind::TarGz));
         }
     }
 
@@ -1659,6 +2208,52 @@ mod tests {
         }
 
         #[test]
+        fn custom_bundles_are_detected_and_updates_stay_in_their_actual_location() {
+            let dir = tempfile::tempdir().unwrap();
+            let apps = dir.path().join("Craft Apps");
+            std::fs::create_dir(&apps).unwrap();
+            let paths = Paths::under(dir.path());
+            let image = dmg(dir.path(), "0.6.0");
+            let expect = Expect { team: None, version: None };
+            let placed = install_dmg(photocraft(), &image, None, Some(&apps), false, &paths, &expect).unwrap();
+            assert_eq!(placed, apps.join("PhotoCraft.app"));
+            let mut manifest = crate::manifest::Manifest::default();
+            manifest.apps.insert("photocraft".into(), record("0.6.0", PackageKind::Dmg, placed.clone(), vec![], false));
+            let existing = crate::detect::detect(photocraft(), &manifest, &crate::detect::Snapshot::default()).unwrap();
+            assert_eq!(existing.source, InstallSource::MacApp);
+            assert_eq!(existing.location, placed.display().to_string());
+            assert_eq!(existing.version.unwrap().to_string(), "0.6.0");
+            let existing = crate::detect::detect(photocraft(), &manifest, &crate::detect::Snapshot::default()).unwrap();
+            let new_default = dir.path().join("Other Apps");
+            std::fs::create_dir(&new_default).unwrap();
+            let update = dmg(dir.path(), "0.7.0");
+            assert_eq!(install_dmg(photocraft(), &update, Some(&existing), Some(&new_default), false, &paths, &expect).unwrap(), placed);
+            assert!(!new_default.join("PhotoCraft.app").exists());
+            let detected = crate::detect::detect(photocraft(), &manifest, &crate::detect::Snapshot::default()).unwrap();
+            assert_eq!(detected.version.unwrap().to_string(), "0.7.0");
+            std::fs::write(placed.join("Contents/Info.plist"), "invalid").unwrap();
+            assert_ne!(
+                crate::detect::detect(photocraft(), &manifest, &crate::detect::Snapshot::default()).map(|i| i.source),
+                Some(InstallSource::Launcher)
+            );
+        }
+
+        #[test]
+        fn an_unrelated_bundle_at_the_selected_destination_is_preserved() {
+            let dir = tempfile::tempdir().unwrap();
+            let placed = bundle(dir.path(), "0.5.0");
+            let plist = placed.join("Contents/Info.plist");
+            let unrelated = std::fs::read_to_string(&plist).unwrap().replace("ai.storyteller.photocraft", "com.example.other");
+            std::fs::write(&plist, &unrelated).unwrap();
+            let image = dmg(dir.path(), "0.6.0");
+            let result =
+                install_dmg(photocraft(), &image, None, Some(dir.path()), false, &Paths::under(dir.path()), &Expect { team: None, version: None });
+            assert!(result.unwrap_err().contains("already exists"));
+            assert_eq!(std::fs::read_to_string(plist).unwrap(), unrelated);
+            assert_eq!(std::fs::read(placed.join("Contents/MacOS/PhotoCraft")).unwrap(), b"0.5.0");
+        }
+
+        #[test]
         fn only_the_teams_signature_passes() {
             let dir = tempfile::tempdir().unwrap();
             let app = bundle(dir.path(), "0.6.0");
@@ -1687,21 +2282,24 @@ mod tests {
                 std::fs::write(current.join("Contents/MacOS/PhotoCraft"), "0.5.0").unwrap();
                 let want = version::parse(release).unwrap();
                 let expect = Expect { team: None, version: Some(&want) };
-                let result = install_dmg(photocraft(), &image, Some(&existing), &paths, &expect);
+                let result = install_dmg(photocraft(), &image, Some(&existing), None, false, &paths, &expect);
                 assert_eq!(result.is_ok(), ok, "release {release}: {result:?}");
                 let now = std::fs::read_to_string(current.join("Contents/MacOS/PhotoCraft")).unwrap();
                 assert_eq!(now, if ok { "0.6.0" } else { "0.5.0" }, "release {release}");
                 if !ok {
                     assert_eq!(result, Err(format!("the app inside isn't version {release}, so it wasn't installed")));
                 }
-                assert!(!apps.join(".PhotoCraft.app.partial").exists());
+                assert_eq!(
+                    std::fs::read_dir(&apps).unwrap().map(|e| e.unwrap().file_name()).collect::<Vec<_>>(),
+                    [std::ffi::OsString::from("PhotoCraft.app")]
+                );
             }
 
             // A bundle that names a pre-release must name the release's.
             let rc = dmg(dir.path(), "0.8.0-rc.2");
             let want = version::parse("0.8.0-rc.1").unwrap();
             let expect = Expect { team: None, version: Some(&want) };
-            assert!(install_dmg(photocraft(), &rc, Some(&existing), &paths, &expect).is_err());
+            assert!(install_dmg(photocraft(), &rc, Some(&existing), None, false, &paths, &expect).is_err());
         }
 
         #[test]
@@ -1713,10 +2311,13 @@ mod tests {
             let image = dmg(dir.path(), "0.6.0");
             let release = Release { tag: "v0.6.0".into(), version: version::parse("0.6.0"), ..Release::default() };
 
-            let result = install_dmg(photocraft(), &image, Some(&existing), &Paths::under(dir.path()), &Expect::release(&release));
+            let result = install_dmg(photocraft(), &image, Some(&existing), None, false, &Paths::under(dir.path()), &Expect::release(&release));
             assert_eq!(result, Err("the app isn't signed by its developer, so it wasn't installed".into()));
             assert_eq!(std::fs::read_to_string(current.join("Contents/MacOS/PhotoCraft")).unwrap(), "0.5.0");
-            assert!(!apps.join(".PhotoCraft.app.partial").exists());
+            assert_eq!(
+                std::fs::read_dir(&apps).unwrap().map(|e| e.unwrap().file_name()).collect::<Vec<_>>(),
+                [std::ffi::OsString::from("PhotoCraft.app")]
+            );
         }
 
         /// A real release passes. Run with `CRAFT_APP=/path/to/PhotoCraft.app cargo test -p

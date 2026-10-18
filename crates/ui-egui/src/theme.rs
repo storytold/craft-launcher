@@ -287,7 +287,9 @@ pub fn install_fonts(ctx: &egui::Context, cjk: Option<Lang>) {
         ("GeistMono-Bold", GEIST_MONO, &[(*b"wght", 700.0)], mono_bold()),
     ];
     for (name, bytes, coords, family) in faces {
-        let tweak = FontTweak { coords: VariationCoords::new(coords.iter().copied()), ..Default::default() };
+        // No subpixel binning: these fonts carry no hinting instructions, so a glyph drawn at a
+        // fractional x smears each stem across two pixels, leaving small text blurry at 100 %.
+        let tweak = FontTweak { coords: VariationCoords::new(coords.iter().copied()), subpixel_binning: Some(false), ..Default::default() };
         fonts.font_data.insert(name.to_owned(), Arc::new(FontData::from_static(bytes).tweak(tweak)));
         let mut stack = vec![name.to_owned()];
         stack.extend(fallback.iter().cloned());
