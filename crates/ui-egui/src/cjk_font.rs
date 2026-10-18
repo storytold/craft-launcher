@@ -40,6 +40,7 @@ fn script_name(script: Script) -> &'static str {
     match script {
         Script::Chinese => "Chinese",
         Script::Japanese => "Japanese",
+        Script::Lao => "Lao",
     }
 }
 
@@ -48,6 +49,7 @@ fn script_families(script: Script) -> &'static str {
     match script {
         Script::Chinese => "PingFang SC, Hiragino Sans GB, Heiti SC, Microsoft YaHei, SimSun, Noto Sans CJK SC and WenQuanYi",
         Script::Japanese => "Hiragino Sans, Yu Gothic, Meiryo, MS Gothic, Noto Sans CJK JP, Noto Sans JP, IPAGothic and TakaoGothic",
+        Script::Lao => "Lao Sangam MN, Lao MN, Leelawadee UI, Noto Sans Lao and Noto Sans Lao UI",
     }
 }
 
@@ -123,6 +125,7 @@ fn candidates(script: Script) -> Vec<Candidate> {
     match script {
         Script::Chinese => chinese_candidates(),
         Script::Japanese => japanese_candidates(),
+        Script::Lao => lao_candidates(),
     }
 }
 
@@ -248,6 +251,50 @@ fn japanese_candidates() -> Vec<Candidate> {
         }
         for (file, family) in [("VL-Gothic-Regular.ttf", "VL Gothic"), ("VL-PGothic-Regular.ttf", "VL PGothic")] {
             for dir in JP_DIRS {
+                add(Path::new(dir).join(file), family);
+            }
+        }
+    }
+    out
+}
+
+/// Where each system keeps a Lao font, best first. Not CJK, but the same job: the bundled faces
+/// have no Lao glyphs, and every desktop system that can show Lao already has a face for it.
+fn lao_candidates() -> Vec<Candidate> {
+    let mut out = Vec::new();
+    let mut add = |path: PathBuf, family: &'static str| out.push(Candidate { path, family });
+    #[cfg(target_os = "macos")]
+    {
+        for dir in ["/System/Library/Fonts/Supplemental", "/System/Library/Fonts", "/Library/Fonts"] {
+            add(Path::new(dir).join("Lao Sangam MN.ttf"), "Lao Sangam MN");
+            add(Path::new(dir).join("Lao MN.ttc"), "Lao MN");
+        }
+    }
+    #[cfg(target_os = "windows")]
+    {
+        let root = std::env::var_os("SystemRoot").map_or_else(|| PathBuf::from(r"C:\Windows"), PathBuf::from);
+        add(root.join("Fonts").join("leelawui.ttf"), "Leelawadee UI");
+        add(root.join("Fonts").join("leelawad.ttf"), "Leelawadee");
+    }
+    #[cfg(all(unix, not(target_os = "macos")))]
+    {
+        // Debian/Ubuntu, Arch, Fedora and FreeBSD's ports.
+        const DIRS: [&str; 7] = [
+            "/usr/share/fonts/truetype/noto",
+            "/usr/share/fonts/opentype/noto",
+            "/usr/share/fonts/noto",
+            "/usr/share/fonts/google-noto",
+            "/usr/share/fonts/google-noto-vf",
+            "/usr/share/fonts/TTF",
+            "/usr/local/share/fonts/noto",
+        ];
+        for (file, family) in [
+            ("NotoSansLao-Regular.ttf", "Noto Sans Lao"),
+            ("NotoSansLaoUI-Regular.ttf", "Noto Sans Lao UI"),
+            ("NotoSansLao[wdth,wght].ttf", "Noto Sans Lao"),
+            ("NotoSansLao-VF.ttf", "Noto Sans Lao"),
+        ] {
+            for dir in DIRS {
                 add(Path::new(dir).join(file), family);
             }
         }
