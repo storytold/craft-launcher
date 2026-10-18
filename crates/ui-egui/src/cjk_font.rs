@@ -40,6 +40,7 @@ fn script_name(script: Script) -> &'static str {
     match script {
         Script::Chinese => "Chinese",
         Script::Japanese => "Japanese",
+        Script::Arabic => "Arabic",
     }
 }
 
@@ -48,6 +49,7 @@ fn script_families(script: Script) -> &'static str {
     match script {
         Script::Chinese => "PingFang SC, Hiragino Sans GB, Heiti SC, Microsoft YaHei, SimSun, Noto Sans CJK SC and WenQuanYi",
         Script::Japanese => "Hiragino Sans, Yu Gothic, Meiryo, MS Gothic, Noto Sans CJK JP, Noto Sans JP, IPAGothic and TakaoGothic",
+        Script::Arabic => "Segoe UI, Tahoma, Geeza Pro, Noto Sans Arabic, Noto Naskh Arabic, DejaVu Sans and Amiri",
     }
 }
 
@@ -123,7 +125,59 @@ fn candidates(script: Script) -> Vec<Candidate> {
     match script {
         Script::Chinese => chinese_candidates(),
         Script::Japanese => japanese_candidates(),
+        Script::Arabic => arabic_candidates(),
     }
+}
+
+/// Where each system keeps an Arabic font, best first. Windows' UI fonts carry Arabic; macOS
+/// ships Geeza Pro; Linux distributions usually have a Noto Sans/Naskh Arabic or DejaVu Sans
+/// (DejaVu's Arabic block covers the interface's needs where nothing better is installed).
+fn arabic_candidates() -> Vec<Candidate> {
+    let mut out = Vec::new();
+    let mut add = |path: PathBuf, family: &'static str| out.push(Candidate { path, family });
+    #[cfg(target_os = "macos")]
+    {
+        add("/System/Library/Fonts/GeezaPro.ttc".into(), "Geeza Pro");
+        for path in mac_font_assets("GeezaPro.ttc") {
+            add(path, "Geeza Pro");
+        }
+        add("/System/Library/Fonts/Supplemental/Al Nile.ttc".into(), "Al Nile");
+        add("/System/Library/Fonts/Supplemental/Baghdad.ttf".into(), "Baghdad");
+        add("/System/Library/Fonts/Supplemental/Damascus.ttf".into(), "Damascus");
+    }
+    #[cfg(target_os = "windows")]
+    {
+        let root = std::env::var_os("SystemRoot").map_or_else(|| PathBuf::from(r"C:\Windows"), PathBuf::from);
+        add(root.join("Fonts").join("segoeui.ttf"), "Segoe UI");
+        add(root.join("Fonts").join("tahoma.ttf"), "Tahoma");
+        add(root.join("Fonts").join("trado.ttf"), "Traditional Arabic");
+        add(root.join("Fonts").join("arabtype.ttf"), "Arabic Typesetting");
+        add(root.join("Fonts").join("arial.ttf"), "Arial");
+    }
+    #[cfg(all(unix, not(target_os = "macos")))]
+    {
+        const NOTO_DIRS: [&str; 6] = [
+            "/usr/share/fonts/truetype/noto",
+            "/usr/share/fonts/opentype/noto",
+            "/usr/share/fonts/noto",
+            "/usr/share/fonts/google-noto",
+            "/usr/local/share/fonts/noto",
+            "/usr/share/fonts",
+        ];
+        for (file, family) in [
+            ("NotoSansArabic-Regular.ttf", "Noto Sans Arabic"),
+            ("NotoSansArabic[wdth,wght].ttf", "Noto Sans Arabic"),
+            ("NotoNaskhArabic-Regular.ttf", "Noto Naskh Arabic"),
+        ] {
+            for dir in NOTO_DIRS {
+                add(Path::new(dir).join(file), family);
+            }
+        }
+        add("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf".into(), "DejaVu Sans");
+        add("/usr/share/fonts/TTF/DejaVuSans.ttf".into(), "DejaVu Sans");
+        add("/usr/share/fonts/truetype/amiri/Amiri-Regular.ttf".into(), "Amiri");
+    }
+    out
 }
 
 /// Where each system keeps a Simplified Chinese font, best first.
