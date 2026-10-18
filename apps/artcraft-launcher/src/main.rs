@@ -86,6 +86,9 @@ fn main() -> ExitCode {
     let backend_waker = waker.clone();
     let settings_path = settings_file::path(APP_ID);
     let mut launcher = Launcher::new(Box::new(NativeBackend::new(move || backend_waker.wake())), starts, settings_path.clone());
+    // Decorations are fixed before the window opens, so read the saved choice early.
+    // A missing or unreadable file keeps the default.
+    launcher.host.system_title_bar = system_title_bar(settings_path.as_deref());
     #[cfg(target_os = "linux")]
     {
         let theme_waker = waker.clone();
@@ -103,11 +106,18 @@ fn main() -> ExitCode {
     // launcher carries on without one until the window is asked for again.
     loop {
         if window {
+            // A reopened window picks up the current choice (changed in the previous window).
+            // The first window keeps the early read from the settings file: its own settings
+            // only load inside `open`, after the decorations are already fixed.
+            if launcher.started {
+                launcher.host.system_title_bar = launcher.ui.settings.system_title_bar;
+            }
+            let system_bar = launcher.host.system_title_bar;
             let result = {
                 let (waker, launcher) = (waker.clone(), &mut launcher);
                 eframe::run_native(
                     "ArtCraft Launcher",
-                    native_options(hidden),
+                    native_options(hidden, system_bar),
                     Box::new(move |cc| {
                         launcher.open(cc, &waker);
                         Ok(Box::new(Shell::new(cc, launcher, hidden)))
@@ -131,7 +141,17 @@ fn main() -> ExitCode {
     }
 }
 
-fn native_options(hidden: bool) -> eframe::NativeOptions {
+/// Whether this start draws the system's title bar: Windows and Linux do without one unless
+/// Settings › Appearance › System Title Bar asks for it. Read from the saved settings before
+/// the window opens; a missing or unreadable file keeps the default. macOS always uses its own.
+fn system_title_bar(settings_path: Option<&std::path::Path>) -> bool {
+    if cfg!(target_os = "macos") {
+        return false;
+    }
+    settings_path.and_then(|p| settings_file::load::<Settings>(p, SETTINGS_KEY)).is_some_and(|s| s.system_title_bar)
+}
+
+fn native_options(hidden: bool, system_title_bar: bool) -> eframe::NativeOptions {
     let icon =
         eframe::icon_data::from_png_bytes(include_bytes!("../../../assets/app-icon/hicolor/256x256/apps/ai.storyteller.artcraft-launcher.png")).ok();
     let mut viewport = egui::ViewportBuilder::default()
@@ -140,9 +160,12 @@ fn native_options(hidden: bool) -> eframe::NativeOptions {
         .with_inner_size([1120.0, 760.0])
         .with_min_inner_size([720.0, 500.0])
         .with_visible(!hidden);
-    // The header is the title bar (see `DesktopHost::title_bar`).
+    // Without the system's title bar the header is the title bar (see `DesktopHost::title_bar`).
+    // macOS always keeps its own: the header runs under the transparent title bar instead.
     viewport = if cfg!(target_os = "macos") {
         viewport.with_fullsize_content_view(true).with_titlebar_shown(false).with_title_shown(false)
+    } else if system_title_bar {
+        viewport.with_decorations(true)
     } else {
         viewport.with_decorations(false)
     };
@@ -393,11 +416,18 @@ fn claim_notification_identity() -> &'static Result<(), String> {
 struct DesktopHost {
     tray: bool,
     quit: bool,
+    system_title_bar: bool,
 }
 
 impl Host for DesktopHost {
     fn title_bar(&self) -> TitleBar {
-        if cfg!(target_os = "macos") { TitleBar::MacOs } else { TitleBar::Custom }
+        if cfg!(target_os = "macos") {
+            TitleBar::MacOs
+        } else if self.system_title_bar {
+            TitleBar::Native
+        } else {
+            TitleBar::Custom
+        }
     }
 
     fn notify(&mut self, title: &str, body: &str) {
@@ -491,7 +521,7 @@ impl Launcher {
             system_theme: system_theme::Monitor::default(),
             ui: LauncherUi::new(&windowless, backend, Settings::default()),
             tray: None,
-            host: DesktopHost { tray: false, quit: false },
+            host: DesktopHost { tray: false, quit: false, system_title_bar: false },
             starts,
             windowless,
             run_again,
@@ -509,6 +539,7 @@ impl Launcher {
         if let Some(settings) = settings {
             self.ui.settings = settings;
         }
+        self.host.system_title_bar = self.ui.settings.system_title_bar;
         self.waker = Some(waker.clone());
         let (wake, on_quit) = (waker.clone(), waker.clone());
         match tray::Tray::new(move || wake.wake(), move || on_quit.quit_from_tray()) {
@@ -856,6 +887,47 @@ mod tests {
             assert_eq!(on_close(true, false, window_hides), OnClose::Quit);
             assert_eq!(on_close(false, false, window_hides), OnClose::Quit);
         }
+    }
+
+    #[test]
+    fn title_bar_follows_the_system_title_bar_choice() {
+        let host = |system_title_bar| DesktopHost { tray: false, quit: false, system_title_bar };
+        if cfg!(target_os = "macos") {
+            assert_eq!(host(false).title_bar(), TitleBar::MacOs);
+            assert_eq!(host(true).title_bar(), TitleBar::MacOs);
+        } else {
+            assert_eq!(host(false).title_bar(), TitleBar::Custom);
+            assert_eq!(host(true).title_bar(), TitleBar::Native);
+        }
+    }
+
+    #[test]
+    fn native_options_honor_the_system_title_bar_choice() {
+        if cfg!(target_os = "macos") {
+            return;
+        }
+        assert_eq!(native_options(false, false).viewport.decorations, Some(false));
+        assert_eq!(native_options(false, true).viewport.decorations, Some(true));
+    }
+
+    #[test]
+    fn system_title_bar_reads_the_saved_choice() {
+        let dir = std::env::temp_dir().join(format!("artcraft-launcher-titlebar-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let path = dir.join("app.ron");
+        // A missing file keeps the custom header.
+        assert!(!system_title_bar(None));
+        assert!(!system_title_bar(Some(&path)));
+        for choice in [false, true] {
+            let settings = Settings { system_title_bar: choice, ..Settings::default() };
+            assert!(settings_file::save(&path, SETTINGS_KEY, &settings).is_ok());
+            // macOS always uses its own title bar.
+            assert_eq!(system_title_bar(Some(&path)), choice && !cfg!(target_os = "macos"));
+        }
+        assert!(std::fs::create_dir_all(&dir).is_ok());
+        assert!(std::fs::write(&path, "not ron {").is_ok());
+        assert!(!system_title_bar(Some(&path)));
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]
