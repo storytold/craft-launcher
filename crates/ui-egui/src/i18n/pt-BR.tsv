@@ -83,6 +83,7 @@
 	Updates always use the format an app was installed with.	As atualizações sempre usam o formato com o qual o aplicativo foi instalado.
 	Running in the background	Execução em segundo plano
 	Keep running in the tray when the window is closed	Continuar na bandeja do sistema ao fechar a janela
+	Hide ArtCraft Launcher from the Dock while in the background	Ocultar o ArtCraft Launcher do Dock em segundo plano
 	Show the window on the current desktop	Mostrar a janela na área de trabalho atual
 	Start ArtCraft Launcher when I log in	Iniciar o ArtCraft Launcher ao fazer login
 	Community	Comunidade

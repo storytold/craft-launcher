@@ -93,6 +93,7 @@
 	Updates always use the format an app was installed with.	Обновления всегда используют формат, с которым приложение было установлено.
 	Running in the background	Работа в фоне
 	Keep running in the tray when the window is closed	Оставаться в трее при закрытии окна
+	Hide ArtCraft Launcher from the Dock while in the background	Скрывать ArtCraft Launcher из Dock при работе в фоне
 	Show the window on the current desktop	Показывать окно на текущем рабочем столе
 	Start ArtCraft Launcher when I log in	Запускать ArtCraft Launcher при входе в систему
 	Community	Сообщество

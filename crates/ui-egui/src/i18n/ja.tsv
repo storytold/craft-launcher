@@ -97,6 +97,7 @@
 	Updates always use the format an app was installed with.	更新は常に、アプリをインストールしたときの形式で行われます。
 	Running in the background	バックグラウンドで実行
 	Keep running in the tray when the window is closed	ウィンドウを閉じてもトレイで実行し続ける
+	Hide ArtCraft Launcher from the Dock while in the background	バックグラウンド実行中はArtCraft LauncherをDockに表示しない
 	Show the window on the current desktop	現在のデスクトップにウィンドウを表示
 	Start ArtCraft Launcher when I log in	ログイン時に ArtCraft Launcher を起動
 	Community	コミュニティ

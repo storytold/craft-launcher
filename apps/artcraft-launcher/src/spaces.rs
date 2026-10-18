@@ -6,7 +6,27 @@
 //! show a hidden window on the current desktop anyway, so this module only exists on macOS.
 
 use objc2::MainThreadMarker;
-use objc2_app_kit::{NSApplication, NSWindowCollectionBehavior};
+use objc2_app_kit::{NSApplication, NSApplicationActivationPolicy, NSWindowCollectionBehavior};
+
+pub(super) fn activation_policy(
+    window_visible: bool,
+    hide_when_hidden: bool,
+    tray_visible: bool,
+    keep_in_tray: bool,
+) -> NSApplicationActivationPolicy {
+    if !window_visible && hide_when_hidden && tray_visible && keep_in_tray {
+        NSApplicationActivationPolicy::Accessory
+    } else {
+        NSApplicationActivationPolicy::Regular
+    }
+}
+
+/// Applies the Dock visibility preference. Must run on the main thread.
+pub fn set_dock_visibility(window_visible: bool, hide_when_hidden: bool, tray_visible: bool, keep_in_tray: bool) {
+    let Some(mtm) = MainThreadMarker::new() else { return };
+    let app = NSApplication::sharedApplication(mtm);
+    app.setActivationPolicy(activation_policy(window_visible, hide_when_hidden, tray_visible, keep_in_tray));
+}
 
 /// Makes the launcher's windows follow the current desktop when shown (`true`), or stay on their
 /// own desktop and switch to it (`false`, macOS's default). Must run on the main thread, as the

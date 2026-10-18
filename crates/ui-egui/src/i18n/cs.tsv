@@ -82,6 +82,7 @@
 	Updates always use the format an app was installed with.	Aktualizace vždy použijí formát, ve kterém byla aplikace nainstalována.
 	Running in the background	Běh na pozadí
 	Keep running in the tray when the window is closed	Po zavření okna ponechat spuštěné v oznamovací oblasti
+	Hide ArtCraft Launcher from the Dock while in the background	Skrýt ArtCraft Launcher v Docku při běhu na pozadí
 	Show the window on the current desktop	Zobrazit okno na aktuální ploše
 	Start ArtCraft Launcher when I log in	Spouštět ArtCraft Launcher po přihlášení
 	Community	Komunita
