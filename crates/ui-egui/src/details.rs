@@ -89,6 +89,7 @@ impl LauncherUi {
             self.detail_shown = Some(id.clone());
             self.detail_shot = 0;
             self.detail_zoom = false;
+            self.detail_scroll_top = true;
             let app = id.clone();
             self.request_pictures(&app);
         }
@@ -132,7 +133,13 @@ impl LauncherUi {
             // A bar that stays on screen says there is more below the fold. egui's default one is
             // floating and invisible until the pointer is over it, so the drawer uses the solid style.
             ui.spacing_mut().scroll = egui::style::ScrollStyle::solid();
-            egui::ScrollArea::vertical().auto_shrink([false, false]).show(ui, |ui| {
+            // One scroll area serves every app's page: a page just opened starts at the top
+            // rather than where the last one was scrolled to (#428).
+            let mut scroll = egui::ScrollArea::vertical().auto_shrink([false, false]);
+            if std::mem::take(&mut self.detail_scroll_top) {
+                scroll = scroll.vertical_scroll_offset(0.0);
+            }
+            scroll.show(ui, |ui| {
                 ui.set_width(ui.available_width());
                 ui.spacing_mut().item_spacing.y = 8.0;
                 self.details_hero(ui, &entry, details, &t);
