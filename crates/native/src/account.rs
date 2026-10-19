@@ -22,6 +22,32 @@ use craft_suite_account::service::{ConversationHome, Flow, Identity, Polled, Ser
 use craft_suite_account::{Account, NewAccount, Secret, Shared, SignedOut, Store};
 
 use crate::http::Http;
+use crate::service_base;
+
+/// Clears [`Accounts::busy`] on drop so a panicked worker does not stick the UI.
+struct BusyGuard {
+    busy: Arc<AtomicBool>,
+    live: bool,
+}
+
+impl BusyGuard {
+    fn new(busy: Arc<AtomicBool>) -> BusyGuard {
+        BusyGuard { busy, live: true }
+    }
+
+    fn clear(&mut self) {
+        if self.live {
+            self.busy.store(false, Ordering::SeqCst);
+            self.live = false;
+        }
+    }
+}
+
+impl Drop for BusyGuard {
+    fn drop(&mut self) {
+        self.clear();
+    }
+}
 
 /// A CollabCraft deployment over the launcher's own HTTPS agent. It then follows the same proxy and
 /// the same certificate trust as everything else the launcher fetches.
@@ -148,6 +174,8 @@ pub struct Accounts {
 /// How often to look again while waiting for a browser, whatever the deployment asked for.
 const MIN_POLL: u64 = 1;
 const MAX_POLL: u64 = 10;
+/// Do not poll longer than a day even if the deployment asks for more.
+const MAX_FLOW_SECS: u64 = 86_400;
 
 impl Accounts {
     /// `emit` is called from any thread with each new state.
@@ -170,6 +198,12 @@ impl Accounts {
         let base = base.trim().trim_end_matches('/').to_owned();
         let mut held = self.base.lock().unwrap_or_else(PoisonError::into_inner);
         if *held == base {
+            return;
+        }
+        if !service_base::allowed_service_base(&base) {
+            (self.emit)(SuiteAccount::Failed(
+                "the suite service must be https:// or http:// on 127.0.0.1, localhost, or [::1] with a port".to_owned(),
+            ));
             return;
         }
         *held = base;
@@ -233,9 +267,10 @@ impl Accounts {
         }
         let (store, service, emit, busy) = (self.store.clone(), self.service.clone(), self.emit.clone(), self.busy.clone());
         std::thread::spawn(move || {
+            let mut guard = BusyGuard::new(busy);
             let state = run_sign_in(&store, service.as_ref(), &base, emit.as_ref());
+            guard.clear();
             emit(state);
-            busy.store(false, Ordering::SeqCst);
         });
     }
 
@@ -246,22 +281,26 @@ impl Accounts {
         }
         let (store, service, emit, busy) = (self.store.clone(), self.service.clone(), self.emit.clone(), self.busy.clone());
         std::thread::spawn(move || {
+            let mut guard = BusyGuard::new(busy);
             let current = store.accounts().map(|list| list.current().map(|a| a.id.clone()));
-            match current {
+            let states: Vec<SuiteAccount> = match current {
                 Ok(Some(id)) => match store.sign_out(service.as_ref(), &id) {
-                    Ok(SignedOut::Everywhere) => emit(SuiteAccount::SignedOut),
+                    Ok(SignedOut::Everywhere) => vec![SuiteAccount::SignedOut],
                     // The local half is done either way. The session may still be live at the
                     // deployment. The user therefore needs to hear that it was not told.
-                    Ok(SignedOut::LocalOnly { why }) => {
-                        emit(SuiteAccount::SignedOut);
-                        emit(SuiteAccount::Failed(format!("Signed out here. The service could not be told ({why}).")));
-                    }
-                    Err(e) => emit(SuiteAccount::Failed(e.to_string())),
+                    Ok(SignedOut::LocalOnly { why }) => vec![
+                        SuiteAccount::SignedOut,
+                        SuiteAccount::Failed(format!("Signed out here. The service could not be told ({why}).")),
+                    ],
+                    Err(e) => vec![SuiteAccount::Failed(e.to_string())],
                 },
-                Ok(None) => emit(SuiteAccount::SignedOut),
-                Err(e) => emit(SuiteAccount::Failed(e.to_string())),
+                Ok(None) => vec![SuiteAccount::SignedOut],
+                Err(e) => vec![SuiteAccount::Failed(e.to_string())],
+            };
+            guard.clear();
+            for state in states {
+                emit(state);
             }
-            busy.store(false, Ordering::SeqCst);
         });
     }
 }
@@ -280,8 +319,11 @@ fn run_sign_in(store: &Store, service: &(dyn Service + Send + Sync), base: &str,
     // The page has to be reported before the waiting starts. The UI opens the browser. Nothing
     // happens at the deployment until the user has been there.
     emit(SuiteAccount::Waiting { verify_url: flow.verify_url.clone() });
-    // The deadline is the deployment's. That is why it is not a setting here.
-    let deadline = Instant::now() + Duration::from_secs(flow.expires_in);
+    // The deadline is the deployment's, capped so a bad value cannot overflow time math.
+    let secs = flow.expires_in.min(MAX_FLOW_SECS);
+    let deadline = Instant::now()
+        .checked_add(Duration::from_secs(secs))
+        .unwrap_or_else(|| Instant::now() + Duration::from_secs(MAX_FLOW_SECS));
     let gap = Duration::from_secs(flow.interval.clamp(MIN_POLL, MAX_POLL));
     while Instant::now() < deadline {
         std::thread::sleep(gap);
