@@ -19,7 +19,11 @@ The small icon at the start of every row in an app's `...` menu. All from
 
 The `stroke="currentColor"` Lucide ships was changed to `stroke="#FFFFFF"`, the same trick
 `assets/social` uses, so the app can tint each icon to its own colour: muted grey on most rows,
-red on Uninstall.
+red on Uninstall. `tag.svg` carries one more of the same: the dot's `fill` is white too, or the
+tint would leave it black.
+
+Lucide is ISC. Its notice, which the licence asks to travel with every copy, is
+`LICENSE-Lucide.txt` beside these files and is also listed in the repository's `NOTICE`.
 
 Nothing here draws a character: the icons are images, so no font has to carry a symbol. The menu
 row paints the icon and then the label, and a screen reader is told only the label.
