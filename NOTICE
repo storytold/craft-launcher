@@ -18,7 +18,7 @@ list (author, source, license) is in ATTRIBUTION.md.
 Social service icons (assets/social/*.svg) — Simple Icons, CC0 1.0 (X, YouTube, TikTok, Instagram),
 and Font Awesome Free 6.7.2 by Fonticons, Inc., CC BY 4.0 (LinkedIn; https://fontawesome.com/license/free).
 The logos are trademarks of their respective owners and are used only to link to ArtCraft's accounts.
-Menu icons (assets/icons/*.svg) - Lucide 0.468.0, ISC. Copyright (c) for portions of Lucide is held by Cole Bemis 2013-2022 as part of Feather (MIT); all other copyright for Lucide is held by Lucide Contributors 2022. assets/icons/LICENSE-Lucide.txt carries the Lucide ISC notice and, for the icons Lucide derives from Feather (such as trash-2.svg), Feather's full MIT notice as well.
+Menu icons (assets/icons/*.svg) - Lucide 0.468.0, ISC. Copyright (c) for portions of Lucide is held by Cole Bemis 2013-2022 as part of Feather (MIT); all other copyright for Lucide is held by Lucide Contributors 2022. assets/icons/LICENSE-Lucide.txt carries the Lucide ISC notice and, for the icons Lucide derives from Feather (such as trash-2.svg), Feather's full MIT notice as well. assets/social/globe.svg comes from the same set under the same licence, so that one file covers it too.
 Inter font (assets/fonts/Inter-Variable.ttf) — SIL Open Font License 1.1. See assets/fonts/OFL-Inter.txt.
 Archivo font (assets/fonts/Archivo-Variable.ttf) — SIL Open Font License 1.1. See assets/fonts/OFL-Archivo.txt.
 Geist Mono font (assets/fonts/GeistMono-Variable.ttf) — SIL Open Font License 1.1. See assets/fonts/OFL-GeistMono.txt.
