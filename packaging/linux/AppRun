@@ -7,7 +7,8 @@
 # generic "Wayland" icon. Best-effort desktop integration: on first run
 # (and whenever the AppImage's path changes) install the .desktop entry and the
 # hicolor icons into $XDG_DATA_HOME, then launch. Every failure here must leave
-# the launch untouched. Opt out with ARTCRAFT_LAUNCHER_NO_DESKTOP_INTEGRATION=1.
+# the launch untouched. AppImage managers can opt out with DESKTOPINTEGRATION=1,
+# and users with ARTCRAFT_LAUNCHER_NO_DESKTOP_INTEGRATION=1.
 
 set -u
 
@@ -16,6 +17,9 @@ DESK_ID=ai.storyteller.artcraft-launcher
 
 integrate() {
   case "${ARTCRAFT_LAUNCHER_NO_DESKTOP_INTEGRATION:-}" in
+    1 | true | yes) return 0 ;;
+  esac
+  case "${DESKTOPINTEGRATION:-}" in
     1 | true | yes) return 0 ;;
   esac
   # The AppImage runtime exports $APPIMAGE; without it (an extracted AppDir) there
@@ -41,15 +45,19 @@ integrate() {
   mkdir -p "$apps" 2>/dev/null || return 0
   tmp="$apps/.$DESK_ID.tmp.$$"
   esc="$(printf '%s' "$appimage" | sed 's/[\\&|]/\\&/g')"
-  if sed -e "s|^Exec=.*|Exec=\"$esc\"|" -e '/^TryExec=/d' "$src_desktop" 2>/dev/null >"$tmp"; then
+  if sed -e "s|^Exec=.*|Exec=\"$esc\"|" -e '/^TryExec=/d' "$src_desktop" 2>/dev/null >"$tmp" &&
+    printf '%s\n' "X-ArtCraft-Launcher-Generated-Exec=\"$appimage\"" >>"$tmp"; then
     if cmp -s "$tmp" "$apps/$DESK_ID.desktop"; then
       rm -f "$tmp"
-    else
+    elif [ ! -e "$apps/$DESK_ID.desktop" ] && [ ! -L "$apps/$DESK_ID.desktop" ] || own_entry "$apps/$DESK_ID.desktop"; then
       if mv -f "$tmp" "$apps/$DESK_ID.desktop" 2>/dev/null; then
         command -v update-desktop-database >/dev/null 2>&1 && update-desktop-database "$apps" >/dev/null 2>&1
       else
         rm -f "$tmp"
       fi
+    else
+      # Keep manager metadata and user changes, including a custom Exec environment.
+      rm -f "$tmp"
     fi
   else
     rm -f "$tmp"
@@ -60,12 +68,36 @@ integrate() {
   src_icons="$APPDIR/usr/share/icons/hicolor"
   [ -d "$src_icons" ] || return 0
   icons="$data/icons/hicolor"
-  (cd "$src_icons" && find . -type f) | while IFS= read -r rel; do
-    mkdir -p "$icons/$(dirname "$rel")" 2>/dev/null || continue
-    if ! cmp -s "$src_icons/$rel" "$icons/$rel"; then
-      cp "$src_icons/$rel" "$icons/$rel" 2>/dev/null || true
+  (cd "$src_icons" && find . -type f) | {
+    changed=false
+    while IFS= read -r rel; do
+      mkdir -p "$icons/$(dirname "$rel")" 2>/dev/null || continue
+      if ! cmp -s "$src_icons/$rel" "$icons/$rel"; then
+        if cp "$src_icons/$rel" "$icons/$rel" 2>/dev/null; then
+          changed=true
+        fi
+      fi
+    done
+    if [ "$changed" = true ] && command -v gtk-update-icon-cache >/dev/null 2>&1; then
+      # A per-user hicolor directory need not have index.theme; -t permits that.
+      gtk-update-icon-cache -f -t "$icons" >/dev/null 2>&1 || true
     fi
-  done
+  }
+}
+
+# Refresh only an unchanged entry whose Exec still matches the executable we wrote.
+# Unmarked legacy entries and customized or ambiguous executable fields are preserved.
+own_entry() {
+  [ -f "$1" ] && [ ! -L "$1" ] || return 1
+  [ "$(grep -c '^Exec=' "$1")" = 1 ] || return 1
+  [ "$(grep -c '^X-ArtCraft-Launcher-Generated-Exec=' "$1")" = 1 ] || return 1
+  grep -Eq '^Exec="/[^"`$\\%]+"$' "$1" || return 1
+  existing_exec="$(sed -n 's/^Exec=//p' "$1")" || return 1
+  generated_exec="$(sed -n 's/^X-ArtCraft-Launcher-Generated-Exec=//p' "$1")" || return 1
+  [ "$existing_exec" = "$generated_exec" ] || return 1
+  expected_body="$(sed -e '/^Exec=/d' -e '/^TryExec=/d' "$src_desktop")" || return 1
+  existing_body="$(sed -e '/^Exec=/d' -e '/^X-ArtCraft-Launcher-Generated-Exec=/d' "$1")" || return 1
+  [ "$expected_body" = "$existing_body" ]
 }
 
 integrate

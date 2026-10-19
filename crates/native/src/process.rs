@@ -2,6 +2,7 @@
 
 use std::path::Path;
 use std::process::{Command, Stdio};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
 
 /// A `Command` that won't flash a console window on Windows, and clears AppImage-injected
@@ -74,6 +75,14 @@ pub fn run_command(mut cmd: Command, program: &str, timeout: Duration) -> Result
             }
         }
     };
+    // A descendant may retain a pipe after the direct child exits. Keep reader completion
+    // under the same deadline; on timeout the readers detach, as in the child timeout path.
+    while !stdout.is_finished() || !stderr.is_finished() {
+        if start.elapsed() >= timeout {
+            return Err(format!("{program} didn't finish within {} seconds", timeout.as_secs()));
+        }
+        std::thread::sleep(Duration::from_millis(15));
+    }
     let text = |pipe: std::thread::JoinHandle<Vec<u8>>| String::from_utf8_lossy(&pipe.join().unwrap_or_default()).into_owned();
     let (out, err) = (text(stdout), text(stderr));
     if status.success() {
@@ -83,12 +92,15 @@ pub fn run_command(mut cmd: Command, program: &str, timeout: Duration) -> Result
     Err(if reason.is_empty() { format!("{program} failed ({status})") } else { reason.to_string() })
 }
 
-/// Reads a child's pipe to the end (at most 8 MB) on its own thread.
+/// Captures at most 8 MB of a child's pipe and drains the rest on its own thread.
 fn read_all<R: std::io::Read + Send + 'static>(pipe: Option<R>) -> std::thread::JoinHandle<Vec<u8>> {
     std::thread::spawn(move || {
         let mut out = Vec::new();
-        if let Some(pipe) = pipe {
-            let _ = std::io::Read::read_to_end(&mut std::io::Read::take(pipe, 8 << 20), &mut out);
+        if let Some(mut pipe) = pipe {
+            let _ = std::io::Read::read_to_end(&mut std::io::Read::take(&mut pipe, 8 << 20), &mut out);
+            // Keep reading without retaining more output: closing a full pipe early can make a
+            // successful helper fail with a broken pipe (SIGPIPE on Unix).
+            let _ = std::io::copy(&mut pipe, &mut std::io::sink());
         }
         out
     })
@@ -139,6 +151,133 @@ pub fn is_flatpak_available() -> bool {
     }
 }
 
+static DISCORD_HANDLER_DETECTED: AtomicBool = AtomicBool::new(false);
+static DETECTION_STARTED: AtomicBool = AtomicBool::new(false);
+
+/// Starts asynchronous detection of a registered Discord URL scheme handler in the background.
+pub fn ensure_discord_detection_started() {
+    if !DETECTION_STARTED.swap(true, Ordering::Relaxed) {
+        let _ = std::thread::Builder::new().name("discord-detect".into()).spawn(|| {
+            let detected = detect_discord_scheme_handler();
+            DISCORD_HANDLER_DETECTED.store(detected, Ordering::Relaxed);
+        });
+    }
+}
+
+/// Whether a registered Discord scheme handler has been detected on this machine.
+///
+/// Triggers background detection if not yet started, and returns immediately without
+/// blocking the calling thread.
+pub fn is_discord_installed() -> bool {
+    ensure_discord_detection_started();
+    DISCORD_HANDLER_DETECTED.load(Ordering::Relaxed)
+}
+
+/// The URL to use for Discord links: deep-links to the app if a handler is registered,
+/// else the web invite. Non-blocking (detection runs in the background).
+pub fn discord_url() -> &'static str {
+    if is_discord_installed() { artcraft_launcher_core::catalog::DISCORD_APP_URL } else { artcraft_launcher_core::catalog::DISCORD_URL }
+}
+
+#[cfg(windows)]
+fn detect_discord_scheme_handler() -> bool {
+    use winreg::RegKey;
+    use winreg::enums::{HKEY_CLASSES_ROOT, HKEY_CURRENT_USER, HKEY_LOCAL_MACHINE, KEY_READ};
+
+    for hive in [HKEY_CURRENT_USER, HKEY_CLASSES_ROOT, HKEY_LOCAL_MACHINE] {
+        let subkey = if hive == HKEY_CLASSES_ROOT { r"discord\shell\open\command" } else { r"Software\Classes\discord\shell\open\command" };
+        if let Ok(key) = RegKey::predef(hive).open_subkey_with_flags(subkey, KEY_READ)
+            && let Ok(val) = key.get_value::<String, _>("")
+            && !val.trim().is_empty()
+        {
+            return true;
+        }
+    }
+    false
+}
+
+#[cfg(target_os = "macos")]
+fn detect_discord_scheme_handler() -> bool {
+    macos_discord_candidates(dirs::home_dir().as_deref()).iter().any(|app_dir| {
+        let plist_path = app_dir.join("Contents/Info.plist");
+        if let Ok(content) = std::fs::read_to_string(&plist_path) { content.contains("<string>discord</string>") } else { false }
+    })
+}
+
+#[cfg(any(target_os = "macos", test))]
+fn macos_discord_candidates(home: Option<&Path>) -> Vec<std::path::PathBuf> {
+    let apps = ["Discord.app", "Discord Canary.app", "Discord PTB.app", "Discord Development.app"];
+    let mut dirs = vec![std::path::PathBuf::from("/Applications")];
+    if let Some(home) = home {
+        dirs.push(home.join("Applications"));
+    }
+    let mut out = Vec::new();
+    for dir in dirs {
+        for app in apps {
+            out.push(dir.join(app));
+        }
+    }
+    out
+}
+
+#[cfg(target_os = "linux")]
+fn detect_discord_scheme_handler() -> bool {
+    // 1. Query xdg-mime for the registered scheme handler (on host or in flatpak sandbox).
+    let mime_query = if in_sandbox() {
+        capture("flatpak-spawn", &["--host", "xdg-mime", "query", "default", "x-scheme-handler/discord"], Duration::from_millis(800))
+    } else {
+        capture("xdg-mime", &["query", "default", "x-scheme-handler/discord"], Duration::from_millis(800))
+    };
+    if let Some(out) = mime_query {
+        let trimmed = out.trim();
+        if !trimmed.is_empty() && trimmed.ends_with(".desktop") {
+            return true;
+        }
+    }
+
+    // 2. Fall back to inspecting installed desktop files to ensure MimeType includes
+    // x-scheme-handler/discord (preventing silent failures as in Arch FS#76847).
+    for path in linux_discord_candidates(dirs::home_dir().as_deref()) {
+        if path.extension().is_some_and(|ext| ext == "desktop")
+            && let Ok(content) = std::fs::read_to_string(&path)
+            && content.lines().any(|line| {
+                let line = line.trim();
+                line.starts_with("MimeType=") && line.contains("x-scheme-handler/discord")
+            })
+        {
+            return true;
+        }
+    }
+
+    false
+}
+
+#[cfg(any(target_os = "linux", test))]
+fn linux_discord_candidates(home: Option<&Path>) -> Vec<std::path::PathBuf> {
+    let mut files = vec![
+        std::path::PathBuf::from("/usr/share/applications/discord.desktop"),
+        std::path::PathBuf::from("/usr/share/applications/discord-canary.desktop"),
+        std::path::PathBuf::from("/usr/share/applications/discord-ptb.desktop"),
+        std::path::PathBuf::from("/var/lib/flatpak/exports/share/applications/com.discordapp.Discord.desktop"),
+        std::path::PathBuf::from("/var/lib/flatpak/exports/share/applications/com.discordapp.DiscordCanary.desktop"),
+        std::path::PathBuf::from("/var/lib/snapd/desktop/applications/discord_discord.desktop"),
+        std::path::PathBuf::from("/snap/bin/discord"),
+    ];
+    if let Some(home) = home {
+        files.push(home.join(".local/share/applications/discord.desktop"));
+        files.push(home.join(".local/share/applications/discord-canary.desktop"));
+        files.push(home.join(".local/share/applications/discord-ptb.desktop"));
+        files.push(home.join(".local/share/flatpak/exports/share/applications/com.discordapp.Discord.desktop"));
+        files.push(home.join(".local/share/flatpak/exports/share/applications/com.discordapp.DiscordCanary.desktop"));
+    }
+    files
+}
+
+#[cfg(not(any(windows, target_os = "macos", target_os = "linux")))]
+fn detect_discord_scheme_handler() -> bool {
+    false
+}
+
 fn which_on_path(name: &str) -> Option<std::path::PathBuf> {
     let path = std::env::var_os("PATH")?;
     std::env::split_paths(&path).map(|d| d.join(name)).find(|p| p.is_file())
@@ -162,12 +301,16 @@ pub fn launch_binary(exe: &Path, args: &[&str]) -> Result<(), String> {
 
 /// Opens a file, folder or URL with the system's default handler.
 pub fn open(target: &std::ffi::OsStr) -> Result<(), String> {
+    spawn_detached(opener(target))
+}
+
+/// The system's default opener for `target`: `explorer` on Windows, `open` on macOS, and
+/// `xdg-open` elsewhere (on the host, through `flatpak-spawn --host`, inside the sandbox).
+fn opener(target: &std::ffi::OsStr) -> Command {
     let mut cmd = if cfg!(target_os = "macos") {
         command("open")
     } else if cfg!(windows) {
-        let mut c = command("explorer");
-        c.arg(target);
-        return spawn_detached(c);
+        command("explorer")
     } else if in_sandbox() {
         let mut c = command("flatpak-spawn");
         c.arg("--host").arg("xdg-open");
@@ -176,7 +319,54 @@ pub fn open(target: &std::ffi::OsStr) -> Result<(), String> {
         command("xdg-open")
     };
     cmd.arg(target);
-    spawn_detached(cmd)
+    cmd
+}
+
+/// Opens `primary_url` with the system's default handler. If opening fails (for example,
+/// if a custom scheme handler is not found or fails to execute), falls back to `fallback_url`.
+pub fn open_url_with_fallback(primary_url: &str, fallback_url: &str) {
+    let primary = primary_url.to_string();
+    let fallback = fallback_url.to_string();
+    std::thread::spawn(move || {
+        if !open_and_wait_success(&primary, Duration::from_millis(1500)) {
+            log::warn!("couldn't open {primary}; falling back to {fallback}");
+            let _ = open(std::ffi::OsStr::new(&fallback));
+        }
+    });
+}
+
+/// Starts the default system opener for `target` and returns `true` unless it fails to start
+/// or exits in error within `timeout`. An opener still running after `timeout` counts as
+/// success and is reaped in the background.
+///
+/// `explorer` exits with an error status even when it opens the target, so on Windows only a
+/// failure to start counts; the registry check in `detect_discord_scheme_handler` covers the rest.
+fn open_and_wait_success(target: &str, timeout: Duration) -> bool {
+    let mut cmd = opener(std::ffi::OsStr::new(target));
+    if cfg!(windows) {
+        return spawn_detached(cmd).is_ok();
+    }
+    let mut child = match cmd.stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null()).spawn() {
+        Ok(c) => c,
+        Err(e) => {
+            log::warn!("couldn't start the opener for {target}: {e}");
+            return false;
+        }
+    };
+    let start = Instant::now();
+    loop {
+        match child.try_wait() {
+            Ok(Some(status)) => return status.success(),
+            Ok(None) if start.elapsed() < timeout => std::thread::sleep(Duration::from_millis(25)),
+            Ok(None) => {
+                std::thread::spawn(move || {
+                    let _ = child.wait();
+                });
+                return true;
+            }
+            Err(_) => return false,
+        }
+    }
 }
 
 /// Shows `path` selected in the file manager.
@@ -324,6 +514,30 @@ mod run_tests {
         assert_eq!(capture(program, &args, Duration::from_secs(30)), None);
     }
 
+    #[cfg(unix)]
+    #[test]
+    fn successful_helpers_can_write_past_the_stdout_capture_limit() {
+        let out = run("/bin/sh", &["-c", "head -c 9437184 /dev/zero"], Duration::from_secs(10)).unwrap();
+        assert_eq!(out.len(), 8 << 20);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn successful_helpers_can_write_past_the_stderr_capture_limit() {
+        let out = run("/bin/sh", &["-c", "head -c 9437184 /dev/zero >&2"], Duration::from_secs(10));
+        assert!(out.is_ok(), "the helper should finish without a broken pipe");
+        assert!(out.unwrap().is_empty());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_helper_that_keeps_writing_still_times_out() {
+        let start = Instant::now();
+        let err = run("yes", &[], Duration::from_millis(100)).unwrap_err();
+        assert!(err.contains("didn't finish within"), "{err}");
+        assert!(start.elapsed() < Duration::from_secs(5));
+    }
+
     #[test]
     fn a_silent_failure_and_a_success() {
         let (program, args) = shell("exit 4");
@@ -355,5 +569,117 @@ mod explorer_tests {
     fn explorer_select_uses_backslashes() {
         let arg = explorer_select_arg(Path::new("C:/Users/A B/AppData/Local/ArtCraft Launcher/apps/photocraft.exe"));
         assert_eq!(arg.unwrap(), r#"/select,"C:\Users\A B\AppData\Local\ArtCraft Launcher\apps\photocraft.exe""#);
+    }
+}
+
+#[cfg(test)]
+mod discord_tests {
+    use super::*;
+
+    #[test]
+    fn linux_candidates_include_flatpak_and_system_paths() {
+        let fake_home = Path::new("/home/testuser");
+        let candidates = linux_discord_candidates(Some(fake_home));
+        assert!(candidates.iter().any(|p| p.ends_with("com.discordapp.Discord.desktop")));
+        assert!(candidates.iter().any(|p| p == Path::new("/home/testuser/.local/share/applications/discord.desktop")));
+        assert!(candidates.iter().any(|p| p == Path::new("/usr/share/applications/discord.desktop")));
+        assert!(candidates.iter().any(|p| p == Path::new("/snap/bin/discord")));
+    }
+
+    #[test]
+    fn macos_candidates_include_standard_apps() {
+        let fake_home = Path::new("/Users/testuser");
+        let candidates = macos_discord_candidates(Some(fake_home));
+        assert!(candidates.iter().any(|p| p == Path::new("/Applications/Discord.app")));
+        assert!(candidates.iter().any(|p| p == Path::new("/Users/testuser/Applications/Discord.app")));
+        assert!(candidates.iter().any(|p| p == Path::new("/Applications/Discord Canary.app")));
+    }
+
+    #[test]
+    fn discord_url_gives_app_or_web_url() {
+        use artcraft_launcher_core::catalog::{DISCORD_APP_URL, DISCORD_URL};
+        let url = discord_url();
+        assert!(url == DISCORD_URL || url == DISCORD_APP_URL);
+    }
+}
+
+#[cfg(test)]
+mod inherited_pipe_tests {
+    use super::*;
+    use std::io::Write;
+
+    fn fixture_args(name: &str, marker: &str) -> Vec<String> {
+        let (_, module) = module_path!().split_once("::").unwrap();
+        // libtest accepts arbitrary skip filters; this one carries our private fixture path.
+        vec!["--ignored".into(), "--exact".into(), format!("{module}::{name}"), "--nocapture".into(), "--skip".into(), marker.into()]
+    }
+
+    fn fixture_dir() -> std::path::PathBuf {
+        let args: Vec<String> = std::env::args().collect();
+        std::path::PathBuf::from(&args[args.iter().position(|arg| arg == "--skip").unwrap() + 1])
+    }
+
+    #[test]
+    #[ignore = "self-spawned subprocess fixture"]
+    fn pipe_holder() {
+        let dir = fixture_dir();
+        let buffer = [b'x'; 64 << 10];
+        // Both streams exceed the capture cap before the direct child exits.
+        for _ in 0..144 {
+            std::io::stdout().write_all(&buffer).unwrap();
+            std::io::stderr().write_all(&buffer).unwrap();
+        }
+        std::fs::write(dir.join("ready"), []).unwrap();
+        let start = Instant::now();
+        while !dir.join("stop").exists() && start.elapsed() < Duration::from_secs(3) {
+            std::thread::sleep(Duration::from_millis(10));
+        }
+        std::fs::write(dir.join("done"), []).unwrap();
+    }
+
+    #[test]
+    #[ignore = "self-spawned subprocess fixture"]
+    fn pipe_parent() {
+        let dir = fixture_dir();
+        let descendant = command(std::env::current_exe().unwrap()).args(fixture_args("pipe_holder", dir.to_str().unwrap())).spawn().unwrap();
+        let start = Instant::now();
+        while !dir.join("ready").exists() && start.elapsed() < Duration::from_secs(3) {
+            std::thread::sleep(Duration::from_millis(10));
+        }
+        assert!(dir.join("ready").exists(), "descendant did not fill both captured pipes");
+        std::fs::write(dir.join("parent-returning"), []).unwrap();
+        // Dropping Child leaves the finite fixture running with inherited stdout/stderr.
+        drop(descendant);
+    }
+
+    struct StopHolder(tempfile::TempDir);
+
+    impl Drop for StopHolder {
+        fn drop(&mut self) {
+            let _ = std::fs::write(self.0.path().join("stop"), []);
+            let start = Instant::now();
+            while !self.0.path().join("done").exists() && start.elapsed() < Duration::from_secs(5) {
+                std::thread::sleep(Duration::from_millis(10));
+            }
+        }
+    }
+
+    #[test]
+    fn exited_helper_does_not_wait_past_deadline_for_inherited_pipes() {
+        let holder = StopHolder(tempfile::tempdir().unwrap());
+        let exe = std::env::current_exe().unwrap();
+        let args = fixture_args("pipe_parent", holder.0.path().to_str().unwrap());
+        let args: Vec<&str> = args.iter().map(String::as_str).collect();
+        let start = Instant::now();
+        let result = run(exe.to_str().unwrap(), &args, Duration::from_secs(1));
+        let elapsed = start.elapsed();
+        assert!(holder.0.path().join("parent-returning").exists(), "direct child did not exit its fixture");
+        assert!(
+            matches!(&result, Err(error) if error.contains("didn't finish within")),
+            "expected a pipe deadline error; helper returned success: {}, elapsed: {elapsed:?}",
+            result.is_ok()
+        );
+        assert!(elapsed < Duration::from_secs(2), "capture exceeded its caller deadline: {elapsed:?}");
+        // The guard stops the finite descendant and waits for its completion marker on failures too.
     }
 }

@@ -126,9 +126,11 @@ fn complete_catalogs_cover_every_ui_literal() {
         include_str!("../app.rs"),
         include_str!("../details.rs"),
         include_str!("../dialogs.rs"),
+        include_str!("../card_parts.rs"),
         include_str!("../model.rs"),
         include_str!("../notes.rs"),
         include_str!("../settings.rs"),
+        include_str!("../settings_dialog.rs"),
         include_str!("../views.rs"),
         include_str!("../widgets.rs"),
         // The desktop shell's tray menu and tooltip.
@@ -515,8 +517,16 @@ fn message_templates_match_real_messages() {
 #[test]
 fn complete_catalogs_translate_package_formats() {
     use artcraft_launcher_core::PackageKind;
-    let kinds =
-        [PackageKind::Msi, PackageKind::PortableZip, PackageKind::Dmg, PackageKind::Deb, PackageKind::Rpm, PackageKind::Flatpak, PackageKind::TarGz];
+    let kinds = [
+        PackageKind::Msi,
+        PackageKind::PortableZip,
+        PackageKind::Dmg,
+        PackageKind::Deb,
+        PackageKind::Rpm,
+        PackageKind::ArchPkg,
+        PackageKind::Flatpak,
+        PackageKind::TarGz,
+    ];
     for lang in Lang::all().filter(|l| l.complete_menus()) {
         for kind in kinds {
             assert!(super::has(lang, kind.label()), "{}: {}", lang.code(), kind.label());

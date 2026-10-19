@@ -139,6 +139,7 @@
 	Disk image (.dmg)	Obraz disku (.dmg)
 	Debian package (.deb)	Balíček Debian (.deb)
 	RPM package (.rpm)	Balíček RPM (.rpm)
+	Arch package (.pkg.tar.zst)	Balíček Arch (.pkg.tar.zst)
 	Flatpak bundle	Balíček Flatpak
 	Tarball (.tar.gz)	Archiv tar (.tar.gz)
 photocraft	Image editing	Úpravy obrázků
@@ -265,6 +266,10 @@ filter	Installed	Nainstalováno
 @msg	{name} installed: {version} (this release publishes no checksum, so only its size was checked)	Aplikace {name} byla nainstalována ve verzi {version} (toto vydání neobsahuje kontrolní součet, ověřena byla pouze velikost)
 @msg	{name} was removed	Aplikace {name} byla odebrána
 @msg	{name} is running. Quit it, then try again.	Aplikace {name} je spuštěná. Ukončete ji a zkuste to znovu.
+@msg	{name} was installed from the {repo} repository or the AUR ({pkg}). Update it with {cmd} or sudo pacman -Syu	Aplikace {name} byla nainstalována z repozitáře {repo} nebo z AUR ({pkg}). Aktualizujte ji příkazem {cmd} nebo sudo pacman -Syu
+@msg	{name} was installed from the {repo} repository or the AUR ({pkg}). Update it with your AUR helper (for example: yay -S {pkg}) or sudo pacman -Syu	Aplikace {name} byla nainstalována z repozitáře {repo} nebo z AUR ({pkg}). Aktualizujte ji pomocí pomocníka AUR (například: yay -S {pkg}) nebo příkazem sudo pacman -Syu
+@msg	{name} was installed from the AUR ({pkg}). Update it with {cmd}	Aplikace {name} byla nainstalována z AUR ({pkg}). Aktualizujte ji příkazem {cmd}
+@msg	{name} was installed from the AUR ({pkg}). Update it with your AUR helper (for example: yay -S {pkg})	Aplikace {name} byla nainstalována z AUR ({pkg}). Aktualizujte ji pomocí pomocníka AUR (například: yay -S {pkg})
 @id	app.install	Nainstalovat
 @id	app.update	Aktualizovat na {v}
 @id	app.open	Otevřít
@@ -342,3 +347,12 @@ filter	Installed	Nainstalováno
 	No storage connected	Žádné připojené úložiště
 	Signing out ends the session for every Craft app.	Odhlášení ukončí sezení ve všech aplikacích Craft.
 	The shared sign-in couldn't be read.	Společné přihlášení se nepodařilo přečíst.
+	Recently updated	Nedávno aktualizované
+	Name (A–Z)	Název (A–Z)
+	Name (Z–A)	Název (Z–A)
+	Frequently used	Nejčastěji používané
+	Next app	Další aplikace
+	Previous app	Předchozí aplikace
+	Show {n} more changes	Zobrazit dalších změn: {n}
+	Last updated: {date}	Naposledy aktualizováno: {date}
+column	Version	Verze

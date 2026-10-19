@@ -13,8 +13,9 @@
 //! | Windows portable zip | after exit, unzip over this folder (settings in `ArtCraftLauncherData` stay) |
 //! | Linux AppImage | rename the new AppImage over this one (fine while running), start it |
 //! | Linux `.deb` / `.rpm` | the system package manager, with the password prompt; then restart |
+//! | Linux Flatpak | reinstall the bundle with `--reinstall` via the host portal; then restart |
 //!
-//! Anything else (a Flatpak, FreeBSD, a development build) gets the download link instead.
+//! Anything else (FreeBSD, a development build) gets the download link instead.
 
 use std::path::{Path, PathBuf};
 
@@ -45,6 +46,8 @@ pub enum Install {
     AppImage(PathBuf),
     /// A Debian or RPM package; the binary.
     Package(PackageKind, PathBuf),
+    /// A Flatpak application.
+    Flatpak,
 }
 
 impl Install {
@@ -55,6 +58,7 @@ impl Install {
             Self::Portable(_) => PackageKind::PortableZip,
             Self::AppImage(_) => PackageKind::AppImage,
             Self::Package(kind, _) => *kind,
+            Self::Flatpak => PackageKind::Flatpak,
         }
     }
 }
@@ -78,7 +82,7 @@ pub fn just_updated_to(paths: &Paths, release: &Release) -> bool {
     let Ok(text) = std::fs::read_to_string(marker(paths)) else { return false };
     let mut lines = text.lines();
     let (Some(tag), Some(at)) = (lines.next(), lines.next().and_then(|a| a.parse::<i64>().ok())) else { return false };
-    tag == release.tag && crate::now() - at < JUST_UPDATED_FOR
+    tag == release.tag && crate::now().checked_sub(at).is_some_and(|age| (0..JUST_UPDATED_FOR).contains(&age))
 }
 
 fn marker(paths: &Paths) -> PathBuf {
@@ -128,7 +132,11 @@ fn msi_install_dir() -> Option<PathBuf> {
 #[cfg(target_os = "linux")]
 fn detect(exe: &Path) -> Option<Install> {
     if process::in_sandbox() {
-        return None;
+        // Only the release bundle installed per user updates itself, with `flatpak install --user
+        // --reinstall --bundle`. A system-wide copy would gain a second, per-user one beside it;
+        // a copy from a repository is that repository's to update (and an unsigned bundle can't
+        // go into a signed one).
+        return (is_user_install() && from_bundle()).then_some(Install::Flatpak);
     }
     if let Some(appimage) = std::env::var_os("APPIMAGE") {
         return Some(Install::AppImage(PathBuf::from(appimage)));
@@ -143,7 +151,51 @@ fn detect(exe: &Path) -> Option<Install> {
     if process::capture("rpm", &["-q", LAUNCHER.id], t).is_some() {
         return Some(Install::Package(PackageKind::Rpm, exe.to_path_buf()));
     }
+    // A pacman install of the launcher. We detect the release's own Arch package (by bundle id).
+    // AUR builds (`artcraft-launcher`, `artcraft-launcher-bin`, `artcraft-launcher-git`) are left to
+    // pacman and the AUR helper.
+    if crate::detect::linux::has_pacman_db() && process::capture("pacman", &["-Q", &LAUNCHER.bundle_id()], t).is_some() {
+        return Some(Install::Package(PackageKind::ArchPkg, exe.to_path_buf()));
+    }
     None
+}
+
+/// Whether this sandbox runs the per-user installation's copy, from `app-path` in `/.flatpak-info`.
+#[cfg(target_os = "linux")]
+fn is_user_install() -> bool {
+    std::fs::read_to_string("/.flatpak-info").is_ok_and(|info| parse_is_user_install(&info))
+}
+
+#[cfg(target_os = "linux")]
+fn parse_is_user_install(info: &str) -> bool {
+    let mut in_instance = false;
+    for line in info.lines() {
+        let line = line.trim();
+        if line.starts_with('[') {
+            in_instance = line == "[Instance]";
+        } else if in_instance && let Some(path) = line.strip_prefix("app-path=") {
+            // The host's path. The per-user installation is ~/.local/share/flatpak there; it can't
+            // be looked up from in here, where XDG_DATA_HOME points into ~/.var/app instead.
+            return path.trim().contains("/.local/share/flatpak/");
+        }
+    }
+    false
+}
+
+/// Whether the per-user copy was installed from a `.flatpak` bundle. `/.flatpak-info` doesn't say
+/// where it came from, so the host's Flatpak is asked.
+#[cfg(target_os = "linux")]
+fn from_bundle() -> bool {
+    let id = LAUNCHER.bundle_id();
+    process::capture_flatpak(&["info", "--user", "--show-origin", &id], std::time::Duration::from_secs(3))
+        .is_some_and(|origin| is_bundle_origin(origin.trim()))
+}
+
+/// Flatpak names a bundle's origin after the last part of the app id, numbered when that name is
+/// taken: `artcraft-launcher-origin`, `artcraft-launcher1-origin`, …
+#[cfg(target_os = "linux")]
+fn is_bundle_origin(origin: &str) -> bool {
+    origin.strip_prefix(LAUNCHER.id).and_then(|rest| rest.strip_suffix("-origin")).is_some_and(|n| n.bytes().all(|b| b.is_ascii_digit()))
 }
 
 #[cfg(not(any(target_os = "macos", windows, target_os = "linux")))]
@@ -165,6 +217,11 @@ pub fn update(
     phase: &mut dyn FnMut(JobPhase),
     last: &dyn Fn() -> Result<(), String>,
 ) -> Result<(), String> {
+    if let (Some(rel_v), Some(cur_v)) = (release.version.as_ref(), current_version().as_ref())
+        && !version::is_newer(rel_v, cur_v)
+    {
+        return Err(format!("ArtCraft Launcher {} is not newer than currently running version {}", release.version_label(), cur_v));
+    }
     let (asset, _) = pick_asset(release, &[LAUNCHER.id], platform, &[install.kind()])
         .ok_or_else(|| format!("ArtCraft Launcher {} has no {} for {}", release.version_label(), install.kind().label(), platform.label()))?;
     let asset = asset.clone();
@@ -181,7 +238,8 @@ pub fn update(
         #[cfg(target_os = "macos")]
         Install::MacApp(bundle) => {
             let existing = Installed { version: None, source: InstallSource::MacApp, location: bundle.display().to_string(), package: None };
-            let placed = install::macos::install_dmg(&LAUNCHER, &file, Some(&existing), None, paths, &install::macos::Expect::release(release));
+            let placed =
+                install::macos::install_dmg(&LAUNCHER, &file, Some(&existing), None, false, paths, &install::macos::Expect::release(release));
             let _ = std::fs::remove_file(&file);
             let placed = placed?;
             relaunch_after_exit(pid, &[Path::new("/usr/bin/open").as_os_str(), placed.as_os_str()])
@@ -199,16 +257,15 @@ pub fn update(
             result?;
             relaunch_after_exit(pid, &[exe.as_os_str()])
         }
+        #[cfg(target_os = "linux")]
+        Install::Flatpak => {
+            let result = install::linux::install_package(PackageKind::Flatpak, &file, stop, phase);
+            let _ = std::fs::remove_file(&file);
+            result?;
+            relaunch_flatpak_after_exit()
+        }
         #[cfg(windows)]
-        Install::Msi(exe) => windows_helper(
-            pid,
-            &format!(
-                "Start-Process -FilePath (Join-Path $env:SystemRoot 'System32\\msiexec.exe') -ArgumentList '/i',{},'/passive','/norestart' -Wait; Remove-Item -LiteralPath {} -ErrorAction SilentlyContinue",
-                ps_quote_arg(&file),
-                ps_quote(&file)
-            ),
-            exe,
-        ),
+        Install::Msi(exe) => windows_helper(pid, &msi_update_step(&file)?, exe),
         #[cfg(windows)]
         Install::Portable(exe) => {
             let dir = exe.parent().ok_or("the launcher isn't in a folder")?;
@@ -268,6 +325,72 @@ fn helper_command(pid: u32, command: &[&std::ffi::OsStr]) -> std::process::Comma
     cmd
 }
 
+#[cfg(target_os = "linux")]
+fn parse_flatpak_instance_id(info: &str) -> Option<String> {
+    for line in info.lines() {
+        if let Some(id) = line.trim().strip_prefix("instance-id=") {
+            let trimmed = id.trim();
+            if !trimmed.is_empty() {
+                return Some(trimmed.to_string());
+            }
+        }
+    }
+    None
+}
+
+#[cfg(target_os = "linux")]
+fn flatpak_instance_id() -> Option<String> {
+    let info = std::fs::read_to_string("/.flatpak-info").ok()?;
+    parse_flatpak_instance_id(&info)
+}
+
+#[cfg(target_os = "linux")]
+fn parse_flatpak_host_pid(ps_output: &str, target_instance: &str) -> Option<u32> {
+    for line in ps_output.lines() {
+        let mut parts = line.split_whitespace();
+        if let (Some(inst), Some(pid)) = (parts.next(), parts.next())
+            && inst == target_instance
+        {
+            return pid.parse().ok();
+        }
+    }
+    None
+}
+
+#[cfg(target_os = "linux")]
+fn flatpak_host_pid() -> Option<u32> {
+    let instance_id = flatpak_instance_id()?;
+    let out = process::capture_flatpak(&["ps", "--columns=instance,pid"], std::time::Duration::from_secs(3))?;
+    parse_flatpak_host_pid(&out, &instance_id)
+}
+
+/// Starts a host helper that waits for this Flatpak instance to exit, then relaunches it via Flatpak on the host.
+#[cfg(target_os = "linux")]
+fn relaunch_flatpak_after_exit() -> Result<(), String> {
+    let host_pid = flatpak_host_pid();
+    let instance_id = flatpak_instance_id();
+    // Each wait clause polls until the old process is gone, then execs the relaunch command.
+    // If the old process is still alive after 60 s the helper gives up WITHOUT launching a second
+    // copy, which is the safe choice: the user can relaunch manually once the old one exits.
+    let (wait_clause, target_arg) = match (host_pid, instance_id) {
+        (Some(pid), _) => (
+            r#"pid=$1; shift; i=0; while kill -0 "$pid" 2>/dev/null; do [ $i -ge 600 ] && exit 1; sleep 0.1; i=$((i+1)); done; exec "$@""#,
+            pid.to_string(),
+        ),
+        (None, Some(id)) => (
+            r#"id=$1; shift; i=0; while flatpak ps --columns=instance 2>/dev/null | grep -q "^$id$"; do [ $i -ge 600 ] && exit 1; sleep 0.1; i=$((i+1)); done; exec "$@""#,
+            id,
+        ),
+        // Without either, starting it again could only meet the old copy still running.
+        (None, None) => return Err("ArtCraft Launcher is updated; quit and reopen it to start the new version".into()),
+    };
+    let script = format!("({wait_clause}) &");
+    let app_id = LAUNCHER.bundle_id();
+    let mut cmd = process::command("flatpak-spawn");
+    cmd.args(["--host", "sh", "-c", &script, "sh", &target_arg, "flatpak", "run", &app_id]).env_remove(PRETEND_VAR);
+    process::spawn_detached(cmd).map_err(|e| format!("couldn't schedule the Flatpak restart ({e})"))
+}
+
 /// Starts a hidden PowerShell that waits for `pid` to exit, runs `step`, then starts `exe`.
 #[cfg(windows)]
 fn windows_helper(pid: u32, step: &str, exe: &Path) -> Result<(), String> {
@@ -289,9 +412,59 @@ fn ps_quote_arg(path: &Path) -> String {
     format!("'\"{}\"'", path.display().to_string().replace('\'', "''"))
 }
 
+#[cfg_attr(not(windows), allow(dead_code))]
+fn msi_update_step(file: &Path) -> Result<String, String> {
+    let file = install::msi_path(file)?;
+    Ok(format!(
+        "Start-Process -FilePath (Join-Path $env:SystemRoot 'System32\\msiexec.exe') -ArgumentList '/i',{},'/passive','/norestart' -Wait; Remove-Item -LiteralPath {} -ErrorAction SilentlyContinue",
+        ps_quote_arg(&file),
+        ps_quote(&file)
+    ))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[cfg(unix)]
+    #[test]
+    fn msi_self_update_uses_the_target_of_a_symlinked_download() {
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join("Launcher O'Brien.msi");
+        std::fs::write(&file, b"test package").unwrap();
+        let link = dir.path().join("cached.msi");
+        std::os::unix::fs::symlink(&file, &link).unwrap();
+        let step = msi_update_step(&link).unwrap();
+        let target = file.canonicalize().unwrap();
+        assert!(step.contains(&format!("-ArgumentList '/i',{},", ps_quote_arg(&target))), "{step}");
+        assert!(step.contains(&format!("Remove-Item -LiteralPath {} ", ps_quote(&target))), "{step}");
+    }
+
+    #[test]
+    fn a_missing_msi_cannot_schedule_a_self_update() {
+        let dir = tempfile::tempdir().unwrap();
+        assert!(msi_update_step(&dir.path().join("missing.msi")).is_err());
+    }
+
+    #[test]
+    fn a_corrupt_self_update_timestamp_does_not_overflow() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = Paths::under(dir.path());
+        let release = Release { tag: "v0.2.0".into(), ..Release::default() };
+        crate::paths::write_atomic(&marker(&paths), format!("v0.2.0\n{}\n", i64::MIN).as_bytes()).unwrap();
+        assert!(!just_updated_to(&paths, &release));
+    }
+
+    #[test]
+    fn a_future_self_update_timestamp_does_not_suppress_updates() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = Paths::under(dir.path());
+        let release = Release { tag: "v0.2.0".into(), ..Release::default() };
+        for at in [crate::now() + JUST_UPDATED_FOR, i64::MAX] {
+            crate::paths::write_atomic(&marker(&paths), format!("v0.2.0\n{at}\n").as_bytes()).unwrap();
+            assert!(!just_updated_to(&paths, &release), "future timestamp {at}");
+        }
+    }
 
     #[test]
     fn a_version_just_installed_is_not_offered_again() {
@@ -371,7 +544,7 @@ mod tests {
         let existing = Installed { version: None, source: InstallSource::MacApp, location: current.display().to_string(), package: None };
         // An unsigned test bundle: the signature check has its own tests in `install`.
         let expect = install::macos::Expect { team: None, version: None };
-        let placed = install::macos::install_dmg(&LAUNCHER, &dmg, Some(&existing), None, &Paths::under(dir.path()), &expect).unwrap();
+        let placed = install::macos::install_dmg(&LAUNCHER, &dmg, Some(&existing), None, false, &Paths::under(dir.path()), &expect).unwrap();
         assert_eq!(placed, current);
         assert_eq!(std::fs::read_to_string(current.join("Contents/MacOS/ArtCraft Launcher")).unwrap(), "0.2.0");
         assert_eq!(
@@ -401,6 +574,8 @@ mod tests {
             "artcraft-launcher-0.2.0-windows-x64-portable.zip",
             "artcraft-launcher-0.2.0-linux-x86_64.AppImage",
             "artcraft-launcher-0.2.0-linux-x86_64.deb",
+            "artcraft-launcher-0.2.0-linux-x86_64.flatpak",
+            "artcraft-launcher-0.2.0-linux-x86_64.pkg.tar.zst",
             "artcraft-launcher-web-0.2.0.zip",
         ];
         let release = Release {
@@ -417,5 +592,74 @@ mod tests {
         assert_eq!(pick(Os::Windows, Install::Portable(PathBuf::new()).kind()).as_deref(), Some(names[2]));
         assert_eq!(pick(Os::Linux, Install::AppImage(PathBuf::new()).kind()).as_deref(), Some(names[3]));
         assert_eq!(pick(Os::Linux, Install::Package(PackageKind::Deb, PathBuf::new()).kind()).as_deref(), Some(names[4]));
+        assert_eq!(pick(Os::Linux, Install::Flatpak.kind()).as_deref(), Some(names[5]));
+        assert_eq!(pick(Os::Linux, Install::Package(PackageKind::ArchPkg, PathBuf::new()).kind()).as_deref(), Some(names[6]));
+    }
+
+    #[test]
+    fn update_refuses_to_downgrade_when_release_is_older() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = Paths::under(dir.path());
+        let http = Http::new().unwrap();
+        let mut phase = |_| ();
+        let last = || Ok(());
+        let stop = Stop::default();
+        let release = Release {
+            version: version::parse("0.1.0"),
+            tag: "v0.1.0".into(),
+            assets: vec![artcraft_launcher_core::release::Asset {
+                name: "artcraft-launcher-0.1.0-linux-x86_64.AppImage".into(),
+                size: 1,
+                url: String::new(),
+                sha256: None,
+            }],
+            ..Release::default()
+        };
+        let install = Install::AppImage(dir.path().join("launcher.AppImage"));
+        use artcraft_launcher_core::{Arch, Os};
+        let platform = Platform { os: Os::Linux, arch: Arch::X64 };
+        let result = update(&install, &release, platform, &http, &paths, &stop, &mut phase, &last);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("is not newer than currently running version"));
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn parses_flatpak_metadata_for_restart() {
+        let info = "[Application]\nname=ai.storyteller.artcraft-launcher\n\n[Instance]\ninstance-id=155661136\n";
+        assert_eq!(parse_flatpak_instance_id(info), Some("155661136".to_string()));
+        assert_eq!(parse_flatpak_instance_id("no instance id here"), None);
+
+        let ps = "Instance   PID    Application\n155661136  842791 ai.storyteller.artcraft-launcher\n";
+        assert_eq!(parse_flatpak_host_pid(ps, "155661136"), Some(842791));
+        assert_eq!(parse_flatpak_host_pid(ps, "999999999"), None);
+    }
+
+    /// Only the per-user installation's copy updates itself; a system-wide one is left alone.
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn only_a_per_user_install_updates_itself() {
+        let info = |path: &str| format!("[Application]\nname=ai.storyteller.artcraft-launcher\n\n[Instance]\ninstance-id=1\napp-path={path}\n");
+        assert!(parse_is_user_install(&info("/home/alice/.local/share/flatpak/app/ai.storyteller.artcraft-launcher/x86_64/stable/0a3de1c/files")));
+        assert!(!parse_is_user_install(&info("/var/lib/flatpak/app/ai.storyteller.artcraft-launcher/x86_64/stable/0a3de1c/files")));
+        // `flatpak run --app-path=` mounts an empty /app.
+        assert!(!parse_is_user_install(&info("")));
+        // The key belongs to [Instance] only.
+        assert!(!parse_is_user_install("[Application]\napp-path=/home/alice/.local/share/flatpak/app/x/files\n"));
+        assert!(!parse_is_user_install("[Instance]\ninstance-id=123\n"));
+        assert!(!parse_is_user_install(""));
+    }
+
+    /// A copy from a repository (Flathub or any other) isn't the bundle's to replace.
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn only_a_bundle_origin_counts_as_the_release_bundle() {
+        assert!(is_bundle_origin("artcraft-launcher-origin"));
+        assert!(is_bundle_origin("artcraft-launcher2-origin"));
+        assert!(!is_bundle_origin("flathub"));
+        assert!(!is_bundle_origin("flathub-beta"));
+        assert!(!is_bundle_origin("artcraft-launcher-beta-origin"));
+        assert!(!is_bundle_origin("photocraft-origin"));
+        assert!(!is_bundle_origin(""));
     }
 }

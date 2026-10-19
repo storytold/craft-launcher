@@ -273,7 +273,7 @@ pub const DETAILS: [AppDetails; 13] = [
                 "Present",
                 "Transitions including Morph, animations and motion paths, a full-screen slide show, presenter view and rehearsed timings.",
             ),
-            feature("Exchange files", "Opens and saves PowerPoint .pptx and exports PDF (slides, notes pages and handouts), PNG and JPEG."),
+            feature("Exchange files", "Opens and saves .pptx presentation files and exports PDF (slides, notes pages and handouts), PNG and JPEG."),
         ],
         shots: &[
             shot("editor", "Editing a slide, with sections and notes"),

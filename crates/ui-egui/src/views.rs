@@ -5,7 +5,7 @@ use artcraft_launcher_core::details::AppDetails;
 use artcraft_launcher_core::platform::pick_asset;
 use artcraft_launcher_core::protocol::{Command, JobPhase};
 use artcraft_launcher_core::status::AppStatus;
-use artcraft_launcher_core::{AppGroup, SUITE, time};
+use artcraft_launcher_core::time;
 use egui::{Color32, CornerRadius, FontId, Rect, RichText, Sense, Stroke, Ui, vec2};
 
 use crate::app::{Dialog, LauncherUi, TitleBar};
@@ -13,7 +13,7 @@ use crate::i18n::{current, fmt, t, tn, tr_ctx};
 use crate::model::{self, AppEntry};
 use crate::settings::{Filter, SortKey, ViewMode};
 use crate::theme::{self, Tokens, rgb, tint};
-use crate::widgets::{self, Cell, Kind};
+use crate::widgets::{self, Kind};
 
 /// Translate a relative timestamp ("just now", "5 min ago", …) into the current language.
 fn ago_text(secs: i64, now: i64) -> String {
@@ -23,17 +23,14 @@ fn ago_text(secs: i64, now: i64) -> String {
         time::TimeAgo::Hours(n) => tn(n, "{n} h ago", "{n} h ago"),
         time::TimeAgo::Yesterday => t("yesterday").to_string(),
         time::TimeAgo::Days(n) => tn(n, "{n} day ago", "{n} days ago"),
-        time::TimeAgo::Date(secs) => {
-            let (y, m, d) = time::civil_from_unix(secs);
-            let month = tr_ctx(current(), "month", time::month_short_en(m));
-            fmt(tl!("{month} {day}, {year}"), &[("month", month), ("day", &d.to_string()), ("year", &y.to_string())])
-        }
+        time::TimeAgo::Date(secs) => date_text(secs),
     }
 }
 
-/// Translate an absolute date ("Oct 8, 2026" → "8 окт. 2026") into the current language.
+/// Translate an absolute date ("Oct 8, 2026" → "8 окт. 2026") into the current language, on this
+/// computer's calendar (`local_time`). Every date the launcher shows is written by this.
 pub(crate) fn date_text(secs: i64) -> String {
-    let (y, m, d) = time::civil_from_unix(secs);
+    let (y, m, d) = crate::local_time::civil(secs);
     let month = tr_ctx(current(), "month", time::month_short_en(m));
     fmt(tl!("{month} {day}, {year}"), &[("month", month), ("day", &d.to_string()), ("year", &y.to_string())])
 }
@@ -53,11 +50,9 @@ enum Primary {
 pub(crate) const HEADER_H: f32 = 48.0;
 /// Height of the footer bar.
 pub(crate) const FOOTER_H: f32 = 34.0;
-/// The footer drops its platform label rather than leave the status less room than this.
-const FOOTER_MIN_STATUS_W: f32 = 300.0;
 
 const CARD_MIN_W: f32 = 320.0;
-const CARD_H: f32 = 280.0;
+const CARD_H: f32 = 314.0;
 /// The card's top strip: number tab and links.
 const STRIP_H: f32 = 40.0;
 const CARD_PAD: f32 = 20.0;
@@ -88,37 +83,11 @@ impl LauncherUi {
                 if widgets::nav_icon(ui, "⚙", tl!("Settings"), h, false).clicked() {
                     self.dialog = Some(Dialog::Settings);
                 }
-                if widgets::nav_icon(ui, "⟳", tl!("Check for updates"), h, self.checking).clicked() {
-                    self.check_now();
-                }
-                ui.add_space(6.0);
-                if widgets::nav_link(ui, tl!("Discord"), tl!("Join the ArtCraft community on Discord"), h, false).clicked() {
-                    ui.ctx().open_url(egui::OpenUrl::new_tab(artcraft_launcher_core::catalog::DISCORD_URL));
-                }
-                ui.add_space(6.0);
-                widgets::rule(ui, h);
-                ui.add_space(6.0);
-                // Right to left: Table, then Grid, so they read Grid · Table.
-                for (mode, label, tip) in
-                    [(ViewMode::Table, tl!("Table"), tl!("Show apps as a table")), (ViewMode::Grid, tl!("Grid"), tl!("Show apps as cards"))]
-                {
-                    if widgets::nav_link(ui, label, tip, h, self.settings.view == mode).clicked() {
-                        self.settings.view = mode;
-                    }
-                }
-                ui.add_space(6.0);
-                widgets::rule(ui, h);
                 // The controls reserve their actual widths before the secondary text gets space.
                 ui.with_layout(egui::Layout::left_to_right(egui::Align::Center), |ui| {
-                    let tag_width =
-                        widgets::caps(ui, tl!("Launcher"), theme::HUD_SIZE, theme::mono_bold(), theme::HUD_SPACING, t.ink).size().x + 16.0;
-                    if ui.available_width() >= 17.0 + tag_width {
+                    if ui.available_width() >= 17.0 + widgets::hud_galley(ui, tl!("Craft App Suite"), t.muted).size().x {
                         widgets::rule(ui, h);
                         ui.add_space(16.0);
-                        widgets::tag(ui, tl!("Launcher"), t.invert_bg, t.invert_fg);
-                    }
-                    if ui.available_width() >= 12.0 + widgets::hud_galley(ui, tl!("Craft App Suite"), t.muted).size().x {
-                        ui.add_space(12.0);
                         widgets::hud(ui, tl!("Craft App Suite"), t.muted);
                     }
                 });
@@ -200,38 +169,27 @@ impl LauncherUi {
             ui.add_space(14.0);
         }
         self.announcements(ui);
+        let updates = self.count(Filter::Updates);
+        let mut compact = false;
         ui.horizontal(|ui| {
-            let updates = self.count(Filter::Updates);
-            let mut filters = vec![
-                (Filter::All, tl!("All"), tl!("Every Craft app"), None),
-                // The tab names a group ("installed ones"); the status pill says "Installed".
-                (Filter::Installed, tr_ctx(current(), "filter", "Installed"), tl!("Apps on this computer"), None),
-                (Filter::Updates, tl!("Updates"), tl!("Installed apps with a newer version"), Some(t.warn)),
-                (Filter::NotInstalled, tl!("Not installed"), tl!("Apps you can install"), None),
-            ];
-            filters.retain(|(f, ..)| self.caps.manage_apps || *f == Filter::All);
+            self.refresh_button(ui);
+            // Hiding an app is only undone from here, so the way back to the hidden ones stays
+            // while there are any: a toggle, lit while the hidden apps are what the page shows.
             if !self.settings.hidden.is_empty() {
-                filters.push((Filter::Hidden, tl!("Hidden Apps"), tl!("Apps you hid"), None));
-            }
-            let filters: Vec<(Filter, Cell<'_>)> =
-                filters.into_iter().map(|(f, label, tip, highlight)| (f, Cell { label, tip, count: Some((self.count(f), highlight)) })).collect();
-            widgets::cells(ui, &mut self.settings.filter, &filters);
-            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                if self.caps.manage_apps && updates > 0 {
-                    let label = if updates == 1 {
-                        tl!("Update 1 app").to_string()
-                    } else {
-                        fmt(tl!("Update all ({count})"), &[("count", &updates.to_string())])
-                    };
-                    if widgets::button(ui, &label, Kind::Primary, 0.0).clicked() {
-                        let ids: Vec<&str> =
-                            self.entries.iter().filter(|e| self.in_filter(e, Filter::Updates) && e.job.is_none()).map(|e| e.app.id).collect();
-                        for id in ids {
-                            self.send(Command::Install { app: id.to_string() });
-                        }
-                    }
-                    ui.add_space(4.0);
+                let showing = self.settings.filter == Filter::Hidden;
+                let label = format!("{} {}", tl!("Hidden Apps"), self.settings.hidden.len());
+                if widgets::button(ui, &label, if showing { Kind::Primary } else { Kind::Secondary }, 0.0)
+                    .on_hover_text(tl!("Apps you hid"))
+                    .clicked()
+                {
+                    self.settings.filter = if showing { Filter::All } else { Filter::Hidden };
                 }
+            }
+            compact = ui.available_width() < theme::TOOLBAR_COMPACT_BELOW;
+            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                // Right to left: the view switch at the far right, then the search.
+                crate::bar::view_toggle(ui, &mut self.settings.view, [tl!("Show apps as cards"), tl!("Show apps as a table")]);
+                ui.add_space(4.0);
                 ui.add(
                     egui::TextEdit::singleline(&mut self.search)
                         .hint_text(tl!("Search apps"))
@@ -240,26 +198,66 @@ impl LauncherUi {
                         .vertical_align(egui::Align::Center)
                         .margin(vec2(10.0, 0.0)),
                 );
-                if self.settings.view == ViewMode::Grid {
-                    egui::ComboBox::from_id_salt("sort")
-                        .selected_text(RichText::new(sort_label(self.settings.sort)).size(13.0))
-                        .width(140.0)
-                        .show_ui(ui, |ui| {
-                            for key in [SortKey::Suite, SortKey::Name, SortKey::Status, SortKey::Installed, SortKey::Latest, SortKey::Released] {
-                                if ui.selectable_label(self.settings.sort == key, sort_label(key)).clicked() {
-                                    self.settings.sort = key;
-                                    self.settings.sort_descending = key.starts_descending();
-                                }
-                            }
-                        });
+                if self.settings.view == ViewMode::Grid && !compact {
+                    self.sort_picker(ui);
                     // The caption only where it fits beside the filters (longer in some languages).
                     let sort = tl!("Sort");
                     if widgets::hud_galley(ui, sort, t.faint).size().x + ui.spacing().item_spacing.x <= ui.available_width() {
                         widgets::hud(ui, sort, t.faint);
                     }
                 }
+                if !compact && self.caps.manage_apps && updates > 0 {
+                    self.update_all_button(ui, updates);
+                }
             });
         });
+        if compact {
+            ui.add_space(6.0);
+            ui.horizontal(|ui| {
+                if self.settings.view == ViewMode::Grid {
+                    // "Sort" before the picker, as in the full-width row.
+                    widgets::hud(ui, tl!("Sort"), t.faint);
+                    self.sort_picker(ui);
+                }
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    if self.caps.manage_apps && updates > 0 {
+                        self.update_all_button(ui, updates);
+                    }
+                });
+            });
+        }
+    }
+
+    fn refresh_button(&mut self, ui: &mut Ui) {
+        if crate::bar::refresh_button(ui, tl!("Check for updates"), self.checking).clicked() {
+            self.check_now();
+        }
+    }
+
+    fn sort_picker(&mut self, ui: &mut Ui) {
+        egui::ComboBox::from_id_salt("sort")
+            .selected_text(RichText::new(grid_sort_label(grid_sort_now(&self.settings))).size(13.0))
+            .width(190.0)
+            .show_ui(ui, |ui| {
+                let current = grid_sort_now(&self.settings);
+                for choice in GRID_SORTS {
+                    if ui.selectable_label(current == choice, grid_sort_label(choice)).clicked() {
+                        self.settings.sort = choice.0;
+                        self.settings.sort_descending = choice.1;
+                    }
+                }
+            });
+    }
+
+    /// Update every eligible app; used in the compact and full-width toolbars.
+    fn update_all_button(&mut self, ui: &mut Ui, updates: usize) {
+        let label = if updates == 1 { tl!("Update 1 app").to_string() } else { fmt(tl!("Update all ({count})"), &[("count", &updates.to_string())]) };
+        if widgets::button(ui, &label, Kind::Primary, 0.0).clicked() {
+            let ids: Vec<&str> = self.entries.iter().filter(|e| self.in_filter(e, Filter::Updates) && e.job.is_none()).map(|e| e.app.id).collect();
+            for id in ids {
+                self.send(Command::Install { app: id.to_string() });
+            }
+        }
     }
 
     /// News from ArtCraft's release feed (and app renames), until the user dismisses each.
@@ -314,42 +312,33 @@ impl LauncherUi {
             let short = fmt(tl!("GitHub limit hit; back in {min} min"), &[("min", &min)]);
             (format!("· {full}"), format!("· {short}"))
         });
-        let platform = match self.platform {
-            Some(p) if self.caps.manage_apps => fmt(tl!("Installing for {platform}"), &[("platform", &p.label())]),
-            Some(p) => fmt(tl!("Downloads for {platform}"), &[("platform", &p.label())]),
-            None => tl!("No downloads for this system").into(),
-        };
-        use artcraft_launcher_core::catalog::{DISCORD_URL, GITHUB_URL, SOCIAL, WEBSITE_URL};
-        let links = [(tl!("Discord"), DISCORD_URL), (tl!("GitHub"), GITHUB_URL), (tl!("Website"), WEBSITE_URL)];
-        let (icon, link_gap) = (13.0, 16.0);
-        // The links and icons on the right keep their size; the status on the left gets what is
-        // left and is cut short with "…", never drawn under them. A narrow window drops the
-        // platform label first, so the status keeps room to be read.
+        use artcraft_launcher_core::catalog::{GITHUB_URL, SOCIAL, WEBSITE_URL};
+        // Every link is an icon, reading Website, GitHub, Discord, then the social accounts.
+        let named =
+            |name: &'static str, label: &str, url: &'static str| widgets::IconLink { name, label: label.to_string(), tip: label.to_string(), url };
+        let mut links = vec![
+            named("Website", tl!("Website"), WEBSITE_URL),
+            named("GitHub", tl!("GitHub"), GITHUB_URL),
+            widgets::IconLink {
+                name: "Discord",
+                label: tl!("Discord").to_string(),
+                tip: tl!("Join the ArtCraft community on Discord").to_string(),
+                url: self.discord_url,
+            },
+        ];
+        links.extend(SOCIAL.iter().map(|(name, url)| widgets::IconLink {
+            name,
+            label: (*name).to_string(),
+            tip: fmt(tl!("ArtCraft on {name}"), &[("name", name)]),
+            url,
+        }));
+        let icon = 13.0;
         let spacing = ui.spacing().item_spacing.x;
-        let links_w: f32 =
-            links.iter().map(|(text, _)| widgets::hud_galley(ui, &format!("{text} ↗"), t.muted).size().x + link_gap).sum::<f32>() - link_gap;
-        let icons_w = SOCIAL.len() as f32 * (icon + 8.0);
-        let platform_w = widgets::hud_galley(ui, &platform, t.faint).size().x + 16.0 + spacing;
-        let left_w = ui.available_width() - icons_w - 12.0 - links_w - 16.0 - 3.0 * spacing;
-        let show_platform = left_w - platform_w >= FOOTER_MIN_STATUS_W;
+        // The icons on the right keep their size; the status on the left gets what is left and
+        // is cut short with "…", never drawn under them.
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-            if show_platform {
-                widgets::hud(ui, &platform, t.faint);
-                ui.add_space(16.0);
-            }
-            // Right to left, so this reads: Website · GitHub · Discord, then the social icons.
-            ui.scope(|ui| {
-                ui.spacing_mut().item_spacing.x = 0.0;
-                widgets::social_icons(ui, icon);
-            });
-            ui.add_space(12.0);
-            ui.scope(|ui| {
-                ui.spacing_mut().item_spacing.x = link_gap;
-                for (text, url) in links {
-                    widgets::hud_link(ui, text, url);
-                }
-            });
-            ui.add_space(16.0);
+            widgets::icon_links(ui, icon, &links);
+            ui.add_space(8.0);
             ui.with_layout(egui::Layout::left_to_right(egui::Align::Center), |ui| {
                 // While GitHub is rate limited, saying so matters more than when we last checked.
                 let avail = ui.available_width();
@@ -377,7 +366,25 @@ impl LauncherUi {
 
     // ---- grid ----------------------------------------------------------------------------
 
+    /// Installed apps first (`ids` arrives that way), then the rest under a "Not installed" header.
     pub(crate) fn grid(&mut self, ui: &mut Ui, ids: &[&'static str]) {
+        let installed = ids.iter().take_while(|id| self.is_installed(id)).count();
+        let (top, rest) = ids.split_at(installed);
+        self.grid_block(ui, top);
+        if !top.is_empty() && !rest.is_empty() {
+            let t = Tokens::get(ui.ctx());
+            ui.add_space(28.0);
+            widgets::hud(ui, tl!("Not installed"), t.faint);
+            ui.add_space(12.0);
+        }
+        self.grid_block(ui, rest);
+        ui.add_space(24.0);
+    }
+
+    fn grid_block(&mut self, ui: &mut Ui, ids: &[&'static str]) {
+        if ids.is_empty() {
+            return;
+        }
         let width = ui.available_width();
         // Neighbouring cards share their 1 px hairline, like the site's `gap-px` grid.
         let cols = ((width / CARD_MIN_W).floor() as usize).max(1);
@@ -390,7 +397,6 @@ impl LauncherUi {
             let min = area.min + vec2(col as f32 * (card_w - 1.0), row as f32 * (CARD_H - 1.0));
             self.card(ui, id, Rect::from_min_size(min, vec2(card_w, CARD_H)));
         }
-        ui.add_space(24.0);
     }
 
     fn card(&mut self, ui: &mut Ui, id: &str, rect: Rect) {
@@ -400,7 +406,12 @@ impl LauncherUi {
         let hovered = ui.rect_contains_pointer(rect);
         let wipe = if self.reduce_motion { 0.0 } else { 0.3 };
         let lift = ui.ctx().animate_bool_with_time(ui.id().with(("card-hover", id)), hovered, wipe);
-        let app_color = rgb(app.color);
+        // An app that is not installed is drawn in greys (icon, name, version, accent), and in its
+        // colours while the pointer is over its card.
+        let installed = entry.status(self.platform, self.caps.manage_apps).is_installed();
+        let in_colour = installed || hovered;
+        // The text and accent use the theme's muted grey; the icon is a grey copy of itself.
+        let app_color = if installed { rgb(app.color) } else { t.muted.lerp_to_gamma(rgb(app.color), lift) };
         // The whole card opens the app's page. Added before the card's own links and buttons, so
         // they sit on top of it and keep their clicks.
         if AppDetails::by_id(id).is_some() {
@@ -421,23 +432,26 @@ impl LauncherUi {
             painter.rect_filled(Rect::from_min_size(inside.min, vec2(inside.width() * lift, 2.0)), CornerRadius::ZERO, app_color);
         }
 
-        // The top strip: the app's number in its colour, and its pages.
+        // The top strip: the version in the app's colour, and its GitHub page.
+        let status = entry.status(self.platform, self.caps.manage_apps);
+        let version = crate::card_parts::strip_version(&entry, &status);
         let strip = Rect::from_min_size(rect.min, vec2(rect.width(), STRIP_H));
         painter.hline(strip.x_range(), strip.bottom() - 0.5, t.hairline());
-        let number = SUITE.iter().position(|a| a.id == app.id).map_or_else(String::new, |i| format!("{:02}", i + 1));
         {
             let mut strip_ui = ui.new_child(
                 egui::UiBuilder::new().max_rect(strip.shrink2(vec2(CARD_PAD, 0.0))).layout(egui::Layout::left_to_right(egui::Align::Center)),
             );
-            widgets::tag(&mut strip_ui, &number, app_color, Color32::BLACK);
+            if !version.is_empty() {
+                let github_w = widgets::hud_galley(&strip_ui, &format!("{} ↗", tl!("GitHub")), t.muted).size().x;
+                let room = (strip_ui.available_width() - github_w - 16.0).max(0.0);
+                widgets::hud_elided(&mut strip_ui, &version, if in_colour { t.app_ink(app) } else { t.muted }, room);
+            }
             strip_ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 ui.spacing_mut().item_spacing.x = 16.0;
                 widgets::hud_link(ui, tl!("GitHub"), &app.repo_url());
-                widgets::hud_link(ui, tl!("Website"), &app.website());
             });
         }
 
-        let status = entry.status(self.platform, self.caps.manage_apps);
         let inner = Rect::from_min_max(egui::pos2(rect.left() + CARD_PAD, strip.bottom() + 18.0), rect.max - vec2(CARD_PAD, CARD_PAD));
         // A detached child: the card's contents never move the next card along.
         let mut child = ui.new_child(egui::UiBuilder::new().max_rect(inner).layout(egui::Layout::top_down(egui::Align::Min)));
@@ -457,32 +471,46 @@ impl LauncherUi {
                 egui::epaint::Shadow { offset: [0, 6], blur: 14, spread: 0, color: Color32::from_black_alpha(71) }
                     .as_shape(icon_rect.shrink(4.0), CornerRadius::same(12)),
             );
-            if let Some(icon) = crate::icons::app(app.id) {
-                egui::Image::new(icon).paint_at(ui, icon_rect);
+            if let Some(icon) = crate::icons::app_image(ui.ctx(), app.id, in_colour) {
+                icon.paint_at(ui, icon_rect);
             }
             ui.add_space(6.0);
             centered_lines(ui, &[&name, &tagline], GAP, |ui| {
                 // The name's row is as tall as its text, not as a button.
                 ui.spacing_mut().interact_size.y = 0.0;
                 ui.horizontal(|ui| {
-                    widgets::wordmark(ui, app, 22.0);
-                    if app.group == AppGroup::New {
-                        widgets::badge(ui, tl!("New"), t.app_ink(app));
-                    }
+                    widgets::wordmark_in(ui, app, 22.0, in_colour);
                 });
                 ui.add(egui::Label::new(RichText::new(tr_ctx(current(), app.id, app.tagline)).font(tagline.clone()).color(t.muted)).truncate());
             });
         });
         ui.add_space(14.0);
-        ui.horizontal(|ui| {
-            let (text, tone) = model::entry_status_text(&entry, &status, self.caps.manage_apps);
-            let r = widgets::badge(ui, &text, widgets::tone_color(&t, tone));
-            if let Some(f) = entry.failure() {
-                r.on_hover_text(fmt(tl!("Couldn't check for updates: {f}"), &[("f", f)]));
+        // Installed and up to date needs no badge: the strip has the version, and the group says the rest.
+        if !matches!(status, AppStatus::UpToDate | AppStatus::Installed) {
+            ui.horizontal(|ui| {
+                let (text, tone) = model::entry_status_text(&entry, &status, self.caps.manage_apps);
+                let r = widgets::badge(ui, &text, widgets::tone_color(&t, tone));
+                if let Some(f) = entry.failure() {
+                    r.on_hover_text(fmt(tl!("Couldn't check for updates: {f}"), &[("f", f)]));
+                }
+            });
+            ui.add_space(8.0);
+        }
+        // Until a version is known, the sentence that says why (no release yet, installed…) stays.
+        if version.is_empty() {
+            let line = version_line(&entry, &status);
+            if !line.trim().is_empty() {
+                ui.label(RichText::new(line).size(12.5).color(t.muted));
+                ui.add_space(8.0);
             }
-        });
-        ui.add_space(4.0);
-        ui.label(RichText::new(version_line(&entry, &status)).size(12.5).color(t.muted));
+        }
+        if let Some(details) = AppDetails::by_id(id) {
+            crate::card_parts::blurb(ui, details.headline, t.muted, 4);
+        }
+        if let Some(line) = crate::card_parts::last_updated(&entry) {
+            ui.add_space(6.0);
+            ui.add(egui::Label::new(RichText::new(line).size(12.5).color(t.faint)).selectable(false));
+        }
         ui.with_layout(egui::Layout::bottom_up(egui::Align::Min), |ui| {
             ui.horizontal(|ui| self.actions(ui, &entry, &status, inner.width()));
         });
@@ -516,16 +544,14 @@ impl LauncherUi {
                 .cell_layout(egui::Layout::left_to_right(egui::Align::Center))
                 .column(Column::remainder().at_least(220.0).clip(true))
                 .column(Column::exact(176.0))
-                .column(Column::exact(84.0))
-                .column(Column::exact(84.0))
+                .column(Column::exact(150.0))
                 .column(Column::exact(104.0))
                 .column(Column::exact(206.0))
                 .header(42.0, |mut header| {
                     for (key, label) in [
                         (Some(SortKey::Name), tl!("App")),
                         (Some(SortKey::Status), tl!("Status")),
-                        (Some(SortKey::Installed), tr_ctx(current(), "column", "Installed")),
-                        (Some(SortKey::Latest), tr_ctx(current(), "column", "Latest")),
+                        (None, tr_ctx(current(), "column", "Version")),
                         (Some(SortKey::Released), tr_ctx(current(), "column", "Released")),
                         (None, ""),
                     ] {
@@ -533,7 +559,13 @@ impl LauncherUi {
                             if key == Some(SortKey::Name) {
                                 rule(ui);
                             }
-                            let Some(k) = key else { return };
+                            let Some(k) = key else {
+                                // A column that is not sorted still names itself.
+                                if !label.is_empty() {
+                                    widgets::hud(ui, label, t.faint);
+                                }
+                                return;
+                            };
                             let active = k == self.settings.sort;
                             let tip = if active { tl!("Click to reverse the order") } else { tl!("Click to sort by this column") };
                             // Measure first so the whole header cell (label + arrow) is the target.
@@ -591,8 +623,9 @@ impl LauncherUi {
                                         self.detail = Some(id.to_string());
                                     }
                                 }
-                                if let Some(icon) = crate::icons::app(entry.app.id) {
-                                    ui.add(egui::Image::new(icon).fit_to_exact_size(vec2(38.0, 38.0)));
+                                let installed = entry.status(self.platform, self.caps.manage_apps).is_installed();
+                                if let Some(icon) = crate::icons::app_image(ui.ctx(), entry.app.id, installed) {
+                                    ui.add(icon.fit_to_exact_size(vec2(38.0, 38.0)));
                                 }
                                 ui.add_space(4.0);
                                 ui.vertical(|ui| {
@@ -601,7 +634,7 @@ impl LauncherUi {
                                     // Name and tagline as one block, centred on the icon.
                                     let block = title_h + GAP + tagline_h;
                                     ui.add_space(((ui.available_height() - block) / 2.0).max(0.0));
-                                    widgets::wordmark(ui, entry.app, TITLE_SIZE);
+                                    widgets::wordmark_in(ui, entry.app, TITLE_SIZE, installed);
                                     ui.add(
                                         egui::Label::new(
                                             RichText::new(tr_ctx(current(), entry.app.id, entry.app.tagline)).size(TAGLINE_SIZE).color(t.muted),
@@ -611,22 +644,37 @@ impl LauncherUi {
                                 });
                             });
                             row.col(|ui| {
-                                let (text, tone) = model::entry_status_text(&entry, &status, self.caps.manage_apps);
+                                // Installed is all it says: being up to date is the absence of an update.
+                                let (text, tone) = if status == AppStatus::UpToDate && entry.job.is_none() && entry.paused.is_none() {
+                                    model::status_text(&AppStatus::Installed, self.caps.manage_apps)
+                                } else {
+                                    model::entry_status_text(&entry, &status, self.caps.manage_apps)
+                                };
                                 let r = widgets::badge(ui, &text, widgets::tone_color(&t, tone));
                                 if let Some(f) = entry.failure() {
                                     r.on_hover_text(fmt(tl!("Couldn't check for updates: {f}"), &[("f", f)]));
                                 }
                             });
                             row.col(|ui| {
-                                let installed = entry.installed_label();
-                                let color = if installed.is_some() { t.ink } else { t.faint };
-                                ui.label(RichText::new(installed.unwrap_or_else(|| "—".into())).family(egui::FontFamily::Monospace).color(color));
-                            });
-                            row.col(|ui| {
-                                let c = if status == AppStatus::UpdateAvailable { t.warn } else { t.ink };
-                                ui.label(
-                                    RichText::new(entry.latest_label().unwrap_or_else(|| "—".into())).family(egui::FontFamily::Monospace).color(c),
-                                );
+                                // The version: what is installed, with an arrow to the new one in the app's colour
+                                // when an update waits; the latest for an app not installed yet.
+                                let mut mono = |text: String, color| ui.label(RichText::new(text).family(egui::FontFamily::Monospace).color(color));
+                                match (status == AppStatus::UpdateAvailable).then(|| entry.installed_label().zip(entry.latest_label())).flatten() {
+                                    Some((from, to)) => {
+                                        mono(format!("{from} → {to}"), t.app_ink(entry.app));
+                                    }
+                                    None => match (entry.installed_label(), entry.latest_label()) {
+                                        (Some(installed), _) => {
+                                            mono(installed, t.ink);
+                                        }
+                                        (None, Some(latest)) => {
+                                            mono(latest, t.faint);
+                                        }
+                                        (None, None) => {
+                                            mono("—".into(), t.faint);
+                                        }
+                                    },
+                                }
                             });
                             row.col(|ui| {
                                 let when = entry.release().and_then(|r| r.published_at);
@@ -792,7 +840,7 @@ impl LauncherUi {
             }
             Primary::Open => {
                 if widgets::button(ui, tl!("Open"), Kind::Secondary, main_w).clicked() {
-                    self.send(Command::Launch { app: id.clone() });
+                    self.launch_app(&id);
                 }
             }
             Primary::Download(url) => {
@@ -830,7 +878,7 @@ impl LauncherUi {
             }
             if manage && status.is_installed() {
                 if ui.button(tl!("Open")).clicked() {
-                    self.send(Command::Launch { app: id.clone() });
+                    self.launch_app(&id);
                     ui.close();
                 }
                 if ui.button(t(reveal)).clicked() {
@@ -897,14 +945,27 @@ impl LauncherUi {
     }
 }
 
-fn sort_label(k: SortKey) -> &'static str {
-    match k {
-        SortKey::Suite => tl!("Suite order"),
-        SortKey::Name => tl!("Name"),
-        SortKey::Status => tl!("Status"),
-        SortKey::Installed => tl!("Installed version"),
-        SortKey::Latest => tl!("Latest version"),
-        SortKey::Released => tl!("Newest release"),
+/// What the grid's sort dropdown offers: the order and, for names, which way. The installed apps
+/// always sit above the rest.
+const GRID_SORTS: [(SortKey, bool); 4] = [(SortKey::Name, false), (SortKey::Name, true), (SortKey::Released, true), (SortKey::Frequent, true)];
+
+/// Which of [`GRID_SORTS`] the settings come to. Anything else (the old suite order, a table
+/// column) reads as Name, A to Z.
+pub(crate) fn grid_sort_now(s: &crate::settings::Settings) -> (SortKey, bool) {
+    match s.sort {
+        SortKey::Name => (SortKey::Name, s.sort_descending),
+        SortKey::Released => (SortKey::Released, true),
+        SortKey::Frequent => (SortKey::Frequent, true),
+        _ => (SortKey::Name, false),
+    }
+}
+
+fn grid_sort_label((key, descending): (SortKey, bool)) -> &'static str {
+    match (key, descending) {
+        (SortKey::Released, _) => tl!("Recently updated"),
+        (SortKey::Frequent, _) => tl!("Frequently used"),
+        (_, true) => tl!("Name (Z–A)"),
+        _ => tl!("Name (A–Z)"),
     }
 }
 

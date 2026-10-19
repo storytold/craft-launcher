@@ -288,6 +288,7 @@ figcraft	Interface design and prototyping	界面设计与原型制作
 	Disk image (.dmg)	磁盘映像 (.dmg)
 	Debian package (.deb)	Debian 软件包 (.deb)
 	RPM package (.rpm)	RPM 软件包 (.rpm)
+	Arch package (.pkg.tar.zst)	Arch 软件包 (.pkg.tar.zst)
 	Flatpak bundle	Flatpak 包
 	Tarball (.tar.gz)	压缩包 (.tar.gz)
 	App details	应用详情
@@ -313,6 +314,10 @@ figcraft	Interface design and prototyping	界面设计与原型制作
 @msg	{name} installed: {version} (this release publishes no checksum, so only its size was checked)	{name} 已安装：{version}（此版本未发布校验和，因此只检查了文件大小）
 @msg	{name} was removed	{name} 已卸载
 @msg	{name} is running. Quit it, then try again.	{name} 正在运行。请先退出，然后重试。
+@msg	{name} was installed from the {repo} repository or the AUR ({pkg}). Update it with {cmd} or sudo pacman -Syu	{name} 是从 {repo} 软件仓库或 AUR 安装的（{pkg}）。请使用 {cmd} 或 sudo pacman -Syu 更新。
+@msg	{name} was installed from the {repo} repository or the AUR ({pkg}). Update it with your AUR helper (for example: yay -S {pkg}) or sudo pacman -Syu	{name} 是从 {repo} 软件仓库或 AUR 安装的（{pkg}）。请使用您的 AUR 助手（例如：yay -S {pkg}）或 sudo pacman -Syu 更新。
+@msg	{name} was installed from the AUR ({pkg}). Update it with {cmd}	{name} 是从 AUR 安装的（{pkg}）。请使用 {cmd} 更新。
+@msg	{name} was installed from the AUR ({pkg}). Update it with your AUR helper (for example: yay -S {pkg})	{name} 是从 AUR 安装的（{pkg}）。请使用您的 AUR 助手（例如：yay -S {pkg}）更新。
 	Install folder	安装文件夹
 	Default install folder	默认安装文件夹
 	System default	系统默认
@@ -342,3 +347,12 @@ figcraft	Interface design and prototyping	界面设计与原型制作
 	No storage connected	未连接存储
 	Signing out ends the session for every Craft app.	退出登录会结束所有 Craft 应用的会话。
 	The shared sign-in couldn't be read.	无法读取共享登录信息。
+	Recently updated	最近更新
+	Name (A–Z)	名称 (A–Z)
+	Name (Z–A)	名称 (Z–A)
+	Frequently used	最常使用
+	Next app	下一个应用
+	Previous app	上一个应用
+	Show {n} more changes	显示另外 {n} 项更改
+	Last updated: {date}	最后更新：{date}
+column	Version	版本

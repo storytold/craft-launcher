@@ -40,13 +40,15 @@ pub enum SortKey {
     Latest,
     /// Release date.
     Released,
+    /// How often the app has been opened from here, most first.
+    Frequent,
 }
 
 impl SortKey {
     /// The direction a first click sorts in: newest and highest first for dates and versions,
     /// A to Z for text.
     pub fn starts_descending(self) -> bool {
-        matches!(self, Self::Installed | Self::Latest | Self::Released)
+        matches!(self, Self::Installed | Self::Latest | Self::Released | Self::Frequent)
     }
 }
 
@@ -121,6 +123,8 @@ pub struct Settings {
     /// request about one. Signing in is a choice somebody makes, never a step they are put through.
     #[serde(default)]
     pub account_service: String,
+    /// How many times each app was opened from the launcher (catalog id → count), for "Frequently used".
+    pub launches: BTreeMap<String, u32>,
 }
 
 impl Settings {
@@ -195,6 +199,7 @@ impl Default for Settings {
             last_check: None,
             hidden: std::collections::BTreeSet::new(),
             account_service: String::new(),
+            launches: BTreeMap::new(),
         }
     }
 }

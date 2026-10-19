@@ -315,7 +315,9 @@ pub struct Capabilities {
     /// What "show in file manager" is called here (`Show in Finder`).
     pub reveal_label: &'static str,
     /// The launcher can update itself in place and restart (an installed build, not a dev build or
-    /// a Flatpak). Without it the UI offers the download instead.
+    /// a Flatpak from anywhere but the release bundle). Without it the UI offers the download
+    /// instead. A backend may only know this once it has found a newer launcher, so the UI reads
+    /// it again on [`Event::LauncherUpdate`].
     pub self_update: bool,
 }
 

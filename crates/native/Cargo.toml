@@ -38,4 +38,6 @@ plist = "1"
 
 [target.'cfg(target_os = "windows")'.dependencies]
 winreg = "0.55"
+# Resolves junctions/symlinks without forcing short MSI paths into the verbatim namespace.
+dunce = "1"
 zip = { version = "8", default-features = false, features = ["deflate"] }

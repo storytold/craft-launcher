@@ -55,7 +55,7 @@ impl Tray {
     pub fn new(wake: impl Fn() + Send + Sync + Clone + 'static, on_quit: impl Fn() + Send + Sync + 'static) -> Result<Self, String> {
         let show = MenuItem::new(i18n::t("Show ArtCraft Launcher"), true, None);
         let check = MenuItem::new(i18n::t("Check for Updates"), true, None);
-        use artcraft_launcher_core::catalog::{DISCORD_URL, GITHUB_URL, WEBSITE_URL};
+        use artcraft_launcher_core::catalog::{GITHUB_URL, WEBSITE_URL};
         let website = MenuItem::new(i18n::t("Visit getartcraft.com"), true, None);
         let github = MenuItem::new(i18n::t("ArtCraft on GitHub"), true, None);
         let discord = MenuItem::new(i18n::t("Join the ArtCraft Discord"), true, None);
@@ -63,7 +63,8 @@ impl Tray {
         let menu = Menu::new();
         menu.append_items(&[&show, &check, &PredefinedMenuItem::separator(), &website, &github, &discord, &PredefinedMenuItem::separator(), &quit])
             .map_err(|e| e.to_string())?;
-        let links = [(website.id().clone(), WEBSITE_URL), (github.id().clone(), GITHUB_URL), (discord.id().clone(), DISCORD_URL)];
+        let links = [(website.id().clone(), WEBSITE_URL), (github.id().clone(), GITHUB_URL)];
+        let discord_id = discord.id().clone();
         let icon = identity(TrayIconBuilder::new())
             .with_menu(Box::new(menu))
             .with_icon(load_icon()?)
@@ -77,7 +78,7 @@ impl Tray {
         {
             let tx = tx.clone();
             let wake = wake.clone();
-            let ids = (show_id.clone(), check_id.clone(), quit_id.clone());
+            let ids = (show_id.clone(), check_id.clone(), quit_id.clone(), discord_id);
             MenuEvent::set_event_handler(Some(move |e: MenuEvent| {
                 let action = if e.id == ids.0 {
                     TrayAction::Show
@@ -85,6 +86,8 @@ impl Tray {
                     TrayAction::Check
                 } else if e.id == ids.2 {
                     TrayAction::Quit
+                } else if e.id == ids.3 {
+                    TrayAction::Open(artcraft_launcher_native::process::discord_url())
                 } else if let Some((_, url)) = links.iter().find(|(id, _)| *id == e.id) {
                     TrayAction::Open(url)
                 } else {

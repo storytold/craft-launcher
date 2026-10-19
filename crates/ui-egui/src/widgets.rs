@@ -98,21 +98,6 @@ pub fn rule(ui: &mut Ui, height: f32) {
     ui.painter().vline(rect.center().x, rect.y_range(), t.hairline());
 }
 
-/// A header link, like the site's nav: a mono label whose span inverts on hover or when `active`.
-pub fn nav_link(ui: &mut Ui, text: &str, tip: &str, height: f32, active: bool) -> Response {
-    let t = Tokens::get(ui.ctx());
-    let galley = hud_galley(ui, text, t.muted);
-    let (rect, resp) = ui.allocate_exact_size(vec2(galley.size().x + 20.0, height), Sense::click());
-    let on = active || resp.hovered();
-    let span = Rect::from_center_size(rect.center(), galley.size() + vec2(12.0, 6.0));
-    if on {
-        ui.painter().rect_filled(span, CornerRadius::ZERO, t.invert_bg);
-    }
-    paint_centred(ui, rect, galley, if on { t.invert_fg } else { t.muted });
-    resp.widget_info(|| egui::WidgetInfo::selected(egui::WidgetType::Button, true, active, text));
-    resp.on_hover_text(tip).on_hover_cursor(egui::CursorIcon::PointingHand)
-}
-
 /// A square header cell with a symbol and a hairline on its left; inverts on hover. While `busy`
 /// it shows a spinner and can't be clicked.
 pub fn nav_icon(ui: &mut Ui, symbol: &str, tip: &str, height: f32, busy: bool) -> Response {
@@ -350,6 +335,12 @@ pub struct Cell<'a> {
 /// Mutually exclusive options in a row of hairline cells (the site's share bar); the chosen one
 /// is inverted. Returns whether the choice changed.
 pub fn cells<T: PartialEq + Copy>(ui: &mut Ui, value: &mut T, options: &[(T, Cell<'_>)]) -> bool {
+    cells_apart(ui, value, options, 0.0)
+}
+
+/// Like [`cells`], but with `gap` between the options: with a gap each option has a hairline box
+/// of its own instead of sharing one.
+pub fn cells_apart<T: PartialEq + Copy>(ui: &mut Ui, value: &mut T, options: &[(T, Cell<'_>)], gap: f32) -> bool {
     let t = Tokens::get(ui.ctx());
     let mut changed = false;
     // In a right-to-left parent the row fills from the right: keep the options' order.
@@ -357,7 +348,7 @@ pub fn cells<T: PartialEq + Copy>(ui: &mut Ui, value: &mut T, options: &[(T, Cel
     let ordered: Vec<&(T, Cell<'_>)> = if rtl { options.iter().rev().collect() } else { options.iter().collect() };
     let mut rects = Vec::with_capacity(options.len());
     ui.scope(|ui| {
-        ui.spacing_mut().item_spacing.x = 0.0;
+        ui.spacing_mut().item_spacing.x = gap;
         for (opt, cell) in ordered {
             let on = *value == *opt;
             let label = hud_galley(ui, cell.label, t.ink);
@@ -392,8 +383,12 @@ pub fn cells<T: PartialEq + Copy>(ui: &mut Ui, value: &mut T, options: &[(T, Cel
             rects.push(rect);
         }
     });
-    // The hairlines: an outline, and a rule between neighbours.
-    if let (Some(first), Some(last)) = (rects.first(), rects.last()) {
+    // The hairlines: an outline each when apart; otherwise one outline and a rule between neighbours.
+    if gap > 0.0 {
+        for r in &rects {
+            ui.painter().rect_stroke(*r, CornerRadius::ZERO, t.hairline(), egui::StrokeKind::Inside);
+        }
+    } else if let (Some(first), Some(last)) = (rects.first(), rects.last()) {
         let p = ui.painter();
         p.rect_stroke(first.union(*last), CornerRadius::ZERO, t.hairline(), egui::StrokeKind::Inside);
         let (top, bottom) = (first.top(), first.bottom());
@@ -497,26 +492,65 @@ pub fn more_menu<R>(ui: &mut Ui, add_contents: impl FnOnce(&mut Ui) -> R) {
 /// ArtCraft's social accounts as a row of small monochrome icons (faint, brighter on hover).
 /// In a right-to-left layout they still read left to right.
 pub fn social_icons(ui: &mut Ui, size: f32) {
-    let t = Tokens::get(ui.ctx());
-    let rtl = ui.layout().prefer_right_to_left();
-    let services = artcraft_launcher_core::catalog::SOCIAL;
-    let ordered: Vec<&(&str, &str)> = if rtl { services.iter().rev().collect() } else { services.iter().collect() };
-    for (name, url) in ordered {
-        let Some(icon) = crate::icons::social(name) else { continue };
-        let pad = 4.0;
-        let (rect, resp) = ui.allocate_exact_size(vec2(size + 2.0 * pad, size + 2.0 * pad), Sense::click());
-        let color = if resp.hovered() { t.ink_strong } else { t.faint };
-        egui::Image::new(icon).tint(color).paint_at(ui, rect.shrink(pad));
-        resp.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Link, true, *name));
-        let resp = resp.on_hover_text(crate::i18n::fmt(tl!("ArtCraft on {name}"), &[("name", name)])).on_hover_cursor(egui::CursorIcon::PointingHand);
-        if resp.clicked() {
-            ui.ctx().open_url(egui::OpenUrl::new_tab(*url));
+    let links: Vec<IconLink> = artcraft_launcher_core::catalog::SOCIAL
+        .iter()
+        .map(|(name, url)| IconLink { name, label: (*name).to_string(), tip: crate::i18n::fmt(tl!("ArtCraft on {name}"), &[("name", name)]), url })
+        .collect();
+    icon_links(ui, size, &links);
+}
+
+/// One logo that opens a page: `name` picks the picture, `label` is what a screen reader says,
+/// `tip` is the hover text.
+pub struct IconLink<'a> {
+    pub name: &'a str,
+    pub label: String,
+    pub tip: String,
+    pub url: &'a str,
+}
+
+/// The width [`icon_links`] takes for `count` logos `size` wide.
+pub fn icon_links_width(count: usize, size: f32) -> f32 {
+    let n = count as f32;
+    n * (size + 2.0 * crate::theme::ICON_LINK_PAD) + (n - 1.0).max(0.0) * crate::theme::ICON_LINK_GAP
+}
+
+/// A row of logo links, given in reading order; each is `size` wide, spaced by the theme's
+/// `ICON_LINK_PAD` and `ICON_LINK_GAP` wherever the row is. In a right-to-left parent they still
+/// read in the order given.
+pub fn icon_links(ui: &mut Ui, size: f32, links: &[IconLink<'_>]) {
+    ui.scope(|ui| {
+        ui.spacing_mut().item_spacing.x = crate::theme::ICON_LINK_GAP;
+        for link in links_in_order(ui, links) {
+            icon_link(ui, size, link);
         }
+    });
+}
+
+fn links_in_order<'l, 'a>(ui: &Ui, links: &'l [IconLink<'a>]) -> Vec<&'l IconLink<'a>> {
+    if ui.layout().prefer_right_to_left() { links.iter().rev().collect() } else { links.iter().collect() }
+}
+
+fn icon_link(ui: &mut Ui, size: f32, link: &IconLink<'_>) {
+    let Some(icon) = crate::icons::social(link.name) else { return };
+    let t = Tokens::get(ui.ctx());
+    let pad = crate::theme::ICON_LINK_PAD;
+    let (rect, resp) = ui.allocate_exact_size(vec2(size + 2.0 * pad, size + 2.0 * pad), Sense::click());
+    let color = if resp.hovered() { t.ink_strong } else { t.faint };
+    egui::Image::new(icon).tint(color).paint_at(ui, rect.shrink(pad));
+    resp.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Link, true, &link.label));
+    let resp = resp.on_hover_text(&link.tip).on_hover_cursor(egui::CursorIcon::PointingHand);
+    if resp.clicked() {
+        ui.ctx().open_url(egui::OpenUrl::new_tab(link.url));
     }
 }
 
 /// An app's name as the site sets it: Archivo, with "Craft" in the app's colour.
 pub fn wordmark(ui: &mut Ui, app: &artcraft_launcher_core::CraftApp, size: f32) -> Response {
+    wordmark_in(ui, app, size, true)
+}
+
+/// [`wordmark`], with "Craft" in the app's colour or, when `in_colour` is false, in grey.
+pub fn wordmark_in(ui: &mut Ui, app: &artcraft_launcher_core::CraftApp, size: f32, in_colour: bool) -> Response {
     let t = Tokens::get(ui.ctx());
     let (prefix, craft) = app.name.strip_suffix("Craft").map_or((app.name, ""), |p| (p, "Craft"));
     let mut job = egui::text::LayoutJob::default();
@@ -527,7 +561,7 @@ pub fn wordmark(ui: &mut Ui, app: &artcraft_launcher_core::CraftApp, size: f32) 
         ..Default::default()
     };
     job.append(prefix, 0.0, format(t.ink_strong));
-    job.append(craft, 0.0, format(t.app_ink(app)));
+    job.append(craft, 0.0, format(if in_colour { t.app_ink(app) } else { t.muted }));
     ui.add(egui::Label::new(job).selectable(false))
 }
 

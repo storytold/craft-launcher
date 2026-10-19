@@ -155,6 +155,7 @@
 	Disk image (.dmg)	Disk-Image (.dmg)
 	Debian package (.deb)	Debian-Paket (.deb)
 	RPM package (.rpm)	RPM-Paket (.rpm)
+	Arch package (.pkg.tar.zst)	Arch-Paket (.pkg.tar.zst)
 	Flatpak bundle	Flatpak-Bundle
 	Tarball (.tar.gz)	Tar-Archiv (.tar.gz)
 
@@ -279,6 +280,10 @@ filter	Installed	Installiert
 @msg	{name} installed: {version} (this release publishes no checksum, so only its size was checked)	{name} installiert: {version} (diese Version veröffentlicht keine Prüfsumme, daher wurde nur die Größe geprüft)
 @msg	{name} was removed	{name} wurde entfernt
 @msg	{name} is running. Quit it, then try again.	{name} läuft. Beende die App und versuche es erneut.
+@msg	{name} was installed from the {repo} repository or the AUR ({pkg}). Update it with {cmd} or sudo pacman -Syu	{name} wurde aus dem Repository {repo} oder dem AUR installiert ({pkg}). Aktualisiere die App mit {cmd} oder sudo pacman -Syu
+@msg	{name} was installed from the {repo} repository or the AUR ({pkg}). Update it with your AUR helper (for example: yay -S {pkg}) or sudo pacman -Syu	{name} wurde aus dem Repository {repo} oder dem AUR installiert ({pkg}). Aktualisiere die App mit deinem AUR-Hilfsprogramm (zum Beispiel: yay -S {pkg}) oder sudo pacman -Syu
+@msg	{name} was installed from the AUR ({pkg}). Update it with {cmd}	{name} wurde aus dem AUR installiert ({pkg}). Aktualisiere die App mit {cmd}
+@msg	{name} was installed from the AUR ({pkg}). Update it with your AUR helper (for example: yay -S {pkg})	{name} wurde aus dem AUR installiert ({pkg}). Aktualisiere die App mit deinem AUR-Hilfsprogramm (zum Beispiel: yay -S {pkg})
 
 # Command IDs for menu items (@id)
 # Format: @id<TAB>command_id<TAB>translation
@@ -374,3 +379,12 @@ filter	Installed	Installiert
 	No storage connected	Kein Speicher verbunden
 	Signing out ends the session for every Craft app.	Das Abmelden beendet die Sitzung für jede Craft-App.
 	The shared sign-in couldn't be read.	Die gemeinsame Anmeldung konnte nicht gelesen werden.
+	Recently updated	Zuletzt aktualisiert
+	Name (A–Z)	Name (A–Z)
+	Name (Z–A)	Name (Z–A)
+	Frequently used	Am häufigsten genutzt
+	Next app	Nächste App
+	Previous app	Vorherige App
+	Show {n} more changes	{n} weitere Änderungen anzeigen
+	Last updated: {date}	Zuletzt aktualisiert: {date}
+column	Version	Version

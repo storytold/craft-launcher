@@ -5,26 +5,6 @@
 //! Text here is English, the source the UI translates from: each `tagline` has a catalog row
 //! keyed by the app id (`tr_ctx(app.id, app.tagline)` in `ui-egui`).
 
-use serde::{Deserialize, Serialize};
-
-/// Which generation of the suite an app belongs to.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
-pub enum AppGroup {
-    /// The seven original apps.
-    Classic,
-    /// The six apps added after them.
-    New,
-}
-
-impl AppGroup {
-    pub fn label(self) -> &'static str {
-        match self {
-            Self::Classic => "Classic",
-            Self::New => "New",
-        }
-    }
-}
-
 /// One app in the suite.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct CraftApp {
@@ -34,7 +14,6 @@ pub struct CraftApp {
     pub name: &'static str,
     /// What it's for, in a few words (English; the UI translates it by app id).
     pub tagline: &'static str,
-    pub group: AppGroup,
     /// Brand colour (sRGB), for surfaces: getartcraft.com's `--app`.
     pub color: [u8; 3],
     /// The brand colour for text on a light background (the site's light `--app-ink`).
@@ -87,36 +66,20 @@ const fn app(
     id: &'static str,
     name: &'static str,
     tagline: &'static str,
-    group: AppGroup,
     [color, ink_light, ink_dark]: [[u8; 3]; 3],
     repo: &'static str,
 ) -> CraftApp {
-    CraftApp { id, name, tagline, group, color, ink_light, ink_dark, repo, former_ids: &[], former_names: &[] }
+    CraftApp { id, name, tagline, color, ink_light, ink_dark, repo, former_ids: &[], former_names: &[] }
 }
 
-/// The Craft App Suite, in display order: the seven classic apps, then the six new ones.
+/// The Craft App Suite, in display order matching getartcraft.com:
 pub const SUITE: [CraftApp; 13] = [
-    app(
-        "photocraft",
-        "PhotoCraft",
-        "Image editing",
-        AppGroup::Classic,
-        [[0x2f, 0x7b, 0xf5], [0x1a, 0x5b, 0xc4], [0x7f, 0xb0, 0xff]],
-        "storytold/photocraft",
-    ),
-    app(
-        "vectorcraft",
-        "VectorCraft",
-        "Vector illustration",
-        AppGroup::Classic,
-        [[0xe8, 0x57, 0x3f], [0xb8, 0x3a, 0x24], [0xff, 0x8a, 0x70]],
-        "storytold/vectorcraft",
-    ),
+    app("photocraft", "PhotoCraft", "Image editing", [[0x2f, 0x7b, 0xf5], [0x1a, 0x5b, 0xc4], [0x7f, 0xb0, 0xff]], "storytold/photocraft"),
+    app("vectorcraft", "VectorCraft", "Vector illustration", [[0xe8, 0x57, 0x3f], [0xb8, 0x3a, 0x24], [0xff, 0x8a, 0x70]], "storytold/vectorcraft"),
     app(
         "filmcraft",
         "FilmCraft",
         "Video editing, color and sound",
-        AppGroup::Classic,
         [[0x8b, 0x5c, 0xf6], [0x6a, 0x3f, 0xd6], [0xb6, 0x9c, 0xff]],
         "storytold/filmcraft",
     ),
@@ -124,7 +87,6 @@ pub const SUITE: [CraftApp; 13] = [
         "lightcraft",
         "LightCraft",
         "Photo library and raw development",
-        AppGroup::Classic,
         [[0xf2, 0xa5, 0x16], [0x8a, 0x58, 0x00], [0xff, 0xc1, 0x4d]],
         "storytold/lightcraft",
     ),
@@ -135,7 +97,6 @@ pub const SUITE: [CraftApp; 13] = [
             "pdfcraft",
             "PdfCraft",
             "Reading, organizing and protecting PDFs",
-            AppGroup::Classic,
             [[0x12, 0xa5, 0x8a], [0x0a, 0x75, 0x63], [0x3f, 0xd6, 0xb8]],
             "storytold/pdfcraft",
         )
@@ -144,7 +105,6 @@ pub const SUITE: [CraftApp; 13] = [
         "effectcraft",
         "EffectCraft",
         "Motion graphics and visual effects",
-        AppGroup::Classic,
         [[0xe0, 0x36, 0x8f], [0xb0, 0x20, 0x6c], [0xff, 0x7a, 0xb8]],
         "storytold/effectcraft",
     ),
@@ -152,58 +112,39 @@ pub const SUITE: [CraftApp; 13] = [
         "designcraft",
         "DesignCraft",
         "Page layout and publishing",
-        AppGroup::Classic,
         [[0x7b, 0xb5, 0x1c], [0x45, 0x70, 0x08], [0xa6, 0xe0, 0x4a]],
         "storytold/designcraft",
-    ),
-    app(
-        "wordcraft",
-        "WordCraft",
-        "Writing and document design",
-        AppGroup::New,
-        [[0x3f, 0x5f, 0xe0], [0x2a, 0x44, 0xb8], [0x8e, 0xa2, 0xff]],
-        "storytold/wordcraft",
-    ),
-    app(
-        "deckcraft",
-        "DeckCraft",
-        "Presentations and slide shows",
-        AppGroup::New,
-        [[0xf0, 0x7a, 0x1e], [0xa8, 0x4f, 0x0a], [0xff, 0xa0, 0x60]],
-        "storytold/deckcraft",
-    ),
-    app(
-        "gridcraft",
-        "GridCraft",
-        "Spreadsheets and data",
-        AppGroup::New,
-        [[0x1f, 0x9d, 0x55], [0x12, 0x70, 0x3a], [0x4f, 0xd6, 0x8a]],
-        "storytold/gridcraft",
-    ),
-    app(
-        "cadcraft",
-        "CADCraft",
-        "Computer-aided design and drafting",
-        AppGroup::New,
-        [[0x3e, 0xa6, 0xe8], [0x1a, 0x6f, 0xa8], [0x7c, 0xc8, 0xff]],
-        "storytold/cadcraft",
-    ),
-    app(
-        "soundcraft",
-        "SoundCraft",
-        "Recording, editing and mixing audio",
-        AppGroup::New,
-        [[0x1f, 0xa5, 0xc9], [0x0e, 0x72, 0x90], [0x5f, 0xd0, 0xee]],
-        "storytold/soundcraft",
     ),
     app(
         "figcraft",
         "FigCraft",
         "Interface design and prototyping",
-        AppGroup::New,
         [[0x02, 0xda, 0x96], [0x04, 0x7a, 0x56], [0x4f, 0xe8, 0xb6]],
         "storytold/figcraft",
     ),
+    app("wordcraft", "WordCraft", "Writing and document design", [[0x3f, 0x5f, 0xe0], [0x2a, 0x44, 0xb8], [0x8e, 0xa2, 0xff]], "storytold/wordcraft"),
+    app(
+        "soundcraft",
+        "SoundCraft",
+        "Recording, editing and mixing audio",
+        [[0x1f, 0xa5, 0xc9], [0x0e, 0x72, 0x90], [0x5f, 0xd0, 0xee]],
+        "storytold/soundcraft",
+    ),
+    app(
+        "deckcraft",
+        "DeckCraft",
+        "Presentations and slide shows",
+        [[0xf0, 0x7a, 0x1e], [0xa8, 0x4f, 0x0a], [0xff, 0xa0, 0x60]],
+        "storytold/deckcraft",
+    ),
+    app(
+        "cadcraft",
+        "CADCraft",
+        "Computer-aided design and drafting",
+        [[0x3e, 0xa6, 0xe8], [0x1a, 0x6f, 0xa8], [0x7c, 0xc8, 0xff]],
+        "storytold/cadcraft",
+    ),
+    app("gridcraft", "GridCraft", "Spreadsheets and data", [[0x1f, 0x9d, 0x55], [0x12, 0x70, 0x3a], [0x4f, 0xd6, 0x8a]], "storytold/gridcraft"),
 ];
 
 /// ArtCraft's website.
@@ -224,6 +165,8 @@ pub const SOCIAL: [(&str, &str); 5] = [
 
 /// The ArtCraft community on Discord.
 pub const DISCORD_URL: &str = "https://discord.gg/artcraft";
+/// Deep link into the Discord application for the ArtCraft server invite.
+pub const DISCORD_APP_URL: &str = "discord://-/invite/artcraft";
 
 /// ArtCraft Launcher itself, described like a Craft App so it can update itself with the same
 /// machinery (asset names `artcraft-launcher-<ver>-…`, bundle id `ai.storyteller.artcraft-launcher`,
@@ -232,7 +175,6 @@ pub const LAUNCHER: CraftApp = app(
     "artcraft-launcher",
     "ArtCraft Launcher",
     "Installs and updates the Craft App Suite",
-    AppGroup::New,
     [[0x0b, 0x0b, 0x0c], [0x0b, 0x0b, 0x0c], [0xf2, 0xf1, 0xee]],
     "storytold/craft-launcher",
 );
@@ -247,9 +189,8 @@ mod tests {
     use super::*;
 
     #[test]
-    fn suite_has_seven_classic_and_six_new_apps_with_unique_ids() {
-        assert_eq!(SUITE.iter().filter(|a| a.group == AppGroup::Classic).count(), 7);
-        assert_eq!(SUITE.iter().filter(|a| a.group == AppGroup::New).count(), 6);
+    fn suite_has_thirteen_apps_with_unique_ids() {
+        assert_eq!(SUITE.len(), 13);
         let mut ids: Vec<_> = SUITE.iter().map(|a| a.id).collect();
         ids.sort_unstable();
         ids.dedup();

@@ -153,6 +153,7 @@
 	Disk image (.dmg)	Image disque (.dmg)
 	Debian package (.deb)	Paquet Debian (.deb)
 	RPM package (.rpm)	Paquet RPM (.rpm)
+	Arch package (.pkg.tar.zst)	Paquet Arch (.pkg.tar.zst)
 	Flatpak bundle	Paquet Flatpak
 	Tarball (.tar.gz)	Archive (.tar.gz)
 
@@ -277,6 +278,10 @@ filter	Installed	Installées
 @msg	{name} installed: {version} (this release publishes no checksum, so only its size was checked)	{name} installé : {version} (cette version ne publie pas de somme de contrôle : seule sa taille a été vérifiée)
 @msg	{name} was removed	{name} a été supprimé
 @msg	{name} is running. Quit it, then try again.	{name} est en cours d'exécution. Quittez-le, puis réessayez.
+@msg	{name} was installed from the {repo} repository or the AUR ({pkg}). Update it with {cmd} or sudo pacman -Syu	{name} a été installé depuis le dépôt {repo} ou l'AUR ({pkg}). Mettez-le à jour avec {cmd} ou avec sudo pacman -Syu
+@msg	{name} was installed from the {repo} repository or the AUR ({pkg}). Update it with your AUR helper (for example: yay -S {pkg}) or sudo pacman -Syu	{name} a été installé depuis le dépôt {repo} ou l'AUR ({pkg}). Mettez-le à jour avec votre assistant AUR (par exemple : yay -S {pkg}) ou avec sudo pacman -Syu
+@msg	{name} was installed from the AUR ({pkg}). Update it with {cmd}	{name} a été installé depuis l'AUR ({pkg}). Mettez-le à jour avec {cmd}
+@msg	{name} was installed from the AUR ({pkg}). Update it with your AUR helper (for example: yay -S {pkg})	{name} a été installé depuis l'AUR ({pkg}). Mettez-le à jour avec votre assistant AUR (par exemple : yay -S {pkg})
 
 # Command IDs for menu items (@id)
 # Format: @id<TAB>command_id<TAB>translation
@@ -372,3 +377,12 @@ filter	Installed	Installées
 	No storage connected	Aucun stockage connecté
 	Signing out ends the session for every Craft app.	La déconnexion met fin à la session pour toutes les applications Craft.
 	The shared sign-in couldn't be read.	La connexion partagée n'a pas pu être lue.
+	Recently updated	Récemment mises à jour
+	Name (A–Z)	Nom (A–Z)
+	Name (Z–A)	Nom (Z–A)
+	Frequently used	Les plus utilisées
+	Next app	Application suivante
+	Previous app	Application précédente
+	Show {n} more changes	Afficher {n} modifications de plus
+	Last updated: {date}	Dernière mise à jour : {date}
+column	Version	Version
