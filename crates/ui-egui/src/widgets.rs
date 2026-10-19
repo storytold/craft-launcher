@@ -596,20 +596,26 @@ pub fn glyph_button(ui: &mut Ui, glyph: Glyph, tip: &str) -> Response {
 pub fn menu_item(ui: &mut Ui, icon: &str, label: &str, colour: Option<Color32>) -> Response {
     let t = Tokens::get(ui.ctx());
     let height = 26.0;
-    // A menu measures its content before it has a width; 200 is the floor `more_menu` asks for.
-    let width = if ui.available_width().is_finite() { ui.available_width().max(200.0) } else { 200.0 };
+    let ink = colour.unwrap_or(t.ink);
+    let font = egui::TextStyle::Body.resolve(ui.style());
+    // The row must be wide enough for the longest label: a translated one can be much longer than
+    // the English it was written from, and a label that runs past the row cannot be clicked.
+    let label_width = ui.painter().layout_no_wrap(label.to_owned(), font.clone(), ink).size().x;
+    let needed = 28.0 + label_width.ceil() + 16.0;
+    // A menu measures its content before it has a width, so `available_width` can be huge or tiny
+    // on the first pass; 200 is the floor `more_menu` asks for.
+    let available = ui.available_width();
+    let width = if available.is_finite() { available.max(needed.max(200.0)) } else { needed.max(200.0) };
     let (rect, response) = ui.allocate_exact_size(vec2(width, height), Sense::click());
     response.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, ui.is_enabled(), label));
     if response.hovered() || response.has_focus() {
         ui.painter().rect_filled(rect, CornerRadius::ZERO, t.sunken);
     }
-    let ink = colour.unwrap_or(t.ink);
     let middle = egui::pos2(rect.left() + 14.0, rect.center().y);
     if let Some(source) = crate::icons::menu(icon) {
         let tint = if colour.is_some() { ink } else { t.muted };
         egui::Image::new(source).fit_to_exact_size(vec2(14.0, 14.0)).tint(tint).paint_at(ui, egui::Rect::from_center_size(middle, vec2(14.0, 14.0)));
     }
-    let font = egui::TextStyle::Body.resolve(ui.style());
     ui.painter().text(egui::pos2(rect.left() + 28.0, rect.center().y), egui::Align2::LEFT_CENTER, label, font, ink);
     response
 }
