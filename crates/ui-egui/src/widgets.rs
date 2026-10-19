@@ -761,6 +761,29 @@ pub fn glyph_button(ui: &mut Ui, glyph: Glyph, tip: &str) -> Response {
     resp.on_hover_text(tip).on_hover_cursor(egui::CursorIcon::PointingHand)
 }
 
+/// A menu row: an icon, the label, and a full-width hover. A screen reader hears only `label`, so
+/// the icon is decoration and anything looking for the row still finds it by its words.
+pub fn menu_item(ui: &mut Ui, icon: &str, label: &str, colour: Option<Color32>) -> Response {
+    let t = Tokens::get(ui.ctx());
+    let height = 26.0;
+    // A menu measures its content before it has a width; 200 is the floor `more_menu` asks for.
+    let width = if ui.available_width().is_finite() { ui.available_width().max(200.0) } else { 200.0 };
+    let (rect, response) = ui.allocate_exact_size(vec2(width, height), Sense::click());
+    response.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, ui.is_enabled(), label));
+    if response.hovered() || response.has_focus() {
+        ui.painter().rect_filled(rect, CornerRadius::ZERO, t.sunken);
+    }
+    let ink = colour.unwrap_or(t.ink);
+    let middle = egui::pos2(rect.left() + 14.0, rect.center().y);
+    if let Some(source) = crate::icons::menu(icon) {
+        let tint = if colour.is_some() { ink } else { t.muted };
+        egui::Image::new(source).fit_to_exact_size(vec2(14.0, 14.0)).tint(tint).paint_at(ui, egui::Rect::from_center_size(middle, vec2(14.0, 14.0)));
+    }
+    let font = egui::TextStyle::Body.resolve(ui.style());
+    ui.painter().text(egui::pos2(rect.left() + 28.0, rect.center().y), egui::Align2::LEFT_CENTER, label, font, ink);
+    response
+}
+
 /// The "…" button that opens an app's menu: an outlined square like [`glyph_button`]. The visible
 /// dots are not a name a screen reader can use, so the button is named after the app.
 pub fn more_menu<R>(ui: &mut Ui, app_name: &str, add_contents: impl FnOnce(&mut Ui) -> R) {
