@@ -62,4 +62,3 @@ explicit choice of repository ownership, approved distribution, package and
 asset naming, release-checksum verification, update/uninstall behavior, and
 platform support. The public identity must distinguish a community proposal
 from an accepted official Craft App until that decision is made.
-
