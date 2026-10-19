@@ -43,7 +43,6 @@
 	GitHub	GitHub
 	Website	Situs web
 	Classic apps	Aplikasi klasik
-	Classic	Klasik
 	New apps	Aplikasi baru
 	NEW	BARU
 	Install	Pasang
@@ -89,6 +88,7 @@
 	Notify me when an installed app has an update	Beri tahu saya saat aplikasi yang terpasang memiliki pembaruan
 	Include pre-releases (betas and release candidates)	Sertakan pra-rilis (beta dan kandidat rilis)
 	Installing on Linux	Memasang di Linux
+	Installing on Windows	Memasang di Windows
 	Install new apps as	Pasang aplikasi baru sebagai
 	System package (recommended)	Paket sistem (disarankan)
 	Updates always use the format an app was installed with.	Pembaruan selalu menggunakan format yang sama saat aplikasi dipasang.
@@ -153,6 +153,7 @@
 	Disk image (.dmg)	Image diska (.dmg)
 	Debian package (.deb)	Paket Debian (.deb)
 	RPM package (.rpm)	Paket RPM (.rpm)
+	Arch package (.pkg.tar.zst)	Paket Arch (.pkg.tar.zst)
 	Flatpak bundle	Paket Flatpak
 	Tarball (.tar.gz)	Tarball (.tar.gz)
 
@@ -169,6 +170,7 @@ deckcraft	Presentations and slide shows	Presentasi dan peragaan salindia
 gridcraft	Spreadsheets and data	Spreadsheet dan data
 cadcraft	Computer-aided design and drafting	Perancangan dan desain dengan bantuan komputer
 soundcraft	Recording, editing and mixing audio	Perekaman, penyuntingan, dan mixing audio
+figcraft	Interface design and prototyping	Desain antarmuka dan pembuatan prototipe
 
 # Contextual: month abbreviations for date rendering
 month	Jan	Jan
@@ -257,6 +259,7 @@ column	App	Aplikasi
 column	Installed	Terpasang
 column	Latest	Terbaru
 column	Released	Dirilis
+column	Version	Versi
 
 # Contextual: the filter tab names a group (the status pill says "Installed")
 filter	Installed	Terpasang
@@ -276,6 +279,10 @@ filter	Installed	Terpasang
 @msg	{name} installed: {version} (this release publishes no checksum, so only its size was checked)	{name} terpasang: {version} (rilis ini tidak menerbitkan checksum, jadi hanya ukurannya yang diperiksa)
 @msg	{name} was removed	{name} telah dihapus
 @msg	{name} is running. Quit it, then try again.	{name} sedang berjalan. Keluar dari aplikasi, lalu coba lagi.
+@msg	{name} was installed from the {repo} repository or the AUR ({pkg}). Update it with {cmd} or sudo pacman -Syu	{name} dipasang dari repositori {repo} atau AUR ({pkg}). Perbarui dengan {cmd} atau sudo pacman -Syu
+@msg	{name} was installed from the {repo} repository or the AUR ({pkg}). Update it with your AUR helper (for example: yay -S {pkg}) or sudo pacman -Syu	{name} dipasang dari repositori {repo} atau AUR ({pkg}). Perbarui menggunakan pembantu AUR Anda (contoh: yay -S {pkg}) atau sudo pacman -Syu
+@msg	{name} was installed from the AUR ({pkg}). Update it with {cmd}	{name} dipasang dari AUR ({pkg}). Perbarui dengan {cmd}
+@msg	{name} was installed from the AUR ({pkg}). Update it with your AUR helper (for example: yay -S {pkg})	{name} dipasang dari AUR ({pkg}). Perbarui menggunakan pembantu AUR Anda (contoh: yay -S {pkg})
 
 # Command IDs for menu items (@id)
 # Format: @id<TAB>command_id<TAB>translation
@@ -329,3 +336,42 @@ filter	Installed	Terpasang
 	ArtCraft on GitHub	ArtCraft di GitHub
 	Join the ArtCraft Discord	Gabung ke Discord ArtCraft
 @plural	ArtCraft Launcher · {n} update available|ArtCraft Launcher · {n} updates available	ArtCraft Launcher · {n} pembaruan tersedia
+	Install folder	Folder pemasangan
+	Default install folder	Folder pemasangan bawaan
+	System default	Bawaan sistem
+	Browse…	Telusuri…
+	Use default	Gunakan bawaan
+	New installs use this folder. Updates stay in their current location.	Pemasangan baru menggunakan folder ini. Pembaruan tetap di lokasi saat ini.
+	Custom folders use AppImage on Linux.	Folder kustom menggunakan AppImage di Linux.
+	The system manages install locations here.	Sistem mengelola lokasi pemasangan di sini.
+@msg	couldn't use install folder {path}: {reason}	tidak dapat menggunakan folder pemasangan {path}: {reason}
+@msg	this release has no AppImage for a custom install folder	rilis ini tidak memiliki AppImage untuk folder pemasangan kustom
+@msg	custom install folders aren't supported on this system	folder pemasangan kustom tidak didukung di sistem ini
+@msg	{path} already exists and wasn't installed by ArtCraft Launcher	{path} sudah ada dan bukan dipasang oleh ArtCraft Launcher
+@msg	couldn't move {path} to Trash ({reason}). Remove it in Finder instead.	tidak dapat memindahkan {path} ke Sampah ({reason}). Hapus dari Finder.
+	Apps are placed inside this folder.	Aplikasi ditempatkan di dalam folder ini.
+	Replace what's there?	Timpa yang sudah ada?
+	{path} already exists. Installing {name} will overwrite it.	{path} sudah ada. Memasang {name} akan menimpanya.
+	Replace	Timpa
+	App details	Detail aplikasi
+	Close (Esc)	Tutup (Esc)
+	Features	Fitur
+	Latest release	Rilis terbaru
+	Version	Versi
+	Platforms	Platform
+	Releases	Rilis
+	Enlarge picture	Perbesar gambar
+	Click to enlarge	Klik untuk memperbesar
+	Previous picture (←)	Gambar sebelumnya (←)
+	Next picture (→)	Gambar berikutnya (→)
+	Loading pictures…	Memuat gambar…
+	Pictures couldn't be loaded. Reopen this page to try again.	Gambar tidak dapat dimuat. Buka ulang halaman ini untuk mencoba lagi.
+	{name} details	Detail {name}
+	Recently updated	Baru diperbarui
+	Name (A–Z)	Nama (A–Z)
+	Name (Z–A)	Nama (Z–A)
+	Frequently used	Sering digunakan
+	Next app	Aplikasi berikutnya
+	Previous app	Aplikasi sebelumnya
+	Show {n} more changes	Tampilkan {n} perubahan lainnya
+	Last updated: {date}	Terakhir diperbarui: {date}
