@@ -20,7 +20,7 @@ pub fn command(program: impl AsRef<std::ffi::OsStr>) -> Command {
     clean_appimage_env(&mut cmd);
     #[cfg(all(unix, not(target_os = "macos")))]
     if std::env::var_os("DISPLAY").is_some() && std::env::var_os("WINIT_X11_SCALE_FACTOR").is_none() {
-        cmd.env("WINIT_X11_SCALE_FACTOR", "1");
+        cmd.env("WINIT_X11_SCALE_FACTOR", cached_x11_scale_factor());
     }
     cmd
 }
@@ -448,6 +448,113 @@ fn pgrep_pattern(path: &str) -> String {
         pattern.push(c);
     }
     pattern
+}
+
+/// Validates a candidate X11 scale factor so invalid, non-positive, or non-normal values never
+/// reach `WINIT_X11_SCALE_FACTOR` (which would panic inside `winit`).
+pub fn valid_x11_scale(scale: f64) -> Option<String> {
+    (scale.is_finite() && scale.is_normal() && scale > 0.0).then(|| scale.to_string())
+}
+
+/// Parses an XSETTINGS dump (`dump_xsettings` or `xsettingsd.conf`) for `Xft/DPI` or
+/// `Gdk/WindowScalingFactor` / `Gdk/UnscaledDPI`.
+pub fn parse_xsettings_scale(xsettings: &str) -> Option<String> {
+    let mut xft_dpi: Option<f64> = None;
+    let mut gdk_window_scale: Option<f64> = None;
+    let mut gdk_unscaled_dpi: Option<f64> = None;
+
+    for line in xsettings.lines() {
+        let line = line.trim();
+        if line.is_empty() || line.starts_with('#') {
+            continue;
+        }
+        let mut parts = line.split_whitespace();
+        let Some(key) = parts.next() else { continue };
+        let Some(val_str) = parts.next() else { continue };
+        let key = key.trim_end_matches(':');
+        let Ok(raw) = val_str.parse::<f64>() else { continue };
+        if !raw.is_finite() || raw <= 0.0 {
+            continue;
+        }
+        match key {
+            "Xft/DPI" => {
+                let dpi = if raw >= 1024.0 { raw / 1024.0 } else { raw };
+                xft_dpi = Some(dpi);
+            }
+            "Gdk/WindowScalingFactor" => {
+                gdk_window_scale = Some(raw);
+            }
+            "Gdk/UnscaledDPI" => {
+                let dpi = if raw >= 1024.0 { raw / 1024.0 } else { raw };
+                gdk_unscaled_dpi = Some(dpi);
+            }
+            _ => {}
+        }
+    }
+
+    if let Some(dpi) = xft_dpi
+        && let Some(scale) = valid_x11_scale(dpi / 96.0)
+    {
+        return Some(scale);
+    }
+    if let Some(win_scale) = gdk_window_scale {
+        let unscaled_factor = gdk_unscaled_dpi.map_or(1.0, |dpi| dpi / 96.0);
+        if let Some(scale) = valid_x11_scale(win_scale * unscaled_factor) {
+            return Some(scale);
+        }
+    }
+    if let Some(dpi) = gdk_unscaled_dpi {
+        return valid_x11_scale(dpi / 96.0);
+    }
+    None
+}
+
+/// Resolves the X11 scale factor from `xrdb -query` (`Xft.dpi`), `GDK_SCALE`, `QT_SCALE_FACTOR`,
+/// or XSETTINGS (`Xft/DPI`, `Gdk/WindowScalingFactor`), defaulting to `"1"` so `winit` does not
+/// compute an inflated DPI from aspect-ratio EDID millimeter placeholders (such as `160mm x 90mm`
+/// on 16:9 HDMI monitors).
+pub fn resolve_x11_scale_factor(xrdb_stdout: Option<&str>, xsettings: Option<&str>, env: impl Fn(&str) -> Option<String>) -> String {
+    let valid_env = |name: &str| env(name).and_then(|value| value.trim().parse::<f64>().ok().and_then(valid_x11_scale));
+    if let Some(text) = xrdb_stdout {
+        for line in text.lines() {
+            if let Some(rest) = line.strip_prefix("Xft.dpi:")
+                && let Ok(dpi) = rest.trim().parse::<f64>()
+                && let Some(scale) = valid_x11_scale(dpi / 96.0)
+            {
+                return scale;
+            }
+        }
+    }
+    if let Some(scale) = valid_env("GDK_SCALE").or_else(|| valid_env("QT_SCALE_FACTOR")) {
+        return scale;
+    }
+    if let Some(scale) = xsettings.and_then(parse_xsettings_scale) {
+        return scale;
+    }
+    "1".to_string()
+}
+
+/// Queries the host's X11 scale factor once with bounded timeouts and caches the resolved value.
+#[cfg(all(unix, not(target_os = "macos")))]
+pub fn cached_x11_scale_factor() -> &'static str {
+    static SCALE: std::sync::OnceLock<String> = std::sync::OnceLock::new();
+    SCALE.get_or_init(|| {
+        if let Some(existing) = std::env::var("WINIT_X11_SCALE_FACTOR").ok().and_then(|v| v.trim().parse::<f64>().ok().and_then(valid_x11_scale)) {
+            return existing;
+        }
+        let probe = |prog: &str, args: &[&str]| -> Option<String> {
+            let mut cmd = Command::new(prog);
+            clean_appimage_env(&mut cmd);
+            cmd.args(args);
+            run_command(cmd, prog, Duration::from_millis(500)).ok()
+        };
+        let xrdb_out = probe("xrdb", &["-query"]);
+        let xsettings_out = probe("dump_xsettings", &[]).or_else(|| {
+            let config = dirs::config_dir().or_else(|| dirs::home_dir().map(|h| h.join(".config")))?;
+            std::fs::read_to_string(config.join("xsettingsd/xsettingsd.conf")).ok()
+        });
+        resolve_x11_scale_factor(xrdb_out.as_deref(), xsettings_out.as_deref(), |k| std::env::var(k).ok())
+    })
 }
 
 #[cfg(test)]
