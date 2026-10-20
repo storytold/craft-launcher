@@ -173,6 +173,16 @@ const RESCAN_EVERY: i64 = 5 * 60;
 /// Coming back to the window re-checks, but not more often than this.
 const RESCAN_ON_FOCUS_AFTER: i64 = 30;
 
+/// Saved settings made fit for the page as it is now.
+fn for_this_page(mut settings: Settings) -> Settings {
+    // The page no longer offers Installed, Updates or Not installed, so a saved one would hide
+    // apps with nothing on screen to undo it.
+    if !matches!(settings.filter, Filter::All | Filter::Hidden) {
+        settings.filter = Filter::All;
+    }
+    settings
+}
+
 impl LauncherUi {
     pub fn new(ctx: &egui::Context, backend: Box<dyn Backend>, settings: Settings) -> Self {
         let lang = effective_lang(&settings.language);
@@ -181,12 +191,7 @@ impl LauncherUi {
         egui_extras::install_image_loaders(ctx);
         let caps = backend.capabilities();
         let platform = backend.platform();
-        // The page no longer offers Installed, Updates or Not installed, so a saved one would
-        // hide apps with nothing on screen to undo it.
-        let mut settings = settings;
-        if !matches!(settings.filter, Filter::All | Filter::Hidden) {
-            settings.filter = Filter::All;
-        }
+        let settings = for_this_page(settings);
         Self {
             backend,
             settings,
@@ -647,6 +652,12 @@ impl LauncherUi {
         if host.title_bar() == TitleBar::Custom {
             crate::widgets::window_edges(&ctx);
         }
+    }
+
+    /// Takes in settings loaded after start-up (the desktop shell reads its file once the window
+    /// is up), cleaned up the same way as the ones given to [`LauncherUi::new`].
+    pub fn set_settings(&mut self, settings: Settings) {
+        self.settings = for_this_page(settings);
     }
 
     /// The ids to show, filtered and sorted.

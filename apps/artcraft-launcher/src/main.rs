@@ -507,7 +507,7 @@ impl Launcher {
     fn start(&mut self, settings: Option<Settings>, waker: &Arc<Waker>) {
         self.started = true;
         if let Some(settings) = settings {
-            self.ui.settings = settings;
+            self.ui.set_settings(settings);
         }
         self.waker = Some(waker.clone());
         let (wake, on_quit) = (waker.clone(), waker.clone());

@@ -1592,6 +1592,21 @@ fn the_toolbar_has_no_filter_dropdown() {
 }
 
 #[test]
+fn a_saved_filter_loaded_after_start_up_is_dropped_too() {
+    use artcraft_launcher_ui_egui::settings::Filter;
+    let (mut h, _) = harness(ViewMode::Grid, egui::Theme::Dark, true);
+    h.run_steps(6);
+    // The desktop shell reads its settings file after the window is up: a filter saved by an
+    // older version must not hide the apps that are not installed.
+    if let Some(l) = h.state_mut().as_mut() {
+        l.set_settings(Settings { filter: Filter::Installed, ..Settings::default() });
+    }
+    h.run_steps(6);
+    assert_eq!(h.state().as_ref().unwrap().settings.filter, Filter::All);
+    assert!(h.query_all_by_label("DeckCraft").next().is_some(), "an app that is not installed is listed");
+}
+
+#[test]
 fn narrow_header_keeps_the_view_switch_clear_of_brand_text() {
     use artcraft_launcher_ui_egui::TitleBar;
     for theme in [egui::Theme::Dark, egui::Theme::Light] {
