@@ -18,6 +18,10 @@ pub fn command(program: impl AsRef<std::ffi::OsStr>) -> Command {
     }
     #[cfg(unix)]
     clean_appimage_env(&mut cmd);
+    #[cfg(all(unix, not(target_os = "macos")))]
+    if std::env::var_os("DISPLAY").is_some() && std::env::var_os("WINIT_X11_SCALE_FACTOR").is_none() {
+        cmd.env("WINIT_X11_SCALE_FACTOR", "1");
+    }
     cmd
 }
 
