@@ -1025,6 +1025,22 @@ fn the_launcher_updates_itself_and_quits_to_restart() {
     assert!(quit.get());
 }
 
+/// A copy that can't replace itself (a sandbox, a tarball, the web) gets a Download button, and
+/// a question that fits it rather than one about relaunching (#388).
+#[test]
+fn a_copy_that_cannot_update_itself_is_asked_about_downloading_not_relaunching() {
+    let mut ev = events();
+    ev.push(Event::LauncherUpdate(release("artcraft-launcher", "0.2.0", NOW)));
+    let (mut h, _) = harness_with(ev, ViewMode::Grid, egui::Theme::Dark, false, 1.0);
+    h.run_steps(6);
+    h.get_by_label_contains("ArtCraft Launcher 0.2.0 is available");
+    h.get_by_label("A new version is available. Download it to replace this version?");
+    assert!(h.query_by_label_contains("relaunch with the updated version").is_none());
+    assert!(h.query_by_label("Update and restart").is_none());
+    let url = click_opens(&mut h, "Download");
+    assert!(url.as_deref().is_some_and(|u| u.contains("artcraft-launcher-0.2.0")), "{url:?}");
+}
+
 #[test]
 fn launcher_update_prompts_to_relaunch_with_updated_version() {
     let mut ev = events();
