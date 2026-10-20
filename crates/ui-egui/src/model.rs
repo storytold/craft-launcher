@@ -27,11 +27,26 @@ pub struct AppEntry {
     /// `None` where it gives none (the web build), and then [`Self::has_download`] decides. Only
     /// read while a copy is installed.
     pub installable: Option<bool>,
+    /// Disk space this app takes, once the backend has measured it (`None` while unknown, or
+    /// when what's installed has nothing on disk to measure).
+    pub size: Option<u64>,
 }
 
 impl AppEntry {
+    /// A fresh entry for `app`: nothing known about it yet — no release, no install, no size.
     pub fn new(app: &'static CraftApp) -> Self {
-        Self { app, latest: None, installed: None, detected: false, job: None, origin: None, paused: None, ready: false, installable: None }
+        Self {
+            app,
+            latest: None,
+            installed: None,
+            detected: false,
+            job: None,
+            origin: None,
+            paused: None,
+            ready: false,
+            installable: None,
+            size: None,
+        }
     }
 
     pub fn release(&self) -> Option<&Release> {
