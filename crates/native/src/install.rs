@@ -1440,7 +1440,11 @@ mod freebsd {
 fn msi_command(program: &Path, msi: &Path) -> Result<std::process::Command, String> {
     let msi = msi_path(msi)?;
     let mut command = process::command(program);
-    command.arg("/i").arg(msi).args(["/passive", "/norestart"]);
+    // Suppress desktop shortcuts (VectorCraft enables them by default; other apps ignore the property).
+    command
+        .arg("/i")
+        .arg(msi)
+        .args(["/passive", "/norestart", "INSTALLDESKTOPSHORTCUT="]);
     Ok(command)
 }
 
@@ -1536,7 +1540,8 @@ mod tests {
                 std::ffi::OsStr::new("/i"),
                 file.canonicalize().unwrap().as_os_str(),
                 std::ffi::OsStr::new("/passive"),
-                std::ffi::OsStr::new("/norestart")
+                std::ffi::OsStr::new("/norestart"),
+                std::ffi::OsStr::new("INSTALLDESKTOPSHORTCUT=")
             ]
         );
     }
