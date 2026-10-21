@@ -81,6 +81,13 @@ fn same_windows_path(left: &Path, right: &Path) -> bool {
     normalized(left) == normalized(right)
 }
 
+fn app_directory_name(path: &Path, app: &CraftApp) -> bool {
+    path.file_name().is_some_and(|name| {
+        let name = name.to_string_lossy();
+        name.eq_ignore_ascii_case(app.id) || name.eq_ignore_ascii_case(app.name)
+    })
+}
+
 fn linked(meta: &std::fs::Metadata) -> bool {
     #[cfg(windows)]
     {
@@ -143,9 +150,46 @@ fn extract(file: &Path, destination: &Path) -> Result<Vec<PathBuf>, String> {
     Ok(files)
 }
 
+fn strip_common_wrapper(unpacked: &Path, files: Vec<PathBuf>) -> Result<Vec<PathBuf>, String> {
+    let Some(wrapper) = files
+        .first()
+        .and_then(|file| file.components().next())
+        .filter(|first| files.iter().all(|file| file.components().next().as_ref() == Some(first)))
+        .filter(|_| files.iter().any(|file| file.components().count() > 1))
+        .map(|first| first.as_os_str().to_owned())
+    else {
+        return Ok(files);
+    };
+
+    let flattened = unpacked.with_file_name("flattened");
+    std::fs::create_dir(&flattened).map_err(|error| error.to_string())?;
+    let mut paths = Vec::with_capacity(files.len());
+    for relative in files {
+        let relative = relative.strip_prefix(&wrapper).map_err(|error| error.to_string())?.to_path_buf();
+        if relative.as_os_str().is_empty() {
+            return Err("The portable ZIP contains an invalid top-level folder.".into());
+        }
+        let source = unpacked.join(&wrapper).join(&relative);
+        let target = flattened.join(&relative);
+        if let Some(parent) = target.parent() {
+            std::fs::create_dir_all(parent).map_err(|error| error.to_string())?;
+        }
+        std::fs::rename(source, target).map_err(|error| error.to_string())?;
+        paths.push(relative);
+    }
+    std::fs::remove_dir_all(unpacked).map_err(|error| error.to_string())?;
+    std::fs::rename(flattened, unpacked).map_err(|error| error.to_string())?;
+    Ok(paths)
+}
+
 fn recorded_files<'a>(app: &CraftApp, record: &'a Record) -> Result<(&'a Path, Vec<PathBuf>), String> {
-    let root = record.path.parent().ok_or("The portable installation has no parent folder.")?;
-    if record.kind != PackageKind::PortableZip || root.file_name().is_none_or(|n| n != app.id) {
+    let root = record
+        .path
+        .ancestors()
+        .skip(1)
+        .find(|path| app_directory_name(path, app))
+        .ok_or("The launcher has no valid ownership record for this portable folder.")?;
+    if record.kind != PackageKind::PortableZip || !app_directory_name(root, app) {
         return Err("The launcher has no valid ownership record for this portable folder.".into());
     }
     let resolved = resolve_missing(root)?;
@@ -192,7 +236,7 @@ pub fn install(
             let parent = directory.map(Path::to_path_buf).unwrap_or_else(|| paths.apps());
             validate_directory(&parent)?;
             let parent = resolve_missing(&parent)?;
-            (parent.join(app.id), Vec::new())
+            (parent.join(app.name), Vec::new())
         }
     };
     validate_owned_directory(&destination, &destination)?;
@@ -204,15 +248,16 @@ pub fn install(
     let staging = Staging(staging);
     let unpacked = staging.0.join("unpacked");
     std::fs::create_dir(&unpacked).map_err(|e| e.to_string())?;
-    let files = extract(file, &unpacked)?;
+    // Portable archives sometimes wrap every entry in a versioned top-level folder.
+    // Strip that common folder so the installed layout stays <app>/<executable>.
+    let files = strip_common_wrapper(&unpacked, extract(file, &unpacked)?)?;
     let executable = files
         .iter()
         .find(|relative| {
-            relative.parent().is_some_and(|p| p.as_os_str().is_empty())
-                && relative
-                    .file_name()
-                    .and_then(|n| n.to_str())
-                    .is_some_and(|name| app.stems().any(|stem| name.eq_ignore_ascii_case(&format!("{stem}.exe"))))
+            relative
+                .file_name()
+                .and_then(|n| n.to_str())
+                .is_some_and(|name| app.stems().any(|stem| name.eq_ignore_ascii_case(&format!("{stem}.exe"))))
         })
         .ok_or("The portable ZIP does not contain the expected executable at its root.")?
         .clone();
@@ -339,7 +384,6 @@ mod tests {
         let zip = archive(dir.path(), "app.zip", &[("photocraft.exe", b"program"), ("lib/runtime.dll", b"library")]);
         let record = install(app, &zip, "0.5.0", None, &paths, Some(&home), false, &mut |_| Ok(())).unwrap();
         assert_eq!(std::fs::read(&record.path).unwrap(), b"program");
-
         std::fs::remove_file(root.join("lib/runtime.dll")).unwrap();
         std::fs::remove_dir(root.join("lib")).unwrap();
         symlink(&host, root.join("lib")).unwrap();
@@ -422,6 +466,53 @@ mod tests {
         remove(app, &record).unwrap();
         assert!(!record.path.exists());
         assert_eq!(std::fs::read(personal).unwrap(), b"personal");
+    }
+
+    #[test]
+    fn installs_executable_from_a_nested_archive_directory() {
+        let dir = tempfile::tempdir().unwrap();
+        let app = CraftApp::by_id("wordcraft").unwrap();
+        let paths = Paths::under(dir.path());
+        let zip = archive(
+            dir.path(),
+            "wordcraft-portable.zip",
+            &[
+                ("wordcraft-0.9.0-windows-x64-portable/wordcraft.exe", b"program"),
+                ("wordcraft-0.9.0-windows-x64-portable/wordcraft-cli.exe", b"cli"),
+                ("wordcraft-0.9.0-windows-x64-portable/LICENSE-MIT", b"license"),
+            ],
+        );
+
+        let record = install(app, &zip, "0.9.0", None, &paths, None, false, &mut |_| Ok(())).unwrap();
+
+        assert_eq!(record.path.file_name().and_then(|name| name.to_str()), Some("wordcraft.exe"));
+        assert_eq!(record.path.parent().and_then(Path::file_name).and_then(|name| name.to_str()), Some("WordCraft"));
+        assert_eq!(record.path.parent().and_then(Path::parent).and_then(Path::file_name).and_then(|name| name.to_str()), Some("apps"));
+        assert_eq!(std::fs::read(&record.path).unwrap(), b"program");
+        let install_root = record.path.parent().unwrap();
+        assert_eq!(std::fs::read(install_root.join("wordcraft-cli.exe")).unwrap(), b"cli");
+        assert_eq!(std::fs::read(install_root.join("LICENSE-MIT")).unwrap(), b"license");
+        assert!(!install_root.join("wordcraft-0.9.0-windows-x64-portable").exists());
+        remove(app, &record).unwrap();
+        assert!(!install_root.exists());
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn uninstall_accepts_the_display_case_of_the_app_folder() {
+        let dir = tempfile::tempdir().unwrap();
+        let app = CraftApp::by_id("wordcraft").unwrap();
+        let paths = Paths::under(dir.path());
+        let zip = archive(dir.path(), "wordcraft.zip", &[("wordcraft.exe", b"program")]);
+        let mut record = install(app, &zip, "0.9.0", None, &paths, None, false, &mut |_| Ok(())).unwrap();
+
+        let root = record.path.parent().unwrap().to_path_buf();
+        let display_case_root = root.with_file_name("WordCraft");
+        record.path = display_case_root.join("wordcraft.exe");
+        record.files = vec![record.path.clone()];
+
+        remove(app, &record).unwrap();
+        assert!(!display_case_root.exists());
     }
 
     #[test]

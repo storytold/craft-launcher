@@ -164,7 +164,7 @@ pub fn occupied(
     let folder = destination(app, kind, None, None, locations)?;
     let target = match kind {
         PackageKind::Msi => folder,
-        PackageKind::PortableZip => Some(folder.unwrap_or_else(|| paths.apps()).join(app.id)),
+        PackageKind::PortableZip => Some(folder.unwrap_or_else(|| paths.apps()).join(app.name)),
         PackageKind::Dmg => folder.map(|f| f.join(format!("{}.app", app.name))),
         #[cfg(target_os = "linux")]
         PackageKind::AppImage => folder.or_else(crate::detect::linux::appimage_dir).map(|f| f.join(&asset.name)),
@@ -1690,8 +1690,8 @@ mod tests {
         let asset = Asset { name: "photocraft.zip".into(), ..Default::default() };
         let occupied = |previous| occupied(app, &asset, PackageKind::PortableZip, None, previous, &locations, &paths).unwrap();
         assert_eq!(occupied(None), None);
-        std::fs::create_dir(dir.path().join("photocraft")).unwrap();
-        assert_eq!(occupied(None), Some(dir.path().join("photocraft")));
+        std::fs::create_dir(dir.path().join("PhotoCraft")).unwrap();
+        assert_eq!(occupied(None), Some(dir.path().join("PhotoCraft")));
         let old = record("0.5.0", PackageKind::PortableZip, dir.path().join("photocraft/photocraft.exe"), vec![], false);
         assert_eq!(occupied(Some(&old)), None);
     }
