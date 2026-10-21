@@ -123,7 +123,7 @@ impl LauncherUi {
             let width = ui.available_width();
             egui::ComboBox::from_id_salt("language").selected_text(Settings::language_label(&lang_code, installed)).width(width).show_ui(ui, |ui| {
                 ui.selectable_value(&mut lang_code, Settings::LANGUAGE_AUTO.to_string(), tl!("Auto"));
-                for lang in crate::i18n::Lang::all() {
+                for lang in crate::i18n::Lang::for_picker() {
                     ui.selectable_value(&mut lang_code, lang.code().to_string(), Settings::language_label(lang.code(), installed));
                 }
             });

@@ -4,7 +4,7 @@
 use std::collections::{BTreeSet, HashSet};
 
 use super::catalog::{Catalog, unescape};
-use super::lang::{plural_czech, plural_east_slavic, plural_polish};
+use super::lang::{name_sort_key, plural_czech, plural_east_slavic, plural_polish};
 use super::{LANGUAGES, Lang, LangInfo, lang_from_tag, message, tr, trn};
 
 /// Each catalog's rows as (line number, context, source, translation), split exactly as the
@@ -532,4 +532,19 @@ fn complete_catalogs_translate_package_formats() {
             assert!(super::has(lang, kind.label()), "{}: {}", lang.code(), kind.label());
         }
     }
+}
+
+#[test]
+fn picker_lists_english_first_then_names_alphabetically() {
+    let order = Lang::for_picker();
+    assert_eq!(order.first().map(|l| l.code()), Some("en"));
+    assert_eq!(order.len(), Lang::all().count());
+    let keys: Vec<String> = order[1..].iter().map(|l| name_sort_key(l.name())).collect();
+    assert!(keys.windows(2).all(|w| w[0] <= w[1]), "{keys:?}");
+    let pos = |code: &str| order.iter().position(|l| l.code() == code).unwrap_or_else(|| panic!("{code} registered"));
+    assert!(pos("cs") < pos("de"), "Čeština sorts under C, not after Z");
+    assert!(pos("fr") < pos("hu"), "Magyar sorts under M, not under its code");
+    assert!(pos("pt-BR") < pos("ru"), "Latin names come before Cyrillic");
+    assert!(pos("ru") < pos("ja"), "Cyrillic names come before CJK");
+    assert_eq!(name_sort_key("Čeština"), "cestina");
 }
