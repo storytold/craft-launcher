@@ -318,12 +318,23 @@ pub mod linux {
         {
             add(InstallSource::Pacman, packages::parse_pacman(&list));
         }
-        let arch = format!("--arch={}", std::env::consts::ARCH);
-        if let Some(list) = crate::process::capture_flatpak(&["list", "--app", &arch, "--columns=application,version"], t) {
+        // Flatpak's names for architectures aren't Rust's (`i386`, not `x86`), and the launcher
+        // may run emulated on another one: ask Flatpak which it installs for. Without an answer,
+        // list every architecture.
+        let arch = crate::process::capture_flatpak(&["--default-arch"], t)
+            .map(|a| a.trim().to_string())
+            .filter(|a| !a.is_empty())
+            .map(|a| format!("--arch={a}"));
+        let mut list_args = vec!["list", "--app", "--columns=application,version"];
+        list_args.extend(arch.as_deref());
+        if let Some(list) = crate::process::capture_flatpak(&list_args, t) {
             let mut flatpaks = packages::parse_flatpak_list(&list);
             // Bundles built from a release tarball often list no version: ask Flatpak directly.
             for (id, version) in flatpaks.iter_mut().filter(|(id, v)| v.is_empty() && id.starts_with("ai.storyteller.")) {
-                if let Some(v) = crate::process::capture_flatpak(&["info", &arch, id], t).as_deref().and_then(packages::parse_flatpak_info) {
+                let mut info = vec!["info"];
+                info.extend(arch.as_deref());
+                info.push(id);
+                if let Some(v) = crate::process::capture_flatpak(&info, t).as_deref().and_then(packages::parse_flatpak_info) {
                     *version = v;
                 }
             }

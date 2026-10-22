@@ -118,7 +118,7 @@ pub fn install_at(
         }
         #[cfg(target_os = "linux")]
         PackageKind::Deb | PackageKind::Rpm | PackageKind::ArchPkg | PackageKind::Flatpak => {
-            linux::install_package(kind, &file, job.stop, &mut *job.phase).map(|_| None)
+            linux::install_package(app, kind, &file, job.stop, &mut *job.phase).map(|_| None)
         }
         #[cfg(target_os = "linux")]
         PackageKind::AppImage => {
@@ -694,6 +694,7 @@ fn cancelled(stop: &Stop) -> impl Fn() -> bool + '_ {
 pub(crate) mod linux {
     use std::ffi::{OsStr, OsString};
     use std::os::unix::fs::PermissionsExt;
+    use std::time::Duration;
 
     use artcraft_launcher_core::distro;
     use artcraft_launcher_core::protocol::CANCELLED;
@@ -825,48 +826,83 @@ pub(crate) mod linux {
     }
 
     /// Installs (or upgrades) a downloaded package with the system's own tools.
-    pub fn install_package(kind: PackageKind, file: &Path, stop: &Stop, phase: &mut dyn FnMut(JobPhase)) -> Result<(), String> {
+    pub fn install_package(app: &CraftApp, kind: PackageKind, file: &Path, stop: &Stop, phase: &mut dyn FnMut(JobPhase)) -> Result<(), String> {
         if kind == PackageKind::Deb && which("apt-get").is_none() {
             return Err("this system has no apt-get to install a Debian package with".into());
         }
         if kind == PackageKind::ArchPkg && which("pacman").is_none() {
             return Err("this system has no pacman to install an Arch package with".into());
         }
-        install_package_via(&SYSTEM, kind, file, stop, phase)
+        install_package_via(&SYSTEM, app, kind, file, stop, phase)
     }
 
-    pub fn install_package_via(root: &Root<'_>, kind: PackageKind, file: &Path, stop: &Stop, phase: &mut dyn FnMut(JobPhase)) -> Result<(), String> {
+    pub fn install_package_via(
+        root: &Root<'_>,
+        app: &CraftApp,
+        kind: PackageKind,
+        file: &Path,
+        stop: &Stop,
+        phase: &mut dyn FnMut(JobPhase),
+    ) -> Result<(), String> {
         let f = file.as_os_str();
         if let Some(command) = install_command(kind) {
             return as_root(root, command, f, stop, phase, JobPhase::Installing);
         }
         match kind {
             PackageKind::Flatpak => {
+                let id = app.bundle_id();
                 let install_one = || {
-                    log::info!("executing flatpak install --reinstall --bundle for {}", file.display());
-                    let output = process::flatpak_command()
-                        .args(["install", "--user", "-y", "--noninteractive", "--reinstall", "--bundle"])
-                        .arg(f)
-                        .output()
-                        .map_err(|e| format!("couldn't start Flatpak ({e})"))?;
+                    // A bundle can't update an installed copy in place: `--reinstall` removes it
+                    // first. Only do that to a copy that came from a bundle, never to one a remote
+                    // such as Flathub keeps up to date, which the bundle would quietly take over.
+                    let origin = process::capture_flatpak(&["info", "--user", "--show-origin", &id], Duration::from_secs(10))
+                        .map(|o| o.trim().to_string())
+                        .filter(|o| !o.is_empty());
+                    if let Some(origin) = origin.as_deref().filter(|o| !is_bundle_origin(o)) {
+                        return Err(format!("{} is installed from the Flatpak remote {origin}. Update it with flatpak update {id}", app.name));
+                    }
+                    let mut cmd = process::flatpak_command();
+                    cmd.args(["install", "--user", "-y", "--noninteractive"]);
+                    if origin.is_some() {
+                        cmd.arg("--reinstall");
+                    }
+                    log::info!("executing flatpak install{} --bundle for {}", if origin.is_some() { " --reinstall" } else { "" }, file.display());
+                    let output = cmd.arg("--bundle").arg(f).output().map_err(|e| format!("couldn't start Flatpak ({e})"))?;
                     if output.status.success() {
                         log::info!("flatpak install succeeded for {}", file.display());
-                        Ok(())
-                    } else {
-                        let stderr = String::from_utf8_lossy(&output.stderr);
-                        let err = stderr.trim();
-                        let err = if err.is_empty() { String::from_utf8_lossy(&output.stdout).trim().to_string() } else { err.to_string() };
-                        if err.is_empty() {
-                            Err("Flatpak couldn't install the bundle (it needs the Flathub remote for its runtime)".into())
-                        } else {
-                            let clean_err = err.strip_prefix("error: ").or_else(|| err.strip_prefix("Error: ")).unwrap_or(&err);
-                            Err(format!("Flatpak couldn't install the bundle: {clean_err}"))
-                        }
+                        return Ok(());
                     }
+                    let err = flatpak_error(&output.stderr, &output.stdout);
+                    if origin.is_some() {
+                        // Flatpak may already have removed the old copy; its data in ~/.var/app stays.
+                        return Err(format!("{err}. {} may need installing again; its settings are kept.", app.name));
+                    }
+                    Err(err)
                 };
                 root.queue.alone(&cancelled(stop), &mut turn(phase, JobPhase::Installing), install_one).unwrap_or(Err(CANCELLED.into()))
             }
             other => Err(format!("{} isn't a system package", other.label())),
+        }
+    }
+
+    /// Whether `origin`, the remote an installed Flatpak came from, is one Flatpak made up when it
+    /// installed a bundle (`ai.storyteller.photocraft-origin`), not a real remote like `flathub`.
+    pub(crate) fn is_bundle_origin(origin: &str) -> bool {
+        origin.contains("-origin")
+    }
+
+    /// What to tell the user when `flatpak install --bundle` fails: its `error:` line, wherever
+    /// it printed one among warnings and progress, else the last thing it said on stderr.
+    pub(crate) fn flatpak_error(stderr: &[u8], stdout: &[u8]) -> String {
+        let (stderr, stdout) = (String::from_utf8_lossy(stderr), String::from_utf8_lossy(stdout));
+        let error = stderr
+            .lines()
+            .chain(stdout.lines())
+            .map(str::trim)
+            .find_map(|l| l.strip_prefix("error:").or_else(|| l.strip_prefix("Error:")).map(str::trim).filter(|e| !e.is_empty()));
+        match error.or_else(|| stderr.lines().map(str::trim).rev().find(|l| !l.is_empty())) {
+            Some(e) => format!("Flatpak couldn't install the bundle: {e}"),
+            None => "Flatpak couldn't install the bundle (it needs the Flathub remote for its runtime)".into(),
         }
     }
 
@@ -2039,7 +2075,14 @@ mod tests {
                             waiting.send(()).unwrap();
                         }
                     };
-                    linux::install_package_via(root, PackageKind::Deb, Path::new(file), &Stop::default(), &mut phase)
+                    linux::install_package_via(
+                        root,
+                        CraftApp::by_id("photocraft").unwrap(),
+                        PackageKind::Deb,
+                        Path::new(file),
+                        &Stop::default(),
+                        &mut phase,
+                    )
                 })
             });
             waits.recv().unwrap();
@@ -2082,10 +2125,41 @@ mod tests {
         }
         let queue = crate::queue::Queue::new();
         let root = linux::Root { queue: &queue, run: &|_| Ok(()) };
-        let result = linux::install_package_via(&root, PackageKind::Flatpak, Path::new("/nonexistent/file.flatpak"), &Stop::default(), &mut |_| ());
+        let app = CraftApp::by_id("photocraft").unwrap();
+        let result =
+            linux::install_package_via(&root, app, PackageKind::Flatpak, Path::new("/nonexistent/file.flatpak"), &Stop::default(), &mut |_| ());
         assert!(result.is_err());
         let err = result.unwrap_err();
         assert!(err.starts_with("Flatpak couldn't install the bundle: "), "unexpected error: {err}");
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn flatpak_error_picks_the_error_line() {
+        let warned = b"warning: Unable to load summary from remote flathub\nerror: The application ai.storyteller.photocraft requires the runtime org.kde.Platform/x86_64/6.8 which was not found\n";
+        assert_eq!(
+            linux::flatpak_error(warned, b""),
+            "Flatpak couldn't install the bundle: The application ai.storyteller.photocraft requires the runtime org.kde.Platform/x86_64/6.8 which was not found"
+        );
+        let table = b"Looking for matches...\n\n        ID      Branch\n 1. [\xe2\x9c\x97] ai.storyteller.photocraft stable\n\nError: Failed to install: No space left on device\n";
+        assert_eq!(linux::flatpak_error(b"", table), "Flatpak couldn't install the bundle: Failed to install: No space left on device");
+        assert_eq!(
+            linux::flatpak_error(b"some note\nBundle is not signed\n\n", b"progress"),
+            "Flatpak couldn't install the bundle: Bundle is not signed"
+        );
+        assert_eq!(
+            linux::flatpak_error(b"  \n", b"1. ai.storyteller.photocraft"),
+            "Flatpak couldn't install the bundle (it needs the Flathub remote for its runtime)"
+        );
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn only_bundle_origins_are_reinstalled_over() {
+        assert!(linux::is_bundle_origin("ai.storyteller.photocraft-origin"));
+        assert!(linux::is_bundle_origin("photocraft-1-origin"));
+        assert!(!linux::is_bundle_origin("flathub"));
+        assert!(!linux::is_bundle_origin("flathub-beta"));
     }
 
     #[cfg(target_os = "linux")]
