@@ -130,26 +130,38 @@ impl LauncherUi {
             .stroke(Stroke::new(1.0, tint(t.accent, 0.6)))
             .inner_margin(egui::Margin::symmetric(16, 10))
             .show(ui, |ui| {
+                // A narrow banner moves "What's new" under the message, leaving it the room
+                // the link took beside the buttons.
+                let link_left = ui.available_width() < theme::TOOLBAR_COMPACT_BELOW;
+                let busy = self.launcher_job.is_some();
                 // The buttons keep their widths; the message wraps in what they leave.
                 egui::Sides::new().shrink_left().wrap().show(
                     ui,
                     |ui| {
                         widgets::tag(ui, tl!("Update"), t.accent, Color32::WHITE);
                         ui.add_space(4.0);
-                        ui.label(
-                            RichText::new(fmt(tl!("ArtCraft Launcher {version} is available."), &[("version", &r.version_label())]))
-                                .family(theme::medium())
-                                .color(t.ink_strong),
-                        );
+                        let message = RichText::new(fmt(tl!("ArtCraft Launcher {version} is available."), &[("version", &r.version_label())]))
+                            .family(theme::medium())
+                            .color(t.ink_strong);
+                        if link_left && !busy {
+                            ui.vertical(|ui| {
+                                ui.spacing_mut().item_spacing.y = 4.0;
+                                ui.label(message);
+                                widgets::hud_link(ui, tl!("What's new"), &r.html_url);
+                            });
+                        } else {
+                            ui.label(message);
+                        }
                     },
-                    |ui| self.banner_actions(ui, t, r),
+                    |ui| self.banner_actions(ui, t, r, link_left),
                 );
             });
     }
 
     /// The banner's right side: the download's progress and cancel while it runs, otherwise the
-    /// update (or download) buttons plus the release link.
-    fn banner_actions(&mut self, ui: &mut Ui, t: &Tokens, r: &artcraft_launcher_core::Release) {
+    /// update (or download) buttons plus the release link, unless `link_left` put it under the
+    /// message.
+    fn banner_actions(&mut self, ui: &mut Ui, t: &Tokens, r: &artcraft_launcher_core::Release, link_left: bool) {
         if let Some(phase) = self.launcher_job {
             let (fraction, caption) = match phase {
                 JobPhase::Downloading { done, total } if total > 0 => (
@@ -189,8 +201,10 @@ impl LauncherUi {
                 ui.ctx().open_url(egui::OpenUrl::new_tab(url));
             }
         }
-        ui.add_space(8.0);
-        widgets::hud_link(ui, tl!("What's new"), &r.html_url);
+        if !link_left {
+            ui.add_space(8.0);
+            widgets::hud_link(ui, tl!("What's new"), &r.html_url);
+        }
     }
 
     /// The toolbar's main row: the refresh button, the hidden-apps toggle, the view switch, the
