@@ -38,11 +38,13 @@ release_arch() {
     *) echo "unsupported architecture $1" >&2; return 2 ;;
   esac
 }
-HOST_ARCH="$(release_arch "$(uname -m)")"
 # The release workflow cross-compiles aarch64 in an x86_64 VM with CARGO_BUILD_TARGET set to
 # aarch64-unknown-freebsd (craft-common-actions#39): name the archive after the target.
-ARCH="$HOST_ARCH"
-if [ -n "${CARGO_BUILD_TARGET:-}" ]; then ARCH="$(release_arch "${CARGO_BUILD_TARGET%%-*}")"; fi
+case "${CARGO_BUILD_TARGET:-}" in
+  "") ARCH="$(release_arch "$(uname -m)")" ;;
+  *-unknown-freebsd) ARCH="$(release_arch "${CARGO_BUILD_TARGET%%-*}")" ;;
+  *) echo "CARGO_BUILD_TARGET=$CARGO_BUILD_TARGET is not a FreeBSD target" >&2; exit 2 ;;
+esac
 if [ "$DRY_RUN" = 0 ] && [ "$(uname -s)" != FreeBSD ]; then
   echo "error: build on FreeBSD (or pass --dry-run to check the tree layout)" >&2
   exit 2
