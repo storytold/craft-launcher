@@ -72,6 +72,8 @@ fn main() -> ExitCode {
             }
         }
     }
+    // A moved or reinstalled launcher would otherwise leave the login entry pointing at the old path.
+    login::refresh();
     let (tray_loop, woken) = sync_channel(1);
     let waker = Arc::new(Waker { window: Mutex::new(None), tray_loop, quit_pending: AtomicBool::new(false) });
     {
