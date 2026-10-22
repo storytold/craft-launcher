@@ -1,17 +1,19 @@
 //! HTTPS requests: small JSON/text answers, redirect probes, and verified downloads.
 
-use std::io::{Read, Write};
+use std::io::{BufReader, BufWriter, Read, Write};
 use std::path::Path;
-use std::sync::atomic::{AtomicU8, Ordering};
-
-use artcraft_launcher_core::protocol::{CANCELLED, PAUSED};
+use std::sync::atomic::{AtomicBool, AtomicU8, AtomicU64, Ordering};
 use std::time::Duration;
 
+use artcraft_launcher_core::protocol::{CANCELLED, PAUSED};
 use sha2::{Digest, Sha256};
 
 const USER_AGENT: &str = concat!("ArtCraftLauncher/", env!("CARGO_PKG_VERSION"));
 /// Largest JSON or text answer we read.
 const MAX_SMALL: u64 = 4 << 20;
+
+const PARALLEL_CHUNKS: usize = 4;
+const MIN_PARALLEL_SIZE: u64 = 8 * 1024 * 1024;
 
 /// What a GET of a small resource produced.
 #[derive(Debug, PartialEq, Eq)]
@@ -51,11 +53,7 @@ pub struct FeedError {
 
 impl Http {
     pub fn new() -> Result<Self, String> {
-        // The OS checks each certificate chain itself: Windows fetches roots it hasn't stored yet
-        // and trusts what antivirus HTTPS scanning installs. Reading the store ourselves missed
-        // both ("invalid peer certificate: UnknownIssuer").
         let tls = || ureq::tls::TlsConfig::builder().root_certs(ureq::tls::RootCerts::PlatformVerifier).build();
-        // Chosen once: the proxy environment variables, else the OS proxy setting.
         let proxy = crate::proxy::pick();
         let small = ureq::Agent::config_builder()
             .tls_config(tls())
@@ -89,14 +87,11 @@ impl Http {
             .proxy(proxy.clone())
             .timeout_connect(Some(Duration::from_secs(20)))
             .timeout_recv_response(Some(Duration::from_secs(60)))
-            // ureq has no idle timeout: cap each attempt instead, and resume where it stopped.
             .timeout_recv_body(Some(ATTEMPT_BODY_TIME))
             .http_status_as_error(false)
             .user_agent(USER_AGENT)
             .build()
             .new_agent();
-        // An optional token raises GitHub's limit from 60 to 5000 requests an hour. Only ever sent
-        // to api.github.com.
         let token = std::env::var("ARTCRAFT_LAUNCHER_GITHUB_TOKEN").ok().map(|t| t.trim().to_string()).filter(|t| !t.is_empty());
         Ok(Self { small, feed, no_redirect, download, token })
     }
@@ -142,7 +137,6 @@ impl Http {
         let failed = |why: String| FeedError { why, throttled: false, retry_after: None };
         let mut resp =
             self.feed.get(url).header("Accept", "application/json").call().map_err(|e| failed(format!("couldn't reach {} ({e})", host(url))))?;
-        // Seconds only; an HTTP date falls back to our own backoff.
         let retry_after = resp.headers().get("retry-after").and_then(|v| v.to_str().ok()).and_then(|r| r.trim().parse::<i64>().ok());
         match resp.status().as_u16() {
             200 => resp.body_mut().with_config().limit(MAX_SMALL).read_to_string().map_err(|e| failed(format!("unreadable answer ({e})"))),
@@ -160,9 +154,7 @@ impl Http {
         }
     }
 
-    /// GET a small binary file (following redirects). `Ok(None)` for a 404. A file of more than
-    /// `max` bytes is refused: by its announced length before a byte is read, and by a hard limit
-    /// on the body when the length wasn't announced or was wrong.
+    /// GET a small binary file (following redirects).
     pub fn get_bytes(&self, url: &str, max: usize) -> Result<Option<Vec<u8>>, String> {
         let mut resp = self.small.get(url).call().map_err(|e| format!("couldn't reach {} ({e})", host(url)))?;
         match resp.status().as_u16() {
@@ -172,7 +164,6 @@ impl Http {
                 if announced.is_some_and(|n| n > max as u64) {
                     return Err(too_big());
                 }
-                // ureq errors once the limit is reached, so ask for one byte more than we accept.
                 let body = resp.body_mut().with_config().limit(max as u64 + 1).read_to_vec().map_err(|e| format!("unreadable answer ({e})"))?;
                 if body.len() > max { Err(too_big()) } else { Ok(Some(body)) }
             }
@@ -193,52 +184,172 @@ impl Http {
 
     /// Downloads `url` to `dest`, checking it against `sha256` when a checksum is published (and
     /// always against `size`, when known).
-    ///
-    /// Tolerant by design: an interrupted or stalled transfer resumes where it stopped (HTTP range
-    /// requests) with backoff; a paused download, or one left by an earlier run, continues from
-    /// its partial file; a file that fails its checksum is fetched once more from scratch before
-    /// giving up. When the connection stays down, the download ends paused (`PAUSED`), never
-    /// losing what it has. `stop` pauses or cancels it between reads.
     pub fn download(&self, url: &str, dest: &Path, size: u64, sha256: &str, stop: &Stop, progress: &mut dyn FnMut(Transfer)) -> Result<(), String> {
         if let Some(dir) = dest.parent() {
             std::fs::create_dir_all(dir).map_err(|e| format!("couldn't create {} ({e})", dir.display()))?;
         }
-        // A finished copy from an earlier attempt that never got installed. Marking it as just
-        // used, before checking it, keeps `clean_downloads` away from it while it's installed.
         if dest.is_file() && touch(dest) && matches_published(dest, sha256) {
             progress(Transfer::Bytes { done: size, total: size });
             return Ok(());
         }
-        // The partial file is named after the release file and its size; if it still turns out
-        // to belong to something else, the checksum catches it and the download starts over.
         let part = part_path(dest, size);
+        let meta = meta_path(dest, size);
         let mut fresh_start_used = false;
         loop {
-            if let Err(e) = self.fetch_resuming(url, &part, size, stop, progress) {
+            let res = if size >= MIN_PARALLEL_SIZE {
+                match self.fetch_parallel(url, &part, &meta, size, stop, progress) {
+                    Ok(()) => Ok(()),
+                    Err(AttemptError::RangeNotSupported) => {
+                        let _ = std::fs::remove_file(&meta);
+                        let _ = std::fs::remove_file(&part);
+                        self.fetch_resuming(url, &part, size, stop, progress)
+                    }
+                    Err(AttemptError::Stopped(e)) => Err(e),
+                    Err(AttemptError::Fatal(e)) => Err(e),
+                    Err(AttemptError::Retry { error, .. }) => Err(error),
+                }
+            } else {
+                self.fetch_resuming(url, &part, size, stop, progress)
+            };
+
+            if let Err(e) = res {
                 if e == CANCELLED {
                     let _ = std::fs::remove_file(&part);
+                    let _ = std::fs::remove_file(&meta);
                 } else if e != PAUSED {
                     log::warn!("download of {url} failed: {e}");
                 }
                 return Err(e);
             }
             if matches_published(&part, sha256) {
-                if let Err(e) = rename_retrying(&part, dest, stop) {
-                    if e == CANCELLED {
-                        let _ = std::fs::remove_file(&part);
-                    }
-                    return Err(e);
-                }
+                let _ = std::fs::remove_file(&meta);
+                std::fs::rename(&part, dest).map_err(|e| format!("couldn't save the download ({e})"))?;
                 return Ok(());
             }
             let _ = std::fs::remove_file(&part);
+            let _ = std::fs::remove_file(&meta);
             if fresh_start_used {
                 return Err("the download doesn't match its published checksum, so it wasn't installed".into());
             }
-            // A resumed file can be spliced wrongly by a misbehaving proxy: try once from zero.
             log::warn!("checksum mismatch for {url}; downloading again from the start");
             fresh_start_used = true;
         }
+    }
+
+    fn fetch_parallel(
+        &self,
+        url: &str,
+        part: &Path,
+        meta: &Path,
+        size: u64,
+        stop: &Stop,
+        progress: &mut dyn FnMut(Transfer),
+    ) -> Result<(), AttemptError> {
+        let resumable_part = std::fs::metadata(part).is_ok_and(|m| m.is_file() && m.len() == size);
+        let file = std::fs::OpenOptions::new()
+            .read(true)
+            .write(true)
+            .create(true)
+            .truncate(false)
+            .open(part)
+            .map_err(|e| AttemptError::Fatal(format!("couldn't open file ({e})")))?;
+        file.set_len(size).map_err(|e| AttemptError::Fatal(format!("couldn't pre-allocate file ({e})")))?;
+
+        let num_chunks = PARALLEL_CHUNKS;
+        let chunk_size = size.div_ceil(num_chunks as u64);
+        let initial_progress = if resumable_part {
+            load_meta(meta, num_chunks, size).unwrap_or_else(|| vec![0u64; num_chunks])
+        } else {
+            let _ = std::fs::remove_file(meta);
+            vec![0u64; num_chunks]
+        };
+        let chunk_dones: Vec<AtomicU64> = initial_progress.iter().map(|&d| AtomicU64::new(d)).collect();
+        let initial_total: u64 = initial_progress.iter().sum();
+        let total_downloaded = AtomicU64::new(initial_total);
+        let stop_flag = AtomicBool::new(false);
+        let range_unsupported = AtomicBool::new(false);
+        let fatal_error = std::sync::Mutex::new(None);
+
+        let shared = WorkerShared {
+            agent: &self.download,
+            url,
+            size,
+            file: &file,
+            total_downloaded: &total_downloaded,
+            stop_flag: &stop_flag,
+            range_unsupported: &range_unsupported,
+        };
+
+        let res: Result<(), AttemptError> = std::thread::scope(|s| {
+            for (i, done_atomic) in chunk_dones.iter().enumerate() {
+                let start = i as u64 * chunk_size;
+                let end = ((i as u64 + 1) * chunk_size).min(size);
+                let done = done_atomic.load(Ordering::Relaxed);
+                let task = ChunkTask { start, end, done, chunk_done: done_atomic };
+                let shared_ref = &shared;
+                let fatal_ref = &fatal_error;
+                let stop_ref = &stop_flag;
+
+                s.spawn(move || {
+                    if task.start + task.done >= task.end {
+                        return;
+                    }
+                    if let Err(AttemptError::Fatal(msg)) = run_worker(task, shared_ref) {
+                        if let Ok(mut lock) = fatal_ref.lock() {
+                            if lock.is_none() {
+                                *lock = Some(msg);
+                            }
+                        }
+                        stop_ref.store(true, Ordering::Relaxed);
+                    }
+                });
+            }
+
+            let mut last_save = std::time::Instant::now();
+            loop {
+                if let Err(e) = stop.check() {
+                    stop_flag.store(true, Ordering::Relaxed);
+                    save_meta(meta, &chunk_dones);
+                    let _ = file.sync_all();
+                    return Err(AttemptError::Stopped(e));
+                }
+                if range_unsupported.load(Ordering::Relaxed) {
+                    stop_flag.store(true, Ordering::Relaxed);
+                    return Err(AttemptError::RangeNotSupported);
+                }
+                if let Some(msg) = fatal_error.lock().ok().and_then(|g| g.clone()) {
+                    stop_flag.store(true, Ordering::Relaxed);
+                    return Err(AttemptError::Fatal(msg));
+                }
+
+                let current = total_downloaded.load(Ordering::Relaxed);
+                progress(Transfer::Bytes { done: current.min(size), total: size });
+
+                if last_save.elapsed() >= Duration::from_millis(500) {
+                    save_meta(meta, &chunk_dones);
+                    last_save = std::time::Instant::now();
+                }
+
+                let all_finished = chunk_dones.iter().enumerate().all(|(i, d)| {
+                    let start = i as u64 * chunk_size;
+                    let end = ((i as u64 + 1) * chunk_size).min(size);
+                    d.load(Ordering::Relaxed) >= (end - start)
+                });
+
+                if all_finished {
+                    break;
+                }
+
+                std::thread::sleep(Duration::from_millis(50));
+            }
+
+            save_meta(meta, &chunk_dones);
+            let _ = file.sync_all();
+            progress(Transfer::Bytes { done: size, total: size });
+            Ok(())
+        });
+
+        res
     }
 
     /// Fetches `url` into `part`, resuming from whatever `part` already holds. Retries while the
@@ -255,7 +366,6 @@ impl Http {
             }
             if fruitless > 0 {
                 progress(Transfer::Reconnecting { done: have, total: size });
-                // 1 s, 2 s, 4 s … 30 s, staying responsive to Pause and Cancel.
                 let wait = Duration::from_secs((1u64 << (fruitless - 1).min(5)).min(30));
                 let until = std::time::Instant::now() + wait;
                 while std::time::Instant::now() < until {
@@ -274,6 +384,7 @@ impl Http {
                 Ok(()) => return Ok(()),
                 Err(AttemptError::Stopped(e)) => return Err(e),
                 Err(AttemptError::Fatal(e)) => return Err(e),
+                Err(AttemptError::RangeNotSupported) => return Err("unexpected range refusal".into()),
                 Err(AttemptError::Retry { error, progressed }) => {
                     log::info!("{url}: {error}; retrying");
                     fruitless = if progressed { 1 } else { fruitless + 1 };
@@ -285,7 +396,6 @@ impl Http {
     /// One request: appends to `part` from byte `have`.
     fn attempt(&self, url: &str, part: &Path, have: u64, size: u64, stop: &Stop, progress: &mut dyn FnMut(Transfer)) -> Result<(), AttemptError> {
         let retry = |error: String, progressed: bool| AttemptError::Retry { error, progressed };
-        // Binaries are already compressed; ask for the bytes exactly as published.
         let mut req = self.download.get(url).header("Accept-Encoding", "identity");
         if have > 0 {
             req = req.header("Range", &format!("bytes={have}-"));
@@ -303,8 +413,6 @@ impl Http {
                 Some((start, None)) => (start, size),
                 None => return Err(retry("the server sent an unreadable partial response".into(), false)),
             },
-            // The range is past the end: the part file is already complete (or wrong; the
-            // checksum decides).
             416 if have > 0 => return Ok(()),
             404 | 410 => return Err(AttemptError::Fatal("the file is no longer on the release page".into())),
             401 | 403 => return Err(retry(format!("the server refused the download (HTTP {status})"), false)),
@@ -313,41 +421,91 @@ impl Http {
         if size > 0 && total != size {
             return Err(AttemptError::Fatal(format!("the server offered {total} bytes, but the release lists {size}")));
         }
-        // Open the part file at the right place: a 200 restarts it, a 206 continues it.
+
         let mut file = match (status, start) {
             (206, s) if s == have => std::fs::OpenOptions::new().append(true).open(part),
             _ => std::fs::File::create(part),
         }
+        .map(|f| BufWriter::with_capacity(1024 * 1024, f))
         .map_err(|e| AttemptError::Fatal(format!("couldn't save the download ({e})")))?;
+
         let mut done = if status == 206 && start == have { have } else { 0 };
-        // We check the length and checksum ourselves; the reader's limit is only a backstop
-        // against an endless body. (ureq errors once the limit is *reached*, so leave headroom.)
         let remaining = if total > 0 { total.saturating_sub(done) } else { MAX_DOWNLOAD };
         let mut reader = resp.body_mut().with_config().limit(remaining.saturating_add(1 << 20)).reader();
         let mut buf = vec![0u8; 256 * 1024];
         let at_start = done;
         progress(Transfer::Bytes { done, total });
-        loop {
-            stop.check().map_err(AttemptError::Stopped)?;
-            let n = match reader.read(&mut buf) {
-                Ok(n) => n,
-                Err(e) => {
-                    let _ = file.sync_all();
-                    return Err(retry(format!("the connection dropped: {e}"), done > at_start));
+
+        let base = std::time::Instant::now();
+        let last_byte_ms = AtomicU64::new(0);
+        let idle_hit = AtomicBool::new(false);
+        let reader_done = AtomicBool::new(false);
+        let read_result: Result<u64, AttemptError> = std::thread::scope(|s| {
+            s.spawn(|| {
+                let poll = Duration::from_millis(500);
+                loop {
+                    std::thread::sleep(poll);
+                    if reader_done.load(Ordering::Relaxed) || stop.check().is_err() {
+                        break;
+                    }
+                    let now_ms = base.elapsed().as_millis() as u64;
+                    if now_ms.saturating_sub(last_byte_ms.load(Ordering::Relaxed)) > IDLE_TIMEOUT.as_millis() as u64 {
+                        log::warn!("{url}: no data for {}s; treating as stalled", IDLE_TIMEOUT.as_secs());
+                        idle_hit.store(true, Ordering::Relaxed);
+                        break;
+                    }
                 }
-            };
-            if n == 0 {
-                break;
-            }
-            let chunk = buf.get(..n).ok_or_else(|| AttemptError::Fatal("read past the buffer".into()))?;
-            file.write_all(chunk).map_err(|e| AttemptError::Fatal(format!("couldn't save the download ({e}). Is the disk full?")))?;
-            done = done.saturating_add(n as u64);
-            if total > 0 && done > total {
-                return Err(retry("the server sent more than the file's size".into(), false));
-            }
-            progress(Transfer::Bytes { done, total });
-        }
-        file.sync_all().map_err(|e| AttemptError::Fatal(format!("couldn't save the download ({e})")))?;
+            });
+            let result = (|| -> Result<u64, AttemptError> {
+                let mut last_progress = std::time::Instant::now();
+                let mut bytes_since_progress = 0u64;
+                loop {
+                    if let Err(e) = stop.check() {
+                        let _ = file.flush();
+                        return Err(AttemptError::Stopped(e));
+                    }
+                    if idle_hit.load(Ordering::Relaxed) {
+                        let _ = file.flush();
+                        return Err(retry("the connection stalled (idle timeout)".into(), done > at_start));
+                    }
+                    let n = match reader.read(&mut buf) {
+                        Ok(n) => n,
+                        Err(e) => {
+                            let _ = file.flush();
+                            return Err(retry(format!("the connection dropped: {e}"), done > at_start));
+                        }
+                    };
+                    if n == 0 {
+                        break;
+                    }
+                    last_byte_ms.store(base.elapsed().as_millis() as u64, Ordering::Relaxed);
+                    let chunk = buf.get(..n).ok_or_else(|| AttemptError::Fatal("read past the buffer".into()))?;
+                    file.write_all(chunk).map_err(|e| AttemptError::Fatal(format!("couldn't save the download ({e}). Is the disk full?")))?;
+                    done = done.saturating_add(n as u64);
+                    bytes_since_progress = bytes_since_progress.saturating_add(n as u64);
+                    if total > 0 && done > total {
+                        return Err(retry("the server sent more than the file's size".into(), false));
+                    }
+                    if bytes_since_progress >= 64 * 1024 || last_progress.elapsed() >= Duration::from_millis(50) {
+                        progress(Transfer::Bytes { done, total });
+                        last_progress = std::time::Instant::now();
+                        bytes_since_progress = 0;
+                    }
+                }
+                if let Err(e) = stop.check() {
+                    let _ = file.flush();
+                    return Err(AttemptError::Stopped(e));
+                }
+                progress(Transfer::Bytes { done, total });
+                Ok(done)
+            })();
+            reader_done.store(true, Ordering::Relaxed);
+            result
+        });
+        let done = read_result?;
+        file.flush().map_err(|e| AttemptError::Fatal(format!("couldn't save the download ({e})")))?;
+        let raw_file = file.into_inner().map_err(|e| AttemptError::Fatal(format!("couldn't save the download ({e})")))?;
+        raw_file.sync_all().map_err(|e| AttemptError::Fatal(format!("couldn't save the download ({e})")))?;
         if total > 0 && done < total {
             return Err(retry(format!("the connection closed early ({done} of {total} bytes)"), done > at_start));
         }
@@ -355,10 +513,184 @@ impl Http {
     }
 }
 
+struct ChunkTask<'a> {
+    start: u64,
+    end: u64,
+    done: u64,
+    chunk_done: &'a AtomicU64,
+}
+
+struct WorkerShared<'a> {
+    agent: &'a ureq::Agent,
+    url: &'a str,
+    size: u64,
+    file: &'a std::fs::File,
+    total_downloaded: &'a AtomicU64,
+    stop_flag: &'a AtomicBool,
+    range_unsupported: &'a AtomicBool,
+}
+
+fn run_worker(task: ChunkTask<'_>, shared: &WorkerShared<'_>) -> Result<(), AttemptError> {
+    let mut have = task.done;
+    let mut fruitless = 0;
+    let mut buf = vec![0u8; 128 * 1024];
+
+    while task.start + have < task.end {
+        if shared.stop_flag.load(Ordering::Relaxed) || shared.range_unsupported.load(Ordering::Relaxed) {
+            return Ok(());
+        }
+        if fruitless >= MAX_FRUITLESS_ATTEMPTS {
+            return Err(AttemptError::Retry { error: "worker reached max retries".into(), progressed: false });
+        }
+        if fruitless > 0 {
+            std::thread::sleep(Duration::from_millis(200 * (1 << fruitless.min(4))));
+        }
+
+        let req_start = task.start + have;
+        let req_end = task.end - 1;
+        let req = shared
+            .agent
+            .get(shared.url)
+            .header("Accept-Encoding", "identity")
+            .header("Range", &format!("bytes={req_start}-{req_end}"));
+
+        let mut resp = match req.call() {
+            Ok(r) => r,
+            Err(_) => {
+                fruitless += 1;
+                continue;
+            }
+        };
+
+        let status = resp.status().as_u16();
+        if status == 200 {
+            shared.range_unsupported.store(true, Ordering::Relaxed);
+            return Err(AttemptError::RangeNotSupported);
+        }
+        if status == 404 || status == 410 {
+            return Err(AttemptError::Fatal("file no longer available".into()));
+        }
+        if status != 206 {
+            fruitless += 1;
+            continue;
+        }
+
+        let valid_range = resp
+            .headers()
+            .get("content-range")
+            .and_then(|v| v.to_str().ok())
+            .and_then(parse_content_range)
+            .is_some_and(|(start, total)| start == req_start && total.map_or(true, |t| t == shared.size));
+        if !valid_range {
+            shared.range_unsupported.store(true, Ordering::Relaxed);
+            return Err(AttemptError::RangeNotSupported);
+        }
+
+        let limit = (task.end - req_start).saturating_add(64 * 1024);
+        let mut reader = resp.body_mut().with_config().limit(limit).reader();
+        let mut made_progress = false;
+
+        loop {
+            if shared.stop_flag.load(Ordering::Relaxed) || shared.range_unsupported.load(Ordering::Relaxed) {
+                return Ok(());
+            }
+            let n = match reader.read(&mut buf) {
+                Ok(0) => break,
+                Ok(n) => n,
+                Err(_) => break,
+            };
+            let n = n.min((task.end - (task.start + have)) as usize);
+            if n == 0 {
+                break;
+            }
+            if let Err(e) = write_at(shared.file, &buf[..n], task.start + have) {
+                return Err(AttemptError::Fatal(format!("disk write error: {e}")));
+            }
+            have += n as u64;
+            task.chunk_done.store(have, Ordering::Relaxed);
+            shared.total_downloaded.fetch_add(n as u64, Ordering::Relaxed);
+            made_progress = true;
+        }
+
+        if task.start + have >= task.end {
+            return Ok(());
+        }
+        fruitless = if made_progress { 0 } else { fruitless + 1 };
+    }
+    Ok(())
+}
+
+#[cfg(unix)]
+fn write_at(file: &std::fs::File, buf: &[u8], offset: u64) -> std::io::Result<()> {
+    use std::os::unix::fs::FileExt;
+    file.write_all_at(buf, offset)
+}
+
+#[cfg(windows)]
+fn write_at(file: &std::fs::File, mut buf: &[u8], mut offset: u64) -> std::io::Result<()> {
+    use std::os::windows::fs::FileExt;
+    while !buf.is_empty() {
+        let n = file.seek_write(buf, offset)?;
+        if n == 0 {
+            return Err(std::io::Error::new(std::io::ErrorKind::WriteZero, "failed to write buffer"));
+        }
+        buf = &buf[n..];
+        offset += n as u64;
+    }
+    Ok(())
+}
+
+fn meta_path(dest: &Path, size: u64) -> std::path::PathBuf {
+    let tag = size.to_string();
+    let stem = dest.file_name().map(std::ffi::OsStr::to_os_string).unwrap_or_default();
+    let mut name = stem;
+    name.push(format!(".meta.{tag}.part"));
+    dest.with_file_name(name)
+}
+
+fn load_meta(path: &Path, num_chunks: usize, size: u64) -> Option<Vec<u64>> {
+    let bytes = std::fs::read(path).ok()?;
+    if bytes.len() != 4 + num_chunks * 8 {
+        return None;
+    }
+    let magic = u32::from_le_bytes(bytes[0..4].try_into().ok()?);
+    if magic != 1 {
+        return None;
+    }
+    let mut progress = Vec::with_capacity(num_chunks);
+    let chunk_size = size.div_ceil(num_chunks as u64);
+    for i in 0..num_chunks {
+        let start = 4 + i * 8;
+        let d = u64::from_le_bytes(bytes[start..start + 8].try_into().ok()?);
+        let chunk_start = i as u64 * chunk_size;
+        let chunk_end = ((i as u64 + 1) * chunk_size).min(size);
+        let chunk_len = chunk_end.saturating_sub(chunk_start);
+        if d > chunk_len {
+            return None;
+        }
+        progress.push(d);
+    }
+    Some(progress)
+}
+
+fn save_meta(path: &Path, chunk_dones: &[AtomicU64]) {
+    let mut data = Vec::with_capacity(4 + chunk_dones.len() * 8);
+    data.extend_from_slice(&1u32.to_le_bytes());
+    for d in chunk_dones {
+        data.extend_from_slice(&d.load(Ordering::Relaxed).to_le_bytes());
+    }
+    let _ = std::fs::write(path, data);
+}
+
 /// Attempts in a row without any new bytes before pausing (about two minutes of backoff).
-const MAX_FRUITLESS_ATTEMPTS: u32 = 8;
+const MAX_FRUITLESS_ATTEMPTS: u32 = 3;
 /// The longest one request may spend receiving; the next request resumes.
-const ATTEMPT_BODY_TIME: Duration = Duration::from_secs(5 * 60);
+/// Kept large so a healthy download finishes on a single connection; a stalled one is
+/// caught by `IDLE_TIMEOUT` long before this.
+const ATTEMPT_BODY_TIME: Duration = Duration::from_secs(30 * 60);
+/// How long `attempt` tolerates zero bytes before treating the connection as dead.
+/// Shorter than typical carrier NAT timeouts, long enough for a very slow but live link.
+const IDLE_TIMEOUT: Duration = Duration::from_secs(45);
 /// Backstop when the server doesn't say how big the file is.
 const MAX_DOWNLOAD: u64 = 16 << 30;
 
@@ -395,6 +727,9 @@ impl Stop {
 
     /// `Err(PAUSED | CANCELLED)` once asked to stop.
     pub fn check(&self) -> Result<(), String> {
+        if self.0.load(Ordering::Relaxed) == Self::RUN {
+            return Ok(());
+        }
         match self.0.load(Ordering::SeqCst) {
             Self::PAUSE => Err(PAUSED.into()),
             Self::CANCEL => Err(CANCELLED.into()),
@@ -410,7 +745,21 @@ fn matches_published(path: &Path, sha256: &str) -> bool {
 
 /// How much of a download is already on disk (a paused or interrupted one).
 pub fn partial_bytes(dest: &Path, size: u64) -> Option<u64> {
-    std::fs::metadata(part_path(dest, size)).ok().map(|m| m.len()).filter(|n| *n > 0)
+    let part = part_path(dest, size);
+    let part_meta = std::fs::metadata(&part).ok()?;
+    if !part_meta.is_file() {
+        return None;
+    }
+    if part_meta.len() == size {
+        let meta_p = meta_path(dest, size);
+        if let Some(prog) = load_meta(&meta_p, PARALLEL_CHUNKS, size) {
+            let sum: u64 = prog.iter().sum();
+            if sum > 0 {
+                return Some(sum);
+            }
+        }
+    }
+    (part_meta.len() > 0).then_some(part_meta.len())
 }
 
 /// Renames `from` to `to`, retrying for a few seconds while Windows reports the file busy: an
@@ -461,7 +810,6 @@ pub fn clean_downloads(dir: &Path, partial_max_age: Duration, finished_max_age: 
             continue;
         }
         let name = entry.file_name().to_string_lossy().into_owned();
-        // Current partial files are `<file>.<size>.part`.
         let current_part = name
             .strip_suffix(".part")
             .and_then(|stem| stem.rsplit_once('.'))
@@ -477,19 +825,16 @@ pub fn clean_downloads(dir: &Path, partial_max_age: Duration, finished_max_age: 
 
 /// Throws away a paused download, and a finished one kept for another try at installing.
 pub fn discard(dest: &Path, size: u64) {
+    let _ = std::fs::remove_file(meta_path(dest, size));
     let _ = std::fs::remove_file(part_path(dest, size));
     let _ = std::fs::remove_file(dest);
 }
 
 enum AttemptError {
-    /// Paused or cancelled.
     Stopped(String),
-    /// Won't get better by trying again.
     Fatal(String),
-    Retry {
-        error: String,
-        progressed: bool,
-    },
+    RangeNotSupported,
+    Retry { error: String, progressed: bool },
 }
 
 /// `<dest>.<size>.part`: where an unfinished download of `dest` is kept.
@@ -519,23 +864,16 @@ pub fn hex(bytes: &[u8]) -> String {
 
 /// SHA-256 of a file on disk.
 pub fn sha256_file(path: &Path) -> Result<String, String> {
-    let mut file = std::fs::File::open(path).map_err(|e| format!("couldn't read {} ({e})", path.display()))?;
+    let file = std::fs::File::open(path).map_err(|e| format!("couldn't read {} ({e})", path.display()))?;
+    let mut reader = BufReader::with_capacity(1024 * 1024, file);
     let mut hasher = Sha256::new();
-    std::io::copy(&mut file, &mut hasher).map_err(|e| format!("couldn't read {} ({e})", path.display()))?;
+    std::io::copy(&mut reader, &mut hasher).map_err(|e| format!("couldn't read {} ({e})", path.display()))?;
     Ok(hex(&hasher.finalize()))
 }
 
-/// Whether a 403 or 429 from GitHub's API means "slow down", and until when (Unix seconds, when
-/// it says). `None`: refused for some other reason.
-///
-/// GitHub sends `x-ratelimit-reset` with every answer: it's when the hourly quota refills, which
-/// only matters once `x-ratelimit-remaining` is 0. A secondary limit says how long to wait in
-/// `Retry-After` (seconds) and leaves the hourly quota alone; without either, GitHub's advice is
-/// to wait a minute.
 fn refused_until(status: u16, remaining: Option<&str>, reset: Option<i64>, retry_after: Option<i64>, now: i64) -> Option<Option<i64>> {
     let retry = retry_after.map(|secs| now.saturating_add(secs.max(0)));
     if remaining.map(str::trim) == Some("0") {
-        // `None` sorts first: whichever of the two is known, and the later if both are.
         return Some(reset.max(retry));
     }
     if retry.is_some() {
@@ -573,7 +911,6 @@ pub(crate) mod tests {
         clean_downloads(dir.path(), DAYS_30, DAYS_7);
         assert!(keep.exists() && fresh.exists() && finished.exists());
         assert!(!legacy.exists());
-        // A finished file goes sooner than a paused one.
         clean_downloads(dir.path(), DAYS_30, Duration::from_secs(60));
         assert!(keep.exists() && !finished.exists());
         clean_downloads(dir.path(), Duration::from_secs(60), DAYS_7);
@@ -590,7 +927,6 @@ pub(crate) mod tests {
         let http = Http::new().unwrap();
         http.download(&url, &dest, len, &sha, &Stop::default(), &mut |_| {}).unwrap();
         assert!(finished(&dest, len) && !finished(&dest, 0));
-        // Old enough to be cleaned up, were it not about to be used.
         let old = std::time::SystemTime::now() - Duration::from_secs(40 * 86_400);
         std::fs::File::options().write(true).open(&dest).unwrap().set_modified(old).unwrap();
         let mut last = (0, 0);
@@ -602,7 +938,6 @@ pub(crate) mod tests {
         assert_eq!(again, Ok(()));
         assert_eq!(last, (len, len));
         assert_eq!(requests.lock().unwrap().len(), 1);
-        // A cleanup while the installer runs leaves the reused file alone.
         clean_downloads(dir.path(), DAYS_30, DAYS_7);
         assert_eq!(std::fs::read(&dest).unwrap(), body);
         discard(&dest, len);
@@ -618,7 +953,6 @@ pub(crate) mod tests {
         let dest = dir.path().join("file.bin");
         let http = Http::new().unwrap();
         http.download(&url, &dest, len, &sha, &Stop::default(), &mut |_| {}).unwrap();
-        // The same size, so only the checksum can tell.
         std::fs::write(&dest, vec![b'x'; body.len()]).unwrap();
         http.download(&url, &dest, len, &sha, &Stop::default(), &mut |_| {}).unwrap();
         assert_eq!(std::fs::read(&dest).unwrap(), body);
@@ -633,27 +967,19 @@ pub(crate) mod tests {
         assert_eq!(parse_content_range("bytes x-9/10"), None);
     }
 
-    use std::io::{BufRead, BufReader};
+    use std::io::{BufRead, BufReader as TestBufReader};
     use std::net::TcpListener;
     use std::sync::{Arc, Mutex};
 
-    /// How the fake server answers one request.
     #[derive(Clone, Copy, Debug)]
     pub(crate) enum Reply {
-        /// The whole file.
         Full,
-        /// Promise the whole file, send `n` bytes, hang up.
         DropAfter(usize),
-        /// Honour `Range` with a 206.
         Ranged,
-        /// The right length, wrong bytes.
         Corrupt,
-        /// 404.
         Missing,
     }
 
-    /// Serves `body` over plain HTTP following `script`, one reply per connection; records the
-    /// `Range` header each request carried.
     pub(crate) fn serve(body: Vec<u8>, script: Vec<Reply>) -> (String, Arc<Mutex<Vec<Option<String>>>>) {
         let listener = TcpListener::bind("127.0.0.1:0").unwrap();
         let url = format!("http://{}/file.bin", listener.local_addr().unwrap());
@@ -663,7 +989,7 @@ pub(crate) mod tests {
             for reply in script {
                 let Ok((mut stream, _)) = listener.accept() else { return };
                 let mut range = None;
-                let mut reader = BufReader::new(stream.try_clone().unwrap());
+                let mut reader = TestBufReader::new(stream.try_clone().unwrap());
                 loop {
                     let mut line = String::new();
                     if reader.read_line(&mut line).unwrap_or(0) == 0 || line == "\r\n" {
@@ -747,7 +1073,6 @@ pub(crate) mod tests {
 
     #[test]
     fn a_complete_body_of_exactly_the_published_size_succeeds() {
-        // The bug this guards: a reader limit equal to the size failed on the final read.
         let (result, _) = run(vec![Reply::Full]);
         assert_eq!(result.unwrap(), body().0);
     }
@@ -782,7 +1107,6 @@ pub(crate) mod tests {
         let dest = dir.path().join("file.bin");
         let http = Http::new().unwrap();
         let stop = Stop::default();
-        // Pause as soon as the first bytes arrive.
         let err = http
             .download(&url, &dest, len, &sha, &stop, &mut |t| {
                 if matches!(t, Transfer::Bytes { done, .. } if done > 0) {
@@ -856,22 +1180,18 @@ pub(crate) mod tests {
     fn an_oversized_partial_file_that_cannot_be_removed_reports_an_error() {
         let dir = tempfile::tempdir().unwrap();
         let part = part_path(&dir.path().join("file.bin"), 1);
-        // A directory cannot be removed as a file on Unix. On Windows, hold a file open
-        // without delete sharing: metadata remains readable, but removing it is refused.
         #[cfg(unix)]
         std::fs::create_dir(&part).unwrap();
         #[cfg(windows)]
         let _locked_partial = {
             use std::os::windows::fs::OpenOptionsExt;
             std::fs::write(&part, b"too large").unwrap();
-            // FILE_SHARE_READ | FILE_SHARE_WRITE, without FILE_SHARE_DELETE.
             std::fs::File::options().read(true).share_mode(0x00000003).open(&part).unwrap()
         };
         assert!(std::fs::metadata(&part).unwrap().len() > 1);
         assert!(std::fs::remove_file(&part).is_err());
         let http = Http::new().unwrap();
         let stop = Stop::default();
-        // Bound the regression: the old retry loop spins until Cancel, without a request.
         let (finished, done) = std::sync::mpsc::channel();
         let error = std::thread::scope(|scope| {
             let watchdog_stop = &stop;
@@ -888,7 +1208,6 @@ pub(crate) mod tests {
         assert!(part.exists(), "a blocked partial file must be left alone");
     }
 
-    /// Live: a real Craft App release asset (`cargo test -p artcraft-launcher-native -- --ignored`).
     #[test]
     #[ignore = "needs network access"]
     fn downloads_a_real_release_asset() {
@@ -907,13 +1226,12 @@ pub(crate) mod tests {
         assert_eq!(std::fs::metadata(&dest).unwrap().len(), asset.size);
     }
 
-    /// Answers one request with `head` (status line and headers) and an empty body.
     fn answer_once(head: String) -> String {
         let listener = TcpListener::bind("127.0.0.1:0").unwrap();
         let url = format!("http://{}/repos/storytold/photocraft/releases/latest", listener.local_addr().unwrap());
         std::thread::spawn(move || {
             let Ok((mut stream, _)) = listener.accept() else { return };
-            let mut reader = BufReader::new(stream.try_clone().unwrap());
+            let mut reader = TestBufReader::new(stream.try_clone().unwrap());
             loop {
                 let mut line = String::new();
                 if reader.read_line(&mut line).unwrap_or(0) == 0 || line == "\r\n" {
@@ -927,8 +1245,6 @@ pub(crate) mod tests {
 
     #[test]
     fn a_secondary_limit_waits_for_retry_after_not_the_hourly_reset() {
-        // GitHub's secondary limit: quota left, an hourly reset 50 minutes away, and "try again
-        // in a minute". That's a minute, not 50 minutes of "the hourly limit was reached".
         let now = crate::now();
         let url = answer_once(format!(
             "HTTP/1.1 403 Forbidden\r\nx-ratelimit-remaining: 41\r\nx-ratelimit-reset: {}\r\nretry-after: 60\r\n",
@@ -949,15 +1265,11 @@ pub(crate) mod tests {
     #[test]
     fn github_refusals_are_read_the_way_github_documents_them() {
         const NOW: i64 = 1_791_500_000;
-        // Out of quota: until the reset, or Retry-After if that's later.
         assert_eq!(refused_until(403, Some("0"), Some(NOW + 1800), None, NOW), Some(Some(NOW + 1800)));
         assert_eq!(refused_until(403, Some("0"), Some(NOW + 30), Some(90), NOW), Some(Some(NOW + 90)));
         assert_eq!(refused_until(403, Some("0"), None, None, NOW), Some(None));
-        // A secondary limit: Retry-After, never the hourly reset.
         assert_eq!(refused_until(429, Some("12"), Some(NOW + 1800), Some(30), NOW), Some(Some(NOW + 30)));
-        // A 429 that doesn't say: a minute.
         assert_eq!(refused_until(429, Some("12"), Some(NOW + 1800), None, NOW), Some(Some(NOW + 60)));
-        // A plain 403 (blocked, private, …) isn't a rate limit.
         assert_eq!(refused_until(403, Some("12"), Some(NOW + 1800), None, NOW), None);
         assert_eq!(refused_until(403, None, None, None, NOW), None);
     }
