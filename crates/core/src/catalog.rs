@@ -184,9 +184,39 @@ pub const LAUNCHER_REPO: &str = "storytold/craft-launcher";
 /// The launcher's own asset stem.
 pub const LAUNCHER_ID: &str = "artcraft-launcher";
 
+/// A Craft App's 128 px icon (PNG), as copied from its repo into `assets/app-icons`: the UI
+/// draws it, and the Linux install puts it in the desktop menu.
+pub fn app_icon_png(id: &str) -> Option<&'static [u8]> {
+    Some(match id {
+        "photocraft" => include_bytes!("../../../assets/app-icons/photocraft.png"),
+        "vectorcraft" => include_bytes!("../../../assets/app-icons/vectorcraft.png"),
+        "filmcraft" => include_bytes!("../../../assets/app-icons/filmcraft.png"),
+        "lightcraft" => include_bytes!("../../../assets/app-icons/lightcraft.png"),
+        "pdfcraft" => include_bytes!("../../../assets/app-icons/pdfcraft.png"),
+        "effectcraft" => include_bytes!("../../../assets/app-icons/effectcraft.png"),
+        "designcraft" => include_bytes!("../../../assets/app-icons/designcraft.png"),
+        "wordcraft" => include_bytes!("../../../assets/app-icons/wordcraft.png"),
+        "deckcraft" => include_bytes!("../../../assets/app-icons/deckcraft.png"),
+        "gridcraft" => include_bytes!("../../../assets/app-icons/gridcraft.png"),
+        "cadcraft" => include_bytes!("../../../assets/app-icons/cadcraft.png"),
+        "soundcraft" => include_bytes!("../../../assets/app-icons/soundcraft.png"),
+        "figcraft" => include_bytes!("../../../assets/app-icons/figcraft.png"),
+        _ => return None,
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn every_app_has_its_icon() {
+        for app in &SUITE {
+            let png = app_icon_png(app.id).unwrap_or_else(|| panic!("no icon for {}", app.id));
+            assert!(png.starts_with(b"\x89PNG\r\n\x1a\n"), "{} icon isn't a PNG", app.id);
+        }
+        assert!(app_icon_png("notacraft").is_none());
+    }
 
     #[test]
     fn suite_has_thirteen_apps_with_unique_ids() {

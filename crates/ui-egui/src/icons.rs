@@ -2,24 +2,10 @@
 
 use egui::ImageSource;
 
-/// The 128 px icon of a Craft App.
+/// The 128 px icon of a Craft App ([`catalog::app_icon_png`](artcraft_launcher_core::catalog::app_icon_png)).
 pub fn app(id: &str) -> Option<ImageSource<'static>> {
-    Some(match id {
-        "photocraft" => egui::include_image!("../../../assets/app-icons/photocraft.png"),
-        "vectorcraft" => egui::include_image!("../../../assets/app-icons/vectorcraft.png"),
-        "filmcraft" => egui::include_image!("../../../assets/app-icons/filmcraft.png"),
-        "lightcraft" => egui::include_image!("../../../assets/app-icons/lightcraft.png"),
-        "pdfcraft" => egui::include_image!("../../../assets/app-icons/pdfcraft.png"),
-        "effectcraft" => egui::include_image!("../../../assets/app-icons/effectcraft.png"),
-        "designcraft" => egui::include_image!("../../../assets/app-icons/designcraft.png"),
-        "wordcraft" => egui::include_image!("../../../assets/app-icons/wordcraft.png"),
-        "deckcraft" => egui::include_image!("../../../assets/app-icons/deckcraft.png"),
-        "gridcraft" => egui::include_image!("../../../assets/app-icons/gridcraft.png"),
-        "cadcraft" => egui::include_image!("../../../assets/app-icons/cadcraft.png"),
-        "soundcraft" => egui::include_image!("../../../assets/app-icons/soundcraft.png"),
-        "figcraft" => egui::include_image!("../../../assets/app-icons/figcraft.png"),
-        _ => return None,
-    })
+    let png = artcraft_launcher_core::catalog::app_icon_png(id)?;
+    Some(ImageSource::Bytes { uri: format!("bytes://app-icons/{id}.png").into(), bytes: png.into() })
 }
 
 /// A Craft App's icon: in colour, or in greys for an app that is not installed. The grey copy is
