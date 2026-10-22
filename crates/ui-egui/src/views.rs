@@ -103,6 +103,8 @@ impl LauncherUi {
         );
     }
 
+    /// The launcher-update banner and announcements, then the row of refresh, the hidden apps,
+    /// "Update all", sort, search and the view switch (sort and "Update all" on a second row when narrow).
     pub(crate) fn toolbar(&mut self, ui: &mut Ui) {
         if self.settings.filter == Filter::Hidden && self.settings.hidden.is_empty() {
             self.settings.filter = Filter::All;
@@ -335,6 +337,8 @@ impl LauncherUi {
         }
     }
 
+    /// The status bar: when apps were last checked (or GitHub's rate limit) at the left, the
+    /// website, GitHub, Discord and social links at the right.
     pub(crate) fn footer(&mut self, ui: &mut Ui) {
         let t = Tokens::get(ui.ctx());
         let now = self.backend.now();
