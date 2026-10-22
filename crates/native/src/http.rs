@@ -544,8 +544,9 @@ fn refused_until(status: u16, remaining: Option<&str>, reset: Option<i64>, retry
     (status == 429).then_some(Some(now.saturating_add(60)))
 }
 
+/// The host of `url` for error messages, or all of it when it has no scheme.
 fn host(url: &str) -> &str {
-    url.split("://").nth(1).and_then(|r| r.split('/').next()).unwrap_or(url)
+    url.split_once("://").and_then(|(_, rest)| rest.split('/').next()).unwrap_or(url)
 }
 
 #[cfg(test)]
@@ -554,6 +555,13 @@ pub(crate) mod tests {
 
     const DAYS_30: Duration = Duration::from_secs(30 * 86_400);
     const DAYS_7: Duration = Duration::from_secs(7 * 86_400);
+
+    #[test]
+    fn host_is_what_follows_the_scheme() {
+        assert_eq!(host("https://api.github.com/repos/storytold/wordcraft"), "api.github.com");
+        assert_eq!(host("http://127.0.0.1:8080"), "127.0.0.1:8080");
+        assert_eq!(host("not a url"), "not a url");
+    }
 
     #[test]
     fn cleaning_keeps_current_partial_files_and_removes_leftovers() {
