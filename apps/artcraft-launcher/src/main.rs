@@ -94,7 +94,13 @@ fn main() -> ExitCode {
     let _ = motion::reduced();
 
     let backend_waker = waker.clone();
-    let settings_path = settings_file::path(APP_ID);
+    // The settings live with the launcher's other files, not in the folder eframe picks from the
+    // app id: one folder instead of two, and a portable install keeps them beside its executable
+    // (#775). Settings an earlier version left in eframe's folder are adopted once.
+    let settings_path = artcraft_launcher_native::paths::Paths::new().ok().map(|p| p.settings());
+    if let Some(path) = &settings_path {
+        settings_file::adopt(path, settings_file::legacy_path(APP_ID).as_deref());
+    }
     let mut launcher = Launcher::new(Box::new(NativeBackend::new(move || backend_waker.wake())), starts, settings_path.clone());
     #[cfg(target_os = "linux")]
     {
@@ -117,7 +123,7 @@ fn main() -> ExitCode {
                 let (waker, launcher) = (waker.clone(), &mut launcher);
                 eframe::run_native(
                     "ArtCraft Launcher",
-                    native_options(hidden),
+                    native_options(hidden, settings_path.clone()),
                     Box::new(move |cc| {
                         launcher.open(cc, &waker);
                         Ok(Box::new(Shell::new(cc, launcher, hidden)))
@@ -141,7 +147,10 @@ fn main() -> ExitCode {
     }
 }
 
-fn native_options(hidden: bool) -> eframe::NativeOptions {
+/// `settings` is where eframe keeps its state; `None` leaves it the folder eframe picks from the
+/// app id. Despite what `NativeOptions::persistence_path` says, it is the file and not its folder:
+/// eframe passes it to `FileStorage::from_ron_filepath`.
+fn native_options(hidden: bool, settings: Option<std::path::PathBuf>) -> eframe::NativeOptions {
     let icon =
         eframe::icon_data::from_png_bytes(include_bytes!("../../../assets/app-icon/hicolor/256x256/apps/ai.storyteller.artcraft-launcher.png")).ok();
     let mut viewport = egui::ViewportBuilder::default()
@@ -164,7 +173,7 @@ fn native_options(hidden: bool) -> eframe::NativeOptions {
     } else if let Some(icon) = icon {
         viewport = viewport.with_icon(icon);
     }
-    eframe::NativeOptions { viewport, persist_window: true, wgpu_options: wgpu_options(), ..Default::default() }
+    eframe::NativeOptions { viewport, persist_window: true, persistence_path: settings, wgpu_options: wgpu_options(), ..Default::default() }
 }
 
 /// wgpu's backend list. On Windows that is Direct3D 12 with GL as the fallback, not Vulkan:

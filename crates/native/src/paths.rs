@@ -62,6 +62,14 @@ impl Paths {
         self.data.join("logs")
     }
 
+    /// eframe's state file: the window's size and place, egui's memory and the launcher's
+    /// settings. It lives in this folder rather than the one eframe picks from the app id, so the
+    /// launcher keeps its files in one place and a portable install keeps its settings beside its
+    /// executable instead of in the user's profile (#775).
+    pub fn settings(&self) -> PathBuf {
+        self.data.join("app.ron")
+    }
+
     /// Where tarball installs (FreeBSD, Linux without AppImage) are unpacked: `<data>/apps/<app>`.
     pub fn apps(&self) -> PathBuf {
         self.data.join("apps")

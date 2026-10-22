@@ -8,9 +8,43 @@
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
-/// Where eframe keeps its state for `app_id`, as it picks it for a window with that app id.
-pub fn path(app_id: &str) -> Option<PathBuf> {
+/// Where eframe kept its state before it was told otherwise: the folder it picks from the app id.
+/// Only to read a file left there by an earlier version (see [`adopt`]).
+pub fn legacy_path(app_id: &str) -> Option<PathBuf> {
     eframe::storage_dir(app_id).map(|dir| dir.join("app.ron"))
+}
+
+/// Move the settings an earlier version left in eframe's own folder to `path`, once. Does nothing
+/// when there is nothing to move or `path` already exists, so a later run never overwrites newer
+/// settings with older ones. The old file is left where it is: an older launcher started again
+/// still finds it, and it is small.
+///
+/// Written through a temporary file in the destination folder, as every other write to this file
+/// is. A copy that created `path` and then failed would leave a half-written file that the next
+/// start takes for adopted settings, and the launcher would read its defaults from then on with
+/// the real settings still sitting in the old folder.
+pub fn adopt(path: &Path, legacy: Option<&Path>) -> bool {
+    let Some(legacy) = legacy else { return false };
+    if path.exists() || !legacy.is_file() || legacy == path {
+        return false;
+    }
+    let bytes = match std::fs::read(legacy) {
+        Ok(bytes) => bytes,
+        Err(e) => {
+            log::warn!("{}: {e}", legacy.display());
+            return false;
+        }
+    };
+    match artcraft_launcher_native::paths::write_atomic(path, &bytes) {
+        Ok(()) => {
+            log::info!("adopted the settings from {}", legacy.display());
+            true
+        }
+        Err(e) => {
+            log::warn!("{} -> {}: {e}", legacy.display(), path.display());
+            false
+        }
+    }
 }
 
 /// The value stored under `key`, if the file has one that still reads.
@@ -125,6 +159,59 @@ mod tests {
         save(&dir.file(), "settings", &settings).unwrap();
         assert_eq!(load::<Settings>(&dir.file(), "settings"), Some(settings));
         assert_eq!(std::fs::read(&tmp).unwrap(), b"another writer's data");
+    }
+
+    /// Settings an earlier version left in eframe's own folder are taken over once, and never
+    /// over newer ones (#775).
+    #[test]
+    fn settings_left_in_eframes_folder_are_adopted_once() {
+        let old = Scratch::new("settings-adopt-old");
+        let new = Scratch::new("settings-adopt-new");
+        let was = Settings { notify: false, ..Settings::default() };
+        std::fs::create_dir_all(&old.0).unwrap();
+        save(&old.file(), "settings", &was).unwrap();
+
+        // Nothing where the launcher now keeps them: the old file is taken over.
+        assert!(adopt(&new.file(), Some(&old.file())));
+        assert_eq!(load::<Settings>(&new.file(), "settings"), Some(was.clone()));
+        // The old file stays, so an older launcher started again still finds its settings.
+        assert!(old.file().is_file());
+
+        // Already there: left alone, however old the other file is.
+        let now = Settings { notify: true, ..Settings::default() };
+        save(&new.file(), "settings", &now).unwrap();
+        assert!(!adopt(&new.file(), Some(&old.file())));
+        assert_eq!(load::<Settings>(&new.file(), "settings"), Some(now));
+
+        // A destination that cannot be written leaves nothing behind for the next start to take
+        // for adopted settings: here the folder's place is taken by a file. (This holds however
+        // the bytes are written -- the partial-copy case it guards against needs a write that
+        // fails after creating the file, which no portable test can provoke.)
+        let blocked = Scratch::new("settings-adopt-blocked");
+        std::fs::create_dir_all(&blocked.0).unwrap();
+        let wall = blocked.0.join("wall");
+        std::fs::write(&wall, b"not a folder").unwrap();
+        let under = wall.join("app.ron");
+        assert!(!adopt(&under, Some(&old.file())));
+        assert!(!under.exists(), "no half-written settings file");
+        assert_eq!(std::fs::read(&wall).unwrap(), b"not a folder", "and nothing else was replaced");
+
+        // Nothing to take over, and the same file twice, are both no-ops rather than errors.
+        let empty = Scratch::new("settings-adopt-empty");
+        assert!(!adopt(&empty.file(), Some(&Scratch::new("settings-adopt-absent").file())));
+        assert!(!adopt(&empty.file(), None));
+        assert!(!adopt(&old.file(), Some(&old.file())));
+    }
+
+    /// The settings sit with the launcher's other files, so a portable install keeps them beside
+    /// its executable rather than in the user's profile (#775).
+    #[test]
+    fn the_settings_file_is_in_the_launchers_own_folder() {
+        let root = std::env::temp_dir().join(format!("artcraft-launcher-portable-{}", std::process::id()));
+        let paths = artcraft_launcher_native::paths::Paths::under(&root);
+        assert_eq!(paths.settings(), paths.data.join("app.ron"));
+        assert!(paths.settings().starts_with(&root), "{:?}", paths.settings());
+        assert!(paths.settings().starts_with(paths.logs().parent().unwrap()), "beside the logs");
     }
 
     #[test]
