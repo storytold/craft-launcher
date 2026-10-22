@@ -283,6 +283,7 @@ dependencies = [
  "artcraft-launcher-ui-egui",
  "eframe",
  "egui",
+ "egui-winit",
  "env_logger",
  "image",
  "log",
