@@ -296,17 +296,26 @@ pub enum Kind {
     Danger,
 }
 
-/// The natural width of a button, including its horizontal padding.
+/// A button's label, laid out: [`button`] paints it, [`button_width`] measures it.
+fn button_label(ui: &Ui, text: &str) -> Arc<Galley> {
+    caps(ui, text, theme::HUD_SIZE, theme::mono_bold(), theme::BUTTON_SPACING, Tokens::get(ui.ctx()).ink)
+}
+
+/// A button's width around its label: 16 px of padding each side, at least `minimum`.
+fn button_width_of(label: &Galley, minimum: f32) -> f32 {
+    (label.size().x + 32.0).max(minimum)
+}
+
+/// The natural width of a button, including its horizontal padding: what [`button`] takes.
 pub fn button_width(ui: &Ui, text: &str, minimum: f32) -> f32 {
-    let galley = caps(ui, text, theme::HUD_SIZE, theme::mono_bold(), theme::BUTTON_SPACING, Tokens::get(ui.ctx()).ink);
-    (galley.size().x + 32.0).max(minimum)
+    button_width_of(&button_label(ui, text), minimum)
 }
 
 /// A square button with a mono upper-case label, at least `width` wide.
 pub fn button(ui: &mut Ui, text: &str, kind: Kind, width: f32) -> Response {
     let t = Tokens::get(ui.ctx());
-    let galley = caps(ui, text, theme::HUD_SIZE, theme::mono_bold(), theme::BUTTON_SPACING, t.ink);
-    let size = vec2((galley.size().x + 32.0).max(width), theme::CONTROL_H);
+    let galley = button_label(ui, text);
+    let size = vec2(button_width_of(&galley, width), theme::CONTROL_H);
     let (rect, resp) = ui.allocate_exact_size(size, Sense::click());
     let enabled = ui.is_enabled();
     let hovered = resp.hovered() && enabled;
