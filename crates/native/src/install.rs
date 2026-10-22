@@ -1441,11 +1441,20 @@ fn msi_command(program: &Path, msi: &Path) -> Result<std::process::Command, Stri
     let msi = msi_path(msi)?;
     let mut command = process::command(program);
     // Suppress desktop shortcuts (VectorCraft enables them by default; other apps ignore the property).
+    // A verbose log beside the package: Windows Installer's own errors (1603 above all) say
+    // nothing without it.
     command
         .arg("/i")
-        .arg(msi)
-        .args(["/passive", "/norestart", "INSTALLDESKTOPSHORTCUT="]);
+        .arg(&msi)
+        .args(["/passive", "/norestart", "INSTALLDESKTOPSHORTCUT=", "/l*v"])
+        .arg(msi_log(&msi));
     Ok(command)
+}
+
+/// Where `msi_command` asks Windows Installer to write its log.
+#[cfg_attr(not(windows), allow(dead_code))]
+fn msi_log(msi: &Path) -> PathBuf {
+    msi.with_extension("log")
 }
 
 /// Windows Installer's storage APIs can fail on paths through junctions or symlinks (#338).
@@ -1490,7 +1499,10 @@ pub mod windows {
                 command.raw_arg(msi_folder_argument(dir)?);
             }
             let status = command.status().map_err(|e| format!("couldn't start the Windows Installer ({e})"))?;
-            explain(status.code())
+            explain(status.code()).map_err(|e| match status.code() {
+                Some(1602) | None => e,
+                _ => format!("{e}. Its log is at {}", msi_log(msi).display()),
+            })
         })
     }
 
@@ -1541,7 +1553,9 @@ mod tests {
                 file.canonicalize().unwrap().as_os_str(),
                 std::ffi::OsStr::new("/passive"),
                 std::ffi::OsStr::new("/norestart"),
-                std::ffi::OsStr::new("INSTALLDESKTOPSHORTCUT=")
+                std::ffi::OsStr::new("INSTALLDESKTOPSHORTCUT="),
+                std::ffi::OsStr::new("/l*v"),
+                file.canonicalize().unwrap().with_extension("log").as_os_str()
             ]
         );
     }
