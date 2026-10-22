@@ -42,8 +42,8 @@ release_arch() {
 # aarch64-unknown-freebsd (craft-common-actions#39): name the archive after the target.
 case "${CARGO_BUILD_TARGET:-}" in
   "") ARCH="$(release_arch "$(uname -m)")" ;;
-  *-unknown-freebsd) ARCH="$(release_arch "${CARGO_BUILD_TARGET%%-*}")" ;;
-  *) echo "CARGO_BUILD_TARGET=$CARGO_BUILD_TARGET is not a FreeBSD target" >&2; exit 2 ;;
+  aarch64-unknown-freebsd | x86_64-unknown-freebsd) ARCH="$(release_arch "${CARGO_BUILD_TARGET%%-*}")" ;;
+  *) echo "CARGO_BUILD_TARGET=$CARGO_BUILD_TARGET is not a supported FreeBSD target" >&2; exit 2 ;;
 esac
 if [ "$DRY_RUN" = 0 ] && [ "$(uname -s)" != FreeBSD ]; then
   echo "error: build on FreeBSD (or pass --dry-run to check the tree layout)" >&2
