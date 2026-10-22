@@ -317,10 +317,15 @@ impl LauncherUi {
                     ui.spacing_mut().item_spacing.y = 5.0;
                     widgets::wordmark(ui, app, theme::PAGE_TITLE);
                     ui.add(egui::Label::new(RichText::new(details.headline).size(15.0).color(t.ink)).wrap());
-                    // "Version 0.5.0 · Oct 8, 2026", or the installed-versus-latest line.
+                    // "Version 0.5.0 · Oct 8, 2026", or the installed-versus-latest line, and how
+                    // much room the installed copy takes.
                     let version = crate::views::version_line(entry, &status);
-                    if !version.trim().is_empty() {
-                        ui.label(RichText::new(version).size(12.5).color(t.muted));
+                    let line = match entry.size {
+                        Some(bytes) if !version.trim().is_empty() => format!("{version} · {}", widgets::human_bytes(bytes)),
+                        _ => version,
+                    };
+                    if !line.trim().is_empty() {
+                        ui.label(RichText::new(line).size(12.5).color(t.muted));
                     }
                 });
                 if wide {

@@ -206,6 +206,13 @@ impl LauncherUi {
                         widgets::hud(ui, sort, t.faint);
                     }
                 }
+                // What every installed app takes together: before the sort in the grid, beside
+                // the search in the table, where there is no sort control.
+                if let Some(total) = self.total_size() {
+                    ui.add_space(12.0);
+                    widgets::hud(ui, &fmt(tl!("Total: {size}"), &[("size", &widgets::human_bytes(total))]), t.faint)
+                        .on_hover_text(tl!("Disk space used by the installed apps"));
+                }
                 if !compact && self.caps.manage_apps && updates > 0 {
                     self.update_all_button(ui, updates);
                 }
@@ -226,6 +233,12 @@ impl LauncherUi {
                 });
             });
         }
+    }
+
+    /// The disk space every installed app takes, once the backend has measured any of them.
+    fn total_size(&self) -> Option<u64> {
+        let total = self.entries.iter().filter_map(|e| e.size).sum::<u64>();
+        (total > 0).then_some(total)
     }
 
     fn refresh_button(&mut self, ui: &mut Ui) {
@@ -441,14 +454,22 @@ impl LauncherUi {
             let mut strip_ui = ui.new_child(
                 egui::UiBuilder::new().max_rect(strip.shrink2(vec2(CARD_PAD, 0.0))).layout(egui::Layout::left_to_right(egui::Align::Center)),
             );
+            // What the app takes on disk, if it is installed: the strip says so beside its version.
+            let size = entry.size.map(widgets::human_bytes);
             if !version.is_empty() {
-                let github_w = widgets::hud_galley(&strip_ui, &format!("{} ↗", tl!("GitHub")), t.muted).size().x;
-                let room = (strip_ui.available_width() - github_w - 16.0).max(0.0);
+                // Room for what the right end of the strip already holds: the size, then GitHub.
+                let github_w = widgets::hud_galley(&strip_ui, &format!("{} ↗", tl!("GitHub")), t.muted).size().x + 16.0;
+                let size_w = size.as_deref().map_or(0.0, |s| widgets::hud_galley(&strip_ui, s, t.faint).size().x + 16.0);
+                let room = (strip_ui.available_width() - github_w - size_w - 16.0).max(0.0);
                 widgets::hud_elided(&mut strip_ui, &version, if in_colour { t.app_ink(app) } else { t.muted }, room);
             }
             strip_ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 ui.spacing_mut().item_spacing.x = 16.0;
                 widgets::hud_link(ui, tl!("GitHub"), &app.repo_url());
+                // How much disk space the installed copy takes; only an installed app has one.
+                if let Some(size) = size.as_ref() {
+                    widgets::hud(ui, size, t.faint).on_hover_text(tl!("Size on disk"));
+                }
             });
         }
 
@@ -545,6 +566,7 @@ impl LauncherUi {
                 .column(Column::remainder().at_least(220.0).clip(true))
                 .column(Column::exact(176.0))
                 .column(Column::exact(150.0))
+                .column(Column::exact(96.0))
                 .column(Column::exact(104.0))
                 .column(Column::exact(206.0))
                 .header(42.0, |mut header| {
@@ -552,6 +574,7 @@ impl LauncherUi {
                         (Some(SortKey::Name), tl!("App")),
                         (Some(SortKey::Status), tl!("Status")),
                         (None, tr_ctx(current(), "column", "Version")),
+                        (Some(SortKey::Size), tr_ctx(current(), "column", "Size")),
                         (Some(SortKey::Released), tr_ctx(current(), "column", "Released")),
                         (None, ""),
                     ] {
@@ -674,6 +697,19 @@ impl LauncherUi {
                                             mono("—".into(), t.faint);
                                         }
                                     },
+                                }
+                            });
+                            row.col(|ui| {
+                                // How much disk space the installed copy takes; an app without a
+                                // measurable install (a system package) says nothing.
+                                let mut mono = |text: String, color| ui.label(RichText::new(text).family(egui::FontFamily::Monospace).color(color));
+                                match entry.size {
+                                    Some(bytes) => {
+                                        mono(widgets::human_bytes(bytes), t.ink);
+                                    }
+                                    None => {
+                                        mono("—".into(), t.faint);
+                                    }
                                 }
                             });
                             row.col(|ui| {
