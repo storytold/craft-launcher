@@ -51,6 +51,21 @@ pub(crate) const HEADER_H: f32 = 48.0;
 /// Height of the footer bar.
 pub(crate) const FOOTER_H: f32 = 34.0;
 
+/// The table's App column never gets narrower than this.
+const TABLE_APP_MIN_W: f32 = 220.0;
+const TABLE_STATUS_W: f32 = 176.0;
+const TABLE_ACTIONS_W: f32 = 206.0;
+/// The columns a narrow table can do without, with their widths, kept in this order: Released goes
+/// first, then Version, so the action buttons stay in the window.
+const TABLE_OPTIONAL: [(TableColumn, f32); 2] = [(TableColumn::Version, 150.0), (TableColumn::Released, 104.0)];
+
+/// A table column a narrow window can drop.
+#[derive(Clone, Copy, PartialEq)]
+enum TableColumn {
+    Version,
+    Released,
+}
+
 const CARD_MIN_W: f32 = 320.0;
 const CARD_H: f32 = 314.0;
 /// The card's top strip: number tab and links.
@@ -538,23 +553,39 @@ impl LauncherUi {
             ui.ctx().layer_painter(ui.layer_id()).with_clip_rect(clip).hline(span, y, t.hairline());
         };
         egui::Frame::new().fill(t.bg).stroke(t.hairline()).inner_margin(egui::Margin::symmetric(16, 0)).show(ui, |ui| {
-            TableBuilder::new(ui)
+            // A narrow window drops the optional columns that don't fit, rather than push the
+            // buttons out of view.
+            let spacing = ui.spacing().item_spacing.x;
+            let mut room = ui.available_width() - TABLE_APP_MIN_W - TABLE_STATUS_W - TABLE_ACTIONS_W - 2.0 * spacing;
+            let shown: Vec<TableColumn> = TABLE_OPTIONAL
+                .iter()
+                .take_while(|(_, w)| {
+                    room -= w + spacing;
+                    room >= 0.0
+                })
+                .map(|(k, _)| *k)
+                .collect();
+            let mut table = TableBuilder::new(ui)
                 .striped(false)
                 .vscroll(false)
                 .cell_layout(egui::Layout::left_to_right(egui::Align::Center))
-                .column(Column::remainder().at_least(220.0).clip(true))
-                .column(Column::exact(176.0))
-                .column(Column::exact(150.0))
-                .column(Column::exact(104.0))
-                .column(Column::exact(206.0))
+                .column(Column::remainder().at_least(TABLE_APP_MIN_W).clip(true))
+                .column(Column::exact(TABLE_STATUS_W));
+            for (c, w) in TABLE_OPTIONAL {
+                if shown.contains(&c) {
+                    table = table.column(Column::exact(w));
+                }
+            }
+            table
+                .column(Column::exact(TABLE_ACTIONS_W))
                 .header(42.0, |mut header| {
-                    for (key, label) in [
-                        (Some(SortKey::Name), tl!("App")),
-                        (Some(SortKey::Status), tl!("Status")),
-                        (None, tr_ctx(current(), "column", "Version")),
-                        (Some(SortKey::Released), tr_ctx(current(), "column", "Released")),
-                        (None, ""),
-                    ] {
+                    let optional = shown.iter().map(|&c| match c {
+                        TableColumn::Version => (None, tr_ctx(current(), "column", "Version")),
+                        TableColumn::Released => (Some(SortKey::Released), tr_ctx(current(), "column", "Released")),
+                    });
+                    let columns =
+                        [(Some(SortKey::Name), tl!("App")), (Some(SortKey::Status), tl!("Status"))].into_iter().chain(optional).chain([(None, "")]);
+                    for (key, label) in columns {
                         header.col(|ui| {
                             if key == Some(SortKey::Name) {
                                 rule(ui);
@@ -563,6 +594,10 @@ impl LauncherUi {
                                 // A column that is not sorted still names itself.
                                 if !label.is_empty() {
                                     widgets::hud(ui, label, t.faint);
+                                } else if !shown.contains(&TableColumn::Released) {
+                                    // Over the buttons, where the header is empty: the sort menu, once
+                                    // Released is hidden, so the table can still be sorted by it.
+                                    self.sort_picker(ui);
                                 }
                                 return;
                             };
@@ -655,35 +690,43 @@ impl LauncherUi {
                                     r.on_hover_text(fmt(tl!("Couldn't check for updates: {f}"), &[("f", f)]));
                                 }
                             });
-                            row.col(|ui| {
-                                // The version: what is installed, with an arrow to the new one in the app's colour
-                                // when an update waits; the latest for an app not installed yet.
-                                let mut mono = |text: String, color| ui.label(RichText::new(text).family(egui::FontFamily::Monospace).color(color));
-                                match (status == AppStatus::UpdateAvailable).then(|| entry.installed_label().zip(entry.latest_label())).flatten() {
-                                    Some((from, to)) => {
-                                        mono(format!("{from} → {to}"), t.app_ink(entry.app));
+                            for &c in &shown {
+                                row.col(|ui| match c {
+                                    TableColumn::Version => {
+                                        // The version: what is installed, with an arrow to the new one in the app's colour
+                                        // when an update waits; the latest for an app not installed yet.
+                                        let mut mono =
+                                            |text: String, color| ui.label(RichText::new(text).family(egui::FontFamily::Monospace).color(color));
+                                        match (status == AppStatus::UpdateAvailable)
+                                            .then(|| entry.installed_label().zip(entry.latest_label()))
+                                            .flatten()
+                                        {
+                                            Some((from, to)) => {
+                                                mono(format!("{from} → {to}"), t.app_ink(entry.app));
+                                            }
+                                            None => match (entry.installed_label(), entry.latest_label()) {
+                                                (Some(installed), _) => {
+                                                    mono(installed, t.ink);
+                                                }
+                                                (None, Some(latest)) => {
+                                                    mono(latest, t.faint);
+                                                }
+                                                (None, None) => {
+                                                    mono("—".into(), t.faint);
+                                                }
+                                            },
+                                        }
                                     }
-                                    None => match (entry.installed_label(), entry.latest_label()) {
-                                        (Some(installed), _) => {
-                                            mono(installed, t.ink);
+                                    TableColumn::Released => {
+                                        let when = entry.release().and_then(|r| r.published_at);
+                                        let r = ui.label(RichText::new(when.map_or_else(|| "—".into(), date_text)).color(t.muted));
+                                        if let Some(w) = when {
+                                            r.on_hover_text(ago_text(w, now));
                                         }
-                                        (None, Some(latest)) => {
-                                            mono(latest, t.faint);
-                                        }
-                                        (None, None) => {
-                                            mono("—".into(), t.faint);
-                                        }
-                                    },
-                                }
-                            });
-                            row.col(|ui| {
-                                let when = entry.release().and_then(|r| r.published_at);
-                                let r = ui.label(RichText::new(when.map_or_else(|| "—".into(), date_text)).color(t.muted));
-                                if let Some(w) = when {
-                                    r.on_hover_text(ago_text(w, now));
-                                }
-                            });
-                            row.col(|ui| self.actions(ui, &entry, &status, 204.0));
+                                    }
+                                });
+                            }
+                            row.col(|ui| self.actions(ui, &entry, &status, TABLE_ACTIONS_W - 2.0));
                         });
                     }
                 });

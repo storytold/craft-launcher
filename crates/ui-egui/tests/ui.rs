@@ -1998,3 +1998,38 @@ fn an_apps_page_is_a_card_in_the_middle_with_next_and_previous_arrows_and_closes
     h.run_steps(30);
     assert!(!showing(&h, "photocraft"), "a click outside did not close it");
 }
+
+#[test]
+fn a_narrow_table_keeps_each_apps_buttons_in_the_window() {
+    let (mut h, _) = harness(ViewMode::Table, egui::Theme::Dark, true);
+    for width in [1180.0, 900.0, 720.0] {
+        h.set_size(egui::vec2(width, 500.0));
+        h.run_steps(6);
+        snapshot(&mut h, &format!("table-{width}"));
+        let button = h.get_by_label("Update to 0.5.0").rect();
+        assert!(button.right() <= width, "at {width} px the button ends at {}", button.right());
+        for column in ["App", "Status"] {
+            assert!(h.query_by_label(column).is_some(), "at {width} px the {column} column is gone");
+        }
+    }
+}
+
+#[test]
+fn a_narrow_table_still_sorts_by_the_columns_it_hides() {
+    let (mut h, _) = harness(ViewMode::Table, egui::Theme::Dark, true);
+    h.set_size(egui::vec2(1180.0, 500.0));
+    h.run_steps(6);
+    let menu = egui::accesskit::Role::ComboBox;
+    assert!(h.query_by_role(menu).is_none(), "a table with every column sorts from its headers");
+    h.set_size(egui::vec2(720.0, 500.0));
+    h.run_steps(6);
+    assert!(h.query_by_label("Released").is_none());
+    h.get_by_role(menu).click();
+    h.run_steps(2);
+    // A click in the menu's popup goes through AccessKit: the simulated pointer misses it.
+    h.get_by_label("Recently updated").click_accesskit();
+    h.run_steps(3);
+    let settings = &h.state().as_ref().unwrap().settings;
+    assert_eq!(settings.sort, artcraft_launcher_ui_egui::settings::SortKey::Released);
+    snapshot(&mut h, "table-720-sort-menu");
+}
