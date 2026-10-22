@@ -79,10 +79,22 @@ pub(crate) struct Toast {
 pub(crate) enum Dialog {
     Notes(String),
     ConfirmUninstall(String),
-    Install { app: String, folder: String },
-    Replace { app: String, path: String },
+    Install {
+        app: String,
+        folder: String,
+    },
+    Replace {
+        app: String,
+        path: String,
+    },
     Settings,
     LauncherUpdate(artcraft_launcher_core::Release),
+    /// Adding a third-party app: the repository typed so far.
+    AddThirdParty(String, bool),
+    /// Taking a third-party app off the list.
+    ConfirmRemoveThirdParty(String),
+    /// A third-party app's README, fetched from its GitHub repository.
+    Readme(String),
 }
 
 impl Dialog {
@@ -96,6 +108,9 @@ impl Dialog {
             Dialog::Replace { app, .. } => ("replace", app),
             Dialog::Settings => ("settings", ""),
             Dialog::LauncherUpdate(r) => ("launcher-update", &r.tag),
+            Dialog::AddThirdParty(..) => ("add-third-party", ""),
+            Dialog::ConfirmRemoveThirdParty(id) => ("remove-third-party", id),
+            Dialog::Readme(id) => ("readme", id),
         }
     }
 }
@@ -133,6 +148,13 @@ pub struct LauncherUi {
     pub(crate) detail_zoom: bool,
     /// The details pictures the backend has sent (or been asked for), by app and picture key.
     pub(crate) pictures: std::collections::HashMap<(String, String), crate::details::Picture>,
+    /// The READMEs of third-party apps, by app id.
+    pub(crate) readmes: std::collections::HashMap<String, crate::readme::Readme>,
+    /// Pictures a README refers to, by the address the backend was asked for.
+    pub(crate) readme_images: std::collections::HashMap<String, crate::details::Picture>,
+    /// Third-party apps whose uninstaller was started by "Remove app": each leaves the list once
+    /// it is really gone.
+    pub(crate) removing: std::collections::BTreeSet<String>,
     started: bool,
     applied_theme: Option<theme::ThemeChoice>,
     /// The OS asks for fewer animations: what the host last said, and the context's time to ask
@@ -206,6 +228,9 @@ impl LauncherUi {
             detail_shot: 0,
             detail_zoom: false,
             pictures: std::collections::HashMap::new(),
+            readmes: std::collections::HashMap::new(),
+            readme_images: std::collections::HashMap::new(),
+            removing: std::collections::BTreeSet::new(),
             started: false,
             applied_theme: None,
             reduce_motion: false,
@@ -369,6 +394,42 @@ impl LauncherUi {
                 }
                 true
             }
+            Event::CustomApps { repos } => {
+                // The backend has set the third-party apps up (`core::custom`); mirror them.
+                let apps: Vec<&'static artcraft_launcher_core::CraftApp> =
+                    artcraft_launcher_core::custom_apps().into_iter().filter(|a| repos.iter().any(|r| r.eq_ignore_ascii_case(a.repo))).collect();
+                self.entries.retain(|e| !e.app.third_party || apps.iter().any(|a| a.id == e.app.id));
+                for app in apps {
+                    if !self.entries.iter().any(|e| e.app.id == app.id) {
+                        self.entries.push(AppEntry::new(app));
+                    }
+                }
+                true
+            }
+            Event::CustomAppRefused { reason, .. } => {
+                use artcraft_launcher_core::custom::AddError;
+                let why = match reason {
+                    AddError::NotARepo => tl!("That doesn't look like a GitHub repository. Use owner/repo or a github.com link."),
+                    AddError::ArtCraft => tl!("That's one of ArtCraft's own apps, which the Craft App Suite already covers."),
+                    AddError::NameTaken => tl!("An app with that name is already in ArtCraft Launcher."),
+                    AddError::TooMany => tl!("The list of third-party apps is full. Remove one to add another."),
+                    AddError::AlreadyAdded => tl!("That app is already in your list."),
+                };
+                self.toast(ctx, why, true);
+                true
+            }
+            Event::ReadmeImage { url, result } => {
+                self.readme_images.insert(url, crate::details::Picture::from_result(result));
+                true
+            }
+            Event::Readme { app, result } => {
+                let state = match result {
+                    Ok(text) => crate::readme::Readme::ready(&text),
+                    Err(why) => crate::readme::Readme::Failed(why),
+                };
+                self.readmes.insert(app, state);
+                true
+            }
             Event::Screenshot { app, key, result } => {
                 self.pictures.insert((app, key), crate::details::Picture::from_result(result));
                 true
@@ -424,6 +485,13 @@ impl LauncherUi {
                     e.job = None;
                 }
                 let kept = self.entry(&app).is_some_and(|e| e.ready);
+                // "Remove app" runs the uninstaller first. Only once the app is really gone (the
+                // backend looked again before saying it finished) does it leave the list; a failed or
+                // cancelled uninstall keeps it, so nothing is left installed but unlisted.
+                let gone = self.entry(&app).is_some_and(|e| e.detected && e.installed.is_none());
+                if self.removing.remove(&app) && result.is_ok() && gone {
+                    self.send(Command::RemoveCustomApp { app: app.clone() });
+                }
                 match result {
                     Ok(msg) => self.toast(ctx, msg, false),
                     // The paused card says it all.
@@ -512,7 +580,8 @@ impl LauncherUi {
         let to_update: Vec<(String, String)> = self
             .entries
             .iter()
-            .filter(|e| self.in_filter(e, Filter::Updates) && e.job.is_none() && !e.ready)
+            // Third-party apps are never updated silently: the user presses Update.
+            .filter(|e| !e.app.third_party && self.in_filter(e, Filter::Updates) && e.job.is_none() && !e.ready)
             .filter_map(|e| {
                 let v = e.latest_label()?;
                 if self.auto_update_attempted.contains(&(e.app.id.to_string(), v.clone())) { None } else { Some((e.app.id.to_string(), v)) }
@@ -616,23 +685,28 @@ impl LauncherUi {
             .show(ui, |ui| {
                 self.toolbar(ui);
                 ui.add_space(18.0);
-                let ids = self.visible_ids();
+                let (third, ids): (Vec<&'static str>, Vec<&'static str>) =
+                    self.visible_ids().into_iter().partition(|id| self.entry(id).is_some_and(|e| e.app.third_party));
                 // The table is wider than a narrow window: let it scroll sideways too.
                 let scroll = match self.settings.view {
                     ViewMode::Grid => egui::ScrollArea::vertical(),
                     ViewMode::Table => egui::ScrollArea::both(),
                 };
                 scroll.auto_shrink(false).show(ui, |ui| {
-                    if ids.is_empty() {
+                    if ids.is_empty() && third.is_empty() {
                         ui.add_space(40.0);
                         ui.vertical_centered(|ui| {
                             crate::widgets::hud(ui, tl!("No apps match"), tokens.muted);
                         });
-                    } else {
+                    } else if !ids.is_empty() {
                         match self.settings.view {
                             ViewMode::Grid => self.grid(ui, &ids),
                             ViewMode::Table => self.table(ui, &ids),
                         }
+                    }
+                    // Only once a third-party app has been added (Settings has the button).
+                    if self.caps.manage_apps && !third.is_empty() {
+                        self.third_party_section(ui, &third, !ids.is_empty());
                     }
                     ui.add_space(16.0);
                 });

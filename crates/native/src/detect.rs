@@ -96,7 +96,57 @@ const PUBLISHER: &str = "Learning Machines LLC";
 /// installers have registered.
 #[cfg_attr(not(windows), allow(dead_code))]
 fn is_installer_entry(app: &CraftApp, display_name: &str, publisher: &str) -> bool {
+    if app.third_party {
+        // Whoever publishes it, so only the name can tell: see `third_party_name_matches`.
+        return third_party_name_matches(app.name, display_name);
+    }
     publisher == PUBLISHER && app.names().any(|n| n == display_name)
+}
+
+/// Whether an uninstall entry named `display_name` is the third-party app called `name` (its
+/// repository's name): compared without case, spaces or punctuation, and allowing only a dotted
+/// version set apart after the name (`my-tool` matches `My Tool` and `My Tool 1.2.3`, but not
+/// `My Tool Pro`, `My Tool 2` or `MyTool2`, which may be different programs). It is strict on
+/// purpose: a match is what "Remove app" hands to the Windows Installer, so a loose match could
+/// uninstall an unrelated program.
+#[cfg_attr(not(windows), allow(dead_code))]
+fn third_party_name_matches(name: &str, display_name: &str) -> bool {
+    let want: Vec<char> = name.chars().filter(|c| c.is_alphanumeric()).flat_map(char::to_lowercase).collect();
+    if want.len() < 3 {
+        return false;
+    }
+    // Walk the shown name until the app's name has been used up; `rest` is what follows it.
+    let mut matched = 0;
+    let mut rest_at = None;
+    for (i, c) in display_name.char_indices() {
+        if matched == want.len() {
+            rest_at = Some(i);
+            break;
+        }
+        if c.is_alphanumeric() {
+            for lower in c.to_lowercase() {
+                if want.get(matched) != Some(&lower) {
+                    return false;
+                }
+                matched += 1;
+            }
+        }
+    }
+    if matched != want.len() {
+        return false;
+    }
+    let rest = rest_at.and_then(|i| display_name.get(i..)).unwrap_or("");
+    let version = rest.trim();
+    // Nothing after the name, or a version set apart from it: `1.2.3` or `v1.2.3`.
+    if version.is_empty() {
+        return true;
+    }
+    let number = version.strip_prefix(['v', 'V']).unwrap_or(version);
+    rest.starts_with(char::is_whitespace)
+        && number.contains('.')
+        && number.starts_with(|c: char| c.is_ascii_digit())
+        && number.ends_with(|c: char| c.is_ascii_digit())
+        && number.chars().all(|c| c.is_ascii_digit() || c == '.')
 }
 
 /// Where a Windows install of `app` may keep its exe, in the order to try: the entry's
@@ -224,7 +274,9 @@ pub mod windows {
                 }
                 let version = key.get_value::<String, _>("DisplayVersion").ok().and_then(|v| version::parse(&v));
                 let location: String = key.get_value("InstallLocation").unwrap_or_default();
-                let exe = exe_path(app, (!location.is_empty()).then(|| PathBuf::from(location)).or_else(|| install_dir(app)));
+                let icon: String = key.get_value("DisplayIcon").unwrap_or_default();
+                let exe = exe_path(app, (!location.is_empty()).then(|| PathBuf::from(location)).or_else(|| install_dir(app)))
+                    .or_else(|| app.third_party.then(|| icon_exe(&icon)).flatten());
                 out.push(MsiInstall { product_code: code, version, exe });
             }
         }
@@ -235,6 +287,17 @@ pub mod windows {
             (None, None) => std::cmp::Ordering::Equal,
         });
         out
+    }
+
+    /// The exe an uninstall entry's `DisplayIcon` points at (`"C:\\App\\app.exe",0`), if it is there.
+    fn icon_exe(icon: &str) -> Option<PathBuf> {
+        let icon = icon.trim();
+        let icon = match icon.rsplit_once(',') {
+            Some((path, index)) if index.trim().parse::<i32>().is_ok() => path,
+            _ => icon,
+        };
+        let path = PathBuf::from(icon.trim().trim_matches('"'));
+        (path.extension().is_some_and(|e| e.eq_ignore_ascii_case("exe")) && path.exists()).then_some(path)
     }
 
     /// The folder the app's MSI remembers for its next upgrade, which is where it went when the
@@ -707,6 +770,24 @@ mod tests {
 
     fn roots() -> Vec<PathBuf> {
         vec![PathBuf::from(r"C:\Program Files"), PathBuf::from(r"C:\Program Files (x86)")]
+    }
+
+    #[test]
+    fn third_party_installer_entries_match_by_name_whoever_publishes_them() {
+        assert!(third_party_name_matches("my-tool", "My Tool"));
+        assert!(third_party_name_matches("my-tool", "My Tool 1.2.3"));
+        assert!(third_party_name_matches("mytool", "MyTool"));
+        assert!(!third_party_name_matches("my-tool", "Other Tool"));
+        assert!(!third_party_name_matches("my-tool", "My"));
+        assert!(third_party_name_matches("my-tool", "My Tool v1.2"));
+        // A longer title is a different program: never hand it to the uninstaller.
+        assert!(!third_party_name_matches("notes", "Notes Pro 3"));
+        // A digit stuck to the name, or a bare number, is a different product, not a version.
+        assert!(!third_party_name_matches("mytool", "MyTool2"));
+        assert!(!third_party_name_matches("mytool", "MyTool 2"));
+        assert!(!third_party_name_matches("my-tool", "My Tool Pro"));
+        // Too short a name would match half the machine.
+        assert!(!third_party_name_matches("ab", "ABBYY FineReader"));
     }
 
     #[test]

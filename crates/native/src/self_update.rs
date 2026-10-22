@@ -226,7 +226,7 @@ pub fn update(
         .ok_or_else(|| format!("ArtCraft Launcher {} has no {} for {}", release.version_label(), install.kind().label(), platform.label()))?;
     let asset = asset.clone();
     let mut job = Job { http, paths, stop, phase, install_locations: &Default::default(), replace: false };
-    let file = install::download(release, &asset, &mut job)?;
+    let file = install::download(release, &asset, &mut job, false)?;
     // The restart ends this process: nothing else may be under way.
     last()?;
     phase(JobPhase::Installing);

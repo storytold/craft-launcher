@@ -346,3 +346,28 @@ figcraft	Interface design and prototyping	界面设计与原型制作
 	Show {n} more changes	显示另外 {n} 项更改
 	Last updated: {date}	最后更新：{date}
 column	Version	版本
+# Third-party apps (apps the user adds by hand; ArtCraft gives no support for them).
+	Third-party apps	第三方应用
+	Add app	添加应用
+	ArtCraft provides no support for third-party apps.	ArtCraft 不为第三方应用提供任何支持。
+	ArtCraft Launcher only helps you keep the apps you add up to date.	ArtCraft Launcher 只帮助您让自己添加的应用保持最新。
+	No third-party apps yet. Add one by its GitHub repository.	还没有第三方应用。请通过其 GitHub 仓库添加。
+	Remove app…	移除应用…
+	Remove app	移除应用
+	Add a third-party app	添加第三方应用
+	Enter the app's GitHub repository (owner/repo) or paste its github.com link.	输入应用的 GitHub 仓库（owner/repo），或粘贴其 github.com 链接。
+	Its releases need a SHA256SUMS.txt file and files named like the Craft Apps' (name-version-system-processor).	其发行版需要包含 SHA256SUMS.txt 文件，且文件命名方式与 Craft Apps 相同（名称-版本-系统-处理器）。
+	ArtCraft doesn't make, review or vouch for them, and can't help if one doesn't work or causes problems.	ArtCraft 不制作、不审核也不担保这些应用，如果某个应用无法运行或引发问题，ArtCraft 也无法提供帮助。
+	Install only apps you trust.	请只安装您信任的应用。
+	Remove {name} from ArtCraft Launcher?	要将 {name} 从 ArtCraft Launcher 中移除吗？
+	ArtCraft Launcher will uninstall it, then stop showing and updating it. Your documents and settings stay.	ArtCraft Launcher 会先卸载它，然后不再显示和更新它。你的文档和设置会保留。
+	ArtCraft Launcher will stop showing it. You can add it again later.	ArtCraft Launcher 将不再显示它。您之后可以重新添加。
+	That doesn't look like a GitHub repository. Use owner/repo or a github.com link.	这看起来不是 GitHub 仓库。请使用 owner/repo 或 github.com 链接。
+	That's one of ArtCraft's own apps, which the Craft App Suite already covers.	这是 ArtCraft 自己的应用，Craft App Suite 已包含它。
+	An app with that name is already in ArtCraft Launcher.	ArtCraft Launcher 中已有同名应用。
+	The list of third-party apps is full. Remove one to add another.	第三方应用列表已满。请先移除一个再添加。
+	That app is already in your list.	该应用已在您的列表中。
+	I acknowledge that the ArtCraft team won't support third-party apps.	我确认 ArtCraft 团队不为第三方应用提供支持。
+	Loading the README…	正在加载 README…
+	Couldn't load the README: {why}	无法加载 README：{why}
+	This README is empty.	此 README 为空。

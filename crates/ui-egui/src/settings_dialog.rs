@@ -4,7 +4,7 @@
 use artcraft_launcher_core::{Os, PackageKind};
 use egui::{RichText, Ui, vec2};
 
-use crate::app::{Host, LauncherUi};
+use crate::app::{Dialog, Host, LauncherUi};
 use crate::i18n::fmt;
 use crate::settings::{CheckEvery, Settings};
 use crate::sheet;
@@ -241,6 +241,12 @@ impl LauncherUi {
                 note(ui, tl!("Updates always use the format an app was installed with."));
             });
         }
+
+        sheet::panel(ui, tl!("Third-party apps"), |ui| {
+            if widgets::button(ui, tl!("Add app"), Kind::Secondary, 100.0).clicked() {
+                self.dialog = Some(Dialog::AddThirdParty(String::new(), false));
+            }
+        });
     }
 
     fn settings_background(&mut self, ui: &mut Ui, host: &mut dyn Host) {

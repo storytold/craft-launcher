@@ -26,24 +26,36 @@ pub struct CraftApp {
     pub former_ids: &'static [&'static str],
     /// Older display names its installers registered (PdfCraft's MSI said PrintCraft until 0.2.1).
     pub former_names: &'static [&'static str],
+    /// A third-party app the user added (`core::custom`). ArtCraft doesn't make or support it.
+    pub third_party: bool,
 }
 
 impl CraftApp {
-    /// `ai.storyteller.<id>`: macOS bundle id, Flatpak id and Linux desktop-file id.
+    /// `ai.storyteller.<id>`: macOS bundle id, Flatpak id and Linux desktop-file id. A
+    /// third-party app gets `io.github.<owner>.<repo>`, the id GitHub-hosted apps conventionally
+    /// use, so it can never be mistaken for one of ArtCraft's.
     pub fn bundle_id(&self) -> String {
-        format!("ai.storyteller.{}", self.id)
+        match (self.third_party, self.repo.split_once('/')) {
+            (true, Some((owner, name))) => format!("io.github.{}.{}", owner.to_ascii_lowercase(), name.to_ascii_lowercase()),
+            _ => format!("ai.storyteller.{}", self.id),
+        }
     }
 
+    /// The app's GitHub releases page.
     pub fn releases_url(&self) -> String {
         format!("https://github.com/{}/releases", self.repo)
     }
 
+    /// The app's GitHub repository page.
     pub fn repo_url(&self) -> String {
         format!("https://github.com/{}", self.repo)
     }
 
-    /// The app's page on getartcraft.com.
+    /// The app's page on getartcraft.com (a third-party app has none: its repository instead).
     pub fn website(&self) -> String {
+        if self.third_party {
+            return self.repo_url();
+        }
         format!("https://getartcraft.com/apps/{}", self.id)
     }
 
@@ -57,8 +69,9 @@ impl CraftApp {
         std::iter::once(self.name).chain(self.former_names.iter().copied())
     }
 
+    /// A Craft App, ArtCraft Launcher's own entry excepted, or a third-party app the user added.
     pub fn by_id(id: &str) -> Option<&'static CraftApp> {
-        SUITE.iter().find(|a| a.id == id)
+        SUITE.iter().find(|a| a.id == id).or_else(|| crate::custom::custom_by_id(id))
     }
 }
 
@@ -69,7 +82,7 @@ const fn app(
     [color, ink_light, ink_dark]: [[u8; 3]; 3],
     repo: &'static str,
 ) -> CraftApp {
-    CraftApp { id, name, tagline, color, ink_light, ink_dark, repo, former_ids: &[], former_names: &[] }
+    CraftApp { id, name, tagline, color, ink_light, ink_dark, repo, former_ids: &[], former_names: &[], third_party: false }
 }
 
 /// The Craft App Suite, in display order matching getartcraft.com:

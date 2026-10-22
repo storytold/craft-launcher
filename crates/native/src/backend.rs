@@ -6,14 +6,16 @@ use std::sync::{Arc, Mutex, OnceLock, PoisonError};
 use std::time::{Duration, Instant};
 
 use artcraft_launcher_core::catalog::{LAUNCHER, LAUNCHER_ID};
+use artcraft_launcher_core::custom::{self, CustomList};
 use artcraft_launcher_core::feed::{Feed, FeedAnswer};
 use artcraft_launcher_core::platform::{Arch, Os, Platform, pick_asset};
 use artcraft_launcher_core::protocol::{
     Backend, BackendOptions, CANCELLED, Capabilities, Command, Event, INSTALL_CANCELLED, JobPhase, LatestRelease, Origin, PAUSED, PausedDownload,
     Source,
 };
+use artcraft_launcher_core::readme;
 use artcraft_launcher_core::release::{Asset, Release};
-use artcraft_launcher_core::{CraftApp, Installed, PackageKind, SUITE, version};
+use artcraft_launcher_core::{CraftApp, Installed, PackageKind, SUITE, all_apps, version};
 
 use crate::feed_throttle::{self, FeedThrottle, Outcome};
 use crate::http::{self, Http, Stop};
@@ -99,6 +101,8 @@ pub struct NativeBackend {
     http: Option<Http>,
     source: Option<Arc<dyn ReleaseSource>>,
     platform: Option<Platform>,
+    /// The third-party apps the user added.
+    custom: CustomList,
 }
 
 impl NativeBackend {
@@ -140,7 +144,11 @@ impl NativeBackend {
             pictures_busy: Mutex::new(std::collections::HashSet::new()),
             last_check: Mutex::new(None),
         });
-        let backend = Self { shared, paths, http, source, platform: native_platform() };
+        // Third-party apps are known before anything looks at "every app".
+        let custom_list = crate::third_party::load(&paths.third_party_apps());
+        custom::set_custom(&custom_list);
+        let backend = Self { shared, paths, http, source, platform: native_platform(), custom: custom_list };
+        backend.emit_custom_apps();
         backend.replay_cache();
         backend.detect_all();
         backend
@@ -152,11 +160,13 @@ impl NativeBackend {
         let pre = self.options().prereleases;
         let feed = if pre { None } else { load_feed(&self.paths) };
         let now = crate::now();
-        for app in &SUITE {
-            let answer = match feed.as_ref().map(|f| f.answer(app, now)) {
+        for app in all_apps() {
+            // The feed is ArtCraft's: it knows nothing of third-party apps, GitHub answers those.
+            let feed_for_app = feed.as_ref().filter(|_| !app.third_party);
+            let answer = match feed_for_app.map(|f| f.answer(app, now)) {
                 Some(FeedAnswer::Fresh(Some(r))) => Some((LatestRelease::Found(r), Origin::ArtCraftApi)),
                 Some(FeedAnswer::Fresh(None)) => Some((LatestRelease::None, Origin::ArtCraftApi)),
-                _ => self.source.as_ref().and_then(|s| s.cached(&feed_repo(feed.as_ref(), app), pre)).map(|l| (l, Origin::GitHub)),
+                _ => self.source.as_ref().and_then(|s| s.cached(&feed_repo(feed_for_app, app), pre)).map(|l| (l, Origin::GitHub)),
             };
             if let Some((latest, from)) = answer {
                 if let LatestRelease::Found(r) = &latest {
@@ -168,6 +178,101 @@ impl NativeBackend {
         if let Some(f) = feed {
             self.shared.emit(Event::Notices { announcements: f.announcements, alerts: f.alerts });
         }
+    }
+
+    /// Tells the UI which third-party apps there are.
+    fn emit_custom_apps(&self) {
+        let repos = self.custom.apps.iter().map(|a| a.repo.clone()).collect();
+        self.shared.emit(Event::CustomApps { repos });
+    }
+
+    /// Adds a third-party app, then looks for what's installed and what's released. ArtCraft
+    /// provides no support for these apps; the launcher only keeps them up to date.
+    fn add_custom_app(&mut self, input: &str) {
+        // Changed on a copy and kept only once it is saved, so an app that couldn't be saved is
+        // never shown as added, only to vanish at the next start.
+        let mut staged = self.custom.clone();
+        match staged.add(input, crate::now()) {
+            Ok(repo) => {
+                if let Err(e) = crate::third_party::save(&staged, &self.paths.third_party_apps()) {
+                    log::warn!("couldn't save the third-party apps list, so {repo} wasn't added: {e}");
+                    self.emit_custom_apps();
+                    return;
+                }
+                self.custom = staged;
+                custom::set_custom(&self.custom);
+                self.emit_custom_apps();
+                self.detect_all();
+                self.check_custom(&repo);
+            }
+            Err(reason) => self.shared.emit(Event::CustomAppRefused { repo: input.trim().to_string(), reason }),
+        }
+    }
+
+    /// Takes a third-party app off the list. A running job for it is cancelled; files it
+    /// installed are left alone (the user can uninstall first), and its saved record stays so
+    /// adding the app back finds it again.
+    fn remove_custom_app(&mut self, id: &str) {
+        // Changed on a copy and kept only once it is saved, so a removal that couldn't be saved
+        // doesn't come back at the next start.
+        let mut staged = self.custom.clone();
+        if !staged.remove(id) {
+            return;
+        }
+        if let Err(e) = crate::third_party::save(&staged, &self.paths.third_party_apps()) {
+            log::warn!("couldn't save the third-party apps list, so {id} wasn't removed: {e}");
+            self.emit_custom_apps();
+            return;
+        }
+        let running = self.shared.jobs.lock().unwrap_or_else(PoisonError::into_inner).get(id).cloned();
+        if let Some(stop) = running {
+            stop.cancel();
+        }
+        self.custom = staged;
+        custom::set_custom(&self.custom);
+        // From here `still_registered` refuses this app, so no check still running can store an
+        // answer behind the clearing below.
+        self.shared.installed.lock().unwrap_or_else(PoisonError::into_inner).remove(id);
+        self.shared.latest.lock().unwrap_or_else(PoisonError::into_inner).remove(id);
+        self.shared.answered.lock().unwrap_or_else(PoisonError::into_inner).remove(id);
+        self.emit_custom_apps();
+    }
+
+    /// Looks up the latest release of one newly added third-party app, straight from GitHub.
+    fn check_custom(&self, repo: &str) {
+        let (Some(source), Some(app)) = (self.source.clone(), self.custom_app(repo)) else {
+            if let Some(app) = self.custom_app(repo) {
+                let latest = LatestRelease::Failed("secure connections aren't available".into());
+                self.shared.emit(Event::Latest { app: app.id.to_string(), latest, from: Origin::GitHub });
+            }
+            return;
+        };
+        let shared = self.shared.clone();
+        let pre = self.options().prereleases;
+        std::thread::spawn(move || {
+            let answer = source.latest(app.repo, pre);
+            source.save();
+            {
+                // Checked under the lock `remove_custom_app` also takes, so an app removed while
+                // this ran can't get its answer back, nor hand it to a later app with the same id.
+                let mut latest = shared.latest.lock().unwrap_or_else(PoisonError::into_inner);
+                if !still_registered(app) {
+                    return;
+                }
+                if let LatestRelease::Found(r) = &answer.latest {
+                    latest.insert(app.id.to_string(), r.clone());
+                }
+                if !matches!(answer.latest, LatestRelease::Failed(_)) {
+                    shared.answered.lock().unwrap_or_else(PoisonError::into_inner).insert(app.id.to_string());
+                }
+            }
+            shared.emit(Event::Latest { app: app.id.to_string(), latest: answer.latest, from: Origin::GitHub });
+        });
+    }
+
+    /// The registered third-party app for `repo` (matched ignoring case), if any.
+    fn custom_app(&self, repo: &str) -> Option<&'static CraftApp> {
+        artcraft_launcher_core::custom_apps().into_iter().find(|a| a.repo.eq_ignore_ascii_case(repo))
     }
 
     fn options(&self) -> BackendOptions {
@@ -188,7 +293,8 @@ impl NativeBackend {
             http::clean_downloads(&paths.downloads(), Duration::from_secs(30 * 86_400), Duration::from_secs(7 * 86_400));
             let snapshot = crate::detect::Snapshot::take();
             let manifest = shared.manifest.lock().unwrap_or_else(PoisonError::into_inner).clone();
-            for app in &SUITE {
+            let apps = all_apps();
+            for app in &apps {
                 let found = crate::detect::detect(app, &manifest, &snapshot);
                 {
                     let mut map = shared.installed.lock().unwrap_or_else(PoisonError::into_inner);
@@ -200,7 +306,7 @@ impl NativeBackend {
                 shared.emit(Event::Detected { app: app.id.to_string(), installed: found });
             }
             // Downloads paused (or cut off by quitting) in an earlier run.
-            for app in &SUITE {
+            for app in &apps {
                 report_partial(app, &shared, &paths, platform, &options);
             }
             shared.detecting.store(false, Ordering::SeqCst);
@@ -212,7 +318,7 @@ impl NativeBackend {
     /// day old, or no answer at all), at most once an hour per app unless `force`.
     fn check(&self, force: bool) {
         let (Some(source), Some(http)) = (self.source.clone(), self.http.clone()) else {
-            for app in &SUITE {
+            for app in all_apps() {
                 self.shared.emit(Event::Latest {
                     app: app.id.to_string(),
                     latest: LatestRelease::Failed("secure connections aren't available".into()),
@@ -246,7 +352,7 @@ impl NativeBackend {
                 shared.emit(Event::Notices { announcements: f.announcements.clone(), alerts: f.alerts.clone() });
             }
             let now = crate::now();
-            let queue = Mutex::new(SUITE.iter().chain(std::iter::once(&LAUNCHER)).collect::<Vec<&CraftApp>>());
+            let queue = Mutex::new(all_apps().into_iter().chain(std::iter::once(&LAUNCHER)).collect::<Vec<&CraftApp>>());
             let sources = Mutex::new(Vec::new());
             std::thread::scope(|scope| {
                 for _ in 0..WORKERS {
@@ -254,8 +360,8 @@ impl NativeBackend {
                         loop {
                             let Some(app) = queue.lock().unwrap_or_else(PoisonError::into_inner).pop() else { break };
                             let (latest, from, used) = match &mirror {
-                                Some(_) => mirror_latest(app, feed.as_ref(), now),
-                                None => latest_for(app, feed.as_ref(), fallback, source.as_ref(), &shared, pre, force, now),
+                                Some(_) if !app.third_party => mirror_latest(app, feed.as_ref(), now),
+                                _ => latest_for(app, feed.as_ref(), fallback, source.as_ref(), &shared, pre, force, now),
                             };
                             if let Some(used) = used {
                                 sources.lock().unwrap_or_else(PoisonError::into_inner).push(used);
@@ -274,11 +380,18 @@ impl NativeBackend {
                                 continue;
                             }
                             let Some(latest) = latest else { continue };
-                            if let LatestRelease::Found(r) = &latest {
-                                shared.latest.lock().unwrap_or_else(PoisonError::into_inner).insert(app.id.to_string(), r.clone());
-                            }
-                            if !matches!(latest, LatestRelease::Failed(_)) {
-                                shared.answered.lock().unwrap_or_else(PoisonError::into_inner).insert(app.id.to_string());
+                            {
+                                // As in `check_custom`: an app removed during the check keeps nothing.
+                                let mut known = shared.latest.lock().unwrap_or_else(PoisonError::into_inner);
+                                if !still_registered(app) {
+                                    continue;
+                                }
+                                if let LatestRelease::Found(r) = &latest {
+                                    known.insert(app.id.to_string(), r.clone());
+                                }
+                                if !matches!(latest, LatestRelease::Failed(_)) {
+                                    shared.answered.lock().unwrap_or_else(PoisonError::into_inner).insert(app.id.to_string());
+                                }
                             }
                             shared.emit(Event::Latest { app: app.id.to_string(), latest, from });
                         }
@@ -294,7 +407,7 @@ impl NativeBackend {
             }
             // A newer release changes which file an install would use.
             let options = shared.options.lock().unwrap_or_else(PoisonError::into_inner).clone();
-            for app in &SUITE {
+            for app in all_apps() {
                 report_partial(app, &shared, &paths, platform, &options);
             }
             let sources = sources.into_inner().unwrap_or_else(PoisonError::into_inner);
@@ -731,7 +844,7 @@ fn latest_for(
     force: bool,
     now: i64,
 ) -> (Option<LatestRelease>, Origin, Option<Source>) {
-    if fallback.trust_feed {
+    if fallback.trust_feed && !app.third_party {
         match feed.map(|f| f.answer(app, now)) {
             Some(FeedAnswer::Fresh(Some(r))) => return (Some(LatestRelease::Found(r)), Origin::ArtCraftApi, Some(Source::Feed)),
             Some(FeedAnswer::Fresh(None)) => return (Some(LatestRelease::None), Origin::ArtCraftApi, Some(Source::Feed)),
@@ -764,6 +877,10 @@ fn limit_notice(source_used: Source, limited_until: Option<i64>) -> Option<i64> 
 
 /// The repo to ask GitHub about, following the feed's repo renames.
 fn feed_repo(feed: Option<&Feed>, app: &CraftApp) -> String {
+    if app.third_party {
+        // The feed's renames are ArtCraft's own; a third-party repo is asked for by its name.
+        return app.repo.to_string();
+    }
     feed.map_or_else(|| app.repo.to_string(), |f| f.repo_for(app))
 }
 
@@ -948,6 +1065,54 @@ impl NativeBackend {
     }
 }
 
+/// The most of a README that is kept (the rest is cut).
+const MAX_README_BYTES: usize = 200 * 1024;
+
+/// Whether `app` is still the app registered under its id: always for ArtCraft's own, and for a
+/// third-party app only while its repository is still on the list. An answer for a removed app
+/// (or for another repository that had the same name) must not be kept.
+fn still_registered(app: &CraftApp) -> bool {
+    !app.third_party || artcraft_launcher_core::custom_apps().iter().any(|a| a.id == app.id && a.repo.eq_ignore_ascii_case(app.repo))
+}
+
+impl NativeBackend {
+    /// Fetches a third-party app's README from its repository, in the background.
+    fn fetch_readme(&self, app: &str) {
+        let Some(def) = CraftApp::by_id(app).filter(|a| a.third_party) else { return };
+        let (shared, http, repo, id) = (self.shared.clone(), self.http.clone(), def.repo, def.id.to_string());
+        std::thread::spawn(move || {
+            let result = match http {
+                None => Err("secure connections aren't available".to_string()),
+                Some(http) => http.get_readme(repo, MAX_README_BYTES).and_then(|r| r.ok_or_else(|| "This repository has no README.".to_string())),
+            };
+            shared.emit(Event::Readme { app: id, result });
+        });
+    }
+
+    /// Fetches one picture a third-party README shows, in the background. Only addresses that
+    /// `core::readme` allows are fetched (the UI checked already; this checks again), and only a
+    /// PNG or a JPEG is handed back, never a page that happened to answer.
+    fn fetch_readme_image(&self, url: &str) {
+        let (shared, http, url) = (self.shared.clone(), self.http.clone(), url.to_string());
+        std::thread::spawn(move || {
+            let result = if !readme::image_allowed(&url) {
+                Err("pictures from this address aren't loaded".to_string())
+            } else {
+                match http {
+                    None => Err("secure connections aren't available".to_string()),
+                    Some(http) => match http.get_bytes_checked(&url, readme::MAX_README_IMAGE_BYTES, readme::image_allowed) {
+                        Ok(Some(bytes)) if readme::sniff(&bytes).is_some() => Ok(bytes),
+                        Ok(Some(_)) => Err("the answer isn't a PNG or JPEG picture".to_string()),
+                        Ok(None) => Err("this picture isn't published".to_string()),
+                        Err(why) => Err(why),
+                    },
+                }
+            };
+            shared.emit(Event::ReadmeImage { url, result });
+        });
+    }
+}
+
 impl Backend for NativeBackend {
     fn send(&mut self, command: Command) {
         match command {
@@ -997,7 +1162,11 @@ impl Backend for NativeBackend {
                 }
             }
             Command::UpdateLauncher => self.update_launcher(),
+            Command::AddCustomApp { repo } => self.add_custom_app(&repo),
+            Command::RemoveCustomApp { app } => self.remove_custom_app(&app),
             Command::FetchScreenshots { app } => self.fetch_screenshots(&app),
+            Command::FetchReadme { app } => self.fetch_readme(&app),
+            Command::FetchReadmeImage { url } => self.fetch_readme_image(&url),
             Command::Configure(options) => {
                 let changed_pre = {
                     let mut o = self.shared.options.lock().unwrap_or_else(PoisonError::into_inner);
@@ -1007,7 +1176,7 @@ impl Backend for NativeBackend {
                 };
                 // Another package format means another file to download.
                 let options = self.options();
-                for app in &SUITE {
+                for app in all_apps() {
                     report_partial(app, &self.shared, &self.paths, self.platform, &options);
                 }
                 if changed_pre {
@@ -1350,7 +1519,7 @@ mod tests {
         let shared = shared();
         shared.latest.lock().unwrap().insert(APP.to_string(), release("0.5.0"));
         let shared = Arc::new(shared);
-        NativeBackend { shared, paths: Paths::under(root), http: None, source, platform: Some(platform) }
+        NativeBackend { shared, paths: Paths::under(root), http: None, source, platform: Some(platform), custom: CustomList::default() }
     }
 
     /// Reports again, and returns what the UI was last told about a kept download.

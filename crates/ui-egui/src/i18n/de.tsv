@@ -378,3 +378,28 @@ filter	Installed	Installiert
 	Show {n} more changes	{n} weitere Änderungen anzeigen
 	Last updated: {date}	Zuletzt aktualisiert: {date}
 column	Version	Version
+# Third-party apps (apps the user adds by hand; ArtCraft gives no support for them).
+	Third-party apps	Apps von Drittanbietern
+	Add app	App hinzufügen
+	ArtCraft provides no support for third-party apps.	ArtCraft bietet keinen Support für Apps von Drittanbietern.
+	ArtCraft Launcher only helps you keep the apps you add up to date.	ArtCraft Launcher hilft dir nur dabei, die von dir hinzugefügten Apps aktuell zu halten.
+	No third-party apps yet. Add one by its GitHub repository.	Noch keine Apps von Drittanbietern. Füge eine über ihr GitHub-Repository hinzu.
+	Remove app…	App entfernen…
+	Remove app	App entfernen
+	Add a third-party app	App eines Drittanbieters hinzufügen
+	Enter the app's GitHub repository (owner/repo) or paste its github.com link.	Gib das GitHub-Repository der App (owner/repo) ein oder füge den github.com-Link ein.
+	Its releases need a SHA256SUMS.txt file and files named like the Craft Apps' (name-version-system-processor).	Ihre Releases brauchen eine Datei SHA256SUMS.txt und Dateinamen wie bei den Craft Apps (name-version-system-prozessor).
+	ArtCraft doesn't make, review or vouch for them, and can't help if one doesn't work or causes problems.	ArtCraft erstellt, prüft und garantiert diese Apps nicht und kann dir nicht helfen, wenn eine nicht funktioniert oder Probleme macht.
+	Install only apps you trust.	Installiere nur Apps, denen du vertraust.
+	Remove {name} from ArtCraft Launcher?	{name} aus ArtCraft Launcher entfernen?
+	ArtCraft Launcher will uninstall it, then stop showing and updating it. Your documents and settings stay.	ArtCraft Launcher deinstalliert sie zuerst und zeigt sie danach nicht mehr an und aktualisiert sie nicht mehr. Deine Dokumente und Einstellungen bleiben erhalten.
+	ArtCraft Launcher will stop showing it. You can add it again later.	ArtCraft Launcher zeigt sie nicht mehr an. Du kannst sie später wieder hinzufügen.
+	That doesn't look like a GitHub repository. Use owner/repo or a github.com link.	Das sieht nicht nach einem GitHub-Repository aus. Verwende owner/repo oder einen github.com-Link.
+	That's one of ArtCraft's own apps, which the Craft App Suite already covers.	Das ist eine eigene App von ArtCraft und bereits in der Craft App Suite enthalten.
+	An app with that name is already in ArtCraft Launcher.	Eine App mit diesem Namen ist bereits in ArtCraft Launcher.
+	The list of third-party apps is full. Remove one to add another.	Die Liste der Apps von Drittanbietern ist voll. Entferne eine, um eine andere hinzuzufügen.
+	That app is already in your list.	Diese App ist bereits in deiner Liste.
+	I acknowledge that the ArtCraft team won't support third-party apps.	Ich nehme zur Kenntnis, dass das ArtCraft-Team Apps von Drittanbietern nicht unterstützt.
+	Loading the README…	README wird geladen…
+	Couldn't load the README: {why}	Das README konnte nicht geladen werden: {why}
+	This README is empty.	Dieses README ist leer.

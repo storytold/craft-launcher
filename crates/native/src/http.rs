@@ -137,6 +137,28 @@ impl Http {
         }
     }
 
+    /// The README of a GitHub repository as raw text, `Ok(None)` when it has none. At most
+    /// `max` bytes are read; a longer README is cut there.
+    pub fn get_readme(&self, repo: &str, max: usize) -> Result<Option<String>, String> {
+        let url = format!("https://api.github.com/repos/{repo}/readme");
+        let mut req = self.small.get(&url).header("Accept", "application/vnd.github.raw+json").header("X-GitHub-Api-Version", "2022-11-28");
+        if let Some(token) = &self.token {
+            req = req.header("Authorization", &format!("Bearer {token}"));
+        }
+        let mut resp = req.call().map_err(|e| format!("couldn't reach GitHub ({e})"))?;
+        match resp.status().as_u16() {
+            200 => {
+                // Read no more than `max` bytes off the wire: a longer README is cut there.
+                let mut bytes = Vec::new();
+                resp.body_mut().as_reader().take(max as u64).read_to_end(&mut bytes).map_err(|e| format!("unreadable answer from GitHub ({e})"))?;
+                Ok(Some(String::from_utf8_lossy(&bytes).into_owned()))
+            }
+            404 => Ok(None),
+            403 | 429 => Err("GitHub's request limit was reached. Try again later.".into()),
+            s => Err(format!("GitHub answered HTTP {s}")),
+        }
+    }
+
     /// ArtCraft's release feed, or why it couldn't be read. Never takes more than ~10 seconds.
     pub fn get_feed(&self, url: &str) -> Result<String, FeedError> {
         let failed = |why: String| FeedError { why, throttled: false, retry_after: None };
@@ -166,19 +188,36 @@ impl Http {
     pub fn get_bytes(&self, url: &str, max: usize) -> Result<Option<Vec<u8>>, String> {
         let mut resp = self.small.get(url).call().map_err(|e| format!("couldn't reach {} ({e})", host(url)))?;
         match resp.status().as_u16() {
-            200 => {
-                let announced = resp.headers().get("content-length").and_then(|v| v.to_str().ok()).and_then(|v| v.parse::<u64>().ok());
-                let too_big = || format!("{} sent more than {max} bytes", host(url));
-                if announced.is_some_and(|n| n > max as u64) {
-                    return Err(too_big());
-                }
-                // ureq errors once the limit is reached, so ask for one byte more than we accept.
-                let body = resp.body_mut().with_config().limit(max as u64 + 1).read_to_vec().map_err(|e| format!("unreadable answer ({e})"))?;
-                if body.len() > max { Err(too_big()) } else { Ok(Some(body)) }
-            }
+            200 => read_capped(&mut resp, url, max).map(Some),
             404 => Ok(None),
             s => Err(format!("{} answered HTTP {s}", host(url))),
         }
+    }
+
+    /// Like [`Http::get_bytes`], but follows redirects by hand: every address the server sends us
+    /// to must pass `allowed` before it is fetched, so a redirect can't lead off the allowed hosts.
+    /// At most [`MAX_REDIRECTS`] hops.
+    pub fn get_bytes_checked(&self, url: &str, max: usize, allowed: impl Fn(&str) -> bool) -> Result<Option<Vec<u8>>, String> {
+        let mut current = url.to_string();
+        for _ in 0..=MAX_REDIRECTS {
+            let mut resp = self.no_redirect.get(&current).call().map_err(|e| format!("couldn't reach {} ({e})", host(&current)))?;
+            match resp.status().as_u16() {
+                200 => return read_capped(&mut resp, &current, max).map(Some),
+                404 => return Ok(None),
+                300..=399 => {
+                    let location = resp.headers().get("location").and_then(|v| v.to_str().ok()).map(str::to_string);
+                    let next = location
+                        .map(|l| resolve_location(&current, &l))
+                        .ok_or_else(|| format!("{} redirected without saying where", host(&current)))?;
+                    if !allowed(&next) {
+                        return Err(format!("{} redirected to an address that isn't allowed", host(&current)));
+                    }
+                    current = next;
+                }
+                s => return Err(format!("{} answered HTTP {s}", host(&current))),
+            }
+        }
+        Err("too many redirects".into())
     }
 
     /// Where `url` redirects to, without following it.
@@ -544,6 +583,37 @@ fn refused_until(status: u16, remaining: Option<&str>, reset: Option<i64>, retry
     (status == 429).then_some(Some(now.saturating_add(60)))
 }
 
+/// The most redirects [`Http::get_bytes_checked`] follows.
+const MAX_REDIRECTS: usize = 5;
+
+/// Reads a 200 answer's body, refusing one of more than `max` bytes: by its announced length
+/// before a byte is read, and by a hard limit on the body when the length wasn't announced or
+/// was wrong.
+fn read_capped(resp: &mut ureq::http::Response<ureq::Body>, url: &str, max: usize) -> Result<Vec<u8>, String> {
+    let announced = resp.headers().get("content-length").and_then(|v| v.to_str().ok()).and_then(|v| v.parse::<u64>().ok());
+    let too_big = || format!("{} sent more than {max} bytes", host(url));
+    if announced.is_some_and(|n| n > max as u64) {
+        return Err(too_big());
+    }
+    // ureq errors once the limit is reached, so ask for one byte more than we accept.
+    let limit = (max as u64).checked_add(1).ok_or_else(|| "the size limit is too large".to_string())?;
+    let body = resp.body_mut().with_config().limit(limit).read_to_vec().map_err(|e| format!("unreadable answer ({e})"))?;
+    if body.len() > max { Err(too_big()) } else { Ok(body) }
+}
+
+/// The absolute address a `Location` header names, given the address `from` that answered with
+/// it. Anything that isn't a full address or a path on the same host is left as is, so an
+/// allow-list check refuses it.
+fn resolve_location(from: &str, location: &str) -> String {
+    if location.starts_with("//") {
+        format!("https:{location}")
+    } else if location.starts_with('/') {
+        format!("https://{}{location}", host(from))
+    } else {
+        location.to_string()
+    }
+}
+
 fn host(url: &str) -> &str {
     url.split("://").nth(1).and_then(|r| r.split('/').next()).unwrap_or(url)
 }
@@ -724,6 +794,15 @@ pub(crate) mod tests {
         }
         let seen = ranges.lock().unwrap().clone();
         (result, seen)
+    }
+
+    #[test]
+    fn a_redirect_location_is_made_absolute_or_left_for_the_allow_list_to_refuse() {
+        let from = "https://github.com/o/r/raw/main/a.png";
+        assert_eq!(resolve_location(from, "/o/r/b.png"), "https://github.com/o/r/b.png");
+        assert_eq!(resolve_location(from, "//evil.example/b.png"), "https://evil.example/b.png");
+        assert_eq!(resolve_location(from, "https://raw.githubusercontent.com/b.png"), "https://raw.githubusercontent.com/b.png");
+        assert_eq!(resolve_location(from, "b.png"), "b.png");
     }
 
     #[test]

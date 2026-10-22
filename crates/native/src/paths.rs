@@ -57,6 +57,11 @@ impl Paths {
         self.data.join("installed.json")
     }
 
+    /// The third-party apps the user added (`third_party.rs`).
+    pub fn third_party_apps(&self) -> PathBuf {
+        self.data.join("third-party-apps.json")
+    }
+
     /// The launcher's own log files (`artcraft-launcher.log` and the previous runs').
     pub fn logs(&self) -> PathBuf {
         self.data.join("logs")

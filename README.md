@@ -251,6 +251,23 @@ New contributors and AI agents: start with [`AGENTS.md`](AGENTS.md). Release pac
 > issues (include your OS, which app you were installing and the launcher's log file) or tell us on
 > [Discord](https://discord.gg/artcraft).
 
+## Third-party apps
+
+The launcher can also keep apps from other developers up to date. On the home screen, under
+**Third-party apps**, press **Add app** and enter a GitHub `owner/repo` (or a github.com link). The app then
+appears in that section with an Install button, and its ⋯ menu has **Remove app…**, which runs the app's uninstaller
+first and takes it off the list once it is really gone (an app that isn't installed is just taken off the list).
+Opening an app's page shows its README with formatting, links and pictures; pictures load only from GitHub's own
+hosts, and links open in your browser.
+
+**ArtCraft provides no support for third-party apps.** ArtCraft doesn't make, review or vouch for them and
+can't help if one doesn't work. The launcher only does for them what it does for the Craft App Suite: it reads
+the repository's GitHub releases, picks the right file for your computer, checks it against the release's
+`SHA256SUMS.txt` and installs it. Downloads come only from that repository's
+`github.com/<owner>/<repo>/releases/download/`. A release must carry a `SHA256SUMS.txt` and files named like the
+Craft Apps' (`name-version-system-processor.ext`). Third-party apps are never updated silently: you press Update.
+The list is saved in `third-party-apps.json` beside the launcher's record of what it installed.
+
 ## The Craft App Suite
 
 ArtCraft Launcher installs the **Craft App Suite**: free, open-source creative tools from the

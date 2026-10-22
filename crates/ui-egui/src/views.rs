@@ -381,6 +381,39 @@ impl LauncherUi {
         ui.add_space(24.0);
     }
 
+    /// The "Third-party apps" section under the Craft Apps, drawn only once one has been added
+    /// (the Add app button is in Settings). They are installed, updated and removed like the
+    /// Craft Apps (their ⋯ menu also has "Remove app").
+    pub(crate) fn third_party_section(&mut self, ui: &mut Ui, ids: &[&'static str], space_above: bool) {
+        let t = Tokens::get(ui.ctx());
+        if space_above {
+            ui.add_space(28.0);
+        }
+        widgets::hud(ui, tl!("Third-party apps"), t.faint);
+        ui.add_space(12.0);
+        match self.settings.view {
+            ViewMode::Grid => self.grid_block(ui, ids),
+            ViewMode::Table => self.table(ui, ids),
+        }
+        ui.add_space(24.0);
+    }
+
+    /// Opens an app's page: the details drawer, or for a third-party app its README (fetched
+    /// from GitHub unless it is already here).
+    fn open_page(&mut self, id: &str) {
+        if self.entry(id).is_some_and(|e| e.app.third_party) {
+            // Opening the page is the "try again" for pictures that failed before.
+            self.readme_images.retain(|_, picture| !matches!(picture, crate::details::Picture::Failed(_)));
+            if !matches!(self.readmes.get(id), Some(crate::readme::Readme::Ready(_) | crate::readme::Readme::Loading)) {
+                self.readmes.insert(id.to_string(), crate::readme::Readme::Loading);
+                self.send(Command::FetchReadme { app: id.to_string() });
+            }
+            self.dialog = Some(Dialog::Readme(id.to_string()));
+        } else {
+            self.detail = Some(id.to_string());
+        }
+    }
+
     fn grid_block(&mut self, ui: &mut Ui, ids: &[&'static str]) {
         if ids.is_empty() {
             return;
@@ -412,13 +445,13 @@ impl LauncherUi {
         let in_colour = installed || hovered;
         // The text and accent use the theme's muted grey; the icon is a grey copy of itself.
         let app_color = if installed { rgb(app.color) } else { t.muted.lerp_to_gamma(rgb(app.color), lift) };
-        // The whole card opens the app's page. Added before the card's own links and buttons, so
-        // they sit on top of it and keep their clicks.
-        if AppDetails::by_id(id).is_some() {
+        // The whole card opens the app's page (a third-party app's is its README). Added before the
+        // card's own links and buttons, so they sit on top of it and keep their clicks.
+        if AppDetails::by_id(id).is_some() || app.third_party {
             let open = ui.interact(rect, ui.id().with(("card-open", id)), Sense::click());
             open.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Button, true, fmt(tl!("{name} details"), &[("name", app.name)])));
             if open.on_hover_cursor(egui::CursorIcon::PointingHand).clicked() {
-                self.detail = Some(id.to_string());
+                self.open_page(id);
             }
         }
         let painter = ui.painter_at(rect.expand(16.0));
@@ -610,7 +643,7 @@ impl LauncherUi {
                                     rule(ui);
                                 }
                                 // Clicking the app's cell opens its page (the content is added after, so it wins any hit).
-                                if AppDetails::by_id(id).is_some() {
+                                if AppDetails::by_id(id).is_some() || entry.app.third_party {
                                     let open = ui.interact(ui.max_rect(), ui.id().with(("row-open", id)), Sense::click());
                                     open.widget_info(|| {
                                         egui::WidgetInfo::labeled(
@@ -620,7 +653,7 @@ impl LauncherUi {
                                         )
                                     });
                                     if open.on_hover_cursor(egui::CursorIcon::PointingHand).clicked() {
-                                        self.detail = Some(id.to_string());
+                                        self.open_page(id);
                                     }
                                 }
                                 let installed = entry.status(self.platform, self.caps.manage_apps).is_installed();
@@ -913,6 +946,13 @@ impl LauncherUi {
                             ui.close();
                         }
                     }
+                }
+            }
+            if manage && entry.app.third_party {
+                ui.separator();
+                if ui.button(RichText::new(tl!("Remove app…")).color(Tokens::get(ui.ctx()).bad)).clicked() {
+                    self.dialog = Some(Dialog::ConfirmRemoveThirdParty(id.clone()));
+                    ui.close();
                 }
             }
             // The drawer shows the links as buttons, so its menu leaves them out (but keeps Hide).

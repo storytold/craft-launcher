@@ -89,7 +89,7 @@ pub fn install_at(
         return Err(format!("Cannot update {} to {}: installed version {} is newer", app.name, release.version_label(), inst_v));
     }
     log::info!("{}: starting {} to {} ({})", app.name, if existing.is_some() { "update" } else { "install" }, release.version_label(), kind.label());
-    let file = download(release, asset, job)?;
+    let file = download(release, asset, job, app.third_party)?;
     log::info!("{}: download ready ({}), running installer...", app.name, file.display());
     // Past this point the install can't be interrupted halfway.
     (job.phase)(JobPhase::Installing);
@@ -98,7 +98,7 @@ pub fn install_at(
     let result = match kind {
         #[cfg(target_os = "macos")]
         PackageKind::Dmg => {
-            macos::install_dmg(app, &file, existing, destination.as_deref(), job.replace, job.paths, &macos::Expect::release(release))
+            macos::install_dmg(app, &file, existing, destination.as_deref(), job.replace, job.paths, &macos::Expect::for_app(app, release))
                 .map(|path| Some(record(&version, kind, path, Vec::new(), false)))
         }
         #[cfg(windows)]
@@ -332,13 +332,15 @@ pub fn available_kinds() -> Vec<PackageKind> {
 /// Fetches `asset` into the download folder, checked against its published SHA-256: the feed's
 /// or GitHub's per-file digest, else the release's `SHA256SUMS.txt`. A release with neither is
 /// refused before anything is fetched: a file nothing vouches for is never installed (#90).
-pub(crate) fn download(release: &Release, asset: &Asset, job: &mut Job<'_>) -> Result<PathBuf, String> {
+/// A `third_party` app's release must list the file in its own `SHA256SUMS.txt`: a per-file
+/// digest from the feed isn't enough, and a release without that list or entry is refused.
+pub(crate) fn download(release: &Release, asset: &Asset, job: &mut Job<'_>, third_party: bool) -> Result<PathBuf, String> {
     if !release::valid_file_name(&asset.name) {
         return Err("the release has an unexpected file name".into());
     }
     let sha = match &asset.sha256 {
-        Some(s) => Some(s.clone()),
-        None => published_checksum(release, asset, job.http)?,
+        Some(s) if !third_party => Some(s.clone()),
+        _ => published_checksum(release, asset, job.http)?,
     };
     let Some(sha) = sha else {
         return Err(format!(
@@ -1137,8 +1139,9 @@ pub mod macos {
     /// What a new copy must prove before it replaces anything. The checksum shows the download is
     /// the file the release lists; these show the app inside is the one the release promises.
     pub struct Expect<'a> {
-        /// The team whose Developer ID signature the bundle must carry. `None` only in tests,
-        /// which build unsigned bundles.
+        /// The team whose Developer ID signature the bundle must carry. `None` in tests, which
+        /// build unsigned bundles, and for third-party apps, whose signer ArtCraft can't know
+        /// (they keep the version check, and the checksum check that comes before both).
         pub team: Option<&'a str>,
         /// The release's version, which the bundle must report. `None` when the tag isn't one.
         pub version: Option<&'a Version>,
@@ -1147,6 +1150,12 @@ pub mod macos {
     impl<'a> Expect<'a> {
         pub fn release(release: &'a Release) -> Self {
             Self { team: Some(TEAM_ID), version: release.version.as_ref() }
+        }
+
+        /// [`Expect::release`] for a Craft App; a third-party app can't carry ArtCraft's
+        /// signature, so only its version is checked.
+        pub fn for_app(app: &artcraft_launcher_core::CraftApp, release: &'a Release) -> Self {
+            if app.third_party { Self { team: None, version: release.version.as_ref() } } else { Self::release(release) }
         }
     }
 
@@ -1507,6 +1516,8 @@ pub mod windows {
         INSTALLER.alone(&cancelled(stop), &mut turn(phase, working), work).unwrap_or_else(|| Err(CANCELLED.into()))
     }
 
+    /// Removes an app through the Windows Installer: runs `msiexec /x` for each product code found for it,
+    /// and fails if none is registered. Waits its turn behind any other installer job of ours.
     pub fn uninstall_msi(app: &CraftApp, stop: &Stop, phase: &mut dyn FnMut(JobPhase)) -> Result<(), String> {
         let installs = crate::detect::windows::msi_installs(app);
         if installs.is_empty() {

@@ -381,3 +381,28 @@ filter	Installed	インストール済み
 	Show {n} more changes	さらに{n}件の変更を表示
 	Last updated: {date}	最終更新: {date}
 column	Version	バージョン
+# Third-party apps (apps the user adds by hand; ArtCraft gives no support for them).
+	Third-party apps	サードパーティ製アプリ
+	Add app	アプリを追加
+	ArtCraft provides no support for third-party apps.	ArtCraft はサードパーティ製アプリのサポートを提供していません。
+	ArtCraft Launcher only helps you keep the apps you add up to date.	ArtCraft Launcher は、追加したアプリを最新の状態に保つお手伝いをするだけです。
+	No third-party apps yet. Add one by its GitHub repository.	サードパーティ製アプリはまだありません。GitHub のリポジトリを指定して追加してください。
+	Remove app…	アプリを削除…
+	Remove app	アプリを削除
+	Add a third-party app	サードパーティ製アプリを追加
+	Enter the app's GitHub repository (owner/repo) or paste its github.com link.	アプリの GitHub リポジトリ（owner/repo）を入力するか、github.com のリンクを貼り付けてください。
+	Its releases need a SHA256SUMS.txt file and files named like the Craft Apps' (name-version-system-processor).	リリースには SHA256SUMS.txt ファイルが必要で、ファイル名は Craft Apps と同じ形式（名前-バージョン-システム-プロセッサ）にしてください。
+	ArtCraft doesn't make, review or vouch for them, and can't help if one doesn't work or causes problems.	ArtCraft はこれらのアプリを作成・審査・保証しておらず、動作しない場合や問題が起きた場合も対応できません。
+	Install only apps you trust.	信頼できるアプリだけをインストールしてください。
+	Remove {name} from ArtCraft Launcher?	{name} を ArtCraft Launcher から削除しますか？
+	ArtCraft Launcher will uninstall it, then stop showing and updating it. Your documents and settings stay.	ArtCraft Launcher はこのアプリをアンインストールしてから、表示と更新をやめます。ドキュメントと設定はそのまま残ります。
+	ArtCraft Launcher will stop showing it. You can add it again later.	ArtCraft Launcher はこのアプリの表示をやめます。あとでもう一度追加できます。
+	That doesn't look like a GitHub repository. Use owner/repo or a github.com link.	GitHub のリポジトリではないようです。owner/repo または github.com のリンクを使用してください。
+	That's one of ArtCraft's own apps, which the Craft App Suite already covers.	これは ArtCraft 自身のアプリで、Craft App Suite にすでに含まれています。
+	An app with that name is already in ArtCraft Launcher.	その名前のアプリはすでに ArtCraft Launcher にあります。
+	The list of third-party apps is full. Remove one to add another.	サードパーティ製アプリの一覧がいっぱいです。1 つ削除してから追加してください。
+	That app is already in your list.	そのアプリはすでに一覧にあります。
+	I acknowledge that the ArtCraft team won't support third-party apps.	ArtCraft チームがサードパーティ製アプリをサポートしないことを了承します。
+	Loading the README…	README を読み込み中…
+	Couldn't load the README: {why}	README を読み込めませんでした: {why}
+	This README is empty.	この README は空です。

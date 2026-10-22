@@ -11,7 +11,7 @@ use crate::widgets::{self, Kind};
 
 impl LauncherUi {
     pub(crate) fn dialogs(&mut self, ctx: &egui::Context, host: &mut dyn Host) {
-        let Some(mut dialog) = self.dialog.clone() else {
+        let Some(mut dialog) = self.dialog.take() else {
             self.alert_popup(ctx);
             return;
         };
@@ -19,7 +19,7 @@ impl LauncherUi {
         // An area is laid out in the size it had last frame, so dialogs can't share one id: the
         // uninstall prompt would open as tall as Settings and never shrink (#88).
         // The large dialogs run their header to the card's edges; the small prompts keep a margin.
-        let large = matches!(dialog, Dialog::Settings | Dialog::Notes(_));
+        let large = matches!(dialog, Dialog::Settings | Dialog::Notes(_) | Dialog::Readme(_));
         let modal = egui::Modal::new(egui::Id::new("dialog").with(dialog.key())).frame(if large {
             crate::sheet::frame(&t)
         } else {
@@ -33,10 +33,12 @@ impl LauncherUi {
             Dialog::Replace { app, path } => modal.show(ctx, |ui| close = self.replace_dialog(ui, app, path)),
             Dialog::Settings => modal.show(ctx, |ui| close = self.settings_dialog(ui, host)),
             Dialog::LauncherUpdate(r) => modal.show(ctx, |ui| close = self.launcher_update_dialog(ui, r)),
+            Dialog::AddThirdParty(input, agreed) => modal.show(ctx, |ui| close = self.add_third_party_dialog(ui, input, agreed)),
+            Dialog::ConfirmRemoveThirdParty(id) => modal.show(ctx, |ui| close = self.remove_third_party_dialog(ui, id)),
+            Dialog::Readme(id) => modal.show(ctx, |ui| close = self.readme_dialog(ui, id)),
         };
-        if close || response.should_close() {
-            self.dialog = None;
-        } else {
+        // A button inside may have opened another dialog (Settings -> Add app): that one wins.
+        if self.dialog.is_none() && !(close || response.should_close()) {
             self.dialog = Some(dialog);
         }
     }
@@ -131,6 +133,54 @@ impl LauncherUi {
         close
     }
 
+    /// A third-party app's README, from its GitHub repository.
+    fn readme_dialog(&mut self, ui: &mut egui::Ui, id: &str) -> bool {
+        let Some(entry) = self.entry(id).cloned() else { return true };
+        let t = Tokens::get(ui.ctx());
+        let size = crate::sheet::size(ui.ctx(), vec2(880.0, 760.0));
+        ui.set_width(size.x);
+        ui.set_max_height(size.y);
+        let hero_h = crate::sheet::hero(ui, crate::icons::app(id), entry.app.name, entry.app.repo, |_| {});
+        let footer_h = theme::CONTROL_H + 32.0;
+        let body_h = (size.y - hero_h - footer_h - 2.0).max(0.0);
+        let saved = crate::sheet::accent_scroll(ui, &t, t.accent);
+        // The pictures the README shows that haven't been asked for yet.
+        let mut wanted: Vec<String> = Vec::new();
+        egui::ScrollArea::vertical().id_salt("readme-body").max_height(body_h).auto_shrink([false, true]).show(ui, |ui| {
+            *ui.visuals_mut() = saved;
+            egui::Frame::new().inner_margin(egui::Margin::same(theme::PAD as i8)).show(ui, |ui| {
+                ui.set_width(ui.available_width());
+                match self.readmes.get(id) {
+                    Some(crate::readme::Readme::Ready(doc)) => {
+                        wanted = crate::readme::show(ui, doc, self.notes_zoom, entry.app.repo, &self.readme_images);
+                    }
+                    Some(crate::readme::Readme::Failed(why)) => {
+                        ui.add(egui::Label::new(RichText::new(fmt(tl!("Couldn't load the README: {why}"), &[("why", why)])).color(t.muted)).wrap());
+                    }
+                    _ => {
+                        ui.label(RichText::new(tl!("Loading the README…")).color(t.muted));
+                    }
+                }
+            });
+        });
+        for url in wanted {
+            self.readme_images.insert(url.clone(), crate::details::Picture::Loading);
+            self.send(Command::FetchReadmeImage { url });
+        }
+        ui.painter().hline(ui.max_rect().x_range(), ui.cursor().top(), t.hairline());
+        let mut close = false;
+        egui::Frame::new().inner_margin(egui::Margin::symmetric(theme::PAD as i8, 16)).show(ui, |ui| {
+            ui.set_width(ui.available_width());
+            ui.horizontal(|ui| {
+                widgets::hud_link(ui, tl!("Open on GitHub"), &entry.app.website());
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    close = widgets::button(ui, tl!("Close"), Kind::Secondary, 90.0).clicked();
+                });
+            });
+        });
+        close
+    }
+
     fn launcher_update_dialog(&mut self, ui: &mut egui::Ui, r: &artcraft_launcher_core::Release) -> bool {
         let t = Tokens::get(ui.ctx());
         ui.set_width(480.0f32.min(ui.ctx().content_rect().width() - 80.0));
@@ -173,6 +223,7 @@ impl LauncherUi {
         close
     }
 
+    /// The "Uninstall {app}?" confirmation. Returns `true` when the dialog should close.
     fn uninstall_dialog(&mut self, ui: &mut egui::Ui, id: &str) -> bool {
         let Some(entry) = self.entry(id).cloned() else { return true };
         let t = Tokens::get(ui.ctx());
@@ -208,6 +259,101 @@ impl LauncherUi {
         close
     }
 
+    /// Adds a third-party app by its GitHub repository, after saying plainly that ArtCraft
+    /// doesn't support it. Adding stays disabled until the user ticks the acknowledgement.
+    fn add_third_party_dialog(&mut self, ui: &mut egui::Ui, input: &mut String, agreed: &mut bool) -> bool {
+        let t = Tokens::get(ui.ctx());
+        ui.set_width(480.0f32.min(ui.ctx().content_rect().width() - 80.0));
+        Self::title(ui, None, tl!("Add a third-party app"), "");
+        ui.add(
+            egui::Label::new(RichText::new(tl!("Enter the app's GitHub repository (owner/repo) or paste its github.com link.")).color(t.muted))
+                .wrap(),
+        );
+        ui.add_space(4.0);
+        ui.add(
+            egui::Label::new(
+                RichText::new(tl!("Its releases need a SHA256SUMS.txt file and files named like the Craft Apps' (name-version-system-processor)."))
+                    .color(t.muted),
+            )
+            .wrap(),
+        );
+        ui.add_space(10.0);
+        let edit = ui.add(egui::TextEdit::singleline(input).hint_text("owner/repo").desired_width(f32::INFINITY));
+        if input.is_empty() {
+            edit.request_focus();
+        }
+        ui.add_space(12.0);
+        egui::Frame::new().stroke(t.hairline()).inner_margin(egui::Margin::same(12)).show(ui, |ui| {
+            ui.set_width(ui.available_width());
+            for (line, color) in [
+                (tl!("ArtCraft provides no support for third-party apps."), t.ink_strong),
+                (tl!("ArtCraft doesn't make, review or vouch for them, and can't help if one doesn't work or causes problems."), t.muted),
+                (tl!("ArtCraft Launcher only helps you keep the apps you add up to date."), t.muted),
+                (tl!("Install only apps you trust."), t.muted),
+            ] {
+                ui.add(egui::Label::new(RichText::new(line).color(color)).wrap());
+            }
+        });
+        ui.add_space(12.0);
+        ui.checkbox(agreed, tl!("I acknowledge that the ArtCraft team won't support third-party apps."));
+        ui.add_space(16.0);
+        let valid = artcraft_launcher_core::custom::parse_repo(input).is_some() && *agreed;
+        let enter = edit.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter));
+        let mut close = false;
+        // A row: a right-to-left layout straight in the column would fill the height left.
+        ui.horizontal(|ui| {
+            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                let add = ui.add_enabled_ui(valid, |ui| widgets::button(ui, tl!("Add app"), Kind::Primary, 100.0)).inner;
+                if (add.clicked() || enter) && valid {
+                    self.send(Command::AddCustomApp { repo: input.trim().to_string() });
+                    close = true;
+                }
+                if widgets::button(ui, tl!("Cancel"), Kind::Secondary, 90.0).clicked() {
+                    close = true;
+                }
+            });
+        });
+        close
+    }
+
+    /// Takes a third-party app off the list. An installed app is uninstalled first (the same
+    /// uninstaller as "Uninstall…"), and leaves the list only once that has worked.
+    fn remove_third_party_dialog(&mut self, ui: &mut egui::Ui, id: &str) -> bool {
+        let Some(entry) = self.entry(id).cloned() else { return true };
+        let t = Tokens::get(ui.ctx());
+        ui.set_width(440.0f32.min(ui.ctx().content_rect().width() - 80.0));
+        Self::title(ui, None, &fmt(tl!("Remove {name} from ArtCraft Launcher?"), &[("name", entry.app.name)]), "");
+        // Whether it is installed, not whether this build manages apps: removing the entry must
+        // never leave an installed app's files behind unmentioned.
+        let installed = entry.status(self.platform, self.caps.manage_apps).is_installed();
+        let how = if installed {
+            tl!("ArtCraft Launcher will uninstall it, then stop showing and updating it. Your documents and settings stay.")
+        } else {
+            tl!("ArtCraft Launcher will stop showing it. You can add it again later.")
+        };
+        ui.add(egui::Label::new(RichText::new(how).color(t.muted)).wrap());
+        ui.add_space(20.0);
+        let mut close = false;
+        ui.horizontal(|ui| {
+            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                if widgets::button(ui, tl!("Remove app"), Kind::Danger, 110.0).clicked() {
+                    if installed {
+                        self.removing.insert(id.to_string());
+                        self.send(Command::Uninstall { app: id.to_string() });
+                    } else {
+                        self.send(Command::RemoveCustomApp { app: id.to_string() });
+                    }
+                    close = true;
+                }
+                if widgets::button(ui, tl!("Cancel"), Kind::Secondary, 90.0).clicked() {
+                    close = true;
+                }
+            });
+        });
+        close
+    }
+
+    /// Asks before replacing an existing copy of the app at `path`. Returns `true` when the dialog should close.
     fn replace_dialog(&mut self, ui: &mut egui::Ui, id: &str, path: &str) -> bool {
         let Some(app) = self.entry(id).map(|e| e.app) else { return true };
         let t = Tokens::get(ui.ctx());

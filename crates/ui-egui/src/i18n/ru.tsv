@@ -374,3 +374,28 @@ filter	Installed	Установлены
 	Show {n} more changes	Показать ещё изменений: {n}
 	Last updated: {date}	Последнее обновление: {date}
 column	Version	Версия
+# Third-party apps (apps the user adds by hand; ArtCraft gives no support for them).
+	Third-party apps	Сторонние приложения
+	Add app	Добавить приложение
+	ArtCraft provides no support for third-party apps.	ArtCraft не поддерживает сторонние приложения.
+	ArtCraft Launcher only helps you keep the apps you add up to date.	ArtCraft Launcher лишь помогает вам поддерживать в актуальном состоянии добавленные вами приложения.
+	No third-party apps yet. Add one by its GitHub repository.	Сторонних приложений пока нет. Добавьте одно по адресу его репозитория на GitHub.
+	Remove app…	Удалить приложение…
+	Remove app	Удалить приложение
+	Add a third-party app	Добавить стороннее приложение
+	Enter the app's GitHub repository (owner/repo) or paste its github.com link.	Введите репозиторий приложения на GitHub (owner/repo) или вставьте ссылку github.com.
+	Its releases need a SHA256SUMS.txt file and files named like the Craft Apps' (name-version-system-processor).	В его релизах должен быть файл SHA256SUMS.txt, а файлы должны называться так же, как у Craft Apps (имя-версия-система-процессор).
+	ArtCraft doesn't make, review or vouch for them, and can't help if one doesn't work or causes problems.	ArtCraft не создаёт и не проверяет их, не отвечает за них и не сможет помочь, если какое-то из них не работает или вызывает проблемы.
+	Install only apps you trust.	Устанавливайте только те приложения, которым доверяете.
+	Remove {name} from ArtCraft Launcher?	Удалить {name} из ArtCraft Launcher?
+	ArtCraft Launcher will uninstall it, then stop showing and updating it. Your documents and settings stay.	ArtCraft Launcher сначала удалит его, а затем перестанет показывать и обновлять. Ваши документы и настройки сохранятся.
+	ArtCraft Launcher will stop showing it. You can add it again later.	ArtCraft Launcher перестанет показывать его. Позже вы сможете добавить его снова.
+	That doesn't look like a GitHub repository. Use owner/repo or a github.com link.	Это не похоже на репозиторий GitHub. Используйте owner/repo или ссылку github.com.
+	That's one of ArtCraft's own apps, which the Craft App Suite already covers.	Это собственное приложение ArtCraft, оно уже входит в Craft App Suite.
+	An app with that name is already in ArtCraft Launcher.	Приложение с таким названием уже есть в ArtCraft Launcher.
+	The list of third-party apps is full. Remove one to add another.	Список сторонних приложений заполнен. Удалите одно, чтобы добавить другое.
+	That app is already in your list.	Это приложение уже есть в вашем списке.
+	I acknowledge that the ArtCraft team won't support third-party apps.	Я принимаю к сведению, что команда ArtCraft не поддерживает сторонние приложения.
+	Loading the README…	Загрузка README…
+	Couldn't load the README: {why}	Не удалось загрузить README: {why}
+	This README is empty.	Этот README пуст.
