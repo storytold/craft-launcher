@@ -100,6 +100,7 @@ impl Drop for Staging {
     }
 }
 
+/// Extracts a portable ZIP into staging, enforcing path, size, and link safety checks.
 fn extract(file: &Path, destination: &Path) -> Result<Vec<PathBuf>, String> {
     let file = std::fs::File::open(file).map_err(|e| e.to_string())?;
     let mut archive = zip::ZipArchive::new(file).map_err(|e| format!("couldn't read the portable ZIP ({e})"))?;
@@ -143,6 +144,22 @@ fn extract(file: &Path, destination: &Path) -> Result<Vec<PathBuf>, String> {
     Ok(files)
 }
 
+/// Finds the app executable directly under the managed application root.
+/// This preserves the path layout required by updates and removal.
+fn root_executable(app: &CraftApp, files: &[PathBuf]) -> Option<PathBuf> {
+    files
+        .iter()
+        .find(|relative| {
+            relative.parent().is_some_and(|p| p.as_os_str().is_empty())
+                && relative
+                    .file_name()
+                    .and_then(|n| n.to_str())
+                    .is_some_and(|name| app.stems().any(|stem| name.eq_ignore_ascii_case(&format!("{stem}.exe"))))
+        })
+        .cloned()
+}
+
+/// Resolves the managed install root and checks previously recorded ownership and paths.
 fn recorded_files<'a>(app: &CraftApp, record: &'a Record) -> Result<(&'a Path, Vec<PathBuf>), String> {
     let root = record.path.parent().ok_or("The portable installation has no parent folder.")?;
     if record.kind != PackageKind::PortableZip || root.file_name().is_none_or(|n| n != app.id) {
@@ -202,20 +219,35 @@ pub fn install(
     std::fs::create_dir_all(staging.parent().ok_or("no staging folder")?).map_err(|e| e.to_string())?;
     std::fs::create_dir(&staging).map_err(|e| e.to_string())?;
     let staging = Staging(staging);
-    let unpacked = staging.0.join("unpacked");
+    let mut unpacked = staging.0.join("unpacked");
     std::fs::create_dir(&unpacked).map_err(|e| e.to_string())?;
-    let files = extract(file, &unpacked)?;
-    let executable = files
-        .iter()
-        .find(|relative| {
-            relative.parent().is_some_and(|p| p.as_os_str().is_empty())
-                && relative
-                    .file_name()
-                    .and_then(|n| n.to_str())
-                    .is_some_and(|name| app.stems().any(|stem| name.eq_ignore_ascii_case(&format!("{stem}.exe"))))
-        })
-        .ok_or("The portable ZIP does not contain the expected executable at its root.")?
-        .clone();
+    let mut files = extract(file, &unpacked)?;
+
+    // Some official portable releases package everything inside one versioned directory.
+    // Treat that directory as the app root so installed paths/manifest entries stay flat.
+    // Root-level layouts retain their existing behavior.
+    if root_executable(app, &files).is_none() {
+        // Inspect extracted files, not directory entries: ZIPs may contain unrelated
+        // empty directories alongside the actual wrapped application.
+        let prefix = files
+            .first()
+            .and_then(|file| file.components().next())
+            .map(|component| PathBuf::from(component.as_os_str()));
+        if let Some(prefix) = prefix {
+            let stripped = files
+                .iter()
+                .map(|file| file.strip_prefix(&prefix).ok().map(Path::to_path_buf))
+                .collect::<Option<Vec<_>>>();
+            if let Some(stripped) = stripped
+                && root_executable(app, &stripped).is_some()
+            {
+                unpacked = unpacked.join(prefix);
+                files = stripped;
+            }
+        }
+    }
+    let executable = root_executable(app, &files)
+        .ok_or("The portable ZIP does not contain the expected executable at its root.")?;
     // Validate the entire transaction before moving any existing program file.
     for relative in &files {
         let target = destination.join(relative);
@@ -309,12 +341,18 @@ mod tests {
     use super::*;
     use std::io::Write;
 
+    /// Creates a ZIP fixture containing files and optional explicit directory entries.
     fn archive(root: &Path, name: &str, files: &[(&str, &[u8])]) -> PathBuf {
         let path = root.join(name);
         let mut zip = zip::ZipWriter::new(std::fs::File::create(&path).unwrap());
         for (name, content) in files {
-            zip.start_file(*name, zip::write::SimpleFileOptions::default()).unwrap();
-            zip.write_all(content).unwrap();
+            if name.ends_with('/') {
+                assert!(content.is_empty());
+                zip.add_directory(*name, zip::write::SimpleFileOptions::default()).unwrap();
+            } else {
+                zip.start_file(*name, zip::write::SimpleFileOptions::default()).unwrap();
+                zip.write_all(content).unwrap();
+            }
         }
         zip.finish().unwrap();
         path
@@ -422,6 +460,52 @@ mod tests {
         remove(app, &record).unwrap();
         assert!(!record.path.exists());
         assert_eq!(std::fs::read(personal).unwrap(), b"personal");
+    }
+
+    /// Verifies that a versioned ZIP wrapper is flattened for install, update, and removal,
+    /// even when the archive contains an unrelated empty directory entry.
+    #[test]
+    fn wrapped_release_zip_installs_updates_and_uninstalls() {
+        let dir = tempfile::tempdir().unwrap();
+        let app = CraftApp::by_id("photocraft").unwrap();
+        let paths = Paths::under(dir.path());
+        let parent = dir.path().join("Apps");
+        let first = archive(
+            dir.path(),
+            "wrapped-first.zip",
+            &[
+                ("unrelated-empty-directory/", b""),
+                ("photocraft-0.10.0-windows-x64-portable/photocraft.exe", b"first"),
+                ("photocraft-0.10.0-windows-x64-portable/lib/runtime.dll", b"runtime"),
+            ],
+        );
+        let record = install(app, &first, "0.10.0", None, &paths, Some(&parent), false, &mut |_| Ok(())).unwrap();
+        let app_root = std::fs::canonicalize(parent.join("photocraft")).unwrap();
+        assert_eq!(record.path, app_root.join("photocraft.exe"));
+        assert_eq!(std::fs::read(&record.path).unwrap(), b"first");
+        assert!(app_root.join("lib/runtime.dll").exists());
+        assert!(!app_root.join("photocraft-0.10.0-windows-x64-portable").exists());
+        assert!(!app_root.join("unrelated-empty-directory").exists());
+
+        let personal = app_root.join("settings.json");
+        std::fs::write(&personal, b"keep").unwrap();
+        let next = archive(
+            dir.path(),
+            "wrapped-next.zip",
+            &[
+                ("photocraft-0.11.0-windows-x64-portable/photocraft.exe", b"second"),
+                ("photocraft-0.11.0-windows-x64-portable/new.dll", b"new"),
+            ],
+        );
+        let updated = install(app, &next, "0.11.0", Some(&record), &paths, None, false, &mut |_| Ok(())).unwrap();
+        assert_eq!(updated.path, record.path);
+        assert_eq!(std::fs::read(&updated.path).unwrap(), b"second");
+        assert!(!app_root.join("lib/runtime.dll").exists());
+        assert!(app_root.join("new.dll").exists());
+        assert_eq!(std::fs::read(&personal).unwrap(), b"keep");
+        remove(app, &updated).unwrap();
+        assert!(!updated.path.exists());
+        assert_eq!(std::fs::read(personal).unwrap(), b"keep");
     }
 
     #[test]
