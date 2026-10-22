@@ -369,6 +369,17 @@ filter	Installed	インストール済み
 @msg	{path} already exists and wasn't installed by ArtCraft Launcher	{path} は既に存在し、ArtCraft Launcherでインストールされたものではありません
 @msg	couldn't move {path} to Trash ({reason}). Remove it in Finder instead.	{path} をゴミ箱に移動できませんでした（{reason}）。Finderで削除してください。
 	Apps are placed inside this folder.	アプリはこのフォルダー内に配置されます。
+	Make this my default install folder	このフォルダーを既定のインストール先にする
+	You can change the default anytime in Settings.	既定のフォルダーは設定からいつでも変更できます。
+	App default	アプリの既定
+	Custom folder	任意のフォルダー
+	The default folder set in Settings.	設定で指定した既定のフォルダーです。
+	The system's usual place for apps.	システムでアプリを置く通常の場所です。
+	A folder for this app only.	このアプリ専用のフォルダーです。
+	No default folder is set, so this is the same as the system default.	既定のフォルダーが設定されていないため、システムの既定と同じです。
+	{size} free on this drive	このドライブの空き容量: {size}
+	This drive may not have enough space. The download alone is {size}.	このドライブの空き容量が足りない可能性があります。ダウンロードだけで {size} あります。
+	Installed at	インストール先
 	Replace what's there?	既存の項目を置き換えますか？
 	{path} already exists. Installing {name} will overwrite it.	{path} は既に存在します。{name} をインストールすると上書きされます。
 	Replace	置き換える

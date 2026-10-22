@@ -95,9 +95,48 @@ pub fn portable_root() -> Option<PathBuf> {
     dir.join("portable.txt").is_file().then(|| dir.join("ArtCraftLauncherData"))
 }
 
+/// Free space, in bytes, on the drive that would hold an install into `folder`, or into the
+/// system's usual place when `folder` is `None`. A folder that doesn't exist yet is measured at
+/// its nearest existing parent. `None` when it can't be found out.
+pub fn free_space(folder: Option<&str>) -> Option<u64> {
+    let folder = match folder.map(str::trim).filter(|f| !f.is_empty()) {
+        // The installer turns down a relative path, so there's nothing to measure.
+        Some(folder) => crate::install::expand_home(folder).ok().filter(|p| p.is_absolute())?,
+        None => system_install_folder()?,
+    };
+    let existing = folder.ancestors().find(|p| !p.as_os_str().is_empty() && p.is_dir())?;
+    fs4::available_space(existing).ok()
+}
+
+/// Where new installs go when no folder is chosen: near enough to measure its drive.
+fn system_install_folder() -> Option<PathBuf> {
+    if cfg!(target_os = "macos") {
+        // `/Applications`, or `~/Applications` when that isn't writable: the same volume.
+        Some(PathBuf::from("/Applications"))
+    } else if cfg!(windows) {
+        // App MSIs go into `C:\Program Files\<App>` (the 64-bit one, even for a 32-bit launcher).
+        ["ProgramW6432", "ProgramFiles"].into_iter().find_map(std::env::var_os).map(PathBuf::from)
+    } else {
+        dirs::home_dir()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn free_space_is_measured_at_the_nearest_existing_folder() {
+        let dir = tempfile::tempdir().unwrap();
+        let missing = dir.path().join("not").join("made").join("yet");
+        let here = free_space(dir.path().to_str());
+        assert!(here.is_some_and(|bytes| bytes > 0));
+        assert!(free_space(missing.to_str()).is_some());
+        assert!(free_space(None).is_some());
+        // Like the installer, `~/` is the home folder.
+        assert!(free_space(Some("~/not-made-yet")).is_some());
+        assert!(free_space(Some("relative/folder")).is_none());
+    }
 
     #[test]
     fn atomic_write_does_not_overwrite_an_unrelated_temporary_file() {

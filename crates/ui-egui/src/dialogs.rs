@@ -2,12 +2,13 @@
 
 use crate::i18n::fmt;
 use artcraft_launcher_core::Os;
+use artcraft_launcher_core::platform::pick_asset;
 use artcraft_launcher_core::protocol::Command;
 use egui::{RichText, vec2};
 
-use crate::app::{Dialog, Host, LauncherUi};
+use crate::app::{Dialog, FolderChoice, Host, LauncherUi};
 use crate::theme::{self, Tokens};
-use crate::widgets::{self, Kind};
+use crate::widgets::{self, Cell, Kind};
 
 impl LauncherUi {
     pub(crate) fn dialogs(&mut self, ctx: &egui::Context, host: &mut dyn Host) {
@@ -29,7 +30,9 @@ impl LauncherUi {
         let response = match &mut dialog {
             Dialog::Notes(id) => modal.show(ctx, |ui| close = self.notes_dialog(ui, id)),
             Dialog::ConfirmUninstall(id) => modal.show(ctx, |ui| close = self.uninstall_dialog(ui, id)),
-            Dialog::Install { app, folder } => modal.show(ctx, |ui| close = self.install_dialog(ui, app, folder, host)),
+            Dialog::Install { app, choice, folder, make_default } => {
+                modal.show(ctx, |ui| close = self.install_dialog(ui, app, choice, folder, make_default, host))
+            }
             Dialog::Replace { app, path } => modal.show(ctx, |ui| close = self.replace_dialog(ui, app, path)),
             Dialog::Settings => modal.show(ctx, |ui| close = self.settings_dialog(ui, host)),
             Dialog::LauncherUpdate(r) => modal.show(ctx, |ui| close = self.launcher_update_dialog(ui, r)),
@@ -233,23 +236,97 @@ impl LauncherUi {
         close
     }
 
-    fn install_dialog(&mut self, ui: &mut egui::Ui, id: &str, folder: &mut String, host: &mut dyn Host) -> bool {
+    fn install_dialog(
+        &mut self,
+        ui: &mut egui::Ui,
+        id: &str,
+        choice: &mut FolderChoice,
+        folder: &mut String,
+        make_default: &mut bool,
+        host: &mut dyn Host,
+    ) -> bool {
         let Some(app) = self.entry(id).map(|e| e.app) else { return true };
         ui.set_width(440.0f32.min(ui.ctx().content_rect().width() - 80.0));
         Self::title(ui, None, app.name, tl!("Install folder"));
-        let default = self.settings.install_locations.root.as_deref().unwrap_or(tl!("System default"));
-        Self::folder_field(ui, folder, Some(default), host);
-        if self.platform.is_some_and(|p| p.os == Os::Linux) {
+        let root = self.settings.install_locations.root.clone();
+        let options = [
+            (FolderChoice::AppDefault, Cell { label: tl!("App default"), tip: tl!("The default folder set in Settings."), count: None }),
+            (FolderChoice::System, Cell { label: tl!("System default"), tip: tl!("The system's usual place for apps."), count: None }),
+            (FolderChoice::Custom, Cell { label: tl!("Custom folder"), tip: tl!("A folder for this app only."), count: None }),
+        ];
+        let ink = Tokens::get(ui.ctx()).ink;
+        let row_width: f32 = options.iter().map(|(_, cell)| widgets::hud_galley(ui, cell.label, ink).size().x + 24.0).sum();
+        if row_width <= ui.available_width() {
+            ui.horizontal(|ui| widgets::cells(ui, choice, &options));
+        } else {
+            // Longer translations don't fit in one row: stack the options, a box each.
+            widgets::cells_apart(ui, choice, &options, 4.0);
+        }
+        ui.add_space(8.0);
+        match *choice {
+            FolderChoice::AppDefault => match &root {
+                Some(root) => {
+                    ui.label(RichText::new(root.as_str()).strong());
+                    ui.label(tl!("The default folder set in Settings."));
+                }
+                None => {
+                    ui.label(tl!("No default folder is set, so this is the same as the system default."));
+                }
+            },
+            FolderChoice::System => {
+                ui.label(tl!("The system's usual place for apps."));
+            }
+            FolderChoice::Custom => {
+                let label = ui.label(tl!("Install folder"));
+                ui.add(egui::TextEdit::singleline(folder).id_salt("install_folder").desired_width(f32::INFINITY)).labelled_by(label.id);
+                ui.label(tl!("Apps are placed inside this folder."));
+                if widgets::button(ui, tl!("Browse…"), Kind::Secondary, 100.0).clicked()
+                    && let Some(selected) = host.pick_folder(if folder.is_empty() { root.as_deref() } else { Some(folder.as_str()) })
+                {
+                    *folder = selected;
+                }
+            }
+        }
+        let custom = (*choice == FolderChoice::Custom).then(|| folder.trim()).filter(|f| !f.is_empty()).map(str::to_string);
+        let target = match *choice {
+            FolderChoice::AppDefault => root.clone(),
+            FolderChoice::System => None,
+            FolderChoice::Custom => custom.clone().or_else(|| root.clone()),
+        };
+        self.free_space_note(ui, id, target);
+        // Only a folder that isn't already the default can become it.
+        let can_make_default = custom.as_ref().is_some_and(|f| root.as_ref() != Some(f));
+        if can_make_default {
+            ui.checkbox(make_default, tl!("Make this my default install folder"));
+            ui.label(tl!("You can change the default anytime in Settings."));
+        }
+        let goes_to_custom_folder = match *choice {
+            FolderChoice::AppDefault => root.is_some(),
+            FolderChoice::System => false,
+            FolderChoice::Custom => custom.is_some() || root.is_some(),
+        };
+        if goes_to_custom_folder && self.platform.is_some_and(|p| p.os == Os::Linux) {
             ui.label(tl!("Custom folders use AppImage on Linux."));
         }
         ui.add_space(14.0);
         let mut close = false;
         ui.horizontal(|ui| {
             if widgets::button(ui, tl!("Install"), Kind::Primary, 100.0).clicked() {
-                if folder.is_empty() {
-                    self.settings.install_locations.per_app.remove(id);
-                } else {
-                    self.settings.install_locations.per_app.insert(id.to_string(), folder.clone());
+                let locations = &mut self.settings.install_locations;
+                locations.per_app.remove(id);
+                locations.system.remove(id);
+                match (*choice, custom) {
+                    // Kept even with no default folder yet, so setting one later doesn't move it.
+                    (FolderChoice::System, _) => {
+                        locations.system.insert(id.to_string());
+                    }
+                    // The app follows the new default rather than keeping its own copy of it.
+                    (FolderChoice::Custom, Some(folder)) if can_make_default && *make_default => locations.root = Some(folder),
+                    (FolderChoice::Custom, Some(folder)) => {
+                        locations.per_app.insert(id.to_string(), folder);
+                    }
+                    // The app default, or a custom folder left empty.
+                    _ => {}
                 }
                 self.configure();
                 self.send(Command::Install { app: id.to_string() });
@@ -258,6 +335,31 @@ impl LauncherUi {
             close |= widgets::button(ui, tl!("Cancel"), Kind::Secondary, 90.0).clicked();
         });
         close
+    }
+
+    /// How much room the drive under `target` has, and a warning when the app may not fit.
+    fn free_space_note(&mut self, ui: &mut egui::Ui, id: &str, target: Option<String>) {
+        // The backend measures off the UI thread: asked again when the folder changes, and every
+        // few seconds while the dialog is open.
+        let now = ui.input(|i| i.time);
+        if self.free_space_asked.as_ref().is_none_or(|(asked, at)| *asked != target || now - at > 5.0) {
+            self.send(Command::FreeSpace { folder: target.clone() });
+            self.free_space_asked = Some((target.clone(), now));
+        }
+        // A late answer for a folder no longer chosen isn't shown.
+        let Some(free) = self.free_space.as_ref().filter(|(folder, _)| *folder == target).and_then(|(_, bytes)| *bytes) else { return };
+        let download = self.platform.zip(self.entry(id)).and_then(|(p, entry)| {
+            let stems: Vec<&str> = entry.app.stems().collect();
+            pick_asset(entry.release()?, &stems, p, p.default_kinds()).map(|(asset, _)| asset.size)
+        });
+        let t = Tokens::get(ui.ctx());
+        ui.label(RichText::new(fmt(tl!("{size} free on this drive"), &[("size", &widgets::human_bytes(free))])).color(t.muted));
+        // Unpacking needs about as much room again as the download itself.
+        if let Some(download) = download.filter(|d| free < d.saturating_mul(2)) {
+            let warning =
+                fmt(tl!("This drive may not have enough space. The download alone is {size}."), &[("size", &widgets::human_bytes(download))]);
+            ui.label(RichText::new(warning).color(t.bad));
+        }
     }
 
     pub(crate) fn folder_field(ui: &mut egui::Ui, folder: &mut String, default: Option<&str>, host: &mut dyn Host) {

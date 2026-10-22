@@ -368,6 +368,17 @@ filter	Installed	Zainstalowane
 @msg	{path} already exists and wasn't installed by ArtCraft Launcher	{path} już istnieje i nie został zainstalowany przez ArtCraft Launcher
 @msg	couldn't move {path} to Trash ({reason}). Remove it in Finder instead.	nie można przenieść {path} do Kosza ({reason}). Usuń go w Finderze.
 	Apps are placed inside this folder.	Aplikacje są umieszczane w tym folderze.
+	Make this my default install folder	Ustaw ten folder jako domyślny folder instalacji
+	You can change the default anytime in Settings.	Domyślny folder możesz zmienić w dowolnej chwili w Ustawieniach.
+	App default	Domyślny aplikacji
+	Custom folder	Własny folder
+	The default folder set in Settings.	Domyślny folder ustawiony w Ustawieniach.
+	The system's usual place for apps.	Zwykłe miejsce na aplikacje w systemie.
+	A folder for this app only.	Folder tylko dla tej aplikacji.
+	No default folder is set, so this is the same as the system default.	Nie ustawiono domyślnego folderu, więc to to samo co domyślny systemowy.
+	{size} free on this drive	{size} wolnego miejsca na tym dysku
+	This drive may not have enough space. The download alone is {size}.	Na tym dysku może zabraknąć miejsca. Sam plik do pobrania ma {size}.
+	Installed at	Zainstalowano w
 	Replace what's there?	Zastąpić to, co tam jest?
 	{path} already exists. Installing {name} will overwrite it.	{path} już istnieje. Instalacja {name} go nadpisze.
 	Replace	Zastąp

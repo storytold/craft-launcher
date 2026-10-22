@@ -234,14 +234,19 @@ fn destination(
     Ok(Some(if kind == PackageKind::Msi { parent.join(app.name) } else { parent }))
 }
 
-fn selected_folder(folder: &str, writable: bool) -> Result<PathBuf, String> {
-    let path = if folder == "~" {
+/// `folder` with a leading `~` or `~/` read as the home folder.
+pub(crate) fn expand_home(folder: &str) -> Result<PathBuf, String> {
+    Ok(if folder == "~" {
         dirs::home_dir().ok_or("no home folder")?
     } else if let Some(relative) = folder.strip_prefix("~/") {
         dirs::home_dir().ok_or("no home folder")?.join(relative)
     } else {
         PathBuf::from(folder)
-    };
+    })
+}
+
+fn selected_folder(folder: &str, writable: bool) -> Result<PathBuf, String> {
+    let path = expand_home(folder)?;
     let invalid = |reason: &str| format!("couldn't use install folder {}: {reason}", path.display());
     if folder.chars().any(|c| c.is_control() || (cfg!(windows) && c == '"')) {
         return Err(invalid("the path contains invalid characters"));

@@ -451,7 +451,6 @@ impl Host for DesktopHost {
         }
         dialog.pick_folder().and_then(|p| p.to_str().map(str::to_string))
     }
-
     fn reduce_motion(&self) -> bool {
         motion::reduced()
     }

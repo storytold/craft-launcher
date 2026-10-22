@@ -84,6 +84,33 @@ struct Shared {
     feed_throttle: Mutex<FeedThrottle>,
     /// Apps whose details pictures are on their way (a second request meanwhile does nothing).
     pictures_busy: Mutex<std::collections::HashSet<&'static str>>,
+    /// Free-space requests: one measured at a time, so a drive that hangs holds up one thread.
+    free_space: Mutex<FreeSpaceQueue>,
+}
+
+/// Free-space requests waiting for the one worker. Only the newest waiting folder is kept: the
+/// UI shows the answer for the folder chosen now, so an older one would be wasted work.
+#[derive(Default)]
+struct FreeSpaceQueue {
+    /// A worker thread is measuring.
+    running: bool,
+    /// The next folder to measure (`Some(None)`: the system's usual place).
+    next: Option<Option<String>>,
+}
+
+impl FreeSpaceQueue {
+    /// Queues `folder` in place of any waiting one. True when a worker should be started.
+    fn push(&mut self, folder: Option<String>) -> bool {
+        self.next = Some(folder);
+        !std::mem::replace(&mut self.running, true)
+    }
+
+    /// The worker's next folder, or `None` when there is none: the worker then ends.
+    fn take(&mut self) -> Option<Option<String>> {
+        let next = self.next.take();
+        self.running = next.is_some();
+        next
+    }
 }
 
 impl Shared {
@@ -138,6 +165,7 @@ impl NativeBackend {
             feed_ok_at: Mutex::new(None),
             feed_throttle: Mutex::new(FeedThrottle::load(&paths.feed_throttle(), crate::now())),
             pictures_busy: Mutex::new(std::collections::HashSet::new()),
+            free_space: Mutex::new(FreeSpaceQueue::default()),
             last_check: Mutex::new(None),
         });
         let backend = Self { shared, paths, http, source, platform: native_platform() };
@@ -931,6 +959,24 @@ impl Drop for PicturesBusy {
 }
 
 impl NativeBackend {
+    /// Measures the free space for `folder` off the UI thread (a network drive can take seconds),
+    /// with at most one measurement running; requests that arrive meanwhile are coalesced.
+    fn free_space(&self, folder: Option<String>) {
+        if !self.shared.free_space.lock().unwrap_or_else(PoisonError::into_inner).push(folder) {
+            return;
+        }
+        let shared = self.shared.clone();
+        std::thread::spawn(move || {
+            loop {
+                // The lock is let go before measuring, so a new request never waits on the drive.
+                let next = shared.free_space.lock().unwrap_or_else(PoisonError::into_inner).take();
+                let Some(folder) = next else { break };
+                let bytes = crate::paths::free_space(folder.as_deref());
+                shared.emit(Event::FreeSpace { folder, bytes });
+            }
+        });
+    }
+
     /// Starts fetching the pictures of an app's details page, unless they are already on their way.
     /// An app without a page, or a name that isn't an app, is ignored.
     fn fetch_screenshots(&self, app: &str) {
@@ -998,6 +1044,7 @@ impl Backend for NativeBackend {
             }
             Command::UpdateLauncher => self.update_launcher(),
             Command::FetchScreenshots { app } => self.fetch_screenshots(&app),
+            Command::FreeSpace { folder } => self.free_space(folder),
             Command::Configure(options) => {
                 let changed_pre = {
                     let mut o = self.shared.options.lock().unwrap_or_else(PoisonError::into_inner);
@@ -1051,6 +1098,20 @@ mod tests {
     use super::*;
     use crate::source::Answer;
 
+    #[test]
+    fn free_space_requests_share_one_worker_and_keep_only_the_newest() {
+        let mut queue = FreeSpaceQueue::default();
+        assert!(queue.push(Some("/a".into())), "the first request starts the worker");
+        assert_eq!(queue.take(), Some(Some("/a".into())));
+        // While /a is measured (on a drive that may hang), requests pile into one slot.
+        assert!(!queue.push(Some("/b".into())));
+        assert!(!queue.push(None));
+        assert!(!queue.push(Some("/c".into())));
+        assert_eq!(queue.take(), Some(Some("/c".into())));
+        assert_eq!(queue.take(), None, "nothing waiting: the worker ends");
+        assert!(queue.push(None), "the next request starts a new worker");
+    }
+
     /// GitHub, counting how often it's asked.
     #[derive(Default)]
     struct CountingGitHub(AtomicUsize);
@@ -1091,6 +1152,7 @@ mod tests {
             feed_ok_at: Mutex::new(None),
             feed_throttle: Mutex::new(FeedThrottle::new()),
             pictures_busy: Mutex::new(std::collections::HashSet::new()),
+            free_space: Mutex::new(FreeSpaceQueue::default()),
         }
     }
 

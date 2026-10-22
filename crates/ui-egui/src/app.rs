@@ -79,10 +79,20 @@ pub(crate) struct Toast {
 pub(crate) enum Dialog {
     Notes(String),
     ConfirmUninstall(String),
-    Install { app: String, folder: String },
+    Install { app: String, choice: FolderChoice, folder: String, make_default: bool },
     Replace { app: String, path: String },
     Settings,
     LauncherUpdate(artcraft_launcher_core::Release),
+}
+
+/// Where the Install dialog puts a new app.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum FolderChoice {
+    /// The default folder from Settings (the system's place when none is set).
+    AppDefault,
+    /// The system's usual place, even when Settings has a default folder.
+    System,
+    Custom,
 }
 
 impl Dialog {
@@ -131,6 +141,11 @@ pub struct LauncherUi {
     pub(crate) detail_shot: usize,
     /// The screenshot is enlarged over the whole window.
     pub(crate) detail_zoom: bool,
+    /// The Install dialog's last free-space request: the folder asked about (`None`: the system's
+    /// place) and when.
+    pub(crate) free_space_asked: Option<(Option<String>, f64)>,
+    /// The backend's latest free-space answer: the folder it is for, and the free bytes.
+    pub(crate) free_space: Option<(Option<String>, Option<u64>)>,
     /// The details pictures the backend has sent (or been asked for), by app and picture key.
     pub(crate) pictures: std::collections::HashMap<(String, String), crate::details::Picture>,
     started: bool,
@@ -205,6 +220,8 @@ impl LauncherUi {
             detail_shown: None,
             detail_shot: 0,
             detail_zoom: false,
+            free_space_asked: None,
+            free_space: None,
             pictures: std::collections::HashMap::new(),
             started: false,
             applied_theme: None,
@@ -307,8 +324,14 @@ impl LauncherUi {
             self.send(Command::Install { app: id.to_string() });
             return;
         }
-        self.dialog =
-            Some(Dialog::Install { app: id.to_string(), folder: self.settings.install_locations.per_app.get(id).cloned().unwrap_or_default() });
+        let locations = &self.settings.install_locations;
+        let (choice, folder) = match locations.per_app.get(id) {
+            _ if locations.system.contains(id) => (FolderChoice::System, String::new()),
+            Some(folder) => (FolderChoice::Custom, folder.clone()),
+            // Nothing chosen for this app yet: it follows the default, whatever that becomes.
+            None => (FolderChoice::AppDefault, String::new()),
+        };
+        self.dialog = Some(Dialog::Install { app: id.to_string(), choice, folder, make_default: false });
     }
 
     /// Non-drawing work: runs every frame and also while the window is hidden in the tray.
@@ -371,6 +394,10 @@ impl LauncherUi {
             }
             Event::Screenshot { app, key, result } => {
                 self.pictures.insert((app, key), crate::details::Picture::from_result(result));
+                true
+            }
+            Event::FreeSpace { folder, bytes } => {
+                self.free_space = Some((folder, bytes));
                 true
             }
             Event::Detected { app, installed } => {

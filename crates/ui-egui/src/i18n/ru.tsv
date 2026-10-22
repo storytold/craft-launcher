@@ -362,6 +362,17 @@ filter	Installed	Установлены
 @msg	{path} already exists and wasn't installed by ArtCraft Launcher	{path} уже существует и не был установлен через ArtCraft Launcher
 @msg	couldn't move {path} to Trash ({reason}). Remove it in Finder instead.	не удалось переместить {path} в Корзину ({reason}). Удалите его через Finder.
 	Apps are placed inside this folder.	Приложения размещаются внутри этой папки.
+	Make this my default install folder	Сделать эту папку папкой установки по умолчанию
+	You can change the default anytime in Settings.	Папку по умолчанию можно изменить в любой момент в настройках.
+	App default	По умолчанию в приложении
+	Custom folder	Своя папка
+	The default folder set in Settings.	Папка по умолчанию, заданная в настройках.
+	The system's usual place for apps.	Обычное место для приложений в системе.
+	A folder for this app only.	Папка только для этого приложения.
+	No default folder is set, so this is the same as the system default.	Папка по умолчанию не задана, поэтому это то же самое, что и системное значение по умолчанию.
+	{size} free on this drive	Свободно на этом диске: {size}
+	This drive may not have enough space. The download alone is {size}.	На этом диске может не хватить места. Одна только загрузка занимает {size}.
+	Installed at	Установлено в
 	Replace what's there?	Заменить существующее?
 	{path} already exists. Installing {name} will overwrite it.	{path} уже существует. Установка {name} перезапишет его.
 	Replace	Заменить

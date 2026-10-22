@@ -334,6 +334,17 @@ filter	Installed	Nainstalováno
 @msg	{path} already exists and wasn't installed by ArtCraft Launcher	{path} již existuje a nebylo nainstalováno aplikací ArtCraft Launcher
 @msg	couldn't move {path} to Trash ({reason}). Remove it in Finder instead.	{path} nelze přesunout do koše ({reason}). Odstraňte položku ve Finderu.
 	Apps are placed inside this folder.	Aplikace se umístí do této složky.
+	Make this my default install folder	Nastavit tuto složku jako výchozí složku pro instalaci
+	You can change the default anytime in Settings.	Výchozí složku můžete kdykoli změnit v Nastavení.
+	App default	Výchozí v aplikaci
+	Custom folder	Vlastní složka
+	The default folder set in Settings.	Výchozí složka nastavená v Nastavení.
+	The system's usual place for apps.	Obvyklé umístění aplikací v systému.
+	A folder for this app only.	Složka jen pro tuto aplikaci.
+	No default folder is set, so this is the same as the system default.	Výchozí složka není nastavena, takže je to stejné jako výchozí nastavení systému.
+	{size} free on this drive	{size} volného místa na tomto disku
+	This drive may not have enough space. The download alone is {size}.	Na tomto disku nemusí být dost místa. Samotné stažení má {size}.
+	Installed at	Nainstalováno v
 	Replace what's there?	Nahradit, co tam je?
 	{path} already exists. Installing {name} will overwrite it.	{path} už existuje. Instalace aplikace {name} ho přepíše.
 	Replace	Nahradit

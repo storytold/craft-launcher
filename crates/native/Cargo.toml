@@ -22,6 +22,8 @@ serde = { workspace = true }
 serde_json = { workspace = true }
 log = { workspace = true }
 dirs = "6"
+# Free space on the drive an app would install to, without unsafe code of our own.
+fs4 = "1.1"
 tempfile = "3"
 sha2 = "0.10"
 # HTTPS over rustls, with the OS verifying certificates (rustls-platform-verifier). No bundled

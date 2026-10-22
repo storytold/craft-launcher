@@ -349,7 +349,8 @@ impl LauncherUi {
     }
 
     /// The facts of the latest release in cells, then its notes.
-    fn release_section(&self, ui: &mut Ui, entry: &AppEntry, details: &AppDetails, t: &Tokens, per_row: usize) {
+    fn release_section(&mut self, ui: &mut Ui, entry: &AppEntry, details: &AppDetails, t: &Tokens, per_row: usize) {
+        self.install_location(ui, entry, t);
         widgets::eyebrow(ui, "02", tl!("Latest release"));
         ui.add_space(4.0);
         let Some(r) = entry.release() else {
@@ -383,6 +384,22 @@ impl LauncherUi {
         }
         ui.add_space(8.0);
         crate::notes::show(ui, &r.notes);
+    }
+
+    /// Where an installed app lives, with a button to show it in the file manager.
+    fn install_location(&mut self, ui: &mut Ui, entry: &AppEntry, t: &Tokens) {
+        let Some(installed) = entry.installed.as_ref().filter(|_| self.caps.manage_apps) else { return };
+        egui::Frame::new().stroke(t.hairline()).inner_margin(theme::BOX_MARGIN).show(ui, |ui| {
+            ui.set_width(ui.available_width());
+            ui.spacing_mut().item_spacing.y = 6.0;
+            widgets::hud(ui, tl!("Installed at"), t.faint);
+            ui.add(egui::Label::new(RichText::new(&installed.location).size(14.0).color(t.ink_strong)).wrap().selectable(true));
+            let reveal = crate::i18n::t(self.caps.reveal_label);
+            if widgets::button(ui, reveal, Kind::Secondary, 120.0).clicked() {
+                self.send(Command::Reveal { app: entry.app.id.to_string() });
+            }
+        });
+        ui.add_space(10.0);
     }
 
     /// The current screenshot, large, over the whole window; ‹ › flip through them, a click or Esc closes it.

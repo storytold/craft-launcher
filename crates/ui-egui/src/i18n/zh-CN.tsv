@@ -334,6 +334,17 @@ figcraft	Interface design and prototyping	界面设计与原型制作
 @msg	{path} already exists and wasn't installed by ArtCraft Launcher	{path} 已存在，且并非由 ArtCraft Launcher 安装
 @msg	couldn't move {path} to Trash ({reason}). Remove it in Finder instead.	无法将 {path} 移到废纸篓（{reason}）。请在 Finder 中移除。
 	Apps are placed inside this folder.	应用会放置在此文件夹内。
+	Make this my default install folder	将此文件夹设为默认安装文件夹
+	You can change the default anytime in Settings.	你可以随时在设置中更改默认文件夹。
+	App default	应用默认
+	Custom folder	自定义文件夹
+	The default folder set in Settings.	在设置中指定的默认文件夹。
+	The system's usual place for apps.	系统存放应用的常用位置。
+	A folder for this app only.	仅用于此应用的文件夹。
+	No default folder is set, so this is the same as the system default.	尚未设置默认文件夹，因此与系统默认相同。
+	{size} free on this drive	此驱动器可用空间：{size}
+	This drive may not have enough space. The download alone is {size}.	此驱动器的空间可能不足。仅下载文件就有 {size}。
+	Installed at	安装位置
 	Replace what's there?	替换现有内容？
 	{path} already exists. Installing {name} will overwrite it.	{path} 已存在。安装 {name} 将覆盖它。
 	Replace	替换
