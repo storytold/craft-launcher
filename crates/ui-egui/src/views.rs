@@ -3,7 +3,7 @@
 
 use artcraft_launcher_core::details::AppDetails;
 use artcraft_launcher_core::platform::pick_asset;
-use artcraft_launcher_core::protocol::{Command, JobPhase};
+use artcraft_launcher_core::protocol::{Command, JobPhase, Source};
 use artcraft_launcher_core::status::AppStatus;
 use artcraft_launcher_core::time;
 use egui::{Color32, CornerRadius, FontId, Rect, RichText, Sense, Stroke, Ui, vec2};
@@ -298,9 +298,14 @@ impl LauncherUi {
             tl!("Checking for updates…").to_string()
         } else if let Some(at) = self.settings.last_check {
             let ago = ago_text(at, now);
-            match self.sources_label() {
-                Some(using) => fmt(tl!("Checked {ago} · using {sources}"), &[("ago", &ago), ("sources", &using)]),
-                None => fmt(tl!("Checked {ago}"), &[("ago", &ago)]),
+            // Nothing was reached: the cards show saved answers, whichever service they came from.
+            if self.last_source == Some(Source::Cache) {
+                fmt(tl!("Checked {ago} · showing saved results"), &[("ago", &ago)])
+            } else {
+                match self.sources_label() {
+                    Some(using) => fmt(tl!("Checked {ago} · using {sources}"), &[("ago", &ago), ("sources", &using)]),
+                    None => fmt(tl!("Checked {ago}"), &[("ago", &ago)]),
+                }
             }
         } else {
             tl!("Not checked yet").to_string()

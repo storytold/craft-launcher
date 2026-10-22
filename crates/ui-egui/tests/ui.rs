@@ -1199,6 +1199,9 @@ fn the_footer_names_the_services_behind_what_is_on_screen() {
     let from_github =
         vec![Event::Latest { app: "wordcraft".into(), latest: LatestRelease::Found(release("wordcraft", "0.3.1", NOW)), from: Origin::GitHub }];
     assert_eq!(footer(from_github), "Checked 3 min ago · using ArtCraft API and GitHub");
+    // Nothing could be reached: the cards show saved answers, so no service is named.
+    let offline = vec![Event::CheckFinished { at: NOW - 180, source: Source::Cache, rate_limited_until: None }];
+    assert_eq!(footer(offline), "Checked 3 min ago · showing saved results");
 }
 
 #[test]
