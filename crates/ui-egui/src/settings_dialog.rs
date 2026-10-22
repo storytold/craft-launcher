@@ -20,10 +20,7 @@ fn row(ui: &mut Ui, label: &str, control_width: f32, add: &mut dyn FnMut(&mut Ui
         ui.label(label);
         add(ui);
     } else {
-        ui.horizontal(|ui| {
-            ui.label(label);
-            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| add(ui));
-        });
+        egui::Sides::new().show(ui, |ui| ui.label(label), |ui| add(ui));
     }
 }
 
@@ -78,12 +75,7 @@ impl LauncherUi {
                     close = widgets::button(ui, tl!("Done"), Kind::Primary, 90.0).clicked();
                 });
             } else {
-                ui.horizontal(|ui| {
-                    quit(ui, host);
-                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        close = widgets::button(ui, tl!("Done"), Kind::Primary, 90.0).clicked();
-                    });
-                });
+                egui::Sides::new().show(ui, |ui| quit(ui, host), |ui| close = widgets::button(ui, tl!("Done"), Kind::Primary, 90.0).clicked());
             }
         });
         close

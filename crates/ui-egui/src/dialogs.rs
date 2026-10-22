@@ -121,12 +121,11 @@ impl LauncherUi {
         let mut close = false;
         egui::Frame::new().inner_margin(egui::Margin::symmetric(theme::PAD as i8, 16)).show(ui, |ui| {
             ui.set_width(ui.available_width());
-            ui.horizontal(|ui| {
-                widgets::hud_link(ui, tl!("Open on GitHub"), &release.html_url);
-                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    close = widgets::button(ui, tl!("Close"), Kind::Secondary, 90.0).clicked();
-                });
-            });
+            egui::Sides::new().show(
+                ui,
+                |ui| widgets::hud_link(ui, tl!("Open on GitHub"), &release.html_url),
+                |ui| close = widgets::button(ui, tl!("Close"), Kind::Secondary, 90.0).clicked(),
+            );
         });
         close
     }
@@ -144,9 +143,10 @@ impl LauncherUi {
         ui.label(RichText::new(message).color(t.muted));
         ui.add_space(14.0);
         let mut close = false;
-        ui.horizontal(|ui| {
-            widgets::hud_link(ui, tl!("What's new"), &r.html_url);
-            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+        egui::Sides::new().show(
+            ui,
+            |ui| widgets::hud_link(ui, tl!("What's new"), &r.html_url),
+            |ui| {
                 if self.caps.self_update {
                     if widgets::button(ui, tl!("Update and restart"), Kind::Primary, 0.0)
                         .on_hover_text(tl!("Downloads the new version, replaces this one and opens it again"))
@@ -168,8 +168,8 @@ impl LauncherUi {
                 if widgets::button(ui, tl!("Later"), Kind::Secondary, 80.0).clicked() {
                     close = true;
                 }
-            });
-        });
+            },
+        );
         close
     }
 
