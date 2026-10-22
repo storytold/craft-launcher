@@ -31,12 +31,18 @@ while [ $# -gt 0 ]; do
 done
 
 # FreeBSD's uname says amd64; release file names use x86_64 like the Linux and Windows ones.
-MACHINE="$(uname -m)"
-case "$MACHINE" in
-  amd64 | x86_64) ARCH=x86_64 ;;
-  arm64 | aarch64) ARCH=aarch64 ;;
-  *) echo "unsupported architecture $MACHINE" >&2; exit 2 ;;
-esac
+release_arch() {
+  case "$1" in
+    amd64 | x86_64) echo x86_64 ;;
+    arm64 | aarch64) echo aarch64 ;;
+    *) echo "unsupported architecture $1" >&2; return 2 ;;
+  esac
+}
+HOST_ARCH="$(release_arch "$(uname -m)")"
+# The release workflow cross-compiles aarch64 in an x86_64 VM with CARGO_BUILD_TARGET set to
+# aarch64-unknown-freebsd (craft-common-actions#39): name the archive after the target.
+ARCH="$HOST_ARCH"
+if [ -n "${CARGO_BUILD_TARGET:-}" ]; then ARCH="$(release_arch "${CARGO_BUILD_TARGET%%-*}")"; fi
 if [ "$DRY_RUN" = 0 ] && [ "$(uname -s)" != FreeBSD ]; then
   echo "error: build on FreeBSD (or pass --dry-run to check the tree layout)" >&2
   exit 2
@@ -54,7 +60,8 @@ STAGE="$WORK/$BASENAME"
 rm -rf "$WORK"
 mkdir -p "$WORK"
 
-BIN="$CARGO_TARGET_DIR/release"
+# Cargo puts a cross build under target/<triple>/release.
+BIN="$CARGO_TARGET_DIR/${CARGO_BUILD_TARGET:+$CARGO_BUILD_TARGET/}release"
 OUT_DIR="$DIST"
 if [ "$DRY_RUN" = 1 ]; then
   # A stub binary, and the tarball stays in the work dir so dist/ only ever holds real builds.
