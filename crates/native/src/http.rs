@@ -223,7 +223,12 @@ impl Http {
                 return Err(e);
             }
             if matches_published(&part, sha256) {
-                std::fs::rename(&part, dest).map_err(|e| format!("couldn't save the download ({e})"))?;
+                if let Err(e) = rename_retrying(&part, dest, stop) {
+                    if e == CANCELLED {
+                        let _ = std::fs::remove_file(&part);
+                    }
+                    return Err(e);
+                }
                 return Ok(());
             }
             let _ = std::fs::remove_file(&part);
@@ -406,6 +411,25 @@ fn matches_published(path: &Path, sha256: &str) -> bool {
 /// How much of a download is already on disk (a paused or interrupted one).
 pub fn partial_bytes(dest: &Path, size: u64) -> Option<u64> {
     std::fs::metadata(part_path(dest, size)).ok().map(|m| m.len()).filter(|n| *n > 0)
+}
+
+/// Renames `from` to `to`, retrying for a few seconds while Windows reports the file busy: an
+/// antivirus scanner often holds a just-written installer open, and the rename then fails with
+/// "Access denied" (os error 5) or a sharing violation (os error 32). `stop` pauses or cancels
+/// it between tries.
+fn rename_retrying(from: &Path, to: &Path, stop: &Stop) -> Result<(), String> {
+    let mut wait = Duration::from_millis(100);
+    loop {
+        stop.check()?;
+        match std::fs::rename(from, to) {
+            Err(e) if cfg!(windows) && matches!(e.raw_os_error(), Some(5 | 32)) && wait <= Duration::from_secs(4) => {
+                log::info!("{} is busy ({e}); retrying the rename", to.display());
+                std::thread::sleep(wait);
+                wait = wait.saturating_mul(2);
+            }
+            result => return result.map_err(|e| format!("couldn't save the download ({e})")),
+        }
+    }
 }
 
 /// Sets a file's modification time to now.
