@@ -367,6 +367,18 @@ filter	Installed	Installées
 	Replace what's there?	Remplacer l’existant ?
 	{path} already exists. Installing {name} will overwrite it.	{path} existe déjà. L’installation de {name} l’écrasera.
 	Replace	Remplacer
+# The suite's shared sign-in (the launcher is where somebody signs in once for every Craft app)
+	Account	Compte
+	Sign in here once. Every Craft app then uses it.	Connectez-vous ici une seule fois. Chaque application Craft utilise ensuite cette connexion.
+	CollabCraft address	Adresse CollabCraft
+	Sign in	Se connecter
+	Sign out	Se déconnecter
+	Open {name}	Ouvrir {name}
+	Your browser is open. Finish signing in there.	Votre navigateur est ouvert. Terminez la connexion là-bas.
+	Storage connected	Stockage connecté
+	No storage connected	Aucun stockage connecté
+	Signing out ends the session for every Craft app.	La déconnexion met fin à la session pour toutes les applications Craft.
+	The shared sign-in couldn't be read.	La connexion partagée n'a pas pu être lue.
 	Recently updated	Récemment mises à jour
 	Name (A–Z)	Nom (A–Z)
 	Name (Z–A)	Nom (Z–A)

@@ -6,7 +6,7 @@ members = ["crates/*", "apps/*", "xtask"]
 version = "0.7.0"
 edition = "2024"
 license = "MIT OR Apache-2.0"
-rust-version = "1.90"
+rust-version = "1.95"
 repository = "https://github.com/storytold/craft-launcher"
 
 [workspace.lints.rust]
@@ -20,6 +20,7 @@ todo = "warn"
 artcraft-launcher-core = { path = "crates/core" }
 artcraft-launcher-ui-egui = { path = "crates/ui-egui" }
 artcraft-launcher-native = { path = "crates/native" }
+craft-suite-account = { git = "https://github.com/wdunn001/craft-libs.git", rev = "f802cbdec018eede562a5bc520a248777a9631b0" }
 egui = "0.36"
 eframe = { version = "0.36", default-features = false }
 egui_extras = { version = "0.36", default-features = false }

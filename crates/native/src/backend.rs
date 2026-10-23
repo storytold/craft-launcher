@@ -15,6 +15,7 @@ use artcraft_launcher_core::protocol::{
 use artcraft_launcher_core::release::{Asset, Release};
 use artcraft_launcher_core::{CraftApp, Installed, PackageKind, SUITE, version};
 
+use crate::account::Accounts;
 use crate::feed_throttle::{self, FeedThrottle, Outcome};
 use crate::http::{self, Http, Stop};
 use crate::install::{self, Job};
@@ -97,6 +98,9 @@ pub struct NativeBackend {
     shared: Arc<Shared>,
     paths: Paths,
     http: Option<Http>,
+    /// The suite's shared sign-in. `None` where there is no HTTPS at all, which is the one case
+    /// in which nothing about an account can be offered.
+    accounts: Option<Accounts>,
     source: Option<Arc<dyn ReleaseSource>>,
     platform: Option<Platform>,
 }
@@ -140,7 +144,11 @@ impl NativeBackend {
             pictures_busy: Mutex::new(std::collections::HashSet::new()),
             last_check: Mutex::new(None),
         });
-        let backend = Self { shared, paths, http, source, platform: native_platform() };
+        let accounts = http.clone().map(|h| {
+            let shared = shared.clone();
+            Accounts::new(h, move |state| shared.emit(Event::Account(state)))
+        });
+        let backend = Self { shared, paths, http, accounts, source, platform: native_platform() };
         backend.replay_cache();
         backend.detect_all();
         backend
@@ -849,17 +857,8 @@ fn fetch_feed(http: &Http, paths: &Paths, url: &str, throttle: &Mutex<FeedThrott
 fn feed_url() -> String {
     std::env::var("ARTCRAFT_LAUNCHER_FEED_URL")
         .ok()
-        .filter(|u| u.starts_with("https://") || is_loopback(u))
+        .filter(|u| u.starts_with("https://") || crate::service_base::loopback_http(u))
         .unwrap_or_else(|| artcraft_launcher_core::feed::FEED_URL.to_string())
-}
-
-/// `http://<loopback host>:<port>` and an optional path: the host must be exactly 127.0.0.1,
-/// localhost or [::1] (no `user@` in front of another host), with a numeric port.
-fn is_loopback(url: &str) -> bool {
-    let Some(rest) = url.strip_prefix("http://") else { return false };
-    let authority = rest.split(['/', '?', '#']).next().unwrap_or_default();
-    let Some((host, port)) = authority.rsplit_once(':') else { return false };
-    matches!(host, "127.0.0.1" | "localhost" | "[::1]") && !port.is_empty() && port.parse::<u16>().is_ok()
 }
 
 /// `ARTCRAFT_LAUNCHER_DOWNLOAD_BASE`: a mirror on this machine (`cargo xtask local serve`) that
@@ -873,7 +872,7 @@ fn local_mirror() -> Option<String> {
     }
     let base = std::env::var("ARTCRAFT_LAUNCHER_DOWNLOAD_BASE").ok()?;
     let base = base.trim();
-    if !is_loopback(base) || base.contains(['?', '#', '\\']) {
+    if !crate::service_base::loopback_http(base) || base.contains(['?', '#', '\\']) {
         log::warn!(
             "ignoring ARTCRAFT_LAUNCHER_DOWNLOAD_BASE={base}: only http://127.0.0.1:<port>/, http://localhost:<port>/ or http://[::1]:<port>/"
         );
@@ -885,7 +884,10 @@ fn local_mirror() -> Option<String> {
 /// The local mirror's feed: `ARTCRAFT_LAUNCHER_FEED_URL` if set, else `release_info.json` beside
 /// the builds. Asked every check (it's on this machine), and never saved over ArtCraft's.
 fn local_feed(http: &Http, base: &str) -> Option<Feed> {
-    let url = std::env::var("ARTCRAFT_LAUNCHER_FEED_URL").ok().filter(|u| is_loopback(u)).unwrap_or_else(|| format!("{base}release_info.json"));
+    let url = std::env::var("ARTCRAFT_LAUNCHER_FEED_URL")
+        .ok()
+        .filter(|u| crate::service_base::loopback_http(u))
+        .unwrap_or_else(|| format!("{base}release_info.json"));
     match http.get_feed(&url) {
         Ok(body) => {
             let feed = Feed::parse(&body).map(|f| f.with_mirror(base));
@@ -1025,6 +1027,24 @@ impl Backend for NativeBackend {
                 }
                 if changed_pre {
                     self.check(true);
+                }
+                if let Some(accounts) = &self.accounts {
+                    accounts.set_base(&options.account_service);
+                }
+            }
+            Command::AccountSignIn => {
+                if let Some(accounts) = &self.accounts {
+                    accounts.sign_in();
+                }
+            }
+            Command::AccountSignOut => {
+                if let Some(accounts) = &self.accounts {
+                    accounts.sign_out();
+                }
+            }
+            Command::AccountRefresh => {
+                if let Some(accounts) = &self.accounts {
+                    accounts.refresh();
                 }
             }
         }
@@ -1227,11 +1247,25 @@ mod tests {
         assert!(matches!(mirror_latest(word, Some(&feed), NOW).0, Some(LatestRelease::None)));
         // Not running: says so.
         assert!(matches!(mirror_latest(photo, None, NOW).0, Some(LatestRelease::Failed(_))));
-        assert!(is_loopback("http://localhost:8787/") && is_loopback("http://[::1]:8787/"));
-        assert!(!is_loopback("http://192.168.1.2:8787/") && !is_loopback("http://localhost.evil.example/"));
-        assert!(!is_loopback("http://127.0.0.1:1@evil.example/") && !is_loopback("http://127.0.0.1:8787@evil.example:80/"));
-        assert!(!is_loopback("http://127.0.0.1/") && !is_loopback("http://127.0.0.1:x/") && !is_loopback("https://127.0.0.1:8787/"));
-        assert!(is_loopback("http://127.0.0.1:8787") && is_loopback("http://127.0.0.1:8787/release_info.json"));
+        use crate::service_base;
+        assert!(service_base::loopback_http("http://localhost:8787/") && service_base::loopback_http("http://[::1]:8787/"));
+        assert!(
+            !service_base::loopback_http("http://192.168.1.2:8787/")
+                && !service_base::loopback_http("http://localhost.evil.example/")
+        );
+        assert!(
+            !service_base::loopback_http("http://127.0.0.1:1@evil.example/")
+                && !service_base::loopback_http("http://127.0.0.1:8787@evil.example:80/")
+        );
+        assert!(
+            !service_base::loopback_http("http://127.0.0.1/")
+                && !service_base::loopback_http("http://127.0.0.1:x/")
+                && !service_base::loopback_http("https://127.0.0.1:8787/")
+        );
+        assert!(
+            service_base::loopback_http("http://127.0.0.1:8787")
+                && service_base::loopback_http("http://127.0.0.1:8787/release_info.json")
+        );
     }
 
     #[test]
@@ -1415,7 +1449,7 @@ mod tests {
         let shared = shared();
         shared.latest.lock().unwrap().insert(APP.to_string(), release("0.5.0"));
         let shared = Arc::new(shared);
-        NativeBackend { shared, paths: Paths::under(root), http: None, source, platform: Some(platform) }
+        NativeBackend { shared, paths: Paths::under(root), http: None, accounts: None, source, platform: Some(platform) }
     }
 
     /// Reports again, and returns what the UI was last told about a kept download.

@@ -3,7 +3,7 @@
 use std::time::Duration;
 
 use artcraft_launcher_core::protocol::{
-    Backend, BackendOptions, CANCELLED, Capabilities, Command, Event, INSTALL_CANCELLED, JobPhase, LatestRelease, PAUSED, Source,
+    Backend, BackendOptions, CANCELLED, Capabilities, Command, Event, INSTALL_CANCELLED, JobPhase, LatestRelease, PAUSED, Source, SuiteAccount,
 };
 use artcraft_launcher_core::release::Release;
 use artcraft_launcher_core::status::AppStatus;
@@ -155,6 +155,18 @@ pub struct LauncherUi {
     /// Versions of apps or the launcher already queued for auto-update during this session,
     /// preventing repeated install loops if an update fails or is in progress.
     pub(crate) auto_update_attempted: std::collections::BTreeSet<(String, String)>,
+    /// The suite's shared sign-in. `Unconfigured` until a backend says otherwise. That is where the
+    /// web build stays.
+    pub(crate) account: SuiteAccount,
+    /// The sign-in page already opened in a browser. Coming back to the window then does not open
+    /// a second tab.
+    opened_verify_url: Option<String>,
+    /// What is being typed into the deployment address, before it is committed.
+    ///
+    /// Held here because committing on every keystroke would ask the backend about an account at
+    /// every half-finished URL, one network request per character. It is committed when the field
+    /// loses focus and when the Settings dialog closes.
+    pub(crate) account_edit: Option<String>,
     /// The URL or deep link to open when Discord is clicked.
     pub(crate) discord_url: &'static str,
 }
@@ -217,6 +229,9 @@ impl LauncherUi {
             last_detect: 0,
             was_focused: true,
             auto_update_attempted: std::collections::BTreeSet::new(),
+            account: SuiteAccount::Unconfigured,
+            opened_verify_url: None,
+            account_edit: None,
             discord_url: artcraft_launcher_core::catalog::DISCORD_URL,
         }
     }
@@ -266,6 +281,16 @@ impl LauncherUi {
         self.backend.send(command);
     }
 
+    /// Takes whatever was typed into the deployment address as the setting.
+    pub(crate) fn commit_account_address(&mut self) {
+        if let Some(typed) = self.account_edit.take() {
+            let typed = typed.trim();
+            if typed != self.settings.account_service {
+                self.settings.account_service = typed.to_owned();
+            }
+        }
+    }
+
     pub(crate) fn toast(&mut self, ctx: &egui::Context, text: impl Into<String>, error: bool) {
         let now = ctx.input(|i| i.time);
         self.toasts.push(Toast { text: text.into(), error, until: now + if error { 8.0 } else { 4.5 } });
@@ -287,6 +312,7 @@ impl LauncherUi {
             kinds: self.settings.preferred_kinds.clone(),
             prereleases: self.settings.prereleases,
             install_locations: self.settings.install_locations.clone(),
+            account_service: self.settings.account_service.trim().to_string(),
         };
         if self.sent_options.as_ref() != Some(&options) {
             self.backend.send(Command::Configure(options.clone()));
@@ -314,6 +340,9 @@ impl LauncherUi {
     /// Non-drawing work: runs every frame and also while the window is hidden in the tray.
     pub fn logic(&mut self, ctx: &egui::Context, host: &mut dyn Host) {
         set_current(crate::i18n::Lang::from_pref(&self.settings.language));
+        if !matches!(self.dialog, Some(Dialog::Settings)) {
+            self.commit_account_address();
+        }
         self.configure();
         if !self.started {
             self.started = true;
@@ -456,6 +485,27 @@ impl LauncherUi {
                     self.dialog = Some(Dialog::LauncherUpdate(r));
                 }
                 fresh
+            }
+            Event::Account(state) => {
+                // A failure is a passing state: report it, then ask again what is true.
+                if let SuiteAccount::Failed(why) = &state {
+                    let why = crate::i18n::msg(why);
+                    self.toast(ctx, why, true);
+                    self.backend.send(Command::AccountRefresh);
+                    return false;
+                }
+                // Nothing happens at the service until the user has been to the sign-in page. Open
+                // it as soon as it is known. Open it only once.
+                if let SuiteAccount::Waiting { verify_url } = &state {
+                    if self.opened_verify_url.as_deref() != Some(verify_url.as_str()) {
+                        self.opened_verify_url = Some(verify_url.clone());
+                        ctx.open_url(egui::OpenUrl::new_tab(verify_url));
+                    }
+                } else {
+                    self.opened_verify_url = None;
+                }
+                self.account = state;
+                false
             }
             Event::CheckStarted => {
                 self.checking = true;

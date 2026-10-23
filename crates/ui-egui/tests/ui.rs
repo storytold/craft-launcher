@@ -9,7 +9,8 @@ use std::sync::OnceLock;
 
 use artcraft_launcher_core::details::AppDetails;
 use artcraft_launcher_core::protocol::{
-    Backend, CANCELLED, Capabilities, Command, Event, INSTALL_CANCELLED, JobPhase, LatestRelease, Origin, PausedDownload, Source,
+    Backend, CANCELLED, Capabilities, Command, Event, INSTALL_CANCELLED, JobPhase, LatestRelease, Origin, PausedDownload, Source, SuiteAccount,
+    SuiteIdentity,
 };
 use artcraft_launcher_core::release::{Asset, Release};
 use artcraft_launcher_core::status::InstallSource;
@@ -194,7 +195,7 @@ fn harness_with(
     manage: bool,
     scale: f32,
 ) -> (Harness<'static, Option<LauncherUi>>, Rc<RefCell<Vec<Command>>>) {
-    harness_full(events, view, theme, manage, scale, artcraft_launcher_ui_egui::TitleBar::Native, Rc::default(), None, None)
+    harness_full(events, view, theme, manage, scale, artcraft_launcher_ui_egui::TitleBar::Native, Rc::default(), None, None, None)
 }
 
 /// Like `harness_with`, with the details pictures answered as `pictures` says (changeable during the test).
@@ -206,7 +207,7 @@ fn harness_pictures(
     scale: f32,
     pictures: Rc<Cell<Pictures>>,
 ) -> (Harness<'static, Option<LauncherUi>>, Rc<RefCell<Vec<Command>>>) {
-    harness_full(events, view, theme, manage, scale, artcraft_launcher_ui_egui::TitleBar::Native, pictures, None, None)
+    harness_full(events, view, theme, manage, scale, artcraft_launcher_ui_egui::TitleBar::Native, pictures, None, None, None)
 }
 
 fn harness_with_title_bar(
@@ -217,7 +218,22 @@ fn harness_with_title_bar(
     scale: f32,
     bar: artcraft_launcher_ui_egui::TitleBar,
 ) -> (Harness<'static, Option<LauncherUi>>, Rc<RefCell<Vec<Command>>>) {
-    harness_full(events, view, theme, manage, scale, bar, Rc::default(), None, None)
+    harness_full(events, view, theme, manage, scale, bar, Rc::default(), None, None, None)
+}
+
+fn account_harness(account: SuiteAccount, service: &str, theme: egui::Theme) -> (Harness<'static, Option<LauncherUi>>, Rc<RefCell<Vec<Command>>>) {
+    let mut ev = events();
+    ev.push(Event::Account(account));
+    let settings = Settings { view: ViewMode::Grid, notify: false, account_service: service.to_string(), ..Settings::default() };
+    harness_full(ev, ViewMode::Grid, theme, true, 1.0, artcraft_launcher_ui_egui::TitleBar::Native, Rc::default(), None, Some(settings), None)
+}
+
+fn open_settings_account(h: &mut Harness<'_, Option<LauncherUi>>) {
+    h.run_steps(6);
+    h.get_by_label("Settings").click();
+    h.run_steps(4);
+    h.get_by_label("Account").scroll_to_me();
+    h.run_steps(2);
 }
 
 fn harness_with_discord(discord_url: Option<&'static str>) -> (Harness<'static, Option<LauncherUi>>, Rc<RefCell<Vec<Command>>>) {
@@ -229,6 +245,7 @@ fn harness_with_discord(discord_url: Option<&'static str>) -> (Harness<'static, 
         1.0,
         artcraft_launcher_ui_egui::TitleBar::Native,
         Rc::default(),
+        None,
         None,
         discord_url,
     )
@@ -244,6 +261,7 @@ fn harness_full(
     bar: artcraft_launcher_ui_egui::TitleBar,
     pictures: Rc<Cell<Pictures>>,
     platform: Option<Platform>,
+    settings_override: Option<Settings>,
     discord_url: Option<&'static str>,
 ) -> (Harness<'static, Option<LauncherUi>>, Rc<RefCell<Vec<Command>>>) {
     struct HeaderHost(artcraft_launcher_ui_egui::TitleBar, Option<&'static str>);
@@ -265,7 +283,7 @@ fn harness_full(
         Some(platform) => Box::new(PlatformFake { inner: fake, platform }),
         None => Box::new(fake),
     });
-    let settings = Settings { view, notify: false, ..Settings::default() };
+    let settings = settings_override.unwrap_or_else(|| Settings { view, notify: false, ..Settings::default() });
     // No `.wgpu()`: it gives every test its own GPU device, and those segfault on parallel test threads (see above).
     // The default renderer creates one only when a test renders.
     let harness = Harness::builder().with_size(egui::vec2(1180.0, 1200.0)).with_pixels_per_point(scale).with_theme(theme).build_ui_state(
@@ -429,6 +447,7 @@ fn windows_package_choice_can_select_portable_and_configures_the_backend() {
         artcraft_launcher_ui_egui::TitleBar::Native,
         Rc::default(),
         Some(Platform { os: Os::Windows, arch: Arch::X64 }),
+        None,
         None,
     );
     h.run_steps(8);
@@ -800,6 +819,30 @@ fn every_table_column_sorts_both_ways() {
     h.run_steps(3);
     let o = order(&h);
     assert_eq!(o.first().map(String::as_str), Some("WordCraft"), "{o:?}");
+}
+
+#[test]
+fn settings_account_signed_out_dark() {
+    let (mut h, _) = account_harness(SuiteAccount::SignedOut, "https://craft.example.com", egui::Theme::Dark);
+    open_settings_account(&mut h);
+    snapshot(&mut h, "artcraft-launcher-settings-account-signed-out");
+    assert!(h.query_by_label("Sign in").is_some());
+}
+
+#[test]
+fn settings_account_signed_in_dark() {
+    let who = SuiteIdentity {
+        display: "Ada Lovelace".into(),
+        email: Some("ada@example.com".into()),
+        service: "https://craft.example.com".into(),
+        linked: Some(true),
+        conversation: None,
+    };
+    let (mut h, _) = account_harness(SuiteAccount::SignedIn(who), "https://craft.example.com", egui::Theme::Dark);
+    open_settings_account(&mut h);
+    snapshot(&mut h, "artcraft-launcher-settings-account-signed-in");
+    h.get_by_label("Ada Lovelace");
+    h.get_by_label("Sign out");
 }
 
 #[test]

@@ -1,6 +1,7 @@
 //! The Settings dialog: a large card in the shape of the app page (see `sheet.rs`), with the
 //! groups of settings in boxes, two columns once the window is wide enough.
 
+use artcraft_launcher_core::protocol::{Command, SuiteAccount};
 use artcraft_launcher_core::{Os, PackageKind};
 use egui::{RichText, Ui, vec2};
 
@@ -110,6 +111,7 @@ impl LauncherUi {
                 let (this, host) = &mut *state;
                 this.settings_install(ui, &mut **host);
                 this.settings_background(ui, &mut **host);
+                this.settings_account(ui);
                 this.settings_community(ui);
             },
         );
@@ -263,6 +265,92 @@ impl LauncherUi {
             {
                 let ctx = ui.ctx().clone();
                 self.toast(&ctx, fmt(tl!("Couldn't change the login item: {e}"), &[("e", &e)]), true);
+            }
+        });
+    }
+
+    /// The suite's shared sign-in.
+    ///
+    /// The launcher is where somebody signs in once for the whole Craft App Suite. The account
+    /// goes in one suite-level folder and the token goes in the operating system's keychain. Every
+    /// Craft App then finds the same session. One sign-out ends it everywhere.
+    ///
+    /// Optional. It stays silent until somebody names a deployment. With the address empty the
+    /// launcher offers nothing further here and makes no request about an account.
+    fn settings_account(&mut self, ui: &mut Ui) {
+        if !self.caps.manage_apps {
+            return;
+        }
+        let t = Tokens::get(ui.ctx());
+        sheet::panel(ui, tl!("Account"), |ui| {
+            ui.label(RichText::new(tl!("Sign in here once. Every Craft app then uses it.")).size(12.0).color(t.muted));
+            ui.add_space(6.0);
+
+            let mut address = self.account_edit.clone().unwrap_or_else(|| self.settings.account_service.clone());
+            ui.label(tl!("CollabCraft address"));
+            let field = egui::TextEdit::singleline(&mut address).hint_text("https://craft.example.com").desired_width(f32::INFINITY);
+            let typing = ui.add(field);
+            if typing.changed() {
+                self.account_edit = Some(address);
+            }
+            // Committed when the field is done with, never per keystroke. Each commit asks the backend
+            // about an account. A half-typed URL is no account.
+            if typing.lost_focus() {
+                self.commit_account_address();
+            }
+
+            let sign_in = |ui: &mut Ui| widgets::button(ui, tl!("Sign in"), Kind::Primary, 0.0).clicked();
+            match self.account.clone() {
+                // Unconfigured has nothing to sign in to. Failed never reaches here: the event handler
+                // reports it and asks the backend again.
+                SuiteAccount::Unconfigured | SuiteAccount::Failed(_) => {}
+                SuiteAccount::SignedOut => {
+                    ui.add_space(8.0);
+                    if sign_in(ui) {
+                        self.send(Command::AccountSignIn);
+                    }
+                }
+                SuiteAccount::Waiting { .. } => {
+                    ui.add_space(8.0);
+                    ui.label(RichText::new(tl!("Your browser is open. Finish signing in there.")).color(t.warn));
+                }
+                SuiteAccount::Unreadable { display, why } => {
+                    ui.add_space(8.0);
+                    ui.label(RichText::new(display.as_str()).family(theme::medium()).color(t.ink_strong));
+                    ui.label(RichText::new(tl!("The shared sign-in couldn't be read.")).size(12.0).color(t.warn));
+                    ui.label(RichText::new(why.as_str()).size(12.0).color(t.muted));
+                    ui.add_space(6.0);
+                    if sign_in(ui) {
+                        self.send(Command::AccountSignIn);
+                    }
+                }
+                SuiteAccount::SignedIn(who) => {
+                    ui.add_space(8.0);
+                    ui.label(RichText::new(who.display.as_str()).family(theme::medium()).color(t.ink_strong));
+                    if let Some(email) = &who.email {
+                        ui.label(RichText::new(email.as_str()).size(12.0).color(t.muted));
+                    }
+                    ui.label(RichText::new(who.service.as_str()).size(12.0).color(t.faint));
+                    // Said here. The alternative is discovering it at the moment of saving.
+                    if let Some(linked) = who.linked {
+                        let (text, color) = if linked { (tl!("Storage connected"), t.good) } else { (tl!("No storage connected"), t.warn) };
+                        ui.label(RichText::new(text).size(12.0).color(color));
+                    }
+                    ui.add_space(6.0);
+                    // Chat with nothing open: the provider's lobby URL from /me. Absent where the
+                    // deployment has no conversation app, so we draw no button rather than a dead one.
+                    if let Some(conv) = &who.conversation {
+                        let label = fmt(&tl!("Open {name}"), &[("name", conv.name.as_str())]);
+                        if widgets::button(ui, &label, Kind::Secondary, 0.0).clicked() {
+                            ui.ctx().open_url(egui::OpenUrl::new_tab(conv.url.clone()));
+                        }
+                        ui.add_space(4.0);
+                    }
+                    if widgets::button(ui, tl!("Sign out"), Kind::Secondary, 0.0).clicked() {
+                        self.send(Command::AccountSignOut);
+                    }
+                    ui.label(RichText::new(tl!("Signing out ends the session for every Craft app.")).size(12.0).color(t.muted));
+                }
             }
         });
     }
