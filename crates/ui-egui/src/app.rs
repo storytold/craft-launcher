@@ -173,6 +173,13 @@ const RESCAN_EVERY: i64 = 5 * 60;
 /// Coming back to the window re-checks, but not more often than this.
 const RESCAN_ON_FOCUS_AFTER: i64 = 30;
 
+/// A periodic update check is due `every` seconds after the last one. The saved time is
+/// hostile (an edited `app.ron`, a clock that ran fast and was later corrected): a time in
+/// the future or a corrupted `i64::MIN` never postpones the check (#774).
+fn update_check_due(last: Option<i64>, now: i64, every: i64) -> bool {
+    last.is_none_or(|t| t > now || now.saturating_sub(t) >= every)
+}
+
 impl LauncherUi {
     pub fn new(ctx: &egui::Context, backend: Box<dyn Backend>, settings: Settings) -> Self {
         let lang = effective_lang(&settings.language);
@@ -325,15 +332,15 @@ impl LauncherUi {
             self.last_detect = now;
         }
         let focused = ctx.input(|i| i.viewport().focused).unwrap_or(true);
-        let came_back = focused && !self.was_focused && now - self.last_detect >= RESCAN_ON_FOCUS_AFTER;
+        let came_back = focused && !self.was_focused && now.saturating_sub(self.last_detect) >= RESCAN_ON_FOCUS_AFTER;
         self.was_focused = focused;
-        if came_back || now - self.last_detect >= RESCAN_EVERY {
+        if came_back || now.saturating_sub(self.last_detect) >= RESCAN_EVERY {
             self.last_detect = now;
             self.backend.send(Command::Detect);
         }
         if let Some(every) = self.settings.check_every.seconds()
             && !self.checking
-            && self.settings.last_check.is_none_or(|t| now - t >= every)
+            && update_check_due(self.settings.last_check, now, every)
         {
             self.backend.send(Command::CheckForUpdates { force: false });
         }
@@ -811,5 +818,29 @@ impl LauncherUi {
                 self.toasts.remove(i);
             }
         });
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::update_check_due;
+
+    const NOW: i64 = 1_791_500_000;
+    const EVERY: i64 = 24 * 60 * 60;
+
+    #[test]
+    fn a_check_is_due_after_its_interval() {
+        assert!(update_check_due(None, NOW, EVERY));
+        assert!(!update_check_due(Some(NOW - EVERY + 1), NOW, EVERY));
+        assert!(update_check_due(Some(NOW - EVERY), NOW, EVERY));
+    }
+
+    #[test]
+    fn a_saved_time_in_the_future_or_at_i64_min_never_postpones_a_check() {
+        // A clock that ran fast and was later corrected, or an edited `app.ron` (#774): the
+        // launcher would sit in the tray for weeks; `i64::MIN` panicked the subtraction.
+        assert!(update_check_due(Some(NOW + 60), NOW, EVERY));
+        assert!(update_check_due(Some(i64::MAX), NOW, EVERY));
+        assert!(update_check_due(Some(i64::MIN), NOW, EVERY));
     }
 }
