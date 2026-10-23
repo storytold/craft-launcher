@@ -73,9 +73,13 @@ fn resolve_missing(path: &Path) -> Result<PathBuf, String> {
 }
 
 fn same_windows_path(left: &Path, right: &Path) -> bool {
+    // `canonicalize` writes `\\?\C:\…` and, for a network share, `\\?\UNC\server\share\…`.
     fn normalized(path: &Path) -> String {
         let text = path.to_string_lossy();
-        let text = text.strip_prefix(r"\\?\").unwrap_or(&text);
+        let text = match text.strip_prefix(r"\\?\UNC\") {
+            Some(share) => format!(r"\\{share}"),
+            None => text.strip_prefix(r"\\?\").unwrap_or(&text).to_string(),
+        };
         text.trim_end_matches(['\\', '/']).to_lowercase()
     }
     normalized(left) == normalized(right)
@@ -460,6 +464,15 @@ fn single_top_folder(files: &[PathBuf]) -> Option<PathBuf> {
 mod tests {
     use super::*;
     use std::io::Write;
+
+    /// A folder on a network share is the same folder after `canonicalize`.
+    #[cfg(windows)]
+    #[test]
+    fn verbatim_paths_match_their_plain_form() {
+        assert!(same_windows_path(Path::new(r"C:\Apps\ArtCraft"), Path::new(r"\\?\C:\apps\artcraft\")));
+        assert!(same_windows_path(Path::new(r"\\server\share\Apps\ArtCraft"), Path::new(r"\\?\UNC\server\share\Apps\ArtCraft")));
+        assert!(!same_windows_path(Path::new(r"C:\Apps\ArtCraft"), Path::new(r"\\?\D:\Apps\ArtCraft")));
+    }
 
     /// Previous files left in the staging folder by a failed update are never cleared by the next one.
     #[test]
