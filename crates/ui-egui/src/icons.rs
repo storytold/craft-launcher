@@ -86,6 +86,25 @@ pub fn social(service: &str) -> Option<ImageSource<'static>> {
     })
 }
 
+/// The small icon a menu row starts with, white so the row can tint it. Lucide, ISC, on its own
+/// 24 px grid; `assets/icons/README.md` and `ATTRIBUTION.md` say where each one came from.
+pub fn menu(name: &str) -> Option<ImageSource<'static>> {
+    Some(match name {
+        "notes" => egui::include_image!("../../../assets/icons/file-text.svg"),
+        "download" => egui::include_image!("../../../assets/icons/download.svg"),
+        "open" => egui::include_image!("../../../assets/icons/play.svg"),
+        "reveal" => egui::include_image!("../../../assets/icons/folder-open.svg"),
+        "reinstall" => egui::include_image!("../../../assets/icons/rotate-ccw.svg"),
+        "uninstall" => egui::include_image!("../../../assets/icons/trash-2.svg"),
+        "releases" => egui::include_image!("../../../assets/icons/tag.svg"),
+        "hide" => egui::include_image!("../../../assets/icons/eye-off.svg"),
+        "unhide" => egui::include_image!("../../../assets/icons/eye.svg"),
+        "website" => egui::include_image!("../../../assets/social/globe.svg"),
+        "github" => egui::include_image!("../../../assets/social/github.svg"),
+        _ => return None,
+    })
+}
+
 /// The ArtCraft "A" mark in blue, as supplied: the launcher's app icon and getartcraft.com's favicon.
 pub fn artcraft_mark() -> ImageSource<'static> {
     egui::include_image!("../../../docs/brand/artcraft-mark.svg")
