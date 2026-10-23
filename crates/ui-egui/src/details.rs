@@ -12,6 +12,7 @@ use artcraft_launcher_core::protocol::Command;
 use egui::{Color32, CornerRadius, Id, Margin, Order, Rect, RichText, Sense, Stroke, Ui, emath::easing, pos2, vec2};
 
 use crate::app::LauncherUi;
+use crate::i18n::{current, tr_ctx};
 use crate::model::AppEntry;
 use crate::theme::{self, Tokens, rgb, tint};
 use crate::views::date_text;
@@ -162,7 +163,7 @@ impl LauncherUi {
                                 ui.set_width(left_w);
                                 ui.spacing_mut().item_spacing.y = 8.0;
                                 for p in details.paragraphs() {
-                                    ui.add(egui::Label::new(RichText::new(p).size(14.5).color(t.ink)).wrap());
+                                    ui.add(egui::Label::new(RichText::new(tr_ctx(current(), details.id, p)).size(14.5).color(t.ink)).wrap());
                                 }
                                 ui.add_space(14.0);
                                 features(ui, details, entry.app, &t);
@@ -186,7 +187,7 @@ impl LauncherUi {
                                 self.gallery(ui, details, &t, app_color);
                                 ui.add_space(8.0);
                                 for p in details.paragraphs() {
-                                    ui.add(egui::Label::new(RichText::new(p).size(14.5).color(t.ink)).wrap());
+                                    ui.add(egui::Label::new(RichText::new(tr_ctx(current(), details.id, p)).size(14.5).color(t.ink)).wrap());
                                 }
                             });
                             ui.vertical(|ui| {
@@ -204,7 +205,7 @@ impl LauncherUi {
                         self.gallery(ui, details, &t, app_color);
                         ui.add_space(8.0);
                         for p in details.paragraphs() {
-                            ui.add(egui::Label::new(RichText::new(p).size(14.5).color(t.ink)).wrap());
+                            ui.add(egui::Label::new(RichText::new(tr_ctx(current(), details.id, p)).size(14.5).color(t.ink)).wrap());
                         }
                         ui.add_space(14.0);
                         features(ui, details, entry.app, &t);
@@ -319,7 +320,7 @@ impl LauncherUi {
                     ui.set_width(text_w);
                     ui.spacing_mut().item_spacing.y = 5.0;
                     widgets::wordmark(ui, app, theme::PAGE_TITLE);
-                    ui.add(egui::Label::new(RichText::new(details.headline).size(15.0).color(t.ink)).wrap());
+                    ui.add(egui::Label::new(RichText::new(tr_ctx(current(), details.id, details.headline)).size(15.0).color(t.ink)).wrap());
                     // "Version 0.5.0 · Oct 8, 2026", or the installed-versus-latest line.
                     let version = crate::views::version_line(entry, &status);
                     if !version.trim().is_empty() {
@@ -364,7 +365,7 @@ impl LauncherUi {
             (tl!("Version"), Some(r.version.as_ref().map_or_else(|| r.tag.clone(), |v| v.to_string()))),
             (tl!("Released"), r.published_at.map(date_text)),
             (tl!("Download"), size),
-            (tl!("Platforms"), Some(details.platforms.to_string())),
+            (tl!("Platforms"), Some(tr_ctx(current(), details.id, details.platforms).to_string())),
         ]
         .into_iter()
         .filter_map(|(label, value)| value.map(|v| (label, v)))
@@ -409,7 +410,11 @@ impl LauncherUi {
                 None => placeholder(ui, pic, Id::new("lightbox-placeholder"), failed.as_deref(), t, true),
             }
             ui.painter().rect_stroke(pic, CornerRadius::ZERO, Stroke::new(1.0, theme::backdrop_ink(40)), egui::StrokeKind::Outside);
-            let caption = if count > 1 { format!("{} · {}/{count}", shot.caption, at + 1) } else { shot.caption.to_string() };
+            let caption = if count > 1 {
+                format!("{} · {}/{count}", tr_ctx(current(), details.id, shot.caption), at + 1)
+            } else {
+                tr_ctx(current(), details.id, shot.caption).to_string()
+            };
             let ink = theme::backdrop_ink(190);
             let galley = widgets::hud_galley(ui, &caption, ink);
             let caption_at = pos2(rect.center().x - galley.size().x / 2.0, pic.bottom() + 14.0);
@@ -464,7 +469,7 @@ impl LauncherUi {
         ui.painter().rect_stroke(pic, CornerRadius::ZERO, t.hairline(), egui::StrokeKind::Inside);
         let count = details.shots.len();
         if count < 2 {
-            widgets::hud(ui, current.caption, t.faint);
+            widgets::hud(ui, tr_ctx(current(), details.id, current.caption), t.faint);
             return;
         }
         // Previous and next, over the sides of the picture.
@@ -477,7 +482,7 @@ impl LauncherUi {
         if arrow_button(ui, next, Id::new("shot-next"), false, tl!("Next picture (→)"), t) {
             self.flip_shot(count, true);
         }
-        widgets::hud(ui, &format!("{} · {}/{count}", current.caption, self.detail_shot.min(count - 1) + 1), t.faint);
+        widgets::hud(ui, &format!("{} · {}/{count}", tr_ctx(current(), details.id, current.caption), self.detail_shot.min(count - 1) + 1), t.faint);
         let gap = 8.0;
         let thumb_w = ((w - gap * (count as f32 - 1.0)) / count as f32).floor().max(1.0);
         ui.horizontal(|ui| {
@@ -502,7 +507,7 @@ impl LauncherUi {
                 }
                 let stroke = if selected { Stroke::new(2.0, app_color) } else { t.hairline() };
                 ui.painter().rect_stroke(resp.rect, CornerRadius::ZERO, stroke, egui::StrokeKind::Inside);
-                if resp.on_hover_cursor(egui::CursorIcon::PointingHand).on_hover_text(shot.caption).clicked() {
+                if resp.on_hover_cursor(egui::CursorIcon::PointingHand).on_hover_text(tr_ctx(current(), details.id, shot.caption)).clicked() {
                     self.detail_shot = i;
                 }
             }
@@ -564,9 +569,9 @@ fn features(ui: &mut Ui, details: &AppDetails, app: &CraftApp, t: &Tokens) {
             ui.spacing_mut().item_spacing.y = 3.0;
             ui.horizontal(|ui| {
                 widgets::hud(ui, &format!("{:02}", i + 1), t.app_ink(app));
-                ui.label(RichText::new(f.title).size(15.0).family(theme::semibold()).color(t.ink_strong));
+                ui.label(RichText::new(tr_ctx(current(), details.id, f.title)).size(15.0).family(theme::semibold()).color(t.ink_strong));
             });
-            ui.add(egui::Label::new(RichText::new(f.text).size(13.5).color(t.muted)).wrap());
+            ui.add(egui::Label::new(RichText::new(tr_ctx(current(), details.id, f.text)).size(13.5).color(t.muted)).wrap());
         });
     }
 }

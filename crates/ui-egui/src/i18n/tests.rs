@@ -547,3 +547,45 @@ fn complete_catalogs_translate_package_formats() {
         }
     }
 }
+
+#[test]
+fn korean_registry_locale_and_single_plural_form() {
+    assert_eq!(Lang::from_code("ko"), Some(Lang::KO));
+    assert_eq!(Lang::from_code("KO"), Some(Lang::KO));
+    assert_eq!(Lang::KO.script(), Some(super::Script::Korean));
+    assert!(Lang::KO.complete_menus());
+    for tag in ["ko", "ko-KR", "ko_KR.UTF-8", "KO-kr"] {
+        assert_eq!(lang_from_tag(tag), Some(Lang::KO), "{tag}");
+    }
+    for n in [0, 1, 2, 5, 21, 100] {
+        assert_eq!((LANGUAGES[Lang::KO.index()].plural)(n), 0);
+    }
+    let settings = crate::Settings { language: "ko".to_string(), ..crate::Settings::default() };
+    let saved = serde_json::to_string(&settings).unwrap();
+    let restored: crate::Settings = serde_json::from_str(&saved).unwrap();
+    assert_eq!(restored.language, "ko");
+}
+
+/// Editorial descriptions are dynamic source data, so the literal scanner cannot see them.
+#[test]
+fn korean_covers_every_app_description() {
+    for details in artcraft_launcher_core::details::DETAILS {
+        let mut strings = vec![details.headline, details.platforms];
+        strings.extend(details.paragraphs());
+        for feature in details.features {
+            strings.extend([feature.title, feature.text]);
+        }
+        strings.extend(details.shots.iter().map(|shot| shot.caption));
+        for source in strings {
+            assert!(
+                LANGUAGES[Lang::KO.index()]
+                    .catalog()
+                    .contextual(details.id, source)
+                    .or_else(|| LANGUAGES[Lang::KO.index()].catalog().plain(source))
+                    .is_some(),
+                "Korean description missing: {} / {source:?}",
+                details.id
+            );
+        }
+    }
+}

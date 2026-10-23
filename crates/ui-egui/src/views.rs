@@ -505,7 +505,7 @@ impl LauncherUi {
             }
         }
         if let Some(details) = AppDetails::by_id(id) {
-            crate::card_parts::blurb(ui, details.headline, t.muted, 4);
+            crate::card_parts::blurb(ui, tr_ctx(current(), app.id, details.headline), t.muted, 4);
         }
         if let Some(line) = crate::card_parts::last_updated(&entry) {
             ui.add_space(6.0);

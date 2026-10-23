@@ -1,0 +1,547 @@
+	Launcher	런처
+	Craft App Suite	Craft 앱 모음
+	Open Source Tools for Creatives, Makers, and Builders	창작자와 제작자를 위한 오픈 소스 도구
+	Settings	설정
+	Check for updates	업데이트 확인
+	Grid	격자
+	Table	표
+	Show apps as cards	앱을 카드로 표시
+	Show apps as a table	앱을 표로 표시
+	All	전체
+	Updates	업데이트
+	Not installed	미설치
+	Search apps	앱 검색
+	Sort	정렬
+	Suite order	기본 앱 순서
+	Name	이름
+	Inspired by	참고한 앱
+	Status	상태
+	Installed version	설치된 버전
+	Latest version	최신 버전
+	Newest release	최근 출시순
+	Discord	Discord
+	GitHub	GitHub
+	Website	웹사이트
+	Classic apps	기존 앱
+	New apps	새 앱
+	NEW	신규
+	Install	설치
+	Update to {v}	{v} 버전으로 업데이트
+	Open	열기
+	Download for {os}	{os}용 다운로드
+	Download	다운로드
+	Coming soon	출시 예정
+	Checking…	확인 중…
+	Not available	사용 불가
+	Offline	오프라인
+	Downloading {done} of {total}	{total} 중 {done} 다운로드 중
+	Downloading…	다운로드 중…
+	Reconnecting…	다시 연결 중…
+	Verifying…	검증 중…
+	Installing, then restarting…	설치 후 다시 시작하는 중…
+	Installing…	설치 중…
+	Removing…	제거 중…
+	Pause download	다운로드 일시정지
+	Cancel download	다운로드 취소
+	Resume download	다운로드 재개
+	Discard download	다운로드 파일 삭제
+	Release notes	출시 정보
+	Show in Finder	Finder에서 보기
+	Show in Explorer	탐색기에서 보기
+	Show in Files	파일 앱에서 보기
+	Reinstall	다시 설치
+	Uninstall…	제거…
+	All releases	모든 버전
+	ArtCraft Launcher {version} is available.	ArtCraft Launcher {version} 버전을 사용할 수 있습니다.
+	Dismiss	닫기
+	Update and restart	업데이트 후 다시 시작
+	A new version is available. Would you like to relaunch with the updated version?	새 버전이 있습니다. 업데이트된 버전으로 다시 시작할까요?
+	A new version is available. Download it to replace this version?	새 버전이 있습니다. 다운로드하여 현재 버전을 교체할까요?
+	Later	나중에
+	What's new	새로운 기능
+	No notes were published with this release.	이 버전에는 출시 정보가 없습니다.
+	Released {date}	출시일: {date}
+	Open on GitHub	GitHub에서 열기
+	Close	닫기
+	ArtCraft Launcher {version}	ArtCraft Launcher {version}
+	Only when I ask	직접 확인할 때만
+	Automatically download and install updates	업데이트 자동 다운로드 및 설치
+	Notify me when an installed app has an update	설치된 앱의 업데이트 알림 받기
+	Include pre-releases (betas and release candidates)	미리 보기 버전 포함(베타 및 출시 후보)
+	Installing on Linux	Linux 설치
+	Installing on Windows	Windows 설치
+	Install new apps as	새 앱 설치 형식
+	System package (recommended)	시스템 패키지(권장)
+	Updates always use the format an app was installed with.	업데이트는 앱을 설치할 때 사용한 형식으로 진행합니다.
+	Running in the background	백그라운드 실행
+	Keep running in the tray when the window is closed	창을 닫아도 트레이에서 계속 실행
+	Show the window on the current desktop	현재 데스크톱에 창 표시
+	Start ArtCraft Launcher when I log in	로그인할 때 ArtCraft Launcher 시작
+	Community	커뮤니티
+	Questions, ideas and news from the ArtCraft team	ArtCraft 팀에 전하는 질문과 아이디어, 새로운 소식
+	Appearance	화면 모양
+	Quit ArtCraft Launcher	ArtCraft Launcher 종료
+	Done	완료
+	Uninstall {name}?	{name} 앱을 제거할까요?
+	The app will be moved to the Trash. Your documents and settings stay.	앱을 휴지통으로 이동합니다. 문서와 설정은 유지됩니다.
+	Windows will remove it like any installed program. Your documents and settings stay.	Windows에서 다른 설치 프로그램과 같은 방식으로 제거합니다. 문서와 설정은 유지됩니다.
+	Your system's package manager will remove it, and may ask for your password. Your documents and settings stay.	시스템 패키지 관리자가 제거하며, 암호를 요청할 수 있습니다. 문서와 설정은 유지됩니다.
+	The app will be removed. Your documents and settings stay.	앱을 제거합니다. 문서와 설정은 유지됩니다.
+	Uninstall	제거
+	Cancel	취소
+	Checked {ago}	{ago} 확인
+	just now	방금
+	yesterday	어제
+	{month} {day}, {year}	{year}년 {month} {day}일
+	Automatically	자동
+	Every Craft app	모든 Craft 앱
+	Apps on this computer	이 컴퓨터에 설치된 앱
+	Installed apps with a newer version	새 버전이 있는 설치된 앱
+	Apps you can install	설치할 수 있는 앱
+	Hide App	앱 숨기기
+	Unhide App	앱 숨기기 해제
+	Hidden Apps	숨긴 앱
+	Apps you hid	숨긴 앱 목록
+	Checked {ago} · using {sources}	{ago} 확인 · 출처: {sources}
+	{a} and {b}	{a} 및 {b}
+	Join the Discord	Discord 참여
+	Learn more	자세히 알아보기
+	Minimize	최소화
+	Maximize	최대화
+	Restore	이전 크기로
+	New	새로 만들기
+	OK	확인
+	Open link	링크 열기
+	Update	업데이트
+	{name} icon	{name} 아이콘
+	Loading ArtCraft Launcher…	ArtCraft Launcher 불러오는 중…
+	Cancel update	업데이트 취소
+	Stop waiting; the update can be started again later	대기를 중단합니다. 업데이트는 나중에 다시 시작할 수 있습니다.
+	Download again	다시 다운로드
+	Install cancelled	설치 취소됨
+	Install cancelled. The download is kept for the next try.	설치가 취소되었습니다. 다음 시도를 위해 다운로드 파일을 보관합니다.
+	Update cancelled	업데이트 취소됨
+	Uninstall cancelled	제거 취소됨
+	Retry install	설치 다시 시도
+	Retry update to {version}	{version} 버전 업데이트 다시 시도
+	The download is still here. It's checked again, then installed.	다운로드 파일이 남아 있습니다. 다시 검증한 후 설치합니다.
+	Waiting for another app…	다른 앱을 기다리는 중…
+	Waiting for other installs…	다른 설치를 기다리는 중…
+	Installer (.msi)	설치 프로그램(.msi)
+	Portable (.zip)	포터블(.zip)
+	Disk image (.dmg)	디스크 이미지(.dmg)
+	Debian package (.deb)	Debian 패키지(.deb)
+	RPM package (.rpm)	RPM 패키지(.rpm)
+	Arch package (.pkg.tar.zst)	Arch 패키지(.pkg.tar.zst)
+	Flatpak bundle	Flatpak 번들
+	Tarball (.tar.gz)	압축 파일(.tar.gz)
+photocraft	Image editing	이미지 편집
+vectorcraft	Vector illustration	벡터 일러스트레이션
+filmcraft	Video editing, color and sound	영상 편집, 색보정 및 사운드
+lightcraft	Photo library and raw development	사진 라이브러리 및 RAW 현상
+pdfcraft	Reading, organizing and protecting PDFs	PDF 읽기, 정리 및 보호
+effectcraft	Motion graphics and visual effects	모션 그래픽 및 시각 효과
+designcraft	Page layout and publishing	페이지 레이아웃 및 출판
+wordcraft	Writing and document design	글쓰기 및 문서 디자인
+deckcraft	Presentations and slide shows	프레젠테이션 및 슬라이드 쇼
+gridcraft	Spreadsheets and data	스프레드시트 및 데이터
+cadcraft	Computer-aided design and drafting	컴퓨터 지원 설계 및 제도
+soundcraft	Recording, editing and mixing audio	오디오 녹음, 편집 및 믹싱
+figcraft	Interface design and prototyping	인터페이스 디자인 및 프로토타이핑
+month	Jan	1월
+month	Feb	2월
+month	Mar	3월
+month	Apr	4월
+month	May	5월
+month	Jun	6월
+month	Jul	7월
+month	Aug	8월
+month	Sep	9월
+month	Oct	10월
+month	Nov	11월
+month	Dec	12월
+	Not checked yet	아직 확인하지 않음
+	GitHub's hourly limit was reached; full details return in {min} min	GitHub의 시간당 요청 한도에 도달했습니다. {min}분 후 전체 정보를 다시 확인할 수 있습니다.
+	GitHub limit hit; back in {min} min	GitHub 요청 한도에 도달했습니다. {min}분 후 재개합니다.
+	Installing for {platform}	{platform}용 설치 중
+	Downloads for {platform}	{platform}용 다운로드
+	No downloads for this system	이 시스템용 다운로드가 없습니다.
+	Join the ArtCraft community on Discord	Discord에서 ArtCraft 커뮤니티 참여
+	ArtCraft on {name}	{name}의 ArtCraft
+	Couldn't open {name}: {e}	{name}을(를) 열 수 없습니다: {e}
+	Download cancelled	다운로드 취소됨
+	Available to install	설치 가능
+	Available	사용 가능
+	Installed · up to date	설치됨 · 최신 버전
+	Update available	업데이트 가능
+	Installed	설치됨
+	installed	설치됨
+	Not available here	이 환경에서 사용 불가
+	Updating…	업데이트 중…
+	Update paused	업데이트 일시정지됨
+	Download paused	다운로드 일시정지됨
+	{version} installed → {latest} released	설치된 버전 {version} → 출시된 버전 {latest}
+	Version {version}	버전 {version}
+	{installed} installed · latest {latest}	설치된 버전 {installed} · 최신 버전 {latest}
+	Installed · latest {latest}	설치됨 · 최신 버전 {latest}
+	Version {version} installed	버전 {version} 설치됨
+	Version {latest}	버전 {latest}
+	No release published yet	아직 출시된 버전이 없습니다.
+	ArtCraft Launcher	ArtCraft Launcher
+	App	앱
+	Latest	최신
+	Released	출시일
+	Auto	자동
+	Language	언어
+	Ascending	오름차순
+	Descending	내림차순
+	Click to reverse the order	클릭하여 순서 뒤집기
+	Click to sort by this column	클릭하여 이 열 기준으로 정렬
+	Like {name}	{name}과(와) 유사
+	{done} of {total}	{total} 중 {done}
+	Downloading	다운로드 중
+	Verifying checksum…	체크섬 검증 중…
+	Resume	재개
+	{done} of {total} downloaded	{total} 중 {done} 다운로드됨
+	{done} downloaded	{done} 다운로드됨
+	Checking for updates…	업데이트 확인 중…
+	Downloads the new version, replaces this one and opens it again	새 버전을 다운로드하여 현재 버전을 교체한 후 다시 엽니다.
+	Couldn't check for updates: {f}	업데이트를 확인할 수 없습니다: {f}
+	Website (coming soon)	웹사이트(준비 중)
+	GitHub repository	GitHub 저장소
+	ArtCraft	ArtCraft
+	Update 1 app	앱 1개 업데이트
+	Update all ({count})	모두 업데이트({count}개)
+	⊞  Grid	⊞  격자
+	☰  Table	☰  표
+	🔍  Search apps	🔍  앱 검색
+	{name} {version}	{name} {version}
+	Match system	시스템 설정 따르기
+	Dark	어둡게
+	Light	밝게
+	Full changelog	전체 변경 이력
+	link	링크
+	No apps match	검색 조건에 맞는 앱이 없습니다.
+	Open ArtCraft Launcher to update.	업데이트하려면 ArtCraft Launcher를 여세요.
+	{name} {v} is available	{name} {v} 버전을 사용할 수 있습니다.
+	{count} updates are available	업데이트 {count}개를 사용할 수 있습니다.
+	These notes weren't fetched (GitHub's request limit was reached). They're on the release page.	GitHub 요청 한도에 도달하여 출시 정보를 가져오지 못했습니다. 출시 페이지에서 확인할 수 있습니다.
+	When on, opening the launcher from the menu bar brings its window to the desktop you're on. When off, macOS switches you to the desktop the window was on.	켜면 메뉴 막대에서 런처를 열 때 현재 데스크톱으로 창을 가져옵니다. 끄면 macOS가 창이 있던 데스크톱으로 이동합니다.
+	Couldn't change the login item: {e}	로그인 항목을 변경할 수 없습니다: {e}
+column	App	앱
+column	Installed	설치된 버전
+column	Latest	최신 버전
+column	Released	출시일
+filter	Installed	설치됨
+	App details	앱 상세 정보
+	Close (Esc)	닫기(Esc)
+	Features	기능
+	Latest release	최신 출시 버전
+	Version	버전
+	Platforms	플랫폼
+	Releases	출시 버전
+	Enlarge picture	이미지 확대
+	Click to enlarge	클릭하여 확대
+	Previous picture (←)	이전 이미지(←)
+	Next picture (→)	다음 이미지(→)
+	Loading pictures…	이미지 불러오는 중…
+	Pictures couldn't be loaded. Reopen this page to try again.	이미지를 불러올 수 없습니다. 이 페이지를 다시 열어 재시도하세요.
+	{name} details	{name} 상세 정보
+@plural	{n} app|{n} apps	앱 {n}개
+@plural	{n} min ago|{n} min ago	{n}분 전
+@plural	{n} h ago|{n} h ago	{n}시간 전
+@plural	{n} day ago|{n} days ago	{n}일 전
+@msg	Couldn't open {name}: {e}	{name}을(를) 열 수 없습니다: {e}
+@msg	Download cancelled	다운로드 취소됨
+@msg	{name} updated to {version}	{name}이(가) {version} 버전으로 업데이트되었습니다.
+@msg	{name} installed: {version}	{name} 설치됨: {version}
+@msg	{name} updated to {version} (this release publishes no checksum, so only its size was checked)	{name}이(가) {version} 버전으로 업데이트되었습니다(이 버전은 체크섬이 공개되지 않아 크기만 확인했습니다).
+@msg	{name} installed: {version} (this release publishes no checksum, so only its size was checked)	{name} 설치됨: {version}(이 버전은 체크섬이 공개되지 않아 크기만 확인했습니다).
+@msg	{name} was removed	{name}이(가) 제거되었습니다.
+@msg	{name} is running. Quit it, then try again.	{name}이(가) 실행 중입니다. 종료한 후 다시 시도하세요.
+@msg	{name} was installed from the {repo} repository or the AUR ({pkg}). Update it with {cmd} or sudo pacman -Syu	{name}은(는) {repo} 저장소 또는 AUR({pkg})에서 설치되었습니다. {cmd} 또는 sudo pacman -Syu로 업데이트하세요.
+@msg	{name} was installed from the {repo} repository or the AUR ({pkg}). Update it with your AUR helper (for example: yay -S {pkg}) or sudo pacman -Syu	{name}은(는) {repo} 저장소 또는 AUR({pkg})에서 설치되었습니다. AUR 도우미(예: yay -S {pkg}) 또는 sudo pacman -Syu로 업데이트하세요.
+@msg	{name} was installed from the AUR ({pkg}). Update it with {cmd}	{name}은(는) AUR({pkg})에서 설치되었습니다. {cmd}로 업데이트하세요.
+@msg	{name} was installed from the AUR ({pkg}). Update it with your AUR helper (for example: yay -S {pkg})	{name}은(는) AUR({pkg})에서 설치되었습니다. AUR 도우미(예: yay -S {pkg})로 업데이트하세요.
+@id	app.install	설치
+@id	app.update	{v} 버전으로 업데이트
+@id	app.open	열기
+@id	app.download	{os}용 다운로드
+@id	app.reveal	Finder에서 보기
+@id	app.reinstall	다시 설치
+@id	app.uninstall	제거…
+@id	app.notes	출시 정보
+@id	app.website	웹사이트
+@id	app.github	GitHub 저장소
+@id	app.releases	모든 버전
+@id	launcher.update	업데이트 후 다시 시작
+@id	launcher.download	다운로드
+@id	launcher.notes	새로운 기능
+@id	launcher.dismiss	닫기
+@id	settings.open	설정
+@id	settings.quit	ArtCraft Launcher 종료
+@id	view.grid	격자
+@id	view.table	표
+@id	filter.all	전체
+@id	filter.installed	설치됨
+@id	filter.updates	업데이트
+@id	filter.notinstalled	미설치
+@id	sort.suite	기본 앱 순서
+@id	sort.name	이름
+@id	sort.inspired	참고한 앱
+@id	sort.status	상태
+@id	sort.installed	설치된 버전
+@id	sort.latest	최신 버전
+@id	sort.released	최근 출시 버전
+@id	help.discord	Discord
+@id	help.github	GitHub
+@id	help.website	웹사이트
+@id	update.check	업데이트 확인
+@id	update.check_auto	업데이트 자동 확인
+@id	update.notify	설치된 앱의 업데이트 알림 받기
+@id	update.prereleases	미리 보기 버전 포함(베타 및 출시 후보)
+@id	linux.preferred_kind	새 앱 설치 형식
+@id	tray.close_to_tray	창을 닫아도 트레이에서 계속 실행
+@id	tray.show_on_current_desktop	현재 데스크톱에 창 표시
+@id	tray.login_item	로그인할 때 ArtCraft Launcher 시작
+@id	appearance.theme	화면 모양
+	Show ArtCraft Launcher	ArtCraft Launcher 표시
+	Check for Updates	업데이트 확인
+	Visit getartcraft.com	getartcraft.com 방문
+	ArtCraft on GitHub	GitHub의 ArtCraft
+	Join the ArtCraft Discord	ArtCraft Discord 참여
+@plural	ArtCraft Launcher · {n} update available|ArtCraft Launcher · {n} updates available	ArtCraft Launcher · 업데이트 {n}개 가능
+	Install folder	설치 폴더
+	Default install folder	기본 설치 폴더
+	System default	시스템 기본값
+	Browse…	찾아보기…
+	Use default	기본값 사용
+	New installs use this folder. Updates stay in their current location.	새 앱은 이 폴더에 설치합니다. 업데이트는 기존 설치 위치를 유지합니다.
+	Custom folders use AppImage on Linux.	Linux에서 사용자 지정 폴더에는 AppImage를 사용합니다.
+	On Linux, custom folders use AppImage format.	Linux에서 사용자 지정 폴더에 설치할 때는 AppImage 형식을 사용합니다.
+	The system manages install locations here.	이 환경에서는 시스템이 설치 위치를 관리합니다.
+@msg	couldn't use install folder {path}: {reason}	설치 폴더 {path}을(를) 사용할 수 없습니다: {reason}
+@msg	this release has no AppImage for a custom install folder	이 버전에는 사용자 지정 설치 폴더용 AppImage가 없습니다.
+@msg	custom install folders aren't supported on this system	이 시스템은 사용자 지정 설치 폴더를 지원하지 않습니다.
+@msg	{path} already exists and wasn't installed by ArtCraft Launcher	{path}이(가) 이미 존재하며 ArtCraft Launcher로 설치된 항목이 아닙니다.
+@msg	couldn't move {path} to Trash ({reason}). Remove it in Finder instead.	{path}을(를) 휴지통으로 이동할 수 없습니다({reason}). Finder에서 직접 제거하세요.
+	Apps are placed inside this folder.	앱이 이 폴더 안에 배치됩니다.
+	Replace what's there?	기존 항목을 교체할까요?
+	{path} already exists. Installing {name} will overwrite it.	{path}이(가) 이미 존재합니다. {name}을(를) 설치하면 덮어씁니다.
+	Replace	교체
+	Recently updated	최근 업데이트순
+	Name (A–Z)	이름 오름차순
+	Name (Z–A)	이름 내림차순
+	Frequently used	자주 사용한 순
+	Next app	다음 앱
+	Previous app	이전 앱
+	Show {n} more changes	변경 사항 {n}개 더 보기
+	Last updated: {date}	최근 업데이트: {date}
+column	Version	버전
+	The image editor you already know how to use.	이미 익숙한 방식으로 사용하는 이미지 편집기.
+	Layers, masks, adjustment layers, layer styles, type, vectors and brushes in a native app written in Rust. Open source, offline, and yours.	레이어, 마스크, 조정 레이어, 레이어 스타일, 문자, 벡터 및 브러시를 갖춘 Rust 네이티브 앱입니다. 오픈 소스이며 오프라인에서 자유롭게 사용할 수 있습니다.
+	PhotoCraft keeps the menus, shortcuts and panels your hands already know, so there is nothing to relearn.	PhotoCraft는 손에 익은 메뉴, 단축키, 패널을 그대로 유지하여 새로 배울 필요가 없습니다.
+	Native GPU canvas	네이티브 GPU 캔버스
+	No Electron and no web view: a fast native compositor.	Electron이나 웹 뷰 없이 작동하는 빠른 네이티브 합성 엔진.
+	Real layered files	레이어를 유지하는 파일
+	Opens and saves layered PSD and PSB documents.	레이어가 있는 PSD 및 PSB 문서를 열고 저장합니다.
+	Non-destructive editing	비파괴 편집
+	Adjustment layers, live-preview filters, smart objects and layer styles.	조정 레이어, 실시간 미리 보기 필터, 고급 개체 및 레이어 스타일.
+	On-device selection	기기 내 선택 기능
+	Subject and object selection and mask refinement run locally.	피사체와 개체 선택 및 마스크 다듬기를 로컬에서 실행합니다.
+	Serious color	정교한 색상 처리
+	8-, 16- and 32-bit RGB, CMYK, Lab and Grayscale, with ICC color management and soft proofing.	8·16·32비트 RGB, CMYK, Lab 및 회색조와 ICC 색상 관리 및 소프트 교정을 지원합니다.
+	Curves and type layers	곡선 및 문자 레이어
+	Levels with a live histogram	실시간 히스토그램이 있는 레벨
+	Layer styles on live type	편집 가능한 문자에 적용한 레이어 스타일
+	Selections and masked adjustments	선택 영역 및 마스크 조정
+	Vector illustration, reimagined in pure Rust.	순수 Rust로 새롭게 구현한 벡터 일러스트레이션.
+	A native vector illustration app with the pen, panels and shortcuts illustrators expect. Open source, and it also runs in a browser.	일러스트레이터에게 익숙한 펜, 패널 및 단축키를 갖춘 네이티브 벡터 일러스트레이션 앱입니다. 오픈 소스이며 브라우저에서도 실행됩니다.
+	The workflow you know	익숙한 작업 방식
+	Pen, direct selection, shape booleans, snapping guides and an appearance panel, laid out the way you expect.	펜, 직접 선택, 도형 불리언 연산, 스냅 안내선 및 모양 패널을 익숙한 구성으로 제공합니다.
+	Genuinely fast	뛰어난 속도
+	Drawings with thousands of shapes stay responsive on a retina display.	수천 개의 도형이 있는 그림도 레티나 디스플레이에서 빠르게 반응합니다.
+	Booleans that don't fail	실패하지 않는 불리언 연산
+	Shape booleans work on the exact curves, so there is no "cannot perform operation", and undo is unlimited.	도형 불리언 연산을 정확한 곡선에서 수행하여 "작업을 수행할 수 없음" 오류가 없으며 실행 취소도 무제한입니다.
+	Live, editable effects	실시간으로 편집하는 효과
+	Blends, envelope distort, gradient mesh, repeats, glows and drop shadows all stay editable.	블렌드, 외피 왜곡, 그레이디언트 메시, 반복, 광선 및 그림자를 계속 편집할 수 있습니다.
+	Image tracing	이미지 추적
+	Turn raster images into clean vector paths, with presets for the common cases.	일반적인 용도에 맞는 사전 설정으로 래스터 이미지를 깔끔한 벡터 패스로 변환합니다.
+	Open formats	개방형 형식
+	Native JSON documents, SVG and PDF import and export, and PNG, JPEG and WebP output.	기본 JSON 문서, SVG 및 PDF 가져오기·내보내기와 PNG, JPEG 및 WebP 출력을 지원합니다.
+	The Neon Drive poster	Neon Drive 포스터
+	Live blends	실시간 블렌드
+	A feature sheet and the Layers panel	기능 소개 시트와 레이어 패널
+	Pathfinder and exact booleans	패스파인더 및 정확한 불리언 연산
+	Professional video editing, rebuilt from scratch.	처음부터 새롭게 구현한 전문 비디오 편집.
+	A native video editor written in pure Rust, with source and program monitors, a real timeline and every trim mode.	소스 및 프로그램 모니터, 정교한 타임라인과 모든 트림 모드를 갖춘 순수 Rust 네이티브 비디오 편집기입니다.
+	A timeline you already know	이미 익숙한 타임라인
+	Source and program monitors, three-point editing, every trim mode and J/K/L trimming.	소스 및 프로그램 모니터, 3점 편집, 모든 트림 모드 및 J/K/L 트리밍.
+	Frame-exact time	프레임 단위로 정확한 시간
+	An integer timebase keeps 23.976 and 29.97 drop-frame footage exact, with no drift.	정수 시간 기준으로 23.976 및 29.97 드롭 프레임 푸티지를 오차 누적 없이 정확하게 유지합니다.
+	Its own codecs	자체 코덱
+	No FFmpeg inside: native support for H.264, HEVC, ProRes, VP9, AAC and Opus.	FFmpeg 없이 H.264, HEVC, ProRes, VP9, AAC 및 Opus를 네이티브로 지원합니다.
+	Color grading	색상 그레이딩
+	Curves, color wheels, HSL secondaries, LUTs and HDR and log workflows, with scopes to check the result.	곡선, 색상 휠, HSL 보조 색상, LUT, HDR 및 로그 작업 방식과 결과 확인용 스코프.
+	Effects and keyframes	효과 및 키프레임
+	Video effects and transitions, keyframes with value and velocity graphs, and a linear-light GPU compositor.	비디오 효과와 전환, 값 및 속도 그래프가 있는 키프레임과 선형 광원 GPU 합성 엔진.
+	Broadcast-ready audio	방송용 오디오
+	EBU R128 loudness meters, a mixer with automation and native audio effects.	EBU R128 음량 측정기, 오토메이션 믹서 및 네이티브 오디오 효과.
+	The Color workspace, with scopes	스코프가 있는 색상 작업 영역
+	The Assembly workspace	어셈블리 작업 영역
+	Keyframes in Effect Controls	효과 컨트롤의 키프레임
+	Your photos. Your pixels. Your machine.	나의 사진. 나의 픽셀. 나의 컴퓨터.
+	A fast photo library and non-destructive raw developer, written from scratch in pure Rust. No account, no cloud, no telemetry and no subscription.	처음부터 순수 Rust로 만든 빠른 사진 라이브러리 및 비파괴 RAW 현상 도구입니다. 계정, 클라우드, 사용 정보 수집 및 구독이 없습니다.
+	Non-destructive by design	처음부터 비파괴 방식
+	A wide-gamut, 32-bit float pipeline that never touches your originals.	원본을 건드리지 않는 광색역 32비트 부동소수점 처리 파이프라인.
+	Every control you reach for	필요한 모든 조정 도구
+	Light, color, effects, tone curve, a color mixer, color grading wheels and built-in presets.	빛, 색상, 효과, 톤 곡선, 색상 믹서, 색상 그레이딩 휠 및 기본 제공 사전 설정.
+	Precise masking	정밀한 마스킹
+	Brush, gradient and range masks, plus sky, subject and background masks.	브러시, 그레이디언트, 범위 마스크와 하늘, 피사체 및 배경 마스크.
+	Native raw decoding	네이티브 RAW 디코딩
+	Pure-Rust decoders for the main camera raw formats: DNG, CR2, ARW, NEF, RAF, RW2, PEF and ORF.	주요 카메라 RAW 형식인 DNG, CR2, ARW, NEF, RAF, RW2, PEF 및 ORF용 순수 Rust 디코더.
+	A library that keeps up	빠르게 반응하는 라이브러리
+	Albums, ratings, flags and search, with grids that stay smooth on large catalogs.	앨범, 평점, 플래그 및 검색을 제공하며 대규모 카탈로그에서도 격자가 부드럽게 작동합니다.
+	Instant feedback	즉각적인 반영
+	The GPU pipeline updates the preview as you move a slider, even on large raw files.	대용량 RAW 파일에서도 슬라이더를 움직이면 GPU 파이프라인이 미리 보기를 즉시 업데이트합니다.
+	The Edit view	편집 보기
+	The tone curve	톤 곡선
+	Color grading wheels	색상 그레이딩 휠
+	A radial mask over a sky mask	하늘 마스크 위의 방사형 마스크
+	The open-source PDF workbench.	오픈 소스 PDF 작업 도구.
+	Read, organize, combine, split and secure PDFs in a fast, native app written in Rust from the ground up. No account, no telemetry and no cloud.	처음부터 Rust로 만든 빠른 네이티브 앱에서 PDF를 읽고 구성하고 결합하고 분할하고 보호하세요. 계정, 사용 정보 수집 및 클라우드가 없습니다.
+	Faithful rendering	원본에 충실한 렌더링
+	World scripts, vertical Japanese, color emoji and transparency.	세계 각지의 문자, 일본어 세로쓰기, 컬러 이모지 및 투명도.
+	Search as you type	입력하면서 검색
+	Instant find, and text selection that follows the document's real reading order.	즉시 검색하며 문서의 실제 읽기 순서를 따르는 텍스트 선택.
+	Organize like cards	카드처럼 구성
+	Rotate, delete, insert and reorder pages, with deep undo behind every change.	페이지 회전, 삭제, 삽입 및 순서 변경을 제공하며 모든 변경을 여러 단계로 실행 취소할 수 있습니다.
+	Combine, extract, split	결합, 추출, 분할
+	Assemble and break apart documents while keeping links, form fields, layers and bookmarks intact.	링크, 양식 필드, 레이어 및 책갈피를 유지하면서 문서를 조합하거나 분리합니다.
+	Fearless saves	안심하고 저장
+	Incremental, atomic saves with autosave and crash recovery.	자동 저장 및 비정상 종료 복구를 갖춘 증분·원자적 저장.
+	Built-in security	내장 보안
+	Opens files from RC4 to AES-256 encryption and honors the author's permissions.	RC4부터 AES-256까지 암호화된 파일을 열고 작성자가 설정한 권한을 준수합니다.
+	Motion graphics and visual effects, in pure Rust.	순수 Rust로 구현한 모션 그래픽 및 시각 효과.
+	A native compositor with compositions, layers, keyframes, effects, expressions, 3D cameras and lights, and a render queue. Young, moving fast, and already usable.	컴포지션, 레이어, 키프레임, 효과, 표현식, 3D 카메라와 조명 및 렌더링 대기열을 갖춘 네이티브 합성 앱입니다. 초기 단계지만 빠르게 발전하고 있으며 이미 사용할 수 있습니다.
+	Animate the way you know	익숙한 방식의 애니메이션
+	Familiar panels and keyframes (linear, bezier, hold and eased), with a graph editor for value and speed curves.	익숙한 패널과 키프레임(선형, 베지어, 고정 및 이즈), 값과 속도 곡선용 그래프 편집기.
+	Layers of every kind	다양한 레이어
+	Solids, shapes, text, footage, nested compositions, nulls and adjustment layers, with parenting, track mattes and blend modes.	단색, 모양, 텍스트, 푸티지, 중첩 컴포지션, 널 및 조정 레이어와 부모 연결, 트랙 매트 및 혼합 모드.
+	A large effects library	풍부한 효과 라이브러리
+	Blur, color correction, distortion, generators, keying, particles and simulation, stylize and time effects.	흐림, 색상 교정, 왜곡, 생성기, 키잉, 파티클과 시뮬레이션, 스타일화 및 시간 효과.
+	Real 3D	정교한 3D
+	3D layers with cameras, depth of field, and lights that cast soft ray-traced shadows.	카메라, 피사계 심도 및 부드러운 광선 추적 그림자를 만드는 조명이 있는 3D 레이어.
+	Expressions	표현식
+	JavaScript expressions with wiggle, loops and layer references, edited inline.	wiggle, 반복 및 레이어 참조를 제공하며 인라인으로 편집하는 JavaScript 표현식.
+	Export anywhere	다양한 형식으로 내보내기
+	H.264 and ProRes with alpha, PNG, TIFF and EXR sequences, GIF, and Lottie import and export.	H.264, 알파를 포함한 ProRes, PNG·TIFF·EXR 시퀀스, GIF 및 Lottie 가져오기·내보내기.
+	An animated composition	애니메이션 컴포지션
+	The Graph Editor	그래프 편집기
+	Particles and Effect Controls	파티클 및 효과 컨트롤
+	3D layers with cameras and lights	카메라와 조명이 있는 3D 레이어
+	Page layout and publishing, rebuilt in pure Rust.	순수 Rust로 새롭게 구현한 페이지 레이아웃 및 출판.
+	A native layout app with spreads, parent pages, threaded stories, styles, swatches, text wrap and a paragraph composer. No subscription, no license server and no telemetry.	스프레드, 상위 페이지, 연결된 스토리, 스타일, 색상 견본, 텍스트 감싸기 및 단락 컴포저를 갖춘 네이티브 레이아웃 앱입니다. 구독, 라이선스 서버 및 사용 정보 수집이 없습니다.
+	The layout tools you know	익숙한 레이아웃 도구
+	Spreads and parent pages, frames and threaded stories, with paragraph and character styles.	스프레드와 상위 페이지, 프레임과 연결된 스토리, 단락 및 문자 스타일.
+	Beautiful type	아름다운 타이포그래피
+	A Knuth–Plass paragraph composer, dictionary hyphenation, optical margin alignment and baseline grids, with line breaks that match on screen and in PDF.	Knuth–Plass 단락 컴포저, 사전 기반 하이픈 넣기, 광학 여백 맞춤 및 기준선 격자를 제공하며 화면과 PDF의 줄 바꿈이 일치합니다.
+	Print-ready PDF	인쇄용 PDF
+	Real selectable text with embedded fonts, CMYK and spot colors, bleed, crop marks and PDF/A output.	포함된 글꼴을 사용하는 선택 가능한 텍스트, CMYK 및 별색, 도련, 자르기 표시 및 PDF/A 출력.
+	Fast	빠른 속도
+	Multithreaded rendering, instant undo and cached text composition.	멀티스레드 렌더링, 즉각적인 실행 취소 및 캐시된 텍스트 조판.
+	A documented native format, PNG export and layout interchange import and export.	문서화된 기본 형식, PNG 내보내기 및 레이아웃 교환 형식 가져오기·내보내기.
+	Built for automation	자동화를 위한 설계
+	Every menu item, tool, panel and dialog can be driven over a JSON control channel and an MCP server.	모든 메뉴 항목, 도구, 패널 및 대화 상자를 JSON 제어 채널과 MCP 서버로 조작할 수 있습니다.
+	A magazine spread with a threaded story	연결된 스토리가 있는 잡지 스프레드
+	The familiar word processor, native and offline.	익숙한 워드 프로세서, 네이티브와 오프라인으로.
+	A word processor with the ribbon, shortcuts and behavior you already know, written in Rust. Open source, and built from public specifications.	익숙한 리본, 단축키 및 동작을 갖춘 Rust 워드 프로세서입니다. 공개 사양을 바탕으로 만든 오픈 소스입니다.
+	Familiar	익숙한 사용법
+	Ribbon tabs and groups, a live Styles gallery and the editing behavior you expect, from list continuation to Format Painter.	리본 탭과 그룹, 실시간 스타일 갤러리와 목록 이어쓰기부터 서식 복사까지 익숙한 편집 동작.
+	Your files	자유로운 파일 사용
+	Opens and saves .docx, and also .odt, .rtf, .html, .md, .tex and .txt. Opens older .doc files and exports PDF with real, selectable text.	.docx와 .odt, .rtf, .html, .md, .tex, .txt를 열고 저장합니다. 이전 .doc 파일을 열고 실제 선택 가능한 텍스트가 있는 PDF로 내보냅니다.
+	Paragraph layout is cached, so typing stays responsive even in long documents.	단락 레이아웃을 캐시하여 긴 문서에서도 입력이 빠르게 반응합니다.
+	Private	개인정보 보호
+	Spelling, grammar and everything else work offline.	맞춤법, 문법 및 모든 기능이 오프라인으로 작동합니다.
+	Everywhere	어디서나
+	One Rust codebase for macOS, Windows, Linux, BSD and the web.	하나의 Rust 코드베이스로 macOS, Windows, Linux, BSD 및 웹을 지원합니다.
+	Built for agents	에이전트를 위한 설계
+	Every action is a command, driven from the ribbon, shortcuts, a command-line tool, a JSON control channel or an MCP server.	모든 작업이 명령이며 리본, 단축키, 명령줄 도구, JSON 제어 채널 또는 MCP 서버에서 실행할 수 있습니다.
+	The Home tab and the Navigation pane	홈 탭과 탐색 창
+	Track Changes and comments	변경 내용 추적 및 댓글
+	The Design tab	디자인 탭
+	The Layout tab	레이아웃 탭
+	Presentations, rebuilt in Rust.	Rust로 새롭게 구현한 프레젠테이션.
+	A presentation app with slide masters, shapes, animations and a presenter view, written in Rust. In alpha, heading for beta.	슬라이드 마스터, 도형, 애니메이션 및 발표자 보기를 갖춘 Rust 프레젠테이션 앱입니다. 알파 단계에서 베타를 향해 개발 중입니다.
+	Make decks	슬라이드 만들기
+	Slide masters and layouts with placeholders that inherit formatting, themes, sections, notes and comments.	서식을 상속하는 자리 표시자가 있는 슬라이드 마스터 및 레이아웃, 테마, 구역, 메모 및 댓글.
+	Draw	그리기
+	Preset shapes with adjust handles, connectors that stay glued to shapes, freeform tools, merged shapes, gradients, shadows and glow.	조정 핸들이 있는 도형, 도형에 연결된 상태를 유지하는 연결선, 자유형 도구, 도형 병합, 그레이디언트, 그림자 및 광선.
+	Write	텍스트 작성
+	In-place text editing with full font and paragraph formatting, bullets and numbering, columns and autofit.	완전한 글꼴 및 단락 서식, 글머리 기호와 번호 매기기, 단 및 자동 맞춤을 갖춘 제자리 텍스트 편집.
+	Add content	내용 추가
+	Pictures with crop and corrections, styled tables, charts, audio and video.	자르기와 보정이 가능한 그림, 스타일이 있는 표, 차트, 오디오 및 비디오.
+	Present	발표
+	Transitions including Morph, animations and motion paths, a full-screen slide show, presenter view and rehearsed timings.	모핑을 포함한 전환, 애니메이션 및 이동 경로, 전체 화면 슬라이드 쇼, 발표자 보기 및 연습한 발표 시간.
+	Exchange files	파일 교환
+	Opens and saves .pptx presentation files and exports PDF (slides, notes pages and handouts), PNG and JPEG.	.pptx 프레젠테이션을 열고 저장하며 PDF(슬라이드, 메모 페이지 및 유인물), PNG 및 JPEG로 내보냅니다.
+	Editing a slide, with sections and notes	구역과 메모가 있는 슬라이드 편집
+	The Shape Format tab	도형 서식 탭
+	The slide sorter	여러 슬라이드 보기
+	The Format Shape pane	도형 서식 창
+	Spreadsheets you already know how to use.	이미 익숙한 방식으로 사용하는 스프레드시트.
+	A spreadsheet with the ribbon, formula bar, sheet tabs and shortcuts you know, on a calculation engine written in Rust. No subscription, no license server and no telemetry.	익숙한 리본, 수식 입력줄, 시트 탭 및 단축키를 Rust 계산 엔진 위에 구현한 스프레드시트입니다. 구독, 라이선스 서버 및 사용 정보 수집이 없습니다.
+	The ribbon, formula bar, Name Box, fill handle, point-mode formulas, Format Cells, Paste Special, conditional formatting, tables and charts.	리본, 수식 입력줄, 이름 상자, 채우기 핸들, 클릭으로 참조를 지정하는 수식, 셀 서식, 선택하여 붙여넣기, 조건부 서식, 표 및 차트.
+	Compatible	호환성
+	XLSX is the native format, with formulas, tables, conditional formats, charts, pivot tables and print settings round-tripping. CSV and TSV too.	기본 형식은 XLSX이며 수식, 표, 조건부 서식, 차트, 피벗 테이블 및 인쇄 설정을 열고 저장할 때 유지합니다. CSV와 TSV도 지원합니다.
+	Capable	풍부한 기능
+	A dependency-graph calculation engine with dynamic arrays, LET and LAMBDA, structured table references, sort, AutoFilter and Flash Fill.	동적 배열, LET 및 LAMBDA, 구조화된 표 참조, 정렬, 자동 필터 및 빠른 채우기를 갖춘 종속성 그래프 계산 엔진.
+	Copy-on-write workbooks, incremental recalculation and a grid that only lays out what is on screen.	쓰기 시 복사 방식의 통합 문서, 증분 재계산 및 화면에 보이는 영역만 배치하는 격자.
+	Agent-native	에이전트 기본 지원
+	Every ribbon button, menu item, dialog and keystroke is a command, available over a JSON control channel, an MCP server or the CLI.	모든 리본 버튼, 메뉴 항목, 대화 상자 및 키 입력이 명령이며 JSON 제어 채널, MCP 서버 또는 CLI로 사용할 수 있습니다.
+	One Rust codebase for the desktop and the web.	하나의 Rust 코드베이스로 데스크톱과 웹을 지원합니다.
+	A quarterly sales dashboard	분기별 매출 대시보드
+	A household budget	가계부
+	A pivot table	피벗 테이블
+	Formatting a chart	차트 서식 지정
+	Computer-aided drafting, in pure Rust.	순수 Rust로 구현한 컴퓨터 지원 제도.
+	A drafting app with the command line, object snaps and workflow that drafters already know. Free, with no account and no subscription. In early, fast development.	제도 작업자에게 익숙한 명령줄, 개체 스냅 및 작업 방식을 갖춘 제도 앱입니다. 무료이며 계정이나 구독이 필요하지 않습니다. 초기 단계에서 빠르게 개발 중입니다.
+	Type L, click two points, type @5<45 and press Enter. Prompts with clickable keywords, polar tracking, direct distance entry and grips work the way drafting habit expects.	L을 입력하고 두 점을 클릭한 다음 @5<45를 입력하고 Enter를 누르세요. 클릭 가능한 키워드가 있는 프롬프트, 극좌표 추적, 직접 거리 입력 및 그립이 익숙한 제도 방식대로 작동합니다.
+	Open files	개방형 파일 지원
+	Reads and writes DXF natively (R12 through 2018) and opens and saves DWG (R13 through 2018) with the open-source acadrust library. Exports SVG and PNG.	DXF(R12~2018)를 네이티브로 읽고 쓰며 오픈 소스 acadrust 라이브러리로 DWG(R13~2018)를 열고 저장합니다. SVG와 PNG로 내보냅니다.
+	Fast and native	빠른 네이티브 앱
+	Pure Rust and egui, with no Electron and no web view.	Electron이나 웹 뷰 없이 순수 Rust와 egui로 구현했습니다.
+	A full drafting toolset	완전한 제도 도구
+	Draw, modify, dimension, hatch and block commands, layers with a properties manager, paper-space layouts and PDF plotting.	그리기, 수정, 치수, 해치 및 블록 명령, 속성 관리자가 있는 레이어, 도면 공간 레이아웃 및 PDF 출력.
+	Every menu item, tool and prompt is a command, available over MCP, a JSON control channel or the CLI.	모든 메뉴 항목, 도구 및 프롬프트가 명령이며 MCP, JSON 제어 채널 또는 CLI로 사용할 수 있습니다.
+	An apartment floor plan	아파트 평면도
+	A mechanical bracket drawing	기계용 브래킷 도면
+	A layout sheet	레이아웃 시트
+	Recording, editing and mixing, in Rust.	Rust로 구현한 녹음, 편집 및 믹싱.
+	A digital audio workstation that follows the workflow audio engineers already know: an Edit window for arranging and editing, and a Mix window for balancing. Pre-alpha.	오디오 엔지니어에게 익숙한 작업 방식을 따르는 디지털 오디오 워크스테이션입니다. 편집 창에서 배치와 편집을 하고 믹스 창에서 균형을 조정합니다. 프리알파 단계입니다.
+	Editing	편집
+	Shuffle, Slip, Spot and Grid modes, Smart, Grabber, Trim and other tools, fades and crossfades, playlists with comping lanes and clip gain.	셔플, 슬립, 스팟 및 격자 모드, 스마트·그래버·트림 등의 도구, 페이드와 크로스페이드, 컴핑 레인이 있는 플레이리스트 및 클립 게인.
+	Mixing	믹싱
+	Faders and pans with automation, sends, busses, aux inputs, VCA masters, routing folders and automatic plugin delay compensation.	오토메이션이 있는 페이더와 팬, 센드, 버스, 보조 입력, VCA 마스터, 라우팅 폴더 및 자동 플러그인 지연 보정.
+	Automation	오토메이션
+	Volume, pan, mute, send and every plugin parameter, with Write, Touch, Latch and Trim passes recorded live from the faders.	볼륨, 팬, 음소거, 센드 및 모든 플러그인 매개 변수를 페이더에서 실시간으로 기록하며 쓰기, 터치, 래치 및 트림 모드를 지원합니다.
+	Plugins	플러그인
+	EQ, dynamics, reverbs, modulation effects, a subtractive synth and a drum synth, all original, and CLAP plugins load too.	자체 제작한 EQ, 다이내믹스, 리버브, 모듈레이션 효과, 감산 신시사이저 및 드럼 신시사이저를 제공하며 CLAP 플러그인도 불러올 수 있습니다.
+	The Edit window with a nine-track session	9트랙 세션의 편집 창
+	The Mix window	믹스 창
+	Automation and memory locations	오토메이션 및 메모리 위치
+	The Score Editor	악보 편집기
+	Interface design and prototyping, in pure Rust.	순수 Rust로 구현한 인터페이스 디자인 및 프로토타이핑.
+	Design screens, components and prototypes in a native app that opens instantly and works offline, with no account and no telemetry. Early alpha.	즉시 열리고 오프라인으로 작동하는 네이티브 앱에서 화면, 컴포넌트 및 프로토타입을 디자인하세요. 계정과 사용 정보 수집이 없습니다. 초기 알파 단계입니다.
+	Auto layout	자동 레이아웃
+	Rows, columns, wrap and grids with padding, gaps and Hug, Fill or Fixed sizing, plus constraints and layout grids.	안쪽 여백과 간격, 내용 맞춤·채우기·고정 크기를 갖춘 행, 열, 줄 바꿈 및 격자와 제약 조건 및 레이아웃 격자.
+	Components	컴포넌트
+	Instances with overrides, variants and properties, styles, and variables with modes bound to fills, strokes and effects.	재정의, 변형 및 속성이 있는 인스턴스, 스타일과 모드가 있는 변수 및 채우기·선·효과 연결.
+	Vectors	벡터
+	Real vector networks, the pen and pencil, the shape builder, editable booleans and variable width strokes.	벡터 네트워크, 펜과 연필, 도형 구성 도구, 편집 가능한 불리언 연산 및 가변 너비 선.
+	Prototypes	프로토타입
+	Connections, triggers and animated transitions, variables with conditionals, flows and a presentation view with device frames.	연결, 트리거 및 애니메이션 전환, 조건부 변수, 흐름 및 기기 프레임이 있는 프레젠테이션 보기.
+	Hand off	개발 전달
+	Inspect mode with measurements, annotations, ready-for-dev status, and code for CSS, HTML, React, SwiftUI and Compose.	치수, 주석, 개발 준비 상태와 CSS, HTML, React, SwiftUI 및 Compose 코드를 제공하는 검사 모드.
+	Plain .figcraft files on your own disk. SVG, PNG, JPEG, WebP and PDF in and out, and .fig files open, best effort.	내 디스크의 일반 .figcraft 파일을 사용합니다. SVG, PNG, JPEG, WebP 및 PDF를 가져오고 내보내며 .fig 파일도 가능한 범위에서 엽니다.
+	macOS, Windows, Linux, FreeBSD, web	macOS, Windows, Linux, FreeBSD, 웹
