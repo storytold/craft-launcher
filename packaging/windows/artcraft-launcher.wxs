@@ -41,7 +41,12 @@
         DowngradeErrorMessage="A newer version of ArtCraft Launcher is already installed." />
     <MediaTemplate EmbedCab="yes" CompressionLevel="high" />
 
-    <!-- MSI caches this icon using its Id as the filename; keep the .exe extension (ICE50). -->
+    <!-- The Apps & features icon only. MSI caches it under %APPDATA%\Microsoft\Installer\{ProductCode},
+         using its Id as the filename (keep the .exe extension, ICE50). Every update is a major
+         upgrade with a new ProductCode that deletes the old folder, so the shortcuts must not use
+         it: a taskbar pin is a copy of the shortcut, an update never refreshes it, and its icon
+         went blank once the old folder was gone. The shortcuts take the exe's own icon instead
+         (build.rs embeds it), at a path every update keeps. -->
     <Icon Id="ArtCraftLauncherIcon.exe" SourceFile="$(var.IconPath)" />
     <Property Id="ARPPRODUCTICON" Value="ArtCraftLauncherIcon.exe" />
     <Property Id="ARPURLINFOABOUT" Value="https://getartcraft.com/apps" />
@@ -156,8 +161,7 @@
       <Component Id="ArtCraftLauncherShortcut" Directory="ProgramMenuFolder" Guid="870F3DFA-BC0F-497F-85D5-A361B04826AF">
         <Shortcut Id="StartMenuShortcut" Name="ArtCraft Launcher"
             Description="Install and update the Craft App Suite"
-            Target="[#ArtCraftLauncherExe]" WorkingDirectory="INSTALLFOLDER"
-            Icon="ArtCraftLauncherIcon.exe" IconIndex="0">
+            Target="[#ArtCraftLauncherExe]" WorkingDirectory="INSTALLFOLDER">
           <ShortcutProperty Key="System.AppUserModel.ID" Value="ai.storyteller.artcraft-launcher" />
         </Shortcut>
         <RegistryValue Root="HKCU" Key="Software\Learning Machines LLC\ArtCraft Launcher" Name="StartMenuShortcut" Value="1" Type="integer" KeyPath="yes" />
@@ -168,8 +172,7 @@
           Condition="INSTALLDESKTOPSHORTCUT = &quot;1&quot;">
         <Shortcut Id="DesktopShortcut" Name="ArtCraft Launcher"
             Description="Install and update the Craft App Suite"
-            Target="[#ArtCraftLauncherExe]" WorkingDirectory="INSTALLFOLDER"
-            Icon="ArtCraftLauncherIcon.exe" IconIndex="0">
+            Target="[#ArtCraftLauncherExe]" WorkingDirectory="INSTALLFOLDER">
           <ShortcutProperty Key="System.AppUserModel.ID" Value="ai.storyteller.artcraft-launcher" />
         </Shortcut>
         <RegistryValue Root="HKCU" Key="Software\Learning Machines LLC\ArtCraft Launcher" Name="DesktopShortcut" Value="1" Type="integer" KeyPath="yes" />

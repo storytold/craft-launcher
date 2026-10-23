@@ -3,11 +3,12 @@
   Check MSI icon references without building or installing ArtCraft Launcher.
 
 .DESCRIPTION
-  Windows Installer caches each <Icon> under its Id as a file name, so a shortcut icon Id needs an
-  .exe or .ico extension (ICE50 for advertised shortcuts; extensionless identifiers can display a
-  generic document icon even when the ICO data and application are valid). Also checks that every
-  shortcut and ARPPRODUCTICON reference an <Icon> that exists, and that the Start Menu shortcut
-  carries the app's AppUserModelID (toast notifications need it).
+  Windows Installer caches each <Icon> under %APPDATA%\Microsoft\Installer\{ProductCode}, which
+  every update (a major upgrade, new ProductCode) deletes. A shortcut that used one left taskbar
+  pins, which an update never refreshes, with a blank icon, so shortcuts must not name an <Icon>:
+  they take the exe's embedded icon. ARPPRODUCTICON must reference an <Icon> that exists, with an
+  .exe or .ico extension (ICE50), and every shortcut must carry the app's AppUserModelID (toast
+  notifications need it).
 #>
 param(
   [string] $WxsPath = (Join-Path $PSScriptRoot 'artcraft-launcher.wxs')
@@ -26,13 +27,8 @@ $shortcuts = $Wxs.SelectNodes('//w:Shortcut', $Ns)
 if ($shortcuts.Count -eq 0) { throw 'No <Shortcut> in the MSI.' }
 foreach ($shortcut in $shortcuts) {
   $id = $shortcut.GetAttribute('Id')
-  $iconId = $shortcut.GetAttribute('Icon')
-  if (-not $Icons.ContainsKey($iconId)) {
-    throw "Shortcut '$id' references missing icon '$iconId'."
-  }
-  $iconExtension = [IO.Path]::GetExtension($iconId)
-  if ($iconExtension -notin '.exe', '.ico') {
-    throw "Shortcut '$id' icon '$iconId' must have an .exe or .ico extension (ICE50)."
+  if ($shortcut.HasAttribute('Icon')) {
+    throw "Shortcut '$id' must not use an MSI <Icon>: an update deletes it and pinned shortcuts go blank. Leave Icon off to use the exe's own icon."
   }
   $aumid = $shortcut.SelectSingleNode('w:ShortcutProperty[@Key="System.AppUserModel.ID"]', $Ns)
   if (-not $aumid -or $aumid.GetAttribute('Value') -ne $AppId) {
@@ -41,7 +37,13 @@ foreach ($shortcut in $shortcuts) {
 }
 
 $arpIcon = $Wxs.SelectSingleNode('//w:Property[@Id="ARPPRODUCTICON"]', $Ns)
-if ($arpIcon -and -not $Icons.ContainsKey($arpIcon.GetAttribute('Value'))) {
-  throw "ARPPRODUCTICON references missing icon '$($arpIcon.GetAttribute('Value'))'."
+if ($arpIcon) {
+  $iconId = $arpIcon.GetAttribute('Value')
+  if (-not $Icons.ContainsKey($iconId)) {
+    throw "ARPPRODUCTICON references missing icon '$iconId'."
+  }
+  if ([IO.Path]::GetExtension($iconId) -notin '.exe', '.ico') {
+    throw "ARPPRODUCTICON icon '$iconId' must have an .exe or .ico extension (ICE50)."
+  }
 }
 Write-Output 'Windows shortcut icon references ok'
