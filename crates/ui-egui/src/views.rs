@@ -802,7 +802,7 @@ impl LauncherUi {
             self.job_actions(ui, entry, &id, main_w, width);
             return;
         }
-        if self.paused_actions(ui, entry, &id, status, main_w, links_in_menu) {
+        if self.paused_actions(ui, entry, &id, status, width, links_in_menu) {
             return;
         }
         self.primary_button(ui, entry, &id, status, main_w);

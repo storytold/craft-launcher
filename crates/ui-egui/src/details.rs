@@ -113,8 +113,9 @@ impl LauncherUi {
             self.detail_shown = None;
             return;
         }
-        let entry = self.entry(&id).cloned();
-        debug_assert!(entry.is_some());
+        if self.entry(&id).is_none() {
+            return;
+        }
         if !open {
             self.detail_zoom = false;
         }
