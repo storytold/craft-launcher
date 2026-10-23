@@ -767,7 +767,10 @@ pub(crate) mod linux {
     use artcraft_launcher_core::distro;
     use artcraft_launcher_core::protocol::CANCELLED;
 
-    use super::*;
+    use super::{
+        CraftApp, INSTALLER, InstallSource, Installed, JobPhase, PackageKind, Path, PathBuf, Paths, Record, SHARED_CALL, SYSTEM_BIN_DIRS, Stop,
+        cancelled, find_in, pkexec, process, run_as_root, swap_into_place, tree, turn,
+    };
 
     /// apt waits this long for another package tool (a software centre, automatic updates) to
     /// let go of its lock, instead of failing at once.
@@ -1213,7 +1216,7 @@ pub mod macos {
 
     use artcraft_launcher_core::version::Version;
 
-    use super::*;
+    use super::{CraftApp, InstallSource, Installed, Path, PathBuf, Paths, Release, process, staging_dir, swap_into_place};
 
     /// `/Applications` when we can write there, else `~/Applications`.
     fn applications_dir(existing: Option<&Installed>, destination: Option<&Path>) -> Result<PathBuf, String> {
@@ -1415,7 +1418,7 @@ pub mod macos {
 #[cfg(unix)]
 #[allow(dead_code)]
 mod tree {
-    use super::*;
+    use super::{CraftApp, Path, PathBuf, single_top_folder};
 
     /// Unpacks `file` and returns a staging folder laid out like `/usr/local`.
     pub fn unpack(app: &CraftApp, file: &Path, staging: &Path) -> Result<PathBuf, String> {
@@ -1475,7 +1478,7 @@ mod tree {
 mod freebsd {
     use std::ffi::OsStr;
 
-    use super::*;
+    use super::{CraftApp, Path, PathBuf, Paths, pkexec, process, run_as_root, tree};
 
     /// Copies the release's tree into `/usr/local` (asking for permission through polkit), or
     /// into `~/.local` when polkit isn't installed. Returns the binary, every file installed,
@@ -1574,7 +1577,7 @@ pub(crate) fn msi_path(msi: &Path) -> Result<PathBuf, String> {
 pub mod windows {
     use artcraft_launcher_core::protocol::CANCELLED;
 
-    use super::*;
+    use super::{INSTALLER, JobPhase, Path, PathBuf, Stop, cancelled, msi_command, msi_folder_argument, msi_log, process, turn};
 
     fn msiexec() -> PathBuf {
         std::env::var_os("SystemRoot").map_or_else(|| PathBuf::from(r"C:\Windows"), PathBuf::from).join(r"System32\msiexec.exe")

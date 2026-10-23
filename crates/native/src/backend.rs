@@ -233,58 +233,13 @@ impl NativeBackend {
         let mirror = local_mirror();
         std::thread::spawn(move || {
             shared.emit(Event::CheckStarted);
-            let (feed, fallback) = if let Some(base) = &mirror {
-                // A local mirror answers for everything: GitHub is never asked.
-                (local_feed(&http, base), Fallback { trust_feed: true, github_every: GITHUB_FALLBACK_EVERY })
-            } else if pre {
-                // The feed serves stable releases only; with pre-releases on, GitHub decides.
-                (None, Fallback { trust_feed: false, github_every: EARLY_GITHUB_EVERY })
-            } else {
-                feed_and_fallback(&http, &paths, &shared)
-            };
+            let (feed, fallback) = check_plan(&http, mirror.as_ref(), pre, &paths, &shared);
             if let Some(f) = &feed {
                 shared.emit(Event::Notices { announcements: f.announcements.clone(), alerts: f.alerts.clone() });
             }
             let now = crate::now();
             let queue = Mutex::new(SUITE.iter().chain(std::iter::once(&LAUNCHER)).collect::<Vec<&CraftApp>>());
-            let sources = Mutex::new(Vec::new());
-            std::thread::scope(|scope| {
-                for _ in 0..WORKERS {
-                    scope.spawn(|| {
-                        loop {
-                            let Some(app) = queue.lock().unwrap_or_else(PoisonError::into_inner).pop() else { break };
-                            let (latest, from, used) = match &mirror {
-                                Some(_) => mirror_latest(app, feed.as_ref(), now),
-                                None => latest_for(app, feed.as_ref(), fallback, source.as_ref(), &shared, pre, force, now),
-                            };
-                            if let Some(used) = used {
-                                sources.lock().unwrap_or_else(PoisonError::into_inner).push(used);
-                            }
-                            if app.id == LAUNCHER_ID {
-                                // Is there a newer ArtCraft Launcher?
-                                if let Some(LatestRelease::Found(r)) = latest
-                                    && let (Some(newest), Some(current)) = (r.version.as_ref(), crate::self_update::current_version())
-                                    && version::is_newer(newest, &current)
-                                    && !crate::self_update::just_updated_to(&paths, &r)
-                                {
-                                    shared.self_install.get_or_init(crate::self_update::current);
-                                    *shared.launcher_release.lock().unwrap_or_else(PoisonError::into_inner) = Some(r.clone());
-                                    shared.emit(Event::LauncherUpdate(r));
-                                }
-                                continue;
-                            }
-                            let Some(latest) = latest else { continue };
-                            if let LatestRelease::Found(r) = &latest {
-                                shared.latest.lock().unwrap_or_else(PoisonError::into_inner).insert(app.id.to_string(), r.clone());
-                            }
-                            if !matches!(latest, LatestRelease::Failed(_)) {
-                                shared.answered.lock().unwrap_or_else(PoisonError::into_inner).insert(app.id.to_string());
-                            }
-                            shared.emit(Event::Latest { app: app.id.to_string(), latest, from });
-                        }
-                    });
-                }
-            });
+            let sources = sweep(&queue, &mirror, feed.as_ref(), fallback, &source, &shared, &paths, pre, force, now);
             source.save();
             {
                 let answered = shared.answered.lock().unwrap_or_else(PoisonError::into_inner);
@@ -297,16 +252,7 @@ impl NativeBackend {
             for app in &SUITE {
                 report_partial(app, &shared, &paths, platform, &options);
             }
-            let sources = sources.into_inner().unwrap_or_else(PoisonError::into_inner);
-            let source_used = if sources.contains(&Source::Cache) {
-                Source::Cache
-            } else if sources.contains(&Source::GitHubPages) {
-                Source::GitHubPages
-            } else if sources.contains(&Source::GitHubApi) {
-                Source::GitHubApi
-            } else {
-                Source::Feed
-            };
+            let source_used = source_used_of(&sources);
             let at = crate::now();
             *shared.last_check.lock().unwrap_or_else(PoisonError::into_inner) = Some(at);
             shared.checking.store(false, Ordering::SeqCst);
@@ -660,6 +606,96 @@ fn planned_download(
     let record = shared.manifest.lock().unwrap_or_else(PoisonError::into_inner).apps.get(app.id).cloned();
     let (asset, _) = planned_asset(app, &release, platform?, options, existing.as_ref(), record.as_ref())?;
     artcraft_launcher_core::release::valid_file_name(&asset.name).then(|| (install::download_path(paths, &asset), asset.size))
+}
+
+/// What one check asks: which feed to poll (a local mirror trumps everything), and how much to
+/// lean on GitHub.
+fn check_plan(http: &Http, mirror: Option<&String>, pre: bool, paths: &Paths, shared: &Arc<Shared>) -> (Option<Feed>, Fallback) {
+    if let Some(base) = mirror {
+        // A local mirror answers for everything: GitHub is never asked.
+        (local_feed(http, base), Fallback { trust_feed: true, github_every: GITHUB_FALLBACK_EVERY })
+    } else if pre {
+        // The feed serves stable releases only; with pre-releases on, GitHub decides.
+        (None, Fallback { trust_feed: false, github_every: EARLY_GITHUB_EVERY })
+    } else {
+        feed_and_fallback(http, paths, shared)
+    }
+}
+
+/// Answers the apps from a shared queue over a few workers, and returns which sources answered.
+#[allow(clippy::too_many_arguments)]
+fn sweep(
+    queue: &Mutex<Vec<&'static CraftApp>>,
+    mirror: &Option<String>,
+    feed: Option<&Feed>,
+    fallback: Fallback,
+    source: &Arc<dyn ReleaseSource>,
+    shared: &Arc<Shared>,
+    paths: &Paths,
+    pre: bool,
+    force: bool,
+    now: i64,
+) -> Vec<Source> {
+    let sources = Mutex::new(Vec::new());
+    std::thread::scope(|scope| {
+        for _ in 0..WORKERS {
+            scope.spawn(|| {
+                loop {
+                    let Some(app) = queue.lock().unwrap_or_else(PoisonError::into_inner).pop() else { break };
+                    let (latest, from, used) = match mirror {
+                        Some(_) => mirror_latest(app, feed, now),
+                        None => latest_for(app, feed, fallback, source.as_ref(), shared, pre, force, now),
+                    };
+                    if let Some(used) = used {
+                        sources.lock().unwrap_or_else(PoisonError::into_inner).push(used);
+                    }
+                    check_app(app, latest, from, shared, paths);
+                }
+            });
+        }
+    });
+    sources.into_inner().unwrap_or_else(PoisonError::into_inner)
+}
+
+/// Publishes one app's answer to the shared state, or handles the launcher's own update check
+/// first (it doesn't appear in the grid, so it has no card of its own to publish to).
+fn check_app(app: &'static CraftApp, latest: Option<LatestRelease>, from: Origin, shared: &Arc<Shared>, paths: &Paths) {
+    if app.id == LAUNCHER_ID {
+        launcher_update(paths, latest, shared);
+        return;
+    }
+    let Some(latest) = latest else { return };
+    if let LatestRelease::Found(r) = &latest {
+        shared.latest.lock().unwrap_or_else(PoisonError::into_inner).insert(app.id.to_string(), r.clone());
+    }
+    if !matches!(latest, LatestRelease::Failed(_)) {
+        shared.answered.lock().unwrap_or_else(PoisonError::into_inner).insert(app.id.to_string());
+    }
+    shared.emit(Event::Latest { app: app.id.to_string(), latest, from });
+}
+
+/// Offers the launcher's own update when its answer is a newer release than the running one.
+fn launcher_update(paths: &Paths, latest: Option<LatestRelease>, shared: &Arc<Shared>) {
+    let Some(LatestRelease::Found(r)) = latest else { return };
+    let (Some(newest), Some(current)) = (r.version.as_ref(), crate::self_update::current_version()) else { return };
+    if version::is_newer(newest, &current) && !crate::self_update::just_updated_to(paths, &r) {
+        shared.self_install.get_or_init(crate::self_update::current);
+        *shared.launcher_release.lock().unwrap_or_else(PoisonError::into_inner) = Some(r.clone());
+        shared.emit(Event::LauncherUpdate(r));
+    }
+}
+
+/// The weakest source that answered this check; it sets the wording of the "checked with" line.
+fn source_used_of(sources: &[Source]) -> Source {
+    if sources.contains(&Source::Cache) {
+        Source::Cache
+    } else if sources.contains(&Source::GitHubPages) {
+        Source::GitHubPages
+    } else if sources.contains(&Source::GitHubApi) {
+        Source::GitHubApi
+    } else {
+        Source::Feed
+    }
 }
 
 /// How much the feed is trusted in one check, and how freely GitHub may be asked.

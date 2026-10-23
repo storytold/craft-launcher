@@ -82,7 +82,7 @@ pub fn message(lang: Lang, s: &str) -> String {
 /// [`message`] in the current language, remembering the last answer: the status bar asks for the
 /// same message every frame.
 pub fn msg(s: &str) -> String {
-    static LAST: std::sync::Mutex<Option<(&'static str, String, String)>> = std::sync::Mutex::new(None);
+    static LAST: std::sync::Mutex<Option<(&str, String, String)>> = std::sync::Mutex::new(None);
     let lang = current();
     let mut last = LAST.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
     if let Some((code, src, out)) = last.as_ref()

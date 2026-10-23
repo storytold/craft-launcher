@@ -1,5 +1,6 @@
 //! Portable Windows packages: bounded extraction and replacement of recorded files only.
 
+use std::ffi::OsStr;
 use std::path::{Component, Path, PathBuf};
 
 use crate::manifest::Record;
@@ -218,44 +219,12 @@ pub fn install(
     let unpacked = staging.0.join("unpacked");
     std::fs::create_dir(&unpacked).map_err(|e| e.to_string())?;
     let (files, entries) = extract(file, &unpacked)?;
-    // The official Windows packaging script uses Compress-Archive -Path $Portable,
-    // which places all files inside a single versioned directory in the ZIP.
-    // Accept that layout and traditional flat archives, but never arbitrary nesting.
-    let has_root_executable = files.iter().any(|relative| {
-        relative.parent().is_some_and(|parent| parent.as_os_str().is_empty())
-            && relative
-                .file_name()
-                .and_then(|name| name.to_str())
-                .is_some_and(|name| app.stems().any(|stem| name.eq_ignore_ascii_case(&format!("{stem}.exe"))))
-    });
-    let (unpacked, files) = if has_root_executable {
-        (unpacked, files)
-    } else {
-        let prefix = files.first().and_then(|path| path.components().next()).ok_or("The portable ZIP contains no files.")?.as_os_str().to_os_string();
-        let prefix = PathBuf::from(prefix);
-        // Include explicit ZIP directory entries as well as extracted files.
-        // The wrapper directory itself is allowed; unrelated roots are not.
-        if !entries.iter().all(|path| path.starts_with(&prefix))
-            || !files.iter().all(|path| path.strip_prefix(&prefix).is_ok_and(|relative| relative.components().next().is_some()))
-        {
-            return Err("The portable ZIP has an unsupported directory layout.".into());
-        }
-        let unpacked = unpacked.join(&prefix);
-        let files: Vec<PathBuf> = files
-            .into_iter()
-            .map(|path| path.strip_prefix(&prefix).map(Path::to_path_buf).map_err(|e| e.to_string()))
-            .collect::<Result<Vec<_>, _>>()?;
-        (unpacked, files)
-    };
+    // Accept both a flat layout (files at the ZIP root) and a single wrapper-folder layout,
+    // but never arbitrary nesting.
+    let (unpacked, files) = flatten_zip_layout(app, &unpacked, files, &entries)?;
     let executable = files
         .iter()
-        .find(|relative| {
-            relative.parent().is_some_and(|p| p.as_os_str().is_empty())
-                && relative
-                    .file_name()
-                    .and_then(|n| n.to_str())
-                    .is_some_and(|name| app.stems().any(|stem| name.eq_ignore_ascii_case(&format!("{stem}.exe"))))
-        })
+        .find(|relative| is_root_executable(relative, app))
         .ok_or("The portable ZIP does not contain the expected executable at its root.")?
         .clone();
     // Validate the entire transaction before moving any existing program file.
@@ -322,6 +291,35 @@ pub fn install(
         return Err(error);
     }
     Ok(record)
+}
+
+/// Whether a ZIP-relative path sits at the archive root and is one of the app's executables.
+fn is_root_executable(relative: &Path, app: &CraftApp) -> bool {
+    relative.parent().is_some_and(|parent| parent.as_os_str().is_empty())
+        && relative.file_name().and_then(OsStr::to_str).is_some_and(|name| app.stems().any(|stem| name.eq_ignore_ascii_case(&format!("{stem}.exe"))))
+}
+
+/// Flattens a portable ZIP whose files all sit in one top-level folder (the official Windows
+/// packaging script's `Compress-Archive -Path $Portable` puts everything under a versioned
+/// directory) into the flat layout a root launcher exe requires, passing already-flat layouts
+/// through. ZIPs mixing unrelated top-level folders are rejected.
+fn flatten_zip_layout(app: &CraftApp, unpacked: &Path, files: Vec<PathBuf>, entries: &[PathBuf]) -> Result<(PathBuf, Vec<PathBuf>), String> {
+    if files.iter().any(|relative| is_root_executable(relative, app)) {
+        return Ok((unpacked.to_path_buf(), files));
+    }
+    let prefix = files.first().and_then(|path| path.components().next()).ok_or("The portable ZIP contains no files.")?.as_os_str().to_os_string();
+    let prefix = PathBuf::from(prefix);
+    // Include explicit ZIP directory entries as well as extracted files.
+    // The wrapper directory itself is allowed; unrelated roots are not.
+    if !entries.iter().all(|path| path.starts_with(&prefix))
+        || !files.iter().all(|path| path.strip_prefix(&prefix).is_ok_and(|relative| relative.components().next().is_some()))
+    {
+        return Err("The portable ZIP has an unsupported directory layout.".into());
+    }
+    let unpacked = unpacked.join(&prefix);
+    let files: Vec<PathBuf> =
+        files.into_iter().map(|path| path.strip_prefix(&prefix).map(Path::to_path_buf).map_err(|e| e.to_string())).collect::<Result<Vec<_>, _>>()?;
+    Ok((unpacked, files))
 }
 
 /// Removes only recorded program files. Personal settings and documents remain.

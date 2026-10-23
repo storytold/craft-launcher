@@ -350,36 +350,8 @@ pub fn cells_apart<T: PartialEq + Copy>(ui: &mut Ui, value: &mut T, options: &[(
     ui.scope(|ui| {
         ui.spacing_mut().item_spacing.x = gap;
         for (opt, cell) in ordered {
-            let on = *value == *opt;
-            let label = hud_galley(ui, cell.label, t.ink);
-            let count = cell.count.map(|(n, highlight)| {
-                let c = if on { t.invert_fg.gamma_multiply(0.6) } else { highlight.filter(|_| n > 0).unwrap_or(t.faint) };
-                (hud_galley(ui, &n.to_string(), c), c)
-            });
-            let w = label.size().x + count.as_ref().map_or(0.0, |(g, _)| g.size().x + 8.0) + 24.0;
-            let (rect, resp) = ui.allocate_exact_size(vec2(w, theme::CONTROL_H), Sense::click());
-            let hovered = resp.hovered();
-            let (fill, ink) = match (on, hovered) {
-                (true, _) => (t.invert_bg, t.invert_fg),
-                (false, true) => (t.sunken, t.ink_strong),
-                (false, false) => (Color32::TRANSPARENT, t.muted),
-            };
-            ui.painter().rect_filled(rect, CornerRadius::ZERO, fill);
-            let text_rect = rect.shrink2(vec2(12.0, 0.0));
-            let label_w = label.size().x;
-            paint_left(ui, text_rect, label, ink);
-            if let Some((g, c)) = count {
-                paint_left(ui, text_rect.with_min_x(text_rect.left() + label_w + 8.0), g, c);
-            }
-            let name = match cell.count {
-                Some((n, _)) => format!("{} {n}", cell.label),
-                None => cell.label.to_string(),
-            };
-            resp.widget_info(|| egui::WidgetInfo::selected(egui::WidgetType::Button, true, on, &name));
-            if resp.on_hover_text(cell.tip).on_hover_cursor(egui::CursorIcon::PointingHand).clicked() && !on {
-                *value = *opt;
-                changed = true;
-            }
+            let (rect, chosen) = paint_cell(ui, value, opt, cell, &t);
+            changed |= chosen;
             rects.push(rect);
         }
     });
@@ -398,6 +370,43 @@ pub fn cells_apart<T: PartialEq + Copy>(ui: &mut Ui, value: &mut T, options: &[(
         }
     }
     changed
+}
+
+/// Paints one cell: its label and count over a hairline box, and its hover/click behaviour.
+/// Returns the cell's rect (for the row's hairlines) and whether the click chose it.
+fn paint_cell<T: PartialEq + Copy>(ui: &mut Ui, value: &mut T, opt: &T, cell: &Cell<'_>, t: &Tokens) -> (Rect, bool) {
+    let mut changed = false;
+    let on = *value == *opt;
+    let label = hud_galley(ui, cell.label, t.ink);
+    let count = cell.count.map(|(n, highlight)| {
+        let c = if on { t.invert_fg.gamma_multiply(0.6) } else { highlight.filter(|_| n > 0).unwrap_or(t.faint) };
+        (hud_galley(ui, &n.to_string(), c), c)
+    });
+    let w = label.size().x + count.as_ref().map_or(0.0, |(g, _)| g.size().x + 8.0) + 24.0;
+    let (rect, resp) = ui.allocate_exact_size(vec2(w, theme::CONTROL_H), Sense::click());
+    let hovered = resp.hovered();
+    let (fill, ink) = match (on, hovered) {
+        (true, _) => (t.invert_bg, t.invert_fg),
+        (false, true) => (t.sunken, t.ink_strong),
+        (false, false) => (Color32::TRANSPARENT, t.muted),
+    };
+    ui.painter().rect_filled(rect, CornerRadius::ZERO, fill);
+    let text_rect = rect.shrink2(vec2(12.0, 0.0));
+    let label_w = label.size().x;
+    paint_left(ui, text_rect, label, ink);
+    if let Some((g, c)) = count {
+        paint_left(ui, text_rect.with_min_x(text_rect.left() + label_w + 8.0), g, c);
+    }
+    let name = match cell.count {
+        Some((n, _)) => format!("{} {n}", cell.label),
+        None => cell.label.to_string(),
+    };
+    resp.widget_info(|| egui::WidgetInfo::selected(egui::WidgetType::Button, true, on, &name));
+    if resp.on_hover_text(cell.tip).on_hover_cursor(egui::CursorIcon::PointingHand).clicked() && !on {
+        *value = *opt;
+        changed = true;
+    }
+    (rect, changed)
 }
 
 /// A slim square progress bar with a caption above it.

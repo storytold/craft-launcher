@@ -1619,6 +1619,32 @@ fn saved_filters_are_migrated_on_ui_construction() {
     }
 }
 
+/// Checks that, at one window width, every header control stays inside the window and clear of
+/// the brand text, that a custom title bar's buttons are there and inside, and snapshots the
+/// three widths that matter visually.
+fn assert_header_at_width(h: &mut Harness<'_, Option<LauncherUi>>, bar: artcraft_launcher_ui_egui::TitleBar, theme: egui::Theme, width: f32) {
+    for label in ["Show apps as cards", "Show apps as a table", "Settings", "Check for updates"] {
+        let rect = h.get_by_label(label).rect();
+        assert!(rect.left() >= 0.0 && rect.right() <= width, "{bar:?} {width}: {label} {rect:?}");
+        if let Some(text) = h.query_by_label("Craft App Suite") {
+            assert!(!rect.intersects(text.rect()), "{bar:?} {width}: Craft App Suite overlaps {label} {rect:?}");
+        }
+    }
+    if bar == artcraft_launcher_ui_egui::TitleBar::Custom {
+        for label in ["Minimize", "Maximize", "Close"] {
+            let rect = h.get_by_label(label).rect();
+            assert!(rect.left() >= 0.0 && rect.right() <= width, "{width}: {label} {rect:?}");
+        }
+    }
+    if width == 1180.0 {
+        assert!(h.query_by_label("Launcher").is_none());
+        h.get_by_label("Craft App Suite");
+    }
+    if [720.0, 800.0, 1180.0].contains(&width) {
+        snapshot(h, &format!("header-{theme:?}-{bar:?}-{width}"));
+    }
+}
+
 #[test]
 fn narrow_header_keeps_the_view_switch_clear_of_brand_text() {
     use artcraft_launcher_ui_egui::TitleBar;
@@ -1628,26 +1654,7 @@ fn narrow_header_keeps_the_view_switch_clear_of_brand_text() {
             for width in (720..=1180).step_by(10).chain([720, 1180]).map(|w| w as f32) {
                 h.set_size(egui::vec2(width, 900.0));
                 h.run_steps(6);
-                for label in ["Show apps as cards", "Show apps as a table", "Settings", "Check for updates"] {
-                    let rect = h.get_by_label(label).rect();
-                    assert!(rect.left() >= 0.0 && rect.right() <= width, "{bar:?} {width}: {label} {rect:?}");
-                    if let Some(text) = h.query_by_label("Craft App Suite") {
-                        assert!(!rect.intersects(text.rect()), "{bar:?} {width}: Craft App Suite overlaps {label} {rect:?}");
-                    }
-                }
-                if bar == TitleBar::Custom {
-                    for label in ["Minimize", "Maximize", "Close"] {
-                        let rect = h.get_by_label(label).rect();
-                        assert!(rect.left() >= 0.0 && rect.right() <= width, "{width}: {label} {rect:?}");
-                    }
-                }
-                if width == 1180.0 {
-                    assert!(h.query_by_label("Launcher").is_none());
-                    h.get_by_label("Craft App Suite");
-                }
-                if [720.0, 800.0, 1180.0].contains(&width) {
-                    snapshot(&mut h, &format!("header-{theme:?}-{bar:?}-{width}"));
-                }
+                assert_header_at_width(&mut h, bar, theme, width);
             }
             h.get_by_label("Show apps as a table").click();
             h.run_steps(2);
