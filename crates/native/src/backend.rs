@@ -148,7 +148,7 @@ impl NativeBackend {
             let shared = shared.clone();
             Accounts::new(h, move |state| shared.emit(Event::Account(state)))
         });
-        let backend = Self { shared, paths, http, accounts, source, platform: native_platform(), self_install: crate::self_update::current() };
+        let backend = Self { shared, paths, http, accounts, source, platform: native_platform() };
         backend.replay_cache();
         backend.detect_all();
         backend
@@ -1449,7 +1449,7 @@ mod tests {
         let shared = shared();
         shared.latest.lock().unwrap().insert(APP.to_string(), release("0.5.0"));
         let shared = Arc::new(shared);
-        NativeBackend { shared, paths: Paths::under(root), http: None, accounts: None, source, platform: Some(platform), self_install: None }
+        NativeBackend { shared, paths: Paths::under(root), http: None, accounts: None, source, platform: Some(platform) }
     }
 
     /// Reports again, and returns what the UI was last told about a kept download.
