@@ -840,7 +840,7 @@ impl LauncherUi {
             }
             Primary::Open => {
                 if widgets::button(ui, tl!("Open"), Kind::Secondary, main_w).clicked() {
-                    self.launch_app(&id);
+                    self.launch_app(ui.ctx(), &id);
                 }
             }
             Primary::Download(url) => {
@@ -878,7 +878,12 @@ impl LauncherUi {
             }
             if manage && status.is_installed() {
                 if ui.button(tl!("Open")).clicked() {
-                    self.launch_app(&id);
+                    self.launch_app(ui.ctx(), &id);
+                    ui.close();
+                }
+                if ui.button(tl!("Launch options…")).clicked() {
+                    let flags = self.settings.launch_flags.get(&id).cloned().unwrap_or_default();
+                    self.dialog = Some(Dialog::LaunchFlags { app: id.clone(), flags });
                     ui.close();
                 }
                 if ui.button(t(reveal)).clicked() {

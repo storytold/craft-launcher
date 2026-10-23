@@ -990,10 +990,10 @@ impl Backend for NativeBackend {
                     }
                 }
             }
-            Command::Launch { app } => {
+            Command::Launch { app, args } => {
                 let Some(def) = CraftApp::by_id(&app) else { return };
                 let result = match self.installed(&app) {
-                    Some(inst) => install::launch(def, &inst, &self.paths),
+                    Some(inst) => install::launch(def, &inst, &self.paths, &args),
                     None => Err(format!("{} isn't installed", def.name)),
                 };
                 if let Err(e) = result {

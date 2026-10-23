@@ -72,6 +72,13 @@
 	Show in Files	Mostrar en Archivos
 	Reinstall	Reinstalar
 	Uninstall…	Desinstalar…
+	Launch options…	Opciones de inicio…
+	{name} launch options	Opciones de inicio de {name}
+	Flags added each time the app is opened	Parámetros que se añaden cada vez que se abre la aplicación
+	Separate flags with spaces. Quote a value that has spaces in it.	Separa los parámetros con espacios. Pon entre comillas un valor que contenga espacios.
+	A quote isn't closed.	Hay unas comillas sin cerrar.
+	{name} wasn't opened: a quote in its launch options isn't closed.	{name} no se abrió: hay unas comillas sin cerrar en sus opciones de inicio.
+	Save	Guardar
 	All releases	Todas las versiones
 	ArtCraft Launcher {version} is available.	ArtCraft Launcher {version} está disponible.
 	Dismiss	Descartar

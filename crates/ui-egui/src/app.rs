@@ -83,6 +83,7 @@ pub(crate) enum Dialog {
     Replace { app: String, path: String },
     Settings,
     LauncherUpdate(artcraft_launcher_core::Release),
+    LaunchFlags { app: String, flags: String },
 }
 
 impl Dialog {
@@ -96,6 +97,7 @@ impl Dialog {
             Dialog::Replace { app, .. } => ("replace", app),
             Dialog::Settings => ("settings", ""),
             Dialog::LauncherUpdate(r) => ("launcher-update", &r.tag),
+            Dialog::LaunchFlags { app, .. } => ("launch-flags", app),
         }
     }
 }
@@ -708,11 +710,18 @@ impl LauncherUi {
         list.into_iter().map(|(_, e)| e.app.id).collect()
     }
 
-    /// Opens an app, and counts it for "Frequently used".
-    pub(crate) fn launch_app(&mut self, id: &str) {
+    /// Opens an app with its launch flags, and counts it for "Frequently used".
+    pub(crate) fn launch_app(&mut self, ctx: &egui::Context, id: &str) {
+        let flags = self.settings.launch_flags.get(id).map_or("", String::as_str);
+        // The dialog only saves flags that split, but the settings file can be edited by hand.
+        let Ok(args) = artcraft_launcher_core::args::split(flags) else {
+            let name = self.entry(id).map_or(id, |e| e.app.name).to_string();
+            self.toast(ctx, crate::i18n::fmt(tl!("{name} wasn't opened: a quote in its launch options isn't closed."), &[("name", &name)]), true);
+            return;
+        };
         let opened = self.settings.launches.entry(id.to_string()).or_insert(0);
         *opened = opened.saturating_add(1);
-        self.send(Command::Launch { app: id.to_string() });
+        self.send(Command::Launch { app: id.to_string(), args });
     }
 
     /// Whether the app on screen under `id` is installed on this computer.

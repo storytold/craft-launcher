@@ -73,6 +73,13 @@
 	Show in Files	Pokaż w menedżerze plików
 	Reinstall	Przeinstaluj
 	Uninstall…	Odinstaluj…
+	Launch options…	Opcje uruchamiania…
+	{name} launch options	Opcje uruchamiania aplikacji {name}
+	Flags added each time the app is opened	Flagi dodawane przy każdym otwarciu aplikacji
+	Separate flags with spaces. Quote a value that has spaces in it.	Oddziel flagi spacjami. Wartość ze spacjami umieść w cudzysłowie.
+	A quote isn't closed.	Cudzysłów nie jest zamknięty.
+	{name} wasn't opened: a quote in its launch options isn't closed.	Nie otwarto aplikacji {name}: cudzysłów w jej opcjach uruchamiania nie jest zamknięty.
+	Save	Zapisz
 	All releases	Wszystkie wydania
 	ArtCraft Launcher {version} is available.	Dostępna jest nowa wersja ArtCraft Launcher ({version}).
 	Dismiss	Zamknij

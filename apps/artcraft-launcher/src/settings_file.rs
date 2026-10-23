@@ -110,7 +110,8 @@ mod tests {
     #[test]
     fn settings_saved_with_no_file_read_back() {
         let dir = Scratch::new("settings-round-trip");
-        let settings = Settings { last_check: Some(1_791_500_000), notify: false, ..Settings::default() };
+        let mut settings = Settings { last_check: Some(1_791_500_000), notify: false, ..Settings::default() };
+        settings.launch_flags.insert("photocraft".into(), r#"--dir "My Photos""#.into());
         assert_eq!(save(&dir.file(), "settings", &settings), Ok(()));
         assert_eq!(load::<Settings>(&dir.file(), "settings"), Some(settings));
     }

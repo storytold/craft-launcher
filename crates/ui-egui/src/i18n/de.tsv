@@ -72,6 +72,13 @@
 	Show in Files	Im Dateimanager zeigen
 	Reinstall	Neu installieren
 	Uninstall…	Deinstallieren…
+	Launch options…	Startoptionen…
+	{name} launch options	Startoptionen für {name}
+	Flags added each time the app is opened	Flags, die bei jedem Öffnen der App angehängt werden
+	Separate flags with spaces. Quote a value that has spaces in it.	Flags durch Leerzeichen trennen. Werte mit Leerzeichen in Anführungszeichen setzen.
+	A quote isn't closed.	Ein Anführungszeichen wird nicht geschlossen.
+	{name} wasn't opened: a quote in its launch options isn't closed.	{name} wurde nicht geöffnet: Ein Anführungszeichen in den Startoptionen wird nicht geschlossen.
+	Save	Speichern
 	All releases	Alle Versionen
 	ArtCraft Launcher {version} is available.	ArtCraft Launcher {version} ist verfügbar.
 	Dismiss	Ausblenden

@@ -74,6 +74,13 @@
 	Show in Files	ファイルマネージャーで表示
 	Reinstall	再インストール
 	Uninstall…	アンインストール…
+	Launch options…	起動オプション…
+	{name} launch options	{name} の起動オプション
+	Flags added each time the app is opened	アプリを開くたびに追加されるフラグ
+	Separate flags with spaces. Quote a value that has spaces in it.	フラグはスペースで区切ってください。スペースを含む値は引用符で囲んでください。
+	A quote isn't closed.	引用符が閉じられていません。
+	{name} wasn't opened: a quote in its launch options isn't closed.	{name} を開けませんでした: 起動オプションの引用符が閉じられていません。
+	Save	保存
 	All releases	すべてのリリース
 	ArtCraft Launcher {version} is available.	ArtCraft Launcher {version} が利用可能です。
 	Dismiss	閉じる

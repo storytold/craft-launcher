@@ -530,17 +530,18 @@ fn remove_appimage(app: &CraftApp, path: &Path, record: Option<&Record>) -> Resu
     Ok(())
 }
 
-/// Starts an installed app.
-pub fn launch(app: &CraftApp, installed: &Installed, paths: &Paths) -> Result<(), String> {
+/// Starts an installed app with `args` (the user's launch flags) on its command line.
+pub fn launch(app: &CraftApp, installed: &Installed, paths: &Paths, args: &[String]) -> Result<(), String> {
     let _ = paths;
     let path = Path::new(&installed.location);
     match installed.source {
         InstallSource::Flatpak => {
             let mut cmd = process::flatpak_command();
-            cmd.args(["run", &app.bundle_id()]);
+            // After the app's id: flags before it would go to `flatpak run` itself.
+            cmd.args(["run", &app.bundle_id()]).args(args);
             process::spawn_detached(cmd)
         }
-        InstallSource::MacApp => process::open(path.as_os_str()),
+        InstallSource::MacApp => process::open_app(path, args),
         // A tarball the launcher unpacked into its own folder: run it here, against its own
         // home, rather than on the host through `flatpak-spawn` (which is what `launch_binary`
         // would do inside the sandbox). Its settings then land beside it instead of in the
@@ -550,6 +551,7 @@ pub fn launch(app: &CraftApp, installed: &Installed, paths: &Paths) -> Result<()
             let home = paths.app_home(app.id);
             prepare_home(&home);
             let mut cmd = process::command(path);
+            cmd.args(args);
             for (name, value) in home_env(&home) {
                 cmd.env(name, value);
             }
@@ -558,12 +560,12 @@ pub fn launch(app: &CraftApp, installed: &Installed, paths: &Paths) -> Result<()
             }
             process::spawn_detached(cmd)
         }
-        _ if cfg!(target_os = "macos") && path.extension().is_some_and(|e| e == "app") => process::open(path.as_os_str()),
+        _ if cfg!(target_os = "macos") && path.extension().is_some_and(|e| e == "app") => process::open_app(path, args),
         _ => {
             if !path.exists() {
                 return Err(format!("{} isn't where it was installed ({})", app.name, path.display()));
             }
-            process::launch_binary(path, &[])
+            process::launch_binary(path, args)
         }
     }
     .map_err(|e| format!("Couldn't open {}: {e}", app.name))

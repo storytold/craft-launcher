@@ -295,7 +295,7 @@ fn which_on_path(name: &str) -> Option<std::path::PathBuf> {
 }
 
 /// Starts an app binary from its own folder.
-pub fn launch_binary(exe: &Path, args: &[&str]) -> Result<(), String> {
+pub fn launch_binary(exe: &Path, args: &[String]) -> Result<(), String> {
     let mut cmd = if in_sandbox() {
         let mut c = command("flatpak-spawn");
         c.arg("--host").arg(exe);
@@ -313,6 +313,15 @@ pub fn launch_binary(exe: &Path, args: &[&str]) -> Result<(), String> {
 /// Opens a file, folder or URL with the system's default handler.
 pub fn open(target: &std::ffi::OsStr) -> Result<(), String> {
     spawn_detached(opener(target))
+}
+
+/// macOS: opens an `.app` bundle with `open`, handing `args` to the app (`open … --args`).
+pub fn open_app(bundle: &Path, args: &[String]) -> Result<(), String> {
+    let mut cmd = opener(bundle.as_os_str());
+    if !args.is_empty() {
+        cmd.arg("--args").args(args);
+    }
+    spawn_detached(cmd)
 }
 
 /// The system's default opener for `target`: `explorer` on Windows, `open` on macOS, and
