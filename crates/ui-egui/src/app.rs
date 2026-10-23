@@ -3,7 +3,7 @@
 use std::time::Duration;
 
 use artcraft_launcher_core::protocol::{
-    Backend, BackendOptions, CANCELLED, Capabilities, Command, Event, INSTALL_CANCELLED, JobPhase, LatestRelease, PAUSED, Source,
+    Backend, BackendOptions, CANCELLED, Capabilities, Command, Event, INSTALL_CANCELLED, JobPhase, LatestRelease, MachineAutoUpdate, PAUSED, Source,
 };
 use artcraft_launcher_core::release::Release;
 use artcraft_launcher_core::status::AppStatus;
@@ -155,6 +155,12 @@ pub struct LauncherUi {
     /// Versions of apps or the launcher already queued for auto-update during this session,
     /// preventing repeated install loops if an update fails or is in progress.
     pub(crate) auto_update_attempted: std::collections::BTreeSet<(String, String)>,
+    /// The update service's background installs (Windows), while there is a service: then
+    /// "Automatically download and install updates" shows and changes them, for everyone on the
+    /// computer, rather than this user's own setting.
+    pub(crate) machine_auto_update: Option<MachineAutoUpdate>,
+    /// A change to `machine_auto_update` is waiting on Windows' permission prompt.
+    pub(crate) machine_auto_update_pending: bool,
     /// The URL or deep link to open when Discord is clicked.
     pub(crate) discord_url: &'static str,
 }
@@ -217,7 +223,30 @@ impl LauncherUi {
             last_detect: 0,
             was_focused: true,
             auto_update_attempted: std::collections::BTreeSet::new(),
+            machine_auto_update: None,
+            machine_auto_update_pending: false,
             discord_url: artcraft_launcher_core::catalog::DISCORD_URL,
+        }
+    }
+
+    /// "Automatically download and install updates" was ticked or unticked. With the update
+    /// service installed it's the computer's setting, which only an administrator may change: the
+    /// backend asks Windows for permission, and the box shows the setting as it then stands. Set
+    /// by Group Policy, it can't be changed here at all.
+    pub(crate) fn set_auto_update(&mut self, on: bool) {
+        match self.machine_auto_update {
+            Some(machine) if machine.managed || self.machine_auto_update_pending => {}
+            Some(_) => {
+                self.settings.auto_update = on;
+                self.machine_auto_update_pending = true;
+                self.send(Command::SetAutoUpdate { on });
+            }
+            None => {
+                self.settings.auto_update = on;
+                if on {
+                    self.trigger_auto_updates();
+                }
+            }
         }
     }
 
@@ -408,6 +437,7 @@ impl LauncherUi {
                 true
             }
             Event::LauncherUpdate(r) => self.on_launcher_update(r),
+            Event::MachineAutoUpdate { setting, error } => self.on_machine_auto_update(ctx, setting, error),
             Event::CheckStarted => {
                 self.checking = true;
                 false
@@ -487,6 +517,20 @@ impl LauncherUi {
         fresh
     }
 
+    /// The computer's background-install setting (with the update service), as it now stands:
+    /// the box shows what an administrator chose. `true` when it's on, so whatever waits installs.
+    fn on_machine_auto_update(&mut self, ctx: &egui::Context, setting: Option<MachineAutoUpdate>, error: Option<String>) -> bool {
+        self.machine_auto_update_pending = false;
+        self.machine_auto_update = setting;
+        if let Some(machine) = setting {
+            self.settings.auto_update = machine.on;
+        }
+        if let Some(e) = error {
+            self.toast(ctx, e, true);
+        }
+        setting.is_some_and(|m| m.on)
+    }
+
     /// One notification per new version of an installed app.
     fn announce_updates(&mut self, host: &mut dyn Host) {
         let mut fresh = Vec::new();
@@ -522,7 +566,8 @@ impl LauncherUi {
 
     /// When auto-updates are enabled, automatically downloads and installs pending updates.
     pub(crate) fn trigger_auto_updates(&mut self) {
-        if !self.caps.manage_apps || !self.settings.auto_update {
+        // While Windows asks an administrator, the box shows what was asked for, not what is.
+        if !self.caps.manage_apps || !self.settings.auto_update || self.machine_auto_update_pending {
             return;
         }
         let to_update: Vec<(String, String)> = self

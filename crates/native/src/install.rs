@@ -219,10 +219,9 @@ fn destination(
         return Ok(None);
     }
     if let Some(inst) = existing {
-        let exe = Path::new(&inst.location);
         return Ok(match kind {
             PackageKind::AppImage => previous.filter(|r| r.kind == kind).and_then(|r| r.path.parent()).map(Path::to_path_buf),
-            PackageKind::Msi => exe.parent().filter(|_| exe.is_absolute()).map(Path::to_path_buf),
+            PackageKind::Msi => msi_update_folder(inst),
             _ => None,
         });
     }
@@ -232,6 +231,14 @@ fn destination(
     }
     let parent = selected_folder(folder, kind != PackageKind::Msi)?;
     Ok(Some(if kind == PackageKind::Msi { parent.join(app.name) } else { parent }))
+}
+
+/// The folder an MSI update of `existing` goes in: the one its copy is in, so an app installed into
+/// a chosen folder stays there. (The update service goes by the folder the package registered,
+/// `detect::windows::machine_install_folder`.)
+pub fn msi_update_folder(existing: &Installed) -> Option<PathBuf> {
+    let exe = Path::new(&existing.location);
+    exe.parent().filter(|_| exe.is_absolute()).map(Path::to_path_buf)
 }
 
 fn selected_folder(folder: &str, writable: bool) -> Result<PathBuf, String> {
@@ -1577,21 +1584,60 @@ pub(crate) fn msi_path(msi: &Path) -> Result<PathBuf, String> {
 pub mod windows {
     use artcraft_launcher_core::protocol::CANCELLED;
 
-    use super::{CraftApp, INSTALLER, JobPhase, Path, PathBuf, Stop, cancelled, msi_command, msi_folder_argument, msi_log, process, turn};
+    use super::{CraftApp, INSTALLER, JobPhase, Path, PathBuf, Stop, cancelled, msi_command, msi_folder_argument, msi_log, msi_path, process, turn};
+
+    /// `%SystemRoot%\System32`, where Windows' own tools are run from by full path.
+    pub fn system32() -> PathBuf {
+        std::env::var_os("SystemRoot").map_or_else(|| PathBuf::from(r"C:\Windows"), PathBuf::from).join("System32")
+    }
 
     fn msiexec() -> PathBuf {
-        std::env::var_os("SystemRoot").map_or_else(|| PathBuf::from(r"C:\Windows"), PathBuf::from).join(r"System32\msiexec.exe")
+        system32().join("msiexec.exe")
     }
+
+    /// The Windows Installer's exit code `1618`: another installation holds its lock.
+    pub const ANOTHER_INSTALL: &str = "another installation is in progress. Wait for it to finish, then try again.";
 
     fn explain(code: Option<i32>) -> Result<(), String> {
         match code {
             Some(0 | 3010 | 1641) => Ok(()),
             Some(1602) => Err("cancelled".into()),
-            Some(1618) => Err("another installation is in progress. Wait for it to finish, then try again.".into()),
+            Some(1618) => Err(ANOTHER_INSTALL.into()),
             Some(1925 | 1303) => Err("Windows didn't allow the install (administrator permission is needed)".into()),
             Some(c) => Err(format!("the Windows Installer stopped with error {c}")),
             None => Err("the Windows Installer was interrupted".into()),
         }
+    }
+
+    /// Runs an MSI with no UI at all and no restart, for the update service (LocalSystem, which
+    /// needs no permission and has nobody to show a window to), into `destination` when given, as
+    /// [`run_msi`] does. Windows Installer's verbose log goes to `log`, which a failure names.
+    /// `Ok(true)` when Windows wants a restart to finish replacing files in use.
+    pub fn run_msi_quiet(msi: &Path, destination: Option<&Path>, log: &Path, stop: &Stop, phase: &mut dyn FnMut(JobPhase)) -> Result<bool, String> {
+        let mut restart = false;
+        in_turn(stop, phase, JobPhase::Installing, || {
+            use std::os::windows::process::CommandExt;
+            let mut command = process::command(msiexec());
+            command.arg("/i").arg(msi_path(msi)?).args(["/qn", "/norestart", "/l*v"]).arg(log);
+            if let Some(dir) = destination {
+                command.raw_arg(msi_folder_argument(dir)?);
+            }
+            let status = command.status().map_err(|e| format!("couldn't start the Windows Installer ({e})"))?;
+            restart = matches!(status.code(), Some(3010 | 1641));
+            explain(status.code()).map_err(|e| match status.code() {
+                Some(1602) | None => e,
+                _ => format!("{e}. Its log is at {}", log.display()),
+            })
+        })?;
+        Ok(restart)
+    }
+
+    /// Starts an MSI as [`run_msi_quiet`] does, without waiting for it: for the update service's
+    /// own package, which stops the service (this process) to replace it and starts the new one.
+    pub fn start_msi_quiet(msi: &Path, log: &Path) -> Result<(), String> {
+        let mut cmd = process::command(msiexec());
+        cmd.arg("/i").arg(msi_path(msi)?).args(["/qn", "/norestart", "/l*v"]).arg(log);
+        process::spawn_detached(cmd).map_err(|e| format!("couldn't start the Windows Installer ({e})"))
     }
 
     /// Runs an MSI with a progress window and no restart. Windows asks for permission itself.
@@ -1740,6 +1786,19 @@ mod tests {
             locations.per_app.insert(app.id.into(), dir.path().display().to_string());
             assert_eq!(destination(app, PackageKind::Dmg, None, None, &locations).unwrap(), Some(dir.path().into()));
         }
+    }
+
+    #[test]
+    fn an_msi_update_goes_where_its_copy_is() {
+        let app = CraftApp::by_id("photocraft").unwrap();
+        let exe = std::env::temp_dir().join("Craft Apps").join("PhotoCraft").join("photocraft.exe");
+        let msi = |location: String| Installed { version: None, source: InstallSource::Msi, location, package: Some("{code}".into()) };
+        let chosen = msi(exe.display().to_string());
+        assert_eq!(msi_update_folder(&chosen), exe.parent().map(Path::to_path_buf));
+        let locations = InstallLocations::default();
+        assert_eq!(destination(app, PackageKind::Msi, Some(&chosen), None, &locations).unwrap(), msi_update_folder(&chosen));
+        // Only the app's name is known (no exe found): the package's own folder.
+        assert_eq!(msi_update_folder(&msi(app.name.to_string())), None);
     }
 
     #[test]
