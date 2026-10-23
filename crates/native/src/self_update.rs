@@ -17,6 +17,7 @@
 //!
 //! Anything else (FreeBSD, a development build) gets the download link instead.
 
+use std::ffi::OsString;
 use std::path::{Path, PathBuf};
 
 use artcraft_launcher_core::PackageKind;
@@ -227,68 +228,77 @@ pub fn update(
     let asset = asset.clone();
     let mut job = Job { http, paths, stop, phase, install_locations: &Default::default(), replace: false };
     let file = install::download(release, &asset, &mut job)?;
+    #[cfg(windows)]
+    windows_precheck(install, paths, &file)?;
     // The restart ends this process: nothing else may be under way.
     last()?;
     phase(JobPhase::Installing);
+    // Written before the swap starts: the Windows helper runs alongside this process and clears
+    // it when it fails, which a write after scheduling could undo.
+    mark_installed(paths, release);
+    let pid = std::process::id();
+    let scheduled = (|| -> Result<(), String> {
+        match install {
+            #[cfg(target_os = "macos")]
+            Install::MacApp(bundle) => {
+                let existing = Installed { version: None, source: InstallSource::MacApp, location: bundle.display().to_string(), package: None };
+                let placed =
+                    install::macos::install_dmg(&LAUNCHER, &file, Some(&existing), None, false, paths, &install::macos::Expect::release(release));
+                let _ = std::fs::remove_file(&file);
+                let placed = placed?;
+                relaunch_after_exit(pid, &[Path::new("/usr/bin/open").as_os_str(), placed.as_os_str()])
+            }
+            #[cfg(target_os = "linux")]
+            Install::AppImage(path) => {
+                replace_appimage(&file, path)?;
+                let _ = std::fs::remove_file(&file);
+                relaunch_after_exit(pid, &[path.as_os_str()])
+            }
+            #[cfg(target_os = "linux")]
+            Install::Package(kind, exe) => {
+                let result = install::linux::install_package(*kind, &file, stop, phase);
+                let _ = std::fs::remove_file(&file);
+                result?;
+                relaunch_after_exit(pid, &[exe.as_os_str()])
+            }
+            #[cfg(target_os = "linux")]
+            Install::Flatpak => {
+                let result = install::linux::install_package(PackageKind::Flatpak, &file, stop, phase);
+                let _ = std::fs::remove_file(&file);
+                result?;
+                relaunch_flatpak_after_exit()
+            }
+            #[cfg(windows)]
+            Install::Msi(exe) => windows_helper(paths, pid, exe, &msi_finish(&file)?),
+            #[cfg(windows)]
+            Install::Portable(exe) => {
+                exe.parent().ok_or("the launcher isn't in a folder")?;
+                windows_helper(paths, pid, exe, &Finish::Portable { zip: file, tmp: paths.cache.join(PORTABLE_STAGING) })
+            }
+            #[allow(unreachable_patterns)]
+            _ => {
+                let _ = (pid, &file);
+                Err("this copy of ArtCraft Launcher can't update itself; download the new version instead".into())
+            }
+        }
+    })();
+    unmark_unless_scheduled(paths, scheduled)
+}
+
+/// Records `release` as just installed, so it isn't offered again for [`JUST_UPDATED_FOR`].
+fn mark_installed(paths: &Paths, release: &Release) {
     if let Err(e) = crate::paths::write_atomic(&marker(paths), format!("{}\n{}\n", release.tag, crate::now()).as_bytes()) {
         log::warn!("couldn't record the self-update: {e}");
     }
-    let pid = std::process::id();
-    match install {
-        #[cfg(target_os = "macos")]
-        Install::MacApp(bundle) => {
-            let existing = Installed { version: None, source: InstallSource::MacApp, location: bundle.display().to_string(), package: None };
-            let placed =
-                install::macos::install_dmg(&LAUNCHER, &file, Some(&existing), None, false, paths, &install::macos::Expect::release(release));
-            let _ = std::fs::remove_file(&file);
-            let placed = placed?;
-            relaunch_after_exit(pid, &[Path::new("/usr/bin/open").as_os_str(), placed.as_os_str()])
-        }
-        #[cfg(target_os = "linux")]
-        Install::AppImage(path) => {
-            replace_appimage(&file, path)?;
-            let _ = std::fs::remove_file(&file);
-            relaunch_after_exit(pid, &[path.as_os_str()])
-        }
-        #[cfg(target_os = "linux")]
-        Install::Package(kind, exe) => {
-            let result = install::linux::install_package(*kind, &file, stop, phase);
-            let _ = std::fs::remove_file(&file);
-            result?;
-            relaunch_after_exit(pid, &[exe.as_os_str()])
-        }
-        #[cfg(target_os = "linux")]
-        Install::Flatpak => {
-            let result = install::linux::install_package(PackageKind::Flatpak, &file, stop, phase);
-            let _ = std::fs::remove_file(&file);
-            result?;
-            relaunch_flatpak_after_exit()
-        }
-        #[cfg(windows)]
-        Install::Msi(exe) => windows_helper(pid, &msi_update_step(&file)?, exe),
-        #[cfg(windows)]
-        Install::Portable(exe) => {
-            let dir = exe.parent().ok_or("the launcher isn't in a folder")?;
-            let tmp = paths.cache.join("launcher-update");
-            windows_helper(
-                pid,
-                &format!(
-                    "$t = {tmp}; Remove-Item -LiteralPath $t -Recurse -Force -ErrorAction SilentlyContinue; Expand-Archive -LiteralPath {zip} -DestinationPath $t -Force; \
-                     $top = Get-ChildItem -LiteralPath $t | Select-Object -First 1; Copy-Item -Path (Join-Path $top.FullName '*') -Destination {dir} -Recurse -Force; \
-                     Remove-Item -LiteralPath $t -Recurse -Force -ErrorAction SilentlyContinue; Remove-Item -LiteralPath {zip} -ErrorAction SilentlyContinue",
-                    tmp = ps_quote(&tmp),
-                    zip = ps_quote(&file),
-                    dir = ps_quote(dir),
-                ),
-                exe,
-            )
-        }
-        #[allow(unreachable_patterns)]
-        _ => {
-            let _ = (pid, &file);
-            Err("this copy of ArtCraft Launcher can't update itself; download the new version instead".into())
-        }
+}
+
+/// Removes the record of [`mark_installed`] when the swap couldn't be scheduled, so the update
+/// stays on offer.
+fn unmark_unless_scheduled(paths: &Paths, scheduled: Result<(), String>) -> Result<(), String> {
+    if scheduled.is_err() {
+        let _ = std::fs::remove_file(marker(paths));
     }
+    scheduled
 }
 
 /// Copies the new AppImage beside the running one and renames it over it. The running copy is
@@ -391,35 +401,242 @@ fn relaunch_flatpak_after_exit() -> Result<(), String> {
     process::spawn_detached(cmd).map_err(|e| format!("couldn't schedule the Flatpak restart ({e})"))
 }
 
-/// Starts a hidden PowerShell that waits for `pid` to exit, runs `step`, then starts `exe`.
+/// The first argument of the Windows update helper: a copy of this program that finishes an
+/// update once the launcher has exited (see [`finish`]).
+pub const FINISH_FLAG: &str = "--finish-update";
+
+/// What the update helper does once the old launcher has exited.
+#[derive(Clone, Debug, PartialEq, Eq)]
+#[cfg_attr(not(windows), allow(dead_code))]
+enum Finish {
+    /// Run the new MSI, which reinstalls into the same folder.
+    Msi(PathBuf),
+    /// Unpack the new portable zip into `tmp` and copy it over the launcher's folder.
+    Portable { zip: PathBuf, tmp: PathBuf },
+}
+
+/// The helper's arguments: [`FINISH_FLAG`], the process id to wait for, the exe to start
+/// afterwards, then the step.
+#[cfg_attr(not(windows), allow(dead_code))]
+fn helper_args(pid: u32, exe: &Path, finish: &Finish) -> Vec<OsString> {
+    let mut args: Vec<OsString> = vec![FINISH_FLAG.into(), pid.to_string().into(), exe.into()];
+    match finish {
+        Finish::Msi(msi) => args.extend(["msi".into(), msi.into()]),
+        Finish::Portable { zip, tmp } => args.extend(["portable".into(), zip.into(), tmp.into()]),
+    }
+    args
+}
+
+/// Reads [`helper_args`] back.
+#[cfg_attr(not(windows), allow(dead_code))]
+fn parse_helper_args(args: &[OsString]) -> Option<(u32, PathBuf, Finish)> {
+    let [flag, pid, exe, step @ ..] = args else { return None };
+    if flag != FINISH_FLAG {
+        return None;
+    }
+    let pid = pid.to_str()?.parse().ok()?;
+    let finish = match step {
+        [kind, msi] if kind == "msi" => Finish::Msi(msi.into()),
+        [kind, zip, tmp] if kind == "portable" => Finish::Portable { zip: zip.into(), tmp: tmp.into() },
+        _ => return None,
+    };
+    Some((pid, exe.into(), finish))
+}
+
+#[cfg_attr(not(windows), allow(dead_code))]
+fn msi_finish(file: &Path) -> Result<Finish, String> {
+    install::msi_path(file).map(Finish::Msi)
+}
+
+/// The cache folder the update helper is copied into.
+#[cfg_attr(not(windows), allow(dead_code))]
+const HELPER_DIR: &str = "launcher-update-helper";
+/// The cache folder a portable update is unpacked into.
+#[cfg_attr(not(windows), allow(dead_code))]
+const PORTABLE_STAGING: &str = "launcher-update";
+
+/// Copies this program into the cache and starts the copy as the update helper, which waits for
+/// `pid` to exit, does `finish` and starts `exe`. Run from the cache, the helper doesn't hold the
+/// installed exe that the step replaces.
 #[cfg(windows)]
-fn windows_helper(pid: u32, step: &str, exe: &Path) -> Result<(), String> {
-    let script = format!("Wait-Process -Id {pid} -Timeout 60 -ErrorAction SilentlyContinue; {step}; Start-Process -FilePath {}", ps_quote(exe));
-    let mut cmd = process::command("powershell.exe");
-    cmd.args(["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-WindowStyle", "Hidden", "-Command", &script]).env_remove(PRETEND_VAR);
+fn windows_helper(paths: &Paths, pid: u32, exe: &Path, finish: &Finish) -> Result<(), String> {
+    let program = std::env::current_exe().map_err(|e| format!("couldn't find this program ({e})"))?;
+    let dir = paths.cache.join(HELPER_DIR);
+    // The previous update's copy, when it's still there.
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).map_err(|e| format!("couldn't schedule the update ({e})"))?;
+    let helper = dir.join(program.file_name().ok_or("this program has no file name")?);
+    std::fs::copy(&program, &helper).map_err(|e| format!("couldn't schedule the update ({e})"))?;
+    let mut cmd = process::command(&helper);
+    cmd.args(helper_args(pid, exe, finish)).env_remove(PRETEND_VAR);
     process::spawn_detached(cmd).map_err(|e| format!("couldn't schedule the update ({e})"))
 }
 
-/// A PowerShell single-quoted literal.
-#[cfg_attr(not(windows), allow(dead_code))]
-fn ps_quote(path: &Path) -> String {
-    format!("'{}'", path.display().to_string().replace('\'', "''"))
+/// Finishes an update when this program was started as the update helper; `args` are its
+/// arguments without the program name. `None` when they don't start with [`FINISH_FLAG`]. The
+/// launcher is started again even when the step fails: the old copy is then still in place.
+#[cfg(windows)]
+pub fn finish(args: &[OsString]) -> Option<Result<(), String>> {
+    if args.first().is_none_or(|a| a != FINISH_FLAG) {
+        return None;
+    }
+    let Some((pid, exe, step)) = parse_helper_args(args) else { return Some(Err("the update helper's arguments are incomplete".into())) };
+    let Ok(me) = std::env::current_exe() else { return Some(Err("the update helper couldn't find itself".into())) };
+    let paths = match launcher_paths(&exe) {
+        Ok(paths) => paths,
+        Err(e) => return Some(Err(e)),
+    };
+    // Nothing runs unless this is the launcher's own update, signed like this helper.
+    if let Err(e) = check_helper(&me, &paths, &exe, &step).and_then(|()| signed_like(&me, &exe)) {
+        record_failure(&paths, &e);
+        return Some(Err(e));
+    }
+    let done = run_step(&me, pid, &exe, &step, std::time::Duration::from_secs(60));
+    if let Err(e) = &done {
+        record_failure(&paths, e);
+    }
+    // The new launcher, or the old one when the step failed.
+    let started = signed_like(&me, &exe)
+        .and_then(|()| process::spawn_detached(std::process::Command::new(&exe)).map_err(|e| format!("couldn't start {} ({e})", exe.display())));
+    if let Err(e) = &started {
+        record_failure(&paths, e);
+    }
+    Some(done.and(started))
 }
 
-/// A PowerShell literal for an msiexec argument: the path in double quotes, as msiexec expects.
+/// The launcher's folders for the installation at `exe`, as [`Paths::new`] finds them when that
+/// exe runs: beside it with `portable.txt`, the per-user folders otherwise.
 #[cfg_attr(not(windows), allow(dead_code))]
-fn ps_quote_arg(path: &Path) -> String {
-    format!("'\"{}\"'", path.display().to_string().replace('\'', "''"))
+fn launcher_paths(exe: &Path) -> Result<Paths, String> {
+    match exe.parent() {
+        Some(dir) if dir.join("portable.txt").is_file() => Ok(Paths::under(&dir.join("ArtCraftLauncherData"))),
+        _ => Paths::new(),
+    }
 }
 
+/// Where a failed update's error waits for the next start.
+fn failure_file(paths: &Paths) -> PathBuf {
+    paths.logs().join("self-update-error.txt")
+}
+
+/// Records a failed update: the next check offers the update again, and the next start logs `error`.
 #[cfg_attr(not(windows), allow(dead_code))]
-fn msi_update_step(file: &Path) -> Result<String, String> {
-    let file = install::msi_path(file)?;
-    Ok(format!(
-        "Start-Process -FilePath (Join-Path $env:SystemRoot 'System32\\msiexec.exe') -ArgumentList '/i',{},'/passive','/norestart' -Wait; Remove-Item -LiteralPath {} -ErrorAction SilentlyContinue",
-        ps_quote_arg(&file),
-        ps_quote(&file)
-    ))
+fn record_failure(paths: &Paths, error: &str) {
+    let _ = std::fs::remove_file(marker(paths));
+    let _ = std::fs::create_dir_all(paths.logs());
+    let _ = crate::paths::write_atomic(&failure_file(paths), error.as_bytes());
+}
+
+/// The error of the last update, if it failed, once.
+pub fn take_failure(paths: &Paths) -> Option<String> {
+    let file = failure_file(paths);
+    let error = std::fs::read_to_string(&file).ok()?;
+    let _ = std::fs::remove_file(&file);
+    Some(error)
+}
+
+/// Checks, while the launcher still runs and can show the error, what the helper checks before
+/// it installs: this program, the installed exe and the new MSI are signed by one publisher, and
+/// the helper finds the cache in `paths` that holds its copy, the download and the staging folder.
+#[cfg(windows)]
+fn windows_precheck(install: &Install, paths: &Paths, download: &Path) -> Result<(), String> {
+    let me = std::env::current_exe().map_err(|e| format!("couldn't find this program ({e})"))?;
+    match install {
+        Install::Msi(exe) => signed_like(&me, exe).and_then(|()| signed_like(&me, download)).and_then(|()| same_cache_as_helper(paths, exe)),
+        Install::Portable(exe) => signed_like(&me, exe).and_then(|()| same_cache_as_helper(paths, exe)),
+        _ => Ok(()),
+    }
+}
+
+/// Accepts `paths` when the update helper, which finds the launcher's folders again from `exe`
+/// ([`launcher_paths`]), finds the same cache. Refuses a launcher that keeps its files in the
+/// temporary folder because its own folders couldn't be found.
+#[cfg(windows)]
+fn same_cache_as_helper(paths: &Paths, exe: &Path) -> Result<(), String> {
+    let canonical = |p: &Path| p.canonicalize().ok();
+    let theirs = launcher_paths(exe).ok().and_then(|helper| canonical(&helper.cache));
+    if theirs.is_some() && theirs == canonical(&paths.cache) {
+        Ok(())
+    } else {
+        Err(format!("ArtCraft Launcher can't update itself while it keeps its files in {}; download the new version instead", paths.cache.display()))
+    }
+}
+
+/// Accepts `file` when it carries a valid Authenticode signature from the same publisher as
+/// `reference`, this program. Refuses an unsigned file, another publisher's, and every file when
+/// `reference` itself isn't signed.
+#[cfg(windows)]
+fn signed_like(reference: &Path, file: &Path) -> Result<(), String> {
+    let publisher = |path: &Path| verifysign::verify_file(path).map(|signature| signature.subject_name());
+    let ours = publisher(reference).map_err(|e| format!("this copy of ArtCraft Launcher isn't signed ({e}), so it doesn't install updates"))?;
+    let theirs = publisher(file).map_err(|e| format!("{} isn't signed ({e})", file.display()))?;
+    if ours == theirs { Ok(()) } else { Err(format!("{} isn't signed by ArtCraft Launcher's publisher", file.display())) }
+}
+
+/// Whether `file` is a Windows program or library (it starts with the `MZ` header), whatever its
+/// name.
+#[cfg(windows)]
+fn is_program(file: &Path) -> bool {
+    use std::io::Read;
+    let mut magic = [0u8; 2];
+    std::fs::File::open(file).and_then(|mut f| f.read_exact(&mut magic)).is_ok() && magic == *b"MZ"
+}
+
+/// Allows only the launcher's own update: `exe` is this launcher's MSI or portable installation,
+/// of the kind `step` updates, and the helper (`me`), the download and the staging folder are in
+/// that installation's cache. Anything else is refused before the helper runs or starts a file.
+#[cfg(windows)]
+fn check_helper(me: &Path, paths: &Paths, exe: &Path, step: &Finish) -> Result<(), String> {
+    let refused = || "the update helper only finishes ArtCraft Launcher's own update".to_string();
+    let canonical = |p: &Path| p.canonicalize().map_err(|_| refused());
+    let cache = canonical(&paths.cache)?;
+    if canonical(me.parent().ok_or_else(refused)?)? != cache.join(HELPER_DIR) {
+        return Err(refused());
+    }
+    let exe = canonical(exe)?;
+    let downloads = canonical(&paths.downloads())?;
+    let in_downloads = |file: &Path| canonical(file).map(|f| f.parent() == Some(downloads.as_path()));
+    let allowed = match (detect(&exe), step) {
+        (Some(Install::Msi(installed)), Finish::Msi(msi)) => installed == exe && in_downloads(msi)?,
+        (Some(Install::Portable(installed)), Finish::Portable { zip, tmp }) => {
+            installed == exe
+                && in_downloads(zip)?
+                && tmp.file_name().is_some_and(|n| n == PORTABLE_STAGING)
+                && canonical(tmp.parent().ok_or_else(refused)?)? == cache
+        }
+        _ => false,
+    };
+    if allowed { Ok(()) } else { Err(refused()) }
+}
+
+/// Waits up to `wait` for `pid` to exit, does `step` once it has, and removes the download either
+/// way. The MSI, and every program in the portable zip, must be signed like `reference`.
+#[cfg(windows)]
+fn run_step(reference: &Path, pid: u32, exe: &Path, step: &Finish, wait: std::time::Duration) -> Result<(), String> {
+    let result = if process::wait_for_exit(pid, wait) {
+        match step {
+            Finish::Msi(msi) => signed_like(reference, msi).and_then(|()| install::windows::reinstall(msi)),
+            Finish::Portable { zip, tmp } => match (exe.parent(), exe.file_name()) {
+                (Some(dir), Some(executable)) => crate::portable::unpack_over(zip, tmp, dir, executable, &|file| {
+                    // The expected launcher must be signed even when its contents aren't a PE file.
+                    if file.file_name() == Some(executable) || is_program(file) { signed_like(reference, file) } else { Ok(()) }
+                }),
+                _ => Err("the launcher isn't in a folder".into()),
+            },
+        }
+    } else {
+        Err("ArtCraft Launcher was still running after a minute, so the update wasn't installed".into())
+    };
+    match step {
+        Finish::Msi(msi) => {
+            let _ = std::fs::remove_file(msi);
+        }
+        // `unpack_over` removes the staging folder, unless it holds files it couldn't put back.
+        Finish::Portable { zip, .. } => {
+            let _ = std::fs::remove_file(zip);
+        }
+    }
+    result
 }
 
 #[cfg(test)]
@@ -434,16 +651,376 @@ mod tests {
         std::fs::write(&file, b"test package").unwrap();
         let link = dir.path().join("cached.msi");
         std::os::unix::fs::symlink(&file, &link).unwrap();
-        let step = msi_update_step(&link).unwrap();
-        let target = file.canonicalize().unwrap();
-        assert!(step.contains(&format!("-ArgumentList '/i',{},", ps_quote_arg(&target))), "{step}");
-        assert!(step.contains(&format!("Remove-Item -LiteralPath {} ", ps_quote(&target))), "{step}");
+        assert_eq!(msi_finish(&link).unwrap(), Finish::Msi(file.canonicalize().unwrap()));
     }
 
     #[test]
     fn a_missing_msi_cannot_schedule_a_self_update() {
         let dir = tempfile::tempdir().unwrap();
-        assert!(msi_update_step(&dir.path().join("missing.msi")).is_err());
+        assert!(msi_finish(&dir.path().join("missing.msi")).is_err());
+    }
+
+    /// The helper reads back exactly what the launcher passed it, paths with spaces and
+    /// apostrophes included, and nothing that is incomplete or unknown.
+    #[test]
+    fn the_update_helper_reads_back_its_arguments() {
+        let exe = Path::new(r"C:\Users\O'Brien\AppData\Local\Programs\ArtCraft Launcher\artcraft-launcher.exe");
+        let msi = Finish::Msi(PathBuf::from(r"C:\Users\O'Brien\AppData\Local\ArtCraft Launcher\cache\artcraft-launcher-0.7.0-windows-x64.msi"));
+        let portable =
+            Finish::Portable { zip: PathBuf::from(r"D:\Tools\x 1.zip"), tmp: PathBuf::from(r"D:\Tools\ArtCraftLauncherData\cache\launcher-update") };
+        for finish in [msi, portable] {
+            let args = helper_args(4242, exe, &finish);
+            assert_eq!(args.first().map(OsString::as_os_str), Some(std::ffi::OsStr::new(FINISH_FLAG)));
+            assert_eq!(parse_helper_args(&args), Some((4242, exe.to_path_buf(), finish)));
+        }
+        let os = |args: &[&str]| args.iter().map(OsString::from).collect::<Vec<_>>();
+        for bad in [
+            os(&[]),
+            os(&["--hidden"]),
+            os(&[FINISH_FLAG, "4242", "launcher.exe"]),
+            os(&[FINISH_FLAG, "4242", "launcher.exe", "msi"]),
+            os(&[FINISH_FLAG, "4242", "launcher.exe", "msi", "a.msi", "extra"]),
+            os(&[FINISH_FLAG, "4242", "launcher.exe", "portable", "a.zip"]),
+            os(&[FINISH_FLAG, "not a pid", "launcher.exe", "msi", "a.msi"]),
+            os(&[FINISH_FLAG, "4242", "launcher.exe", "script", "Remove-Item C:\\"]),
+            os(&["--finish", "4242", "launcher.exe", "msi", "a.msi"]),
+        ] {
+            assert_eq!(parse_helper_args(&bad), None, "{bad:?}");
+        }
+    }
+
+    /// Arguments that aren't the helper's leave the launcher to start as usual.
+    #[cfg(windows)]
+    #[test]
+    fn only_the_helper_flag_starts_the_update_helper() {
+        assert_eq!(finish(&[]), None);
+        assert_eq!(finish(&[OsString::from("--hidden")]), None);
+        assert!(finish(&[OsString::from(FINISH_FLAG)]).is_some_and(|done| done.is_err()));
+    }
+
+    /// The portable update waits for the old launcher to exit, then replaces its files with the
+    /// zip's folder, keeps the settings beside it, and removes the download and the staging folder.
+    #[cfg(windows)]
+    #[test]
+    fn a_portable_update_replaces_the_launcher_after_it_exits() {
+        use std::io::Write;
+        let dir = tempfile::tempdir().unwrap();
+        let folder = dir.path().join("ArtCraft Launcher");
+        std::fs::create_dir_all(folder.join("ArtCraftLauncherData")).unwrap();
+        std::fs::write(folder.join("artcraft-launcher.exe"), "0.1.0").unwrap();
+        std::fs::write(folder.join("portable.txt"), "").unwrap();
+        std::fs::write(folder.join("ArtCraftLauncherData").join("settings.json"), "{}").unwrap();
+        let zip = dir.path().join("artcraft-launcher-0.2.0-windows-x64-portable.zip");
+        let mut writer = zip::ZipWriter::new(std::fs::File::create(&zip).unwrap());
+        let signed_exe = std::fs::read(system_program("cmd.exe")).unwrap();
+        for (name, body) in [
+            ("artcraft-launcher-0.2.0-windows-x64-portable/artcraft-launcher.exe", signed_exe.as_slice()),
+            ("artcraft-launcher-0.2.0-windows-x64-portable/portable.txt", b"".as_slice()),
+        ] {
+            writer.start_file(name, zip::write::SimpleFileOptions::default()).unwrap();
+            writer.write_all(body).unwrap();
+        }
+        writer.finish().unwrap();
+        let tmp = dir.path().join("cache").join("launcher-update");
+        let step = Finish::Portable { zip: zip.clone(), tmp: tmp.clone() };
+
+        let mut old = std::process::Command::new("ping").args(["-n", "3", "127.0.0.1"]).stdout(std::process::Stdio::null()).spawn().unwrap();
+        let exe = folder.join("artcraft-launcher.exe");
+        let helper = {
+            let (exe, step, pid) = (exe.clone(), step.clone(), old.id());
+            std::thread::spawn(move || run_step(&system_program("cmd.exe"), pid, &exe, &step, std::time::Duration::from_secs(30)))
+        };
+        std::thread::sleep(std::time::Duration::from_millis(500));
+        assert_eq!(std::fs::read_to_string(&exe).unwrap(), "0.1.0", "replaced while the old launcher was still running");
+        old.wait().unwrap();
+        helper.join().unwrap().unwrap();
+        assert_eq!(std::fs::read(&exe).unwrap(), signed_exe);
+        assert_eq!(std::fs::read_to_string(folder.join("ArtCraftLauncherData").join("settings.json")).unwrap(), "{}");
+        assert!(!folder.join("artcraft-launcher-0.2.0-windows-x64-portable").exists(), "the zip's folder must not be nested in the launcher's");
+        assert!(!zip.exists() && !tmp.exists(), "the download and the staging folder are removed");
+    }
+
+    /// The helper finishes only the launcher's own update: its own installation, with the
+    /// download from its own cache. A signed launcher must not run or start anything else.
+    #[cfg(windows)]
+    #[test]
+    fn the_update_helper_refuses_anything_but_the_launchers_own_update() {
+        let dir = tempfile::tempdir().unwrap();
+        let folder = dir.path().join("ArtCraft Launcher");
+        std::fs::create_dir_all(&folder).unwrap();
+        let exe = folder.join("artcraft-launcher.exe");
+        std::fs::write(&exe, "0.1.0").unwrap();
+        std::fs::write(folder.join("portable.txt"), "").unwrap();
+        let paths = Paths::under(dir.path());
+        let cache = paths.cache.clone();
+        std::fs::create_dir_all(paths.downloads()).unwrap();
+        std::fs::create_dir_all(cache.join(HELPER_DIR)).unwrap();
+        let me = cache.join(HELPER_DIR).join("artcraft-launcher.exe");
+        std::fs::write(&me, "helper").unwrap();
+        let zip = paths.downloads().join("artcraft-launcher-0.2.0-windows-x64-portable.zip");
+        std::fs::write(&zip, "zip").unwrap();
+        let elsewhere = dir.path().join("elsewhere.zip");
+        std::fs::write(&elsewhere, "zip").unwrap();
+        let other = dir.path().join("other.exe");
+        std::fs::write(&other, "other").unwrap();
+        let staging = cache.join(PORTABLE_STAGING);
+        let portable = |zip: &Path, tmp: &Path| Finish::Portable { zip: zip.to_path_buf(), tmp: tmp.to_path_buf() };
+
+        assert_eq!(check_helper(&me, &paths, &exe, &portable(&zip, &staging)), Ok(()));
+        // A helper that isn't in the installation's cache.
+        assert!(check_helper(&other, &paths, &exe, &portable(&zip, &staging)).is_err());
+        // Not the launcher's installation.
+        assert!(check_helper(&me, &paths, &other, &portable(&zip, &staging)).is_err());
+        // A download from outside the cache.
+        assert!(check_helper(&me, &paths, &exe, &portable(&elsewhere, &staging)).is_err());
+        // Unpacking anywhere but the cache's staging folder.
+        assert!(check_helper(&me, &paths, &exe, &portable(&zip, &dir.path().join(PORTABLE_STAGING))).is_err());
+        assert!(check_helper(&me, &paths, &exe, &portable(&zip, &paths.downloads())).is_err());
+        // An MSI for a portable installation.
+        assert!(check_helper(&me, &paths, &exe, &Finish::Msi(zip.clone())).is_err());
+        // No longer a portable installation.
+        std::fs::remove_file(folder.join("portable.txt")).unwrap();
+        assert!(check_helper(&me, &paths, &exe, &portable(&zip, &staging)).is_err());
+    }
+
+    /// The helper finds a portable launcher's folders beside it, as that launcher does.
+    #[test]
+    fn the_helper_uses_the_portable_launchers_own_folders() {
+        let dir = tempfile::tempdir().unwrap();
+        let exe = dir.path().join("artcraft-launcher.exe");
+        std::fs::write(dir.path().join("portable.txt"), "").unwrap();
+        let paths = launcher_paths(&exe).unwrap();
+        assert_eq!(paths.cache, dir.path().join("ArtCraftLauncherData").join("cache"));
+        assert_eq!(paths.data, dir.path().join("ArtCraftLauncherData").join("data"));
+    }
+
+    /// The launcher quits for an update only when the helper finds the cache the update was
+    /// downloaded into. One that keeps its files in the temporary folder, because its own folders
+    /// couldn't be found, refuses before it quits: the helper would look in the per-user folders.
+    #[cfg(windows)]
+    #[test]
+    fn a_launcher_whose_helper_looks_in_other_folders_does_not_quit_for_an_update() {
+        let dir = tempfile::tempdir().unwrap();
+        let folder = dir.path().join("ArtCraft Launcher");
+        std::fs::create_dir_all(&folder).unwrap();
+        let exe = folder.join("artcraft-launcher.exe");
+        std::fs::write(&exe, "0.1.0").unwrap();
+        let own = Paths::under(&folder.join("ArtCraftLauncherData"));
+        let temporary = Paths::under(&dir.path().join("Temp").join("artcraft-launcher"));
+        for paths in [&own, &temporary] {
+            std::fs::create_dir_all(paths.downloads()).unwrap();
+        }
+        // Installed with the MSI: the helper calls `Paths::new` again.
+        assert!(same_cache_as_helper(&temporary, &exe).is_err_and(|e| e.contains("can't update itself")));
+        std::fs::write(folder.join("portable.txt"), "").unwrap();
+        assert_eq!(same_cache_as_helper(&own, &exe), Ok(()));
+        assert!(same_cache_as_helper(&temporary, &exe).is_err());
+    }
+
+    /// An update whose swap couldn't be scheduled stays on offer, and a scheduled one is not
+    /// offered again unless the helper, running alongside, records that it failed.
+    #[test]
+    fn only_a_scheduled_update_is_recorded_as_installed() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = Paths::under(dir.path());
+        std::fs::create_dir_all(&paths.data).unwrap();
+        let release = Release { tag: "v0.2.0".into(), ..Release::default() };
+        mark_installed(&paths, &release);
+        assert!(unmark_unless_scheduled(&paths, Err("couldn't schedule the update".into())).is_err());
+        assert!(!just_updated_to(&paths, &release));
+        mark_installed(&paths, &release);
+        assert!(unmark_unless_scheduled(&paths, Ok(())).is_ok());
+        assert!(just_updated_to(&paths, &release));
+        // The helper refuses before this process has finished scheduling it.
+        mark_installed(&paths, &release);
+        record_failure(&paths, "the update helper only finishes ArtCraft Launcher's own update");
+        assert!(unmark_unless_scheduled(&paths, Ok(())).is_ok());
+        assert!(!just_updated_to(&paths, &release), "a failure the helper recorded must stay recorded");
+    }
+
+    /// A failed update is offered again and its error is logged at the next start, once.
+    #[test]
+    fn a_failed_update_is_offered_again_and_reported_once() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = Paths::under(dir.path());
+        let release = Release { tag: "v0.2.0".into(), ..Release::default() };
+        std::fs::create_dir_all(&paths.data).unwrap();
+        crate::paths::write_atomic(&marker(&paths), format!("v0.2.0\n{}\n", crate::now()).as_bytes()).unwrap();
+        assert!(just_updated_to(&paths, &release));
+        record_failure(&paths, "the Windows Installer stopped with error 1603");
+        assert!(!just_updated_to(&paths, &release));
+        assert_eq!(take_failure(&paths).as_deref(), Some("the Windows Installer stopped with error 1603"));
+        assert_eq!(take_failure(&paths), None);
+    }
+
+    /// A launcher that doesn't quit keeps its files, and the download is still removed.
+    #[cfg(windows)]
+    #[test]
+    fn a_launcher_that_keeps_running_is_not_replaced() {
+        let dir = tempfile::tempdir().unwrap();
+        let exe = dir.path().join("artcraft-launcher.exe");
+        std::fs::write(&exe, "0.1.0").unwrap();
+        let msi = dir.path().join("artcraft-launcher-0.2.0-windows-x64.msi");
+        std::fs::write(&msi, "not a package").unwrap();
+        let running = std::process::id();
+        let started = std::time::Instant::now();
+        // The test process itself never exits within the wait, so the package is never run.
+        let error =
+            run_step(&system_program("cmd.exe"), running, &exe, &Finish::Msi(msi.clone()), std::time::Duration::from_millis(300)).unwrap_err();
+        assert!(error.contains("still running"), "{error}");
+        assert!(started.elapsed() < std::time::Duration::from_secs(30));
+        assert_eq!(std::fs::read_to_string(&exe).unwrap(), "0.1.0");
+        assert!(!msi.exists());
+    }
+
+    #[cfg(windows)]
+    fn system_program(name: &str) -> PathBuf {
+        PathBuf::from(std::env::var_os("SystemRoot").unwrap()).join("System32").join(name)
+    }
+
+    /// The process id of a process that has already exited.
+    #[cfg(windows)]
+    fn exited_pid() -> u32 {
+        let mut gone = std::process::Command::new("cmd").args(["/C", "exit"]).spawn().unwrap();
+        gone.wait().unwrap();
+        gone.id()
+    }
+
+    /// Two programs from one publisher match; an unsigned one never does, on either side.
+    #[cfg(windows)]
+    #[test]
+    fn a_file_must_be_signed_by_the_launchers_own_publisher() {
+        let (cmd, msiexec) = (system_program("cmd.exe"), system_program("msiexec.exe"));
+        // `cargo test` binaries are unsigned.
+        let unsigned = std::env::current_exe().unwrap();
+        assert_eq!(signed_like(&cmd, &msiexec), Ok(()));
+        assert!(signed_like(&cmd, &unsigned).is_err_and(|e| e.contains("isn't signed")));
+        assert!(signed_like(&unsigned, &cmd).is_err_and(|e| e.contains("doesn't install updates")));
+    }
+
+    /// An unsigned launcher says so before it quits for an update. `cargo test` binaries are
+    /// unsigned, like a package built without the signing secrets.
+    #[cfg(windows)]
+    #[test]
+    fn an_unsigned_launcher_refuses_to_update_before_it_quits() {
+        let dir = tempfile::tempdir().unwrap();
+        let msi = dir.path().join("artcraft-launcher-0.2.0-windows-x64.msi");
+        std::fs::write(&msi, "not a package").unwrap();
+        for install in [Install::Msi(system_program("msiexec.exe")), Install::Portable(system_program("msiexec.exe"))] {
+            let error = windows_precheck(&install, &Paths::under(dir.path()), &msi).unwrap_err();
+            assert!(error.contains("isn't signed"), "{error}");
+        }
+    }
+
+    /// An MSI that isn't signed by the launcher's publisher is never handed to the Windows Installer.
+    #[cfg(windows)]
+    #[test]
+    fn an_unsigned_msi_is_never_run() {
+        let dir = tempfile::tempdir().unwrap();
+        let exe = dir.path().join("artcraft-launcher.exe");
+        std::fs::write(&exe, "0.1.0").unwrap();
+        let msi = dir.path().join("artcraft-launcher-0.2.0-windows-x64.msi");
+        std::fs::write(&msi, "not a package").unwrap();
+        let error =
+            run_step(&system_program("cmd.exe"), exited_pid(), &exe, &Finish::Msi(msi.clone()), std::time::Duration::from_secs(5)).unwrap_err();
+        assert!(error.contains("isn't signed"), "{error}");
+        assert!(!msi.exists());
+    }
+
+    /// A program in the portable zip that isn't signed by the launcher's publisher stops the
+    /// update before any file is replaced.
+    #[cfg(windows)]
+    #[test]
+    fn an_unsigned_program_in_the_portable_zip_is_not_installed() {
+        use std::io::Write;
+        let dir = tempfile::tempdir().unwrap();
+        let folder = dir.path().join("ArtCraft Launcher");
+        std::fs::create_dir_all(&folder).unwrap();
+        let exe = folder.join("artcraft-launcher.exe");
+        std::fs::write(&exe, "0.1.0").unwrap();
+        let zip = dir.path().join("artcraft-launcher-0.2.0-windows-x64-portable.zip");
+        let mut writer = zip::ZipWriter::new(std::fs::File::create(&zip).unwrap());
+        writer.start_file("artcraft-launcher-0.2.0-windows-x64-portable/README.md", zip::write::SimpleFileOptions::default()).unwrap();
+        writer.write_all(b"# ArtCraft Launcher").unwrap();
+        writer.start_file("artcraft-launcher-0.2.0-windows-x64-portable/artcraft-launcher.exe", zip::write::SimpleFileOptions::default()).unwrap();
+        writer.write_all(&std::fs::read(system_program("cmd.exe")).unwrap()).unwrap();
+        // An unsigned program under a harmless name.
+        writer.start_file("artcraft-launcher-0.2.0-windows-x64-portable/notes.txt", zip::write::SimpleFileOptions::default()).unwrap();
+        writer.write_all(&std::fs::read(std::env::current_exe().unwrap()).unwrap()).unwrap();
+        writer.finish().unwrap();
+        let tmp = dir.path().join("cache").join(PORTABLE_STAGING);
+        let step = Finish::Portable { zip: zip.clone(), tmp: tmp.clone() };
+        let error = run_step(&system_program("cmd.exe"), exited_pid(), &exe, &step, std::time::Duration::from_secs(5)).unwrap_err();
+        assert!(error.contains("isn't signed"), "{error}");
+        assert_eq!(std::fs::read_to_string(&exe).unwrap(), "0.1.0");
+        assert!(!folder.join("README.md").exists() && !folder.join("notes.txt").exists(), "nothing is copied");
+        assert!(!zip.exists() && !tmp.exists());
+    }
+
+    /// A missing or malformed executable must be rejected before any installed file is changed.
+    #[cfg(windows)]
+    #[test]
+    fn a_portable_update_requires_a_signed_launcher_even_without_an_mz_header() {
+        use std::io::Write;
+        for launcher in [None, Some(b"not a Windows program".as_slice()), Some(b"".as_slice())] {
+            let dir = tempfile::tempdir().unwrap();
+            let folder = dir.path().join("ArtCraft Launcher");
+            std::fs::create_dir_all(folder.join("ArtCraftLauncherData")).unwrap();
+            let exe = folder.join("artcraft-launcher.exe");
+            std::fs::write(&exe, "old launcher").unwrap();
+            let settings = folder.join("ArtCraftLauncherData/settings.json");
+            std::fs::write(&settings, "settings").unwrap();
+            let zip = dir.path().join("update.zip");
+            let mut writer = zip::ZipWriter::new(std::fs::File::create(&zip).unwrap());
+            writer.start_file("launcher/README.md", zip::write::SimpleFileOptions::default()).unwrap();
+            writer.write_all(b"new readme").unwrap();
+            if let Some(body) = launcher {
+                writer.start_file("launcher/artcraft-launcher.exe", zip::write::SimpleFileOptions::default()).unwrap();
+                writer.write_all(body).unwrap();
+            }
+            writer.finish().unwrap();
+            let tmp = dir.path().join(PORTABLE_STAGING);
+            let step = Finish::Portable { zip: zip.clone(), tmp: tmp.clone() };
+            let error = run_step(&system_program("cmd.exe"), exited_pid(), &exe, &step, std::time::Duration::from_secs(5)).unwrap_err();
+            assert!(error.contains(if launcher.is_some() { "isn't signed" } else { "doesn't contain" }), "{error}");
+            assert_eq!(std::fs::read(&exe).unwrap(), b"old launcher");
+            assert_eq!(std::fs::read(&settings).unwrap(), b"settings");
+            assert!(!folder.join("README.md").exists());
+            assert!(!zip.exists() && !tmp.exists());
+        }
+    }
+
+    /// A copy that fails part way through puts the previous files back and removes the new ones,
+    /// so the launcher that starts again is the old one, whole.
+    #[cfg(windows)]
+    #[test]
+    fn a_portable_update_that_fails_part_way_puts_the_old_files_back() {
+        use std::io::Write;
+        let dir = tempfile::tempdir().unwrap();
+        let folder = dir.path().join("ArtCraft Launcher");
+        // A folder where the zip has a file: copying it there fails after the exe was replaced.
+        std::fs::create_dir_all(folder.join("NOTICE")).unwrap();
+        let exe = folder.join("artcraft-launcher.exe");
+        std::fs::write(&exe, "0.1.0").unwrap();
+        let zip = dir.path().join("artcraft-launcher-0.2.0-windows-x64-portable.zip");
+        let mut writer = zip::ZipWriter::new(std::fs::File::create(&zip).unwrap());
+        let signed_exe = std::fs::read(system_program("cmd.exe")).unwrap();
+        for (name, body) in [
+            ("artcraft-launcher-0.2.0-windows-x64-portable/artcraft-launcher.exe", signed_exe.as_slice()),
+            ("artcraft-launcher-0.2.0-windows-x64-portable/README.md", b"# ArtCraft Launcher".as_slice()),
+            ("artcraft-launcher-0.2.0-windows-x64-portable/NOTICE", b"notice".as_slice()),
+        ] {
+            writer.start_file(name, zip::write::SimpleFileOptions::default()).unwrap();
+            writer.write_all(body).unwrap();
+        }
+        writer.finish().unwrap();
+        let tmp = dir.path().join("cache").join(PORTABLE_STAGING);
+        let step = Finish::Portable { zip: zip.clone(), tmp: tmp.clone() };
+        let error = run_step(&system_program("cmd.exe"), exited_pid(), &exe, &step, std::time::Duration::from_secs(5)).unwrap_err();
+        assert!(error.contains("NOTICE"), "{error}");
+        assert_eq!(std::fs::read_to_string(&exe).unwrap(), "0.1.0", "the previous exe is put back");
+        assert!(!folder.join("README.md").exists(), "a file the update added is removed");
+        assert!(!zip.exists() && !tmp.exists());
     }
 
     #[test]
@@ -551,13 +1128,6 @@ mod tests {
             std::fs::read_dir(&apps).unwrap().map(|e| e.unwrap().file_name()).collect::<Vec<_>>(),
             [std::ffi::OsString::from("ArtCraft Launcher.app")]
         );
-    }
-
-    #[test]
-    fn powershell_quoting_survives_apostrophes() {
-        let p = Path::new(r"C:\Users\O'Brien\AppData\Local\ArtCraft Launcher\x.msi");
-        assert_eq!(ps_quote(p), r"'C:\Users\O''Brien\AppData\Local\ArtCraft Launcher\x.msi'");
-        assert_eq!(ps_quote_arg(p), r#"'"C:\Users\O''Brien\AppData\Local\ArtCraft Launcher\x.msi"'"#);
     }
 
     #[test]

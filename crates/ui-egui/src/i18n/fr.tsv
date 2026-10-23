@@ -75,6 +75,7 @@
 	Dismiss	Ignorer
 	Update and restart	Mettre à jour et redémarrer
 	A new version is available. Would you like to relaunch with the updated version?	Une nouvelle version est disponible. Redémarrer avec la nouvelle version ?
+	A new version is available. Download it to replace this version?	Une nouvelle version est disponible. La télécharger pour remplacer cette version ?
 	Later	Plus tard
 	What's new	Nouveautés
 	No notes were published with this release.	Aucune note n'a été publiée avec cette version.
@@ -355,6 +356,7 @@ filter	Installed	Installées
 	Use default	Par défaut
 	New installs use this folder. Updates stay in their current location.	Les nouvelles installations utilisent ce dossier. Les mises à jour conservent leur emplacement actuel.
 	Custom folders use AppImage on Linux.	Les dossiers personnalisés utilisent AppImage sous Linux.
+	On Linux, custom folders use AppImage format.	Les dossiers personnalisés utilisent AppImage sous Linux.
 	The system manages install locations here.	Le système gère les emplacements d’installation ici.
 @msg	couldn't use install folder {path}: {reason}	impossible d’utiliser le dossier d’installation {path} : {reason}
 @msg	this release has no AppImage for a custom install folder	cette version ne propose pas d’AppImage pour un dossier d’installation personnalisé

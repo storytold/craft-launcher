@@ -493,20 +493,23 @@ fn unix_now() -> i64 {
     SystemTime::now().duration_since(UNIX_EPOCH).map_or(0, |d| i64::try_from(d.as_secs()).unwrap_or(0))
 }
 
-/// `2026-10-10T12:00:00Z` (civil-from-days, Howard Hinnant's algorithm).
+/// `2026-10-10T12:00:00Z` (through jiff's civil calendar). jiff spans only years -9999..=9999, far
+/// narrower than the whole `i64` the old hand-rolled Hinnant code converted, so the instant is
+/// moved into range by whole 400-year Gregorian cycles (146_097 days) and the real year restored
+/// afterwards. jiff still does the month/day; the cycle count only shifts the year, keeping every
+/// `i64` exact (e.g. `i64::MAX` → year 292277026596) with no epoch fallback.
 fn rfc3339(secs: i64) -> String {
-    let days = secs.div_euclid(86_400);
     let rem = secs.rem_euclid(86_400);
-    let z = days + 719_468;
-    let era = z.div_euclid(146_097);
-    let doe = z.rem_euclid(146_097);
-    let yoe = (doe - doe / 1460 + doe / 36_524 - doe / 146_096) / 365;
-    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
-    let mp = (5 * doy + 2) / 153;
-    let d = doy - (153 * mp + 2) / 5 + 1;
-    let m = if mp < 10 { mp + 3 } else { mp - 9 };
-    let y = yoe + era * 400 + i64::from(m <= 2);
-    format!("{y:04}-{m:02}-{d:02}T{:02}:{:02}:{:02}Z", rem / 3600, rem % 3600 / 60, rem % 60)
+    let epoch = jiff::civil::Date::constant(1970, 1, 1);
+    let days = secs.div_euclid(86_400);
+    let (cycles, rest) = (days.div_euclid(146_097), days.rem_euclid(146_097));
+    // `rest` is in `0..146_097` (under one 400-year cycle), so `epoch + rest days` lands in
+    // 1970..=2369 (inside jiff's range) and `rest * 86_400` never overflows.
+    let date = epoch.checked_add(jiff::SignedDuration::from_secs(rest * 86_400)).unwrap_or(epoch);
+    // Restore the real year through `i128` so `cycles * 400` can't overflow at the `i64` extremes.
+    let y = i128::from(date.year()) + i128::from(cycles) * 400;
+    let y = i64::try_from(y).unwrap_or(if y < 0 { i64::MIN } else { i64::MAX });
+    format!("{y:04}-{:02}-{:02}T{:02}:{:02}:{:02}Z", date.month(), date.day(), rem / 3600, rem % 3600 / 60, rem % 60)
 }
 
 // ---- versions -----------------------------------------------------------------------------------
@@ -569,28 +572,57 @@ fn serve(o: &Opts) -> Result<(), String> {
             }
         });
     }
+    // Bounded admission: a local dev tool still shouldn't let idle or flooding clients spawn
+    // unbounded threads. Refuse new connections past the cap, and never let a failed thread spawn
+    // take down the listener (CWE-770).
+    const MAX_HANDLERS: usize = 64;
+    let active = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
     for stream in listener.incoming().flatten() {
         let (mirror, base) = (o.mirror.clone(), base.clone());
-        std::thread::spawn(move || {
+        if active.fetch_add(1, std::sync::atomic::Ordering::SeqCst) >= MAX_HANDLERS {
+            active.fetch_sub(1, std::sync::atomic::Ordering::SeqCst);
+            let mut out = stream;
+            let _ = respond(&mut out, "503 Service Unavailable", "text/plain", b"busy", false);
+            continue;
+        }
+        let worker_active = active.clone();
+        let spawned = std::thread::Builder::new().spawn(move || {
             if let Err(e) = handle(stream, &mirror, &base) {
                 eprintln!("  {e}");
             }
+            worker_active.fetch_sub(1, std::sync::atomic::Ordering::SeqCst);
         });
+        if spawned.is_err() {
+            // Couldn't start a worker: drop this connection but keep serving.
+            active.fetch_sub(1, std::sync::atomic::Ordering::SeqCst);
+            eprintln!("  couldn't start a connection handler; dropping the connection");
+        }
     }
     Ok(())
 }
 
 fn handle(stream: TcpStream, mirror: &Path, base: &str) -> Result<(), String> {
     let io = |e: std::io::Error| e.to_string();
+    // A single wall-clock deadline across the request line and every header: an idle or trickling
+    // client must not be able to hold a handler thread open indefinitely (CWE-770).
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(15);
     let mut reader = BufReader::new(stream.try_clone().map_err(io)?);
+    let read_line_until = |reader: &mut BufReader<TcpStream>, buf: &mut String| -> Result<usize, String> {
+        let remaining = deadline.saturating_duration_since(std::time::Instant::now());
+        if remaining.is_zero() {
+            return Err("request header deadline exceeded".into());
+        }
+        reader.get_ref().set_read_timeout(Some(remaining)).map_err(io)?;
+        reader.read_line(buf).map_err(io)
+    };
     let mut line = String::new();
-    reader.read_line(&mut line).map_err(io)?;
+    read_line_until(&mut reader, &mut line)?;
     let mut parts = line.split_whitespace();
     let (method, target) = (parts.next().unwrap_or(""), parts.next().unwrap_or(""));
     let mut range_start: Option<u64> = None;
     loop {
         let mut h = String::new();
-        if reader.read_line(&mut h).map_err(io)? == 0 || h.trim().is_empty() {
+        if read_line_until(&mut reader, &mut h)? == 0 || h.trim().is_empty() {
             break;
         }
         if let Some((k, v)) = h.split_once(':')
@@ -600,6 +632,9 @@ fn handle(stream: TcpStream, mirror: &Path, base: &str) -> Result<(), String> {
         }
     }
     let mut out = stream;
+    out.set_write_timeout(Some(std::time::Duration::from_secs(15))).map_err(io)?;
+    // Headers are in; a legitimate download can take as long as it needs, so lift the deadline.
+    let _ = out.set_read_timeout(None);
     let head = method == "HEAD";
     if method != "GET" && !head {
         return respond(&mut out, "405 Method Not Allowed", "text/plain", b"", head);
@@ -692,6 +727,11 @@ mod tests {
     fn dates_and_versions() {
         assert_eq!(rfc3339(0), "1970-01-01T00:00:00Z");
         assert_eq!(rfc3339(1_791_500_000), "2026-10-08T22:53:20Z");
+        // Year 10000 and the `i64` extremes are past jiff's own calendar range (-9999..=9999), but
+        // the 400-year cycle reduction keeps the dates the old Hinnant code produced, not the epoch.
+        assert_eq!(rfc3339(253_402_300_800), "10000-01-01T00:00:00Z");
+        assert_eq!(rfc3339(i64::MAX), "292277026596-12-04T15:30:07Z");
+        assert_eq!(rfc3339(i64::MIN), "-292277022657-01-27T08:29:52Z");
         assert_eq!(compare_versions("0.10.0", "0.9.0"), std::cmp::Ordering::Greater);
         assert_eq!(compare_versions("1.0.0", "1.0.0-rc.1"), std::cmp::Ordering::Greater);
         assert!(parse_version("1.2").is_none() && parse_version(".building-1.2.3").is_none());

@@ -739,14 +739,17 @@ fn latest_for(
     force: bool,
     now: i64,
 ) -> (Option<LatestRelease>, Origin, Option<Source>) {
+    let repo = feed_repo(feed, app);
     if fallback.trust_feed {
         match feed.map(|f| f.answer(app, now)) {
-            Some(FeedAnswer::Fresh(Some(r))) => return (Some(LatestRelease::Found(r)), Origin::ArtCraftApi, Some(Source::Feed)),
-            Some(FeedAnswer::Fresh(None)) => return (Some(LatestRelease::None), Origin::ArtCraftApi, Some(Source::Feed)),
-            Some(FeedAnswer::AskGitHub) | None => {}
+            // The feed can lag GitHub by some minutes after a release. A check the user pressed
+            // looks past it when GitHub's quota-free redirect names something newer (#91).
+            Some(FeedAnswer::Fresh(found)) if !(force && feed_is_behind(source, &repo, found.as_ref())) => {
+                return (Some(found.map_or(LatestRelease::None, LatestRelease::Found)), Origin::ArtCraftApi, Some(Source::Feed));
+            }
+            Some(FeedAnswer::Fresh(_) | FeedAnswer::AskGitHub) | None => {}
         }
     }
-    let repo = feed_repo(feed, app);
     let due = {
         let mut asked = shared.github_asked.lock().unwrap_or_else(PoisonError::into_inner);
         let due = force || asked.get(app.id).is_none_or(|t| now - t >= fallback.github_every);
@@ -760,6 +763,16 @@ fn latest_for(
         (Some(answer.latest), Origin::GitHub, Some(answer.source))
     } else {
         (source.cached(&repo, pre), Origin::GitHub, None)
+    }
+}
+
+/// Whether GitHub names a newer stable release of `repo` than the feed's `latest` (`None`: the
+/// feed says there is none). `false` whenever the redirect can't be read: the feed then stands.
+fn feed_is_behind(source: &dyn ReleaseSource, repo: &str, latest: Option<&Release>) -> bool {
+    let Some(newest) = source.newest_tag(repo).and_then(|tag| version::parse(&tag)) else { return false };
+    match latest.and_then(|r| r.version.as_ref()) {
+        Some(feed) => version::is_newer(&newest, feed),
+        None => true,
     }
 }
 
@@ -1294,14 +1307,75 @@ mod tests {
         assert_eq!(used, Some(Source::GitHubApi));
     }
 
+    /// Refresh looks past a feed that is behind GitHub (#91).
+    #[test]
+    fn refresh_asks_github_when_its_redirect_names_a_newer_release_than_the_feed() {
+        /// GitHub, whose quota-free redirect names `newest`.
+        struct Ahead {
+            newest: Option<&'static str>,
+            asked: AtomicUsize,
+        }
+        impl ReleaseSource for Ahead {
+            fn latest(&self, _repo: &str, _pre: bool) -> Answer {
+                self.asked.fetch_add(1, Ordering::SeqCst);
+                let found = Release { tag: "v0.7.0".into(), version: version::parse("0.7.0"), ..Release::default() };
+                Answer { latest: LatestRelease::Found(found), source: Source::GitHubApi }
+            }
+            fn cached(&self, _repo: &str, _pre: bool) -> Option<LatestRelease> {
+                None
+            }
+            fn rate_limited_until(&self) -> Option<i64> {
+                None
+            }
+            fn save(&self) {}
+            fn newest_tag(&self, _repo: &str) -> Option<String> {
+                self.newest.map(str::to_string)
+            }
+        }
+        let photo = CraftApp::by_id("photocraft").unwrap();
+        let feed = feed(); // vouches for PhotoCraft v0.6.0
+        let github = |newest| Ahead { newest, asked: AtomicUsize::new(0) };
+
+        // GitHub names the release the feed has: Refresh takes the feed's answer, asking nothing more.
+        let same = github(Some("v0.6.0"));
+        let (latest, _, used) = latest_for(photo, Some(&feed), LOADED, &same, &shared(), false, true, NOW);
+        assert!(matches!(latest, Some(LatestRelease::Found(ref r)) if r.tag == "v0.6.0"));
+        assert_eq!((used, same.asked.load(Ordering::SeqCst)), (Some(Source::Feed), 0));
+
+        // GitHub names a newer one: Refresh asks GitHub for it.
+        let ahead = github(Some("v0.7.0"));
+        let (latest, _, used) = latest_for(photo, Some(&feed), LOADED, &ahead, &shared(), false, true, NOW);
+        assert!(matches!(latest, Some(LatestRelease::Found(ref r)) if r.tag == "v0.7.0"), "{latest:?}");
+        assert_eq!((used, ahead.asked.load(Ordering::SeqCst)), (Some(Source::GitHubApi), 1));
+
+        // An automatic check never probes: the feed stands, as does a Refresh when the redirect
+        // can't be read, or names something older.
+        let (_, _, used) = latest_for(photo, Some(&feed), LOADED, &ahead, &shared(), false, false, NOW);
+        assert_eq!((used, ahead.asked.load(Ordering::SeqCst)), (Some(Source::Feed), 1));
+        for newest in [None, Some("v0.5.9"), Some("not a version")] {
+            let github = github(newest);
+            let (_, _, used) = latest_for(photo, Some(&feed), LOADED, &github, &shared(), false, true, NOW);
+            assert_eq!((used, github.asked.load(Ordering::SeqCst)), (Some(Source::Feed), 0), "{newest:?}");
+        }
+    }
+
     const APP: &str = "photocraft";
 
     /// A PhotoCraft release with one file per platform and format, so whichever this machine
     /// installs is there.
     fn release(version: &str) -> Release {
         let suffixes = ["-portable.zip", ".tar.gz", ".msi", ".dmg", ".AppImage", ".deb", ".rpm", ".flatpak"];
-        let tokens =
-            ["windows-x64", "windows-x86", "windows-arm64", "macos-universal", "linux-x86_64", "linux-aarch64", "linux-riscv64", "freebsd-x86_64"];
+        let tokens = [
+            "windows-x64",
+            "windows-x86",
+            "windows-arm64",
+            "macos-universal",
+            "linux-x86_64",
+            "linux-aarch64",
+            "linux-riscv64",
+            "freebsd-x86_64",
+            "freebsd-aarch64",
+        ];
         let assets = tokens
             .iter()
             .flat_map(|t| suffixes.iter().map(move |s| format!("{APP}-{version}-{t}{s}")))

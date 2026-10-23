@@ -136,7 +136,12 @@ impl LauncherUi {
         ui.set_width(480.0f32.min(ui.ctx().content_rect().width() - 80.0));
         let title = fmt(tl!("ArtCraft Launcher {version} is available."), &[("version", &r.version_label())]);
         Self::title(ui, Some(crate::icons::artcraft_mark()), &title, "");
-        ui.label(RichText::new(tl!("A new version is available. Would you like to relaunch with the updated version?")).color(t.muted));
+        let message = if self.caps.self_update {
+            tl!("A new version is available. Would you like to relaunch with the updated version?")
+        } else {
+            tl!("A new version is available. Download it to replace this version?")
+        };
+        ui.label(RichText::new(message).color(t.muted));
         ui.add_space(14.0);
         let mut close = false;
         ui.horizontal(|ui| {

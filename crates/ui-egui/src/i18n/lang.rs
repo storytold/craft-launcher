@@ -311,9 +311,22 @@ impl Lang {
 
 /// Candidate language codes for a locale tag, most specific first: `ru_RU.UTF-8` →
 /// `ru-ru`, `ru`.
+///
+/// The tag can come straight from an untrusted URL (the web shell reads `#?lang=`), so its length
+/// and subtag count are bounded first: without that, a value of many one-character subtags makes
+/// the prefix joins allocate quadratically (CWE-400). A real BCP-47 tag is far within these caps.
 pub(super) fn candidates(tag: &str) -> Vec<String> {
-    let base = tag.split(['.', '@']).next().unwrap_or("").replace('_', "-").to_ascii_lowercase();
-    let parts: Vec<&str> = base.split('-').filter(|p| !p.is_empty()).collect();
+    /// Longest locale tag we'll consider (generous: real tags are well under this).
+    const MAX_TAG_LEN: usize = 64;
+    /// Most subtags we'll consider (`language-script-region-variant…`; real tags use a handful).
+    const MAX_SUBTAGS: usize = 8;
+
+    let head = tag.split(['.', '@']).next().unwrap_or("");
+    if head.len() > MAX_TAG_LEN {
+        return Vec::new();
+    }
+    let base = head.replace('_', "-").to_ascii_lowercase();
+    let parts: Vec<&str> = base.split('-').filter(|p| !p.is_empty()).take(MAX_SUBTAGS).collect();
     (1..=parts.len()).rev().filter_map(|n| parts.get(..n)).map(|p| p.join("-")).collect()
 }
 

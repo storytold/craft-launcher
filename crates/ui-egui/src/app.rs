@@ -193,12 +193,8 @@ impl LauncherUi {
         egui_extras::install_image_loaders(ctx);
         let caps = backend.capabilities();
         let platform = backend.platform();
-        // The page no longer offers Installed, Updates or Not installed, so a saved one would
-        // hide apps with nothing on screen to undo it.
         let mut settings = settings;
-        if !matches!(settings.filter, Filter::All | Filter::Hidden) {
-            settings.filter = Filter::All;
-        }
+        settings.migrate();
         Self {
             backend,
             settings,

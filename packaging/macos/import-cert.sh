@@ -18,10 +18,17 @@ if [ -z "${APPLE_CERTIFICATE:-}" ]; then
 fi
 
 TMP="${RUNNER_TEMP:-${TMPDIR:-/tmp}}"
-KEYCHAIN="$TMP/artcraft-launcher-signing.keychain-db"
-CERT="$TMP/artcraft-launcher-signing.p12"
+# Create a private directory we own, so a predictable name in a shared, world-writable temp root
+# can't be pre-created by another local user to capture the decoded signing bundle (CWE-377). The
+# keychain lives here too; later signing/notarization steps read it through $MACOS_KEYCHAIN and the
+# runner discards RUNNER_TEMP when the job ends.
+WORK="$(mktemp -d "$TMP/artcraft-launcher-signing.XXXXXXXX")"
+KEYCHAIN="$WORK/artcraft-launcher-signing.keychain-db"
+CERT="$WORK/artcraft-launcher-signing.p12"
 KC_PASS="${KEYCHAIN_PASSWORD:-$(openssl rand -hex 24)}"
 
+# The decoded .p12 is removed as soon as it is imported; the keychain must outlive this script so
+# codesign can use it in a later step, so it is left in the private directory rather than deleted.
 trap 'rm -f "$CERT"' EXIT
 printf '%s' "$APPLE_CERTIFICATE" | base64 --decode >"$CERT"
 security create-keychain -p "$KC_PASS" "$KEYCHAIN"

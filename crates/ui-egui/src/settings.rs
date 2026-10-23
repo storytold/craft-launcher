@@ -19,6 +19,7 @@ pub enum ViewMode {
 pub enum Filter {
     #[default]
     All,
+    // These three no longer appear in the toolbar but must remain deserializable from old settings.
     Installed,
     Updates,
     NotInstalled,
@@ -130,6 +131,13 @@ pub struct Settings {
 impl Settings {
     /// Machine-readable code for "follow the system language".
     pub const LANGUAGE_AUTO: &'static str = "auto";
+
+    /// Clear saved catalog filters whose controls were removed from the toolbar.
+    pub fn migrate(&mut self) {
+        if !matches!(self.filter, Filter::All | Filter::Hidden) {
+            self.filter = Filter::All;
+        }
+    }
 
     /// Display name for a language `code`: a language's name in itself, from the registry
     /// ([`LANGUAGES`](crate::i18n::LANGUAGES)). A language needing a CJK font is named in English,

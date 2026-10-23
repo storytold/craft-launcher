@@ -37,6 +37,11 @@ fn main() -> ExitCode {
     // First, so the panic report and every start-up warning are recorded (`logging`).
     let logs = logging::install();
     logging::install_panic_hook();
+    // A copy of the launcher finishing a self-update: no window, log file or single-instance claim.
+    #[cfg(windows)]
+    if let Some(done) = artcraft_launcher_native::self_update::finish(&std::env::args_os().skip(1).collect::<Vec<_>>()) {
+        return if done.is_ok() { ExitCode::SUCCESS } else { ExitCode::FAILURE };
+    }
     // Detect system language in the background so the first frame can use it.
     artcraft_launcher_ui_egui::i18n::detect_system_lang_in_background();
     // Detect Discord protocol handler in the background without blocking startup.
@@ -71,6 +76,11 @@ fn main() -> ExitCode {
                 log::warn!("no log file: {e}");
             }
         }
+    }
+    if let Some(error) =
+        artcraft_launcher_native::paths::Paths::new().ok().and_then(|paths| artcraft_launcher_native::self_update::take_failure(&paths))
+    {
+        log::warn!("the last self-update didn't install: {error}");
     }
     let (tray_loop, woken) = sync_channel(1);
     let waker = Arc::new(Waker { window: Mutex::new(None), tray_loop, quit_pending: AtomicBool::new(false) });
@@ -154,7 +164,15 @@ fn native_options(hidden: bool) -> eframe::NativeOptions {
     } else if let Some(icon) = icon {
         viewport = viewport.with_icon(icon);
     }
-    eframe::NativeOptions { viewport, persist_window: true, wgpu_options: wgpu_options(), ..Default::default() }
+    // Persistence goes to the same file `settings_file` uses, so a portable suite keeps its
+    // settings and window state inside itself instead of in the user's profile.
+    eframe::NativeOptions {
+        viewport,
+        persist_window: true,
+        persistence_path: settings_file::path(APP_ID),
+        wgpu_options: wgpu_options(),
+        ..Default::default()
+    }
 }
 
 /// wgpu's backend list. On Windows that is Direct3D 12 with GL as the fallback, not Vulkan:
@@ -507,7 +525,7 @@ impl Launcher {
     fn start(&mut self, settings: Option<Settings>, waker: &Arc<Waker>) {
         self.started = true;
         if let Some(settings) = settings {
-            self.ui.settings = settings;
+            self.restore_saved_settings(settings);
         }
         self.waker = Some(waker.clone());
         let (wake, on_quit) = (waker.clone(), waker.clone());
@@ -516,6 +534,13 @@ impl Launcher {
             Err(e) => log::warn!("no tray icon: {e}"),
         }
         self.host.tray = self.tray.is_some();
+    }
+
+    fn restore_saved_settings(&mut self, mut settings: Settings) {
+        // `LauncherUi::new` sees defaults before the shell loads persisted settings. Filters
+        // removed from the 0.6 toolbar must be cleared at this later load boundary too.
+        settings.migrate();
+        self.ui.settings = settings;
     }
 
     /// Readies the launcher for a new window. Unless the launcher started in the tray, the first
@@ -812,6 +837,21 @@ mod tests {
         let seen = Arc::new(Seen { clock: AtomicI64::new(NOW), ..Seen::default() });
         let (show, show_requests) = channel();
         (Launcher::new(Box::new(Quiet(seen.clone())), show_requests, None), show, seen)
+    }
+
+    #[test]
+    fn saved_filters_are_migrated_when_desktop_settings_load() {
+        use artcraft_launcher_ui_egui::settings::Filter;
+
+        let (mut launcher, _show, _) = launcher();
+        // `start` also creates a native tray, which macOS requires on the main thread.
+        for (filter, expected) in
+            [(Filter::Installed, Filter::All), (Filter::Updates, Filter::All), (Filter::NotInstalled, Filter::All), (Filter::Hidden, Filter::Hidden)]
+        {
+            launcher.restore_saved_settings(Settings { filter, last_check: Some(NOW), ..Settings::default() });
+            assert_eq!(launcher.ui.settings.filter, expected, "{filter:?}");
+            assert_eq!(launcher.ui.settings.last_check, Some(NOW));
+        }
     }
 
     #[test]

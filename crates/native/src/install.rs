@@ -81,6 +81,7 @@ pub fn install_at(
     {
         return Err(format!("{} is running. Quit it, then try again.", app.name));
     }
+    bind_artifact_version(app, release, asset)?;
     if !job.replace
         && let Some(inst) = existing
         && let (Some(rel_v), Some(inst_v)) = (release.version.as_ref(), inst.version.as_ref())
@@ -145,6 +146,38 @@ pub fn install_at(
     }
     // The system's own prompt was dismissed: the download itself wasn't cancelled.
     result.map_err(|e| if e == CANCELLED { INSTALL_CANCELLED.to_string() } else { e })
+}
+
+/// Rejects an artifact whose own identity disagrees with the release that authorized it.
+///
+/// A feed or GitHub converter supplies the release version, the asset filename, and the download
+/// URL independently. The downgrade guard and the persisted record both trust `release.version`,
+/// so a controller could advertise a new version while pointing at an older official artifact —
+/// bypassing the guard and recording a false installed version (finding: version not bound to the
+/// release). We require the version encoded in the asset filename and the release tag embedded in
+/// the download URL to agree with the release version before any bytes are fetched.
+fn bind_artifact_version(app: &CraftApp, release: &Release, asset: &Asset) -> Result<(), String> {
+    let Some(release_version) = release.version.as_ref() else { return Ok(()) };
+    let mismatch = || format!("{}'s download does not match the advertised version {}.", app.name, release.version_label());
+
+    // The version in the asset filename (`<stem>-<version>-<os>-<arch>.<ext>`), when it carries one.
+    let stems: Vec<&str> = app.stems().collect();
+    if let Some(parsed) = artcraft_launcher_core::platform::parse_asset_name(&asset.name, &stems)
+        && version::parse(&parsed.version).as_ref() != Some(release_version)
+    {
+        return Err(mismatch());
+    }
+
+    // The release tag embedded in a GitHub download URL (`.../releases/download/<tag>/<name>`).
+    if let Some(tag) = asset.url.split("/releases/download/").nth(1).and_then(|rest| rest.split('/').next())
+        && !tag.is_empty()
+        && version::parse(tag).is_some()
+        && version::parse(tag).as_ref() != Some(release_version)
+        && tag != release.tag
+    {
+        return Err(mismatch());
+    }
+    Ok(())
 }
 
 /// What a new install would write over: something already at its destination that the launcher
@@ -951,6 +984,10 @@ pub(crate) mod linux {
 
     fn unpack_tree(app: &CraftApp, file: &Path, staged: &Path, paths: &Paths) -> Result<PathBuf, String> {
         let tree = tree::unpack(app, file, staged)?;
+        // Validate the staged binary and set its mode *before* either swap: a rejected update
+        // (e.g. a symlinked app binary) must never disturb the installed tree it replaces.
+        let staged_bin = tree.join("bin").join(app.id);
+        make_runnable_within(&tree, &staged_bin)?;
         let root = paths.apps().join(app.id);
         std::fs::create_dir_all(&root).map_err(|e| format!("couldn't create {} ({e})", root.display()))?;
         for dir in ["bin", "share"] {
@@ -958,10 +995,34 @@ pub(crate) mod linux {
                 swap_into_place(&tree.join(dir), &root.join(dir))?;
             }
         }
-        let bin = root.join("bin").join(app.id);
-        std::fs::set_permissions(&bin, std::fs::Permissions::from_mode(0o755))
-            .map_err(|e| format!("couldn't make {} runnable ({e})", bin.display()))?;
-        Ok(bin)
+        Ok(root.join("bin").join(app.id))
+    }
+
+    /// Makes `bin` executable (0755) without ever following an archive-controlled symlink out of
+    /// the installation tree.
+    ///
+    /// `bin` comes from an untrusted tarball. If it, or one of its ancestors inside `root`, is a
+    /// symlink, a plain `std::fs::set_permissions(bin, …)` would follow the link and change the
+    /// mode of an existing file *outside* the tree (CWE-59). We reject any symlinked component
+    /// before changing permissions, so the chmod can only ever reach a regular file that lives at
+    /// the verified path inside the launcher's own apps folder.
+    fn make_runnable_within(root: &Path, bin: &Path) -> Result<(), String> {
+        // No component between `root` and `bin` may be a symlink.
+        let rel = bin.strip_prefix(root).map_err(|_| "the app binary isn't inside the install tree".to_string())?;
+        let mut here = root.to_path_buf();
+        for part in rel.components() {
+            here.push(part);
+            let meta = std::fs::symlink_metadata(&here).map_err(|e| format!("couldn't check {} ({e})", here.display()))?;
+            if meta.file_type().is_symlink() {
+                return Err("the download's app binary escapes the install tree through a symlink".into());
+            }
+        }
+        // The final component is a verified non-symlink regular file inside the launcher's own
+        // apps folder, so changing its mode cannot reach anything outside the tree.
+        if !here.metadata().map_err(|e| e.to_string())?.file_type().is_file() {
+            return Err("the download's app binary isn't a regular file".into());
+        }
+        std::fs::set_permissions(bin, std::fs::Permissions::from_mode(0o755)).map_err(|e| format!("couldn't make {} runnable ({e})", bin.display()))
     }
 
     /// Removes a tree the launcher unpacked in [`install_tree`], keeping the app's `home/`: the
@@ -1440,8 +1501,16 @@ mod freebsd {
 fn msi_command(program: &Path, msi: &Path) -> Result<std::process::Command, String> {
     let msi = msi_path(msi)?;
     let mut command = process::command(program);
-    command.arg("/i").arg(msi).args(["/passive", "/norestart"]);
+    // A verbose log beside the package: Windows Installer's own errors (1603 above all) say
+    // nothing without it.
+    command.arg("/i").arg(&msi).args(["/passive", "/norestart", "/l*v"]).arg(msi_log(&msi));
     Ok(command)
+}
+
+/// Where `msi_command` asks Windows Installer to write its log.
+#[cfg_attr(not(windows), allow(dead_code))]
+fn msi_log(msi: &Path) -> PathBuf {
+    msi.with_extension("log")
 }
 
 /// Windows Installer's storage APIs can fail on paths through junctions or symlinks (#338).
@@ -1486,8 +1555,18 @@ pub mod windows {
                 command.raw_arg(msi_folder_argument(dir)?);
             }
             let status = command.status().map_err(|e| format!("couldn't start the Windows Installer ({e})"))?;
-            explain(status.code())
+            explain(status.code()).map_err(|e| match status.code() {
+                Some(1602) | None => e,
+                _ => format!("{e}. Its log is at {}", msi_log(msi).display()),
+            })
         })
+    }
+
+    /// Runs the launcher's own new MSI for a self-update, with the same progress window and no
+    /// restart as [`run_msi`], and waits for it.
+    pub fn reinstall(msi: &Path) -> Result<(), String> {
+        let status = msi_command(&msiexec(), msi)?.status().map_err(|e| format!("couldn't start the Windows Installer ({e})"))?;
+        explain(status.code())
     }
 
     /// Runs `work` once no other Windows Installer job of ours is running (a second one would
@@ -1536,7 +1615,9 @@ mod tests {
                 std::ffi::OsStr::new("/i"),
                 file.canonicalize().unwrap().as_os_str(),
                 std::ffi::OsStr::new("/passive"),
-                std::ffi::OsStr::new("/norestart")
+                std::ffi::OsStr::new("/norestart"),
+                std::ffi::OsStr::new("/l*v"),
+                file.canonicalize().unwrap().with_extension("log").as_os_str()
             ]
         );
     }
@@ -1961,6 +2042,56 @@ mod tests {
 
     #[cfg(target_os = "linux")]
     #[test]
+    fn a_tarball_binary_that_is_a_symlink_out_of_the_tree_is_refused() {
+        use std::io::Write;
+        use std::os::unix::fs::PermissionsExt;
+        let app = CraftApp::by_id("wordcraft").unwrap();
+        let dir = tempfile::tempdir().unwrap();
+        let paths = Paths::under(dir.path());
+
+        // A working install the rejected update must leave untouched.
+        let good = dir.path().join("wordcraft-0.3.0-linux-x86_64.tar.gz");
+        tarball(&good, &["wordcraft-0.3.0-linux-x86_64/bin/wordcraft"]);
+        let bin = linux::install_tree(app, &good, &paths).unwrap();
+        assert_eq!(std::fs::read_to_string(&bin).unwrap(), "hi");
+
+        // A file outside the install tree that the archive tries to chmod through a symlink.
+        let outside = dir.path().join("victim");
+        std::fs::write(&outside, b"secret").unwrap();
+        std::fs::set_permissions(&outside, std::fs::Permissions::from_mode(0o600)).unwrap();
+
+        // A tarball whose bin/wordcraft is a symlink to that external file.
+        let file = dir.path().join("evil.tar.gz");
+        let f = std::fs::File::create(&file).unwrap();
+        let mut b = tar::Builder::new(flate2::write::GzEncoder::new(f, flate2::Compression::fast()));
+        let mut link = tar::Header::new_gnu();
+        link.set_entry_type(tar::EntryType::Symlink);
+        link.set_size(0);
+        link.set_mode(0o777);
+        link.set_cksum();
+        b.append_link(&mut link, "wordcraft-0.3.0-linux-x86_64/bin/wordcraft", &outside).unwrap();
+        // A second real file so the top folder is detected.
+        let mut reg = tar::Header::new_gnu();
+        reg.set_size(2);
+        reg.set_mode(0o644);
+        reg.set_cksum();
+        b.append_data(&mut reg, "wordcraft-0.3.0-linux-x86_64/share/applications/ai.storyteller.wordcraft.desktop", &b"hi"[..]).unwrap();
+        b.into_inner().unwrap().finish().unwrap();
+        drop(std::io::stdout().flush());
+
+        let result = linux::install_tree(app, &file, &paths);
+        assert!(result.is_err(), "a symlink binary must be rejected: {result:?}");
+        assert!(result.unwrap_err().contains("symlink"));
+        // The external file keeps its original mode: the chmod never reached it.
+        let mode = std::fs::metadata(&outside).unwrap().permissions().mode() & 0o777;
+        assert_eq!(mode, 0o600, "the external file's permissions must be untouched");
+        // The rejected update left the previously installed, working binary fully intact.
+        assert!(bin.is_file(), "the rejected update must not remove the working binary");
+        assert_eq!(std::fs::read_to_string(&bin).unwrap(), "hi");
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
     fn an_app_sees_its_own_home_and_the_xdg_folders_inside_it() {
         let home = PathBuf::from("/data/apps/photocraft/home");
         let env = home_env(&home);
@@ -2240,6 +2371,37 @@ mod tests {
         let result = install_at(app, &release, &asset, PackageKind::AppImage, Some(&installed), None, &mut job, None);
         assert!(result.is_err());
         assert!(result.unwrap_err().contains("installed version 0.5.0 is newer"));
+    }
+
+    #[test]
+    fn install_rejects_an_artifact_whose_version_is_not_the_advertised_one() {
+        // The release advertises 99.0.0, but the selected artifact is an older official build
+        // (filename and URL tag say 0.4.0). The guard must refuse before any download.
+        let dir = tempfile::tempdir().unwrap();
+        let paths = Paths::under(dir.path());
+        let http = Http::new().unwrap();
+        let phase = &mut |_| ();
+        let locations = InstallLocations::default();
+        let app = CraftApp::by_id("photocraft").unwrap();
+        let release = Release { version: version::parse("99.0.0"), tag: "v99.0.0".into(), ..Release::default() };
+        let asset = Asset {
+            name: "photocraft-0.4.0-linux-x86_64.AppImage".into(),
+            url: "https://github.com/storytold/photocraft/releases/download/v0.4.0/photocraft-0.4.0-linux-x86_64.AppImage".into(),
+            ..Asset::default()
+        };
+        let stop = Stop::default();
+        let mut job = Job { http: &http, paths: &paths, stop: &stop, phase, install_locations: &locations, replace: false };
+        let result = install_at(app, &release, &asset, PackageKind::AppImage, None, None, &mut job, None);
+        assert!(result.is_err(), "mismatched artifact version must be rejected");
+        assert!(result.unwrap_err().contains("does not match the advertised version"));
+
+        // A matching artifact passes the guard (it fails later for unrelated reasons, not the bind).
+        let good = Asset {
+            name: "photocraft-99.0.0-linux-x86_64.AppImage".into(),
+            url: "https://github.com/storytold/photocraft/releases/download/v99.0.0/photocraft-99.0.0-linux-x86_64.AppImage".into(),
+            ..Asset::default()
+        };
+        assert!(bind_artifact_version(app, &release, &good).is_ok());
     }
 
     #[cfg(target_os = "linux")]

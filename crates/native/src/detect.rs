@@ -184,17 +184,23 @@ pub mod windows {
 
     const UNINSTALL: &str = r"SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall";
 
-    /// Reads VERSIONINFO without executing the downloaded application. The path is data in
-    /// a child-only environment variable, never interpolated into PowerShell source.
+    /// Reads the ProductVersion string from a program's VERSIONINFO, in the first language that
+    /// has one, without running the program or any other process.
     pub fn executable_version(path: &std::path::Path) -> Option<artcraft_launcher_core::version::Version> {
-        let path = std::fs::canonicalize(path).ok()?;
-        let mut command = crate::process::command("powershell.exe");
-        command.args([
-            "-NoLogo", "-NoProfile", "-NonInteractive", "-Command",
-            "[Console]::OutputEncoding = [System.Text.Encoding]::UTF8; [System.Diagnostics.FileVersionInfo]::GetVersionInfo($env:ARTCRAFT_VERSION_FILE).ProductVersion",
-        ]).env("ARTCRAFT_VERSION_FILE", path);
-        let output = crate::process::run_command(command, "powershell.exe", std::time::Duration::from_secs(5)).ok()?;
-        version::parse(output.trim())
+        let path = dunce::canonicalize(path).ok()?;
+        let info = winsafe::HVERSIONINFO::GetFileVersionInfo(path.to_str()?).ok()?;
+        let listed = info.langs_and_cps().map(<[_]>::to_vec).unwrap_or_default();
+        let product = string_tables(&listed).into_iter().find_map(|table| info.str_val(table, "ProductVersion").ok())?;
+        version::parse(product.trim())
+    }
+
+    /// The string tables to look in: the languages the file lists, then U.S. English in UTF-16,
+    /// Windows-1252 and no code page, as .NET's `FileVersionInfo` also tries when a file lists none
+    /// or its listed one has no strings.
+    pub(crate) fn string_tables(listed: &[(winsafe::LANGID, winsafe::co::CP)]) -> Vec<(winsafe::LANGID, winsafe::co::CP)> {
+        use winsafe::{LANGID, co};
+        let us = LANGID::new(co::LANG::ENGLISH, co::SUBLANG::ENGLISH_US);
+        listed.iter().copied().chain([(us, co::CP::UTF16), (us, co::CP::WINDOWS_1252), (us, co::CP::ACP)]).collect()
     }
 
     /// An MSI install found in the registry.
@@ -509,6 +515,130 @@ mod tests {
     use artcraft_launcher_core::SUITE;
 
     use super::*;
+
+    /// A file without VERSIONINFO, or one that isn't there, has no version.
+    #[cfg(windows)]
+    #[test]
+    fn a_file_without_version_info_has_no_version() {
+        let dir = tempfile::tempdir().unwrap();
+        let text = dir.path().join("photocraft.exe");
+        std::fs::write(&text, "not a program").unwrap();
+        assert_eq!(windows::executable_version(&text), None);
+        assert_eq!(windows::executable_version(&dir.path().join("missing.exe")), None);
+    }
+
+    /// Without a listed language, the version is still looked for in the string tables .NET's
+    /// `FileVersionInfo` falls back to (040904B0, 040904E4, 04090000), after any listed one.
+    #[cfg(windows)]
+    #[test]
+    fn the_version_is_looked_for_in_the_usual_string_tables_too() {
+        use winsafe::{LANGID, co};
+        let key = |(lang, cp): (LANGID, co::CP)| format!("{:04x}{:04x}", u16::from(lang), u16::from(cp));
+        let keys = |listed: &[(LANGID, co::CP)]| windows::string_tables(listed).into_iter().map(key).collect::<Vec<_>>();
+        assert_eq!(keys(&[]), ["040904b0", "040904e4", "04090000"]);
+        let german = (LANGID::new(co::LANG::GERMAN, co::SUBLANG::GERMAN), co::CP::UTF16);
+        assert_eq!(keys(&[german]), ["040704b0", "040904b0", "040904e4", "04090000"]);
+    }
+
+    /// A program whose VERSIONINFO has a ProductVersion in the U.S. English UTF-16 table but no
+    /// `\VarFileInfo\Translation` entry still has a version.
+    #[cfg(windows)]
+    #[test]
+    fn a_version_without_a_translation_entry_is_found() {
+        let dir = tempfile::tempdir().unwrap();
+        let exe = dir.path().join("photocraft.exe");
+        std::fs::write(&exe, resource_only_program("1.2.3")).unwrap();
+        assert_eq!(windows::executable_version(&exe), version::parse("1.2.3"));
+    }
+
+    /// A VERSIONINFO block node: length, value length, type, the key, then the value and the
+    /// children, each aligned to 4 bytes.
+    #[cfg(windows)]
+    fn version_node(key: &str, value: &[u8], value_length: u16, text: bool, children: &[Vec<u8>]) -> Vec<u8> {
+        let align = |bytes: &mut Vec<u8>| bytes.resize(bytes.len().next_multiple_of(4), 0);
+        let mut node = vec![0, 0];
+        node.extend(value_length.to_le_bytes());
+        node.extend(u16::from(text).to_le_bytes());
+        node.extend(key.encode_utf16().chain([0]).flat_map(u16::to_le_bytes));
+        align(&mut node);
+        node.extend(value);
+        for child in children {
+            align(&mut node);
+            node.extend(child);
+        }
+        let length = u16::try_from(node.len()).unwrap();
+        node[..2].copy_from_slice(&length.to_le_bytes());
+        node
+    }
+
+    /// A 64-bit program file holding only a version resource (`ProductVersion` = `product`, in
+    /// the 040904B0 string table) and no `\VarFileInfo\Translation` entry.
+    #[cfg(windows)]
+    fn resource_only_program(product: &str) -> Vec<u8> {
+        let put = |bytes: &mut Vec<u8>, at: usize, value: &[u8]| bytes[at..at + value.len()].copy_from_slice(value);
+        let text: Vec<u8> = product.encode_utf16().chain([0]).flat_map(u16::to_le_bytes).collect();
+        let string = version_node("ProductVersion", &text, u16::try_from(product.len() + 1).unwrap(), true, &[]);
+        let table = version_node("040904b0", &[], 0, true, &[string]);
+        let strings = version_node("StringFileInfo", &[], 0, true, &[table]);
+        let mut fixed = vec![0u8; 52];
+        put(&mut fixed, 0, &0xFEEF_04BDu32.to_le_bytes());
+        put(&mut fixed, 4, &0x0001_0000u32.to_le_bytes());
+        let info = version_node("VS_VERSION_INFO", &fixed, 52, false, &[strings]);
+
+        // The resource section: type 16 (RT_VERSION) > id 1 > language 0x0409 > the data.
+        const RVA: u32 = 0x1000;
+        let mut rsrc = vec![0u8; 0x58];
+        for (dir, id, next) in [(0x00, 16u32, 0x8000_0018u32), (0x18, 1, 0x8000_0030), (0x30, 0x0409, 0x48)] {
+            put(&mut rsrc, dir + 14, &1u16.to_le_bytes());
+            put(&mut rsrc, dir + 16, &id.to_le_bytes());
+            put(&mut rsrc, dir + 20, &next.to_le_bytes());
+        }
+        put(&mut rsrc, 0x48, &(RVA + 0x58).to_le_bytes());
+        put(&mut rsrc, 0x4C, &u32::try_from(info.len()).unwrap().to_le_bytes());
+        rsrc.extend(&info);
+        let raw = u32::try_from(rsrc.len().next_multiple_of(0x200)).unwrap();
+        let rsrc_len = u32::try_from(rsrc.len()).unwrap();
+
+        let mut file = vec![0u8; 0x200];
+        put(&mut file, 0, b"MZ");
+        put(&mut file, 0x3C, &0x40u32.to_le_bytes());
+        put(&mut file, 0x40, b"PE\0\0");
+        // COFF header: x64, one section, a 240-byte optional header, an executable DLL image.
+        put(&mut file, 0x44, &0x8664u16.to_le_bytes());
+        put(&mut file, 0x46, &1u16.to_le_bytes());
+        put(&mut file, 0x54, &240u16.to_le_bytes());
+        put(&mut file, 0x56, &0x2022u16.to_le_bytes());
+        // PE32+ optional header.
+        let opt = 0x58;
+        put(&mut file, opt, &0x20Bu16.to_le_bytes());
+        put(&mut file, opt + 8, &raw.to_le_bytes());
+        put(&mut file, opt + 24, &0x1_4000_0000u64.to_le_bytes());
+        put(&mut file, opt + 32, &0x1000u32.to_le_bytes());
+        put(&mut file, opt + 36, &0x200u32.to_le_bytes());
+        put(&mut file, opt + 40, &6u16.to_le_bytes());
+        put(&mut file, opt + 48, &6u16.to_le_bytes());
+        put(&mut file, opt + 56, &(RVA + rsrc_len.next_multiple_of(0x1000)).to_le_bytes());
+        put(&mut file, opt + 60, &0x200u32.to_le_bytes());
+        put(&mut file, opt + 68, &2u16.to_le_bytes());
+        put(&mut file, opt + 72, &0x10_0000u64.to_le_bytes());
+        put(&mut file, opt + 80, &0x1000u64.to_le_bytes());
+        put(&mut file, opt + 88, &0x10_0000u64.to_le_bytes());
+        put(&mut file, opt + 96, &0x1000u64.to_le_bytes());
+        put(&mut file, opt + 108, &16u32.to_le_bytes());
+        put(&mut file, opt + 112 + 2 * 8, &RVA.to_le_bytes());
+        put(&mut file, opt + 112 + 2 * 8 + 4, &rsrc_len.to_le_bytes());
+        // The .rsrc section header.
+        let section = opt + 240;
+        put(&mut file, section, b".rsrc\0\0\0");
+        put(&mut file, section + 8, &rsrc_len.to_le_bytes());
+        put(&mut file, section + 12, &RVA.to_le_bytes());
+        put(&mut file, section + 16, &raw.to_le_bytes());
+        put(&mut file, section + 20, &0x200u32.to_le_bytes());
+        put(&mut file, section + 36, &0x4000_0040u32.to_le_bytes());
+        rsrc.resize(usize::try_from(raw).unwrap(), 0);
+        file.extend(rsrc);
+        file
+    }
 
     #[test]
     fn recognises_appimage_names_conservatively() {

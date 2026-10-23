@@ -59,6 +59,7 @@
 	Dismiss	忽略
 	Update and restart	更新并重启
 	A new version is available. Would you like to relaunch with the updated version?	有新版本可用。是否使用更新后的版本重新启动？
+	A new version is available. Download it to replace this version?	有新版本可用。是否下载以替换当前版本？
 	Later	稍后
 	What's new	更新内容
 	No notes were published with this release.	此版本未提供更新说明。
@@ -325,6 +326,7 @@ figcraft	Interface design and prototyping	界面设计与原型制作
 	Use default	使用默认
 	New installs use this folder. Updates stay in their current location.	新安装的应用使用此文件夹。更新时保留当前位置。
 	Custom folders use AppImage on Linux.	在 Linux 上，自定义文件夹使用 AppImage。
+	On Linux, custom folders use AppImage format.	在 Linux 上，自定义文件夹使用 AppImage。
 	The system manages install locations here.	此环境中的安装位置由系统管理。
 @msg	couldn't use install folder {path}: {reason}	无法使用安装文件夹 {path}：{reason}
 @msg	this release has no AppImage for a custom install folder	此版本没有可用于自定义安装文件夹的 AppImage

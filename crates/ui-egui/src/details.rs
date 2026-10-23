@@ -40,7 +40,10 @@ pub(crate) enum Picture {
 impl Picture {
     pub(crate) fn from_result(result: Result<Vec<u8>, String>) -> Self {
         match result {
-            Ok(bytes) => Self::Ready(bytes.into()),
+            // The backend already enforces the pixel budget; re-check here so bytes can never
+            // reach egui's image loader (which allocates from the JPEG header) unvalidated.
+            Ok(bytes) if artcraft_launcher_core::details::screenshot_within_budget(&bytes) => Self::Ready(bytes.into()),
+            Ok(_) => Self::Failed("the picture's dimensions are too large".into()),
             Err(why) => Self::Failed(why),
         }
     }

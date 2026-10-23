@@ -24,7 +24,7 @@ sys-locale = "0.3"
 # Finding the Simplified Chinese face in a system font collection; egui already uses it.
 skrifa = { version = "0.44", default-features = false, features = ["std"] }
 # The system time zone, so dates read as this computer's calendar; already in the desktop build.
-jiff = "0.2"
+jiff = { workspace = true }
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 # The browser's time zone, for the same dates.

@@ -126,7 +126,7 @@ if has appimage; then
   if [ -z "$TOOL" ]; then
     TOOL="$CARGO_TARGET_DIR/appimagetool-$ARCH.AppImage"
     if [ ! -x "$TOOL" ]; then
-      curl -fsSL -o "$TOOL" "https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-$ARCH.AppImage"
+      curl --proto '=https' -fsSL -o "$TOOL" "https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-$ARCH.AppImage"
       chmod +x "$TOOL"
     fi
   fi

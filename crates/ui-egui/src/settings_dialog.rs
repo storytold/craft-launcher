@@ -178,7 +178,7 @@ impl LauncherUi {
                 self.settings.install_locations.root = (!folder.is_empty()).then_some(folder);
                 note(ui, tl!("New installs use this folder. Updates stay in their current location."));
                 if self.platform.is_some_and(|p| p.os == Os::Linux) {
-                    note(ui, tl!("Custom folders use AppImage on Linux."));
+                    note(ui, tl!("On Linux, custom folders use AppImage format."));
                 }
             } else {
                 ui.label(tl!("The system manages install locations here."));

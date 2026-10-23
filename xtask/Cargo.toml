@@ -7,3 +7,6 @@ publish = false
 
 [lints]
 workspace = true
+
+[dependencies]
+jiff = { workspace = true }

@@ -1635,6 +1635,34 @@ fn the_toolbar_has_no_filter_dropdown() {
 }
 
 #[test]
+fn saved_filters_are_migrated_on_ui_construction() {
+    use artcraft_launcher_ui_egui::settings::Filter;
+
+    for (saved, expected) in [
+        (r#"{"filter":"All"}"#, Filter::All),
+        (r#"{"filter":"Installed"}"#, Filter::All),
+        (r#"{"filter":"Updates"}"#, Filter::All),
+        (r#"{"filter":"NotInstalled"}"#, Filter::All),
+        (r#"{"filter":"Hidden"}"#, Filter::Hidden),
+    ] {
+        let mut settings: Settings = serde_json::from_str(saved).unwrap();
+        settings.language = "en".into(); // Avoid the global system-locale probe in parallel tests.
+        settings.last_check = Some(NOW);
+        let backend = Fake {
+            events: Vec::new(),
+            sent: Rc::default(),
+            manage: true,
+            pictures: Rc::default(),
+            asked: Vec::new(),
+            clock: Rc::new(Cell::new(NOW)),
+        };
+        let ui = LauncherUi::new(&egui::Context::default(), Box::new(backend), settings);
+        assert_eq!(ui.settings.filter, expected, "{saved}");
+        assert_eq!(ui.settings.last_check, Some(NOW));
+    }
+}
+
+#[test]
 fn narrow_header_keeps_the_view_switch_clear_of_brand_text() {
     use artcraft_launcher_ui_egui::TitleBar;
     for theme in [egui::Theme::Dark, egui::Theme::Light] {

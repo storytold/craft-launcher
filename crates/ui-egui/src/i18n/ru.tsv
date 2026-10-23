@@ -75,6 +75,7 @@
 	Dismiss	Закрыть
 	Update and restart	Обновить и перезапустить
 	A new version is available. Would you like to relaunch with the updated version?	Доступна новая версия. Перезапустить с обновленной версией?
+	A new version is available. Download it to replace this version?	Доступна новая версия. Скачать её, чтобы заменить эту версию?
 	Later	Позже
 	What's new	Что нового
 	No notes were published with this release.	Заметки к этому релизу не публиковались.
@@ -353,6 +354,7 @@ filter	Installed	Установлены
 	Use default	Использовать по умолчанию
 	New installs use this folder. Updates stay in their current location.	Новые приложения устанавливаются в эту папку. При обновлении текущее расположение сохраняется.
 	Custom folders use AppImage on Linux.	В Linux для установки в выбранную папку используется AppImage.
+	On Linux, custom folders use AppImage format.	В Linux для установки в выбранную папку используется AppImage.
 	The system manages install locations here.	В этой среде расположением приложений управляет система.
 @msg	couldn't use install folder {path}: {reason}	не удалось использовать папку установки {path}: {reason}
 @msg	this release has no AppImage for a custom install folder	в этом выпуске нет AppImage для установки в выбранную папку

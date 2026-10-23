@@ -186,13 +186,14 @@ impl FeedRelease {
     /// when it doesn't hold up (no tag, or not a version).
     fn to_release(&self, repo: &str, mirror: Option<&str>) -> Option<Release> {
         let version = version::parse(&self.tag)?;
-        let prefix = release::download_prefix(repo);
-        let allowed = |url: &str| url.starts_with(&prefix) || mirror.is_some_and(|m| url.starts_with(m) && !url.contains(".."));
+        let allowed = |url: &str| {
+            release::download_url_under(url, &release::download_prefix(repo)) || mirror.is_some_and(|m| release::download_url_under_mirror(url, m))
+        };
         let releases_page = format!("https://github.com/{repo}/releases/");
         let assets = self
             .assets
             .iter()
-            .filter(|(name, _, url, _)| release::valid_file_name(name) && allowed(url) && !url.contains(['?', '#', '\\']))
+            .filter(|(name, _, url, _)| release::valid_file_name(name) && allowed(url))
             .map(|(name, size, url, sha)| Asset {
                 name: name.clone(),
                 size: *size,
@@ -407,9 +408,13 @@ impl RawNotice {
         if self.title.trim().is_empty() && self.body.trim().is_empty() {
             return None;
         }
-        let link = self
-            .maybe_web_link
-            .filter(|l| (l.starts_with("https://") || l.starts_with("http://")) && l.len() <= 2000 && !l.chars().any(char::is_whitespace));
+        // The link may reach the system opener (whose WSL fallback shells out), so refuse any
+        // shell/cmd metacharacter or control character in it as well as whitespace (CWE-78).
+        let link = self.maybe_web_link.filter(|l| {
+            (l.starts_with("https://") || l.starts_with("http://"))
+                && l.len() <= 2000
+                && !l.chars().any(|c| c.is_whitespace() || c.is_control() || release::is_shell_meta(c))
+        });
         Some(Notice {
             id: format!("{kind}:{}:{}", self.created_at.as_deref().unwrap_or(""), self.title.trim()),
             title: truncate(self.title.trim(), 200),
@@ -565,6 +570,18 @@ mod tests {
     }
 
     #[test]
+    fn a_feed_url_cannot_traverse_out_of_the_repository() {
+        // The feed advertises a legitimate tag but points the asset at another repository by
+        // climbing out with `../` after the approved prefix (CWE-180).
+        let escaped = sample().replace(
+            "https://github.com/storytold/photocraft/releases/download/v0.6.0/photocraft-0.6.0-macos-universal.dmg",
+            "https://github.com/storytold/photocraft/releases/download/../../../../attacker/repo/releases/download/v99/photocraft-0.6.0-macos-universal.dmg",
+        );
+        let FeedAnswer::Fresh(Some(r)) = Feed::parse(&escaped).unwrap().answer(app("photocraft"), NOW) else { panic!() };
+        assert!(r.assets.is_empty(), "the traversing download must be rejected");
+    }
+
+    #[test]
     fn a_local_mirror_is_trusted_only_when_asked_for_and_never_goes_stale() {
         const MIRROR: &str = "http://127.0.0.1:8787/";
         let local = sample().replace("https://github.com/storytold/photocraft/releases/download/v0.6.0/", "http://127.0.0.1:8787/photocraft/v0.6.0/");
@@ -612,7 +629,8 @@ mod tests {
                 "\"alerts\": []",
                 r#""alerts": [
             {"title": "Security update", "body": "Update PdfCraft now.", "maybe_web_link": "https://getartcraft.com/security", "created_at": null},
-            {"title": "Bad link", "body": "x", "maybe_web_link": "javascript:alert(1)"}]"#,
+            {"title": "Bad link", "body": "x", "maybe_web_link": "javascript:alert(1)"},
+            {"title": "Shell link", "body": "x", "maybe_web_link": "https://getartcraft.com/a|calc.exe"}]"#,
             )
             .replace(
                 "\"app_renames\": []",
@@ -620,9 +638,10 @@ mod tests {
             "new_name_lower": "docucraft", "description": "Same app, new name.", "renamed_at": "2026-10-09T08:00:00Z"}]"#,
             );
         let feed = Feed::parse(&with_notices).unwrap();
-        assert_eq!(feed.alerts.len(), 2);
+        assert_eq!(feed.alerts.len(), 3);
         assert_eq!(feed.alerts[0].link.as_deref(), Some("https://getartcraft.com/security"));
         assert_eq!(feed.alerts[1].link, None, "only web links are kept");
+        assert_eq!(feed.alerts[2].link, None, "a link with shell metacharacters is dropped");
         let titles: Vec<&str> = feed.announcements.iter().map(|n| n.title.as_str()).collect();
         assert_eq!(titles, ["New: CADCraft 1.0", "PdfCraft is now DocuCraft"]);
         // Ids are stable across parses, so dismissals stick.

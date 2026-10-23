@@ -65,6 +65,7 @@
 	Dismiss	Dispensar
 	Update and restart	Atualizar e reiniciar
 	A new version is available. Would you like to relaunch with the updated version?	Uma nova versão está disponível. Reiniciar com a nova versão?
+	A new version is available. Download it to replace this version?	Uma nova versão está disponível. Baixar para substituir esta versão?
 	Later	Mais tarde
 	What's new	Novidades
 	No notes were published with this release.	Nenhuma nota foi publicada com este lançamento.
@@ -345,6 +346,7 @@ filter	Installed	Instalados
 	Use default	Usar padrão
 	New installs use this folder. Updates stay in their current location.	Novas instalações usam esta pasta. As atualizações mantêm o local atual.
 	Custom folders use AppImage on Linux.	Pastas personalizadas usam AppImage no Linux.
+	On Linux, custom folders use AppImage format.	Pastas personalizadas usam AppImage no Linux.
 	The system manages install locations here.	O sistema gerencia os locais de instalação neste ambiente.
 @msg	couldn't use install folder {path}: {reason}	não foi possível usar a pasta de instalação {path}: {reason}
 @msg	this release has no AppImage for a custom install folder	esta versão não tem um AppImage para uma pasta de instalação personalizada
