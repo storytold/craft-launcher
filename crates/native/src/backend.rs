@@ -50,10 +50,24 @@ const WORKERS: usize = 4;
 
 type Waker = Arc<dyn Fn() + Send + Sync>;
 
+#[derive(Default)]
+struct DownloadSize {
+    revision: u64,
+    plan: Option<(PackageKind, u64)>,
+}
+
+impl DownloadSize {
+    fn invalidate(&mut self) {
+        self.revision = self.revision.wrapping_add(1);
+        self.plan = None;
+    }
+}
+
 struct Shared {
     events: Mutex<Vec<Event>>,
     waker: Waker,
     latest: Mutex<HashMap<String, Release>>,
+    download_sizes: Mutex<HashMap<String, DownloadSize>>,
     installed: Mutex<HashMap<String, Installed>>,
     jobs: Mutex<HashMap<String, Arc<Stop>>>,
     /// The launcher is replacing itself and will restart: no new job starts.
@@ -87,6 +101,46 @@ struct Shared {
 }
 
 impl Shared {
+    fn store_latest(&self, app: &str, release: &Release) {
+        let mut latest = self.latest.lock().unwrap_or_else(PoisonError::into_inner);
+        if latest.get(app) != Some(release) {
+            latest.insert(app.to_string(), release.clone());
+            self.invalidate_download_size(app);
+        }
+    }
+
+    fn store_detected(&self, app: &str, found: Option<&Installed>) {
+        let mut installed = self.installed.lock().unwrap_or_else(PoisonError::into_inner);
+        if installed.get(app) != found {
+            match found {
+                Some(i) => installed.insert(app.to_string(), i.clone()),
+                None => installed.remove(app),
+            };
+            self.invalidate_download_size(app);
+        }
+    }
+
+    fn invalidate_download_size(&self, app: &str) {
+        self.download_sizes.lock().unwrap_or_else(PoisonError::into_inner).entry(app.to_string()).or_default().invalidate();
+    }
+
+    fn download_revision(&self, app: &str) -> u64 {
+        self.download_sizes.lock().unwrap_or_else(PoisonError::into_inner).entry(app.to_string()).or_default().revision
+    }
+
+    fn report_download(&self, app: &str, revision: u64, plan: Option<(PackageKind, u64)>, download: Option<PausedDownload>, ready: bool) -> bool {
+        {
+            let mut sizes = self.download_sizes.lock().unwrap_or_else(PoisonError::into_inner);
+            let Some(cached) = sizes.get_mut(app).filter(|cached| cached.revision == revision) else { return false };
+            cached.plan = plan;
+            let mut events = self.events.lock().unwrap_or_else(PoisonError::into_inner);
+            events.push(Event::Paused { app: app.to_string(), download });
+            events.push(Event::ReadyToInstall { app: app.to_string(), ready });
+        }
+        (self.waker)();
+        true
+    }
+
     fn emit(&self, event: Event) {
         self.events.lock().unwrap_or_else(PoisonError::into_inner).push(event);
         (self.waker)();
@@ -122,6 +176,7 @@ impl NativeBackend {
             events: Mutex::new(Vec::new()),
             waker,
             latest: Mutex::new(HashMap::new()),
+            download_sizes: Mutex::new(HashMap::new()),
             installed: Mutex::new(HashMap::new()),
             jobs: Mutex::new(HashMap::new()),
             restarting: AtomicBool::new(false),
@@ -160,7 +215,7 @@ impl NativeBackend {
             };
             if let Some((latest, from)) = answer {
                 if let LatestRelease::Found(r) = &latest {
-                    self.shared.latest.lock().unwrap_or_else(PoisonError::into_inner).insert(app.id.to_string(), r.clone());
+                    self.shared.store_latest(app.id, r);
                 }
                 self.shared.emit(Event::Latest { app: app.id.to_string(), latest, from });
             }
@@ -181,7 +236,6 @@ impl NativeBackend {
         let shared = self.shared.clone();
         let paths = self.paths.clone();
         let platform = self.platform;
-        let options = self.options();
         std::thread::spawn(move || {
             // Leftovers from interrupted installs or older versions of the launcher. A paused
             // download stays a month; a finished one kept after a failed install, a week.
@@ -190,18 +244,12 @@ impl NativeBackend {
             let manifest = shared.manifest.lock().unwrap_or_else(PoisonError::into_inner).clone();
             for app in &SUITE {
                 let found = crate::detect::detect(app, &manifest, &snapshot);
-                {
-                    let mut map = shared.installed.lock().unwrap_or_else(PoisonError::into_inner);
-                    match &found {
-                        Some(i) => map.insert(app.id.to_string(), i.clone()),
-                        None => map.remove(app.id),
-                    };
-                }
+                shared.store_detected(app.id, found.as_ref());
                 shared.emit(Event::Detected { app: app.id.to_string(), installed: found });
             }
             // Downloads paused (or cut off by quitting) in an earlier run.
             for app in &SUITE {
-                report_partial(app, &shared, &paths, platform, &options);
+                report_partial(app, &shared, &paths, platform);
             }
             shared.detecting.store(false, Ordering::SeqCst);
         });
@@ -275,7 +323,7 @@ impl NativeBackend {
                             }
                             let Some(latest) = latest else { continue };
                             if let LatestRelease::Found(r) = &latest {
-                                shared.latest.lock().unwrap_or_else(PoisonError::into_inner).insert(app.id.to_string(), r.clone());
+                                shared.store_latest(app.id, r);
                             }
                             if !matches!(latest, LatestRelease::Failed(_)) {
                                 shared.answered.lock().unwrap_or_else(PoisonError::into_inner).insert(app.id.to_string());
@@ -293,9 +341,8 @@ impl NativeBackend {
                 }
             }
             // A newer release changes which file an install would use.
-            let options = shared.options.lock().unwrap_or_else(PoisonError::into_inner).clone();
             for app in &SUITE {
-                report_partial(app, &shared, &paths, platform, &options);
+                report_partial(app, &shared, &paths, platform);
             }
             let sources = sources.into_inner().unwrap_or_else(PoisonError::into_inner);
             let source_used = if sources.contains(&Source::Cache) {
@@ -378,7 +425,6 @@ impl NativeBackend {
                     other => other,
                 }
             };
-            report_partial(app, &shared, &paths, platform, &options);
             // Look again: the result is whatever is on disk now.
             let manifest = shared.manifest.lock().unwrap_or_else(PoisonError::into_inner).clone();
             let found = crate::detect::detect(app, &manifest, &crate::detect::Snapshot::take());
@@ -400,7 +446,10 @@ impl NativeBackend {
                     None => map.remove(app.id),
                 };
             }
+            // The manifest may change the package plan even when detection finds the same copy.
+            shared.invalidate_download_size(app.id);
             shared.emit(Event::Detected { app: app.id.to_string(), installed: found });
+            report_partial(app, &shared, &paths, platform);
             shared.jobs.lock().unwrap_or_else(PoisonError::into_inner).remove(app.id);
             shared.emit(Event::JobFinished { app: app.id.to_string(), result });
         });
@@ -639,27 +688,30 @@ fn planned_asset(
 }
 
 /// Tells the UI whether `app` has a paused download waiting, or a finished one to install.
-fn report_partial(app: &CraftApp, shared: &Shared, paths: &Paths, platform: Option<Platform>, options: &BackendOptions) {
-    let planned = planned_download(app, shared, paths, platform, options);
-    let download = planned.as_ref().and_then(|(dest, size)| Some(PausedDownload { done: http::partial_bytes(dest, *size)?, total: *size }));
-    shared.emit(Event::Paused { app: app.id.to_string(), download });
-    let ready = planned.is_some_and(|(dest, size)| http::finished(&dest, size));
-    shared.emit(Event::ReadyToInstall { app: app.id.to_string(), ready });
+fn report_partial(app: &CraftApp, shared: &Shared, paths: &Paths, platform: Option<Platform>) {
+    // Capture the revision before the options: Configure invalidates it while changing options.
+    // Planning may discover installers, so neither mutex stays locked while it runs.
+    let revision = shared.download_revision(app.id);
+    let options = shared.options.lock().unwrap_or_else(PoisonError::into_inner).clone();
+    let planned = planned_download(app, shared, paths, platform, &options);
+    let download = planned.as_ref().and_then(|(dest, _, size)| Some(PausedDownload { done: http::partial_bytes(dest, *size)?, total: *size }));
+    let ready = planned.as_ref().is_some_and(|(dest, _, size)| http::finished(dest, *size));
+    shared.report_download(app.id, revision, planned.as_ref().map(|(_, kind, size)| (*kind, *size)), download, ready);
 }
 
-/// Where the planned download of `app` is kept, and its size.
+/// Where the planned download of `app` is kept, its package format and published size.
 fn planned_download(
     app: &CraftApp,
     shared: &Shared,
     paths: &Paths,
     platform: Option<Platform>,
     options: &BackendOptions,
-) -> Option<(std::path::PathBuf, u64)> {
+) -> Option<(std::path::PathBuf, PackageKind, u64)> {
     let release = shared.latest.lock().unwrap_or_else(PoisonError::into_inner).get(app.id).cloned()?;
     let existing = shared.installed.lock().unwrap_or_else(PoisonError::into_inner).get(app.id).cloned();
     let record = shared.manifest.lock().unwrap_or_else(PoisonError::into_inner).apps.get(app.id).cloned();
-    let (asset, _) = planned_asset(app, &release, platform?, options, existing.as_ref(), record.as_ref())?;
-    artcraft_launcher_core::release::valid_file_name(&asset.name).then(|| (install::download_path(paths, &asset), asset.size))
+    let (asset, kind) = planned_asset(app, &release, platform?, options, existing.as_ref(), record.as_ref())?;
+    artcraft_launcher_core::release::valid_file_name(&asset.name).then(|| (install::download_path(paths, &asset), kind, asset.size))
 }
 
 /// How much the feed is trusted in one check, and how freely GitHub may be asked.
@@ -981,7 +1033,7 @@ impl Backend for NativeBackend {
                     // A paused download, or one kept after a failed install: throw the file away.
                     None => {
                         if let Some(def) = CraftApp::by_id(&app)
-                            && let Some((dest, size)) = planned_download(def, &self.shared, &self.paths, self.platform, &self.options())
+                            && let Some((dest, _, size)) = planned_download(def, &self.shared, &self.paths, self.platform, &self.options())
                         {
                             http::discard(&dest, size);
                         }
@@ -1016,12 +1068,15 @@ impl Backend for NativeBackend {
                     let mut o = self.shared.options.lock().unwrap_or_else(PoisonError::into_inner);
                     let changed = o.prereleases != options.prereleases;
                     *o = options;
+                    // An older worker must not overwrite the plan for these settings.
+                    for cached in self.shared.download_sizes.lock().unwrap_or_else(PoisonError::into_inner).values_mut() {
+                        cached.invalidate();
+                    }
                     changed
                 };
                 // Another package format means another file to download.
-                let options = self.options();
                 for app in &SUITE {
-                    report_partial(app, &self.shared, &self.paths, self.platform, &options);
+                    report_partial(app, &self.shared, &self.paths, self.platform);
                 }
                 if changed_pre {
                     self.check(true);
@@ -1045,6 +1100,10 @@ impl Backend for NativeBackend {
 
     fn platform(&self) -> Option<Platform> {
         self.platform
+    }
+
+    fn download_size(&self, app: &str) -> Option<(PackageKind, u64)> {
+        self.shared.download_sizes.lock().unwrap_or_else(PoisonError::into_inner).get(app).and_then(|cached| cached.plan)
     }
 
     fn now(&self) -> i64 {
@@ -1087,6 +1146,7 @@ mod tests {
             events: Mutex::new(Vec::new()),
             waker: Arc::new(|| {}),
             latest: Mutex::new(HashMap::new()),
+            download_sizes: Mutex::new(HashMap::new()),
             installed: Mutex::new(HashMap::new()),
             jobs: Mutex::new(HashMap::new()),
             restarting: AtomicBool::new(false),
@@ -1421,7 +1481,7 @@ mod tests {
     /// Reports again, and returns what the UI was last told about a kept download.
     fn ready(backend: &mut NativeBackend) -> Option<bool> {
         let app = CraftApp::by_id(APP).unwrap();
-        report_partial(app, &backend.shared, &backend.paths, backend.platform, &BackendOptions::default());
+        report_partial(app, &backend.shared, &backend.paths, backend.platform);
         last_ready(backend.poll())
     }
 
@@ -1435,10 +1495,86 @@ mod tests {
     /// Puts the planned download on disk, as a failed install leaves it.
     fn keep_file(backend: &NativeBackend) -> std::path::PathBuf {
         let app = CraftApp::by_id(APP).unwrap();
-        let (dest, size) = planned_download(app, &backend.shared, &backend.paths, backend.platform, &BackendOptions::default()).unwrap();
+        let (dest, _, size) = planned_download(app, &backend.shared, &backend.paths, backend.platform, &BackendOptions::default()).unwrap();
         std::fs::create_dir_all(backend.paths.downloads()).unwrap();
         std::fs::write(&dest, vec![0u8; size as usize]).unwrap();
         dest
+    }
+
+    #[test]
+    fn download_size_reads_the_cached_plan_and_reports_clear_missing_assets() {
+        let Some(platform) = native_platform() else { return };
+        let dir = tempfile::tempdir().unwrap();
+        let mut backend = backend(dir.path(), platform, None);
+        assert_eq!(backend.download_size(APP), None);
+        ready(&mut backend);
+        let (kind, size) = backend.download_size(APP).unwrap();
+        assert_eq!(size, 3);
+        assert_eq!(backend.download_size("unknown"), None);
+
+        let mut latest = release("0.6.0");
+        for asset in &mut latest.assets {
+            asset.size = 0;
+        }
+        backend.shared.latest.lock().unwrap().insert(APP.to_string(), latest);
+        // Reading from a frame neither discovers installers nor replans the download.
+        assert_eq!(backend.download_size(APP), Some((kind, 3)));
+        ready(&mut backend);
+        assert_eq!(backend.download_size(APP), Some((kind, 0)));
+
+        backend.shared.latest.lock().unwrap().insert(APP.to_string(), Release::default());
+        ready(&mut backend);
+        assert_eq!(backend.download_size(APP), None);
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn download_size_respects_preferences_and_the_installed_package_format() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut backend = backend(dir.path(), Platform { os: Os::Windows, arch: Arch::X64 }, None);
+        let mut latest = release("0.5.0");
+        for asset in &mut latest.assets {
+            asset.size = if asset.name.ends_with(".msi") { 100 } else { 200 };
+        }
+        backend.shared.latest.lock().unwrap().insert(APP.to_string(), latest);
+        // A worker started planning the default MSI before the user chose portable ZIP.
+        let old_revision = backend.shared.download_revision(APP);
+        let options = BackendOptions { kinds: vec![PackageKind::PortableZip], ..Default::default() };
+        backend.send(Command::Configure(options));
+        assert_eq!(backend.download_size(APP), Some((PackageKind::PortableZip, 200)));
+        backend.poll();
+        assert!(!backend.shared.report_download(APP, old_revision, Some((PackageKind::Msi, 100)), None, false));
+        assert!(backend.poll().is_empty());
+        assert_eq!(backend.download_size(APP), Some((PackageKind::PortableZip, 200)));
+        backend.shared.installed.lock().unwrap().insert(
+            APP.to_string(),
+            Installed { version: None, source: InstallSource::Msi, location: r"C:\Apps\PhotoCraft\photocraft.exe".into(), package: None },
+        );
+        report_partial(CraftApp::by_id(APP).unwrap(), &backend.shared, &backend.paths, backend.platform);
+        assert_eq!(backend.download_size(APP), Some((PackageKind::Msi, 100)));
+    }
+
+    #[test]
+    fn a_new_release_rejects_a_slow_workers_older_download_size() {
+        let Some(platform) = native_platform() else { return };
+        let dir = tempfile::tempdir().unwrap();
+        let mut backend = backend(dir.path(), platform, None);
+        ready(&mut backend);
+        let old_plan = backend.download_size(APP);
+        let old_revision = backend.shared.download_revision(APP);
+        let mut latest = release("0.6.0");
+        for asset in &mut latest.assets {
+            asset.size = 300;
+        }
+        backend.shared.store_latest(APP, &latest);
+        assert_eq!(backend.download_size(APP), None);
+        ready(&mut backend);
+        let fresh = backend.download_size(APP).unwrap();
+        assert_eq!(fresh.1, 300);
+        backend.poll();
+        assert!(!backend.shared.report_download(APP, old_revision, old_plan, None, false));
+        assert!(backend.poll().is_empty());
+        assert_eq!(backend.download_size(APP), Some(fresh));
     }
 
     #[test]
@@ -1466,6 +1602,88 @@ mod tests {
         backend.shared.latest.lock().unwrap().insert(APP.to_string(), release("0.6.0"));
         backend.send(Command::Configure(BackendOptions::default()));
         assert_eq!(last_ready(backend.poll()), Some(false));
+    }
+
+    #[test]
+    fn an_unchanged_refresh_keeps_the_download_size_while_other_results_wait() {
+        struct Unchanged {
+            saving: mpsc::Sender<()>,
+            finish: Mutex<mpsc::Receiver<()>>,
+        }
+        impl ReleaseSource for Unchanged {
+            fn latest(&self, repo: &str, _prereleases: bool) -> Answer {
+                let latest = if CraftApp::by_id(APP).is_some_and(|app| app.repo == repo) {
+                    LatestRelease::Found(release("0.5.0"))
+                } else {
+                    LatestRelease::None
+                };
+                Answer { latest, source: Source::GitHubApi }
+            }
+            fn cached(&self, _repo: &str, _prereleases: bool) -> Option<LatestRelease> {
+                None
+            }
+            fn rate_limited_until(&self) -> Option<i64> {
+                None
+            }
+            fn save(&self) {
+                let _ = self.saving.send(());
+                // Disconnecting the sender also releases this gate if the test panics.
+                let _ = self.finish.lock().unwrap().recv();
+            }
+        }
+        let Some(platform) = native_platform() else { return };
+        let dir = tempfile::tempdir().unwrap();
+        let (saving, saved) = mpsc::channel();
+        let (finish, finished) = mpsc::channel();
+        let mut backend = backend(dir.path(), platform, Some(Arc::new(Unchanged { saving, finish: Mutex::new(finished) })));
+        backend.http = Some(Http::new().unwrap());
+        backend.shared.options.lock().unwrap().prereleases = true;
+        ready(&mut backend);
+        let before = backend.download_size(APP);
+        assert!(before.is_some());
+        let (wake, waking) = mpsc::channel();
+        Arc::get_mut(&mut backend.shared).unwrap().waker = Arc::new(move || {
+            let _ = wake.send(());
+        });
+
+        backend.send(Command::CheckForUpdates { force: true });
+        saved.recv_timeout(Duration::from_secs(20)).unwrap();
+        // Latest was delivered, but the batch's final report_partial loop cannot run yet.
+        let during = backend.download_size(APP);
+        let pending = backend.poll();
+        drop(finish);
+        let mut complete = false;
+        while !complete {
+            waking.recv_timeout(Duration::from_secs(20)).unwrap();
+            complete = backend.poll().iter().any(|event| matches!(event, Event::CheckFinished { .. }));
+        }
+        assert!(pending.iter().any(|event| matches!(event, Event::Latest { app, latest: LatestRelease::Found(_), .. } if app == APP)));
+        assert!(!pending.iter().any(|event| matches!(event, Event::CheckFinished { .. })));
+        assert_eq!(during, before, "an identical release must keep its known size throughout Refresh");
+    }
+
+    #[test]
+    fn unchanged_detection_keeps_the_plan_but_a_changed_copy_rejects_old_reports() {
+        let Some(platform) = native_platform() else { return };
+        let dir = tempfile::tempdir().unwrap();
+        let mut backend = backend(dir.path(), platform, None);
+        ready(&mut backend);
+        let plan = backend.download_size(APP);
+        let revision = backend.shared.download_revision(APP);
+        backend.shared.store_detected(APP, None);
+        assert_eq!(backend.download_size(APP), plan);
+
+        backend.shared.store_detected(APP, Some(&copy("0.4.0")));
+        assert_eq!(backend.download_size(APP), None);
+        assert!(!backend.shared.report_download(APP, revision, plan, None, false));
+        let revision = backend.shared.download_revision(APP);
+        assert!(backend.shared.report_download(APP, revision, plan, None, false));
+        backend.shared.store_detected(APP, Some(&copy("0.4.0")));
+        assert_eq!(backend.download_size(APP), plan);
+
+        backend.shared.store_detected(APP, Some(&copy("0.5.0")));
+        assert_eq!(backend.download_size(APP), None);
+        assert!(!backend.shared.report_download(APP, revision, plan, None, false));
     }
 
     #[test]

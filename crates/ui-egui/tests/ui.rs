@@ -55,6 +55,7 @@ struct Fake {
     pictures: Rc<Cell<Pictures>>,
     /// Apps whose pictures were asked for and not answered yet.
     asked: Vec<String>,
+    downloads: std::collections::BTreeMap<String, (artcraft_launcher_core::PackageKind, u64)>,
     clock: Rc<Cell<i64>>,
 }
 
@@ -66,6 +67,17 @@ impl Backend for Fake {
         self.sent.borrow_mut().push(command);
     }
     fn poll(&mut self) -> Vec<Event> {
+        for event in &self.events {
+            if let Event::Latest { app, latest: LatestRelease::Found(release), .. } = event
+                && let Some(def) = artcraft_launcher_core::CraftApp::by_id(app)
+            {
+                let platform = self.platform().unwrap();
+                let stems: Vec<_> = def.stems().collect();
+                if let Some((asset, kind)) = artcraft_launcher_core::platform::pick_asset(release, &stems, platform, platform.default_kinds()) {
+                    self.downloads.insert(app.clone(), (kind, asset.size));
+                }
+            }
+        }
         let mut out = std::mem::take(&mut self.events);
         if self.pictures.get() != Pictures::Silent {
             for app in std::mem::take(&mut self.asked) {
@@ -90,6 +102,9 @@ impl Backend for Fake {
     }
     fn now(&self) -> i64 {
         self.clock.get()
+    }
+    fn download_size(&self, app: &str) -> Option<(artcraft_launcher_core::PackageKind, u64)> {
+        self.downloads.get(app).copied()
     }
 }
 
@@ -260,7 +275,7 @@ fn harness_full(
     artcraft_launcher_ui_egui::i18n::set_test_lang(artcraft_launcher_ui_egui::i18n::Lang::EN);
     let sent = Rc::new(RefCell::new(Vec::new()));
     let sent2 = sent.clone();
-    let fake = Fake { events, sent: sent2, manage, pictures, asked: Vec::new(), clock: Rc::new(Cell::new(NOW)) };
+    let fake = Fake { events, sent: sent2, manage, pictures, asked: Vec::new(), downloads: Default::default(), clock: Rc::new(Cell::new(NOW)) };
     let mut backend: Option<Box<dyn Backend>> = Some(match platform {
         Some(platform) => Box::new(PlatformFake { inner: fake, platform }),
         None => Box::new(fake),
@@ -315,6 +330,7 @@ fn folder_harness(picked: Rc<RefCell<Option<String>>>) -> (Harness<'static, Opti
         manage: true,
         pictures: Rc::default(),
         asked: vec![],
+        downloads: Default::default(),
         clock: Rc::new(Cell::new(NOW)),
     });
     let mut host = Picker(picked);
@@ -462,8 +478,15 @@ fn install_locations_survive_settings_save_and_older_settings_use_system_default
 #[test]
 fn keeps_working_with_no_window_then_draws_in_a_new_one() {
     let sent = Rc::new(RefCell::new(Vec::new()));
-    let backend =
-        Fake { events: events(), sent: sent.clone(), manage: true, pictures: Rc::default(), asked: Vec::new(), clock: Rc::new(Cell::new(NOW)) };
+    let backend = Fake {
+        events: events(),
+        sent: sent.clone(),
+        manage: true,
+        pictures: Rc::default(),
+        asked: Vec::new(),
+        downloads: Default::default(),
+        clock: Rc::new(Cell::new(NOW)),
+    };
     let windowless = egui::Context::default();
     let mut ui = LauncherUi::new(&windowless, Box::new(backend), Settings { notify: false, ..Settings::default() });
     // No window: the backend's news is still taken in.
@@ -925,8 +948,15 @@ fn discord_link_opens_app_when_discord_is_installed() {
 fn looks_again_at_installed_apps_every_few_minutes_not_every_frame() {
     let sent = Rc::new(RefCell::new(Vec::new()));
     let clock = Rc::new(Cell::new(NOW));
-    let mut backend =
-        Some(Fake { events: events(), sent: sent.clone(), manage: true, pictures: Rc::default(), asked: Vec::new(), clock: clock.clone() });
+    let mut backend = Some(Fake {
+        events: events(),
+        sent: sent.clone(),
+        manage: true,
+        pictures: Rc::default(),
+        asked: Vec::new(),
+        downloads: Default::default(),
+        clock: clock.clone(),
+    });
     let mut h = Harness::builder().with_size(egui::vec2(1180.0, 1200.0)).build_ui_state(
         move |ui, state: &mut Option<LauncherUi>| {
             if state.is_none()
@@ -990,7 +1020,15 @@ fn the_launcher_updates_itself_and_quits_to_restart() {
     let quit = Rc::new(Cell::new(false));
     let mut host = QuitHost(quit.clone());
     let mut backend = Some(Scripted {
-        inner: Fake { events, sent: sent.clone(), manage: true, pictures: Rc::default(), asked: Vec::new(), clock: Rc::new(Cell::new(NOW)) },
+        inner: Fake {
+            events,
+            sent: sent.clone(),
+            manage: true,
+            pictures: Rc::default(),
+            asked: Vec::new(),
+            downloads: Default::default(),
+            clock: Rc::new(Cell::new(NOW)),
+        },
         later: shared_events.clone(),
     });
     let mut h = Harness::builder().with_size(egui::vec2(1180.0, 1200.0)).build_ui_state(
@@ -1071,7 +1109,15 @@ fn feed_announcements_and_alerts_show_until_dismissed() {
         announcements: vec![notice("a1", "CADCraft 1.0 is out", Some("https://getartcraft.com/news"))],
         alerts: vec![notice("x1", "Security update", Some("https://getartcraft.com/security"))],
     });
-    let mut backend = Some(Fake { events: evs, sent, manage: true, pictures: Rc::default(), asked: Vec::new(), clock: Rc::new(Cell::new(NOW)) });
+    let mut backend = Some(Fake {
+        events: evs,
+        sent,
+        manage: true,
+        pictures: Rc::default(),
+        asked: Vec::new(),
+        downloads: Default::default(),
+        clock: Rc::new(Cell::new(NOW)),
+    });
     let mut h = Harness::builder().with_size(egui::vec2(1180.0, 1200.0)).build_ui_state(
         move |ui, state: &mut Option<LauncherUi>| {
             if state.is_none()
@@ -1118,8 +1164,15 @@ fn automatic_updates_queue_installs_for_outdated_apps_and_launcher() {
     ev.push(Event::LauncherUpdate(release("artcraft-launcher", "0.2.0", NOW)));
     let sent = Rc::new(RefCell::new(Vec::new()));
     let sent2 = sent.clone();
-    let mut backend =
-        Some(Fake { events: ev, sent: sent2, manage: true, pictures: Rc::default(), asked: Vec::new(), clock: Rc::new(Cell::new(NOW)) });
+    let mut backend = Some(Fake {
+        events: ev,
+        sent: sent2,
+        manage: true,
+        pictures: Rc::default(),
+        asked: Vec::new(),
+        downloads: Default::default(),
+        clock: Rc::new(Cell::new(NOW)),
+    });
     let mut h = Harness::builder().with_size(egui::vec2(1180.0, 1200.0)).build_ui_state(
         move |ui, state: &mut Option<LauncherUi>| {
             if state.is_none()
@@ -1147,8 +1200,15 @@ fn automatic_updates_are_disabled_by_default() {
     ev.push(Event::LauncherUpdate(release("artcraft-launcher", "0.2.0", NOW)));
     let sent = Rc::new(RefCell::new(Vec::new()));
     let sent2 = sent.clone();
-    let mut backend =
-        Some(Fake { events: ev, sent: sent2, manage: true, pictures: Rc::default(), asked: Vec::new(), clock: Rc::new(Cell::new(NOW)) });
+    let mut backend = Some(Fake {
+        events: ev,
+        sent: sent2,
+        manage: true,
+        pictures: Rc::default(),
+        asked: Vec::new(),
+        downloads: Default::default(),
+        clock: Rc::new(Cell::new(NOW)),
+    });
     let mut h = Harness::builder().with_size(egui::vec2(1180.0, 1200.0)).build_ui_state(
         move |ui, state: &mut Option<LauncherUi>| {
             if state.is_none()
@@ -1175,7 +1235,15 @@ fn the_footer_names_the_services_behind_what_is_on_screen() {
         let mut evs = events();
         evs.extend(extra);
         let sent = Rc::new(RefCell::new(Vec::new()));
-        let mut backend = Some(Fake { events: evs, sent, manage: true, pictures: Rc::default(), asked: Vec::new(), clock: Rc::new(Cell::new(NOW)) });
+        let mut backend = Some(Fake {
+            events: evs,
+            sent,
+            manage: true,
+            pictures: Rc::default(),
+            asked: Vec::new(),
+            downloads: Default::default(),
+            clock: Rc::new(Cell::new(NOW)),
+        });
         let mut h = Harness::builder().with_size(egui::vec2(1180.0, 1200.0)).build_ui_state(
             move |ui, state: &mut Option<LauncherUi>| {
                 if state.is_none()
@@ -1224,6 +1292,7 @@ fn custom_title_bar_has_window_buttons() {
         manage: true,
         pictures: Rc::default(),
         asked: Vec::new(),
+        downloads: Default::default(),
         clock: Rc::new(Cell::new(NOW)),
     });
     let mut h = Harness::builder().with_size(egui::vec2(1180.0, 1200.0)).build_ui_state(
@@ -1525,6 +1594,7 @@ fn the_rate_limit_notice_never_runs_under_the_footer_links() {
             manage: true,
             pictures: Rc::default(),
             asked: Vec::new(),
+            downloads: Default::default(),
             clock: Rc::new(Cell::new(NOW)),
         });
         let mut h = Harness::builder().with_size(egui::vec2(width, 900.0)).build_ui_state(
@@ -1611,6 +1681,7 @@ fn saved_filters_are_migrated_on_ui_construction() {
             manage: true,
             pictures: Rc::default(),
             asked: Vec::new(),
+            downloads: Default::default(),
             clock: Rc::new(Cell::new(NOW)),
         };
         let ui = LauncherUi::new(&egui::Context::default(), Box::new(backend), settings);
@@ -1671,8 +1742,15 @@ impl Host for OsMotion {
 fn short_window(reduce: Rc<Cell<bool>>) -> Harness<'static, Option<LauncherUi>> {
     artcraft_launcher_ui_egui::i18n::set_test_lang(artcraft_launcher_ui_egui::i18n::Lang::EN);
     let events = events().into_iter().filter(|e| !matches!(e, Event::Progress { .. })).collect();
-    let mut backend =
-        Some(Fake { events, sent: Rc::default(), manage: true, pictures: Rc::default(), asked: Vec::new(), clock: Rc::new(Cell::new(NOW)) });
+    let mut backend = Some(Fake {
+        events,
+        sent: Rc::default(),
+        manage: true,
+        pictures: Rc::default(),
+        asked: Vec::new(),
+        downloads: Default::default(),
+        clock: Rc::new(Cell::new(NOW)),
+    });
     let mut host = OsMotion(reduce);
     let mut h = Harness::builder().with_size(egui::vec2(1180.0, 500.0)).with_step_dt(1.0 / 60.0).with_max_steps(120).build_ui_state(
         move |ui, state: &mut Option<LauncherUi>| {
@@ -1786,6 +1864,160 @@ fn with_animations_on_hovering_a_card_animates() {
     // The rule wipes in and the icon rises over 0.3 s, at 60 frames a second.
     let frames = frames_to_hover_the_next_card(&mut h);
     assert!(frames >= 10, "{frames} frames");
+}
+
+#[test]
+fn install_and_update_actions_preview_download_sizes() {
+    for view in [ViewMode::Grid, ViewMode::Table] {
+        for label in ["Install", "Update to 0.5.0"] {
+            let (mut h, _) = harness(view, egui::Theme::Dark, true);
+            h.run_steps(4);
+            if view == ViewMode::Grid {
+                assert!(h.query_all_by_label("Download size: 150 MB").count() >= 2);
+            }
+            let pos = h.get_all_by_label(label).next().unwrap().rect().center();
+            h.hover_at(pos);
+            h.run_steps(40);
+            h.get_by_label("Disk image (.dmg) · 150 MB");
+            if label == "Update to 0.5.0" {
+                snapshot(&mut h, if view == ViewMode::Grid { "download-size-grid" } else { "download-size-table" });
+            }
+        }
+    }
+}
+
+#[test]
+fn unknown_download_sizes_are_not_presented_as_one_kilobyte() {
+    let mut ev = events();
+    for event in &mut ev {
+        if let Event::Latest { latest: LatestRelease::Found(r), .. } = event {
+            for asset in &mut r.assets {
+                asset.size = 0;
+            }
+        }
+    }
+    let (mut h, _) = harness_with(ev, ViewMode::Grid, egui::Theme::Dark, true, 1.0);
+    h.run_steps(4);
+    h.hover_at(h.get_by_label("Update to 0.5.0").rect().center());
+    h.run_steps(40);
+    assert!(h.query_by_label_contains("Download size:").is_none());
+    assert!(h.query_by_label_contains("Disk image (.dmg) ·").is_none());
+}
+
+#[test]
+fn download_size_preview_uses_the_managed_plan_or_manual_platform_formats() {
+    use artcraft_launcher_core::PackageKind;
+    struct Windows(Fake, Option<(PackageKind, u64)>);
+    impl Backend for Windows {
+        fn send(&mut self, c: Command) {
+            self.0.send(c);
+        }
+        fn poll(&mut self) -> Vec<Event> {
+            self.0.poll()
+        }
+        fn capabilities(&self) -> Capabilities {
+            self.0.capabilities()
+        }
+        fn platform(&self) -> Option<Platform> {
+            Some(Platform { os: Os::Windows, arch: Arch::X64 })
+        }
+        fn now(&self) -> i64 {
+            self.0.now()
+        }
+        fn download_size(&self, app: &str) -> Option<(PackageKind, u64)> {
+            (app == "photocraft").then_some(self.1).flatten()
+        }
+    }
+    for (manage, installer_size, has_plan) in
+        [(false, 100 << 20, true), (false, 0, true), (true, 100 << 20, true), (true, 0, true), (true, 100 << 20, false)]
+    {
+        let mut r = release("photocraft", "0.5.0", NOW);
+        r.assets = [("windows-x64.msi", installer_size), ("windows-x64-portable.zip", 2 << 30), ("linux-x86_64.AppImage", 3 << 20)]
+            .into_iter()
+            .map(|(suffix, size)| Asset {
+                name: format!("photocraft-0.5.0-{suffix}"),
+                size,
+                url: format!("https://github.com/storytold/photocraft/releases/download/v0.5.0/photocraft-0.5.0-{suffix}"),
+                sha256: None,
+            })
+            .collect();
+        artcraft_launcher_ui_egui::i18n::set_test_lang(artcraft_launcher_ui_egui::i18n::Lang::EN);
+        let mut backend = Some(Windows(
+            Fake {
+                events: vec![
+                    Event::Latest { app: "photocraft".into(), latest: LatestRelease::Found(r), from: Origin::ArtCraftApi },
+                    Event::Detected { app: "photocraft".into(), installed: None },
+                    Event::CheckFinished { at: NOW, source: Source::GitHubApi, rate_limited_until: None },
+                ],
+                sent: Rc::default(),
+                manage,
+                pictures: Rc::default(),
+                asked: Vec::new(),
+                downloads: Default::default(),
+                clock: Rc::new(Cell::new(NOW)),
+            },
+            has_plan.then_some((PackageKind::Msi, installer_size)),
+        ));
+        let mut h = Harness::builder().with_size(egui::vec2(1180.0, 900.0)).build_ui_state(
+            move |ui, state: &mut Option<LauncherUi>| {
+                if state.is_none()
+                    && let Some(b) = backend.take()
+                {
+                    *state = Some(LauncherUi::new(ui.ctx(), Box::new(b), Settings { notify: false, ..Settings::default() }));
+                }
+                if let Some(l) = state.as_mut() {
+                    l.logic(&ui.ctx().clone(), &mut NoHost);
+                    l.ui(ui, &mut NoHost);
+                }
+            },
+            None,
+        );
+        h.run_steps(4);
+        // Keep the target card in view regardless of the suite's alphabetical order.
+        h.get_by_role(egui::accesskit::Role::TextInput).click();
+        h.get_by_role(egui::accesskit::Role::TextInput).type_text("PhotoCraft");
+        h.run_steps(4);
+        if manage && has_plan && installer_size > 0 {
+            h.get_by_label("Download size: 100 MB");
+        } else if !manage && installer_size > 0 {
+            h.get_by_label("Download size: 100 MB – 2.0 GB");
+        } else {
+            assert!(
+                h.query_by_label_contains("Download size:").is_none(),
+                "an unknown managed plan or partial manual range must not imply a known size"
+            );
+        }
+        let pos = h.get_by_label(if manage { "Install" } else { "Download for Windows" }).rect().center();
+        assert!(h.ctx.content_rect().contains(pos), "the download action must be visible before hovering");
+        h.hover_at(pos);
+        h.run_steps(40);
+        if installer_size > 0 && (!manage || has_plan) {
+            h.get_by_label_contains("Installer (.msi) · 100 MB");
+        } else {
+            assert!(h.query_by_label_contains("Installer (.msi) ·").is_none());
+        }
+        if manage {
+            assert!(h.query_by_label_contains("Portable (.zip) · 2.0 GB").is_none(), "managed installs download only the planned asset");
+        } else {
+            h.get_by_label_contains("Portable (.zip) · 2.0 GB");
+        }
+        assert!(h.query_by_label_contains("AppImage · 3 MB").is_none());
+        if installer_size > 0 && has_plan {
+            snapshot(&mut h, if manage { "download-size-windows-managed" } else { "download-size-windows-manual" });
+        }
+    }
+}
+
+#[test]
+fn web_download_actions_also_preview_known_sizes() {
+    for view in [ViewMode::Grid, ViewMode::Table] {
+        let (mut h, _) = harness(view, egui::Theme::Dark, false);
+        h.run_steps(4);
+        let pos = h.get_all_by_label("Download for macOS").next().unwrap().rect().center();
+        h.hover_at(pos);
+        h.run_steps(40);
+        h.get_by_label("Disk image (.dmg) · 150 MB");
+    }
 }
 
 #[test]
