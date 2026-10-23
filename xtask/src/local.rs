@@ -514,38 +514,29 @@ fn rfc3339(secs: i64) -> String {
 
 // ---- versions -----------------------------------------------------------------------------------
 
-/// `1.2.3` or `1.2.3-pre.4`: the numeric core and the pre-release, if any.
-fn parse_version(v: &str) -> Option<([u64; 3], Option<String>)> {
-    let (core, pre) = match v.split_once('-') {
-        Some((c, p)) => (c, Some(p.to_string())),
-        None => (v, None),
-    };
-    let mut parts = core.split('.').map(|p| p.parse::<u64>().ok());
-    let n = [parts.next()??, parts.next()??, parts.next()??];
-    parts.next().is_none().then_some((n, pre))
+/// `1.2.3` or `1.2.3-pre.4`.
+fn parse_version(v: &str) -> Option<semver::Version> {
+    semver::Version::parse(v).ok()
 }
 
 /// The version a build of an unreleased commit gets: after `checkout` and before whatever is
 /// released next, ordered by commit time. `0.4.0` → `0.4.1-dev.20261010183500`;
 /// `1.0.0-rc.1` → `1.0.0-rc.1.dev.20261010183500`.
 fn dev_version(checkout: &str, committed: i64) -> Result<String, String> {
-    let ([major, minor, patch], pre) = parse_version(checkout).ok_or_else(|| format!("can't read version `{checkout}`"))?;
+    let v = parse_version(checkout).ok_or_else(|| format!("can't read version `{checkout}`"))?;
+    let (major, minor, patch) = (v.major, v.minor, v.patch);
     let stamp: String = rfc3339(committed).chars().filter(char::is_ascii_digit).collect();
-    Ok(match pre {
-        None => format!("{major}.{minor}.{}-dev.{stamp}", patch.checked_add(1).ok_or("version too large")?),
-        Some(pre) => format!("{major}.{minor}.{patch}-{pre}.dev.{stamp}"),
+    Ok(if v.pre.is_empty() {
+        format!("{major}.{minor}.{}-dev.{stamp}", patch.checked_add(1).ok_or("version too large")?)
+    } else {
+        format!("{major}.{minor}.{patch}-{}.dev.{stamp}", v.pre)
     })
 }
 
+/// Semver precedence: numeric pre-release parts compare as numbers (`rc.10` is after `rc.9`).
 fn compare_versions(a: &str, b: &str) -> std::cmp::Ordering {
-    use std::cmp::Ordering;
     match (parse_version(a), parse_version(b)) {
-        (Some((na, pa)), Some((nb, pb))) => na.cmp(&nb).then_with(|| match (pa, pb) {
-            (None, None) => Ordering::Equal,
-            (None, Some(_)) => Ordering::Greater,
-            (Some(_), None) => Ordering::Less,
-            (Some(x), Some(y)) => x.cmp(&y),
-        }),
+        (Some(x), Some(y)) => x.cmp_precedence(&y),
         _ => a.cmp(b),
     }
 }
@@ -734,6 +725,7 @@ mod tests {
         assert_eq!(rfc3339(i64::MIN), "-292277022657-01-27T08:29:52Z");
         assert_eq!(compare_versions("0.10.0", "0.9.0"), std::cmp::Ordering::Greater);
         assert_eq!(compare_versions("1.0.0", "1.0.0-rc.1"), std::cmp::Ordering::Greater);
+        assert_eq!(compare_versions("1.0.0-rc.10", "1.0.0-rc.9"), std::cmp::Ordering::Greater);
         assert!(parse_version("1.2").is_none() && parse_version(".building-1.2.3").is_none());
     }
 
