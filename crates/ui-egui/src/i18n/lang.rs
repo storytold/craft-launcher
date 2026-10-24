@@ -94,7 +94,7 @@ pub(super) fn plural_polish(n: u64) -> usize {
 }
 
 /// The registry. English first: it is the fallback and the source language.
-pub static LANGUAGES: [LangInfo; 11] = [
+pub static LANGUAGES: [LangInfo; 15] = [
     LangInfo {
         code: "en",
         name: "English",
@@ -213,6 +213,50 @@ pub static LANGUAGES: [LangInfo; 11] = [
         source: include_str!("ja.tsv"),
         plural: plural_none,
         plural_forms: 1,
+        complete_menus: true,
+        catalog: OnceLock::new(),
+    },
+    LangInfo {
+        code: "nl",
+        name: "Nederlands",
+        english_name: "Dutch",
+        script: None,
+        source: include_str!("nl.tsv"),
+        plural: plural_one_other,
+        plural_forms: 2,
+        complete_menus: true,
+        catalog: OnceLock::new(),
+    },
+    LangInfo {
+        code: "da",
+        name: "Dansk",
+        english_name: "Danish",
+        script: None,
+        source: include_str!("da.tsv"),
+        plural: plural_one_other,
+        plural_forms: 2,
+        complete_menus: true,
+        catalog: OnceLock::new(),
+    },
+    LangInfo {
+        code: "sv",
+        name: "Svenska",
+        english_name: "Swedish",
+        script: None,
+        source: include_str!("sv.tsv"),
+        plural: plural_one_other,
+        plural_forms: 2,
+        complete_menus: true,
+        catalog: OnceLock::new(),
+    },
+    LangInfo {
+        code: "fi",
+        name: "Suomi",
+        english_name: "Finnish",
+        script: None,
+        source: include_str!("fi.tsv"),
+        plural: plural_one_other,
+        plural_forms: 2,
         complete_menus: true,
         catalog: OnceLock::new(),
     },

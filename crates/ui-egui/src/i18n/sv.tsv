@@ -1,0 +1,328 @@
+# Swedish (sv) catalog for ArtCraft Launcher.
+# Format: context<TAB>source<TAB>translation
+# Empty context = plain UI string (tl!, t).
+# @id = command-id keyed (tr_id).
+# @plural = plural forms: one|other (only 1 is "one" in Swedish).
+# @msg = status/error message template (message, msg).
+# Other context = disambiguation for tr_ctx.
+#
+# Clean-room: written from the meaning of ArtCraft Launcher's English labels, in standard
+# Swedish following the wording conventions of Swedish software UIs (the interface addresses
+# the user as "du").
+#
+# Coverage: the whole interface: every menu string and tl! literal (complete_menus = true).
+# Left in English on purpose: product name "ArtCraft Launcher" (and its "Launcher" tag), suite
+# name "Craft App Suite", app names (PhotoCraft, LightCraft, FilmCraft,
+# DesignCraft, VectorCraft, PdfCraft, EffectCraft, WordCraft, DeckCraft, GridCraft, CADCraft,
+# SoundCraft, FigCraft), "GitHub", "Discord", "Finder", "makers".
+# Trailing "…" (U+2026) must be preserved. Placeholders must appear in the translation:
+# {ago}, {a}, {b}, {count}, {date}, {day}, {done}, {e}, {f}, {installed}, {latest}, {min},
+# {month}, {name}, {n}, {os}, {platform}, {sources}, {total}, {version}, {v}, {year}.
+
+	Launcher	Launcher
+	Craft App Suite	Craft App Suite
+	Open Source Tools for Creatives, Makers, and Builders	Verktyg med öppen källkod för kreatörer, makers och byggare
+	Settings	Inställningar
+	Check for updates	Sök efter uppdateringar
+	Grid	Rutnät
+	Table	Tabell
+	Show apps as cards	Visa appar som kort
+	Show apps as a table	Visa appar som en tabell
+	All	Alla
+	Updates	Uppdateringar
+	Not installed	Inte installerade
+	Search apps	Sök bland appar
+	Sort	Sortera
+	Suite order	Svitordning
+	Name	Namn
+	Inspired by	Inspiration från
+	Status	Status
+	Installed version	Installerad version
+	Latest version	Senaste version
+	Newest release	Senaste utgåva
+	Discord	Discord
+	GitHub	GitHub
+	Website	Webbplats
+	Classic apps	Klassiska appar
+	Classic	Klassisk
+	New apps	Nya appar
+	NEW	NY
+	Install	Installera
+	Update to {v}	Uppdatera till {v}
+	Open	Öppna
+	Download for {os}	Hämta för {os}
+	Download	Hämta
+	Coming soon	Kommer snart
+	Checking…	Kontrollerar…
+	Not available	Inte tillgänglig
+	Offline	Offline
+	Downloading {done} of {total}	Hämtar {done} av {total}
+	Downloading…	Hämtar…
+	Reconnecting…	Ansluter igen…
+	Verifying…	Verifierar…
+	Installing, then restarting…	Installerar och startar om…
+	Installing…	Installerar…
+	Removing…	Tar bort…
+	Pause download	Pausa hämtningen
+	Cancel download	Avbryt hämtningen
+	Resume download	Återuppta hämtningen
+	Discard download	Radera hämtningen
+	Release notes	Versionsfakta
+	Show in Finder	Visa i Finder
+	Show in Explorer	Visa i Utforskaren
+	Show in Files	Visa i Filer
+	Reinstall	Installera om
+	Uninstall…	Avinstallera…
+	All releases	Alla utgåvor
+	ArtCraft Launcher {version} is available.	ArtCraft Launcher {version} är tillgänglig.
+	Dismiss	Ignorera
+	Update and restart	Uppdatera och starta om
+	A new version is available. Would you like to relaunch with the updated version?	En ny version finns tillgänglig. Vill du starta om med den uppdaterade versionen?
+	Later	Senare
+	What's new	Nyheter
+	No notes were published with this release.	Den här utgåvan publicerades utan versionsfakta.
+	Released {date}	Utgiven {date}
+	Open on GitHub	Öppna på GitHub
+	Close	Stäng
+	ArtCraft Launcher {version}	ArtCraft Launcher {version}
+	Only when I ask	Endast när jag ber om det
+	Automatically download and install updates	Hämta och installera uppdateringar automatiskt
+	Notify me when an installed app has an update	Meddela mig när en installerad app har en uppdatering
+	Include pre-releases (betas and release candidates)	Inkludera förhandsversioner (betaversioner och kandidatutgåvor)
+	Installing on Linux	Installation på Linux
+	Install new apps as	Installera nya appar som
+	System package (recommended)	Systempaket (rekommenderas)
+	Updates always use the format an app was installed with.	Uppdateringar använder alltid det format appen installerades med.
+	Running in the background	Kör i bakgrunden
+	Keep running in the tray when the window is closed	Fortsätt köras i systemfältet när fönstret stängs
+	Show the window on the current desktop	Visa fönstret på det aktuella skrivbordet
+	Start ArtCraft Launcher when I log in	Starta ArtCraft Launcher när jag loggar in
+	Community	Community
+	Questions, ideas and news from the ArtCraft team	Frågor, idéer och nyheter från ArtCraft-teamet
+	Appearance	Utseende
+	Quit ArtCraft Launcher	Avsluta ArtCraft Launcher
+	Done	Klar
+	Uninstall {name}?	Avinstallera {name}?
+	The app will be moved to the Trash. Your documents and settings stay.	Appen flyttas till papperskorgen. Dina dokument och inställningar finns kvar.
+	Windows will remove it like any installed program. Your documents and settings stay.	Windows tar bort den som ett vanligt installerat program. Dina dokument och inställningar finns kvar.
+	Your system's package manager will remove it, and may ask for your password. Your documents and settings stay.	Systemets pakethanterare tar bort den och kan be om ditt lösenord. Dina dokument och inställningar finns kvar.
+	The app will be removed. Your documents and settings stay.	Appen tas bort. Dina dokument och inställningar finns kvar.
+	Uninstall	Avinstallera
+	Cancel	Avbryt
+	Checked {ago}	Kontrollerad {ago}
+	just now	just nu
+	yesterday	igår
+	{month} {day}, {year}	{day} {month} {year}
+	Automatically	Automatiskt
+	Every Craft app	Alla Craft-appar
+	Apps on this computer	Appar på den här datorn
+	Installed apps with a newer version	Installerade appar med nyare version
+	Apps you can install	Appar du kan installera
+	Hide App	Dölj app
+	Unhide App	Visa app
+	Hidden Apps	Dolda appar
+	Apps you hid	Appar du har dolt
+	Checked {ago} · using {sources}	Kontrollerad {ago} · med {sources}
+	{a} and {b}	{a} och {b}
+	Join the Discord	Gå med i Discord
+	Learn more	Läs mer
+	Minimize	Minimera
+	Maximize	Maximera
+	Restore	Återställ
+	New	Ny
+	OK	OK
+	Open link	Öppna länk
+	Update	Uppdatera
+	{name} icon	{name}-ikon
+	Loading ArtCraft Launcher…	Laddar ArtCraft Launcher…
+	Cancel update	Avbryt uppdateringen
+	Stop waiting; the update can be started again later	Sluta vänta; uppdateringen kan startas igen senare
+	Download again	Hämta igen
+	Install cancelled	Installationen avbröts
+	Install cancelled. The download is kept for the next try.	Installationen avbröts. Hämtningen sparas till nästa försök.
+	Update cancelled	Uppdateringen avbröts
+	Uninstall cancelled	Avinstallationen avbröts
+	Retry install	Försök installera igen
+	Retry update to {version}	Försök uppdatera till {version} igen
+	The download is still here. It's checked again, then installed.	Hämtningen finns kvar. Den kontrolleras igen och installeras sedan.
+	Waiting for another app…	Väntar på en annan app…
+	Waiting for other installs…	Väntar på andra installationer…
+	Installer (.msi)	Installationsprogram (.msi)
+	Portable (.zip)	Portabel (.zip)
+	Disk image (.dmg)	Diskavbildning (.dmg)
+	Debian package (.deb)	Debian-paket (.deb)
+	RPM package (.rpm)	RPM-paket (.rpm)
+	Flatpak bundle	Flatpak-paket
+	Tarball (.tar.gz)	Tar-arkiv (.tar.gz)
+photocraft	Image editing	Bildredigering
+vectorcraft	Vector illustration	Vektorillustration
+filmcraft	Video editing, color and sound	Videoredigering, färg och ljud
+lightcraft	Photo library and raw development	Bildbibliotek och utveckling av raw-filer
+pdfcraft	Reading, organizing and protecting PDFs	Läsa, organisera och skydda PDF-filer
+effectcraft	Motion graphics and visual effects	Rörlig grafik och visuella effekter
+designcraft	Page layout and publishing	Layout och publicering
+wordcraft	Writing and document design	Skrivande och dokumentformgivning
+deckcraft	Presentations and slide shows	Presentationer och bildspel
+gridcraft	Spreadsheets and data	Kalkylblad och data
+cadcraft	Computer-aided design and drafting	Datorstödd konstruktion och ritning
+soundcraft	Recording, editing and mixing audio	Inspelning, redigering och mixning av ljud
+figcraft	Interface design and prototyping	Gränssnittsdesign och prototypning
+month	Jan	jan
+month	Feb	feb
+month	Mar	mar
+month	Apr	apr
+month	May	maj
+month	Jun	jun
+month	Jul	jul
+month	Aug	aug
+month	Sep	sep
+month	Oct	okt
+month	Nov	nov
+month	Dec	dec
+	Not checked yet	Inte kontrollerad ännu
+	GitHub's hourly limit was reached; full details return in {min} min	GitHubs gräns per timme har nåtts; all information är tillbaka om {min} min
+	GitHub limit hit; back in {min} min	GitHub-gränsen har nåtts; tillbaka om {min} min
+	Installing for {platform}	Installerar för {platform}
+	Downloads for {platform}	Hämtningar för {platform}
+	No downloads for this system	Inga hämtningar för det här systemet
+	Join the ArtCraft community on Discord	Gå med i ArtCraft-communityn på Discord
+	ArtCraft on {name}	ArtCraft på {name}
+	Couldn't open {name}: {e}	Kunde inte öppna {name}: {e}
+	Download cancelled	Hämtningen avbröts
+	Available to install	Kan installeras
+	Available	Tillgänglig
+	Installed · up to date	Installerad · aktuell
+	Update available	Uppdatering tillgänglig
+	Installed	Installerad
+	installed	installerad
+	Not available here	Inte tillgänglig här
+	Updating…	Uppdaterar…
+	Update paused	Uppdateringen pausad
+	Download paused	Hämtningen pausad
+	{version} installed → {latest} released	{version} installerad → {latest} utgiven
+	Version {version}	Version {version}
+	{installed} installed · latest {latest}	{installed} installerade · senaste {latest}
+	Installed · latest {latest}	Installerad · senaste {latest}
+	Version {version} installed	Version {version} installerad
+	Version {latest}	Version {latest}
+	No release published yet	Ingen utgåva publicerad än
+	ArtCraft Launcher	ArtCraft Launcher
+	App	App
+	Latest	Senaste
+	Released	Utgiven
+	Auto	Automatiskt
+	Language	Språk
+	Ascending	Stigande
+	Descending	Fallande
+	Click to reverse the order	Klicka för att vända ordningen
+	Click to sort by this column	Klicka för att sortera efter den här kolumnen
+	Like {name}	Liknar {name}
+	{done} of {total}	{done} av {total}
+	Downloading	Hämtar
+	Verifying checksum…	Verifierar kontrollsumma…
+	Resume	Återuppta
+	{done} of {total} downloaded	{done} av {total} hämtat
+	{done} downloaded	{done} hämtat
+	Checking for updates…	Söker efter uppdateringar…
+	Downloads the new version, replaces this one and opens it again	Hämtar den nya versionen, ersätter den här och öppnar den igen
+	Couldn't check for updates: {f}	Kunde inte söka efter uppdateringar: {f}
+	Website (coming soon)	Webbplats (kommer snart)
+	GitHub repository	GitHub-arkiv
+	ArtCraft	ArtCraft
+	Update 1 app	Uppdatera 1 app
+	Update all ({count})	Uppdatera alla ({count})
+	⊞  Grid	⊞  Rutnät
+	☰  Table	☰  Tabell
+	🔍  Search apps	🔍  Sök bland appar
+	{name} {version}	{name} {version}
+	Match system	Följ systemet
+	Dark	Mörkt
+	Light	Ljust
+	Full changelog	Fullständig ändringslogg
+	link	länk
+	No apps match	Inga appar matchar
+	Open ArtCraft Launcher to update.	Öppna ArtCraft Launcher för att uppdatera.
+	{name} {v} is available	{name} {v} är tillgänglig
+	{count} updates are available	Det finns {count} uppdateringar
+	These notes weren't fetched (GitHub's request limit was reached). They're on the release page.	De här versionsfaktorna hämtades inte (GitHubs gräns för antal anrop har nåtts). De finns på utgåvans sida.
+	When on, opening the launcher from the menu bar brings its window to the desktop you're on. When off, macOS switches you to the desktop the window was on.	När den är aktiverad flyttas fönstret till skrivbordet du befinner dig på när du öppnar startprogrammet från menyraden. När den är inaktiverad växlar macOS till skrivbordet där fönstret befann sig.
+	Couldn't change the login item: {e}	Kunde inte ändra inloggningsobjektet: {e}
+column	App	App
+column	Installed	Installerad
+column	Latest	Senaste
+column	Released	Utgiven
+filter	Installed	Installerade
+	App details	Appinformation
+	Close (Esc)	Stäng (Esc)
+	Features	Funktioner
+	Latest release	Senaste utgåvan
+	Version	Version
+	Platforms	Plattformar
+	Releases	Utgåvor
+	Enlarge picture	Förstora bild
+	Click to enlarge	Klicka för att förstora
+	Previous picture (←)	Föregående bild (←)
+	Next picture (→)	Nästa bild (→)
+	Loading pictures…	Laddar bilder…
+	Pictures couldn't be loaded. Reopen this page to try again.	Bilderna kunde inte laddas. Öppna sidan igen och försök en gång till.
+	{name} details	Information om {name}
+@plural	{n} app|{n} apps	{n} app|{n} appar
+@plural	{n} min ago|{n} min ago	för {n} min sedan|för {n} min sedan
+@plural	{n} h ago|{n} h ago	för {n} h sedan|för {n} h sedan
+@plural	{n} day ago|{n} days ago	för {n} dag sedan|för {n} dagar sedan
+@msg	Couldn't open {name}: {e}	Kunde inte öppna {name}: {e}
+@msg	Download cancelled	Hämtningen avbröts
+@msg	{name} updated to {version}	{name} har uppdaterats till {version}
+@msg	{name} installed: {version}	{name} har installerats: {version}
+@msg	{name} updated to {version} (this release publishes no checksum, so only its size was checked)	{name} har uppdaterats till {version} (den här utgåvan publicerar ingen kontrollsumma, så endast dess storlek kontrollerades)
+@msg	{name} installed: {version} (this release publishes no checksum, so only its size was checked)	{name} har installerats: {version} (den här utgåvan publicerar ingen kontrollsumma, så endast dess storlek kontrollerades)
+@msg	{name} was removed	{name} har tagits bort
+@msg	{name} is running. Quit it, then try again.	{name} körs. Avsluta den och försök igen.
+@id	app.install	Installera
+@id	app.update	Uppdatera till {v}
+@id	app.open	Öppna
+@id	app.download	Hämta för {os}
+@id	app.reveal	Visa i Finder
+@id	app.reinstall	Installera om
+@id	app.uninstall	Avinstallera…
+@id	app.notes	Versionsfakta
+@id	app.website	Webbplats
+@id	app.github	GitHub-arkiv
+@id	app.releases	Alla utgåvor
+@id	launcher.update	Uppdatera och starta om
+@id	launcher.download	Hämta
+@id	launcher.notes	Nyheter
+@id	launcher.dismiss	Ignorera
+@id	settings.open	Inställningar
+@id	settings.quit	Avsluta ArtCraft Launcher
+@id	view.grid	Rutnät
+@id	view.table	Tabell
+@id	filter.all	Alla
+@id	filter.installed	Installerade
+@id	filter.updates	Uppdateringar
+@id	filter.notinstalled	Inte installerade
+@id	sort.suite	Svitordning
+@id	sort.name	Namn
+@id	sort.inspired	Inspiration från
+@id	sort.status	Status
+@id	sort.installed	Installerad version
+@id	sort.latest	Senaste version
+@id	sort.released	Senaste utgåva
+@id	help.discord	Discord
+@id	help.github	GitHub
+@id	help.website	Webbplats
+@id	update.check	Sök efter uppdateringar
+@id	update.check_auto	Sök efter uppdateringar automatiskt
+@id	update.notify	Meddela mig när en installerad app har en uppdatering
+@id	update.prereleases	Inkludera förhandsversioner (betaversioner och kandidatutgåvor)
+@id	linux.preferred_kind	Installera nya appar som
+@id	tray.close_to_tray	Fortsätt köras i systemfältet när fönstret stängs
+@id	tray.show_on_current_desktop	Visa fönstret på det aktuella skrivbordet
+@id	tray.login_item	Starta ArtCraft Launcher när jag loggar in
+@id	appearance.theme	Utseende
+	Show ArtCraft Launcher	Visa ArtCraft Launcher
+	Check for Updates	Sök efter uppdateringar
+	Visit getartcraft.com	Besök getartcraft.com
+	ArtCraft on GitHub	ArtCraft på GitHub
+	Join the ArtCraft Discord	Gå med i ArtCrafts Discord
+@plural	ArtCraft Launcher · {n} update available|ArtCraft Launcher · {n} updates available	ArtCraft Launcher · {n} uppdatering tillgänglig|ArtCraft Launcher · {n} uppdateringar tillgängliga
