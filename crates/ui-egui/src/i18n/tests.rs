@@ -325,6 +325,22 @@ fn hungarian_locales_and_plurals_work() {
 }
 
 #[test]
+fn italian_locales_and_plurals_work() {
+    for tag in ["it", "it-IT", "it_IT.UTF-8", "it-CH", "IT_sm"] {
+        assert_eq!(lang_from_tag(tag), Some(Lang::IT), "{tag}");
+    }
+    assert_eq!(super::detect::first_supported(["xx-XX", "it-IT", "en-US"]), Some(Lang::IT));
+    // Only 1 is singular, as in English; "app" itself doesn't change.
+    assert_eq!(trn(Lang::IT, 0, "{n} app", "{n} apps"), "0 app");
+    assert_eq!(trn(Lang::IT, 1, "{n} day ago", "{n} days ago"), "1 giorno fa");
+    assert_eq!(trn(Lang::IT, 3, "{n} day ago", "{n} days ago"), "3 giorni fa");
+    assert_eq!(super::tr_ctx(Lang::IT, "month", "May"), "mag");
+    assert_eq!(tr(Lang::IT, "{month} {day}, {year}"), "{day} {month} {year}");
+    assert_eq!(message(Lang::IT, "PhotoCraft updated to 0.5.0"), "PhotoCraft aggiornata alla versione 0.5.0");
+    assert_eq!(tr(Lang::IT, "Untranslated diagnostic"), "Untranslated diagnostic");
+}
+
+#[test]
 fn french_locales_and_plurals_work() {
     for tag in ["fr", "fr-FR", "fr_CA.UTF-8", "fr-BE", "FR_ch"] {
         assert_eq!(lang_from_tag(tag), Some(Lang::FR), "{tag}");
