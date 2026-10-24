@@ -28,8 +28,13 @@ public class MainActivity extends GameActivity {
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
-        super.onCreate(savedInstanceState);
+        // Write the package snapshot *before* super.onCreate(): GameActivity starts the native
+        // thread from there, and the Rust detection reads this file exactly once at start-up. A
+        // write after super loses the race on a fresh install, so every card says 可安装 until the
+        // next launch. The Activity's context is already attached here, so PackageManager and
+        // getFilesDir() are usable.
         writeInstalledApps();
+        super.onCreate(savedInstanceState);
         watchLaunchRequests();
     }
 
