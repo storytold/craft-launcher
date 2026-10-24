@@ -14,6 +14,8 @@ versions.
 
 - `artcraft-launcher.svg`: a copy of `docs/brand/artcraft-mark.svg`; also the hicolor scalable icon.
 - `artcraft-launcher-1024.png`: 1024 px render, with extra transparent margin for Apple's icon grid.
+- `ArtCraftLauncher.icon`: macOS Liquid Glass app icon (Icon Composer, Xcode 26+).
+- `Assets.car`: compiled asset catalog containing the macOS Liquid Glass icon (`CFBundleIconName`).
 - `artcraft-launcher.icns`: macOS bundle icon (`CFBundleIconFile`).
 - `artcraft-launcher.ico`: Windows icon, 16–256 px, embedded in the `.exe` by
   `apps/artcraft-launcher/build.rs` and used by the MSI.
