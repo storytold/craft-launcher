@@ -318,6 +318,8 @@ pub(crate) fn choose_kinds_with(
             InstallSource::Flatpak => Some(PackageKind::Flatpak),
             InstallSource::AppImage => Some(PackageKind::AppImage),
             InstallSource::Binary => Some(PackageKind::TarGz),
+            // An APK is replaced by handing the new one to the system installer.
+            InstallSource::Apk => Some(PackageKind::Apk),
         };
         if let Some(k) = kind.filter(|k| available.contains(k) || (*k == PackageKind::ArchPkg && can_pacman)) {
             return vec![k];
@@ -535,6 +537,13 @@ pub fn launch(app: &CraftApp, installed: &Installed, paths: &Paths) -> Result<()
     let _ = paths;
     let path = Path::new(&installed.location);
     match installed.source {
+        // Android has no binary to exec: the app is a package, and only the system can start it.
+        #[cfg(target_os = "android")]
+        InstallSource::Apk => {
+            let package = installed.package.clone().unwrap_or_else(|| app.bundle_id());
+            return crate::android::launch(package.as_str())
+                .map_err(|e| format!("Couldn't open {}: {e}", app.name));
+        }
         InstallSource::Flatpak => {
             let mut cmd = process::flatpak_command();
             cmd.args(["run", &app.bundle_id()]);

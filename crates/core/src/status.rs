@@ -26,6 +26,8 @@ pub enum InstallSource {
     AppImage,
     /// A binary found on `PATH` or in a system prefix.
     Binary,
+    /// An Android package, installed by the system package manager.
+    Apk,
 }
 
 impl InstallSource {
@@ -40,6 +42,7 @@ impl InstallSource {
             Self::Flatpak => "Flatpak",
             Self::AppImage => "AppImage",
             Self::Binary => "System binary",
+            Self::Apk => "Android package",
         }
     }
 

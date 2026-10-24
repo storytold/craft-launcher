@@ -42,6 +42,18 @@ impl CraftApp {
         format!("https://github.com/{}", self.repo)
     }
 
+    /// The repository every release lookup, asset URL and checksum for this app uses.
+    ///
+    /// Upstream's own repository, unless this build is a port ([`RELEASE_REPO`]). This is the one
+    /// place that decides, so a port cannot end up half-moved (release list from one repository,
+    /// download URL from another).
+    pub fn release_repo(&self) -> String {
+        match RELEASE_REPO {
+            Some(repo) => repo.to_string(),
+            None => self.repo.to_string(),
+        }
+    }
+
     /// The app's page on getartcraft.com.
     pub fn website(&self) -> String {
         format!("https://getartcraft.com/apps/{}", self.id)
@@ -152,6 +164,18 @@ pub const WEBSITE_URL: &str = "https://getartcraft.com";
 /// The GitHub account every Craft App's repository lives under: the only one the launcher
 /// installs from, whatever the release feed says.
 pub const GITHUB_OWNER: &str = "storytold";
+/// The repository *release lookups and downloads* come from, when this build is a port.
+///
+/// Upstream publishes desktop builds under `storytold/<app>`. A port publishes Android builds, and
+/// this one keeps them all in a single repository — one release carrying every app's APK, named
+/// `<AppName>-<version>-android-arm64.apk` — so one value covers the whole suite. Without it the
+/// launcher would offer the desktop release and try to install a package this platform cannot run.
+/// `None` is upstream's behaviour and is what a release build keeps.
+///
+/// Setting this does **not** move [`CraftApp::repo_url`], [`CraftApp::releases_url`] or
+/// [`CraftApp::website`]: those are documentation links and stay pointed at upstream, whose source
+/// this is. Only the release lookup, the asset URLs and the checksums move.
+pub const RELEASE_REPO: Option<&str> = Some("tzhazuma/artcraft-android");
 /// ArtCraft on GitHub: every Craft App's source.
 pub const GITHUB_URL: &str = "https://github.com/storytold";
 /// ArtCraft's social accounts: (service, URL). Shown as small icons, less prominent than Discord.
@@ -238,5 +262,29 @@ mod tests {
         assert_eq!(pdf.names().collect::<Vec<_>>(), ["PdfCraft", "PrintCraft"]);
         assert_eq!(pdf.website(), "https://getartcraft.com/apps/pdfcraft");
         assert_eq!(CraftApp::by_id("wordcraft").unwrap().website(), "https://getartcraft.com/apps/wordcraft");
+    }
+
+    /// A port moves every release lookup and download to its own repository, and moves nothing
+    /// else: the documentation links must keep pointing at the upstream source.
+    #[test]
+    fn a_port_looks_releases_up_in_its_own_repository() {
+        for a in &SUITE {
+            // The download prefix is built from this, so it is the whole of the download address.
+            let expected = match RELEASE_REPO {
+                Some(repo) => repo.to_string(),
+                None => a.repo.to_string(),
+            };
+            assert_eq!(a.release_repo(), expected);
+            assert!(a.repo_url().starts_with("https://github.com/storytold/"));
+            assert!(a.releases_url().starts_with("https://github.com/storytold/"));
+            assert_eq!(a.website(), format!("https://getartcraft.com/apps/{}", a.id));
+        }
+        if RELEASE_REPO.is_some() {
+            // Every app downloads from the one repository, so the prefix is the same for all of
+            // them and carries no app name of its own — the asset name does that.
+            for a in &SUITE {
+                assert_eq!(crate::release::download_prefix(&a.release_repo()), "https://github.com/tzhazuma/artcraft-android/releases/download/");
+            }
+        }
     }
 }
