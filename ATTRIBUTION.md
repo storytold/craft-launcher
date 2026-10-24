@@ -51,3 +51,10 @@ licensed like those apps. Refresh them from the source path, never redraw them.
 |---|---|---|---|---|
 | `docs/brand/` (all files) | ArtCraft name, wordmark and mark | ArtCraft Team | getartcraft.com (via `craftrules/assets/brand/`) | Not open source; trademarks of the ArtCraft Team, [`docs/brand/LICENSE-brand.txt`](docs/brand/LICENSE-brand.txt) |
 | README app icons (linked, not copied) | Each Craft app's 64 px icon | ArtCraft Team and each app's contributors | `raw.githubusercontent.com/storytold/<app>/main/assets/app-icon/hicolor/64x64/apps/ai.storyteller.<app>.png` | MIT OR Apache-2.0 (each app's license) |
+
+## Icon-system proposal (documentation only)
+
+| Path | Title | Author | Source | License |
+|---|---|---|---|---|
+| `docs/proposals/engraving-icon-system/original-experiment.png` | Engraving and geometric colour-field experiment | Andrew Collard; existing animal identities by the ArtCraft Team and app contributors | Contributor-supplied visual experiment | MIT OR Apache-2.0 for this contribution; existing brand and trademark rights retained |
+| `docs/proposals/engraving-icon-system/generated-exploration.png` | AI-assisted three-icon family exploration | Andrew Collard with OpenAI image generation | Generated from the original experiment using the prompt brief in the proposal | MIT OR Apache-2.0 for this contribution; existing brand and trademark rights retained |
