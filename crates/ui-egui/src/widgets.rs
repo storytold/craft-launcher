@@ -4,6 +4,7 @@
 //! Upper-case text is drawn upper case but announced to screen readers as written.
 
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 use egui::{Color32, CornerRadius, Galley, Rect, Response, RichText, Sense, Stroke, Ui, vec2};
 
@@ -20,10 +21,33 @@ pub fn tone_color(t: &Tokens, tone: Tone) -> Color32 {
     }
 }
 
+/// Whether the Georgian face in use draws Mtavruli (U+1C90–U+1CBF), the capitals Unicode maps
+/// Georgian letters to. Set when the face loads; until then, and without one, Georgian stays as
+/// written, since a face without them (DejaVu Sans, older Sylfaen) would draw boxes.
+static GEORGIAN_CAPS: AtomicBool = AtomicBool::new(false);
+
+#[cfg_attr(target_arch = "wasm32", allow(dead_code))]
+pub(crate) fn set_georgian_caps(on: bool) {
+    GEORGIAN_CAPS.store(on, Ordering::Relaxed);
+}
+
+/// `text` in upper case. Georgian goes to Mtavruli only when the face draws it.
+fn upper(text: &str) -> String {
+    let georgian_caps = GEORGIAN_CAPS.load(Ordering::Relaxed);
+    text.chars().fold(String::with_capacity(text.len()), |mut out, c| {
+        if !georgian_caps && ('\u{10d0}'..='\u{10ff}').contains(&c) {
+            out.push(c);
+        } else {
+            out.extend(c.to_uppercase());
+        }
+        out
+    })
+}
+
 /// `text` laid out upper case in `family`, `spacing` points between letters.
 pub fn caps(ui: &Ui, text: &str, size: f32, family: egui::FontFamily, spacing: f32, color: Color32) -> Arc<Galley> {
     let format = egui::TextFormat { font_id: egui::FontId::new(size, family), color, extra_letter_spacing: spacing, ..Default::default() };
-    ui.painter().layout_job(egui::text::LayoutJob::single_section(text.to_uppercase(), format))
+    ui.painter().layout_job(egui::text::LayoutJob::single_section(upper(text), format))
 }
 
 /// A `.hud-label`: 11 px Geist Mono, upper case, widely spaced.
@@ -60,7 +84,7 @@ pub fn hud_elided(ui: &mut Ui, text: &str, color: Color32, max_width: f32) -> Re
         extra_letter_spacing: theme::HUD_SPACING,
         ..Default::default()
     };
-    let mut job = egui::text::LayoutJob::single_section(text.to_uppercase(), format);
+    let mut job = egui::text::LayoutJob::single_section(upper(text), format);
     job.wrap = egui::text::TextWrapping::truncate_at_width(max_width.min(ui.available_width()).max(0.0));
     let galley = ui.painter().layout_job(job);
     let elided = galley.elided;
@@ -597,4 +621,16 @@ pub fn wordmark_in(ui: &mut Ui, app: &artcraft_launcher_core::CraftApp, size: f3
 /// A heading in the display face, tracked in like the site's (`tracking-[-0.02em]`).
 pub fn heading(text: &str, size: f32, color: Color32) -> RichText {
     RichText::new(text).size(size).family(theme::display()).color(color).extra_letter_spacing(-0.02 * size)
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn upper_keeps_georgian_unless_the_face_has_capitals() {
+        assert_eq!(super::upper("Update all (2)"), "UPDATE ALL (2)");
+        assert_eq!(super::upper("ყველას განახლება (2) · ArtCraft"), "ყველას განახლება (2) · ARTCRAFT");
+        super::set_georgian_caps(true);
+        assert_eq!(super::upper("ყველას განახლება · ArtCraft"), "ᲧᲕᲔᲚᲐᲡ ᲒᲐᲜᲐᲮᲚᲔᲑᲐ · ARTCRAFT");
+        super::set_georgian_caps(false);
+    }
 }

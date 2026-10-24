@@ -95,7 +95,8 @@ means adding its row to every catalog marked `complete_menus` (the `*.tsv` files
 the English text, never through another catalog. Product and app names (ArtCraft Launcher, Craft
 App Suite, PhotoCraft…) stay in English.
 A CJK language is drawn with the system's own CJK font (`crates/ui-egui/src/cjk_font.rs`, desktop
-only; English where there is none): never bundle a CJK font, they are 10 MB and more.
+only; English where there is none): never bundle a CJK font, they are 10 MB and more. Georgian
+borrows the system's Georgian font the same way.
 
 ### Other rules
 
