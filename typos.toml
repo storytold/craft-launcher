@@ -1,0 +1,84 @@
+# Spell-checking for `crate-ci/typos` (see `.github/workflows/ci.yml`).
+#
+# Two kinds of exemption are needed, because this repo mixes spelling conventions on purpose.
+#
+# 1. Files: the translation catalogs under `crates/ui-egui/src/i18n/` are not spell-checked. Their
+#    second column is German, French, Polish, Portuguese, Spanish, Czech, Hungarian, Japanese and
+#    Chinese, and `typos` reads every file type, so it would flag correct words in those languages.
+#    `docs/brand/LICENSE-brand.txt` is a verbatim trademark licence and must not be edited.
+#
+# 2. Words: the prose is British English ("colour", "centred", "licence", "honoured"), while the
+#    code, Apple's notary terms and the app-id paths keep the American spelling ("Color32",
+#    "center()", "notarized"). `typos` reads them all as one locale, so the British spellings are
+#    listed as correct. `extend-words` covers prose and comments; `extend-identifiers` additionally
+#    covers the same words inside code names.
+
+[files]
+extend-exclude = [
+    # Generated icon renders, not source.
+    "assets/app-icons/**",
+    # The translation catalogs: German, French, Polish, Portuguese, Spanish, Czech, Hungarian,
+    # Japanese and Chinese in the second column.
+    "*.tsv",
+    # A verbatim trademark licence; its wording is not ours to change.
+    "docs/brand/LICENSE-brand.txt",
+]
+
+[default]
+# American English, so "Color32", "center()" and "notarized" read as correct.
+locale = "en-us"
+
+[default.extend-words]
+# `PN` and `FO` are format abbreviations, `wdth` the OpenType width variation axis.
+PN = "PN"
+FO = "FO"
+wdth = "wdth"
+# British spellings the repo uses in prose, doc comments and test names.
+centred = "centred"
+centre = "centre"
+centres = "centres"
+colour = "colour"
+colours = "colours"
+colourful = "colourful"
+labelled = "labelled"
+licence = "licence"
+honour = "honour"
+honours = "honours"
+honoured = "honoured"
+flavour = "flavour"
+favour = "favour"
+neighbour = "neighbour"
+neighbours = "neighbours"
+neighbouring = "neighbouring"
+recognised = "recognised"
+recognises = "recognises"
+recognising = "recognising"
+organising = "organising"
+localisation = "localisation"
+internationalisation = "internationalisation"
+# German words the i18n tests look up by label ("Alle aktualisieren" = "Update all").
+Alle = "Alle"
+# "macOS 11 Big Sur" is the release's name, not the French preposition "sur".
+Sur = "Sur"
+
+[default.extend-identifiers]
+# Correct words from the translation catalogs, which the i18n tests assert on. German.
+alle = "alle"
+ein = "ein"
+ist = "ist"
+manuell = "manuell"
+paket = "paket"
+deine = "deine"
+unter = "unter"
+# French.
+somme = "somme"
+mis = "mis"
+apparence = "apparence"
+existant = "existant"
+complet = "complet"
+cours = "cours"
+# Spanish.
+hace = "hace"
+# Polish.
+sie = "sie"
+nowe = "nowe"

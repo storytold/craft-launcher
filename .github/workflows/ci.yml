@@ -54,6 +54,16 @@ jobs:
       - name: Test
         run: cargo test --workspace --locked
 
+  typos:
+    name: typos
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      # Spell-check every file. `typos.toml` holds the exemptions: the translation catalogs (whose
+      # second column is not English) and the British spellings the prose uses.
+      - name: Spell-check
+        uses: crate-ci/typos@685eb3d55be2f85191e8c84acb9f44d7756f84ab # v1.29.4
+
   wasm:
     name: wasm32 check + trunk build
     runs-on: ubuntu-latest
