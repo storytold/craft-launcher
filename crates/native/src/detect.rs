@@ -795,7 +795,9 @@ mod android {
     pub fn detect(app: &CraftApp) -> Option<Installed> {
         let root = paths::root()?;
         let text = std::fs::read_to_string(root.join("installed-apps.txt")).ok()?;
-        let package = app.bundle_id();
+        // Android application ids cannot follow a rename: PdfCraft's package is still the name
+        // its APK shipped under (see `CraftApp::android_bundle_id`).
+        let package = app.android_bundle_id();
         for line in text.lines() {
             let mut parts = line.split('\t');
             let id = parts.next()?;

@@ -34,6 +34,17 @@ impl CraftApp {
         format!("ai.storyteller.{}", self.id)
     }
 
+    /// The package id an installed Android build of this app has.
+    ///
+    /// Android application ids are permanent once published — they name the app's data, its
+    /// updates and the intents that launch it — so a port cannot follow a later rename. PdfCraft
+    /// is the one app whose Android build shipped under the former name:
+    /// `ai.storyteller.printcraft`, not `ai.storyteller.pdfcraft`. Everywhere else this is
+    /// [`Self::bundle_id`].
+    pub fn android_bundle_id(&self) -> String {
+        ANDROID_PACKAGE_IDS.iter().find_map(|(id, package)| (*id == self.id).then(|| (*package).to_string())).unwrap_or_else(|| self.bundle_id())
+    }
+
     pub fn releases_url(&self) -> String {
         format!("https://github.com/{}/releases", self.repo)
     }
@@ -176,6 +187,15 @@ pub const GITHUB_OWNER: &str = "storytold";
 /// [`CraftApp::website`]: those are documentation links and stay pointed at upstream, whose source
 /// this is. Only the release lookup, the asset URLs and the checksums move.
 pub const RELEASE_REPO: Option<&str> = Some("tzhazuma/artcraft-android");
+
+/// Android application ids that are not `ai.storyteller.<id>`.
+///
+/// A package id cannot change after it is published, so the Android port of PdfCraft still uses
+/// the name it first shipped under — `ai.storyteller.printcraft` — although the app itself was
+/// renamed from PrintCraft to PdfCraft. Android detection and launching use
+/// [`CraftApp::android_bundle_id`]; nothing on the desktop does.
+pub const ANDROID_PACKAGE_IDS: &[(&str, &str)] = &[("pdfcraft", "ai.storyteller.printcraft")];
+
 /// ArtCraft on GitHub: every Craft App's source.
 pub const GITHUB_URL: &str = "https://github.com/storytold";
 /// ArtCraft's social accounts: (service, URL). Shown as small icons, less prominent than Discord.
@@ -262,6 +282,18 @@ mod tests {
         assert_eq!(pdf.names().collect::<Vec<_>>(), ["PdfCraft", "PrintCraft"]);
         assert_eq!(pdf.website(), "https://getartcraft.com/apps/pdfcraft");
         assert_eq!(CraftApp::by_id("wordcraft").unwrap().website(), "https://getartcraft.com/apps/wordcraft");
+    }
+
+    /// PdfCraft's Android package keeps the pre-rename name, because a published application id
+    /// cannot change. Every other app is `ai.storyteller.<id>`.
+    #[test]
+    fn android_package_ids_keep_published_names() {
+        assert_eq!(CraftApp::by_id("pdfcraft").unwrap().android_bundle_id(), "ai.storyteller.printcraft");
+        for a in &SUITE {
+            if a.id != "pdfcraft" {
+                assert_eq!(a.android_bundle_id(), a.bundle_id(), "{}", a.id);
+            }
+        }
     }
 
     /// A port moves every release lookup and download to its own repository, and moves nothing

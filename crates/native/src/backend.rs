@@ -758,6 +758,15 @@ struct Fallback {
 ///   apps the feed doesn't list or hasn't refreshed in a day, or once the feed has seriously
 ///   failed (several checks in a row and an hour without an answer); then hourly per app.
 fn feed_and_fallback(http: &Http, paths: &Paths, shared: &Shared) -> (Option<Feed>, Fallback) {
+    // A port disables the upstream feed (`ARTCRAFT_LAUNCHER_NO_FEED`): neither a fetch nor the
+    // cached copy may answer then. The cache holds upstream desktop releases; serving it would
+    // offer versions this platform has no package for ("not available here") and make every app
+    // look out of date. GitHub's answer for RELEASE_REPO is the only source in that case.
+    if feed_url().is_empty() {
+        let loaded = shared.loaded.load(Ordering::SeqCst);
+        let github_every = if loaded { GITHUB_FALLBACK_EVERY } else { EARLY_GITHUB_EVERY };
+        return (None, Fallback { trust_feed: false, github_every });
+    }
     let saved = load_feed(paths);
     let loaded = shared.loaded.load(Ordering::SeqCst);
     let first_time = !loaded && saved.is_none();

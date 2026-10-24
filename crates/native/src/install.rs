@@ -540,7 +540,7 @@ pub fn launch(app: &CraftApp, installed: &Installed, paths: &Paths) -> Result<()
         // Android has no binary to exec: the app is a package, and only the system can start it.
         #[cfg(target_os = "android")]
         InstallSource::Apk => {
-            let package = installed.package.clone().unwrap_or_else(|| app.bundle_id());
+            let package = installed.package.clone().unwrap_or_else(|| app.android_bundle_id());
             return crate::android::launch(package.as_str())
                 .map_err(|e| format!("Couldn't open {}: {e}", app.name));
         }
