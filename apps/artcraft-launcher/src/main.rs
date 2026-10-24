@@ -234,7 +234,8 @@ fn wgpu_options() -> eframe::WgpuConfiguration {
             setup.instance_descriptor.backends = backends;
         } else {
             setup.instance_descriptor.backends = Backends::DX12 | Backends::GL;
-            let integrated = setup.power_preference == PowerPreference::LowPower;
+            let integrated =
+                prefer_integrated(PowerPreference::from_env(), artcraft_launcher_native::graphics::windows_gpu_preference(), setup.power_preference);
             setup.native_adapter_selector = Some(Arc::new(move |adapters, surface| {
                 adapters
                     .iter()
@@ -261,6 +262,27 @@ fn wgpu_options() -> eframe::WgpuConfiguration {
 fn pin_dx12_compiler(config: &mut eframe::WgpuConfiguration, env_choice: Option<eframe::wgpu::Dx12Compiler>) {
     if let eframe::egui_wgpu::WgpuSetup::CreateNew(setup) = &mut config.wgpu_setup {
         setup.instance_descriptor.backend_options.dx12.shader_compiler = env_choice.unwrap_or(eframe::wgpu::Dx12Compiler::Fxc);
+    }
+}
+
+/// Whether the integrated GPU should come before the discrete one on Windows: what
+/// `WGPU_POWER_PREF` says if it is set (a developer's override, as everywhere), else the choice
+/// Windows recorded for this exe under Settings → Graphics (#399: "Power saving" there used to
+/// change nothing, and a hybrid laptop's discrete GPU stayed awake for a launcher that only needs
+/// to draw its window), else wgpu's default preference.
+#[cfg(any(windows, test))]
+fn prefer_integrated(
+    env: Option<eframe::wgpu::PowerPreference>,
+    windows: Option<artcraft_launcher_native::graphics::GpuPreference>,
+    default: eframe::wgpu::PowerPreference,
+) -> bool {
+    use artcraft_launcher_native::graphics::GpuPreference;
+    use eframe::wgpu::PowerPreference;
+    match (env, windows) {
+        (Some(env), _) => env == PowerPreference::LowPower,
+        (None, Some(GpuPreference::PowerSaving)) => true,
+        (None, Some(GpuPreference::HighPerformance)) => false,
+        (None, None) => default == PowerPreference::LowPower,
     }
 }
 
@@ -1157,6 +1179,22 @@ mod tests {
         assert!(matches!(compiler(None), Dx12Compiler::Fxc));
         assert!(matches!(compiler(Some(Dx12Compiler::Auto)), Dx12Compiler::Auto));
         assert!(matches!(compiler(Some(Dx12Compiler::default_dynamic_dxc())), Dx12Compiler::DynamicDxc { .. }));
+    }
+
+    /// Windows' Graphics setting for the exe decides between the GPUs unless `WGPU_POWER_PREF`
+    /// is set; without either, wgpu's default preference stands (#399).
+    #[test]
+    fn windows_graphics_setting_picks_the_gpu_unless_the_environment_does() {
+        use artcraft_launcher_native::graphics::GpuPreference::{HighPerformance, PowerSaving};
+        use eframe::wgpu::PowerPreference::{HighPerformance as High, LowPower, None as NoPref};
+        assert!(prefer_integrated(None, Some(PowerSaving), High));
+        assert!(!prefer_integrated(None, Some(HighPerformance), LowPower));
+        assert!(!prefer_integrated(None, None, High));
+        assert!(prefer_integrated(None, None, LowPower));
+        assert!(!prefer_integrated(None, None, NoPref));
+        // The environment overrides the setting either way.
+        assert!(prefer_integrated(Some(LowPower), Some(HighPerformance), High));
+        assert!(!prefer_integrated(Some(High), Some(PowerSaving), LowPower));
     }
 
     #[test]
