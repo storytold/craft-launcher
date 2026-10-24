@@ -5,6 +5,8 @@
 #![cfg_attr(windows, windows_subsystem = "windows")]
 #![deny(clippy::unwrap_used, clippy::expect_used, clippy::panic, clippy::unimplemented, clippy::todo, clippy::unreachable)]
 
+#[cfg(target_os = "macos")]
+mod hiding;
 mod logging;
 mod motion;
 mod settings_file;
@@ -666,7 +668,13 @@ impl<'a> Shell<'a> {
         // Started hidden at login but there's no tray to come back from: show the window.
         let visible = !hidden || launcher.tray.is_none();
         let mut shell = Self { launcher, window_hides, visible: true, quitting: false, applied_follow: None };
-        if !visible {
+        if !visible && window_hides {
+            // Started in the tray: the window stays out of sight. On macOS this doesn't hide the
+            // app as `put_away` does, since the app is still being activated as it starts, which
+            // would unhide it, window and all.
+            shell.visible = false;
+            cc.egui_ctx.send_viewport_cmd(egui::ViewportCommand::Visible(false));
+        } else if !visible {
             shell.put_away(&cc.egui_ctx);
         } else if hidden {
             cc.egui_ctx.send_viewport_cmd(egui::ViewportCommand::Visible(true));
@@ -683,6 +691,8 @@ impl<'a> Shell<'a> {
             let on = self.launcher.ui.settings.show_on_current_desktop;
             spaces::follow_current_desktop(on);
             self.applied_follow = Some(on);
+            // Back from `put_away`, which hides the whole app here.
+            hiding::unhide();
         }
         if self.window_hides {
             ctx.send_viewport_cmd(egui::ViewportCommand::Visible(true));
@@ -694,10 +704,14 @@ impl<'a> Shell<'a> {
         }
     }
 
-    /// Puts the window away in the tray: hidden where it can hide, closed where it can't.
+    /// Puts the window away in the tray: hidden where it can hide, closed where it can't. On macOS
+    /// the whole app hides, so its Dock icon brings the window back (`hiding`).
     fn put_away(&mut self, ctx: &egui::Context) {
         if self.window_hides {
             self.visible = false;
+            #[cfg(target_os = "macos")]
+            hiding::hide();
+            #[cfg(not(target_os = "macos"))]
             ctx.send_viewport_cmd(egui::ViewportCommand::Visible(false));
         } else {
             self.launcher.closed_to_tray = true;
