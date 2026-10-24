@@ -837,6 +837,98 @@ fn settings_link_to_discord() {
 }
 
 #[test]
+fn settings_fit_inside_a_short_linux_window_after_resizing() {
+    struct LinuxBackend;
+    impl Backend for LinuxBackend {
+        fn send(&mut self, _command: Command) {}
+        fn poll(&mut self) -> Vec<Event> {
+            Vec::new()
+        }
+        fn capabilities(&self) -> Capabilities {
+            Capabilities { manage_apps: true, reveal_label: "Show in file manager", self_update: true }
+        }
+        fn platform(&self) -> Option<Platform> {
+            Some(Platform { os: Os::Linux, arch: Arch::X64 })
+        }
+        fn now(&self) -> i64 {
+            NOW
+        }
+    }
+    struct LinuxHost;
+    impl Host for LinuxHost {
+        fn title_bar(&self) -> artcraft_launcher_ui_egui::TitleBar {
+            artcraft_launcher_ui_egui::TitleBar::Custom
+        }
+        fn has_tray(&self) -> bool {
+            true
+        }
+        fn login_item(&self) -> Option<bool> {
+            Some(false)
+        }
+    }
+    artcraft_launcher_ui_egui::i18n::set_test_lang(artcraft_launcher_ui_egui::i18n::Lang::EN);
+    for scale in [1.0, 1.5] {
+        let mut h = Harness::builder().with_size(egui::vec2(1147.0, 519.0)).with_pixels_per_point(scale).build_ui_state(
+            |ui, state: &mut Option<LauncherUi>| {
+                if state.is_none() {
+                    let settings = Settings { notify: false, theme: artcraft_launcher_ui_egui::theme::ThemeChoice::Dark, ..Settings::default() };
+                    *state = Some(LauncherUi::new(ui.ctx(), Box::new(LinuxBackend), settings));
+                }
+                if let Some(l) = state.as_mut() {
+                    l.logic(&ui.ctx().clone(), &mut LinuxHost);
+                    l.ui(ui, &mut LinuxHost);
+                }
+            },
+            None,
+        );
+        h.run_steps(6);
+        h.get_by_label("Settings").click();
+        h.run_steps(4);
+        // Open at the reported size (#255), shrink to the desktop minimum, then grow and shrink again.
+        for size in [egui::vec2(1147.0, 519.0), egui::vec2(720.0, 500.0), egui::vec2(1180.0, 900.0), egui::vec2(1147.0, 519.0)] {
+            h.set_size(size);
+            h.run_steps(6);
+            snapshot(&mut h, &format!("settings-linux-{}x{}-{scale}-top", size.x, size.y));
+            let done = h.get_by_label("Done").rect();
+            for label in ["Done", "Quit ArtCraft Launcher", "Language"] {
+                let rect = h.get_by_label(label).rect();
+                assert!(
+                    rect.left() >= 16.0 && rect.right() <= size.x - 16.0 && rect.top() >= 16.0 && rect.bottom() <= size.y - 16.0,
+                    "{size:?} at {scale}: {label} {rect:?}"
+                );
+            }
+            // Reach the bottom with the wheel, using the visible body rather than the footer.
+            h.hover_at(egui::pos2(done.left() - 120.0, done.top() - 100.0));
+            h.event(egui::Event::MouseWheel {
+                unit: egui::MouseWheelUnit::Point,
+                delta: egui::vec2(0.0, -2000.0),
+                phase: egui::TouchPhase::Move,
+                modifiers: egui::Modifiers::NONE,
+            });
+            h.run_steps(6);
+            snapshot(&mut h, &format!("settings-linux-{}x{}-{scale}-bottom", size.x, size.y));
+            let light = h.get_by_label("Light").rect();
+            assert!(light.top() >= 16.0 && light.bottom() < done.top(), "{size:?} at {scale}: Light {light:?}, Done {done:?}");
+            assert_eq!(h.get_by_label("Done").rect(), done, "the footer stays still while the settings scroll");
+            h.get_by_label("Light").click();
+            h.run_steps(3);
+            assert_eq!(h.state().as_ref().unwrap().settings.theme, artcraft_launcher_ui_egui::theme::ThemeChoice::Light);
+            h.get_by_label("Dark").click();
+            h.event(egui::Event::MouseWheel {
+                unit: egui::MouseWheelUnit::Point,
+                delta: egui::vec2(0.0, 2000.0),
+                phase: egui::TouchPhase::Move,
+                modifiers: egui::Modifiers::NONE,
+            });
+            h.run_steps(6);
+        }
+        h.get_by_label("Done").click();
+        h.run_steps(3);
+        assert!(h.query_by_label("Done").is_none());
+    }
+}
+
+#[test]
 fn the_uninstall_prompt_keeps_its_own_size_after_a_taller_dialog() {
     let (mut h, _) = harness(ViewMode::Grid, egui::Theme::Dark, true);
     h.run_steps(6);
