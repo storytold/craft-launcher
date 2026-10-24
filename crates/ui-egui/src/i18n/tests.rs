@@ -4,7 +4,7 @@
 use std::collections::{BTreeSet, HashSet};
 
 use super::catalog::{Catalog, unescape};
-use super::lang::{plural_czech, plural_east_slavic, plural_polish};
+use super::lang::{plural_arabic, plural_czech, plural_east_slavic, plural_polish};
 use super::{LANGUAGES, Lang, LangInfo, lang_from_tag, message, tr, trn};
 
 /// Each catalog's rows as (line number, context, source, translation), split exactly as the
@@ -546,4 +546,34 @@ fn complete_catalogs_translate_package_formats() {
             assert!(super::has(lang, kind.label()), "{}: {}", lang.code(), kind.label());
         }
     }
+}
+
+#[test]
+fn arabic_locales_and_plurals_work() {
+    for tag in ["ar", "ar-SA", "ar-EG", "ar-AE", "ar-MA", "ar_SA.UTF-8"] {
+        assert_eq!(lang_from_tag(tag), Some(Lang::AR), "{tag}");
+    }
+    assert_eq!(super::detect::first_supported(["xx-XX", "ar-SA", "en-US"]), Some(Lang::AR));
+    assert_eq!(plural_arabic(0), 0);
+    assert_eq!(plural_arabic(1), 1);
+    assert_eq!(plural_arabic(2), 2);
+    for n in 3..=10 {
+        assert_eq!(plural_arabic(n), 3);
+    }
+    for n in 11..=99 {
+        assert_eq!(plural_arabic(n), 4);
+    }
+    assert_eq!(plural_arabic(100), 5);
+}
+
+#[test]
+fn arabic_bidi_and_templates_work() {
+    assert_eq!(tr(Lang::AR, "Search apps"), "التطبيقات في البحث");
+    assert_eq!(tr(Lang::AR, "Sort"), "فرز");
+    assert_eq!(tr(Lang::AR, "Name (A–Z)"), "(أ–ي) الاسم");
+    assert_eq!(super::translate::fmt(tr(Lang::AR, "Last updated: {date}"), &[("date", "2026-10-20")]), "20-10-2026 تحديث: آخر");
+    assert_eq!(
+        trn(Lang::AR, 3, "ArtCraft Launcher · {n} update available", "ArtCraft Launcher · {n} updates available"),
+        "متوفرة تحديثات ArtCraft Launcher · 3"
+    );
 }

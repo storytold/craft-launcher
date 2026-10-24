@@ -54,7 +54,7 @@ pub fn fmt(template: &str, args: &[(&str, &str)]) -> String {
     for (k, v) in args {
         out = out.replace(&format!("{{{k}}}"), v);
     }
-    out
+    if super::bidi::has_rtl(&out) { super::bidi::reorder(&out).into_owned() } else { out }
 }
 
 /// A plural-aware string: `one`/`other` are the English forms (with `{n}` where the count goes),
@@ -76,7 +76,8 @@ pub fn tn(n: u64, one: &str, other: &str) -> String {
 /// the parts of a message a template's placeholders stand for (names, versions, reasons), stay
 /// as they are.
 pub fn message(lang: Lang, s: &str) -> String {
-    lang.catalog().message(s).unwrap_or_else(|| s.to_string())
+    let out = lang.catalog().message(s).unwrap_or_else(|| s.to_string());
+    if lang.is_rtl() && super::bidi::has_rtl(&out) { super::bidi::reorder(&out).into_owned() } else { out }
 }
 
 /// [`message`] in the current language, remembering the last answer: the status bar asks for the

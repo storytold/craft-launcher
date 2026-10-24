@@ -26,6 +26,7 @@
 //!   rows hold whole messages or templates such as `Couldn't open {name}: {e}`, whose
 //!   placeholders match any text and are carried over into the translation.
 
+pub mod bidi;
 mod catalog;
 mod detect;
 mod lang;
@@ -34,6 +35,7 @@ mod translate;
 #[cfg(test)]
 mod tests;
 
+pub use bidi::reorder as bidi_reorder;
 pub use detect::{detect_system_lang_in_background, set_system_locales, set_test_lang, system_lang};
 pub use lang::{LANGUAGES, Lang, LangInfo, Script, lang_from_tag};
 pub use translate::{current, fmt, has, message, msg, set_current, t, t_id, tn, tr, tr_ctx, tr_id, trn};

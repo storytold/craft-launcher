@@ -115,13 +115,18 @@ impl Catalog {
                 continue;
             };
             let (context, source_text, translation) = (unescape(context), unescape(source_text), unescape(translation));
+            let display_text = if !translation.contains('{') && super::bidi::has_rtl(&translation) {
+                super::bidi::reorder(&translation).into_owned()
+            } else {
+                translation.clone()
+            };
             let duplicate = match context.as_str() {
-                "" => cat.plain.insert(source_text.clone(), translation).is_some(),
-                "@id" => cat.by_id.insert(source_text.clone(), translation).is_some(),
+                "" => cat.plain.insert(source_text.clone(), display_text).is_some(),
+                "@id" => cat.by_id.insert(source_text.clone(), display_text).is_some(),
                 "@plural" => {
                     let forms: Vec<String> = translation.split('|').map(str::to_string).collect();
-                    if forms.len() > 3 {
-                        log::warn!("i18n catalog: line {line_no}: @plural expects 1 to 3 forms separated by '|', got {}", forms.len());
+                    if forms.len() > 6 {
+                        log::warn!("i18n catalog: line {line_no}: @plural expects 1 to 6 forms separated by '|', got {}", forms.len());
                         continue;
                     }
                     cat.plural.insert(source_text.clone(), forms).is_some()
@@ -135,7 +140,7 @@ impl Catalog {
                     }
                     cat.messages.insert(source_text.clone(), translation).is_some()
                 }
-                _ => cat.contextual.entry(context.clone()).or_default().insert(source_text.clone(), translation).is_some(),
+                _ => cat.contextual.entry(context.clone()).or_default().insert(source_text.clone(), display_text).is_some(),
             };
             if duplicate {
                 log::warn!("i18n catalog: line {line_no}: duplicate key {context:?} {source_text:?}");

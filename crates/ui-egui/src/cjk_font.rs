@@ -40,6 +40,7 @@ fn script_name(script: Script) -> &'static str {
     match script {
         Script::Chinese => "Chinese",
         Script::Japanese => "Japanese",
+        Script::Arabic => "Arabic",
     }
 }
 
@@ -48,6 +49,7 @@ fn script_families(script: Script) -> &'static str {
     match script {
         Script::Chinese => "PingFang SC, Hiragino Sans GB, Heiti SC, Microsoft YaHei, SimSun, Noto Sans CJK SC and WenQuanYi",
         Script::Japanese => "Hiragino Sans, Yu Gothic, Meiryo, MS Gothic, Noto Sans CJK JP, Noto Sans JP, IPAGothic and TakaoGothic",
+        Script::Arabic => "Segoe UI, Arial, Tahoma, SF Arabic, Geeza Pro and Noto Sans Arabic",
     }
 }
 
@@ -123,7 +125,36 @@ fn candidates(script: Script) -> Vec<Candidate> {
     match script {
         Script::Chinese => chinese_candidates(),
         Script::Japanese => japanese_candidates(),
+        Script::Arabic => arabic_candidates(),
     }
+}
+
+/// Where each system keeps an Arabic font, best first.
+fn arabic_candidates() -> Vec<Candidate> {
+    let mut out = Vec::new();
+    let mut add = |path: PathBuf, family: &'static str| out.push(Candidate { path, family });
+    #[cfg(target_os = "windows")]
+    {
+        let root = std::env::var_os("SystemRoot").map_or_else(|| PathBuf::from(r"C:\Windows"), PathBuf::from);
+        add(root.join("Fonts").join("segoeui.ttf"), "Segoe UI");
+        add(root.join("Fonts").join("arial.ttf"), "Arial");
+        add(root.join("Fonts").join("tahoma.ttf"), "Tahoma");
+    }
+    #[cfg(target_os = "macos")]
+    {
+        add("/System/Library/Fonts/SFArabic.ttf".into(), "SF Arabic");
+        add("/System/Library/Fonts/GeezaPro.ttc".into(), "Geeza Pro");
+        add("/System/Library/Fonts/Supplemental/Arial.ttf".into(), "Arial");
+    }
+    #[cfg(all(unix, not(target_os = "macos")))]
+    {
+        for dir in unix_font_dirs() {
+            add(dir.join("truetype/noto/NotoSansArabic-Regular.ttf"), "Noto Sans Arabic");
+            add(dir.join("noto/NotoSansArabic-Regular.ttf"), "Noto Sans Arabic");
+            add(dir.join("google-noto/NotoSansArabic-Regular.ttf"), "Noto Sans Arabic");
+        }
+    }
+    out
 }
 
 /// Where each system keeps a Simplified Chinese font, best first.
