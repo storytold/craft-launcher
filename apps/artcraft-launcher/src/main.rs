@@ -42,6 +42,12 @@ fn main() -> ExitCode {
     if let Some(done) = artcraft_launcher_native::self_update::finish(&std::env::args_os().skip(1).collect::<Vec<_>>()) {
         return if done.is_ok() { ExitCode::SUCCESS } else { ExitCode::FAILURE };
     }
+    // A copy of the launcher started with administrator rights to install a batch of Craft App
+    // MSIs (one UAC prompt for all of them): no window, log file or single-instance claim.
+    #[cfg(windows)]
+    if let Some(code) = artcraft_launcher_native::msi_batch::helper(&std::env::args_os().skip(1).collect::<Vec<_>>()) {
+        return ExitCode::from(code);
+    }
     // Detect system language in the background so the first frame can use it.
     artcraft_launcher_ui_egui::i18n::detect_system_lang_in_background();
     // Detect Discord protocol handler in the background without blocking startup.

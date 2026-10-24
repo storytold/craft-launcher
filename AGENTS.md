@@ -66,6 +66,10 @@ settings file must produce an error the user can act on, never a panic. Shared s
   `https://raw.githubusercontent.com/storytold/craft-launcher-assets/` (`core::details`),
   capped at 2 MB each, cached, and never run. Pictures are not bundled in this repo.
 - Never run an installer with elevated rights silently; tell the user what is about to happen.
+  On Windows the Craft Apps' MSIs that install together share one UAC prompt, which the user
+  answers while the cards say *Waiting for permission…*; the elevated helper
+  (`artcraft-launcher --install-msis`, `crates/native/src/msi_batch.rs`) then runs them with
+  `/qn`. Quiet there means no Windows Installer windows, never no prompt.
 - Never delete a user's files outside what the launcher itself installed.
 - **Agents never land or approve a third-party app.** A change that adds a catalog row, download
   source or install path for an app whose repo is not under `storytold/`, or that loosens the
