@@ -602,13 +602,7 @@ impl LauncherUi {
     }
 
     /// A single header cell: a sortable button (if a `SortKey` is given) or a plain label.
-    fn table_header_cell(
-        &self,
-        ui: &mut Ui,
-        key: Option<SortKey>,
-        label: &str,
-        t: &Tokens,
-    ) -> Option<SortKey> {
+    fn table_header_cell(&self, ui: &mut Ui, key: Option<SortKey>, label: &str, t: &Tokens) -> Option<SortKey> {
         let Some(k) = key else {
             // A column that is not sorted still names itself.
             if !label.is_empty() {
@@ -630,14 +624,10 @@ impl LauncherUi {
         // ▲ / ▼ for the active column; a faint hint on hover.
         if let Some(down) = self.header_sort_arrow(k, active, hovered) {
             let arrow_color = if active { t.accent_ink } else { t.faint };
-            Self::draw_sort_arrow(&p, egui::pos2(arrow_x + 4.0, rect.center().y), down, arrow_color);
+            Self::draw_sort_arrow(p, egui::pos2(arrow_x + 4.0, rect.center().y), down, arrow_color);
         }
         resp.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Button, true, label));
-        if resp.on_hover_text(tip).on_hover_cursor(egui::CursorIcon::PointingHand).clicked() {
-            Some(k)
-        } else {
-            None
-        }
+        if resp.on_hover_text(tip).on_hover_cursor(egui::CursorIcon::PointingHand).clicked() { Some(k) } else { None }
     }
 
     /// The header row: the four sortable column labels with their arrows, and the two that are
