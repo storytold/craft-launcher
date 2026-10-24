@@ -34,12 +34,35 @@ impl CraftApp {
         format!("ai.storyteller.{}", self.id)
     }
 
+    /// The package id an installed Android build of this app has.
+    ///
+    /// Android application ids are permanent once published — they name the app's data, its
+    /// updates and the intents that launch it — so a port cannot follow a later rename. PdfCraft
+    /// is the one app whose Android build shipped under the former name:
+    /// `ai.storyteller.printcraft`, not `ai.storyteller.pdfcraft`. Everywhere else this is
+    /// [`Self::bundle_id`].
+    pub fn android_bundle_id(&self) -> String {
+        ANDROID_PACKAGE_IDS.iter().find_map(|(id, package)| (*id == self.id).then(|| (*package).to_string())).unwrap_or_else(|| self.bundle_id())
+    }
+
     pub fn releases_url(&self) -> String {
         format!("https://github.com/{}/releases", self.repo)
     }
 
     pub fn repo_url(&self) -> String {
         format!("https://github.com/{}", self.repo)
+    }
+
+    /// The repository every release lookup, asset URL and checksum for this app uses.
+    ///
+    /// Upstream's own repository, unless this build is a port ([`RELEASE_REPO`]). This is the one
+    /// place that decides, so a port cannot end up half-moved (release list from one repository,
+    /// download URL from another).
+    pub fn release_repo(&self) -> String {
+        match RELEASE_REPO {
+            Some(repo) => repo.to_string(),
+            None => self.repo.to_string(),
+        }
     }
 
     /// The app's page on getartcraft.com.
@@ -152,6 +175,27 @@ pub const WEBSITE_URL: &str = "https://getartcraft.com";
 /// The GitHub account every Craft App's repository lives under: the only one the launcher
 /// installs from, whatever the release feed says.
 pub const GITHUB_OWNER: &str = "storytold";
+/// The repository *release lookups and downloads* come from, when this build is a port.
+///
+/// Upstream publishes desktop builds under `storytold/<app>`. A port publishes Android builds, and
+/// this one keeps them all in a single repository — one release carrying every app's APK, named
+/// `<AppName>-<version>-android-arm64.apk` — so one value covers the whole suite. Without it the
+/// launcher would offer the desktop release and try to install a package this platform cannot run.
+/// `None` is upstream's behaviour and is what a release build keeps.
+///
+/// Setting this does **not** move [`CraftApp::repo_url`], [`CraftApp::releases_url`] or
+/// [`CraftApp::website`]: those are documentation links and stay pointed at upstream, whose source
+/// this is. Only the release lookup, the asset URLs and the checksums move.
+pub const RELEASE_REPO: Option<&str> = Some("tzhazuma/artcraft-android");
+
+/// Android application ids that are not `ai.storyteller.<id>`.
+///
+/// A package id cannot change after it is published, so the Android port of PdfCraft still uses
+/// the name it first shipped under — `ai.storyteller.printcraft` — although the app itself was
+/// renamed from PrintCraft to PdfCraft. Android detection and launching use
+/// [`CraftApp::android_bundle_id`]; nothing on the desktop does.
+pub const ANDROID_PACKAGE_IDS: &[(&str, &str)] = &[("pdfcraft", "ai.storyteller.printcraft")];
+
 /// ArtCraft on GitHub: every Craft App's source.
 pub const GITHUB_URL: &str = "https://github.com/storytold";
 /// ArtCraft's social accounts: (service, URL). Shown as small icons, less prominent than Discord.
@@ -238,5 +282,41 @@ mod tests {
         assert_eq!(pdf.names().collect::<Vec<_>>(), ["PdfCraft", "PrintCraft"]);
         assert_eq!(pdf.website(), "https://getartcraft.com/apps/pdfcraft");
         assert_eq!(CraftApp::by_id("wordcraft").unwrap().website(), "https://getartcraft.com/apps/wordcraft");
+    }
+
+    /// PdfCraft's Android package keeps the pre-rename name, because a published application id
+    /// cannot change. Every other app is `ai.storyteller.<id>`.
+    #[test]
+    fn android_package_ids_keep_published_names() {
+        assert_eq!(CraftApp::by_id("pdfcraft").unwrap().android_bundle_id(), "ai.storyteller.printcraft");
+        for a in &SUITE {
+            if a.id != "pdfcraft" {
+                assert_eq!(a.android_bundle_id(), a.bundle_id(), "{}", a.id);
+            }
+        }
+    }
+
+    /// A port moves every release lookup and download to its own repository, and moves nothing
+    /// else: the documentation links must keep pointing at the upstream source.
+    #[test]
+    fn a_port_looks_releases_up_in_its_own_repository() {
+        for a in &SUITE {
+            // The download prefix is built from this, so it is the whole of the download address.
+            let expected = match RELEASE_REPO {
+                Some(repo) => repo.to_string(),
+                None => a.repo.to_string(),
+            };
+            assert_eq!(a.release_repo(), expected);
+            assert!(a.repo_url().starts_with("https://github.com/storytold/"));
+            assert!(a.releases_url().starts_with("https://github.com/storytold/"));
+            assert_eq!(a.website(), format!("https://getartcraft.com/apps/{}", a.id));
+        }
+        if RELEASE_REPO.is_some() {
+            // Every app downloads from the one repository, so the prefix is the same for all of
+            // them and carries no app name of its own — the asset name does that.
+            for a in &SUITE {
+                assert_eq!(crate::release::download_prefix(&a.release_repo()), "https://github.com/tzhazuma/artcraft-android/releases/download/");
+            }
+        }
     }
 }

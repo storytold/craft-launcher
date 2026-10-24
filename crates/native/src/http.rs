@@ -49,12 +49,54 @@ pub struct FeedError {
     pub retry_after: Option<i64>,
 }
 
+/// What a certificate chain is checked against.
+///
+/// Everywhere but Android that is the OS's own verifier. On Android `rustls-platform-verifier`
+/// needs a Kotlin component plus a Maven dependency
+/// (`org.rustls:rustls-platform-verifier-android`) before it can reach the system TrustManager —
+/// more than a port that only adds a crate can supply. The system store is still what decides:
+/// `/system/etc/security/cacerts` holds the same roots the TrustManager consults, one PEM file per
+/// root. What this gives up against the TrustManager is revocation checking and user-installed
+/// roots; both matter for a corporate MITM proxy, neither for GitHub's own certificates.
+#[cfg(not(target_os = "android"))]
+fn root_certs() -> ureq::tls::RootCerts {
+    ureq::tls::RootCerts::PlatformVerifier
+}
+
+#[cfg(target_os = "android")]
+fn root_certs() -> ureq::tls::RootCerts {
+    use ureq::tls::Certificate;
+
+    /// Android's system trust store: one PEM file per root, named by subject hash.
+    const DIR: &str = "/system/etc/security/cacerts";
+
+    // Read once: every agent shares the answer, and the store does not change under a running app.
+    static CERTS: std::sync::OnceLock<Vec<Certificate<'static>>> = std::sync::OnceLock::new();
+    let certs = CERTS.get_or_init(|| {
+        let Ok(entries) = std::fs::read_dir(DIR) else {
+            log::error!("no system certificate store at {DIR}: HTTPS cannot be verified");
+            return Vec::new();
+        };
+        let mut out = Vec::new();
+        for entry in entries.flatten() {
+            let read = std::fs::read(entry.path()).map_err(|e| e.to_string());
+            match read.and_then(|bytes| Certificate::from_pem(&bytes).map_err(|e| e.to_string())) {
+                Ok(cert) => out.push(cert),
+                Err(e) => log::debug!("{}: {e}", entry.path().display()),
+            }
+        }
+        log::info!("{} system root certificates read from {DIR}", out.len());
+        out
+    });
+    ureq::tls::RootCerts::new_with_certs(certs)
+}
+
 impl Http {
     pub fn new() -> Result<Self, String> {
         // The OS checks each certificate chain itself: Windows fetches roots it hasn't stored yet
         // and trusts what antivirus HTTPS scanning installs. Reading the store ourselves missed
         // both ("invalid peer certificate: UnknownIssuer").
-        let tls = || ureq::tls::TlsConfig::builder().root_certs(ureq::tls::RootCerts::PlatformVerifier).build();
+        let tls = || ureq::tls::TlsConfig::builder().root_certs(root_certs()).build();
         // Chosen once: the proxy environment variables, else the OS proxy setting.
         let proxy = crate::proxy::pick();
         let small = ureq::Agent::config_builder()

@@ -758,6 +758,15 @@ struct Fallback {
 ///   apps the feed doesn't list or hasn't refreshed in a day, or once the feed has seriously
 ///   failed (several checks in a row and an hour without an answer); then hourly per app.
 fn feed_and_fallback(http: &Http, paths: &Paths, shared: &Shared) -> (Option<Feed>, Fallback) {
+    // A port disables the upstream feed (`ARTCRAFT_LAUNCHER_NO_FEED`): neither a fetch nor the
+    // cached copy may answer then. The cache holds upstream desktop releases; serving it would
+    // offer versions this platform has no package for ("not available here") and make every app
+    // look out of date. GitHub's answer for RELEASE_REPO is the only source in that case.
+    if feed_url().is_empty() {
+        let loaded = shared.loaded.load(Ordering::SeqCst);
+        let github_every = if loaded { GITHUB_FALLBACK_EVERY } else { EARLY_GITHUB_EVERY };
+        return (None, Fallback { trust_feed: false, github_every });
+    }
     let saved = load_feed(paths);
     let loaded = shared.loaded.load(Ordering::SeqCst);
     let first_time = !loaded && saved.is_none();
@@ -852,7 +861,14 @@ fn limit_notice(source_used: Source, limited_until: Option<i64>) -> Option<i64> 
 }
 
 /// The repo to ask GitHub about, following the feed's repo renames.
+///
+/// A ported build ships its own releases, so [`CraftApp::release_repo`] wins outright and the feed
+/// is not consulted: the feed describes upstream's desktop releases, and following its renames
+/// would walk the lookup back to a repository this build must not install from.
 fn feed_repo(feed: Option<&Feed>, app: &CraftApp) -> String {
+    if artcraft_launcher_core::catalog::RELEASE_REPO.is_some() {
+        return app.release_repo();
+    }
     feed.map_or_else(|| app.repo.to_string(), |f| f.repo_for(app))
 }
 
@@ -923,6 +939,13 @@ fn fetch_feed(http: &Http, paths: &Paths, url: &str, throttle: &Mutex<FeedThrott
 /// The feed's address. `ARTCRAFT_LAUNCHER_FEED_URL` points at a staging server or a local copy
 /// (only `https://`, or plain `http://` on localhost).
 fn feed_url() -> String {
+    // A port ships its own builds in its own repository, so the upstream release feed is not a
+    // source of truth for it -- and worse, it answers with desktop-only assets, which the launcher
+    // then reports as "not available here". With this set the feed is skipped entirely and every
+    // release is read from RELEASE_REPO over GitHub.
+    if std::env::var("ARTCRAFT_LAUNCHER_NO_FEED").is_ok() {
+        return String::new();
+    }
     std::env::var("ARTCRAFT_LAUNCHER_FEED_URL")
         .ok()
         .filter(|u| feed_url_override_allowed(u, cfg!(feature = "local-mirror")))
@@ -1152,6 +1175,24 @@ mod tests {
         assert!(!feed_url_override_allowed("https://staging.example/release_info.json", false));
         assert!(feed_url_override_allowed("https://staging.example/release_info.json", true));
         assert!(!feed_url_override_allowed("http://attacker.example/release_info.json", true));
+    }
+
+    /// The repo every release lookup and download for an app is built from. A port must resolve it
+    /// to its own repository, and must not let the upstream feed's renames pull it back.
+    #[test]
+    fn a_port_asks_its_own_repositories_for_releases() {
+        for app in &artcraft_launcher_core::catalog::SUITE {
+            let repo = feed_repo(None, app);
+            let prefix = artcraft_launcher_core::release::download_prefix(&repo);
+            match artcraft_launcher_core::catalog::RELEASE_REPO {
+                Some(port_repo) => {
+                    assert_eq!(repo, port_repo);
+                    assert!(prefix.starts_with(&format!("https://github.com/{port_repo}/")), "{prefix}");
+                    assert!(!prefix.contains("storytold/"), "{prefix}");
+                }
+                None => assert_eq!(repo, app.repo),
+            }
+        }
     }
 
     /// GitHub, counting how often it's asked.

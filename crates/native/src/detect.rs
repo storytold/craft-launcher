@@ -48,6 +48,8 @@ pub fn detect(app: &CraftApp, manifest: &Manifest, snapshot: &Snapshot) -> Optio
     return linux::detect(app, snapshot);
     #[cfg(target_os = "freebsd")]
     return freebsd::detect(app);
+    #[cfg(target_os = "android")]
+    return android::detect(app);
     #[allow(unreachable_code)]
     None
 }
@@ -773,5 +775,43 @@ mod tests {
             let with_location: Vec<PathBuf> = std::iter::once(location.join(&exe)).chain(in_program_files).collect();
             assert_eq!(exe_candidates(a, Some(&location), &roots), with_location);
         }
+    }
+}
+
+/// Android: the activity lists the installed suite and hands it over as a file.
+///
+/// This crate has no JNI, and `PackageManager` is not reachable without it. The activity already
+/// runs in the right process with the right context, so it enumerates the packages and writes
+/// `<root>/installed-apps.txt` (`<package id>\t<version name>` per line); reading that is all this
+/// side has to do. Reusing the launcher's own record/manifest path was not an option: an APK
+/// installed by the system has neither.
+#[cfg(target_os = "android")]
+mod android {
+    use artcraft_launcher_core::status::Installed;
+    use crate::paths;
+    use artcraft_launcher_core::catalog::CraftApp;
+    use artcraft_launcher_core::InstallSource;
+
+    pub fn detect(app: &CraftApp) -> Option<Installed> {
+        let root = paths::root()?;
+        let text = std::fs::read_to_string(root.join("installed-apps.txt")).ok()?;
+        // Android application ids cannot follow a rename: PdfCraft's package is still the name
+        // its APK shipped under (see `CraftApp::android_bundle_id`).
+        let package = app.android_bundle_id();
+        for line in text.lines() {
+            let mut parts = line.split('\t');
+            let id = parts.next()?;
+            if id != package {
+                continue;
+            }
+            let version = parts.next().and_then(|v| artcraft_launcher_core::version::parse(v.trim()));
+            return Some(Installed {
+                version,
+                source: InstallSource::Apk,
+                location: format!("package {package}"),
+                package: Some(package),
+            });
+        }
+        None
     }
 }

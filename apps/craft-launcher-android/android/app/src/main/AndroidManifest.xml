@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!-- Without this every release fetch fails and the launcher shows every app as offline; the
+         symptom looks like a broken network or a TLS problem, not a missing permission. -->
+    <uses-permission android:name="android.permission.INTERNET" />
+
+    <!-- Android 11+ hides other apps from getInstalledPackages unless this is declared, so the
+         suite an already-installed app was invisible and every card said "not installed". -->
+    <uses-permission android:name="android.permission.QUERY_ALL_PACKAGES" />
+
+    <!-- Android 11+ hides other packages from getInstalledPackages unless they are declared or
+         QUERY_ALL_PACKAGES is honoured. This ROM appears to ignore the latter (the list came back
+         with only this app in it), so the suite is named explicitly, which is the sanctioned path
+         and does not depend on that permission being granted. -->
+    <queries>
+        <package android:name="ai.storyteller.cadcraft" />
+        <package android:name="ai.storyteller.deckcraft" />
+        <package android:name="ai.storyteller.designcraft" />
+        <package android:name="ai.storyteller.effectcraft" />
+        <package android:name="ai.storyteller.figcraft" />
+        <package android:name="ai.storyteller.filmcraft" />
+        <package android:name="ai.storyteller.gridcraft" />
+        <package android:name="ai.storyteller.lightcraft" />
+        <package android:name="ai.storyteller.photocraft" />
+        <package android:name="ai.storyteller.printcraft" />
+        <package android:name="ai.storyteller.soundcraft" />
+        <package android:name="ai.storyteller.vectorcraft" />
+        <package android:name="ai.storyteller.wordcraft" />
+    </queries>
+
+    <application
+        android:icon="@mipmap/ic_launcher"
+        android:label="ArtCraft Launcher"
+        android:roundIcon="@mipmap/ic_launcher_round"
+        android:supportsRtl="true"
+        android:theme="@style/ActivityTheme">
+        <activity
+            android:name=".MainActivity"
+            android:configChanges="orientation|screenSize|screenLayout|keyboardHidden"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+
+            <meta-data android:name="android.app.lib_name" android:value="main" />
+        </activity>
+    </application>
+
+</manifest>
