@@ -1168,6 +1168,38 @@ pub(crate) mod linux {
         written
     }
 
+    /// Adds the menu entry an AppImage never got: launchers up to 0.2.0 recorded AppImage
+    /// installs with no files, before they wrote entries. Records that list files were
+    /// integrated already, so an entry the user removed since stays removed. Returns whether the
+    /// manifest changed. Called at startup, at most once per process.
+    pub fn repair_menu_entries(manifest: &mut crate::manifest::Manifest) -> bool {
+        static REPAIR: std::sync::Once = std::sync::Once::new();
+        match host_data_dir() {
+            Some(data) => repair_menu_entries_in(&data, manifest, &REPAIR),
+            None => false,
+        }
+    }
+
+    /// [`repair_menu_entries`] into the data folder `data`.
+    pub(crate) fn repair_menu_entries_in(data: &Path, manifest: &mut crate::manifest::Manifest, once: &std::sync::Once) -> bool {
+        let mut changed = false;
+        once.call_once(|| {
+            for (id, rec) in &mut manifest.apps {
+                if rec.kind != PackageKind::AppImage || !rec.files.is_empty() || !rec.path.is_file() {
+                    continue;
+                }
+                let Some(app) = CraftApp::by_id(id) else { continue };
+                let files = integrate_into(data, app, &rec.path, &[], Some(&*rec));
+                if !files.is_empty() {
+                    log::info!("{}: added the menu entry an earlier launcher didn't", app.name);
+                    rec.files = files;
+                    changed = true;
+                }
+            }
+        });
+        changed
+    }
+
     /// Takes away what [`integrate`] added for the removed AppImage `appimage`.
     pub fn unintegrate(app: &CraftApp, appimage: &Path, record: Option<&Record>) {
         if let Some(data) = host_data_dir() {
@@ -2320,6 +2352,79 @@ mod tests {
         std::fs::write(&desktop, "[Desktop Entry]\nExec=/usr/bin/wordcraft\n").unwrap();
         linux::unintegrate_from(&data, app, &new, Some(&rec));
         assert!(desktop.exists());
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn repairs_menu_entries_for_appimages_installed_before_entries_existed() {
+        use crate::manifest::Manifest;
+
+        let root = tempfile::tempdir().unwrap();
+        let data = root.path().join("share");
+        let appimage = |name: &str| {
+            let p = root.path().join("Applications").join(name);
+            std::fs::create_dir_all(p.parent().unwrap()).unwrap();
+            std::fs::write(&p, b"").unwrap();
+            p
+        };
+        let grid = appimage("gridcraft-0.5.0-linux-x86_64.AppImage");
+        let deck = appimage("deckcraft-0.2.0-linux-x86_64.AppImage");
+        let mut m = Manifest::default();
+        // As launcher 0.2.0 recorded them: no files.
+        m.apps.insert("gridcraft".into(), record("0.5.0", PackageKind::AppImage, grid.clone(), vec![], false));
+        m.apps.insert("deckcraft".into(), record("0.2.0", PackageKind::AppImage, deck.clone(), vec![], false));
+        // Gone from disk, and not an AppImage: both skipped.
+        m.apps.insert("wordcraft".into(), record("0.3.0", PackageKind::AppImage, root.path().join("missing.AppImage"), vec![], false));
+        m.apps.insert("pdfcraft".into(), record("0.3.0", PackageKind::Deb, grid.clone(), vec![], false));
+
+        assert!(linux::repair_menu_entries_in(&data, &mut m, &std::sync::Once::new()));
+        let desktop = data.join("applications/ai.storyteller.gridcraft.desktop");
+        assert!(desktop_entry_is_ours(&desktop));
+        assert_eq!(crate::desktop_entry::exec_program(&std::fs::read_to_string(&desktop).unwrap()).map(PathBuf::from), Some(grid.clone()));
+        assert!(m.apps["gridcraft"].files.contains(&desktop));
+        assert!(data.join("applications/ai.storyteller.deckcraft.desktop").is_file());
+        assert!(m.apps["wordcraft"].files.is_empty() && m.apps["pdfcraft"].files.is_empty());
+        assert!(!data.join("applications/ai.storyteller.wordcraft.desktop").exists());
+        assert!(!data.join("applications/ai.storyteller.pdfcraft.desktop").exists());
+
+        // Repaired once: an entry the user deletes afterwards stays deleted.
+        std::fs::remove_file(&desktop).unwrap();
+        assert!(!linux::repair_menu_entries_in(&data, &mut m, &std::sync::Once::new()));
+        assert!(!desktop.exists());
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn legacy_menu_repair_runs_once_per_process_and_persists_its_files() {
+        use crate::manifest::Manifest;
+
+        let root = tempfile::tempdir().unwrap();
+        let data = root.path().join("share");
+        let appimage = root.path().join("gridcraft.AppImage");
+        std::fs::write(&appimage, b"").unwrap();
+        let manifest_path = root.path().join("installed.json");
+        let mut manifest = Manifest::default();
+        let once = std::sync::Once::new();
+
+        // A startup with no legacy installs still consumes this process's repair pass.
+        assert!(!linux::repair_menu_entries_in(&data, &mut manifest, &once));
+        manifest.apps.insert("gridcraft".into(), record("0.5.0", PackageKind::AppImage, appimage, vec![], false));
+        assert!(!linux::repair_menu_entries_in(&data, &mut manifest, &once));
+        let desktop = data.join("applications/ai.storyteller.gridcraft.desktop");
+        assert!(!desktop.exists());
+
+        // The next process can repair the legacy record and save the files it owns.
+        let next_process = std::sync::Once::new();
+        assert!(linux::repair_menu_entries_in(&data, &mut manifest, &next_process));
+        manifest.save(&manifest_path).unwrap();
+        std::fs::remove_file(&desktop).unwrap();
+        assert!(!linux::repair_menu_entries_in(&data, &mut manifest, &next_process));
+
+        // A later restart respects the user's deletion using the saved file list.
+        let mut reloaded = Manifest::load(&manifest_path);
+        assert!(reloaded.apps["gridcraft"].files.contains(&desktop));
+        assert!(!linux::repair_menu_entries_in(&data, &mut reloaded, &std::sync::Once::new()));
+        assert!(!desktop.exists());
     }
 
     #[cfg(target_os = "linux")]
