@@ -49,3 +49,8 @@ zip = { version = "8", default-features = false, features = ["deflate"] }
 winsafe = { version = "0.0.29", features = ["kernel", "version"] }
 # Authenticode checks through WinTrust: the update helper installs only files from the launcher's publisher.
 verifysign = "1"
+
+[target.'cfg(target_os = "linux")'.dev-dependencies]
+# A loopback TLS server proves HTTPS downgrade redirects are refused by production agents.
+rcgen = { version = "0.14", default-features = false, features = ["crypto", "ring", "pem"] }
+rustls = { version = "0.23", default-features = false, features = ["ring", "std"] }
