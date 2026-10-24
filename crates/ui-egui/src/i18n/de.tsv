@@ -378,3 +378,15 @@ filter	Installed	Installiert
 	Show {n} more changes	{n} weitere Änderungen anzeigen
 	Last updated: {date}	Zuletzt aktualisiert: {date}
 column	Version	Version
+	Font Vault Management	Schriftarten-Tresor verwalten
+	Fonts added here are shared with every Craft app.	Hier hinzugefügte Schriftarten stehen allen Craft-Apps zur Verfügung.
+	Add Font	Schriftart hinzufügen
+	Delete	Löschen
+	Couldn't read the font vault: {e}	Der Schriftarten-Tresor konnte nicht gelesen werden: {e}
+	No fonts in the vault yet.	Noch keine Schriftarten im Tresor.
+	Added {name} to the font vault.	{name} wurde dem Schriftarten-Tresor hinzugefügt.
+	{name} is already in the font vault.	{name} ist bereits im Schriftarten-Tresor.
+	Couldn't add the font: {e}	Die Schriftart konnte nicht hinzugefügt werden: {e}
+	Removed {name} from the font vault.	{name} wurde aus dem Schriftarten-Tresor entfernt.
+	Couldn't remove the font: {e}	Die Schriftart konnte nicht entfernt werden: {e}
+	Fonts	Schriftarten

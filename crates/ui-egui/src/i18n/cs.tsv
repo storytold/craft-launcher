@@ -346,3 +346,15 @@ filter	Installed	Nainstalováno
 	Show {n} more changes	Zobrazit dalších změn: {n}
 	Last updated: {date}	Naposledy aktualizováno: {date}
 column	Version	Verze
+	Font Vault Management	Správa trezoru písem
+	Fonts added here are shared with every Craft app.	Písma přidaná zde sdílejí všechny aplikace Craft.
+	Add Font	Přidat písmo
+	Delete	Smazat
+	Couldn't read the font vault: {e}	Trezor písem nelze načíst: {e}
+	No fonts in the vault yet.	V trezoru zatím nejsou žádná písma.
+	Added {name} to the font vault.	Písmo {name} bylo přidáno do trezoru.
+	{name} is already in the font vault.	Písmo {name} už v trezoru je.
+	Couldn't add the font: {e}	Písmo nelze přidat: {e}
+	Removed {name} from the font vault.	Písmo {name} bylo odebráno z trezoru.
+	Couldn't remove the font: {e}	Písmo nelze odebrat: {e}
+	Fonts	Písma

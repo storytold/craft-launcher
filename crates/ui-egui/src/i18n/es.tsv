@@ -359,3 +359,15 @@ filter	Installed	Instaladas
 	Show {n} more changes	Mostrar {n} cambios más
 	Last updated: {date}	Última actualización: {date}
 column	Version	Versión
+	Font Vault Management	Gestión del almacén de fuentes
+	Fonts added here are shared with every Craft app.	Las fuentes que añadas aquí se comparten con todas las apps Craft.
+	Add Font	Añadir fuente
+	Delete	Eliminar
+	Couldn't read the font vault: {e}	No se pudo leer el almacén de fuentes: {e}
+	No fonts in the vault yet.	Todavía no hay fuentes en el almacén.
+	Added {name} to the font vault.	Se añadió {name} al almacén de fuentes.
+	{name} is already in the font vault.	{name} ya está en el almacén de fuentes.
+	Couldn't add the font: {e}	No se pudo añadir la fuente: {e}
+	Removed {name} from the font vault.	Se quitó {name} del almacén de fuentes.
+	Couldn't remove the font: {e}	No se pudo quitar la fuente: {e}
+	Fonts	Fuentes

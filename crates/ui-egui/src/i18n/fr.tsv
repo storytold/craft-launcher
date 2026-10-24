@@ -376,3 +376,15 @@ filter	Installed	Installées
 	Show {n} more changes	Afficher {n} modifications de plus
 	Last updated: {date}	Dernière mise à jour : {date}
 column	Version	Version
+	Font Vault Management	Gestion du coffre de polices
+	Fonts added here are shared with every Craft app.	Les polices ajoutées ici sont partagées avec toutes les apps Craft.
+	Add Font	Ajouter une police
+	Delete	Supprimer
+	Couldn't read the font vault: {e}	Impossible de lire le coffre de polices : {e}
+	No fonts in the vault yet.	Aucune police dans le coffre pour l'instant.
+	Added {name} to the font vault.	{name} a été ajoutée au coffre de polices.
+	{name} is already in the font vault.	{name} est déjà dans le coffre de polices.
+	Couldn't add the font: {e}	Impossible d'ajouter la police : {e}
+	Removed {name} from the font vault.	{name} a été retirée du coffre de polices.
+	Couldn't remove the font: {e}	Impossible de supprimer la police : {e}
+	Fonts	Polices

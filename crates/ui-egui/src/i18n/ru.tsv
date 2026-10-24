@@ -374,3 +374,15 @@ filter	Installed	Установлены
 	Show {n} more changes	Показать ещё изменений: {n}
 	Last updated: {date}	Последнее обновление: {date}
 column	Version	Версия
+	Font Vault Management	Управление хранилищем шрифтов
+	Fonts added here are shared with every Craft app.	Шрифты, добавленные здесь, доступны всем приложениям Craft.
+	Add Font	Добавить шрифт
+	Delete	Удалить
+	Couldn't read the font vault: {e}	Не удалось прочитать хранилище шрифтов: {e}
+	No fonts in the vault yet.	В хранилище пока нет шрифтов.
+	Added {name} to the font vault.	Шрифт {name} добавлен в хранилище.
+	{name} is already in the font vault.	Шрифт {name} уже есть в хранилище.
+	Couldn't add the font: {e}	Не удалось добавить шрифт: {e}
+	Removed {name} from the font vault.	Шрифт {name} удалён из хранилища.
+	Couldn't remove the font: {e}	Не удалось удалить шрифт: {e}
+	Fonts	Шрифты

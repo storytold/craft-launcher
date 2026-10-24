@@ -379,3 +379,15 @@ filter	Installed	Telepítve
 	Show {n} more changes	{n} további változás megjelenítése
 	Last updated: {date}	Utoljára frissítve: {date}
 column	Version	Verzió
+	Font Vault Management	Betűtípus-tár kezelése
+	Fonts added here are shared with every Craft app.	Az itt hozzáadott betűtípusokat minden Craft alkalmazás használhatja.
+	Add Font	Betűtípus hozzáadása
+	Delete	Törlés
+	Couldn't read the font vault: {e}	A betűtípus-tárat nem sikerült beolvasni: {e}
+	No fonts in the vault yet.	A tárban még nincs betűtípus.
+	Added {name} to the font vault.	{name} bekerült a betűtípus-tárba.
+	{name} is already in the font vault.	{name} már szerepel a betűtípus-tárban.
+	Couldn't add the font: {e}	A betűtípust nem sikerült hozzáadni: {e}
+	Removed {name} from the font vault.	{name} eltávolítva a betűtípus-tárból.
+	Couldn't remove the font: {e}	A betűtípust nem sikerült eltávolítani: {e}
+	Fonts	Betűtípusok

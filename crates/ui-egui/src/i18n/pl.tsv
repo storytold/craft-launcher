@@ -380,3 +380,15 @@ filter	Installed	Zainstalowane
 	Show {n} more changes	Pokaż {n} więcej zmian
 	Last updated: {date}	Ostatnia aktualizacja: {date}
 column	Version	Wersja
+	Font Vault Management	Zarządzanie skarbcem czcionek
+	Fonts added here are shared with every Craft app.	Czcionki dodane tutaj są dostępne we wszystkich aplikacjach Craft.
+	Add Font	Dodaj czcionkę
+	Delete	Usuń
+	Couldn't read the font vault: {e}	Nie udało się odczytać skarbca czcionek: {e}
+	No fonts in the vault yet.	W skarbcu nie ma jeszcze czcionek.
+	Added {name} to the font vault.	Dodano {name} do skarbca czcionek.
+	{name} is already in the font vault.	{name} jest już w skarbcu czcionek.
+	Couldn't add the font: {e}	Nie udało się dodać czcionki: {e}
+	Removed {name} from the font vault.	Usunięto {name} ze skarbca czcionek.
+	Couldn't remove the font: {e}	Nie udało się usunąć czcionki: {e}
+	Fonts	Czcionki

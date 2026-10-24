@@ -4,7 +4,7 @@
 use artcraft_launcher_core::{Os, PackageKind};
 use egui::{RichText, Ui, vec2};
 
-use crate::app::{Host, LauncherUi};
+use crate::app::{FontAdded, Host, LauncherUi};
 use crate::i18n::fmt;
 use crate::settings::{CheckEvery, Settings};
 use crate::sheet;
@@ -110,6 +110,7 @@ impl LauncherUi {
                 let (this, host) = &mut *state;
                 this.settings_install(ui, &mut **host);
                 this.settings_background(ui, &mut **host);
+                this.settings_fonts(ui, &mut **host);
                 this.settings_community(ui);
             },
         );
@@ -276,6 +277,81 @@ impl LauncherUi {
                 self.toast(&ctx, fmt(tl!("Couldn't change the login item: {e}"), &[("e", &e)]), true);
             }
         });
+    }
+
+    /// The FontCore vault the Craft apps share, on hosts that have one: add a font file, or
+    /// delete one. The list is read again every couple of seconds, so changes made elsewhere
+    /// (the `fontcore` CLI, another app) show up while Settings is open.
+    fn settings_fonts(&mut self, ui: &mut Ui, host: &mut dyn Host) {
+        const REFRESH_SECS: f64 = 2.0;
+        let now = ui.input(|i| i.time);
+        if self.fonts.as_ref().is_none_or(|(read_at, _)| now - read_at > REFRESH_SECS) {
+            self.fonts = host.fonts().map(|listing| (now, listing));
+        }
+        let Some((_, listing)) = &self.fonts else { return };
+        let listing = listing.clone();
+        // egui draws only on input or when asked, so ask: an idle window still picks up changes.
+        ui.ctx().request_repaint_after(std::time::Duration::from_secs_f64(REFRESH_SECS));
+        let t = Tokens::get(ui.ctx());
+        let mut add = false;
+        let mut remove = None;
+        sheet::panel(ui, tl!("Font Vault Management"), |ui| {
+            note(ui, tl!("Fonts added here are shared with every Craft app."));
+            ui.add_space(6.0);
+            add = widgets::button(ui, tl!("Add Font"), Kind::Primary, 0.0).clicked();
+            ui.add_space(10.0);
+            match &listing {
+                Err(e) => {
+                    let text = fmt(tl!("Couldn't read the font vault: {e}"), &[("e", e)]);
+                    ui.add(egui::Label::new(RichText::new(text).size(12.0).color(t.warn)).wrap());
+                }
+                Ok(rows) if rows.is_empty() => note(ui, tl!("No fonts in the vault yet.")),
+                Ok(rows) => {
+                    egui::ScrollArea::vertical().id_salt("font-vault").max_height(240.0).auto_shrink([false, true]).show(ui, |ui| {
+                        for (i, font) in rows.iter().enumerate() {
+                            if i > 0 {
+                                let y = ui.cursor().top();
+                                ui.painter().hline(ui.max_rect().x_range(), y, t.hairline());
+                                ui.add_space(1.0);
+                            }
+                            let size = vec2(ui.available_width(), theme::CONTROL_H + 12.0);
+                            ui.allocate_ui_with_layout(size, egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                                if widgets::button(ui, tl!("Delete"), Kind::Danger, 0.0).clicked() {
+                                    remove = Some(font.clone());
+                                }
+                                ui.with_layout(egui::Layout::top_down(egui::Align::Min), |ui| {
+                                    ui.add_space(4.0);
+                                    ui.add(egui::Label::new(&font.name).truncate());
+                                    ui.add(egui::Label::new(RichText::new(&font.detail).size(12.0).color(t.muted)).truncate());
+                                });
+                            });
+                        }
+                    });
+                }
+            }
+        });
+
+        let ctx = ui.ctx().clone();
+        if add {
+            match host.add_font() {
+                Ok(Some(FontAdded::Added(font))) => {
+                    self.toast(&ctx, fmt(tl!("Added {name} to the font vault."), &[("name", &font.name)]), false);
+                }
+                Ok(Some(FontAdded::AlreadyPresent(font))) => {
+                    self.toast(&ctx, fmt(tl!("{name} is already in the font vault."), &[("name", &font.name)]), false);
+                }
+                Ok(None) => {}
+                Err(e) => self.toast(&ctx, fmt(tl!("Couldn't add the font: {e}"), &[("e", &e)]), true),
+            }
+            self.fonts = None;
+        }
+        if let Some(font) = remove {
+            match host.remove_font(&font.id) {
+                Ok(()) => self.toast(&ctx, fmt(tl!("Removed {name} from the font vault."), &[("name", &font.name)]), false),
+                Err(e) => self.toast(&ctx, fmt(tl!("Couldn't remove the font: {e}"), &[("e", &e)]), true),
+            }
+            self.fonts = None;
+        }
     }
 
     fn settings_community(&mut self, ui: &mut Ui) {

@@ -381,3 +381,15 @@ filter	Installed	インストール済み
 	Show {n} more changes	さらに{n}件の変更を表示
 	Last updated: {date}	最終更新: {date}
 column	Version	バージョン
+	Font Vault Management	フォント保管庫の管理
+	Fonts added here are shared with every Craft app.	ここで追加したフォントは、すべての Craft アプリで共有されます。
+	Add Font	フォントを追加
+	Delete	削除
+	Couldn't read the font vault: {e}	フォント保管庫を読み込めませんでした: {e}
+	No fonts in the vault yet.	保管庫にはまだフォントがありません。
+	Added {name} to the font vault.	{name} をフォント保管庫に追加しました。
+	{name} is already in the font vault.	{name} はすでにフォント保管庫にあります。
+	Couldn't add the font: {e}	フォントを追加できませんでした: {e}
+	Removed {name} from the font vault.	{name} をフォント保管庫から削除しました。
+	Couldn't remove the font: {e}	フォントを削除できませんでした: {e}
+	Fonts	フォント

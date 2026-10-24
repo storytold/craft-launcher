@@ -346,3 +346,15 @@ figcraft	Interface design and prototyping	界面设计与原型制作
 	Show {n} more changes	显示另外 {n} 项更改
 	Last updated: {date}	最后更新：{date}
 column	Version	版本
+	Font Vault Management	字体库管理
+	Fonts added here are shared with every Craft app.	在此添加的字体会与所有 Craft 应用共享。
+	Add Font	添加字体
+	Delete	删除
+	Couldn't read the font vault: {e}	无法读取字体库：{e}
+	No fonts in the vault yet.	字体库中还没有字体。
+	Added {name} to the font vault.	已将 {name} 添加到字体库。
+	{name} is already in the font vault.	{name} 已在字体库中。
+	Couldn't add the font: {e}	无法添加字体：{e}
+	Removed {name} from the font vault.	已从字体库中移除 {name}。
+	Couldn't remove the font: {e}	无法移除字体：{e}
+	Fonts	字体

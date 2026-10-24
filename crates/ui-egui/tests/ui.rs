@@ -15,7 +15,7 @@ use artcraft_launcher_core::release::{Asset, Release};
 use artcraft_launcher_core::status::InstallSource;
 use artcraft_launcher_core::{Arch, Installed, Os, Platform, SUITE, version};
 use artcraft_launcher_ui_egui::settings::ViewMode;
-use artcraft_launcher_ui_egui::{Host, LauncherUi, Settings};
+use artcraft_launcher_ui_egui::{FontAdded, FontRow, Host, LauncherUi, Settings};
 use egui_kittest::Harness;
 use egui_kittest::kittest::{NodeT, Queryable};
 
@@ -812,6 +812,82 @@ fn settings_link_to_discord() {
     h.get_by_label("Questions, ideas and news from the ArtCraft team");
     // The footer icon and the button in Settings.
     assert!(h.query_all_by_label_contains("Discord").count() >= 2);
+    // A host with no font vault (the web build) shows no Font Vault Management panel.
+    assert!(h.query_by_label("Add Font").is_none());
+}
+
+#[test]
+fn settings_add_and_delete_fonts_in_the_vault() {
+    /// A FontCore vault in memory: adding always picks "Craft Mono Regular".
+    struct VaultHost(Rc<RefCell<Vec<FontRow>>>);
+    impl Host for VaultHost {
+        fn fonts(&mut self) -> Option<Result<Vec<FontRow>, String>> {
+            Some(Ok(self.0.borrow().clone()))
+        }
+        fn add_font(&mut self) -> Result<Option<FontAdded>, String> {
+            let font = FontRow { id: "2b7e4a511f3a9c0d".into(), name: "Craft Mono Regular".into(), detail: "OTF".into() };
+            if self.0.borrow().contains(&font) {
+                return Ok(Some(FontAdded::AlreadyPresent(font)));
+            }
+            self.0.borrow_mut().push(font.clone());
+            Ok(Some(FontAdded::Added(font)))
+        }
+        fn remove_font(&mut self, id: &str) -> Result<(), String> {
+            self.0.borrow_mut().retain(|f| f.id != id);
+            Ok(())
+        }
+    }
+    artcraft_launcher_ui_egui::i18n::set_test_lang(artcraft_launcher_ui_egui::i18n::Lang::EN);
+    let vault =
+        Rc::new(RefCell::new(vec![FontRow { id: "1f3a9c0d2b7e4a51".into(), name: "Story Sans Bold".into(), detail: "TTF · OFL-1.1".into() }]));
+    let mut host = VaultHost(vault.clone());
+    let mut backend = Some(Fake {
+        events: events(),
+        sent: Rc::default(),
+        manage: true,
+        pictures: Rc::default(),
+        asked: Vec::new(),
+        clock: Rc::new(Cell::new(NOW)),
+    });
+    let mut h = Harness::builder().with_size(egui::vec2(1180.0, 1200.0)).build_ui_state(
+        move |ui, state: &mut Option<LauncherUi>| {
+            if let Some(b) = backend.take() {
+                *state = Some(LauncherUi::new(ui.ctx(), Box::new(b), Settings { notify: false, ..Settings::default() }));
+            }
+            if let Some(l) = state.as_mut() {
+                l.logic(&ui.ctx().clone(), &mut host);
+                l.ui(ui, &mut host);
+            }
+        },
+        None,
+    );
+    h.run_steps(6);
+    h.get_by_label("Settings").click();
+    h.run_steps(4);
+    snapshot(&mut h, "settings-font-vault");
+    h.get_by_label("Fonts added here are shared with every Craft app.");
+    h.get_by_label("Story Sans Bold");
+    h.get_by_label("TTF · OFL-1.1");
+
+    h.get_by_label("Add Font").click();
+    h.run_steps(4);
+    h.get_by_label("Craft Mono Regular");
+    h.get_by_label("Added Craft Mono Regular to the font vault.");
+    h.get_by_label("Add Font").click();
+    h.run_steps(4);
+    h.get_by_label("Craft Mono Regular is already in the font vault.");
+    assert_eq!(vault.borrow().len(), 2);
+
+    // The first row's Delete removes Story Sans Bold.
+    h.get_all_by_label("Delete").next().unwrap().click();
+    h.run_steps(4);
+    h.get_by_label("Removed Story Sans Bold from the font vault.");
+    assert!(h.query_by_label("Story Sans Bold").is_none());
+    assert_eq!(vault.borrow().iter().map(|f| f.name.as_str()).collect::<Vec<_>>(), ["Craft Mono Regular"]);
+
+    h.get_by_label("Delete").click();
+    h.run_steps(4);
+    h.get_by_label("No fonts in the vault yet.");
 }
 
 #[test]

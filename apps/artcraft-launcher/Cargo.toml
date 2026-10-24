@@ -61,6 +61,7 @@ zbus = { version = "5", default-features = false, features = ["async-io", "block
 tray-icon = { version = "0.25", default-features = false, features = ["ksni"] }
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+fontcore = { workspace = true }
 rfd = { version = "=0.17.2", default-features = false, features = ["xdg-portal", "wayland"] }
 
 [build-dependencies]

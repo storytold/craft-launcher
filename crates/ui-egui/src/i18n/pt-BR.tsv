@@ -366,3 +366,15 @@ filter	Installed	Instalados
 	Show {n} more changes	Mostrar mais {n} alterações
 	Last updated: {date}	Última atualização: {date}
 column	Version	Versão
+	Font Vault Management	Gerenciamento do cofre de fontes
+	Fonts added here are shared with every Craft app.	As fontes adicionadas aqui são compartilhadas com todos os apps Craft.
+	Add Font	Adicionar fonte
+	Delete	Excluir
+	Couldn't read the font vault: {e}	Não foi possível ler o cofre de fontes: {e}
+	No fonts in the vault yet.	Ainda não há fontes no cofre.
+	Added {name} to the font vault.	{name} foi adicionada ao cofre de fontes.
+	{name} is already in the font vault.	{name} já está no cofre de fontes.
+	Couldn't add the font: {e}	Não foi possível adicionar a fonte: {e}
+	Removed {name} from the font vault.	{name} foi removida do cofre de fontes.
+	Couldn't remove the font: {e}	Não foi possível remover a fonte: {e}
+	Fonts	Fontes
