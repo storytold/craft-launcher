@@ -61,7 +61,7 @@
 	Downloading…	ダウンロード中…
 	Reconnecting…	再接続中…
 	Verifying…	検証中…
-	Installing, then restarting…	インストール完了後再起動します…
+	Installing, then restarting…	インストールして再起動します…
 	Installing…	インストール中…
 	Removing…	アンインストール中…
 	Pause download	ダウンロードを一時停止
@@ -360,14 +360,14 @@ filter	Installed	インストール済み
 	Browse…	参照…
 	Use default	既定を使用
 	New installs use this folder. Updates stay in their current location.	新しいインストールにはこのフォルダーを使用します。更新時は現在の場所を維持します。
-	Custom folders use AppImage on Linux.	Linuxで任意のフォルダーにインストールする場合はAppImageを使用します。
-	On Linux, custom folders use AppImage format.	Linuxで任意のフォルダーにインストールする場合はAppImageを使用します。
+	Custom folders use AppImage on Linux.	Linux では、任意のフォルダーにインストールする場合は AppImage を使用します。
+	On Linux, custom folders use AppImage format.	Linux で任意のフォルダーを指定した場合は、AppImage 形式を使用します。
 	The system manages install locations here.	この環境ではシステムがインストール先を管理します。
 @msg	couldn't use install folder {path}: {reason}	インストール先フォルダー {path} を使用できませんでした: {reason}
-@msg	this release has no AppImage for a custom install folder	このリリースには任意のインストール先フォルダーで使用できるAppImageがありません
+@msg	this release has no AppImage for a custom install folder	このリリースには任意のインストール先フォルダーで使用できる AppImage がありません
 @msg	custom install folders aren't supported on this system	このシステムではインストール先フォルダーの変更に対応していません
-@msg	{path} already exists and wasn't installed by ArtCraft Launcher	{path} は既に存在し、ArtCraft Launcherでインストールされたものではありません
-@msg	couldn't move {path} to Trash ({reason}). Remove it in Finder instead.	{path} をゴミ箱に移動できませんでした（{reason}）。Finderで削除してください。
+@msg	{path} already exists and wasn't installed by ArtCraft Launcher	{path} は既に存在し、ArtCraft Launcher でインストールされたものではありません
+@msg	couldn't move {path} to Trash ({reason}). Remove it in Finder instead.	{path} をゴミ箱に移動できませんでした（{reason}）。Finder で削除してください。
 	Apps are placed inside this folder.	アプリはこのフォルダー内に配置されます。
 	Replace what's there?	既存の項目を置き換えますか？
 	{path} already exists. Installing {name} will overwrite it.	{path} は既に存在します。{name} をインストールすると上書きされます。
@@ -378,6 +378,6 @@ filter	Installed	インストール済み
 	Frequently used	よく使う順
 	Next app	次のアプリ
 	Previous app	前のアプリ
-	Show {n} more changes	さらに{n}件の変更を表示
+	Show {n} more changes	さらに {n} 件の変更を表示
 	Last updated: {date}	最終更新: {date}
 column	Version	バージョン
