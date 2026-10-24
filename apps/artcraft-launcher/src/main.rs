@@ -5,6 +5,7 @@
 #![cfg_attr(windows, windows_subsystem = "windows")]
 #![deny(clippy::unwrap_used, clippy::expect_used, clippy::panic, clippy::unimplemented, clippy::todo, clippy::unreachable)]
 
+mod font_vault;
 mod logging;
 mod motion;
 mod settings_file;
@@ -25,7 +26,7 @@ use artcraft_launcher_core::protocol::Backend;
 use artcraft_launcher_native::single_instance::{self, Instance};
 use artcraft_launcher_native::{NativeBackend, login};
 use artcraft_launcher_ui_egui::theme::Tokens;
-use artcraft_launcher_ui_egui::{Host, LauncherUi, Settings, TitleBar};
+use artcraft_launcher_ui_egui::{FontAdded, FontRow, Host, LauncherUi, Settings, TitleBar};
 use eframe::wgpu::rwh::{HasDisplayHandle, RawDisplayHandle};
 
 const APP_ID: &str = "ai.storyteller.artcraft-launcher";
@@ -514,6 +515,19 @@ impl Host for DesktopHost {
             dialog = dialog.set_directory(folder);
         }
         dialog.pick_folder().and_then(|p| p.to_str().map(str::to_string))
+    }
+
+    fn fonts(&mut self) -> Option<Result<Vec<FontRow>, String>> {
+        Some(font_vault::list())
+    }
+
+    fn add_font(&mut self) -> Result<Option<FontAdded>, String> {
+        let picked = rfd::FileDialog::new().add_filter(artcraft_launcher_ui_egui::tl!("Fonts"), &["ttf", "otf", "ttc", "otc"]).pick_file();
+        picked.map(|path| font_vault::add(&path)).transpose()
+    }
+
+    fn remove_font(&mut self, id: &str) -> Result<(), String> {
+        font_vault::remove(id)
     }
 
     fn reduce_motion(&self) -> bool {

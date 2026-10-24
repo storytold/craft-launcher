@@ -1,0 +1,26 @@
+[package]
+name = "fontcore"
+description = "FontCore: the local font vault and fonts.json manifest shared by the Craft App Suite"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+publish = false
+
+[lints]
+workspace = true
+
+[dependencies]
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = "2"
+ttf-parser = "0.24"
+sha2 = "0.10"
+# `directories`, not `dirs`: its `ProjectDirs` path is the one the standalone FontCore CLI uses, so
+# the launcher and the CLI open the same vault.
+directories = "5"
+spdx = "0.13"
+
+[dev-dependencies]
+tempfile = "3"
+jsonschema = { version = "0.59", default-features = false }

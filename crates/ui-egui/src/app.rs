@@ -29,6 +29,25 @@ pub enum TitleBar {
     MacOs,
 }
 
+/// One font in the shared FontCore vault, as the Font Vault Management panel lists it.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct FontRow {
+    /// FontCore's id for the file (the start of its SHA-256), which [`Host::remove_font`] takes.
+    pub id: String,
+    /// Family and style, e.g. "Inter Bold".
+    pub name: String,
+    /// Format and license, e.g. "TTF · OFL-1.1".
+    pub detail: String,
+}
+
+/// What [`Host::add_font`] did with the file the person picked.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum FontAdded {
+    Added(FontRow),
+    /// The vault already holds a byte-identical file; nothing changed.
+    AlreadyPresent(FontRow),
+}
+
 /// What only the shell can do. Every method has a do-nothing default (the web build).
 pub trait Host {
     /// Who draws the title bar.
@@ -60,6 +79,20 @@ pub trait Host {
     }
     fn pick_folder(&mut self, _initial: Option<&str>) -> Option<String> {
         None
+    }
+    /// The fonts in the FontCore vault the Craft apps share, or `None` where there is no vault
+    /// (the web build), which hides the Font Vault Management panel. Read about every two
+    /// seconds while Settings is open.
+    fn fonts(&mut self) -> Option<Result<Vec<FontRow>, String>> {
+        None
+    }
+    /// Asks for a font file and adds it to the FontCore vault; `Ok(None)` when the person cancels.
+    fn add_font(&mut self) -> Result<Option<FontAdded>, String> {
+        Ok(None)
+    }
+    /// Removes a font, by [`FontRow::id`], from the FontCore vault.
+    fn remove_font(&mut self, _id: &str) -> Result<(), String> {
+        Err("not supported here".into())
     }
     /// The URL to open when Discord is clicked. Defaults to the web link.
     fn discord_url(&self) -> &'static str {
@@ -120,6 +153,8 @@ pub struct LauncherUi {
     pub(crate) alerts: Vec<artcraft_launcher_core::feed::Notice>,
     pub(crate) search: String,
     pub(crate) toasts: Vec<Toast>,
+    /// The FontCore vault's fonts for Settings, with the time they were read (`Host::fonts`).
+    pub(crate) fonts: Option<(f64, Result<Vec<FontRow>, String>)>,
     pub(crate) dialog: Option<Dialog>,
     /// Release-note text scale for this session, independent of the main UI zoom.
     pub(crate) notes_zoom: f32,
@@ -199,6 +234,7 @@ impl LauncherUi {
             alerts: Vec::new(),
             search: String::new(),
             toasts: Vec::new(),
+            fonts: None,
             dialog: None,
             notes_zoom: 1.0,
             detail: None,

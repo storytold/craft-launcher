@@ -1,0 +1,143 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/calebnanji/FontCore/main/schema/fonts.v1.json",
+  "title": "FontCore manifest (fonts.json), schema version 1",
+  "description": "The manifest at the root of a FontCore vault. Every object may carry fields not listed here; readers must ignore them and writers must preserve them. Name extension fields after your app id (for example \"ai.storytold.photocraft:recent\") so they cannot collide with fields added to this schema later.",
+  "type": "object",
+  "required": ["schema_version", "fonts"],
+  "properties": {
+    "schema_version": {
+      "description": "Manifest layout version. Additive changes keep version 1; a reader must refuse a version it does not know.",
+      "const": 1
+    },
+    "fonts": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/font" }
+    }
+  },
+  "additionalProperties": true,
+  "$defs": {
+    "font": {
+      "description": "One font file stored in the vault.",
+      "type": "object",
+      "required": ["id", "file", "format", "sha256", "size", "faces", "added_at"],
+      "properties": {
+        "id": {
+          "description": "The first 16 hex digits of sha256.",
+          "type": "string",
+          "pattern": "^[0-9a-f]{16}$"
+        },
+        "file": {
+          "description": "Path of the font file relative to the vault root: '/'-separated, non-empty segments with no '.', '..', '\\' or ':'.",
+          "type": "string",
+          "pattern": "^[^/\\\\:]+(/[^/\\\\:]+)*$",
+          "not": { "pattern": "(^|/)\\.{1,2}(/|$)" }
+        },
+        "format": {
+          "description": "Container format. 'ttc' covers both .ttc and .otc collections. Variable fonts use these same values; WOFF/WOFF2 are never stored.",
+          "enum": ["ttf", "otf", "ttc"]
+        },
+        "sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "size": {
+          "description": "File size in bytes.",
+          "type": "integer",
+          "minimum": 0
+        },
+        "faces": {
+          "description": "Every face in the file, in collection order. Single-face files have exactly one.",
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/face" }
+        },
+        "enabled": {
+          "description": "false hides the whole file from apps, whatever its faces say.",
+          "type": "boolean",
+          "default": true
+        },
+        "apps": {
+          "description": "Apps allowed to load this font. Omitted or empty means every app.",
+          "type": "array",
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/app_id" }
+        },
+        "tags": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "license": { "$ref": "#/$defs/license" },
+        "source": {
+          "description": "File name the font was imported from.",
+          "type": "string"
+        },
+        "added_at": {
+          "description": "Import time.",
+          "$ref": "#/$defs/timestamp"
+        }
+      },
+      "additionalProperties": true
+    },
+    "face": {
+      "description": "Naming and style information for one face, plus whether apps may load it.",
+      "type": "object",
+      "required": ["index", "family", "subfamily", "weight", "italic", "monospaced"],
+      "properties": {
+        "index": {
+          "description": "Index of the face in the file; 0 for single-face files.",
+          "type": "integer",
+          "minimum": 0
+        },
+        "family": { "type": "string" },
+        "subfamily": { "type": "string" },
+        "full_name": { "type": "string" },
+        "postscript_name": { "type": "string" },
+        "version": { "type": "string" },
+        "weight": {
+          "description": "OS/2 weight class.",
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 1000
+        },
+        "italic": { "type": "boolean" },
+        "monospaced": { "type": "boolean" },
+        "enabled": {
+          "description": "false hides this face from apps; the other faces of a collection stay available.",
+          "type": "boolean",
+          "default": true
+        }
+      },
+      "additionalProperties": true
+    },
+    "app_id": {
+      "description": "Lowercase reverse-DNS app id with at least three labels, such as ai.storytold.photocraft.",
+      "type": "string",
+      "maxLength": 253,
+      "pattern": "^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?){2,}$"
+    },
+    "license": {
+      "description": "An SPDX license expression as a string (\"OFL-1.1\", \"MIT OR Apache-2.0\"), or {\"custom\": \"...\"} for a license with no SPDX identifier.",
+      "oneOf": [
+        {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9.+:() -]*$"
+        },
+        {
+          "type": "object",
+          "required": ["custom"],
+          "properties": {
+            "custom": { "type": "string", "minLength": 1 }
+          },
+          "additionalProperties": true
+        }
+      ]
+    },
+    "timestamp": {
+      "description": "RFC 3339 date-time with an uppercase 'T' and an explicit 'Z' or ±HH:MM offset, such as 2026-10-22T02:30:00Z.",
+      "type": "string",
+      "format": "date-time",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\\.[0-9]+)?(Z|[+-][0-9]{2}:[0-9]{2})$"
+    }
+  }
+}
