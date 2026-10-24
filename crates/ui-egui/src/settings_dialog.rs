@@ -136,7 +136,7 @@ impl LauncherUi {
         if pref.needs_cjk_font() && !theme::cjk_font_available(pref) {
             // In English on purpose: the language asked for can't be drawn.
             let text = "No font for this language was found on this system, so the interface stays in English. \
-                        Installing one (for example Noto Sans CJK) and restarting fixes it.";
+                        Installing one (for example Noto Sans CJK or Noto Sans Georgian) and restarting fixes it.";
             ui.add(egui::Label::new(RichText::new(text).size(12.0).color(t.warn)).wrap());
             ui.add_space(14.0);
         }
