@@ -46,3 +46,8 @@ inherits = "release"
 opt-level = "s"
 lto = "fat"
 strip = "debuginfo"
+
+[patch.crates-io]
+# winit 0.30.13 with an activation token that names the latest click, which KWin needs before it
+# brings the browser forward (#698; MailCraft #144). Dropped when winit itself does it.
+winit = { git = "https://github.com/UCS-Care-Group/winit", rev = "bb472d90071a8b48288aeaa70ad81b767808ae9a" }

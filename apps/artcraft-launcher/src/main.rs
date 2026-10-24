@@ -5,6 +5,8 @@
 #![cfg_attr(windows, windows_subsystem = "windows")]
 #![deny(clippy::unwrap_used, clippy::expect_used, clippy::panic, clippy::unimplemented, clippy::todo, clippy::unreachable)]
 
+#[cfg(any(target_os = "linux", target_os = "freebsd"))]
+mod browser;
 mod logging;
 mod motion;
 mod settings_file;
@@ -129,7 +131,7 @@ fn main() -> ExitCode {
         if window {
             let result = {
                 let (waker, launcher) = (waker.clone(), &mut launcher);
-                eframe::run_native(
+                run_window(
                     "ArtCraft Launcher",
                     native_options(hidden),
                     Box::new(move |cc| {
@@ -153,6 +155,107 @@ fn main() -> ExitCode {
         hidden = false;
         window = true;
     }
+}
+
+/// The links waiting for the window's activation token (`browser`), set before the first window opens.
+#[cfg(any(target_os = "linux", target_os = "freebsd"))]
+static BROWSER: OnceLock<browser::Browser<winit::event_loop::AsyncRequestSerial>> = OnceLock::new();
+
+/// The links the window followed in this frame: each asks winit for an activation token and opens
+/// when it comes (`WithTokens`) or is overdue, so the browser comes in front of the window.
+#[cfg(any(target_os = "linux", target_os = "freebsd"))]
+fn open_links(ctx: &egui::Context, frame: &eframe::Frame) {
+    use winit::platform::startup_notify::WindowExtStartupNotify as _;
+    let Some(browser) = BROWSER.get() else { return };
+    browser.follow(browser::take_links(ctx));
+    let window = frame.winit_window();
+    let mut request = || window.and_then(|w| w.request_activation_token().ok());
+    if let Some(next) = browser.pump(&mut request, std::time::Instant::now()) {
+        ctx.request_repaint_after(next);
+    }
+}
+
+#[cfg(not(any(target_os = "linux", target_os = "freebsd")))]
+fn open_links(_ctx: &egui::Context, _frame: &eframe::Frame) {}
+
+/// eframe's own handling of winit's events, plus the activation tokens the window asked for
+/// (`open_links`), which eframe would drop.
+#[cfg(any(target_os = "linux", target_os = "freebsd"))]
+struct WithTokens<'a>(eframe::EframeWinitApplication<'a>);
+
+#[cfg(any(target_os = "linux", target_os = "freebsd"))]
+impl winit::application::ApplicationHandler<eframe::UserEvent> for WithTokens<'_> {
+    fn resumed(&mut self, event_loop: &winit::event_loop::ActiveEventLoop) {
+        self.0.resumed(event_loop);
+    }
+    fn window_event(
+        &mut self,
+        event_loop: &winit::event_loop::ActiveEventLoop,
+        window_id: winit::window::WindowId,
+        event: winit::event::WindowEvent,
+    ) {
+        match event {
+            winit::event::WindowEvent::ActivationTokenDone { serial, token } => {
+                if let Some(browser) = BROWSER.get() {
+                    browser.token_arrived(&serial, &token.into_raw());
+                }
+            }
+            event => self.0.window_event(event_loop, window_id, event),
+        }
+    }
+    fn new_events(&mut self, event_loop: &winit::event_loop::ActiveEventLoop, cause: winit::event::StartCause) {
+        self.0.new_events(event_loop, cause);
+    }
+    fn user_event(&mut self, event_loop: &winit::event_loop::ActiveEventLoop, event: eframe::UserEvent) {
+        self.0.user_event(event_loop, event);
+    }
+    fn device_event(&mut self, event_loop: &winit::event_loop::ActiveEventLoop, device_id: winit::event::DeviceId, event: winit::event::DeviceEvent) {
+        self.0.device_event(event_loop, device_id, event);
+    }
+    fn about_to_wait(&mut self, event_loop: &winit::event_loop::ActiveEventLoop) {
+        self.0.about_to_wait(event_loop);
+    }
+    fn suspended(&mut self, event_loop: &winit::event_loop::ActiveEventLoop) {
+        self.0.suspended(event_loop);
+    }
+    fn exiting(&mut self, event_loop: &winit::event_loop::ActiveEventLoop) {
+        self.0.exiting(event_loop);
+    }
+    fn memory_warning(&mut self, event_loop: &winit::event_loop::ActiveEventLoop) {
+        self.0.memory_warning(event_loop);
+    }
+}
+
+/// Run one pass of the window: on Linux and FreeBSD on an event loop of our own (kept for the next
+/// pass, as winit allows one per process), so the activation tokens reach `WithTokens`; elsewhere
+/// as eframe runs it.
+#[cfg(any(target_os = "linux", target_os = "freebsd"))]
+fn run_window(app_name: &str, options: eframe::NativeOptions, creator: eframe::AppCreator<'_>) -> eframe::Result {
+    use winit::platform::run_on_demand::EventLoopExtRunOnDemand as _;
+    thread_local!(static EVENT_LOOP: std::cell::RefCell<Option<winit::event_loop::EventLoop<eframe::UserEvent>>> = const { std::cell::RefCell::new(None) });
+    let _ = BROWSER.set(browser::Browser::new(browser::launch));
+    EVENT_LOOP.with_borrow_mut(|event_loop| {
+        let event_loop = match event_loop {
+            Some(event_loop) => event_loop,
+            None => event_loop.insert(winit::event_loop::EventLoop::<eframe::UserEvent>::with_user_event().build()?),
+        };
+        // eframe keeps a start-up failure to itself on this path: the app is only created once the
+        // window is, so a pass that ends without having created it failed to start.
+        let started = Arc::new(AtomicBool::new(false));
+        let seen = started.clone();
+        let creator: eframe::AppCreator<'_> = Box::new(move |cc| {
+            seen.store(true, Ordering::Relaxed);
+            creator(cc)
+        });
+        let mut app = WithTokens(eframe::create_native(app_name, options, creator, event_loop));
+        event_loop.run_app_on_demand(&mut app)?;
+        if started.load(Ordering::Relaxed) { Ok(()) } else { Err(eframe::Error::AppCreation("the window couldn't be started (see the log)".into())) }
+    })
+}
+
+#[cfg(not(any(target_os = "linux", target_os = "freebsd")))]
+fn run_window(app_name: &str, options: eframe::NativeOptions, creator: eframe::AppCreator<'_>) -> eframe::Result {
+    eframe::run_native(app_name, options, creator)
 }
 
 fn native_options(hidden: bool) -> eframe::NativeOptions {
@@ -804,7 +907,7 @@ impl eframe::App for Shell<'_> {
         craft_quit::on_close_request(ctx);
     }
 
-    fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
+    fn ui(&mut self, ui: &mut egui::Ui, frame: &mut eframe::Frame) {
         self.launcher.ui.ui(ui, &mut self.launcher.host);
         ui.ctx().output_mut(|o| {
             o.commands.retain(|cmd| {
@@ -819,6 +922,7 @@ impl eframe::App for Shell<'_> {
                 true
             });
         });
+        open_links(ui.ctx(), frame);
     }
 
     fn raw_input_hook(&mut self, ctx: &egui::Context, raw_input: &mut egui::RawInput) {

@@ -62,6 +62,8 @@
           version = version;
           src = ./.;
           cargoLock.lockFile = ./Cargo.lock;
+          # The winit patch in Cargo.toml is a git dependency.
+          cargoLock.allowBuiltinFetchGit = true;
 
           nativeBuildInputs = with pkgs; [
             pkg-config
