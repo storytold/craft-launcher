@@ -5,6 +5,7 @@
 #![cfg_attr(windows, windows_subsystem = "windows")]
 #![deny(clippy::unwrap_used, clippy::expect_used, clippy::panic, clippy::unimplemented, clippy::todo, clippy::unreachable)]
 
+mod gpu_health;
 mod logging;
 mod motion;
 mod settings_file;
@@ -124,7 +125,9 @@ fn main() -> ExitCode {
         window = launcher.tray.is_none();
     }
     // One pass per window: where a window can't hide, closing to the tray ends its pass and the
-    // launcher carries on without one until the window is asked for again.
+    // launcher carries on without one until the window is asked for again. A window whose
+    // graphics device was lost ends its pass too, and the next one starts at once (#274).
+    let mut reopens = gpu_health::ReopenBudget::default();
     loop {
         if window {
             let result = {
@@ -142,6 +145,14 @@ fn main() -> ExitCode {
             if let Err(e) = result {
                 log::error!("{e}");
                 return ExitCode::FAILURE;
+            }
+            if let Some(hidden_again) = launcher.reopen_window.take() {
+                if reopens.allow(std::time::Instant::now()) {
+                    hidden = hidden_again;
+                    continue;
+                }
+                log::error!("the graphics device keeps being lost; carrying on without a window");
+                launcher.closed_to_tray = launcher.tray.is_some();
             }
             if !std::mem::take(&mut launcher.closed_to_tray) {
                 return ExitCode::SUCCESS;
@@ -548,6 +559,9 @@ struct Launcher {
     started: bool,
     /// The window closed to carry on in the tray, not to quit.
     closed_to_tray: bool,
+    /// The window's graphics device was lost: open a new window (hidden if this is `true`) with a
+    /// fresh device instead of carrying on without one (#274).
+    reopen_window: Option<bool>,
     /// eframe's settings file, which the launcher writes itself while there is no window.
     settings_path: Option<PathBuf>,
     waker: Option<Arc<Waker>>,
@@ -571,6 +585,7 @@ impl Launcher {
             run_again,
             started: false,
             closed_to_tray: false,
+            reopen_window: None,
             settings_path,
             waker: None,
         }
@@ -714,6 +729,8 @@ struct Shell<'a> {
     /// The "show on the current desktop" setting last applied to the window (macOS).
     #[cfg_attr(not(target_os = "macos"), allow(dead_code))]
     applied_follow: Option<bool>,
+    /// The graphics device the window draws with (none in tests).
+    gpu: Option<gpu_health::WindowGpu>,
 }
 
 impl<'a> Shell<'a> {
@@ -721,7 +738,8 @@ impl<'a> Shell<'a> {
         let window_hides = window_can_hide(cc.display_handle().ok().map(|d| d.as_raw()));
         // Started hidden at login but there's no tray to come back from: show the window.
         let visible = !hidden || launcher.tray.is_none();
-        let mut shell = Self { launcher, window_hides, visible: true, quitting: false, applied_follow: None };
+        let gpu = cc.wgpu_render_state.as_ref().map(|rs| gpu_health::WindowGpu::watch(&rs.device));
+        let mut shell = Self { launcher, window_hides, visible: true, quitting: false, applied_follow: None, gpu };
         if !visible {
             shell.put_away(&cc.egui_ctx);
         } else if hidden {
@@ -787,7 +805,7 @@ impl eframe::App for Shell<'_> {
         // The close button puts the window away in the tray unless the user chose to quit. That is
         // the window manager's button or the header's own (no decorations), which asks to close
         // with `ViewportCommand::Close` and arrives here the same way.
-        if ctx.input(|i| i.viewport().close_requested()) && !self.quitting && !self.launcher.closed_to_tray {
+        if ctx.input(|i| i.viewport().close_requested()) && !self.quitting && !self.launcher.closed_to_tray && self.launcher.reopen_window.is_none() {
             match on_close(self.launcher.tray.is_some(), self.launcher.ui.settings.close_to_tray, self.window_hides) {
                 OnClose::Hide => {
                     self.launcher.ui.hidden_to_tray(&mut self.launcher.host);
@@ -819,6 +837,16 @@ impl eframe::App for Shell<'_> {
                 true
             });
         });
+        // Last, after everything drawn this frame: egui-wgpu can't draw on a lost device, and a
+        // frame with shapes panics inside it. Draw nothing and swap in a new window (#274).
+        if self.gpu.as_ref().is_some_and(gpu_health::WindowGpu::lost) {
+            ui.ctx().graphics_mut(|g| *g = Default::default());
+            if self.launcher.reopen_window.is_none() {
+                log::error!("opening a new window with a fresh graphics device");
+                self.launcher.reopen_window = Some(!self.visible);
+                ui.ctx().send_viewport_cmd(egui::ViewportCommand::Close);
+            }
+        }
     }
 
     fn raw_input_hook(&mut self, ctx: &egui::Context, raw_input: &mut egui::RawInput) {
@@ -1087,7 +1115,7 @@ mod tests {
     fn quitting_overrides_a_close_to_the_tray() {
         let (mut launcher, _show, _) = launcher();
         let ctx = launcher.windowless.clone();
-        let mut shell = Shell { launcher: &mut launcher, window_hides: false, visible: true, quitting: false, applied_follow: None };
+        let mut shell = Shell { launcher: &mut launcher, window_hides: false, visible: true, quitting: false, applied_follow: None, gpu: None };
         shell.put_away(&ctx);
         assert!(shell.launcher.closed_to_tray);
         shell.quit(&ctx);
@@ -1098,7 +1126,7 @@ mod tests {
     fn a_window_that_hides_is_not_closed_to_the_tray() {
         let (mut launcher, _show, _) = launcher();
         let ctx = launcher.windowless.clone();
-        let mut shell = Shell { launcher: &mut launcher, window_hides: true, visible: true, quitting: false, applied_follow: None };
+        let mut shell = Shell { launcher: &mut launcher, window_hides: true, visible: true, quitting: false, applied_follow: None, gpu: None };
         shell.put_away(&ctx);
         assert!(!shell.visible);
         assert!(!shell.launcher.closed_to_tray);
