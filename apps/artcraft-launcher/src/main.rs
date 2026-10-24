@@ -13,6 +13,8 @@ mod spaces;
 #[cfg(target_os = "linux")]
 mod system_theme;
 mod tray;
+#[cfg(not(any(windows, target_os = "macos")))]
+mod x11_background;
 
 use std::path::PathBuf;
 use std::process::ExitCode;
@@ -26,7 +28,7 @@ use artcraft_launcher_native::single_instance::{self, Instance};
 use artcraft_launcher_native::{NativeBackend, login};
 use artcraft_launcher_ui_egui::theme::Tokens;
 use artcraft_launcher_ui_egui::{Host, LauncherUi, Settings, TitleBar};
-use eframe::wgpu::rwh::{HasDisplayHandle, RawDisplayHandle};
+use eframe::wgpu::rwh::{HasDisplayHandle, HasWindowHandle, RawDisplayHandle, RawWindowHandle};
 
 const APP_ID: &str = "ai.storyteller.artcraft-launcher";
 const SETTINGS_KEY: &str = "settings";
@@ -390,6 +392,17 @@ fn window_can_hide(display: Option<RawDisplayHandle>) -> bool {
     !matches!(display, Some(RawDisplayHandle::Wayland(_)))
 }
 
+/// The window's X11 id, when it is an X11 window.
+// Xlib's window id is a `c_ulong`: 64-bit on Linux, so it needs the check, but 32-bit on Windows.
+#[cfg_attr(windows, allow(clippy::useless_conversion))]
+fn x11_window(window: Option<RawWindowHandle>) -> Option<u32> {
+    match window? {
+        RawWindowHandle::Xlib(w) => u32::try_from(w.window).ok(),
+        RawWindowHandle::Xcb(w) => Some(w.window.get()),
+        _ => None,
+    }
+}
+
 /// [`window_can_hide`] before there is a window, from the environment `env` reads: winit opens a
 /// Wayland window wherever `WAYLAND_DISPLAY` or `WAYLAND_SOCKET` is set (Linux and the BSDs).
 fn window_can_hide_here(env: impl Fn(&str) -> Option<std::ffi::OsString>) -> bool {
@@ -714,6 +727,9 @@ struct Shell<'a> {
     /// The "show on the current desktop" setting last applied to the window (macOS).
     #[cfg_attr(not(target_os = "macos"), allow(dead_code))]
     applied_follow: Option<bool>,
+    /// The X11 window and the background colour last set on it (Linux and the BSDs on X11).
+    #[cfg_attr(any(windows, target_os = "macos"), allow(dead_code))]
+    x11: Option<(u32, Option<[u8; 3]>)>,
 }
 
 impl<'a> Shell<'a> {
@@ -721,7 +737,8 @@ impl<'a> Shell<'a> {
         let window_hides = window_can_hide(cc.display_handle().ok().map(|d| d.as_raw()));
         // Started hidden at login but there's no tray to come back from: show the window.
         let visible = !hidden || launcher.tray.is_none();
-        let mut shell = Self { launcher, window_hides, visible: true, quitting: false, applied_follow: None };
+        let x11 = x11_window(cc.window_handle().ok().map(|w| w.as_raw())).map(|window| (window, None));
+        let mut shell = Self { launcher, window_hides, visible: true, quitting: false, applied_follow: None, x11 };
         if !visible {
             shell.put_away(&cc.egui_ctx);
         } else if hidden {
@@ -776,6 +793,15 @@ impl eframe::App for Shell<'_> {
             let on = self.launcher.ui.settings.show_on_current_desktop;
             spaces::follow_current_desktop(on);
             self.applied_follow = Some(on);
+        }
+        #[cfg(not(any(windows, target_os = "macos")))]
+        if let Some((window, applied)) = &mut self.x11 {
+            let bg = Tokens::get(ctx).bg;
+            let rgb = [bg.r(), bg.g(), bg.b()];
+            if *applied != Some(rgb) {
+                x11_background::set(*window, rgb);
+                *applied = Some(rgb);
+            }
         }
         for request in requests {
             match request {
@@ -1089,7 +1115,7 @@ mod tests {
     fn quitting_overrides_a_close_to_the_tray() {
         let (mut launcher, _show, _) = launcher();
         let ctx = launcher.windowless.clone();
-        let mut shell = Shell { launcher: &mut launcher, window_hides: false, visible: true, quitting: false, applied_follow: None };
+        let mut shell = Shell { launcher: &mut launcher, window_hides: false, visible: true, quitting: false, applied_follow: None, x11: None };
         shell.put_away(&ctx);
         assert!(shell.launcher.closed_to_tray);
         shell.quit(&ctx);
@@ -1100,7 +1126,7 @@ mod tests {
     fn a_window_that_hides_is_not_closed_to_the_tray() {
         let (mut launcher, _show, _) = launcher();
         let ctx = launcher.windowless.clone();
-        let mut shell = Shell { launcher: &mut launcher, window_hides: true, visible: true, quitting: false, applied_follow: None };
+        let mut shell = Shell { launcher: &mut launcher, window_hides: true, visible: true, quitting: false, applied_follow: None, x11: None };
         shell.put_away(&ctx);
         assert!(!shell.visible);
         assert!(!shell.launcher.closed_to_tray);
@@ -1198,5 +1224,16 @@ mod tests {
         // egui would ask for the discrete GPU: on a PRIME laptop that's not the desktop's (issue #69).
         let expected = PowerPreference::from_env().unwrap_or(PowerPreference::None);
         assert_eq!(setup.power_preference, expected);
+    }
+
+    #[test]
+    fn only_x11_windows_get_an_x11_background() {
+        use eframe::wgpu::rwh::{WaylandWindowHandle, XcbWindowHandle, XlibWindowHandle};
+        let xcb = XcbWindowHandle::new(std::num::NonZeroU32::MIN.saturating_add(0x08a0_0003));
+        assert_eq!(x11_window(Some(RawWindowHandle::Xcb(xcb))), Some(0x08a0_0004));
+        assert_eq!(x11_window(Some(RawWindowHandle::Xlib(XlibWindowHandle::new(0x08a0_0004)))), Some(0x08a0_0004));
+        let wayland = WaylandWindowHandle::new(NonNull::<std::ffi::c_void>::dangling());
+        assert_eq!(x11_window(Some(RawWindowHandle::Wayland(wayland))), None);
+        assert_eq!(x11_window(None), None);
     }
 }
