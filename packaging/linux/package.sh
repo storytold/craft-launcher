@@ -25,7 +25,9 @@ APP_ID=ai.storyteller.artcraft-launcher
 PKG=artcraft-launcher
 # Verify a downloaded file's sha256 against its expected hex digest.
 check_sha256() {
-  printf '%s  %s\n' "$1" "$2" | sha256sum -c -
+  local expected="$1"
+  local target="$2"
+  printf '%s  %s\n' "$expected" "$target" | sha256sum -c -
 }
 
 SKIP_BUILD=0
