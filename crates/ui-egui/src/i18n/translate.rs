@@ -48,6 +48,33 @@ pub fn t_id<'a>(id: &str, label: &'a str) -> &'a str {
     tr_id(current(), id, label)
 }
 
+/// Words that stay in English in every catalog besides the `…Craft` names, and so keep English
+/// upper case in a language that cases `i` differently.
+const ENGLISH_WORDS: [&str; 7] = ["Suite", "GitHub", "Discord", "Finder", "Windows", "Linux", "FreeBSD"];
+
+/// `s` in upper case for `lang`. Turkish dots its capital i (`indir` → `İNDİR`; `ı` → `I`), but
+/// not in the names that stay in English (`GitHub` → `GITHUB`, `DesignCraft` → `DESIGNCRAFT`).
+pub fn upper(lang: Lang, s: &str) -> String {
+    if lang != Lang::TR {
+        return s.to_uppercase();
+    }
+    let mut out = String::with_capacity(s.len());
+    let mut rest = s;
+    while !rest.is_empty() {
+        // Alternate runs of letters and digits (a word) and everything else.
+        let in_word = rest.starts_with(char::is_alphanumeric);
+        let end = rest.find(|c: char| c.is_alphanumeric() != in_word).unwrap_or(rest.len());
+        let (run, tail) = rest.split_at(end);
+        if !in_word || run.ends_with("Craft") || ENGLISH_WORDS.contains(&run) {
+            out.push_str(&run.to_uppercase());
+        } else {
+            out.extend(run.chars().flat_map(|c| if c == 'i' { 'İ'.to_uppercase() } else { c.to_uppercase() }));
+        }
+        rest = tail;
+    }
+    out
+}
+
 /// Fill `{name}` placeholders. Unknown placeholders are left as written.
 pub fn fmt(template: &str, args: &[(&str, &str)]) -> String {
     let mut out = template.to_string();
