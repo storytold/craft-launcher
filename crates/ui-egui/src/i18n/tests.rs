@@ -273,6 +273,20 @@ fn locale_tags_resolve() {
 }
 
 #[test]
+fn an_abusive_locale_tag_is_bounded() {
+    // The web shell reads `#?lang=` straight from the URL. A tag of thousands of one-character
+    // subtags must not trigger quadratic prefix allocation (CWE-400): it is rejected outright,
+    // and resolution still falls back to English.
+    let huge = "a-".repeat(100_000);
+    assert_eq!(lang_from_tag(&huge), None);
+    assert_eq!(super::detect::first_supported([huge.as_str(), "en-US"]), Some(Lang::EN));
+    // An over-long single tag is rejected too, without scanning its whole length into candidates.
+    assert_eq!(lang_from_tag(&"x".repeat(10_000)), None);
+    // Legitimate multi-subtag tags still resolve.
+    assert_eq!(lang_from_tag("zh-Hans-CN"), Some(Lang::ZH_CN));
+}
+
+#[test]
 fn german_locales_resolve() {
     for tag in ["de", "de-DE", "de_DE.UTF-8", "de-AT", "de-CH", "de_CH.UTF-8", "DE_de"] {
         assert_eq!(lang_from_tag(tag), Some(Lang::DE), "{tag}");

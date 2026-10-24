@@ -184,63 +184,74 @@ impl LauncherUi {
         });
 
         if self.platform.is_some_and(|p| p.os == Os::Windows) {
-            sheet::panel(ui, tl!("Installing on Windows"), |ui| {
-                let mut choice = self
-                    .settings
-                    .preferred_kinds
-                    .first()
-                    .copied()
-                    .filter(|kind| matches!(kind, PackageKind::Msi | PackageKind::PortableZip))
-                    .or(Some(PackageKind::Msi));
-                row(ui, tl!("Install new apps as"), 210.0, &mut |ui| {
-                    let label = choice.map_or_else(|| crate::i18n::t(PackageKind::Msi.label()), |kind| crate::i18n::t(kind.label()));
-                    egui::ComboBox::from_id_salt("windows-kind").selected_text(label).width(210.0).show_ui(ui, |ui| {
-                        for kind in [PackageKind::Msi, PackageKind::PortableZip] {
-                            ui.selectable_value(&mut choice, Some(kind), crate::i18n::t(kind.label()));
-                        }
-                    });
-                });
-                self.settings.preferred_kinds = choice.into_iter().collect();
-                note(ui, tl!("Updates always use the format an app was installed with."));
-            });
+            self.windows_kinds(ui);
         }
 
         if self.platform.is_some_and(|p| p.os == Os::Linux) {
-            sheet::panel(ui, tl!("Installing on Linux"), |ui| {
-                let is_flatpak = crate::settings::is_flatpak_sandbox();
-                let is_appimage = crate::settings::is_appimage();
-                let default_kind = if is_flatpak {
-                    Some(PackageKind::Flatpak)
-                } else if is_appimage {
-                    Some(PackageKind::AppImage)
-                } else {
-                    None
-                };
-                let mut choice = self.settings.preferred_kinds.first().copied().or(default_kind);
-                row(ui, tl!("Install new apps as"), 210.0, &mut |ui| {
-                    let default_label = match default_kind {
-                        Some(k) => crate::i18n::t(k.label()),
-                        None => tl!("System package (recommended)"),
-                    };
-                    let label = choice.map_or(default_label, |k| crate::i18n::t(k.label()));
-                    egui::ComboBox::from_id_salt("kind").selected_text(label).width(210.0).show_ui(ui, |ui| {
-                        if !is_flatpak && !is_appimage {
-                            ui.selectable_value(&mut choice, None, tl!("System package (recommended)"));
-                        }
-                        for k in [PackageKind::Deb, PackageKind::Rpm, PackageKind::ArchPkg, PackageKind::Flatpak, PackageKind::AppImage] {
-                            ui.selectable_value(&mut choice, Some(k), crate::i18n::t(k.label()));
-                        }
-                        // The tarball is unpacked and run inside the launcher's own sandbox, so it
-                        // is only ever on offer there (as the fallback when the host has no Flatpak).
-                        if is_flatpak {
-                            ui.selectable_value(&mut choice, Some(PackageKind::TarGz), crate::i18n::t(PackageKind::TarGz.label()));
-                        }
-                    });
-                });
-                self.settings.preferred_kinds = choice.into_iter().collect();
-                note(ui, tl!("Updates always use the format an app was installed with."));
-            });
+            self.linux_kinds(ui);
         }
+    }
+
+    /// The Windows install-format chooser: an MSI or a portable ZIP.
+    fn windows_kinds(&mut self, ui: &mut Ui) {
+        sheet::panel(ui, tl!("Installing on Windows"), |ui| {
+            let mut choice = self
+                .settings
+                .preferred_kinds
+                .first()
+                .copied()
+                .filter(|kind| matches!(kind, PackageKind::Msi | PackageKind::PortableZip))
+                .or(Some(PackageKind::Msi));
+            row(ui, tl!("Install new apps as"), 210.0, &mut |ui| {
+                let label = choice.map_or_else(|| crate::i18n::t(PackageKind::Msi.label()), |kind| crate::i18n::t(kind.label()));
+                egui::ComboBox::from_id_salt("windows-kind").selected_text(label).width(210.0).show_ui(ui, |ui| {
+                    for kind in [PackageKind::Msi, PackageKind::PortableZip] {
+                        ui.selectable_value(&mut choice, Some(kind), crate::i18n::t(kind.label()));
+                    }
+                });
+            });
+            self.settings.preferred_kinds = choice.into_iter().collect();
+            note(ui, tl!("Updates always use the format an app was installed with."));
+        });
+    }
+
+    /// The Linux install-format chooser: system packages, Flatpak, AppImage, and the sandbox-only
+    /// tarball, with the format the launcher itself runs with as the default suggestion.
+    fn linux_kinds(&mut self, ui: &mut Ui) {
+        sheet::panel(ui, tl!("Installing on Linux"), |ui| {
+            let is_flatpak = crate::settings::is_flatpak_sandbox();
+            let is_appimage = crate::settings::is_appimage();
+            let default_kind = if is_flatpak {
+                Some(PackageKind::Flatpak)
+            } else if is_appimage {
+                Some(PackageKind::AppImage)
+            } else {
+                None
+            };
+            let mut choice = self.settings.preferred_kinds.first().copied().or(default_kind);
+            row(ui, tl!("Install new apps as"), 210.0, &mut |ui| {
+                let default_label = match default_kind {
+                    Some(k) => crate::i18n::t(k.label()),
+                    None => tl!("System package (recommended)"),
+                };
+                let label = choice.map_or(default_label, |k| crate::i18n::t(k.label()));
+                egui::ComboBox::from_id_salt("kind").selected_text(label).width(210.0).show_ui(ui, |ui| {
+                    if !is_flatpak && !is_appimage {
+                        ui.selectable_value(&mut choice, None, tl!("System package (recommended)"));
+                    }
+                    for k in [PackageKind::Deb, PackageKind::Rpm, PackageKind::ArchPkg, PackageKind::Flatpak, PackageKind::AppImage] {
+                        ui.selectable_value(&mut choice, Some(k), crate::i18n::t(k.label()));
+                    }
+                    // The tarball is unpacked and run inside the launcher's own sandbox, so it
+                    // is only ever on offer there (as the fallback when the host has no Flatpak).
+                    if is_flatpak {
+                        ui.selectable_value(&mut choice, Some(PackageKind::TarGz), crate::i18n::t(PackageKind::TarGz.label()));
+                    }
+                });
+            });
+            self.settings.preferred_kinds = choice.into_iter().collect();
+            note(ui, tl!("Updates always use the format an app was installed with."));
+        });
     }
 
     fn settings_background(&mut self, ui: &mut Ui, host: &mut dyn Host) {

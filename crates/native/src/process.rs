@@ -1,5 +1,6 @@
 //! Starting programs: the Craft Apps themselves, the file manager, and helper tools.
 
+use std::ffi::OsStr;
 use std::path::Path;
 use std::process::{Command, Stdio};
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -429,7 +430,7 @@ fn explorer_select_arg(path: &Path) -> Option<std::ffi::OsString> {
 /// Whether a process started from inside `path` (an exe, an AppImage, or a `.app`) is running.
 pub fn is_running(path: &Path) -> bool {
     if cfg!(windows) {
-        let Some(name) = path.file_name().and_then(|n| n.to_str()) else { return false };
+        let Some(name) = path.file_name().and_then(OsStr::to_str) else { return false };
         let filter = format!("IMAGENAME eq {name}");
         capture("tasklist", &["/FI", &filter, "/NH", "/FO", "CSV"], Duration::from_secs(5))
             .is_some_and(|out| out.to_ascii_lowercase().contains(&name.to_ascii_lowercase()))

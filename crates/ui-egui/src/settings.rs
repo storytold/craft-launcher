@@ -124,7 +124,7 @@ pub struct Settings {
 
 impl Settings {
     /// Machine-readable code for "follow the system language".
-    pub const LANGUAGE_AUTO: &'static str = "auto";
+    pub const LANGUAGE_AUTO: &str = "auto";
 
     /// Clear saved catalog filters whose controls were removed from the toolbar.
     pub fn migrate(&mut self) {

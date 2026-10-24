@@ -309,7 +309,8 @@ fn replace_appimage(new: &Path, path: &Path) -> Result<(), String> {
     let dir = path.parent().ok_or("the AppImage isn't in a folder")?;
     let staged = dir.join(format!(".{}.update", path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default()));
     std::fs::copy(new, &staged).map_err(|e| format!("couldn't write next to {} ({e})", path.display()))?;
-    std::fs::set_permissions(&staged, std::fs::Permissions::from_mode(0o755)).map_err(|e| e.to_string())?;
+    // The replacement AppImage must be executable; 0o755 is not group/world-writable.
+    std::fs::set_permissions(&staged, std::fs::Permissions::from_mode(0o755)).map_err(|e| e.to_string())?; // NOSONAR
     std::fs::rename(&staged, path).map_err(|e| {
         let _ = std::fs::remove_file(&staged);
         format!("couldn't replace {} ({e})", path.display())

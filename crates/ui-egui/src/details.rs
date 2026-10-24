@@ -9,6 +9,7 @@ use std::sync::Arc;
 use artcraft_launcher_core::details::AppDetails;
 use artcraft_launcher_core::platform::pick_asset;
 use artcraft_launcher_core::protocol::Command;
+use artcraft_launcher_core::status::AppStatus;
 use egui::{Color32, CornerRadius, Id, Margin, Order, Rect, RichText, Sense, Stroke, Ui, emath::easing, pos2, vec2};
 
 use crate::app::LauncherUi;
@@ -40,7 +41,10 @@ pub(crate) enum Picture {
 impl Picture {
     pub(crate) fn from_result(result: Result<Vec<u8>, String>) -> Self {
         match result {
-            Ok(bytes) => Self::Ready(bytes.into()),
+            // The backend already enforces the pixel budget; re-check here so bytes can never
+            // reach egui's image loader (which allocates from the JPEG header) unvalidated.
+            Ok(bytes) if artcraft_launcher_core::details::screenshot_within_budget(&bytes) => Self::Ready(bytes.into()),
+            Ok(_) => Self::Failed("the picture's dimensions are too large".into()),
             Err(why) => Self::Failed(why),
         }
     }
@@ -109,7 +113,9 @@ impl LauncherUi {
             self.detail_shown = None;
             return;
         }
-        let Some(entry) = self.entry(&id).cloned() else { return };
+        if self.entry(&id).is_none() {
+            return;
+        }
         if !open {
             self.detail_zoom = false;
         }
@@ -120,99 +126,112 @@ impl LauncherUi {
         let area = ctx.content_rect();
         let width = (area.width() - 64.0).clamp(480.0, 1280.0).min((area.width() - 16.0).max(1.0));
         let height = (area.height() - 40.0).clamp(320.0, 1000.0).min((area.height() - 8.0).max(1.0));
-        // Wide enough, the page reads in two columns: the pictures and the story, then the facts.
-        let wide = width >= theme::PAGE_COLUMNS_FROM;
         let panel = Rect::from_center_size(area.center() + vec2(0.0, (1.0 - k) * 24.0), vec2(width, height));
-        let (previous, next) = self.neighbour_apps(&id);
         self.details_scrim(ctx, area, k, &t);
+        self.details_page(ctx, details, &id, panel, k, &t);
+        if self.detail_zoom && open {
+            self.lightbox(ctx, details, &t);
+        }
+    }
+
+    /// The card: the panel's chrome and the scrollable page inside it, at `panel`.
+    fn details_page(&mut self, ctx: &egui::Context, details: &AppDetails, id: &str, panel: Rect, k: f32, t: &Tokens) {
+        let entry = self.entry(id).cloned();
+        let Some(entry) = entry else { return };
+        let wide = panel.width() >= theme::PAGE_COLUMNS_FROM;
+        let (previous, next) = self.neighbour_apps(id);
         egui::Area::new(Id::new("details-drawer")).order(Order::Foreground).fixed_pos(panel.min).constrain(false).show(ctx, |ui| {
             ui.set_opacity(k.clamp(0.0, 1.0));
             let painter = ui.painter();
-            painter.add(theme::shadow(&t).as_shape(panel, CornerRadius::ZERO));
+            painter.add(theme::shadow(t).as_shape(panel, CornerRadius::ZERO));
             painter.rect_filled(panel, CornerRadius::ZERO, t.bg);
             painter.rect_stroke(panel, CornerRadius::ZERO, Stroke::new(1.0, t.line_strong), egui::StrokeKind::Inside);
 
             ui.set_min_size(panel.size());
             ui.set_max_size(panel.size());
             // A bar that stays on screen says there is more below the fold; in the app's colour.
-            let page_visuals = crate::sheet::accent_scroll(ui, &t, t.app_ink(entry.app));
+            let page_visuals = crate::sheet::accent_scroll(ui, t, t.app_ink(entry.app));
             // One scroll position per app, so the next app opens at its top.
-            egui::ScrollArea::vertical().id_salt(("details-scroll", id.clone())).auto_shrink([false, false]).show(ui, |ui| {
+            egui::ScrollArea::vertical().id_salt(("details-scroll", id.to_string())).auto_shrink([false, false]).show(ui, |ui| {
                 // The bar's colours are for the bar alone.
                 *ui.visuals_mut() = page_visuals;
                 ui.set_width(ui.available_width());
                 ui.spacing_mut().item_spacing.y = 8.0;
-                self.details_hero(ui, &entry, details, &t, (previous.as_deref(), next.as_deref()), wide);
+                self.details_hero(ui, &entry, details, t, (previous.as_deref(), next.as_deref()), wide);
                 egui::Frame::new().inner_margin(Margin::same(PAD as i8)).show(ui, |ui| {
-                    ui.set_width(ui.available_width());
-                    let app_color = rgb(entry.app.color);
-                    if wide && details.shots.is_empty() {
-                        // No pictures to fill the left side: the story and features share it, and the
-                        // release facts take the right, so neither side is left empty.
-                        let gap = theme::COLUMN_GAP;
-                        let total = ui.available_width();
-                        let left_w = ((total - gap) * 0.58).floor();
-                        let right_w = total - gap - left_w;
-                        ui.horizontal_top(|ui| {
-                            ui.spacing_mut().item_spacing.x = gap;
-                            ui.vertical(|ui| {
-                                ui.set_width(left_w);
-                                ui.spacing_mut().item_spacing.y = 8.0;
-                                for p in details.paragraphs() {
-                                    ui.add(egui::Label::new(RichText::new(p).size(14.5).color(t.ink)).wrap());
-                                }
-                                ui.add_space(14.0);
-                                features(ui, details, entry.app, &t);
-                            });
-                            ui.vertical(|ui| {
-                                ui.set_width(right_w);
-                                ui.spacing_mut().item_spacing.y = 8.0;
-                                self.release_section(ui, &entry, details, &t, 2);
-                            });
-                        });
-                    } else if wide {
-                        let gap = theme::COLUMN_GAP;
-                        let total = ui.available_width();
-                        let left_w = ((total - gap) * 0.58).floor();
-                        let right_w = total - gap - left_w;
-                        ui.horizontal_top(|ui| {
-                            ui.spacing_mut().item_spacing.x = gap;
-                            ui.vertical(|ui| {
-                                ui.set_width(left_w);
-                                ui.spacing_mut().item_spacing.y = 8.0;
-                                self.gallery(ui, details, &t, app_color);
-                                ui.add_space(8.0);
-                                for p in details.paragraphs() {
-                                    ui.add(egui::Label::new(RichText::new(p).size(14.5).color(t.ink)).wrap());
-                                }
-                            });
-                            ui.vertical(|ui| {
-                                ui.set_width(right_w);
-                                ui.spacing_mut().item_spacing.y = 8.0;
-                                features(ui, details, entry.app, &t);
-                            });
-                        });
-                        // The release gets the full width under both columns, so neither column
-                        // is left with an empty tail: its facts sit in one row of four.
-                        ui.add_space(22.0);
-                        ui.painter().hline(ui.max_rect().x_range(), ui.cursor().top() - 11.0, t.hairline());
-                        self.release_section(ui, &entry, details, &t, 4);
-                    } else {
-                        self.gallery(ui, details, &t, app_color);
-                        ui.add_space(8.0);
-                        for p in details.paragraphs() {
-                            ui.add(egui::Label::new(RichText::new(p).size(14.5).color(t.ink)).wrap());
-                        }
-                        ui.add_space(14.0);
-                        features(ui, details, entry.app, &t);
-                        ui.add_space(14.0);
-                        self.release_section(ui, &entry, details, &t, 2);
-                    }
+                    self.details_body(ui, &entry, details, wide, t);
                 });
             });
         });
-        if self.detail_zoom && open {
-            self.lightbox(ctx, details, &t);
+    }
+
+    /// The page below the hero: the story, pictures, features and release facts, in two columns
+    /// when the card is wide (release facts under both when there are pictures to make columns)
+    /// and stacked when it isn't.
+    fn details_body(&mut self, ui: &mut Ui, entry: &AppEntry, details: &AppDetails, wide: bool, t: &Tokens) {
+        ui.set_width(ui.available_width());
+        let app_color = rgb(entry.app.color);
+        if wide && details.shots.is_empty() {
+            // No pictures to fill the left side: the story and features share it, and the
+            // release facts take the right, so neither side is left empty.
+            let gap = theme::COLUMN_GAP;
+            let total = ui.available_width();
+            let left_w = ((total - gap) * 0.58).floor();
+            let right_w = total - gap - left_w;
+            ui.horizontal_top(|ui| {
+                ui.spacing_mut().item_spacing.x = gap;
+                ui.vertical(|ui| {
+                    ui.set_width(left_w);
+                    ui.spacing_mut().item_spacing.y = 8.0;
+                    for p in details.paragraphs() {
+                        ui.add(egui::Label::new(RichText::new(p).size(14.5).color(t.ink)).wrap());
+                    }
+                    ui.add_space(14.0);
+                    features(ui, details, entry.app, t);
+                });
+                ui.vertical(|ui| {
+                    ui.set_width(right_w);
+                    ui.spacing_mut().item_spacing.y = 8.0;
+                    self.release_section(ui, entry, details, t, 2);
+                });
+            });
+        } else if wide {
+            let gap = theme::COLUMN_GAP;
+            let total = ui.available_width();
+            let left_w = ((total - gap) * 0.58).floor();
+            let right_w = total - gap - left_w;
+            ui.horizontal_top(|ui| {
+                ui.spacing_mut().item_spacing.x = gap;
+                ui.vertical(|ui| {
+                    ui.set_width(left_w);
+                    ui.spacing_mut().item_spacing.y = 8.0;
+                    self.gallery(ui, details, t, app_color);
+                    ui.add_space(8.0);
+                    for p in details.paragraphs() {
+                        ui.add(egui::Label::new(RichText::new(p).size(14.5).color(t.ink)).wrap());
+                    }
+                });
+                ui.vertical(|ui| {
+                    ui.set_width(right_w);
+                    ui.spacing_mut().item_spacing.y = 8.0;
+                    features(ui, details, entry.app, t);
+                });
+            });
+            // The release gets the full width under both columns, so neither column
+            // is left with an empty tail: its facts sit in one row of four.
+            ui.add_space(22.0);
+            ui.painter().hline(ui.max_rect().x_range(), ui.cursor().top() - 11.0, t.hairline());
+            self.release_section(ui, entry, details, t, 4);
+        } else {
+            self.gallery(ui, details, t, app_color);
+            ui.add_space(8.0);
+            for p in details.paragraphs() {
+                ui.add(egui::Label::new(RichText::new(p).size(14.5).color(t.ink)).wrap());
+            }
+            ui.add_space(14.0);
+            features(ui, details, entry.app, t);
+            ui.add_space(14.0);
+            self.release_section(ui, entry, details, t, 2);
         }
     }
 
@@ -286,52 +305,9 @@ impl LauncherUi {
             ui.set_width(ui.available_width());
             ui.horizontal(|ui| {
                 widgets::hud(ui, tl!("App details"), t.faint);
-                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    if widgets::glyph_button(ui, Glyph::Close, tl!("Close (Esc)")).clicked() {
-                        self.detail = None;
-                    }
-                    // Right to left: next, then previous, so they read as a pair before the close.
-                    if let (_, Some(next)) = around
-                        && step_button(ui, false, tl!("Next app"), t)
-                    {
-                        self.detail = Some(next.to_string());
-                    }
-                    if let (Some(previous), _) = around
-                        && step_button(ui, true, tl!("Previous app"), t)
-                    {
-                        self.detail = Some(previous.to_string());
-                    }
-                });
+                self.hero_top_row(ui, around, t);
             });
-            ui.add_space(10.0);
-            let hero_w = ui.available_width();
-            ui.horizontal(|ui| {
-                if let Some(icon) = crate::icons::app(app.id) {
-                    ui.add(egui::Image::new(icon).fit_to_exact_size(vec2(ICON, ICON)));
-                }
-                ui.add_space(8.0);
-                // Beside the buttons when the page is wide: the text keeps what they leave.
-                let text_w = if wide { (hero_w - ICON - 16.0 - ACTION_W - 24.0).max(200.0) } else { (hero_w - ICON - 16.0).max(40.0) };
-                ui.vertical(|ui| {
-                    ui.set_width(text_w);
-                    ui.spacing_mut().item_spacing.y = 5.0;
-                    widgets::wordmark(ui, app, theme::PAGE_TITLE);
-                    ui.add(egui::Label::new(RichText::new(details.headline).size(15.0).color(t.ink)).wrap());
-                    // "Version 0.5.0 · Oct 8, 2026", or the installed-versus-latest line.
-                    let version = crate::views::version_line(entry, &status);
-                    if !version.trim().is_empty() {
-                        ui.label(RichText::new(version).size(12.5).color(t.muted));
-                    }
-                });
-                if wide {
-                    // The main button and its menu, at the right, level with the name.
-                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        ui.allocate_ui_with_layout(vec2(ACTION_W, theme::CONTROL_H), egui::Layout::left_to_right(egui::Align::Center), |ui| {
-                            self.actions_in(ui, entry, &status, ACTION_W, false);
-                        });
-                    });
-                }
-            });
+            self.hero_identity(ui, entry, details, &status, t, wide);
             ui.add_space(14.0);
             // The menu leaves out the links: they are the buttons right below.
             if !wide {
@@ -343,6 +319,60 @@ impl LauncherUi {
         let r = hero.response.rect;
         ui.painter().rect_filled(Rect::from_min_size(r.min, vec2(r.width(), 2.0)), CornerRadius::ZERO, app_color);
         ui.painter().hline(r.x_range(), r.bottom() - 0.5, t.hairline());
+    }
+
+    /// The close button and the previous / next pair, right-aligned in the hero's top row.
+    fn hero_top_row(&mut self, ui: &mut Ui, around: (Option<&str>, Option<&str>), t: &Tokens) {
+        // Right to left: next, then previous, so they read as a pair before the close.
+        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+            if widgets::glyph_button(ui, Glyph::Close, tl!("Close (Esc)")).clicked() {
+                self.detail = None;
+            }
+            if let (_, Some(next)) = around
+                && step_button(ui, false, tl!("Next app"), t)
+            {
+                self.detail = Some(next.to_string());
+            }
+            if let (Some(previous), _) = around
+                && step_button(ui, true, tl!("Previous app"), t)
+            {
+                self.detail = Some(previous.to_string());
+            }
+        });
+    }
+
+    /// The icon, name, headline and version line, with the main action button beside them when
+    /// the page is wide.
+    fn hero_identity(&mut self, ui: &mut Ui, entry: &AppEntry, details: &AppDetails, status: &AppStatus, t: &Tokens, wide: bool) {
+        let app = entry.app;
+        let hero_w = ui.available_width();
+        ui.horizontal(|ui| {
+            if let Some(icon) = crate::icons::app(app.id) {
+                ui.add(egui::Image::new(icon).fit_to_exact_size(vec2(ICON, ICON)));
+            }
+            ui.add_space(8.0);
+            // Beside the buttons when the page is wide: the text keeps what they leave.
+            let text_w = if wide { (hero_w - ICON - 16.0 - ACTION_W - 24.0).max(200.0) } else { (hero_w - ICON - 16.0).max(40.0) };
+            ui.vertical(|ui| {
+                ui.set_width(text_w);
+                ui.spacing_mut().item_spacing.y = 5.0;
+                widgets::wordmark(ui, app, theme::PAGE_TITLE);
+                ui.add(egui::Label::new(RichText::new(details.headline).size(15.0).color(t.ink)).wrap());
+                // "Version 0.5.0 · Oct 8, 2026", or the installed-versus-latest line.
+                let version = crate::views::version_line(entry, status);
+                if !version.trim().is_empty() {
+                    ui.label(RichText::new(version).size(12.5).color(t.muted));
+                }
+            });
+            if wide {
+                // The main button and its menu, at the right, level with the name.
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    ui.allocate_ui_with_layout(vec2(ACTION_W, theme::CONTROL_H), egui::Layout::left_to_right(egui::Align::Center), |ui| {
+                        self.actions_in(ui, entry, status, ACTION_W, false);
+                    });
+                });
+            }
+        });
     }
 
     /// The facts of the latest release in cells, then its notes.

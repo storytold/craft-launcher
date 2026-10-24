@@ -141,7 +141,7 @@ fn strip_cli_prefix<'a>(line: &'a str, prefix: &str) -> Option<&'a str> {
 pub mod macos {
     use std::path::{Path, PathBuf};
 
-    use super::*;
+    use super::{CraftApp, InstallSource, Installed, version};
 
     /// Where a `.app` might be: the system and the user's Applications folders.
     pub fn candidates(app: &CraftApp) -> Vec<PathBuf> {
@@ -180,7 +180,7 @@ pub mod windows {
     use winreg::RegKey;
     use winreg::enums::{HKEY_CURRENT_USER, HKEY_LOCAL_MACHINE, KEY_READ, KEY_WOW64_32KEY, KEY_WOW64_64KEY};
 
-    use super::*;
+    use super::{CraftApp, InstallSource, Installed, exe_candidates, is_installer_entry, version};
 
     const UNINSTALL: &str = r"SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall";
 
@@ -286,7 +286,7 @@ pub mod linux {
     use std::path::{Path, PathBuf};
     use std::time::Duration;
 
-    use super::*;
+    use super::{CraftApp, InstallSource, Installed, Snapshot, appimage_version, parse_cli_version, version};
     use crate::packages::{self, Package};
     use crate::process::capture;
 
@@ -438,7 +438,7 @@ pub mod freebsd {
     use std::path::Path;
     use std::time::Duration;
 
-    use super::*;
+    use super::{CraftApp, InstallSource, Installed, parse_cli_version, version};
 
     pub fn detect(app: &CraftApp) -> Option<Installed> {
         let bin = Path::new("/usr/local/bin").join(app.id);

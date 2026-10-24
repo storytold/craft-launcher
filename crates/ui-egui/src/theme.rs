@@ -357,7 +357,7 @@ fn load_cjk(lang: Lang) -> Option<Arc<FontData>> {
 
 /// The system fonts looked for so far, by language code.
 #[cfg(not(target_arch = "wasm32"))]
-static CJK_FONTS: std::sync::Mutex<std::collections::BTreeMap<&'static str, Option<Arc<FontData>>>> =
+static CJK_FONTS: std::sync::Mutex<std::collections::BTreeMap<&str, Option<Arc<FontData>>>> =
     std::sync::Mutex::new(std::collections::BTreeMap::new());
 
 /// Has the system font for `lang` already been loaded? Never loads it.

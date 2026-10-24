@@ -118,8 +118,7 @@ impl Http {
         match status {
             200 => {
                 let etag = header("etag");
-                let text =
-                    resp.body_mut().with_config().limit(MAX_SMALL).read_to_string().map_err(|e| format!("unreadable answer from GitHub ({e})"))?;
+                let text = read_text_capped(&mut resp, MAX_SMALL).map_err(|e| format!("unreadable answer from GitHub ({e})"))?;
                 Ok(Fetched::Body { text, etag })
             }
             304 => Ok(Fetched::NotModified),
@@ -145,7 +144,7 @@ impl Http {
         // Seconds only; an HTTP date falls back to our own backoff.
         let retry_after = resp.headers().get("retry-after").and_then(|v| v.to_str().ok()).and_then(|r| r.trim().parse::<i64>().ok());
         match resp.status().as_u16() {
-            200 => resp.body_mut().with_config().limit(MAX_SMALL).read_to_string().map_err(|e| failed(format!("unreadable answer ({e})"))),
+            200 => read_text_capped(&mut resp, MAX_SMALL).map_err(|e| failed(format!("unreadable answer ({e})"))),
             s => Err(FeedError { why: format!("{} answered HTTP {s}", host(url)), throttled: s == 429, retry_after }),
         }
     }
@@ -154,7 +153,7 @@ impl Http {
     pub fn get_text(&self, url: &str) -> Result<Option<String>, String> {
         let mut resp = self.small.get(url).call().map_err(|e| format!("couldn't reach {} ({e})", host(url)))?;
         match resp.status().as_u16() {
-            200 => resp.body_mut().with_config().limit(MAX_SMALL).read_to_string().map(Some).map_err(|e| format!("unreadable answer ({e})")),
+            200 => read_text_capped(&mut resp, MAX_SMALL).map(Some).map_err(|e| format!("unreadable answer ({e})")),
             404 => Ok(None),
             s => Err(format!("{} answered HTTP {s}", host(url))),
         }
@@ -548,6 +547,23 @@ fn host(url: &str) -> &str {
     url.split("://").nth(1).and_then(|r| r.split('/').next()).unwrap_or(url)
 }
 
+/// Reads a text body, rejecting one whose *decoded* size exceeds `max`.
+///
+/// ureq's own `limit` guards the *compressed* stream: it sits below the transparent gzip decoder,
+/// so a few hundred wire bytes can still expand far past the cap. So we cap the fully decoded
+/// reader with `take` instead, one byte past the cap, and refuse an oversized answer outright —
+/// before it is parsed — instead of truncating it into something that merely fails to parse
+/// (CWE-409). Invalid UTF-8 stays an error, as before.
+fn read_text_capped(resp: &mut ureq::http::Response<ureq::Body>, max: u64) -> Result<String, String> {
+    let mut reader = resp.body_mut().with_config().reader().take(max.saturating_add(1));
+    let mut text = String::new();
+    reader.read_to_string(&mut text).map_err(|e| e.to_string())?;
+    if text.len() as u64 > max {
+        return Err(format!("the answer is larger than {max} bytes"));
+    }
+    Ok(text)
+}
+
 #[cfg(test)]
 pub(crate) mod tests {
     use super::*;
@@ -650,6 +666,8 @@ pub(crate) mod tests {
         Corrupt,
         /// 404.
         Missing,
+        /// The whole body, already a gzip stream, announced as `Content-Encoding: gzip`.
+        Gzipped,
     }
 
     /// Serves `body` over plain HTTP following `script`, one reply per connection; records the
@@ -684,6 +702,10 @@ pub(crate) mod tests {
                     Reply::Corrupt => write!(stream, "HTTP/1.1 200 OK\r\nContent-Length: {len}\r\nConnection: close\r\n\r\n")
                         .and_then(|()| stream.write_all(&vec![b'x'; len])),
                     Reply::Missing => write!(stream, "HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"),
+                    Reply::Gzipped => {
+                        write!(stream, "HTTP/1.1 200 OK\r\nContent-Length: {len}\r\nContent-Encoding: gzip\r\nConnection: close\r\n\r\n")
+                            .and_then(|()| stream.write_all(&body))
+                    }
                     Reply::Ranged => {
                         let from = range.unwrap_or(0);
                         write!(
@@ -886,6 +908,43 @@ pub(crate) mod tests {
         });
         assert!(error.contains("couldn't save the download"), "{error}");
         assert!(part.exists(), "a blocked partial file must be left alone");
+    }
+
+    #[test]
+    fn an_oversized_feed_answer_is_refused_before_parsing() {
+        // More than MAX_SMALL (4 MiB) of decoded text: rejected outright, not truncated and parsed.
+        let big = vec![b' '; (MAX_SMALL as usize) + 1024];
+        let (url, _) = serve(big, vec![Reply::Full]);
+        let http = Http::new().unwrap();
+        let err = http.get_feed(&url).unwrap_err();
+        assert!(err.why.contains("larger than"), "{}", err.why);
+        // A small answer still comes back intact.
+        let (url, _) = serve(b"{\"ok\":true}".to_vec(), vec![Reply::Full]);
+        assert_eq!(http.get_feed(&url).unwrap(), "{\"ok\":true}");
+    }
+
+    #[test]
+    fn a_gzip_bomb_answer_is_refused_before_parsing() {
+        // A few hundred bytes on the wire that decode to more than MAX_SMALL. ureq's own limit
+        // sits below the transparent gzip decoder, so only a cap on the decoded stream (CWE-409)
+        // refuses this; a wire-byte limit would hand the parser truncated JSON.
+        let big = vec![b'x'; (MAX_SMALL as usize) + 1024];
+        let gz = gzip(&big);
+        assert!(gz.len() * 4 < MAX_SMALL as usize, "no longer a bomb: {} compressed bytes", gz.len());
+        let (url, _) = serve(gz, vec![Reply::Gzipped]);
+        let http = Http::new().unwrap();
+        let err = http.get_text(&url).unwrap_err();
+        assert!(err.contains("larger than"), "{err}");
+        // A small gzip answer still decodes intact.
+        let (url, _) = serve(gzip(b"{\"ok\":true}"), vec![Reply::Gzipped]);
+        assert_eq!(http.get_text(&url).unwrap().unwrap(), "{\"ok\":true}");
+    }
+
+    /// `data` as a real gzip stream (what `Reply::Gzipped` serves).
+    fn gzip(data: &[u8]) -> Vec<u8> {
+        let mut enc = flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::default());
+        enc.write_all(data).unwrap();
+        enc.finish().unwrap()
     }
 
     /// Live: a real Craft App release asset (`cargo test -p artcraft-launcher-native -- --ignored`).
