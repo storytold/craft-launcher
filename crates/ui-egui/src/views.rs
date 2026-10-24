@@ -583,6 +583,63 @@ impl LauncherUi {
         ui.ctx().layer_painter(ui.layer_id()).with_clip_rect(clip).hline(span, y, t.hairline());
     }
 
+    /// ▲ / ▼ sort indicator next to a column header.
+    fn draw_sort_arrow(p: &egui::Painter, c: egui::Pos2, down: bool, color: egui::Color32) {
+        let (tip_y, base_y) = if down { (c.y + 3.0, c.y - 2.0) } else { (c.y - 3.0, c.y + 2.0) };
+        let pts = vec![egui::pos2(c.x - 3.5, base_y), egui::pos2(c.x + 3.5, base_y), egui::pos2(c.x, tip_y)];
+        p.add(egui::Shape::convex_polygon(pts, color, Stroke::NONE));
+    }
+
+    /// Whether to draw an arrow for this column header (Some(down)), or None.
+    fn header_sort_arrow(&self, k: SortKey, active: bool, hovered: bool) -> Option<bool> {
+        if active {
+            Some(self.settings.sort_descending)
+        } else if hovered {
+            Some(k.starts_descending())
+        } else {
+            None
+        }
+    }
+
+    /// A single header cell: a sortable button (if a `SortKey` is given) or a plain label.
+    fn table_header_cell(
+        &self,
+        ui: &mut Ui,
+        key: Option<SortKey>,
+        label: &str,
+        t: &Tokens,
+    ) -> Option<SortKey> {
+        let Some(k) = key else {
+            // A column that is not sorted still names itself.
+            if !label.is_empty() {
+                widgets::hud(ui, label, t.faint);
+            }
+            return None;
+        };
+        let active = k == self.settings.sort;
+        let tip = if active { tl!("Click to reverse the order") } else { tl!("Click to sort by this column") };
+        // Measure first so the whole header cell (label + arrow) is the target.
+        let (rect, resp) = ui.allocate_exact_size(ui.available_size(), Sense::click());
+        let hovered = resp.hovered();
+        let color = if active || hovered { t.ink_strong } else { t.faint };
+        let galley = widgets::hud_galley(ui, label, color);
+        let text_pos = egui::pos2(rect.left(), rect.center().y - galley.size().y / 2.0);
+        let arrow_x = text_pos.x + galley.size().x + 4.0;
+        let p = ui.painter();
+        p.galley(text_pos, galley, color);
+        // ▲ / ▼ for the active column; a faint hint on hover.
+        if let Some(down) = self.header_sort_arrow(k, active, hovered) {
+            let arrow_color = if active { t.accent_ink } else { t.faint };
+            Self::draw_sort_arrow(&p, egui::pos2(arrow_x + 4.0, rect.center().y), down, arrow_color);
+        }
+        resp.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Button, true, label));
+        if resp.on_hover_text(tip).on_hover_cursor(egui::CursorIcon::PointingHand).clicked() {
+            Some(k)
+        } else {
+            None
+        }
+    }
+
     /// The header row: the four sortable column labels with their arrows, and the two that are
     /// plain.
     fn table_header(
@@ -604,41 +661,7 @@ impl LauncherUi {
                 if key == Some(SortKey::Name) {
                     Self::table_rule(ui, t, span, clip);
                 }
-                let Some(k) = key else {
-                    // A column that is not sorted still names itself.
-                    if !label.is_empty() {
-                        widgets::hud(ui, label, t.faint);
-                    }
-                    return;
-                };
-                let active = k == self.settings.sort;
-                let tip = if active { tl!("Click to reverse the order") } else { tl!("Click to sort by this column") };
-                // Measure first so the whole header cell (label + arrow) is the target.
-                let (rect, resp) = ui.allocate_exact_size(ui.available_size(), Sense::click());
-                let hovered = resp.hovered();
-                let color = if active || hovered { t.ink_strong } else { t.faint };
-                let galley = widgets::hud_galley(ui, label, color);
-                let text_pos = egui::pos2(rect.left(), rect.center().y - galley.size().y / 2.0);
-                let arrow_x = text_pos.x + galley.size().x + 4.0;
-                let p = ui.painter();
-                p.galley(text_pos, galley, color);
-                // ▲ / ▼ for the active column; a faint hint on hover.
-                let arrow = if active {
-                    Some(self.settings.sort_descending)
-                } else if hovered {
-                    Some(k.starts_descending())
-                } else {
-                    None
-                };
-                if let Some(down) = arrow {
-                    let c = egui::pos2(arrow_x + 4.0, rect.center().y);
-                    let (tip_y, base_y) = if down { (c.y + 3.0, c.y - 2.0) } else { (c.y - 3.0, c.y + 2.0) };
-                    let pts = vec![egui::pos2(c.x - 3.5, base_y), egui::pos2(c.x + 3.5, base_y), egui::pos2(c.x, tip_y)];
-                    let arrow_color = if active { t.accent_ink } else { t.faint };
-                    p.add(egui::Shape::convex_polygon(pts, arrow_color, Stroke::NONE));
-                }
-                resp.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Button, true, label));
-                if resp.on_hover_text(tip).on_hover_cursor(egui::CursorIcon::PointingHand).clicked() {
+                if let Some(k) = self.table_header_cell(ui, key, label, t) {
                     *sort_clicked = Some(k);
                 }
             });
