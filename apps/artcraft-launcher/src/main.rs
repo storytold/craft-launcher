@@ -33,7 +33,30 @@ const SETTINGS_KEY: &str = "settings";
 
 type Wake = Arc<OnceLock<Box<dyn Fn() + Send + Sync>>>;
 
+/// Resolves the X11 scale factor from `xrdb -query`, desktop environment variables, or XSETTINGS.
+#[cfg(any(all(unix, not(target_os = "macos")), test))]
+fn resolve_x11_scale_factor(xrdb_stdout: Option<&str>, xsettings: Option<&str>, env: impl Fn(&str) -> Option<String>) -> String {
+    artcraft_launcher_native::process::resolve_x11_scale_factor(xrdb_stdout, xsettings, env)
+}
+
+/// Ensures `WINIT_X11_SCALE_FACTOR` is populated with a validated desktop scale factor on X11.
+#[cfg(all(unix, not(target_os = "macos")))]
+fn ensure_x11_scale_factor() {
+    if std::env::var_os("DISPLAY").is_some()
+        && window_can_hide_here(|name| std::env::var_os(name))
+        && std::env::var_os("WINIT_X11_SCALE_FACTOR").is_none()
+    {
+        let scale = artcraft_launcher_native::process::cached_x11_scale_factor();
+        if let Ok(exe) = std::env::current_exe() {
+            use std::os::unix::process::CommandExt;
+            let _ = std::process::Command::new(exe).args(std::env::args_os().skip(1)).env("WINIT_X11_SCALE_FACTOR", scale).exec();
+        }
+    }
+}
+
 fn main() -> ExitCode {
+    #[cfg(all(unix, not(target_os = "macos")))]
+    ensure_x11_scale_factor();
     // First, so the panic report and every start-up warning are recorded (`logging`).
     let logs = logging::install();
     logging::install_panic_hook();
@@ -870,6 +893,37 @@ mod tests {
             assert!(window_can_hide(Some(display)), "{display:?}");
         }
         assert!(window_can_hide(None));
+    }
+
+    #[test]
+    fn x11_scale_factor_validates_inputs_and_preserves_xsettings_before_default() {
+        let none = |_: &str| None;
+        assert_eq!(resolve_x11_scale_factor(Some("Xft.dpi:\t96\n"), None, none), "1");
+        assert_eq!(resolve_x11_scale_factor(Some("Xft.dpi: 144\n"), None, none), "1.5");
+        // Malformed or non-normal Xft.dpi falls through to GDK_SCALE / QT_SCALE_FACTOR.
+        assert_eq!(resolve_x11_scale_factor(Some("Xft.dpi: inf\n"), None, |k| (k == "GDK_SCALE").then(|| "2".to_string())), "2");
+        // Empty or invalid GDK_SCALE falls through to valid QT_SCALE_FACTOR.
+        assert_eq!(
+            resolve_x11_scale_factor(None, None, |k| match k {
+                "GDK_SCALE" => Some(String::new()),
+                "QT_SCALE_FACTOR" => Some("1.25".to_string()),
+                _ => None,
+            }),
+            "1.25"
+        );
+        assert_eq!(
+            resolve_x11_scale_factor(None, None, |k| match k {
+                "GDK_SCALE" => Some("auto".to_string()),
+                "QT_SCALE_FACTOR" => Some("1.5".to_string()),
+                _ => None,
+            }),
+            "1.5"
+        );
+        // XSETTINGS Xft/DPI (1024-scaled) is preserved when xrdb and env vars are unset.
+        assert_eq!(resolve_x11_scale_factor(None, Some("Xft/DPI 196608\n"), none), "2");
+        assert_eq!(resolve_x11_scale_factor(None, Some("Gdk/WindowScalingFactor 2\nGdk/UnscaledDPI 98304\n"), none), "2");
+        // Malformed env and unset XSETTINGS fall back to "1".
+        assert_eq!(resolve_x11_scale_factor(None, None, |k| (k == "GDK_SCALE").then(|| "invalid".to_string())), "1");
     }
 
     #[test]
