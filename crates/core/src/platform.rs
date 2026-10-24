@@ -262,6 +262,20 @@ mod tests {
     ];
 
     #[test]
+    fn photocraft_013_has_both_reported_windows_and_flatpak_downloads() {
+        let release = crate::release::parse_github_release(include_str!("../tests/fixtures/photocraft-0.13.0.json"), "storytold/photocraft").unwrap();
+        for (os, kind, name) in [
+            (Os::Windows, PackageKind::Msi, "photocraft-0.13.0-windows-x64.msi"),
+            (Os::Linux, PackageKind::Flatpak, "photocraft-0.13.0-linux-x86_64.flatpak"),
+        ] {
+            let (asset, picked) = pick_asset(&release, &["photocraft"], Platform { os, arch: Arch::X64 }, &[kind]).unwrap();
+            assert_eq!(asset.name, name);
+            assert_eq!(picked, kind);
+            assert!(asset.sha256.is_some());
+        }
+    }
+
+    #[test]
     fn macos_prefers_the_published_universal_build() {
         // PhotoCraft v0.9.0's GitHub metadata, trimmed to its desktop DMG.
         let mut r = crate::release::parse_github_release(include_str!("../tests/fixtures/photocraft-release.json"), "storytold/photocraft").unwrap();

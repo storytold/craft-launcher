@@ -721,6 +721,62 @@ mod tests {
     }
 
     #[test]
+    fn versioned_release_folders_install_update_and_remove_without_touching_user_files() {
+        let dir = tempfile::tempdir().unwrap();
+        let app = CraftApp::by_id("wordcraft").unwrap();
+        let paths = Paths::under(dir.path());
+        let parent = dir.path().join("My Portable Apps");
+        // The layout shipped by WordCraft 0.10.0, including files beside the GUI executable.
+        let first = archive(
+            dir.path(),
+            "wordcraft.zip",
+            &[
+                ("wordcraft-0.10.0-windows-x64-portable/wordcraft.exe", b"first"),
+                ("wordcraft-0.10.0-windows-x64-portable/wordcraft-cli.exe", b"cli"),
+                ("wordcraft-0.10.0-windows-x64-portable/lib/runtime.dll", b"runtime"),
+                ("wordcraft-0.10.0-windows-x64-portable/obsolete.txt", b"old"),
+            ],
+        );
+        let old = install(app, &first, "0.10.0", None, &paths, Some(&parent), false, &mut |_| Ok(())).unwrap();
+        let root = std::fs::canonicalize(parent.join("wordcraft")).unwrap();
+        assert_eq!(old.path, root.join("wordcraft.exe"));
+        assert_eq!(std::fs::read(root.join("lib/runtime.dll")).unwrap(), b"runtime");
+        assert_eq!(std::fs::read(root.join("wordcraft-cli.exe")).unwrap(), b"cli");
+        assert!(!root.join("wordcraft-0.10.0-windows-x64-portable").exists());
+        let personal = root.join("my-document.docx");
+        std::fs::write(&personal, b"personal document").unwrap();
+        let next = archive(
+            dir.path(),
+            "next.zip",
+            &[
+                ("wordcraft-0.11.0-windows-x64-portable/wordcraft.exe", b"next"),
+                ("wordcraft-0.11.0-windows-x64-portable/lib/runtime.dll", b"next runtime"),
+            ],
+        );
+        let record = install(app, &next, "0.11.0", Some(&old), &paths, None, false, &mut |_| Ok(())).unwrap();
+        assert_eq!(record.path, old.path);
+        assert_eq!(std::fs::read(&record.path).unwrap(), b"next");
+        assert!(!root.join("obsolete.txt").exists());
+        assert!(!root.join("wordcraft-cli.exe").exists());
+        assert_eq!(std::fs::read(&personal).unwrap(), b"personal document");
+        assert!(record.files.iter().all(|file| file.starts_with(&root)));
+        remove(app, &record).unwrap();
+        assert!(!record.path.exists());
+        assert!(!root.join("lib/runtime.dll").exists());
+        assert_eq!(std::fs::read(personal).unwrap(), b"personal document");
+    }
+
+    #[test]
+    fn a_wrapped_executable_with_unrelated_top_level_files_is_not_flattened() {
+        let dir = tempfile::tempdir().unwrap();
+        let app = CraftApp::by_id("wordcraft").unwrap();
+        let paths = Paths::under(dir.path());
+        let zip = archive(dir.path(), "mixed.zip", &[("one/wordcraft.exe", b"one"), ("two/settings.json", b"foreign")]);
+        assert!(install(app, &zip, "0.10.0", None, &paths, None, false, &mut |_| Ok(())).is_err());
+        assert!(!paths.apps().join("wordcraft").exists());
+    }
+
+    #[test]
     fn upgrade_downgrade_and_uninstall_preserve_personal_files_and_location() {
         let dir = tempfile::tempdir().unwrap();
         let app = CraftApp::by_id("photocraft").unwrap();
