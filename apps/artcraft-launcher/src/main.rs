@@ -658,6 +658,9 @@ struct Shell<'a> {
     /// The "show on the current desktop" setting last applied to the window (macOS).
     #[cfg_attr(not(target_os = "macos"), allow(dead_code))]
     applied_follow: Option<bool>,
+    /// Previous viewport focus state (macOS: detect reopen via focus gain while hidden).
+    #[cfg_attr(not(target_os = "macos"), allow(dead_code))]
+    was_focused: bool,
 }
 
 impl<'a> Shell<'a> {
@@ -665,7 +668,7 @@ impl<'a> Shell<'a> {
         let window_hides = window_can_hide(cc.display_handle().ok().map(|d| d.as_raw()));
         // Started hidden at login but there's no tray to come back from: show the window.
         let visible = !hidden || launcher.tray.is_none();
-        let mut shell = Self { launcher, window_hides, visible: true, quitting: false, applied_follow: None };
+        let mut shell = Self { launcher, window_hides, visible: true, quitting: false, applied_follow: None, was_focused: false };
         if !visible {
             shell.put_away(&cc.egui_ctx);
         } else if hidden {
@@ -720,6 +723,15 @@ impl eframe::App for Shell<'_> {
             let on = self.launcher.ui.settings.show_on_current_desktop;
             spaces::follow_current_desktop(on);
             self.applied_follow = Some(on);
+        }
+        // macOS: handle Dock icon click (reopen) when window is hidden in tray.
+        #[cfg(target_os = "macos")]
+        {
+            let focused = ctx.input(|i| i.viewport().focused.unwrap_or(false));
+            if !self.visible && focused && !self.was_focused {
+                self.show(ctx);
+            }
+            self.was_focused = focused;
         }
         for request in requests {
             match request {
