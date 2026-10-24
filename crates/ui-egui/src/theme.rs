@@ -336,6 +336,10 @@ pub fn install_fonts(ctx: &egui::Context, cjk: Option<Lang>) {
 /// The system's font for a CJK language, read once per language (tens of MB). Desktop only: the
 /// web build has none, so CJK text can't be drawn there.
 pub fn cjk_font(lang: Lang) -> Option<Arc<FontData>> {
+    #[cfg(test)]
+    if lang == Lang::ZH_TW && WITHOUT_TRADITIONAL_CHINESE_FONT.with(std::cell::Cell::get) {
+        return None;
+    }
     #[cfg(not(target_arch = "wasm32"))]
     {
         CJK_FONTS.lock().unwrap_or_else(std::sync::PoisonError::into_inner).entry(lang.code()).or_insert_with(|| load_cjk(lang)).clone()
@@ -376,4 +380,85 @@ pub fn cjk_font_loaded(lang: Lang) -> bool {
 /// Can the CJK language `lang` be drawn? Loads the system font on the first call ([`cjk_font`]).
 pub fn cjk_font_available(lang: Lang) -> bool {
     cjk_font(lang).is_some()
+}
+
+#[cfg(test)]
+std::thread_local! {
+    static WITHOUT_TRADITIONAL_CHINESE_FONT: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{Host, LauncherUi, Settings};
+    use artcraft_launcher_core::protocol::{Backend, Command, Event};
+    use egui_kittest::Harness;
+    use egui_kittest::kittest::Queryable;
+
+    // Thread-local and restored on panic: other tests keep their real system fonts and cache.
+    struct WithoutTraditionalChineseFont(bool);
+    impl WithoutTraditionalChineseFont {
+        fn new() -> Self {
+            Self(WITHOUT_TRADITIONAL_CHINESE_FONT.with(|flag| flag.replace(true)))
+        }
+    }
+    impl Drop for WithoutTraditionalChineseFont {
+        fn drop(&mut self) {
+            WITHOUT_TRADITIONAL_CHINESE_FONT.with(|flag| flag.set(self.0));
+        }
+    }
+
+    struct IdleBackend;
+    impl Backend for IdleBackend {
+        fn send(&mut self, _: Command) {}
+        fn poll(&mut self) -> Vec<Event> {
+            Vec::new()
+        }
+        fn capabilities(&self) -> artcraft_launcher_core::protocol::Capabilities {
+            artcraft_launcher_core::protocol::Capabilities { manage_apps: true, reveal_label: "Show in Finder", self_update: true }
+        }
+        fn platform(&self) -> Option<artcraft_launcher_core::Platform> {
+            None
+        }
+        fn now(&self) -> i64 {
+            1_791_500_000
+        }
+    }
+    struct NoHost;
+    impl Host for NoHost {}
+
+    #[test]
+    fn traditional_chinese_without_font_keeps_english_and_explains_why() {
+        let system_font_available = cjk_font_available(Lang::ZH_TW);
+        let without_font = WithoutTraditionalChineseFont::new();
+        crate::i18n::set_test_lang(Lang::EN);
+        assert!(!cjk_font_available(Lang::ZH_TW));
+        let mut h = Harness::builder().with_size(egui::vec2(1180.0, 900.0)).build_ui_state(
+            |ui, state: &mut Option<LauncherUi>| {
+                let launcher = state.get_or_insert_with(|| {
+                    LauncherUi::new(ui.ctx(), Box::new(IdleBackend), Settings { language: "en".into(), ..Settings::default() })
+                });
+                launcher.logic(&ui.ctx().clone(), &mut NoHost);
+                launcher.ui(ui, &mut NoHost);
+            },
+            None,
+        );
+        h.run_steps(6);
+        h.get_by_label("Settings").click();
+        h.run_steps(3);
+        h.get_by_value("English").click();
+        h.run_steps(2);
+        h.get_by_label("Traditional Chinese (Taiwan)").click_accesskit();
+        h.run_steps(3);
+        assert_eq!(h.state().as_ref().unwrap().settings.language, "zh-TW");
+        assert_eq!(crate::i18n::current(), Lang::EN);
+        h.get_by_label_contains("No font for this language was found");
+        h.get_by_label("Notify me when an installed app has an update");
+        let settings = h.state().as_ref().unwrap().settings.clone();
+        let restored: Settings = serde_json::from_str(&serde_json::to_string(&settings).unwrap()).unwrap();
+        assert_eq!(restored.language, "zh-TW");
+        assert_eq!(crate::app::effective_lang(&restored.language), Lang::EN);
+        drop(without_font);
+        assert_eq!(cjk_font_available(Lang::ZH_TW), system_font_available);
+    }
 }
