@@ -402,7 +402,12 @@ pub mod linux {
 
     pub fn detect(app: &CraftApp, snapshot: &Snapshot) -> Option<Installed> {
         if let Some((path, version)) = appimages(app).into_iter().next() {
-            return Some(Installed { version, source: InstallSource::AppImage, location: path.display().to_string(), package: None });
+            return Some(appimage_install(app, path, version, |bin, app| {
+                let (program, args) = appimage_probe_command(bin, crate::process::in_sandbox())?;
+                let args: Vec<&str> = args.iter().map(String::as_str).collect();
+                let out = crate::process::capture(&program, &args, Duration::from_secs(5))?;
+                parse_cli_version(out.trim(), app)
+            }));
         }
         let order = [InstallSource::Deb, InstallSource::Rpm, InstallSource::Pacman, InstallSource::Flatpak];
         if let Some(p) = packages::find(app, &snapshot.packages, &order) {
@@ -410,6 +415,25 @@ pub mod linux {
             return Some(Installed { version: packages::version_of(p), source: p.manager, location, package: Some(p.name.clone()) });
         }
         detect_system_install(app)
+    }
+
+    /// Bare AppImage names (for example Gear Lever's rename) carry no version (#471).
+    /// Probe only the selected unknown-version app; release filenames need no execution.
+    pub(crate) fn appimage_install(
+        app: &CraftApp,
+        path: PathBuf,
+        version: Option<version::Version>,
+        probe: impl FnOnce(&Path, &CraftApp) -> Option<version::Version>,
+    ) -> Installed {
+        let version = version.or_else(|| probe(&path, app));
+        Installed { version, source: InstallSource::AppImage, location: path.display().to_string(), package: None }
+    }
+
+    /// A host AppImage must be queried on the host when the launcher runs inside Flatpak,
+    /// just as launching it is. Paths remain individual arguments, never shell commands.
+    pub(crate) fn appimage_probe_command(bin: &Path, sandbox: bool) -> Option<(String, Vec<String>)> {
+        let path = bin.to_str()?.to_string();
+        Some(if sandbox { ("flatpak-spawn".into(), vec!["--host".into(), path, "--version".into()]) } else { (path, vec!["--version".into()]) })
     }
 
     /// When the package managers don't report the app (a query timed out or was locked, an
@@ -458,6 +482,40 @@ pub mod freebsd {
 #[cfg(all(test, target_os = "linux"))]
 mod linux_tests {
     use super::*;
+
+    #[test]
+    fn renamed_appimage_reports_its_cli_version_and_offers_the_update() {
+        use artcraft_launcher_core::status::{AppStatus, Latest, status};
+        let app = CraftApp::by_id("photocraft").unwrap();
+        let installed = linux::appimage_install(app, PathBuf::from("/tmp/My Apps/photocraft.appimage"), None, |_, app| {
+            parse_cli_version("photocraft 0.7.0 (792616159, 2026-10-11)", app)
+        });
+        let latest = version::parse("0.9.0").unwrap();
+        assert_eq!(installed.version.as_ref().unwrap().to_string(), "0.7.0");
+        assert_eq!(status(Some(&installed), Latest::Found { version: Some(&latest), has_asset: true }), AppStatus::UpdateAvailable);
+    }
+
+    #[test]
+    fn known_appimage_versions_skip_the_probe_and_failed_probes_stay_unknown() {
+        let app = CraftApp::by_id("photocraft").unwrap();
+        let known = linux::appimage_install(app, PathBuf::from("photocraft-0.7.0-linux-x86_64.AppImage"), version::parse("0.7.0"), |_, _| {
+            panic!("release filename already gives the version")
+        });
+        assert_eq!(known.version.unwrap().to_string(), "0.7.0");
+        let unknown = linux::appimage_install(app, PathBuf::from("photocraft.appimage"), None, |_, _| None);
+        assert!(unknown.version.is_none());
+        assert_eq!(unknown.source, InstallSource::AppImage);
+    }
+
+    #[test]
+    fn appimage_version_probe_uses_host_arguments_in_flatpak() {
+        let path = Path::new("/home/user/My Apps/photo;craft.appimage");
+        assert_eq!(linux::appimage_probe_command(path, false), Some((path.display().to_string(), vec!["--version".into()])));
+        assert_eq!(
+            linux::appimage_probe_command(path, true),
+            Some(("flatpak-spawn".into(), vec!["--host".into(), path.display().to_string(), "--version".into()]))
+        );
+    }
 
     #[test]
     fn ours_filter_matches_rpm_packages() {
