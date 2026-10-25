@@ -13,6 +13,11 @@ const USER_AGENT: &str = concat!("ArtCraftLauncher/", env!("CARGO_PKG_VERSION"))
 /// Largest JSON or text answer we read.
 const MAX_SMALL: u64 = 4 << 20;
 
+/// Plain HTTP is only ever spoken to a developer's loopback mirror (feature `local-mirror`) and
+/// to this module's test server. Everywhere else an HTTPS answer that redirects to `http://` must
+/// fail, not fetch checksums and payloads in clear text.
+const HTTPS_ONLY: bool = !cfg!(any(test, feature = "local-mirror"));
+
 /// What a GET of a small resource produced.
 #[derive(Debug, PartialEq, Eq)]
 pub enum Fetched {
@@ -73,6 +78,7 @@ impl Http {
             .proxy(proxy.clone())
             .timeout_global(Some(Duration::from_secs(20)))
             .http_status_as_error(false)
+            .https_only(HTTPS_ONLY)
             .user_agent(USER_AGENT)
             .build()
             .new_agent();
@@ -82,6 +88,7 @@ impl Http {
             .timeout_connect(Some(Duration::from_secs(5)))
             .timeout_global(Some(Duration::from_secs(10)))
             .http_status_as_error(false)
+            .https_only(HTTPS_ONLY)
             .user_agent(USER_AGENT)
             .build()
             .new_agent();
@@ -92,6 +99,7 @@ impl Http {
             .http_status_as_error(false)
             .max_redirects(0)
             .max_redirects_will_error(false)
+            .https_only(HTTPS_ONLY)
             .user_agent(USER_AGENT)
             .build()
             .new_agent();
@@ -103,6 +111,7 @@ impl Http {
             // ureq has no idle timeout: cap each attempt instead, and resume where it stopped.
             .timeout_recv_body(Some(ATTEMPT_BODY_TIME))
             .http_status_as_error(false)
+            .https_only(HTTPS_ONLY)
             .user_agent(USER_AGENT)
             .build()
             .new_agent();
@@ -627,6 +636,19 @@ pub(crate) mod tests {
 
     const DAYS_30: Duration = Duration::from_secs(30 * 86_400);
     const DAYS_7: Duration = Duration::from_secs(7 * 86_400);
+
+    /// ureq's `https_only`, which the shipped agents set (see `HTTPS_ONLY`): a plain-HTTP request
+    /// is refused before any connection. Pinned against ureq itself because the test server below
+    /// speaks loopback HTTP, so this crate's own agents allow plain HTTP under `cfg(test)`.
+    #[test]
+    fn https_only_refuses_plain_http_before_connecting() {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let url = format!("http://{}/file.bin", listener.local_addr().unwrap());
+        let agent = ureq::Agent::config_builder().https_only(true).timeout_global(Some(Duration::from_secs(5))).build().new_agent();
+        assert!(agent.get(&url).call().is_err());
+        listener.set_nonblocking(true).unwrap();
+        assert!(listener.accept().is_err(), "a plain-HTTP request reached the server");
+    }
 
     #[test]
     fn host_is_what_follows_the_scheme() {
