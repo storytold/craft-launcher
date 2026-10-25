@@ -95,6 +95,7 @@
 	ArtCraft Launcher {version}	ArtCraft Launcher {version}
 	Only when I ask	მხოლოდ მოთხოვნისას
 	Automatically download and install updates	განახლებების ავტომატური ჩამოტვირთვა და ინსტალაცია
+	Automatic updates wait or pause while Low Data Mode is on and resume when it’s off. Clicking Install, Update, or Resume still downloads over the current network.	ავტომატური განახლებები ელოდება ან ჩერდება, სანამ მონაცემთა დაზოგვის რეჟიმი ჩართულია, და გამორთვის შემდეგ გრძელდება. „ინსტალაცია“, „განახლება“ ან „გაგრძელება“ ღილაკზე დაწკაპუნებით ჩამოტვირთვა მაინც ხდება მიმდინარე ქსელით.
 	Notify me when an installed app has an update	შეტყობინება, როცა დაინსტალირებულ აპლიკაციას განახლება აქვს
 	Include pre-releases (betas and release candidates)	წინასწარი ვერსიების ჩართვა (ბეტა-ვერსიები და გამოშვების კანდიდატები)
 	Installing on Linux	ინსტალაცია Linux-ზე

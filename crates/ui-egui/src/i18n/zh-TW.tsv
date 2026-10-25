@@ -75,6 +75,7 @@
 	ArtCraft Launcher {version}	ArtCraft Launcher {version}
 	Only when I ask	僅在我要求時
 	Automatically download and install updates	自動下載並安裝更新
+	Automatic updates wait or pause while Low Data Mode is on and resume when it’s off. Clicking Install, Update, or Resume still downloads over the current network.	開啟低數據模式時，自動更新會等待或暫停，關閉後會自動繼續。點按「安裝」、「更新」或「繼續」仍會透過目前的網路下載。
 	Notify me when an installed app has an update	已安裝的應用程式有更新時通知我
 	Include pre-releases (betas and release candidates)	包含預先發行版（Beta 版與候選發行版）
 	Installing on Linux	在 Linux 上安裝
