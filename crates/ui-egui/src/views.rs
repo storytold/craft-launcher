@@ -991,8 +991,8 @@ impl LauncherUi {
         });
     }
 
-    /// The menu items for an installed app: open, reveal in the file manager, reinstall, and
-    /// uninstall (which asks first).
+    /// The menu items for an installed app: open, reveal in the file manager, desktop shortcut,
+    /// reinstall, and uninstall (which asks first).
     fn menu_installed(&mut self, ui: &mut Ui, status: &AppStatus, id: &str, reveal: &'static str) {
         if ui.button(tl!("Open")).clicked() {
             self.launch_app(id);
@@ -1000,6 +1000,10 @@ impl LauncherUi {
         }
         if ui.button(t(reveal)).clicked() {
             self.send(Command::Reveal { app: id.to_string() });
+            ui.close();
+        }
+        if self.caps.desktop_shortcuts && ui.button(tl!("Add desktop shortcut")).clicked() {
+            self.send(Command::CreateDesktopShortcut { app: id.to_string() });
             ui.close();
         }
         if *status == AppStatus::UpToDate && ui.button(tl!("Reinstall")).clicked() {

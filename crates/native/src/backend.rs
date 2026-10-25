@@ -1082,6 +1082,22 @@ impl Backend for NativeBackend {
                     }
                 }
             }
+            Command::CreateDesktopShortcut { app } => {
+                let Some(def) = CraftApp::by_id(&app) else { return };
+                let result = match self.installed(&app) {
+                    Some(inst) => {
+                        let path = std::path::Path::new(&inst.location);
+                        crate::process::create_desktop_shortcut(def.name, path)
+                    }
+                    None => Err(format!("{} isn't installed", def.name)),
+                };
+                if let Err(e) = result {
+                    self.shared.emit(Event::JobFinished {
+                        app,
+                        result: Err(format!("Couldn't create the desktop shortcut: {e}")),
+                    });
+                }
+            }
             Command::UpdateLauncher => self.update_launcher(),
             Command::FetchScreenshots { app } => self.fetch_screenshots(&app),
             Command::Configure(options) => {
@@ -1113,7 +1129,12 @@ impl Backend for NativeBackend {
             Some(Os::Windows) => "Show in Explorer",
             _ => "Show in Files",
         };
-        Capabilities { manage_apps: true, reveal_label, self_update: self.shared.self_install.get().is_some_and(Option::is_some) }
+        Capabilities {
+            manage_apps: true,
+            reveal_label,
+            self_update: self.shared.self_install.get().is_some_and(Option::is_some),
+            desktop_shortcuts: matches!(self.platform.map(|p| p.os), Some(Os::Windows)),
+        }
     }
 
     fn platform(&self) -> Option<Platform> {
