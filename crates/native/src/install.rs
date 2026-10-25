@@ -129,6 +129,9 @@ pub fn install(
 
 type RecordCommit<'a> = Option<&'a mut dyn FnMut(&Record) -> Result<(), String>>;
 
+/// Does the work of [`install`], plus `commit` (the caller's way of saving the new record). The
+/// download waits its turn in the line, using the job's place if it has one; a file already
+/// downloaded skips the line.
 #[allow(clippy::too_many_arguments)]
 pub fn install_at(
     app: &CraftApp,

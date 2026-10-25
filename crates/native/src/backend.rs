@@ -433,6 +433,8 @@ impl NativeBackend {
 
     /// Starts the job, or returns `false` without starting one: the app is unknown, doesn't run
     /// on this platform, is already running a job, or the launcher is restarting into an update.
+    /// An install takes its place in the download line first, so apps started together download in
+    /// screen order.
     fn start_job(&self, app_id: &str, work: Work) -> bool {
         let uninstall = matches!(work, Work::Uninstall);
         let Some(app) = CraftApp::by_id(app_id) else { return false };
@@ -770,6 +772,8 @@ fn install_plan(
     Ok(InstallPlan { release, platform, asset, kind })
 }
 
+/// Plans and runs an install or update of `app` from its latest known release, and returns the
+/// message to show. `place` is the job's spot in the download line, used when the download starts.
 #[allow(clippy::too_many_arguments)]
 fn run_install(
     app: &CraftApp,
@@ -1530,6 +1534,8 @@ impl NativeBackend {
 }
 
 impl Backend for NativeBackend {
+    /// Carries out a command from the UI. Long work (checks, installs, removals) runs on its own
+    /// thread.
     fn send(&mut self, command: Command) {
         match command {
             Command::CheckForUpdates { force } => self.check(force),

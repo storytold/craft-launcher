@@ -58,6 +58,7 @@ pub struct Place<'a> {
 }
 
 impl Drop for Place<'_> {
+    /// Leaves the line and wakes the others, so the next one can start.
     fn drop(&mut self) {
         self.queue.lock().waiting.retain(|w| w.id != self.id);
         self.queue.changed.notify_all();
@@ -101,6 +102,7 @@ pub struct Turn<'a> {
 }
 
 impl Drop for Turn<'_> {
+    /// Frees the slot and wakes the waiting jobs.
     fn drop(&mut self) {
         let mut state = self.queue.lock();
         state.running = state.running.saturating_sub(1);
@@ -110,17 +112,20 @@ impl Drop for Turn<'_> {
 }
 
 impl Default for Downloads {
+    /// An empty queue that lets one download run at a time.
     fn default() -> Self {
         Self::new()
     }
 }
 
 impl Downloads {
+    /// An empty queue that lets one download run at a time; `const` so it can be a `static`.
     pub const fn new() -> Self {
         let state = State { running: 0, limit: 1, next_id: 0, waiting: Vec::new(), order: Vec::new() };
         Self { state: Mutex::new(state), changed: Condvar::new() }
     }
 
+    /// Locks the state; a job that panicked while holding it doesn't stop the others.
     fn lock(&self) -> MutexGuard<'_, State> {
         self.state.lock().unwrap_or_else(PoisonError::into_inner)
     }
@@ -176,6 +181,7 @@ mod tests {
         release
     }
 
+    /// A download with nothing else running starts at once, and so does the next one after it.
     #[test]
     fn a_download_alone_never_waits() {
         let queue = Downloads::new();
@@ -183,6 +189,7 @@ mod tests {
         drop(queue.turn("filmcraft", &GO, &mut || panic!("the first download is over")).unwrap());
     }
 
+    /// With the default limit, no two of the suite's apps download together.
     #[test]
     fn downloads_never_run_at_the_same_time() {
         let queue = Downloads::new();
@@ -202,6 +209,7 @@ mod tests {
         assert_eq!(most.load(Ordering::SeqCst), 1);
     }
 
+    /// A higher limit lets several run together, never more than it allows.
     #[test]
     fn downloads_never_run_beyond_the_limit() {
         let queue = Downloads::new();
@@ -222,6 +230,7 @@ mod tests {
         assert!(most.load(Ordering::SeqCst) <= 3);
     }
 
+    /// With a limit of two, a second download starts while the first is still running.
     #[test]
     fn a_second_download_runs_alongside_when_the_limit_allows() {
         let queue = Downloads::new();
@@ -233,6 +242,8 @@ mod tests {
         });
     }
 
+    /// A waiting download starts at once when the limit is raised, without the running one
+    /// finishing.
     #[test]
     fn raising_the_limit_starts_a_waiting_download() {
         let queue = Downloads::new();
@@ -249,6 +260,7 @@ mod tests {
         });
     }
 
+    /// Zero counts as one, and anything above the most counts as the most.
     #[test]
     fn the_limit_stays_between_one_and_the_most() {
         let queue = Downloads::new();
@@ -280,12 +292,14 @@ mod tests {
         done.into_inner().unwrap()
     }
 
+    /// With no screen order sent, waiting downloads go in suite order, not the order they asked in.
     #[test]
     fn waiting_downloads_go_in_suite_order_without_a_screen_order() {
         let queue = Downloads::new();
         assert_eq!(finishing_order(&queue, &["soundcraft", "wordcraft", "lightcraft"], || {}), ["lightcraft", "wordcraft", "soundcraft"]);
     }
 
+    /// Waiting downloads go in the order their apps are on screen.
     #[test]
     fn waiting_downloads_go_in_screen_order() {
         let queue = Downloads::new();
@@ -293,6 +307,8 @@ mod tests {
         assert_eq!(finishing_order(&queue, &["lightcraft", "soundcraft", "wordcraft"], || {}), ["wordcraft", "soundcraft", "lightcraft"]);
     }
 
+    /// Apps missing from the screen order (hidden by a filter or search) go after the listed ones,
+    /// in suite order.
     #[test]
     fn waiting_downloads_not_on_screen_go_last_in_suite_order() {
         let queue = Downloads::new();
@@ -301,6 +317,7 @@ mod tests {
         assert_eq!(finishing_order(&queue, &apps, || {}), ["wordcraft", "photocraft", "lightcraft", "soundcraft"]);
     }
 
+    /// Sending a new screen order changes who goes next among the waiting downloads.
     #[test]
     fn resorting_the_screen_reorders_the_waiting_downloads() {
         let queue = Downloads::new();
@@ -309,6 +326,8 @@ mod tests {
         assert_eq!(finishing_order(&queue, &["wordcraft", "soundcraft", "lightcraft"], resort), ["lightcraft", "soundcraft", "wordcraft"]);
     }
 
+    /// A stopped job leaves the line while the running download carries on, and the line works
+    /// afterwards.
     #[test]
     fn a_waiting_download_can_be_stopped_and_leaves_the_line() {
         let queue = Downloads::new();
@@ -329,6 +348,8 @@ mod tests {
         drop(queue.turn("wordcraft", &GO, &mut || panic!("the line is empty")).unwrap());
     }
 
+    /// A job that joined the line waits its turn even when a job below it on screen gets to its
+    /// download first.
     #[test]
     fn a_job_higher_on_screen_goes_first_even_when_it_reaches_its_download_later() {
         let queue = Downloads::new();
@@ -345,6 +366,8 @@ mod tests {
         });
     }
 
+    /// A place dropped before its turn (the job failed or found its file already downloaded) lets
+    /// the next job start.
     #[test]
     fn a_place_given_up_before_its_turn_frees_the_line() {
         let queue = Downloads::new();
@@ -362,6 +385,7 @@ mod tests {
         assert!(queue.lock().waiting.is_empty());
     }
 
+    /// A download that panics still frees its slot.
     #[test]
     fn a_download_that_dies_frees_the_line() {
         let queue = Downloads::new();

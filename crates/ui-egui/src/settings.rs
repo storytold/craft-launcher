@@ -246,6 +246,7 @@ pub fn default_preferred_kinds() -> Vec<PackageKind> {
 }
 
 impl Default for Settings {
+    /// The settings a new install starts with.
     fn default() -> Self {
         Self {
             install_locations: Default::default(),

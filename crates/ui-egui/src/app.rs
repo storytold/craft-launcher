@@ -463,6 +463,8 @@ impl LauncherUi {
         self.entries.iter_mut().find(|e| e.app.id == id)
     }
 
+    /// Sends the backend the settings it needs and, when it changed, the order of the apps on
+    /// screen. Runs every frame; only changes are sent.
     pub(crate) fn configure(&mut self) {
         let options = BackendOptions {
             kinds: self.settings.preferred_kinds.clone(),
