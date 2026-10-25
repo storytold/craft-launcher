@@ -105,3 +105,37 @@ macOS 上 `cargo +stable check --tests -p artcraft-launcher-native` 会失败（
   证书没影响，对企业 MITM 代理有影响。
 - **触屏 UI**：和 GridCraft 一样，界面是按桌面设计的；网格卡片在大屏手机上能用，但没有专门的
   触控布局。
+
+## 7. 2026-10-24 修复：已安装包名与桌面 feed 缓存（真机验证时发现）
+
+两处缺陷让启动器与手机、与移植仓库自己的 release 不一致：
+
+1. **PdfCraft 永远显示「可安装」。** Android 的 applicationId 一旦发布就不能改，PdfCraft 的
+   移植包一直是 `ai.storyteller.printcraft`，而 `detect`/`launch` 都按目录 id 拼成
+   `ai.storyteller.pdfcraft`。于是即使 APK 已装，卡片状态仍是 `可安装`，`打开` 也会去启动一个
+   不存在的包。修复：`CraftApp::android_bundle_id()` 持有这一处别名
+   （`ANDROID_PACKAGE_IDS = [("pdfcraft", "ai.storyteller.printcraft")]`），Android 的检测与
+   启动都改用它；桌面路径不变。
+2. **`ARTCRAFT_LAUNCHER_NO_FEED` 没有绕过缓存。** 网络请求确实跳过了，但
+   `feed_and_fallback` 仍会 `load_feed` 读上次存下的 `feed.json`，那是上游**桌面** release
+   的数据：每张卡都显示 0.15.x / 0.16.x（本平台没有对应包），PdfCraft 显示「此平台不可用」，
+   启动器自己还提示可更新到 0.7.0（同样没有 Android APK）。修复：feed 被禁用时连缓存一起
+   跳过，只信 `RELEASE_REPO` 的 GitHub 回答。
+
+3. **全新安装后的第一次启动，所有卡片都显示「可安装」。** `MainActivity` 在
+   `super.onCreate()` 之后才把 `installed-apps.txt` 写给 Rust；而 GameActivity 正是在
+   `super.onCreate()` 里启动原生线程，Rust 只读一次这个文件。首次安装时还没有上一次留下的
+   文件，于是检测先跑、文件后到，13 个已安装应用全被读成未安装；重启一次又正常。修复：把
+   `writeInstalledApps()` 提到 `super.onCreate()` 之前（Activity 的 context 此时已 attach，
+   `PackageManager`/`getFilesDir()` 可用）。
+
+同时 `versionName` 从 0.4.1 对到 0.7.0（crate 的 workspace 版本）。
+
+真机验证（vivo PA2573）：卸载旧包 → 安装 → 第一次冷启动，13 张卡全部 `已安装` 且按钮为
+`打开`，`files/installed-apps.txt` 与 `pm list packages` 一致。
+
+**代码在 fork 分支，不在本目录：** 上游 crate 的改动提交在
+`github.com/tzhazuma/craft-launcher` 的 `android-port` 分支（`bcaded0`，父提交 `312c0f8`），
+`~/artcraft-android` 只记录 gitlink。本目录下的两个 patch 文件（`upstream/0001-...` 与
+`~/artcraft-android/patches/launcher-platform-android.patch`）是当时的合并快照，已经**不能**
+apply 到 `android-port` 的当前树；重建时以 fork 分支为准。
