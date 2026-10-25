@@ -60,6 +60,9 @@ zbus = { version = "5", default-features = false, features = ["async-io", "block
 
 [target.'cfg(any(target_os = "linux", target_os = "freebsd", target_os = "openbsd", target_os = "netbsd", target_os = "dragonfly"))'.dependencies]
 tray-icon = { version = "0.25", default-features = false, features = ["ksni"] }
+# The X11 window's background colour (x11_background.rs). Pure-Rust connection, no unsafe; already
+# in Cargo.lock through winit.
+x11rb = "0.13"
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 rfd = { version = "=0.17.2", default-features = false, features = ["xdg-portal", "wayland"] }
