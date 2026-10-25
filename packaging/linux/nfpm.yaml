@@ -17,11 +17,10 @@ vendor: Learning Machines LLC
 homepage: https://github.com/storytold/craft-launcher
 license: MIT OR Apache-2.0
 description: |-
-  Install, update and launch the Craft App Suite.
-  ArtCraft Launcher lists PhotoCraft, LightCraft, FilmCraft, DesignCraft,
-  VectorCraft, PdfCraft, EffectCraft, WordCraft, DeckCraft, GridCraft, CADCraft,
-  SoundCraft and FigCraft, installs the right build for this computer and keeps
-  them up to date from GitHub releases. It can live in the system tray.
+  Install, update and launch Zendaya applications.
+  Zendaya Launcher brings Photozen and your installed applications together,
+  installs the right build for this computer and checks GitHub releases for updates.
+  It can live in the system tray.
 
 # The binary links only glibc and libgcc_s directly. Windowing (X11/Wayland, xkbcommon) and the
 # GPU (Vulkan, EGL/GL) are loaded at runtime with dlopen, so they aren't ELF NEEDED entries and

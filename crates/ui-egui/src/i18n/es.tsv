@@ -1,4 +1,4 @@
-# Spanish (es) catalog for ArtCraft Launcher.
+# Spanish (es) catalog for Zendaya Launcher.
 # Format: context<TAB>source<TAB>translation
 # Empty context = plain UI string (tl!, t).
 # @id = command-id keyed (tr_id).
@@ -6,12 +6,12 @@
 # @msg = status/error message template (message, msg).
 # Other context = disambiguation for tr_ctx.
 #
-# Clean-room: written from the meaning of ArtCraft Launcher's English labels, in neutral
+# Clean-room: written from the meaning of Zendaya Launcher's English labels, in neutral
 # international Spanish for Spain and Latin America (the interface addresses the user as "tú";
 # no regional words such as "ordenador").
 #
 # Coverage: the whole interface: every menu string and tl! literal (complete_menus = true).
-# Left in English on purpose: product name "ArtCraft Launcher" (and its "Launcher" tag), suite
+# Left in English on purpose: product name "Zendaya Launcher" (and its "Launcher" tag), suite
 # name "Craft App Suite", app names (PhotoCraft, LightCraft, FilmCraft,
 # DesignCraft, VectorCraft, PdfCraft, EffectCraft, WordCraft, DeckCraft, GridCraft, CADCraft,
 # SoundCraft, FigCraft), "GitHub", "Discord", "Finder", "makers".
@@ -73,7 +73,7 @@
 	Reinstall	Reinstalar
 	Uninstall…	Desinstalar…
 	All releases	Todas las versiones
-	ArtCraft Launcher {version} is available.	ArtCraft Launcher {version} está disponible.
+	Zendaya Launcher {version} is available.	Zendaya Launcher {version} está disponible.
 	Dismiss	Descartar
 	Update and restart	Actualizar y reiniciar
 	A new version is available. Would you like to relaunch with the updated version?	Hay una versión nueva. ¿Quieres reiniciar con la versión actualizada?
@@ -84,7 +84,7 @@
 	Released {date}	Publicada el {date}
 	Open on GitHub	Abrir en GitHub
 	Close	Cerrar
-	ArtCraft Launcher {version}	ArtCraft Launcher {version}
+	Zendaya Launcher {version}	Zendaya Launcher {version}
 	Only when I ask	Solo cuando lo pida
 	Automatically download and install updates	Descargar e instalar actualizaciones automáticamente
 	Notify me when an installed app has an update	Avisarme cuando una aplicación instalada tenga una actualización
@@ -97,11 +97,11 @@
 	Running in the background	En segundo plano
 	Keep running in the tray when the window is closed	Seguir abierto en la bandeja del sistema al cerrar la ventana
 	Show the window on the current desktop	Mostrar la ventana en el escritorio actual
-	Start ArtCraft Launcher when I log in	Abrir ArtCraft Launcher al iniciar sesión
+	Start Zendaya Launcher when I log in	Abrir Zendaya Launcher al iniciar sesión
 	Community	Comunidad
 	Questions, ideas and news from the ArtCraft team	Preguntas, ideas y noticias del equipo de ArtCraft
 	Appearance	Apariencia
-	Quit ArtCraft Launcher	Salir de ArtCraft Launcher
+	Quit Zendaya Launcher	Salir de Zendaya Launcher
 	Done	Listo
 	Uninstall {name}?	¿Desinstalar {name}?
 	The app will be moved to the Trash. Your documents and settings stay.	La aplicación se moverá a la Papelera. Tus documentos y ajustes se conservan.
@@ -135,7 +135,7 @@
 	Open link	Abrir enlace
 	Update	Actualizar
 	{name} icon	Icono de {name}
-	Loading ArtCraft Launcher…	Cargando ArtCraft Launcher…
+	Loading Zendaya Launcher…	Cargando Zendaya Launcher…
 	Cancel update	Cancelar la actualización
 	Stop waiting; the update can be started again later	Dejar de esperar; la actualización se puede volver a iniciar más tarde
 	Download again	Volver a descargar
@@ -156,7 +156,7 @@
 	Arch package (.pkg.tar.zst)	Paquete Arch (.pkg.tar.zst)
 	Flatpak bundle	Paquete Flatpak
 	Tarball (.tar.gz)	Archivo tar (.tar.gz)
-photocraft	Image editing	Edición de imágenes
+photozen	Image editing	Edición de imágenes
 vectorcraft	Vector illustration	Ilustración vectorial
 filmcraft	Video editing, color and sound	Edición de video, color y sonido
 lightcraft	Photo library and raw development	Fototeca y revelado RAW
@@ -208,7 +208,7 @@ month	Dec	dic.
 	Version {version} installed	Versión {version} instalada
 	Version {latest}	Versión {latest}
 	No release published yet	Aún no hay ninguna versión publicada
-	ArtCraft Launcher	ArtCraft Launcher
+	Zendaya Launcher	Zendaya Launcher
 	App	Aplicación
 	Latest	Última
 	Released	Publicada
@@ -243,11 +243,11 @@ month	Dec	dic.
 	Full changelog	Registro de cambios completo
 	link	enlace
 	No apps match	Ninguna aplicación coincide
-	Open ArtCraft Launcher to update.	Abre ArtCraft Launcher para actualizar.
+	Open Zendaya Launcher to update.	Abre Zendaya Launcher para actualizar.
 	{name} {v} is available	{name} {v} está disponible
 	{count} updates are available	Hay {count} actualizaciones disponibles
 	These notes weren't fetched (GitHub's request limit was reached). They're on the release page.	Estas notas no se descargaron (se alcanzó el límite de solicitudes de GitHub). Están en la página de la versión.
-	When on, opening the launcher from the menu bar brings its window to the desktop you're on. When off, macOS switches you to the desktop the window was on.	Si está activado, abrir ArtCraft Launcher desde la barra de menús lleva su ventana al escritorio en el que estás. Si está desactivado, macOS te cambia al escritorio en el que estaba la ventana.
+	When on, opening the launcher from the menu bar brings its window to the desktop you're on. When off, macOS switches you to the desktop the window was on.	Si está activado, abrir Zendaya Launcher desde la barra de menús lleva su ventana al escritorio en el que estás. Si está desactivado, macOS te cambia al escritorio en el que estaba la ventana.
 	Couldn't change the login item: {e}	No se pudo cambiar el elemento de inicio de sesión: {e}
 column	App	Aplicación
 column	Installed	Instalada
@@ -300,7 +300,7 @@ filter	Installed	Instaladas
 @id	launcher.notes	Novedades
 @id	launcher.dismiss	Descartar
 @id	settings.open	Ajustes
-@id	settings.quit	Salir de ArtCraft Launcher
+@id	settings.quit	Salir de Zendaya Launcher
 @id	view.grid	Cuadrícula
 @id	view.table	Tabla
 @id	filter.all	Todas
@@ -324,14 +324,14 @@ filter	Installed	Instaladas
 @id	linux.preferred_kind	Instalar las aplicaciones nuevas como
 @id	tray.close_to_tray	Seguir abierto en la bandeja del sistema al cerrar la ventana
 @id	tray.show_on_current_desktop	Mostrar la ventana en el escritorio actual
-@id	tray.login_item	Abrir ArtCraft Launcher al iniciar sesión
+@id	tray.login_item	Abrir Zendaya Launcher al iniciar sesión
 @id	appearance.theme	Apariencia
-	Show ArtCraft Launcher	Mostrar ArtCraft Launcher
+	Show Zendaya Launcher	Mostrar Zendaya Launcher
 	Check for Updates	Buscar actualizaciones
 	Visit getartcraft.com	Visitar getartcraft.com
 	ArtCraft on GitHub	ArtCraft en GitHub
 	Join the ArtCraft Discord	Únete al Discord de ArtCraft
-@plural	ArtCraft Launcher · {n} update available|ArtCraft Launcher · {n} updates available	ArtCraft Launcher · {n} actualización disponible|ArtCraft Launcher · {n} actualizaciones disponibles
+@plural	Zendaya Launcher · {n} update available|Zendaya Launcher · {n} updates available	Zendaya Launcher · {n} actualización disponible|Zendaya Launcher · {n} actualizaciones disponibles
 	Install folder	Carpeta de instalación
 	Default install folder	Carpeta de instalación predeterminada
 	System default	Predeterminada del sistema
@@ -344,7 +344,7 @@ filter	Installed	Instaladas
 @msg	couldn't use install folder {path}: {reason}	no se pudo usar la carpeta de instalación {path}: {reason}
 @msg	this release has no AppImage for a custom install folder	esta versión no tiene un AppImage para una carpeta de instalación personalizada
 @msg	custom install folders aren't supported on this system	este sistema no admite carpetas de instalación personalizadas
-@msg	{path} already exists and wasn't installed by ArtCraft Launcher	{path} ya existe y no fue instalado por ArtCraft Launcher
+@msg	{path} already exists and wasn't installed by Zendaya Launcher	{path} ya existe y no fue instalado por Zendaya Launcher
 @msg	couldn't move {path} to Trash ({reason}). Remove it in Finder instead.	no se pudo mover {path} a la Papelera ({reason}). Elimínalo desde Finder.
 	Apps are placed inside this folder.	Las aplicaciones se guardan dentro de esta carpeta.
 	Replace what's there?	¿Reemplazar lo que hay?
@@ -359,3 +359,24 @@ filter	Installed	Instaladas
 	Show {n} more changes	Mostrar {n} cambios más
 	Last updated: {date}	Última actualización: {date}
 column	Version	Versión
+	The language of the launcher's menus and buttons.	El idioma de los menús y botones del lanzador.
+	When to look for new versions, and what to do with them.	Cuándo buscar nuevas versiones y qué hacer con ellas.
+	What the launcher does when its window is closed.	Qué hace el lanzador cuando se cierra su ventana.
+	Light, dark, or the same as your system.	Claro, oscuro o igual que tu sistema.
+
+# Store navigation and discovery
+	Home	Inicio
+	Applications	Aplicaciones
+	Games	Juegos
+	Library	Biblioteca
+	Games will arrive later. Discover our applications in the meantime.	Los juegos llegarán más adelante. Descubre nuestras aplicaciones mientras tanto.
+	Explore applications	Explorar aplicaciones
+	Discover applications	Descubre aplicaciones
+	Your library is empty	Tu biblioteca está vacía
+	Featured application	Aplicación destacada
+	Make room for your creativity.	Da espacio a tu creatividad.
+	Edit photos, compose with layers and bring your ideas to life.	Edita fotos, compón con capas y da vida a tus ideas.
+	Discover Photozen	Descubrir Photozen
+	Your creative space	Tu espacio creativo
+	All your installed applications, together.	Todas tus aplicaciones instaladas, juntas.
+	Back	Atrás

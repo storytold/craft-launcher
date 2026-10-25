@@ -1,8 +1,8 @@
 [Desktop Entry]
 Type=Application
-Name=ArtCraft Launcher
+Name=Zendaya Launcher
 GenericName=App Launcher
-Comment=Install, update and launch the Craft App Suite
+Comment=Install, update and launch Zendaya applications
 Exec=artcraft-launcher
 TryExec=artcraft-launcher
 Icon=ai.storyteller.artcraft-launcher

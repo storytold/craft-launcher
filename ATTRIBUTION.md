@@ -51,3 +51,10 @@ licensed like those apps. Refresh them from the source path, never redraw them.
 |---|---|---|---|---|
 | `docs/brand/` (all files) | ArtCraft name, wordmark and mark | ArtCraft Team | getartcraft.com (via `craftrules/assets/brand/`) | Not open source; trademarks of the ArtCraft Team, [`docs/brand/LICENSE-brand.txt`](docs/brand/LICENSE-brand.txt) |
 | README app icons (linked, not copied) | Each Craft app's 64 px icon | ArtCraft Team and each app's contributors | `raw.githubusercontent.com/storytold/<app>/main/assets/app-icon/hicolor/64x64/apps/ai.storyteller.<app>.png` | MIT OR Apache-2.0 (each app's license) |
+
+## Store preview
+
+`assets/store/photozen-demo.jpg` is the PhotoCraft/Photozen application screenshot from
+[craft-launcher-assets v1](https://github.com/storytold/craft-launcher-assets/blob/v1/photocraft/demo.jpg),
+originally produced by PhotoCraft (the project Photozen is based on).
+The application is MIT / Apache-2.0 licensed; the depicted Hokusai artwork is in the public domain.

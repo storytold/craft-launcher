@@ -1,5 +1,5 @@
-//! Small building blocks in getartcraft.com's style: mono labels, square buttons, badges and
-//! hairline cell groups.
+//! Small building blocks: mono labels, rounded buttons, pill badges, segmented controls and
+//! switches.
 //!
 //! Upper-case text is drawn upper case but announced to screen readers as written.
 
@@ -85,7 +85,7 @@ pub fn eyebrow(ui: &mut Ui, index: &str, label: &str) {
 pub fn tag(ui: &mut Ui, text: &str, fill: Color32, ink: Color32) -> Response {
     let galley = caps(ui, text, theme::HUD_SIZE, theme::mono_bold(), theme::HUD_SPACING, ink);
     let (rect, resp) = ui.allocate_exact_size(galley.size() + vec2(16.0, 8.0), Sense::hover());
-    ui.painter().rect_filled(rect, CornerRadius::ZERO, fill);
+    ui.painter().rect_filled(rect, theme::radius(6), fill);
     paint_centred(ui, rect, galley, ink);
     resp.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Label, true, text));
     resp
@@ -274,12 +274,11 @@ pub fn hud_link(ui: &mut Ui, text: &str, url: &str) -> Response {
     resp
 }
 
-/// A small square status badge: 10 px mono on the sunken surface, in `color`.
+/// A small pill-shaped status badge: 10 px mono in `color`, on a wash of it.
 pub fn badge(ui: &mut Ui, text: &str, color: Color32) -> Response {
-    let t = Tokens::get(ui.ctx());
     let galley = caps(ui, text, 10.0, theme::mono(), 1.0, color);
-    let (rect, resp) = ui.allocate_exact_size(vec2(galley.size().x + 12.0, 20.0), Sense::hover());
-    ui.painter().rect(rect, CornerRadius::ZERO, t.sunken, t.hairline(), egui::StrokeKind::Inside);
+    let (rect, resp) = ui.allocate_exact_size(vec2(galley.size().x + 18.0, 22.0), Sense::hover());
+    ui.painter().rect_filled(rect, CornerRadius::same(11), theme::tint(color, 0.14));
     paint_centred(ui, rect, galley, color);
     resp.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Label, true, text));
     resp
@@ -302,7 +301,7 @@ pub fn button_width(ui: &Ui, text: &str, minimum: f32) -> f32 {
     (galley.size().x + 32.0).max(minimum)
 }
 
-/// A square button with a mono upper-case label, at least `width` wide.
+/// A rounded button with a mono upper-case label, at least `width` wide.
 pub fn button(ui: &mut Ui, text: &str, kind: Kind, width: f32) -> Response {
     let t = Tokens::get(ui.ctx());
     let galley = caps(ui, text, theme::HUD_SIZE, theme::mono_bold(), theme::BUTTON_SPACING, t.ink);
@@ -313,12 +312,12 @@ pub fn button(ui: &mut Ui, text: &str, kind: Kind, width: f32) -> Response {
     let (fill, stroke, color) = match kind {
         Kind::Primary => (t.invert_bg.gamma_multiply(if hovered { 0.8 } else { 1.0 }), Stroke::NONE, t.invert_fg),
         Kind::Danger => (t.bad.gamma_multiply(if hovered { 0.8 } else { 1.0 }), Stroke::NONE, Color32::WHITE),
-        Kind::Secondary if hovered => (t.invert_bg, Stroke::NONE, t.invert_fg),
-        Kind::Secondary => (t.bg, Stroke::new(1.0, t.line_strong), t.ink),
+        Kind::Secondary if hovered => (t.sunken, Stroke::new(1.0, t.line_strong), t.ink_strong),
+        Kind::Secondary => (Color32::TRANSPARENT, Stroke::new(1.0, t.line_strong), t.ink),
     };
     // Disabled: the whole button at half strength, like the site's `opacity-50`.
     let fade = |c: Color32| if enabled { c } else { c.gamma_multiply(0.5) };
-    ui.painter().rect(rect, CornerRadius::ZERO, fade(fill), Stroke::new(stroke.width, fade(stroke.color)), egui::StrokeKind::Inside);
+    ui.painter().rect(rect, theme::radius(theme::CONTROL_R), fade(fill), Stroke::new(stroke.width, fade(stroke.color)), egui::StrokeKind::Inside);
     paint_centred(ui, rect, galley, fade(color));
     resp.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Button, enabled, text));
     if enabled { resp.on_hover_cursor(egui::CursorIcon::PointingHand) } else { resp }
@@ -332,14 +331,14 @@ pub struct Cell<'a> {
     pub count: Option<(usize, Option<Color32>)>,
 }
 
-/// Mutually exclusive options in a row of hairline cells (the site's share bar); the chosen one
-/// is inverted. Returns whether the choice changed.
+/// Mutually exclusive options as a segmented control: a sunken rounded track with the chosen one
+/// raised on it. Returns whether the choice changed.
 pub fn cells<T: PartialEq + Copy>(ui: &mut Ui, value: &mut T, options: &[(T, Cell<'_>)]) -> bool {
     cells_apart(ui, value, options, 0.0)
 }
 
-/// Like [`cells`], but with `gap` between the options: with a gap each option has a hairline box
-/// of its own instead of sharing one.
+/// Like [`cells`], but with `gap` between the options: with a gap each option is a pill of its own
+/// instead of sitting on a shared track.
 pub fn cells_apart<T: PartialEq + Copy>(ui: &mut Ui, value: &mut T, options: &[(T, Cell<'_>)], gap: f32) -> bool {
     let t = Tokens::get(ui.ctx());
     let mut changed = false;
@@ -347,6 +346,9 @@ pub fn cells_apart<T: PartialEq + Copy>(ui: &mut Ui, value: &mut T, options: &[(
     let rtl = ui.layout().prefer_right_to_left();
     let ordered: Vec<&(T, Cell<'_>)> = if rtl { options.iter().rev().collect() } else { options.iter().collect() };
     let mut rects = Vec::with_capacity(options.len());
+    // The track goes under the options, so its slot is taken first and filled once their row is known.
+    let track = ui.painter().add(egui::Shape::Noop);
+    let inset = if gap > 0.0 { 0.0 } else { 3.0 };
     ui.scope(|ui| {
         ui.spacing_mut().item_spacing.x = gap;
         for (opt, cell) in ordered {
@@ -361,10 +363,10 @@ pub fn cells_apart<T: PartialEq + Copy>(ui: &mut Ui, value: &mut T, options: &[(
             let hovered = resp.hovered();
             let (fill, ink) = match (on, hovered) {
                 (true, _) => (t.invert_bg, t.invert_fg),
-                (false, true) => (t.sunken, t.ink_strong),
+                (false, true) => (t.line, t.ink_strong),
                 (false, false) => (Color32::TRANSPARENT, t.muted),
             };
-            ui.painter().rect_filled(rect, CornerRadius::ZERO, fill);
+            ui.painter().rect_filled(rect.shrink(inset), theme::radius(theme::CONTROL_R - inset as u8), fill);
             let text_rect = rect.shrink2(vec2(12.0, 0.0));
             let label_w = label.size().x;
             paint_left(ui, text_rect, label, ink);
@@ -383,33 +385,27 @@ pub fn cells_apart<T: PartialEq + Copy>(ui: &mut Ui, value: &mut T, options: &[(
             rects.push(rect);
         }
     });
-    // The hairlines: an outline each when apart; otherwise one outline and a rule between neighbours.
+    // Apart, each option gets its own outline; together, they share one sunken track.
     if gap > 0.0 {
         for r in &rects {
-            ui.painter().rect_stroke(*r, CornerRadius::ZERO, t.hairline(), egui::StrokeKind::Inside);
+            ui.painter().rect_stroke(*r, theme::radius(theme::CONTROL_R), t.hairline(), egui::StrokeKind::Inside);
         }
     } else if let (Some(first), Some(last)) = (rects.first(), rects.last()) {
-        let p = ui.painter();
-        p.rect_stroke(first.union(*last), CornerRadius::ZERO, t.hairline(), egui::StrokeKind::Inside);
-        let (top, bottom) = (first.top(), first.bottom());
-        for r in rects.iter().skip(1) {
-            let x = if rtl { r.right() } else { r.left() };
-            p.vline(x, top..=bottom, t.hairline());
-        }
+        ui.painter().set(track, egui::Shape::rect_filled(first.union(*last), theme::radius(theme::CONTROL_R), t.sunken));
     }
     changed
 }
 
-/// A slim square progress bar with a caption above it.
+/// A slim rounded progress bar with a caption above it.
 pub fn progress(ui: &mut Ui, fraction: Option<f32>, caption: &str, color: Color32, width: f32) {
     let t = Tokens::get(ui.ctx());
     let (rect, _) = ui.allocate_exact_size(vec2(width, theme::CONTROL_H), Sense::hover());
     let p = ui.painter();
     let bar = Rect::from_min_size(egui::pos2(rect.left(), rect.bottom() - 4.0), vec2(width, 4.0));
-    p.rect_filled(bar, CornerRadius::ZERO, t.line);
+    p.rect_filled(bar, CornerRadius::same(2), t.line);
     match fraction {
         Some(f) => {
-            p.rect_filled(Rect::from_min_size(bar.min, vec2(bar.width() * f.clamp(0.0, 1.0), bar.height())), CornerRadius::ZERO, color);
+            p.rect_filled(Rect::from_min_size(bar.min, vec2(bar.width() * f.clamp(0.0, 1.0), bar.height())), CornerRadius::same(2), color);
         }
         None => {
             // Keep the segment moving through the track boundary without resetting visibly.
@@ -419,7 +415,7 @@ pub fn progress(ui: &mut Ui, fraction: Option<f32>, caption: &str, color: Color3
             for left in [x, x - width] {
                 let seg = Rect::from_min_size(egui::pos2(bar.left() + left, bar.top()), vec2(segment_width, bar.height())).intersect(bar);
                 if seg.is_positive() {
-                    p.rect_filled(seg, CornerRadius::ZERO, color);
+                    p.rect_filled(seg, CornerRadius::same(2), color);
                 }
             }
             ui.ctx().request_repaint();
@@ -442,6 +438,49 @@ pub fn human_bytes(n: u64) -> String {
     }
 }
 
+/// A setting that is on or off: its label (and an optional note under it) at the left, a switch
+/// at the right. The whole row toggles. Returns the row's response; `changed()` when it flipped.
+pub fn switch_row(ui: &mut Ui, on: &mut bool, label: &str, note: Option<&str>) -> Response {
+    let t = Tokens::get(ui.ctx());
+    const TRACK: egui::Vec2 = vec2(38.0, 22.0);
+    let width = ui.available_width();
+    let text_w = (width - TRACK.x - 16.0).max(40.0);
+    let wrap = |text: &str, size: f32, color: Color32| {
+        let mut job = egui::text::LayoutJob::single_section(
+            text.to_string(),
+            egui::TextFormat { font_id: egui::FontId::proportional(size), color, ..Default::default() },
+        );
+        job.wrap.max_width = text_w;
+        ui.painter().layout_job(job)
+    };
+    let title = wrap(label, 14.0, t.ink);
+    let sub = note.map(|n| wrap(n, 12.0, t.muted));
+    let text_h = title.size().y + sub.as_ref().map_or(0.0, |g| g.size().y + 3.0);
+    let (rect, mut resp) = ui.allocate_exact_size(vec2(width, text_h.max(TRACK.y) + 12.0), Sense::click());
+    if resp.clicked() {
+        *on = !*on;
+        resp.mark_changed();
+    }
+    let hovered = resp.hovered();
+    let k = ui.ctx().animate_bool_with_time(resp.id, *on, ui.style().animation_time);
+    let p = ui.painter();
+    let top = rect.center().y - text_h / 2.0;
+    let title_h = title.size().y;
+    p.galley(egui::pos2(rect.left(), top), title, t.ink);
+    if let Some(sub) = sub {
+        p.galley(egui::pos2(rect.left(), top + title_h + 3.0), sub, t.muted);
+    }
+    let track = Rect::from_min_size(egui::pos2(rect.right() - TRACK.x, rect.center().y - TRACK.y / 2.0), TRACK);
+    let off_fill = if hovered { t.line_strong } else { t.line };
+    p.rect_filled(track, CornerRadius::same(11), off_fill.lerp_to_gamma(t.accent, k));
+    let knob_x = egui::lerp(track.left() + 11.0..=track.right() - 11.0, k);
+    p.circle_filled(egui::pos2(knob_x, track.center().y), 8.0, Color32::WHITE);
+    let enabled = ui.is_enabled();
+    let value = *on;
+    resp.widget_info(|| egui::WidgetInfo::selected(egui::WidgetType::Checkbox, enabled, value, label));
+    resp.on_hover_cursor(egui::CursorIcon::PointingHand)
+}
+
 /// Which drawn glyph a [`glyph_button`] shows (drawn, so no font needs the symbol).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Glyph {
@@ -449,23 +488,20 @@ pub enum Glyph {
     Close,
 }
 
-/// A small outlined square button with a drawn glyph; inverts on hover.
+/// A small outlined rounded button with a drawn glyph; lights up on hover.
 pub fn glyph_button(ui: &mut Ui, glyph: Glyph, tip: &str) -> Response {
     let t = Tokens::get(ui.ctx());
     let (rect, resp) = ui.allocate_exact_size(vec2(theme::CONTROL_H, theme::CONTROL_H), Sense::click());
     let hovered = resp.hovered();
     let p = ui.painter();
-    if hovered {
-        p.rect_filled(rect, CornerRadius::ZERO, t.invert_bg);
-    } else {
-        p.rect_stroke(rect, CornerRadius::ZERO, t.hairline(), egui::StrokeKind::Inside);
-    }
-    let c = if hovered { t.invert_fg } else { t.muted };
+    let fill = if hovered { t.sunken } else { Color32::TRANSPARENT };
+    p.rect(rect, theme::radius(theme::CONTROL_R), fill, Stroke::new(1.0, if hovered { t.line_strong } else { t.line }), egui::StrokeKind::Inside);
+    let c = if hovered { t.ink_strong } else { t.muted };
     let m = rect.center();
     match glyph {
         Glyph::Pause => {
             for dx in [-3.0, 3.0] {
-                p.rect_filled(Rect::from_center_size(m + vec2(dx, 0.0), vec2(2.5, 10.0)), CornerRadius::ZERO, c);
+                p.rect_filled(Rect::from_center_size(m + vec2(dx, 0.0), vec2(2.5, 10.0)), CornerRadius::same(1), c);
             }
         }
         Glyph::Close => {
@@ -478,11 +514,14 @@ pub fn glyph_button(ui: &mut Ui, glyph: Glyph, tip: &str) -> Response {
     resp.on_hover_text(tip).on_hover_cursor(egui::CursorIcon::PointingHand)
 }
 
-/// The "…" button that opens an app's menu: an outlined square like [`glyph_button`].
+/// The "…" button that opens an app's menu: an outlined rounded button like [`glyph_button`].
 pub fn more_menu<R>(ui: &mut Ui, add_contents: impl FnOnce(&mut Ui) -> R) {
     let t = Tokens::get(ui.ctx());
-    let btn =
-        egui::Button::new(RichText::new("…").size(15.0).color(t.muted)).fill(Color32::TRANSPARENT).min_size(vec2(theme::CONTROL_H, theme::CONTROL_H));
+    let btn = egui::Button::new(RichText::new("…").size(15.0).color(t.muted))
+        .fill(Color32::TRANSPARENT)
+        .stroke(t.hairline())
+        .corner_radius(theme::radius(theme::CONTROL_R))
+        .min_size(vec2(theme::CONTROL_H, theme::CONTROL_H));
     egui::containers::menu::MenuButton::from_button(btn).ui(ui, |ui| {
         ui.set_min_width(200.0);
         add_contents(ui)

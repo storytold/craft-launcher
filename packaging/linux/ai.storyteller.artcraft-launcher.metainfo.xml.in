@@ -5,19 +5,18 @@
   <id>ai.storyteller.artcraft-launcher</id>
   <metadata_license>CC0-1.0</metadata_license>
   <project_license>MIT OR Apache-2.0</project_license>
-  <name>ArtCraft Launcher</name>
-  <summary>Install, update and launch the Craft App Suite</summary>
+  <name>Zendaya Launcher</name>
+  <summary>Install, update and launch Zendaya applications</summary>
   <developer id="ai.storyteller">
     <name>Learning Machines LLC</name>
   </developer>
   <description>
     <p>
-      ArtCraft Launcher lists every app in the Craft App Suite (PhotoCraft, LightCraft, FilmCraft,
-      DesignCraft, VectorCraft, PdfCraft, EffectCraft, WordCraft, DeckCraft, GridCraft, CADCraft,
-      SoundCraft and FigCraft), installs the right build for your computer, and keeps them up to date.
+      Zendaya Launcher discovers, installs and opens Zendaya applications, including Photozen.
+      It installs the right build for your computer and keeps your applications up to date.
     </p>
     <ul>
-      <li>One place to find, install and open every Craft app</li>
+      <li>One place to find, install and open Zendaya applications</li>
       <li>Checks GitHub releases for updates and installs them for you</li>
       <li>Lives in the system tray and tells you when updates are ready</li>
     </ul>

@@ -483,7 +483,7 @@ mod linux_tests {
 
     #[test]
     fn reads_binary_version_from_cli() {
-        let photo = CraftApp::by_id("photocraft").unwrap();
+        let photo = crate::test_catalog::by_id("photocraft").unwrap();
         let temp_dir = tempfile::tempdir().unwrap();
         let bin = temp_dir.path().join("photocraft");
         std::fs::write(&bin, "#!/bin/sh\necho 'photocraft 0.6.0 (0c72d9542, 2026-10-10)'\n").unwrap();
@@ -504,9 +504,9 @@ mod linux_tests {
             bin
         };
         let sound = write("soundcraft", "#!/bin/sh\necho 'SoundCraft 0.5.0'\n");
-        assert_eq!(linux::binary_version(&sound, CraftApp::by_id("soundcraft").unwrap()).unwrap().to_string(), "0.5.0");
+        assert_eq!(linux::binary_version(&sound, crate::test_catalog::by_id("soundcraft").unwrap()).unwrap().to_string(), "0.5.0");
         let pdf = write("pdfcraft", "#!/bin/sh\necho 'printcraft 0.2.1'\n");
-        assert_eq!(linux::binary_version(&pdf, CraftApp::by_id("pdfcraft").unwrap()).unwrap().to_string(), "0.2.1");
+        assert_eq!(linux::binary_version(&pdf, crate::test_catalog::by_id("pdfcraft").unwrap()).unwrap().to_string(), "0.2.1");
     }
 }
 
@@ -667,9 +667,9 @@ mod tests {
 
     #[test]
     fn parse_cli_version_accepts_id_display_name_and_former_id() {
-        let photo = CraftApp::by_id("photocraft").unwrap();
-        let sound = CraftApp::by_id("soundcraft").unwrap();
-        let pdf = CraftApp::by_id("pdfcraft").unwrap();
+        let photo = crate::test_catalog::by_id("photocraft").unwrap();
+        let sound = crate::test_catalog::by_id("soundcraft").unwrap();
+        let pdf = crate::test_catalog::by_id("pdfcraft").unwrap();
         assert_eq!(parse_cli_version("photocraft 0.7.0 (dev build)", photo).unwrap().to_string(), "0.7.0");
         assert_eq!(parse_cli_version("SoundCraft 0.5.0", sound).unwrap().to_string(), "0.5.0");
         assert_eq!(parse_cli_version("printcraft 0.2.1", pdf).unwrap().to_string(), "0.2.1");
@@ -680,7 +680,7 @@ mod tests {
     #[cfg(target_os = "linux")]
     #[test]
     fn finds_appimages_in_every_folder_newest_first() {
-        let app = CraftApp::by_id("photocraft").unwrap();
+        let app = crate::test_catalog::by_id("photocraft").unwrap();
         let root = tempfile::tempdir().unwrap();
         let (apps, gear, bin) = (root.path().join("Applications"), root.path().join("AppImages"), root.path().join("bin"));
         for d in [&apps, &gear, &bin] {
@@ -711,19 +711,19 @@ mod tests {
 
     #[test]
     fn pdfcraft_matches_its_former_printcraft_installer_name() {
-        let pdf = CraftApp::by_id("pdfcraft").unwrap();
+        let pdf = crate::test_catalog::by_id("pdfcraft").unwrap();
         assert!(is_installer_entry(pdf, "PrintCraft", LEARNING_MACHINES), "a PrintCraft entry from {LEARNING_MACHINES} should be PdfCraft's");
     }
 
     #[test]
     fn pdfcraft_still_matches_its_own_installer_name() {
-        let pdf = CraftApp::by_id("pdfcraft").unwrap();
+        let pdf = crate::test_catalog::by_id("pdfcraft").unwrap();
         assert!(is_installer_entry(pdf, "PdfCraft", LEARNING_MACHINES));
     }
 
     #[test]
     fn printcraft_entries_match_nothing_else() {
-        let pdf = CraftApp::by_id("pdfcraft").unwrap();
+        let pdf = crate::test_catalog::by_id("pdfcraft").unwrap();
         assert!(!is_installer_entry(pdf, "PrintCraft", "Some Other Publisher"));
         assert!(!is_installer_entry(pdf, "PhotoCraft", LEARNING_MACHINES));
         for a in SUITE.iter().filter(|a| a.id != "pdfcraft") {
@@ -733,7 +733,7 @@ mod tests {
 
     #[test]
     fn pdfcraft_exe_is_sought_under_every_name_it_has_shipped_as() {
-        let pdf = CraftApp::by_id("pdfcraft").unwrap();
+        let pdf = crate::test_catalog::by_id("pdfcraft").unwrap();
         let location = PathBuf::from(r"D:\Apps\PrintCraft");
         let roots = roots();
         let mut want = vec![location.join("pdfcraft.exe"), location.join("printcraft.exe")];

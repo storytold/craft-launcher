@@ -123,9 +123,11 @@ pub struct LauncherUi {
     pub(crate) dialog: Option<Dialog>,
     /// Release-note text scale for this session, independent of the main UI zoom.
     pub(crate) notes_zoom: f32,
-    /// The app whose details drawer is open (or closing: see `detail_shown`).
+    /// The section to return to when leaving an app detail page.
+    pub(crate) page: crate::store::Page,
+    /// The application currently displayed as the main page.
     pub(crate) detail: Option<String>,
-    /// The app the drawer is drawn for: it outlives `detail` while the drawer slides out.
+    /// The page whose screenshots and keyboard state have been initialized.
     pub(crate) detail_shown: Option<String>,
     /// Which screenshot the drawer shows.
     pub(crate) detail_shot: usize,
@@ -201,6 +203,7 @@ impl LauncherUi {
             toasts: Vec::new(),
             dialog: None,
             notes_zoom: 1.0,
+            page: crate::store::Page::Home,
             detail: None,
             detail_shown: None,
             detail_shot: 0,
@@ -489,7 +492,7 @@ impl LauncherUi {
         if self.settings.notify {
             let (title, body) = match fresh.as_slice() {
                 [(_, name, v)] => {
-                    let body: String = tl!("Open ArtCraft Launcher to update.").to_string();
+                    let body: String = tl!("Open Zendaya Launcher to update.").to_string();
                     (crate::i18n::fmt(tl!("{name} {v} is available"), &[("name", name), ("v", v)]), body)
                 }
                 many => {
@@ -611,33 +614,20 @@ impl LauncherUi {
             .exact_size(crate::views::FOOTER_H)
             .resizable(false)
             .show(ui, |ui| self.footer(ui));
+        egui::Panel::left("navigation")
+            .frame(egui::Frame::new().fill(tokens.sunken).inner_margin(egui::Margin::symmetric(4, 12)))
+            .exact_size(88.0)
+            .resizable(false)
+            .show(ui, |ui| self.store_navigation(ui));
         egui::CentralPanel::default()
-            .frame(egui::Frame::new().fill(tokens.bg).inner_margin(egui::Margin { left: 20, right: 20, top: 18, bottom: 0 }))
+            .frame(egui::Frame::new().fill(tokens.bg).inner_margin(egui::Margin { left: 28, right: 28, top: 22, bottom: 0 }))
             .show(ui, |ui| {
-                self.toolbar(ui);
-                ui.add_space(18.0);
-                let ids = self.visible_ids();
-                // The table is wider than a narrow window: let it scroll sideways too.
-                let scroll = match self.settings.view {
-                    ViewMode::Grid => egui::ScrollArea::vertical(),
-                    ViewMode::Table => egui::ScrollArea::both(),
-                };
-                scroll.auto_shrink(false).show(ui, |ui| {
-                    if ids.is_empty() {
-                        ui.add_space(40.0);
-                        ui.vertical_centered(|ui| {
-                            crate::widgets::hud(ui, tl!("No apps match"), tokens.muted);
-                        });
-                    } else {
-                        match self.settings.view {
-                            ViewMode::Grid => self.grid(ui, &ids),
-                            ViewMode::Table => self.table(ui, &ids),
-                        }
-                    }
-                    ui.add_space(16.0);
-                });
+                if self.detail.is_some() {
+                    self.details_page(ui);
+                } else {
+                    self.store_page(ui);
+                }
             });
-        self.details_drawer(&ctx);
         self.dialogs(&ctx, host);
         self.draw_toasts(&ctx);
         if host.title_bar() == TitleBar::Custom {

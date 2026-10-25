@@ -62,8 +62,8 @@ fn events() -> Vec<Event> {
     for (i, app) in SUITE.iter().enumerate() {
         let latest = LatestRelease::Found(release(app.id, "0.5.0", NOW - 40 * 86_400 - i as i64 * 600));
         ev.push(Event::Latest { app: app.id.into(), latest, from: Origin::ArtCraftApi });
-        let installed = matches!(app.id, "photocraft" | "lightcraft").then(|| Installed {
-            version: version::parse(if app.id == "photocraft" { "0.4.1" } else { "0.5.0" }),
+        let installed = matches!(app.id, "photozen").then(|| Installed {
+            version: version::parse(if app.id == "photozen" { "0.4.1" } else { "0.5.0" }),
             source: InstallSource::Msi,
             location: format!("C:\\Program Files\\{}\\{}.exe", app.name, app.id),
             package: None,
@@ -72,16 +72,25 @@ fn events() -> Vec<Event> {
     }
     ev.push(Event::Progress { app: "filmcraft".into(), phase: JobPhase::Verifying });
     ev.push(Event::CheckFinished { at: NOW - 180, source: Source::Feed, rate_limited_until: None });
-    ev.push(Event::JobFinished { app: "lightcraft".into(), result: Ok("LightCraft updated to 0.5.0".into()) });
+    ev.push(Event::JobFinished { app: "photozen".into(), result: Ok("Photozen updated to 0.5.0".into()) });
     ev
 }
 
 fn harness(view: ViewMode) -> Harness<'static, Option<LauncherUi>> {
     artcraft_launcher_ui_egui::i18n::set_test_lang(artcraft_launcher_ui_egui::i18n::Lang::EN);
-    let mut backend = Some(Fake { events: events(), clock: Rc::new(Cell::new(NOW)) });
+    let mut backend = Some(Fake {
+        events: {
+            let mut ev = events();
+            if view == ViewMode::Table {
+                ev.push(Event::Progress { app: "photozen".into(), phase: JobPhase::Verifying });
+            }
+            ev
+        },
+        clock: Rc::new(Cell::new(NOW)),
+    });
     let settings =
         Settings { view, notify: false, language: "pt-BR".into(), theme: artcraft_launcher_ui_egui::theme::ThemeChoice::Dark, ..Settings::default() };
-    Harness::builder().with_size(egui::vec2(1180.0, 900.0)).with_theme(egui::Theme::Dark).build_ui_state(
+    let mut harness = Harness::builder().with_step_dt(1.0 / 60.0).with_size(egui::vec2(1180.0, 900.0)).with_theme(egui::Theme::Dark).build_ui_state(
         move |ui, state: &mut Option<LauncherUi>| {
             if state.is_none()
                 && let Some(b) = backend.take()
@@ -94,7 +103,11 @@ fn harness(view: ViewMode) -> Harness<'static, Option<LauncherUi>> {
             }
         },
         None,
-    )
+    );
+    harness.run_steps(3);
+    harness.get_all_by_role_and_label(egui::accesskit::Role::Button, artcraft_launcher_ui_egui::i18n::t("Applications")).next().unwrap().click();
+    harness.run_steps(2);
+    harness
 }
 
 #[test]
@@ -102,15 +115,15 @@ fn portuguese_ui_translates_labels_dates_and_messages() {
     let mut h = harness(ViewMode::Grid);
     h.run_steps(8);
     assert!(h.query_by_label("Launcher").is_none());
-    h.get_by_label("Craft App Suite");
+    h.get_by_label("Zendaya Launcher");
     h.get_by_label("Edição de imagens");
     h.get_by_label("Atualizar para 0.5.0");
-    h.get_by_label_contains("Conferindo a soma de verificação…");
     h.get_by_label_contains("Verificado há 3 min · via ArtCraft API");
-    h.get_by_label("LightCraft atualizado para 0.5.0");
+    h.get_by_label("Photozen atualizado para 0.5.0");
 
     let mut table = harness(ViewMode::Table);
     table.run_steps(8);
+    table.get_by_label_contains("Conferindo a soma de verificação…");
     table.get_by_label("Versão");
     assert!(table.query_all_by_label_contains("de ago. de 2026").count() >= 1);
 }

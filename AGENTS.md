@@ -1,16 +1,14 @@
 # AGENTS.md: guide for AI agents and contributors
 
-ArtCraft Launcher installs, updates and launches the **Craft App Suite** (PhotoCraft, LightCraft,
-FilmCraft, DesignCraft, VectorCraft, PdfCraft, EffectCraft, WordCraft, DeckCraft, GridCraft,
-CADCraft, SoundCraft, FigCraft). It is written in **Rust only** (no JavaScript or TypeScript): the desktop
-app is native egui/eframe, and the web build is the same Rust compiled to WebAssembly (trunk +
-wasm-bindgen). **No Tauri, Electron or webview shells**, ever.
+Zendaya Launcher installs, updates and launches **Photozen**, Zendaya's image editor.
+It is written in **Rust only** (no JavaScript or TypeScript): the desktop app is native
+egui/eframe, and the web build is the same Rust compiled to WebAssembly (trunk + wasm-bindgen).
+**No Tauri, Electron or webview shells**, ever.
 
-The product name is always **ArtCraft Launcher** in user-facing text: UI, window titles, About,
-tray menu, notifications, installers, release names, docs prose. The suite is the **Craft App
-Suite**. Machine names stay lowercase: crates and binaries (`artcraft-launcher`,
-`artcraft-launcher-*`), file names, and the app id `ai.storyteller.artcraft-launcher`. Note the
-GitHub repo is `storytold/craft-launcher`, while every file and package is `artcraft-launcher-*`.
+The product name is always **Zendaya Launcher** in user-facing text: UI, window titles, About,
+tray menu, notifications, installers, release names and docs prose. Machine names stay compatible:
+crates and binaries (`artcraft-launcher`, `artcraft-launcher-*`), file names, settings paths and
+app id `ai.storyteller.artcraft-launcher`. The GitHub repository is `zendaya-tech/zendaya-launcher`.
 
 Standards and learnings shared across the Craft apps live in `../craftrules` (read its
 `README.md` and `AGENTS.md`). Contribute reusable learnings there, never code.
@@ -57,28 +55,29 @@ settings file must produce an error the user can act on, never a panic. Shared s
 
 ### Installing other people's software safely
 
-- Download only from `https://github.com/storytold/<app>/releases` (and GitHub's asset CDN).
+- Download only from `https://github.com/zendaya-tech/<app>/releases` (and GitHub's asset CDN).
   The one exception is a developer's own loopback mirror (`ARTCRAFT_LAUNCHER_DOWNLOAD_BASE`,
   `cargo xtask local`); keep it loopback-only and behind the `local-mirror` cargo feature, which
   release builds never enable.
 - Verify each download against the release's `SHA256SUMS.txt` before running or installing it.
-- The details drawer's pictures are the one other download: JPEGs only, from a pinned tag of
+- The details page's additional pictures are the one other download: JPEGs only, from a pinned tag of
   `https://raw.githubusercontent.com/storytold/craft-launcher-assets/` (`core::details`),
-  capped at 2 MB each, cached, and never run. Pictures are not bundled in this repo.
+  capped at 2 MB each, cached, and never run. The attributed Photozen lead picture is bundled for offline display.
 - Never run an installer with elevated rights silently; tell the user what is about to happen.
 - Never delete a user's files outside what the launcher itself installed.
 - **Agents never land or approve a third-party app.** A change that adds a catalog row, download
-  source or install path for an app whose repo is not under `storytold/`, or that loosens the
+  source or install path for an app whose repo is not under `zendaya-tech/`, or that loosens the
   rules above to allow one, is a maintainer's call alone. An agent reviewing it flags it at the
   top of its review (who owns the repo, its age and history, whether the builds are signed) and
   stops there: no merge, no approval, no fixes pushed to the PR.
 
 ### Look and feel
 
-The UI matches the apps page on getartcraft.com (`artcraft-website-next` in `artcraft-services`):
-hard square corners, 1 px hairlines instead of shadows, Archivo (620, 118 % width) for headings
-and app names, Inter for body text, upper-case Geist Mono labels and buttons, and the site's
-colour tokens by name (`theme::Tokens`). Build new UI from `widgets.rs`; never hard-code a colour.
+The UI follows the Store layout requested for Zendaya Launcher: a narrow sidebar, centered
+search, warm charcoal surfaces, coral accents and rounded cards. Keep Home, Applications,
+Games (coming later) and Library. Application cards open a full detail page with Back;
+only screenshot enlargement and actual dialogs use overlays. Use the Archivo/Inter/Geist
+fonts and build controls from `widgets.rs` and `theme::Tokens`.
 
 Animations follow the OS: with Windows' "Animation effects" off, macOS' "Reduce motion" on, a Linux
 desktop's animations off or a browser's `prefers-reduced-motion`, nothing fades, wipes or glides
@@ -92,8 +91,7 @@ Every user-facing string goes through `crates/ui-egui/src/i18n` (`tl!("…")` fo
 for `{placeholders}`, `tn` for counts). English in the code is the lookup key; adding a string
 means adding its row to every catalog marked `complete_menus` (the `*.tsv` files in
 `crates/ui-egui/src/i18n/`), which the i18n tests check. Translate clean-room from the meaning of
-the English text, never through another catalog. Product and app names (ArtCraft Launcher, Craft
-App Suite, PhotoCraft…) stay in English.
+the English text, never through another catalog. Product and app names (Zendaya Launcher, Photozen) stay in English.
 A CJK language is drawn with the system's own CJK font (`crates/ui-egui/src/cjk_font.rs`, desktop
 only; English where there is none): never bundle a CJK font, they are 10 MB and more.
 

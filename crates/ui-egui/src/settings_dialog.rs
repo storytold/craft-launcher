@@ -1,5 +1,6 @@
-//! The Settings dialog: a large card in the shape of the app page (see `sheet.rs`), with the
-//! groups of settings in boxes, two columns once the window is wide enough.
+//! The Settings dialog: a large rounded card in the shape of the app page (see `sheet.rs`), with
+//! the groups of settings in rounded boxes, each saying what it is for, two columns once the
+//! window is wide enough. On/off settings are switches.
 
 use artcraft_launcher_core::{Os, PackageKind};
 use egui::{RichText, Ui, vec2};
@@ -29,7 +30,15 @@ fn row(ui: &mut Ui, label: &str, control_width: f32, add: &mut dyn FnMut(&mut Ui
 
 fn note(ui: &mut Ui, text: &str) {
     let t = Tokens::get(ui.ctx());
-    ui.label(RichText::new(text).size(12.0).color(t.muted));
+    ui.add_space(2.0);
+    ui.add(egui::Label::new(RichText::new(text).size(12.0).color(t.muted)).wrap());
+}
+
+/// A hairline between two settings in the same group.
+fn divider(ui: &mut Ui) {
+    let t = Tokens::get(ui.ctx());
+    let (rect, _) = ui.allocate_exact_size(vec2(ui.available_width(), 1.0), egui::Sense::hover());
+    ui.painter().hline(rect.x_range(), rect.center().y, t.hairline());
 }
 
 impl LauncherUi {
@@ -38,15 +47,10 @@ impl LauncherUi {
         let size = sheet::size(ui.ctx(), vec2(1000.0, 820.0));
         ui.set_width(size.x);
         ui.set_max_height(size.y);
-        let hero_h = sheet::hero(
-            ui,
-            Some(crate::icons::artcraft_mark()),
-            tl!("Settings"),
-            &format!("ArtCraft Launcher {}", env!("CARGO_PKG_VERSION")),
-            |_| {},
-        );
+        let hero_h =
+            sheet::hero(ui, Some(crate::icons::artcraft_mark()), tl!("Settings"), &format!("Zendaya Launcher {}", env!("CARGO_PKG_VERSION")), |_| {});
 
-        let quit_width = widgets::button_width(ui, tl!("Quit ArtCraft Launcher"), 0.0);
+        let quit_width = widgets::button_width(ui, tl!("Quit Zendaya Launcher"), 0.0);
         let done_width = widgets::button_width(ui, tl!("Done"), 90.0);
         let stack_actions = self.caps.manage_apps && quit_width + done_width + ui.spacing().item_spacing.x + 48.0 > size.x;
         let footer_h = if stack_actions { 2.0 * theme::CONTROL_H + ui.spacing().item_spacing.y } else { theme::CONTROL_H } + 32.0;
@@ -68,7 +72,7 @@ impl LauncherUi {
         egui::Frame::new().inner_margin(egui::Margin::symmetric(theme::PAD as i8, 16)).show(ui, |ui| {
             ui.set_width(ui.available_width());
             let quit = |ui: &mut Ui, host: &mut dyn Host| {
-                if self.caps.manage_apps && widgets::button(ui, tl!("Quit ArtCraft Launcher"), Kind::Secondary, 0.0).clicked() {
+                if self.caps.manage_apps && widgets::button(ui, tl!("Quit Zendaya Launcher"), Kind::Secondary, 0.0).clicked() {
                     host.quit();
                 }
             };
@@ -119,7 +123,7 @@ impl LauncherUi {
         let t = Tokens::get(ui.ctx());
         let mut lang_code = self.settings.language.clone();
         let installed = self.cjk_font;
-        sheet::panel(ui, tl!("Language"), |ui| {
+        sheet::panel_with(ui, tl!("Language"), Some(tl!("The language of the launcher's menus and buttons.")), |ui| {
             let width = ui.available_width();
             egui::ComboBox::from_id_salt("language").selected_text(Settings::language_label(&lang_code, installed)).width(width).show_ui(ui, |ui| {
                 ui.selectable_value(&mut lang_code, Settings::LANGUAGE_AUTO.to_string(), tl!("Auto"));
@@ -143,7 +147,7 @@ impl LauncherUi {
     }
 
     fn settings_updates(&mut self, ui: &mut Ui) {
-        sheet::panel(ui, tl!("Updates"), |ui| {
+        sheet::panel_with(ui, tl!("Updates"), Some(tl!("When to look for new versions, and what to do with them.")), |ui| {
             let mut every = self.settings.check_every;
             row(ui, tl!("Check for updates"), 150.0, &mut |ui| {
                 egui::ComboBox::from_id_salt("every").selected_text(every.label()).width(150.0).show_ui(ui, |ui| {
@@ -153,14 +157,19 @@ impl LauncherUi {
                 });
             });
             self.settings.check_every = every;
-            if self.caps.manage_apps
-                && ui.checkbox(&mut self.settings.auto_update, tl!("Automatically download and install updates")).changed()
-                && self.settings.auto_update
-            {
-                self.trigger_auto_updates();
+            ui.add_space(6.0);
+            if self.caps.manage_apps {
+                divider(ui);
+                if widgets::switch_row(ui, &mut self.settings.auto_update, tl!("Automatically download and install updates"), None).changed()
+                    && self.settings.auto_update
+                {
+                    self.trigger_auto_updates();
+                }
             }
-            ui.checkbox(&mut self.settings.notify, tl!("Notify me when an installed app has an update"));
-            ui.checkbox(&mut self.settings.prereleases, tl!("Include pre-releases (betas and release candidates)"));
+            divider(ui);
+            widgets::switch_row(ui, &mut self.settings.notify, tl!("Notify me when an installed app has an update"), None);
+            divider(ui);
+            widgets::switch_row(ui, &mut self.settings.prereleases, tl!("Include pre-releases (betas and release candidates)"), None);
         });
     }
 
@@ -248,17 +257,34 @@ impl LauncherUi {
         if !self.caps.manage_apps || !(host.has_tray() || host.has_desktops() || host.login_item().is_some()) {
             return;
         }
-        sheet::panel(ui, tl!("Running in the background"), |ui| {
+        sheet::panel_with(ui, tl!("Running in the background"), Some(tl!("What the launcher does when its window is closed.")), |ui| {
+            // A hairline goes between settings, never above the first.
+            let mut first = true;
+            let mut gap = |ui: &mut Ui| {
+                if !std::mem::take(&mut first) {
+                    divider(ui);
+                }
+            };
             if host.has_tray() {
-                ui.checkbox(&mut self.settings.close_to_tray, tl!("Keep running in the tray when the window is closed"));
+                gap(ui);
+                widgets::switch_row(ui, &mut self.settings.close_to_tray, tl!("Keep running in the tray when the window is closed"), None);
             }
             if host.has_desktops() {
-                ui.checkbox(&mut self.settings.show_on_current_desktop, tl!("Show the window on the current desktop")).on_hover_text(tl!(
-                    "When on, opening the launcher from the menu bar brings its window to the desktop you're on. When off, macOS switches you to the desktop the window was on."
-                ));
+                gap(ui);
+                widgets::switch_row(
+                    ui,
+                    &mut self.settings.show_on_current_desktop,
+                    tl!("Show the window on the current desktop"),
+                    Some(tl!(
+                        "When on, opening the launcher from the menu bar brings its window to the desktop you're on. When off, macOS switches you to the desktop the window was on."
+                    )),
+                );
+            }
+            if host.login_item().is_some() {
+                gap(ui);
             }
             if let Some(mut on) = host.login_item()
-                && ui.checkbox(&mut on, tl!("Start ArtCraft Launcher when I log in")).changed()
+                && widgets::switch_row(ui, &mut on, tl!("Start Zendaya Launcher when I log in"), None).changed()
                 && let Err(e) = host.set_login_item(on)
             {
                 let ctx = ui.ctx().clone();
@@ -294,7 +320,7 @@ impl LauncherUi {
 
     fn settings_appearance(&mut self, ui: &mut Ui) {
         let mut theme_choice = self.settings.theme;
-        sheet::panel(ui, tl!("Appearance"), |ui| {
+        sheet::panel_with(ui, tl!("Appearance"), Some(tl!("Light, dark, or the same as your system.")), |ui| {
             ui.horizontal(|ui| {
                 widgets::cells(ui, &mut theme_choice, &ThemeChoice::ALL.map(|c| (c, Cell { label: c.label(), tip: c.label(), count: None })));
             });

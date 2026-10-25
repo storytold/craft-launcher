@@ -132,6 +132,7 @@ fn complete_catalogs_cover_every_ui_literal() {
         include_str!("../settings.rs"),
         include_str!("../settings_dialog.rs"),
         include_str!("../views.rs"),
+        include_str!("../store.rs"),
         include_str!("../widgets.rs"),
         // The desktop shell's tray menu and tooltip.
         include_str!("../../../../apps/artcraft-launcher/src/tray.rs"),
@@ -190,7 +191,7 @@ fn complete_catalogs_translate_every_tagline() {
 #[test]
 fn product_names_stay_in_english() {
     for lang in Lang::all() {
-        for name in ["ArtCraft Launcher", "Craft App Suite", "Launcher"] {
+        for name in ["Zendaya Launcher", "Craft App Suite", "Launcher"] {
             assert_eq!(tr(lang, name), name, "{}", lang.code());
         }
     }

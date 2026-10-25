@@ -8,7 +8,7 @@ use egui::{CornerRadius, Rect, Sense, Ui, vec2};
 use crate::settings::ViewMode;
 use crate::theme::{self, Tokens};
 
-/// Grid and table as two square icons in one hairline box; the chosen one is inverted. In a
+/// Grid and table as two icons on one sunken rounded track; the chosen one is inverted. In a
 /// right-to-left parent they still read grid, then table.
 pub fn view_toggle(ui: &mut Ui, view: &mut ViewMode, tips: [&str; 2]) {
     let t = Tokens::get(ui.ctx());
@@ -18,6 +18,7 @@ pub fn view_toggle(ui: &mut Ui, view: &mut ViewMode, tips: [&str; 2]) {
         modes.reverse();
     }
     let mut rects = Vec::with_capacity(2);
+    let track = ui.painter().add(egui::Shape::Noop);
     ui.scope(|ui| {
         ui.spacing_mut().item_spacing.x = 0.0;
         for (mode, tip) in modes {
@@ -25,21 +26,21 @@ pub fn view_toggle(ui: &mut Ui, view: &mut ViewMode, tips: [&str; 2]) {
             let (rect, resp) = ui.allocate_exact_size(vec2(theme::CONTROL_H, theme::CONTROL_H), Sense::click());
             let (fill, ink) = match (on, resp.hovered()) {
                 (true, _) => (t.invert_bg, t.invert_fg),
-                (false, true) => (t.sunken, t.ink_strong),
+                (false, true) => (t.line, t.ink_strong),
                 (false, false) => (egui::Color32::TRANSPARENT, t.muted),
             };
             let p = ui.painter();
-            p.rect_filled(rect, CornerRadius::ZERO, fill);
+            p.rect_filled(rect.shrink(3.0), theme::radius(theme::CONTROL_R - 3), fill);
             let c = rect.center();
             match mode {
                 ViewMode::Grid => {
                     for (dx, dy) in [(-1.0, -1.0), (1.0, -1.0), (-1.0, 1.0), (1.0, 1.0)] {
-                        p.rect_filled(Rect::from_center_size(c + vec2(dx * 3.75, dy * 3.75), vec2(6.0, 6.0)), CornerRadius::ZERO, ink);
+                        p.rect_filled(Rect::from_center_size(c + vec2(dx * 3.75, dy * 3.75), vec2(6.0, 6.0)), CornerRadius::same(2), ink);
                     }
                 }
                 ViewMode::Table => {
                     for dy in [-5.0, 0.0, 5.0] {
-                        p.rect_filled(Rect::from_center_size(c + vec2(0.0, dy), vec2(15.0, 2.5)), CornerRadius::ZERO, ink);
+                        p.rect_filled(Rect::from_center_size(c + vec2(0.0, dy), vec2(15.0, 2.5)), CornerRadius::same(1), ink);
                     }
                 }
             }
@@ -51,12 +52,7 @@ pub fn view_toggle(ui: &mut Ui, view: &mut ViewMode, tips: [&str; 2]) {
         }
     });
     if let (Some(first), Some(last)) = (rects.first(), rects.last()) {
-        let p = ui.painter();
-        p.rect_stroke(first.union(*last), CornerRadius::ZERO, t.hairline(), egui::StrokeKind::Inside);
-        for r in rects.iter().skip(1) {
-            let x = if rtl { r.right() } else { r.left() };
-            p.vline(x, first.top()..=first.bottom(), t.hairline());
-        }
+        ui.painter().set(track, egui::Shape::rect_filled(first.union(*last), theme::radius(theme::CONTROL_R), t.sunken));
     }
 }
 
@@ -68,10 +64,7 @@ pub fn refresh_button(ui: &mut Ui, tip: &str, busy: bool) -> egui::Response {
     let (rect, resp) = ui.allocate_exact_size(vec2(theme::CONTROL_H, theme::CONTROL_H), if busy { Sense::hover() } else { Sense::click() });
     let hovered = resp.hovered() && !busy;
     let p = ui.painter();
-    if hovered {
-        p.rect_filled(rect, CornerRadius::ZERO, t.sunken);
-    }
-    p.rect_stroke(rect, CornerRadius::ZERO, t.hairline(), egui::StrokeKind::Inside);
+    p.rect(rect, theme::radius(theme::CONTROL_R), if hovered { t.line } else { t.sunken }, egui::Stroke::NONE, egui::StrokeKind::Inside);
     if busy {
         egui::Spinner::new().size(16.0).color(t.muted).paint_at(ui, Rect::from_center_size(rect.center(), vec2(16.0, 16.0)));
     } else {

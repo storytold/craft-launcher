@@ -5,7 +5,8 @@ use egui::ImageSource;
 /// The 128 px icon of a Craft App.
 pub fn app(id: &str) -> Option<ImageSource<'static>> {
     Some(match id {
-        "photocraft" => egui::include_image!("../../../assets/app-icons/photocraft.png"),
+        // Photozen still ships PhotoCraft's icon.
+        "photozen" | "photocraft" => egui::include_image!("../../../assets/app-icons/photocraft.png"),
         "vectorcraft" => egui::include_image!("../../../assets/app-icons/vectorcraft.png"),
         "filmcraft" => egui::include_image!("../../../assets/app-icons/filmcraft.png"),
         "lightcraft" => egui::include_image!("../../../assets/app-icons/lightcraft.png"),

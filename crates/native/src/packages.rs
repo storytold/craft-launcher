@@ -118,7 +118,7 @@ mod tests {
 
     #[test]
     fn candidate_names_cover_bundle_ids_for_deb_rpm_and_pacman() {
-        let photo = CraftApp::by_id("photocraft").unwrap();
+        let photo = crate::test_catalog::by_id("photocraft").unwrap();
         let deb_names = candidate_names(photo, InstallSource::Deb);
         assert!(deb_names.contains(&"photocraft".to_string()));
         assert!(deb_names.contains(&"ai.storyteller.photocraft".to_string()));
@@ -135,8 +135,8 @@ mod tests {
 
     #[test]
     fn finds_aur_packages_in_every_flavour() {
-        let photo = CraftApp::by_id("photocraft").unwrap();
-        let pdf = CraftApp::by_id("pdfcraft").unwrap();
+        let photo = crate::test_catalog::by_id("photocraft").unwrap();
+        let pdf = crate::test_catalog::by_id("pdfcraft").unwrap();
         let installed =
             pkgs(InstallSource::Pacman, parse_pacman("linux 6.11.1.arch1-1\nphotocraft-git 0.3.0.r47.g47f9306-1\nprintcraft-bin 0.2.1-1\n"));
         let hit = find(photo, &installed, &[InstallSource::Pacman]).unwrap();
@@ -144,12 +144,12 @@ mod tests {
         assert_eq!(version_of(hit).unwrap().to_string(), "0.3.0");
         // PdfCraft under its old name.
         assert_eq!(find(pdf, &installed, &[InstallSource::Pacman]).unwrap().name, "printcraft-bin");
-        assert!(find(CraftApp::by_id("wordcraft").unwrap(), &installed, &[InstallSource::Pacman]).is_none());
+        assert!(find(crate::test_catalog::by_id("wordcraft").unwrap(), &installed, &[InstallSource::Pacman]).is_none());
     }
 
     #[test]
     fn prefers_managers_in_order_and_reads_revisions() {
-        let photo = CraftApp::by_id("photocraft").unwrap();
+        let photo = crate::test_catalog::by_id("photocraft").unwrap();
         let mut installed = pkgs(InstallSource::Deb, parse_dpkg("photocraft|installed|0.5.0-1\n"));
         installed.extend(pkgs(InstallSource::Flatpak, parse_flatpak_list("ai.storyteller.photocraft\t0.4.0\n")));
         let hit = find(photo, &installed, &[InstallSource::Deb, InstallSource::Flatpak]).unwrap();

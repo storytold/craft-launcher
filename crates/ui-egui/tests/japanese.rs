@@ -68,7 +68,7 @@ fn release(id: &str, v: &str, at: i64) -> Release {
 fn events() -> Vec<Event> {
     let mut ev = Vec::new();
     let versions = [
-        ("photocraft", "0.5.0"),
+        ("photozen", "0.5.0"),
         ("vectorcraft", "0.7.0"),
         ("filmcraft", "0.4.0"),
         ("lightcraft", "0.4.0"),
@@ -88,7 +88,7 @@ fn events() -> Vec<Event> {
         });
     }
     ev.push(Event::Latest { app: "soundcraft".into(), latest: LatestRelease::None, from: Origin::ArtCraftApi });
-    let installed = [("photocraft", "0.4.1"), ("lightcraft", "0.4.0"), ("wordcraft", "0.3.0"), ("effectcraft", "0.5.0")];
+    let installed = [("photozen", "0.4.1"), ("lightcraft", "0.4.0"), ("wordcraft", "0.3.0"), ("effectcraft", "0.5.0")];
     for app in &SUITE {
         let inst = installed.iter().find(|(id, _)| *id == app.id).map(|(_, v)| Installed {
             version: version::parse(v),
@@ -116,7 +116,7 @@ fn harness_language(
     let sent2 = sent.clone();
     let mut backend = Some(Fake { events: events(), sent: sent2, manage, clock: Rc::new(Cell::new(NOW)) });
     let settings = Settings { view, notify: false, language: language.into(), ..Settings::default() };
-    let harness = Harness::builder().with_size(egui::vec2(1180.0, 900.0)).with_theme(theme).build_ui_state(
+    let mut harness = Harness::builder().with_size(egui::vec2(1180.0, 900.0)).with_theme(theme).build_ui_state(
         move |ui, state: &mut Option<LauncherUi>| {
             if state.is_none()
                 && let Some(b) = backend.take()
@@ -136,6 +136,9 @@ fn harness_language(
         },
         None,
     );
+    harness.run_steps(3);
+    harness.get_all_by_role_and_label(egui::accesskit::Role::Button, artcraft_launcher_ui_egui::i18n::t("Applications")).next().unwrap().click();
+    harness.run_steps(2);
     (harness, sent)
 }
 
@@ -186,10 +189,10 @@ fn japanese_switches_persists_and_keeps_install_actions() {
     // Product names stay in English.
     assert!(h.query_by_label("Launcher").is_none());
     snapshot(&mut h, "grid-ja-dark");
-    h.get_by_label("すべて更新（2）").click();
+    h.get_by_label(artcraft_launcher_ui_egui::i18n::t("Update 1 app")).click();
     h.run_steps(2);
     let installs: Vec<_> = sent.borrow().iter().filter_map(|c| if let Command::Install { app } = c { Some(app.clone()) } else { None }).collect();
-    assert_eq!(installs, ["photocraft", "effectcraft"]);
+    assert_eq!(installs, ["photozen"]);
 
     let (mut table, _) = harness_language(ViewMode::Table, egui::Theme::Light, true, &restored.language);
     table.run_steps(6);
@@ -198,5 +201,5 @@ fn japanese_switches_persists_and_keeps_install_actions() {
     snapshot(&mut table, "table-ja-light");
     let (mut web, _) = harness_language(ViewMode::Grid, egui::Theme::Dark, false, &restored.language);
     web.run_steps(6);
-    assert!(web.query_all_by_label("macOS 版をダウンロード").count() >= 3);
+    assert!(web.query_all_by_label("macOS 版をダウンロード").count() == SUITE.len());
 }

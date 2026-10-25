@@ -1,4 +1,4 @@
-# Hungarian (hu) catalog for ArtCraft Launcher.
+# Hungarian (hu) catalog for Zendaya Launcher.
 # Format: context<TAB>source<TAB>translation
 # Empty context = plain UI string (tl!, t).
 # @id = command-id keyed (tr_id).
@@ -6,12 +6,12 @@
 # @msg = status/error message template (message, msg).
 # Other context = disambiguation for tr_ctx.
 #
-# Clean-room: written from the meaning of ArtCraft Launcher's English labels in neutral Hungarian,
+# Clean-room: written from the meaning of Zendaya Launcher's English labels in neutral Hungarian,
 # using the terms Hungarian-speaking users of creative software know. The user is addressed with
 # the informal "te", as in most current creative and community software.
 #
 # Coverage: the whole interface — every menu string and tl! literal (complete_menus = true).
-# Left in English on purpose: product name "ArtCraft Launcher" (and its "Launcher" tag), suite
+# Left in English on purpose: product name "Zendaya Launcher" (and its "Launcher" tag), suite
 # name "Craft App Suite",
 # app names (PhotoCraft, LightCraft, FilmCraft, DesignCraft, VectorCraft, PdfCraft, EffectCraft,
 # WordCraft, DeckCraft, GridCraft, CADCraft, SoundCraft, FigCraft), "GitHub", "Discord".
@@ -73,7 +73,7 @@
 	Reinstall	Újratelepítés
 	Uninstall…	Eltávolítás…
 	All releases	Minden kiadás
-	ArtCraft Launcher {version} is available.	Elérhető az ArtCraft Launcher új verziója: {version}.
+	Zendaya Launcher {version} is available.	Elérhető az Zendaya Launcher új verziója: {version}.
 	Dismiss	Elrejtés
 	Update and restart	Frissítés és újraindítás
 	A new version is available. Would you like to relaunch with the updated version?	Új verzió érhető el. Újraindítod az alkalmazást a frissítéshez?
@@ -84,7 +84,7 @@
 	Released {date}	Megjelent: {date}
 	Open on GitHub	Megnyitás a GitHubon
 	Close	Bezárás
-	ArtCraft Launcher {version}	ArtCraft Launcher {version}
+	Zendaya Launcher {version}	Zendaya Launcher {version}
 	Only when I ask	Csak kézi kereséskor
 	Automatically download and install updates	Frissítések automatikus letöltése és telepítése
 	Notify me when an installed app has an update	Értesítés a telepített alkalmazásokhoz elérhető frissítésekről
@@ -97,11 +97,11 @@
 	Running in the background	Futtatás a háttérben
 	Keep running in the tray when the window is closed	Az ablak bezárásakor kerüljön a tálcára
 	Show the window on the current desktop	Ablak megjelenítése az aktuális asztalon
-	Start ArtCraft Launcher when I log in	ArtCraft Launcher indítása bejelentkezéskor
+	Start Zendaya Launcher when I log in	Zendaya Launcher indítása bejelentkezéskor
 	Community	Közösség
 	Questions, ideas and news from the ArtCraft team	Kérdések, ötletek és hírek az ArtCraft csapatától
 	Appearance	Megjelenés
-	Quit ArtCraft Launcher	Kilépés az ArtCraft Launcherből
+	Quit Zendaya Launcher	Kilépés az Zendaya Launcherből
 	Done	Kész
 	Uninstall {name}?	{name} eltávolítása?
 	The app will be moved to the Trash. Your documents and settings stay.	Az alkalmazás a Kukába kerül. A dokumentumaid és beállításaid megmaradnak.
@@ -136,7 +136,7 @@
 	Open link	Hivatkozás megnyitása
 	Update	Frissítés
 	{name} icon	{name} ikonja
-	Loading ArtCraft Launcher…	ArtCraft Launcher betöltése…
+	Loading Zendaya Launcher…	Zendaya Launcher betöltése…
 	Cancel update	Frissítés megszakítása
 	Stop waiting; the update can be started again later	Megszakítja a várakozást. A frissítést később újra elindíthatod.
 	Download again	Újbóli letöltés
@@ -161,7 +161,7 @@
 	Tarball (.tar.gz)	Tömörített archívum (.tar.gz)
 
 # Contextual: each app's tagline, keyed by app id
-photocraft	Image editing	Képszerkesztés
+photozen	Image editing	Képszerkesztés
 vectorcraft	Vector illustration	Vektoros illusztráció
 filmcraft	Video editing, color and sound	Videószerkesztés, színkorrekció és hang
 lightcraft	Photo library and raw development	Fotók rendszerezése és RAW-előhívás
@@ -215,7 +215,7 @@ month	Dec	dec.
 	Version {version} installed	Telepített verzió: {version}
 	Version {latest}	Verzió: {latest}
 	No release published yet	Még nem jelent meg kiadás
-	ArtCraft Launcher	ArtCraft Launcher
+	Zendaya Launcher	Zendaya Launcher
 	App	Alkalmazás
 	Latest	Legújabb
 	Released	Megjelent
@@ -250,11 +250,11 @@ month	Dec	dec.
 	Full changelog	Teljes változásnapló
 	link	hivatkozás
 	No apps match	Nincs találat
-	Open ArtCraft Launcher to update.	Nyisd meg az ArtCraft Launchert a frissítéshez.
+	Open Zendaya Launcher to update.	Nyisd meg az Zendaya Launchert a frissítéshez.
 	{name} {v} is available	Elérhető: {name} {v}
 	{count} updates are available	{count} frissítés elérhető
 	These notes weren't fetched (GitHub's request limit was reached). They're on the release page.	A kiadási információkat nem sikerült betölteni, mert elértük a GitHub lekérdezési korlátját. A kiadás oldalán megtalálod őket.
-	When on, opening the launcher from the menu bar brings its window to the desktop you're on. When off, macOS switches you to the desktop the window was on.	Ha be van kapcsolva, a menüsorból megnyitott ArtCraft Launcher ablaka az aktuális asztalon jelenik meg. Ha ki van kapcsolva, a macOS arra az asztalra vált, ahol az ablak található.
+	When on, opening the launcher from the menu bar brings its window to the desktop you're on. When off, macOS switches you to the desktop the window was on.	Ha be van kapcsolva, a menüsorból megnyitott Zendaya Launcher ablaka az aktuális asztalon jelenik meg. Ha ki van kapcsolva, a macOS arra az asztalra vált, ahol az ablak található.
 	Couldn't change the login item: {e}	Az automatikus indítás beállítását nem sikerült módosítani: {e}
 
 # Contextual: table column headers
@@ -318,7 +318,7 @@ filter	Installed	Telepítve
 @id	launcher.notes	Újdonságok
 @id	launcher.dismiss	Elrejtés
 @id	settings.open	Beállítások
-@id	settings.quit	Kilépés az ArtCraft Launcherből
+@id	settings.quit	Kilépés az Zendaya Launcherből
 @id	view.grid	Rács
 @id	view.table	Táblázat
 @id	filter.all	Összes
@@ -342,16 +342,16 @@ filter	Installed	Telepítve
 @id	linux.preferred_kind	Új alkalmazások csomagformátuma
 @id	tray.close_to_tray	Az ablak bezárásakor kerüljön a tálcára
 @id	tray.show_on_current_desktop	Ablak megjelenítése az aktuális asztalon
-@id	tray.login_item	ArtCraft Launcher indítása bejelentkezéskor
+@id	tray.login_item	Zendaya Launcher indítása bejelentkezéskor
 @id	appearance.theme	Megjelenés
 
 # Tray (menu bar) menu and tooltip
-	Show ArtCraft Launcher	ArtCraft Launcher megjelenítése
+	Show Zendaya Launcher	Zendaya Launcher megjelenítése
 	Check for Updates	Frissítések keresése
 	Visit getartcraft.com	getartcraft.com megnyitása
 	ArtCraft on GitHub	ArtCraft a GitHubon
 	Join the ArtCraft Discord	Csatlakozás az ArtCraft Discord-közösségéhez
-@plural	ArtCraft Launcher · {n} update available|ArtCraft Launcher · {n} updates available	ArtCraft Launcher · {n} frissítés elérhető|ArtCraft Launcher · {n} frissítés elérhető
+@plural	Zendaya Launcher · {n} update available|Zendaya Launcher · {n} updates available	Zendaya Launcher · {n} frissítés elérhető|Zendaya Launcher · {n} frissítés elérhető
 	Install folder	Telepítési mappa
 	Default install folder	Alapértelmezett telepítési mappa
 	System default	Rendszer alapértelmezése
@@ -364,7 +364,7 @@ filter	Installed	Telepítve
 @msg	couldn't use install folder {path}: {reason}	a(z) {path} telepítési mappa nem használható: {reason}
 @msg	this release has no AppImage for a custom install folder	ez a kiadás nem tartalmaz AppImage-fájlt egyéni telepítési mappához
 @msg	custom install folders aren't supported on this system	ezen a rendszeren nem támogatottak az egyéni telepítési mappák
-@msg	{path} already exists and wasn't installed by ArtCraft Launcher	a(z) {path} már létezik, és nem az ArtCraft Launcher telepítette
+@msg	{path} already exists and wasn't installed by Zendaya Launcher	a(z) {path} már létezik, és nem az Zendaya Launcher telepítette
 @msg	couldn't move {path} to Trash ({reason}). Remove it in Finder instead.	a(z) {path} nem helyezhető a Kukába ({reason}). Távolítsa el a Finderben.
 	Apps are placed inside this folder.	Az alkalmazások ebbe a mappába kerülnek.
 	Replace what's there?	Lecseréli, ami ott van?
@@ -379,3 +379,24 @@ filter	Installed	Telepítve
 	Show {n} more changes	{n} további változás megjelenítése
 	Last updated: {date}	Utoljára frissítve: {date}
 column	Version	Verzió
+	The language of the launcher's menus and buttons.	Az indító menüinek és gombjainak nyelve.
+	When to look for new versions, and what to do with them.	Mikor keressen új verziókat, és mi történjen velük.
+	What the launcher does when its window is closed.	Mit tegyen az indító, amikor bezárja az ablakát.
+	Light, dark, or the same as your system.	Világos, sötét, vagy a rendszerrel megegyező.
+
+# Store navigation and discovery
+	Home	Kezdőlap
+	Applications	Alkalmazások
+	Games	Játékok
+	Library	Könyvtár
+	Games will arrive later. Discover our applications in the meantime.	A játékok később érkeznek. Addig fedezze fel alkalmazásainkat.
+	Explore applications	Alkalmazások böngészése
+	Discover applications	Alkalmazások felfedezése
+	Your library is empty	A könyvtár üres
+	Featured application	Kiemelt alkalmazás
+	Make room for your creativity.	Adjon teret a kreativitásának.
+	Edit photos, compose with layers and bring your ideas to life.	Szerkesszen fotókat, alkosson rétegekkel és valósítsa meg ötleteit.
+	Discover Photozen	A Photozen felfedezése
+	Your creative space	Az Ön alkotótere
+	All your installed applications, together.	Minden telepített alkalmazás egy helyen.
+	Back	Vissza

@@ -1,5 +1,5 @@
-//! Colours, type and shapes, matching getartcraft.com: hard edges, hairline rules, Archivo
-//! display type, Inter body text and Geist Mono labels. Widgets read [`Tokens::get`]; nothing
+//! Colours, type and shapes: soft rounded cards and controls, quiet hairlines, Archivo display
+//! type, Inter body text and Geist Mono labels. Widgets read [`Tokens::get`]; nothing
 //! hard-codes a colour.
 
 use std::sync::Arc;
@@ -38,8 +38,10 @@ impl ThemeChoice {
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Tokens {
     pub dark: bool,
-    /// Page and card surface.
+    /// Page surface.
     pub bg: Color32,
+    /// Cards, dialogs' groups and menus: a step above the page.
+    pub surface: Color32,
     /// Badges, wells and row hovers.
     pub sunken: Color32,
     /// Body text.
@@ -79,16 +81,17 @@ const fn hex(rgb: u32) -> Color32 {
 impl Tokens {
     pub const DARK: Self = Self {
         dark: true,
-        bg: hex(0x121316),
-        sunken: hex(0x060607),
+        bg: hex(0x292525),
+        surface: hex(0x353030),
+        sunken: hex(0x211c1c),
         ink: hex(0xf2f1ee),
         ink_strong: hex(0xffffff),
         muted: ink_alpha(0xf2f1ee, 153),
         faint: ink_alpha(0xf2f1ee, 97),
-        line: ink_alpha(0xf2f1ee, 38),
-        line_strong: ink_alpha(0xf2f1ee, 102),
-        accent: hex(0x2d81ff),
-        accent_ink: hex(0x74aaff),
+        line: ink_alpha(0xf2f1ee, 22),
+        line_strong: ink_alpha(0xf2f1ee, 64),
+        accent: hex(0xe97e65),
+        accent_ink: hex(0xffa18b),
         invert_bg: hex(0xffffff),
         invert_fg: hex(0x0b0b0c),
         // PdfCraft's and LightCraft's inks, so status colours come from the site's palette.
@@ -99,16 +102,17 @@ impl Tokens {
 
     pub const LIGHT: Self = Self {
         dark: false,
-        bg: hex(0xf2f1ee),
-        sunken: hex(0xe9e8e4),
+        bg: hex(0xf4f3f0),
+        surface: hex(0xffffff),
+        sunken: hex(0xeceae6),
         ink: hex(0x101014),
         ink_strong: hex(0x000000),
         muted: ink_alpha(0x101014, 158),
         faint: ink_alpha(0x101014, 107),
-        line: ink_alpha(0x101014, 41),
-        line_strong: ink_alpha(0x101014, 102),
-        accent: hex(0x2d81ff),
-        accent_ink: hex(0x1659c4),
+        line: ink_alpha(0x101014, 26),
+        line_strong: ink_alpha(0x101014, 72),
+        accent: hex(0xe97e65),
+        accent_ink: hex(0xa33e28),
         invert_bg: hex(0x101014),
         invert_fg: hex(0xf2f1ee),
         good: hex(0x0a7563),
@@ -142,7 +146,23 @@ pub fn rgb(c: [u8; 3]) -> Color32 {
 
 /// The shadow under menus, dialogs and toasts.
 pub fn shadow(t: &Tokens) -> egui::epaint::Shadow {
-    egui::epaint::Shadow { offset: [0, 8], blur: 24, spread: 0, color: Color32::from_black_alpha(if t.dark { 140 } else { 36 }) }
+    egui::epaint::Shadow { offset: [0, 12], blur: 32, spread: 0, color: Color32::from_black_alpha(if t.dark { 150 } else { 40 }) }
+}
+
+/// The soft shadow a card lifts onto while the pointer is over it; `amount` runs from 0 to 1.
+pub fn card_shadow(t: &Tokens, amount: f32) -> egui::epaint::Shadow {
+    let alpha = if t.dark { 120.0 } else { 28.0 } * amount.clamp(0.0, 1.0);
+    egui::epaint::Shadow { offset: [0, 8], blur: 24, spread: 0, color: Color32::from_black_alpha(alpha.round() as u8) }
+}
+
+/// Corner radii, largest first: dialogs and drawers, cards, the groups inside them, controls.
+pub const DIALOG_R: u8 = 18;
+pub const CARD_R: u8 = 10;
+pub const BOX_R: u8 = 8;
+pub const CONTROL_R: u8 = 9;
+
+pub fn radius(r: u8) -> CornerRadius {
+    CornerRadius::same(r)
 }
 
 /// The dim over the page behind a drawer; `amount` runs from 0 (none) to 1.
@@ -169,14 +189,14 @@ pub fn backdrop_ink(alpha: u8) -> Color32 {
 fn visuals(t: &Tokens) -> Visuals {
     let mut v = if t.dark { Visuals::dark() } else { Visuals::light() };
     v.panel_fill = t.bg;
-    v.window_fill = t.bg;
+    v.window_fill = t.surface;
     v.extreme_bg_color = t.sunken;
     v.text_edit_bg_color = Some(t.sunken);
     v.faint_bg_color = t.sunken;
     v.code_bg_color = t.sunken;
-    v.window_stroke = Stroke::new(1.0, t.line_strong);
-    v.window_corner_radius = CornerRadius::ZERO;
-    v.menu_corner_radius = CornerRadius::ZERO;
+    v.window_stroke = Stroke::new(1.0, t.line);
+    v.window_corner_radius = radius(BOX_R);
+    v.menu_corner_radius = radius(BOX_R);
     v.window_shadow = shadow(t);
     v.popup_shadow = shadow(t);
     v.override_text_color = Some(t.ink);
@@ -186,8 +206,8 @@ fn visuals(t: &Tokens) -> Visuals {
     v.warn_fg_color = t.warn;
     v.error_fg_color = t.bad;
     for (w, fill, stroke, fg) in [
-        (&mut v.widgets.noninteractive, t.bg, t.line, t.muted),
-        (&mut v.widgets.inactive, t.bg, t.line, t.ink),
+        (&mut v.widgets.noninteractive, t.surface, t.line, t.muted),
+        (&mut v.widgets.inactive, t.sunken, t.line, t.ink),
         (&mut v.widgets.hovered, t.sunken, t.line_strong, t.ink_strong),
         (&mut v.widgets.active, t.sunken, t.line_strong, t.ink_strong),
         (&mut v.widgets.open, t.sunken, t.line_strong, t.ink_strong),
@@ -195,7 +215,7 @@ fn visuals(t: &Tokens) -> Visuals {
         w.bg_fill = fill;
         w.weak_bg_fill = fill;
         w.bg_stroke = Stroke::new(1.0, stroke);
-        w.corner_radius = CornerRadius::ZERO;
+        w.corner_radius = radius(CONTROL_R);
         w.fg_stroke = Stroke::new(1.0, fg);
         w.expansion = 0.0;
     }
@@ -217,8 +237,8 @@ pub fn apply(ctx: &egui::Context, choice: ThemeChoice) {
         style.spacing.icon_spacing = 10.0;
         style.spacing.button_padding = egui::vec2(12.0, 6.0);
         style.spacing.interact_size.y = CONTROL_H;
-        style.spacing.menu_margin = egui::Margin::same(4);
-        style.spacing.window_margin = egui::Margin::same(4);
+        style.spacing.menu_margin = egui::Margin::same(6);
+        style.spacing.window_margin = egui::Margin::same(6);
         style.text_styles = [
             (TextStyle::Heading, FontId::new(24.0, display())),
             (TextStyle::Body, FontId::new(14.0, FontFamily::Proportional)),
@@ -247,8 +267,8 @@ pub const BUTTON_SPACING: f32 = HUD_SIZE * 0.12;
 pub const PAD: f32 = 24.0;
 /// The gap between the two columns of a page or dialog.
 pub const COLUMN_GAP: f32 = 32.0;
-/// Padding inside a hairline box: a group of settings, a feature, a release fact.
-pub const BOX_MARGIN: egui::Margin = egui::Margin::symmetric(14, 12);
+/// Padding inside a rounded box: a group of settings, a feature, a release fact.
+pub const BOX_MARGIN: egui::Margin = egui::Margin::symmetric(18, 16);
 /// Below this width the toolbar moves the sort and "Update all" to a second row.
 pub const TOOLBAR_COMPACT_BELOW: f32 = 640.0;
 /// From this width the large dialogs read in two columns.

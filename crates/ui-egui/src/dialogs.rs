@@ -23,7 +23,12 @@ impl LauncherUi {
         let modal = egui::Modal::new(egui::Id::new("dialog").with(dialog.key())).frame(if large {
             crate::sheet::frame(&t)
         } else {
-            egui::Frame::new().fill(t.bg).stroke(egui::Stroke::new(1.0, t.line_strong)).shadow(theme::shadow(&t)).inner_margin(theme::PAD as i8)
+            egui::Frame::new()
+                .fill(t.surface)
+                .stroke(egui::Stroke::new(1.0, t.line))
+                .corner_radius(theme::radius(theme::DIALOG_R))
+                .shadow(theme::shadow(&t))
+                .inner_margin(theme::PAD as i8)
         });
         let mut close = false;
         let response = match &mut dialog {
@@ -46,7 +51,12 @@ impl LauncherUi {
         let Some(alert) = self.alerts.iter().find(|a| !self.settings.dismissed_notices.contains(&a.id)).cloned() else { return };
         let t = Tokens::get(ctx);
         let modal = egui::Modal::new(egui::Id::new("feed_alert").with(&alert.id)).frame(
-            egui::Frame::new().fill(t.bg).stroke(egui::Stroke::new(1.0, t.line_strong)).shadow(theme::shadow(&t)).inner_margin(theme::PAD as i8),
+            egui::Frame::new()
+                .fill(t.surface)
+                .stroke(egui::Stroke::new(1.0, t.line))
+                .corner_radius(theme::radius(theme::DIALOG_R))
+                .shadow(theme::shadow(&t))
+                .inner_margin(theme::PAD as i8),
         );
         let mut ok = false;
         modal.show(ctx, |ui| {
@@ -134,7 +144,7 @@ impl LauncherUi {
     fn launcher_update_dialog(&mut self, ui: &mut egui::Ui, r: &artcraft_launcher_core::Release) -> bool {
         let t = Tokens::get(ui.ctx());
         ui.set_width(480.0f32.min(ui.ctx().content_rect().width() - 80.0));
-        let title = fmt(tl!("ArtCraft Launcher {version} is available."), &[("version", &r.version_label())]);
+        let title = fmt(tl!("Zendaya Launcher {version} is available."), &[("version", &r.version_label())]);
         Self::title(ui, Some(crate::icons::artcraft_mark()), &title, "");
         let message = if self.caps.self_update {
             tl!("A new version is available. Would you like to relaunch with the updated version?")

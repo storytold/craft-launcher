@@ -1,6 +1,6 @@
-# Simplified Chinese (zh-CN) catalog for ArtCraft Launcher.
+# Simplified Chinese (zh-CN) catalog for Zendaya Launcher.
 # Format: context<TAB>English source<TAB>translation.
-# Original translations from the English UI. Product and app names (ArtCraft Launcher and its
+# Original translations from the English UI. Product and app names (Zendaya Launcher and its
 # "Launcher" tag, Craft App Suite, PhotoCraft…) and third-party names stay unchanged.
 # Shown with the system's Chinese font (PingFang, Microsoft YaHei, Noto Sans CJK…): see cjk_font.rs.
 # Chinese has one plural form. Placeholders and trailing ellipses are preserved.
@@ -55,7 +55,7 @@
 	Reinstall	重新安装
 	Uninstall…	卸载…
 	All releases	所有版本
-	ArtCraft Launcher {version} is available.	ArtCraft Launcher {version} 已可更新。
+	Zendaya Launcher {version} is available.	Zendaya Launcher {version} 已可更新。
 	Dismiss	忽略
 	Update and restart	更新并重启
 	A new version is available. Would you like to relaunch with the updated version?	有新版本可用。是否使用更新后的版本重新启动？
@@ -66,7 +66,7 @@
 	Released {date}	发布于 {date}
 	Open on GitHub	在 GitHub 上打开
 	Close	关闭
-	ArtCraft Launcher {version}	ArtCraft Launcher {version}
+	Zendaya Launcher {version}	Zendaya Launcher {version}
 	Only when I ask	仅手动检查
 	Automatically download and install updates	自动下载并安装更新
 	Notify me when an installed app has an update	已安装应用有更新时通知我
@@ -79,11 +79,11 @@
 	Running in the background	后台运行
 	Keep running in the tray when the window is closed	关闭窗口后继续在系统托盘中运行
 	Show the window on the current desktop	在当前桌面显示窗口
-	Start ArtCraft Launcher when I log in	登录时启动 ArtCraft Launcher
+	Start Zendaya Launcher when I log in	登录时启动 Zendaya Launcher
 	Community	社区
 	Questions, ideas and news from the ArtCraft team	与 ArtCraft 团队交流问题、想法和动态
 	Appearance	外观
-	Quit ArtCraft Launcher	退出 ArtCraft Launcher
+	Quit Zendaya Launcher	退出 Zendaya Launcher
 	Done	完成
 	Uninstall {name}?	卸载 {name}？
 	The app will be moved to the Trash. Your documents and settings stay.	应用将移到废纸篓。你的文档和设置会保留。
@@ -132,7 +132,7 @@ month	Dec	12月
 	Version {version} installed	已安装版本 {version}
 	Version {latest}	版本 {latest}
 	No release published yet	尚未发布版本
-	ArtCraft Launcher	ArtCraft Launcher
+	Zendaya Launcher	Zendaya Launcher
 	App	应用
 	Latest	最新
 	Released	发布日期
@@ -165,7 +165,7 @@ month	Dec	12月
 	Full changelog	完整更新日志
 	link	链接
 	No apps match	没有匹配的应用
-	Open ArtCraft Launcher to update.	打开 ArtCraft Launcher 进行更新。
+	Open Zendaya Launcher to update.	打开 Zendaya Launcher 进行更新。
 	{name} {v} is available	{name} {v} 已可更新
 	{count} updates are available	有 {count} 个可用更新
 	These notes weren't fetched (GitHub's request limit was reached). They're on the release page.	未能获取更新说明（已达到 GitHub 请求上限）。可前往版本发布页面查看。
@@ -196,7 +196,7 @@ filter	Installed	已安装
 @id	launcher.notes	更新内容
 @id	launcher.dismiss	忽略
 @id	settings.open	设置
-@id	settings.quit	退出 ArtCraft Launcher
+@id	settings.quit	退出 Zendaya Launcher
 @id	view.grid	网格
 @id	view.table	表格
 @id	filter.all	全部
@@ -219,7 +219,7 @@ filter	Installed	已安装
 @id	linux.preferred_kind	新应用安装格式
 @id	tray.close_to_tray	关闭窗口后继续在系统托盘中运行
 @id	tray.show_on_current_desktop	在当前桌面显示窗口
-@id	tray.login_item	登录时启动 ArtCraft Launcher
+@id	tray.login_item	登录时启动 Zendaya Launcher
 @id	appearance.theme	外观
 	Update	更新
 	New	新
@@ -230,14 +230,14 @@ filter	Installed	已安装
 	Restore	还原
 	Show in Finder	在访达中显示
 	Show in Explorer	在资源管理器中显示
-	Show ArtCraft Launcher	显示 ArtCraft Launcher
+	Show Zendaya Launcher	显示 Zendaya Launcher
 	Check for Updates	检查更新
 	Visit getartcraft.com	访问 getartcraft.com
 	ArtCraft on GitHub	ArtCraft 的 GitHub 主页
 	Join the ArtCraft Discord	加入 ArtCraft Discord 社区
-@plural	ArtCraft Launcher · {n} update available|ArtCraft Launcher · {n} updates available	ArtCraft Launcher · 有 {n} 个可用更新
+@plural	Zendaya Launcher · {n} update available|Zendaya Launcher · {n} updates available	Zendaya Launcher · 有 {n} 个可用更新
 @plural	{n} app|{n} apps	{n} 个应用
-photocraft	Image editing	图像编辑
+photozen	Image editing	图像编辑
 vectorcraft	Vector illustration	矢量插画
 filmcraft	Video editing, color and sound	视频剪辑、调色和声音处理
 lightcraft	Photo library and raw development	照片管理与 RAW 处理
@@ -252,7 +252,7 @@ soundcraft	Recording, editing and mixing audio	音频录制、编辑与混音
 figcraft	Interface design and prototyping	界面设计与原型制作
 
 	Show in Files	在文件管理器中显示
-	Loading ArtCraft Launcher…	正在加载 ArtCraft Launcher…
+	Loading Zendaya Launcher…	正在加载 Zendaya Launcher…
 	Download cancelled	下载已取消
 	Automatically	自动
 	Checked {ago} · using {sources}	上次检查：{ago} · 来源：{sources}
@@ -331,7 +331,7 @@ figcraft	Interface design and prototyping	界面设计与原型制作
 @msg	couldn't use install folder {path}: {reason}	无法使用安装文件夹 {path}：{reason}
 @msg	this release has no AppImage for a custom install folder	此版本没有可用于自定义安装文件夹的 AppImage
 @msg	custom install folders aren't supported on this system	此系统不支持自定义安装文件夹
-@msg	{path} already exists and wasn't installed by ArtCraft Launcher	{path} 已存在，且并非由 ArtCraft Launcher 安装
+@msg	{path} already exists and wasn't installed by Zendaya Launcher	{path} 已存在，且并非由 Zendaya Launcher 安装
 @msg	couldn't move {path} to Trash ({reason}). Remove it in Finder instead.	无法将 {path} 移到废纸篓（{reason}）。请在 Finder 中移除。
 	Apps are placed inside this folder.	应用会放置在此文件夹内。
 	Replace what's there?	替换现有内容？
@@ -346,3 +346,24 @@ figcraft	Interface design and prototyping	界面设计与原型制作
 	Show {n} more changes	显示另外 {n} 项更改
 	Last updated: {date}	最后更新：{date}
 column	Version	版本
+	The language of the launcher's menus and buttons.	启动器菜单和按钮使用的语言。
+	When to look for new versions, and what to do with them.	何时检查新版本，以及如何处理它们。
+	What the launcher does when its window is closed.	关闭窗口后启动器的行为。
+	Light, dark, or the same as your system.	浅色、深色或跟随系统。
+
+# Store navigation and discovery
+	Home	主页
+	Applications	应用
+	Games	游戏
+	Library	库
+	Games will arrive later. Discover our applications in the meantime.	游戏将于日后推出。欢迎先探索我们的应用。
+	Explore applications	浏览应用
+	Discover applications	发现应用
+	Your library is empty	应用库为空
+	Featured application	精选应用
+	Make room for your creativity.	让创意自由绽放。
+	Edit photos, compose with layers and bring your ideas to life.	编辑照片，组合图层，让创意成为现实。
+	Discover Photozen	探索 Photozen
+	Your creative space	你的创作空间
+	All your installed applications, together.	所有已安装的应用，尽在一处。
+	Back	返回

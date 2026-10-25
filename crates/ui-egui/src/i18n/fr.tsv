@@ -1,4 +1,4 @@
-# French (fr) catalog for ArtCraft Launcher.
+# French (fr) catalog for Zendaya Launcher.
 # Format: context<TAB>source<TAB>translation
 # Empty context = plain UI string (tl!, t).
 # @id = command-id keyed (tr_id).
@@ -6,11 +6,11 @@
 # @msg = status/error message template (message, msg).
 # Other context = disambiguation for tr_ctx.
 #
-# Clean-room: written from the meaning of ArtCraft Launcher's English labels, in neutral
+# Clean-room: written from the meaning of Zendaya Launcher's English labels, in neutral
 # international French (the interface addresses the user as "vous").
 #
 # Coverage: the whole interface: every menu string and tl! literal (complete_menus = true).
-# Left in English on purpose: product name "ArtCraft Launcher" (and its "Launcher" tag), suite
+# Left in English on purpose: product name "Zendaya Launcher" (and its "Launcher" tag), suite
 # name "Craft App Suite", app names (PhotoCraft, LightCraft, FilmCraft, DesignCraft, VectorCraft,
 # PdfCraft, EffectCraft, WordCraft, DeckCraft, GridCraft, CADCraft, SoundCraft, FigCraft), "GitHub",
 # "Discord".
@@ -71,7 +71,7 @@
 	Reinstall	Réinstaller
 	Uninstall…	Désinstaller…
 	All releases	Toutes les versions
-	ArtCraft Launcher {version} is available.	ArtCraft Launcher {version} est disponible.
+	Zendaya Launcher {version} is available.	Zendaya Launcher {version} est disponible.
 	Dismiss	Ignorer
 	Update and restart	Mettre à jour et redémarrer
 	A new version is available. Would you like to relaunch with the updated version?	Une nouvelle version est disponible. Redémarrer avec la nouvelle version ?
@@ -82,7 +82,7 @@
 	Released {date}	Publiée le {date}
 	Open on GitHub	Ouvrir sur GitHub
 	Close	Fermer
-	ArtCraft Launcher {version}	ArtCraft Launcher {version}
+	Zendaya Launcher {version}	Zendaya Launcher {version}
 	Only when I ask	Seulement à ma demande
 	Automatically download and install updates	Télécharger et installer les mises à jour automatiquement
 	Notify me when an installed app has an update	Me prévenir quand une application installée a une mise à jour
@@ -95,11 +95,11 @@
 	Running in the background	Exécution en arrière-plan
 	Keep running in the tray when the window is closed	Rester actif dans la zone de notification à la fermeture de la fenêtre
 	Show the window on the current desktop	Afficher la fenêtre sur le bureau actuel
-	Start ArtCraft Launcher when I log in	Lancer ArtCraft Launcher à l'ouverture de session
+	Start Zendaya Launcher when I log in	Lancer Zendaya Launcher à l'ouverture de session
 	Community	Communauté
 	Questions, ideas and news from the ArtCraft team	Questions, idées et actualités de l'équipe ArtCraft
 	Appearance	Apparence
-	Quit ArtCraft Launcher	Quitter ArtCraft Launcher
+	Quit Zendaya Launcher	Quitter Zendaya Launcher
 	Done	Terminé
 	Uninstall {name}?	Désinstaller {name} ?
 	The app will be moved to the Trash. Your documents and settings stay.	L'application sera placée dans la Corbeille. Vos documents et réglages sont conservés.
@@ -134,7 +134,7 @@
 	Open link	Ouvrir le lien
 	Update	Mettre à jour
 	{name} icon	Icône de {name}
-	Loading ArtCraft Launcher…	Chargement d'ArtCraft Launcher…
+	Loading Zendaya Launcher…	Chargement d'Zendaya Launcher…
 	Cancel update	Annuler la mise à jour
 	Stop waiting; the update can be started again later	Ne plus attendre ; la mise à jour pourra être relancée plus tard
 	Download again	Télécharger à nouveau
@@ -159,7 +159,7 @@
 	Tarball (.tar.gz)	Archive (.tar.gz)
 
 # Contextual: each app's tagline, keyed by app id
-photocraft	Image editing	Retouche d'images
+photozen	Image editing	Retouche d'images
 vectorcraft	Vector illustration	Illustration vectorielle
 filmcraft	Video editing, color and sound	Montage vidéo, étalonnage et son
 lightcraft	Photo library and raw development	Photothèque et développement RAW
@@ -213,7 +213,7 @@ month	Dec	déc.
 	Version {version} installed	Version {version} installée
 	Version {latest}	Version {latest}
 	No release published yet	Aucune version publiée pour l'instant
-	ArtCraft Launcher	ArtCraft Launcher
+	Zendaya Launcher	Zendaya Launcher
 	App	Application
 	Latest	Dernière
 	Released	Publiée
@@ -247,7 +247,7 @@ month	Dec	déc.
 	Full changelog	Journal des modifications complet
 	link	lien
 	No apps match	Aucune application ne correspond
-	Open ArtCraft Launcher to update.	Ouvrez ArtCraft Launcher pour mettre à jour.
+	Open Zendaya Launcher to update.	Ouvrez Zendaya Launcher pour mettre à jour.
 	{name} {v} is available	{name} {v} est disponible
 	{count} updates are available	{count} mises à jour sont disponibles
 	These notes weren't fetched (GitHub's request limit was reached). They're on the release page.	Ces notes n'ont pas pu être récupérées (la limite de requêtes de GitHub a été atteinte). Elles sont sur la page de la version.
@@ -302,7 +302,7 @@ filter	Installed	Installées
 @id	launcher.notes	Nouveautés
 @id	launcher.dismiss	Ignorer
 @id	settings.open	Réglages
-@id	settings.quit	Quitter ArtCraft Launcher
+@id	settings.quit	Quitter Zendaya Launcher
 @id	view.grid	Grille
 @id	view.table	Tableau
 @id	filter.all	Toutes
@@ -326,11 +326,11 @@ filter	Installed	Installées
 @id	linux.preferred_kind	Installer les nouvelles applications en tant que
 @id	tray.close_to_tray	Rester actif dans la zone de notification à la fermeture de la fenêtre
 @id	tray.show_on_current_desktop	Afficher la fenêtre sur le bureau actuel
-@id	tray.login_item	Lancer ArtCraft Launcher à l'ouverture de session
+@id	tray.login_item	Lancer Zendaya Launcher à l'ouverture de session
 @id	appearance.theme	Apparence
 
 # Tray (menu bar) menu and tooltip
-	Show ArtCraft Launcher	Afficher ArtCraft Launcher
+	Show Zendaya Launcher	Afficher Zendaya Launcher
 	Check for Updates	Rechercher des mises à jour
 	Visit getartcraft.com	Visiter getartcraft.com
 	ArtCraft on GitHub	ArtCraft sur GitHub
@@ -348,7 +348,7 @@ filter	Installed	Installées
 	Next picture (→)	Image suivante (→)
 	Loading pictures…	Chargement des images…
 	Pictures couldn't be loaded. Reopen this page to try again.	Impossible de charger les images. Rouvrir la page permet de réessayer.
-@plural	ArtCraft Launcher · {n} update available|ArtCraft Launcher · {n} updates available	ArtCraft Launcher · {n} mise à jour disponible|ArtCraft Launcher · {n} mises à jour disponibles
+@plural	Zendaya Launcher · {n} update available|Zendaya Launcher · {n} updates available	Zendaya Launcher · {n} mise à jour disponible|Zendaya Launcher · {n} mises à jour disponibles
 	Install folder	Dossier d’installation
 	Default install folder	Dossier d’installation par défaut
 	System default	Par défaut du système
@@ -361,7 +361,7 @@ filter	Installed	Installées
 @msg	couldn't use install folder {path}: {reason}	impossible d’utiliser le dossier d’installation {path} : {reason}
 @msg	this release has no AppImage for a custom install folder	cette version ne propose pas d’AppImage pour un dossier d’installation personnalisé
 @msg	custom install folders aren't supported on this system	les dossiers d’installation personnalisés ne sont pas pris en charge sur ce système
-@msg	{path} already exists and wasn't installed by ArtCraft Launcher	{path} existe déjà et n’a pas été installé par ArtCraft Launcher
+@msg	{path} already exists and wasn't installed by Zendaya Launcher	{path} existe déjà et n’a pas été installé par Zendaya Launcher
 @msg	couldn't move {path} to Trash ({reason}). Remove it in Finder instead.	impossible de déplacer {path} vers la Corbeille ({reason}). Supprimez-le dans le Finder.
 	Apps are placed inside this folder.	Les applications sont placées dans ce dossier.
 	Replace what's there?	Remplacer l’existant ?
@@ -376,3 +376,24 @@ filter	Installed	Installées
 	Show {n} more changes	Afficher {n} modifications de plus
 	Last updated: {date}	Dernière mise à jour : {date}
 column	Version	Version
+	The language of the launcher's menus and buttons.	La langue des menus et des boutons du launcher.
+	When to look for new versions, and what to do with them.	Quand chercher de nouvelles versions, et quoi en faire.
+	What the launcher does when its window is closed.	Ce que fait le launcher quand sa fenêtre est fermée.
+	Light, dark, or the same as your system.	Clair, sombre, ou comme votre système.
+
+# Store navigation and discovery
+	Home	Accueil
+	Applications	Applications
+	Games	Jeux
+	Library	Bibliothèque
+	Games will arrive later. Discover our applications in the meantime.	Les jeux arriveront plus tard. Découvrez nos applications en attendant.
+	Explore applications	Explorer les applications
+	Discover applications	Découvrez les applications
+	Your library is empty	Votre bibliothèque est vide
+	Featured application	Application à la une
+	Make room for your creativity.	Faites place à votre créativité.
+	Edit photos, compose with layers and bring your ideas to life.	Retouchez vos photos, composez avec des calques et donnez vie à vos idées.
+	Discover Photozen	Découvrir Photozen
+	Your creative space	Votre espace créatif
+	All your installed applications, together.	Toutes vos applications installées, réunies.
+	Back	Retour

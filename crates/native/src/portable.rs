@@ -500,7 +500,7 @@ mod tests {
         assert!(validate_directory(&root).is_ok());
         assert!(validate_owned_directory(&root, &root).is_ok());
 
-        let app = CraftApp::by_id("photocraft").unwrap();
+        let app = crate::test_catalog::by_id("photocraft").unwrap();
         let paths = Paths::under(&home);
         let zip = archive(dir.path(), "app.zip", &[("photocraft.exe", b"program"), ("lib/runtime.dll", b"library")]);
         let record = install(app, &zip, "0.5.0", None, &paths, Some(&home), false, &mut |_| Ok(())).unwrap();
@@ -555,14 +555,14 @@ mod tests {
         let foreign_root = link.join("photocraft");
         std::fs::create_dir(&foreign_root).unwrap();
         std::fs::write(foreign_root.join("photocraft.exe"), b"foreign program").unwrap();
-        assert!(remove(CraftApp::by_id("photocraft").unwrap(), &record).is_err());
+        assert!(remove(crate::test_catalog::by_id("photocraft").unwrap(), &record).is_err());
         assert_eq!(std::fs::read(foreign_root.join("photocraft.exe")).unwrap(), b"foreign program");
     }
 
     #[test]
     fn upgrade_downgrade_and_uninstall_preserve_personal_files_and_location() {
         let dir = tempfile::tempdir().unwrap();
-        let app = CraftApp::by_id("photocraft").unwrap();
+        let app = crate::test_catalog::by_id("photocraft").unwrap();
         let paths = Paths::under(dir.path());
         let parent = dir.path().join("My Tools");
         let first = archive(dir.path(), "first.zip", &[("photocraft.exe", b"first"), ("obsolete.dll", b"old")]);
@@ -593,7 +593,7 @@ mod tests {
     #[test]
     fn a_failed_manifest_commit_restores_the_previous_program() {
         let dir = tempfile::tempdir().unwrap();
-        let app = CraftApp::by_id("photocraft").unwrap();
+        let app = crate::test_catalog::by_id("photocraft").unwrap();
         let paths = Paths::under(dir.path());
         let old = archive(dir.path(), "old.zip", &[("photocraft.exe", b"old"), ("lib.dll", b"library")]);
         let record = install(app, &old, "0.5.0", None, &paths, None, false, &mut |_| Ok(())).unwrap();
@@ -608,7 +608,7 @@ mod tests {
     #[test]
     fn collision_is_rejected_before_replacing_any_old_file() {
         let dir = tempfile::tempdir().unwrap();
-        let app = CraftApp::by_id("photocraft").unwrap();
+        let app = crate::test_catalog::by_id("photocraft").unwrap();
         let paths = Paths::under(dir.path());
         let old = archive(dir.path(), "old.zip", &[("photocraft.exe", b"old")]);
         let record = install(app, &old, "0.5.0", None, &paths, None, false, &mut |_| Ok(())).unwrap();
@@ -623,7 +623,7 @@ mod tests {
     #[test]
     fn a_new_install_writes_over_unrecorded_files_only_when_asked_to() {
         let dir = tempfile::tempdir().unwrap();
-        let app = CraftApp::by_id("photocraft").unwrap();
+        let app = crate::test_catalog::by_id("photocraft").unwrap();
         let paths = Paths::under(dir.path());
         let folder = paths.apps().join("photocraft");
         std::fs::create_dir_all(&folder).unwrap();

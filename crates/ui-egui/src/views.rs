@@ -47,7 +47,7 @@ enum Primary {
 }
 
 /// Height of the header bar (the site's nav).
-pub(crate) const HEADER_H: f32 = 48.0;
+pub(crate) const HEADER_H: f32 = 58.0;
 /// Height of the footer bar.
 pub(crate) const FOOTER_H: f32 = 34.0;
 
@@ -56,43 +56,13 @@ const CARD_H: f32 = 314.0;
 /// The card's top strip: number tab and links.
 const STRIP_H: f32 = 40.0;
 const CARD_PAD: f32 = 20.0;
-/// Room macOS's traffic lights take at the left of the header.
-const TRAFFIC_LIGHTS_W: f32 = 72.0;
+/// The space between two cards of the grid.
+const CARD_GAP: f32 = 16.0;
 
 impl LauncherUi {
     /// The header bar; with a custom or macOS title bar it is also the window's title bar.
     pub(crate) fn header(&mut self, ui: &mut Ui, bar: TitleBar) {
-        let t = Tokens::get(ui.ctx());
-        let h = HEADER_H;
-        if bar != TitleBar::Native {
-            widgets::title_bar_drag(ui);
-        }
-        ui.horizontal(|ui| {
-            ui.spacing_mut().item_spacing.x = 0.0;
-            if bar == TitleBar::MacOs {
-                ui.add_space(TRAFFIC_LIGHTS_W);
-            }
-            // The ArtCraft wordmark exactly as supplied, in its own cell.
-            let logo = vec2(14.0 * crate::icons::ARTCRAFT_LOGO_ASPECT, 14.0);
-            let (cell, _) = ui.allocate_exact_size(vec2(logo.x + 40.0, h), Sense::hover());
-            egui::Image::new(crate::icons::artcraft_logo(t.dark)).alt_text(tl!("ArtCraft")).paint_at(ui, Rect::from_center_size(cell.center(), logo));
-            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                if bar == TitleBar::Custom {
-                    widgets::window_buttons(ui, h);
-                }
-                if widgets::nav_icon(ui, "⚙", tl!("Settings"), h, false).clicked() {
-                    self.dialog = Some(Dialog::Settings);
-                }
-                // The controls reserve their actual widths before the secondary text gets space.
-                ui.with_layout(egui::Layout::left_to_right(egui::Align::Center), |ui| {
-                    if ui.available_width() >= 17.0 + widgets::hud_galley(ui, tl!("Craft App Suite"), t.muted).size().x {
-                        widgets::rule(ui, h);
-                        ui.add_space(16.0);
-                        widgets::hud(ui, tl!("Craft App Suite"), t.muted);
-                    }
-                });
-            });
-        });
+        self.store_header(ui, bar);
     }
 
     pub(crate) fn toolbar(&mut self, ui: &mut Ui) {
@@ -112,7 +82,7 @@ impl LauncherUi {
                         widgets::tag(ui, tl!("Update"), t.accent, Color32::WHITE);
                         ui.add_space(4.0);
                         ui.label(
-                            RichText::new(fmt(tl!("ArtCraft Launcher {version} is available."), &[("version", &r.version_label())]))
+                            RichText::new(fmt(tl!("Zendaya Launcher {version} is available."), &[("version", &r.version_label())]))
                                 .family(theme::medium())
                                 .color(t.ink_strong),
                         );
@@ -190,14 +160,6 @@ impl LauncherUi {
                 // Right to left: the view switch at the far right, then the search.
                 crate::bar::view_toggle(ui, &mut self.settings.view, [tl!("Show apps as cards"), tl!("Show apps as a table")]);
                 ui.add_space(4.0);
-                ui.add(
-                    egui::TextEdit::singleline(&mut self.search)
-                        .hint_text(tl!("Search apps"))
-                        .desired_width(200.0)
-                        .min_size(vec2(0.0, theme::CONTROL_H))
-                        .vertical_align(egui::Align::Center)
-                        .margin(vec2(10.0, 0.0)),
-                );
                 if self.settings.view == ViewMode::Grid && !compact {
                     self.sort_picker(ui);
                     // The caption only where it fits beside the filters (longer in some languages).
@@ -386,15 +348,15 @@ impl LauncherUi {
             return;
         }
         let width = ui.available_width();
-        // Neighbouring cards share their 1 px hairline, like the site's `gap-px` grid.
-        let cols = ((width / CARD_MIN_W).floor() as usize).max(1);
-        let card_w = (width + (cols as f32 - 1.0)) / cols as f32;
+        // Each card stands on its own, `CARD_GAP` from its neighbours.
+        let cols = (((width + CARD_GAP) / (CARD_MIN_W + CARD_GAP)).floor() as usize).max(1);
+        let card_w = (width - (cols as f32 - 1.0) * CARD_GAP) / cols as f32;
         let rows = ids.len().div_ceil(cols);
-        let height = rows as f32 * (CARD_H - 1.0) + 1.0;
+        let height = rows as f32 * (CARD_H + CARD_GAP) - CARD_GAP;
         let (area, _) = ui.allocate_exact_size(vec2(width, height), Sense::hover());
         for (i, id) in ids.iter().enumerate() {
             let (row, col) = (i / cols, i % cols);
-            let min = area.min + vec2(col as f32 * (card_w - 1.0), row as f32 * (CARD_H - 1.0));
+            let min = area.min + vec2(col as f32 * (card_w + CARD_GAP), row as f32 * (CARD_H + CARD_GAP));
             self.card(ui, id, Rect::from_min_size(min, vec2(card_w, CARD_H)));
         }
     }
@@ -406,12 +368,8 @@ impl LauncherUi {
         let hovered = ui.rect_contains_pointer(rect);
         let wipe = if self.reduce_motion { 0.0 } else { 0.3 };
         let lift = ui.ctx().animate_bool_with_time(ui.id().with(("card-hover", id)), hovered, wipe);
-        // An app that is not installed is drawn in greys (icon, name, version, accent), and in its
-        // colours while the pointer is over its card.
-        let installed = entry.status(self.platform, self.caps.manage_apps).is_installed();
-        let in_colour = installed || hovered;
-        // The text and accent use the theme's muted grey; the icon is a grey copy of itself.
-        let app_color = if installed { rgb(app.color) } else { t.muted.lerp_to_gamma(rgb(app.color), lift) };
+        let in_colour = true;
+        let app_color = rgb(app.color);
         // The whole card opens the app's page. Added before the card's own links and buttons, so
         // they sit on top of it and keep their clicks.
         if AppDetails::by_id(id).is_some() {
@@ -421,22 +379,22 @@ impl LauncherUi {
                 self.detail = Some(id.to_string());
             }
         }
-        let painter = ui.painter_at(rect.expand(16.0));
-        // A faint wash in the app's colour fades in under the pointer.
-        let fill = t.bg.lerp_to_gamma(app_color, 0.05 * lift);
-        painter.rect(rect, CornerRadius::ZERO, fill, t.hairline(), egui::StrokeKind::Inside);
-        // On hover, a 2 px rule in the app's colour wipes in from the left along the top, inside the
-        // hairlines the card shares with its neighbours (the site's rule sits within its grid gaps).
+        let painter = ui.painter_at(rect.expand(32.0));
+        // Under the pointer the card lifts onto a soft shadow, with a faint wash and an outline in
+        // the app's colour.
+        let card_r = theme::radius(theme::CARD_R);
         if lift > 0.0 {
-            let inside = rect.shrink(1.0);
-            painter.rect_filled(Rect::from_min_size(inside.min, vec2(inside.width() * lift, 2.0)), CornerRadius::ZERO, app_color);
+            painter.add(theme::card_shadow(&t, lift).as_shape(rect, card_r));
         }
+        let fill = t.surface.lerp_to_gamma(app_color, 0.04 * lift);
+        let outline = t.line.lerp_to_gamma(app_color.gamma_multiply(0.7), lift);
+        painter.rect(rect, card_r, fill, egui::Stroke::new(1.0, outline), egui::StrokeKind::Inside);
 
         // The top strip: the version in the app's colour, and its GitHub page.
         let status = entry.status(self.platform, self.caps.manage_apps);
         let version = crate::card_parts::strip_version(&entry, &status);
         let strip = Rect::from_min_size(rect.min, vec2(rect.width(), STRIP_H));
-        painter.hline(strip.x_range(), strip.bottom() - 0.5, t.hairline());
+        painter.hline(strip.x_range().shrink(CARD_PAD), strip.bottom() - 0.5, t.hairline());
         {
             let mut strip_ui = ui.new_child(
                 egui::UiBuilder::new().max_rect(strip.shrink2(vec2(CARD_PAD, 0.0))).layout(egui::Layout::left_to_right(egui::Align::Center)),
@@ -1030,7 +988,7 @@ mod tests {
         Release {
             tag: "v0.4.1".into(),
             version: None,
-            name: "ArtCraft Launcher v0.4.1".into(),
+            name: "Zendaya Launcher v0.4.1".into(),
             published_at: None,
             html_url: "https://github.com/storytold/craft-launcher/releases/tag/v0.4.1".into(),
             notes: String::new(),

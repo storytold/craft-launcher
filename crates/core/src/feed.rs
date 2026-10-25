@@ -452,27 +452,27 @@ mod tests {
         "release_info": {{
           "apps": {{
             "photocraft": {{
-              "name": "PhotoCraft", "repo": "storytold/photocraft",
+              "name": "PhotoCraft", "repo": "zendaya-tech/photocraft",
               "latest_release": {{
                 "tag": "v0.6.0", "version": "0.6.0", "name": "PhotoCraft v0.6.0",
                 "published_at": "2026-10-09T10:00:00Z",
-                "html_url": "https://github.com/storytold/photocraft/releases/tag/v0.6.0",
+                "html_url": "https://github.com/zendaya-tech/photocraft/releases/tag/v0.6.0",
                 "prerelease": false, "notes_markdown": "Notes",
                 "assets": [
                   {{ "name": "photocraft-0.6.0-macos-universal.dmg", "size_bytes": 123,
-                     "download_url": "https://github.com/storytold/photocraft/releases/download/v0.6.0/photocraft-0.6.0-macos-universal.dmg",
+                     "download_url": "https://github.com/zendaya-tech/photocraft/releases/download/v0.6.0/photocraft-0.6.0-macos-universal.dmg",
                      "sha256": "{HASH}", "platform": {{ "os": "macos", "arch": "universal", "package_type": "dmg" }} }},
                   {{ "name": "evil.dmg", "size_bytes": 1, "download_url": "https://evil.example/evil.dmg", "sha256": null }}
                 ]
               }},
               "app_last_fetched": "2026-10-09T13:00:00Z"
             }},
-            "soundcraft": {{ "name": "SoundCraft", "repo": "storytold/soundcraft", "latest_release": null,
+            "soundcraft": {{ "name": "SoundCraft", "repo": "zendaya-tech/soundcraft", "latest_release": null,
                              "app_last_fetched": "2026-10-09T13:00:00Z" }},
-            "filmcraft": {{ "name": "FilmCraft", "repo": "storytold/filmcraft", "latest_release": null, "app_last_fetched": null }},
-            "vectorcraft": {{ "repo": "storytold/vectorcraft", "app_last_fetched": "2026-10-01T00:00:00Z",
+            "filmcraft": {{ "name": "FilmCraft", "repo": "zendaya-tech/filmcraft", "latest_release": null, "app_last_fetched": null }},
+            "vectorcraft": {{ "repo": "zendaya-tech/vectorcraft", "app_last_fetched": "2026-10-01T00:00:00Z",
                               "latest_release": {{ "tag": "v0.7.0" }} }},
-            "brandnewcraft": {{ "repo": "storytold/brandnewcraft", "app_last_fetched": "2026-10-09T13:00:00Z" }}
+            "brandnewcraft": {{ "repo": "zendaya-tech/brandnewcraft", "app_last_fetched": "2026-10-09T13:00:00Z" }}
           }},
           "last_fetched": "2026-10-09T13:00:00Z",
           "some_future_field": {{ "whatever": [1, 2, 3] }}
@@ -484,8 +484,19 @@ mod tests {
         )
     }
 
+    // Feed fixtures exercise freshness for multiple apps independently of the live catalog.
     fn app(id: &str) -> &'static CraftApp {
-        CraftApp::by_id(id).unwrap()
+        const fn fixture(id: &'static str, repo: &'static str) -> CraftApp {
+            CraftApp { id, repo, bundle_name: id, ..crate::catalog::PHOTOZEN }
+        }
+        const APPS: [CraftApp; 5] = [
+            fixture("photocraft", "zendaya-tech/photocraft"),
+            fixture("soundcraft", "zendaya-tech/soundcraft"),
+            fixture("filmcraft", "zendaya-tech/filmcraft"),
+            fixture("vectorcraft", "zendaya-tech/vectorcraft"),
+            fixture("wordcraft", "zendaya-tech/wordcraft"),
+        ];
+        APPS.iter().find(|app| app.id == id).unwrap()
     }
 
     #[test]
@@ -533,39 +544,40 @@ mod tests {
         let moved = sample()
             .replace(
                 "\"repo_renames\": []",
-                r#""repo_renames": [{"old_name": "Storytold/photocraft", "new_name": "storytold/photocraft-app", "renamed_at": null}]"#,
+                r#""repo_renames": [{"old_name": "Zendaya-Tech/photocraft", "new_name": "zendaya-tech/photocraft-app", "renamed_at": null}]"#,
             )
             .replace(
-                "\"name\": \"PhotoCraft\", \"repo\": \"storytold/photocraft\"",
-                "\"name\": \"PhotoCraft\", \"repo\": \"storytold/photocraft-app\"",
+                "\"name\": \"PhotoCraft\", \"repo\": \"zendaya-tech/photocraft\"",
+                "\"name\": \"PhotoCraft\", \"repo\": \"zendaya-tech/photocraft-app\"",
             )
-            .replace("github.com/storytold/photocraft/releases", "github.com/storytold/photocraft-app/releases");
+            .replace("github.com/zendaya-tech/photocraft/releases", "github.com/zendaya-tech/photocraft-app/releases");
         let feed = Feed::parse(&moved).unwrap();
-        assert_eq!(feed.repo_for(app("photocraft")), "storytold/photocraft-app");
+        assert_eq!(feed.repo_for(app("photocraft")), "zendaya-tech/photocraft-app");
         let FeedAnswer::Fresh(Some(r)) = feed.answer(app("photocraft"), NOW) else { panic!() };
-        assert!(r.assets[0].url.starts_with("https://github.com/storytold/photocraft-app/releases/download/"));
+        assert!(r.assets[0].url.starts_with("https://github.com/zendaya-tech/photocraft-app/releases/download/"));
         // The same entry without the rename: the repo doesn't match, so GitHub decides.
-        let unannounced = moved.replace(r#"{"old_name": "Storytold/photocraft", "new_name": "storytold/photocraft-app", "renamed_at": null}"#, "");
+        let unannounced =
+            moved.replace(r#"{"old_name": "Zendaya-Tech/photocraft", "new_name": "zendaya-tech/photocraft-app", "renamed_at": null}"#, "");
         let feed = Feed::parse(&unannounced).unwrap();
         assert_eq!(feed.answer(app("photocraft"), NOW), FeedAnswer::AskGitHub);
     }
 
     #[test]
-    fn a_rename_out_of_storytold_is_dropped() {
+    fn a_rename_out_of_the_configured_owner_is_dropped() {
         // Even a feed that vouches for the new repository, with matching links and checksums,
         // can't send an app's downloads to another account (#90).
         let moved = sample()
             .replace(
                 "\"repo_renames\": []",
-                r#""repo_renames": [{"old_name": "storytold/photocraft", "new_name": "art/photocraft", "renamed_at": null},
-                                  {"old_name": "art/photocraft", "new_name": "storytold/photocraft", "renamed_at": null},
-                                  {"old_name": "storytold/photocraft", "new_name": "storytold.evil.example/photocraft", "renamed_at": null}]"#,
+                r#""repo_renames": [{"old_name": "zendaya-tech/photocraft", "new_name": "art/photocraft", "renamed_at": null},
+                                  {"old_name": "art/photocraft", "new_name": "zendaya-tech/photocraft", "renamed_at": null},
+                                  {"old_name": "zendaya-tech/photocraft", "new_name": "zendaya-tech.evil.example/photocraft", "renamed_at": null}]"#,
             )
-            .replace("\"name\": \"PhotoCraft\", \"repo\": \"storytold/photocraft\"", "\"name\": \"PhotoCraft\", \"repo\": \"art/photocraft\"")
-            .replace("github.com/storytold/photocraft/releases", "github.com/art/photocraft/releases");
+            .replace("\"name\": \"PhotoCraft\", \"repo\": \"zendaya-tech/photocraft\"", "\"name\": \"PhotoCraft\", \"repo\": \"art/photocraft\"")
+            .replace("github.com/zendaya-tech/photocraft/releases", "github.com/art/photocraft/releases");
         let feed = Feed::parse(&moved).unwrap();
         assert!(feed.repo_renames.is_empty(), "{:?}", feed.repo_renames);
-        assert_eq!(feed.repo_for(app("photocraft")), "storytold/photocraft");
+        assert_eq!(feed.repo_for(app("photocraft")), "zendaya-tech/photocraft");
         assert_eq!(feed.answer(app("photocraft"), NOW), FeedAnswer::AskGitHub);
     }
 
@@ -574,8 +586,8 @@ mod tests {
         // The feed advertises a legitimate tag but points the asset at another repository by
         // climbing out with `../` after the approved prefix (CWE-180).
         let escaped = sample().replace(
-            "https://github.com/storytold/photocraft/releases/download/v0.6.0/photocraft-0.6.0-macos-universal.dmg",
-            "https://github.com/storytold/photocraft/releases/download/../../../../attacker/repo/releases/download/v99/photocraft-0.6.0-macos-universal.dmg",
+            "https://github.com/zendaya-tech/photocraft/releases/download/v0.6.0/photocraft-0.6.0-macos-universal.dmg",
+            "https://github.com/zendaya-tech/photocraft/releases/download/../../../../attacker/repo/releases/download/v99/photocraft-0.6.0-macos-universal.dmg",
         );
         let FeedAnswer::Fresh(Some(r)) = Feed::parse(&escaped).unwrap().answer(app("photocraft"), NOW) else { panic!() };
         assert!(r.assets.is_empty(), "the traversing download must be rejected");
@@ -584,7 +596,8 @@ mod tests {
     #[test]
     fn a_local_mirror_is_trusted_only_when_asked_for_and_never_goes_stale() {
         const MIRROR: &str = "http://127.0.0.1:8787/";
-        let local = sample().replace("https://github.com/storytold/photocraft/releases/download/v0.6.0/", "http://127.0.0.1:8787/photocraft/v0.6.0/");
+        let local =
+            sample().replace("https://github.com/zendaya-tech/photocraft/releases/download/v0.6.0/", "http://127.0.0.1:8787/photocraft/v0.6.0/");
         // Without the mirror, the local link is dropped like any other stranger's.
         let FeedAnswer::Fresh(Some(r)) = Feed::parse(&local).unwrap().answer(app("photocraft"), NOW) else { panic!() };
         assert!(r.assets.is_empty());

@@ -1167,7 +1167,7 @@ mod tests {
     fn feed() -> Feed {
         Feed::parse(
             r#"{"release_info": {"apps": {
-            "photocraft": {"repo": "storytold/photocraft", "latest_release": {"tag": "v0.6.0"}, "app_last_fetched": "2026-10-09T13:00:00Z"}
+            "photocraft": {"repo": "zendaya-tech/photocraft", "latest_release": {"tag": "v0.6.0"}, "app_last_fetched": "2026-10-09T13:00:00Z"}
         }}}"#,
         )
         .unwrap()
@@ -1217,8 +1217,8 @@ mod tests {
 
     #[test]
     fn a_local_mirror_answers_for_every_app_on_its_own() {
-        let photo = CraftApp::by_id("photocraft").unwrap();
-        let word = CraftApp::by_id("wordcraft").unwrap();
+        let photo = crate::test_catalog::by_id("photocraft").unwrap();
+        let word = crate::test_catalog::by_id("wordcraft").unwrap();
         let feed = feed().with_mirror("http://127.0.0.1:8787/");
         // Listed: found, even long after the sync.
         let (latest, _, _) = mirror_latest(photo, Some(&feed), NOW + 30 * 86_400);
@@ -1238,8 +1238,8 @@ mod tests {
     fn github_is_only_the_fallback_and_is_asked_rarely() {
         let github = CountingGitHub::default();
         let shared = shared();
-        let photo = CraftApp::by_id("photocraft").unwrap();
-        let word = CraftApp::by_id("wordcraft").unwrap();
+        let photo = crate::test_catalog::by_id("photocraft").unwrap();
+        let word = crate::test_catalog::by_id("wordcraft").unwrap();
         let feed = feed();
 
         // The feed vouches for PhotoCraft: GitHub isn't asked.
@@ -1298,7 +1298,7 @@ mod tests {
                 self.newest.map(str::to_string)
             }
         }
-        let photo = CraftApp::by_id("photocraft").unwrap();
+        let photo = crate::test_catalog::by_id("photocraft").unwrap();
         let feed = feed(); // vouches for PhotoCraft v0.6.0
         let github = |newest| Ahead { newest, asked: AtomicUsize::new(0) };
 
@@ -1325,7 +1325,7 @@ mod tests {
         }
     }
 
-    const APP: &str = "photocraft";
+    const APP: &str = "photozen";
 
     /// A PhotoCraft release with one file per platform and format, so whichever this machine
     /// installs is there.
@@ -1544,12 +1544,12 @@ mod tests {
     #[test]
     fn the_launcher_gives_up_waiting_and_names_the_busy_apps() {
         let jobs = Mutex::new(HashMap::new());
-        for id in [LAUNCHER_ID, "photocraft"] {
+        for id in [LAUNCHER_ID, "photozen"] {
             jobs.lock().unwrap().insert(id.to_string(), Arc::new(Stop::default()));
         }
         let restarting = AtomicBool::new(false);
         let error = claim_restart(&jobs, &restarting, &Stop::default(), Duration::from_millis(300), &mut || {}).unwrap_err();
-        assert!(error.contains("PhotoCraft was still installing") && error.contains("cancel it"), "{error}");
+        assert!(error.contains("Photozen was still installing") && error.contains("cancel it"), "{error}");
         assert!(!restarting.load(Ordering::SeqCst));
         assert!(restart_blocked(vec!["WordCraft", "FilmCraft"]).contains("FilmCraft, WordCraft were still installing"));
     }

@@ -890,10 +890,14 @@ mod tests {
     #[cfg(windows)]
     #[test]
     fn a_file_must_be_signed_by_the_launchers_own_publisher() {
-        let (cmd, msiexec) = (system_program("cmd.exe"), system_program("msiexec.exe"));
-        // `cargo test` binaries are unsigned.
+        let cmd = system_program("cmd.exe");
+        let dir = tempfile::tempdir().unwrap();
+        let same_publisher = dir.path().join("signed-copy.exe");
+        std::fs::copy(&cmd, &same_publisher).unwrap();
+        // Windows system programs can have different signing certificates on the same OS.
+        // A separate copy preserves a known publisher without relying on a particular OS image.
         let unsigned = std::env::current_exe().unwrap();
-        assert_eq!(signed_like(&cmd, &msiexec), Ok(()));
+        assert_eq!(signed_like(&cmd, &same_publisher), Ok(()));
         assert!(signed_like(&cmd, &unsigned).is_err_and(|e| e.contains("isn't signed")));
         assert!(signed_like(&unsigned, &cmd).is_err_and(|e| e.contains("doesn't install updates")));
     }

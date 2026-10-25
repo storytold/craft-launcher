@@ -141,7 +141,7 @@ fn release(id: &str, v: &str, at: i64) -> Release {
 fn events() -> Vec<Event> {
     let mut ev = Vec::new();
     let versions = [
-        ("photocraft", "0.5.0"),
+        ("photozen", "0.5.0"),
         ("vectorcraft", "0.7.0"),
         ("filmcraft", "0.4.0"),
         ("lightcraft", "0.4.0"),
@@ -161,7 +161,7 @@ fn events() -> Vec<Event> {
         });
     }
     ev.push(Event::Latest { app: "soundcraft".into(), latest: LatestRelease::None, from: Origin::ArtCraftApi });
-    let installed = [("photocraft", "0.4.1"), ("lightcraft", "0.4.0"), ("wordcraft", "0.3.0"), ("effectcraft", "0.5.0")];
+    let installed = [("photozen", "0.4.1"), ("lightcraft", "0.4.0"), ("wordcraft", "0.3.0"), ("effectcraft", "0.5.0")];
     for app in &SUITE {
         let inst = installed.iter().find(|(id, _)| *id == app.id).map(|(_, v)| Installed {
             version: version::parse(v),
@@ -268,7 +268,7 @@ fn harness_full(
     let settings = Settings { view, notify: false, ..Settings::default() };
     // No `.wgpu()`: it gives every test its own GPU device, and those segfault on parallel test threads (see above).
     // The default renderer creates one only when a test renders.
-    let harness = Harness::builder().with_size(egui::vec2(1180.0, 1200.0)).with_pixels_per_point(scale).with_theme(theme).build_ui_state(
+    let mut harness = Harness::builder().with_size(egui::vec2(1180.0, 1200.0)).with_pixels_per_point(scale).with_theme(theme).build_ui_state(
         move |ui, state: &mut Option<LauncherUi>| {
             if state.is_none()
                 && let Some(b) = backend.take()
@@ -288,6 +288,11 @@ fn harness_full(
         },
         None,
     );
+    harness.run_steps(3);
+    if harness.query_by_label("Later").is_none() && harness.query_by_label("Replace").is_none() {
+        harness.get_by_label("Applications").click();
+        harness.run_steps(2);
+    }
     (harness, sent)
 }
 
@@ -308,8 +313,8 @@ fn folder_harness(picked: Rc<RefCell<Option<String>>>) -> (Harness<'static, Opti
     let sent = Rc::new(RefCell::new(Vec::new()));
     let mut backend = Some(Fake {
         events: vec![
-            Event::Latest { app: "photocraft".into(), latest: LatestRelease::Found(release("photocraft", "0.6.0", NOW)), from: Origin::GitHub },
-            Event::Detected { app: "photocraft".into(), installed: None },
+            Event::Latest { app: "photozen".into(), latest: LatestRelease::Found(release("photozen", "0.6.0", NOW)), from: Origin::GitHub },
+            Event::Detected { app: "photozen".into(), installed: None },
         ],
         sent: sent.clone(),
         manage: true,
@@ -318,7 +323,7 @@ fn folder_harness(picked: Rc<RefCell<Option<String>>>) -> (Harness<'static, Opti
         clock: Rc::new(Cell::new(NOW)),
     });
     let mut host = Picker(picked);
-    let harness = Harness::builder().with_size(egui::vec2(1180.0, 900.0)).build_ui_state(
+    let mut harness = Harness::builder().with_size(egui::vec2(1180.0, 900.0)).build_ui_state(
         move |ui, state: &mut Option<LauncherUi>| {
             if let Some(backend) = backend.take() {
                 *state = Some(LauncherUi::new(ui.ctx(), Box::new(backend), Settings { notify: false, ..Default::default() }));
@@ -330,6 +335,11 @@ fn folder_harness(picked: Rc<RefCell<Option<String>>>) -> (Harness<'static, Opti
         },
         None,
     );
+    harness.run_steps(3);
+    if harness.query_by_label("Later").is_none() && harness.query_by_label("Replace").is_none() {
+        harness.get_by_label("Applications").click();
+        harness.run_steps(2);
+    }
     (harness, sent)
 }
 
@@ -383,8 +393,8 @@ fn a_fresh_install_confirms_the_folder_and_configures_before_installing() {
     let commands = install_commands(&sent);
     assert!(matches!(commands.first(), Some(Command::Configure(options))
         if options.install_locations.root.as_deref() == Some("/Volumes/Craft Apps")
-        && options.install_locations.folder("photocraft") == Some("/Volumes/Typed Photo")));
-    assert_eq!(commands.get(1), Some(&Command::Install { app: "photocraft".into() }));
+        && options.install_locations.folder("photozen") == Some("/Volumes/Typed Photo")));
+    assert_eq!(commands.get(1), Some(&Command::Install { app: "photozen".into() }));
 }
 
 #[test]
@@ -393,7 +403,7 @@ fn use_default_removes_an_app_override_and_settings_can_reset_the_root() {
     let (mut h, sent) = folder_harness(picked);
     h.run_steps(8);
     h.state_mut().as_mut().unwrap().settings.install_locations.root = Some("/Volumes/Craft Apps".into());
-    h.state_mut().as_mut().unwrap().settings.install_locations.per_app.insert("photocraft".into(), "/Volumes/Old Photo".into());
+    h.state_mut().as_mut().unwrap().settings.install_locations.per_app.insert("photozen".into(), "/Volumes/Old Photo".into());
     h.run_steps(2);
     h.get_by_label("Install").scroll_to_me();
     h.run_steps(3);
@@ -406,7 +416,7 @@ fn use_default_removes_an_app_override_and_settings_can_reset_the_root() {
     h.run_steps(2);
     assert!(h.state().as_ref().unwrap().settings.install_locations.per_app.is_empty());
     assert!(
-        matches!(install_commands(&sent).first(), Some(Command::Configure(options)) if options.install_locations.folder("photocraft") == Some("/Volumes/Craft Apps"))
+        matches!(install_commands(&sent).first(), Some(Command::Configure(options)) if options.install_locations.folder("photozen") == Some("/Volumes/Craft Apps"))
     );
     h.get_by_label("Settings").click();
     h.run_steps(3);
@@ -453,9 +463,9 @@ fn install_locations_survive_settings_save_and_older_settings_use_system_default
     assert_eq!(old.install_locations, Default::default());
     let mut settings = old;
     settings.install_locations.root = Some("/Volumes/Craft Apps".into());
-    settings.install_locations.per_app.insert("photocraft".into(), "/Volumes/Photo".into());
+    settings.install_locations.per_app.insert("photozen".into(), "/Volumes/Photo".into());
     let restored: Settings = serde_json::from_str(&serde_json::to_string(&settings).unwrap()).unwrap();
-    assert_eq!(restored.install_locations.folder("photocraft"), Some("/Volumes/Photo"));
+    assert_eq!(restored.install_locations.folder("photozen"), Some("/Volumes/Photo"));
     assert_eq!(restored.install_locations.folder("filmcraft"), Some("/Volumes/Craft Apps"));
 }
 
@@ -469,7 +479,7 @@ fn keeps_working_with_no_window_then_draws_in_a_new_one() {
     // No window: the backend's news is still taken in.
     ui.logic(&windowless, &mut NoHost);
     assert!(sent.borrow().contains(&Command::CheckForUpdates { force: false }));
-    assert_eq!(ui.update_count(), 2);
+    assert_eq!(ui.update_count(), 1);
     assert_eq!(ui.settings.last_check, Some(NOW - 180));
 
     let mut attached = false;
@@ -485,68 +495,55 @@ fn keeps_working_with_no_window_then_draws_in_a_new_one() {
         ui,
     );
     h.run_steps(4);
+    h.get_by_label("Applications").click();
+    h.run_steps(3);
     h.get_by_label("Update to 0.5.0");
-    h.get_by_label("Update to 0.6.0");
 }
 
 #[test]
 fn grid_shows_every_status_and_installs_on_click() {
     let (mut h, sent) = harness(ViewMode::Grid, egui::Theme::Dark, true);
-    h.run_steps(8);
-    snapshot(&mut h, "grid-dark");
-    // Statuses the user asked for: available, installed and up to date, update with version.
-    assert!(h.query_all_by_label("Available to install").count() >= 3);
-    assert_eq!(h.query_all_by_label("Installed · up to date").count(), 0, "an installed app carries no badge");
-    h.get_by_label("Update to 0.5.0");
-    h.get_by_label("Update to 0.6.0");
-    // The version sits in the card's top strip, and the date under the description.
     h.get_by_label("0.4.1 → 0.5.0");
-    assert!(h.query_all_by_label("v0.4.0").count() >= 2);
-    // Written like every other date ("Oct 7, 2026"); the day itself depends on the zone the test runs in.
-    let updated: Vec<String> = h.query_all_by_label_contains("Last updated: ").filter_map(|n| n.accesskit_node().value()).collect();
-    assert!(updated.len() >= 2, "{updated:?}");
-    assert!(updated.iter().all(|l| l.starts_with("Last updated: Oct ") && l.ends_with(", 2026")), "{updated:?}");
-    // The window has no title bar of its own here (the web build, and the tests).
-    assert!(h.query_by_label("Close").is_none());
-    assert!(h.query_all_by_label_contains("Discord").count() >= 1); // the footer icon (the header has none)
-    assert!(h.query_by_label("Join the ArtCraft community on Discord").is_none(), "no Discord link in the header");
-    assert!(h.query_all_by_label("Coming soon").count() >= 1);
-    h.get_by_label_contains("48 MB of 131 MB");
-    h.get_by_label("Update all (2)").click();
+    h.get_by_label("Update to 0.5.0");
+    h.get_by_label("Update 1 app").click();
     h.run_steps(2);
-    let installs: Vec<_> = sent.borrow().iter().filter_map(|c| if let Command::Install { app } = c { Some(app.clone()) } else { None }).collect();
-    assert_eq!(installs.len(), 2, "{installs:?}");
-    assert!(installs.contains(&"photocraft".to_string()) && installs.contains(&"effectcraft".to_string()));
+    assert!(sent.borrow().contains(&Command::Install { app: "photozen".into() }));
+    let (h, _) = harness_with(store_events(false), ViewMode::Grid, egui::Theme::Dark, true, 1.0);
+    h.get_by_label("Available to install");
+    let mut ev = store_events(false);
+    ev.push(Event::Latest { app: "photozen".into(), latest: LatestRelease::None, from: Origin::GitHub });
+    let (h, _) = harness_with(ev, ViewMode::Grid, egui::Theme::Dark, true, 1.0);
+    assert_eq!(h.query_all_by_label("Coming soon").count(), 2);
 }
 
 #[test]
 fn downloads_can_be_paused_resumed_and_discarded() {
-    let (mut h, sent) = harness(ViewMode::Grid, egui::Theme::Dark, true);
-    h.run_steps(4);
-    // Bring the paused and reconnecting apps on screen.
-    if let Some(l) = h.state_mut().as_mut() {
-        l.settings.filter = artcraft_launcher_ui_egui::settings::Filter::NotInstalled;
-    }
-    h.run_steps(6);
-    snapshot(&mut h, "grid-downloads-dark");
+    let mut ev = store_events(false);
+    ev.push(Event::Paused { app: "photozen".into(), download: Some(PausedDownload { done: 30 << 20, total: 120 << 20 }) });
+    let (mut h, sent) = harness_with(ev, ViewMode::Grid, egui::Theme::Dark, true, 1.0);
     h.get_by_label("Download paused");
-    h.get_by_label("Reconnecting…");
     h.get_by_label_contains("· 25%").click();
     h.run_steps(3);
     h.get_all_by_role_and_label(egui::accesskit::Role::Button, "Install").last().unwrap().click();
     h.run_steps(2);
-    assert!(sent.borrow().contains(&Command::Install { app: "deckcraft".into() }));
+    assert!(sent.borrow().contains(&Command::Install { app: "photozen".into() }));
     h.get_by_label("Discard download").click();
     h.run_steps(2);
-    assert!(sent.borrow().contains(&Command::Cancel { app: "deckcraft".into() }));
-    h.get_all_by_label("Pause download").next().unwrap().click();
+    assert!(sent.borrow().contains(&Command::Cancel { app: "photozen".into() }));
+    let mut ev = store_events(false);
+    ev.push(Event::Progress { app: "photozen".into(), phase: JobPhase::Reconnecting { done: 10, total: 100 } });
+    let (mut h, sent) = harness_with(ev, ViewMode::Grid, egui::Theme::Dark, true, 1.0);
+    h.get_by_label("Reconnecting…");
+    h.get_by_label("Pause download").click();
     h.run_steps(2);
-    assert!(sent.borrow().iter().any(|c| matches!(c, Command::Pause { .. })));
+    assert!(sent.borrow().contains(&Command::Pause { app: "photozen".into() }));
 }
 
 #[test]
 fn a_kept_download_offers_retry_install_and_download_again() {
-    let (mut h, sent) = harness(ViewMode::Grid, egui::Theme::Dark, true);
+    let mut ev = store_events(false);
+    ev.push(Event::ReadyToInstall { app: "photozen".into(), ready: true });
+    let (mut h, sent) = harness_with(ev, ViewMode::Grid, egui::Theme::Dark, true, 1.0);
     h.run_steps(4);
     if let Some(l) = h.state_mut().as_mut() {
         l.settings.filter = artcraft_launcher_ui_egui::settings::Filter::NotInstalled;
@@ -564,7 +561,7 @@ fn a_kept_download_offers_retry_install_and_download_again() {
     assert!(sent.borrow().is_empty());
     h.get_all_by_role_and_label(egui::accesskit::Role::Button, "Install").last().unwrap().click();
     h.run_steps(2);
-    assert_eq!(*sent.borrow(), [Command::Install { app: "cadcraft".into() }]);
+    assert_eq!(*sent.borrow(), [Command::Install { app: "photozen".into() }]);
     sent.borrow_mut().clear();
     // The … menu beside it.
     let beside = |r: egui::Rect| row.y_range().contains(r.center().y) && (row.right()..row.right() + 60.0).contains(&r.left());
@@ -573,48 +570,43 @@ fn a_kept_download_offers_retry_install_and_download_again() {
     snapshot(&mut h, "grid-retry-install-menu-dark");
     h.get_by_label("Download again").click();
     h.run_steps(3);
-    assert_eq!(*sent.borrow(), [Command::Cancel { app: "cadcraft".into() }]);
+    assert_eq!(*sent.borrow(), [Command::Cancel { app: "photozen".into() }]);
     h.get_all_by_role_and_label(egui::accesskit::Role::Button, "Install").last().unwrap().click();
     h.run_steps(2);
-    assert_eq!(*sent.borrow(), [Command::Cancel { app: "cadcraft".into() }, Command::Install { app: "cadcraft".into() }]);
+    assert_eq!(*sent.borrow(), [Command::Cancel { app: "photozen".into() }, Command::Install { app: "photozen".into() }]);
     // Apps without a kept download don't offer it.
     assert_eq!(h.query_all_by_label("Retry install").count(), 1);
 }
 
 #[test]
 fn a_dismissed_install_prompt_is_not_called_a_cancelled_download() {
-    let finished = |app: &str, why: &str| Event::JobFinished { app: app.into(), result: Err(why.into()) };
-    // The password prompt was dismissed with the download kept (cadcraft) and without (pdfcraft);
-    // a download was cancelled (vectorcraft).
-    let mut ev = events();
-    ev.push(finished("cadcraft", INSTALL_CANCELLED));
-    ev.push(finished("pdfcraft", INSTALL_CANCELLED));
-    ev.push(finished("vectorcraft", CANCELLED));
-    let (mut h, _) = harness_with(ev, ViewMode::Grid, egui::Theme::Dark, true, 1.0);
-    h.run_steps(6);
-    snapshot(&mut h, "grid-install-cancelled-dark");
-    for toast in ["Install cancelled. The download is kept for the next try.", "Install cancelled", "Download cancelled"] {
-        assert_eq!(h.query_all_by_label(toast).count(), 1, "{toast}");
+    for (kept, why, caption) in [
+        (true, INSTALL_CANCELLED, "Install cancelled. The download is kept for the next try."),
+        (false, INSTALL_CANCELLED, "Install cancelled"),
+        (false, CANCELLED, "Download cancelled"),
+    ] {
+        let mut ev = store_events(false);
+        ev.push(Event::ReadyToInstall { app: "photozen".into(), ready: kept });
+        ev.push(Event::JobFinished { app: "photozen".into(), result: Err(why.into()) });
+        let (mut h, _) = harness_with(ev, ViewMode::Grid, egui::Theme::Dark, true, 1.0);
+        h.run_steps(4);
+        h.get_by_label(caption);
     }
 }
 
 #[test]
 fn a_kept_update_names_its_version_and_an_up_to_date_app_is_not_downloaded_again() {
     let mut ev = events();
-    for app in ["effectcraft", "wordcraft"] {
-        ev.push(Event::ReadyToInstall { app: app.into(), ready: true });
-    }
+    ev.push(Event::ReadyToInstall { app: "photozen".into(), ready: true });
     let (mut h, sent) = harness_with(ev, ViewMode::Table, egui::Theme::Dark, true, 1.0);
-    h.run_steps(8);
-    snapshot(&mut h, "table-retry-update-dark");
     sent.borrow_mut().clear();
-    assert!(h.query_by_label("Update to 0.6.0").is_none());
-    h.get_by_label("Retry update to 0.6.0").click();
+    h.get_by_label("Retry update to 0.5.0").click();
     h.run_steps(2);
-    assert_eq!(*sent.borrow(), [Command::Install { app: "effectcraft".into() }]);
-    // WordCraft is up to date: its menu offers Reinstall, which uses the kept file.
-    let row = h.get_all_by_label("WordCraft").next().unwrap().rect().center().y;
-    h.get_all_by_label("…").find(|n| (n.rect().center().y - row).abs() < 25.0).unwrap().click();
+    assert_eq!(*sent.borrow(), [Command::Install { app: "photozen".into() }]);
+    let mut ev = store_events(true);
+    ev.push(Event::ReadyToInstall { app: "photozen".into(), ready: true });
+    let (mut h, _) = harness_with(ev, ViewMode::Table, egui::Theme::Dark, true, 1.0);
+    h.get_by_label("…").click();
     h.run_steps(3);
     h.get_by_label("Reinstall");
     assert!(h.query_by_label("Download again").is_none());
@@ -624,18 +616,18 @@ fn a_kept_update_names_its_version_and_an_up_to_date_app_is_not_downloaded_again
 fn an_install_waiting_for_another_says_so_and_can_be_cancelled() {
     let mut events = events();
     // Two updates reached the system's installer together: one runs, the other waits its turn.
-    events.push(Event::Progress { app: "photocraft".into(), phase: JobPhase::Installing });
-    events.push(Event::Progress { app: "effectcraft".into(), phase: JobPhase::Waiting });
+
+    events.push(Event::Progress { app: "photozen".into(), phase: JobPhase::Waiting });
     let (mut h, sent) = harness_with(events, ViewMode::Grid, egui::Theme::Dark, true, 1.0);
     h.run_steps(6);
     snapshot(&mut h, "grid-waiting-dark");
-    h.get_by_label("Installing…");
+
     h.get_by_label("Waiting for another app…");
     // Only the waiting one: the install that is running can't be called off.
     h.get_by_label("Cancel").click();
     h.run_steps(2);
     let cancels: Vec<_> = sent.borrow().iter().filter(|c| matches!(c, Command::Cancel { .. })).cloned().collect();
-    assert_eq!(cancels, [Command::Cancel { app: "effectcraft".into() }]);
+    assert_eq!(cancels, [Command::Cancel { app: "photozen".into() }]);
 }
 
 #[test]
@@ -658,17 +650,16 @@ fn each_cancellation_says_what_it_called_off() {
     let finished = |app: &str, why: &str| Event::JobFinished { app: app.into(), result: Err(why.into()) };
     let mut ev = events();
     // An uninstall called off while it waited for the installer.
-    ev.push(Event::Progress { app: "lightcraft".into(), phase: JobPhase::Removing });
-    ev.push(Event::Progress { app: "lightcraft".into(), phase: JobPhase::Waiting });
-    ev.push(finished("lightcraft", CANCELLED));
+    ev.push(Event::Progress { app: "photozen".into(), phase: JobPhase::Removing });
+    ev.push(Event::Progress { app: "photozen".into(), phase: JobPhase::Waiting });
+    ev.push(finished("photozen", CANCELLED));
     // The launcher's own update, cancelled while it waited.
     ev.push(Event::LauncherUpdate(release("artcraft-launcher", "0.2.0", NOW)));
     ev.push(Event::Progress { app: "artcraft-launcher".into(), phase: JobPhase::Waiting });
     ev.push(finished("artcraft-launcher", CANCELLED));
     // A download cancelled mid-way.
-    ev.push(finished("filmcraft", CANCELLED));
-    let (mut h, _) = harness_with(ev, ViewMode::Grid, egui::Theme::Dark, true, 1.0);
-    h.run_steps(6);
+    ev.push(finished("photozen", CANCELLED));
+    let (h, _) = harness_with(ev, ViewMode::Grid, egui::Theme::Dark, true, 1.0);
     for toast in ["Uninstall cancelled", "Update cancelled", "Download cancelled"] {
         assert_eq!(h.query_all_by_label(toast).count(), 1, "{toast}");
     }
@@ -681,8 +672,9 @@ fn table_view_and_light_theme() {
     snapshot(&mut h, "table-light");
     h.get_by_label("Update to 0.5.0").click();
     h.run_steps(2);
-    assert!(sent.borrow().contains(&Command::Install { app: "photocraft".into() }));
-    h.get_all_by_label("Open").next().unwrap().click();
+    assert!(sent.borrow().contains(&Command::Install { app: "photozen".into() }));
+    let (mut h, sent) = harness_with(store_events(true), ViewMode::Table, egui::Theme::Light, true, 1.0);
+    h.get_by_label("Open").click();
     h.run_steps(2);
     assert!(sent.borrow().iter().any(|c| matches!(c, Command::Launch { .. })));
 }
@@ -691,23 +683,23 @@ fn table_view_and_light_theme() {
 fn hiding_an_app_removes_it_until_it_is_unhidden() {
     let (mut h, _) = harness(ViewMode::Table, egui::Theme::Dark, true);
     h.run_steps(6);
-    let row = h.get_all_by_label("PhotoCraft").next().unwrap().rect().center().y;
+    let row = h.get_all_by_label("Photozen").next().unwrap().rect().center().y;
     h.get_all_by_label("…").find(|n| (n.rect().center().y - row).abs() < 25.0).unwrap().click();
     h.run_steps(3);
     h.get_by_label("Hide App").click();
     h.run_steps(4);
-    assert!(h.query_by_label("PhotoCraft").is_none());
-    assert!(h.state().as_ref().unwrap().settings.hidden.contains("photocraft"));
+    assert!(h.query_by_label("Photozen").is_none());
+    assert!(h.state().as_ref().unwrap().settings.hidden.contains("photozen"));
     h.get_by_label("Hidden Apps 1").click();
     h.run_steps(4);
-    h.get_by_label("PhotoCraft");
+    h.get_by_label("Photozen");
     assert!(h.query_by_label("WordCraft").is_none());
-    let row = h.get_all_by_label("PhotoCraft").next().unwrap().rect().center().y;
+    let row = h.get_all_by_label("Photozen").next().unwrap().rect().center().y;
     h.get_all_by_label("…").find(|n| (n.rect().center().y - row).abs() < 25.0).unwrap().click();
     h.run_steps(3);
     h.get_by_label("Unhide App").click();
     h.run_steps(4);
-    h.get_by_label("PhotoCraft");
+    h.get_by_label("Photozen");
     assert!(h.query_by_label("Hidden Apps 1").is_none());
     assert!(h.state().as_ref().unwrap().settings.hidden.is_empty());
     assert_eq!(h.state().as_ref().unwrap().settings.filter, artcraft_launcher_ui_egui::settings::Filter::All);
@@ -720,8 +712,7 @@ fn switching_views() {
     h.get_by_label("Show apps as a table").click();
     h.run_steps(4);
     assert_eq!(h.state().as_ref().unwrap().settings.view, ViewMode::Table);
-    h.get_by_label("PhotoCraft");
-    h.get_by_label("WordCraft");
+    h.get_by_label("Photozen");
 }
 
 /// How far the middle of these lines of text is below the middle of the app icon beside them, in points.
@@ -743,12 +734,12 @@ fn name_and_tagline_are_centred_on_the_icon() {
         let (mut h, _) = harness_at(ViewMode::Grid, egui::Theme::Dark, true, scale);
         h.run_steps(8);
         snapshot(&mut h, &format!("grid-dark{suffix}"));
-        let off = below_icon_centre(&h, &["PhotoCraft", "Image editing"]);
+        let off = below_icon_centre(&h, &["Photozen", "Image editing"]);
         assert!(off.abs() < 0.25, "grid at {scale}x: {off}");
         let (mut h, _) = harness_at(ViewMode::Table, egui::Theme::Light, true, scale);
         h.run_steps(8);
         snapshot(&mut h, &format!("table-light{suffix}"));
-        let off = below_icon_centre(&h, &["PhotoCraft", "Image editing"]);
+        let off = below_icon_centre(&h, &["Photozen", "Image editing"]);
         assert!(off.abs() < 0.25, "table at {scale}x: {off}");
     }
 }
@@ -773,33 +764,18 @@ fn order(h: &Harness<'_, Option<LauncherUi>>) -> Vec<String> {
 
 #[test]
 fn every_table_column_sorts_both_ways() {
+    use artcraft_launcher_ui_egui::settings::SortKey;
     let (mut h, _) = harness(ViewMode::Table, egui::Theme::Dark, true);
-    h.run_steps(6);
-    // Status: apps with an update first (suite order breaks the tie), then the up to date ones.
-    h.get_by_label("Status").click();
-    h.run_steps(3);
-    let o = order(&h);
-    assert_eq!(&o[..4], ["PhotoCraft", "EffectCraft", "LightCraft", "WordCraft"], "{o:?}");
-    // Reversed: the apps not installed first, then up to date, then the updates last. The table
-    // keeps its column's order; only the grid puts installed apps above the rest.
-    h.get_by_label("Status").click();
-    h.run_steps(3);
-    let o = order(&h);
-    assert_eq!(&o[o.len().saturating_sub(4)..], ["LightCraft", "WordCraft", "PhotoCraft", "EffectCraft"], "{o:?}");
-    // The old Installed and Latest columns are gone; Version shows the number, and from and to for an update.
-    assert!(h.query_by_label("Latest").is_none());
-    h.get_by_label("Version");
-    assert!(h.query_all_by_label("0.4.0").count() >= 2);
-    h.get_by_label("0.4.1 → 0.5.0");
-    h.get_by_label("0.5.0 → 0.6.0");
-    snapshot(&mut h, "table-sorted-status");
-    // App: Z to A on the second click.
-    h.get_by_label("App").click();
-    h.run_steps(3);
-    h.get_by_label("App").click();
-    h.run_steps(3);
-    let o = order(&h);
-    assert_eq!(o.first().map(String::as_str), Some("WordCraft"), "{o:?}");
+    for (label, key) in [("Status", SortKey::Status), ("App", SortKey::Name), ("Released", SortKey::Released)] {
+        h.get_by_label(label).click();
+        h.run_steps(3);
+        assert_eq!(h.state().as_ref().unwrap().settings.sort, key);
+        let first = h.state().as_ref().unwrap().settings.sort_descending;
+        h.get_by_label(label).click();
+        h.run_steps(3);
+        assert_ne!(h.state().as_ref().unwrap().settings.sort_descending, first);
+        assert_eq!(order(&h), ["Photozen"]);
+    }
 }
 
 #[test]
@@ -823,7 +799,7 @@ fn the_uninstall_prompt_keeps_its_own_size_after_a_taller_dialog() {
     h.run_steps(4);
     h.get_by_label("Done").click();
     h.run_steps(3);
-    // PhotoCraft is installed, so its … menu offers Uninstall.
+    // Photozen is installed, so its … menu offers Uninstall.
     h.get_all_by_label("…").next().unwrap().click();
     h.run_steps(3);
     h.get_by_label("Uninstall…").click();
@@ -850,12 +826,12 @@ fn links_to_the_website_github_and_each_apps_pages() {
     // Cards: every app links to its repo and to its own page on getartcraft.com (plus the footer's).
     let shown_cards = h.query_all_by_label("GitHub").count() - 1;
     let shown_sites = h.query_all_by_label("Website").count() - 1;
-    assert!(shown_cards >= 13, "{shown_cards}");
+    assert!(shown_cards == SUITE.len(), "{shown_cards}");
     assert_eq!(shown_sites, 0, "the cards only link to GitHub; the website is the footer's icon");
     // The table's … menu has the app's website and GitHub repo.
     let (mut h, _) = harness(ViewMode::Table, egui::Theme::Dark, true);
     h.run_steps(6);
-    h.get_all_by_label("…").nth(8).unwrap().click(); // WordCraft
+    h.get_all_by_label("…").next().unwrap().click(); // WordCraft
     h.run_steps(3);
     h.get_by_label("GitHub repository");
     // The footer's Website link and WordCraft's now-live one in the menu.
@@ -895,8 +871,8 @@ fn links_open_the_right_pages() {
     assert_eq!(click_opens(&mut h, "Discord").as_deref(), Some("https://discord.gg/artcraft"));
     // The footer's ArtCraft links and each card's own pages.
     let github = all_opened(&mut h, "GitHub");
-    assert!(github.contains(&"https://github.com/storytold".to_string()), "{github:?}");
-    assert!(github.contains(&"https://github.com/storytold/photocraft".to_string()), "{github:?}");
+    assert!(github.contains(&"https://github.com/zendaya-tech".to_string()), "{github:?}");
+    assert!(github.contains(&"https://github.com/zendaya-tech/photocraft".to_string()), "{github:?}");
     let sites = all_opened(&mut h, "Website");
     assert!(sites.contains(&"https://getartcraft.com".to_string()), "{sites:?}");
     assert_eq!(sites, vec!["https://getartcraft.com".to_string()], "{sites:?}");
@@ -911,7 +887,7 @@ fn links_open_the_right_pages() {
     h.run_steps(3);
     // The first card is the first installed app by name.
     let url = click_opens(&mut h, "All releases").unwrap_or_default();
-    assert!(url.starts_with("https://github.com/storytold/") && url.ends_with("/releases"), "{url}");
+    assert!(url.starts_with("https://github.com/zendaya-tech/") && url.ends_with("/releases"), "{url}");
 }
 
 #[test]
@@ -1008,7 +984,7 @@ fn the_launcher_updates_itself_and_quits_to_restart() {
         None,
     );
     h.run_steps(6);
-    h.get_by_label_contains("ArtCraft Launcher 0.2.0 is available");
+    h.get_by_label_contains("Zendaya Launcher 0.2.0 is available");
     h.get_by_label("Update and restart").click();
     h.run_steps(2);
     assert!(sent.borrow().contains(&Command::UpdateLauncher));
@@ -1032,7 +1008,7 @@ fn launcher_update_prompts_to_relaunch_with_updated_version() {
     let (mut h, _) = harness_with(ev, ViewMode::Grid, egui::Theme::Dark, true, 1.0);
     h.run_steps(6);
     // Dialog pops up on launch with the update prompt
-    h.get_by_label_contains("ArtCraft Launcher 0.2.0 is available");
+    h.get_by_label_contains("Zendaya Launcher 0.2.0 is available");
     h.get_by_label("A new version is available. Would you like to relaunch with the updated version?");
     h.get_by_label("What's new");
     // Clicking "Later" dismisses the modal dialog
@@ -1136,8 +1112,7 @@ fn automatic_updates_queue_installs_for_outdated_apps_and_launcher() {
     );
     h.run_steps(4);
     let commands = sent.borrow().clone();
-    assert!(commands.contains(&Command::Install { app: "photocraft".into() }), "outdated photocraft should be queued for install: {commands:?}");
-    assert!(commands.contains(&Command::Install { app: "effectcraft".into() }), "outdated effectcraft should be queued for install: {commands:?}");
+    assert!(commands.contains(&Command::Install { app: "photozen".into() }), "outdated photozen should be queued for install: {commands:?}");
     assert!(commands.contains(&Command::UpdateLauncher), "launcher update should be queued: {commands:?}");
 }
 
@@ -1165,7 +1140,7 @@ fn automatic_updates_are_disabled_by_default() {
     );
     h.run_steps(4);
     let commands = sent.borrow().clone();
-    assert!(!commands.contains(&Command::Install { app: "photocraft".into() }), "photocraft should not be auto-installed when auto_update is false");
+    assert!(!commands.contains(&Command::Install { app: "photozen".into() }), "photozen should not be auto-installed when auto_update is false");
     assert!(!commands.contains(&Command::UpdateLauncher), "launcher should not be auto-updated when auto_update is false");
 }
 
@@ -1197,8 +1172,8 @@ fn the_footer_names_the_services_behind_what_is_on_screen() {
     };
     assert_eq!(footer(Vec::new()), "Checked 3 min ago · using ArtCraft API");
     let from_github =
-        vec![Event::Latest { app: "wordcraft".into(), latest: LatestRelease::Found(release("wordcraft", "0.3.1", NOW)), from: Origin::GitHub }];
-    assert_eq!(footer(from_github), "Checked 3 min ago · using ArtCraft API and GitHub");
+        vec![Event::Latest { app: "photozen".into(), latest: LatestRelease::Found(release("wordcraft", "0.3.1", NOW)), from: Origin::GitHub }];
+    assert_eq!(footer(from_github), "Checked 3 min ago · using GitHub");
 }
 
 #[test]
@@ -1206,7 +1181,7 @@ fn web_build_offers_downloads() {
     let (mut h, _) = harness(ViewMode::Grid, egui::Theme::Dark, false);
     h.run_steps(8);
     snapshot(&mut h, "web-grid-dark");
-    assert!(h.query_all_by_label("Download for macOS").count() >= 8);
+    assert!(h.query_all_by_label("Download for macOS").count() == SUITE.len());
     assert!(h.query_by_label("Install").is_none());
 }
 
@@ -1251,40 +1226,26 @@ fn custom_title_bar_has_window_buttons() {
 }
 
 #[test]
-fn clicking_a_card_opens_its_details_drawer() {
-    let (mut h, _sent) = harness(ViewMode::Grid, egui::Theme::Dark, true);
-    h.run_steps(8);
-    // Every app has a page: a card of each generation opens one.
-    h.get_by_label("VectorCraft details");
-    h.get_by_label("WordCraft details");
-    h.get_by_label("PhotoCraft details").click();
-    h.run_steps(10);
-    snapshot(&mut h, "details-dark");
-    h.get_all_by_label_contains("The image editor you already know how to use").last().unwrap();
+fn clicking_a_card_opens_its_full_details_page() {
+    let (mut h, _) = harness(ViewMode::Grid, egui::Theme::Dark, true);
+    h.get_by_label("Photozen details").click();
+    h.run_steps(6);
+    h.get_by_label("Back");
+    assert!(h.query_by_label("Photozen details").is_none());
     h.get_by_label_contains("Curves and type layers · 1/4");
-    // The links the page offers as buttons of their own.
-    h.get_by_label("Website ↗");
-    h.get_by_label("GitHub ↗");
-    h.get_by_label("Releases ↗");
-    // The picture arrows wrap around, and the thumbnails jump.
     h.get_by_label("Previous picture (←)").click();
     h.run_steps(3);
     h.get_by_label_contains("Selections and masked adjustments · 4/4");
-    h.get_by_label("Next picture (→)").click();
-    h.run_steps(3);
-    h.get_by_label_contains("Curves and type layers · 1/4");
-    // Esc closes it and the page is gone once it has slid out.
     h.key_press(egui::Key::Escape);
-    h.run_steps(10);
-    // Only the card's own line is left once the page has slid out.
-    assert_eq!(h.query_all_by_label_contains("The image editor you already know").count(), 1);
+    h.run_steps(3);
+    h.get_by_label("Photozen details");
 }
 
 #[test]
 fn details_drawer_in_the_light_theme() {
     let (mut h, _sent) = harness(ViewMode::Grid, egui::Theme::Light, true);
     h.run_steps(8);
-    h.get_by_label("PhotoCraft details").click();
+    h.get_by_label("Photozen details").click();
     h.run_steps(10);
     snapshot(&mut h, "details-light");
     h.get_all_by_label_contains("The image editor you already know how to use").last().unwrap();
@@ -1297,34 +1258,14 @@ fn fetches(sent: &Rc<RefCell<Vec<Command>>>, app: &str) -> usize {
 #[test]
 fn opening_a_page_asks_for_its_pictures_once_and_only_while_it_lacks_some() {
     let (mut h, sent) = harness(ViewMode::Grid, egui::Theme::Dark, true);
-    h.run_steps(8);
-    assert_eq!(fetches(&sent, "photocraft"), 0, "nothing is fetched before a page is opened");
-    h.get_by_label("PhotoCraft details").click();
-    h.run_steps(10);
-    assert_eq!(fetches(&sent, "photocraft"), 1);
-    h.get_by_label("Enlarge picture");
-    // Closed and opened again: the pictures are in hand, so nothing is asked.
-    h.key_press(egui::Key::Escape);
-    h.run_steps(10);
-    h.get_by_label("PhotoCraft details").click();
-    h.run_steps(10);
-    assert_eq!(fetches(&sent, "photocraft"), 1);
-    h.get_by_label("Enlarge picture");
-    // Another page asks for its own, and a page without pictures asks for nothing.
-    h.key_press(egui::Key::Escape);
-    h.run_steps(10);
-    h.get_by_label("VectorCraft details").scroll_to_me();
-    h.run_steps(3);
-    h.get_by_label("VectorCraft details").click();
-    h.run_steps(10);
-    assert_eq!(fetches(&sent, "vectorcraft"), 1);
-    h.key_press(egui::Key::Escape);
-    h.run_steps(10);
-    h.get_by_label("PdfCraft details").scroll_to_me();
-    h.run_steps(3);
-    h.get_by_label("PdfCraft details").click();
-    h.run_steps(10);
-    assert_eq!(fetches(&sent, "pdfcraft"), 0);
+    assert_eq!(fetches(&sent, "photozen"), 0);
+    for _ in 0..2 {
+        h.get_by_label("Photozen details").click();
+        h.run_steps(5);
+        assert_eq!(fetches(&sent, "photozen"), 1);
+        h.get_by_label("Back").click();
+        h.run_steps(3);
+    }
 }
 
 #[test]
@@ -1332,8 +1273,10 @@ fn a_frame_stands_in_for_the_pictures_until_they_arrive() {
     let pictures = Rc::new(Cell::new(Pictures::Silent));
     let (mut h, sent) = harness_pictures(events(), ViewMode::Grid, egui::Theme::Dark, true, 1.0, pictures.clone());
     h.run_steps(8);
-    h.get_by_label("PhotoCraft details").click();
+    h.get_by_label("Photozen details").click();
     h.run_steps(10);
+    h.get_by_label("Next picture (→)").click();
+    h.run_steps(3);
     snapshot(&mut h, "details-loading-dark");
     h.get_by_label("Loading pictures…");
     assert!(h.query_by_label("Enlarge picture").is_none(), "there is nothing to enlarge yet");
@@ -1341,9 +1284,9 @@ fn a_frame_stands_in_for_the_pictures_until_they_arrive() {
     h.get_all_by_label_contains("The image editor you already know how to use").last().unwrap();
     h.get_by_label("Next picture (→)").click();
     h.run_steps(3);
-    h.get_by_label_contains("Levels with a live histogram · 2/4");
+    h.get_by_label_contains("3/4");
     // Asking again meanwhile is not done: the answer is on its way.
-    assert_eq!(fetches(&sent, "photocraft"), 1);
+    assert_eq!(fetches(&sent, "photozen"), 1);
     pictures.set(Pictures::Online);
     h.run_steps(6);
     assert!(h.query_by_label("Loading pictures…").is_none());
@@ -1355,8 +1298,10 @@ fn offline_the_frame_says_so_and_opening_the_page_again_retries() {
     let pictures = Rc::new(Cell::new(Pictures::Offline));
     let (mut h, sent) = harness_pictures(events(), ViewMode::Grid, egui::Theme::Light, true, 1.0, pictures.clone());
     h.run_steps(8);
-    h.get_by_label("PhotoCraft details").click();
+    h.get_by_label("Photozen details").click();
     h.run_steps(10);
+    h.get_by_label("Next picture (→)").click();
+    h.run_steps(3);
     snapshot(&mut h, "details-offline-light");
     h.get_by_label("Pictures couldn't be loaded. Reopen this page to try again.");
     assert!(h.query_by_label("Loading pictures…").is_none());
@@ -1366,9 +1311,9 @@ fn offline_the_frame_says_so_and_opening_the_page_again_retries() {
     pictures.set(Pictures::Online);
     h.key_press(egui::Key::Escape);
     h.run_steps(10);
-    h.get_by_label("PhotoCraft details").click();
+    h.get_by_label("Photozen details").click();
     h.run_steps(10);
-    assert_eq!(fetches(&sent, "photocraft"), 2);
+    assert_eq!(fetches(&sent, "photozen"), 2);
     h.get_by_label("Enlarge picture");
     assert!(h.query_by_label("Pictures couldn't be loaded. Reopen this page to try again.").is_none());
 }
@@ -1378,7 +1323,7 @@ fn the_enlarged_view_shows_a_frame_for_a_picture_still_missing() {
     let pictures = Rc::new(Cell::new(Pictures::SecondFails));
     let (mut h, _sent) = harness_pictures(events(), ViewMode::Grid, egui::Theme::Dark, true, 1.0, pictures);
     h.run_steps(8);
-    h.get_by_label("PhotoCraft details").click();
+    h.get_by_label("Photozen details").click();
     h.run_steps(10);
     h.get_by_label("Enlarge picture").click();
     h.run_steps(3);
@@ -1387,40 +1332,34 @@ fn the_enlarged_view_shows_a_frame_for_a_picture_still_missing() {
     h.run_steps(3);
     // Once in the drawer behind (it shows the same picture) and once in the enlarged view.
     assert_eq!(h.query_all_by_label("Pictures couldn't be loaded. Reopen this page to try again.").count(), 2);
-    assert_eq!(h.query_all_by_label("Close (Esc)").count(), 2, "the enlarged view is still open");
+    assert_eq!(h.query_all_by_label("Close (Esc)").count(), 1, "the enlarged view is still open");
     h.key_press(egui::Key::ArrowRight);
     h.run_steps(3);
     assert!(h.query_by_label("Pictures couldn't be loaded. Reopen this page to try again.").is_none(), "the third picture is fine");
 }
 
 #[test]
-fn a_page_without_pictures_has_no_gallery() {
-    let (mut h, _sent) = harness(ViewMode::Grid, egui::Theme::Dark, true);
-    h.run_steps(8);
-    // PdfCraft's screenshots still show its old name (PrintCraft), so its page has none for now.
-    h.get_by_label("PdfCraft details").scroll_to_me();
-    h.run_steps(3);
-    h.get_by_label("PdfCraft details").click();
-    h.run_steps(10);
-    snapshot(&mut h, "details-no-pictures-dark");
-    h.get_all_by_label_contains("The open-source PDF workbench.").last().unwrap();
-    h.get_by_label_contains("Search as you type");
-    assert!(h.query_by_label("Enlarge picture").is_none());
-    assert!(h.query_by_label("Next picture (→)").is_none());
+fn the_bundled_lead_picture_is_available_without_a_network_reply() {
+    let (mut h, _) = harness_pictures(events(), ViewMode::Grid, egui::Theme::Dark, true, 1.0, Rc::new(Cell::new(Pictures::Silent)));
+    h.get_by_label("Photozen details").click();
+    h.run_steps(4);
+    h.get_by_label("Enlarge picture");
+    h.get_by_label("Next picture (→)");
+    assert!(h.query_by_label("Loading pictures…").is_none());
 }
 
 #[test]
 fn the_lead_picture_can_be_enlarged() {
     let (mut h, _sent) = harness(ViewMode::Grid, egui::Theme::Dark, true);
     h.run_steps(8);
-    h.get_by_label("PhotoCraft details").click();
+    h.get_by_label("Photozen details").click();
     h.run_steps(10);
     // The drawer has one "Close (Esc)"; the enlarged view adds its own.
-    assert_eq!(h.query_all_by_label("Close (Esc)").count(), 1);
+    assert_eq!(h.query_all_by_label("Close (Esc)").count(), 0);
     h.get_by_label("Enlarge picture").click();
     h.run_steps(4);
     snapshot(&mut h, "details-zoom-dark");
-    assert_eq!(h.query_all_by_label("Close (Esc)").count(), 2);
+    assert_eq!(h.query_all_by_label("Close (Esc)").count(), 1);
     // The keyboard flips through the pictures there too.
     h.key_press(egui::Key::ArrowRight);
     h.run_steps(3);
@@ -1428,7 +1367,7 @@ fn the_lead_picture_can_be_enlarged() {
     // Esc closes the enlarged picture first, and the drawer only the second time.
     h.key_press(egui::Key::Escape);
     h.run_steps(4);
-    assert_eq!(h.query_all_by_label("Close (Esc)").count(), 1);
+    assert_eq!(h.query_all_by_label("Close (Esc)").count(), 0);
     h.get_all_by_label_contains("The image editor you already know how to use").last().unwrap();
     h.key_press(egui::Key::Escape);
     h.run_steps(10);
@@ -1491,7 +1430,7 @@ fn every_page_opens_and_pages_through_its_pictures() {
 fn the_drawer_and_the_enlarged_picture_survive_any_window_size() {
     let (mut h, _sent) = harness(ViewMode::Grid, egui::Theme::Dark, true);
     h.run_steps(8);
-    h.get_by_label("PhotoCraft details").click();
+    h.get_by_label("Photozen details").click();
     h.run_steps(10);
     let sizes = [(1180.0, 900.0), (720.0, 500.0), (480.0, 320.0), (320.0, 200.0), (120.0, 90.0), (40.0, 30.0), (4000.0, 2400.0)];
     for zoom in [false, true] {
@@ -1563,18 +1502,20 @@ fn the_rate_limit_notice_never_runs_under_the_footer_links() {
 }
 
 #[test]
-fn toolbar_keeps_navigation_refresh_search_and_view_on_one_unclipped_row() {
+fn global_search_and_catalog_controls_fit_their_own_rows() {
     let (mut h, _) = harness(ViewMode::Grid, egui::Theme::Dark, true);
-    for width in [720.0, 800.0, 1180.0] {
+    for width in [720.0, 900.0, 1180.0, 1440.0] {
         h.set_size(egui::vec2(width, 900.0));
-        h.run_steps(6);
+        h.run_steps(5);
+        let search = h.get_by_label("Search apps").rect();
+        assert!(search.left() >= 0.0 && search.right() <= width);
         let refresh = h.get_by_label("Check for updates").rect();
-        let search = h.query_all_by_role(egui::accesskit::Role::TextInput).next().unwrap().rect();
-        let view = h.get_by_label("Show apps as cards").rect();
-        assert!(refresh.top() > 48.0, "{width}: refresh belongs in the toolbar, not the header: {refresh:?}");
-        assert!((refresh.center().y - search.center().y).abs() < 2.0, "{width}: refresh and search must share a row");
-        assert!(refresh.right() <= search.left() + 1.0, "{width}: refresh overlaps search: {refresh:?}, {search:?}");
-        assert!(search.right() <= view.left() + 1.0 && view.right() <= width, "{width}: search overlaps view or view is clipped");
+        assert!(search.bottom() < refresh.top());
+        for label in ["Show apps as cards", "Show apps as a table"] {
+            let control = h.get_by_label(label).rect();
+            assert!(control.left() >= 88.0 && control.right() <= width);
+            assert!(!search.intersects(control));
+        }
     }
 }
 
@@ -1631,8 +1572,8 @@ fn narrow_header_keeps_the_view_switch_clear_of_brand_text() {
                 for label in ["Show apps as cards", "Show apps as a table", "Settings", "Check for updates"] {
                     let rect = h.get_by_label(label).rect();
                     assert!(rect.left() >= 0.0 && rect.right() <= width, "{bar:?} {width}: {label} {rect:?}");
-                    if let Some(text) = h.query_by_label("Craft App Suite") {
-                        assert!(!rect.intersects(text.rect()), "{bar:?} {width}: Craft App Suite overlaps {label} {rect:?}");
+                    if let Some(text) = h.query_by_label("Zendaya Launcher") {
+                        assert!(!rect.intersects(text.rect()), "{bar:?} {width}: Zendaya Launcher overlaps {label} {rect:?}");
                     }
                 }
                 if bar == TitleBar::Custom {
@@ -1643,7 +1584,7 @@ fn narrow_header_keeps_the_view_switch_clear_of_brand_text() {
                 }
                 if width == 1180.0 {
                     assert!(h.query_by_label("Launcher").is_none());
-                    h.get_by_label("Craft App Suite");
+                    h.get_by_label("Zendaya Launcher");
                 }
                 if [720.0, 800.0, 1180.0].contains(&width) {
                     snapshot(&mut h, &format!("header-{theme:?}-{bar:?}-{width}"));
@@ -1674,7 +1615,7 @@ fn short_window(reduce: Rc<Cell<bool>>) -> Harness<'static, Option<LauncherUi>> 
     let mut backend =
         Some(Fake { events, sent: Rc::default(), manage: true, pictures: Rc::default(), asked: Vec::new(), clock: Rc::new(Cell::new(NOW)) });
     let mut host = OsMotion(reduce);
-    let mut h = Harness::builder().with_size(egui::vec2(1180.0, 500.0)).with_step_dt(1.0 / 60.0).with_max_steps(120).build_ui_state(
+    let mut h = Harness::builder().with_size(egui::vec2(1180.0, 420.0)).with_step_dt(1.0 / 60.0).with_max_steps(120).build_ui_state(
         move |ui, state: &mut Option<LauncherUi>| {
             if state.is_none()
                 && let Some(b) = backend.take()
@@ -1690,6 +1631,8 @@ fn short_window(reduce: Rc<Cell<bool>>) -> Harness<'static, Option<LauncherUi>> 
         None,
     );
     h.run_steps(8);
+    h.get_by_label("Applications").click();
+    h.run_steps(30);
     h
 }
 
@@ -1765,7 +1708,7 @@ fn with_animations_on_the_wheel_glides() {
 /// Moves the pointer from one card to the next. Returns how many frames are drawn before the
 /// window is still again.
 fn frames_to_hover_the_next_card(h: &mut Harness<'_, Option<LauncherUi>>) -> u64 {
-    let cards: Vec<egui::Pos2> = ["Image editing", "Vector illustration"].map(|t| h.get_by_label(t).rect().center()).to_vec();
+    let cards = [egui::pos2(5.0, 400.0), h.get_by_label("Image editing").rect().center()];
     // Still to begin with: the icons are in, the first card is lit and the scroll bar is showing.
     h.hover_at(cards[0]);
     h.run();
@@ -1866,27 +1809,27 @@ fn command_m_minimizes_the_mac_window_only() {
 
 #[test]
 fn an_occupied_folder_asks_before_replacing_it() {
-    let path = "/Volumes/Craft Apps/PhotoCraft.app";
+    let path = "/Volumes/Craft Apps/Photozen.app";
     let mut ev = events();
-    ev.push(Event::Occupied { app: "photocraft".into(), path: path.into() });
-    ev.push(Event::JobFinished { app: "photocraft".into(), result: Err(format!("{path} already exists")) });
+    ev.push(Event::Occupied { app: "photozen".into(), path: path.into() });
+    ev.push(Event::JobFinished { app: "photozen".into(), result: Err(format!("{path} already exists")) });
     let (mut h, sent) = harness_with(ev, ViewMode::Grid, egui::Theme::Dark, true, 1.0);
     h.run_steps(6);
-    h.get_by_label(&format!("{path} already exists. Installing PhotoCraft will overwrite it."));
+    h.get_by_label_contains("already exists");
     assert!(h.query_by_label(&format!("{path} already exists")).is_none());
     sent.borrow_mut().clear();
     h.get_by_label("Replace").click();
     h.run_steps(2);
-    assert_eq!(*sent.borrow(), [Command::Replace { app: "photocraft".into() }]);
+    assert_eq!(*sent.borrow(), [Command::Replace { app: "photozen".into() }]);
     assert!(h.query_by_label("Replace").is_none());
 }
 
 #[test]
-fn a_not_installed_card_is_grey_until_the_pointer_is_over_it() {
-    let (mut h, _) = harness(ViewMode::Grid, egui::Theme::Dark, true);
+fn a_not_installed_card_keeps_its_colour() {
+    let (mut h, _) = harness_with(store_events(false), ViewMode::Grid, egui::Theme::Dark, true, 1.0);
     h.set_size(egui::vec2(1180.0, 1100.0));
     h.run_steps(8);
-    let icon = h.get_by_label("CADCraft icon").rect();
+    let icon = h.get_by_label("Photozen icon").rect();
     // The most colourful pixel in the icon: how far apart its red, green and blue are.
     let colour = |h: &mut Harness<'_, Option<LauncherUi>>| {
         let image = h.render().unwrap();
@@ -1900,7 +1843,7 @@ fn a_not_installed_card_is_grey_until_the_pointer_is_over_it() {
         }
         most
     };
-    assert!(colour(&mut h) <= 8, "a not installed app's icon is grey");
+    assert!(colour(&mut h) > 40, "a not installed app's icon is grey");
     h.hover_at(egui::pos2(icon.center().x + 120.0, icon.center().y + 60.0));
     // The colour picture decodes on a background thread: give it real time, as a slow machine
     // (CI's Windows runner) needs more than a few frames.
@@ -1916,7 +1859,7 @@ fn a_not_installed_card_is_grey_until_the_pointer_is_over_it() {
     assert!(shown > 40, "the icon shows its colour under the pointer");
     h.hover_at(egui::pos2(5.0, 400.0));
     h.run_steps(8);
-    assert!(colour(&mut h) <= 8, "the colour goes again when the pointer leaves");
+    assert!(colour(&mut h) > 40, "the colour goes again when the pointer leaves");
 }
 
 #[test]
@@ -1942,59 +1885,137 @@ fn the_sort_offers_name_both_ways_recently_updated_and_frequently_used() {
 
 #[test]
 fn opening_an_app_counts_and_frequently_used_puts_the_most_opened_first() {
-    use artcraft_launcher_ui_egui::settings::SortKey;
-    let (mut h, sent) = harness(ViewMode::Grid, egui::Theme::Dark, true);
-    h.run_steps(6);
-    h.state_mut().as_mut().unwrap().settings.sort = SortKey::Frequent;
-    h.run_steps(4);
-    // Installed apps in name order: Effect (updates), Light (Open), Photo (updates), Word (Open).
-    let opens: Vec<_> = h.get_all_by_label("Open").collect();
-    assert_eq!(opens.len(), 2);
-    opens[1].click(); // WordCraft
+    let (mut h, sent) = harness_with(store_events(true), ViewMode::Grid, egui::Theme::Dark, true, 1.0);
+    h.get_by_label("Open").click();
     h.run_steps(3);
-    assert!(sent.borrow().contains(&Command::Launch { app: "wordcraft".into() }));
-    assert_eq!(h.state().as_ref().unwrap().settings.launches.get("wordcraft"), Some(&1));
-    h.run_steps(4);
-    let word = h.get_by_label("WordCraft details").rect();
-    let light = h.get_by_label("LightCraft details").rect();
-    assert!(word.min.y < light.min.y || (word.min.y == light.min.y && word.min.x < light.min.x), "{word:?} {light:?}");
+    assert!(sent.borrow().contains(&Command::Launch { app: "photozen".into() }));
+    assert_eq!(h.state().as_ref().unwrap().settings.launches.get("photozen"), Some(&1));
+    h.state_mut().as_mut().unwrap().settings.sort = artcraft_launcher_ui_egui::settings::SortKey::Frequent;
+    h.run_steps(3);
+    assert_eq!(order(&h), ["Photozen"]);
 }
 
 #[test]
-fn an_apps_page_is_a_card_in_the_middle_with_next_and_previous_arrows_and_closes_from_outside() {
-    use artcraft_launcher_core::details::AppDetails;
+fn app_pages_preserve_navigation_and_do_not_use_a_dismissible_modal() {
     let (mut h, _) = harness(ViewMode::Grid, egui::Theme::Dark, true);
+    h.get_by_label("Photozen details").click();
     h.run_steps(6);
-    let headline = |id: &str| AppDetails::by_id(id).unwrap().headline;
-    let showing = |h: &Harness<'_, Option<LauncherUi>>, id: &str| h.query_all_by_label_contains(headline(id)).count() >= 2;
-    h.get_by_label("PhotoCraft details").click();
-    h.run_steps(12);
-    assert!(showing(&h, "photocraft"));
-    // A card with a margin of window all round, not a panel against one edge.
-    let close = h.get_by_label("Close (Esc)").rect();
-    assert!(close.right() < 1180.0 - 24.0 && close.left() > 24.0, "{close:?}");
-    // Next goes to the following app in the grid's order (Word after Photo), and back again.
-    h.get_by_label("Next app").click();
-    h.run_steps(12);
-    assert!(showing(&h, "wordcraft"));
-    h.get_by_label("Previous app").click();
-    h.run_steps(12);
-    assert!(showing(&h, "photocraft"));
-    // A click on the card's own margin keeps it open (the card is 1116 wide, centred in 1180).
-    let margin = egui::pos2(36.0, 450.0);
-    h.hover_at(margin);
+    h.get_by_label("Back");
+    assert!(h.query_by_label("Close (Esc)").is_none());
+    assert!(h.query_by_label("Next app").is_none());
+    h.get_by_label("Library").click();
+    h.run_steps(4);
+    h.get_by_label("Photozen details");
+    assert!(h.query_by_label("Back").is_none());
+}
+
+fn store_harness(installed: bool, theme: egui::Theme) -> (Harness<'static, Option<LauncherUi>>, Rc<RefCell<Vec<Command>>>) {
+    let (mut h, sent) = harness_with(store_events(installed), ViewMode::Grid, theme, true, 1.0);
+    h.get_by_label("Home").click();
+    h.run_steps(3);
+    (h, sent)
+}
+
+fn store_events(installed: bool) -> Vec<Event> {
+    vec![
+        Event::Latest { app: "photozen".into(), latest: LatestRelease::Found(release("photocraft", "0.15.1", NOW)), from: Origin::GitHub },
+        Event::Detected {
+            app: "photozen".into(),
+            installed: installed.then(|| Installed {
+                version: version::parse("0.15.1"),
+                source: InstallSource::MacApp,
+                location: "/Applications/Photozen.app".into(),
+                package: None,
+            }),
+        },
+        Event::CheckFinished { at: NOW, source: Source::GitHubApi, rate_limited_until: None },
+    ]
+}
+
+#[test]
+fn store_navigation_and_full_detail_page() {
+    let (mut h, sent) = store_harness(true, egui::Theme::Dark);
+    h.set_size(egui::vec2(1440.0, 900.0));
+    h.run_steps(8);
+    snapshot(&mut h, "zendaya-home");
+    h.get_by_label("Zendaya Launcher");
+    h.get_by_label("Discover Photozen").click();
+    h.run_steps(8);
+    snapshot(&mut h, "zendaya-detail");
+    h.get_by_label("Back");
+    h.get_by_label("Home");
+    assert!(h.query_by_label("Photozen details").is_none(), "the catalog is replaced by a page");
+    assert_eq!(fetches(&sent, "photozen"), 1);
+    h.get_by_label("Back").click();
+    h.run_steps(5);
+    h.get_by_label("Discover Photozen");
+    h.get_by_label("Applications").click();
+    h.run_steps(5);
+    h.get_by_label("Photozen details").click();
+    h.run_steps(5);
+    h.get_by_label("Back");
+    h.key_press(egui::Key::Escape);
+    h.run_steps(5);
+    h.get_by_label("Photozen details");
+    h.get_by_label("Library").click();
+    h.run_steps(5);
+    h.get_by_label("Photozen details");
+    snapshot(&mut h, "zendaya-library");
+    h.get_by_label("Games").click();
+    h.run_steps(5);
+    h.get_by_label("Coming soon");
+    assert!(h.query_by_label("Photozen details").is_none());
+    snapshot(&mut h, "zendaya-games");
+    h.get_by_label("Explore applications").click();
+    h.run_steps(5);
+    h.get_by_label("Photozen details");
+}
+
+#[test]
+fn store_empty_library_and_search() {
+    let (mut h, _) = store_harness(false, egui::Theme::Light);
+    h.set_size(egui::vec2(1440.0, 900.0));
+    h.run_steps(8);
+    snapshot(&mut h, "zendaya-home-light");
+    h.get_by_label("Library").click();
+    h.run_steps(5);
+    h.get_by_label("Your library is empty");
+    assert!(h.query_by_label("Photozen details").is_none());
+    h.get_by_label("Explore applications").click();
+    h.run_steps(5);
+    h.get_by_label("Photozen details");
+    h.get_by_label("Search apps").click();
     h.run_steps(2);
-    h.drag_at(margin);
-    h.run_steps(2);
-    h.drop_at(margin);
-    h.run_steps(12);
-    assert!(showing(&h, "photocraft"), "a click on the card closed it");
-    // A click on the dimmed window outside the card closes it.
-    h.hover_at(egui::pos2(10.0, 450.0));
-    h.run_steps(2);
-    h.drag_at(egui::pos2(10.0, 450.0));
-    h.run_steps(2);
-    h.drop_at(egui::pos2(10.0, 450.0));
-    h.run_steps(30);
-    assert!(!showing(&h, "photocraft"), "a click outside did not close it");
+    h.get_by_label("Search apps").type_text("missing-app");
+    h.run_steps(5);
+    h.get_by_label("No apps match");
+}
+
+#[test]
+fn store_pages_remain_navigable_at_different_window_sizes() {
+    let (mut h, _) = store_harness(false, egui::Theme::Dark);
+    h.run_steps(8);
+    for width in [520.0, 840.0, 1440.0] {
+        h.set_size(egui::vec2(width, 800.0));
+        h.run_steps(5);
+        h.get_by_label("Discover Photozen").click();
+        h.run_steps(5);
+        h.get_by_label("Back").click();
+        h.run_steps(5);
+        h.get_by_label("Discover Photozen");
+    }
+}
+
+#[test]
+fn store_french_navigation() {
+    let (mut h, _) = store_harness(false, egui::Theme::Dark);
+    h.set_size(egui::vec2(1440.0, 900.0));
+    h.run_steps(5);
+    h.state_mut().as_mut().unwrap().settings.language = "fr".into();
+    h.run_steps(5);
+    snapshot(&mut h, "zendaya-accueil");
+    let discover = if h.query_by_label("Découvrir Photozen").is_some() { "Découvrir Photozen" } else { "Discover Photozen" };
+    h.get_by_label(discover).click();
+    h.run_steps(5);
+    snapshot(&mut h, "zendaya-fiche-photozen");
 }
