@@ -189,11 +189,15 @@ impl LauncherUi {
                     .labelled_by(label);
             });
             self.settings.check_every = every;
-            if self.caps.manage_apps
-                && ui.checkbox(&mut self.settings.auto_update, tl!("Automatically download and install updates")).changed()
-                && self.settings.auto_update
-            {
-                self.trigger_auto_updates();
+            if self.caps.manage_apps {
+                let auto_update = ui.checkbox(&mut self.settings.auto_update, tl!("Automatically download and install updates"));
+                #[cfg(target_os = "macos")]
+                let auto_update = auto_update.on_hover_text(tl!(
+                    "Automatic updates wait or pause while Low Data Mode is on and resume when it’s off. Clicking Install, Update, or Resume still downloads over the current network."
+                ));
+                if auto_update.changed() && self.settings.auto_update {
+                    self.trigger_auto_updates();
+                }
             }
             if self.caps.manage_apps {
                 ui.checkbox(&mut self.settings.batch_updates, tl!("Ask for permission once when updating all apps"));
