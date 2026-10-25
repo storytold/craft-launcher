@@ -108,6 +108,8 @@ pub struct Settings {
     /// Show a system notification when an installed app has an update.
     pub notify: bool,
     pub prereleases: bool,
+    /// Downloads that may run at once (1 to 4).
+    pub simultaneous_downloads: u8,
     /// Linux: the package format to prefer for new installs (empty: the system's own).
     pub preferred_kinds: Vec<PackageKind>,
     /// Announcements and alerts from the release feed the user dismissed (by notice id).
@@ -197,6 +199,7 @@ impl Default for Settings {
             auto_update: false,
             notify: true,
             prereleases: false,
+            simultaneous_downloads: 1,
             preferred_kinds: default_preferred_kinds(),
             dismissed_notices: std::collections::BTreeSet::new(),
             notified: BTreeMap::new(),

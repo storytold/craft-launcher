@@ -85,6 +85,8 @@ pub struct BackendOptions {
     pub kinds: Vec<PackageKind>,
     /// Offer pre-releases (`0.6.0-rc.1`) as updates.
     pub prereleases: bool,
+    /// Downloads that may run at once (0 counts as 1).
+    pub simultaneous_downloads: u8,
 }
 
 /// The answer to "what's the latest release of this app?".

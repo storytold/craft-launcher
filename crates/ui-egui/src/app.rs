@@ -422,6 +422,7 @@ impl LauncherUi {
         let options = BackendOptions {
             kinds: self.settings.preferred_kinds.clone(),
             prereleases: self.settings.prereleases,
+            simultaneous_downloads: self.settings.simultaneous_downloads,
             install_locations: self.settings.install_locations.clone(),
         };
         if self.sent_options.as_ref() != Some(&options) {
@@ -1095,6 +1096,22 @@ mod tests {
         launcher.configure();
         assert_eq!(last_order(&sent).expect("an order is sent"), launcher.visible_ids());
         assert_eq!(launcher.visible_ids().len(), SUITE.len());
+    }
+
+    #[test]
+    /// The number of downloads allowed at once reaches the backend, and settings saved before it
+    /// existed allow one.
+    fn simultaneous_downloads_reach_the_backend() {
+        let old: Settings = serde_json::from_str(r#"{"prereleases":true}"#).unwrap();
+        assert_eq!(old.simultaneous_downloads, 1);
+        let (mut launcher, sent, _ctx) = launcher();
+        launcher.settings.simultaneous_downloads = 3;
+        launcher.configure();
+        let configured = sent.borrow().iter().rev().find_map(|command| match command {
+            Command::Configure(options) => Some(options.simultaneous_downloads),
+            _ => None,
+        });
+        assert_eq!(configured, Some(3));
     }
 
     /// A CJK preference is drawable only while that language's own face is installed: having the

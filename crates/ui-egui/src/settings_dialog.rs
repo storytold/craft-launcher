@@ -190,6 +190,23 @@ impl LauncherUi {
             {
                 self.trigger_auto_updates();
             }
+            if self.caps.manage_apps {
+                let mut at_once = self.settings.simultaneous_downloads.clamp(1, 4);
+                row(ui, tl!("Simultaneous downloads"), 150.0, &mut |ui, label| {
+                    egui::ComboBox::from_id_salt("at_once")
+                        .selected_text(at_once.to_string())
+                        .width(150.0)
+                        .show_ui(ui, |ui| {
+                            for n in 1..=4 {
+                                ui.selectable_value(&mut at_once, n, n.to_string());
+                            }
+                        })
+                        .response
+                        .labelled_by(label);
+                });
+                self.settings.simultaneous_downloads = at_once;
+                note(ui, tl!("Downloads running together share your connection, so each one is slower."));
+            }
             ui.checkbox(&mut self.settings.notify, tl!("Notify me when an installed app has an update"));
             ui.checkbox(&mut self.settings.prereleases, tl!("Include pre-releases (betas and release candidates)"));
         });
