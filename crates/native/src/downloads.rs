@@ -195,6 +195,14 @@ mod tests {
     }
 
     #[test]
+    fn waiting_downloads_not_on_screen_go_last_in_suite_order() {
+        let queue = Downloads::new();
+        queue.set_order(vec!["wordcraft".into(), "photocraft".into()]);
+        let apps = ["soundcraft", "wordcraft", "lightcraft", "photocraft"];
+        assert_eq!(finishing_order(&queue, &apps, || {}), ["wordcraft", "photocraft", "lightcraft", "soundcraft"]);
+    }
+
+    #[test]
     fn resorting_the_screen_reorders_the_waiting_downloads() {
         let queue = Downloads::new();
         queue.set_order(vec!["wordcraft".into(), "soundcraft".into(), "lightcraft".into()]);
