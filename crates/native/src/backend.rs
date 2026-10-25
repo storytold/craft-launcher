@@ -464,6 +464,9 @@ impl NativeBackend {
         let platform = self.platform;
         let options = self.options();
         let source = self.source.clone();
+        // Taken now, before the job's thread runs, so apps started together (Update all) download
+        // in screen order whichever job reaches its download first.
+        let place = (!uninstall).then(|| install::DOWNLOADS.join(app.id));
         std::thread::spawn(move || {
             let job = job;
             let existing = shared.installed.lock().unwrap_or_else(PoisonError::into_inner).get(app.id).cloned();
@@ -500,6 +503,7 @@ impl NativeBackend {
                     approved,
                     source.as_deref(),
                     batch,
+                    place,
                 );
                 // Stopped by the connection rather than by the user: say so, and how to go on.
                 match r {
@@ -780,6 +784,7 @@ fn run_install(
     approved: Option<&str>,
     source: Option<&dyn ReleaseSource>,
     batch: Option<crate::queue::Gather>,
+    place: Option<crate::downloads::Place<'static>>,
 ) -> Result<String, String> {
     // The ways out below that never reach the installer (a repository-managed Flatpak, a missing
     // release, the overwrite question, a paused download) free the rest of the batch at once;
@@ -873,6 +878,7 @@ fn run_install(
         approved_path,
         downgrade,
         batch: batch.take(),
+        place,
     };
     let mut commit_record = |record: &crate::manifest::Record| {
         let mut manifest = shared.manifest.lock().unwrap_or_else(PoisonError::into_inner);

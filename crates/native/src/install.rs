@@ -49,6 +49,9 @@ pub struct Job<'a> {
     /// The batch of installs this one belongs to (an "update all"): where the platform needs a
     /// permission prompt, the whole batch shares one. `None` for a job on its own.
     pub batch: Option<crate::queue::Gather>,
+    /// The job's place in the download line, taken when it started (none: it takes one when it
+    /// gets to its download).
+    pub place: Option<crate::downloads::Place<'static>>,
 }
 
 /// A job's place in its batch (see [`Job::batch`]): the installer queue takes it where the batch
@@ -676,13 +679,17 @@ fn download_turn(app: &CraftApp, asset: &Asset, job: &mut Job<'_>) -> Result<Opt
         Some(Downgrade::Reinstall { asset, .. }) => here(asset),
         Some(Downgrade::KeepOldCopy) | None => true,
     };
+    let place = job.place.take();
     if here(asset) && put_back_here {
+        // Everything is here: the place in line isn't needed.
+        drop(place);
         return Ok(None);
     }
     let dest = download_path(job.paths, asset);
     let phase = &mut *job.phase;
     let mut queued = false;
-    let turn = DOWNLOADS.turn(app.id, &|| job.stop.check(), &mut || {
+    let place = place.unwrap_or_else(|| DOWNLOADS.join(app.id));
+    let turn = place.turn(&|| job.stop.check(), &mut || {
         queued = true;
         phase(JobPhase::Queued);
     })?;
@@ -3054,6 +3061,7 @@ mod tests {
                 approved_path: None,
                 downgrade: None,
                 batch: None,
+                place: None,
             };
             let err = install(app, &release, &asset, kind, None, None, &mut job).unwrap_err();
             assert!(err.contains("isn't supported"), "{err}");
@@ -3088,6 +3096,7 @@ mod tests {
             approved_path: None,
             downgrade: None,
             batch: None,
+            place: None,
         };
         let error = install(app, &release, &asset, PackageKind::AppImage, None, None, &mut job).unwrap_err();
         assert!(error.contains("folder is unavailable") || (process::in_sandbox() && error.contains("aren't supported")), "{error}");
@@ -3121,6 +3130,7 @@ mod tests {
             approved_path: None,
             downgrade: None,
             batch: None,
+            place: None,
         };
         let err = install(app, &release, &asset, kind, None, None, &mut job).unwrap_err();
         assert!(err.contains("publishes no checksum"), "{err}");
@@ -3773,6 +3783,46 @@ mod tests {
         assert_eq!(choose_kinds_with(app, None, None, &[PackageKind::ArchPkg], &[PackageKind::ArchPkg], false), vec![PackageKind::ArchPkg]);
     }
 
+    /// A downgrade that puts back the installed version fetches two packages, so it takes its turn
+    /// to download unless both are here; keeping the old copy aside needs only the chosen one.
+    #[test]
+    fn a_downgrade_takes_a_turn_unless_every_package_it_fetches_is_here() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = Paths::under(dir.path());
+        let http = Http::new().unwrap();
+        let phase = &mut |_| ();
+        let locations = InstallLocations::default();
+        let app = CraftApp::by_id("photocraft").unwrap();
+        let chosen = Asset { name: "photocraft-0.4.0-windows-x86_64.msi".into(), size: 4, ..Asset::default() };
+        let installed = Asset { name: "photocraft-0.5.0-windows-x86_64.msi".into(), size: 5, ..Asset::default() };
+        let previous = Release::default();
+        let stop = Stop::default();
+        let mut job = Job {
+            http: &http,
+            paths: &paths,
+            stop: &stop,
+            phase,
+            install_locations: &locations,
+            replace: false,
+            downgrade: Some(Downgrade::Reinstall { previous: &previous, asset: &installed }),
+            place: None,
+        };
+        let have = |asset: &Asset| {
+            let dest = download_path(&paths, asset);
+            std::fs::create_dir_all(dest.parent().unwrap()).unwrap();
+            std::fs::write(dest, vec![0; asset.size as usize]).unwrap();
+        };
+        // The turn is dropped at the end of each statement, so the next one never waits for it.
+        assert!(download_turn(app, &chosen, &mut job).unwrap().is_some(), "nothing is here");
+        have(&chosen);
+        assert!(download_turn(app, &chosen, &mut job).unwrap().is_some(), "the package to put back is missing");
+        have(&installed);
+        assert!(download_turn(app, &chosen, &mut job).unwrap().is_none(), "both are here");
+        std::fs::remove_file(download_path(&paths, &installed)).unwrap();
+        job.downgrade = Some(Downgrade::KeepOldCopy);
+        assert!(download_turn(app, &chosen, &mut job).unwrap().is_none(), "the old copy is kept aside, so only the chosen one is needed");
+    }
+
     #[test]
     fn install_refuses_to_downgrade_when_target_release_is_older() {
         let dir = tempfile::tempdir().unwrap();
@@ -3803,6 +3853,7 @@ mod tests {
             approved_path: None,
             downgrade: None,
             batch: None,
+            place: None,
         };
         let result = install_at(app, &release, &asset, PackageKind::AppImage, Some(&installed), None, &mut job, None);
         assert!(result.is_err());
@@ -3836,6 +3887,7 @@ mod tests {
             approved_path: None,
             downgrade: None,
             batch: None,
+            place: None,
         };
         let result = install_at(app, &release, &asset, PackageKind::AppImage, None, None, &mut job, None);
         assert!(result.is_err(), "mismatched artifact version must be rejected");

@@ -3,7 +3,8 @@
 //! Downloads running side by side split the connection, so each crawls and none is ready soon.
 //! Here they take turns: a job that asks while the limit is reached waits, and the waiting jobs go
 //! in the order their apps are on screen ([`Downloads::set_order`]), not the order they were
-//! asked for.
+//! asked for. A job takes its place in line when it starts ([`Downloads::join`]), so an app higher
+//! on screen goes first even when a job below it reaches its download sooner.
 
 use std::sync::{Condvar, Mutex, MutexGuard, PoisonError};
 use std::time::Duration;
@@ -49,6 +50,51 @@ pub struct Downloads {
     changed: Condvar,
 }
 
+/// A job's place in line, held from when the job starts until its turn comes. Dropping it (the
+/// job failed, was stopped or found its download already done) leaves the line.
+pub struct Place<'a> {
+    queue: &'a Downloads,
+    id: u64,
+}
+
+impl Drop for Place<'_> {
+    fn drop(&mut self) {
+        self.queue.lock().waiting.retain(|w| w.id != self.id);
+        self.queue.changed.notify_all();
+    }
+}
+
+impl<'a> Place<'a> {
+    /// Waits until it is this job's turn to download. `waiting` is called once, when the job has
+    /// to wait. `stop` is asked a few times a second while it waits (so it must not block); its
+    /// error ends the wait, and the job leaves the line.
+    pub fn turn(self, stop: &dyn Fn() -> Result<(), String>, waiting: &mut dyn FnMut()) -> Result<Turn<'a>, String> {
+        let queue = self.queue;
+        let mut state = queue.lock();
+        let mut told = false;
+        loop {
+            if state.running < state.limit && state.next() == Some(self.id) {
+                break;
+            }
+            // The lock is let go before the place leaves the line (locals drop before `self`).
+            stop()?;
+            if told {
+                state = queue.changed.wait_timeout(state, Duration::from_millis(100)).unwrap_or_else(PoisonError::into_inner).0;
+            } else {
+                told = true;
+                drop(state);
+                waiting();
+                state = queue.lock();
+            }
+        }
+        state.running += 1;
+        drop(state);
+        // Leaving the line wakes the others: with another free slot, the next one can start too.
+        drop(self);
+        Ok(Turn { queue })
+    }
+}
+
 /// A job's turn to download. The next job's turn starts when it is dropped (even by unwinding).
 pub struct Turn<'a> {
     queue: &'a Downloads,
@@ -92,40 +138,19 @@ impl Downloads {
         self.changed.notify_all();
     }
 
-    /// Waits until it is `app`'s turn to download. `waiting` is called once, when the job has to
-    /// wait. `stop` is asked a few times a second while it waits (so it must not block); its
-    /// error ends the wait, and the job leaves the line.
-    pub fn turn(&self, app: &str, stop: &dyn Fn() -> Result<(), String>, waiting: &mut dyn FnMut()) -> Result<Turn<'_>, String> {
+    /// Takes a place in line for `app`. Until it is dropped or used, apps below it on screen wait
+    /// for it, even while its job hasn't reached its download yet.
+    pub fn join(&self, app: &str) -> Place<'_> {
         let mut state = self.lock();
         let id = state.next_id;
         state.next_id = state.next_id.wrapping_add(1);
         state.waiting.push(Waiting { id, app: app.to_string() });
-        let mut told = false;
-        loop {
-            if state.running < state.limit && state.next() == Some(id) {
-                break;
-            }
-            if let Err(e) = stop() {
-                state.waiting.retain(|w| w.id != id);
-                drop(state);
-                self.changed.notify_all();
-                return Err(e);
-            }
-            if told {
-                state = self.changed.wait_timeout(state, Duration::from_millis(100)).unwrap_or_else(PoisonError::into_inner).0;
-            } else {
-                told = true;
-                drop(state);
-                waiting();
-                state = self.lock();
-            }
-        }
-        state.waiting.retain(|w| w.id != id);
-        state.running += 1;
-        drop(state);
-        // With another free slot, the next waiting job can start too.
-        self.changed.notify_all();
-        Ok(Turn { queue: self })
+        Place { queue: self, id }
+    }
+
+    /// Takes a place in line for `app` and waits for its turn: [`Place::turn`].
+    pub fn turn(&self, app: &str, stop: &dyn Fn() -> Result<(), String>, waiting: &mut dyn FnMut()) -> Result<Turn<'_>, String> {
+        self.join(app).turn(stop, waiting)
     }
 }
 
@@ -302,6 +327,39 @@ mod tests {
         });
         assert!(queue.lock().waiting.is_empty());
         drop(queue.turn("wordcraft", &GO, &mut || panic!("the line is empty")).unwrap());
+    }
+
+    #[test]
+    fn a_job_higher_on_screen_goes_first_even_when_it_reaches_its_download_later() {
+        let queue = Downloads::new();
+        queue.set_order(vec!["wordcraft".into(), "lightcraft".into()]);
+        let word = queue.join("wordcraft");
+        std::thread::scope(|scope| {
+            let (turned, turns) = mpsc::channel();
+            let queue = &queue;
+            let light = scope.spawn(move || queue.turn("lightcraft", &GO, &mut || turned.send(()).unwrap()).map(drop));
+            // Nothing is downloading, yet LightCraft waits for WordCraft, which is above it.
+            turns.recv().unwrap();
+            drop(word.turn(&GO, &mut || panic!("WordCraft is first in line")).unwrap());
+            assert_eq!(light.join().unwrap(), Ok(()));
+        });
+    }
+
+    #[test]
+    fn a_place_given_up_before_its_turn_frees_the_line() {
+        let queue = Downloads::new();
+        queue.set_order(vec!["wordcraft".into(), "lightcraft".into()]);
+        let word = queue.join("wordcraft");
+        std::thread::scope(|scope| {
+            let (turned, turns) = mpsc::channel();
+            let queue = &queue;
+            let light = scope.spawn(move || queue.turn("lightcraft", &GO, &mut || turned.send(()).unwrap()).map(drop));
+            turns.recv().unwrap();
+            // WordCraft's job failed, or found its download already done.
+            drop(word);
+            assert_eq!(light.join().unwrap(), Ok(()));
+        });
+        assert!(queue.lock().waiting.is_empty());
     }
 
     #[test]
