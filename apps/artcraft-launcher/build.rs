@@ -11,6 +11,13 @@ fn main() {
     if std::env::var("CARGO_CFG_TARGET_OS").as_deref() != Ok("windows") {
         return;
     }
+    // The exe runs with administrator rights as the MSI batch helper (`--install-msis`), from a
+    // folder the user's account can write to. Resolve its imported DLLs from System32 only
+    // (LOAD_LIBRARY_SEARCH_SYSTEM32), never from beside the exe, so a DLL planted there can't
+    // load into the elevated process. Every DLL it imports is a Windows one.
+    if std::env::var("CARGO_CFG_TARGET_ENV").as_deref() == Ok("msvc") {
+        println!("cargo:rustc-link-arg-bins=/DEPENDENTLOADFLAG:0x800");
+    }
     let mut res = winresource::WindowsResource::new();
     res.set_icon("../../assets/app-icon/artcraft-launcher.ico")
         .set("ProductName", "ArtCraft Launcher")

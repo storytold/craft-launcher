@@ -145,6 +145,10 @@ pub struct LauncherUi {
     pub(crate) alerts: Vec<artcraft_launcher_core::feed::Notice>,
     pub(crate) search: String,
     pub(crate) toasts: Vec<Toast>,
+    /// The apps (with versions) the system's permission prompt is up for, and the toast that
+    /// lists them, which stays until the prompt is answered.
+    asking_for: Vec<String>,
+    asking_toast: Option<String>,
     pub(crate) dialog: Option<Dialog>,
     /// Release-note text scale for this session, independent of the main UI zoom.
     pub(crate) notes_zoom: f32,
@@ -247,6 +251,8 @@ impl LauncherUi {
             alerts: Vec::new(),
             search: String::new(),
             toasts: Vec::new(),
+            asking_for: Vec::new(),
+            asking_toast: None,
             dialog: None,
             notes_zoom: 1.0,
             detail: None,
@@ -288,6 +294,9 @@ impl LauncherUi {
         self.pending.clear();
         self.frame = None;
         self.flushed.clear();
+        // So the next frame announces a permission prompt that is still up.
+        self.asking_for.clear();
+        self.asking_toast = None;
     }
 
     /// Input on its way to egui (the shell's `raw_input_hook`): with fewer animations asked for,
@@ -320,6 +329,36 @@ impl LauncherUi {
 
     pub(crate) fn send(&mut self, command: Command) {
         self.backend.send(command);
+    }
+
+    /// While the system's permission prompt is up (Windows' one UAC prompt for a batch of
+    /// installs), says which apps and versions it is for, so answering it is an informed choice.
+    fn announce_permission(&mut self, ctx: &egui::Context) {
+        let asking: Vec<String> = self
+            .entries
+            .iter()
+            .filter(|e| e.job == Some(JobPhase::Elevating))
+            .map(|e| match e.release() {
+                Some(r) => format!("{} {}", e.app.name, r.version_label()),
+                None => e.app.name.to_string(),
+            })
+            .collect();
+        // A toast that went (cleared with a new window, say) is shown again while the prompt is up.
+        let shown = self.asking_toast.as_ref().is_some_and(|text| self.toasts.iter().any(|t| &t.text == text));
+        if asking == self.asking_for && (asking.is_empty() || shown) {
+            return;
+        }
+        if let Some(old) = self.asking_toast.take() {
+            self.toasts.retain(|t| t.text != old);
+        }
+        if !asking.is_empty() {
+            let text = crate::i18n::fmt(tl!("Windows is asking for permission to install: {apps}"), &[("apps", &asking.join(", "))]);
+            let now = ctx.input(|i| i.time);
+            // Until the prompt is answered (the next change clears it).
+            self.toasts.push(Toast { text: text.clone(), error: false, until: now + 24.0 * 3600.0 });
+            self.asking_toast = Some(text);
+        }
+        self.asking_for = asking;
     }
 
     /// The toolbar's check button. The side effects run once, when the pass flushes.
@@ -479,6 +518,7 @@ impl LauncherUi {
         for event in self.backend.poll() {
             changed |= self.handle(event);
         }
+        self.announce_permission(ctx);
         if changed {
             self.announce_updates(host);
             if self.settings.auto_update {
@@ -934,7 +974,8 @@ impl LauncherUi {
     }
 
     /// Draws the toasts and dismisses a clicked one. Drains messages queued since the last drawing
-    /// pass, starting each expiry on this pass, keeps at most four (dropping the oldest), removes
+    /// pass, starting each expiry on this pass, keeps at most four (dropping the oldest, except the
+    /// permission prompt's list of apps: see [`Self::announce_permission`]), removes
     /// expired ones, and asks for another frame while any remain; call it once per visible frame.
     fn draw_toasts(&mut self, ctx: &egui::Context) {
         let now = ctx.input(|i| i.time);
@@ -942,8 +983,11 @@ impl LauncherUi {
         // countdown only now, on the first pass that can actually show them.
         for (text, error) in std::mem::take(&mut self.pending_toasts) {
             self.toasts.push(Toast { text, error, until: now + if error { 8.0 } else { 4.5 } });
-            if self.toasts.len() > 4 {
-                self.toasts.remove(0);
+            // The oldest goes, but never the list of apps a permission prompt that's up is for.
+            if self.toasts.len() > 4
+                && let Some(oldest) = self.toasts.iter().position(|t| self.asking_toast.as_ref() != Some(&t.text))
+            {
+                self.toasts.remove(oldest);
             }
         }
         self.toasts.retain(|t| t.until > now);

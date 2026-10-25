@@ -90,7 +90,7 @@ pub(crate) fn appimage_version(name: &str, stems: &[&str]) -> Option<Option<Stri
 
 /// Who our Windows Installer packages name as their publisher.
 #[cfg_attr(not(windows), allow(dead_code))]
-const PUBLISHER: &str = "Learning Machines LLC";
+const PUBLISHER: &str = crate::signing::PUBLISHER;
 
 /// Whether an uninstall entry's `DisplayName` and `Publisher` are `app`'s, under any name its
 /// installers have registered.
@@ -212,8 +212,20 @@ pub mod windows {
 
     /// Every Windows Installer entry for `app`, newest first.
     pub fn msi_installs(app: &CraftApp) -> Vec<MsiInstall> {
+        installs_in(app, &[(HKEY_LOCAL_MACHINE, KEY_WOW64_64KEY), (HKEY_LOCAL_MACHINE, KEY_WOW64_32KEY), (HKEY_CURRENT_USER, 0)])
+    }
+
+    /// [`msi_installs`] registered for the whole machine only: what only an administrator can
+    /// write, for code that runs with administrator rights.
+    pub fn machine_msi_installs(app: &CraftApp) -> Vec<MsiInstall> {
+        installs_in(app, &[(HKEY_LOCAL_MACHINE, KEY_WOW64_64KEY), (HKEY_LOCAL_MACHINE, KEY_WOW64_32KEY)])
+    }
+
+    /// The Windows Installer entries for `app` under `hives` (each with its registry view flags),
+    /// newest first.
+    fn installs_in(app: &CraftApp, hives: &[(winreg::HKEY, u32)]) -> Vec<MsiInstall> {
         let mut out = Vec::new();
-        for (hive, flags) in [(HKEY_LOCAL_MACHINE, KEY_WOW64_64KEY), (HKEY_LOCAL_MACHINE, KEY_WOW64_32KEY), (HKEY_CURRENT_USER, 0)] {
+        for &(hive, flags) in hives {
             let Ok(root) = RegKey::predef(hive).open_subkey_with_flags(UNINSTALL, KEY_READ | flags) else { continue };
             for code in root.enum_keys().flatten() {
                 let Ok(key) = root.open_subkey_with_flags(&code, KEY_READ | flags) else { continue };

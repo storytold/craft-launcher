@@ -48,6 +48,17 @@ fn test_jpeg() -> Vec<u8> {
     .clone()
 }
 
+thread_local! {
+    /// Events a test hands the backend between frames (each test runs its harness on its own
+    /// thread).
+    static LATER: RefCell<Vec<Event>> = const { RefCell::new(Vec::new()) };
+}
+
+/// Has the backend report `events` on its next poll.
+fn later(events: impl IntoIterator<Item = Event>) {
+    LATER.with(|later| later.borrow_mut().extend(events));
+}
+
 struct Fake {
     events: Vec<Event>,
     sent: Rc<RefCell<Vec<Command>>>,
@@ -67,6 +78,7 @@ impl Backend for Fake {
     }
     fn poll(&mut self) -> Vec<Event> {
         let mut out = std::mem::take(&mut self.events);
+        out.extend(LATER.with(|later| std::mem::take(&mut *later.borrow_mut())));
         if self.pictures.get() != Pictures::Silent {
             for app in std::mem::take(&mut self.asked) {
                 let Some(page) = AppDetails::by_id(&app) else { continue };
@@ -960,6 +972,56 @@ fn an_install_waiting_for_another_says_so_and_can_be_cancelled() {
     h.run_steps(2);
     let cancels: Vec<_> = sent.borrow().iter().filter(|c| matches!(c, Command::Cancel { .. })).cloned().collect();
     assert_eq!(cancels, [Command::Cancel { app: "effectcraft".into() }]);
+}
+
+#[test]
+fn the_permission_prompt_names_every_app_and_version_it_is_for() {
+    let mut ev = events();
+    // Windows' one UAC prompt is up for a batch of two updates.
+    ev.push(Event::Progress { app: "photocraft".into(), phase: JobPhase::Elevating });
+    ev.push(Event::Progress { app: "effectcraft".into(), phase: JobPhase::Elevating });
+    let (mut h, _) = harness_with(ev, ViewMode::Grid, egui::Theme::Dark, true, 1.0);
+    h.run_steps(6);
+    assert!(h.query_all_by_label("Waiting for permission…").count() >= 1);
+    h.get_by_label("Windows is asking for permission to install: PhotoCraft 0.5.0, EffectCraft 0.6.0");
+}
+
+#[test]
+fn the_permission_toast_outlasts_other_jobs_finishing_while_the_prompt_is_up() {
+    let mut ev = events();
+    ev.push(Event::Progress { app: "photocraft".into(), phase: JobPhase::Elevating });
+    let (mut h, _) = harness_with(ev, ViewMode::Grid, egui::Theme::Dark, true, 1.0);
+    h.run_steps(4);
+    let asking = "Windows is asking for permission to install: PhotoCraft 0.5.0";
+    h.get_by_label(asking);
+    // More jobs finish than there is room for toasts while the prompt is still up.
+    later(
+        ["vectorcraft", "filmcraft", "pdfcraft", "designcraft", "deckcraft"]
+            .map(|app| Event::JobFinished { app: app.into(), result: Ok(format!("{app} done")) }),
+    );
+    h.run_steps(4);
+    h.get_by_label(asking);
+    assert!(h.query_by_label("deckcraft done").is_some(), "the newest of the others shows too");
+    assert!(h.query_by_label("vectorcraft done").is_none(), "the oldest of the others made room");
+}
+
+#[test]
+fn the_permission_toast_comes_back_in_a_new_window_while_the_prompt_is_up() {
+    let mut ev = events();
+    ev.push(Event::Progress { app: "photocraft".into(), phase: JobPhase::Elevating });
+    let (mut h, _) = harness_with(ev, ViewMode::Grid, egui::Theme::Dark, true, 1.0);
+    h.run_steps(4);
+    let asking = "Windows is asking for permission to install: PhotoCraft 0.5.0";
+    h.get_by_label(asking);
+    // The window was closed to the tray and opened again: toasts start over.
+    let ctx = h.ctx.clone();
+    h.state_mut().as_mut().unwrap().attach(&ctx);
+    h.run_steps(4);
+    h.get_by_label(asking);
+    // Once the prompt is answered, it goes.
+    later([Event::Progress { app: "photocraft".into(), phase: JobPhase::Installing }]);
+    h.run_steps(4);
+    assert!(h.query_by_label(asking).is_none());
 }
 
 #[test]

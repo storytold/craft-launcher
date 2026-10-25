@@ -565,14 +565,10 @@ fn same_cache_as_helper(paths: &Paths, exe: &Path) -> Result<(), String> {
 }
 
 /// Accepts `file` when it carries a valid Authenticode signature from the same publisher as
-/// `reference`, this program. Refuses an unsigned file, another publisher's, and every file when
-/// `reference` itself isn't signed.
+/// `reference`, this program (see [`crate::signing::signed_like`]).
 #[cfg(windows)]
 fn signed_like(reference: &Path, file: &Path) -> Result<(), String> {
-    let publisher = |path: &Path| verifysign::verify_file(path).map(|signature| signature.subject_name());
-    let ours = publisher(reference).map_err(|e| format!("this copy of ArtCraft Launcher isn't signed ({e}), so it doesn't install updates"))?;
-    let theirs = publisher(file).map_err(|e| format!("{} isn't signed ({e})", file.display()))?;
-    if ours == theirs { Ok(()) } else { Err(format!("{} isn't signed by ArtCraft Launcher's publisher", file.display())) }
+    crate::signing::signed_like(reference, file)
 }
 
 /// Whether `file` is a Windows program or library (it starts with the `MZ` header), whatever its

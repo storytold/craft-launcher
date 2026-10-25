@@ -109,6 +109,9 @@ pub enum JobPhase {
     Verifying,
     /// The system's installer is busy with another app; this one goes next.
     Waiting,
+    /// Waiting for the user to answer the system's permission prompt (Windows' UAC) that covers
+    /// this install and the others installed with it.
+    Elevating,
     /// Waiting on the OS installer (MSI) or copying files.
     Installing,
     Removing,
