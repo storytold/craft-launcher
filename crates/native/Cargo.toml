@@ -21,10 +21,10 @@ artcraft-launcher-core = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 log = { workspace = true }
-dirs = "6"
-getrandom = "0.3"
+dirs = "7"
+getrandom = "0.4"
 tempfile = "3"
-sha2 = "0.10"
+sha2 = "0.11"
 # HTTPS over rustls, with the OS verifying certificates (rustls-platform-verifier). No bundled
 # root list: webpki-roots and webpki-root-certs are CDLA-licensed.
 ureq = { version = "3.4", default-features = false, features = ["rustls-no-provider", "_ring", "gzip", "platform-verifier"] }
@@ -41,10 +41,10 @@ tar = { version = "0.4", default-features = false }
 plist = "1"
 
 [target.'cfg(target_os = "windows")'.dependencies]
-winreg = "0.55"
+winreg = "0.56"
 # Resolves junctions/symlinks without forcing short MSI paths into the verbatim namespace.
 dunce = "1"
-zip = { version = "8", default-features = false, features = ["deflate"] }
+zip = { version = "9", default-features = false, features = ["deflate"] }
 # Safe wrappers for waiting for another process and reading a file's VERSIONINFO.
 winsafe = { version = "0.0.29", features = ["kernel", "version"] }
 # Authenticode checks through WinTrust: the update helper installs only files from the launcher's publisher.
