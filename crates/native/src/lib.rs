@@ -20,6 +20,8 @@ pub mod login;
 pub mod manifest;
 #[cfg(any(windows, test))]
 mod msi_context;
+#[cfg(target_os = "macos")]
+mod network;
 pub mod packages;
 pub mod paths;
 pub mod pins;
