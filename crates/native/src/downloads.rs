@@ -1,7 +1,7 @@
-//! One download at a time.
+//! One download at a time, or as many as the user allows ([`Downloads::set_limit`]).
 //!
 //! Downloads running side by side split the connection, so each crawls and none is ready soon.
-//! Here they take turns: a job that asks while another downloads waits, and the waiting jobs go
+//! Here they take turns: a job that asks while the limit is reached waits, and the waiting jobs go
 //! in the order their apps are on screen ([`Downloads::set_order`]), not the order they were
 //! asked for.
 
@@ -15,8 +15,14 @@ struct Waiting {
     app: String,
 }
 
+/// The most downloads the user can let run at once.
+pub const MAX_AT_ONCE: usize = 4;
+
 struct State {
-    busy: bool,
+    /// Downloads running now.
+    running: usize,
+    /// Downloads that may run at once (1 to [`MAX_AT_ONCE`]).
+    limit: usize,
     next_id: u64,
     waiting: Vec<Waiting>,
     /// App ids in the order they are on screen.
@@ -50,7 +56,9 @@ pub struct Turn<'a> {
 
 impl Drop for Turn<'_> {
     fn drop(&mut self) {
-        self.queue.lock().busy = false;
+        let mut state = self.queue.lock();
+        state.running = state.running.saturating_sub(1);
+        drop(state);
         self.queue.changed.notify_all();
     }
 }
@@ -63,7 +71,7 @@ impl Default for Downloads {
 
 impl Downloads {
     pub const fn new() -> Self {
-        let state = State { busy: false, next_id: 0, waiting: Vec::new(), order: Vec::new() };
+        let state = State { running: 0, limit: 1, next_id: 0, waiting: Vec::new(), order: Vec::new() };
         Self { state: Mutex::new(state), changed: Condvar::new() }
     }
 
@@ -77,6 +85,13 @@ impl Downloads {
         self.changed.notify_all();
     }
 
+    /// How many downloads may run at once: 0 counts as 1, and more than [`MAX_AT_ONCE`] as that.
+    /// Lowering it lets running downloads finish; waiting ones start as they do.
+    pub fn set_limit(&self, limit: usize) {
+        self.lock().limit = limit.clamp(1, MAX_AT_ONCE);
+        self.changed.notify_all();
+    }
+
     /// Waits until it is `app`'s turn to download. `waiting` is called once, when the job has to
     /// wait. `stop` is asked a few times a second while it waits (so it must not block); its
     /// error ends the wait, and the job leaves the line.
@@ -87,7 +102,7 @@ impl Downloads {
         state.waiting.push(Waiting { id, app: app.to_string() });
         let mut told = false;
         loop {
-            if !state.busy && state.next() == Some(id) {
+            if state.running < state.limit && state.next() == Some(id) {
                 break;
             }
             if let Err(e) = stop() {
@@ -106,7 +121,10 @@ impl Downloads {
             }
         }
         state.waiting.retain(|w| w.id != id);
-        state.busy = true;
+        state.running += 1;
+        drop(state);
+        // With another free slot, the next waiting job can start too.
+        self.changed.notify_all();
         Ok(Turn { queue: self })
     }
 }
@@ -157,6 +175,62 @@ mod tests {
             }
         });
         assert_eq!(most.load(Ordering::SeqCst), 1);
+    }
+
+    #[test]
+    fn downloads_never_run_beyond_the_limit() {
+        let queue = Downloads::new();
+        queue.set_limit(3);
+        let (inside, most) = (AtomicUsize::new(0), AtomicUsize::new(0));
+        std::thread::scope(|scope| {
+            for (i, app) in SUITE.iter().enumerate() {
+                let (queue, inside, most) = (&queue, &inside, &most);
+                scope.spawn(move || {
+                    std::thread::sleep(Duration::from_millis(i as u64 % 4));
+                    let _turn = queue.turn(app.id, &GO, &mut || {}).unwrap();
+                    most.fetch_max(inside.fetch_add(1, Ordering::SeqCst) + 1, Ordering::SeqCst);
+                    std::thread::sleep(Duration::from_millis(3));
+                    inside.fetch_sub(1, Ordering::SeqCst);
+                });
+            }
+        });
+        assert!(most.load(Ordering::SeqCst) <= 3);
+    }
+
+    #[test]
+    fn a_second_download_runs_alongside_when_the_limit_allows() {
+        let queue = Downloads::new();
+        queue.set_limit(2);
+        std::thread::scope(|scope| {
+            let release = hold(scope, &queue);
+            drop(queue.turn("wordcraft", &GO, &mut || panic!("one slot is free")).unwrap());
+            release.send(()).unwrap();
+        });
+    }
+
+    #[test]
+    fn raising_the_limit_starts_a_waiting_download() {
+        let queue = Downloads::new();
+        std::thread::scope(|scope| {
+            let release = hold(scope, &queue);
+            let (turned, turns) = mpsc::channel();
+            let queue = &queue;
+            let waiting = scope.spawn(move || queue.turn("wordcraft", &GO, &mut || turned.send(()).unwrap()).map(drop));
+            turns.recv().unwrap();
+            queue.set_limit(2);
+            // It starts while the other download is still running.
+            assert_eq!(waiting.join().unwrap(), Ok(()));
+            release.send(()).unwrap();
+        });
+    }
+
+    #[test]
+    fn the_limit_stays_between_one_and_the_most() {
+        let queue = Downloads::new();
+        queue.set_limit(0);
+        assert_eq!(queue.lock().limit, 1);
+        queue.set_limit(9);
+        assert_eq!(queue.lock().limit, MAX_AT_ONCE);
     }
 
     /// Queues `apps` (in that order) behind a running download, then lets them all through.

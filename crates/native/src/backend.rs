@@ -1596,6 +1596,7 @@ impl Backend for NativeBackend {
                     let mut o = self.shared.options.lock().unwrap_or_else(PoisonError::into_inner);
                     let changed =
                         o.prereleases != options.prereleases || o.versions != options.versions || o.launcher_version != options.launcher_version;
+                    install::DOWNLOADS.set_limit(options.simultaneous_downloads.into());
                     *o = options;
                     // An older worker must not overwrite the plan for these settings.
                     for cached in self.shared.download_sizes.lock().unwrap_or_else(PoisonError::into_inner).values_mut() {
