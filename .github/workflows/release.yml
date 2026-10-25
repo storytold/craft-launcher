@@ -3,40 +3,213 @@ name: Release
 on:
   push:
     branches: [release]
+    tags: ["v*"]
   workflow_dispatch:
     inputs:
       version:
-        description: "Version override for a test run, e.g. 0.2.0-rc.1 (empty: Cargo.toml)"
+        description: "Expected Cargo.toml version (optional; must match the source)"
         type: string
         default: ""
 
 permissions:
-  contents: write
+  contents: read
 
+# Serialize branches/tags so two runs cannot overwrite the same draft's assets.
 concurrency:
-  group: release-${{ github.ref }}
+  group: launcher-release
   cancel-in-progress: false
 
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: "0"
+  RUST_BACKTRACE: "1"
+
 jobs:
+  version:
+    name: Resolve release version
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      date: ${{ steps.version.outputs.date }}
+      prerelease: ${{ steps.version.outputs.prerelease }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Validate version and tag
+        id: version
+        env:
+          INPUT_VERSION: ${{ inputs.version }}
+        run: |
+          python3 - <<'PY'
+          import datetime
+          import os
+          import re
+          import tomllib
+
+          with open("Cargo.toml", "rb") as manifest:
+              version = tomllib.load(manifest)["workspace"]["package"]["version"]
+          number = r"(?:0|[1-9][0-9]*)"
+          identifier = r"(?:0|[1-9][0-9]*|[0-9]*[A-Za-z-][0-9A-Za-z-]*)"
+          pattern = rf"{number}\.{number}\.{number}(?:-{identifier}(?:\.{identifier})*)?"
+          if not re.fullmatch(pattern, version):
+              raise SystemExit(f"Invalid release version in Cargo.toml: {version}")
+          expected = os.environ.get("INPUT_VERSION", "").strip()
+          if expected and expected != version:
+              raise SystemExit(f"Expected {expected}, but Cargo.toml contains {version}. Bump the source version first.")
+          if os.environ["GITHUB_REF_TYPE"] == "tag" and os.environ["GITHUB_REF_NAME"] != f"v{version}":
+              raise SystemExit(f"Release tag must match Cargo.toml: v{version}")
+          date = datetime.datetime.now(datetime.timezone.utc).date().isoformat()
+          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as output:
+              output.write(f"version={version}\ndate={date}\nprerelease={str('-' in version).lower()}\n")
+          PY
+      - name: Refuse to replace a published release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          if draft=$(gh release view "v$VERSION" --json isDraft --jq '.isDraft' 2>/dev/null); then
+            if [ "$draft" != true ]; then
+              echo "::error::v$VERSION is already published. Bump Cargo.toml for a new release."
+              exit 1
+            fi
+          fi
+
+  windows:
+    name: Windows x64 (MSI and portable ZIP)
+    needs: version
+    runs-on: windows-2022
+    timeout-minutes: 90
+    env:
+      ARTCRAFT_LAUNCHER_VERSION: ${{ needs.version.outputs.version }}
+      ARTCRAFT_LAUNCHER_BUILD_DATE: ${{ needs.version.outputs.date }}
+      ARTCRAFT_LAUNCHER_BUILD_SHA: ${{ github.sha }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+        with:
+          targets: x86_64-pc-windows-msvc
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        with:
+          key: release-windows-x64
+      - name: Install WiX 5 and installer extensions
+        shell: pwsh
+        run: |
+          dotnet tool install --global wix --version 5.0.2
+          if ($LASTEXITCODE -ne 0) { throw 'WiX installation failed' }
+          wix extension add -g WixToolset.UI.wixext/5.0.2 WixToolset.Util.wixext/5.0.2
+          if ($LASTEXITCODE -ne 0) { throw 'WiX extension installation failed' }
+      # sign.ps1 allows unsigned packages when the optional secrets are absent.
+      - name: Build and package Windows
+        shell: pwsh
+        env:
+          WINDOWS_CERTIFICATE: ${{ secrets.WINDOWS_CERTIFICATE }}
+          WINDOWS_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
+          AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+          AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
+          AZURE_SIGNING_ENDPOINT: ${{ secrets.AZURE_SIGNING_ENDPOINT }}
+          AZURE_SIGNING_ACCOUNT: ${{ secrets.AZURE_SIGNING_ACCOUNT }}
+          AZURE_CERT_PROFILE: ${{ secrets.AZURE_CERT_PROFILE }}
+        run: ./packaging/windows/package.ps1 -Arch x64
+      - name: Require Windows packages
+        shell: pwsh
+        run: |
+          foreach ($suffix in @('windows-x64.msi', 'windows-x64-portable.zip')) {
+            $file = "dist/release/artcraft-launcher-$env:ARTCRAFT_LAUNCHER_VERSION-$suffix"
+            if (-not (Test-Path -LiteralPath $file) -or (Get-Item -LiteralPath $file).Length -eq 0) {
+              throw "Missing or empty release package: $file"
+            }
+          }
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: release-windows-x64
+          path: dist/release/*
+          if-no-files-found: error
+
+  linux:
+    name: Linux x86_64 (AppImage, DEB, RPM and tar.gz)
+    needs: version
+    # glibc 2.35 matches packaging/linux/nfpm.yaml's declared minimum.
+    runs-on: ubuntu-22.04
+    timeout-minutes: 90
+    env:
+      ARTCRAFT_LAUNCHER_VERSION: ${{ needs.version.outputs.version }}
+      ARTCRAFT_LAUNCHER_BUILD_DATE: ${{ needs.version.outputs.date }}
+      ARTCRAFT_LAUNCHER_BUILD_SHA: ${{ github.sha }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Install Linux build and packaging dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libxkbcommon-dev libwayland-dev libx11-dev libxrandr-dev libxi-dev \
+            libgl1-mesa-dev pkg-config desktop-file-utils appstream zsync
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        with:
+          key: release-linux-x86_64
+      - name: Install checksum-verified nfpm
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p "$RUNNER_TEMP/nfpm"
+          cd "$RUNNER_TEMP/nfpm"
+          gh release download v2.47.0 --repo goreleaser/nfpm \
+            --pattern nfpm_2.47.0_amd64.deb --pattern checksums.txt
+          grep '  nfpm_2.47.0_amd64.deb$' checksums.txt | sha256sum --check --strict
+          sudo dpkg -i nfpm_2.47.0_amd64.deb
+      - name: Build and package Linux
+        run: bash packaging/linux/package.sh
+      - name: Require Linux packages
+        run: |
+          for suffix in AppImage AppImage.zsync deb rpm tar.gz; do
+            test -s "dist/release/artcraft-launcher-$ARTCRAFT_LAUNCHER_VERSION-linux-x86_64.$suffix"
+          done
+          dpkg-deb --info dist/release/*.deb
+          tar -tzf dist/release/*.tar.gz
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: release-linux-x86_64
+          path: dist/release/*
+          if-no-files-found: error
+
   release:
-    # Intentionally tracked at @main (not SHA-pinned) so org-wide CI improvements, security fixes, and build optimizations propagate without PR churn across all craftapp repos.
-    uses: storytold/craft-common-actions/.github/workflows/release.yml@main
-    with:
-      app-name: craft-launcher
-      app-title: ArtCraft Launcher
-      version: ${{ inputs.version }}
-    secrets:
-      APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
-      APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
-      KEYCHAIN_PASSWORD: ${{ secrets.KEYCHAIN_PASSWORD }}
-      APPLE_ID: ${{ secrets.APPLE_ID }}
-      APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
-      APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-      WINDOWS_CERTIFICATE: ${{ secrets.WINDOWS_CERTIFICATE }}
-      WINDOWS_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
-      AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
-      AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
-      AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
-      AZURE_SIGNING_ENDPOINT: ${{ secrets.AZURE_SIGNING_ENDPOINT }}
-      AZURE_SIGNING_ACCOUNT: ${{ secrets.AZURE_SIGNING_ACCOUNT }}
-      AZURE_CERT_PROFILE: ${{ secrets.AZURE_CERT_PROFILE }}
+    name: Create draft GitHub release
+    needs: [version, windows, linux]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      VERSION: ${{ needs.version.outputs.version }}
+      PRERELEASE: ${{ needs.version.outputs.prerelease }}
+    steps:
+      - uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5
+        with:
+          pattern: release-*
+          path: dist/release
+          merge-multiple: true
+      - name: Generate SHA-256 checksums
+        working-directory: dist/release
+        run: sha256sum artcraft-launcher-* > SHA256SUMS.txt
+      - name: Create or update draft and upload packages
+        working-directory: dist/release
+        run: |
+          tag="v$VERSION"
+          if draft=$(gh release view "$tag" --json isDraft --jq '.isDraft' 2>/dev/null); then
+            if [ "$draft" != true ]; then
+              echo "::error::Refusing to overwrite published release $tag"
+              exit 1
+            fi
+          else
+            prerelease=()
+            if [ "$PRERELEASE" = true ]; then prerelease+=(--prerelease); fi
+            gh release create "$tag" --draft "${prerelease[@]}" \
+              --target "$GITHUB_SHA" --title "ArtCraft Launcher $tag" \
+              --notes "Windows x64: MSI installer and portable ZIP. Linux x86_64: AppImage (with delta updates), DEB, RPM and tar.gz. Verify downloads with SHA256SUMS.txt. Windows packages are unsigned unless signing credentials are configured."
+          fi
+          gh release upload "$tag" artcraft-launcher-* SHA256SUMS.txt --clobber
+          gh release view "$tag" --json url --jq '.url' >> "$GITHUB_STEP_SUMMARY"
