@@ -425,7 +425,7 @@ mod tests {
             if let Some(font) = load(script) {
                 let family = candidates(script).into_iter().find(|c| c.path.is_file()).map(|c| c.family);
                 assert!(family.is_some());
-                assert!(FontRef::from_index(&font.font, font.index).is_ok());
+                assert!(FontRef::from_index(font.bytes(), font.index).is_ok());
             }
         }
     }

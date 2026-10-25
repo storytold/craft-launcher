@@ -956,14 +956,7 @@ fn feed_url_override_allowed(url: &str, allow_https: bool) -> bool {
     is_loopback(url) || (allow_https && url.starts_with("https://"))
 }
 
-/// `http://<loopback host>:<port>` and an optional path: the host must be exactly 127.0.0.1,
-/// localhost or [::1] (no `user@` in front of another host), with a numeric port.
-fn is_loopback(url: &str) -> bool {
-    let Some(rest) = url.strip_prefix("http://") else { return false };
-    let authority = rest.split(['/', '?', '#']).next().unwrap_or_default();
-    let Some((host, port)) = authority.rsplit_once(':') else { return false };
-    matches!(host, "127.0.0.1" | "localhost" | "[::1]") && !port.is_empty() && port.parse::<u16>().is_ok()
-}
+use crate::http::is_loopback;
 
 /// `ARTCRAFT_LAUNCHER_DOWNLOAD_BASE`: a mirror on this machine (`cargo xtask local serve`) that
 /// serves `release_info.json` and the builds it lists. While it's set, releases come only from

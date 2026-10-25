@@ -83,10 +83,11 @@ pub fn jpeg_dimensions(bytes: &[u8]) -> Option<(u16, u16)> {
         return None;
     }
     let mut i = 2; // past the SOI (FF D8).
+    let mut dims = None;
     while i + 1 < bytes.len() {
         // Markers are FF, with any number of FF fill bytes before the type byte.
         if bytes[i] != 0xFF {
-            return None;
+            break;
         }
         let mut j = i;
         while j < bytes.len() && bytes[j] == 0xFF {
@@ -97,21 +98,32 @@ pub fn jpeg_dimensions(bytes: &[u8]) -> Option<(u16, u16)> {
         match marker {
             // Standalone markers with no length: RSTn, SOI, EOI, TEM.
             0x01 | 0xD0..=0xD9 => continue,
+            // SOS (Start of Scan): marker headers end, entropy-coded scan data begins.
+            0xDA => break,
             _ => {}
         }
         let len = u16::from_be_bytes([*bytes.get(i)?, *bytes.get(i + 1)?]) as usize;
         if len < 2 {
             return None;
         }
-        // SOF0..SOF15, excluding DHT (C4), DAC (CC) and the RSTn range already handled.
-        if matches!(marker, 0xC0..=0xCF) && !matches!(marker, 0xC4 | 0xC8 | 0xCC) {
+        // Only SOF0 (0xC0: baseline), SOF1 (0xC1: extended sequential), and SOF2 (0xC2: progressive)
+        // are supported by standard image rendering decoders.
+        if matches!(marker, 0xC0..=0xC2) {
+            if dims.is_some() {
+                // Ambiguous / multiple frame markers: reject to prevent frame smuggling (CWE-789).
+                return None;
+            }
             let h = u16::from_be_bytes([*bytes.get(i + 3)?, *bytes.get(i + 4)?]);
             let w = u16::from_be_bytes([*bytes.get(i + 5)?, *bytes.get(i + 6)?]);
-            return Some((w, h));
+            dims = Some((w, h));
+        } else if matches!(marker, 0xC3 | 0xC5..=0xCF) && !matches!(marker, 0xC4 | 0xC8 | 0xCC) {
+            // Unsupported frame marker (e.g. lossless 0xC3): the rendering decoder will skip it or fail,
+            // so accepting its dimensions would let a subsequent large frame bypass the budget (CWE-789).
+            return None;
         }
         i += len;
     }
-    None
+    dims
 }
 
 /// Whether `bytes` is a JPEG whose declared dimensions are within [`MAX_SCREENSHOT_PIXELS`], so it
@@ -552,6 +564,25 @@ mod tests {
         // Not a JPEG, or no frame header present.
         assert_eq!(jpeg_dimensions(b"<html>"), None);
         assert_eq!(jpeg_dimensions(&[0xFF, 0xD8]), None);
+
+        // Unsupported C3 frame marker is rejected (CWE-789).
+        let mut c3 = vec![0xFF, 0xD8, 0xFF, 0xC3, 0x00, 0x11, 0x08];
+        c3.extend_from_slice(&100u16.to_be_bytes());
+        c3.extend_from_slice(&100u16.to_be_bytes());
+        c3.push(0x03);
+        assert_eq!(jpeg_dimensions(&c3), None);
+
+        // Multiple / conflicting SOF markers are rejected.
+        let mut multi = vec![0xFF, 0xD8];
+        multi.extend_from_slice(&[0xFF, 0xC0, 0x00, 0x0B, 0x08]);
+        multi.extend_from_slice(&100u16.to_be_bytes());
+        multi.extend_from_slice(&100u16.to_be_bytes());
+        multi.extend_from_slice(&[0x01, 0x00, 0x00, 0x00]);
+        multi.extend_from_slice(&[0xFF, 0xC0, 0x00, 0x0B, 0x08]);
+        multi.extend_from_slice(&9000u16.to_be_bytes());
+        multi.extend_from_slice(&9000u16.to_be_bytes());
+        multi.extend_from_slice(&[0x01, 0x00, 0x00, 0x00]);
+        assert_eq!(jpeg_dimensions(&multi), None);
     }
 
     #[test]

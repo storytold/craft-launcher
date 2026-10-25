@@ -155,6 +155,12 @@ fn main() -> ExitCode {
     }
 }
 
+/// The native window and renderer setup. `hidden` only sets the initial visibility; the shell
+/// shows the window after a tray start. Non-macOS windows are undecorated because the header
+/// draws the title bar, while macOS keeps its bundle icon and hides the system title. Window
+/// state persists to the portable-aware settings path, system font fallback is off so the
+/// deliberate bundled faces stay in charge, and wgpu limits are clamped to the adapter so a
+/// short adapter cannot fail device creation.
 fn native_options(hidden: bool) -> eframe::NativeOptions {
     let icon =
         eframe::icon_data::from_png_bytes(include_bytes!("../../../assets/app-icon/hicolor/256x256/apps/ai.storyteller.artcraft-launcher.png")).ok();
@@ -185,6 +191,11 @@ fn native_options(hidden: bool) -> eframe::NativeOptions {
         persist_window: true,
         persistence_path: settings_file::path(APP_ID),
         wgpu_options: within_adapter_limits(wgpu_options()),
+        // The launcher's typography is deliberate (its bundled Latin and monochrome emoji faces
+        // plus, for a CJK language, the one system face read by `theme`). eframe's system-font
+        // provider would enumerate and select fonts asynchronously, changing which face draws Han
+        // text and paying startup cost.
+        system_font_fallback: false,
         ..Default::default()
     }
 }

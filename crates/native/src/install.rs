@@ -156,26 +156,33 @@ pub fn install_at(
 /// bypassing the guard and recording a false installed version (finding: version not bound to the
 /// release). We require the version encoded in the asset filename and the release tag embedded in
 /// the download URL to agree with the release version before any bytes are fetched.
-fn bind_artifact_version(app: &CraftApp, release: &Release, asset: &Asset) -> Result<(), String> {
-    let Some(release_version) = release.version.as_ref() else { return Ok(()) };
+pub(crate) fn bind_artifact_version(app: &CraftApp, release: &Release, asset: &Asset) -> Result<(), String> {
     let mismatch = || format!("{}'s download does not match the advertised version {}.", app.name, release.version_label());
+    let release_version = release.version.as_ref();
 
     // The version in the asset filename (`<stem>-<version>-<os>-<arch>.<ext>`), when it carries one.
     let stems: Vec<&str> = app.stems().collect();
-    if let Some(parsed) = artcraft_launcher_core::platform::parse_asset_name(&asset.name, &stems)
+    if let Some(release_version) = release_version
+        && let Some(parsed) = artcraft_launcher_core::platform::parse_asset_name(&asset.name, &stems)
         && version::parse(&parsed.version).as_ref() != Some(release_version)
     {
         return Err(mismatch());
     }
 
-    // The release tag embedded in a GitHub download URL (`.../releases/download/<tag>/<name>`).
-    if let Some(tag) = asset.url.split("/releases/download/").nth(1).and_then(|rest| rest.split('/').next())
-        && !tag.is_empty()
-        && version::parse(tag).is_some()
-        && version::parse(tag).as_ref() != Some(release_version)
-        && tag != release.tag
-    {
-        return Err(mismatch());
+    // The release tag and filename embedded in a release download URL (`.../releases/download/<tag>/<name>`).
+    if let Some(rest) = asset.url.split("/releases/download/").nth(1) {
+        let mut parts = rest.split('/');
+        let tag = parts.next().unwrap_or("");
+        let url_filename = parts.next().unwrap_or("");
+        if tag.is_empty()
+            || release_version
+                .map_or(tag != release.tag, |release_version| tag != release.tag && version::parse(tag).as_ref() != Some(release_version))
+        {
+            return Err(mismatch());
+        }
+        if !url_filename.is_empty() && url_filename != asset.name {
+            return Err(format!("{}'s download URL filename does not match selected asset {}.", app.name, asset.name));
+        }
     }
     Ok(())
 }
@@ -667,7 +674,7 @@ fn swap_into_place_via(staged: &Path, dest: &Path, rename: impl Fn(&Path, &Path)
 fn single_top_folder(dir: &Path) -> Result<PathBuf, String> {
     let entries: Vec<_> = std::fs::read_dir(dir).map_err(|e| e.to_string())?.flatten().collect();
     match entries.as_slice() {
-        [only] if only.path().is_dir() => Ok(only.path()),
+        [only] if only.file_type().is_ok_and(|ft| ft.is_dir() && !ft.is_symlink()) => Ok(only.path()),
         _ => Ok(dir.to_path_buf()),
     }
 }
@@ -1039,6 +1046,16 @@ pub(crate) mod linux {
 
     fn unpack_tree(app: &CraftApp, file: &Path, staged: &Path, paths: &Paths) -> Result<PathBuf, String> {
         let tree = tree::unpack(app, file, staged)?;
+        // Verify tree root is strictly within staged and is not a symlink (CWE-59).
+        let rel_tree = tree.strip_prefix(staged).map_err(|_| "staging layout escapes staging".to_string())?;
+        let mut check_root = staged.to_path_buf();
+        for part in rel_tree.components() {
+            check_root.push(part);
+            let meta = std::fs::symlink_metadata(&check_root).map_err(|e| format!("couldn't check {} ({e})", check_root.display()))?;
+            if meta.file_type().is_symlink() {
+                return Err("unpacked tree root is a symlink".into());
+            }
+        }
         // Validate the staged binary and set its mode *before* either swap: a rejected update
         // (e.g. a symlinked app binary) must never disturb the installed tree it replaces.
         let staged_bin = tree.join("bin").join(app.id);
@@ -1062,6 +1079,10 @@ pub(crate) mod linux {
     /// before changing permissions, so the chmod can only ever reach a regular file that lives at
     /// the verified path inside the launcher's own apps folder.
     fn make_runnable_within(root: &Path, bin: &Path) -> Result<(), String> {
+        let root_meta = std::fs::symlink_metadata(root).map_err(|e| format!("couldn't check {} ({e})", root.display()))?;
+        if root_meta.file_type().is_symlink() {
+            return Err("the install tree root is a symlink".into());
+        }
         // No component between `root` and `bin` may be a symlink.
         let rel = bin.strip_prefix(root).map_err(|_| "the app binary isn't inside the install tree".to_string())?;
         let mut here = root.to_path_buf();
@@ -1421,14 +1442,50 @@ mod tree {
         let gz = std::fs::File::open(file).map_err(|e| e.to_string())?;
         let mut archive = tar::Archive::new(flate2::read::GzDecoder::new(gz));
         archive.set_preserve_permissions(true);
-        // `unpack` refuses entries that would land outside `staging` (`..`, absolute paths).
-        archive.unpack(staging).map_err(|e| format!("couldn't unpack the download ({e})"))?;
+        // Bound entry count and cumulative unpacked bytes to prevent decompression bombs (CWE-409).
+        const MAX_ENTRIES: usize = 50_000;
+        const MAX_UNPACKED_BYTES: u64 = 2 * 1024 * 1024 * 1024;
+        let mut entry_count = 0;
+        let mut total_unpacked = 0u64;
+        let mut directories = Vec::new();
+        let entries = archive.entries().map_err(|e| format!("couldn't read archive entries ({e})"))?;
+        for entry in entries {
+            let mut entry = entry.map_err(|e| format!("invalid tar entry ({e})"))?;
+            entry_count += 1;
+            if entry_count > MAX_ENTRIES {
+                return Err("archive has too many entries".into());
+            }
+            let size = entry.size();
+            total_unpacked = total_unpacked.saturating_add(size);
+            if total_unpacked > MAX_UNPACKED_BYTES {
+                return Err("archive exceeds maximum unpacked size".into());
+            }
+            if entry.header().entry_type().is_dir() {
+                directories.push(entry);
+            } else {
+                entry.unpack_in(staging).map_err(|e| format!("couldn't unpack archive entry ({e})"))?;
+            }
+        }
+        // Delay directory entries until child entries are written so restrictive modes do not break child extraction.
+        directories.sort_by(|a, b| b.path_bytes().cmp(&a.path_bytes()));
+        for mut dir in directories {
+            dir.unpack_in(staging).map_err(|e| format!("couldn't unpack archive directory ({e})"))?;
+        }
         let top = single_top_folder(staging)?;
         if top.join("bin").join(app.id).is_file() {
             return Ok(top);
         }
         // Flat layout: put each file where /usr/local keeps it.
+        // Ensure tree is a fresh directory and not an archive-created symlink or directory (CWE-59).
         let tree = staging.join("tree");
+        if let Ok(m) = std::fs::symlink_metadata(&tree) {
+            if m.file_type().is_symlink() || !m.is_dir() {
+                let _ = std::fs::remove_file(&tree);
+            } else {
+                let _ = std::fs::remove_dir_all(&tree);
+            }
+        }
+        std::fs::create_dir_all(&tree).map_err(|e| e.to_string())?;
         let id = app.bundle_id();
         for (from, to) in [
             (top.join(app.id), tree.join("bin").join(app.id)),
@@ -1436,8 +1493,18 @@ mod tree {
             (top.join(format!("{id}.desktop")), tree.join("share/applications").join(format!("{id}.desktop"))),
             (top.join(format!("{id}.png")), tree.join("share/pixmaps").join(format!("{id}.png"))),
         ] {
-            if from.is_file() {
+            if std::fs::symlink_metadata(&from).is_ok_and(|m| m.file_type().is_file()) {
                 if let Some(dir) = to.parent() {
+                    let rel = dir.strip_prefix(&tree).map_err(|_| "destination escapes staging tree".to_string())?;
+                    let mut check = tree.clone();
+                    for part in rel.components() {
+                        check.push(part);
+                        if let Ok(m) = std::fs::symlink_metadata(&check)
+                            && m.file_type().is_symlink()
+                        {
+                            return Err("destination parent directory is a symlink".into());
+                        }
+                    }
                     std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
                 }
                 std::fs::rename(&from, &to).map_err(|e| e.to_string())?;
@@ -1449,22 +1516,32 @@ mod tree {
         Ok(tree)
     }
 
-    /// Every file under `root`, relative to it.
-    pub fn files(root: &Path) -> Vec<PathBuf> {
+    /// Every file under `root`, relative to it. Does not descend through symlinks (CWE-59, CWE-400).
+    pub fn files(root: &Path) -> Result<Vec<PathBuf>, String> {
         let mut out = Vec::new();
         let mut stack = vec![root.to_path_buf()];
+        let mut visited = 0;
+        const MAX_FILES: usize = 50_000;
         while let Some(dir) = stack.pop() {
-            for entry in std::fs::read_dir(&dir).into_iter().flatten().flatten() {
+            let entries = std::fs::read_dir(&dir).map_err(|e| format!("couldn't read directory {}: {e}", dir.display()))?;
+            for entry in entries {
+                let entry = entry.map_err(|e| format!("couldn't read directory entry: {e}"))?;
+                visited += 1;
+                if visited > MAX_FILES {
+                    return Err("directory tree exceeds maximum file limit of 50,000".into());
+                }
+                let ft = entry.file_type().map_err(|e| format!("couldn't read file type: {e}"))?;
                 let p = entry.path();
-                if p.is_dir() {
+                if ft.is_dir() && !ft.is_symlink() {
                     stack.push(p);
-                } else if let Ok(rel) = p.strip_prefix(root) {
+                } else {
+                    let rel = p.strip_prefix(root).map_err(|e| e.to_string())?;
                     out.push(rel.to_path_buf());
                 }
             }
         }
         out.sort();
-        out
+        Ok(out)
     }
 }
 
@@ -1486,7 +1563,7 @@ mod freebsd {
 
     fn install_from(app: &CraftApp, file: &Path, staging: &Path) -> Result<(PathBuf, Vec<PathBuf>, bool), String> {
         let tree = tree::unpack(app, file, staging)?;
-        let rel = tree::files(&tree);
+        let rel = tree::files(&tree)?;
         let mut source = tree.into_os_string();
         source.push("/.");
         if pkexec().is_some() {
@@ -1525,12 +1602,39 @@ mod freebsd {
         if files.is_empty() {
             return Err("the launcher has no record of these files".into());
         }
+        let prefix = if needs_root { PathBuf::from("/usr/local") } else { dirs::home_dir().ok_or("no home folder")?.join(".local") };
+        let mut safe_files = Vec::new();
+        for f in files {
+            // Refuse paths that climb or escape install prefix (CWE-59).
+            if !f.starts_with(&prefix) || f.components().any(|c| matches!(c, std::path::Component::ParentDir)) {
+                return Err(format!("refusing to remove file outside install prefix: {}", f.display()));
+            }
+            let mut has_symlink_ancestor = false;
+            if let Ok(rel) = f.strip_prefix(&prefix) {
+                let mut check = prefix.clone();
+                for part in rel.components() {
+                    if let Ok(meta) = std::fs::symlink_metadata(&check)
+                        && meta.file_type().is_symlink()
+                    {
+                        has_symlink_ancestor = true;
+                        break;
+                    }
+                    check.push(part);
+                }
+            }
+            if !has_symlink_ancestor {
+                safe_files.push(f);
+            }
+        }
+        if safe_files.is_empty() {
+            return Ok(());
+        }
         if needs_root {
             let mut args: Vec<&OsStr> = vec![OsStr::new("/bin/rm"), OsStr::new("-f"), OsStr::new("--")];
-            args.extend(files.iter().map(|f| f.as_os_str()));
+            args.extend(safe_files.iter().map(|f| f.as_os_str()));
             return run_as_root(&args);
         }
-        for f in files {
+        for f in safe_files {
             let _ = std::fs::remove_file(f);
         }
         Ok(())
@@ -2035,7 +2139,7 @@ mod tests {
         );
         for file in [tree_style, flat_style] {
             let root = tree::unpack(app, &file, &dir.path().join("staging")).unwrap();
-            let files = tree::files(&root);
+            let files = tree::files(&root).unwrap();
             assert!(files.contains(&PathBuf::from("bin/wordcraft")), "{files:?}");
             assert!(files.contains(&PathBuf::from("share/applications/ai.storyteller.wordcraft.desktop")), "{files:?}");
             assert!(!files.iter().any(|f| f.ends_with("README.md")), "{files:?}");
@@ -2043,6 +2147,47 @@ mod tests {
         let bad = dir.path().join("bad.tar.gz");
         tarball(&bad, &["x/README.md"]);
         assert!(tree::unpack(app, &bad, &dir.path().join("staging")).is_err());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn tree_files_does_not_traverse_directory_symlinks() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path().join("root");
+        let external = dir.path().join("external");
+        std::fs::create_dir_all(&root).unwrap();
+        std::fs::create_dir_all(&external).unwrap();
+        std::fs::write(root.join("regular.txt"), b"hi").unwrap();
+        std::fs::write(external.join("secret.txt"), b"secret").unwrap();
+        std::os::unix::fs::symlink(&external, root.join("link_to_external")).unwrap();
+
+        let list = tree::files(&root).unwrap();
+        assert_eq!(list, vec![PathBuf::from("link_to_external"), PathBuf::from("regular.txt")]);
+    }
+
+    #[cfg(target_os = "freebsd")]
+    #[test]
+    fn remove_files_refuses_escaping_paths() {
+        assert!(freebsd::remove_files(&[PathBuf::from("/etc/shadow")], false).is_err());
+        if let Some(home) = dirs::home_dir() {
+            let prefix = home.join(".local");
+            assert!(freebsd::remove_files(&[prefix.join("../escaped")], false).is_err());
+        }
+    }
+
+    #[test]
+    fn single_top_folder_rejects_symlink() {
+        let dir = tempfile::tempdir().unwrap();
+        let real_dir = dir.path().join("real");
+        std::fs::create_dir_all(&real_dir).unwrap();
+        let staging = dir.path().join("staging");
+        std::fs::create_dir_all(&staging).unwrap();
+        #[cfg(unix)]
+        {
+            std::os::unix::fs::symlink(&real_dir, staging.join("symlink_dir")).unwrap();
+            let res = single_top_folder(&staging).unwrap();
+            assert_eq!(res, staging, "a directory symlink must not be chosen as top folder");
+        }
     }
 
     #[cfg(target_os = "linux")]
@@ -2473,6 +2618,22 @@ mod tests {
             ..Asset::default()
         };
         assert!(bind_artifact_version(app, &release, &good).is_ok());
+
+        // URL filename mismatch is rejected (CWE-494).
+        let bad_url_name = Asset {
+            name: "photocraft-99.0.0-linux-x86_64.AppImage".into(),
+            url: "https://github.com/storytold/photocraft/releases/download/v99.0.0/other.AppImage".into(),
+            ..Asset::default()
+        };
+        assert!(bind_artifact_version(app, &release, &bad_url_name).is_err());
+
+        // URL tag mismatch is rejected.
+        let bad_tag = Asset {
+            name: "photocraft-99.0.0-linux-x86_64.AppImage".into(),
+            url: "https://github.com/storytold/photocraft/releases/download/unparsed_tag/photocraft-99.0.0-linux-x86_64.AppImage".into(),
+            ..Asset::default()
+        };
+        assert!(bind_artifact_version(app, &release, &bad_tag).is_err());
     }
 
     #[cfg(target_os = "linux")]

@@ -244,6 +244,7 @@ column	Latest	Nejnovější
 column	Released	Vydáno
 filter	Installed	Nainstalováno
 	App details	Podrobnosti o aplikaci
+	More actions for {name}	Další akce pro {name}
 	Close (Esc)	Zavřít (Esc)
 	Features	Funkce
 	Latest release	Nejnovější verze

@@ -85,6 +85,31 @@ pub fn is_shell_meta(c: char) -> bool {
     matches!(c, '|' | '&' | ';' | '<' | '>' | '(' | ')' | '$' | '`' | '"' | '\'' | '^' | '!' | '*' | '%' | '{' | '}' | '[' | ']')
 }
 
+/// Whether `url` is a valid release page URL strictly for `repo` on GitHub:
+/// starts with `https://github.com/<repo>/releases`, contains no dot-segments (`.` or `..`),
+/// no percent-encoded path separators (`%2f`, `%5c`), no query/fragment/backslash, and
+/// satisfies [`safe_web_link`] (no shell metacharacters or control bytes, CWE-78).
+pub fn safe_release_html_url(repo: &str, url: &str) -> Option<String> {
+    if !safe_web_link(url) {
+        return None;
+    }
+    let releases = format!("https://github.com/{repo}/releases");
+    if url == releases {
+        return Some(url.to_string());
+    }
+    let rest = url.strip_prefix(&releases)?;
+    let path = rest.strip_prefix('/')?;
+    if path.is_empty() || path.contains(['?', '#', '\\']) {
+        return None;
+    }
+    for seg in path.split('/') {
+        if seg.is_empty() || seg == "." || seg == ".." || seg.contains("%2f") || seg.contains("%2F") || seg.contains("%5c") || seg.contains("%5C") {
+            return None;
+        }
+    }
+    Some(url.to_string())
+}
+
 /// The prefix every download of `repo` must start with.
 pub fn download_prefix(repo: &str) -> String {
     format!("https://github.com/{repo}/releases/download/")
@@ -168,10 +193,7 @@ fn release_from_value(v: &serde_json::Value, repo: &str) -> Result<Release, Stri
     }
     let tag = v["tag_name"].as_str().filter(|t| !t.is_empty() && t.len() <= 64).ok_or("no release found")?.to_string();
     let releases = format!("https://github.com/{repo}/releases");
-    let html_url = v["html_url"]
-        .as_str()
-        .filter(|u| u.strip_prefix(&releases).is_some_and(|rest| rest.starts_with('/') && !rest.contains(['?', '#', '\\'])))
-        .map_or_else(|| releases.clone(), str::to_string);
+    let html_url = v["html_url"].as_str().and_then(|u| safe_release_html_url(repo, u)).unwrap_or_else(|| releases.clone());
     let prefix = download_prefix(repo);
     let assets = v["assets"]
         .as_array()
@@ -333,6 +355,31 @@ mod tests {
         }
         assert_eq!(parse_github_release(r#"{"message":"Not Found"}"#, REPO).unwrap_err(), "no releases yet");
         assert!(parse_github_release("<html>", REPO).is_err());
+    }
+
+    #[test]
+    fn release_html_url_rejects_traversal_and_metacharacters() {
+        let repo = "storytold/photocraft";
+        assert_eq!(
+            safe_release_html_url(repo, "https://github.com/storytold/photocraft/releases/tag/v1.0.0"),
+            Some("https://github.com/storytold/photocraft/releases/tag/v1.0.0".to_string())
+        );
+        assert_eq!(
+            safe_release_html_url(repo, "https://github.com/storytold/photocraft/releases"),
+            Some("https://github.com/storytold/photocraft/releases".to_string())
+        );
+        for bad in [
+            "https://github.com/storytold/photocraft/releases/../../attacker/repo/releases/tag/v1",
+            "https://github.com/storytold/photocraft/releases/tag/v1/../../../attacker/repo",
+            "https://github.com/storytold/photocraft/releases/tag/v1|calc.exe",
+            "https://github.com/storytold/photocraft/releases/tag/v1%2f..%2f..",
+            "https://github.com/storytold/photocraft/releases/tag/v1?x=1",
+            "https://github.com/storytold/photocraft/releases/tag/v1#hash",
+            "https://github.com/storytold/other/releases/tag/v1.0.0",
+            "http://github.com/storytold/photocraft/releases/tag/v1",
+        ] {
+            assert!(safe_release_html_url(repo, bad).is_none(), "should reject: {bad}");
+        }
     }
 
     #[test]

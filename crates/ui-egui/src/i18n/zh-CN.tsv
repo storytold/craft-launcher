@@ -295,6 +295,7 @@ figcraft	Interface design and prototyping	界面设计与原型制作
 	Flatpak bundle	Flatpak 包
 	Tarball (.tar.gz)	压缩包 (.tar.gz)
 	App details	应用详情
+	More actions for {name}	{name} 的更多操作
 	Close (Esc)	关闭（Esc）
 	Features	功能特性
 	Latest release	最新发布

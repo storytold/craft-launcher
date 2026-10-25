@@ -206,7 +206,12 @@ impl FeedRelease {
             name: if self.name.is_empty() { self.tag.clone() } else { truncate(&self.name, 120) },
             tag: self.tag.clone(),
             published_at: self.published_at,
-            html_url: if self.html_url.starts_with(&releases_page) { self.html_url.clone() } else { format!("{releases_page}tag/{}", self.tag) },
+            html_url: release::safe_release_html_url(repo, &self.html_url)
+                .or_else(|| {
+                    let fallback = format!("{releases_page}tag/{}", self.tag);
+                    release::safe_release_html_url(repo, &fallback)
+                })
+                .unwrap_or_else(|| format!("https://github.com/{repo}/releases")),
             notes: truncate(&self.notes, 64 * 1024),
             prerelease: self.prerelease,
             assets,
@@ -275,7 +280,7 @@ struct RawApp {
 impl RawApp {
     fn into_app(self) -> FeedApp {
         FeedApp {
-            repo: self.repo.filter(|r| r.split('/').count() == 2),
+            repo: self.repo.filter(|r| r.split('/').count() == 2 && r.split('/').all(|part| !part.is_empty() && part != "." && part != "..")),
             release: self.latest_release.and_then(RawRelease::into_release),
             fetched_at: self.app_last_fetched.as_deref().and_then(parse_rfc3339),
         }
@@ -372,7 +377,7 @@ impl RawRepoRename {
     fn into_rename(self) -> Option<RepoRename> {
         let ok = |r: &str| {
             let mut parts = r.split('/');
-            matches!((parts.next(), parts.next(), parts.next()), (Some(a), Some(b), None) if a.eq_ignore_ascii_case(GITHUB_OWNER) && !b.is_empty()
+            matches!((parts.next(), parts.next(), parts.next()), (Some(a), Some(b), None) if a.eq_ignore_ascii_case(GITHUB_OWNER) && !b.is_empty() && b != "." && b != ".."
           && r.bytes().all(|c| c.is_ascii_alphanumeric() || b"-_./".contains(&c)))
         };
         (ok(&self.old_name) && ok(&self.new_name)).then(|| RepoRename {

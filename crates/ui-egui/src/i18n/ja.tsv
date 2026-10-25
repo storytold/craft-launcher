@@ -270,6 +270,7 @@ column	Released	公開日
 # Contextual: the filter tab names a group (the status pill says "Installed")
 filter	Installed	インストール済み
 	App details	アプリの詳細
+	More actions for {name}	{name} のその他の操作
 	Close (Esc)	閉じる (Esc)
 	Features	機能
 	Latest release	最新リリース

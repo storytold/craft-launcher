@@ -257,6 +257,7 @@ column	Latest	Última
 column	Released	Publicada
 filter	Installed	Instaladas
 	App details	Detalles de la app
+	More actions for {name}	Más acciones para {name}
 	Close (Esc)	Cerrar (Esc)
 	Features	Funciones
 	Latest release	Última versión
