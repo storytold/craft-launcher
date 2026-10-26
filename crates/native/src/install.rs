@@ -1442,35 +1442,7 @@ mod tree {
         let gz = std::fs::File::open(file).map_err(|e| e.to_string())?;
         let mut archive = tar::Archive::new(flate2::read::GzDecoder::new(gz));
         archive.set_preserve_permissions(true);
-        // Bound entry count and cumulative unpacked bytes to prevent decompression bombs (CWE-409).
-        const MAX_ENTRIES: usize = 50_000;
-        const MAX_UNPACKED_BYTES: u64 = 2 * 1024 * 1024 * 1024;
-        let mut entry_count = 0;
-        let mut total_unpacked = 0u64;
-        let mut directories = Vec::new();
-        let entries = archive.entries().map_err(|e| format!("couldn't read archive entries ({e})"))?;
-        for entry in entries {
-            let mut entry = entry.map_err(|e| format!("invalid tar entry ({e})"))?;
-            entry_count += 1;
-            if entry_count > MAX_ENTRIES {
-                return Err("archive has too many entries".into());
-            }
-            let size = entry.size();
-            total_unpacked = total_unpacked.saturating_add(size);
-            if total_unpacked > MAX_UNPACKED_BYTES {
-                return Err("archive exceeds maximum unpacked size".into());
-            }
-            if entry.header().entry_type().is_dir() {
-                directories.push(entry);
-            } else {
-                entry.unpack_in(staging).map_err(|e| format!("couldn't unpack archive entry ({e})"))?;
-            }
-        }
-        // Delay directory entries until child entries are written so restrictive modes do not break child extraction.
-        directories.sort_by(|a, b| b.path_bytes().cmp(&a.path_bytes()));
-        for mut dir in directories {
-            dir.unpack_in(staging).map_err(|e| format!("couldn't unpack archive directory ({e})"))?;
-        }
+        unpack_entries(&mut archive, staging)?;
         let top = single_top_folder(staging)?;
         if top.join("bin").join(app.id).is_file() {
             return Ok(top);
@@ -1493,27 +1465,68 @@ mod tree {
             (top.join(format!("{id}.desktop")), tree.join("share/applications").join(format!("{id}.desktop"))),
             (top.join(format!("{id}.png")), tree.join("share/pixmaps").join(format!("{id}.png"))),
         ] {
-            if std::fs::symlink_metadata(&from).is_ok_and(|m| m.file_type().is_file()) {
-                if let Some(dir) = to.parent() {
-                    let rel = dir.strip_prefix(&tree).map_err(|_| "destination escapes staging tree".to_string())?;
-                    let mut check = tree.clone();
-                    for part in rel.components() {
-                        check.push(part);
-                        if let Ok(m) = std::fs::symlink_metadata(&check)
-                            && m.file_type().is_symlink()
-                        {
-                            return Err("destination parent directory is a symlink".into());
-                        }
-                    }
-                    std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
-                }
-                std::fs::rename(&from, &to).map_err(|e| e.to_string())?;
-            }
+            move_into_tree(&tree, &from, &to)?;
         }
         if !tree.join("bin").join(app.id).is_file() {
             return Err("the download doesn't contain the app".into());
         }
         Ok(tree)
+    }
+
+    /// Extracts the archive's entries into `staging`; directories last, so restrictive modes don't
+    /// stop their children from being written.
+    fn unpack_entries<R: std::io::Read>(archive: &mut tar::Archive<R>, staging: &Path) -> Result<(), String> {
+        // Bound entry count and cumulative unpacked bytes to prevent decompression bombs (CWE-409).
+        const MAX_ENTRIES: usize = 50_000;
+        const MAX_UNPACKED_BYTES: u64 = 2 * 1024 * 1024 * 1024;
+        let mut entry_count = 0;
+        let mut total_unpacked = 0u64;
+        let mut directories = Vec::new();
+        let entries = archive.entries().map_err(|e| format!("couldn't read archive entries ({e})"))?;
+        for entry in entries {
+            let mut entry = entry.map_err(|e| format!("invalid tar entry ({e})"))?;
+            entry_count += 1;
+            if entry_count > MAX_ENTRIES {
+                return Err("archive has too many entries".into());
+            }
+            total_unpacked = total_unpacked.saturating_add(entry.size());
+            if total_unpacked > MAX_UNPACKED_BYTES {
+                return Err("archive exceeds maximum unpacked size".into());
+            }
+            if entry.header().entry_type().is_dir() {
+                directories.push(entry);
+            } else {
+                entry.unpack_in(staging).map_err(|e| format!("couldn't unpack archive entry ({e})"))?;
+            }
+        }
+        // Delay directory entries until child entries are written so restrictive modes do not break child extraction.
+        directories.sort_by(|a, b| b.path_bytes().cmp(&a.path_bytes()));
+        for mut dir in directories {
+            dir.unpack_in(staging).map_err(|e| format!("couldn't unpack archive directory ({e})"))?;
+        }
+        Ok(())
+    }
+
+    /// Moves a regular file `from` to `to` inside the staging `tree`, creating its folders, unless
+    /// a folder on the way is a symlink.
+    fn move_into_tree(tree: &Path, from: &Path, to: &Path) -> Result<(), String> {
+        if !std::fs::symlink_metadata(from).is_ok_and(|m| m.file_type().is_file()) {
+            return Ok(());
+        }
+        if let Some(dir) = to.parent() {
+            let rel = dir.strip_prefix(tree).map_err(|_| "destination escapes staging tree".to_string())?;
+            let mut check = tree.to_path_buf();
+            for part in rel.components() {
+                check.push(part);
+                if let Ok(m) = std::fs::symlink_metadata(&check)
+                    && m.file_type().is_symlink()
+                {
+                    return Err("destination parent directory is a symlink".into());
+                }
+            }
+            std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
+        }
+        std::fs::rename(from, to).map_err(|e| e.to_string())
     }
 
     /// Every file under `root`, relative to it. Does not descend through symlinks (CWE-59, CWE-400).

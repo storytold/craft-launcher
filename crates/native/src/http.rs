@@ -2,7 +2,6 @@
 
 use std::io::{Read, Write};
 use std::path::Path;
-use std::sync::atomic::{AtomicU8, Ordering};
 
 use artcraft_launcher_core::protocol::{CANCELLED, PAUSED};
 use std::time::Duration;
@@ -462,32 +461,9 @@ pub enum Transfer {
     },
 }
 
-/// Asks a running download to pause (keeping its partial file) or cancel (deleting it).
-#[derive(Debug, Default)]
-pub struct Stop(AtomicU8);
-
-impl Stop {
-    const RUN: u8 = 0;
-    const PAUSE: u8 = 1;
-    const CANCEL: u8 = 2;
-
-    pub fn pause(&self) {
-        let _ = self.0.compare_exchange(Self::RUN, Self::PAUSE, Ordering::SeqCst, Ordering::SeqCst);
-    }
-
-    pub fn cancel(&self) {
-        self.0.store(Self::CANCEL, Ordering::SeqCst);
-    }
-
-    /// `Err(PAUSED | CANCELLED)` once asked to stop.
-    pub fn check(&self) -> Result<(), String> {
-        match self.0.load(Ordering::SeqCst) {
-            Self::PAUSE => Err(PAUSED.into()),
-            Self::CANCEL => Err(CANCELLED.into()),
-            _ => Ok(()),
-        }
-    }
-}
+/// Asks a running download to pause (keeping its partial file) or cancel (deleting it). Shared with
+/// `craft_update`, so a self-update sees the same pause and cancel.
+pub use craft_update::Stop;
 
 /// Whether a file on disk is the published one: its SHA-256 matches.
 fn matches_published(path: &Path, sha256: &str) -> bool {

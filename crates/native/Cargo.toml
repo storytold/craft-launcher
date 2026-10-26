@@ -18,6 +18,7 @@ local-mirror = []
 
 [dependencies]
 artcraft-launcher-core = { workspace = true }
+craft-update = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 log = { workspace = true }
@@ -27,7 +28,7 @@ tempfile = "3"
 sha2 = "0.10"
 # HTTPS over rustls, with the OS verifying certificates (rustls-platform-verifier). No bundled
 # root list: webpki-roots and webpki-root-certs are CDLA-licensed.
-ureq = { version = "3.4", default-features = false, features = ["rustls-no-provider", "_ring", "gzip", "platform-verifier"] }
+ureq = { version = "3.5", default-features = false, features = ["rustls-no-provider", "_ring", "gzip", "platform-verifier"] }
 
 [dev-dependencies]
 # The tests' fake server answers with real gzip streams (Reply::Gzipped), on every platform.
