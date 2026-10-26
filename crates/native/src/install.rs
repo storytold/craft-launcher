@@ -1295,9 +1295,7 @@ pub mod macos {
             return Ok(dir.to_path_buf());
         }
         let system = PathBuf::from("/Applications");
-        let probe = system.join(".artcraft-launcher-write-test");
-        if std::fs::write(&probe, b"").is_ok() {
-            let _ = std::fs::remove_file(&probe);
+        if super::write_probe(&system).is_ok() {
             return Ok(system);
         }
         let user = dirs::home_dir().ok_or("no home folder")?.join("Applications");
@@ -1820,6 +1818,54 @@ pub mod windows {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Every entry left in `dir`, by name.
+    fn entries(dir: &Path) -> Vec<std::ffi::OsString> {
+        std::fs::read_dir(dir).unwrap().map(|e| e.unwrap().file_name()).collect()
+    }
+
+    #[test]
+    fn write_probe_reports_a_writable_folder_and_leaves_nothing_behind() {
+        let dir = tempfile::tempdir().unwrap();
+        assert!(write_probe(dir.path()).is_ok());
+        assert!(entries(dir.path()).is_empty());
+        assert!(write_probe(&dir.path().join("missing")).is_err());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn write_probe_reports_a_read_only_folder_as_not_writable() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = tempfile::tempdir().unwrap();
+        let blocked = dir.path().join("blocked");
+        std::fs::create_dir(&blocked).unwrap();
+        std::fs::set_permissions(&blocked, std::fs::Permissions::from_mode(0o555)).unwrap();
+        // Root ignores the mode bits, so there is nothing to check when the tests run as root.
+        let privileged = std::fs::File::create(blocked.join("root-check")).is_ok();
+        if !privileged {
+            assert!(write_probe(&blocked).is_err());
+            assert!(entries(&blocked).is_empty());
+        }
+        std::fs::set_permissions(&blocked, std::fs::Permissions::from_mode(0o755)).unwrap();
+    }
+
+    /// Issue #778: in a folder other users can write to (`/Applications` is writable by every
+    /// admin), a symlink planted at the probe's name must not let the probe empty its target.
+    #[cfg(unix)]
+    #[test]
+    fn write_probe_leaves_a_planted_symlink_and_its_target_untouched() {
+        let dir = tempfile::tempdir().unwrap();
+        let elsewhere = tempfile::tempdir().unwrap();
+        let victim = elsewhere.path().join("victim.txt");
+        std::fs::write(&victim, b"keep this file").unwrap();
+        let planted = dir.path().join(".artcraft-launcher-write-test");
+        std::os::unix::fs::symlink(&victim, &planted).unwrap();
+
+        assert!(write_probe(dir.path()).is_ok());
+        assert_eq!(std::fs::read(&victim).unwrap(), b"keep this file");
+        assert_eq!(std::fs::read_link(&planted).unwrap(), victim);
+        assert_eq!(entries(dir.path()), vec![planted.file_name().unwrap().to_owned()]);
+    }
 
     #[cfg(unix)]
     #[test]
