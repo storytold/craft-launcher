@@ -45,6 +45,9 @@ fn to_update_release(release: &Release) -> craft_update::Release {
     }
 }
 
+// Android is a port-only OS: `craft_update::Os` has no variant for it, and there is no desktop
+// package to select for it. The Android build stubs `update` below instead.
+#[cfg(not(target_os = "android"))]
 fn to_update_platform(platform: Platform) -> craft_update::Platform {
     craft_update::Platform {
         os: match platform.os {
@@ -78,6 +81,7 @@ pub fn take_failure(paths: &Paths) -> Option<String> {
 /// Downloads `release` for `platform`, puts it in place and starts the helper that relaunches
 /// it once this process has exited. On success the caller must quit promptly. `last` is called
 /// once the download is ready and returns when the launcher may replace itself and restart.
+#[cfg(not(target_os = "android"))]
 #[allow(clippy::too_many_arguments)]
 pub fn update(
     install: &Install,
@@ -115,6 +119,24 @@ pub fn update(
         last,
         Some(env!("CARGO_PKG_VERSION")),
     )
+}
+
+/// Self-update would download a desktop archive and replace a binary; on Android the installable
+/// is an APK, so the update path is the Launcher's release page. Report that instead of doing
+/// something destructive.
+#[cfg(target_os = "android")]
+#[allow(clippy::too_many_arguments)]
+pub fn update(
+    _install: &Install,
+    _release: &Release,
+    _platform: Platform,
+    _http: &Http,
+    _paths: &Paths,
+    _stop: &Stop,
+    _phase: &mut dyn FnMut(JobPhase),
+    _last: &dyn Fn() -> Result<(), String>,
+) -> Result<(), String> {
+    Err("self-update is not available on Android; install the new APK".into())
 }
 
 /// Finishes an update when this program was started as the update helper.
