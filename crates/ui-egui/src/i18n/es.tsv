@@ -71,6 +71,7 @@
 	Show in Explorer	Mostrar en el Explorador
 	Show in Files	Mostrar en Archivos
 	Reinstall	Reinstalar
+	Add desktop shortcut	Añadir acceso directo al escritorio
 	Uninstall…	Desinstalar…
 	All releases	Todas las versiones
 	ArtCraft Launcher {version} is available.	ArtCraft Launcher {version} está disponible.
@@ -257,6 +258,7 @@ column	Latest	Última
 column	Released	Publicada
 filter	Installed	Instaladas
 	App details	Detalles de la app
+	More actions for {name}	Más acciones para {name}
 	Close (Esc)	Cerrar (Esc)
 	Features	Funciones
 	Latest release	Última versión

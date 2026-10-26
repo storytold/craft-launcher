@@ -71,6 +71,7 @@
 	Show in Explorer	Megjelenítés a Fájlkezelőben
 	Show in Files	Megjelenítés a fájlkezelőben
 	Reinstall	Újratelepítés
+	Add desktop shortcut	Asztali parancsikon hozzáadása
 	Uninstall…	Eltávolítás…
 	All releases	Minden kiadás
 	ArtCraft Launcher {version} is available.	Elérhető az ArtCraft Launcher új verziója: {version}.
@@ -268,6 +269,7 @@ column	Released	Dátum
 # Contextual: the filter tab names a group (the status pill says "Installed")
 filter	Installed	Telepítve
 	App details	Alkalmazás részletei
+	More actions for {name}	További műveletek: {name}
 	Close (Esc)	Bezárás (Esc)
 	Features	Funkciók
 	Latest release	Legújabb kiadás

@@ -72,6 +72,7 @@
 	Show in Explorer	Pokaż w Eksploratorze plików
 	Show in Files	Pokaż w menedżerze plików
 	Reinstall	Przeinstaluj
+	Add desktop shortcut	Dodaj skrót na pulpicie
 	Uninstall…	Odinstaluj…
 	All releases	Wszystkie wydania
 	ArtCraft Launcher {version} is available.	Dostępna jest nowa wersja ArtCraft Launcher ({version}).
@@ -269,6 +270,7 @@ column	Released	Data wydania
 # Contextual: the filter tab names a group (the status pill says "Installed")
 filter	Installed	Zainstalowane
 	App details	Szczegóły aplikacji
+	More actions for {name}	Więcej działań: {name}
 	Close (Esc)	Zamknij (Esc)
 	Features	Funkcje
 	Latest release	Najnowsze wydanie

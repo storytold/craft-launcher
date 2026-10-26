@@ -59,6 +59,7 @@
 	Show in Explorer	Mostrar no Explorer
 	Show in Files	Mostrar no gerenciador de arquivos
 	Reinstall	Reinstalar
+	Add desktop shortcut	Adicionar atalho na área de trabalho
 	Uninstall…	Desinstalar…
 	All releases	Todos os lançamentos
 	ArtCraft Launcher {version} is available.	ArtCraft Launcher {version} está disponível.
@@ -328,6 +329,7 @@ filter	Installed	Instalados
 	ArtCraft on GitHub	ArtCraft no GitHub
 	Join the ArtCraft Discord	Entrar no Discord da ArtCraft
 	App details	Detalhes do aplicativo
+	More actions for {name}	Mais ações para {name}
 	Close (Esc)	Fechar (Esc)
 	Features	Recursos
 	Latest release	Último lançamento

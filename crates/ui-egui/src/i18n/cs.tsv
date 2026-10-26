@@ -58,6 +58,7 @@
 	Show in Explorer	Zobrazit v Průzkumníku
 	Show in Files	Zobrazit v Souborech
 	Reinstall	Znovu nainstalovat
+	Add desktop shortcut	Přidat zástupce na plochu
 	Uninstall…	Odinstalovat…
 	All releases	Všechna vydání
 	ArtCraft Launcher {version} is available.	Je k dispozici ArtCraft Launcher {version}.
@@ -244,6 +245,7 @@ column	Latest	Nejnovější
 column	Released	Vydáno
 filter	Installed	Nainstalováno
 	App details	Podrobnosti o aplikaci
+	More actions for {name}	Další akce pro {name}
 	Close (Esc)	Zavřít (Esc)
 	Features	Funkce
 	Latest release	Nejnovější verze
