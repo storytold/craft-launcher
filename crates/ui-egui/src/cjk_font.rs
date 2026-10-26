@@ -39,6 +39,7 @@ fn face_metrics(data: &[u8], index: u32) -> (f32, f32) {
 fn script_name(script: Script) -> &'static str {
     match script {
         Script::Chinese => "Chinese",
+        Script::TraditionalChinese => "Traditional Chinese",
         Script::Japanese => "Japanese",
     }
 }
@@ -47,6 +48,7 @@ fn script_name(script: Script) -> &'static str {
 fn script_families(script: Script) -> &'static str {
     match script {
         Script::Chinese => "PingFang SC, Hiragino Sans GB, Heiti SC, Microsoft YaHei, SimSun, Noto Sans CJK SC, WenQuanYi and MiSans",
+        Script::TraditionalChinese => "PingFang TC, Microsoft JhengHei and Noto Sans CJK TC",
         Script::Japanese => "Hiragino Sans, Yu Gothic, Meiryo, MS Gothic, Noto Sans CJK JP, Noto Sans JP, IPAGothic and TakaoGothic",
     }
 }
@@ -122,6 +124,7 @@ pub(crate) fn face_index(data: &[u8], family: &str) -> Option<u32> {
 fn candidates(script: Script) -> Vec<Candidate> {
     match script {
         Script::Chinese => chinese_candidates(),
+        Script::TraditionalChinese => traditional_chinese_candidates(),
         Script::Japanese => japanese_candidates(),
     }
 }
@@ -325,6 +328,41 @@ fn mac_font_assets(file: &str) -> Vec<PathBuf> {
         }
     }
     out.sort();
+    out
+}
+
+/// Taiwan glyph forms from installed fonts only; never bundle a CJK face.
+fn traditional_chinese_candidates() -> Vec<Candidate> {
+    let mut out = Vec::new();
+    let mut add = |path: PathBuf, family: &'static str| out.push(Candidate { path, family });
+    #[cfg(target_os = "macos")]
+    {
+        add("/System/Library/Fonts/PingFang.ttc".into(), "PingFang TC");
+        for path in mac_font_assets("PingFang.ttc") {
+            add(path, "PingFang TC");
+        }
+    }
+    #[cfg(target_os = "windows")]
+    {
+        let root = std::env::var_os("SystemRoot").map_or_else(|| PathBuf::from(r"C:\Windows"), PathBuf::from);
+        add(root.join("Fonts/msjh.ttc"), "Microsoft JhengHei");
+    }
+    #[cfg(all(unix, not(target_os = "macos")))]
+    {
+        for dir in [
+            "/usr/share/fonts/opentype/noto",
+            "/usr/share/fonts/noto-cjk",
+            "/usr/share/fonts/google-noto-sans-cjk-fonts",
+            "/usr/local/share/fonts/noto",
+        ] {
+            for file in ["NotoSansCJK-Regular.ttc", "NotoSansCJKtc-Regular.otf", "NotoSansCJK-VF.ttc"] {
+                add(Path::new(dir).join(file), "Noto Sans CJK TC");
+            }
+        }
+    }
+    for dir in user_font_dirs() {
+        add(dir.join("NotoSansCJKtc-Regular.otf"), "Noto Sans CJK TC");
+    }
     out
 }
 
