@@ -38,6 +38,12 @@ flate2 = "1"
 flate2 = "1"
 tar = { version = "0.4", default-features = false }
 
+[target.'cfg(target_os = "linux")'.dependencies]
+# Safe SO_PEERCRED, so the launcher can prove the helper is the process it started.
+rustix = { version = "1.1", features = ["net"] }
+# O_NOFOLLOW for the root-owned staging copy.
+libc = "0.2"
+
 [target.'cfg(target_os = "macos")'.dependencies]
 plist = "1"
 
@@ -47,6 +53,6 @@ winreg = "0.55"
 dunce = "1"
 zip = { version = "8", default-features = false, features = ["deflate"] }
 # Safe wrappers for waiting for another process and reading a file's VERSIONINFO.
-winsafe = { version = "0.0.29", features = ["kernel", "version"] }
+winsafe = { version = "0.0.29", features = ["kernel", "version", "shell", "advapi"] }
 # Authenticode checks through WinTrust: the update helper installs only files from the launcher's publisher.
 verifysign = "1"

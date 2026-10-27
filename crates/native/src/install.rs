@@ -16,6 +16,11 @@
 //!   (`<data>/apps/<app>`) and run inside the same sandbox with `HOME` pointed at a `home/`
 //!   folder beside it, so the app's settings stay in the sandbox too.
 //!
+//! The first system install or removal asks for permission — the polkit password prompt on
+//! Linux, the one UAC prompt on Windows — and starts a short-lived helper as the privileged
+//! user for the rest of the run (see `root_helper` and `windows_helper`), so updating several
+//! apps at once asks only once. FreeBSD keeps one `pkexec` per command.
+//!
 //! Every download is checked against its published SHA-256 before anything is unpacked, a
 //! running app is never replaced, and a new copy is fully in place before the old one goes.
 
@@ -29,6 +34,13 @@ use crate::http::{Http, Stop, Transfer};
 use crate::manifest::Record;
 use crate::paths::Paths;
 use crate::process;
+
+#[cfg(target_os = "linux")]
+pub mod root_helper;
+#[cfg(windows)]
+pub mod windows_helper;
+#[cfg(any(windows, test))]
+pub(crate) mod windows_wire;
 
 /// What an install needs from the backend.
 pub struct Job<'a> {
@@ -90,7 +102,12 @@ pub fn install_at(
         return Err(format!("Cannot update {} to {}: installed version {} is newer", app.name, release.version_label(), inst_v));
     }
     log::info!("{}: starting {} to {} ({})", app.name, if existing.is_some() { "update" } else { "install" }, release.version_label(), kind.label());
-    let file = download(release, asset, job)?;
+    #[allow(unused_variables)]
+    let (file, sha) = download(release, asset, job)?;
+    // Linux stages a root-owned copy and checks it against this verified checksum; Windows
+    // carries it to the elevated helper. Other platforms don't need it past the download.
+    #[cfg(target_os = "linux")]
+    let _expected = root_helper::expect_hash(&file, &sha);
     log::info!("{}: download ready ({}), running installer...", app.name, file.display());
     // Past this point the install can't be interrupted halfway.
     (job.phase)(JobPhase::Installing);
@@ -103,7 +120,7 @@ pub fn install_at(
                 .map(|path| Some(record(&version, kind, path, Vec::new(), false)))
         }
         #[cfg(windows)]
-        PackageKind::Msi => windows::run_msi(&file, destination.as_deref(), job.stop, &mut *job.phase).map(|_| None),
+        PackageKind::Msi => windows::run_msi(&file, destination.as_deref(), job.stop, &mut *job.phase, Some(sha.as_str())).map(|_| None),
         #[cfg(windows)]
         PackageKind::PortableZip => {
             crate::portable::install(app, &file, &version, previous, job.paths, destination.as_deref(), job.replace, &mut |record| {
@@ -372,7 +389,7 @@ pub fn available_kinds() -> Vec<PackageKind> {
 /// Fetches `asset` into the download folder, checked against its published SHA-256: the feed's
 /// or GitHub's per-file digest, else the release's `SHA256SUMS.txt`. A release with neither is
 /// refused before anything is fetched: a file nothing vouches for is never installed (#90).
-pub(crate) fn download(release: &Release, asset: &Asset, job: &mut Job<'_>) -> Result<PathBuf, String> {
+pub(crate) fn download(release: &Release, asset: &Asset, job: &mut Job<'_>) -> Result<(PathBuf, String), String> {
     if !release::valid_file_name(&asset.name) {
         return Err("the release has an unexpected file name".into());
     }
@@ -393,7 +410,7 @@ pub(crate) fn download(release: &Release, asset: &Asset, job: &mut Job<'_>) -> R
         Transfer::Reconnecting { done, total } => phase(JobPhase::Reconnecting { done, total }),
     })?;
     (job.phase)(JobPhase::Verifying);
-    Ok(dest)
+    Ok((dest, sha))
 }
 
 /// The file's line in the release's `SHA256SUMS.txt`. `Ok(None)` only when the release really
@@ -720,7 +737,16 @@ fn pkexec() -> Option<PathBuf> {
 }
 
 /// Runs a command as root through polkit (`pkexec`), which shows the desktop's password prompt.
-#[cfg(any(target_os = "linux", target_os = "freebsd"))]
+/// The first one also starts the helper that later commands share, so the prompt is shown once
+/// for a run of installs and removals (see `root_helper`).
+#[cfg(target_os = "linux")]
+fn run_as_root(args: &[&std::ffi::OsStr]) -> Result<(), String> {
+    root_helper::run(args)
+}
+
+/// FreeBSD has no shared helper: its two root commands (`cp` and `rm`) are not package-manager
+/// calls worth a session, so each uses its own `pkexec` prompt.
+#[cfg(target_os = "freebsd")]
 fn run_as_root(args: &[&std::ffi::OsStr]) -> Result<(), String> {
     let args = with_absolute_program(&SYSTEM_BIN_DIRS, args)?;
     let pkexec = pkexec().ok_or("installing system-wide needs polkit (pkexec), which isn't installed")?;
@@ -779,10 +805,6 @@ pub(crate) mod linux {
         cancelled, find_in, pkexec, process, run_as_root, swap_into_place, tree, turn,
     };
 
-    /// apt waits this long for another package tool (a software centre, automatic updates) to
-    /// let go of its lock, instead of failing at once.
-    const APT_WAITS: &str = "DPkg::Lock::Timeout=60";
-
     /// A package tool that root commands can run, from the same directories `run_as_root` uses.
     fn system_tool(name: &str) -> Option<PathBuf> {
         find_in(&SYSTEM_BIN_DIRS, OsStr::new(name))
@@ -824,13 +846,14 @@ pub(crate) mod linux {
 
     /// The command that installs (or upgrades) a downloaded system package.
     pub fn install_command(kind: PackageKind) -> Option<&'static [&'static str]> {
+        use super::root_helper::{APT_INSTALL, DNF_INSTALL, PACMAN_INSTALL, RPM_INSTALL, ZYPPER_INSTALL};
         match kind {
             // apt resolves dependencies and records the package like any other.
-            PackageKind::Deb => Some(&["apt-get", "-o", APT_WAITS, "install", "-y", "--allow-downgrades"]),
-            PackageKind::Rpm if system_tool("dnf").is_some() => Some(&["dnf", "install", "-y"]),
-            PackageKind::Rpm if system_tool("zypper").is_some() => Some(&["zypper", "--non-interactive", "install", "--allow-unsigned-rpm"]),
-            PackageKind::Rpm => Some(&["rpm", "-U", "--replacepkgs"]),
-            PackageKind::ArchPkg => Some(&["pacman", "-U", "--noconfirm"]),
+            PackageKind::Deb => Some(APT_INSTALL),
+            PackageKind::Rpm if system_tool("dnf").is_some() => Some(DNF_INSTALL),
+            PackageKind::Rpm if system_tool("zypper").is_some() => Some(ZYPPER_INSTALL),
+            PackageKind::Rpm => Some(RPM_INSTALL),
+            PackageKind::ArchPkg => Some(PACMAN_INSTALL),
             _ => None,
         }
     }
@@ -955,19 +978,20 @@ pub(crate) mod linux {
     }
 
     pub fn remove_package(app: &CraftApp, installed: &Installed, stop: &Stop, phase: &mut dyn FnMut(JobPhase)) -> Result<(), String> {
+        use super::root_helper::{APT_REMOVE, DNF_REMOVE, DPKG_REMOVE, FLATPAK_SYSTEM_UNINSTALL, PACMAN_REMOVE, RPM_REMOVE};
         let mut remove = |command: &[&str], package: &str| as_root(&SYSTEM, command, OsStr::new(package), stop, phase, JobPhase::Removing);
         match installed.source {
-            InstallSource::Deb if system_tool("apt-get").is_some() => remove(&["apt-get", "-o", APT_WAITS, "remove", "-y"], app.id),
-            InstallSource::Deb => remove(&["dpkg", "-r"], app.id),
+            InstallSource::Deb if system_tool("apt-get").is_some() => remove(APT_REMOVE, app.id),
+            InstallSource::Deb => remove(DPKG_REMOVE, app.id),
             InstallSource::Rpm => {
                 if system_tool("dnf").is_some() {
-                    remove(&["dnf", "remove", "-y"], app.id)
+                    remove(DNF_REMOVE, app.id)
                 } else {
-                    remove(&["rpm", "-e"], app.id)
+                    remove(RPM_REMOVE, app.id)
                 }
             }
             // The package detected (photocraft, photocraft-bin or photocraft-git).
-            InstallSource::Pacman => remove(&["pacman", "-R", "--noconfirm"], installed.package.as_deref().unwrap_or(app.id)),
+            InstallSource::Pacman => remove(PACMAN_REMOVE, installed.package.as_deref().unwrap_or(app.id)),
             InstallSource::Flatpak => {
                 let id = app.bundle_id();
                 let user = process::flatpak_command().args(["uninstall", "--user", "-y", "--noninteractive", &id]).status();
@@ -981,7 +1005,7 @@ pub(crate) mod linux {
                     }
                     return Err(format!("couldn't uninstall {id}"));
                 }
-                remove(&["flatpak", "uninstall", "--system", "-y", "--noninteractive"], &id)
+                remove(FLATPAK_SYSTEM_UNINSTALL, &id)
             }
             other => Err(format!("{} isn't a system package", other.label())),
         }
@@ -1679,13 +1703,14 @@ pub(crate) fn msi_path(msi: &Path) -> Result<PathBuf, String> {
 pub mod windows {
     use artcraft_launcher_core::protocol::CANCELLED;
 
-    use super::{CraftApp, INSTALLER, JobPhase, Path, PathBuf, Stop, cancelled, msi_command, msi_folder_argument, msi_log, process, turn};
+    use super::{CraftApp, INSTALLER, JobPhase, Path, PathBuf, Stop, cancelled, msi_command, turn};
 
-    fn msiexec() -> PathBuf {
+    /// The Windows Installer, which the elevated helper runs once permission has been granted.
+    pub(super) fn msiexec() -> PathBuf {
         std::env::var_os("SystemRoot").map_or_else(|| PathBuf::from(r"C:\Windows"), PathBuf::from).join(r"System32\msiexec.exe")
     }
 
-    fn explain(code: Option<i32>) -> Result<(), String> {
+    pub(super) fn explain(code: Option<i32>) -> Result<(), String> {
         match code {
             Some(0 | 3010 | 1641) => Ok(()),
             Some(1602) => Err("cancelled".into()),
@@ -1696,20 +1721,17 @@ pub mod windows {
         }
     }
 
-    /// Runs an MSI with a progress window and no restart. Windows asks for permission itself.
-    pub fn run_msi(msi: &Path, destination: Option<&Path>, stop: &Stop, phase: &mut dyn FnMut(JobPhase)) -> Result<(), String> {
-        in_turn(stop, phase, JobPhase::Installing, || {
-            use std::os::windows::process::CommandExt;
-            let mut command = msi_command(&msiexec(), msi)?;
-            if let Some(dir) = destination {
-                command.raw_arg(msi_folder_argument(dir)?);
-            }
-            let status = command.status().map_err(|e| format!("couldn't start the Windows Installer ({e})"))?;
-            explain(status.code()).map_err(|e| match status.code() {
-                Some(1602) | None => e,
-                _ => format!("{e}. Its log is at {}", msi_log(msi).display()),
-            })
-        })
+    /// Runs an MSI with a progress window and no restart. The first one asks for administrator
+    /// permission once; the helper keeps that permission for the rest of the run (see
+    /// [`super::windows_helper`]). `expected` is the checksum the download was verified against.
+    pub fn run_msi(
+        msi: &Path,
+        destination: Option<&Path>,
+        stop: &Stop,
+        phase: &mut dyn FnMut(JobPhase),
+        expected: Option<&str>,
+    ) -> Result<(), String> {
+        in_turn(stop, phase, JobPhase::Installing, || super::windows_helper::install(msi, destination, expected))
     }
 
     /// Runs the launcher's own new MSI for a self-update, with the same progress window and no
@@ -1732,11 +1754,7 @@ pub mod windows {
         }
         in_turn(stop, phase, JobPhase::Removing, || {
             for m in installs {
-                let status = process::command(msiexec())
-                    .args(["/x", &m.product_code, "/passive", "/norestart"])
-                    .status()
-                    .map_err(|e| format!("couldn't start the Windows Installer ({e})"))?;
-                explain(status.code())?;
+                super::windows_helper::uninstall(&m.product_code)?;
             }
             Ok(())
         })
