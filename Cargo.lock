@@ -300,8 +300,8 @@ dependencies = [
 name = "artcraft-launcher-core"
 version = "0.14.0"
 dependencies = [
+ "craft-update",
  "jiff",
- "semver",
  "serde",
  "serde_json",
 ]

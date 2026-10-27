@@ -1,6 +1,6 @@
 [package]
 name = "artcraft-launcher-core"
-description = "ArtCraft Launcher core: the Craft App Suite catalog, versions, release parsing and asset choice (pure, wasm-safe)"
+description = "ArtCraft Launcher core: the Craft App Suite catalog and feed, with craft-update's versions, release parsing and asset choice re-exported (pure, wasm-safe)"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -13,6 +13,6 @@ workspace = true
 [dependencies]
 serde = { workspace = true }
 serde_json = { workspace = true }
-semver = { workspace = true }
 # Calendar conversion (jiff); see AGENTS.md. Only civil-date math is used, no time zone.
 jiff = { workspace = true }
+craft-update = { workspace = true }

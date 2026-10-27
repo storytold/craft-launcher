@@ -6,16 +6,20 @@
 
 #![deny(clippy::unwrap_used, clippy::expect_used, clippy::panic, clippy::unimplemented, clippy::todo, clippy::unreachable)]
 
+pub mod asset_arch;
 pub mod catalog;
 pub mod details;
-pub mod distro;
 pub mod feed;
-pub mod platform;
 pub mod protocol;
 pub mod release;
 pub mod status;
 pub mod time;
-pub mod version;
+
+// GitHub release parsing, versions, platforms and asset choice are shared with every Craft app
+// through craft-update (built without its `native` feature, so they stay wasm-safe). Fix them
+// there: storytold/craft-libs, crates/update. `release` re-exports craft-update's and adds the
+// launcher's "Choose version" list.
+pub use craft_update::{distro, platform, version};
 
 pub use catalog::{CraftApp, SUITE};
 pub use platform::{Arch, Os, PackageKind, Platform};

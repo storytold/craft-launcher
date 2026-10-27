@@ -96,6 +96,9 @@ pub struct Notice {
 }
 
 /// What the feed says about one app, once checked.
+// One answer per app check, matched on at once and never stored in bulk, so boxing the release
+// would only add an allocation.
+#[allow(clippy::large_enum_variant)]
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum FeedAnswer {
     /// Fresh: the app's latest release, or `None` when it has none.
@@ -206,6 +209,7 @@ impl FeedRelease {
             })
             .collect();
         Some(Release {
+            repo: repo.to_string(),
             version: Some(version),
             name: if self.name.is_empty() { self.tag.clone() } else { truncate(&self.name, 120) },
             tag: self.tag.clone(),

@@ -1226,6 +1226,7 @@ mod tests {
             html_url: "https://github.com/storytold/craft-launcher/releases/tag/v0.4.1".into(),
             notes: String::new(),
             prerelease: false,
+            repo: String::new(),
             assets: vec![
                 asset(&format!("{LAUNCHER_ID}-0.4.1-linux-x86_64.flatpak")),
                 asset(&format!("{LAUNCHER_ID}-0.4.1-linux-x86_64.AppImage")),
