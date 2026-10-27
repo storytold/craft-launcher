@@ -89,6 +89,10 @@ you when an update is out. It is a small native app that can sit in your menu ba
 
 The web version shows the same catalog in the browser, with the latest download for each app.
 
+On macOS, automatic app and launcher updates wait while Low Data Mode is on. Downloads already
+running automatically pause and resume when it is off. Manual updates and release checks remain
+available.
+
 ## Interface languages
 
 The interface is in English, Brazilian Portuguese (Português (Brasil)), Czech (Čeština), French

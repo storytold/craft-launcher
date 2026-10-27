@@ -15,6 +15,8 @@ pub mod http;
 pub mod install;
 pub mod login;
 pub mod manifest;
+#[cfg(target_os = "macos")]
+mod network;
 pub mod packages;
 pub mod paths;
 #[cfg(windows)]

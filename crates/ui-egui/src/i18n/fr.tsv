@@ -85,6 +85,7 @@
 	ArtCraft Launcher {version}	ArtCraft Launcher {version}
 	Only when I ask	Seulement à ma demande
 	Automatically download and install updates	Télécharger et installer les mises à jour automatiquement
+	Automatic updates wait or pause while Low Data Mode is on and resume when it’s off. Clicking Install, Update, or Resume still downloads over the current network.	Les mises à jour automatiques sont différées ou mises en pause lorsque le mode Faibles données est activé, puis reprennent lorsqu’il est désactivé. Cliquer sur Installer, Mettre à jour ou Reprendre permet toujours de télécharger via le réseau actuel.
 	Notify me when an installed app has an update	Me prévenir quand une application installée a une mise à jour
 	Include pre-releases (betas and release candidates)	Inclure les préversions (bêtas et versions candidates)
 	Installing on Linux	Installation sous Linux

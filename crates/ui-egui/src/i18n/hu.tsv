@@ -87,6 +87,7 @@
 	ArtCraft Launcher {version}	ArtCraft Launcher {version}
 	Only when I ask	Csak kézi kereséskor
 	Automatically download and install updates	Frissítések automatikus letöltése és telepítése
+	Automatic updates wait or pause while Low Data Mode is on and resume when it’s off. Clicking Install, Update, or Resume still downloads over the current network.	Az automatikus frissítések várakoznak vagy szünetelnek, amíg az Alacsony adatforgalmú mód be van kapcsolva, és a kikapcsolása után folytatódnak. A Telepítés, Frissítés vagy Folytatás gombra kattintva továbbra is letölthet az aktuális hálózaton.
 	Notify me when an installed app has an update	Értesítés a telepített alkalmazásokhoz elérhető frissítésekről
 	Include pre-releases (betas and release candidates)	Előzetes kiadások engedélyezése (béta- és kiadásra jelölt verziók)
 	Installing on Linux	Telepítés Linuxon

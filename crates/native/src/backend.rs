@@ -55,7 +55,8 @@ struct Shared {
     waker: Waker,
     latest: Mutex<HashMap<String, Release>>,
     installed: Mutex<HashMap<String, Installed>>,
-    jobs: Mutex<HashMap<String, Arc<Stop>>>,
+    jobs: Mutex<HashMap<String, RunningJob>>,
+    automatic_updates_allowed: AtomicBool,
     /// The launcher is replacing itself and will restart: no new job starts.
     restarting: AtomicBool,
     manifest: Mutex<Manifest>,
@@ -110,17 +111,59 @@ impl Drop for BusyGuard {
 struct JobGuard {
     shared: Arc<Shared>,
     app_id: String,
+    finished: bool,
+}
+
+#[derive(Clone)]
+struct RunningJob {
+    stop: Arc<Stop>,
+    automatic: bool,
+    deferred: bool,
+}
+
+impl JobGuard {
+    /// Remove the job before its terminal events are published. Returning the deferred flag lets
+    /// callers publish completion and deferral together after the old slot is released.
+    fn finish(&mut self) -> bool {
+        if self.finished {
+            return false;
+        }
+        self.finished = true;
+        let job = self.shared.jobs.lock().unwrap_or_else(PoisonError::into_inner).remove(&self.app_id);
+        job.is_some_and(|job| job.deferred && job.stop.check().is_err_and(|e| e == PAUSED))
+    }
 }
 
 impl Drop for JobGuard {
     fn drop(&mut self) {
-        self.shared.jobs.lock().unwrap_or_else(PoisonError::into_inner).remove(&self.app_id);
+        if self.finish() {
+            self.shared.emit(Event::AutomaticUpdateDeferred { app: self.app_id.clone() });
+        }
     }
 }
 
 impl Shared {
+    fn network_changed(&self, allowed: bool) {
+        let mut jobs = self.jobs.lock().unwrap_or_else(PoisonError::into_inner);
+        self.automatic_updates_allowed.store(allowed, Ordering::SeqCst);
+        if !allowed {
+            for job in jobs.values_mut().filter(|job| job.automatic && job.stop.check().is_ok()) {
+                job.deferred = true;
+                job.stop.pause();
+            }
+        }
+        drop(jobs);
+        (self.waker)();
+    }
+
     fn emit(&self, event: Event) {
         self.events.lock().unwrap_or_else(PoisonError::into_inner).push(event);
+        (self.waker)();
+    }
+
+    /// Publish related terminal events under one queue lock, so the UI cannot retry between them.
+    fn emit_all(&self, events: impl IntoIterator<Item = Event>) {
+        self.events.lock().unwrap_or_else(PoisonError::into_inner).extend(events);
         (self.waker)();
     }
 }
@@ -131,6 +174,8 @@ pub struct NativeBackend {
     http: Option<Http>,
     source: Option<Arc<dyn ReleaseSource>>,
     platform: Option<Platform>,
+    #[cfg(target_os = "macos")]
+    _network: Option<crate::network::Monitor>,
 }
 
 impl NativeBackend {
@@ -156,6 +201,7 @@ impl NativeBackend {
             latest: Mutex::new(HashMap::new()),
             installed: Mutex::new(HashMap::new()),
             jobs: Mutex::new(HashMap::new()),
+            automatic_updates_allowed: AtomicBool::new(false),
             restarting: AtomicBool::new(false),
             manifest: Mutex::new(Manifest::load(&paths.manifest())),
             options: Mutex::new(BackendOptions::default()),
@@ -172,7 +218,22 @@ impl NativeBackend {
             pictures_busy: Mutex::new(std::collections::HashSet::new()),
             last_check: Mutex::new(None),
         });
-        let backend = Self { shared, paths, http, source, platform: native_platform() };
+        #[cfg(not(target_os = "macos"))]
+        shared.network_changed(true);
+        #[cfg(target_os = "macos")]
+        let network = {
+            let shared = shared.clone();
+            crate::network::Monitor::new(move |allowed| shared.network_changed(allowed))
+        };
+        let backend = Self {
+            shared,
+            paths,
+            http,
+            source,
+            platform: native_platform(),
+            #[cfg(target_os = "macos")]
+            _network: Some(network),
+        };
         backend.replay_cache();
         backend.detect_all();
         backend
@@ -299,33 +360,47 @@ impl NativeBackend {
 
     fn start_job(&self, app_id: &str, work: Work) {
         let uninstall = work == Work::Uninstall;
+        let automatic = work == Work::AutoUpdate;
         let Some(app) = CraftApp::by_id(app_id) else { return };
         log::info!("{}: starting {} job", app.name, if uninstall { "uninstall" } else { "install/update" });
         let stop = Arc::new(Stop::default());
-        let restarting = {
+        let (restarting, rejected, busy) = {
             let mut jobs = self.shared.jobs.lock().unwrap_or_else(PoisonError::into_inner);
             if jobs.contains_key(app.id) {
-                return;
+                (false, true, true)
+            } else if automatic && !self.automatic_updates_allowed() {
+                (false, true, false)
+            } else {
+                let restarting = self.shared.restarting.load(Ordering::SeqCst);
+                if !restarting {
+                    jobs.insert(app.id.to_string(), RunningJob { stop: stop.clone(), automatic, deferred: false });
+                }
+                (restarting, false, false)
             }
-            let restarting = self.shared.restarting.load(Ordering::SeqCst);
-            if !restarting {
-                jobs.insert(app.id.to_string(), stop.clone());
-            }
-            restarting
         };
+        if rejected {
+            if automatic {
+                self.shared.emit(if busy {
+                    Event::AutomaticUpdateWaiting { app: app.id.to_string() }
+                } else {
+                    Event::AutomaticUpdateDeferred { app: app.id.to_string() }
+                });
+            }
+            return;
+        }
         if restarting {
             let result = Err("ArtCraft Launcher is restarting to finish its update. Try again once it's back.".into());
             self.shared.emit(Event::JobFinished { app: app.id.to_string(), result });
             return;
         }
         let shared = self.shared.clone();
-        let job = JobGuard { shared: shared.clone(), app_id: app.id.to_string() };
+        let job = JobGuard { shared: shared.clone(), app_id: app.id.to_string(), finished: false };
         let paths = self.paths.clone();
         let http = self.http.clone();
         let platform = self.platform;
         let options = self.options();
         std::thread::spawn(move || {
-            let job = job;
+            let mut job = job;
             let existing = shared.installed.lock().unwrap_or_else(PoisonError::into_inner).get(app.id).cloned();
             let record = shared.manifest.lock().unwrap_or_else(PoisonError::into_inner).apps.get(app.id).cloned();
             let result = if uninstall {
@@ -362,7 +437,6 @@ impl NativeBackend {
                     other => other,
                 }
             };
-            report_partial(app, &shared, &paths, platform, &options);
             // Look again: the result is whatever is on disk now.
             let manifest = shared.manifest.lock().unwrap_or_else(PoisonError::into_inner).clone();
             let found = crate::detect::detect(app, &manifest, &crate::detect::Snapshot::take());
@@ -385,13 +459,20 @@ impl NativeBackend {
                 };
             }
             shared.emit(Event::Detected { app: app.id.to_string(), installed: found });
+            let deferred = job.finish();
+            let app_id = app.id.to_string();
+            let mut events = vec![Event::JobFinished { app: app_id.clone(), result }];
+            if deferred {
+                events.push(Event::AutomaticUpdateDeferred { app: app_id });
+            }
+            shared.emit_all(events);
+            report_partial(app, &shared, &paths, platform, &options);
             drop(job);
-            shared.emit(Event::JobFinished { app: app.id.to_string(), result });
         });
     }
 
     /// Downloads the newer launcher, puts it in place and asks the UI to quit so it can start.
-    fn update_launcher(&self) {
+    fn update_launcher(&self, automatic: bool) {
         let id = LAUNCHER_ID.to_string();
         let (Some(install), Some(platform)) = (self.shared.self_install.get().cloned().flatten(), self.platform) else {
             self.shared.emit(Event::JobFinished {
@@ -402,17 +483,27 @@ impl NativeBackend {
         };
         let Some(release) = self.shared.launcher_release.lock().unwrap_or_else(PoisonError::into_inner).clone() else { return };
         let stop = Arc::new(Stop::default());
-        {
+        let (rejected, busy) = {
             let mut jobs = self.shared.jobs.lock().unwrap_or_else(PoisonError::into_inner);
             if jobs.contains_key(&id) {
-                return;
+                (true, true)
+            } else if automatic && !self.automatic_updates_allowed() {
+                (true, false)
+            } else {
+                jobs.insert(id.clone(), RunningJob { stop: stop.clone(), automatic, deferred: false });
+                (false, false)
             }
-            jobs.insert(id.clone(), stop.clone());
+        };
+        if rejected {
+            if automatic {
+                self.shared.emit(if busy { Event::AutomaticUpdateWaiting { app: id } } else { Event::AutomaticUpdateDeferred { app: id } });
+            }
+            return;
         }
-        let job = JobGuard { shared: self.shared.clone(), app_id: id.clone() };
+        let job = JobGuard { shared: self.shared.clone(), app_id: id.clone(), finished: false };
         let (shared, paths, http) = (self.shared.clone(), self.paths.clone(), self.http.clone());
         std::thread::spawn(move || {
-            let job = job;
+            let mut job = job;
             let mut last_emit = Instant::now() - Duration::from_secs(1);
             let mut phase = |p: JobPhase| {
                 if matches!(p, JobPhase::Downloading { done, total } if done != total && done != 0) && last_emit.elapsed() < Duration::from_millis(50)
@@ -430,14 +521,25 @@ impl NativeBackend {
                 Some(http) => crate::self_update::update(&install, &release, platform, http, &paths, &stop, &mut phase, &last),
                 None => Err("secure connections aren't available on this system".into()),
             };
-            drop(job);
+            let deferred = job.finish();
             match result {
-                Ok(()) => shared.emit(Event::LauncherRestarting),
+                Ok(()) => {
+                    let mut events = vec![Event::LauncherRestarting];
+                    if deferred {
+                        events.push(Event::AutomaticUpdateDeferred { app: LAUNCHER_ID.to_string() });
+                    }
+                    shared.emit_all(events);
+                }
                 Err(e) => {
                     shared.restarting.store(false, Ordering::SeqCst);
-                    shared.emit(Event::JobFinished { app: LAUNCHER_ID.to_string(), result: Err(e) });
+                    let mut events = vec![Event::JobFinished { app: LAUNCHER_ID.to_string(), result: Err(e) }];
+                    if deferred {
+                        events.push(Event::AutomaticUpdateDeferred { app: LAUNCHER_ID.to_string() });
+                    }
+                    shared.emit_all(events);
                 }
             }
+            drop(job);
         });
     }
 
@@ -449,6 +551,7 @@ impl NativeBackend {
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum Work {
     Install,
+    AutoUpdate,
     Replace,
     Uninstall,
 }
@@ -554,7 +657,7 @@ fn landed(before: Option<&Installed>, after: Option<&Installed>, latest: &versio
 /// wait (`stop`); after `limit` it gives up and names the apps still busy, since one may be
 /// stuck behind a password prompt nobody has answered.
 fn claim_restart(
-    jobs: &Mutex<HashMap<String, Arc<Stop>>>,
+    jobs: &Mutex<HashMap<String, RunningJob>>,
     restarting: &AtomicBool,
     stop: &Stop,
     limit: Duration,
@@ -1035,22 +1138,29 @@ impl NativeBackend {
 }
 
 impl Backend for NativeBackend {
+    fn automatic_updates_allowed(&self) -> bool {
+        self.shared.automatic_updates_allowed.load(Ordering::SeqCst)
+    }
+
     fn send(&mut self, command: Command) {
         match command {
             Command::CheckForUpdates { force } => self.check(force),
             Command::Detect => self.detect_all(),
             Command::Install { app } => self.start_job(&app, Work::Install),
+            Command::AutoUpdate { app } if app == LAUNCHER_ID => self.update_launcher(true),
+            Command::AutoUpdate { app } => self.start_job(&app, Work::AutoUpdate),
             Command::Replace { app } => self.start_job(&app, Work::Replace),
             Command::Uninstall { app } => self.start_job(&app, Work::Uninstall),
             Command::Pause { app } => {
-                if let Some(stop) = self.shared.jobs.lock().unwrap_or_else(PoisonError::into_inner).get(&app) {
-                    stop.pause();
+                if let Some(job) = self.shared.jobs.lock().unwrap_or_else(PoisonError::into_inner).get_mut(&app) {
+                    job.deferred = false;
+                    job.stop.pause();
                 }
             }
             Command::Cancel { app } => {
                 let running = self.shared.jobs.lock().unwrap_or_else(PoisonError::into_inner).get(&app).cloned();
                 match running {
-                    Some(stop) => stop.cancel(),
+                    Some(job) => job.stop.cancel(),
                     // A paused download, or one kept after a failed install: throw the file away.
                     None => {
                         if let Some(def) = CraftApp::by_id(&app)
@@ -1082,7 +1192,7 @@ impl Backend for NativeBackend {
                     }
                 }
             }
-            Command::UpdateLauncher => self.update_launcher(),
+            Command::UpdateLauncher => self.update_launcher(false),
             Command::FetchScreenshots { app } => self.fetch_screenshots(&app),
             Command::Configure(options) => {
                 let changed_pre = {
@@ -1172,6 +1282,7 @@ mod tests {
             latest: Mutex::new(HashMap::new()),
             installed: Mutex::new(HashMap::new()),
             jobs: Mutex::new(HashMap::new()),
+            automatic_updates_allowed: AtomicBool::new(true),
             restarting: AtomicBool::new(false),
             manifest: Mutex::new(Manifest::default()),
             options: Mutex::new(BackendOptions::default()),
@@ -1188,6 +1299,147 @@ mod tests {
             feed_throttle: Mutex::new(FeedThrottle::new()),
             pictures_busy: Mutex::new(std::collections::HashSet::new()),
         }
+    }
+
+    #[test]
+    fn low_data_mode_pauses_automatic_app_and_launcher_downloads_only() {
+        let shared = Arc::new(shared());
+        let ids = ["photocraft", LAUNCHER_ID, "wordcraft", "filmcraft", "deckcraft"];
+        for id in ids {
+            shared
+                .jobs
+                .lock()
+                .unwrap()
+                .insert(id.into(), RunningJob { stop: Arc::new(Stop::default()), automatic: id != "wordcraft", deferred: false });
+        }
+        // User pauses and cancellations must not become automatic retries.
+        {
+            let jobs = shared.jobs.lock().unwrap();
+            jobs.get("filmcraft").unwrap().stop.pause();
+            jobs.get("deckcraft").unwrap().stop.cancel();
+        }
+        shared.network_changed(false);
+        assert!(!shared.automatic_updates_allowed.load(Ordering::SeqCst));
+        {
+            let jobs = shared.jobs.lock().unwrap();
+            for id in ["photocraft", LAUNCHER_ID] {
+                let job = jobs.get(id).unwrap();
+                assert_eq!(job.stop.check(), Err(PAUSED.into()));
+                assert!(job.deferred);
+            }
+            assert!(jobs.get("wordcraft").unwrap().stop.check().is_ok());
+            assert!(!jobs.get("filmcraft").unwrap().deferred);
+            assert!(!jobs.get("deckcraft").unwrap().deferred);
+        }
+        // A quick off/on change must still remember which jobs need to resume.
+        shared.network_changed(true);
+        for id in ids {
+            drop(JobGuard { shared: shared.clone(), app_id: id.into(), finished: false });
+        }
+        assert_eq!(
+            *shared.events.lock().unwrap(),
+            vec![Event::AutomaticUpdateDeferred { app: "photocraft".into() }, Event::AutomaticUpdateDeferred { app: LAUNCHER_ID.into() },]
+        );
+    }
+
+    #[test]
+    fn terminal_events_are_queued_in_order_as_one_batch() {
+        let shared = shared();
+        shared.emit_all([Event::JobFinished { app: APP.into(), result: Err(PAUSED.into()) }, Event::AutomaticUpdateDeferred { app: APP.into() }]);
+        assert_eq!(
+            std::mem::take(&mut *shared.events.lock().unwrap()),
+            vec![Event::JobFinished { app: APP.into(), result: Err(PAUSED.into()) }, Event::AutomaticUpdateDeferred { app: APP.into() }]
+        );
+    }
+
+    #[test]
+    fn a_finished_guard_cannot_remove_a_replacement_job() {
+        let shared = Arc::new(shared());
+        shared.jobs.lock().unwrap().insert(APP.into(), RunningJob { stop: Arc::new(Stop::default()), automatic: false, deferred: false });
+        let mut guard = JobGuard { shared: shared.clone(), app_id: APP.into(), finished: false };
+        assert!(!guard.finish());
+        shared.jobs.lock().unwrap().insert(APP.into(), RunningJob { stop: Arc::new(Stop::default()), automatic: true, deferred: false });
+        drop(guard);
+        assert!(shared.jobs.lock().unwrap().contains_key(APP));
+    }
+
+    #[test]
+    fn low_data_mode_defers_automatic_work_but_manual_updates_still_start() {
+        let Some(platform) = native_platform() else { return };
+        let dir = tempfile::tempdir().unwrap();
+        let mut backend = backend(dir.path(), platform, None);
+        backend.shared.network_changed(false);
+        backend.send(Command::AutoUpdate { app: APP.into() });
+        assert!(backend.shared.jobs.lock().unwrap().is_empty());
+        assert_eq!(backend.poll(), vec![Event::AutomaticUpdateDeferred { app: APP.into() }]);
+
+        // This test backend has no HTTP client, so a manual job ends with an actionable error.
+        backend.send(Command::Install { app: APP.into() });
+        wait_until(|| backend.shared.events.lock().unwrap().iter().any(|event| matches!(event, Event::JobFinished { app, .. } if app == APP)));
+        let events = backend.poll();
+        assert!(events.iter().any(|event| matches!(event, Event::JobFinished { app, .. } if app == APP)));
+        assert!(!events.iter().any(|event| matches!(event, Event::AutomaticUpdateDeferred { .. })));
+    }
+
+    #[test]
+    fn an_automatic_update_waits_for_an_active_job() {
+        let Some(platform) = native_platform() else { return };
+        let dir = tempfile::tempdir().unwrap();
+        let mut backend = backend(dir.path(), platform, None);
+        backend.shared.jobs.lock().unwrap().insert(APP.into(), RunningJob { stop: Arc::new(Stop::default()), automatic: false, deferred: false });
+        backend.send(Command::AutoUpdate { app: APP.into() });
+        assert_eq!(backend.poll(), vec![Event::AutomaticUpdateWaiting { app: APP.into() }]);
+    }
+
+    /// Start on an unrestricted connection, then turn Low Data Mode on and off in System Settings.
+    #[cfg(target_os = "macos")]
+    #[test]
+    #[ignore = "requires toggling macOS Low Data Mode on the active network"]
+    fn live_macos_low_data_mode_cycle() {
+        let shared = Arc::new(shared());
+        shared.automatic_updates_allowed.store(false, Ordering::SeqCst);
+        let (sent, received) = mpsc::channel();
+        let watched = shared.clone();
+        let _monitor = crate::network::Monitor::new(move |allowed| {
+            watched.network_changed(allowed);
+            let _ = sent.send(allowed);
+        });
+        let wait_for = |expected| {
+            let deadline = Instant::now() + Duration::from_secs(180);
+            loop {
+                let remaining = deadline.saturating_duration_since(Instant::now());
+                let allowed = received.recv_timeout(remaining).expect("toggle Low Data Mode before the timeout");
+                eprintln!("Network.framework: automatic updates allowed = {allowed}");
+                if allowed == expected {
+                    break;
+                }
+            }
+        };
+        wait_for(true);
+        let app_stop = Arc::new(Stop::default());
+        let launcher_stop = Arc::new(Stop::default());
+        let manual_stop = Arc::new(Stop::default());
+        for (id, stop, automatic) in
+            [("photocraft", app_stop.clone(), true), (LAUNCHER_ID, launcher_stop.clone(), true), ("wordcraft", manual_stop.clone(), false)]
+        {
+            shared.jobs.lock().unwrap().insert(id.into(), RunningJob { stop, automatic, deferred: false });
+        }
+        eprintln!("READY: turn Low Data Mode ON");
+        wait_for(false);
+        assert!(!shared.automatic_updates_allowed.load(Ordering::SeqCst));
+        assert_eq!(app_stop.check(), Err(PAUSED.into()));
+        assert_eq!(launcher_stop.check(), Err(PAUSED.into()));
+        assert!(manual_stop.check().is_ok());
+        for id in ["photocraft", LAUNCHER_ID] {
+            drop(JobGuard { shared: shared.clone(), app_id: id.into(), finished: false });
+        }
+        assert_eq!(shared.events.lock().unwrap().len(), 2, "both automatic updates must be eligible for retry");
+        eprintln!("PASS: automatic app and launcher jobs paused; manual job unaffected");
+        eprintln!("READY: turn Low Data Mode OFF");
+        wait_for(true);
+        assert!(shared.automatic_updates_allowed.load(Ordering::SeqCst));
+        assert!(manual_stop.check().is_ok());
+        eprintln!("PASS: automatic updates allowed again after Low Data Mode was turned off");
     }
 
     /// A local server answering every request with `status` (and `Retry-After: 120` on a 429),
@@ -1498,7 +1750,15 @@ mod tests {
         let shared = shared();
         shared.latest.lock().unwrap().insert(APP.to_string(), release("0.5.0"));
         let shared = Arc::new(shared);
-        NativeBackend { shared, paths: Paths::under(root), http: None, source, platform: Some(platform) }
+        NativeBackend {
+            shared,
+            paths: Paths::under(root),
+            http: None,
+            source,
+            platform: Some(platform),
+            #[cfg(target_os = "macos")]
+            _network: None,
+        }
     }
 
     /// Reports again, and returns what the UI was last told about a kept download.
@@ -1709,7 +1969,7 @@ mod tests {
     fn the_launcher_gives_up_waiting_and_names_the_busy_apps() {
         let jobs = Mutex::new(HashMap::new());
         for id in [LAUNCHER_ID, "photocraft"] {
-            jobs.lock().unwrap().insert(id.to_string(), Arc::new(Stop::default()));
+            jobs.lock().unwrap().insert(id.to_string(), RunningJob { stop: Arc::new(Stop::default()), automatic: false, deferred: false });
         }
         let restarting = AtomicBool::new(false);
         let error = claim_restart(&jobs, &restarting, &Stop::default(), Duration::from_millis(300), &mut || {}).unwrap_err();
@@ -1722,7 +1982,7 @@ mod tests {
     fn the_launcher_restarts_only_once_every_other_job_has_ended() {
         let jobs = Mutex::new(HashMap::new());
         for id in [LAUNCHER_ID, "photocraft", "filmcraft"] {
-            jobs.lock().unwrap().insert(id.to_string(), Arc::new(Stop::default()));
+            jobs.lock().unwrap().insert(id.to_string(), RunningJob { stop: Arc::new(Stop::default()), automatic: false, deferred: false });
         }
         let restarting = AtomicBool::new(false);
         let stop = Stop::default();
@@ -1749,8 +2009,10 @@ mod tests {
 
     #[test]
     fn a_cancelled_launcher_update_stops_waiting_and_claims_nothing() {
-        let jobs =
-            Mutex::new(HashMap::from([(LAUNCHER_ID.to_string(), Arc::new(Stop::default())), ("photocraft".to_string(), Arc::new(Stop::default()))]));
+        let jobs = Mutex::new(HashMap::from([
+            (LAUNCHER_ID.to_string(), RunningJob { stop: Arc::new(Stop::default()), automatic: false, deferred: false }),
+            ("photocraft".to_string(), RunningJob { stop: Arc::new(Stop::default()), automatic: false, deferred: false }),
+        ]));
         let restarting = AtomicBool::new(false);
         let stop = Stop::default();
         let (waiting, waits) = mpsc::channel();

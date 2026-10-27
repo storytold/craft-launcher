@@ -100,6 +100,13 @@ pub(crate) enum UiAction {
     },
 }
 
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum UpdateAttempt {
+    Automatic,
+    Manual,
+    Deferred,
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) enum Dialog {
     Notes(String),
@@ -177,9 +184,10 @@ pub struct LauncherUi {
     last_detect: i64,
     /// Whether the window had focus last frame, to re-check when the user comes back to it.
     was_focused: bool,
-    /// Versions of apps or the launcher already queued for auto-update during this session,
-    /// preventing repeated install loops if an update fails or is in progress.
-    pub(crate) auto_update_attempted: std::collections::BTreeSet<(String, String)>,
+    /// Per-version backoff and manual intent; late network events cannot override a user's action.
+    auto_update_attempted: std::collections::BTreeMap<(String, String), UpdateAttempt>,
+    /// Automatic updates waiting for an active job to finish before retrying.
+    auto_update_waiting: std::collections::BTreeSet<String>,
     /// The URL or deep link to open when Discord is clicked.
     pub(crate) discord_url: &'static str,
     /// UI actions drawn in this pass, not sent yet.
@@ -264,7 +272,8 @@ impl LauncherUi {
             sent_options: None,
             last_detect: 0,
             was_focused: true,
-            auto_update_attempted: std::collections::BTreeSet::new(),
+            auto_update_attempted: std::collections::BTreeMap::new(),
+            auto_update_waiting: std::collections::BTreeSet::new(),
             discord_url: artcraft_launcher_core::catalog::DISCORD_URL,
             pending: Vec::new(),
             frame: None,
@@ -313,6 +322,7 @@ impl LauncherUi {
     /// Looks for updates now (the tray's "Check for Updates").
     pub fn check_now(&mut self) {
         self.auto_update_attempted.clear();
+        self.auto_update_waiting.clear();
         self.backend.send(Command::CheckForUpdates { force: true });
         self.backend.send(Command::Detect);
         self.last_detect = self.backend.now();
@@ -366,7 +376,25 @@ impl LauncherUi {
                 continue;
             }
             match action {
-                UiAction::Command(command) => self.backend.send(command.clone()),
+                UiAction::Command(command) => {
+                    let manual = match command {
+                        Command::Install { app } | Command::Replace { app } | Command::Pause { app } | Command::Cancel { app } => Some(app.as_str()),
+                        Command::UpdateLauncher => Some(artcraft_launcher_core::catalog::LAUNCHER_ID),
+                        _ => None,
+                    };
+                    if let Some(id) = manual {
+                        self.auto_update_waiting.remove(id);
+                        let version = if id == artcraft_launcher_core::catalog::LAUNCHER_ID {
+                            self.launcher_update.as_ref().map(Release::version_label)
+                        } else {
+                            self.entry(id).and_then(AppEntry::latest_label)
+                        };
+                        if let Some(version) = version {
+                            self.auto_update_attempted.insert((id.to_string(), version), UpdateAttempt::Manual);
+                        }
+                    }
+                    self.backend.send(command.clone());
+                }
                 UiAction::Launch(id) => {
                     let opened = self.settings.launches.entry(id.clone()).or_insert(0);
                     *opened = opened.saturating_add(1);
@@ -374,6 +402,7 @@ impl LauncherUi {
                 }
                 UiAction::CheckNow => {
                     self.auto_update_attempted.clear();
+                    self.auto_update_waiting.clear();
                     self.backend.send(Command::CheckForUpdates { force: true });
                     self.backend.send(Command::Detect);
                     self.last_detect = self.backend.now();
@@ -481,9 +510,9 @@ impl LauncherUi {
         }
         if changed {
             self.announce_updates(host);
-            if self.settings.auto_update {
-                self.trigger_auto_updates();
-            }
+        }
+        if self.settings.auto_update {
+            self.trigger_auto_updates();
         }
         if self.restart_requested {
             // The helper is waiting for this process to exit before it starts the new launcher.
@@ -497,6 +526,23 @@ impl LauncherUi {
     /// Returns whether app state changed.
     fn handle(&mut self, event: Event) -> bool {
         match event {
+            Event::AutomaticUpdateDeferred { app } => {
+                for ((id, _), attempt) in &mut self.auto_update_attempted {
+                    if *id == app && *attempt == UpdateAttempt::Automatic {
+                        *attempt = UpdateAttempt::Deferred;
+                    }
+                }
+                false
+            }
+            Event::AutomaticUpdateWaiting { app } => {
+                self.auto_update_waiting.insert(app.clone());
+                for ((id, _), attempt) in &mut self.auto_update_attempted {
+                    if *id == app && *attempt == UpdateAttempt::Automatic {
+                        *attempt = UpdateAttempt::Deferred;
+                    }
+                }
+                false
+            }
             Event::Latest { app, latest, from } => {
                 self.on_latest(app, latest, from);
                 true
@@ -542,6 +588,7 @@ impl LauncherUi {
                 false
             }
             Event::JobFinished { app, result } => {
+                self.auto_update_waiting.remove(&app);
                 self.on_job_finished(app, result);
                 true
             }
@@ -674,22 +721,24 @@ impl LauncherUi {
 
     /// When auto-updates are enabled, automatically downloads and installs pending updates.
     pub(crate) fn trigger_auto_updates(&mut self) {
-        if !self.caps.manage_apps || !self.settings.auto_update {
+        if !self.caps.manage_apps || !self.settings.auto_update || !self.backend.automatic_updates_allowed() {
             return;
         }
+        let waiting = &self.auto_update_waiting;
+        self.auto_update_attempted.retain(|(id, _), attempt| *attempt != UpdateAttempt::Deferred || waiting.contains(id));
         let to_update: Vec<(String, String)> = self
             .entries
             .iter()
             .filter(|e| self.in_filter(e, Filter::Updates) && e.job.is_none() && !e.ready)
             .filter_map(|e| {
                 let v = e.latest_label()?;
-                if self.auto_update_attempted.contains(&(e.app.id.to_string(), v.clone())) { None } else { Some((e.app.id.to_string(), v)) }
+                if self.auto_update_attempted.contains_key(&(e.app.id.to_string(), v.clone())) { None } else { Some((e.app.id.to_string(), v)) }
             })
             .collect();
         for (id, version) in to_update {
             log::info!("auto-update: queuing update for {id} to {version}");
-            self.auto_update_attempted.insert((id.clone(), version));
-            self.send(Command::Install { app: id });
+            self.auto_update_attempted.insert((id.clone(), version), UpdateAttempt::Automatic);
+            self.send(Command::AutoUpdate { app: id });
         }
         if self.caps.self_update
             && let Some(r) = &self.launcher_update
@@ -697,10 +746,10 @@ impl LauncherUi {
         {
             let id = artcraft_launcher_core::catalog::LAUNCHER_ID.to_string();
             let v = r.version_label();
-            if !self.auto_update_attempted.contains(&(id.clone(), v.clone())) {
+            if !self.auto_update_attempted.contains_key(&(id.clone(), v.clone())) {
                 log::info!("auto-update: queuing launcher self-update to {v}");
-                self.auto_update_attempted.insert((id, v));
-                self.send(Command::UpdateLauncher);
+                self.auto_update_attempted.insert((id.clone(), v), UpdateAttempt::Automatic);
+                self.send(Command::AutoUpdate { app: id });
             }
         }
     }
@@ -1052,6 +1101,68 @@ mod tests {
     /// Counts the `Install` commands in `sent`, ignoring every other command.
     fn installs(sent: &RefCell<Vec<Command>>) -> usize {
         sent.borrow().iter().filter(|command| matches!(command, Command::Install { .. })).count()
+    }
+
+    #[test]
+    fn a_manual_cancel_keeps_a_deferred_update_from_resuming_automatically() {
+        for deferred_before_cancel in [true, false] {
+            let (mut launcher, sent, _ctx) = launcher();
+            launcher.settings.auto_update = true;
+            launcher.caps.self_update = true;
+            launcher.caps.manage_apps = true;
+            let id = artcraft_launcher_core::catalog::LAUNCHER_ID;
+            let release = Release { tag: "v0.9.0".into(), version: artcraft_launcher_core::version::parse("0.9.0"), ..Release::default() };
+            launcher.auto_update_attempted.insert((id.into(), release.version_label()), UpdateAttempt::Automatic);
+            launcher.launcher_update = Some(release);
+            if deferred_before_cancel {
+                launcher.handle(Event::AutomaticUpdateDeferred { app: id.into() });
+            }
+            launcher.act_command(Command::Cancel { app: id.into() });
+            launcher.flush_actions();
+            if !deferred_before_cancel {
+                launcher.handle(Event::AutomaticUpdateDeferred { app: id.into() });
+            }
+            launcher.handle(Event::JobFinished { app: id.into(), result: Err(PAUSED.into()) });
+            launcher.trigger_auto_updates();
+            assert_eq!(*sent.borrow(), vec![Command::Cancel { app: id.into() }], "deferred before cancel: {deferred_before_cancel}");
+        }
+    }
+
+    #[test]
+    fn manual_updates_are_not_retried_before_any_automatic_attempt() {
+        for id in [artcraft_launcher_core::catalog::LAUNCHER_ID, "photocraft"] {
+            let (mut launcher, sent, _ctx) = launcher();
+            launcher.settings.auto_update = true;
+            launcher.caps.self_update = true;
+            launcher.caps.manage_apps = true;
+            launcher.platform = Some(Platform { os: artcraft_launcher_core::Os::MacOs, arch: artcraft_launcher_core::Arch::Arm64 });
+            let release = Release {
+                tag: "v0.9.0".into(),
+                version: artcraft_launcher_core::version::parse("0.9.0"),
+                assets: vec![artcraft_launcher_core::release::Asset { name: format!("{id}-0.9.0-macos-universal.dmg"), ..Default::default() }],
+                ..Release::default()
+            };
+            let manual = if id == artcraft_launcher_core::catalog::LAUNCHER_ID {
+                launcher.launcher_update = Some(release);
+                Command::UpdateLauncher
+            } else {
+                let entry = launcher.entry_mut(id).unwrap();
+                entry.detected = true;
+                entry.latest = Some(LatestRelease::Found(release));
+                entry.installed = Some(artcraft_launcher_core::Installed {
+                    version: artcraft_launcher_core::version::parse("0.8.0"),
+                    source: artcraft_launcher_core::InstallSource::MacApp,
+                    location: "/Applications/PhotoCraft.app".into(),
+                    package: None,
+                });
+                Command::Install { app: id.into() }
+            };
+            launcher.act_command(manual.clone());
+            launcher.act_command(Command::Pause { app: id.into() });
+            launcher.flush_actions();
+            launcher.trigger_auto_updates();
+            assert_eq!(*sent.borrow(), vec![manual, Command::Pause { app: id.into() }]);
+        }
     }
 
     /// A CJK preference is drawable only while that language's own face is installed: having the

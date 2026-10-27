@@ -87,6 +87,7 @@
 	ArtCraft Launcher {version}	ArtCraft Launcher {version}
 	Only when I ask	Nur manuell
 	Automatically download and install updates	Updates automatisch herunterladen und installieren
+	Automatic updates wait or pause while Low Data Mode is on and resume when it’s off. Clicking Install, Update, or Resume still downloads over the current network.	Automatische Updates warten oder pausieren bei aktiviertem Datensparmodus und werden fortgesetzt, sobald er ausgeschaltet ist. Mit „Installieren“, „Aktualisieren“ oder „Fortsetzen“ werden Downloads weiterhin über das aktuelle Netzwerk ausgeführt.
 	Notify me when an installed app has an update	Benachrichtigen, wenn es für eine installierte App ein Update gibt
 	Include pre-releases (betas and release candidates)	Vorabversionen einbeziehen (Betas und Release Candidates)
 	Installing on Linux	Installation unter Linux

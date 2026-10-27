@@ -74,6 +74,7 @@
 	ArtCraft Launcher {version}	ArtCraft Launcher {version}
 	Only when I ask	Pouze na vyžádání
 	Automatically download and install updates	Automaticky stahovat a instalovat aktualizace
+	Automatic updates wait or pause while Low Data Mode is on and resume when it’s off. Clicking Install, Update, or Resume still downloads over the current network.	Automatické aktualizace se při zapnutém režimu malého objemu dat odloží nebo pozastaví a po jeho vypnutí se obnoví. Kliknutím na „Nainstalovat“, „Aktualizovat“ nebo „Pokračovat“ můžete i nadále stahovat přes aktuální síť.
 	Notify me when an installed app has an update	Upozornit, když má nainstalovaná aplikace aktualizaci
 	Include pre-releases (betas and release candidates)	Zahrnout předběžná vydání (beta verze a kandidáty na vydání)
 	Installing on Linux	Instalace v Linuxu

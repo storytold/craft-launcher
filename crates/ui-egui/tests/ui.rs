@@ -1554,8 +1554,7 @@ fn automatic_checks_run_every_five_minutes() {
 }
 
 #[test]
-/// With auto-update on, outdated apps are queued for Install and the launcher for
-/// `UpdateLauncher`.
+/// Automatic app and launcher updates are distinguished from manual installs.
 fn automatic_updates_queue_installs_for_outdated_apps_and_launcher() {
     let mut ev = events();
     ev.push(Event::LauncherUpdate(release("artcraft-launcher", "0.2.0", NOW)));
@@ -1579,9 +1578,9 @@ fn automatic_updates_queue_installs_for_outdated_apps_and_launcher() {
     );
     h.run_steps(4);
     let commands = sent.borrow().clone();
-    assert!(commands.contains(&Command::Install { app: "photocraft".into() }), "outdated photocraft should be queued for install: {commands:?}");
-    assert!(commands.contains(&Command::Install { app: "effectcraft".into() }), "outdated effectcraft should be queued for install: {commands:?}");
-    assert!(commands.contains(&Command::UpdateLauncher), "launcher update should be queued: {commands:?}");
+    assert!(commands.contains(&Command::AutoUpdate { app: "photocraft".into() }), "outdated photocraft should be queued for install: {commands:?}");
+    assert!(commands.contains(&Command::AutoUpdate { app: "effectcraft".into() }), "outdated effectcraft should be queued for install: {commands:?}");
+    assert!(commands.contains(&Command::AutoUpdate { app: "artcraft-launcher".into() }), "launcher update should be queued: {commands:?}");
 }
 
 #[test]
@@ -1609,8 +1608,87 @@ fn automatic_updates_are_disabled_by_default() {
     );
     h.run_steps(4);
     let commands = sent.borrow().clone();
+    assert!(!commands.iter().any(|command| matches!(command, Command::AutoUpdate { .. })));
     assert!(!commands.contains(&Command::Install { app: "photocraft".into() }), "photocraft should not be auto-installed when auto_update is false");
     assert!(!commands.contains(&Command::UpdateLauncher), "launcher should not be auto-updated when auto_update is false");
+}
+
+#[test]
+fn low_data_mode_defers_and_resumes_automatic_updates_without_another_release_event() {
+    struct NetworkFake {
+        inner: Fake,
+        allowed: Rc<Cell<bool>>,
+        incoming: Rc<RefCell<Vec<Event>>>,
+    }
+    impl Backend for NetworkFake {
+        fn automatic_updates_allowed(&self) -> bool {
+            self.allowed.get()
+        }
+        fn send(&mut self, command: Command) {
+            self.inner.send(command);
+        }
+        fn poll(&mut self) -> Vec<Event> {
+            let mut events = self.inner.poll();
+            events.extend(std::mem::take(&mut *self.incoming.borrow_mut()));
+            events
+        }
+        fn capabilities(&self) -> Capabilities {
+            self.inner.capabilities()
+        }
+        fn platform(&self) -> Option<Platform> {
+            self.inner.platform()
+        }
+        fn now(&self) -> i64 {
+            self.inner.now()
+        }
+    }
+    let allowed = Rc::new(Cell::new(false));
+    let incoming = Rc::new(RefCell::new(Vec::new()));
+    let sent = Rc::new(RefCell::new(Vec::new()));
+    let mut ev = events();
+    ev.push(Event::LauncherUpdate(release("artcraft-launcher", "0.9.0", NOW)));
+    let backend = NetworkFake {
+        inner: Fake { events: ev, sent: sent.clone(), manage: true, pictures: Rc::default(), asked: Vec::new(), clock: Rc::new(Cell::new(NOW)) },
+        allowed: allowed.clone(),
+        incoming: incoming.clone(),
+    };
+    let ctx = egui::Context::default();
+    let mut launcher = LauncherUi::new(&ctx, Box::new(backend), Settings { auto_update: true, notify: false, ..Settings::default() });
+    launcher.logic(&ctx, &mut NoHost);
+    assert!(!sent.borrow().iter().any(|command| matches!(command, Command::AutoUpdate { .. })));
+    assert!(sent.borrow().iter().any(|command| matches!(command, Command::CheckForUpdates { .. })), "release checks remain available");
+
+    allowed.set(true);
+    launcher.logic(&ctx, &mut NoHost);
+    let automatic: Vec<_> = sent.borrow().iter().filter(|command| matches!(command, Command::AutoUpdate { .. })).cloned().collect();
+    for id in ["photocraft", "effectcraft", "artcraft-launcher"] {
+        assert!(automatic.contains(&Command::AutoUpdate { app: id.into() }));
+    }
+    assert_eq!(automatic.len(), 3);
+    sent.borrow_mut().clear();
+    launcher.logic(&ctx, &mut NoHost);
+    assert!(sent.borrow().is_empty(), "an unchanged path must not repeat automatic updates");
+
+    allowed.set(false);
+    for id in ["photocraft", "artcraft-launcher"] {
+        incoming.borrow_mut().extend([
+            Event::AutomaticUpdateDeferred { app: id.into() },
+            Event::JobFinished { app: id.into(), result: Err(artcraft_launcher_core::protocol::PAUSED.into()) },
+        ]);
+    }
+    launcher.logic(&ctx, &mut NoHost);
+    assert!(sent.borrow().is_empty());
+    allowed.set(true);
+    launcher.logic(&ctx, &mut NoHost);
+    assert_eq!(*sent.borrow(), vec![Command::AutoUpdate { app: "photocraft".into() }, Command::AutoUpdate { app: "artcraft-launcher".into() },]);
+
+    sent.borrow_mut().clear();
+    incoming.borrow_mut().push(Event::AutomaticUpdateWaiting { app: "photocraft".into() });
+    launcher.logic(&ctx, &mut NoHost);
+    assert!(sent.borrow().is_empty(), "an active job must hold the automatic retry");
+    incoming.borrow_mut().push(Event::JobFinished { app: "photocraft".into(), result: Err(artcraft_launcher_core::protocol::PAUSED.into()) });
+    launcher.logic(&ctx, &mut NoHost);
+    assert_eq!(*sent.borrow(), vec![Command::AutoUpdate { app: "photocraft".into() }]);
 }
 
 #[test]
