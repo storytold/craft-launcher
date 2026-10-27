@@ -452,18 +452,33 @@ impl LauncherUi {
 
     // ---- grid ----------------------------------------------------------------------------
 
-    /// Installed apps first (`ids` arrives that way), then the rest under a "Not installed" header.
+    /// Installed apps first (`ids` arrives that way), then the rest. Each group can be collapsed.
     pub(crate) fn grid(&mut self, ui: &mut Ui, ids: &[&'static str]) {
         let installed = ids.iter().take_while(|id| self.is_installed(id)).count();
         let (top, rest) = ids.split_at(installed);
-        self.grid_block(ui, top);
-        if !top.is_empty() && !rest.is_empty() {
-            let t = Tokens::get(ui.ctx());
-            ui.add_space(28.0);
-            widgets::hud(ui, tl!("Not installed"), t.faint);
-            ui.add_space(12.0);
+
+        if !top.is_empty() {
+            if widgets::disclosure_header(ui, tl!("Installed"), self.settings.installed_section_open).clicked() {
+                self.settings.installed_section_open = !self.settings.installed_section_open;
+            }
+            if self.settings.installed_section_open {
+                ui.add_space(8.0);
+                self.grid_block(ui, top);
+            }
         }
-        self.grid_block(ui, rest);
+
+        if !top.is_empty() && !rest.is_empty() {
+            ui.add_space(28.0);
+        }
+        if !rest.is_empty() {
+            if widgets::disclosure_header(ui, tl!("Not installed"), self.settings.not_installed_section_open).clicked() {
+                self.settings.not_installed_section_open = !self.settings.not_installed_section_open;
+            }
+            if self.settings.not_installed_section_open {
+                ui.add_space(8.0);
+                self.grid_block(ui, rest);
+            }
+        }
         ui.add_space(24.0);
     }
 

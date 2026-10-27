@@ -51,6 +51,32 @@ pub fn hud(ui: &mut Ui, text: &str, color: Color32) -> Response {
     resp
 }
 
+/// A full-width disclosure header styled like the launcher's mono section labels.
+pub fn disclosure_header(ui: &mut Ui, text: &str, open: bool) -> Response {
+    let t = Tokens::get(ui.ctx());
+    let (rect, resp) = ui.allocate_exact_size(vec2(ui.available_width(), 32.0), Sense::click());
+    let hovered = resp.hovered();
+    if hovered {
+        ui.painter().rect_filled(rect, CornerRadius::ZERO, t.line);
+    }
+
+    let center = egui::pos2(rect.left() + 11.0, rect.center().y);
+    let arrow = if open {
+        vec![center + vec2(-3.0, -1.5), center + vec2(3.0, -1.5), center + vec2(0.0, 2.5)]
+    } else {
+        vec![center + vec2(-1.5, -3.0), center + vec2(-1.5, 3.0), center + vec2(2.5, 0.0)]
+    };
+    let color = if hovered { t.ink_strong } else { t.faint };
+    ui.painter().add(egui::Shape::convex_polygon(arrow, color, Stroke::NONE));
+
+    let label_color = if hovered { t.ink_strong } else { t.faint };
+    let galley = hud_galley(ui, text, label_color);
+    let label_rect = Rect::from_min_size(egui::pos2(rect.left() + 26.0, rect.top()), vec2(galley.size().x, rect.height()));
+    paint_left(ui, label_rect, galley, label_color);
+    resp.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, true, text));
+    resp.on_hover_cursor(egui::CursorIcon::PointingHand)
+}
+
 /// A mono label cut to one line with "…" where it is wider than `max_width`; the full text shows
 /// on hover and is what screen readers read.
 pub fn hud_elided(ui: &mut Ui, text: &str, color: Color32, max_width: f32) -> Response {

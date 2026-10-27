@@ -124,6 +124,10 @@ pub struct Settings {
     pub launches: BTreeMap<String, u32>,
     /// Catalog ids pinned to Quick Launch.
     pub pinned: std::collections::BTreeSet<String>,
+    /// Whether the installed apps section is expanded in the grid.
+    pub installed_section_open: bool,
+    /// Whether the not installed apps section is expanded in the grid.
+    pub not_installed_section_open: bool,
 }
 
 impl Settings {
@@ -207,6 +211,8 @@ impl Default for Settings {
             tray_hint_shown: false,
             launches: BTreeMap::new(),
             pinned: std::collections::BTreeSet::new(),
+            installed_section_open: true,
+            not_installed_section_open: true,
         }
     }
 }
