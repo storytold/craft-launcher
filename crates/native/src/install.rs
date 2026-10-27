@@ -1665,8 +1665,10 @@ pub mod macos {
                     Duration::from_secs(300),
                 )
             };
+            // diskimages-helper can stay busy for a while (another image, a shared CI runner): a
+            // minute of retries is still quick, as in craft-update (storytold/craft-libs#349).
             let mut attached = attach();
-            for wait in [1, 2, 4, 8] {
+            for wait in [1, 2, 4, 8, 16, 32] {
                 if attached.is_ok() {
                     break;
                 }
