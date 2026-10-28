@@ -84,6 +84,47 @@ struct Shared {
     feed_throttle: Mutex<FeedThrottle>,
     /// Apps whose details pictures are on their way (a second request meanwhile does nothing).
     pictures_busy: Mutex<std::collections::HashSet<&'static str>>,
+    /// What is known about how much disk space the installed apps take.
+    sizes: Mutex<Sizes>,
+    /// A size pass is running; another request waits for it.
+    measuring: AtomicBool,
+    /// A size pass was asked for: the one that is running measures again once it ends.
+    sizes_dirty: AtomicBool,
+}
+
+/// What is known about how much disk space the installed apps take.
+#[derive(Default)]
+struct Sizes {
+    /// The answer for each app: where it was measured and what that came to.
+    measured: HashMap<String, Measured>,
+    /// A number per app that goes up every time the app's install changes. What was measured
+    /// before a change is out of date, even when the folder it was measured at is the same.
+    generations: HashMap<String, u64>,
+}
+
+/// One answer about an app's disk space: the folder (or file) it was measured at, and what that
+/// came to (`None` when there was nothing whose size could be measured).
+struct Measured {
+    /// Where the answer belongs to: the path and the version that was measured. A new one means
+    /// the app must be measured again.
+    key: String,
+    bytes: Option<u64>,
+    /// The app's generation when it was measured: an answer from an older one is out of date.
+    generation: u64,
+}
+
+impl Sizes {
+    /// How many times the app's install has changed.
+    fn generation(&self, app: &str) -> u64 {
+        self.generations.get(app).copied().unwrap_or(0)
+    }
+
+    /// Says the app's install changed: what was measured for it is out of date.
+    fn change(&mut self, app: &str) {
+        let generation = self.generations.entry(app.to_string()).or_insert(0);
+        *generation += 1;
+        self.measured.remove(app);
+    }
 }
 
 #[derive(Clone, Copy)]
@@ -123,6 +164,128 @@ impl Shared {
         self.events.lock().unwrap_or_else(PoisonError::into_inner).push(event);
         (self.waker)();
     }
+}
+
+/// Measures how much disk space every installed app takes, on its own thread: a folder walk can
+/// take a while, and each answer arrives as one [`Event::InstallSize`]. A pass already running
+/// does another one when the disk changed under it.
+fn measure_sizes(shared: &Arc<Shared>) {
+    measure_sizes_with(shared, measure_all_sizes);
+}
+
+/// Starts a size pass, or asks for one to run: `pass` does the measuring.
+fn measure_sizes_with(shared: &Arc<Shared>, pass: impl Fn(&Shared) + Send + 'static) {
+    // Ask first, then take the flag: a pass that is giving the flag up has already seen the
+    // request, whichever of the two threads gets there first. Asking the other way round loses a
+    // request that arrives between the pass's own check and the flag being given up.
+    shared.sizes_dirty.store(true, Ordering::SeqCst);
+    if shared.measuring.swap(true, Ordering::SeqCst) {
+        return;
+    }
+    let shared = shared.clone();
+    std::thread::spawn(move || {
+        loop {
+            shared.sizes_dirty.store(false, Ordering::SeqCst);
+            pass(&shared);
+            // A request came in while the pass was running: measure again.
+            if shared.sizes_dirty.swap(false, Ordering::SeqCst) {
+                continue;
+            }
+            // The pass is over, unless a request came in while it was giving up its flag.
+            if end_pass(&shared) {
+                break;
+            }
+        }
+    });
+}
+
+/// Ends a size pass: gives up the flag, so that a request can start a new pass, and takes the
+/// flag back when a request came in while it was being given up. Returns whether the pass is
+/// over.
+fn end_pass(shared: &Shared) -> bool {
+    shared.measuring.store(false, Ordering::SeqCst);
+    // A request may have arrived between the pass's own check and the flag being given up: it
+    // found the pass still running, so it only set the dirty flag. Take the flag back, or the
+    // request is lost and the sizes stay as they were until the next detection pass.
+    !shared.sizes_dirty.load(Ordering::SeqCst) || shared.measuring.swap(true, Ordering::SeqCst)
+}
+
+/// One look at every app: what it takes, from the last answer where that install hasn't changed
+/// since. Apps that aren't installed anymore (or never were) say so.
+fn measure_all_sizes(shared: &Shared) {
+    for app in &SUITE {
+        // The record and its generation are taken together, under the lock order every other
+        // site uses (installed, then sizes): reading them apart lets a change between the two
+        // hand an old record to a new generation, which would keep a size the app no longer has.
+        let (found, generation) = {
+            let installed = shared.installed.lock().unwrap_or_else(PoisonError::into_inner);
+            let found = installed.get(app.id).cloned();
+            let sizes = shared.sizes.lock().unwrap_or_else(PoisonError::into_inner);
+            (found, sizes.generation(app.id))
+        };
+        let bytes = match found {
+            None => {
+                shared.sizes.lock().unwrap_or_else(PoisonError::into_inner).measured.remove(app.id);
+                None
+            }
+            Some(inst) => {
+                // Where the app's files are: the folder (or file) to measure. A Flatpak's deploy
+                // folder is new after every update, so the answer is measured again when it is.
+                let target = crate::size::target(&inst);
+                let path = target.as_ref().map_or_else(|| inst.location.clone(), |p| p.display().to_string());
+                // The copy is part of the key: an update that leaves the path alone (an MSI or a
+                // macOS bundle replaced in place) is another copy, and is measured again.
+                let key = match &inst.version {
+                    Some(v) => format!("{path}@{v}"),
+                    None => path,
+                };
+                // Only an answer from the generation just read is current: one from before the
+                // change belongs to a copy the app no longer has.
+                let cached = {
+                    let sizes = shared.sizes.lock().unwrap_or_else(PoisonError::into_inner);
+                    sizes.measured.get(app.id).filter(|m| m.key == key && m.generation == generation).map(|m| m.bytes)
+                };
+                match cached {
+                    Some(bytes) => bytes,
+                    None => {
+                        let bytes = target.map(|p| crate::size::path_size(&p));
+                        // The app may have changed while its folder was being walked: then this
+                        // answer is out of date, and the next pass measures the app again.
+                        let answer = Measured { key, bytes, generation };
+                        if !keep_measured(shared, app.id, answer) {
+                            log::debug!("{}: the app changed while it was being measured", app.id);
+                        }
+                        bytes
+                    }
+                }
+            }
+        };
+        emit_size_if_current(shared, app.id, generation, bytes);
+    }
+}
+
+/// Says how much room an app takes, unless it changed while its size was being worked out: the
+/// answer belongs to a generation the app has already left, and the pass that change asked for
+/// says what it takes now.
+fn emit_size_if_current(shared: &Shared, app: &str, generation: u64, bytes: Option<u64>) {
+    // Held across the emit, so a change cannot slip in between the check and the publication.
+    let sizes = shared.sizes.lock().unwrap_or_else(PoisonError::into_inner);
+    if sizes.generation(app) != generation {
+        return;
+    }
+    shared.emit(Event::InstallSize { app: app.to_string(), bytes });
+}
+
+/// Keeps what was measured for an app, unless the app changed while it was being measured: an
+/// out-of-date answer would be found again by the next pass, and the app's size would stay
+/// wrong.
+fn keep_measured(shared: &Shared, app: &str, answer: Measured) -> bool {
+    let mut sizes = shared.sizes.lock().unwrap_or_else(PoisonError::into_inner);
+    if sizes.generation(app) != answer.generation {
+        return false;
+    }
+    sizes.measured.insert(app.to_string(), answer);
+    true
 }
 
 pub struct NativeBackend {
@@ -170,6 +333,9 @@ impl NativeBackend {
             feed_ok_at: Mutex::new(None),
             feed_throttle: Mutex::new(FeedThrottle::load(&paths.feed_throttle(), crate::now())),
             pictures_busy: Mutex::new(std::collections::HashSet::new()),
+            sizes: Mutex::new(Sizes::default()),
+            measuring: AtomicBool::new(false),
+            sizes_dirty: AtomicBool::new(false),
             last_check: Mutex::new(None),
         });
         let backend = Self { shared, paths, http, source, platform: native_platform() };
@@ -237,6 +403,8 @@ impl NativeBackend {
             for app in &SUITE {
                 report_partial(app, &shared, &paths, platform, &options);
             }
+            // Now that the apps are known, so is how much space they take.
+            measure_sizes(&shared);
             drop(busy);
         });
     }
@@ -378,15 +546,22 @@ impl NativeBackend {
                 (result, _) => result,
             };
             {
+                // Both change together, in the order used everywhere else (installed, then
+                // sizes), so a measurement pass can never pair the new record with the old
+                // generation — and the generation is up before anything is said about the app.
                 let mut map = shared.installed.lock().unwrap_or_else(PoisonError::into_inner);
+                let mut sizes = shared.sizes.lock().unwrap_or_else(PoisonError::into_inner);
                 match &found {
                     Some(i) => map.insert(app.id.to_string(), i.clone()),
                     None => map.remove(app.id),
                 };
+                // The install changed the disk: what was measured for the app is out of date.
+                sizes.change(app.id);
             }
             shared.emit(Event::Detected { app: app.id.to_string(), installed: found });
             drop(job);
             shared.emit(Event::JobFinished { app: app.id.to_string(), result });
+            measure_sizes(&shared);
         });
     }
 
@@ -1187,6 +1362,9 @@ mod tests {
             feed_ok_at: Mutex::new(None),
             feed_throttle: Mutex::new(FeedThrottle::new()),
             pictures_busy: Mutex::new(std::collections::HashSet::new()),
+            sizes: Mutex::new(Sizes::default()),
+            measuring: AtomicBool::new(false),
+            sizes_dirty: AtomicBool::new(false),
         }
     }
 
@@ -1762,5 +1940,165 @@ mod tests {
             assert_eq!(claim.join().unwrap(), Err(CANCELLED.to_string()));
         });
         assert!(!restarting.load(Ordering::SeqCst));
+    }
+
+    #[test]
+    fn a_request_that_comes_while_a_pass_gives_up_its_flag_is_not_lost() {
+        let shared = shared();
+        // The pass is running and has just found no request.
+        shared.measuring.store(true, Ordering::SeqCst);
+        // A request comes in: it finds the pass still running, so it only sets the flag.
+        shared.sizes_dirty.store(true, Ordering::SeqCst);
+        // The pass gives up its flag and sees the request: it takes the flag back and goes on.
+        assert!(!end_pass(&shared));
+        assert!(shared.measuring.load(Ordering::SeqCst));
+        assert!(shared.sizes_dirty.load(Ordering::SeqCst));
+    }
+
+    #[test]
+    fn a_pass_without_a_request_ends_and_frees_the_flag() {
+        let shared = shared();
+        shared.measuring.store(true, Ordering::SeqCst);
+        assert!(end_pass(&shared));
+        assert!(!shared.measuring.load(Ordering::SeqCst));
+    }
+
+    #[test]
+    fn a_request_during_a_pass_measures_again() {
+        let shared = Arc::new(shared());
+        let (started_tx, started_rx) = mpsc::channel::<()>();
+        let (go_tx, wait_rx) = mpsc::channel::<()>();
+        let passes = Arc::new(AtomicUsize::new(0));
+        let count = passes.clone();
+        let pass = move |_: &Shared| {
+            count.fetch_add(1, Ordering::SeqCst);
+            let _ = started_tx.send(());
+            let _ = wait_rx.recv();
+        };
+        measure_sizes_with(&shared, pass);
+        started_rx.recv().unwrap();
+        // A request comes in while the pass is running: it only sets the flag.
+        measure_sizes_with(&shared, |_| {});
+        go_tx.send(()).unwrap();
+        // The pass ends and the request is answered by another pass.
+        started_rx.recv().unwrap();
+        assert_eq!(passes.load(Ordering::SeqCst), 2);
+        go_tx.send(()).unwrap();
+    }
+
+    #[test]
+    fn a_request_asks_before_it_looks_at_the_flag() {
+        // The window between asking and looking is one instruction wide, so no run can be caught
+        // by a test: what matters is the order the two steps are written in.
+        let source = include_str!("backend.rs");
+        let start = source.find("fn measure_sizes_with").expect("the function is there");
+        let body = &source[start..];
+        let body = &body[..body.find("\nfn ").unwrap_or(body.len())];
+        let ask = body.find("sizes_dirty.store(true").expect("the request is recorded");
+        let look = body.find("measuring.swap(true").expect("the flag is looked at");
+        assert!(ask < look, "the request must record itself before it looks at the flag");
+    }
+
+    #[test]
+    fn a_measurement_from_before_a_change_is_not_kept() {
+        let shared = shared();
+        let generation = shared.sizes.lock().unwrap().generation("photocraft");
+        let answer = || Measured { key: "C:/apps/photocraft".into(), bytes: Some(42), generation };
+        assert!(keep_measured(&shared, "photocraft", answer()));
+        // The app changes while its folder is being walked: the answer is out of date.
+        shared.sizes.lock().unwrap().change("photocraft");
+        assert!(!keep_measured(&shared, "photocraft", answer()));
+        // Nothing is kept: the next pass measures the app again.
+        assert!(!shared.sizes.lock().unwrap().measured.contains_key("photocraft"));
+    }
+
+    #[test]
+    fn a_size_the_app_no_longer_has_is_not_published() {
+        let shared = shared();
+        let stale = shared.sizes.lock().unwrap().generation("photocraft");
+        // The app changes while its size is being worked out, so the answer belongs to a
+        // generation the app has left: the UI must not hear about it.
+        shared.sizes.lock().unwrap().change("photocraft");
+        emit_size_if_current(&shared, "photocraft", stale, Some(100));
+        assert!(!shared.events.lock().unwrap().iter().any(|e| matches!(e, Event::InstallSize { .. })));
+        // The generation that is current now is published.
+        let now = shared.sizes.lock().unwrap().generation("photocraft");
+        emit_size_if_current(&shared, "photocraft", now, Some(200));
+        assert!(shared.events.lock().unwrap().iter().any(|e| matches!(e, Event::InstallSize { app, bytes: Some(200) } if app == "photocraft")));
+    }
+
+    #[test]
+    fn the_record_and_its_generation_are_read_together() {
+        // Read apart, a change between the two hands an old record to a new generation, which
+        // the pass then keeps as if it were current. The window is one statement wide, so no run
+        // can be caught by a test: what matters is that both are read from one block, before the
+        // folder is walked.
+        let source = include_str!("backend.rs");
+        let start = source.find("fn measure_all_sizes").expect("the function is there");
+        let body = &source[start..];
+        let body = &body[..body.find("\nfn ").unwrap_or(body.len())];
+        let pair = body.find("let (found, generation) = {").expect("both are taken in one block");
+        let record = body[pair..].find("installed.get(app.id)").expect("the record is read");
+        let generation = body[pair..].find("sizes.generation(app.id)").expect("the generation is read");
+        let walk = body[pair..].find("crate::size::path_size").expect("the folder is walked");
+        assert!(record < generation && generation < walk, "both are read before anything is measured");
+    }
+
+    #[test]
+    fn the_generation_changes_before_the_app_is_published() {
+        // A pass started by the Detected or JobFinished event must read the record with the
+        // generation that goes with it, so the change is written ahead of both. The two are a
+        // statement apart, which no run can be paused between: the order is what is checked.
+        let source = include_str!("backend.rs");
+        let start = source.find("fn start_job").expect("the function is there");
+        let job = &source[start..];
+        let job = &job[..job.find("\n    fn update_launcher").unwrap_or(job.len())];
+        let at = job.find("let mut map = shared.installed.lock()").expect("the job puts the record away");
+        let job = &job[at..];
+        let change = job.find("sizes.change(app.id)").expect("the install changes the generation");
+        let detected = job.find("Event::Detected").expect("the app is published");
+        let finished = job.find("Event::JobFinished").expect("the job is published");
+        assert!(change < detected && detected < finished, "what was measured must be out of date before either is said");
+    }
+
+    #[test]
+    fn an_app_that_changed_is_measured_again() {
+        let shared = shared();
+        let dir = tempfile::tempdir().unwrap();
+        let app = SUITE.iter().find(|a| a.id == "photocraft").unwrap();
+        std::fs::write(dir.path().join("app.bin"), vec![0u8; 100]).unwrap();
+        let inst = Installed { version: None, source: InstallSource::Launcher, location: dir.path().display().to_string(), package: None };
+        shared.installed.lock().unwrap().insert(app.id.to_string(), inst);
+        measure_all_sizes(&shared);
+        assert_eq!(shared.sizes.lock().unwrap().measured.get(app.id).map(|m| m.bytes), Some(Some(100)));
+        // The app changes: what was measured is out of date, and the app is measured again.
+        std::fs::write(dir.path().join("app.bin"), vec![0u8; 200]).unwrap();
+        shared.sizes.lock().unwrap().change(app.id);
+        measure_all_sizes(&shared);
+        assert_eq!(shared.sizes.lock().unwrap().measured.get(app.id).map(|m| m.bytes), Some(Some(200)));
+    }
+
+    #[test]
+    fn a_new_version_at_the_same_path_is_measured_again() {
+        let shared = shared();
+        let dir = tempfile::tempdir().unwrap();
+        let app = SUITE.iter().find(|a| a.id == "photocraft").unwrap();
+        std::fs::write(dir.path().join("app.bin"), vec![0u8; 100]).unwrap();
+        let inst = Installed {
+            version: version::parse("1.0.0"),
+            source: InstallSource::Launcher,
+            location: dir.path().display().to_string(),
+            package: None,
+        };
+        shared.installed.lock().unwrap().insert(app.id.to_string(), inst.clone());
+        measure_all_sizes(&shared);
+        assert_eq!(shared.sizes.lock().unwrap().measured.get(app.id).map(|m| m.bytes), Some(Some(100)));
+        // The app is updated in place: the path is the same, the version is not.
+        std::fs::write(dir.path().join("app.bin"), vec![0u8; 200]).unwrap();
+        let mut updated = inst;
+        updated.version = version::parse("2.0.0");
+        shared.installed.lock().unwrap().insert(app.id.to_string(), updated);
+        measure_all_sizes(&shared);
+        assert_eq!(shared.sizes.lock().unwrap().measured.get(app.id).map(|m| m.bytes), Some(Some(200)));
     }
 }

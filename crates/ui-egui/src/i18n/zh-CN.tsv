@@ -177,6 +177,7 @@ column	App	应用
 column	Installed	已安装版本
 column	Latest	最新版本
 column	Released	发布日期
+column	Size	大小
 filter	Installed	已安装
 	{name} details	{name} 详情
 @plural	{n} min ago|{n} min ago	{n} 分钟前
@@ -348,4 +349,7 @@ figcraft	Interface design and prototyping	界面设计与原型制作
 	Previous app	上一个应用
 	Show {n} more changes	显示另外 {n} 项更改
 	Last updated: {date}	最后更新：{date}
+	Size on disk	磁盘占用
+	Total: {size}	总计：{size}
+	Disk space used by the installed apps	已安装应用占用的磁盘空间
 column	Version	版本

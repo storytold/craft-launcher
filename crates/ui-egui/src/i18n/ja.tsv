@@ -266,6 +266,7 @@ column	App	アプリ
 column	Installed	インストール済みバージョン
 column	Latest	最新バージョン
 column	Released	公開日
+column	Size	サイズ
 
 # Contextual: the filter tab names a group (the status pill says "Installed")
 filter	Installed	インストール済み
@@ -383,4 +384,7 @@ filter	Installed	インストール済み
 	Previous app	前のアプリ
 	Show {n} more changes	さらに{n}件の変更を表示
 	Last updated: {date}	最終更新: {date}
+	Size on disk	ディスク使用量
+	Total: {size}	合計: {size}
+	Disk space used by the installed apps	インストール済みアプリが使用するディスク容量
 column	Version	バージョン

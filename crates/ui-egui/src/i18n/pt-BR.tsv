@@ -251,6 +251,7 @@ column	App	Aplicativo
 column	Installed	Instalada
 column	Latest	Última
 column	Released	Lançamento
+column	Size	Tamanho
 
 # Contextual: the filter tab names a group (the status pill says "Installed")
 filter	Installed	Instalados
@@ -368,4 +369,7 @@ filter	Installed	Instalados
 	Previous app	Aplicativo anterior
 	Show {n} more changes	Mostrar mais {n} alterações
 	Last updated: {date}	Última atualização: {date}
+	Size on disk	Tamanho em disco
+	Total: {size}	Total: {size}
+	Disk space used by the installed apps	Espaço em disco usado pelos aplicativos instalados
 column	Version	Versão

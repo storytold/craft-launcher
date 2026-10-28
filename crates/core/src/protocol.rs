@@ -194,6 +194,13 @@ pub enum Event {
         app: String,
         installed: Option<Installed>,
     },
+    /// How much disk space an installed copy takes, measured on its own thread. `None` when the
+    /// app isn't installed, or what's installed has no folder to measure (a package a system
+    /// package manager owns, a bare binary).
+    InstallSize {
+        app: String,
+        bytes: Option<u64>,
+    },
     Progress {
         app: String,
         phase: JobPhase,

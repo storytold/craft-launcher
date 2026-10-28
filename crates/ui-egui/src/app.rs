@@ -512,6 +512,12 @@ impl LauncherUi {
                 }
                 true
             }
+            Event::InstallSize { app, bytes } => {
+                if let Some(e) = self.entry_mut(&app) {
+                    e.size = bytes;
+                }
+                false
+            }
             Event::Progress { app, phase } => {
                 self.on_progress(app, phase);
                 false
@@ -869,6 +875,10 @@ impl LauncherUi {
                 SortKey::Released => {
                     let at = |e: &AppEntry| e.release().and_then(|r| r.published_at);
                     let (x, y) = (at(a), at(b));
+                    opt(x.zip(y).map(|(x, y)| x.cmp(&y)), x.is_some(), y.is_some())
+                }
+                SortKey::Size => {
+                    let (x, y) = (a.size, b.size);
                     opt(x.zip(y).map(|(x, y)| x.cmp(&y)), x.is_some(), y.is_some())
                 }
             };

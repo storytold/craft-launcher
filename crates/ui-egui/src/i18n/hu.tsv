@@ -264,6 +264,7 @@ column	App	Alkalmazás
 column	Installed	Telepített
 column	Latest	Legújabb
 column	Released	Dátum
+column	Size	Méret
 
 # Contextual: the filter tab names a group (the status pill says "Installed")
 filter	Installed	Telepítve
@@ -381,4 +382,7 @@ filter	Installed	Telepítve
 	Previous app	Előző alkalmazás
 	Show {n} more changes	{n} további változás megjelenítése
 	Last updated: {date}	Utoljára frissítve: {date}
+	Size on disk	Lemezfoglalás
+	Total: {size}	Összesen: {size}
+	Disk space used by the installed apps	A telepített alkalmazások lemezfoglalása
 column	Version	Verzió

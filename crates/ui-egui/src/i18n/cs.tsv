@@ -242,6 +242,7 @@ column	App	Aplikace
 column	Installed	Nainstalováno
 column	Latest	Nejnovější
 column	Released	Vydáno
+column	Size	Velikost
 filter	Installed	Nainstalováno
 	App details	Podrobnosti o aplikaci
 	More actions for {name}	Další akce pro {name}
@@ -348,4 +349,7 @@ filter	Installed	Nainstalováno
 	Previous app	Předchozí aplikace
 	Show {n} more changes	Zobrazit dalších změn: {n}
 	Last updated: {date}	Naposledy aktualizováno: {date}
+	Size on disk	Velikost na disku
+	Total: {size}	Celkem: {size}
+	Disk space used by the installed apps	Místo na disku zabrané nainstalovanými aplikacemi
 column	Version	Verze

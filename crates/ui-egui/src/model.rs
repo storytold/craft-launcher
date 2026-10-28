@@ -22,11 +22,14 @@ pub struct AppEntry {
     pub paused: Option<PausedDownload>,
     /// A finished download waiting for another try at installing it.
     pub ready: bool,
+    /// Disk space this app takes, once the backend has measured it (`None` while unknown, or
+    /// when what's installed has nothing on disk to measure).
+    pub size: Option<u64>,
 }
 
 impl AppEntry {
     pub fn new(app: &'static CraftApp) -> Self {
-        Self { app, latest: None, installed: None, detected: false, job: None, origin: None, paused: None, ready: false }
+        Self { app, latest: None, installed: None, detected: false, job: None, origin: None, paused: None, ready: false, size: None }
     }
 
     pub fn release(&self) -> Option<&Release> {

@@ -260,6 +260,7 @@ column	App	Приложение
 column	Installed	Текущая
 column	Latest	Последняя
 column	Released	Дата релиза
+column	Size	Размер
 
 # Contextual: the filter tab names a group (the status pill says "Installed")
 filter	Installed	Установлены
@@ -376,4 +377,7 @@ filter	Installed	Установлены
 	Previous app	Предыдущее приложение
 	Show {n} more changes	Показать ещё изменений: {n}
 	Last updated: {date}	Последнее обновление: {date}
+	Size on disk	Размер на диске
+	Total: {size}	Всего: {size}
+	Disk space used by the installed apps	Место на диске, занятое установленными приложениями
 column	Version	Версия

@@ -27,6 +27,7 @@ pub mod queue;
 pub mod screenshots;
 pub mod self_update;
 pub mod single_instance;
+pub mod size;
 pub mod source;
 
 pub use backend::NativeBackend;

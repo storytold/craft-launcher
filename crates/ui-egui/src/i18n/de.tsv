@@ -263,6 +263,7 @@ column	App	App
 column	Installed	Lokal
 column	Latest	Neueste
 column	Released	Datum
+column	Size	Größe
 
 # Contextual: the filter tab names a group (the status pill says "Installed")
 filter	Installed	Installiert
@@ -380,4 +381,7 @@ filter	Installed	Installiert
 	Previous app	Vorherige App
 	Show {n} more changes	{n} weitere Änderungen anzeigen
 	Last updated: {date}	Zuletzt aktualisiert: {date}
+	Size on disk	Belegter Speicherplatz
+	Total: {size}	Gesamt: {size}
+	Disk space used by the installed apps	Von den installierten Apps belegter Speicherplatz
 column	Version	Version
