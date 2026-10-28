@@ -1008,11 +1008,16 @@ impl LauncherUi {
         });
     }
 
-    /// The menu items for an installed app: open, reveal in the file manager, reinstall, and
-    /// uninstall (which asks first).
+    /// The menu items for an installed app: open, its launch options, reveal in the file manager,
+    /// reinstall, and uninstall (which asks first).
     fn menu_installed(&mut self, ui: &mut Ui, status: &AppStatus, id: &str, reveal: &'static str) {
         if ui.button(tl!("Open")).clicked() {
             self.launch_app(id);
+            ui.close();
+        }
+        if ui.button(tl!("Launch options…")).clicked() {
+            let flags = self.settings.launch_flags.get(id).cloned().unwrap_or_default();
+            self.dialog = Some(Dialog::LaunchFlags { app: id.to_string(), flags });
             ui.close();
         }
         if ui.button(t(reveal)).clicked() {

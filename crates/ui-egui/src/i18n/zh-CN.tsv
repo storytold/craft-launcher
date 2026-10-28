@@ -54,6 +54,13 @@
 	Release notes	更新说明
 	Reinstall	重新安装
 	Uninstall…	卸载…
+	Launch options…	启动选项…
+	{name} launch options	{name} 启动选项
+	Flags added each time the app is opened	每次打开应用时附加的参数
+	Separate flags with spaces. Quote a value that has spaces in it.	用空格分隔各个参数。含有空格的值请用引号括起来。
+	A quote isn't closed.	有引号未闭合。
+	{name} wasn't opened: a quote in its launch options isn't closed.	未打开 {name}：其启动选项中有引号未闭合。
+	Save	保存
 	All releases	所有版本
 	ArtCraft Launcher {version} is available.	ArtCraft Launcher {version} 已可更新。
 	Dismiss	忽略

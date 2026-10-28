@@ -32,8 +32,10 @@ pub enum Command {
     Uninstall {
         app: String,
     },
+    /// Start an installed app, passing `args` (the user's launch flags) on its command line.
     Launch {
         app: String,
+        args: Vec<String>,
     },
     /// Show the installed app in the file manager.
     Reveal {

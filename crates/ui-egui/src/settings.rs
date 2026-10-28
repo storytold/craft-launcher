@@ -122,6 +122,9 @@ pub struct Settings {
     pub tray_hint_shown: bool,
     /// How many times each app was opened from the launcher (catalog id → count), for "Frequently used".
     pub launches: BTreeMap<String, u32>,
+    /// Extra command-line flags each app is opened with (catalog id → the text as typed, split
+    /// by [`args::split`](artcraft_launcher_core::args::split) at launch).
+    pub launch_flags: BTreeMap<String, String>,
 }
 
 impl Settings {
@@ -204,6 +207,7 @@ impl Default for Settings {
             hidden: std::collections::BTreeSet::new(),
             tray_hint_shown: false,
             launches: BTreeMap::new(),
+            launch_flags: BTreeMap::new(),
         }
     }
 }

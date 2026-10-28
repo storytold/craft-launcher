@@ -59,6 +59,13 @@
 	Show in Files	Zobrazit v Souborech
 	Reinstall	Znovu nainstalovat
 	Uninstall…	Odinstalovat…
+	Launch options…	Možnosti spuštění…
+	{name} launch options	Možnosti spuštění aplikace {name}
+	Flags added each time the app is opened	Přepínače přidané při každém otevření aplikace
+	Separate flags with spaces. Quote a value that has spaces in it.	Přepínače oddělte mezerami. Hodnotu s mezerami dejte do uvozovek.
+	A quote isn't closed.	Uvozovky nejsou uzavřené.
+	{name} wasn't opened: a quote in its launch options isn't closed.	Aplikace {name} nebyla otevřena: uvozovky v jejích možnostech spuštění nejsou uzavřené.
+	Save	Uložit
 	All releases	Všechna vydání
 	ArtCraft Launcher {version} is available.	Je k dispozici ArtCraft Launcher {version}.
 	Dismiss	Skrýt

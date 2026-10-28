@@ -72,6 +72,13 @@
 	Show in Files	Megjelenítés a fájlkezelőben
 	Reinstall	Újratelepítés
 	Uninstall…	Eltávolítás…
+	Launch options…	Indítási beállítások…
+	{name} launch options	{name} indítási beállításai
+	Flags added each time the app is opened	Kapcsolók, amelyeket az alkalmazás minden megnyitásakor átad
+	Separate flags with spaces. Quote a value that has spaces in it.	A kapcsolókat szóközzel válassza el. A szóközt tartalmazó értéket tegye idézőjelbe.
+	A quote isn't closed.	Egy idézőjel nincs lezárva.
+	{name} wasn't opened: a quote in its launch options isn't closed.	A(z) {name} nem nyílt meg: az indítási beállításaiban egy idézőjel nincs lezárva.
+	Save	Mentés
 	All releases	Minden kiadás
 	ArtCraft Launcher {version} is available.	Elérhető az ArtCraft Launcher új verziója: {version}.
 	Dismiss	Elrejtés

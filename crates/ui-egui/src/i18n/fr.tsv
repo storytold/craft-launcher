@@ -70,6 +70,13 @@
 	Show in Files	Afficher dans Fichiers
 	Reinstall	Réinstaller
 	Uninstall…	Désinstaller…
+	Launch options…	Options de lancement…
+	{name} launch options	Options de lancement de {name}
+	Flags added each time the app is opened	Options ajoutées à chaque ouverture de l'application
+	Separate flags with spaces. Quote a value that has spaces in it.	Séparez les options par des espaces. Mettez entre guillemets une valeur qui contient des espaces.
+	A quote isn't closed.	Un guillemet n'est pas fermé.
+	{name} wasn't opened: a quote in its launch options isn't closed.	{name} n'a pas été ouvert : un guillemet n'est pas fermé dans ses options de lancement.
+	Save	Enregistrer
 	All releases	Toutes les versions
 	ArtCraft Launcher {version} is available.	ArtCraft Launcher {version} est disponible.
 	Dismiss	Ignorer
