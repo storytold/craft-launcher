@@ -1,6 +1,7 @@
 //! The header, toolbar, footer, the grid of cards and the table, laid out like the apps page on
 //! getartcraft.com: hairline cells, mono labels and square controls.
 
+use artcraft_launcher_core::CraftApp;
 use artcraft_launcher_core::details::AppDetails;
 use artcraft_launcher_core::platform::pick_asset;
 use artcraft_launcher_core::protocol::{Command, JobPhase};
@@ -63,6 +64,66 @@ const CARD_PAD: f32 = 20.0;
 const TRAFFIC_LIGHTS_W: f32 = 72.0;
 
 impl LauncherUi {
+    fn pin_button(&mut self, ui: &mut Ui, app: &'static CraftApp) {
+        self.pin_button_with_offset(ui, app, egui::Vec2::ZERO);
+    }
+
+    fn pin_button_with_offset(&mut self, ui: &mut Ui, app: &'static CraftApp, offset: egui::Vec2) {
+        let pinned = self.settings.pinned.contains(app.id);
+        let label = if pinned {
+            fmt(tl!("Remove {app} from Quick Launch"), &[("app", app.name)])
+        } else {
+            fmt(tl!("Add {app} to Quick Launch"), &[("app", app.name)])
+        };
+        if widgets::glyph_button_with_offset(ui, widgets::Glyph::Star(pinned), &label, offset).clicked() {
+            self.toggle_pin(app.id);
+        }
+    }
+
+    pub(crate) fn quick_launch(&mut self, ui: &mut Ui) {
+        let entries: Vec<_> =
+            self.entries.iter().filter(|e| self.settings.pinned.contains(e.app.id) && !self.settings.hidden.contains(e.app.id)).cloned().collect();
+        if entries.is_empty() {
+            return;
+        }
+        let t = Tokens::get(ui.ctx());
+        widgets::hud(ui, tl!("Quick Launch"), t.muted);
+        ui.add_space(8.0);
+        ui.push_id("quick-launch", |ui| {
+            ui.horizontal_wrapped(|ui| {
+                for entry in entries {
+                    ui.push_id(entry.app.id, |ui| {
+                        egui::Frame::new().stroke(t.hairline()).inner_margin(8).show(ui, |ui| {
+                            ui.horizontal(|ui| {
+                                self.pin_button(ui, entry.app);
+                                let status = entry.status(self.platform, self.caps.manage_apps);
+                                let installed = status.is_installed();
+                                if let Some(icon) = crate::icons::app_image(ui.ctx(), entry.app.id, installed) {
+                                    ui.add(icon.fit_to_exact_size(vec2(24.0, 24.0)));
+                                }
+                                widgets::wordmark_in(ui, entry.app, 16.0, installed);
+                                if let Some(phase) = entry.job {
+                                    let label = match phase {
+                                        JobPhase::Downloading { .. } => tl!("Downloading…"),
+                                        JobPhase::Reconnecting { .. } => tl!("Reconnecting…"),
+                                        JobPhase::Verifying => tl!("Verifying checksum…"),
+                                        JobPhase::Waiting => tl!("Waiting for another app…"),
+                                        JobPhase::Installing => tl!("Installing…"),
+                                        JobPhase::Removing => tl!("Removing…"),
+                                    };
+                                    ui.add_enabled_ui(false, |ui| widgets::button(ui, label, Kind::Secondary, 100.0));
+                                } else {
+                                    self.primary_button(ui, &entry, entry.app.id, &status, 100.0);
+                                }
+                            });
+                        });
+                    });
+                }
+            });
+        });
+        ui.add_space(18.0);
+    }
+
     /// The header bar; with a custom or macOS title bar it is also the window's title bar.
     pub(crate) fn header(&mut self, ui: &mut Ui, bar: TitleBar) {
         let t = Tokens::get(ui.ctx());
@@ -477,11 +538,12 @@ impl LauncherUi {
             );
             if !version.is_empty() {
                 let github_w = widgets::hud_galley(&strip_ui, &format!("{} ↗", tl!("GitHub")), t.muted).size().x;
-                let room = (strip_ui.available_width() - github_w - 16.0).max(0.0);
+                let room = (strip_ui.available_width() - github_w - theme::CONTROL_H - 32.0).max(0.0);
                 widgets::hud_elided(&mut strip_ui, &version, if in_colour { t.app_ink(app) } else { t.muted }, room);
             }
             strip_ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 ui.spacing_mut().item_spacing.x = 16.0;
+                self.pin_button_with_offset(ui, app, vec2(4.0, 0.0));
                 widgets::hud_link(ui, tl!("GitHub"), &app.repo_url());
             });
         }
@@ -574,7 +636,7 @@ impl LauncherUi {
                 .column(Column::exact(176.0))
                 .column(Column::exact(150.0))
                 .column(Column::exact(104.0))
-                .column(Column::exact(206.0))
+                .column(Column::exact(220.0))
                 .header(42.0, |header| self.table_header(header, &mut sort_clicked, &t, span, clip))
                 .body(|body| self.table_rows(body, ids, &t, (title_h, tagline_h), now, (span, clip)));
         });
@@ -689,7 +751,10 @@ impl LauncherUi {
                 row.col(|ui| self.table_status_cell(ui, &entry, &status, t));
                 row.col(|ui| self.table_version_cell(ui, &entry, &status, t));
                 row.col(|ui| self.table_released_cell(ui, &entry, now, t));
-                row.col(|ui| self.actions(ui, &entry, &status, 204.0));
+                row.col(|ui| {
+                    self.pin_button(ui, entry.app);
+                    self.actions(ui, &entry, &status, 168.0);
+                });
             });
         }
     }

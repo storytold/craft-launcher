@@ -503,6 +503,7 @@ pub enum Glyph {
     Close,
     Settings,
     Refresh,
+    Star(bool),
 }
 
 /// Paints one of the launcher's symbols with the painter, centred in `rect`.
@@ -522,6 +523,21 @@ pub fn paint_glyph(p: &egui::Painter, rect: Rect, glyph: Glyph, color: Color32) 
 fn glyph_shapes(rect: Rect, glyph: Glyph, color: Color32) -> Vec<egui::Shape> {
     let m = rect.center();
     match glyph {
+        Glyph::Star(selected) => {
+            let points: Vec<_> = (0..10)
+                .map(|i| {
+                    let angle = std::f32::consts::TAU * i as f32 / 10.0 - std::f32::consts::FRAC_PI_2;
+                    let radius = if i % 2 == 0 { 7.0 } else { 3.2 };
+                    m + vec2(angle.cos(), angle.sin()) * radius
+                })
+                .collect();
+            vec![egui::Shape::Path(egui::epaint::PathShape {
+                points,
+                closed: true,
+                fill: if selected { color } else { Color32::TRANSPARENT },
+                stroke: Stroke::new(1.2, color).into(),
+            })]
+        }
         Glyph::Pause => [-3.0, 3.0]
             .into_iter()
             .map(|dx| egui::Shape::rect_filled(Rect::from_center_size(m + vec2(dx, 0.0), vec2(2.5, 10.0)), CornerRadius::ZERO, color))
@@ -562,19 +578,38 @@ fn glyph_shapes(rect: Rect, glyph: Glyph, color: Color32) -> Vec<egui::Shape> {
     }
 }
 
-/// A small outlined square button with a drawn glyph; inverts on hover.
+/// A square button with a drawn glyph; stars are borderless and other glyphs invert on hover.
 pub fn glyph_button(ui: &mut Ui, glyph: Glyph, tip: &str) -> Response {
+    glyph_button_with_offset(ui, glyph, tip, egui::Vec2::ZERO)
+}
+
+/// A glyph button whose painted control is nudged without moving its click target.
+pub fn glyph_button_with_offset(ui: &mut Ui, glyph: Glyph, tip: &str, offset: egui::Vec2) -> Response {
     let t = Tokens::get(ui.ctx());
     let (rect, resp) = ui.allocate_exact_size(vec2(theme::CONTROL_H, theme::CONTROL_H), Sense::click());
+    let paint_rect = rect.translate(offset);
     let hovered = resp.hovered();
     let p = ui.painter();
-    if hovered {
-        p.rect_filled(rect, CornerRadius::ZERO, t.invert_bg);
+    let is_star = matches!(glyph, Glyph::Star(_));
+    if is_star {
+        // Stars sit beside text links on app cards, so keep their full click target but omit the
+        // square control outline. A quiet hover wash still makes the affordance discoverable.
+        if hovered {
+            p.rect_filled(paint_rect, CornerRadius::ZERO, t.line);
+        }
+    } else if hovered {
+        p.rect_filled(paint_rect, CornerRadius::ZERO, t.invert_bg);
     } else {
-        p.rect_stroke(rect, CornerRadius::ZERO, t.hairline(), egui::StrokeKind::Inside);
+        p.rect_stroke(paint_rect, CornerRadius::ZERO, t.hairline(), egui::StrokeKind::Inside);
     }
-    let c = if hovered { t.invert_fg } else { t.muted };
-    paint_glyph(p, rect, glyph, c);
+    let c = match glyph {
+        Glyph::Star(true) => t.accent_ink,
+        Glyph::Star(false) if hovered => t.ink_strong,
+        Glyph::Star(false) => t.faint,
+        _ if hovered => t.invert_fg,
+        _ => t.muted,
+    };
+    paint_glyph(p, paint_rect, glyph, c);
     resp.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, true, tip));
     resp.on_hover_text(tip).on_hover_cursor(egui::CursorIcon::PointingHand)
 }

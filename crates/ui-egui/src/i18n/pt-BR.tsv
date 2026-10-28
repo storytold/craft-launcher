@@ -369,3 +369,7 @@ filter	Installed	Instalados
 	Show {n} more changes	Mostrar mais {n} alterações
 	Last updated: {date}	Última atualização: {date}
 column	Version	Versão
+
+	Quick Launch	Inicialização rápida
+	Add {app} to Quick Launch	Adicionar {app} à Inicialização rápida
+	Remove {app} from Quick Launch	Remover {app} da Inicialização rápida

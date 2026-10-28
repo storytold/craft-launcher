@@ -384,3 +384,7 @@ filter	Installed	インストール済み
 	Show {n} more changes	さらに{n}件の変更を表示
 	Last updated: {date}	最終更新: {date}
 column	Version	バージョン
+
+	Quick Launch	クイック起動
+	Add {app} to Quick Launch	{app}をクイック起動に追加
+	Remove {app} from Quick Launch	{app}をクイック起動から削除

@@ -122,6 +122,8 @@ pub struct Settings {
     pub tray_hint_shown: bool,
     /// How many times each app was opened from the launcher (catalog id → count), for "Frequently used".
     pub launches: BTreeMap<String, u32>,
+    /// Catalog ids pinned to Quick Launch.
+    pub pinned: std::collections::BTreeSet<String>,
 }
 
 impl Settings {
@@ -204,6 +206,7 @@ impl Default for Settings {
             hidden: std::collections::BTreeSet::new(),
             tray_hint_shown: false,
             launches: BTreeMap::new(),
+            pinned: std::collections::BTreeSet::new(),
         }
     }
 }

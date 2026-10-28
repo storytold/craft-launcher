@@ -349,3 +349,7 @@ figcraft	Interface design and prototyping	界面设计与原型制作
 	Show {n} more changes	显示另外 {n} 项更改
 	Last updated: {date}	最后更新：{date}
 column	Version	版本
+
+	Quick Launch	快速启动
+	Add {app} to Quick Launch	将{app}添加到快速启动
+	Remove {app} from Quick Launch	从快速启动中移除{app}

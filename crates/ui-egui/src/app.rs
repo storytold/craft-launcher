@@ -93,6 +93,7 @@ pub(crate) enum UiAction {
     Launch(String),
     /// Re-run the manual update check, clearing the auto-update back-off.
     CheckNow,
+    TogglePin(String),
     /// A message a UI interaction asked to show.
     Toast {
         text: String,
@@ -372,6 +373,11 @@ impl LauncherUi {
                     *opened = opened.saturating_add(1);
                     self.backend.send(Command::Launch { app: id.clone() });
                 }
+                UiAction::TogglePin(id) => {
+                    if !self.settings.pinned.remove(id) {
+                        self.settings.pinned.insert(id.clone());
+                    }
+                }
                 UiAction::CheckNow => {
                     self.auto_update_attempted.clear();
                     self.backend.send(Command::CheckForUpdates { force: true });
@@ -382,6 +388,10 @@ impl LauncherUi {
             }
             self.flushed.push(action.clone());
         }
+    }
+
+    pub(crate) fn toggle_pin(&mut self, id: &str) {
+        self.pending.push(UiAction::TogglePin(id.to_string()));
     }
 
     /// Queues a message for the next pass that can actually draw. Its age is deliberately not
@@ -797,6 +807,7 @@ impl LauncherUi {
                     ViewMode::Table => egui::ScrollArea::both(),
                 };
                 scroll.auto_shrink(false).show(ui, |ui| {
+                    self.quick_launch(ui);
                     if ids.is_empty() {
                         ui.add_space(40.0);
                         ui.vertical_centered(|ui| {

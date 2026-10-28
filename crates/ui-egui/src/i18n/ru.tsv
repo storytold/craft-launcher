@@ -377,3 +377,7 @@ filter	Installed	Установлены
 	Show {n} more changes	Показать ещё изменений: {n}
 	Last updated: {date}	Последнее обновление: {date}
 column	Version	Версия
+
+	Quick Launch	Быстрый запуск
+	Add {app} to Quick Launch	Добавить {app} в быстрый запуск
+	Remove {app} from Quick Launch	Убрать {app} из быстрого запуска

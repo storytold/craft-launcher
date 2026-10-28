@@ -349,3 +349,7 @@ filter	Installed	Nainstalováno
 	Show {n} more changes	Zobrazit dalších změn: {n}
 	Last updated: {date}	Naposledy aktualizováno: {date}
 column	Version	Verze
+
+	Quick Launch	Rychlé spuštění
+	Add {app} to Quick Launch	Přidat {app} do rychlého spuštění
+	Remove {app} from Quick Launch	Odebrat {app} z rychlého spuštění
