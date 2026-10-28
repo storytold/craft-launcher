@@ -33,6 +33,11 @@ serde = { workspace = true }
 craft-quit = { version = "0.1.0", git = "https://github.com/storytold/craft-libs", rev = "92d392cff132eaf53e13afff77f38b5c11b73aa0", features = ["egui"] }
 
 [target.'cfg(target_os = "linux")'.dependencies]
+raw-window-handle = "0.6"
+wayland-client = "0.31"
+# GNOME/Wayland window controls without an embedded title font.
+winit = { version = "0.30", default-features = false, features = ["wayland-csd-adwaita-notitle"] }
+
 zbus = "5"
 
 # The tray (menu bar) icon. On Linux and the BSDs the StatusNotifierItem backend talks D-Bus
