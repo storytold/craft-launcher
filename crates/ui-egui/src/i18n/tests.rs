@@ -365,10 +365,10 @@ fn simplified_chinese_locales_respect_the_script() {
         assert_eq!(lang_from_tag(tag), Some(Lang::ZH_CN), "{tag}");
     }
     for tag in ["zh-TW", "zh-HK", "zh-MO", "zh-Hant", "zh-Hant-CN", "zh-Hant-SG", "zh_TW.UTF-8"] {
-        assert_eq!(lang_from_tag(tag), None, "{tag}");
+        assert_eq!(lang_from_tag(tag), Some(Lang::ZH_TW), "{tag}");
     }
-    // A Traditional Chinese system that also lists English gets English, not Simplified.
-    assert_eq!(super::detect::first_supported(["zh-Hant-TW", "en-US"]), Some(Lang::EN));
+    // Traditional Chinese is matched before the English fallback.
+    assert_eq!(super::detect::first_supported(["zh-Hant-TW", "en-US"]), Some(Lang::ZH_TW));
 }
 
 #[test]
@@ -561,4 +561,15 @@ fn picker_lists_english_first_then_names_alphabetically() {
     assert!(pos("pt-BR") < pos("ru"), "Latin names come before Cyrillic");
     assert!(pos("ru") < pos("ja"), "Cyrillic names come before CJK");
     assert_eq!(name_sort_key("Čeština"), "cestina");
+}
+
+#[test]
+fn taiwan_catalog_terms_and_fallback() {
+    assert_eq!(lang_from_tag("zh-Hans-TW"), Some(Lang::ZH_CN));
+    assert_eq!(tr(Lang::ZH_TW, "Settings"), "設定");
+    assert_eq!(tr(Lang::ZH_TW, "Check for updates"), "檢查更新");
+    assert_eq!(tr(Lang::ZH_TW, "Unknown future text"), "Unknown future text");
+    for n in [0, 1, 2, 100] {
+        assert_eq!(trn(Lang::ZH_TW, n, "{n} app", "{n} apps"), format!("{n} 個應用程式"));
+    }
 }
