@@ -186,14 +186,17 @@ impl FeedRelease {
     /// when it doesn't hold up (no tag, or not a version).
     fn to_release(&self, repo: &str, mirror: Option<&str>) -> Option<Release> {
         let version = version::parse(&self.tag)?;
-        let allowed = |url: &str| {
-            release::download_url_under(url, &release::download_prefix(repo)) || mirror.is_some_and(|m| release::download_url_under_mirror(url, m))
+        // A GitHub link must be exactly this release's own `<tag>/<name>` (#764); a loopback mirror
+        // keeps its own layout.
+        let allowed = |name: &str, url: &str| {
+            release::expected_download_url(repo, &self.tag, name).as_deref() == Some(url)
+                || mirror.is_some_and(|m| release::download_url_under_mirror(url, m))
         };
         let releases_page = format!("https://github.com/{repo}/releases/");
         let assets = self
             .assets
             .iter()
-            .filter(|(name, _, url, _)| release::valid_file_name(name) && allowed(url))
+            .filter(|(name, _, url, _)| release::valid_file_name(name) && allowed(name, url))
             .map(|(name, size, url, sha)| Asset {
                 name: name.clone(),
                 size: *size,
@@ -573,6 +576,24 @@ mod tests {
         );
         let FeedAnswer::Fresh(Some(r)) = Feed::parse(&escaped).unwrap().answer(app("photocraft"), NOW) else { panic!() };
         assert!(r.assets.is_empty(), "the traversing download must be rejected");
+    }
+
+    /// #764: a feed link must be exactly this release's `<tag>/<name>`, so neither a traversal
+    /// (plain or percent-encoded) nor an older release of the same app gets through.
+    #[test]
+    fn a_feed_link_must_be_its_releases_own() {
+        const REAL: &str = "https://github.com/storytold/photocraft/releases/download/v0.6.0/photocraft-0.6.0-macos-universal.dmg";
+        for link in [
+            "https://github.com/storytold/photocraft/releases/download/../../../../other/repo/releases/download/v1/photocraft-0.6.0-macos-universal.dmg",
+            "https://github.com/storytold/photocraft/releases/download/%2e%2e/%2E%2E/%2e%2e/%2e%2e/other/repo/releases/download/v1/photocraft-0.6.0-macos-universal.dmg",
+            // An older release of the same app, under this release's file name.
+            "https://github.com/storytold/photocraft/releases/download/v0.4.0/photocraft-0.6.0-macos-universal.dmg",
+        ] {
+            let FeedAnswer::Fresh(Some(r)) = Feed::parse(&sample().replace(REAL, link)).unwrap().answer(app("photocraft"), NOW) else { panic!() };
+            assert!(r.assets.is_empty(), "{link}");
+        }
+        let FeedAnswer::Fresh(Some(r)) = Feed::parse(&sample()).unwrap().answer(app("photocraft"), NOW) else { panic!() };
+        assert_eq!(r.assets.iter().map(|a| a.url.as_str()).collect::<Vec<_>>(), [REAL]);
     }
 
     #[test]

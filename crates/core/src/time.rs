@@ -1,5 +1,5 @@
-//! Just enough calendar to read GitHub's timestamps and show them (the conversion goes through
-//! jiff; this module owns only the parsing and the output format strings).
+//! Just enough calendar to show GitHub's timestamps (the conversion goes through jiff; this module
+//! owns only the output format strings). Reading them is craft-update's [`parse_rfc3339`].
 //!
 //! # Internationalisation
 //! [`format_ago`] and [`format_date`] are English-only fallbacks. Translatable UI must use
@@ -34,48 +34,9 @@ pub enum TimeAgo {
     Date(i64),
 }
 
-/// Seconds since the Unix epoch for an RFC 3339 UTC timestamp such as `2026-10-08T14:52:50Z`.
-pub fn parse_rfc3339(text: &str) -> Option<i64> {
-    let b = text.trim().as_bytes();
-    if b.len() < 19 || b.get(4) != Some(&b'-') || b.get(7) != Some(&b'-') || !matches!(b.get(10), Some(b'T' | b't' | b' ')) {
-        return None;
-    }
-    let num = |from: usize, to: usize| -> Option<i64> {
-        let s = std::str::from_utf8(b.get(from..to)?).ok()?;
-        if !s.bytes().all(|c| c.is_ascii_digit()) {
-            return None;
-        }
-        s.parse().ok()
-    };
-    let (y, mo, d) = (num(0, 4)?, num(5, 7)?, num(8, 10)?);
-    let (h, mi, s) = (num(11, 13)?, num(14, 16)?, num(17, 19)?);
-    if !(1..=12).contains(&mo) || !(1..=31).contains(&d) || h > 23 || mi > 59 || s > 60 {
-        return None;
-    }
-    // Offsets other than Z: GitHub always sends Z, but honour ±hh:mm if present.
-    let tail = std::str::from_utf8(b.get(19..)?).ok()?;
-    let tail = tail.strip_prefix('.').map_or(tail, |t| t.trim_start_matches(|c: char| c.is_ascii_digit()));
-    let offset = match tail {
-        "" | "Z" | "z" => 0,
-        t if t.len() == 6 && (t.starts_with('+') || t.starts_with('-')) => {
-            let sign = if t.starts_with('-') { -1 } else { 1 };
-            let oh: i64 = t.get(1..3)?.parse().ok()?;
-            let om: i64 = t.get(4..6)?.parse().ok()?;
-            sign * (oh * 3600 + om * 60)
-        }
-        _ => return None,
-    };
-    Some(days_from_civil(y, mo, d)? * 86_400 + h * 3600 + mi * 60 + s - offset)
-}
-
-/// Days since 1970-01-01 (through jiff's civil calendar). A day past the month's length rolls over
-/// the way the old Hinnant arithmetic did (e.g. `2026-02-30` → `2026-03-02`). `None` for a year
-/// outside jiff's range.
-fn days_from_civil(y: i64, m: i64, d: i64) -> Option<i64> {
-    let first = jiff::civil::Date::new(i16::try_from(y).ok()?, i8::try_from(m).ok()?, 1).ok()?;
-    let date = first.checked_add(jiff::SignedDuration::from_hours(d.checked_sub(1)?.checked_mul(24)?)).ok()?;
-    Some(date.duration_since(jiff::civil::Date::constant(1970, 1, 1)).as_secs() / 86_400)
-}
+/// Seconds since the Unix epoch for an RFC 3339 timestamp such as `2026-10-08T14:52:50Z`. Shared
+/// with every Craft app through craft-update, which tests it.
+pub use craft_update::time::parse_rfc3339;
 
 /// (year, month, day) for a Unix time (UTC). jiff's civil calendar only spans years -9999..=9999,
 /// far narrower than the whole `i64` the old hand-rolled Hinnant code converted, so the instant is
@@ -149,17 +110,6 @@ pub fn format_ago(secs: i64, now: i64) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn reads_github_timestamps() {
-        assert_eq!(parse_rfc3339("1970-01-01T00:00:00Z"), Some(0));
-        assert_eq!(parse_rfc3339("2026-10-08T14:52:50Z"), Some(1_791_471_170));
-        assert_eq!(parse_rfc3339("2026-10-08T16:52:50+02:00"), Some(1_791_471_170));
-        assert_eq!(parse_rfc3339("2026-10-08T14:52:50.123Z"), Some(1_791_471_170));
-        for bad in ["", "2026-10-08", "2026-13-08T00:00:00Z", "2026-10-08T14:52:50Q", "20x6-10-08T14:52:50Z"] {
-            assert_eq!(parse_rfc3339(bad), None, "{bad}");
-        }
-    }
 
     #[test]
     fn shows_dates_people_read() {

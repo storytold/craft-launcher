@@ -87,7 +87,7 @@ impl Tray {
                 } else if e.id == ids.2 {
                     TrayAction::Quit
                 } else if e.id == ids.3 {
-                    TrayAction::Open(artcraft_launcher_native::process::discord_url())
+                    TrayAction::Open(artcraft_launcher_native::discord::discord_url())
                 } else if let Some((_, url)) = links.iter().find(|(id, _)| *id == e.id) {
                     TrayAction::Open(url)
                 } else {

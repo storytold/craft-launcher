@@ -8,6 +8,7 @@
 //! The UI cannot see a Linux machine's package managers, so there it answers nothing and the
 //! field keeps saying "System default".
 
+use artcraft_launcher_core::asset_arch::asset_arch;
 use artcraft_launcher_core::platform::{parse_asset_name, pick_asset};
 use artcraft_launcher_core::protocol::LatestRelease;
 use artcraft_launcher_core::{Arch, CraftApp, Os, PackageKind};
@@ -48,7 +49,7 @@ impl LauncherUi {
         };
         let stems: Vec<&str> = entry.app.stems().collect();
         let (asset, kind) = pick_asset(release, &stems, platform, &kinds)?;
-        Some((kind, parse_asset_name(&asset.name, &stems).and_then(|name| name.arch())))
+        Some((kind, parse_asset_name(&asset.name, &stems).and_then(|name| asset_arch(&name))))
     }
 
     /// The folder a fresh install of `id` goes inside when no folder is chosen.

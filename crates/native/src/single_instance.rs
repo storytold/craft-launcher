@@ -88,7 +88,7 @@ fn token() -> Option<String> {
 fn fresh_secret() -> Option<String> {
     let mut bytes = [0u8; 32];
     getrandom::fill(&mut bytes).ok()?;
-    Some(bytes.iter().map(|b| format!("{b:02x}")).collect())
+    Some(crate::http::hex(&bytes))
 }
 
 /// Writes `bytes` to `path` readable and writable only by the owner.

@@ -5,7 +5,7 @@
 use artcraft_launcher_core::protocol::InstallLocations;
 use artcraft_launcher_core::release::{Asset, Release};
 use artcraft_launcher_core::{CraftApp, InstallSource, Installed, PackageKind, version};
-use artcraft_launcher_native::http::{Http, Stop};
+use artcraft_launcher_native::http::Stop;
 use artcraft_launcher_native::install::{self, Job};
 use artcraft_launcher_native::paths::Paths;
 
@@ -16,7 +16,7 @@ fn uncertain_msi_updates_do_not_download_or_start_an_installer() {
     // No HTTP request should reach this URL, and it cannot contact a live service if regressed.
     let asset =
         Asset { name: "photocraft-99.0.0-windows-x64.msi".into(), url: "http://127.0.0.1:9/must-not-download.msi".into(), ..Default::default() };
-    let http = Http::new().unwrap();
+    let http = artcraft_launcher_native::http::for_launcher().unwrap();
     let stop = Stop::default();
     let locations = InstallLocations::default();
     for code in [None, Some("not-a-product-code"), Some("{00000000-0000-0000-0000-000000000000}")] {

@@ -403,22 +403,13 @@ fn read_sums(dir: &Path) -> BTreeMap<String, String> {
         .collect()
 }
 
-/// SHA-256 through the system's own tool (files are hundreds of megabytes).
+/// SHA-256 of a file, streamed (packages are hundreds of megabytes; dependencies build optimised).
 fn sha256(path: &Path) -> Result<String, String> {
-    let out = if cfg!(windows) {
-        Command::new("certutil").arg("-hashfile").arg(path).arg("SHA256").output()
-    } else if cfg!(target_os = "macos") {
-        Command::new("shasum").args(["-a", "256"]).arg(path).output()
-    } else {
-        Command::new("sha256sum").arg(path).output()
-    }
-    .map_err(|e| format!("couldn't hash {} ({e})", path.display()))?;
-    let text = String::from_utf8_lossy(&out.stdout);
-    // shasum/sha256sum: "<hash>  <file>"; certutil: the hash alone on the second line.
-    text.split_whitespace()
-        .find(|w| w.len() == 64 && w.bytes().all(|b| b.is_ascii_hexdigit()))
-        .map(str::to_ascii_lowercase)
-        .ok_or_else(|| format!("couldn't hash {}", path.display()))
+    use sha2::{Digest, Sha256};
+    let mut file = std::fs::File::open(path).map_err(|e| format!("couldn't hash {} ({e})", path.display()))?;
+    let mut hasher = Sha256::new();
+    std::io::copy(&mut file, &mut hasher).map_err(|e| format!("couldn't hash {} ({e})", path.display()))?;
+    Ok(format!("{:x}", hasher.finalize()))
 }
 
 // ---- feed ---------------------------------------------------------------------------------------
