@@ -287,7 +287,9 @@ impl LauncherUi {
         theme::install_fonts(ctx, self.cjk_font);
         egui_extras::install_image_loaders(ctx);
         self.fonts_ready = false;
-        self.applied_theme = None;
+        // Installed now, so the window's first clear colour already comes from the launcher's style.
+        theme::apply(ctx, self.settings.theme);
+        self.applied_theme = Some(self.settings.theme);
         self.applied_motion = None;
         self.motion_recheck = 0.0;
         self.toasts.clear();

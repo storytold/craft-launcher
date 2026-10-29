@@ -1,0 +1,18 @@
+Tokens {
+    dark: false,
+    bg: #F2_F1_EE_FF,
+    sunken: #E9_E8_E4_FF,
+    ink: #10_10_14_FF,
+    ink_strong: #00_00_00_FF,
+    muted: #0A_0A_0C_9E,
+    faint: #07_07_08_6B,
+    line: #03_03_03_29,
+    line_strong: #06_06_08_66,
+    accent: #2D_81_FF_FF,
+    accent_ink: #16_59_C4_FF,
+    invert_bg: #10_10_14_FF,
+    invert_fg: #F2_F1_EE_FF,
+    good: #0A_75_63_FF,
+    warn: #8A_58_00_FF,
+    bad: #B3_26_1E_FF,
+}

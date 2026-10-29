@@ -116,8 +116,17 @@ impl Tokens {
         bad: hex(0xb3261e),
     };
 
+    /// The tokens [`install`] stored for the slot egui is drawing with. Both slots can hold the
+    /// same variant, so this reads the stored set and never derives one from `ctx.theme()` alone.
     pub fn get(ctx: &egui::Context) -> Self {
-        if ctx.theme() == egui::Theme::Dark { Self::DARK } else { Self::LIGHT }
+        let theme = ctx.theme();
+        let stored = ctx.data(|d| d.get_temp::<SlotTokens>(egui::Id::unique(SLOT_TOKENS_KEY)));
+        match (stored, theme) {
+            (Some(slots), egui::Theme::Dark) => slots.dark,
+            (Some(slots), egui::Theme::Light) => slots.light,
+            (None, egui::Theme::Dark) => Self::DARK,
+            (None, egui::Theme::Light) => Self::LIGHT,
+        }
     }
 
     pub fn hairline(&self) -> Stroke {
@@ -202,32 +211,56 @@ fn visuals(t: &Tokens) -> Visuals {
     v
 }
 
-/// Applies both appearances (egui switches between them with the theme preference).
+const SLOT_TOKENS_KEY: &str = "artcraft-launcher-slot-tokens";
+
+/// The token sets in the two egui style slots, kept in egui's temp data.
+#[derive(Clone, Copy)]
+struct SlotTokens {
+    light: Tokens,
+    dark: Tokens,
+}
+
+/// The style for one slot: egui's defaults for the variant, our visuals, spacing and text styles.
+fn slot_style(mut style: egui::Style, t: &Tokens) -> egui::Style {
+    style.visuals = visuals(t);
+    style.spacing.item_spacing = egui::vec2(8.0, 6.0);
+    // Between a checkbox (or radio button) and its label.
+    style.spacing.icon_spacing = 10.0;
+    style.spacing.button_padding = egui::vec2(12.0, 6.0);
+    style.spacing.interact_size.y = CONTROL_H;
+    style.spacing.menu_margin = egui::Margin::same(4);
+    style.spacing.window_margin = egui::Margin::same(4);
+    style.text_styles = [
+        (TextStyle::Heading, FontId::new(24.0, display())),
+        (TextStyle::Body, FontId::new(14.0, FontFamily::Proportional)),
+        (TextStyle::Button, FontId::new(13.5, medium())),
+        (TextStyle::Small, FontId::new(12.0, FontFamily::Proportional)),
+        (TextStyle::Monospace, FontId::new(13.0, FontFamily::Monospace)),
+    ]
+    .into();
+    style
+}
+
+/// Installs `light` in egui's light slot and `dark` in its dark slot. The theme preference stays
+/// on the system answer, so egui switches between the slots without a rebuild; with no answer it
+/// falls back to the dark slot.
+pub fn install(ctx: &egui::Context, light: Tokens, dark: Tokens) {
+    for (theme, tokens) in [(egui::Theme::Light, &light), (egui::Theme::Dark, &dark)] {
+        ctx.set_style_of(theme, slot_style((*ctx.style_of(theme)).clone(), tokens));
+    }
+    ctx.data_mut(|d| d.insert_temp(egui::Id::unique(SLOT_TOKENS_KEY), SlotTokens { light, dark }));
+    ctx.options_mut(|o| o.fallback_theme = egui::Theme::Dark);
+    ctx.set_theme(egui::ThemePreference::System);
+}
+
+/// Applies the user's choice: "Match system" gives each slot its own variant, a fixed choice
+/// gives both slots that variant.
 pub fn apply(ctx: &egui::Context, choice: ThemeChoice) {
-    ctx.set_visuals_of(egui::Theme::Dark, visuals(&Tokens::DARK));
-    ctx.set_visuals_of(egui::Theme::Light, visuals(&Tokens::LIGHT));
-    ctx.set_theme(match choice {
-        ThemeChoice::System => egui::ThemePreference::System,
-        ThemeChoice::Dark => egui::ThemePreference::Dark,
-        ThemeChoice::Light => egui::ThemePreference::Light,
-    });
-    ctx.all_styles_mut(|style| {
-        style.spacing.item_spacing = egui::vec2(8.0, 6.0);
-        // Between a checkbox (or radio button) and its label.
-        style.spacing.icon_spacing = 10.0;
-        style.spacing.button_padding = egui::vec2(12.0, 6.0);
-        style.spacing.interact_size.y = CONTROL_H;
-        style.spacing.menu_margin = egui::Margin::same(4);
-        style.spacing.window_margin = egui::Margin::same(4);
-        style.text_styles = [
-            (TextStyle::Heading, FontId::new(24.0, display())),
-            (TextStyle::Body, FontId::new(14.0, FontFamily::Proportional)),
-            (TextStyle::Button, FontId::new(13.5, medium())),
-            (TextStyle::Small, FontId::new(12.0, FontFamily::Proportional)),
-            (TextStyle::Monospace, FontId::new(13.0, FontFamily::Monospace)),
-        ]
-        .into();
-    });
+    match choice {
+        ThemeChoice::System => install(ctx, Tokens::LIGHT, Tokens::DARK),
+        ThemeChoice::Dark => install(ctx, Tokens::DARK, Tokens::DARK),
+        ThemeChoice::Light => install(ctx, Tokens::LIGHT, Tokens::LIGHT),
+    }
 }
 
 /// Height of buttons, inputs and filter cells (the site's medium button).

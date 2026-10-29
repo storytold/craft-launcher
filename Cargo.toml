@@ -33,8 +33,9 @@ semver = { version = "1", features = ["serde"] }
 log = "0.4"
 # All date/time conversion goes through jiff (no hand-rolled calendar code beyond the 400-year range extension; AGENTS.md).
 jiff = "0.2"
-craft-update = { version = "=0.1.0", git = "https://github.com/storytold/craft-libs", rev = "92d392cff132eaf53e13afff77f38b5c11b73aa0" }
-craft-ui = { version = "=0.1.0", git = "https://github.com/storytold/craft-libs", rev = "92d392cff132eaf53e13afff77f38b5c11b73aa0" }
+craft-update = { version = "=0.1.0", git = "https://github.com/aiongg/craft-libs", rev = "d7a4b88f28547d49f216c4aa4392143a7c0692ae" }
+craft-platform = { version = "=0.1.0", git = "https://github.com/aiongg/craft-libs", rev = "d7a4b88f28547d49f216c4aa4392143a7c0692ae", features = ["appearance"] }
+craft-ui = { version = "=0.1.0", git = "https://github.com/aiongg/craft-libs", rev = "d7a4b88f28547d49f216c4aa4392143a7c0692ae" }
 
 [profile.dev.package."*"]
 opt-level = 2

@@ -10,8 +10,6 @@ mod motion;
 mod settings_file;
 #[cfg(target_os = "macos")]
 mod spaces;
-#[cfg(target_os = "linux")]
-mod system_theme;
 mod tray;
 
 use std::path::PathBuf;
@@ -24,7 +22,6 @@ use std::time::Duration;
 use artcraft_launcher_core::protocol::Backend;
 use artcraft_launcher_native::single_instance::{self, Instance};
 use artcraft_launcher_native::{NativeBackend, login};
-use artcraft_launcher_ui_egui::theme::Tokens;
 use artcraft_launcher_ui_egui::{Host, LauncherUi, Settings, TitleBar};
 use eframe::wgpu::rwh::{HasDisplayHandle, RawDisplayHandle};
 
@@ -110,10 +107,14 @@ fn main() -> ExitCode {
     let backend_waker = waker.clone();
     let settings_path = settings_file::path(APP_ID);
     let mut launcher = Launcher::new(Box::new(NativeBackend::new(move || backend_waker.wake())), starts, settings_path.clone());
-    #[cfg(target_os = "linux")]
+    #[cfg(all(unix, not(target_os = "macos")))]
     {
         let theme_waker = waker.clone();
-        launcher.system_theme = system_theme::Monitor::start(move || theme_waker.wake());
+        launcher.appearance = craft_platform::appearance::Watcher::start(move || theme_waker.wake());
+        // Wait briefly for the desktop's answer so a light desktop doesn't open dark.
+        if let Some(watcher) = &launcher.appearance {
+            let _ = watcher.wait_first(std::time::Duration::from_millis(250));
+        }
     }
     // Started hidden at login where a window can't hide: start in the tray without mapping one,
     // so no window flashes up. Without a tray to come back from, the window opens after all.
@@ -568,8 +569,9 @@ impl Host for DesktopHost {
 /// Everything that outlives a window: the UI state and its backend, the tray icon, and the work
 /// that goes on with or without a window.
 struct Launcher {
-    #[cfg(target_os = "linux")]
-    system_theme: system_theme::Monitor,
+    /// The desktop's light/dark answer on Linux and the BSDs, where winit cannot read it on Wayland.
+    #[cfg(all(unix, not(target_os = "macos")))]
+    appearance: Option<craft_platform::appearance::Watcher>,
     ui: LauncherUi,
     tray: Option<tray::Tray>,
     host: DesktopHost,
@@ -597,8 +599,8 @@ impl Launcher {
             let _ = asked.send(info.delay);
         });
         Self {
-            #[cfg(target_os = "linux")]
-            system_theme: system_theme::Monitor::default(),
+            #[cfg(all(unix, not(target_os = "macos")))]
+            appearance: None,
             ui: LauncherUi::new(&windowless, backend, Settings::default()),
             tray: None,
             host: DesktopHost { tray: false, quit: false, default_folders: Vec::new() },
@@ -858,8 +860,11 @@ impl eframe::App for Shell<'_> {
     }
 
     fn raw_input_hook(&mut self, ctx: &egui::Context, raw_input: &mut egui::RawInput) {
-        #[cfg(target_os = "linux")]
-        self.launcher.system_theme.apply(raw_input);
+        // The portal's answer replaces winit's; no answer clears it so egui uses the fallback.
+        #[cfg(all(unix, not(target_os = "macos")))]
+        if let Some(watcher) = &self.launcher.appearance {
+            portal_system_theme(raw_input, watcher.current());
+        }
         self.launcher.ui.raw_input(ctx, raw_input);
     }
 
@@ -868,12 +873,36 @@ impl eframe::App for Shell<'_> {
     }
 
     fn clear_color(&self, visuals: &egui::Visuals) -> [f32; 4] {
-        (if visuals.dark_mode { Tokens::DARK.bg } else { Tokens::LIGHT.bg }).to_normalized_gamma_f32()
+        // `visuals` are the drawing slot's, whose `panel_fill` is its stored tokens' `bg`.
+        visuals.panel_fill.to_normalized_gamma_f32()
     }
+}
+
+/// Sets egui's system theme from the portal's answer; no answer clears winit's.
+#[cfg(all(unix, not(target_os = "macos")))]
+fn portal_system_theme(raw: &mut egui::RawInput, answer: Option<craft_platform::appearance::Theme>) {
+    use craft_platform::appearance::Theme;
+    raw.system_theme = answer.map(|theme| match theme {
+        Theme::Dark => egui::Theme::Dark,
+        Theme::Light => egui::Theme::Light,
+    });
 }
 
 #[cfg(test)]
 mod tests {
+    #[cfg(all(unix, not(target_os = "macos")))]
+    #[test]
+    fn portal_answer_replaces_winit_and_none_clears_it() {
+        use craft_platform::appearance::Theme;
+        let mut raw = egui::RawInput { system_theme: Some(egui::Theme::Light), ..Default::default() };
+        super::portal_system_theme(&mut raw, Some(Theme::Dark));
+        assert_eq!(raw.system_theme, Some(egui::Theme::Dark));
+        super::portal_system_theme(&mut raw, Some(Theme::Light));
+        assert_eq!(raw.system_theme, Some(egui::Theme::Light));
+        super::portal_system_theme(&mut raw, None);
+        assert_eq!(raw.system_theme, None);
+    }
+
     use std::ptr::NonNull;
     use std::sync::atomic::{AtomicI64, AtomicUsize, Ordering};
     use std::sync::mpsc::Sender;
