@@ -47,7 +47,7 @@ fn main() -> ExitCode {
     // Detect system language in the background so the first frame can use it.
     artcraft_launcher_ui_egui::i18n::detect_system_lang_in_background();
     // Detect Discord protocol handler in the background without blocking startup.
-    artcraft_launcher_native::process::ensure_discord_detection_started();
+    artcraft_launcher_native::discord::ensure_discord_detection_started();
     // `std::env::args` panics on an argument that is not UTF-8, and the launcher is started with
     // whatever the desktop hands it: a login entry, a file manager, a terminal in a Latin-1
     // locale. It only ever looks for the two flags below, so an argument it cannot read is one it
@@ -559,7 +559,7 @@ impl Host for DesktopHost {
     }
 
     fn discord_url(&self) -> &'static str {
-        artcraft_launcher_native::process::discord_url()
+        artcraft_launcher_native::discord::discord_url()
     }
 
     fn quit(&mut self) {
