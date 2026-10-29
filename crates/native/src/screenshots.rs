@@ -7,7 +7,7 @@ use std::path::Path;
 use artcraft_launcher_core::details::{AppDetails, MAX_SCREENSHOT_BYTES, looks_like_jpeg, screenshot_within_budget};
 
 use crate::http::Http;
-use crate::paths::{Paths, write_atomic};
+use crate::paths::{LauncherPaths, Paths, write_atomic};
 
 /// The picture saved at `saved`, if there is one and it's still a JPEG of a sane size. A damaged or
 /// swapped file is ignored, and the picture is fetched again over it.

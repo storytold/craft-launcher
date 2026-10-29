@@ -79,7 +79,7 @@ fn main() -> ExitCode {
     // launcher running, so a second start doesn't rotate away the running one's log. Records
     // logged until now are written to it first.
     if let Some(logs) = logs {
-        match artcraft_launcher_native::paths::Paths::new() {
+        match artcraft_launcher_native::paths::for_launcher() {
             Ok(paths) => match logs.attach_dir(&paths.logs()) {
                 Ok(path) => log::info!("ArtCraft Launcher {}, log file {}", env!("CARGO_PKG_VERSION"), path.display()),
                 Err(e) => {
@@ -94,7 +94,7 @@ fn main() -> ExitCode {
         }
     }
     if let Some(error) =
-        artcraft_launcher_native::paths::Paths::new().ok().and_then(|paths| artcraft_launcher_native::self_update::take_failure(&paths))
+        artcraft_launcher_native::paths::for_launcher().ok().and_then(|paths| artcraft_launcher_native::self_update::take_failure(&paths))
     {
         log::warn!("the last self-update didn't install: {error}");
     }
@@ -547,7 +547,7 @@ impl Host for DesktopHost {
         if let Some((_, answer)) = self.default_folders.iter().find(|(question, _)| *question == (kind, arch)) {
             return answer.clone();
         }
-        let answer = artcraft_launcher_native::paths::Paths::new().ok().and_then(|paths| {
+        let answer = artcraft_launcher_native::paths::for_launcher().ok().and_then(|paths| {
             artcraft_launcher_native::install::default_folder(kind, arch, &paths).and_then(|folder| folder.to_str().map(str::to_string))
         });
         self.default_folders.push(((kind, arch), answer.clone()));

@@ -19,7 +19,7 @@ use crate::feed_throttle::{self, FeedThrottle, Outcome};
 use crate::http::{self, Http, Stop};
 use crate::install::{self, Job};
 use crate::manifest::Manifest;
-use crate::paths::Paths;
+use crate::paths::{LauncherPaths, Paths};
 use crate::process;
 use crate::source::{GitHubSource, ReleaseSource};
 
@@ -141,7 +141,7 @@ impl NativeBackend {
     /// `waker` is called (from any thread) whenever events are waiting; it should repaint the UI.
     pub fn new(waker: impl Fn() + Send + Sync + 'static) -> Self {
         let waker: Waker = Arc::new(waker);
-        let paths = Paths::new().unwrap_or_else(|e| {
+        let paths = crate::paths::for_launcher().unwrap_or_else(|e| {
             log::error!("{e}; keeping files in the temporary folder");
             Paths::under(&std::env::temp_dir().join("artcraft-launcher"))
         });

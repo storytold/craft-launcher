@@ -24,10 +24,6 @@ pub fn current() -> Option<Install> {
     craft_update::self_update::current(&craft_update::suite::LAUNCHER)
 }
 
-fn to_update_paths(paths: &Paths) -> craft_update::Paths {
-    craft_update::Paths { data: paths.data.clone(), cache: paths.cache.clone() }
-}
-
 /// `release` as read from `repo` (`""` for the launcher's own; the download links must be that
 /// repository's, craft-launcher#764). The caller's repo wins over the one the release carries.
 fn with_repo(release: &Release, repo: &str) -> Release {
@@ -36,12 +32,12 @@ fn with_repo(release: &Release, repo: &str) -> Release {
 
 /// Whether `release` is the version this launcher just updated itself to.
 pub fn just_updated_to(paths: &Paths, release: &Release) -> bool {
-    craft_update::self_update::just_updated_to(&to_update_paths(paths), release)
+    craft_update::self_update::just_updated_to(paths, release)
 }
 
 /// The error of the last update, if it failed, once.
 pub fn take_failure(paths: &Paths) -> Option<String> {
-    craft_update::self_update::take_failure(&to_update_paths(paths))
+    craft_update::self_update::take_failure(paths)
 }
 
 /// Downloads `release`, read from `repo` (the launcher's, or the one the feed renamed it to), for
@@ -69,7 +65,7 @@ pub fn update(
         &release,
         platform,
         &update_http,
-        &to_update_paths(paths),
+        paths,
         stop,
         phase,
         last,

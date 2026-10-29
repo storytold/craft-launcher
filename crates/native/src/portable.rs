@@ -741,8 +741,8 @@ mod tests {
             assert_eq!(std::fs::read(&personal).unwrap(), b"personal");
             let mut manifest = crate::manifest::Manifest::default();
             manifest.apps.insert(app.id.into(), record.clone());
-            manifest.save(&paths.manifest()).unwrap();
-            let restored = crate::manifest::Manifest::load(&paths.manifest());
+            manifest.save(&paths.data.join("installed.json")).unwrap();
+            let restored = crate::manifest::Manifest::load(&paths.data.join("installed.json"));
             let detected = crate::detect::detect(app, &restored, &crate::detect::Snapshot::take()).unwrap();
             assert_eq!(detected.version, artcraft_launcher_core::version::parse(version));
             assert_eq!(detected.location, record.path.to_string_lossy());
