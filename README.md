@@ -91,11 +91,12 @@ The web version shows the same catalog in the browser, with the latest download 
 
 ## Interface languages
 
-The interface is in English, Brazilian Portuguese (Português (Brasil)), Czech (Čeština), French
-(Français), German (Deutsch), Hungarian (Magyar), Japanese (日本語), Polish (Polski), Russian
-(Русский), Simplified Chinese (简体中文) or Spanish (Español). **Auto**, the default, follows the
-system or browser language; **Settings → Language** picks one and switches at once, and the choice
-is kept between runs. Czech locales (`cs-CZ`, `cs_CZ.UTF-8`…) select Czech, German ones (`de-DE`,
+The interface is in English, Brazilian Portuguese (Português (Brasil)), Catalan (Català), Czech
+(Čeština), French (Français), German (Deutsch), Hungarian (Magyar), Japanese (日本語), Polish
+(Polski), Russian (Русский), Simplified Chinese (简体中文) or Spanish (Español). **Auto**, the
+default, follows the system or browser language; **Settings → Language** picks one and switches at
+once, and the choice is kept between runs. Catalan locales (`ca`, `ca-ES`, `ca-AD`, `ca_ES.UTF-8`…)
+select Catalan, Czech locales (`cs-CZ`, `cs_CZ.UTF-8`…) select Czech, German ones (`de-DE`,
 `de-AT`, `de-CH`, `de_DE.UTF-8`…) German, French ones (`fr-FR`, `fr-CA`…) French, Hungarian ones
 (`hu`, `hu-HU`, `hu_HU.UTF-8`…) Hungarian, Japanese ones (`ja`, `ja-JP`, `ja_JP.UTF-8`…) Japanese,
 Polish ones (`pl`, `pl-PL`, `pl_PL.UTF-8`) Polish, Spanish ones (`es-ES`, `es-MX`, `es-419`…)

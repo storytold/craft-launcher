@@ -1,0 +1,367 @@
+# Catalan (ca) catalog for ArtCraft Launcher.
+# Format: context<TAB>source<TAB>translation
+# Empty context = plain UI string (tl!, t).
+# @id = command-id keyed (tr_id).
+# @plural = plural forms: one|other (only 1 is "one" in Catalan).
+# @msg = status/error message template (message, msg).
+# Other context = disambiguation for tr_ctx.
+#
+# Clean-room: written from the meaning of ArtCraft Launcher's English labels, in standard
+# Catalan for Catalonia, Andorra, the Balearic Islands and Valencia (the interface addresses
+# the user as "tu"; no regionalisms).
+#
+# Coverage: the whole interface: every menu string and tl! literal (complete_menus = true).
+# Left in English on purpose: product name "ArtCraft Launcher" (and its "Launcher" tag), suite
+# name "Craft App Suite", app names (PhotoCraft, LightCraft, FilmCraft,
+# DesignCraft, VectorCraft, PdfCraft, EffectCraft, WordCraft, DeckCraft, GridCraft, CADCraft,
+# SoundCraft, FigCraft), "GitHub", "Discord", "Finder", "makers".
+# Trailing "…" (U+2026) must be preserved. Placeholders must appear in the translation:
+# {ago}, {a}, {b}, {count}, {date}, {day}, {done}, {e}, {f}, {installed}, {latest}, {min},
+# {month}, {name}, {n}, {os}, {platform}, {sources}, {total}, {version}, {v}, {year}.
+
+	Launcher	Launcher
+	Craft App Suite	Craft App Suite
+	by {name}	per {name}
+	Open Source Tools for Creatives, Makers, and Builders	Eines de codi obert per a creatius, makers i constructors
+	Settings	Configuració
+	Check for updates	Comprova si hi ha actualitzacions
+	Grid	Graella
+	Table	Taula
+	Show apps as cards	Mostra les aplicacions com a targetes
+	Show apps as a table	Mostra les aplicacions com a taula
+	All	Totes
+	Updates	Actualitzacions
+	Not installed	No instal·lades
+	Search apps	Cerca aplicacions
+	Sort	Ordena
+	Suite order	Ordre de la suite
+	Name	Nom
+	Inspired by	Inspirada en
+	Status	Estat
+	Installed version	Versió instal·lada
+	Latest version	Última versió
+	Newest release	Versió més recent
+	Discord	Discord
+	GitHub	GitHub
+	Website	Lloc web
+	Classic apps	Aplicacions clàssiques
+	New apps	Aplicacions noves
+	NEW	NOU
+	Install	Instal·la
+	Update to {v}	Actualitza a {v}
+	Open	Obre
+	Download for {os}	Baixa per a {os}
+	Download	Baixa
+	Coming soon	Properament
+	Checking…	Comprovant…
+	Not available	No disponible
+	Offline	Sense connexió
+	Downloading {done} of {total}	Baixant {done} de {total}
+	Downloading…	Baixant…
+	Reconnecting…	Tornant a connectar…
+	Verifying…	Verificant…
+	Installing, then restarting…	Instal·lant i reiniciant…
+	Installing…	Instal·lant…
+	Removing…	Desinstal·lant…
+	Pause download	Posa en pausa la baixada
+	Cancel download	Cancel·la la baixada
+	Resume download	Reprèn la baixada
+	Discard download	Descarta la baixada
+	Release notes	Notes de la versió
+	Show in Finder	Mostra al Finder
+	Show in Explorer	Mostra a l'Explorador
+	Show in Files	Mostra a Fitxers
+	Reinstall	Reinstal·la
+	Uninstall…	Desinstal·la…
+	All releases	Totes les versions
+	ArtCraft Launcher {version} is available.	ArtCraft Launcher {version} ja està disponible.
+	Dismiss	Descarta
+	Update and restart	Actualitza i reinicia
+	A new version is available. Would you like to relaunch with the updated version?	Hi ha una versió nova. Vols reiniciar amb la versió actualitzada?
+	A new version is available. Download it to replace this version?	Hi ha una versió nova. La vols baixar per substituir aquesta versió?
+	Later	Més tard
+	What's new	Novetats
+	No notes were published with this release.	Aquesta versió no s'ha publicat amb notes.
+	Released {date}	Publicada el {date}
+	Open on GitHub	Obre al GitHub
+	Close	Tanca
+	ArtCraft Launcher {version}	ArtCraft Launcher {version}
+	Only when I ask	Només quan ho demani
+	Automatically download and install updates	Baixa i instal·la les actualitzacions automàticament
+	Notify me when an installed app has an update	Avisa'm quan una aplicació instal·lada tingui una actualització
+	Include pre-releases (betas and release candidates)	Inclou les versions preliminars (betes i versions candidates)
+	Installing on Linux	Instal·lació a Linux
+	Installing on Windows	Instal·lació a Windows
+	Install new apps as	Instal·la les aplicacions noves com a
+	System package (recommended)	Paquet del sistema (recomanat)
+	Updates always use the format an app was installed with.	Les actualitzacions sempre utilitzen el format amb què es va instal·lar cada aplicació.
+	Running in the background	En segon pla
+	Keep running in the tray when the window is closed	Continua obert a la safata quan es tanca la finestra
+	ArtCraft Launcher is still running	ArtCraft Launcher encara s'està executant
+	It's in the tray: open it or quit it from the tray icon, or turn this off in the settings.	És a la safata: obre'l o tanca'l des de la icona de la safata, o desactiva-ho a la configuració.
+	Show the window on the current desktop	Mostra la finestra a l'escriptori actual
+	Start ArtCraft Launcher when I log in	Obre ArtCraft Launcher en iniciar la sessió
+	Community	Comunitat
+	Questions, ideas and news from the ArtCraft team	Preguntes, idees i notícies de l'equip d'ArtCraft
+	Appearance	Aparença
+	Quit ArtCraft Launcher	Tanca ArtCraft Launcher
+	Done	Fet
+	Uninstall {name}?	Vols desinstal·lar {name}?
+	The app will be moved to the Trash. Your documents and settings stay.	L'aplicació es mourà a la paperera. Els teus documents i la configuració es conserven.
+	Windows will remove it like any installed program. Your documents and settings stay.	El Windows la traurà com qualsevol programa instal·lat. Els teus documents i la configuració es conserven.
+	Your system's package manager will remove it, and may ask for your password. Your documents and settings stay.	El gestor de paquets del sistema la traurà i et pot demanar la contrasenya. Els teus documents i la configuració es conserven.
+	The app will be removed. Your documents and settings stay.	L'aplicació es traurà. Els teus documents i la configuració es conserven.
+	Uninstall	Desinstal·la
+	Cancel	Cancel·la
+	Checked {ago}	Comprovat {ago}
+	just now	fa un moment
+	yesterday	ahir
+	{month} {day}, {year}	{day} {month} de {year}
+	Automatically	Automàticament
+	Every Craft app	Totes les aplicacions Craft
+	Apps on this computer	Aplicacions en aquest ordinador
+	Installed apps with a newer version	Aplicacions instal·lades amb una versió més nova
+	Apps you can install	Aplicacions que pots instal·lar
+	Hide App	Amaga l'aplicació
+	Unhide App	Torna a mostrar l'aplicació
+	Hidden Apps	Aplicacions amagades
+	Apps you hid	Aplicacions que has amagat
+	Checked {ago} · using {sources}	Comprovat {ago} · amb {sources}
+	{a} and {b}	{a} i {b}
+	Join the Discord	Uneix-te al Discord
+	Learn more	Més informació
+	Minimize	Minimitza
+	Maximize	Maximitza
+	Restore	Restaura
+	New	Nou
+	OK	D'acord
+	Open link	Obre l'enllaç
+	Update	Actualitza
+	{name} icon	Icona de {name}
+	Loading ArtCraft Launcher…	S'està carregant ArtCraft Launcher…
+	Cancel update	Cancel·la l'actualització
+	Stop waiting; the update can be started again later	Deixa d'esperar; l'actualització es pot tornar a iniciar més tard
+	Download again	Torna a baixar
+	Install cancelled	Instal·lació cancel·lada
+	Install cancelled. The download is kept for the next try.	Instal·lació cancel·lada. La baixada es conserva per al proper intent.
+	Update cancelled	Actualització cancel·lada
+	Uninstall cancelled	Desinstal·lació cancel·lada
+	Retry install	Torna a instal·lar
+	Retry update to {version}	Torna a actualitzar a {version}
+	The download is still here. It's checked again, then installed.	La baixada encara hi és. Es torna a comprovar i després s'instal·la.
+	Waiting for another app…	Esperant una altra aplicació…
+	Waiting for other installs…	Esperant altres instal·lacions…
+	Installer (.msi)	Instal·lador (.msi)
+	Portable (.zip)	Portàtil (.zip)
+	Disk image (.dmg)	Imatge de disc (.dmg)
+	Debian package (.deb)	Paquet Debian (.deb)
+	RPM package (.rpm)	Paquet RPM (.rpm)
+	Arch package (.pkg.tar.zst)	Paquet d'Arch (.pkg.tar.zst)
+	Flatpak bundle	Paquet Flatpak
+	Tarball (.tar.gz)	Fitxer tar (.tar.gz)
+photocraft	Image editing	Edició d'imatges
+vectorcraft	Vector illustration	Il·lustració vectorial
+filmcraft	Video editing, color and sound	Edició de vídeo, color i so
+lightcraft	Photo library and raw development	Fototeca i revelatge RAW
+pdfcraft	Reading, organizing and protecting PDFs	Llegeix, organitza i protegeix PDF
+effectcraft	Motion graphics and visual effects	Gràfics en moviment i efectes visuals
+designcraft	Page layout and publishing	Maquetació i publicació
+wordcraft	Writing and document design	Escriptura i disseny de documents
+deckcraft	Presentations and slide shows	Presentacions i diapositives
+gridcraft	Spreadsheets and data	Fulls de càlcul i dades
+solidcraft	Parametric 3D CAD	CAD 3D paramètric
+cadcraft	Computer-aided design and drafting	Disseny assistit per ordinador i dibuix tècnic
+soundcraft	Recording, editing and mixing audio	Enregistrament, edició i mescla d'àudio
+figcraft	Interface design and prototyping	Disseny d'interfícies i prototips
+month	Jan	de gener
+month	Feb	de febrer
+month	Mar	de març
+month	Apr	d'abril
+month	May	de maig
+month	Jun	de juny
+month	Jul	de juliol
+month	Aug	d'agost
+month	Sep	de setembre
+month	Oct	d'octubre
+month	Nov	de novembre
+month	Dec	de desembre
+	Not checked yet	Encara no comprovat
+	GitHub's hourly limit was reached; full details return in {min} min	S'ha arribat al límit per hora del GitHub; els detalls complets tornaran d'aquí a {min} min
+	GitHub limit hit; back in {min} min	Límit del GitHub assolit; torna d'aquí a {min} min
+	Installing for {platform}	Instal·lació per a {platform}
+	Downloads for {platform}	Baixades per a {platform}
+	No downloads for this system	No hi ha baixades per a aquest sistema
+	Join the ArtCraft community on Discord	Uneix-te a la comunitat d'ArtCraft al Discord
+	ArtCraft on {name}	ArtCraft a {name}
+	Couldn't open {name}: {e}	No s'ha pogut obrir {name}: {e}
+	Download cancelled	Baixada cancel·lada
+	Available to install	Disponible per instal·lar
+	Available	Disponible
+	Installed · up to date	Instal·lada · al dia
+	Update available	Actualització disponible
+	Installed	Instal·lada
+	installed	instal·lada
+	Not available here	No disponible aquí
+	Updating…	Actualitzant…
+	Update paused	Actualització en pausa
+	Download paused	Baixada en pausa
+	{version} installed → {latest} released	{version} instal·lada → {latest} publicada
+	Version {version}	Versió {version}
+	{installed} installed · latest {latest}	{installed} instal·lada · última {latest}
+	Installed · latest {latest}	Instal·lada · última {latest}
+	Version {version} installed	Versió {version} instal·lada
+	Version {latest}	Versió {latest}
+	No release published yet	Encara no s'ha publicat cap versió
+	ArtCraft Launcher	ArtCraft Launcher
+	App	Aplicació
+	Latest	Última
+	Released	Publicada
+	Auto	Automàtic
+	Language	Idioma
+	Ascending	Ascendent
+	Descending	Descendent
+	Click to reverse the order	Fes clic per invertir l'ordre
+	Click to sort by this column	Fes clic per ordenar per aquesta columna
+	Like {name}	A l'estil de {name}
+	{done} of {total}	{done} de {total}
+	Downloading	Baixant
+	Verifying checksum…	Verificant la suma de comprovació…
+	Resume	Reprèn
+	{done} of {total} downloaded	{done} de {total} baixats
+	{done} downloaded	{done} baixats
+	Checking for updates…	Comprovant si hi ha actualitzacions…
+	Downloads the new version, replaces this one and opens it again	Baixa la versió nova, substitueix aquesta i la torna a obrir
+	Couldn't check for updates: {f}	No s'han pogut comprovar les actualitzacions: {f}
+	Website (coming soon)	Lloc web (properament)
+	GitHub repository	Repositori del GitHub
+	ArtCraft	ArtCraft
+	Update 1 app	Actualitza 1 aplicació
+	Update all ({count})	Actualitza-ho tot ({count})
+	⊞  Grid	⊞  Graella
+	☰  Table	☰  Taula
+	🔍  Search apps	🔍  Cerca aplicacions
+	{name} {version}	{name} {version}
+	Match system	Igual que el sistema
+	Dark	Fosc
+	Light	Clar
+	Full changelog	Registre de canvis complet
+	link	enllaç
+	No apps match	Cap aplicació coincideix
+	Open ArtCraft Launcher to update.	Obre ArtCraft Launcher per actualitzar.
+	{name} {v} is available	{name} {v} ja està disponible
+	{count} updates are available	Hi ha {count} actualitzacions disponibles
+	These notes weren't fetched (GitHub's request limit was reached). They're on the release page.	Aquestes notes no s'han obtingut (s'ha arribat al límit de sol·licituds del GitHub). Són a la pàgina de la versió.
+	When on, opening the launcher from the menu bar brings its window to the desktop you're on. When off, macOS switches you to the desktop the window was on.	Quan està activat, obrir ArtCraft Launcher des de la barra de menús porta la finestra a l'escriptori on ets. Quan està desactivat, el macOS et canvia a l'escriptori on era la finestra.
+	Couldn't change the login item: {e}	No s'ha pogut canviar l'element d'inici de sessió: {e}
+column	App	Aplicació
+column	Installed	Instal·lada
+column	Latest	Última
+column	Released	Publicada
+filter	Installed	Instal·lades
+	App details	Detalls de l'aplicació
+	More actions for {name}	Més accions per a {name}
+	Close (Esc)	Tanca (Esc)
+	Features	Funcions
+	Latest release	Última versió
+	Version	Versió
+	Platforms	Plataformes
+	Releases	Versions
+	Enlarge picture	Amplia la imatge
+	Click to enlarge	Fes clic per ampliar
+	Previous picture (←)	Imatge anterior (←)
+	Next picture (→)	Imatge següent (→)
+	Loading pictures…	S'estan carregant les imatges…
+	Pictures couldn't be loaded. Reopen this page to try again.	No s'han pogut carregar les imatges. Torna a obrir aquesta pàgina per intentar-ho de nou.
+	{name} details	Detalls de {name}
+@plural	{n} app|{n} apps	{n} aplicació|{n} aplicacions
+@plural	{n} min ago|{n} min ago	fa {n} min|fa {n} min
+@plural	{n} h ago|{n} h ago	fa {n} h|fa {n} h
+@plural	{n} day ago|{n} days ago	fa {n} dia|fa {n} dies
+@msg	Couldn't open {name}: {e}	No s'ha pogut obrir {name}: {e}
+@msg	Download cancelled	Baixada cancel·lada
+@msg	{name} updated to {version}	{name} actualitzada a {version}
+@msg	{name} installed: {version}	{name} instal·lada: {version}
+@msg	{name} updated to {version} (this release publishes no checksum, so only its size was checked)	{name} actualitzada a {version} (aquesta versió no publica la suma de comprovació, així que només s'ha comprovat la mida)
+@msg	{name} installed: {version} (this release publishes no checksum, so only its size was checked)	{name} instal·lada: {version} (aquesta versió no publica la suma de comprovació, així que només s'ha comprovat la mida)
+@msg	{name} was removed	S'ha tret {name}
+@msg	{name} is running. Quit it, then try again.	{name} s'està executant. Tanca-la i torna-ho a provar.
+@msg	{name} was installed from the {repo} repository or the AUR ({pkg}). Update it with {cmd} or sudo pacman -Syu	{name} es va instal·lar des del repositori {repo} o de l'AUR ({pkg}). Actualitza-la amb {cmd} o sudo pacman -Syu
+@msg	{name} was installed from the {repo} repository or the AUR ({pkg}). Update it with your AUR helper (for example: yay -S {pkg}) or sudo pacman -Syu	{name} es va instal·lar des del repositori {repo} o de l'AUR ({pkg}). Actualitza-la amb el teu assistent de l'AUR (per exemple: yay -S {pkg}) o sudo pacman -Syu
+@msg	{name} was installed from the AUR ({pkg}). Update it with {cmd}	{name} es va instal·lar des de l'AUR ({pkg}). Actualitza-la amb {cmd}
+@msg	{name} was installed from the AUR ({pkg}). Update it with your AUR helper (for example: yay -S {pkg})	{name} es va instal·lar des de l'AUR ({pkg}). Actualitza-la amb el teu assistent de l'AUR (per exemple: yay -S {pkg})
+@id	app.install	Instal·la
+@id	app.update	Actualitza a {v}
+@id	app.open	Obre
+@id	app.download	Baixa per a {os}
+@id	app.reveal	Mostra al Finder
+@id	app.reinstall	Reinstal·la
+@id	app.uninstall	Desinstal·la…
+@id	app.notes	Notes de la versió
+@id	app.website	Lloc web
+@id	app.github	Repositori del GitHub
+@id	app.releases	Totes les versions
+@id	launcher.update	Actualitza i reinicia
+@id	launcher.download	Baixa
+@id	launcher.notes	Novetats
+@id	launcher.dismiss	Descarta
+@id	settings.open	Configuració
+@id	settings.quit	Tanca ArtCraft Launcher
+@id	view.grid	Graella
+@id	view.table	Taula
+@id	filter.all	Totes
+@id	filter.installed	Instal·lades
+@id	filter.updates	Actualitzacions
+@id	filter.notinstalled	No instal·lades
+@id	sort.suite	Ordre de la suite
+@id	sort.name	Nom
+@id	sort.inspired	Inspirada en
+@id	sort.status	Estat
+@id	sort.installed	Versió instal·lada
+@id	sort.latest	Última versió
+@id	sort.released	Versió més recent
+@id	help.discord	Discord
+@id	help.github	GitHub
+@id	help.website	Lloc web
+@id	update.check	Comprova si hi ha actualitzacions
+@id	update.check_auto	Comprova les actualitzacions automàticament
+@id	update.notify	Avisa'm quan una aplicació instal·lada tingui una actualització
+@id	update.prereleases	Inclou les versions preliminars (betes i versions candidates)
+@id	linux.preferred_kind	Instal·la les aplicacions noves com a
+@id	tray.close_to_tray	Continua obert a la safata quan es tanca la finestra
+@id	tray.show_on_current_desktop	Mostra la finestra a l'escriptori actual
+@id	tray.login_item	Obre ArtCraft Launcher en iniciar la sessió
+@id	appearance.theme	Aparença
+	Show ArtCraft Launcher	Mostra ArtCraft Launcher
+	Check for Updates	Comprova si hi ha actualitzacions
+	Visit getartcraft.com	Visita getartcraft.com
+	ArtCraft on GitHub	ArtCraft al GitHub
+	Join the ArtCraft Discord	Uneix-te al Discord d'ArtCraft
+@plural	ArtCraft Launcher · {n} update available|ArtCraft Launcher · {n} updates available	ArtCraft Launcher · {n} actualització disponible|ArtCraft Launcher · {n} actualitzacions disponibles
+	Install folder	Carpeta d'instal·lació
+	Default install folder	Carpeta d'instal·lació predeterminada
+	System default	Predeterminada del sistema
+	Browse…	Navega…
+	Use default	Utilitza la predeterminada
+	New installs use this folder. Updates stay in their current location.	Les instal·lacions noves utilitzen aquesta carpeta. Les actualitzacions es queden a la seva ubicació actual.
+	Custom folders use AppImage on Linux.	Les carpetes personalitzades utilitzen AppImage a Linux.
+	On Linux, custom folders use AppImage format.	A Linux, les carpetes personalitzades utilitzen el format AppImage.
+	The system manages install locations here.	El sistema gestiona les ubicacions d'instal·lació aquí.
+@msg	couldn't use install folder {path}: {reason}	no s'ha pogut utilitzar la carpeta d'instal·lació {path}: {reason}
+@msg	this release has no AppImage for a custom install folder	aquesta versió no té cap AppImage per a una carpeta d'instal·lació personalitzada
+@msg	custom install folders aren't supported on this system	aquest sistema no admet carpetes d'instal·lació personalitzades
+@msg	{path} already exists and wasn't installed by ArtCraft Launcher	{path} ja existeix i no es va instal·lar amb ArtCraft Launcher
+@msg	couldn't move {path} to Trash ({reason}). Remove it in Finder instead.	no s'ha pogut moure {path} a la paperera ({reason}). Elimina'l des del Finder.
+	Apps are placed inside this folder.	Les aplicacions es desen dins d'aquesta carpeta.
+	Replace what's there?	Vols substituir el que hi ha?
+	{path} already exists. Installing {name} will overwrite it.	{path} ja existeix. Instal·lar {name} el sobreescriurà.
+	Replace	Substitueix
+	Recently updated	Actualitzades recentment
+	Name (A–Z)	Nom (A–Z)
+	Name (Z–A)	Nom (Z–A)
+	Frequently used	Les més utilitzades
+	Next app	Aplicació següent
+	Previous app	Aplicació anterior
+	Show {n} more changes	Mostra {n} canvis més
+	Last updated: {date}	Última actualització: {date}
+column	Version	Versió
+column	Author	Autor

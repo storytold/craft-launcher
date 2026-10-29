@@ -352,6 +352,21 @@ fn spanish_locales_and_plurals_work() {
 }
 
 #[test]
+fn catalan_locales_and_plurals_work() {
+    for tag in ["ca", "ca-ES", "ca_ES.UTF-8", "ca-AD", "ca-FR", "CA_es"] {
+        assert_eq!(lang_from_tag(tag), Some(Lang::CA), "{tag}");
+    }
+    assert_eq!(super::detect::first_supported(["xx-XX", "ca-ES", "en-US"]), Some(Lang::CA));
+    // Only 1 is singular in Catalan, as in English.
+    assert_eq!(trn(Lang::CA, 0, "{n} app", "{n} apps"), "0 aplicacions");
+    assert_eq!(trn(Lang::CA, 1, "{n} app", "{n} apps"), "1 aplicació");
+    assert_eq!(trn(Lang::CA, 3, "{n} day ago", "{n} days ago"), "fa 3 dies");
+    assert_eq!(super::tr_ctx(Lang::CA, "month", "Mar"), "de març");
+    assert_eq!(tr(Lang::CA, "{month} {day}, {year}"), "{day} {month} de {year}");
+    assert_eq!(message(Lang::CA, "PhotoCraft updated to 0.5.0"), "PhotoCraft actualitzada a 0.5.0");
+}
+
+#[test]
 fn polish_locales_resolve() {
     for tag in ["pl", "pl-PL", "pl_PL.UTF-8", "PL_pl"] {
         assert_eq!(lang_from_tag(tag), Some(Lang::PL), "{tag}");
