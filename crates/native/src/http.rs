@@ -141,7 +141,7 @@ impl Http {
         {
             req = req.header("Authorization", &format!("Bearer {token}"));
         }
-        let mut resp = req.call().map_err(|e| format!("couldn't reach GitHub ({e})"))?;
+        let mut resp = req.call().map_err(|e| format!("{UNREACHABLE} GitHub ({e})"))?;
         let header = |name: &str| resp.headers().get(name).and_then(|v| v.to_str().ok()).map(str::to_string);
         let status = resp.status().as_u16();
         match status {
@@ -170,7 +170,7 @@ impl Http {
         let failed = |why: String| FeedError { why, throttled: false, retry_after: None };
         let agent = if is_loopback(url) { &self.direct } else { &self.feed };
         let mut resp =
-            agent.get(url).header("Accept", "application/json").call().map_err(|e| failed(format!("couldn't reach {} ({e})", host(url))))?;
+            agent.get(url).header("Accept", "application/json").call().map_err(|e| failed(format!("{UNREACHABLE} {} ({e})", host(url))))?;
         // Seconds only; an HTTP date falls back to our own backoff.
         let retry_after = resp.headers().get("retry-after").and_then(|v| v.to_str().ok()).and_then(|r| r.trim().parse::<i64>().ok());
         match resp.status().as_u16() {
@@ -182,7 +182,7 @@ impl Http {
     /// GET a small text file (following redirects).
     pub fn get_text(&self, url: &str) -> Result<Option<String>, String> {
         let agent = if is_loopback(url) { &self.direct } else { &self.small };
-        let mut resp = agent.get(url).call().map_err(|e| format!("couldn't reach {} ({e})", host(url)))?;
+        let mut resp = agent.get(url).call().map_err(|e| format!("{UNREACHABLE} {} ({e})", host(url)))?;
         match resp.status().as_u16() {
             200 => read_text_capped(&mut resp, MAX_SMALL).map(Some).map_err(|e| format!("unreadable answer ({e})")),
             404 => Ok(None),
@@ -195,7 +195,7 @@ impl Http {
     /// on the body when the length wasn't announced or was wrong.
     pub fn get_bytes(&self, url: &str, max: usize) -> Result<Option<Vec<u8>>, String> {
         let agent = if is_loopback(url) { &self.direct } else { &self.small };
-        let mut resp = agent.get(url).call().map_err(|e| format!("couldn't reach {} ({e})", host(url)))?;
+        let mut resp = agent.get(url).call().map_err(|e| format!("{UNREACHABLE} {} ({e})", host(url)))?;
         match resp.status().as_u16() {
             200 => {
                 let announced = resp.headers().get("content-length").and_then(|v| v.to_str().ok()).and_then(|v| v.parse::<u64>().ok());
@@ -214,7 +214,7 @@ impl Http {
 
     /// Where `url` redirects to, without following it.
     pub fn redirect_target(&self, url: &str) -> Result<Option<String>, String> {
-        let resp = self.no_redirect.head(url).call().map_err(|e| format!("couldn't reach {} ({e})", host(url)))?;
+        let resp = self.no_redirect.head(url).call().map_err(|e| format!("{UNREACHABLE} {} ({e})", host(url)))?;
         match resp.status().as_u16() {
             300..=399 => Ok(resp.headers().get("location").and_then(|v| v.to_str().ok()).map(str::to_string)),
             404 => Ok(None),
@@ -569,6 +569,20 @@ fn host(url: &str) -> &str {
     url.split_once("://").and_then(|(_, rest)| rest.split('/').next()).unwrap_or(url)
 }
 
+/// How every error in this module starts when the request didn't complete at all: no name
+/// resolution, no route, a refused connection, a dropped handshake, nothing within the timeout.
+/// Kept next to the errors it describes so the two can't drift apart. (`Http::attempt`'s
+/// "couldn't connect" is deliberately outside it: that one never leaves the download loop.)
+const UNREACHABLE: &str = "couldn't reach";
+
+/// Whether one of this module's GETs ended without the host completing an answer, as opposed to
+/// answering with something unwelcome (an HTTP status, a body that couldn't be read). A caller
+/// with a second host to try uses this to tell "ask the other one" from "this network is going
+/// nowhere". Erring towards `true` only costs that caller one skipped retry.
+pub fn is_unreachable(error: &str) -> bool {
+    error.starts_with(UNREACHABLE)
+}
+
 /// Reads a text body, rejecting one whose *decoded* size exceeds `max`.
 ///
 /// ureq's own `limit` guards the *compressed* stream: it sits below the transparent gzip decoder,
@@ -609,6 +623,22 @@ pub(crate) mod tests {
         assert_eq!(host("https://api.github.com/repos/storytold/wordcraft"), "api.github.com");
         assert_eq!(host("http://127.0.0.1:8080"), "127.0.0.1:8080");
         assert_eq!(host("not a url"), "not a url");
+    }
+
+    #[test]
+    fn a_host_that_never_answered_is_told_from_one_that_said_no() {
+        // A caller with a second host to try leans on this: only the first kind is worth retrying
+        // somewhere else.
+        let gone = std::net::TcpListener::bind("127.0.0.1:0").unwrap().local_addr().unwrap();
+        let http = Http::new().unwrap();
+        let refused = http.get_text(&format!("http://{gone}/file.txt")).unwrap_err();
+        assert!(is_unreachable(&refused), "{refused}");
+        assert!(is_unreachable(&http.get_feed(&format!("http://{gone}/feed.json")).unwrap_err().why));
+        assert!(is_unreachable(&http.redirect_target(&format!("http://{gone}/latest")).unwrap_err()));
+        // A refusal is an answer, and so is a body that can't be read.
+        assert!(!is_unreachable("GitHub refused the request (HTTP 403)"));
+        assert!(!is_unreachable(&format!("{} answered HTTP 503", host("https://github.com/storytold/photocraft/releases/latest"))));
+        assert!(!is_unreachable("unreadable answer from GitHub (the answer is larger than 4194304 bytes)"));
     }
 
     #[test]

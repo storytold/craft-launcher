@@ -155,7 +155,8 @@ pub enum Source {
     Feed,
     /// The GitHub REST API.
     GitHubApi,
-    /// github.com release pages (no API quota; used when the API is rate-limited).
+    /// github.com release pages (no API quota; used whenever the API gave no answer, whether it
+    /// was out of quota or couldn't be reached).
     GitHubPages,
     /// Saved answers from an earlier check.
     Cache,
