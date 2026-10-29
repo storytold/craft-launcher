@@ -33,7 +33,9 @@ semver = { version = "1", features = ["serde"] }
 log = "0.4"
 # All date/time conversion goes through jiff (no hand-rolled calendar code beyond the 400-year range extension; AGENTS.md).
 jiff = "0.2"
-craft-update = { version = "=0.1.0", git = "https://github.com/storytold/craft-libs", rev = "92d392cff132eaf53e13afff77f38b5c11b73aa0" }
+# Release parsing, versions and platforms are craft-update's (`core` uses them without `native`,
+# so they build for wasm32); `native` adds downloads, installs and self-update.
+craft-update = { git = "https://github.com/smittie2000/craft-libs", version = "=0.1.0", rev = "6205a1b6c58a73c692732f263736bd1b34238f8d", default-features = false }
 craft-ui = { version = "=0.1.0", git = "https://github.com/storytold/craft-libs", rev = "92d392cff132eaf53e13afff77f38b5c11b73aa0" }
 
 [profile.dev.package."*"]

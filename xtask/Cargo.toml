@@ -11,3 +11,4 @@ workspace = true
 [dependencies]
 jiff = { workspace = true }
 semver = { workspace = true }
+sha2 = "0.10"

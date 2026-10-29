@@ -15,7 +15,6 @@
 //!   doesn't skip the wait.
 
 use std::collections::VecDeque;
-use std::hash::{BuildHasher, Hasher};
 use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
@@ -196,9 +195,9 @@ fn sane(retry_after: Option<i64>) -> i64 {
     retry_after.filter(|s| (0..=MAX_RETRY_AFTER).contains(s)).unwrap_or(0)
 }
 
-/// A random number in `0.0..1.0`, different in every launcher (std's hasher keys are random).
+/// A random number in `0.0..1.0` from the OS's random source; `0.5` if it can't be read.
 pub fn jitter() -> f64 {
-    let bits = std::collections::hash_map::RandomState::new().build_hasher().finish();
+    let Ok(bits) = getrandom::u64() else { return 0.5 };
     #[allow(clippy::cast_precision_loss)]
     let fraction = (bits >> 11) as f64 / (1u64 << 53) as f64;
     fraction

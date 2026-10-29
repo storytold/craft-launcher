@@ -300,8 +300,8 @@ dependencies = [
 name = "artcraft-launcher-core"
 version = "0.9.0"
 dependencies = [
+ "craft-update",
  "jiff",
- "semver",
  "serde",
  "serde_json",
 ]
@@ -323,11 +323,8 @@ dependencies = [
  "sha2",
  "tar",
  "tempfile",
- "ureq",
- "verifysign",
  "winreg",
  "winsafe",
- "zip 8.6.0",
 ]
 
 [[package]]
@@ -1024,7 +1021,7 @@ dependencies = [
 [[package]]
 name = "craft-update"
 version = "0.1.0"
-source = "git+https://github.com/storytold/craft-libs?rev=92d392cff132eaf53e13afff77f38b5c11b73aa0#92d392cff132eaf53e13afff77f38b5c11b73aa0"
+source = "git+https://github.com/smittie2000/craft-libs?rev=6205a1b6c58a73c692732f263736bd1b34238f8d#6205a1b6c58a73c692732f263736bd1b34238f8d"
 dependencies = [
  "chrono",
  "dunce",
@@ -1042,7 +1039,7 @@ dependencies = [
  "verifysign",
  "winreg",
  "winsafe",
- "zip 9.1.0",
+ "zip",
 ]
 
 [[package]]
@@ -5099,12 +5096,6 @@ dependencies = [
 
 [[package]]
 name = "typed-path"
-version = "0.12.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8e28f89b80c87b8fb0cf04ab448d5dd0dd0ade2f8891bae878de66a75a28600e"
-
-[[package]]
-name = "typed-path"
 version = "0.13.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9ce898823d8cd0f028662d2f349694b1af0a5cc9be83f1d213a00d3147445e1e"
@@ -6232,6 +6223,7 @@ version = "0.9.0"
 dependencies = [
  "jiff",
  "semver",
+ "sha2",
 ]
 
 [[package]]
@@ -6449,20 +6441,6 @@ dependencies = [
 
 [[package]]
 name = "zip"
-version = "8.6.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2d04a6b5381502aa6087c94c669499eb1602eb9c5e8198e534de571f7154809b"
-dependencies = [
- "crc32fast",
- "flate2",
- "indexmap",
- "memchr",
- "typed-path 0.12.3",
- "zopfli",
-]
-
-[[package]]
-name = "zip"
 version = "9.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2886b00003a72c4ccee3f42cfc34908d33b2508a74d827dc2a4244706475c704"
@@ -6473,7 +6451,7 @@ dependencies = [
  "indexmap",
  "memchr",
  "nix",
- "typed-path 0.13.0",
+ "typed-path",
  "windows-sys 0.61.2",
  "zopfli",
 ]

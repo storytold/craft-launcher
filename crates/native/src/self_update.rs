@@ -24,55 +24,14 @@ pub fn current() -> Option<Install> {
     craft_update::self_update::current(&craft_update::suite::LAUNCHER)
 }
 
-fn to_update_paths(paths: &Paths) -> craft_update::Paths {
-    craft_update::Paths { data: paths.data.clone(), cache: paths.cache.clone() }
-}
-
-fn to_update_release(release: &Release) -> craft_update::Release {
-    craft_update::Release {
-        tag: release.tag.clone(),
-        version: release.version.clone(),
-        name: release.name.clone(),
-        published_at: release.published_at,
-        html_url: release.html_url.clone(),
-        notes: release.notes.clone(),
-        prerelease: release.prerelease,
-        assets: release
-            .assets
-            .iter()
-            .map(|a| craft_update::Asset { name: a.name.clone(), size: a.size, url: a.url.clone(), sha256: a.sha256.clone() })
-            .collect(),
-    }
-}
-
-fn to_update_platform(platform: Platform) -> craft_update::Platform {
-    craft_update::Platform {
-        os: match platform.os {
-            artcraft_launcher_core::Os::Windows => craft_update::Os::Windows,
-            artcraft_launcher_core::Os::MacOs => craft_update::Os::MacOs,
-            artcraft_launcher_core::Os::Linux => craft_update::Os::Linux,
-            artcraft_launcher_core::Os::FreeBsd => craft_update::Os::FreeBsd,
-        },
-        arch: match platform.arch {
-            artcraft_launcher_core::Arch::X64 => craft_update::Arch::X64,
-            artcraft_launcher_core::Arch::Arm64 => craft_update::Arch::Arm64,
-            artcraft_launcher_core::Arch::X86 => craft_update::Arch::X86,
-            artcraft_launcher_core::Arch::Riscv64 => craft_update::Arch::Riscv64,
-        },
-    }
-}
-
 /// Whether `release` is the version this launcher just updated itself to.
 pub fn just_updated_to(paths: &Paths, release: &Release) -> bool {
-    let update_paths = to_update_paths(paths);
-    let update_release = to_update_release(release);
-    craft_update::self_update::just_updated_to(&update_paths, &update_release)
+    craft_update::self_update::just_updated_to(paths, release)
 }
 
 /// The error of the last update, if it failed, once.
 pub fn take_failure(paths: &Paths) -> Option<String> {
-    let update_paths = to_update_paths(paths);
-    craft_update::self_update::take_failure(&update_paths)
+    craft_update::self_update::take_failure(paths)
 }
 
 /// Downloads `release` for `platform`, puts it in place and starts the helper that relaunches
@@ -83,35 +42,21 @@ pub fn update(
     install: &Install,
     release: &Release,
     platform: Platform,
-    _http: &Http,
+    http: &Http,
     paths: &Paths,
     stop: &Stop,
     phase: &mut dyn FnMut(JobPhase),
     last: &dyn Fn() -> Result<(), String>,
 ) -> Result<(), String> {
-    let update_release = to_update_release(release);
-    let update_platform = to_update_platform(platform);
-    let update_paths = to_update_paths(paths);
-    let update_http = craft_update::Http::new("ArtCraft-Launcher/SelfUpdate")?;
-    let mut update_phase = |p: craft_update::JobPhase| {
-        phase(match p {
-            craft_update::JobPhase::Downloading { done, total } => JobPhase::Downloading { done, total },
-            craft_update::JobPhase::Reconnecting { done, total } => JobPhase::Reconnecting { done, total },
-            craft_update::JobPhase::Waiting => JobPhase::Waiting,
-            craft_update::JobPhase::Verifying => JobPhase::Verifying,
-            craft_update::JobPhase::Installing => JobPhase::Installing,
-            craft_update::JobPhase::Removing => JobPhase::Removing,
-        });
-    };
     craft_update::self_update::update(
         &craft_update::suite::LAUNCHER,
         install,
-        &update_release,
-        update_platform,
-        &update_http,
-        &update_paths,
+        release,
+        platform,
+        http,
+        paths,
         stop,
-        &mut update_phase,
+        phase,
         last,
         Some(env!("CARGO_PKG_VERSION")),
     )

@@ -4,13 +4,15 @@
 //! The UI sends [`Command`]s and drains [`Event`]s once per frame, so backends do their work on
 //! threads (desktop) or futures (web) and never block a frame.
 
-use std::collections::BTreeMap;
-
 use serde::{Deserialize, Serialize};
 
 use crate::platform::{PackageKind, Platform};
 use crate::release::Release;
 use crate::status::Installed;
+
+// What a job is doing, how it ended, where new installs go and what a release lookup found:
+// shared with every Craft app's installer through craft-update.
+pub use craft_update::protocol::{CANCELLED, INSTALL_CANCELLED, InstallLocations, JobPhase, LatestRelease, PAUSED, Source};
 
 /// Asks the backend to do something. Results arrive later as [`Event`]s.
 #[derive(Clone, Debug, PartialEq)]
@@ -59,20 +61,6 @@ pub enum Command {
     Configure(BackendOptions),
 }
 
-/// Parent folders for new installs. Existing installations keep their recorded location.
-#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(default)]
-pub struct InstallLocations {
-    pub root: Option<String>,
-    pub per_app: BTreeMap<String, String>,
-}
-
-impl InstallLocations {
-    pub fn folder(&self, app: &str) -> Option<&str> {
-        self.per_app.get(app).map(String::as_str).or(self.root.as_deref())
-    }
-}
-
 /// Settings the backend needs.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default)]
@@ -84,36 +72,6 @@ pub struct BackendOptions {
     pub prereleases: bool,
 }
 
-/// The answer to "what's the latest release of this app?".
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub enum LatestRelease {
-    Found(Release),
-    /// The repo exists but has no published release.
-    None,
-    /// Couldn't find out (offline, rate-limited, unreadable answer).
-    Failed(String),
-}
-
-/// What a running job is doing.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum JobPhase {
-    Downloading {
-        done: u64,
-        total: u64,
-    },
-    /// The connection dropped; trying again shortly, from where it stopped.
-    Reconnecting {
-        done: u64,
-        total: u64,
-    },
-    Verifying,
-    /// The system's installer is busy with another app; this one goes next.
-    Waiting,
-    /// Waiting on the OS installer (MSI) or copying files.
-    Installing,
-    Removing,
-}
-
 /// A partly downloaded file waiting to be resumed.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct PausedDownload {
@@ -121,14 +79,6 @@ pub struct PausedDownload {
     /// 0 when unknown.
     pub total: u64,
 }
-
-/// The `JobFinished` error a paused job ends with (not a failure).
-pub const PAUSED: &str = "paused";
-/// The `JobFinished` error a cancelled job ends with (not a failure).
-pub const CANCELLED: &str = "cancelled";
-/// The `JobFinished` error of an install whose system prompt (password, Windows Installer) the
-/// user dismissed after the download finished (not a failure).
-pub const INSTALL_CANCELLED: &str = "install cancelled";
 
 /// Which service an app's release information came from (the footer names them).
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -144,30 +94,6 @@ impl Origin {
         match self {
             Self::ArtCraftApi => "ArtCraft API",
             Self::GitHub => "GitHub",
-        }
-    }
-}
-
-/// Where release information came from.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub enum Source {
-    /// ArtCraft's release feed (storyteller-web), which polls GitHub for everyone.
-    Feed,
-    /// The GitHub REST API.
-    GitHubApi,
-    /// github.com release pages (no API quota; used when the API is rate-limited).
-    GitHubPages,
-    /// Saved answers from an earlier check.
-    Cache,
-}
-
-impl Source {
-    pub fn label(self) -> &'static str {
-        match self {
-            Self::Feed => "ArtCraft",
-            Self::GitHubApi => "GitHub",
-            Self::GitHubPages => "GitHub (release pages)",
-            Self::Cache => "saved results",
         }
     }
 }

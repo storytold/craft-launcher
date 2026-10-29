@@ -435,7 +435,7 @@ pub mod linux {
             artcraft_launcher_core::SUITE.iter().any(|a| {
                 [InstallSource::Deb, InstallSource::Rpm, InstallSource::Pacman, InstallSource::Flatpak]
                     .iter()
-                    .any(|m| crate::packages::candidate_names(a, *m).iter().any(|n| n == name))
+                    .any(|m| crate::packages::candidate_names(&a.update_app(), *m).iter().any(|n| n == name))
             })
         };
         let t = Duration::from_secs(10);
@@ -545,7 +545,7 @@ pub mod linux {
             return Some(Installed { version, source: InstallSource::AppImage, location: path.display().to_string(), package: None });
         }
         let order = [InstallSource::Deb, InstallSource::Rpm, InstallSource::Pacman, InstallSource::Flatpak];
-        if let Some(p) = packages::find(app, &snapshot.packages, &order) {
+        if let Some(p) = packages::find(&app.update_app(), &snapshot.packages, &order) {
             // A Flatpak runs under the id it was found under, which may be an older one.
             let location = if p.manager == InstallSource::Flatpak { p.name.clone() } else { binary_on_path(app.id) };
             return Some(Installed { version: packages::version_of(p), source: p.manager, location, package: Some(p.name.clone()) });
@@ -606,7 +606,7 @@ mod linux_tests {
             artcraft_launcher_core::SUITE.iter().any(|a| {
                 [InstallSource::Deb, InstallSource::Rpm, InstallSource::Pacman, InstallSource::Flatpak]
                     .iter()
-                    .any(|m| crate::packages::candidate_names(a, *m).iter().any(|n| n == name))
+                    .any(|m| crate::packages::candidate_names(&a.update_app(), *m).iter().any(|n| n == name))
             })
         };
         assert!(ours("photocraft"));

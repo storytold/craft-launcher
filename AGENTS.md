@@ -20,10 +20,15 @@ Standards and learnings shared across the Craft apps live in `../craftrules` (re
 
 ```text
 crates/
-  core      artcraft-launcher-core      pure and wasm-safe: the app catalog, versions, GitHub
-                                        release parsing, picking the right asset per platform
-  native    artcraft-launcher-native    desktop only: HTTP, detecting installed apps, download,
-                                        verify and install
+  core      artcraft-launcher-core      pure and wasm-safe: the app catalog, the feed, statuses;
+                                        re-exports craft-update's release parsing, versions,
+                                        platforms, asset picking, timestamps and the protocol
+                                        and status types it shares (storytold/craft-libs)
+  native    artcraft-launcher-native    desktop only: detecting installed apps, download, verify
+                                        and install; re-exports craft-update's HTTP client,
+                                        paths, manifest, proxy, process, release source,
+                                        portable installs, Linux menu entries, package
+                                        listings and the installer queue
   ui-egui   artcraft-launcher-ui-egui   the shared egui UI (desktop and web)
 apps/
   artcraft-launcher                     desktop shell (eframe): window, tray icon, notifications
@@ -118,8 +123,10 @@ only; English where there is none): never bundle a CJK font, they are 10 MB and 
    refresh it from there, never redraw.
 3. **Never break wasm.** `cargo xtask wasm` must pass. File-system, process and OS code is
    `cfg(not(target_arch = "wasm32"))`.
-4. **Tests are the gate.** Release parsing and asset picking in `core` get unit tests with real
-   GitHub release JSON fixtures (small, committed under `crates/core/tests/fixtures/`).
+4. **Tests are the gate.** Release parsing, asset picking and every module `core` and `native`
+   re-export live in craft-update (`storytold/craft-libs`, `crates/update`), shared with every
+   Craft app: fix them there, with their tests (release parsing on real GitHub release JSON
+   fixtures), then bump the pin here. Never copy them back into the launcher.
 5. When fetching anything, use a generic `ArtCraft-Launcher/<version>` User-Agent and never put
    a person's name, email or other personal details in requests.
 6. **Time goes through `jiff`** (workspace dependency). Never hand-roll UTC/calendar conversion
@@ -127,7 +134,9 @@ only; English where there is none): never bundle a CJK font, they are 10 MB and 
    exception is range extension: past the years jiff can represent, shift the date by whole 400-year
    Gregorian cycles (146,097 days, after which the calendar repeats), let jiff compute the month and
    day, and add the cycles back to the year (splitting seconds into hours, minutes and seconds is
-   plain arithmetic).
+   plain arithmetic). The release parsing and `core::time::parse_rfc3339` re-exported from
+   craft-update read timestamps with chrono, which is craft-libs' choice; the launcher's own code
+   stays on jiff.
 
 ## 3. Before you finish a task
 

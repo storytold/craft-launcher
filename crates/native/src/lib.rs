@@ -8,30 +8,24 @@
 #![deny(clippy::unwrap_used, clippy::expect_used, clippy::panic, clippy::unimplemented, clippy::todo, clippy::unreachable)]
 
 pub mod backend;
-pub mod desktop_entry;
 pub mod detect;
+pub mod discord;
 pub mod feed_throttle;
 pub mod http;
 pub mod install;
 pub mod login;
-pub mod manifest;
 #[cfg(any(windows, test))]
 mod msi_context;
-pub mod packages;
 pub mod paths;
-#[cfg(windows)]
-pub mod portable;
-pub mod process;
-pub mod proxy;
-pub mod queue;
 pub mod screenshots;
 pub mod self_update;
 pub mod single_instance;
-pub mod source;
 
 pub use backend::NativeBackend;
-
-/// Unix seconds now.
-pub fn now() -> i64 {
-    std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| i64::try_from(d.as_secs()).unwrap_or(i64::MAX))
-}
+// Shared with every Craft app's installer through craft-update: the launcher's record of what it
+// installed, starting programs, the system proxy settings downloads go through, GitHub release
+// lookups, Linux menu entries and package-manager listings, and the one-installer-at-a-time queue.
+pub use craft_update::{desktop_entry, manifest, now, packages, process, proxy, queue, source};
+// Portable zip installs on Windows.
+#[cfg(windows)]
+pub use craft_update::portable;
