@@ -45,6 +45,8 @@ fn note(ui: &mut Ui, text: &str) {
 }
 
 impl LauncherUi {
+    /// The Settings sheet: the groups in a scrolling body, Quit and Done in the footer; true when
+    /// it should close.
     pub(crate) fn settings_dialog(&mut self, ui: &mut Ui, host: &mut dyn Host) -> bool {
         let t = Tokens::get(ui.ctx());
         let size = sheet::size(ui.ctx(), vec2(1000.0, 820.0));
@@ -90,12 +92,7 @@ impl LauncherUi {
                     close = widgets::button(ui, tl!("Done"), Kind::Primary, 90.0).clicked();
                 });
             } else {
-                ui.horizontal(|ui| {
-                    quit(ui, host);
-                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        close = widgets::button(ui, tl!("Done"), Kind::Primary, 90.0).clicked();
-                    });
-                });
+                egui::Sides::new().show(ui, |ui| quit(ui, host), |ui| close = widgets::button(ui, tl!("Done"), Kind::Primary, 90.0).clicked());
             }
         });
         close

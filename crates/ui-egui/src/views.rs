@@ -82,34 +82,41 @@ impl LauncherUi {
         if bar != TitleBar::Native {
             widgets::title_bar_drag(ui);
         }
-        ui.horizontal(|ui| {
-            ui.spacing_mut().item_spacing.x = 0.0;
-            if bar == TitleBar::MacOs {
-                ui.add_space(TRAFFIC_LIGHTS_W);
-            }
-            // The ArtCraft wordmark exactly as supplied, in its own cell.
-            let logo = vec2(14.0 * crate::icons::ARTCRAFT_LOGO_ASPECT, 14.0);
-            let (cell, _) = ui.allocate_exact_size(vec2(logo.x + 40.0, h), Sense::hover());
-            egui::Image::new(crate::icons::artcraft_logo(t.dark)).alt_text(tl!("ArtCraft")).paint_at(ui, Rect::from_center_size(cell.center(), logo));
-            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+        // The controls on the right are laid out first and keep their widths; the left side gets
+        // what is left, and drops the secondary text when it doesn't fit there.
+        egui::Sides::new().shrink_left().height(h).spacing(0.0).show(
+            ui,
+            |ui| {
+                ui.spacing_mut().item_spacing.x = 0.0;
+                if bar == TitleBar::MacOs {
+                    ui.add_space(TRAFFIC_LIGHTS_W);
+                }
+                // The ArtCraft wordmark exactly as supplied, in its own cell.
+                let logo = vec2(14.0 * crate::icons::ARTCRAFT_LOGO_ASPECT, 14.0);
+                let (cell, _) = ui.allocate_exact_size(vec2(logo.x + 40.0, h), Sense::hover());
+                egui::Image::new(crate::icons::artcraft_logo(t.dark))
+                    .alt_text(tl!("ArtCraft"))
+                    .paint_at(ui, Rect::from_center_size(cell.center(), logo));
+                if ui.available_width() >= 17.0 + widgets::hud_galley(ui, tl!("Craft App Suite"), t.muted).size().x {
+                    widgets::rule(ui, h);
+                    ui.add_space(16.0);
+                    widgets::hud(ui, tl!("Craft App Suite"), t.muted);
+                }
+            },
+            |ui| {
+                ui.spacing_mut().item_spacing.x = 0.0;
                 if bar == TitleBar::Custom {
                     widgets::window_buttons(ui, h);
                 }
                 if widgets::nav_icon(ui, widgets::Glyph::Settings, tl!("Settings"), h, false).clicked() {
                     self.dialog = Some(Dialog::Settings);
                 }
-                // The controls reserve their actual widths before the secondary text gets space.
-                ui.with_layout(egui::Layout::left_to_right(egui::Align::Center), |ui| {
-                    if ui.available_width() >= 17.0 + widgets::hud_galley(ui, tl!("Craft App Suite"), t.muted).size().x {
-                        widgets::rule(ui, h);
-                        ui.add_space(16.0);
-                        widgets::hud(ui, tl!("Craft App Suite"), t.muted);
-                    }
-                });
-            });
-        });
+            },
+        );
     }
 
+    /// The launcher-update banner and announcements, then the row of refresh, the hidden apps,
+    /// "Update all", sort, search and the view switch (sort and "Update all" on a second row when narrow).
     pub(crate) fn toolbar(&mut self, ui: &mut Ui) {
         if self.settings.filter == Filter::Hidden && self.settings.hidden.is_empty() {
             self.settings.filter = Filter::All;
@@ -137,65 +144,81 @@ impl LauncherUi {
             .stroke(Stroke::new(1.0, tint(t.accent, 0.6)))
             .inner_margin(egui::Margin::symmetric(16, 10))
             .show(ui, |ui| {
-                ui.horizontal(|ui| {
-                    widgets::tag(ui, tl!("Update"), t.accent, Color32::WHITE);
-                    ui.add_space(4.0);
-                    ui.label(
-                        RichText::new(fmt(tl!("ArtCraft Launcher {version} is available."), &[("version", &r.version_label())]))
+                // A narrow banner moves "What's new" under the message, leaving it the room
+                // the link took beside the buttons.
+                let link_left = ui.available_width() < theme::TOOLBAR_COMPACT_BELOW;
+                let busy = self.launcher_job.is_some();
+                // The buttons keep their widths; the message wraps in what they leave.
+                egui::Sides::new().shrink_left().wrap().show(
+                    ui,
+                    |ui| {
+                        widgets::tag(ui, tl!("Update"), t.accent, Color32::WHITE);
+                        ui.add_space(4.0);
+                        let message = RichText::new(fmt(tl!("ArtCraft Launcher {version} is available."), &[("version", &r.version_label())]))
                             .family(theme::medium())
-                            .color(t.ink_strong),
-                    );
-                    self.banner_actions(ui, t, r);
-                });
+                            .color(t.ink_strong);
+                        if link_left && !busy {
+                            ui.vertical(|ui| {
+                                ui.spacing_mut().item_spacing.y = 4.0;
+                                ui.label(message);
+                                widgets::hud_link(ui, tl!("What's new"), &r.html_url);
+                            });
+                        } else {
+                            ui.label(message);
+                        }
+                    },
+                    |ui| self.banner_actions(ui, t, r, link_left),
+                );
             });
     }
 
     /// The banner's right side: the download's progress and cancel while it runs, otherwise the
-    /// update (or download) buttons plus the release link.
-    fn banner_actions(&mut self, ui: &mut Ui, t: &Tokens, r: &artcraft_launcher_core::Release) {
-        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-            if let Some(phase) = self.launcher_job {
-                let (fraction, caption) = match phase {
-                    JobPhase::Downloading { done, total } if total > 0 => (
-                        Some(done as f32 / total as f32),
-                        fmt(tl!("Downloading {done} of {total}"), &[("done", &widgets::human_bytes(done)), ("total", &widgets::human_bytes(total))]),
-                    ),
-                    JobPhase::Downloading { .. } | JobPhase::Reconnecting { .. } => (None, tl!("Downloading…").to_string()),
-                    JobPhase::Verifying => (None, tl!("Verifying…").to_string()),
-                    JobPhase::Waiting => (None, tl!("Waiting for other installs…").to_string()),
-                    JobPhase::Installing | JobPhase::Removing => (None, tl!("Installing, then restarting…").to_string()),
-                };
-                // Another app's install can hang on a password prompt: the wait can be called off.
-                if phase == JobPhase::Waiting
-                    && widgets::glyph_button(ui, widgets::Glyph::Close, tl!("Cancel update"))
-                        .on_hover_text(tl!("Stop waiting; the update can be started again later"))
-                        .clicked()
-                {
-                    self.act_command(Command::Cancel { app: artcraft_launcher_core::catalog::LAUNCHER_ID.to_string() });
-                }
-                widgets::progress(ui, fraction, &caption, t.accent, 220.0);
-                return;
-            }
-            if widgets::glyph_button(ui, widgets::Glyph::Close, tl!("Dismiss")).clicked() {
-                self.launcher_update = None;
-            }
-            if self.caps.self_update {
-                if widgets::button(ui, tl!("Update and restart"), Kind::Primary, 0.0)
-                    .on_hover_text(tl!("Downloads the new version, replaces this one and opens it again"))
+    /// update (or download) buttons plus the release link, unless `link_left` put it under the
+    /// message.
+    fn banner_actions(&mut self, ui: &mut Ui, t: &Tokens, r: &artcraft_launcher_core::Release, link_left: bool) {
+        if let Some(phase) = self.launcher_job {
+            let (fraction, caption) = match phase {
+                JobPhase::Downloading { done, total } if total > 0 => (
+                    Some(done as f32 / total as f32),
+                    fmt(tl!("Downloading {done} of {total}"), &[("done", &widgets::human_bytes(done)), ("total", &widgets::human_bytes(total))]),
+                ),
+                JobPhase::Downloading { .. } | JobPhase::Reconnecting { .. } => (None, tl!("Downloading…").to_string()),
+                JobPhase::Verifying => (None, tl!("Verifying…").to_string()),
+                JobPhase::Waiting => (None, tl!("Waiting for other installs…").to_string()),
+                JobPhase::Installing | JobPhase::Removing => (None, tl!("Installing, then restarting…").to_string()),
+            };
+            // Another app's install can hang on a password prompt: the wait can be called off.
+            if phase == JobPhase::Waiting
+                && widgets::glyph_button(ui, widgets::Glyph::Close, tl!("Cancel update"))
+                    .on_hover_text(tl!("Stop waiting; the update can be started again later"))
                     .clicked()
-                {
-                    self.act_command(Command::UpdateLauncher);
-                }
-            } else {
-                let url =
-                    self.platform.and_then(|p| launcher_download(r, p, crate::settings::is_flatpak_sandbox())).unwrap_or_else(|| r.html_url.clone());
-                if widgets::button(ui, tl!("Download"), Kind::Primary, 0.0).clicked() {
-                    widgets::open_external_link(ui.ctx(), &url);
-                }
+            {
+                self.act_command(Command::Cancel { app: artcraft_launcher_core::catalog::LAUNCHER_ID.to_string() });
             }
+            widgets::progress(ui, fraction, &caption, t.accent, 220.0);
+            return;
+        }
+        if widgets::glyph_button(ui, widgets::Glyph::Close, tl!("Dismiss")).clicked() {
+            self.launcher_update = None;
+        }
+        if self.caps.self_update {
+            if widgets::button(ui, tl!("Update and restart"), Kind::Primary, 0.0)
+                .on_hover_text(tl!("Downloads the new version, replaces this one and opens it again"))
+                .clicked()
+            {
+                self.act_command(Command::UpdateLauncher);
+            }
+        } else {
+            let url =
+                self.platform.and_then(|p| launcher_download(r, p, crate::settings::is_flatpak_sandbox())).unwrap_or_else(|| r.html_url.clone());
+            if widgets::button(ui, tl!("Download"), Kind::Primary, 0.0).clicked() {
+                widgets::open_external_link(ui.ctx(), &url);
+            }
+        }
+        if !link_left {
             ui.add_space(8.0);
             widgets::hud_link(ui, tl!("What's new"), &r.html_url);
-        });
+        }
     }
 
     /// The toolbar's main row: the refresh button, the hidden-apps toggle, the view switch, the
@@ -333,6 +356,8 @@ impl LauncherUi {
         }
     }
 
+    /// The status bar: when apps were last checked (or GitHub's rate limit) at the left, the
+    /// website, GitHub, Discord and social links at the right.
     pub(crate) fn footer(&mut self, ui: &mut Ui) {
         let t = Tokens::get(ui.ctx());
         let now = self.backend.now();
@@ -378,10 +403,9 @@ impl LauncherUi {
         let spacing = ui.spacing().item_spacing.x;
         // The icons on the right keep their size; the status on the left gets what is left and
         // is cut short with "…", never drawn under them.
-        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-            widgets::icon_links(ui, icon, &links);
-            ui.add_space(8.0);
-            ui.with_layout(egui::Layout::left_to_right(egui::Align::Center), |ui| {
+        egui::Sides::new().shrink_left().height(ui.available_height()).spacing(spacing + 8.0).show(
+            ui,
+            |ui| {
                 // While GitHub is rate limited, saying so matters more than when we last checked.
                 let avail = ui.available_width();
                 let text = |s: &str| RichText::new(s).size(12.0).color(t.warn);
@@ -402,8 +426,9 @@ impl LauncherUi {
                         resp.on_hover_text(full);
                     }
                 }
-            });
-        });
+            },
+            |ui| widgets::icon_links(ui, icon, &links),
+        );
     }
 
     // ---- grid ----------------------------------------------------------------------------
@@ -487,15 +512,18 @@ impl LauncherUi {
             let mut strip_ui = ui.new_child(
                 egui::UiBuilder::new().max_rect(strip.shrink2(vec2(CARD_PAD, 0.0))).layout(egui::Layout::left_to_right(egui::Align::Center)),
             );
-            if !version.is_empty() {
-                let github_w = widgets::hud_galley(&strip_ui, &format!("{} ↗", tl!("GitHub")), t.muted).size().x;
-                let room = (strip_ui.available_width() - github_w - 16.0).max(0.0);
-                widgets::hud_elided(&mut strip_ui, &version, if in_colour { t.app_ink(app) } else { t.muted }, room);
-            }
-            strip_ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                ui.spacing_mut().item_spacing.x = 16.0;
-                widgets::hud_link(ui, tl!("GitHub"), &app.repo_url());
-            });
+            // The link is laid out first; the version gets the room left and is elided to it.
+            let height = strip_ui.available_height();
+            egui::Sides::new().shrink_left().height(height).spacing(16.0).show(
+                &mut strip_ui,
+                |ui| {
+                    if !version.is_empty() {
+                        let room = ui.available_width();
+                        widgets::hud_elided(ui, &version, if in_colour { t.app_ink(app) } else { t.muted }, room);
+                    }
+                },
+                |ui| widgets::hud_link(ui, tl!("GitHub"), &app.repo_url()),
+            );
         }
 
         let inner = Rect::from_min_max(egui::pos2(rect.left() + CARD_PAD, strip.bottom() + 18.0), rect.max - vec2(CARD_PAD, CARD_PAD));

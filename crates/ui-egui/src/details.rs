@@ -309,10 +309,7 @@ impl LauncherUi {
         let status = entry.status(self.platform, self.caps.manage_apps);
         let hero = egui::Frame::new().fill(tint(app_color, if t.dark { 0.09 } else { 0.07 })).inner_margin(Margin::same(PAD as i8)).show(ui, |ui| {
             ui.set_width(ui.available_width());
-            ui.horizontal(|ui| {
-                widgets::hud(ui, tl!("App details"), t.faint);
-                self.hero_top_row(ui, around, t);
-            });
+            egui::Sides::new().show(ui, |ui| widgets::hud(ui, tl!("App details"), t.faint), |ui| self.hero_top_row(ui, around, t));
             self.hero_identity(ui, entry, details, &status, t, wide);
             ui.add_space(14.0);
             // The menu leaves out the links: they are the buttons right below.
@@ -329,22 +326,21 @@ impl LauncherUi {
 
     /// The close button and the previous / next pair, right-aligned in the hero's top row.
     fn hero_top_row(&mut self, ui: &mut Ui, around: (Option<&str>, Option<&str>), t: &Tokens) {
-        // Right to left: next, then previous, so they read as a pair before the close.
-        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-            if widgets::glyph_button(ui, Glyph::Close, tl!("Close (Esc)")).clicked() {
-                self.detail = None;
-            }
-            if let (_, Some(next)) = around
-                && step_button(ui, false, tl!("Next app"), t)
-            {
-                self.detail = Some(next.to_string());
-            }
-            if let (Some(previous), _) = around
-                && step_button(ui, true, tl!("Previous app"), t)
-            {
-                self.detail = Some(previous.to_string());
-            }
-        });
+        // Drawn into the right side of `egui::Sides`, which lays out right to left: next, then
+        // previous, so they read as a pair before the close.
+        if widgets::glyph_button(ui, Glyph::Close, tl!("Close (Esc)")).clicked() {
+            self.detail = None;
+        }
+        if let (_, Some(next)) = around
+            && step_button(ui, false, tl!("Next app"), t)
+        {
+            self.detail = Some(next.to_string());
+        }
+        if let (Some(previous), _) = around
+            && step_button(ui, true, tl!("Previous app"), t)
+        {
+            self.detail = Some(previous.to_string());
+        }
     }
 
     /// The icon, name, headline and version line, with the main action button beside them when
