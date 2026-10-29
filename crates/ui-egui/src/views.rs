@@ -1,6 +1,7 @@
 //! The header, toolbar, footer, the grid of cards and the table, laid out like the apps page on
 //! getartcraft.com: hairline cells, mono labels and square controls.
 
+use artcraft_launcher_core::catalog::AppKind;
 use artcraft_launcher_core::details::AppDetails;
 use artcraft_launcher_core::platform::pick_asset;
 use artcraft_launcher_core::protocol::{Command, JobPhase};
@@ -14,6 +15,17 @@ use crate::model::{self, AppEntry};
 use crate::settings::{Filter, SortKey, ViewMode};
 use crate::theme::{self, Tokens, rgb, tint};
 use crate::widgets::{self, Kind};
+
+/// The byline that says who makes an app: "by ArtCraft" or "by <publisher>". Official apps take
+/// the accent colour, community apps the muted one.
+fn kind_badge(ui: &mut Ui, app: &artcraft_launcher_core::CraftApp, t: &Tokens) {
+    let text = fmt(tl!("by {name}"), &[("name", app.publisher)]);
+    let color = match app.kind {
+        AppKind::Official => t.accent_ink,
+        AppKind::Community => t.muted,
+    };
+    widgets::badge(ui, &text, color);
+}
 
 /// Translate a relative timestamp ("just now", "5 min ago", …) into the current language.
 fn ago_text(secs: i64, now: i64) -> String {
@@ -263,7 +275,7 @@ impl LauncherUi {
     /// The grid's sort combo box. It writes the chosen key and direction directly (not through the
     /// action queue) and carries an accessible "Sort" name.
     fn sort_picker(&mut self, ui: &mut Ui) {
-        egui::ComboBox::from_id_salt("sort")
+        craft_ui::ComboBox::from_id_salt("sort")
             .selected_text(RichText::new(grid_sort_label(grid_sort_now(&self.settings))).size(13.0))
             .width(190.0)
             .show_ui(ui, |ui| {
@@ -514,6 +526,7 @@ impl LauncherUi {
                 ui.spacing_mut().interact_size.y = 0.0;
                 ui.horizontal(|ui| {
                     widgets::wordmark_in(ui, app, 22.0, in_colour);
+                    kind_badge(ui, app, &t);
                 });
                 ui.add(egui::Label::new(RichText::new(tr_ctx(current(), app.id, app.tagline)).font(tagline.clone()).color(t.muted)).truncate());
             });
@@ -574,6 +587,7 @@ impl LauncherUi {
                 .column(Column::exact(176.0))
                 .column(Column::exact(150.0))
                 .column(Column::exact(104.0))
+                .column(Column::exact(120.0))
                 .column(Column::exact(206.0))
                 .header(42.0, |header| self.table_header(header, &mut sort_clicked, &t, span, clip))
                 .body(|body| self.table_rows(body, ids, &t, (title_h, tagline_h), now, (span, clip)));
@@ -656,6 +670,7 @@ impl LauncherUi {
             (Some(SortKey::Status), tl!("Status")),
             (None, tr_ctx(current(), "column", "Version")),
             (Some(SortKey::Released), tr_ctx(current(), "column", "Released")),
+            (None, tr_ctx(current(), "column", "Author")),
             (None, ""),
         ] {
             header.col(|ui| {
@@ -670,7 +685,7 @@ impl LauncherUi {
     }
 
     /// The table's one row per app: the app (click to open its page), its status, the version,
-    /// when it was released, and its actions.
+    /// when it was released, who makes it, and its actions.
     fn table_rows(
         &mut self,
         mut body: egui_extras::TableBody<'_>,
@@ -689,6 +704,9 @@ impl LauncherUi {
                 row.col(|ui| self.table_status_cell(ui, &entry, &status, t));
                 row.col(|ui| self.table_version_cell(ui, &entry, &status, t));
                 row.col(|ui| self.table_released_cell(ui, &entry, now, t));
+                row.col(|ui| {
+                    ui.label(RichText::new(entry.app.publisher).color(t.muted));
+                });
                 row.col(|ui| self.actions(ui, &entry, &status, 204.0));
             });
         }

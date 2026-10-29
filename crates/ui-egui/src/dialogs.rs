@@ -258,8 +258,8 @@ impl LauncherUi {
         let Some(app) = self.entry(id).map(|e| e.app) else { return true };
         ui.set_width(440.0f32.min(ui.ctx().content_rect().width() - 80.0));
         Self::title(ui, None, app.name, tl!("Install folder"));
-        let default = self.settings.install_locations.root.as_deref().unwrap_or(tl!("System default"));
-        Self::folder_field(ui, folder, Some(default), host);
+        let default = self.settings.install_locations.root.clone().or_else(|| self.default_folder_for(id, host));
+        Self::folder_field(ui, folder, default.as_deref(), host);
         if self.platform.is_some_and(|p| p.os == Os::Linux) {
             ui.label(tl!("Custom folders use AppImage on Linux."));
         }

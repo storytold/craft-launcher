@@ -17,6 +17,8 @@ pub mod install;
 pub mod android;
 pub mod login;
 pub mod manifest;
+#[cfg(any(windows, test))]
+mod msi_context;
 pub mod packages;
 pub mod paths;
 #[cfg(windows)]

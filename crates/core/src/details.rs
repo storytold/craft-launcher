@@ -139,7 +139,7 @@ pub fn screenshot_within_budget(bytes: &[u8]) -> bool {
 /// Where every Craft App runs (getartcraft.com lists the same for each of them).
 const PLATFORMS: &str = "macOS, Windows, Linux, FreeBSD, web";
 
-pub const DETAILS: [AppDetails; 13] = [
+pub const DETAILS: [AppDetails; 14] = [
     AppDetails {
         id: "photocraft",
         headline: "The image editor you already know how to use.",
@@ -470,6 +470,24 @@ pub const DETAILS: [AppDetails; 13] = [
                 "Your files",
                 "Plain .figcraft files on your own disk. SVG, PNG, JPEG, WebP and PDF in and out, and .fig files open, best effort.",
             ),
+        ],
+        shots: &[],
+        platforms: PLATFORMS,
+    },
+    AppDetails {
+        id: "solidcraft",
+        headline: "Parametric 3D CAD, in pure Rust.",
+        about: "A parametric solid modeller by Tangency Labs. Sketch, constrain and build solids on an editable feature \
+                timeline: change a dimension and the model rebuilds. Early, but usable for simple parts. Open source, \
+                and it can be driven by AI agents through its MCP server.",
+        features: &[
+            feature(
+                "Sketches and constraints",
+                "Lines, arcs, splines and text, solved by SolidCraft's own constraint solver, with parameter-driven dimensions.",
+            ),
+            feature("Features", "Extrude, revolve, sweep, loft, fillet, chamfer, shell, holes, threads and patterns on a parametric timeline."),
+            feature("Files", "STEP, IGES, 3MF, STL, OBJ and glTF in and out where supported, and .sc designs."),
+            feature("Desktop, web and agents", "A desktop app, a browser app, a headless CLI and an MCP server, all running the same commands."),
         ],
         shots: &[],
         platforms: PLATFORMS,

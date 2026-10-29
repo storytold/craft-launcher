@@ -2,3 +2,7 @@ allow-unwrap-in-tests = true
 allow-expect-in-tests = true
 allow-panic-in-tests = true
 allow-indexing-slicing-in-tests = true
+disallowed-types = [
+    { path = "egui::ComboBox", reason = "use craft_ui::ComboBox: egui's combo box menu can't grow back while open (egui#5225)" },
+]
+cognitive-complexity-threshold = 30

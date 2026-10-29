@@ -454,6 +454,173 @@ fn use_default_removes_an_app_override_and_settings_can_reset_the_root() {
     assert_eq!(h.state().as_ref().unwrap().settings.install_locations.root, None);
 }
 
+/// The install-folder fields' default comes from the host, so a person sees the real folder a
+/// fresh install uses (here `/Applications`) instead of only "System default", and a saved root
+/// override replaces it. The default is the same value the empty field's hint shows.
+#[test]
+fn the_install_folder_fields_default_to_the_hosts_answer() {
+    struct DefaultHost {
+        picked: Rc<RefCell<Option<String>>>,
+        initial: Rc<RefCell<Option<Option<String>>>>,
+    }
+    impl Host for DefaultHost {
+        fn pick_folder(&mut self, initial: Option<&str>) -> Option<String> {
+            *self.initial.borrow_mut() = Some(initial.map(str::to_string));
+            self.picked.borrow_mut().take()
+        }
+        fn default_install_folder(&mut self, _kind: artcraft_launcher_core::PackageKind, _arch: Option<Arch>) -> Option<String> {
+            Some("/Applications".into())
+        }
+    }
+    artcraft_launcher_ui_egui::i18n::set_test_lang(artcraft_launcher_ui_egui::i18n::Lang::EN);
+    let sent = Rc::new(RefCell::new(Vec::new()));
+    let mut backend = Some(Fake {
+        events: vec![
+            Event::Latest { app: "photocraft".into(), latest: LatestRelease::Found(release("photocraft", "0.6.0", NOW)), from: Origin::GitHub },
+            Event::Detected { app: "photocraft".into(), installed: None },
+        ],
+        sent: sent.clone(),
+        manage: true,
+        pictures: Rc::default(),
+        asked: vec![],
+        clock: Rc::new(Cell::new(NOW)),
+    });
+    let picked = Rc::new(RefCell::new(None));
+    let initial = Rc::new(RefCell::new(None));
+    let mut host = DefaultHost { picked: picked.clone(), initial: initial.clone() };
+    let harness = test_harness_builder(egui::Theme::Dark).with_size(egui::vec2(1180.0, 900.0)).build_ui_state(
+        move |ui, state: &mut Option<LauncherUi>| {
+            if let Some(backend) = backend.take() {
+                *state = Some(LauncherUi::new(ui.ctx(), Box::new(backend), Settings { notify: false, ..Default::default() }));
+            }
+            if let Some(launcher) = state {
+                launcher.logic(ui.ctx(), &mut host);
+                launcher.ui(ui, &mut host);
+            }
+        },
+        None,
+    );
+    let mut h = harness;
+    h.run_steps(8);
+    // Settings' install folder starts at the host's default.
+    h.get_by_label("Settings").click();
+    h.run_steps(4);
+    h.get_by_label("Browse…").scroll_to_me();
+    h.run_steps(4);
+    h.get_by_label("Browse…").click();
+    h.run_steps(3);
+    assert_eq!(initial.borrow().as_ref(), Some(&Some("/Applications".into())));
+    h.get_by_label("Done").click();
+    h.run_steps(3);
+    // So does the per-app install dialog's folder, and a saved root override replaces it.
+    h.get_by_label("Install").scroll_to_me();
+    h.run_steps(3);
+    h.get_by_label("Install").click();
+    h.run_steps(3);
+    h.get_by_label("Browse…").scroll_to_me();
+    h.run_steps(3);
+    h.get_by_label("Browse…").click();
+    h.run_steps(3);
+    assert_eq!(initial.borrow().as_ref(), Some(&Some("/Applications".into())));
+    h.state_mut().as_mut().unwrap().settings.install_locations.root = Some("/Volumes/Craft Apps".into());
+    h.run_steps(3);
+    h.get_by_label("Browse…").click();
+    h.run_steps(3);
+    assert_eq!(initial.borrow().as_ref(), Some(&Some("/Volumes/Craft Apps".into())));
+    h.check_accessibility();
+}
+
+/// A host whose default folder names the package it was asked about (`Msi X86`), and answers
+/// nothing when the architecture is unknown, as the desktop host does for an MSI.
+/// What Browse was last opened at: `None` until it is clicked.
+type BrowsedFrom = Rc<RefCell<Option<Option<String>>>>;
+
+struct PackageHost {
+    initial: BrowsedFrom,
+}
+impl Host for PackageHost {
+    fn pick_folder(&mut self, initial: Option<&str>) -> Option<String> {
+        *self.initial.borrow_mut() = Some(initial.map(str::to_string));
+        None
+    }
+    fn default_install_folder(&mut self, kind: artcraft_launcher_core::PackageKind, arch: Option<Arch>) -> Option<String> {
+        Some(format!("{kind:?} {:?}", arch?))
+    }
+}
+
+/// A Windows launcher whose apps publish only the named assets, with `preferred` formats saved.
+/// Returns the harness and what Browse was last opened at.
+fn windows_package_harness(
+    apps: &[(&str, &[&str])],
+    preferred: Vec<artcraft_launcher_core::PackageKind>,
+) -> (Harness<'static, Option<LauncherUi>>, BrowsedFrom) {
+    artcraft_launcher_ui_egui::i18n::set_test_lang(artcraft_launcher_ui_egui::i18n::Lang::EN);
+    let mut events = Vec::new();
+    for (id, assets) in apps {
+        let mut latest = release(id, "0.6.0", NOW);
+        latest.assets = assets.iter().map(|name| Asset { name: (*name).into(), size: 1, url: format!("https://x/{name}"), sha256: None }).collect();
+        events.push(Event::Latest { app: (*id).into(), latest: LatestRelease::Found(latest), from: Origin::GitHub });
+        events.push(Event::Detected { app: (*id).into(), installed: None });
+    }
+    let fake = Fake { events, sent: Rc::default(), manage: true, pictures: Rc::default(), asked: vec![], clock: Rc::new(Cell::new(NOW)) };
+    let mut backend: Option<Box<dyn Backend>> = Some(Box::new(PlatformFake { inner: fake, platform: Platform { os: Os::Windows, arch: Arch::X64 } }));
+    let initial = Rc::new(RefCell::new(None));
+    let mut host = PackageHost { initial: initial.clone() };
+    let harness = test_harness_builder(egui::Theme::Dark).with_size(egui::vec2(1180.0, 900.0)).build_ui_state(
+        move |ui, state: &mut Option<LauncherUi>| {
+            if let Some(backend) = backend.take() {
+                let settings = Settings { notify: false, preferred_kinds: preferred.clone(), ..Default::default() };
+                *state = Some(LauncherUi::new(ui.ctx(), backend, settings));
+            }
+            if let Some(launcher) = state {
+                launcher.logic(ui.ctx(), &mut host);
+                launcher.ui(ui, &mut host);
+            }
+        },
+        None,
+    );
+    (harness, initial)
+}
+
+/// The install dialog's default follows the package the backend will really install: Portable
+/// ZIP is preferred, but this release ships only a 32-bit MSI, so the app goes into the 32-bit
+/// Program Files and not the launcher's `apps` folder.
+#[test]
+fn the_install_folder_default_follows_the_package_the_backend_falls_back_to() {
+    let (mut h, initial) =
+        windows_package_harness(&[("photocraft", &["photocraft-0.6.0-windows-x86.msi"])], vec![artcraft_launcher_core::PackageKind::PortableZip]);
+    h.run_steps(8);
+    h.get_by_label("Install").scroll_to_me();
+    h.run_steps(3);
+    h.get_by_label("Install").click();
+    h.run_steps(3);
+    h.get_by_label("Browse…").click();
+    h.run_steps(3);
+    assert_eq!(initial.borrow().as_ref(), Some(&Some("Msi X86".into())));
+}
+
+/// Settings covers every app, so it shows a folder only when every app's package shares one: a
+/// 32-bit-only app beside a 64-bit one leaves it at "System default".
+#[test]
+fn settings_shows_a_default_folder_only_when_every_app_shares_it() {
+    let open_settings_browse = |apps: &[(&str, &[&str])]| {
+        let (mut h, initial) = windows_package_harness(apps, vec![]);
+        h.run_steps(8);
+        h.get_by_label("Settings").click();
+        h.run_steps(4);
+        h.get_by_label("Browse…").scroll_to_me();
+        h.run_steps(4);
+        h.get_by_label("Browse…").click();
+        h.run_steps(3);
+        initial.take()
+    };
+    let x64 = ["photocraft-0.6.0-windows-x64.msi", "photocraft-0.6.0-windows-x86.msi"];
+    let shared = open_settings_browse(&[("photocraft", &x64), ("vectorcraft", &["vectorcraft-0.6.0-windows-x64.msi"])]);
+    assert_eq!(shared, Some(Some("Msi X64".into())));
+    let mixed = open_settings_browse(&[("photocraft", &x64), ("vectorcraft", &["vectorcraft-0.6.0-windows-x86.msi"])]);
+    assert_eq!(mixed, Some(None));
+}
+
 #[cfg(windows)]
 #[test]
 fn windows_package_choice_can_select_portable_and_configures_the_backend() {

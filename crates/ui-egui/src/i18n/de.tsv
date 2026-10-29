@@ -21,6 +21,7 @@
 
 	Launcher	Launcher
 	Craft App Suite	Craft App Suite
+	by {name}	von {name}
 	Open Source Tools for Creatives, Makers, and Builders	Open-Source-Werkzeuge für Kreative, Maker und Entwickler
 	Settings	Einstellungen
 	Check for updates	Nach Updates suchen
@@ -173,6 +174,7 @@ designcraft	Page layout and publishing	Seitenlayout und Publishing
 wordcraft	Writing and document design	Schreiben und Dokumentgestaltung
 deckcraft	Presentations and slide shows	Präsentationen und Diashows
 gridcraft	Spreadsheets and data	Tabellenkalkulation und Daten
+solidcraft	Parametric 3D CAD	Parametrisches 3D-CAD
 cadcraft	Computer-aided design and drafting	Computergestütztes Konstruieren und Zeichnen
 soundcraft	Recording, editing and mixing audio	Audio aufnehmen, bearbeiten und mischen
 figcraft	Interface design and prototyping	Interface-Design und Prototyping
@@ -381,3 +383,4 @@ filter	Installed	Installiert
 	Show {n} more changes	{n} weitere Änderungen anzeigen
 	Last updated: {date}	Zuletzt aktualisiert: {date}
 column	Version	Version
+column	Author	Autor

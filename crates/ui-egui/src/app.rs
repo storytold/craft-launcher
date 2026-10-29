@@ -7,7 +7,7 @@ use artcraft_launcher_core::protocol::{
 };
 use artcraft_launcher_core::release::Release;
 use artcraft_launcher_core::status::AppStatus;
-use artcraft_launcher_core::{Platform, SUITE};
+use artcraft_launcher_core::{Arch, PackageKind, Platform, SUITE};
 
 use crate::i18n::set_current;
 use crate::model::AppEntry;
@@ -59,6 +59,13 @@ pub trait Host {
         false
     }
     fn pick_folder(&mut self, _initial: Option<&str>) -> Option<String> {
+        None
+    }
+    /// The folder a new install of this format goes inside when the person hasn't chosen one, so
+    /// the install-folder field can show that folder instead of only saying "System default".
+    /// `arch` is the package's architecture when the release names one. `None` when this host
+    /// has no single answer (the web build; formats the system manages).
+    fn default_install_folder(&mut self, _kind: PackageKind, _arch: Option<Arch>) -> Option<String> {
         None
     }
     /// The URL to open when Discord is clicked. Defaults to the web link.

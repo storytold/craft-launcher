@@ -21,6 +21,7 @@
 
 	Launcher	Launcher
 	Craft App Suite	Craft App Suite
+	by {name}	készítette: {name}
 	Open Source Tools for Creatives, Makers, and Builders	Nyílt forráskódú eszközök alkotóknak, barkácsolóknak és fejlesztőknek
 	Settings	Beállítások
 	Check for updates	Frissítések keresése
@@ -173,6 +174,7 @@ designcraft	Page layout and publishing	Oldaltervezés és kiadványszerkesztés
 wordcraft	Writing and document design	Írás és dokumentumtervezés
 deckcraft	Presentations and slide shows	Prezentációk és diavetítések
 gridcraft	Spreadsheets and data	Táblázatok és adatok
+solidcraft	Parametric 3D CAD	Paraméteres 3D CAD
 cadcraft	Computer-aided design and drafting	Számítógépes tervezés és műszaki rajz
 soundcraft	Recording, editing and mixing audio	Hangrögzítés, hangszerkesztés és keverés
 figcraft	Interface design and prototyping	Felülettervezés és prototípus-készítés
@@ -382,3 +384,4 @@ filter	Installed	Telepítve
 	Show {n} more changes	{n} további változás megjelenítése
 	Last updated: {date}	Utoljára frissítve: {date}
 column	Version	Verzió
+column	Author	Szerző

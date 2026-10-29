@@ -3,7 +3,9 @@
 //! Apps go where their platform keeps applications, installed the platform's own way:
 //!
 //! - macOS: the signed `.app` from the release DMG into `/Applications`.
-//! - Windows: the release MSI (Windows Installer) into `C:\Program Files\<App>`.
+//! - Windows: the release MSI (Windows Installer), for the current user into
+//!   `%LOCALAPPDATA%\Programs\ArtCraft\<App>` by default. An update keeps the installed copy's folder
+//!   and scope (per-machine copies stay in `C:\Program Files\ArtCraft\<App>`).
 //! - Linux: the distro's own package (`.deb` through apt on the Debian family, `.rpm` through
 //!   dnf/zypper/rpm on the Fedora, Red Hat and SUSE families, read from `os-release`) with the
 //!   system's polkit password prompt; otherwise a Flatpak, otherwise an AppImage in
@@ -21,6 +23,7 @@
 
 use std::path::{Path, PathBuf};
 
+use artcraft_launcher_core::Arch;
 use artcraft_launcher_core::protocol::{CANCELLED, INSTALL_CANCELLED, InstallLocations, JobPhase};
 use artcraft_launcher_core::release::{self, Asset, Release};
 use artcraft_launcher_core::{CraftApp, InstallSource, Installed, PackageKind, version};
@@ -75,6 +78,8 @@ pub fn install_at(
     let _ = commit;
     #[allow(unused_variables)]
     let destination = destination(app, kind, existing, previous, job.install_locations)?;
+    #[cfg(windows)]
+    let destination = msi_update_folder(app, kind, existing, destination);
     if let Some(inst) = existing
         && inst.source.launcher_can_update()
         && process::is_running(Path::new(&inst.location))
@@ -90,7 +95,30 @@ pub fn install_at(
         return Err(format!("Cannot update {} to {}: installed version {} is newer", app.name, release.version_label(), inst_v));
     }
     log::info!("{}: starting {} to {} ({})", app.name, if existing.is_some() { "update" } else { "install" }, release.version_label(), kind.label());
-    let file = download(release, asset, job)?;
+    // An update of an installed MSI may be an all-users one. Say so before the (slow) scope lookup, so
+    // the other updates of this "Update all" wait for it and share one permission prompt.
+    #[cfg(windows)]
+    let mut joined = (kind == PackageKind::Msi && existing.is_some_and(|inst| inst.source == InstallSource::Msi)).then(msi_batch::Joined::join);
+    #[cfg(windows)]
+    let msi_scope = if kind == PackageKind::Msi {
+        let updated = crate::msi_context::update_scope(
+            existing.is_some_and(|inst| inst.source == InstallSource::Msi),
+            existing.and_then(|inst| inst.package.as_deref()),
+            crate::msi_context::probe,
+            |code| crate::detect::windows::record_scope(app, code),
+        )?;
+        // A fresh install is machine-wide (Program Files); an update keeps the context of the copy it replaces.
+        crate::msi_context::install_scope(updated, existing.is_none())
+    } else {
+        None
+    };
+    #[cfg(windows)]
+    if msi_scope != Some(MsiScope::PerMachine) {
+        joined = None;
+    }
+    // The checksum is kept for the Windows all-users route, which checks the held package again.
+    #[cfg_attr(not(windows), allow(unused_variables))]
+    let (file, sha256) = download(release, asset, job)?;
     log::info!("{}: download ready ({}), running installer...", app.name, file.display());
     // Past this point the install can't be interrupted halfway.
     (job.phase)(JobPhase::Installing);
@@ -103,7 +131,17 @@ pub fn install_at(
                 .map(|path| Some(record(&version, kind, path, Vec::new(), false)))
         }
         #[cfg(windows)]
-        PackageKind::Msi => windows::run_msi(&file, destination.as_deref(), job.stop, &mut *job.phase).map(|_| None),
+        PackageKind::Msi => {
+            // An update lands in the same Windows Installer context as the copy being replaced:
+            // per-machine needs elevation, per-user must not duplicate itself per-machine. A
+            // fresh install passes no context and takes the package's own default.
+            match &joined {
+                // All-users updates that are ready together share one permission prompt.
+                Some(joined) => windows::run_msi_all_users(&file, &sha256, destination.as_deref(), joined, job.stop, &mut *job.phase),
+                None => windows::run_msi(&file, destination.as_deref(), msi_scope, job.stop, &mut *job.phase),
+            }
+            .map(|_| None)
+        }
         #[cfg(windows)]
         PackageKind::PortableZip => {
             crate::portable::install(app, &file, &version, previous, job.paths, destination.as_deref(), job.replace, &mut |record| {
@@ -119,7 +157,12 @@ pub fn install_at(
         }
         #[cfg(target_os = "linux")]
         PackageKind::Deb | PackageKind::Rpm | PackageKind::ArchPkg | PackageKind::Flatpak => {
-            linux::install_package(kind, &file, job.stop, &mut *job.phase).map(|_| None)
+            linux::install_package(kind, &file, job.stop, &mut *job.phase).map(|_| {
+                if kind == PackageKind::Flatpak {
+                    linux::retire_former_flatpak(app, existing);
+                }
+                None
+            })
         }
         #[cfg(target_os = "linux")]
         PackageKind::AppImage => {
@@ -213,6 +256,25 @@ pub fn occupied(
     Ok(target.filter(|t| std::fs::symlink_metadata(t).is_ok()))
 }
 
+/// An MSI update keeps the folder of the copy it replaces only when that copy was found in the
+/// record's own scope. A path found by the launch-only fallback, in another scope, is never passed
+/// to the installer: the update then keeps the record's context and the package's own folder.
+#[cfg(windows)]
+fn msi_update_folder(app: &CraftApp, kind: PackageKind, existing: Option<&Installed>, destination: Option<PathBuf>) -> Option<PathBuf> {
+    match existing {
+        Some(inst) if kind == PackageKind::Msi && inst.source == InstallSource::Msi => {
+            let in_scope = inst.package.as_deref().is_some_and(|code| crate::detect::windows::location_is_in_record_scope(app, code, &inst.location));
+            keep_if_in_scope(destination, in_scope)
+        }
+        _ => destination,
+    }
+}
+
+#[cfg(windows)]
+fn keep_if_in_scope(destination: Option<PathBuf>, in_scope: bool) -> Option<PathBuf> {
+    destination.filter(|_| in_scope)
+}
+
 /// The folder a new copy goes in: beside the launcher's copy it replaces, else the user's choice,
 /// else the platform default (`None`). macOS updates find their bundle's folder themselves.
 fn destination(
@@ -241,6 +303,42 @@ fn destination(
     Ok(Some(if kind == PackageKind::Msi { parent.join(app.name) } else { parent }))
 }
 
+/// The folder a new install goes inside when the person hasn't chosen one, so the UI can show
+/// that folder instead of only saying "System default". The answer follows the package: a
+/// Windows MSI installs for everyone into `Program Files\ArtCraft\<App>`, and a 32-bit package
+/// into the 32-bit Program Files, so `arch` is the package's architecture when the release names
+/// one and `None` (the release is unknown) answers nothing. A portable ZIP unpacks into the
+/// launcher's own `apps` folder. A macOS app goes wherever the installer would put it
+/// (`/Applications`, or `~/Applications` when the system folder is not writable). Formats the
+/// system itself manages (the distro's packages on Linux, Flatpak) have no single folder, so
+/// they answer `None`.
+pub fn default_folder(kind: PackageKind, arch: Option<Arch>, paths: &Paths) -> Option<PathBuf> {
+    #[cfg(windows)]
+    {
+        match kind {
+            PackageKind::Msi => match arch {
+                Some(Arch::X86) => {
+                    Some(PathBuf::from(std::env::var_os("ProgramFiles(x86)").or_else(|| std::env::var_os("ProgramFiles"))?).join("ArtCraft"))
+                }
+                Some(_) => Some(PathBuf::from(std::env::var_os("ProgramFiles")?).join("ArtCraft")),
+                None => None,
+            },
+            PackageKind::PortableZip => Some(paths.apps()),
+            _ => None,
+        }
+    }
+    #[cfg(target_os = "macos")]
+    {
+        let _ = (arch, paths);
+        (kind == PackageKind::Dmg).then(macos::default_applications_dir).flatten()
+    }
+    #[cfg(not(any(windows, target_os = "macos")))]
+    {
+        let _ = (kind, arch, paths);
+        None
+    }
+}
+
 fn selected_folder(folder: &str, writable: bool) -> Result<PathBuf, String> {
     let path = if folder == "~" {
         dirs::home_dir().ok_or("no home folder")?
@@ -260,16 +358,33 @@ fn selected_folder(folder: &str, writable: bool) -> Result<PathBuf, String> {
         return Err(invalid("the folder is unavailable. Create it or reconnect its drive first"));
     }
     if writable {
-        let probe = path.join(format!(
-            ".artcraft-launcher-write-test-{}-{}",
-            std::process::id(),
-            std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_nanos())
-        ));
-        let output = std::fs::OpenOptions::new().write(true).create_new(true).open(&probe).map_err(|e| invalid(&e.to_string()))?;
-        drop(output);
-        std::fs::remove_file(&probe).map_err(|e| invalid(&e.to_string()))?;
+        write_probe(&path).map_err(|e| invalid(&e.to_string()))?;
     }
     Ok(path)
+}
+
+/// Creates and removes a scratch file in `dir`, the way a real write would be refused.
+fn write_probe(dir: &Path) -> std::io::Result<()> {
+    let probe = dir.join(format!(
+        ".artcraft-launcher-write-test-{}-{}",
+        std::process::id(),
+        std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_nanos())
+    ));
+    drop(std::fs::OpenOptions::new().write(true).create_new(true).open(&probe)?);
+    std::fs::remove_file(&probe)
+}
+
+/// The folder a new macOS app goes inside: `system` (`/Applications`) when this account can
+/// create files there, else `Applications` in `home`. It creates nothing, so the install-folder
+/// hint can ask on a redraw: `write_probe` takes a fresh name with `create_new`, so a link
+/// planted in `/Applications` is never followed and no existing file is touched. The installer
+/// creates `~/Applications` itself when it gets that answer.
+#[cfg(any(target_os = "macos", test))]
+fn mac_applications_dir(system: &Path, home: Option<&Path>) -> Option<PathBuf> {
+    if write_probe(system).is_ok() {
+        return Some(system.to_path_buf());
+    }
+    home.map(|home| home.join("Applications"))
 }
 
 #[cfg(any(windows, test))]
@@ -279,6 +394,34 @@ fn msi_folder_argument(path: &Path) -> Result<String, String> {
         return Err(format!("couldn't use install folder {value}: the path contains invalid characters"));
     }
     Ok(format!("INSTALLFOLDER=\"{value}\""))
+}
+
+/// The Windows Installer context an update must keep. A per-machine install elevates and writes
+/// HKLM registrations; a per-user one must not silently become a second, per-machine copy (or
+/// the other way round). A fresh install is always `PerMachine`.
+#[cfg(any(windows, test))]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum MsiScope {
+    PerUser,
+    PerMachine,
+}
+
+/// The `msiexec` properties that ask a dual-scope package for `scope`. Passing the context
+/// explicitly on every update also keeps a per-machine update working when the package's own
+/// default has since changed.
+///
+/// `ALLUSERS=1` is what the current per-machine-only packages already set themselves, so it
+/// changes nothing for them; `ALLUSERS=2` with `MSIINSTALLPERUSER=1` is the documented
+/// single-package way to request a per-user install of a dual-scope package. A per-user
+/// registered copy can only come from a dual-scope package, so its updates can safely ask for
+/// one.
+#[cfg(any(windows, test))]
+fn msi_scope_arguments(scope: Option<MsiScope>) -> Vec<&'static str> {
+    match scope {
+        Some(MsiScope::PerUser) => vec!["ALLUSERS=2", "MSIINSTALLPERUSER=1"],
+        Some(MsiScope::PerMachine) => vec!["ALLUSERS=1"],
+        None => Vec::new(),
+    }
 }
 
 /// Where `asset` is downloaded to (and its partial file kept while unfinished).
@@ -310,6 +453,9 @@ pub(crate) fn choose_kinds_with(
     available: &[PackageKind],
     can_pacman: bool,
 ) -> Vec<PackageKind> {
+    // Formats the launcher can't verify for this app (SolidCraft's unsigned macOS build) never count.
+    let available: Vec<PackageKind> = available.iter().copied().filter(|k| app.installs(*k)).collect();
+    let available = available.as_slice();
     if let Some(inst) = existing {
         let kind = match inst.source {
             InstallSource::Launcher => record.map(|r| r.kind),
@@ -374,7 +520,8 @@ pub fn available_kinds() -> Vec<PackageKind> {
 /// Fetches `asset` into the download folder, checked against its published SHA-256: the feed's
 /// or GitHub's per-file digest, else the release's `SHA256SUMS.txt`. A release with neither is
 /// refused before anything is fetched: a file nothing vouches for is never installed (#90).
-pub(crate) fn download(release: &Release, asset: &Asset, job: &mut Job<'_>) -> Result<PathBuf, String> {
+/// Returns the file and the checksum it was checked against.
+pub(crate) fn download(release: &Release, asset: &Asset, job: &mut Job<'_>) -> Result<(PathBuf, String), String> {
     if !release::valid_file_name(&asset.name) {
         return Err("the release has an unexpected file name".into());
     }
@@ -395,7 +542,7 @@ pub(crate) fn download(release: &Release, asset: &Asset, job: &mut Job<'_>) -> R
         Transfer::Reconnecting { done, total } => phase(JobPhase::Reconnecting { done, total }),
     })?;
     (job.phase)(JobPhase::Verifying);
-    Ok(dest)
+    Ok((dest, sha))
 }
 
 /// The file's line in the release's `SHA256SUMS.txt`. `Ok(None)` only when the release really
@@ -553,7 +700,8 @@ pub fn launch(app: &CraftApp, installed: &Installed, paths: &Paths) -> Result<()
         }
         InstallSource::Flatpak => {
             let mut cmd = process::flatpak_command();
-            cmd.args(["run", &app.bundle_id()]);
+            // The id detection found it under, which may be one of the app's older ones.
+            cmd.args(["run", &installed.package.clone().unwrap_or_else(|| app.bundle_id())]);
             process::spawn_detached(cmd)
         }
         InstallSource::MacApp => process::open(path.as_os_str()),
@@ -577,6 +725,12 @@ pub fn launch(app: &CraftApp, installed: &Installed, paths: &Paths) -> Result<()
         _ if cfg!(target_os = "macos") && path.extension().is_some_and(|e| e == "app") => process::open(path.as_os_str()),
         _ => {
             if !path.exists() {
+                if cfg!(windows) && installed.source == InstallSource::Msi && path.components().count() < 2 {
+                    return Err(format!(
+                        "{} is registered with Windows, but the launcher can't find where it put the program. Reinstall it from here.",
+                        app.name
+                    ));
+                }
                 return Err(format!("{} isn't where it was installed ({})", app.name, path.display()));
             }
             process::launch_binary(path, &[])
@@ -749,14 +903,16 @@ fn root_outcome(code: Option<i32>) -> Result<(), String> {
     }
 }
 
-/// How the error of an installer call shared by several apps ends (see `linux::shared_outcome`).
-const SHARED_CALL: &str = "apps together. Try them one at a time.";
+/// How the error of an installer call shared by several apps ends (see `linux::shared_outcome` and
+/// `msi_batch::outcome`). "In one go" covers a Linux package call, a Windows batch under one
+/// prompt, and its fallback where each package ran by itself but the run still has one result.
+const SHARED_CALL: &str = "apps in one go. Try them one at a time.";
 
 /// Whether an install failed in one installer call shared with other apps (Linux packages
-/// installed together). Such a call can fail after it has installed some of its apps; any other
-/// failure is the app's own.
+/// installed together, or Windows all-users updates under one permission prompt). Such a call can
+/// fail after it has installed some of its apps; any other failure is the app's own.
 pub fn failed_in_shared_call(error: &str) -> bool {
-    cfg!(target_os = "linux") && error.ends_with(SHARED_CALL)
+    cfg!(any(target_os = "linux", windows)) && error.ends_with(SHARED_CALL)
 }
 
 /// The system's installer runs one job at a time; the others wait their turn here.
@@ -965,20 +1121,22 @@ pub(crate) mod linux {
 
     pub fn remove_package(app: &CraftApp, installed: &Installed, stop: &Stop, phase: &mut dyn FnMut(JobPhase)) -> Result<(), String> {
         let mut remove = |command: &[&str], package: &str| as_root(&SYSTEM, command, OsStr::new(package), stop, phase, JobPhase::Removing);
+        let package = installed.package.as_deref().unwrap_or(app.id);
         match installed.source {
-            InstallSource::Deb if system_tool("apt-get").is_some() => remove(&["apt-get", "-o", APT_WAITS, "remove", "-y"], app.id),
-            InstallSource::Deb => remove(&["dpkg", "-r"], app.id),
+            // The package detected (photocraft, or ai.storyteller.photocraft).
+            InstallSource::Deb if system_tool("apt-get").is_some() => remove(&["apt-get", "-o", APT_WAITS, "remove", "-y"], package),
+            InstallSource::Deb => remove(&["dpkg", "-r"], package),
             InstallSource::Rpm => {
                 if system_tool("dnf").is_some() {
-                    remove(&["dnf", "remove", "-y"], app.id)
+                    remove(&["dnf", "remove", "-y"], package)
                 } else {
-                    remove(&["rpm", "-e"], app.id)
+                    remove(&["rpm", "-e"], package)
                 }
             }
             // The package detected (photocraft, photocraft-bin or photocraft-git).
-            InstallSource::Pacman => remove(&["pacman", "-R", "--noconfirm"], installed.package.as_deref().unwrap_or(app.id)),
+            InstallSource::Pacman => remove(&["pacman", "-R", "--noconfirm"], package),
             InstallSource::Flatpak => {
-                let id = app.bundle_id();
+                let id = installed.package.clone().unwrap_or_else(|| app.bundle_id());
                 let user = process::flatpak_command().args(["uninstall", "--user", "-y", "--noninteractive", &id]).status();
                 if user.is_ok_and(|s| s.success()) {
                     return Ok(());
@@ -994,6 +1152,28 @@ pub(crate) mod linux {
             }
             other => Err(format!("{} isn't a system package", other.label())),
         }
+    }
+
+    /// The older Flatpak id `app` was found under before an update, if it's one of its own
+    /// ([`CraftApp::former_bundles`]) and not the current id.
+    pub(crate) fn former_flatpak<'a>(app: &CraftApp, existing: Option<&'a Installed>) -> Option<&'a str> {
+        let old = existing.filter(|i| i.source == InstallSource::Flatpak)?.package.as_deref()?;
+        (old != app.bundle_id() && app.former_bundles.contains(&old)).then_some(old)
+    }
+
+    /// After a Flatpak update of an app that was installed under one of its older ids, removes
+    /// that old copy, which would otherwise come back once the new one is removed. Its data
+    /// folder (`~/.var/app/<old id>`) stays: the new app copies its settings from there on its
+    /// first launch.
+    pub fn retire_former_flatpak(app: &CraftApp, existing: Option<&Installed>) {
+        let Some(old) = former_flatpak(app, existing) else { return };
+        for scope in ["--user", "--system"] {
+            if process::flatpak_command().args(["uninstall", scope, "-y", "--noninteractive", old]).status().is_ok_and(|s| s.success()) {
+                log::info!("{}: removed the old Flatpak {old}; its data stays for the new app", app.name);
+                return;
+            }
+        }
+        log::warn!("{}: couldn't remove the old Flatpak {old}; `flatpak uninstall {old}` removes it", app.name);
     }
 
     pub fn install_appimage(
@@ -1233,7 +1413,9 @@ pub mod macos {
 
     use super::{CraftApp, InstallSource, Installed, Path, PathBuf, Paths, Release, process, staging_dir, swap_into_place};
 
-    /// `/Applications` when we can write there, else `~/Applications`.
+    const SYSTEM_APPLICATIONS: &str = "/Applications";
+
+    /// `/Applications` when we can write there, else `~/Applications`, which is created.
     fn applications_dir(existing: Option<&Installed>, destination: Option<&Path>) -> Result<PathBuf, String> {
         if let Some(parent) =
             existing.filter(|i| i.source == InstallSource::MacApp).and_then(|i| Path::new(&i.location).parent().map(Path::to_path_buf))
@@ -1243,15 +1425,16 @@ pub mod macos {
         if let Some(dir) = destination {
             return Ok(dir.to_path_buf());
         }
-        let system = PathBuf::from("/Applications");
-        let probe = system.join(".artcraft-launcher-write-test");
-        if std::fs::write(&probe, b"").is_ok() {
-            let _ = std::fs::remove_file(&probe);
-            return Ok(system);
+        let dir = default_applications_dir().ok_or("no home folder")?;
+        if dir != Path::new(SYSTEM_APPLICATIONS) {
+            std::fs::create_dir_all(&dir).map_err(|e| format!("couldn't create {} ({e})", dir.display()))?;
         }
-        let user = dirs::home_dir().ok_or("no home folder")?.join("Applications");
-        std::fs::create_dir_all(&user).map_err(|e| format!("couldn't create {} ({e})", user.display()))?;
-        Ok(user)
+        Ok(dir)
+    }
+
+    /// The same choice as a fresh install makes, creating nothing: the install-folder hint.
+    pub(super) fn default_applications_dir() -> Option<PathBuf> {
+        super::mac_applications_dir(Path::new(SYSTEM_APPLICATIONS), dirs::home_dir().as_deref())
     }
 
     /// The Apple Developer team that signs every Craft App and ArtCraft Launcher (Learning
@@ -1654,6 +1837,23 @@ mod freebsd {
     }
 }
 
+/// What a Windows Installer exit code means for the job that ran it.
+#[cfg(any(windows, test))]
+fn explain(code: Option<i32>) -> Result<(), String> {
+    match code {
+        Some(0 | 3010 | 1641) => Ok(()),
+        Some(1602) => Err("cancelled".into()),
+        Some(1618) => Err("another installation is in progress. Wait for it to finish, then try again.".into()),
+        Some(1925 | 1303) => Err("Windows didn't allow the install (administrator permission is needed)".into()),
+        Some(c) => Err(format!("the Windows Installer stopped with error {c}")),
+        None => Err("the Windows Installer was interrupted".into()),
+    }
+}
+
+/// One permission prompt for several all-users updates.
+#[cfg(any(windows, test))]
+mod msi_batch;
+
 /// Builds the Windows Installer command separately so its package argument can be checked
 /// without starting an installer.
 #[cfg_attr(not(windows), allow(dead_code))]
@@ -1688,37 +1888,91 @@ pub(crate) fn msi_path(msi: &Path) -> Result<PathBuf, String> {
 pub mod windows {
     use artcraft_launcher_core::protocol::CANCELLED;
 
-    use super::{CraftApp, INSTALLER, JobPhase, Path, PathBuf, Stop, cancelled, msi_command, msi_folder_argument, msi_log, process, turn};
+    use super::{
+        CraftApp, INSTALLER, JobPhase, MsiScope, Path, PathBuf, Stop, cancelled, explain, msi_batch, msi_command, msi_folder_argument, msi_log,
+        msi_scope_arguments, process, turn,
+    };
 
     fn msiexec() -> PathBuf {
         std::env::var_os("SystemRoot").map_or_else(|| PathBuf::from(r"C:\Windows"), PathBuf::from).join(r"System32\msiexec.exe")
     }
 
-    fn explain(code: Option<i32>) -> Result<(), String> {
-        match code {
-            Some(0 | 3010 | 1641) => Ok(()),
-            Some(1602) => Err("cancelled".into()),
-            Some(1618) => Err("another installation is in progress. Wait for it to finish, then try again.".into()),
-            Some(1925 | 1303) => Err("Windows didn't allow the install (administrator permission is needed)".into()),
-            Some(c) => Err(format!("the Windows Installer stopped with error {c}")),
-            None => Err("the Windows Installer was interrupted".into()),
-        }
+    /// Runs an MSI with a progress window and no restart. Windows asks for permission itself.
+    /// `scope`, from the copy being replaced's registration, keeps the update in the same
+    /// Windows Installer context (see [`MsiScope`]).
+    pub fn run_msi(
+        msi: &Path,
+        destination: Option<&Path>,
+        scope: Option<MsiScope>,
+        stop: &Stop,
+        phase: &mut dyn FnMut(JobPhase),
+    ) -> Result<(), String> {
+        in_turn(stop, phase, JobPhase::Installing, || run_direct(msi, destination, scope))
     }
 
-    /// Runs an MSI with a progress window and no restart. Windows asks for permission itself.
-    pub fn run_msi(msi: &Path, destination: Option<&Path>, stop: &Stop, phase: &mut dyn FnMut(JobPhase)) -> Result<(), String> {
-        in_turn(stop, phase, JobPhase::Installing, || {
-            use std::os::windows::process::CommandExt;
-            let mut command = msi_command(&msiexec(), msi)?;
-            if let Some(dir) = destination {
-                command.raw_arg(msi_folder_argument(dir)?);
-            }
-            let status = command.status().map_err(|e| format!("couldn't start the Windows Installer ({e})"))?;
-            explain(status.code()).map_err(|e| match status.code() {
-                Some(1602) | None => e,
-                _ => format!("{e}. Its log is at {}", msi_log(msi).display()),
-            })
+    /// Runs one MSI by itself: `msiexec` asks for permission itself, and the prompt names the package's
+    /// publisher.
+    fn run_direct(msi: &Path, destination: Option<&Path>, scope: Option<MsiScope>) -> Result<(), String> {
+        use std::os::windows::process::CommandExt;
+        let mut command = msi_command(&msiexec(), msi)?;
+        if let Some(dir) = destination {
+            command.raw_arg(msi_folder_argument(dir)?);
+        }
+        for argument in msi_scope_arguments(scope) {
+            command.raw_arg(argument);
+        }
+        let status = command.status().map_err(|e| format!("couldn't start the Windows Installer ({e})"))?;
+        explain(status.code()).map_err(|e| match status.code() {
+            Some(1602) | None => e,
+            _ => format!("{e}. Its log is at {}", msi_log(msi).display()),
         })
+    }
+
+    /// Updates an app installed for all users. Jobs that are ready together go into one call, so Windows
+    /// asks for permission once for all of them; one that is alone runs as [`run_msi`] does.
+    /// `sha256` is the checksum the download was checked against: the package is held unchangeable
+    /// and checked again before it waits, and stays held until its call ends.
+    pub(super) fn run_msi_all_users(
+        msi: &Path,
+        sha256: &str,
+        destination: Option<&Path>,
+        joined: &msi_batch::Joined<'_>,
+        stop: &Stop,
+        phase: &mut dyn FnMut(JobPhase),
+    ) -> Result<(), String> {
+        let _held = msi_batch::hold(msi, sha256)?;
+        let scope = Some(MsiScope::PerMachine);
+        run_all_users_with(msi, destination, joined, stop, phase, &|| run_direct(msi, destination, scope), &|targets| {
+            msi_batch::run(&msiexec(), targets)
+        })
+    }
+
+    /// [`run_msi_all_users`] with the two ways of installing handed in: `alone` for a job that is the
+    /// only one in its call, `together` for the command lines of every job of a call of several.
+    pub(super) fn run_all_users_with(
+        msi: &Path,
+        destination: Option<&Path>,
+        joined: &msi_batch::Joined<'_>,
+        stop: &Stop,
+        phase: &mut dyn FnMut(JobPhase),
+        alone: &dyn Fn() -> Result<(), String>,
+        together: &dyn Fn(&[std::ffi::OsString]) -> Result<(), String>,
+    ) -> Result<(), String> {
+        use std::ffi::OsString;
+        let line = msi_batch::line(msi, destination, Some(MsiScope::PerMachine))?;
+        INSTALLER.batched_when(
+            vec![OsString::from(msi_batch::COMMAND)],
+            OsString::from(line),
+            &cancelled(stop),
+            &mut turn(phase, JobPhase::Installing),
+            &|_, targets| match targets {
+                [_one] => alone(),
+                _ => together(targets),
+            },
+            // Queued: this job's package is ready, so the others need not wait for it any more.
+            &|| joined.arrived(),
+            &|_| msi_batch::everyone_here(),
+        )
     }
 
     /// Runs the launcher's own new MSI for a self-update, with the same progress window and no
@@ -1755,6 +2009,84 @@ pub mod windows {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A folder found only by the launch fallback, in another scope, never reaches the installer.
+    #[cfg(windows)]
+    #[test]
+    fn an_update_takes_the_folder_only_from_the_records_own_scope() {
+        let folder = Some(PathBuf::from(r"C:\Users\a\AppData\Local\Programs\ArtCraft\DeckCraft"));
+        assert_eq!(keep_if_in_scope(folder.clone(), true), folder);
+        assert_eq!(keep_if_in_scope(folder, false), None);
+        assert_eq!(keep_if_in_scope(None, true), None);
+    }
+
+    /// The default folder shown in the UI is the one a fresh install really uses.
+    #[cfg(windows)]
+    #[test]
+    fn the_default_folder_is_the_artcraft_suite_folder_in_program_files() {
+        let paths = Paths::under(std::path::Path::new(r"C:\scratch"));
+        let program_files = std::env::var_os("ProgramFiles").map(PathBuf::from).unwrap();
+        assert_eq!(default_folder(PackageKind::Msi, Some(Arch::X64), &paths), Some(program_files.join("ArtCraft")));
+        assert_eq!(default_folder(PackageKind::PortableZip, Some(Arch::X64), &paths), Some(paths.apps()));
+        assert_eq!(default_folder(PackageKind::Dmg, Some(Arch::X64), &paths), None);
+    }
+
+    /// A 32-bit package installs under the 32-bit Program Files; an unknown architecture answers
+    /// nothing, so the UI says "System default" instead of guessing the destination.
+    #[cfg(windows)]
+    #[test]
+    fn a_32_bit_package_uses_the_32_bit_program_files_and_an_unknown_architecture_answers_nothing() {
+        let paths = Paths::under(std::path::Path::new(r"C:\scratch"));
+        let x86 = std::env::var_os("ProgramFiles(x86)").or_else(|| std::env::var_os("ProgramFiles")).map(PathBuf::from).unwrap();
+        assert_eq!(default_folder(PackageKind::Msi, Some(Arch::X86), &paths), Some(x86.join("ArtCraft")));
+        assert_eq!(default_folder(PackageKind::Msi, None, &paths), None);
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn the_default_folder_is_wherever_the_installer_would_put_a_new_app() {
+        let paths = Paths::under(std::path::Path::new("/tmp/scratch"));
+        // `/Applications` when we can write there, else `~/Applications`: the same choice the
+        // installer makes, so the hint never disagrees with where the app really goes.
+        assert_eq!(default_folder(PackageKind::Dmg, None, &paths), macos::default_applications_dir());
+        assert_eq!(default_folder(PackageKind::Msi, None, &paths), None);
+    }
+
+    /// The macOS default-folder answer is asked on a redraw, so it must leave the disk as it was:
+    /// nothing left in a writable `/Applications`, no `~/Applications` created when it is not.
+    #[test]
+    fn the_mac_default_folder_lookup_creates_nothing() {
+        let system = tempfile::tempdir().unwrap();
+        let home = tempfile::tempdir().unwrap();
+        assert_eq!(mac_applications_dir(system.path(), Some(home.path())), Some(system.path().to_path_buf()));
+        assert_eq!(std::fs::read_dir(system.path()).unwrap().count(), 0, "the write probe was left behind");
+
+        let unwritable = system.path().join("missing");
+        assert_eq!(mac_applications_dir(&unwritable, Some(home.path())), Some(home.path().join("Applications")));
+        assert!(!home.path().join("Applications").exists(), "a folder hint must not create ~/Applications");
+        assert_eq!(mac_applications_dir(&unwritable, None), None);
+    }
+
+    /// A link planted under the old fixed probe name must not be followed: the probe once wrote
+    /// through it and truncated whatever it pointed at.
+    #[cfg(unix)]
+    #[test]
+    fn the_mac_default_folder_lookup_does_not_write_through_a_planted_link() {
+        let system = tempfile::tempdir().unwrap();
+        let victim = tempfile::NamedTempFile::new().unwrap();
+        std::fs::write(victim.path(), b"keep me").unwrap();
+        std::os::unix::fs::symlink(victim.path(), system.path().join(".artcraft-launcher-write-test")).unwrap();
+        assert_eq!(mac_applications_dir(system.path(), None), Some(system.path().to_path_buf()));
+        assert_eq!(std::fs::read(victim.path()).unwrap(), b"keep me");
+    }
+
+    #[cfg(not(any(windows, target_os = "macos")))]
+    #[test]
+    fn formats_the_system_manages_have_no_single_default_folder() {
+        let paths = Paths::under(std::path::Path::new("/tmp/scratch"));
+        assert_eq!(default_folder(PackageKind::Deb, None, &paths), None);
+        assert_eq!(default_folder(PackageKind::AppImage, None, &paths), None);
+    }
 
     #[cfg(unix)]
     #[test]
@@ -1865,6 +2197,19 @@ mod tests {
         }
         assert!(msi_folder_argument(Path::new("D:\\bad\" TRANSFORMS=evil")).is_err());
         assert!(msi_folder_argument(Path::new("D:\\bad\nfolder")).is_err());
+    }
+
+    #[test]
+    fn msi_updates_keep_the_registered_context_and_new_installs_send_no_scope() {
+        // A fresh install passes nothing: the package's own default (per-user for a dual-scope
+        // package) applies, and an older per-machine-only package keeps behaving exactly as
+        // before.
+        assert_eq!(msi_scope_arguments(None), Vec::<&str>::new());
+        // A per-user update asks for the documented single-package per-user install...
+        assert_eq!(msi_scope_arguments(Some(MsiScope::PerUser)), vec!["ALLUSERS=2", "MSIINSTALLPERUSER=1"]);
+        // ...and a per-machine update asks for what per-machine-only packages already set
+        // themselves, so it changes nothing for the current releases.
+        assert_eq!(msi_scope_arguments(Some(MsiScope::PerMachine)), vec!["ALLUSERS=1"]);
     }
 
     #[cfg(target_os = "linux")]
@@ -2347,7 +2692,7 @@ mod tests {
         assert_eq!(linux::shared_outcome(failed(), 1), failed());
         assert_eq!(
             linux::shared_outcome(failed(), 3),
-            Err("the system installer stopped with error 100 while handling 3 apps together. Try them one at a time.".into())
+            Err("the system installer stopped with error 100 while handling 3 apps in one go. Try them one at a time.".into())
         );
         // A dismissed password prompt stays a cancellation for every app, not an error.
         assert_eq!(linux::shared_outcome(Err("cancelled".into()), 3), Err("cancelled".into()));
@@ -2417,7 +2762,7 @@ mod tests {
         // apt failed: both apps say so, and how to find the one at fault.
         let (ran, results) = two_debs_through_pkexec(100);
         assert_eq!(ran.len(), 1, "{ran:?}");
-        let error = "the system installer stopped with error 100 while handling 2 apps together. Try them one at a time.";
+        let error = "the system installer stopped with error 100 while handling 2 apps in one go. Try them one at a time.";
         assert_eq!(results, vec![Err(error.to_string()); 2]);
     }
 
@@ -2559,6 +2904,29 @@ mod tests {
         assert!(managed_elsewhere_with(app, &installed, false, |_| None).is_some());
         assert_eq!(choose_kinds_with(app, Some(&installed), None, &[], &[], false), Vec::<PackageKind>::new());
         assert_eq!(choose_kinds_with(app, Some(&installed), None, &[PackageKind::ArchPkg], &[PackageKind::ArchPkg], true), Vec::<PackageKind>::new());
+    }
+
+    #[test]
+    fn solidcraft_is_never_installed_from_its_unsigned_macos_build() {
+        let sc = artcraft_launcher_core::CraftApp::by_id("solidcraft").unwrap();
+        assert_eq!(choose_kinds_with(sc, None, None, &[], &[PackageKind::Dmg], false), Vec::<PackageKind>::new());
+        let photo = artcraft_launcher_core::CraftApp::by_id("photocraft").unwrap();
+        assert_eq!(choose_kinds_with(photo, None, None, &[], &[PackageKind::Dmg], false), [PackageKind::Dmg]);
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn only_an_apps_own_older_flatpak_id_is_retired() {
+        use super::linux::former_flatpak;
+        let flatpak = |id: &str| Installed { version: None, source: InstallSource::Flatpak, location: id.into(), package: Some(id.into()) };
+        let sc = artcraft_launcher_core::CraftApp::by_id("solidcraft").unwrap();
+        let old = flatpak("ai.storyteller.solvecraft");
+        assert_eq!(former_flatpak(sc, Some(&old)), Some("ai.storyteller.solvecraft"));
+        assert_eq!(former_flatpak(sc, Some(&flatpak("io.tangencylabs.solidcraft"))), None);
+        assert_eq!(former_flatpak(sc, Some(&flatpak("ai.storyteller.cadcraft"))), None);
+        assert_eq!(former_flatpak(sc, None), None);
+        let deb = Installed { source: InstallSource::Deb, ..old.clone() };
+        assert_eq!(former_flatpak(sc, Some(&deb)), None);
     }
 
     #[test]

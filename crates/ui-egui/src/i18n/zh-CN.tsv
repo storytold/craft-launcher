@@ -7,6 +7,7 @@
 
 	Launcher	Launcher
 	Craft App Suite	Craft App Suite
+	by {name}	由 {name} 提供
 	Open Source Tools for Creatives, Makers, and Builders	为创作者和开发者打造的开源工具
 	Settings	设置
 	Check for updates	检查更新
@@ -249,6 +250,7 @@ designcraft	Page layout and publishing	页面排版与出版
 wordcraft	Writing and document design	写作与文档设计
 deckcraft	Presentations and slide shows	演示文稿与幻灯片
 gridcraft	Spreadsheets and data	电子表格与数据处理
+solidcraft	Parametric 3D CAD	参数化三维 CAD
 cadcraft	Computer-aided design and drafting	计算机辅助设计与制图
 soundcraft	Recording, editing and mixing audio	音频录制、编辑与混音
 figcraft	Interface design and prototyping	界面设计与原型制作
@@ -348,4 +350,5 @@ figcraft	Interface design and prototyping	界面设计与原型制作
 	Previous app	上一个应用
 	Show {n} more changes	显示另外 {n} 项更改
 	Last updated: {date}	最后更新：{date}
+column	Author	作者
 column	Version	版本

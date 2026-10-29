@@ -136,7 +136,7 @@ impl LauncherUi {
         let installed = self.cjk_font;
         sheet::panel_with_heading(ui, tl!("Language"), |ui, heading| {
             let width = ui.available_width();
-            egui::ComboBox::from_id_salt("language")
+            craft_ui::ComboBox::from_id_salt("language")
                 .selected_text(Settings::language_label(&lang_code, installed))
                 .width(width)
                 .show_ui(ui, |ui| {
@@ -172,7 +172,7 @@ impl LauncherUi {
         sheet::panel(ui, tl!("Updates"), |ui| {
             let mut every = self.settings.check_every;
             row(ui, tl!("Check for updates"), 150.0, &mut |ui, label| {
-                egui::ComboBox::from_id_salt("every")
+                craft_ui::ComboBox::from_id_salt("every")
                     .selected_text(every.label())
                     .width(150.0)
                     .show_ui(ui, |ui| {
@@ -203,7 +203,8 @@ impl LauncherUi {
         sheet::panel(ui, tl!("Default install folder"), |ui| {
             if self.custom_install_folders() {
                 let mut folder = self.settings.install_locations.root.clone().unwrap_or_default();
-                Self::folder_field(ui, &mut folder, None, host);
+                let default = self.suite_default_folder(host);
+                Self::folder_field(ui, &mut folder, default.as_deref(), host);
                 self.settings.install_locations.root = (!folder.is_empty()).then_some(folder);
                 note(ui, tl!("New installs use this folder. Updates stay in their current location."));
                 if self.platform.is_some_and(|p| p.os == Os::Linux) {
@@ -235,7 +236,7 @@ impl LauncherUi {
                 .or(Some(PackageKind::Msi));
             row(ui, tl!("Install new apps as"), 210.0, &mut |ui, label| {
                 let shown = choice.map_or_else(|| crate::i18n::t(PackageKind::Msi.label()), |kind| crate::i18n::t(kind.label()));
-                egui::ComboBox::from_id_salt("windows-kind")
+                craft_ui::ComboBox::from_id_salt("windows-kind")
                     .selected_text(shown)
                     .width(210.0)
                     .show_ui(ui, |ui| {
@@ -271,7 +272,7 @@ impl LauncherUi {
                     None => tl!("System package (recommended)"),
                 };
                 let shown = choice.map_or(default_label, |k| crate::i18n::t(k.label()));
-                egui::ComboBox::from_id_salt("kind")
+                craft_ui::ComboBox::from_id_salt("kind")
                     .selected_text(shown)
                     .width(210.0)
                     .show_ui(ui, |ui| {

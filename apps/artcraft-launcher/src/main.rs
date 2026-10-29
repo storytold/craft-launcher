@@ -454,6 +454,13 @@ fn tray_step(requests: &[Request]) -> TrayStep {
     }
 }
 
+/// The nearest folder at or above `initial` that exists, so Browse starts near a default that is
+/// often created only by the first install (`Program Files\ArtCraft`).
+fn nearest_existing_folder(initial: Option<&str>) -> Option<std::path::PathBuf> {
+    let folder = initial.map(std::path::PathBuf::from)?;
+    folder.ancestors().find(|candidate| candidate.is_dir()).map(|folder| folder.to_path_buf())
+}
+
 /// What `LauncherUi::logic` is told about its window while there is none: it isn't focused.
 fn no_window() -> egui::RawInput {
     let viewport = egui::ViewportInfo { focused: Some(false), ..Default::default() };
@@ -475,9 +482,16 @@ fn claim_notification_identity() -> &'static Result<(), String> {
     })
 }
 
+/// A default-folder question (format and architecture) with the host's answer.
+type DefaultFolderAnswer = ((artcraft_launcher_core::PackageKind, Option<artcraft_launcher_core::Arch>), Option<String>);
+
 struct DesktopHost {
     tray: bool,
     quit: bool,
+    /// Default-folder answers by question: the fields redraw often while a dialog is open,
+    /// Settings asks once per app's package, and the macOS answer probes the disk. There are
+    /// only a handful of distinct questions (format and architecture).
+    default_folders: Vec<DefaultFolderAnswer>,
 }
 
 impl Host for DesktopHost {
@@ -521,10 +535,21 @@ impl Host for DesktopHost {
 
     fn pick_folder(&mut self, initial: Option<&str>) -> Option<String> {
         let mut dialog = rfd::FileDialog::new();
-        if let Some(folder) = initial.filter(|p| std::path::Path::new(p).is_dir()) {
+        if let Some(folder) = nearest_existing_folder(initial) {
             dialog = dialog.set_directory(folder);
         }
         dialog.pick_folder().and_then(|p| p.to_str().map(str::to_string))
+    }
+
+    fn default_install_folder(&mut self, kind: artcraft_launcher_core::PackageKind, arch: Option<artcraft_launcher_core::Arch>) -> Option<String> {
+        if let Some((_, answer)) = self.default_folders.iter().find(|(question, _)| *question == (kind, arch)) {
+            return answer.clone();
+        }
+        let answer = artcraft_launcher_native::paths::Paths::new().ok().and_then(|paths| {
+            artcraft_launcher_native::install::default_folder(kind, arch, &paths).and_then(|folder| folder.to_str().map(str::to_string))
+        });
+        self.default_folders.push(((kind, arch), answer.clone()));
+        answer
     }
 
     fn reduce_motion(&self) -> bool {
@@ -576,7 +601,7 @@ impl Launcher {
             system_theme: system_theme::Monitor::default(),
             ui: LauncherUi::new(&windowless, backend, Settings::default()),
             tray: None,
-            host: DesktopHost { tray: false, quit: false },
+            host: DesktopHost { tray: false, quit: false, default_folders: Vec::new() },
             starts,
             windowless,
             run_again,
@@ -909,6 +934,17 @@ mod tests {
         let seen = Arc::new(Seen { clock: AtomicI64::new(NOW), ..Seen::default() });
         let (show, show_requests) = channel();
         (Launcher::new(Box::new(Quiet(seen.clone())), show_requests, None), show, seen)
+    }
+
+    #[test]
+    fn browse_starts_at_the_nearest_folder_that_exists() {
+        let existing = std::env::temp_dir();
+        assert_eq!(nearest_existing_folder(None), None);
+        // A default like `Program Files\ArtCraft` is often created only by the first install:
+        // Browse then starts one level up, where the eye can find it again.
+        let missing = existing.join("artcraft-launcher-does-not-exist-yet");
+        assert_eq!(nearest_existing_folder(missing.to_str()), Some(existing.clone()));
+        assert_eq!(nearest_existing_folder(existing.to_str()), Some(existing));
     }
 
     #[test]
