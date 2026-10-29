@@ -154,10 +154,13 @@ pub fn install_at(
     } else {
         None
     };
+    // The last check before any bytes are fetched, for both downloads.
+    check_download_link(app, release, asset)?;
     // The package to put back comes first: without it, nothing is removed.
     #[cfg_attr(not(windows), allow(unused_variables))]
     let rollback = match job.downgrade {
         Some(Downgrade::Reinstall { previous, asset }) => {
+            check_download_link(app, previous, asset)?;
             let (file, sha256) = download(previous, asset, job)?;
             Some((file, sha256, previous.version_label()))
         }
@@ -277,13 +280,15 @@ pub(crate) fn bind_artifact_version(app: &CraftApp, release: &Release, asset: &A
     }
 
     // The release tag and filename embedded in a release download URL (`.../releases/download/<tag>/<name>`).
+    // A `+` in either is `%2B` there, as GitHub and `expected_download_url` write it; no other
+    // escape is decoded, so anything else still has to match as written.
     if let Some(rest) = asset.url.split("/releases/download/").nth(1) {
         let mut parts = rest.split('/');
-        let tag = parts.next().unwrap_or("");
-        let url_filename = parts.next().unwrap_or("");
+        let tag = parts.next().unwrap_or("").replace("%2B", "+");
+        let url_filename = parts.next().unwrap_or("").replace("%2B", "+");
         if tag.is_empty()
             || release_version
-                .map_or(tag != release.tag, |release_version| tag != release.tag && version::parse(tag).as_ref() != Some(release_version))
+                .map_or(tag != release.tag, |release_version| tag != release.tag && version::parse(&tag).as_ref() != Some(release_version))
         {
             return Err(mismatch());
         }
@@ -292,6 +297,27 @@ pub(crate) fn bind_artifact_version(app: &CraftApp, release: &Release, asset: &A
         }
     }
     Ok(())
+}
+
+/// The last check before any bytes are fetched (#764): the link must be exactly the GitHub download
+/// for this release's tag and this asset's name in the release's repository ([`Release::repo`],
+/// which the feed sets when it follows a rename; else the app's own), whichever converter (API,
+/// feed or `SHA256SUMS.txt`) built the asset, and so must the link of the release's
+/// `SHA256SUMS.txt` that the download is checked against. A `+` may be written plainly or as `%2B`
+/// (`release::same_download_url`). A `local-mirror` build also accepts the developer's loopback
+/// mirror, whose links the feed parser has already confined; so do this crate's tests, whose
+/// downloads come from a server on 127.0.0.1. It mirrors `craft_update::install::check_download_link`,
+/// which takes craft-update's `App` rather than a `CraftApp` and doesn't see this crate's tests.
+fn check_download_link(app: &CraftApp, release: &Release, asset: &Asset) -> Result<(), String> {
+    let repo = if release.repo.is_empty() { app.repo } else { release.repo.as_str() };
+    let own = |a: &Asset| {
+        ((cfg!(feature = "local-mirror") || cfg!(test)) && crate::http::is_loopback(&a.url))
+            || release::expected_download_url(repo, &release.tag, &a.name).is_some_and(|expected| release::same_download_url(&a.url, &expected))
+    };
+    if own(asset) && release.sums_asset().is_none_or(own) {
+        return Ok(());
+    }
+    Err(format!("{}'s download link isn't the one its release publishes ({}), so it wasn't downloaded.", app.name, asset.name))
 }
 
 /// What a new install would write over: something already at its destination that the launcher
@@ -3560,6 +3586,60 @@ mod tests {
             ..Asset::default()
         };
         assert!(bind_artifact_version(app, &release, &bad_tag).is_err());
+
+        // #764: another app's release with the right tag and name passes the bind (it reads only
+        // the path after `/releases/download/`), but the check before the download refuses it.
+        let other_repo = Asset {
+            name: "photocraft-99.0.0-linux-x86_64.AppImage".into(),
+            url: "https://github.com/storytold/vectorcraft/releases/download/v99.0.0/photocraft-99.0.0-linux-x86_64.AppImage".into(),
+            ..Asset::default()
+        };
+        assert!(bind_artifact_version(app, &release, &other_repo).is_ok());
+        let err = install_at(app, &release, &other_repo, PackageKind::AppImage, None, None, &mut job, None).unwrap_err();
+        assert!(err.contains("isn't the one its release publishes"), "{err}");
+        assert!(check_download_link(app, &release, &good).is_ok());
+        // The checksums the download is verified against must come from the release too.
+        let mut foreign_sums = release.clone();
+        foreign_sums.assets.push(Asset {
+            name: "SHA256SUMS.txt".into(),
+            url: "https://github.com/storytold/vectorcraft/releases/download/v99.0.0/SHA256SUMS.txt".into(),
+            ..Asset::default()
+        });
+        assert!(check_download_link(app, &foreign_sums, &good).is_err());
+        // A release read from the repository the feed says the app moved to carries that repo,
+        // and its links are checked against it.
+        let moved = Release { repo: "storytold/vectorcraft".into(), ..release.clone() };
+        assert!(check_download_link(app, &moved, &other_repo).is_ok());
+        assert!(check_download_link(app, &moved, &good).is_err());
+    }
+
+    /// A release whose tag has a `+` (semver build metadata) has `%2B` in its links. Both checks
+    /// before the download accept them, so `install_at` gets as far as the download, which the
+    /// cancelled job ends before anything is fetched. A link with another escape is still refused.
+    #[test]
+    fn install_accepts_a_plus_release_up_to_the_download() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = Paths::under(dir.path());
+        let http = Http::new().unwrap();
+        let phase = &mut |_| ();
+        let locations = InstallLocations::default();
+        let app = CraftApp::by_id("photocraft").unwrap();
+        let name = "photocraft-1.0.0+build.1-linux-x86_64.AppImage";
+        let release = release::release_from_sums(app.repo, "v1.0.0+build.1", &[("a".repeat(64), name.to_string())]);
+        let asset = release.assets[0].clone();
+        assert!(asset.url.ends_with("/download/v1.0.0%2Bbuild.1/photocraft-1.0.0%2Bbuild.1-linux-x86_64.AppImage"), "{}", asset.url);
+        assert_eq!(bind_artifact_version(app, &release, &asset), Ok(()));
+        let stop = Stop::default();
+        stop.cancel();
+        let mut job = Job { http: &http, paths: &paths, stop: &stop, phase, install_locations: &locations, replace: false, downgrade: None };
+        let result = install_at(app, &release, &asset, PackageKind::AppImage, None, None, &mut job, None);
+        assert_eq!(result.unwrap_err(), artcraft_launcher_core::protocol::CANCELLED);
+        // A plain `+`, as an older feed or saved release wrote it, passes both checks too.
+        let plain = Asset { url: asset.url.replace("%2B", "+"), ..asset.clone() };
+        assert_eq!(bind_artifact_version(app, &release, &plain), Ok(()));
+        assert!(check_download_link(app, &release, &plain).is_ok());
+        let other_escape = Asset { url: asset.url.replace("%2B", "%2b"), ..asset };
+        assert!(bind_artifact_version(app, &release, &other_escape).is_err());
     }
 
     #[cfg(target_os = "linux")]
