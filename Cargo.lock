@@ -323,8 +323,6 @@ dependencies = [
  "sha2",
  "tar",
  "tempfile",
- "ureq",
- "verifysign",
  "winreg",
  "winsafe",
 ]
