@@ -51,7 +51,5 @@ impl LauncherPaths for Paths {
 /// Portable mode's folder, when a `portable.txt` beside the executable asks for it: where
 /// [`for_launcher`] puts everything, for the settings file that goes beside it.
 pub fn portable_root() -> Option<PathBuf> {
-    let exe = std::env::current_exe().ok()?;
-    let dir = exe.parent()?;
-    dir.join("portable.txt").is_file().then(|| dir.join(format!("{}Data", craft_update::suite::LAUNCHER.name.replace(' ', ""))))
+    Paths::portable_root(&craft_update::suite::LAUNCHER)
 }

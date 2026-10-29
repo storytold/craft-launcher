@@ -8,7 +8,6 @@
 #![deny(clippy::unwrap_used, clippy::expect_used, clippy::panic, clippy::unimplemented, clippy::todo, clippy::unreachable)]
 
 pub mod backend;
-pub mod desktop_entry;
 pub mod detect;
 pub mod discord;
 pub mod feed_throttle;
@@ -21,7 +20,6 @@ pub mod packages;
 pub mod paths;
 pub mod pins;
 pub mod process;
-pub mod queue;
 pub mod screenshots;
 pub mod self_update;
 pub mod single_instance;
@@ -29,8 +27,9 @@ pub mod source;
 
 pub use backend::NativeBackend;
 // Shared with every Craft app's installer through craft-update: the launcher's record of what it
-// installed, and the system proxy settings downloads go through.
-pub use craft_update::{manifest, now, proxy};
+// installed, the system proxy settings downloads go through, Linux menu entries and the
+// one-installer-at-a-time queue.
+pub use craft_update::{desktop_entry, manifest, now, proxy, queue};
 // Portable zip installs on Windows.
 #[cfg(windows)]
 pub use craft_update::portable;

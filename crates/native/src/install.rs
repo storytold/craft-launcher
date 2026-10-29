@@ -1546,7 +1546,7 @@ pub(crate) mod linux {
             // Someone else's icon under the app's id (the app's own AppImage puts one there).
             _ => icon.is_file(),
         };
-        let Some(text) = crate::desktop_entry::render(app, appimage, has_icon) else {
+        let Some(text) = crate::desktop_entry::render(&app.update_app(), appimage, has_icon) else {
             log::warn!("{}: {} can't be written into a menu entry; skipping it", app.name, appimage.display());
             return written;
         };

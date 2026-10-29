@@ -48,7 +48,7 @@ impl LauncherUi {
         };
         let stems: Vec<&str> = entry.app.stems().collect();
         let (asset, kind) = pick_asset(release, &stems, platform, &kinds)?;
-        Some((kind, parse_asset_name(&asset.name, &stems).as_ref().and_then(artcraft_launcher_core::asset_arch::asset_arch)))
+        Some((kind, parse_asset_name(&asset.name, &stems).and_then(|name| name.arch())))
     }
 
     /// The folder a fresh install of `id` goes inside when no folder is chosen.

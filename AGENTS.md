@@ -19,13 +19,14 @@ GitHub repo is `storytold/craft-launcher`, while every file and package is `artc
 crates/
   core      artcraft-launcher-core      pure and wasm-safe: the app catalog, the feed, statuses,
                                         the version choice; re-exports craft-update's release
-                                        parsing, versions, platforms, asset picking, timestamps
-                                        and the protocol and status types it shares
-                                        (storytold/craft-libs)
+                                        parsing, versions, platforms, asset picking and
+                                        architectures, timestamps and the protocol and status
+                                        types it shares (storytold/craft-libs)
   native    artcraft-launcher-native    desktop only: release lookups, detecting installed apps,
-                                        download, verify and install; re-exports craft-update's
-                                        HTTP client, paths, manifest, proxy, process helpers and
-                                        portable installs
+                                        package listings, download, verify and install;
+                                        re-exports craft-update's HTTP client, paths, manifest,
+                                        proxy, process helpers, portable installs, Linux menu
+                                        entries and the installer queue
   ui-egui   artcraft-launcher-ui-egui   the shared egui UI (desktop and web)
 apps/
   artcraft-launcher                     desktop shell (eframe): window, tray icon, notifications
