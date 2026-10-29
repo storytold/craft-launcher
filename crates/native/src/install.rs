@@ -193,7 +193,12 @@ pub fn install_at(
                 ),
                 None => windows::run_msi(&file, destination.as_deref(), msi_scope, job.stop, &mut *job.phase),
             }
-            .map(|_| None)
+            .map(|_| {
+                // Dual-scope MSIs often leave uninstall in HKLM and InstallDir only in HKCU.
+                // Mirror the folder into the uninstall hive so Open works on scope-strict lookups.
+                crate::detect::windows::sync_install_dir_to_record_hives(app);
+                None
+            })
         }
         #[cfg(windows)]
         PackageKind::PortableZip => {

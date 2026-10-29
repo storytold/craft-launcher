@@ -211,7 +211,7 @@ fn newest_first(a: Option<&version::Version>, b: Option<&version::Version>) -> s
 
 #[cfg(windows)]
 pub mod windows {
-    use std::path::PathBuf;
+    use std::path::{Path, PathBuf};
 
     use winreg::enums::{HKEY_CURRENT_USER, HKEY_LOCAL_MACHINE, KEY_READ, KEY_WOW64_32KEY, KEY_WOW64_64KEY};
     use winreg::{HKEY, RegKey};
@@ -321,14 +321,66 @@ pub mod windows {
         })
     }
 
-    /// The app's exe for one uninstall record, found only in that record's own scope: the recorded
-    /// folder first, then `App Paths` in the record's hive and registry view, then the usual folders
-    /// for that scope (`ArtCraft` suite folder first, then the bare root, for older installs). A
-    /// per-machine entry therefore never stands in for a per-user record, or the other way round.
-    fn exe_path(app: &CraftApp, location: Option<PathBuf>, hive: HKEY, flags: u32) -> Option<PathBuf> {
-        if let Some(found) = exe_candidates(app, location.as_deref(), &[]).into_iter().find(|p| p.exists()) {
-            return Some(found);
+    /// The package-authored install folder from any uninstall hive/view. Dual-scope MSIs can put the
+    /// uninstall row in one hive and `InstallDir` in another; Open needs either.
+    fn install_dir_any(app: &CraftApp) -> Option<PathBuf> {
+        UNINSTALL_ROOTS.into_iter().find_map(|(hive, flags)| install_dir(app, hive, flags))
+    }
+
+    /// After an MSI install, copy the package's install folder into every hive that has an uninstall
+    /// record for `app` but no `InstallDir` of its own. That keeps the next Open/update on a
+    /// scope-strict lookup (Launcher 0.9.0 and earlier) without a manual regedit. Writing HKLM needs
+    /// elevation and is skipped quietly when this process cannot; [`exe_in_any_scope`] still finds the
+    /// exe for Open.
+    pub fn sync_install_dir_to_record_hives(app: &CraftApp) {
+        use winreg::enums::KEY_ALL_ACCESS;
+
+        let Some(folder) = install_dir_any(app).or_else(|| {
+            let mut roots: Vec<PathBuf> = std::env::var_os("LOCALAPPDATA").map(|local| PathBuf::from(local).join("Programs")).into_iter().collect();
+            for var in ["ProgramW6432", "ProgramFiles", "ProgramFiles(x86)"] {
+                if let Some(pf) = std::env::var_os(var).map(PathBuf::from)
+                    && !roots.contains(&pf)
+                {
+                    roots.push(pf);
+                }
+            }
+            exe_in_roots(app, roots).and_then(|exe| exe.parent().map(Path::to_path_buf))
+        }) else {
+            return;
+        };
+        let folder_text = folder.to_string_lossy();
+        // Trailing separator matches what the MSI writes under HKCU.
+        let folder_value = if folder_text.ends_with(['\\', '/']) { folder_text.into_owned() } else { format!("{folder_text}\\") };
+
+        let mut seen_hives = Vec::new();
+        for install in msi_installs(app) {
+            let (hive, flags, hive_name) = match install.scope {
+                crate::install::MsiScope::PerUser => (HKEY_CURRENT_USER, 0, "HKCU"),
+                crate::install::MsiScope::PerMachine => (HKEY_LOCAL_MACHINE, KEY_WOW64_64KEY, "HKLM"),
+            };
+            if seen_hives.contains(&hive_name) || install_dir(app, hive, flags).is_some() {
+                continue;
+            }
+            seen_hives.push(hive_name);
+            for key_path in install_dir_keys(app) {
+                match RegKey::predef(hive).create_subkey_with_flags(&key_path, KEY_ALL_ACCESS | flags) {
+                    Ok((key, _)) => {
+                        if let Err(e) = key.set_value("InstallDir", &folder_value) {
+                            log::warn!("{}: couldn't record InstallDir under {hive_name}\\{key_path} ({e})", app.name);
+                        } else {
+                            log::info!("{}: recorded InstallDir for uninstall hive {hive_name}", app.name);
+                        }
+                    }
+                    Err(e) => log::warn!("{}: couldn't create {hive_name}\\{key_path} to record InstallDir ({e})", app.name),
+                }
+            }
         }
+    }
+
+    /// The exe registered under `App Paths` for `app` in one hive and registry view, when that file
+    /// is still on disk. Dual-scope packages often write this under HKCU even when the uninstall
+    /// record landed in HKLM.
+    fn app_paths_exe(app: &CraftApp, hive: HKEY, flags: u32) -> Option<PathBuf> {
         for stem in app.stems() {
             let app_paths = format!(r"SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths\{stem}.exe");
             if let Ok(key) = RegKey::predef(hive).open_subkey_with_flags(&app_paths, KEY_READ | flags)
@@ -339,6 +391,20 @@ pub mod windows {
                     return Some(p);
                 }
             }
+        }
+        None
+    }
+
+    /// The app's exe for one uninstall record, found only in that record's own scope: the recorded
+    /// folder first, then `App Paths` in the record's hive and registry view, then the usual folders
+    /// for that scope (`ArtCraft` suite folder first, then the bare root, for older installs). A
+    /// per-machine entry therefore never stands in for a per-user record, or the other way round.
+    fn exe_path(app: &CraftApp, location: Option<PathBuf>, hive: HKEY, flags: u32) -> Option<PathBuf> {
+        if let Some(found) = exe_candidates(app, location.as_deref(), &[]).into_iter().find(|p| p.exists()) {
+            return Some(found);
+        }
+        if let Some(found) = app_paths_exe(app, hive, flags) {
+            return Some(found);
         }
         let roots: Vec<PathBuf> = if hive == HKEY_CURRENT_USER {
             // Per-user installs (dual-scope packages) live in the user's own Programs folder.
@@ -387,14 +453,24 @@ pub mod windows {
     /// the record's own scope. The package records its folder (`InstallDir`) in the hive of the account
     /// that installed it, which need not be the hive of its uninstall record: a per-user install can
     /// leave a per-machine record. So the folder any hive or view recorded is tried first (this finds
-    /// a custom folder), then the usual folders of every scope. This only decides which exe "Open"
-    /// runs and where "Show in folder" goes. An update never takes its folder from here
-    /// (`location_is_in_record_scope`), and the record's scope is unchanged. Every candidate is
+    /// a custom folder), then `App Paths` in every hive (the package often writes that under HKCU
+    /// while the uninstall row is in HKLM), then the usual folders of every scope. This only decides
+    /// which exe "Open" runs and where "Show in folder" goes. An update never takes its folder from
+    /// here (`location_is_in_record_scope`), and the record's scope is unchanged. Every candidate is
     /// collected and the one whose own version is the record's is chosen, so a leftover older copy in
     /// another scope is not opened under the newer record's version (`pick_candidate`).
     fn exe_in_any_scope(app: &CraftApp, version: Option<&version::Version>) -> Option<PathBuf> {
-        let mut found: Vec<PathBuf> =
-            UNINSTALL_ROOTS.into_iter().filter_map(|(hive, flags)| exe_in_folder(app, &install_dir(app, hive, flags)?)).collect();
+        let mut found: Vec<PathBuf> = Vec::new();
+        for (hive, flags) in UNINSTALL_ROOTS {
+            if let Some(dir) = install_dir(app, hive, flags)
+                && let Some(exe) = exe_in_folder(app, &dir)
+            {
+                push_unique(&mut found, exe);
+            }
+            if let Some(exe) = app_paths_exe(app, hive, flags) {
+                push_unique(&mut found, exe);
+            }
+        }
         let mut roots: Vec<PathBuf> = std::env::var_os("LOCALAPPDATA").map(|local| PathBuf::from(local).join("Programs")).into_iter().collect();
         for var in ["ProgramW6432", "ProgramFiles", "ProgramFiles(x86)"] {
             if let Some(pf) = std::env::var_os(var).map(PathBuf::from)
@@ -403,8 +479,16 @@ pub mod windows {
                 roots.push(pf);
             }
         }
-        found.extend(exe_all_in_roots(app, roots));
+        for exe in exe_all_in_roots(app, roots) {
+            push_unique(&mut found, exe);
+        }
         pick_candidate(found, version, executable_version)
+    }
+
+    pub(super) fn push_unique(found: &mut Vec<PathBuf>, exe: PathBuf) {
+        if !found.iter().any(|p| p == &exe) {
+            found.push(exe);
+        }
     }
 
     /// The first candidate whose version is `wanted`; with no match (or no version to match, or exes
@@ -1006,6 +1090,21 @@ mod tests {
         assert_eq!(windows::pick_candidate(both.clone(), v("0.99.0").as_ref(), version_of), Some(old.clone()));
         assert_eq!(windows::pick_candidate(both, None, version_of), Some(old.clone()));
         assert_eq!(windows::pick_candidate(Vec::new(), v("0.12.0").as_ref(), version_of), None);
+    }
+
+    /// The launch fallback keeps one path per exe, in the order it found them, so an `App Paths`
+    /// hit that repeats an `InstallDir` hit does not hide a later version match.
+    #[cfg(windows)]
+    #[test]
+    fn launch_fallback_candidates_keep_first_sighting_only() {
+        let first = PathBuf::from(r"C:\Users\a\AppData\Local\Programs\ArtCraft\WordCraft\wordcraft.exe");
+        let same = first.clone();
+        let other = PathBuf::from(r"C:\Program Files\ArtCraft\WordCraft\wordcraft.exe");
+        let mut found = Vec::new();
+        windows::push_unique(&mut found, first.clone());
+        windows::push_unique(&mut found, same);
+        windows::push_unique(&mut found, other.clone());
+        assert_eq!(found, vec![first, other]);
     }
 
     /// Every exe under the given roots, in the order `exe_in_roots` prefers them, so a version match
