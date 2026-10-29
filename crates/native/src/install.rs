@@ -1530,7 +1530,7 @@ pub mod macos {
         {
             return Err(format!("{} already exists and wasn't installed by ArtCraft Launcher", dest.display()));
         }
-        let staging = super::staging_dir(&dir)?;
+        let staging = staging_dir(&dir)?;
         let staged = staging.path().join(&bundle);
         let (Some(src_s), Some(staged_s)) = (src.to_str(), staged.to_str()) else { return Err("unusual characters in a path".into()) };
         // ditto keeps the code signature and symlinks intact. The disk image's volume adds Finder
