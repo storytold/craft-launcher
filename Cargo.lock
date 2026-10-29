@@ -327,7 +327,6 @@ dependencies = [
  "verifysign",
  "winreg",
  "winsafe",
- "zip",
 ]
 
 [[package]]
