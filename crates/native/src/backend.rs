@@ -145,7 +145,7 @@ impl NativeBackend {
             log::error!("{e}; keeping files in the temporary folder");
             Paths::under(&std::env::temp_dir().join("artcraft-launcher"))
         });
-        let http = match Http::new() {
+        let http = match crate::http::for_launcher() {
             Ok(h) => Some(h),
             Err(e) => {
                 log::error!("HTTPS unavailable: {e}");
@@ -1411,7 +1411,7 @@ mod tests {
         let Some(platform) = native_platform() else { return };
         let dir = tempfile::tempdir().unwrap();
         let mut backend = backend(dir.path(), platform, Some(Arc::new(Published)));
-        backend.http = Some(Http::new().unwrap());
+        backend.http = Some(Http::new(crate::http::USER_AGENT).unwrap());
         {
             let mut options = backend.shared.options.lock().unwrap();
             options.prereleases = true; // asks the source directly, never ArtCraft's API
@@ -1523,7 +1523,7 @@ mod tests {
         let (url, hits) = serve("429 Too Many Requests");
         let dir = tempfile::tempdir().unwrap();
         let paths = Paths::under(dir.path());
-        let http = Http::new().unwrap();
+        let http = Http::new(crate::http::USER_AGENT).unwrap();
         let throttle = Mutex::new(FeedThrottle::load(&paths.feed_throttle(), crate::now()));
         assert!(matches!(fetch_feed(&http, &paths, &url, &throttle, FEED_ATTEMPTS), FeedFetch::Failed));
         assert_eq!(hits.load(Ordering::SeqCst), 1);
@@ -1539,7 +1539,7 @@ mod tests {
         let (url, hits) = serve("503 Service Unavailable");
         let dir = tempfile::tempdir().unwrap();
         let paths = Paths::under(dir.path());
-        let http = Http::new().unwrap();
+        let http = Http::new(crate::http::USER_AGENT).unwrap();
         let throttle = Mutex::new(FeedThrottle::new());
         // First load: three tries, a couple of seconds apart.
         assert!(matches!(fetch_feed(&http, &paths, &url, &throttle, FEED_ATTEMPTS), FeedFetch::Failed));
@@ -1872,7 +1872,7 @@ mod tests {
         let Some(platform) = native_platform() else { return };
         let dir = tempfile::tempdir().unwrap();
         let mut backend = backend(dir.path(), platform, Some(Arc::new(CountingGitHub::default())));
-        backend.http = Some(Http::new().unwrap());
+        backend.http = Some(Http::new(crate::http::USER_AGENT).unwrap());
         let (waker, woke) = panic_on_wake();
         Arc::get_mut(&mut backend.shared).unwrap().waker = waker;
 
@@ -1988,7 +1988,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let mut backend = backend(dir.path(), platform, Some(Arc::new(Newer)));
         // A check needs a client; with pre-releases on it asks only `Newer`, never ArtCraft's API.
-        backend.http = Some(Http::new().unwrap());
+        backend.http = Some(Http::new(crate::http::USER_AGENT).unwrap());
         backend.shared.options.lock().unwrap().prereleases = true;
         keep_file(&backend);
         assert_eq!(ready(&mut backend), Some(true));

@@ -2673,7 +2673,7 @@ mod tests {
         let (older, newer, older_msi, newer_msi) = (tagged("0.4.0"), tagged("0.5.0"), msi("0.4.0"), msi("0.5.0"));
         let dir = tempfile::tempdir().unwrap();
         let paths = Paths::under(dir.path());
-        let http = Http::new().unwrap();
+        let http = Http::new(crate::http::USER_AGENT).unwrap();
         let locations = InstallLocations::default();
         let portable = Installed {
             version: version::parse("0.5.0"),
@@ -2788,7 +2788,7 @@ mod tests {
             let asset = Asset { name: name.into(), size: body.len() as u64, url, sha256: Some(sha) };
             let release = Release { tag: "v0.3.0".into(), version: version::parse("0.3.0"), assets: vec![asset.clone()], ..Release::default() };
             let paths = Paths::under(&dir.path().join(name));
-            let http = Http::new().unwrap();
+            let http = Http::new(crate::http::USER_AGENT).unwrap();
             let installed = Installed {
                 version: version::parse("0.4.0"),
                 source,
@@ -2832,7 +2832,7 @@ mod tests {
         let release = Release { assets: vec![asset.clone()], ..Release::default() };
         let dir = tempfile::tempdir().unwrap();
         let paths = Paths::under(dir.path());
-        let http = Http::new().unwrap();
+        let http = Http::new(crate::http::USER_AGENT).unwrap();
         // A format no build of the launcher installs here stands in for any failing install step.
         let kind = if cfg!(windows) { PackageKind::Dmg } else { PackageKind::Msi };
         let mut phases = Vec::new();
@@ -2867,7 +2867,7 @@ mod tests {
         let missing = dir.path().join("unavailable/Apps");
         let locations = InstallLocations { root: Some(missing.display().to_string()), ..Default::default() };
         let paths = Paths::under(dir.path());
-        let http = Http::new().unwrap();
+        let http = Http::new(crate::http::USER_AGENT).unwrap();
         let mut phases = vec![];
         let mut phase = |p| phases.push(p);
         let mut job = Job {
@@ -2897,7 +2897,7 @@ mod tests {
         let release = Release { assets: vec![asset.clone()], ..Release::default() };
         let dir = tempfile::tempdir().unwrap();
         let paths = Paths::under(dir.path());
-        let http = Http::new().unwrap();
+        let http = Http::new(crate::http::USER_AGENT).unwrap();
         let kind = if cfg!(windows) { PackageKind::Dmg } else { PackageKind::Msi };
         let mut phases = Vec::new();
         let mut phase = |p: JobPhase| phases.push(p);
@@ -3519,7 +3519,7 @@ mod tests {
     fn install_refuses_to_downgrade_when_target_release_is_older() {
         let dir = tempfile::tempdir().unwrap();
         let paths = Paths::under(dir.path());
-        let http = Http::new().unwrap();
+        let http = Http::new(crate::http::USER_AGENT).unwrap();
         let phase = &mut |_| ();
         let locations = InstallLocations::default();
         let app = CraftApp::by_id("photocraft").unwrap();
@@ -3547,7 +3547,7 @@ mod tests {
         // (filename and URL tag say 0.4.0). The guard must refuse before any download.
         let dir = tempfile::tempdir().unwrap();
         let paths = Paths::under(dir.path());
-        let http = Http::new().unwrap();
+        let http = Http::new(crate::http::USER_AGENT).unwrap();
         let phase = &mut |_| ();
         let locations = InstallLocations::default();
         let app = CraftApp::by_id("photocraft").unwrap();
@@ -3620,7 +3620,7 @@ mod tests {
     fn install_accepts_a_plus_release_up_to_the_download() {
         let dir = tempfile::tempdir().unwrap();
         let paths = Paths::under(dir.path());
-        let http = Http::new().unwrap();
+        let http = Http::new(crate::http::USER_AGENT).unwrap();
         let phase = &mut |_| ();
         let locations = InstallLocations::default();
         let app = CraftApp::by_id("photocraft").unwrap();
