@@ -63,16 +63,6 @@ pub fn update(
     let release = with_repo(release, repo);
     // The download goes to github.com's release CDN, never the API, so no token is needed.
     let update_http = craft_update::Http::new(crate::http::USER_AGENT)?;
-    let mut update_phase = |p: craft_update::JobPhase| {
-        phase(match p {
-            craft_update::JobPhase::Downloading { done, total } => JobPhase::Downloading { done, total },
-            craft_update::JobPhase::Reconnecting { done, total } => JobPhase::Reconnecting { done, total },
-            craft_update::JobPhase::Waiting => JobPhase::Waiting,
-            craft_update::JobPhase::Verifying => JobPhase::Verifying,
-            craft_update::JobPhase::Installing => JobPhase::Installing,
-            craft_update::JobPhase::Removing => JobPhase::Removing,
-        });
-    };
     craft_update::self_update::update(
         &craft_update::suite::LAUNCHER,
         install,
@@ -81,7 +71,7 @@ pub fn update(
         &update_http,
         &to_update_paths(paths),
         stop,
-        &mut update_phase,
+        phase,
         last,
         Some(env!("CARGO_PKG_VERSION")),
     )
