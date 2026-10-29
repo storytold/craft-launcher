@@ -836,16 +836,6 @@ impl eframe::App for Shell<'_> {
                 Request::Quit => self.quit(ctx),
             }
         }
-        // After the requests, so a window being shown gets its Dock icon back before it comes out.
-        #[cfg(target_os = "macos")]
-        {
-            let settings = &self.launcher.ui.settings;
-            let on = shows_dock_icon(self.visible, self.launcher.tray.is_some(), settings.hide_dock_icon);
-            if self.applied_dock != Some(on) {
-                dock::show_icon(on);
-                self.applied_dock = Some(on);
-            }
-        }
         // The close button puts the window away in the tray unless the user chose to quit. That is
         // the window manager's button or the header's own (no decorations), which asks to close
         // with `ViewportCommand::Close` and arrives here the same way.
@@ -861,6 +851,18 @@ impl eframe::App for Shell<'_> {
                     self.launcher.closed_to_tray = true;
                 }
                 OnClose::Quit => {}
+            }
+        }
+        // After the requests and the close button, so the icon matches what this pass did to the window:
+        // a window being shown gets its Dock icon back before it comes out, and one being put away
+        // loses it now rather than on some later pass.
+        #[cfg(target_os = "macos")]
+        {
+            let settings = &self.launcher.ui.settings;
+            let on = shows_dock_icon(self.visible, self.launcher.tray.is_some(), settings.hide_dock_icon);
+            if self.applied_dock != Some(on) {
+                dock::show_icon(on);
+                self.applied_dock = Some(on);
             }
         }
         craft_quit::on_close_request(ctx);
