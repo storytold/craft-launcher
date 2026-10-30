@@ -402,9 +402,14 @@ pub mod windows {
     /// hive (or that survived uninstall) would otherwise leave a stale path. Best-effort: HKLM needs
     /// elevation and is skipped quietly when this process cannot write it.
     pub fn clear_install_dir_from_hives(app: &CraftApp) {
+        clear_install_dir_in(app, &UNINSTALL_ROOTS);
+    }
+
+    /// Same as [`clear_install_dir_from_hives`], but limited to `roots` so tests can touch only HKCU.
+    pub(super) fn clear_install_dir_in(app: &CraftApp, roots: &[(HKEY, u32)]) {
         use winreg::enums::KEY_ALL_ACCESS;
 
-        for (hive, flags) in UNINSTALL_ROOTS {
+        for &(hive, flags) in roots {
             let hive_name = if hive == HKEY_CURRENT_USER { "HKCU" } else { "HKLM" };
             for key_path in install_dir_keys(app) {
                 let Ok(key) = RegKey::predef(hive).open_subkey_with_flags(&key_path, KEY_ALL_ACCESS | flags) else {
@@ -1193,7 +1198,8 @@ mod tests {
         let (key, _) = hkcu.create_subkey_with_flags(&key_path, KEY_ALL_ACCESS).unwrap();
         key.set_value("InstallDir", &r"C:\Temp\ArtCraftLauncherInstallDirClearTest\").unwrap();
 
-        windows::clear_install_dir_from_hives(app);
+        // HKCU only: an elevated run must not delete a real HKLM InstallDir this test never restores.
+        windows::clear_install_dir_in(app, &[(HKEY_CURRENT_USER, 0)]);
 
         let after = hkcu.open_subkey_with_flags(&key_path, KEY_READ).ok().and_then(|k| k.get_value::<String, _>("InstallDir").ok());
         // Restore before asserting so a panic cannot leave DeckCraft's real InstallDir missing

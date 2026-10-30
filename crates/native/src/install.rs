@@ -2144,7 +2144,6 @@ pub mod windows {
             }
         }
         Ok(())
-
     }
 }
 
