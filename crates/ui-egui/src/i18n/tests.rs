@@ -562,3 +562,56 @@ fn picker_lists_english_first_then_names_alphabetically() {
     assert!(pos("ru") < pos("ja"), "Cyrillic names come before CJK");
     assert_eq!(name_sort_key("Čeština"), "cestina");
 }
+
+/// Persian does not depend on workstation fonts, including in the browser build.
+#[test]
+fn bundled_font_covers_persian_in_every_ui_family() {
+    use egui::{FontFamily, FontId};
+    let ctx = egui::Context::default();
+    crate::theme::install_fonts(&ctx, None);
+    let mut output = ctx.run_ui(egui::RawInput::default(), |_| {});
+    output.textures_delta.clear();
+    let text: String = Lang::FA
+        .0
+        .source
+        .lines()
+        .filter_map(|line| line.split('\t').nth(2))
+        .flat_map(str::chars)
+        .filter(|c| ('\u{0600}'..='\u{06ff}').contains(c) && c.is_alphabetic())
+        .collect();
+    assert!(text.chars().count() > 500);
+    for (family, weight) in [
+        (FontFamily::Proportional, 400),
+        (FontFamily::Monospace, 400),
+        (crate::theme::medium(), 500),
+        (crate::theme::semibold(), 600),
+        (crate::theme::display(), 620),
+        (crate::theme::mono(), 500),
+        (crate::theme::mono_bold(), 700),
+    ] {
+        ctx.fonts_mut(|f| assert!(f.has_glyphs(&FontId::new(14.0, family.clone()), &text), "missing Persian glyph in {family:?}"));
+        ctx.fonts(|f| {
+            assert!(
+                f.definitions().families.get(&family).is_some_and(|stack| stack.contains(&format!("Vazirmatn-{weight}"))),
+                "wrong Persian weight for {family:?}"
+            )
+        });
+    }
+}
+
+/// Bidi comes from the same pinned egui fork as the English UI, with no pre-reordered text.
+#[test]
+fn persian_uses_native_logical_text_and_visual_glyph_positions() {
+    let ctx = egui::Context::default();
+    crate::theme::install_fonts(&ctx, None);
+    let mut output = ctx.run_ui(egui::RawInput::default(), |ui| {
+        let text = "سلام 12";
+        let galley = ui.painter().layout_no_wrap(text.into(), egui::FontId::proportional(15.0), egui::Color32::WHITE);
+        assert_eq!(galley.job.text, text);
+        let glyphs = &galley.rows[0].row.glyphs;
+        let x = |c| glyphs.iter().find(|g| g.chr == c).expect("native glyph").pos.x;
+        assert!(x('س') > x('م'), "Persian word reads right to left");
+        assert!(x('1') < x('2'), "technical numbers retain their order");
+    });
+    output.textures_delta.clear();
+}

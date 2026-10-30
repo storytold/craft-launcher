@@ -85,6 +85,7 @@ impl LauncherUi {
         Some((crate::fmt(tl!("Install version {version}"), &[("version", &tag)]), ready))
     }
 
+    /// Select the app’s release track in one scrollable, accessible version menu.
     pub(crate) fn version_combo(&mut self, ui: &mut Ui, id: &str, app: &CraftApp, width: f32, label: egui::Id) -> bool {
         let t = Tokens::get(ui.ctx());
         let choice =
@@ -109,10 +110,15 @@ impl LauncherUi {
             .selected_text(summary)
             .width(width)
             .height(390.0)
+            .popup_style(widgets::locale_popup_style())
             .show_ui(ui, |ui| {
                 // The combo already scrolls its entire menu. Keep every option, including
                 // Nightly, in that one scroll region. Rows touch: with a gap, the selected row's
                 // highlight covers only part of its slot and the spacing looks uneven around it.
+                if crate::i18n::current().is_rtl() {
+                    ui.style_mut().right_to_left = true;
+                    ui.spacing_mut().scroll.bar_inner_margin = 12.0;
+                }
                 ui.spacing_mut().item_spacing.y = 0.0;
                 let option_size = egui::vec2(ui.available_width(), 42.0);
                 if latest.is_none()

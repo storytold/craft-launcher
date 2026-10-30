@@ -6,6 +6,7 @@ use artcraft_launcher_core::protocol::Command;
 use egui::{RichText, vec2};
 
 use crate::app::{Dialog, Host, LauncherUi};
+use crate::rtl::LocalizedTooltip as _;
 use crate::theme::{self, Tokens};
 use crate::widgets::{self, Kind};
 
@@ -75,7 +76,7 @@ impl LauncherUi {
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     ok = widgets::button(ui, tl!("OK"), Kind::Primary, 90.0).clicked();
                     if let Some(link) = &alert.link
-                        && widgets::button(ui, tl!("Open link"), Kind::Secondary, 110.0).on_hover_text(link.as_str()).clicked()
+                        && widgets::button(ui, tl!("Open link"), Kind::Secondary, 110.0).localized_hover_text(link.as_str()).clicked()
                     {
                         widgets::open_external_link(ui.ctx(), link);
                     }
@@ -169,7 +170,7 @@ impl LauncherUi {
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 if self.caps.self_update {
                     if widgets::button(ui, tl!("Update and restart"), Kind::Primary, 0.0)
-                        .on_hover_text(tl!("Downloads the new version, replaces this one and opens it again"))
+                        .localized_hover_text(tl!("Downloads the new version, replaces this one and opens it again"))
                         .clicked()
                     {
                         self.act_command(Command::UpdateLauncher);

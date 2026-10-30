@@ -8,6 +8,7 @@ use std::sync::Arc;
 use egui::{Color32, CornerRadius, Galley, Rect, Response, RichText, Sense, Stroke, Ui, vec2};
 
 use crate::model::Tone;
+use crate::rtl::LocalizedTooltip as _;
 use crate::theme::{self, Tokens};
 
 pub fn tone_color(t: &Tokens, tone: Tone) -> Color32 {
@@ -22,6 +23,9 @@ pub fn tone_color(t: &Tokens, tone: Tone) -> Color32 {
 
 /// `text` laid out upper case in `family`, `spacing` points between letters.
 pub fn caps(ui: &Ui, text: &str, size: f32, family: egui::FontFamily, spacing: f32, color: Color32) -> Arc<Galley> {
+    let persian = text.chars().any(|c| matches!(c, '\u{0600}'..='\u{06ff}'));
+    let size = if persian && family == theme::mono_bold() { size.max(12.0) } else { size };
+    let spacing = if persian { 0.0 } else { spacing };
     let format = egui::TextFormat { font_id: egui::FontId::new(size, family), color, extra_letter_spacing: spacing, ..Default::default() };
     ui.painter().layout_job(egui::text::LayoutJob::single_section(text.to_uppercase(), format))
 }
@@ -64,7 +68,7 @@ pub fn hud_elided_spans(ui: &mut Ui, spans: &[(&str, Color32)], max_width: f32) 
         let format = egui::TextFormat {
             font_id: egui::FontId::new(theme::HUD_SIZE, theme::mono()),
             color: *color,
-            extra_letter_spacing: theme::HUD_SPACING,
+            extra_letter_spacing: if crate::i18n::current().is_rtl() { 0.0 } else { theme::HUD_SPACING },
             ..Default::default()
         };
         job.append(&text.to_uppercase(), 0.0, format);
@@ -79,7 +83,7 @@ pub fn hud_elided_spans(ui: &mut Ui, spans: &[(&str, Color32)], max_width: f32) 
     ui.painter().galley(pos, galley, fallback);
     let text: String = spans.iter().map(|(t, _)| *t).collect();
     resp.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Label, true, &text));
-    if elided { resp.on_hover_text(text) } else { resp }
+    if elided { resp.localized_hover_text(text) } else { resp }
 }
 
 /// "01 / Features": a section eyebrow, the index faint.
@@ -127,7 +131,7 @@ pub fn nav_icon(ui: &mut Ui, glyph: Glyph, tip: &str, height: f32, busy: bool) -
         paint_glyph(p, rect, glyph, if hovered { t.invert_fg } else { t.muted });
     }
     resp.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, !busy, tip));
-    let resp = resp.on_hover_text(tip);
+    let resp = resp.localized_hover_text(tip);
     if busy { resp } else { resp.on_hover_cursor(egui::CursorIcon::PointingHand) }
 }
 
@@ -236,7 +240,7 @@ fn window_button(ui: &mut Ui, button: WindowButton, height: f32) -> Response {
         }
     }
     resp.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, true, label));
-    resp.on_hover_text(label)
+    resp.localized_hover_text(label)
 }
 
 /// Custom title bars: a hairline round the window, and resizing it from its edges and corners.
@@ -310,16 +314,34 @@ pub(crate) fn open_external_link(ctx: &egui::Context, url: &str) {
 
 /// A mono link with an ↗: muted, ink on hover. Opens `url` in the browser.
 pub fn hud_link(ui: &mut Ui, text: &str, url: &str) -> Response {
+    if !crate::i18n::current().is_rtl() {
+        let t = Tokens::get(ui.ctx());
+        let galley = hud_galley(ui, &format!("{text} ↗"), t.muted);
+        let (rect, resp) = ui.allocate_exact_size(galley.size(), Sense::click());
+        paint_left(ui, rect, galley, if resp.hovered() { t.ink_strong } else { t.muted });
+        resp.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Link, true, text));
+        let resp = resp.on_hover_text(url).on_hover_cursor(egui::CursorIcon::PointingHand);
+        if resp.clicked() {
+            open_external_link(ui.ctx(), url);
+        }
+        return resp;
+    }
     let t = Tokens::get(ui.ctx());
-    let galley = hud_galley(ui, &format!("{text} ↗"), t.muted);
-    let (rect, resp) = ui.allocate_exact_size(galley.size(), Sense::click());
-    paint_left(ui, rect, galley, if resp.hovered() { t.ink_strong } else { t.muted });
+    let galley = hud_galley(ui, text, t.muted);
+    let (rect, resp) = ui.allocate_exact_size(vec2(galley.size().x + 15.0, galley.size().y), Sense::click());
+    let color = if resp.hovered() { t.ink_strong } else { t.muted };
+    let text_rect = rect.with_max_x(rect.right() - 15.0);
+    paint_left(ui, text_rect, galley, color);
+    let c = egui::pos2(rect.right() - 4.0, rect.center().y);
+    // Same 7px northeast arrow after every link, independent of language and font.
+    ui.painter().line_segment([c + vec2(-3.0, 3.0), c + vec2(3.0, -3.0)], Stroke::new(1.2, color));
+    ui.painter().line_segment([c + vec2(-2.0, -3.0), c + vec2(3.0, -3.0)], Stroke::new(1.2, color));
+    ui.painter().line_segment([c + vec2(3.0, -3.0), c + vec2(3.0, 2.0)], Stroke::new(1.2, color));
     resp.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Link, true, text));
-    let resp = resp.on_hover_text(url).on_hover_cursor(egui::CursorIcon::PointingHand);
     if resp.clicked() {
         open_external_link(ui.ctx(), url);
     }
-    resp
+    resp.localized_hover_text(url).on_hover_cursor(egui::CursorIcon::PointingHand)
 }
 
 /// A small square status badge: 10 px mono on the sunken surface, in `color`.
@@ -459,7 +481,7 @@ fn paint_cell<T: PartialEq + Copy>(ui: &mut Ui, value: &mut T, opt: &T, cell: &C
         None => cell.label.to_string(),
     };
     resp.widget_info(|| egui::WidgetInfo::selected(egui::Role::Button, true, on, &name));
-    if resp.on_hover_text(cell.tip).on_hover_cursor(egui::CursorIcon::PointingHand).clicked() && !on {
+    if resp.localized_hover_text(cell.tip).on_hover_cursor(egui::CursorIcon::PointingHand).clicked() && !on {
         *value = *opt;
         changed = true;
     }
@@ -588,7 +610,7 @@ pub fn glyph_button(ui: &mut Ui, glyph: Glyph, tip: &str) -> Response {
     let c = if hovered { t.invert_fg } else { t.muted };
     paint_glyph(p, rect, glyph, c);
     resp.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, true, tip));
-    resp.on_hover_text(tip).on_hover_cursor(egui::CursorIcon::PointingHand)
+    resp.localized_hover_text(tip).on_hover_cursor(egui::CursorIcon::PointingHand)
 }
 
 /// The "…" button that opens an app's menu: an outlined square like [`glyph_button`]. The visible
@@ -599,7 +621,7 @@ pub fn more_menu<R>(ui: &mut Ui, app_name: &str, add_contents: impl FnOnce(&mut 
         egui::Button::new(RichText::new("…").size(15.0).color(t.muted)).fill(Color32::TRANSPARENT).min_size(vec2(theme::CONTROL_H, theme::CONTROL_H));
     let (response, _) = egui::containers::menu::MenuButton::from_button(btn).ui(ui, |ui| {
         ui.set_min_width(200.0);
-        add_contents(ui)
+        popup_body(ui, add_contents)
     });
     response.accessible_name(crate::i18n::fmt(tl!("More actions for {name}"), &[("name", app_name)]));
 }
@@ -656,7 +678,7 @@ fn icon_link(ui: &mut Ui, size: f32, link: &IconLink<'_>) {
     let color = if resp.hovered() { t.ink_strong } else { t.faint };
     egui::Image::new(icon).tint(color).paint_at(ui, rect.shrink(pad));
     resp.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Link, true, &link.label));
-    let resp = resp.on_hover_text(&link.tip).on_hover_cursor(egui::CursorIcon::PointingHand);
+    let resp = resp.localized_hover_text(&link.tip).on_hover_cursor(egui::CursorIcon::PointingHand);
     if resp.clicked() {
         open_external_link(ui.ctx(), link.url);
     }
@@ -686,6 +708,125 @@ pub fn wordmark_in(ui: &mut Ui, app: &artcraft_launcher_core::CraftApp, size: f3
 /// A heading in the display face, tracked in like the site's (`tracking-[-0.02em]`).
 pub fn heading(text: &str, size: f32, color: Color32) -> RichText {
     RichText::new(text).size(size).family(theme::display()).color(color).extra_letter_spacing(-0.02 * size)
+}
+
+/// Measure a HUD link using the same arrow geometry as its renderer.
+pub fn external_link_width(ui: &Ui, text: &str) -> f32 {
+    let color = Tokens::get(ui.ctx()).muted;
+    if crate::i18n::current().is_rtl() { hud_galley(ui, text, color).size().x + 15.0 } else { hud_galley(ui, &format!("{text} ↗"), color).size().x }
+}
+/// Draw an external-link button with a stable northeast arrow in either language.
+pub fn external_button(ui: &mut Ui, text: &str, width: f32) -> Response {
+    if !crate::i18n::current().is_rtl() {
+        return button(ui, &format!("{text} ↗"), Kind::Secondary, width);
+    }
+    button_inner(ui, text, Kind::Secondary, width, true)
+}
+/// Paint the themed button and optional external arrow inside a single click target.
+fn button_inner(ui: &mut Ui, text: &str, kind: Kind, width: f32, external: bool) -> Response {
+    let t = Tokens::get(ui.ctx());
+    let galley = caps(ui, text, theme::HUD_SIZE, theme::mono_bold(), theme::BUTTON_SPACING, t.ink);
+    let arrow_w = if external { 15.0 } else { 0.0 };
+    let size = vec2((galley.size().x + 32.0 + arrow_w).max(width), theme::CONTROL_H);
+    let (rect, resp) = ui.allocate_exact_size(size, Sense::click());
+    let enabled = ui.is_enabled();
+    let hovered = resp.hovered() && enabled;
+    let (fill, stroke, color) = match kind {
+        Kind::Primary => (t.invert_bg.gamma_multiply(if hovered { 0.8 } else { 1.0 }), Stroke::NONE, t.invert_fg),
+        Kind::Danger => (t.bad.gamma_multiply(if hovered { 0.8 } else { 1.0 }), Stroke::NONE, Color32::WHITE),
+        Kind::Secondary if hovered => (t.invert_bg, Stroke::NONE, t.invert_fg),
+        Kind::Secondary => (t.bg, Stroke::new(1.0, t.line_strong), t.ink),
+    };
+    // Disabled: the whole button at half strength, like the site's `opacity-50`.
+    let fade = |c: Color32| if enabled { c } else { c.gamma_multiply(0.5) };
+    ui.painter().rect(rect, CornerRadius::ZERO, fade(fill), Stroke::new(stroke.width, fade(stroke.color)), egui::StrokeKind::Inside);
+    if external {
+        let start = rect.center().x - (galley.size().x + arrow_w) / 2.0;
+        let arrow_x = start + galley.size().x + 11.0;
+        ui.painter().galley(egui::pos2(start, rect.center().y - galley.size().y / 2.0), galley, fade(color));
+        let c = egui::pos2(arrow_x, rect.center().y);
+        let stroke = Stroke::new(1.2, fade(color));
+        ui.painter().line_segment([c + vec2(-3.0, 3.0), c + vec2(3.0, -3.0)], stroke);
+        ui.painter().line_segment([c + vec2(-2.0, -3.0), c + vec2(3.0, -3.0)], stroke);
+        ui.painter().line_segment([c + vec2(3.0, -3.0), c + vec2(3.0, 2.0)], stroke);
+    } else {
+        paint_centred(ui, rect, galley, fade(color));
+    }
+    resp.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, enabled, if external { format!("{text} ↗") } else { text.to_owned() }));
+    if enabled { resp.on_hover_cursor(egui::CursorIcon::PointingHand) } else { resp }
+}
+
+/// Use RTL widget chrome and a reserved scrollbar gutter only for RTL popup contents.
+pub fn locale_popup_style() -> egui::style::StyleModifier {
+    if crate::i18n::current().is_rtl() {
+        egui::style::StyleModifier::from(|style: &mut egui::Style| {
+            style.right_to_left = true;
+            style.spacing.scroll = egui::style::ScrollStyle::solid();
+            style.spacing.scroll.bar_inner_margin = 10.0;
+            style.spacing.scroll.bar_outer_margin = 4.0;
+        })
+    } else {
+        egui::style::StyleModifier::default()
+    }
+}
+
+/// Bound and pad RTL menus; retain the default popup layout for other languages.
+pub fn popup_body<R>(ui: &mut Ui, add: impl FnOnce(&mut Ui) -> R) -> R {
+    if crate::i18n::current().is_rtl() {
+        // Popup UIs start with a large available screen rect. Bound the justified child,
+        // otherwise it stretches a short menu across most of the window.
+        ui.style_mut().right_to_left = true;
+        ui.spacing_mut().scroll.bar_inner_margin = 10.0;
+        ui.set_width(ui.min_size().x.max(216.0));
+        egui::Frame::new()
+            .inner_margin(egui::Margin::same(4))
+            .show(ui, |ui| {
+                ui.spacing_mut().button_padding = vec2(12.0, 7.0);
+                ui.spacing_mut().item_spacing.y = 3.0;
+                ui.with_layout(egui::Layout::top_down_justified(egui::Align::Max), add).inner
+            })
+            .inner
+    } else {
+        add(ui)
+    }
+}
+
+/// Render a menu action or selectable option with a logical accessibility name.
+pub fn popup_item(ui: &mut Ui, text: &str, selected: Option<bool>, color: Option<Color32>) -> Response {
+    if !crate::i18n::current().is_rtl() {
+        return if let Some(on) = selected { ui.selectable_label(on, text) } else { ui.button(text) };
+    }
+    let mut label = RichText::new(text);
+    if let Some(color) = color {
+        label = label.color(color);
+    }
+    let mut button = egui::Button::new(label);
+    if let Some(on) = selected {
+        button = button.selected(on).frame_when_inactive(on);
+    }
+    let response = ui.add(button);
+    response.widget_info(|| {
+        let mut info = egui::WidgetInfo::labeled(egui::Role::Button, ui.is_enabled(), text);
+        info.selected = selected;
+        info
+    });
+    response
+}
+
+/// Apply a menu selection and mark its response changed only when the value changes.
+pub fn popup_value<T: PartialEq>(ui: &mut Ui, value: &mut T, option: T, label: &str) -> Response {
+    let mut response = popup_item(ui, label, Some(*value == option), None);
+    if response.clicked() && *value != option {
+        *value = option;
+        response.mark_changed();
+    }
+    response
+}
+
+/// Keep the checkbox accessibility name in logical Unicode order.
+pub(crate) fn localized_checkbox(ui: &mut Ui, value: &mut bool, label: &str) -> Response {
+    let response = ui.checkbox(value, label);
+    response.accessible_name(label)
 }
 
 #[cfg(test)]

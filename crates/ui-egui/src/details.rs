@@ -13,10 +13,12 @@ use artcraft_launcher_core::status::AppStatus;
 use egui::{Color32, CornerRadius, Id, Margin, Order, Rect, RichText, Sense, Stroke, Ui, emath::easing, pos2, vec2};
 
 use crate::app::LauncherUi;
+use crate::i18n::{current, tr_ctx};
 use crate::model::AppEntry;
+use crate::rtl::LocalizedTooltip as _;
 use crate::theme::{self, Tokens, rgb, tint};
 use crate::views::date_text;
-use crate::widgets::{self, Glyph, Kind};
+use crate::widgets::{self, Glyph};
 
 /// Screenshots are 8:5.
 const SHOT_ASPECT: f32 = 0.625;
@@ -157,6 +159,9 @@ impl LauncherUi {
                 ui.set_max_size(panel.size());
                 // A bar that stays on screen says there is more below the fold; in the app's colour.
                 let page_visuals = crate::sheet::accent_scroll(ui, t, t.app_ink(entry.app));
+                if current().is_rtl() {
+                    ui.spacing_mut().scroll.bar_inner_margin = 10.0;
+                }
                 // One scroll position per app, so the next app opens at its top.
                 egui::ScrollArea::vertical().id_salt(("details-scroll", id.to_string())).auto_shrink([false, false]).show(ui, |ui| {
                     // The bar's colours are for the bar alone.
@@ -190,7 +195,7 @@ impl LauncherUi {
                     ui.set_width(left_w);
                     ui.spacing_mut().item_spacing.y = 8.0;
                     for p in details.paragraphs() {
-                        ui.add(egui::Label::new(RichText::new(p).size(14.5).color(t.ink)).wrap());
+                        crate::rtl::paragraph(ui, copy(details, p), egui::FontId::proportional(14.5), t.ink);
                     }
                     ui.add_space(14.0);
                     features(ui, details, entry.app, t);
@@ -214,7 +219,7 @@ impl LauncherUi {
                     self.gallery(ui, details, t, app_color);
                     ui.add_space(8.0);
                     for p in details.paragraphs() {
-                        ui.add(egui::Label::new(RichText::new(p).size(14.5).color(t.ink)).wrap());
+                        crate::rtl::paragraph(ui, copy(details, p), egui::FontId::proportional(14.5), t.ink);
                     }
                 });
                 ui.vertical(|ui| {
@@ -232,7 +237,7 @@ impl LauncherUi {
             self.gallery(ui, details, t, app_color);
             ui.add_space(8.0);
             for p in details.paragraphs() {
-                ui.add(egui::Label::new(RichText::new(p).size(14.5).color(t.ink)).wrap());
+                crate::rtl::paragraph(ui, copy(details, p), egui::FontId::proportional(14.5), t.ink);
             }
             ui.add_space(14.0);
             features(ui, details, entry.app, t);
@@ -364,11 +369,11 @@ impl LauncherUi {
                 ui.set_width(text_w);
                 ui.spacing_mut().item_spacing.y = 5.0;
                 widgets::wordmark(ui, app, theme::PAGE_TITLE);
-                ui.add(egui::Label::new(RichText::new(details.headline).size(15.0).color(t.ink)).wrap());
+                crate::rtl::paragraph(ui, copy(details, details.headline), egui::FontId::proportional(15.0), t.ink);
                 // "Version 0.5.0 · Oct 8, 2026", or the installed-versus-latest line.
                 let version = crate::views::version_line(entry, status);
                 if !version.trim().is_empty() {
-                    ui.label(RichText::new(version).size(12.5).color(t.muted));
+                    crate::rtl::label(ui, version, egui::FontId::proportional(12.5), t.muted);
                 }
             });
             if wide {
@@ -405,12 +410,16 @@ impl LauncherUi {
         .collect();
         for pair in facts.chunks(per_row) {
             ui.columns(per_row, |cols| {
-                for (col, (label, value)) in cols.iter_mut().zip(pair) {
+                for (i, (label, value)) in pair.iter().enumerate() {
+                    let index = if current().is_rtl() { per_row - 1 - i } else { i };
+                    let Some(col) = cols.get_mut(index) else { continue };
                     egui::Frame::new().stroke(t.hairline()).inner_margin(theme::BOX_MARGIN).show(col, |ui| {
                         ui.set_width(ui.available_width());
                         ui.spacing_mut().item_spacing.y = 2.0;
-                        widgets::hud(ui, label, t.faint);
-                        ui.add(egui::Label::new(RichText::new(value).size(14.0).color(t.ink_strong)).wrap());
+                        ui.with_layout(crate::rtl::content_column(), |ui| {
+                            widgets::hud(ui, label, t.faint);
+                            crate::rtl::paragraph(ui, value, egui::FontId::proportional(14.0), t.ink_strong);
+                        });
                     });
                 }
             });
@@ -448,7 +457,11 @@ impl LauncherUi {
                     None => placeholder(ui, pic, Id::unique("lightbox-placeholder"), failed.as_deref(), t, true),
                 }
                 ui.painter().rect_stroke(pic, CornerRadius::ZERO, Stroke::new(1.0, theme::backdrop_ink(40)), egui::StrokeKind::Outside);
-                let caption = if count > 1 { format!("{} · {}/{count}", shot.caption, at + 1) } else { shot.caption.to_string() };
+                let caption = if count > 1 {
+                    format!("{} · {}/{count}", copy(details, shot.caption), at + 1)
+                } else {
+                    copy(details, shot.caption).to_string()
+                };
                 let ink = theme::backdrop_ink(190);
                 let galley = widgets::hud_galley(ui, &caption, ink);
                 let caption_at = pos2(rect.center().x - galley.size().x / 2.0, pic.bottom() + 14.0);
@@ -488,7 +501,7 @@ impl LauncherUi {
                 image.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, true, tl!("Enlarge picture")));
                 let rect = image.rect;
                 // The arrows below are added after the picture, so they keep their own clicks.
-                if image.on_hover_cursor(egui::CursorIcon::ZoomIn).on_hover_text(tl!("Click to enlarge")).clicked() {
+                if image.on_hover_cursor(egui::CursorIcon::ZoomIn).localized_hover_text(tl!("Click to enlarge")).clicked() {
                     self.detail_zoom = true;
                 }
                 rect
@@ -503,7 +516,7 @@ impl LauncherUi {
         ui.painter().rect_stroke(pic, CornerRadius::ZERO, t.hairline(), egui::StrokeKind::Inside);
         let count = details.shots.len();
         if count < 2 {
-            widgets::hud(ui, current.caption, t.faint);
+            widgets::hud(ui, copy(details, current.caption), t.faint);
             return;
         }
         // Previous and next, over the sides of the picture.
@@ -516,7 +529,7 @@ impl LauncherUi {
         if arrow_button(ui, next, Id::unique("shot-next"), false, tl!("Next picture (→)"), t) {
             self.flip_shot(count, true);
         }
-        widgets::hud(ui, &format!("{} · {}/{count}", current.caption, self.detail_shot.min(count - 1) + 1), t.faint);
+        widgets::hud(ui, &format!("{} · {}/{count}", copy(details, current.caption), self.detail_shot.min(count - 1) + 1), t.faint);
         let gap = 8.0;
         let thumb_w = ((w - gap * (count as f32 - 1.0)) / count as f32).floor().max(1.0);
         ui.horizontal(|ui| {
@@ -541,8 +554,8 @@ impl LauncherUi {
                 }
                 let stroke = if selected { Stroke::new(2.0, app_color) } else { t.hairline() };
                 ui.painter().rect_stroke(resp.rect, CornerRadius::ZERO, stroke, egui::StrokeKind::Inside);
-                resp.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, true, shot.caption));
-                if resp.on_hover_cursor(egui::CursorIcon::PointingHand).on_hover_text(shot.caption).clicked() {
+                resp.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, true, copy(details, shot.caption)));
+                if resp.on_hover_cursor(egui::CursorIcon::PointingHand).localized_hover_text(copy(details, shot.caption)).clicked() {
                     self.detail_shot = i;
                 }
             }
@@ -561,7 +574,7 @@ fn placeholder(ui: &mut Ui, rect: Rect, id: Id, failed: Option<&str>, t: &Tokens
     let resp = ui.interact(rect, id, Sense::hover());
     resp.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Label, true, text));
     if let Some(why) = failed {
-        resp.on_hover_text(why);
+        resp.localized_hover_text(why);
     }
 }
 
@@ -577,7 +590,7 @@ fn step_button(ui: &mut Ui, left: bool, tip: &str, t: &Tokens) -> bool {
         Stroke::new(1.75, ink),
     ));
     resp.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, true, tip));
-    resp.on_hover_cursor(egui::CursorIcon::PointingHand).on_hover_text(tip).clicked()
+    resp.on_hover_cursor(egui::CursorIcon::PointingHand).localized_hover_text(tip).clicked()
 }
 
 /// The app's links as a row of buttons each as wide as its label; the ↗ says each opens the
@@ -587,7 +600,7 @@ fn link_buttons(ui: &mut Ui, app: &CraftApp) {
     ui.horizontal(|ui| {
         ui.spacing_mut().item_spacing.x = 8.0;
         for (label, url) in links {
-            if widgets::button(ui, &format!("{label} ↗"), Kind::Secondary, 0.0).on_hover_text(url.as_str()).clicked() {
+            if widgets::external_button(ui, label, 0.0).localized_hover_text(url.as_str()).clicked() {
                 widgets::open_external_link(ui.ctx(), &url);
             }
         }
@@ -602,11 +615,16 @@ fn features(ui: &mut Ui, details: &AppDetails, app: &CraftApp, t: &Tokens) {
         egui::Frame::new().stroke(t.hairline()).inner_margin(theme::BOX_MARGIN).show(ui, |ui| {
             ui.set_width(ui.available_width());
             ui.spacing_mut().item_spacing.y = 3.0;
-            ui.horizontal(|ui| {
+            let title = |ui: &mut Ui| {
                 widgets::hud(ui, &format!("{:02}", i + 1), t.app_ink(app));
-                ui.label(RichText::new(f.title).size(15.0).family(theme::semibold()).color(t.ink_strong));
-            });
-            ui.add(egui::Label::new(RichText::new(f.text).size(13.5).color(t.muted)).wrap());
+                crate::rtl::label(ui, copy(details, f.title), egui::FontId::new(15.0, theme::semibold()), t.ink_strong);
+            };
+            if current().is_rtl() {
+                ui.allocate_ui_with_layout(vec2(ui.available_width(), 22.0), crate::rtl::content_row(egui::Align::Center), title);
+            } else {
+                ui.horizontal(title);
+            }
+            crate::rtl::paragraph(ui, copy(details, f.text), egui::FontId::proportional(13.5), t.muted);
         });
     }
 }
@@ -622,5 +640,10 @@ fn arrow_button(ui: &mut Ui, rect: Rect, id: Id, left: bool, tip: &str, t: &Toke
     let points = vec![pos2(c.x - s * 3.5, c.y - 6.0), pos2(c.x + s * 3.5, c.y), pos2(c.x - s * 3.5, c.y + 6.0)];
     painter.add(egui::Shape::line(points, Stroke::new(1.75, ink)));
     resp.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, true, tip));
-    resp.on_hover_cursor(egui::CursorIcon::PointingHand).on_hover_text(tip).clicked()
+    resp.on_hover_cursor(egui::CursorIcon::PointingHand).localized_hover_text(tip).clicked()
+}
+
+/// Changed editorial keys fall back to the current English source.
+fn copy<'a>(details: &AppDetails, source: &'a str) -> &'a str {
+    tr_ctx(current(), details.id, source)
 }
