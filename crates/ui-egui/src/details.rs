@@ -450,7 +450,7 @@ impl LauncherUi {
                 ui.painter().rect_stroke(pic, CornerRadius::ZERO, Stroke::new(1.0, theme::backdrop_ink(40)), egui::StrokeKind::Outside);
                 let caption = if count > 1 { format!("{} · {}/{count}", shot.caption, at + 1) } else { shot.caption.to_string() };
                 let ink = theme::backdrop_ink(190);
-                let galley = widgets::hud_galley(ui, &caption, ink);
+                let galley = widgets::hud_galley_english(ui, &caption, ink);
                 let caption_at = pos2(rect.center().x - galley.size().x / 2.0, pic.bottom() + 14.0);
                 ui.painter().galley(caption_at, galley, ink);
 
@@ -503,7 +503,7 @@ impl LauncherUi {
         ui.painter().rect_stroke(pic, CornerRadius::ZERO, t.hairline(), egui::StrokeKind::Inside);
         let count = details.shots.len();
         if count < 2 {
-            widgets::hud(ui, current.caption, t.faint);
+            widgets::hud_english(ui, current.caption, t.faint);
             return;
         }
         // Previous and next, over the sides of the picture.
@@ -516,7 +516,7 @@ impl LauncherUi {
         if arrow_button(ui, next, Id::unique("shot-next"), false, tl!("Next picture (→)"), t) {
             self.flip_shot(count, true);
         }
-        widgets::hud(ui, &format!("{} · {}/{count}", current.caption, self.detail_shot.min(count - 1) + 1), t.faint);
+        widgets::hud_english(ui, &format!("{} · {}/{count}", current.caption, self.detail_shot.min(count - 1) + 1), t.faint);
         let gap = 8.0;
         let thumb_w = ((w - gap * (count as f32 - 1.0)) / count as f32).floor().max(1.0);
         ui.horizontal(|ui| {

@@ -53,6 +53,54 @@ pub fn t_id<'a>(id: &str, label: &'a str) -> &'a str {
 #[cfg(test)]
 pub(crate) use strict::{StrictCjkDrawing, drew_cjk};
 
+/// `s` in upper case for the language the UI is drawn in ([`upper_in`] with [`current`]).
+pub fn upper(s: &str) -> String {
+    upper_in(current(), s)
+}
+
+/// `s` in upper case for `lang`. Rust's `to_uppercase` knows no language, and Turkish has a
+/// dotted and a dotless i (`i` → `İ`, `ı` → `I`), so Turkish gets its own rule.
+pub fn upper_in(lang: Lang, s: &str) -> String {
+    if lang.code() == "tr" { upper_turkish(s) } else { s.to_uppercase() }
+}
+
+/// Words that stay English inside Turkish text and keep the English `i` → `I` (product and platform
+/// names). Mixed-case words (`PhotoCraft`, `GitHub`, `macOS`) are recognised as names
+/// without being listed.
+const ENGLISH_WORDS: &[&str] = &["Craft", "Suite", "Launcher", "Discord", "Linux", "Windows", "Finder"];
+
+/// Turkish upper case, word by word: names written in English (see [`ENGLISH_WORDS`]) keep the
+/// English rule, so "LightCraft benzeri" becomes "LIGHTCRAFT BENZERİ". A suffix after an
+/// apostrophe ("GitHub'da") is its own word and follows Turkish.
+pub(super) fn upper_turkish(s: &str) -> String {
+    let mut out = String::with_capacity(s.len() + 8);
+    let mut rest = s;
+    while let Some(start) = rest.find(char::is_alphanumeric) {
+        let (gap, tail) = rest.split_at(start);
+        out.push_str(gap);
+        let end = tail.find(|c: char| !c.is_alphanumeric()).unwrap_or(tail.len());
+        let (word, after) = tail.split_at(end);
+        if is_english_name(word) {
+            out.push_str(&word.to_uppercase());
+        } else {
+            for c in word.chars() {
+                match c {
+                    'i' => out.push('İ'),
+                    'ı' => out.push('I'),
+                    c => out.extend(c.to_uppercase()),
+                }
+            }
+        }
+        rest = after;
+    }
+    out.push_str(rest);
+    out
+}
+
+fn is_english_name(word: &str) -> bool {
+    ENGLISH_WORDS.contains(&word) || word.chars().skip(1).any(char::is_uppercase)
+}
+
 /// Fill `{name}` placeholders. Unknown placeholders are left as written.
 pub fn fmt(template: &str, args: &[(&str, &str)]) -> String {
     let mut out = template.to_string();

@@ -22,13 +22,32 @@ pub fn tone_color(t: &Tokens, tone: Tone) -> Color32 {
 
 /// `text` laid out upper case in `family`, `spacing` points between letters.
 pub fn caps(ui: &Ui, text: &str, size: f32, family: egui::FontFamily, spacing: f32, color: Color32) -> Arc<Galley> {
+    laid_out(ui, crate::i18n::upper(text), size, family, spacing, color)
+}
+
+fn laid_out(ui: &Ui, upper: String, size: f32, family: egui::FontFamily, spacing: f32, color: Color32) -> Arc<Galley> {
     let format = egui::TextFormat { font_id: egui::FontId::new(size, family), color, extra_letter_spacing: spacing, ..Default::default() };
-    ui.painter().layout_job(egui::text::LayoutJob::single_section(text.to_uppercase(), format))
+    ui.painter().layout_job(egui::text::LayoutJob::single_section(upper, format))
 }
 
 /// A `.hud-label`: 11 px Geist Mono, upper case, widely spaced.
 pub fn hud_galley(ui: &Ui, text: &str, color: Color32) -> Arc<Galley> {
     caps(ui, text, theme::HUD_SIZE, theme::mono(), theme::HUD_SPACING, color)
+}
+
+/// [`hud_galley`] for text that is never translated (the apps' screenshot captions): English
+/// upper case in every UI language, so Turkish doesn't dot its i's.
+pub fn hud_galley_english(ui: &Ui, text: &str, color: Color32) -> Arc<Galley> {
+    laid_out(ui, text.to_uppercase(), theme::HUD_SIZE, theme::mono(), theme::HUD_SPACING, color)
+}
+
+/// [`hud`] for text that is never translated (see [`hud_galley_english`]).
+pub fn hud_english(ui: &mut Ui, text: &str, color: Color32) -> Response {
+    let galley = hud_galley_english(ui, text, color);
+    let (rect, resp) = ui.allocate_exact_size(galley.size(), Sense::hover());
+    paint_left(ui, rect, galley, color);
+    resp.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Label, true, text));
+    resp
 }
 
 /// Paints `galley` at the left of `rect`, centred vertically.
@@ -67,7 +86,7 @@ pub fn hud_elided_spans(ui: &mut Ui, spans: &[(&str, Color32)], max_width: f32) 
             extra_letter_spacing: theme::HUD_SPACING,
             ..Default::default()
         };
-        job.append(&text.to_uppercase(), 0.0, format);
+        job.append(&crate::i18n::upper(text), 0.0, format);
     }
     job.wrap = egui::text::TextWrapping::truncate_at_width(max_width.min(ui.available_width()).max(0.0));
     let galley = ui.painter().layout_job(job);

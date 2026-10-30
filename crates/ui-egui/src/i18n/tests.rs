@@ -562,3 +562,46 @@ fn picker_lists_english_first_then_names_alphabetically() {
     assert!(pos("ru") < pos("ja"), "Cyrillic names come before CJK");
     assert_eq!(name_sort_key("Čeština"), "cestina");
 }
+
+#[test]
+fn turkish_locales_resolve() {
+    for tag in ["tr", "tr-TR", "tr_TR.UTF-8", "TR_tr"] {
+        assert_eq!(lang_from_tag(tag), Some(Lang::TR), "{tag}");
+    }
+    assert_eq!(super::detect::first_supported(["xx-XX", "tr-TR", "en-US"]), Some(Lang::TR));
+}
+
+#[test]
+fn turkish_counts_dates_and_messages_work() {
+    // After a number the noun stays singular, for 1 as for every other count.
+    assert_eq!(trn(Lang::TR, 1, "{n} app", "{n} apps"), "1 uygulama");
+    assert_eq!(trn(Lang::TR, 0, "{n} app", "{n} apps"), "0 uygulama");
+    assert_eq!(trn(Lang::TR, 21, "{n} day ago", "{n} days ago"), "21 gün önce");
+    assert_eq!(super::tr_ctx(Lang::TR, "month", "Aug"), "Ağu");
+    assert_eq!(tr(Lang::TR, "{month} {day}, {year}"), "{day} {month} {year}");
+    assert_eq!(message(Lang::TR, "PhotoCraft updated to 0.5.0"), "PhotoCraft, 0.5.0 sürümüne güncellendi");
+    assert_eq!(message(Lang::TR, "LightCraft was removed"), "LightCraft kaldırıldı");
+}
+
+#[test]
+fn turkish_upper_case_keeps_the_dotted_i() {
+    use super::translate::upper_turkish;
+    assert_eq!(upper_turkish("Bilgi"), "BİLGİ");
+    assert_eq!(upper_turkish("İndir"), "İNDİR");
+    assert_eq!(upper_turkish("Kaldırıldı"), "KALDIRILDI");
+    assert_eq!(upper_turkish("Uygulama ayrıntıları"), "UYGULAMA AYRINTILARI");
+    // Names written in English keep English upper case, suffixes after them follow Turkish.
+    assert_eq!(upper_turkish("LightCraft benzeri"), "LIGHTCRAFT BENZERİ");
+    assert_eq!(upper_turkish("GitHub'da aç"), "GITHUB'DA AÇ");
+    assert_eq!(upper_turkish("Craft App Suite"), "CRAFT APP SUITE");
+    assert_eq!(upper_turkish("Windows için indir"), "WINDOWS İÇİN İNDİR");
+    assert_eq!(upper_turkish("Discord'a katıl"), "DISCORD'A KATIL");
+}
+
+#[test]
+fn upper_follows_the_language() {
+    use super::translate::upper_in;
+    assert_eq!(upper_in(Lang::TR, "Bilgi"), "BİLGİ");
+    assert_eq!(upper_in(Lang::EN, "Bilgi"), "BILGI");
+    assert_eq!(upper_in(Lang::DE, "Größe"), "GRÖSSE");
+}
