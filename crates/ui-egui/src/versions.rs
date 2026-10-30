@@ -85,6 +85,7 @@ impl LauncherUi {
         Some((crate::fmt(tl!("Install version {version}"), &[("version", &tag)]), ready))
     }
 
+    /// Select the app’s release track in one scrollable, accessible version menu.
     pub(crate) fn version_combo(&mut self, ui: &mut Ui, id: &str, app: &CraftApp, width: f32, label: egui::Id) -> bool {
         let t = Tokens::get(ui.ctx());
         let choice =

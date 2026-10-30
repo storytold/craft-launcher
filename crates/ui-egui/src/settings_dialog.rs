@@ -40,12 +40,14 @@ fn row(ui: &mut Ui, label: &str, control_width: f32, add: &mut dyn FnMut(&mut Ui
     }
 }
 
+/// Render secondary settings guidance with localized wrapping and alignment.
 fn note(ui: &mut Ui, text: &str) {
     let t = Tokens::get(ui.ctx());
     crate::rtl::paragraph(ui, text, egui::FontId::proportional(12.0), t.muted);
 }
 
 impl LauncherUi {
+    /// Keep the settings header and footer fixed while the localized body scrolls.
     pub(crate) fn settings_dialog(&mut self, ui: &mut Ui, host: &mut dyn Host) -> bool {
         let t = Tokens::get(ui.ctx());
         let size = sheet::size(ui.ctx(), vec2(1000.0, 820.0));
@@ -105,6 +107,7 @@ impl LauncherUi {
         close
     }
 
+    /// Place settings groups in the upstream columns with localized alignment inside each.
     fn settings_contents(&mut self, ui: &mut Ui, host: &mut dyn Host, wide: bool) {
         // The columns are drawn from two closures that both need `self` and `host`: the pieces
         // are drawn one after the other, through a cell, never at the same time (were they ever,
@@ -369,6 +372,7 @@ impl LauncherUi {
         });
     }
 
+    /// Present theme choices in the existing segmented control.
     fn settings_appearance(&mut self, ui: &mut Ui) {
         let mut theme_choice = self.settings.theme;
         sheet::panel(ui, tl!("Appearance"), |ui| {

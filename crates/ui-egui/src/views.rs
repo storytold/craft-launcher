@@ -116,6 +116,7 @@ impl LauncherUi {
         });
     }
 
+    /// Render the fixed toolbar with localized search, sorting and update controls.
     pub(crate) fn toolbar(&mut self, ui: &mut Ui) {
         if self.settings.filter == Filter::Hidden && self.settings.hidden.is_empty() {
             self.settings.filter = Filter::All;
@@ -340,6 +341,7 @@ impl LauncherUi {
         }
     }
 
+    /// Render source status and project links without mirroring their shell positions.
     pub(crate) fn footer(&mut self, ui: &mut Ui) {
         let t = Tokens::get(ui.ctx());
         let now = self.backend.now();
@@ -430,6 +432,7 @@ impl LauncherUi {
         ui.add_space(24.0);
     }
 
+    /// Lay out cards in reading order, including a right-aligned partial RTL row.
     fn grid_block(&mut self, ui: &mut Ui, ids: &[&'static str]) {
         if ids.is_empty() {
             return;
@@ -1142,6 +1145,7 @@ pub(crate) fn grid_sort_now(s: &crate::settings::Settings) -> (SortKey, bool) {
     }
 }
 
+/// Return the translated label for the selected grid sorting direction.
 fn grid_sort_label((key, descending): (SortKey, bool)) -> &'static str {
     match (key, descending) {
         (SortKey::Released, _) => tl!("Recently updated"),

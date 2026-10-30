@@ -218,6 +218,7 @@ fn check_details(h: &mut Harness<'_, Option<LauncherUi>>) {
     h.run_steps(12);
     h.get_all_by_label("ویرایشگر تصویری که کار با آن را از قبل بلدید.").last().unwrap();
     h.get_by_label("وب‌سایت ↗");
+    h.get_by_label("منحنی‌ها و لایه‌های متن · 1/4");
     snapshot(h, "details-photo-fa-dark");
     if let Some(l) = h.state_mut().as_mut() {
         l.settings.theme = artcraft_launcher_ui_egui::theme::ThemeChoice::Light;

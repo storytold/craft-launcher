@@ -516,7 +516,7 @@ impl LauncherUi {
         ui.painter().rect_stroke(pic, CornerRadius::ZERO, t.hairline(), egui::StrokeKind::Inside);
         let count = details.shots.len();
         if count < 2 {
-            widgets::hud(ui, current.caption, t.faint);
+            widgets::hud(ui, copy(details, current.caption), t.faint);
             return;
         }
         // Previous and next, over the sides of the picture.
@@ -529,7 +529,7 @@ impl LauncherUi {
         if arrow_button(ui, next, Id::unique("shot-next"), false, tl!("Next picture (→)"), t) {
             self.flip_shot(count, true);
         }
-        widgets::hud(ui, &format!("{} · {}/{count}", current.caption, self.detail_shot.min(count - 1) + 1), t.faint);
+        widgets::hud(ui, &format!("{} · {}/{count}", copy(details, current.caption), self.detail_shot.min(count - 1) + 1), t.faint);
         let gap = 8.0;
         let thumb_w = ((w - gap * (count as f32 - 1.0)) / count as f32).floor().max(1.0);
         ui.horizontal(|ui| {

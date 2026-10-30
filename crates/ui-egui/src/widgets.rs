@@ -710,16 +710,19 @@ pub fn heading(text: &str, size: f32, color: Color32) -> RichText {
     RichText::new(text).size(size).family(theme::display()).color(color).extra_letter_spacing(-0.02 * size)
 }
 
+/// Measure a HUD link using the same arrow geometry as its renderer.
 pub fn external_link_width(ui: &Ui, text: &str) -> f32 {
     let color = Tokens::get(ui.ctx()).muted;
     if crate::i18n::current().is_rtl() { hud_galley(ui, text, color).size().x + 15.0 } else { hud_galley(ui, &format!("{text} ↗"), color).size().x }
 }
+/// Draw an external-link button with a stable northeast arrow in either language.
 pub fn external_button(ui: &mut Ui, text: &str, width: f32) -> Response {
     if !crate::i18n::current().is_rtl() {
         return button(ui, &format!("{text} ↗"), Kind::Secondary, width);
     }
     button_inner(ui, text, Kind::Secondary, width, true)
 }
+/// Paint the themed button and optional external arrow inside a single click target.
 fn button_inner(ui: &mut Ui, text: &str, kind: Kind, width: f32, external: bool) -> Response {
     let t = Tokens::get(ui.ctx());
     let galley = caps(ui, text, theme::HUD_SIZE, theme::mono_bold(), theme::BUTTON_SPACING, t.ink);
@@ -753,6 +756,7 @@ fn button_inner(ui: &mut Ui, text: &str, kind: Kind, width: f32, external: bool)
     if enabled { resp.on_hover_cursor(egui::CursorIcon::PointingHand) } else { resp }
 }
 
+/// Use RTL widget chrome and a reserved scrollbar gutter only for RTL popup contents.
 pub fn locale_popup_style() -> egui::style::StyleModifier {
     if crate::i18n::current().is_rtl() {
         egui::style::StyleModifier::from(|style: &mut egui::Style| {
@@ -766,6 +770,7 @@ pub fn locale_popup_style() -> egui::style::StyleModifier {
     }
 }
 
+/// Bound and pad RTL menus; retain the default popup layout for other languages.
 pub fn popup_body<R>(ui: &mut Ui, add: impl FnOnce(&mut Ui) -> R) -> R {
     if crate::i18n::current().is_rtl() {
         // Popup UIs start with a large available screen rect. Bound the justified child,
@@ -786,6 +791,7 @@ pub fn popup_body<R>(ui: &mut Ui, add: impl FnOnce(&mut Ui) -> R) -> R {
     }
 }
 
+/// Render a menu action or selectable option with a logical accessibility name.
 pub fn popup_item(ui: &mut Ui, text: &str, selected: Option<bool>, color: Option<Color32>) -> Response {
     if !crate::i18n::current().is_rtl() {
         return if let Some(on) = selected { ui.selectable_label(on, text) } else { ui.button(text) };
@@ -807,6 +813,7 @@ pub fn popup_item(ui: &mut Ui, text: &str, selected: Option<bool>, color: Option
     response
 }
 
+/// Apply a menu selection and mark its response changed only when the value changes.
 pub fn popup_value<T: PartialEq>(ui: &mut Ui, value: &mut T, option: T, label: &str) -> Response {
     let mut response = popup_item(ui, label, Some(*value == option), None);
     if response.clicked() && *value != option {
@@ -816,6 +823,7 @@ pub fn popup_value<T: PartialEq>(ui: &mut Ui, value: &mut T, option: T, label: &
     response
 }
 
+/// Keep the checkbox accessibility name in logical Unicode order.
 pub(crate) fn localized_checkbox(ui: &mut Ui, value: &mut bool, label: &str) -> Response {
     let response = ui.checkbox(value, label);
     response.accessible_name(label)
