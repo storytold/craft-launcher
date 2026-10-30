@@ -60,8 +60,8 @@ pub fn run(program: &str, args: &[&str], timeout: Duration) -> Result<String, St
 
 /// Runs a configured helper with bounded output and a timeout.
 pub fn run_command(mut cmd: Command, program: &str, timeout: Duration) -> Result<String, String> {
-    let mut child =
-        cmd.stdin(Stdio::null()).stdout(Stdio::piped()).stderr(Stdio::piped()).spawn().map_err(|e| format!("couldn't start {program} ({e})"))?;
+    cmd.stdin(Stdio::null()).stdout(Stdio::piped()).stderr(Stdio::piped());
+    let mut child = retry_text_busy(|| cmd.spawn(), std::thread::sleep).map_err(|e| format!("couldn't start {program} ({e})"))?;
     // Read both pipes while it runs, so a chatty helper can't block on a full one.
     let (stdout, stderr) = (read_all(child.stdout.take()), read_all(child.stderr.take()));
     let start = Instant::now();
@@ -91,6 +91,21 @@ pub fn run_command(mut cmd: Command, program: &str, timeout: Duration) -> Result
     }
     let reason = err.trim();
     Err(if reason.is_empty() { format!("{program} failed ({status})") } else { reason.to_string() })
+}
+
+/// Linux may briefly refuse a freshly written executable with ETXTBSY (#460).
+/// Retry only that startup error, at most four times (40 ms); never rerun a started child.
+fn retry_text_busy<T>(mut start: impl FnMut() -> std::io::Result<T>, mut wait: impl FnMut(Duration)) -> std::io::Result<T> {
+    let mut retries = 0;
+    loop {
+        match start() {
+            Err(error) if cfg!(target_os = "linux") && error.raw_os_error() == Some(26) && retries < 4 => {
+                retries += 1;
+                wait(Duration::from_millis(10));
+            }
+            result => return result,
+        }
+    }
 }
 
 /// Captures at most 8 MB of a child's pipe and drains the rest on its own thread.
@@ -751,6 +766,51 @@ mod inherited_pipe_tests {
             assert!(elapsed < deadline * 2, "capture exceeded its caller deadline {deadline:?}: {elapsed:?}");
             // The guard stops the finite descendant and waits for its completion marker on failures too.
             break;
+        }
+    }
+}
+
+#[cfg(all(test, target_os = "linux"))]
+mod busy_tests {
+    use super::*;
+
+    #[test]
+    fn transient_text_busy_retries_until_started() {
+        let (mut calls, mut waits) = (0, 0);
+        let result = retry_text_busy(
+            || {
+                calls += 1;
+                if calls < 3 { Err(std::io::Error::from_raw_os_error(26)) } else { Ok("started") }
+            },
+            |delay| {
+                assert_eq!(delay, Duration::from_millis(10));
+                waits += 1;
+            },
+        );
+        assert_eq!(result.unwrap(), "started");
+        assert_eq!((calls, waits), (3, 2));
+    }
+
+    #[test]
+    fn persistent_text_busy_is_bounded_and_preserves_the_error() {
+        let (mut calls, mut waits) = (0, 0);
+        let result: std::io::Result<()> = retry_text_busy(
+            || {
+                calls += 1;
+                Err(std::io::Error::from_raw_os_error(26))
+            },
+            |_| waits += 1,
+        );
+        assert_eq!(result.unwrap_err().raw_os_error(), Some(26));
+        assert_eq!((calls, waits), (5, 4));
+    }
+
+    #[test]
+    fn unrelated_startup_errors_are_not_retried() {
+        for code in [2, 13, 8] {
+            let result: std::io::Result<()> =
+                retry_text_busy(|| Err(std::io::Error::from_raw_os_error(code)), |_| panic!("only ETXTBSY is retryable"));
+            assert_eq!(result.unwrap_err().raw_os_error(), Some(code));
         }
     }
 }
