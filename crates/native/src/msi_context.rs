@@ -54,12 +54,10 @@ pub(crate) fn single_scope(scopes: impl IntoIterator<Item = MsiScope>) -> Option
 }
 
 /// The context to install in. An update keeps `updated`, the context of the copy it replaces. A fresh
-/// install (no copy at all) is machine-wide, so every app lands in `C:\Program Files\ArtCraft\<App>`
-/// (or the folder the person chose) and not in one account's profile; a dual-scope package would
-/// otherwise take its own default, which is per-user. Windows asks for permission once, for that
-/// install. Anything else (a copy that is not an MSI) takes the package's own default.
+/// install (no copy at all) is per-user, so a standard account can install a dual-scope package
+/// without an administrator. Anything else (a copy that is not an MSI) takes the package's own default.
 pub(crate) fn install_scope(updated: Option<MsiScope>, fresh: bool) -> Option<MsiScope> {
-    updated.or_else(|| fresh.then_some(MsiScope::PerMachine))
+    updated.or_else(|| fresh.then_some(MsiScope::PerUser))
 }
 
 pub(crate) fn valid_product_code(code: &str) -> bool {
@@ -235,8 +233,8 @@ mod tests {
     }
 
     #[test]
-    fn a_fresh_install_is_machine_wide() {
-        assert_eq!(install_scope(None, true), Some(MsiScope::PerMachine));
+    fn a_fresh_install_is_per_user() {
+        assert_eq!(install_scope(None, true), Some(MsiScope::PerUser));
     }
 
     #[test]

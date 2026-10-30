@@ -141,7 +141,7 @@ pub fn install_at(
             crate::msi_context::probe,
             |code| crate::detect::windows::record_scope(app, code),
         )?;
-        // A fresh install is machine-wide (Program Files); an update keeps the context of the copy it replaces.
+        // A fresh install needs only this account; an update keeps the context of the copy it replaces.
         crate::msi_context::install_scope(updated, existing.is_none())
     } else {
         None
@@ -178,7 +178,7 @@ pub fn install_at(
         PackageKind::Msi => {
             // An update lands in the same Windows Installer context as the copy being replaced:
             // per-machine needs elevation, per-user must not duplicate itself per-machine. A
-            // fresh install passes no context and takes the package's own default.
+            // fresh install explicitly requests per-user scope.
             match (&joined, &rollback) {
                 (_, Some((previous, previous_sha256, previous_version))) => windows::downgrade_msi(
                     app,
@@ -351,7 +351,15 @@ fn destination(
             _ => None,
         });
     }
-    let Some(folder) = locations.folder(app.id) else { return Ok(None) };
+    let Some(folder) = locations.folder(app.id) else {
+        #[cfg(windows)]
+        if kind == PackageKind::Msi {
+            // /passive skips the installer's folder wizard. Give it the same per-user folder
+            // the launcher displays, instead of relying on UI-only MSI directory actions.
+            return Ok(Some(msi_user_folder().ok_or("no per-user applications folder on this system")?.join(app.name)));
+        }
+        return Ok(None);
+    };
     if !matches!(kind, PackageKind::Dmg | PackageKind::AppImage | PackageKind::Msi | PackageKind::PortableZip) || process::in_sandbox() {
         return Err("custom install folders aren't supported on this system".into());
     }
@@ -361,9 +369,8 @@ fn destination(
 
 /// The folder a new install goes inside when the person hasn't chosen one, so the UI can show
 /// that folder instead of only saying "System default". The answer follows the package: a
-/// Windows MSI installs for everyone into `Program Files\ArtCraft\<App>`, and a 32-bit package
-/// into the 32-bit Program Files, so `arch` is the package's architecture when the release names
-/// one and `None` (the release is unknown) answers nothing. A portable ZIP unpacks into the
+/// Windows MSI installs for this account into `%LOCALAPPDATA%\Programs\ArtCraft\<App>`,
+/// independent of package architecture. A portable ZIP unpacks into the
 /// launcher's own `apps` folder. A macOS app goes wherever the installer would put it
 /// (`/Applications`, or `~/Applications` when the system folder is not writable). Formats the
 /// system itself manages (the distro's packages on Linux, Flatpak) have no single folder, so
@@ -371,14 +378,9 @@ fn destination(
 pub fn default_folder(kind: PackageKind, arch: Option<Arch>, paths: &Paths) -> Option<PathBuf> {
     #[cfg(windows)]
     {
+        let _ = arch;
         match kind {
-            PackageKind::Msi => match arch {
-                Some(Arch::X86) => {
-                    Some(PathBuf::from(std::env::var_os("ProgramFiles(x86)").or_else(|| std::env::var_os("ProgramFiles"))?).join("ArtCraft"))
-                }
-                Some(_) => Some(PathBuf::from(std::env::var_os("ProgramFiles")?).join("ArtCraft")),
-                None => None,
-            },
+            PackageKind::Msi => msi_user_folder(),
             PackageKind::PortableZip => Some(paths.apps()),
             _ => None,
         }
@@ -393,6 +395,12 @@ pub fn default_folder(kind: PackageKind, arch: Option<Arch>, paths: &Paths) -> O
         let _ = (kind, arch, paths);
         None
     }
+}
+
+/// The suite folder shared by the MSI command and the default-folder hint. Does not create it.
+#[cfg(windows)]
+fn msi_user_folder() -> Option<PathBuf> {
+    dirs::data_local_dir().map(|folder| folder.join("Programs").join("ArtCraft"))
 }
 
 fn selected_folder(folder: &str, writable: bool) -> Result<PathBuf, String> {
@@ -454,7 +462,7 @@ fn msi_folder_argument(path: &Path) -> Result<String, String> {
 
 /// The Windows Installer context an update must keep. A per-machine install elevates and writes
 /// HKLM registrations; a per-user one must not silently become a second, per-machine copy (or
-/// the other way round). A fresh install is always `PerMachine`.
+/// the other way round). A fresh install requests `PerUser`.
 #[cfg(any(windows, test))]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum MsiScope {
@@ -2171,23 +2179,42 @@ mod tests {
     /// The default folder shown in the UI is the one a fresh install really uses.
     #[cfg(windows)]
     #[test]
-    fn the_default_folder_is_the_artcraft_suite_folder_in_program_files() {
+    fn the_default_folder_is_the_artcraft_suite_folder_for_this_account() {
         let paths = Paths::under(std::path::Path::new(r"C:\scratch"));
-        let program_files = std::env::var_os("ProgramFiles").map(PathBuf::from).unwrap();
-        assert_eq!(default_folder(PackageKind::Msi, Some(Arch::X64), &paths), Some(program_files.join("ArtCraft")));
+        let folder = dirs::data_local_dir().unwrap().join("Programs").join("ArtCraft");
+        assert_eq!(default_folder(PackageKind::Msi, Some(Arch::X64), &paths), Some(folder));
         assert_eq!(default_folder(PackageKind::PortableZip, Some(Arch::X64), &paths), Some(paths.apps()));
         assert_eq!(default_folder(PackageKind::Dmg, Some(Arch::X64), &paths), None);
     }
 
-    /// A 32-bit package installs under the 32-bit Program Files; an unknown architecture answers
-    /// nothing, so the UI says "System default" instead of guessing the destination.
+    /// Every package architecture uses the account's folder, even before the release is known.
     #[cfg(windows)]
     #[test]
-    fn a_32_bit_package_uses_the_32_bit_program_files_and_an_unknown_architecture_answers_nothing() {
+    fn every_msi_architecture_uses_the_account_folder() {
         let paths = Paths::under(std::path::Path::new(r"C:\scratch"));
-        let x86 = std::env::var_os("ProgramFiles(x86)").or_else(|| std::env::var_os("ProgramFiles")).map(PathBuf::from).unwrap();
-        assert_eq!(default_folder(PackageKind::Msi, Some(Arch::X86), &paths), Some(x86.join("ArtCraft")));
-        assert_eq!(default_folder(PackageKind::Msi, None, &paths), None);
+        let folder = dirs::data_local_dir().unwrap().join("Programs").join("ArtCraft");
+        for arch in [Some(Arch::X86), Some(Arch::X64), Some(Arch::Arm64), None] {
+            assert_eq!(default_folder(PackageKind::Msi, arch, &paths), Some(folder.clone()));
+        }
+    }
+
+    /// Passive fresh installs receive the displayed account folder and never request all-users scope.
+    #[cfg(windows)]
+    #[test]
+    fn fresh_msi_commands_use_the_displayed_account_folder_and_scope() {
+        let paths = Paths::under(Path::new(r"C:\scratch"));
+        let package = tempfile::NamedTempFile::new().unwrap();
+        let parent = default_folder(PackageKind::Msi, None, &paths).unwrap();
+        for id in ["gridcraft", "lightcraft", "photocraft", "wordcraft"] {
+            let app = CraftApp::by_id(id).unwrap();
+            let folder = destination(app, PackageKind::Msi, None, None, &InstallLocations::default()).unwrap().unwrap();
+            assert_eq!(folder, parent.join(app.name));
+            let scope = crate::msi_context::install_scope(None, true);
+            let command = msi_batch::line(package.path(), Some(&folder), scope).unwrap();
+            assert!(command.contains(&msi_folder_argument(&folder).unwrap()));
+            assert!(command.contains("ALLUSERS=2 MSIINSTALLPERUSER=1"));
+            assert!(!command.contains("ALLUSERS=1"));
+        }
     }
 
     #[cfg(target_os = "macos")]
