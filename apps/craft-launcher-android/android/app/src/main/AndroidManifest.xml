@@ -27,6 +27,7 @@
         <package android:name="ai.storyteller.soundcraft" />
         <package android:name="ai.storyteller.vectorcraft" />
         <package android:name="ai.storyteller.wordcraft" />
+        <package android:name="ai.storyteller.solidcraft" />
     </queries>
 
     <application

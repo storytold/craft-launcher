@@ -63,6 +63,9 @@ public class MainActivity extends GameActivity {
                 "ai.storyteller.designcraft", "ai.storyteller.wordcraft", "ai.storyteller.deckcraft",
                 "ai.storyteller.soundcraft", "ai.storyteller.gridcraft", "ai.storyteller.cadcraft",
                 "ai.storyteller.figcraft", "ai.storyteller.artcraftlauncher",
+                // SolidCraft's declared bundle is io.tangencylabs.solidcraft, but it shipped under
+                // this id before and the filter below only accepts ai.storyteller.*.
+                "ai.storyteller.solidcraft",
         };
         java.util.Set<String> seen = new java.util.LinkedHashSet<>();
         for (String name : suite) {

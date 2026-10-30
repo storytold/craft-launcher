@@ -261,7 +261,14 @@ pub const RELEASE_REPO: Option<&str> = Some("tzhazuma/artcraft-android");
 /// the name it first shipped under — `ai.storyteller.printcraft` — although the app itself was
 /// renamed from PrintCraft to PdfCraft. Android detection and launching use
 /// [`CraftApp::android_bundle_id`]; nothing on the desktop does.
-pub const ANDROID_PACKAGE_IDS: &[(&str, &str)] = &[("pdfcraft", "ai.storyteller.printcraft")];
+pub const ANDROID_PACKAGE_IDS: &[(&str, &str)] = &[
+    ("pdfcraft", "ai.storyteller.printcraft"),
+    // SolidCraft declares `io.tangencylabs.solidcraft`, but its `former_bundles` include
+    // `ai.storyteller.solidcraft`, and the Android activity only probes names under
+    // `ai.storyteller.`. Shipping the port under the former id is what makes the launcher able to
+    // see, launch and update it; the desktop is unaffected.
+    ("solidcraft", "ai.storyteller.solidcraft"),
+];
 
 /// ArtCraft on GitHub: every Craft App's source.
 pub const GITHUB_URL: &str = "https://github.com/storytold";
@@ -374,8 +381,9 @@ mod tests {
     #[test]
     fn android_package_ids_keep_published_names() {
         assert_eq!(CraftApp::by_id("pdfcraft").unwrap().android_bundle_id(), "ai.storyteller.printcraft");
+        assert_eq!(CraftApp::by_id("solidcraft").unwrap().android_bundle_id(), "ai.storyteller.solidcraft");
         for a in &SUITE {
-            if a.id != "pdfcraft" {
+            if a.id != "pdfcraft" && a.id != "solidcraft" {
                 assert_eq!(a.android_bundle_id(), a.bundle_id(), "{}", a.id);
             }
         }
