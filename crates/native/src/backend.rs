@@ -1196,7 +1196,8 @@ impl Backend for NativeBackend {
                 for app in &SUITE {
                     report_partial(app, &self.shared, &self.paths, self.platform, &options);
                 }
-                if changed_pre {
+                // "Only when I ask": the next check the user asks for uses the new choice (#929).
+                if changed_pre && options.auto_check {
                     self.check(true);
                 }
             }
@@ -1825,6 +1826,21 @@ mod tests {
         backend.shared.latest.lock().unwrap().insert(APP.to_string(), release("0.6.0"));
         backend.send(Command::Configure(BackendOptions::default()));
         assert_eq!(last_ready(backend.poll()), Some(false));
+    }
+
+    #[test]
+    /// "Only when I ask" (#929): a changed pre-release choice, including the saved one sent at
+    /// startup, starts no check; with automatic checks it still does.
+    fn a_prerelease_change_checks_only_when_checks_are_automatic() {
+        let Some(platform) = native_platform() else { return };
+        let dir = tempfile::tempdir().unwrap();
+        let mut backend = backend(dir.path(), platform, None);
+        backend.poll();
+        let checked = |events: Vec<Event>| events.iter().any(|e| matches!(e, Event::Latest { .. }));
+        backend.send(Command::Configure(BackendOptions { prereleases: true, auto_check: false, ..Default::default() }));
+        assert!(!checked(backend.poll()), "no check without the user asking");
+        backend.send(Command::Configure(BackendOptions { prereleases: false, auto_check: true, ..Default::default() }));
+        assert!(checked(backend.poll()), "automatic checks still follow a changed choice");
     }
 
     #[test]

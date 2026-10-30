@@ -439,6 +439,7 @@ impl LauncherUi {
             versions: self.settings.versions.clone(),
             launcher_version: self.settings.launcher_version.clone(),
             install_locations: self.settings.install_locations.clone(),
+            auto_check: self.settings.check_every.seconds().is_some(),
         };
         if self.sent_options.as_ref() != Some(&options) {
             self.backend.send(Command::Configure(options.clone()));
@@ -490,7 +491,10 @@ impl LauncherUi {
         self.request_pinned_lists();
         if !self.started {
             self.started = true;
-            self.backend.send(Command::CheckForUpdates { force: false });
+            // "Only when I ask" means no check the user did not ask for, at startup too (#929).
+            if self.settings.check_every.seconds().is_some() {
+                self.backend.send(Command::CheckForUpdates { force: false });
+            }
         }
         let now = self.backend.now();
         if self.last_detect == 0 {
@@ -1034,6 +1038,7 @@ mod tests {
     use egui_kittest::Harness;
 
     use super::*;
+    use crate::settings::CheckEvery;
 
     struct NoHost;
     impl Host for NoHost {}
@@ -1105,6 +1110,39 @@ mod tests {
         assert_eq!(drawable_lang("ja", Some(Lang::ZH_CN)), Lang::EN);
         assert_eq!(drawable_lang("ja", Some(Lang::JA)), Lang::JA);
         assert_eq!(drawable_lang("fr", Some(Lang::ZH_CN)), Lang::FR);
+    }
+
+    /// Counts the `CheckForUpdates` commands in `sent`.
+    fn checks(sent: &RefCell<Vec<Command>>) -> usize {
+        sent.borrow().iter().filter(|command| matches!(command, Command::CheckForUpdates { .. })).count()
+    }
+
+    #[test]
+    /// "Only when I ask" (#929): starting the launcher must not look for updates on its own.
+    fn only_when_i_ask_sends_no_check_at_startup() {
+        let sent = Rc::new(RefCell::new(Vec::new()));
+        let settings = Settings { language: "en".into(), notify: false, check_every: CheckEvery::Never, ..Settings::default() };
+        let ctx = egui::Context::default();
+        let mut launcher = LauncherUi::new(&ctx, Box::new(Recorder { sent: sent.clone() }), settings);
+        launcher.logic(&ctx, &mut NoHost);
+        launcher.logic(&ctx, &mut NoHost);
+        assert_eq!(checks(&sent), 0, "no check without the user asking: {:?}", sent.borrow());
+        // The backend is told too, so a saved pre-release choice starts no check either.
+        assert!(sent.borrow().iter().any(|c| matches!(c, Command::Configure(o) if !o.auto_check)));
+        // Asking still works.
+        launcher.check_now();
+        assert_eq!(checks(&sent), 1);
+    }
+
+    #[test]
+    /// "Automatically" still checks once at startup.
+    fn automatic_checks_still_look_at_startup() {
+        let sent = Rc::new(RefCell::new(Vec::new()));
+        let settings = Settings { language: "en".into(), notify: false, check_every: CheckEvery::Hour, ..Settings::default() };
+        let ctx = egui::Context::default();
+        let mut launcher = LauncherUi::new(&ctx, Box::new(Recorder { sent: sent.clone() }), settings);
+        launcher.logic(&ctx, &mut NoHost);
+        assert!(checks(&sent) >= 1, "automatic mode checks at startup: {:?}", sent.borrow());
     }
 
     #[test]

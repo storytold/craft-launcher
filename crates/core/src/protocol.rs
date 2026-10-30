@@ -99,6 +99,9 @@ pub struct BackendOptions {
     pub launcher_version: VersionTrack,
     /// Offer pre-releases (`0.6.0-rc.1`) as updates.
     pub prereleases: bool,
+    /// Updates are looked for automatically. Off ("Only when I ask"), a changed pre-release
+    /// choice does not start a check on its own (#929).
+    pub auto_check: bool,
 }
 
 /// The answer to "what's the latest release of this app?".
