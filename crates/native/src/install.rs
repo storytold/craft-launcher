@@ -2901,6 +2901,7 @@ mod tests {
                 approved_path: None,
                 downgrade: Some(Downgrade::Reinstall { previous: &newer, asset: &newer_msi }),
                 batch: None,
+                place: None,
             };
             install(app, &older, &older_msi, PackageKind::Msi, Some(&portable), None, &mut job).unwrap_err()
         };
@@ -3024,6 +3025,7 @@ mod tests {
                     approved_path: None,
                     downgrade,
                     batch: None,
+                    place: None,
                 };
                 install(app, &release, &asset, kind, Some(&installed), previous, &mut job).unwrap_err()
             };
