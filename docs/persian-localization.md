@@ -1,56 +1,34 @@
 # Persian localization
 
-Select **فارسی** in Settings, or use an OS locale such as `fa-IR`. Persian is registered
-through the existing language registry; settings serialization and backend protocols are
-unchanged. All menu strings, notifications, package labels and message templates use the
-existing source-keyed TSV catalog. Product names remain in English.
+Select **فارسی** in Settings, or use a locale such as `fa-IR` or `fa_IR.UTF-8`.
+The existing source-keyed TSV registry handles translations and English fallback.
+Product names and release notes stay as published; dates retain the Gregorian calendar.
 
 ## Direction and typography
 
-The main header, product identity, screenshot navigation and dialog action positions keep
-the original layout. Filters, card order/content, settings content, popup options and product
-details content flow from right to left. Technical values (versions, URLs and paths) retain
-their Latin order. Editable strings remain logical Unicode; display-order text is never
-persisted or sent to the backend.
+The main header, dialog headers and actions, product identity and screenshot navigation keep
+the upstream layout. Persian card order/content, settings bodies, popup options and release
+facts read right to left. Scrollbars retain a reserved gutter so they do not cover labels.
 
-The small `rtl` module adapts text at the paint boundary for egui 0.36's per-script shaping.
-It uses `unicode-bidi` for directional runs. Wrapped copy is split in logical order before
-each line is reordered. Custom-painted labels and tooltips expose logical accessibility text. Keep using
-`rtl::paragraph` for wrapped prose, rather than wrapping a pre-reordered label. This is a
-scoped presentation adapter, not a replacement for native bidirectional text editing.
+The upstream egui 0.37 fork handles logical Unicode text, bidi, shaping, wrapping and editing.
+There is no display-order conversion or separate bidi dependency in this localization.
+The crate-private `rtl` helpers only scope content layout/alignment and translated tooltips.
+Never reorder stored text, paths, versions, clipboard data or backend messages for display.
 
-The adapter retains attribution to NibrasAz7's work in
-[PR #397](https://github.com/storytold/craft-launcher/pull/397). Its API is crate-private.
+Vazirmatn's small OFL variable fallback follows the original typography weight roles and
+keeps the Latin faces first. Source and license are in `ATTRIBUTION.md` and
+`assets/fonts/Vazirmatn-OFL.txt`; no proprietary font or local preview runner is bundled.
 
-Vazirmatn's OFL variable font is bundled as a fallback after the original Latin faces.
-Weights follow the existing regular, medium, semibold, display and mono roles. Source and
-license are in `ATTRIBUTION.md` and `assets/fonts/Vazirmatn-OFL.txt`. No proprietary font,
-local font path, preview runner or owner-specific configuration is part of this change.
+## Maintenance and verification
 
-## Editorial copy and dates
+App descriptions and feature copy use the app id as context and the exact English source
+as key. Changed copy falls back to current English until translated. Add new interface
+strings to the complete Persian catalog through the same coverage/placeholder/plural gates
+as other complete languages. Avoid requiring translations of all future editorial copy.
 
-Product descriptions, feature copy and screenshot captions use the app id as translation
-context and the exact English source as key. A changed or new description falls back to
-English until translated. Release notes remain in their source language. Gregorian dates
-retain the existing conversion and sorting; only their month names are translated. Solar
-Hijri conversion and third-party product comparison labels are outside this change.
-
-## Verification
-
-```sh
-cargo test -p artcraft-launcher-ui-egui
-cargo clippy -p artcraft-launcher-ui-egui --all-targets -- -D warnings
-cargo xtask wasm
-cargo xtask ci
-```
-
-The registry marks Persian menus complete, so the shared coverage, placeholder, plural and
-package-format tests apply. Additional checks cover bundled glyphs and weight roles,
-logical text wrapping, mixed technical tokens, localized search, popup interactions and
-scrollbar clearance, direction boundaries and compact settings windows. Optional rendered
-screenshots follow the existing `ARTCRAFT_LAUNCHER_SNAPSHOTS` test convention. Persian tests
-use the actual bundled font without a workstation font override.
-
-Before landing, verify the normal desktop shell and native keyboard/screen-reader behavior
-on the supported platforms. In particular, egui's native text input/caret behavior is not
-implemented by this display adapter; mixed-direction editing needs separate platform QA.
+Run `cargo xtask ci` (formatting, strict clippy, workspace tests and WASM). Persian integration
+coverage exercises logical accessibility names, localized search, card order, product details,
+menus and compact Settings. Optional screenshots use `ARTCRAFT_LAUNCHER_SNAPSHOTS` as in the
+existing UI tests. Before release, review the bundled font and native mixed Persian/Latin
+input, selection, clipboard and screen readers on Windows, macOS and Linux. Automated UI
+coverage does not substitute for those platform checks.

@@ -85,9 +85,12 @@ pub fn set_enabled(on: bool) -> Result<(), String> {
         if !on {
             return remove(&path);
         }
-        let exe = program()?.display().to_string().replace('"', "\\\"");
+        // Quote the executable path per the Desktop Entry spec, rejecting one that can't be
+        // represented as a single argument (e.g. a path with a line break, which could otherwise
+        // introduce a second Exec= key that the desktop runs at login instead of us) (CWE-74).
+        let exec = crate::desktop_entry::exec_quote(&program()?).ok_or("this program's path can't be used in a startup entry")?;
         let entry = format!(
-            "[Desktop Entry]\nType=Application\nName=ArtCraft Launcher\nComment=Install and update the Craft App Suite\nExec=\"{exe}\" {HIDDEN_FLAG}\nIcon={ID}\nTerminal=false\nX-GNOME-Autostart-enabled=true\n"
+            "[Desktop Entry]\nType=Application\nName=ArtCraft Launcher\nComment=Install and update the Craft App Suite\nExec={exec} {HIDDEN_FLAG}\nIcon={ID}\nTerminal=false\nX-GNOME-Autostart-enabled=true\n"
         );
         crate::paths::write_atomic(&path, entry.as_bytes())
     }

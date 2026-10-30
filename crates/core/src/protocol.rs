@@ -21,6 +21,10 @@ pub enum Command {
     },
     /// Look again at what's installed.
     Detect,
+    /// Fetch published versions for the selector without starting an install.
+    ListVersions {
+        app: String,
+    },
     /// Install or update an app to its latest release.
     Install {
         app: String,
@@ -73,6 +77,15 @@ impl InstallLocations {
     }
 }
 
+/// Which published build to follow. A pinned version never changes on its own.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub enum VersionTrack {
+    #[default]
+    Stable,
+    Nightly,
+    Pinned(String),
+}
+
 /// Settings the backend needs.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default)]
@@ -80,6 +93,10 @@ pub struct BackendOptions {
     pub install_locations: InstallLocations,
     /// Package formats to install, best first (empty: the platform default).
     pub kinds: Vec<PackageKind>,
+    /// Per-app version choices; an absent entry follows stable releases.
+    pub versions: BTreeMap<String, VersionTrack>,
+    /// The launcher's own version choice.
+    pub launcher_version: VersionTrack,
     /// Offer pre-releases (`0.6.0-rc.1`) as updates.
     pub prereleases: bool,
 }
@@ -181,6 +198,11 @@ pub enum Event {
         /// The service this answer came from.
         from: Origin,
     },
+    /// The published versions of an app (or the launcher), bounded to the latest 100.
+    Versions {
+        app: String,
+        result: Result<Vec<Release>, String>,
+    },
     /// The latest ArtCraft Launcher release, when it's newer than this one.
     LauncherUpdate(Release),
     /// The new launcher is in place (or will be, once this one exits): quit now so it can start.
@@ -246,7 +268,9 @@ pub struct Capabilities {
     /// What "show in file manager" is called here (`Show in Finder`).
     pub reveal_label: &'static str,
     /// The launcher can update itself in place and restart (an installed build, not a dev build or
-    /// a Flatpak). Without it the UI offers the download instead.
+    /// a Flatpak from anywhere but the release bundle). Without it the UI offers the download
+    /// instead. A backend may only know this once it has found a newer launcher, so the UI reads
+    /// it again on [`Event::LauncherUpdate`].
     pub self_update: bool,
 }
 

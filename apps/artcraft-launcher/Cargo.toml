@@ -20,7 +20,7 @@ local-mirror = ["artcraft-launcher-native/local-mirror"]
 artcraft-launcher-core = { workspace = true }
 artcraft-launcher-ui-egui = { workspace = true }
 artcraft-launcher-native = { workspace = true }
-eframe = { workspace = true, features = ["default_fonts", "wgpu", "accesskit", "wayland", "x11", "persistence", "links"] }
+eframe = { workspace = true, features = ["default_fonts", "clipboard", "wgpu", "accesskit", "wayland", "x11", "persistence", "links"] }
 egui = { workspace = true }
 log = { workspace = true }
 env_logger = { version = "0.11", default-features = false, features = ["auto-color", "humantime"] }
@@ -30,6 +30,7 @@ notify-rust = "4"
 # Cargo.lock through eframe's "persistence" feature.
 ron = "0.12.2"
 serde = { workspace = true }
+craft-quit = { version = "0.1.0", git = "https://github.com/storytold/craft-libs", rev = "92d392cff132eaf53e13afff77f38b5c11b73aa0", features = ["egui"] }
 
 [target.'cfg(target_os = "linux")'.dependencies]
 zbus = "5"
@@ -37,7 +38,7 @@ zbus = "5"
 # The tray (menu bar) icon. On Linux and the BSDs the StatusNotifierItem backend talks D-Bus
 # directly, so no GTK or libappindicator is needed.
 [target.'cfg(any(target_os = "macos", target_os = "windows"))'.dependencies]
-tray-icon = "0.25"
+tray-icon = "0.26"
 
 # macOS only: which desktop (Space) the window shows on (spaces.rs) and the "Reduce motion"
 # setting (motion.rs). Safe AppKit calls only, and already in Cargo.lock through winit and
@@ -58,7 +59,7 @@ winreg = "0.55"
 zbus = { version = "5", default-features = false, features = ["async-io", "blocking-api"] }
 
 [target.'cfg(any(target_os = "linux", target_os = "freebsd", target_os = "openbsd", target_os = "netbsd", target_os = "dragonfly"))'.dependencies]
-tray-icon = { version = "0.25", default-features = false, features = ["ksni"] }
+tray-icon = { version = "0.26", default-features = false, features = ["ksni"] }
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 rfd = { version = "=0.17.2", default-features = false, features = ["xdg-portal", "wayland"] }

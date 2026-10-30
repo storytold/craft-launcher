@@ -169,7 +169,7 @@ fn german_switches_persists_and_keeps_install_actions() {
     h.get_by_label_contains("Zuletzt geprüft: vor 3 Min. · über ArtCraft API");
     h.get_by_label("Auf 0.5.0 aktualisieren");
     // Product names stay in English.
-    h.get_by_label("Launcher");
+    assert!(h.query_by_label("Launcher").is_none());
     snapshot(&mut h, "grid-de-dark");
     h.get_by_label("Alle aktualisieren (2)").click();
     h.run_steps(2);
@@ -187,13 +187,11 @@ fn german_switches_persists_and_keeps_install_actions() {
     for width in [720.0, 800.0, 1180.0] {
         web.set_size(egui::vec2(width, 900.0));
         web.run_steps(6);
-        for label in ["Grid", "Table", "Settings", "Check for updates"] {
+        for label in ["Show apps as cards", "Show apps as a table", "Settings", "Check for updates"] {
             let rect = web.get_by_label(artcraft_launcher_ui_egui::i18n::t(label)).rect();
             assert!(rect.left() >= 0.0 && rect.right() <= width, "{width}: {label} {rect:?}");
-            for label in ["Launcher", "Craft App Suite"] {
-                if let Some(text) = web.query_by_label(label) {
-                    assert!(!rect.intersects(text.rect()), "{width}: {label} overlaps {rect:?}");
-                }
+            if let Some(text) = web.query_by_label("Craft App Suite") {
+                assert!(!rect.intersects(text.rect()), "{width}: Craft App Suite overlaps {label} {rect:?}");
             }
         }
     }

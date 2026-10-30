@@ -4,7 +4,7 @@
 use std::collections::{BTreeSet, HashSet};
 
 use super::catalog::{Catalog, unescape};
-use super::lang::{plural_czech, plural_east_slavic, plural_polish};
+use super::lang::{name_sort_key, plural_czech, plural_east_slavic, plural_polish};
 use super::{LANGUAGES, Lang, LangInfo, lang_from_tag, message, tr, trn};
 
 /// Each catalog's rows as (line number, context, source, translation), split exactly as the
@@ -126,9 +126,11 @@ fn complete_catalogs_cover_every_ui_literal() {
         include_str!("../app.rs"),
         include_str!("../details.rs"),
         include_str!("../dialogs.rs"),
+        include_str!("../card_parts.rs"),
         include_str!("../model.rs"),
         include_str!("../notes.rs"),
         include_str!("../settings.rs"),
+        include_str!("../settings_dialog.rs"),
         include_str!("../views.rs"),
         include_str!("../widgets.rs"),
         // The desktop shell's tray menu and tooltip.
@@ -268,6 +270,20 @@ fn locale_tags_resolve() {
     assert_eq!(lang_from_tag("xx-XX"), None);
     assert_eq!(lang_from_tag(""), None);
     assert_eq!(super::detect::first_supported(["xx-XX", "ru-RU", "en-US"]), Some(Lang::RU));
+}
+
+#[test]
+fn an_abusive_locale_tag_is_bounded() {
+    // The web shell reads `#?lang=` straight from the URL. A tag of thousands of one-character
+    // subtags must not trigger quadratic prefix allocation (CWE-400): it is rejected outright,
+    // and resolution still falls back to English.
+    let huge = "a-".repeat(100_000);
+    assert_eq!(lang_from_tag(&huge), None);
+    assert_eq!(super::detect::first_supported([huge.as_str(), "en-US"]), Some(Lang::EN));
+    // An over-long single tag is rejected too, without scanning its whole length into candidates.
+    assert_eq!(lang_from_tag(&"x".repeat(10_000)), None);
+    // Legitimate multi-subtag tags still resolve.
+    assert_eq!(lang_from_tag("zh-Hans-CN"), Some(Lang::ZH_CN));
 }
 
 #[test]
@@ -515,13 +531,36 @@ fn message_templates_match_real_messages() {
 #[test]
 fn complete_catalogs_translate_package_formats() {
     use artcraft_launcher_core::PackageKind;
-    let kinds =
-        [PackageKind::Msi, PackageKind::PortableZip, PackageKind::Dmg, PackageKind::Deb, PackageKind::Rpm, PackageKind::Flatpak, PackageKind::TarGz];
+    let kinds = [
+        PackageKind::Msi,
+        PackageKind::PortableZip,
+        PackageKind::Dmg,
+        PackageKind::Deb,
+        PackageKind::Rpm,
+        PackageKind::ArchPkg,
+        PackageKind::Flatpak,
+        PackageKind::TarGz,
+    ];
     for lang in Lang::all().filter(|l| l.complete_menus()) {
         for kind in kinds {
             assert!(super::has(lang, kind.label()), "{}: {}", lang.code(), kind.label());
         }
     }
+}
+
+#[test]
+fn picker_lists_english_first_then_names_alphabetically() {
+    let order = Lang::for_picker();
+    assert_eq!(order.first().map(|l| l.code()), Some("en"));
+    assert_eq!(order.len(), Lang::all().count());
+    let keys: Vec<String> = order[1..].iter().map(|l| name_sort_key(l.name())).collect();
+    assert!(keys.windows(2).all(|w| w[0] <= w[1]), "{keys:?}");
+    let pos = |code: &str| order.iter().position(|l| l.code() == code).unwrap_or_else(|| panic!("{code} registered"));
+    assert!(pos("cs") < pos("de"), "Čeština sorts under C, not after Z");
+    assert!(pos("fr") < pos("hu"), "Magyar sorts under M, not under its code");
+    assert!(pos("pt-BR") < pos("ru"), "Latin names come before Cyrillic");
+    assert!(pos("ru") < pos("ja"), "Cyrillic names come before CJK");
+    assert_eq!(name_sort_key("Čeština"), "cestina");
 }
 
 /// Persian does not depend on workstation fonts, including in the browser build.
@@ -558,4 +597,21 @@ fn bundled_font_covers_persian_in_every_ui_family() {
             )
         });
     }
+}
+
+/// Bidi comes from the same pinned egui fork as the English UI, with no pre-reordered text.
+#[test]
+fn persian_uses_native_logical_text_and_visual_glyph_positions() {
+    let ctx = egui::Context::default();
+    crate::theme::install_fonts(&ctx, None);
+    let mut output = ctx.run_ui(egui::RawInput::default(), |ui| {
+        let text = "سلام 12";
+        let galley = ui.painter().layout_no_wrap(text.into(), egui::FontId::proportional(15.0), egui::Color32::WHITE);
+        assert_eq!(galley.job.text, text);
+        let glyphs = &galley.rows[0].row.glyphs;
+        let x = |c| glyphs.iter().find(|g| g.chr == c).expect("native glyph").pos.x;
+        assert!(x('س') > x('م'), "Persian word reads right to left");
+        assert!(x('1') < x('2'), "technical numbers retain their order");
+    });
+    output.textures_delta.clear();
 }

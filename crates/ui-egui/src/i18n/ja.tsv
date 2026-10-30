@@ -23,6 +23,7 @@
 
 	Launcher	Launcher
 	Craft App Suite	Craft App Suite
+	by {name}	{name} 提供
 	Open Source Tools for Creatives, Makers, and Builders	クリエイター、メイカー、ビルダーのためのオープンソースツール
 	Settings	設定
 	Check for updates	更新を確認
@@ -79,6 +80,7 @@
 	Dismiss	閉じる
 	Update and restart	更新して再起動
 	A new version is available. Would you like to relaunch with the updated version?	新しいバージョンがあります。更新後のバージョンで再起動しますか？
+	A new version is available. Download it to replace this version?	新しいバージョンがあります。ダウンロードしてこのバージョンと置き換えますか？
 	Later	後で
 	What's new	新着情報
 	No notes were published with this release.	このリリースにはリリースノートが公開されていません。
@@ -97,6 +99,8 @@
 	Updates always use the format an app was installed with.	更新は常に、アプリをインストールしたときの形式で行われます。
 	Running in the background	バックグラウンドで実行
 	Keep running in the tray when the window is closed	ウィンドウを閉じてもトレイで実行し続ける
+	ArtCraft Launcher is still running	ArtCraft Launcher は実行中です
+	It's in the tray: open it or quit it from the tray icon, or turn this off in the settings.	トレイに入りました。トレイのアイコンから開くか終了できます。設定でこの動作を無効にすることもできます。
 	Show the window on the current desktop	現在のデスクトップにウィンドウを表示
 	Start ArtCraft Launcher when I log in	ログイン時に ArtCraft Launcher を起動
 	Community	コミュニティ
@@ -157,6 +161,7 @@
 	Disk image (.dmg)	ディスクイメージ (.dmg)
 	Debian package (.deb)	Debian パッケージ (.deb)
 	RPM package (.rpm)	RPM パッケージ (.rpm)
+	Arch package (.pkg.tar.zst)	Arch パッケージ (.pkg.tar.zst)
 	Flatpak bundle	Flatpak バンドル
 	Tarball (.tar.gz)	tarball (.tar.gz)
 
@@ -171,6 +176,7 @@ designcraft	Page layout and publishing	ページレイアウトと出版
 wordcraft	Writing and document design	文書作成とデザイン
 deckcraft	Presentations and slide shows	プレゼンテーションとスライドショー
 gridcraft	Spreadsheets and data	表計算とデータ
+solidcraft	Parametric 3D CAD	パラメトリック3D CAD
 cadcraft	Computer-aided design and drafting	コンピューター支援設計と製図
 soundcraft	Recording, editing and mixing audio	オーディオの録音、編集、ミックス
 figcraft	Interface design and prototyping	インターフェースデザインとプロトタイピング
@@ -266,6 +272,7 @@ column	Released	公開日
 # Contextual: the filter tab names a group (the status pill says "Installed")
 filter	Installed	インストール済み
 	App details	アプリの詳細
+	More actions for {name}	{name} のその他の操作
 	Close (Esc)	閉じる (Esc)
 	Features	機能
 	Latest release	最新リリース
@@ -295,6 +302,10 @@ filter	Installed	インストール済み
 @msg	{name} installed: {version} (this release publishes no checksum, so only its size was checked)	{name} をインストールしました: {version}（このリリースはチェックサムを公開していないため、サイズのみ確認しました）
 @msg	{name} was removed	{name} をアンインストールしました
 @msg	{name} is running. Quit it, then try again.	{name} が実行中です。終了してから再試行してください。
+@msg	{name} was installed from the {repo} repository or the AUR ({pkg}). Update it with {cmd} or sudo pacman -Syu	{name} は {repo} リポジトリまたは AUR からインストールされています ({pkg})。{cmd} または sudo pacman -Syu で更新してください。
+@msg	{name} was installed from the {repo} repository or the AUR ({pkg}). Update it with your AUR helper (for example: yay -S {pkg}) or sudo pacman -Syu	{name} は {repo} リポジトリまたは AUR からインストールされています ({pkg})。AUR ヘルパー (例: yay -S {pkg}) または sudo pacman -Syu で更新してください。
+@msg	{name} was installed from the AUR ({pkg}). Update it with {cmd}	{name} は AUR からインストールされています ({pkg})。{cmd} で更新してください。
+@msg	{name} was installed from the AUR ({pkg}). Update it with your AUR helper (for example: yay -S {pkg})	{name} は AUR からインストールされています ({pkg})。AUR ヘルパー (例: yay -S {pkg}) で更新してください。
 
 # Command IDs for menu items (@id)
 # Format: @id<TAB>command_id<TAB>translation
@@ -355,6 +366,7 @@ filter	Installed	インストール済み
 	Use default	既定を使用
 	New installs use this folder. Updates stay in their current location.	新しいインストールにはこのフォルダーを使用します。更新時は現在の場所を維持します。
 	Custom folders use AppImage on Linux.	Linuxで任意のフォルダーにインストールする場合はAppImageを使用します。
+	On Linux, custom folders use AppImage format.	Linuxで任意のフォルダーにインストールする場合はAppImageを使用します。
 	The system manages install locations here.	この環境ではシステムがインストール先を管理します。
 @msg	couldn't use install folder {path}: {reason}	インストール先フォルダー {path} を使用できませんでした: {reason}
 @msg	this release has no AppImage for a custom install folder	このリリースには任意のインストール先フォルダーで使用できるAppImageがありません
@@ -365,3 +377,24 @@ filter	Installed	インストール済み
 	Replace what's there?	既存の項目を置き換えますか？
 	{path} already exists. Installing {name} will overwrite it.	{path} は既に存在します。{name} をインストールすると上書きされます。
 	Replace	置き換える
+	Recently updated	最近更新
+	Name (A–Z)	名前 (A–Z)
+	Name (Z–A)	名前 (Z–A)
+	Frequently used	よく使う順
+	Next app	次のアプリ
+	Previous app	前のアプリ
+	Show {n} more changes	さらに{n}件の変更を表示
+	Last updated: {date}	最終更新: {date}
+column	Version	バージョン
+column	Author	作者
+	Choose version	バージョンを選択
+	latest {version}	最新 {version}
+	{version} (latest release)	{version}（最新リリース）
+	Launcher version	ランチャーのバージョン
+	Nightly	ナイトリービルド
+	Nightly (none published yet)	ナイトリービルド（未公開）
+	Install version {version}	バージョン {version} をインストール
+	Download selected version	選択したバージョンをダウンロード
+	Older launcher versions require a manual reinstall.	古いランチャーに戻すには手動で再インストールする必要があります。
+	Your files may not open in older versions.	古いバージョンではファイルを開けない場合があります。
+	Enable automatic installs in Settings to follow new nightly builds.	新しいナイトリービルドを自動的に受け取るには、設定で自動インストールを有効にしてください。

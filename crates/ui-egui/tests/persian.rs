@@ -216,7 +216,7 @@ fn check_details(h: &mut Harness<'_, Option<LauncherUi>>) {
     assert_eq!(tr_ctx(Lang::FA, "photocraft", changed), changed);
     h.get_by_label("جزئیات PhotoCraft").click();
     h.run_steps(12);
-    h.get_by_label("ویرایشگر تصویری که کار با آن را از قبل بلدید.");
+    h.get_all_by_label("ویرایشگر تصویری که کار با آن را از قبل بلدید.").last().unwrap();
     h.get_by_label("وب‌سایت ↗");
     snapshot(h, "details-photo-fa-dark");
     if let Some(l) = h.state_mut().as_mut() {
@@ -245,7 +245,7 @@ fn check_details(h: &mut Harness<'_, Option<LauncherUi>>) {
     h.run_steps(6);
     h.get_by_label("جزئیات EffectCraft").click();
     h.run_steps(12);
-    h.get_by_label("موشن‌گرافیک و جلوه‌های بصری، ساخته‌شده با Rust.").scroll_to_me();
+    h.get_all_by_label("Motion graphics and visual effects.").last().unwrap().scroll_to_me();
     h.run_steps(8);
     snapshot(h, "details-effect-fa-narrow");
     h.get_by_label("انیمیشن‌سازی با روشی آشنا").scroll_to_me();
@@ -260,7 +260,7 @@ fn check_details(h: &mut Harness<'_, Option<LauncherUi>>) {
 fn check_popups(h: &mut Harness<'_, Option<LauncherUi>>) {
     use artcraft_launcher_ui_egui::settings::{CheckEvery, SortKey};
     // The first menu belongs to PhotoCraft, an installed app with a newer release.
-    h.get_all_by_label("…").next().unwrap().click();
+    h.get_by_label("گزینه‌های بیشتر برای PhotoCraft").click();
     h.run_steps(6);
     let notes = h.get_by_label("یادداشت‌های انتشار").rect();
     let reveal = h.get_by_label("نمایش در Finder").rect();
@@ -278,7 +278,7 @@ fn check_popups(h: &mut Harness<'_, Option<LauncherUi>>) {
     h.run_steps(5);
     h.key_press(egui::Key::Escape);
     h.run_steps(6);
-    h.get_by_label("ترتیب مجموعه").click();
+    h.get_by_role_and_label(egui::accesskit::Role::ComboBox, "مرتب‌سازی").click();
     h.run_steps(6);
     snapshot(h, "sort-menu-fa-dark");
     h.set_size(egui::vec2(860.0, 600.0));
@@ -286,7 +286,7 @@ fn check_popups(h: &mut Harness<'_, Option<LauncherUi>>) {
     snapshot(h, "sort-menu-fa-narrow");
     h.set_size(egui::vec2(1180.0, 900.0));
     h.run_steps(6);
-    h.get_by_label("نام").click();
+    h.get_by_label("نام (الف تا ی)").click();
     h.run_steps(6);
     assert_eq!(h.state().as_ref().unwrap().settings.sort, SortKey::Name);
     if let Some(l) = h.state_mut().as_mut() {
@@ -313,11 +313,11 @@ fn check_popups(h: &mut Harness<'_, Option<LauncherUi>>) {
         .get_all_by_role(egui::accesskit::Role::ScrollBar)
         .find(|node| {
             let r = node.rect();
-            r.left() > option.right() && r.left() < option.right() + 40.0 && r.top() < option.bottom() && r.bottom() > option.top()
+            r.right() < option.left() && r.right() > option.left() - 40.0 && r.top() < option.bottom() && r.bottom() > option.top()
         })
         .expect("the language list has its own reserved scrollbar")
         .rect();
-    assert!(scroll.left() - option.right() >= 10.0, "scrollbar does not overlap RTL menu rows");
+    assert!(option.left() - scroll.right() >= 10.0, "scrollbar does not overlap RTL menu rows");
     h.key_press(egui::Key::Escape);
     h.run_steps(6);
     h.get_by_label("بستن").click();

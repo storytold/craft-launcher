@@ -21,6 +21,7 @@
 
 	Launcher	Launcher
 	Craft App Suite	Craft App Suite
+	by {name}	készítette: {name}
 	Open Source Tools for Creatives, Makers, and Builders	Nyílt forráskódú eszközök alkotóknak, barkácsolóknak és fejlesztőknek
 	Settings	Beállítások
 	Check for updates	Frissítések keresése
@@ -77,6 +78,7 @@
 	Dismiss	Elrejtés
 	Update and restart	Frissítés és újraindítás
 	A new version is available. Would you like to relaunch with the updated version?	Új verzió érhető el. Újraindítod az alkalmazást a frissítéshez?
+	A new version is available. Download it to replace this version?	Új verzió érhető el. Letöltöd, hogy lecseréld vele ezt a verziót?
 	Later	Később
 	What's new	Újdonságok
 	No notes were published with this release.	Ehhez a kiadáshoz nem tettek közzé kiadási információkat.
@@ -95,6 +97,8 @@
 	Updates always use the format an app was installed with.	A frissítések mindig az eredeti telepítés csomagformátumát használják.
 	Running in the background	Futtatás a háttérben
 	Keep running in the tray when the window is closed	Az ablak bezárásakor kerüljön a tálcára
+	ArtCraft Launcher is still running	Az ArtCraft Launcher továbbra is fut
+	It's in the tray: open it or quit it from the tray icon, or turn this off in the settings.	A tálcára került: az ikonjáról megnyitható vagy bezárható, vagy kapcsolja ki ezt a beállításokban.
 	Show the window on the current desktop	Ablak megjelenítése az aktuális asztalon
 	Start ArtCraft Launcher when I log in	ArtCraft Launcher indítása bejelentkezéskor
 	Community	Közösség
@@ -155,6 +159,7 @@
 	Disk image (.dmg)	Lemezkép (.dmg)
 	Debian package (.deb)	Debian-csomag (.deb)
 	RPM package (.rpm)	RPM-csomag (.rpm)
+	Arch package (.pkg.tar.zst)	Arch-csomag (.pkg.tar.zst)
 	Flatpak bundle	Flatpak-csomag
 	Tarball (.tar.gz)	Tömörített archívum (.tar.gz)
 
@@ -169,6 +174,7 @@ designcraft	Page layout and publishing	Oldaltervezés és kiadványszerkesztés
 wordcraft	Writing and document design	Írás és dokumentumtervezés
 deckcraft	Presentations and slide shows	Prezentációk és diavetítések
 gridcraft	Spreadsheets and data	Táblázatok és adatok
+solidcraft	Parametric 3D CAD	Paraméteres 3D CAD
 cadcraft	Computer-aided design and drafting	Számítógépes tervezés és műszaki rajz
 soundcraft	Recording, editing and mixing audio	Hangrögzítés, hangszerkesztés és keverés
 figcraft	Interface design and prototyping	Felülettervezés és prototípus-készítés
@@ -264,6 +270,7 @@ column	Released	Dátum
 # Contextual: the filter tab names a group (the status pill says "Installed")
 filter	Installed	Telepítve
 	App details	Alkalmazás részletei
+	More actions for {name}	További műveletek: {name}
 	Close (Esc)	Bezárás (Esc)
 	Features	Funkciók
 	Latest release	Legújabb kiadás
@@ -293,6 +300,10 @@ filter	Installed	Telepítve
 @msg	{name} installed: {version} (this release publishes no checksum, so only its size was checked)	{name} telepítve: {version} (ehhez a kiadáshoz nem adtak meg ellenőrzőösszeget, ezért csak a fájl méretét ellenőriztük)
 @msg	{name} was removed	{name} eltávolítva
 @msg	{name} is running. Quit it, then try again.	{name} fut. Zárd be, majd próbáld újra.
+@msg	{name} was installed from the {repo} repository or the AUR ({pkg}). Update it with {cmd} or sudo pacman -Syu	{name} a(z) {repo} tárolóból vagy az AUR-ból lett telepítve ({pkg}). Frissítsd ezzel: {cmd} vagy sudo pacman -Syu
+@msg	{name} was installed from the {repo} repository or the AUR ({pkg}). Update it with your AUR helper (for example: yay -S {pkg}) or sudo pacman -Syu	{name} a(z) {repo} tárolóból vagy az AUR-ból lett telepítve ({pkg}). Frissítsd az AUR-segédeddel (például: yay -S {pkg}) vagy ezzel: sudo pacman -Syu
+@msg	{name} was installed from the AUR ({pkg}). Update it with {cmd}	{name} az AUR-ból lett telepítve ({pkg}). Frissítsd ezzel: {cmd}
+@msg	{name} was installed from the AUR ({pkg}). Update it with your AUR helper (for example: yay -S {pkg})	{name} az AUR-ból lett telepítve ({pkg}). Frissítsd az AUR-segédeddel (például: yay -S {pkg})
 
 # Command IDs for menu items (@id)
 # Format: @id<TAB>command_id<TAB>translation
@@ -353,6 +364,7 @@ filter	Installed	Telepítve
 	Use default	Alapértelmezett használata
 	New installs use this folder. Updates stay in their current location.	Az új telepítések ezt a mappát használják. A frissítések a jelenlegi helyükön maradnak.
 	Custom folders use AppImage on Linux.	Linuxon az egyéni mappákhoz AppImage szükséges.
+	On Linux, custom folders use AppImage format.	Linuxon az egyéni mappákhoz AppImage szükséges.
 	The system manages install locations here.	Itt a rendszer kezeli a telepítési helyeket.
 @msg	couldn't use install folder {path}: {reason}	a(z) {path} telepítési mappa nem használható: {reason}
 @msg	this release has no AppImage for a custom install folder	ez a kiadás nem tartalmaz AppImage-fájlt egyéni telepítési mappához
@@ -363,3 +375,24 @@ filter	Installed	Telepítve
 	Replace what's there?	Lecseréli, ami ott van?
 	{path} already exists. Installing {name} will overwrite it.	{path} már létezik. A(z) {name} telepítése felülírja.
 	Replace	Csere
+	Recently updated	Nemrég frissítve
+	Name (A–Z)	Név (A–Z)
+	Name (Z–A)	Név (Z–A)
+	Frequently used	Leggyakrabban használt
+	Next app	Következő alkalmazás
+	Previous app	Előző alkalmazás
+	Show {n} more changes	{n} további változás megjelenítése
+	Last updated: {date}	Utoljára frissítve: {date}
+column	Version	Verzió
+column	Author	Szerző
+	Choose version	Verzió kiválasztása
+	latest {version}	legújabb: {version}
+	{version} (latest release)	{version} (legújabb kiadás)
+	Launcher version	Az indító verziója
+	Nightly	Éjszakai kiadás
+	Nightly (none published yet)	Éjszakai kiadás (még nincs)
+	Install version {version}	A(z) {version} verzió telepítése
+	Download selected version	Kiválasztott verzió letöltése
+	Older launcher versions require a manual reinstall.	Az indító régebbi verzióit kézzel kell újratelepíteni.
+	Your files may not open in older versions.	Előfordulhat, hogy a régebbi verziók nem tudják megnyitni a fájljaidat.
+	Enable automatic installs in Settings to follow new nightly builds.	Az új éjszakai kiadások követéséhez kapcsold be az automatikus telepítést a beállításokban.

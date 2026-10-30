@@ -7,6 +7,7 @@
 
 	Launcher	Launcher
 	Craft App Suite	Craft App Suite
+	by {name}	由 {name} 提供
 	Open Source Tools for Creatives, Makers, and Builders	为创作者和开发者打造的开源工具
 	Settings	设置
 	Check for updates	检查更新
@@ -59,6 +60,7 @@
 	Dismiss	忽略
 	Update and restart	更新并重启
 	A new version is available. Would you like to relaunch with the updated version?	有新版本可用。是否使用更新后的版本重新启动？
+	A new version is available. Download it to replace this version?	有新版本可用。是否下载以替换当前版本？
 	Later	稍后
 	What's new	更新内容
 	No notes were published with this release.	此版本未提供更新说明。
@@ -77,6 +79,8 @@
 	Updates always use the format an app was installed with.	更新时始终使用应用原来的安装格式。
 	Running in the background	后台运行
 	Keep running in the tray when the window is closed	关闭窗口后继续在系统托盘中运行
+	ArtCraft Launcher is still running	ArtCraft Launcher 仍在运行
+	It's in the tray: open it or quit it from the tray icon, or turn this off in the settings.	它已进入系统托盘：可通过托盘图标打开或退出，也可在设置中关闭此行为。
 	Show the window on the current desktop	在当前桌面显示窗口
 	Start ArtCraft Launcher when I log in	登录时启动 ArtCraft Launcher
 	Community	社区
@@ -246,6 +250,7 @@ designcraft	Page layout and publishing	页面排版与出版
 wordcraft	Writing and document design	写作与文档设计
 deckcraft	Presentations and slide shows	演示文稿与幻灯片
 gridcraft	Spreadsheets and data	电子表格与数据处理
+solidcraft	Parametric 3D CAD	参数化三维 CAD
 cadcraft	Computer-aided design and drafting	计算机辅助设计与制图
 soundcraft	Recording, editing and mixing audio	音频录制、编辑与混音
 figcraft	Interface design and prototyping	界面设计与原型制作
@@ -288,9 +293,11 @@ figcraft	Interface design and prototyping	界面设计与原型制作
 	Disk image (.dmg)	磁盘映像 (.dmg)
 	Debian package (.deb)	Debian 软件包 (.deb)
 	RPM package (.rpm)	RPM 软件包 (.rpm)
+	Arch package (.pkg.tar.zst)	Arch 软件包 (.pkg.tar.zst)
 	Flatpak bundle	Flatpak 包
 	Tarball (.tar.gz)	压缩包 (.tar.gz)
 	App details	应用详情
+	More actions for {name}	{name} 的更多操作
 	Close (Esc)	关闭（Esc）
 	Features	功能特性
 	Latest release	最新发布
@@ -313,6 +320,10 @@ figcraft	Interface design and prototyping	界面设计与原型制作
 @msg	{name} installed: {version} (this release publishes no checksum, so only its size was checked)	{name} 已安装：{version}（此版本未发布校验和，因此只检查了文件大小）
 @msg	{name} was removed	{name} 已卸载
 @msg	{name} is running. Quit it, then try again.	{name} 正在运行。请先退出，然后重试。
+@msg	{name} was installed from the {repo} repository or the AUR ({pkg}). Update it with {cmd} or sudo pacman -Syu	{name} 是从 {repo} 软件仓库或 AUR 安装的（{pkg}）。请使用 {cmd} 或 sudo pacman -Syu 更新。
+@msg	{name} was installed from the {repo} repository or the AUR ({pkg}). Update it with your AUR helper (for example: yay -S {pkg}) or sudo pacman -Syu	{name} 是从 {repo} 软件仓库或 AUR 安装的（{pkg}）。请使用您的 AUR 助手（例如：yay -S {pkg}）或 sudo pacman -Syu 更新。
+@msg	{name} was installed from the AUR ({pkg}). Update it with {cmd}	{name} 是从 AUR 安装的（{pkg}）。请使用 {cmd} 更新。
+@msg	{name} was installed from the AUR ({pkg}). Update it with your AUR helper (for example: yay -S {pkg})	{name} 是从 AUR 安装的（{pkg}）。请使用您的 AUR 助手（例如：yay -S {pkg}）更新。
 	Install folder	安装文件夹
 	Default install folder	默认安装文件夹
 	System default	系统默认
@@ -320,6 +331,7 @@ figcraft	Interface design and prototyping	界面设计与原型制作
 	Use default	使用默认
 	New installs use this folder. Updates stay in their current location.	新安装的应用使用此文件夹。更新时保留当前位置。
 	Custom folders use AppImage on Linux.	在 Linux 上，自定义文件夹使用 AppImage。
+	On Linux, custom folders use AppImage format.	在 Linux 上，自定义文件夹使用 AppImage。
 	The system manages install locations here.	此环境中的安装位置由系统管理。
 @msg	couldn't use install folder {path}: {reason}	无法使用安装文件夹 {path}：{reason}
 @msg	this release has no AppImage for a custom install folder	此版本没有可用于自定义安装文件夹的 AppImage
@@ -330,3 +342,24 @@ figcraft	Interface design and prototyping	界面设计与原型制作
 	Replace what's there?	替换现有内容？
 	{path} already exists. Installing {name} will overwrite it.	{path} 已存在。安装 {name} 将覆盖它。
 	Replace	替换
+	Recently updated	最近更新
+	Name (A–Z)	名称 (A–Z)
+	Name (Z–A)	名称 (Z–A)
+	Frequently used	最常使用
+	Next app	下一个应用
+	Previous app	上一个应用
+	Show {n} more changes	显示另外 {n} 项更改
+	Last updated: {date}	最后更新：{date}
+column	Author	作者
+column	Version	版本
+	Choose version	选择版本
+	latest {version}	最新 {version}
+	{version} (latest release)	{version}（最新发布）
+	Launcher version	启动器版本
+	Nightly	每日构建版
+	Nightly (none published yet)	每日构建版（尚未发布）
+	Install version {version}	安装版本 {version}
+	Download selected version	下载所选版本
+	Older launcher versions require a manual reinstall.	旧版启动器需要手动重新安装。
+	Your files may not open in older versions.	旧版可能无法打开你的文件。
+	Enable automatic installs in Settings to follow new nightly builds.	在设置中启用自动安装，即可跟进新的每日构建版。

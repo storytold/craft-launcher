@@ -21,6 +21,7 @@
 
 	Launcher	Launcher
 	Craft App Suite	Craft App Suite
+	by {name}	von {name}
 	Open Source Tools for Creatives, Makers, and Builders	Open-Source-Werkzeuge für Kreative, Maker und Entwickler
 	Settings	Einstellungen
 	Check for updates	Nach Updates suchen
@@ -77,6 +78,7 @@
 	Dismiss	Ausblenden
 	Update and restart	Aktualisieren und neu starten
 	A new version is available. Would you like to relaunch with the updated version?	Eine neue Version ist verfügbar. Mit der neuen Version neu starten?
+	A new version is available. Download it to replace this version?	Eine neue Version ist verfügbar. Herunterladen, um diese Version zu ersetzen?
 	Later	Später
 	What's new	Neuigkeiten
 	No notes were published with this release.	Zu dieser Version wurden keine Hinweise veröffentlicht.
@@ -95,6 +97,8 @@
 	Updates always use the format an app was installed with.	Updates verwenden immer das Format, mit dem eine App installiert wurde.
 	Running in the background	Im Hintergrund ausführen
 	Keep running in the tray when the window is closed	Beim Schließen des Fensters im Infobereich weiterlaufen
+	ArtCraft Launcher is still running	ArtCraft Launcher läuft weiter
+	It's in the tray: open it or quit it from the tray icon, or turn this off in the settings.	Er ist im Infobereich: dort über das Symbol öffnen oder beenden, oder das in den Einstellungen abschalten.
 	Show the window on the current desktop	Fenster auf dem aktuellen Schreibtisch zeigen
 	Start ArtCraft Launcher when I log in	ArtCraft Launcher bei der Anmeldung starten
 	Community	Community
@@ -155,6 +159,7 @@
 	Disk image (.dmg)	Disk-Image (.dmg)
 	Debian package (.deb)	Debian-Paket (.deb)
 	RPM package (.rpm)	RPM-Paket (.rpm)
+	Arch package (.pkg.tar.zst)	Arch-Paket (.pkg.tar.zst)
 	Flatpak bundle	Flatpak-Bundle
 	Tarball (.tar.gz)	Tar-Archiv (.tar.gz)
 
@@ -169,6 +174,7 @@ designcraft	Page layout and publishing	Seitenlayout und Publishing
 wordcraft	Writing and document design	Schreiben und Dokumentgestaltung
 deckcraft	Presentations and slide shows	Präsentationen und Diashows
 gridcraft	Spreadsheets and data	Tabellenkalkulation und Daten
+solidcraft	Parametric 3D CAD	Parametrisches 3D-CAD
 cadcraft	Computer-aided design and drafting	Computergestütztes Konstruieren und Zeichnen
 soundcraft	Recording, editing and mixing audio	Audio aufnehmen, bearbeiten und mischen
 figcraft	Interface design and prototyping	Interface-Design und Prototyping
@@ -279,6 +285,10 @@ filter	Installed	Installiert
 @msg	{name} installed: {version} (this release publishes no checksum, so only its size was checked)	{name} installiert: {version} (diese Version veröffentlicht keine Prüfsumme, daher wurde nur die Größe geprüft)
 @msg	{name} was removed	{name} wurde entfernt
 @msg	{name} is running. Quit it, then try again.	{name} läuft. Beende die App und versuche es erneut.
+@msg	{name} was installed from the {repo} repository or the AUR ({pkg}). Update it with {cmd} or sudo pacman -Syu	{name} wurde aus dem Repository {repo} oder dem AUR installiert ({pkg}). Aktualisiere die App mit {cmd} oder sudo pacman -Syu
+@msg	{name} was installed from the {repo} repository or the AUR ({pkg}). Update it with your AUR helper (for example: yay -S {pkg}) or sudo pacman -Syu	{name} wurde aus dem Repository {repo} oder dem AUR installiert ({pkg}). Aktualisiere die App mit deinem AUR-Hilfsprogramm (zum Beispiel: yay -S {pkg}) oder sudo pacman -Syu
+@msg	{name} was installed from the AUR ({pkg}). Update it with {cmd}	{name} wurde aus dem AUR installiert ({pkg}). Aktualisiere die App mit {cmd}
+@msg	{name} was installed from the AUR ({pkg}). Update it with your AUR helper (for example: yay -S {pkg})	{name} wurde aus dem AUR installiert ({pkg}). Aktualisiere die App mit deinem AUR-Hilfsprogramm (zum Beispiel: yay -S {pkg})
 
 # Command IDs for menu items (@id)
 # Format: @id<TAB>command_id<TAB>translation
@@ -332,6 +342,7 @@ filter	Installed	Installiert
 	ArtCraft on GitHub	ArtCraft auf GitHub
 	Join the ArtCraft Discord	Dem ArtCraft-Discord beitreten
 	App details	App-Details
+	More actions for {name}	Weitere Aktionen für {name}
 	Close (Esc)	Schließen (Esc)
 	Features	Funktionen
 	Latest release	Neueste Version
@@ -352,6 +363,7 @@ filter	Installed	Installiert
 	Use default	Standard verwenden
 	New installs use this folder. Updates stay in their current location.	Neue Installationen verwenden diesen Ordner. Updates bleiben am bisherigen Speicherort.
 	Custom folders use AppImage on Linux.	Für eigene Ordner wird unter Linux AppImage verwendet.
+	On Linux, custom folders use AppImage format.	Für eigene Ordner wird unter Linux AppImage verwendet.
 	The system manages install locations here.	Das System verwaltet hier die Installationsorte.
 @msg	couldn't use install folder {path}: {reason}	Installationsordner {path} konnte nicht verwendet werden: {reason}
 @msg	this release has no AppImage for a custom install folder	diese Veröffentlichung enthält kein AppImage für einen eigenen Installationsordner
@@ -362,3 +374,24 @@ filter	Installed	Installiert
 	Replace what's there?	Vorhandenes ersetzen?
 	{path} already exists. Installing {name} will overwrite it.	{path} existiert bereits. Die Installation von {name} überschreibt es.
 	Replace	Ersetzen
+	Recently updated	Zuletzt aktualisiert
+	Name (A–Z)	Name (A–Z)
+	Name (Z–A)	Name (Z–A)
+	Frequently used	Am häufigsten genutzt
+	Next app	Nächste App
+	Previous app	Vorherige App
+	Show {n} more changes	{n} weitere Änderungen anzeigen
+	Last updated: {date}	Zuletzt aktualisiert: {date}
+column	Version	Version
+column	Author	Autor
+	Choose version	Version auswählen
+	latest {version}	neueste {version}
+	{version} (latest release)	{version} (neueste Version)
+	Launcher version	Launcher-Version
+	Nightly	Nightly
+	Nightly (none published yet)	Nightly (noch keins veröffentlicht)
+	Install version {version}	Version {version} installieren
+	Download selected version	Ausgewählte Version herunterladen
+	Older launcher versions require a manual reinstall.	Ältere Launcher-Versionen müssen manuell neu installiert werden.
+	Your files may not open in older versions.	Ältere Versionen können deine Dateien möglicherweise nicht öffnen.
+	Enable automatic installs in Settings to follow new nightly builds.	Aktiviere automatische Installationen in den Einstellungen, um neuen Nightly-Builds zu folgen.

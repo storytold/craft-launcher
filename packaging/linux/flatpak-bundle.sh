@@ -22,7 +22,7 @@ FLATHUB=https://dl.flathub.org/repo/flathub.flatpakrepo
 
 TEST=1
 TARBALL=""
-while [ $# -gt 0 ]; do
+while [[ $# -gt 0 ]]; do
   case "$1" in
     --no-test) TEST=0; shift ;;
     -h | --help) sed -n '2,14p' "$0"; exit 0 ;;
@@ -39,7 +39,7 @@ case "$ARCH" in
 esac
 BASENAME="$PKG-$VERSION-linux-$ARCH"
 TARBALL="${TARBALL:-$DIST/$BASENAME.tar.gz}"
-[ -f "$TARBALL" ] || { echo "error: $TARBALL not found (run packaging/linux/package.sh --formats tar first)" >&2; exit 1; }
+[[ -f "$TARBALL" ]] || { echo "error: $TARBALL not found (run packaging/linux/package.sh --formats tar first)" >&2; exit 1; }
 for tool in flatpak flatpak-builder; do
   command -v "$tool" >/dev/null || { echo "error: $tool not found (apt install flatpak flatpak-builder librsvg2-common)" >&2; exit 1; }
 done
@@ -50,7 +50,7 @@ WORK="$CARGO_TARGET_DIR/flatpak-bundle"
 rm -rf "$WORK"
 mkdir -p "$WORK/stage"
 tar -xzf "$TARBALL" -C "$WORK/stage" --strip-components=1
-[ -x "$WORK/stage/bin/$PKG" ] || { echo "error: $TARBALL has no bin/$PKG" >&2; exit 1; }
+[[ -x "$WORK/stage/bin/$PKG" ]] || { echo "error: $TARBALL has no bin/$PKG" >&2; exit 1; }
 cp "$HERE/flatpak/$APP_ID.bundle.yml" "$WORK/$APP_ID.yml"
 
 flatpak remote-add --user --if-not-exists flathub "$FLATHUB"
@@ -63,7 +63,7 @@ OUT="$DIST/$BASENAME.flatpak"
 flatpak build-bundle --runtime-repo="$FLATHUB" "$WORK/repo" "$OUT" "$APP_ID" stable
 echo "wrote $OUT"
 
-if [ "$TEST" = 1 ]; then
+if [[ "$TEST" = 1 ]]; then
   flatpak install --user -y --noninteractive --reinstall "$OUT"
   flatpak info --user "$APP_ID"
   flatpak run --command=sh "$APP_ID" -c 'test -x /app/bin/artcraft-launcher && ls /app/share/applications /app/share/metainfo /app/share/icons/hicolor/scalable/apps'

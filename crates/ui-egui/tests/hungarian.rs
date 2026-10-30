@@ -125,7 +125,7 @@ fn hungarian_ui_translates_labels_dates_and_messages() {
     h.run_steps(8);
     snapshot(&mut h, "grid-hu-dark");
     // Product names stay in English.
-    h.get_by_label("Launcher");
+    assert!(h.query_by_label("Launcher").is_none());
     h.get_by_label("Craft App Suite");
     h.get_by_label("Képszerkesztés");
     h.get_by_label("Frissítés: 0.5.0");
@@ -136,7 +136,7 @@ fn hungarian_ui_translates_labels_dates_and_messages() {
     let mut table = harness(ViewMode::Table);
     table.run_steps(8);
     snapshot(&mut table, "table-hu-dark");
-    table.get_by_label("Telepített");
+    table.get_by_label("Verzió");
     assert!(table.query_all_by_label_contains("2026. aug.").count() >= 1);
     check_settings_layout();
 }
@@ -158,20 +158,24 @@ fn check_settings_layout() {
         assert!(!done.intersects(quit));
         let title = h.get_all_by_label("Beállítások").last().unwrap().rect();
         assert!(screen.contains_rect(title), "{width}x{height}: title is clipped: {title:?}");
+        // The community links and the appearance choices sit in different columns (stacked, one
+        // under the other), so each is scrolled to in turn.
         h.get_by_label("Rendszerbeállítás szerint").scroll_to_me();
+        h.run_steps(8);
+        let theme = h.get_by_label("Rendszerbeállítás szerint").rect();
+        assert!(theme.bottom() < done.top(), "appearance controls must scroll above the fixed actions");
+        h.get_by_label("Csatlakozás a Discordhoz").scroll_to_me();
         h.run_steps(8);
         // The footer has the same services, and the cards behind the modal have Webhely and GitHub
         // links as one 14px line of text; keep only the settings body's buttons (34px) and icons (24px).
         let discord = h.get_by_label("Csatlakozás a Discordhoz").rect();
-        let theme = h.get_by_label("Rendszerbeállítás szerint").rect();
         assert!(screen.contains_rect(discord), "community links must be reachable by scrolling");
-        assert!(theme.bottom() < done.top(), "appearance controls must scroll above the fixed actions");
         let mut links = vec![discord];
         for label in ["Webhely", "GitHub", "X", "Instagram", "LinkedIn", "YouTube", "TikTok"] {
             let candidates: Vec<_> = h
                 .query_all_by_label(label)
                 .map(|n| n.rect())
-                .filter(|r| r.top() >= discord.top() - 1.0 && r.bottom() < theme.top() && r.height() > 20.0)
+                .filter(|r| r.top() >= discord.top() - 1.0 && r.bottom() < done.top() && r.height() > 20.0)
                 .collect();
             assert_eq!(candidates.len(), 1, "{width}x{height}: settings link {label}: {candidates:?}");
             links.extend(candidates);

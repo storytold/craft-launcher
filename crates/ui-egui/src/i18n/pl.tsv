@@ -21,6 +21,7 @@
 
 	Launcher	Launcher
 	Craft App Suite	Craft App Suite
+	by {name}	przez {name}
 	Open Source Tools for Creatives, Makers, and Builders	Narzędzia open source dla artystów, twórców i konstruktorów
 	Settings	Ustawienia
 	Check for updates	Sprawdź dostępność aktualizacji
@@ -78,6 +79,7 @@
 	Dismiss	Zamknij
 	Update and restart	Zaktualizuj i zrestartuj
 	A new version is available. Would you like to relaunch with the updated version?	Nowa wersja jest dostępna. Czy chcesz uruchomić ponownie ze zaktualizowaną wersją
+	A new version is available. Download it to replace this version?	Nowa wersja jest dostępna. Czy chcesz ją pobrać, aby zastąpić tę wersję?
 	Later	Później
 	What's new	Co nowego
 	No notes were published with this release.	Dla tego wydania nie opublikowano żadnych notatek.
@@ -96,6 +98,8 @@
 	Updates always use the format an app was installed with.	Aktualizacje zawsze używają formatu, w jakim pierwotnie zainstalowano aplikację.
 	Running in the background	Działanie w tle
 	Keep running in the tray when the window is closed	Po zamknięciu okna działaj w zasobniku systemowym
+	ArtCraft Launcher is still running	ArtCraft Launcher nadal działa
+	It's in the tray: open it or quit it from the tray icon, or turn this off in the settings.	Jest w zasobniku systemowym: otwórz go lub zamknij z jego ikony, albo wyłącz to w ustawieniach.
 	Show the window on the current desktop	Pokaż okno na bieżącym pulpicie
 	Start ArtCraft Launcher when I log in	Uruchom ArtCraft Launcher po zalogowaniu
 	Community	Społeczność
@@ -156,6 +160,7 @@
 	Disk image (.dmg)	Obraz dysku (.dmg)
 	Debian package (.deb)	Pakiet Debiana (.deb)
 	RPM package (.rpm)	Pakiet RPM (.rpm)
+	Arch package (.pkg.tar.zst)	Pakiet Arch (.pkg.tar.zst)
 	Flatpak bundle	Pakiet Flatpak
 	Tarball (.tar.gz)	Archiwum (.tar.gz)
 
@@ -170,6 +175,7 @@ designcraft	Page layout and publishing	Skład stron i publikowanie
 wordcraft	Writing and document design	Pisanie i projektowanie dokumentów
 deckcraft	Presentations and slide shows	Prezentacje i pokazy slajdów
 gridcraft	Spreadsheets and data	Arkusze kalkulacyjne i dane
+solidcraft	Parametric 3D CAD	Parametryczny CAD 3D
 cadcraft	Computer-aided design and drafting	Projektowanie i kreślenie wspomagane komputerowo
 soundcraft	Recording, editing and mixing audio	Nagrywanie, edycja i miksowanie dźwięku
 figcraft	Interface design and prototyping	Projektowanie interfejsów i prototypowanie
@@ -265,6 +271,7 @@ column	Released	Data wydania
 # Contextual: the filter tab names a group (the status pill says "Installed")
 filter	Installed	Zainstalowane
 	App details	Szczegóły aplikacji
+	More actions for {name}	Więcej działań: {name}
 	Close (Esc)	Zamknij (Esc)
 	Features	Funkcje
 	Latest release	Najnowsze wydanie
@@ -294,6 +301,10 @@ filter	Installed	Zainstalowane
 @msg	{name} installed: {version} (this release publishes no checksum, so only its size was checked)	Zainstalowano {name} w wersji {version} (to wydanie nie zawiera sumy kontrolnej, więc sprawdzono tylko rozmiar)
 @msg	{name} was removed	Usunięto {name}
 @msg	{name} is running. Quit it, then try again.	{name} jest uruchomiona. Zamknij ją i spróbuj ponownie.
+@msg	{name} was installed from the {repo} repository or the AUR ({pkg}). Update it with {cmd} or sudo pacman -Syu	{name} została zainstalowana z repozytorium {repo} lub AUR ({pkg}). Zaktualizuj ją poleceniem {cmd} lub sudo pacman -Syu
+@msg	{name} was installed from the {repo} repository or the AUR ({pkg}). Update it with your AUR helper (for example: yay -S {pkg}) or sudo pacman -Syu	{name} została zainstalowana z repozytorium {repo} lub AUR ({pkg}). Zaktualizuj ją za pomocą swojego pomocnika AUR (na przykład: yay -S {pkg}) lub poleceniem sudo pacman -Syu
+@msg	{name} was installed from the AUR ({pkg}). Update it with {cmd}	{name} została zainstalowana z AUR ({pkg}). Zaktualizuj ją poleceniem {cmd}
+@msg	{name} was installed from the AUR ({pkg}). Update it with your AUR helper (for example: yay -S {pkg})	{name} została zainstalowana z AUR ({pkg}). Zaktualizuj ją za pomocą swojego pomocnika AUR (na przykład: yay -S {pkg})
 
 # Command IDs for menu items (@id)
 # Format: @id<TAB>command_id<TAB>translation
@@ -354,6 +365,7 @@ filter	Installed	Zainstalowane
 	Use default	Użyj domyślnego
 	New installs use this folder. Updates stay in their current location.	Nowe instalacje używają tego folderu. Aktualizacje pozostają w obecnej lokalizacji.
 	Custom folders use AppImage on Linux.	W Linuksie własne foldery korzystają z formatu AppImage.
+	On Linux, custom folders use AppImage format.	W Linuksie własne foldery korzystają z formatu AppImage.
 	The system manages install locations here.	W tym środowisku system zarządza lokalizacjami instalacji.
 @msg	couldn't use install folder {path}: {reason}	nie można użyć folderu instalacji {path}: {reason}
 @msg	this release has no AppImage for a custom install folder	to wydanie nie zawiera AppImage dla własnego folderu instalacji
@@ -364,3 +376,24 @@ filter	Installed	Zainstalowane
 	Replace what's there?	Zastąpić to, co tam jest?
 	{path} already exists. Installing {name} will overwrite it.	{path} już istnieje. Instalacja {name} go nadpisze.
 	Replace	Zastąp
+	Recently updated	Ostatnio zaktualizowane
+	Name (A–Z)	Nazwa (A–Z)
+	Name (Z–A)	Nazwa (Z–A)
+	Frequently used	Najczęściej używane
+	Next app	Następna aplikacja
+	Previous app	Poprzednia aplikacja
+	Show {n} more changes	Pokaż {n} więcej zmian
+	Last updated: {date}	Ostatnia aktualizacja: {date}
+column	Version	Wersja
+column	Author	Autor
+	Choose version	Wybierz wersję
+	latest {version}	najnowsza {version}
+	{version} (latest release)	{version} (najnowsze wydanie)
+	Launcher version	Wersja programu uruchamiającego
+	Nightly	Wersja nocna
+	Nightly (none published yet)	Wersja nocna (jeszcze brak)
+	Install version {version}	Zainstaluj wersję {version}
+	Download selected version	Pobierz wybraną wersję
+	Older launcher versions require a manual reinstall.	Starsze wersje programu uruchamiającego wymagają ręcznej ponownej instalacji.
+	Your files may not open in older versions.	Starsza wersja może nie otwierać Twoich plików.
+	Enable automatic installs in Settings to follow new nightly builds.	Włącz automatyczne instalacje w Ustawieniach, aby otrzymywać nowe wersje nocne.

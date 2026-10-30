@@ -20,6 +20,7 @@
 
 	Launcher	Launcher
 	Craft App Suite	Craft App Suite
+	by {name}	от {name}
 	Open Source Tools for Creatives, Makers, and Builders	Инструменты с открытым кодом для творцов, мастеров и создателей
 	Settings	Настройки
 	Check for updates	Проверить обновления
@@ -75,6 +76,7 @@
 	Dismiss	Закрыть
 	Update and restart	Обновить и перезапустить
 	A new version is available. Would you like to relaunch with the updated version?	Доступна новая версия. Перезапустить с обновленной версией?
+	A new version is available. Download it to replace this version?	Доступна новая версия. Скачать её, чтобы заменить эту версию?
 	Later	Позже
 	What's new	Что нового
 	No notes were published with this release.	Заметки к этому релизу не публиковались.
@@ -93,6 +95,8 @@
 	Updates always use the format an app was installed with.	Обновления всегда используют формат, с которым приложение было установлено.
 	Running in the background	Работа в фоне
 	Keep running in the tray when the window is closed	Оставаться в трее при закрытии окна
+	ArtCraft Launcher is still running	ArtCraft Launcher продолжает работать
+	It's in the tray: open it or quit it from the tray icon, or turn this off in the settings.	Он в трее: откройте или закройте его через значок в трее, либо отключите это в настройках.
 	Show the window on the current desktop	Показывать окно на текущем рабочем столе
 	Start ArtCraft Launcher when I log in	Запускать ArtCraft Launcher при входе в систему
 	Community	Сообщество
@@ -153,6 +157,7 @@
 	Disk image (.dmg)	Образ диска (.dmg)
 	Debian package (.deb)	Пакет Debian (.deb)
 	RPM package (.rpm)	Пакет RPM (.rpm)
+	Arch package (.pkg.tar.zst)	Пакет Arch (.pkg.tar.zst)
 	Flatpak bundle	Пакет Flatpak
 	Tarball (.tar.gz)	Архив (.tar.gz)
 
@@ -167,6 +172,7 @@ designcraft	Page layout and publishing	Вёрстка и издательско�
 wordcraft	Writing and document design	Тексты и оформление документов
 deckcraft	Presentations and slide shows	Презентации и слайд-шоу
 gridcraft	Spreadsheets and data	Электронные таблицы и данные
+solidcraft	Parametric 3D CAD	Параметрический 3D CAD
 cadcraft	Computer-aided design and drafting	Автоматизированное проектирование и черчение
 soundcraft	Recording, editing and mixing audio	Запись, редактирование и сведение звука
 figcraft	Interface design and prototyping	Дизайн интерфейсов и прототипирование
@@ -276,6 +282,10 @@ filter	Installed	Установлены
 @msg	{name} installed: {version} (this release publishes no checksum, so only its size was checked)	Приложение {name} установлено: {version} (в этом релизе нет контрольных сумм, поэтому проверен только размер)
 @msg	{name} was removed	Приложение {name} удалено
 @msg	{name} is running. Quit it, then try again.	Приложение {name} запущено. Закройте его и попробуйте снова.
+@msg	{name} was installed from the {repo} repository or the AUR ({pkg}). Update it with {cmd} or sudo pacman -Syu	Приложение {name} установлено из репозитория {repo} или из AUR ({pkg}). Обновите его командой {cmd} или sudo pacman -Syu
+@msg	{name} was installed from the {repo} repository or the AUR ({pkg}). Update it with your AUR helper (for example: yay -S {pkg}) or sudo pacman -Syu	Приложение {name} установлено из репозитория {repo} или из AUR ({pkg}). Обновите его с помощью вашего помощника AUR (например: yay -S {pkg}) или командой sudo pacman -Syu
+@msg	{name} was installed from the AUR ({pkg}). Update it with {cmd}	Приложение {name} установлено из AUR ({pkg}). Обновите его командой {cmd}
+@msg	{name} was installed from the AUR ({pkg}). Update it with your AUR helper (for example: yay -S {pkg})	Приложение {name} установлено из AUR ({pkg}). Обновите его с помощью вашего помощника AUR (например: yay -S {pkg})
 
 # Command IDs for menu items (@id)
 # Format: @id<TAB>command_id<TAB>translation
@@ -328,6 +338,7 @@ filter	Installed	Установлены
 	ArtCraft on GitHub	ArtCraft на GitHub
 	Join the ArtCraft Discord	Присоединиться к Discord ArtCraft
 	App details	О приложении
+	More actions for {name}	Другие действия для {name}
 	Close (Esc)	Закрыть (Esc)
 	Features	Возможности
 	Latest release	Последний релиз
@@ -348,6 +359,7 @@ filter	Installed	Установлены
 	Use default	Использовать по умолчанию
 	New installs use this folder. Updates stay in their current location.	Новые приложения устанавливаются в эту папку. При обновлении текущее расположение сохраняется.
 	Custom folders use AppImage on Linux.	В Linux для установки в выбранную папку используется AppImage.
+	On Linux, custom folders use AppImage format.	В Linux для установки в выбранную папку используется AppImage.
 	The system manages install locations here.	В этой среде расположением приложений управляет система.
 @msg	couldn't use install folder {path}: {reason}	не удалось использовать папку установки {path}: {reason}
 @msg	this release has no AppImage for a custom install folder	в этом выпуске нет AppImage для установки в выбранную папку
@@ -358,3 +370,24 @@ filter	Installed	Установлены
 	Replace what's there?	Заменить существующее?
 	{path} already exists. Installing {name} will overwrite it.	{path} уже существует. Установка {name} перезапишет его.
 	Replace	Заменить
+	Recently updated	Недавно обновлённые
+	Name (A–Z)	Имя (А–Я)
+	Name (Z–A)	Имя (Я–А)
+	Frequently used	Часто используемые
+	Next app	Следующее приложение
+	Previous app	Предыдущее приложение
+	Show {n} more changes	Показать ещё изменений: {n}
+	Last updated: {date}	Последнее обновление: {date}
+column	Version	Версия
+column	Author	Автор
+	Choose version	Выбрать версию
+	latest {version}	последняя {version}
+	{version} (latest release)	{version} (последний релиз)
+	Launcher version	Версия лаунчера
+	Nightly	Ночная сборка
+	Nightly (none published yet)	Ночная сборка (пока нет)
+	Install version {version}	Установить версию {version}
+	Download selected version	Скачать выбранную версию
+	Older launcher versions require a manual reinstall.	Для возврата к старой версии лаунчера нужна переустановка вручную.
+	Your files may not open in older versions.	В старой версии ваши файлы могут не открыться.
+	Enable automatic installs in Settings to follow new nightly builds.	Чтобы получать новые ночные сборки, включите автоматическую установку в настройках.

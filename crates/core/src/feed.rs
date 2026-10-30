@@ -18,7 +18,7 @@ use serde::Deserialize;
 use serde::de::{DeserializeOwned, Deserializer};
 
 use crate::catalog::{CraftApp, GITHUB_OWNER};
-use crate::release::{self, Asset, Release};
+use crate::release::{self, Asset, Release, truncate};
 use crate::time::parse_rfc3339;
 use crate::version;
 
@@ -186,13 +186,16 @@ impl FeedRelease {
     /// when it doesn't hold up (no tag, or not a version).
     fn to_release(&self, repo: &str, mirror: Option<&str>) -> Option<Release> {
         let version = version::parse(&self.tag)?;
-        let prefix = release::download_prefix(repo);
-        let allowed = |url: &str| url.starts_with(&prefix) || mirror.is_some_and(|m| url.starts_with(m) && !url.contains(".."));
+        let allowed = |name: &str, url: &str| {
+            (release::download_url_under(url, &release::download_prefix(repo))
+                && url == format!("{}{}/{}", release::download_prefix(repo), self.tag, name))
+                || mirror.is_some_and(|m| release::download_url_under_mirror(url, m))
+        };
         let releases_page = format!("https://github.com/{repo}/releases/");
         let assets = self
             .assets
             .iter()
-            .filter(|(name, _, url, _)| release::valid_file_name(name) && allowed(url) && !url.contains(['?', '#', '\\']))
+            .filter(|(name, _, url, _)| release::valid_file_name(name) && allowed(name, url))
             .map(|(name, size, url, sha)| Asset {
                 name: name.clone(),
                 size: *size,
@@ -205,7 +208,12 @@ impl FeedRelease {
             name: if self.name.is_empty() { self.tag.clone() } else { truncate(&self.name, 120) },
             tag: self.tag.clone(),
             published_at: self.published_at,
-            html_url: if self.html_url.starts_with(&releases_page) { self.html_url.clone() } else { format!("{releases_page}tag/{}", self.tag) },
+            html_url: release::safe_release_html_url(repo, &self.html_url)
+                .or_else(|| {
+                    let fallback = format!("{releases_page}tag/{}", self.tag);
+                    release::safe_release_html_url(repo, &fallback)
+                })
+                .unwrap_or_else(|| format!("https://github.com/{repo}/releases")),
             notes: truncate(&self.notes, 64 * 1024),
             prerelease: self.prerelease,
             assets,
@@ -274,7 +282,7 @@ struct RawApp {
 impl RawApp {
     fn into_app(self) -> FeedApp {
         FeedApp {
-            repo: self.repo.filter(|r| r.split('/').count() == 2),
+            repo: self.repo.filter(|r| r.split('/').count() == 2 && r.split('/').all(|part| !part.is_empty() && part != "." && part != "..")),
             release: self.latest_release.and_then(RawRelease::into_release),
             fetched_at: self.app_last_fetched.as_deref().and_then(parse_rfc3339),
         }
@@ -371,7 +379,7 @@ impl RawRepoRename {
     fn into_rename(self) -> Option<RepoRename> {
         let ok = |r: &str| {
             let mut parts = r.split('/');
-            matches!((parts.next(), parts.next(), parts.next()), (Some(a), Some(b), None) if a.eq_ignore_ascii_case(GITHUB_OWNER) && !b.is_empty()
+            matches!((parts.next(), parts.next(), parts.next()), (Some(a), Some(b), None) if a.eq_ignore_ascii_case(GITHUB_OWNER) && !b.is_empty() && b != "." && b != ".."
           && r.bytes().all(|c| c.is_ascii_alphanumeric() || b"-_./".contains(&c)))
         };
         (ok(&self.old_name) && ok(&self.new_name)).then(|| RepoRename {
@@ -407,9 +415,13 @@ impl RawNotice {
         if self.title.trim().is_empty() && self.body.trim().is_empty() {
             return None;
         }
-        let link = self
-            .maybe_web_link
-            .filter(|l| (l.starts_with("https://") || l.starts_with("http://")) && l.len() <= 2000 && !l.chars().any(char::is_whitespace));
+        // The link may reach the system opener (whose WSL fallback shells out), so refuse any
+        // shell/cmd metacharacter or control character in it as well as whitespace (CWE-78).
+        let link = self.maybe_web_link.filter(|l| {
+            (l.starts_with("https://") || l.starts_with("http://"))
+                && l.len() <= 2000
+                && !l.chars().any(|c| c.is_whitespace() || c.is_control() || release::is_shell_meta(c))
+        });
         Some(Notice {
             id: format!("{kind}:{}:{}", self.created_at.as_deref().unwrap_or(""), self.title.trim()),
             title: truncate(self.title.trim(), 200),
@@ -418,17 +430,6 @@ impl RawNotice {
             created_at: self.created_at.as_deref().and_then(parse_rfc3339),
         })
     }
-}
-
-fn truncate(s: &str, max: usize) -> String {
-    if s.len() <= max {
-        return s.to_string();
-    }
-    let mut end = max;
-    while !s.is_char_boundary(end) {
-        end -= 1;
-    }
-    format!("{}…", &s[..end])
 }
 
 #[cfg(test)]
@@ -565,6 +566,25 @@ mod tests {
     }
 
     #[test]
+    fn feed_release_drops_an_asset_from_another_tag() {
+        let wrong = sample().replace("releases/download/v0.6.0/photocraft", "releases/download/v9.0.0/photocraft");
+        let FeedAnswer::Fresh(Some(r)) = Feed::parse(&wrong).unwrap().answer(app("photocraft"), NOW) else { panic!() };
+        assert!(r.assets.is_empty());
+    }
+
+    #[test]
+    fn a_feed_url_cannot_traverse_out_of_the_repository() {
+        // The feed advertises a legitimate tag but points the asset at another repository by
+        // climbing out with `../` after the approved prefix (CWE-180).
+        let escaped = sample().replace(
+            "https://github.com/storytold/photocraft/releases/download/v0.6.0/photocraft-0.6.0-macos-universal.dmg",
+            "https://github.com/storytold/photocraft/releases/download/../../../../attacker/repo/releases/download/v99/photocraft-0.6.0-macos-universal.dmg",
+        );
+        let FeedAnswer::Fresh(Some(r)) = Feed::parse(&escaped).unwrap().answer(app("photocraft"), NOW) else { panic!() };
+        assert!(r.assets.is_empty(), "the traversing download must be rejected");
+    }
+
+    #[test]
     fn a_local_mirror_is_trusted_only_when_asked_for_and_never_goes_stale() {
         const MIRROR: &str = "http://127.0.0.1:8787/";
         let local = sample().replace("https://github.com/storytold/photocraft/releases/download/v0.6.0/", "http://127.0.0.1:8787/photocraft/v0.6.0/");
@@ -612,7 +632,8 @@ mod tests {
                 "\"alerts\": []",
                 r#""alerts": [
             {"title": "Security update", "body": "Update PdfCraft now.", "maybe_web_link": "https://getartcraft.com/security", "created_at": null},
-            {"title": "Bad link", "body": "x", "maybe_web_link": "javascript:alert(1)"}]"#,
+            {"title": "Bad link", "body": "x", "maybe_web_link": "javascript:alert(1)"},
+            {"title": "Shell link", "body": "x", "maybe_web_link": "https://getartcraft.com/a|calc.exe"}]"#,
             )
             .replace(
                 "\"app_renames\": []",
@@ -620,9 +641,10 @@ mod tests {
             "new_name_lower": "docucraft", "description": "Same app, new name.", "renamed_at": "2026-10-09T08:00:00Z"}]"#,
             );
         let feed = Feed::parse(&with_notices).unwrap();
-        assert_eq!(feed.alerts.len(), 2);
+        assert_eq!(feed.alerts.len(), 3);
         assert_eq!(feed.alerts[0].link.as_deref(), Some("https://getartcraft.com/security"));
         assert_eq!(feed.alerts[1].link, None, "only web links are kept");
+        assert_eq!(feed.alerts[2].link, None, "a link with shell metacharacters is dropped");
         let titles: Vec<&str> = feed.announcements.iter().map(|n| n.title.as_str()).collect();
         assert_eq!(titles, ["New: CADCraft 1.0", "PdfCraft is now DocuCraft"]);
         // Ids are stable across parses, so dismissals stick.

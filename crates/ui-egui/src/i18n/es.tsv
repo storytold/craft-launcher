@@ -21,6 +21,7 @@
 
 	Launcher	Launcher
 	Craft App Suite	Craft App Suite
+	by {name}	por {name}
 	Open Source Tools for Creatives, Makers, and Builders	Herramientas de código abierto para creativos, makers y constructores
 	Settings	Ajustes
 	Check for updates	Buscar actualizaciones
@@ -77,6 +78,7 @@
 	Dismiss	Descartar
 	Update and restart	Actualizar y reiniciar
 	A new version is available. Would you like to relaunch with the updated version?	Hay una versión nueva. ¿Quieres reiniciar con la versión actualizada?
+	A new version is available. Download it to replace this version?	Hay una versión nueva. ¿Quieres descargarla para reemplazar esta versión?
 	Later	Más tarde
 	What's new	Novedades
 	No notes were published with this release.	Esta versión no se publicó con notas.
@@ -95,6 +97,8 @@
 	Updates always use the format an app was installed with.	Las actualizaciones siempre usan el formato con el que se instaló cada aplicación.
 	Running in the background	En segundo plano
 	Keep running in the tray when the window is closed	Seguir abierto en la bandeja del sistema al cerrar la ventana
+	ArtCraft Launcher is still running	ArtCraft Launcher sigue abierto
+	It's in the tray: open it or quit it from the tray icon, or turn this off in the settings.	Está en la bandeja del sistema: ábrelo o ciérralo desde su icono, o desactiva esto en los ajustes.
 	Show the window on the current desktop	Mostrar la ventana en el escritorio actual
 	Start ArtCraft Launcher when I log in	Abrir ArtCraft Launcher al iniciar sesión
 	Community	Comunidad
@@ -152,6 +156,7 @@
 	Disk image (.dmg)	Imagen de disco (.dmg)
 	Debian package (.deb)	Paquete Debian (.deb)
 	RPM package (.rpm)	Paquete RPM (.rpm)
+	Arch package (.pkg.tar.zst)	Paquete Arch (.pkg.tar.zst)
 	Flatpak bundle	Paquete Flatpak
 	Tarball (.tar.gz)	Archivo tar (.tar.gz)
 photocraft	Image editing	Edición de imágenes
@@ -164,6 +169,7 @@ designcraft	Page layout and publishing	Maquetación y publicación
 wordcraft	Writing and document design	Escritura y diseño de documentos
 deckcraft	Presentations and slide shows	Presentaciones y diapositivas
 gridcraft	Spreadsheets and data	Hojas de cálculo y datos
+solidcraft	Parametric 3D CAD	CAD 3D paramétrico
 cadcraft	Computer-aided design and drafting	CAD: diseño y dibujo técnico
 soundcraft	Recording, editing and mixing audio	Grabación, edición y mezcla de audio
 figcraft	Interface design and prototyping	Diseño de interfaces y prototipos
@@ -253,6 +259,7 @@ column	Latest	Última
 column	Released	Publicada
 filter	Installed	Instaladas
 	App details	Detalles de la app
+	More actions for {name}	Más acciones para {name}
 	Close (Esc)	Cerrar (Esc)
 	Features	Funciones
 	Latest release	Última versión
@@ -278,6 +285,10 @@ filter	Installed	Instaladas
 @msg	{name} installed: {version} (this release publishes no checksum, so only its size was checked)	{name} instalada: {version} (esta versión no publica la suma de comprobación, así que solo se comprobó su tamaño)
 @msg	{name} was removed	Se quitó {name}
 @msg	{name} is running. Quit it, then try again.	{name} está abierta. Ciérrala y vuelve a intentarlo.
+@msg	{name} was installed from the {repo} repository or the AUR ({pkg}). Update it with {cmd} or sudo pacman -Syu	{name} se instaló desde el repositorio {repo} o AUR ({pkg}). Actualízala con {cmd} o con sudo pacman -Syu
+@msg	{name} was installed from the {repo} repository or the AUR ({pkg}). Update it with your AUR helper (for example: yay -S {pkg}) or sudo pacman -Syu	{name} se instaló desde el repositorio {repo} o AUR ({pkg}). Actualízala con tu asistente de AUR (por ejemplo: yay -S {pkg}) o con sudo pacman -Syu
+@msg	{name} was installed from the AUR ({pkg}). Update it with {cmd}	{name} se instaló desde AUR ({pkg}). Actualízala con {cmd}
+@msg	{name} was installed from the AUR ({pkg}). Update it with your AUR helper (for example: yay -S {pkg})	{name} se instaló desde AUR ({pkg}). Actualízala con tu asistente de AUR (por ejemplo: yay -S {pkg})
 @id	app.install	Instalar
 @id	app.update	Actualizar a {v}
 @id	app.open	Abrir
@@ -333,6 +344,7 @@ filter	Installed	Instaladas
 	Use default	Usar predeterminada
 	New installs use this folder. Updates stay in their current location.	Las nuevas instalaciones usan esta carpeta. Las actualizaciones conservan su ubicación actual.
 	Custom folders use AppImage on Linux.	Las carpetas personalizadas usan AppImage en Linux.
+	On Linux, custom folders use AppImage format.	Las carpetas personalizadas usan AppImage en Linux.
 	The system manages install locations here.	El sistema gestiona las ubicaciones de instalación aquí.
 @msg	couldn't use install folder {path}: {reason}	no se pudo usar la carpeta de instalación {path}: {reason}
 @msg	this release has no AppImage for a custom install folder	esta versión no tiene un AppImage para una carpeta de instalación personalizada
@@ -343,3 +355,24 @@ filter	Installed	Instaladas
 	Replace what's there?	¿Reemplazar lo que hay?
 	{path} already exists. Installing {name} will overwrite it.	{path} ya existe. Instalar {name} lo sobrescribirá.
 	Replace	Reemplazar
+	Recently updated	Actualizadas recientemente
+	Name (A–Z)	Nombre (A–Z)
+	Name (Z–A)	Nombre (Z–A)
+	Frequently used	Más usadas
+	Next app	Aplicación siguiente
+	Previous app	Aplicación anterior
+	Show {n} more changes	Mostrar {n} cambios más
+	Last updated: {date}	Última actualización: {date}
+column	Version	Versión
+column	Author	Autor
+	Choose version	Elegir versión
+	latest {version}	última {version}
+	{version} (latest release)	{version} (última versión)
+	Launcher version	Versión del iniciador
+	Nightly	Nocturna
+	Nightly (none published yet)	Nocturna (aún no publicada)
+	Install version {version}	Instalar la versión {version}
+	Download selected version	Descargar la versión seleccionada
+	Older launcher versions require a manual reinstall.	Las versiones anteriores del iniciador requieren una reinstalación manual.
+	Your files may not open in older versions.	Es posible que tus archivos no se abran en versiones antiguas.
+	Enable automatic installs in Settings to follow new nightly builds.	Activa las instalaciones automáticas en Ajustes para recibir las nuevas versiones nocturnas.

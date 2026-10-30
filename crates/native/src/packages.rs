@@ -69,7 +69,7 @@ pub fn parse_flatpak_info(text: &str) -> Option<String> {
 /// (`photocraft`) or the reverse-DNS bundle id (`ai.storyteller.photocraft`).
 pub fn candidate_names(app: &CraftApp, manager: InstallSource) -> Vec<String> {
     match manager {
-        InstallSource::Flatpak => vec![app.bundle_id()],
+        InstallSource::Flatpak => app.bundle_ids().collect(),
         InstallSource::Pacman => {
             app.stems().flat_map(|s| [s.to_string(), format!("{s}-bin"), format!("{s}-git")]).chain(std::iter::once(app.bundle_id())).collect()
         }
@@ -114,6 +114,18 @@ mod tests {
         let info = "\nWordCraft - Word processor\n\n          ID: ai.storyteller.wordcraft\n     Version: 0.3.0\n      Branch: master\n";
         assert_eq!(parse_flatpak_info(info).as_deref(), Some("0.3.0"));
         assert_eq!(parse_flatpak_info("Version: \n"), None);
+    }
+
+    #[test]
+    fn solidcraft_flatpak_is_found_under_its_older_ids_current_first() {
+        let sc = CraftApp::by_id("solidcraft").unwrap();
+        let old = pkgs(InstallSource::Flatpak, parse_flatpak_list("ai.storyteller.solvecraft\t0.7.0\n"));
+        assert_eq!(find(sc, &old, &[InstallSource::Flatpak]).map(|p| p.name.as_str()), Some("ai.storyteller.solvecraft"));
+        let both = pkgs(InstallSource::Flatpak, parse_flatpak_list("ai.storyteller.solidcraft\t0.8.0\nio.tangencylabs.solidcraft\t0.25.1\n"));
+        assert_eq!(find(sc, &both, &[InstallSource::Flatpak]).map(|p| p.name.as_str()), Some("io.tangencylabs.solidcraft"));
+        // Another app's old id never matches SolidCraft.
+        let other = pkgs(InstallSource::Flatpak, parse_flatpak_list("ai.storyteller.cadcraft\t0.3.0\n"));
+        assert!(find(sc, &other, &[InstallSource::Flatpak]).is_none());
     }
 
     #[test]

@@ -36,7 +36,7 @@ pub(crate) fn unsmooth_wheel(ctx: &egui::Context, raw: &mut RawInput) {
     let page = raw.screen_rect.unwrap_or_else(|| ctx.viewport_rect()).height();
     let mut events = Vec::with_capacity(raw.events.len());
     for event in std::mem::take(&mut raw.events) {
-        let Event::MouseWheel { unit, delta, phase: TouchPhase::Move, modifiers } = &event else {
+        let Event::MouseWheel { unit, delta, phase: TouchPhase::Move, modifiers, source } = &event else {
             events.push(event);
             continue;
         };
@@ -51,7 +51,8 @@ pub(crate) fn unsmooth_wheel(ctx: &egui::Context, raw: &mut RawInput) {
             events.push(event);
             continue;
         }
-        let step = Event::MouseWheel { unit: MouseWheelUnit::Point, delta: points / steps, phase: TouchPhase::Move, modifiers: *modifiers };
+        let step =
+            Event::MouseWheel { unit: MouseWheelUnit::Point, delta: points / steps, phase: TouchPhase::Move, modifiers: *modifiers, source: *source };
         events.extend(std::iter::repeat_n(step, steps as usize));
     }
     raw.events = events;
@@ -59,6 +60,7 @@ pub(crate) fn unsmooth_wheel(ctx: &egui::Context, raw: &mut RawInput) {
 
 #[cfg(test)]
 mod tests {
+    use egui::MouseWheelSource;
     use egui::{Modifiers, Vec2, vec2};
 
     use super::*;
@@ -66,7 +68,7 @@ mod tests {
     const FRAME: f64 = 1.0 / 60.0;
 
     fn wheel(unit: MouseWheelUnit, delta: Vec2, modifiers: Modifiers) -> Event {
-        Event::MouseWheel { unit, delta, phase: TouchPhase::Move, modifiers }
+        Event::MouseWheel { unit, delta, phase: TouchPhase::Move, modifiers, source: MouseWheelSource::Wheel }
     }
 
     /// One frame: how far egui scrolls in it.
@@ -129,12 +131,35 @@ mod tests {
             wheel(MouseWheelUnit::Line, vec2(0.0, f32::NAN), Modifiers::NONE),
             wheel(MouseWheelUnit::Page, vec2(f32::INFINITY, 0.0), Modifiers::NONE),
             wheel(MouseWheelUnit::Point, vec2(0.0, 1.0e9), Modifiers::NONE),
-            Event::MouseWheel { unit: MouseWheelUnit::Point, delta: vec2(0.0, 40.0), phase: TouchPhase::Start, modifiers: Modifiers::NONE },
+            Event::MouseWheel {
+                unit: MouseWheelUnit::Point,
+                delta: vec2(0.0, 40.0),
+                phase: TouchPhase::Start,
+                modifiers: Modifiers::NONE,
+                source: MouseWheelSource::Unknown,
+            },
         ];
         let mut raw = RawInput { events: events.clone(), ..Default::default() };
         unsmooth_wheel(&ctx, &mut raw);
         // NaN is not equal to itself: compare what the events look like.
         assert_eq!(format!("{:?}", raw.events), format!("{events:?}"));
+    }
+
+    #[test]
+    fn every_step_keeps_the_wheel_source() {
+        let ctx = egui::Context::default();
+        for source in [MouseWheelSource::Wheel, MouseWheelSource::Trackpad, MouseWheelSource::Momentum, MouseWheelSource::Unknown] {
+            let event =
+                Event::MouseWheel { unit: MouseWheelUnit::Line, delta: vec2(0.0, -3.0), phase: TouchPhase::Move, modifiers: Modifiers::NONE, source };
+            let mut raw = RawInput { events: vec![event], ..Default::default() };
+            unsmooth_wheel(&ctx, &mut raw);
+            assert!(raw.events.len() > 1, "{source:?} was not split");
+            assert!(
+                raw.events.iter().all(|event| matches!(event, Event::MouseWheel { source: kept, .. } if *kept == source)),
+                "{source:?} was not preserved: {:?}",
+                raw.events
+            );
+        }
     }
 
     #[test]

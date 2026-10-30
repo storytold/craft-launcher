@@ -1,4 +1,4 @@
-# Persian: logical Unicode order; rendering handles bidi at the paint boundary.
+# Persian: logical Unicode order; the upstream egui fork handles bidi and shaping.
 # context<TAB>English source<TAB>Persian translation
 	Launcher	Launcher
 	Craft App Suite	Craft App Suite
@@ -507,3 +507,39 @@ column	App	برنامه
 @msg	{path} already exists and wasn't installed by ArtCraft Launcher	{path} از قبل وجود دارد و توسط ArtCraft Launcher نصب نشده است
 @msg	couldn't move {path} to Trash ({reason}). Remove it in Finder instead.	انتقال {path} به سطل زباله ناموفق بود ({reason}). آن را در Finder حذف کنید.
 	{path} already exists. Installing {name} will overwrite it.	{path} از قبل وجود دارد. نصب {name} آن را بازنویسی می‌کند.
+
+# UI additions from current main
+	A new version is available. Download it to replace this version?	نسخهٔ جدیدی آماده است. برای جایگزینی این نسخه دریافت شود؟
+	Arch package (.pkg.tar.zst)	بستهٔ Arch (.pkg.tar.zst)
+	ArtCraft Launcher is still running	ArtCraft Launcher همچنان در حال اجراست
+	Choose version	انتخاب نسخه
+	Download selected version	دریافت نسخهٔ انتخاب‌شده
+	Enable automatic installs in Settings to follow new nightly builds.	برای دریافت خودکار ساخت‌های شبانهٔ جدید، نصب خودکار را در تنظیمات فعال کنید.
+	Frequently used	پراستفاده‌ترین‌ها
+	Install version {version}	نصب نسخهٔ {version}
+	It's in the tray: open it or quit it from the tray icon, or turn this off in the settings.	برنامه در سینی سیستم فعال است؛ از آیکون آن برنامه را باز کنید یا ببندید، یا این گزینه را در تنظیمات غیرفعال کنید.
+	Last updated: {date}	آخرین به‌روزرسانی: {date}
+	Launcher version	نسخهٔ لانچر
+	Like {name}	مشابه {name}
+	More actions for {name}	گزینه‌های بیشتر برای {name}
+	Name (A–Z)	نام (الف تا ی)
+	Name (Z–A)	نام (ی تا الف)
+	Next app	برنامهٔ بعدی
+	Nightly	ساخت شبانه
+	Nightly (none published yet)	ساخت شبانه (هنوز منتشر نشده)
+	Older launcher versions require a manual reinstall.	برای استفاده از نسخه‌های قدیمی‌تر لانچر، نصب دوباره به‌صورت دستی لازم است.
+	On Linux, custom folders use AppImage format.	در لینوکس، نصب در پوشهٔ دلخواه با قالب AppImage انجام می‌شود.
+	Previous app	برنامهٔ قبلی
+	Recently updated	تازه به‌روزشده‌ها
+	Show {n} more changes	نمایش {n} تغییر دیگر
+	Your files may not open in older versions.	ممکن است فایل‌های شما در نسخه‌های قدیمی‌تر باز نشوند.
+	by {name}	از {name}
+	latest {version}	جدیدترین: {version}
+	{version} (latest release)	{version} (جدیدترین انتشار)
+column	Author	سازنده
+column	Version	نسخه
+solidcraft	Parametric 3D CAD	طراحی سه‌بعدی پارامتریک
+@msg	{name} was installed from the AUR ({pkg}). Update it with your AUR helper (for example: yay -S {pkg})	{name} از AUR نصب شده است ({pkg}). آن را با ابزار مدیریت AUR خود به‌روز کنید (برای نمونه: yay -S {pkg})
+@msg	{name} was installed from the AUR ({pkg}). Update it with {cmd}	{name} از AUR نصب شده است ({pkg}). آن را با {cmd} به‌روز کنید
+@msg	{name} was installed from the {repo} repository or the AUR ({pkg}). Update it with your AUR helper (for example: yay -S {pkg}) or sudo pacman -Syu	{name} از مخزن {repo} یا AUR نصب شده است ({pkg}). آن را با ابزار مدیریت AUR خود (برای نمونه: yay -S {pkg}) یا sudo pacman -Syu به‌روز کنید
+@msg	{name} was installed from the {repo} repository or the AUR ({pkg}). Update it with {cmd} or sudo pacman -Syu	{name} از مخزن {repo} یا AUR نصب شده است ({pkg}). آن را با {cmd} یا sudo pacman -Syu به‌روز کنید
