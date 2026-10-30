@@ -2751,6 +2751,62 @@ fn changelog_shortcuts_zoom_only_the_notes_text() {
 }
 
 #[test]
+/// The notes card grows with the zoomed text, stops at the window, and comes back on reset (#594).
+fn the_notes_card_follows_the_zoom_within_the_window() {
+    let (mut h, _) = harness(ViewMode::Grid, egui::Theme::Dark, true);
+    h.run_steps(4);
+    h.get_by_label("More actions for PhotoCraft").click();
+    h.run_steps(2);
+    h.get_by_label("Release notes").click();
+    h.run_steps(4);
+    let span = |h: &Harness<'_, Option<LauncherUi>>| h.get_by_label("Close").rect().right() - h.get_by_label("Open on GitHub").rect().left();
+    let usual = span(&h);
+    for _ in 0..3 {
+        h.key_press_modifiers(egui::Modifiers::COMMAND, egui::Key::Plus);
+        h.run_steps(3);
+    }
+    assert!(span(&h) > usual * 1.2, "the card kept its width: {usual} -> {}", span(&h));
+    for _ in 0..30 {
+        h.key_press_modifiers(egui::Modifiers::COMMAND, egui::Key::Plus);
+        h.run_steps(3);
+    }
+    let window = h.ctx.content_rect();
+    assert!(window.contains_rect(h.get_by_label("Close").rect()), "Close left the window");
+    assert!(window.contains_rect(h.get_by_label("Open on GitHub").rect()), "the link left the window");
+    h.key_press_modifiers(egui::Modifiers::COMMAND, egui::Key::Num0);
+    h.run_steps(3);
+    assert!((span(&h) - usual).abs() < 0.5, "reset left the card at {}, was {usual}", span(&h));
+}
+
+#[test]
+/// Notes too long to fit take the zoom's extra height too (#594).
+fn long_notes_get_a_taller_card_when_zoomed() {
+    let notes: String = (0..200).map(|n| format!("Line {n}\n\n")).collect();
+    let mut ev = events();
+    for e in &mut ev {
+        if let Event::Latest { latest: LatestRelease::Found(r), .. } = e {
+            r.notes.clone_from(&notes);
+        }
+    }
+    let (mut h, _) = harness_with(ev, ViewMode::Grid, egui::Theme::Dark, true, 1.0);
+    h.run_steps(4);
+    h.get_by_label("More actions for PhotoCraft").click();
+    h.run_steps(2);
+    h.get_by_label("Release notes").click();
+    h.run_steps(4);
+    let bottom = |h: &Harness<'_, Option<LauncherUi>>| h.get_by_label("Close").rect().bottom();
+    let usual = bottom(&h);
+    for _ in 0..3 {
+        h.key_press_modifiers(egui::Modifiers::COMMAND, egui::Key::Plus);
+        h.run_steps(3);
+    }
+    assert!(bottom(&h) > usual + 60.0, "the card kept its height: {usual} -> {}", bottom(&h));
+    h.key_press_modifiers(egui::Modifiers::COMMAND, egui::Key::Num0);
+    h.run_steps(3);
+    assert!((bottom(&h) - usual).abs() < 0.5, "reset left the card at {}, was {usual}", bottom(&h));
+}
+
+#[test]
 fn command_m_minimizes_the_mac_window_only() {
     use artcraft_launcher_ui_egui::TitleBar;
     for bar in [TitleBar::MacOs, TitleBar::Native, TitleBar::Custom] {
