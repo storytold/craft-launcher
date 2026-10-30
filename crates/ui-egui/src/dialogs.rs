@@ -270,7 +270,7 @@ impl LauncherUi {
         let default = self.settings.install_locations.root.clone().or_else(|| self.default_folder_for(id, host));
         Self::folder_field(ui, folder, default.as_deref(), host);
         if self.platform.is_some_and(|p| p.os == Os::Linux) {
-            ui.label(tl!("Custom folders use AppImage on Linux."));
+            ui.label(tl!("On Linux, custom folders use AppImage format."));
         }
         ui.add_space(14.0);
         let mut close = false;
