@@ -4,7 +4,7 @@
 //! It mirrors the backend's choice (`native::install::choose_kinds`, then `pick_asset`): the
 //! preferred formats first, then every other format this platform installs, each tried against
 //! every asset token. Choosing only the preferred format would show the portable `apps` folder
-//! for a release that ships only an MSI, which the backend then installs into Program Files.
+//! for a release that ships only an MSI, which the backend installs into the account's Programs folder.
 //! The UI cannot see a Linux machine's package managers, so there it answers nothing and the
 //! field keeps saying "System default".
 
@@ -38,8 +38,7 @@ fn fresh_kinds(app: &CraftApp, os: Os, preferred: &[PackageKind]) -> Vec<Package
 
 impl LauncherUi {
     /// The format and architecture of the package a fresh install of `entry` would use. Before
-    /// the release is known, the first format with no architecture (an MSI then answers
-    /// nothing, as its Program Files depends on it). `None` when nothing installs it here.
+    /// the release is known, the first format with no architecture. `None` when nothing installs it here.
     fn fresh_package(&self, entry: &AppEntry) -> Option<(PackageKind, Option<Arch>)> {
         let platform = self.platform?;
         let kinds = fresh_kinds(entry.app, platform.os, &self.settings.preferred_kinds);
@@ -58,8 +57,8 @@ impl LauncherUi {
     }
 
     /// The default for Settings, which covers every app: the folder when every app that can be
-    /// installed here shares one, else `None` ("System default"). A 32-bit-only app goes to
-    /// `Program Files (x86)`, so the launcher's own architecture is not the answer. An app
+    /// installed here shares one, else `None` ("System default"). Windows MSI packages share
+    /// the account's Programs folder across architectures. An app
     /// whose release is not known yet cannot be installed, so it does not count.
     pub(crate) fn suite_default_folder(&self, host: &mut dyn Host) -> Option<String> {
         let mut shared: Option<String> = None;
