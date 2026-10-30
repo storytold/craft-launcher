@@ -37,9 +37,18 @@ impl LauncherUi {
             Dialog::Replace { app, path } => modal.show(ctx, |ui| close = self.replace_dialog(ui, app, path)),
             Dialog::Settings => modal.show(ctx, |ui| close = self.settings_dialog(ui, host)),
             Dialog::LauncherUpdate(r) => modal.show(ctx, |ui| close = self.launcher_update_dialog(ui, r)),
+            Dialog::Versions(id) => modal.show(ctx, |ui| close = self.version_dialog(ui, id)),
         };
+        if self.dialog.as_ref().is_some_and(|active| active.key() != dialog.key()) {
+            // A control inside a dialog opened a different one; don't restore the old dialog.
+            return;
+        }
         if close || response.should_close() {
             self.dialog = None;
+            if matches!(dialog, Dialog::Versions(_)) {
+                // Close, Escape or a click outside: a version chosen there is dropped.
+                self.revert_version_choice();
+            }
         } else {
             self.dialog = Some(dialog);
         }

@@ -386,3 +386,14 @@ filter	Installed	Zainstalowane
 	Last updated: {date}	Ostatnia aktualizacja: {date}
 column	Version	Wersja
 column	Author	Autor
+	Choose version	Wybierz wersję
+	latest {version}	najnowsza {version}
+	{version} (latest release)	{version} (najnowsze wydanie)
+	Launcher version	Wersja programu uruchamiającego
+	Nightly	Wersja nocna
+	Nightly (none published yet)	Wersja nocna (jeszcze brak)
+	Install version {version}	Zainstaluj wersję {version}
+	Download selected version	Pobierz wybraną wersję
+	Older launcher versions require a manual reinstall.	Starsze wersje programu uruchamiającego wymagają ręcznej ponownej instalacji.
+	Your files may not open in older versions.	Starsza wersja może nie otwierać Twoich plików.
+	Enable automatic installs in Settings to follow new nightly builds.	Włącz automatyczne instalacje w Ustawieniach, aby otrzymywać nowe wersje nocne.

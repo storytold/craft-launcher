@@ -22,6 +22,28 @@ jobs:
     # Intentionally tracked at @main (not SHA-pinned) so org-wide CI improvements, security fixes, and build optimizations propagate without PR churn across all craftapp repos.
     uses: storytold/craft-common-actions/.github/workflows/packaging-lint.yml@main
 
+  linux-package-metadata:
+    timeout-minutes: 10
+    name: Linux package glibc requirements (no app build)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Install package metadata readers
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends rpm
+      - name: Install nfpm (SHA256-verified)
+        uses: storytold/craft-common-actions/actions/install-nfpm@main
+        with:
+          nfpm-version: "2.47.0"
+          deb-arch: amd64
+      - name: Check glibc dependencies in fixture deb and rpm packages
+        run: bash packaging/linux/test-package-metadata.sh
+
   windows-install-policy:
     timeout-minutes: 10
     name: Windows installation policy (no app build)

@@ -29,12 +29,12 @@ use super::MsiScope;
 pub(super) const COMMAND: &str = "windows-installer-all-users";
 
 /// What PowerShell exits with when the permission prompt is declined (`ERROR_CANCELLED`).
-const DECLINED: i32 = 1223;
+pub(super) const DECLINED: i32 = 1223;
 
 /// What PowerShell exits with when the elevated session could not be started for any other
 /// reason. Bit 29 is the "customer" bit, which no Windows or Windows Installer error code sets,
 /// so it cannot be mistaken for an exit code from `msiexec`.
-const LAUNCH_FAILED: i32 = 0x2000_0001;
+pub(super) const LAUNCH_FAILED: i32 = 0x2000_0001;
 
 /// Longest encoded script handed to PowerShell. The command line limit is 32,767 characters and
 /// the script travels twice (outer and elevated); thirteen apps need about a third of this.
@@ -95,7 +95,7 @@ impl Drop for Joined<'_> {
 }
 
 /// `path` as text that can sit inside quotes on a command line.
-fn text(path: &Path) -> Result<&str, String> {
+pub(super) fn text(path: &Path) -> Result<&str, String> {
     let text = path.to_str().ok_or("unusual characters in a path")?;
     if text.chars().any(|c| c == '"' || c.is_control()) {
         return Err(format!("couldn't use {text}: the path contains invalid characters"));
@@ -122,7 +122,7 @@ pub(super) fn line(msi: &Path, destination: Option<&Path>, scope: Option<MsiScop
 
 /// `text` as a PowerShell single-quoted string. PowerShell also reads the typographic single
 /// quotes as quotes, so those are doubled too.
-fn quoted(text: &str) -> String {
+pub(super) fn quoted(text: &str) -> String {
     let mut out = String::with_capacity(text.len() + 2);
     out.push('\'');
     for c in text.chars() {
@@ -157,7 +157,7 @@ fn inner_script(program: &str, lines: &[String]) -> String {
 /// What the launcher runs without elevation: it starts the elevated session (the one prompt) and
 /// waits for it. Start-Process throws when the prompt is declined and when the session cannot
 /// start at all; [`launch_catch`] tells the two apart.
-fn outer_script(powershell: &str, encoded: &str) -> String {
+pub(super) fn outer_script(powershell: &str, encoded: &str) -> String {
     format!(
         "try {{ $elevated = Start-Process -FilePath {} -Verb RunAs -WindowStyle Hidden -Wait -PassThru \
          -ArgumentList '-NoProfile','-NonInteractive','-EncodedCommand','{encoded}'; exit $elevated.ExitCode }} \
@@ -230,7 +230,7 @@ fn plan(msiexec: &str, lines: &[String]) -> Plan {
 
 /// The base64 form of `script` that `-EncodedCommand` takes: UTF-16 little-endian, so no quoting
 /// can go wrong however odd a path is.
-fn encoded(script: &str) -> String {
+pub(super) fn encoded(script: &str) -> String {
     const ALPHABET: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
     let bytes: Vec<u8> = script.encode_utf16().flat_map(u16::to_le_bytes).collect();
     let mut out = String::with_capacity(bytes.len().div_ceil(3) * 4);

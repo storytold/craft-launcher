@@ -387,3 +387,14 @@ filter	Installed	インストール済み
 	Last updated: {date}	最終更新: {date}
 column	Version	バージョン
 column	Author	作者
+	Choose version	バージョンを選択
+	latest {version}	最新 {version}
+	{version} (latest release)	{version}（最新リリース）
+	Launcher version	ランチャーのバージョン
+	Nightly	ナイトリービルド
+	Nightly (none published yet)	ナイトリービルド（未公開）
+	Install version {version}	バージョン {version} をインストール
+	Download selected version	選択したバージョンをダウンロード
+	Older launcher versions require a manual reinstall.	古いランチャーに戻すには手動で再インストールする必要があります。
+	Your files may not open in older versions.	古いバージョンではファイルを開けない場合があります。
+	Enable automatic installs in Settings to follow new nightly builds.	新しいナイトリービルドを自動的に受け取るには、設定で自動インストールを有効にしてください。

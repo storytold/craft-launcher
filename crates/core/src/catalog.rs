@@ -170,7 +170,7 @@ pub const SUITE: [CraftApp; 14] = [
             "pdfcraft",
             "PdfCraft",
             "Reading, organizing and protecting PDFs",
-            [[0x12, 0xa5, 0x8a], [0x0a, 0x75, 0x63], [0x3f, 0xd6, 0xb8]],
+            [[0xe8, 0x20, 0x4f], [0xb7, 0x02, 0x28], [0xf2, 0x3a, 0x62]],
             "storytold/pdfcraft",
         )
     },

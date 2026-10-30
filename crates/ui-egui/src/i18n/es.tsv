@@ -365,3 +365,14 @@ filter	Installed	Instaladas
 	Last updated: {date}	Última actualización: {date}
 column	Version	Versión
 column	Author	Autor
+	Choose version	Elegir versión
+	latest {version}	última {version}
+	{version} (latest release)	{version} (última versión)
+	Launcher version	Versión del iniciador
+	Nightly	Nocturna
+	Nightly (none published yet)	Nocturna (aún no publicada)
+	Install version {version}	Instalar la versión {version}
+	Download selected version	Descargar la versión seleccionada
+	Older launcher versions require a manual reinstall.	Las versiones anteriores del iniciador requieren una reinstalación manual.
+	Your files may not open in older versions.	Es posible que tus archivos no se abran en versiones antiguas.
+	Enable automatic installs in Settings to follow new nightly builds.	Activa las instalaciones automáticas en Ajustes para recibir las nuevas versiones nocturnas.

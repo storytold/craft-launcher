@@ -380,3 +380,14 @@ filter	Installed	Установлены
 	Last updated: {date}	Последнее обновление: {date}
 column	Version	Версия
 column	Author	Автор
+	Choose version	Выбрать версию
+	latest {version}	последняя {version}
+	{version} (latest release)	{version} (последний релиз)
+	Launcher version	Версия лаунчера
+	Nightly	Ночная сборка
+	Nightly (none published yet)	Ночная сборка (пока нет)
+	Install version {version}	Установить версию {version}
+	Download selected version	Скачать выбранную версию
+	Older launcher versions require a manual reinstall.	Для возврата к старой версии лаунчера нужна переустановка вручную.
+	Your files may not open in older versions.	В старой версии ваши файлы могут не открыться.
+	Enable automatic installs in Settings to follow new nightly builds.	Чтобы получать новые ночные сборки, включите автоматическую установку в настройках.

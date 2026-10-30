@@ -352,3 +352,14 @@ filter	Installed	Nainstalováno
 	Last updated: {date}	Naposledy aktualizováno: {date}
 column	Version	Verze
 column	Author	Autor
+	Choose version	Vybrat verzi
+	latest {version}	nejnovější {version}
+	{version} (latest release)	{version} (nejnovější verze)
+	Launcher version	Verze spouštěče
+	Nightly	Noční sestavení
+	Nightly (none published yet)	Noční sestavení (zatím žádné)
+	Install version {version}	Nainstalovat verzi {version}
+	Download selected version	Stáhnout vybranou verzi
+	Older launcher versions require a manual reinstall.	Starší verze spouštěče vyžadují ruční přeinstalaci.
+	Your files may not open in older versions.	Starší verze nemusí vaše soubory otevřít.
+	Enable automatic installs in Settings to follow new nightly builds.	Chcete-li automaticky dostávat nová noční sestavení, zapněte v nastavení automatické instalace.
