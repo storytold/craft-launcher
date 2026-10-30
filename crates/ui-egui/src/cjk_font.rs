@@ -40,6 +40,7 @@ fn script_name(script: Script) -> &'static str {
     match script {
         Script::Chinese => "Chinese",
         Script::Japanese => "Japanese",
+        Script::Korean => "Korean",
     }
 }
 
@@ -48,6 +49,7 @@ fn script_families(script: Script) -> &'static str {
     match script {
         Script::Chinese => "PingFang SC, Hiragino Sans GB, Heiti SC, Microsoft YaHei, SimSun, Noto Sans CJK SC, WenQuanYi and MiSans",
         Script::Japanese => "Hiragino Sans, Yu Gothic, Meiryo, MS Gothic, Noto Sans CJK JP, Noto Sans JP, IPAGothic and TakaoGothic",
+        Script::Korean => "Apple SD Gothic Neo, Malgun Gothic, Gulim, Noto Sans CJK KR, Noto Sans KR and NanumGothic",
     }
 }
 
@@ -123,6 +125,7 @@ fn candidates(script: Script) -> Vec<Candidate> {
     match script {
         Script::Chinese => chinese_candidates(),
         Script::Japanese => japanese_candidates(),
+        Script::Korean => korean_candidates(),
     }
 }
 
@@ -300,6 +303,62 @@ fn japanese_candidates() -> Vec<Candidate> {
             for dir in JP_DIRS {
                 add(Path::new(dir).join(file), family);
             }
+        }
+    }
+    out
+}
+
+/// Where each system keeps a Korean font, best first.
+fn korean_candidates() -> Vec<Candidate> {
+    let mut out = Vec::new();
+    let mut add = |path: PathBuf, family: &'static str| out.push(Candidate { path, family });
+    #[cfg(target_os = "macos")]
+    {
+        add("/System/Library/Fonts/AppleSDGothicNeo.ttc".into(), "Apple SD Gothic Neo");
+        for path in mac_font_assets("AppleSDGothicNeo.ttc") {
+            add(path, "Apple SD Gothic Neo");
+        }
+    }
+    #[cfg(target_os = "windows")]
+    {
+        let root = std::env::var_os("SystemRoot").map_or_else(|| PathBuf::from(r"C:\Windows"), PathBuf::from);
+        add(root.join("Fonts").join("malgun.ttf"), "Malgun Gothic");
+        add(root.join("Fonts").join("gulim.ttc"), "Gulim");
+    }
+    #[cfg(all(unix, not(target_os = "macos")))]
+    {
+        // Debian/Ubuntu, Arch, Fedora (static and variable) and FreeBSD's ports.
+        const NOTO_DIRS: [&str; 8] = [
+            "/usr/share/fonts/opentype/noto",
+            "/usr/share/fonts/noto-cjk",
+            "/usr/share/fonts/google-noto-cjk",
+            "/usr/share/fonts/google-noto-sans-cjk-fonts",
+            "/usr/share/fonts/google-noto-sans-cjk-vf-fonts",
+            "/usr/share/fonts/noto",
+            "/usr/local/share/fonts/noto",
+            "/usr/local/share/fonts/noto-cjk",
+        ];
+        for file in ["NotoSansCJK-Regular.ttc", "NotoSansCJKkr-Regular.otf", "NotoSansCJK-VF.ttc"] {
+            for dir in NOTO_DIRS {
+                add(Path::new(dir).join(file), "Noto Sans CJK KR");
+            }
+        }
+        // Standalone Noto Sans KR, and Nanum Gothic (fonts-nanum).
+        const KR_DIRS: [&str; 6] = [
+            "/usr/share/fonts/opentype/noto",
+            "/usr/share/fonts/truetype/noto",
+            "/usr/share/fonts/noto",
+            "/usr/share/fonts/truetype/nanum",
+            "/usr/share/fonts/nanum",
+            "/usr/local/share/fonts",
+        ];
+        for file in ["NotoSansKR-Regular.otf", "NotoSansKR-VF.ttf"] {
+            for dir in KR_DIRS {
+                add(Path::new(dir).join(file), "Noto Sans KR");
+            }
+        }
+        for dir in KR_DIRS {
+            add(Path::new(dir).join("NanumGothic.ttf"), "NanumGothic");
         }
     }
     out
