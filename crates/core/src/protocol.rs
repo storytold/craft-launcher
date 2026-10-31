@@ -61,6 +61,12 @@ pub enum Command {
     },
     /// Change how the backend behaves.
     Configure(BackendOptions),
+    /// Turn the update service's background installs on or off for the whole computer (only while
+    /// [`Event::MachineAutoUpdate`] says there is a service). Windows asks for an administrator's
+    /// permission; the answer comes back as [`Event::MachineAutoUpdate`].
+    SetAutoUpdate {
+        on: bool,
+    },
 }
 
 /// Parent folders for new installs. Existing installations keep their recorded location.
@@ -99,6 +105,15 @@ pub struct BackendOptions {
     pub launcher_version: VersionTrack,
     /// Offer pre-releases (`0.6.0-rc.1`) as updates.
     pub prereleases: bool,
+}
+
+/// The ArtCraft Launcher Update Service's own "install updates automatically" (Windows): one
+/// setting for the whole computer, which only an administrator can change.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct MachineAutoUpdate {
+    pub on: bool,
+    /// Group Policy sets it: nobody can change it from the launcher.
+    pub managed: bool,
 }
 
 /// The answer to "what's the latest release of this app?".
@@ -249,6 +264,14 @@ pub enum Event {
         app: String,
         key: String,
         result: Result<Vec<u8>, String>,
+    },
+    /// The update service's background installs, which "Automatically download and install
+    /// updates" shows while there is a service (`None`: there's none, and the setting is this
+    /// user's alone). Sent when it changes, and after every [`Command::SetAutoUpdate`] with why the
+    /// change didn't happen, if it failed (a dismissed permission prompt isn't a failure).
+    MachineAutoUpdate {
+        setting: Option<MachineAutoUpdate>,
+        error: Option<String>,
     },
     CheckStarted,
     CheckFinished {

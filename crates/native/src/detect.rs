@@ -233,6 +233,9 @@ pub mod windows {
         pub product_code: String,
         pub version: Option<artcraft_launcher_core::version::Version>,
         pub exe: Option<PathBuf>,
+        /// The folder the package itself registered (`InstallLocation`, else the folder the app's
+        /// MSI remembers, from the record's own registry view), when it registered one.
+        pub folder: Option<PathBuf>,
         /// The context of the uninstall record that named it: the machine's records are per-machine,
         /// the current account's own are per-user.
         pub scope: crate::install::MsiScope,
@@ -290,9 +293,9 @@ pub mod windows {
                 }
                 let version = key.get_value::<String, _>("DisplayVersion").ok().and_then(|v| version::parse(&v));
                 let location: String = key.get_value("InstallLocation").unwrap_or_default();
-                let exe =
-                    exe_path(app, (!location.is_empty()).then(|| PathBuf::from(location)).or_else(|| install_dir(app, hive, flags)), hive, flags);
-                out.push(MsiInstall { product_code: code, version, exe, scope: record_context(hive) });
+                let folder = (!location.is_empty()).then(|| PathBuf::from(location)).or_else(|| install_dir(app, hive, flags));
+                let exe = exe_path(app, folder.clone(), hive, flags);
+                out.push(MsiInstall { product_code: code, version, exe, folder, scope: record_context(hive) });
             }
         }
         out.sort_by(|a, b| match (&b.version, &a.version) {
@@ -413,9 +416,27 @@ pub mod windows {
     }
 
     pub fn detect(app: &CraftApp) -> Option<Installed> {
-        let m = msi_installs(app).into_iter().next()?;
+        msi_installs(app).into_iter().next().map(|m| installed(app, m))
+    }
+
+    /// The newest Windows Installer copy of `app` installed for every user: what the update
+    /// service (LocalSystem) may replace. A copy only one user installed is theirs to update.
+    pub fn machine_install(app: &CraftApp) -> Option<Installed> {
+        msi_installs(app).into_iter().find(|m| m.scope == crate::install::MsiScope::PerMachine).map(|m| installed(app, m))
+    }
+
+    /// The folder [`machine_install`]'s package registered, where its update goes. Not the
+    /// exe's folder: `App Paths` may name another copy, and the exe may sit in a subfolder.
+    /// `None` when it registered none, and its update goes where the package puts it by default.
+    pub fn machine_install_folder(app: &CraftApp) -> Option<PathBuf> {
+        msi_installs(app).into_iter().find(|m| m.scope == crate::install::MsiScope::PerMachine).and_then(|m| m.folder)
+    }
+
+    /// What `m` is reported as. Its folder for an update is not taken from here: the launcher checks
+    /// `location_is_in_record_scope`, and the update service uses [`machine_install_folder`].
+    fn installed(app: &CraftApp, m: MsiInstall) -> Installed {
         let location = m.exe.or_else(|| exe_in_any_scope(app, m.version.as_ref())).map_or_else(|| app.name.to_string(), |p| location_text(&p));
-        Some(Installed { version: m.version, source: InstallSource::Msi, location, package: Some(m.product_code) })
+        Installed { version: m.version, source: InstallSource::Msi, location, package: Some(m.product_code) }
     }
 }
 

@@ -13,6 +13,8 @@ pub struct Paths {
 }
 
 const DIR: &str = if cfg!(any(target_os = "macos", target_os = "windows")) { "ArtCraft Launcher" } else { "artcraft-launcher" };
+const SERVICE_DIR: &str =
+    if cfg!(any(target_os = "macos", target_os = "windows")) { "ArtCraft Launcher Updater" } else { "artcraft-launcher-updater" };
 
 impl Paths {
     pub fn new() -> Result<Self, String> {
@@ -27,6 +29,17 @@ impl Paths {
     /// For tests: everything under one folder.
     pub fn under(root: &std::path::Path) -> Self {
         Self { data: root.join("data"), cache: root.join("cache") }
+    }
+
+    /// The update service's folders: `<local data>/ArtCraft Launcher Updater` (`cache` inside it).
+    /// The service runs as LocalSystem on Windows, whose local data folder is in the system profile
+    /// (`C:\Windows\System32\config\systemprofile\AppData\Local`), where only administrators and
+    /// the system can write: a package the service downloads can't be swapped by a user between
+    /// its checks and the install. A shared folder such as `C:\ProgramData` would let any user
+    /// create files (and links) inside it first.
+    pub fn for_service() -> Result<Self, String> {
+        let root = dirs::data_local_dir().ok_or("no data folder for the update service")?.join(SERVICE_DIR);
+        Ok(Self { cache: root.join("cache"), data: root })
     }
 
     pub fn downloads(&self) -> PathBuf {

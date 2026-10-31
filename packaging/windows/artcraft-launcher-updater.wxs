@@ -1,0 +1,147 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  ArtCraft Launcher Update Service MSI (WiX Toolset v5 and its Util extension, as for
+  artcraft-launcher.wxs). Built by package.ps1:
+
+    wix build artcraft-launcher-updater.wxs -arch x64 -ext WixToolset.Util.wixext -d Version=1.2.3
+      -d DisplayVersion=1.2.3-rc.1 -d BinDir=... -d IconPath=... -o out.msi
+
+  Per-machine (an administrator installs it once; Windows asks for permission), into
+  C:\Program Files\ArtCraft Launcher Updater. It installs artcraft-launcher-updater.exe and
+  registers it as the Windows service ArtCraftLauncherUpdater: LocalSystem, started automatically
+  with Windows and restarted if it fails. The service installs updates to the Craft Apps an
+  administrator installed for all users, on a schedule and when the launcher or the command line
+  asks, so users get them without a UAC prompt each time. The folder goes on the system PATH, so
+  `artcraft-launcher-updater check | update | status` works in any terminal.
+
+  Settings (see apps/artcraft-launcher-updater/src/policy.rs), as properties on the command line:
+
+    msiexec /i artcraft-launcher-updater-<ver>-windows-x64.msi AUTOUPDATE=1 CHECKINTERVALHOURS=24
+
+    AUTOUPDATE          0 (default): install updates only on request; 1: in the background too.
+                        ArtCraft Launcher's "Automatically download and install updates" shows it
+                        and changes it with an administrator's permission (UAC), as does
+                        `artcraft-launcher-updater set auto-update on|off` (elevated)
+    ALLOWREQUESTS       1 (default): the launcher and the command line may ask for updates
+    CHECKINTERVALHOURS  6 (default): hours between scheduled checks (1-168)
+    PRERELEASES         0 (default): 1 offers pre-releases as updates
+
+  They are stored under HKLM\SOFTWARE\Learning Machines LLC\ArtCraft Launcher Updater and kept
+  by later versions (the service's own update runs this package with no properties). Group
+  Policy's key (HKLM\SOFTWARE\Policies\Learning Machines LLC\ArtCraft Launcher Updater, DWORDs)
+  wins over them.
+
+  No setup wizard: there's nothing to choose. Double-clicked, it asks for permission, shows its
+  progress and finishes.
+-->
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs"
+     xmlns:util="http://wixtoolset.org/schemas/v4/wxs/util">
+  <Package
+      Name="ArtCraft Launcher Update Service"
+      Manufacturer="Learning Machines LLC"
+      Version="$(var.Version)"
+      UpgradeCode="C076217F-2A77-42D8-A12E-65AB36FA668F"
+      Scope="perMachine"
+      Compressed="yes"
+      Language="1033">
+    <SummaryInformation Description="ArtCraft Launcher Update Service: installs updates to the Craft App Suite without asking every user for administrator permission" Manufacturer="Learning Machines LLC" />
+    <!-- Same-version upgrades let successive pre-releases of one X.Y.Z replace each other. -->
+    <MajorUpgrade AllowSameVersionUpgrades="yes"
+        DowngradeErrorMessage="A newer version of the ArtCraft Launcher Update Service is already installed." />
+    <MediaTemplate EmbedCab="yes" CompressionLevel="high" />
+
+    <!-- MSI caches this icon using its Id as the filename; keep the .exe extension (ICE50). -->
+    <Icon Id="ArtCraftLauncherUpdaterIcon.exe" SourceFile="$(var.IconPath)" />
+    <Property Id="ARPPRODUCTICON" Value="ArtCraftLauncherUpdaterIcon.exe" />
+    <Property Id="ARPURLINFOABOUT" Value="https://getartcraft.com/apps" />
+    <Property Id="ARPURLUPDATEINFO" Value="https://github.com/storytold/craft-launcher/releases" />
+    <Property Id="ARPHELPLINK" Value="https://discord.gg/artcraft" />
+    <Property Id="ARPCOMMENTS" Value="Installs updates to the Craft App Suite in the background ($(var.DisplayVersion))." />
+    <!-- One feature, nothing to change: no Modify button in Apps & features. -->
+    <Property Id="ARPNOMODIFY" Value="1" />
+
+    <StandardDirectory Id="ProgramFiles6432Folder">
+      <Directory Id="INSTALLFOLDER" Name="ArtCraft Launcher Updater" />
+    </StandardDirectory>
+
+    <!-- Each setting: given on the command line, else what the installed version stored, else
+         the default. (AppSearch would overwrite a command-line value, so the stored one is read
+         into PREVIOUS… and only used when nothing was given.) -->
+    <Property Id="PREVIOUSAUTOUPDATE">
+      <RegistrySearch Id="PreviousAutoUpdate" Root="HKLM" Key="SOFTWARE\Learning Machines LLC\ArtCraft Launcher Updater" Name="AutoUpdate" Type="raw" />
+    </Property>
+    <Property Id="PREVIOUSALLOWREQUESTS">
+      <RegistrySearch Id="PreviousAllowRequests" Root="HKLM" Key="SOFTWARE\Learning Machines LLC\ArtCraft Launcher Updater" Name="AllowRequests" Type="raw" />
+    </Property>
+    <Property Id="PREVIOUSCHECKINTERVALHOURS">
+      <RegistrySearch Id="PreviousCheckIntervalHours" Root="HKLM" Key="SOFTWARE\Learning Machines LLC\ArtCraft Launcher Updater" Name="CheckIntervalHours" Type="raw" />
+    </Property>
+    <Property Id="PREVIOUSPRERELEASES">
+      <RegistrySearch Id="PreviousPrereleases" Root="HKLM" Key="SOFTWARE\Learning Machines LLC\ArtCraft Launcher Updater" Name="Prereleases" Type="raw" />
+    </Property>
+    <SetProperty Id="AUTOUPDATE" Action="RememberAutoUpdate" Value="[PREVIOUSAUTOUPDATE]" After="AppSearch" Sequence="first"
+        Condition="NOT AUTOUPDATE AND PREVIOUSAUTOUPDATE" />
+    <SetProperty Id="AUTOUPDATE" Action="DefaultAutoUpdate" Value="0" After="RememberAutoUpdate" Sequence="first" Condition="NOT AUTOUPDATE" />
+    <SetProperty Id="ALLOWREQUESTS" Action="RememberAllowRequests" Value="[PREVIOUSALLOWREQUESTS]" After="DefaultAutoUpdate" Sequence="first"
+        Condition="NOT ALLOWREQUESTS AND PREVIOUSALLOWREQUESTS" />
+    <SetProperty Id="ALLOWREQUESTS" Action="DefaultAllowRequests" Value="1" After="RememberAllowRequests" Sequence="first" Condition="NOT ALLOWREQUESTS" />
+    <SetProperty Id="CHECKINTERVALHOURS" Action="RememberCheckIntervalHours" Value="[PREVIOUSCHECKINTERVALHOURS]" After="DefaultAllowRequests" Sequence="first"
+        Condition="NOT CHECKINTERVALHOURS AND PREVIOUSCHECKINTERVALHOURS" />
+    <SetProperty Id="CHECKINTERVALHOURS" Action="DefaultCheckIntervalHours" Value="6" After="RememberCheckIntervalHours" Sequence="first"
+        Condition="NOT CHECKINTERVALHOURS" />
+    <SetProperty Id="PRERELEASES" Action="RememberPrereleases" Value="[PREVIOUSPRERELEASES]" After="DefaultCheckIntervalHours" Sequence="first"
+        Condition="NOT PRERELEASES AND PREVIOUSPRERELEASES" />
+    <SetProperty Id="PRERELEASES" Action="DefaultPrereleases" Value="0" After="RememberPrereleases" Sequence="first" Condition="NOT PRERELEASES" />
+    <!-- Public, so a value given on the command line reaches the elevated part of the install. -->
+    <Property Id="AUTOUPDATE" Secure="yes" />
+    <Property Id="ALLOWREQUESTS" Secure="yes" />
+    <Property Id="CHECKINTERVALHOURS" Secure="yes" />
+    <Property Id="PRERELEASES" Secure="yes" />
+
+    <Feature Id="Main" Title="ArtCraft Launcher Update Service" Level="1">
+      <ComponentGroupRef Id="UpdaterFiles" />
+    </Feature>
+  </Package>
+
+  <Fragment>
+    <ComponentGroup Id="UpdaterFiles" Directory="INSTALLFOLDER">
+      <Component Id="UpdaterService" Guid="C5B00355-1467-4CE0-BA00-A4AA8BEC2900">
+        <File Id="UpdaterExe" Source="$(var.BinDir)\artcraft-launcher-updater.exe" KeyPath="yes" />
+        <ServiceInstall Id="UpdaterServiceInstall"
+            Name="ArtCraftLauncherUpdater"
+            DisplayName="ArtCraft Launcher Update Service"
+            Description="Keeps the Craft App Suite up to date: installs new releases of the apps an administrator installed, without asking each user for administrator permission."
+            Type="ownProcess"
+            Start="auto"
+            ErrorControl="normal"
+            Account="LocalSystem"
+            Arguments="service"
+            Vital="yes">
+          <!-- Restarted a minute after a failure, twice; the count resets after a day. (The Util
+               extension's custom action: the MsiServiceConfig tables are documented not to work
+               as expected.) -->
+          <util:ServiceConfig FirstFailureActionType="restart" SecondFailureActionType="restart" ThirdFailureActionType="none"
+              RestartServiceDelayInSeconds="60" ResetPeriodInDays="1" />
+        </ServiceInstall>
+        <ServiceControl Id="UpdaterServiceControl" Name="ArtCraftLauncherUpdater" Start="install" Stop="both" Remove="uninstall" Wait="yes" />
+      </Component>
+
+      <!-- `artcraft-launcher-updater` in any terminal. -->
+      <Component Id="UpdaterOnPath" Guid="C61ECE6A-6D64-484D-8F6B-81E65B1022D4">
+        <Environment Id="UpdaterPath" Name="PATH" Value="[INSTALLFOLDER]" Part="last" Action="set" System="yes" Permanent="no" />
+        <RegistryValue Root="HKLM" Key="SOFTWARE\Learning Machines LLC\ArtCraft Launcher Updater" Name="InstallDir" Value="[INSTALLFOLDER]" Type="string" KeyPath="yes" />
+      </Component>
+
+      <!-- The settings, as strings (the service reads strings and DWORDs alike), so the next
+           version's RegistrySearch reads them back as they were written. -->
+      <Component Id="UpdaterSettings" Guid="9E476260-FC74-408A-8162-9975F4CBE539">
+        <RegistryKey Root="HKLM" Key="SOFTWARE\Learning Machines LLC\ArtCraft Launcher Updater">
+          <RegistryValue Name="AutoUpdate" Value="[AUTOUPDATE]" Type="string" KeyPath="yes" />
+          <RegistryValue Name="AllowRequests" Value="[ALLOWREQUESTS]" Type="string" />
+          <RegistryValue Name="CheckIntervalHours" Value="[CHECKINTERVALHOURS]" Type="string" />
+          <RegistryValue Name="Prereleases" Value="[PRERELEASES]" Type="string" />
+        </RegistryKey>
+      </Component>
+    </ComponentGroup>
+  </Fragment>
+</Wix>

@@ -22,6 +22,8 @@ craft-update = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 log = { workspace = true }
+# The launcher's and the updater's log files (logging.rs).
+env_logger = { version = "0.11", default-features = false, features = ["auto-color", "humantime"] }
 dirs = "6"
 getrandom = "0.3"
 tempfile = "3"
@@ -46,6 +48,8 @@ winreg = "0.55"
 # Resolves junctions/symlinks without forcing short MSI paths into the verbatim namespace.
 dunce = "1"
 zip = { version = "9", default-features = false, features = ["deflate"] }
+# The update service's process ID, to tell it from anything else on its port (service.rs).
+windows-service = "0.8"
 # Safe wrappers for waiting for another process and reading a file's VERSIONINFO.
 winsafe = { version = "0.0.29", features = ["kernel", "version"] }
 # Authenticode checks through WinTrust: the update helper installs only files from the launcher's publisher.
