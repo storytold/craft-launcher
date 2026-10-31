@@ -69,3 +69,6 @@ eframe = { git = "https://github.com/storytold/egui.git", rev = "6d518fc79968157
 egui_demo_lib = { git = "https://github.com/storytold/egui.git", rev = "6d518fc799681571963842f95b55a6b68431b15a" }
 egui_inspection = { git = "https://github.com/storytold/egui.git", rev = "6d518fc799681571963842f95b55a6b68431b15a" }
 winit = { git = "https://github.com/storytold/winit.git", rev = "a517b3846ee8457d84ee4975110bfda6797c44dc" }
+
+# OCLP Metal fixes; proposed organization-owned fork: docs/oclp-wgpu-fork.md.
+wgpu = { git = "https://github.com/ITJamie/wgpu-fork", rev = "21c08e23135ba27ed1c6b68177ecc20c0d076dd9" }

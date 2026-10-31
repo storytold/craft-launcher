@@ -243,6 +243,9 @@ releases (`0.4.0` builds as `0.4.1-dev.<commit time>`), which the launcher offer
 `ARTCRAFT_LAUNCHER_DOWNLOAD_BASE` is set (loopback addresses only), the launcher asks only the
 mirror, never GitHub. Only builds with the `local-mirror` feature read it; releases never have it. `cargo xtask local help` lists the options (`--only`, `--no-pull`, `--arch`, …).
 
+The [OCLP wgpu fork proposal](docs/oclp-wgpu-fork.md) describes the pinned Metal
+compiler workarounds, hardware checks, and proposed organization ownership.
+
 New contributors and AI agents: start with [`AGENTS.md`](AGENTS.md). Release packaging lives in
 [`packaging/`](packaging/) and [`.github/workflows/release.yml`](.github/workflows/release.yml).
 
