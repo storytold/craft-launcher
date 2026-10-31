@@ -1069,7 +1069,7 @@ impl LauncherUi {
             ui.close();
         }
         if self.caps.desktop_shortcuts && ui.button(tl!("Add desktop shortcut")).clicked() {
-            self.send(Command::CreateDesktopShortcut { app: id.to_string() });
+            self.act_command(Command::CreateDesktopShortcut { app: id.to_string() });
             ui.close();
         }
         if *status == AppStatus::UpToDate && ui.button(tl!("Reinstall")).clicked() {
