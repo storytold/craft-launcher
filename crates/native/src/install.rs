@@ -198,7 +198,12 @@ pub fn install_at(
                 (Some(joined), None) => windows::run_msi_all_users(&file, &sha256, destination.as_deref(), joined, job.stop, &mut *job.phase),
                 (None, None) => windows::run_msi(&file, destination.as_deref(), msi_scope, job.stop, &mut *job.phase),
             }
-            .map(|_| None)
+            .map(|_| {
+                // Dual-scope MSIs often leave uninstall in HKLM and InstallDir only in HKCU.
+                // Mirror the folder into the uninstall hive so Open works on scope-strict lookups.
+                crate::detect::windows::sync_install_dir_to_record_hives(app);
+                None
+            })
         }
         #[cfg(windows)]
         PackageKind::PortableZip => {
@@ -2162,10 +2167,18 @@ pub mod windows {
     }
 
     pub fn uninstall_msi(app: &CraftApp, stop: &Stop, phase: &mut dyn FnMut(JobPhase)) -> Result<(), String> {
-        in_turn(stop, phase, JobPhase::Removing, || remove_registrations(app).map_err(|removal| removal.error))
+        in_turn(stop, phase, JobPhase::Removing, || {
+            remove_registrations(app).map_err(|removal| removal.error)?;
+            // Launcher-mirrored InstallDir is outside the MSI Registry table; clear it so a stale
+            // path cannot outlive the product (and so an empty uninstall-adjacent key is not held open).
+            // Downgrade uses remove_registrations without this clear; sync_install_dir runs after a
+            // successful install of the chosen (or put-back) package.
+            crate::detect::windows::clear_install_dir_from_hives(app);
+            Ok(())
+        })
     }
 
-    /// Removes every Windows Installer registration of `app` in turn, within the caller's queue
+    /// Removes every Windows Installer registration of `app` in turn, within the caller's void
     /// turn. A failure says whether an earlier registration was already removed, so a downgrade
     /// knows the app is partly gone.
     fn remove_registrations(app: &CraftApp) -> Result<(), msi_downgrade::Removal> {
