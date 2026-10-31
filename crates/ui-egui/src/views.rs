@@ -413,19 +413,27 @@ impl LauncherUi {
 
     // ---- grid ----------------------------------------------------------------------------
 
-    /// Installed apps first (`ids` arrives that way), then the rest under a "Not installed" header.
+    /// Installed apps first (`ids` arrives that way), then not-installed apps; each group can fold.
     pub(crate) fn grid(&mut self, ui: &mut Ui, ids: &[&'static str]) {
         let installed = ids.iter().take_while(|id| self.is_installed(id)).count();
         let (top, rest) = ids.split_at(installed);
-        self.grid_block(ui, top);
-        if !top.is_empty() && !rest.is_empty() {
-            let t = Tokens::get(ui.ctx());
-            ui.add_space(28.0);
-            widgets::hud(ui, tl!("Not installed"), t.faint);
-            ui.add_space(12.0);
+        if !top.is_empty() {
+            self.grid_section(ui, tl!("Installed"), "installed", top);
         }
-        self.grid_block(ui, rest);
+        if !rest.is_empty() {
+            if !top.is_empty() {
+                ui.add_space(28.0);
+            }
+            self.grid_section(ui, tl!("Not installed"), "not-installed", rest);
+        }
         ui.add_space(24.0);
+    }
+
+    /// A collapsible grid group, initially open. The full header row is the disclosure control.
+    fn grid_section(&mut self, ui: &mut Ui, label: &str, id: &'static str, ids: &[&'static str]) {
+        widgets::collapsing_section(ui, label, ("app-grid-section", id), |ui| {
+            self.grid_block(ui, ids);
+        });
     }
 
     fn grid_block(&mut self, ui: &mut Ui, ids: &[&'static str]) {
