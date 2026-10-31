@@ -305,6 +305,8 @@ impl NativeBackend {
         });
     }
 
+    /// Starts an install, update or removal job for `app_id` on its own thread. An install takes
+    /// its place in the download line first, so apps started together download in screen order.
     fn start_job(&self, app_id: &str, work: Work) {
         let uninstall = work == Work::Uninstall;
         let Some(app) = CraftApp::by_id(app_id) else { return };
@@ -333,6 +335,9 @@ impl NativeBackend {
         let platform = self.platform;
         let options = self.options();
         let source = self.source.clone();
+        // Taken now, before the job's thread runs, so apps started together (Update all) download
+        // in screen order whichever job reaches its download first.
+        let place = (!uninstall).then(|| install::DOWNLOADS.join(app.id));
         std::thread::spawn(move || {
             let job = job;
             let existing = shared.installed.lock().unwrap_or_else(PoisonError::into_inner).get(app.id).cloned();
@@ -363,6 +368,7 @@ impl NativeBackend {
                     &stop,
                     work == Work::Replace,
                     source.as_deref(),
+                    place,
                 );
                 // Stopped by the connection rather than by the user: say so, and how to go on.
                 match r {
@@ -498,6 +504,8 @@ fn downgrade_previous(
     })
 }
 
+/// Plans and runs an install or update of `app` from its latest known release, and returns the
+/// message to show. `place` is the job's spot in the download line, used when the download starts.
 #[allow(clippy::too_many_arguments)]
 fn run_install(
     app: &CraftApp,
@@ -511,6 +519,7 @@ fn run_install(
     stop: &Stop,
     replace: bool,
     source: Option<&dyn ReleaseSource>,
+    place: Option<crate::downloads::Place<'static>>,
 ) -> Result<String, String> {
     if let Some(msg) = existing.and_then(|e| install::managed_elsewhere(app, e, false)) {
         return Err(msg);
@@ -579,7 +588,7 @@ fn run_install(
         last_emit = Instant::now();
         shared.emit(Event::Progress { app: app.id.to_string(), phase: p });
     };
-    let mut job = Job { http, paths, stop, phase: &mut phase, install_locations: &options.install_locations, replace, downgrade };
+    let mut job = Job { http, paths, stop, phase: &mut phase, install_locations: &options.install_locations, replace, downgrade, place };
     let mut commit_record = |record: &crate::manifest::Record| {
         let mut manifest = shared.manifest.lock().unwrap_or_else(PoisonError::into_inner);
         let mut updated = manifest.clone();
@@ -1131,6 +1140,8 @@ impl NativeBackend {
 }
 
 impl Backend for NativeBackend {
+    /// Carries out a command from the UI. Long work (checks, installs, removals) runs on its own
+    /// thread.
     fn send(&mut self, command: Command) {
         match command {
             Command::CheckForUpdates { force } => self.check(force),
@@ -1190,11 +1201,13 @@ impl Backend for NativeBackend {
             }
             Command::UpdateLauncher => self.update_launcher(),
             Command::FetchScreenshots { app } => self.fetch_screenshots(&app),
+            Command::DownloadOrder(order) => install::DOWNLOADS.set_order(order),
             Command::Configure(options) => {
                 let changed_pre = {
                     let mut o = self.shared.options.lock().unwrap_or_else(PoisonError::into_inner);
                     let changed =
                         o.prereleases != options.prereleases || o.versions != options.versions || o.launcher_version != options.launcher_version;
+                    install::DOWNLOADS.set_limit(options.simultaneous_downloads.into());
                     *o = options;
                     changed
                 };

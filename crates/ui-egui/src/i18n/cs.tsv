@@ -137,6 +137,10 @@
 	Retry update to {version}	Zkusit aktualizaci na {version} znovu
 	The download is still here. It's checked again, then installed.	Stažený soubor je stále k dispozici. Znovu se ověří a poté nainstaluje.
 	Waiting for another app…	Čekání na jinou aplikaci…
+	Waiting for another download…	Čekání na jiné stahování…
+	Simultaneous downloads	Souběžná stahování
+	No limit	Bez omezení
+	Downloads running together share your connection, so each one is slower.	Souběžná stahování sdílejí vaše připojení, takže každé je pomalejší.
 	Waiting for other installs…	Čekání na dokončení ostatních instalací…
 	Installer (.msi)	Instalační program (.msi)
 	Portable (.zip)	Přenosná verze (.zip)

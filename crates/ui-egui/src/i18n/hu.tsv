@@ -151,6 +151,10 @@
 	Retry update to {version}	Frissítés újrapróbálása: {version}
 	The download is still here. It's checked again, then installed.	A letöltött fájl megmaradt. Újra ellenőrizzük, majd telepítjük.
 	Waiting for another app…	Várakozás egy másik alkalmazásra…
+	Waiting for another download…	Várakozás egy másik letöltésre…
+	Simultaneous downloads	Egyidejű letöltések
+	No limit	Korlátlan
+	Downloads running together share your connection, so each one is slower.	Az egyidejű letöltések megosztják a kapcsolatot, így mindegyik lassabb.
 	Waiting for other installs…	Várakozás a többi telepítésre…
 
 # Package formats offered for download (PackageKind::label)

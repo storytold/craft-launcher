@@ -285,6 +285,10 @@ figcraft	Interface design and prototyping	界面设计与原型制作
 	Retry update to {version}	重试更新至 {version}
 	The download is still here. It's checked again, then installed.	已下载的文件仍在。会先重新校验，然后安装。
 	Waiting for another app…	正在等待其他应用…
+	Waiting for another download…	正在等待其他下载…
+	Simultaneous downloads	同时下载数
+	No limit	不限制
+	Downloads running together share your connection, so each one is slower.	同时进行的下载会共享网络连接，因此每个下载都会变慢。
 	Waiting for other installs…	正在等待其他安装…
 
 # Package formats offered for download (PackageKind::label)
