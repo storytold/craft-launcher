@@ -222,6 +222,8 @@ impl NativeBackend {
             http::clean_downloads(&paths.downloads(), Duration::from_secs(30 * 86_400), Duration::from_secs(7 * 86_400));
             let snapshot = crate::detect::Snapshot::take();
             let manifest = shared.manifest.lock().unwrap_or_else(PoisonError::into_inner).clone();
+            #[cfg(target_os = "linux")]
+            crate::install::linux::refresh_menu_entries(&manifest);
             for app in &SUITE {
                 let found = crate::detect::detect(app, &manifest, &snapshot);
                 {

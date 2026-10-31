@@ -785,7 +785,7 @@ pub fn launch(app: &CraftApp, installed: &Installed, paths: &Paths) -> Result<()
                 }
                 return Err(format!("{} isn't where it was installed ({})", app.name, path.display()));
             }
-            process::launch_binary(path, &[])
+            process::launch_binary(app.id, path, &[])
         }
     }
     .map_err(|e| format!("Couldn't open {}: {e}", app.name))
@@ -1380,7 +1380,10 @@ pub(crate) mod linux {
     /// install. Returns the files written, for the record.
     pub fn integrate(app: &CraftApp, appimage: &Path, replaced: &[PathBuf], previous: Option<&Record>) -> Vec<PathBuf> {
         match host_data_dir() {
-            Some(data) => integrate_into(&data, app, appimage, replaced, previous),
+            Some(data) => {
+                let runner = if process::in_sandbox() { None } else { process::appimage_runner() };
+                integrate_into(&data, app, appimage, replaced, previous, runner.as_deref().map(Path::new))
+            }
             None => Vec::new(),
         }
     }
@@ -1388,7 +1391,14 @@ pub(crate) mod linux {
     /// [`integrate`] into the data folder `data`. Only writes over files the launcher wrote
     /// before: its own marked menu entry, an entry pointing at a copy this install replaced, and
     /// an icon listed in `previous`.
-    pub(crate) fn integrate_into(data: &Path, app: &CraftApp, appimage: &Path, replaced: &[PathBuf], previous: Option<&Record>) -> Vec<PathBuf> {
+    pub(crate) fn integrate_into(
+        data: &Path,
+        app: &CraftApp,
+        appimage: &Path,
+        replaced: &[PathBuf],
+        previous: Option<&Record>,
+        runner: Option<&Path>,
+    ) -> Vec<PathBuf> {
         let ours_before = |p: &Path| previous.is_some_and(|r| r.files.iter().any(|f| f == p));
         let mut written = Vec::new();
         let icon = icon_path(data, app);
@@ -1406,7 +1416,7 @@ pub(crate) mod linux {
             // Someone else's icon under the app's id (the app's own AppImage puts one there).
             _ => icon.is_file(),
         };
-        let Some(text) = crate::desktop_entry::render(app, appimage, has_icon) else {
+        let Some(text) = crate::desktop_entry::render(app, appimage, has_icon, runner) else {
             log::warn!("{}: {} can't be written into a menu entry; skipping it", app.name, appimage.display());
             return written;
         };
@@ -1414,8 +1424,8 @@ pub(crate) mod linux {
         let replace = match std::fs::read_to_string(&desktop) {
             Ok(old) => {
                 crate::desktop_entry::is_ours(&old)
-                    || crate::desktop_entry::exec_program(&old)
-                        .is_some_and(|p| Path::new(&p) == appimage || replaced.iter().any(|r| r == Path::new(&p)))
+                    || crate::desktop_entry::runs_appimage(&old, appimage)
+                    || replaced.iter().any(|p| crate::desktop_entry::runs_appimage(&old, p))
             }
             Err(_) => !desktop.exists(),
         };
@@ -1428,6 +1438,52 @@ pub(crate) mod linux {
             Err(e) => log::warn!("{}: couldn't add the menu entry: {e}", app.name),
         }
         written
+    }
+
+    /// Points the launcher's unedited menu entries at its current AppImage runtime, or back at the
+    /// AppImage itself when there is none and the runner an entry names is gone.
+    pub fn refresh_menu_entries(manifest: &crate::manifest::Manifest) {
+        if process::in_sandbox() {
+            return;
+        }
+        let Some(data) = host_data_dir() else {
+            return;
+        };
+        let runner = process::appimage_runner();
+        for (id, record) in &manifest.apps {
+            if record.kind == PackageKind::AppImage
+                && let Some(app) = CraftApp::by_id(id)
+            {
+                refresh_owned_menu_entry(&data, app, &record.path, runner.as_deref().map(Path::new));
+            }
+        }
+    }
+
+    /// [`refresh_menu_entries`] for one app in the data folder `data`: rewrites its menu entry for
+    /// `runner` only when it is a plain file the launcher wrote and nobody edited since.
+    pub(crate) fn refresh_owned_menu_entry(data: &Path, app: &CraftApp, appimage: &Path, runner: Option<&Path>) {
+        let desktop = desktop_path(data, app);
+        if !appimage.is_file() || !std::fs::symlink_metadata(&desktop).is_ok_and(|m| m.is_file()) {
+            return;
+        }
+        let Ok(old) = std::fs::read_to_string(&desktop) else { return };
+        // This runs on every start, so a user's edits (names, arguments, actions) must survive it.
+        if !crate::desktop_entry::is_generated(&old, app, appimage) {
+            return;
+        }
+        // A runner that still exists may be a wrapped launcher's (NixOS can't run AppImages
+        // directly), so an unwrapped run only rewrites entries whose runner is gone.
+        if runner.is_none() && crate::desktop_entry::runner_of(&old).is_none_or(|r| process::runnable(&r)) {
+            return;
+        }
+        let Some(text) = crate::desktop_entry::render(app, appimage, icon_path(data, app).is_file(), runner) else {
+            return;
+        };
+        if text != old
+            && let Err(e) = crate::paths::write_atomic(&desktop, text.as_bytes())
+        {
+            log::warn!("{}: couldn't refresh the menu entry: {e}", app.name);
+        }
     }
 
     /// Takes away what [`integrate`] added for the removed AppImage `appimage`.
@@ -1444,8 +1500,9 @@ pub(crate) mod linux {
         let desktop = desktop_path(data, app);
         if let Ok(text) = std::fs::read_to_string(&desktop) {
             let program = crate::desktop_entry::exec_program(&text).map(PathBuf::from);
-            let runs_removed = program.as_deref() == Some(appimage);
-            let ours_and_dangling = crate::desktop_entry::is_ours(&text) && program.is_none_or(|p| !p.exists());
+            let runs_removed = crate::desktop_entry::runs_appimage(&text, appimage);
+            let owns_target = crate::desktop_entry::is_ours(&text) && text.lines().any(|line| line.starts_with("TryExec="));
+            let ours_and_dangling = crate::desktop_entry::is_ours(&text) && !owns_target && program.is_none_or(|p| !p.exists());
             if runs_removed || ours_and_dangling {
                 let _ = std::fs::remove_file(&desktop);
             }
@@ -3082,7 +3139,7 @@ mod tests {
         std::fs::write(&new, b"").unwrap();
 
         // Fresh install: entry and icon written and recorded.
-        let files = linux::integrate_into(&data, app, &new, &[], None);
+        let files = linux::integrate_into(&data, app, &new, &[], None, None);
         assert_eq!(files, [icon.clone(), desktop.clone()]);
         let text = std::fs::read_to_string(&desktop).unwrap();
         assert!(text.contains("Exec=\"") && text.contains("My Apps/wordcraft-0.3.0-linux-x86_64.AppImage\" %F\n"), "{text}");
@@ -3091,16 +3148,16 @@ mod tests {
         let rec = record("0.3.0", PackageKind::AppImage, new.clone(), files, false);
 
         // An update rewrites both.
-        assert_eq!(linux::integrate_into(&data, app, &new, &[], Some(&rec)).len(), 2);
+        assert_eq!(linux::integrate_into(&data, app, &new, &[], Some(&rec), None).len(), 2);
 
         // Someone else's entry and icon are left alone (and not recorded).
         std::fs::write(&desktop, "[Desktop Entry]\nExec=/usr/bin/wordcraft\n").unwrap();
         std::fs::write(&icon, b"theirs").unwrap();
-        assert!(linux::integrate_into(&data, app, &new, &[], None).is_empty());
+        assert!(linux::integrate_into(&data, app, &new, &[], None, None).is_empty());
         assert_eq!(std::fs::read(&icon).unwrap(), b"theirs");
         // ...unless the entry runs a copy this install just replaced (the app wrote it itself).
         std::fs::write(&desktop, format!("[Desktop Entry]\nExec=\"{}\" %F\n", old.display())).unwrap();
-        assert_eq!(linux::integrate_into(&data, app, &new, std::slice::from_ref(&old), None), std::slice::from_ref(&desktop));
+        assert_eq!(linux::integrate_into(&data, app, &new, std::slice::from_ref(&old), None, None), std::slice::from_ref(&desktop));
         assert!(desktop_entry_is_ours(&desktop));
 
         // Uninstall: an icon the record doesn't list stays; the entry for the removed copy goes.
@@ -3111,7 +3168,7 @@ mod tests {
         // With the record, the launcher's icon goes too.
         std::fs::remove_file(&icon).unwrap();
         std::fs::write(&new, b"").unwrap();
-        let files = linux::integrate_into(&data, app, &new, &[], None);
+        let files = linux::integrate_into(&data, app, &new, &[], None, None);
         let rec = record("0.3.0", PackageKind::AppImage, new.clone(), files, false);
         std::fs::remove_file(&new).unwrap();
         linux::unintegrate_from(&data, app, &new, Some(&rec));
@@ -3120,6 +3177,106 @@ mod tests {
         std::fs::write(&desktop, "[Desktop Entry]\nExec=/usr/bin/wordcraft\n").unwrap();
         linux::unintegrate_from(&data, app, &new, Some(&rec));
         assert!(desktop.exists());
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn runner_menu_entries_are_removed_with_their_appimage_only() {
+        let app = CraftApp::by_id("wordcraft").unwrap();
+        let root = tempfile::tempdir().unwrap();
+        let data = root.path().join("share");
+        let image = root.path().join("wordcraft.AppImage");
+        let runner = root.path().join("appimage-run");
+        std::fs::write(&image, b"").unwrap();
+        std::fs::write(&runner, b"").unwrap();
+        let files = linux::integrate_into(&data, app, &image, &[], None, Some(&runner));
+        let rec = record("0.3.0", PackageKind::AppImage, image.clone(), files, false);
+        let desktop = data.join("applications/ai.storyteller.wordcraft.desktop");
+        assert!(std::fs::read_to_string(&desktop).unwrap().contains("Exec=env WORDCRAFT_NO_DESKTOP_INTEGRATION=1 "));
+        linux::unintegrate_from(&data, app, &root.path().join("old.AppImage"), None);
+        assert!(desktop.exists(), "removing another copy must keep the current entry");
+        std::fs::remove_file(&image).unwrap();
+        let generated = std::fs::read_to_string(&desktop).unwrap();
+        let exec = generated.lines().find(|l| l.starts_with("Exec=")).unwrap();
+        let image_exec = crate::desktop_entry::exec_quote(&image).unwrap();
+        let swapped = exec.replacen(&crate::desktop_entry::exec_quote(&runner).unwrap(), "\"/usr/bin/editor\"", 1);
+        for other in [format!("Exec=\"{}\" %F", runner.display()), format!("Exec=\"{}\" {image_exec} %F", runner.display()), swapped] {
+            let elsewhere = generated.replace(exec, &other);
+            std::fs::write(&desktop, &elsewhere).unwrap();
+            linux::unintegrate_from(&data, app, &image, None);
+            assert_eq!(std::fs::read_to_string(&desktop).unwrap(), elsewhere, "an entry pointed at another program is the user's");
+        }
+        std::fs::write(&desktop, &generated).unwrap();
+        linux::unintegrate_from(&data, app, &image, Some(&rec));
+        assert!(!desktop.exists());
+        assert!(!data.join("icons/hicolor/128x128/apps/ai.storyteller.wordcraft.png").exists());
+        assert!(runner.exists());
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn refreshes_owned_menu_entries_without_touching_icons_or_rewriting_unchanged_entries() {
+        use std::os::unix::fs::MetadataExt;
+
+        let app = CraftApp::by_id("wordcraft").unwrap();
+        let root = tempfile::tempdir().unwrap();
+        let data = root.path().join("share");
+        let image = root.path().join("wordcraft.AppImage");
+        let runner = root.path().join("appimage-run");
+        std::fs::write(&image, b"").unwrap();
+        linux::integrate_into(&data, app, &image, &[], None, None);
+        let desktop = data.join("applications/ai.storyteller.wordcraft.desktop");
+        let icon = data.join("icons/hicolor/128x128/apps/ai.storyteller.wordcraft.png");
+        std::fs::write(&icon, b"user's icon").unwrap();
+        linux::refresh_owned_menu_entry(&data, app, &image, Some(&runner));
+        let text = std::fs::read_to_string(&desktop).unwrap();
+        assert_eq!(text, crate::desktop_entry::render(app, &image, true, Some(&runner)).unwrap());
+        assert_eq!(std::fs::read(&icon).unwrap(), b"user's icon");
+        let inode = std::fs::metadata(&desktop).unwrap().ino();
+        linux::refresh_owned_menu_entry(&data, app, &image, Some(&runner));
+        assert_eq!(std::fs::metadata(&desktop).unwrap().ino(), inode);
+        // A new runtime (a new Nix store path) replaces the one an unedited entry names.
+        let newer = root.path().join("newer/appimage-run");
+        linux::refresh_owned_menu_entry(&data, app, &image, Some(&newer));
+        assert_eq!(std::fs::read_to_string(&desktop).unwrap(), crate::desktop_entry::render(app, &image, true, Some(&newer)).unwrap());
+        let edited = text.replace("Name=WordCraft\n", "Name=My Writer\n");
+        std::fs::write(&desktop, &edited).unwrap();
+        let inode = std::fs::metadata(&desktop).unwrap().ino();
+        linux::refresh_owned_menu_entry(&data, app, &image, Some(&newer));
+        assert_eq!(std::fs::read_to_string(&desktop).unwrap(), edited);
+        assert_eq!(std::fs::metadata(&desktop).unwrap().ino(), inode);
+        // Without a runner, an entry whose runner is gone runs the AppImage again; one whose runner
+        // is still there (a wrapped launcher's) is left.
+        std::fs::write(&desktop, crate::desktop_entry::render(app, &image, true, Some(&newer)).unwrap()).unwrap();
+        linux::refresh_owned_menu_entry(&data, app, &image, None);
+        assert_eq!(std::fs::read_to_string(&desktop).unwrap(), crate::desktop_entry::render(app, &image, true, None).unwrap());
+        std::fs::write(&runner, b"").unwrap();
+        std::fs::write(&desktop, &text).unwrap();
+        linux::refresh_owned_menu_entry(&data, app, &image, None);
+        assert_eq!(std::fs::read_to_string(&desktop).unwrap(), text);
+        // A runner named without a path is looked up on `PATH`, as the desktop does.
+        let bare = crate::desktop_entry::render(app, &image, true, Some(Path::new("sh"))).unwrap();
+        std::fs::write(&desktop, &bare).unwrap();
+        linux::refresh_owned_menu_entry(&data, app, &image, None);
+        assert_eq!(std::fs::read_to_string(&desktop).unwrap(), bare);
+
+        let other = crate::desktop_entry::render(app, &root.path().join("different.AppImage"), true, None).unwrap();
+        std::fs::write(&desktop, &other).unwrap();
+        linux::refresh_owned_menu_entry(&data, app, &image, Some(&runner));
+        assert_eq!(std::fs::read_to_string(&desktop).unwrap(), other);
+        let theirs = "[Desktop Entry]\nExec=/usr/bin/wordcraft\n";
+        std::fs::write(&desktop, theirs).unwrap();
+        linux::refresh_owned_menu_entry(&data, app, &image, Some(&runner));
+        assert_eq!(std::fs::read_to_string(&desktop).unwrap(), theirs);
+        std::fs::remove_file(&desktop).unwrap();
+        linux::refresh_owned_menu_entry(&data, app, &image, Some(&runner));
+        assert!(!desktop.exists());
+        let target = root.path().join("another.desktop");
+        std::fs::write(&target, &text).unwrap();
+        std::os::unix::fs::symlink(&target, &desktop).unwrap();
+        linux::refresh_owned_menu_entry(&data, app, &image, Some(Path::new("/different/runner")));
+        assert!(desktop.is_symlink());
+        assert_eq!(std::fs::read_to_string(&target).unwrap(), text);
     }
 
     #[cfg(target_os = "linux")]

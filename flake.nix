@@ -71,6 +71,7 @@
             pkg-config
             libclang
             autoPatchelfHook
+            makeBinaryWrapper
           ];
           buildInputs = commonDeps;
 
@@ -88,6 +89,19 @@
           ];
 
           doCheck = false;
+
+          postInstall = pkgs.lib.optionalString pkgs.stdenv.hostPlatform.isLinux ''
+            install -Dm644 packaging/linux/ai.storyteller.artcraft-launcher.desktop \
+              "$out/share/applications/ai.storyteller.artcraft-launcher.desktop"
+            mkdir -p "$out/share/icons"
+            cp -R assets/app-icon/hicolor "$out/share/icons/"
+          '';
+
+          # NixOS can't run the apps' AppImages directly, so the launcher runs them through appimage-run.
+          postFixup = pkgs.lib.optionalString pkgs.stdenv.hostPlatform.isLinux ''
+            wrapProgram "$out/bin/artcraft-launcher" \
+              --set ARTCRAFT_LAUNCHER_APPIMAGE_RUNNER "${pkgs.lib.getExe pkgs.appimage-run}"
+          '';
         };
 
         apps.default = {
