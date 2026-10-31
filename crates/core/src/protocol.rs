@@ -113,7 +113,7 @@ pub struct BackendOptions {
     pub launcher_version: VersionTrack,
     /// Offer pre-releases (`0.6.0-rc.1`) as updates.
     pub prereleases: bool,
-    /// Downloads that may run at once (0 counts as 1).
+    /// Downloads that may run at once (1 to 4; 0 for no limit).
     pub simultaneous_downloads: u8,
 }
 

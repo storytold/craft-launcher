@@ -115,7 +115,7 @@ pub struct Settings {
     /// Version track per app. Missing entries follow stable releases.
     pub versions: BTreeMap<String, artcraft_launcher_core::protocol::VersionTrack>,
     pub launcher_version: artcraft_launcher_core::protocol::VersionTrack,
-    /// Downloads that may run at once (1 to 4).
+    /// Downloads that may run at once (1 to 4; 0 for no limit).
     pub simultaneous_downloads: u8,
     /// Linux: the package format to prefer for new installs (empty: the system's own).
     pub preferred_kinds: Vec<PackageKind>,

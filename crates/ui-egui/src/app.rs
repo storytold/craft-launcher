@@ -1259,6 +1259,13 @@ mod tests {
             _ => None,
         });
         assert_eq!(configured, Some(3));
+        launcher.settings.simultaneous_downloads = 0;
+        launcher.configure();
+        let configured = sent.borrow().iter().rev().find_map(|command| match command {
+            Command::Configure(options) => Some(options.simultaneous_downloads),
+            _ => None,
+        });
+        assert_eq!(configured, Some(0), "no limit is sent as 0");
     }
 
     /// A CJK preference is drawable only while that language's own face is installed: having the

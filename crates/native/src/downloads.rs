@@ -22,7 +22,7 @@ pub const MAX_AT_ONCE: usize = 4;
 struct State {
     /// Downloads running now.
     running: usize,
-    /// Downloads that may run at once (1 to [`MAX_AT_ONCE`]).
+    /// Downloads that may run at once (1 to [`MAX_AT_ONCE`], or `usize::MAX` for no limit).
     limit: usize,
     next_id: u64,
     waiting: Vec<Waiting>,
@@ -136,10 +136,10 @@ impl Downloads {
         self.changed.notify_all();
     }
 
-    /// How many downloads may run at once: 0 counts as 1, and more than [`MAX_AT_ONCE`] as that.
+    /// How many downloads may run at once: 0 means no limit, and more than [`MAX_AT_ONCE`] counts as that.
     /// Lowering it lets running downloads finish; waiting ones start as they do.
     pub fn set_limit(&self, limit: usize) {
-        self.lock().limit = limit.clamp(1, MAX_AT_ONCE);
+        self.lock().limit = if limit == 0 { usize::MAX } else { limit.min(MAX_AT_ONCE) };
         self.changed.notify_all();
     }
 
@@ -260,14 +260,26 @@ mod tests {
         });
     }
 
-    /// Zero counts as one, and anything above the most counts as the most.
+    /// Zero lifts the limit, and anything above the most counts as the most.
     #[test]
-    fn the_limit_stays_between_one_and_the_most() {
+    fn zero_lifts_the_limit_and_the_rest_stops_at_the_most() {
         let queue = Downloads::new();
         queue.set_limit(0);
-        assert_eq!(queue.lock().limit, 1);
+        assert_eq!(queue.lock().limit, usize::MAX);
         queue.set_limit(9);
         assert_eq!(queue.lock().limit, MAX_AT_ONCE);
+        queue.set_limit(1);
+        assert_eq!(queue.lock().limit, 1);
+    }
+
+    /// With no limit, every app downloads at once and none waits for another.
+    #[test]
+    fn with_no_limit_every_download_runs_at_once() {
+        let queue = Downloads::new();
+        queue.set_limit(0);
+        let turns: Vec<_> = SUITE.iter().map(|app| queue.turn(app.id, &GO, &mut || panic!("{} should not wait", app.id)).unwrap()).collect();
+        assert_eq!(queue.lock().running, SUITE.len());
+        drop(turns);
     }
 
     /// Queues `apps` (in that order) behind a running download, then lets them all through.
