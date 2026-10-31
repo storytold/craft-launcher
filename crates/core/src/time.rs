@@ -35,37 +35,38 @@ pub enum TimeAgo {
 }
 
 /// Seconds since the Unix epoch for an RFC 3339 UTC timestamp such as `2026-10-08T14:52:50Z`.
+#[must_use]
 pub fn parse_rfc3339(text: &str) -> Option<i64> {
-    let b = text.trim().as_bytes();
-    if b.len() < 19 || b.get(4) != Some(&b'-') || b.get(7) != Some(&b'-') || !matches!(b.get(10), Some(b'T' | b't' | b' ')) {
+    let bytes = text.trim().as_bytes();
+    if bytes.len() < 19 || bytes.get(4) != Some(&b'-') || bytes.get(7) != Some(&b'-') || !matches!(bytes.get(10), Some(b'T' | b't' | b' ')) {
         return None;
     }
     let num = |from: usize, to: usize| -> Option<i64> {
-        let s = std::str::from_utf8(b.get(from..to)?).ok()?;
-        if !s.bytes().all(|c| c.is_ascii_digit()) {
+        let slice = std::str::from_utf8(bytes.get(from..to)?).ok()?;
+        if !slice.bytes().all(|c| c.is_ascii_digit()) {
             return None;
         }
-        s.parse().ok()
+        slice.parse().ok()
     };
-    let (y, mo, d) = (num(0, 4)?, num(5, 7)?, num(8, 10)?);
-    let (h, mi, s) = (num(11, 13)?, num(14, 16)?, num(17, 19)?);
-    if !(1..=12).contains(&mo) || !(1..=31).contains(&d) || h > 23 || mi > 59 || s > 60 {
+    let (year, month, day) = (num(0, 4)?, num(5, 7)?, num(8, 10)?);
+    let (hour, minute, second) = (num(11, 13)?, num(14, 16)?, num(17, 19)?);
+    if !(1..=12).contains(&month) || !(1..=31).contains(&day) || hour > 23 || minute > 59 || second > 60 {
         return None;
     }
     // Offsets other than Z: GitHub always sends Z, but honour ±hh:mm if present.
-    let tail = std::str::from_utf8(b.get(19..)?).ok()?;
+    let tail = std::str::from_utf8(bytes.get(19..)?).ok()?;
     let tail = tail.strip_prefix('.').map_or(tail, |t| t.trim_start_matches(|c: char| c.is_ascii_digit()));
     let offset = match tail {
         "" | "Z" | "z" => 0,
         t if t.len() == 6 && (t.starts_with('+') || t.starts_with('-')) => {
             let sign = if t.starts_with('-') { -1 } else { 1 };
-            let oh: i64 = t.get(1..3)?.parse().ok()?;
-            let om: i64 = t.get(4..6)?.parse().ok()?;
-            sign * (oh * 3600 + om * 60)
+            let offset_hours: i64 = t.get(1..3)?.parse().ok()?;
+            let offset_minutes: i64 = t.get(4..6)?.parse().ok()?;
+            sign * (offset_hours * 3600 + offset_minutes * 60)
         }
         _ => return None,
     };
-    Some(days_from_civil(y, mo, d)? * 86_400 + h * 3600 + mi * 60 + s - offset)
+    Some(days_from_civil(year, month, day)? * 86_400 + hour * 3600 + minute * 60 + second - offset)
 }
 
 /// Days since 1970-01-01 (through jiff's civil calendar). A day past the month's length rolls over
@@ -78,11 +79,12 @@ fn days_from_civil(y: i64, m: i64, d: i64) -> Option<i64> {
 }
 
 /// (year, month, day) for a Unix time (UTC). jiff's civil calendar only spans years -9999..=9999,
-/// far narrower than the whole `i64` the old hand-rolled Hinnant code converted, so the instant is
+/// far narrower than the whole `i64` the old hand-rolled `Hinnant` code converted, so the instant is
 /// first moved into range by whole 400-year Gregorian cycles (the calendar repeats every 400 years
-/// = 146_097 days) and the real year restored afterwards. jiff still does the month/day; the cycle
+/// = `146_097` days) and the real year restored afterwards. jiff still does the month/day; the cycle
 /// count only shifts the year, keeping every `i64` exact (e.g. `i64::MAX` → year 292277026596,
 /// `i64::MIN` → year -292277022657), with no epoch fallback for a value the old code converted.
+#[must_use]
 pub fn civil_from_unix(secs: i64) -> (i64, u32, u32) {
     let epoch = jiff::civil::Date::constant(1970, 1, 1);
     let days = secs.div_euclid(86_400);
@@ -101,11 +103,13 @@ const MONTHS: [&str; 12] = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Au
 /// English three-letter month abbreviation for month `m` (1–12); `"?"` when out of range.
 /// Source key for `tr_ctx("month", …)` at the call site; never shown untranslated in
 /// non-English UI.
+#[must_use]
 pub fn month_short_en(m: u32) -> &'static str {
     if (1..=12).contains(&m) { MONTHS.get((m - 1) as usize).copied().unwrap_or("?") } else { "?" }
 }
 
 /// `Oct 8, 2026`
+#[must_use]
 pub fn format_date(secs: i64) -> String {
     let (y, m, d) = civil_from_unix(secs);
     let month = month_short_en(m);
@@ -115,6 +119,7 @@ pub fn format_date(secs: i64) -> String {
 /// Classify a timestamp for translation-neutral rendering (no allocation, no English).
 /// Thresholds match [`format_ago`]: <60s → [`TimeAgo::JustNow`], <1h → minutes,
 /// <1d → hours, <2d → yesterday, <30d → days, older → [`TimeAgo::Date`].
+#[must_use]
 pub fn ago_kind(secs: i64, now: i64) -> TimeAgo {
     let dt = now.saturating_sub(secs);
     if dt < 60 {
@@ -135,6 +140,7 @@ pub fn ago_kind(secs: i64, now: i64) -> TimeAgo {
 /// `just now`, `5 min ago`, `3 h ago`, `yesterday`, `4 days ago`, or the date.
 ///
 /// English-only fallback; translatable UI should match on [`ago_kind`] instead.
+#[must_use]
 pub fn format_ago(secs: i64, now: i64) -> String {
     match ago_kind(secs, now) {
         TimeAgo::JustNow => "just now".into(),

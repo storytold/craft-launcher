@@ -19,6 +19,7 @@ pub enum Os {
 }
 
 impl Os {
+    #[must_use]
     pub fn label(self) -> &'static str {
         match self {
             Self::Windows => "Windows",
@@ -38,6 +39,7 @@ pub enum Arch {
 }
 
 impl Arch {
+    #[must_use]
     pub fn label(self) -> &'static str {
         match self {
             Self::X64 => "x64",
@@ -68,6 +70,7 @@ pub enum PackageKind {
 }
 
 impl PackageKind {
+    #[must_use]
     pub fn label(self) -> &'static str {
         match self {
             Self::Msi => "Installer (.msi)",
@@ -106,6 +109,7 @@ pub struct Platform {
 
 impl Platform {
     /// The platform this binary was built for, or `None` for wasm and unsupported targets.
+    #[must_use]
     pub fn current() -> Option<Self> {
         let os = if cfg!(target_os = "windows") {
             Os::Windows
@@ -132,6 +136,7 @@ impl Platform {
         Some(Self { os, arch })
     }
 
+    #[must_use]
     pub fn label(self) -> String {
         match self.os {
             Os::MacOs => "macOS".into(),
@@ -147,21 +152,19 @@ impl Platform {
             (Os::Windows, Arch::X64) => &["windows-x64", "windows-x86"],
             (Os::Windows, Arch::X86) => &["windows-x86"],
             (Os::Windows, Arch::Arm64) => &["windows-arm64", "windows-x64", "windows-x86"],
-            (Os::Windows, _) => &[],
             (Os::MacOs, Arch::X64) => &["macos-universal", "macos-x86_64"],
             (Os::MacOs, Arch::Arm64) => &["macos-universal", "macos-aarch64", "macos-arm64", "macos-x86_64"],
-            (Os::MacOs, _) => &[],
             (Os::Linux, Arch::X64) => &["linux-x86_64"],
             (Os::Linux, Arch::Arm64) => &["linux-aarch64"],
             (Os::Linux, Arch::Riscv64) => &["linux-riscv64"],
-            (Os::Linux, Arch::X86) => &[],
             (Os::FreeBsd, Arch::X64) => &["freebsd-x86_64"],
             (Os::FreeBsd, Arch::Arm64) => &["freebsd-aarch64"],
-            (Os::FreeBsd, _) => &[],
+            (Os::Windows | Os::MacOs | Os::FreeBsd, _) | (Os::Linux, Arch::X86) => &[],
         }
     }
 
     /// Package formats the launcher installs on this OS, in order of preference.
+    #[must_use]
     pub fn default_kinds(self) -> &'static [PackageKind] {
         match self.os {
             Os::Windows => &[PackageKind::Msi, PackageKind::PortableZip],
@@ -172,6 +175,7 @@ impl Platform {
     }
 
     /// Every format offered as a manual download on this OS (the web build's download menu).
+    #[must_use]
     pub fn download_kinds(self) -> &'static [PackageKind] {
         match self.os {
             Os::Windows => &[PackageKind::Msi, PackageKind::PortableZip],
@@ -194,6 +198,7 @@ pub struct AssetName {
 impl AssetName {
     /// The architecture the asset is built for: the last part of its token (`windows-x86` → x86).
     /// `None` for a token that names none (`macos-universal`).
+    #[must_use]
     pub fn arch(&self) -> Option<Arch> {
         match self.token.rsplit('-').next()? {
             "x64" | "x86_64" => Some(Arch::X64),
@@ -207,6 +212,7 @@ impl AssetName {
 
 /// Reads `<stem>-<version>-<os>-<arch>[-portable].<ext>`; `None` for checksums, zsync files, CLI
 /// and web bundles, or anything else.
+#[must_use]
 pub fn parse_asset_name(name: &str, stems: &[&str]) -> Option<AssetName> {
     const KINDS: [PackageKind; 9] = [
         PackageKind::PortableZip,
@@ -235,6 +241,7 @@ pub fn parse_asset_name(name: &str, stems: &[&str]) -> Option<AssetName> {
 
 /// The best asset of `release` for `platform`, trying `kinds` in order and, within a kind, the
 /// platform's tokens in order (native before emulated).
+#[must_use]
 pub fn pick_asset<'a>(release: &'a Release, stems: &[&str], platform: Platform, kinds: &[PackageKind]) -> Option<(&'a Asset, PackageKind)> {
     let parsed: Vec<(&Asset, AssetName)> = release.assets.iter().filter_map(|a| parse_asset_name(&a.name, stems).map(|n| (a, n))).collect();
     for kind in kinds {

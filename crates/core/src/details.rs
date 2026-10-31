@@ -69,6 +69,7 @@ pub const MAX_SCREENSHOT_PIXELS: u64 = 8192 * 8192;
 
 /// True when `bytes` start like a JPEG file. A captive portal's login page, a proxy's error page or
 /// a truncated answer is refused before it is saved or decoded.
+#[must_use]
 pub fn looks_like_jpeg(bytes: &[u8]) -> bool {
     bytes.starts_with(&[0xFF, 0xD8, 0xFF])
 }
@@ -76,8 +77,9 @@ pub fn looks_like_jpeg(bytes: &[u8]) -> bool {
 /// Reads the pixel dimensions `(width, height)` declared in a JPEG's frame header, without
 /// decoding any pixels. `None` when the bytes aren't a JPEG we can read a frame size from.
 ///
-/// It walks the marker segments to the Start-Of-Frame (SOFn) marker, whose payload begins with
+/// It walks the marker segments to the Start-Of-Frame (`SOFn`) marker, whose payload begins with
 /// `precision (1) · height (2, big-endian) · width (2)`.
+#[must_use]
 pub fn jpeg_dimensions(bytes: &[u8]) -> Option<(u16, u16)> {
     if !looks_like_jpeg(bytes) {
         return None;
@@ -128,6 +130,7 @@ pub fn jpeg_dimensions(bytes: &[u8]) -> Option<(u16, u16)> {
 
 /// Whether `bytes` is a JPEG whose declared dimensions are within [`MAX_SCREENSHOT_PIXELS`], so it
 /// is safe to hand to an image loader that allocates from the header before decoding.
+#[must_use]
 pub fn screenshot_within_budget(bytes: &[u8]) -> bool {
     match jpeg_dimensions(bytes) {
         Some((w, h)) => w != 0 && h != 0 && u64::from(w) * u64::from(h) <= MAX_SCREENSHOT_PIXELS,
@@ -494,10 +497,12 @@ pub const DETAILS: [AppDetails; 14] = [
 impl AppDetails {
     /// Where the picture `key` of this app is published, or `None` if the page has no such picture.
     /// The only way to turn a request into an address: callers never build one from their own text.
+    #[must_use]
     pub fn screenshot_url(&self, key: &str) -> Option<String> {
         self.shots.iter().find(|s| s.key == key).map(|s| format!("{SCREENSHOTS_BASE}/{SCREENSHOTS_REV}/{}/{}.jpg", self.id, s.key))
     }
 
+    #[must_use]
     pub fn by_id(id: &str) -> Option<&'static AppDetails> {
         DETAILS.iter().find(|d| d.id == id)
     }

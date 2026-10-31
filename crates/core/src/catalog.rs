@@ -6,7 +6,7 @@
 //! keyed by the app id (`tr_ctx(app.id, app.tagline)` in `ui-egui`).
 
 /// Who makes an app. Official apps live under [`GITHUB_OWNER`]; a community app is maintained
-/// outside ArtCraft and is labelled as such wherever it is shown.
+/// outside `ArtCraft` and is labelled as such wherever it is shown.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum AppKind {
     Official,
@@ -30,18 +30,18 @@ pub struct CraftApp {
     pub ink_dark: [u8; 3],
     /// GitHub `owner/repo`.
     pub repo: &'static str,
-    /// Older names its release assets may carry (PdfCraft shipped as PrintCraft until 0.2.1).
+    /// Older names its release assets may carry (`PdfCraft` shipped as `PrintCraft` until 0.2.1).
     pub former_ids: &'static [&'static str],
-    /// Older display names its installers registered (PdfCraft's MSI said PrintCraft until 0.2.1).
+    /// Older display names its installers registered (`PdfCraft`'s MSI said `PrintCraft` until 0.2.1).
     pub former_names: &'static [&'static str],
     pub kind: AppKind,
     /// Who publishes it, as the card's byline shows it (`ArtCraft`, `Tangency Labs`).
     pub publisher: &'static str,
-    /// The publisher its Windows installer names, when it isn't ArtCraft's (`Learning Machines LLC`).
+    /// The publisher its Windows installer names, when it isn't `ArtCraft`'s (`Learning Machines LLC`).
     pub msi_publisher: Option<&'static str>,
     /// The bundle id when it isn't `ai.storyteller.<id>` (a community app brings its own).
     pub bundle: Option<&'static str>,
-    /// Older bundle ids its Flatpak shipped under (SolidCraft was `ai.storyteller.solidcraft`).
+    /// Older bundle ids its Flatpak shipped under (`SolidCraft` was `ai.storyteller.solidcraft`).
     pub former_bundles: &'static [&'static str],
     /// Its website, when it isn't a page on getartcraft.com (a community app has its own).
     pub site: Option<&'static str>,
@@ -53,31 +53,36 @@ pub struct CraftApp {
 
 impl CraftApp {
     /// `ai.storyteller.<id>`: macOS bundle id, Flatpak id and Linux desktop-file id.
+    #[must_use]
     pub fn bundle_id(&self) -> String {
         self.bundle.map_or_else(|| format!("ai.storyteller.{}", self.id), str::to_string)
     }
 
+    #[must_use]
     pub fn releases_url(&self) -> String {
         format!("https://github.com/{}/releases", self.repo)
     }
 
+    #[must_use]
     pub fn repo_url(&self) -> String {
         format!("https://github.com/{}", self.repo)
     }
 
     /// The app's website: its page on getartcraft.com, or a community app's own site.
+    #[must_use]
     pub fn website(&self) -> String {
         self.site.map_or_else(|| format!("https://getartcraft.com/apps/{}", self.id), str::to_string)
     }
 
     /// Whether the launcher installs this app from a `kind` package.
+    #[must_use]
     pub fn installs(&self, kind: crate::PackageKind) -> bool {
         kind != crate::PackageKind::Dmg || self.mac_team.is_some()
     }
 
     /// Bundle ids this app may be installed under, current first.
     pub fn bundle_ids(&self) -> impl Iterator<Item = String> + '_ {
-        std::iter::once(self.bundle_id()).chain(self.former_bundles.iter().map(|b| b.to_string()))
+        std::iter::once(self.bundle_id()).chain(self.former_bundles.iter().map(ToString::to_string))
     }
 
     /// Asset stems this app's releases may use, current first.
@@ -90,6 +95,7 @@ impl CraftApp {
         std::iter::once(self.name).chain(self.former_names.iter().copied())
     }
 
+    #[must_use]
     pub fn by_id(id: &str) -> Option<&'static CraftApp> {
         SUITE.iter().find(|a| a.id == id)
     }
@@ -214,18 +220,18 @@ pub const SUITE: [CraftApp; 14] = [
     },
 ];
 
-/// The Apple Developer team that signs every official Craft App and ArtCraft Launcher (Learning
+/// The Apple Developer team that signs every official Craft App and `ArtCraft` Launcher (Learning
 /// Machines LLC): the macOS side of the Windows publisher check.
 pub const ARTCRAFT_TEAM_ID: &str = "DJ6XS33FX8";
 
-/// ArtCraft's website.
+/// `ArtCraft`'s website.
 pub const WEBSITE_URL: &str = "https://getartcraft.com";
 /// The GitHub account every official Craft App's repository lives under. The release feed can
 /// only move an app within it; a community app installs from its own repo, pinned in [`SUITE`].
 pub const GITHUB_OWNER: &str = "storytold";
-/// ArtCraft on GitHub: every Craft App's source.
+/// `ArtCraft` on GitHub: every Craft App's source.
 pub const GITHUB_URL: &str = "https://github.com/storytold";
-/// ArtCraft's social accounts: (service, URL). Shown as small icons, less prominent than Discord.
+/// `ArtCraft`'s social accounts: (service, URL). Shown as small icons, less prominent than Discord.
 pub const SOCIAL: [(&str, &str); 5] = [
     ("X", "https://x.com/get_artcraft"),
     ("Instagram", "https://www.instagram.com/officialartcraftstudios"),
@@ -234,12 +240,12 @@ pub const SOCIAL: [(&str, &str); 5] = [
     ("TikTok", "https://www.tiktok.com/@artcraft.studios"),
 ];
 
-/// The ArtCraft community on Discord.
+/// The `ArtCraft` community on Discord.
 pub const DISCORD_URL: &str = "https://discord.gg/artcraft";
-/// Deep link into the Discord application for the ArtCraft server invite.
+/// Deep link into the Discord application for the `ArtCraft` server invite.
 pub const DISCORD_APP_URL: &str = "discord://-/invite/artcraft";
 
-/// ArtCraft Launcher itself, described like a Craft App so it can update itself with the same
+/// `ArtCraft` Launcher itself, described like a Craft App so it can update itself with the same
 /// machinery (asset names `artcraft-launcher-<ver>-…`, bundle id `ai.storyteller.artcraft-launcher`,
 /// `ArtCraft Launcher.app`). Not part of [`SUITE`].
 pub const LAUNCHER: CraftApp = app(
@@ -257,6 +263,7 @@ pub const LAUNCHER_ID: &str = "artcraft-launcher";
 
 /// A Craft App's 128 px icon (PNG), as copied from its repo into `assets/app-icons`: the UI
 /// draws it, and the Linux install puts it in the desktop menu.
+#[must_use]
 pub fn app_icon_png(id: &str) -> Option<&'static [u8]> {
     Some(match id {
         "photocraft" => include_bytes!("../../../assets/app-icons/photocraft.png"),

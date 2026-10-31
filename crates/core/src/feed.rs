@@ -142,7 +142,8 @@ impl Feed {
     }
 
     /// The repo to ask GitHub about for `app`, following the feed's repo renames. Always under
-    /// [`GITHUB_OWNER`]: the feed can move an app within ArtCraft's account, never out of it.
+    /// [`GITHUB_OWNER`]: the feed can move an app within `ArtCraft`'s account, never out of it.
+    #[must_use]
     pub fn repo_for(&self, app: &CraftApp) -> String {
         let mut repo = app.repo.to_string();
         // Follow a chain of moves (a → b → c), without looping forever.
@@ -156,6 +157,7 @@ impl Feed {
     }
 
     /// What the feed says about `app` at `now`.
+    #[must_use]
     pub fn answer(&self, app: &CraftApp, now: i64) -> FeedAnswer {
         let Some(entry) = self.apps.get(app.id) else { return FeedAnswer::AskGitHub };
         let Some(fetched_at) = entry.fetched_at else { return FeedAnswer::AskGitHub };
@@ -232,9 +234,8 @@ fn lenient<'de, D: Deserializer<'de>, T: DeserializeOwned + Default>(d: D) -> Re
 /// A list where entries of the wrong shape are dropped rather than spoiling the rest.
 fn lenient_vec<'de, D: Deserializer<'de>, T: DeserializeOwned>(d: D) -> Result<Vec<T>, D::Error> {
     let value = serde_json::Value::deserialize(d)?;
-    let items = match value {
-        serde_json::Value::Array(items) => items,
-        _ => return Ok(Vec::new()),
+    let serde_json::Value::Array(items) = value else {
+        return Ok(Vec::new());
     };
     Ok(items.into_iter().filter_map(|v| T::deserialize(v).ok()).collect())
 }
@@ -242,9 +243,8 @@ fn lenient_vec<'de, D: Deserializer<'de>, T: DeserializeOwned>(d: D) -> Result<V
 /// A map where entries of the wrong shape are dropped.
 fn lenient_map<'de, D: Deserializer<'de>, T: DeserializeOwned>(d: D) -> Result<BTreeMap<String, T>, D::Error> {
     let value = serde_json::Value::deserialize(d)?;
-    let entries = match value {
-        serde_json::Value::Object(entries) => entries,
-        _ => return Ok(BTreeMap::new()),
+    let serde_json::Value::Object(entries) = value else {
+        return Ok(BTreeMap::new());
     };
     Ok(entries.into_iter().filter_map(|(k, v)| T::deserialize(v).ok().map(|t| (k, t))).collect())
 }

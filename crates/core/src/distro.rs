@@ -16,6 +16,7 @@ pub struct OsRelease {
 }
 
 /// Reads `os-release` text (`KEY=value` lines, values optionally quoted).
+#[must_use]
 pub fn parse_os_release(text: &str) -> OsRelease {
     let mut out = OsRelease::default();
     for line in text.lines() {
@@ -45,7 +46,8 @@ fn unquote(v: &str) -> &str {
 
 /// The distro's own package format: `.deb` for the Debian family, `.rpm` for the Fedora, Red Hat
 /// and SUSE families, `.pkg.tar.zst` for the Arch Linux family, `None` for anything else
-/// (unknown distros), which gets AppImages.
+/// (unknown distros), which gets `AppImage` files.
+#[must_use]
 pub fn native_package(os: &OsRelease) -> Option<PackageKind> {
     std::iter::once(&os.id).chain(&os.id_like).find_map(|id| family(id))
 }
