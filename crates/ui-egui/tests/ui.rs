@@ -2100,6 +2100,78 @@ fn maximized_the_close_button_reaches_the_screens_corner() {
     assert!(asked.iter().any(|c| matches!(c, egui::ViewportCommand::BeginResize(_))), "{asked:?}");
 }
 
+/// A quick drag on an edge only resizes: egui sees it as one spot, so nothing nearby may click (#571).
+#[test]
+fn a_press_on_the_window_edge_only_resizes() {
+    use egui::ViewportCommand as Asked;
+    struct FramelessHost;
+    impl Host for FramelessHost {
+        fn title_bar(&self) -> artcraft_launcher_ui_egui::TitleBar {
+            artcraft_launcher_ui_egui::TitleBar::Custom
+        }
+    }
+    artcraft_launcher_ui_egui::i18n::set_test_lang(artcraft_launcher_ui_egui::i18n::Lang::EN);
+    let mut backend = Some(Fake {
+        events: events(),
+        sent: Rc::new(RefCell::new(Vec::new())),
+        manage: true,
+        pictures: Rc::default(),
+        asked: Vec::new(),
+        clock: Rc::new(Cell::new(NOW)),
+    });
+    let mut h = test_harness_builder(egui::Theme::Dark).with_size(egui::vec2(1180.0, 1200.0)).build_ui_state(
+        move |ui, state: &mut Option<LauncherUi>| {
+            if state.is_none()
+                && let Some(b) = backend.take()
+            {
+                *state = Some(LauncherUi::new(ui.ctx(), Box::new(b), Settings { notify: false, ..Settings::default() }));
+            }
+            if let Some(l) = state.as_mut() {
+                l.logic(&ui.ctx().clone(), &mut FramelessHost);
+                // The harness keeps its app 8 px in; a real header starts at the window's top.
+                let window = ui.ctx().content_rect();
+                ui.scope_builder(egui::UiBuilder::new().max_rect(window), |ui| l.ui(ui, &mut FramelessHost));
+            }
+        },
+        None,
+    );
+    h.run_steps(6);
+    let press = |h: &mut Harness<'_, Option<LauncherUi>>, pos: egui::Pos2| -> Vec<Asked> {
+        let mut asked = Vec::new();
+        for pressed in [true, false] {
+            let input = h.input_mut();
+            input.events.push(egui::Event::PointerMoved(pos));
+            input.events.push(egui::Event::PointerButton { pos, button: egui::PointerButton::Primary, pressed, modifiers: egui::Modifiers::NONE });
+            h.step();
+            asked.extend(h.output().viewport_output.values().flat_map(|v| v.commands.iter().cloned()));
+        }
+        h.run_steps(2);
+        asked
+    };
+    let settings_open =
+        |h: &Harness<'_, Option<LauncherUi>>| h.query_by_role_and_label(egui::accesskit::Role::ComboBox, "Launcher version").is_some();
+    for label in ["Minimize", "Maximize", "Close", "Settings"] {
+        let x = h.get_by_label(label).rect().center().x;
+        let asked = press(&mut h, egui::pos2(x, 2.0));
+        assert!(asked.iter().any(|c| matches!(c, Asked::BeginResize(_))), "{label}: {asked:?}");
+        assert!(!asked.iter().any(|c| matches!(c, Asked::Minimized(_) | Asked::Maximized(_) | Asked::Close)), "{label}: {asked:?}");
+    }
+    assert!(!settings_open(&h), "the gear was pressed through the edge");
+    // The first frame at a new size already covers the new edge, or Close slips out from under it.
+    h.set_size(egui::vec2(1300.0, 1200.0));
+    h.step();
+    let x = h.get_by_label("Close").rect().center().x;
+    let asked = press(&mut h, egui::pos2(x, 2.0));
+    assert!(!asked.iter().any(|c| matches!(c, Asked::Close)), "after growing: {asked:?}");
+    // A dialog's backdrop reaches the edges too; the press doesn't dismiss it.
+    h.get_by_label("Settings").click();
+    h.run_steps(4);
+    assert!(settings_open(&h));
+    let asked = press(&mut h, egui::pos2(590.0, 1198.0));
+    assert!(asked.iter().any(|c| matches!(c, Asked::BeginResize(_))), "{asked:?}");
+    assert!(settings_open(&h), "the dialog closed on a resize");
+}
+
 #[test]
 /// Clicking a card opens its details drawer with the page links, wrapping picture arrows and
 /// Esc-to-close.

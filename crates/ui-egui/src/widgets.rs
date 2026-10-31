@@ -255,6 +255,17 @@ pub fn window_edges(ctx: &egui::Context) {
         t.hairline(),
         egui::StrokeKind::Inside,
     );
+    // Above every layer, so egui's click tolerance can't hand a resize's press to what's nearby (#571).
+    let e = RESIZE_EDGE;
+    let bands = [r.with_max_y(r.top() + e), r.with_min_y(r.bottom() - e), r.with_max_x(r.left() + e), r.with_min_x(r.right() - e)];
+    for (edge, rect) in bands.into_iter().enumerate() {
+        egui::Area::new(egui::Id::unique(("window-edge", edge)))
+            .order(egui::Order::Tooltip)
+            .movable(false)
+            .constrain(false)
+            .fixed_pos(rect.min)
+            .show(ctx, |ui| ui.allocate_response(rect.size(), egui::Sense::CLICK));
+    }
     let Some(p) = ctx.input(|i| i.pointer.hover_pos()).filter(|p| r.contains(*p)) else { return };
     let near = |d: f32| d < RESIZE_EDGE;
     // A corner takes a little of each edge next to it.
