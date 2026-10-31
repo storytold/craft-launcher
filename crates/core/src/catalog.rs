@@ -235,7 +235,7 @@ pub const SOCIAL: [(&str, &str); 5] = [
 ];
 
 /// The ArtCraft community on Discord.
-pub const DISCORD_URL: &str = "https://discord.gg/artcraft";
+pub const DISCORD_URL: &str = "https://discord.com/invite/artcraft";
 /// Deep link into the Discord application for the ArtCraft server invite.
 pub const DISCORD_APP_URL: &str = "discord://-/invite/artcraft";
 

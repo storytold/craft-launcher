@@ -185,10 +185,10 @@ pub fn is_discord_installed() -> bool {
     DISCORD_HANDLER_DETECTED.load(Ordering::Relaxed)
 }
 
-/// The URL to use for Discord links: deep-links to the app if a handler is registered,
-/// else the web invite. Non-blocking (detection runs in the background).
+/// The URL to use for Discord links. Use the web invite because some Linux handlers
+/// misinterpret Discord's custom URI scheme as an HTTP URL.
 pub fn discord_url() -> &'static str {
-    if is_discord_installed() { artcraft_launcher_core::catalog::DISCORD_APP_URL } else { artcraft_launcher_core::catalog::DISCORD_URL }
+    artcraft_launcher_core::catalog::DISCORD_URL
 }
 
 #[cfg(windows)]
@@ -644,10 +644,9 @@ mod discord_tests {
     }
 
     #[test]
-    fn discord_url_gives_app_or_web_url() {
-        use artcraft_launcher_core::catalog::{DISCORD_APP_URL, DISCORD_URL};
-        let url = discord_url();
-        assert!(url == DISCORD_URL || url == DISCORD_APP_URL);
+    fn discord_url_uses_web_invite() {
+        use artcraft_launcher_core::catalog::DISCORD_URL;
+        assert_eq!(discord_url(), DISCORD_URL);
     }
 }
 
