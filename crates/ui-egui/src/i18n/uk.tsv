@@ -1,0 +1,374 @@
+# Ukrainian (uk) catalog for ArtCraft Launcher.
+# Format: context<TAB>source<TAB>translation
+# Empty context = plain UI string (tl!, t).
+# @id = command-id keyed (tr_id).
+# @plural = plural forms: one|other (English) or one|few|many (Ukrainian).
+# @msg = status/error message template (message, msg).
+# Other context = disambiguation for tr_ctx.
+#
+# Clean-room: written from the meaning of ArtCraft Launcher's English labels in clear,
+# idiomatic Ukrainian for users of creative software.
+#
+# Coverage: the whole interface — every menu string and tl! literal (complete_menus = true).
+# Left in English on purpose: product name "ArtCraft Launcher" (and its "Launcher" tag), suite
+# name "Craft App Suite",
+# app names (PhotoCraft, LightCraft, FilmCraft, DesignCraft, VectorCraft, PdfCraft, EffectCraft,
+# WordCraft, DeckCraft, GridCraft, CADCraft, SoundCraft, FigCraft), "GitHub", "Discord", "Website".
+# Shortcut keys keep their key-cap names (Shift, Alt, Ctrl, Cmd, Esc).
+# Trailing "…" (U+2026) must be preserved. Placeholders {name}, {n}, {version}, {count}, {v},
+# {what}, {unit}, {real}, {e} must appear in translation.
+
+	Launcher	Launcher
+	Craft App Suite	Craft App Suite
+	Open Source Tools for Creatives, Makers, and Builders	Відкриті інструменти для творців, мейкерів і розробників
+	Settings	Налаштування
+	Check for updates	Перевірити оновлення
+	Grid	Сітка
+	Table	Таблиця
+	Show apps as cards	Показувати застосунки картками
+	Show apps as a table	Показувати застосунки таблицею
+	All	Усі
+	Updates	Оновлення
+	Not installed	Не встановлені
+	Search apps	Пошук застосунків
+	Sort	Сортування
+	Suite order	За порядком у наборі
+	Name	Назва
+	Status	Статус
+	Installed version	Встановлена версія
+	Latest version	Остання версія
+	Newest release	Найновіший випуск
+	Discord	Discord
+	GitHub	GitHub
+	Website	Вебсайт
+	Classic apps	Класичні застосунки
+	New apps	Нові застосунки
+	NEW	НОВЕ
+	Install	Встановити
+	Update to {v}	Оновити до {v}
+	Open	Відкрити
+	Download for {os}	Завантажити для {os}
+	Download	Завантажити
+	Coming soon	Незабаром
+	Checking…	Перевірка…
+	Not available	Недоступно
+	Offline	Не в мережі
+	Downloading {done} of {total}	Завантаження {done} із {total}
+	Downloading…	Завантаження…
+	Reconnecting…	Повторне з’єднання…
+	Verifying…	Перевірка цілісності…
+	Installing, then restarting…	Встановлення, потім перезапуск…
+	Installing…	Встановлення…
+	Removing…	Видалення…
+	Pause download	Призупинити завантаження
+	Cancel download	Скасувати завантаження
+	Resume download	Продовжити завантаження
+	Discard download	Видалити завантажене
+	Release notes	Примітки до випуску
+	Show in Finder	Показати в Finder
+	Show in Explorer	Показати в Провіднику
+	Show in Files	Показати у файловому менеджері
+	Reinstall	Перевстановити
+	Uninstall…	Видалити…
+	All releases	Усі випуски
+	ArtCraft Launcher {version} is available.	Доступний ArtCraft Launcher {version}.
+	Dismiss	Закрити
+	Update and restart	Оновити й перезапустити
+	A new version is available. Would you like to relaunch with the updated version?	Доступна нова версія. Перезапустити з оновленою версією?
+	Later	Пізніше
+	What's new	Що нового
+	No notes were published with this release.	До цього випуску примітки не опубліковано.
+	Released {date}	Випущено {date}
+	Open on GitHub	Відкрити на GitHub
+	Close	Закрити
+	ArtCraft Launcher {version}	ArtCraft Launcher {version}
+	Only when I ask	Лише за моїм запитом
+	Automatically download and install updates	Автоматично завантажувати й встановлювати оновлення
+	Notify me when an installed app has an update	Повідомляти, коли для встановленого застосунку з’являється оновлення
+	Include pre-releases (betas and release candidates)	Включати передвипуски (бета-версії та реліз-кандидати)
+	Installing on Linux	Встановлення в Linux
+	Installing on Windows	Встановлення у Windows
+	Install new apps as	Встановлювати нові застосунки як
+	System package (recommended)	Системний пакет (рекомендовано)
+	Updates always use the format an app was installed with.	Оновлення завжди використовують формат, у якому застосунок було встановлено.
+	Running in the background	Робота у фоновому режимі
+	Keep running in the tray when the window is closed	Продовжувати роботу в треї після закриття вікна
+	Show the window on the current desktop	Показувати вікно на поточному робочому столі
+	Start ArtCraft Launcher when I log in	Запускати ArtCraft Launcher під час входу в систему
+	Community	Спільнота
+	Questions, ideas and news from the ArtCraft team	Запитання, ідеї та новини від команди ArtCraft
+	Appearance	Зовнішній вигляд
+	Quit ArtCraft Launcher	Вийти з ArtCraft Launcher
+	Done	Готово
+	Uninstall {name}?	Видалити {name}?
+	The app will be moved to the Trash. Your documents and settings stay.	Застосунок буде переміщено в Кошик. Ваші документи та налаштування залишаться.
+	Windows will remove it like any installed program. Your documents and settings stay.	Windows видалить його так само, як будь-яку іншу програму. Ваші документи та налаштування залишаться.
+	Your system's package manager will remove it, and may ask for your password. Your documents and settings stay.	Системний менеджер пакетів видалить його й може запитати ваш пароль. Ваші документи та налаштування залишаться.
+	The app will be removed. Your documents and settings stay.	Застосунок буде видалено. Ваші документи та налаштування залишаться.
+	Uninstall	Видалити
+	Cancel	Скасувати
+	Checked {ago}	Перевірено {ago}
+	just now	щойно
+	yesterday	вчора
+	{month} {day}, {year}	{day} {month} {year}
+
+	Automatically	Автоматично
+	Every Craft app	Усі застосунки Craft
+	Apps on this computer	Застосунки на цьому комп’ютері
+	Installed apps with a newer version	Встановлені застосунки з новішою версією
+	Apps you can install	Застосунки, які можна встановити
+	Hide App	Сховати застосунок
+	Unhide App	Показати застосунок
+	Hidden Apps	Сховані застосунки
+	Apps you hid	Застосунки, які ви сховали
+	Checked {ago} · using {sources}	Перевірено {ago} · джерела: {sources}
+	{a} and {b}	{a} і {b}
+	Join the Discord	Приєднатися до Discord
+	Learn more	Докладніше
+	Minimize	Згорнути
+	Maximize	Розгорнути
+	Restore	Відновити
+	New	Нове
+	OK	Гаразд
+	Open link	Відкрити посилання
+	Update	Оновити
+	{name} icon	Значок {name}
+	Loading ArtCraft Launcher…	Завантаження ArtCraft Launcher…
+	Cancel update	Скасувати оновлення
+	Stop waiting; the update can be started again later	Припинити чекати; оновлення можна буде запустити знову пізніше
+	Download again	Завантажити ще раз
+	Install cancelled	Встановлення скасовано
+	Install cancelled. The download is kept for the next try.	Встановлення скасовано. Завантажений файл збережено для наступної спроби.
+	Update cancelled	Оновлення скасовано
+	Uninstall cancelled	Видалення скасовано
+	Retry install	Повторити встановлення
+	Retry update to {version}	Повторити оновлення до {version}
+	The download is still here. It's checked again, then installed.	Завантажений файл усе ще на місці. Його перевірять ще раз, а потім встановлять.
+	Waiting for another app…	Очікування іншого застосунку…
+	Waiting for other installs…	Очікування інших встановлень…
+
+# Package formats offered for download (PackageKind::label)
+	Installer (.msi)	Програма встановлення (.msi)
+	Portable (.zip)	Портативна версія (.zip)
+	Disk image (.dmg)	Образ диска (.dmg)
+	Debian package (.deb)	Пакет Debian (.deb)
+	RPM package (.rpm)	Пакет RPM (.rpm)
+	Arch package (.pkg.tar.zst)	Пакет Arch (.pkg.tar.zst)
+	Flatpak bundle	Пакет Flatpak
+	Tarball (.tar.gz)	Архів (.tar.gz)
+
+# Contextual: each app's tagline, keyed by app id
+photocraft	Image editing	Редагування зображень
+vectorcraft	Vector illustration	Векторна іллюстрація
+filmcraft	Video editing, color and sound	Монтаж відео, корекція кольору та звук
+lightcraft	Photo library and raw development	Фототека та проявка RAW
+pdfcraft	Reading, organizing and protecting PDFs	Читання, впорядкування та захист PDF
+effectcraft	Motion graphics and visual effects	Моушн-графіка та візуальні ефекти
+designcraft	Page layout and publishing	Верстка та публікації
+wordcraft	Writing and document design	Написання текстів та оформлення документів
+deckcraft	Presentations and slide shows	Презентації та слайд-шоу
+gridcraft	Spreadsheets and data	Електронні таблиці та дані
+cadcraft	Computer-aided design and drafting	Комп’ютерне проєктування та креслення
+soundcraft	Recording, editing and mixing audio	Запис, редагування та зведення звуку
+figcraft	Interface design and prototyping	Дизайн інтерфейсів та прототипування
+
+# Contextual: month abbreviations for date rendering
+month	Jan	січ.
+month	Feb	лют.
+month	Mar	бер.
+month	Apr	квіт.
+month	May	трав.
+month	Jun	черв.
+month	Jul	лип.
+month	Aug	серп.
+month	Sep	вер.
+month	Oct	жовт.
+month	Nov	лист.
+month	Dec	груд.
+	Not checked yet	Ще не перевірено
+	GitHub's hourly limit was reached; full details return in {min} min	Вичерпано годинний ліміт GitHub; повні подробиці повернуться через {min} хв
+	GitHub limit hit; back in {min} min	Ліміт GitHub вичерпано; доступ відновиться за {min} хв
+	Installing for {platform}	Встановлення для {platform}
+	Downloads for {platform}	Завантаження для {platform}
+	No downloads for this system	Немає завантажень для цієї системи
+	Join the ArtCraft community on Discord	Приєднатися до спільноти ArtCraft у Discord
+	ArtCraft on {name}	ArtCraft на {name}
+	Couldn't open {name}: {e}	Не вдалося відкрити {name}: {e}
+	Download cancelled	Завантаження скасовано
+	Available to install	Доступно для встановлення
+	Available	Доступно
+	Installed · up to date	Встановлено · актуально
+	Update available	Доступне оновлення
+	Installed	Встановлено
+	installed	встановлено
+	Not available here	Недоступно тут
+	Updating…	Оновлення…
+	Update paused	Оновлення призупинено
+	Download paused	Завантаження призупинено
+	{version} installed → {latest} released	{version} встановлено → {latest} випущено
+	Version {version}	Версія {version}
+	{installed} installed · latest {latest}	{installed} встановлено · остання {latest}
+	Installed · latest {latest}	Встановлено · остання {latest}
+	Version {version} installed	Версія {version} встановлена
+	Version {latest}	Версія {latest}
+	No release published yet	Випуск ще не опубліковано
+	ArtCraft Launcher	ArtCraft Launcher
+	App	Застосунок
+	Latest	Остання
+	Released	Випущено
+	Auto	Авто
+	Language	Мова
+	Ascending	За зростанням
+	Descending	За спаданням
+	Click to reverse the order	Натисніть, щоб змінити порядок
+	Click to sort by this column	Натисніть, щоб сортувати за цією колонкою
+	{done} of {total}	{done} із {total}
+	Downloading	Завантаження
+	Verifying checksum…	Перевірка контрольної суми…
+	Resume	Продовжити
+	{done} of {total} downloaded	Завантажено {done} із {total}
+	{done} downloaded	Завантажено {done}
+	Checking for updates…	Перевірка оновлень…
+	Downloads the new version, replaces this one and opens it again	Завантажує нову версію, замінює цю і відкриває її знову
+	Couldn't check for updates: {f}	Не вдалося перевірити оновлення: {f}
+	GitHub repository	Репозиторій GitHub
+	ArtCraft	ArtCraft
+	Update 1 app	Оновити 1 застосунок
+	Update all ({count})	Оновити всі ({count})
+	⊞  Grid	⊞  Сітка
+	☰  Table	☰  Таблиця
+	🔍  Search apps	🔍  Пошук застосунків
+	{name} {version}	{name} {version}
+	Match system	Як у системі
+	Dark	Темна
+	Light	Світла
+	Full changelog	Повний список змін
+	link	посилання
+	No apps match	Немає відповідних застосунків
+	Open ArtCraft Launcher to update.	Відкрийте ArtCraft Launcher, щоб оновити.
+	{name} {v} is available	Доступне оновлення {name} {v}
+	{count} updates are available	Доступні оновлення ({count})
+	These notes weren't fetched (GitHub's request limit was reached). They're on the release page.	Ці примітки не вдалося отримати (вичерпано ліміт запитів GitHub). Вони є на сторінці випуску.
+	When on, opening the launcher from the menu bar brings its window to the desktop you're on. When off, macOS switches you to the desktop the window was on.	Якщо ввімкнено, відкриття лаунчера з рядка меню переносить його вікно на поточний робочий стіл. Якщо вимкнено, macOS перемикає вас на робочий стіл, де було вікно.
+	Couldn't change the login item: {e}	Не вдалося змінити елемент автозапуску: {e}
+
+# Contextual: table column headers
+column	App	Застосунок
+column	Installed	Встановлена
+column	Latest	Остання
+column	Released	Дата випуску
+column	Version	Версія
+
+# Contextual: the filter tab names a group (the status pill says "Installed")
+filter	Installed	Встановлені
+	{name} details	{name}: подробиці
+
+# Plural forms for Ukrainian (one|few|many)
+@plural	{n} app|{n} apps	{n} застосунок|{n} застосунки|{n} застосунків
+@plural	{n} min ago|{n} min ago	{n} хвилину тому|{n} хвилини тому|{n} хвилин тому
+@plural	{n} h ago|{n} h ago	{n} годину тому|{n} години тому|{n} годин тому
+@plural	{n} day ago|{n} days ago	{n} день тому|{n} дні тому|{n} днів тому
+
+# Message templates (@msg): toasts from the backend. {placeholders} match any text.
+@msg	Couldn't open {name}: {e}	Не вдалося відкрити {name}: {e}
+@msg	Download cancelled	Завантаження скасовано
+@msg	{name} updated to {version}	Застосунок {name} оновлено до {version}
+@msg	{name} installed: {version}	Застосунок {name} встановлено: {version}
+@msg	{name} updated to {version} (this release publishes no checksum, so only its size was checked)	Застосунок {name} оновлено до {version} (у цьому випуску немає контрольних сум, тому перевірено лише розмір)
+@msg	{name} installed: {version} (this release publishes no checksum, so only its size was checked)	Застосунок {name} встановлено: {version} (у цьому випуску немає контрольних сум, тому перевірено лише розмір)
+@msg	{name} was removed	Застосунок {name} видалено
+@msg	{name} is running. Quit it, then try again.	Застосунок {name} запущено. Закрийте його та спробуйте ще раз.
+@msg	{name} was installed from the {repo} repository or the AUR ({pkg}). Update it with {cmd} or sudo pacman -Syu	Застосунок {name} встановлено з репозиторію {repo} або з AUR ({pkg}). Оновіть його командою {cmd} або sudo pacman -Syu
+@msg	{name} was installed from the {repo} repository or the AUR ({pkg}). Update it with your AUR helper (for example: yay -S {pkg}) or sudo pacman -Syu	Застосунок {name} встановлено з репозиторію {repo} або з AUR ({pkg}). Оновіть його за допомогою вашого помічника AUR (наприклад: yay -S {pkg}) або командою sudo pacman -Syu
+@msg	{name} was installed from the AUR ({pkg}). Update it with {cmd}	Застосунок {name} встановлено з AUR ({pkg}). Оновіть його командою {cmd}
+@msg	{name} was installed from the AUR ({pkg}). Update it with your AUR helper (for example: yay -S {pkg})	Застосунок {name} встановлено з AUR ({pkg}). Оновіть його за допомогою вашого помічника AUR (наприклад: yay -S {pkg})
+
+# Command IDs for menu items (@id)
+# Format: @id<TAB>command_id<TAB>translation
+@id	app.install	Встановити
+@id	app.update	Оновити до {v}
+@id	app.open	Відкрити
+@id	app.download	Завантажити для {os}
+@id	app.reveal	Показати в Finder
+@id	app.reinstall	Перевстановити
+@id	app.uninstall	Видалити…
+@id	app.notes	Примітки до випуску
+@id	app.website	Вебсайт
+@id	app.github	Репозиторій на GitHub
+@id	app.releases	Усі випуски
+@id	launcher.update	Оновити й перезапустити
+@id	launcher.download	Завантажити
+@id	launcher.notes	Що нового
+@id	launcher.dismiss	Закрити
+@id	settings.open	Налаштування
+@id	settings.quit	Вийти з ArtCraft Launcher
+@id	view.grid	Сітка
+@id	view.table	Таблиця
+@id	filter.all	Усі
+@id	filter.installed	Встановлені
+@id	filter.updates	Оновлення
+@id	filter.notinstalled	Не встановлені
+@id	sort.suite	За порядком у наборі
+@id	sort.name	Назва
+@id	sort.status	Статус
+@id	sort.installed	Встановлена версія
+@id	sort.latest	Остання версія
+@id	sort.released	Найновіший випуск
+@id	help.discord	Discord
+@id	help.github	GitHub
+@id	help.website	Вебсайт
+@id	update.check	Перевірити оновлення
+@id	update.check_auto	Перевіряти оновлення автоматично
+@id	update.notify	Повідомляти, коли для встановленого застосунку з’являється оновлення
+@id	update.prereleases	Включати передвипуски (бета-версії та реліз-кандидати)
+@id	linux.preferred_kind	Встановлювати нові застосунки як
+@id	tray.close_to_tray	Продовжувати роботу в треї після закриття вікна
+@id	tray.show_on_current_desktop	Показувати вікно на поточному робочому столі
+@id	tray.login_item	Запускати ArtCraft Launcher під час входу в систему
+@id	appearance.theme	Зовнішній вигляд
+
+# Tray (menu bar) menu and tooltip
+	Show ArtCraft Launcher	Показати ArtCraft Launcher
+	Check for Updates	Перевірити оновлення
+	Visit getartcraft.com	Відкрити getartcraft.com
+	ArtCraft on GitHub	ArtCraft на GitHub
+	Join the ArtCraft Discord	Приєднатися до Discord ArtCraft
+	App details	Про застосунок
+	Close (Esc)	Закрити (Esc)
+	Features	Можливості
+	Latest release	Останній випуск
+	Version	Версія
+	Platforms	Платформи
+	Releases	Випуски
+	Enlarge picture	Збільшити зображення
+	Click to enlarge	Натисніть, щоб збільшити
+	Previous picture (←)	Попереднє зображення (←)
+	Next picture (→)	Наступне зображення (→)
+	Loading pictures…	Завантаження зображень…
+	Pictures couldn't be loaded. Reopen this page to try again.	Не вдалося завантажити зображення. Відкрийте цю сторінку ще раз.
+@plural	ArtCraft Launcher · {n} update available|ArtCraft Launcher · {n} updates available	ArtCraft Launcher · {n} оновлення|ArtCraft Launcher · {n} оновлення|ArtCraft Launcher · {n} оновлень
+	Install folder	Папка встановлення
+	Default install folder	Папка встановлення за замовчуванням
+	System default	Системне значення за замовчуванням
+	Browse…	Огляд…
+	Use default	Скористатися значенням за замовчуванням
+	New installs use this folder. Updates stay in their current location.	Нові застосунки встановлюються в цю папку. Під час оновлення поточне розташування зберігається.
+	Custom folders use AppImage on Linux.	Для власних папок у Linux використовується AppImage.
+	The system manages install locations here.	Тут розташуванням застосунків керує система.
+@msg	couldn't use install folder {path}: {reason}	не вдалося використати папку встановлення {path}: {reason}
+@msg	this release has no AppImage for a custom install folder	у цьому випуску немає AppImage для власної папки встановлення
+@msg	custom install folders aren't supported on this system	ця система не підтримує власні папки встановлення
+@msg	{path} already exists and wasn't installed by ArtCraft Launcher	{path} уже існує і не був встановлений через ArtCraft Launcher
+@msg	couldn't move {path} to Trash ({reason}). Remove it in Finder instead.	не вдалося перемістити {path} у Кошик ({reason}). Натомість видаліть його у Finder.
+	Apps are placed inside this folder.	Застосунки розміщуються всередині цієї папки.
+	Replace what's there?	Замінити наявне?
+	{path} already exists. Installing {name} will overwrite it.	{path} уже існує. Встановлення {name} перезапише його.
+	Replace	Замінити
+	Recently updated	Нещодавно оновлені
+	Name (A–Z)	Назва (A–Z)
+	Name (Z–A)	Назва (Z–A)
+	Frequently used	Часто використовувані
+	Next app	Наступний застосунок
+	Previous app	Попередній застосунок
+	Show {n} more changes	Показати ще {n} змін
+	Last updated: {date}	Востаннє оновлено: {date}

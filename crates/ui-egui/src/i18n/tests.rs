@@ -25,10 +25,12 @@ fn rows(lang: &LangInfo) -> Vec<(usize, &str, &str, &str)> {
     out
 }
 
+/// Every catalog that carries rows (English is the built-in source, with no file of its own).
 fn catalogs() -> impl Iterator<Item = &'static LangInfo> {
     LANGUAGES.iter().filter(|l| !l.source.is_empty())
 }
 
+/// The `{name}` placeholders a source or translation line carries, for comparison.
 fn placeholders(template: &str) -> BTreeSet<String> {
     let mut out = BTreeSet::new();
     let mut rest = template;
@@ -209,6 +211,28 @@ fn russian_plural_rule_works() {
     }
     assert_eq!(trn(Lang::RU, 21, "{n} day ago", "{n} days ago"), "21 день назад");
     assert_eq!(trn(Lang::RU, 3, "{n} day ago", "{n} days ago"), "3 дня назад");
+}
+
+#[test]
+fn ukrainian_locales_and_plurals_work() {
+    for tag in ["uk", "uk-UA", "uk_UA.UTF-8", "UK_ua"] {
+        assert_eq!(lang_from_tag(tag), Some(Lang::UK), "{tag}");
+    }
+    assert_eq!(super::detect::first_supported(["xx-XX", "uk-UA", "en-US"]), Some(Lang::UK));
+    // Ukrainian counts share Russian's rule: 1 (but not 11) is "one", 2–4 (but not 12–14) "few",
+    // everything else "many".
+    assert_eq!(trn(Lang::UK, 1, "{n} app", "{n} apps"), "1 застосунок");
+    assert_eq!(trn(Lang::UK, 3, "{n} app", "{n} apps"), "3 застосунки");
+    assert_eq!(trn(Lang::UK, 5, "{n} app", "{n} apps"), "5 застосунків");
+    assert_eq!(trn(Lang::UK, 21, "{n} day ago", "{n} days ago"), "21 день тому");
+    assert_eq!(trn(Lang::UK, 22, "{n} day ago", "{n} days ago"), "22 дні тому");
+    assert_eq!(trn(Lang::UK, 12, "{n} day ago", "{n} days ago"), "12 днів тому");
+    // A key the Ukrainian catalog doesn't carry falls back to the English forms.
+    assert_eq!(trn(Lang::UK, 3, "{n} unknown item", "{n} unknown items"), "3 unknown items");
+    assert_eq!(super::tr_ctx(Lang::UK, "month", "Mar"), "бер.");
+    assert_eq!(tr(Lang::UK, "{month} {day}, {year}"), "{day} {month} {year}");
+    assert_eq!(message(Lang::UK, "PhotoCraft updated to 0.5.0"), "Застосунок PhotoCraft оновлено до 0.5.0");
+    assert_eq!(tr(Lang::UK, "Untranslated diagnostic"), "Untranslated diagnostic");
 }
 
 #[test]
