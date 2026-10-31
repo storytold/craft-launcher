@@ -307,6 +307,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "artcraft-launcher-helper"
+version = "0.11.1"
+dependencies = [
+ "artcraft-launcher-native",
+ "log",
+ "sha2",
+ "windows-sys 0.61.2",
+ "winresource",
+]
+
+[[package]]
 name = "artcraft-launcher-native"
 version = "0.11.1"
 dependencies = [

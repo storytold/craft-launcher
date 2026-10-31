@@ -191,7 +191,7 @@ pub fn install_at(
                     job.stop,
                     &mut *job.phase,
                 ),
-                None => windows::run_msi(&file, destination.as_deref(), msi_scope, job.stop, &mut *job.phase),
+                None => windows::run_msi(app, &file, &sha256, destination.as_deref(), msi_scope, job.stop, &mut *job.phase),
             }
             .map(|_| None)
         }
@@ -1913,7 +1913,7 @@ mod freebsd {
 }
 
 /// What a Windows Installer exit code means for the job that ran it.
-#[cfg(any(windows, test))]
+#[cfg(windows)]
 fn explain(code: Option<i32>) -> Result<(), String> {
     match code {
         Some(0 | 3010 | 1641) => Ok(()),
@@ -1929,15 +1929,42 @@ fn explain(code: Option<i32>) -> Result<(), String> {
 #[cfg(any(windows, test))]
 mod msi_downgrade;
 
-/// Helpers for Windows Installer PowerShell scripts running under elevation.
+/// All-users Windows Installer work run by the launcher's installer helper, under one prompt.
 #[cfg(any(windows, test))]
-mod msi_batch;
+pub mod elevated;
+
+/// Which packages the elevated helper may install: signed through the pinned root, and the app it replaces.
+#[cfg(any(windows, test))]
+pub mod identity;
+
+/// A downloaded package held unchanged from its last check until `msiexec` is done with it.
+#[cfg(any(windows, test))]
+mod held;
+
+/// Package revocation: online before the prompt, cache-only in the elevated helper.
+#[cfg(any(windows, test))]
+pub mod revocation;
+
+/// Which program the launcher may elevate as its helper: our helper, of this build.
+#[cfg(any(windows, test))]
+mod helper_build;
+
+/// `path` as text that can sit inside quotes on a Windows command line.
+#[cfg(any(windows, test))]
+fn windows_text(path: &Path) -> Result<&str, String> {
+    let text = path.to_str().ok_or("unusual characters in a path")?;
+    if text.chars().any(|c| c == '"' || c.is_control()) {
+        return Err(format!("couldn't use {text}: the path contains invalid characters"));
+    }
+    Ok(text)
+}
 /// Builds the Windows Installer command separately so its package argument can be checked
 /// without starting an installer.
 #[cfg_attr(not(windows), allow(dead_code))]
 fn msi_command(program: &Path, msi: &Path) -> Result<std::process::Command, String> {
     let msi = msi_path(msi)?;
-    let mut command = process::command(program);
+    // Not `process::command`: `msiexec` shows its own window, and nothing here hides one.
+    let mut command = std::process::Command::new(program);
     // A verbose log beside the package: Windows Installer's own errors (1603 above all) say
     // nothing without it.
     command.arg("/i").arg(&msi).args(["/passive", "/norestart", "/l*v"]).arg(msi_log(&msi));
@@ -1967,30 +1994,44 @@ pub mod windows {
     use artcraft_launcher_core::protocol::CANCELLED;
 
     use super::{
-        CraftApp, INSTALLER, JobPhase, MsiScope, Path, PathBuf, Stop, cancelled, explain, msi_batch, msi_command, msi_downgrade, msi_folder_argument,
-        msi_log, msi_scope_arguments, process, turn,
+        CraftApp, INSTALLER, JobPhase, MsiScope, Path, PathBuf, Stop, cancelled, elevated, explain, held, msi_command, msi_downgrade,
+        msi_folder_argument, msi_log, msi_path, msi_scope_arguments, turn,
     };
 
-    fn msiexec() -> PathBuf {
-        std::env::var_os("SystemRoot").map_or_else(|| PathBuf::from(r"C:\Windows"), PathBuf::from).join(r"System32\msiexec.exe")
+    /// `msiexec` in the system folder, asked of Windows. Never from `SystemRoot`: the elevated
+    /// helper runs this, and an elevated program's environment takes the person's own variables,
+    /// which any program of theirs can set.
+    pub(super) fn msiexec() -> PathBuf {
+        winsafe::GetSystemDirectory().map_or_else(|_| PathBuf::from(r"C:\Windows\System32"), PathBuf::from).join("msiexec.exe")
     }
 
     /// Runs an MSI with a progress window and no restart. Windows asks for permission itself.
     /// `scope`, from the copy being replaced's registration, keeps the update in the same
     /// Windows Installer context (see [`MsiScope`]).
+    /// The package is held unchanged from its last check until `msiexec` exits (see [`held`]).
+    /// Its path is resolved first and only that path is used after: the downloads folder is the
+    /// person's own, so a link on the way could otherwise point elsewhere once the file is held.
+    /// A resolved path has no links, and no folder on it can be renamed while the file is held.
     pub fn run_msi(
+        app: &CraftApp,
         msi: &Path,
+        sha256: &str,
         destination: Option<&Path>,
         scope: Option<MsiScope>,
         stop: &Stop,
         phase: &mut dyn FnMut(JobPhase),
     ) -> Result<(), String> {
-        in_turn(stop, phase, JobPhase::Installing, || run_direct(msi, destination, scope))
+        in_turn(stop, phase, JobPhase::Installing, || {
+            let msi = &msi_path(msi)?;
+            let _held = held::hold(msi, sha256)?;
+            held::check_publisher(app, msi, scope == Some(MsiScope::PerMachine))?;
+            run_direct(msi, destination, scope)
+        })
     }
 
     /// Runs one MSI by itself: `msiexec` asks for permission itself, and the prompt names the package's
     /// publisher.
-    fn run_direct(msi: &Path, destination: Option<&Path>, scope: Option<MsiScope>) -> Result<(), String> {
+    pub(super) fn run_direct(msi: &Path, destination: Option<&Path>, scope: Option<MsiScope>) -> Result<(), String> {
         use std::os::windows::process::CommandExt;
         let mut command = msi_command(&msiexec(), msi)?;
         if let Some(dir) = destination {
@@ -2043,85 +2084,77 @@ pub mod windows {
         stop: &Stop,
         phase: &mut dyn FnMut(JobPhase),
     ) -> Result<(), String> {
+        // Resolved once, before anything is checked or held, as in [`run_msi`].
+        let (chosen_file, previous_file) = (msi_path(chosen.file)?, msi_path(previous.file)?);
+        let chosen = Package { file: &chosen_file, ..chosen };
+        let previous = Package { file: &previous_file, ..previous };
         if scope == Some(MsiScope::PerMachine) {
-            let mut elevated = None;
-            in_turn(stop, phase, JobPhase::Installing, || {
-                elevated = downgrade_elevated(app, &chosen, &previous, destination, scope)?;
-                Ok(())
-            })?;
-            // Separate prompts are no fallback: refusing a later one would leave no app at all.
-            return match elevated {
-                Some(ended) => msi_downgrade::report(ended, app.name, chosen.version, previous.version),
-                None => Err(msi_downgrade::no_session(app.name, chosen.version)),
+            // Asked before the prompt, so nobody gives permission for a downgrade that can't start.
+            if crate::detect::windows::msi_installs(app).is_empty() {
+                return Err(format!("{} isn't registered with the Windows Installer", app.name));
+            }
+            if let Some(refused) = elevated::refusal(app) {
+                return Err(refused);
+            }
+            // The helper refuses this too; asking first spares a prompt for nothing.
+            if destination.is_none() {
+                return Err(elevated::no_folder(app.name));
+            }
+            // The helper checks both again itself; this only spares a prompt for packages it would refuse.
+            held::check_publisher(app, chosen.file, true)?;
+            held::check_publisher(app, previous.file, true)?;
+            let package =
+                |p: &Package<'_>| elevated::Package { file: p.file.to_path_buf(), sha256: p.sha256.to_string(), version: p.version.to_string() };
+            let job = elevated::Job {
+                app: app.id.to_string(),
+                chosen: package(&chosen),
+                previous: package(&previous),
+                folder: destination.map(Path::to_path_buf),
             };
+            // One prompt for all three steps: separate prompts are no route, since refusing a
+            // later one would leave no app at all.
+            return in_turn(stop, phase, JobPhase::Installing, || elevated::run(&job, app.name));
         }
         // One turn for all three steps: once the copy is removed, nothing waiting in the queue
         // (another install, or a cancel while waiting) can stop the put-back.
         in_turn(stop, phase, JobPhase::Installing, || {
+            // Both held unchanged from their last check until the last step is done.
+            let _held = (held::hold(chosen.file, chosen.sha256)?, held::hold(previous.file, previous.sha256)?);
             msi_downgrade::run(msi_downgrade::Steps {
                 app: app.name,
                 chosen: chosen.version,
                 previous: previous.version,
-                remove: &mut || remove_registrations(app),
+                // Only the copy's own context: a per-machine registration of another product
+                // code must not be removed by a per-user downgrade.
+                remove: &mut || remove_registrations(app, scope),
                 install_chosen: &mut || run_direct(chosen.file, destination, scope),
                 reinstall_previous: &mut || run_direct(previous.file, destination, scope),
             })
         })
     }
 
-    /// The one-prompt route: both packages held unchanged and checked again, then one elevated
-    /// session removes, installs and if needed puts back. `None` when that session can't start.
-    fn downgrade_elevated(
-        app: &CraftApp,
-        chosen: &Package<'_>,
-        previous: &Package<'_>,
-        destination: Option<&Path>,
-        scope: Option<MsiScope>,
-    ) -> Result<Option<msi_downgrade::Ended>, String> {
-        let _held = (msi_batch::hold(chosen.file, chosen.sha256)?, msi_batch::hold(previous.file, previous.sha256)?);
-        let installs = crate::detect::windows::msi_installs(app);
-        if installs.is_empty() {
-            return Err(format!("{} isn't registered with the Windows Installer", app.name));
-        }
-        let removals = installs.iter().map(|m| msi_downgrade::removal(&m.product_code)).collect::<Result<Vec<_>, _>>()?;
-        let script = msi_downgrade::script(
-            msi_batch::text(&msiexec())?,
-            &removals,
-            &msi_batch::line(chosen.file, destination, scope)?,
-            &msi_batch::line(previous.file, destination, scope)?,
-        );
-        let root =
-            std::env::var_os("SystemRoot").map(PathBuf::from).filter(|root| root.is_absolute()).ok_or("SystemRoot is not set to an absolute path")?;
-        let powershell = root.join(r"System32\WindowsPowerShell\v1.0\powershell.exe");
-        let mut command = process::command(&powershell);
-        command
-            .args(["-NoProfile", "-NonInteractive", "-Command"])
-            .arg(msi_batch::outer_script(msi_batch::text(&powershell)?, &msi_batch::encoded(&script)));
-        log::info!("{}: going back to {} under one permission prompt", app.name, chosen.version);
-        let ended = match command.status() {
-            Ok(status) => msi_downgrade::ended(status.code()),
-            Err(e) => {
-                log::warn!("couldn't start PowerShell ({e})");
-                msi_downgrade::Ended::LaunchFailed
-            }
-        };
-        Ok((ended != msi_downgrade::Ended::LaunchFailed).then_some(ended))
-    }
-
     pub fn uninstall_msi(app: &CraftApp, stop: &Stop, phase: &mut dyn FnMut(JobPhase)) -> Result<(), String> {
-        in_turn(stop, phase, JobPhase::Removing, || remove_registrations(app).map_err(|removal| removal.error))
+        in_turn(stop, phase, JobPhase::Removing, || remove_registrations(app, None).map_err(|removal| removal.error))
     }
 
-    /// Removes every Windows Installer registration of `app` in turn, within the caller's queue
-    /// turn. A failure says whether an earlier registration was already removed, so a downgrade
-    /// knows the app is partly gone.
-    fn remove_registrations(app: &CraftApp) -> Result<(), msi_downgrade::Removal> {
-        let installs = crate::detect::windows::msi_installs(app);
+    /// The registrations to remove: all of them, or only those in the `only` context. The elevated
+    /// helper passes the machine's: a per-user uninstall record lives in HKCU, which any program of
+    /// the person's can write, so its product code could name any product on the machine.
+    pub(super) fn removable(installs: Vec<crate::detect::windows::MsiInstall>, only: Option<MsiScope>) -> Vec<crate::detect::windows::MsiInstall> {
+        installs.into_iter().filter(|m| only.is_none_or(|scope| m.scope == scope)).collect()
+    }
+
+    /// Removes every Windows Installer registration of `app` (in the `only` context, if given) in
+    /// turn, within the caller's queue turn. A failure says whether an earlier registration was
+    /// already removed, so a downgrade knows the app is partly gone.
+    pub(super) fn remove_registrations(app: &CraftApp, only: Option<MsiScope>) -> Result<(), msi_downgrade::Removal> {
+        let installs = removable(crate::detect::windows::msi_installs(app), only);
         if installs.is_empty() {
             return Err(msi_downgrade::Removal { error: format!("{} isn't registered with the Windows Installer", app.name), partly: false });
         }
         for (removed, m) in installs.iter().enumerate() {
-            let status = process::command(msiexec())
+            // `msiexec` shows its own window; nothing here hides one.
+            let status = std::process::Command::new(msiexec())
                 .args(["/x", &m.product_code, "/passive", "/norestart"])
                 .status()
                 .map_err(|e| format!("couldn't start the Windows Installer ({e})"))
@@ -2137,6 +2170,28 @@ pub mod windows {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The elevated helper removes only the machine's registrations: a per-user record (HKCU) can
+    /// carry any product code, and must never reach an elevated `msiexec /x`.
+    #[cfg(windows)]
+    #[test]
+    fn the_elevated_removal_never_takes_a_per_user_record() {
+        let install = |code: &str, scope| crate::detect::windows::MsiInstall { product_code: code.into(), version: None, exe: None, scope };
+        let all = || vec![install("{machine}", MsiScope::PerMachine), install("{planted}", MsiScope::PerUser)];
+        let codes = |list: Vec<crate::detect::windows::MsiInstall>| list.into_iter().map(|m| m.product_code).collect::<Vec<_>>();
+        assert_eq!(codes(windows::removable(all(), Some(MsiScope::PerMachine))), ["{machine}"]);
+        assert_eq!(codes(windows::removable(all(), Some(MsiScope::PerUser))), ["{planted}"]);
+        assert_eq!(codes(windows::removable(all(), None)), ["{machine}", "{planted}"]);
+    }
+
+    /// The elevated helper's `msiexec` is the real one in the system folder Windows names.
+    #[cfg(windows)]
+    #[test]
+    fn msiexec_is_the_one_in_the_system_folder() {
+        let system = PathBuf::from(winsafe::GetSystemDirectory().unwrap());
+        assert_eq!(windows::msiexec(), system.join("msiexec.exe"));
+        assert!(windows::msiexec().is_file());
+    }
 
     /// A folder found only by the launch fallback, in another scope, never reaches the installer.
     #[cfg(windows)]

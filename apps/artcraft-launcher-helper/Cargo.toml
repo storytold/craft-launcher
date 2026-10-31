@@ -1,0 +1,43 @@
+[package]
+name = "artcraft-launcher-helper"
+description = "ArtCraft Launcher's installer helper: the only part of the launcher that runs elevated"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+build = "build.rs"
+publish = false
+
+# The workspace's lints, except `unsafe_code`: `deny` here, not `forbid`, so the reviewed Windows
+# calls in `main.rs` and `package_facts.rs` can allow it. `forbid` can't be lifted for an item. A test in `main.rs`
+# fails if this copy and `[workspace.lints]` in the root Cargo.toml drift apart.
+[lints.rust]
+unsafe_code = "deny"
+
+[lints.clippy]
+cognitive_complexity = "deny"
+too_many_arguments = "deny"
+wildcard_imports = "deny"
+dbg_macro = "warn"
+todo = "warn"
+
+[dependencies]
+artcraft-launcher-native = { workspace = true }
+log = { workspace = true }
+
+# Windows calls with no safe wrapper: `SetDefaultDllDirectories` (main.rs), and WinTrust's chain
+# plus Windows Installer's read-only database API (package_facts.rs). Both crates are already in
+# Cargo.lock; sha2 hashes the signing root.
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.61", features = [
+    "Win32_Foundation",
+    "Win32_Security_Cryptography",
+    "Win32_Security_WinTrust",
+    "Win32_System_ApplicationInstallationAndServicing",
+    "Win32_System_LibraryLoader",
+] }
+sha2 = "0.10"
+
+[build-dependencies]
+# VERSIONINFO for the permission prompt and Task Manager; build.rs only uses it on Windows.
+winresource = "0.1"

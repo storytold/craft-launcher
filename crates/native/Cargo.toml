@@ -46,7 +46,8 @@ winreg = "0.55"
 # Resolves junctions/symlinks without forcing short MSI paths into the verbatim namespace.
 dunce = "1"
 zip = { version = "9", default-features = false, features = ["deflate"] }
-# Safe wrappers for waiting for another process and reading a file's VERSIONINFO.
-winsafe = { version = "0.0.29", features = ["kernel", "version"] }
+# Safe wrappers for waiting for another process, reading a file's VERSIONINFO, and asking for
+# permission to start the launcher's own installer helper (ShellExecuteEx "runas").
+winsafe = { version = "0.0.29", features = ["kernel", "version", "advapi", "shell"] }
 # Authenticode checks through WinTrust: the update helper installs only files from the launcher's publisher.
 verifysign = "1"

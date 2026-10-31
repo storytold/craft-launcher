@@ -48,7 +48,11 @@ settings file must produce an error the user can act on, never a panic.
   `unimplemented!`. Return the crate's error type and propagate with `?`.
 - Every production crate root (`lib.rs`, each binary's `main.rs`, and `xtask`) carries
   `#![deny(clippy::unwrap_used, clippy::expect_used, clippy::panic, clippy::unimplemented, clippy::todo, clippy::unreachable)]`.
-- **No `unsafe`.** The workspace sets `unsafe_code = "forbid"`.
+- **No `unsafe`.** The workspace sets `unsafe_code = "forbid"`. The one exception is the installer
+  helper (`apps/artcraft-launcher-helper`), which sets `unsafe_code = "deny"` for reviewed Windows
+  calls with no safe wrapper: `SetDefaultDllDirectories` in its `main.rs`, and WinTrust's chain plus
+  Windows Installer's read-only database API in `package_facts.rs`. Add nothing else there; any new
+  call needs a maintainer's review.
 - **Everything from the network is hostile.** Use `get()` instead of indexing, checked arithmetic
   for sizes and offsets, and cap downloads and JSON sizes.
 
@@ -71,6 +75,60 @@ settings file must produce an error the user can act on, never a panic.
   capped at 2 MB each, cached, and never run. Pictures are not bundled in this repo.
 - Never run an installer with elevated rights silently; tell the user what is about to happen.
 - Never delete a user's files outside what the launcher itself installed.
+
+### Windows elevated installs: guards that must stay
+
+Each of these closes a hole found in review or in a real incident
+(`docs/incident-2026-10-windows-antivirus.md`, storytold/craft-launcher#1080). None is
+redundant. Removing or "simplifying" one reopens it, so change them only with that reason in hand.
+
+- **No script interpreter, encoded command or hidden window.** Elevated work runs in
+  `artcraft-launcher-helper.exe` or in `msiexec` called directly. A hidden, elevated, base64
+  PowerShell (#974) was deleted by antivirus as a Trojan, and users reported it as a compromise.
+- **The helper is a separate exe that loads DLLs from System32 only** (`/DEPENDENTLOADFLAG`,
+  `SetDefaultDllDirectories` first in `main`, no graphics imports). It sits in the person's own
+  launcher folder, where any of their programs can plant a DLL.
+- **The helper is resolved, held open and publisher-checked before the prompt**
+  (`elevated::checked_helper`). That folder is writable by the person's programs, so the prompt
+  would otherwise name whatever was put there.
+- **The helper must be this build's helper, not just ours** (`helper_build::check`): its signed
+  VERSIONINFO must say `artcraft-launcher-helper.exe` and the launcher's own version. The publisher
+  alone admits any program we ever signed, such as an older launcher renamed as the helper, which
+  loads planted DLLs when elevated.
+- **The job travels on the command line, and the helper checks every part again.** It trusts
+  nothing the unelevated launcher wrote.
+- **Packages are resolved, then held, then hashed and publisher-checked, and that one path goes to
+  `msiexec`** (`held`, `run_msi`, `downgrade_msi`). The downloads folder is the person's own: a
+  file or a junction above it could be swapped between the check and the install.
+- **The helper installs only packages whose signature chains to the pinned Microsoft root**
+  (`identity::SIGNING_ROOT_SHA256`). Never fall back to the subject and issuer names alone: Windows
+  trusts roots the person's own account adds, and the helper runs as that account, so any of their
+  programs could give itself our publisher's name and have our genuine prompt install its package
+  for all users (shown live on #1080).
+- **The unelevated launcher refuses a package whose signing certificate was revoked**
+  (`revocation::check`, from `held::check_publisher`), before an all-users install and before a
+  downgrade's prompt. Expiry is no substitute: the packages are timestamped, so a signature stays
+  valid after its certificate expires. The helper repeats that decision against Windows' cache
+  through required `PackageFacts::check_revocation`, before reading the product or removing it,
+  so starting the helper directly cannot bypass a known revocation. Every helper trust check is
+  cache-only (`WTD_CACHE_ONLY_URL_RETRIEVAL` for the raw WinTrust root check); skipping revocation
+  alone does not prevent network retrieval. An unanswerable check (offline) continues with a
+  warning; that is a stated `shortcut:`, not a promise of fresh revocation information.
+- **The helper installs a package only for the app it replaces:** Windows Installer's HKLM
+  registration must link the package's UpgradeCode to every product being removed
+  (`identity::check`). Our publisher signs every Craft app and the launcher, so the signature alone
+  would let one replace another.
+- **A release build refuses an all-users install of an official app when it can't verify its own
+  signature** (`held::skips_unsigned_self`). Only a development build skips the check. A community
+  app is signed by its own developer, so its package checksum is the check, and its all-users
+  downgrade is refused before the prompt.
+- **Run folders live in `Program Files\ArtCraft\Launcher installer runs`, never ProgramData**, and a
+  link or junction in place of that folder is refused. Ordinary accounts can add files in
+  ProgramData, so they could plant a result or redirect the clean-up.
+- **`msiexec` comes from `GetSystemDirectory`, never `SystemRoot`.** The elevated helper inherits
+  the person's environment, which their programs can set.
+- **Elevated removal takes only all-users (HKLM) registrations.** A per-user uninstall record is in
+  HKCU, so it could name any product on the machine.
 - **Agents never land or approve a third-party app.** A change that adds a catalog row, download
   source or install path for an app whose repo is not under `storytold/` and isn't one of the
   approved community apps above, or that loosens the rules above to allow one, is a maintainer's

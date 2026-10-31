@@ -11,6 +11,13 @@ fn main() {
     if std::env::var("CARGO_CFG_TARGET_OS").as_deref() != Ok("windows") {
         return;
     }
+    // The exe's own imports come only from System32 (`LOAD_LIBRARY_SEARCH_SYSTEM32`), never its
+    // folder: a per-user install's folder is writable by the person's programs. Checked on
+    // Windows 11 with a planted `version.dll`. It doesn't cover DLLs that system DLLs load later,
+    // which is why elevated work runs in `artcraft-launcher-helper` instead.
+    if std::env::var("CARGO_CFG_TARGET_ENV").as_deref() == Ok("msvc") {
+        println!("cargo:rustc-link-arg-bins=/DEPENDENTLOADFLAG:0x800");
+    }
     let mut res = winresource::WindowsResource::new();
     res.set_icon("../../assets/app-icon/artcraft-launcher.ico")
         .set("ProductName", "ArtCraft Launcher")
