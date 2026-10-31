@@ -1414,6 +1414,9 @@ pub(crate) mod linux {
         let replace = match std::fs::read_to_string(&desktop) {
             Ok(old) => {
                 crate::desktop_entry::is_ours(&old)
+                    // A dangling unmarked entry (Exec/TryExec points at a removed file) is
+                    // already hidden by the desktop; taking it over is the only recovery.
+                    || crate::desktop_entry::is_dangling(&old)
                     || crate::desktop_entry::exec_program(&old)
                         .is_some_and(|p| Path::new(&p) == appimage || replaced.iter().any(|r| r == Path::new(&p)))
             }
@@ -3093,14 +3096,21 @@ mod tests {
         // An update rewrites both.
         assert_eq!(linux::integrate_into(&data, app, &new, &[], Some(&rec)).len(), 2);
 
-        // Someone else's entry and icon are left alone (and not recorded).
-        std::fs::write(&desktop, "[Desktop Entry]\nExec=/usr/bin/wordcraft\n").unwrap();
+        // Someone else's entry and icon are left alone (and not recorded) while it still
+        // points at a file that exists.
+        std::fs::write(&desktop, "[Desktop Entry]\nExec=/bin/sh\n").unwrap();
         std::fs::write(&icon, b"theirs").unwrap();
         assert!(linux::integrate_into(&data, app, &new, &[], None).is_empty());
         assert_eq!(std::fs::read(&icon).unwrap(), b"theirs");
         // ...unless the entry runs a copy this install just replaced (the app wrote it itself).
         std::fs::write(&desktop, format!("[Desktop Entry]\nExec=\"{}\" %F\n", old.display())).unwrap();
         assert_eq!(linux::integrate_into(&data, app, &new, std::slice::from_ref(&old), None), std::slice::from_ref(&desktop));
+        assert!(desktop_entry_is_ours(&desktop));
+        // ...or unless it is dangling: an old unmarked entry whose target the desktop already
+        // hides (the upgrade bug that made 10 of the 12 craft apps vanish from the menu).
+        std::fs::write(&desktop, "[Desktop Entry]\nExec=wordcraft %F\nTryExec=/does/not/exist.AppImage\n").unwrap();
+        assert!(!desktop_entry_is_ours(&desktop));
+        assert_eq!(linux::integrate_into(&data, app, &new, &[], None), std::slice::from_ref(&desktop));
         assert!(desktop_entry_is_ours(&desktop));
 
         // Uninstall: an icon the record doesn't list stays; the entry for the removed copy goes.
