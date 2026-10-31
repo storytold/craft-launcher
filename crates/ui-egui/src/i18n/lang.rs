@@ -22,7 +22,8 @@ impl Script {
 
 /// One supported UI language.
 pub struct LangInfo {
-    /// Canonical BCP 47 code (`en`, `ru`, `zh-CN`, `de`, `fr`, `pt-BR`, `es`, `cs`, `pl`, `hu`, `ja`).
+    /// Canonical BCP 47 code (`en`, `ru`, `zh-CN`, `de`, `fr`, `pt-BR`, `es`, `cs`, `pl`, `hu`, `ja`,
+    /// `bs`).
     /// Also the `interfaceLanguage` value.
     pub code: &'static str,
     /// The language's name in itself, shown in the Preferences dropdown.
@@ -35,8 +36,8 @@ pub struct LangInfo {
     pub source: &'static str,
     /// Plural form index for a count (English, German, Spanish and Hungarian: 0 = one, 1 = other;
     /// Russian: 0 = one, 1 = few, 2 = many; Czech: 0 = one, 1 = few, 2 = other; Polish: 0 = one only
-    /// for 1, 1 = few, 2 = many; French: 0 = one for 0 and 1; a language whose nouns don't inflect
-    /// for number: always 0).
+    /// for 1, 1 = few, 2 = many; Bosnian: 0 = one, 1 = few, 2 = other; French: 0 = one for 0 and 1;
+    /// a language whose nouns don't inflect for number: always 0).
     pub plural: fn(u64) -> usize,
     /// Number of plural forms the catalog's `@plural` rows carry (checked by tests).
     pub plural_forms: usize,
@@ -93,8 +94,21 @@ pub(super) fn plural_polish(n: u64) -> usize {
     }
 }
 
+/// Bosnian integer counts: 1 in the last digit (but not 11) is `one` ("21 aplikacija"), 2–4 in the
+/// last digit (but not 12–14) `few`, everything else `other`.
+pub(super) fn plural_bosnian(n: u64) -> usize {
+    match n % 100 {
+        11..=14 => 2,
+        _ => match n % 10 {
+            1 => 0,
+            2..=4 => 1,
+            _ => 2,
+        },
+    }
+}
+
 /// The registry. English first: it is the fallback and the source language.
-pub static LANGUAGES: [LangInfo; 11] = [
+pub static LANGUAGES: [LangInfo; 12] = [
     LangInfo {
         code: "en",
         name: "English",
@@ -216,6 +230,17 @@ pub static LANGUAGES: [LangInfo; 11] = [
         complete_menus: true,
         catalog: OnceLock::new(),
     },
+    LangInfo {
+        code: "bs",
+        name: "Bosanski",
+        english_name: "Bosnian",
+        script: None,
+        source: include_str!("bs.tsv"),
+        plural: plural_bosnian,
+        plural_forms: 3,
+        complete_menus: true,
+        catalog: OnceLock::new(),
+    },
 ];
 
 impl LangInfo {
@@ -254,6 +279,7 @@ impl Lang {
     pub const PL: Lang = Lang(&LANGUAGES[8]);
     pub const HU: Lang = Lang(&LANGUAGES[9]);
     pub const JA: Lang = Lang(&LANGUAGES[10]);
+    pub const BS: Lang = Lang(&LANGUAGES[11]);
 
     pub fn code(self) -> &'static str {
         self.0.code

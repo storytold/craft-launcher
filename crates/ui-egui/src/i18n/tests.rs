@@ -4,7 +4,7 @@
 use std::collections::{BTreeSet, HashSet};
 
 use super::catalog::{Catalog, unescape};
-use super::lang::{name_sort_key, plural_czech, plural_east_slavic, plural_polish};
+use super::lang::{name_sort_key, plural_bosnian, plural_czech, plural_east_slavic, plural_polish};
 use super::{LANGUAGES, Lang, LangInfo, lang_from_tag, message, tr, trn};
 
 /// Each catalog's rows as (line number, context, source, translation), split exactly as the
@@ -351,6 +351,31 @@ fn spanish_locales_and_plurals_work() {
     assert_eq!(message(Lang::ES, "PhotoCraft updated to 0.5.0"), "PhotoCraft actualizada a 0.5.0");
 }
 
+/// Bosnian locale tags resolve to Bosnian, its plural rule picks `one`, `few` and `other` at the
+/// edges (21 is `one`, 12–14 are `other`), and counts, dates and messages read in Bosnian.
+#[test]
+fn bosnian_locales_and_plurals_work() {
+    for tag in ["bs", "bs-BA", "bs_BA.UTF-8", "bs-Latn-BA", "BS_ba"] {
+        assert_eq!(lang_from_tag(tag), Some(Lang::BS), "{tag}");
+    }
+    assert_eq!(super::detect::first_supported(["xx-XX", "bs-BA", "en-US"]), Some(Lang::BS));
+    for n in [1, 21, 101] {
+        assert_eq!(plural_bosnian(n), 0, "{n}");
+    }
+    for n in [2, 3, 4, 22, 104] {
+        assert_eq!(plural_bosnian(n), 1, "{n}");
+    }
+    for n in [0, 5, 11, 12, 14, 15, 100, 111] {
+        assert_eq!(plural_bosnian(n), 2, "{n}");
+    }
+    assert_eq!(trn(Lang::BS, 1, "{n} app", "{n} apps"), "1 aplikacija");
+    assert_eq!(trn(Lang::BS, 3, "{n} app", "{n} apps"), "3 aplikacije");
+    assert_eq!(trn(Lang::BS, 5, "{n} app", "{n} apps"), "5 aplikacija");
+    assert_eq!(trn(Lang::BS, 21, "{n} day ago", "{n} days ago"), "prije 21 dan");
+    assert_eq!(tr(Lang::BS, "{month} {day}, {year}"), "{day}. {month} {year}.");
+    assert_eq!(message(Lang::BS, "PhotoCraft updated to 0.5.0"), "PhotoCraft je ažuriran na 0.5.0");
+}
+
 #[test]
 fn polish_locales_resolve() {
     for tag in ["pl", "pl-PL", "pl_PL.UTF-8", "PL_pl"] {
@@ -548,6 +573,8 @@ fn complete_catalogs_translate_package_formats() {
     }
 }
 
+/// The Settings picker lists English first, then every other language by its own name with accents
+/// folded (Bosanski under B, Čeština under C), Latin names before Cyrillic and Cyrillic before CJK.
 #[test]
 fn picker_lists_english_first_then_names_alphabetically() {
     let order = Lang::for_picker();
@@ -556,6 +583,7 @@ fn picker_lists_english_first_then_names_alphabetically() {
     let keys: Vec<String> = order[1..].iter().map(|l| name_sort_key(l.name())).collect();
     assert!(keys.windows(2).all(|w| w[0] <= w[1]), "{keys:?}");
     let pos = |code: &str| order.iter().position(|l| l.code() == code).unwrap_or_else(|| panic!("{code} registered"));
+    assert!(pos("bs") < pos("cs"), "Bosanski sorts under B");
     assert!(pos("cs") < pos("de"), "Čeština sorts under C, not after Z");
     assert!(pos("fr") < pos("hu"), "Magyar sorts under M, not under its code");
     assert!(pos("pt-BR") < pos("ru"), "Latin names come before Cyrillic");
