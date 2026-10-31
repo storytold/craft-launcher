@@ -13,6 +13,8 @@ pub mod detect;
 pub mod feed_throttle;
 pub mod http;
 pub mod install;
+#[cfg(target_os = "android")]
+pub mod android;
 pub mod login;
 pub mod manifest;
 #[cfg(any(windows, test))]

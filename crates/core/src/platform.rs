@@ -16,6 +16,9 @@ pub enum Os {
     MacOs,
     Linux,
     FreeBsd,
+    /// Android. Its own variant rather than Linux: `cfg!(target_os = "linux")` is false here, so
+    /// without this the platform is unknown and every app is reported "Not available here".
+    Android,
 }
 
 impl Os {
@@ -25,6 +28,7 @@ impl Os {
             Self::MacOs => "macOS",
             Self::Linux => "Linux",
             Self::FreeBsd => "FreeBSD",
+            Self::Android => "Android",
         }
     }
 }
@@ -65,6 +69,8 @@ pub enum PackageKind {
     Flatpak,
     /// Linux or FreeBSD tarball (`bin/<app>`, `share/…`).
     TarGz,
+    /// Android package, installed by the system installer.
+    Apk,
 }
 
 impl PackageKind {
@@ -79,6 +85,7 @@ impl PackageKind {
             Self::ArchPkg => "Arch package (.pkg.tar.zst)",
             Self::Flatpak => "Flatpak bundle",
             Self::TarGz => "Tarball (.tar.gz)",
+            Self::Apk => "Android package (.apk)",
         }
     }
 
@@ -93,6 +100,7 @@ impl PackageKind {
             Self::ArchPkg => ".pkg.tar.zst",
             Self::Flatpak => ".flatpak",
             Self::TarGz => ".tar.gz",
+            Self::Apk => ".apk",
         }
     }
 }
@@ -115,6 +123,8 @@ impl Platform {
             Os::Linux
         } else if cfg!(target_os = "freebsd") {
             Os::FreeBsd
+        } else if cfg!(target_os = "android") {
+            Os::Android
         } else {
             return None;
         };
@@ -158,6 +168,8 @@ impl Platform {
             (Os::FreeBsd, Arch::X64) => &["freebsd-x86_64"],
             (Os::FreeBsd, Arch::Arm64) => &["freebsd-aarch64"],
             (Os::FreeBsd, _) => &[],
+            (Os::Android, Arch::Arm64) => &["android-arm64", "android-aarch64"],
+            (Os::Android, _) => &[],
         }
     }
 
@@ -168,6 +180,7 @@ impl Platform {
             Os::MacOs => &[PackageKind::Dmg],
             Os::Linux => &[PackageKind::AppImage, PackageKind::TarGz],
             Os::FreeBsd => &[PackageKind::TarGz],
+            Os::Android => &[PackageKind::Apk],
         }
     }
 
@@ -178,6 +191,7 @@ impl Platform {
             Os::MacOs => &[PackageKind::Dmg],
             Os::Linux => &[PackageKind::AppImage, PackageKind::Deb, PackageKind::Rpm, PackageKind::ArchPkg, PackageKind::Flatpak, PackageKind::TarGz],
             Os::FreeBsd => &[PackageKind::TarGz],
+            Os::Android => &[PackageKind::Apk],
         }
     }
 }
@@ -208,7 +222,8 @@ impl AssetName {
 /// Reads `<stem>-<version>-<os>-<arch>[-portable].<ext>`; `None` for checksums, zsync files, CLI
 /// and web bundles, or anything else.
 pub fn parse_asset_name(name: &str, stems: &[&str]) -> Option<AssetName> {
-    const KINDS: [PackageKind; 9] = [
+    const KINDS: [PackageKind; 10] = [
+        PackageKind::Apk,
         PackageKind::PortableZip,
         PackageKind::TarGz,
         PackageKind::Msi,
@@ -220,15 +235,32 @@ pub fn parse_asset_name(name: &str, stems: &[&str]) -> Option<AssetName> {
         PackageKind::Flatpak,
     ];
     let (kind, base) = KINDS.iter().find_map(|k| name.strip_suffix(k.suffix()).map(|b| (*k, b)))?;
+    // Case-insensitive: the app ids are lowercase (`photocraft`) but the uploaded assets are
+    // capitalised (`Photocraft-android-arm64.apk`), and a case-sensitive prefix match silently
+    // skipped every asset -- which is reported as "Not available here", not as a naming problem.
+    let lower = base.to_ascii_lowercase();
     for stem in stems {
-        let Some(rest) = base.strip_prefix(stem).and_then(|r| r.strip_prefix('-')) else { continue };
-        // rest = <version>-<os>-<arch>; os and arch never contain '-', versions may.
+        let Some(rest) = lower.strip_prefix(&stem.to_ascii_lowercase())
+            .and_then(|r| r.strip_prefix('-'))
+            .map(|r| &base[base.len() - r.len()..]) else { continue };
+        // rest = [<version>-]<os>-<arch>; os and arch never contain '-', versions may.
+        //
+        // The version is optional because the ported builds are uploaded as
+        // `Photocraft-android-arm64.apk`, with no version segment at all. Requiring one made every
+        // asset unmatchable, which the launcher reports as "Not available here" -- the same screen
+        // an unsupported platform shows, so it read as a platform bug.
         let mut parts = rest.rsplitn(3, '-');
-        let (arch, os, version) = (parts.next()?, parts.next()?, parts.next()?);
-        if crate::version::parse(version).is_none() || !version.starts_with(|c: char| c.is_ascii_digit()) {
-            continue;
-        }
-        return Some(AssetName { stem: (*stem).to_string(), version: version.to_string(), token: format!("{os}-{arch}"), kind });
+        let arch = parts.next()?;
+        let os = parts.next()?;
+        let version = parts.next().filter(|v| {
+            crate::version::parse(v).is_some() && v.starts_with(|c: char| c.is_ascii_digit())
+        });
+        return Some(AssetName {
+            stem: (*stem).to_string(),
+            version: version.unwrap_or_default().to_string(),
+            token: format!("{os}-{arch}"),
+            kind,
+        });
     }
     None
 }

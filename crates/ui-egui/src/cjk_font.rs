@@ -246,6 +246,22 @@ fn chinese_candidates() -> Vec<Candidate> {
             add(dir.join(file), "MiSans");
         }
     }
+
+    // Android ships its CJK faces in the system font directory, and every one of them covers both
+    // Han orders: `NotoSansCJK-Regular.ttc` holds SC/TC/JP/KR in one collection, `DroidSansFallback`
+    // is the older single-face one. Neither sits in the Unix font directories above.
+    #[cfg(target_os = "android")]
+    {
+        for (file, family) in [
+            ("NotoSansCJK-Regular.ttc", "Noto Sans CJK SC"),
+            ("NotoSansCJKsc-Regular.otf", "Noto Sans CJK SC"),
+            ("NotoSansSC-Regular.otf", "Noto Sans SC"),
+            ("DroidSansFallbackFull.ttf", "Droid Sans Fallback"),
+            ("DroidSansFallback.ttf", "Droid Sans Fallback"),
+        ] {
+            add(Path::new("/system/fonts").join(file), family);
+        }
+    }
     out
 }
 

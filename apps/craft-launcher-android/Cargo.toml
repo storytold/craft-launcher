@@ -1,0 +1,43 @@
+[package]
+name = "artcraft-launcher-android"
+description = "ArtCraft Launcher on Android: eframe + wgpu shell on GameActivity, reusing the desktop UI and backend"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish = false
+
+# The workspace forbids `unsafe`; the Android entry point needs `#[unsafe(no_mangle)]`, so this
+# crate follows the `crates/platform` precedent: `deny`, with `#[allow(unsafe_code)]` on the entry
+# only. Deliberately NOT `[lints] workspace = true`, which would bring back `forbid`.
+[lints.rust]
+unsafe_code = "deny"
+
+[lints.clippy]
+dbg_macro = "warn"
+todo = "warn"
+too_many_arguments = "allow"
+type_complexity = "allow"
+
+[lib]
+name = "main"
+crate-type = ["cdylib"]
+
+[target.'cfg(target_os = "android")'.dependencies]
+jni = "0.22"
+ndk-context = "0.1"
+artcraft-launcher-core = { workspace = true }
+artcraft-launcher-ui-egui = { workspace = true }
+artcraft-launcher-native = { workspace = true }
+egui = { workspace = true }
+log = { workspace = true }
+# accesskit + android-native-activity is a hard `compile_error!` in eframe, and NativeActivity has
+# no soft keyboard/IME, so this must be GameActivity. No tray/notify/rfd here: those are desktop
+# dependencies of `apps/artcraft-launcher`, which this crate deliberately does not reuse.
+eframe = { workspace = true, default-features = false, features = [
+    "default_fonts",
+    "wgpu",
+    "android-game-activity",
+    "persistence",
+] }
+winit = { version = "0.30", default-features = false }
+android_logger = "0.15"

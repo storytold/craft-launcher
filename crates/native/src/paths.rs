@@ -2,6 +2,7 @@
 
 use std::io::Write;
 use std::path::PathBuf;
+use std::sync::OnceLock;
 
 /// The launcher's folders.
 #[derive(Clone, Debug)]
@@ -14,8 +15,32 @@ pub struct Paths {
 
 const DIR: &str = if cfg!(any(target_os = "macos", target_os = "windows")) { "ArtCraft Launcher" } else { "artcraft-launcher" };
 
+/// Where the host says the launcher's files go, when the OS won't say.
+///
+/// `dirs` answers nothing on Android (`data_local_dir` is `None` there), and an app cannot write
+/// the `/tmp` that `new` would otherwise fall back to, so a port has to hand its own private
+/// directory over — the one its activity owns. Set before the first [`Paths::new`]; the first
+/// call wins, so a second window or a restart cannot move the launcher's files under it.
+static ROOT: OnceLock<PathBuf> = OnceLock::new();
+
+/// Give the launcher the root its files live under. Only the first call has an effect.
+pub fn set_root(root: PathBuf) {
+    let _ = ROOT.set(root);
+}
+
+/// The root a host handed over, if any. Used by the Android detection path, which reads a file the
+/// activity writes into that same directory.
+pub fn root() -> Option<&'static PathBuf> {
+    ROOT.get()
+}
+
 impl Paths {
     pub fn new() -> Result<Self, String> {
+        // A host that had to name the root itself wins over the OS's answer: it knows where this
+        // platform actually lets the process write.
+        if let Some(root) = ROOT.get() {
+            return Ok(Self::under(root));
+        }
         if let Some(root) = portable_root() {
             return Ok(Self::under(&root));
         }

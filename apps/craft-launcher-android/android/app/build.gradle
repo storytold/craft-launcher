@@ -1,0 +1,52 @@
+plugins {
+    id 'com.android.application'
+}
+
+android {
+    compileSdk = 35
+
+    defaultConfig {
+        applicationId = "ai.storyteller.artcraftlauncher"
+        minSdk = 31
+        targetSdk = 35
+        versionCode = 1
+        versionName = "0.11.1"
+    }
+
+    sourceSets {
+        main {
+            // Output of `cargo ndk -o apps/craft-launcher-android/jniLibs` (one level above android/).
+            jniLibs.srcDirs = ['../../jniLibs']
+        }
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled = false
+            // Debuggable on purpose, like the other ports: run-as is the only way to read what the
+            // app wrote (installed-apps.txt and the release cache), and this app renders through a
+            // SurfaceView, so screencap on this ROM keeps returning a stale frame -- the UI cannot
+            // be read back any other way.
+            debuggable true
+            // Debug signing keeps the release APK directly `adb install`-able.
+            signingConfig = signingConfigs.debug
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+            ndk {
+                abiFilters 'arm64-v8a'
+            }
+        }
+        debug {
+            minifyEnabled false
+        }
+    }
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+    namespace = 'ai.storyteller.artcraftlauncher'
+}
+
+dependencies {
+    implementation 'androidx.appcompat:appcompat:1.7.0'
+    implementation "androidx.games:games-activity:4.4.0"
+}
