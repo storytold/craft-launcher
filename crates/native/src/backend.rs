@@ -365,9 +365,14 @@ impl NativeBackend {
                     source.as_deref(),
                 );
                 // Stopped by the connection rather than by the user: say so, and how to go on.
+                // Only point at Resume when there is something to resume from. A download that
+                // never connected leaves no part file behind, and `report_partial` then gives its
+                // card no Resume button either, so naming one described a control that isn't there.
                 match r {
                     Err(e) if e == PAUSED && stop.check().is_ok() => {
-                        Err("The download paused because the connection keeps dropping. Press Resume to continue where it stopped.".into())
+                        let resumable = planned_download(app, &shared, &paths, platform, &options)
+                            .is_some_and(|(dest, size)| http::partial_bytes(&dest, size).is_some());
+                        Err(paused_message(resumable))
                     }
                     other => other,
                 }
@@ -699,6 +704,17 @@ fn planned_asset(
         install::choose_kinds(app, existing, record, &options.kinds)
     };
     pick_asset(release, &stems, platform, &kinds).map(|(a, k)| (a.clone(), k))
+}
+
+/// What a download that stopped on its own says to the user. `resumable` is whether part of the
+/// file is already on disk: only then does the card carry a Resume button for the text to name,
+/// and only then has a connection ever delivered anything.
+fn paused_message(resumable: bool) -> String {
+    if resumable {
+        "The download paused because the connection keeps dropping. Press Resume to continue where it stopped.".into()
+    } else {
+        "The download didn't start: nothing could be reached, so there is nothing to resume. Check your connection and try again.".into()
+    }
 }
 
 /// Tells the UI whether `app` has a paused download waiting, or a finished one to install.
@@ -1988,5 +2004,37 @@ mod tests {
             assert_eq!(claim.join().unwrap(), Err(CANCELLED.to_string()));
         });
         assert!(!restarting.load(Ordering::SeqCst));
+    }
+
+    #[test]
+    fn a_download_that_never_connected_is_not_offered_a_resume() {
+        // Nothing on disk: the card has no Resume button, so the text must not name one, and
+        // must not claim a connection that kept dropping when none was ever made (#576).
+        let nothing = paused_message(false);
+        assert!(!nothing.contains("Resume"), "{nothing}");
+        assert!(!nothing.contains("keeps dropping"), "{nothing}");
+
+        // Part of the file is there: Resume can continue it, so saying so is right.
+        let partly = paused_message(true);
+        assert!(partly.contains("Resume"), "{partly}");
+    }
+
+    #[test]
+    fn a_part_file_decides_whether_a_download_can_be_resumed() {
+        let dir = tempfile::tempdir().unwrap();
+        let dest = dir.path().join("photocraft.msi");
+        let size = 67 << 20;
+
+        // Never started: no part file at all.
+        assert_eq!(http::partial_bytes(&dest, size), None);
+
+        // Started and gave up before the first byte landed: an empty part file is no progress.
+        let part = dir.path().join(format!("photocraft.msi.{size}.part"));
+        std::fs::write(&part, []).unwrap();
+        assert_eq!(http::partial_bytes(&dest, size), None);
+
+        // Some of it arrived: that is what Resume continues.
+        std::fs::write(&part, [0u8; 2048]).unwrap();
+        assert_eq!(http::partial_bytes(&dest, size), Some(2048));
     }
 }
