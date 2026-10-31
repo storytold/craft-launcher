@@ -286,7 +286,9 @@ impl LauncherUi {
             .show_ui(ui, |ui| {
                 let current = grid_sort_now(&self.settings);
                 for choice in GRID_SORTS {
-                    if ui.selectable_label(current == choice, grid_sort_label(choice)).clicked() {
+                    let selected = current == choice;
+                    let text = widgets::selected_item_text(ui, selected, grid_sort_label(choice));
+                    if ui.selectable_label(selected, text).clicked() {
                         self.settings.sort = choice.0;
                         self.settings.sort_descending = choice.1;
                     }

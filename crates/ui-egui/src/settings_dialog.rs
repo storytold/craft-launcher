@@ -140,9 +140,14 @@ impl LauncherUi {
                 .selected_text(Settings::language_label(&lang_code, installed))
                 .width(width)
                 .show_ui(ui, |ui| {
-                    ui.selectable_value(&mut lang_code, Settings::LANGUAGE_AUTO.to_string(), tl!("Auto"));
+                    let selected = lang_code == Settings::LANGUAGE_AUTO;
+                    let text = widgets::selected_item_text(ui, selected, tl!("Auto"));
+                    ui.selectable_value(&mut lang_code, Settings::LANGUAGE_AUTO.to_string(), text);
                     for lang in crate::i18n::Lang::for_picker() {
-                        ui.selectable_value(&mut lang_code, lang.code().to_string(), Settings::language_label(lang.code(), installed));
+                        let code = lang.code().to_string();
+                        let selected = lang_code == code;
+                        let text = widgets::selected_item_text(ui, selected, Settings::language_label(lang.code(), installed));
+                        ui.selectable_value(&mut lang_code, code, text);
                     }
                 })
                 .response
@@ -179,7 +184,9 @@ impl LauncherUi {
                     .width(150.0)
                     .show_ui(ui, |ui| {
                         for e in CheckEvery::ALL {
-                            ui.selectable_value(&mut every, e, e.label());
+                            let selected = every == e;
+                            let text = widgets::selected_item_text(ui, selected, e.label());
+                            ui.selectable_value(&mut every, e, text);
                         }
                     })
                     .response
@@ -247,7 +254,9 @@ impl LauncherUi {
                     .width(210.0)
                     .show_ui(ui, |ui| {
                         for kind in [PackageKind::Msi, PackageKind::PortableZip] {
-                            ui.selectable_value(&mut choice, Some(kind), crate::i18n::t(kind.label()));
+                            let selected = choice == Some(kind);
+                            let text = widgets::selected_item_text(ui, selected, crate::i18n::t(kind.label()));
+                            ui.selectable_value(&mut choice, Some(kind), text);
                         }
                     })
                     .response
@@ -283,15 +292,21 @@ impl LauncherUi {
                     .width(210.0)
                     .show_ui(ui, |ui| {
                         if !is_flatpak && !is_appimage {
-                            ui.selectable_value(&mut choice, None, tl!("System package (recommended)"));
+                            let selected = choice.is_none();
+                            let text = widgets::selected_item_text(ui, selected, tl!("System package (recommended)"));
+                            ui.selectable_value(&mut choice, None, text);
                         }
                         for k in [PackageKind::Deb, PackageKind::Rpm, PackageKind::ArchPkg, PackageKind::Flatpak, PackageKind::AppImage] {
-                            ui.selectable_value(&mut choice, Some(k), crate::i18n::t(k.label()));
+                            let selected = choice == Some(k);
+                            let text = widgets::selected_item_text(ui, selected, crate::i18n::t(k.label()));
+                            ui.selectable_value(&mut choice, Some(k), text);
                         }
                         // The tarball is unpacked and run inside the launcher's own sandbox, so it
                         // is only ever on offer there (as the fallback when the host has no Flatpak).
                         if is_flatpak {
-                            ui.selectable_value(&mut choice, Some(PackageKind::TarGz), crate::i18n::t(PackageKind::TarGz.label()));
+                            let selected = choice == Some(PackageKind::TarGz);
+                            let text = widgets::selected_item_text(ui, selected, crate::i18n::t(PackageKind::TarGz.label()));
+                            ui.selectable_value(&mut choice, Some(PackageKind::TarGz), text);
                         }
                     })
                     .response

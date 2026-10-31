@@ -115,10 +115,12 @@ impl LauncherUi {
                 // highlight covers only part of its slot and the spacing looks uneven around it.
                 ui.spacing_mut().item_spacing.y = 0.0;
                 let option_size = egui::vec2(ui.available_width(), 42.0);
-                if latest.is_none()
-                    && ui.add(egui::Button::selectable(choice == VersionTrack::Stable, tl!("Latest release")).min_size(option_size)).clicked()
-                {
-                    picked = Some(VersionTrack::Stable);
+                if latest.is_none() {
+                    let selected = choice == VersionTrack::Stable;
+                    let text = widgets::selected_item_text(ui, selected, tl!("Latest release"));
+                    if ui.add(egui::Button::selectable(selected, text).min_size(option_size)).clicked() {
+                        picked = Some(VersionTrack::Stable);
+                    }
                 }
                 let nightly = list
                     .as_ref()
@@ -126,7 +128,9 @@ impl LauncherUi {
                     .is_some_and(|rs| rs.iter().any(|r| is_nightly(r) && self.has_version_download(app, r)));
                 // Without a build, the reason rides in the disabled row itself, not a line of its own.
                 let label = if nightly { tl!("Nightly") } else { tl!("Nightly (none published yet)") };
-                if ui.add_enabled(nightly, egui::Button::selectable(choice == VersionTrack::Nightly, label).min_size(option_size)).clicked() {
+                let selected = choice == VersionTrack::Nightly;
+                let text = widgets::selected_item_text(ui, selected, label);
+                if ui.add_enabled(nightly, egui::Button::selectable(selected, text).min_size(option_size)).clicked() {
                     picked = Some(VersionTrack::Nightly);
                 }
                 match &list {
@@ -151,6 +155,7 @@ impl LauncherUi {
                             } else {
                                 (choice == pin, r.tag.clone(), pin)
                             };
+                            let text = widgets::selected_item_text(ui, selected, text);
                             if ui.add(egui::Button::selectable(selected, text).min_size(option_size)).clicked() {
                                 picked = Some(track);
                             }

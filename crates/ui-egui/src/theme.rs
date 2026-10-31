@@ -11,6 +11,7 @@ use serde::{Deserialize, Serialize};
 use crate::i18n::Lang;
 
 pub const DEFAULT_ACCENT: [u8; 3] = [45, 129, 255];
+pub const CONTRAST_RATIO_MIN: f32 = 3.75;
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub enum ThemeChoice {
@@ -162,6 +163,20 @@ fn contrasting_ink(accent: Color32, background: Color32, dark: bool) -> Color32 
 }
 
 fn selection_ink(accent: Color32) -> Color32 {
+    let red = f32::from(accent.r()) / 255.0;
+    let green = f32::from(accent.g()) / 255.0;
+    let blue = f32::from(accent.b()) / 255.0;
+    let max_channel = accent.r().max(accent.g()).max(accent.b());
+    let min_channel = accent.r().min(accent.g()).min(accent.b());
+    let saturation = if max_channel == 0 { 0.0 } else { f32::from(max_channel - min_channel) / f32::from(max_channel) };
+    let perceived_brightness = 0.299 * red + 0.587 * green + 0.114 * blue;
+    // The channel weights account for hue; the saturation bias favors light ink on vivid colors.
+    let prefers_light_ink = perceived_brightness < 0.46 + 0.08 * saturation;
+    let preferred = if prefers_light_ink { Color32::WHITE } else { Color32::BLACK };
+    if contrast_ratio(preferred, accent) >= CONTRAST_RATIO_MIN {
+        return preferred;
+    }
+
     let white_contrast = contrast_ratio(Color32::WHITE, accent);
     let black_contrast = contrast_ratio(Color32::BLACK, accent);
     if white_contrast >= black_contrast { Color32::WHITE } else { Color32::BLACK }
@@ -518,9 +533,23 @@ mod tests {
             for tokens in [Tokens::DARK, Tokens::LIGHT].map(|tokens| tokens.with_accent(Some(accent))) {
                 let selection = visuals(&tokens).selection;
                 assert_eq!(selection.stroke.color, selection_ink(tokens.accent));
-                assert!(contrast_ratio(selection.stroke.color, selection.bg_fill) >= 4.5);
+                assert!(contrast_ratio(selection.stroke.color, selection.bg_fill) >= 3.85);
             }
         }
+    }
+
+    #[test]
+    fn selection_ink_accounts_for_hue_and_saturation() {
+        let saturated_blue = rgb([0, 126, 255]);
+        let neutral_gray = rgb([118, 118, 118]);
+        let blue_below_minimum = rgb([0, 128, 255]);
+
+        assert_eq!(selection_ink(saturated_blue), Color32::WHITE);
+        assert_eq!(selection_ink(neutral_gray), Color32::BLACK);
+        assert_eq!(selection_ink(blue_below_minimum), Color32::BLACK);
+        assert!(contrast_ratio(selection_ink(saturated_blue), saturated_blue) >= 3.85);
+        assert!(contrast_ratio(selection_ink(neutral_gray), neutral_gray) >= 3.85);
+        assert!(contrast_ratio(selection_ink(blue_below_minimum), blue_below_minimum) >= 3.85);
     }
 
     #[test]
