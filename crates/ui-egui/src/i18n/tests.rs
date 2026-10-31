@@ -1,5 +1,5 @@
-//! Tests for the i18n catalogs (format, duplicates, placeholders, plural forms, coverage) and the
-//! lookups.
+//! Tests for the i18n catalogs (format, duplicates, placeholders, plural forms) and the
+//! lookups, plus the missing-translation report.
 
 use std::collections::{BTreeSet, HashSet};
 
@@ -118,47 +118,62 @@ fn ellipsis_preserved() {
     }
 }
 
-/// Every string the UI looks up by literal (`tl!("…")`, `t("…")`) in the language of each catalog
-/// that claims to be complete.
+/// Every `.rs` file of the UI crate (except the i18n folder) and the desktop tray menu.
+fn ui_sources() -> Vec<String> {
+    fn walk(dir: &std::path::Path, out: &mut Vec<String>) {
+        let mut entries: Vec<_> = std::fs::read_dir(dir).expect("read source dir").flatten().map(|e| e.path()).collect();
+        entries.sort();
+        for path in entries {
+            if path.is_dir() {
+                if path.file_name().is_some_and(|n| n != "i18n") {
+                    walk(&path, out);
+                }
+            } else if path.extension().is_some_and(|e| e == "rs") {
+                out.push(std::fs::read_to_string(&path).expect("read source file"));
+            }
+        }
+    }
+    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
+    let mut out = Vec::new();
+    walk(&root.join("src"), &mut out);
+    out.push(std::fs::read_to_string(root.join("../../apps/artcraft-launcher/src/tray.rs")).expect("read tray.rs"));
+    out
+}
+
+/// The text of the string literal that starts after `source[at..]`'s leading whitespace, if any.
+fn literal_after(source: &str, at: usize) -> Option<&str> {
+    let rest = source[at..].trim_start();
+    let body = rest.strip_prefix('"')?;
+    Some(&body[..body.find('"')?])
+}
+
+/// Translation report: prints, per language, the UI strings that have no translation and so show
+/// in English. It never fails on a missing translation; it fails only when the scanner finds
+/// almost nothing, which means the scanner is broken.
 #[test]
-fn complete_catalogs_cover_every_ui_literal() {
-    let sources = [
-        include_str!("../app.rs"),
-        include_str!("../details.rs"),
-        include_str!("../dialogs.rs"),
-        include_str!("../card_parts.rs"),
-        include_str!("../model.rs"),
-        include_str!("../notes.rs"),
-        include_str!("../settings.rs"),
-        include_str!("../settings_dialog.rs"),
-        include_str!("../views.rs"),
-        include_str!("../widgets.rs"),
-        // The desktop shell's tray menu and tooltip.
-        include_str!("../../../../apps/artcraft-launcher/src/tray.rs"),
-    ];
+fn missing_translations_report() {
+    let sources = ui_sources();
     let mut keys = BTreeSet::new();
-    for source in sources {
+    for source in &sources {
         // `t("…")` calls, not `fmt(`, `.get(` and the like.
-        for (i, _) in source.match_indices("t(\"") {
+        for (i, _) in source.match_indices("t(") {
             if source[..i].ends_with(|c: char| c.is_alphanumeric() || c == '_' || c == '.') {
                 continue;
             }
-            let start = i + 3;
-            if let Some(len) = source[start..].find('"') {
-                keys.insert(&source[start..start + len]);
+            if let Some(key) = literal_after(source, i + 2) {
+                keys.insert(key);
             }
         }
-        for (i, _) in source.match_indices("tl!(\"") {
-            let start = i + 5;
-            if let Some(len) = source[start..].find('"') {
-                keys.insert(&source[start..start + len]);
+        for (i, _) in source.match_indices("tl!(") {
+            if let Some(key) = literal_after(source, i + 4) {
+                keys.insert(key);
             }
         }
     }
     assert!(keys.len() > 100, "found only {} UI literals", keys.len());
     // Plural keys: `tn(n, "one", "other")`, `trn(lang, n, "one", "other")`.
     let mut plurals = BTreeSet::new();
-    for source in sources {
+    for source in &sources {
         for (i, call) in source.match_indices("tn(").chain(source.match_indices("trn(")) {
             if source[..i].ends_with(|c: char| c.is_alphanumeric() || c == '_') || source[i + call.len()..].starts_with(')') {
                 continue;
@@ -170,19 +185,31 @@ fn complete_catalogs_cover_every_ui_literal() {
         }
     }
     assert!(plurals.len() >= 4, "found only {plurals:?}");
-    for lang in Lang::all().filter(|l| l.complete_menus()) {
-        let missing: Vec<_> = keys.iter().filter(|k| !super::has(lang, k)).collect();
-        assert!(missing.is_empty(), "{} is missing translations for {missing:#?}", lang.code());
-        let missing: Vec<_> = plurals.iter().filter(|k| lang.catalog().plural(k, 0).is_none()).collect();
-        assert!(missing.is_empty(), "{} is missing @plural rows for {missing:#?}", lang.code());
-    }
-}
 
-#[test]
-fn complete_catalogs_translate_every_tagline() {
-    for lang in Lang::all().filter(|l| l.complete_menus()) {
+    use artcraft_launcher_core::PackageKind;
+    let kinds = [
+        PackageKind::Msi,
+        PackageKind::PortableZip,
+        PackageKind::Dmg,
+        PackageKind::Deb,
+        PackageKind::Rpm,
+        PackageKind::ArchPkg,
+        PackageKind::Flatpak,
+        PackageKind::TarGz,
+    ];
+    println!("\nTranslation report ({} UI literals, {} plurals): missing strings show in English", keys.len(), plurals.len());
+    for lang in Lang::all().filter(|l| l.code() != "en") {
+        let mut missing: Vec<String> = keys.iter().filter(|k| !super::has(lang, k)).map(|k| format!("string: {k}")).collect();
+        missing.extend(plurals.iter().filter(|k| lang.catalog().plural(k, 0).is_none()).map(|k| format!("plural: {k}")));
+        missing.extend(kinds.iter().filter(|k| !super::has(lang, k.label())).map(|k| format!("package format: {}", k.label())));
         for app in &artcraft_launcher_core::SUITE {
-            assert_ne!(super::tr_ctx(lang, app.id, app.tagline), app.tagline, "{}: {}", lang.code(), app.id);
+            if super::tr_ctx(lang, app.id, app.tagline) == app.tagline {
+                missing.push(format!("tagline ({}): {}", app.id, app.tagline));
+            }
+        }
+        println!("{}: {} missing", lang.code(), missing.len());
+        for m in &missing {
+            println!("  {m}");
         }
     }
 }
@@ -526,26 +553,6 @@ fn message_templates_match_real_messages() {
     assert_eq!(cat.message("Couldn't open : x"), None);
     assert_eq!(cat.message("Something else"), None);
     assert_eq!(message(Lang::EN, "Something else"), "Something else");
-}
-
-#[test]
-fn complete_catalogs_translate_package_formats() {
-    use artcraft_launcher_core::PackageKind;
-    let kinds = [
-        PackageKind::Msi,
-        PackageKind::PortableZip,
-        PackageKind::Dmg,
-        PackageKind::Deb,
-        PackageKind::Rpm,
-        PackageKind::ArchPkg,
-        PackageKind::Flatpak,
-        PackageKind::TarGz,
-    ];
-    for lang in Lang::all().filter(|l| l.complete_menus()) {
-        for kind in kinds {
-            assert!(super::has(lang, kind.label()), "{}: {}", lang.code(), kind.label());
-        }
-    }
 }
 
 #[test]

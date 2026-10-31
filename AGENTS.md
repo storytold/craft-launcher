@@ -99,8 +99,10 @@ spinners keep moving.
 
 Every user-facing string goes through `crates/ui-egui/src/i18n` (`tl!("…")` for literals, `fmt`
 for `{placeholders}`, `tn` for counts). English in the code is the lookup key; adding a string
-means adding its row to every catalog marked `complete_menus` (the `*.tsv` files in
-`crates/ui-egui/src/i18n/`), which the i18n tests check. Translate clean-room from the meaning of
+means adding English only. A string without a row in a catalog (the `*.tsv` files in
+`crates/ui-egui/src/i18n/`) shows in English and never fails a test or blocks a PR; the
+`missing_translations_report` test lists the missing strings per language (`cargo xtask ci` prints
+it). Translators add rows to the catalogs. Translate clean-room from the meaning of
 the English text, never through another catalog. Product and app names (ArtCraft Launcher, Craft
 App Suite, PhotoCraft…) stay in English.
 A CJK language is drawn with the system's own CJK font (`crates/ui-egui/src/cjk_font.rs`, desktop
