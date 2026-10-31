@@ -49,6 +49,7 @@ impl Release {
         }
     }
 
+    #[must_use]
     pub fn sums_asset(&self) -> Option<&Asset> {
         self.assets.iter().find(|a| a.name == "SHA256SUMS.txt")
     }
@@ -81,6 +82,7 @@ pub fn safe_web_link(url: &str) -> bool {
 /// Characters a command interpreter (POSIX shells or `cmd.exe`) may treat specially. A real
 /// `https` URL never needs any of them unescaped in a browser-opened link. `%` matters because
 /// `cmd.exe` expands `%NAME%` references, and an expanded value could itself carry metacharacters.
+#[must_use]
 pub fn is_shell_meta(c: char) -> bool {
     matches!(c, '|' | '&' | ';' | '<' | '>' | '(' | ')' | '$' | '`' | '"' | '\'' | '^' | '!' | '*' | '%' | '{' | '}' | '[' | ']')
 }
@@ -89,6 +91,7 @@ pub fn is_shell_meta(c: char) -> bool {
 /// starts with `https://github.com/<repo>/releases`, contains no dot-segments (`.` or `..`),
 /// no percent-encoded path separators (`%2f`, `%5c`), no query/fragment/backslash, and
 /// satisfies [`safe_web_link`] (no shell metacharacters or control bytes, CWE-78).
+#[must_use]
 pub fn safe_release_html_url(repo: &str, url: &str) -> Option<String> {
     if !safe_web_link(url) {
         return None;
@@ -111,6 +114,7 @@ pub fn safe_release_html_url(repo: &str, url: &str) -> Option<String> {
 }
 
 /// The prefix every download of `repo` must start with.
+#[must_use]
 pub fn download_prefix(repo: &str) -> String {
     format!("https://github.com/{repo}/releases/download/")
 }
@@ -123,12 +127,14 @@ pub fn download_prefix(repo: &str) -> String {
 /// accepted only when the text after the prefix is exactly `<tag>/<name>` — two non-empty path
 /// segments with no traversal (`.`/`..`), no additional slashes, no query or fragment, and no
 /// backslash or percent-encoded separators that a client could later re-interpret.
+#[must_use]
 pub fn download_url_under(url: &str, prefix: &str) -> bool {
     let Some(rest) = url.strip_prefix(prefix) else { return false };
     download_suffix_ok(rest)
 }
 
 /// Whether `url` sits under a developer mirror `base` (ending in `/`) without escaping it.
+#[must_use]
 pub fn download_url_under_mirror(url: &str, base: &str) -> bool {
     let Some(rest) = url.strip_prefix(base) else { return false };
     // A mirror serves `<tag>/<name>` just like GitHub, but we only require that it can't climb out
@@ -159,6 +165,10 @@ fn contains_encoded_separator(rest: &str) -> bool {
 }
 
 /// Reads `GET /repos/<repo>/releases/latest` (or one element of `/releases`).
+///
+/// # Errors
+///
+/// Returns an error if the JSON is malformed or does not describe a usable release.
 pub fn parse_github_release(json: &str, repo: &str) -> Result<Release, String> {
     let v: serde_json::Value = serde_json::from_str(json).map_err(|e| format!("unreadable answer from GitHub ({e})"))?;
     release_from_value(&v, repo)
@@ -166,6 +176,10 @@ pub fn parse_github_release(json: &str, repo: &str) -> Result<Release, String> {
 
 /// Published releases offered for manual selection, in GitHub's order.
 /// Drafts and unparseable tags cannot be installed.
+///
+/// # Errors
+///
+/// Returns an error if the JSON is malformed or its top level is not an array.
 pub fn parse_github_versions(json: &str, repo: &str) -> Result<Vec<Release>, String> {
     let v: serde_json::Value = serde_json::from_str(json).map_err(|e| format!("unreadable answer from GitHub ({e})"))?;
     let list = v.as_array().ok_or("unexpected answer from GitHub")?;
@@ -179,15 +193,18 @@ pub fn parse_github_versions(json: &str, repo: &str) -> Result<Vec<Release>, Str
 }
 
 /// A published, explicitly marked nightly build, not merely a beta or release candidate.
+#[must_use]
 pub fn is_nightly(release: &Release) -> bool {
     release.prerelease && release.version.as_ref().is_some_and(|v| v.pre.as_str().split('.').any(|part| part.eq_ignore_ascii_case("nightly")))
 }
 
 /// Selects a published release. A nightly must be explicitly marked; a pin never falls back.
+#[must_use]
 pub fn has_published_checksum(r: &Release) -> bool {
     r.sums_asset().is_some() || r.assets.iter().any(|a| a.sha256.is_some())
 }
 
+#[must_use]
 pub fn choose_version(releases: &[Release], track: &crate::protocol::VersionTrack) -> Option<Release> {
     use crate::protocol::VersionTrack;
     match track {
@@ -203,6 +220,10 @@ pub fn choose_version(releases: &[Release], track: &crate::protocol::VersionTrac
 
 /// Reads `GET /repos/<repo>/releases` and returns the newest stable (or any, with
 /// `allow_prerelease`) published release.
+///
+/// # Errors
+///
+/// Returns an error if the JSON is malformed or its top level is not an array.
 pub fn parse_github_release_list(json: &str, repo: &str, allow_prerelease: bool) -> Result<Option<Release>, String> {
     let v: serde_json::Value = serde_json::from_str(json).map_err(|e| format!("unreadable answer from GitHub ({e})"))?;
     let list = v.as_array().ok_or("unexpected answer from GitHub")?;
@@ -262,6 +283,7 @@ fn release_from_value(v: &serde_json::Value, repo: &str) -> Result<Release, Stri
 
 /// A release known only from its tag and `SHA256SUMS.txt` (the quota-free route: the
 /// `releases/latest` redirect names the tag, and the sums list every file).
+#[must_use]
 pub fn release_from_sums(repo: &str, tag: &str, sums: &[(String, String)]) -> Release {
     let prefix = download_prefix(repo);
     let mut assets: Vec<Asset> = sums
@@ -282,12 +304,14 @@ pub fn release_from_sums(repo: &str, tag: &str, sums: &[(String, String)]) -> Re
 }
 
 /// The tag in a `https://github.com/<repo>/releases/tag/<tag>` redirect target.
+#[must_use]
 pub fn tag_from_redirect(location: &str, repo: &str) -> Option<String> {
     let rest = location.strip_prefix(&format!("https://github.com/{repo}/releases/tag/"))?;
     (!rest.is_empty() && rest.len() <= 64 && rest.bytes().all(|b| b.is_ascii_alphanumeric() || b"._-+".contains(&b))).then(|| rest.to_string())
 }
 
 /// Reads `sha256sum` output: `<hex>  <name>` (or `<hex> *<name>`) per line.
+#[must_use]
 pub fn parse_sha256sums(text: &str) -> Vec<(String, String)> {
     text.lines()
         .filter_map(|line| {
@@ -299,6 +323,7 @@ pub fn parse_sha256sums(text: &str) -> Vec<(String, String)> {
 }
 
 /// A bare file name we'd be willing to save: no paths, no control characters.
+#[must_use]
 pub fn valid_file_name(name: &str) -> bool {
     !name.is_empty()
         && name.len() <= 200

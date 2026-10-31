@@ -8,6 +8,7 @@ pub use semver::Version;
 ///
 /// Accepts `v0.5.0`, `0.5.0`, `0.2.0-rc.1`, Debian's `0.2.0~rc.1-1`, and the two-part `0.5`
 /// some platforms report. Build metadata is kept but never affects ordering.
+#[must_use]
 pub fn parse(text: &str) -> Option<Version> {
     let t = text.trim();
     let t = t.strip_prefix(['v', 'V']).unwrap_or(t);
@@ -35,6 +36,7 @@ pub fn parse(text: &str) -> Option<Version> {
 /// Reads a version as a system package manager reports it, dropping what the packaging adds:
 /// an epoch (`1:`), the package revision (`-1`, `-2.fc40`), Debian's `~` pre-release spelling, and
 /// a VCS snapshot suffix (`0.3.0.r47.g47f9306` from an AUR `-git` package, read as `0.3.0`).
+#[must_use]
 pub fn parse_package(text: &str) -> Option<Version> {
     let t = text.trim();
     // Epoch.
@@ -98,23 +100,27 @@ fn digits(text: &str, from: usize) -> Option<(u64, usize)> {
 }
 
 /// A version that's a plain `X.Y.Z` with no pre-release suffix.
+#[must_use]
 pub fn is_stable(v: &Version) -> bool {
     v.pre.is_empty()
 }
 
 /// Orders by precedence, ignoring build metadata.
+#[must_use]
 pub fn compare(a: &Version, b: &Version) -> Ordering {
     a.cmp_precedence(b)
 }
 
 /// True when `latest` is newer than `installed`.
+#[must_use]
 pub fn is_newer(latest: &Version, installed: &Version) -> bool {
     compare(latest, installed) == Ordering::Greater
 }
 
-/// Platforms that only record `X.Y.Z` (the MSI ProductVersion, `CFBundleShortVersionString`)
+/// Platforms that only record `X.Y.Z` (the MSI `ProductVersion`, `CFBundleShortVersionString`)
 /// drop a pre-release suffix. A numeric-only installed version therefore counts as current when it
 /// matches a pre-release's numbers, rather than nagging forever.
+#[must_use]
 pub fn is_update(latest: &Version, installed: &Version) -> bool {
     if installed.pre.is_empty()
         && !latest.pre.is_empty()

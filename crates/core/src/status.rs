@@ -22,13 +22,14 @@ pub enum InstallSource {
     Pacman,
     /// A Flatpak.
     Flatpak,
-    /// An AppImage file found on disk.
+    /// An `AppImage` file found on disk.
     AppImage,
     /// A binary found on `PATH` or in a system prefix.
     Binary,
 }
 
 impl InstallSource {
+    #[must_use]
     pub fn label(self) -> &'static str {
         match self {
             Self::Launcher => "ArtCraft Launcher",
@@ -45,6 +46,7 @@ impl InstallSource {
 
     /// Whether the launcher may replace or remove this copy itself. Packages owned by a system
     /// package manager (deb, rpm, Flatpak) are updated through that manager instead.
+    #[must_use]
     pub fn launcher_can_update(self) -> bool {
         matches!(self, Self::Launcher | Self::MacApp | Self::Msi | Self::AppImage)
     }
@@ -56,7 +58,7 @@ pub struct Installed {
     /// `None` when the copy is there but its version couldn't be read.
     pub version: Option<Version>,
     pub source: InstallSource,
-    /// Where it lives: the `.app`, the exe, the AppImage, or the binary of a package.
+    /// Where it lives: the `.app`, the exe, the `AppImage`, or the binary of a package.
     pub location: String,
     /// The package that installed it, for package-manager installs (`photocraft-bin`).
     #[serde(default)]
@@ -83,6 +85,7 @@ pub enum AppStatus {
 }
 
 impl AppStatus {
+    #[must_use]
     pub fn is_installed(&self) -> bool {
         matches!(self, Self::UpToDate | Self::UpdateAvailable | Self::Installed)
     }
@@ -97,6 +100,7 @@ pub enum Latest<'a> {
     Found { version: Option<&'a Version>, has_asset: bool },
 }
 
+#[must_use]
 pub fn status(installed: Option<&Installed>, latest: Latest<'_>) -> AppStatus {
     match (installed, latest) {
         (None, Latest::Pending) => AppStatus::Checking,
