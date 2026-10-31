@@ -26,7 +26,7 @@ permissions:
 jobs:
   windows-arm64:
     # Immutable supporting workflow revision until the new install contract lands upstream.
-    uses: storytold/craft-common-actions/.github/workflows/windows-arm64.yml@8bb4e5ab95443171104ad88113fe1ef9b0e5ce3f
+    uses: storytold/craft-common-actions/.github/workflows/windows-arm64.yml@fa5ef18780cf5e7d5d3b8de068de56cffc83cac5
     with:
       app-name: craft-launcher
       app-dir: ArtCraft Launcher
