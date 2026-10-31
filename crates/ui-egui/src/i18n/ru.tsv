@@ -133,6 +133,11 @@
 	Maximize	Развернуть
 	Restore	Восстановить
 	New	Новое
+	Classic	Классическое
+	Inspired by	Вдохновлено
+	Like {name}	Как {name}
+	Website (coming soon)	Веб-сайт (появится скоро)
+@id	sort.inspired	По вдохновению
 	OK	ОК
 	Open link	Открыть ссылку
 	Update	Обновить

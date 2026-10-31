@@ -1,0 +1,328 @@
+# Finnish (fi) catalog for ArtCraft Launcher.
+# Format: context<TAB>source<TAB>translation
+# Empty context = plain UI string (tl!, t).
+# @id = command-id keyed (tr_id).
+# @plural = plural forms: one|other (only 1 is "one" in Finnish).
+# @msg = status/error message template (message, msg).
+# Other context = disambiguation for tr_ctx.
+#
+# Clean-room: written from the meaning of ArtCraft Launcher's English labels, in standard
+# Finnish software terminology (Microsoft/Apple fi style): concise labels, lowercase
+# sentence style, imperative for buttons.
+#
+# Coverage: the whole interface: every menu string and tl! literal (complete_menus = true).
+# Left in English on purpose: product name "ArtCraft Launcher" (and its "Launcher" tag), suite
+# name "Craft App Suite", app names (PhotoCraft, LightCraft, FilmCraft,
+# DesignCraft, VectorCraft, PdfCraft, EffectCraft, WordCraft, DeckCraft, GridCraft, CADCraft,
+# SoundCraft, FigCraft), "GitHub", "Discord", "Finder".
+# Trailing "…" (U+2026) must be preserved. Placeholders must appear in the translation:
+# {ago}, {a}, {b}, {count}, {date}, {day}, {done}, {e}, {f}, {installed}, {latest}, {min},
+# {month}, {name}, {n}, {os}, {platform}, {sources}, {total}, {version}, {v}, {year}.
+
+	Launcher	Launcher
+	Craft App Suite	Craft App Suite
+	Open Source Tools for Creatives, Makers, and Builders	Avoimen lähdekoodin työkalut luojille, tekijöille ja rakentajille
+	Settings	Asetukset
+	Check for updates	Tarkista päivitykset
+	Grid	Ruudukko
+	Table	Taulukko
+	Show apps as cards	Näytä sovellukset kortteina
+	Show apps as a table	Näytä sovellukset taulukkona
+	All	Kaikki
+	Updates	Päivitykset
+	Not installed	Ei asennettu
+	Search apps	Etsi sovelluksia
+	Sort	Järjestä
+	Suite order	Suiten järjestys
+	Name	Nimi
+	Inspired by	Innoittaja
+	Status	Tila
+	Installed version	Asennettu versio
+	Latest version	Uusin versio
+	Newest release	Uusin julkaisu
+	Discord	Discord
+	GitHub	GitHub
+	Website	Verkkosivusto
+	Classic apps	Perinteiset sovellukset
+	Classic	Perinteiset
+	New apps	Uudet sovellukset
+	NEW	UUSI
+	Install	Asenna
+	Update to {v}	Päivitä versioon {v}
+	Open	Avaa
+	Download for {os}	Lataa {os}-versio
+	Download	Lataa
+	Coming soon	Tulossa pian
+	Checking…	Tarkistetaan…
+	Not available	Ei saatavilla
+	Offline	Ei verkkoyhteyttä
+	Downloading {done} of {total}	Ladataan {done}/{total}
+	Downloading…	Ladataan…
+	Reconnecting…	Yhdistetään uudelleen…
+	Verifying…	Varmistetaan…
+	Installing, then restarting…	Asennetaan ja käynnistetään uudelleen…
+	Installing…	Asennetaan…
+	Removing…	Poistetaan…
+	Pause download	Keskeytä lataus
+	Cancel download	Peruuta lataus
+	Resume download	Jatka latausta
+	Discard download	Hylkää lataus
+	Release notes	Julkaisutiedot
+	Show in Finder	Näytä Finderissä
+	Show in Explorer	Näytä Resurssienhallinnassa
+	Show in Files	Näytä Tiedostot-sovelluksessa
+	Reinstall	Asenna uudelleen
+	Uninstall…	Poista asennus…
+	All releases	Kaikki julkaisut
+	ArtCraft Launcher {version} is available.	ArtCraft Launcher {version} on saatavilla.
+	Dismiss	Ohita
+	Update and restart	Päivitä ja käynnistä uudelleen
+	A new version is available. Would you like to relaunch with the updated version?	Uusi versio on saatavilla. Haluatko käynnistää ohjelman uudelleen päivitetyn version kanssa?
+	Later	Myöhemmin
+	What's new	Uutta
+	No notes were published with this release.	Tämän julkaisun mukana ei ole julkaisutietoja.
+	Released {date}	Julkaistu {date}
+	Open on GitHub	Avaa GitHubissa
+	Close	Sulje
+	ArtCraft Launcher {version}	ArtCraft Launcher {version}
+	Only when I ask	Vain pyynnöstäni
+	Automatically download and install updates	Lataa ja asenna päivitykset automaattisesti
+	Notify me when an installed app has an update	Ilmoita, kun asennetulla sovelluksella on päivitys
+	Include pre-releases (betas and release candidates)	Sisällytä esiversiot (beetat ja julkaisuehdokkaat)
+	Installing on Linux	Asentaminen Linuxissa
+	Install new apps as	Asenna uudet sovellukset muodossa
+	System package (recommended)	Järjestelmäpaketti (suositeltu)
+	Updates always use the format an app was installed with.	Päivitykset käyttävät aina muotoa, jolla sovellus on asennettu.
+	Running in the background	Taustalla ajaminen
+	Keep running in the tray when the window is closed	Pidä käynnissä ilmoitusalueella, kun ikkuna suljetaan
+	Show the window on the current desktop	Näytä ikkuna nykyisellä työpöydällä
+	Start ArtCraft Launcher when I log in	Käynnistä ArtCraft Launcher, kun kirjaudun sisään
+	Community	Yhteisö
+	Questions, ideas and news from the ArtCraft team	Kysymyksiä, ideoita ja uutisia ArtCraft-tiimiltä
+	Appearance	Ulkoasu
+	Quit ArtCraft Launcher	Lopeta ArtCraft Launcher
+	Done	Valmis
+	Uninstall {name}?	Poistetaanko {name}?
+	The app will be moved to the Trash. Your documents and settings stay.	Sovellus siirretään roskakoriin. Tiedostosi ja asetuksesi säilyvät.
+	Windows will remove it like any installed program. Your documents and settings stay.	Windows poistaa sen kuten minkä tahansa asennetun ohjelman. Tiedostosi ja asetuksesi säilyvät.
+	Your system's package manager will remove it, and may ask for your password. Your documents and settings stay.	Järjestelmän pakettienhallinta poistaa sen ja saattaa pyytää salasanaasi. Tiedostosi ja asetuksesi säilyvät.
+	The app will be removed. Your documents and settings stay.	Sovellus poistetaan. Tiedostosi ja asetuksesi säilyvät.
+	Uninstall	Poista asennus
+	Cancel	Peruuta
+	Checked {ago}	Tarkistettu {ago}
+	just now	juuri nyt
+	yesterday	eilen
+	{month} {day}, {year}	{day}. {month} {year}
+	Automatically	Automaattisesti
+	Every Craft app	Kaikki Craft-sovellukset
+	Apps on this computer	Tämän tietokoneen sovellukset
+	Installed apps with a newer version	Asennetut sovellukset, joista on uudempi versio
+	Apps you can install	Asennettavat sovellukset
+	Hide App	Piilota sovellus
+	Unhide App	Näytä piilotettu sovellus
+	Hidden Apps	Piilotetut sovellukset
+	Apps you hid	Piilottamasi sovellukset
+	Checked {ago} · using {sources}	Tarkistettu {ago} · lähteinä {sources}
+	{a} and {b}	{a} ja {b}
+	Join the Discord	Liity Discordiin
+	Learn more	Lisätietoja
+	Minimize	Pienennä
+	Maximize	Suurenna
+	Restore	Palauta
+	New	Uusi
+	OK	OK
+	Open link	Avaa linkki
+	Update	Päivitä
+	{name} icon	{name}-kuvake
+	Loading ArtCraft Launcher…	Ladataan ArtCraft Launcheria…
+	Cancel update	Peruuta päivitys
+	Stop waiting; the update can be started again later	Lopeta odottaminen; päivityksen voi käynnistää uudelleen myöhemmin
+	Download again	Lataa uudelleen
+	Install cancelled	Asennus peruutettu
+	Install cancelled. The download is kept for the next try.	Asennus peruutettiin. Lataus säilytetään seuraavaa yritystä varten.
+	Update cancelled	Päivitys peruutettu
+	Uninstall cancelled	Poisto peruutettiin
+	Retry install	Yritä asennusta uudelleen
+	Retry update to {version}	Yritä päivitystä versioon {version} uudelleen
+	The download is still here. It's checked again, then installed.	Lataus on edelleen olemassa. Se tarkistetaan uudelleen ja asennetaan sitten.
+	Waiting for another app…	Odotetaan toista sovellusta…
+	Waiting for other installs…	Odotetaan muita asennuksia…
+	Installer (.msi)	Asennusohjelma (.msi)
+	Portable (.zip)	Siirrettävä (.zip)
+	Disk image (.dmg)	Levykuva (.dmg)
+	Debian package (.deb)	Debian-paketti (.deb)
+	RPM package (.rpm)	RPM-paketti (.rpm)
+	Flatpak bundle	Flatpak-paketti
+	Tarball (.tar.gz)	Tar-arkisto (.tar.gz)
+photocraft	Image editing	Kuvankäsittely
+vectorcraft	Vector illustration	Vektorigrafiikka
+filmcraft	Video editing, color and sound	Videoeditointi, väri ja ääni
+lightcraft	Photo library and raw development	Kuvakirjasto ja raakakuvien kehitys
+pdfcraft	Reading, organizing and protecting PDFs	PDF-tiedostojen lukeminen, järjestäminen ja suojaaminen
+effectcraft	Motion graphics and visual effects	Liikegrafiikka ja visuaaliset efektit
+designcraft	Page layout and publishing	Sivuasettelu ja julkaiseminen
+wordcraft	Writing and document design	Kirjoittaminen ja asiakirjojen muotoilu
+deckcraft	Presentations and slide shows	Esitykset ja diaesitykset
+gridcraft	Spreadsheets and data	Taulukkolaskenta ja data
+cadcraft	Computer-aided design and drafting	Tietokoneavusteinen suunnittelu ja tekninen piirtäminen
+soundcraft	Recording, editing and mixing audio	Äänen tallennus, muokkaus ja miksaus
+figcraft	Interface design and prototyping	Käyttöliittymäsuunnittelu ja prototypointi
+month	Jan	tam
+month	Feb	hel
+month	Mar	maa
+month	Apr	huh
+month	May	tou
+month	Jun	kes
+month	Jul	hei
+month	Aug	elo
+month	Sep	syy
+month	Oct	lok
+month	Nov	mar
+month	Dec	jou
+	Not checked yet	Ei vielä tarkistettu
+	GitHub's hourly limit was reached; full details return in {min} min	GitHubin tuntikohtainen raja saavutettiin; kaikki tiedot ovat taas saatavilla {min} min kuluttua
+	GitHub limit hit; back in {min} min	GitHubin raja tuli vastaan; taas käytettävissä {min} min kuluttua
+	Installing for {platform}	Asennus alustalle {platform}
+	Downloads for {platform}	Lataukset alustalle {platform}
+	No downloads for this system	Tälle järjestelmälle ei ole latauksia
+	Join the ArtCraft community on Discord	Liity ArtCraft-yhteisöön Discordissa
+	ArtCraft on {name}	ArtCraft: {name}
+	Couldn't open {name}: {e}	Ei voitu avata {name}: {e}
+	Download cancelled	Lataus peruutettu
+	Available to install	Asennettavissa
+	Available	Saatavilla
+	Installed · up to date	Asennettu · ajan tasalla
+	Update available	Päivitys saatavilla
+	Installed	Asennettu
+	installed	asennettu
+	Not available here	Ei saatavilla täällä
+	Updating…	Päivitetään…
+	Update paused	Päivitys keskeytetty
+	Download paused	Lataus keskeytetty
+	{version} installed → {latest} released	{version} asennettu → {latest} julkaistu
+	Version {version}	Versio {version}
+	{installed} installed · latest {latest}	{installed} asennettu · uusin {latest}
+	Installed · latest {latest}	Asennettu · uusin {latest}
+	Version {version} installed	Versio {version} asennettu
+	Version {latest}	Versio {latest}
+	No release published yet	Ei vielä julkaisuja
+	ArtCraft Launcher	ArtCraft Launcher
+	App	Sovellus
+	Latest	Uusin
+	Released	Julkaistu
+	Auto	Automaattinen
+	Language	Kieli
+	Ascending	Nouseva
+	Descending	Laskeva
+	Click to reverse the order	Vaihda järjestyksen suunta napsauttamalla
+	Click to sort by this column	Järjestä tämän sarakkeen mukaan napsauttamalla
+	Like {name}	Kuten {name}
+	{done} of {total}	{done}/{total}
+	Downloading	Ladataan
+	Verifying checksum…	Varmistetaan tarkistussummaa…
+	Resume	Jatka
+	{done} of {total} downloaded	{done}/{total} ladattu
+	{done} downloaded	{done} ladattu
+	Checking for updates…	Tarkistetaan päivityksiä…
+	Downloads the new version, replaces this one and opens it again	Lataa uuden version, korvaa tämän ja käynnistää sen uudelleen
+	Couldn't check for updates: {f}	Päivityksiä ei voitu tarkistaa: {f}
+	Website (coming soon)	Verkkosivusto (tulossa pian)
+	GitHub repository	GitHub-tietovarasto
+	ArtCraft	ArtCraft
+	Update 1 app	Päivitä 1 sovellus
+	Update all ({count})	Päivitä kaikki ({count})
+	⊞  Grid	⊞  Ruudukko
+	☰  Table	☰  Taulukko
+	🔍  Search apps	🔍  Etsi sovelluksia
+	{name} {version}	{name} {version}
+	Match system	Järjestelmän mukainen
+	Dark	Tumma
+	Light	Vaalea
+	Full changelog	Koko muutosloki
+	link	linkki
+	No apps match	Mikään sovellus ei vastaa hakua
+	Open ArtCraft Launcher to update.	Avaa ArtCraft Launcher päivittämistä varten.
+	{name} {v} is available	{name} {v} on saatavilla
+	{count} updates are available	{count} päivitystä on saatavilla
+	These notes weren't fetched (GitHub's request limit was reached). They're on the release page.	Näitä julkaisutietoja ei noudettu (GitHubin pyyntöraja saavutettiin). Ne löytyvät julkaisusivulta.
+	When on, opening the launcher from the menu bar brings its window to the desktop you're on. When off, macOS switches you to the desktop the window was on.	Kun asetus on käytössä, ArtCraft Launcherin avaaminen valikkopalkista tuo sen ikkunan työpöydälle, jolla olet. Kun asetus on pois käytöstä, macOS siirtää sinut työpöydälle, jolla ikkuna on.
+	Couldn't change the login item: {e}	Kirjautumiskohteen muuttaminen ei onnistunut: {e}
+column	App	Sovellus
+column	Installed	Asennettu
+column	Latest	Uusin
+column	Released	Julkaistu
+filter	Installed	Asennetut
+	App details	Sovelluksen tiedot
+	Close (Esc)	Sulje (Esc)
+	Features	Ominaisuudet
+	Latest release	Uusin julkaisu
+	Version	Versio
+	Platforms	Alustat
+	Releases	Julkaisut
+	Enlarge picture	Suurenna kuva
+	Click to enlarge	Suurenna napsauttamalla
+	Previous picture (←)	Edellinen kuva (←)
+	Next picture (→)	Seuraava kuva (→)
+	Loading pictures…	Ladataan kuvia…
+	Pictures couldn't be loaded. Reopen this page to try again.	Kuvien lataaminen ei onnistunut. Avaa sivu uudelleen ja yritä uudestaan.
+	{name} details	{name} · tiedot
+@plural	{n} app|{n} apps	{n} sovellus|{n} sovellusta
+@plural	{n} min ago|{n} min ago	{n} min sitten|{n} min sitten
+@plural	{n} h ago|{n} h ago	{n} t sitten|{n} t sitten
+@plural	{n} day ago|{n} days ago	{n} päivä sitten|{n} päivää sitten
+@msg	Couldn't open {name}: {e}	Ei voitu avata {name}: {e}
+@msg	Download cancelled	Lataus peruutettu
+@msg	{name} updated to {version}	{name} päivitettiin versioon {version}
+@msg	{name} installed: {version}	{name} asennettu: {version}
+@msg	{name} updated to {version} (this release publishes no checksum, so only its size was checked)	{name} päivitettiin versioon {version} (tämä julkaisu ei julkaise tarkistussummaa, joten vain sen koko tarkistettiin)
+@msg	{name} installed: {version} (this release publishes no checksum, so only its size was checked)	{name} asennettu: {version} (tämä julkaisu ei julkaise tarkistussummaa, joten vain sen koko tarkistettiin)
+@msg	{name} was removed	{name} poistettiin
+@msg	{name} is running. Quit it, then try again.	{name} on käynnissä. Lopeta se ja yritä sitten uudelleen.
+@id	app.install	Asenna
+@id	app.update	Päivitä versioon {v}
+@id	app.open	Avaa
+@id	app.download	Lataa {os}-versio
+@id	app.reveal	Näytä Finderissä
+@id	app.reinstall	Asenna uudelleen
+@id	app.uninstall	Poista asennus…
+@id	app.notes	Julkaisutiedot
+@id	app.website	Verkkosivusto
+@id	app.github	GitHub-tietovarasto
+@id	app.releases	Kaikki julkaisut
+@id	launcher.update	Päivitä ja käynnistä uudelleen
+@id	launcher.download	Lataa
+@id	launcher.notes	Uutta
+@id	launcher.dismiss	Ohita
+@id	settings.open	Asetukset
+@id	settings.quit	Lopeta ArtCraft Launcher
+@id	view.grid	Ruudukko
+@id	view.table	Taulukko
+@id	filter.all	Kaikki
+@id	filter.installed	Asennetut
+@id	filter.updates	Päivitykset
+@id	filter.notinstalled	Ei asennettu
+@id	sort.suite	Suiten järjestys
+@id	sort.name	Nimi
+@id	sort.inspired	Innoittaja
+@id	sort.status	Tila
+@id	sort.installed	Asennettu versio
+@id	sort.latest	Uusin versio
+@id	sort.released	Uusin julkaisu
+@id	help.discord	Discord
+@id	help.github	GitHub
+@id	help.website	Verkkosivusto
+@id	update.check	Tarkista päivitykset
+@id	update.check_auto	Tarkista päivitykset automaattisesti
+@id	update.notify	Ilmoita, kun asennetulla sovelluksella on päivitys
+@id	update.prereleases	Sisällytä esiversiot (beetat ja julkaisuehdokkaat)
+@id	linux.preferred_kind	Asenna uudet sovellukset muodossa
+@id	tray.close_to_tray	Pidä käynnissä ilmoitusalueella, kun ikkuna suljetaan
+@id	tray.show_on_current_desktop	Näytä ikkuna nykyisellä työpöydällä
+@id	tray.login_item	Käynnistä ArtCraft Launcher, kun kirjaudun sisään
+@id	appearance.theme	Ulkoasu
+	Show ArtCraft Launcher	Näytä ArtCraft Launcher
+	Check for Updates	Tarkista päivitykset
+	Visit getartcraft.com	Siirry sivulle getartcraft.com
+	ArtCraft on GitHub	ArtCraft GitHubissa
+	Join the ArtCraft Discord	Liity ArtCraftin Discordiin
+@plural	ArtCraft Launcher · {n} update available|ArtCraft Launcher · {n} updates available	ArtCraft Launcher · {n} päivitys saatavilla|ArtCraft Launcher · {n} päivitystä saatavilla
