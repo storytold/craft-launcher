@@ -210,8 +210,13 @@ impl LauncherUi {
             if self.custom_install_folders() {
                 let mut folder = self.settings.install_locations.root.clone().unwrap_or_default();
                 let default = self.suite_default_folder(host);
-                Self::folder_field(ui, &mut folder, default.as_deref(), host);
-                self.settings.install_locations.root = (!folder.is_empty()).then_some(folder);
+                Self::folder_field(ui, &mut folder, default.as_deref(), false, host);
+                let root = (!folder.is_empty()).then_some(folder);
+                if root != self.settings.install_locations.root {
+                    // The default chosen here, not the folder of the last install, is what the next install offers.
+                    self.settings.last_install_folder = None;
+                }
+                self.settings.install_locations.root = root;
                 note(ui, tl!("New installs use this folder. Updates stay in their current location."));
                 if self.platform.is_some_and(|p| p.os == Os::Linux) {
                     note(ui, tl!("On Linux, custom folders use AppImage format."));

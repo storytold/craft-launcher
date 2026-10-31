@@ -331,6 +331,11 @@ fn snapshot(h: &mut Harness<'_, Option<LauncherUi>>, name: &str) {
 /// A managing macOS fixture with a fresh PhotoCraft release and a scripted folder picker, for
 /// the install-folder flow.
 fn folder_harness(picked: Rc<RefCell<Option<String>>>) -> (Harness<'static, Option<LauncherUi>>, Rc<RefCell<Vec<Command>>>) {
+    folder_harness_for(picked, &["photocraft"])
+}
+
+/// [`folder_harness`] with a fresh release of each of `apps`, none of them installed.
+fn folder_harness_for(picked: Rc<RefCell<Option<String>>>, apps: &[&str]) -> (Harness<'static, Option<LauncherUi>>, Rc<RefCell<Vec<Command>>>) {
     struct Picker(Rc<RefCell<Option<String>>>);
     impl Host for Picker {
         fn pick_folder(&mut self, _initial: Option<&str>) -> Option<String> {
@@ -339,17 +344,16 @@ fn folder_harness(picked: Rc<RefCell<Option<String>>>) -> (Harness<'static, Opti
     }
     artcraft_launcher_ui_egui::i18n::set_test_lang(artcraft_launcher_ui_egui::i18n::Lang::EN);
     let sent = Rc::new(RefCell::new(Vec::new()));
-    let mut backend = Some(Fake {
-        events: vec![
-            Event::Latest { app: "photocraft".into(), latest: LatestRelease::Found(release("photocraft", "0.6.0", NOW)), from: Origin::GitHub },
-            Event::Detected { app: "photocraft".into(), installed: None },
-        ],
-        sent: sent.clone(),
-        manage: true,
-        pictures: Rc::default(),
-        asked: vec![],
-        clock: Rc::new(Cell::new(NOW)),
-    });
+    let events = apps
+        .iter()
+        .flat_map(|id| {
+            [
+                Event::Latest { app: (*id).into(), latest: LatestRelease::Found(release(id, "0.6.0", NOW)), from: Origin::GitHub },
+                Event::Detected { app: (*id).into(), installed: None },
+            ]
+        })
+        .collect();
+    let mut backend = Some(Fake { events, sent: sent.clone(), manage: true, pictures: Rc::default(), asked: vec![], clock: Rc::new(Cell::new(NOW)) });
     let mut host = Picker(picked);
     let harness = test_harness_builder(egui::Theme::Dark).with_size(egui::vec2(1180.0, 900.0)).build_ui_state(
         move |ui, state: &mut Option<LauncherUi>| {
@@ -368,6 +372,11 @@ fn folder_harness(picked: Rc<RefCell<Option<String>>>) -> (Harness<'static, Opti
 
 fn install_commands(sent: &RefCell<Vec<Command>>) -> Vec<Command> {
     sent.borrow().iter().filter(|c| !matches!(c, Command::CheckForUpdates { .. })).cloned().collect()
+}
+
+/// What the install-folder field holds.
+fn folder_text(h: &Harness<'_, Option<LauncherUi>>) -> Option<String> {
+    h.get_by_role_and_label(egui::accesskit::Role::TextInput, "Install folder").value()
 }
 
 #[test]
@@ -647,6 +656,108 @@ fn use_default_removes_an_app_override_and_settings_can_reset_the_root() {
     h.get_by_label("Use default").click();
     h.run_steps(2);
     assert_eq!(h.state().as_ref().unwrap().settings.install_locations.root, None);
+}
+
+#[test]
+/// Clicking into the empty install-folder field puts its default there, all selected: typing
+/// replaces it as before, and End (or a second click) edits it in place, so another drive or
+/// folder doesn't mean typing the whole path. Left as it was, it still means the default, so no
+/// per-app folder is kept.
+fn clicking_into_the_install_folder_field_makes_its_default_editable() {
+    let open = |h: &mut Harness<'static, Option<LauncherUi>>| {
+        h.get_by_label("Install").scroll_to_me();
+        h.run_steps(3);
+        h.get_by_label("Install").click();
+        h.run_steps(3);
+    };
+    let (mut h, sent) = folder_harness(Rc::default());
+    h.run_steps(8);
+    h.state_mut().as_mut().unwrap().settings.install_locations.root = Some("/Volumes/Craft Apps".into());
+    h.run_steps(2);
+    open(&mut h);
+    h.get_by_role_and_label(egui::accesskit::Role::TextInput, "Install folder").click();
+    h.run_steps(2);
+    assert_eq!(folder_text(&h).as_deref(), Some("/Volumes/Craft Apps"));
+    h.key_press(egui::Key::End);
+    h.get_by_role_and_label(egui::accesskit::Role::TextInput, "Install folder").type_text("/Photo");
+    h.run_steps(2);
+    assert_eq!(folder_text(&h).as_deref(), Some("/Volumes/Craft Apps/Photo"));
+    h.get_by_label("Cancel").click();
+    h.run_steps(3);
+    // A press held for a few frames, as a mouse click is, leaves the default all selected too.
+    open(&mut h);
+    let at = h.get_by_role_and_label(egui::accesskit::Role::TextInput, "Install folder").rect().center();
+    h.hover_at(at);
+    h.drag_at(at);
+    h.run_steps(3);
+    h.event(egui::Event::PointerButton { pos: at, button: egui::PointerButton::Primary, pressed: false, modifiers: egui::Modifiers::NONE });
+    h.run_steps(2);
+    h.get_by_role_and_label(egui::accesskit::Role::TextInput, "Install folder").type_text("/Volumes/Typed");
+    h.run_steps(2);
+    assert_eq!(folder_text(&h).as_deref(), Some("/Volumes/Typed"));
+    h.get_by_label("Cancel").click();
+    h.run_steps(3);
+    open(&mut h);
+    h.get_by_role_and_label(egui::accesskit::Role::TextInput, "Install folder").click();
+    h.run_steps(2);
+    sent.borrow_mut().clear();
+    h.get_all_by_role_and_label(egui::accesskit::Role::Button, "Install").last().unwrap().click();
+    h.run_steps(2);
+    let settings = &h.state().as_ref().unwrap().settings;
+    assert!(settings.install_locations.per_app.is_empty());
+    assert_eq!(settings.install_locations.folder("photocraft"), Some("/Volumes/Craft Apps"));
+    assert_eq!(settings.last_install_folder, None);
+    // Nothing to configure anew: the install goes where the backend was already told.
+    assert_eq!(install_commands(&sent), [Command::Install { app: "photocraft".into() }]);
+}
+
+#[test]
+/// The folder an install went into is filled in for the next app's install. An install into the
+/// default folder, or a default folder chosen in Settings, puts the default back in its place.
+fn the_next_install_offers_the_folder_the_last_one_went_into() {
+    let picked = Rc::new(RefCell::new(None));
+    let (mut h, _sent) = folder_harness_for(picked.clone(), &["photocraft", "filmcraft"]);
+    h.run_steps(8);
+    // One card on screen at a time, so its Install is the only one.
+    h.state_mut().as_mut().unwrap().settings.hidden.insert("filmcraft".into());
+    h.run_steps(3);
+    h.get_by_label("Install").scroll_to_me();
+    h.run_steps(3);
+    h.get_by_label("Install").click();
+    h.run_steps(3);
+    h.get_by_role_and_label(egui::accesskit::Role::TextInput, "Install folder").click();
+    h.get_by_role_and_label(egui::accesskit::Role::TextInput, "Install folder").type_text("/Volumes/Craft Apps");
+    h.run_steps(3);
+    h.get_all_by_role_and_label(egui::accesskit::Role::Button, "Install").last().unwrap().click();
+    h.run_steps(3);
+    assert_eq!(h.state().as_ref().unwrap().settings.last_install_folder.as_deref(), Some("/Volumes/Craft Apps"));
+
+    h.state_mut().as_mut().unwrap().settings.hidden = ["photocraft".to_string()].into();
+    h.run_steps(3);
+    h.get_by_label("Install").scroll_to_me();
+    h.run_steps(3);
+    h.get_by_label("Install").click();
+    h.run_steps(3);
+    assert_eq!(folder_text(&h).as_deref(), Some("/Volumes/Craft Apps"), "FilmCraft's install starts in PhotoCraft's folder");
+    h.get_by_label("Use default").click();
+    h.run_steps(2);
+    h.get_all_by_role_and_label(egui::accesskit::Role::Button, "Install").last().unwrap().click();
+    h.run_steps(3);
+    let settings = &h.state().as_ref().unwrap().settings;
+    assert_eq!(settings.install_locations.folder("filmcraft"), None);
+    assert_eq!(settings.last_install_folder, None, "an install into the default folder offers the default next");
+
+    h.state_mut().as_mut().unwrap().settings.last_install_folder = Some("/Volumes/Craft Apps".into());
+    *picked.borrow_mut() = Some("/Volumes/Apps".into());
+    h.get_by_label("Settings").click();
+    h.run_steps(4);
+    h.get_by_label("Browse…").scroll_to_me();
+    h.run_steps(4);
+    h.get_by_label("Browse…").click();
+    h.run_steps(3);
+    let settings = &h.state().as_ref().unwrap().settings;
+    assert_eq!(settings.install_locations.root.as_deref(), Some("/Volumes/Apps"));
+    assert_eq!(settings.last_install_folder, None, "a default chosen in Settings replaces the last install's folder");
 }
 
 /// The install-folder fields' default comes from the host, so a person sees the real folder a
@@ -1130,12 +1241,15 @@ fn install_locations_survive_settings_save_and_older_settings_use_system_default
     let old: Settings = serde_json::from_str(r#"{"auto_update":true}"#).unwrap();
     assert!(old.auto_update);
     assert_eq!(old.install_locations, Default::default());
+    assert_eq!(old.last_install_folder, None);
     let mut settings = old;
     settings.install_locations.root = Some("/Volumes/Craft Apps".into());
     settings.install_locations.per_app.insert("photocraft".into(), "/Volumes/Photo".into());
+    settings.last_install_folder = Some("/Volumes/Photo".into());
     let restored: Settings = serde_json::from_str(&serde_json::to_string(&settings).unwrap()).unwrap();
     assert_eq!(restored.install_locations.folder("photocraft"), Some("/Volumes/Photo"));
     assert_eq!(restored.install_locations.folder("filmcraft"), Some("/Volumes/Craft Apps"));
+    assert_eq!(restored.last_install_folder.as_deref(), Some("/Volumes/Photo"));
 }
 
 #[test]

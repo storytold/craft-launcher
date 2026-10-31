@@ -88,6 +88,10 @@ impl CheckEvery {
 #[serde(default)]
 pub struct Settings {
     pub install_locations: artcraft_launcher_core::protocol::InstallLocations,
+    /// The folder the last install from the install dialog went into, filled in for the next
+    /// one; `None` when it went into the default folder. A default folder chosen in Settings
+    /// clears it.
+    pub last_install_folder: Option<String>,
     pub view: ViewMode,
     pub filter: Filter,
     pub sort: SortKey,
@@ -188,6 +192,7 @@ impl Default for Settings {
     fn default() -> Self {
         Self {
             install_locations: Default::default(),
+            last_install_folder: None,
             view: ViewMode::Grid,
             filter: Filter::All,
             sort: SortKey::Suite,

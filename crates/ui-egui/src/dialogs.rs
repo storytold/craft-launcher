@@ -260,15 +260,16 @@ impl LauncherUi {
     }
 
     /// Lets the user choose this app's install folder and returns `true` when the dialog should
-    /// close, including when the app entry is gone. An empty field removes the per-app override, a
-    /// non-empty one persists it, and any changed configuration is sent before the install is queued. The path
+    /// close, including when the app entry is gone. An empty field, or the default folder left as
+    /// it was, removes the per-app override; any other folder persists it and is filled in for the
+    /// next install. Any changed configuration is sent before the install is queued. The path
     /// itself is not validated here.
     fn install_dialog(&mut self, ui: &mut egui::Ui, id: &str, folder: &mut String, host: &mut dyn Host) -> bool {
         let Some(app) = self.entry(id).map(|e| e.app) else { return true };
         ui.set_width(440.0f32.min(ui.ctx().content_rect().width() - 80.0));
         Self::title(ui, None, app.name, tl!("Install folder"));
         let default = self.settings.install_locations.root.clone().or_else(|| self.default_folder_for(id, host));
-        Self::folder_field(ui, folder, default.as_deref(), host);
+        Self::folder_field(ui, folder, default.as_deref(), true, host);
         if self.platform.is_some_and(|p| p.os == Os::Linux) {
             ui.label(tl!("Custom folders use AppImage on Linux."));
         }
@@ -276,11 +277,13 @@ impl LauncherUi {
         let mut close = false;
         ui.horizontal(|ui| {
             if widgets::button(ui, tl!("Install"), Kind::Primary, 100.0).clicked() {
-                if folder.is_empty() {
-                    self.settings.install_locations.per_app.remove(id);
-                } else {
-                    self.settings.install_locations.per_app.insert(id.to_string(), folder.clone());
-                }
+                let chosen = chosen_folder(folder, default.as_deref());
+                let per_app = &mut self.settings.install_locations.per_app;
+                match &chosen {
+                    Some(chosen) => per_app.insert(id.to_string(), chosen.clone()),
+                    None => per_app.remove(id),
+                };
+                self.settings.last_install_folder = chosen;
                 self.configure();
                 self.act_command(Command::Install { app: id.to_string() });
                 close = true;
@@ -290,15 +293,28 @@ impl LauncherUi {
         close
     }
 
-    pub(crate) fn folder_field(ui: &mut egui::Ui, folder: &mut String, default: Option<&str>, host: &mut dyn Host) {
+    /// The install-folder field with its note, Browse… and Use default. An empty field means
+    /// `default`, which it shows as its hint. With `edit_default`, focusing the empty field (a click
+    /// or Tab) puts `default` there, all selected: typing replaces it as before, and the arrow keys
+    /// or a second click edit it, say to change only the drive.
+    pub(crate) fn folder_field(ui: &mut egui::Ui, folder: &mut String, default: Option<&str>, edit_default: bool, host: &mut dyn Host) {
         let label = ui.label(tl!("Install folder"));
-        ui.add(
-            egui::TextEdit::singleline(folder)
-                .id_salt("install_folder")
-                .hint_text(default.unwrap_or(tl!("System default")))
-                .desired_width(f32::INFINITY),
-        )
-        .labelled_by(label.id);
+        let field = egui::TextEdit::singleline(folder)
+            .id_salt("install_folder")
+            .hint_text(default.unwrap_or(tl!("System default")))
+            .desired_width(f32::INFINITY)
+            .show(ui);
+        let response = field.response.response.labelled_by(label.id);
+        if edit_default
+            && response.gained_focus()
+            && folder.is_empty()
+            && let Some(default) = default
+        {
+            *folder = default.to_string();
+            let mut state = field.state;
+            state.cursor.set_char_range(Some(egui::text::CCursorRange::select_all_str(folder)));
+            state.store(ui.ctx(), response.id);
+        }
         ui.label(tl!("Apps are placed inside this folder."));
         ui.horizontal(|ui| {
             if widgets::button(ui, tl!("Browse…"), Kind::Secondary, 100.0).clicked()
@@ -310,5 +326,24 @@ impl LauncherUi {
                 folder.clear();
             }
         });
+    }
+}
+
+/// The folder an install-folder field asks for, or `None` for its default: the field is empty,
+/// or still holds the default a click put there.
+fn chosen_folder(folder: &str, default: Option<&str>) -> Option<String> {
+    (!folder.is_empty() && Some(folder) != default).then(|| folder.to_string())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::chosen_folder;
+
+    #[test]
+    fn the_default_left_as_it_was_is_no_choice() {
+        assert_eq!(chosen_folder("", Some("/Applications")), None);
+        assert_eq!(chosen_folder("/Applications", Some("/Applications")), None);
+        assert_eq!(chosen_folder("/Volumes/Apps", Some("/Applications")).as_deref(), Some("/Volumes/Apps"));
+        assert_eq!(chosen_folder("/Volumes/Apps", None).as_deref(), Some("/Volumes/Apps"));
     }
 }
