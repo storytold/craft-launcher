@@ -168,7 +168,7 @@ fn native_options(hidden: bool) -> eframe::NativeOptions {
         .with_title("ArtCraft Launcher")
         .with_app_id(APP_ID)
         .with_inner_size([1120.0, 760.0])
-        .with_min_inner_size([720.0, 500.0])
+        .with_min_inner_size([1090.0, 500.0])
         .with_visible(!hidden);
     // The header is the title bar (see `DesktopHost::title_bar`).
     viewport = if cfg!(target_os = "macos") {
