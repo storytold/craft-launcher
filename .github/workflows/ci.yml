@@ -42,7 +42,14 @@ jobs:
         with:
           components: clippy, rustfmt
 
+      # Only main saves; pull requests restore main's cache. A PR's own cache (up to 1.2 GB per OS)
+      # is visible to that PR alone, and with the repository at its 10 GB limit the PR caches
+      # evicted main's: Windows legs then found no cache and compiled every dependency.
+      # v1: the dev profile dropped dependency debug info, and an existing key is never resaved.
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        with:
+          prefix-key: v1-rust
+          save-if: ${{ github.ref == 'refs/heads/main' }}
 
       - name: Format
         if: runner.os == 'Linux'
@@ -67,7 +74,9 @@ jobs:
           components: clippy
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
         with:
+          prefix-key: v1-rust
           key: wasm32
+          save-if: ${{ github.ref == 'refs/heads/main' }}
       - name: Check wasm-safe crates
         run: cargo xtask wasm
       - name: Clippy (wasm32)
