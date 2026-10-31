@@ -1190,19 +1190,27 @@ impl Backend for NativeBackend {
             }
             Command::CreateDesktopShortcut { app } => {
                 let Some(def) = CraftApp::by_id(&app) else { return };
-                let result = match self.installed(&app) {
-                    Some(inst) => {
-                        let path = std::path::Path::new(&inst.location);
-                        crate::process::create_desktop_shortcut(def.name, path)
-                    }
-                    None => Err(format!("{} isn't installed", def.name)),
-                };
-                if let Err(e) = result {
+                let Some(inst) = self.installed(&app) else {
                     self.shared.emit(Event::JobFinished {
                         app,
-                        result: Err(format!("Couldn't create the desktop shortcut: {e}")),
+                        result: Err(format!("{} isn't installed", def.name)),
                     });
-                }
+                    return;
+                };
+                let path = std::path::PathBuf::from(&inst.location);
+                let name = def.name;
+                let app_id = app;
+                let shared = self.shared.clone();
+                // PowerShell can take a moment; don't freeze the UI thread.
+                std::thread::spawn(move || {
+                    let result = crate::process::create_desktop_shortcut(name, &path)
+                        .map(|()| format!("Desktop shortcut created for {name}"))
+                        .map_err(|e| format!("Couldn't create the desktop shortcut: {e}"));
+                    shared.emit(Event::JobFinished {
+                        app: app_id,
+                        result,
+                    });
+                });
             }
             Command::UpdateLauncher => self.update_launcher(),
             Command::FetchScreenshots { app } => self.fetch_screenshots(&app),

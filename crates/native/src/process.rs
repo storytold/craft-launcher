@@ -475,18 +475,17 @@ pub fn create_desktop_shortcut(name: &str, target: &Path) -> Result<(), String> 
     // Single-quote escape for PowerShell string literals.
     let esc = |s: &str| s.replace('\'', "''");
     let script = format!(
-        "$s = (New-Object -ComObject WScript.Shell).CreateShortcut('{}'); \
-         $s.TargetPath = '{}'; \
-         $s.WorkingDirectory = '{}'; \
-         $s.Save()",
+        "$s=(New-Object -ComObject WScript.Shell).CreateShortcut('{}');$s.TargetPath='{}';$s.WorkingDirectory='{}';$s.Save()",
         esc(lnk_s),
         esc(target_s),
         esc(dir_s),
     );
 
-    let mut cmd = command("powershell.exe");
+    // Absolute system path (same pattern as explorer/tasklist) — avoids PATH search and is faster to start.
+    let powershell = windows_system_program(r"System32\WindowsPowerShell\v1.0\powershell.exe")?;
+    let mut cmd = command(powershell);
     cmd.args(["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command", &script]);
-    run_command(cmd, "powershell", Duration::from_secs(20)).map(|_| ())?;
+    run_command(cmd, "powershell", Duration::from_secs(10)).map(|_| ())?;
     if !lnk.exists() {
         return Err("the shortcut was not created".into());
     }
