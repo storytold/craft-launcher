@@ -141,8 +141,11 @@ impl NativeBackend {
     pub fn new(waker: impl Fn() + Send + Sync + 'static) -> Self {
         let waker: Waker = Arc::new(waker);
         let paths = Paths::new().unwrap_or_else(|e| {
-            log::error!("{e}; keeping files in the temporary folder");
-            Paths::under(&std::env::temp_dir().join("artcraft-launcher"))
+            log::error!("{e}; trying a private temporary folder");
+            Paths::private_temp().unwrap_or_else(|e| {
+                log::error!("{e}; filesystem operations will be unavailable");
+                Paths::unavailable()
+            })
         });
         let http = match Http::new() {
             Ok(h) => Some(h),
