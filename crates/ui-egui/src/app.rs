@@ -469,15 +469,16 @@ impl LauncherUi {
     }
 
     /// Asks to install `id`. On a host that supports custom folders and for an app that is not
-    /// installed, it opens the folder dialog and sends nothing until that is confirmed; otherwise
-    /// it queues `Install` immediately, including for an already installed app (update/reinstall).
+    /// installed, it opens the folder dialog, filled in with the app's own folder or else the one
+    /// the last install went into, and sends nothing until that is confirmed; otherwise it queues
+    /// `Install` immediately, including for an already installed app (update/reinstall).
     pub(crate) fn install_app(&mut self, id: &str) {
         if !self.custom_install_folders() || self.entry(id).is_some_and(|e| e.installed.is_some()) {
             self.act_command(Command::Install { app: id.to_string() });
             return;
         }
-        self.dialog =
-            Some(Dialog::Install { app: id.to_string(), folder: self.settings.install_locations.per_app.get(id).cloned().unwrap_or_default() });
+        let folder = self.settings.install_locations.per_app.get(id).or(self.settings.last_install_folder.as_ref()).cloned().unwrap_or_default();
+        self.dialog = Some(Dialog::Install { app: id.to_string(), folder });
     }
 
     /// Non-drawing work: runs every frame and also while the window is hidden in the tray.
