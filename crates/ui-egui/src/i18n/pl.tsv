@@ -149,6 +149,7 @@
 	Update cancelled	Anulowano aktualizację
 	Uninstall cancelled	Anulowano odinstalowanie
 	Retry install	Ponów instalację
+	Retry update	Ponów aktualizację
 	Retry update to {version}	Ponów aktualizację do {version}
 	The download is still here. It's checked again, then installed.	Pobrany plik wciąż tu jest. Zostanie sprawdzony ponownie, a następnie zainstalowany.
 	Waiting for another app…	Oczekiwanie na inną aplikację…

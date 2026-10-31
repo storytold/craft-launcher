@@ -282,6 +282,7 @@ figcraft	Interface design and prototyping	界面设计与原型制作
 	Update cancelled	更新已取消
 	Uninstall cancelled	卸载已取消
 	Retry install	重试安装
+	Retry update	重试更新
 	Retry update to {version}	重试更新至 {version}
 	The download is still here. It's checked again, then installed.	已下载的文件仍在。会先重新校验，然后安装。
 	Waiting for another app…	正在等待其他应用…

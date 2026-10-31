@@ -109,11 +109,14 @@ fn harness_language(
     theme: egui::Theme,
     manage: bool,
     language: &str,
+    extra: Vec<Event>,
 ) -> (Harness<'static, Option<LauncherUi>>, Rc<RefCell<Vec<Command>>>) {
     artcraft_launcher_ui_egui::i18n::set_test_lang(artcraft_launcher_ui_egui::i18n::Lang::EN);
     let sent = Rc::new(RefCell::new(Vec::new()));
     let sent2 = sent.clone();
-    let mut backend = Some(Fake { events: events(), sent: sent2, manage, clock: Rc::new(Cell::new(NOW)) });
+    let mut events = events();
+    events.extend(extra);
+    let mut backend = Some(Fake { events, sent: sent2, manage, clock: Rc::new(Cell::new(NOW)) });
     let settings = Settings { view, notify: false, language: language.into(), ..Settings::default() };
     let harness = Harness::builder().with_size(egui::vec2(1180.0, 900.0)).with_theme(theme).build_ui_state(
         move |ui, state: &mut Option<LauncherUi>| {
@@ -147,7 +150,7 @@ fn snapshot(h: &mut Harness<'_, Option<LauncherUi>>, name: &str) {
 // One test: the UI language is process-wide.
 #[test]
 fn german_switches_persists_and_keeps_install_actions() {
-    let (mut h, sent) = harness_language(ViewMode::Grid, egui::Theme::Dark, true, "en");
+    let (mut h, sent) = harness_language(ViewMode::Grid, egui::Theme::Dark, true, "en", Vec::new());
     h.run_steps(6);
     h.get_by_label("Settings").click();
     h.run_steps(3);
@@ -176,12 +179,27 @@ fn german_switches_persists_and_keeps_install_actions() {
     let installs: Vec<_> = sent.borrow().iter().filter_map(|c| if let Command::Install { app } = c { Some(app.clone()) } else { None }).collect();
     assert_eq!(installs, ["photocraft", "effectcraft"]);
 
-    let (mut table, _) = harness_language(ViewMode::Table, egui::Theme::Light, true, &restored.language);
+    let (mut table, _) = harness_language(ViewMode::Table, egui::Theme::Light, true, &restored.language, Vec::new());
     table.run_steps(6);
     table.get_by_label("Datum");
     assert!(table.query_all_by_label_contains(". Okt. 2026").count() >= 1);
     snapshot(&mut table, "table-de-light");
-    let (mut web, _) = harness_language(ViewMode::Grid, egui::Theme::Dark, false, &restored.language);
+    // Kept downloads: German retry labels are long, but a button never outgrows its slot (#956).
+    let kept = ["photocraft", "vectorcraft"].map(|app| Event::ReadyToInstall { app: app.into(), ready: true });
+    let (mut retry, _) = harness_language(ViewMode::Table, egui::Theme::Light, true, &restored.language, kept.into());
+    retry.run_steps(6);
+    let slot = retry.query_all_by_label("Installieren").next().unwrap().rect().width();
+    for app in ["PhotoCraft", "VectorCraft"] {
+        let menu = retry.get_by_label(&format!("Weitere Aktionen für {app}")).rect();
+        // The main button is the one ending just left of the menu (or overlapping it).
+        let main = retry
+            .query_all_by_role(egui::accesskit::Role::Button)
+            .filter(|n| (n.rect().center().y - menu.center().y).abs() < 1.0 && n.rect().left() < menu.left() && n.rect().right() > menu.left() - 20.0)
+            .find(|n| n.rect().height() < 40.0)
+            .unwrap();
+        assert!(main.rect().width() <= slot + 0.5, "{app}: {:?} wider than Installieren ({slot})", main.rect());
+    }
+    let (mut web, _) = harness_language(ViewMode::Grid, egui::Theme::Dark, false, &restored.language, Vec::new());
     web.run_steps(6);
     assert!(web.query_all_by_label("Für macOS herunterladen").count() >= 3);
     for width in [720.0, 800.0, 1180.0] {
