@@ -363,3 +363,4 @@ column	Version	版本
 	Older launcher versions require a manual reinstall.	旧版启动器需要手动重新安装。
 	Your files may not open in older versions.	旧版可能无法打开你的文件。
 	Enable automatic installs in Settings to follow new nightly builds.	在设置中启用自动安装，即可跟进新的每日构建版。
+notecraft	Local-first notes with canvas pages and OneNote import	本地优先的笔记，支持画布页面和 OneNote 导入

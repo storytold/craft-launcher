@@ -123,7 +123,7 @@ const fn app(
 }
 
 /// The Craft App Suite, in display order matching getartcraft.com, then the community apps:
-pub const SUITE: [CraftApp; 14] = [
+pub const SUITE: [CraftApp; 15] = [
     app("photocraft", "PhotoCraft", "Image editing", [[0x2f, 0x7b, 0xf5], [0x1a, 0x5b, 0xc4], [0x7f, 0xb0, 0xff]], "storytold/photocraft"),
     app("vectorcraft", "VectorCraft", "Vector illustration", [[0xe8, 0x57, 0x3f], [0xb8, 0x3a, 0x24], [0xff, 0x8a, 0x70]], "storytold/vectorcraft"),
     app(
@@ -173,6 +173,21 @@ pub const SUITE: [CraftApp; 14] = [
         "storytold/figcraft",
     ),
     app("wordcraft", "WordCraft", "Writing and document design", [[0x3f, 0x5f, 0xe0], [0x2a, 0x44, 0xb8], [0x8e, 0xa2, 0xff]], "storytold/wordcraft"),
+    CraftApp {
+        kind: AppKind::Community,
+        publisher: "AlienTech Software",
+        msi_publisher: Some("AlienTech Software"),
+        bundle: Some("notecraft"),
+        former_bundles: &[],
+        site: None,
+        ..app(
+            "notecraft",
+            "NoteCraft",
+            "Local-first notes with canvas pages and OneNote import",
+            [[0x7a, 0x45, 0xb8], [0x5a, 0x23, 0x88], [0xc8, 0xb3, 0xe8]],
+            "AlienTechSoftware/notecraft",
+        )
+    },
     app(
         "soundcraft",
         "SoundCraft",
@@ -273,6 +288,7 @@ pub fn app_icon_png(id: &str) -> Option<&'static [u8]> {
         "cadcraft" => include_bytes!("../../../assets/app-icons/cadcraft.png"),
         "soundcraft" => include_bytes!("../../../assets/app-icons/soundcraft.png"),
         "figcraft" => include_bytes!("../../../assets/app-icons/figcraft.png"),
+        "notecraft" => include_bytes!("../../../assets/app-icons/notecraft.png"),
         _ => return None,
     })
 }
@@ -291,8 +307,8 @@ mod tests {
     }
 
     #[test]
-    fn suite_has_fourteen_apps_with_unique_ids() {
-        assert_eq!(SUITE.len(), 14);
+    fn suite_has_fifteen_apps_with_unique_ids() {
+        assert_eq!(SUITE.len(), 15);
         let mut ids: Vec<_> = SUITE.iter().map(|a| a.id).collect();
         ids.sort_unstable();
         ids.dedup();

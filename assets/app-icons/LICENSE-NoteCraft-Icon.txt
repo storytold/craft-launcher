@@ -1,0 +1,7 @@
+MIT License
+
+NoteCraft App Icon
+Copyright 2026 AlienTech Software
+
+Created with Windows Copilot.
+Licensed under MIT - free to use, modify, and redistribute.

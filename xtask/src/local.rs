@@ -32,7 +32,16 @@ const APPS: &[(&str, &str)] = &[
     ("deckcraft", "DeckCraft"),
     ("cadcraft", "CADCraft"),
     ("gridcraft", "GridCraft"),
+    ("notecraft", "NoteCraft"),
 ];
+
+/// Apps whose GitHub repo is not `storytold/{id}`.
+const REPO_OVERRIDES: &[(&str, &str)] = &[("notecraft", "AlienTechSoftware/notecraft")];
+
+/// The GitHub repo that ships `id`.
+fn app_repo(id: &str) -> String {
+    REPO_OVERRIDES.iter().find(|(app, _)| *app == id).map_or_else(|| format!("storytold/{id}"), |(_, repo)| (*repo).to_string())
+}
 
 const DEFAULT_PORT: u16 = 8787;
 /// Marks a version folder whose build finished; anything without it is ignored and rebuilt.
@@ -186,7 +195,7 @@ fn sync(o: &Opts) -> Result<(), String> {
 fn sync_one(o: &Opts, id: &str, name: &str) -> Result<Outcome, String> {
     let repo = o.root.join(id);
     if !repo.join(".git").exists() {
-        return Ok(Outcome::Skipped(format!("no checkout at {} (git clone git@github.com:storytold/{id}.git)", repo.display())));
+        return Ok(Outcome::Skipped(format!("no checkout at {} (git clone git@github.com:{}.git)", repo.display(), app_repo(id))));
     }
     let mut pull_note = String::new();
     if o.pull {
@@ -454,7 +463,7 @@ fn feed(mirror: &Path, base: &str) -> String {
             r#"{}:{{"name":{},"repo":{},"latest_release":{{"tag":{},"name":{},"published_at":{},"html_url":"","prerelease":false,"notes_markdown":{},"assets":[{}]}},"app_last_fetched":{}}}"#,
             json_str(id),
             json_str(name),
-            json_str(&format!("storytold/{id}")),
+            json_str(&app_repo(id)),
             json_str(&format!("v{version}")),
             json_str(&format!("{name} v{version} (local build)")),
             json_str(&published),

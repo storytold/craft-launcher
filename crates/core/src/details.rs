@@ -139,7 +139,7 @@ pub fn screenshot_within_budget(bytes: &[u8]) -> bool {
 /// Where every Craft App runs (getartcraft.com lists the same for each of them).
 const PLATFORMS: &str = "macOS, Windows, Linux, FreeBSD, web";
 
-pub const DETAILS: [AppDetails; 14] = [
+pub const DETAILS: [AppDetails; 15] = [
     AppDetails {
         id: "photocraft",
         headline: "The image editor you already know how to use.",
@@ -488,6 +488,24 @@ pub const DETAILS: [AppDetails; 14] = [
         ],
         shots: &[],
         platforms: PLATFORMS,
+    },
+    AppDetails {
+        id: "notecraft",
+        headline: "Your notes as plain files, with canvas pages and OneNote import.",
+        about: "A local-first note-taking app written in pure Rust: notebooks, sections and pages are plain folders on your \
+                disk. Sync them with any tool you already use—no server, no account, no database.\n\n\
+                Write on a page in its finished look, with free-form canvas layouts, import your OneNote notebooks, and \
+                keep everything yours.",
+        features: &[
+            feature("Your files, your folders", "Notebooks and pages are plain folders and files on your disk, synced by any tool you choose."),
+            feature("Two page formats", "HTML for rich layouts and canvas pages, or CommonMark for simple Markdown text—per page or per notebook."),
+            feature("OneNote import", "Read and import .one section files: import from your old notebook into NoteCraft's open format."),
+            feature("Free-form pages", "Positioned text boxes, images and tables on a canvas, with move and resize by mouse."),
+            feature("Write in its look", "Headings, bold, italic, links, lists, tables, equations, diagrams and tags: see them as you write."),
+            feature("Drivable by agents", "A command line and an MCP server let you and your AI read and write notes without the window."),
+        ],
+        shots: &[],
+        platforms: "Windows, Linux",
     },
 ];
 
