@@ -251,6 +251,8 @@ month	Dec	12月
 	🔍  Search apps	🔍  アプリを検索
 	{name} {version}	{name} {version}
 	Match system	システムに合わせる
+	Accent color	アクセントカラー
+	Reset accent	アクセントカラーをリセット
 	Dark	ダーク
 	Light	ライト
 	Full changelog	完全な変更履歴

@@ -246,6 +246,8 @@ month	Dec	déc.
 	🔍  Search apps	🔍  Rechercher des applications
 	{name} {version}	{name} {version}
 	Match system	Comme le système
+	Accent color	Couleur d’accentuation
+	Reset accent	Réinitialiser la couleur d’accentuation
 	Dark	Sombre
 	Light	Clair
 	Full changelog	Journal des modifications complet

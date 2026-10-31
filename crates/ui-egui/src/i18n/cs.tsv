@@ -229,6 +229,8 @@ month	Dec	12.
 	🔍  Search apps	🔍  Hledat aplikace
 	{name} {version}	{name} {version}
 	Match system	Podle systému
+	Accent color	Barva zvýraznění
+	Reset accent	Obnovit výchozí akcent
 	Dark	Tmavý
 	Light	Světlý
 	Full changelog	Úplný přehled změn

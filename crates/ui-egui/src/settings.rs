@@ -93,6 +93,8 @@ pub struct Settings {
     pub sort: SortKey,
     pub sort_descending: bool,
     pub theme: ThemeChoice,
+    /// One accent shared by the light and dark appearances; `None` uses the brand blue.
+    pub accent: Option<[u8; 3]>,
     /// Interface language: `auto` (follow the system) or a language code from the registry
     /// (`en`, `ru`, `zh-CN`, `de`, `fr`, `pt-BR`, `pl`).
     pub language: String,
@@ -193,6 +195,7 @@ impl Default for Settings {
             sort: SortKey::Suite,
             sort_descending: false,
             theme: ThemeChoice::System,
+            accent: None,
             language: "auto".to_string(),
             close_to_tray: true,
             show_on_current_desktop: true,
@@ -210,5 +213,24 @@ impl Default for Settings {
             tray_hint_shown: false,
             launches: BTreeMap::new(),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn missing_accent_uses_the_default() {
+        let settings: Settings = serde_json::from_str("{}").expect("empty settings deserialize");
+        assert_eq!(settings.accent, None);
+    }
+
+    #[test]
+    fn custom_accent_round_trips() {
+        let settings = Settings { accent: Some([20, 120, 220]), ..Settings::default() };
+        let encoded = serde_json::to_string(&settings).expect("settings serialize");
+        let decoded: Settings = serde_json::from_str(&encoded).expect("settings deserialize");
+        assert_eq!(decoded.accent, settings.accent);
     }
 }

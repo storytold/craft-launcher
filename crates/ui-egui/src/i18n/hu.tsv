@@ -249,6 +249,8 @@ month	Dec	dec.
 	🔍  Search apps	🔍  Alkalmazások keresése
 	{name} {version}	{name} {version}
 	Match system	Rendszerbeállítás szerint
+	Accent color	Kiemelőszín
+	Reset accent	Kiemelőszín visszaállítása
 	Dark	Sötét
 	Light	Világos
 	Full changelog	Teljes változásnapló

@@ -236,6 +236,8 @@ month	Dec	dez.
 	🔍  Search apps	🔍  Buscar aplicativos
 	{name} {version}	{name} {version}
 	Match system	Igual ao sistema
+	Accent color	Cor de destaque
+	Reset accent	Redefinir cor de destaque
 	Dark	Escuro
 	Light	Claro
 	Full changelog	Histórico completo de alterações
