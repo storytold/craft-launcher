@@ -83,6 +83,9 @@ the route.
 - v0.11.0 was revoked, and its release page points users to v0.10.0. v0.10.0 also contains this
   route, so its users stay exposed until a release with #1077 ships.
 - #1076, an alternative that also removed the downgrade route, was closed in favour of #1077.
+- #1082: `msi_context.rs` ran a hidden, non-elevated PowerShell lookup on MSI updates. It now
+  reads Windows Installer's own registration keys for this account and the machine instead, so no
+  update starts PowerShell.
 
 ## Still open
 
@@ -93,9 +96,6 @@ the route.
 - **Confirmation:** test on a Windows VM with Kaspersky and behaviour detection on. Run Update all
   with two or more outdated all-users apps on an affected build, then on a build with #1077. The
   test only counts if the affected build reproduces the flag.
-- **Remaining lookup:** `msi_context.rs` runs a hidden, non-elevated PowerShell lookup on MSI
-  updates. It runs for single-app updates too, which #1027 says are fine, so it was left in place.
-  If flags continue, look there next.
 - **Affected users:** the revert does not repair installs the antivirus has already damaged. The
   "isn't where it was installed" errors are tracked in #993.
 
