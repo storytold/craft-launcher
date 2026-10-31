@@ -16,6 +16,10 @@
 //! another local program can do with any of this is bring the window forward or make the launcher
 //! quit.
 //!
+//! The Linux launcher inside WSL listens on its own port (issue #271). WSL shares loopback ports
+//! with Windows (WSL 2 forwards them, WSL 1 binds Windows' own), so on the shared port a WSL
+//! launcher answered the Windows launcher's hello and the Windows one exited without a window.
+//!
 //! ## Upgrading over the published 0.7.0 build
 //!
 //! Replacement of a running 0.7.0 instance remains an unqualified compatibility gap. The
@@ -41,6 +45,8 @@ use std::time::{Duration, Instant};
 use artcraft_launcher_core::version::{self, Version};
 
 const PORT: u16 = 47_413;
+/// The port inside WSL, so a WSL launcher never holds the Windows launcher's [`PORT`].
+const WSL_PORT: u16 = 47_414;
 /// What launchers before the version handshake send (and still the answer to an unknown peer).
 const SHOW: &[u8] = b"artcraft-launcher:show";
 /// `hello <version> <nonce>`: a second start introduces itself with its version and client nonce.
@@ -144,9 +150,38 @@ fn ours() -> Option<Version> {
     version::parse(env!("CARGO_PKG_VERSION"))
 }
 
+/// The port this launcher claims.
+fn port() -> u16 {
+    port_for(in_wsl())
+}
+
+/// [`WSL_PORT`] inside WSL, else [`PORT`].
+fn port_for(wsl: bool) -> u16 {
+    if wsl { WSL_PORT } else { PORT }
+}
+
+/// Whether this is the Linux launcher running inside WSL. The kernel release says so even when
+/// the WSL variables aren't passed on (a systemd unit, say).
+#[cfg(target_os = "linux")]
+fn in_wsl() -> bool {
+    std::env::var_os("WSL_DISTRO_NAME").is_some() || std::fs::read_to_string("/proc/sys/kernel/osrelease").is_ok_and(|r| is_wsl_kernel(&r))
+}
+
+#[cfg(not(target_os = "linux"))]
+fn in_wsl() -> bool {
+    false
+}
+
+/// Whether a kernel release is WSL's: `5.15.167.4-microsoft-standard-WSL2` (WSL 2) or
+/// `4.4.0-19041-Microsoft` (WSL 1).
+#[cfg_attr(not(target_os = "linux"), allow(dead_code))]
+fn is_wsl_kernel(release: &str) -> bool {
+    release.to_ascii_lowercase().contains("microsoft")
+}
+
 /// Claims the instance; `wake` is set later (the UI context doesn't exist yet).
 pub fn claim(wake: Wake) -> Instance {
-    let addr = SocketAddr::from((Ipv4Addr::LOCALHOST, PORT));
+    let addr = SocketAddr::from((Ipv4Addr::LOCALHOST, port()));
     let ours = ours();
     let token = token();
     if let Ok(listener) = TcpListener::bind(addr) {
@@ -620,5 +655,24 @@ mod tests {
         assert_eq!(verdict(b"artcraft-launcher:running unknown\n", &v("0.1.2")), Answer::Defer);
         assert_eq!(verdict(b"garbage\n", &v("0.1.2")), Answer::Defer);
         assert_eq!(verdict(b"", &v("0.1.2")), Answer::Legacy);
+    }
+
+    // Issue #271: a launcher inside WSL held the Windows launcher's port, so the Windows one
+    // exited without a window.
+    #[test]
+    fn wsl_kernels_are_recognised() {
+        assert!(is_wsl_kernel("5.15.167.4-microsoft-standard-WSL2\n"));
+        assert!(is_wsl_kernel("6.6.36.6-microsoft-standard-WSL2+"));
+        assert!(is_wsl_kernel("4.4.0-19041-Microsoft"));
+        assert!(!is_wsl_kernel("6.8.0-45-generic"));
+        assert!(!is_wsl_kernel("6.10.14-linuxkit"));
+        assert!(!is_wsl_kernel(""));
+    }
+
+    #[test]
+    fn wsl_launchers_keep_off_the_windows_launchers_port() {
+        assert_eq!(port_for(false), PORT);
+        assert_eq!(port_for(true), WSL_PORT);
+        assert_ne!(port_for(true), port_for(false));
     }
 }
