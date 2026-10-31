@@ -130,6 +130,7 @@ impl Feed {
                 created_at: r.renamed_at,
             });
         }
+        feed.announcements.truncate(MAX_NOTICES);
         Some(feed)
     }
 
@@ -183,9 +184,9 @@ impl Feed {
 
 impl FeedRelease {
     /// The release with only the downloads that belong to `repo` (or sit under `mirror`). `None`
-    /// when it doesn't hold up (no tag, or not a version).
+    /// when it doesn't hold up (no tag, a tag with odd characters, or not a version).
     fn to_release(&self, repo: &str, mirror: Option<&str>) -> Option<Release> {
-        let version = version::parse(&self.tag)?;
+        let version = version::parse(&self.tag).filter(|_| release::valid_tag(&self.tag))?;
         let allowed = |name: &str, url: &str| {
             (release::download_url_under(url, &release::download_prefix(repo))
                 && url == format!("{}{}/{}", release::download_prefix(repo), self.tag, name))
@@ -415,13 +416,7 @@ impl RawNotice {
         if self.title.trim().is_empty() && self.body.trim().is_empty() {
             return None;
         }
-        // The link may reach the system opener (whose WSL fallback shells out), so refuse any
-        // shell/cmd metacharacter or control character in it as well as whitespace (CWE-78).
-        let link = self.maybe_web_link.filter(|l| {
-            (l.starts_with("https://") || l.starts_with("http://"))
-                && l.len() <= 2000
-                && !l.chars().any(|c| c.is_whitespace() || c.is_control() || release::is_shell_meta(c))
-        });
+        let link = self.maybe_web_link.filter(|l| release::safe_web_link(l));
         Some(Notice {
             id: format!("{kind}:{}:{}", self.created_at.as_deref().unwrap_or(""), self.title.trim()),
             title: truncate(self.title.trim(), 200),
@@ -633,7 +628,9 @@ mod tests {
                 r#""alerts": [
             {"title": "Security update", "body": "Update PdfCraft now.", "maybe_web_link": "https://getartcraft.com/security", "created_at": null},
             {"title": "Bad link", "body": "x", "maybe_web_link": "javascript:alert(1)"},
-            {"title": "Shell link", "body": "x", "maybe_web_link": "https://getartcraft.com/a|calc.exe"}]"#,
+            {"title": "Shell link", "body": "x", "maybe_web_link": "https://getartcraft.com/a|calc.exe"},
+            {"title": "Plain http", "body": "x", "maybe_web_link": "http://getartcraft.com/security"},
+            {"title": "User-info", "body": "x", "maybe_web_link": "https://getartcraft.com@evil.example/"}]"#,
             )
             .replace(
                 "\"app_renames\": []",
@@ -641,13 +638,33 @@ mod tests {
             "new_name_lower": "docucraft", "description": "Same app, new name.", "renamed_at": "2026-10-09T08:00:00Z"}]"#,
             );
         let feed = Feed::parse(&with_notices).unwrap();
-        assert_eq!(feed.alerts.len(), 3);
+        assert_eq!(feed.alerts.len(), 5);
         assert_eq!(feed.alerts[0].link.as_deref(), Some("https://getartcraft.com/security"));
         assert_eq!(feed.alerts[1].link, None, "only web links are kept");
         assert_eq!(feed.alerts[2].link, None, "a link with shell metacharacters is dropped");
+        assert_eq!(feed.alerts[3].link, None, "plain http is dropped");
+        assert_eq!(feed.alerts[4].link, None, "a link with user-info is dropped");
         let titles: Vec<&str> = feed.announcements.iter().map(|n| n.title.as_str()).collect();
         assert_eq!(titles, ["New: CADCraft 1.0", "PdfCraft is now DocuCraft"]);
         // Ids are stable across parses, so dismissals stick.
         assert_eq!(Feed::parse(&with_notices).unwrap().alerts[0].id, feed.alerts[0].id);
+    }
+
+    #[test]
+    fn rename_notices_count_toward_the_cap() {
+        let many: Vec<String> = (0..MAX_NOTICES).map(|i| format!(r#"{{"title": "News {i}", "body": "x"}}"#)).collect();
+        let full = sample().replace("\"announcements\": []", &format!("\"announcements\": [{}]", many.join(","))).replace(
+            "\"app_renames\": []",
+            r#""app_renames": [{"old_name": "PdfCraft", "old_name_lower": "pdfcraft", "new_name": "DocuCraft", "new_name_lower": "docucraft"}]"#,
+        );
+        assert_eq!(Feed::parse(&full).unwrap().announcements.len(), MAX_NOTICES);
+    }
+
+    #[test]
+    fn a_feed_release_with_an_odd_tag_asks_github() {
+        for odd in ["v0.6.0~beta-\\u202e", "v0.6.0~beta-a/b"] {
+            let feed = sample().replace("\"tag\": \"v0.6.0\"", &format!("\"tag\": \"{odd}\""));
+            assert_eq!(Feed::parse(&feed).unwrap().answer(app("photocraft"), NOW), FeedAnswer::AskGitHub, "{odd:?}");
+        }
     }
 }

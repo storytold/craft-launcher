@@ -143,7 +143,7 @@ fn download_suffix_ok(rest: &str) -> bool {
     }
     let mut parts = rest.split('/');
     let (Some(tag), Some(name), None) = (parts.next(), parts.next(), parts.next()) else { return false };
-    !tag.is_empty() && tag != "." && tag != ".." && tag.len() <= 64 && !tag.contains('\\') && valid_file_name(name)
+    valid_tag(tag) && valid_file_name(name)
 }
 
 /// Any `.` or `..` path segment that could climb out of the repository.
@@ -228,7 +228,7 @@ fn release_from_value(v: &serde_json::Value, repo: &str) -> Result<Release, Stri
     if let Some(msg) = v["message"].as_str() {
         return Err(if msg == "Not Found" { "no releases yet".into() } else { format!("GitHub says: {}", truncate(msg, 200)) });
     }
-    let tag = v["tag_name"].as_str().filter(|t| !t.is_empty() && t.len() <= 64).ok_or("no release found")?.to_string();
+    let tag = v["tag_name"].as_str().filter(|t| valid_tag(t)).ok_or("no release found")?.to_string();
     let releases = format!("https://github.com/{repo}/releases");
     let html_url = v["html_url"].as_str().and_then(|u| safe_release_html_url(repo, u)).unwrap_or_else(|| releases.clone());
     let prefix = download_prefix(repo);
@@ -284,7 +284,18 @@ pub fn release_from_sums(repo: &str, tag: &str, sums: &[(String, String)]) -> Re
 /// The tag in a `https://github.com/<repo>/releases/tag/<tag>` redirect target.
 pub fn tag_from_redirect(location: &str, repo: &str) -> Option<String> {
     let rest = location.strip_prefix(&format!("https://github.com/{repo}/releases/tag/"))?;
-    (!rest.is_empty() && rest.len() <= 64 && rest.bytes().all(|b| b.is_ascii_alphanumeric() || b"._-+".contains(&b))).then(|| rest.to_string())
+    valid_tag(rest).then(|| rest.to_string())
+}
+
+/// A release tag we'd put in a URL, a file or the UI: up to 64 of `[A-Za-z0-9._+-]`, not
+/// starting with a dot, so no separators, control or bidi characters and no `.`/`..`.
+pub fn valid_tag(tag: &str) -> bool {
+    tag.len() <= 64 && !tag.starts_with('.') && plain_name(tag)
+}
+
+/// Non-empty and only `[A-Za-z0-9._+-]`, the characters every Craft release tag and asset uses.
+fn plain_name(s: &str) -> bool {
+    !s.is_empty() && s.bytes().all(|b| b.is_ascii_alphanumeric() || b"._-+".contains(&b))
 }
 
 /// Reads `sha256sum` output: `<hex>  <name>` (or `<hex> *<name>`) per line.
@@ -298,14 +309,16 @@ pub fn parse_sha256sums(text: &str) -> Vec<(String, String)> {
         .collect()
 }
 
-/// A bare file name we'd be willing to save: no paths, no control characters.
+/// A bare file name we'd be willing to save: only `[A-Za-z0-9._+-]`, no leading or trailing dot,
+/// and not a name Windows reserves for a device (`CON`, `nul.txt`, `COM1.msi`).
 pub fn valid_file_name(name: &str) -> bool {
-    !name.is_empty()
-        && name.len() <= 200
-        && name != "."
-        && name != ".."
-        && !name.starts_with('.')
-        && !name.chars().any(|c| c.is_control() || matches!(c, '/' | '\\' | ':' | '<' | '>' | '"' | '|' | '?' | '*'))
+    name.len() <= 200 && !name.starts_with('.') && !name.ends_with('.') && plain_name(name) && !windows_device(name)
+}
+
+fn windows_device(name: &str) -> bool {
+    let stem = name.split('.').next().unwrap_or_default().to_ascii_uppercase();
+    matches!(stem.as_str(), "CON" | "PRN" | "AUX" | "NUL")
+        || matches!(stem.as_bytes(), [b'C', b'O', b'M', b'1'..=b'9'] | [b'L', b'P', b'T', b'1'..=b'9'])
 }
 
 /// `s` cut to at most `max` bytes (on a char boundary) with an ellipsis, for text from a
@@ -524,9 +537,48 @@ mod tests {
 
     #[test]
     fn file_names_cannot_escape() {
-        for bad in ["", "..", "a/b", "a\\b", ".hidden", "c:x", "x\u{0}"] {
+        for bad in [
+            "",
+            "..",
+            "a/b",
+            "a\\b",
+            ".hidden",
+            "c:x",
+            "x\u{0}",
+            "a b.dmg",
+            "a%2e.msi",
+            "a#b",
+            "evil\u{202e}gpj.exe",
+            "x.msi.",
+            "CON",
+            "nul.txt",
+            "COM1.msi",
+            "lpt9",
+        ] {
             assert!(!valid_file_name(bad), "{bad:?}");
         }
-        assert!(valid_file_name("photocraft-0.5.0-linux-x86_64.AppImage"));
+        for good in [
+            "photocraft-0.5.0-linux-x86_64.AppImage",
+            "lightcraft_0.9.0_amd64.deb",
+            "x-1.0+git.tar.gz",
+            "console.zip",
+            "COM10.txt",
+            "COM0.msi",
+            "lpt0",
+        ] {
+            assert!(valid_file_name(good), "{good:?}");
+        }
+    }
+
+    #[test]
+    fn tags_are_plain() {
+        for good in ["v0.6.0", "v1.0.0-beta.2", "nightly-2026-10-29", "v1+build.7"] {
+            assert!(valid_tag(good), "{good:?}");
+        }
+        for bad in ["", ".", "..", ".v1", "v1/x", "v1\\x", "v1\nx", "v1\u{202e}", "v 1", "v1?x", "v".repeat(65).as_str()] {
+            assert!(!valid_tag(bad), "{bad:?}");
+        }
+        let api = r#"{"tag_name": "v1\u202egpj", "html_url": "", "assets": []}"#;
+        assert!(parse_github_release(api, REPO).is_err());
     }
 }
