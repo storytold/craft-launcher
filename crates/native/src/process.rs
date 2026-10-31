@@ -143,6 +143,20 @@ pub fn flatpak_command() -> Command {
     }
 }
 
+/// [`flatpak_command`] in the C locale, for output the launcher reads: Flatpak translates its
+/// messages.
+pub fn flatpak_command_c() -> Command {
+    if in_sandbox() {
+        let mut cmd = command("flatpak-spawn");
+        cmd.args(["--host", "--env=LC_ALL=C", "flatpak"]);
+        cmd
+    } else {
+        let mut cmd = command("flatpak");
+        cmd.env("LC_ALL", "C");
+        cmd
+    }
+}
+
 /// Runs a flatpak command and captures its standard output.
 pub fn capture_flatpak(args: &[&str], timeout: Duration) -> Option<String> {
     if in_sandbox() {
