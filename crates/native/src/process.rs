@@ -455,6 +455,48 @@ fn explorer_select_arg(path: &Path) -> Option<std::ffi::OsString> {
     Some(arg)
 }
 
+/// Creates a `.lnk` on the user's Desktop that opens `target`.
+///
+/// Windows only. `name` is the shortcut's file name without `.lnk` (usually the app's display name).
+#[cfg(windows)]
+pub fn create_desktop_shortcut(name: &str, target: &Path) -> Result<(), String> {
+    if !target.exists() {
+        return Err(format!("{} isn't where it was installed", target.display()));
+    }
+    let desktop = dirs::desktop_dir().ok_or_else(|| "couldn't find the Desktop folder".to_string())?;
+    let lnk = desktop.join(format!("{name}.lnk"));
+    let target = dunce::canonicalize(target).unwrap_or_else(|_| target.to_path_buf());
+    let work_dir = target.parent().map(Path::to_path_buf).unwrap_or_else(|| PathBuf::from("."));
+
+    let target_s = target.to_str().ok_or_else(|| "path isn't valid Unicode".to_string())?;
+    let lnk_s = lnk.to_str().ok_or_else(|| "path isn't valid Unicode".to_string())?;
+    let dir_s = work_dir.to_str().ok_or_else(|| "path isn't valid Unicode".to_string())?;
+
+    // Single-quote escape for PowerShell string literals.
+    let esc = |s: &str| s.replace('\'', "''");
+    let script = format!(
+        "$s=(New-Object -ComObject WScript.Shell).CreateShortcut('{}');$s.TargetPath='{}';$s.WorkingDirectory='{}';$s.Save()",
+        esc(lnk_s),
+        esc(target_s),
+        esc(dir_s),
+    );
+
+    // Absolute system path (same pattern as explorer/tasklist) — avoids PATH search and is faster to start.
+    let powershell = windows_system_program(r"System32\WindowsPowerShell\v1.0\powershell.exe")?;
+    let mut cmd = command(powershell);
+    cmd.args(["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command", &script]);
+    run_command(cmd, "powershell", Duration::from_secs(10)).map(|_| ())?;
+    if !lnk.exists() {
+        return Err("the shortcut was not created".into());
+    }
+    Ok(())
+}
+
+#[cfg(not(windows))]
+pub fn create_desktop_shortcut(_name: &str, _target: &Path) -> Result<(), String> {
+    Err("desktop shortcuts are only supported on Windows".into())
+}
+
 /// Whether a process started from inside `path` (an exe, an AppImage, or a `.app`) is running.
 pub fn is_running(path: &Path) -> bool {
     if cfg!(windows) {

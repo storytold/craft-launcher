@@ -1188,6 +1188,30 @@ impl Backend for NativeBackend {
                     }
                 }
             }
+            Command::CreateDesktopShortcut { app } => {
+                let Some(def) = CraftApp::by_id(&app) else { return };
+                let Some(inst) = self.installed(&app) else {
+                    self.shared.emit(Event::JobFinished {
+                        app,
+                        result: Err(format!("{} isn't installed", def.name)),
+                    });
+                    return;
+                };
+                let path = std::path::PathBuf::from(&inst.location);
+                let name = def.name;
+                let app_id = app;
+                let shared = self.shared.clone();
+                // PowerShell can take a moment; don't freeze the UI thread.
+                std::thread::spawn(move || {
+                    let result = crate::process::create_desktop_shortcut(name, &path)
+                        .map(|()| format!("Desktop shortcut created for {name}"))
+                        .map_err(|e| format!("Couldn't create the desktop shortcut: {e}"));
+                    shared.emit(Event::JobFinished {
+                        app: app_id,
+                        result,
+                    });
+                });
+            }
             Command::UpdateLauncher => self.update_launcher(),
             Command::FetchScreenshots { app } => self.fetch_screenshots(&app),
             Command::Configure(options) => {
@@ -1229,7 +1253,12 @@ impl Backend for NativeBackend {
             Some(Os::Windows) => "Show in Explorer",
             _ => "Show in Files",
         };
-        Capabilities { manage_apps: true, reveal_label, self_update: self.shared.self_install.get().is_some_and(Option::is_some) }
+        Capabilities {
+            manage_apps: true,
+            reveal_label,
+            self_update: self.shared.self_install.get().is_some_and(Option::is_some),
+            desktop_shortcuts: matches!(self.platform.map(|p| p.os), Some(Os::Windows)),
+        }
     }
 
     fn platform(&self) -> Option<Platform> {

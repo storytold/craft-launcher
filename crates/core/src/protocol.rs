@@ -43,6 +43,10 @@ pub enum Command {
     Reveal {
         app: String,
     },
+    /// Create a desktop shortcut for an installed app (Windows).
+    CreateDesktopShortcut {
+        app: String,
+    },
     /// Pause a running download, keeping what's downloaded so far (`Install` resumes it).
     Pause {
         app: String,
@@ -272,6 +276,8 @@ pub struct Capabilities {
     /// instead. A backend may only know this once it has found a newer launcher, so the UI reads
     /// it again on [`Event::LauncherUpdate`].
     pub self_update: bool,
+    /// Offer "Add desktop shortcut" for installed apps (Windows desktop only).
+    pub desktop_shortcuts: bool,
 }
 
 /// The UI's view of a backend.
