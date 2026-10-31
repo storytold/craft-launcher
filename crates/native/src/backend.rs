@@ -141,6 +141,17 @@ impl NativeBackend {
             log::error!("{e}; keeping files in the temporary folder");
             Paths::under(&std::env::temp_dir().join("artcraft-launcher"))
         });
+        let manifest = Manifest::load(&paths.manifest());
+        #[cfg(target_os = "linux")]
+        let manifest = {
+            let mut manifest = manifest;
+            if install::linux::repair_menu_entries(&mut manifest)
+                && let Err(e) = manifest.save(&paths.manifest())
+            {
+                log::warn!("couldn't save the install record: {e}");
+            }
+            manifest
+        };
         let http = match Http::new() {
             Ok(h) => Some(h),
             Err(e) => {
@@ -157,7 +168,7 @@ impl NativeBackend {
             installed: Mutex::new(HashMap::new()),
             jobs: Mutex::new(HashMap::new()),
             restarting: AtomicBool::new(false),
-            manifest: Mutex::new(Manifest::load(&paths.manifest())),
+            manifest: Mutex::new(manifest),
             options: Mutex::new(BackendOptions::default()),
             checking: AtomicBool::new(false),
             detecting: AtomicBool::new(false),
