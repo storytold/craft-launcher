@@ -1944,9 +1944,14 @@ mod msi_downgrade;
 fn msi_command(program: &Path, msi: &Path) -> Result<std::process::Command, String> {
     let msi = msi_path(msi)?;
     let mut command = process::command(program);
+    // Suppress desktop shortcuts (VectorCraft enables them by default; other apps ignore the property).
     // A verbose log beside the package: Windows Installer's own errors (1603 above all) say
     // nothing without it.
-    command.arg("/i").arg(&msi).args(["/passive", "/norestart", "/l*v"]).arg(msi_log(&msi));
+    command
+        .arg("/i")
+        .arg(&msi)
+        .args(["/passive", "/norestart", "INSTALLDESKTOPSHORTCUT=", "/l*v"])
+        .arg(msi_log(&msi));
     Ok(command)
 }
 
@@ -2288,6 +2293,7 @@ mod tests {
                 file.canonicalize().unwrap().as_os_str(),
                 std::ffi::OsStr::new("/passive"),
                 std::ffi::OsStr::new("/norestart"),
+                std::ffi::OsStr::new("INSTALLDESKTOPSHORTCUT="),
                 std::ffi::OsStr::new("/l*v"),
                 file.canonicalize().unwrap().with_extension("log").as_os_str()
             ]
