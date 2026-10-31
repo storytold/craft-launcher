@@ -595,8 +595,8 @@ impl LauncherUi {
                 .column(Column::remainder().at_least(220.0).clip(true))
                 .column(Column::exact(176.0))
                 .column(Column::exact(150.0))
+                .column(Column::exact(132.0))
                 .column(Column::exact(104.0))
-                .column(Column::exact(120.0))
                 .column(Column::exact(206.0))
                 .header(42.0, |header| self.table_header(header, &mut sort_clicked, &t, span, clip))
                 .body(|body| self.table_rows(body, ids, &t, (title_h, tagline_h), now, (span, clip)));

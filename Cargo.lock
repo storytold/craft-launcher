@@ -290,7 +290,7 @@ checksum = "d3fb67a6e08acf24fdeccbac2cb6ac4305825bd1f117462e0e6f2f193345ad56"
 
 [[package]]
 name = "artcraft-launcher"
-version = "0.10.0"
+version = "0.11.1"
 dependencies = [
  "artcraft-launcher-core",
  "artcraft-launcher-native",
@@ -332,7 +332,7 @@ dependencies = [
 
 [[package]]
 name = "artcraft-launcher-core"
-version = "0.10.0"
+version = "0.11.1"
 dependencies = [
  "jiff",
  "semver",
@@ -342,7 +342,7 @@ dependencies = [
 
 [[package]]
 name = "artcraft-launcher-native"
-version = "0.10.0"
+version = "0.11.1"
 dependencies = [
  "artcraft-launcher-core",
  "craft-update",
@@ -366,7 +366,7 @@ dependencies = [
 
 [[package]]
 name = "artcraft-launcher-ui-egui"
-version = "0.10.0"
+version = "0.11.1"
 dependencies = [
  "artcraft-launcher-core",
  "craft-ui",
@@ -386,7 +386,7 @@ dependencies = [
 
 [[package]]
 name = "artcraft-launcher-web"
-version = "0.10.0"
+version = "0.11.1"
 dependencies = [
  "artcraft-launcher-core",
  "artcraft-launcher-ui-egui",
@@ -1058,7 +1058,7 @@ dependencies = [
 [[package]]
 name = "craft-update"
 version = "0.1.0"
-source = "git+https://github.com/storytold/craft-libs?rev=92d392cff132eaf53e13afff77f38b5c11b73aa0#92d392cff132eaf53e13afff77f38b5c11b73aa0"
+source = "git+https://github.com/storytold/craft-libs?rev=4323a0f90e69e6e7a064607daacc25d081f58e1d#4323a0f90e69e6e7a064607daacc25d081f58e1d"
 dependencies = [
  "chrono",
  "dunce",
@@ -6266,7 +6266,7 @@ checksum = "ec7a2a501ed189703dba8b08142f057e887dfc4b2cc4db2d343ac6376ba3e0b9"
 
 [[package]]
 name = "xtask"
-version = "0.10.0"
+version = "0.11.1"
 dependencies = [
  "jiff",
  "semver",

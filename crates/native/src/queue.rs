@@ -119,31 +119,10 @@ impl Queue {
         turn: &mut dyn FnMut(bool),
         exec: &dyn Fn(&[OsString], &[OsString]) -> Outcome,
     ) -> Outcome {
-        self.batched_when(command, target, cancelled, turn, exec, &|| {}, &|_| true)
-    }
-
-    /// [`batched`](Self::batched) for a call that should not start until more jobs have joined it.
-    ///
-    /// `queued` is called once, as this job joins the waiting list. `ready` is asked, a few times
-    /// a second, with how many jobs wait for the same `command`; a job takes the call only when
-    /// it says yes, so the jobs of one call can be held until the last of them has arrived. Both
-    /// run with the queue locked: they must not block.
-    #[allow(clippy::too_many_arguments)]
-    pub fn batched_when(
-        &self,
-        command: Vec<OsString>,
-        target: OsString,
-        cancelled: &dyn Fn() -> bool,
-        turn: &mut dyn FnMut(bool),
-        exec: &dyn Fn(&[OsString], &[OsString]) -> Outcome,
-        queued: &dyn Fn(),
-        ready: &dyn Fn(usize) -> bool,
-    ) -> Outcome {
         let mut state = self.lock();
         let id = state.next_id;
         state.next_id = state.next_id.wrapping_add(1);
         state.waiting.push(Waiting { id, command: command.clone(), target });
-        queued();
         let (mut waited, mut started) = (false, false);
         loop {
             if let Some(at) = state.finished.iter().position(|(done, _)| *done == id) {
@@ -155,7 +134,7 @@ impl Queue {
                 state.waiting.retain(|w| w.id != id);
                 return Err(CANCELLED.into());
             }
-            if !running && !state.busy && ready(state.waiting.iter().filter(|w| w.command == command).count()) {
+            if !running && !state.busy {
                 break;
             }
             let tell = if running { waited && !started } else { !waited };
@@ -529,150 +508,5 @@ mod tests {
         assert!(results.contains(&None), "{results:?}");
         assert!(results.contains(&Some(Err("the system installer was interrupted".to_string()))), "{results:?}");
         assert_eq!(queue.batched(install(), os("c.deb"), &|| false, &mut |_| {}, &|_, _| Ok(())), Ok(()));
-    }
-}
-
-/// A call that is held until every job it is waiting for has joined it.
-#[cfg(test)]
-mod gathering {
-    use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
-
-    use super::*;
-
-    fn os(s: &str) -> OsString {
-        OsString::from(s)
-    }
-
-    #[test]
-    fn a_call_is_held_until_the_last_job_has_joined_and_then_takes_them_all() {
-        let queue = Queue::new();
-        let calls = Mutex::new(Vec::<Vec<OsString>>::new());
-        let joined = AtomicUsize::new(0);
-        let results: Vec<Outcome> = std::thread::scope(|scope| {
-            let handles: Vec<_> = (0..3u64)
-                .map(|i| {
-                    let (queue, calls, joined) = (&queue, &calls, &joined);
-                    scope.spawn(move || {
-                        // They arrive a good while apart: the first would run alone without the hold.
-                        std::thread::sleep(Duration::from_millis(250 * i));
-                        queue.batched_when(
-                            vec![os("all-users")],
-                            os(&format!("app{i}")),
-                            &|| false,
-                            &mut |_| {},
-                            &|_, targets| {
-                                calls.lock().unwrap().push(targets.to_vec());
-                                Ok(())
-                            },
-                            &|| {
-                                joined.fetch_add(1, Ordering::SeqCst);
-                            },
-                            &|waiting| waiting >= 3,
-                        )
-                    })
-                })
-                .collect();
-            handles.into_iter().map(|h| h.join().unwrap()).collect()
-        });
-        assert_eq!(results, vec![Ok(()); 3]);
-        assert_eq!(joined.load(Ordering::SeqCst), 3, "every job says once that it has joined");
-        let mut calls = calls.into_inner().unwrap();
-        assert_eq!(calls.len(), 1, "one call for all three: {calls:?}");
-        let mut targets = calls.remove(0);
-        targets.sort();
-        assert_eq!(targets, [os("app0"), os("app1"), os("app2")]);
-    }
-
-    #[test]
-    fn a_job_that_drops_out_does_not_hold_the_others_forever() {
-        let queue = Queue::new();
-        // `ready` is the caller's own count of who is still coming; here the third never comes.
-        let still_coming = AtomicUsize::new(1);
-        let calls = AtomicUsize::new(0);
-        let targets_seen = AtomicUsize::new(0);
-        std::thread::scope(|scope| {
-            for name in ["a", "b"] {
-                let (queue, still_coming, calls, targets_seen) = (&queue, &still_coming, &calls, &targets_seen);
-                scope.spawn(move || {
-                    queue
-                        .batched_when(
-                            vec![os("all-users")],
-                            os(name),
-                            &|| false,
-                            &mut |_| {},
-                            &|_, targets| {
-                                calls.fetch_add(1, Ordering::SeqCst);
-                                targets_seen.fetch_add(targets.len(), Ordering::SeqCst);
-                                Ok(())
-                            },
-                            &|| {},
-                            &|_| still_coming.load(Ordering::SeqCst) == 0,
-                        )
-                        .unwrap();
-                });
-            }
-            std::thread::sleep(Duration::from_millis(400));
-            assert_eq!(calls.load(Ordering::SeqCst), 0, "nothing runs while a job is still coming");
-            still_coming.store(0, Ordering::SeqCst); // it failed or was cancelled
-        });
-        assert_eq!((calls.load(Ordering::SeqCst), targets_seen.load(Ordering::SeqCst)), (1, 2));
-    }
-
-    #[test]
-    fn a_cancel_ends_the_wait_without_running_anything() {
-        let queue = Queue::new();
-        let cancel = AtomicBool::new(false);
-        let ran = AtomicBool::new(false);
-        let outcome = std::thread::scope(|scope| {
-            let job = scope.spawn(|| {
-                queue.batched_when(
-                    vec![os("all-users")],
-                    os("a"),
-                    &|| cancel.load(Ordering::SeqCst),
-                    &mut |_| {},
-                    &|_, _| {
-                        ran.store(true, Ordering::SeqCst);
-                        Ok(())
-                    },
-                    &|| {},
-                    &|_| false,
-                )
-            });
-            std::thread::sleep(Duration::from_millis(300));
-            cancel.store(true, Ordering::SeqCst);
-            job.join().unwrap()
-        });
-        assert_eq!(outcome, Err(CANCELLED.into()));
-        assert!(!ran.load(Ordering::SeqCst));
-        // The queue is free again.
-        assert_eq!(queue.batched(vec![os("x")], os("t"), &|| false, &mut |_| {}, &|_, _| Ok(())), Ok(()));
-    }
-
-    #[test]
-    fn a_job_that_is_told_to_wait_hears_it_once() {
-        let queue = Queue::new();
-        let waits = AtomicUsize::new(0);
-        let go = AtomicBool::new(false);
-        std::thread::scope(|scope| {
-            let job = scope.spawn(|| {
-                queue.batched_when(
-                    vec![os("all-users")],
-                    os("a"),
-                    &|| false,
-                    &mut |waiting| {
-                        if waiting {
-                            waits.fetch_add(1, Ordering::SeqCst);
-                        }
-                    },
-                    &|_, _| Ok(()),
-                    &|| {},
-                    &|_| go.load(Ordering::SeqCst),
-                )
-            });
-            std::thread::sleep(Duration::from_millis(350));
-            go.store(true, Ordering::SeqCst);
-            assert_eq!(job.join().unwrap(), Ok(()));
-        });
-        assert_eq!(waits.load(Ordering::SeqCst), 1);
     }
 }
