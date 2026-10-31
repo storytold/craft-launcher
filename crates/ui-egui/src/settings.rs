@@ -93,6 +93,8 @@ pub struct Settings {
     pub sort: SortKey,
     pub sort_descending: bool,
     pub theme: ThemeChoice,
+    /// Absolute interface size in percent, or zero to follow the display scale.
+    pub interface_size: u16,
     /// Interface language: `auto` (follow the system) or a language code from the registry
     /// (`en`, `ru`, `zh-CN`, `de`, `fr`, `pt-BR`, `pl`).
     pub language: String,
@@ -133,6 +135,9 @@ impl Settings {
 
     /// Clear saved catalog filters whose controls were removed from the toolbar.
     pub fn migrate(&mut self) {
+        if self.interface_size != 0 {
+            self.interface_size = self.interface_size.clamp(50, 300);
+        }
         if !matches!(self.filter, Filter::All | Filter::Hidden) {
             self.filter = Filter::All;
         }
@@ -193,6 +198,7 @@ impl Default for Settings {
             sort: SortKey::Suite,
             sort_descending: false,
             theme: ThemeChoice::System,
+            interface_size: 0,
             language: "auto".to_string(),
             close_to_tray: true,
             show_on_current_desktop: true,
