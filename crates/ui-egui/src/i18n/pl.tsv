@@ -250,6 +250,8 @@ month	Dec	gru
 	🔍  Search apps	🔍  Wyszukaj aplikacje
 	{name} {version}	{name} {version}
 	Match system	Zgodnie z systemem
+	Accent color	Kolor akcentu
+	Reset accent	Przywróć domyślny kolor akcentu
 	Dark	Ciemny
 	Light	Jasny
 	Full changelog	Pełna lista zmian

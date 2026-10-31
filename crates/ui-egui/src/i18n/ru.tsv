@@ -245,6 +245,8 @@ month	Dec	дек.
 	🔍  Search apps	🔍  Поиск приложений
 	{name} {version}	{name} {version}
 	Match system	Как в системе
+	Accent color	Акцентный цвет
+	Reset accent	Сбросить акцентный цвет
 	Dark	Тёмная
 	Light	Светлая
 	Full changelog	Полный список изменений

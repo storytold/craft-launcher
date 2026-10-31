@@ -173,7 +173,7 @@ pub struct LauncherUi {
     /// The details pictures the backend has sent (or been asked for), by app and picture key.
     pub(crate) pictures: std::collections::HashMap<(String, String), crate::details::Picture>,
     started: bool,
-    applied_theme: Option<theme::ThemeChoice>,
+    applied_theme: Option<(theme::ThemeChoice, Option<[u8; 3]>)>,
     /// The OS asks for fewer animations: what the host last said, and the context's time to ask
     /// it again at.
     pub(crate) reduce_motion: bool,
@@ -795,9 +795,10 @@ impl LauncherUi {
         // becomes active next pass, so drawing with it in the pass that installed it would panic.
         set_current(drawable_lang(&self.settings.language, self.cjk_font));
         self.zoom_input(&ctx);
-        if self.applied_theme != Some(self.settings.theme) {
-            theme::apply(&ctx, self.settings.theme);
-            self.applied_theme = Some(self.settings.theme);
+        let theme_choice = (self.settings.theme, self.settings.accent);
+        if self.applied_theme != Some(theme_choice) {
+            theme::apply(&ctx, self.settings.theme, self.settings.accent);
+            self.applied_theme = Some(theme_choice);
         }
         let now = ctx.input(|i| i.time);
         if now >= self.motion_recheck {

@@ -10,6 +10,8 @@ use serde::{Deserialize, Serialize};
 
 use crate::i18n::Lang;
 
+pub const DEFAULT_ACCENT: [u8; 3] = [45, 129, 255];
+
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub enum ThemeChoice {
     /// Follow the system's light or dark setting.
@@ -117,7 +119,17 @@ impl Tokens {
     };
 
     pub fn get(ctx: &egui::Context) -> Self {
-        if ctx.theme() == egui::Theme::Dark { Self::DARK } else { Self::LIGHT }
+        let tokens = if ctx.theme() == egui::Theme::Dark { Self::DARK } else { Self::LIGHT };
+        let accent = ctx.data(|data| data.get_temp::<Option<[u8; 3]>>(egui::Id::unique("artcraft-theme-accent"))).flatten();
+        tokens.with_accent(accent)
+    }
+
+    fn with_accent(mut self, accent: Option<[u8; 3]>) -> Self {
+        if let Some(accent) = accent {
+            self.accent = rgb(accent);
+            self.accent_ink = contrasting_ink(self.accent, self.bg, self.dark);
+        }
+        self
     }
 
     pub fn hairline(&self) -> Stroke {
@@ -128,6 +140,43 @@ impl Tokens {
     pub fn app_ink(&self, app: &artcraft_launcher_core::CraftApp) -> Color32 {
         rgb(if self.dark { app.ink_dark } else { app.ink_light })
     }
+}
+
+fn contrasting_ink(accent: Color32, background: Color32, dark: bool) -> Color32 {
+    let target = if dark { Color32::WHITE } else { Color32::BLACK };
+    if contrast_ratio(accent, background) >= 4.5 {
+        return accent;
+    }
+
+    let mut low = 0.0;
+    let mut high = 1.0;
+    for _ in 0..8 {
+        let amount = (low + high) / 2.0;
+        if contrast_ratio(mix(accent, target, amount), background) >= 4.5 {
+            high = amount;
+        } else {
+            low = amount;
+        }
+    }
+    mix(accent, target, high)
+}
+
+fn mix(from: Color32, to: Color32, amount: f32) -> Color32 {
+    let channel = |a: u8, b: u8| (f32::from(a) + (f32::from(b) - f32::from(a)) * amount).round() as u8;
+    Color32::from_rgb(channel(from.r(), to.r()), channel(from.g(), to.g()), channel(from.b(), to.b()))
+}
+
+fn contrast_ratio(a: Color32, b: Color32) -> f32 {
+    fn luminance(color: Color32) -> f32 {
+        let linear = |channel: u8| {
+            let value = f32::from(channel) / 255.0;
+            if value <= 0.04045 { value / 12.92 } else { ((value + 0.055) / 1.055).powf(2.4) }
+        };
+        0.2126 * linear(color.r()) + 0.7152 * linear(color.g()) + 0.0722 * linear(color.b())
+    }
+
+    let (lighter, darker) = if luminance(a) >= luminance(b) { (luminance(a), luminance(b)) } else { (luminance(b), luminance(a)) };
+    (lighter + 0.05) / (darker + 0.05)
 }
 
 /// Mixes `c` into the background at `alpha` (0â€“1): tinted washes.
@@ -203,9 +252,10 @@ fn visuals(t: &Tokens) -> Visuals {
 }
 
 /// Applies both appearances (egui switches between them with the theme preference).
-pub fn apply(ctx: &egui::Context, choice: ThemeChoice) {
-    ctx.set_visuals_of(egui::Theme::Dark, visuals(&Tokens::DARK));
-    ctx.set_visuals_of(egui::Theme::Light, visuals(&Tokens::LIGHT));
+pub fn apply(ctx: &egui::Context, choice: ThemeChoice, accent: Option<[u8; 3]>) {
+    ctx.data_mut(|data| data.insert_temp(egui::Id::unique("artcraft-theme-accent"), accent));
+    ctx.set_visuals_of(egui::Theme::Dark, visuals(&Tokens::DARK.with_accent(accent)));
+    ctx.set_visuals_of(egui::Theme::Light, visuals(&Tokens::LIGHT.with_accent(accent)));
     ctx.set_theme(match choice {
         ThemeChoice::System => egui::ThemePreference::System,
         ThemeChoice::Dark => egui::ThemePreference::Dark,
@@ -446,6 +496,29 @@ pub fn cjk_font_available(lang: Lang) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn accent_override_is_shared_and_its_ink_is_readable() {
+        let accent = [20, 120, 220];
+        for tokens in [Tokens::DARK, Tokens::LIGHT].map(|tokens| tokens.with_accent(Some(accent))) {
+            assert_eq!(tokens.accent, rgb(accent));
+            assert!(contrast_ratio(tokens.accent_ink, tokens.bg) >= 4.5);
+        }
+    }
+
+    #[test]
+    fn theme_application_exposes_the_accent_to_tokens() {
+        let ctx = egui::Context::default();
+        let accent = [20, 120, 220];
+
+        apply(&ctx, ThemeChoice::Dark, Some(accent));
+        assert_eq!(Tokens::get(&ctx).accent, rgb(accent));
+        assert!(Tokens::get(&ctx).dark);
+
+        apply(&ctx, ThemeChoice::Light, Some(accent));
+        assert_eq!(Tokens::get(&ctx).accent, rgb(accent));
+        assert!(!Tokens::get(&ctx).dark);
+    }
 
     /// The app's bundled font set is deliberate and bounded: our three families, egui's Latin
     /// fallbacks, its small monochrome icon face and the two attributed monochrome emoji faces.

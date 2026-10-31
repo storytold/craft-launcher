@@ -242,6 +242,8 @@ month	Dec	dic.
 	🔍  Search apps	🔍  Buscar aplicaciones
 	{name} {version}	{name} {version}
 	Match system	Igual que el sistema
+	Accent color	Color de acento
+	Reset accent	Restablecer color de acento
 	Dark	Oscuro
 	Light	Claro
 	Full changelog	Registro de cambios completo

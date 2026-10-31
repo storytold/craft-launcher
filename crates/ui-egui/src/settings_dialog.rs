@@ -357,11 +357,27 @@ impl LauncherUi {
 
     fn settings_appearance(&mut self, ui: &mut Ui) {
         let mut theme_choice = self.settings.theme;
+        let had_accent_override = self.settings.accent.is_some();
+        let mut accent = self.settings.accent.unwrap_or(theme::DEFAULT_ACCENT);
+        let mut reset_accent = false;
         sheet::panel(ui, tl!("Appearance"), |ui| {
             ui.horizontal(|ui| {
                 widgets::cells(ui, &mut theme_choice, &ThemeChoice::ALL.map(|c| (c, Cell { label: c.label(), tip: c.label(), count: None })));
             });
+            ui.horizontal(|ui| {
+                let label = ui.label(tl!("Accent color"));
+                ui.color_edit_button_srgb(&mut accent).labelled_by(label.id);
+                if had_accent_override && widgets::button(ui, tl!("Reset accent"), Kind::Secondary, 0.0).clicked() {
+                    accent = theme::DEFAULT_ACCENT;
+                    reset_accent = true;
+                }
+            });
         });
         self.settings.theme = theme_choice;
+        if reset_accent {
+            self.settings.accent = None;
+        } else if accent != self.settings.accent.unwrap_or(theme::DEFAULT_ACCENT) {
+            self.settings.accent = Some(accent);
+        }
     }
 }
