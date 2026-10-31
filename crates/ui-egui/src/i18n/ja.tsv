@@ -102,6 +102,7 @@
 	ArtCraft Launcher is still running	ArtCraft Launcher は実行中です
 	It's in the tray: open it or quit it from the tray icon, or turn this off in the settings.	トレイに入りました。トレイのアイコンから開くか終了できます。設定でこの動作を無効にすることもできます。
 	Show the window on the current desktop	現在のデスクトップにウィンドウを表示
+	Hide the Dock icon while in the menu bar	メニューバーで実行中はDockのアイコンを隠す
 	Start ArtCraft Launcher when I log in	ログイン時に ArtCraft Launcher を起動
 	Community	コミュニティ
 	Questions, ideas and news from the ArtCraft team	ArtCraft チームからの質問、アイデア、ニュース
@@ -261,6 +262,7 @@ month	Dec	12月
 	{count} updates are available	{count} 件の更新があります
 	These notes weren't fetched (GitHub's request limit was reached). They're on the release page.	このリリースノートは取得できませんでした（GitHub のリクエスト上限に達しました）。リリースページにあります。
 	When on, opening the launcher from the menu bar brings its window to the desktop you're on. When off, macOS switches you to the desktop the window was on.	オンにすると、メニューバーからランチャーを開いたときにウィンドウが現在のデスクトップに表示されます。オフにすると、macOS はウィンドウがあったデスクトップに切り替えます。
+	When on, closing the window takes ArtCraft Launcher out of the Dock and it keeps running from the menu bar. The Dock icon comes back when you open the window.	オンにすると、ウィンドウを閉じたときにArtCraft LauncherがDockから消え、メニューバーで実行を続けます。ウィンドウを開くとDockのアイコンが戻ります。
 	Couldn't change the login item: {e}	ログイン項目を変更できませんでした: {e}
 
 # Contextual: table column headers

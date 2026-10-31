@@ -100,6 +100,7 @@
 	ArtCraft Launcher is still running	Az ArtCraft Launcher továbbra is fut
 	It's in the tray: open it or quit it from the tray icon, or turn this off in the settings.	A tálcára került: az ikonjáról megnyitható vagy bezárható, vagy kapcsolja ki ezt a beállításokban.
 	Show the window on the current desktop	Ablak megjelenítése az aktuális asztalon
+	Hide the Dock icon while in the menu bar	Dock-ikon elrejtése, amíg a menüsorban fut
 	Start ArtCraft Launcher when I log in	ArtCraft Launcher indítása bejelentkezéskor
 	Community	Közösség
 	Questions, ideas and news from the ArtCraft team	Kérdések, ötletek és hírek az ArtCraft csapatától
@@ -259,6 +260,7 @@ month	Dec	dec.
 	{count} updates are available	{count} frissítés elérhető
 	These notes weren't fetched (GitHub's request limit was reached). They're on the release page.	A kiadási információkat nem sikerült betölteni, mert elértük a GitHub lekérdezési korlátját. A kiadás oldalán megtalálod őket.
 	When on, opening the launcher from the menu bar brings its window to the desktop you're on. When off, macOS switches you to the desktop the window was on.	Ha be van kapcsolva, a menüsorból megnyitott ArtCraft Launcher ablaka az aktuális asztalon jelenik meg. Ha ki van kapcsolva, a macOS arra az asztalra vált, ahol az ablak található.
+	When on, closing the window takes ArtCraft Launcher out of the Dock and it keeps running from the menu bar. The Dock icon comes back when you open the window.	Ha be van kapcsolva, az ablak bezárásakor az ArtCraft Launcher eltűnik a Dockból, és a menüsorból fut tovább. A Dock-ikon az ablak megnyitásakor visszatér.
 	Couldn't change the login item: {e}	Az automatikus indítás beállítását nem sikerült módosítani: {e}
 
 # Contextual: table column headers

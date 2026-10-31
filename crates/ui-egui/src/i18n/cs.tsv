@@ -87,6 +87,7 @@
 	ArtCraft Launcher is still running	ArtCraft Launcher stále běží
 	It's in the tray: open it or quit it from the tray icon, or turn this off in the settings.	Je v oznamovací oblasti: otevřete ho nebo ukončete přes ikonu v ní, nebo to vypněte v nastavení.
 	Show the window on the current desktop	Zobrazit okno na aktuální ploše
+	Hide the Dock icon while in the menu bar	Skrýt ikonu v Docku při běhu na řádku nabídek
 	Start ArtCraft Launcher when I log in	Spouštět ArtCraft Launcher po přihlášení
 	Community	Komunita
 	Questions, ideas and news from the ArtCraft team	Dotazy, nápady a novinky od týmu ArtCraft
@@ -239,6 +240,7 @@ month	Dec	12.
 	{count} updates are available	Počet dostupných aktualizací: {count}
 	These notes weren't fetched (GitHub's request limit was reached). They're on the release page.	Tyto poznámky se nepodařilo načíst (byl dosažen limit požadavků GitHubu). Najdete je na stránce vydání.
 	When on, opening the launcher from the menu bar brings its window to the desktop you're on. When off, macOS switches you to the desktop the window was on.	Je-li tato volba zapnutá, otevření launcheru z řádku nabídek zobrazí jeho okno na aktuální ploše. Je-li vypnutá, macOS přepne na plochu, na které se okno nacházelo.
+	When on, closing the window takes ArtCraft Launcher out of the Dock and it keeps running from the menu bar. The Dock icon comes back when you open the window.	Je-li tato volba zapnutá, po zavření okna zmizí ArtCraft Launcher z Docku a dál běží z řádku nabídek. Ikona v Docku se vrátí, když okno otevřete.
 	Couldn't change the login item: {e}	Položku po přihlášení nelze změnit: {e}
 column	App	Aplikace
 column	Installed	Nainstalováno

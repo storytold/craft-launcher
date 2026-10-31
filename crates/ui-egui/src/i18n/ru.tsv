@@ -98,6 +98,7 @@
 	ArtCraft Launcher is still running	ArtCraft Launcher продолжает работать
 	It's in the tray: open it or quit it from the tray icon, or turn this off in the settings.	Он в трее: откройте или закройте его через значок в трее, либо отключите это в настройках.
 	Show the window on the current desktop	Показывать окно на текущем рабочем столе
+	Hide the Dock icon while in the menu bar	Скрывать значок в Dock, пока приложение в строке меню
 	Start ArtCraft Launcher when I log in	Запускать ArtCraft Launcher при входе в систему
 	Community	Сообщество
 	Questions, ideas and news from the ArtCraft team	Вопросы, идеи и новости от команды ArtCraft
@@ -255,6 +256,7 @@ month	Dec	дек.
 	{count} updates are available	Доступны обновления ({count})
 	These notes weren't fetched (GitHub's request limit was reached). They're on the release page.	Заметки не были загружены (достигнут лимит запросов GitHub). Они есть на странице релиза.
 	When on, opening the launcher from the menu bar brings its window to the desktop you're on. When off, macOS switches you to the desktop the window was on.	Когда включено, открытие лаунчера из строки меню переносит его окно на текущий рабочий стол. Когда выключено, macOS переключает вас на рабочий стол, где находилось окно.
+	When on, closing the window takes ArtCraft Launcher out of the Dock and it keeps running from the menu bar. The Dock icon comes back when you open the window.	Когда включено, после закрытия окна ArtCraft Launcher пропадает из Dock и продолжает работать в строке меню. Значок в Dock возвращается при открытии окна.
 	Couldn't change the login item: {e}	Не удалось изменить пункт автозагрузки: {e}
 
 # Contextual: table column headers

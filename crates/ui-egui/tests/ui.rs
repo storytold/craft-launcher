@@ -1857,6 +1857,19 @@ fn the_current_desktop_setting_is_only_offered_where_the_os_has_desktops() {
 }
 
 #[test]
+fn the_dock_icon_setting_is_only_offered_where_the_os_has_a_dock() {
+    // NoHost has no Dock (Windows, Linux, web): no setting.
+    let (mut h, _) = harness(ViewMode::Grid, egui::Theme::Dark, true);
+    h.run_steps(6);
+    h.get_by_label("Settings").click();
+    h.run_steps(4);
+    assert!(h.query_by_label("Hide the Dock icon while in the menu bar").is_none());
+    // Off by default: the launcher stays a normal Dock app unless the user asks (macOS shows it
+    // in Settings, DesktopHost::has_dock).
+    assert!(!Settings::default().hide_dock_icon_in_tray);
+}
+
+#[test]
 /// A feed alert is acknowledged only by OK (persisted), while an inline announcement stays until
 /// its own Dismiss is clicked.
 fn feed_announcements_and_alerts_show_until_dismissed() {
