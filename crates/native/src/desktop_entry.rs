@@ -3,7 +3,11 @@
 //! An AppImage installs nothing by itself, so without an entry the app is missing from the
 //! desktop's menu and, on Wayland, the dock can't match the window's app id to an icon. The
 //! launcher writes `<data>/applications/ai.storyteller.<app>.desktop` (the id each app's window
-//! reports) and marks it as its own, so it only ever replaces or removes entries it wrote.
+//! reports) and marks it as its own, so it only ever replaces or removes entries it wrote. The
+//! entry also carries the file types the app opens (`MimeType=`), which is what makes the desktop
+//! offer the app for a file at all; `install::linux` refreshes the desktop's MIME database after
+//! writing or removing one, since GLib-based desktops read `mimeinfo.cache` beside the entries
+//! rather than the entries themselves.
 //!
 //! The text is built by pure functions, tested on every platform; only Linux writes the files.
 
@@ -18,6 +22,7 @@ pub const MARKER: &str = "X-ArtCraft-Launcher=true";
 
 /// The menu categories and the window class each app's own `.desktop` file declares.
 pub fn meta(app: &CraftApp) -> (&'static str, Option<&'static str>) {
+    // Keep in step with [`file_types`], the other half of what the apps declare there.
     match app.id {
         "photocraft" => ("Graphics;2DGraphics;RasterGraphics;Photography;", Some("photocraft")),
         "pdfcraft" => ("Office;Viewer;", Some("pdfcraft")),
@@ -34,6 +39,65 @@ pub fn meta(app: &CraftApp) -> (&'static str, Option<&'static str>) {
         "figcraft" => ("Graphics;2DGraphics;VectorGraphics;X-Design;", Some("figcraft")),
         _ => ("Graphics;", None),
     }
+}
+
+/// The file types (`MimeType=`) each app's own `.desktop` file declares, copied verbatim from
+/// `<app>/packaging/linux/ai.storyteller.<app>.desktop`. They are how the desktop knows the app
+/// opens a file at all: an entry without them shows up as a launch button and nothing else, so
+/// double-clicking an `.xlsx` can't offer GridCraft and "Open with" never lists it.
+///
+/// The list is the app's, not a choice the launcher makes: where two apps claim the same type
+/// (PhotoCraft and LightCraft both take `image/jpeg`), which one a click reaches is the user's
+/// default, and the desktop decides it. DesignCraft and EffectCraft declare none yet.
+pub fn file_types(app: &CraftApp) -> Option<&'static str> {
+    let mimes = match app.id {
+        "photocraft" => {
+            "application/x-photocraft;image/x-paintnet;image/openraster;application/x-krita;\
+             image/vnd.adobe.photoshop;image/x-psd;image/x-psb;image/png;image/jpeg;image/tiff;\
+             image/webp;image/gif;image/bmp;image/x-tga;image/x-icon;image/vnd.microsoft.icon;\
+             image/x-portable-anymap;image/x-portable-bitmap;image/x-portable-graymap;\
+             image/x-portable-pixmap;image/x-exr;image/vnd.radiance;image/avif;image/qoi;"
+        }
+        "pdfcraft" => "application/pdf;",
+        "lightcraft" => {
+            "image/jpeg;image/png;image/tiff;image/webp;image/x-adobe-dng;image/x-sony-arw;\
+             image/x-canon-cr2;image/x-canon-cr3;image/x-nikon-nef;image/x-fuji-raf;\
+             image/x-olympus-orf;image/x-panasonic-rw2;image/x-panasonic-rw;image/x-pentax-pef;"
+        }
+        "filmcraft" => {
+            "application/x-filmcraft;video/mp4;video/x-m4v;video/quicktime;video/x-matroska;\
+             video/webm;video/vnd.avi;video/x-msvideo;application/mxf;video/mp2t;video/mpeg;video/3gpp;"
+        }
+        "vectorcraft" => "image/svg+xml;application/pdf;",
+        "wordcraft" => {
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.document;\
+             application/vnd.ms-word.document.macroEnabled.12;\
+             application/vnd.openxmlformats-officedocument.wordprocessingml.template;\
+             application/vnd.ms-word.template.macroEnabled.12;application/msword;\
+             application/msword-template;application/vnd.oasis.opendocument.text;application/rtf;\
+             text/rtf;text/markdown;text/x-tex;text/html;text/plain;"
+        }
+        "deckcraft" => {
+            "application/x-deckcraft;\
+             application/vnd.openxmlformats-officedocument.presentationml.presentation;\
+             application/vnd.openxmlformats-officedocument.presentationml.template;\
+             application/vnd.openxmlformats-officedocument.presentationml.slideshow;"
+        }
+        "gridcraft" => {
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet;\
+             application/vnd.ms-excel.sheet.macroEnabled.12;\
+             application/vnd.ms-excel.sheet.binary.macroEnabled.12;\
+             application/vnd.oasis.opendocument.spreadsheet;text/csv;text/tab-separated-values;"
+        }
+        "cadcraft" => "image/vnd.dxf;image/vnd.dwg;application/x-dxf;application/acad;",
+        "soundcraft" => {
+            "application/x-soundcraft-session;audio/x-wav;audio/wav;audio/vnd.wave;audio/x-aiff;\
+             audio/aiff;audio/flac;audio/x-flac;audio/mpeg;audio/midi;audio/x-midi;"
+        }
+        "figcraft" => "application/x-figcraft;image/svg+xml;image/png;image/jpeg;x-scheme-handler/figcraft;",
+        _ => return None,
+    };
+    Some(mimes)
 }
 
 /// `path` as one quoted argument of an `Exec=` key, per the Desktop Entry spec: inside double
@@ -82,6 +146,11 @@ pub fn render(app: &CraftApp, appimage: &Path, icon: bool) -> Option<String> {
     }
     text.push_str("Terminal=false\n");
     text.push_str(&format!("Categories={categories}\n"));
+    // What the app opens, as its own entry declares it. An empty `MimeType=` is worse than none:
+    // the desktop reads it as a claim on nothing, so leave the key out.
+    if let Some(file_types) = file_types(app) {
+        text.push_str(&format!("MimeType={file_types}\n"));
+    }
     text.push_str(&format!("StartupWMClass={}\n", wm_class.map_or_else(|| app.bundle_id(), str::to_string)));
     text.push_str(MARKER);
     text.push('\n');
@@ -148,8 +217,9 @@ mod tests {
             "[Desktop Entry]\nType=Application\nName=PhotoCraft\nComment={}\n\
              Exec=\"/home/ana/Applications/photocraft-0.6.0-linux-x86_64.AppImage\" %F\n\
              Icon=ai.storyteller.photocraft\nTerminal=false\nCategories=Graphics;2DGraphics;RasterGraphics;Photography;\n\
-             StartupWMClass=photocraft\nX-ArtCraft-Launcher=true\n",
-            app("photocraft").tagline
+             MimeType={}\nStartupWMClass=photocraft\nX-ArtCraft-Launcher=true\n",
+            app("photocraft").tagline,
+            file_types(app("photocraft")).unwrap()
         );
         assert_eq!(text, expected);
         assert!(is_ours(&text));
@@ -157,6 +227,29 @@ mod tests {
         assert!(!no_icon.contains("Icon="));
         assert!(no_icon.contains("StartupWMClass=ai.storyteller.wordcraft\n"));
         assert!(no_icon.contains("Categories=Office;WordProcessor;\n"));
+    }
+
+    #[test]
+    fn lists_the_file_types_each_app_opens() {
+        let wordcraft = render(app("wordcraft"), Path::new("/x/w.AppImage"), false).unwrap();
+        assert!(wordcraft.contains("MimeType=application/vnd.openxmlformats-officedocument.wordprocessingml.document;"));
+        assert!(wordcraft.contains(";text/plain;\n"), "{wordcraft}");
+        let figcraft = render(app("figcraft"), Path::new("/x/f.AppImage"), false).unwrap();
+        assert!(figcraft.contains(";x-scheme-handler/figcraft;\n"), "{figcraft}");
+        // DesignCraft declares no file types, so its entry must claim none either: an app that
+        // has never opened a `.psd` shouldn't be offered for one.
+        let designcraft = render(app("designcraft"), Path::new("/x/d.AppImage"), false).unwrap();
+        assert!(!designcraft.contains("MimeType="), "{designcraft}");
+        // Every list is a well-formed `MimeType=`: `type/subtype;`, no spaces, closed with `;`.
+        for app in &artcraft_launcher_core::SUITE {
+            let Some(file_types) = file_types(app) else {
+                continue;
+            };
+            assert!(file_types.ends_with(';'), "{}: {file_types}", app.id);
+            for one in file_types.split(';').filter(|t| !t.is_empty()) {
+                assert!(one.contains('/') && !one.contains(char::is_whitespace), "{}: {one}", app.id);
+            }
+        }
     }
 
     #[test]
