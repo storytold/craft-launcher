@@ -597,14 +597,20 @@ const MAX_LINE_BYTES: usize = 8 * 1024;
 /// Maximum byte length for all request headers combined (CWE-400, F-019).
 const MAX_HEADER_BYTES: usize = 64 * 1024;
 
-/// Sanitizes a string for safe terminal logging, escaping ASCII control characters
-/// and ANSI escape sequences to prevent terminal display manipulation (CWE-117, F-020, F-021).
+/// Sanitizes a string for safe terminal logging, escaping control characters and Unicode line
+/// separators to prevent terminal display manipulation (CWE-117, F-020, F-021).
+///
+/// `is_ascii_control` alone is not enough: C1 controls (U+0080..=U+009F), including the 8-bit CSI
+/// byte U+009B, can start or alter ANSI sequences in terminals, and U+2028/U+2029 act as line
+/// breaks in some log viewers. Those are escaped; ordinary printable Unicode stays as-is.
 fn sanitize_for_terminal(s: &str) -> String {
+    use std::fmt::Write;
     let mut out = String::with_capacity(s.len());
     for c in s.chars() {
-        if c.is_ascii_control() || c == '\x1b' {
-            use std::fmt::Write;
+        if c.is_ascii_control() {
             let _ = write!(out, "\\x{:02x}", c as u32);
+        } else if c.is_control() || matches!(c, '\u{2028}' | '\u{2029}') {
+            let _ = write!(out, "\\u{{{:04x}}}", c as u32);
         } else {
             out.push(c);
         }
@@ -836,6 +842,12 @@ mod tests {
         assert_eq!(sanitize_for_terminal("\x1b[2Jevil"), "\\x1b[2Jevil");
         // CR / LF / Tab / Bell / Backspace
         assert_eq!(sanitize_for_terminal("foo\r\nbar\t\x07\x08"), "foo\\x0d\\x0abar\\x09\\x07\\x08");
+        // C1 controls, including the 8-bit CSI (U+009B) and NEL (U+0085).
+        assert_eq!(sanitize_for_terminal("a\u{9b}2Jb\u{85}c"), "a\\u{009b}2Jb\\u{0085}c");
+        // Unicode line/paragraph separators can break a log line in some viewers.
+        assert_eq!(sanitize_for_terminal("one\u{2028}two\u{2029}three"), "one\\u{2028}two\\u{2029}three");
+        // Printable non-ASCII text is preserved.
+        assert_eq!(sanitize_for_terminal("caf\u{e9} \u{1f642}"), "caf\u{e9} \u{1f642}");
     }
 
     #[test]

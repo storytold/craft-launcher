@@ -36,4 +36,6 @@ mod tests;
 
 pub use detect::{detect_system_lang_in_background, set_system_locales, set_test_lang, system_lang};
 pub use lang::{LANGUAGES, Lang, LangInfo, Script, lang_from_tag};
+#[cfg(test)]
+pub(crate) use translate::{StrictCjkDrawing, drew_cjk};
 pub use translate::{current, fmt, has, message, msg, set_current, t, t_id, tn, tr, tr_ctx, tr_id, trn};

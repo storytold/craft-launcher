@@ -23,7 +23,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # No macOS on PRs or main (craftrules release/cut-a-release.md): the org's 5 macOS slots
+        # No macOS on PRs or main: the org's 5 macOS slots
         # are kept for release builds, and release.yml builds and checks macOS.
         os: [ubuntu-latest, windows-latest]
     steps:

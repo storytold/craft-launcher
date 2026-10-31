@@ -19,6 +19,7 @@
 
 	Launcher	Launcher
 	Craft App Suite	Craft App Suite
+	by {name}	par {name}
 	Open Source Tools for Creatives, Makers, and Builders	Des outils open source pour les créatifs, les makers et les bâtisseurs
 	Settings	Réglages
 	Check for updates	Rechercher des mises à jour
@@ -172,6 +173,7 @@ designcraft	Page layout and publishing	Mise en page et édition
 wordcraft	Writing and document design	Rédaction et mise en forme de documents
 deckcraft	Presentations and slide shows	Présentations et diaporamas
 gridcraft	Spreadsheets and data	Tableurs et données
+solidcraft	Parametric 3D CAD	CAO paramétrique 3D
 cadcraft	Computer-aided design and drafting	Conception et dessin assistés par ordinateur
 soundcraft	Recording, editing and mixing audio	Enregistrement, édition et mixage audio
 figcraft	Interface design and prototyping	Design d'interfaces et prototypage
@@ -380,3 +382,15 @@ filter	Installed	Installées
 	Show {n} more changes	Afficher {n} modifications de plus
 	Last updated: {date}	Dernière mise à jour : {date}
 column	Version	Version
+column	Author	Auteur
+	Choose version	Choisir une version
+	latest {version}	dernière {version}
+	{version} (latest release)	{version} (dernière version)
+	Launcher version	Version du lanceur
+	Nightly	Nocturne
+	Nightly (none published yet)	Nocturne (pas encore publiée)
+	Install version {version}	Installer la version {version}
+	Download selected version	Télécharger la version choisie
+	Older launcher versions require a manual reinstall.	Les anciennes versions du lanceur nécessitent une réinstallation manuelle.
+	Your files may not open in older versions.	Tes fichiers pourraient ne pas s’ouvrir avec une ancienne version.
+	Enable automatic installs in Settings to follow new nightly builds.	Active les installations automatiques dans les paramètres pour recevoir les nouvelles versions nocturnes.

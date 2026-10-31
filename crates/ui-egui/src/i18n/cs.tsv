@@ -7,6 +7,7 @@
 
 	Launcher	Launcher
 	Craft App Suite	Craft App Suite
+	by {name}	od {name}
 	Open Source Tools for Creatives, Makers, and Builders	Open-source nástroje pro kreativce, tvůrce a vývojáře
 	Settings	Nastavení
 	Check for updates	Zkontrolovat aktualizace
@@ -156,6 +157,7 @@ designcraft	Page layout and publishing	Sazba stránek a publikování
 wordcraft	Writing and document design	Psaní a návrh dokumentů
 deckcraft	Presentations and slide shows	Prezentace a promítání snímků
 gridcraft	Spreadsheets and data	Tabulky a data
+solidcraft	Parametric 3D CAD	Parametrické 3D CAD
 cadcraft	Computer-aided design and drafting	Počítačem podporované navrhování a kreslení
 soundcraft	Recording, editing and mixing audio	Nahrávání, úpravy a mixování zvuku
 figcraft	Interface design and prototyping	Návrh rozhraní a prototypování
@@ -350,3 +352,15 @@ filter	Installed	Nainstalováno
 	Show {n} more changes	Zobrazit dalších změn: {n}
 	Last updated: {date}	Naposledy aktualizováno: {date}
 column	Version	Verze
+column	Author	Autor
+	Choose version	Vybrat verzi
+	latest {version}	nejnovější {version}
+	{version} (latest release)	{version} (nejnovější verze)
+	Launcher version	Verze spouštěče
+	Nightly	Noční sestavení
+	Nightly (none published yet)	Noční sestavení (zatím žádné)
+	Install version {version}	Nainstalovat verzi {version}
+	Download selected version	Stáhnout vybranou verzi
+	Older launcher versions require a manual reinstall.	Starší verze spouštěče vyžadují ruční přeinstalaci.
+	Your files may not open in older versions.	Starší verze nemusí vaše soubory otevřít.
+	Enable automatic installs in Settings to follow new nightly builds.	Chcete-li automaticky dostávat nová noční sestavení, zapněte v nastavení automatické instalace.

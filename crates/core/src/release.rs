@@ -164,6 +164,43 @@ pub fn parse_github_release(json: &str, repo: &str) -> Result<Release, String> {
     release_from_value(&v, repo)
 }
 
+/// Published releases offered for manual selection, in GitHub's order.
+/// Drafts and unparseable tags cannot be installed.
+pub fn parse_github_versions(json: &str, repo: &str) -> Result<Vec<Release>, String> {
+    let v: serde_json::Value = serde_json::from_str(json).map_err(|e| format!("unreadable answer from GitHub ({e})"))?;
+    let list = v.as_array().ok_or("unexpected answer from GitHub")?;
+    Ok(list
+        .iter()
+        .filter(|item| !item["draft"].as_bool().unwrap_or(false))
+        .filter_map(|item| release_from_value(item, repo).ok())
+        .filter(|r| r.version.is_some())
+        .take(100)
+        .collect())
+}
+
+/// A published, explicitly marked nightly build, not merely a beta or release candidate.
+pub fn is_nightly(release: &Release) -> bool {
+    release.prerelease && release.version.as_ref().is_some_and(|v| v.pre.as_str().split('.').any(|part| part.eq_ignore_ascii_case("nightly")))
+}
+
+/// Selects a published release. A nightly must be explicitly marked; a pin never falls back.
+pub fn has_published_checksum(r: &Release) -> bool {
+    r.sums_asset().is_some() || r.assets.iter().any(|a| a.sha256.is_some())
+}
+
+pub fn choose_version(releases: &[Release], track: &crate::protocol::VersionTrack) -> Option<Release> {
+    use crate::protocol::VersionTrack;
+    match track {
+        VersionTrack::Stable => releases
+            .iter()
+            .filter(|r| !r.prerelease && r.version.as_ref().is_some_and(version::is_stable))
+            .max_by(|a, b| a.version.cmp(&b.version))
+            .cloned(),
+        VersionTrack::Nightly => releases.iter().filter(|r| is_nightly(r) && has_published_checksum(r)).max_by_key(|r| r.published_at).cloned(),
+        VersionTrack::Pinned(tag) => releases.iter().find(|r| r.tag == *tag).cloned(),
+    }
+}
+
 /// Reads `GET /repos/<repo>/releases` and returns the newest stable (or any, with
 /// `allow_prerelease`) published release.
 pub fn parse_github_release_list(json: &str, repo: &str, allow_prerelease: bool) -> Result<Option<Release>, String> {
@@ -201,7 +238,10 @@ fn release_from_value(v: &serde_json::Value, repo: &str) -> Result<Release, Stri
             list.iter()
                 .filter_map(|a| {
                     let name = a["name"].as_str().filter(|n| valid_file_name(n))?.to_string();
-                    let url = a["browser_download_url"].as_str().filter(|u| download_url_under(u, &prefix))?.to_string();
+                    let url = a["browser_download_url"]
+                        .as_str()
+                        .filter(|u| download_url_under(u, &prefix) && *u == format!("{prefix}{tag}/{name}"))?
+                        .to_string();
                     let sha256 = a["digest"].as_str().and_then(|d| d.strip_prefix("sha256:")).filter(|h| is_hex64(h)).map(str::to_ascii_lowercase);
                     Some(Asset { name, size: a["size"].as_u64().unwrap_or(0), url, sha256 })
                 })
@@ -383,6 +423,13 @@ mod tests {
     }
 
     #[test]
+    fn selected_release_cannot_download_an_asset_from_a_different_tag() {
+        let wrong_tag = "https://github.com/storytold/photocraft/releases/download/v9.0.0/photocraft-0.5.0-macos-universal.dmg";
+        let r = parse_github_release(&api_json(wrong_tag), REPO).unwrap();
+        assert!(r.assets.is_empty());
+    }
+
+    #[test]
     fn traversal_cannot_escape_the_repository() {
         // Raw-prefix matches but the interpreted path climbs into another repository (CWE-180).
         for url in [
@@ -401,6 +448,53 @@ mod tests {
         // A plain, confined download still passes.
         let prefix = download_prefix(REPO);
         assert!(download_url_under("https://github.com/storytold/photocraft/releases/download/v0.5.0/photocraft-0.5.0-macos-universal.dmg", &prefix));
+    }
+
+    #[test]
+    fn version_choices_exclude_drafts_and_distinguish_nightly_from_betas() {
+        let json = r#"[
+            {"tag_name":"v0.8.0-nightly.20261028","prerelease":true,"draft":false,"assets":[]},
+            {"tag_name":"v0.8.0-beta.1","prerelease":true,"draft":false,"assets":[]},
+            {"tag_name":"v0.7.0","prerelease":false,"draft":false,"assets":[]},
+            {"tag_name":"v0.9.0-nightly.20261029","prerelease":true,"draft":true,"assets":[]},
+            {"tag_name":"not-a-version","prerelease":false,"draft":false,"assets":[]}]"#;
+        let choices = parse_github_versions(json, REPO).unwrap();
+        assert_eq!(choices.iter().map(|r| r.tag.as_str()).collect::<Vec<_>>(), ["v0.8.0-nightly.20261028", "v0.8.0-beta.1", "v0.7.0"]);
+        assert!(is_nightly(&choices[0]));
+        assert!(!is_nightly(&choices[1]));
+        assert!(!is_nightly(&choices[2]));
+    }
+
+    #[test]
+    fn a_nightly_without_published_checksums_is_unavailable() {
+        let mut nightly = Release {
+            tag: "v1.1.0-nightly.20261028".into(),
+            version: crate::version::parse("v1.1.0-nightly.20261028"),
+            prerelease: true,
+            ..Default::default()
+        };
+        nightly.assets.push(Asset { name: "app.zip".into(), size: 3, url: "https://example.invalid/app.zip".into(), sha256: None });
+        assert!(choose_version(&[nightly], &crate::protocol::VersionTrack::Nightly).is_none());
+    }
+
+    #[test]
+    fn selection_follows_nightly_or_pins_an_older_release_without_beta_fallback() {
+        use crate::protocol::VersionTrack;
+        let json = r#"[
+            {"tag_name":"v0.8.0-nightly.20261028","prerelease":true,"published_at":"2026-10-28T10:00:00Z"},
+            {"tag_name":"v0.8.0-beta.1","prerelease":true,"published_at":"2026-10-28T12:00:00Z"},
+            {"tag_name":"v0.8.0-nightly.20261027","prerelease":true,"published_at":"2026-10-27T10:00:00Z"},
+            {"tag_name":"v0.7.0","prerelease":false},
+            {"tag_name":"v0.6.0","prerelease":false}]"#;
+        let mut list = parse_github_versions(json, REPO).unwrap();
+        for r in list.iter_mut().filter(|r| is_nightly(r)) {
+            r.assets.push(Asset { name: "app.zip".into(), size: 3, url: "https://example.invalid/app.zip".into(), sha256: Some(HASH.into()) });
+        }
+        assert_eq!(choose_version(&list, &VersionTrack::Stable).unwrap().tag, "v0.7.0");
+        assert_eq!(choose_version(&list, &VersionTrack::Nightly).unwrap().tag, "v0.8.0-nightly.20261028");
+        assert_eq!(choose_version(&list, &VersionTrack::Pinned("v0.6.0".into())).unwrap().tag, "v0.6.0");
+        assert!(choose_version(&list, &VersionTrack::Pinned("v9.0.0".into())).is_none());
+        assert!(choose_version(&list[3..], &VersionTrack::Nightly).is_none());
     }
 
     #[test]

@@ -25,10 +25,12 @@ permissions:
 
 jobs:
   windows-arm64:
-    # Intentionally tracked at @main (not SHA-pinned) so org-wide CI improvements, security fixes, and build optimizations propagate without PR churn across all craftapp repos.
-    uses: storytold/craft-common-actions/.github/workflows/windows-arm64.yml@main
+    # Immutable supporting workflow revision until the new install contract lands upstream.
+    uses: storytold/craft-common-actions/.github/workflows/windows-arm64.yml@8bb4e5ab95443171104ad88113fe1ef9b0e5ce3f
     with:
       app-name: craft-launcher
       app-dir: ArtCraft Launcher
+      install-relative-path: Programs/ArtCraft/Launcher
+      install-scope: perUser
       is-per-user: true
       main-binary: artcraft-launcher.exe

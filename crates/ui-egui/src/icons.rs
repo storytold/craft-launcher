@@ -20,7 +20,7 @@ pub fn app_image(ctx: &egui::Context, id: &str, in_colour: bool) -> Option<egui:
     if let Some(colour) = &colour {
         let _ = colour.load_for_size(ctx, egui::Vec2::splat(64.0));
     }
-    let key = egui::Id::new(("grey-app-icon", id));
+    let key = egui::Id::unique(("grey-app-icon", id));
     if let Some(texture) = ctx.data(|d| d.get_temp::<egui::TextureHandle>(key)) {
         return Some(egui::Image::new(&texture));
     }

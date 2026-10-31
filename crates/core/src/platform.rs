@@ -51,7 +51,7 @@ impl Arch {
 /// A package format a release ships.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum PackageKind {
-    /// Windows Installer package (installs for all users into Program Files).
+    /// Windows Installer package (per user by default; an existing per-machine copy stays per-machine).
     Msi,
     /// Windows zip with the exe at the top level.
     PortableZip,
@@ -191,6 +191,20 @@ pub struct AssetName {
     pub kind: PackageKind,
 }
 
+impl AssetName {
+    /// The architecture the asset is built for: the last part of its token (`windows-x86` → x86).
+    /// `None` for a token that names none (`macos-universal`).
+    pub fn arch(&self) -> Option<Arch> {
+        match self.token.rsplit('-').next()? {
+            "x64" | "x86_64" => Some(Arch::X64),
+            "x86" => Some(Arch::X86),
+            "arm64" | "aarch64" => Some(Arch::Arm64),
+            "riscv64" => Some(Arch::Riscv64),
+            _ => None,
+        }
+    }
+}
+
 /// Reads `<stem>-<version>-<os>-<arch>[-portable].<ext>`; `None` for checksums, zsync files, CLI
 /// and web bundles, or anything else.
 pub fn parse_asset_name(name: &str, stems: &[&str]) -> Option<AssetName> {
@@ -325,6 +339,15 @@ mod tests {
         for arch in [Arch::X86, Arch::Riscv64] {
             assert_eq!(pick_asset(&r, &["photocraft"], Platform { os: Os::MacOs, arch }, &[PackageKind::Dmg]), None);
         }
+    }
+
+    #[test]
+    fn asset_names_carry_their_architecture() {
+        let arch = |name: &str| parse_asset_name(name, &["photocraft"]).unwrap().arch();
+        assert_eq!(arch("photocraft-0.5.0-windows-x64.msi"), Some(Arch::X64));
+        assert_eq!(arch("photocraft-0.5.0-windows-x86.msi"), Some(Arch::X86));
+        assert_eq!(arch("photocraft-0.5.0-linux-aarch64.tar.gz"), Some(Arch::Arm64));
+        assert_eq!(arch("photocraft-0.5.0-macos-universal.dmg"), None);
     }
 
     #[test]

@@ -15,6 +15,23 @@
 //! Launchers from before the handshake send a bare `show`, which is still understood. The worst
 //! another local program can do with any of this is bring the window forward or make the launcher
 //! quit.
+//!
+//! ## Upgrading over the published 0.7.0 build
+//!
+//! Replacement of a running 0.7.0 instance remains an unqualified compatibility gap. The
+//! published 0.7.0 `answer` expects `hello <version> <token>` and grants `Replace` only when the
+//! second word equals its owner-only token file. A newer build sends `hello <version> <nonce>`
+//! instead, so 0.7.0 reads the nonce as a wrong token, replies `running 0.7.0`, and merely shows
+//! its window. If that reply arrives in time, a newer newcomer requests takeover but the old
+//! process does not release its port; a same-version newcomer defers. The old reader and new
+//! client have similar timeouts, so a delayed reply can instead reach the legacy fallback and
+//! leave another process running without the listening socket. These timing paths need an
+//! old-release interoperability test. Quit the running 0.7.0 launcher from its tray menu before
+//! starting the new version. Do not make the new side
+//! send the token to force a `Replace`: that would restore the clear-text shared-secret handshake
+//! this protocol removed (0.7.0 itself already puts the token on the wire when it starts). A
+//! future compatibility shim would need an out-of-band, authenticated way to stop the old process;
+//! it must not accept an unauthenticated lifecycle request.
 
 use std::io::{ErrorKind, Read, Write};
 use std::net::{Ipv4Addr, SocketAddr, TcpListener, TcpStream};

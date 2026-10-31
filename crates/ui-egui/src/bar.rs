@@ -43,7 +43,7 @@ pub fn view_toggle(ui: &mut Ui, view: &mut ViewMode, tips: [&str; 2]) {
                     }
                 }
             }
-            resp.widget_info(|| egui::WidgetInfo::selected(egui::WidgetType::Button, true, on, tip));
+            resp.widget_info(|| egui::WidgetInfo::selected(egui::Role::Button, true, on, tip));
             if resp.on_hover_text(tip).on_hover_cursor(egui::CursorIcon::PointingHand).clicked() {
                 *view = mode;
             }
@@ -75,15 +75,9 @@ pub fn refresh_button(ui: &mut Ui, tip: &str, busy: bool) -> egui::Response {
     if busy {
         egui::Spinner::new().size(16.0).color(t.muted).paint_at(ui, Rect::from_center_size(rect.center(), vec2(16.0, 16.0)));
     } else {
-        p.text(
-            rect.center(),
-            egui::Align2::CENTER_CENTER,
-            "\u{27f3}",
-            egui::FontId::proportional(17.0),
-            if hovered { t.ink_strong } else { t.muted },
-        );
+        crate::widgets::paint_glyph(p, rect, crate::widgets::Glyph::Refresh, if hovered { t.ink_strong } else { t.muted });
     }
-    resp.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Button, !busy, tip));
+    resp.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, !busy, tip));
     let resp = resp.on_hover_text(tip);
     if busy { resp } else { resp.on_hover_cursor(egui::CursorIcon::PointingHand) }
 }

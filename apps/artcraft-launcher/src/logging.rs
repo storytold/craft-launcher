@@ -45,8 +45,18 @@ pub fn rotate(dir: &Path) -> std::io::Result<(PathBuf, File)> {
         }
     }
     let path = numbered(dir, 0);
-    let file = File::create(&path)?;
+    let file = create_private(&path)?;
     Ok((path, file))
+}
+
+/// A log names the user's folders, so only the user may read it.
+fn create_private(path: &Path) -> std::io::Result<File> {
+    let mut options = std::fs::OpenOptions::new();
+    // The mode only applies to a new file, so never open one that's already there.
+    options.write(true).create_new(true);
+    #[cfg(unix)]
+    std::os::unix::fs::OpenOptionsExt::mode(&mut options, 0o600);
+    options.open(path)
 }
 
 /// Where formatted records go besides standard error: kept in memory until a file is attached,
@@ -127,10 +137,13 @@ pub(crate) fn redact_credentials(text: &str) -> String {
         let prefix_len = idx + 7;
         result.push_str(&remaining[..prefix_len]);
         let mut token_rest = &remaining[prefix_len..];
-        let spaces = token_rest.chars().take_while(|c| c.is_whitespace() && *c != '\r' && *c != '\n').count();
-        if spaces > 0 {
-            result.push_str(&token_rest[..spaces]);
-            token_rest = &token_rest[spaces..];
+        // Stop at the first byte that is not ordinary horizontal whitespace. `find` returns a
+        // byte index, so multi-byte Unicode whitespace (NBSP, em space, ideographic space) is
+        // copied whole instead of being cut at a non-char boundary.
+        let spaces_end = token_rest.find(|c: char| !(c.is_whitespace() && c != '\r' && c != '\n')).unwrap_or(token_rest.len());
+        if spaces_end > 0 {
+            result.push_str(&token_rest[..spaces_end]);
+            token_rest = &token_rest[spaces_end..];
         }
         let end_token = token_rest.find(|c: char| c.is_whitespace() || c == '"' || c == '\'' || c == '\r' || c == '\n').unwrap_or(token_rest.len());
         result.push_str("[REDACTED]");
@@ -252,6 +265,27 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
+    #[cfg(unix)]
+    #[test]
+    fn only_the_user_can_read_the_log() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = temp_dir("private");
+        let (path, _file) = rotate(&dir).unwrap();
+        assert_eq!(std::fs::metadata(&path).unwrap().permissions().mode() & 0o777, 0o600);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn a_log_path_someone_else_made_is_not_opened() {
+        let dir = temp_dir("taken");
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join(LOG_FILE);
+        std::fs::write(&path, "not ours").unwrap();
+        assert_eq!(create_private(&path).unwrap_err().kind(), std::io::ErrorKind::AlreadyExists);
+        assert_eq!(read(&path), "not ours");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
     #[test]
     fn rotation_into_an_unusable_directory_is_an_error_not_a_panic() {
         let dir = temp_dir("blocked");
@@ -361,5 +395,14 @@ mod tests {
         assert_eq!(redact_credentials("Authorization: Bearer  secret_double_space"), "Authorization: Bearer  [REDACTED]");
         assert_eq!(redact_credentials("header \"authorization: bearer my_secret\" and more"), "header \"authorization: bearer [REDACTED]\" and more");
         assert_eq!(redact_credentials("normal log line without tokens"), "normal log line without tokens");
+    }
+
+    #[test]
+    fn redact_credentials_copies_unicode_whitespace_whole() {
+        // NBSP (U+00A0), em space (U+2003) and ideographic space (U+3000) are each multiple
+        // UTF-8 bytes; a character count must not be used as a byte slice index.
+        assert_eq!(redact_credentials("Authorization: Bearer \u{a0}secretToken"), "Authorization: Bearer \u{a0}[REDACTED]");
+        assert_eq!(redact_credentials("Bearer \u{2003}\u{3000}tok\u{a0}tail"), "Bearer \u{2003}\u{3000}[REDACTED]\u{a0}tail");
+        assert_eq!(redact_credentials("Bearer \u{a0}\u{a0}multi\u{2003}gap"), "Bearer \u{a0}\u{a0}[REDACTED]\u{2003}gap");
     }
 }

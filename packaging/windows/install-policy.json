@@ -1,0 +1,53 @@
+{
+  "id": "artcraft-launcher",
+  "name": "ArtCraft Launcher",
+  "mode": "perUser",
+  "upgradeCode": "1AC08DBF-D4CF-4BA4-A81E-CAA5C1004974",
+  "sources": [
+    "artcraft-launcher.wxs"
+  ],
+  "icon": "assets/app-icon/artcraft-launcher.ico",
+  "localization": [
+    "artcraft-launcher.en-us.wxl"
+  ],
+  "extensions": [
+    "UI",
+    "Util"
+  ],
+  "payloads": [
+    "NOTICE",
+    "artcraft-launcher.exe"
+  ],
+  "registry": [
+    [
+      "1",
+      "Software\\Learning Machines LLC\\ArtCraft Launcher",
+      "InstallDir",
+      "[INSTALLFOLDER]"
+    ],
+    [
+      "1",
+      "Software\\Learning Machines LLC\\ArtCraft Launcher",
+      "DesktopShortcutChoice",
+      "[DESKTOPSHORTCUTCHOICE]"
+    ],
+    [
+      "1",
+      "Software\\Microsoft\\Windows\\CurrentVersion\\App Paths\\artcraft-launcher.exe",
+      "",
+      "[#ArtCraftLauncherExe]"
+    ],
+    [
+      "1",
+      "Software\\Learning Machines LLC\\ArtCraft Launcher",
+      "StartMenuShortcut",
+      "#1"
+    ],
+    [
+      "1",
+      "Software\\Learning Machines LLC\\ArtCraft Launcher",
+      "DesktopShortcut",
+      "#1"
+    ]
+  ]
+}

@@ -1,6 +1,7 @@
 //! The header, toolbar, footer, the grid of cards and the table, laid out like the apps page on
 //! getartcraft.com: hairline cells, mono labels and square controls.
 
+use artcraft_launcher_core::catalog::AppKind;
 use artcraft_launcher_core::details::AppDetails;
 use artcraft_launcher_core::platform::pick_asset;
 use artcraft_launcher_core::protocol::{Command, JobPhase};
@@ -14,6 +15,17 @@ use crate::model::{self, AppEntry};
 use crate::settings::{Filter, SortKey, ViewMode};
 use crate::theme::{self, Tokens, rgb, tint};
 use crate::widgets::{self, Kind};
+
+/// The byline that says who makes an app: "by ArtCraft" or "by <publisher>". Official apps take
+/// the accent colour, community apps the muted one.
+fn kind_badge(ui: &mut Ui, app: &artcraft_launcher_core::CraftApp, t: &Tokens) {
+    let text = fmt(tl!("by {name}"), &[("name", app.publisher)]);
+    let color = match app.kind {
+        AppKind::Official => t.accent_ink,
+        AppKind::Community => t.muted,
+    };
+    widgets::badge(ui, &text, color);
+}
 
 /// Translate a relative timestamp ("just now", "5 min ago", …) into the current language.
 fn ago_text(secs: i64, now: i64) -> String {
@@ -41,6 +53,11 @@ enum Primary {
     /// The download is already here; only the install step is left. Carries the button's label.
     Retry(String),
     Update(String),
+    /// A pinned release only installs after the backend has checked that exact tag.
+    SelectedVersion {
+        tag: String,
+        checked: bool,
+    },
     Open,
     Download(String),
     Unavailable(&'static str),
@@ -83,7 +100,7 @@ impl LauncherUi {
                 if bar == TitleBar::Custom {
                     widgets::window_buttons(ui, h);
                 }
-                if widgets::nav_icon(ui, "⚙", tl!("Settings"), h, false).clicked() {
+                if widgets::nav_icon(ui, widgets::Glyph::Settings, tl!("Settings"), h, false).clicked() {
                     self.dialog = Some(Dialog::Settings);
                 }
                 // The controls reserve their actual widths before the secondary text gets space.
@@ -159,7 +176,7 @@ impl LauncherUi {
                         .on_hover_text(tl!("Stop waiting; the update can be started again later"))
                         .clicked()
                 {
-                    self.send(Command::Cancel { app: artcraft_launcher_core::catalog::LAUNCHER_ID.to_string() });
+                    self.act_command(Command::Cancel { app: artcraft_launcher_core::catalog::LAUNCHER_ID.to_string() });
                 }
                 widgets::progress(ui, fraction, &caption, t.accent, 220.0);
                 return;
@@ -172,13 +189,13 @@ impl LauncherUi {
                     .on_hover_text(tl!("Downloads the new version, replaces this one and opens it again"))
                     .clicked()
                 {
-                    self.send(Command::UpdateLauncher);
+                    self.act_command(Command::UpdateLauncher);
                 }
             } else {
                 let url =
                     self.platform.and_then(|p| launcher_download(r, p, crate::settings::is_flatpak_sandbox())).unwrap_or_else(|| r.html_url.clone());
                 if widgets::button(ui, tl!("Download"), Kind::Primary, 0.0).clicked() {
-                    ui.ctx().open_url(egui::OpenUrl::new_tab(url));
+                    widgets::open_external_link(ui.ctx(), &url);
                 }
             }
             ui.add_space(8.0);
@@ -215,9 +232,10 @@ impl LauncherUi {
                         .hint_text(tl!("Search apps"))
                         .desired_width(200.0)
                         .min_size(vec2(0.0, theme::CONTROL_H))
-                        .vertical_align(egui::Align::Center)
+                        .align(egui::Align2::LEFT_CENTER)
                         .margin(vec2(10.0, 0.0)),
-                );
+                )
+                .accessible_name(tl!("Search apps"));
                 if self.settings.view == ViewMode::Grid && !compact {
                     self.sort_picker(ui);
                     // The caption only where it fits beside the filters (longer in some languages).
@@ -251,14 +269,18 @@ impl LauncherUi {
         });
     }
 
+    /// The toolbar's check button. It queues a forced check through the UI action boundary and is
+    /// disabled while `self.checking`; the backend receives the check only when this pass flushes.
     fn refresh_button(&mut self, ui: &mut Ui) {
         if crate::bar::refresh_button(ui, tl!("Check for updates"), self.checking).clicked() {
-            self.check_now();
+            self.check_now_from_ui();
         }
     }
 
+    /// The grid's sort combo box. It writes the chosen key and direction directly (not through the
+    /// action queue) and carries an accessible "Sort" name.
     fn sort_picker(&mut self, ui: &mut Ui) {
-        egui::ComboBox::from_id_salt("sort")
+        craft_ui::ComboBox::from_id_salt("sort")
             .selected_text(RichText::new(grid_sort_label(grid_sort_now(&self.settings))).size(13.0))
             .width(190.0)
             .show_ui(ui, |ui| {
@@ -269,7 +291,9 @@ impl LauncherUi {
                         self.settings.sort_descending = choice.1;
                     }
                 }
-            });
+            })
+            .response
+            .accessible_name(tl!("Sort"));
     }
 
     /// Update every eligible app; used in the compact and full-width toolbars.
@@ -278,7 +302,7 @@ impl LauncherUi {
         if widgets::button(ui, &label, Kind::Primary, 0.0).clicked() {
             let ids: Vec<&str> = self.entries.iter().filter(|e| self.in_filter(e, Filter::Updates) && e.job.is_none()).map(|e| e.app.id).collect();
             for id in ids {
-                self.send(Command::Install { app: id.to_string() });
+                self.act_command(Command::Install { app: id.to_string() });
             }
         }
     }
@@ -422,13 +446,17 @@ impl LauncherUi {
         }
     }
 
+    /// Draws one app card into the caller-allocated `rect`. A card whose app has a details page gets
+    /// a click target over the whole rect before its own links and buttons, so those sit on top and
+    /// keep their clicks. An installed card is drawn in colour; a missing one greys out until the
+    /// pointer is over it.
     fn card(&mut self, ui: &mut Ui, id: &str, rect: Rect) {
         let Some(entry) = self.entry(id).cloned() else { return };
         let t = Tokens::get(ui.ctx());
         let app = entry.app;
         let hovered = ui.rect_contains_pointer(rect);
         let wipe = if self.reduce_motion { 0.0 } else { 0.3 };
-        let lift = ui.ctx().animate_bool_with_time(ui.id().with(("card-hover", id)), hovered, wipe);
+        let lift = ui.ctx().animate_bool_with_time(ui.scope_id().with(("card-hover", id)), hovered, wipe);
         // An app that is not installed is drawn in greys (icon, name, version, accent), and in its
         // colours while the pointer is over its card.
         let installed = entry.status(self.platform, self.caps.manage_apps).is_installed();
@@ -438,8 +466,8 @@ impl LauncherUi {
         // The whole card opens the app's page. Added before the card's own links and buttons, so
         // they sit on top of it and keep their clicks.
         if AppDetails::by_id(id).is_some() {
-            let open = ui.interact(rect, ui.id().with(("card-open", id)), Sense::click());
-            open.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Button, true, fmt(tl!("{name} details"), &[("name", app.name)])));
+            let open = ui.interact(rect, ui.scope_id().with(("card-open", id)), Sense::click());
+            open.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, true, fmt(tl!("{name} details"), &[("name", app.name)])));
             if open.on_hover_cursor(egui::CursorIcon::PointingHand).clicked() {
                 self.detail = Some(id.to_string());
             }
@@ -457,7 +485,8 @@ impl LauncherUi {
 
         // The top strip: the version in the app's colour, and its GitHub page.
         let status = entry.status(self.platform, self.caps.manage_apps);
-        let version = crate::card_parts::strip_version(&entry, &status);
+        let behind = self.behind_latest(&entry);
+        let version = crate::card_parts::strip_version(&entry, &status, behind.as_deref());
         let strip = Rect::from_min_size(rect.min, vec2(rect.width(), STRIP_H));
         painter.hline(strip.x_range(), strip.bottom() - 0.5, t.hairline());
         {
@@ -467,7 +496,10 @@ impl LauncherUi {
             if !version.is_empty() {
                 let github_w = widgets::hud_galley(&strip_ui, &format!("{} ↗", tl!("GitHub")), t.muted).size().x;
                 let room = (strip_ui.available_width() - github_w - 16.0).max(0.0);
-                widgets::hud_elided(&mut strip_ui, &version, if in_colour { t.app_ink(app) } else { t.muted }, room);
+                let highlight = if in_colour { t.app_ink(app) } else { t.muted };
+                let spans: Vec<(&str, egui::Color32)> =
+                    version.iter().map(|(text, lit)| (text.as_str(), if *lit { highlight } else { t.muted })).collect();
+                widgets::hud_elided_spans(&mut strip_ui, &spans, room);
             }
             strip_ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 ui.spacing_mut().item_spacing.x = 16.0;
@@ -487,7 +519,7 @@ impl LauncherUi {
             // The slot is as tall as the text beside it when that is taller, so the two share a centre.
             let block = lines_height(ui, &[&name, &tagline], GAP);
             let (slot, icon_response) = ui.allocate_exact_size(vec2(ICON, block.max(ICON)), Sense::hover());
-            icon_response.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Image, true, fmt(tl!("{name} icon"), &[("name", app.name)])));
+            icon_response.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Image, true, fmt(tl!("{name} icon"), &[("name", app.name)])));
             // The icon rises a little on hover, over a soft drop shadow (the site's only shadow).
             let icon_rect = Rect::from_center_size(slot.center(), vec2(ICON, ICON)).translate(vec2(0.0, -4.0 * lift));
             ui.painter().add(
@@ -503,6 +535,7 @@ impl LauncherUi {
                 ui.spacing_mut().interact_size.y = 0.0;
                 ui.horizontal(|ui| {
                     widgets::wordmark_in(ui, app, 22.0, in_colour);
+                    kind_badge(ui, app, &t);
                 });
                 ui.add(egui::Label::new(RichText::new(tr_ctx(current(), app.id, app.tagline)).font(tagline.clone()).color(t.muted)).truncate());
             });
@@ -562,6 +595,7 @@ impl LauncherUi {
                 .column(Column::remainder().at_least(220.0).clip(true))
                 .column(Column::exact(176.0))
                 .column(Column::exact(150.0))
+                .column(Column::exact(132.0))
                 .column(Column::exact(104.0))
                 .column(Column::exact(206.0))
                 .header(42.0, |header| self.table_header(header, &mut sort_clicked, &t, span, clip))
@@ -626,7 +660,7 @@ impl LauncherUi {
             let arrow_color = if active { t.accent_ink } else { t.faint };
             Self::draw_sort_arrow(p, egui::pos2(arrow_x + 4.0, rect.center().y), down, arrow_color);
         }
-        resp.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Button, true, label));
+        resp.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, true, label));
         if resp.on_hover_text(tip).on_hover_cursor(egui::CursorIcon::PointingHand).clicked() { Some(k) } else { None }
     }
 
@@ -645,6 +679,7 @@ impl LauncherUi {
             (Some(SortKey::Status), tl!("Status")),
             (None, tr_ctx(current(), "column", "Version")),
             (Some(SortKey::Released), tr_ctx(current(), "column", "Released")),
+            (None, tr_ctx(current(), "column", "Author")),
             (None, ""),
         ] {
             header.col(|ui| {
@@ -659,7 +694,7 @@ impl LauncherUi {
     }
 
     /// The table's one row per app: the app (click to open its page), its status, the version,
-    /// when it was released, and its actions.
+    /// when it was released, who makes it, and its actions.
     fn table_rows(
         &mut self,
         mut body: egui_extras::TableBody<'_>,
@@ -678,6 +713,9 @@ impl LauncherUi {
                 row.col(|ui| self.table_status_cell(ui, &entry, &status, t));
                 row.col(|ui| self.table_version_cell(ui, &entry, &status, t));
                 row.col(|ui| self.table_released_cell(ui, &entry, now, t));
+                row.col(|ui| {
+                    ui.label(RichText::new(entry.app.publisher).color(t.muted));
+                });
                 row.col(|ui| self.actions(ui, &entry, &status, 204.0));
             });
         }
@@ -702,14 +740,15 @@ impl LauncherUi {
         }
         // Clicking the app's cell opens its page (the content is added after, so it wins any hit).
         if AppDetails::by_id(id).is_some() {
-            let open = ui.interact(ui.max_rect(), ui.id().with(("row-open", id)), Sense::click());
-            open.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Button, true, fmt(tl!("{name} details"), &[("name", entry.app.name)])));
+            let open = ui.interact(ui.max_rect(), ui.scope_id().with(("row-open", id)), Sense::click());
+            open.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, true, fmt(tl!("{name} details"), &[("name", entry.app.name)])));
             if open.on_hover_cursor(egui::CursorIcon::PointingHand).clicked() {
                 self.detail = Some(id.to_string());
             }
         }
         let installed = entry.status(self.platform, self.caps.manage_apps).is_installed();
         if let Some(icon) = crate::icons::app_image(ui.ctx(), entry.app.id, installed) {
+            // Decorative: the wordmark beside it carries the app name.
             ui.add(icon.fit_to_exact_size(vec2(38.0, 38.0)));
         }
         ui.add_space(4.0);
@@ -738,26 +777,30 @@ impl LauncherUi {
         }
     }
 
-    /// The version column: what is installed, with an arrow to the new one in the app's colour
-    /// when an update waits; the latest, for an app not installed yet.
+    /// The version column: what is installed, with an arrow to the new one (only that in the app's
+    /// colour) when an update waits, or a quiet note of the newer release for a version kept on
+    /// purpose; the latest, for an app not installed yet.
     fn table_version_cell(&self, ui: &mut Ui, entry: &AppEntry, status: &AppStatus, t: &Tokens) {
-        let mut mono = |text: String, color| ui.label(RichText::new(text).family(egui::FontFamily::Monospace).color(color));
-        match (*status == AppStatus::UpdateAvailable).then(|| entry.installed_label().zip(entry.latest_label())).flatten() {
-            Some((from, to)) => {
-                mono(format!("{from} → {to}"), t.app_ink(entry.app));
-            }
+        let mono = |text: String, color| RichText::new(text).family(egui::FontFamily::Monospace).color(color);
+        let (first, second) = match (*status == AppStatus::UpdateAvailable).then(|| entry.installed_label().zip(entry.latest_label())).flatten() {
+            Some((from, to)) => (mono(format!("{from} → "), t.ink), Some(mono(to, t.app_ink(entry.app)))),
             None => match (entry.installed_label(), entry.latest_label()) {
                 (Some(installed), _) => {
-                    mono(installed, t.ink);
+                    let note =
+                        self.behind_latest(entry).map(|newer| mono(format!(" · {}", fmt(tl!("latest {version}"), &[("version", &newer)])), t.faint));
+                    (mono(installed, t.ink), note)
                 }
-                (None, Some(latest)) => {
-                    mono(latest, t.faint);
-                }
-                (None, None) => {
-                    mono("—".into(), t.faint);
-                }
+                (None, Some(latest)) => (mono(latest, t.faint), None),
+                (None, None) => (mono("—".into(), t.faint), None),
             },
+        };
+        // One label in two colours, so it reads as one piece of text ("0.4.1 → 0.5.0").
+        let style = ui.style().clone();
+        let mut job = egui::text::LayoutJob::default();
+        for part in std::iter::once(first).chain(second) {
+            part.append_to(&mut job, &style, egui::FontSelection::Default, egui::Align::Center);
         }
+        ui.label(job);
     }
 
     /// The released column: the release date, or an em dash, with "how long ago" in its tooltip.
@@ -784,6 +827,14 @@ impl LauncherUi {
                 (_, Some(url)) => Primary::Download(url),
                 (_, None) => Primary::Unavailable(tl!("Not available")),
             };
+        }
+        // Once the pinned version is the installed one, the normal statuses (Open) take over again.
+        if let Some(artcraft_launcher_core::protocol::VersionTrack::Pinned(tag)) = self.settings.versions.get(entry.app.id)
+            && entry.installed.as_ref().and_then(|i| i.version.as_ref()) != artcraft_launcher_core::version::parse(tag).as_ref()
+        {
+            let checked = entry.release().is_some_and(|r| &r.tag == tag)
+                && !matches!(status, AppStatus::Checking | AppStatus::NoRelease | AppStatus::Unavailable);
+            return Primary::SelectedVersion { tag: tag.clone(), checked };
         }
         match status {
             AppStatus::Available if entry.ready => Primary::Retry(tl!("Retry install").into()),
@@ -869,12 +920,12 @@ impl LauncherUi {
         // Waiting has one square button beside the bar, like the menu otherwise.
         widgets::progress(ui, fraction, &caption, color, if downloading { bar_w } else { main_w });
         if downloading && widgets::glyph_button(ui, widgets::Glyph::Pause, tl!("Pause download")).clicked() {
-            self.send(Command::Pause { app: id.to_string() });
+            self.act_command(Command::Pause { app: id.to_string() });
         }
         if (downloading || waiting)
             && widgets::glyph_button(ui, widgets::Glyph::Close, if waiting { tl!("Cancel") } else { tl!("Cancel download") }).clicked()
         {
-            self.send(Command::Cancel { app: id.to_string() });
+            self.act_command(Command::Cancel { app: id.to_string() });
         }
     }
 
@@ -906,7 +957,7 @@ impl LauncherUi {
             self.install_app(id);
         }
         if widgets::glyph_button(ui, widgets::Glyph::Close, tl!("Discard download")).clicked() {
-            self.send(Command::Cancel { app: id.to_string() });
+            self.act_command(Command::Cancel { app: id.to_string() });
         }
         self.menu(ui, entry, status, links_in_menu);
         true
@@ -931,6 +982,12 @@ impl LauncherUi {
                     self.install_app(id);
                 }
             }
+            Primary::SelectedVersion { tag, checked } => {
+                let label = fmt(tl!("Install version {version}"), &[("version", &tag)]);
+                if ui.add_enabled_ui(checked, |ui| widgets::button(ui, &label, Kind::Primary, main_w)).inner.clicked() {
+                    self.install_app(id);
+                }
+            }
             Primary::Open => {
                 if widgets::button(ui, tl!("Open"), Kind::Secondary, main_w).clicked() {
                     self.launch_app(id);
@@ -942,7 +999,7 @@ impl LauncherUi {
                     None => tl!("Download").into(),
                 };
                 if widgets::button(ui, &label, Kind::Primary, main_w).clicked() {
-                    ui.ctx().open_url(egui::OpenUrl::new_tab(url));
+                    widgets::open_external_link(ui.ctx(), &url);
                 }
             }
             Primary::Unavailable(label) => {
@@ -951,11 +1008,20 @@ impl LauncherUi {
         }
     }
 
+    /// The card's "…" menu. Backend commands are queued at the action boundary; dialog, settings and
+    /// external-link actions happen inline. "Download again" appears
+    /// only for a kept download in a ready available/update state and cancels before installing;
+    /// `links` adds the website/repository/releases rows, which the details drawer omits because it
+    /// shows them as buttons.
     fn menu(&mut self, ui: &mut Ui, entry: &AppEntry, status: &AppStatus, links: bool) {
         let id = entry.app.id.to_string();
         let manage = self.caps.manage_apps;
         let reveal = self.caps.reveal_label;
-        widgets::more_menu(ui, |ui| {
+        widgets::more_menu(ui, entry.app.name, |ui| {
+            if ui.button(tl!("Choose version")).clicked() {
+                self.open_versions(&id);
+                ui.close();
+            }
             if entry.release().is_some() && ui.button(tl!("Release notes")).clicked() {
                 self.dialog = Some(Dialog::Notes(id.clone()));
                 ui.close();
@@ -964,7 +1030,7 @@ impl LauncherUi {
             let can_download_again =
                 manage && entry.ready && entry.paused.is_none() && matches!(status, AppStatus::Available | AppStatus::UpdateAvailable);
             if can_download_again && ui.button(tl!("Download again")).clicked() {
-                self.send(Command::Cancel { app: id.clone() });
+                self.act_command(Command::Cancel { app: id.clone() });
                 self.install_app(&id);
                 ui.close();
             }
@@ -979,7 +1045,7 @@ impl LauncherUi {
                 ui.separator();
                 let link = |ui: &mut Ui, label: &str, url: String| {
                     if ui.button(label).clicked() {
-                        ui.ctx().open_url(egui::OpenUrl::new_tab(url));
+                        widgets::open_external_link(ui.ctx(), &url);
                         ui.close();
                     }
                 };
@@ -999,7 +1065,7 @@ impl LauncherUi {
             ui.close();
         }
         if ui.button(t(reveal)).clicked() {
-            self.send(Command::Reveal { app: id.to_string() });
+            self.act_command(Command::Reveal { app: id.to_string() });
             ui.close();
         }
         if self.caps.desktop_shortcuts && ui.button(tl!("Add desktop shortcut")).clicked() {
@@ -1035,7 +1101,7 @@ impl LauncherUi {
             ui.separator();
             for (label, url) in options {
                 if ui.button(label).clicked() {
-                    ui.ctx().open_url(egui::OpenUrl::new_tab(url));
+                    widgets::open_external_link(ui.ctx(), &url);
                     ui.close();
                 }
             }

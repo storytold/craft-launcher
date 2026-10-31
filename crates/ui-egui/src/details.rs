@@ -64,7 +64,7 @@ impl LauncherUi {
             }
         }
         if missing {
-            self.send(Command::FetchScreenshots { app: details.id.to_string() });
+            self.act_command(Command::FetchScreenshots { app: details.id.to_string() });
         }
     }
 
@@ -102,7 +102,7 @@ impl LauncherUi {
         // Asked every frame, even while closed, so the first opening starts from 0 and slides.
         let open = self.detail.is_some();
         let slide = if self.reduce_motion { 0.0 } else { SLIDE_SECS };
-        let k = ctx.animate_bool_with_time_and_easing(Id::new("details-slide"), open, slide, easing::cubic_out);
+        let k = ctx.animate_bool_with_time_and_easing(Id::unique("details-slide"), open, slide, easing::cubic_out);
         let Some(id) = self.detail_shown.clone() else { return };
         let Some(details) = AppDetails::by_id(&id) else {
             self.detail = None;
@@ -140,29 +140,35 @@ impl LauncherUi {
         let Some(entry) = entry else { return };
         let wide = panel.width() >= theme::PAGE_COLUMNS_FROM;
         let (previous, next) = self.neighbour_apps(id);
-        egui::Area::new(Id::new("details-drawer")).order(Order::Foreground).fixed_pos(panel.min).constrain(false).show(ctx, |ui| {
-            ui.set_opacity(k.clamp(0.0, 1.0));
-            let painter = ui.painter();
-            painter.add(theme::shadow(t).as_shape(panel, CornerRadius::ZERO));
-            painter.rect_filled(panel, CornerRadius::ZERO, t.bg);
-            painter.rect_stroke(panel, CornerRadius::ZERO, Stroke::new(1.0, t.line_strong), egui::StrokeKind::Inside);
+        egui::Area::new(Id::unique("details-drawer"))
+            .order(Order::Foreground)
+            .fixed_pos(panel.min)
+            .constrain(false)
+            .role(egui::Role::Dialog)
+            .accessible_name(format!("{}: {}", tl!("App details"), entry.app.name))
+            .show(ctx, |ui| {
+                ui.set_opacity(k.clamp(0.0, 1.0));
+                let painter = ui.painter();
+                painter.add(theme::shadow(t).as_shape(panel, CornerRadius::ZERO));
+                painter.rect_filled(panel, CornerRadius::ZERO, t.bg);
+                painter.rect_stroke(panel, CornerRadius::ZERO, Stroke::new(1.0, t.line_strong), egui::StrokeKind::Inside);
 
-            ui.set_min_size(panel.size());
-            ui.set_max_size(panel.size());
-            // A bar that stays on screen says there is more below the fold; in the app's colour.
-            let page_visuals = crate::sheet::accent_scroll(ui, t, t.app_ink(entry.app));
-            // One scroll position per app, so the next app opens at its top.
-            egui::ScrollArea::vertical().id_salt(("details-scroll", id.to_string())).auto_shrink([false, false]).show(ui, |ui| {
-                // The bar's colours are for the bar alone.
-                *ui.visuals_mut() = page_visuals;
-                ui.set_width(ui.available_width());
-                ui.spacing_mut().item_spacing.y = 8.0;
-                self.details_hero(ui, &entry, details, t, (previous.as_deref(), next.as_deref()), wide);
-                egui::Frame::new().inner_margin(Margin::same(PAD as i8)).show(ui, |ui| {
-                    self.details_body(ui, &entry, details, wide, t);
+                ui.set_min_size(panel.size());
+                ui.set_max_size(panel.size());
+                // A bar that stays on screen says there is more below the fold; in the app's colour.
+                let page_visuals = crate::sheet::accent_scroll(ui, t, t.app_ink(entry.app));
+                // One scroll position per app, so the next app opens at its top.
+                egui::ScrollArea::vertical().id_salt(("details-scroll", id.to_string())).auto_shrink([false, false]).show(ui, |ui| {
+                    // The bar's colours are for the bar alone.
+                    *ui.visuals_mut() = page_visuals;
+                    ui.set_width(ui.available_width());
+                    ui.spacing_mut().item_spacing.y = 8.0;
+                    self.details_hero(ui, &entry, details, t, (previous.as_deref(), next.as_deref()), wide);
+                    egui::Frame::new().inner_margin(Margin::same(PAD as i8)).show(ui, |ui| {
+                        self.details_body(ui, &entry, details, wide, t);
+                    });
                 });
             });
-        });
     }
 
     /// The page below the hero: the story, pictures, features and release facts, in two columns
@@ -286,7 +292,7 @@ impl LauncherUi {
 
     /// The page behind the drawer, dimmed (egui can't blur what is under a layer); a click on it closes the drawer.
     fn details_scrim(&mut self, ctx: &egui::Context, area: Rect, k: f32, t: &Tokens) {
-        egui::Area::new(Id::new("details-scrim")).order(Order::Middle).fixed_pos(area.min).show(ctx, |ui| {
+        egui::Area::new(Id::unique("details-scrim")).order(Order::Middle).fixed_pos(area.min).show(ctx, |ui| {
             let (rect, resp) = ui.allocate_exact_size(area.size(), Sense::click());
             ui.painter().rect_filled(rect, CornerRadius::ZERO, theme::scrim(t, k));
             if resp.on_hover_cursor(egui::CursorIcon::Default).clicked() {
@@ -348,6 +354,7 @@ impl LauncherUi {
         let hero_w = ui.available_width();
         ui.horizontal(|ui| {
             if let Some(icon) = crate::icons::app(app.id) {
+                // Decorative: the wordmark beside it carries the app name.
                 ui.add(egui::Image::new(icon).fit_to_exact_size(vec2(ICON, ICON)));
             }
             ui.add_space(8.0);
@@ -423,46 +430,51 @@ impl LauncherUi {
         let src = self.picture_source(details.id, shot.key);
         let failed = self.failure(details.id, shot.key);
         let full = ctx.content_rect();
-        egui::Area::new(Id::new("details-lightbox")).order(Order::Tooltip).fixed_pos(full.min).show(ctx, |ui| {
-            let (rect, backdrop) = ui.allocate_exact_size(full.size(), Sense::click());
-            ui.painter().rect_filled(rect, CornerRadius::ZERO, theme::backdrop());
-            // As large as the window allows, but no larger than 1400 points: the files are 1200 px wide.
-            let room = rect.shrink2(vec2(112.0, 96.0));
-            let w = room.width().min(room.height() / SHOT_ASPECT).clamp(1.0, 1400.0);
-            let pic = Rect::from_center_size(rect.center(), vec2(w, w * SHOT_ASPECT));
-            match src {
-                Some(src) => egui::Image::new(src).paint_at(ui, pic),
-                // Flipped to a picture that hasn't arrived: the same frame, saying so.
-                None => placeholder(ui, pic, Id::new("lightbox-placeholder"), failed.as_deref(), t, true),
-            }
-            ui.painter().rect_stroke(pic, CornerRadius::ZERO, Stroke::new(1.0, theme::backdrop_ink(40)), egui::StrokeKind::Outside);
-            let caption = if count > 1 { format!("{} · {}/{count}", shot.caption, at + 1) } else { shot.caption.to_string() };
-            let ink = theme::backdrop_ink(190);
-            let galley = widgets::hud_galley(ui, &caption, ink);
-            let caption_at = pos2(rect.center().x - galley.size().x / 2.0, pic.bottom() + 14.0);
-            ui.painter().galley(caption_at, galley, ink);
+        egui::Area::new(Id::unique("details-lightbox"))
+            .order(Order::Tooltip)
+            .fixed_pos(full.min)
+            .role(egui::Role::Dialog)
+            .accessible_name(format!("{}: {}", tl!("Enlarge picture"), CraftApp::by_id(details.id).map_or("", |app| app.name)))
+            .show(ctx, |ui| {
+                let (rect, backdrop) = ui.allocate_exact_size(full.size(), Sense::click());
+                ui.painter().rect_filled(rect, CornerRadius::ZERO, theme::backdrop());
+                // As large as the window allows, but no larger than 1400 points: the files are 1200 px wide.
+                let room = rect.shrink2(vec2(112.0, 96.0));
+                let w = room.width().min(room.height() / SHOT_ASPECT).clamp(1.0, 1400.0);
+                let pic = Rect::from_center_size(rect.center(), vec2(w, w * SHOT_ASPECT));
+                match src {
+                    Some(src) => egui::Image::new(src).paint_at(ui, pic),
+                    // Flipped to a picture that hasn't arrived: the same frame, saying so.
+                    None => placeholder(ui, pic, Id::unique("lightbox-placeholder"), failed.as_deref(), t, true),
+                }
+                ui.painter().rect_stroke(pic, CornerRadius::ZERO, Stroke::new(1.0, theme::backdrop_ink(40)), egui::StrokeKind::Outside);
+                let caption = if count > 1 { format!("{} · {}/{count}", shot.caption, at + 1) } else { shot.caption.to_string() };
+                let ink = theme::backdrop_ink(190);
+                let galley = widgets::hud_galley(ui, &caption, ink);
+                let caption_at = pos2(rect.center().x - galley.size().x / 2.0, pic.bottom() + 14.0);
+                ui.painter().galley(caption_at, galley, ink);
 
-            if count > 1 {
-                let y = pic.center().y - ARROW / 2.0;
-                let prev = Rect::from_min_size(pos2(pic.left() - 16.0 - ARROW, y), vec2(ARROW, ARROW));
-                let next = Rect::from_min_size(pos2(pic.right() + 16.0, y), vec2(ARROW, ARROW));
-                if arrow_button(ui, prev, Id::new("zoom-prev"), true, tl!("Previous picture (←)"), t) {
-                    self.flip_shot(count, false);
+                if count > 1 {
+                    let y = pic.center().y - ARROW / 2.0;
+                    let prev = Rect::from_min_size(pos2(pic.left() - 16.0 - ARROW, y), vec2(ARROW, ARROW));
+                    let next = Rect::from_min_size(pos2(pic.right() + 16.0, y), vec2(ARROW, ARROW));
+                    if arrow_button(ui, prev, Id::unique("zoom-prev"), true, tl!("Previous picture (←)"), t) {
+                        self.flip_shot(count, false);
+                    }
+                    if arrow_button(ui, next, Id::unique("zoom-next"), false, tl!("Next picture (→)"), t) {
+                        self.flip_shot(count, true);
+                    }
                 }
-                if arrow_button(ui, next, Id::new("zoom-next"), false, tl!("Next picture (→)"), t) {
-                    self.flip_shot(count, true);
+                let close =
+                    Rect::from_min_size(pos2(rect.right() - 16.0 - theme::CONTROL_H, rect.top() + 16.0), vec2(theme::CONTROL_H, theme::CONTROL_H));
+                let mut done = backdrop.clicked();
+                ui.scope_builder(egui::UiBuilder::new().max_rect(close), |ui| {
+                    done |= widgets::glyph_button(ui, Glyph::Close, tl!("Close (Esc)")).clicked();
+                });
+                if done {
+                    self.detail_zoom = false;
                 }
-            }
-            let close =
-                Rect::from_min_size(pos2(rect.right() - 16.0 - theme::CONTROL_H, rect.top() + 16.0), vec2(theme::CONTROL_H, theme::CONTROL_H));
-            let mut done = backdrop.clicked();
-            ui.scope_builder(egui::UiBuilder::new().max_rect(close), |ui| {
-                done |= widgets::glyph_button(ui, Glyph::Close, tl!("Close (Esc)")).clicked();
             });
-            if done {
-                self.detail_zoom = false;
-            }
-        });
     }
 
     /// The lead screenshot, its caption, and a row of thumbnails to switch between them. A picture
@@ -473,7 +485,7 @@ impl LauncherUi {
         let pic = match self.picture_source(details.id, current.key) {
             Some(lead) => {
                 let image = ui.add(egui::Image::new(lead).fit_to_exact_size(vec2(w, w * SHOT_ASPECT)).sense(Sense::click()));
-                image.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Button, true, tl!("Enlarge picture")));
+                image.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, true, tl!("Enlarge picture")));
                 let rect = image.rect;
                 // The arrows below are added after the picture, so they keep their own clicks.
                 if image.on_hover_cursor(egui::CursorIcon::ZoomIn).on_hover_text(tl!("Click to enlarge")).clicked() {
@@ -484,7 +496,7 @@ impl LauncherUi {
             None => {
                 let (rect, _) = ui.allocate_exact_size(vec2(w, w * SHOT_ASPECT), Sense::hover());
                 let failed = self.failure(details.id, current.key);
-                placeholder(ui, rect, Id::new("lead-placeholder"), failed.as_deref(), t, false);
+                placeholder(ui, rect, Id::unique("lead-placeholder"), failed.as_deref(), t, false);
                 rect
             }
         };
@@ -498,10 +510,10 @@ impl LauncherUi {
         let y = pic.center().y - ARROW / 2.0;
         let prev = Rect::from_min_size(pos2(pic.left() + 10.0, y), vec2(ARROW, ARROW));
         let next = Rect::from_min_size(pos2(pic.right() - 10.0 - ARROW, y), vec2(ARROW, ARROW));
-        if arrow_button(ui, prev, Id::new("shot-prev"), true, tl!("Previous picture (←)"), t) {
+        if arrow_button(ui, prev, Id::unique("shot-prev"), true, tl!("Previous picture (←)"), t) {
             self.flip_shot(count, false);
         }
-        if arrow_button(ui, next, Id::new("shot-next"), false, tl!("Next picture (→)"), t) {
+        if arrow_button(ui, next, Id::unique("shot-next"), false, tl!("Next picture (→)"), t) {
             self.flip_shot(count, true);
         }
         widgets::hud(ui, &format!("{} · {}/{count}", current.caption, self.detail_shot.min(count - 1) + 1), t.faint);
@@ -529,6 +541,7 @@ impl LauncherUi {
                 }
                 let stroke = if selected { Stroke::new(2.0, app_color) } else { t.hairline() };
                 ui.painter().rect_stroke(resp.rect, CornerRadius::ZERO, stroke, egui::StrokeKind::Inside);
+                resp.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, true, shot.caption));
                 if resp.on_hover_cursor(egui::CursorIcon::PointingHand).on_hover_text(shot.caption).clicked() {
                     self.detail_shot = i;
                 }
@@ -546,7 +559,7 @@ fn placeholder(ui: &mut Ui, rect: Rect, id: Id, failed: Option<&str>, t: &Tokens
     let galley = ui.painter().layout(text.to_string(), egui::FontId::proportional(13.5), ink, (rect.width() - 32.0).max(1.0));
     ui.painter().galley(rect.center() - galley.size() / 2.0, galley, ink);
     let resp = ui.interact(rect, id, Sense::hover());
-    resp.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Label, true, text));
+    resp.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Label, true, text));
     if let Some(why) = failed {
         resp.on_hover_text(why);
     }
@@ -563,7 +576,7 @@ fn step_button(ui: &mut Ui, left: bool, tip: &str, t: &Tokens) -> bool {
         vec![pos2(c.x - s * 3.0, c.y - 5.5), pos2(c.x + s * 3.0, c.y), pos2(c.x - s * 3.0, c.y + 5.5)],
         Stroke::new(1.75, ink),
     ));
-    resp.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Button, true, tip));
+    resp.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, true, tip));
     resp.on_hover_cursor(egui::CursorIcon::PointingHand).on_hover_text(tip).clicked()
 }
 
@@ -575,7 +588,7 @@ fn link_buttons(ui: &mut Ui, app: &CraftApp) {
         ui.spacing_mut().item_spacing.x = 8.0;
         for (label, url) in links {
             if widgets::button(ui, &format!("{label} ↗"), Kind::Secondary, 0.0).on_hover_text(url.as_str()).clicked() {
-                ui.ctx().open_url(egui::OpenUrl::new_tab(url));
+                widgets::open_external_link(ui.ctx(), &url);
             }
         }
     });
@@ -608,6 +621,6 @@ fn arrow_button(ui: &mut Ui, rect: Rect, id: Id, left: bool, tip: &str, t: &Toke
     let (c, s) = (rect.center(), if left { -1.0 } else { 1.0 });
     let points = vec![pos2(c.x - s * 3.5, c.y - 6.0), pos2(c.x + s * 3.5, c.y), pos2(c.x - s * 3.5, c.y + 6.0)];
     painter.add(egui::Shape::line(points, Stroke::new(1.75, ink)));
-    resp.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Button, true, tip));
+    resp.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, true, tip));
     resp.on_hover_cursor(egui::CursorIcon::PointingHand).on_hover_text(tip).clicked()
 }

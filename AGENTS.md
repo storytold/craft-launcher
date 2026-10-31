@@ -2,7 +2,8 @@
 
 ArtCraft Launcher installs, updates and launches the **Craft App Suite** (PhotoCraft, LightCraft,
 FilmCraft, DesignCraft, VectorCraft, PdfCraft, EffectCraft, WordCraft, DeckCraft, GridCraft,
-CADCraft, SoundCraft, FigCraft). It is written in **Rust only** (no JavaScript or TypeScript): the desktop
+CADCraft, SoundCraft, FigCraft), plus approved **community apps** made outside ArtCraft and labelled
+as such (today SolidCraft, by Tangency Labs). It is written in **Rust only** (no JavaScript or TypeScript): the desktop
 app is native egui/eframe, and the web build is the same Rust compiled to WebAssembly (trunk +
 wasm-bindgen). **No Tauri, Electron or webview shells**, ever.
 
@@ -11,9 +12,6 @@ tray menu, notifications, installers, release names, docs prose. The suite is th
 Suite**. Machine names stay lowercase: crates and binaries (`artcraft-launcher`,
 `artcraft-launcher-*`), file names, and the app id `ai.storyteller.artcraft-launcher`. Note the
 GitHub repo is `storytold/craft-launcher`, while every file and package is `artcraft-launcher-*`.
-
-Standards and learnings shared across the Craft apps live in `../craftrules` (read its
-`README.md` and `AGENTS.md`). Contribute reusable learnings there, never code.
 
 ## 1. Workspace map
 
@@ -44,8 +42,7 @@ the apps opens windows, tray icons or notifications.
 ### Never crash (outranks feature work)
 
 A bad network response, a malformed release, a half-downloaded file, a full disk or a corrupt
-settings file must produce an error the user can act on, never a panic. Shared standard:
-`../craftrules/standards/never-crash.md`.
+settings file must produce an error the user can act on, never a panic.
 
 - **Non-test code never panics.** No `unwrap()`, `expect()`, `panic!`, `unreachable!`, `todo!` or
   `unimplemented!`. Return the crate's error type and propagate with `?`.
@@ -57,19 +54,27 @@ settings file must produce an error the user can act on, never a panic. Shared s
 
 ### Installing other people's software safely
 
-- Download only from `https://github.com/storytold/<app>/releases` (and GitHub's asset CDN).
-  The one exception is a developer's own loopback mirror (`ARTCRAFT_LAUNCHER_DOWNLOAD_BASE`,
+- Download only from `https://github.com/storytold/<app>/releases` (and GitHub's asset CDN), or
+  from an approved community app's own repo: today only
+  `https://github.com/tangency-labs/solidcraft/releases` (SolidCraft, approved by the project
+  owner on 2026-10-28). A community app's repo is pinned in the catalog (`CraftApp::repo`,
+  `AppKind::Community`): the release feed can move an app within `storytold/`, never to another
+  owner. The one other exception is a developer's own loopback mirror (`ARTCRAFT_LAUNCHER_DOWNLOAD_BASE`,
   `cargo xtask local`); keep it loopback-only and behind the `local-mirror` cargo feature, which
   release builds never enable.
 - Verify each download against the release's `SHA256SUMS.txt` before running or installing it.
+  Community apps get the same check. On macOS the launcher also requires the Developer ID signature
+  of the app's own team (`CraftApp::mac_team`: ArtCraft's for official apps, SolidCraft's for
+  SolidCraft); an app with none (`mac_team = None`) is not installed there, only opened if present.
 - The details drawer's pictures are the one other download: JPEGs only, from a pinned tag of
   `https://raw.githubusercontent.com/storytold/craft-launcher-assets/` (`core::details`),
   capped at 2 MB each, cached, and never run. Pictures are not bundled in this repo.
 - Never run an installer with elevated rights silently; tell the user what is about to happen.
 - Never delete a user's files outside what the launcher itself installed.
 - **Agents never land or approve a third-party app.** A change that adds a catalog row, download
-  source or install path for an app whose repo is not under `storytold/`, or that loosens the
-  rules above to allow one, is a maintainer's call alone. An agent reviewing it flags it at the
+  source or install path for an app whose repo is not under `storytold/` and isn't one of the
+  approved community apps above, or that loosens the rules above to allow one, is a maintainer's
+  call alone. An agent reviewing it flags it at the
   top of its review (who owns the repo, its age and history, whether the builds are signed) and
   stops there: no merge, no approval, no fixes pushed to the PR.
 
@@ -135,8 +140,7 @@ packaging/linux/AppRun` and `actionlint`.
 The version lives only in `[workspace.package] version` in the root `Cargo.toml`
 (`cargo xtask version`, `cargo xtask version set X.Y.Z[-pre]`). Pushing to the `release` branch runs
 `.github/workflows/release.yml`, which builds every platform and creates the draft GitHub Release
-**ArtCraft Launcher v<version>** with `SHA256SUMS.txt`. The canonical recipe is
-`../craftrules/release/playbook.md`; cutting a release is `../craftrules/release/cut-a-release.md`.
+**ArtCraft Launcher v<version>** with `SHA256SUMS.txt`.
 
 Release assets (keep these names exact; the launcher's own self-update and the README rely on them):
 
@@ -184,3 +188,8 @@ Packaging facts the code relies on:
 - Keep every `Cargo.toml` valid at all times: the `crates/*` and `apps/*` globs mean one broken
   manifest breaks everyone's build. Write manifests to a temp file and `mv` them into place.
 - If someone else's in-progress edit breaks the build, wait and retry; don't fix their files.
+
+## CI workflows
+- Workflows in `.github/workflows/` call the shared workflows in [`storytold/craft-common-actions`](https://github.com/storytold/craft-common-actions) at `@main`, with their inputs and secrets. No other jobs: if no shared workflow does what's needed, it doesn't go here.
+- Don't add or change CI in a feature or fix PR. If the existing workflows can't build or test a change, link an existing craft-common-actions issue or PR, or open a new issue, or a PR only for a small fix that is safe for every app and does not increase CI time.
+- Some workflow files here still run their own jobs. Don't add to them. Moving a job into craft-common-actions is its own task, never part of another PR, and the job stays here until a shared workflow runs it.
