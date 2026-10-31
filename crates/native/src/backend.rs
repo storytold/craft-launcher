@@ -606,6 +606,21 @@ fn run_install(
     Ok(installed_text(app, existing.is_some(), &release))
 }
 
+/// Reports a launched app that quit in error right after starting, unless a job for it has started
+/// since then (an update, say), which reports its own end.
+fn start_failed(shared: Arc<Shared>, app: String) -> impl FnOnce(String) + Send + 'static {
+    move |e| {
+        let jobs = shared.jobs.lock().unwrap_or_else(PoisonError::into_inner);
+        if jobs.contains_key(&app) {
+            return;
+        }
+        // Queued under `jobs`, so a job starting now has its events land after this one.
+        shared.events.lock().unwrap_or_else(PoisonError::into_inner).push(Event::JobFinished { app, result: Err(e) });
+        drop(jobs);
+        (shared.waker)();
+    }
+}
+
 /// What a finished install tells the user.
 fn installed_text(app: &CraftApp, update: bool, release: &Release) -> String {
     let verb = if update { "updated to" } else { "installed:" };
@@ -1172,7 +1187,7 @@ impl Backend for NativeBackend {
             Command::Launch { app } => {
                 let Some(def) = CraftApp::by_id(&app) else { return };
                 let result = match self.installed(&app) {
-                    Some(inst) => install::launch(def, &inst, &self.paths),
+                    Some(inst) => install::launch(def, &inst, &self.paths, start_failed(self.shared.clone(), app.clone())),
                     None => Err(format!("{} isn't installed", def.name)),
                 };
                 if let Err(e) = result {
@@ -1805,6 +1820,40 @@ mod tests {
 
         backend.start_job(APP, Work::Uninstall);
         assert!(!received.recv_timeout(Duration::from_secs(2)).unwrap());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn an_app_that_quits_right_after_launch_is_reported() {
+        use std::os::unix::fs::PermissionsExt;
+        let Some(platform) = native_platform() else { return };
+        let dir = tempfile::tempdir().unwrap();
+        let exe = dir.path().join("photocraft");
+        std::fs::write(&exe, "#!/bin/sh\nexit 3\n").unwrap();
+        std::fs::set_permissions(&exe, std::fs::Permissions::from_mode(0o755)).unwrap();
+        let mut backend = backend(dir.path(), platform, None);
+        let installed = Installed { version: None, source: InstallSource::Binary, location: exe.to_string_lossy().into_owned(), package: None };
+        backend.shared.installed.lock().unwrap().insert(APP.to_string(), installed);
+
+        backend.send(Command::Launch { app: APP.to_string() });
+        let mut events = Vec::new();
+        wait_until(|| {
+            events.extend(backend.poll());
+            !events.is_empty()
+        });
+        let [Event::JobFinished { app, result: Err(e) }] = &events[..] else { panic!("{events:?}") };
+        assert_eq!((app.as_str(), e.as_str()), (APP, "PhotoCraft quit right after starting (exit status: 3)."));
+    }
+
+    #[test]
+    fn a_failed_start_isnt_reported_over_a_job_started_since() {
+        let shared = Arc::new(shared());
+        shared.jobs.lock().unwrap().insert(APP.to_string(), Arc::new(Stop::default()));
+        start_failed(shared.clone(), APP.to_string())("quit".into());
+        assert!(shared.events.lock().unwrap().is_empty());
+        shared.jobs.lock().unwrap().clear();
+        start_failed(shared.clone(), APP.to_string())("quit".into());
+        assert_eq!(shared.events.lock().unwrap().len(), 1);
     }
 
     /// Puts the planned download on disk, as a failed install leaves it.
