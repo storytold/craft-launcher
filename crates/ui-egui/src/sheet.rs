@@ -59,6 +59,7 @@ pub(crate) fn hero(ui: &mut Ui, icon: Option<ImageSource<'static>>, title: &str,
 pub(crate) fn accent_scroll(ui: &mut Ui, t: &Tokens, bar: Color32) -> egui::Visuals {
     ui.spacing_mut().scroll = egui::style::ScrollStyle::solid();
     ui.spacing_mut().scroll.bar_width = 10.0;
+    ui.spacing_mut().scroll.bar_inner_margin = 0.0;
     let page = ui.visuals().clone();
     let v = ui.visuals_mut();
     v.extreme_bg_color = t.bg.blend(tint(bar, if t.dark { 0.14 } else { 0.10 }));

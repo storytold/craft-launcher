@@ -2903,3 +2903,100 @@ fn an_apps_page_is_a_card_in_the_middle_with_next_and_previous_arrows_and_closes
     h.run_steps(30);
     assert!(!showing(&h, "photocraft"), "a click outside did not close it");
 }
+
+#[test]
+fn scrolling_an_apps_page_compacts_the_hero_and_keeps_navigation_and_actions_visible() {
+    use artcraft_launcher_core::details::AppDetails;
+    let mut h = short_window(Rc::new(Cell::new(false)));
+    h.set_size(egui::vec2(1180.0, 720.0));
+    h.run_steps(16);
+    h.get_by_label("PhotoCraft details").click();
+    h.run_steps(20);
+
+    let headline = AppDetails::by_id("photocraft").unwrap().headline;
+    assert!(h.query_all_by_label_contains(headline).count() >= 2, "expanded hero shows the headline");
+    assert!(h.query_by_label("Website ↗").is_some(), "expanded hero shows external links");
+    let close_before = h.get_by_label("Close (Esc)").rect();
+    let lead_before = h.get_by_label("Enlarge picture").rect();
+
+    let hero_action = |h: &Harness<'_, _>| {
+        h.query_all_by_label("More actions for PhotoCraft").map(|n| n.rect()).min_by(|a, b| a.top().total_cmp(&b.top())).expect("hero action button")
+    };
+    let action_before = hero_action(&h);
+
+    // First scroll minimizes the hero bar without scrolling the body content yet,
+    // smoothly gliding the primary action button from its expanded slot into the compact bar.
+    turn_wheel(&mut h, 8.0);
+    h.run_steps(4);
+    let action_mid = hero_action(&h);
+    h.run_steps(45);
+    let action_compact = hero_action(&h);
+    assert!(
+        action_mid.top() < action_before.top() - 2.0 && action_mid.top() > action_compact.top() + 2.0,
+        "primary action glides vertically instead of snapping: before={action_before:?} mid={action_mid:?} compact={action_compact:?}"
+    );
+    assert!(
+        action_mid.right() < action_before.right() - 2.0 && action_mid.right() > action_compact.right() + 2.0,
+        "primary action glides horizontally instead of snapping: before={action_before:?} mid={action_mid:?} compact={action_compact:?}"
+    );
+
+    // Navigation (< > ×), app name and primary action stay visible at the top of the card,
+    // while the headline, version and external links hide so the body gets more room.
+    let close_scrolled = h.get_by_label("Close (Esc)").rect();
+    let next_scrolled = h.get_by_label("Next app").rect();
+    let prev_scrolled = h.get_by_label("Previous app").rect();
+    let lead_after_minimize = h.get_by_label("Enlarge picture").rect();
+    assert!(close_scrolled.top() >= 0.0 && close_scrolled.bottom() <= 120.0, "{close_scrolled:?}");
+    assert!((close_scrolled.center().y - next_scrolled.center().y).abs() < 2.0);
+    assert!((close_scrolled.center().y - prev_scrolled.center().y).abs() < 2.0);
+    assert!((close_scrolled.top() - close_before.top()).abs() < 20.0, "controls stay near the top edge");
+    assert!(h.query_by_label("Website ↗").is_none(), "compact hero hides external links");
+    assert_eq!(h.query_all_by_label_contains(headline).count(), 1, "only the background card still has the headline");
+    assert!(lead_after_minimize.top() < lead_before.top(), "minimizing the bar rises the body into the freed space");
+    // The compact bar's bottom is 12 px below the close button, and the body starts 24 px (PAD) below that:
+    // no content has scrolled off under the bar yet.
+    let compact_bar_bottom = close_scrolled.bottom() + 12.0;
+    assert!((lead_after_minimize.top() - (compact_bar_bottom + 24.0)).abs() < 2.0, "body stays at offset 0 until minimized: {lead_after_minimize:?}");
+    h.check_accessibility();
+
+    // Second scroll (now that the bar is minimized) scrolls the body content itself.
+    turn_wheel(&mut h, 8.0);
+    h.run_steps(45);
+    let lead_after_scroll = h.get_by_label("Enlarge picture").rect();
+    assert!(lead_after_scroll.top() < lead_after_minimize.top() - 40.0, "subsequent scroll moves the body content: {lead_after_scroll:?}");
+
+    // Scrolling back to the top restores the full hero.
+    turn_wheel(&mut h, -16.0);
+    h.run_steps(45);
+    assert!(h.query_by_label("Website ↗").is_some(), "scrolling back to top restores external links");
+    assert!(h.query_all_by_label_contains(headline).count() >= 2, "scrolling back to top restores the headline");
+
+    // Dragging the scroll bar thumb down and back up with the mouse smoothly collapses the hero,
+    // scrolls the body, and restores the full hero at the top.
+    let bar_x = close_before.right() + 24.0 + 5.0;
+    let start_pos = egui::pos2(bar_x, 60.0);
+    h.hover_at(start_pos);
+    h.run_steps(2);
+    h.drag_at(start_pos);
+    h.run_steps(2);
+    for step in 1..=15 {
+        let y = 60.0 + (step as f32) * 20.0;
+        h.hover_at(egui::pos2(bar_x, y));
+        h.run_steps(2);
+    }
+    let lead_dragged_down = h.get_by_label("Enlarge picture").rect();
+    assert!(h.query_by_label("Website ↗").is_none(), "dragging the scroll bar down compacts the hero");
+    assert!(lead_dragged_down.top() < lead_after_minimize.top() - 40.0, "dragging the scroll bar down scrolls the body: {lead_dragged_down:?}");
+
+    for step in (0..15).rev() {
+        let y = 60.0 + (step as f32) * 20.0;
+        h.hover_at(egui::pos2(bar_x, y));
+        h.run_steps(2);
+    }
+    h.drop_at(start_pos);
+    h.run_steps(4);
+    let lead_dragged_up = h.get_by_label("Enlarge picture").rect();
+    assert!(h.query_by_label("Website ↗").is_some(), "dragging the scroll bar back to the top restores external links");
+    assert!(h.query_all_by_label_contains(headline).count() >= 2, "dragging the scroll bar back to the top restores the headline");
+    assert!((lead_dragged_up.top() - lead_before.top()).abs() < 2.0, "body returns to the top after dragging the scroll bar up: {lead_dragged_up:?}");
+}
