@@ -4,6 +4,7 @@
 //! Upper-case text is drawn upper case but announced to screen readers as written.
 
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 use egui::{Color32, CornerRadius, Galley, Rect, Response, RichText, Sense, Stroke, Ui, vec2};
 
@@ -20,10 +21,37 @@ pub fn tone_color(t: &Tokens, tone: Tone) -> Color32 {
     }
 }
 
+/// Whether the Georgian face in use draws Mtavruli (U+1C90–U+1CBF), the capitals Unicode maps
+/// Georgian letters to. Set when the face loads; until then, and without one, Georgian stays as
+/// written, since a face without them (DejaVu Sans, older Sylfaen) would draw boxes.
+static GEORGIAN_CAPS: AtomicBool = AtomicBool::new(false);
+
+#[cfg_attr(target_arch = "wasm32", allow(dead_code))]
+pub(crate) fn set_georgian_caps(on: bool) {
+    GEORGIAN_CAPS.store(on, Ordering::Relaxed);
+}
+
+/// `text` in upper case. Georgian goes to Mtavruli only when the face draws it.
+fn upper(text: &str) -> String {
+    upper_with(text, GEORGIAN_CAPS.load(Ordering::Relaxed))
+}
+
+/// [`upper`] with the face's Georgian capitals given rather than read from [`GEORGIAN_CAPS`].
+fn upper_with(text: &str, georgian_caps: bool) -> String {
+    text.chars().fold(String::with_capacity(text.len()), |mut out, c| {
+        if !georgian_caps && ('\u{10d0}'..='\u{10ff}').contains(&c) {
+            out.push(c);
+        } else {
+            out.extend(c.to_uppercase());
+        }
+        out
+    })
+}
+
 /// `text` laid out upper case in `family`, `spacing` points between letters.
 pub fn caps(ui: &Ui, text: &str, size: f32, family: egui::FontFamily, spacing: f32, color: Color32) -> Arc<Galley> {
     let format = egui::TextFormat { font_id: egui::FontId::new(size, family), color, extra_letter_spacing: spacing, ..Default::default() };
-    ui.painter().layout_job(egui::text::LayoutJob::single_section(text.to_uppercase(), format))
+    ui.painter().layout_job(egui::text::LayoutJob::single_section(upper(text), format))
 }
 
 /// A `.hud-label`: 11 px Geist Mono, upper case, widely spaced.
@@ -67,7 +95,7 @@ pub fn hud_elided_spans(ui: &mut Ui, spans: &[(&str, Color32)], max_width: f32) 
             extra_letter_spacing: theme::HUD_SPACING,
             ..Default::default()
         };
-        job.append(&text.to_uppercase(), 0.0, format);
+        job.append(&upper(text), 0.0, format);
     }
     job.wrap = egui::text::TextWrapping::truncate_at_width(max_width.min(ui.available_width()).max(0.0));
     let galley = ui.painter().layout_job(job);
@@ -775,5 +803,13 @@ mod tests {
                 assert_ne!(a, b, "two glyphs share one bounding box");
             }
         }
+    }
+
+    #[test]
+    fn upper_keeps_georgian_unless_the_face_has_capitals() {
+        // The capability is passed in: `GEORGIAN_CAPS` is shared with tests that load a face.
+        assert_eq!(super::upper_with("Update all (2)", false), "UPDATE ALL (2)");
+        assert_eq!(super::upper_with("ყველას განახლება (2) · ArtCraft", false), "ყველას განახლება (2) · ARTCRAFT");
+        assert_eq!(super::upper_with("ყველას განახლება · ArtCraft", true), "ᲧᲕᲔᲚᲐᲡ ᲒᲐᲜᲐᲮᲚᲔᲑᲐ · ARTCRAFT");
     }
 }

@@ -400,6 +400,26 @@ fn japanese_locales_and_counts_work() {
     assert_eq!(message(Lang::JA, "PhotoCraft updated to 0.5.0"), "PhotoCraft を 0.5.0 に更新しました");
 }
 
+#[test]
+fn georgian_locales_and_counts_work() {
+    for tag in ["ka", "ka-GE", "ka_GE.UTF-8", "KA_ge"] {
+        assert_eq!(lang_from_tag(tag), Some(Lang::KA), "{tag}");
+    }
+    assert_eq!(super::detect::first_supported(["xx-XX", "ka-GE", "en-US"]), Some(Lang::KA));
+    // After a number the noun stays singular, so both forms are the same; 1 is still "one".
+    for n in [0, 1, 2, 21, 100] {
+        assert_eq!(trn(Lang::KA, n, "{n} app", "{n} apps"), format!("{n} აპლიკაცია"));
+        assert_eq!(trn(Lang::KA, n, "{n} day ago", "{n} days ago"), format!("{n} დღის წინ"));
+    }
+    assert_eq!(trn(Lang::KA, 2, "{n} unknown item", "{n} unknown items"), "2 unknown items");
+    assert_eq!(tr(Lang::KA, "Untranslated diagnostic"), "Untranslated diagnostic");
+    assert_eq!(super::tr_ctx(Lang::KA, "month", "Mar"), "მარ");
+    assert_eq!(tr(Lang::KA, "{month} {day}, {year}"), "{day} {month}, {year}");
+    assert_eq!(message(Lang::KA, "PhotoCraft updated to 0.5.0"), "PhotoCraft განახლდა ვერსიამდე 0.5.0");
+    // Georgian has no letter case: no Mtavruli (U+1C90–U+1CBF) in the interface.
+    assert!(!Lang::KA.0.source.chars().any(|c| ('\u{1c90}'..='\u{1cbf}').contains(&c)));
+}
+
 /// With the system's Chinese font installed, every UI family can draw the whole Chinese catalog.
 /// Machines without one (CI, the web) skip this; the UI then stays in English.
 #[test]
@@ -468,6 +488,40 @@ fn system_font_covers_japanese_in_every_ui_family() {
     }
 }
 
+/// With a system Georgian font installed, every UI family can draw the whole Georgian catalog.
+/// Machines without one (the web, minimal Linux installs) skip this.
+#[test]
+fn system_font_covers_georgian_in_every_ui_family() {
+    use egui::{FontFamily, FontId};
+    if !crate::theme::cjk_font_available(Lang::KA) {
+        return;
+    }
+    let ctx = egui::Context::default();
+    crate::theme::install_fonts(&ctx, Some(Lang::KA));
+    let mut output = ctx.run_ui(egui::RawInput::default(), |_| {});
+    output.textures_delta.clear();
+    let text: String = Lang::KA
+        .0
+        .source
+        .lines()
+        .filter_map(|line| line.split('\t').nth(2))
+        .flat_map(str::chars)
+        .filter(|c| ('\u{10d0}'..='\u{10ff}').contains(c))
+        .collect();
+    assert!(text.chars().count() > 1000);
+    for family in [
+        FontFamily::Proportional,
+        FontFamily::Monospace,
+        crate::theme::medium(),
+        crate::theme::semibold(),
+        crate::theme::display(),
+        crate::theme::mono(),
+        crate::theme::mono_bold(),
+    ] {
+        ctx.fonts_mut(|fonts| assert!(fonts.has_glyphs(&FontId::new(14.0, family.clone()), &text), "missing glyph in {family:?}"));
+    }
+}
+
 #[test]
 fn language_labels_come_from_the_registry() {
     use crate::settings::Settings;
@@ -480,6 +534,8 @@ fn language_labels_come_from_the_registry() {
     assert_eq!(Settings::language_label(Lang::ZH_CN.code(), Some(Lang::ZH_CN)), "Simplified Chinese (简体中文)");
     assert_eq!(Settings::language_label(Lang::JA.code(), Some(Lang::ZH_CN)), "Japanese");
     assert_eq!(Settings::language_label(Lang::JA.code(), Some(Lang::JA)), "Japanese (日本語)");
+    assert_eq!(Settings::language_label(Lang::KA.code(), None), "Georgian");
+    assert_eq!(Settings::language_label(Lang::KA.code(), Some(Lang::KA)), "Georgian (ქართული)");
     assert_eq!(Settings::language_label(Settings::LANGUAGE_AUTO, None), "Auto");
     assert_eq!(Settings::language_label("xx", None), "Auto");
 }
