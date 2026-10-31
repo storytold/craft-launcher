@@ -158,8 +158,14 @@ impl LauncherUi {
         let pref = crate::i18n::Lang::from_pref(&self.settings.language);
         if pref.needs_cjk_font() && !theme::cjk_font_available(pref) {
             // In English on purpose: the language asked for can't be drawn.
-            let text = "No font for this language was found on this system, so the interface stays in English. \
-                        Installing one (for example Noto Sans CJK) and restarting fixes it.";
+            let font_example = match pref.script() {
+                Some(crate::i18n::Script::Hebrew) => "Noto Sans Hebrew",
+                _ => "Noto Sans CJK",
+            };
+            let text = format!(
+                "No font for this language was found on this system, so the interface stays in English. \
+                 Installing one (for example {font_example}) and restarting fixes it."
+            );
             ui.add(egui::Label::new(RichText::new(text).size(12.0).color(t.warn)).wrap());
             ui.add_space(14.0);
         }

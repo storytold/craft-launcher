@@ -40,6 +40,7 @@ fn script_name(script: Script) -> &'static str {
     match script {
         Script::Chinese => "Chinese",
         Script::Japanese => "Japanese",
+        Script::Hebrew => "Hebrew",
     }
 }
 
@@ -48,6 +49,9 @@ fn script_families(script: Script) -> &'static str {
     match script {
         Script::Chinese => "PingFang SC, Hiragino Sans GB, Heiti SC, Microsoft YaHei, SimSun, Noto Sans CJK SC, WenQuanYi and MiSans",
         Script::Japanese => "Hiragino Sans, Yu Gothic, Meiryo, MS Gothic, Noto Sans CJK JP, Noto Sans JP, IPAGothic and TakaoGothic",
+        Script::Hebrew => {
+            "SF Hebrew, Arial Hebrew, Arial, Segoe UI, Noto Sans Hebrew, Heebo, Rubik, Assistant, David Libre, FreeSans and DejaVu Sans"
+        }
     }
 }
 
@@ -84,6 +88,7 @@ pub(crate) fn load(script: Script) -> Option<FontData> {
     None
 }
 
+/// Reads a font file up to [`MAX_FONT_BYTES`], returning `None` if missing, not a regular file, or oversized.
 fn read(path: &Path) -> Option<Vec<u8>> {
     let meta = std::fs::metadata(path).ok()?;
     if !meta.is_file() {
@@ -123,6 +128,7 @@ fn candidates(script: Script) -> Vec<Candidate> {
     match script {
         Script::Chinese => chinese_candidates(),
         Script::Japanese => japanese_candidates(),
+        Script::Hebrew => hebrew_candidates(),
     }
 }
 
@@ -305,6 +311,76 @@ fn japanese_candidates() -> Vec<Candidate> {
     out
 }
 
+/// The free OFL Hebrew faces a user may install by hand, by family preference.
+const HEBREW_USER_FILES: [(&str, &str); 6] = [
+    ("NotoSansHebrew-Regular.ttf", "Noto Sans Hebrew"),
+    ("Rubik-Regular.ttf", "Rubik"),
+    ("Heebo-Regular.ttf", "Heebo"),
+    ("Assistant-Regular.ttf", "Assistant"),
+    ("DavidLibre-Regular.ttf", "David Libre"),
+    ("Alef-Regular.ttf", "Alef"),
+];
+
+/// Where each system keeps a Hebrew font, best first.
+fn hebrew_candidates() -> Vec<Candidate> {
+    let mut out = Vec::new();
+    let mut add = |path: PathBuf, family: &'static str| out.push(Candidate { path, family });
+    #[cfg(target_os = "macos")]
+    {
+        add("/System/Library/Fonts/SFHebrew.ttf".into(), "SF Hebrew");
+        for path in mac_font_assets("SFHebrew.ttf") {
+            add(path, "SF Hebrew");
+        }
+        add("/System/Library/Fonts/ArialHB.ttc".into(), "Arial Hebrew");
+        add("/System/Library/Fonts/Supplemental/Arial Unicode.ttf".into(), "Arial Unicode MS");
+        add("/System/Library/Fonts/Supplemental/Arial.ttf".into(), "Arial");
+    }
+    #[cfg(target_os = "windows")]
+    {
+        let root = std::env::var_os("SystemRoot").map_or_else(|| PathBuf::from(r"C:\Windows"), PathBuf::from);
+        add(root.join("Fonts").join("segoeui.ttf"), "Segoe UI");
+        add(root.join("Fonts").join("arial.ttf"), "Arial");
+        add(root.join("Fonts").join("david.ttf"), "David");
+    }
+    #[cfg(all(unix, not(target_os = "macos")))]
+    {
+        const NOTO_DIRS: [&str; 8] = [
+            "/usr/share/fonts/truetype/noto",
+            "/usr/share/fonts/opentype/noto",
+            "/usr/share/fonts/noto",
+            "/usr/share/fonts/google-noto-vf",
+            "/usr/share/fonts/google-noto-sans-hebrew-vf-fonts",
+            "/usr/share/fonts/google-noto-sans-hebrew-fonts",
+            "/usr/local/share/fonts/noto",
+            "/usr/local/share/fonts",
+        ];
+        for file in ["NotoSansHebrew-Regular.ttf", "NotoSansHebrew-Regular.otf", "NotoSansHebrew[wdth,wght].ttf"] {
+            for dir in NOTO_DIRS {
+                add(Path::new(dir).join(file), "Noto Sans Hebrew");
+            }
+        }
+        const FALLBACK_DIRS: [&str; 6] = [
+            "/usr/share/fonts/truetype/freefont",
+            "/usr/share/fonts/gnu-free",
+            "/usr/share/fonts/truetype/dejavu",
+            "/usr/share/fonts/TTF",
+            "/usr/share/fonts/dejavu-sans-fonts",
+            "/usr/local/share/fonts",
+        ];
+        for (file, family) in [("FreeSans.ttf", "FreeSans"), ("DejaVuSans.ttf", "DejaVu Sans")] {
+            for dir in FALLBACK_DIRS {
+                add(Path::new(dir).join(file), family);
+            }
+        }
+    }
+    for (file, family) in HEBREW_USER_FILES {
+        for dir in user_font_dirs() {
+            add(dir.join(file), family);
+        }
+    }
+    out
+}
+
 /// `file` in macOS's downloaded font assets:
 /// `/System/Library/AssetsV2/com_apple_MobileAsset_Font*/*.asset/AssetData/<file>`.
 #[cfg(target_os = "macos")]
@@ -392,6 +468,18 @@ mod tests {
         let first_misans = chinese_candidates().iter().position(|c| c.family == "MiSans").unwrap();
         assert!(chinese_candidates()[..first_misans].iter().all(|c| c.family != "MiSans"));
         assert!(first_misans > 0, "the system's own fonts come first");
+    }
+
+    /// System Hebrew fonts come before user-installed OFL Hebrew faces, and every path is absolute.
+    #[test]
+    fn hebrew_candidates_include_system_and_user_fonts() {
+        let cands = hebrew_candidates();
+        let names: Vec<String> = cands.iter().filter_map(|c| c.path.file_name().map(|n| n.to_string_lossy().into_owned())).collect();
+        assert!(names.iter().any(|n| n == "NotoSansHebrew-Regular.ttf"), "{names:?}");
+        assert!(names.iter().any(|n| n == "Rubik-Regular.ttf"), "{names:?}");
+        assert!(cands.iter().all(|c| c.path.is_absolute() || c.path.starts_with("/")));
+        let first_rubik = cands.iter().position(|c| c.family == "Rubik").unwrap();
+        assert!(first_rubik > 0, "the system's own Hebrew fonts come first");
     }
 
     #[test]
