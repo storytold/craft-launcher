@@ -1,4 +1,4 @@
-# Incident: antivirus flagged the launcher during Update all on Windows
+# Incident: antivirus flagged ArtCraft Launcher during Update all on Windows
 
 Status (2026-10-31): the Update all route is reverted on `main` (#1077) but not yet released. The
 same elevated PowerShell route is still used by all-users downgrades, and no test has confirmed
@@ -6,20 +6,21 @@ that the revert stops the detection. See [Still open](#still-open).
 
 ## Summary
 
-Since v0.10.0, updating two or more all-users apps together ran installers through a hidden,
+Since v0.10.0, updating two or more all-users apps together normally ran installers through a hidden,
 elevated PowerShell with a Base64 script. Users soon reported antivirus flags during Update all.
 Kaspersky's report in #1045 shows a behavioural `PDM:Trojan.Win32.Generic` detection. It killed
 and deleted `artcraft-launcher.exe` and removed its shortcut and registry entry, and the reporter
-had to reinstall the launcher and every app.
+had to reinstall ArtCraft Launcher and every app.
 
-The launcher was not doing anything malicious: packages were checked against their release
-checksums, and Windows still showed a permission prompt. The route is treated as the cause because
-the evidence below points to it, not because the detection has been reproduced.
+Nothing found so far suggests malicious intent: this code only ran `msiexec` on packages checked
+against their release checksums, and Windows still showed a permission prompt. The route is treated
+as the cause because the evidence below points to it, not because the detection has been reproduced.
 
 ## What triggered it
 
-#974 added one permission prompt for an Update all of all-users apps. For two or more apps, the
-launcher:
+#974 added one permission prompt for an Update all of all-users apps. For two or more apps, unless
+the batch was too long or PowerShell could not start (each app then got its own `msiexec` prompt),
+ArtCraft Launcher:
 
 1. started a hidden `powershell.exe`;
 2. asked for elevation with `Start-Process -Verb RunAs -WindowStyle Hidden`;
@@ -48,7 +49,7 @@ Pointing to this route:
 
 - The Update all reports began about three hours after v0.10.0 was released.
 - #1027 separates the two routes: one at a time works, and Update all gets flagged.
-- The #1045 detection is behavioural, so it depends on what the launcher does when it runs.
+- The #1045 detection is behavioural, so it depends on what ArtCraft Launcher does when it runs.
 
 Not established:
 
@@ -57,7 +58,7 @@ Not established:
 
 The Avast `FileRepMalware` flag in #251 predates this route and is a separate reputation flag.
 
-## File scans can't detect this
+## File scans didn't detect this
 
 On 2026-10-31, no VirusTotal engine flagged these builds, and Kaspersky's engine showed
 `undetected` on all of them:
@@ -71,8 +72,9 @@ On 2026-10-31, no VirusTotal engine flagged these builds, and Kaspersky's engine
 | v0.11.0 zip | Yes | 0 / 0 | New scan |
 
 VirusTotal's sandbox run of the v0.11.0 MSI shows no PowerShell, because the route needs two or
-more outdated all-users apps and someone to accept the prompt. A clean scan therefore says nothing
-about this kind of detection, and neither Windows CI nor a VirusTotal check would have caught it.
+more outdated all-users apps and someone to accept the prompt. These clean scans therefore say
+little about this kind of detection, and neither our Windows CI nor these VirusTotal results flagged
+the route.
 
 ## What changed
 
@@ -99,8 +101,8 @@ about this kind of detection, and neither Windows CI nor a VirusTotal check woul
 
 ## For next time
 
-- Don't start hidden, elevated or encoded PowerShell from the launcher. Prefer one prompt per app
+- Don't start hidden, elevated or encoded PowerShell from ArtCraft Launcher. Prefer one prompt per app
   to a script that behaves like malware. Bringing back a single prompt needs a different design,
   such as a signed helper.
 - Before releasing a change to how Windows installs run, try it on a machine with behavioural
-  antivirus on. File scans and CI won't show this kind of problem.
+  antivirus on. File scans and CI didn't show this problem.
