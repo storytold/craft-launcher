@@ -90,8 +90,10 @@ impl FeedThrottle {
     /// changes. A missing or malformed file just means no backoff is pending.
     pub fn load(file: &Path, now: i64) -> Self {
         let mut saved = std::fs::read(file).ok().and_then(|b| serde_json::from_slice::<Saved>(&b).ok()).unwrap_or_default();
-        // A wait far in the future means a broken file or a clock that jumped back: drop it.
-        if saved.not_before > now + MAX_THROTTLE_BACKOFF * 2 {
+        // A saved wait outside the sane range means a broken file, an edited value or a clock
+        // that jumped: drop it. A `not_before` near `i64::MIN` would otherwise wrap the
+        // subtraction in `wait` into a centuries-long wait (#774).
+        if !(0..=now.saturating_add(MAX_THROTTLE_BACKOFF * 2)).contains(&saved.not_before) {
             saved.not_before = 0;
         }
         Self { saved, file: Some(file.to_path_buf()), ..Self::new() }
@@ -112,7 +114,7 @@ impl FeedThrottle {
             let gap = WARM_GAPS.get(self.saved.failures as usize).or(WARM_GAPS.last()).copied().unwrap_or(WINDOW);
             at = at.max(last + gap);
         }
-        (at - now).max(0)
+        at.saturating_sub(now).max(0)
     }
 
     /// Notes that a request is being sent now.
@@ -373,6 +375,18 @@ mod tests {
         std::fs::write(&file, br#"{"not_before": 99999999999, "throttles": 3}"#).unwrap();
         assert_eq!(FeedThrottle::load(&file, NOW).wait(NOW), 0);
         std::fs::write(&file, br#"{"unknown": true}"#).unwrap();
+        assert_eq!(FeedThrottle::load(&file, NOW).wait(NOW), 0);
+    }
+
+    #[test]
+    fn an_absurdly_old_saved_not_before_is_no_wait() {
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join("feed-throttle.json");
+        // A hostile or corrupted `not_before` near i64::MIN once wrapped `at - now` into a
+        // wait of centuries (a debug-build panic, #774).
+        std::fs::write(&file, br#"{"not_before": -9223372036854775808, "throttles": 1}"#).unwrap();
+        assert_eq!(FeedThrottle::load(&file, NOW).wait(NOW), 0);
+        std::fs::write(&file, br#"{"not_before": -60, "throttles": 1}"#).unwrap();
         assert_eq!(FeedThrottle::load(&file, NOW).wait(NOW), 0);
     }
 }
