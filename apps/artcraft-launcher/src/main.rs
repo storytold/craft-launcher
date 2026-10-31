@@ -65,6 +65,39 @@ fn main() -> ExitCode {
         println!("artcraft-launcher {}", env!("CARGO_PKG_VERSION"));
         return ExitCode::SUCCESS;
     }
+    if args.first().is_some_and(|a| a == "--qualify-install") {
+        return match artcraft_launcher_native::qualification::run(&args[1..]) {
+            Ok(()) => ExitCode::SUCCESS,
+            Err(error) => {
+                eprintln!("installation qualification: {error}");
+                ExitCode::FAILURE
+            }
+        };
+    }
+    if args.first().is_some_and(|a| a == "--qualify-self-update") {
+        return match artcraft_launcher_native::qualification::update(&args[1..]) {
+            Ok(()) => ExitCode::SUCCESS,
+            Err(error) => {
+                eprintln!("self-update qualification: {error}");
+                ExitCode::FAILURE
+            }
+        };
+    }
+    let qualification_ui = if args.first().is_some_and(|a| a == "--qualify-ui") {
+        let result = args
+            .get(1)
+            .ok_or_else(|| "--qualify-ui needs a qualification root".to_string())
+            .and_then(|root| artcraft_launcher_native::qualification::ui_report(std::path::Path::new(root)));
+        match result {
+            Ok(path) => Some(path),
+            Err(error) => {
+                eprintln!("UI qualification: {error}");
+                return ExitCode::FAILURE;
+            }
+        }
+    } else {
+        None
+    };
     let mut hidden = args.iter().any(|a| a == login::HIDDEN_FLAG);
 
     let wake: Wake = Arc::new(OnceLock::new());
@@ -129,12 +162,15 @@ fn main() -> ExitCode {
         if window {
             let result = {
                 let (waker, launcher) = (waker.clone(), &mut launcher);
+                let qualification_ui = qualification_ui.clone();
                 eframe::run_native(
                     "ArtCraft Launcher",
                     native_options(hidden),
                     Box::new(move |cc| {
                         launcher.open(cc, &waker);
-                        Ok(Box::new(Shell::new(cc, launcher, hidden)))
+                        let mut shell = Shell::new(cc, launcher, hidden);
+                        shell.qualification_ui = qualification_ui.clone();
+                        Ok(Box::new(shell))
                     }),
                 )
             };
@@ -747,6 +783,8 @@ struct Shell<'a> {
     window_hides: bool,
     visible: bool,
     quitting: bool,
+    qualification_ui: Option<PathBuf>,
+    qualification_frames: u8,
     /// The "show on the current desktop" setting last applied to the window (macOS).
     #[cfg_attr(not(target_os = "macos"), allow(dead_code))]
     applied_follow: Option<bool>,
@@ -757,7 +795,8 @@ impl<'a> Shell<'a> {
         let window_hides = window_can_hide(cc.display_handle().ok().map(|d| d.as_raw()));
         // Started hidden at login but there's no tray to come back from: show the window.
         let visible = !hidden || launcher.tray.is_none();
-        let mut shell = Self { launcher, window_hides, visible: true, quitting: false, applied_follow: None };
+        let mut shell =
+            Self { launcher, window_hides, visible: true, quitting: false, qualification_ui: None, qualification_frames: 0, applied_follow: None };
         if !visible {
             shell.put_away(&cc.egui_ctx);
         } else if hidden {
@@ -842,6 +881,18 @@ impl eframe::App for Shell<'_> {
 
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
         self.launcher.ui.ui(ui, &mut self.launcher.host);
+        if let Some(report) = &self.qualification_ui {
+            self.qualification_frames = self.qualification_frames.saturating_add(1);
+            if self.qualification_frames >= 3 {
+                // A missing/unwritable report is a failing smoke test in the external runner.
+                if let Err(error) = artcraft_launcher_native::paths::write_atomic(report, b"{\"schema\":1,\"ui_frames\":3}\n") {
+                    log::error!("UI qualification report: {error}");
+                }
+                self.quit(ui.ctx());
+            } else {
+                ui.ctx().request_repaint();
+            }
+        }
         ui.ctx().output_mut(|o| {
             o.commands.retain(|cmd| {
                 // The Discord deep link goes to the system opener, falling back to the web invite;
@@ -1136,7 +1187,15 @@ mod tests {
     fn quitting_overrides_a_close_to_the_tray() {
         let (mut launcher, _show, _) = launcher();
         let ctx = launcher.windowless.clone();
-        let mut shell = Shell { launcher: &mut launcher, window_hides: false, visible: true, quitting: false, applied_follow: None };
+        let mut shell = Shell {
+            launcher: &mut launcher,
+            window_hides: false,
+            visible: true,
+            quitting: false,
+            qualification_ui: None,
+            qualification_frames: 0,
+            applied_follow: None,
+        };
         shell.put_away(&ctx);
         assert!(shell.launcher.closed_to_tray);
         shell.quit(&ctx);
@@ -1147,7 +1206,15 @@ mod tests {
     fn a_window_that_hides_is_not_closed_to_the_tray() {
         let (mut launcher, _show, _) = launcher();
         let ctx = launcher.windowless.clone();
-        let mut shell = Shell { launcher: &mut launcher, window_hides: true, visible: true, quitting: false, applied_follow: None };
+        let mut shell = Shell {
+            launcher: &mut launcher,
+            window_hides: true,
+            visible: true,
+            quitting: false,
+            qualification_ui: None,
+            qualification_frames: 0,
+            applied_follow: None,
+        };
         shell.put_away(&ctx);
         assert!(!shell.visible);
         assert!(!shell.launcher.closed_to_tray);

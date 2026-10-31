@@ -57,3 +57,10 @@ licensed like those apps. Refresh them from the source path, never redraw them.
 |---|---|---|---|---|
 | `docs/brand/` (all files) | ArtCraft name, wordmark and mark | ArtCraft Team | getartcraft.com | Not open source; trademarks of the ArtCraft Team, [`docs/brand/LICENSE-brand.txt`](docs/brand/LICENSE-brand.txt) |
 | README app icons (linked, not copied) | Each Craft app's 64 px icon | ArtCraft Team and each app's contributors | `raw.githubusercontent.com/storytold/<app>/main/assets/app-icon/hicolor/64x64/apps/ai.storyteller.<app>.png` | MIT OR Apache-2.0 (each app's license) |
+
+## Release qualification fixtures
+
+| Path | Title | Author | Source | License |
+|---|---|---|---|---|
+| `packaging/e2e/fixtures/figcraft-0.12.1.sha256`, `figcraft-0.13.1.sha256` | Published release filenames and SHA-256 checksums | FigCraft release automation / ArtCraft contributors | Unmodified `SHA256SUMS.txt` from [v0.12.1](https://github.com/storytold/figcraft/releases/tag/v0.12.1) and [v0.13.1](https://github.com/storytold/figcraft/releases/tag/v0.13.1) | Machine-generated release metadata; source project MIT OR Apache-2.0, as above. No application payload bundled. |
+| `packaging/e2e/fixtures/launcher-0.9.0.sha256` | Published launcher release filenames and SHA-256 checksums | ArtCraft Launcher release automation / contributors | Unmodified `SHA256SUMS.txt` from [v0.9.0](https://github.com/storytold/craft-launcher/releases/tag/v0.9.0) | Machine-generated release metadata; source project MIT OR Apache-2.0. No application payload bundled. |

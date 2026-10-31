@@ -9,6 +9,10 @@ on:
         description: "Version override for a test run, e.g. 0.2.0-rc.1 (empty: Cargo.toml)"
         type: string
         default: ""
+      create-draft:
+        description: "Create/update a draft release after qualification (leave off for a test run)"
+        type: boolean
+        default: false
 
 permissions:
   contents: write
@@ -25,6 +29,10 @@ jobs:
       app-name: craft-launcher
       app-title: ArtCraft Launcher
       version: ${{ inputs.version }}
+      launcher-qualification: true
+      # Manual qualification is artifact-only by default. Release-branch pushes keep their
+      # established draft behavior, and still require successful candidate qualification.
+      create-draft: ${{ github.event_name == 'push' || inputs.create-draft }}
     secrets:
       APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
       APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}

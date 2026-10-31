@@ -1,0 +1,18 @@
+# The regular CI jobs already build/test native qualification code on Linux and Windows.
+# This cheap gate validates evidence/cleanup contracts without building seven more binaries.
+name: Qualification contract
+
+on:
+  pull_request:
+    paths: ["packaging/e2e/**", "crates/native/src/qualification*", "crates/native/src/qualification/**", ".github/workflows/**"]
+  push:
+    branches: [main, release]
+    paths: ["packaging/e2e/**", "crates/native/src/qualification*", "crates/native/src/qualification/**", ".github/workflows/**"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  contract:
+    uses: storytold/craft-common-actions/.github/workflows/launcher-qualification-contract.yml@main

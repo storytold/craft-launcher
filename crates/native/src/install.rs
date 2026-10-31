@@ -1473,7 +1473,7 @@ pub mod macos {
 
     use artcraft_launcher_core::version::Version;
 
-    use super::{CraftApp, InstallSource, Installed, Path, PathBuf, Paths, Release, process, staging_dir, swap_into_place};
+    use super::{CraftApp, InstallSource, Installed, Path, PathBuf, Paths, Release, process, swap_into_place};
 
     const SYSTEM_APPLICATIONS: &str = "/Applications";
 
