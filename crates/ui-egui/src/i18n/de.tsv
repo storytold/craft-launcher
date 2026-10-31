@@ -100,6 +100,8 @@
 	ArtCraft Launcher is still running	ArtCraft Launcher läuft weiter
 	It's in the tray: open it or quit it from the tray icon, or turn this off in the settings.	Er ist im Infobereich: dort über das Symbol öffnen oder beenden, oder das in den Einstellungen abschalten.
 	Show the window on the current desktop	Fenster auf dem aktuellen Schreibtisch zeigen
+	Hide the Dock icon while the window is closed	Dock-Symbol ausblenden, solange das Fenster geschlossen ist
+	The launcher stays in the menu bar only. Its Dock icon comes back when you open the window.	Der Launcher bleibt dann nur in der Menüleiste. Sein Dock-Symbol erscheint wieder, sobald du das Fenster öffnest.
 	Start ArtCraft Launcher when I log in	ArtCraft Launcher bei der Anmeldung starten
 	Community	Community
 	Questions, ideas and news from the ArtCraft team	Fragen, Ideen und Neuigkeiten vom ArtCraft-Team

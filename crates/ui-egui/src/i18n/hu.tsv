@@ -100,6 +100,8 @@
 	ArtCraft Launcher is still running	Az ArtCraft Launcher továbbra is fut
 	It's in the tray: open it or quit it from the tray icon, or turn this off in the settings.	A tálcára került: az ikonjáról megnyitható vagy bezárható, vagy kapcsolja ki ezt a beállításokban.
 	Show the window on the current desktop	Ablak megjelenítése az aktuális asztalon
+	Hide the Dock icon while the window is closed	Dock-ikon elrejtése, amíg az ablak zárva van
+	The launcher stays in the menu bar only. Its Dock icon comes back when you open the window.	Az ArtCraft Launcher ilyenkor csak a menüsorban látható. A Dock-ikonja az ablak megnyitásakor visszatér.
 	Start ArtCraft Launcher when I log in	ArtCraft Launcher indítása bejelentkezéskor
 	Community	Közösség
 	Questions, ideas and news from the ArtCraft team	Kérdések, ötletek és hírek az ArtCraft csapatától

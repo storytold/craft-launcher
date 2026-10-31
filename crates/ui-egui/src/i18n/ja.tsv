@@ -102,6 +102,8 @@
 	ArtCraft Launcher is still running	ArtCraft Launcher は実行中です
 	It's in the tray: open it or quit it from the tray icon, or turn this off in the settings.	トレイに入りました。トレイのアイコンから開くか終了できます。設定でこの動作を無効にすることもできます。
 	Show the window on the current desktop	現在のデスクトップにウィンドウを表示
+	Hide the Dock icon while the window is closed	ウィンドウを閉じている間は Dock のアイコンを隠す
+	The launcher stays in the menu bar only. Its Dock icon comes back when you open the window.	ランチャーはメニューバーにだけ表示されます。ウィンドウを開くと Dock のアイコンが戻ります。
 	Start ArtCraft Launcher when I log in	ログイン時に ArtCraft Launcher を起動
 	Community	コミュニティ
 	Questions, ideas and news from the ArtCraft team	ArtCraft チームからの質問、アイデア、ニュース

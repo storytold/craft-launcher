@@ -5,6 +5,8 @@
 #![cfg_attr(windows, windows_subsystem = "windows")]
 #![deny(clippy::unwrap_used, clippy::expect_used, clippy::panic, clippy::unimplemented, clippy::todo, clippy::unreachable)]
 
+#[cfg(target_os = "macos")]
+mod dock;
 mod logging;
 mod motion;
 mod settings_file;
@@ -418,6 +420,13 @@ enum OnClose {
     Quit,
 }
 
+/// Whether the Dock icon shows (macOS): always while the window is out, and while it is put away in
+/// the menu bar unless the user chose to hide it then.
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
+fn shows_dock_icon(window_visible: bool, has_tray: bool, hide_dock_icon: bool) -> bool {
+    window_visible || !(has_tray && hide_dock_icon)
+}
+
 fn on_close(has_tray: bool, close_to_tray: bool, window_hides: bool) -> OnClose {
     if !(has_tray && close_to_tray) {
         OnClose::Quit
@@ -522,6 +531,10 @@ impl Host for DesktopHost {
     }
 
     fn has_desktops(&self) -> bool {
+        cfg!(target_os = "macos")
+    }
+
+    fn has_dock(&self) -> bool {
         cfg!(target_os = "macos")
     }
 
@@ -750,6 +763,9 @@ struct Shell<'a> {
     /// The "show on the current desktop" setting last applied to the window (macOS).
     #[cfg_attr(not(target_os = "macos"), allow(dead_code))]
     applied_follow: Option<bool>,
+    /// Whether the Dock icon was last shown (macOS).
+    #[cfg_attr(not(target_os = "macos"), allow(dead_code))]
+    applied_dock: Option<bool>,
 }
 
 impl<'a> Shell<'a> {
@@ -757,7 +773,7 @@ impl<'a> Shell<'a> {
         let window_hides = window_can_hide(cc.display_handle().ok().map(|d| d.as_raw()));
         // Started hidden at login but there's no tray to come back from: show the window.
         let visible = !hidden || launcher.tray.is_none();
-        let mut shell = Self { launcher, window_hides, visible: true, quitting: false, applied_follow: None };
+        let mut shell = Self { launcher, window_hides, visible: true, quitting: false, applied_follow: None, applied_dock: None };
         if !visible {
             shell.put_away(&cc.egui_ctx);
         } else if hidden {
@@ -835,6 +851,18 @@ impl eframe::App for Shell<'_> {
                     self.launcher.closed_to_tray = true;
                 }
                 OnClose::Quit => {}
+            }
+        }
+        // After the requests and the close button, so the icon matches what this pass did to the window:
+        // a window being shown gets its Dock icon back before it comes out, and one being put away
+        // loses it now rather than on some later pass.
+        #[cfg(target_os = "macos")]
+        {
+            let settings = &self.launcher.ui.settings;
+            let on = shows_dock_icon(self.visible, self.launcher.tray.is_some(), settings.hide_dock_icon);
+            if self.applied_dock != Some(on) {
+                dock::show_icon(on);
+                self.applied_dock = Some(on);
             }
         }
         craft_quit::on_close_request(ctx);
@@ -1007,6 +1035,15 @@ mod tests {
     }
 
     #[test]
+    fn the_dock_icon_hides_only_while_the_window_is_away_in_the_menu_bar() {
+        assert!(!shows_dock_icon(false, true, true));
+        // The window is out, the user keeps the icon, or there's no menu bar icon to come back from.
+        assert!(shows_dock_icon(true, true, true));
+        assert!(shows_dock_icon(false, true, false));
+        assert!(shows_dock_icon(false, false, true));
+    }
+
+    #[test]
     fn the_tray_alone_waits_until_asked() {
         assert_eq!(tray_step(&[]), TrayStep::Stay);
     }
@@ -1136,7 +1173,8 @@ mod tests {
     fn quitting_overrides_a_close_to_the_tray() {
         let (mut launcher, _show, _) = launcher();
         let ctx = launcher.windowless.clone();
-        let mut shell = Shell { launcher: &mut launcher, window_hides: false, visible: true, quitting: false, applied_follow: None };
+        let mut shell =
+            Shell { launcher: &mut launcher, window_hides: false, visible: true, quitting: false, applied_follow: None, applied_dock: None };
         shell.put_away(&ctx);
         assert!(shell.launcher.closed_to_tray);
         shell.quit(&ctx);
@@ -1147,7 +1185,8 @@ mod tests {
     fn a_window_that_hides_is_not_closed_to_the_tray() {
         let (mut launcher, _show, _) = launcher();
         let ctx = launcher.windowless.clone();
-        let mut shell = Shell { launcher: &mut launcher, window_hides: true, visible: true, quitting: false, applied_follow: None };
+        let mut shell =
+            Shell { launcher: &mut launcher, window_hides: true, visible: true, quitting: false, applied_follow: None, applied_dock: None };
         shell.put_away(&ctx);
         assert!(!shell.visible);
         assert!(!shell.launcher.closed_to_tray);
