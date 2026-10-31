@@ -1428,6 +1428,7 @@ pub(crate) mod linux {
                 crate::desktop_entry::is_ours(&old)
                     || crate::desktop_entry::exec_program(&old)
                         .is_some_and(|p| Path::new(&p) == appimage || replaced.iter().any(|r| r == Path::new(&p)))
+                    || crate::desktop_entry::name(&old).is_some_and(|n| n == app.name)
             }
             Err(_) => !desktop.exists(),
         };

@@ -184,3 +184,13 @@ mod tests {
         assert_eq!(exec_program("[Desktop Entry]\nName=x\n"), None);
     }
 }
+
+/// Extracts the `Name=` field from a desktop entry.
+pub fn name(content: &str) -> Option<String> {
+    for line in content.lines() {
+        if let Some(value) = line.strip_prefix("Name=") {
+            return Some(value.to_string());
+        }
+    }
+    None
+}
