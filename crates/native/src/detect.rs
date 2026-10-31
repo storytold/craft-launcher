@@ -14,18 +14,23 @@ use artcraft_launcher_core::{CraftApp, InstallSource, Installed, version};
 
 use crate::manifest::Manifest;
 
-/// One look at the system, shared by every app's detection (package lists are read once).
+/// One look at the system, shared by every app's detection: package lists and AppImage folders
+/// are read once.
 #[derive(Default)]
 pub struct Snapshot {
     #[allow(dead_code)]
     packages: Vec<crate::packages::Package>,
+    // `None` keeps `Snapshot::default()` behaving like an uncached snapshot. Normal detection
+    // takes a snapshot once and shares its AppImage candidates across the whole pass.
+    #[cfg(target_os = "linux")]
+    appimages: Option<Vec<(PathBuf, String)>>,
 }
 
 impl Snapshot {
     pub fn take() -> Self {
         #[cfg(target_os = "linux")]
         {
-            Self { packages: linux::packages() }
+            Self { packages: linux::packages(), appimages: Some(linux::appimage_candidates(&linux::appimage_dirs())) }
         }
         #[cfg(not(target_os = "linux"))]
         {
@@ -515,24 +520,63 @@ pub mod linux {
             let Ok(entries) = std::fs::read_dir(dir) else { continue };
             let mut found: Vec<(PathBuf, Option<version::Version>)> = entries
                 .flatten()
-                .filter_map(|e| {
-                    let name = e.file_name().into_string().ok()?;
+                .filter_map(|entry| {
+                    let name = entry.file_name().into_string().ok()?;
                     let version = appimage_version(&name, &stems)?;
-                    let path = e.path();
+                    let path = entry.path();
                     path.is_file().then(|| (path, version.as_deref().and_then(version::parse)))
                 })
                 .collect();
             found.sort_by(|a, b| a.0.cmp(&b.0));
             out.extend(found);
         }
+        sort_appimages(&mut out);
+        out
+    }
+
+    /// Reads each search directory once and keeps just its AppImage-like entries, in search order.
+    /// Paths are sorted within each directory so equal-version ties keep their existing order.
+    pub(super) fn appimage_candidates(dirs: &[PathBuf]) -> Vec<(PathBuf, String)> {
+        let mut out = Vec::new();
+        for dir in dirs {
+            let Ok(entries) = std::fs::read_dir(dir) else { continue };
+            let mut found: Vec<(PathBuf, String)> = entries
+                .flatten()
+                .filter_map(|entry| {
+                    let name = entry.file_name().into_string().ok()?;
+                    let is_appimage = name.rsplit_once('.').is_some_and(|(_, ext)| ext.eq_ignore_ascii_case("appimage"));
+                    is_appimage.then(|| (entry.path(), name))
+                })
+                .collect();
+            found.sort_by(|a, b| a.0.cmp(&b.0));
+            out.extend(found);
+        }
+        out
+    }
+
+    /// Applies one app's filename rules to the shared candidates and keeps the existing version
+    /// precedence. The filesystem scan itself is done when the snapshot is taken.
+    pub(super) fn appimages_from_candidates(app: &CraftApp, candidates: &[(PathBuf, String)]) -> Vec<(PathBuf, Option<version::Version>)> {
+        let stems: Vec<&str> = app.stems().collect();
+        let mut out: Vec<(PathBuf, Option<version::Version>)> = candidates
+            .iter()
+            .filter_map(|(path, name)| {
+                let found = appimage_version(name, &stems)?;
+                path.is_file().then(|| (path.clone(), found.as_deref().and_then(version::parse)))
+            })
+            .collect();
+        sort_appimages(&mut out);
+        out
+    }
+
+    fn sort_appimages(found: &mut [(PathBuf, Option<version::Version>)]) {
         // Stable sort: equal versions keep the folder order above.
-        out.sort_by(|a, b| match (&b.1, &a.1) {
+        found.sort_by(|a, b| match (&b.1, &a.1) {
             (Some(x), Some(y)) => version::compare(x, y),
             (Some(_), None) => std::cmp::Ordering::Greater,
             (None, Some(_)) => std::cmp::Ordering::Less,
             (None, None) => std::cmp::Ordering::Equal,
         });
-        out
     }
 
     /// AppImages of `app` in any of the usual folders, newest first.
@@ -541,7 +585,11 @@ pub mod linux {
     }
 
     pub fn detect(app: &CraftApp, snapshot: &Snapshot) -> Option<Installed> {
-        if let Some((path, version)) = appimages(app).into_iter().next() {
+        let appimage = match snapshot.appimages.as_ref() {
+            Some(candidates) => appimages_from_candidates(app, candidates).into_iter().next(),
+            None => appimages(app).into_iter().next(),
+        };
+        if let Some((path, version)) = appimage {
             return Some(Installed { version, source: InstallSource::AppImage, location: path.display().to_string(), package: None });
         }
         let order = [InstallSource::Deb, InstallSource::Rpm, InstallSource::Pacman, InstallSource::Flatpak];
@@ -848,7 +896,22 @@ mod tests {
         std::fs::write(gear.join("photocraft.appimage"), b"").unwrap();
         std::fs::write(bin.join("photocraft-0.6.0-linux-x86_64.AppImage"), b"").unwrap();
         std::fs::create_dir(bin.join("photocraft.AppImage")).unwrap();
-        let found = linux::appimages_in(app, &[apps.clone(), gear.clone(), bin.clone(), root.path().join("missing")]);
+        let dirs = [apps.clone(), gear.clone(), bin.clone(), root.path().join("missing")];
+        let candidates = linux::appimage_candidates(&dirs);
+        for candidate in &SUITE {
+            assert_eq!(
+                linux::appimages_from_candidates(candidate, &candidates),
+                linux::appimages_in(candidate, &dirs),
+                "cached AppImages for {} must preserve the existing detection order",
+                candidate.id,
+            );
+        }
+        let snapshot = Snapshot { packages: Vec::new(), appimages: Some(candidates) };
+        let detected = linux::detect(app, &snapshot).expect("the indexed AppImage should be detected");
+        assert_eq!(detected.location, bin.join("photocraft-0.6.0-linux-x86_64.AppImage").display().to_string());
+        assert_eq!(detected.version.as_ref().map(ToString::to_string).as_deref(), Some("0.6.0"));
+
+        let found = linux::appimages_in(app, &dirs);
         let names: Vec<_> = found.iter().map(|(p, v)| (p.clone(), v.as_ref().map(ToString::to_string))).collect();
         assert_eq!(
             names,
