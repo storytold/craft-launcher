@@ -84,34 +84,58 @@ impl LauncherUi {
     pub(crate) fn header(&mut self, ui: &mut Ui, bar: TitleBar) {
         let t = Tokens::get(ui.ctx());
         let h = HEADER_H;
+        let rtl = current().rtl();
         if bar != TitleBar::Native {
             widgets::title_bar_drag(ui);
         }
-        ui.horizontal(|ui| {
+        ui.allocate_ui_with_layout(vec2(ui.available_width(), h), egui::Layout::left_to_right(egui::Align::Center), |ui| {
             ui.spacing_mut().item_spacing.x = 0.0;
             if bar == TitleBar::MacOs {
                 ui.add_space(TRAFFIC_LIGHTS_W);
             }
-            // The ArtCraft wordmark exactly as supplied, in its own cell.
-            let logo = vec2(14.0 * crate::icons::ARTCRAFT_LOGO_ASPECT, 14.0);
-            let (cell, _) = ui.allocate_exact_size(vec2(logo.x + 40.0, h), Sense::hover());
-            egui::Image::new(crate::icons::artcraft_logo(t.dark)).alt_text(tl!("ArtCraft")).paint_at(ui, Rect::from_center_size(cell.center(), logo));
-            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                if bar == TitleBar::Custom {
-                    widgets::window_buttons(ui, h);
-                }
+            if rtl {
                 if widgets::nav_icon(ui, widgets::Glyph::Settings, tl!("Settings"), h, false).clicked() {
                     self.dialog = Some(Dialog::Settings);
                 }
-                // The controls reserve their actual widths before the secondary text gets space.
-                ui.with_layout(egui::Layout::left_to_right(egui::Align::Center), |ui| {
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    if bar == TitleBar::Custom {
+                        widgets::window_buttons(ui, h);
+                    }
+                    let logo = vec2(14.0 * crate::icons::ARTCRAFT_LOGO_ASPECT, 14.0);
+                    let (cell, _) = ui.allocate_exact_size(vec2(logo.x + 40.0, h), Sense::hover());
+                    egui::Image::new(crate::icons::artcraft_logo(t.dark))
+                        .alt_text(tl!("ArtCraft"))
+                        .paint_at(ui, Rect::from_center_size(cell.center(), logo));
                     if ui.available_width() >= 17.0 + widgets::hud_galley(ui, tl!("Craft App Suite"), t.muted).size().x {
                         widgets::rule(ui, h);
                         ui.add_space(16.0);
                         widgets::hud(ui, tl!("Craft App Suite"), t.muted);
                     }
                 });
-            });
+            } else {
+                // The ArtCraft wordmark exactly as supplied, in its own cell.
+                let logo = vec2(14.0 * crate::icons::ARTCRAFT_LOGO_ASPECT, 14.0);
+                let (cell, _) = ui.allocate_exact_size(vec2(logo.x + 40.0, h), Sense::hover());
+                egui::Image::new(crate::icons::artcraft_logo(t.dark))
+                    .alt_text(tl!("ArtCraft"))
+                    .paint_at(ui, Rect::from_center_size(cell.center(), logo));
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    if bar == TitleBar::Custom {
+                        widgets::window_buttons(ui, h);
+                    }
+                    if widgets::nav_icon(ui, widgets::Glyph::Settings, tl!("Settings"), h, false).clicked() {
+                        self.dialog = Some(Dialog::Settings);
+                    }
+                    // The controls reserve their actual widths before the secondary text gets space.
+                    ui.with_layout(egui::Layout::left_to_right(egui::Align::Center), |ui| {
+                        if ui.available_width() >= 17.0 + widgets::hud_galley(ui, tl!("Craft App Suite"), t.muted).size().x {
+                            widgets::rule(ui, h);
+                            ui.add_space(16.0);
+                            widgets::hud(ui, tl!("Craft App Suite"), t.muted);
+                        }
+                    });
+                });
+            }
         });
     }
 
@@ -208,7 +232,10 @@ impl LauncherUi {
     /// whether the window is narrow enough that a second row follows.
     fn toolbar_row(&mut self, ui: &mut Ui, t: &Tokens, updates: usize) -> bool {
         let mut compact = false;
-        ui.horizontal(|ui| {
+        let rtl = current().rtl();
+        let outer = if rtl { egui::Layout::right_to_left(egui::Align::Center) } else { egui::Layout::left_to_right(egui::Align::Center) };
+        let inner = if rtl { egui::Layout::left_to_right(egui::Align::Center) } else { egui::Layout::right_to_left(egui::Align::Center) };
+        ui.allocate_ui_with_layout(vec2(ui.available_width(), theme::CONTROL_H), outer, |ui| {
             self.refresh_button(ui);
             // Hiding an app is only undone from here, so the way back to the hidden ones stays
             // while there are any: a toggle, lit while the hidden apps are what the page shows.
@@ -223,8 +250,8 @@ impl LauncherUi {
                 }
             }
             compact = ui.available_width() < theme::TOOLBAR_COMPACT_BELOW;
-            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                // Right to left: the view switch at the far right, then the search.
+            ui.with_layout(inner, |ui| {
+                // Opposite side: the view switch at the far edge, then the search.
                 crate::bar::view_toggle(ui, &mut self.settings.view, [tl!("Show apps as cards"), tl!("Show apps as a table")]);
                 ui.add_space(4.0);
                 ui.add(
@@ -232,7 +259,7 @@ impl LauncherUi {
                         .hint_text(tl!("Search apps"))
                         .desired_width(200.0)
                         .min_size(vec2(0.0, theme::CONTROL_H))
-                        .align(egui::Align2::LEFT_CENTER)
+                        .align(if rtl { egui::Align2::RIGHT_CENTER } else { egui::Align2::LEFT_CENTER })
                         .margin(vec2(10.0, 0.0)),
                 )
                 .accessible_name(tl!("Search apps"));
@@ -254,14 +281,17 @@ impl LauncherUi {
 
     /// The toolbar's second row on narrow windows: the sort picker, then update-all.
     fn toolbar_compact_row(&mut self, ui: &mut Ui, t: &Tokens, updates: usize) {
+        let rtl = current().rtl();
+        let outer = if rtl { egui::Layout::right_to_left(egui::Align::Center) } else { egui::Layout::left_to_right(egui::Align::Center) };
+        let inner = if rtl { egui::Layout::left_to_right(egui::Align::Center) } else { egui::Layout::right_to_left(egui::Align::Center) };
         ui.add_space(6.0);
-        ui.horizontal(|ui| {
+        ui.allocate_ui_with_layout(vec2(ui.available_width(), theme::CONTROL_H), outer, |ui| {
             if self.settings.view == ViewMode::Grid {
                 // "Sort" before the picker, as in the full-width row.
                 widgets::hud(ui, tl!("Sort"), t.faint);
                 self.sort_picker(ui);
             }
-            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+            ui.with_layout(inner, |ui| {
                 if self.caps.manage_apps && updates > 0 {
                     self.update_all_button(ui, updates);
                 }
@@ -381,12 +411,15 @@ impl LauncherUi {
         }));
         let icon = 13.0;
         let spacing = ui.spacing().item_spacing.x;
-        // The icons on the right keep their size; the status on the left gets what is left and
+        let rtl = current().rtl();
+        let outer = if rtl { egui::Layout::left_to_right(egui::Align::Center) } else { egui::Layout::right_to_left(egui::Align::Center) };
+        let inner = if rtl { egui::Layout::right_to_left(egui::Align::Center) } else { egui::Layout::left_to_right(egui::Align::Center) };
+        // The icons on the opposite edge keep their size; the status gets what is left and
         // is cut short with "…", never drawn under them.
-        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+        ui.allocate_ui_with_layout(vec2(ui.available_width(), ui.spacing().interact_size.y), outer, |ui| {
             widgets::icon_links(ui, icon, &links);
             ui.add_space(8.0);
-            ui.with_layout(egui::Layout::left_to_right(egui::Align::Center), |ui| {
+            ui.with_layout(inner, |ui| {
                 // While GitHub is rate limited, saying so matters more than when we last checked.
                 let avail = ui.available_width();
                 let text = |s: &str| RichText::new(s).size(12.0).color(t.warn);
@@ -421,17 +454,25 @@ impl LauncherUi {
         if !top.is_empty() && !rest.is_empty() {
             let t = Tokens::get(ui.ctx());
             ui.add_space(28.0);
-            widgets::hud(ui, tl!("Not installed"), t.faint);
+            if current().rtl() {
+                ui.with_layout(egui::Layout::top_down(egui::Align::Max), |ui| {
+                    widgets::hud(ui, tl!("Not installed"), t.faint);
+                });
+            } else {
+                widgets::hud(ui, tl!("Not installed"), t.faint);
+            }
             ui.add_space(12.0);
         }
         self.grid_block(ui, rest);
         ui.add_space(24.0);
     }
 
+    /// Lays out one block of app cards in a shared-hairline grid, ordering columns right-to-left when the UI locale is RTL.
     fn grid_block(&mut self, ui: &mut Ui, ids: &[&'static str]) {
         if ids.is_empty() {
             return;
         }
+        let rtl = current().rtl();
         let width = ui.available_width();
         // Neighbouring cards share their 1 px hairline, like the site's `gap-px` grid.
         let cols = ((width / CARD_MIN_W).floor() as usize).max(1);
@@ -441,7 +482,8 @@ impl LauncherUi {
         let (area, _) = ui.allocate_exact_size(vec2(width, height), Sense::hover());
         for (i, id) in ids.iter().enumerate() {
             let (row, col) = (i / cols, i % cols);
-            let min = area.min + vec2(col as f32 * (card_w - 1.0), row as f32 * (CARD_H - 1.0));
+            let visual_col = if rtl { cols - 1 - col } else { col };
+            let min = area.min + vec2(visual_col as f32 * (card_w - 1.0), row as f32 * (CARD_H - 1.0));
             self.card(ui, id, Rect::from_min_size(min, vec2(card_w, CARD_H)));
         }
     }
@@ -484,15 +526,17 @@ impl LauncherUi {
         }
 
         // The top strip: the version in the app's colour, and its GitHub page.
+        let rtl = current().rtl();
+        let align = if rtl { egui::Align::Max } else { egui::Align::Min };
         let status = entry.status(self.platform, self.caps.manage_apps);
         let behind = self.behind_latest(&entry);
         let version = crate::card_parts::strip_version(&entry, &status, behind.as_deref());
         let strip = Rect::from_min_size(rect.min, vec2(rect.width(), STRIP_H));
         painter.hline(strip.x_range(), strip.bottom() - 0.5, t.hairline());
         {
-            let mut strip_ui = ui.new_child(
-                egui::UiBuilder::new().max_rect(strip.shrink2(vec2(CARD_PAD, 0.0))).layout(egui::Layout::left_to_right(egui::Align::Center)),
-            );
+            let strip_layout = if rtl { egui::Layout::right_to_left(egui::Align::Center) } else { egui::Layout::left_to_right(egui::Align::Center) };
+            let link_layout = if rtl { egui::Layout::left_to_right(egui::Align::Center) } else { egui::Layout::right_to_left(egui::Align::Center) };
+            let mut strip_ui = ui.new_child(egui::UiBuilder::new().max_rect(strip.shrink2(vec2(CARD_PAD, 0.0))).layout(strip_layout));
             if !version.is_empty() {
                 let github_w = widgets::hud_galley(&strip_ui, &format!("{} ↗", tl!("GitHub")), t.muted).size().x;
                 let room = (strip_ui.available_width() - github_w - 16.0).max(0.0);
@@ -501,7 +545,7 @@ impl LauncherUi {
                     version.iter().map(|(text, lit)| (text.as_str(), if *lit { highlight } else { t.muted })).collect();
                 widgets::hud_elided_spans(&mut strip_ui, &spans, room);
             }
-            strip_ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+            strip_ui.with_layout(link_layout, |ui| {
                 ui.spacing_mut().item_spacing.x = 16.0;
                 widgets::hud_link(ui, tl!("GitHub"), &app.repo_url());
             });
@@ -509,7 +553,7 @@ impl LauncherUi {
 
         let inner = Rect::from_min_max(egui::pos2(rect.left() + CARD_PAD, strip.bottom() + 18.0), rect.max - vec2(CARD_PAD, CARD_PAD));
         // A detached child: the card's contents never move the next card along.
-        let mut child = ui.new_child(egui::UiBuilder::new().max_rect(inner).layout(egui::Layout::top_down(egui::Align::Min)));
+        let mut child = ui.new_child(egui::UiBuilder::new().max_rect(inner).layout(egui::Layout::top_down(align)));
         child.set_clip_rect(rect.intersect(ui.clip_rect()));
         let ui = &mut child;
         ui.horizontal(|ui| {
@@ -567,7 +611,7 @@ impl LauncherUi {
             ui.add_space(6.0);
             ui.add(egui::Label::new(RichText::new(line).size(12.5).color(t.faint)).selectable(false));
         }
-        ui.with_layout(egui::Layout::bottom_up(egui::Align::Min), |ui| {
+        ui.with_layout(egui::Layout::bottom_up(align), |ui| {
             ui.horizontal(|ui| self.actions(ui, &entry, &status, inner.width()));
         });
     }
@@ -1184,7 +1228,8 @@ pub(crate) fn launcher_download(r: &artcraft_launcher_core::Release, p: artcraft
 /// Each line is measured as an empty galley, which is rounded to the pixel like a label, unlike `Fonts::row_height`.
 fn centered_lines(ui: &mut Ui, fonts: &[&FontId], gap: f32, add_contents: impl FnOnce(&mut Ui)) {
     let height = lines_height(ui, fonts, gap);
-    ui.allocate_ui_with_layout(vec2(ui.available_width(), height), egui::Layout::top_down(egui::Align::Min), |ui| {
+    let align = if current().rtl() { egui::Align::Max } else { egui::Align::Min };
+    ui.allocate_ui_with_layout(vec2(ui.available_width(), height), egui::Layout::top_down(align), |ui| {
         ui.spacing_mut().item_spacing.y = gap;
         add_contents(ui);
     });

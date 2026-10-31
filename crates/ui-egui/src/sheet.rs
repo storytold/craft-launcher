@@ -27,23 +27,28 @@ pub(crate) fn frame(t: &Tokens) -> Frame {
 pub(crate) fn hero(ui: &mut Ui, icon: Option<ImageSource<'static>>, title: &str, caption: &str, right: impl FnOnce(&mut Ui)) -> f32 {
     let t = Tokens::get(ui.ctx());
     let top = ui.cursor().top();
+    let rtl = crate::i18n::current().rtl();
+    let align = if rtl { egui::Align::Max } else { egui::Align::Min };
+    let row_layout = if rtl { egui::Layout::right_to_left(egui::Align::Center) } else { egui::Layout::left_to_right(egui::Align::Center) };
+    let end_layout = if rtl { egui::Layout::left_to_right(egui::Align::Center) } else { egui::Layout::right_to_left(egui::Align::Center) };
     let shown =
         Frame::new().fill(tint(t.accent, if t.dark { 0.09 } else { 0.07 })).inner_margin(Margin::symmetric(theme::PAD as i8, 18)).show(ui, |ui| {
             ui.set_width(ui.available_width());
-            ui.horizontal(|ui| {
+            let row_h = if icon.is_some() { 44.0 } else { ui.spacing().interact_size.y };
+            ui.allocate_ui_with_layout(vec2(ui.available_width(), row_h), row_layout, |ui| {
                 if let Some(icon) = icon {
                     // Decorative: the heading beside it carries the title.
                     ui.add(egui::Image::new(icon).fit_to_exact_size(vec2(44.0, 44.0)));
                     ui.add_space(6.0);
                 }
-                ui.vertical(|ui| {
+                ui.with_layout(egui::Layout::top_down(align), |ui| {
                     ui.spacing_mut().item_spacing.y = 4.0;
                     ui.label(widgets::heading(title, theme::SHEET_TITLE, t.ink_strong));
                     if !caption.is_empty() {
                         widgets::hud(ui, caption, t.faint);
                     }
                 });
-                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), right);
+                ui.with_layout(end_layout, right);
             });
         });
     let r = shown.response.rect;
@@ -70,46 +75,81 @@ pub(crate) fn accent_scroll(ui: &mut Ui, t: &Tokens, bar: Color32) -> egui::Visu
 
 /// Two columns of equal width a `gap` apart when `wide`; otherwise `left` then `right`, stacked.
 pub(crate) fn columns(ui: &mut Ui, wide: bool, gap: f32, left: impl FnOnce(&mut Ui), right: impl FnOnce(&mut Ui)) {
+    let rtl = crate::i18n::current().rtl();
+    let align = if rtl { egui::Align::Max } else { egui::Align::Min };
     if !wide {
-        left(ui);
-        right(ui);
+        ui.with_layout(egui::Layout::top_down(align), |ui| {
+            left(ui);
+            right(ui);
+        });
         return;
     }
     let w = ((ui.available_width() - gap) / 2.0).floor();
     ui.horizontal_top(|ui| {
         ui.spacing_mut().item_spacing.x = gap;
-        ui.vertical(|ui| {
-            ui.set_width(w);
-            left(ui);
-        });
-        ui.vertical(|ui| {
-            ui.set_width(w);
-            right(ui);
-        });
+        if rtl {
+            ui.with_layout(egui::Layout::top_down(align), |ui| {
+                ui.set_width(w);
+                right(ui);
+            });
+            ui.with_layout(egui::Layout::top_down(align), |ui| {
+                ui.set_width(w);
+                left(ui);
+            });
+        } else {
+            ui.vertical(|ui| {
+                ui.set_width(w);
+                left(ui);
+            });
+            ui.vertical(|ui| {
+                ui.set_width(w);
+                right(ui);
+            });
+        }
     });
 }
 
 /// A titled box: a hairline frame with a small caps heading, for one group of settings.
 pub(crate) fn panel(ui: &mut Ui, title: &str, body: impl FnOnce(&mut Ui)) {
     let t = Tokens::get(ui.ctx());
+    let rtl = crate::i18n::current().rtl();
     Frame::new().stroke(t.hairline()).inner_margin(theme::BOX_MARGIN).show(ui, |ui| {
         ui.set_width(ui.available_width());
-        widgets::hud(ui, title, t.faint);
-        ui.add_space(8.0);
-        body(ui);
+        if rtl {
+            ui.with_layout(egui::Layout::top_down(egui::Align::Max), |ui| {
+                ui.set_width(ui.available_width());
+                widgets::hud(ui, title, t.faint);
+                ui.add_space(8.0);
+                body(ui);
+            });
+        } else {
+            widgets::hud(ui, title, t.faint);
+            ui.add_space(8.0);
+            body(ui);
+        }
     });
     ui.add_space(14.0);
 }
 
-/// [`panel`], but the body also receives the heading's id so its control can be named by that
+/// [`panel`], passing the heading's accessibility node id to `body` so a lone control can name the
 /// visible heading (egui 0.37's `Response::labelled_by`), without adding a second identical label.
 pub(crate) fn panel_with_heading(ui: &mut Ui, title: &str, body: impl FnOnce(&mut Ui, egui::Id)) {
     let t = Tokens::get(ui.ctx());
+    let rtl = crate::i18n::current().rtl();
     Frame::new().stroke(t.hairline()).inner_margin(theme::BOX_MARGIN).show(ui, |ui| {
         ui.set_width(ui.available_width());
-        let heading = widgets::hud(ui, title, t.faint);
-        ui.add_space(8.0);
-        body(ui, heading.id);
+        if rtl {
+            ui.with_layout(egui::Layout::top_down(egui::Align::Max), |ui| {
+                ui.set_width(ui.available_width());
+                let heading = widgets::hud(ui, title, t.faint);
+                ui.add_space(8.0);
+                body(ui, heading.id);
+            });
+        } else {
+            let heading = widgets::hud(ui, title, t.faint);
+            ui.add_space(8.0);
+            body(ui, heading.id);
+        }
     });
     ui.add_space(14.0);
 }

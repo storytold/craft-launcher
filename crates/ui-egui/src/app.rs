@@ -794,6 +794,10 @@ impl LauncherUi {
         // Set the current language only after the font gate: a face installed by `set_fonts`
         // becomes active next pass, so drawing with it in the pass that installed it would panic.
         set_current(drawable_lang(&self.settings.language, self.cjk_font));
+        let rtl = crate::i18n::current().rtl();
+        if ctx.global_style().right_to_left != rtl {
+            ctx.all_styles_mut(|style| style.right_to_left = rtl);
+        }
         self.zoom_input(&ctx);
         if self.applied_theme != Some(self.settings.theme) {
             theme::apply(&ctx, self.settings.theme);
