@@ -161,6 +161,12 @@ fn contrasting_ink(accent: Color32, background: Color32, dark: bool) -> Color32 
     mix(accent, target, high)
 }
 
+fn selection_ink(accent: Color32) -> Color32 {
+    let white_contrast = contrast_ratio(Color32::WHITE, accent);
+    let black_contrast = contrast_ratio(Color32::BLACK, accent);
+    if white_contrast >= black_contrast { Color32::WHITE } else { Color32::BLACK }
+}
+
 fn mix(from: Color32, to: Color32, amount: f32) -> Color32 {
     let channel = |a: u8, b: u8| (f32::from(a) + (f32::from(b) - f32::from(a)) * amount).round() as u8;
     Color32::from_rgb(channel(from.r(), to.r()), channel(from.g(), to.g()), channel(from.b(), to.b()))
@@ -231,7 +237,7 @@ fn visuals(t: &Tokens) -> Visuals {
     v.override_text_color = Some(t.ink);
     v.hyperlink_color = t.accent_ink;
     v.selection.bg_fill = t.accent;
-    v.selection.stroke = Stroke::new(1.0, Color32::WHITE);
+    v.selection.stroke = Stroke::new(1.0, selection_ink(t.accent));
     v.warn_fg_color = t.warn;
     v.error_fg_color = t.bad;
     for (w, fill, stroke, fg) in [
@@ -503,6 +509,17 @@ mod tests {
         for tokens in [Tokens::DARK, Tokens::LIGHT].map(|tokens| tokens.with_accent(Some(accent))) {
             assert_eq!(tokens.accent, rgb(accent));
             assert!(contrast_ratio(tokens.accent_ink, tokens.bg) >= 4.5);
+        }
+    }
+
+    #[test]
+    fn selection_ink_contrasts_with_custom_accent_in_both_themes() {
+        for accent in [[20, 120, 220], [240, 200, 30], [30, 30, 30]] {
+            for tokens in [Tokens::DARK, Tokens::LIGHT].map(|tokens| tokens.with_accent(Some(accent))) {
+                let selection = visuals(&tokens).selection;
+                assert_eq!(selection.stroke.color, selection_ink(tokens.accent));
+                assert!(contrast_ratio(selection.stroke.color, selection.bg_fill) >= 4.5);
+            }
         }
     }
 
