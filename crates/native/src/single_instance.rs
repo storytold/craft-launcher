@@ -64,23 +64,69 @@ const MAX_GREETING: usize = 256;
 /// this account. Mutual challenge-response uses this secret without ever sending it across the wire
 /// (CWE-522, CWE-287).
 fn token() -> Option<String> {
-    use std::io::Read;
+    token_at(&token_path()?)
+}
+
+fn token_path() -> Option<std::path::PathBuf> {
     let dir =
         dirs::data_local_dir()?.join(if cfg!(any(target_os = "macos", target_os = "windows")) { "ArtCraft Launcher" } else { "artcraft-launcher" });
-    let path = dir.join(".instance-token");
-    if let Ok(mut f) = std::fs::File::open(&path) {
-        let mut s = String::new();
-        if f.read_to_string(&mut s).is_ok() {
-            let s = s.trim().to_string();
-            if !s.is_empty() {
-                return Some(s);
+    Some(dir.join(".instance-token"))
+}
+
+fn read_token(path: &std::path::Path) -> Option<String> {
+    let s = std::fs::read_to_string(path).ok()?;
+    let s = s.trim();
+    (!s.is_empty()).then(|| s.to_string())
+}
+
+/// Bounded retry for a listener that started before a token became available.
+/// Generated tokens are 64 bytes; a bounded read avoids repeated unbounded file reads on connections.
+fn read_published_token(path: &std::path::Path) -> Option<String> {
+    let file = std::fs::File::open(path).ok()?;
+    if !file.metadata().ok()?.is_file() {
+        return None;
+    }
+    let mut bytes = Vec::new();
+    file.take(MAX_GREETING as u64 + 1).read_to_end(&mut bytes).ok()?;
+    if bytes.len() > MAX_GREETING {
+        return None;
+    }
+    let text = std::str::from_utf8(&bytes).ok()?.trim();
+    (!text.is_empty()).then(|| text.to_string())
+}
+
+fn token_at(path: &std::path::Path) -> Option<String> {
+    // Keep a readable valid token usable even when its directory is not writable.
+    if let Some(secret) = read_token(path) {
+        return Some(secret);
+    }
+    std::fs::create_dir_all(path.parent()?).ok()?;
+    // The sidecar is permanent: replacing or deleting it could let starts lock different files.
+    // Locking the token itself has the same problem when recovering it by replacement.
+    let mut options = std::fs::OpenOptions::new();
+    options.read(true).write(true).create(true).truncate(false);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        options.mode(0o600);
+    }
+    let lock = options.open(path.with_extension("lock")).ok()?;
+    let deadline = Instant::now() + Duration::from_secs(1);
+    loop {
+        match lock.try_lock() {
+            Ok(()) => break,
+            Err(std::fs::TryLockError::WouldBlock) if Instant::now() < deadline => {
+                std::thread::sleep(Duration::from_millis(10));
             }
+            Err(_) => return read_token(path),
         }
     }
-    // Create it, owner-only, using the OS CSPRNG.
-    let _ = std::fs::create_dir_all(&dir);
+    // Another start may have initialized or recovered the token while we waited.
+    if let Some(secret) = read_token(path) {
+        return Some(secret);
+    }
     let secret = fresh_secret()?;
-    write_private(&path, secret.as_bytes()).ok()?;
+    write_private(path, secret.as_bytes()).ok()?;
     Some(secret)
 }
 
@@ -91,21 +137,13 @@ fn fresh_secret() -> Option<String> {
     Some(bytes.iter().map(|b| format!("{b:02x}")).collect())
 }
 
-/// Writes `bytes` to `path` readable and writable only by the owner.
+/// Publishes a complete owner-only token. The caller holds the stable sidecar lock.
 fn write_private(path: &std::path::Path, bytes: &[u8]) -> std::io::Result<()> {
-    use std::io::Write;
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::OpenOptionsExt;
-        let mut f = std::fs::OpenOptions::new().write(true).create(true).truncate(true).mode(0o600).open(path)?;
-        f.write_all(bytes)
-    }
-    #[cfg(not(unix))]
-    {
-        // On Windows the per-user profile directory is already access-controlled to the user.
-        let mut f = std::fs::File::create(path)?;
-        f.write_all(bytes)
-    }
+    let parent = path.parent().ok_or_else(|| std::io::Error::new(ErrorKind::InvalidInput, "token has no parent directory"))?;
+    let mut file = tempfile::NamedTempFile::new_in(parent)?;
+    file.write_all(bytes)?;
+    file.persist(path).map_err(|e| e.error)?;
+    Ok(())
 }
 
 /// What another start asks of the running launcher.
@@ -202,9 +240,25 @@ fn constant_time_eq(a: &str, b: &str) -> bool {
 
 /// Answers other starts on `listener` until the receiver is dropped.
 fn listen(listener: TcpListener, ours: Option<Version>, token: Option<String>, wake: Wake) -> Receiver<Request> {
+    listen_with_token_path(listener, ours, token, token_path(), wake)
+}
+
+fn listen_with_token_path(
+    listener: TcpListener,
+    ours: Option<Version>,
+    mut token: Option<String>,
+    token_path: Option<std::path::PathBuf>,
+    wake: Wake,
+) -> Receiver<Request> {
     let (tx, rx) = channel();
     std::thread::spawn(move || {
         for mut stream in listener.incoming().flatten() {
+            // A contended or failed initialization need not disable takeover for this process's
+            // lifetime. Only read an already-published token here: network traffic must not create
+            // or repair files, acquire a lock, or change an established in-memory identity.
+            if token.is_none() {
+                token = token_path.as_deref().and_then(read_published_token);
+            }
             let Some(request) = handle_incoming(&mut stream, ours.as_ref(), token.as_deref()) else { continue };
             drop(stream);
             if tx.send(request).is_err() {
@@ -312,7 +366,9 @@ fn handle_incoming(stream: &mut TcpStream, ours: Option<&Version>, token: Option
 
 /// The new start's side: says hello to whatever holds the port and reads the answer.
 fn ask(addr: SocketAddr, ours: Option<&Version>, token: Option<&str>) -> std::io::Result<Answer> {
-    let Some(ours) = ours else {
+    let Some(ours) = ours.filter(|_| token.is_some_and(|token| !token.is_empty())) else {
+        // Without the shared token, ask only to show the window. A version-only running
+        // reply cannot establish that the primary accepted an authenticated replacement.
         let mut stream = TcpStream::connect_timeout(&addr, Duration::from_secs(1))?;
         stream.write_all(SHOW)?;
         return Ok(Answer::Defer);
@@ -413,6 +469,15 @@ mod tests {
         let (addr, rx) = primary("0.1.0");
         assert_eq!(ask(addr, Some(&v("0.1.2")), Some(TOK)).ok(), Some(Answer::TakeOver));
         assert_eq!(next(&rx), Request::Replace);
+    }
+
+    #[test]
+    fn a_tokenless_newer_start_does_not_expect_an_authenticated_primary_to_exit() {
+        let (addr, rx) = primary("0.6.0");
+        for token in [None, Some("")] {
+            assert_eq!(ask(addr, Some(&v("0.7.0")), token).unwrap(), Answer::Defer);
+            assert_eq!(next(&rx), Request::Show);
+        }
     }
 
     #[test]
@@ -620,5 +685,215 @@ mod tests {
         assert_eq!(verdict(b"artcraft-launcher:running unknown\n", &v("0.1.2")), Answer::Defer);
         assert_eq!(verdict(b"garbage\n", &v("0.1.2")), Answer::Defer);
         assert_eq!(verdict(b"", &v("0.1.2")), Answer::Legacy);
+    }
+}
+
+#[cfg(test)]
+mod token_publication_tests {
+    use super::*;
+
+    #[test]
+    fn simultaneous_first_starts_all_use_the_published_token() {
+        for _ in 0..10 {
+            let dir = tempfile::tempdir().unwrap();
+            let path = dir.path().join("data/token");
+            let barrier = std::sync::Arc::new(std::sync::Barrier::new(16));
+            let secrets = std::thread::scope(|scope| {
+                let handles: Vec<_> = (0..16)
+                    .map(|_| {
+                        let barrier = barrier.clone();
+                        let path = &path;
+                        scope.spawn(move || {
+                            barrier.wait();
+                            token_at(path).unwrap()
+                        })
+                    })
+                    .collect();
+                handles.into_iter().map(|h| h.join().unwrap()).collect::<Vec<_>>()
+            });
+            let saved = read_token(&path).unwrap();
+            assert_eq!(saved.len(), 64);
+            assert!(saved.bytes().all(|b| b.is_ascii_hexdigit()));
+            assert!(secrets.iter().all(|s| *s == saved));
+        }
+    }
+
+    #[test]
+    fn repeated_starts_preserve_an_existing_token() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("token");
+        std::fs::write(&path, b"existing-token\n").unwrap();
+        assert_eq!(token_at(&path).as_deref(), Some("existing-token"));
+        assert_eq!(std::fs::read(&path).unwrap(), b"existing-token\n");
+    }
+
+    #[test]
+    fn corrupt_or_blank_tokens_are_recovered_without_racing() {
+        for initial in [&b"\xff"[..], &b""[..], &b" \n\t"[..]] {
+            let dir = tempfile::tempdir().unwrap();
+            let path = dir.path().join("token");
+            std::fs::write(&path, initial).unwrap();
+            let barrier = std::sync::Barrier::new(16);
+            let secrets = std::thread::scope(|scope| {
+                let handles: Vec<_> = (0..16)
+                    .map(|_| {
+                        scope.spawn(|| {
+                            barrier.wait();
+                            token_at(&path).unwrap()
+                        })
+                    })
+                    .collect();
+                handles.into_iter().map(|h| h.join().unwrap()).collect::<Vec<_>>()
+            });
+            let saved = read_token(&path).unwrap();
+            assert_eq!(saved.len(), 64);
+            assert!(secrets.iter().all(|secret| secret == &saved));
+        }
+    }
+
+    #[test]
+    fn a_waiting_start_uses_the_token_published_by_the_lock_holder() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("token");
+        std::fs::write(&path, b"\xff").unwrap();
+        let lock = std::fs::OpenOptions::new().read(true).write(true).create(true).truncate(false).open(path.with_extension("lock")).unwrap();
+        lock.lock().unwrap();
+        std::thread::scope(|scope| {
+            let waiting = scope.spawn(|| token_at(&path));
+            std::thread::sleep(Duration::from_millis(50));
+            write_private(&path, b"recovered-by-winner").unwrap();
+            drop(lock);
+            assert_eq!(waiting.join().unwrap().as_deref(), Some("recovered-by-winner"));
+        });
+    }
+
+    #[test]
+    fn listener_token_retry_is_bounded_and_never_mutates_the_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("token");
+        for bytes in [vec![b'x'; MAX_GREETING + 1], vec![0xff], b" \n\t".to_vec()] {
+            std::fs::write(&path, &bytes).unwrap();
+            assert!(read_published_token(&path).is_none());
+            assert_eq!(std::fs::read(&path).unwrap(), bytes);
+        }
+        // Existing startup behavior remains compatible with readable long tokens.
+        std::fs::write(&path, vec![b'x'; MAX_GREETING + 1]).unwrap();
+        assert!(token_at(&path).is_some());
+        assert!(!path.with_extension("lock").exists());
+        std::fs::write(&path, b"  existing-token\n").unwrap();
+        assert_eq!(read_published_token(&path).as_deref(), Some("existing-token"));
+    }
+
+    #[test]
+    fn a_tokenless_primary_can_use_a_later_publication_without_restart() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("token");
+        let lock = std::fs::OpenOptions::new().read(true).write(true).create(true).truncate(false).open(path.with_extension("lock")).unwrap();
+        lock.lock().unwrap();
+        let initial = token_at(&path);
+        assert!(initial.is_none());
+        let listener = TcpListener::bind((Ipv4Addr::LOCALHOST, 0)).unwrap();
+        let addr = listener.local_addr().unwrap();
+        let running = version::parse("0.6.0").unwrap();
+        let newer = version::parse("0.7.0").unwrap();
+        let rx = listen_with_token_path(listener, Some(running), initial, Some(path.clone()), Wake::default());
+        write_private(&path, b"later-publication").unwrap();
+        drop(lock);
+        assert_eq!(ask(addr, Some(&newer), Some("later-publication")).unwrap(), Answer::TakeOver);
+        assert_eq!(rx.recv_timeout(Duration::from_secs(2)).unwrap(), Request::Replace);
+        // Once established, a token is not reloaded or changed by later file changes.
+        std::fs::write(&path, b"different-token").unwrap();
+        assert_eq!(ask(addr, Some(&newer), Some("later-publication")).unwrap(), Answer::TakeOver);
+        assert_eq!(rx.recv_timeout(Duration::from_secs(2)).unwrap(), Request::Replace);
+    }
+
+    #[test]
+    fn a_tokenless_listener_does_not_create_or_repair_a_token_on_a_request() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("token");
+        let listener = TcpListener::bind((Ipv4Addr::LOCALHOST, 0)).unwrap();
+        let addr = listener.local_addr().unwrap();
+        let running = version::parse("0.6.0").unwrap();
+        let newer = version::parse("0.7.0").unwrap();
+        let rx = listen_with_token_path(listener, Some(running), None, Some(path.clone()), Wake::default());
+        let _ = ask(addr, Some(&newer), None).unwrap();
+        assert_eq!(rx.recv_timeout(Duration::from_secs(2)).unwrap(), Request::Show);
+        assert!(!path.exists());
+        assert!(!path.with_extension("lock").exists());
+        std::fs::write(&path, b"\xff").unwrap();
+        let _ = ask(addr, Some(&newer), None).unwrap();
+        assert_eq!(rx.recv_timeout(Duration::from_secs(2)).unwrap(), Request::Show);
+        assert_eq!(std::fs::read(&path).unwrap(), b"\xff");
+        assert!(!path.with_extension("lock").exists());
+    }
+
+    #[test]
+    fn a_busy_lock_does_not_block_startup_indefinitely() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("token");
+        let lock = std::fs::OpenOptions::new().read(true).write(true).create(true).truncate(false).open(path.with_extension("lock")).unwrap();
+        lock.lock().unwrap();
+        let start = Instant::now();
+        assert!(token_at(&path).is_none());
+        assert!(start.elapsed() < Duration::from_secs(5));
+        drop(lock);
+        assert!(token_at(&path).is_some());
+    }
+
+    #[test]
+    fn valid_token_remains_readable_without_a_usable_sidecar() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("token");
+        std::fs::write(&path, b"existing-token\n").unwrap();
+        std::fs::create_dir(path.with_extension("lock")).unwrap();
+        assert_eq!(token_at(&path).as_deref(), Some("existing-token"));
+        assert_eq!(std::fs::read(&path).unwrap(), b"existing-token\n");
+    }
+
+    #[test]
+    fn a_failed_recovery_preserves_other_files() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("token");
+        std::fs::create_dir(&path).unwrap();
+        std::fs::write(path.join("sentinel"), b"keep").unwrap();
+        assert!(token_at(&path).is_none());
+        assert_eq!(std::fs::read(path.join("sentinel")).unwrap(), b"keep");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn published_token_is_owner_only() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("token");
+        assert!(token_at(&path).is_some());
+        for private_path in [&path, &path.with_extension("lock")] {
+            assert_eq!(std::fs::metadata(private_path).unwrap().permissions().mode() & 0o777, 0o600);
+        }
+    }
+    #[test]
+    fn concurrent_starts_can_authenticate_a_newer_launcher() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("token");
+        let barrier = std::sync::Barrier::new(2);
+        let (first, second) = std::thread::scope(|scope| {
+            let start = || {
+                barrier.wait();
+                token_at(&path).unwrap()
+            };
+            let first = scope.spawn(start);
+            let second = scope.spawn(start);
+            (first.join().unwrap(), second.join().unwrap())
+        });
+        let listener = TcpListener::bind((Ipv4Addr::LOCALHOST, 0)).unwrap();
+        let addr = listener.local_addr().unwrap();
+        let running = version::parse("0.6.0").unwrap();
+        let newer = version::parse("0.7.0").unwrap();
+        let server = std::thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            handle_incoming(&mut stream, Some(&running), Some(&first))
+        });
+        assert_eq!(ask(addr, Some(&newer), Some(&second)).unwrap(), Answer::TakeOver);
+        assert_eq!(server.join().unwrap(), Some(Request::Replace));
     }
 }
