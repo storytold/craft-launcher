@@ -523,6 +523,29 @@ fn closing_the_dialog_without_installing_drops_the_chosen_version() {
 }
 
 #[test]
+fn choosing_the_installed_version_survives_close() {
+    // PhotoCraft 0.4.1 is installed. A draft pick of 0.4.0 is dropped on Close, but 0.4.1 is final.
+    let installed = signed_photocraft("0.4.1");
+    let (mut h, _, queue) = version_menu(installed.clone(), vec![signed_photocraft("0.5.0"), installed, signed_photocraft("0.4.0")]);
+    h.query_all_by_role_and_label(egui::accesskit::Role::Button, "v0.4.0").next().unwrap().click();
+    h.run_steps(4);
+    h.get_by_role_and_label(egui::accesskit::Role::ComboBox, "Version").click();
+    h.run_steps(4);
+    queue.borrow_mut().push(Event::Latest {
+        app: "photocraft".into(),
+        latest: LatestRelease::Found(signed_photocraft("0.4.1")),
+        from: Origin::GitHub,
+    });
+    h.query_all_by_role_and_label(egui::accesskit::Role::Button, "v0.4.1").next().unwrap().click();
+    h.run_steps(4);
+    h.get_by_label("Close").click();
+    h.run_steps(4);
+    let pin = h.state().as_ref().unwrap().settings.versions.get("photocraft").cloned();
+    assert_eq!(pin, Some(artcraft_launcher_core::protocol::VersionTrack::Pinned("v0.4.1".into())), "the installed version stays chosen");
+    assert!(h.query_by_label("Install version v0.4.1").is_none(), "the card is not left on Install");
+}
+
+#[test]
 fn choosing_an_app_version_turns_its_main_action_into_install() {
     // A newer release takes the "latest release" label, so v0.4.0 is a plain pin.
     let pin = signed_photocraft("0.4.0");

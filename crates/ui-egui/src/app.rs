@@ -146,6 +146,8 @@ pub struct LauncherUi {
     pub(crate) launcher_update: Option<Release>,
     pub(crate) version_lists: std::collections::HashMap<String, Result<Vec<Release>, String>>,
     pub(crate) version_requests: std::collections::HashSet<String>,
+    /// The choice an Install pressed in the version dialog replaced, kept until that job ends.
+    pub(crate) install_choice_before: Option<(String, artcraft_launcher_core::protocol::VersionTrack)>,
     /// While the Choose version dialog is open: its app and the choice it had before, put back
     /// unless the dialog's Install keeps the new one.
     pub(crate) version_before: Option<(String, artcraft_launcher_core::protocol::VersionTrack)>,
@@ -257,6 +259,7 @@ impl LauncherUi {
             launcher_update: None,
             version_lists: std::collections::HashMap::new(),
             version_requests: std::collections::HashSet::new(),
+            install_choice_before: None,
             version_before: None,
             launcher_job: None,
             restart_requested: false,
@@ -631,6 +634,14 @@ impl LauncherUi {
             e.job = None;
         }
         let kept = self.entry(&app).is_some_and(|e| e.ready);
+        // A refused downgrade must not leave the card on a version it can't install.
+        if self.install_choice_before.as_ref().is_some_and(|(id, _)| *id == app)
+            && let Some((id, before)) = self.install_choice_before.take()
+            && result.is_err()
+            && self.chosen_is_older(&id)
+        {
+            self.restore_version_choice(id, before);
+        }
         match result {
             Ok(msg) => self.toast(msg, false),
             // The paused card says it all.
