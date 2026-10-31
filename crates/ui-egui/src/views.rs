@@ -250,7 +250,8 @@ impl LauncherUi {
                     ),
                     JobPhase::Downloading { .. } | JobPhase::Reconnecting { .. } => (None, tl!("Downloading…").to_string()),
                     JobPhase::Verifying => (None, tl!("Verifying…").to_string()),
-                    JobPhase::Waiting | JobPhase::Queued => (None, tl!("Waiting for other installs…").to_string()),
+                    JobPhase::Queued => (None, tl!("Waiting for another download…").to_string()),
+                    JobPhase::Waiting => (None, tl!("Waiting for other installs…").to_string()),
                     JobPhase::Installing | JobPhase::Removing => (None, tl!("Installing, then restarting…").to_string()),
                 };
                 // Another app's install can hang on a password prompt: the wait can be called off.
