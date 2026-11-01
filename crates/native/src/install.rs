@@ -171,7 +171,7 @@ pub fn install_at(
     let (msi_scope, destination) = if kind == PackageKind::Msi && existing.is_none() {
         let scope = crate::msi_context::fresh_scope(crate::msi_context::package_installs_per_user(&file));
         log::info!("{}: installing {}", app.name, if scope == MsiScope::PerUser { "for this account" } else { "for everyone" });
-        (Some(scope), fresh_msi_folder(app, scope, destination))
+        (Some(scope), fresh_msi_folder(scope, job.install_locations.folder(app.id).is_some(), destination))
     } else {
         (msi_scope, destination)
     };
@@ -422,11 +422,11 @@ fn msi_user_folder() -> Option<PathBuf> {
 
 /// The folder for a fresh MSI install in `scope`. The account folder is only the default of a
 /// per-user install: a per-machine-only package goes where it was authored to (Program Files), as
-/// before per-user installs. A folder the person chose is kept either way.
+/// before per-user installs. A folder the person chose (`chosen`) is kept either way, even when it
+/// is the account folder itself.
 #[cfg(windows)]
-fn fresh_msi_folder(app: &CraftApp, scope: MsiScope, destination: Option<PathBuf>) -> Option<PathBuf> {
-    let account_default = msi_user_folder().map(|folder| folder.join(app.name));
-    if scope == MsiScope::PerMachine && destination.is_some() && destination == account_default { None } else { destination }
+fn fresh_msi_folder(scope: MsiScope, chosen: bool, destination: Option<PathBuf>) -> Option<PathBuf> {
+    if scope == MsiScope::PerMachine && !chosen { None } else { destination }
 }
 
 fn selected_folder(folder: &str, writable: bool) -> Result<PathBuf, String> {
@@ -2359,17 +2359,19 @@ mod tests {
         }
     }
 
-    /// A per-machine-only package drops the account folder default and keeps a chosen folder.
+    /// A per-machine-only package drops the account folder default and keeps a chosen folder,
+    /// including a chosen folder that is the account folder itself.
     #[cfg(windows)]
     #[test]
     fn a_per_machine_only_package_installs_where_it_was_authored_to() {
         let app = CraftApp::by_id("gridcraft").unwrap();
         let account = default_folder(PackageKind::Msi, None, &Paths::under(Path::new(r"C:\scratch"))).unwrap().join(app.name);
         let chosen = PathBuf::from(r"D:\Tools\GridCraft");
-        assert_eq!(fresh_msi_folder(app, MsiScope::PerMachine, Some(account.clone())), None);
-        assert_eq!(fresh_msi_folder(app, MsiScope::PerMachine, Some(chosen.clone())), Some(chosen.clone()));
-        assert_eq!(fresh_msi_folder(app, MsiScope::PerUser, Some(account.clone())), Some(account));
-        assert_eq!(fresh_msi_folder(app, MsiScope::PerUser, Some(chosen.clone())), Some(chosen));
+        assert_eq!(fresh_msi_folder(MsiScope::PerMachine, false, Some(account.clone())), None);
+        assert_eq!(fresh_msi_folder(MsiScope::PerMachine, true, Some(account.clone())), Some(account.clone()));
+        assert_eq!(fresh_msi_folder(MsiScope::PerMachine, true, Some(chosen.clone())), Some(chosen.clone()));
+        assert_eq!(fresh_msi_folder(MsiScope::PerUser, false, Some(account.clone())), Some(account));
+        assert_eq!(fresh_msi_folder(MsiScope::PerUser, true, Some(chosen.clone())), Some(chosen));
     }
 
     #[cfg(target_os = "macos")]

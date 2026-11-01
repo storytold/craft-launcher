@@ -65,9 +65,10 @@ pub(crate) fn install_scope(updated: Option<MsiScope>, fresh: bool) -> Option<Ms
 const NO_ELEVATION_NEEDED: u32 = 8;
 
 /// Whether a package can install for one account, from the lookup's two lines: its Word Count and
-/// its own `ALLUSERS` property. A dual-scope package (WiX `perUserOrMachine`, as every ArtCraft
-/// release) authors `ALLUSERS=2` and leaves bit 3 clear, since installing it for everyone still
-/// needs elevation; a per-user-only package sets bit 3. A per-machine-only package does neither.
+/// its own `ALLUSERS` property. Only a package that authors `ALLUSERS` for everyone (`1`, or any
+/// value but `2`) is per-machine-only. A dual-scope package (WiX `perUserOrMachine`, as every
+/// ArtCraft release) authors `ALLUSERS=2`; a package without `ALLUSERS` installs per-user by
+/// default; and bit 3 marks a package that never needs elevation.
 pub(crate) fn installs_per_user(output: &str) -> Option<bool> {
     let mut lines = output.lines().map(str::trim);
     let word_count = lines.next()?.parse::<u32>().ok()?;
@@ -75,7 +76,7 @@ pub(crate) fn installs_per_user(output: &str) -> Option<bool> {
     if lines.any(|line| !line.is_empty()) {
         return None;
     }
-    Some(word_count & NO_ELEVATION_NEEDED != 0 || all_users == "2")
+    Some(word_count & NO_ELEVATION_NEEDED != 0 || all_users.is_empty() || all_users == "2")
 }
 
 /// The context of a fresh install, once the downloaded package says what it supports. A
@@ -375,7 +376,9 @@ mod tests {
     fn the_package_says_whether_it_installs_per_user() {
         assert_eq!(installs_per_user("2\r\n2\r\n"), Some(true));
         assert_eq!(installs_per_user("2\r\n1\r\n"), Some(false));
-        assert_eq!(installs_per_user("2\r\n\r\n"), Some(false));
+        // No ALLUSERS: the package's own default is a per-user install.
+        assert_eq!(installs_per_user("2\r\n\r\n"), Some(true));
+        assert_eq!(installs_per_user("2\r\nYes\r\n"), Some(false));
         assert_eq!(installs_per_user("10\r\n\r\n"), Some(true));
         for output in ["", "x\n2", "-8\n", "2", "2\n2\nnoise", "8 9\n"] {
             assert_eq!(installs_per_user(output), None, "{output:?}");
