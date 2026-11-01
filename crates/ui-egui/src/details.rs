@@ -523,7 +523,11 @@ impl LauncherUi {
         if arrow_button(ui, next, Id::unique("shot-next"), false, tl!("Next picture (→)"), t) {
             self.flip_shot(count, true);
         }
-        widgets::hud(ui, &format!("{} · {}/{count}", tr_ctx(current_language(), details.id, current.caption), self.detail_shot.min(count - 1) + 1), t.faint);
+        widgets::hud(
+            ui,
+            &format!("{} · {}/{count}", tr_ctx(current_language(), details.id, current.caption), self.detail_shot.min(count - 1) + 1),
+            t.faint,
+        );
         let gap = 8.0;
         let thumb_w = ((w - gap * (count as f32 - 1.0)) / count as f32).floor().max(1.0);
         ui.horizontal(|ui| {
@@ -549,7 +553,8 @@ impl LauncherUi {
                 let stroke = if selected { Stroke::new(2.0, app_color) } else { t.hairline() };
                 ui.painter().rect_stroke(resp.rect, CornerRadius::ZERO, stroke, egui::StrokeKind::Inside);
                 resp.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, true, tr_ctx(current_language(), details.id, shot.caption)));
-                if resp.on_hover_cursor(egui::CursorIcon::PointingHand).on_hover_text(tr_ctx(current_language(), details.id, shot.caption)).clicked() {
+                if resp.on_hover_cursor(egui::CursorIcon::PointingHand).on_hover_text(tr_ctx(current_language(), details.id, shot.caption)).clicked()
+                {
                     self.detail_shot = i;
                 }
             }
