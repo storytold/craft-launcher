@@ -1539,6 +1539,41 @@ fn the_first_close_to_the_tray_is_explained_once() {
 }
 
 #[test]
+fn community_apps_can_be_hidden_and_restored_in_settings() {
+    for view in [ViewMode::Grid, ViewMode::Table] {
+        let (mut h, _) = harness(view, egui::Theme::Dark, true);
+        h.run_steps(6);
+        assert!(!h.state().as_ref().unwrap().settings.hide_community_apps);
+        assert!(h.query_by_label("SolidCraft details").is_some());
+        h.get_by_label("Settings").click();
+        h.run_steps(4);
+        h.get_by_label("Hide community apps").click();
+        h.run_steps(2);
+        assert!(h.state().as_ref().unwrap().settings.hide_community_apps);
+        h.get_by_label("Done").click();
+        h.run_steps(4);
+        assert!(h.query_by_label("SolidCraft details").is_none());
+        assert!(h.query_by_label("PhotoCraft details").is_some());
+        h.get_by_label("Settings").click();
+        h.run_steps(4);
+        h.get_by_label("Hide community apps").click();
+        h.run_steps(2);
+        h.get_by_label("Done").click();
+        h.run_steps(4);
+        assert!(h.query_by_label("SolidCraft details").is_some());
+    }
+}
+
+#[test]
+fn community_visibility_preference_round_trips_and_defaults_off_for_old_settings() {
+    let old: Settings = serde_json::from_str("{}").unwrap();
+    assert!(!old.hide_community_apps);
+    let settings = Settings { hide_community_apps: true, ..old };
+    let restored: Settings = serde_json::from_str(&serde_json::to_string(&settings).unwrap()).unwrap();
+    assert!(restored.hide_community_apps);
+}
+
+#[test]
 /// The Settings dialog announces its heading once and shows the community section's Discord
 /// entry alongside the footer's.
 fn settings_link_to_discord() {
@@ -3010,6 +3045,23 @@ fn external_windows_copies_open_and_stay_out_of_update_all_and_removal() {
     }
     assert!(sent.borrow().contains(&Command::Reveal { app: "photocraft".into() }));
     assert!(sent.borrow().contains(&Command::Reveal { app: "lightcraft".into() }));
+}
+
+#[test]
+/// The tray count follows actionable updates while external copies retain passive version info.
+fn external_windows_updates_do_not_inflate_the_tray_count() {
+    let (mut h, _sent) = external_windows_harness(false);
+    h.run_steps(8);
+    assert_eq!(h.state().as_ref().unwrap().update_count(), 1);
+    h.get_by_label("Update 1 app");
+    h.get_all_by_label("PhotoCraft").next().unwrap();
+    h.state_mut().as_mut().unwrap().settings.hidden.insert("effectcraft".into());
+    h.run_steps(3);
+    assert_eq!(h.state().as_ref().unwrap().update_count(), 0);
+    assert!(h.query_by_label("Update 1 app").is_none());
+    let row = h.get_all_by_label("PhotoCraft").next().unwrap().rect().center().y;
+    h.get_by_label("0.4.1 → 0.5.0");
+    h.get_all_by_label("Open").find(|n| (n.rect().center().y - row).abs() < 25.0).unwrap();
 }
 
 #[test]

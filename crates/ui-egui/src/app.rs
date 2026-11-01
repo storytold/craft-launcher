@@ -315,8 +315,8 @@ impl LauncherUi {
         }
     }
 
-    /// Installed apps with an update waiting (the tray shows the count). Hidden apps are left out,
-    /// so the badge matches the Updates list.
+    /// Updates offered here (the tray shows the count). Hidden apps and external Windows copies
+    /// are left out, so the badge matches the available update actions.
     pub fn update_count(&self) -> usize {
         self.entries.iter().filter(|e| self.in_filter(e, Filter::Updates)).count()
     }
@@ -672,7 +672,7 @@ impl LauncherUi {
     fn announce_updates(&mut self, host: &mut dyn Host) {
         let mut fresh = Vec::new();
         for e in &self.entries {
-            if !self.in_filter(e, Filter::Updates) || e.external_windows_copy(self.platform) {
+            if !self.in_filter(e, Filter::Updates) {
                 continue;
             }
             let Some(v) = e.latest_label() else { continue };
@@ -723,7 +723,7 @@ impl LauncherUi {
         let to_update: Vec<(String, String)> = self
             .entries
             .iter()
-            .filter(|e| self.in_filter(e, Filter::Updates) && !e.external_windows_copy(self.platform) && e.job.is_none() && !e.ready)
+            .filter(|e| self.in_filter(e, Filter::Updates) && e.job.is_none() && !e.ready)
             .filter_map(|e| {
                 let v = e.latest_label()?;
                 if self.auto_update_attempted.contains(&(e.app.id.to_string(), v.clone())) { None } else { Some((e.app.id.to_string(), v)) }
@@ -872,6 +872,7 @@ impl LauncherUi {
             .enumerate()
             .filter(|(_, e)| {
                 self.in_filter(e, self.settings.filter)
+                    && !(self.settings.hide_community_apps && e.app.kind == artcraft_launcher_core::catalog::AppKind::Community)
                     && (needle.is_empty() || e.app.name.to_lowercase().contains(&needle) || e.app.tagline.to_lowercase().contains(&needle))
             })
             .collect();
@@ -967,7 +968,7 @@ impl LauncherUi {
             Filter::Hidden => hidden,
             Filter::All => !hidden,
             Filter::Installed => !hidden && status.is_installed(),
-            Filter::Updates => !hidden && status == AppStatus::UpdateAvailable,
+            Filter::Updates => !hidden && status == AppStatus::UpdateAvailable && !entry.external_windows_copy(self.platform),
             Filter::NotInstalled => !hidden && !status.is_installed(),
         }
     }

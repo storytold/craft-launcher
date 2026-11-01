@@ -127,7 +127,7 @@ impl LauncherUi {
             ui.add_space(14.0);
         }
         self.announcements(ui);
-        let updates = self.entries.iter().filter(|e| self.in_filter(e, Filter::Updates) && !e.external_windows_copy(self.platform)).count();
+        let updates = self.update_count();
         let compact = self.toolbar_row(ui, &t, updates);
         if compact {
             self.toolbar_compact_row(ui, &t, updates);
@@ -300,12 +300,7 @@ impl LauncherUi {
     fn update_all_button(&mut self, ui: &mut Ui, updates: usize) {
         let label = if updates == 1 { tl!("Update 1 app").to_string() } else { fmt(tl!("Update all ({count})"), &[("count", &updates.to_string())]) };
         if widgets::button(ui, &label, Kind::Primary, 0.0).clicked() {
-            let ids: Vec<&str> = self
-                .entries
-                .iter()
-                .filter(|e| self.in_filter(e, Filter::Updates) && !e.external_windows_copy(self.platform) && e.job.is_none())
-                .map(|e| e.app.id)
-                .collect();
+            let ids: Vec<&str> = self.entries.iter().filter(|e| self.in_filter(e, Filter::Updates) && e.job.is_none()).map(|e| e.app.id).collect();
             for id in ids {
                 self.act_command(Command::Install { app: id.to_string() });
             }
