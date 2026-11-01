@@ -473,7 +473,7 @@ pub const DETAILS: [AppDetails; 16] = [
     },
     AppDetails {
         id: "texturecraft",
-        headline: "3D texture painting",
+        headline: "Paint textures on 3D models.",
         about: "Paint materials on 3D models and export textures.",
         features: &[
             feature("Materials", "Paint materials on 3D models and export textures."),
