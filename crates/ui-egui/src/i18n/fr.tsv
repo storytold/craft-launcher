@@ -394,3 +394,8 @@ column	Author	Auteur
 	Older launcher versions require a manual reinstall.	Les anciennes versions du lanceur nécessitent une réinstallation manuelle.
 	Your files may not open in older versions.	Tes fichiers pourraient ne pas s’ouvrir avec une ancienne version.
 	Enable automatic installs in Settings to follow new nightly builds.	Active les installations automatiques dans les paramètres pour recevoir les nouvelles versions nocturnes.
+texturecraft	3D texture painting	Peinture de textures 3D
+texturecraft	Paint materials on 3D models and export textures.	Peignez des matériaux sur des modèles 3D et exportez les textures.
+texturecraft	Materials	Matériaux
+texturecraft	Mesh maps	Cartes de maillage
+texturecraft	Bake mesh maps and use smart materials.	Calculez des cartes de maillage et utilisez des matériaux intelligents.

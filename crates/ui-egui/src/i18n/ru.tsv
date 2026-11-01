@@ -392,3 +392,8 @@ column	Author	Автор
 	Older launcher versions require a manual reinstall.	Для возврата к старой версии лаунчера нужна переустановка вручную.
 	Your files may not open in older versions.	В старой версии ваши файлы могут не открыться.
 	Enable automatic installs in Settings to follow new nightly builds.	Чтобы получать новые ночные сборки, включите автоматическую установку в настройках.
+texturecraft	3D texture painting	Рисование 3D-текстур
+texturecraft	Paint materials on 3D models and export textures.	Рисуйте материалы на 3D-моделях и экспортируйте текстуры.
+texturecraft	Materials	Материалы
+texturecraft	Mesh maps	Карты сетки
+texturecraft	Bake mesh maps and use smart materials.	Запекайте карты сетки и используйте умные материалы.

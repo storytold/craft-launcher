@@ -364,3 +364,8 @@ column	Version	版本
 	Older launcher versions require a manual reinstall.	旧版启动器需要手动重新安装。
 	Your files may not open in older versions.	旧版可能无法打开你的文件。
 	Enable automatic installs in Settings to follow new nightly builds.	在设置中启用自动安装，即可跟进新的每日构建版。
+texturecraft	3D texture painting	3D 纹理绘制
+texturecraft	Paint materials on 3D models and export textures.	在 3D 模型上绘制材质并导出纹理。
+texturecraft	Materials	材质
+texturecraft	Mesh maps	网格贴图
+texturecraft	Bake mesh maps and use smart materials.	烘焙网格贴图并使用智能材质。
