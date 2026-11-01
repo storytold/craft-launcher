@@ -82,7 +82,8 @@ pub(crate) fn load(script: Script) -> Option<FontData> {
         };
         if matches!(script, Script::Georgian) {
             // Upper-case labels use Mtavruli only where this face draws it.
-            let caps = FontRef::from_index(&bytes, index).is_ok_and(|f| ('\u{1c90}'..='\u{1cba}').all(|c| f.charmap().map(c).is_some()));
+            let caps = FontRef::from_index(&bytes, index)
+                .is_ok_and(|f| ('\u{1c90}'..='\u{1cba}').chain('\u{1cbd}'..='\u{1cbf}').all(|c| f.charmap().map(c).is_some()));
             crate::widgets::set_georgian_caps(caps);
         }
         let mut font = FontData::from_owned(bytes).tweak(tweak);
