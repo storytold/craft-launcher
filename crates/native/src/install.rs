@@ -166,6 +166,15 @@ pub fn install_at(
     #[cfg_attr(not(windows), allow(unused_variables))]
     let (file, sha256) = download(release, asset, job)?;
     log::info!("{}: download ready ({}), running installer...", app.name, file.display());
+    // A fresh install asks the downloaded package whether it can install for one account.
+    #[cfg(windows)]
+    let (msi_scope, destination) = if kind == PackageKind::Msi && existing.is_none() {
+        let scope = crate::msi_context::fresh_scope(crate::msi_context::package_installs_per_user(&file));
+        log::info!("{}: installing {}", app.name, if scope == MsiScope::PerUser { "for this account" } else { "for everyone" });
+        (Some(scope), fresh_msi_folder(app, scope, destination))
+    } else {
+        (msi_scope, destination)
+    };
     // Past this point the install can't be interrupted halfway.
     (job.phase)(JobPhase::Installing);
     #[allow(unused_variables)]
@@ -409,6 +418,15 @@ pub fn default_folder(kind: PackageKind, arch: Option<Arch>, paths: &Paths) -> O
 #[cfg(windows)]
 fn msi_user_folder() -> Option<PathBuf> {
     dirs::data_local_dir().map(|folder| folder.join("Programs").join("ArtCraft"))
+}
+
+/// The folder for a fresh MSI install in `scope`. The account folder is only the default of a
+/// per-user install: a per-machine-only package goes where it was authored to (Program Files), as
+/// before per-user installs. A folder the person chose is kept either way.
+#[cfg(windows)]
+fn fresh_msi_folder(app: &CraftApp, scope: MsiScope, destination: Option<PathBuf>) -> Option<PathBuf> {
+    let account_default = msi_user_folder().map(|folder| folder.join(app.name));
+    if scope == MsiScope::PerMachine && destination.is_some() && destination == account_default { None } else { destination }
 }
 
 fn selected_folder(folder: &str, writable: bool) -> Result<PathBuf, String> {
@@ -2339,6 +2357,19 @@ mod tests {
             assert!(command.contains("ALLUSERS=2 MSIINSTALLPERUSER=1"));
             assert!(!command.contains("ALLUSERS=1"));
         }
+    }
+
+    /// A per-machine-only package drops the account folder default and keeps a chosen folder.
+    #[cfg(windows)]
+    #[test]
+    fn a_per_machine_only_package_installs_where_it_was_authored_to() {
+        let app = CraftApp::by_id("gridcraft").unwrap();
+        let account = default_folder(PackageKind::Msi, None, &Paths::under(Path::new(r"C:\scratch"))).unwrap().join(app.name);
+        let chosen = PathBuf::from(r"D:\Tools\GridCraft");
+        assert_eq!(fresh_msi_folder(app, MsiScope::PerMachine, Some(account.clone())), None);
+        assert_eq!(fresh_msi_folder(app, MsiScope::PerMachine, Some(chosen.clone())), Some(chosen.clone()));
+        assert_eq!(fresh_msi_folder(app, MsiScope::PerUser, Some(account.clone())), Some(account));
+        assert_eq!(fresh_msi_folder(app, MsiScope::PerUser, Some(chosen.clone())), Some(chosen));
     }
 
     #[cfg(target_os = "macos")]
