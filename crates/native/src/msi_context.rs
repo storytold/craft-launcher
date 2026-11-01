@@ -60,6 +60,40 @@ pub(crate) fn install_scope(updated: Option<MsiScope>, fresh: bool) -> Option<Ms
     updated.or_else(|| fresh.then_some(MsiScope::PerUser))
 }
 
+/// Bit 3 of the package's Word Count summary property (`msidbSumInfoSourceTypeLUAPackage`): a
+/// per-user-only package, which installs without elevated privileges.
+const NO_ELEVATION_NEEDED: u32 = 8;
+
+/// Whether a package can install for one account, from the lookup's two lines: its Word Count and
+/// its own `ALLUSERS` property. A dual-scope package (WiX `perUserOrMachine`, as every ArtCraft
+/// release) authors `ALLUSERS=2` and leaves bit 3 clear, since installing it for everyone still
+/// needs elevation; a per-user-only package sets bit 3. A per-machine-only package does neither.
+pub(crate) fn installs_per_user(output: &str) -> Option<bool> {
+    let mut lines = output.lines().map(str::trim);
+    let word_count = lines.next()?.parse::<u32>().ok()?;
+    let all_users = lines.next()?;
+    if lines.any(|line| !line.is_empty()) {
+        return None;
+    }
+    Some(word_count & NO_ELEVATION_NEEDED != 0 || all_users == "2")
+}
+
+/// The context of a fresh install, once the downloaded package says what it supports. A
+/// per-machine-only package would fail as a per-user install, so it keeps the all-users route and
+/// Windows asks for administrator permission, as before per-user installs. A package that can't be
+/// read is still installed per-user: every current release supports it, and a failure is reported
+/// with the installer's own error.
+pub(crate) fn fresh_scope(installs_per_user: Result<bool, String>) -> MsiScope {
+    match installs_per_user {
+        Ok(true) => MsiScope::PerUser,
+        Ok(false) => MsiScope::PerMachine,
+        Err(reason) => {
+            log::warn!("couldn't read the package's install scope ({reason}); installing for this account");
+            MsiScope::PerUser
+        }
+    }
+}
+
 pub(crate) fn valid_product_code(code: &str) -> bool {
     code.len() == 38
         && code.bytes().enumerate().all(|(index, byte)| match index {
@@ -141,6 +175,26 @@ fn current_user_sid() -> Result<String, String> {
         TokenInfo::User(user) => user.User.Sid().map(|sid| sid.to_string()).ok_or_else(|| "couldn't identify this account".into()),
         _ => Err("couldn't identify this account".into()),
     }
+}
+
+/// Reads whether a downloaded package can install for one account (see [`installs_per_user`]).
+/// The path reaches the script through the environment, so it is never parsed as PowerShell.
+#[cfg(windows)]
+pub(crate) fn package_installs_per_user(package: &std::path::Path) -> Result<bool, String> {
+    let mut command = crate::process::command(powershell()?);
+    command.env("ARTCRAFT_MSI_PACKAGE", package);
+    command.args(["-NoProfile", "-NonInteractive", "-Command", include_str!("msi_package.ps1")]);
+    let output = crate::process::run_command(command, "Windows Installer package check", std::time::Duration::from_secs(10))?;
+    installs_per_user(&output).ok_or_else(|| format!("unexpected package lookup output {:?}", output.trim()))
+}
+
+#[cfg(windows)]
+fn powershell() -> Result<std::path::PathBuf, String> {
+    let root = std::env::var_os("SystemRoot")
+        .map(std::path::PathBuf::from)
+        .filter(|root| root.is_absolute())
+        .ok_or("SystemRoot is not set to an absolute path")?;
+    Ok(root.join(r"System32\WindowsPowerShell\v1.0\powershell.exe"))
 }
 
 #[cfg(test)]
@@ -300,6 +354,58 @@ mod tests {
     #[test]
     fn a_fresh_install_is_per_user() {
         assert_eq!(install_scope(None, true), Some(MsiScope::PerUser));
+    }
+
+    /// One app installed both for this account and for everyone: the update stops with a message
+    /// that says so, whether the Windows Installer lookup or the uninstall records find the two.
+    #[test]
+    fn a_copy_for_this_account_and_one_for_everyone_stop_the_update() {
+        for contexts in ["4\r\n1\r\n", "2\n4\n"] {
+            let result = update_scope(true, Some(CODE), |_| parse_contexts(contexts), |_| panic!("must not consult the record"));
+            assert_eq!(result, Err(CONFLICTING_CONTEXT.to_string()), "{contexts:?}");
+        }
+        let records = || single_scope([MsiScope::PerMachine, MsiScope::PerUser]);
+        let result = update_scope(true, Some(CODE), |_| Err(ProbeError::Unavailable("PowerShell is blocked".into())), |_| records());
+        assert_eq!(result, Err(UNKNOWN_CONTEXT.to_string()));
+    }
+
+    /// Outputs as the lookup prints them for real packages: the ArtCraft releases (Word Count 2,
+    /// `ALLUSERS=2`), a per-machine-only package (`ALLUSERS=1`) and a per-user-only one (bit 3).
+    #[test]
+    fn the_package_says_whether_it_installs_per_user() {
+        assert_eq!(installs_per_user("2\r\n2\r\n"), Some(true));
+        assert_eq!(installs_per_user("2\r\n1\r\n"), Some(false));
+        assert_eq!(installs_per_user("2\r\n\r\n"), Some(false));
+        assert_eq!(installs_per_user("10\r\n\r\n"), Some(true));
+        for output in ["", "x\n2", "-8\n", "2", "2\n2\nnoise", "8 9\n"] {
+            assert_eq!(installs_per_user(output), None, "{output:?}");
+        }
+    }
+
+    /// A file that is not a package gives an error, never a scope guessed from empty output.
+    #[cfg(windows)]
+    #[test]
+    fn a_file_that_is_not_a_package_cannot_be_read() {
+        let file = tempfile::NamedTempFile::new().unwrap();
+        std::fs::write(file.path(), b"not an MSI").unwrap();
+        assert!(package_installs_per_user(file.path()).is_err());
+    }
+
+    /// Reads a real release package: `ARTCRAFT_TEST_MSI=<path>` and `ARTCRAFT_TEST_MSI_PER_USER=1|0`.
+    #[cfg(windows)]
+    #[test]
+    #[ignore = "needs a downloaded MSI"]
+    fn a_downloaded_package_reports_its_scope() {
+        let path = std::env::var_os("ARTCRAFT_TEST_MSI").unwrap();
+        let expected = std::env::var("ARTCRAFT_TEST_MSI_PER_USER").unwrap() == "1";
+        assert_eq!(package_installs_per_user(std::path::Path::new(&path)), Ok(expected));
+    }
+
+    #[test]
+    fn a_per_machine_only_package_falls_back_to_installing_for_everyone() {
+        assert_eq!(fresh_scope(Ok(true)), MsiScope::PerUser);
+        assert_eq!(fresh_scope(Ok(false)), MsiScope::PerMachine);
+        assert_eq!(fresh_scope(Err("lookup timed out".into())), MsiScope::PerUser);
     }
 
     #[test]
