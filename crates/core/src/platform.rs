@@ -290,11 +290,8 @@ mod tests {
 
     #[test]
     fn texturecraft_selects_published_desktop_assets() {
-        let release = crate::release::parse_github_release(
-            include_str!("../tests/fixtures/texturecraft-release.json"),
-            "storytold/texturecraft",
-        )
-        .unwrap();
+        let release =
+            crate::release::parse_github_release(include_str!("../tests/fixtures/texturecraft-release.json"), "storytold/texturecraft").unwrap();
         for (os, kind, expected) in [
             (Os::Windows, PackageKind::Msi, "texturecraft-0.1.0-windows-x64.msi"),
             (Os::MacOs, PackageKind::Dmg, "texturecraft-0.1.0-macos-universal.dmg"),
