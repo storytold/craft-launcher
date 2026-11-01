@@ -21,7 +21,7 @@ jobs:
   # builds and checks macOS.
   test:
     # Tracks @main so suite-wide CI fixes reach every app without a PR in each repository.
-    uses: storytold/craft-common-actions/.github/workflows/gate.yml@ci/gate-optional-packages
+    uses: storytold/craft-common-actions/.github/workflows/gate.yml@main
     with:
       os: '["ubuntu-24.04","windows-latest"]'
       # The launcher bundles its own fonts (assets/fonts/) and builds nothing from craft-fonts.
@@ -40,7 +40,7 @@ jobs:
   # clippy for wasm32. Its own cache: another target and the wasm-release profile.
   web:
     # Tracks @main so suite-wide CI fixes reach every app without a PR in each repository.
-    uses: storytold/craft-common-actions/.github/workflows/gate.yml@ci/gate-optional-packages
+    uses: storytold/craft-common-actions/.github/workflows/gate.yml@main
     with:
       cache-version: v1-web
       craft-fonts-ref: ""
