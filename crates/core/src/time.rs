@@ -35,7 +35,6 @@ pub enum TimeAgo {
 }
 
 /// Seconds since the Unix epoch for an RFC 3339 UTC timestamp such as `2026-10-08T14:52:50Z`.
-#[must_use]
 pub fn parse_rfc3339(text: &str) -> Option<i64> {
     let bytes = text.trim().as_bytes();
     if bytes.len() < 19 || bytes.get(4) != Some(&b'-') || bytes.get(7) != Some(&b'-') || !matches!(bytes.get(10), Some(b'T' | b't' | b' ')) {
@@ -84,7 +83,6 @@ fn days_from_civil(y: i64, m: i64, d: i64) -> Option<i64> {
 /// = `146_097` days) and the real year restored afterwards. jiff still does the month/day; the cycle
 /// count only shifts the year, keeping every `i64` exact (e.g. `i64::MAX` → year 292277026596,
 /// `i64::MIN` → year -292277022657), with no epoch fallback for a value the old code converted.
-#[must_use]
 pub fn civil_from_unix(secs: i64) -> (i64, u32, u32) {
     let epoch = jiff::civil::Date::constant(1970, 1, 1);
     let days = secs.div_euclid(86_400);
@@ -103,13 +101,11 @@ const MONTHS: [&str; 12] = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Au
 /// English three-letter month abbreviation for month `m` (1–12); `"?"` when out of range.
 /// Source key for `tr_ctx("month", …)` at the call site; never shown untranslated in
 /// non-English UI.
-#[must_use]
 pub fn month_short_en(m: u32) -> &'static str {
     if (1..=12).contains(&m) { MONTHS.get((m - 1) as usize).copied().unwrap_or("?") } else { "?" }
 }
 
 /// `Oct 8, 2026`
-#[must_use]
 pub fn format_date(secs: i64) -> String {
     let (y, m, d) = civil_from_unix(secs);
     let month = month_short_en(m);
@@ -119,7 +115,6 @@ pub fn format_date(secs: i64) -> String {
 /// Classify a timestamp for translation-neutral rendering (no allocation, no English).
 /// Thresholds match [`format_ago`]: <60s → [`TimeAgo::JustNow`], <1h → minutes,
 /// <1d → hours, <2d → yesterday, <30d → days, older → [`TimeAgo::Date`].
-#[must_use]
 pub fn ago_kind(secs: i64, now: i64) -> TimeAgo {
     let dt = now.saturating_sub(secs);
     if dt < 60 {
@@ -140,7 +135,6 @@ pub fn ago_kind(secs: i64, now: i64) -> TimeAgo {
 /// `just now`, `5 min ago`, `3 h ago`, `yesterday`, `4 days ago`, or the date.
 ///
 /// English-only fallback; translatable UI should match on [`ago_kind`] instead.
-#[must_use]
 pub fn format_ago(secs: i64, now: i64) -> String {
     match ago_kind(secs, now) {
         TimeAgo::JustNow => "just now".into(),

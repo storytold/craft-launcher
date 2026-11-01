@@ -29,7 +29,6 @@ pub enum InstallSource {
 }
 
 impl InstallSource {
-    #[must_use]
     pub fn label(self) -> &'static str {
         match self {
             Self::Launcher => "ArtCraft Launcher",
@@ -46,7 +45,6 @@ impl InstallSource {
 
     /// Whether the launcher may replace or remove this copy itself. Packages owned by a system
     /// package manager (deb, rpm, Flatpak) are updated through that manager instead.
-    #[must_use]
     pub fn launcher_can_update(self) -> bool {
         matches!(self, Self::Launcher | Self::MacApp | Self::Msi | Self::AppImage)
     }
@@ -85,7 +83,6 @@ pub enum AppStatus {
 }
 
 impl AppStatus {
-    #[must_use]
     pub fn is_installed(&self) -> bool {
         matches!(self, Self::UpToDate | Self::UpdateAvailable | Self::Installed)
     }
@@ -100,7 +97,6 @@ pub enum Latest<'a> {
     Found { version: Option<&'a Version>, has_asset: bool },
 }
 
-#[must_use]
 pub fn status(installed: Option<&Installed>, latest: Latest<'_>) -> AppStatus {
     match (installed, latest) {
         (None, Latest::Pending) => AppStatus::Checking,

@@ -142,8 +142,7 @@ impl Feed {
     }
 
     /// The repo to ask GitHub about for `app`, following the feed's repo renames. Always under
-    /// [`GITHUB_OWNER`]: the feed can move an app within `ArtCraft`'s account, never out of it.
-    #[must_use]
+    /// [`GITHUB_OWNER`]: the feed can move an app within ArtCraft's account, never out of it.
     pub fn repo_for(&self, app: &CraftApp) -> String {
         let mut repo = app.repo.to_string();
         // Follow a chain of moves (a → b → c), without looping forever.
@@ -157,7 +156,6 @@ impl Feed {
     }
 
     /// What the feed says about `app` at `now`.
-    #[must_use]
     pub fn answer(&self, app: &CraftApp, now: i64) -> FeedAnswer {
         let Some(entry) = self.apps.get(app.id) else { return FeedAnswer::AskGitHub };
         let Some(fetched_at) = entry.fetched_at else { return FeedAnswer::AskGitHub };
