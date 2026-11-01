@@ -414,7 +414,8 @@ impl NativeBackend {
         let stop = Arc::new(Stop::default());
         {
             let mut jobs = self.shared.jobs.lock().unwrap_or_else(PoisonError::into_inner);
-            if jobs.contains_key(&id) {
+            // Also while an update that finished waits for the restart (#935).
+            if jobs.contains_key(&id) || self.shared.restarting.load(Ordering::SeqCst) {
                 return;
             }
             jobs.insert(id.clone(), stop.clone());
@@ -423,14 +424,11 @@ impl NativeBackend {
         let (shared, paths, http) = (self.shared.clone(), self.paths.clone(), self.http.clone());
         std::thread::spawn(move || {
             let job = job;
-            let mut last_emit = Instant::now() - Duration::from_secs(1);
+            let mut last_count = None;
             let mut phase = |p: JobPhase| {
-                if matches!(p, JobPhase::Downloading { done, total } if done != total && done != 0) && last_emit.elapsed() < Duration::from_millis(50)
-                {
-                    return;
+                if phase_is_due(&p, &mut last_count, Instant::now()) {
+                    shared.emit(Event::Progress { app: LAUNCHER_ID.to_string(), phase: p });
                 }
-                last_emit = Instant::now();
-                shared.emit(Event::Progress { app: LAUNCHER_ID.to_string(), phase: p });
             };
             let last = || {
                 let mut waiting = || shared.emit(Event::Progress { app: LAUNCHER_ID.to_string(), phase: JobPhase::Waiting });
@@ -440,14 +438,7 @@ impl NativeBackend {
                 Some(http) => crate::self_update::update(&install, &release, platform, http, &paths, &stop, &mut phase, &last),
                 None => Err("secure connections aren't available on this system".into()),
             };
-            drop(job);
-            match result {
-                Ok(()) => shared.emit(Event::LauncherRestarting),
-                Err(e) => {
-                    shared.restarting.store(false, Ordering::SeqCst);
-                    shared.emit(Event::JobFinished { app: LAUNCHER_ID.to_string(), result: Err(e) });
-                }
-            }
+            report_self_update(&shared, job, result);
         });
     }
 
@@ -570,14 +561,11 @@ fn run_install(
         shared.emit(Event::Occupied { app: app.id.to_string(), path: path.display().to_string() });
         return Err(format!("{} already exists", path.display()));
     }
-    let mut last_emit = Instant::now() - Duration::from_secs(1);
+    let mut last_count = None;
     let mut phase = |p: JobPhase| {
-        // Downloads report thousands of times; the UI needs ~20 a second.
-        if matches!(p, JobPhase::Downloading { done, total } if done != total && done != 0) && last_emit.elapsed() < Duration::from_millis(50) {
-            return;
+        if phase_is_due(&p, &mut last_count, Instant::now()) {
+            shared.emit(Event::Progress { app: app.id.to_string(), phase: p });
         }
-        last_emit = Instant::now();
-        shared.emit(Event::Progress { app: app.id.to_string(), phase: p });
     };
     let mut job = Job { http, paths, stop, phase: &mut phase, install_locations: &options.install_locations, replace, downgrade };
     let mut commit_record = |record: &crate::manifest::Record| {
@@ -606,6 +594,18 @@ fn run_install(
     Ok(installed_text(app, existing.is_some(), &release))
 }
 
+/// Thins download byte counts to the ~20 a second the UI needs; every other phase goes out.
+fn phase_is_due(phase: &JobPhase, last_count: &mut Option<Instant>, now: Instant) -> bool {
+    if !matches!(*phase, JobPhase::Downloading { done, total } if done != total && done != 0) {
+        return true;
+    }
+    if last_count.is_some_and(|last| now.duration_since(last) < Duration::from_millis(50)) {
+        return false;
+    }
+    *last_count = Some(now);
+    true
+}
+
 /// What a finished install tells the user.
 fn installed_text(app: &CraftApp, update: bool, release: &Release) -> String {
     let verb = if update { "updated to" } else { "installed:" };
@@ -623,6 +623,19 @@ fn landed_despite(error: &str, before: Option<&Installed>, after: Option<&Instal
 fn landed(before: Option<&Installed>, after: Option<&Installed>, latest: &version::Version) -> bool {
     let has_latest = |copy: Option<&Installed>| copy.and_then(|i| i.version.as_ref()).is_some_and(|v| !version::is_update(latest, v));
     has_latest(after) && !has_latest(before)
+}
+
+/// Says how the launcher's own update ended. A failed one gives back the restart it claimed
+/// before `job` ends, so it can't take a later update's claim with it.
+fn report_self_update(shared: &Shared, job: JobGuard, result: Result<(), String>) {
+    if result.is_err() {
+        shared.restarting.store(false, Ordering::SeqCst);
+    }
+    drop(job);
+    match result {
+        Ok(()) => shared.emit(Event::LauncherRestarting),
+        Err(e) => shared.emit(Event::JobFinished { app: LAUNCHER_ID.to_string(), result: Err(e) }),
+    }
 }
 
 /// For the launcher's own update, before it replaces itself: waits (saying so through `waiting`)
@@ -1971,6 +1984,67 @@ mod tests {
         let restarting = AtomicBool::new(false);
         assert_eq!(claim_restart(&jobs, &restarting, &stop, RESTART_WAIT, &mut || panic!("it never waits")), Ok(()));
         assert!(restarting.load(Ordering::SeqCst));
+    }
+
+    #[test]
+    fn no_second_launcher_update_starts_while_the_first_restarts() {
+        let dir = tempfile::tempdir().unwrap();
+        let (woke, wakes) = mpsc::channel();
+        let mut shared = shared();
+        shared.waker = Arc::new(move || {
+            let _ = woke.send(());
+        });
+        shared.self_install.set(Some(crate::self_update::Install::AppImage(dir.path().join("launcher.AppImage")))).unwrap();
+        *shared.launcher_release.lock().unwrap() = Some(release("0.6.0"));
+        // The first update has finished and the helper waits for this process to exit (#935).
+        shared.restarting.store(true, Ordering::SeqCst);
+        let platform = Platform { os: Os::Linux, arch: Arch::X64 };
+        let backend = NativeBackend {
+            shared: Arc::new(shared),
+            paths: Paths::under(dir.path()),
+            http: None,
+            source: None,
+            platform: Some(platform),
+            pins: None,
+        };
+        backend.update_launcher();
+        // A second update would start, fail here for lack of HTTP, and report it.
+        assert!(wakes.recv_timeout(Duration::from_millis(500)).is_err(), "{:?}", backend.shared.events.lock().unwrap());
+        assert!(backend.shared.jobs.lock().unwrap().is_empty());
+        assert!(backend.shared.restarting.load(Ordering::SeqCst), "the pending restart keeps new jobs out");
+    }
+
+    #[test]
+    fn a_failed_launcher_update_gives_back_the_restart_it_claimed() {
+        let shared = Arc::new(shared());
+        let job = || {
+            shared.jobs.lock().unwrap().insert(LAUNCHER_ID.to_string(), Arc::new(Stop::default()));
+            JobGuard { shared: shared.clone(), app_id: LAUNCHER_ID.to_string() }
+        };
+        shared.restarting.store(true, Ordering::SeqCst);
+        report_self_update(&shared, job(), Ok(()));
+        assert!(shared.restarting.load(Ordering::SeqCst), "the helper waits for this process to exit");
+        assert!(shared.jobs.lock().unwrap().is_empty());
+        // The swap or its helper can still fail after the claim.
+        report_self_update(&shared, job(), Err("disk full".into()));
+        assert!(!shared.restarting.load(Ordering::SeqCst));
+        assert!(shared.jobs.lock().unwrap().is_empty());
+        let events = shared.events.lock().unwrap();
+        assert!(matches!(&events[..], [Event::LauncherRestarting, Event::JobFinished { result: Err(_), .. }]), "{events:?}");
+    }
+
+    #[test]
+    fn the_first_byte_count_goes_out_right_after_another_phase() {
+        let count = |done| JobPhase::Downloading { done, total: 100 };
+        let (now, mut last) = (Instant::now(), None);
+        assert!(phase_is_due(&JobPhase::Waiting, &mut last, now));
+        assert!(phase_is_due(&count(0), &mut last, now));
+        assert!(phase_is_due(&count(1), &mut last, now), "held back by the zero count");
+        assert!(!phase_is_due(&count(2), &mut last, now + Duration::from_millis(49)), "too soon after the last count");
+        assert!(phase_is_due(&JobPhase::Verifying, &mut last, now + Duration::from_millis(49)), "only counts are thinned");
+        assert!(phase_is_due(&count(3), &mut last, now + Duration::from_millis(50)));
+        assert!(!phase_is_due(&count(4), &mut last, now + Duration::from_millis(60)), "too soon after that one");
+        assert!(phase_is_due(&count(100), &mut last, now + Duration::from_millis(51)), "the finished count always goes out");
     }
 
     #[test]
