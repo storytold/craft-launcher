@@ -49,6 +49,10 @@ finish-args:
   # .deb and .rpm builds are the recommended way to run the launcher on Linux.
   - --talk-name=org.freedesktop.Flatpak
   - --filesystem=home
+  # The version each app should follow (craft_update::pins), in a host folder of its own so the
+  # Craft apps' Flatpaks can be granted read access to it alone. Usually inside home, but
+  # $XDG_DATA_HOME may sit elsewhere; :create also makes the folder, so an app's grant mounts it.
+  - --filesystem=xdg-data/ArtCraft/versions:create
 build-options:
   append-path: /usr/lib/sdk/rust-stable/bin
 modules:

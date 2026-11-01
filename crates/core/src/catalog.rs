@@ -45,10 +45,10 @@ pub struct CraftApp {
     pub former_bundles: &'static [&'static str],
     /// Its website, when it isn't a page on getartcraft.com (a community app has its own).
     pub site: Option<&'static str>,
-    /// Whether the launcher installs its macOS build. `false` while those builds carry no
-    /// Developer ID signature the launcher can check: it then opens a copy that's there and
-    /// links to the releases, but installs nothing.
-    pub installs_on_mac: bool,
+    /// The Apple Developer team whose Developer ID signature its macOS build must carry. `None`
+    /// while those builds carry no signature the launcher can check: it then opens a copy that's
+    /// there and links to the releases, but installs nothing.
+    pub mac_team: Option<&'static str>,
 }
 
 impl CraftApp {
@@ -72,7 +72,7 @@ impl CraftApp {
 
     /// Whether the launcher installs this app from a `kind` package.
     pub fn installs(&self, kind: crate::PackageKind) -> bool {
-        kind != crate::PackageKind::Dmg || self.installs_on_mac
+        kind != crate::PackageKind::Dmg || self.mac_team.is_some()
     }
 
     /// Bundle ids this app may be installed under, current first.
@@ -118,7 +118,7 @@ const fn app(
         bundle: None,
         former_bundles: &[],
         site: None,
-        installs_on_mac: true,
+        mac_team: Some(ARTCRAFT_TEAM_ID),
     }
 }
 
@@ -202,8 +202,8 @@ pub const SUITE: [CraftApp; 14] = [
         bundle: Some("io.tangencylabs.solidcraft"),
         former_bundles: &["ai.storyteller.solidcraft", "ai.storyteller.solvecraft"],
         site: Some("https://solidcraft.io"),
-        // Its macOS builds aren't Developer ID signed yet (its README says to right-click Open).
-        installs_on_mac: false,
+        // Signed by its own developer's team, not ArtCraft's (since 0.27, per its README).
+        mac_team: Some("G5QA5U5X2S"),
         ..app(
             "solidcraft",
             "SolidCraft",
@@ -213,6 +213,10 @@ pub const SUITE: [CraftApp; 14] = [
         )
     },
 ];
+
+/// The Apple Developer team that signs every official Craft App and ArtCraft Launcher (Learning
+/// Machines LLC): the macOS side of the Windows publisher check.
+pub const ARTCRAFT_TEAM_ID: &str = "DJ6XS33FX8";
 
 /// ArtCraft's website.
 pub const WEBSITE_URL: &str = "https://getartcraft.com";
@@ -312,8 +316,9 @@ mod tests {
         assert_eq!(CraftApp::by_id("gridcraft").unwrap().bundle_id(), "ai.storyteller.gridcraft");
         assert_eq!(CraftApp::by_id("gridcraft").unwrap().kind, AppKind::Official);
         assert_eq!(sc.website(), "https://solidcraft.io");
-        assert!(!sc.installs(crate::PackageKind::Dmg) && sc.installs(crate::PackageKind::Msi) && sc.installs(crate::PackageKind::Flatpak));
-        assert!(CraftApp::by_id("gridcraft").unwrap().installs(crate::PackageKind::Dmg));
+        assert!(sc.installs(crate::PackageKind::Dmg) && sc.installs(crate::PackageKind::Msi) && sc.installs(crate::PackageKind::Flatpak));
+        assert_eq!(sc.mac_team, Some("G5QA5U5X2S"));
+        assert_eq!(CraftApp::by_id("gridcraft").unwrap().mac_team, Some(ARTCRAFT_TEAM_ID));
     }
 
     #[test]
