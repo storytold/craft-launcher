@@ -747,6 +747,9 @@ impl Launcher {
 struct Shell<'a> {
     launcher: &'a mut Launcher,
     window_hides: bool,
+    /// Whether the launcher last showed its window or put it away. On macOS the Dock, Finder and
+    /// ⌘Tab can bring the window back without the launcher knowing; that only matters for the
+    /// tray's left-click toggle, which macOS never sends, as a left click opens the tray menu.
     visible: bool,
     quitting: bool,
     /// The "show on the current desktop" setting last applied to the window (macOS).
