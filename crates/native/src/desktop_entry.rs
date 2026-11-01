@@ -32,6 +32,7 @@ pub fn meta(app: &CraftApp) -> (&'static str, Option<&'static str>) {
         "cadcraft" => ("Graphics;Engineering;VectorGraphics;", None),
         "soundcraft" => ("AudioVideo;Audio;Midi;Mixer;Sequencer;Recorder;", None),
         "figcraft" => ("Graphics;2DGraphics;VectorGraphics;X-Design;", Some("figcraft")),
+        "craft-anything" => ("Development;Debugger;", None),
         _ => ("Graphics;", None),
     }
 }

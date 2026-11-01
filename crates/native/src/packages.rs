@@ -13,6 +13,8 @@ pub struct Package {
     pub name: String,
     /// As the package manager reports it (`0.5.0-1`); empty when it doesn't say.
     pub version: String,
+    /// A per-user Flatpak install (`flatpak --user`), which the launcher installs and updates.
+    pub user: bool,
 }
 
 /// `dpkg-query -W -f '${Package}|${db:Status-Status}|${Version}\n'`: installed packages only.
@@ -78,11 +80,14 @@ pub fn candidate_names(app: &CraftApp, manager: InstallSource) -> Vec<String> {
     }
 }
 
-/// The package of `app` among `installed`, preferring the manager listed first in `order`.
+/// The package of `app` among `installed`, preferring the manager listed first in `order`. A user
+/// install beats a system one under any of the app's ids (#881); within a scope the current id wins.
 pub fn find<'a>(app: &CraftApp, installed: &'a [Package], order: &[InstallSource]) -> Option<&'a Package> {
     order.iter().find_map(|manager| {
         let names = candidate_names(app, *manager);
-        names.iter().find_map(|n| installed.iter().find(|p| p.manager == *manager && p.name == *n))
+        [true, false]
+            .into_iter()
+            .find_map(|user| names.iter().find_map(|n| installed.iter().find(|p| p.manager == *manager && p.user == user && p.name == *n)))
     })
 }
 
@@ -96,7 +101,7 @@ mod tests {
     use super::*;
 
     fn pkgs(manager: InstallSource, list: Vec<(String, String)>) -> Vec<Package> {
-        list.into_iter().map(|(name, version)| Package { manager, name, version }).collect()
+        list.into_iter().map(|(name, version)| Package { manager, name, version, user: false }).collect()
     }
 
     #[test]
@@ -126,6 +131,17 @@ mod tests {
         // Another app's old id never matches SolidCraft.
         let other = pkgs(InstallSource::Flatpak, parse_flatpak_list("ai.storyteller.cadcraft\t0.3.0\n"));
         assert!(find(sc, &other, &[InstallSource::Flatpak]).is_none());
+    }
+
+    #[test]
+    fn a_user_flatpak_beats_a_system_one_under_any_id() {
+        let sc = CraftApp::by_id("solidcraft").unwrap();
+        let mut installed = pkgs(InstallSource::Flatpak, parse_flatpak_list("io.tangencylabs.solidcraft\t0.25.1\n"));
+        installed.push(Package { manager: InstallSource::Flatpak, name: "ai.storyteller.solidcraft".into(), version: "0.26.0".into(), user: true });
+        assert_eq!(find(sc, &installed, &[InstallSource::Flatpak]).map(|p| p.name.as_str()), Some("ai.storyteller.solidcraft"));
+        // Within the user scope the current id still wins.
+        installed.push(Package { manager: InstallSource::Flatpak, name: "io.tangencylabs.solidcraft".into(), version: "0.26.1".into(), user: true });
+        assert_eq!(find(sc, &installed, &[InstallSource::Flatpak]).map(|p| (p.name.as_str(), p.user)), Some(("io.tangencylabs.solidcraft", true)));
     }
 
     #[test]

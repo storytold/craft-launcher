@@ -139,7 +139,7 @@ pub fn screenshot_within_budget(bytes: &[u8]) -> bool {
 /// Where every Craft App runs (getartcraft.com lists the same for each of them).
 const PLATFORMS: &str = "macOS, Windows, Linux, FreeBSD, web";
 
-pub const DETAILS: [AppDetails; 14] = [
+pub const DETAILS: [AppDetails; 15] = [
     AppDetails {
         id: "photocraft",
         headline: "The image editor you already know how to use.",
@@ -467,6 +467,27 @@ pub const DETAILS: [AppDetails; 14] = [
                 "Your files",
                 "Plain .figcraft files on your own disk. SVG, PNG, JPEG, WebP and PDF in and out, and .fig files open, best effort.",
             ),
+        ],
+        shots: &[],
+        platforms: PLATFORMS,
+    },
+    AppDetails {
+        id: "craft-anything",
+        headline: "See how any website, app or game works, then build your own.",
+        about: "Point it at a target and say what you want. It studies the original with real inspection tools, has a \
+                coding agent build a new project in the stack you ask for, checks the result against the original and \
+                refines it. Open source and clean-room.",
+        features: &[
+            feature(
+                "Study anything",
+                "Websites, desktop apps, phone apps, games and files: find out how they're built, with the evidence behind every answer.",
+            ),
+            feature("Build your own", "Say what you want and a coding agent builds a new project in the language or engine you name."),
+            feature(
+                "Checked, not guessed",
+                "Every build is compared with the original, at three screen widths for a page, and refined until it's close.",
+            ),
+            feature("Agent-ready", "Every tool is a CLI command and an MCP tool, and no AI is needed just to inspect."),
         ],
         shots: &[],
         platforms: PLATFORMS,

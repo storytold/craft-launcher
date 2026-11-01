@@ -131,6 +131,9 @@ pub struct NativeBackend {
     http: Option<Http>,
     source: Option<Arc<dyn ReleaseSource>>,
     platform: Option<Platform>,
+    /// The version-choice file the apps read (see [`crate::pins`]); `None` when there is no
+    /// per-user data folder.
+    pins: Option<std::path::PathBuf>,
 }
 
 impl NativeBackend {
@@ -172,7 +175,11 @@ impl NativeBackend {
             pictures_busy: Mutex::new(std::collections::HashSet::new()),
             last_check: Mutex::new(None),
         });
-        let backend = Self { shared, paths, http, source, platform: native_platform() };
+        let pins = craft_update::pins::Pins::default_path();
+        if let Some(path) = &pins {
+            crate::pins::prepare_folder(path);
+        }
+        let backend = Self { shared, paths, http, source, platform: native_platform(), pins };
         backend.replay_cache();
         backend.detect_all();
         backend
@@ -464,6 +471,13 @@ fn release_matches_track(release: &Release, track: &VersionTrack, prereleases: b
     }
 }
 
+/// Whether `chosen` is a version picked by name that is older than the installed copy.
+fn is_chosen_downgrade(track: &VersionTrack, chosen: &Release, existing: Option<&Installed>) -> bool {
+    let VersionTrack::Pinned(tag) = track else { return false };
+    let (Some(chosen_v), Some(installed_v)) = (chosen.version.as_ref(), existing.and_then(|i| i.version.as_ref())) else { return false };
+    chosen.tag == *tag && version::is_newer(installed_v, chosen_v)
+}
+
 /// For a version chosen by name that is older than the installed copy: the installed version's own
 /// published release, to put back if the downgrade fails. `None` for anything else, without
 /// asking `list`. An error means the downgrade can't be made safe, so it must not start.
@@ -474,11 +488,9 @@ fn downgrade_previous(
     existing: Option<&Installed>,
     list: impl FnOnce() -> Result<Vec<Release>, String>,
 ) -> Result<Option<Release>, String> {
-    let VersionTrack::Pinned(tag) = track else { return Ok(None) };
-    let (Some(chosen_v), Some(installed_v)) = (chosen.version.as_ref(), existing.and_then(|i| i.version.as_ref())) else { return Ok(None) };
-    if chosen.tag != *tag || !version::is_newer(installed_v, chosen_v) {
+    let Some(installed_v) = existing.and_then(|i| i.version.as_ref()).filter(|_| is_chosen_downgrade(track, chosen, existing)) else {
         return Ok(None);
-    }
+    };
     let releases =
         list().map_err(|e| format!("couldn't find {} {installed_v} to put back if going back fails ({e}), so nothing was changed.", app.name))?;
     releases.into_iter().find(|r| r.version.as_ref() == Some(installed_v)).map(Some).ok_or_else(|| {
@@ -527,11 +539,19 @@ fn run_install(
             format!("{} {} has no download for {}", app.name, release.version_label(), platform.label())
         }
     })?;
-    // Going back to a version chosen by name: the installed version's own package is found first,
-    // so a downgrade that fails can put it back. Without it nothing changes.
-    let previous = downgrade_previous(app, track, &release, existing, || {
-        source.ok_or_else(|| "secure connections aren't available on this system".to_string())?.versions(&feed_repo(load_feed(paths).as_ref(), app))
-    })?;
+    // Going back to a version chosen by name. A macOS bundle or a launcher AppImage keeps the old
+    // copy until the new one is in place. Otherwise the installed version's own package is found
+    // first, so a downgrade that fails can put it back. Without it nothing changes.
+    let keeps_old_copy = install::keeps_old_copy(kind, existing, record);
+    let previous = if keeps_old_copy {
+        None
+    } else {
+        downgrade_previous(app, track, &release, existing, || {
+            source
+                .ok_or_else(|| "secure connections aren't available on this system".to_string())?
+                .versions(&feed_repo(load_feed(paths).as_ref(), app))
+        })?
+    };
     let previous_asset = match &previous {
         Some(p) => Some(
             planned_asset(app, p, platform, options, existing, record)
@@ -541,7 +561,11 @@ fn run_install(
         ),
         None => None,
     };
-    let downgrade = previous.as_ref().zip(previous_asset.as_ref()).map(|(previous, asset)| install::Downgrade { previous, asset });
+    let downgrade = if keeps_old_copy {
+        is_chosen_downgrade(track, &release, existing).then_some(install::Downgrade::KeepOldCopy)
+    } else {
+        previous.as_ref().zip(previous_asset.as_ref()).map(|(previous, asset)| install::Downgrade::Reinstall { previous, asset })
+    };
     if !replace && let Some(path) = install::occupied(app, &asset, kind, existing, record, &options.install_locations, paths)? {
         shared.emit(Event::Occupied { app: app.id.to_string(), path: path.display().to_string() });
         return Err(format!("{} already exists", path.display()));
@@ -1174,6 +1198,15 @@ impl Backend for NativeBackend {
                     *o = options;
                     changed
                 };
+                // Every Configure, not only on a change: the first one carries the choices saved
+                // before the shared file existed, and the file may have been deleted since.
+                if let Some(path) = &self.pins {
+                    match crate::pins::sync(path, &self.options().versions) {
+                        Ok(true) => log::info!("version choices written to {}", path.display()),
+                        Ok(false) => {}
+                        Err(e) => log::warn!("couldn't write the version choices: {e}"),
+                    }
+                }
                 // Another package format means another file to download.
                 let options = self.options();
                 for app in &SUITE {
@@ -1223,6 +1256,17 @@ mod tests {
 
     fn tagged(v: &str) -> Release {
         Release { tag: format!("v{v}"), version: version::parse(v), ..Default::default() }
+    }
+
+    #[test]
+    fn a_downgrade_is_only_a_version_chosen_by_name_below_the_installed_one() {
+        let installed = Installed { version: version::parse("0.14.0"), source: InstallSource::MacApp, location: String::new(), package: None };
+        let pinned = VersionTrack::Pinned("v0.13.0".into());
+        assert!(is_chosen_downgrade(&pinned, &tagged("0.13.0"), Some(&installed)));
+        assert!(!is_chosen_downgrade(&VersionTrack::Stable, &tagged("0.13.0"), Some(&installed)));
+        assert!(!is_chosen_downgrade(&VersionTrack::Pinned("v0.15.0".into()), &tagged("0.15.0"), Some(&installed)));
+        assert!(!is_chosen_downgrade(&pinned, &tagged("0.12.0"), Some(&installed)));
+        assert!(!is_chosen_downgrade(&pinned, &tagged("0.13.0"), None));
     }
 
     #[test]
@@ -1665,7 +1709,7 @@ mod tests {
         let shared = shared();
         shared.latest.lock().unwrap().insert(APP.to_string(), release("0.5.0"));
         let shared = Arc::new(shared);
-        NativeBackend { shared, paths: Paths::under(root), http: None, source, platform: Some(platform) }
+        NativeBackend { shared, paths: Paths::under(root), http: None, source, platform: Some(platform), pins: Some(root.join("versions.json")) }
     }
 
     /// Reports again, and returns what the UI was last told about a kept download.
@@ -1800,6 +1844,21 @@ mod tests {
     }
 
     #[test]
+    fn the_settings_reach_the_file_the_apps_read() {
+        let Some(platform) = native_platform() else { return };
+        let dir = tempfile::tempdir().unwrap();
+        let mut backend = backend(dir.path(), platform, None);
+        let mut options = BackendOptions::default();
+        options.versions.insert("pdfcraft".into(), VersionTrack::Pinned("v0.13.0".into()));
+        backend.send(Command::Configure(options));
+        let pins = craft_update::pins::Pins::load(&dir.path().join("versions.json"));
+        assert_eq!(pins.track("pdfcraft"), Some(craft_update::pins::VersionTrack::Pinned("v0.13.0".into())));
+        backend.send(Command::Configure(BackendOptions::default()));
+        let pins = craft_update::pins::Pins::load(&dir.path().join("versions.json"));
+        assert_eq!(pins.choice("pdfcraft"), craft_update::pins::Choice::Stable);
+    }
+
+    #[test]
     fn a_check_that_finds_a_newer_release_ends_the_retry_offer() {
         struct Newer;
         impl ReleaseSource for Newer {
@@ -1867,8 +1926,8 @@ mod tests {
             assert!(!landed_after(error), "{error}");
         }
         // A call shared with other apps may have installed this one before it failed.
-        let shared = "the system installer stopped with error 100 while handling 2 apps in one go. Try them one at a time.";
-        assert_eq!(landed_after(shared), cfg!(any(target_os = "linux", windows)));
+        let shared = "the system installer stopped with error 100 while handling 2 apps together. Try them one at a time.";
+        assert_eq!(landed_after(shared), cfg!(target_os = "linux"));
         assert!(!landed_despite(shared, before.as_ref(), before.as_ref(), &latest));
     }
 

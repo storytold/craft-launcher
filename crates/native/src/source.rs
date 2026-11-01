@@ -129,7 +129,7 @@ impl GitHubSource {
                 Ok(Some(found(None)))
             }
             Fetched::RateLimited { reset } => {
-                *self.limited_until.lock().unwrap_or_else(PoisonError::into_inner) = Some(reset.unwrap_or_else(|| crate::now() + 15 * 60));
+                *self.limited_until.lock().unwrap_or_else(PoisonError::into_inner) = Some(retry_at(reset, crate::now()));
                 Ok(None)
             }
         }
@@ -155,6 +155,14 @@ impl GitHubSource {
     }
 }
 
+/// GitHub's quota refills within the hour, so a later reset is a bad answer.
+const MAX_LIMIT_WAIT: i64 = 60 * 60;
+
+/// When to ask the API again after a refusal.
+fn retry_at(reset: Option<i64>, now: i64) -> i64 {
+    reset.unwrap_or(now + 15 * 60).min(now + MAX_LIMIT_WAIT)
+}
+
 impl ReleaseSource for GitHubSource {
     fn versions(&self, repo: &str) -> Result<Vec<Release>, String> {
         if let Some((at, list)) = self.versions_cache.lock().unwrap_or_else(PoisonError::into_inner).get(repo)
@@ -170,7 +178,7 @@ impl ReleaseSource for GitHubSource {
             Fetched::Body { text, .. } => release::parse_github_versions(&text, repo)?,
             Fetched::NotFound => Vec::new(),
             Fetched::RateLimited { reset } => {
-                *self.limited_until.lock().unwrap_or_else(PoisonError::into_inner) = Some(reset.unwrap_or_else(|| crate::now() + 15 * 60));
+                *self.limited_until.lock().unwrap_or_else(PoisonError::into_inner) = Some(retry_at(reset, crate::now()));
                 return Err("GitHub's request limit was reached. Try again later.".into());
             }
             Fetched::NotModified => return Err("GitHub returned no version list. Try again.".into()),
@@ -234,5 +242,22 @@ impl ReleaseSource for GitHubSource {
             }
             Err(e) => log::warn!("release cache: {e}"),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_refusal_waits_for_the_reset_github_names() {
+        assert_eq!(retry_at(Some(1_000 + 600), 1_000), 1_600);
+        assert_eq!(retry_at(None, 1_000), 1_000 + 15 * 60);
+    }
+
+    #[test]
+    fn a_reset_past_the_quota_window_cannot_stop_the_api_for_good() {
+        assert_eq!(retry_at(Some(i64::MAX), 1_000), 1_000 + 60 * 60);
+        assert_eq!(retry_at(Some(99_999_999_999), 1_000), 1_000 + 60 * 60);
     }
 }

@@ -1,4 +1,4 @@
-//! The Craft App Suite: the fourteen apps the launcher knows about.
+//! The Craft App Suite: the fifteen apps the launcher knows about.
 //!
 //! The list is data so a later version can fetch it from an API; [`SUITE`] is the built-in copy.
 //!
@@ -45,10 +45,10 @@ pub struct CraftApp {
     pub former_bundles: &'static [&'static str],
     /// Its website, when it isn't a page on getartcraft.com (a community app has its own).
     pub site: Option<&'static str>,
-    /// Whether the launcher installs its macOS build. `false` while those builds carry no
-    /// Developer ID signature the launcher can check: it then opens a copy that's there and
-    /// links to the releases, but installs nothing.
-    pub installs_on_mac: bool,
+    /// The Apple Developer team whose Developer ID signature its macOS build must carry. `None`
+    /// while those builds carry no signature the launcher can check: it then opens a copy that's
+    /// there and links to the releases, but installs nothing.
+    pub mac_team: Option<&'static str>,
 }
 
 impl CraftApp {
@@ -72,7 +72,7 @@ impl CraftApp {
 
     /// Whether the launcher installs this app from a `kind` package.
     pub fn installs(&self, kind: crate::PackageKind) -> bool {
-        kind != crate::PackageKind::Dmg || self.installs_on_mac
+        kind != crate::PackageKind::Dmg || self.mac_team.is_some()
     }
 
     /// Bundle ids this app may be installed under, current first.
@@ -118,12 +118,12 @@ const fn app(
         bundle: None,
         former_bundles: &[],
         site: None,
-        installs_on_mac: true,
+        mac_team: Some(ARTCRAFT_TEAM_ID),
     }
 }
 
 /// The Craft App Suite, in display order matching getartcraft.com, then the community apps:
-pub const SUITE: [CraftApp; 14] = [
+pub const SUITE: [CraftApp; 15] = [
     app("photocraft", "PhotoCraft", "Image editing", [[0x2f, 0x7b, 0xf5], [0x1a, 0x5b, 0xc4], [0x7f, 0xb0, 0xff]], "storytold/photocraft"),
     app("vectorcraft", "VectorCraft", "Vector illustration", [[0xe8, 0x57, 0x3f], [0xb8, 0x3a, 0x24], [0xff, 0x8a, 0x70]], "storytold/vectorcraft"),
     app(
@@ -195,6 +195,14 @@ pub const SUITE: [CraftApp; 14] = [
         "storytold/cadcraft",
     ),
     app("gridcraft", "GridCraft", "Spreadsheets and data", [[0x1f, 0x9d, 0x55], [0x12, 0x70, 0x3a], [0x4f, 0xd6, 0x8a]], "storytold/gridcraft"),
+    // The raven's tile blue, with its README's deep (#1659c4) and light (#74aaff) accents for text.
+    app(
+        "craft-anything",
+        "Craft Anything",
+        "Find out how any software works, then craft your own",
+        [[0x4e, 0x7b, 0xfb], [0x16, 0x59, 0xc4], [0x74, 0xaa, 0xff]],
+        "storytold/craft-anything",
+    ),
     CraftApp {
         kind: AppKind::Community,
         publisher: "Tangency Labs",
@@ -202,8 +210,8 @@ pub const SUITE: [CraftApp; 14] = [
         bundle: Some("io.tangencylabs.solidcraft"),
         former_bundles: &["ai.storyteller.solidcraft", "ai.storyteller.solvecraft"],
         site: Some("https://solidcraft.io"),
-        // Its macOS builds aren't Developer ID signed yet (its README says to right-click Open).
-        installs_on_mac: false,
+        // Signed by its own developer's team, not ArtCraft's (since 0.27, per its README).
+        mac_team: Some("G5QA5U5X2S"),
         ..app(
             "solidcraft",
             "SolidCraft",
@@ -213,6 +221,10 @@ pub const SUITE: [CraftApp; 14] = [
         )
     },
 ];
+
+/// The Apple Developer team that signs every official Craft App and ArtCraft Launcher (Learning
+/// Machines LLC): the macOS side of the Windows publisher check.
+pub const ARTCRAFT_TEAM_ID: &str = "DJ6XS33FX8";
 
 /// ArtCraft's website.
 pub const WEBSITE_URL: &str = "https://getartcraft.com";
@@ -265,6 +277,7 @@ pub fn app_icon_png(id: &str) -> Option<&'static [u8]> {
         "wordcraft" => include_bytes!("../../../assets/app-icons/wordcraft.png"),
         "deckcraft" => include_bytes!("../../../assets/app-icons/deckcraft.png"),
         "gridcraft" => include_bytes!("../../../assets/app-icons/gridcraft.png"),
+        "craft-anything" => include_bytes!("../../../assets/app-icons/craft-anything.png"),
         "solidcraft" => include_bytes!("../../../assets/app-icons/solidcraft.png"),
         "cadcraft" => include_bytes!("../../../assets/app-icons/cadcraft.png"),
         "soundcraft" => include_bytes!("../../../assets/app-icons/soundcraft.png"),
@@ -287,14 +300,15 @@ mod tests {
     }
 
     #[test]
-    fn suite_has_fourteen_apps_with_unique_ids() {
-        assert_eq!(SUITE.len(), 14);
+    fn suite_has_fifteen_apps_with_unique_ids() {
+        assert_eq!(SUITE.len(), 15);
         let mut ids: Vec<_> = SUITE.iter().map(|a| a.id).collect();
         ids.sort_unstable();
         ids.dedup();
         assert_eq!(ids.len(), SUITE.len());
         for a in &SUITE {
-            assert_eq!(a.name.to_lowercase(), a.id);
+            // `Craft Anything` is `craft-anything`.
+            assert_eq!(a.name.to_lowercase().replace(' ', "-"), a.id);
             match a.kind {
                 AppKind::Official => assert_eq!(a.repo, format!("storytold/{}", a.id)),
                 AppKind::Community => assert!(!a.repo.starts_with("storytold/"), "{} is community", a.id),
@@ -312,8 +326,19 @@ mod tests {
         assert_eq!(CraftApp::by_id("gridcraft").unwrap().bundle_id(), "ai.storyteller.gridcraft");
         assert_eq!(CraftApp::by_id("gridcraft").unwrap().kind, AppKind::Official);
         assert_eq!(sc.website(), "https://solidcraft.io");
-        assert!(!sc.installs(crate::PackageKind::Dmg) && sc.installs(crate::PackageKind::Msi) && sc.installs(crate::PackageKind::Flatpak));
-        assert!(CraftApp::by_id("gridcraft").unwrap().installs(crate::PackageKind::Dmg));
+        assert!(sc.installs(crate::PackageKind::Dmg) && sc.installs(crate::PackageKind::Msi) && sc.installs(crate::PackageKind::Flatpak));
+        assert_eq!(sc.mac_team, Some("G5QA5U5X2S"));
+        assert_eq!(CraftApp::by_id("gridcraft").unwrap().mac_team, Some(ARTCRAFT_TEAM_ID));
+    }
+
+    #[test]
+    fn craft_anything_is_an_official_app() {
+        let ca = CraftApp::by_id("craft-anything").unwrap();
+        assert_eq!(ca.kind, AppKind::Official);
+        assert_eq!(ca.repo, "storytold/craft-anything");
+        assert_eq!(ca.bundle_id(), "ai.storyteller.craft-anything");
+        assert_eq!(ca.website(), "https://getartcraft.com/apps/craft-anything");
+        assert_eq!(ca.mac_team, Some(ARTCRAFT_TEAM_ID));
     }
 
     #[test]
