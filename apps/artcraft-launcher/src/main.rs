@@ -776,9 +776,10 @@ impl<'a> Shell<'a> {
             self.visible = false;
             ctx.send_viewport_cmd(egui::ViewportCommand::Visible(false));
             // Only the menu bar icon is left to bring the window back, so leave the Dock only
-            // where there is one.
+            // where there is one. The setting is greyed out without close-to-tray but keeps its
+            // saved value, so a tray toggle mustn't act on it then.
             #[cfg(target_os = "macos")]
-            if self.launcher.tray.is_some() && self.launcher.ui.settings.hide_dock_icon_in_tray {
+            if self.launcher.tray.is_some() && self.launcher.ui.settings.close_to_tray && self.launcher.ui.settings.hide_dock_icon_in_tray {
                 dock::show_in_dock(false);
             }
         } else {
