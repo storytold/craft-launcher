@@ -233,7 +233,7 @@ impl LauncherUi {
                     // What it is, like the grid and table badges.
                     if let Some(format) = match &entry.installed {
                         Some(_) => entry.installed_kind_label(),
-                        None => entry.planned_kind_label(self.platform, &self.settings.preferred_kinds, &self.caps.install_kinds),
+                        None => entry.planned_kind_label(self.platform, &self.settings.preferred_kinds, &self.install_kinds),
                     } {
                         ui.add_space(4.0);
                         ui.horizontal(|ui| {

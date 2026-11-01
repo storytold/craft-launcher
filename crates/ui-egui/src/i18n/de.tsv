@@ -157,6 +157,15 @@
 	Flatpak bundle	Flatpak-Bundle
 	Tarball (.tar.gz)	Tar-Archiv (.tar.gz)
 
+	Applications folder	Programme-Ordner
+	Windows Installer	Windows-Installer
+	Debian package	Debian-Paket
+	RPM package	RPM-Paket
+	Arch package (AUR)	Arch-Paket (AUR)
+	Flatpak	Flatpak
+	AppImage	AppImage
+	System binary	System-Binärdatei
+
 # Contextual: each app's tagline, keyed by app id
 photocraft	Image editing	Bildbearbeitung
 vectorcraft	Vector illustration	Vektorillustration

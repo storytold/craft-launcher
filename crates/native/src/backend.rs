@@ -969,7 +969,11 @@ impl Backend for NativeBackend {
             Some(Os::Windows) => "Show in Explorer",
             _ => "Show in Files",
         };
-        Capabilities { manage_apps: true, reveal_label, self_update: self.self_install.is_some(), install_kinds: crate::install::available_kinds() }
+        Capabilities { manage_apps: true, reveal_label, self_update: self.self_install.is_some() }
+    }
+
+    fn install_kinds(&self) -> Vec<PackageKind> {
+        install::available_kinds()
     }
 
     fn platform(&self) -> Option<Platform> {

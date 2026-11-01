@@ -153,6 +153,20 @@ fn complete_catalogs_cover_every_ui_literal() {
             }
         }
     }
+    // Installed-format badges also display InstallSource labels dynamically.
+    // ArtCraft Launcher is a product name and intentionally remains English.
+    for label in [
+        "Applications folder",
+        "Windows Installer",
+        "Debian package",
+        "RPM package",
+        "Arch package (AUR)",
+        "Flatpak",
+        "AppImage",
+        "System binary",
+    ] {
+        keys.insert(label);
+    }
     assert!(keys.len() > 100, "found only {} UI literals", keys.len());
     // Plural keys: `tn(n, "one", "other")`, `trn(lang, n, "one", "other")`.
     let mut plurals = BTreeSet::new();

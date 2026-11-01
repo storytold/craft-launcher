@@ -35,7 +35,6 @@ impl Backend for Fake {
             manage_apps: self.manage,
             reveal_label: "Show in Finder",
             self_update: self.manage,
-            install_kinds: vec![artcraft_launcher_core::PackageKind::Dmg],
         }
     }
     fn platform(&self) -> Option<Platform> {

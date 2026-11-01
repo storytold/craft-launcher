@@ -64,12 +64,13 @@ impl AppEntry {
     /// else where it was found (`None` when nothing is installed).
     pub fn installed_kind_label(&self) -> Option<&'static str> {
         let installed = self.installed.as_ref()?;
-        Some(installed.kind.map(|k| k.label()).unwrap_or(installed.source.label()))
+        let label = installed.kind.map(|k| k.label()).unwrap_or(installed.source.label());
+        Some(t(label))
     }
 
     /// What `Install` would download now: the preferred formats the backend can install,
-    /// then what it can install, first published asset wins. Empty `installable` (an old
-    /// backend) falls back to the platform's download list. A label only; the backend
+    /// then what it can install, first published asset wins. An empty list (for example on
+    /// the web) falls back to the platform's manual-download formats. A label only; the backend
     /// decides the real one at install time.
     pub fn planned_kind_label(&self, platform: Option<Platform>, preferred: &[PackageKind], installable: &[PackageKind]) -> Option<&'static str> {
         let (release, platform) = (self.release()?, platform?);
@@ -78,7 +79,7 @@ impl AppEntry {
         let mut kinds: Vec<PackageKind> = preferred.iter().copied().filter(|k| base.contains(k)).collect();
         let rest: Vec<PackageKind> = base.iter().copied().filter(|k| !kinds.contains(k)).collect();
         kinds.extend(rest);
-        kinds.into_iter().find_map(|k| pick_asset(release, &stems, platform, &[k]).map(|(_, kind)| kind.label()))
+        kinds.into_iter().find_map(|k| pick_asset(release, &stems, platform, &[k]).map(|(_, kind)| t(kind.label())))
     }
 
     pub fn latest_label(&self) -> Option<String> {

@@ -267,6 +267,15 @@ filter	Installed	Установлены
 @plural	{n} h ago|{n} h ago	{n} час назад|{n} часа назад|{n} часов назад
 @plural	{n} day ago|{n} days ago	{n} день назад|{n} дня назад|{n} дней назад
 
+	Applications folder	Папка «Программы»
+	Windows Installer	Установщик Windows
+	Debian package	Пакет Debian
+	RPM package	Пакет RPM
+	Arch package (AUR)	Пакет Arch (AUR)
+	Flatpak	Flatpak
+	AppImage	AppImage
+	System binary	Системный бинарный файл
+
 # Message templates (@msg): toasts from the backend. {placeholders} match any text.
 @msg	Couldn't open {name}: {e}	Не удалось открыть {name}: {e}
 @msg	Download cancelled	Скачивание отменено

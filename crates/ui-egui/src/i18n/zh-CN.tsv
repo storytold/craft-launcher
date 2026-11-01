@@ -304,6 +304,15 @@ figcraft	Interface design and prototyping	界面设计与原型制作
 	Loading pictures…	正在加载图片…
 	Pictures couldn't be loaded. Reopen this page to try again.	无法加载图片。重新打开此页面可重试。
 
+	Applications folder	应用程序文件夹
+	Windows Installer	Windows 安装程序
+	Debian package	Debian 软件包
+	RPM package	RPM 软件包
+	Arch package (AUR)	Arch 软件包（AUR）
+	Flatpak	Flatpak
+	AppImage	AppImage
+	System binary	系统二进制文件
+
 # Message templates (@msg): toasts from the backend. {placeholders} match any text.
 @msg	Couldn't open {name}: {e}	无法打开 {name}：{e}
 @msg	Download cancelled	下载已取消

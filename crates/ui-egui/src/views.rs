@@ -483,7 +483,7 @@ impl LauncherUi {
             // What it is: the installed format, else what Install would download.
             let format = match &entry.installed {
                 Some(_) => entry.installed_kind_label(),
-                None => entry.planned_kind_label(self.platform, &self.settings.preferred_kinds, &self.caps.install_kinds),
+                None => entry.planned_kind_label(self.platform, &self.settings.preferred_kinds, &self.install_kinds),
             };
             if let Some(format) = format {
                 ui.add_space(6.0);
@@ -642,7 +642,7 @@ impl LauncherUi {
                                 // What it is: the installed format, else what Install would download.
                                 let format = match &entry.installed {
                                     Some(_) => entry.installed_kind_label(),
-                                    None => entry.planned_kind_label(self.platform, &self.settings.preferred_kinds, &self.caps.install_kinds),
+                                    None => entry.planned_kind_label(self.platform, &self.settings.preferred_kinds, &self.install_kinds),
                                 };
                                 match format {
                                     Some(format) => {

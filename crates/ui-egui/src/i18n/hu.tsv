@@ -157,6 +157,15 @@
 	Flatpak bundle	Flatpak-csomag
 	Tarball (.tar.gz)	Tömörített archívum (.tar.gz)
 
+	Applications folder	Alkalmazások mappa
+	Windows Installer	Windows Installer
+	Debian package	Debian-csomag
+	RPM package	RPM-csomag
+	Arch package (AUR)	Arch-csomag (AUR)
+	Flatpak	Flatpak
+	AppImage	AppImage
+	System binary	Rendszerbináris
+
 # Contextual: each app's tagline, keyed by app id
 photocraft	Image editing	Képszerkesztés
 vectorcraft	Vector illustration	Vektoros illusztráció
