@@ -2259,6 +2259,110 @@ fn maximized_the_close_button_reaches_the_screens_corner() {
     assert!(asked.iter().any(|c| matches!(c, egui::ViewportCommand::BeginResize(_))), "{asked:?}");
 }
 
+/// A quick drag on an edge only resizes: egui sees it as one spot, so nothing nearby may click (#571).
+#[test]
+fn a_press_on_the_window_edge_only_resizes() {
+    use egui::ViewportCommand as Asked;
+    struct FramelessHost;
+    impl Host for FramelessHost {
+        fn title_bar(&self) -> artcraft_launcher_ui_egui::TitleBar {
+            artcraft_launcher_ui_egui::TitleBar::Custom
+        }
+    }
+    artcraft_launcher_ui_egui::i18n::set_test_lang(artcraft_launcher_ui_egui::i18n::Lang::EN);
+    let mut backend = Some(Fake {
+        events: events(),
+        sent: Rc::new(RefCell::new(Vec::new())),
+        manage: true,
+        pictures: Rc::default(),
+        asked: Vec::new(),
+        clock: Rc::new(Cell::new(NOW)),
+    });
+    let mut h = test_harness_builder(egui::Theme::Dark).with_size(egui::vec2(1180.0, 1200.0)).build_ui_state(
+        move |ui, state: &mut Option<LauncherUi>| {
+            if state.is_none()
+                && let Some(b) = backend.take()
+            {
+                *state = Some(LauncherUi::new(ui.ctx(), Box::new(b), Settings { notify: false, ..Settings::default() }));
+            }
+            if let Some(l) = state.as_mut() {
+                l.logic(&ui.ctx().clone(), &mut FramelessHost);
+                // The harness keeps its app 8 px in; a real header starts at the window's top.
+                let window = ui.ctx().content_rect();
+                ui.scope_builder(egui::UiBuilder::new().max_rect(window), |ui| l.ui(ui, &mut FramelessHost));
+            }
+        },
+        None,
+    );
+    h.run_steps(6);
+    let press = |h: &mut Harness<'_, Option<LauncherUi>>, pos: egui::Pos2| -> Vec<Asked> {
+        let mut asked = Vec::new();
+        for pressed in [true, false] {
+            let input = h.input_mut();
+            input.events.push(egui::Event::PointerMoved(pos));
+            input.events.push(egui::Event::PointerButton { pos, button: egui::PointerButton::Primary, pressed, modifiers: egui::Modifiers::NONE });
+            h.step();
+            asked.extend(h.output().viewport_output.values().flat_map(|v| v.commands.iter().cloned()));
+        }
+        h.run_steps(2);
+        asked
+    };
+    let settings_open =
+        |h: &Harness<'_, Option<LauncherUi>>| h.query_by_role_and_label(egui::accesskit::Role::ComboBox, "Launcher version").is_some();
+    for label in ["Minimize", "Maximize", "Close", "Settings"] {
+        let x = h.get_by_label(label).rect().center().x;
+        let asked = press(&mut h, egui::pos2(x, 2.0));
+        assert!(asked.iter().any(|c| matches!(c, Asked::BeginResize(_))), "{label}: {asked:?}");
+        assert!(!asked.iter().any(|c| matches!(c, Asked::Minimized(_) | Asked::Maximized(_) | Asked::Close)), "{label}: {asked:?}");
+    }
+    assert!(!settings_open(&h), "the gear was pressed through the edge");
+    // The first frame at a new size already covers the new edge, or Close slips out from under it.
+    h.set_size(egui::vec2(1300.0, 1200.0));
+    h.step();
+    let x = h.get_by_label("Close").rect().center().x;
+    let asked = press(&mut h, egui::pos2(x, 2.0));
+    assert!(!asked.iter().any(|c| matches!(c, Asked::Close)), "after growing: {asked:?}");
+    // The first frame after a restore has no edge areas to hit yet, only last frame's full buttons.
+    let press_on_restore = |h: &mut Harness<'_, Option<LauncherUi>>, label: &str, y: f32| -> Vec<Asked> {
+        h.input_mut().viewports.entry(egui::ViewportId::ROOT).or_default().maximized = Some(true);
+        h.run_steps(3);
+        let x = h.get_by_label(label).rect().center().x;
+        h.input_mut().viewports.entry(egui::ViewportId::ROOT).or_default().maximized = Some(false);
+        press(h, egui::pos2(x, y))
+    };
+    for label in ["Minimize", "Restore", "Close"] {
+        let asked = press_on_restore(&mut h, label, 4.5);
+        assert!(!asked.iter().any(|c| matches!(c, Asked::Minimized(_) | Asked::Maximized(_) | Asked::Close)), "{label} after restoring: {asked:?}");
+    }
+    // Just below the band, that frame's click is the button's.
+    let asked = press_on_restore(&mut h, "Minimize", 5.5);
+    assert!(asked.contains(&Asked::Minimized(true)), "below the band after restoring: {asked:?}");
+    // A key press still works with the pointer resting on the band, and so does a click below it.
+    let x = h.get_by_label("Minimize").rect().center().x;
+    press(&mut h, egui::pos2(x, 4.5));
+    h.get_by_label("Minimize").focus();
+    h.run_steps(2);
+    h.key_down(egui::Key::Enter);
+    h.step();
+    let asked: Vec<_> = h.output().viewport_output.values().flat_map(|v| v.commands.iter().cloned()).collect();
+    assert!(asked.contains(&Asked::Minimized(true)), "by key: {asked:?}");
+    h.key_up(egui::Key::Enter);
+    h.step();
+    for (label, want) in [("Minimize", Asked::Minimized(true)), ("Maximize", Asked::Maximized(true)), ("Close", Asked::Close)] {
+        let x = h.get_by_label(label).rect().center().x;
+        let asked = press(&mut h, egui::pos2(x, 5.5));
+        assert!(asked.contains(&want), "{label} below the band: {asked:?}");
+        assert!(!asked.iter().any(|c| matches!(c, Asked::BeginResize(_))), "{label} below the band: {asked:?}");
+    }
+    // A dialog's backdrop reaches the edges too; the press doesn't dismiss it.
+    h.get_by_label("Settings").click();
+    h.run_steps(4);
+    assert!(settings_open(&h));
+    let asked = press(&mut h, egui::pos2(590.0, 1198.0));
+    assert!(asked.iter().any(|c| matches!(c, Asked::BeginResize(_))), "{asked:?}");
+    assert!(settings_open(&h), "the dialog closed on a resize");
+}
+
 #[test]
 /// Clicking a card opens its details drawer with the page links, wrapping picture arrows and
 /// Esc-to-close.
