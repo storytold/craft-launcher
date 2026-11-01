@@ -37,9 +37,18 @@ impl LauncherUi {
             Dialog::Replace { app, path } => modal.show(ctx, |ui| close = self.replace_dialog(ui, app, path)),
             Dialog::Settings => modal.show(ctx, |ui| close = self.settings_dialog(ui, host)),
             Dialog::LauncherUpdate(r) => modal.show(ctx, |ui| close = self.launcher_update_dialog(ui, r)),
+            Dialog::Versions(id) => modal.show(ctx, |ui| close = self.version_dialog(ui, id)),
         };
+        if self.dialog.as_ref().is_some_and(|active| active.key() != dialog.key()) {
+            // A control inside a dialog opened a different one; don't restore the old dialog.
+            return;
+        }
         if close || response.should_close() {
             self.dialog = None;
+            if matches!(dialog, Dialog::Versions(_)) {
+                // Close, Escape or a click outside: a version chosen there is dropped.
+                self.revert_version_choice();
+            }
         } else {
             self.dialog = Some(dialog);
         }
@@ -258,8 +267,8 @@ impl LauncherUi {
         let Some(app) = self.entry(id).map(|e| e.app) else { return true };
         ui.set_width(440.0f32.min(ui.ctx().content_rect().width() - 80.0));
         Self::title(ui, None, app.name, tl!("Install folder"));
-        let default = self.settings.install_locations.root.as_deref().unwrap_or(tl!("System default"));
-        Self::folder_field(ui, folder, Some(default), host);
+        let default = self.settings.install_locations.root.clone().or_else(|| self.default_folder_for(id, host));
+        Self::folder_field(ui, folder, default.as_deref(), host);
         if self.platform.is_some_and(|p| p.os == Os::Linux) {
             ui.label(tl!("Custom folders use AppImage on Linux."));
         }

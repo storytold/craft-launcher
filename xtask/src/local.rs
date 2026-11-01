@@ -32,6 +32,7 @@ const APPS: &[(&str, &str)] = &[
     ("deckcraft", "DeckCraft"),
     ("cadcraft", "CADCraft"),
     ("gridcraft", "GridCraft"),
+    ("craft-anything", "Craft Anything"),
 ];
 
 const DEFAULT_PORT: u16 = 8787;

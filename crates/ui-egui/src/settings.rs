@@ -75,10 +75,10 @@ impl CheckEvery {
     }
 
     /// How often to look. Checks ask ArtCraft's release feed (one cheap request; GitHub only as a
-    /// fallback), so automatic checks run every five minutes.
+    /// fallback), so automatic checks run every twelve minutes to reduce GitHub API traffic.
     pub fn seconds(self) -> Option<i64> {
         match self {
-            Self::Hour | Self::FourHours | Self::Day => Some(5 * 60),
+            Self::Hour | Self::FourHours | Self::Day => Some(12 * 60),
             Self::Never => None,
         }
     }
@@ -108,6 +108,9 @@ pub struct Settings {
     /// Show a system notification when an installed app has an update.
     pub notify: bool,
     pub prereleases: bool,
+    /// Version track per app. Missing entries follow stable releases.
+    pub versions: BTreeMap<String, artcraft_launcher_core::protocol::VersionTrack>,
+    pub launcher_version: artcraft_launcher_core::protocol::VersionTrack,
     /// Linux: the package format to prefer for new installs (empty: the system's own).
     pub preferred_kinds: Vec<PackageKind>,
     /// Announcements and alerts from the release feed the user dismissed (by notice id).
@@ -197,6 +200,8 @@ impl Default for Settings {
             auto_update: false,
             notify: true,
             prereleases: false,
+            versions: BTreeMap::new(),
+            launcher_version: Default::default(),
             preferred_kinds: default_preferred_kinds(),
             dismissed_notices: std::collections::BTreeSet::new(),
             notified: BTreeMap::new(),

@@ -120,10 +120,29 @@ pub(crate) fn face_index(data: &[u8], family: &str) -> Option<u32> {
 
 /// Where each system keeps a font for `script`, best first.
 fn candidates(script: Script) -> Vec<Candidate> {
-    match script {
+    let found = match script {
         Script::Chinese => chinese_candidates(),
         Script::Japanese => japanese_candidates(),
+    };
+    let mut out = Vec::with_capacity(found.len() * 2);
+    for candidate in found {
+        // A Flatpak sandbox sees the host's fonts only there; its own folders hold the runtime's (#620).
+        let host = flatpak_host_path(&candidate.path).map(|path| Candidate { path, family: candidate.family });
+        out.push(candidate);
+        out.extend(host);
     }
+    out
+}
+
+/// Where Flatpak mounts the host's system font folder holding `path` (`add_font_path_args`, `common/flatpak-run.c`).
+fn flatpak_host_path(path: &Path) -> Option<PathBuf> {
+    if !cfg!(target_os = "linux") {
+        return None;
+    }
+    // User fonts need no twin: both manifests grant `--filesystem=home`.
+    [("/usr/share/fonts", "/run/host/fonts"), ("/usr/local/share/fonts", "/run/host/local-fonts")]
+        .into_iter()
+        .find_map(|(dir, host)| path.strip_prefix(dir).ok().map(|rest| Path::new(host).join(rest)))
 }
 
 /// The MiSans files a user installs by hand (Xiaomi's free Chinese face: the one some systems
@@ -392,6 +411,27 @@ mod tests {
         let first_misans = chinese_candidates().iter().position(|c| c.family == "MiSans").unwrap();
         assert!(chinese_candidates()[..first_misans].iter().all(|c| c.family != "MiSans"));
         assert!(first_misans > 0, "the system's own fonts come first");
+    }
+
+    /// Inside Flatpak the host's fonts are under `/run/host` (#620), each right after its own path.
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn flatpak_host_fonts_follow_the_paths_they_mirror() {
+        for (path, host) in [
+            ("/usr/share/fonts/noto-cjk/NotoSansCJK-Regular.ttc", Some("/run/host/fonts/noto-cjk/NotoSansCJK-Regular.ttc")),
+            ("/usr/local/share/fonts/noto/NotoSansCJK-Regular.ttc", Some("/run/host/local-fonts/noto/NotoSansCJK-Regular.ttc")),
+            ("/home/u/.local/share/fonts/MiSans-Regular.ttf", None),
+            ("/usr/share/fontsx/a.ttf", None),
+            ("/run/host/fonts/a.ttf", None),
+        ] {
+            assert_eq!(flatpak_host_path(Path::new(path)), host.map(PathBuf::from), "{path}");
+        }
+        for (script, family) in [(Script::Chinese, "Noto Sans CJK SC"), (Script::Japanese, "Noto Sans CJK JP")] {
+            let found = candidates(script);
+            let at = found.iter().position(|c| c.path == Path::new("/usr/share/fonts/noto-cjk/NotoSansCJK-Regular.ttc")).unwrap();
+            assert_eq!(found[at + 1].path, Path::new("/run/host/fonts/noto-cjk/NotoSansCJK-Regular.ttc"));
+            assert_eq!(found[at + 1].family, family);
+        }
     }
 
     #[test]

@@ -371,6 +371,201 @@ fn install_commands(sent: &RefCell<Vec<Command>>) -> Vec<Command> {
 }
 
 #[test]
+fn app_and_launcher_offer_version_choices_without_starting_an_install() {
+    let (mut h, sent) = harness(ViewMode::Grid, egui::Theme::Dark, true);
+    h.run_steps(6);
+    h.get_by_label("More actions for PhotoCraft").click();
+    h.run_steps(3);
+    h.get_by_label("Choose version").click();
+    h.run_steps(3);
+    h.get_by_role_and_label(egui::accesskit::Role::ComboBox, "Version");
+    assert!(sent.borrow().iter().any(|c| matches!(c, Command::ListVersions { app } if app == "photocraft")));
+    assert!(!sent.borrow().iter().any(|c| matches!(c, Command::Install { .. })));
+    h.get_by_label("Close").click();
+    h.run_steps(3);
+    h.get_by_label("Settings").click();
+    h.run_steps(4);
+    h.get_by_role_and_label(egui::accesskit::Role::ComboBox, "Launcher version").click();
+    h.run_steps(3);
+    h.get_by_label("Latest release");
+    h.get_by_label("Nightly (none published yet)");
+    assert!(h.query_by_label("Launcher versions").is_none(), "version selection belongs in Settings, not another dialog");
+    assert!(sent.borrow().iter().any(|c| matches!(c, Command::ListVersions { app } if app == artcraft_launcher_core::catalog::LAUNCHER_ID)));
+}
+
+#[test]
+fn version_choices_have_room_and_nightly_scrolls_with_the_versions() {
+    let releases: Vec<_> = (1..=25)
+        .rev()
+        .map(|v| {
+            let mut r = release("artcraft-launcher", &format!("0.{v}.0"), NOW);
+            r.assets[0].sha256 = Some("0".repeat(64));
+            r
+        })
+        .collect();
+    let mut ev = events();
+    ev.push(Event::Versions { app: artcraft_launcher_core::catalog::LAUNCHER_ID.into(), result: Ok(releases) });
+    let (mut h, _) = harness_with(ev, ViewMode::Grid, egui::Theme::Dark, true, 1.0);
+    h.set_size(egui::vec2(1180.0, 1100.0));
+    h.run_steps(6);
+    h.get_by_label("Settings").click();
+    h.run_steps(4);
+    h.get_by_role_and_label(egui::accesskit::Role::ComboBox, "Launcher version").click();
+    h.run_steps(5);
+    let nightly_before = h.get_by_label("Nightly (none published yet)").rect();
+    // The newest release carries the label; there is no separate "Latest release" row.
+    let first = h.get_by_label("v0.25.0 (latest release)").rect();
+    assert!(h.query_by_label("Latest release").is_none(), "the latest version is labelled in place");
+    assert!(nightly_before.height() >= 40.0, "dropdown rows need a comfortable target: {nightly_before:?}");
+    // Rows touch, so a selected row's highlight fills its whole slot and the spacing stays even.
+    assert!((first.top() - nightly_before.bottom()).abs() < 1.0, "rows sit at an even pitch: {nightly_before:?} {first:?}");
+    h.event(egui::Event::PointerMoved(first.center()));
+    h.event(egui::Event::MouseWheel {
+        unit: egui::MouseWheelUnit::Point,
+        delta: egui::vec2(0.0, -250.0),
+        phase: egui::TouchPhase::Move,
+        source: egui::MouseWheelSource::Wheel,
+        modifiers: egui::Modifiers::NONE,
+    });
+    h.run_steps(30);
+    let nightly_after = h.get_by_label("Nightly (none published yet)").rect();
+    assert!(nightly_after.top() < nightly_before.top() - 80.0, "Nightly must scroll with release rows: {nightly_before:?} -> {nightly_after:?}");
+}
+
+/// A backend that answers ListVersions, unlike the shared Fake: the dialog clears the cached
+/// list when it opens, so the choice only appears once the reply arrives.
+struct VersionsFake {
+    events: Rc<RefCell<Vec<Event>>>,
+    sent: Rc<RefCell<Vec<Command>>>,
+    answer: Vec<Release>,
+}
+
+impl Backend for VersionsFake {
+    fn send(&mut self, command: Command) {
+        if let Command::ListVersions { app } = &command {
+            self.events.borrow_mut().push(Event::Versions { app: app.clone(), result: Ok(self.answer.clone()) });
+        }
+        self.sent.borrow_mut().push(command);
+    }
+    fn poll(&mut self) -> Vec<Event> {
+        std::mem::take(&mut *self.events.borrow_mut())
+    }
+    fn capabilities(&self) -> Capabilities {
+        Capabilities { manage_apps: true, reveal_label: "Show in Finder", self_update: true }
+    }
+    fn platform(&self) -> Option<Platform> {
+        Some(Platform { os: Os::MacOs, arch: Arch::Arm64 })
+    }
+    fn now(&self) -> i64 {
+        NOW
+    }
+}
+
+/// A PhotoCraft release with a published checksum, so the selector offers it.
+fn signed_photocraft(v: &str) -> Release {
+    let mut r = release("photocraft", v, NOW);
+    r.assets[0].sha256 = Some("0".repeat(64));
+    r
+}
+
+type VersionsHarness = (Harness<'static, Option<LauncherUi>>, Rc<RefCell<Vec<Command>>>, Rc<RefCell<Vec<Event>>>);
+
+/// The suite (PhotoCraft 0.4.1 installed) with `latest` as PhotoCraft's checked release and
+/// `answer` as its published versions, opened on PhotoCraft's expanded version menu.
+fn version_menu(latest: Release, answer: Vec<Release>) -> VersionsHarness {
+    struct DummyHost;
+    impl Host for DummyHost {}
+    let mut ev = events();
+    ev.push(Event::Latest { app: "photocraft".into(), latest: LatestRelease::Found(latest), from: Origin::GitHub });
+    let sent = Rc::new(RefCell::new(Vec::new()));
+    let queue = Rc::new(RefCell::new(ev));
+    let mut backend = Some(VersionsFake { events: queue.clone(), sent: sent.clone(), answer });
+    let mut h = test_harness_builder(egui::Theme::Dark).with_size(egui::vec2(1180.0, 1200.0)).build_ui_state(
+        move |ui, state: &mut Option<LauncherUi>| {
+            if let Some(backend) = backend.take() {
+                *state = Some(LauncherUi::new(ui.ctx(), Box::new(backend), Settings { notify: false, ..Default::default() }));
+            }
+            if let Some(launcher) = state {
+                launcher.logic(ui.ctx(), &mut DummyHost);
+                launcher.ui(ui, &mut DummyHost);
+            }
+        },
+        None,
+    );
+    h.run_steps(6);
+    h.get_by_label("More actions for PhotoCraft").click();
+    h.run_steps(3);
+    h.get_by_label("Choose version").click();
+    h.run_steps(4);
+    h.get_by_role_and_label(egui::accesskit::Role::ComboBox, "Version").click();
+    h.run_steps(4);
+    (h, sent, queue)
+}
+
+#[test]
+fn closing_the_dialog_without_installing_drops_the_chosen_version() {
+    // As on a real machine: the checked release is still the newest when the older one is picked.
+    let (mut h, sent, _) = version_menu(signed_photocraft("0.5.0"), vec![signed_photocraft("0.5.0"), signed_photocraft("0.4.0")]);
+    h.query_all_by_role_and_label(egui::accesskit::Role::Button, "v0.4.0").next().unwrap().click();
+    h.run_steps(4);
+    assert!(h.query_all_by_label("Install version v0.4.0").count() > 0, "the dialog offers the chosen version");
+    sent.borrow_mut().clear();
+    h.get_by_label("Close").click();
+    h.run_steps(4);
+    assert!(h.query_by_label("Version").is_none(), "Close closes the dialog");
+    assert!(h.query_by_label("Install version v0.4.0").is_none(), "the card goes back to its own action");
+    let configured = sent.borrow().iter().rev().find_map(|c| match c {
+        Command::Configure(o) => Some(o.versions.get("photocraft").cloned()),
+        _ => None,
+    });
+    assert_eq!(configured, Some(None), "the choice from before (latest release) is restored");
+    assert!(sent.borrow().iter().any(|c| matches!(c, Command::CheckForUpdates { force: true })), "the restored choice is checked again");
+}
+
+#[test]
+fn choosing_an_app_version_turns_its_main_action_into_install() {
+    // A newer release takes the "latest release" label, so v0.4.0 is a plain pin.
+    let pin = signed_photocraft("0.4.0");
+    let (mut h, sent, queue) = version_menu(pin.clone(), vec![signed_photocraft("0.5.0"), pin]);
+    assert!(h.query_all_by_role_and_label(egui::accesskit::Role::Button, "v0.5.0 (latest release)").next().is_some());
+    sent.borrow_mut().clear();
+    h.query_all_by_role_and_label(egui::accesskit::Role::Button, "v0.4.0").next().unwrap().click();
+    h.run_steps(4);
+    assert!(
+        sent.borrow().iter().any(|c| matches!(c, Command::CheckForUpdates { force: true })),
+        "selection must refresh the release used by Install"
+    );
+    assert!(!sent.borrow().iter().any(|c| matches!(c, Command::Install { .. })), "selection itself must not install");
+    h.run_steps(4);
+    assert!(h.query_by_label("Version").is_some(), "choosing a version keeps the dialog open");
+    // The dialog's own Install sits on its Close button's row; the card shows the same label.
+    let row = h.get_by_label("Close").rect().center().y;
+    h.get_all_by_label("Install version v0.4.0")
+        .find(|n| (n.rect().center().y - row).abs() < 4.0)
+        .expect("the dialog offers Install for the chosen version")
+        .click();
+    h.run_steps(4);
+    assert!(sent.borrow().iter().any(|c| matches!(c, Command::Install { app } if app == "photocraft")));
+    assert!(!sent.borrow().iter().any(|c| matches!(c, Command::Launch { app } if app == "photocraft")));
+    assert!(h.query_by_label("Version").is_none(), "installing closes the dialog");
+    assert!(h.query_by_label("Install version v0.4.0").is_some(), "installing from the dialog keeps the chosen version");
+    // Once the pinned version is the installed copy, the card opens it again.
+    let opens = h.query_all_by_label("Open").count();
+    queue.borrow_mut().push(Event::Detected {
+        app: "photocraft".into(),
+        installed: Some(Installed {
+            version: version::parse("0.4.0"),
+            source: InstallSource::MacApp,
+            location: "/Applications/PhotoCraft.app".into(),
+            package: None,
+        }),
+    });
+    h.run_steps(4);
+    assert!(h.query_by_label("Install version v0.4.0").is_none(), "an installed pin is not offered again");
+    assert_eq!(h.query_all_by_label("Open").count(), opens + 1, "PhotoCraft shows Open");
+}
+
+#[test]
 /// A custom-folder install opens a confirmation dialog with no command until Install; the
 /// chosen root and per-app folder are persisted, Configure precedes Install, and Cancel keeps
 /// no override.
@@ -452,6 +647,173 @@ fn use_default_removes_an_app_override_and_settings_can_reset_the_root() {
     h.get_by_label("Use default").click();
     h.run_steps(2);
     assert_eq!(h.state().as_ref().unwrap().settings.install_locations.root, None);
+}
+
+/// The install-folder fields' default comes from the host, so a person sees the real folder a
+/// fresh install uses (here `/Applications`) instead of only "System default", and a saved root
+/// override replaces it. The default is the same value the empty field's hint shows.
+#[test]
+fn the_install_folder_fields_default_to_the_hosts_answer() {
+    struct DefaultHost {
+        picked: Rc<RefCell<Option<String>>>,
+        initial: Rc<RefCell<Option<Option<String>>>>,
+    }
+    impl Host for DefaultHost {
+        fn pick_folder(&mut self, initial: Option<&str>) -> Option<String> {
+            *self.initial.borrow_mut() = Some(initial.map(str::to_string));
+            self.picked.borrow_mut().take()
+        }
+        fn default_install_folder(&mut self, _kind: artcraft_launcher_core::PackageKind, _arch: Option<Arch>) -> Option<String> {
+            Some("/Applications".into())
+        }
+    }
+    artcraft_launcher_ui_egui::i18n::set_test_lang(artcraft_launcher_ui_egui::i18n::Lang::EN);
+    let sent = Rc::new(RefCell::new(Vec::new()));
+    let mut backend = Some(Fake {
+        events: vec![
+            Event::Latest { app: "photocraft".into(), latest: LatestRelease::Found(release("photocraft", "0.6.0", NOW)), from: Origin::GitHub },
+            Event::Detected { app: "photocraft".into(), installed: None },
+        ],
+        sent: sent.clone(),
+        manage: true,
+        pictures: Rc::default(),
+        asked: vec![],
+        clock: Rc::new(Cell::new(NOW)),
+    });
+    let picked = Rc::new(RefCell::new(None));
+    let initial = Rc::new(RefCell::new(None));
+    let mut host = DefaultHost { picked: picked.clone(), initial: initial.clone() };
+    let harness = test_harness_builder(egui::Theme::Dark).with_size(egui::vec2(1180.0, 900.0)).build_ui_state(
+        move |ui, state: &mut Option<LauncherUi>| {
+            if let Some(backend) = backend.take() {
+                *state = Some(LauncherUi::new(ui.ctx(), Box::new(backend), Settings { notify: false, ..Default::default() }));
+            }
+            if let Some(launcher) = state {
+                launcher.logic(ui.ctx(), &mut host);
+                launcher.ui(ui, &mut host);
+            }
+        },
+        None,
+    );
+    let mut h = harness;
+    h.run_steps(8);
+    // Settings' install folder starts at the host's default.
+    h.get_by_label("Settings").click();
+    h.run_steps(4);
+    h.get_by_label("Browse…").scroll_to_me();
+    h.run_steps(4);
+    h.get_by_label("Browse…").click();
+    h.run_steps(3);
+    assert_eq!(initial.borrow().as_ref(), Some(&Some("/Applications".into())));
+    h.get_by_label("Done").click();
+    h.run_steps(3);
+    // So does the per-app install dialog's folder, and a saved root override replaces it.
+    h.get_by_label("Install").scroll_to_me();
+    h.run_steps(3);
+    h.get_by_label("Install").click();
+    h.run_steps(3);
+    h.get_by_label("Browse…").scroll_to_me();
+    h.run_steps(3);
+    h.get_by_label("Browse…").click();
+    h.run_steps(3);
+    assert_eq!(initial.borrow().as_ref(), Some(&Some("/Applications".into())));
+    h.state_mut().as_mut().unwrap().settings.install_locations.root = Some("/Volumes/Craft Apps".into());
+    h.run_steps(3);
+    h.get_by_label("Browse…").click();
+    h.run_steps(3);
+    assert_eq!(initial.borrow().as_ref(), Some(&Some("/Volumes/Craft Apps".into())));
+    h.check_accessibility();
+}
+
+/// A host whose default folder names the package it was asked about (`Msi X86`), and answers
+/// nothing when the architecture is unknown, as the desktop host does for an MSI.
+/// What Browse was last opened at: `None` until it is clicked.
+type BrowsedFrom = Rc<RefCell<Option<Option<String>>>>;
+
+struct PackageHost {
+    initial: BrowsedFrom,
+}
+impl Host for PackageHost {
+    fn pick_folder(&mut self, initial: Option<&str>) -> Option<String> {
+        *self.initial.borrow_mut() = Some(initial.map(str::to_string));
+        None
+    }
+    fn default_install_folder(&mut self, kind: artcraft_launcher_core::PackageKind, arch: Option<Arch>) -> Option<String> {
+        Some(format!("{kind:?} {:?}", arch?))
+    }
+}
+
+/// A Windows launcher whose apps publish only the named assets, with `preferred` formats saved.
+/// Returns the harness and what Browse was last opened at.
+fn windows_package_harness(
+    apps: &[(&str, &[&str])],
+    preferred: Vec<artcraft_launcher_core::PackageKind>,
+) -> (Harness<'static, Option<LauncherUi>>, BrowsedFrom) {
+    artcraft_launcher_ui_egui::i18n::set_test_lang(artcraft_launcher_ui_egui::i18n::Lang::EN);
+    let mut events = Vec::new();
+    for (id, assets) in apps {
+        let mut latest = release(id, "0.6.0", NOW);
+        latest.assets = assets.iter().map(|name| Asset { name: (*name).into(), size: 1, url: format!("https://x/{name}"), sha256: None }).collect();
+        events.push(Event::Latest { app: (*id).into(), latest: LatestRelease::Found(latest), from: Origin::GitHub });
+        events.push(Event::Detected { app: (*id).into(), installed: None });
+    }
+    let fake = Fake { events, sent: Rc::default(), manage: true, pictures: Rc::default(), asked: vec![], clock: Rc::new(Cell::new(NOW)) };
+    let mut backend: Option<Box<dyn Backend>> = Some(Box::new(PlatformFake { inner: fake, platform: Platform { os: Os::Windows, arch: Arch::X64 } }));
+    let initial = Rc::new(RefCell::new(None));
+    let mut host = PackageHost { initial: initial.clone() };
+    let harness = test_harness_builder(egui::Theme::Dark).with_size(egui::vec2(1180.0, 900.0)).build_ui_state(
+        move |ui, state: &mut Option<LauncherUi>| {
+            if let Some(backend) = backend.take() {
+                let settings = Settings { notify: false, preferred_kinds: preferred.clone(), ..Default::default() };
+                *state = Some(LauncherUi::new(ui.ctx(), backend, settings));
+            }
+            if let Some(launcher) = state {
+                launcher.logic(ui.ctx(), &mut host);
+                launcher.ui(ui, &mut host);
+            }
+        },
+        None,
+    );
+    (harness, initial)
+}
+
+/// The install dialog's default follows the package the backend will really install: Portable
+/// ZIP is preferred, but this release ships only a 32-bit MSI, so the app goes into the 32-bit
+/// Program Files and not the launcher's `apps` folder.
+#[test]
+fn the_install_folder_default_follows_the_package_the_backend_falls_back_to() {
+    let (mut h, initial) =
+        windows_package_harness(&[("photocraft", &["photocraft-0.6.0-windows-x86.msi"])], vec![artcraft_launcher_core::PackageKind::PortableZip]);
+    h.run_steps(8);
+    h.get_by_label("Install").scroll_to_me();
+    h.run_steps(3);
+    h.get_by_label("Install").click();
+    h.run_steps(3);
+    h.get_by_label("Browse…").click();
+    h.run_steps(3);
+    assert_eq!(initial.borrow().as_ref(), Some(&Some("Msi X86".into())));
+}
+
+/// Settings covers every app, so it shows a folder only when every app's package shares one: a
+/// 32-bit-only app beside a 64-bit one leaves it at "System default".
+#[test]
+fn settings_shows_a_default_folder_only_when_every_app_shares_it() {
+    let open_settings_browse = |apps: &[(&str, &[&str])]| {
+        let (mut h, initial) = windows_package_harness(apps, vec![]);
+        h.run_steps(8);
+        h.get_by_label("Settings").click();
+        h.run_steps(4);
+        h.get_by_label("Browse…").scroll_to_me();
+        h.run_steps(4);
+        h.get_by_label("Browse…").click();
+        h.run_steps(3);
+        initial.take()
+    };
+    let x64 = ["photocraft-0.6.0-windows-x64.msi", "photocraft-0.6.0-windows-x86.msi"];
+    let shared = open_settings_browse(&[("photocraft", &x64), ("vectorcraft", &["vectorcraft-0.6.0-windows-x64.msi"])]);
+    assert_eq!(shared, Some(Some("Msi X64".into())));
+    let mixed = open_settings_browse(&[("photocraft", &x64), ("vectorcraft", &["vectorcraft-0.6.0-windows-x86.msi"])]);
+    assert_eq!(mixed, Some(None));
 }
 
 #[cfg(windows)]
@@ -1345,8 +1707,7 @@ fn discord_link_opens_app_when_discord_is_installed() {
 }
 
 #[test]
-/// Background detection waits five minutes: it is not sent at startup or on every frame, and is
-/// sent once at the five-minute mark.
+/// Background app detection remains on its own five-minute cadence; release polling is separate.
 fn looks_again_at_installed_apps_every_few_minutes_not_every_frame() {
     let sent = Rc::new(RefCell::new(Vec::new()));
     let clock = Rc::new(Cell::new(NOW));
@@ -1545,11 +1906,11 @@ fn feed_announcements_and_alerts_show_until_dismissed() {
 }
 
 #[test]
-fn automatic_checks_run_every_five_minutes() {
+fn automatic_checks_run_every_twelve_minutes() {
     use artcraft_launcher_ui_egui::settings::CheckEvery;
-    assert_eq!(Settings::default().check_every.seconds(), Some(300));
+    assert_eq!(Settings::default().check_every.seconds(), Some(720));
     // Older saved choices still load, and mean "automatically" now.
-    assert_eq!(CheckEvery::Day.seconds(), Some(300));
+    assert_eq!(CheckEvery::Day.seconds(), Some(720));
     assert_eq!(CheckEvery::Never.seconds(), None);
 }
 

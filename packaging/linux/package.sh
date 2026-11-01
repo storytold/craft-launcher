@@ -11,8 +11,9 @@
 #
 # Needs: cargo; nfpm for deb/rpm (https://nfpm.goreleaser.com); appimagetool for the AppImage
 # (downloaded into $CARGO_TARGET_DIR if missing). Build on an old distro (CI: Ubuntu 22.04,
-# glibc 2.35) so the binaries run on newer ones. Optional: desktop-file-validate, appstreamcli,
-# zsyncmake (the zsync package) for the AppImage's .zsync.
+# glibc 2.35) so the binaries run on newer ones. RISC-V CI uses Ubuntu 24.04 (glibc 2.39)
+# and sets GLIBC_FLOOR accordingly. Set it for other build baselines too. Optional:
+# desktop-file-validate, appstreamcli, zsyncmake (the zsync package) for the AppImage's .zsync.
 #
 # Cross builds (CI: riscv64, deb/rpm/tar.gz): set CROSS_ARCH (riscv64), CROSS_TARGET (the Rust
 # triple), CROSS_COMPILE (binutils prefix, for strip) and optionally EMULATOR (e.g. qemu-riscv64)
@@ -107,6 +108,8 @@ if has deb || has rpm; then
   command -v nfpm >/dev/null || { echo "error: nfpm not found (https://nfpm.goreleaser.com/install/)" >&2; exit 1; }
   export VERSION
   export NFPM_ARCH="$DEB_ARCH"
+  # Match the build runner: Ubuntu 22.04 normally, Ubuntu 24.04 for RISC-V in CI.
+  export GLIBC_FLOOR="${GLIBC_FLOOR:-2.35}"
   # nfpm expands env vars in fields like `version` and `arch`, but not in `contents[].src`.
   sed "s|\${STAGE}|$STAGE|g" "$HERE/nfpm.yaml" >"$WORK/nfpm.yaml"
   for fmt in deb rpm; do

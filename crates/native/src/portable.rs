@@ -133,7 +133,8 @@ fn extract(file: &Path, destination: &Path) -> Result<(Vec<PathBuf>, Vec<PathBuf
         let mut entry = archive.by_index(index).map_err(|e| e.to_string())?;
         let relative = entry.enclosed_name().ok_or("The portable ZIP contains an unsafe path.")?;
         if relative.components().any(|c| !matches!(c, Component::Normal(_)))
-            || entry.name().contains(['\\', ':'])
+            // zip 9: a name that doesn't decode is as unsafe as one with `\` or `:`.
+            || entry.name().map_or(true, |name| name.contains(['\\', ':']))
             || entry.unix_mode().is_some_and(|mode| mode & 0o170000 == 0o120000)
         {
             return Err("The portable ZIP contains an unsafe path or link.".into());

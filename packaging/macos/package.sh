@@ -101,14 +101,14 @@ notarize() {
 # connection there (NSURLErrorDomain -1005, "Error 68") fails them although notarization worked.
 # Both are idempotent, so retry with a pause; a missing or bad ticket still fails every try.
 stapler_retry() {
-  local try
+  local action="$1" target="$2" try
   for try in 1 2 3 4; do
-    xcrun stapler "$1" "$2" && return 0
+    xcrun stapler "$action" "$target" && return 0
     [[ "$try" = 4 ]] && break
-    echo "stapler $1 failed (try $try of 4); retrying in $((try * 20)) s" >&2
+    echo "stapler $action failed (try $try of 4); retrying in $((try * 20)) s" >&2
     sleep $((try * 20))
   done
-  echo "error: stapler $1 $(basename "$2") failed 4 times" >&2
+  echo "error: stapler $action $(basename "$target") failed 4 times" >&2
   exit 1
 }
 

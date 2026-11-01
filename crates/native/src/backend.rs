@@ -10,7 +10,7 @@ use artcraft_launcher_core::feed::{Feed, FeedAnswer};
 use artcraft_launcher_core::platform::{Arch, Os, Platform, pick_asset};
 use artcraft_launcher_core::protocol::{
     Backend, BackendOptions, CANCELLED, Capabilities, Command, Event, INSTALL_CANCELLED, JobPhase, LatestRelease, Origin, PAUSED, PausedDownload,
-    Source,
+    Source, VersionTrack,
 };
 use artcraft_launcher_core::release::{Asset, Release};
 use artcraft_launcher_core::{CraftApp, Installed, PackageKind, SUITE, version};
@@ -131,6 +131,9 @@ pub struct NativeBackend {
     http: Option<Http>,
     source: Option<Arc<dyn ReleaseSource>>,
     platform: Option<Platform>,
+    /// The version-choice file the apps read (see [`crate::pins`]); `None` when there is no
+    /// per-user data folder.
+    pins: Option<std::path::PathBuf>,
 }
 
 impl NativeBackend {
@@ -172,7 +175,11 @@ impl NativeBackend {
             pictures_busy: Mutex::new(std::collections::HashSet::new()),
             last_check: Mutex::new(None),
         });
-        let backend = Self { shared, paths, http, source, platform: native_platform() };
+        let pins = craft_update::pins::Pins::default_path();
+        if let Some(path) = &pins {
+            crate::pins::prepare_folder(path);
+        }
+        let backend = Self { shared, paths, http, source, platform: native_platform(), pins };
         backend.replay_cache();
         backend.detect_all();
         backend
@@ -264,7 +271,8 @@ impl NativeBackend {
         let busy = BusyGuard { shared: shared.clone(), flag: BusyFlag::Checking };
         let paths = self.paths.clone();
         let platform = self.platform;
-        let pre = self.options().prereleases;
+        let options = self.options();
+        let pre = options.prereleases;
         let mirror = local_mirror();
         std::thread::spawn(move || {
             let busy = busy;
@@ -275,7 +283,7 @@ impl NativeBackend {
             }
             let now = crate::now();
             let queue = Mutex::new(SUITE.iter().chain(std::iter::once(&LAUNCHER)).collect::<Vec<&CraftApp>>());
-            let sources = sweep(&queue, &mirror, feed.as_ref(), fallback, &source, &shared, &paths, pre, force, now);
+            let sources = sweep(&queue, &mirror, feed.as_ref(), fallback, &source, &shared, &paths, &options, force, now);
             source.save();
             {
                 let answered = shared.answered.lock().unwrap_or_else(PoisonError::into_inner);
@@ -324,6 +332,7 @@ impl NativeBackend {
         let http = self.http.clone();
         let platform = self.platform;
         let options = self.options();
+        let source = self.source.clone();
         std::thread::spawn(move || {
             let job = job;
             let existing = shared.installed.lock().unwrap_or_else(PoisonError::into_inner).get(app.id).cloned();
@@ -353,6 +362,7 @@ impl NativeBackend {
                     record.as_ref(),
                     &stop,
                     work == Work::Replace,
+                    source.as_deref(),
                 );
                 // Stopped by the connection rather than by the user: say so, and how to go on.
                 match r {
@@ -453,6 +463,41 @@ enum Work {
     Uninstall,
 }
 
+fn release_matches_track(release: &Release, track: &VersionTrack, prereleases: bool) -> bool {
+    match track {
+        VersionTrack::Stable => prereleases || (!release.prerelease && release.version.as_ref().is_some_and(version::is_stable)),
+        VersionTrack::Nightly => artcraft_launcher_core::release::is_nightly(release),
+        VersionTrack::Pinned(tag) => &release.tag == tag,
+    }
+}
+
+/// Whether `chosen` is a version picked by name that is older than the installed copy.
+fn is_chosen_downgrade(track: &VersionTrack, chosen: &Release, existing: Option<&Installed>) -> bool {
+    let VersionTrack::Pinned(tag) = track else { return false };
+    let (Some(chosen_v), Some(installed_v)) = (chosen.version.as_ref(), existing.and_then(|i| i.version.as_ref())) else { return false };
+    chosen.tag == *tag && version::is_newer(installed_v, chosen_v)
+}
+
+/// For a version chosen by name that is older than the installed copy: the installed version's own
+/// published release, to put back if the downgrade fails. `None` for anything else, without
+/// asking `list`. An error means the downgrade can't be made safe, so it must not start.
+fn downgrade_previous(
+    app: &CraftApp,
+    track: &VersionTrack,
+    chosen: &Release,
+    existing: Option<&Installed>,
+    list: impl FnOnce() -> Result<Vec<Release>, String>,
+) -> Result<Option<Release>, String> {
+    let Some(installed_v) = existing.and_then(|i| i.version.as_ref()).filter(|_| is_chosen_downgrade(track, chosen, existing)) else {
+        return Ok(None);
+    };
+    let releases =
+        list().map_err(|e| format!("couldn't find {} {installed_v} to put back if going back fails ({e}), so nothing was changed.", app.name))?;
+    releases.into_iter().find(|r| r.version.as_ref() == Some(installed_v)).map(Some).ok_or_else(|| {
+        format!("{} {installed_v} isn't published any more, so it couldn't be put back if going back fails. Nothing was changed.", app.name)
+    })
+}
+
 #[allow(clippy::too_many_arguments)]
 fn run_install(
     app: &CraftApp,
@@ -465,6 +510,7 @@ fn run_install(
     record: Option<&crate::manifest::Record>,
     stop: &Stop,
     replace: bool,
+    source: Option<&dyn ReleaseSource>,
 ) -> Result<String, String> {
     if let Some(msg) = existing.and_then(|e| install::managed_elsewhere(app, e, false)) {
         return Err(msg);
@@ -477,7 +523,11 @@ fn run_install(
         .unwrap_or_else(PoisonError::into_inner)
         .get(app.id)
         .cloned()
-        .ok_or("the latest release hasn't been found yet. Check for updates first.")?;
+        .ok_or("the selected release hasn't been found yet. Check for updates first.")?;
+    let track = options.versions.get(app.id).unwrap_or(&VersionTrack::Stable);
+    if !release_matches_track(&release, track, options.prereleases) {
+        return Err("the selected version isn't available yet. Check for updates before installing.".into());
+    }
     let (asset, kind) = planned_asset(app, &release, platform, options, existing, record).ok_or_else(|| {
         if platform.os == artcraft_launcher_core::Os::Linux
             && options.install_locations.folder(app.id).is_some()
@@ -489,6 +539,33 @@ fn run_install(
             format!("{} {} has no download for {}", app.name, release.version_label(), platform.label())
         }
     })?;
+    // Going back to a version chosen by name. A macOS bundle or a launcher AppImage keeps the old
+    // copy until the new one is in place. Otherwise the installed version's own package is found
+    // first, so a downgrade that fails can put it back. Without it nothing changes.
+    let keeps_old_copy = install::keeps_old_copy(kind, existing, record);
+    let previous = if keeps_old_copy {
+        None
+    } else {
+        downgrade_previous(app, track, &release, existing, || {
+            source
+                .ok_or_else(|| "secure connections aren't available on this system".to_string())?
+                .versions(&feed_repo(load_feed(paths).as_ref(), app))
+        })?
+    };
+    let previous_asset = match &previous {
+        Some(p) => Some(
+            planned_asset(app, p, platform, options, existing, record)
+                .filter(|(_, k)| *k == kind)
+                .map(|(a, _)| a)
+                .ok_or_else(|| format!("{} {} has no matching download to put back, so nothing was changed.", app.name, p.version_label()))?,
+        ),
+        None => None,
+    };
+    let downgrade = if keeps_old_copy {
+        is_chosen_downgrade(track, &release, existing).then_some(install::Downgrade::KeepOldCopy)
+    } else {
+        previous.as_ref().zip(previous_asset.as_ref()).map(|(previous, asset)| install::Downgrade::Reinstall { previous, asset })
+    };
     if !replace && let Some(path) = install::occupied(app, &asset, kind, existing, record, &options.install_locations, paths)? {
         shared.emit(Event::Occupied { app: app.id.to_string(), path: path.display().to_string() });
         return Err(format!("{} already exists", path.display()));
@@ -502,7 +579,7 @@ fn run_install(
         last_emit = Instant::now();
         shared.emit(Event::Progress { app: app.id.to_string(), phase: p });
     };
-    let mut job = Job { http, paths, stop, phase: &mut phase, install_locations: &options.install_locations, replace };
+    let mut job = Job { http, paths, stop, phase: &mut phase, install_locations: &options.install_locations, replace, downgrade };
     let mut commit_record = |record: &crate::manifest::Record| {
         let mut manifest = shared.manifest.lock().unwrap_or_else(PoisonError::into_inner);
         let mut updated = manifest.clone();
@@ -672,7 +749,7 @@ fn sweep(
     source: &Arc<dyn ReleaseSource>,
     shared: &Arc<Shared>,
     paths: &Paths,
-    pre: bool,
+    options: &BackendOptions,
     force: bool,
     now: i64,
 ) -> Vec<Source> {
@@ -682,9 +759,15 @@ fn sweep(
             scope.spawn(|| {
                 loop {
                     let Some(app) = queue.lock().unwrap_or_else(PoisonError::into_inner).pop() else { break };
+                    let track =
+                        if app.id == LAUNCHER_ID { &options.launcher_version } else { options.versions.get(app.id).unwrap_or(&VersionTrack::Stable) };
                     let (latest, from, used) = match mirror {
-                        Some(_) => mirror_latest(app, feed, now),
-                        None => latest_for(app, feed, fallback, source.as_ref(), shared, pre, force, now),
+                        Some(_) => mirror_chosen(app, feed, now, track),
+                        None if *track != VersionTrack::Stable => {
+                            let answer = source.chosen(&feed_repo(feed, app), track);
+                            (Some(answer.latest), Origin::GitHub, Some(answer.source))
+                        }
+                        None => latest_for(app, feed, fallback, source.as_ref(), shared, options.prereleases, force, now),
                     };
                     if let Some(used) = used {
                         sources.lock().unwrap_or_else(PoisonError::into_inner).push(used);
@@ -984,6 +1067,19 @@ fn mirror_latest(app: &CraftApp, feed: Option<&Feed>, now: i64) -> (Option<Lates
     (Some(latest), Origin::ArtCraftApi, Some(Source::Feed))
 }
 
+/// A selected track never silently falls back to the mirror's stable release.
+fn mirror_chosen(app: &CraftApp, feed: Option<&Feed>, now: i64, track: &VersionTrack) -> (Option<LatestRelease>, Origin, Option<Source>) {
+    let (answer, origin, source) = mirror_latest(app, feed, now);
+    let chosen = match (track, answer) {
+        (VersionTrack::Stable, answer) => answer,
+        (VersionTrack::Nightly, Some(LatestRelease::Found(r))) if artcraft_launcher_core::release::is_nightly(&r) => Some(LatestRelease::Found(r)),
+        (VersionTrack::Pinned(tag), Some(LatestRelease::Found(r))) if &r.tag == tag => Some(LatestRelease::Found(r)),
+        (_, Some(LatestRelease::Failed(why))) => Some(LatestRelease::Failed(why)),
+        _ => Some(LatestRelease::None),
+    };
+    (chosen, origin, source)
+}
+
 /// The last saved feed answer, if any.
 fn load_feed(paths: &Paths) -> Option<Feed> {
     std::fs::read_to_string(paths.feed_cache()).ok().and_then(|body| Feed::parse(&body))
@@ -1039,6 +1135,16 @@ impl Backend for NativeBackend {
         match command {
             Command::CheckForUpdates { force } => self.check(force),
             Command::Detect => self.detect_all(),
+            Command::ListVersions { app } => {
+                let Some(def) = (if app == LAUNCHER_ID { Some(&LAUNCHER) } else { CraftApp::by_id(&app) }) else { return };
+                let source = self.source.clone();
+                let shared = self.shared.clone();
+                let repo = feed_repo(load_feed(&self.paths).as_ref(), def);
+                std::thread::spawn(move || {
+                    let result = source.ok_or("secure connections aren't available on this system".to_string()).and_then(|s| s.versions(&repo));
+                    shared.emit(Event::Versions { app, result });
+                });
+            }
             Command::Install { app } => self.start_job(&app, Work::Install),
             Command::Replace { app } => self.start_job(&app, Work::Replace),
             Command::Uninstall { app } => self.start_job(&app, Work::Uninstall),
@@ -1087,10 +1193,20 @@ impl Backend for NativeBackend {
             Command::Configure(options) => {
                 let changed_pre = {
                     let mut o = self.shared.options.lock().unwrap_or_else(PoisonError::into_inner);
-                    let changed = o.prereleases != options.prereleases;
+                    let changed =
+                        o.prereleases != options.prereleases || o.versions != options.versions || o.launcher_version != options.launcher_version;
                     *o = options;
                     changed
                 };
+                // Every Configure, not only on a change: the first one carries the choices saved
+                // before the shared file existed, and the file may have been deleted since.
+                if let Some(path) = &self.pins {
+                    match crate::pins::sync(path, &self.options().versions) {
+                        Ok(true) => log::info!("version choices written to {}", path.display()),
+                        Ok(false) => {}
+                        Err(e) => log::warn!("couldn't write the version choices: {e}"),
+                    }
+                }
                 // Another package format means another file to download.
                 let options = self.options();
                 for app in &SUITE {
@@ -1137,6 +1253,101 @@ mod tests {
     use super::*;
 
     use crate::source::Answer;
+
+    fn tagged(v: &str) -> Release {
+        Release { tag: format!("v{v}"), version: version::parse(v), ..Default::default() }
+    }
+
+    #[test]
+    fn a_downgrade_is_only_a_version_chosen_by_name_below_the_installed_one() {
+        let installed = Installed { version: version::parse("0.14.0"), source: InstallSource::MacApp, location: String::new(), package: None };
+        let pinned = VersionTrack::Pinned("v0.13.0".into());
+        assert!(is_chosen_downgrade(&pinned, &tagged("0.13.0"), Some(&installed)));
+        assert!(!is_chosen_downgrade(&VersionTrack::Stable, &tagged("0.13.0"), Some(&installed)));
+        assert!(!is_chosen_downgrade(&VersionTrack::Pinned("v0.15.0".into()), &tagged("0.15.0"), Some(&installed)));
+        assert!(!is_chosen_downgrade(&pinned, &tagged("0.12.0"), Some(&installed)));
+        assert!(!is_chosen_downgrade(&pinned, &tagged("0.13.0"), None));
+    }
+
+    #[test]
+    fn only_a_version_chosen_by_name_below_the_installed_one_looks_for_a_package_to_put_back() {
+        let app = CraftApp::by_id("filmcraft").unwrap();
+        let installed = Installed { version: version::parse("0.14.0"), source: InstallSource::Msi, location: String::new(), package: None };
+        let pinned = VersionTrack::Pinned("v0.13.0".into());
+        let never = || -> Result<Vec<Release>, String> { panic!("no list is needed") };
+        // An update, the latest release, nothing installed, or a stale release: no downgrade.
+        assert_eq!(downgrade_previous(app, &VersionTrack::Stable, &tagged("0.13.0"), Some(&installed), never), Ok(None));
+        assert_eq!(downgrade_previous(app, &VersionTrack::Pinned("v0.15.0".into()), &tagged("0.15.0"), Some(&installed), never), Ok(None));
+        assert_eq!(downgrade_previous(app, &pinned, &tagged("0.13.0"), None, never), Ok(None));
+        assert_eq!(downgrade_previous(app, &pinned, &tagged("0.12.0"), Some(&installed), never), Ok(None));
+        // Going back finds the installed version's own release.
+        let found = downgrade_previous(app, &pinned, &tagged("0.13.0"), Some(&installed), || Ok(vec![tagged("0.14.0"), tagged("0.13.0")]));
+        assert_eq!(found.unwrap().map(|r| r.tag), Some("v0.14.0".to_string()));
+        // Without it, or without the list, the downgrade doesn't start.
+        let gone = downgrade_previous(app, &pinned, &tagged("0.13.0"), Some(&installed), || Ok(vec![tagged("0.13.0")])).unwrap_err();
+        assert!(gone.contains("FilmCraft 0.14.0 isn't published any more") && gone.contains("Nothing was changed"), "{gone}");
+        let offline = downgrade_previous(app, &pinned, &tagged("0.13.0"), Some(&installed), || Err("offline".into())).unwrap_err();
+        assert!(offline.contains("(offline)") && offline.contains("nothing was changed"), "{offline}");
+    }
+
+    /// Going back is a conscious choice: a check for a pinned app reports the pinned release, so
+    /// a newer one never shows as an update (badge, Update all, notification or automatic install).
+    #[test]
+    fn a_pinned_app_is_never_offered_a_newer_release() {
+        struct Published;
+        impl ReleaseSource for Published {
+            fn latest(&self, repo: &str, _prereleases: bool) -> crate::source::Answer {
+                let found = CraftApp::by_id(APP).is_some_and(|a| a.repo == repo);
+                let latest = if found { LatestRelease::Found(tagged("0.6.0")) } else { LatestRelease::None };
+                crate::source::Answer { latest, source: Source::GitHubApi }
+            }
+            fn versions(&self, _repo: &str) -> Result<Vec<Release>, String> {
+                Ok(vec![tagged("0.6.0"), tagged("0.5.0")])
+            }
+            fn cached(&self, _repo: &str, _prereleases: bool) -> Option<LatestRelease> {
+                None
+            }
+            fn rate_limited_until(&self) -> Option<i64> {
+                None
+            }
+            fn save(&self) {}
+        }
+        let Some(platform) = native_platform() else { return };
+        let dir = tempfile::tempdir().unwrap();
+        let mut backend = backend(dir.path(), platform, Some(Arc::new(Published)));
+        backend.http = Some(Http::new().unwrap());
+        {
+            let mut options = backend.shared.options.lock().unwrap();
+            options.prereleases = true; // asks the source directly, never ArtCraft's API
+            options.versions.insert(APP.to_string(), VersionTrack::Pinned("v0.5.0".into()));
+        }
+        backend.send(Command::CheckForUpdates { force: true });
+        let mut events = Vec::new();
+        let deadline = Instant::now() + Duration::from_secs(20);
+        while !events.iter().any(|e| matches!(e, Event::CheckFinished { .. })) {
+            assert!(Instant::now() < deadline, "the check never finished");
+            std::thread::sleep(Duration::from_millis(10));
+            events.extend(backend.poll());
+        }
+        let answered = events.iter().rev().find_map(|e| match e {
+            Event::Latest { app, latest: LatestRelease::Found(r), .. } if app == APP => Some(r.tag.clone()),
+            _ => None,
+        });
+        assert_eq!(answered.as_deref(), Some("v0.5.0"), "the pinned release, not the newer one");
+    }
+
+    #[test]
+    fn an_install_cannot_use_a_stale_release_from_a_different_track() {
+        let mut release = Release { tag: "v0.8.0".into(), version: version::parse("v0.8.0"), ..Default::default() };
+        assert!(!release_matches_track(&release, &VersionTrack::Nightly, false));
+        assert!(!release_matches_track(&release, &VersionTrack::Pinned("v0.7.0".into()), false));
+        assert!(release_matches_track(&release, &VersionTrack::Stable, false));
+        release.tag = "v0.9.0-nightly.20261028".into();
+        release.version = version::parse(&release.tag);
+        release.prerelease = true;
+        assert!(release_matches_track(&release, &VersionTrack::Nightly, false));
+        assert!(!release_matches_track(&release, &VersionTrack::Stable, false));
+    }
 
     #[test]
     fn feed_url_overrides_are_loopback_only_outside_local_mirror_builds() {
@@ -1498,7 +1709,7 @@ mod tests {
         let shared = shared();
         shared.latest.lock().unwrap().insert(APP.to_string(), release("0.5.0"));
         let shared = Arc::new(shared);
-        NativeBackend { shared, paths: Paths::under(root), http: None, source, platform: Some(platform) }
+        NativeBackend { shared, paths: Paths::under(root), http: None, source, platform: Some(platform), pins: Some(root.join("versions.json")) }
     }
 
     /// Reports again, and returns what the UI was last told about a kept download.
@@ -1630,6 +1841,21 @@ mod tests {
         backend.shared.latest.lock().unwrap().insert(APP.to_string(), release("0.6.0"));
         backend.send(Command::Configure(BackendOptions::default()));
         assert_eq!(last_ready(backend.poll()), Some(false));
+    }
+
+    #[test]
+    fn the_settings_reach_the_file_the_apps_read() {
+        let Some(platform) = native_platform() else { return };
+        let dir = tempfile::tempdir().unwrap();
+        let mut backend = backend(dir.path(), platform, None);
+        let mut options = BackendOptions::default();
+        options.versions.insert("pdfcraft".into(), VersionTrack::Pinned("v0.13.0".into()));
+        backend.send(Command::Configure(options));
+        let pins = craft_update::pins::Pins::load(&dir.path().join("versions.json"));
+        assert_eq!(pins.track("pdfcraft"), Some(craft_update::pins::VersionTrack::Pinned("v0.13.0".into())));
+        backend.send(Command::Configure(BackendOptions::default()));
+        let pins = craft_update::pins::Pins::load(&dir.path().join("versions.json"));
+        assert_eq!(pins.choice("pdfcraft"), craft_update::pins::Choice::Stable);
     }
 
     #[test]

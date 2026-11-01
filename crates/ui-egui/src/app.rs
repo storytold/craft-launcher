@@ -7,7 +7,7 @@ use artcraft_launcher_core::protocol::{
 };
 use artcraft_launcher_core::release::Release;
 use artcraft_launcher_core::status::AppStatus;
-use artcraft_launcher_core::{Platform, SUITE};
+use artcraft_launcher_core::{Arch, PackageKind, Platform, SUITE};
 
 use crate::i18n::set_current;
 use crate::model::AppEntry;
@@ -61,6 +61,13 @@ pub trait Host {
     fn pick_folder(&mut self, _initial: Option<&str>) -> Option<String> {
         None
     }
+    /// The folder a new install of this format goes inside when the person hasn't chosen one, so
+    /// the install-folder field can show that folder instead of only saying "System default".
+    /// `arch` is the package's architecture when the release names one. `None` when this host
+    /// has no single answer (the web build; formats the system manages).
+    fn default_install_folder(&mut self, _kind: PackageKind, _arch: Option<Arch>) -> Option<String> {
+        None
+    }
     /// The URL to open when Discord is clicked. Defaults to the web link.
     fn discord_url(&self) -> &'static str {
         artcraft_launcher_core::catalog::DISCORD_URL
@@ -108,6 +115,7 @@ pub(crate) enum Dialog {
     Replace { app: String, path: String },
     Settings,
     LauncherUpdate(artcraft_launcher_core::Release),
+    Versions(String),
 }
 
 impl Dialog {
@@ -121,6 +129,7 @@ impl Dialog {
             Dialog::Replace { app, .. } => ("replace", app),
             Dialog::Settings => ("settings", ""),
             Dialog::LauncherUpdate(r) => ("launcher-update", &r.tag),
+            Dialog::Versions(id) => ("versions", id),
         }
     }
 }
@@ -135,6 +144,11 @@ pub struct LauncherUi {
     pub(crate) last_source: Option<Source>,
     pub(crate) rate_limited_until: Option<i64>,
     pub(crate) launcher_update: Option<Release>,
+    pub(crate) version_lists: std::collections::HashMap<String, Result<Vec<Release>, String>>,
+    pub(crate) version_requests: std::collections::HashSet<String>,
+    /// While the Choose version dialog is open: its app and the choice it had before, put back
+    /// unless the dialog's Install keeps the new one.
+    pub(crate) version_before: Option<(String, artcraft_launcher_core::protocol::VersionTrack)>,
     /// The launcher's own update, while it downloads and installs.
     pub(crate) launcher_job: Option<artcraft_launcher_core::protocol::JobPhase>,
     /// The new launcher is in place: quit so it can start.
@@ -241,6 +255,9 @@ impl LauncherUi {
             last_source: None,
             rate_limited_until: None,
             launcher_update: None,
+            version_lists: std::collections::HashMap::new(),
+            version_requests: std::collections::HashSet::new(),
+            version_before: None,
             launcher_job: None,
             restart_requested: false,
             announcements: Vec::new(),
@@ -419,6 +436,8 @@ impl LauncherUi {
         let options = BackendOptions {
             kinds: self.settings.preferred_kinds.clone(),
             prereleases: self.settings.prereleases,
+            versions: self.settings.versions.clone(),
+            launcher_version: self.settings.launcher_version.clone(),
             install_locations: self.settings.install_locations.clone(),
         };
         if self.sent_options.as_ref() != Some(&options) {
@@ -433,6 +452,20 @@ impl LauncherUi {
                 matches!(p.os, artcraft_launcher_core::Os::Windows | artcraft_launcher_core::Os::MacOs | artcraft_launcher_core::Os::Linux)
             })
             && !crate::settings::is_flatpak_sandbox()
+    }
+
+    pub(crate) fn request_versions(&mut self, id: &str) {
+        if !self.version_lists.contains_key(id) && self.version_requests.insert(id.to_string()) {
+            self.act_command(Command::ListVersions { app: id.to_string() });
+        }
+    }
+
+    pub(crate) fn open_versions(&mut self, id: &str) {
+        self.version_lists.remove(id);
+        self.version_requests.remove(id);
+        self.version_before = Some((id.to_string(), self.settings.versions.get(id).cloned().unwrap_or_default()));
+        self.dialog = Some(Dialog::Versions(id.to_string()));
+        self.request_versions(id);
     }
 
     /// Asks to install `id`. On a host that supports custom folders and for an app that is not
@@ -453,6 +486,8 @@ impl LauncherUi {
         // actually show: English where the system has no CJK face for the preference.
         set_current(effective_lang(&self.settings.language));
         self.configure();
+        // A kept version's card notes a newer release; that needs the app's published list.
+        self.request_pinned_lists();
         if !self.started {
             self.started = true;
             self.backend.send(Command::CheckForUpdates { force: false });
@@ -500,6 +535,11 @@ impl LauncherUi {
             Event::Latest { app, latest, from } => {
                 self.on_latest(app, latest, from);
                 true
+            }
+            Event::Versions { app, result } => {
+                self.version_requests.remove(&app);
+                self.version_lists.insert(app, result);
+                false
             }
             Event::Screenshot { app, key, result } => {
                 self.pictures.insert((app, key), crate::details::Picture::from_result(result));

@@ -186,14 +186,16 @@ impl FeedRelease {
     /// when it doesn't hold up (no tag, or not a version).
     fn to_release(&self, repo: &str, mirror: Option<&str>) -> Option<Release> {
         let version = version::parse(&self.tag)?;
-        let allowed = |url: &str| {
-            release::download_url_under(url, &release::download_prefix(repo)) || mirror.is_some_and(|m| release::download_url_under_mirror(url, m))
+        let allowed = |name: &str, url: &str| {
+            (release::download_url_under(url, &release::download_prefix(repo))
+                && url == format!("{}{}/{}", release::download_prefix(repo), self.tag, name))
+                || mirror.is_some_and(|m| release::download_url_under_mirror(url, m))
         };
         let releases_page = format!("https://github.com/{repo}/releases/");
         let assets = self
             .assets
             .iter()
-            .filter(|(name, _, url, _)| release::valid_file_name(name) && allowed(url))
+            .filter(|(name, _, url, _)| release::valid_file_name(name) && allowed(name, url))
             .map(|(name, size, url, sha)| Asset {
                 name: name.clone(),
                 size: *size,
@@ -561,6 +563,13 @@ mod tests {
         assert!(feed.repo_renames.is_empty(), "{:?}", feed.repo_renames);
         assert_eq!(feed.repo_for(app("photocraft")), "storytold/photocraft");
         assert_eq!(feed.answer(app("photocraft"), NOW), FeedAnswer::AskGitHub);
+    }
+
+    #[test]
+    fn feed_release_drops_an_asset_from_another_tag() {
+        let wrong = sample().replace("releases/download/v0.6.0/photocraft", "releases/download/v9.0.0/photocraft");
+        let FeedAnswer::Fresh(Some(r)) = Feed::parse(&wrong).unwrap().answer(app("photocraft"), NOW) else { panic!() };
+        assert!(r.assets.is_empty());
     }
 
     #[test]

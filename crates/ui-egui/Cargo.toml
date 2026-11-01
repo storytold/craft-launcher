@@ -13,6 +13,7 @@ workspace = true
 [dependencies]
 artcraft-launcher-core = { workspace = true }
 egui = { workspace = true }
+craft-ui = { workspace = true }
 egui_extras = { workspace = true, features = ["image", "svg"] }
 image = { version = "0.25", default-features = false, features = ["png", "jpeg"] }
 serde = { workspace = true }

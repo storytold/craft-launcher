@@ -1,6 +1,7 @@
 //! The header, toolbar, footer, the grid of cards and the table, laid out like the apps page on
 //! getartcraft.com: hairline cells, mono labels and square controls.
 
+use artcraft_launcher_core::catalog::AppKind;
 use artcraft_launcher_core::details::AppDetails;
 use artcraft_launcher_core::platform::pick_asset;
 use artcraft_launcher_core::protocol::{Command, JobPhase};
@@ -14,6 +15,17 @@ use crate::model::{self, AppEntry};
 use crate::settings::{Filter, SortKey, ViewMode};
 use crate::theme::{self, Tokens, rgb, tint};
 use crate::widgets::{self, Kind};
+
+/// The byline that says who makes an app: "by ArtCraft" or "by <publisher>". Official apps take
+/// the accent colour, community apps the muted one.
+fn kind_badge(ui: &mut Ui, app: &artcraft_launcher_core::CraftApp, t: &Tokens) {
+    let text = fmt(tl!("by {name}"), &[("name", app.publisher)]);
+    let color = match app.kind {
+        AppKind::Official => t.accent_ink,
+        AppKind::Community => t.muted,
+    };
+    widgets::badge(ui, &text, color);
+}
 
 /// Translate a relative timestamp ("just now", "5 min ago", …) into the current language.
 fn ago_text(secs: i64, now: i64) -> String {
@@ -41,6 +53,11 @@ enum Primary {
     /// The download is already here; only the install step is left. Carries the button's label.
     Retry(String),
     Update(String),
+    /// A pinned release only installs after the backend has checked that exact tag.
+    SelectedVersion {
+        tag: String,
+        checked: bool,
+    },
     Open,
     Download(String),
     Unavailable(&'static str),
@@ -263,7 +280,7 @@ impl LauncherUi {
     /// The grid's sort combo box. It writes the chosen key and direction directly (not through the
     /// action queue) and carries an accessible "Sort" name.
     fn sort_picker(&mut self, ui: &mut Ui) {
-        egui::ComboBox::from_id_salt("sort")
+        craft_ui::ComboBox::from_id_salt("sort")
             .selected_text(RichText::new(grid_sort_label(grid_sort_now(&self.settings))).size(13.0))
             .width(190.0)
             .show_ui(ui, |ui| {
@@ -468,7 +485,8 @@ impl LauncherUi {
 
         // The top strip: the version in the app's colour, and its GitHub page.
         let status = entry.status(self.platform, self.caps.manage_apps);
-        let version = crate::card_parts::strip_version(&entry, &status);
+        let behind = self.behind_latest(&entry);
+        let version = crate::card_parts::strip_version(&entry, &status, behind.as_deref());
         let strip = Rect::from_min_size(rect.min, vec2(rect.width(), STRIP_H));
         painter.hline(strip.x_range(), strip.bottom() - 0.5, t.hairline());
         {
@@ -478,7 +496,10 @@ impl LauncherUi {
             if !version.is_empty() {
                 let github_w = widgets::hud_galley(&strip_ui, &format!("{} ↗", tl!("GitHub")), t.muted).size().x;
                 let room = (strip_ui.available_width() - github_w - 16.0).max(0.0);
-                widgets::hud_elided(&mut strip_ui, &version, if in_colour { t.app_ink(app) } else { t.muted }, room);
+                let highlight = if in_colour { t.app_ink(app) } else { t.muted };
+                let spans: Vec<(&str, egui::Color32)> =
+                    version.iter().map(|(text, lit)| (text.as_str(), if *lit { highlight } else { t.muted })).collect();
+                widgets::hud_elided_spans(&mut strip_ui, &spans, room);
             }
             strip_ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 ui.spacing_mut().item_spacing.x = 16.0;
@@ -514,6 +535,7 @@ impl LauncherUi {
                 ui.spacing_mut().interact_size.y = 0.0;
                 ui.horizontal(|ui| {
                     widgets::wordmark_in(ui, app, 22.0, in_colour);
+                    kind_badge(ui, app, &t);
                 });
                 ui.add(egui::Label::new(RichText::new(tr_ctx(current(), app.id, app.tagline)).font(tagline.clone()).color(t.muted)).truncate());
             });
@@ -573,6 +595,7 @@ impl LauncherUi {
                 .column(Column::remainder().at_least(220.0).clip(true))
                 .column(Column::exact(176.0))
                 .column(Column::exact(150.0))
+                .column(Column::exact(132.0))
                 .column(Column::exact(104.0))
                 .column(Column::exact(206.0))
                 .header(42.0, |header| self.table_header(header, &mut sort_clicked, &t, span, clip))
@@ -656,6 +679,7 @@ impl LauncherUi {
             (Some(SortKey::Status), tl!("Status")),
             (None, tr_ctx(current(), "column", "Version")),
             (Some(SortKey::Released), tr_ctx(current(), "column", "Released")),
+            (None, tr_ctx(current(), "column", "Author")),
             (None, ""),
         ] {
             header.col(|ui| {
@@ -670,7 +694,7 @@ impl LauncherUi {
     }
 
     /// The table's one row per app: the app (click to open its page), its status, the version,
-    /// when it was released, and its actions.
+    /// when it was released, who makes it, and its actions.
     fn table_rows(
         &mut self,
         mut body: egui_extras::TableBody<'_>,
@@ -689,6 +713,9 @@ impl LauncherUi {
                 row.col(|ui| self.table_status_cell(ui, &entry, &status, t));
                 row.col(|ui| self.table_version_cell(ui, &entry, &status, t));
                 row.col(|ui| self.table_released_cell(ui, &entry, now, t));
+                row.col(|ui| {
+                    ui.label(RichText::new(entry.app.publisher).color(t.muted));
+                });
                 row.col(|ui| self.actions(ui, &entry, &status, 204.0));
             });
         }
@@ -750,26 +777,30 @@ impl LauncherUi {
         }
     }
 
-    /// The version column: what is installed, with an arrow to the new one in the app's colour
-    /// when an update waits; the latest, for an app not installed yet.
+    /// The version column: what is installed, with an arrow to the new one (only that in the app's
+    /// colour) when an update waits, or a quiet note of the newer release for a version kept on
+    /// purpose; the latest, for an app not installed yet.
     fn table_version_cell(&self, ui: &mut Ui, entry: &AppEntry, status: &AppStatus, t: &Tokens) {
-        let mut mono = |text: String, color| ui.label(RichText::new(text).family(egui::FontFamily::Monospace).color(color));
-        match (*status == AppStatus::UpdateAvailable).then(|| entry.installed_label().zip(entry.latest_label())).flatten() {
-            Some((from, to)) => {
-                mono(format!("{from} → {to}"), t.app_ink(entry.app));
-            }
+        let mono = |text: String, color| RichText::new(text).family(egui::FontFamily::Monospace).color(color);
+        let (first, second) = match (*status == AppStatus::UpdateAvailable).then(|| entry.installed_label().zip(entry.latest_label())).flatten() {
+            Some((from, to)) => (mono(format!("{from} → "), t.ink), Some(mono(to, t.app_ink(entry.app)))),
             None => match (entry.installed_label(), entry.latest_label()) {
                 (Some(installed), _) => {
-                    mono(installed, t.ink);
+                    let note =
+                        self.behind_latest(entry).map(|newer| mono(format!(" · {}", fmt(tl!("latest {version}"), &[("version", &newer)])), t.faint));
+                    (mono(installed, t.ink), note)
                 }
-                (None, Some(latest)) => {
-                    mono(latest, t.faint);
-                }
-                (None, None) => {
-                    mono("—".into(), t.faint);
-                }
+                (None, Some(latest)) => (mono(latest, t.faint), None),
+                (None, None) => (mono("—".into(), t.faint), None),
             },
+        };
+        // One label in two colours, so it reads as one piece of text ("0.4.1 → 0.5.0").
+        let style = ui.style().clone();
+        let mut job = egui::text::LayoutJob::default();
+        for part in std::iter::once(first).chain(second) {
+            part.append_to(&mut job, &style, egui::FontSelection::Default, egui::Align::Center);
         }
+        ui.label(job);
     }
 
     /// The released column: the release date, or an em dash, with "how long ago" in its tooltip.
@@ -796,6 +827,14 @@ impl LauncherUi {
                 (_, Some(url)) => Primary::Download(url),
                 (_, None) => Primary::Unavailable(tl!("Not available")),
             };
+        }
+        // Once the pinned version is the installed one, the normal statuses (Open) take over again.
+        if let Some(artcraft_launcher_core::protocol::VersionTrack::Pinned(tag)) = self.settings.versions.get(entry.app.id)
+            && entry.installed.as_ref().and_then(|i| i.version.as_ref()) != artcraft_launcher_core::version::parse(tag).as_ref()
+        {
+            let checked = entry.release().is_some_and(|r| &r.tag == tag)
+                && !matches!(status, AppStatus::Checking | AppStatus::NoRelease | AppStatus::Unavailable);
+            return Primary::SelectedVersion { tag: tag.clone(), checked };
         }
         match status {
             AppStatus::Available if entry.ready => Primary::Retry(tl!("Retry install").into()),
@@ -943,6 +982,12 @@ impl LauncherUi {
                     self.install_app(id);
                 }
             }
+            Primary::SelectedVersion { tag, checked } => {
+                let label = fmt(tl!("Install version {version}"), &[("version", &tag)]);
+                if ui.add_enabled_ui(checked, |ui| widgets::button(ui, &label, Kind::Primary, main_w)).inner.clicked() {
+                    self.install_app(id);
+                }
+            }
             Primary::Open => {
                 if widgets::button(ui, tl!("Open"), Kind::Secondary, main_w).clicked() {
                     self.launch_app(id);
@@ -973,6 +1018,10 @@ impl LauncherUi {
         let manage = self.caps.manage_apps;
         let reveal = self.caps.reveal_label;
         widgets::more_menu(ui, entry.app.name, |ui| {
+            if ui.button(tl!("Choose version")).clicked() {
+                self.open_versions(&id);
+                ui.close();
+            }
             if entry.release().is_some() && ui.button(tl!("Release notes")).clicked() {
                 self.dialog = Some(Dialog::Notes(id.clone()));
                 ui.close();
