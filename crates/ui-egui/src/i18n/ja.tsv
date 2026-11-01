@@ -150,6 +150,7 @@
 	Update cancelled	更新をキャンセルしました
 	Uninstall cancelled	アンインストールをキャンセルしました
 	Retry install	インストールを再試行
+	Retry update	更新を再試行
 	Retry update to {version}	{version} への更新を再試行
 	The download is still here. It's checked again, then installed.	ダウンロードしたファイルはそのまま残っています。もう一度検証してからインストールします。
 	Waiting for another app…	他のアプリを待機中…
