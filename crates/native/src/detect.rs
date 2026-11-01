@@ -426,8 +426,8 @@ pub mod linux {
         on_path.or_else(|| usual.map(|d| d.join(id)).find(|p| p.is_file()))
     }
 
-    /// The version `bin --version` prints, or `None` when it doesn't answer within 5 seconds or
-    /// prints no version.
+    /// The version `bin --version` prints, or `None` when it can't be started, doesn't finish
+    /// within 5 seconds (it is then killed), exits with an error, or prints no version.
     pub(crate) fn binary_version(bin: &Path, app: &CraftApp) -> Option<version::Version> {
         let out = crate::process::capture(bin.to_str()?, &["--version"], Duration::from_secs(5))?;
         parse_cli_version(out.trim(), app)
