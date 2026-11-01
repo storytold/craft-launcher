@@ -20,7 +20,7 @@ PKG=artcraft-launcher
 APP_NAME="ArtCraft Launcher"
 
 ARCH=universal
-while [ $# -gt 0 ]; do
+while [[ $# -gt 0 ]]; do
   case "$1" in
     --arch) ARCH="$2"; shift 2 ;;
     -h | --help) sed -n '2,14p' "$0"; exit 0 ;;
@@ -37,13 +37,13 @@ esac
 DMG="$DIST/$PKG-$VERSION-macos-$ARCH.dmg"
 IDENTITY="${MACOS_SIGN_IDENTITY:--}"
 STRICT=0
-if [ "$IDENTITY" != "-" ] && [ -n "${APPLE_ID:-}" ] && [ -n "${APPLE_PASSWORD:-}" ] && [ -n "${APPLE_TEAM_ID:-}" ]; then
+if [[ "$IDENTITY" != "-" ]] && [[ -n "${APPLE_ID:-}" ]] && [[ -n "${APPLE_PASSWORD:-}" ]] && [[ -n "${APPLE_TEAM_ID:-}" ]]; then
   STRICT=1
 fi
 
 FAILED=0
 fail() {
-  if [ "$STRICT" = 1 ]; then
+  if [[ "$STRICT" = 1 ]]; then
     echo "error: $*" >&2
     FAILED=1
   else
@@ -54,19 +54,19 @@ fail() {
 # spctl's online ticket lookup can lag a few seconds behind notarytool's "Accepted".
 assess() {
   local out attempt tries=1
-  [ "$STRICT" = 1 ] && tries=5
+  [[ "$STRICT" = 1 ]] && tries=5
   for attempt in $(seq "$tries"); do
     if out="$(spctl "$@" 2>&1)"; then
       printf '%s\n' "$out"
       return 0
     fi
-    [ "$attempt" = "$tries" ] || sleep 10
+    [[ "$attempt" = "$tries" ]] || sleep 10
   done
   printf '%s\n' "$out"
   return 1
 }
 
-if [ ! -f "$DMG" ]; then
+if [[ ! -f "$DMG" ]]; then
   echo "error: missing $DMG" >&2
   exit 1
 fi
@@ -82,7 +82,7 @@ trap cleanup EXIT
 # ---- DMG ---------------------------------------------------------------------------------------
 echo "==> $(basename "$DMG")"
 codesign --verify --strict --verbose=2 "$DMG"
-if [ "$STRICT" = 1 ]; then
+if [[ "$STRICT" = 1 ]]; then
   xcrun stapler validate "$DMG" || fail "no notarization ticket stapled to the DMG"
   assess --assess --type open --context context:primary-signature -vv "$DMG" \
     || fail "Gatekeeper rejects the DMG"
@@ -93,7 +93,7 @@ mkdir -p "$MNT"
 hdiutil attach "$DMG" -readonly -nobrowse -noautoopen -mountpoint "$MNT" -quiet
 APP="$MNT/$APP_NAME.app"
 EXE="$APP/Contents/MacOS/$APP_NAME"
-if [ ! -x "$EXE" ]; then
+if [[ ! -x "$EXE" ]]; then
   echo "error: $(basename "$DMG") has no $APP_NAME.app/Contents/MacOS/$APP_NAME" >&2
   exit 1
 fi
@@ -128,11 +128,11 @@ printf '%s\n' "$details" | grep -q '^Authority=Developer ID Application:' \
   || fail "$APP_NAME.app is not signed with a Developer ID Application identity"
 printf '%s\n' "$details" | grep -q '^Timestamp=' \
   || fail "$APP_NAME.app signature has no secure timestamp"
-if [ -n "${APPLE_TEAM_ID:-}" ]; then
+if [[ -n "${APPLE_TEAM_ID:-}" ]]; then
   printf '%s\n' "$details" | grep -qx "TeamIdentifier=$APPLE_TEAM_ID" \
     || fail "$APP_NAME.app is signed by a different team"
 fi
-if [ "$STRICT" = 1 ]; then
+if [[ "$STRICT" = 1 ]]; then
   xcrun stapler validate "$APP" || fail "no notarization ticket stapled to $APP_NAME.app"
   if gk="$(assess --assess --type execute -vv "$APP")"; then
     printf '%s\n' "$gk"
@@ -144,17 +144,17 @@ if [ "$STRICT" = 1 ]; then
   fi
 fi
 
-if [ "$FAILED" != 0 ]; then
+if [[ "$FAILED" != 0 ]]; then
   echo "error: macOS artifacts failed verification" >&2
   exit 1
 fi
 
-if [ "$STRICT" = 1 ]; then
+if [[ "$STRICT" = 1 ]]; then
   result="signed (Developer ID, hardened runtime), notarized; DMG and app stapled"
 else
   result="signature intact; Developer ID and notarization not required (no signing secrets)"
 fi
 echo "==> verified: $result"
-if [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then
+if [[ -n "${GITHUB_STEP_SUMMARY:-}" ]]; then
   echo "- macOS \`$(basename "$DMG")\`: $result" >>"$GITHUB_STEP_SUMMARY"
 fi

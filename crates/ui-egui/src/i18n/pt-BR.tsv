@@ -8,6 +8,7 @@
 
 	Launcher	Launcher
 	Craft App Suite	Craft App Suite
+	by {name}	por {name}
 	Open Source Tools for Creatives, Makers, and Builders	Ferramentas de código aberto para criadores, artistas e desenvolvedores
 	Settings	Configurações
 	Check for updates	Verificar atualizações
@@ -84,6 +85,8 @@
 	Updates always use the format an app was installed with.	As atualizações sempre usam o formato com o qual o aplicativo foi instalado.
 	Running in the background	Execução em segundo plano
 	Keep running in the tray when the window is closed	Continuar na bandeja do sistema ao fechar a janela
+	ArtCraft Launcher is still running	O ArtCraft Launcher continua aberto
+	It's in the tray: open it or quit it from the tray icon, or turn this off in the settings.	Ele está na bandeja do sistema: abra-o ou encerre-o pelo ícone, ou desative isso nas configurações.
 	Show the window on the current desktop	Mostrar a janela na área de trabalho atual
 	Start ArtCraft Launcher when I log in	Iniciar o ArtCraft Launcher ao fazer login
 	Community	Comunidade
@@ -159,6 +162,8 @@ designcraft	Page layout and publishing	Diagramação de páginas e publicação
 wordcraft	Writing and document design	Escrita e design de documentos
 deckcraft	Presentations and slide shows	Apresentações e slides
 gridcraft	Spreadsheets and data	Planilhas e dados
+craft-anything	Find out how any software works, then craft your own	Descubra como qualquer software funciona e crie o seu
+solidcraft	Parametric 3D CAD	CAD 3D paramétrico
 cadcraft	Computer-aided design and drafting	Desenho técnico e projeto assistido por computador (CAD)
 soundcraft	Recording, editing and mixing audio	Gravação, edição e mixagem de áudio
 figcraft	Interface design and prototyping	Design de interfaces e prototipagem
@@ -326,6 +331,7 @@ filter	Installed	Instalados
 	ArtCraft on GitHub	ArtCraft no GitHub
 	Join the ArtCraft Discord	Entrar no Discord da ArtCraft
 	App details	Detalhes do aplicativo
+	More actions for {name}	Mais ações para {name}
 	Close (Esc)	Fechar (Esc)
 	Features	Recursos
 	Latest release	Último lançamento
@@ -366,3 +372,15 @@ filter	Installed	Instalados
 	Show {n} more changes	Mostrar mais {n} alterações
 	Last updated: {date}	Última atualização: {date}
 column	Version	Versão
+column	Author	Autor
+	Choose version	Escolher versão
+	latest {version}	mais recente {version}
+	{version} (latest release)	{version} (último lançamento)
+	Launcher version	Versão do inicializador
+	Nightly	Versão noturna
+	Nightly (none published yet)	Versão noturna (ainda não publicada)
+	Install version {version}	Instalar a versão {version}
+	Download selected version	Baixar a versão selecionada
+	Older launcher versions require a manual reinstall.	Versões antigas do inicializador exigem reinstalação manual.
+	Your files may not open in older versions.	Seus arquivos podem não abrir em versões antigas.
+	Enable automatic installs in Settings to follow new nightly builds.	Ative as instalações automáticas nas Configurações para receber as novas versões noturnas.

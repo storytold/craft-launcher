@@ -1,6 +1,7 @@
 //! Starting programs: the Craft Apps themselves, the file manager, and helper tools.
 
-use std::path::Path;
+use std::ffi::OsStr;
+use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
@@ -296,12 +297,23 @@ fn which_on_path(name: &str) -> Option<std::path::PathBuf> {
 
 /// Starts an app binary from its own folder.
 pub fn launch_binary(exe: &Path, args: &[&str]) -> Result<(), String> {
+    launch_binary_with_env(exe, args, &[])
+}
+
+/// Starts an app binary from its own folder with `env` added to its environment. Inside the
+/// sandbox `flatpak-spawn` does not pass the launcher's environment on, so each one becomes an
+/// `--env=` argument instead.
+pub fn launch_binary_with_env(exe: &Path, args: &[&str], env: &[(&str, &std::ffi::OsStr)]) -> Result<(), String> {
     let mut cmd = if in_sandbox() {
         let mut c = command("flatpak-spawn");
-        c.arg("--host").arg(exe);
+        c.arg("--host");
+        c.args(env_args(env));
+        c.arg(exe);
         c
     } else {
-        command(exe)
+        let mut c = command(exe);
+        c.envs(env.iter().copied());
+        c
     };
     cmd.args(args);
     if let Some(dir) = exe.parent() {
@@ -310,18 +322,29 @@ pub fn launch_binary(exe: &Path, args: &[&str]) -> Result<(), String> {
     spawn_detached(cmd)
 }
 
+/// `--env=NAME=VALUE` for each of `env`, as `flatpak run` and `flatpak-spawn` take them.
+pub fn env_args(env: &[(&str, &std::ffi::OsStr)]) -> Vec<std::ffi::OsString> {
+    env.iter()
+        .map(|(name, value)| {
+            let mut arg = std::ffi::OsString::from(format!("--env={name}="));
+            arg.push(value);
+            arg
+        })
+        .collect()
+}
+
 /// Opens a file, folder or URL with the system's default handler.
 pub fn open(target: &std::ffi::OsStr) -> Result<(), String> {
-    spawn_detached(opener(target))
+    spawn_detached(opener(target)?)
 }
 
 /// The system's default opener for `target`: `explorer` on Windows, `open` on macOS, and
 /// `xdg-open` elsewhere (on the host, through `flatpak-spawn --host`, inside the sandbox).
-fn opener(target: &std::ffi::OsStr) -> Command {
+fn opener(target: &std::ffi::OsStr) -> Result<Command, String> {
     let mut cmd = if cfg!(target_os = "macos") {
         command("open")
     } else if cfg!(windows) {
-        command("explorer")
+        command(windows_system_program("explorer.exe")?)
     } else if in_sandbox() {
         let mut c = command("flatpak-spawn");
         c.arg("--host").arg("xdg-open");
@@ -330,7 +353,7 @@ fn opener(target: &std::ffi::OsStr) -> Command {
         command("xdg-open")
     };
     cmd.arg(target);
-    cmd
+    Ok(cmd)
 }
 
 /// Opens `primary_url` with the system's default handler. If opening fails (for example,
@@ -353,7 +376,13 @@ pub fn open_url_with_fallback(primary_url: &str, fallback_url: &str) {
 /// `explorer` exits with an error status even when it opens the target, so on Windows only a
 /// failure to start counts; the registry check in `detect_discord_scheme_handler` covers the rest.
 fn open_and_wait_success(target: &str, timeout: Duration) -> bool {
-    let mut cmd = opener(std::ffi::OsStr::new(target));
+    let mut cmd = match opener(std::ffi::OsStr::new(target)) {
+        Ok(cmd) => cmd,
+        Err(error) => {
+            log::warn!("couldn't resolve the system opener for {target}: {error}");
+            return false;
+        }
+    };
     if cfg!(windows) {
         return spawn_detached(cmd).is_ok();
     }
@@ -396,7 +425,7 @@ pub fn reveal(path: &Path) -> Result<(), String> {
 #[cfg(windows)]
 fn reveal_in_explorer(path: &Path) -> Result<(), String> {
     use std::os::windows::process::CommandExt;
-    let mut cmd = command("explorer");
+    let mut cmd = command(windows_system_program("explorer.exe")?);
     // Passed raw: `arg` would wrap all of `/select,...` in quotes when the path has a space
     // (`C:\Program Files\...`), and Explorer then ignores the switch and opens Documents.
     // A quote in the path would end the quoted part early and let the rest reach Explorer as
@@ -429,10 +458,12 @@ fn explorer_select_arg(path: &Path) -> Option<std::ffi::OsString> {
 /// Whether a process started from inside `path` (an exe, an AppImage, or a `.app`) is running.
 pub fn is_running(path: &Path) -> bool {
     if cfg!(windows) {
-        let Some(name) = path.file_name().and_then(|n| n.to_str()) else { return false };
+        let Some(name) = path.file_name().and_then(OsStr::to_str) else { return false };
         let filter = format!("IMAGENAME eq {name}");
-        capture("tasklist", &["/FI", &filter, "/NH", "/FO", "CSV"], Duration::from_secs(5))
-            .is_some_and(|out| out.to_ascii_lowercase().contains(&name.to_ascii_lowercase()))
+        let Ok(tasklist) = windows_system_program(r"System32\tasklist.exe") else { return false };
+        let mut cmd = command(tasklist);
+        cmd.args(["/FI", &filter, "/NH", "/FO", "CSV"]);
+        run_command(cmd, "tasklist", Duration::from_secs(5)).ok().is_some_and(|out| out.to_ascii_lowercase().contains(&name.to_ascii_lowercase()))
     } else {
         let Some(p) = path.to_str() else { return false };
         let pattern = pgrep_pattern(p);
@@ -445,6 +476,17 @@ pub fn is_running(path: &Path) -> bool {
     }
 }
 
+fn windows_system_program(relative: &str) -> Result<PathBuf, String> {
+    let root = std::env::var_os("SystemRoot")
+        .filter(|root| !root.is_empty())
+        .map(PathBuf::from)
+        .ok_or_else(|| "Windows didn't provide its system folder".to_string())?;
+    if !root.is_absolute() {
+        return Err("Windows provided a non-absolute system folder".into());
+    }
+    Ok(root.join(relative))
+}
+
 /// Quote the path's metacharacters for pgrep's extended regular expression.
 fn pgrep_pattern(path: &str) -> String {
     let mut pattern = String::with_capacity(path.len());
@@ -455,6 +497,19 @@ fn pgrep_pattern(path: &str) -> String {
         pattern.push(c);
     }
     pattern
+}
+
+#[cfg(test)]
+mod env_tests {
+    use super::*;
+
+    #[test]
+    fn each_variable_becomes_one_env_argument_with_its_value_intact() {
+        let path = std::ffi::OsStr::new("/home/ana/.local/share/artcraft-launcher/versions with space.json");
+        let args = env_args(&[("CRAFT_VERSIONS_FILE", path)]);
+        assert_eq!(args, [std::ffi::OsString::from("--env=CRAFT_VERSIONS_FILE=/home/ana/.local/share/artcraft-launcher/versions with space.json")]);
+        assert!(env_args(&[]).is_empty());
+    }
 }
 
 #[cfg(test)]
@@ -571,6 +626,14 @@ mod run_tests {
 #[cfg(test)]
 mod explorer_tests {
     use super::*;
+
+    #[cfg(windows)]
+    #[test]
+    fn system_helpers_use_absolute_system_paths() {
+        let root = PathBuf::from(std::env::var_os("SystemRoot").unwrap());
+        assert_eq!(windows_system_program("explorer.exe").unwrap(), root.join("explorer.exe"));
+        assert_eq!(windows_system_program(r"System32\tasklist.exe").unwrap(), root.join(r"System32\tasklist.exe"));
+    }
 
     #[test]
     fn explorer_select_quotes_only_the_path() {
