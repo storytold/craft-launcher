@@ -16,3 +16,7 @@ serde_json = { workspace = true }
 semver = { workspace = true }
 # Calendar conversion (jiff); see AGENTS.md. Only civil-date math is used, no time zone.
 jiff = { workspace = true }
+
+[build-dependencies]
+serde = { workspace = true }
+toml = "0.8"

@@ -1,0 +1,652 @@
+# Bundled app catalog. The launcher embeds this data at build time.
+
+[[apps]]
+color = [47, 123, 245]
+former_bundles = []
+former_ids = []
+former_names = []
+id = "photocraft"
+ink_dark = [127, 176, 255]
+ink_light = [26, 91, 196]
+kind = "official"
+mac_team = "DJ6XS33FX8"
+name = "PhotoCraft"
+publisher = "ArtCraft"
+repo = "storytold/photocraft"
+tagline = "Image editing"
+[apps.details]
+headline = "The image editor you already know how to use."
+about = "Layers, masks, adjustment layers, layer styles, type, vectors and brushes in a native app. Open source, offline, and yours.\n\nPhotoCraft keeps the menus, shortcuts and panels your hands already know, so there is nothing to relearn."
+platforms = "macOS, Windows, Linux, FreeBSD, web"
+[[apps.details.features]]
+text = "No Electron and no web view: a fast native compositor."
+title = "Native GPU canvas"
+[[apps.details.features]]
+text = "Opens and saves layered PSD and PSB documents."
+title = "Real layered files"
+[[apps.details.features]]
+text = "Adjustment layers, live-preview filters, smart objects and layer styles."
+title = "Non-destructive editing"
+[[apps.details.features]]
+text = "Subject and object selection and mask refinement run locally."
+title = "On-device selection"
+[[apps.details.features]]
+text = "8-, 16- and 32-bit RGB, CMYK, Lab and Grayscale, with ICC color management and soft proofing."
+title = "Serious color"
+[[apps.details.shots]]
+caption = "Curves and type layers"
+key = "demo"
+[[apps.details.shots]]
+caption = "Levels with a live histogram"
+key = "adjustments"
+[[apps.details.shots]]
+caption = "Layer styles on live type"
+key = "layer-styles"
+[[apps.details.shots]]
+caption = "Selections and masked adjustments"
+key = "masks"
+
+[[apps]]
+color = [232, 87, 63]
+former_bundles = []
+former_ids = []
+former_names = []
+id = "vectorcraft"
+ink_dark = [255, 138, 112]
+ink_light = [184, 58, 36]
+kind = "official"
+mac_team = "DJ6XS33FX8"
+name = "VectorCraft"
+publisher = "ArtCraft"
+repo = "storytold/vectorcraft"
+tagline = "Vector illustration"
+[apps.details]
+headline = "Vector illustration, with familiar tools and editable effects."
+about = "A native vector illustration app with the pen, panels and shortcuts illustrators expect. Open source, and it also runs in a browser."
+platforms = "macOS, Windows, Linux, FreeBSD, web"
+[[apps.details.features]]
+text = "Pen, direct selection, shape booleans, snapping guides and an appearance panel, laid out the way you expect."
+title = "The workflow you know"
+[[apps.details.features]]
+text = "Drawings with thousands of shapes stay responsive on a retina display."
+title = "Genuinely fast"
+[[apps.details.features]]
+text = "Shape booleans work on the exact curves, so there is no \"cannot perform operation\", and undo is unlimited."
+title = "Booleans that don't fail"
+[[apps.details.features]]
+text = "Blends, envelope distort, gradient mesh, repeats, glows and drop shadows all stay editable."
+title = "Live, editable effects"
+[[apps.details.features]]
+text = "Turn raster images into clean vector paths, with presets for the common cases."
+title = "Image tracing"
+[[apps.details.features]]
+text = "Native JSON documents, SVG and PDF import and export, and PNG, JPEG and WebP output."
+title = "Open formats"
+[[apps.details.shots]]
+caption = "The Neon Drive poster"
+key = "neon"
+[[apps.details.shots]]
+caption = "Live blends"
+key = "ribbons"
+[[apps.details.shots]]
+caption = "A feature sheet and the Layers panel"
+key = "sheet"
+[[apps.details.shots]]
+caption = "Pathfinder and exact booleans"
+key = "bezier"
+
+[[apps]]
+color = [139, 92, 246]
+former_bundles = []
+former_ids = []
+former_names = []
+id = "filmcraft"
+ink_dark = [182, 156, 255]
+ink_light = [106, 63, 214]
+kind = "official"
+mac_team = "DJ6XS33FX8"
+name = "FilmCraft"
+publisher = "ArtCraft"
+repo = "storytold/filmcraft"
+tagline = "Video editing, color and sound"
+[apps.details]
+headline = "Professional video editing, rebuilt from scratch."
+about = "A native video editor with source and program monitors, a real timeline and every trim mode."
+platforms = "macOS, Windows, Linux, FreeBSD, web"
+[[apps.details.features]]
+text = "Source and program monitors, three-point editing, every trim mode and J/K/L trimming."
+title = "A timeline you already know"
+[[apps.details.features]]
+text = "An integer timebase keeps 23.976 and 29.97 drop-frame footage exact, with no drift."
+title = "Frame-exact time"
+[[apps.details.features]]
+text = "No FFmpeg inside: native support for H.264, HEVC, ProRes, VP9, AAC and Opus."
+title = "Its own codecs"
+[[apps.details.features]]
+text = "Curves, color wheels, HSL secondaries, LUTs and HDR and log workflows, with scopes to check the result."
+title = "Color grading"
+[[apps.details.features]]
+text = "Video effects and transitions, keyframes with value and velocity graphs, and a linear-light GPU compositor."
+title = "Effects and keyframes"
+[[apps.details.features]]
+text = "EBU R128 loudness meters, a mixer with automation and native audio effects."
+title = "Broadcast-ready audio"
+[[apps.details.shots]]
+caption = "The Color workspace, with scopes"
+key = "color"
+[[apps.details.shots]]
+caption = "The Assembly workspace"
+key = "assembly"
+[[apps.details.shots]]
+caption = "Keyframes in Effect Controls"
+key = "keyframes"
+
+[[apps]]
+color = [242, 165, 22]
+former_bundles = []
+former_ids = []
+former_names = []
+id = "lightcraft"
+ink_dark = [255, 193, 77]
+ink_light = [138, 88, 0]
+kind = "official"
+mac_team = "DJ6XS33FX8"
+name = "LightCraft"
+publisher = "ArtCraft"
+repo = "storytold/lightcraft"
+tagline = "Photo library and raw development"
+[apps.details]
+headline = "Your photos. Your pixels. Your machine."
+about = "A fast photo library and non-destructive raw developer. No account, no cloud, no telemetry and no subscription."
+platforms = "macOS, Windows, Linux, FreeBSD, web"
+[[apps.details.features]]
+text = "A wide-gamut, 32-bit float pipeline that never touches your originals."
+title = "Non-destructive by design"
+[[apps.details.features]]
+text = "Light, color, effects, tone curve, a color mixer, color grading wheels and built-in presets."
+title = "Every control you reach for"
+[[apps.details.features]]
+text = "Brush, gradient and range masks, plus sky, subject and background masks."
+title = "Precise masking"
+[[apps.details.features]]
+text = "Support for the main camera raw formats: DNG, CR2, ARW, NEF, RAF, RW2, PEF and ORF."
+title = "Native raw decoding"
+[[apps.details.features]]
+text = "Albums, ratings, flags and search, with grids that stay smooth on large catalogs."
+title = "A library that keeps up"
+[[apps.details.features]]
+text = "The GPU pipeline updates the preview as you move a slider, even on large raw files."
+title = "Instant feedback"
+[[apps.details.shots]]
+caption = "The Edit view"
+key = "hero"
+[[apps.details.shots]]
+caption = "The tone curve"
+key = "curve"
+[[apps.details.shots]]
+caption = "Color grading wheels"
+key = "grading"
+[[apps.details.shots]]
+caption = "A radial mask over a sky mask"
+key = "masking"
+
+[[apps]]
+color = [232, 32, 79]
+former_bundles = []
+former_ids = ["printcraft"]
+former_names = ["PrintCraft"]
+id = "pdfcraft"
+ink_dark = [242, 58, 98]
+ink_light = [183, 2, 40]
+kind = "official"
+mac_team = "DJ6XS33FX8"
+name = "PdfCraft"
+publisher = "ArtCraft"
+repo = "storytold/pdfcraft"
+tagline = "Reading, organizing and protecting PDFs"
+[apps.details]
+headline = "The open-source PDF workbench."
+about = "Read, organize, combine, split and secure PDFs in a fast, native app. No account, no telemetry and no cloud."
+platforms = "macOS, Windows, Linux, FreeBSD, web"
+[[apps.details.features]]
+text = "World scripts, vertical Japanese, color emoji and transparency."
+title = "Faithful rendering"
+[[apps.details.features]]
+text = "Instant find, and text selection that follows the document's real reading order."
+title = "Search as you type"
+[[apps.details.features]]
+text = "Rotate, delete, insert and reorder pages, with deep undo behind every change."
+title = "Organize like cards"
+[[apps.details.features]]
+text = "Assemble and break apart documents while keeping links, form fields, layers and bookmarks intact."
+title = "Combine, extract, split"
+[[apps.details.features]]
+text = "Incremental, atomic saves with autosave and crash recovery."
+title = "Fearless saves"
+[[apps.details.features]]
+text = "Opens files from RC4 to AES-256 encryption and honors the author's permissions."
+title = "Built-in security"
+
+[[apps]]
+color = [224, 54, 143]
+former_bundles = []
+former_ids = []
+former_names = []
+id = "effectcraft"
+ink_dark = [255, 122, 184]
+ink_light = [176, 32, 108]
+kind = "official"
+mac_team = "DJ6XS33FX8"
+name = "EffectCraft"
+publisher = "ArtCraft"
+repo = "storytold/effectcraft"
+tagline = "Motion graphics and visual effects"
+[apps.details]
+headline = "Motion graphics and visual effects."
+about = "A native compositor with compositions, layers, keyframes, effects, expressions, 3D cameras and lights, and a render queue. Young, moving fast, and already usable."
+platforms = "macOS, Windows, Linux, FreeBSD, web"
+[[apps.details.features]]
+text = "Familiar panels and keyframes (linear, bezier, hold and eased), with a graph editor for value and speed curves."
+title = "Animate the way you know"
+[[apps.details.features]]
+text = "Solids, shapes, text, footage, nested compositions, nulls and adjustment layers, with parenting, track mattes and blend modes."
+title = "Layers of every kind"
+[[apps.details.features]]
+text = "Blur, color correction, distortion, generators, keying, particles and simulation, stylize and time effects."
+title = "A large effects library"
+[[apps.details.features]]
+text = "3D layers with cameras, depth of field, and lights that cast soft ray-traced shadows."
+title = "Real 3D"
+[[apps.details.features]]
+text = "JavaScript expressions with wiggle, loops and layer references, edited inline."
+title = "Expressions"
+[[apps.details.features]]
+text = "H.264 and ProRes with alpha, PNG, TIFF and EXR sequences, GIF, and Lottie import and export."
+title = "Export anywhere"
+[[apps.details.shots]]
+caption = "An animated composition"
+key = "hero"
+[[apps.details.shots]]
+caption = "The Graph Editor"
+key = "graph"
+[[apps.details.shots]]
+caption = "Particles and Effect Controls"
+key = "effects"
+[[apps.details.shots]]
+caption = "3D layers with cameras and lights"
+key = "3d"
+
+[[apps]]
+color = [123, 181, 28]
+former_bundles = []
+former_ids = []
+former_names = []
+id = "designcraft"
+ink_dark = [166, 224, 74]
+ink_light = [69, 112, 8]
+kind = "official"
+mac_team = "DJ6XS33FX8"
+name = "DesignCraft"
+publisher = "ArtCraft"
+repo = "storytold/designcraft"
+tagline = "Page layout and publishing"
+[apps.details]
+headline = "Page layout and publishing."
+about = "A native layout app with spreads, parent pages, threaded stories, styles, swatches, text wrap and a paragraph composer. No subscription, no license server and no telemetry."
+platforms = "macOS, Windows, Linux, FreeBSD, web"
+[[apps.details.features]]
+text = "Spreads and parent pages, frames and threaded stories, with paragraph and character styles."
+title = "The layout tools you know"
+[[apps.details.features]]
+text = "A Knuth–Plass paragraph composer, dictionary hyphenation, optical margin alignment and baseline grids, with line breaks that match on screen and in PDF."
+title = "Beautiful type"
+[[apps.details.features]]
+text = "Real selectable text with embedded fonts, CMYK and spot colors, bleed, crop marks and PDF/A output."
+title = "Print-ready PDF"
+[[apps.details.features]]
+text = "Multithreaded rendering, instant undo and cached text composition."
+title = "Fast"
+[[apps.details.features]]
+text = "A documented native format, PNG export and layout interchange import and export."
+title = "Open formats"
+[[apps.details.features]]
+text = "Every menu item, tool, panel and dialog can be driven over a JSON control channel and an MCP server."
+title = "Built for automation"
+[[apps.details.shots]]
+caption = "A magazine spread with a threaded story"
+key = "spread"
+
+[[apps]]
+color = [2, 218, 150]
+former_bundles = []
+former_ids = []
+former_names = []
+id = "figcraft"
+ink_dark = [79, 232, 182]
+ink_light = [4, 122, 86]
+kind = "official"
+mac_team = "DJ6XS33FX8"
+name = "FigCraft"
+publisher = "ArtCraft"
+repo = "storytold/figcraft"
+tagline = "Interface design and prototyping"
+[apps.details]
+headline = "Interface design and prototyping."
+about = "Design screens, components and prototypes in a native app that opens instantly and works offline, with no account and no telemetry. Early alpha."
+platforms = "macOS, Windows, Linux, FreeBSD, web"
+[[apps.details.features]]
+text = "Rows, columns, wrap and grids with padding, gaps and Hug, Fill or Fixed sizing, plus constraints and layout grids."
+title = "Auto layout"
+[[apps.details.features]]
+text = "Instances with overrides, variants and properties, styles, and variables with modes bound to fills, strokes and effects."
+title = "Components"
+[[apps.details.features]]
+text = "Real vector networks, the pen and pencil, the shape builder, editable booleans and variable width strokes."
+title = "Vectors"
+[[apps.details.features]]
+text = "Connections, triggers and animated transitions, variables with conditionals, flows and a presentation view with device frames."
+title = "Prototypes"
+[[apps.details.features]]
+text = "Inspect mode with measurements, annotations, ready-for-dev status, and code for CSS, HTML, React, SwiftUI and Compose."
+title = "Hand off"
+[[apps.details.features]]
+text = "Plain .figcraft files on your own disk. SVG, PNG, JPEG, WebP and PDF in and out, and .fig files open, best effort."
+title = "Your files"
+
+[[apps]]
+color = [63, 95, 224]
+former_bundles = []
+former_ids = []
+former_names = []
+id = "wordcraft"
+ink_dark = [142, 162, 255]
+ink_light = [42, 68, 184]
+kind = "official"
+mac_team = "DJ6XS33FX8"
+name = "WordCraft"
+publisher = "ArtCraft"
+repo = "storytold/wordcraft"
+tagline = "Writing and document design"
+[apps.details]
+headline = "The familiar word processor, native and offline."
+about = "A word processor with the ribbon, shortcuts and behavior you already know. Open source, and built from public specifications."
+platforms = "macOS, Windows, Linux, BSD, web"
+[[apps.details.features]]
+text = "Ribbon tabs and groups, a live Styles gallery and the editing behavior you expect, from list continuation to Format Painter."
+title = "Familiar"
+[[apps.details.features]]
+text = "Opens and saves .docx, and also .odt, .rtf, .html, .md, .tex and .txt. Opens older .doc files and exports PDF with real, selectable text."
+title = "Your files"
+[[apps.details.features]]
+text = "Paragraph layout is cached, so typing stays responsive even in long documents."
+title = "Fast"
+[[apps.details.features]]
+text = "Spelling, grammar and everything else work offline."
+title = "Private"
+[[apps.details.features]]
+text = "Work on macOS, Windows, Linux, BSD and the web."
+title = "Everywhere"
+[[apps.details.features]]
+text = "Every action is a command, driven from the ribbon, shortcuts, a command-line tool, a JSON control channel or an MCP server."
+title = "Built for agents"
+[[apps.details.shots]]
+caption = "The Home tab and the Navigation pane"
+key = "hero"
+[[apps.details.shots]]
+caption = "Track Changes and comments"
+key = "review"
+[[apps.details.shots]]
+caption = "The Design tab"
+key = "design"
+[[apps.details.shots]]
+caption = "The Layout tab"
+key = "layout"
+
+[[apps]]
+color = [31, 165, 201]
+former_bundles = []
+former_ids = []
+former_names = []
+id = "soundcraft"
+ink_dark = [95, 208, 238]
+ink_light = [14, 114, 144]
+kind = "official"
+mac_team = "DJ6XS33FX8"
+name = "SoundCraft"
+publisher = "ArtCraft"
+repo = "storytold/soundcraft"
+tagline = "Recording, editing and mixing audio"
+[apps.details]
+headline = "Record, edit and mix your audio."
+about = "A digital audio workstation that follows the workflow audio engineers already know: an Edit window for arranging and editing, and a Mix window for balancing. Pre-alpha."
+platforms = "macOS, Windows, Linux, FreeBSD, web"
+[[apps.details.features]]
+text = "Shuffle, Slip, Spot and Grid modes, Smart, Grabber, Trim and other tools, fades and crossfades, playlists with comping lanes and clip gain."
+title = "Editing"
+[[apps.details.features]]
+text = "Faders and pans with automation, sends, busses, aux inputs, VCA masters, routing folders and automatic plugin delay compensation."
+title = "Mixing"
+[[apps.details.features]]
+text = "Volume, pan, mute, send and every plugin parameter, with Write, Touch, Latch and Trim passes recorded live from the faders."
+title = "Automation"
+[[apps.details.features]]
+text = "EQ, dynamics, reverbs, modulation effects, a subtractive synth and a drum synth, all original, and CLAP plugins load too."
+title = "Plugins"
+[[apps.details.shots]]
+caption = "The Edit window with a nine-track session"
+key = "edit"
+[[apps.details.shots]]
+caption = "The Mix window"
+key = "mix"
+[[apps.details.shots]]
+caption = "Automation and memory locations"
+key = "automation"
+[[apps.details.shots]]
+caption = "The Score Editor"
+key = "score"
+
+[[apps]]
+color = [240, 122, 30]
+former_bundles = []
+former_ids = []
+former_names = []
+id = "deckcraft"
+ink_dark = [255, 160, 96]
+ink_light = [168, 79, 10]
+kind = "official"
+mac_team = "DJ6XS33FX8"
+name = "DeckCraft"
+publisher = "ArtCraft"
+repo = "storytold/deckcraft"
+tagline = "Presentations and slide shows"
+[apps.details]
+headline = "Create slides, tell stories and present."
+about = "A presentation app with slide masters, shapes, animations and a presenter view. In alpha, heading for beta."
+platforms = "macOS, Windows, Linux, BSD, web"
+[[apps.details.features]]
+text = "Slide masters and layouts with placeholders that inherit formatting, themes, sections, notes and comments."
+title = "Make decks"
+[[apps.details.features]]
+text = "Preset shapes with adjust handles, connectors that stay glued to shapes, freeform tools, merged shapes, gradients, shadows and glow."
+title = "Draw"
+[[apps.details.features]]
+text = "In-place text editing with full font and paragraph formatting, bullets and numbering, columns and autofit."
+title = "Write"
+[[apps.details.features]]
+text = "Pictures with crop and corrections, styled tables, charts, audio and video."
+title = "Add content"
+[[apps.details.features]]
+text = "Transitions including Morph, animations and motion paths, a full-screen slide show, presenter view and rehearsed timings."
+title = "Present"
+[[apps.details.features]]
+text = "Opens and saves .pptx presentation files and exports PDF (slides, notes pages and handouts), PNG and JPEG."
+title = "Exchange files"
+[[apps.details.shots]]
+caption = "Editing a slide, with sections and notes"
+key = "editor"
+[[apps.details.shots]]
+caption = "The Shape Format tab"
+key = "shape"
+[[apps.details.shots]]
+caption = "The slide sorter"
+key = "sorter"
+[[apps.details.shots]]
+caption = "The Format Shape pane"
+key = "format"
+
+[[apps]]
+color = [62, 166, 232]
+former_bundles = []
+former_ids = []
+former_names = []
+id = "cadcraft"
+ink_dark = [124, 200, 255]
+ink_light = [26, 111, 168]
+kind = "official"
+mac_team = "DJ6XS33FX8"
+name = "CADCraft"
+publisher = "ArtCraft"
+repo = "storytold/cadcraft"
+tagline = "Computer-aided design and drafting"
+[apps.details]
+headline = "Computer-aided drafting, with a familiar workflow."
+about = "A drafting app with the command line, object snaps and workflow that drafters already know. Free, with no account and no subscription. In early, fast development."
+platforms = "macOS, Windows, Linux, FreeBSD, web"
+[[apps.details.features]]
+text = "Type L, click two points, type @5<45 and press Enter. Prompts with clickable keywords, polar tracking, direct distance entry and grips work the way drafting habit expects."
+title = "The workflow you know"
+[[apps.details.features]]
+text = "Reads and writes DXF natively (R12 through 2018) and opens and saves DWG (R13 through 2018). Exports SVG and PNG."
+title = "Open files"
+[[apps.details.features]]
+text = "A responsive, native drafting workspace."
+title = "Fast and native"
+[[apps.details.features]]
+text = "Draw, modify, dimension, hatch and block commands, layers with a properties manager, paper-space layouts and PDF plotting."
+title = "A full drafting toolset"
+[[apps.details.features]]
+text = "Every menu item, tool and prompt is a command, available over MCP, a JSON control channel or the CLI."
+title = "Built for agents"
+[[apps.details.shots]]
+caption = "An apartment floor plan"
+key = "apartment"
+[[apps.details.shots]]
+caption = "A mechanical bracket drawing"
+key = "bracket"
+[[apps.details.shots]]
+caption = "A layout sheet"
+key = "layout"
+
+[[apps]]
+color = [31, 157, 85]
+former_bundles = []
+former_ids = []
+former_names = []
+id = "gridcraft"
+ink_dark = [79, 214, 138]
+ink_light = [18, 112, 58]
+kind = "official"
+mac_team = "DJ6XS33FX8"
+name = "GridCraft"
+publisher = "ArtCraft"
+repo = "storytold/gridcraft"
+tagline = "Spreadsheets and data"
+[apps.details]
+headline = "Spreadsheets you already know how to use."
+about = "A spreadsheet with the ribbon, formula bar, sheet tabs and shortcuts you know. No subscription, no license server and no telemetry."
+platforms = "macOS, Windows, Linux, BSD, web"
+[[apps.details.features]]
+text = "The ribbon, formula bar, Name Box, fill handle, point-mode formulas, Format Cells, Paste Special, conditional formatting, tables and charts."
+title = "Familiar"
+[[apps.details.features]]
+text = "XLSX is the native format, with formulas, tables, conditional formats, charts, pivot tables and print settings round-tripping. CSV and TSV too."
+title = "Compatible"
+[[apps.details.features]]
+text = "A dependency-graph calculation engine with dynamic arrays, LET and LAMBDA, structured table references, sort, AutoFilter and Flash Fill."
+title = "Capable"
+[[apps.details.features]]
+text = "Copy-on-write workbooks, incremental recalculation and a grid that only lays out what is on screen."
+title = "Fast"
+[[apps.details.features]]
+text = "Every ribbon button, menu item, dialog and keystroke is a command, available over a JSON control channel, an MCP server or the CLI."
+title = "Agent-native"
+[[apps.details.features]]
+text = "Work on the desktop and the web."
+title = "Everywhere"
+[[apps.details.shots]]
+caption = "A quarterly sales dashboard"
+key = "hero"
+[[apps.details.shots]]
+caption = "A household budget"
+key = "budget"
+[[apps.details.shots]]
+caption = "A pivot table"
+key = "pivot"
+[[apps.details.shots]]
+caption = "Formatting a chart"
+key = "chart"
+
+[[apps]]
+color = [78, 123, 251]
+former_bundles = []
+former_ids = []
+former_names = []
+id = "craft-anything"
+ink_dark = [116, 170, 255]
+ink_light = [22, 89, 196]
+kind = "official"
+mac_team = "DJ6XS33FX8"
+name = "Craft Anything"
+publisher = "ArtCraft"
+repo = "storytold/craft-anything"
+tagline = "Find out how any software works, then craft your own"
+[apps.details]
+headline = "See how any website, app or game works, then build your own."
+about = "Point it at a target and say what you want. It studies the original with real inspection tools, has a coding agent build a new project in the stack you ask for, checks the result against the original and refines it. Open source and clean-room."
+platforms = "macOS, Windows, Linux, FreeBSD, web"
+[[apps.details.features]]
+text = "Websites, desktop apps, phone apps, games and files: find out how they're built, with the evidence behind every answer."
+title = "Study anything"
+[[apps.details.features]]
+text = "Say what you want and a coding agent builds a new project in the language or engine you name."
+title = "Build your own"
+[[apps.details.features]]
+text = "Every build is compared with the original, at three screen widths for a page, and refined until it's close."
+title = "Checked, not guessed"
+[[apps.details.features]]
+text = "Every tool is a CLI command and an MCP tool, and no AI is needed just to inspect."
+title = "Agent-ready"
+
+[[apps]]
+bundle = "io.tangencylabs.solidcraft"
+color = [70, 161, 251]
+former_bundles = ["ai.storyteller.solidcraft", "ai.storyteller.solvecraft"]
+former_ids = []
+former_names = []
+id = "solidcraft"
+ink_dark = [140, 196, 255]
+ink_light = [22, 83, 174]
+kind = "community"
+mac_team = "G5QA5U5X2S"
+msi_publisher = "SolidCraft contributors"
+name = "SolidCraft"
+publisher = "Tangency Labs"
+repo = "tangency-labs/solidcraft"
+site = "https://solidcraft.io"
+tagline = "Parametric 3D CAD"
+[apps.details]
+headline = "Parametric 3D CAD, with editable sketches and solids."
+about = "A parametric solid modeller by Tangency Labs. Sketch, constrain and build solids on an editable feature timeline: change a dimension and the model rebuilds. Early, but usable for simple parts. Open source, and it can be driven by AI agents through its MCP server."
+platforms = "macOS, Windows, Linux, FreeBSD, web"
+[[apps.details.features]]
+text = "Lines, arcs, splines and text, solved by SolidCraft's own constraint solver, with parameter-driven dimensions."
+title = "Sketches and constraints"
+[[apps.details.features]]
+text = "Extrude, revolve, sweep, loft, fillet, chamfer, shell, holes, threads and patterns on a parametric timeline."
+title = "Features"
+[[apps.details.features]]
+text = "STEP, IGES, 3MF, STL, OBJ and glTF in and out where supported, and .sc designs."
+title = "Files"
+[[apps.details.features]]
+text = "A desktop app, a browser app, a headless CLI and an MCP server, all running the same commands."
+title = "Desktop, web and agents"
