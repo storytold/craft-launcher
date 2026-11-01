@@ -354,15 +354,20 @@ fn georgian_candidates() -> Vec<Candidate> {
     }
     #[cfg(all(unix, not(target_os = "macos")))]
     {
-        // Debian/Ubuntu, Arch, Fedora (static and variable) and FreeBSD's ports.
+        // Debian/Ubuntu, Arch, Fedora (static and variable), openSUSE and FreeBSD's ports.
         for path in [
             "/usr/share/fonts/truetype/noto/NotoSansGeorgian-Regular.ttf",
+            "/usr/share/fonts/truetype/NotoSansGeorgian-Regular.ttf",
             "/usr/share/fonts/noto/NotoSansGeorgian-Regular.ttf",
             "/usr/share/fonts/google-noto/NotoSansGeorgian-Regular.ttf",
             "/usr/share/fonts/google-noto-vf/NotoSansGeorgian[wght].ttf",
             "/usr/local/share/fonts/noto/NotoSansGeorgian-Regular.ttf",
         ] {
             add(path.into(), "Noto Sans Georgian");
+        }
+        // A face the user installed by hand.
+        for dir in user_font_dirs() {
+            add(dir.join("NotoSansGeorgian-Regular.ttf"), "Noto Sans Georgian");
         }
         // DejaVu Sans draws Georgian too, and most desktops have it.
         for path in [
