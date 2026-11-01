@@ -78,14 +78,16 @@ settings file must produce an error the user can act on, never a panic.
   (`apps/artcraft-launcher-updater`), which an administrator installs to do exactly that, and
   which must stay this narrow: it only *updates* Craft Apps an administrator already installed for
   all users (Windows Installer, HKLM), only to a newer release, and only with a package that passes
-  `msi::check` (valid Authenticode signature whose certificate subject is exactly
-  `msi::SIGNER_SUBJECT`, the app's own `ProductName` and `Manufacturer`, the release's version) on
-  top of the SHA-256. Community apps (`AppKind::Community`) sign their own packages, so it never
-  takes them: the launcher updates them, with the prompt. It downloads into its own folder in the
-  system profile (`Paths::for_service`), never a shared one such as `C:\ProgramData`. Its requests
-  (`native::service`) carry app ids only: never a path, a URL or a version, and clients believe
-  only the service's own process on its port. Installing a new app always goes through the
-  launcher and the UAC prompt.
+  `msi::verify` (a valid, trusted Authenticode signature, checked through WinTrust, whose
+  certificate is exactly `msi::PUBLISHER`; then the app's own `ProductName` and `Manufacturer` and
+  the release's version) on top of the SHA-256. It runs no script: no PowerShell, for the checks or
+  for the permission prompt that changes its setting. Community apps (`AppKind::Community`) sign
+  their own packages, so it never takes them: the launcher updates them, with the prompt. It
+  downloads into its own folder in the system profile (`Paths::for_service`), never a shared one
+  such as `C:\ProgramData`, and installs only into the folder the app registered for all users,
+  refused when any part of that path is a link or junction. Its requests (`native::service`) carry
+  app ids only: never a path, a URL or a version, and clients believe only the service's own
+  process on its port. Installing a new app always goes through the launcher and the UAC prompt.
 - Never delete a user's files outside what the launcher itself installed.
 - **Agents never land or approve a third-party app.** A change that adds a catalog row, download
   source or install path for an app whose repo is not under `storytold/` and isn't one of the

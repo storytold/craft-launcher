@@ -300,19 +300,22 @@ impl Engine {
         install::bind_artifact_version(app, release, asset)?;
         let (file, _) = install::download(release, asset, &mut self.job(stop, phase))?;
         let names: Vec<&str> = app.names().collect();
-        let expect = crate::msi::Expect { names, version: release.version.as_ref(), signer: Some(crate::msi::SIGNER_SUBJECT) };
+        let expect = crate::msi::Expect { names, version: release.version.as_ref(), signer: Some(&crate::msi::PUBLISHER) };
         // A download that matches its checksum but fails these is kept (the next run would only
         // fetch the same file again); the download folder's cleanup takes it in a week.
         crate::msi::verify(&file, &expect)?;
-        log::info!("{}: {} checked (signature, product, version); installing", app.name, asset.name);
-        // Past this point the install can't be interrupted halfway.
-        phase(JobPhase::Installing);
-        let logs = self.paths.logs();
-        let _ = std::fs::create_dir_all(&logs);
         // Into the folder the installed package registered, so an app put in a chosen folder stays
         // there (none registered: where the package goes by default). It comes from what's
         // registered here, never from a request.
         let folder = crate::detect::windows::machine_install_folder(app);
+        if let Some(folder) = &folder {
+            refuse_links(folder)?;
+        }
+        log::info!("{}: {} checked (signature, product, version, folder); installing", app.name, asset.name);
+        // Past this point the install can't be interrupted halfway.
+        phase(JobPhase::Installing);
+        let logs = self.paths.logs();
+        let _ = std::fs::create_dir_all(&logs);
         let restart = install::windows::run_msi_quiet(&file, folder.as_deref(), &logs.join(format!("msi-{}.log", app.id)), stop, phase)?;
         let _ = std::fs::remove_file(&file);
         // What's registered now is the truth.
@@ -392,7 +395,7 @@ impl Engine {
         let expect = crate::msi::Expect {
             names: vec![crate::service::DISPLAY_NAME],
             version: launcher.version.as_ref(),
-            signer: Some(crate::msi::SIGNER_SUBJECT),
+            signer: Some(&crate::msi::PUBLISHER),
         };
         crate::msi::verify(&file, &expect)?;
         let logs = self.paths.logs();
@@ -405,6 +408,28 @@ impl Engine {
     pub fn start_own_update(&self, _launcher: &Release, _asset: &Asset, _stop: &Stop) -> Result<(), String> {
         Err("the update service updates itself on Windows only".into())
     }
+}
+
+/// Refuses an install folder with a link or a junction anywhere in its path. The service installs
+/// as LocalSystem, so a folder that leads somewhere else would put the package's files where no
+/// administrator chose. Parts that don't exist yet are left to the Windows Installer to create.
+#[cfg_attr(not(windows), allow(dead_code))]
+fn refuse_links(folder: &Path) -> Result<(), String> {
+    if !folder.is_absolute() {
+        return Err(format!("the registered folder {} isn't a full path, so the update wasn't installed", folder.display()));
+    }
+    for part in folder.ancestors() {
+        match std::fs::symlink_metadata(part) {
+            // On Windows `is_symlink` covers junctions too (both are name surrogates).
+            Ok(meta) if meta.file_type().is_symlink() => {
+                return Err(format!("{} leads to another folder, so the update wasn't installed there", part.display()));
+            }
+            Ok(_) => {}
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+            Err(e) => return Err(format!("couldn't check {} ({e}), so the update wasn't installed", part.display())),
+        }
+    }
+    Ok(())
 }
 
 /// What a run of `scope` would do about `app`, given what's installed and the latest release.
@@ -422,7 +447,7 @@ fn decide(
         Scope::Machine if inst.source != InstallSource::Msi => {
             return Plan::Blocked("not installed for all users with the Windows Installer".into());
         }
-        // The service installs only packages the Craft Apps' publisher signed (`msi::SIGNER_SUBJECT`).
+        // The service installs only packages the Craft Apps' publisher signed (`msi::PUBLISHER`).
         // A community app signs its own, so the launcher updates it, with Windows asking for permission.
         Scope::Machine if app.kind == AppKind::Community => {
             return Plan::Blocked("a community app, which the launcher updates itself".into());
@@ -533,6 +558,37 @@ mod tests {
         let latest = LatestRelease::Found(release("0.2.0"));
         let p = decide(solid, Some(&inst), &latest, Scope::Machine, WINDOWS, &BackendOptions::default(), None);
         assert!(matches!(p, Plan::Blocked(ref why) if why.contains("community")), "{p:?}");
+    }
+
+    /// `link` made to lead to `target`: a junction on Windows (no privilege needed), a symlink
+    /// elsewhere.
+    fn make_link(target: &Path, link: &Path) {
+        #[cfg(windows)]
+        {
+            let made = std::process::Command::new("cmd").arg("/c").arg("mklink").arg("/J").arg(link).arg(target).output().unwrap();
+            assert!(made.status.success(), "{}", String::from_utf8_lossy(&made.stderr));
+        }
+        #[cfg(unix)]
+        std::os::unix::fs::symlink(target, link).unwrap();
+    }
+
+    #[test]
+    fn an_install_folder_that_leads_elsewhere_is_refused() {
+        let dir = tempfile::tempdir().unwrap();
+        // The temporary folder's own path may pass through a link (macOS's /var).
+        let root = if cfg!(windows) { dir.path().to_path_buf() } else { dir.path().canonicalize().unwrap() };
+        let real = root.join("Program Files");
+        std::fs::create_dir(&real).unwrap();
+        let link = root.join("Elsewhere");
+        make_link(&real, &link);
+        assert_eq!(refuse_links(&real.join("GridCraft")), Ok(()), "a part that doesn't exist yet is the installer's to make");
+        let err = refuse_links(&link.join("GridCraft")).unwrap_err();
+        assert!(err.contains("Elsewhere") && err.contains("leads to another folder"), "{err}");
+        // The folder itself, not only a part above it.
+        std::fs::create_dir(real.join("Real")).unwrap();
+        make_link(&real.join("Real"), &real.join("GridCraft"));
+        assert!(refuse_links(&real.join("GridCraft")).is_err());
+        assert!(refuse_links(Path::new("GridCraft")).unwrap_err().contains("isn't a full path"));
     }
 
     #[test]

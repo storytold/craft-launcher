@@ -121,61 +121,49 @@ pub fn set_auto_update(on: bool) -> Result<(), String> {
     }
 }
 
-/// Where [`ELEVATE`] finds the program to run and the value to give it.
+/// How long the elevated program has to change the setting once the prompt is accepted. Writing
+/// one registry value takes far less; this only bounds a program that never got to it.
 #[cfg_attr(not(windows), allow(dead_code))]
-const EXE_VAR: &str = "ARTCRAFT_LAUNCHER_UPDATER";
-#[cfg_attr(not(windows), allow(dead_code))]
-const VALUE_VAR: &str = "ARTCRAFT_LAUNCHER_AUTO_UPDATE";
-/// `ERROR_CANCELLED`: the permission prompt was dismissed.
-#[cfg_attr(not(windows), allow(dead_code))]
-const CANCELLED: i32 = 1223;
+const ELEVATED_WAIT: std::time::Duration = std::time::Duration::from_secs(60);
 
-/// The PowerShell behind [`set_auto_update_elevated`]: starts the updater with the `runas` verb,
-/// which shows the UAC prompt, waits for it and exits with its exit code (or `ERROR_CANCELLED`
-/// when the prompt was dismissed). The program and the value reach it through the environment,
-/// never the script text.
-#[cfg_attr(not(windows), allow(dead_code))]
-const ELEVATE: &str = r#"
-$psi = New-Object System.Diagnostics.ProcessStartInfo
-$psi.FileName = $env:ARTCRAFT_LAUNCHER_UPDATER
-$psi.Arguments = 'set auto-update ' + $env:ARTCRAFT_LAUNCHER_AUTO_UPDATE
-$psi.Verb = 'runas'
-$psi.UseShellExecute = $true
-$psi.WindowStyle = [System.Diagnostics.ProcessWindowStyle]::Hidden
-try {
-  $p = [System.Diagnostics.Process]::Start($psi)
-  if (-not $p) { exit 3 }
-  $p.WaitForExit()
-  exit $p.ExitCode
-} catch {
-  $e = $_.Exception
-  while ($e -and -not ($e -is [System.ComponentModel.Win32Exception])) { $e = $e.InnerException }
-  if ($e) { exit $e.NativeErrorCode }
-  exit 2
-}
-"#;
-
-/// Asks Windows to run `artcraft-launcher-updater set auto-update on|off` as an administrator:
-/// the UAC prompt (with an administrator's name and password for a user who isn't one). Waits for
-/// it. `Ok(true)` once it's changed, `Ok(false)` when the prompt was dismissed.
+/// Asks Windows to run `artcraft-launcher-updater set auto-update on|off` as an administrator
+/// (`ShellExecuteEx` with the `runas` verb, no script): the UAC prompt, naming the updater and its
+/// publisher (with an administrator's name and password for a user who isn't one). Waits for the
+/// change. `Ok(true)` once it's made, `Ok(false)` when the prompt was dismissed.
 pub fn set_auto_update_elevated(on: bool) -> Result<bool, String> {
     #[cfg(windows)]
     {
+        use winsafe::{self as w, co};
         let exe = updater_exe().ok_or("the update service isn't installed")?;
-        let powershell = crate::install::windows::system32().join(r"WindowsPowerShell\v1.0\powershell.exe");
-        let mut cmd = crate::process::command(&powershell);
-        cmd.args(["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-EncodedCommand", &crate::msi::encode_command(ELEVATE)])
-            .env(EXE_VAR, &exe)
-            .env(VALUE_VAR, if on { "on" } else { "off" })
-            .stdin(std::process::Stdio::null())
-            .stdout(std::process::Stdio::null())
-            .stderr(std::process::Stdio::null());
-        let status = cmd.status().map_err(|e| format!("couldn't ask for administrator permission ({e})"))?;
-        match status.code() {
-            Some(0) => Ok(true),
-            Some(CANCELLED) => Ok(false),
-            Some(code) => Err(format!("automatic updates weren't changed (error {code})")),
-            None => Err("automatic updates weren't changed".into()),
+        let file = exe.to_str().ok_or("the update service's folder can't be read")?;
+        let started = w::ShellExecuteEx(&w::SHELLEXECUTEINFO {
+            mask: co::SEE_MASK::NOASYNC | co::SEE_MASK::FLAG_NO_UI,
+            verb: Some("runas"),
+            file,
+            parameters: Some(if on { "set auto-update on" } else { "set auto-update off" }),
+            show: co::SW::HIDE,
+            ..Default::default()
+        });
+        match started {
+            Ok(()) => {}
+            Err(co::ERROR::CANCELLED) => return Ok(false),
+            Err(e) => return Err(format!("couldn't ask for administrator permission ({e})")),
+        }
+        // winsafe hands back no process to wait for, so the change itself is the answer: the
+        // setting is in HKLM, where only an administrator's program can have written it.
+        let deadline = std::time::Instant::now() + ELEVATED_WAIT;
+        loop {
+            let policy = Policy::load();
+            if policy.auto_update_managed {
+                return Err("Group Policy sets this on this computer, so it can't be changed here".into());
+            }
+            if policy.auto_update == on {
+                return Ok(true);
+            }
+            if std::time::Instant::now() >= deadline {
+                return Err("automatic updates weren't changed".into());
+            }
+            std::thread::sleep(std::time::Duration::from_millis(250));
         }
     }
     #[cfg(not(windows))]
