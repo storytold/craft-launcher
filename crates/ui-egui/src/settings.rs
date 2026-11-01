@@ -75,10 +75,10 @@ impl CheckEvery {
     }
 
     /// How often to look. Checks ask ArtCraft's release feed (one cheap request; GitHub only as a
-    /// fallback), so automatic checks run every five minutes.
+    /// fallback), so automatic checks run every twelve minutes to reduce GitHub API traffic.
     pub fn seconds(self) -> Option<i64> {
         match self {
-            Self::Hour | Self::FourHours | Self::Day => Some(5 * 60),
+            Self::Hour | Self::FourHours | Self::Day => Some(12 * 60),
             Self::Never => None,
         }
     }

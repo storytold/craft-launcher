@@ -52,23 +52,30 @@ pub enum Downgrade<'a> {
     /// The installed version's own release and package, downloaded and checked before a downgrade
     /// changes anything, so a failed Windows Installer downgrade can put it back.
     Reinstall { previous: &'a Release, asset: &'a Asset },
-    /// The installed copy is moved aside, not removed, until the older one is in place, and moved
-    /// back if that fails (see [`keeps_old_copy`]). No older package is needed.
+    /// The installed copy stays until the older one is in place (see [`keeps_old_copy`]). No
+    /// older package is needed.
     KeepOldCopy,
 }
 
-/// Whether going back over `existing` keeps the old copy aside until the new one is in place: a
-/// macOS bundle the launcher replaces itself, the same way it updates one.
-pub fn keeps_old_copy(kind: PackageKind, existing: Option<&Installed>) -> bool {
-    kind == PackageKind::Dmg && existing.is_some_and(|inst| inst.source == InstallSource::MacApp)
+/// Whether going back over `existing` keeps the old copy until the new one is in place, the same
+/// way an update does. A macOS bundle is moved aside and moved back if the swap fails. An
+/// AppImage the launcher installed (`previous` records it) is renamed in whole, and the old file
+/// is removed only after that. A tarball is left out: its `bin` and `share` swap one at a time.
+pub fn keeps_old_copy(kind: PackageKind, existing: Option<&Installed>, previous: Option<&Record>) -> bool {
+    let source = existing.map(|inst| inst.source);
+    match kind {
+        PackageKind::Dmg => source == Some(InstallSource::MacApp),
+        PackageKind::AppImage => source == Some(InstallSource::Launcher) && previous.is_some_and(|r| r.kind == PackageKind::AppImage),
+        _ => false,
+    }
 }
 
 /// Whether `downgrade` has a way back for this kind of install.
-fn downgrade_is_safe(downgrade: Option<Downgrade<'_>>, kind: PackageKind, existing: Option<&Installed>) -> bool {
+fn downgrade_is_safe(downgrade: Option<Downgrade<'_>>, kind: PackageKind, existing: Option<&Installed>, previous: Option<&Record>) -> bool {
     match downgrade {
         None => true,
         Some(Downgrade::Reinstall { .. }) => kind == PackageKind::Msi && existing.is_some_and(|inst| inst.source == InstallSource::Msi),
-        Some(Downgrade::KeepOldCopy) => keeps_old_copy(kind, existing),
+        Some(Downgrade::KeepOldCopy) => keeps_old_copy(kind, existing, previous),
     }
 }
 
@@ -125,14 +132,10 @@ pub fn install_at(
     {
         return Err(format!("Cannot update {} to {}: installed version {} is newer", app.name, release.version_label(), inst_v));
     }
-    if !downgrade_is_safe(job.downgrade, kind, existing) {
+    if !downgrade_is_safe(job.downgrade, kind, existing, previous) {
         return Err(format!("Going back to an older version of {} isn't available for this kind of install yet.", app.name));
     }
     log::info!("{}: starting {} to {} ({})", app.name, if existing.is_some() { "update" } else { "install" }, release.version_label(), kind.label());
-    // An update of an installed MSI may be an all-users one. Say so before the (slow) scope lookup, so
-    // the other updates of this "Update all" wait for it and share one permission prompt.
-    #[cfg(windows)]
-    let mut joined = (kind == PackageKind::Msi && existing.is_some_and(|inst| inst.source == InstallSource::Msi)).then(msi_batch::Joined::join);
     #[cfg(windows)]
     let msi_scope = if kind == PackageKind::Msi {
         let updated = crate::msi_context::update_scope(
@@ -146,11 +149,6 @@ pub fn install_at(
     } else {
         None
     };
-    #[cfg(windows)]
-    if msi_scope != Some(MsiScope::PerMachine) || job.downgrade.is_some() {
-        // A downgrade runs its own remove, install and put-back steps, outside any batch.
-        joined = None;
-    }
     // The package to put back comes first: without it, nothing is removed.
     #[cfg_attr(not(windows), allow(unused_variables))]
     let rollback = match job.downgrade {
@@ -160,7 +158,6 @@ pub fn install_at(
         }
         Some(Downgrade::KeepOldCopy) | None => None,
     };
-    // The checksum is kept for the Windows all-users route, which checks the held package again.
     #[cfg_attr(not(windows), allow(unused_variables))]
     let (file, sha256) = download(release, asset, job)?;
     log::info!("{}: download ready ({}), running installer...", app.name, file.display());
@@ -169,9 +166,14 @@ pub fn install_at(
     #[allow(unused_variables)]
     let version = release.version_label();
     let result = match kind {
+        // No team to check the signature against: refuse rather than install it unchecked.
+        #[cfg(target_os = "macos")]
+        PackageKind::Dmg if app.mac_team.is_none() => {
+            Err("ArtCraft Launcher has no macOS signing team recorded for this app, so it wasn't installed here".into())
+        }
         #[cfg(target_os = "macos")]
         PackageKind::Dmg => {
-            macos::install_dmg(app, &file, existing, destination.as_deref(), job.replace, job.paths, &macos::Expect::release(release))
+            macos::install_dmg(app, &file, existing, destination.as_deref(), job.replace, job.paths, &macos::Expect::release(app, release))
                 .map(|path| Some(record(&version, kind, path, Vec::new(), false)))
         }
         #[cfg(windows)]
@@ -179,8 +181,8 @@ pub fn install_at(
             // An update lands in the same Windows Installer context as the copy being replaced:
             // per-machine needs elevation, per-user must not duplicate itself per-machine. A
             // fresh install passes no context and takes the package's own default.
-            match (&joined, &rollback) {
-                (_, Some((previous, previous_sha256, previous_version))) => windows::downgrade_msi(
+            match &rollback {
+                Some((previous, previous_sha256, previous_version)) => windows::downgrade_msi(
                     app,
                     windows::Package { file: &file, sha256: &sha256, version: &version },
                     windows::Package { file: previous, sha256: previous_sha256, version: previous_version },
@@ -189,9 +191,7 @@ pub fn install_at(
                     job.stop,
                     &mut *job.phase,
                 ),
-                // All-users updates that are ready together share one permission prompt.
-                (Some(joined), None) => windows::run_msi_all_users(&file, &sha256, destination.as_deref(), joined, job.stop, &mut *job.phase),
-                (None, None) => windows::run_msi(&file, destination.as_deref(), msi_scope, job.stop, &mut *job.phase),
+                None => windows::run_msi(&file, destination.as_deref(), msi_scope, job.stop, &mut *job.phase),
             }
             .map(|_| None)
         }
@@ -509,7 +509,7 @@ pub(crate) fn choose_kinds_with(
     available: &[PackageKind],
     can_pacman: bool,
 ) -> Vec<PackageKind> {
-    // Formats the launcher can't verify for this app (SolidCraft's unsigned macOS build) never count.
+    // Formats the launcher can't verify for this app (a macOS build with no `mac_team`) never count.
     let available: Vec<PackageKind> = available.iter().copied().filter(|k| app.installs(*k)).collect();
     let available = available.as_slice();
     if let Some(inst) = existing {
@@ -744,13 +744,22 @@ fn remove_appimage(app: &CraftApp, path: &Path, record: Option<&Record>) -> Resu
 pub fn launch(app: &CraftApp, installed: &Installed, paths: &Paths) -> Result<(), String> {
     let _ = paths;
     let path = Path::new(&installed.location);
+    // Every app is told where the shared version-choice file is (see `craft_update::pins`), so
+    // it finds it even when its own data folder points elsewhere: a redirected home, a sandbox,
+    // or a launcher whose data folder moved.
+    let pins = craft_update::pins::Pins::default_path();
+    let env: Vec<(&str, &std::ffi::OsStr)> = pins.iter().map(|p| (craft_update::pins::PATH_ENV, p.as_os_str())).collect();
     match installed.source {
         InstallSource::Flatpak => {
             let mut cmd = process::flatpak_command();
+            cmd.arg("run");
+            cmd.args(process::env_args(&env));
             // The id detection found it under, which may be one of the app's older ones.
-            cmd.args(["run", &installed.package.clone().unwrap_or_else(|| app.bundle_id())]);
+            cmd.arg(installed.package.clone().unwrap_or_else(|| app.bundle_id()));
             process::spawn_detached(cmd)
         }
+        // `open` starts the app through Launch Services, which gives it the user's real home, so
+        // it finds the file at its default path; not every macOS `open` takes an environment.
         InstallSource::MacApp => process::open(path.as_os_str()),
         // A tarball the launcher unpacked into its own folder: run it here, against its own
         // home, rather than on the host through `flatpak-spawn` (which is what `launch_binary`
@@ -764,6 +773,9 @@ pub fn launch(app: &CraftApp, installed: &Installed, paths: &Paths) -> Result<()
             for (name, value) in home_env(&home) {
                 cmd.env(name, value);
             }
+            // Its data folder now points inside its own home, so this is the only way it finds
+            // the real version-choice file.
+            cmd.envs(env.iter().copied());
             if let Some(dir) = path.parent() {
                 cmd.current_dir(dir);
             }
@@ -780,7 +792,7 @@ pub fn launch(app: &CraftApp, installed: &Installed, paths: &Paths) -> Result<()
                 }
                 return Err(format!("{} isn't where it was installed ({})", app.name, path.display()));
             }
-            process::launch_binary(path, &[])
+            process::launch_binary_with_env(path, &[], &env)
         }
     }
     .map_err(|e| format!("Couldn't open {}: {e}", app.name))
@@ -943,23 +955,23 @@ fn run_as_root(args: &[&std::ffi::OsStr]) -> Result<(), String> {
 fn root_outcome(code: Option<i32>) -> Result<(), String> {
     match code {
         Some(0) => Ok(()),
-        // pkexec: 126 = the password prompt was dismissed, 127 = not authorized.
-        Some(126 | 127) => Err("cancelled".into()),
+        // pkexec: 126 = the password prompt was dismissed.
+        Some(126) => Err("cancelled".into()),
+        // pkexec: 127 = not authorized, no authentication agent, or another pkexec error.
+        Some(127) => Err("the system installer stopped with error 127 (usually refused permission or no polkit authentication agent)".into()),
         Some(c) => Err(format!("the system installer stopped with error {c}")),
         None => Err("the system installer was interrupted".into()),
     }
 }
 
-/// How the error of an installer call shared by several apps ends (see `linux::shared_outcome` and
-/// `msi_batch::outcome`). "In one go" covers a Linux package call, a Windows batch under one
-/// prompt, and its fallback where each package ran by itself but the run still has one result.
-const SHARED_CALL: &str = "apps in one go. Try them one at a time.";
+/// How the error of an installer call shared by several apps ends (see `linux::shared_outcome`).
+const SHARED_CALL: &str = "apps together. Try them one at a time.";
 
 /// Whether an install failed in one installer call shared with other apps (Linux packages
-/// installed together, or Windows all-users updates under one permission prompt). Such a call can
-/// fail after it has installed some of its apps; any other failure is the app's own.
+/// installed together). Such a call can fail after it has installed some of its apps; any other
+/// failure is the app's own.
 pub fn failed_in_shared_call(error: &str) -> bool {
-    cfg!(any(target_os = "linux", windows)) && error.ends_with(SHARED_CALL)
+    cfg!(target_os = "linux") && error.ends_with(SHARED_CALL)
 }
 
 /// The system's installer runs one job at a time; the others wait their turn here.
@@ -1453,6 +1465,9 @@ pub(crate) mod linux {
 }
 
 #[cfg(target_os = "macos")]
+mod macos_verify;
+
+#[cfg(target_os = "macos")]
 pub mod macos {
     use std::time::Duration;
 
@@ -1484,10 +1499,6 @@ pub mod macos {
         super::mac_applications_dir(Path::new(SYSTEM_APPLICATIONS), dirs::home_dir().as_deref())
     }
 
-    /// The Apple Developer team that signs every Craft App and ArtCraft Launcher (Learning
-    /// Machines LLC): the macOS side of the Windows publisher check.
-    pub const TEAM_ID: &str = "DJ6XS33FX8";
-
     /// What a new copy must prove before it replaces anything. The checksum shows the download is
     /// the file the release lists; these show the app inside is the one the release promises.
     pub struct Expect<'a> {
@@ -1499,8 +1510,9 @@ pub mod macos {
     }
 
     impl<'a> Expect<'a> {
-        pub fn release(release: &'a Release) -> Self {
-            Self { team: Some(TEAM_ID), version: release.version.as_ref() }
+        /// What `release` of `app` must prove: the app's own team's signature, and the version.
+        pub fn release(app: &'a CraftApp, release: &'a Release) -> Self {
+            Self { team: app.mac_team, version: release.version.as_ref() }
         }
     }
 
@@ -1577,6 +1589,9 @@ pub mod macos {
     ) -> Result<PathBuf, String> {
         let bundle = format!("{}.app", app.name);
         let src = mount.join(&bundle);
+        if !std::fs::symlink_metadata(&src).is_ok_and(|m| m.is_dir()) {
+            return Err("the disk image does not contain an app directory".into());
+        }
         crate::detect::macos::read_bundle(app, &src).ok_or("the disk image doesn't contain the app")?;
         let dir = applications_dir(existing, destination)?;
         let dest = existing.filter(|i| i.source == InstallSource::MacApp).map_or_else(|| dir.join(&bundle), |i| PathBuf::from(&i.location));
@@ -1595,27 +1610,40 @@ pub mod macos {
         // bundle's signature lives in its files, not in extended attributes.
         process::run(DITTO, &["--norsrc", "--noextattr", "--noacl", src_s, staged_s], Duration::from_secs(600))
             .map_err(|reason| format!("couldn't copy the app: {reason}"))?;
-        let checked = crate::detect::macos::read_bundle(app, &staged)
-            .ok_or_else(|| "the copied app is incomplete".to_string())
-            .and_then(|found| check(&staged, &found, expect));
-        checked?;
-        swap_into_place(&staged, &dest)?;
+        if !std::fs::symlink_metadata(&staged).is_ok_and(|m| m.is_dir()) {
+            return Err("the copied app is not an app directory".into());
+        }
+        let found = crate::detect::macos::read_bundle(app, &staged).ok_or("the copied app is incomplete")?;
+        check_and_swap(app, &staged, &dest, &found, expect, process::run)?;
         Ok(dest)
     }
 
-    /// Checks a copied bundle against what its release promises, before it replaces anything.
-    fn check(bundle: &Path, found: &Installed, expect: &Expect<'_>) -> Result<(), String> {
-        if let Some(team) = expect.team
-            && !signed_by(bundle, team)
-        {
-            return Err("the app isn't signed by its developer, so it wasn't installed".into());
+    /// Unsigned fixtures are allowed only in test builds, never in production installs.
+    pub(super) fn required_team(team: Option<&str>, test_build: bool) -> Result<Option<&str>, String> {
+        if team.is_none() && !test_build {
+            return Err("no macOS signing team was supplied, so the app wasn't installed".into());
+        }
+        Ok(team)
+    }
+
+    /// Every check must succeed before the old copy or its record can be changed.
+    pub(super) fn check_and_swap(
+        app: &CraftApp,
+        bundle: &Path,
+        destination: &Path,
+        found: &Installed,
+        expect: &Expect<'_>,
+        run: impl FnMut(&str, &[&str], Duration) -> Result<String, String>,
+    ) -> Result<(), String> {
+        if let Some(team) = required_team(expect.team, cfg!(test))? {
+            super::macos_verify::verify_with(app, bundle, team, run)?;
         }
         if let Some(want) = expect.version
             && !found.version.as_ref().is_some_and(|v| same_release(v, want))
         {
             return Err(format!("the app inside isn't version {want}, so it wasn't installed"));
         }
-        Ok(())
+        swap_into_place(bundle, destination)
     }
 
     /// Whether `bundle` has a valid Developer ID signature from `team`, nested code included. The
@@ -1897,14 +1925,13 @@ fn explain(code: Option<i32>) -> Result<(), String> {
     }
 }
 
-/// One permission prompt for several all-users updates.
-#[cfg(any(windows, test))]
-mod msi_batch;
-
 /// Going back to an older version of a Windows Installer app.
 #[cfg(any(windows, test))]
 mod msi_downgrade;
 
+/// Helpers for Windows Installer PowerShell scripts running under elevation.
+#[cfg(any(windows, test))]
+mod msi_batch;
 /// Builds the Windows Installer command separately so its package argument can be checked
 /// without starting an installer.
 #[cfg_attr(not(windows), allow(dead_code))]
@@ -1977,53 +2004,6 @@ pub mod windows {
             Some(1602) | None => e,
             _ => format!("{e}. Its log is at {}", msi_log(msi).display()),
         })
-    }
-
-    /// Updates an app installed for all users. Jobs that are ready together go into one call, so Windows
-    /// asks for permission once for all of them; one that is alone runs as [`run_msi`] does.
-    /// `sha256` is the checksum the download was checked against: the package is held unchangeable
-    /// and checked again before it waits, and stays held until its call ends.
-    pub(super) fn run_msi_all_users(
-        msi: &Path,
-        sha256: &str,
-        destination: Option<&Path>,
-        joined: &msi_batch::Joined<'_>,
-        stop: &Stop,
-        phase: &mut dyn FnMut(JobPhase),
-    ) -> Result<(), String> {
-        let _held = msi_batch::hold(msi, sha256)?;
-        let scope = Some(MsiScope::PerMachine);
-        run_all_users_with(msi, destination, joined, stop, phase, &|| run_direct(msi, destination, scope), &|targets| {
-            msi_batch::run(&msiexec(), targets)
-        })
-    }
-
-    /// [`run_msi_all_users`] with the two ways of installing handed in: `alone` for a job that is the
-    /// only one in its call, `together` for the command lines of every job of a call of several.
-    pub(super) fn run_all_users_with(
-        msi: &Path,
-        destination: Option<&Path>,
-        joined: &msi_batch::Joined<'_>,
-        stop: &Stop,
-        phase: &mut dyn FnMut(JobPhase),
-        alone: &dyn Fn() -> Result<(), String>,
-        together: &dyn Fn(&[std::ffi::OsString]) -> Result<(), String>,
-    ) -> Result<(), String> {
-        use std::ffi::OsString;
-        let line = msi_batch::line(msi, destination, Some(MsiScope::PerMachine))?;
-        INSTALLER.batched_when(
-            vec![OsString::from(msi_batch::COMMAND)],
-            OsString::from(line),
-            &cancelled(stop),
-            &mut turn(phase, JobPhase::Installing),
-            &|_, targets| match targets {
-                [_one] => alone(),
-                _ => together(targets),
-            },
-            // Queued: this job's package is ready, so the others need not wait for it any more.
-            &|| joined.arrived(),
-            &|_| msi_batch::everyone_here(),
-        )
     }
 
     /// Runs the launcher's own new MSI for a self-update, with the same progress window and no
@@ -2573,63 +2553,100 @@ mod tests {
         let (release, asset) = (Release::default(), Asset::default());
         let reinstall = Some(Downgrade::Reinstall { previous: &release, asset: &asset });
         let keep = Some(Downgrade::KeepOldCopy);
-        // Only a macOS bundle over a Mac app keeps its old copy aside.
-        assert!(keeps_old_copy(PackageKind::Dmg, Some(&mac)));
-        assert!(!keeps_old_copy(PackageKind::Dmg, Some(&portable)));
-        assert!(!keeps_old_copy(PackageKind::Dmg, None));
-        assert!(!keeps_old_copy(PackageKind::Msi, Some(&mac)));
+        let record = |kind| Record { version: "0.5.0".into(), kind, path: PathBuf::new(), installed_at: 0, files: Vec::new(), needs_root: false };
+        let (appimage, tarball) = (record(PackageKind::AppImage), record(PackageKind::TarGz));
+        // A macOS bundle over a Mac app, or an AppImage over one the launcher installed, keeps its
+        // old copy until the new one is in place.
+        assert!(keeps_old_copy(PackageKind::Dmg, Some(&mac), None));
+        assert!(keeps_old_copy(PackageKind::AppImage, Some(&portable), Some(&appimage)));
+        assert!(!keeps_old_copy(PackageKind::Dmg, Some(&portable), None));
+        assert!(!keeps_old_copy(PackageKind::Dmg, None, None));
+        assert!(!keeps_old_copy(PackageKind::Msi, Some(&mac), None));
+        // An AppImage the launcher didn't record, a user's own AppImage, and a tarball don't.
+        assert!(!keeps_old_copy(PackageKind::AppImage, Some(&portable), None));
+        assert!(!keeps_old_copy(PackageKind::AppImage, Some(&installed(InstallSource::AppImage)), Some(&appimage)));
+        assert!(!keeps_old_copy(PackageKind::AppImage, Some(&portable), Some(&tarball)));
+        assert!(!keeps_old_copy(PackageKind::TarGz, Some(&portable), Some(&tarball)));
         // Each way back fits one kind of install; anything else is refused.
-        assert!(downgrade_is_safe(None, PackageKind::AppImage, Some(&portable)));
-        assert!(downgrade_is_safe(keep, PackageKind::Dmg, Some(&mac)));
-        assert!(downgrade_is_safe(reinstall, PackageKind::Msi, Some(&msi)));
-        assert!(!downgrade_is_safe(keep, PackageKind::Msi, Some(&msi)));
-        assert!(!downgrade_is_safe(keep, PackageKind::Dmg, Some(&portable)));
-        assert!(!downgrade_is_safe(keep, PackageKind::AppImage, Some(&portable)));
-        assert!(!downgrade_is_safe(reinstall, PackageKind::Dmg, Some(&mac)));
+        assert!(downgrade_is_safe(None, PackageKind::AppImage, Some(&portable), None));
+        assert!(downgrade_is_safe(keep, PackageKind::Dmg, Some(&mac), None));
+        assert!(downgrade_is_safe(keep, PackageKind::AppImage, Some(&portable), Some(&appimage)));
+        assert!(downgrade_is_safe(reinstall, PackageKind::Msi, Some(&msi), None));
+        assert!(!downgrade_is_safe(keep, PackageKind::Msi, Some(&msi), None));
+        assert!(!downgrade_is_safe(keep, PackageKind::Dmg, Some(&portable), None));
+        assert!(!downgrade_is_safe(keep, PackageKind::AppImage, Some(&portable), None));
+        assert!(!downgrade_is_safe(reinstall, PackageKind::Dmg, Some(&mac), None));
+        assert!(!downgrade_is_safe(reinstall, PackageKind::AppImage, Some(&portable), Some(&appimage)));
     }
 
-    /// Going back over a Mac app passes the "installed version is newer" guard and installs the
-    /// older bundle the way an update does, with no older package fetched first.
-    #[cfg(not(target_os = "macos"))]
+    /// Going back over a Mac app or a launcher AppImage passes the "installed version is newer"
+    /// guard and installs the older copy the way an update does, with no older package fetched
+    /// first. Each case runs where its package can't really install, so it stops at that step.
     #[test]
-    fn a_mac_downgrade_goes_ahead_without_a_package_to_put_back() {
+    fn a_downgrade_that_keeps_the_old_copy_goes_ahead_without_a_package_to_put_back() {
         use crate::http::tests::{Reply, body, serve};
         let app = CraftApp::by_id("wordcraft").unwrap();
-        let (body, sha) = body();
-        let (url, requests) = serve(body.clone(), vec![Reply::Full]);
-        let asset = Asset { name: "wordcraft-0.3.0-macos-universal.dmg".into(), size: body.len() as u64, url, sha256: Some(sha) };
-        let release = Release { tag: "v0.3.0".into(), version: version::parse("0.3.0"), assets: vec![asset.clone()], ..Release::default() };
         let dir = tempfile::tempdir().unwrap();
-        let paths = Paths::under(dir.path());
-        let http = Http::new().unwrap();
-        let installed = Installed {
-            version: version::parse("0.4.0"),
-            source: InstallSource::MacApp,
-            location: dir.path().join("WordCraft.app").display().to_string(),
-            package: None,
+        let old_appimage = dir.path().join("wordcraft-0.4.0-linux-x86_64.AppImage");
+        let record = Record {
+            version: "0.4.0".into(),
+            kind: PackageKind::AppImage,
+            path: old_appimage.clone(),
+            installed_at: 0,
+            files: Vec::new(),
+            needs_root: false,
         };
-        let run = |downgrade| {
-            let mut phases = Vec::new();
-            let mut phase = |p: JobPhase| phases.push(p);
-            let mut job = Job {
-                http: &http,
-                paths: &paths,
-                stop: &Stop::default(),
-                phase: &mut phase,
-                install_locations: &InstallLocations::default(),
-                replace: false,
-                downgrade,
+        let cases = [
+            (
+                PackageKind::Dmg,
+                "wordcraft-0.3.0-macos-universal.dmg",
+                InstallSource::MacApp,
+                dir.path().join("WordCraft.app"),
+                None,
+                cfg!(target_os = "macos"),
+            ),
+            (
+                PackageKind::AppImage,
+                "wordcraft-0.3.0-linux-x86_64.AppImage",
+                InstallSource::Launcher,
+                old_appimage,
+                Some(&record),
+                cfg!(target_os = "linux"),
+            ),
+        ];
+        for (kind, name, source, location, previous, installs_here) in cases {
+            if installs_here {
+                continue;
+            }
+            let (body, sha) = body();
+            let (url, requests) = serve(body.clone(), vec![Reply::Full]);
+            let asset = Asset { name: name.into(), size: body.len() as u64, url, sha256: Some(sha) };
+            let release = Release { tag: "v0.3.0".into(), version: version::parse("0.3.0"), assets: vec![asset.clone()], ..Release::default() };
+            let paths = Paths::under(&dir.path().join(name));
+            let http = Http::new().unwrap();
+            let installed = Installed { version: version::parse("0.4.0"), source, location: location.display().to_string(), package: None };
+            let run = |downgrade| {
+                let mut phase = |_: JobPhase| {};
+                let mut job = Job {
+                    http: &http,
+                    paths: &paths,
+                    stop: &Stop::default(),
+                    phase: &mut phase,
+                    install_locations: &InstallLocations::default(),
+                    replace: false,
+                    downgrade,
+                };
+                install(app, &release, &asset, kind, Some(&installed), previous, &mut job).unwrap_err()
             };
-            install(app, &release, &asset, PackageKind::Dmg, Some(&installed), None, &mut job).unwrap_err()
-        };
-        // Not chosen by name: still refused as older than the installed copy.
-        let refused = run(None);
-        assert!(refused.contains("installed version 0.4.0 is newer"), "{refused}");
-        assert!(requests.lock().unwrap().is_empty(), "nothing was downloaded");
-        // Chosen by name: only the chosen version is downloaded, then this system can't open a DMG.
-        let error = run(Some(Downgrade::KeepOldCopy));
-        assert!(error.contains("isn't supported"), "{error}");
-        assert_eq!(requests.lock().unwrap().len(), 1, "one package, the chosen one");
+            // Not chosen by name: still refused as older than the installed copy.
+            let refused = run(None);
+            assert!(refused.contains("installed version 0.4.0 is newer"), "{name}: {refused}");
+            assert!(requests.lock().unwrap().is_empty(), "{name}: nothing was downloaded");
+            // Chosen by name: only the chosen version is downloaded, then this system can't install it.
+            let error = run(Some(Downgrade::KeepOldCopy));
+            assert!(error.contains("isn't supported"), "{name}: {error}");
+            assert_eq!(requests.lock().unwrap().len(), 1, "{name}: one package, the chosen one");
+        }
     }
 
     #[test]
@@ -2959,7 +2976,7 @@ mod tests {
         assert_eq!(linux::shared_outcome(failed(), 1), failed());
         assert_eq!(
             linux::shared_outcome(failed(), 3),
-            Err("the system installer stopped with error 100 while handling 3 apps in one go. Try them one at a time.".into())
+            Err("the system installer stopped with error 100 while handling 3 apps together. Try them one at a time.".into())
         );
         // A dismissed password prompt stays a cancellation for every app, not an error.
         assert_eq!(linux::shared_outcome(Err("cancelled".into()), 3), Err("cancelled".into()));
@@ -3026,10 +3043,16 @@ mod tests {
         assert_eq!(ran.len(), 1, "{ran:?}");
         assert_eq!(results, vec![Err("cancelled".to_string()); 2]);
 
+        // No prompt could be shown (no polkit agent): a failure with its cause, not a cancel.
+        let (ran, results) = two_debs_through_pkexec(127);
+        assert_eq!(ran.len(), 1, "{ran:?}");
+        let error = "the system installer stopped with error 127 (usually refused permission or no polkit authentication agent) while handling 2 apps together. Try them one at a time.";
+        assert_eq!(results, vec![Err(error.to_string()); 2]);
+
         // apt failed: both apps say so, and how to find the one at fault.
         let (ran, results) = two_debs_through_pkexec(100);
         assert_eq!(ran.len(), 1, "{ran:?}");
-        let error = "the system installer stopped with error 100 while handling 2 apps in one go. Try them one at a time.";
+        let error = "the system installer stopped with error 100 while handling 2 apps together. Try them one at a time.";
         assert_eq!(results, vec![Err(error.to_string()); 2]);
     }
 
@@ -3174,9 +3197,11 @@ mod tests {
     }
 
     #[test]
-    fn solidcraft_is_never_installed_from_its_unsigned_macos_build() {
+    fn a_macos_build_installs_only_when_its_team_is_known() {
         let sc = artcraft_launcher_core::CraftApp::by_id("solidcraft").unwrap();
-        assert_eq!(choose_kinds_with(sc, None, None, &[], &[PackageKind::Dmg], false), Vec::<PackageKind>::new());
+        assert_eq!(choose_kinds_with(sc, None, None, &[], &[PackageKind::Dmg], false), [PackageKind::Dmg]);
+        let unsigned = artcraft_launcher_core::CraftApp { mac_team: None, ..*sc };
+        assert_eq!(choose_kinds_with(&unsigned, None, None, &[], &[PackageKind::Dmg], false), Vec::<PackageKind>::new());
         let photo = artcraft_launcher_core::CraftApp::by_id("photocraft").unwrap();
         assert_eq!(choose_kinds_with(photo, None, None, &[], &[PackageKind::Dmg], false), [PackageKind::Dmg]);
     }
@@ -3333,8 +3358,9 @@ mod tests {
     mod macos_checks {
         use artcraft_launcher_core::{SUITE, version};
 
-        use super::macos::{Expect, TEAM_ID, install_dmg, signed_by};
+        use super::macos::{Expect, install_dmg, signed_by};
         use super::*;
+        use artcraft_launcher_core::catalog::ARTCRAFT_TEAM_ID as TEAM_ID;
 
         fn photocraft() -> &'static CraftApp {
             SUITE.iter().find(|a| a.id == "photocraft").unwrap()
@@ -3492,8 +3518,9 @@ mod tests {
             let image = dmg(dir.path(), "0.6.0");
             let release = Release { tag: "v0.6.0".into(), version: version::parse("0.6.0"), ..Release::default() };
 
-            let result = install_dmg(photocraft(), &image, Some(&existing), None, false, &Paths::under(dir.path()), &Expect::release(&release));
-            assert_eq!(result, Err("the app isn't signed by its developer, so it wasn't installed".into()));
+            let result =
+                install_dmg(photocraft(), &image, Some(&existing), None, false, &Paths::under(dir.path()), &Expect::release(photocraft(), &release));
+            assert!(result.unwrap_err().contains("macOS verification did not succeed (signature integrity"));
             assert_eq!(std::fs::read_to_string(current.join("Contents/MacOS/PhotoCraft")).unwrap(), "0.5.0");
             assert_eq!(
                 std::fs::read_dir(&apps).unwrap().map(|e| e.unwrap().file_name()).collect::<Vec<_>>(),

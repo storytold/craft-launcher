@@ -19,6 +19,7 @@ pub mod manifest;
 mod msi_context;
 pub mod packages;
 pub mod paths;
+pub mod pins;
 #[cfg(windows)]
 pub mod portable;
 pub mod process;
