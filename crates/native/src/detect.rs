@@ -440,34 +440,48 @@ pub mod linux {
         };
         let t = Duration::from_secs(10);
         let mut out = Vec::new();
-        let mut add = |manager, list: Vec<(String, String)>| {
-            out.extend(list.into_iter().filter(|(n, _)| ours(n)).map(|(name, version)| Package { manager, name, version }));
+        let mut add = |manager, user, list: Vec<(String, String)>| {
+            out.extend(list.into_iter().filter(|(n, _)| ours(n)).map(|(name, version)| Package { manager, name, version, user }));
         };
         if let Some(list) = capture("dpkg-query", &["-W", "-f", "${Package}|${db:Status-Status}|${Version}\n"], t) {
-            add(InstallSource::Deb, packages::parse_dpkg(&list));
+            add(InstallSource::Deb, false, packages::parse_dpkg(&list));
         }
         if let Some(list) = capture("rpm", &["-qa", "--qf", "%{NAME}|%{VERSION}\n"], t) {
-            add(InstallSource::Rpm, packages::parse_rpm(&list));
+            add(InstallSource::Rpm, false, packages::parse_rpm(&list));
         }
         // Only run `pacman` where its database exists: elsewhere `pacman` on PATH may be an unrelated program
         // (the Pac-Man game in /usr/games on Debian-family systems).
         if has_pacman_db()
             && let Some(list) = capture("pacman", &["-Q"], t)
         {
-            add(InstallSource::Pacman, packages::parse_pacman(&list));
+            add(InstallSource::Pacman, false, packages::parse_pacman(&list));
         }
         let arch = format!("--arch={}", std::env::consts::ARCH);
-        if let Some(list) = crate::process::capture_flatpak(&["list", "--app", &arch, "--columns=application,version"], t) {
-            let mut flatpaks = packages::parse_flatpak_list(&list);
-            // Bundles built from a release tarball often list no version: ask Flatpak directly.
-            for (id, version) in
-                flatpaks.iter_mut().filter(|(id, v)| v.is_empty() && artcraft_launcher_core::SUITE.iter().any(|a| a.bundle_ids().any(|b| b == *id)))
-            {
-                if let Some(v) = crate::process::capture_flatpak(&["info", &arch, id], t).as_deref().and_then(packages::parse_flatpak_info) {
-                    *version = v;
+        // User installs are marked so `packages::find` reads the user copy the launcher updates, not a
+        // stale system one (#881). The unscoped list after it still covers every system installation,
+        // named ones included (`--system` is only the default one).
+        let mut user_ids = Vec::new();
+        for scope in [&["--user"][..], &[]] {
+            let list_args = [&["list", "--app"][..], scope, &[&arch, "--columns=application,version"]].concat();
+            if let Some(list) = crate::process::capture_flatpak(&list_args, t) {
+                let mut flatpaks = packages::parse_flatpak_list(&list);
+                // The unscoped list repeats the user installs: the user pass already has them.
+                flatpaks.retain(|(id, _)| !user_ids.contains(id));
+                if !scope.is_empty() {
+                    user_ids.extend(flatpaks.iter().map(|(id, _)| id.clone()));
                 }
+                // Bundles built from a release tarball often list no version: ask Flatpak directly.
+                for (id, version) in flatpaks
+                    .iter_mut()
+                    .filter(|(id, v)| v.is_empty() && artcraft_launcher_core::SUITE.iter().any(|a| a.bundle_ids().any(|b| b == *id)))
+                {
+                    let info_args = [&["info"][..], scope, &[&arch, id]].concat();
+                    if let Some(v) = crate::process::capture_flatpak(&info_args, t).as_deref().and_then(packages::parse_flatpak_info) {
+                        *version = v;
+                    }
+                }
+                add(InstallSource::Flatpak, !scope.is_empty(), flatpaks);
             }
-            add(InstallSource::Flatpak, flatpaks);
         }
         out
     }

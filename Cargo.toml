@@ -3,7 +3,7 @@ resolver = "3"
 members = ["crates/*", "apps/*", "xtask"]
 
 [workspace.package]
-version = "0.10.0"
+version = "0.12.0"
 edition = "2024"
 license = "MIT OR Apache-2.0"
 rust-version = "1.95"
@@ -33,14 +33,19 @@ semver = { version = "1", features = ["serde"] }
 log = "0.4"
 # All date/time conversion goes through jiff (no hand-rolled calendar code beyond the 400-year range extension; AGENTS.md).
 jiff = "0.2"
-craft-update = { version = "=0.1.0", git = "https://github.com/storytold/craft-libs", rev = "92d392cff132eaf53e13afff77f38b5c11b73aa0" }
+craft-update = { version = "=0.1.0", git = "https://github.com/storytold/craft-libs", rev = "4323a0f90e69e6e7a064607daacc25d081f58e1d" }
 craft-ui = { version = "=0.1.0", git = "https://github.com/storytold/craft-libs", rev = "92d392cff132eaf53e13afff77f38b5c11b73aa0" }
 
 [profile.dev.package."*"]
 opt-level = 2
+debug = false
 
+# Line tables keep file:line in panic backtraces but drop variable info, as in the other craft
+# apps: full debug info made Windows test links slow and the CI cache large. To inspect locals in
+# a debugger, build with CARGO_PROFILE_DEV_DEBUG=true.
 [profile.dev]
 opt-level = 1
+debug = "line-tables-only"
 
 [profile.release]
 lto = "thin"
