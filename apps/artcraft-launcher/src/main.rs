@@ -423,10 +423,11 @@ enum OnClose {
 }
 
 /// Whether the Dock icon shows (macOS): always while the window is out, and while it is put away in
-/// the menu bar unless the user chose to hide it then.
+/// the menu bar unless the user chose to hide it then. The Dock choice only counts while "keep
+/// running in the tray" is on, as in Settings, which greys it out otherwise but keeps it for later.
 #[cfg_attr(not(target_os = "macos"), allow(dead_code))]
-fn shows_dock_icon(window_visible: bool, has_tray: bool, hide_dock_icon: bool) -> bool {
-    window_visible || !(has_tray && hide_dock_icon)
+fn shows_dock_icon(window_visible: bool, has_tray: bool, close_to_tray: bool, hide_dock_icon: bool) -> bool {
+    window_visible || !(has_tray && close_to_tray && hide_dock_icon)
 }
 
 fn on_close(has_tray: bool, close_to_tray: bool, window_hides: bool) -> OnClose {
@@ -876,7 +877,7 @@ impl eframe::App for Shell<'_> {
         #[cfg(target_os = "macos")]
         {
             let settings = &self.launcher.ui.settings;
-            let on = shows_dock_icon(self.visible, self.launcher.tray.is_some(), settings.hide_dock_icon);
+            let on = shows_dock_icon(self.visible, self.launcher.tray.is_some(), settings.close_to_tray, settings.hide_dock_icon);
             if self.applied_dock != Some(on) {
                 dock::show_icon(on);
                 self.applied_dock = Some(on);
@@ -1053,11 +1054,14 @@ mod tests {
 
     #[test]
     fn the_dock_icon_hides_only_while_the_window_is_away_in_the_menu_bar() {
-        assert!(!shows_dock_icon(false, true, true));
+        assert!(!shows_dock_icon(false, true, true, true));
         // The window is out, the user keeps the icon, or there's no menu bar icon to come back from.
-        assert!(shows_dock_icon(true, true, true));
-        assert!(shows_dock_icon(false, true, false));
-        assert!(shows_dock_icon(false, false, true));
+        assert!(shows_dock_icon(true, true, true, true));
+        assert!(shows_dock_icon(false, true, true, false));
+        assert!(shows_dock_icon(false, false, true, true));
+        // "Keep running in the tray" is off (the window was put away at login or from the tray
+        // menu): the greyed-out Dock choice doesn't apply.
+        assert!(shows_dock_icon(false, true, false, true));
     }
 
     #[test]
