@@ -364,3 +364,9 @@ column	Author	Autor
 	Older launcher versions require a manual reinstall.	Starší verze spouštěče vyžadují ruční přeinstalaci.
 	Your files may not open in older versions.	Starší verze nemusí vaše soubory otevřít.
 	Enable automatic installs in Settings to follow new nightly builds.	Chcete-li automaticky dostávat nová noční sestavení, zapněte v nastavení automatické instalace.
+texturecraft	3D texture painting	Malování textur ve 3D
+texturecraft	Paint materials on 3D models and export textures.	Malujte materiály na 3D modely a exportujte textury.
+texturecraft	Materials	Materiály
+texturecraft	Mesh maps	Mapy sítí
+texturecraft	Bake mesh maps and use smart materials.	Vypékejte mapy sítí a používejte inteligentní materiály.
+texturecraft	Paint textures on 3D models.	Malujte textury na 3D modely.

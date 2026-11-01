@@ -397,3 +397,9 @@ column	Author	Szerző
 	Older launcher versions require a manual reinstall.	Az indító régebbi verzióit kézzel kell újratelepíteni.
 	Your files may not open in older versions.	Előfordulhat, hogy a régebbi verziók nem tudják megnyitni a fájljaidat.
 	Enable automatic installs in Settings to follow new nightly builds.	Az új éjszakai kiadások követéséhez kapcsold be az automatikus telepítést a beállításokban.
+texturecraft	3D texture painting	3D textúrafestés
+texturecraft	Paint materials on 3D models and export textures.	Fess anyagokat 3D modellekre, és exportáld a textúrákat.
+texturecraft	Materials	Anyagok
+texturecraft	Mesh maps	Hálótérképek
+texturecraft	Bake mesh maps and use smart materials.	Süss ki hálótérképeket, és használj intelligens anyagokat.
+texturecraft	Paint textures on 3D models.	Fess textúrákat 3D modellekre.
