@@ -642,7 +642,16 @@ impl Launcher {
         if !self.started {
             self.start(cc.storage.and_then(|s| eframe::get_value(s, SETTINGS_KEY)), waker);
         }
-        self.ui.attach(&cc.egui_ctx);
+        self.attach_window(&cc.egui_ctx);
+    }
+
+    fn attach_window(&mut self, ctx: &egui::Context) {
+        // A native Auto window follows display scale even if an older version saved egui zoom.
+        // Do this for tray-created windows too; the shared UI keeps transient control/web zoom.
+        if self.ui.settings.interface_size == 0 {
+            ctx.set_zoom_factor(1.0);
+        }
+        self.ui.attach(ctx);
     }
 
     /// Saves the settings with no window, where eframe would on a window's behalf.
@@ -960,6 +969,33 @@ mod tests {
             assert_eq!(launcher.ui.settings.filter, expected, "{filter:?}");
             assert_eq!(launcher.ui.settings.last_check, Some(NOW));
         }
+    }
+
+    #[test]
+    fn native_auto_discards_legacy_zoom_including_after_a_tray_start() {
+        let (mut launcher, _show, _) = launcher();
+        launcher.restore_saved_settings(Settings::default());
+        for started in [false, true] {
+            launcher.started = started;
+            let ctx = egui::Context::default();
+            ctx.memory_mut(|memory| memory.options.zoom_factor = 1.75);
+            launcher.attach_window(&ctx);
+            for _ in 0..2 {
+                let mut output = ctx.run_ui(egui::RawInput::default(), |_| {});
+                output.textures_delta.clear();
+            }
+            assert_eq!(ctx.zoom_factor(), 1.0);
+        }
+        // An explicit saved percentage is still applied by LauncherUi::logic.
+        launcher.restore_saved_settings(Settings { interface_size: 150, ..Settings::default() });
+        let ctx = egui::Context::default();
+        ctx.memory_mut(|memory| memory.options.zoom_factor = 1.75);
+        launcher.attach_window(&ctx);
+        for _ in 0..3 {
+            let mut output = ctx.run_ui(egui::RawInput::default(), |ui| launcher.ui.logic(ui.ctx(), &mut launcher.host));
+            output.textures_delta.clear();
+        }
+        assert_eq!(ctx.zoom_factor(), 1.5);
     }
 
     #[test]
