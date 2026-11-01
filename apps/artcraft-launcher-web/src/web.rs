@@ -307,7 +307,8 @@ impl Backend for WebBackend {
             Command::Configure(o) => {
                 let changed = o.prereleases != self.prereleases;
                 self.prereleases = o.prereleases;
-                if changed {
+                // "Only when I ask" (#929): a changed pre-release choice starts no check on its own.
+                if changed && o.auto_check {
                     self.check();
                 }
             }
