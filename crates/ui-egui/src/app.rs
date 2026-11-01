@@ -862,7 +862,7 @@ impl LauncherUi {
 
     /// The ids to show, filtered and sorted.
     pub(crate) fn visible_ids(&self) -> Vec<&'static str> {
-        let needle = self.search.trim().to_lowercase();
+        let needle = crate::i18n::to_lowercase(self.search.trim());
         let mut list: Vec<(usize, &AppEntry)> = self
             .entries
             .iter()
@@ -870,7 +870,9 @@ impl LauncherUi {
             .filter(|(_, e)| {
                 self.in_filter(e, self.settings.filter)
                     && !(self.settings.hide_community_apps && e.app.kind == artcraft_launcher_core::catalog::AppKind::Community)
-                    && (needle.is_empty() || e.app.name.to_lowercase().contains(&needle) || e.app.tagline.to_lowercase().contains(&needle))
+                    && (needle.is_empty()
+                        || crate::i18n::to_lowercase(e.app.name).contains(&needle)
+                        || crate::i18n::to_lowercase(e.app.tagline).contains(&needle))
             })
             .collect();
         let platform = self.platform;

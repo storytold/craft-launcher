@@ -111,6 +111,50 @@ pub fn msg(s: &str) -> String {
     out
 }
 
+/// Case conversion that respects language-specific casing rules (e.g. Turkish dotted and dotless i).
+pub fn to_uppercase(text: &str) -> String {
+    to_uppercase_in(current(), text)
+}
+
+/// Case conversion in a specific language.
+pub fn to_uppercase_in(lang: Lang, text: &str) -> String {
+    if lang == Lang::TR {
+        let mut s = String::with_capacity(text.len());
+        for c in text.chars() {
+            match c {
+                'i' => s.push('İ'),
+                'ı' => s.push('I'),
+                other => s.extend(other.to_uppercase()),
+            }
+        }
+        s
+    } else {
+        text.to_uppercase()
+    }
+}
+
+/// Lowercase conversion that respects language-specific rules (e.g. Turkish dotted and dotless i).
+pub fn to_lowercase(text: &str) -> String {
+    to_lowercase_in(current(), text)
+}
+
+/// Lowercase conversion in a specific language.
+pub fn to_lowercase_in(lang: Lang, text: &str) -> String {
+    if lang == Lang::TR {
+        let mut s = String::with_capacity(text.len());
+        for c in text.chars() {
+            match c {
+                'İ' => s.push('i'),
+                'I' => s.push('ı'),
+                other => s.extend(other.to_lowercase()),
+            }
+        }
+        s
+    } else {
+        text.to_lowercase()
+    }
+}
+
 /// A test-only strict drawing policy: while a [`StrictCjkDrawing`] guard is in scope, translating
 /// text into a CJK language whose own face is not the one installed in the drawing context panics,
 /// instead of quietly drawing tofu. It is how a unit test proves a frame cannot select Chinese

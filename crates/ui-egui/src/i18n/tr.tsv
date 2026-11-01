@@ -8,17 +8,21 @@
 #
 # Clean-room: written from the meaning of ArtCraft Launcher's English labels in natural Turkish,
 # using the terms Turkish-speaking users of creative software know.
+# using the terms German-speaking users of creative software know. The user is addressed with
+# the informal "du", as in most current creative and community software.
 #
 # Coverage: the whole interface — every menu string and tl! literal (complete_menus = true).
 # Left in English on purpose: product name "ArtCraft Launcher" (and its "Launcher" tag), suite
-# name "Craft App Suite", app names (PhotoCraft, LightCraft, FilmCraft, DesignCraft, VectorCraft,
-# PdfCraft, EffectCraft, WordCraft, DeckCraft, GridCraft, CADCraft, SoundCraft), "GitHub", "Discord".
+# name "Craft App Suite",
+# app names (PhotoCraft, LightCraft, FilmCraft, DesignCraft, VectorCraft, PdfCraft, EffectCraft,
+# WordCraft, DeckCraft, GridCraft, CADCraft, SoundCraft, FigCraft), "GitHub", "Discord".
 # Shortcut keys keep their key-cap names (Shift, Alt, Ctrl, Cmd, Esc).
 # Trailing "…" (U+2026) must be preserved. Placeholders {name}, {n}, {version}, {count}, {v},
 # {what}, {unit}, {real}, {e} must appear in translation.
 
 	Launcher	Launcher
 	Craft App Suite	Craft App Suite
+	by {name}	{name} tarafından
 	Open Source Tools for Creatives, Makers, and Builders	Tasarımcılar, Üreticiler ve Geliştiriciler İçin Açık Kaynaklı Araçlar
 	Settings	Ayarlar
 	Check for updates	Güncellemeleri denetle
@@ -75,6 +79,7 @@
 	Dismiss	Kapat
 	Update and restart	Güncelle ve yeniden başlat
 	A new version is available. Would you like to relaunch with the updated version?	Yeni bir sürüm mevcut. Güncellenmiş sürümle yeniden başlatmak ister misiniz?
+	A new version is available. Download it to replace this version?	Yeni bir sürüm mevcut. Bu sürümün yerine geçmesi için indirilsin mi?
 	Later	Daha sonra
 	What's new	Yenilikler
 	No notes were published with this release.	Bu sürümle birlikte herhangi bir not yayımlanmadı.
@@ -87,11 +92,14 @@
 	Notify me when an installed app has an update	Yüklü bir uygulama için güncelleme olduğunda bildir
 	Include pre-releases (betas and release candidates)	Ön sürümleri dahil et (beta ve aday sürümler)
 	Installing on Linux	Linux üzerinde yükleme
+	Installing on Windows	Windows'a Yükleme
 	Install new apps as	Yeni uygulamaları şu biçimde yükle:
 	System package (recommended)	Sistem paketi (önerilen)
 	Updates always use the format an app was installed with.	Güncellemeler daima uygulamanın ilk yüklendiği paket biçimini kullanır.
 	Running in the background	Arka planda çalışma
 	Keep running in the tray when the window is closed	Pencere kapatıldığında sistem tepsisinde çalışmaya devam et
+	ArtCraft Launcher is still running	ArtCraft Launcher çalışmaya devam ediyor
+	It's in the tray: open it or quit it from the tray icon, or turn this off in the settings.	Sistem tepsisinde: tepsi simgesinden açabilir ya da çıkabilirsiniz, veya bunu ayarlardan kapatabilirsiniz.
 	Show the window on the current desktop	Pencereyi geçerli masaüstünde göster
 	Start ArtCraft Launcher when I log in	Oturum açıldığında ArtCraft Launcher'ı başlat
 	Community	Topluluk
@@ -152,6 +160,7 @@
 	Disk image (.dmg)	Disk görüntüsü (.dmg)
 	Debian package (.deb)	Debian paketi (.deb)
 	RPM package (.rpm)	RPM paketi (.rpm)
+	Arch package (.pkg.tar.zst)	Arch paketi (.pkg.tar.zst)
 	Flatpak bundle	Flatpak paketi
 	Tarball (.tar.gz)	Tar arşivi (.tar.gz)
 
@@ -166,8 +175,11 @@ designcraft	Page layout and publishing	Sayfa mizanpajı ve yayıncılık
 wordcraft	Writing and document design	Yazım ve belge tasarımı
 deckcraft	Presentations and slide shows	Sunumlar ve slayt gösterileri
 gridcraft	Spreadsheets and data	Hesap tabloları ve veri
+craft-anything	Find out how any software works, then craft your own	Herhangi bir yazılımın nasıl çalıştığını keşfedin, ardından kendinizinkini üretin
+solidcraft	Parametric 3D CAD	Parametrik 3B CAD
 cadcraft	Computer-aided design and drafting	Bilgisayar destekli tasarım ve çizim
 soundcraft	Recording, editing and mixing audio	Ses kaydı, düzenleme ve miksaj
+figcraft	Interface design and prototyping	Arayüz tasarımı ve prototipleme
 
 # Contextual: month abbreviations for date rendering
 month	Jan	Oca
@@ -260,7 +272,7 @@ column	Released	Yayımlanma
 filter	Installed	Yüklü
 	{name} details	{name} ayrıntıları
 
-# Plural forms for Turkish (one|other). After a number the noun stays singular.
+# Plural forms for German (one|other)
 @plural	{n} app|{n} apps	{n} uygulama|{n} uygulama
 @plural	{n} min ago|{n} min ago	{n} dk. önce|{n} dk. önce
 @plural	{n} h ago|{n} h ago	{n} sa. önce|{n} sa. önce
@@ -275,6 +287,10 @@ filter	Installed	Yüklü
 @msg	{name} installed: {version} (this release publishes no checksum, so only its size was checked)	{name} yüklendi: {version} (bu sürüm sağlama toplamı yayımlamadığı için yalnızca boyutu denetlendi)
 @msg	{name} was removed	{name} kaldırıldı
 @msg	{name} is running. Quit it, then try again.	{name} çalışıyor. Uygulamayı kapatıp tekrar deneyin.
+@msg	{name} was installed from the {repo} repository or the AUR ({pkg}). Update it with {cmd} or sudo pacman -Syu	{name}, {repo} deposundan veya AUR'dan ({pkg}) yüklendi. {cmd} veya sudo pacman -Syu ile güncelleyin
+@msg	{name} was installed from the {repo} repository or the AUR ({pkg}). Update it with your AUR helper (for example: yay -S {pkg}) or sudo pacman -Syu	{name}, {repo} deposundan veya AUR'dan ({pkg}) yüklendi. AUR yardımcınızla (örneğin: yay -S {pkg}) veya sudo pacman -Syu ile güncelleyin
+@msg	{name} was installed from the AUR ({pkg}). Update it with {cmd}	{name}, AUR'dan ({pkg}) yüklendi. {cmd} ile güncelleyin
+@msg	{name} was installed from the AUR ({pkg}). Update it with your AUR helper (for example: yay -S {pkg})	{name}, AUR'dan ({pkg}) yüklendi. AUR yardımcınızla (örneğin: yay -S {pkg}) güncelleyin
 
 # Command IDs for menu items (@id)
 # Format: @id<TAB>command_id<TAB>translation
@@ -328,6 +344,7 @@ filter	Installed	Yüklü
 	ArtCraft on GitHub	GitHub'da ArtCraft
 	Join the ArtCraft Discord	ArtCraft Discord'una Katılın
 	App details	Uygulama ayrıntıları
+	More actions for {name}	{name} için diğer işlemler
 	Close (Esc)	Kapat (Esc)
 	Features	Özellikler
 	Latest release	En son sürüm
@@ -341,3 +358,49 @@ filter	Installed	Yüklü
 	Loading pictures…	Görseller yükleniyor…
 	Pictures couldn't be loaded. Reopen this page to try again.	Görseller yüklenemedi. Tekrar denemek için bu sayfayı yeniden açın.
 @plural	ArtCraft Launcher · {n} update available|ArtCraft Launcher · {n} updates available	ArtCraft Launcher · {n} güncelleme mevcut|ArtCraft Launcher · {n} güncelleme mevcut
+	Install folder	Yükleme klasörü
+	Default install folder	Varsayılan yükleme klasörü
+	System default	Sistem varsayılanı
+	Browse…	Gözat…
+	Use default	Varsayılanı kullan
+	New installs use this folder. Updates stay in their current location.	Yeni yüklemeler bu klasörü kullanır. Güncellemeler mevcut konumlarında kalır.
+	Custom folders use AppImage on Linux.	Özel klasörler Linux'ta AppImage kullanır.
+	On Linux, custom folders use AppImage format.	Linux'ta özel klasörler AppImage biçimini kullanır.
+	The system manages install locations here.	Yükleme konumlarını burada sistem yönetir.
+@msg	couldn't use install folder {path}: {reason}	yükleme klasörü {path} kullanılamadı: {reason}
+@msg	this release has no AppImage for a custom install folder	bu sürümde özel bir yükleme klasörü için AppImage bulunmuyor
+@msg	custom install folders aren't supported on this system	özel yükleme klasörleri bu sistemde desteklenmiyor
+@msg	{path} already exists and wasn't installed by ArtCraft Launcher	{path} zaten mevcut ve ArtCraft Launcher tarafından yüklenmemiş
+@msg	couldn't move {path} to Trash ({reason}). Remove it in Finder instead.	{path} Çöp Sepeti'ne taşınamadı ({reason}). Bunun yerine Finder'da kaldırın.
+	Apps are placed inside this folder.	Uygulamalar bu klasörün içine yerleştirilir.
+	Replace what's there?	Mevcut olanla değiştirilsin mi?
+	{path} already exists. Installing {name} will overwrite it.	{path} zaten mevcut. {name} uygulamasını yüklemek üzerine yazacaktır.
+	Replace	Değiştir
+	Recently updated	Son güncellenenler
+	Name (A–Z)	Ad (A–Z)
+	Name (Z–A)	Ad (Z–A)
+	Frequently used	Sık kullanılanlar
+	Next app	Sonraki uygulama
+	Previous app	Önceki uygulama
+	Show {n} more changes	{n} değişiklik daha göster
+	Last updated: {date}	Son güncelleme: {date}
+column	Version	Sürüm
+column	Author	Geliştirici
+	Choose version	Sürüm seçin
+	latest {version}	en son {version}
+	{version} (latest release)	{version} (en son sürüm)
+	Launcher version	Launcher sürümü
+	Nightly	Nightly
+	Nightly (none published yet)	Nightly (henüz yayımlanmadı)
+	Install version {version}	{version} sürümünü yükle
+	Download selected version	Seçilen sürümü indir
+	Older launcher versions require a manual reinstall.	Daha eski Launcher sürümleri el ile yeniden yükleme gerektirir.
+	Your files may not open in older versions.	Dosyalarınız daha eski sürümlerde açılmayabilir.
+	Enable automatic installs in Settings to follow new nightly builds.	Yeni nightly derlemelerini takip etmek için Ayarlar'da otomatik yüklemeleri etkinleştirin.
+texturecraft	3D texture painting	3B doku boyama
+texturecraft	Paint materials on 3D models and export textures.	3B modeller üzerine materyal boyayın ve dokuları dışa aktarın.
+texturecraft	Materials	Materyaller
+texturecraft	Mesh maps	Mesh haritaları
+texturecraft	Bake mesh maps and use smart materials.	Mesh haritalarını derleyin ve akıllı materyaller kullanın.
+texturecraft	Paint textures on 3D models.	3B modeller üzerine doku boyayın.
+	Hide community apps	Topluluk uygulamalarını gizle

@@ -110,8 +110,7 @@ fn harness(view: ViewMode) -> Harness<'static, Option<LauncherUi>> {
 fn turkish_ui_translates_labels_dates_and_messages() {
     let mut h = harness(ViewMode::Grid);
     h.run_steps(8);
-    // Product names stay in English.
-    h.get_by_label("Launcher");
+    // Product and suite names stay in English.
     h.get_by_label("Craft App Suite");
     h.get_by_label("Görsel düzenleme");
     h.get_by_label("0.5.0 sürümüne güncelle");

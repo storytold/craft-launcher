@@ -591,3 +591,18 @@ fn picker_lists_english_first_then_names_alphabetically() {
     assert!(pos("ru") < pos("ja"), "Cyrillic names come before CJK");
     assert_eq!(name_sort_key("Čeština"), "cestina");
 }
+
+#[test]
+fn turkish_casing_rules_preserve_dotted_and_dotless_i() {
+    // In Turkish, 'i' capitalizes to 'İ' and 'ı' to 'I'; in other languages (e.g. English),
+    // 'i' capitalizes to 'I', preserving ASCII titles such as "title" -> "TITLE".
+    assert_eq!(super::to_uppercase_in(Lang::TR, "title"), "TİTLE");
+    assert_eq!(super::to_uppercase_in(Lang::EN, "title"), "TITLE");
+    assert_eq!(super::to_uppercase_in(Lang::TR, "indir"), "İNDİR");
+    assert_eq!(super::to_uppercase_in(Lang::TR, "ayrıntılar"), "AYRINTILAR");
+
+    // Lowercasing preserves dotted and dotless i in Turkish:
+    assert_eq!(super::to_lowercase_in(Lang::TR, "İNDİR"), "indir");
+    assert_eq!(super::to_lowercase_in(Lang::TR, "AYRINTILAR"), "ayrıntılar");
+    assert_eq!(super::to_lowercase_in(Lang::EN, "TITLE"), "title");
+}
