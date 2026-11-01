@@ -51,7 +51,7 @@ impl Arch {
 /// A package format a release ships.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum PackageKind {
-    /// Windows Installer package (installs for all users into Program Files).
+    /// Windows Installer package (per user by default; an existing per-machine copy stays per-machine).
     Msi,
     /// Windows zip with the exe at the top level.
     PortableZip,
@@ -60,6 +60,8 @@ pub enum PackageKind {
     AppImage,
     Deb,
     Rpm,
+    /// Arch Linux package (`.pkg.tar.zst`).
+    ArchPkg,
     Flatpak,
     /// Linux or FreeBSD tarball (`bin/<app>`, `share/…`).
     TarGz,
@@ -74,6 +76,7 @@ impl PackageKind {
             Self::AppImage => "AppImage",
             Self::Deb => "Debian package (.deb)",
             Self::Rpm => "RPM package (.rpm)",
+            Self::ArchPkg => "Arch package (.pkg.tar.zst)",
             Self::Flatpak => "Flatpak bundle",
             Self::TarGz => "Tarball (.tar.gz)",
         }
@@ -87,6 +90,7 @@ impl PackageKind {
             Self::AppImage => ".AppImage",
             Self::Deb => ".deb",
             Self::Rpm => ".rpm",
+            Self::ArchPkg => ".pkg.tar.zst",
             Self::Flatpak => ".flatpak",
             Self::TarGz => ".tar.gz",
         }
@@ -136,19 +140,23 @@ impl Platform {
     }
 
     /// Asset platform tokens to try, best first. Windows on ARM and 64-bit Windows can fall back
-    /// to emulated builds; macOS releases are universal.
+    /// to emulated builds; macOS prefers universal, then native builds. Apple silicon can fall
+    /// back to Intel builds, but Intel Macs cannot run ARM builds.
     fn tokens(self) -> &'static [&'static str] {
         match (self.os, self.arch) {
             (Os::Windows, Arch::X64) => &["windows-x64", "windows-x86"],
             (Os::Windows, Arch::X86) => &["windows-x86"],
             (Os::Windows, Arch::Arm64) => &["windows-arm64", "windows-x64", "windows-x86"],
             (Os::Windows, _) => &[],
-            (Os::MacOs, _) => &["macos-universal", "macos-aarch64", "macos-arm64", "macos-x86_64"],
+            (Os::MacOs, Arch::X64) => &["macos-universal", "macos-x86_64"],
+            (Os::MacOs, Arch::Arm64) => &["macos-universal", "macos-aarch64", "macos-arm64", "macos-x86_64"],
+            (Os::MacOs, _) => &[],
             (Os::Linux, Arch::X64) => &["linux-x86_64"],
             (Os::Linux, Arch::Arm64) => &["linux-aarch64"],
             (Os::Linux, Arch::Riscv64) => &["linux-riscv64"],
             (Os::Linux, Arch::X86) => &[],
             (Os::FreeBsd, Arch::X64) => &["freebsd-x86_64"],
+            (Os::FreeBsd, Arch::Arm64) => &["freebsd-aarch64"],
             (Os::FreeBsd, _) => &[],
         }
     }
@@ -168,7 +176,7 @@ impl Platform {
         match self.os {
             Os::Windows => &[PackageKind::Msi, PackageKind::PortableZip],
             Os::MacOs => &[PackageKind::Dmg],
-            Os::Linux => &[PackageKind::AppImage, PackageKind::Deb, PackageKind::Rpm, PackageKind::Flatpak, PackageKind::TarGz],
+            Os::Linux => &[PackageKind::AppImage, PackageKind::Deb, PackageKind::Rpm, PackageKind::ArchPkg, PackageKind::Flatpak, PackageKind::TarGz],
             Os::FreeBsd => &[PackageKind::TarGz],
         }
     }
@@ -183,10 +191,24 @@ pub struct AssetName {
     pub kind: PackageKind,
 }
 
+impl AssetName {
+    /// The architecture the asset is built for: the last part of its token (`windows-x86` → x86).
+    /// `None` for a token that names none (`macos-universal`).
+    pub fn arch(&self) -> Option<Arch> {
+        match self.token.rsplit('-').next()? {
+            "x64" | "x86_64" => Some(Arch::X64),
+            "x86" => Some(Arch::X86),
+            "arm64" | "aarch64" => Some(Arch::Arm64),
+            "riscv64" => Some(Arch::Riscv64),
+            _ => None,
+        }
+    }
+}
+
 /// Reads `<stem>-<version>-<os>-<arch>[-portable].<ext>`; `None` for checksums, zsync files, CLI
 /// and web bundles, or anything else.
 pub fn parse_asset_name(name: &str, stems: &[&str]) -> Option<AssetName> {
-    const KINDS: [PackageKind; 8] = [
+    const KINDS: [PackageKind; 9] = [
         PackageKind::PortableZip,
         PackageKind::TarGz,
         PackageKind::Msi,
@@ -194,6 +216,7 @@ pub fn parse_asset_name(name: &str, stems: &[&str]) -> Option<AssetName> {
         PackageKind::AppImage,
         PackageKind::Deb,
         PackageKind::Rpm,
+        PackageKind::ArchPkg,
         PackageKind::Flatpak,
     ];
     let (kind, base) = KINDS.iter().find_map(|k| name.strip_suffix(k.suffix()).map(|b| (*k, b)))?;
@@ -251,6 +274,81 @@ mod tests {
         "photocraft-web-0.5.0.zip",
         "SHA256SUMS.txt",
     ];
+
+    #[test]
+    fn macos_prefers_the_published_universal_build() {
+        // PhotoCraft v0.9.0's GitHub metadata, trimmed to its desktop DMG.
+        let mut r = crate::release::parse_github_release(include_str!("../tests/fixtures/photocraft-release.json"), "storytold/photocraft").unwrap();
+        // Split builds must not outrank the published universal DMG, even when listed first.
+        r.assets.splice(0..0, release(&["photocraft-0.9.0-macos-arm64.dmg", "photocraft-0.9.0-macos-x86_64.dmg"]).assets);
+        for arch in [Arch::X64, Arch::Arm64] {
+            let (asset, kind) = pick_asset(&r, &["photocraft"], Platform { os: Os::MacOs, arch }, &[PackageKind::Dmg]).unwrap();
+            assert_eq!(asset.name, "photocraft-0.9.0-macos-universal.dmg");
+            assert_eq!(kind, PackageKind::Dmg);
+        }
+    }
+
+    #[test]
+    fn freebsd_picks_the_tarball_for_the_processor() {
+        // SoundCraft v0.10.0's GitHub metadata, trimmed to its FreeBSD tarballs.
+        let r = crate::release::parse_github_release(include_str!("../tests/fixtures/soundcraft-release.json"), "storytold/soundcraft").unwrap();
+        let pick = |arch| {
+            let platform = Platform { os: Os::FreeBsd, arch };
+            pick_asset(&r, &["soundcraft"], platform, platform.default_kinds()).map(|(a, k)| (a.name.as_str(), k))
+        };
+        assert_eq!(pick(Arch::X64), Some(("soundcraft-0.10.0-freebsd-x86_64.tar.gz", PackageKind::TarGz)));
+        assert_eq!(pick(Arch::Arm64), Some(("soundcraft-0.10.0-freebsd-aarch64.tar.gz", PackageKind::TarGz)));
+        for arch in [Arch::X86, Arch::Riscv64] {
+            assert_eq!(pick(arch), None);
+        }
+        // An x86_64 machine never takes the ARM tarball, nor an ARM machine the x86_64 one.
+        let only_arm = release(&["soundcraft-0.10.0-freebsd-aarch64.tar.gz"]);
+        assert_eq!(pick_asset(&only_arm, &["soundcraft"], Platform { os: Os::FreeBsd, arch: Arch::X64 }, &[PackageKind::TarGz]), None);
+        let only_x64 = release(&["soundcraft-0.10.0-freebsd-x86_64.tar.gz"]);
+        assert_eq!(pick_asset(&only_x64, &["soundcraft"], Platform { os: Os::FreeBsd, arch: Arch::Arm64 }, &[PackageKind::TarGz]), None);
+    }
+
+    #[test]
+    fn macos_split_builds_match_the_processor() {
+        let r = release(&["photocraft-0.5.0-macos-arm64.dmg", "photocraft-0.5.0-macos-x86_64.dmg"]);
+        let pick = |arch| pick_asset(&r, &["photocraft"], Platform { os: Os::MacOs, arch }, &[PackageKind::Dmg]).map(|(a, _)| a.name.as_str());
+        assert_eq!(pick(Arch::X64), Some("photocraft-0.5.0-macos-x86_64.dmg"));
+        assert_eq!(pick(Arch::Arm64), Some("photocraft-0.5.0-macos-arm64.dmg"));
+    }
+
+    #[test]
+    fn intel_macos_never_selects_an_arm_only_build() {
+        for token in ["macos-aarch64", "macos-arm64"] {
+            let name = format!("photocraft-0.5.0-{token}.dmg");
+            let r = release(&[&name]);
+            assert_eq!(pick_asset(&r, &["photocraft"], Platform { os: Os::MacOs, arch: Arch::X64 }, &[PackageKind::Dmg]), None);
+            assert_eq!(
+                pick_asset(&r, &["photocraft"], Platform { os: Os::MacOs, arch: Arch::Arm64 }, &[PackageKind::Dmg]).map(|(a, _)| a.name.as_str()),
+                Some(name.as_str())
+            );
+        }
+    }
+
+    #[test]
+    fn apple_silicon_keeps_the_intel_fallback() {
+        let r = release(&["photocraft-0.5.0-macos-x86_64.dmg"]);
+        assert_eq!(
+            pick_asset(&r, &["photocraft"], Platform { os: Os::MacOs, arch: Arch::Arm64 }, &[PackageKind::Dmg]).map(|(a, _)| a.name.as_str()),
+            Some("photocraft-0.5.0-macos-x86_64.dmg")
+        );
+        for arch in [Arch::X86, Arch::Riscv64] {
+            assert_eq!(pick_asset(&r, &["photocraft"], Platform { os: Os::MacOs, arch }, &[PackageKind::Dmg]), None);
+        }
+    }
+
+    #[test]
+    fn asset_names_carry_their_architecture() {
+        let arch = |name: &str| parse_asset_name(name, &["photocraft"]).unwrap().arch();
+        assert_eq!(arch("photocraft-0.5.0-windows-x64.msi"), Some(Arch::X64));
+        assert_eq!(arch("photocraft-0.5.0-windows-x86.msi"), Some(Arch::X86));
+        assert_eq!(arch("photocraft-0.5.0-linux-aarch64.tar.gz"), Some(Arch::Arm64));
+        assert_eq!(arch("photocraft-0.5.0-macos-universal.dmg"), None);
+    }
 
     #[test]
     fn reads_asset_names() {
@@ -313,6 +411,8 @@ mod tests {
             "photocraft-0.5.0-linux-x86_64.deb",
             "photocraft-0.5.0-linux-aarch64.rpm",
             "photocraft-0.5.0-linux-x86_64.rpm",
+            "photocraft-0.5.0-linux-aarch64.pkg.tar.zst",
+            "photocraft-0.5.0-linux-x86_64.pkg.tar.zst",
             "photocraft-0.5.0-linux-aarch64.flatpak",
             "photocraft-0.5.0-linux-x86_64.flatpak",
             "photocraft-0.5.0-linux-aarch64.tar.gz",
@@ -322,7 +422,7 @@ mod tests {
         let p_x64 = Platform { os: Os::Linux, arch: Arch::X64 };
         let p_arm64 = Platform { os: Os::Linux, arch: Arch::Arm64 };
 
-        for kind in [PackageKind::AppImage, PackageKind::Deb, PackageKind::Rpm, PackageKind::Flatpak, PackageKind::TarGz] {
+        for kind in [PackageKind::AppImage, PackageKind::Deb, PackageKind::Rpm, PackageKind::ArchPkg, PackageKind::Flatpak, PackageKind::TarGz] {
             let pick_x64 = pick_asset(&multi_arch_release, &["photocraft"], p_x64, &[kind]).map(|(a, _)| a.name.clone());
             assert!(pick_x64.as_deref().unwrap().contains("linux-x86_64"), "Expected x86_64 asset for {kind:?}, got {pick_x64:?}");
 
@@ -335,10 +435,11 @@ mod tests {
             "photocraft-0.5.0-linux-aarch64.AppImage",
             "photocraft-0.5.0-linux-aarch64.deb",
             "photocraft-0.5.0-linux-aarch64.rpm",
+            "photocraft-0.5.0-linux-aarch64.pkg.tar.zst",
             "photocraft-0.5.0-linux-aarch64.flatpak",
             "photocraft-0.5.0-linux-aarch64.tar.gz",
         ]);
-        for kind in [PackageKind::AppImage, PackageKind::Deb, PackageKind::Rpm, PackageKind::Flatpak, PackageKind::TarGz] {
+        for kind in [PackageKind::AppImage, PackageKind::Deb, PackageKind::Rpm, PackageKind::ArchPkg, PackageKind::Flatpak, PackageKind::TarGz] {
             assert_eq!(pick_asset(&arm_only_release, &["photocraft"], p_x64, &[kind]), None, "x86_64 must never match an aarch64 asset for {kind:?}");
         }
     }

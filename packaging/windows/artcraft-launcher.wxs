@@ -8,7 +8,7 @@
       -culture en-US -loc artcraft-launcher.en-us.wxl -d Version=1.2.3 -d DisplayVersion=1.2.3-rc.1
       -d BinDir=... -d IconPath=... -d BannerBmp=... -d DialogBmp=... -o out.msi
 
-  Per-user install (no UAC prompt), by default into %LOCALAPPDATA%\Programs\ArtCraft Launcher, so
+  Per-user install (no UAC prompt), by default into %LOCALAPPDATA%\Programs\ArtCraft\Launcher, so
   the launcher can update itself without elevation, plus a Start Menu shortcut. The shortcut
   carries the AppUserModelID ai.storyteller.artcraft-launcher, which Windows needs to show toast
   notifications from an unpackaged app and to group the taskbar button. No file associations.
@@ -41,7 +41,12 @@
         DowngradeErrorMessage="A newer version of ArtCraft Launcher is already installed." />
     <MediaTemplate EmbedCab="yes" CompressionLevel="high" />
 
-    <!-- MSI caches this icon using its Id as the filename; keep the .exe extension (ICE50). -->
+    <!-- The Apps & features icon only. MSI caches it under %APPDATA%\Microsoft\Installer\{ProductCode},
+         using its Id as the filename (keep the .exe extension, ICE50). Every update is a major
+         upgrade with a new ProductCode that deletes the old folder, so the shortcuts must not use
+         it: a taskbar pin is a copy of the shortcut, an update never refreshes it, and its icon
+         went blank once the old folder was gone. The shortcuts take the exe's own icon instead
+         (build.rs embeds it), at a path every update keeps. -->
     <Icon Id="ArtCraftLauncherIcon.exe" SourceFile="$(var.IconPath)" />
     <Property Id="ARPPRODUCTICON" Value="ArtCraftLauncherIcon.exe" />
     <Property Id="ARPURLINFOABOUT" Value="https://getartcraft.com/apps" />
@@ -50,7 +55,9 @@
 
     <StandardDirectory Id="LocalAppDataFolder">
       <Directory Id="LocalProgramsFolder" Name="Programs">
-        <Directory Id="INSTALLFOLDER" Name="ArtCraft Launcher" />
+        <Directory Id="CraftSuiteFolder" Name="ArtCraft">
+          <Directory Id="INSTALLFOLDER" Name="Launcher" />
+        </Directory>
       </Directory>
     </StandardDirectory>
     <StandardDirectory Id="ProgramMenuFolder" />
@@ -58,9 +65,12 @@
 
     <!-- An update installs where the user put the previous version (recorded by
          ArtCraftLauncherApp below; every version since 0.1.0 records it). -->
-    <Property Id="INSTALLFOLDER">
+    <Property Id="INSTALLFOLDER" Secure="yes" />
+    <Property Id="PREVIOUSINSTALLFOLDER" Secure="yes">
       <RegistrySearch Id="PreviousInstallFolder" Root="HKCU" Key="Software\Learning Machines LLC\ArtCraft Launcher" Name="InstallDir" Type="raw" />
     </Property>
+    <SetProperty Id="INSTALLFOLDER" Action="CraftRestoreLauncherFolder" Value="[PREVIOUSINSTALLFOLDER]"
+        Before="CostInitialize" Sequence="both" Condition="PREVIOUSINSTALLFOLDER AND NOT INSTALLFOLDER" />
 
     <!-- The desktop shortcut: the folder page's box sets INSTALLDESKTOPSHORTCUT to 1. It starts
          ticked on a first install; an update keeps what the user chose last time, and an update
@@ -143,6 +153,7 @@
   <Fragment>
     <ComponentGroup Id="ArtCraftLauncherFiles">
       <Component Id="ArtCraftLauncherApp" Directory="INSTALLFOLDER" Guid="55DCC431-EBEF-4C11-BABB-6D78CE0ECF4E">
+        <File Id="ArtCraftLauncherNotice" Source="$(var.BinDir)\NOTICE" KeyPath="no" />
         <File Id="ArtCraftLauncherExe" Source="$(var.BinDir)\artcraft-launcher.exe" KeyPath="no" />
         <!-- Read back by the next version's installer and by the launcher (self_update.rs). -->
         <RegistryValue Root="HKCU" Key="Software\Learning Machines LLC\ArtCraft Launcher" Name="InstallDir" Value="[INSTALLFOLDER]" Type="string" KeyPath="yes" />
@@ -150,14 +161,14 @@
         <!-- Win+R "artcraft-launcher". -->
         <RegistryValue Root="HKCU" Key="Software\Microsoft\Windows\CurrentVersion\App Paths\artcraft-launcher.exe" Value="[#ArtCraftLauncherExe]" Type="string" />
         <RemoveFolder Id="RemoveInstallFolder" Directory="INSTALLFOLDER" On="uninstall" />
+        <RemoveFolder Id="RemoveSuiteFolder" Directory="CraftSuiteFolder" On="uninstall" />
         <RemoveFolder Id="RemoveLocalProgramsFolder" Directory="LocalProgramsFolder" On="uninstall" />
       </Component>
 
       <Component Id="ArtCraftLauncherShortcut" Directory="ProgramMenuFolder" Guid="870F3DFA-BC0F-497F-85D5-A361B04826AF">
         <Shortcut Id="StartMenuShortcut" Name="ArtCraft Launcher"
             Description="Install and update the Craft App Suite"
-            Target="[#ArtCraftLauncherExe]" WorkingDirectory="INSTALLFOLDER"
-            Icon="ArtCraftLauncherIcon.exe" IconIndex="0">
+            Target="[#ArtCraftLauncherExe]" WorkingDirectory="INSTALLFOLDER">
           <ShortcutProperty Key="System.AppUserModel.ID" Value="ai.storyteller.artcraft-launcher" />
         </Shortcut>
         <RegistryValue Root="HKCU" Key="Software\Learning Machines LLC\ArtCraft Launcher" Name="StartMenuShortcut" Value="1" Type="integer" KeyPath="yes" />
@@ -168,8 +179,7 @@
           Condition="INSTALLDESKTOPSHORTCUT = &quot;1&quot;">
         <Shortcut Id="DesktopShortcut" Name="ArtCraft Launcher"
             Description="Install and update the Craft App Suite"
-            Target="[#ArtCraftLauncherExe]" WorkingDirectory="INSTALLFOLDER"
-            Icon="ArtCraftLauncherIcon.exe" IconIndex="0">
+            Target="[#ArtCraftLauncherExe]" WorkingDirectory="INSTALLFOLDER">
           <ShortcutProperty Key="System.AppUserModel.ID" Value="ai.storyteller.artcraft-launcher" />
         </Shortcut>
         <RegistryValue Root="HKCU" Key="Software\Learning Machines LLC\ArtCraft Launcher" Name="DesktopShortcut" Value="1" Type="integer" KeyPath="yes" />

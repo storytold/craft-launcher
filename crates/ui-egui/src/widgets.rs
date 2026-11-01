@@ -47,26 +47,38 @@ pub fn hud(ui: &mut Ui, text: &str, color: Color32) -> Response {
     let galley = hud_galley(ui, text, color);
     let (rect, resp) = ui.allocate_exact_size(galley.size(), Sense::hover());
     paint_left(ui, rect, galley, color);
-    resp.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Label, true, text));
+    resp.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Label, true, text));
     resp
 }
 
 /// A mono label cut to one line with "…" where it is wider than `max_width`; the full text shows
 /// on hover and is what screen readers read.
 pub fn hud_elided(ui: &mut Ui, text: &str, color: Color32, max_width: f32) -> Response {
-    let format = egui::TextFormat {
-        font_id: egui::FontId::new(theme::HUD_SIZE, theme::mono()),
-        color,
-        extra_letter_spacing: theme::HUD_SPACING,
-        ..Default::default()
-    };
-    let mut job = egui::text::LayoutJob::single_section(text.to_uppercase(), format);
+    hud_elided_spans(ui, &[(text, color)], max_width)
+}
+
+/// [`hud_elided`] with each piece of the text in its own colour.
+pub fn hud_elided_spans(ui: &mut Ui, spans: &[(&str, Color32)], max_width: f32) -> Response {
+    let mut job = egui::text::LayoutJob::default();
+    for (text, color) in spans {
+        let format = egui::TextFormat {
+            font_id: egui::FontId::new(theme::HUD_SIZE, theme::mono()),
+            color: *color,
+            extra_letter_spacing: theme::HUD_SPACING,
+            ..Default::default()
+        };
+        job.append(&text.to_uppercase(), 0.0, format);
+    }
     job.wrap = egui::text::TextWrapping::truncate_at_width(max_width.min(ui.available_width()).max(0.0));
     let galley = ui.painter().layout_job(job);
     let elided = galley.elided;
     let (rect, resp) = ui.allocate_exact_size(galley.size(), Sense::hover());
-    paint_left(ui, rect, galley, color);
-    resp.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Label, true, text));
+    let pos = egui::pos2(rect.left(), rect.center().y - galley.size().y / 2.0);
+    // Each piece keeps the colour it was laid out with; nothing overrides it.
+    let fallback = spans.first().map_or(Color32::PLACEHOLDER, |(_, c)| *c);
+    ui.painter().galley(pos, galley, fallback);
+    let text: String = spans.iter().map(|(t, _)| *t).collect();
+    resp.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Label, true, &text));
     if elided { resp.on_hover_text(text) } else { resp }
 }
 
@@ -87,7 +99,7 @@ pub fn tag(ui: &mut Ui, text: &str, fill: Color32, ink: Color32) -> Response {
     let (rect, resp) = ui.allocate_exact_size(galley.size() + vec2(16.0, 8.0), Sense::hover());
     ui.painter().rect_filled(rect, CornerRadius::ZERO, fill);
     paint_centred(ui, rect, galley, ink);
-    resp.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Label, true, text));
+    resp.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Label, true, text));
     resp
 }
 
@@ -98,24 +110,9 @@ pub fn rule(ui: &mut Ui, height: f32) {
     ui.painter().vline(rect.center().x, rect.y_range(), t.hairline());
 }
 
-/// A header link, like the site's nav: a mono label whose span inverts on hover or when `active`.
-pub fn nav_link(ui: &mut Ui, text: &str, tip: &str, height: f32, active: bool) -> Response {
-    let t = Tokens::get(ui.ctx());
-    let galley = hud_galley(ui, text, t.muted);
-    let (rect, resp) = ui.allocate_exact_size(vec2(galley.size().x + 20.0, height), Sense::click());
-    let on = active || resp.hovered();
-    let span = Rect::from_center_size(rect.center(), galley.size() + vec2(12.0, 6.0));
-    if on {
-        ui.painter().rect_filled(span, CornerRadius::ZERO, t.invert_bg);
-    }
-    paint_centred(ui, rect, galley, if on { t.invert_fg } else { t.muted });
-    resp.widget_info(|| egui::WidgetInfo::selected(egui::WidgetType::Button, true, active, text));
-    resp.on_hover_text(tip).on_hover_cursor(egui::CursorIcon::PointingHand)
-}
-
-/// A square header cell with a symbol and a hairline on its left; inverts on hover. While `busy`
-/// it shows a spinner and can't be clicked.
-pub fn nav_icon(ui: &mut Ui, symbol: &str, tip: &str, height: f32, busy: bool) -> Response {
+/// A square header cell with a drawn glyph and a hairline on its left; inverts on hover. While
+/// `busy` it shows a spinner and can't be clicked.
+pub fn nav_icon(ui: &mut Ui, glyph: Glyph, tip: &str, height: f32, busy: bool) -> Response {
     let t = Tokens::get(ui.ctx());
     let (rect, resp) = ui.allocate_exact_size(vec2(height, height), if busy { Sense::hover() } else { Sense::click() });
     let p = ui.painter();
@@ -127,9 +124,9 @@ pub fn nav_icon(ui: &mut Ui, symbol: &str, tip: &str, height: f32, busy: bool) -
     if busy {
         egui::Spinner::new().size(16.0).color(t.muted).paint_at(ui, Rect::from_center_size(rect.center(), vec2(16.0, 16.0)));
     } else {
-        p.text(rect.center(), egui::Align2::CENTER_CENTER, symbol, egui::FontId::proportional(17.0), if hovered { t.invert_fg } else { t.muted });
+        paint_glyph(p, rect, glyph, if hovered { t.invert_fg } else { t.muted });
     }
-    resp.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Button, !busy, tip));
+    resp.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, !busy, tip));
     let resp = resp.on_hover_text(tip);
     if busy { resp } else { resp.on_hover_cursor(egui::CursorIcon::PointingHand) }
 }
@@ -138,12 +135,21 @@ pub fn nav_icon(ui: &mut Ui, symbol: &str, tip: &str, height: f32, busy: bool) -
 /// The title bar's own controls leave this band alone.
 const RESIZE_EDGE: f32 = 5.0;
 
+/// How wide the resize band along the window's edges is right now: nothing while the window is
+/// maximized or full screen, when `window_edges` offers no resizing and the edges are the screen's,
+/// so the controls there reach all the way to the corner (#374).
+fn resize_band(ctx: &egui::Context) -> f32 {
+    let (maximized, fullscreen) = ctx.input(|i| (i.viewport().maximized.unwrap_or(false), i.viewport().fullscreen.unwrap_or(false)));
+    if maximized || fullscreen { 0.0 } else { RESIZE_EDGE }
+}
+
 /// Custom title bars: dragging the header's empty space moves the window, and double-clicking it
 /// maximizes or restores it. Call before drawing the header, so its controls stay on top.
 pub fn title_bar_drag(ui: &mut Ui) {
     let r = ui.max_rect();
-    let rect = Rect::from_min_max(r.min + vec2(RESIZE_EDGE, RESIZE_EDGE), r.max - vec2(RESIZE_EDGE, 0.0));
-    let resp = ui.interact(rect, ui.id().with("title-bar"), Sense::click_and_drag());
+    let band = resize_band(ui.ctx());
+    let rect = Rect::from_min_max(r.min + vec2(band, band), r.max - vec2(band, 0.0));
+    let resp = ui.interact(rect, ui.scope_id().with("title-bar"), Sense::click_and_drag());
     if resp.drag_started_by(egui::PointerButton::Primary) {
         ui.ctx().send_viewport_cmd(egui::ViewportCommand::StartDrag);
     }
@@ -180,13 +186,19 @@ pub fn window_buttons(ui: &mut Ui, height: f32) {
     rule(ui, height);
 }
 
+/// Draws one caption button and returns its click response; the caller sends the viewport
+/// command. Hit-testing excludes the top resize band (and, for close, the right-edge band) so
+/// the window edges stay resizable; when maximized there is no band and close reaches the
+/// corner.
 fn window_button(ui: &mut Ui, button: WindowButton, height: f32) -> Response {
     let t = Tokens::get(ui.ctx());
     let (rect, _) = ui.allocate_exact_size(vec2(46.0, height), Sense::hover());
-    // Clickable below the resize band along the top (and, for close, the right edge).
-    let right = if button == WindowButton::Close { RESIZE_EDGE } else { 0.0 };
-    let hit = Rect::from_min_max(rect.min + vec2(0.0, RESIZE_EDGE), rect.max - vec2(right, 0.0));
-    let resp = ui.interact(hit, ui.id().with(("window-button", button as u8)), Sense::click());
+    // Clickable below the resize band along the top (and, for close, the right edge); maximized,
+    // there is no band and the close button takes the screen's corner, as Windows' own does.
+    let band = resize_band(ui.ctx());
+    let right = if button == WindowButton::Close { band } else { 0.0 };
+    let hit = Rect::from_min_max(rect.min + vec2(0.0, band), rect.max - vec2(right, 0.0));
+    let resp = ui.interact(hit, ui.scope_id().with(("window-button", button as u8)), Sense::click());
     let (fill, ink) = match (button, resp.hovered()) {
         (WindowButton::Close, true) => (Color32::from_rgb(0xc4, 0x2b, 0x1c), Color32::WHITE),
         (_, true) => (t.line, t.ink_strong),
@@ -223,7 +235,7 @@ fn window_button(ui: &mut Ui, button: WindowButton, height: f32) -> Response {
             p.line_segment([c + vec2(-s, s), c + vec2(s, -s)], stroke);
         }
     }
-    resp.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Button, true, label));
+    resp.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, true, label));
     resp.on_hover_text(label)
 }
 
@@ -237,7 +249,7 @@ pub fn window_edges(ctx: &egui::Context) {
     }
     let t = Tokens::get(ctx);
     let r = ctx.content_rect();
-    ctx.layer_painter(egui::LayerId::new(egui::Order::Foreground, egui::Id::new("window-border"))).rect_stroke(
+    ctx.layer_painter(egui::LayerId::new(egui::Order::Foreground, egui::Id::unique("window-border"))).rect_stroke(
         r,
         CornerRadius::ZERO,
         t.hairline(),
@@ -275,16 +287,37 @@ pub fn window_edges(ctx: &egui::Context) {
     }
 }
 
+/// Whether `url` may be handed to the system/browser opener.
+///
+/// Release assets, release pages and feed links all come from the network, so every external
+/// opener goes through the same check as [`release::safe_web_link`](artcraft_launcher_core::release::safe_web_link).
+/// The one intentional non-https target is the exact Discord app deep link, which the desktop
+/// shell intercepts and opens through the system opener with a web fallback; arbitrary custom
+/// schemes stay refused.
+pub(crate) fn external_link_allowed(url: &str) -> bool {
+    artcraft_launcher_core::release::safe_web_link(url) || url == artcraft_launcher_core::catalog::DISCORD_APP_URL
+}
+
+/// Opens a UI link only after [`external_link_allowed`]; anything else is logged and dropped.
+pub(crate) fn open_external_link(ctx: &egui::Context, url: &str) {
+    if external_link_allowed(url) {
+        ctx.open_url(egui::OpenUrl::new_tab(url));
+    } else {
+        // Debug-format so control characters in a hostile URL cannot forge a log line.
+        log::warn!("refusing to open unsafe URL: {url:?}");
+    }
+}
+
 /// A mono link with an ↗: muted, ink on hover. Opens `url` in the browser.
 pub fn hud_link(ui: &mut Ui, text: &str, url: &str) -> Response {
     let t = Tokens::get(ui.ctx());
     let galley = hud_galley(ui, &format!("{text} ↗"), t.muted);
     let (rect, resp) = ui.allocate_exact_size(galley.size(), Sense::click());
     paint_left(ui, rect, galley, if resp.hovered() { t.ink_strong } else { t.muted });
-    resp.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Link, true, text));
+    resp.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Link, true, text));
     let resp = resp.on_hover_text(url).on_hover_cursor(egui::CursorIcon::PointingHand);
     if resp.clicked() {
-        ui.ctx().open_url(egui::OpenUrl::new_tab(url));
+        open_external_link(ui.ctx(), url);
     }
     resp
 }
@@ -296,7 +329,7 @@ pub fn badge(ui: &mut Ui, text: &str, color: Color32) -> Response {
     let (rect, resp) = ui.allocate_exact_size(vec2(galley.size().x + 12.0, 20.0), Sense::hover());
     ui.painter().rect(rect, CornerRadius::ZERO, t.sunken, t.hairline(), egui::StrokeKind::Inside);
     paint_centred(ui, rect, galley, color);
-    resp.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Label, true, text));
+    resp.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Label, true, text));
     resp
 }
 
@@ -311,17 +344,26 @@ pub enum Kind {
     Danger,
 }
 
-/// The natural width of a button, including its horizontal padding.
+/// A button's label, laid out: [`button`] paints it, [`button_width`] measures it.
+fn button_label(ui: &Ui, text: &str) -> Arc<Galley> {
+    caps(ui, text, theme::HUD_SIZE, theme::mono_bold(), theme::BUTTON_SPACING, Tokens::get(ui.ctx()).ink)
+}
+
+/// A button's width around its label: 16 px of padding each side, at least `minimum`.
+fn button_width_of(label: &Galley, minimum: f32) -> f32 {
+    (label.size().x + 32.0).max(minimum)
+}
+
+/// The natural width of a button, including its horizontal padding: what [`button`] takes.
 pub fn button_width(ui: &Ui, text: &str, minimum: f32) -> f32 {
-    let galley = caps(ui, text, theme::HUD_SIZE, theme::mono_bold(), theme::BUTTON_SPACING, Tokens::get(ui.ctx()).ink);
-    (galley.size().x + 32.0).max(minimum)
+    button_width_of(&button_label(ui, text), minimum)
 }
 
 /// A square button with a mono upper-case label, at least `width` wide.
 pub fn button(ui: &mut Ui, text: &str, kind: Kind, width: f32) -> Response {
     let t = Tokens::get(ui.ctx());
-    let galley = caps(ui, text, theme::HUD_SIZE, theme::mono_bold(), theme::BUTTON_SPACING, t.ink);
-    let size = vec2((galley.size().x + 32.0).max(width), theme::CONTROL_H);
+    let galley = button_label(ui, text);
+    let size = vec2(button_width_of(&galley, width), theme::CONTROL_H);
     let (rect, resp) = ui.allocate_exact_size(size, Sense::click());
     let enabled = ui.is_enabled();
     let hovered = resp.hovered() && enabled;
@@ -335,7 +377,7 @@ pub fn button(ui: &mut Ui, text: &str, kind: Kind, width: f32) -> Response {
     let fade = |c: Color32| if enabled { c } else { c.gamma_multiply(0.5) };
     ui.painter().rect(rect, CornerRadius::ZERO, fade(fill), Stroke::new(stroke.width, fade(stroke.color)), egui::StrokeKind::Inside);
     paint_centred(ui, rect, galley, fade(color));
-    resp.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Button, enabled, text));
+    resp.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, enabled, text));
     if enabled { resp.on_hover_cursor(egui::CursorIcon::PointingHand) } else { resp }
 }
 
@@ -350,6 +392,12 @@ pub struct Cell<'a> {
 /// Mutually exclusive options in a row of hairline cells (the site's share bar); the chosen one
 /// is inverted. Returns whether the choice changed.
 pub fn cells<T: PartialEq + Copy>(ui: &mut Ui, value: &mut T, options: &[(T, Cell<'_>)]) -> bool {
+    cells_apart(ui, value, options, 0.0)
+}
+
+/// Like [`cells`], but with `gap` between the options: with a gap each option has a hairline box
+/// of its own instead of sharing one.
+pub fn cells_apart<T: PartialEq + Copy>(ui: &mut Ui, value: &mut T, options: &[(T, Cell<'_>)], gap: f32) -> bool {
     let t = Tokens::get(ui.ctx());
     let mut changed = false;
     // In a right-to-left parent the row fills from the right: keep the options' order.
@@ -357,43 +405,19 @@ pub fn cells<T: PartialEq + Copy>(ui: &mut Ui, value: &mut T, options: &[(T, Cel
     let ordered: Vec<&(T, Cell<'_>)> = if rtl { options.iter().rev().collect() } else { options.iter().collect() };
     let mut rects = Vec::with_capacity(options.len());
     ui.scope(|ui| {
-        ui.spacing_mut().item_spacing.x = 0.0;
+        ui.spacing_mut().item_spacing.x = gap;
         for (opt, cell) in ordered {
-            let on = *value == *opt;
-            let label = hud_galley(ui, cell.label, t.ink);
-            let count = cell.count.map(|(n, highlight)| {
-                let c = if on { t.invert_fg.gamma_multiply(0.6) } else { highlight.filter(|_| n > 0).unwrap_or(t.faint) };
-                (hud_galley(ui, &n.to_string(), c), c)
-            });
-            let w = label.size().x + count.as_ref().map_or(0.0, |(g, _)| g.size().x + 8.0) + 24.0;
-            let (rect, resp) = ui.allocate_exact_size(vec2(w, theme::CONTROL_H), Sense::click());
-            let hovered = resp.hovered();
-            let (fill, ink) = match (on, hovered) {
-                (true, _) => (t.invert_bg, t.invert_fg),
-                (false, true) => (t.sunken, t.ink_strong),
-                (false, false) => (Color32::TRANSPARENT, t.muted),
-            };
-            ui.painter().rect_filled(rect, CornerRadius::ZERO, fill);
-            let text_rect = rect.shrink2(vec2(12.0, 0.0));
-            let label_w = label.size().x;
-            paint_left(ui, text_rect, label, ink);
-            if let Some((g, c)) = count {
-                paint_left(ui, text_rect.with_min_x(text_rect.left() + label_w + 8.0), g, c);
-            }
-            let name = match cell.count {
-                Some((n, _)) => format!("{} {n}", cell.label),
-                None => cell.label.to_string(),
-            };
-            resp.widget_info(|| egui::WidgetInfo::selected(egui::WidgetType::Button, true, on, &name));
-            if resp.on_hover_text(cell.tip).on_hover_cursor(egui::CursorIcon::PointingHand).clicked() && !on {
-                *value = *opt;
-                changed = true;
-            }
+            let (rect, chosen) = paint_cell(ui, value, opt, cell, &t);
+            changed |= chosen;
             rects.push(rect);
         }
     });
-    // The hairlines: an outline, and a rule between neighbours.
-    if let (Some(first), Some(last)) = (rects.first(), rects.last()) {
+    // The hairlines: an outline each when apart; otherwise one outline and a rule between neighbours.
+    if gap > 0.0 {
+        for r in &rects {
+            ui.painter().rect_stroke(*r, CornerRadius::ZERO, t.hairline(), egui::StrokeKind::Inside);
+        }
+    } else if let (Some(first), Some(last)) = (rects.first(), rects.last()) {
         let p = ui.painter();
         p.rect_stroke(first.union(*last), CornerRadius::ZERO, t.hairline(), egui::StrokeKind::Inside);
         let (top, bottom) = (first.top(), first.bottom());
@@ -403,6 +427,43 @@ pub fn cells<T: PartialEq + Copy>(ui: &mut Ui, value: &mut T, options: &[(T, Cel
         }
     }
     changed
+}
+
+/// Paints one cell: its label and count over a hairline box, and its hover/click behaviour.
+/// Returns the cell's rect (for the row's hairlines) and whether the click chose it.
+fn paint_cell<T: PartialEq + Copy>(ui: &mut Ui, value: &mut T, opt: &T, cell: &Cell<'_>, t: &Tokens) -> (Rect, bool) {
+    let mut changed = false;
+    let on = *value == *opt;
+    let label = hud_galley(ui, cell.label, t.ink);
+    let count = cell.count.map(|(n, highlight)| {
+        let c = if on { t.invert_fg.gamma_multiply(0.6) } else { highlight.filter(|_| n > 0).unwrap_or(t.faint) };
+        (hud_galley(ui, &n.to_string(), c), c)
+    });
+    let w = label.size().x + count.as_ref().map_or(0.0, |(g, _)| g.size().x + 8.0) + 24.0;
+    let (rect, resp) = ui.allocate_exact_size(vec2(w, theme::CONTROL_H), Sense::click());
+    let hovered = resp.hovered();
+    let (fill, ink) = match (on, hovered) {
+        (true, _) => (t.invert_bg, t.invert_fg),
+        (false, true) => (t.sunken, t.ink_strong),
+        (false, false) => (Color32::TRANSPARENT, t.muted),
+    };
+    ui.painter().rect_filled(rect, CornerRadius::ZERO, fill);
+    let text_rect = rect.shrink2(vec2(12.0, 0.0));
+    let label_w = label.size().x;
+    paint_left(ui, text_rect, label, ink);
+    if let Some((g, c)) = count {
+        paint_left(ui, text_rect.with_min_x(text_rect.left() + label_w + 8.0), g, c);
+    }
+    let name = match cell.count {
+        Some((n, _)) => format!("{} {n}", cell.label),
+        None => cell.label.to_string(),
+    };
+    resp.widget_info(|| egui::WidgetInfo::selected(egui::Role::Button, true, on, &name));
+    if resp.on_hover_text(cell.tip).on_hover_cursor(egui::CursorIcon::PointingHand).clicked() && !on {
+        *value = *opt;
+        changed = true;
+    }
+    (rect, changed)
 }
 
 /// A slim square progress bar with a caption above it.
@@ -431,8 +492,8 @@ pub fn progress(ui: &mut Ui, fraction: Option<f32>, caption: &str, color: Color3
         }
     }
     p.text(egui::pos2(rect.left(), rect.top() + 9.0), egui::Align2::LEFT_CENTER, caption, egui::FontId::new(12.0, theme::medium()), t.muted);
-    let resp = ui.interact(rect, ui.id().with(("progress", caption)), Sense::hover());
-    resp.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::ProgressIndicator, true, caption));
+    let resp = ui.interact(rect, ui.scope_id().with(("progress", caption)), Sense::hover());
+    resp.widget_info(|| egui::WidgetInfo::labeled(egui::Role::ProgressIndicator, true, caption));
 }
 
 pub fn human_bytes(n: u64) -> String {
@@ -452,6 +513,65 @@ pub fn human_bytes(n: u64) -> String {
 pub enum Glyph {
     Pause,
     Close,
+    Settings,
+    Refresh,
+}
+
+/// Paints one of the launcher's symbols with the painter, centred in `rect`.
+///
+/// These are shapes rather than font characters: the bundled Inter, Archivo and Geist Mono faces
+/// have no gear or refresh symbol. The app enables egui's monochrome emoji fonts for arbitrary
+/// release-note/feed text, but these fixed controls stay painter-drawn so their geometry and
+/// accessible names do not depend on font selection.
+pub fn paint_glyph(p: &egui::Painter, rect: Rect, glyph: Glyph, color: Color32) {
+    p.extend(glyph_shapes(rect, glyph, color));
+}
+
+/// The shapes [`paint_glyph`] draws for `glyph`, centred in `rect`.
+///
+/// Separated from painting so a test can inspect the actual geometry: every shape must stay
+/// inside the button it belongs to, at both control sizes.
+fn glyph_shapes(rect: Rect, glyph: Glyph, color: Color32) -> Vec<egui::Shape> {
+    let m = rect.center();
+    match glyph {
+        Glyph::Pause => [-3.0, 3.0]
+            .into_iter()
+            .map(|dx| egui::Shape::rect_filled(Rect::from_center_size(m + vec2(dx, 0.0), vec2(2.5, 10.0)), CornerRadius::ZERO, color))
+            .collect(),
+        Glyph::Close => {
+            let s = 4.5;
+            vec![
+                egui::Shape::line_segment([m + vec2(-s, -s), m + vec2(s, s)], Stroke::new(1.5, color)),
+                egui::Shape::line_segment([m + vec2(-s, s), m + vec2(s, -s)], Stroke::new(1.5, color)),
+            ]
+        }
+        Glyph::Settings => {
+            let stroke = Stroke::new(1.5, color);
+            let mut shapes = vec![egui::Shape::circle_stroke(m, 3.2, stroke)];
+            for i in 0..8 {
+                let angle = std::f32::consts::TAU * i as f32 / 8.0;
+                let (sin, cos) = angle.sin_cos();
+                shapes.push(egui::Shape::line_segment([m + vec2(cos, sin) * 4.8, m + vec2(cos, sin) * 6.6], stroke));
+            }
+            shapes
+        }
+        Glyph::Refresh => {
+            let stroke = Stroke::new(1.5, color);
+            let radius = 6.0;
+            let start = -std::f32::consts::FRAC_PI_2;
+            let points: Vec<egui::Pos2> = (0..=12)
+                .map(|i| {
+                    let angle = start + std::f32::consts::TAU * 0.78 * i as f32 / 12.0;
+                    m + vec2(angle.cos(), angle.sin()) * radius
+                })
+                .collect();
+            let tip = m + vec2(start.cos(), start.sin()) * radius;
+            vec![
+                egui::Shape::line(points, stroke),
+                egui::Shape::convex_polygon(vec![tip + vec2(-2.4, -0.6), tip + vec2(1.6, -3.0), tip + vec2(1.2, 1.8)], color, Stroke::NONE),
+            ]
+        }
+    }
 }
 
 /// A small outlined square button with a drawn glyph; inverts on hover.
@@ -466,57 +586,89 @@ pub fn glyph_button(ui: &mut Ui, glyph: Glyph, tip: &str) -> Response {
         p.rect_stroke(rect, CornerRadius::ZERO, t.hairline(), egui::StrokeKind::Inside);
     }
     let c = if hovered { t.invert_fg } else { t.muted };
-    let m = rect.center();
-    match glyph {
-        Glyph::Pause => {
-            for dx in [-3.0, 3.0] {
-                p.rect_filled(Rect::from_center_size(m + vec2(dx, 0.0), vec2(2.5, 10.0)), CornerRadius::ZERO, c);
-            }
-        }
-        Glyph::Close => {
-            let s = 4.5;
-            p.line_segment([m + vec2(-s, -s), m + vec2(s, s)], Stroke::new(1.5, c));
-            p.line_segment([m + vec2(-s, s), m + vec2(s, -s)], Stroke::new(1.5, c));
-        }
-    }
-    resp.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Button, true, tip));
+    paint_glyph(p, rect, glyph, c);
+    resp.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, true, tip));
     resp.on_hover_text(tip).on_hover_cursor(egui::CursorIcon::PointingHand)
 }
 
-/// The "…" button that opens an app's menu: an outlined square like [`glyph_button`].
-pub fn more_menu<R>(ui: &mut Ui, add_contents: impl FnOnce(&mut Ui) -> R) {
+/// The "…" button that opens an app's menu: an outlined square like [`glyph_button`]. The visible
+/// dots are not a name a screen reader can use, so the button is named after the app.
+pub fn more_menu<R>(ui: &mut Ui, app_name: &str, add_contents: impl FnOnce(&mut Ui) -> R) {
     let t = Tokens::get(ui.ctx());
     let btn =
         egui::Button::new(RichText::new("…").size(15.0).color(t.muted)).fill(Color32::TRANSPARENT).min_size(vec2(theme::CONTROL_H, theme::CONTROL_H));
-    egui::containers::menu::MenuButton::from_button(btn).ui(ui, |ui| {
+    let (response, _) = egui::containers::menu::MenuButton::from_button(btn).ui(ui, |ui| {
         ui.set_min_width(200.0);
         add_contents(ui)
     });
+    response.accessible_name(crate::i18n::fmt(tl!("More actions for {name}"), &[("name", app_name)]));
 }
 
 /// ArtCraft's social accounts as a row of small monochrome icons (faint, brighter on hover).
 /// In a right-to-left layout they still read left to right.
 pub fn social_icons(ui: &mut Ui, size: f32) {
-    let t = Tokens::get(ui.ctx());
-    let rtl = ui.layout().prefer_right_to_left();
-    let services = artcraft_launcher_core::catalog::SOCIAL;
-    let ordered: Vec<&(&str, &str)> = if rtl { services.iter().rev().collect() } else { services.iter().collect() };
-    for (name, url) in ordered {
-        let Some(icon) = crate::icons::social(name) else { continue };
-        let pad = 4.0;
-        let (rect, resp) = ui.allocate_exact_size(vec2(size + 2.0 * pad, size + 2.0 * pad), Sense::click());
-        let color = if resp.hovered() { t.ink_strong } else { t.faint };
-        egui::Image::new(icon).tint(color).paint_at(ui, rect.shrink(pad));
-        resp.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Link, true, *name));
-        let resp = resp.on_hover_text(crate::i18n::fmt(tl!("ArtCraft on {name}"), &[("name", name)])).on_hover_cursor(egui::CursorIcon::PointingHand);
-        if resp.clicked() {
-            ui.ctx().open_url(egui::OpenUrl::new_tab(*url));
+    let links: Vec<IconLink> = artcraft_launcher_core::catalog::SOCIAL
+        .iter()
+        .map(|(name, url)| IconLink { name, label: (*name).to_string(), tip: crate::i18n::fmt(tl!("ArtCraft on {name}"), &[("name", name)]), url })
+        .collect();
+    icon_links(ui, size, &links);
+}
+
+/// One logo that opens a page: `name` picks the picture, `label` is what a screen reader says,
+/// `tip` is the hover text.
+pub struct IconLink<'a> {
+    pub name: &'a str,
+    pub label: String,
+    pub tip: String,
+    pub url: &'a str,
+}
+
+/// The width [`icon_links`] takes for `count` logos `size` wide.
+pub fn icon_links_width(count: usize, size: f32) -> f32 {
+    let n = count as f32;
+    n * (size + 2.0 * crate::theme::ICON_LINK_PAD) + (n - 1.0).max(0.0) * crate::theme::ICON_LINK_GAP
+}
+
+/// A row of logo links, given in reading order; each is `size` wide, spaced by the theme's
+/// `ICON_LINK_PAD` and `ICON_LINK_GAP` wherever the row is. In a right-to-left parent they still
+/// read in the order given.
+pub fn icon_links(ui: &mut Ui, size: f32, links: &[IconLink<'_>]) {
+    ui.scope(|ui| {
+        ui.spacing_mut().item_spacing.x = crate::theme::ICON_LINK_GAP;
+        for link in links_in_order(ui, links) {
+            icon_link(ui, size, link);
         }
+    });
+}
+
+fn links_in_order<'l, 'a>(ui: &Ui, links: &'l [IconLink<'a>]) -> Vec<&'l IconLink<'a>> {
+    if ui.layout().prefer_right_to_left() { links.iter().rev().collect() } else { links.iter().collect() }
+}
+
+/// Draws one social logo as a link: `Role::Link` with its label and tip, a pointer cursor, and
+/// the safe external opener on click. An unknown social name draws nothing and returns without
+/// a response.
+fn icon_link(ui: &mut Ui, size: f32, link: &IconLink<'_>) {
+    let Some(icon) = crate::icons::social(link.name) else { return };
+    let t = Tokens::get(ui.ctx());
+    let pad = crate::theme::ICON_LINK_PAD;
+    let (rect, resp) = ui.allocate_exact_size(vec2(size + 2.0 * pad, size + 2.0 * pad), Sense::click());
+    let color = if resp.hovered() { t.ink_strong } else { t.faint };
+    egui::Image::new(icon).tint(color).paint_at(ui, rect.shrink(pad));
+    resp.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Link, true, &link.label));
+    let resp = resp.on_hover_text(&link.tip).on_hover_cursor(egui::CursorIcon::PointingHand);
+    if resp.clicked() {
+        open_external_link(ui.ctx(), link.url);
     }
 }
 
 /// An app's name as the site sets it: Archivo, with "Craft" in the app's colour.
 pub fn wordmark(ui: &mut Ui, app: &artcraft_launcher_core::CraftApp, size: f32) -> Response {
+    wordmark_in(ui, app, size, true)
+}
+
+/// [`wordmark`], with "Craft" in the app's colour or, when `in_colour` is false, in grey.
+pub fn wordmark_in(ui: &mut Ui, app: &artcraft_launcher_core::CraftApp, size: f32, in_colour: bool) -> Response {
     let t = Tokens::get(ui.ctx());
     let (prefix, craft) = app.name.strip_suffix("Craft").map_or((app.name, ""), |p| (p, "Craft"));
     let mut job = egui::text::LayoutJob::default();
@@ -527,11 +679,101 @@ pub fn wordmark(ui: &mut Ui, app: &artcraft_launcher_core::CraftApp, size: f32) 
         ..Default::default()
     };
     job.append(prefix, 0.0, format(t.ink_strong));
-    job.append(craft, 0.0, format(t.app_ink(app)));
+    job.append(craft, 0.0, format(if in_colour { t.app_ink(app) } else { t.muted }));
     ui.add(egui::Label::new(job).selectable(false))
 }
 
 /// A heading in the display face, tracked in like the site's (`tracking-[-0.02em]`).
 pub fn heading(text: &str, size: f32, color: Color32) -> RichText {
     RichText::new(text).size(size).family(theme::display()).color(color).extra_letter_spacing(-0.02 * size)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The drawn glyphs replace the old `⚙`/`⟳` text (which 0.37 no longer has a fallback font
+    /// for). Their geometry is production code: every shape must stay inside the control, at both
+    /// the tool-button and header-cell sizes, or a click target would draw outside its hit rect.
+    #[test]
+    fn every_painter_glyph_stays_inside_its_control() {
+        for glyph in [Glyph::Pause, Glyph::Close, Glyph::Settings, Glyph::Refresh] {
+            for side in [crate::theme::CONTROL_H, 48.0] {
+                let rect = Rect::from_min_size(egui::pos2(100.0, 200.0), egui::vec2(side, side));
+                let shapes = glyph_shapes(rect, glyph, Color32::WHITE);
+                assert!(!shapes.is_empty(), "{glyph:?} draws nothing at {side} px");
+                for shape in shapes {
+                    let bounds = shape.visual_bounding_rect();
+                    assert!(rect.expand(1.0).contains_rect(bounds), "{glyph:?} at {side} px draws outside its {rect:?}: {bounds:?}");
+                }
+            }
+        }
+    }
+
+    /// The URLs the context has asked to open in its current output, for asserting that the opener
+    /// was (or was not) reached.
+    fn opened_urls(ctx: &egui::Context) -> Vec<String> {
+        ctx.output(|out| {
+            out.commands
+                .iter()
+                .filter_map(|command| match command {
+                    egui::OutputCommand::OpenUrl(open) => Some(open.url.clone()),
+                    _ => None,
+                })
+                .collect()
+        })
+    }
+
+    /// Every external opener goes through `open_external_link`; a release asset URL carrying an
+    /// opener metacharacter must never reach egui's open command, while a plain https release
+    /// URL and the exact Discord app deep link still do.
+    #[test]
+    fn external_openers_refuse_hostile_urls() {
+        let ctx = egui::Context::default();
+        let release_asset = "https://github.com/storytold/photocraft/releases/download/v0.5.0/photocraft-0.5.0-macos-universal.dmg";
+        open_external_link(&ctx, release_asset);
+        assert_eq!(opened_urls(&ctx), vec![release_asset.to_string()]);
+
+        ctx.output_mut(|out| out.commands.clear());
+        for hostile in [
+            "https://github.com/storytold/photocraft/releases/download/v0.5.0/photocraft.dmg|calc.exe",
+            "https://github.com/storytold/photocraft/releases/download/v0.5.0/photocraft.dmg&whoami",
+            "https://github.com/storytold/photocraft/releases/download/v0.5.0/photocraft.dmg`id`",
+            "https://github.com/storytold/photocraft/releases/download/v0.5.0/photocraft.dmg\nnext",
+            "https://user@evil.example/photocraft.dmg",
+            "https:///path",
+            "javascript:alert(1)",
+            "file:///C:/Windows/System32/calc.exe",
+            "ms-msdt:/id",
+            "discord://-/invite/not-artcraft",
+        ] {
+            open_external_link(&ctx, hostile);
+        }
+        assert!(opened_urls(&ctx).is_empty(), "hostile URLs reached the opener: {:?}", opened_urls(&ctx));
+
+        open_external_link(&ctx, artcraft_launcher_core::catalog::DISCORD_APP_URL);
+        assert_eq!(opened_urls(&ctx), vec![artcraft_launcher_core::catalog::DISCORD_APP_URL.to_string()]);
+    }
+
+    /// Each glyph must be distinct geometry, not the same fallback shape for all four.
+    #[test]
+    fn each_glyph_has_its_own_shapes() {
+        let rect = Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(crate::theme::CONTROL_H, crate::theme::CONTROL_H));
+        let bounds: Vec<[u32; 4]> = [Glyph::Pause, Glyph::Close, Glyph::Settings, Glyph::Refresh]
+            .into_iter()
+            .map(|glyph| {
+                let union = glyph_shapes(rect, glyph, Color32::WHITE)
+                    .into_iter()
+                    .map(|shape| shape.visual_bounding_rect())
+                    .reduce(|a, b| a.union(b))
+                    .expect("every glyph draws at least one shape");
+                [union.min.x.to_bits(), union.min.y.to_bits(), union.max.x.to_bits(), union.max.y.to_bits()]
+            })
+            .collect();
+        for (i, a) in bounds.iter().enumerate() {
+            for b in &bounds[i + 1..] {
+                assert_ne!(a, b, "two glyphs share one bounding box");
+            }
+        }
+    }
 }

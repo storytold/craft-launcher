@@ -8,7 +8,7 @@
   };
 
   outputs = { self, nixpkgs, flake-utils, rust-overlay }:
-    flake-utils.lib.eachDefaultSystem (system:
+    flake-utils.lib.eachSystem [ "x86_64-linux" "aarch64-linux" ] (system:
       let
         pkgs = import nixpkgs {
           inherit system;
@@ -61,15 +61,31 @@
           pname = "artcraft-launcher";
           version = version;
           src = ./.;
-          cargoLock.lockFile = ./Cargo.lock;
+          cargoLock = {
+            lockFile = ./Cargo.lock;
+            # Resolve Git dependencies at the immutable revisions in Cargo.lock.
+            allowBuiltinFetchGit = true;
+          };
 
           nativeBuildInputs = with pkgs; [
             pkg-config
-            cmake
-            ninja
             libclang
+            autoPatchelfHook
           ];
           buildInputs = commonDeps;
+
+          runtimeDependencies = with pkgs; [
+            wayland
+            libxkbcommon
+            libGL
+            vulkan-loader
+            #X11 support
+            libx11
+            libxcursor
+            libxrandr
+            libxi
+            libxcb
+          ];
 
           doCheck = false;
         };

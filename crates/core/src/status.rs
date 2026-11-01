@@ -17,7 +17,8 @@ pub enum InstallSource {
     Deb,
     /// An RPM package.
     Rpm,
-    /// An Arch Linux package (from the AUR: `<app>`, `<app>-bin` or `<app>-git`).
+    /// An Arch Linux package: the release's own (`ai.storyteller.<app>`), or `<app>`, `<app>-bin`
+    /// or `<app>-git` from the AUR or a repository.
     Pacman,
     /// A Flatpak.
     Flatpak,
@@ -35,7 +36,7 @@ impl InstallSource {
             Self::Msi => "Windows Installer",
             Self::Deb => "Debian package",
             Self::Rpm => "RPM package",
-            Self::Pacman => "Arch package (AUR)",
+            Self::Pacman => "Arch package",
             Self::Flatpak => "Flatpak",
             Self::AppImage => "AppImage",
             Self::Binary => "System binary",
