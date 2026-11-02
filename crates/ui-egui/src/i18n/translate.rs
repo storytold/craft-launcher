@@ -112,10 +112,11 @@ pub fn msg(s: &str) -> String {
 }
 
 /// Does `text` match a protected product, suite, brand or app name that must stay in English?
+/// Trailing link arrows (e.g. `GitHub ↗`) and punctuation are trimmed so decorated labels are preserved.
 pub fn is_protected_name(text: &str) -> bool {
-    let trimmed = text.trim();
-    matches!(trimmed, "ArtCraft Launcher" | "Craft App Suite" | "Launcher" | "GitHub" | "Discord")
-        || artcraft_launcher_core::SUITE.iter().any(|a| a.name.eq_ignore_ascii_case(trimmed))
+    let clean = text.trim().trim_end_matches(['↗', '→', '…', ':', ' ']);
+    matches!(clean, "ArtCraft Launcher" | "Craft App Suite" | "Launcher" | "GitHub" | "Discord")
+        || artcraft_launcher_core::SUITE.iter().any(|a| a.name.eq_ignore_ascii_case(clean))
 }
 
 /// Case conversion that respects language-specific casing rules (e.g. Turkish dotted and dotless i),
