@@ -331,8 +331,9 @@ fn japanese_candidates() -> Vec<Candidate> {
 }
 
 /// The free OFL Hebrew faces a user may install by hand, by family preference.
-const HEBREW_USER_FILES: [(&str, &str); 6] = [
+const HEBREW_USER_FILES: [(&str, &str); 7] = [
     ("NotoSansHebrew-Regular.ttf", "Noto Sans Hebrew"),
+    ("NotoSansHebrew[wdth,wght].ttf", "Noto Sans Hebrew"),
     ("Rubik-Regular.ttf", "Rubik"),
     ("Heebo-Regular.ttf", "Heebo"),
     ("Assistant-Regular.ttf", "Assistant"),
