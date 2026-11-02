@@ -2116,11 +2116,13 @@ pub mod windows {
     pub fn uninstall_msi(app: &CraftApp, stop: &Stop, phase: &mut dyn FnMut(JobPhase)) -> Result<(), String> {
         in_turn(stop, phase, JobPhase::Removing, || {
             remove_registrations(app).map_err(|removal| removal.error)?;
-            // Launcher-mirrored InstallDir is outside the MSI Registry table; clear it so a stale
-            // path cannot outlive the product (and so an empty uninstall-adjacent key is not held open).
+            // Launcher-mirrored InstallDir is outside the MSI Registry table; clear it only when no
+            // uninstall record remains, so a surviving per-user or per-machine copy keeps its folder.
             // Downgrade uses remove_registrations without this clear; sync_install_dir runs after a
             // successful install of the chosen (or put-back) package.
-            crate::detect::windows::clear_install_dir_from_hives(app);
+            if crate::detect::windows::msi_installs(app).is_empty() {
+                crate::detect::windows::clear_install_dir_from_hives(app);
+            }
             Ok(())
         })
     }

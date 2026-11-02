@@ -247,10 +247,16 @@ pub mod windows {
         /// The context of the uninstall record that named it: the machine's records are per-machine,
         /// the current account's own are per-user.
         pub scope: crate::install::MsiScope,
+        /// The uninstall hive this record was read from. InstallDir sync writes into this hive, not a remapped one.
+        hive: HKEY,
+        /// The registry view flags used to open the record (0 for HKCU, `KEY_WOW64_64KEY` / `KEY_WOW64_32KEY` for HKLM).
+        flags: u32,
     }
 
-    /// Where the uninstall records of an MSI are kept: the machine's (both registry views) and the account's own.
-    const UNINSTALL_ROOTS: [(HKEY, u32); 3] = [(HKEY_LOCAL_MACHINE, KEY_WOW64_64KEY), (HKEY_LOCAL_MACHINE, KEY_WOW64_32KEY), (HKEY_CURRENT_USER, 0)];
+    /// Where the uninstall records of an MSI are kept. Per-user (HKCU) is first so a user install wins
+    /// over a machine copy when both register the same product code, and so InstallDir / App Paths
+    /// discovery prefers the folder the user installed.
+    const UNINSTALL_ROOTS: [(HKEY, u32); 3] = [(HKEY_CURRENT_USER, 0), (HKEY_LOCAL_MACHINE, KEY_WOW64_64KEY), (HKEY_LOCAL_MACHINE, KEY_WOW64_32KEY)];
 
     fn record_context(hive: HKEY) -> crate::install::MsiScope {
         if hive == HKEY_CURRENT_USER { crate::install::MsiScope::PerUser } else { crate::install::MsiScope::PerMachine }
@@ -303,7 +309,7 @@ pub mod windows {
                 let location: String = key.get_value("InstallLocation").unwrap_or_default();
                 let exe =
                     exe_path(app, (!location.is_empty()).then(|| PathBuf::from(location)).or_else(|| install_dir(app, hive, flags)), hive, flags);
-                out.push(MsiInstall { product_code: code, version, exe, scope: record_context(hive) });
+                out.push(MsiInstall { product_code: code, version, exe, scope: record_context(hive), hive, flags });
             }
         }
         out.sort_by(|a, b| super::newest_first(a.version.as_ref(), b.version.as_ref()));
@@ -346,10 +352,31 @@ pub mod windows {
     /// invented by searching Program Files / LocalAppData (`exe_in_roots`), which can pick a leftover
     /// copy in the wrong scope and then make updates trust that folder.
     fn validated_install_dir(app: &CraftApp, record_version: Option<&version::Version>) -> Option<PathBuf> {
-        UNINSTALL_ROOTS.into_iter().find_map(|(hive, flags)| {
-            let folder = install_dir(app, hive, flags)?;
-            folder_is_valid_install_dir(app, &folder, record_version, executable_version).then_some(folder)
-        })
+        let folders = UNINSTALL_ROOTS.into_iter().filter_map(|(hive, flags)| install_dir(app, hive, flags));
+        first_live_recorded_folder(folders, |folder| folder_is_valid_install_dir(app, folder, record_version, executable_version))
+    }
+
+    /// Among recorded InstallDir folders in discovery order (HKCU before HKLM), the first that still
+    /// holds a live install. Tests pass a fake list so hive combinations can be checked without the
+    /// real registry; a stale path (no exe) is skipped.
+    pub(super) fn first_live_recorded_folder(folders: impl IntoIterator<Item = PathBuf>, is_live: impl Fn(&Path) -> bool) -> Option<PathBuf> {
+        folders.into_iter().find(|folder| is_live(folder))
+    }
+
+    /// Distinct InstallDir sync destinations for uninstall records, keyed by `(hive, flags)` so a
+    /// 32-bit HKLM view stays separate from the 64-bit view and is never forced to `KEY_WOW64_64KEY`.
+    pub(super) fn mirror_destinations(records: &[(HKEY, u32)]) -> Vec<(HKEY, u32)> {
+        let mut seen = Vec::new();
+        let mut out = Vec::new();
+        for &(hive, flags) in records {
+            let key = (hive as usize, flags);
+            if seen.contains(&key) {
+                continue;
+            }
+            seen.push(key);
+            out.push((hive, flags));
+        }
+        out
     }
 
     /// Formats a folder the way the MSI writes `InstallDir` (trailing separator).
@@ -358,40 +385,48 @@ pub mod windows {
         if folder_text.ends_with(['\\', '/']) { folder_text.into_owned() } else { format!("{folder_text}\\") }
     }
 
-    /// After an MSI install, copy a validated package-authored install folder into every hive that
+    /// After an MSI install, copy a validated package-authored install folder into every hive/view that
     /// has an uninstall record for `app` but no `InstallDir` of its own. That keeps the next
     /// Open/update on a scope-strict lookup (Launcher 0.9.0 and earlier) without a manual regedit.
+    /// Each record keeps its own hive and registry view (a 32-bit HKLM row is not rewritten as 64-bit).
     /// Writing HKLM needs elevation and is skipped quietly when this process cannot;
     /// [`exe_in_any_scope`] still finds the exe for Open.
     pub fn sync_install_dir_to_record_hives(app: &CraftApp) {
         use winreg::enums::KEY_ALL_ACCESS;
 
-        let mut seen_hives = Vec::new();
-        for install in msi_installs(app) {
-            let (hive, flags, hive_name) = match install.scope {
-                crate::install::MsiScope::PerUser => (HKEY_CURRENT_USER, 0, "HKCU"),
-                crate::install::MsiScope::PerMachine => (HKEY_LOCAL_MACHINE, KEY_WOW64_64KEY, "HKLM"),
-            };
-            if seen_hives.contains(&hive_name) || install_dir(app, hive, flags).is_some() {
+        let installs = msi_installs(app);
+        let records: Vec<(HKEY, u32)> = installs.iter().map(|m| (m.hive, m.flags)).collect();
+        for (hive, flags) in mirror_destinations(&records) {
+            if install_dir(app, hive, flags).is_some() {
                 continue;
             }
+            let Some(install) = installs.iter().find(|m| m.hive == hive && m.flags == flags) else {
+                continue;
+            };
             // Only a recorded InstallDir (validated against this record's version) — never an
             // exe_in_roots guess that could promote a leftover copy into update-folder selection.
             let Some(folder) = validated_install_dir(app, install.version.as_ref()) else {
                 continue;
             };
-            seen_hives.push(hive_name);
+            let hive_name = if hive == HKEY_CURRENT_USER { "HKCU" } else { "HKLM" };
+            let view = if flags == KEY_WOW64_32KEY {
+                "32-bit"
+            } else if flags == KEY_WOW64_64KEY {
+                "64-bit"
+            } else {
+                "native"
+            };
             let folder_value = install_dir_registry_value(&folder);
             for key_path in install_dir_keys(app) {
                 match RegKey::predef(hive).create_subkey_with_flags(&key_path, KEY_ALL_ACCESS | flags) {
                     Ok((key, _)) => {
                         if let Err(e) = key.set_value("InstallDir", &folder_value) {
-                            log::warn!("{}: couldn't record InstallDir under {hive_name}\\{key_path} ({e})", app.name);
+                            log::warn!("{}: couldn't record InstallDir under {hive_name}\\{key_path} ({view}) ({e})", app.name);
                         } else {
-                            log::info!("{}: recorded InstallDir for uninstall hive {hive_name}", app.name);
+                            log::info!("{}: recorded InstallDir for uninstall hive {hive_name} ({view})", app.name);
                         }
                     }
-                    Err(e) => log::warn!("{}: couldn't create {hive_name}\\{key_path} to record InstallDir ({e})", app.name),
+                    Err(e) => log::warn!("{}: couldn't create {hive_name}\\{key_path} ({view}) to record InstallDir ({e})", app.name),
                 }
             }
         }
@@ -1155,6 +1190,46 @@ mod tests {
         assert_eq!(found, vec![first, other]);
     }
 
+    /// Fake-registry hive combinations: per-user InstallDir wins when listed first (HKCU before HKLM),
+    /// and a stale path with no exe is skipped for a live one later in the list.
+    #[cfg(windows)]
+    #[test]
+    fn recorded_install_dir_prefers_per_user_and_skips_stale() {
+        let user = PathBuf::from(r"C:\Users\a\AppData\Local\Programs\ArtCraft\WordCraft");
+        let machine = PathBuf::from(r"C:\Program Files\ArtCraft\WordCraft");
+        let stale = PathBuf::from(r"C:\Gone\WordCraft");
+        assert_eq!(
+            windows::first_live_recorded_folder([user.clone(), machine.clone()], |_| true),
+            Some(user.clone()),
+            "HKCU-first discovery must prefer the per-user folder"
+        );
+        assert_eq!(
+            windows::first_live_recorded_folder([stale.clone(), machine.clone()], |p| p == machine),
+            Some(machine.clone()),
+            "a stale InstallDir must not win over a live one"
+        );
+        assert_eq!(windows::first_live_recorded_folder([stale, user], |_| false), None, "no Open candidate when every recorded folder is dead");
+    }
+
+    /// Sync destinations keep each uninstall record's registry view; a 32-bit HKLM row is not folded
+    /// into the 64-bit view.
+    #[cfg(windows)]
+    #[test]
+    fn install_dir_mirror_keeps_each_record_registry_view() {
+        use winreg::enums::{HKEY_CURRENT_USER, HKEY_LOCAL_MACHINE, KEY_WOW64_32KEY, KEY_WOW64_64KEY};
+
+        let records = [
+            (HKEY_LOCAL_MACHINE, KEY_WOW64_32KEY),
+            (HKEY_LOCAL_MACHINE, KEY_WOW64_64KEY),
+            (HKEY_CURRENT_USER, 0),
+            (HKEY_LOCAL_MACHINE, KEY_WOW64_32KEY),
+        ];
+        assert_eq!(
+            windows::mirror_destinations(&records),
+            vec![(HKEY_LOCAL_MACHINE, KEY_WOW64_32KEY), (HKEY_LOCAL_MACHINE, KEY_WOW64_64KEY), (HKEY_CURRENT_USER, 0)]
+        );
+    }
+
     /// A folder is only a safe InstallDir to mirror when it still holds this app's exe, and a
     /// versioned uninstall record rejects a leftover copy of another version.
     #[cfg(windows)]
@@ -1168,10 +1243,7 @@ mod tests {
         let version_of = |p: &std::path::Path| {
             if p.ends_with("deckcraft.exe") { v("0.12.0") } else { None }
         };
-        assert!(
-            !windows::folder_is_valid_install_dir(deck, &folder, v("0.12.0").as_ref(), version_of),
-            "empty folder must not be synced"
-        );
+        assert!(!windows::folder_is_valid_install_dir(deck, &folder, v("0.12.0").as_ref(), version_of), "empty folder must not be synced");
         std::fs::write(folder.join("deckcraft.exe"), "x").unwrap();
         assert!(windows::folder_is_valid_install_dir(deck, &folder, v("0.12.0").as_ref(), version_of));
         assert!(
@@ -1187,8 +1259,8 @@ mod tests {
     #[cfg(windows)]
     #[test]
     fn clear_install_dir_removes_a_launcher_written_hkcu_value() {
-        use winreg::enums::{HKEY_CURRENT_USER, KEY_ALL_ACCESS, KEY_READ};
         use winreg::RegKey;
+        use winreg::enums::{HKEY_CURRENT_USER, KEY_ALL_ACCESS, KEY_READ};
 
         let app = CraftApp::by_id("deckcraft").unwrap();
         let key_path = install_dir_keys(app)[0].clone();
