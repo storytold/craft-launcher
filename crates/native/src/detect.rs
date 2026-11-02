@@ -253,9 +253,10 @@ pub mod windows {
         flags: u32,
     }
 
-    /// Where the uninstall records of an MSI are kept. Per-user (HKCU) is first so a user install wins
-    /// over a machine copy when both register the same product code, and so InstallDir / App Paths
-    /// discovery prefers the folder the user installed.
+    /// Where the uninstall records of an MSI are kept. Per-user (HKCU) is first so a *valid* user
+    /// install wins over a machine copy when both register the same product code, and so InstallDir /
+    /// App Paths discovery prefers the folder the user installed. A dead or version-mismatched HKCU
+    /// record does not suppress HKLM (`msi_installs`).
     const UNINSTALL_ROOTS: [(HKEY, u32); 3] = [(HKEY_CURRENT_USER, 0), (HKEY_LOCAL_MACHINE, KEY_WOW64_64KEY), (HKEY_LOCAL_MACHINE, KEY_WOW64_32KEY)];
 
     fn record_context(hive: HKEY) -> crate::install::MsiScope {
@@ -289,9 +290,28 @@ pub mod windows {
         msi_installs(app).into_iter().find(|m| m.product_code == product_code).and_then(|m| m.exe).is_some_and(|exe| location_text(&exe) == location)
     }
 
+    /// Whether an earlier uninstall record (typically HKCU) is good enough to suppress a later
+    /// same-product-code hive (typically HKLM). Needs a live exe; when both the record and the file
+    /// report a version they must agree, so a leftover per-user copy cannot hide a working
+    /// machine-wide install from Open / Reveal / update-folder selection.
+    pub(super) fn prefer_existing_msi_record(
+        existing_exe: Option<&Path>,
+        existing_version: Option<&version::Version>,
+        version_of: impl Fn(&Path) -> Option<version::Version>,
+    ) -> bool {
+        let Some(exe) = existing_exe else {
+            return false;
+        };
+        match (existing_version, version_of(exe)) {
+            (Some(want), Some(have)) => have == *want,
+            // Exe present; no version pair to compare (record or file lacks one).
+            _ => true,
+        }
+    }
+
     /// Every Windows Installer entry for `app`, newest first.
     pub fn msi_installs(app: &CraftApp) -> Vec<MsiInstall> {
-        let mut out = Vec::new();
+        let mut out: Vec<MsiInstall> = Vec::new();
         for (hive, flags) in UNINSTALL_ROOTS {
             let Ok(root) = RegKey::predef(hive).open_subkey_with_flags(UNINSTALL, KEY_READ | flags) else { continue };
             for code in root.enum_keys().flatten() {
@@ -302,14 +322,24 @@ pub mod windows {
                 let Ok(key) = root.open_subkey_with_flags(&code, KEY_READ | flags) else { continue };
                 let name: String = key.get_value("DisplayName").unwrap_or_default();
                 let publisher: String = key.get_value("Publisher").unwrap_or_default();
-                if !is_installer_entry(app, &name, &publisher) || out.iter().any(|m: &MsiInstall| m.product_code == code) {
+                if !is_installer_entry(app, &name, &publisher) {
                     continue;
                 }
                 let version = key.get_value::<String, _>("DisplayVersion").ok().and_then(|v| version::parse(&v));
                 let location: String = key.get_value("InstallLocation").unwrap_or_default();
                 let exe =
                     exe_path(app, (!location.is_empty()).then(|| PathBuf::from(location)).or_else(|| install_dir(app, hive, flags)), hive, flags);
-                out.push(MsiInstall { product_code: code, version, exe, scope: record_context(hive), hive, flags });
+                let candidate = MsiInstall { product_code: code.clone(), version, exe, scope: record_context(hive), hive, flags };
+                if let Some(existing) = out.iter_mut().find(|m| m.product_code == code) {
+                    // HKCU-first: keep a validated per-user record; replace it when its exe is missing
+                    // or disagrees with DisplayVersion so HKLM (or its version-aware fallback) can win.
+                    if prefer_existing_msi_record(existing.exe.as_deref(), existing.version.as_ref(), executable_version) {
+                        continue;
+                    }
+                    *existing = candidate;
+                    continue;
+                }
+                out.push(candidate);
             }
         }
         out.sort_by(|a, b| super::newest_first(a.version.as_ref(), b.version.as_ref()));
@@ -1188,6 +1218,26 @@ mod tests {
         windows::push_unique(&mut found, same);
         windows::push_unique(&mut found, other.clone());
         assert_eq!(found, vec![first, other]);
+    }
+
+    /// A same-product-code HKCU record only suppresses HKLM when its exe is live and matches
+    /// DisplayVersion; a stale or missing per-user exe must not hide a machine-wide install.
+    #[cfg(windows)]
+    #[test]
+    fn stale_per_user_msi_record_does_not_suppress_machine_duplicate() {
+        let v = |s: &str| version::parse(s);
+        let stale = PathBuf::from(r"C:\Users\a\AppData\Local\Programs\ArtCraft\DeckCraft\deckcraft.exe");
+        let version_of = |p: &std::path::Path| if p == stale { v("0.11.0") } else { v("0.12.0") };
+        assert!(
+            !windows::prefer_existing_msi_record(Some(&stale), v("0.12.0").as_ref(), version_of),
+            "wrong-version HKCU exe must not suppress HKLM"
+        );
+        assert!(
+            windows::prefer_existing_msi_record(Some(&stale), v("0.11.0").as_ref(), version_of),
+            "matching HKCU exe keeps HKCU priority"
+        );
+        assert!(!windows::prefer_existing_msi_record(None, v("0.12.0").as_ref(), version_of), "missing HKCU exe must not suppress HKLM");
+        assert!(windows::prefer_existing_msi_record(Some(&stale), None, version_of), "exe with no record version still prefers HKCU");
     }
 
     /// Fake-registry hive combinations: per-user InstallDir wins when listed first (HKCU before HKLM),
