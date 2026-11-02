@@ -916,7 +916,8 @@ impl LauncherUi {
     }
 
     /// While a pin handle is dragged, hovering another pinned card/row moves the dragged app there.
-    /// Reorder only after the pointer crosses the target's midpoint so the list does not flicker.
+    /// Insert before the target when the pointer is in its top/left half, otherwise after — so
+    /// grip-to-grip drops work in every direction without depending on travel relative to midpoints.
     fn pin_drop_target(&mut self, ui: &Ui, id: &str, rect: Rect) {
         let Some(from) = self.pin_dragging.clone() else {
             return;
@@ -934,16 +935,13 @@ impl LauncherUi {
         if !rect.contains(pos) {
             return;
         }
-        let Some(from_i) = self.settings.pinned.iter().position(|p| p == &from) else {
-            return;
-        };
         let Some(to_i) = self.settings.pinned.iter().position(|p| p == id) else {
             return;
         };
-        let past_mid = if from_i < to_i { pos.y > rect.center().y || pos.x > rect.center().x } else { pos.y < rect.center().y || pos.x < rect.center().x };
-        if past_mid {
-            self.settings.reorder_pinned(&from, id);
-        }
+        let insert_before = pos.x < rect.center().x || pos.y < rect.center().y;
+        let last = self.settings.pinned.len().saturating_sub(1);
+        let final_index = if insert_before { to_i } else { to_i.saturating_add(1).min(last) };
+        self.settings.reorder_pinned_to(&from, final_index);
     }
 
     /// A running job's row: one progress bar, with pause and cancel while its download is under

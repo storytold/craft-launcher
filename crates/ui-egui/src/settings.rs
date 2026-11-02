@@ -191,6 +191,20 @@ impl Settings {
         self.pinned.insert(to.min(self.pinned.len()), item);
     }
 
+    /// Move `from_id` so its final index is `to_index` (clamped). Used by drag-and-drop.
+    pub fn reorder_pinned_to(&mut self, from_id: &str, to_index: usize) {
+        let Some(from) = self.pinned.iter().position(|p| p == from_id) else {
+            return;
+        };
+        let to_index = to_index.min(self.pinned.len().saturating_sub(1));
+        if from == to_index {
+            return;
+        }
+        let item = self.pinned.remove(from);
+        // After remove, inserting at the original `to_index` yields that final index.
+        self.pinned.insert(to_index.min(self.pinned.len()), item);
+    }
+
     /// Display name for a language `code`: a language's name in itself, from the registry
     /// ([`LANGUAGES`](crate::i18n::LANGUAGES)). A language needing a CJK font is named in English,
     /// with its own name added only while `installed` — the CJK face in the current font stack — is
@@ -300,6 +314,19 @@ mod tests {
         s.reorder_pinned("filmcraft", "missing");
         s.reorder_pinned("filmcraft", "filmcraft");
         assert_eq!(s.pinned, vec!["filmcraft", "photocraft"]);
+    }
+
+    #[test]
+    fn reorder_pinned_to_moves_to_final_index() {
+        let mut s = Settings { pinned: vec!["a".into(), "b".into(), "c".into()], ..Settings::default() };
+        s.reorder_pinned_to("c", 0);
+        assert_eq!(s.pinned, vec!["c", "a", "b"]);
+        s.reorder_pinned_to("c", 2);
+        assert_eq!(s.pinned, vec!["a", "b", "c"]);
+        s.reorder_pinned_to("a", 1);
+        assert_eq!(s.pinned, vec!["b", "a", "c"]);
+        s.reorder_pinned_to("a", 1);
+        assert_eq!(s.pinned, vec!["b", "a", "c"]);
     }
 
     #[test]
