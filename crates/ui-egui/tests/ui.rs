@@ -2804,6 +2804,22 @@ fn command_m_minimizes_the_mac_window_only() {
 }
 
 #[test]
+/// Ctrl+R (Command-R on macOS) checks for updates like the refresh button; a plain R does not.
+fn command_r_checks_for_updates() {
+    let (mut h, sent) = harness(ViewMode::Grid, egui::Theme::Dark, true);
+    h.run_steps(4);
+    let forced = |sent: &RefCell<Vec<Command>>| sent.borrow().iter().filter(|c| matches!(c, Command::CheckForUpdates { force: true })).count();
+    sent.borrow_mut().clear();
+    h.key_press(egui::Key::R);
+    h.run_steps(2);
+    assert_eq!(forced(&sent), 0, "R alone must not check");
+    h.key_press_modifiers(egui::Modifiers::COMMAND, egui::Key::R);
+    h.run_steps(2);
+    assert_eq!(forced(&sent), 1, "Command-R checks once");
+    assert!(sent.borrow().contains(&Command::Detect), "and looks for installed apps again, as the button does");
+}
+
+#[test]
 fn an_occupied_folder_asks_before_replacing_it() {
     let path = "/Volumes/Craft Apps/PhotoCraft.app";
     let mut ev = events();

@@ -775,6 +775,11 @@ impl LauncherUi {
         if host.title_bar() == TitleBar::MacOs && ctx.input_mut(|i| i.consume_key(egui::Modifiers::MAC_CMD, egui::Key::M)) {
             ctx.send_viewport_cmd(egui::ViewportCommand::Minimized(true));
         }
+        // Ctrl+R (Command-R on macOS) checks for updates, as the toolbar's refresh button does, and
+        // like it is ignored while a check is running. In a browser the page reloads instead.
+        if !self.checking && ctx.input_mut(|i| i.consume_key(egui::Modifiers::COMMAND, egui::Key::R)) {
+            self.check_now_from_ui();
+        }
         // `effective_lang` only picks a CJK language once the system's font has loaded; install
         // that face now, and draw nothing until the context has switched to it.
         let lang = effective_lang(&self.settings.language);
