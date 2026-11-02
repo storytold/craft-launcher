@@ -399,3 +399,10 @@ texturecraft	Mesh maps	Карты сетки
 texturecraft	Bake mesh maps and use smart materials.	Запекайте карты сетки и используйте умные материалы.
 texturecraft	Paint textures on 3D models.	Рисуйте текстуры на 3D-моделях.
 	Hide community apps	Скрыть приложения сообщества
+materialcraft	Procedural material design	Создание процедурных материалов
+materialcraft	Build materials with node graphs.	Создавайте материалы с помощью графов узлов.
+materialcraft	Create tileable PBR materials and export texture maps.	Создавайте бесшовные PBR-материалы и экспортируйте карты текстур.
+materialcraft	Node graphs	Графы узлов
+materialcraft	Combine noises, patterns and filters.	Комбинируйте шумы, узоры и фильтры.
+materialcraft	Live previews	Предпросмотр в реальном времени
+materialcraft	Preview materials in 2D and on 3D models.	Просматривайте материалы в 2D и на 3D-моделях.

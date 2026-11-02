@@ -371,3 +371,10 @@ texturecraft	Mesh maps	网格贴图
 texturecraft	Bake mesh maps and use smart materials.	烘焙网格贴图并使用智能材质。
 texturecraft	Paint textures on 3D models.	在 3D 模型上绘制纹理。
 	Hide community apps	隐藏社区应用
+materialcraft	Procedural material design	程序化材质设计
+materialcraft	Build materials with node graphs.	使用节点图构建材质。
+materialcraft	Create tileable PBR materials and export texture maps.	创建可无缝平铺的 PBR 材质并导出纹理贴图。
+materialcraft	Node graphs	节点图
+materialcraft	Combine noises, patterns and filters.	组合噪声、图案和滤镜。
+materialcraft	Live previews	实时预览
+materialcraft	Preview materials in 2D and on 3D models.	在二维视图和三维模型上预览材质。

@@ -406,3 +406,10 @@ texturecraft	Mesh maps	メッシュマップ
 texturecraft	Bake mesh maps and use smart materials.	メッシュマップをベイクし、スマートマテリアルを使用します。
 texturecraft	Paint textures on 3D models.	3Dモデルにテクスチャを描きます。
 	Hide community apps	コミュニティアプリを非表示
+materialcraft	Procedural material design	プロシージャルマテリアルの作成
+materialcraft	Build materials with node graphs.	ノードグラフでマテリアルを作成します。
+materialcraft	Create tileable PBR materials and export texture maps.	継ぎ目なく繰り返せるPBRマテリアルを作成し、テクスチャマップを書き出します。
+materialcraft	Node graphs	ノードグラフ
+materialcraft	Combine noises, patterns and filters.	ノイズ、パターン、フィルターを組み合わせます。
+materialcraft	Live previews	リアルタイムプレビュー
+materialcraft	Preview materials in 2D and on 3D models.	マテリアルを2Dと3Dモデル上でプレビューします。
