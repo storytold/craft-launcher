@@ -413,10 +413,21 @@ impl LauncherUi {
 
     // ---- grid ----------------------------------------------------------------------------
 
-    /// Installed apps first (`ids` arrives that way), then the rest under a "Not installed" header.
+    /// Pinned apps first (user order), then installed, then the rest under a "Not installed" header.
     pub(crate) fn grid(&mut self, ui: &mut Ui, ids: &[&'static str]) {
-        let installed = ids.iter().take_while(|id| self.is_installed(id)).count();
-        let (top, rest) = ids.split_at(installed);
+        let pinned_n = ids.iter().take_while(|id| self.settings.is_pinned(id)).count();
+        let (pinned, rest) = ids.split_at(pinned_n);
+        if !pinned.is_empty() {
+            let t = Tokens::get(ui.ctx());
+            widgets::hud(ui, tl!("Pinned"), t.faint);
+            ui.add_space(12.0);
+            self.grid_block(ui, pinned);
+            if !rest.is_empty() {
+                ui.add_space(28.0);
+            }
+        }
+        let installed = rest.iter().take_while(|id| self.is_installed(id)).count();
+        let (top, rest) = rest.split_at(installed);
         self.grid_block(ui, top);
         if !top.is_empty() && !rest.is_empty() {
             let t = Tokens::get(ui.ctx());
@@ -426,6 +437,9 @@ impl LauncherUi {
         }
         self.grid_block(ui, rest);
         ui.add_space(24.0);
+        if !ui.input(|i| i.pointer.primary_down()) {
+            self.pin_dragging = None;
+        }
     }
 
     fn grid_block(&mut self, ui: &mut Ui, ids: &[&'static str]) {
@@ -452,6 +466,7 @@ impl LauncherUi {
     /// pointer is over it.
     fn card(&mut self, ui: &mut Ui, id: &str, rect: Rect) {
         let Some(entry) = self.entry(id).cloned() else { return };
+        self.pin_drop_target(ui, id, rect);
         let t = Tokens::get(ui.ctx());
         let app = entry.app;
         let hovered = ui.rect_contains_pointer(rect);
@@ -609,6 +624,9 @@ impl LauncherUi {
                 self.settings.sort_descending = k.starts_descending();
             }
         }
+        if !ui.input(|i| i.pointer.primary_down()) {
+            self.pin_dragging = None;
+        }
     }
 
     /// The table's hairline under the row `ui` is drawing, across the table's full width.
@@ -738,9 +756,11 @@ impl LauncherUi {
         if rule {
             Self::table_rule(ui, t, span, clip);
         }
+        let row_rect = ui.max_rect();
+        self.pin_drop_target(ui, id, row_rect);
         // Clicking the app's cell opens its page (the content is added after, so it wins any hit).
         if AppDetails::by_id(id).is_some() {
-            let open = ui.interact(ui.max_rect(), ui.scope_id().with(("row-open", id)), Sense::click());
+            let open = ui.interact(row_rect, ui.scope_id().with(("row-open", id)), Sense::click());
             open.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, true, fmt(tl!("{name} details"), &[("name", entry.app.name)])));
             if open.on_hover_cursor(egui::CursorIcon::PointingHand).clicked() {
                 self.detail = Some(id.to_string());
@@ -856,12 +876,14 @@ impl LauncherUi {
     }
 
     /// The main button and the `⋯` menu beside it. `links_in_menu` is false where the page shows
-    /// the website, GitHub and releases links as buttons of its own.
+    /// the website, GitHub and releases links as buttons of its own. Pinned apps also get a drag
+    /// handle for reordering.
     pub(crate) fn actions_in(&mut self, ui: &mut Ui, entry: &AppEntry, status: &AppStatus, width: f32, links_in_menu: bool) {
         let id = entry.app.id.to_string();
-        // One square button (the menu) beside the main one.
         let gap = ui.spacing().item_spacing.x;
-        let main_w = (width - theme::CONTROL_H - gap).max(120.0);
+        let pinned = self.settings.is_pinned(entry.app.id);
+        let squares = 1.0 + if pinned { 1.0 } else { 0.0 };
+        let main_w = (width - squares * (theme::CONTROL_H + gap) + gap).max(90.0);
         if entry.job.is_some() {
             self.job_actions(ui, entry, &id, main_w, width);
             return;
@@ -870,7 +892,53 @@ impl LauncherUi {
             return;
         }
         self.primary_button(ui, entry, &id, status, main_w);
+        if pinned {
+            self.pin_grip(ui, entry);
+        }
         self.menu(ui, entry, status, links_in_menu);
+    }
+
+    /// Drag handle that reorders this pinned app among the other pinned apps.
+    fn pin_grip(&mut self, ui: &mut Ui, entry: &AppEntry) {
+        let tip = fmt(tl!("Reorder {name}"), &[("name", entry.app.name)]);
+        let resp = widgets::grip_button(ui, &tip);
+        if resp.drag_started() || resp.dragged() {
+            self.pin_dragging = Some(entry.app.id.to_string());
+        }
+        if resp.drag_stopped() {
+            self.pin_dragging = None;
+        }
+    }
+
+    /// While a pin handle is dragged, hovering another pinned card/row moves the dragged app there.
+    /// Reorder only after the pointer crosses the target's midpoint so the list does not flicker.
+    fn pin_drop_target(&mut self, ui: &Ui, id: &str, rect: Rect) {
+        let Some(from) = self.pin_dragging.clone() else {
+            return;
+        };
+        if from == id || !self.settings.is_pinned(id) {
+            return;
+        }
+        if !ui.input(|i| i.pointer.primary_down()) {
+            self.pin_dragging = None;
+            return;
+        }
+        let Some(pos) = ui.input(|i| i.pointer.interact_pos()) else {
+            return;
+        };
+        if !rect.contains(pos) {
+            return;
+        }
+        let Some(from_i) = self.settings.pinned.iter().position(|p| p == &from) else {
+            return;
+        };
+        let Some(to_i) = self.settings.pinned.iter().position(|p| p == id) else {
+            return;
+        };
+        let past_mid = if from_i < to_i { pos.y > rect.center().y || pos.x > rect.center().x } else { pos.y < rect.center().y || pos.x < rect.center().x };
+        if past_mid {
+            self.settings.reorder_pinned(&from, id);
+        }
     }
 
     /// A running job's row: one progress bar, with pause and cancel while its download is under
@@ -958,6 +1026,9 @@ impl LauncherUi {
         }
         if widgets::glyph_button(ui, widgets::Glyph::Close, tl!("Discard download")).clicked() {
             self.act_command(Command::Cancel { app: id.to_string() });
+        }
+        if self.settings.is_pinned(entry.app.id) {
+            self.pin_grip(ui, entry);
         }
         self.menu(ui, entry, status, links_in_menu);
         true
@@ -1053,8 +1124,23 @@ impl LauncherUi {
                 link(ui, tl!("GitHub repository"), entry.app.repo_url());
                 link(ui, tl!("All releases"), entry.app.releases_url());
             }
+            self.menu_pin(ui, entry, &id);
             self.menu_hide(ui, entry, &id);
         });
+    }
+
+    /// Pin — or unpin — the app at the top of the list.
+    fn menu_pin(&mut self, ui: &mut Ui, entry: &AppEntry, id: &str) {
+        ui.separator();
+        let pinned = self.settings.is_pinned(entry.app.id);
+        if ui.button(if pinned { tl!("Unpin") } else { tl!("Pin to top") }).clicked() {
+            if pinned {
+                self.settings.unpin_app(id);
+            } else {
+                self.settings.pin_app(id);
+            }
+            ui.close();
+        }
     }
 
     /// The menu items for an installed app: open, reveal in the file manager, reinstall, and
@@ -1105,6 +1191,7 @@ impl LauncherUi {
     }
 
     /// Hide — or unhide — the app, keeping the Hidden filter sane when the hidden set empties.
+    /// Hiding also clears a pin so a hidden app cannot float back into the main list.
     fn menu_hide(&mut self, ui: &mut Ui, entry: &AppEntry, id: &str) {
         ui.separator();
         let hidden = self.settings.hidden.contains(entry.app.id);
@@ -1115,6 +1202,7 @@ impl LauncherUi {
                     self.settings.filter = Filter::All;
                 }
             } else {
+                self.settings.unpin_app(id);
                 self.settings.hidden.insert(id.to_string());
             }
             ui.close();

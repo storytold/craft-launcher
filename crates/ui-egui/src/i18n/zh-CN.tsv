@@ -271,6 +271,10 @@ figcraft	Interface design and prototyping	界面设计与原型制作
 	Apps on this computer	此电脑上的应用
 	Installed apps with a newer version	有新版本的已安装应用
 	Apps you can install	可安装的应用
+	Pin to top	置顶
+	Unpin	取消置顶
+	Pinned	已置顶
+	Reorder {name}	重新排序 {name}
 	Hide App	隐藏应用
 	Unhide App	取消隐藏应用
 	Hidden Apps	已隐藏的应用

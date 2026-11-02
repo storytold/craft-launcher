@@ -127,6 +127,8 @@ pub struct Settings {
     pub tray_hint_shown: bool,
     /// How many times each app was opened from the launcher (catalog id → count), for "Frequently used".
     pub launches: BTreeMap<String, u32>,
+    /// Catalog ids pinned to the top of the grid/table, in the order the user chose.
+    pub pinned: Vec<String>,
 }
 
 impl Settings {
@@ -138,6 +140,41 @@ impl Settings {
         if !matches!(self.filter, Filter::All | Filter::Hidden) {
             self.filter = Filter::All;
         }
+    }
+
+    /// Whether `id` is in the pinned list.
+    pub fn is_pinned(&self, id: &str) -> bool {
+        self.pinned.iter().any(|p| p == id)
+    }
+
+    /// Pin `id` at the end of the pinned list (no-op if already pinned).
+    pub fn pin_app(&mut self, id: &str) {
+        if id.is_empty() || self.is_pinned(id) {
+            return;
+        }
+        self.pinned.push(id.to_string());
+    }
+
+    /// Remove `id` from the pinned list.
+    pub fn unpin_app(&mut self, id: &str) {
+        self.pinned.retain(|p| p != id);
+    }
+
+    /// Move the pinned app `from_id` so its final index is the current index of `to_id`.
+    pub fn reorder_pinned(&mut self, from_id: &str, to_id: &str) {
+        if from_id == to_id {
+            return;
+        }
+        let Some(from) = self.pinned.iter().position(|p| p == from_id) else {
+            return;
+        };
+        let Some(to) = self.pinned.iter().position(|p| p == to_id) else {
+            return;
+        };
+        let item = self.pinned.remove(from);
+        // After `remove`, indices after `from` shift left; inserting at the original `to`
+        // still lands the item on that final index (whether moving up or down).
+        self.pinned.insert(to.min(self.pinned.len()), item);
     }
 
     /// Display name for a language `code`: a language's name in itself, from the registry
@@ -212,6 +249,58 @@ impl Default for Settings {
             hidden: std::collections::BTreeSet::new(),
             tray_hint_shown: false,
             launches: BTreeMap::new(),
+            pinned: Vec::new(),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn pin_appends_once_and_unpin_removes() {
+        let mut s = Settings::default();
+        s.pin_app("photocraft");
+        s.pin_app("photocraft");
+        s.pin_app("filmcraft");
+        assert_eq!(s.pinned, vec!["photocraft", "filmcraft"]);
+        s.unpin_app("photocraft");
+        assert_eq!(s.pinned, vec!["filmcraft"]);
+        s.unpin_app("missing");
+        assert_eq!(s.pinned, vec!["filmcraft"]);
+    }
+
+    #[test]
+    fn reorder_pinned_moves_to_target_index() {
+        let mut s = Settings { pinned: vec!["a".into(), "b".into(), "c".into(), "d".into()], ..Settings::default() };
+        s.reorder_pinned("a", "c");
+        assert_eq!(s.pinned, vec!["b", "c", "a", "d"]);
+        s.reorder_pinned("a", "b");
+        assert_eq!(s.pinned, vec!["a", "b", "c", "d"]);
+        s.reorder_pinned("photocraft", "filmcraft"); // no-op when missing
+        let mut s = Settings { pinned: vec!["photocraft".into(), "filmcraft".into()], ..Settings::default() };
+        s.reorder_pinned("photocraft", "filmcraft");
+        assert_eq!(s.pinned, vec!["filmcraft", "photocraft"]);
+        s.reorder_pinned("missing", "a");
+        s.reorder_pinned("filmcraft", "missing");
+        s.reorder_pinned("filmcraft", "filmcraft");
+        assert_eq!(s.pinned, vec!["filmcraft", "photocraft"]);
+    }
+
+    #[test]
+    fn old_settings_json_loads_with_empty_pinned() {
+        let s: Settings = serde_json::from_str(r#"{"view":"Grid"}"#).expect("legacy settings");
+        assert!(s.pinned.is_empty());
+    }
+
+    #[test]
+    fn hide_path_unpins() {
+        let mut s = Settings::default();
+        s.pin_app("photocraft");
+        s.unpin_app("photocraft");
+        s.hidden.insert("photocraft".into());
+        assert!(s.pinned.is_empty());
+        assert!(s.hidden.contains("photocraft"));
     }
 }

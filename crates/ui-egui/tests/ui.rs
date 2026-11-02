@@ -1391,6 +1391,75 @@ fn table_view_and_light_theme() {
 }
 
 #[test]
+/// Pin floats an app above Name sort; reorder via settings is reflected; Hide clears the pin.
+fn pinning_an_app_keeps_it_on_top_until_unpinned() {
+    let (mut h, _) = harness(ViewMode::Table, egui::Theme::Dark, true);
+    h.run_steps(6);
+    // Name sort would put CADCraft before PhotoCraft; a pin must still win.
+    h.state_mut().as_mut().unwrap().settings.sort = artcraft_launcher_ui_egui::settings::SortKey::Name;
+    h.state_mut().as_mut().unwrap().settings.sort_descending = false;
+    h.run_steps(2);
+    h.get_by_label("More actions for PhotoCraft").click();
+    h.run_steps(3);
+    h.get_by_label("Pin to top").click();
+    h.run_steps(4);
+    assert_eq!(h.state().as_ref().unwrap().settings.pinned, vec!["photocraft".to_string()]);
+    let ids = h.state().as_ref().unwrap().visible_ids_for_test();
+    assert_eq!(ids.first().copied(), Some("photocraft"), "pinned app stays first under Name sort: {ids:?}");
+    h.state_mut().as_mut().unwrap().settings.pin_app("filmcraft");
+    h.state_mut().as_mut().unwrap().settings.reorder_pinned("photocraft", "filmcraft");
+    h.run_steps(2);
+    assert_eq!(h.state().as_ref().unwrap().settings.pinned, vec!["filmcraft".to_string(), "photocraft".to_string()]);
+    assert_eq!(&h.state().as_ref().unwrap().visible_ids_for_test()[..2], &["filmcraft", "photocraft"]);
+    h.get_all_by_label_contains("Reorder").next().expect("pinned rows expose reorder handles");
+}
+
+#[test]
+/// Hiding a pinned app also removes it from the pin list.
+fn hide_clears_pin() {
+    let (mut h, _) = harness(ViewMode::Grid, egui::Theme::Dark, true);
+    h.run_steps(6);
+    h.state_mut().as_mut().unwrap().settings.pin_app("photocraft");
+    h.run_steps(2);
+    h.get_by_label("More actions for PhotoCraft").click();
+    h.run_steps(3);
+    h.get_by_label("Hide App").click();
+    h.run_steps(4);
+    assert!(h.state().as_ref().unwrap().settings.pinned.is_empty());
+    assert!(h.state().as_ref().unwrap().settings.hidden.contains("photocraft"));
+}
+
+#[test]
+/// After pinning from the menu, opening it again offers Unpin and clears the pin.
+fn pinned_app_menu_offers_unpin() {
+    let (mut h, _) = harness(ViewMode::Grid, egui::Theme::Dark, true);
+    h.run_steps(6);
+    h.get_by_label("More actions for PhotoCraft").click();
+    h.run_steps(3);
+    h.get_by_label("Pin to top").click();
+    h.run_steps(4);
+    assert_eq!(h.state().as_ref().unwrap().settings.pinned, vec!["photocraft".to_string()]);
+    h.get_by_label("More actions for PhotoCraft").click();
+    h.run_steps(3);
+    assert!(h.query_by_label("Pin to top").is_none(), "pinned apps must not keep offering Pin to top");
+    h.get_by_label("Unpin").click();
+    h.run_steps(4);
+    assert!(h.state().as_ref().unwrap().settings.pinned.is_empty());
+}
+
+#[test]
+/// Grid shows a Pinned section label once at least one app is pinned.
+fn grid_shows_pinned_section_header() {
+    let (mut h, _) = harness(ViewMode::Grid, egui::Theme::Dark, true);
+    h.run_steps(6);
+    assert!(h.query_by_label("Pinned").is_none());
+    h.state_mut().as_mut().unwrap().settings.pin_app("photocraft");
+    h.run_steps(4);
+    h.get_by_label("Pinned");
+    h.get_all_by_label_contains("Reorder PhotoCraft").next().expect("pinned card exposes a reorder handle");
+}
+
+#[test]
 /// Hide removes an app from All into Hidden Apps; Unhide restores it, clears the hidden set and
 /// returns the filter to All.
 fn hiding_an_app_removes_it_until_it_is_unhidden() {
