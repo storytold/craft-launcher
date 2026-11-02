@@ -415,6 +415,7 @@ impl LauncherUi {
 
     /// Pinned apps first (user order), then installed, then the rest under a "Not installed" header.
     pub(crate) fn grid(&mut self, ui: &mut Ui, ids: &[&'static str]) {
+        self.clear_pin_drag_on_escape(ui);
         let pinned_n = ids.iter().take_while(|id| self.settings.is_pinned(id)).count();
         let (pinned, rest) = ids.split_at(pinned_n);
         if !pinned.is_empty() {
@@ -591,6 +592,7 @@ impl LauncherUi {
 
     pub(crate) fn table(&mut self, ui: &mut Ui, ids: &[&'static str]) {
         use egui_extras::{Column, TableBuilder};
+        self.clear_pin_drag_on_escape(ui);
         let t = Tokens::get(ui.ctx());
         let now = self.backend.now();
         let mut sort_clicked = None;
@@ -899,6 +901,13 @@ impl LauncherUi {
         self.menu(ui, entry, status, links_in_menu);
     }
 
+    /// Cancel an in-progress pin reorder (Escape) before drop targets run this frame.
+    fn clear_pin_drag_on_escape(&mut self, ui: &Ui) {
+        if self.pin_dragging.is_some() && ui.input(|i| i.key_pressed(egui::Key::Escape)) {
+            self.pin_dragging = None;
+        }
+    }
+
     /// Drag handle that reorders this pinned app among the other pinned apps.
     fn pin_grip(&mut self, ui: &mut Ui, entry: &AppEntry) {
         let tip = fmt(tl!("Reorder {name}"), &[("name", entry.app.name)]);
@@ -906,7 +915,7 @@ impl LauncherUi {
         // Only latch on drag start: after a reorder, the same egui widget id can sit on a
         // different app's row, and `dragged()` would steal `pin_dragging` mid-gesture.
         // Do not clear on `drag_stopped` here — drop targets must see the release first;
-        // `grid`/`table` clear `pin_dragging` when the pointer is up.
+        // `grid`/`table` clear `pin_dragging` when the pointer is up (Escape clears earlier).
         if resp.drag_started() {
             self.pin_dragging = Some(entry.app.id.to_string());
         }
