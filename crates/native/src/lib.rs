@@ -24,6 +24,7 @@ pub mod pins;
 pub mod portable;
 pub mod process;
 pub mod proxy;
+pub mod qualification;
 pub mod queue;
 pub mod screenshots;
 pub mod self_update;
