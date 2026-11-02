@@ -1226,6 +1226,74 @@ pub(crate) mod linux {
         }
     }
 
+    /// Experimental in-place migration; only an absent ref permits bundle fallback.
+    #[cfg(feature = "experimental-oci-migration")]
+    pub fn migrate_bundle_to_oci(app: &CraftApp, installed: &Installed, expected: &super::version::Version, stop: &Stop) -> Result<bool, String> {
+        if installed.source != InstallSource::Flatpak || installed.externally_managed || !app.repo.starts_with("storytold/") {
+            return Ok(false);
+        }
+        // Only bundle-created origins qualify; never redirect another repository's install.
+        if !installed.origin.as_deref().is_some_and(|origin| origin.ends_with("-origin")) {
+            return Ok(false);
+        }
+        let id = installed.package.as_deref().ok_or("Flatpak installation has no package ID")?;
+        let scope = match installed.installation.as_deref() {
+            Some("user") => "--user".to_string(),
+            Some("system") => "--system".to_string(),
+            Some(name) => format!("--installation={name}"),
+            None => return Err("Flatpak installation scope is unknown".into()),
+        };
+        let run = |args: &[&str]| -> Result<String, String> {
+            let mut cmd = if process::in_sandbox() {
+                let mut cmd = process::command("flatpak-spawn");
+                cmd.args(["--host", "--watch-bus", "flatpak"]);
+                cmd
+            } else {
+                process::command("flatpak")
+            };
+            cmd.arg(&scope).args(args);
+            let output = process::cancellable_output(cmd, || stop.check())?;
+            if !output.status.success() {
+                return Err(format!("Flatpak OCI migration failed: {}", String::from_utf8_lossy(&output.stderr).trim()));
+            }
+            Ok(String::from_utf8_lossy(&output.stdout).into_owned())
+        };
+        let reference = run(&["info", "--show-ref", id])?;
+        let reference = reference.trim();
+        if !reference.starts_with(&format!("app/{id}/")) || !reference.ends_with("/stable") {
+            return Ok(false);
+        }
+        let remotes = run(&["remotes", "--columns=name,url"])?;
+        let remote = remotes.lines().find_map(|line| {
+            let (name, _) = line.split_once('\t')?;
+            crate::packages::is_artcraft_remote(name, line).then(|| name.to_string())
+        });
+        let remote = match remote {
+            Some(remote) => remote,
+            None => {
+                if remotes.lines().any(|line| line.split('\t').next() == Some("artcraft-oci")) {
+                    return Err("The artcraft-oci remote points to a different repository".into());
+                }
+                run(&["remote-add", "--noninteractive", "artcraft-oci", "https://getartcraft.com/artcraft-oci.flatpakrepo"])?;
+                let remotes = run(&["remotes", "--columns=name,url"])?;
+                if !crate::packages::is_artcraft_remote("artcraft-oci", &remotes) {
+                    return Err("The ArtCraft OCI descriptor configured an unexpected repository".into());
+                }
+                "artcraft-oci".to_string()
+            }
+        };
+        let refs = run(&["remote-ls", "--app", "--columns=ref,version", &remote])?;
+        if !crate::packages::oci_ref_available(reference, expected, &refs)? {
+            return Ok(false);
+        }
+        run(&["install", "--reinstall", "-y", "--noninteractive", &remote, reference])?;
+        let origin = run(&["info", "--show-origin", id])?;
+        if origin.trim() != remote {
+            return Err("Flatpak did not switch the installed app to the ArtCraft OCI remote".into());
+        }
+        Ok(true)
+    }
+
     /// Updates an installed Flatpak from its remote repository (such as FlatPark).
     pub fn update_flatpak_app(
         app: &CraftApp,

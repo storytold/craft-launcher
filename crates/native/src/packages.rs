@@ -273,3 +273,35 @@ mod remote_url_tests {
         assert!(!is_artcraft_remote("other", "custom\toci+https://getartcraft.com"));
     }
 }
+
+/// A missing ref permits bundle fallback; an unknown or different version must not replace it.
+#[cfg(all(target_os = "linux", feature = "experimental-oci-migration"))]
+pub(crate) fn oci_ref_available(reference: &str, expected: &version::Version, listing: &str) -> Result<bool, String> {
+    for line in listing.lines() {
+        let mut fields = line.split('\t');
+        if fields.next().map(str::trim) != Some(reference) {
+            continue;
+        }
+        let candidate = fields.next().and_then(|value| version::parse(value.trim()));
+        if candidate.as_ref() != Some(expected) {
+            return Err("The ArtCraft OCI repository does not yet provide the selected version".into());
+        }
+        return Ok(true);
+    }
+    Ok(false)
+}
+
+#[cfg(all(test, target_os = "linux", feature = "experimental-oci-migration"))]
+mod migration_tests {
+    use super::*;
+    #[test]
+    fn migration_requires_the_exact_ref_and_selected_version() {
+        let reference = "app/ai.storyteller.photocraft/x86_64/stable";
+        let expected = version::parse("1.2.3").unwrap();
+        assert_eq!(oci_ref_available(reference, &expected, &format!("{reference}\t1.2.3")), Ok(true));
+        assert_eq!(oci_ref_available(reference, &expected, "app/ai.storyteller.photocraft/aarch64/stable\t1.2.3"), Ok(false));
+        for value in ["", "1.2.2", "1.2.4", "unknown"] {
+            assert!(oci_ref_available(reference, &expected, &format!("{reference}\t{value}")).is_err());
+        }
+    }
+}
