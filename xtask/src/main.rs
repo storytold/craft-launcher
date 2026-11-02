@@ -101,6 +101,10 @@ fn cmd_ci() -> Result<(), String> {
         ("fmt", Box::new(|| cargo_step(&["fmt", "--all", "--", "--check"]))),
         ("clippy", Box::new(|| cargo_step(&["clippy", "--workspace", "--all-targets", "--", "-D", "warnings"]))),
         ("test", Box::new(|| cargo_step(&["test", "--workspace"]))),
+        (
+            "i18n-report",
+            Box::new(|| cargo_step(&["test", "-p", "artcraft-launcher-ui-egui", "--lib", "missing_translations_report", "--", "--nocapture"])),
+        ),
         ("wasm", Box::new(cmd_wasm)),
     ];
     let mut done = Vec::new();
