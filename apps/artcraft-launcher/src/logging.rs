@@ -214,10 +214,29 @@ pub fn install() -> Option<Logs> {
     Some(Logs { sink })
 }
 
+thread_local! {
+    /// Set while [`catch_expected`] runs: a panic then is one its caller handles.
+    static EXPECTED_PANIC: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+}
+
+/// Run `f`, which may panic in a way the caller handles (`gpu_health`: `Device::poll` panics on a
+/// lost device). The panic hook logs such a panic as handled, not as an internal error; every
+/// other panic is still reported.
+pub fn catch_expected<R>(f: impl FnOnce() -> R) -> std::thread::Result<R> {
+    EXPECTED_PANIC.with(|e| e.set(true));
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(f));
+    EXPECTED_PANIC.with(|e| e.set(false));
+    result
+}
+
 /// Report a panic through the logger (standard error and the log file), with a backtrace when
 /// `RUST_BACKTRACE` asks for one; standard error alone when `RUST_LOG` turned errors off.
 pub fn install_panic_hook() {
     std::panic::set_hook(Box::new(|info| {
+        if EXPECTED_PANIC.with(std::cell::Cell::get) {
+            log::info!("handled: {info}");
+            return;
+        }
         let trace = std::backtrace::Backtrace::capture();
         let report = if trace.status() == std::backtrace::BacktraceStatus::Captured {
             format!("internal error: {info}\n{trace}")
@@ -235,6 +254,16 @@ pub fn install_panic_hook() {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// An expected panic comes back as an error, and only while `catch_expected` runs is a panic
+    /// treated as expected (#612 review).
+    #[test]
+    fn expected_panics_are_caught_and_the_mark_is_cleared() {
+        assert!(catch_expected(|| panic!("expected")).is_err());
+        assert!(!EXPECTED_PANIC.with(std::cell::Cell::get));
+        assert_eq!(catch_expected(|| 7).ok(), Some(7));
+        assert!(!EXPECTED_PANIC.with(std::cell::Cell::get));
+    }
     use log::Log;
     use std::sync::atomic::{AtomicUsize, Ordering};
 
