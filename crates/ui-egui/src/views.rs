@@ -903,7 +903,9 @@ impl LauncherUi {
     fn pin_grip(&mut self, ui: &mut Ui, entry: &AppEntry) {
         let tip = fmt(tl!("Reorder {name}"), &[("name", entry.app.name)]);
         let resp = widgets::grip_button(ui, &tip);
-        if resp.drag_started() || resp.dragged() {
+        // Only latch on drag start: after a reorder, the same egui widget id can sit on a
+        // different app's row, and `dragged()` would steal `pin_dragging` mid-gesture.
+        if resp.drag_started() {
             self.pin_dragging = Some(entry.app.id.to_string());
         }
         if resp.drag_stopped() {
@@ -1144,8 +1146,9 @@ impl LauncherUi {
                 self.settings.unpin_app(id);
                 ui.close();
             }
-            let prev = self.settings.pinned_neighbor(id, -1).map(str::to_owned);
-            let next = self.settings.pinned_neighbor(id, 1).map(str::to_owned);
+            let known = |pid: &str| self.entry(pid).is_some();
+            let prev = self.settings.pinned_neighbor(id, -1, known).map(str::to_owned);
+            let next = self.settings.pinned_neighbor(id, 1, known).map(str::to_owned);
             if prev.is_some() && ui.button(tl!("Move up")).clicked() {
                 if let Some(prev) = prev.as_deref() {
                     self.settings.reorder_pinned(id, prev);

@@ -160,11 +160,18 @@ impl Settings {
         self.pinned.retain(|p| p != id);
     }
 
-    /// The pinned id one step above (`delta = -1`) or below (`delta = 1`) `id`, if any.
-    pub fn pinned_neighbor(&self, id: &str, delta: i32) -> Option<&str> {
+    /// The next pinned id above (`delta = -1`) or below (`delta = 1`) `id` that passes `available`.
+    /// Skips stale catalog ids left in `pinned` so Move up/down still change the visible order.
+    pub fn pinned_neighbor(&self, id: &str, delta: i32, available: impl Fn(&str) -> bool) -> Option<&str> {
         let i = self.pinned.iter().position(|p| p == id)?;
-        let j = i.checked_add_signed(delta as isize)?;
-        self.pinned.get(j).map(String::as_str)
+        let mut j = i;
+        loop {
+            j = j.checked_add_signed(delta as isize)?;
+            let cand = self.pinned.get(j)?;
+            if available(cand) {
+                return Some(cand.as_str());
+            }
+        }
     }
 
     /// Move the pinned app `from_id` so its final index is the current index of `to_id`.
@@ -314,10 +321,19 @@ mod tests {
     #[test]
     fn pinned_neighbor_steps_within_bounds() {
         let s = Settings { pinned: vec!["a".into(), "b".into(), "c".into()], ..Settings::default() };
-        assert_eq!(s.pinned_neighbor("b", -1), Some("a"));
-        assert_eq!(s.pinned_neighbor("b", 1), Some("c"));
-        assert_eq!(s.pinned_neighbor("a", -1), None);
-        assert_eq!(s.pinned_neighbor("c", 1), None);
-        assert_eq!(s.pinned_neighbor("missing", 1), None);
+        let any = |_: &str| true;
+        assert_eq!(s.pinned_neighbor("b", -1, any), Some("a"));
+        assert_eq!(s.pinned_neighbor("b", 1, any), Some("c"));
+        assert_eq!(s.pinned_neighbor("a", -1, any), None);
+        assert_eq!(s.pinned_neighbor("c", 1, any), None);
+        assert_eq!(s.pinned_neighbor("missing", 1, any), None);
+    }
+
+    #[test]
+    fn pinned_neighbor_skips_unavailable_ids() {
+        let s = Settings { pinned: vec!["a".into(), "gone".into(), "b".into()], ..Settings::default() };
+        let live = |id: &str| id != "gone";
+        assert_eq!(s.pinned_neighbor("a", 1, live), Some("b"));
+        assert_eq!(s.pinned_neighbor("b", -1, live), Some("a"));
     }
 }
