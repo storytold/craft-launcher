@@ -1,0 +1,96 @@
+# Persian (fa) catalog for ArtCraft Launcher — initial, incomplete draft.
+# Format: context<TAB>source<TAB>translation
+# Translated from the English source. Missing entries fall back to English.
+	Launcher	Launcher
+	Craft App Suite	Craft App Suite
+	by {name}	از {name}
+	Open Source Tools for Creatives, Makers, and Builders	ابزارهای متن‌باز برای طراحان، سازندگان و خلاقان
+	Settings	تنظیمات
+	Check for updates	بررسی به‌روزرسانی‌ها
+	Grid	شبکه‌ای
+	Table	جدول
+	Show apps as cards	نمایش برنامه‌ها به‌صورت کارت
+	Show apps as a table	نمایش برنامه‌ها به‌صورت جدول
+	All	همه
+	Updates	به‌روزرسانی‌ها
+	Not installed	نصب‌نشده
+	Search apps	جست‌وجوی برنامه‌ها
+	Sort	مرتب‌سازی
+	Suite order	ترتیب مجموعه
+	Name	نام
+	Status	وضعیت
+	Installed version	نسخه نصب‌شده
+	Latest version	آخرین نسخه
+	Newest release	جدیدترین انتشار
+	Discord	Discord
+	GitHub	GitHub
+	Website	وب‌سایت
+	Classic apps	برنامه‌های قدیمی
+	New apps	برنامه‌های جدید
+	NEW	جدید
+	Install	نصب
+	Update to {v}	به‌روزرسانی به {v}
+	Open	باز کردن
+	Download for {os}	دانلود برای {os}
+	Download	دانلود
+	Coming soon	به‌زودی
+	Checking…	در حال بررسی…
+	Not available	در دسترس نیست
+	Offline	آفلاین
+	Downloading {done} of {total}	در حال دانلود {done} از {total}
+	Downloading…	در حال دانلود…
+	Reconnecting…	در حال اتصال دوباره…
+	Verifying…	در حال تأیید…
+	Installing, then restarting…	در حال نصب و راه‌اندازی دوباره…
+	Installing…	در حال نصب…
+	Removing…	در حال حذف…
+	Pause download	توقف موقت دانلود
+	Cancel download	لغو دانلود
+	Resume download	ادامه دانلود
+	Discard download	حذف فایل دانلودشده
+	Release notes	یادداشت‌های انتشار
+	Show in Finder	نمایش در Finder
+	Show in Explorer	نمایش در Explorer
+	Show in Files	نمایش در مدیر فایل
+	Reinstall	نصب دوباره
+	Uninstall…	حذف نصب…
+	All releases	همه نسخه‌ها
+	ArtCraft Launcher {version} is available.	نسخه {version} از ArtCraft Launcher در دسترس است.
+	Dismiss	بستن
+	Update and restart	به‌روزرسانی و راه‌اندازی دوباره
+	Later	بعداً
+	What's new	تازه‌ها
+	No notes were published with this release.	برای این نسخه یادداشتی منتشر نشده است.
+	Released {date}	منتشرشده در {date}
+	Open on GitHub	باز کردن در GitHub
+	Close	بستن
+	Only when I ask	فقط به درخواست من
+	Automatically download and install updates	دانلود و نصب خودکار به‌روزرسانی‌ها
+	Notify me when an installed app has an update	وقتی به‌روزرسانی برنامه‌ای نصب‌شده در دسترس است، به من اطلاع بده
+	Appearance	ظاهر
+	Quit ArtCraft Launcher	خروج از ArtCraft Launcher
+	Done	تمام
+	Uninstall {name}?	{name} حذف نصب شود؟
+	The app will be removed. Your documents and settings stay.	برنامه حذف می‌شود. سندها و تنظیمات شما حفظ می‌شوند.
+	Uninstall	حذف نصب
+	Cancel	لغو
+	just now	همین حالا
+	yesterday	دیروز
+	Automatically	خودکار
+	Minimize	کوچک کردن
+	Maximize	بزرگ کردن
+	Restore	بازگرداندن
+	New	جدید
+	OK	تأیید
+	Open link	باز کردن پیوند
+	Update	به‌روزرسانی
+	Language	زبان
+	Installed	نصب‌شده
+	Update available	به‌روزرسانی موجود است
+	Not checked yet	هنوز بررسی نشده است
+	Retry install	تلاش دوباره برای نصب
+	Dark	تیره
+	Light	روشن
+	Match system	مطابق سیستم
+	No apps match	برنامه‌ای پیدا نشد
+	Full changelog	فهرست کامل تغییرات
