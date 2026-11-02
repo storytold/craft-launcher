@@ -1,0 +1,377 @@
+# Indonesian (id) catalog for ArtCraft Launcher.
+# Format: context<TAB>source<TAB>translation
+# Empty context = plain UI string (tl!, t).
+# @id = command-id keyed (tr_id).
+# @plural = plural forms: one form for Indonesian (no grammatical number inflection).
+# @msg = status/error message template (message, msg).
+# Other context = disambiguation for tr_ctx.
+#
+# Clean-room: written from the meaning of ArtCraft Launcher's English labels in standard Indonesian,
+# using the terms Indonesian-speaking users of creative and system software know.
+#
+# Coverage: the whole interface — every menu string and tl! literal (complete_menus = true).
+# Left in English on purpose: product name "ArtCraft Launcher" (and its "Launcher" tag), suite
+# name "Craft App Suite",
+# app names (PhotoCraft, LightCraft, FilmCraft, DesignCraft, VectorCraft, PdfCraft, EffectCraft,
+# WordCraft, DeckCraft, GridCraft, CADCraft, SoundCraft), "GitHub", "Discord".
+# Shortcut keys keep their key-cap names (Shift, Alt, Ctrl, Cmd, Esc).
+# Trailing "…" (U+2026) must be preserved. Placeholders {name}, {n}, {version}, {count}, {v},
+# {what}, {unit}, {real}, {e} must appear in translation.
+
+	Launcher	Launcher
+	Craft App Suite	Craft App Suite
+	Open Source Tools for Creatives, Makers, and Builders	Alat Bersumber Terbuka untuk Kreator, Pembuat, dan Pembangun
+	Settings	Pengaturan
+	Check for updates	Periksa pembaruan
+	Grid	Kisi
+	Table	Tabel
+	Show apps as cards	Tampilkan aplikasi sebagai kartu
+	Show apps as a table	Tampilkan aplikasi sebagai tabel
+	All	Semua
+	Updates	Pembaruan
+	Not installed	Belum terpasang
+	Search apps	Cari aplikasi
+	Sort	Urutkan
+	Suite order	Urutan suite
+	Name	Nama
+	Inspired by	Terinspirasi oleh
+	Status	Status
+	Installed version	Versi terpasang
+	Latest version	Versi terbaru
+	Newest release	Rilis terbaru
+	Discord	Discord
+	GitHub	GitHub
+	Website	Situs web
+	Classic apps	Aplikasi klasik
+	New apps	Aplikasi baru
+	NEW	BARU
+	Install	Pasang
+	Update to {v}	Perbarui ke {v}
+	Open	Buka
+	Download for {os}	Unduh untuk {os}
+	Download	Unduh
+	Coming soon	Segera hadir
+	Checking…	Memeriksa…
+	Not available	Tidak tersedia
+	Offline	Offline
+	Downloading {done} of {total}	Mengunduh {done} dari {total}
+	Downloading…	Mengunduh…
+	Reconnecting…	Menghubungkan kembali…
+	Verifying…	Memverifikasi…
+	Installing, then restarting…	Memasang, lalu memulai ulang…
+	Installing…	Memasang…
+	Removing…	Menghapus…
+	Pause download	Jeda unduhan
+	Cancel download	Batalkan unduhan
+	Resume download	Lanjutkan unduhan
+	Discard download	Buang unduhan
+	Release notes	Catatan rilis
+	Show in Finder	Tampilkan di Finder
+	Show in Explorer	Tampilkan di Explorer
+	Show in Files	Tampilkan di Berkas
+	Reinstall	Pasang ulang
+	Uninstall…	Copot pemasangan…
+	All releases	Semua rilis
+	ArtCraft Launcher {version} is available.	ArtCraft Launcher {version} tersedia.
+	Dismiss	Tutup
+	Update and restart	Perbarui dan mulai ulang
+	A new version is available. Would you like to relaunch with the updated version?	Versi baru tersedia. Luncurkan ulang dengan versi yang diperbarui?
+	Later	Nanti
+	What's new	Yang baru
+	No notes were published with this release.	Tidak ada catatan yang diterbitkan untuk rilis ini.
+	Released {date}	Dirilis {date}
+	Open on GitHub	Buka di GitHub
+	Close	Tutup
+	ArtCraft Launcher {version}	ArtCraft Launcher {version}
+	Only when I ask	Hanya saat diminta
+	Automatically download and install updates	Unduh dan pasang pembaruan secara otomatis
+	Notify me when an installed app has an update	Beri tahu saya saat aplikasi yang terpasang memiliki pembaruan
+	Include pre-releases (betas and release candidates)	Sertakan pra-rilis (beta dan kandidat rilis)
+	Installing on Linux	Memasang di Linux
+	Installing on Windows	Memasang di Windows
+	Install new apps as	Pasang aplikasi baru sebagai
+	System package (recommended)	Paket sistem (disarankan)
+	Updates always use the format an app was installed with.	Pembaruan selalu menggunakan format yang sama saat aplikasi dipasang.
+	Running in the background	Berjalan di latar belakang
+	Keep running in the tray when the window is closed	Tetap berjalan di baki saat jendela ditutup
+	Show the window on the current desktop	Tampilkan jendela di desktop saat ini
+	Start ArtCraft Launcher when I log in	Jalankan ArtCraft Launcher saat saya masuk
+	Community	Komunitas
+	Questions, ideas and news from the ArtCraft team	Pertanyaan, ide, dan berita dari tim ArtCraft
+	Appearance	Tampilan
+	Quit ArtCraft Launcher	Keluar dari ArtCraft Launcher
+	Done	Selesai
+	Uninstall {name}?	Copot {name}?
+	The app will be moved to the Trash. Your documents and settings stay.	Aplikasi akan dipindahkan ke Tong Sampah. Dokumen dan pengaturan Anda tetap tersimpan.
+	Windows will remove it like any installed program. Your documents and settings stay.	Windows akan menghapusnya seperti program terpasang lainnya. Dokumen dan pengaturan Anda tetap tersimpan.
+	Your system's package manager will remove it, and may ask for your password. Your documents and settings stay.	Pengelola paket sistem Anda akan menghapusnya, dan mungkin meminta kata sandi Anda. Dokumen dan pengaturan Anda tetap tersimpan.
+	The app will be removed. Your documents and settings stay.	Aplikasi akan dihapus. Dokumen dan pengaturan Anda tetap tersimpan.
+	Uninstall	Copot pemasangan
+	Cancel	Batal
+	Checked {ago}	Diperiksa {ago}
+	just now	baru saja
+	yesterday	kemarin
+	{month} {day}, {year}	{day} {month} {year}
+	Automatically	Secara otomatis
+	Every Craft app	Setiap aplikasi Craft
+	Apps on this computer	Aplikasi di komputer ini
+	Installed apps with a newer version	Aplikasi terpasang dengan versi yang lebih baru
+	Apps you can install	Aplikasi yang dapat Anda pasang
+	Hide App	Sembunyikan Aplikasi
+	Unhide App	Tampilkan Aplikasi
+	Hidden Apps	Aplikasi Tersembunyi
+	Apps you hid	Aplikasi yang Anda sembunyikan
+	Checked {ago} · using {sources}	Diperiksa {ago} · menggunakan {sources}
+	{a} and {b}	{a} dan {b}
+	Join the Discord	Gabung ke Discord
+	Learn more	Pelajari lebih lanjut
+	Minimize	Minimalkan
+	Maximize	Maksimalkan
+	Restore	Pulihkan
+	New	Baru
+	OK	Oke
+	Open link	Buka tautan
+	Update	Perbarui
+	{name} icon	Ikon {name}
+	Loading ArtCraft Launcher…	Memuat ArtCraft Launcher…
+	Cancel update	Batalkan pembaruan
+	Stop waiting; the update can be started again later	Berhenti menunggu; pembaruan dapat dimulai lagi nanti
+	Download again	Unduh lagi
+	Install cancelled	Pemasangan dibatalkan
+	Install cancelled. The download is kept for the next try.	Pemasangan dibatalkan. Unduhan disimpan untuk percobaan berikutnya.
+	Update cancelled	Pembaruan dibatalkan
+	Uninstall cancelled	Pencopotan dibatalkan
+	Retry install	Coba pasang lagi
+	Retry update to {version}	Coba perbarui ke {version} lagi
+	The download is still here. It's checked again, then installed.	Unduhan masih ada. Berkas diperiksa lagi, lalu dipasang.
+	Waiting for another app…	Menunggu aplikasi lain…
+	Waiting for other installs…	Menunggu pemasangan lainnya…
+
+# Package formats offered for download (PackageKind::label)
+	Installer (.msi)	Pemasang (.msi)
+	Portable (.zip)	Portabel (.zip)
+	Disk image (.dmg)	Image diska (.dmg)
+	Debian package (.deb)	Paket Debian (.deb)
+	RPM package (.rpm)	Paket RPM (.rpm)
+	Arch package (.pkg.tar.zst)	Paket Arch (.pkg.tar.zst)
+	Flatpak bundle	Paket Flatpak
+	Tarball (.tar.gz)	Tarball (.tar.gz)
+
+# Contextual: each app's tagline, keyed by app id
+photocraft	Image editing	Penyuntingan gambar
+vectorcraft	Vector illustration	Ilustrasi vektor
+filmcraft	Video editing, color and sound	Penyuntingan video, warna, dan suara
+lightcraft	Photo library and raw development	Pustaka foto dan pengembangan RAW
+pdfcraft	Reading, organizing and protecting PDFs	Membaca, menata, dan mengamankan PDF
+effectcraft	Motion graphics and visual effects	Grafik bergerak dan efek visual
+designcraft	Page layout and publishing	Tata letak halaman dan penerbitan
+wordcraft	Writing and document design	Penulisan dan desain dokumen
+deckcraft	Presentations and slide shows	Presentasi dan peragaan salindia
+gridcraft	Spreadsheets and data	Spreadsheet dan data
+cadcraft	Computer-aided design and drafting	Perancangan dan desain dengan bantuan komputer
+soundcraft	Recording, editing and mixing audio	Perekaman, penyuntingan, dan mixing audio
+figcraft	Interface design and prototyping	Desain antarmuka dan pembuatan prototipe
+
+# Contextual: month abbreviations for date rendering
+month	Jan	Jan
+month	Feb	Feb
+month	Mar	Mar
+month	Apr	Apr
+month	May	Mei
+month	Jun	Jun
+month	Jul	Jul
+month	Aug	Agt
+month	Sep	Sep
+month	Oct	Okt
+month	Nov	Nov
+month	Dec	Des
+	Not checked yet	Belum diperiksa
+	GitHub's hourly limit was reached; full details return in {min} min	Batas per jam GitHub tercapai; detail lengkap kembali dalam {min} mnt
+	GitHub limit hit; back in {min} min	Batas GitHub tercapai; kembali dalam {min} mnt
+	Installing for {platform}	Memasang untuk {platform}
+	Downloads for {platform}	Unduhan untuk {platform}
+	No downloads for this system	Tidak ada unduhan untuk sistem ini
+	Join the ArtCraft community on Discord	Gabung dengan komunitas ArtCraft di Discord
+	ArtCraft on {name}	ArtCraft di {name}
+	Couldn't open {name}: {e}	Tidak dapat membuka {name}: {e}
+	Download cancelled	Unduhan dibatalkan
+	Available to install	Tersedia untuk dipasang
+	Available	Tersedia
+	Installed · up to date	Terpasang · mutakhir
+	Update available	Pembaruan tersedia
+	Installed	Terpasang
+	installed	terpasang
+	Not available here	Tidak tersedia di sini
+	Updating…	Memperbarui…
+	Update paused	Pembaruan dijeda
+	Download paused	Unduhan dijeda
+	{version} installed → {latest} released	{version} terpasang → {latest} dirilis
+	Version {version}	Versi {version}
+	{installed} installed · latest {latest}	{installed} terpasang · terbaru {latest}
+	Installed · latest {latest}	Terpasang · terbaru {latest}
+	Version {version} installed	Versi {version} terpasang
+	Version {latest}	Versi {latest}
+	No release published yet	Belum ada rilis yang diterbitkan
+	ArtCraft Launcher	ArtCraft Launcher
+	App	Aplikasi
+	Latest	Terbaru
+	Released	Dirilis
+	Auto	Otomatis
+	Language	Bahasa
+	Ascending	Menaik
+	Descending	Menurun
+	Click to reverse the order	Klik untuk membalik urutan
+	Click to sort by this column	Klik untuk mengurutkan berdasarkan kolom ini
+	Like {name}	Mirip {name}
+	{done} of {total}	{done} dari {total}
+	Downloading	Mengunduh
+	Verifying checksum…	Memverifikasi checksum…
+	Resume	Lanjutkan
+	{done} of {total} downloaded	{done} dari {total} terunduh
+	{done} downloaded	{done} terunduh
+	Checking for updates…	Memeriksa pembaruan…
+	Downloads the new version, replaces this one and opens it again	Mengunduh versi baru, mengganti versi ini, dan membukanya kembali
+	Couldn't check for updates: {f}	Tidak dapat memeriksa pembaruan: {f}
+	Website (coming soon)	Situs web (segera hadir)
+	GitHub repository	Repositori GitHub
+	ArtCraft	ArtCraft
+	Update 1 app	Perbarui 1 aplikasi
+	Update all ({count})	Perbarui semua ({count})
+	⊞  Grid	⊞  Kisi
+	☰  Table	☰  Tabel
+	🔍  Search apps	🔍  Cari aplikasi
+	{name} {version}	{name} {version}
+	Match system	Ikuti sistem
+	Dark	Gelap
+	Light	Terang
+	Full changelog	Log perubahan lengkap
+	link	tautan
+	No apps match	Tidak ada aplikasi yang cocok
+	Open ArtCraft Launcher to update.	Buka ArtCraft Launcher untuk memperbarui.
+	{name} {v} is available	{name} {v} tersedia
+	{count} updates are available	{count} pembaruan tersedia
+	These notes weren't fetched (GitHub's request limit was reached). They're on the release page.	Catatan ini tidak dapat diambil (batas permintaan GitHub tercapai). Catatan tersedia di halaman rilis.
+	When on, opening the launcher from the menu bar brings its window to the desktop you're on. When off, macOS switches you to the desktop the window was on.	Saat aktif, membuka peluncur dari bilah menu akan menampilkan jendelanya di desktop Anda saat ini. Saat nonaktif, macOS beralih ke desktop tempat jendela sebelumnya berada.
+	Couldn't change the login item: {e}	Tidak dapat mengubah item masuk: {e}
+
+# Contextual: table column headers
+column	App	Aplikasi
+column	Installed	Terpasang
+column	Latest	Terbaru
+column	Released	Dirilis
+column	Version	Versi
+
+# Contextual: the filter tab names a group (the status pill says "Installed")
+filter	Installed	Terpasang
+
+# Plural forms for Indonesian (one form)
+@plural	{n} app|{n} apps	{n} aplikasi
+@plural	{n} min ago|{n} min ago	{n} mnt lalu
+@plural	{n} h ago|{n} h ago	{n} jam lalu
+@plural	{n} day ago|{n} days ago	{n} hari lalu
+
+# Message templates (@msg): toasts from the backend. {placeholders} match any text.
+@msg	Couldn't open {name}: {e}	Tidak dapat membuka {name}: {e}
+@msg	Download cancelled	Unduhan dibatalkan
+@msg	{name} updated to {version}	{name} diperbarui ke {version}
+@msg	{name} installed: {version}	{name} terpasang: {version}
+@msg	{name} updated to {version} (this release publishes no checksum, so only its size was checked)	{name} diperbarui ke {version} (rilis ini tidak menerbitkan checksum, jadi hanya ukurannya yang diperiksa)
+@msg	{name} installed: {version} (this release publishes no checksum, so only its size was checked)	{name} terpasang: {version} (rilis ini tidak menerbitkan checksum, jadi hanya ukurannya yang diperiksa)
+@msg	{name} was removed	{name} telah dihapus
+@msg	{name} is running. Quit it, then try again.	{name} sedang berjalan. Keluar dari aplikasi, lalu coba lagi.
+@msg	{name} was installed from the {repo} repository or the AUR ({pkg}). Update it with {cmd} or sudo pacman -Syu	{name} dipasang dari repositori {repo} atau AUR ({pkg}). Perbarui dengan {cmd} atau sudo pacman -Syu
+@msg	{name} was installed from the {repo} repository or the AUR ({pkg}). Update it with your AUR helper (for example: yay -S {pkg}) or sudo pacman -Syu	{name} dipasang dari repositori {repo} atau AUR ({pkg}). Perbarui menggunakan pembantu AUR Anda (contoh: yay -S {pkg}) atau sudo pacman -Syu
+@msg	{name} was installed from the AUR ({pkg}). Update it with {cmd}	{name} dipasang dari AUR ({pkg}). Perbarui dengan {cmd}
+@msg	{name} was installed from the AUR ({pkg}). Update it with your AUR helper (for example: yay -S {pkg})	{name} dipasang dari AUR ({pkg}). Perbarui menggunakan pembantu AUR Anda (contoh: yay -S {pkg})
+
+# Command IDs for menu items (@id)
+# Format: @id<TAB>command_id<TAB>translation
+@id	app.install	Pasang
+@id	app.update	Perbarui ke {v}
+@id	app.open	Buka
+@id	app.download	Unduh untuk {os}
+@id	app.reveal	Tampilkan di Finder
+@id	app.reinstall	Pasang ulang
+@id	app.uninstall	Copot pemasangan…
+@id	app.notes	Catatan rilis
+@id	app.website	Situs web
+@id	app.github	Repositori GitHub
+@id	app.releases	Semua rilis
+@id	launcher.update	Perbarui dan mulai ulang
+@id	launcher.download	Unduh
+@id	launcher.notes	Yang baru
+@id	launcher.dismiss	Tutup
+@id	settings.open	Pengaturan
+@id	settings.quit	Keluar dari ArtCraft Launcher
+@id	view.grid	Kisi
+@id	view.table	Tabel
+@id	filter.all	Semua
+@id	filter.installed	Terpasang
+@id	filter.updates	Pembaruan
+@id	filter.notinstalled	Belum terpasang
+@id	sort.suite	Urutan suite
+@id	sort.name	Nama
+@id	sort.inspired	Terinspirasi oleh
+@id	sort.status	Status
+@id	sort.installed	Versi terpasang
+@id	sort.latest	Versi terbaru
+@id	sort.released	Rilis terbaru
+@id	help.discord	Discord
+@id	help.github	GitHub
+@id	help.website	Situs web
+@id	update.check	Periksa pembaruan
+@id	update.check_auto	Periksa pembaruan secara otomatis
+@id	update.notify	Beri tahu saya saat aplikasi yang terpasang memiliki pembaruan
+@id	update.prereleases	Sertakan pra-rilis (beta dan kandidat rilis)
+@id	linux.preferred_kind	Pasang aplikasi baru sebagai
+@id	tray.close_to_tray	Tetap berjalan di baki saat jendela ditutup
+@id	tray.show_on_current_desktop	Tampilkan jendela di desktop saat ini
+@id	tray.login_item	Jalankan ArtCraft Launcher saat saya masuk
+@id	appearance.theme	Tampilan
+
+# Tray (menu bar) menu and tooltip
+	Show ArtCraft Launcher	Tampilkan ArtCraft Launcher
+	Check for Updates	Periksa Pembaruan
+	Visit getartcraft.com	Kunjungi getartcraft.com
+	ArtCraft on GitHub	ArtCraft di GitHub
+	Join the ArtCraft Discord	Gabung ke Discord ArtCraft
+@plural	ArtCraft Launcher · {n} update available|ArtCraft Launcher · {n} updates available	ArtCraft Launcher · {n} pembaruan tersedia
+	Install folder	Folder pemasangan
+	Default install folder	Folder pemasangan bawaan
+	System default	Bawaan sistem
+	Browse…	Telusuri…
+	Use default	Gunakan bawaan
+	New installs use this folder. Updates stay in their current location.	Pemasangan baru menggunakan folder ini. Pembaruan tetap di lokasi saat ini.
+	Custom folders use AppImage on Linux.	Folder kustom menggunakan AppImage di Linux.
+	The system manages install locations here.	Sistem mengelola lokasi pemasangan di sini.
+@msg	couldn't use install folder {path}: {reason}	tidak dapat menggunakan folder pemasangan {path}: {reason}
+@msg	this release has no AppImage for a custom install folder	rilis ini tidak memiliki AppImage untuk folder pemasangan kustom
+@msg	custom install folders aren't supported on this system	folder pemasangan kustom tidak didukung di sistem ini
+@msg	{path} already exists and wasn't installed by ArtCraft Launcher	{path} sudah ada dan bukan dipasang oleh ArtCraft Launcher
+@msg	couldn't move {path} to Trash ({reason}). Remove it in Finder instead.	tidak dapat memindahkan {path} ke Sampah ({reason}). Hapus dari Finder.
+	Apps are placed inside this folder.	Aplikasi ditempatkan di dalam folder ini.
+	Replace what's there?	Timpa yang sudah ada?
+	{path} already exists. Installing {name} will overwrite it.	{path} sudah ada. Memasang {name} akan menimpanya.
+	Replace	Timpa
+	App details	Detail aplikasi
+	Close (Esc)	Tutup (Esc)
+	Features	Fitur
+	Latest release	Rilis terbaru
+	Version	Versi
+	Platforms	Platform
+	Releases	Rilis
+	Enlarge picture	Perbesar gambar
+	Click to enlarge	Klik untuk memperbesar
+	Previous picture (←)	Gambar sebelumnya (←)
+	Next picture (→)	Gambar berikutnya (→)
+	Loading pictures…	Memuat gambar…
+	Pictures couldn't be loaded. Reopen this page to try again.	Gambar tidak dapat dimuat. Buka ulang halaman ini untuk mencoba lagi.
+	{name} details	Detail {name}
+	Recently updated	Baru diperbarui
+	Name (A–Z)	Nama (A–Z)
+	Name (Z–A)	Nama (Z–A)
+	Frequently used	Sering digunakan
+	Next app	Aplikasi berikutnya
+	Previous app	Aplikasi sebelumnya
+	Show {n} more changes	Tampilkan {n} perubahan lainnya
+	Last updated: {date}	Terakhir diperbarui: {date}
