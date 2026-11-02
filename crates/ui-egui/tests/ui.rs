@@ -2943,3 +2943,54 @@ fn an_apps_page_is_a_card_in_the_middle_with_next_and_previous_arrows_and_closes
     h.run_steps(30);
     assert!(!showing(&h, "photocraft"), "a click outside did not close it");
 }
+
+#[test]
+fn oci_migration_setting_is_linux_only_and_configures_the_backend() {
+    let label = "Migrate Flatpak bundles to ArtCraft OCI (experimental)";
+    for (os, manage) in [(Os::Linux, true), (Os::MacOs, true), (Os::Windows, true), (Os::Linux, false)] {
+        let (mut h, sent) = harness_full(
+            events(),
+            ViewMode::Grid,
+            egui::Theme::Dark,
+            manage,
+            1.0,
+            artcraft_launcher_ui_egui::TitleBar::Native,
+            Rc::default(),
+            Some(Platform { os, arch: Arch::X64 }),
+            None,
+        );
+        h.run_steps(6);
+        h.get_by_label("Settings").click();
+        h.run_steps(4);
+        if os != Os::Linux || !manage {
+            assert!(h.query_by_label(label).is_none());
+            continue;
+        }
+        assert!(!h.state().as_ref().unwrap().settings.oci_migration);
+        h.get_by_label(label).click();
+        h.run_steps(3);
+        assert!(h.state().as_ref().unwrap().settings.oci_migration);
+        h.get_by_label("The OCI repository is a preview with GPG verification disabled.").scroll_to_me();
+        h.run_steps(4);
+        snapshot(&mut h, "oci-migration-enabled");
+        h.get_by_label("Done").click();
+        h.run_steps(4);
+        assert!(sent.borrow().iter().any(|command| matches!(command, Command::Configure(options) if options.oci_migration)));
+        h.get_by_label("Settings").click();
+        h.run_steps(4);
+        h.get_by_label(label).click();
+        h.run_steps(3);
+        h.get_by_label("Done").click();
+        h.run_steps(4);
+        assert!(!h.state().as_ref().unwrap().settings.oci_migration);
+        let last = sent
+            .borrow()
+            .iter()
+            .filter_map(|command| match command {
+                Command::Configure(options) => Some(options.oci_migration),
+                _ => None,
+            })
+            .next_back();
+        assert_eq!(last, Some(false));
+    }
+}
