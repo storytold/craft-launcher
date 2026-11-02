@@ -82,6 +82,7 @@
 	ArtCraft Launcher is still running	ArtCraft Launcher 仍在运行
 	It's in the tray: open it or quit it from the tray icon, or turn this off in the settings.	它已进入系统托盘：可通过托盘图标打开或退出，也可在设置中关闭此行为。
 	Show the window on the current desktop	在当前桌面显示窗口
+	Hide the Dock icon while in the menu bar	在菜单栏中运行时隐藏程序坞图标
 	Start ArtCraft Launcher when I log in	登录时启动 ArtCraft Launcher
 	Community	社区
 	Questions, ideas and news from the ArtCraft team	与 ArtCraft 团队交流问题、想法和动态
@@ -173,6 +174,7 @@ month	Dec	12月
 	{count} updates are available	有 {count} 个可用更新
 	These notes weren't fetched (GitHub's request limit was reached). They're on the release page.	未能获取更新说明（已达到 GitHub 请求上限）。可前往版本发布页面查看。
 	When on, opening the launcher from the menu bar brings its window to the desktop you're on. When off, macOS switches you to the desktop the window was on.	开启后，从菜单栏打开启动器时，窗口会显示在当前桌面。关闭后，macOS 会切换到窗口原来所在的桌面。
+	When on, closing the window takes ArtCraft Launcher out of the Dock and it keeps running from the menu bar. The Dock icon comes back when you open the window.	开启后，关闭窗口时 ArtCraft Launcher 会从程序坞中移除，并继续在菜单栏中运行。打开窗口后，程序坞图标会重新出现。
 	Couldn't change the login item: {e}	无法更改登录启动项：{e}
 column	App	应用
 column	Installed	已安装版本

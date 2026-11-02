@@ -319,6 +319,15 @@ impl LauncherUi {
                     "When on, opening the launcher from the menu bar brings its window to the desktop you're on. When off, macOS switches you to the desktop the window was on."
                 ));
             }
+            if host.has_tray() && host.has_dock() {
+                ui.add_enabled(
+                    self.settings.close_to_tray,
+                    egui::Checkbox::new(&mut self.settings.hide_dock_icon_in_tray, tl!("Hide the Dock icon while in the menu bar")),
+                )
+                .on_hover_text(tl!(
+                    "When on, closing the window takes ArtCraft Launcher out of the Dock and it keeps running from the menu bar. The Dock icon comes back when you open the window."
+                ));
+            }
             if let Some(mut on) = host.login_item()
                 && ui.checkbox(&mut on, tl!("Start ArtCraft Launcher when I log in")).changed()
                 && let Err(e) = host.set_login_item(on)
