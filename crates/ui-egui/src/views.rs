@@ -905,17 +905,17 @@ impl LauncherUi {
         let resp = widgets::grip_button(ui, &tip);
         // Only latch on drag start: after a reorder, the same egui widget id can sit on a
         // different app's row, and `dragged()` would steal `pin_dragging` mid-gesture.
+        // Do not clear on `drag_stopped` here — drop targets must see the release first;
+        // `grid`/`table` clear `pin_dragging` when the pointer is up.
         if resp.drag_started() {
             self.pin_dragging = Some(entry.app.id.to_string());
-        }
-        if resp.drag_stopped() {
-            self.pin_dragging = None;
         }
     }
 
     /// While a pin handle is dragged, hovering another pinned card/row moves the dragged app there.
     /// Grid uses the horizontal half; table uses the vertical half. One target per surface — the
     /// table's full-row target already covers the grip column, so the grip itself does not reorder.
+    /// A release over a target still counts (process before clearing `pin_dragging`).
     fn pin_drop_target(&mut self, ui: &Ui, id: &str, rect: Rect, axis: PinDropAxis) {
         let Some(from) = self.pin_dragging.clone() else {
             return;
@@ -923,10 +923,7 @@ impl LauncherUi {
         if from == id || !self.settings.is_pinned(id) {
             return;
         }
-        if !ui.input(|i| i.pointer.primary_down()) {
-            self.pin_dragging = None;
-            return;
-        }
+        let primary_down = ui.input(|i| i.pointer.primary_down());
         let Some(pos) = ui.input(|i| i.pointer.interact_pos()) else {
             return;
         };
@@ -942,6 +939,9 @@ impl LauncherUi {
         };
         let insertion_index = if insert_before { to_i } else { to_i.saturating_add(1) };
         self.settings.reorder_pinned_to(&from, insertion_index);
+        if !primary_down {
+            self.pin_dragging = None;
+        }
     }
 
     /// A running job's row: one progress bar, with pause and cancel while its download is under
