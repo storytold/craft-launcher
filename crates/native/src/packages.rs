@@ -243,12 +243,13 @@ mod tests {
     }
 }
 
-/// Matches the first party repository by URL, independently of its local remote name.
+/// Matches the OCI URL from https://getartcraft.com/artcraft-oci.flatpakrepo,
+/// independently of its local remote name (normally `artcraft-oci`).
 pub fn is_artcraft_remote(origin: &str, remotes: &str) -> bool {
     remotes.lines().any(|line| {
         let Some((name, url)) = line.split_once('\t') else { return false };
         let url = url.trim().trim_end_matches('/');
-        name.trim() == origin && (url == "https://getartcraft.com/linux" || url.starts_with("https://getartcraft.com/linux/"))
+        name.trim() == origin && url == "oci+https://getartcraft.com"
     })
 }
 
@@ -257,11 +258,18 @@ mod remote_url_tests {
     use super::*;
     #[test]
     fn recognizes_custom_names_and_rejects_unrelated_urls() {
-        assert!(is_artcraft_remote("custom", "custom\thttps://getartcraft.com/linux/\n"));
-        assert!(is_artcraft_remote("custom", "custom\thttps://getartcraft.com/linux/repo\n"));
-        for url in ["https://getartcraft.com.evil/linux", "https://getartcraft.com/linux-other", "http://getartcraft.com/linux"] {
+        assert!(is_artcraft_remote("artcraft-oci", "artcraft-oci\toci+https://getartcraft.com\n"));
+        assert!(is_artcraft_remote("custom", "custom\toci+https://getartcraft.com/\n"));
+        for url in [
+            "oci+https://getartcraft.com.evil",
+            "oci+https://getartcraft.com/other",
+            "oci+http://getartcraft.com",
+            "https://getartcraft.com/linux",
+            "https://getartcraft.com/artcraft-oci.flatpakrepo",
+            "https://getartcraft.com",
+        ] {
             assert!(!is_artcraft_remote("custom", &format!("custom\t{url}")));
         }
-        assert!(!is_artcraft_remote("other", "custom\thttps://getartcraft.com/linux"));
+        assert!(!is_artcraft_remote("other", "custom\toci+https://getartcraft.com"));
     }
 }
