@@ -51,6 +51,41 @@ pub fn hud(ui: &mut Ui, text: &str, color: Color32) -> Response {
     resp
 }
 
+/// A full-width disclosure row in the site's mono-label style, with its body initially open.
+pub fn collapsing_section(ui: &mut Ui, label: &str, id_salt: impl std::hash::Hash + std::fmt::Debug, add_body: impl FnOnce(&mut Ui)) {
+    let mut state =
+        egui::collapsing_header::CollapsingState::load_with_default_open(ui.ctx(), ui.make_persistent_id(("collapsing-section", id_salt)), true);
+    let t = Tokens::get(ui.ctx());
+    let (rect, response) = ui.allocate_exact_size(vec2(ui.available_width(), 24.0), Sense::click());
+    if response.clicked() {
+        state.toggle(ui);
+    }
+    response.widget_info(|| egui::WidgetInfo::labeled(egui::Role::DisclosureTriangle, ui.is_enabled(), label));
+    ui.ctx().accesskit_node_builder(response.id, |node| node.set_expanded(state.is_open()));
+
+    let openness = state.openness(ui.ctx());
+    let center = rect.left_center() + vec2(9.0, 0.0);
+    let lerp = |closed: (f32, f32), open: (f32, f32)| egui::pos2(closed.0, closed.1).lerp(egui::pos2(open.0, open.1), openness);
+    let points = [
+        lerp((center.x - 1.0, center.y - 3.0), (center.x - 3.0, center.y - 1.0)),
+        lerp((center.x + 2.0, center.y), (center.x, center.y + 3.0)),
+        lerp((center.x - 1.0, center.y + 3.0), (center.x + 3.0, center.y - 1.0)),
+    ];
+    let color = if response.hovered() { t.muted } else { t.faint };
+    let stroke = Stroke::new(1.3, color);
+    ui.painter().line_segment([points[0], points[1]], stroke);
+    ui.painter().line_segment([points[1], points[2]], stroke);
+    let label_color = if response.hovered() { t.ink_strong } else { t.faint };
+    let galley = hud_galley(ui, label, label_color);
+    ui.painter().galley(rect.left_center() + vec2(22.0, -galley.size().y / 2.0), galley, label_color);
+    response.on_hover_cursor(egui::CursorIcon::PointingHand);
+
+    let _ = state.show_body_unindented(ui, |ui| {
+        ui.add_space(12.0);
+        add_body(ui);
+    });
+}
+
 /// A mono label cut to one line with "…" where it is wider than `max_width`; the full text shows
 /// on hover and is what screen readers read.
 pub fn hud_elided(ui: &mut Ui, text: &str, color: Color32, max_width: f32) -> Response {
