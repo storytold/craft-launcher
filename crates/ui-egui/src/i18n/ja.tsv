@@ -176,6 +176,7 @@ designcraft	Page layout and publishing	ページレイアウトと出版
 wordcraft	Writing and document design	文書作成とデザイン
 deckcraft	Presentations and slide shows	プレゼンテーションとスライドショー
 gridcraft	Spreadsheets and data	表計算とデータ
+craft-anything	Find out how any software works, then craft your own	あらゆるソフトウェアの仕組みを知り、自分だけのものを作る
 solidcraft	Parametric 3D CAD	パラメトリック3D CAD
 cadcraft	Computer-aided design and drafting	コンピューター支援設計と製図
 soundcraft	Recording, editing and mixing audio	オーディオの録音、編集、ミックス
@@ -398,3 +399,10 @@ column	Author	作者
 	Older launcher versions require a manual reinstall.	古いランチャーに戻すには手動で再インストールする必要があります。
 	Your files may not open in older versions.	古いバージョンではファイルを開けない場合があります。
 	Enable automatic installs in Settings to follow new nightly builds.	新しいナイトリービルドを自動的に受け取るには、設定で自動インストールを有効にしてください。
+texturecraft	3D texture painting	3Dテクスチャペイント
+texturecraft	Paint materials on 3D models and export textures.	3Dモデルにマテリアルを塗り、テクスチャを書き出します。
+texturecraft	Materials	マテリアル
+texturecraft	Mesh maps	メッシュマップ
+texturecraft	Bake mesh maps and use smart materials.	メッシュマップをベイクし、スマートマテリアルを使用します。
+texturecraft	Paint textures on 3D models.	3Dモデルにテクスチャを描きます。
+	Hide community apps	コミュニティアプリを非表示

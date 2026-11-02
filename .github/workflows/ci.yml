@@ -6,9 +6,8 @@ on:
   pull_request:
   workflow_dispatch:
 
-env:
-  CARGO_TERM_COLOR: always
-  RUST_BACKTRACE: 1
+permissions:
+  contents: read
 
 # A newer push to a PR branch cancels its older run. Runs on main are never cancelled, so every
 # main state that gets a run is checked to the end.
@@ -17,66 +16,35 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
+  # fmt, clippy, tests and the wasm check (`cargo xtask ci`) through the suite's shared gate. No
+  # macOS on PRs or main: the org's 5 macOS slots are kept for release builds, and release.yml
+  # builds and checks macOS.
   test:
-    name: test (${{ matrix.os }})
-    runs-on: ${{ matrix.os }}
-    strategy:
-      fail-fast: false
-      matrix:
-        # No macOS on PRs or main: the org's 5 macOS slots
-        # are kept for release builds, and release.yml builds and checks macOS.
-        os: [ubuntu-latest, windows-latest]
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-
+    # Tracks @main so suite-wide CI fixes reach every app without a PR in each repository.
+    uses: storytold/craft-common-actions/.github/workflows/gate.yml@main
+    with:
+      os: '["ubuntu-24.04","windows-latest"]'
+      # The launcher bundles its own fonts (assets/fonts/) and builds nothing from craft-fonts.
+      craft-fonts-ref: ""
+      # `cargo xtask ci` and the Windows command run cargo test, not nextest.
+      tools: ""
       # egui/winit/wgpu headers. The tray (ksni) and notifications (notify-rust over zbus) are
       # pure-Rust D-Bus clients, so no GTK, appindicator, xdo or libdbus packages are needed.
-      - name: Install Linux system dependencies (egui/winit)
-        if: runner.os == 'Linux'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends \
-            libxkbcommon-dev libwayland-dev libx11-dev libxrandr-dev libxi-dev libgl1-mesa-dev
+      packages: libxkbcommon-dev libwayland-dev libx11-dev libxrandr-dev libxi-dev libgl1-mesa-dev
+      # Windows checks what differs by platform: clippy and the tests.
+      windows-command: |
+        cargo clippy --workspace --all-targets --locked -- -D warnings
+        cargo test --workspace --locked
 
-      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
-        with:
-          components: clippy, rustfmt
-
-      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
-
-      - name: Format
-        if: runner.os == 'Linux'
-        run: cargo fmt --all -- --check
-
-      - name: Clippy
-        run: cargo clippy --workspace --all-targets --locked -- -D warnings
-
-      - name: Test
-        run: cargo test --workspace --locked
-
-  wasm:
-    name: wasm32 check + trunk build
-    runs-on: ubuntu-latest
-    env:
-      TRUNK_VERSION: 0.21.14
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
-        with:
-          targets: wasm32-unknown-unknown
-          components: clippy
-      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
-        with:
-          key: wasm32
-      - name: Check wasm-safe crates
-        run: cargo xtask wasm
-      - name: Clippy (wasm32)
-        run: cargo clippy -p artcraft-launcher-core -p artcraft-launcher-web --target wasm32-unknown-unknown --locked -- -D warnings
-      - name: Install trunk
-        run: |
-          curl --proto '=https' -fsSL "https://github.com/trunk-rs/trunk/releases/download/v${TRUNK_VERSION}/trunk-x86_64-unknown-linux-gnu.tar.gz" \
-            | tar -xz -C "$HOME/.cargo/bin" trunk
-          trunk --version
-      # The same build and zip the release makes (size gate and relative-URL check included).
-      - name: Build and zip the web app
-        run: packaging/web/package.sh
+  # The browser build, as the release makes it (size gate and relative-URL check included), and
+  # clippy for wasm32. Its own cache: another target and the wasm-release profile.
+  web:
+    # Tracks @main so suite-wide CI fixes reach every app without a PR in each repository.
+    uses: storytold/craft-common-actions/.github/workflows/gate.yml@main
+    with:
+      cache-version: v1-web
+      craft-fonts-ref: ""
+      tools: trunk@0.21.14
+      command: |
+        cargo clippy -p artcraft-launcher-core -p artcraft-launcher-web --target wasm32-unknown-unknown --locked -- -D warnings
+        packaging/web/package.sh
