@@ -1286,6 +1286,9 @@ pub(crate) mod linux {
                 "artcraft-oci".to_string()
             }
         };
+        // The Version column comes from the remote's AppStream catalog, which Flatpak only fetches
+        // on demand; without a refresh a new remote lists refs with empty versions.
+        run(&["update", "--appstream", &remote])?;
         let refs = run(&["remote-ls", "--app", "--columns=ref,version", &remote])?;
         if !crate::packages::oci_ref_available(reference, expected, &refs)? {
             return Ok(false);
