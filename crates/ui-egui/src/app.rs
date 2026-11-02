@@ -1349,11 +1349,6 @@ mod tests {
         let _guard = crate::i18n::StrictCjkDrawing::on(None);
         let _ = crate::i18n::tr(Lang::ZH_CN, "Settings");
     }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::update_check_due;
 
     const NOW: i64 = 1_791_500_000;
     const EVERY: i64 = 24 * 60 * 60;
