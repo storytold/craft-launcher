@@ -1,0 +1,327 @@
+# Danish (da) catalog for ArtCraft Launcher.
+# Format: context<TAB>source<TAB>translation
+# Empty context = plain UI string (tl!, t).
+# @id = command-id keyed (tr_id).
+# @plural = plural forms: one|other (Danish has one plural class, so the forms often coincide).
+# @msg = status/error message template (message, msg).
+# Other context = disambiguation for tr_ctx.
+#
+# Clean-room: written from the meaning of ArtCraft Launcher's English labels, in standard
+# Danish software terminology in the informal "du" register (Microsoft/Apple da style).
+#
+# Coverage: the whole interface: every menu string and tl! literal (complete_menus = true).
+# Left in English on purpose: product name "ArtCraft Launcher" (and its "Launcher" tag), suite
+# name "Craft App Suite", app names (PhotoCraft, LightCraft, FilmCraft,
+# DesignCraft, VectorCraft, PdfCraft, EffectCraft, WordCraft, DeckCraft, GridCraft, CADCraft,
+# SoundCraft, FigCraft), "GitHub", "Discord", "Finder", "makers".
+# Trailing "…" (U+2026) must be preserved. Placeholders must appear in the translation:
+# {ago}, {a}, {b}, {count}, {date}, {day}, {done}, {e}, {f}, {installed}, {latest}, {min},
+# {month}, {name}, {n}, {os}, {platform}, {sources}, {total}, {version}, {v}, {year}.
+
+	Launcher	Launcher
+	Craft App Suite	Craft App Suite
+	Open Source Tools for Creatives, Makers, and Builders	Open source-værktøjer til kreative, makers og byggere
+	Settings	Indstillinger
+	Check for updates	Søg efter opdateringer
+	Grid	Gitter
+	Table	Tabel
+	Show apps as cards	Vis apps som kort
+	Show apps as a table	Vis apps som en tabel
+	All	Alle
+	Updates	Opdateringer
+	Not installed	Ikke installerede
+	Search apps	Søg efter apps
+	Sort	Sortér
+	Suite order	Suite-rækkefølge
+	Name	Navn
+	Inspired by	Inspiret af
+	Status	Status
+	Installed version	Installeret version
+	Latest version	Seneste version
+	Newest release	Nyeste udgivelse
+	Discord	Discord
+	GitHub	GitHub
+	Website	Websted
+	Classic apps	Klassiske apps
+	Classic	Klassisk
+	New apps	Nye apps
+	NEW	NY
+	Install	Installér
+	Update to {v}	Opdatér til {v}
+	Open	Åbn
+	Download for {os}	Download til {os}
+	Download	Download
+	Coming soon	Kommer snart
+	Checking…	Tjekker…
+	Not available	Ikke tilgængelig
+	Offline	Offline
+	Downloading {done} of {total}	Downloader {done} af {total}
+	Downloading…	Downloader…
+	Reconnecting…	Genopretter forbindelsen…
+	Verifying…	Verificerer…
+	Installing, then restarting…	Installerer og genstarter…
+	Installing…	Installerer…
+	Removing…	Fjerner…
+	Pause download	Sæt download på pause
+	Cancel download	Annullér download
+	Resume download	Genoptag download
+	Discard download	Kassér download
+	Release notes	Udgivelsesnoter
+	Show in Finder	Vis i Finder
+	Show in Explorer	Vis i Stifinder
+	Show in Files	Vis i Filer
+	Reinstall	Geninstallér
+	Uninstall…	Afinstallér…
+	All releases	Alle udgivelser
+	ArtCraft Launcher {version} is available.	ArtCraft Launcher {version} er tilgængelig.
+	Dismiss	Skjul
+	Update and restart	Opdatér og genstart
+	A new version is available. Would you like to relaunch with the updated version?	En ny version er tilgængelig. Vil du genstarte med den opdaterede version?
+	Later	Senere
+	What's new	Nyheder
+	No notes were published with this release.	Der blev ikke udgivet noter med denne udgivelse.
+	Released {date}	Udgivet {date}
+	Open on GitHub	Åbn på GitHub
+	Close	Luk
+	ArtCraft Launcher {version}	ArtCraft Launcher {version}
+	Only when I ask	Kun når jeg beder om det
+	Automatically download and install updates	Download og installér opdateringer automatisk
+	Notify me when an installed app has an update	Underret mig, når en installeret app har en opdatering
+	Include pre-releases (betas and release candidates)	Medtag forhåndsudgivelser (betaer og release candidates)
+	Installing on Linux	Installation på Linux
+	Install new apps as	Installér nye apps som
+	System package (recommended)	Systempakke (anbefalet)
+	Updates always use the format an app was installed with.	Opdateringer bruger altid det format, som en app blev installeret med.
+	Running in the background	Kører i baggrunden
+	Keep running in the tray when the window is closed	Kør videre i systembakken, når vinduet lukkes
+	Show the window on the current desktop	Vis vinduet på det aktuelle skrivebord
+	Start ArtCraft Launcher when I log in	Start ArtCraft Launcher, når jeg logger på
+	Community	Fællesskab
+	Questions, ideas and news from the ArtCraft team	Spørgsmål, idéer og nyheder fra ArtCraft-teamet
+	Appearance	Udseende
+	Quit ArtCraft Launcher	Afslut ArtCraft Launcher
+	Done	Udført
+	Uninstall {name}?	Afinstallér {name}?
+	The app will be moved to the Trash. Your documents and settings stay.	Appen flyttes til Papirkurven. Dine dokumenter og indstillinger bevares.
+	Windows will remove it like any installed program. Your documents and settings stay.	Windows fjerner den ligesom ethvert andet installeret program. Dine dokumenter og indstillinger bevares.
+	Your system's package manager will remove it, and may ask for your password. Your documents and settings stay.	Systemets pakkehåndtering fjerner den og vil muligvis bede om din adgangskode. Dine dokumenter og indstillinger bevares.
+	The app will be removed. Your documents and settings stay.	Appen fjernes. Dine dokumenter og indstillinger bevares.
+	Uninstall	Afinstallér
+	Cancel	Annullér
+	Checked {ago}	Tjekket {ago}
+	just now	lige nu
+	yesterday	i går
+	{month} {day}, {year}	{day}. {month} {year}
+	Automatically	Automatisk
+	Every Craft app	Alle Craft-apps
+	Apps on this computer	Apps på denne computer
+	Installed apps with a newer version	Installerede apps med en nyere version
+	Apps you can install	Apps, du kan installere
+	Hide App	Skjul app
+	Unhide App	Vis app igen
+	Hidden Apps	Skjulte apps
+	Apps you hid	Apps, du har skjult
+	Checked {ago} · using {sources}	Tjekket {ago} · via {sources}
+	{a} and {b}	{a} og {b}
+	Join the Discord	Slut dig til Discord
+	Learn more	Få mere at vide
+	Minimize	Minimér
+	Maximize	Maksimér
+	Restore	Gendan
+	New	Ny
+	OK	OK
+	Open link	Åbn link
+	Update	Opdatér
+	{name} icon	{name}-ikon
+	Loading ArtCraft Launcher…	Indlæser ArtCraft Launcher…
+	Cancel update	Annullér opdatering
+	Stop waiting; the update can be started again later	Stop med at vente; opdateringen kan startes igen senere
+	Download again	Download igen
+	Install cancelled	Installation annulleret
+	Install cancelled. The download is kept for the next try.	Installation annulleret. Downloaden gemmes til næste forsøg.
+	Update cancelled	Opdatering annulleret
+	Uninstall cancelled	Afinstallation annulleret
+	Retry install	Prøv installation igen
+	Retry update to {version}	Prøv opdatering til {version} igen
+	The download is still here. It's checked again, then installed.	Downloaden er der stadig. Den tjekkes igen og installeres derefter.
+	Waiting for another app…	Venter på en anden app…
+	Waiting for other installs…	Venter på andre installationer…
+	Installer (.msi)	Installationsprogram (.msi)
+	Portable (.zip)	Portable (.zip)
+	Disk image (.dmg)	Diskaftryk (.dmg)
+	Debian package (.deb)	Debian-pakke (.deb)
+	RPM package (.rpm)	RPM-pakke (.rpm)
+	Flatpak bundle	Flatpak-bundle
+	Tarball (.tar.gz)	Tar-arkiv (.tar.gz)
+photocraft	Image editing	Billedredigering
+vectorcraft	Vector illustration	Vektorillustration
+filmcraft	Video editing, color and sound	Videoredigering, farve og lyd
+lightcraft	Photo library and raw development	Fotobibliotek og raw-fremkaldelse
+pdfcraft	Reading, organizing and protecting PDFs	Læsning, organisering og beskyttelse af PDF-filer
+effectcraft	Motion graphics and visual effects	Motion graphics og visuelle effekter
+designcraft	Page layout and publishing	Sideopsætning og publicering
+wordcraft	Writing and document design	Skrivning og dokumentdesign
+deckcraft	Presentations and slide shows	Præsentationer og diasshows
+gridcraft	Spreadsheets and data	Regneark og data
+cadcraft	Computer-aided design and drafting	Computerstøttet design og tegning
+soundcraft	Recording, editing and mixing audio	Optagelse, redigering og mixing af lyd
+figcraft	Interface design and prototyping	Interface-design og prototyping
+month	Jan	jan
+month	Feb	feb
+month	Mar	mar
+month	Apr	apr
+month	May	maj
+month	Jun	jun
+month	Jul	jul
+month	Aug	aug
+month	Sep	sep
+month	Oct	okt
+month	Nov	nov
+month	Dec	dec
+	Not checked yet	Ikke tjekket endnu
+	GitHub's hourly limit was reached; full details return in {min} min	GitHubs grænse pr. time blev nået; alle detaljer vender tilbage om {min} min
+	GitHub limit hit; back in {min} min	GitHub-grænsen er nået; tilbage om {min} min
+	Installing for {platform}	Installation til {platform}
+	Downloads for {platform}	Downloads til {platform}
+	No downloads for this system	Ingen downloads til dette system
+	Join the ArtCraft community on Discord	Slut dig til ArtCraft-fællesskabet på Discord
+	ArtCraft on {name}	ArtCraft på {name}
+	Couldn't open {name}: {e}	Kunne ikke åbne {name}: {e}
+	Download cancelled	Download annulleret
+	Available to install	Kan installeres
+	Available	Tilgængelig
+	Installed · up to date	Installeret · ajour
+	Update available	Opdatering tilgængelig
+	Installed	Installeret
+	installed	installeret
+	Not available here	Ikke tilgængelig her
+	Updating…	Opdaterer…
+	Update paused	Opdatering sat på pause
+	Download paused	Download sat på pause
+	{version} installed → {latest} released	{version} installeret → {latest} udgivet
+	Version {version}	Version {version}
+	{installed} installed · latest {latest}	{installed} installeret · seneste {latest}
+	Installed · latest {latest}	Installeret · seneste {latest}
+	Version {version} installed	Version {version} installeret
+	Version {latest}	Version {latest}
+	No release published yet	Ingen udgivelser endnu
+	ArtCraft Launcher	ArtCraft Launcher
+	App	App
+	Latest	Seneste
+	Released	Udgivet
+	Auto	Auto
+	Language	Sprog
+	Ascending	Stigende
+	Descending	Faldende
+	Click to reverse the order	Klik for at vende rækkefølgen
+	Click to sort by this column	Klik for at sortere efter denne kolonne
+	Like {name}	Ligesom {name}
+	{done} of {total}	{done} af {total}
+	Downloading	Downloader
+	Verifying checksum…	Verificerer kontrolsum…
+	Resume	Genoptag
+	{done} of {total} downloaded	{done} af {total} downloadet
+	{done} downloaded	{done} downloadet
+	Checking for updates…	Søger efter opdateringer…
+	Downloads the new version, replaces this one and opens it again	Downloader den nye version, erstatter denne og åbner den igen
+	Couldn't check for updates: {f}	Kunne ikke søge efter opdateringer: {f}
+	Website (coming soon)	Websted (kommer snart)
+	GitHub repository	GitHub-repository
+	ArtCraft	ArtCraft
+	Update 1 app	Opdatér 1 app
+	Update all ({count})	Opdatér alle ({count})
+	⊞  Grid	⊞  Gitter
+	☰  Table	☰  Tabel
+	🔍  Search apps	🔍  Søg efter apps
+	{name} {version}	{name} {version}
+	Match system	Følg systemet
+	Dark	Mørk
+	Light	Lys
+	Full changelog	Fuld ændringslog
+	link	link
+	No apps match	Ingen apps matcher
+	Open ArtCraft Launcher to update.	Åbn ArtCraft Launcher for at opdatere.
+	{name} {v} is available	{name} {v} er tilgængelig
+	{count} updates are available	Der er {count} tilgængelige opdateringer
+	These notes weren't fetched (GitHub's request limit was reached). They're on the release page.	Disse noter blev ikke hentet (GitHubs anmodningsgrænse blev nået). De findes på udgivelsessiden.
+	When on, opening the launcher from the menu bar brings its window to the desktop you're on. When off, macOS switches you to the desktop the window was on.	Når den er slået til, vises vinduet på det skrivebord, du er på, når du åbner launcher-appen fra menulinjen. Når den er slået fra, skifter macOS dig til det skrivebord, vinduet var på.
+	Couldn't change the login item: {e}	Kunne ikke ændre login-elementet: {e}
+column	App	App
+column	Installed	Installeret
+column	Latest	Seneste
+column	Released	Udgivet
+filter	Installed	Installerede
+	App details	Detaljer om appen
+	Close (Esc)	Luk (Esc)
+	Features	Funktioner
+	Latest release	Seneste udgivelse
+	Version	Version
+	Platforms	Platforme
+	Releases	Udgivelser
+	Enlarge picture	Forstør billede
+	Click to enlarge	Klik for at forstørre
+	Previous picture (←)	Forrige billede (←)
+	Next picture (→)	Næste billede (→)
+	Loading pictures…	Indlæser billeder…
+	Pictures couldn't be loaded. Reopen this page to try again.	Billederne kunne ikke indlæses. Åbn siden igen for at prøve en gang til.
+	{name} details	Detaljer om {name}
+@plural	{n} app|{n} apps	{n} app|{n} apps
+@plural	{n} min ago|{n} min ago	for {n} min siden|for {n} min siden
+@plural	{n} h ago|{n} h ago	for {n} t siden|for {n} t siden
+@plural	{n} day ago|{n} days ago	for {n} dag siden|for {n} dage siden
+@msg	Couldn't open {name}: {e}	Kunne ikke åbne {name}: {e}
+@msg	Download cancelled	Download annulleret
+@msg	{name} updated to {version}	{name} opdateret til {version}
+@msg	{name} installed: {version}	{name} installeret: {version}
+@msg	{name} updated to {version} (this release publishes no checksum, so only its size was checked)	{name} opdateret til {version} (denne udgivelse offentliggør ingen kontrolsum, så kun dens størrelse blev kontrolleret)
+@msg	{name} installed: {version} (this release publishes no checksum, so only its size was checked)	{name} installeret: {version} (denne udgivelse offentliggør ingen kontrolsum, så kun dens størrelse blev kontrolleret)
+@msg	{name} was removed	{name} blev fjernet
+@msg	{name} is running. Quit it, then try again.	{name} kører. Luk den, og prøv igen.
+@id	app.install	Installér
+@id	app.update	Opdatér til {v}
+@id	app.open	Åbn
+@id	app.download	Download til {os}
+@id	app.reveal	Vis i Finder
+@id	app.reinstall	Geninstallér
+@id	app.uninstall	Afinstallér…
+@id	app.notes	Udgivelsesnoter
+@id	app.website	Websted
+@id	app.github	GitHub-repository
+@id	app.releases	Alle udgivelser
+@id	launcher.update	Opdatér og genstart
+@id	launcher.download	Download
+@id	launcher.notes	Nyheder
+@id	launcher.dismiss	Skjul
+@id	settings.open	Indstillinger
+@id	settings.quit	Afslut ArtCraft Launcher
+@id	view.grid	Gitter
+@id	view.table	Tabel
+@id	filter.all	Alle
+@id	filter.installed	Installerede
+@id	filter.updates	Opdateringer
+@id	filter.notinstalled	Ikke installerede
+@id	sort.suite	Suite-rækkefølge
+@id	sort.name	Navn
+@id	sort.inspired	Inspiret af
+@id	sort.status	Status
+@id	sort.installed	Installeret version
+@id	sort.latest	Seneste version
+@id	sort.released	Nyeste udgivelse
+@id	help.discord	Discord
+@id	help.github	GitHub
+@id	help.website	Websted
+@id	update.check	Søg efter opdateringer
+@id	update.check_auto	Søg efter opdateringer automatisk
+@id	update.notify	Underret mig, når en installeret app har en opdatering
+@id	update.prereleases	Medtag forhåndsudgivelser (betaer og release candidates)
+@id	linux.preferred_kind	Installér nye apps som
+@id	tray.close_to_tray	Kør videre i systembakken, når vinduet lukkes
+@id	tray.show_on_current_desktop	Vis vinduet på det aktuelle skrivebord
+@id	tray.login_item	Start ArtCraft Launcher, når jeg logger på
+@id	appearance.theme	Udseende
+	Show ArtCraft Launcher	Vis ArtCraft Launcher
+	Check for Updates	Søg efter opdateringer
+	Visit getartcraft.com	Besøg getartcraft.com
+	ArtCraft on GitHub	ArtCraft på GitHub
+	Join the ArtCraft Discord	Slut dig til ArtCraft-Discord
+@plural	ArtCraft Launcher · {n} update available|ArtCraft Launcher · {n} updates available	ArtCraft Launcher · {n} tilgængelig opdatering|ArtCraft Launcher · {n} tilgængelige opdateringer

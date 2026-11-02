@@ -1,0 +1,328 @@
+# Dutch (nl) catalog for ArtCraft Launcher.
+# Format: context<TAB>source<TAB>translation
+# Empty context = plain UI string (tl!, t).
+# @id = command-id keyed (tr_id).
+# @plural = plural forms: one|other (only 1 is "one" in Dutch).
+# @msg = status/error message template (message, msg).
+# Other context = disambiguation for tr_ctx.
+#
+# Clean-room: written from the meaning of ArtCraft Launcher's English labels, in neutral
+# standard Dutch for the Netherlands and Flanders (the interface addresses the user as "je";
+# software terminology follows the Dutch Microsoft/Apple style).
+#
+# Coverage: the whole interface: every menu string and tl! literal (complete_menus = true).
+# Left in English on purpose: product name "ArtCraft Launcher" (and its "Launcher" tag), suite
+# name "Craft App Suite", app names (PhotoCraft, LightCraft, FilmCraft,
+# DesignCraft, VectorCraft, PdfCraft, EffectCraft, WordCraft, DeckCraft, GridCraft, CADCraft,
+# SoundCraft, FigCraft), "GitHub", "Discord", "Finder", "makers".
+# Trailing "…" (U+2026) must be preserved. Placeholders must appear in the translation:
+# {ago}, {a}, {b}, {count}, {date}, {day}, {done}, {e}, {f}, {installed}, {latest}, {min},
+# {month}, {name}, {n}, {os}, {platform}, {sources}, {total}, {version}, {v}, {year}.
+
+	Launcher	Launcher
+	Craft App Suite	Craft App Suite
+	Open Source Tools for Creatives, Makers, and Builders	Open source-tools voor creatievelingen, makers en bouwers
+	Settings	Instellingen
+	Check for updates	Controleren op updates
+	Grid	Raster
+	Table	Tabel
+	Show apps as cards	Apps als kaarten weergeven
+	Show apps as a table	Apps als tabel weergeven
+	All	Alle
+	Updates	Updates
+	Not installed	Niet geïnstalleerd
+	Search apps	Apps zoeken
+	Sort	Sorteren
+	Suite order	Suitevolgorde
+	Name	Naam
+	Inspired by	Geïnspireerd door
+	Status	Status
+	Installed version	Geïnstalleerde versie
+	Latest version	Nieuwste versie
+	Newest release	Nieuwste release
+	Discord	Discord
+	GitHub	GitHub
+	Website	Website
+	Classic apps	Klassieke apps
+	Classic	Klassiek
+	New apps	Nieuwe apps
+	NEW	NIEUW
+	Install	Installeren
+	Update to {v}	Bijwerken naar {v}
+	Open	Openen
+	Download for {os}	Downloaden voor {os}
+	Download	Downloaden
+	Coming soon	Binnenkort beschikbaar
+	Checking…	Controleren…
+	Not available	Niet beschikbaar
+	Offline	Offline
+	Downloading {done} of {total}	Downloaden: {done} van {total}
+	Downloading…	Downloaden…
+	Reconnecting…	Opnieuw verbinden…
+	Verifying…	Verifiëren…
+	Installing, then restarting…	Installeren en daarna opnieuw opstarten…
+	Installing…	Installeren…
+	Removing…	Verwijderen…
+	Pause download	Download pauzeren
+	Cancel download	Download annuleren
+	Resume download	Download hervatten
+	Discard download	Download weggooien
+	Release notes	Releaseopmerkingen
+	Show in Finder	In Finder tonen
+	Show in Explorer	In Verkenner tonen
+	Show in Files	In Bestanden tonen
+	Reinstall	Opnieuw installeren
+	Uninstall…	Verwijderen…
+	All releases	Alle releases
+	ArtCraft Launcher {version} is available.	ArtCraft Launcher {version} is beschikbaar.
+	Dismiss	Negeren
+	Update and restart	Bijwerken en opnieuw opstarten
+	A new version is available. Would you like to relaunch with the updated version?	Er is een nieuwe versie beschikbaar. Wil je opnieuw opstarten met de bijgewerkte versie?
+	Later	Later
+	What's new	Wat is er nieuw
+	No notes were published with this release.	Bij deze release zijn geen opmerkingen gepubliceerd.
+	Released {date}	Uitgebracht op {date}
+	Open on GitHub	Openen op GitHub
+	Close	Sluiten
+	ArtCraft Launcher {version}	ArtCraft Launcher {version}
+	Only when I ask	Alleen als ik het vraag
+	Automatically download and install updates	Updates automatisch downloaden en installeren
+	Notify me when an installed app has an update	Me laten weten wanneer een geïnstalleerde app een update heeft
+	Include pre-releases (betas and release candidates)	Pre-releases opnemen (bèta's en release candidates)
+	Installing on Linux	Installeren op Linux
+	Install new apps as	Nieuwe apps installeren als
+	System package (recommended)	Systeempakket (aanbevolen)
+	Updates always use the format an app was installed with.	Updates gebruiken altijd de indeling waarmee een app is geïnstalleerd.
+	Running in the background	Op de achtergrond uitvoeren
+	Keep running in the tray when the window is closed	Actief blijven in het systeemvak wanneer het venster wordt gesloten
+	Show the window on the current desktop	Het venster op het huidige bureaublad tonen
+	Start ArtCraft Launcher when I log in	ArtCraft Launcher starten wanneer ik me aanmeld
+	Community	Community
+	Questions, ideas and news from the ArtCraft team	Vragen, ideeën en nieuws van het ArtCraft-team
+	Appearance	Vormgeving
+	Quit ArtCraft Launcher	ArtCraft Launcher afsluiten
+	Done	Gereed
+	Uninstall {name}?	{name} verwijderen?
+	The app will be moved to the Trash. Your documents and settings stay.	De app wordt verplaatst naar de prullenbak. Je documenten en instellingen blijven staan.
+	Windows will remove it like any installed program. Your documents and settings stay.	Windows verwijdert de app zoals elk geïnstalleerd programma. Je documenten en instellingen blijven staan.
+	Your system's package manager will remove it, and may ask for your password. Your documents and settings stay.	De pakketbeheerder van je systeem verwijdert de app en kan om je wachtwoord vragen. Je documenten en instellingen blijven staan.
+	The app will be removed. Your documents and settings stay.	De app wordt verwijderd. Je documenten en instellingen blijven staan.
+	Uninstall	Verwijderen
+	Cancel	Annuleren
+	Checked {ago}	Gecontroleerd {ago}
+	just now	zojuist
+	yesterday	gisteren
+	{month} {day}, {year}	{day} {month} {year}
+	Automatically	Automatisch
+	Every Craft app	Alle Craft-apps
+	Apps on this computer	Apps op deze computer
+	Installed apps with a newer version	Geïnstalleerde apps met een nieuwere versie
+	Apps you can install	Apps die je kunt installeren
+	Hide App	App verbergen
+	Unhide App	App weer tonen
+	Hidden Apps	Verborgen apps
+	Apps you hid	Apps die je hebt verborgen
+	Checked {ago} · using {sources}	Gecontroleerd {ago} · met {sources}
+	{a} and {b}	{a} en {b}
+	Join the Discord	Word lid van de Discord
+	Learn more	Meer informatie
+	Minimize	Minimaliseren
+	Maximize	Maximaliseren
+	Restore	Herstellen
+	New	Nieuw
+	OK	OK
+	Open link	Koppeling openen
+	Update	Bijwerken
+	{name} icon	Pictogram van {name}
+	Loading ArtCraft Launcher…	ArtCraft Launcher wordt geladen…
+	Cancel update	Update annuleren
+	Stop waiting; the update can be started again later	Stoppen met wachten; de update kan later opnieuw worden gestart
+	Download again	Opnieuw downloaden
+	Install cancelled	Installatie geannuleerd
+	Install cancelled. The download is kept for the next try.	Installatie geannuleerd. De download wordt bewaard voor de volgende poging.
+	Update cancelled	Update geannuleerd
+	Uninstall cancelled	Verwijderen geannuleerd
+	Retry install	Installatie opnieuw proberen
+	Retry update to {version}	Bijwerken naar {version} opnieuw proberen
+	The download is still here. It's checked again, then installed.	De download is er nog. Deze wordt opnieuw gecontroleerd en daarna geïnstalleerd.
+	Waiting for another app…	Wachten op een andere app…
+	Waiting for other installs…	Wachten op andere installaties…
+	Installer (.msi)	Installatieprogramma (.msi)
+	Portable (.zip)	Portable (.zip)
+	Disk image (.dmg)	Schijfkopie (.dmg)
+	Debian package (.deb)	Debian-pakket (.deb)
+	RPM package (.rpm)	RPM-pakket (.rpm)
+	Flatpak bundle	Flatpak-bundel
+	Tarball (.tar.gz)	Tar-archief (.tar.gz)
+photocraft	Image editing	Beeldbewerking
+vectorcraft	Vector illustration	Vectorillustraties
+filmcraft	Video editing, color and sound	Videobewerking, kleur en geluid
+lightcraft	Photo library and raw development	Fotobibliotheek en RAW-ontwikkeling
+pdfcraft	Reading, organizing and protecting PDFs	Pdf's lezen, organiseren en beveiligen
+effectcraft	Motion graphics and visual effects	Motion graphics en visuele effecten
+designcraft	Page layout and publishing	Pagina's opmaken en publiceren
+wordcraft	Writing and document design	Schrijven en documentontwerp
+deckcraft	Presentations and slide shows	Presentaties en diavoorstellingen
+gridcraft	Spreadsheets and data	Spreadsheets en data
+cadcraft	Computer-aided design and drafting	CAD: ontwerpen en technisch tekenen
+soundcraft	Recording, editing and mixing audio	Audio opnemen, bewerken en mixen
+figcraft	Interface design and prototyping	Interfaceontwerp en prototyping
+month	Jan	jan
+month	Feb	feb
+month	Mar	mrt
+month	Apr	apr
+month	May	mei
+month	Jun	jun
+month	Jul	jul
+month	Aug	aug
+month	Sep	sep
+month	Oct	okt
+month	Nov	nov
+month	Dec	dec
+	Not checked yet	Nog niet gecontroleerd
+	GitHub's hourly limit was reached; full details return in {min} min	Het uurlimiet van GitHub is bereikt; volledige details zijn over {min} min weer beschikbaar
+	GitHub limit hit; back in {min} min	GitHub-limiet bereikt; over {min} min weer beschikbaar
+	Installing for {platform}	Installeren voor {platform}
+	Downloads for {platform}	Downloads voor {platform}
+	No downloads for this system	Geen downloads voor dit systeem
+	Join the ArtCraft community on Discord	Word lid van de ArtCraft-community op Discord
+	ArtCraft on {name}	ArtCraft op {name}
+	Couldn't open {name}: {e}	Kon {name} niet openen: {e}
+	Download cancelled	Download geannuleerd
+	Available to install	Beschikbaar om te installeren
+	Available	Beschikbaar
+	Installed · up to date	Geïnstalleerd · up-to-date
+	Update available	Update beschikbaar
+	Installed	Geïnstalleerd
+	installed	geïnstalleerd
+	Not available here	Hier niet beschikbaar
+	Updating…	Bijwerken…
+	Update paused	Update gepauzeerd
+	Download paused	Download gepauzeerd
+	{version} installed → {latest} released	{version} geïnstalleerd → {latest} uitgebracht
+	Version {version}	Versie {version}
+	{installed} installed · latest {latest}	{installed} geïnstalleerd · nieuwste {latest}
+	Installed · latest {latest}	Geïnstalleerd · nieuwste {latest}
+	Version {version} installed	Versie {version} geïnstalleerd
+	Version {latest}	Versie {latest}
+	No release published yet	Nog geen release gepubliceerd
+	ArtCraft Launcher	ArtCraft Launcher
+	App	App
+	Latest	Nieuwste
+	Released	Uitgebracht
+	Auto	Automatisch
+	Language	Taal
+	Ascending	Oplopend
+	Descending	Aflopend
+	Click to reverse the order	Klik om de volgorde om te draaien
+	Click to sort by this column	Klik om op deze kolom te sorteren
+	Like {name}	Zoals {name}
+	{done} of {total}	{done} van {total}
+	Downloading	Downloaden
+	Verifying checksum…	Controlesom verifiëren…
+	Resume	Hervatten
+	{done} of {total} downloaded	{done} van {total} gedownload
+	{done} downloaded	{done} gedownload
+	Checking for updates…	Controleren op updates…
+	Downloads the new version, replaces this one and opens it again	Downloadt de nieuwe versie, vervangt de huidige en opent de app opnieuw
+	Couldn't check for updates: {f}	Kon niet controleren op updates: {f}
+	Website (coming soon)	Website (binnenkort beschikbaar)
+	GitHub repository	GitHub-repository
+	ArtCraft	ArtCraft
+	Update 1 app	1 app bijwerken
+	Update all ({count})	Alles bijwerken ({count})
+	⊞  Grid	⊞  Raster
+	☰  Table	☰  Tabel
+	🔍  Search apps	🔍  Apps zoeken
+	{name} {version}	{name} {version}
+	Match system	Systeem volgen
+	Dark	Donker
+	Light	Licht
+	Full changelog	Volledig wijzigingslogboek
+	link	koppeling
+	No apps match	Geen apps gevonden
+	Open ArtCraft Launcher to update.	Open ArtCraft Launcher om bij te werken.
+	{name} {v} is available	{name} {v} is beschikbaar
+	{count} updates are available	Er zijn {count} updates beschikbaar
+	These notes weren't fetched (GitHub's request limit was reached). They're on the release page.	Deze opmerkingen zijn niet opgehaald (de aanvraaglimiet van GitHub is bereikt). Ze staan op de releasepagina.
+	When on, opening the launcher from the menu bar brings its window to the desktop you're on. When off, macOS switches you to the desktop the window was on.	Als dit aan staat, wordt het venster van de launcher naar het bureaublad gebracht waar je je bevindt als je de launcher vanuit de menubalk opent. Als dit uit staat, schakelt macOS je over naar het bureaublad waar het venster zich bevond.
+	Couldn't change the login item: {e}	Kon het inlogitem niet wijzigen: {e}
+column	App	App
+column	Installed	Geïnstalleerd
+column	Latest	Nieuwste
+column	Released	Uitgebracht
+filter	Installed	Geïnstalleerd
+	App details	Details van de app
+	Close (Esc)	Sluiten (Esc)
+	Features	Functies
+	Latest release	Nieuwste release
+	Version	Versie
+	Platforms	Platformen
+	Releases	Releases
+	Enlarge picture	Afbeelding vergroten
+	Click to enlarge	Klik om te vergroten
+	Previous picture (←)	Vorige afbeelding (←)
+	Next picture (→)	Volgende afbeelding (→)
+	Loading pictures…	Afbeeldingen worden geladen…
+	Pictures couldn't be loaded. Reopen this page to try again.	De afbeeldingen konden niet worden geladen. Open deze pagina opnieuw om het nog eens te proberen.
+	{name} details	Details van {name}
+@plural	{n} app|{n} apps	{n} app|{n} apps
+@plural	{n} min ago|{n} min ago	{n} min geleden|{n} min geleden
+@plural	{n} h ago|{n} h ago	{n} uur geleden|{n} uur geleden
+@plural	{n} day ago|{n} days ago	{n} dag geleden|{n} dagen geleden
+@msg	Couldn't open {name}: {e}	Kon {name} niet openen: {e}
+@msg	Download cancelled	Download geannuleerd
+@msg	{name} updated to {version}	{name} bijgewerkt naar {version}
+@msg	{name} installed: {version}	{name} geïnstalleerd: {version}
+@msg	{name} updated to {version} (this release publishes no checksum, so only its size was checked)	{name} bijgewerkt naar {version} (deze release publiceert geen controlesom, dus alleen de grootte is gecontroleerd)
+@msg	{name} installed: {version} (this release publishes no checksum, so only its size was checked)	{name} geïnstalleerd: {version} (deze release publiceert geen controlesom, dus alleen de grootte is gecontroleerd)
+@msg	{name} was removed	{name} is verwijderd
+@msg	{name} is running. Quit it, then try again.	{name} is actief. Sluit de app af en probeer het opnieuw.
+@id	app.install	Installeren
+@id	app.update	Bijwerken naar {v}
+@id	app.open	Openen
+@id	app.download	Downloaden voor {os}
+@id	app.reveal	In Finder tonen
+@id	app.reinstall	Opnieuw installeren
+@id	app.uninstall	Verwijderen…
+@id	app.notes	Releaseopmerkingen
+@id	app.website	Website
+@id	app.github	GitHub-repository
+@id	app.releases	Alle releases
+@id	launcher.update	Bijwerken en opnieuw opstarten
+@id	launcher.download	Downloaden
+@id	launcher.notes	Wat is er nieuw
+@id	launcher.dismiss	Negeren
+@id	settings.open	Instellingen
+@id	settings.quit	ArtCraft Launcher afsluiten
+@id	view.grid	Raster
+@id	view.table	Tabel
+@id	filter.all	Alle
+@id	filter.installed	Geïnstalleerd
+@id	filter.updates	Updates
+@id	filter.notinstalled	Niet geïnstalleerd
+@id	sort.suite	Suitevolgorde
+@id	sort.name	Naam
+@id	sort.inspired	Geïnspireerd door
+@id	sort.status	Status
+@id	sort.installed	Geïnstalleerde versie
+@id	sort.latest	Nieuwste versie
+@id	sort.released	Nieuwste release
+@id	help.discord	Discord
+@id	help.github	GitHub
+@id	help.website	Website
+@id	update.check	Controleren op updates
+@id	update.check_auto	Automatisch controleren op updates
+@id	update.notify	Me laten weten wanneer een geïnstalleerde app een update heeft
+@id	update.prereleases	Pre-releases opnemen (bèta's en release candidates)
+@id	linux.preferred_kind	Nieuwe apps installeren als
+@id	tray.close_to_tray	Actief blijven in het systeemvak wanneer het venster wordt gesloten
+@id	tray.show_on_current_desktop	Het venster op het huidige bureaublad tonen
+@id	tray.login_item	ArtCraft Launcher starten wanneer ik me aanmeld
+@id	appearance.theme	Vormgeving
+	Show ArtCraft Launcher	ArtCraft Launcher tonen
+	Check for Updates	Controleren op updates
+	Visit getartcraft.com	getartcraft.com bezoeken
+	ArtCraft on GitHub	ArtCraft op GitHub
+	Join the ArtCraft Discord	Word lid van de ArtCraft Discord
+@plural	ArtCraft Launcher · {n} update available|ArtCraft Launcher · {n} updates available	ArtCraft Launcher · {n} update beschikbaar|ArtCraft Launcher · {n} updates beschikbaar
