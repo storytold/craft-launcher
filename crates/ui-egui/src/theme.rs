@@ -311,7 +311,16 @@ fn font_definitions(cjk: Option<Lang>) -> FontDefinitions {
     const INTER: &[u8] = include_bytes!("../../../assets/fonts/Inter-Variable.ttf");
     const ARCHIVO: &[u8] = include_bytes!("../../../assets/fonts/Archivo-Variable.ttf");
     const GEIST_MONO: &[u8] = include_bytes!("../../../assets/fonts/GeistMono-Variable.ttf");
+    const VAZIRMATN: &[u8] = include_bytes!("../../../assets/fonts/Vazirmatn-Variable.ttf"); 
     let mut fonts = FontDefinitions::default();
+    fonts.font_data.insert(
+        "Vazirmatn".to_owned(),
+        Arc::new(FontData::from_static(VAZIRMATN).tweak(FontTweak {
+            coords: VariationCoords::new([(*b"wght", 400.0)].into_iter()),
+            subpixel_binning: Some(false),
+            ..Default::default()
+        })),
+    );
     // egui's own Latin faces and the small monochrome icon face stay behind ours.
     let fallback: Vec<String> = fonts.families.get(&FontFamily::Proportional).cloned().unwrap_or_default();
     let faces: [Face<'_>; 7] = [
@@ -329,6 +338,7 @@ fn font_definitions(cjk: Option<Lang>) -> FontDefinitions {
         let tweak = FontTweak { coords: VariationCoords::new(coords.iter().copied()), subpixel_binning: Some(false), ..Default::default() };
         fonts.font_data.insert(name.to_owned(), Arc::new(FontData::from_static(bytes).tweak(tweak)));
         let mut stack = vec![name.to_owned()];
+        stack.push("Vazirmatn".to_owned());
         stack.extend(fallback.iter().cloned());
         fonts.families.insert(family, stack);
     }
@@ -459,7 +469,7 @@ mod tests {
         for fallback in ["Ubuntu-Light", "Hack", "egui-icons", "NotoEmoji-Regular", "emoji-icon-font"] {
             assert!(fonts.font_data.contains_key(fallback), "missing egui fallback {fallback}");
         }
-        assert_eq!(fonts.font_data.len(), 12, "unexpected extra faces: {:?}", fonts.font_data.keys().collect::<Vec<_>>());
+        assert_eq!(fonts.font_data.len(), 13, "unexpected extra faces: {:?}", fonts.font_data.keys().collect::<Vec<_>>());
         for family in [egui::FontFamily::Proportional, egui::FontFamily::Monospace, medium(), semibold(), display(), mono(), mono_bold()] {
             let stack = fonts.families.get(&family).unwrap_or_else(|| panic!("family {family:?} missing"));
             assert_eq!(
@@ -484,7 +494,7 @@ mod tests {
         let fonts = font_definitions(None);
         assert_eq!(
             fonts.font_data.len(),
-            12,
+            13,
             "the coverage test is only meaningful for the bundled stack: {:?}",
             fonts.font_data.keys().collect::<Vec<_>>()
         );
