@@ -466,7 +466,7 @@ impl LauncherUi {
     /// pointer is over it.
     fn card(&mut self, ui: &mut Ui, id: &str, rect: Rect) {
         let Some(entry) = self.entry(id).cloned() else { return };
-        self.pin_drop_target(ui, id, rect);
+        self.pin_drop_target(ui, id, rect, PinDropAxis::Horizontal);
         let t = Tokens::get(ui.ctx());
         let app = entry.app;
         let hovered = ui.rect_contains_pointer(rect);
@@ -757,8 +757,8 @@ impl LauncherUi {
             Self::table_rule(ui, t, span, clip);
         }
         let row_rect = ui.max_rect();
-        // Drop target spans the full table width so a drag from the grip column still hits the row.
-        self.pin_drop_target(ui, id, Rect::from_x_y_ranges(span, row_rect.y_range()));
+        // Full-row target (covers the grip column too); only this target reorders in the table.
+        self.pin_drop_target(ui, id, Rect::from_x_y_ranges(span, row_rect.y_range()), PinDropAxis::Vertical);
         // Clicking the app's cell opens its page (the content is added after, so it wins any hit).
         if AppDetails::by_id(id).is_some() {
             let open = ui.interact(row_rect, ui.scope_id().with(("row-open", id)), Sense::click());
@@ -911,14 +911,12 @@ impl LauncherUi {
         if resp.drag_stopped() {
             self.pin_dragging = None;
         }
-        // The grip column is also a drop target (table rows otherwise only register the first cell).
-        self.pin_drop_target(ui, entry.app.id, resp.rect.expand2(vec2(8.0, 12.0)));
     }
 
     /// While a pin handle is dragged, hovering another pinned card/row moves the dragged app there.
-    /// Insert before the target when the pointer is in its top/left half, otherwise after — so
-    /// grip-to-grip drops work in every direction without depending on travel relative to midpoints.
-    fn pin_drop_target(&mut self, ui: &Ui, id: &str, rect: Rect) {
+    /// Grid uses the horizontal half; table uses the vertical half. One target per surface — the
+    /// table's full-row target already covers the grip column, so the grip itself does not reorder.
+    fn pin_drop_target(&mut self, ui: &Ui, id: &str, rect: Rect, axis: PinDropAxis) {
         let Some(from) = self.pin_dragging.clone() else {
             return;
         };
@@ -938,10 +936,12 @@ impl LauncherUi {
         let Some(to_i) = self.settings.pinned.iter().position(|p| p == id) else {
             return;
         };
-        let insert_before = pos.x < rect.center().x || pos.y < rect.center().y;
-        let last = self.settings.pinned.len().saturating_sub(1);
-        let final_index = if insert_before { to_i } else { to_i.saturating_add(1).min(last) };
-        self.settings.reorder_pinned_to(&from, final_index);
+        let insert_before = match axis {
+            PinDropAxis::Horizontal => pos.x < rect.center().x,
+            PinDropAxis::Vertical => pos.y < rect.center().y,
+        };
+        let insertion_index = if insert_before { to_i } else { to_i.saturating_add(1) };
+        self.settings.reorder_pinned_to(&from, insertion_index);
     }
 
     /// A running job's row: one progress bar, with pause and cancel while its download is under
@@ -1230,6 +1230,15 @@ impl LauncherUi {
             ui.close();
         }
     }
+}
+
+/// Which half of a pin drop target decides insert-before vs insert-after.
+#[derive(Clone, Copy, Debug)]
+enum PinDropAxis {
+    /// Grid cards: left/right of the card.
+    Horizontal,
+    /// Table rows: above/below the row midline.
+    Vertical,
 }
 
 /// What the grid's sort dropdown offers: the order and, for names, which way. The installed apps

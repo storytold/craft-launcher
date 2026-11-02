@@ -191,18 +191,21 @@ impl Settings {
         self.pinned.insert(to.min(self.pinned.len()), item);
     }
 
-    /// Move `from_id` so its final index is `to_index` (clamped). Used by drag-and-drop.
-    pub fn reorder_pinned_to(&mut self, from_id: &str, to_index: usize) {
+    /// Move `from_id` to insertion slot `to_index` (`0..=len`, before remove). Used by drag-and-drop.
+    pub fn reorder_pinned_to(&mut self, from_id: &str, mut to_index: usize) {
         let Some(from) = self.pinned.iter().position(|p| p == from_id) else {
             return;
         };
-        let to_index = to_index.min(self.pinned.len().saturating_sub(1));
-        if from == to_index {
+        to_index = to_index.min(self.pinned.len());
+        // Already in this slot (including the no-op "insert immediately after self").
+        if to_index == from || to_index == from + 1 {
             return;
         }
         let item = self.pinned.remove(from);
-        // After remove, inserting at the original `to_index` yields that final index.
-        self.pinned.insert(to_index.min(self.pinned.len()), item);
+        if from < to_index {
+            to_index -= 1;
+        }
+        self.pinned.insert(to_index, item);
     }
 
     /// Display name for a language `code`: a language's name in itself, from the registry
@@ -317,15 +320,19 @@ mod tests {
     }
 
     #[test]
-    fn reorder_pinned_to_moves_to_final_index() {
+    fn reorder_pinned_to_uses_insertion_slot() {
         let mut s = Settings { pinned: vec!["a".into(), "b".into(), "c".into()], ..Settings::default() };
+        // Insert c before a (slot 0).
         s.reorder_pinned_to("c", 0);
         assert_eq!(s.pinned, vec!["c", "a", "b"]);
-        s.reorder_pinned_to("c", 2);
+        // Insert c after b (slot 3).
+        s.reorder_pinned_to("c", 3);
         assert_eq!(s.pinned, vec!["a", "b", "c"]);
-        s.reorder_pinned_to("a", 1);
+        // Insert a before c (slot 2) → [b, a, c].
+        s.reorder_pinned_to("a", 2);
         assert_eq!(s.pinned, vec!["b", "a", "c"]);
-        s.reorder_pinned_to("a", 1);
+        // Insert a after itself (slot 2) is a no-op.
+        s.reorder_pinned_to("a", 2);
         assert_eq!(s.pinned, vec!["b", "a", "c"]);
     }
 
