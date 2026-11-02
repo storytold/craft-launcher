@@ -156,6 +156,7 @@ designcraft	Page layout and publishing	עימוד דפים והוצאה לאור
 wordcraft	Writing and document design	כתיבה ועיצוב מסמכים
 deckcraft	Presentations and slide shows	מצגות ושקופיות
 gridcraft	Spreadsheets and data	גיליונות אלקטרוניים ונתונים
+craft-anything	Find out how any software works, then craft your own	לגלות כיצד כל תוכנה פועלת, וליצור בעצמך
 solidcraft	Parametric 3D CAD	תיב״ם תלת־ממדי פרמטרי
 cadcraft	Computer-aided design and drafting	תיב״ם (תכנון ושרטוט בעזרת מחשב)
 soundcraft	Recording, editing and mixing audio	הקלטה, עריכה ומיקס של שמע
@@ -363,3 +364,10 @@ column	Author	יוצר
 	Older launcher versions require a manual reinstall.	גרסאות קודמות של ה-Launcher דורשות התקנה ידנית מחדש.
 	Your files may not open in older versions.	ייתכן שהקבצים שלך לא ייפתחו בגרסאות קודמות.
 	Enable automatic installs in Settings to follow new nightly builds.	הפעל התקנות אוטומטיות בהגדרות כדי לקבל גרסאות Nightly חדשות.
+texturecraft	3D texture painting	ציור טקסטורות בתלת־ממד
+texturecraft	Paint materials on 3D models and export textures.	ציור חומרים על גבי מודלים בתלת־ממד וייצוא טקסטורות.
+texturecraft	Materials	חומרים
+texturecraft	Mesh maps	מפות רשת
+texturecraft	Bake mesh maps and use smart materials.	אפיית מפות רשת ושימוש בחומרים חכמים.
+texturecraft	Paint textures on 3D models.	ציור טקסטורות על גבי מודלים בתלת־ממד.
+	Hide community apps	הסתרת יישומי קהילה
