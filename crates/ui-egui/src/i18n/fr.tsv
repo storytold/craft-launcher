@@ -401,3 +401,10 @@ texturecraft	Mesh maps	Cartes de maillage
 texturecraft	Bake mesh maps and use smart materials.	Calculez des cartes de maillage et utilisez des matériaux intelligents.
 texturecraft	Paint textures on 3D models.	Peignez des textures sur des modèles 3D.
 	Hide community apps	Masquer les applications communautaires
+materialcraft	Procedural material design	Conception de matériaux procéduraux
+materialcraft	Build materials with node graphs.	Créez des matériaux avec des graphes de nœuds.
+materialcraft	Create tileable PBR materials and export texture maps.	Créez des matériaux PBR répétables sans raccord et exportez des cartes de textures.
+materialcraft	Node graphs	Graphes de nœuds
+materialcraft	Combine noises, patterns and filters.	Combinez bruits, motifs et filtres.
+materialcraft	Live previews	Aperçus en direct
+materialcraft	Preview materials in 2D and on 3D models.	Visualisez les matériaux en 2D et sur des modèles 3D.

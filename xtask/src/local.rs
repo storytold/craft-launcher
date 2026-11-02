@@ -34,6 +34,7 @@ const APPS: &[(&str, &str)] = &[
     ("gridcraft", "GridCraft"),
     ("craft-anything", "Craft Anything"),
     ("texturecraft", "TextureCraft"),
+    ("materialcraft", "MaterialCraft"),
 ];
 
 const DEFAULT_PORT: u16 = 8787;

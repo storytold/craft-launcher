@@ -1,0 +1,34 @@
+{
+  "draft": true,
+  "html_url": "https://github.com/storytold/materialcraft/releases/tag/untagged-0d6d764e898d65ecfaa7",
+  "name": "MaterialCraft v0.1.0",
+  "prerelease": false,
+  "published_at": null,
+  "tag_name": "v0.1.0",
+  "assets": [
+    {
+      "browser_download_url": "https://github.com/storytold/materialcraft/releases/download/untagged-0d6d764e898d65ecfaa7/materialcraft-0.1.0-linux-x86_64.flatpak",
+      "digest": "sha256:c74f1df1efbee501c96823c9df429799def655f97dc618b33759874f3a372358",
+      "name": "materialcraft-0.1.0-linux-x86_64.flatpak",
+      "size": 11300936
+    },
+    {
+      "browser_download_url": "https://github.com/storytold/materialcraft/releases/download/untagged-0d6d764e898d65ecfaa7/materialcraft-0.1.0-macos-universal.dmg",
+      "digest": "sha256:ee8e7ff35c9443b207d6cc359ae6b5fe495e9a9201c56dd4374c1fb8288bb2a2",
+      "name": "materialcraft-0.1.0-macos-universal.dmg",
+      "size": 19893640
+    },
+    {
+      "browser_download_url": "https://github.com/storytold/materialcraft/releases/download/untagged-0d6d764e898d65ecfaa7/materialcraft-0.1.0-windows-x64.msi",
+      "digest": "sha256:3dca9a43e12315f7030b586b6862c5e89e4d31279809b348939ee449b6ad1b82",
+      "name": "materialcraft-0.1.0-windows-x64.msi",
+      "size": 11939840
+    },
+    {
+      "browser_download_url": "https://github.com/storytold/materialcraft/releases/download/untagged-0d6d764e898d65ecfaa7/SHA256SUMS.txt",
+      "digest": "sha256:f978d5882def19023d9c0818a8a05782f8ffe19081a8719223ee5d2df358caeb",
+      "name": "SHA256SUMS.txt",
+      "size": 2996
+    }
+  ]
+}
