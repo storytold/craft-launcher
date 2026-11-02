@@ -412,6 +412,24 @@ fn japanese_locales_and_counts_work() {
     assert_eq!(message(Lang::JA, "PhotoCraft updated to 0.5.0"), "PhotoCraft を 0.5.0 に更新しました");
 }
 
+#[test]
+fn turkish_locales_and_plurals_work() {
+    for tag in ["tr", "tr-TR", "tr_TR.UTF-8", "TR_tr"] {
+        assert_eq!(lang_from_tag(tag), Some(Lang::TR), "{tag}");
+    }
+    assert_eq!(super::detect::first_supported(["xx-XX", "tr-TR", "en-US"]), Some(Lang::TR));
+    // Turkish nouns do not inflect for number; one plural form covers every count.
+    for n in [0, 1, 2, 11, 100] {
+        assert_eq!(trn(Lang::TR, n, "{n} app", "{n} apps"), format!("{n} uygulama"));
+        assert_eq!(trn(Lang::TR, n, "{n} day ago", "{n} days ago"), format!("{n} gün önce"));
+    }
+    assert_eq!(trn(Lang::TR, 2, "{n} unknown item", "{n} unknown items"), "2 unknown items");
+    assert_eq!(tr(Lang::TR, "Untranslated diagnostic"), "Untranslated diagnostic");
+    assert_eq!(super::tr_ctx(Lang::TR, "month", "Mar"), "Mar");
+    assert_eq!(tr(Lang::TR, "{month} {day}, {year}"), "{day} {month} {year}");
+    assert_eq!(message(Lang::TR, "PhotoCraft updated to 0.5.0"), "PhotoCraft, 0.5.0 sürümüne güncellendi");
+}
+
 /// With the system's Chinese font installed, every UI family can draw the whole Chinese catalog.
 /// Machines without one (CI, the web) skip this; the UI then stays in English.
 #[test]
@@ -570,7 +588,9 @@ fn picker_lists_english_first_then_names_alphabetically() {
     let pos = |code: &str| order.iter().position(|l| l.code() == code).unwrap_or_else(|| panic!("{code} registered"));
     assert!(pos("cs") < pos("de"), "Čeština sorts under C, not after Z");
     assert!(pos("fr") < pos("hu"), "Magyar sorts under M, not under its code");
-    assert!(pos("pt-BR") < pos("ru"), "Latin names come before Cyrillic");
+    assert!(pos("pt-BR") < pos("tr"), "Português sorts before Türkçe");
+    assert!(pos("tr") < pos("ru"), "Latin names come before Cyrillic");
     assert!(pos("ru") < pos("ja"), "Cyrillic names come before CJK");
     assert_eq!(name_sort_key("Čeština"), "cestina");
+    assert_eq!(name_sort_key("Türkçe"), "turkce");
 }
