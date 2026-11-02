@@ -61,6 +61,20 @@ pub struct Installed {
     /// The package that installed it, for package-manager installs (`photocraft-bin`).
     #[serde(default)]
     pub package: Option<String>,
+    /// Whether this copy is managed externally (such as a Flatpak from FlatPark) and
+    /// will not be replaced with a downloaded bundle.
+    #[serde(default)]
+    pub externally_managed: bool,
+    /// The remote repository or origin (`flatpark`, `<app>-origin`), when known.
+    #[serde(default)]
+    pub origin: Option<String>,
+}
+
+impl Installed {
+    /// Whether this copy is managed externally and should not be replaced by a downloaded bundle.
+    pub fn is_externally_managed(&self) -> bool {
+        self.externally_managed
+    }
 }
 
 /// The status shown on an app's card or row.
@@ -124,7 +138,14 @@ mod tests {
     use super::*;
 
     fn inst(v: &str) -> Installed {
-        Installed { version: version::parse(v), source: InstallSource::Launcher, location: String::new(), package: None }
+        Installed {
+            version: version::parse(v),
+            source: InstallSource::Launcher,
+            location: String::new(),
+            package: None,
+            externally_managed: false,
+            origin: None,
+        }
     }
 
     #[test]

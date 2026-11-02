@@ -512,6 +512,20 @@ fn run_install(
     replace: bool,
     source: Option<&dyn ReleaseSource>,
 ) -> Result<String, String> {
+    if let Some(inst) = existing
+        && inst.source == artcraft_launcher_core::InstallSource::Flatpak
+        && inst.externally_managed
+    {
+        #[cfg(target_os = "linux")]
+        {
+            shared.emit(Event::Progress { app: app.id.to_string(), phase: JobPhase::Installing });
+            let mut phase = |p| shared.emit(Event::Progress { app: app.id.to_string(), phase: p });
+            install::linux::update_flatpak_app(app, true, stop, &mut phase)?;
+            return Ok(format!("{} was updated through FlatPark", app.name));
+        }
+        #[cfg(not(target_os = "linux"))]
+        return Err(format!("{} is a Flatpak, which is not supported on this platform", app.name));
+    }
     if let Some(msg) = existing.and_then(|e| install::managed_elsewhere(app, e, false)) {
         return Err(msg);
     }
@@ -1260,7 +1274,14 @@ mod tests {
 
     #[test]
     fn a_downgrade_is_only_a_version_chosen_by_name_below_the_installed_one() {
-        let installed = Installed { version: version::parse("0.14.0"), source: InstallSource::MacApp, location: String::new(), package: None };
+        let installed = Installed {
+            version: version::parse("0.14.0"),
+            source: InstallSource::MacApp,
+            location: String::new(),
+            package: None,
+            externally_managed: false,
+            origin: None,
+        };
         let pinned = VersionTrack::Pinned("v0.13.0".into());
         assert!(is_chosen_downgrade(&pinned, &tagged("0.13.0"), Some(&installed)));
         assert!(!is_chosen_downgrade(&VersionTrack::Stable, &tagged("0.13.0"), Some(&installed)));
@@ -1272,7 +1293,14 @@ mod tests {
     #[test]
     fn only_a_version_chosen_by_name_below_the_installed_one_looks_for_a_package_to_put_back() {
         let app = CraftApp::by_id("filmcraft").unwrap();
-        let installed = Installed { version: version::parse("0.14.0"), source: InstallSource::Msi, location: String::new(), package: None };
+        let installed = Installed {
+            version: version::parse("0.14.0"),
+            source: InstallSource::Msi,
+            location: String::new(),
+            package: None,
+            externally_managed: false,
+            origin: None,
+        };
         let pinned = VersionTrack::Pinned("v0.13.0".into());
         let never = || -> Result<Vec<Release>, String> { panic!("no list is needed") };
         // An update, the latest release, nothing installed, or a stale release: no downgrade.
@@ -1657,6 +1685,8 @@ mod tests {
             source: artcraft_launcher_core::InstallSource::Msi,
             location: r"C:\Apps\PhotoCraft\photocraft.exe".into(),
             package: None,
+            externally_managed: false,
+            origin: None,
         };
         assert_eq!(planned_asset(app, &release, platform, &portable_options, Some(&msi), None).unwrap().1, PackageKind::Msi);
         let launcher = Installed {
@@ -1664,6 +1694,8 @@ mod tests {
             source: artcraft_launcher_core::InstallSource::Launcher,
             location: r"D:\Craft Apps\PhotoCraft\photocraft.exe".into(),
             package: None,
+            externally_managed: false,
+            origin: None,
         };
         let record = crate::manifest::Record {
             version: "0.4.0".into(),
@@ -1695,8 +1727,14 @@ mod tests {
         assert_eq!(planned_asset(app, &release, platform, &options, None, None).unwrap().1, PackageKind::AppImage);
         release.assets.retain(|a| !a.name.ends_with(".AppImage"));
         assert!(planned_asset(app, &release, platform, &options, None, None).is_none());
-        let existing =
-            Installed { version: None, source: artcraft_launcher_core::InstallSource::Deb, location: "/usr/bin/photocraft".into(), package: None };
+        let existing = Installed {
+            version: None,
+            source: artcraft_launcher_core::InstallSource::Deb,
+            location: "/usr/bin/photocraft".into(),
+            package: None,
+            externally_managed: false,
+            origin: None,
+        };
         let system = BackendOptions { kinds: options.kinds.clone(), ..Default::default() };
         assert_eq!(
             planned_asset(app, &release, platform, &options, Some(&existing), None),
@@ -1896,7 +1934,14 @@ mod tests {
     }
 
     fn copy(v: &str) -> Installed {
-        Installed { version: version::parse(v), source: InstallSource::Deb, location: String::new(), package: None }
+        Installed {
+            version: version::parse(v),
+            source: InstallSource::Deb,
+            location: String::new(),
+            package: None,
+            externally_managed: false,
+            origin: None,
+        }
     }
 
     #[test]

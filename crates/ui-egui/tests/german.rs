@@ -94,6 +94,8 @@ fn events() -> Vec<Event> {
             source: InstallSource::MacApp,
             location: format!("/Applications/{}.app", app.name),
             package: None,
+            externally_managed: false,
+            origin: None,
         });
         ev.push(Event::Detected { app: app.id.into(), installed: inst });
     }
