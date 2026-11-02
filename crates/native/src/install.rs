@@ -1247,7 +1247,9 @@ pub(crate) mod linux {
             Some(name) => format!("--installation={name}"),
             None => return Err("Flatpak installation scope is unknown".into()),
         };
-        let run = |args: &[&str]| -> Result<String, String> {
+        // `cancellable` is false for steps that must not stop part-way: killing flatpak-spawn
+        // doesn't wait for the host transaction, and `--reinstall` removes the old ref first.
+        let flatpak = |args: &[&str], cancellable: bool| -> Result<String, String> {
             let mut cmd = if process::in_sandbox() {
                 let mut cmd = process::command("flatpak-spawn");
                 cmd.args(["--host", "--watch-bus", "flatpak"]);
@@ -1256,12 +1258,13 @@ pub(crate) mod linux {
                 process::command("flatpak")
             };
             cmd.arg(&scope).args(args);
-            let output = process::cancellable_output(cmd, || stop.check())?;
+            let output = process::cancellable_output(cmd, || if cancellable { stop.check() } else { Ok(()) })?;
             if !output.status.success() {
                 return Err(format!("Flatpak OCI migration failed: {}", String::from_utf8_lossy(&output.stderr).trim()));
             }
             Ok(String::from_utf8_lossy(&output.stdout).into_owned())
         };
+        let run = |args: &[&str]| flatpak(args, true);
         let reference = run(&["info", "--show-ref", id])?;
         let reference = reference.trim();
         if !reference.starts_with(&format!("app/{id}/")) || !reference.ends_with("/stable") {
@@ -1278,7 +1281,8 @@ pub(crate) mod linux {
                 if remotes.lines().any(|line| line.split('\t').next() == Some("artcraft-oci")) {
                     return Err("The artcraft-oci remote points to a different repository".into());
                 }
-                run(&["remote-add", "artcraft-oci", "https://getartcraft.com/artcraft-oci.flatpakrepo"])?;
+                // Another app's migration may add the remote first; the URL is checked below.
+                run(&["remote-add", "--if-not-exists", "artcraft-oci", "https://getartcraft.com/artcraft-oci.flatpakrepo"])?;
                 let remotes = run(&["remotes", "--show-disabled", "--columns=name,url"])?;
                 if !crate::packages::is_artcraft_remote("artcraft-oci", &remotes) {
                     return Err("The ArtCraft OCI descriptor configured an unexpected repository".into());
@@ -1293,7 +1297,18 @@ pub(crate) mod linux {
         if !crate::packages::oci_ref_available(reference, expected, &refs)? {
             return Ok(false);
         }
-        run(&["install", "--reinstall", "-y", "--noninteractive", &remote, reference])?;
+        stop.check()?;
+        if let Err(e) = flatpak(&["install", "--reinstall", "-y", "--noninteractive", &remote, reference], false) {
+            // The bundle origin has no repository to restore from, so point at the bundle itself.
+            if flatpak(&["info", id], false).is_err() {
+                return Err(format!(
+                    "{e}. {} is no longer installed; reinstall it from the .flatpak bundle at {}",
+                    app.name,
+                    app.releases_url()
+                ));
+            }
+            return Err(e);
+        }
         let origin = run(&["info", "--show-origin", id])?;
         if origin.trim() != remote {
             return Err("Flatpak did not switch the installed app to the ArtCraft OCI remote".into());
