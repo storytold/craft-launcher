@@ -160,6 +160,13 @@ impl Settings {
         self.pinned.retain(|p| p != id);
     }
 
+    /// The pinned id one step above (`delta = -1`) or below (`delta = 1`) `id`, if any.
+    pub fn pinned_neighbor(&self, id: &str, delta: i32) -> Option<&str> {
+        let i = self.pinned.iter().position(|p| p == id)?;
+        let j = i.checked_add_signed(delta as isize)?;
+        self.pinned.get(j).map(String::as_str)
+    }
+
     /// Move the pinned app `from_id` so its final index is the current index of `to_id`.
     pub fn reorder_pinned(&mut self, from_id: &str, to_id: &str) {
         if from_id == to_id {
@@ -302,5 +309,15 @@ mod tests {
         s.hidden.insert("photocraft".into());
         assert!(s.pinned.is_empty());
         assert!(s.hidden.contains("photocraft"));
+    }
+
+    #[test]
+    fn pinned_neighbor_steps_within_bounds() {
+        let s = Settings { pinned: vec!["a".into(), "b".into(), "c".into()], ..Settings::default() };
+        assert_eq!(s.pinned_neighbor("b", -1), Some("a"));
+        assert_eq!(s.pinned_neighbor("b", 1), Some("c"));
+        assert_eq!(s.pinned_neighbor("a", -1), None);
+        assert_eq!(s.pinned_neighbor("c", 1), None);
+        assert_eq!(s.pinned_neighbor("missing", 1), None);
     }
 }

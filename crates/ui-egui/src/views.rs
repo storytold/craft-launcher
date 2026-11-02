@@ -757,7 +757,8 @@ impl LauncherUi {
             Self::table_rule(ui, t, span, clip);
         }
         let row_rect = ui.max_rect();
-        self.pin_drop_target(ui, id, row_rect);
+        // Drop target spans the full table width so a drag from the grip column still hits the row.
+        self.pin_drop_target(ui, id, Rect::from_x_y_ranges(span, row_rect.y_range()));
         // Clicking the app's cell opens its page (the content is added after, so it wins any hit).
         if AppDetails::by_id(id).is_some() {
             let open = ui.interact(row_rect, ui.scope_id().with(("row-open", id)), Sense::click());
@@ -908,6 +909,8 @@ impl LauncherUi {
         if resp.drag_stopped() {
             self.pin_dragging = None;
         }
+        // The grip column is also a drop target (table rows otherwise only register the first cell).
+        self.pin_drop_target(ui, entry.app.id, resp.rect.expand2(vec2(8.0, 12.0)));
     }
 
     /// While a pin handle is dragged, hovering another pinned card/row moves the dragged app there.
@@ -1007,8 +1010,9 @@ impl LauncherUi {
             return false;
         }
         let pct = if p.total > 0 { format!(" · {:.0}%", p.done as f32 / p.total as f32 * 100.0) } else { String::new() };
-        // Resume, then discard and the menu (two squares).
-        let resume_w = (width - 2.0 * (theme::CONTROL_H + gap)).max(90.0);
+        // Resume, then discard, optional pin grip, and the menu.
+        let squares = 2.0 + if self.settings.is_pinned(entry.app.id) { 1.0 } else { 0.0 };
+        let resume_w = (width - squares * (theme::CONTROL_H + gap) + gap).max(0.0);
         // Narrow (the table): just tl!("Resume"); the tooltip says how far it got.
         let label = match resume_w {
             w if w < 150.0 => tl!("Resume").to_string(),
@@ -1129,16 +1133,33 @@ impl LauncherUi {
         });
     }
 
-    /// Pin — or unpin — the app at the top of the list.
+    /// Pin — or unpin — the app at the top of the list. Hidden apps are not offered Pin to top
+    /// (they can still Unpin if somehow still pinned). Move up/down reorder for keyboard users.
     fn menu_pin(&mut self, ui: &mut Ui, entry: &AppEntry, id: &str) {
         ui.separator();
         let pinned = self.settings.is_pinned(entry.app.id);
-        if ui.button(if pinned { tl!("Unpin") } else { tl!("Pin to top") }).clicked() {
-            if pinned {
+        let hidden = self.settings.hidden.contains(entry.app.id);
+        if pinned {
+            if ui.button(tl!("Unpin")).clicked() {
                 self.settings.unpin_app(id);
-            } else {
-                self.settings.pin_app(id);
+                ui.close();
             }
+            let prev = self.settings.pinned_neighbor(id, -1).map(str::to_owned);
+            let next = self.settings.pinned_neighbor(id, 1).map(str::to_owned);
+            if prev.is_some() && ui.button(tl!("Move up")).clicked() {
+                if let Some(prev) = prev.as_deref() {
+                    self.settings.reorder_pinned(id, prev);
+                }
+                ui.close();
+            }
+            if next.is_some() && ui.button(tl!("Move down")).clicked() {
+                if let Some(next) = next.as_deref() {
+                    self.settings.reorder_pinned(id, next);
+                }
+                ui.close();
+            }
+        } else if !hidden && ui.button(tl!("Pin to top")).clicked() {
+            self.settings.pin_app(id);
             ui.close();
         }
     }

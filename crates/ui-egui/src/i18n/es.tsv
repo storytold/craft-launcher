@@ -126,6 +126,8 @@
 	Unpin	Quitar fijación
 	Pinned	Fijadas
 	Reorder {name}	Reordenar {name}
+	Move up	Subir
+	Move down	Bajar
 	Hide App	Ocultar aplicación
 	Unhide App	Mostrar aplicación
 	Hidden Apps	Aplicaciones ocultas

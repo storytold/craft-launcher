@@ -113,6 +113,8 @@
 	Unpin	Odepnout
 	Pinned	Připnuté
 	Reorder {name}	Změnit pořadí: {name}
+	Move up	Posunout nahoru
+	Move down	Posunout dolů
 	Hide App	Skrýt aplikaci
 	Unhide App	Zobrazit aplikaci
 	Hidden Apps	Skryté aplikace

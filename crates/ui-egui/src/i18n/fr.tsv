@@ -125,6 +125,8 @@
 	Unpin	Désépingler
 	Pinned	Épinglés
 	Reorder {name}	Réordonner {name}
+	Move up	Monter
+	Move down	Descendre
 	Hide App	Masquer l'application
 	Unhide App	Afficher l'application
 	Hidden Apps	Applications masquées

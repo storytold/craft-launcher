@@ -128,6 +128,8 @@
 	Unpin	Odepnij
 	Pinned	Przypięte
 	Reorder {name}	Zmień kolejność: {name}
+	Move up	W górę
+	Move down	W dół
 	Hide App	Ukryj aplikację
 	Unhide App	Pokaż aplikację
 	Hidden Apps	Ukryte aplikacje

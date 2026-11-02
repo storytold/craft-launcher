@@ -129,6 +129,8 @@
 	Unpin	ピン留めを外す
 	Pinned	ピン留め
 	Reorder {name}	{name}の順序を変更
+	Move up	上へ
+	Move down	下へ
 	Hide App	アプリを非表示
 	Unhide App	アプリを再表示
 	Hidden Apps	非表示のアプリ

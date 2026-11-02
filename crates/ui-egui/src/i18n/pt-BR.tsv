@@ -115,6 +115,8 @@
 	Unpin	Desafixar
 	Pinned	Fixados
 	Reorder {name}	Reordenar {name}
+	Move up	Mover para cima
+	Move down	Mover para baixo
 	Hide App	Ocultar aplicativo
 	Unhide App	Mostrar aplicativo
 	Hidden Apps	Aplicativos ocultos

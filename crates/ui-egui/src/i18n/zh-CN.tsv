@@ -275,6 +275,8 @@ figcraft	Interface design and prototyping	界面设计与原型制作
 	Unpin	取消置顶
 	Pinned	已置顶
 	Reorder {name}	重新排序 {name}
+	Move up	上移
+	Move down	下移
 	Hide App	隐藏应用
 	Unhide App	取消隐藏应用
 	Hidden Apps	已隐藏的应用

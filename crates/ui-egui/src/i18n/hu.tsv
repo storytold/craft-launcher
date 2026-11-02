@@ -127,6 +127,8 @@
 	Unpin	Rögzítés feloldása
 	Pinned	Rögzítettek
 	Reorder {name}	Átrendezés: {name}
+	Move up	Feljebb
+	Move down	Lejjebb
 	Hide App	Alkalmazás elrejtése
 	Unhide App	Alkalmazás megjelenítése
 	Hidden Apps	Rejtett alkalmazások

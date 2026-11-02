@@ -127,6 +127,8 @@
 	Unpin	Loslösen
 	Pinned	Angeheftet
 	Reorder {name}	{name} neu anordnen
+	Move up	Nach oben
+	Move down	Nach unten
 	Hide App	App ausblenden
 	Unhide App	App einblenden
 	Hidden Apps	Ausgeblendete Apps

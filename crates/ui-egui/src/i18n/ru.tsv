@@ -125,6 +125,8 @@
 	Unpin	Открепить
 	Pinned	Закреплённые
 	Reorder {name}	Изменить порядок: {name}
+	Move up	Выше
+	Move down	Ниже
 	Hide App	Скрыть приложение
 	Unhide App	Показать приложение
 	Hidden Apps	Скрытые приложения
