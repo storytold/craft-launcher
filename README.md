@@ -345,26 +345,3 @@ Forks and modified versions must remove them.
   <a href="https://getartcraft.com/"><img alt="ArtCraft" src="docs/brand/artcraft-mark.svg" width="28"></a><br>
   <sub>Made by the <a href="https://getartcraft.com/">ArtCraft</a> team and community.</sub>
 </p>
-
-## Experimental OCI migration
-
-On Linux, enable **Settings → Advanced → Migrate Flatpak bundles to ArtCraft OCI
-(experimental)** to opt in. The preference is saved and defaults to off, including for
-existing settings files. No custom build is needed. The legacy `experimental-oci-migration`
-Cargo feature remains accepted but does not opt users in.
-
-On an update, a first party installation with a bundle-created `-origin` remote may be
-reinstalled from the OCI repository in the same installation scope, using the same full
-Flatpak ref. Existing installations managed by another repository are not redirected.
-The migration reuses a remote with URL `oci+https://getartcraft.com`, or adds `artcraft-oci`
-using `https://getartcraft.com/artcraft-oci.flatpakrepo`. A conflicting remote name is an error.
-The current descriptor is a preview with `GPGVerify=false`; enabling this setting explicitly
-opts into that repository configuration. The launcher does not uninstall the app or remove
-its data. Subsequent updates use the detected OCI remote.
-
-If the exact ref is absent, the existing verified bundle update proceeds. A repository error,
-cancellation, or missing/different repository version stops the update; migration requires
-an exact match to the selected release version. Launcher pinned/nightly tracks and explicit
-replacement operations do not trigger migration. The feature does not change new installs.
-
-Test with an isolated Flatpak installation before enabling this in release builds. The setting is off in packaged builds unless the user enables it.
