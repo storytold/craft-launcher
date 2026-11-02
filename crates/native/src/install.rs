@@ -1301,11 +1301,7 @@ pub(crate) mod linux {
         if let Err(e) = flatpak(&["install", "--reinstall", "-y", "--noninteractive", &remote, reference], false) {
             // The bundle origin has no repository to restore from, so point at the bundle itself.
             if flatpak(&["info", id], false).is_err() {
-                return Err(format!(
-                    "{e}. {} is no longer installed; reinstall it from the .flatpak bundle at {}",
-                    app.name,
-                    app.releases_url()
-                ));
+                return Err(format!("{e}. {} is no longer installed; reinstall it from the .flatpak bundle at {}", app.name, app.releases_url()));
             }
             return Err(e);
         }
