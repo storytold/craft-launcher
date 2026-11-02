@@ -335,8 +335,14 @@ impl NativeBackend {
         let source = self.source.clone();
         std::thread::spawn(move || {
             let job = job;
+            let manifest = shared.manifest.lock().unwrap_or_else(PoisonError::into_inner).clone();
+            let record = manifest.apps.get(app.id).cloned();
+            // Windows registrations can change after the UI's last detection pass. Ownership
+            // decisions must use the current registration, paired with this manifest snapshot.
+            #[cfg(windows)]
+            let existing = crate::detect::detect(app, &manifest, &crate::detect::Snapshot::take(&paths));
+            #[cfg(not(windows))]
             let existing = shared.installed.lock().unwrap_or_else(PoisonError::into_inner).get(app.id).cloned();
-            let record = shared.manifest.lock().unwrap_or_else(PoisonError::into_inner).apps.get(app.id).cloned();
             let result = if uninstall {
                 shared.emit(Event::Progress { app: app.id.to_string(), phase: JobPhase::Removing });
                 let mut phase = |phase| shared.emit(Event::Progress { app: app.id.to_string(), phase });
@@ -1736,6 +1742,99 @@ mod tests {
             assert!(Instant::now() < deadline, "the worker did not finish unwinding");
             std::thread::sleep(Duration::from_millis(2));
         }
+    }
+
+    #[cfg(windows)]
+    #[test]
+    /// A registration added after detection must stop both Install and Replace before downloads.
+    fn late_external_registration_blocks_install_and_replace_with_an_empty_cache() {
+        let dir = tempfile::tempdir().unwrap();
+        let platform = Platform { os: Os::Windows, arch: Arch::X64 };
+        let mut backend = backend(dir.path(), platform, None);
+        let folder = dir.path().join("Creative Apps").join(APP);
+        std::fs::create_dir_all(&folder).unwrap();
+        let exe = folder.join("photocraft.exe");
+        let personal = folder.join("personal.txt");
+        std::fs::write(&exe, b"external program").unwrap();
+        std::fs::write(&personal, b"personal data").unwrap();
+        backend.shared.options.lock().unwrap().kinds = vec![PackageKind::PortableZip];
+        backend.shared.options.lock().unwrap().install_locations.root = Some(folder.parent().unwrap().display().to_string());
+        assert!(!backend.shared.installed.lock().unwrap().contains_key(APP));
+        assert!(!backend.paths.external_apps().exists());
+        let registration = serde_json::json!({ "apps": { APP: {
+            "path": exe,
+            "sha256": http::sha256_file(&exe).unwrap(),
+            "version": "0.4.1"
+        } } });
+        std::fs::create_dir_all(&backend.paths.data).unwrap();
+        std::fs::write(backend.paths.external_apps(), serde_json::to_vec(&registration).unwrap()).unwrap();
+
+        for work in [Work::Install, Work::Replace] {
+            backend.shared.installed.lock().unwrap().clear();
+            backend.start_job(APP, work);
+            let mut events = Vec::new();
+            wait_until(|| {
+                events.extend(backend.poll());
+                events.iter().any(|event| matches!(event, Event::JobFinished { app, .. } if app == APP))
+            });
+            let error = events
+                .iter()
+                .find_map(|event| match event {
+                    Event::JobFinished { app, result: Err(error) } if app == APP => Some(error.as_str()),
+                    _ => None,
+                })
+                .unwrap();
+            assert!(error.contains("installed outside the launcher"), "{error}");
+            assert!(!events.iter().any(|event| matches!(event, Event::Occupied { .. } | Event::Progress { .. })));
+            assert_eq!(std::fs::read(&exe).unwrap(), b"external program");
+            assert_eq!(std::fs::read(&personal).unwrap(), b"personal data");
+            let detected = backend.installed(APP).unwrap();
+            assert_eq!(detected.source, InstallSource::Binary);
+            assert_eq!(detected.location, exe.display().to_string());
+            assert!(!backend.shared.manifest.lock().unwrap().apps.contains_key(APP));
+            assert!(!backend.paths.manifest().exists());
+            assert!(!backend.paths.downloads().exists());
+        }
+    }
+
+    #[cfg(windows)]
+    #[test]
+    /// Removing a registration also takes effect before the next install, without a UI rescan.
+    fn a_removed_registration_does_not_leave_a_stale_external_install_guard() {
+        let dir = tempfile::tempdir().unwrap();
+        let platform = Platform { os: Os::Windows, arch: Arch::X64 };
+        let mut backend = backend(dir.path(), platform, None);
+        let exe = dir.path().join("photocraft.exe");
+        std::fs::write(&exe, b"external program").unwrap();
+        std::fs::create_dir_all(&backend.paths.data).unwrap();
+        let registration = serde_json::json!({ "apps": { APP: {
+            "path": exe,
+            "sha256": http::sha256_file(&exe).unwrap()
+        } } });
+        std::fs::write(backend.paths.external_apps(), serde_json::to_vec(&registration).unwrap()).unwrap();
+        let app = CraftApp::by_id(APP).unwrap();
+        let installed = crate::detect::detect(app, &Manifest::default(), &crate::detect::Snapshot::take(&backend.paths)).unwrap();
+        assert_eq!(installed.source, InstallSource::Binary);
+        backend.shared.installed.lock().unwrap().insert(APP.into(), installed);
+        std::fs::remove_file(backend.paths.external_apps()).unwrap();
+
+        backend.start_job(APP, Work::Install);
+        let mut events = Vec::new();
+        wait_until(|| {
+            events.extend(backend.poll());
+            events.iter().any(|event| matches!(event, Event::JobFinished { app, .. } if app == APP))
+        });
+        let error = events
+            .iter()
+            .find_map(|event| match event {
+                Event::JobFinished { app, result: Err(error) } if app == APP => Some(error.as_str()),
+                _ => None,
+            })
+            .unwrap();
+        assert!(error.contains("secure connections aren't available"), "{error}");
+        assert!(backend.installed(APP).is_none());
+        assert_eq!(std::fs::read(&exe).unwrap(), b"external program");
+        assert!(!backend.paths.manifest().exists());
     }
 
     fn panic_on_wake() -> (Waker, mpsc::Receiver<()>) {
