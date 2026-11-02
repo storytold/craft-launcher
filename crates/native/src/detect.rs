@@ -309,8 +309,10 @@ pub mod windows {
         }
     }
 
-    /// Every Windows Installer entry for `app`, newest first.
-    pub fn msi_installs(app: &CraftApp) -> Vec<MsiInstall> {
+    /// Every matching uninstall row for `app` across hives and registry views. The same product code
+    /// may appear more than once (dual-scope packages); InstallDir sync needs every row, while
+    /// Open / Reveal / update-folder selection collapses duplicates via [`select_msi_installs`].
+    fn msi_install_rows(app: &CraftApp) -> Vec<MsiInstall> {
         let mut out: Vec<MsiInstall> = Vec::new();
         for (hive, flags) in UNINSTALL_ROOTS {
             let Ok(root) = RegKey::predef(hive).open_subkey_with_flags(UNINSTALL, KEY_READ | flags) else { continue };
@@ -329,21 +331,48 @@ pub mod windows {
                 let location: String = key.get_value("InstallLocation").unwrap_or_default();
                 let exe =
                     exe_path(app, (!location.is_empty()).then(|| PathBuf::from(location)).or_else(|| install_dir(app, hive, flags)), hive, flags);
-                let candidate = MsiInstall { product_code: code.clone(), version, exe, scope: record_context(hive), hive, flags };
-                if let Some(existing) = out.iter_mut().find(|m| m.product_code == code) {
-                    // HKCU-first: keep a validated per-user record; replace it when its exe is missing
-                    // or disagrees with DisplayVersion so HKLM (or its version-aware fallback) can win.
-                    if prefer_existing_msi_record(existing.exe.as_deref(), existing.version.as_ref(), executable_version) {
-                        continue;
-                    }
-                    *existing = candidate;
+                out.push(MsiInstall { product_code: code, version, exe, scope: record_context(hive), hive, flags });
+            }
+        }
+        out
+    }
+
+    /// One record per product code for Open / Reveal / update-folder selection. Keeps an earlier
+    /// (HKCU-first) row when its exe is live and matches DisplayVersion; otherwise the later row wins.
+    pub(super) fn select_msi_installs(
+        rows: Vec<MsiInstall>,
+        version_of: impl Fn(&Path) -> Option<version::Version>,
+    ) -> Vec<MsiInstall> {
+        let mut out: Vec<MsiInstall> = Vec::new();
+        for candidate in rows {
+            if let Some(existing) = out.iter_mut().find(|m| m.product_code == candidate.product_code) {
+                if prefer_existing_msi_record(existing.exe.as_deref(), existing.version.as_ref(), &version_of) {
                     continue;
                 }
-                out.push(candidate);
+                *existing = candidate;
+                continue;
             }
+            out.push(candidate);
         }
         out.sort_by(|a, b| super::newest_first(a.version.as_ref(), b.version.as_ref()));
         out
+    }
+
+    /// Every Windows Installer entry for `app`, newest first — one preferred record per product code.
+    pub fn msi_installs(app: &CraftApp) -> Vec<MsiInstall> {
+        select_msi_installs(msi_install_rows(app), executable_version)
+    }
+
+    /// Builds an [`MsiInstall`] for unit tests of product-code selection vs InstallDir sync destinations.
+    #[cfg(test)]
+    pub(super) fn msi_install_for_test(
+        product_code: &str,
+        hive: HKEY,
+        flags: u32,
+        exe: Option<PathBuf>,
+        version: Option<version::Version>,
+    ) -> MsiInstall {
+        MsiInstall { product_code: product_code.to_string(), version, exe, scope: record_context(hive), hive, flags }
     }
 
     /// The folder the app's MSI remembers for its next upgrade, read from the same registry view as the
@@ -419,12 +448,16 @@ pub mod windows {
     /// has an uninstall record for `app` but no `InstallDir` of its own. That keeps the next
     /// Open/update on a scope-strict lookup (Launcher 0.9.0 and earlier) without a manual regedit.
     /// Each record keeps its own hive and registry view (a 32-bit HKLM row is not rewritten as 64-bit).
+    /// Destinations come from every matching uninstall row — not the product-code-deduped Open list —
+    /// so a valid HKCU duplicate does not leave the matching HKLM record unhealed.
     /// Writing HKLM needs elevation and is skipped quietly when this process cannot;
     /// [`exe_in_any_scope`] still finds the exe for Open.
     pub fn sync_install_dir_to_record_hives(app: &CraftApp) {
         use winreg::enums::KEY_ALL_ACCESS;
 
-        let installs = msi_installs(app);
+        // All rows (before Open/update dedupe): dual-scope packages register the same product in
+        // HKCU and HKLM; both need InstallDir when only one hive authored it.
+        let installs = msi_install_rows(app);
         let records: Vec<(HKEY, u32)> = installs.iter().map(|m| (m.hive, m.flags)).collect();
         for (hive, flags) in mirror_destinations(&records) {
             if install_dir(app, hive, flags).is_some() {
@@ -1277,6 +1310,36 @@ mod tests {
         assert_eq!(
             windows::mirror_destinations(&records),
             vec![(HKEY_LOCAL_MACHINE, KEY_WOW64_32KEY), (HKEY_LOCAL_MACHINE, KEY_WOW64_64KEY), (HKEY_CURRENT_USER, 0)]
+        );
+    }
+
+    /// InstallDir sync destinations come from every matching uninstall row. Product-code preference
+    /// only chooses which record Open/update uses; a valid HKCU duplicate must not drop HKLM from sync.
+    #[cfg(windows)]
+    #[test]
+    fn install_dir_sync_keeps_hives_dropped_by_open_selection() {
+        use winreg::enums::{HKEY_CURRENT_USER, HKEY_LOCAL_MACHINE, KEY_WOW64_64KEY};
+
+        let code = "{11111111-2222-3333-4444-555555555555}";
+        let v = |s: &str| version::parse(s);
+        let user_exe = PathBuf::from(r"C:\Users\a\AppData\Local\Programs\ArtCraft\DeckCraft\deckcraft.exe");
+        let machine_exe = PathBuf::from(r"C:\Program Files\ArtCraft\DeckCraft\deckcraft.exe");
+        let version_of = |p: &std::path::Path| if p == user_exe || p == machine_exe { v("0.12.0") } else { None };
+
+        // Same product in HKCU then HKLM — the order `msi_install_rows` discovers dual-scope packages.
+        let all_destinations = [(HKEY_CURRENT_USER, 0), (HKEY_LOCAL_MACHINE, KEY_WOW64_64KEY)];
+        let rows = vec![
+            windows::msi_install_for_test(code, HKEY_CURRENT_USER, 0, Some(user_exe.clone()), v("0.12.0")),
+            windows::msi_install_for_test(code, HKEY_LOCAL_MACHINE, KEY_WOW64_64KEY, Some(machine_exe.clone()), v("0.12.0")),
+        ];
+        let selected = windows::select_msi_installs(rows, version_of);
+
+        assert_eq!(selected.len(), 1, "Open/update keeps one preferred record per product code");
+        assert_eq!(selected[0].scope, crate::install::MsiScope::PerUser, "valid HKCU wins Open/update selection");
+        assert_eq!(
+            windows::mirror_destinations(&all_destinations),
+            vec![(HKEY_CURRENT_USER, 0), (HKEY_LOCAL_MACHINE, KEY_WOW64_64KEY)],
+            "InstallDir sync must still heal HKLM when Open prefers HKCU"
         );
     }
 
