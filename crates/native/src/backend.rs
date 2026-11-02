@@ -566,8 +566,9 @@ fn run_install(
     if !release_matches_track(&release, track, options.prereleases) {
         return Err("the selected version isn't available yet. Check for updates before installing.".into());
     }
-    #[cfg(all(target_os = "linux", feature = "experimental-oci-migration"))]
-    if matches!(track, VersionTrack::Stable)
+    #[cfg(target_os = "linux")]
+    if options.experimental_oci_migration
+        && matches!(track, VersionTrack::Stable)
         && !release.prerelease
         && !replace
         && let Some(installed) = existing

@@ -275,7 +275,7 @@ mod remote_url_tests {
 }
 
 /// A missing ref permits bundle fallback; an unknown or different version must not replace it.
-#[cfg(all(target_os = "linux", feature = "experimental-oci-migration"))]
+#[cfg(target_os = "linux")]
 pub(crate) fn oci_ref_available(reference: &str, expected: &version::Version, listing: &str) -> Result<bool, String> {
     for line in listing.lines() {
         let mut fields = line.split('\t');
@@ -291,7 +291,7 @@ pub(crate) fn oci_ref_available(reference: &str, expected: &version::Version, li
     Ok(false)
 }
 
-#[cfg(all(test, target_os = "linux", feature = "experimental-oci-migration"))]
+#[cfg(all(test, target_os = "linux"))]
 mod migration_tests {
     use super::*;
     #[test]

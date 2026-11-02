@@ -13,7 +13,7 @@ publish = false
 workspace = true
 
 [features]
-# Opt-in migration of first party Flatpak bundles to the ArtCraft OCI remote.
+# Compatibility feature; migration now requires the saved Advanced setting.
 experimental-oci-migration = ["artcraft-launcher-native/experimental-oci-migration"]
 # Development only: install from `cargo xtask local serve` (see the README).
 local-mirror = ["artcraft-launcher-native/local-mirror"]
