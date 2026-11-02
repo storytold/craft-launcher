@@ -1226,7 +1226,7 @@ pub(crate) mod linux {
         }
     }
 
-    /// Experimental in-place migration; only an absent ref permits bundle fallback.
+    /// Opt-in OCI migration; only an absent ref permits bundle fallback.
     pub fn migrate_bundle_to_oci(app: &CraftApp, installed: &Installed, expected: &super::version::Version, stop: &Stop) -> Result<bool, String> {
         if installed.source != InstallSource::Flatpak || installed.externally_managed || !app.repo.starts_with("storytold/") {
             return Ok(false);

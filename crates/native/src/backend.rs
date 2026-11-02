@@ -567,7 +567,7 @@ fn run_install(
         return Err("the selected version isn't available yet. Check for updates before installing.".into());
     }
     #[cfg(target_os = "linux")]
-    if options.experimental_oci_migration
+    if options.oci_migration
         && matches!(track, VersionTrack::Stable)
         && !release.prerelease
         && !replace

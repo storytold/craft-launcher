@@ -208,7 +208,7 @@ impl LauncherUi {
             return;
         }
         sheet::panel(ui, tl!("Advanced"), |ui| {
-            ui.checkbox(&mut self.settings.experimental_oci_migration, tl!("Migrate Flatpak bundles to ArtCraft OCI (experimental)"));
+            ui.checkbox(&mut self.settings.oci_migration, tl!("Migrate Flatpak bundles to ArtCraft OCI (experimental)"));
             note(ui, tl!("On update, switch first party apps when the matching package is available. Otherwise, keep using bundles."));
             note(ui, tl!("The OCI repository is a preview with GPG verification disabled."));
         });
