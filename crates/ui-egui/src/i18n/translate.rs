@@ -53,22 +53,12 @@ pub fn t_id<'a>(id: &str, label: &'a str) -> &'a str {
 #[cfg(test)]
 pub(crate) use strict::{StrictCjkDrawing, drew_cjk};
 
-/// Fill `{name}` placeholders in one pass. Values and unknown placeholders stay as written.
+/// Fill `{name}` placeholders. Unknown placeholders are left as written.
 pub fn fmt(template: &str, args: &[(&str, &str)]) -> String {
-    let mut out = String::with_capacity(template.len());
-    let mut rest = template;
-    while let Some((before, after)) = rest.split_once('{') {
-        out.push_str(before);
-        let filled = after.split_once('}').and_then(|(name, tail)| args.iter().find(|(k, _)| *k == name).map(|(_, v)| (*v, tail)));
-        if let Some((value, tail)) = filled {
-            out.push_str(value);
-            rest = tail;
-        } else {
-            out.push('{');
-            rest = after;
-        }
+    let mut out = template.to_string();
+    for (k, v) in args {
+        out = out.replace(&format!("{{{k}}}"), v);
     }
-    out.push_str(rest);
     out
 }
 

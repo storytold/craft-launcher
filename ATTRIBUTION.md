@@ -30,9 +30,9 @@ next to them.
 
 ### Craft App Suite icons
 
-The launcher shows each Craft app with that app's own icon. They are copied unmodified from each
-app's repository; their designs belong to the ArtCraft Team and each app's contributors and are
-licensed like those apps. Refresh them from the source path, never redraw them.
+The launcher shows each Craft app with that app's own icon. Suite icons are copied unmodified from
+their repositories; ASUSCraft's launcher icon is an attributed adaptation of its source logo. Their
+designs belong to the ArtCraft Team and each app's contributors and are licensed like those apps.
 
 | Path | Title | Author | Source | License |
 |---|---|---|---|---|
@@ -53,6 +53,7 @@ licensed like those apps. Refresh them from the source path, never redraw them.
 | `assets/app-icons/texturecraft.png` | TextureCraft app icon (engraved zebra), 128 px | TextureCraft project owner | [`storytold/texturecraft`](https://github.com/storytold/texturecraft) `assets/app-icon/hicolor/128x128/apps/ai.storyteller.texturecraft.png`, copied unmodified | MIT OR Apache-2.0 ([icon license](https://github.com/storytold/texturecraft/blob/main/assets/app-icon/LICENSE.txt)) |
 | `assets/app-icons/materialcraft.png` | MaterialCraft app icon (engraved rhino), 128 px | MaterialCraft project owner | [`storytold/materialcraft`](https://github.com/storytold/materialcraft) `assets/app-icon/hicolor/128x128/apps/ai.storyteller.materialcraft.png`, copied unmodified | MIT OR Apache-2.0 ([icon license](https://github.com/storytold/materialcraft/blob/main/assets/app-icon/LICENSE.txt)) |
 | `assets/app-icons/craft-anything.png` | Craft Anything app icon (engraved raven), 128 px | ArtCraft Team | [`storytold/craft-anything`](https://github.com/storytold/craft-anything) `assets/app-icon/hicolor/128x128/apps/ai.storyteller.craft-anything.png`, copied unmodified | **Not open source; not MIT or Apache-2.0.** Used on the terms of the ArtCraft brand assets (Craft Anything's [`assets/app-icon/LICENSE.txt`](https://github.com/storytold/craft-anything/blob/main/assets/app-icon/LICENSE.txt), [`docs/brand/LICENSE-brand.txt`](docs/brand/LICENSE-brand.txt)) |
+| `assets/app-icons/asuscraft.svg`, `assets/app-icons/asuscraft.png` | ASUSCraft app icon (launcher laptop mark), 128 px render | Mostafa Momen | Original launcher adaptation of the ASUSCraft identity from [`Mostafamomen/asus-control-center`](https://github.com/Mostafamomen/asus-control-center) `assets/asuscraft.svg`; SVG master rendered as a square PNG for the Craft Apps catalog | GPL-3.0-or-later (ASUSCraft's [`LICENSE`](https://github.com/Mostafamomen/asus-control-center/blob/main/LICENSE)) |
 
 ## Documentation and README
 

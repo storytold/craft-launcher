@@ -132,7 +132,7 @@ fn harness_language(
                 } else {
                     artcraft_launcher_ui_egui::theme::ThemeChoice::Light
                 };
-                *state = Some(LauncherUi::new(ui.ctx(), Box::new(b), s));
+                *state = Some(LauncherUi::with_catalog(ui.ctx(), Box::new(b), s, SUITE.iter()));
             }
             if let Some(l) = state.as_mut() {
                 l.logic(&ui.ctx().clone(), &mut NoHost);

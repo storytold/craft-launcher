@@ -104,7 +104,7 @@ fn harness_on(view: ViewMode, os: Os) -> Harness<'static, Option<LauncherUi>> {
             if state.is_none()
                 && let Some(b) = backend.take()
             {
-                *state = Some(LauncherUi::new(ui.ctx(), Box::new(b), settings.clone()));
+                *state = Some(LauncherUi::with_catalog(ui.ctx(), Box::new(b), settings.clone(), SUITE.iter()));
             }
             if let Some(l) = state.as_mut() {
                 l.logic(&ui.ctx().clone(), &mut DesktopHost);

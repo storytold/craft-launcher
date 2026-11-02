@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-labelledby="title desc">
+  <title id="title">ASUSCraft</title>
+  <desc id="desc">A crisp cyan laptop mark with an ASUSCraft A and hardware status light.</desc>
+  <defs>
+    <linearGradient id="surface" x1="70" y1="48" x2="442" y2="466" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#202d3b"/>
+      <stop offset="1" stop-color="#101820"/>
+    </linearGradient>
+    <linearGradient id="cyan" x1="128" y1="376" x2="378" y2="104" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#35e5c2"/>
+      <stop offset=".55" stop-color="#28cde9"/>
+      <stop offset="1" stop-color="#62a7ff"/>
+    </linearGradient>
+  </defs>
+  <rect x="16" y="16" width="480" height="480" rx="112" fill="url(#surface)"/>
+  <rect x="17" y="17" width="478" height="478" rx="111" fill="none" stroke="#73899a" stroke-opacity=".22" stroke-width="2"/>
+  <path d="m256 95 132 237h-53l-79-142-79 142h-53z" fill="none" stroke="url(#cyan)" stroke-linecap="round" stroke-linejoin="round" stroke-width="25"/>
+  <path d="M207 279h98l27 49h-152z" fill="#17232d" stroke="url(#cyan)" stroke-linejoin="round" stroke-width="11"/>
+  <path d="M110 362h292l-22 42H132z" fill="#16232c" stroke="url(#cyan)" stroke-linejoin="round" stroke-width="12"/>
+  <path d="M175 362h162l-15 20H190z" fill="#273b47"/>
+  <circle cx="365" cy="380" r="7" fill="#69f5d3"/>
+</svg>

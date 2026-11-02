@@ -177,11 +177,11 @@ designcraft	Page layout and publishing	ページレイアウトと出版
 wordcraft	Writing and document design	文書作成とデザイン
 deckcraft	Presentations and slide shows	プレゼンテーションとスライドショー
 gridcraft	Spreadsheets and data	表計算とデータ
-craft-anything	Find out how any software works, then craft your own	あらゆるソフトウェアの仕組みを知り、自分だけのものを作る
 solidcraft	Parametric 3D CAD	パラメトリック3D CAD
 cadcraft	Computer-aided design and drafting	コンピューター支援設計と製図
 soundcraft	Recording, editing and mixing audio	オーディオの録音、編集、ミックス
 figcraft	Interface design and prototyping	インターフェースデザインとプロトタイピング
+asuscraft	Complete ASUS Laptop Control Center	対応するASUS製Linuxノートパソコン向けハードウェアコントロールセンター
 
 # Contextual: month abbreviations for date rendering
 month	Jan	1月
@@ -418,3 +418,4 @@ materialcraft	Preview materials in 2D and on 3D models.	マテリアルを2Dと3
 	Migrate Flatpak bundles to ArtCraft OCI (experimental)	Flatpak バンドルを ArtCraft OCI に移行する（実験的）
 	On update, switch first party apps when the matching package is available. Otherwise, keep using bundles.	更新時に対応するパッケージがあれば ArtCraft 公式アプリを移行します。なければ引き続きバンドルを使用します。
 	The OCI repository is a preview with GPG verification disabled.	OCI リポジトリはプレビュー版で、GPG 検証は無効になっています。
+	Back to CraftApps	CraftApps に戻る

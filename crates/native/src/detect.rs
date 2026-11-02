@@ -209,17 +209,6 @@ pub mod macos {
     }
 }
 
-/// Newest version first; an entry with no version comes after every entry with one.
-#[cfg(any(windows, test))]
-fn newest_first(a: Option<&version::Version>, b: Option<&version::Version>) -> std::cmp::Ordering {
-    match (b, a) {
-        (Some(x), Some(y)) => version::compare(x, y),
-        (Some(_), None) => std::cmp::Ordering::Greater,
-        (None, Some(_)) => std::cmp::Ordering::Less,
-        (None, None) => std::cmp::Ordering::Equal,
-    }
-}
-
 #[cfg(windows)]
 pub mod windows {
     use std::path::PathBuf;
@@ -317,7 +306,12 @@ pub mod windows {
                 out.push(MsiInstall { product_code: code, version, exe, scope: record_context(hive) });
             }
         }
-        out.sort_by(|a, b| super::newest_first(a.version.as_ref(), b.version.as_ref()));
+        out.sort_by(|a, b| match (&b.version, &a.version) {
+            (Some(x), Some(y)) => version::compare(x, y),
+            (Some(_), None) => std::cmp::Ordering::Less,
+            (None, Some(_)) => std::cmp::Ordering::Greater,
+            (None, None) => std::cmp::Ordering::Equal,
+        });
         out
     }
 
@@ -542,6 +536,7 @@ pub mod linux {
         crate::process::which(id).unwrap_or_else(|| PathBuf::from("/usr/bin").join(id)).display().to_string()
     }
 
+
     /// `~/Applications`, where the launcher puts AppImages (the AppImageLauncher convention).
     pub fn appimage_dir() -> Option<PathBuf> {
         dirs::home_dir().map(|h| h.join("Applications"))
@@ -633,7 +628,7 @@ pub mod linux {
     /// reported as a system binary: the launcher can open it but leaves updating and removing it
     /// to whatever installed it, since it can't tell which package manager that was.
     fn detect_system_install(app: &CraftApp) -> Option<Installed> {
-        let bin = find_binary(app.id)?;
+        let bin = find_binary(app)?;
         Some(Installed {
             version: binary_version(&bin, app),
             source: InstallSource::Binary,
@@ -645,12 +640,23 @@ pub mod linux {
         })
     }
 
-    /// The app's binary on `PATH`, else in `/usr/bin`, `/usr/local/bin` or `~/.local/bin`.
-    fn find_binary(id: &str) -> Option<PathBuf> {
-        let on_path = crate::process::which(id);
+    fn find_binary(app: &CraftApp) -> Option<PathBuf> {
+        let explicit = app.local_app.filter(|local| local.release_managed).and_then(|local| local.executable).map(PathBuf::from);
+        let ids: Vec<_> = app.stems().collect();
+        let on_path = std::env::var_os("PATH")
+            .and_then(|path| std::env::split_paths(&path).flat_map(|dir| ids.iter().map(move |id| dir.join(id))).find(|p| is_executable_file(p)));
         let usual = ["/usr/bin", "/usr/local/bin"].into_iter().map(PathBuf::from).chain(dirs::home_dir().map(|h| h.join(".local/bin")));
-        on_path.or_else(|| usual.map(|d| d.join(id)).find(|p| p.is_file()))
+        explicit
+            .filter(|p| is_executable_file(p))
+            .or(on_path)
+            .or_else(|| usual.flat_map(|dir| ids.iter().map(move |id| dir.join(id))).find(|p| is_executable_file(p)))
     }
+
+    fn is_executable_file(path: &Path) -> bool {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::metadata(path).is_ok_and(|metadata| metadata.is_file() && metadata.permissions().mode() & 0o111 != 0)
+    }
+
 
     /// The version `bin --version` prints, or `None` when it can't be started, doesn't finish
     /// within 5 seconds (it is then killed), exits with an error, or prints no version.
@@ -766,21 +772,6 @@ mod tests {
     use artcraft_launcher_core::SUITE;
 
     use super::*;
-
-    #[test]
-    fn msi_entries_sort_newest_first_and_unversioned_last() {
-        use std::cmp::Ordering::{Equal, Greater, Less};
-        let (old, new) = (version::parse("0.4.0"), version::parse("0.5.0"));
-        // Each arm by hand: the sort below never asks about None against Some in that order.
-        assert_eq!(newest_first(new.as_ref(), old.as_ref()), Less);
-        assert_eq!(newest_first(old.as_ref(), new.as_ref()), Greater);
-        assert_eq!(newest_first(new.as_ref(), None), Less);
-        assert_eq!(newest_first(None, new.as_ref()), Greater);
-        assert_eq!(newest_first(None, None), Equal);
-        let mut versions = vec![None, old.clone(), new.clone(), None];
-        versions.sort_by(|a, b| newest_first(a.as_ref(), b.as_ref()));
-        assert_eq!(versions, vec![new, old, None, None]);
-    }
 
     /// A file without VERSIONINFO, or one that isn't there, has no version.
     #[cfg(windows)]

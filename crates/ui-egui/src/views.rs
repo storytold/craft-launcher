@@ -88,6 +88,126 @@ const TAGLINE_SIZE: f32 = 12.0;
 /// The card's top strip: number tab and links.
 const STRIP_H: f32 = 40.0;
 const CARD_PAD: f32 = 20.0;
+
+/// The reference's large outlined OPEN button: cyan border, dark fill, bright on hover.
+fn local_open_button(ui: &mut Ui, label: &str, width: f32, cyan: Color32, t: &Tokens) -> egui::Response {
+    let size = vec2(width, 38.0);
+    let (rect, resp) = ui.allocate_exact_size(size, Sense::click());
+    let enabled = ui.is_enabled();
+    let hovered = resp.hovered() && enabled;
+    let pressed = resp.is_pointer_button_down_on() && enabled;
+    let (fill, border, ink) = if !enabled {
+        (t.bg, t.line, t.faint)
+    } else if pressed {
+        (cyan.gamma_multiply(0.22), cyan, t.ink_strong)
+    } else if hovered {
+        (cyan.gamma_multiply(0.12), cyan, t.ink_strong)
+    } else {
+        (t.bg, cyan, t.ink_strong)
+    };
+    ui.painter().rect(rect, egui::CornerRadius::same(8), fill, Stroke::new(1.5, border), egui::StrokeKind::Inside);
+    let galley = ui.painter().layout_no_wrap(label.to_owned(), FontId::new(13.0, theme::mono_bold()), ink);
+    ui.painter().galley(egui::pos2(rect.center().x - galley.size().x / 2.0, rect.center().y - galley.size().y / 2.0), galley, ink);
+    resp.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, enabled, label));
+    if enabled { resp.on_hover_cursor(egui::CursorIcon::PointingHand) } else { resp }
+}
+
+/// Finds `name` in the XDG application directories, user first.
+fn local_desktop_file(name: &str) -> Option<std::path::PathBuf> {
+    let mut dirs = Vec::new();
+    if let Some(data) = std::env::var_os("XDG_DATA_HOME") {
+        dirs.push(std::path::PathBuf::from(data));
+    } else if let Some(home) = std::env::var_os("HOME") {
+        dirs.push(std::path::PathBuf::from(home).join(".local/share"));
+    }
+    dirs.push(std::path::PathBuf::from("/usr/local/share"));
+    dirs.push(std::path::PathBuf::from("/usr/share"));
+    dirs.into_iter().map(|d| d.join("applications").join(name)).find(|p| p.is_file())
+}
+
+/// One `Key=value` from a desktop entry's `[Desktop Entry]` group.
+fn local_desktop_key(path: &std::path::Path, key: &str) -> Option<String> {
+    let text = std::fs::read_to_string(path).ok()?;
+    let mut in_group = false;
+    for line in text.lines() {
+        let line = line.trim();
+        if line.starts_with('[') {
+            in_group = line == "[Desktop Entry]";
+            continue;
+        }
+        if !in_group {
+            continue;
+        }
+        if let Some(rest) = line.strip_prefix(key).and_then(|r| r.strip_prefix('=')) {
+            let value = rest.trim();
+            if !value.is_empty() {
+                return Some(value.to_string());
+            }
+        }
+    }
+    None
+}
+
+/// The program an `Exec=` line runs: its first argument, with desktop-entry quoting.
+fn local_exec_program(line: &str) -> Option<String> {
+    let mut chars = line.trim_start().chars();
+    let mut out = String::new();
+    if line.trim_start().starts_with('"') {
+        chars.next();
+        loop {
+            match chars.next()? {
+                '"' => break,
+                '\\' => out.push(chars.next()?),
+                c => out.push(c),
+            }
+        }
+    } else {
+        out.extend(chars.take_while(|c| !c.is_whitespace()));
+    }
+    (!out.is_empty()).then_some(out)
+}
+
+/// Resolves an `Icon=` value: absolute paths directly, icon names through common themes.
+fn local_resolve_icon(icon: &str) -> Option<std::path::PathBuf> {
+    let direct = std::path::Path::new(icon);
+    if direct.is_absolute() {
+        return direct.is_file().then(|| direct.to_path_buf());
+    }
+    let mut bases = Vec::new();
+    if let Some(data) = std::env::var_os("XDG_DATA_HOME") {
+        bases.push(std::path::PathBuf::from(data).join("icons"));
+    } else if let Some(home) = std::env::var_os("HOME") {
+        bases.push(std::path::PathBuf::from(home).join(".local/share/icons"));
+    }
+    if let Some(home) = std::env::var_os("HOME") {
+        bases.push(std::path::PathBuf::from(home).join(".icons"));
+    }
+    bases.push(std::path::PathBuf::from("/usr/local/share/icons"));
+    bases.push(std::path::PathBuf::from("/usr/share/icons"));
+    // Prefer a PNG anywhere in the theme over an SVG: the card decodes PNG bytes with the
+    // `image` crate, while an SVG-only icon falls back to the initials badge.
+    for ext in ["png", "svg", "xpm"] {
+        for base in &bases {
+            for theme in ["hicolor", "Adwaita", "breeze", "Papirus"] {
+                for size in ["128x128", "256x256", "512x512", "64x64", "48x48", "32x32", "24x24", "16x16", "scalable"] {
+                    let p = base.join(theme).join(size).join("apps").join(format!("{icon}.{ext}"));
+                    if p.is_file() {
+                        return Some(p);
+                    }
+                }
+            }
+        }
+    }
+    for dir in ["/usr/share/pixmaps", "/usr/local/share/pixmaps"] {
+        for ext in ["png", "svg", "xpm"] {
+            let p = std::path::Path::new(dir).join(format!("{icon}.{ext}"));
+            if p.is_file() {
+                return Some(p);
+            }
+        }
+    }
+    None
+}
 /// Room macOS's traffic lights take at the left of the header.
 const TRAFFIC_LIGHTS_W: f32 = 72.0;
 
@@ -438,6 +558,199 @@ impl LauncherUi {
         }
         self.grid_block(ui, rest);
         ui.add_space(24.0);
+    }
+
+    /// Renders launch-only local applications as a separate grid
+    /// section after the Craft apps. These never touch CraftApp/release/install machinery.
+    pub(crate) fn local_grid(&mut self, ui: &mut Ui) {
+        let needle = self.search.trim().to_lowercase();
+        let entries: Vec<_> = self
+            .local_entries
+            .iter()
+            .filter(|e| needle.is_empty() || e.app.name.to_lowercase().contains(&needle) || e.app.tagline.to_lowercase().contains(&needle))
+            .cloned()
+            .collect();
+        if entries.is_empty() {
+            return;
+        }
+        let t = crate::theme::Tokens::get(ui.ctx());
+        ui.add_space(28.0);
+        crate::widgets::hud(ui, "Local apps", t.faint);
+        ui.add_space(12.0);
+        // Exactly the Craft grid's sizing and spacing: same columns, shared hairlines, same height.
+        let width = ui.available_width();
+        let cols = ((width / CARD_MIN_W).floor() as usize).max(1);
+        let card_w = (width + (cols as f32 - 1.0)) / cols as f32;
+        let rows = entries.len().div_ceil(cols);
+        let height = rows as f32 * (CARD_H - 1.0) + 1.0;
+        let (area, _) = ui.allocate_exact_size(egui::vec2(width, height), egui::Sense::hover());
+        for (i, entry) in entries.iter().enumerate() {
+            let (row, col) = (i / cols, i % cols);
+            let min = area.min + egui::vec2(col as f32 * (card_w - 1.0), row as f32 * (CARD_H - 1.0));
+            self.local_card(ui, entry, egui::Rect::from_min_size(min, egui::vec2(card_w, CARD_H)));
+        }
+        ui.add_space(24.0);
+    }
+
+    /// Reads the `Icon=` value from an application's desktop entry.
+    fn local_icon_name(desktop_entry: &str) -> Option<String> {
+        let path = local_desktop_file(desktop_entry)?;
+        local_desktop_key(&path, "Icon")
+    }
+
+    /// Whether the desktop entry and its `Exec` program both exist.
+    fn local_installed(desktop_entry: &str) -> bool {
+        let Some(path) = local_desktop_file(desktop_entry) else { return false };
+        let Some(exec) = local_desktop_key(&path, "Exec") else { return false };
+        let Some(program) = local_exec_program(&exec) else { return false };
+        let path = std::path::Path::new(&program);
+        if path.components().count() > 1 {
+            path.is_file()
+        } else {
+            std::env::var_os("PATH").is_some_and(|paths| std::env::split_paths(&paths).any(|dir| dir.join(path).is_file()))
+        }
+    }
+
+    /// Draws one local-app card in the reference's dark, cyan-accented style, at the same size as
+    /// an official Craft card. No Craft status/version/GitHub/install controls.
+    fn local_card(&mut self, ui: &mut Ui, entry: &crate::model::LocalAppEntry, rect: egui::Rect) {
+        const CYAN: Color32 = Color32::from_rgb(0x22, 0xd3, 0xee);
+        const RADIUS: u8 = 10;
+        let t = Tokens::get(ui.ctx());
+        let installed = Self::local_installed(entry.app.desktop_entry);
+        let now = std::time::Instant::now();
+        if self.local_launching.get(entry.app.id).is_some_and(|at| now.duration_since(*at).as_secs_f32() > 4.0) {
+            self.local_launching.remove(entry.app.id);
+        }
+        let launching = self.local_launching.contains_key(entry.app.id);
+        let hovered = ui.rect_contains_pointer(rect);
+        let wipe = if self.reduce_motion { 0.0 } else { 0.25 };
+        let lift = ui.ctx().animate_bool_with_time(ui.scope_id().with(("local-card-hover", entry.app.id)), hovered, wipe);
+        let painter = ui.painter_at(rect.expand(32.0));
+
+        if lift > 0.0 && !self.reduce_motion {
+            let glow = egui::epaint::Shadow {
+                offset: [0, 0],
+                blur: 20,
+                spread: 1,
+                color: Color32::from_rgba_unmultiplied(CYAN.r(), CYAN.g(), CYAN.b(), (58.0 * lift) as u8),
+            };
+            painter.add(glow.as_shape(rect.shrink(1.0), egui::CornerRadius::same(RADIUS)));
+        }
+        let fill = t.bg.lerp_to_gamma(CYAN, 0.03 * lift);
+        painter.rect(rect.shrink(0.5), egui::CornerRadius::same(RADIUS), fill, Stroke::new(1.0, t.line_strong), egui::StrokeKind::Inside);
+        let accent = Rect::from_min_size(egui::pos2(rect.left() + 10.0, rect.top() + 1.0), egui::vec2(rect.width() - 20.0, 2.0));
+        painter.rect_filled(accent, egui::CornerRadius::same(1), CYAN);
+
+        // Metadata row: LOCAL APP, status, and the working overflow menu.
+        let strip = Rect::from_min_size(egui::pos2(rect.left() + 16.0, rect.top() + 10.0), egui::vec2(rect.width() - 32.0, 20.0));
+        painter.hline(rect.x_range().shrink(12.0), strip.bottom() + 8.0, t.hairline());
+        let mut strip_ui = ui.new_child(egui::UiBuilder::new().max_rect(strip).layout(egui::Layout::left_to_right(egui::Align::Center)));
+        crate::widgets::hud(&mut strip_ui, "LOCAL APP", CYAN);
+        strip_ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+            ui.spacing_mut().item_spacing.x = 8.0;
+            ui.menu_button("…", |ui| {
+                ui.set_min_width(190.0);
+                if ui.button("Open").clicked() {
+                    self.launch_app(entry.app.id);
+                    ui.close();
+                }
+                if ui.button("Copy launch command").clicked() {
+                    ui.ctx().copy_text(format!("gtk-launch {}", entry.app.desktop_entry.trim_end_matches(".desktop")));
+                    ui.close();
+                }
+                if ui.button("Show desktop entry").clicked() {
+                    #[cfg(not(target_arch = "wasm32"))]
+                    if let Some(path) = local_desktop_file(entry.app.desktop_entry)
+                        && let Some(dir) = path.parent()
+                    {
+                        let _ = std::process::Command::new("xdg-open").arg(dir).spawn();
+                    }
+                    ui.close();
+                }
+            });
+            let (label, color) = if installed { ("INSTALLED", CYAN) } else { ("NOT INSTALLED", t.muted) };
+            crate::widgets::badge(ui, label, color);
+        });
+
+        let inner = Rect::from_min_max(egui::pos2(rect.left() + 16.0, strip.bottom() + 16.0), rect.max - vec2(16.0, 12.0));
+        let mut child = ui.new_child(egui::UiBuilder::new().max_rect(inner).layout(egui::Layout::top_down(egui::Align::Min)));
+        child.set_clip_rect(rect.intersect(ui.clip_rect()));
+        let ui = &mut child;
+
+        ui.horizontal(|ui| {
+            const ICON: f32 = 56.0;
+            let (slot, _) = ui.allocate_exact_size(vec2(ICON, ICON), Sense::hover());
+            let icon_rect = Rect::from_center_size(slot.center() + vec2(0.0, -lift), vec2(ICON, ICON));
+            ui.painter().add(
+                egui::epaint::Shadow {
+                    offset: [0, 5],
+                    blur: 14,
+                    spread: 0,
+                    color: Color32::from_rgba_unmultiplied(CYAN.r(), CYAN.g(), CYAN.b(), 80),
+                }
+                .as_shape(icon_rect.shrink(3.0), egui::CornerRadius::same(12)),
+            );
+            if let Some(icon) = Self::local_app_image(ui.ctx(), entry.app.icon, entry.app.desktop_entry) {
+                icon.paint_at(ui, icon_rect);
+            } else {
+                let fallback = entry.app.name.chars().next().map(|c| c.to_uppercase().to_string()).unwrap_or_else(|| "?".to_string());
+                ui.painter().text(icon_rect.center(), egui::Align2::CENTER_CENTER, fallback, FontId::new(22.0, theme::display()), t.muted);
+            }
+            ui.add_space(12.0);
+            ui.vertical(|ui| {
+                ui.label(crate::widgets::heading(entry.app.name, 20.0, t.ink_strong));
+                ui.add_space(2.0);
+                ui.add(egui::Label::new(RichText::new(entry.app.tagline).size(12.5).color(t.muted)).wrap());
+            });
+        });
+
+        ui.with_layout(egui::Layout::bottom_up(egui::Align::Min), |ui| {
+            let width = inner.width();
+            let label = if launching {
+                "LAUNCHING..."
+            } else if installed {
+                "OPEN"
+            } else {
+                "NOT INSTALLED"
+            };
+            ui.add_enabled_ui(installed && !launching, |ui| {
+                if local_open_button(ui, label, width, CYAN, &t).clicked() {
+                    self.launch_app(entry.app.id);
+                }
+            });
+        });
+    }
+
+    /// Resolves the desktop entry's icon and decodes its PNG bytes into a texture, avoiding the
+    /// unsupported `file://` URI path. The resolver prefers a PNG of any size over an SVG, so the
+    /// installed mascot renders; an SVG-only icon leaves the initials fallback in place.
+    fn local_app_image(ctx: &egui::Context, icon_name: &str, desktop_entry: &str) -> Option<egui::Image<'static>> {
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            let name = Self::local_icon_name(desktop_entry).unwrap_or_else(|| icon_name.to_string());
+            let path = local_resolve_icon(&name)?;
+            let key = egui::Id::unique(("local-app-icon", path.clone()));
+            if let Some(texture) = ctx.data(|d| d.get_temp::<egui::TextureHandle>(key)) {
+                return Some(egui::Image::new(&texture));
+            }
+            let bytes = std::fs::read(&path).ok()?;
+            let picture = image::load_from_memory(&bytes).ok()?.to_rgba8();
+            let size = [picture.width() as usize, picture.height() as usize];
+            let pixels = picture.into_raw();
+            let texture = ctx.load_texture(
+                format!("local-app-icon-{}", path.display()),
+                egui::ColorImage::from_rgba_unmultiplied(size, &pixels),
+                egui::TextureOptions::LINEAR,
+            );
+            ctx.data_mut(|d| d.insert_temp(key, texture.clone()));
+            Some(egui::Image::new(&texture))
+        }
+        #[cfg(target_arch = "wasm32")]
+        {
+            let _ = (icon_name, desktop_entry);
+            None
+        }
     }
 
     fn grid_block(&mut self, ui: &mut Ui, ids: &[&'static str]) {
@@ -827,6 +1140,9 @@ impl LauncherUi {
     // ---- actions -------------------------------------------------------------------------
 
     fn primary_action(&self, entry: &AppEntry, status: &AppStatus) -> Primary {
+        if entry.app.local_app.is_some_and(|local| !local.release_managed) {
+            return if status.is_installed() { Primary::Open } else { Primary::Unavailable(tl!("Not installed")) };
+        }
         if !self.caps.manage_apps {
             let platform = self.platform;
             let url = entry.release().zip(platform).and_then(|(r, p)| {
@@ -1032,6 +1348,27 @@ impl LauncherUi {
         let manage = self.caps.manage_apps;
         let reveal = self.caps.reveal_label;
         widgets::more_menu(ui, entry.app.name, |ui| {
+            if entry.app.local_app.is_some_and(|local| !local.release_managed) {
+                if status.is_installed() && ui.button(tl!("Open")).clicked() {
+                    self.launch_app(&id);
+                    ui.close();
+                }
+                if links {
+                    ui.separator();
+                    if let Some(url) = entry.app.website_url()
+                        && ui.button(tl!("Website")).clicked()
+                    {
+                        widgets::open_external_link(ui.ctx(), &url);
+                        ui.close();
+                    }
+                    if ui.button(tl!("GitHub repository")).clicked() {
+                        widgets::open_external_link(ui.ctx(), &entry.app.repo_url());
+                        ui.close();
+                    }
+                }
+                self.menu_hide(ui, entry, &id);
+                return;
+            }
             if ui.button(tl!("Choose version")).clicked() {
                 self.open_versions(&id);
                 ui.close();
@@ -1063,9 +1400,13 @@ impl LauncherUi {
                         ui.close();
                     }
                 };
-                link(ui, tl!("Website"), entry.app.website());
+                if let Some(url) = entry.app.website_url() {
+                    link(ui, tl!("Website"), url);
+                }
                 link(ui, tl!("GitHub repository"), entry.app.repo_url());
-                link(ui, tl!("All releases"), entry.app.releases_url());
+                if let Some(url) = entry.app.releases_page_url() {
+                    link(ui, tl!("All releases"), url);
+                }
             }
             self.menu_hide(ui, entry, &id);
         });
@@ -1248,5 +1589,50 @@ mod tests {
     fn a_plain_linux_copy_still_gets_the_appimage() {
         let url = launcher_download(&release(), platform(), false).unwrap();
         assert_eq!(url, format!("https://dl.example/{LAUNCHER_ID}-0.4.1-linux-x86_64.AppImage"));
+    }
+}
+
+#[cfg(test)]
+mod local_app_helpers {
+    use super::*;
+
+    #[test]
+    fn reads_the_program_from_quoted_and_plain_exec_lines() {
+        assert_eq!(local_exec_program("\"/opt/My App/app\" %F").as_deref(), Some("/opt/My App/app"));
+        assert_eq!(local_exec_program("asus-control-center %U").as_deref(), Some("asus-control-center"));
+        assert_eq!(local_exec_program("   "), None);
+    }
+
+    #[test]
+    fn reads_keys_from_the_desktop_entry_group() {
+        let path = std::env::temp_dir().join("artcraft-local-entry-test.desktop");
+        let _ = std::fs::write(&path, "[Desktop Entry]\nName=Test\nIcon=example\n[Other]\nIcon=wrong\n");
+        assert_eq!(local_desktop_key(&path, "Icon").as_deref(), Some("example"));
+        assert_eq!(local_desktop_key(&path, "Missing"), None);
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn the_installed_asus_mascot_resolves_and_decodes() {
+        let name = "io.github.asuscontrolcenter.AsusControlCenter";
+        let Some(path) = local_resolve_icon(name) else {
+            eprintln!("ASUS icon not installed on this machine; skipping");
+            return;
+        };
+        assert_eq!(path.extension().and_then(|e| e.to_str()), Some("png"), "expected the PNG mascot, got {}", path.display());
+        let bytes = std::fs::read(&path).expect("installed icon should be readable");
+        let picture = image::load_from_memory(&bytes).expect("installed icon should decode");
+        assert!(picture.width() > 0 && picture.height() > 0);
+        let ctx = egui::Context::default();
+        assert!(LauncherUi::local_app_image(&ctx, name, "asus-control-center.desktop").is_some());
+    }
+
+    #[test]
+    fn an_absolute_icon_path_is_used_directly() {
+        let path = std::env::temp_dir().join("artcraft-local-icon-test.png");
+        let _ = std::fs::write(&path, b"not really a picture");
+        assert_eq!(local_resolve_icon(&path.to_string_lossy()), Some(path.clone()));
+        let _ = std::fs::remove_file(&path);
+        assert_eq!(local_resolve_icon("/definitely/missing/icon.png"), None);
     }
 }

@@ -40,7 +40,7 @@ impl Release {
         self.version.as_ref().map_or_else(|| self.tag.clone(), ToString::to_string)
     }
 
-    /// Fills in checksums from a `SHA256SUMS.txt` for assets that don't have one.
+    /// Fills in checksums from a `SHA256SUMS[.txt]` file for assets that don't have one.
     pub fn apply_sums(&mut self, sums: &[(String, String)]) {
         for asset in &mut self.assets {
             if asset.sha256.is_none() {
@@ -50,7 +50,7 @@ impl Release {
     }
 
     pub fn sums_asset(&self) -> Option<&Asset> {
-        self.assets.iter().find(|a| a.name == "SHA256SUMS.txt")
+        self.assets.iter().find(|a| matches!(a.name.as_str(), "SHA256SUMS.txt" | "SHA256SUMS"))
     }
 }
 
@@ -260,7 +260,7 @@ fn release_from_value(v: &serde_json::Value, repo: &str) -> Result<Release, Stri
     })
 }
 
-/// A release known only from its tag and `SHA256SUMS.txt` (the quota-free route: the
+/// A release known only from its tag and a SHA256SUMS file (the quota-free route: the
 /// `releases/latest` redirect names the tag, and the sums list every file).
 pub fn release_from_sums(repo: &str, tag: &str, sums: &[(String, String)]) -> Release {
     let prefix = download_prefix(repo);
