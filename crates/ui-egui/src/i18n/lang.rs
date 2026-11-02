@@ -13,11 +13,12 @@ use super::detect::system_lang;
 pub enum Script {
     Chinese,
     Japanese,
+    Devanagari,
 }
 
 impl Script {
     /// Every script a language can be written in.
-    pub const ALL: [Script; 2] = [Script::Chinese, Script::Japanese];
+    pub const ALL: [Script; 3] = [Script::Chinese, Script::Japanese, Script::Devanagari];
 }
 
 /// One supported UI language.
@@ -94,7 +95,7 @@ pub(super) fn plural_polish(n: u64) -> usize {
 }
 
 /// The registry. English first: it is the fallback and the source language.
-pub static LANGUAGES: [LangInfo; 11] = [
+pub static LANGUAGES: [LangInfo; 12] = [
     LangInfo {
         code: "en",
         name: "English",
@@ -200,6 +201,17 @@ pub static LANGUAGES: [LangInfo; 11] = [
         english_name: "Hungarian",
         script: None,
         source: include_str!("hu.tsv"),
+        plural: plural_one_other,
+        plural_forms: 2,
+        complete_menus: true,
+        catalog: OnceLock::new(),
+    },
+    LangInfo {
+        code: "hi",
+        name: "हिन्दी",
+        english_name: "Hindi",
+        script: Some(Script::Devanagari),
+        source: include_str!("hi.tsv"),
         plural: plural_one_other,
         plural_forms: 2,
         complete_menus: true,
