@@ -250,6 +250,7 @@ designcraft	Page layout and publishing	页面排版与出版
 wordcraft	Writing and document design	写作与文档设计
 deckcraft	Presentations and slide shows	演示文稿与幻灯片
 gridcraft	Spreadsheets and data	电子表格与数据处理
+craft-anything	Find out how any software works, then craft your own	了解任何软件的工作原理，然后打造你自己的版本
 solidcraft	Parametric 3D CAD	参数化三维 CAD
 cadcraft	Computer-aided design and drafting	计算机辅助设计与制图
 soundcraft	Recording, editing and mixing audio	音频录制、编辑与混音
@@ -363,3 +364,10 @@ column	Version	版本
 	Older launcher versions require a manual reinstall.	旧版启动器需要手动重新安装。
 	Your files may not open in older versions.	旧版可能无法打开你的文件。
 	Enable automatic installs in Settings to follow new nightly builds.	在设置中启用自动安装，即可跟进新的每日构建版。
+texturecraft	3D texture painting	3D 纹理绘制
+texturecraft	Paint materials on 3D models and export textures.	在 3D 模型上绘制材质并导出纹理。
+texturecraft	Materials	材质
+texturecraft	Mesh maps	网格贴图
+texturecraft	Bake mesh maps and use smart materials.	烘焙网格贴图并使用智能材质。
+texturecraft	Paint textures on 3D models.	在 3D 模型上绘制纹理。
+	Hide community apps	隐藏社区应用
