@@ -39,5 +39,6 @@ pub use lang::{LANGUAGES, Lang, LangInfo, Script, lang_from_tag};
 #[cfg(test)]
 pub(crate) use translate::{StrictCjkDrawing, drew_cjk};
 pub use translate::{
-    current, fmt, has, message, msg, set_current, t, t_id, tn, to_lowercase, to_lowercase_in, to_uppercase, to_uppercase_in, tr, tr_ctx, tr_id, trn,
+    current, fmt, has, is_protected_name, message, msg, set_current, t, t_id, tn, to_lowercase, to_lowercase_in, to_uppercase, to_uppercase_in, tr,
+    tr_ctx, tr_id, trn,
 };

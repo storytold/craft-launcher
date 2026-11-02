@@ -601,8 +601,21 @@ fn turkish_casing_rules_preserve_dotted_and_dotless_i() {
     assert_eq!(super::to_uppercase_in(Lang::TR, "indir"), "İNDİR");
     assert_eq!(super::to_uppercase_in(Lang::TR, "ayrıntılar"), "AYRINTILAR");
 
+    // Protected product and app names stay in English ASCII casing:
+    assert_eq!(super::to_uppercase_in(Lang::TR, "Craft App Suite"), "CRAFT APP SUITE");
+    assert_eq!(super::to_uppercase_in(Lang::TR, "FilmCraft"), "FILMCRAFT");
+    assert_eq!(super::to_uppercase_in(Lang::TR, "Launcher"), "LAUNCHER");
+    assert_eq!(super::to_lowercase_in(Lang::TR, "FilmCraft"), "filmcraft");
+
     // Lowercasing preserves dotted and dotless i in Turkish:
     assert_eq!(super::to_lowercase_in(Lang::TR, "İNDİR"), "indir");
     assert_eq!(super::to_lowercase_in(Lang::TR, "AYRINTILAR"), "ayrıntılar");
     assert_eq!(super::to_lowercase_in(Lang::EN, "TITLE"), "title");
+
+    // Protected name helper checks:
+    assert!(super::is_protected_name("Craft App Suite"));
+    assert!(super::is_protected_name("FilmCraft"));
+    assert!(super::is_protected_name("PhotoCraft"));
+    assert!(!super::is_protected_name("indir"));
+    assert!(!super::is_protected_name("ayrıntılar"));
 }

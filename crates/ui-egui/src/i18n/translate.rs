@@ -111,14 +111,22 @@ pub fn msg(s: &str) -> String {
     out
 }
 
-/// Case conversion that respects language-specific casing rules (e.g. Turkish dotted and dotless i).
+/// Does `text` match a protected product, suite, brand or app name that must stay in English?
+pub fn is_protected_name(text: &str) -> bool {
+    let trimmed = text.trim();
+    matches!(trimmed, "ArtCraft Launcher" | "Craft App Suite" | "Launcher" | "GitHub" | "Discord")
+        || artcraft_launcher_core::SUITE.iter().any(|a| a.name.eq_ignore_ascii_case(trimmed))
+}
+
+/// Case conversion that respects language-specific casing rules (e.g. Turkish dotted and dotless i),
+/// while preserving ASCII casing for protected product and app names.
 pub fn to_uppercase(text: &str) -> String {
     to_uppercase_in(current(), text)
 }
 
-/// Case conversion in a specific language.
+/// Case conversion in a specific language, preserving ASCII casing for protected names.
 pub fn to_uppercase_in(lang: Lang, text: &str) -> String {
-    if lang == Lang::TR {
+    if lang == Lang::TR && !is_protected_name(text) {
         let mut s = String::with_capacity(text.len());
         for c in text.chars() {
             match c {
@@ -133,14 +141,15 @@ pub fn to_uppercase_in(lang: Lang, text: &str) -> String {
     }
 }
 
-/// Lowercase conversion that respects language-specific rules (e.g. Turkish dotted and dotless i).
+/// Lowercase conversion that respects language-specific rules (e.g. Turkish dotted and dotless i),
+/// while preserving ASCII casing for protected product and app names.
 pub fn to_lowercase(text: &str) -> String {
     to_lowercase_in(current(), text)
 }
 
-/// Lowercase conversion in a specific language.
+/// Lowercase conversion in a specific language, preserving ASCII casing for protected names.
 pub fn to_lowercase_in(lang: Lang, text: &str) -> String {
-    if lang == Lang::TR {
+    if lang == Lang::TR && !is_protected_name(text) {
         let mut s = String::with_capacity(text.len());
         for c in text.chars() {
             match c {
