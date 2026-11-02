@@ -121,6 +121,11 @@ pub fn install_at(
     {
         return Err(format!("{} is running. Quit it, then try again.", app.name));
     }
+    if kind == PackageKind::Flatpak
+        && let Some(installed) = existing.filter(|installed| installed.source == InstallSource::Flatpak && installed.externally_managed)
+    {
+        return Err(managed_elsewhere(app, installed, false).unwrap_or_else(|| "Update this app through its Flatpak repository".into()));
+    }
     bind_artifact_version(app, release, asset)?;
     // A feed can't send an app back to an older build; only a version the person chose by name
     // (a downgrade with a way back if it fails) gets past this.
@@ -1262,7 +1267,7 @@ pub(crate) mod linux {
         if !reference.starts_with(&format!("app/{id}/")) || !reference.ends_with("/stable") {
             return Ok(false);
         }
-        let remotes = run(&["remotes", "--columns=name,url"])?;
+        let remotes = run(&["remotes", "--show-disabled", "--columns=name,url"])?;
         let remote = remotes.lines().find_map(|line| {
             let (name, _) = line.split_once('\t')?;
             crate::packages::is_artcraft_remote(name, line).then(|| name.to_string())
@@ -1274,7 +1279,7 @@ pub(crate) mod linux {
                     return Err("The artcraft-oci remote points to a different repository".into());
                 }
                 run(&["remote-add", "--noninteractive", "artcraft-oci", "https://getartcraft.com/artcraft-oci.flatpakrepo"])?;
-                let remotes = run(&["remotes", "--columns=name,url"])?;
+                let remotes = run(&["remotes", "--show-disabled", "--columns=name,url"])?;
                 if !crate::packages::is_artcraft_remote("artcraft-oci", &remotes) {
                     return Err("The ArtCraft OCI descriptor configured an unexpected repository".into());
                 }

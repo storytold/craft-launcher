@@ -305,3 +305,31 @@ mod migration_tests {
         }
     }
 }
+
+/// Only a confirmed bundle origin with no repository URL permits bundle replacement.
+/// Missing rows are unknown, so preserve remote ownership conservatively.
+pub fn remote_manages_flatpak(origin: &str, remotes: &str) -> bool {
+    remotes
+        .lines()
+        .find_map(|line| {
+            let mut fields = line.split('\t');
+            if fields.next().map(str::trim) != Some(origin) {
+                return None;
+            }
+            Some(fields.next().is_some_and(|url| !url.trim().is_empty()))
+        })
+        .unwrap_or(true)
+}
+
+#[cfg(test)]
+mod remote_ownership_tests {
+    use super::*;
+    #[test]
+    fn only_confirmed_empty_urls_allow_bundle_replacement() {
+        assert!(!remote_manages_flatpak("app-origin", "app-origin\t\n"));
+        assert!(remote_manages_flatpak("renamed", "renamed\thttps://example.org/repo\n"));
+        assert!(remote_manages_flatpak("renamed", "renamed\toci+https://getartcraft.com\n"));
+        assert!(remote_manages_flatpak("missing", "other\t\n"));
+        assert!(!remote_manages_flatpak("app-origin", "app-origin"));
+    }
+}

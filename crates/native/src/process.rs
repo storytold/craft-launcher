@@ -797,7 +797,13 @@ pub(crate) fn cancellable_output(mut cmd: Command, check: impl Fn() -> Result<()
     let mut child =
         cmd.stdin(Stdio::null()).stdout(Stdio::piped()).stderr(Stdio::piped()).spawn().map_err(|e| format!("couldn't run flatpak ({e})"))?;
     let (stdout, stderr) = (read_all(child.stdout.take()), read_all(child.stderr.take()));
+    let started = Instant::now();
     let status = loop {
+        if started.elapsed() >= Duration::from_secs(60 * 60) {
+            let _ = child.kill();
+            let _ = child.wait();
+            return Err("Flatpak did not finish within one hour".into());
+        }
         if let Err(e) = check() {
             let _ = child.kill();
             let _ = child.wait();

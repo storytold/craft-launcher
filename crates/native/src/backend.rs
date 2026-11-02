@@ -379,13 +379,6 @@ impl NativeBackend {
             // One installer call can cover several apps, and fail after some of them went in.
             let latest = shared.latest.lock().unwrap_or_else(PoisonError::into_inner).get(app.id).cloned();
             let result = match (result, latest) {
-                (Ok(_), _)
-                    if existing.as_ref().is_some_and(|e| e.externally_managed)
-                        && found.is_some()
-                        && existing.as_ref().and_then(|e| e.version.as_ref()) == found.as_ref().and_then(|f| f.version.as_ref()) =>
-                {
-                    Ok(format!("{} is already up to date", app.name))
-                }
                 (Err(e), Some(release))
                     if !uninstall && release.version.as_ref().is_some_and(|v| landed_despite(&e, existing.as_ref(), found.as_ref(), v)) =>
                 {
