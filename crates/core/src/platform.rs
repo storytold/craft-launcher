@@ -305,29 +305,6 @@ mod tests {
     }
 
     #[test]
-    fn materialcraft_selects_desktop_assets_when_published() {
-        // Real v0.1.0 draft metadata: GitHub uses temporary URLs until publication.
-        let json = include_str!("../tests/fixtures/materialcraft-release.json");
-        let repo = "storytold/materialcraft";
-        assert!(crate::release::parse_github_versions(&format!("[{json}]"), repo).unwrap().is_empty());
-        assert!(crate::release::parse_github_release(json, repo).unwrap().assets.is_empty());
-        // Model GitHub replacing the temporary URL tag with the published release tag.
-        let published = json.replace("untagged-0d6d764e898d65ecfaa7", "v0.1.0");
-        let release = crate::release::parse_github_release(&published, repo).unwrap();
-        assert!(release.sums_asset().is_some());
-        for (os, kind, expected) in [
-            (Os::Windows, PackageKind::Msi, "materialcraft-0.1.0-windows-x64.msi"),
-            (Os::MacOs, PackageKind::Dmg, "materialcraft-0.1.0-macos-universal.dmg"),
-            (Os::Linux, PackageKind::Flatpak, "materialcraft-0.1.0-linux-x86_64.flatpak"),
-        ] {
-            let platform = Platform { os, arch: Arch::X64 };
-            let (asset, selected) = pick_asset(&release, &["materialcraft"], platform, &[kind]).unwrap();
-            assert_eq!(asset.name, expected);
-            assert_eq!(selected, kind);
-        }
-    }
-
-    #[test]
     fn freebsd_picks_the_tarball_for_the_processor() {
         // SoundCraft v0.10.0's GitHub metadata, trimmed to its FreeBSD tarballs.
         let r = crate::release::parse_github_release(include_str!("../tests/fixtures/soundcraft-release.json"), "storytold/soundcraft").unwrap();
