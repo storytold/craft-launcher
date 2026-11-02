@@ -524,7 +524,7 @@ pub(crate) fn choose_kinds_with(
             // opens and removes them but never replaces them.
             InstallSource::Pacman if is_release_arch_package(app, inst) => Some(PackageKind::ArchPkg),
             InstallSource::Pacman => return Vec::new(),
-            // Flatpaks installed from FlatPark are externally managed: the launcher will not
+            // Repository-managed Flatpaks are externally managed: the launcher will not
             // replace them with a downloaded local .flatpak bundle.
             InstallSource::Flatpak if inst.externally_managed => return Vec::new(),
             InstallSource::Flatpak => Some(PackageKind::Flatpak),
@@ -636,7 +636,7 @@ fn managed_elsewhere_with(app: &CraftApp, installed: &Installed, uninstall: bool
                 Some("system") | None => "--system".to_string(),
                 Some(name) => format!("--installation={name}"),
             };
-            Some(format!("{} was installed from FlatPark. Update it with flatpak update {scope} {pkg}", app.name))
+            Some(format!("{} was installed from a Flatpak repository. Update it with flatpak update {scope} {pkg}", app.name))
         }
         InstallSource::Binary => Some(format!("{} was installed outside the launcher. Update or remove it the way it was installed.", app.name)),
         _ => None,
@@ -3377,7 +3377,10 @@ mod tests {
         assert!(flatpark_installed.is_externally_managed());
         assert_eq!(choose_kinds_with(app, Some(&flatpark_installed), None, &[], &[PackageKind::Flatpak], false), Vec::<PackageKind>::new());
         let hint = managed_elsewhere_with(app, &flatpark_installed, false, |_| None);
-        assert_eq!(hint.as_deref(), Some("PhotoCraft was installed from FlatPark. Update it with flatpak update --user ai.storyteller.photocraft"));
+        assert_eq!(
+            hint.as_deref(),
+            Some("PhotoCraft was installed from a Flatpak repository. Update it with flatpak update --user ai.storyteller.photocraft")
+        );
         // During uninstall, managed_elsewhere returns None so it can be removed
         assert_eq!(managed_elsewhere_with(app, &flatpark_installed, true, |_| None), None);
 
@@ -3394,7 +3397,7 @@ mod tests {
         let hint_former = managed_elsewhere_with(app, &former_installed, false, |_| None);
         assert_eq!(
             hint_former.as_deref(),
-            Some("PhotoCraft was installed from FlatPark. Update it with flatpak update --system ai.storyteller.photocraft-old")
+            Some("PhotoCraft was installed from a Flatpak repository. Update it with flatpak update --system ai.storyteller.photocraft-old")
         );
 
         let bundle_installed = Installed {

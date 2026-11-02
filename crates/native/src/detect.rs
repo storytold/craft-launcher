@@ -619,7 +619,19 @@ pub mod linux {
         if let Some(p) = packages::find(app, &snapshot.packages, &order) {
             // A Flatpak runs under the id it was found under, which may be an older one.
             let location = if p.manager == InstallSource::Flatpak { p.name.clone() } else { binary_on_path(app.id) };
-            let externally_managed = p.manager == InstallSource::Flatpak && p.origin.as_deref().is_some_and(packages::is_flatpark_origin);
+            let externally_managed = p.manager == InstallSource::Flatpak
+                && p.origin.as_deref().is_some_and(|origin| {
+                    if packages::is_flatpark_origin(origin) {
+                        return true;
+                    }
+                    let scope = match p.installation.as_deref() {
+                        Some("user") => "--user".to_string(),
+                        Some("system") | None => "--system".to_string(),
+                        Some(name) => format!("--installation={name}"),
+                    };
+                    crate::process::capture_flatpak(&["remotes", &scope, "--columns=name,url"], Duration::from_secs(10))
+                        .is_some_and(|remotes| packages::is_artcraft_remote(origin, &remotes))
+                });
             return Some(Installed {
                 version: packages::version_of(p),
                 source: p.manager,

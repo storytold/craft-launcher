@@ -543,7 +543,7 @@ fn run_install(
             let after = deployed_commit();
             return Ok(match (before, after) {
                 (Some(before), Some(after)) if before.trim() == after.trim() => format!("{} is already up to date", app.name),
-                (Some(_), Some(_)) => format!("{} was updated through FlatPark", app.name),
+                (Some(_), Some(_)) => format!("{} was updated through its Flatpak repository", app.name),
                 _ => format!("Flatpak finished checking {} for updates", app.name),
             });
         }

@@ -242,3 +242,26 @@ mod tests {
         assert!(!is_flatpark_origin(""));
     }
 }
+
+/// Matches the first party repository by URL, independently of its local remote name.
+pub fn is_artcraft_remote(origin: &str, remotes: &str) -> bool {
+    remotes.lines().any(|line| {
+        let Some((name, url)) = line.split_once('\t') else { return false };
+        let url = url.trim().trim_end_matches('/');
+        name.trim() == origin && (url == "https://getartcraft.com/linux" || url.starts_with("https://getartcraft.com/linux/"))
+    })
+}
+
+#[cfg(test)]
+mod remote_url_tests {
+    use super::*;
+    #[test]
+    fn recognizes_custom_names_and_rejects_unrelated_urls() {
+        assert!(is_artcraft_remote("custom", "custom\thttps://getartcraft.com/linux/\n"));
+        assert!(is_artcraft_remote("custom", "custom\thttps://getartcraft.com/linux/repo\n"));
+        for url in ["https://getartcraft.com.evil/linux", "https://getartcraft.com/linux-other", "http://getartcraft.com/linux"] {
+            assert!(!is_artcraft_remote("custom", &format!("custom\t{url}")));
+        }
+        assert!(!is_artcraft_remote("other", "custom\thttps://getartcraft.com/linux"));
+    }
+}
