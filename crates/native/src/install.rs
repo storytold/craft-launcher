@@ -1473,7 +1473,7 @@ pub mod macos {
 
     use artcraft_launcher_core::version::Version;
 
-    use super::{CraftApp, InstallSource, Installed, Path, PathBuf, Paths, Release, process, staging_dir, swap_into_place};
+    use super::{CraftApp, InstallSource, Installed, Path, PathBuf, Paths, Release, process, swap_into_place};
 
     const SYSTEM_APPLICATIONS: &str = "/Applications";
 
@@ -1614,7 +1614,7 @@ pub mod macos {
             return Err("the copied app is not an app directory".into());
         }
         let found = crate::detect::macos::read_bundle(app, &staged).ok_or("the copied app is incomplete")?;
-        check_and_swap(app, &staged, &dest, &found, expect, process::run)?;
+        check_and_swap(app, &staged, &dest, &found, expect, process::run_with_output)?;
         Ok(dest)
     }
 
@@ -1633,7 +1633,7 @@ pub mod macos {
         destination: &Path,
         found: &Installed,
         expect: &Expect<'_>,
-        run: impl FnMut(&str, &[&str], Duration) -> Result<String, String>,
+        run: impl FnMut(&str, &[&str], Duration) -> Result<process::RunOutput, String>,
     ) -> Result<(), String> {
         if let Some(team) = required_team(expect.team, cfg!(test))? {
             super::macos_verify::verify_with(app, bundle, team, run)?;
