@@ -387,6 +387,7 @@ impl LauncherUi {
                     reset_accent = true;
                 }
             });
+            ui.checkbox(&mut self.settings.hide_community_apps, tl!("Hide community apps"));
         });
         self.settings.theme = theme_choice;
         if reset_accent {

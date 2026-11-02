@@ -1539,6 +1539,41 @@ fn the_first_close_to_the_tray_is_explained_once() {
 }
 
 #[test]
+fn community_apps_can_be_hidden_and_restored_in_settings() {
+    for view in [ViewMode::Grid, ViewMode::Table] {
+        let (mut h, _) = harness(view, egui::Theme::Dark, true);
+        h.run_steps(6);
+        assert!(!h.state().as_ref().unwrap().settings.hide_community_apps);
+        assert!(h.query_by_label("SolidCraft details").is_some());
+        h.get_by_label("Settings").click();
+        h.run_steps(4);
+        h.get_by_label("Hide community apps").click();
+        h.run_steps(2);
+        assert!(h.state().as_ref().unwrap().settings.hide_community_apps);
+        h.get_by_label("Done").click();
+        h.run_steps(4);
+        assert!(h.query_by_label("SolidCraft details").is_none());
+        assert!(h.query_by_label("PhotoCraft details").is_some());
+        h.get_by_label("Settings").click();
+        h.run_steps(4);
+        h.get_by_label("Hide community apps").click();
+        h.run_steps(2);
+        h.get_by_label("Done").click();
+        h.run_steps(4);
+        assert!(h.query_by_label("SolidCraft details").is_some());
+    }
+}
+
+#[test]
+fn community_visibility_preference_round_trips_and_defaults_off_for_old_settings() {
+    let old: Settings = serde_json::from_str("{}").unwrap();
+    assert!(!old.hide_community_apps);
+    let settings = Settings { hide_community_apps: true, ..old };
+    let restored: Settings = serde_json::from_str(&serde_json::to_string(&settings).unwrap()).unwrap();
+    assert!(restored.hide_community_apps);
+}
+
+#[test]
 /// The Settings dialog announces its heading once and shows the community section's Discord
 /// entry alongside the footer's.
 fn settings_link_to_discord() {
