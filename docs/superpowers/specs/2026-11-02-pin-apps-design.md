@@ -53,6 +53,7 @@ In `menu` / `menu_hide` area (before Hide):
 - Painter-drawn grip (six dots or two bars), matching existing glyph buttons — not emoji.
 - Accessible name e.g. **Reorder {name}**.
 - Drag reorders only among pinned siblings; drop inserts before/after the hovered pinned target.
+- Escape cancels an in-progress drag and restores the pin order from drag start (hover already mutates order live).
 - Cursor: grab / grabbing.
 - Respect `reduce_motion` only for any visual feedback animation; reorder itself is immediate.
 

@@ -205,8 +205,9 @@ pub struct LauncherUi {
     /// Toasts created from logic (which may run with an old input time) or the UI. Their expiry is
     /// fixed when the next `ui` pass actually shows them.
     pending_toasts: Vec<(String, bool)>,
-    /// Catalog id of a pinned app while the user drags its reorder handle.
-    pub(crate) pin_dragging: Option<String>,
+    /// While the user drags a pin handle: dragged catalog id and the pinned order at drag start
+    /// (so Escape can restore it after live mid-drag reorders).
+    pub(crate) pin_dragging: Option<(String, Vec<String>)>,
 }
 
 /// The language to draw in: the preference, or English where it needs a CJK font the system
@@ -866,6 +867,16 @@ impl LauncherUi {
     /// Test hook for the filtered/sorted catalog ids currently shown.
     pub fn visible_ids_for_test(&self) -> Vec<&'static str> {
         self.visible_ids()
+    }
+
+    /// Test hook: start a pin drag as if the grip had just been grabbed (stores a restore snapshot).
+    pub fn begin_pin_drag_for_test(&mut self, id: &str) {
+        self.pin_dragging = Some((id.to_string(), self.settings.pinned.clone()));
+    }
+
+    /// Test hook: whether a pin reorder drag is in progress.
+    pub fn pin_dragging_for_test(&self) -> bool {
+        self.pin_dragging.is_some()
     }
 
     /// The ids to show, filtered and sorted. Pinned apps stay first in the user's pin order;

@@ -901,10 +901,14 @@ impl LauncherUi {
         self.menu(ui, entry, status, links_in_menu);
     }
 
-    /// Cancel an in-progress pin reorder (Escape) before drop targets run this frame.
+    /// Cancel an in-progress pin reorder (Escape) before drop targets run this frame, restoring
+    /// the pinned order from drag start (live hover already mutated `settings.pinned`).
     fn clear_pin_drag_on_escape(&mut self, ui: &Ui) {
-        if self.pin_dragging.is_some() && ui.input(|i| i.key_pressed(egui::Key::Escape)) {
-            self.pin_dragging = None;
+        if self.pin_dragging.is_some()
+            && ui.input(|i| i.key_pressed(egui::Key::Escape))
+            && let Some((_, original)) = self.pin_dragging.take()
+        {
+            self.settings.pinned = original;
         }
     }
 
@@ -915,9 +919,9 @@ impl LauncherUi {
         // Only latch on drag start: after a reorder, the same egui widget id can sit on a
         // different app's row, and `dragged()` would steal `pin_dragging` mid-gesture.
         // Do not clear on `drag_stopped` here — drop targets must see the release first;
-        // `grid`/`table` clear `pin_dragging` when the pointer is up (Escape clears earlier).
+        // `grid`/`table` clear `pin_dragging` when the pointer is up (Escape restores earlier).
         if resp.drag_started() {
-            self.pin_dragging = Some(entry.app.id.to_string());
+            self.pin_dragging = Some((entry.app.id.to_string(), self.settings.pinned.clone()));
         }
     }
 
@@ -926,9 +930,10 @@ impl LauncherUi {
     /// table's full-row target already covers the grip column, so the grip itself does not reorder.
     /// A release over a target still counts (process before clearing `pin_dragging`).
     fn pin_drop_target(&mut self, ui: &Ui, id: &str, rect: Rect, axis: PinDropAxis) {
-        let Some(from) = self.pin_dragging.clone() else {
+        let Some((from, _)) = self.pin_dragging.as_ref() else {
             return;
         };
+        let from = from.clone();
         if from == id || !self.settings.is_pinned(id) {
             return;
         }
@@ -1153,7 +1158,10 @@ impl LauncherUi {
                 self.settings.unpin_app(id);
                 ui.close();
             }
-            let known = |pid: &str| self.entry(pid).is_some();
+            // Neighbors must be on screen under the current search/filter — catalog presence alone
+            // would let Move skip over a filtered pin with no visible change.
+            let visible: std::collections::HashSet<&str> = self.visible_ids().into_iter().collect();
+            let known = |pid: &str| visible.contains(pid);
             let prev = self.settings.pinned_neighbor(id, -1, known).map(str::to_owned);
             let next = self.settings.pinned_neighbor(id, 1, known).map(str::to_owned);
             if prev.is_some() && ui.button(tl!("Move up")).clicked() {

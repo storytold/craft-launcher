@@ -1448,6 +1448,28 @@ fn pinned_app_menu_offers_unpin() {
 }
 
 #[test]
+/// Escape during a pin drag restores the order from drag start (live hover already mutated pins).
+fn escape_cancels_pin_drag_and_restores_order() {
+    let (mut h, _) = harness(ViewMode::Grid, egui::Theme::Dark, true);
+    h.run_steps(6);
+    {
+        let ui = h.state_mut().as_mut().unwrap();
+        ui.settings.pin_app("photocraft");
+        ui.settings.pin_app("filmcraft");
+        ui.settings.pin_app("wordcraft");
+        assert_eq!(ui.settings.pinned, ["photocraft", "filmcraft", "wordcraft"]);
+        ui.begin_pin_drag_for_test("photocraft");
+        // Mid-drag: pointer has already reordered via drop targets.
+        ui.settings.pinned = vec!["filmcraft".into(), "photocraft".into(), "wordcraft".into()];
+    }
+    h.key_press(egui::Key::Escape);
+    h.run_steps(2);
+    let ui = h.state().as_ref().unwrap();
+    assert!(!ui.pin_dragging_for_test());
+    assert_eq!(ui.settings.pinned, ["photocraft", "filmcraft", "wordcraft"]);
+}
+
+#[test]
 /// Grid shows a Pinned section label once at least one app is pinned.
 fn grid_shows_pinned_section_header() {
     let (mut h, _) = harness(ViewMode::Grid, egui::Theme::Dark, true);
