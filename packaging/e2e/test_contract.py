@@ -7,10 +7,11 @@ import sys
 from pathlib import Path
 import tempfile
 import unittest
+import zipfile
 from unittest.mock import patch
 
 from contract import BINARY_ARCHES, TARGETS, artifact_names, digest, operations, self_update_artifact
-from runner import Runner
+from runner import Runner, owned_processes
 from verify_release import verify
 
 
@@ -18,7 +19,7 @@ class EvidenceTests(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)
-        self.root = Path(self.temp.name)
+        self.root = Path(self.temp.name).resolve()
         self.artifacts = self.root / "artifacts"
         self.reports = self.root / "reports"
         self.artifacts.mkdir()
@@ -165,6 +166,74 @@ class EvidenceTests(unittest.TestCase):
         duplicate.write_bytes(b"ambiguous second executable")
         with self.assertRaisesRegex(RuntimeError, "exactly one"):
             runner.executable(self.root, "artcraft-launcher")
+
+    def test_process_selection_uses_exact_path_and_includes_only_its_descendants(self):
+        snapshot = "10 1 /tmp/owned/app --start\n11 10 /tmp/extracted/app\n12 11 helper\n13 1 /tmp/owned/application\n14 1 unrelated\n"
+        self.assertEqual(owned_processes(snapshot, Path("/tmp/owned/app")), {10, 11, 12})
+        self.assertEqual(owned_processes(snapshot, Path("/tmp/absent")), set())
+
+    def test_portable_archive_cleanup_runs_on_body_failure(self):
+        artifact = self.root / "launcher.zip"
+        with zipfile.ZipFile(artifact, "w") as archive:
+            archive.writestr("artcraft-launcher.exe", b"fixture; never executed")
+            archive.writestr("portable.txt", b"")
+        runner = Runner.__new__(Runner)
+        runner.work, runner.commands = self.root, 0
+        with self.assertRaisesRegex(RuntimeError, "body failure"):
+            with runner.installed_launcher(artifact) as exe:
+                self.assertTrue(exe.is_file())
+                raise RuntimeError("body failure")
+        self.assertFalse(exe.exists())
+        self.assertTrue(artifact.exists())
+
+    def test_portable_archive_rejects_traversal_and_missing_marker(self):
+        for index, member in enumerate(("../escape.exe", "artcraft-launcher.exe")):
+            artifact = self.root / f"bad-{index}.zip"
+            with zipfile.ZipFile(artifact, "w") as archive:
+                archive.writestr(member, b"fixture; never executed")
+            runner = Runner.__new__(Runner)
+            runner.work, runner.commands = self.root, index
+            with self.assertRaisesRegex(RuntimeError, "unsafe|marker missing"):
+                with runner.installed_launcher(artifact):
+                    self.fail("invalid package yielded an executable")
+        self.assertFalse((self.root / "escape.exe").exists())
+
+    def test_package_cleanup_failure_is_not_silenced(self):
+        artifact = self.root / "launcher.AppImage"
+        artifact.write_bytes(b"fixture; never executed")
+        runner = Runner.__new__(Runner)
+        runner.work, runner.commands = self.root, 0
+        with patch.object(Path, "unlink", side_effect=OSError("cleanup denied")):
+            with self.assertRaisesRegex(OSError, "cleanup denied"):
+                with runner.installed_launcher(artifact):
+                    pass
+
+    def test_failed_native_operation_cannot_reuse_a_stale_success(self):
+        root = self.root / "native"
+        root.mkdir()
+        stale = root / "result.json"
+        stale.write_text('{"success": true}')
+        runner = Runner.__new__(Runner)
+        runner.command = lambda *args, **kwargs: (_ for _ in ()).throw(RuntimeError("child failed"))
+        with self.assertRaisesRegex(RuntimeError, "child failed"):
+            runner.operation("unused", root, "portable", "remove")
+        self.assertFalse(stale.exists())
+
+    def test_windows_teardown_tolerates_exited_process_but_verifies_final_state(self):
+        runner = Runner.__new__(Runner)
+        runner.env = {}
+        commands = []
+        runner.command = lambda argv, **kwargs: commands.append(argv)
+        runner.is_running = lambda path: False
+        with patch("runner.platform.system", return_value="Windows"):
+            runner.stop_app({"location": str(self.root / "app.exe"), "source": "Launcher"})
+        script = commands[0][-1]
+        self.assertIn("$ErrorActionPreference = 'Stop'", script)
+        self.assertIn("Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue", script)
+        runner.is_running = lambda path: True
+        with patch("runner.platform.system", return_value="Windows"), patch("runner.time.monotonic", side_effect=[0, 11]):
+            with self.assertRaisesRegex(RuntimeError, "did not stop"):
+                runner.stop_app({"location": str(self.root / "app.exe"), "source": "Launcher"})
 
     def test_nonzero_status_preserves_real_subprocess_output(self):
         # Exercise the runner's real wrapper, not a mocked successful command. spctl --status

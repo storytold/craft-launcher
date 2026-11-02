@@ -65,38 +65,9 @@ fn main() -> ExitCode {
         println!("artcraft-launcher {}", env!("CARGO_PKG_VERSION"));
         return ExitCode::SUCCESS;
     }
-    if args.first().is_some_and(|a| a == "--qualify-install") {
-        return match artcraft_launcher_native::qualification::run(&args[1..]) {
-            Ok(()) => ExitCode::SUCCESS,
-            Err(error) => {
-                eprintln!("installation qualification: {error}");
-                ExitCode::FAILURE
-            }
-        };
-    }
-    if args.first().is_some_and(|a| a == "--qualify-self-update") {
-        return match artcraft_launcher_native::qualification::update(&args[1..]) {
-            Ok(()) => ExitCode::SUCCESS,
-            Err(error) => {
-                eprintln!("self-update qualification: {error}");
-                ExitCode::FAILURE
-            }
-        };
-    }
-    let qualification_ui = if args.first().is_some_and(|a| a == "--qualify-ui") {
-        let result = args
-            .get(1)
-            .ok_or_else(|| "--qualify-ui needs a qualification root".to_string())
-            .and_then(|root| artcraft_launcher_native::qualification::ui_report(std::path::Path::new(root)));
-        match result {
-            Ok(path) => Some(path),
-            Err(error) => {
-                eprintln!("UI qualification: {error}");
-                return ExitCode::FAILURE;
-            }
-        }
-    } else {
-        None
+    let qualification_ui = match qualification_args(&args) {
+        Ok(path) => path,
+        Err(exit) => return exit,
     };
     let mut hidden = args.iter().any(|a| a == login::HIDDEN_FLAG);
 
@@ -189,6 +160,44 @@ fn main() -> ExitCode {
         hidden = false;
         window = true;
     }
+}
+
+/// Dispatch explicit qualification flags before ordinary GUI startup.
+fn qualification_args(args: &[String]) -> Result<Option<PathBuf>, ExitCode> {
+    if args.first().is_some_and(|a| a == "--qualify-install") {
+        return Err(match artcraft_launcher_native::qualification::run(&args[1..]) {
+            Ok(()) => ExitCode::SUCCESS,
+            Err(error) => {
+                eprintln!("installation qualification: {error}");
+                ExitCode::FAILURE
+            }
+        });
+    }
+    if args.first().is_some_and(|a| a == "--qualify-self-update") {
+        return Err(match artcraft_launcher_native::qualification::update(&args[1..]) {
+            Ok(()) => ExitCode::SUCCESS,
+            Err(error) => {
+                eprintln!("self-update qualification: {error}");
+                ExitCode::FAILURE
+            }
+        });
+    }
+    let qualification_ui = if args.first().is_some_and(|a| a == "--qualify-ui") {
+        let result = args
+            .get(1)
+            .ok_or_else(|| "--qualify-ui needs a qualification root".to_string())
+            .and_then(|root| artcraft_launcher_native::qualification::ui_report(std::path::Path::new(root)));
+        match result {
+            Ok(path) => Some(path),
+            Err(error) => {
+                eprintln!("UI qualification: {error}");
+                return Err(ExitCode::FAILURE);
+            }
+        }
+    } else {
+        None
+    };
+    Ok(qualification_ui)
 }
 
 /// The native window and renderer setup. `hidden` only sets the initial visibility; the shell

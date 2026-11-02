@@ -3,12 +3,14 @@
 import hashlib
 from pathlib import Path
 
+PORTABLE_ZIP = "portable.zip"
+
 TARGETS = {
     "macos-arm64": ("macos-universal", ["dmg"], ["dmg"]),
     "macos-x64": ("macos-universal", ["dmg"], ["dmg"]),
-    "windows-x64": ("windows-x64", ["msi", "portable.zip"], ["msi", "portable"]),
-    "windows-x86": ("windows-x86", ["msi", "portable.zip"], ["msi", "portable"]),
-    "windows-arm64": ("windows-arm64", ["msi", "portable.zip"], ["msi", "portable"]),
+    "windows-x64": ("windows-x64", ["msi", PORTABLE_ZIP], ["msi", "portable"]),
+    "windows-x86": ("windows-x86", ["msi", PORTABLE_ZIP], ["msi", "portable"]),
+    "windows-arm64": ("windows-arm64", ["msi", PORTABLE_ZIP], ["msi", "portable"]),
     "linux-x86_64": ("linux-x86_64", ["deb", "AppImage", "tar.gz"], ["deb", "appimage"]),
     "linux-aarch64": ("linux-aarch64", ["deb", "AppImage", "tar.gz"], ["deb", "appimage"]),
 }
@@ -27,23 +29,27 @@ OPERATIONS = [
 
 
 def operations(kind):
+    """Return ordered lifecycle requirements, respecting dpkg's process policy."""
     # The production launcher deliberately delegates running-process policy to dpkg for a
     # system Debian install. Portable/macOS/MSI installs have their own running-app guard.
     return [step for step in OPERATIONS if not (kind == "deb" and step == "reject-running")]
 
 
 def artifact_names(version, target):
+    """List the immutable package names required for one native target."""
     token, formats, _ = TARGETS[target]
     stem = f"artcraft-launcher-{version}-{token}"
-    return [f"{stem}-portable.zip" if fmt == "portable.zip" else f"{stem}.{fmt}" for fmt in formats]
+    return [f"{stem}-{PORTABLE_ZIP}" if fmt == PORTABLE_ZIP else f"{stem}.{fmt}" for fmt in formats]
 
 
 def self_update_artifact(version, target):
-    suffix = ".dmg" if target.startswith("macos-") else ("-portable.zip" if target.startswith("windows-") else ".AppImage")
+    """Select the package supported by the candidate's replacement/restart test."""
+    suffix = {"macos": ".dmg", "windows": f"-{PORTABLE_ZIP}", "linux": ".AppImage"}[target.split("-")[0]]
     return next(name for name in artifact_names(version, target) if name.endswith(suffix))
 
 
 def digest(path):
+    """Hash package bytes without reading the entire package into memory."""
     result = hashlib.sha256()
     with Path(path).open("rb") as stream:
         for chunk in iter(lambda: stream.read(1024 * 1024), b""):
@@ -52,5 +58,6 @@ def digest(path):
 
 
 def require(condition, message):
+    """Fail closed with the violated qualification requirement."""
     if not condition:
         raise RuntimeError(message)

@@ -131,7 +131,7 @@ fn checked_root_under(root: &Path, temp: &Path) -> Result<PathBuf, String> {
     let parent = canonical(parent)?;
     let name = root
         .file_name()
-        .and_then(|n| n.to_str())
+        .and_then(std::ffi::OsStr::to_str)
         .filter(|n| n.starts_with("launcher-e2e-"))
         .ok_or("qualification directory needs a launcher-e2e- prefix")?;
     if !parent.starts_with(&temp) || root.is_symlink() {
@@ -202,37 +202,8 @@ fn operate(root: &Path, kind: PackageKind, app: &CraftApp, operation: &str, path
         "verify-old" => return verify(app, paths, Some(OLD)),
         "verify-new" => return verify(app, paths, Some(NEW)),
         "verify-absent" => return verify(app, paths, None),
-        "launch" => {
-            let found = found.as_ref().ok_or("install the qualification app before launching it")?;
-            install::launch(app, found, paths)?;
-            let start = std::time::Instant::now();
-            while start.elapsed() < std::time::Duration::from_secs(20) {
-                if crate::process::is_running(Path::new(&found.location)) {
-                    std::thread::sleep(std::time::Duration::from_secs(3));
-                    return if crate::process::is_running(Path::new(&found.location)) {
-                        Ok(())
-                    } else {
-                        Err("launched app exited immediately".into())
-                    };
-                }
-                std::thread::sleep(std::time::Duration::from_millis(200));
-            }
-            return Err("launcher did not start the installed app".into());
-        }
-        "remove" => {
-            if let Some(found) = &found {
-                let record = manifest.apps.get(APP);
-                let files = record.map(|r| r.files.clone()).unwrap_or_default();
-                install::uninstall(app, found, record, paths, &Stop::default(), &mut |_| {})?;
-                if Path::new(&found.location).exists() || files.iter().any(|f| f.exists()) {
-                    return Err("uninstall left installed files or desktop integration behind".into());
-                }
-                manifest.apps.remove(APP);
-                manifest.save(&paths.manifest())?;
-            }
-            verify(app, paths, None)?;
-            return check_document(root);
-        }
+        "launch" => return launch_installed(app, found.as_ref(), paths),
+        "remove" => return remove_installed(root, app, found.as_ref(), &mut manifest, paths),
         "install-old" | "install-new" | "pause-new" | "cancel-new" | "bad-checksum" | "reject-downgrade" | "reject-running" | "corrupt-cache" => {}
         _ => return Err("unknown qualification operation".into()),
     }
@@ -308,6 +279,42 @@ fn operate(root: &Path, kind: PackageKind, app: &CraftApp, operation: &str, path
     check_document(root)
 }
 
+/// Confirm the normal launch path produces a process that remains alive.
+fn launch_installed(app: &CraftApp, found: Option<&Installed>, paths: &Paths) -> Result<(), String> {
+    let found = found.ok_or("install the qualification app before launching it")?;
+    install::launch(app, found, paths)?;
+    let start = std::time::Instant::now();
+    while start.elapsed() < std::time::Duration::from_secs(20) {
+        if crate::process::is_running(Path::new(&found.location)) {
+            std::thread::sleep(std::time::Duration::from_secs(3));
+            return if crate::process::is_running(Path::new(&found.location)) { Ok(()) } else { Err("launched app exited immediately".into()) };
+        }
+        std::thread::sleep(std::time::Duration::from_millis(200));
+    }
+    Err("launcher did not start the installed app".into())
+}
+
+/// Remove through the production uninstaller, then reject residual installed files.
+fn remove_installed(root: &Path, app: &CraftApp, found: Option<&Installed>, manifest: &mut Manifest, paths: &Paths) -> Result<(), String> {
+    if let Some(found) = found {
+        let record = manifest.apps.get(APP);
+        let files = record.map(|r| r.files.clone()).unwrap_or_default();
+        install::uninstall(app, found, record, paths, &Stop::default(), &mut |_| {})?;
+        verify_removed(Path::new(&found.location), &files)?;
+        manifest.apps.remove(APP);
+        manifest.save(&paths.manifest())?;
+    }
+    verify(app, paths, None)?;
+    check_document(root)
+}
+
+fn verify_removed(location: &Path, files: &[PathBuf]) -> Result<(), String> {
+    if location.exists() || files.iter().any(|file| file.exists()) {
+        return Err("uninstall left installed files or desktop integration behind".into());
+    }
+    Ok(())
+}
+
 fn check_document(root: &Path) -> Result<(), String> {
     if std::fs::read(root.join("documents/keep.txt")).map_err(|e| e.to_string())? != b"user document\n" {
         return Err("lifecycle operation changed the user document".into());
@@ -318,6 +325,22 @@ fn check_document(root: &Path) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn uninstall_evidence_rejects_leftover_binary_or_desktop_entry() {
+        let temp = tempfile::tempdir().unwrap();
+        let binary = temp.path().join("app");
+        let desktop = temp.path().join("app.desktop");
+        let files = vec![desktop.clone()];
+        assert!(verify_removed(&binary, &files).is_ok());
+        std::fs::write(&binary, b"leftover binary").unwrap();
+        assert!(verify_removed(&binary, &files).is_err());
+        std::fs::remove_file(&binary).unwrap();
+        std::fs::write(&desktop, b"leftover desktop integration").unwrap();
+        assert!(verify_removed(&binary, &files).is_err());
+        std::fs::remove_file(&desktop).unwrap();
+        assert!(verify_removed(&binary, &files).is_ok());
+    }
 
     #[test]
     fn fixtures_have_two_ordered_versions_and_every_native_architecture() {

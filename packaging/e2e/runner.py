@@ -24,8 +24,29 @@ import zipfile
 from contract import BINARY_ARCHES, TARGETS, artifact_names, digest, operations, require
 
 
+PREFERENCES_SENTINEL = "keep launcher preferences\n"
+
+
+def owned_processes(output, path):
+    """Find exact-path processes and descendants in one bounded Unix process snapshot."""
+    rows = []
+    for line in output.splitlines():
+        fields = line.strip().split(None, 2)
+        if len(fields) == 3:
+            rows.append((int(fields[0]), int(fields[1]), fields[2]))
+    owned = {pid for pid, _, command in rows if command == str(path) or command.startswith(str(path) + " ")}
+    for _ in range(len(rows)):
+        added = {pid for pid, parent, _ in rows if parent in owned} - owned
+        if not added:
+            break
+        owned.update(added)
+    return owned
+
+
 class Runner:
+    """Exercise candidate packages only in an explicitly disposable runner environment."""
     def __init__(self, args):
+        """Allocate a new isolated home only after validating the disposable runner guard."""
         hosted = os.environ.get("RUNNER_ENVIRONMENT") == "github-hosted"
         disposable_vm = (os.environ.get("RUNNER_ENVIRONMENT") == "self-hosted" and
                          os.environ.get("ARTCRAFT_QUALIFICATION_DISPOSABLE_VM") == "1")
@@ -34,7 +55,7 @@ class Runner:
         self.args = args
         self.output = args.output.resolve()
         self.output.mkdir(parents=True, exist_ok=False)
-        self.work = Path(tempfile.mkdtemp(prefix="launcher-e2e-work-", dir=os.environ["RUNNER_TEMP"]))
+        self.work = Path(tempfile.mkdtemp(prefix="launcher-e2e-work-", dir=os.environ["RUNNER_TEMP"])).resolve()
         self.env = dict(os.environ)
         # Windows Known Folders/registry belong to the disposable runner account. Redirection
         # alone is not sufficient there; never advertise this harness as workstation-safe.
@@ -47,11 +68,12 @@ class Runner:
         # Prevent accidental fixture redirection even if a developer set the variable upstream.
         self.env.pop("ARTCRAFT_LAUNCHER_DOWNLOAD_BASE", None)
         self.commands = 0
-        self.report = dict(schema=1, target=args.target, source_sha=os.environ["GITHUB_SHA"],
-                           run_id=os.environ["GITHUB_RUN_ID"], version=args.version,
-                           runner_arch=platform.machine(), success=False, artifacts={}, lifecycles={}, packages={})
+        self.report = {"schema": 1, "target": args.target, "source_sha": os.environ["GITHUB_SHA"],
+                       "run_id": os.environ["GITHUB_RUN_ID"], "version": args.version,
+                       "runner_arch": platform.machine(), "success": False, "artifacts": {}, "lifecycles": {}, "packages": {}}
 
     def command(self, argv, *, env=None, timeout=600, allowed=(0,), record_output=True):
+        """Run a real child process, retaining failure output unless it is a private process inventory."""
         argv = [str(a) for a in argv]
         self.commands += 1
         label = f"{self.commands:03d}-{Path(argv[0]).name}"
@@ -69,52 +91,22 @@ class Runner:
         return result.stdout.decode(errors="replace")
 
     def executable(self, directory, name="artcraft-launcher.exe"):
+        """Require a unique package executable, ignoring similarly named directories."""
         matches = [path for path in directory.rglob(name) if path.is_file()]
         require(len(matches) == 1, f"expected exactly one {name} under {directory}: {matches}")
         return matches[0]
 
     @contextlib.contextmanager
     def installed_launcher(self, artifact):
+        """Install the selected real package and remove it even if qualification raises."""
         folder = self.work / f"package-{self.commands}"
         folder.mkdir()
         if artifact.suffix == ".dmg":
-            mount = folder / "mount"
-            mount.mkdir()
-            attached = False
-            try:
-                self.command(["hdiutil", "attach", "-readonly", "-nobrowse", "-noautoopen", "-mountpoint", mount, artifact])
-                attached = True
-                bundle = folder / "ArtCraft Launcher.app"
-                self.command(["ditto", mount / bundle.name, bundle])
-            finally:
-                if attached:
-                    self.command(["hdiutil", "detach", mount])
-            self.command(["codesign", "--verify", "--deep", "--strict", bundle])
-            self.command(["xcrun", "stapler", "validate", bundle])
-            if self.args.gatekeeper == "enabled":
-                self.command(["/usr/sbin/spctl", "--assess", "--type", "execute", bundle])
-            try:
-                yield bundle / "Contents/MacOS/ArtCraft Launcher"
-            finally:
-                shutil.rmtree(bundle)
-                require(not bundle.exists(), "launcher bundle remains after removal")
-        elif artifact.suffix == ".msi":
-            exe = folder / "artcraft-launcher.exe"
-            installed = False
-            try:
-                self.command(["msiexec.exe", "/i", artifact, "/qn", "/norestart",
-                              f"INSTALLFOLDER={folder}", "INSTALLDESKTOPSHORTCUT=1",
-                              "/L*v", self.output / "launcher-install.log"], allowed=(0, 3010))
-                installed = True
-                require(exe.is_file(), "MSI did not install launcher executable")
-                self.check_windows_registration(folder, installed=True)
+            with self.installed_dmg(artifact, folder) as exe:
                 yield exe
-            finally:
-                if installed:
-                    self.command(["msiexec.exe", "/x", artifact, "/qn", "/norestart",
-                                  "/L*v", self.output / "launcher-uninstall.log"], allowed=(0, 3010))
-                    require(not exe.exists(), "MSI uninstall left launcher executable")
-                    self.check_windows_registration(folder, installed=False)
+        elif artifact.suffix == ".msi":
+            with self.installed_msi(artifact, folder) as exe:
+                yield exe
         elif artifact.suffix == ".zip":
             with zipfile.ZipFile(artifact) as archive:
                 for name in archive.namelist():
@@ -160,7 +152,52 @@ class Runner:
         else:
             raise RuntimeError(f"unsupported candidate format: {artifact}")
 
+    @contextlib.contextmanager
+    def installed_dmg(self, artifact, folder):
+        """Copy and verify the signed bundle, and remove only that temporary copy."""
+        mount = folder / "mount"
+        mount.mkdir()
+        attached = False
+        try:
+            self.command(["hdiutil", "attach", "-readonly", "-nobrowse", "-noautoopen", "-mountpoint", mount, artifact])
+            attached = True
+            bundle = folder / "ArtCraft Launcher.app"
+            self.command(["ditto", mount / bundle.name, bundle])
+        finally:
+            if attached:
+                self.command(["hdiutil", "detach", mount])
+        self.command(["codesign", "--verify", "--deep", "--strict", bundle])
+        self.command(["xcrun", "stapler", "validate", bundle])
+        if self.args.gatekeeper == "enabled":
+            self.command(["/usr/sbin/spctl", "--assess", "--type", "execute", bundle])
+        try:
+            yield bundle / "Contents/MacOS/ArtCraft Launcher"
+        finally:
+            shutil.rmtree(bundle)
+            require(not bundle.exists(), "launcher bundle remains after removal")
+
+    @contextlib.contextmanager
+    def installed_msi(self, artifact, folder):
+        """Use Windows Installer and verify its registration and removal."""
+        exe = folder / "artcraft-launcher.exe"
+        installed = False
+        try:
+            self.command(["msiexec.exe", "/i", artifact, "/qn", "/norestart",
+                          f"INSTALLFOLDER={folder}", "INSTALLDESKTOPSHORTCUT=1",
+                          "/L*v", self.output / "launcher-install.log"], allowed=(0, 3010))
+            installed = True
+            require(exe.is_file(), "MSI did not install launcher executable")
+            self.check_windows_registration(folder, installed=True)
+            yield exe
+        finally:
+            if installed:
+                self.command(["msiexec.exe", "/x", artifact, "/qn", "/norestart",
+                              "/L*v", self.output / "launcher-uninstall.log"], allowed=(0, 3010))
+                require(not exe.exists(), "MSI uninstall left launcher executable")
+                self.check_windows_registration(folder, installed=False)
+
     def check_windows_registration(self, folder, *, installed):
+        """Check MSI-owned registry and shortcut state after installation or removal."""
         import winreg
         key_path = r"Software\Learning Machines LLC\ArtCraft Launcher"
         try:
@@ -176,6 +213,7 @@ class Runner:
             require(shortcut.exists() == installed, f"shortcut state is wrong: {shortcut}")
 
     def operation(self, exe, root, kind, operation, *, elevated=False):
+        """Run one fresh native operation and validate its source, version and architecture."""
         result_file = root / "result.json"
         # Reports must be fresh, not success left over from a previous invocation.
         if result_file.exists():
@@ -198,6 +236,7 @@ class Runner:
 
     @staticmethod
     def app_executable(installed):
+        """Resolve the actual process executable from a native installed-app record."""
         path = Path(installed["location"])
         if path.suffix == ".app":
             info = plistlib.loads((path / "Contents/Info.plist").read_bytes())
@@ -205,6 +244,7 @@ class Runner:
         return path
 
     def probe_app(self, result):
+        """Execute the installed application and require its expected version."""
         path = self.app_executable(result["installed"])
         output = self.command([path, "--version"], timeout=60)
         # The executable, not just a manifest or registry row, must report the version.
@@ -223,22 +263,11 @@ class Runner:
             self.command(["powershell", "-NoProfile", "-NonInteractive", "-Command",
                           "$ErrorActionPreference = 'Stop'; Get-CimInstance Win32_Process | "
                           "Where-Object { $_.ExecutablePath -eq $env:QUALIFIED_APP_EXE } | "
-                          "ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction Stop }"], env=env)
+                          "ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }"], env=env)
         else:
             # Inspect in memory only: unrelated process arguments can contain runner secrets.
             output = self.command(["ps", "-axo", "pid=,ppid=,args="], record_output=False)
-            rows = []
-            for line in output.splitlines():
-                fields = line.strip().split(None, 2)
-                if len(fields) == 3:
-                    rows.append((int(fields[0]), int(fields[1]), fields[2]))
-            owned = {pid for pid, _, command in rows if command == str(path) or command.startswith(str(path) + " ")}
-            # Bound descendant traversal to the finite process snapshot.
-            for _ in range(len(rows)):
-                added = {pid for pid, parent, _ in rows if parent in owned} - owned
-                if not added:
-                    break
-                owned.update(added)
+            owned = owned_processes(output, path)
             for pid in sorted(owned, reverse=True):
                 try:
                     if installed["source"] == "Deb":
@@ -253,6 +282,7 @@ class Runner:
         require(not self.is_running(path), f"test-owned process did not stop: {path}")
 
     def is_running(self, path):
+        """Inspect processes for the exact test-owned executable without saving unrelated arguments."""
         if platform.system() == "Windows":
             env = dict(self.env, QUALIFIED_APP_EXE=str(path))
             output = self.command(["powershell", "-NoProfile", "-NonInteractive", "-Command",
@@ -294,7 +324,7 @@ class Runner:
             personal = target_exe.parent / "ArtCraftLauncherData/qualification-personal.txt"
             if kind == "portable":
                 personal.parent.mkdir(parents=True, exist_ok=True)
-                personal.write_text("keep launcher preferences\n")
+                personal.write_text(PREFERENCES_SENTINEL)
             target = target_exe.parents[2] if kind == "dmg" else target_exe
             try:
                 env = dict(self.env, ARTCRAFT_LAUNCHER_PRETEND_VERSION="0.9.0")
@@ -313,18 +343,19 @@ class Runner:
                 else:
                     raise RuntimeError("self-update did not replace the old launcher and restart it")
                 require(self.args.version in self.command([target_exe, "--version"], timeout=60), "restart has wrong launcher version")
-                require(Path(result["preferences"]).read_text() == "keep launcher preferences\n", "self-update lost launcher preferences")
+                require(Path(result["preferences"]).read_text() == PREFERENCES_SENTINEL, "self-update lost launcher preferences")
                 if kind == "portable":
-                    require(personal.read_text() == "keep launcher preferences\n", "self-update lost portable preferences")
+                    require(personal.read_text() == PREFERENCES_SENTINEL, "self-update lost portable preferences")
                 # Invoke the installed replacement: source SHA/architecture must match the candidate.
                 self.operation(target_exe, root, kind, "verify-absent")
-                self.report["self_update"] = dict(from_version="0.9.0", to_version=self.args.version,
-                                                candidate=artifact.name, sha256=digest(artifact),
-                                                replaced=True, restarted=True, data_preserved=True)
+                self.report["self_update"] = {"from_version": "0.9.0", "to_version": self.args.version,
+                                              "candidate": artifact.name, "sha256": digest(artifact),
+                                              "replaced": True, "restarted": True, "data_preserved": True}
             finally:
-                self.stop_app(dict(location=str(target), source="Launcher"))
+                self.stop_app({"location": str(target), "source": "Launcher"})
 
     def lifecycle(self, exe, kind):
+        """Run ordered app operations and always attempt native cleanup on failure."""
         root = self.work / f"launcher-e2e-{kind}"
         completed = []
         self.report["lifecycles"][kind] = completed
@@ -332,28 +363,13 @@ class Runner:
         elevated = kind == "deb"
         launched = None
         cleanup_app = None
+        personal = None
         try:
             for index, operation in enumerate(operations(kind)):
                 result = self.operation(exe, root, kind, operation, elevated=elevated)
                 cleanup_app = result["installed"]
                 (self.output / f"{kind}-{index:02d}-{operation}.json").write_text(json.dumps(result, indent=2))
-                if operation in ("verify-old", "verify-new"):
-                    self.probe_app(result)
-                if operation == "install-old" and kind == "portable":
-                    # Personal files inside a portable installation are specifically preserved.
-                    personal = Path(result["installed"]["location"]).parent / "personal-project.txt"
-                    personal.write_text("keep my project\n")
-                if operation == "launch":
-                    launched = result["installed"]
-                    require(self.is_running(self.app_executable(launched)), "no process from the exact installed app path")
-                    if kind == "deb":
-                        self.stop_app(launched)
-                        launched = None
-                if operation == "reject-running":
-                    self.stop_app(launched)
-                    launched = None
-                if kind == "portable" and operation in ("verify-new", "remove"):
-                    require(personal.read_text() == "keep my project\n", "portable update/removal lost a user file")
+                launched, personal = self.check_lifecycle_step(kind, operation, result, launched, personal)
                 completed.append(operation)
                 if operation == "init" and not elevated:
                     self.gui(exe, root)
@@ -365,7 +381,29 @@ class Runner:
             if (root / "owner.txt").exists():
                 self.operation(exe, root, kind, "remove", elevated=elevated)
 
+    def check_lifecycle_step(self, kind, operation, result, launched, personal):
+        """Check execution and personal-data preservation after one real native operation."""
+        if operation in ("verify-old", "verify-new"):
+            self.probe_app(result)
+        if operation == "install-old" and kind == "portable":
+            # Personal files inside a portable installation are specifically preserved.
+            personal = Path(result["installed"]["location"]).parent / "personal-project.txt"
+            personal.write_text("keep my project\n")
+        if operation == "launch":
+            launched = result["installed"]
+            require(self.is_running(self.app_executable(launched)), "no process from the exact installed app path")
+            if kind == "deb":
+                self.stop_app(launched)
+                launched = None
+        if operation == "reject-running":
+            self.stop_app(launched)
+            launched = None
+        if kind == "portable" and operation in ("verify-new", "remove"):
+            require(personal.read_text() == "keep my project\n", "portable update/removal lost a user file")
+        return launched, personal
+
     def gui(self, exe, root):
+        """Require two independent GUI starts, each rendering at least three frames."""
         report = root / "ui.json"
         for attempt in range(2):
             report.unlink(missing_ok=True)
@@ -376,6 +414,7 @@ class Runner:
         self.report.setdefault("ui", []).append(root.name)
 
     def run(self):
+        """Qualify all package formats and bind success to unchanged candidate bytes."""
         target = self.args.target
         require(target.split("-")[0] == {"Darwin": "macos", "Windows": "windows", "Linux": "linux"}[platform.system()],
                 "candidate target does not match runner OS")
@@ -399,8 +438,8 @@ class Runner:
                 # including tar.gz, which does not run an app lifecycle of its own.
                 identity_root = self.work / f"launcher-e2e-package-{self.commands}"
                 identity = self.operation(exe, identity_root, kind or "appimage", "init")
-                (self.output / f"package-{name}.json").write_text(json.dumps(dict(
-                    artifact=name, sha256=self.report["artifacts"][name], native=identity), indent=2))
+                (self.output / f"package-{name}.json").write_text(json.dumps({
+                    "artifact": name, "sha256": self.report["artifacts"][name], "native": identity}, indent=2))
                 if kind:
                     self.lifecycle(exe, kind)
                 if kind in ("dmg", "portable", "appimage"):
@@ -413,6 +452,7 @@ class Runner:
 
 
 def main():
+    """Write a failed summary even when installation, qualification or cleanup raises."""
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--artifacts", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)

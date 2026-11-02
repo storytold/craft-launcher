@@ -9,12 +9,71 @@ from contract import BINARY_ARCHES, TARGETS, artifact_names, digest, operations,
 
 
 def verify_native(native, operation, version, sha, target):
+    """Reject native results from another operation, binary, architecture or source."""
     require(native.get("schema") == 1 and native.get("success") is True and
             (native.get("operation"), native.get("launcher_version"), native.get("build_sha"), native.get("binary_arch")) ==
             (operation, version, sha, BINARY_ARCHES[target]), f"{target} invalid native result: {operation}")
 
 
+
+def verify_packages(artifacts, folder, report, version, sha, target):
+    """Bind every installed package to its exact bytes and executed native identity."""
+    names = artifact_names(version, target)
+    for name in names:
+        require(report["artifacts"][name] == digest(artifacts / name), f"candidate changed after qualification: {name}")
+        require(report.get("packages", {}).get(name) == "installed-executed-and-removed", f"{name} was not removed cleanly")
+        identity_path = folder / f"package-{name}.json"
+        require(identity_path.is_file(), f"{target} missing package identity: {name}")
+        identity = json.loads(identity_path.read_text())
+        require((identity.get("artifact"), identity.get("sha256")) == (name, report["artifacts"][name]),
+                f"{target} package identity belongs to another artifact: {name}")
+        verify_native(identity.get("native", {}), "init", version, sha, target)
+
+
+def verify_lifecycles(folder, report, version, sha, target):
+    """Require the complete ordered lifecycle and each independent native result."""
+    expected_kinds = TARGETS[target][2]
+    require(set(report.get("lifecycles", {})) == set(expected_kinds), f"{target} has missing lifecycle formats")
+    for kind in expected_kinds:
+        require(report["lifecycles"][kind] == operations(kind), f"{target}/{kind} skipped or reordered a required operation")
+        for index, operation in enumerate(operations(kind)):
+            native_path = folder / f"{kind}-{index:02d}-{operation}.json"
+            require(native_path.is_file(), f"{target}/{kind} missing native result: {operation}")
+            native = json.loads(native_path.read_text())
+            verify_native(native, operation, version, sha, target)
+
+
+def verify_ui(folder, report, target):
+    """Require both GUI startups for every applicable package format."""
+    expected_kinds = TARGETS[target][2]
+    require(set(report.get("ui", [])) == {f"launcher-e2e-{kind}" for kind in expected_kinds if kind != "deb"},
+            f"{target} has missing GUI startup proof")
+    for root in report["ui"]:
+        for attempt in range(2):
+            gui_path = folder / f"gui-{root}-{attempt}.json"
+            require(gui_path.is_file(), f"{target} missing GUI result: {root}/{attempt}")
+            gui = json.loads(gui_path.read_text())
+            require(gui.get("schema") == 1 and gui.get("ui_frames", 0) >= 3, f"{target} missing GUI frames")
+
+
+def verify_update(folder, report, version, sha, target):
+    """Bind replacement/restart evidence to the candidate and native updater result."""
+    update = report.get("self_update", {})
+    require(update.get("from_version") == "0.9.0" and update.get("to_version") == version and
+            update.get("replaced") is True and update.get("restarted") is True and update.get("data_preserved") is True,
+            f"{target} has no successful self-update/restart proof")
+    require(update.get("candidate") == self_update_artifact(version, target) and update.get("sha256") == report["artifacts"][update["candidate"]],
+            f"{target} self-update used another candidate")
+    update_path = folder / "self-update-native.json"
+    require(update_path.is_file(), f"{target} missing native self-update result")
+    native_update = json.loads(update_path.read_text())
+    require(native_update.get("schema") == 1 and native_update.get("scheduled") is True and
+            (native_update.get("source_sha"), native_update.get("from_version"), native_update.get("to_version"), native_update.get("candidate_sha256")) ==
+            (sha, "0.9.0", version, update["sha256"]), f"{target} invalid native self-update result")
+
+
 def verify(artifacts, reports, version, sha, run_id):
+    """Validate the complete target set before returning releasable candidate evidence."""
     paths = list(reports.rglob("qualification-*.json"))
     require(len(paths) == len(TARGETS), "missing or duplicate platform qualification reports")
     found = {}
@@ -27,52 +86,20 @@ def verify(artifacts, reports, version, sha, run_id):
                 f"{target} report belongs to another commit, workflow run or version")
         names = artifact_names(version, target)
         require(set(report.get("artifacts", {})) == set(names), f"{target} did not test every required package")
-        for name in names:
-            require(report["artifacts"][name] == digest(artifacts / name), f"candidate changed after qualification: {name}")
-            require(report.get("packages", {}).get(name) == "installed-executed-and-removed", f"{name} was not removed cleanly")
-            identity_path = path.parent / f"package-{name}.json"
-            require(identity_path.is_file(), f"{target} missing package identity: {name}")
-            identity = json.loads(identity_path.read_text())
-            require((identity.get("artifact"), identity.get("sha256")) == (name, report["artifacts"][name]),
-                    f"{target} package identity belongs to another artifact: {name}")
-            verify_native(identity.get("native", {}), "init", version, sha, target)
-        expected_kinds = TARGETS[target][2]
-        require(set(report.get("lifecycles", {})) == set(expected_kinds), f"{target} has missing lifecycle formats")
-        for kind in expected_kinds:
-            require(report["lifecycles"][kind] == operations(kind), f"{target}/{kind} skipped or reordered a required operation")
-            for index, operation in enumerate(operations(kind)):
-                native_path = path.parent / f"{kind}-{index:02d}-{operation}.json"
-                require(native_path.is_file(), f"{target}/{kind} missing native result: {operation}")
-                native = json.loads(native_path.read_text())
-                verify_native(native, operation, version, sha, target)
-        require(set(report.get("ui", [])) == {f"launcher-e2e-{kind}" for kind in expected_kinds if kind != "deb"},
-                f"{target} has missing GUI startup proof")
-        for root in report["ui"]:
-            for attempt in range(2):
-                gui_path = path.parent / f"gui-{root}-{attempt}.json"
-                require(gui_path.is_file(), f"{target} missing GUI result: {root}/{attempt}")
-                gui = json.loads(gui_path.read_text())
-                require(gui.get("schema") == 1 and gui.get("ui_frames", 0) >= 3, f"{target} missing GUI frames")
-        update = report.get("self_update", {})
-        require(update.get("from_version") == "0.9.0" and update.get("to_version") == version and
-                update.get("replaced") is True and update.get("restarted") is True and update.get("data_preserved") is True,
-                f"{target} has no successful self-update/restart proof")
-        require(update.get("candidate") == self_update_artifact(version, target) and update.get("sha256") == report["artifacts"][update["candidate"]],
-                f"{target} self-update used another candidate")
-        update_path = path.parent / "self-update-native.json"
-        require(update_path.is_file(), f"{target} missing native self-update result")
-        native_update = json.loads(update_path.read_text())
-        require(native_update.get("schema") == 1 and native_update.get("scheduled") is True and
-                (native_update.get("source_sha"), native_update.get("from_version"), native_update.get("to_version"), native_update.get("candidate_sha256")) ==
-                (sha, "0.9.0", version, update["sha256"]), f"{target} invalid native self-update result")
+        verify_packages(artifacts, path.parent, report, version, sha, target)
+        verify_lifecycles(path.parent, report, version, sha, target)
+        verify_ui(path.parent, report, target)
+        verify_update(path.parent, report, version, sha, target)
         if target.startswith("macos-"):
             require(report.get("gatekeeper") == "assessments enabled", "standard macOS gate requires enabled policy")
         found[target] = report
     require(set(found) == set(TARGETS), "platform qualification set is incomplete")
-    return dict(schema=1, source_sha=sha, run_id=run_id, version=version, qualified=found,
-                limits=["GUI startup, not full UI interaction automation", "self-update uses a verified candidate cache; release discovery and MSI/DEB self-update not covered",
-                        "RPM, Flatpak, Arch, RISC-V, FreeBSD and Web retain existing build/static gates; no lifecycle proof",
-                        "disabled Gatekeeper needs a separate disposable image qualification"])
+    return {"schema": 1, "source_sha": sha, "run_id": run_id, "version": version, "qualified": found,
+            "limits": ["GUI startup, not full UI interaction automation",
+                       "self-update uses a verified candidate cache; release discovery and MSI/DEB self-update not covered",
+                       "RPM, Flatpak, Arch, RISC-V, FreeBSD and Web retain existing build/static gates; no lifecycle proof",
+                       "disabled Gatekeeper needs a separate disposable image qualification"]}
+
 
 
 if __name__ == "__main__":
