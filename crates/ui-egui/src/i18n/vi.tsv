@@ -1,0 +1,382 @@
+# Vietnamese (vi) catalog for ArtCraft Launcher.
+# Format: context<TAB>source<TAB>translation
+# Empty context = plain UI string (tl!, t).
+# @id = command-id keyed (tr_id).
+# @plural = plural forms: one|other in English, one form for Vietnamese.
+# @msg = status/error message template (message, msg).
+# Other context = disambiguation for tr_ctx.
+#
+# Clean-room: written from the meaning of ArtCraft Launcher's English labels in natural, concise
+# Vietnamese, using standard Vietnamese creative and computing terminology.
+#
+# Coverage: the whole interface — every menu string and tl! literal (complete_menus = true).
+# Left in English on purpose: product name "ArtCraft Launcher" (and its "Launcher" tag), suite
+# name "Craft App Suite",
+# app names (PhotoCraft, LightCraft, FilmCraft, DesignCraft, VectorCraft, PdfCraft, EffectCraft,
+# WordCraft, DeckCraft, GridCraft, CADCraft, SoundCraft, FigCraft), "GitHub", "Discord".
+# Shortcut keys keep their key-cap names (Shift, Alt, Ctrl, Cmd, Esc).
+# Trailing "…" (U+2026) must be preserved. Placeholders {name}, {n}, {version}, {count}, {v},
+# {what}, {unit}, {real}, {e} must appear in translation.
+# Vietnamese nouns do not inflect for grammatical number (one plural form).
+
+	Launcher	Launcher
+	Craft App Suite	Craft App Suite
+	Open Source Tools for Creatives, Makers, and Builders	Bộ công cụ mã nguồn mở cho nhà sáng tạo, người chế tác và nhà phát triển
+	Settings	Tùy chọn
+	Check for updates	Kiểm tra cập nhật
+	Grid	Lưới
+	Table	Bảng
+	Show apps as cards	Hiển thị ứng dụng dạng thẻ
+	Show apps as a table	Hiển thị ứng dụng dạng bảng
+	All	Tất cả
+	Updates	Cập nhật
+	Not installed	Chưa cài đặt
+	Search apps	Tìm ứng dụng
+	Sort	Sắp xếp
+	Suite order	Thứ tự bộ ứng dụng
+	Name	Tên
+	Inspired by	Lấy cảm hứng từ
+	Status	Trạng thái
+	Installed version	Phiên bản đã cài
+	Latest version	Phiên bản mới nhất
+	Newest release	Bản phát hành mới nhất
+	Discord	Discord
+	GitHub	GitHub
+	Website	Trang web
+	Classic apps	Ứng dụng cổ điển
+	Classic	Cổ điển
+	New apps	Ứng dụng mới
+	NEW	MỚI
+	Install	Cài đặt
+	Update to {v}	Cập nhật lên {v}
+	Open	Mở
+	Download for {os}	Tải về cho {os}
+	Download	Tải về
+	Coming soon	Sắp ra mắt
+	Checking…	Đang kiểm tra…
+	Not available	Không khả dụng
+	Offline	Ngoại tuyến
+	Downloading {done} of {total}	Đang tải {done} / {total}
+	Downloading…	Đang tải về…
+	Reconnecting…	Đang kết nối lại…
+	Verifying…	Đang xác minh…
+	Installing, then restarting…	Đang cài đặt, sau đó khởi động lại…
+	Installing…	Đang cài đặt…
+	Removing…	Đang gỡ bỏ…
+	Pause download	Tạm dừng tải về
+	Cancel download	Hủy tải về
+	Resume download	Tiếp tục tải về
+	Discard download	Hủy bỏ bản tải về
+	Release notes	Ghi chú phát hành
+	Show in Finder	Hiển thị trong Finder
+	Show in Explorer	Hiển thị trong Explorer
+	Show in Files	Hiển thị trong Trình quản lý tệp
+	Reinstall	Cài đặt lại
+	Uninstall…	Gỡ cài đặt…
+	All releases	Tất cả bản phát hành
+	ArtCraft Launcher {version} is available.	Đã có ArtCraft Launcher {version}.
+	Dismiss	Bỏ qua
+	Update and restart	Cập nhật và khởi động lại
+	A new version is available. Would you like to relaunch with the updated version?	Đã có phiên bản mới. Bạn có muốn khởi động lại với phiên bản đã cập nhật không?
+	A new version is available. Download it to replace this version?	Đã có phiên bản mới. Tải về để thay thế phiên bản này?
+	Later	Để sau
+	What's new	Có gì mới
+	No notes were published with this release.	Không có ghi chú phát hành nào cho phiên bản này.
+	Released {date}	Phát hành {date}
+	Open on GitHub	Mở trên GitHub
+	Close	Đóng
+	ArtCraft Launcher {version}	ArtCraft Launcher {version}
+	Only when I ask	Chỉ khi tôi yêu cầu
+	Automatically download and install updates	Tự động tải về và cài đặt bản cập nhật
+	Notify me when an installed app has an update	Thông báo khi ứng dụng đã cài có bản cập nhật
+	Include pre-releases (betas and release candidates)	Bao gồm bản phát hành trước (beta và RC)
+	Installing on Linux	Cài đặt trên Linux
+	Installing on Windows	Cài đặt trên Windows
+	Install new apps as	Cài đặt ứng dụng mới dưới dạng
+	System package (recommended)	Gói hệ thống (khuyến nghị)
+	Updates always use the format an app was installed with.	Các bản cập nhật luôn dùng định dạng mà ứng dụng đã được cài đặt.
+	Running in the background	Chạy trong nền
+	Keep running in the tray when the window is closed	Tiếp tục chạy ở khay hệ thống khi đóng cửa sổ
+	Show the window on the current desktop	Hiển thị cửa sổ trên màn hình nền hiện tại
+	Start ArtCraft Launcher when I log in	Khởi động ArtCraft Launcher khi đăng nhập
+	Community	Cộng đồng
+	Questions, ideas and news from the ArtCraft team	Câu hỏi, ý tưởng và tin tức từ đội ngũ ArtCraft
+	Appearance	Giao diện
+	Quit ArtCraft Launcher	Thoát ArtCraft Launcher
+	Done	Xong
+	Uninstall {name}?	Gỡ cài đặt {name}?
+	The app will be moved to the Trash. Your documents and settings stay.	Ứng dụng sẽ được chuyển vào Thùng rác. Tài liệu và tùy chọn của bạn vẫn được giữ nguyên.
+	Windows will remove it like any installed program. Your documents and settings stay.	Windows sẽ gỡ bỏ ứng dụng như mọi chương trình đã cài đặt khác. Tài liệu và tùy chọn của bạn vẫn được giữ nguyên.
+	Your system's package manager will remove it, and may ask for your password. Your documents and settings stay.	Trình quản lý gói của hệ thống sẽ gỡ bỏ ứng dụng và có thể hỏi mật khẩu của bạn. Tài liệu và tùy chọn của bạn vẫn được giữ nguyên.
+	The app will be removed. Your documents and settings stay.	Ứng dụng sẽ được gỡ bỏ. Tài liệu và tùy chọn của bạn vẫn được giữ nguyên.
+	Uninstall	Gỡ cài đặt
+	Cancel	Hủy
+	Checked {ago}	Đã kiểm tra {ago}
+	just now	vừa xong
+	yesterday	hôm qua
+	{month} {day}, {year}	{day} {month}, {year}
+
+	Automatically	Tự động
+	Every Craft app	Mọi ứng dụng Craft
+	Apps on this computer	Ứng dụng trên máy tính này
+	Installed apps with a newer version	Ứng dụng đã cài có phiên bản mới hơn
+	Apps you can install	Ứng dụng có thể cài đặt
+	Hide App	Ẩn ứng dụng
+	Unhide App	Hiện lại ứng dụng
+	Hidden Apps	Ứng dụng đã ẩn
+	Apps you hid	Các ứng dụng bạn đã ẩn
+	Checked {ago} · using {sources}	Đã kiểm tra {ago} · qua {sources}
+	{a} and {b}	{a} và {b}
+	Join the Discord	Tham gia Discord
+	Learn more	Tìm hiểu thêm
+	Minimize	Thu nhỏ
+	Maximize	Phóng to
+	Restore	Khôi phục
+	New	Mới
+	OK	OK
+	Open link	Mở liên kết
+	Update	Cập nhật
+	{name} icon	Biểu tượng {name}
+	Loading ArtCraft Launcher…	Đang tải ArtCraft Launcher…
+	Cancel update	Hủy cập nhật
+	Stop waiting; the update can be started again later	Dừng chờ; có thể bắt đầu cập nhật lại sau
+	Download again	Tải lại
+	Install cancelled	Đã hủy cài đặt
+	Install cancelled. The download is kept for the next try.	Đã hủy cài đặt. Bản tải về được giữ lại cho lần thử tiếp theo.
+	Update cancelled	Đã hủy cập nhật
+	Uninstall cancelled	Đã hủy gỡ cài đặt
+	Retry install	Thử cài đặt lại
+	Retry update to {version}	Thử cập nhật lại lên {version}
+	The download is still here. It's checked again, then installed.	Bản tải về vẫn còn đây. Tệp sẽ được kiểm tra lại rồi cài đặt.
+	Waiting for another app…	Đang chờ ứng dụng khác…
+	Waiting for other installs…	Đang chờ các tiến trình cài đặt khác…
+
+# Package formats offered for download (PackageKind::label)
+	Installer (.msi)	Trình cài đặt (.msi)
+	Portable (.zip)	Bản di động (.zip)
+	Disk image (.dmg)	Ảnh đĩa (.dmg)
+	Debian package (.deb)	Gói Debian (.deb)
+	RPM package (.rpm)	Gói RPM (.rpm)
+	Arch package (.pkg.tar.zst)	Gói Arch (.pkg.tar.zst)
+	Flatpak bundle	Gói Flatpak
+	Tarball (.tar.gz)	Gói nén (.tar.gz)
+
+# Contextual: each app's tagline, keyed by app id
+photocraft	Image editing	Chỉnh sửa ảnh
+vectorcraft	Vector illustration	Minh họa vector
+filmcraft	Video editing, color and sound	Dựng phim, chỉnh màu và âm thanh
+lightcraft	Photo library and raw development	Thư viện ảnh và xử lý ảnh RAW
+pdfcraft	Reading, organizing and protecting PDFs	Đọc, sắp xếp và bảo vệ tài liệu PDF
+effectcraft	Motion graphics and visual effects	Đồ họa chuyển động và kỹ xảo hình ảnh
+designcraft	Page layout and publishing	Bố cục trang và chế bản
+wordcraft	Writing and document design	Soạn thảo và thiết kế tài liệu
+deckcraft	Presentations and slide shows	Bài thuyết trình và trình chiếu
+gridcraft	Spreadsheets and data	Bảng tính và dữ liệu
+cadcraft	Computer-aided design and drafting	Thiết kế và vẽ kỹ thuật CAD
+soundcraft	Recording, editing and mixing audio	Thu âm, biên tập và hòa âm
+figcraft	Interface design and prototyping	Thiết kế giao diện và tạo mẫu thử
+
+# Contextual: month abbreviations for date rendering
+month	Jan	Thg 1
+month	Feb	Thg 2
+month	Mar	Thg 3
+month	Apr	Thg 4
+month	May	Thg 5
+month	Jun	Thg 6
+month	Jul	Thg 7
+month	Aug	Thg 8
+month	Sep	Thg 9
+month	Oct	Thg 10
+month	Nov	Thg 11
+month	Dec	Thg 12
+	Not checked yet	Chưa kiểm tra
+	GitHub's hourly limit was reached; full details return in {min} min	Đã đạt giới hạn theo giờ của GitHub; chi tiết đầy đủ sẽ có lại sau {min} phút
+	GitHub limit hit; back in {min} min	Đã chạm giới hạn GitHub; thử lại sau {min} phút
+	Installing for {platform}	Đang cài đặt cho {platform}
+	Downloads for {platform}	Bản tải về cho {platform}
+	No downloads for this system	Không có bản tải về cho hệ thống này
+	Join the ArtCraft community on Discord	Tham gia cộng đồng ArtCraft trên Discord
+	ArtCraft on {name}	ArtCraft trên {name}
+	Couldn't open {name}: {e}	Không thể mở {name}: {e}
+	Download cancelled	Đã hủy tải về
+	Available to install	Có thể cài đặt
+	Available	Khả dụng
+	Installed · up to date	Đã cài đặt · bản mới nhất
+	Update available	Có bản cập nhật
+	Installed	Đã cài đặt
+	installed	đã cài đặt
+	Not available here	Không khả dụng trên hệ thống này
+	Updating…	Đang cập nhật…
+	Update paused	Đã tạm dừng cập nhật
+	Download paused	Đã tạm dừng tải về
+	{version} installed → {latest} released	Đã cài {version} → đã phát hành {latest}
+	Version {version}	Phiên bản {version}
+	{installed} installed · latest {latest}	Đã cài {installed} · mới nhất {latest}
+	Installed · latest {latest}	Đã cài · mới nhất {latest}
+	Version {version} installed	Đã cài phiên bản {version}
+	Version {latest}	Phiên bản {latest}
+	No release published yet	Chưa có bản phát hành nào
+	ArtCraft Launcher	ArtCraft Launcher
+	App	Ứng dụng
+	Latest	Mới nhất
+	Released	Phát hành
+	Auto	Tự động
+	Language	Ngôn ngữ
+	Ascending	Tăng dần
+	Descending	Giảm dần
+	Click to reverse the order	Nhấp để đảo ngược thứ tự
+	Click to sort by this column	Nhấp để sắp xếp theo cột này
+	Like {name}	Tương tự {name}
+	{done} of {total}	{done} / {total}
+	Downloading	Đang tải về
+	Verifying checksum…	Đang kiểm tra mã kiểm…
+	Resume	Tiếp tục
+	{done} of {total} downloaded	Đã tải {done} / {total}
+	{done} downloaded	Đã tải {done}
+	Checking for updates…	Đang kiểm tra cập nhật…
+	Downloads the new version, replaces this one and opens it again	Tải phiên bản mới, thay thế phiên bản hiện tại và mở lại ứng dụng
+	Couldn't check for updates: {f}	Không thể kiểm tra cập nhật: {f}
+	Website (coming soon)	Trang web (sắp ra mắt)
+	GitHub repository	Kho mã nguồn GitHub
+	ArtCraft	ArtCraft
+	Update 1 app	Cập nhật 1 ứng dụng
+	Update all ({count})	Cập nhật tất cả ({count})
+	⊞  Grid	⊞  Lưới
+	☰  Table	☰  Bảng
+	🔍  Search apps	🔍  Tìm ứng dụng
+	{name} {version}	{name} {version}
+	Match system	Theo hệ thống
+	Dark	Tối
+	Light	Sáng
+	Full changelog	Nhật ký thay đổi đầy đủ
+	link	liên kết
+	No apps match	Không có ứng dụng phù hợp
+	Open ArtCraft Launcher to update.	Mở ArtCraft Launcher để cập nhật.
+	{name} {v} is available	Đã có {name} {v}
+	{count} updates are available	Có {count} bản cập nhật
+	These notes weren't fetched (GitHub's request limit was reached). They're on the release page.	Không tải được ghi chú phát hành (đã đạt giới hạn yêu cầu của GitHub). Bạn có thể xem trên trang phát hành.
+	When on, opening the launcher from the menu bar brings its window to the desktop you're on. When off, macOS switches you to the desktop the window was on.	Khi bật, mở trình khởi chạy từ thanh menu sẽ đưa cửa sổ tới màn hình nền hiện tại. Khi tắt, macOS sẽ chuyển sang màn hình nền nơi đặt cửa sổ.
+	Couldn't change the login item: {e}	Không thể thay đổi mục khởi động cùng hệ thống: {e}
+
+# Contextual: table column headers
+column	App	Ứng dụng
+column	Installed	Đã cài
+column	Latest	Mới nhất
+column	Released	Phát hành
+
+# Contextual: the filter tab names a group (the status pill says "Installed")
+filter	Installed	Đã cài đặt
+	App details	Chi tiết ứng dụng
+	Close (Esc)	Đóng (Esc)
+	Features	Tính năng
+	Latest release	Bản phát hành mới nhất
+	Version	Phiên bản
+	Platforms	Nền tảng
+	Releases	Bản phát hành
+	Enlarge picture	Phóng to ảnh
+	Click to enlarge	Nhấp để phóng to
+	Previous picture (←)	Ảnh trước (←)
+	Next picture (→)	Ảnh tiếp (→)
+	Loading pictures…	Đang tải ảnh…
+	Pictures couldn't be loaded. Reopen this page to try again.	Không thể tải ảnh. Hãy mở lại trang này để thử lại.
+	{name} details	Chi tiết {name}
+
+# Plural forms for Vietnamese (one form: Vietnamese nouns don't inflect for number)
+@plural	{n} app|{n} apps	{n} ứng dụng
+@plural	{n} min ago|{n} min ago	{n} phút trước
+@plural	{n} h ago|{n} h ago	{n} giờ trước
+@plural	{n} day ago|{n} days ago	{n} ngày trước
+
+# Message templates (@msg): toasts from the backend. {placeholders} match any text.
+@msg	Couldn't open {name}: {e}	Không thể mở {name}: {e}
+@msg	Download cancelled	Đã hủy tải về
+@msg	{name} updated to {version}	Đã cập nhật {name} lên {version}
+@msg	{name} installed: {version}	Đã cài đặt {name}: {version}
+@msg	{name} updated to {version} (this release publishes no checksum, so only its size was checked)	Đã cập nhật {name} lên {version} (bản phát hành này không có mã kiểm nên chỉ kiểm tra kích thước tệp)
+@msg	{name} installed: {version} (this release publishes no checksum, so only its size was checked)	Đã cài đặt {name}: {version} (bản phát hành này không có mã kiểm nên chỉ kiểm tra kích thước tệp)
+@msg	{name} was removed	Đã gỡ cài đặt {name}
+@msg	{name} is running. Quit it, then try again.	{name} đang chạy. Hãy thoát ứng dụng rồi thử lại.
+@msg	{name} was installed from the {repo} repository or the AUR ({pkg}). Update it with {cmd} or sudo pacman -Syu	{name} được cài đặt từ kho {repo} hoặc AUR ({pkg}). Hãy cập nhật bằng {cmd} hoặc sudo pacman -Syu
+@msg	{name} was installed from the {repo} repository or the AUR ({pkg}). Update it with your AUR helper (for example: yay -S {pkg}) or sudo pacman -Syu	{name} được cài đặt từ kho {repo} hoặc AUR ({pkg}). Hãy cập nhật bằng trình trợ giúp AUR (ví dụ: yay -S {pkg}) hoặc sudo pacman -Syu
+@msg	{name} was installed from the AUR ({pkg}). Update it with {cmd}	{name} được cài đặt từ AUR ({pkg}). Hãy cập nhật bằng {cmd}
+@msg	{name} was installed from the AUR ({pkg}). Update it with your AUR helper (for example: yay -S {pkg})	{name} được cài đặt từ AUR ({pkg}). Hãy cập nhật bằng trình trợ giúp AUR (ví dụ: yay -S {pkg})
+
+# Command IDs for menu items (@id)
+# Format: @id<TAB>command_id<TAB>translation
+@id	app.install	Cài đặt
+@id	app.update	Cập nhật lên {v}
+@id	app.open	Mở
+@id	app.download	Tải về cho {os}
+@id	app.reveal	Hiển thị trong Finder
+@id	app.reinstall	Cài đặt lại
+@id	app.uninstall	Gỡ cài đặt…
+@id	app.notes	Ghi chú phát hành
+@id	app.website	Trang web
+@id	app.github	Kho mã nguồn GitHub
+@id	app.releases	Tất cả bản phát hành
+@id	launcher.update	Cập nhật và khởi động lại
+@id	launcher.download	Tải về
+@id	launcher.notes	Có gì mới
+@id	launcher.dismiss	Bỏ qua
+@id	settings.open	Tùy chọn
+@id	settings.quit	Thoát ArtCraft Launcher
+@id	view.grid	Lưới
+@id	view.table	Bảng
+@id	filter.all	Tất cả
+@id	filter.installed	Đã cài đặt
+@id	filter.updates	Cập nhật
+@id	filter.notinstalled	Chưa cài đặt
+@id	sort.suite	Thứ tự bộ ứng dụng
+@id	sort.name	Tên
+@id	sort.inspired	Lấy cảm hứng từ
+@id	sort.status	Trạng thái
+@id	sort.installed	Phiên bản đã cài
+@id	sort.latest	Phiên bản mới nhất
+@id	sort.released	Bản phát hành mới nhất
+@id	help.discord	Discord
+@id	help.github	GitHub
+@id	help.website	Trang web
+@id	update.check	Kiểm tra cập nhật
+@id	update.check_auto	Tự động kiểm tra cập nhật
+@id	update.notify	Thông báo khi ứng dụng đã cài có bản cập nhật
+@id	update.prereleases	Bao gồm bản phát hành trước (beta và RC)
+@id	linux.preferred_kind	Cài đặt ứng dụng mới dưới dạng
+@id	tray.close_to_tray	Tiếp tục chạy ở khay hệ thống khi đóng cửa sổ
+@id	tray.show_on_current_desktop	Hiển thị cửa sổ trên màn hình nền hiện tại
+@id	tray.login_item	Khởi động ArtCraft Launcher khi đăng nhập
+@id	appearance.theme	Giao diện
+
+# Tray (menu bar) menu and tooltip
+	Show ArtCraft Launcher	Hiển thị ArtCraft Launcher
+	Check for Updates	Kiểm tra cập nhật
+	Visit getartcraft.com	Truy cập getartcraft.com
+	ArtCraft on GitHub	ArtCraft trên GitHub
+	Join the ArtCraft Discord	Tham gia Discord của ArtCraft
+@plural	ArtCraft Launcher · {n} update available|ArtCraft Launcher · {n} updates available	ArtCraft Launcher · Có {n} bản cập nhật
+	Install folder	Thư mục cài đặt
+	Default install folder	Thư mục cài đặt mặc định
+	System default	Mặc định hệ thống
+	Browse…	Duyệt…
+	Use default	Dùng mặc định
+	New installs use this folder. Updates stay in their current location.	Các cài đặt mới sẽ dùng thư mục này. Bản cập nhật giữ nguyên vị trí hiện tại.
+	Custom folders use AppImage on Linux.	Trên Linux, thư mục tùy chỉnh dùng định dạng AppImage.
+	On Linux, custom folders use AppImage format.	Trên Linux, thư mục tùy chỉnh dùng định dạng AppImage.
+	The system manages install locations here.	Hệ thống quản lý vị trí cài đặt tại đây.
+@msg	couldn't use install folder {path}: {reason}	không thể dùng thư mục cài đặt {path}: {reason}
+@msg	this release has no AppImage for a custom install folder	bản phát hành này không có AppImage cho thư mục cài đặt tùy chỉnh
+@msg	custom install folders aren't supported on this system	hệ thống này không hỗ trợ thư mục cài đặt tùy chỉnh
+@msg	{path} already exists and wasn't installed by ArtCraft Launcher	{path} đã tồn tại và không được cài đặt bởi ArtCraft Launcher
+@msg	couldn't move {path} to Trash ({reason}). Remove it in Finder instead.	không thể chuyển {path} vào Thùng rác ({reason}). Hãy xóa trong Finder.
+	Apps are placed inside this folder.	Các ứng dụng được đặt bên trong thư mục này.
+	Replace what's there?	Thay thế mục hiện có?
+	{path} already exists. Installing {name} will overwrite it.	{path} đã tồn tại. Cài đặt {name} sẽ ghi đè lên mục đó.
+	Replace	Thay thế
+	Recently updated	Mới cập nhật gần đây
+	Name (A–Z)	Tên (A–Z)
+	Name (Z–A)	Tên (Z–A)
+	Frequently used	Thường dùng
+	Next app	Ứng dụng tiếp theo
+	Previous app	Ứng dụng trước
+	Show {n} more changes	Hiển thị thêm {n} thay đổi
+	Last updated: {date}	Cập nhật lần cuối: {date}
+column	Version	Phiên bản
