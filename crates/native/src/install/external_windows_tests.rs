@@ -131,6 +131,55 @@ fn a_registration_added_during_download_blocks_portable_replacement() {
 }
 
 #[test]
+/// Previously managed ownership can disappear during download before an external registration wins.
+fn a_managed_copy_removed_during_download_does_not_hide_a_new_registration() {
+    let dir = tempfile::tempdir().unwrap();
+    let paths = Paths::under(dir.path());
+    let app = CraftApp::by_id("photocraft").unwrap();
+    let (exe, personal) = external_copy(dir.path());
+    let exe = std::fs::canonicalize(exe).unwrap();
+    let previous = Record {
+        version: "0.4.0".into(),
+        kind: PackageKind::PortableZip,
+        path: exe.clone(),
+        installed_at: 1,
+        files: vec![exe.clone()],
+        needs_root: false,
+    };
+    let mut manifest = Manifest::default();
+    manifest.apps.insert(app.id.into(), previous.clone());
+    manifest.save(&paths.manifest()).unwrap();
+    let installed = Installed { version: None, source: InstallSource::Launcher, location: exe.display().to_string(), package: None };
+    let (asset, release) = cached_portable(&paths);
+    let http = Http::new().unwrap();
+    let stop = Stop::default();
+    let locations = InstallLocations::default();
+    let mut phases = Vec::new();
+    let mut phase = |phase| {
+        if phase == JobPhase::Verifying {
+            std::fs::remove_file(paths.manifest()).unwrap();
+            register(&paths, &exe);
+        }
+        phases.push(phase);
+    };
+    let mut job = Job { http: &http, paths: &paths, stop: &stop, phase: &mut phase, install_locations: &locations, replace: true, downgrade: None };
+    let mut commits = Vec::new();
+    let mut commit = |record: &Record| {
+        commits.push(record.clone());
+        Ok(())
+    };
+    let result = install_at(app, &release, &asset, PackageKind::PortableZip, Some(&installed), Some(&previous), &mut job, Some(&mut commit));
+    assert!(result.unwrap_err().contains("installed outside the launcher"));
+    assert!(phases.contains(&JobPhase::Verifying));
+    assert!(!phases.contains(&JobPhase::Installing));
+    assert!(commits.is_empty());
+    assert!(!paths.manifest().exists());
+    assert!(download_path(&paths, &asset).is_file());
+    assert_eq!(std::fs::read(&exe).unwrap(), b"external program");
+    assert_eq!(std::fs::read(&personal).unwrap(), b"personal files stay here");
+}
+
+#[test]
 /// Current launcher records and known MSI installs retain precedence over external registrations.
 fn managed_installations_keep_precedence_over_external_registrations() {
     let dir = tempfile::tempdir().unwrap();
@@ -145,6 +194,8 @@ fn managed_installations_keep_precedence_over_external_registrations() {
         let installed = Installed { version: None, source, location: managed.display().to_string(), package: None };
         assert_eq!(check_external_install(app, Some(&installed), &paths), Ok(()));
     }
+    // An earlier managed result is not current ownership: a fresh check must consult the disk.
+    assert!(check_external_install(app, None, &paths).unwrap_err().contains("installed outside the launcher"));
     let mut manifest = Manifest::default();
     manifest.apps.insert(
         app.id.into(),

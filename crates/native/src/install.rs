@@ -183,10 +183,10 @@ pub fn install_at(
     };
     #[cfg_attr(not(windows), allow(unused_variables))]
     let (file, sha256) = download(release, asset, job)?;
-    // A registration may have been added while the package was downloading. Replace is an
-    // overwrite choice, not permission to take ownership of a newly registered external copy.
+    // Ownership can change during download, even when a managed copy existed at the start.
+    // Always detect again: Replace does not authorize adopting a newly registered external copy.
     #[cfg(windows)]
-    check_external_install(app, existing, job.paths)?;
+    check_external_install(app, None, job.paths)?;
     log::info!("{}: download ready ({}), running installer...", app.name, file.display());
     // Past this point the install can't be interrupted halfway.
     (job.phase)(JobPhase::Installing);
