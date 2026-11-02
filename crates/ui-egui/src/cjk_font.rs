@@ -46,7 +46,7 @@ fn script_name(script: Script) -> &'static str {
 /// The families looked for, for the "none found" log line.
 fn script_families(script: Script) -> &'static str {
     match script {
-        Script::Chinese => "PingFang SC, Hiragino Sans GB, Heiti SC, Microsoft YaHei, SimSun, Noto Sans CJK SC and WenQuanYi",
+        Script::Chinese => "PingFang SC, Hiragino Sans GB, Heiti SC, Microsoft YaHei, SimSun, Noto Sans CJK SC, WenQuanYi and MiSans",
         Script::Japanese => "Hiragino Sans, Yu Gothic, Meiryo, MS Gothic, Noto Sans CJK JP, Noto Sans JP, IPAGothic and TakaoGothic",
     }
 }
@@ -120,10 +120,73 @@ pub(crate) fn face_index(data: &[u8], family: &str) -> Option<u32> {
 
 /// Where each system keeps a font for `script`, best first.
 fn candidates(script: Script) -> Vec<Candidate> {
-    match script {
+    let found = match script {
         Script::Chinese => chinese_candidates(),
         Script::Japanese => japanese_candidates(),
+    };
+    let mut out = Vec::with_capacity(found.len() * 2);
+    for candidate in found {
+        // A Flatpak sandbox sees the host's fonts only there; its own folders hold the runtime's (#620).
+        let host = flatpak_host_path(&candidate.path).map(|path| Candidate { path, family: candidate.family });
+        out.push(candidate);
+        out.extend(host);
     }
+    out
+}
+
+/// Where Flatpak mounts the host's system font folder holding `path` (`add_font_path_args`, `common/flatpak-run.c`).
+fn flatpak_host_path(path: &Path) -> Option<PathBuf> {
+    if !cfg!(target_os = "linux") {
+        return None;
+    }
+    // User fonts need no twin: both manifests grant `--filesystem=home`.
+    [("/usr/share/fonts", "/run/host/fonts"), ("/usr/local/share/fonts", "/run/host/local-fonts")]
+        .into_iter()
+        .find_map(|(dir, host)| path.strip_prefix(dir).ok().map(|rest| Path::new(host).join(rest)))
+}
+
+/// The MiSans files a user installs by hand (Xiaomi's free Chinese face: the one some systems
+/// have in place of any of the above), by weight preference. Its family name is `MiSans`.
+const MISANS_FILES: [&str; 3] = ["MiSans-Regular.ttf", "MiSans-Normal.ttf", "MiSans-Medium.ttf"];
+
+/// Where fonts a user installs by hand go on this system: the user's font folders, then the
+/// system-wide ones, each as the font managers lay them out.
+fn user_font_dirs() -> Vec<PathBuf> {
+    let mut dirs = Vec::new();
+    #[cfg(target_os = "macos")]
+    {
+        if let Some(home) = std::env::var_os("HOME") {
+            dirs.push(PathBuf::from(home).join("Library/Fonts"));
+        }
+        dirs.push("/Library/Fonts".into());
+    }
+    #[cfg(target_os = "windows")]
+    {
+        // Fonts installed "for me" (the default since Windows 10 1809) go under the user's profile.
+        if let Some(local) = std::env::var_os("LOCALAPPDATA") {
+            dirs.push(PathBuf::from(local).join(r"Microsoft\Windows\Fonts"));
+        }
+        let root = std::env::var_os("SystemRoot").map_or_else(|| PathBuf::from(r"C:\Windows"), PathBuf::from);
+        dirs.push(root.join("Fonts"));
+    }
+    #[cfg(all(unix, not(target_os = "macos")))]
+    {
+        if let Some(home) = std::env::var_os("HOME").map(PathBuf::from) {
+            for sub in [".local/share/fonts", ".local/share/fonts/MiSans", ".local/share/fonts/misans", ".fonts"] {
+                dirs.push(home.join(sub));
+            }
+        }
+        for dir in [
+            "/usr/share/fonts/MiSans",
+            "/usr/share/fonts/misans",
+            "/usr/share/fonts/truetype/misans",
+            "/usr/share/fonts/TTF",
+            "/usr/local/share/fonts/MiSans",
+        ] {
+            dirs.push(dir.into());
+        }
+    }
+    dirs
 }
 
 /// Where each system keeps a Simplified Chinese font, best first.
@@ -175,6 +238,12 @@ fn chinese_candidates() -> Vec<Candidate> {
             for dir in WQY_DIRS {
                 add(Path::new(dir).join(file), family);
             }
+        }
+    }
+    // Last, a MiSans the user installed themselves, on any system (#378).
+    for file in MISANS_FILES {
+        for dir in user_font_dirs() {
+            add(dir.join(file), "MiSans");
         }
     }
     out
@@ -332,6 +401,39 @@ mod tests {
         }
     }
 
+    /// A hand-installed MiSans is looked for in the user's font folders on every system (#378).
+    #[test]
+    fn misans_is_looked_for_where_users_install_fonts() {
+        let names: Vec<String> = chinese_candidates().iter().filter_map(|c| c.path.file_name().map(|n| n.to_string_lossy().into_owned())).collect();
+        assert!(names.iter().any(|n| n == "MiSans-Regular.ttf"), "{names:?}");
+        assert!(chinese_candidates().iter().filter(|c| c.family == "MiSans").all(|c| c.path.is_absolute() || c.path.starts_with("/")));
+        // After the system's own faces: those are complete families with hinting the system tuned.
+        let first_misans = chinese_candidates().iter().position(|c| c.family == "MiSans").unwrap();
+        assert!(chinese_candidates()[..first_misans].iter().all(|c| c.family != "MiSans"));
+        assert!(first_misans > 0, "the system's own fonts come first");
+    }
+
+    /// Inside Flatpak the host's fonts are under `/run/host` (#620), each right after its own path.
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn flatpak_host_fonts_follow_the_paths_they_mirror() {
+        for (path, host) in [
+            ("/usr/share/fonts/noto-cjk/NotoSansCJK-Regular.ttc", Some("/run/host/fonts/noto-cjk/NotoSansCJK-Regular.ttc")),
+            ("/usr/local/share/fonts/noto/NotoSansCJK-Regular.ttc", Some("/run/host/local-fonts/noto/NotoSansCJK-Regular.ttc")),
+            ("/home/u/.local/share/fonts/MiSans-Regular.ttf", None),
+            ("/usr/share/fontsx/a.ttf", None),
+            ("/run/host/fonts/a.ttf", None),
+        ] {
+            assert_eq!(flatpak_host_path(Path::new(path)), host.map(PathBuf::from), "{path}");
+        }
+        for (script, family) in [(Script::Chinese, "Noto Sans CJK SC"), (Script::Japanese, "Noto Sans CJK JP")] {
+            let found = candidates(script);
+            let at = found.iter().position(|c| c.path == Path::new("/usr/share/fonts/noto-cjk/NotoSansCJK-Regular.ttc")).unwrap();
+            assert_eq!(found[at + 1].path, Path::new("/run/host/fonts/noto-cjk/NotoSansCJK-Regular.ttc"));
+            assert_eq!(found[at + 1].family, family);
+        }
+    }
+
     #[test]
     fn face_index_finds_families_in_real_fonts() {
         // The bundled Latin faces stand in for system fonts the test machine may not have.
@@ -347,7 +449,7 @@ mod tests {
             if let Some(font) = load(script) {
                 let family = candidates(script).into_iter().find(|c| c.path.is_file()).map(|c| c.family);
                 assert!(family.is_some());
-                assert!(FontRef::from_index(&font.font, font.index).is_ok());
+                assert!(FontRef::from_index(font.bytes(), font.index).is_ok());
             }
         }
     }

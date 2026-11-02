@@ -13,13 +13,15 @@
 # Left in English on purpose: product name "ArtCraft Launcher" (and its "Launcher" tag), suite
 # name "Craft App Suite",
 # app names (PhotoCraft, LightCraft, FilmCraft, DesignCraft, VectorCraft, PdfCraft, EffectCraft,
-# WordCraft, DeckCraft, GridCraft, CADCraft, SoundCraft, FigCraft), "GitHub", "Discord", "Website".
+# WordCraft, DeckCraft, GridCraft, CADCraft, SoundCraft, FigCraft, Craft Anything, TextureCraft,
+# SolidCraft), "GitHub" and "Discord".
 # Shortcut keys keep their key-cap names (Shift, Alt, Ctrl, Cmd, Esc).
 # Trailing "…" (U+2026) must be preserved. Placeholders {name}, {n}, {version}, {count}, {v},
 # {what}, {unit}, {real}, {e} must appear in translation.
 
 	Launcher	Launcher
 	Craft App Suite	Craft App Suite
+	by {name}	від {name}
 	Open Source Tools for Creatives, Makers, and Builders	Відкриті інструменти для творців, мейкерів і розробників
 	Settings	Налаштування
 	Check for updates	Перевірити оновлення
@@ -75,6 +77,7 @@
 	Dismiss	Закрити
 	Update and restart	Оновити й перезапустити
 	A new version is available. Would you like to relaunch with the updated version?	Доступна нова версія. Перезапустити з оновленою версією?
+	A new version is available. Download it to replace this version?	Доступна нова версія. Завантажити її, щоб замінити цю версію?
 	Later	Пізніше
 	What's new	Що нового
 	No notes were published with this release.	До цього випуску примітки не опубліковано.
@@ -93,6 +96,8 @@
 	Updates always use the format an app was installed with.	Оновлення завжди використовують формат, у якому застосунок було встановлено.
 	Running in the background	Робота у фоновому режимі
 	Keep running in the tray when the window is closed	Продовжувати роботу в треї після закриття вікна
+	ArtCraft Launcher is still running	ArtCraft Launcher усе ще працює
+	It's in the tray: open it or quit it from the tray icon, or turn this off in the settings.	Він у треї: відкрийте або закрийте його через значок у треї або вимкніть це в налаштуваннях.
 	Show the window on the current desktop	Показувати вікно на поточному робочому столі
 	Start ArtCraft Launcher when I log in	Запускати ArtCraft Launcher під час входу в систему
 	Community	Спільнота
@@ -168,6 +173,8 @@ designcraft	Page layout and publishing	Верстка та публікації
 wordcraft	Writing and document design	Написання текстів та оформлення документів
 deckcraft	Presentations and slide shows	Презентації та слайд-шоу
 gridcraft	Spreadsheets and data	Електронні таблиці та дані
+craft-anything	Find out how any software works, then craft your own	Дізнайтеся, як працює будь-яка програма, і створіть свою
+solidcraft	Parametric 3D CAD	Параметричний 3D CAD
 cadcraft	Computer-aided design and drafting	Комп’ютерне проєктування та креслення
 soundcraft	Recording, editing and mixing audio	Запис, редагування та зведення звуку
 figcraft	Interface design and prototyping	Дизайн інтерфейсів та прототипування
@@ -258,6 +265,7 @@ column	Installed	Встановлена
 column	Latest	Остання
 column	Released	Дата випуску
 column	Version	Версія
+column	Author	Автор
 
 # Contextual: the filter tab names a group (the status pill says "Installed")
 filter	Installed	Встановлені
@@ -334,6 +342,7 @@ filter	Installed	Встановлені
 	ArtCraft on GitHub	ArtCraft на GitHub
 	Join the ArtCraft Discord	Приєднатися до Discord ArtCraft
 	App details	Про застосунок
+	More actions for {name}	Інші дії для {name}
 	Close (Esc)	Закрити (Esc)
 	Features	Можливості
 	Latest release	Останній випуск
@@ -354,6 +363,7 @@ filter	Installed	Встановлені
 	Use default	Скористатися значенням за замовчуванням
 	New installs use this folder. Updates stay in their current location.	Нові застосунки встановлюються в цю папку. Під час оновлення поточне розташування зберігається.
 	Custom folders use AppImage on Linux.	Для власних папок у Linux використовується AppImage.
+	On Linux, custom folders use AppImage format.	У Linux для власних папок використовується формат AppImage.
 	The system manages install locations here.	Тут розташуванням застосунків керує система.
 @msg	couldn't use install folder {path}: {reason}	не вдалося використати папку встановлення {path}: {reason}
 @msg	this release has no AppImage for a custom install folder	у цьому випуску немає AppImage для власної папки встановлення
@@ -372,3 +382,21 @@ filter	Installed	Встановлені
 	Previous app	Попередній застосунок
 	Show {n} more changes	Показати ще {n} змін
 	Last updated: {date}	Востаннє оновлено: {date}
+	Choose version	Вибрати версію
+	latest {version}	остання {version}
+	{version} (latest release)	{version} (останній випуск)
+	Launcher version	Версія лаунчера
+	Nightly	Нічна збірка
+	Nightly (none published yet)	Нічна збірка (ще не опубліковано)
+	Install version {version}	Встановити версію {version}
+	Download selected version	Завантажити обрану версію
+	Older launcher versions require a manual reinstall.	Для повернення до старішої версії лаунчера потрібне ручне перевстановлення.
+	Your files may not open in older versions.	У старіших версіях ваші файли можуть не відкритися.
+	Enable automatic installs in Settings to follow new nightly builds.	Щоб отримувати нові нічні збірки, увімкніть автоматичне встановлення в налаштуваннях.
+texturecraft	3D texture painting	Малювання 3D-текстур
+texturecraft	Paint materials on 3D models and export textures.	Малюйте матеріали на 3D-моделях і експортуйте текстури.
+texturecraft	Materials	Матеріали
+texturecraft	Mesh maps	Карти сітки
+texturecraft	Bake mesh maps and use smart materials.	Запікайте карти сітки та використовуйте розумні матеріали.
+texturecraft	Paint textures on 3D models.	Малюйте текстури на 3D-моделях.
+	Hide community apps	Приховати застосунки спільноти

@@ -22,7 +22,7 @@ APP_NAME="ArtCraft Launcher"   # display name: bundle, executable, icon, DMG vol
 
 ARCH=universal
 SKIP_BUILD=0
-while [ $# -gt 0 ]; do
+while [[ $# -gt 0 ]]; do
   case "$1" in
     --arch) ARCH="$2"; shift 2 ;;
     --skip-build) SKIP_BUILD=1; shift ;;
@@ -46,9 +46,9 @@ APP="$WORK/$APP_NAME.app"
 DMG="$DIST/$PKG-$VERSION-macos-$ARCH.dmg"
 
 NOTARIZE=0
-if [ "$IDENTITY" = "-" ]; then
+if [[ "$IDENTITY" = "-" ]]; then
   warn "macOS: ad-hoc signing (no MACOS_SIGN_IDENTITY); artifacts are not notarized"
-elif [ -n "${APPLE_ID:-}" ] && [ -n "${APPLE_PASSWORD:-}" ] && [ -n "${APPLE_TEAM_ID:-}" ]; then
+elif [[ -n "${APPLE_ID:-}" ]] && [[ -n "${APPLE_PASSWORD:-}" ]] && [[ -n "${APPLE_TEAM_ID:-}" ]]; then
   NOTARIZE=1
 else
   warn "macOS: APPLE_ID / APPLE_PASSWORD / APPLE_TEAM_ID incomplete; signed but not notarized"
@@ -57,7 +57,7 @@ fi
 echo "==> $APP_NAME $VERSION for macOS ($ARCH), identity: $IDENTITY, notarize: $NOTARIZE"
 
 # ---- build -------------------------------------------------------------------------------------
-if [ "$SKIP_BUILD" = 0 ]; then
+if [[ "$SKIP_BUILD" = 0 ]]; then
   args=()
   for t in "${TARGETS[@]}"; do args+=(--target "$t"); done
   (cd "$ROOT" && cargo build --release --locked -p "$PKG" "${args[@]}")
@@ -74,9 +74,9 @@ lipo -info "$WORK/bin/$PKG"
 sign() {
   # Hardened runtime + secure timestamp for a real identity; ad-hoc can't be timestamped.
   local ts=(--timestamp)
-  [ "$IDENTITY" = "-" ] && ts=(--timestamp=none)
+  [[ "$IDENTITY" = "-" ]] && ts=(--timestamp=none)
   local kc=()
-  [ -n "${MACOS_KEYCHAIN:-}" ] && kc=(--keychain "$MACOS_KEYCHAIN")
+  [[ -n "${MACOS_KEYCHAIN:-}" ]] && kc=(--keychain "$MACOS_KEYCHAIN")
   codesign --force --sign "$IDENTITY" ${kc[@]+"${kc[@]}"} "${ts[@]}" "$@"
 }
 
@@ -88,13 +88,28 @@ notarize() {
   echo "$out"
   id="$(printf '%s' "$out" | plutil -extract id raw -o - - 2>/dev/null || true)"
   status="$(printf '%s' "$out" | plutil -extract status raw -o - - 2>/dev/null || true)"
-  if [ "$status" != "Accepted" ]; then
-    if [ -n "$id" ]; then
+  if [[ "$status" != "Accepted" ]]; then
+    if [[ -n "$id" ]]; then
       xcrun notarytool log "$id" --apple-id "$APPLE_ID" --password "$APPLE_PASSWORD" --team-id "$APPLE_TEAM_ID" || true
     fi
     echo "error: notarization of $(basename "$file") failed (status: ${status:-unknown})" >&2
     exit 1
   fi
+}
+
+# `stapler staple` and `stapler validate` both fetch the ticket from Apple's CloudKit, and a dropped
+# connection there (NSURLErrorDomain -1005, "Error 68") fails them although notarization worked.
+# Both are idempotent, so retry with a pause; a missing or bad ticket still fails every try.
+stapler_retry() {
+  local action="$1" target="$2" try
+  for try in 1 2 3 4; do
+    xcrun stapler "$action" "$target" && return 0
+    [[ "$try" = 4 ]] && break
+    echo "stapler $action failed (try $try of 4); retrying in $((try * 20)) s" >&2
+    sleep $((try * 20))
+  done
+  echo "error: stapler $action $(basename "$target") failed 4 times" >&2
+  exit 1
 }
 
 # ---- ArtCraft Launcher.app ---------------------------------------------------------------------
@@ -103,6 +118,7 @@ mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 # Executable and icon carry the display name (CFBundleExecutable / CFBundleIconFile).
 cp "$WORK/bin/$PKG" "$APP/Contents/MacOS/$APP_NAME"
 cp "$ROOT/assets/app-icon/$PKG.icns" "$APP/Contents/Resources/$APP_NAME.icns"
+cp "$ROOT/NOTICE" "$APP/Contents/Resources/"
 sed -e "s/@VERSION@/$VERSION/g" -e "s/@SHORT_VERSION@/$SHORT_VERSION/g" \
   -e "s/@BUILD_SHA@/${ARTCRAFT_LAUNCHER_BUILD_SHA:-unknown}/g" \
   "$HERE/Info.plist.in" >"$APP/Contents/Info.plist"
@@ -123,11 +139,11 @@ sign --options runtime --entitlements "$HERE/entitlements.plist" "$APP/Contents/
 sign --options runtime --entitlements "$HERE/entitlements.plist" "$APP"
 codesign --verify --strict --deep --verbose=2 "$APP"
 
-if [ "$NOTARIZE" = 1 ]; then
+if [[ "$NOTARIZE" = 1 ]]; then
   ditto -c -k --keepParent "$APP" "$WORK/notarize.zip"
   notarize "$WORK/notarize.zip"
-  xcrun stapler staple "$APP"
-  xcrun stapler validate "$APP"
+  stapler_retry staple "$APP"
+  stapler_retry validate "$APP"
   spctl --assess --type execute -vvv "$APP"
 fi
 
@@ -156,7 +172,7 @@ hdiutil_retry() {
     if hdiutil "$@"; then
       return 0
     fi
-    [ "$attempt" = 5 ] && { echo "hdiutil $what failed 5 times" >&2; return 1; }
+    [[ "$attempt" = 5 ]] && { echo "hdiutil $what failed 5 times" >&2; return 1; }
     warn "hdiutil $what failed (attempt $attempt of 5); retrying in $((attempt * 10))s"
     sleep $((attempt * 10))
   done
@@ -164,10 +180,10 @@ hdiutil_retry() {
 hdiutil_retry create create -srcfolder "$STAGE" -volname "$APP_NAME" -fs HFS+ -format UDZO -imagekey zlib-level=9 -ov "$DMG"
 sign "$DMG"
 codesign --verify --strict --verbose=2 "$DMG"
-if [ "$NOTARIZE" = 1 ]; then
+if [[ "$NOTARIZE" = 1 ]]; then
   notarize "$DMG"
-  xcrun stapler staple "$DMG"
-  xcrun stapler validate "$DMG"
+  stapler_retry staple "$DMG"
+  stapler_retry validate "$DMG"
   spctl --assess --type open --context context:primary-signature -vvv "$DMG"
 fi
 

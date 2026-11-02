@@ -1,6 +1,6 @@
 # .deb and .rpm packages (nfpm: https://nfpm.goreleaser.com). Run by package.sh, which stages
 # the file tree, substitutes its path for ${STAGE} (nfpm doesn't expand env vars in `src`) and
-# exports VERSION and NFPM_ARCH.
+# exports VERSION, NFPM_ARCH and GLIBC_FLOOR (the build runner's glibc baseline).
 #
 #   nfpm package -f packaging/linux/nfpm.yaml -p deb -t dist/release/
 name: artcraft-launcher
@@ -32,7 +32,7 @@ description: |-
 overrides:
   deb:
     depends:
-      - libc6 (>= 2.35)
+      - libc6 (>= ${GLIBC_FLOOR})
       - libgcc-s1
       - libxkbcommon0
       - libxkbcommon-x11-0
@@ -48,9 +48,11 @@ overrides:
       - libegl-mesa0
       - xdg-desktop-portal
   rpm:
-    # Soname provides rather than package names, so the same requirements resolve on Fedora/RHEL
-    # (libxkbcommon-x11, libX11-xcb, ...) and openSUSE (libxkbcommon-x11-0, libX11-xcb1, ...).
+    # Match the runner's glibc floor. Use soname provides for windowing libraries so the same
+    # requirements resolve on Fedora/RHEL (libxkbcommon-x11, libX11-xcb, ...) and openSUSE
+    # (libxkbcommon-x11-0, libX11-xcb1, ...).
     depends:
+      - glibc >= ${GLIBC_FLOOR}
       - libxkbcommon.so.0()(64bit)
       - libxkbcommon-x11.so.0()(64bit)
       - libwayland-client.so.0()(64bit)

@@ -13,7 +13,7 @@ use artcraft_launcher_core::{Arch, Installed, Os, Platform, SUITE, version};
 use artcraft_launcher_ui_egui::settings::ViewMode;
 use artcraft_launcher_ui_egui::{Host, LauncherUi, Settings};
 use egui_kittest::Harness;
-use egui_kittest::kittest::Queryable;
+use egui_kittest::kittest::{NodeT, Queryable};
 
 const NOW: i64 = 1_791_500_000;
 
@@ -156,6 +156,37 @@ fn simplified_chinese_switches_persists_and_keeps_install_actions() {
     h.run_steps(2);
     // Opening Settings doesn't load the (large) Chinese font: the picker names it in English.
     assert!(!artcraft_launcher_ui_egui::theme::cjk_font_loaded(artcraft_launcher_ui_egui::i18n::Lang::ZH_CN));
+    // The native-name sort puts Chinese last, below the popup's scroll viewport. Scroll the
+    // actual popup with a wheel over its visible first row before the physical pointer click.
+    let before_scroll = h.get_by_label("Simplified Chinese").rect();
+    let first_row = h.get_by_label("Auto").rect();
+    let popup_bottom = first_row.top() + h.ctx.global_style().spacing.combo_height;
+    if std::env::var_os("ARTCRAFT_LAUNCHER_CHINESE_SCROLL_DIAGNOSTICS").is_some() {
+        let node = h.get_by_label("Simplified Chinese");
+        eprintln!("ScrollIntoView target {:?}: {node:?}", node.accesskit_node().locate());
+        node.scroll_to_me();
+        h.step();
+        eprintln!("after action: rect {:?}, remaining input {:?}", h.get_by_label("Simplified Chinese").rect(), h.ctx.input(|i| i.events.clone()));
+        h.step();
+        eprintln!("after following pass: rect {:?}", h.get_by_label("Simplified Chinese").rect());
+    }
+    h.event(egui::Event::PointerMoved(first_row.center()));
+    h.event(egui::Event::MouseWheel {
+        unit: egui::MouseWheelUnit::Point,
+        delta: egui::vec2(0.0, -600.0),
+        phase: egui::TouchPhase::Move,
+        source: egui::MouseWheelSource::Wheel,
+        modifiers: egui::Modifiers::NONE,
+    });
+    h.run_steps(60);
+    let after_scroll = h.get_by_label("Simplified Chinese").rect();
+    assert!(after_scroll.center().y < before_scroll.center().y, "the last option must scroll into view: {before_scroll:?} -> {after_scroll:?}");
+    assert!(
+        (first_row.top()..=popup_bottom).contains(&after_scroll.center().y),
+        "the physical click must be inside the popup viewport: {after_scroll:?}, top {}, bottom {popup_bottom}",
+        first_row.top()
+    );
+    assert_eq!(h.state().as_ref().unwrap().settings.language, "en", "scrolling must not select a language");
     h.get_by_label("Simplified Chinese").click();
     h.run_steps(3);
     if !artcraft_launcher_ui_egui::theme::cjk_font_available(artcraft_launcher_ui_egui::i18n::Lang::ZH_CN) {
