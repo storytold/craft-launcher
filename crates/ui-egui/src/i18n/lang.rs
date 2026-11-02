@@ -275,6 +275,17 @@ impl Lang {
         LANGUAGES.iter().map(Lang)
     }
 
+    /// Every registered language in the order the Settings picker lists them: English first
+    /// (the source language and the fallback), then the rest by their own name with accents
+    /// folded, so Čeština sits under C rather than after Z. Names in other scripts follow the
+    /// Latin ones in code point order: Cyrillic, then the CJK languages. The order follows the
+    /// native name even where the picker shows a CJK language's English name instead.
+    pub fn for_picker() -> Vec<Lang> {
+        let mut rest: Vec<Lang> = Lang::all().filter(|l| l.code() != "en").collect();
+        rest.sort_by_cached_key(|l| name_sort_key(l.name()));
+        std::iter::once(Lang::EN).chain(rest).collect()
+    }
+
     pub fn name(self) -> &'static str {
         self.0.name
     }
@@ -354,4 +365,25 @@ fn chinese(tag: &str) -> Option<Lang> {
     } else {
         None
     }
+}
+
+/// `name` lowercased with the Latin accents that occur in language names folded away, so a
+/// byte-wise sort reads alphabetically. Other scripts are left as they are.
+pub(super) fn name_sort_key(name: &str) -> String {
+    name.chars()
+        .flat_map(char::to_lowercase)
+        .map(|c| match c {
+            'à'..='å' | 'ā' | 'ă' | 'ą' => 'a',
+            'ç' | 'ć' | 'č' => 'c',
+            'è'..='ë' | 'ē' | 'ě' | 'ę' | 'ế' | 'ệ' => 'e',
+            'ì'..='ï' | 'ī' => 'i',
+            'ñ' | 'ń' | 'ň' => 'n',
+            'ò'..='ö' | 'ø' | 'ő' => 'o',
+            'ś' | 'š' => 's',
+            'ù'..='ü' | 'ū' | 'ů' | 'ű' => 'u',
+            'ý' | 'ÿ' => 'y',
+            'ź' | 'ż' | 'ž' => 'z',
+            c => c,
+        })
+        .collect()
 }

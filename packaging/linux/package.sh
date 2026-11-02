@@ -11,8 +11,9 @@
 #
 # Needs: cargo; nfpm for deb/rpm (https://nfpm.goreleaser.com); appimagetool for the AppImage
 # (downloaded into $CARGO_TARGET_DIR if missing). Build on an old distro (CI: Ubuntu 22.04,
-# glibc 2.35) so the binaries run on newer ones. Optional: desktop-file-validate, appstreamcli,
-# zsyncmake (the zsync package) for the AppImage's .zsync.
+# glibc 2.35) so the binaries run on newer ones. RISC-V CI uses Ubuntu 24.04 (glibc 2.39)
+# and sets GLIBC_FLOOR accordingly. Set it for other build baselines too. Optional:
+# desktop-file-validate, appstreamcli, zsyncmake (the zsync package) for the AppImage's .zsync.
 #
 # Cross builds (CI: riscv64, deb/rpm/tar.gz): set CROSS_ARCH (riscv64), CROSS_TARGET (the Rust
 # triple), CROSS_COMPILE (binutils prefix, for strip) and optionally EMULATOR (e.g. qemu-riscv64)
@@ -23,7 +24,12 @@ set -euo pipefail
 HERE="$ROOT/packaging/linux"
 APP_ID=ai.storyteller.artcraft-launcher
 PKG=artcraft-launcher
-# sha256sum -c's line: <hash>  <path>, used for every downloaded artifact.
+# Verify a downloaded file's sha256 against its expected hex digest.
+check_sha256() {
+  local expected="$1"
+  local target="$2"
+  printf '%s  %s\n' "$expected" "$target" | sha256sum -c -
+}
 
 SKIP_BUILD=0
 FORMATS="appimage deb rpm tar"
@@ -102,6 +108,8 @@ if has deb || has rpm; then
   command -v nfpm >/dev/null || { echo "error: nfpm not found (https://nfpm.goreleaser.com/install/)" >&2; exit 1; }
   export VERSION
   export NFPM_ARCH="$DEB_ARCH"
+  # Match the build runner: Ubuntu 22.04 normally, Ubuntu 24.04 for RISC-V in CI.
+  export GLIBC_FLOOR="${GLIBC_FLOOR:-2.35}"
   # nfpm expands env vars in fields like `version` and `arch`, but not in `contents[].src`.
   sed "s|\${STAGE}|$STAGE|g" "$HERE/nfpm.yaml" >"$WORK/nfpm.yaml"
   for fmt in deb rpm; do
@@ -130,7 +138,6 @@ if has appimage; then
   fi
   APPDIR="$WORK/ArtCraftLauncher.AppDir"
   cp -R "$STAGE" "$APPDIR"
-  mv "$APPDIR/usr/share/doc" "$WORK/doc-unused"
   # AppRun is a script, not a symlink: it installs the .desktop entry and icons into
   # $XDG_DATA_HOME before launching, so Wayland compositors can resolve the window's
   # app_id to our icon instead of the generic Wayland logo (opt-out env in the
@@ -151,21 +158,21 @@ if has appimage; then
       download="$TOOL.download"
       curl --proto '=https' -fsSL -o "$download" \
         "https://github.com/AppImage/appimagetool/releases/download/$APPIMAGETOOL_VERSION/appimagetool-$ARCH.AppImage"
-      printf '%s  %s\n' "$APPIMAGETOOL_SHA256" "$download" | sha256sum -c -
+      check_sha256 "$APPIMAGETOOL_SHA256" "$download"
       chmod 755 "$download"
       mv "$download" "$TOOL"
     fi
-    printf '%s  %s\n' "$APPIMAGETOOL_SHA256" "$TOOL" | sha256sum -c -
+    check_sha256 "$APPIMAGETOOL_SHA256" "$TOOL"
   fi
   RUNTIME="$CARGO_TARGET_DIR/appimage-runtime-$APPIMAGE_RUNTIME_VERSION-$ARCH"
   if [[ ! -f "$RUNTIME" ]]; then
     download="$RUNTIME.download"
     curl --proto '=https' -fsSL -o "$download" \
       "https://github.com/AppImage/type2-runtime/releases/download/$APPIMAGE_RUNTIME_VERSION/runtime-$ARCH"
-    printf '%s  %s\n' "$APPIMAGE_RUNTIME_SHA256" "$download" | sha256sum -c -
+    check_sha256 "$APPIMAGE_RUNTIME_SHA256" "$download"
     mv "$download" "$RUNTIME"
   fi
-  printf '%s  %s\n' "$APPIMAGE_RUNTIME_SHA256" "$RUNTIME" | sha256sum -c -
+  check_sha256 "$APPIMAGE_RUNTIME_SHA256" "$RUNTIME"
   # Absolute, because appimagetool runs in $DIST below (CARGO_TARGET_DIR or APPIMAGETOOL may be
   # relative, e.g. target/agent-<name>).
   OUT="$(cd "$DIST" && pwd)/$BASENAME.AppImage"

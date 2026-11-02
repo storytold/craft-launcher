@@ -85,6 +85,31 @@ pub fn is_shell_meta(c: char) -> bool {
     matches!(c, '|' | '&' | ';' | '<' | '>' | '(' | ')' | '$' | '`' | '"' | '\'' | '^' | '!' | '*' | '%' | '{' | '}' | '[' | ']')
 }
 
+/// Whether `url` is a valid release page URL strictly for `repo` on GitHub:
+/// starts with `https://github.com/<repo>/releases`, contains no dot-segments (`.` or `..`),
+/// no percent-encoded path separators (`%2f`, `%5c`), no query/fragment/backslash, and
+/// satisfies [`safe_web_link`] (no shell metacharacters or control bytes, CWE-78).
+pub fn safe_release_html_url(repo: &str, url: &str) -> Option<String> {
+    if !safe_web_link(url) {
+        return None;
+    }
+    let releases = format!("https://github.com/{repo}/releases");
+    if url == releases {
+        return Some(url.to_string());
+    }
+    let rest = url.strip_prefix(&releases)?;
+    let path = rest.strip_prefix('/')?;
+    if path.is_empty() || path.contains(['?', '#', '\\']) {
+        return None;
+    }
+    for seg in path.split('/') {
+        if seg.is_empty() || seg == "." || seg == ".." || seg.contains("%2f") || seg.contains("%2F") || seg.contains("%5c") || seg.contains("%5C") {
+            return None;
+        }
+    }
+    Some(url.to_string())
+}
+
 /// The prefix every download of `repo` must start with.
 pub fn download_prefix(repo: &str) -> String {
     format!("https://github.com/{repo}/releases/download/")
@@ -139,6 +164,43 @@ pub fn parse_github_release(json: &str, repo: &str) -> Result<Release, String> {
     release_from_value(&v, repo)
 }
 
+/// Published releases offered for manual selection, in GitHub's order.
+/// Drafts and unparseable tags cannot be installed.
+pub fn parse_github_versions(json: &str, repo: &str) -> Result<Vec<Release>, String> {
+    let v: serde_json::Value = serde_json::from_str(json).map_err(|e| format!("unreadable answer from GitHub ({e})"))?;
+    let list = v.as_array().ok_or("unexpected answer from GitHub")?;
+    Ok(list
+        .iter()
+        .filter(|item| !item["draft"].as_bool().unwrap_or(false))
+        .filter_map(|item| release_from_value(item, repo).ok())
+        .filter(|r| r.version.is_some())
+        .take(100)
+        .collect())
+}
+
+/// A published, explicitly marked nightly build, not merely a beta or release candidate.
+pub fn is_nightly(release: &Release) -> bool {
+    release.prerelease && release.version.as_ref().is_some_and(|v| v.pre.as_str().split('.').any(|part| part.eq_ignore_ascii_case("nightly")))
+}
+
+/// Selects a published release. A nightly must be explicitly marked; a pin never falls back.
+pub fn has_published_checksum(r: &Release) -> bool {
+    r.sums_asset().is_some() || r.assets.iter().any(|a| a.sha256.is_some())
+}
+
+pub fn choose_version(releases: &[Release], track: &crate::protocol::VersionTrack) -> Option<Release> {
+    use crate::protocol::VersionTrack;
+    match track {
+        VersionTrack::Stable => releases
+            .iter()
+            .filter(|r| !r.prerelease && r.version.as_ref().is_some_and(version::is_stable))
+            .max_by(|a, b| a.version.cmp(&b.version))
+            .cloned(),
+        VersionTrack::Nightly => releases.iter().filter(|r| is_nightly(r) && has_published_checksum(r)).max_by_key(|r| r.published_at).cloned(),
+        VersionTrack::Pinned(tag) => releases.iter().find(|r| r.tag == *tag).cloned(),
+    }
+}
+
 /// Reads `GET /repos/<repo>/releases` and returns the newest stable (or any, with
 /// `allow_prerelease`) published release.
 pub fn parse_github_release_list(json: &str, repo: &str, allow_prerelease: bool) -> Result<Option<Release>, String> {
@@ -168,10 +230,7 @@ fn release_from_value(v: &serde_json::Value, repo: &str) -> Result<Release, Stri
     }
     let tag = v["tag_name"].as_str().filter(|t| !t.is_empty() && t.len() <= 64).ok_or("no release found")?.to_string();
     let releases = format!("https://github.com/{repo}/releases");
-    let html_url = v["html_url"]
-        .as_str()
-        .filter(|u| u.strip_prefix(&releases).is_some_and(|rest| rest.starts_with('/') && !rest.contains(['?', '#', '\\'])))
-        .map_or_else(|| releases.clone(), str::to_string);
+    let html_url = v["html_url"].as_str().and_then(|u| safe_release_html_url(repo, u)).unwrap_or_else(|| releases.clone());
     let prefix = download_prefix(repo);
     let assets = v["assets"]
         .as_array()
@@ -179,7 +238,10 @@ fn release_from_value(v: &serde_json::Value, repo: &str) -> Result<Release, Stri
             list.iter()
                 .filter_map(|a| {
                     let name = a["name"].as_str().filter(|n| valid_file_name(n))?.to_string();
-                    let url = a["browser_download_url"].as_str().filter(|u| download_url_under(u, &prefix))?.to_string();
+                    let url = a["browser_download_url"]
+                        .as_str()
+                        .filter(|u| download_url_under(u, &prefix) && *u == format!("{prefix}{tag}/{name}"))?
+                        .to_string();
                     let sha256 = a["digest"].as_str().and_then(|d| d.strip_prefix("sha256:")).filter(|h| is_hex64(h)).map(str::to_ascii_lowercase);
                     Some(Asset { name, size: a["size"].as_u64().unwrap_or(0), url, sha256 })
                 })
@@ -246,7 +308,9 @@ pub fn valid_file_name(name: &str) -> bool {
         && !name.chars().any(|c| c.is_control() || matches!(c, '/' | '\\' | ':' | '<' | '>' | '"' | '|' | '?' | '*'))
 }
 
-fn truncate(s: &str, max: usize) -> String {
+/// `s` cut to at most `max` bytes (on a char boundary) with an ellipsis, for text from a
+/// release or the feed shown in the UI.
+pub(crate) fn truncate(s: &str, max: usize) -> String {
     if s.len() <= max {
         return s.to_string();
     }
@@ -262,6 +326,14 @@ mod tests {
     use super::*;
 
     const REPO: &str = "storytold/photocraft";
+
+    #[test]
+    fn truncate_keeps_whole_characters() {
+        assert_eq!(truncate("short", 10), "short");
+        assert_eq!(truncate("abcdef", 3), "abc…");
+        // `é` is two bytes: cutting at 2 would split it, so the cut backs off to 1.
+        assert_eq!(truncate("aé", 2), "a…");
+    }
 
     #[test]
     fn only_plain_https_links_pass() {
@@ -326,6 +398,38 @@ mod tests {
     }
 
     #[test]
+    fn release_html_url_rejects_traversal_and_metacharacters() {
+        let repo = "storytold/photocraft";
+        assert_eq!(
+            safe_release_html_url(repo, "https://github.com/storytold/photocraft/releases/tag/v1.0.0"),
+            Some("https://github.com/storytold/photocraft/releases/tag/v1.0.0".to_string())
+        );
+        assert_eq!(
+            safe_release_html_url(repo, "https://github.com/storytold/photocraft/releases"),
+            Some("https://github.com/storytold/photocraft/releases".to_string())
+        );
+        for bad in [
+            "https://github.com/storytold/photocraft/releases/../../attacker/repo/releases/tag/v1",
+            "https://github.com/storytold/photocraft/releases/tag/v1/../../../attacker/repo",
+            "https://github.com/storytold/photocraft/releases/tag/v1|calc.exe",
+            "https://github.com/storytold/photocraft/releases/tag/v1%2f..%2f..",
+            "https://github.com/storytold/photocraft/releases/tag/v1?x=1",
+            "https://github.com/storytold/photocraft/releases/tag/v1#hash",
+            "https://github.com/storytold/other/releases/tag/v1.0.0",
+            "http://github.com/storytold/photocraft/releases/tag/v1",
+        ] {
+            assert!(safe_release_html_url(repo, bad).is_none(), "should reject: {bad}");
+        }
+    }
+
+    #[test]
+    fn selected_release_cannot_download_an_asset_from_a_different_tag() {
+        let wrong_tag = "https://github.com/storytold/photocraft/releases/download/v9.0.0/photocraft-0.5.0-macos-universal.dmg";
+        let r = parse_github_release(&api_json(wrong_tag), REPO).unwrap();
+        assert!(r.assets.is_empty());
+    }
+
+    #[test]
     fn traversal_cannot_escape_the_repository() {
         // Raw-prefix matches but the interpreted path climbs into another repository (CWE-180).
         for url in [
@@ -344,6 +448,53 @@ mod tests {
         // A plain, confined download still passes.
         let prefix = download_prefix(REPO);
         assert!(download_url_under("https://github.com/storytold/photocraft/releases/download/v0.5.0/photocraft-0.5.0-macos-universal.dmg", &prefix));
+    }
+
+    #[test]
+    fn version_choices_exclude_drafts_and_distinguish_nightly_from_betas() {
+        let json = r#"[
+            {"tag_name":"v0.8.0-nightly.20261028","prerelease":true,"draft":false,"assets":[]},
+            {"tag_name":"v0.8.0-beta.1","prerelease":true,"draft":false,"assets":[]},
+            {"tag_name":"v0.7.0","prerelease":false,"draft":false,"assets":[]},
+            {"tag_name":"v0.9.0-nightly.20261029","prerelease":true,"draft":true,"assets":[]},
+            {"tag_name":"not-a-version","prerelease":false,"draft":false,"assets":[]}]"#;
+        let choices = parse_github_versions(json, REPO).unwrap();
+        assert_eq!(choices.iter().map(|r| r.tag.as_str()).collect::<Vec<_>>(), ["v0.8.0-nightly.20261028", "v0.8.0-beta.1", "v0.7.0"]);
+        assert!(is_nightly(&choices[0]));
+        assert!(!is_nightly(&choices[1]));
+        assert!(!is_nightly(&choices[2]));
+    }
+
+    #[test]
+    fn a_nightly_without_published_checksums_is_unavailable() {
+        let mut nightly = Release {
+            tag: "v1.1.0-nightly.20261028".into(),
+            version: crate::version::parse("v1.1.0-nightly.20261028"),
+            prerelease: true,
+            ..Default::default()
+        };
+        nightly.assets.push(Asset { name: "app.zip".into(), size: 3, url: "https://example.invalid/app.zip".into(), sha256: None });
+        assert!(choose_version(&[nightly], &crate::protocol::VersionTrack::Nightly).is_none());
+    }
+
+    #[test]
+    fn selection_follows_nightly_or_pins_an_older_release_without_beta_fallback() {
+        use crate::protocol::VersionTrack;
+        let json = r#"[
+            {"tag_name":"v0.8.0-nightly.20261028","prerelease":true,"published_at":"2026-10-28T10:00:00Z"},
+            {"tag_name":"v0.8.0-beta.1","prerelease":true,"published_at":"2026-10-28T12:00:00Z"},
+            {"tag_name":"v0.8.0-nightly.20261027","prerelease":true,"published_at":"2026-10-27T10:00:00Z"},
+            {"tag_name":"v0.7.0","prerelease":false},
+            {"tag_name":"v0.6.0","prerelease":false}]"#;
+        let mut list = parse_github_versions(json, REPO).unwrap();
+        for r in list.iter_mut().filter(|r| is_nightly(r)) {
+            r.assets.push(Asset { name: "app.zip".into(), size: 3, url: "https://example.invalid/app.zip".into(), sha256: Some(HASH.into()) });
+        }
+        assert_eq!(choose_version(&list, &VersionTrack::Stable).unwrap().tag, "v0.7.0");
+        assert_eq!(choose_version(&list, &VersionTrack::Nightly).unwrap().tag, "v0.8.0-nightly.20261028");
+        assert_eq!(choose_version(&list, &VersionTrack::Pinned("v0.6.0".into())).unwrap().tag, "v0.6.0");
+        assert!(choose_version(&list, &VersionTrack::Pinned("v9.0.0".into())).is_none());
+        assert!(choose_version(&list[3..], &VersionTrack::Nightly).is_none());
     }
 
     #[test]

@@ -73,11 +73,18 @@ fn resolve_missing(path: &Path) -> Result<PathBuf, String> {
     Err("The installation folder has no existing ancestor.".into())
 }
 
+/// Whether two paths name the same Windows folder or file: case, trailing separators and the
+/// verbatim `\\?\` form that `canonicalize` returns don't count.
 fn same_windows_path(left: &Path, right: &Path) -> bool {
+    /// `canonicalize` writes `\\?\C:\…` and, for a network share, `\\?\UNC\server\share\…`;
+    /// Windows reads either prefix in any case.
     fn normalized(path: &Path) -> String {
-        let text = path.to_string_lossy();
-        let text = text.strip_prefix(r"\\?\").unwrap_or(&text);
-        text.trim_end_matches(['\\', '/']).to_lowercase()
+        let text = path.to_string_lossy().to_lowercase();
+        let text = match text.strip_prefix(r"\\?\unc\") {
+            Some(share) => format!(r"\\{share}"),
+            None => text.strip_prefix(r"\\?\").unwrap_or(&text).to_string(),
+        };
+        text.trim_end_matches(['\\', '/']).to_string()
     }
     normalized(left) == normalized(right)
 }
@@ -126,7 +133,8 @@ fn extract(file: &Path, destination: &Path) -> Result<(Vec<PathBuf>, Vec<PathBuf
         let mut entry = archive.by_index(index).map_err(|e| e.to_string())?;
         let relative = entry.enclosed_name().ok_or("The portable ZIP contains an unsafe path.")?;
         if relative.components().any(|c| !matches!(c, Component::Normal(_)))
-            || entry.name().contains(['\\', ':'])
+            // zip 9: a name that doesn't decode is as unsafe as one with `\` or `:`.
+            || entry.name().map_or(true, |name| name.contains(['\\', ':']))
             || entry.unix_mode().is_some_and(|mode| mode & 0o170000 == 0o120000)
         {
             return Err("The portable ZIP contains an unsafe path or link.".into());
@@ -468,6 +476,16 @@ fn single_top_folder(files: &[PathBuf]) -> Option<PathBuf> {
 mod tests {
     use super::*;
     use std::io::Write;
+
+    /// A folder on a network share is the same folder after `canonicalize`.
+    #[cfg(windows)]
+    #[test]
+    fn verbatim_paths_match_their_plain_form() {
+        assert!(same_windows_path(Path::new(r"C:\Apps\ArtCraft"), Path::new(r"\\?\C:\apps\artcraft\")));
+        assert!(same_windows_path(Path::new(r"\\server\share\Apps\ArtCraft"), Path::new(r"\\?\UNC\server\share\Apps\ArtCraft")));
+        assert!(same_windows_path(Path::new(r"\\?\unc\server\share\Apps\ArtCraft"), Path::new(r"\\Server\Share\Apps\ArtCraft")));
+        assert!(!same_windows_path(Path::new(r"C:\Apps\ArtCraft"), Path::new(r"\\?\D:\Apps\ArtCraft")));
+    }
 
     /// Previous files left in the staging folder by a failed update are never cleared by the next one.
     #[test]

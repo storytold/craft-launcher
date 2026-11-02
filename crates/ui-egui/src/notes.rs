@@ -67,7 +67,7 @@ fn show_lines(ui: &mut Ui, notes: &str, scale: f32) {
     }
     if !rest.is_empty() {
         let label = crate::i18n::fmt(tl!("Show {n} more changes"), &[("n", &bullets.saturating_sub(SHOWN).to_string())]);
-        egui::CollapsingHeader::new(label).id_salt(ui.id().with(("more-notes", notes.len()))).show(ui, |ui| {
+        egui::CollapsingHeader::new(label).id_salt(ui.scope_id().with(("more-notes", notes.len()))).show(ui, |ui| {
             for line in rest {
                 draw(ui, line, &t, scale);
             }

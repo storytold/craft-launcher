@@ -83,10 +83,11 @@ pub fn jpeg_dimensions(bytes: &[u8]) -> Option<(u16, u16)> {
         return None;
     }
     let mut i = 2; // past the SOI (FF D8).
+    let mut dims = None;
     while i + 1 < bytes.len() {
         // Markers are FF, with any number of FF fill bytes before the type byte.
         if bytes[i] != 0xFF {
-            return None;
+            break;
         }
         let mut j = i;
         while j < bytes.len() && bytes[j] == 0xFF {
@@ -97,21 +98,32 @@ pub fn jpeg_dimensions(bytes: &[u8]) -> Option<(u16, u16)> {
         match marker {
             // Standalone markers with no length: RSTn, SOI, EOI, TEM.
             0x01 | 0xD0..=0xD9 => continue,
+            // SOS (Start of Scan): marker headers end, entropy-coded scan data begins.
+            0xDA => break,
             _ => {}
         }
         let len = u16::from_be_bytes([*bytes.get(i)?, *bytes.get(i + 1)?]) as usize;
         if len < 2 {
             return None;
         }
-        // SOF0..SOF15, excluding DHT (C4), DAC (CC) and the RSTn range already handled.
-        if matches!(marker, 0xC0..=0xCF) && !matches!(marker, 0xC4 | 0xC8 | 0xCC) {
+        // Only SOF0 (0xC0: baseline), SOF1 (0xC1: extended sequential), and SOF2 (0xC2: progressive)
+        // are supported by standard image rendering decoders.
+        if matches!(marker, 0xC0..=0xC2) {
+            if dims.is_some() {
+                // Ambiguous / multiple frame markers: reject to prevent frame smuggling (CWE-789).
+                return None;
+            }
             let h = u16::from_be_bytes([*bytes.get(i + 3)?, *bytes.get(i + 4)?]);
             let w = u16::from_be_bytes([*bytes.get(i + 5)?, *bytes.get(i + 6)?]);
-            return Some((w, h));
+            dims = Some((w, h));
+        } else if matches!(marker, 0xC3 | 0xC5..=0xCF) && !matches!(marker, 0xC4 | 0xC8 | 0xCC) {
+            // Unsupported frame marker (e.g. lossless 0xC3): the rendering decoder will skip it or fail,
+            // so accepting its dimensions would let a subsequent large frame bypass the budget (CWE-789).
+            return None;
         }
         i += len;
     }
-    None
+    dims
 }
 
 /// Whether `bytes` is a JPEG whose declared dimensions are within [`MAX_SCREENSHOT_PIXELS`], so it
@@ -127,12 +139,11 @@ pub fn screenshot_within_budget(bytes: &[u8]) -> bool {
 /// Where every Craft App runs (getartcraft.com lists the same for each of them).
 const PLATFORMS: &str = "macOS, Windows, Linux, FreeBSD, web";
 
-pub const DETAILS: [AppDetails; 13] = [
+pub const DETAILS: [AppDetails; 16] = [
     AppDetails {
         id: "photocraft",
         headline: "The image editor you already know how to use.",
-        about: "Layers, masks, adjustment layers, layer styles, type, vectors and brushes in a native app \
-            written in Rust. Open source, offline, and yours.\n\n\
+        about: "Layers, masks, adjustment layers, layer styles, type, vectors and brushes in a native app. Open source, offline, and yours.\n\n\
             PhotoCraft keeps the menus, shortcuts and panels your hands already know, so there is \
             nothing to relearn.",
         features: &[
@@ -152,7 +163,7 @@ pub const DETAILS: [AppDetails; 13] = [
     },
     AppDetails {
         id: "vectorcraft",
-        headline: "Vector illustration, reimagined in pure Rust.",
+        headline: "Vector illustration, with familiar tools and editable effects.",
         about: "A native vector illustration app with the pen, panels and shortcuts illustrators expect. \
                 Open source, and it also runs in a browser.",
         features: &[
@@ -180,7 +191,7 @@ pub const DETAILS: [AppDetails; 13] = [
     AppDetails {
         id: "filmcraft",
         headline: "Professional video editing, rebuilt from scratch.",
-        about: "A native video editor written in pure Rust, with source and program monitors, a real timeline and \
+        about: "A native video editor with source and program monitors, a real timeline and \
                 every trim mode.",
         features: &[
             feature("A timeline you already know", "Source and program monitors, three-point editing, every trim mode and J/K/L trimming."),
@@ -203,13 +214,13 @@ pub const DETAILS: [AppDetails; 13] = [
     AppDetails {
         id: "lightcraft",
         headline: "Your photos. Your pixels. Your machine.",
-        about: "A fast photo library and non-destructive raw developer, written from scratch in pure Rust. \
+        about: "A fast photo library and non-destructive raw developer. \
                 No account, no cloud, no telemetry and no subscription.",
         features: &[
             feature("Non-destructive by design", "A wide-gamut, 32-bit float pipeline that never touches your originals."),
             feature("Every control you reach for", "Light, color, effects, tone curve, a color mixer, color grading wheels and built-in presets."),
             feature("Precise masking", "Brush, gradient and range masks, plus sky, subject and background masks."),
-            feature("Native raw decoding", "Pure-Rust decoders for the main camera raw formats: DNG, CR2, ARW, NEF, RAF, RW2, PEF and ORF."),
+            feature("Native raw decoding", "Support for the main camera raw formats: DNG, CR2, ARW, NEF, RAF, RW2, PEF and ORF."),
             feature("A library that keeps up", "Albums, ratings, flags and search, with grids that stay smooth on large catalogs."),
             feature("Instant feedback", "The GPU pipeline updates the preview as you move a slider, even on large raw files."),
         ],
@@ -224,8 +235,7 @@ pub const DETAILS: [AppDetails; 13] = [
     AppDetails {
         id: "pdfcraft",
         headline: "The open-source PDF workbench.",
-        about: "Read, organize, combine, split and secure PDFs in a fast, native app written in Rust from the \
-                ground up. No account, no telemetry and no cloud.",
+        about: "Read, organize, combine, split and secure PDFs in a fast, native app. No account, no telemetry and no cloud.",
         features: &[
             feature("Faithful rendering", "World scripts, vertical Japanese, color emoji and transparency."),
             feature("Search as you type", "Instant find, and text selection that follows the document's real reading order."),
@@ -239,7 +249,7 @@ pub const DETAILS: [AppDetails; 13] = [
     },
     AppDetails {
         id: "effectcraft",
-        headline: "Motion graphics and visual effects, in pure Rust.",
+        headline: "Motion graphics and visual effects.",
         about: "A native compositor with compositions, layers, keyframes, effects, expressions, 3D cameras and \
                 lights, and a render queue. Young, moving fast, and already usable.",
         features: &[
@@ -269,7 +279,7 @@ pub const DETAILS: [AppDetails; 13] = [
     },
     AppDetails {
         id: "designcraft",
-        headline: "Page layout and publishing, rebuilt in pure Rust.",
+        headline: "Page layout and publishing.",
         about: "A native layout app with spreads, parent pages, threaded stories, styles, swatches, text wrap and \
                 a paragraph composer. No subscription, no license server and no telemetry.",
         features: &[
@@ -289,7 +299,7 @@ pub const DETAILS: [AppDetails; 13] = [
     AppDetails {
         id: "wordcraft",
         headline: "The familiar word processor, native and offline.",
-        about: "A word processor with the ribbon, shortcuts and behavior you already know, written in Rust. \
+        about: "A word processor with the ribbon, shortcuts and behavior you already know. \
                 Open source, and built from public specifications.",
         features: &[
             feature(
@@ -302,7 +312,7 @@ pub const DETAILS: [AppDetails; 13] = [
             ),
             feature("Fast", "Paragraph layout is cached, so typing stays responsive even in long documents."),
             feature("Private", "Spelling, grammar and everything else work offline."),
-            feature("Everywhere", "One Rust codebase for macOS, Windows, Linux, BSD and the web."),
+            feature("Everywhere", "Work on macOS, Windows, Linux, BSD and the web."),
             feature(
                 "Built for agents",
                 "Every action is a command, driven from the ribbon, shortcuts, a command-line tool, a JSON control channel or an MCP server.",
@@ -318,8 +328,8 @@ pub const DETAILS: [AppDetails; 13] = [
     },
     AppDetails {
         id: "deckcraft",
-        headline: "Presentations, rebuilt in Rust.",
-        about: "A presentation app with slide masters, shapes, animations and a presenter view, written in Rust. \
+        headline: "Create slides, tell stories and present.",
+        about: "A presentation app with slide masters, shapes, animations and a presenter view. \
                 In alpha, heading for beta.",
         features: &[
             feature("Make decks", "Slide masters and layouts with placeholders that inherit formatting, themes, sections, notes and comments."),
@@ -346,8 +356,7 @@ pub const DETAILS: [AppDetails; 13] = [
     AppDetails {
         id: "gridcraft",
         headline: "Spreadsheets you already know how to use.",
-        about: "A spreadsheet with the ribbon, formula bar, sheet tabs and shortcuts you know, on a calculation engine \
-                written in Rust. No subscription, no license server and no telemetry.",
+        about: "A spreadsheet with the ribbon, formula bar, sheet tabs and shortcuts you know. No subscription, no license server and no telemetry.",
         features: &[
             feature(
                 "Familiar",
@@ -366,7 +375,7 @@ pub const DETAILS: [AppDetails; 13] = [
                 "Agent-native",
                 "Every ribbon button, menu item, dialog and keystroke is a command, available over a JSON control channel, an MCP server or the CLI.",
             ),
-            feature("Everywhere", "One Rust codebase for the desktop and the web."),
+            feature("Everywhere", "Work on the desktop and the web."),
         ],
         shots: &[
             shot("hero", "A quarterly sales dashboard"),
@@ -378,7 +387,7 @@ pub const DETAILS: [AppDetails; 13] = [
     },
     AppDetails {
         id: "cadcraft",
-        headline: "Computer-aided drafting, in pure Rust.",
+        headline: "Computer-aided drafting, with a familiar workflow.",
         about: "A drafting app with the command line, object snaps and workflow that drafters already know. Free, with no \
                 account and no subscription. In early, fast development.",
         features: &[
@@ -388,9 +397,9 @@ pub const DETAILS: [AppDetails; 13] = [
             ),
             feature(
                 "Open files",
-                "Reads and writes DXF natively (R12 through 2018) and opens and saves DWG (R13 through 2018) with the open-source acadrust library. Exports SVG and PNG.",
+                "Reads and writes DXF natively (R12 through 2018) and opens and saves DWG (R13 through 2018). Exports SVG and PNG.",
             ),
-            feature("Fast and native", "Pure Rust and egui, with no Electron and no web view."),
+            feature("Fast and native", "A responsive, native drafting workspace."),
             feature(
                 "A full drafting toolset",
                 "Draw, modify, dimension, hatch and block commands, layers with a properties manager, paper-space layouts and PDF plotting.",
@@ -402,7 +411,7 @@ pub const DETAILS: [AppDetails; 13] = [
     },
     AppDetails {
         id: "soundcraft",
-        headline: "Recording, editing and mixing, in Rust.",
+        headline: "Record, edit and mix your audio.",
         about: "A digital audio workstation that follows the workflow audio engineers already know: an Edit window for \
                 arranging and editing, and a Mix window for balancing. Pre-alpha.",
         features: &[
@@ -433,7 +442,7 @@ pub const DETAILS: [AppDetails; 13] = [
     },
     AppDetails {
         id: "figcraft",
-        headline: "Interface design and prototyping, in pure Rust.",
+        headline: "Interface design and prototyping.",
         about: "Design screens, components and prototypes in a native app that opens instantly and works offline, \
                 with no account and no telemetry. Early alpha.",
         features: &[
@@ -458,6 +467,56 @@ pub const DETAILS: [AppDetails; 13] = [
                 "Your files",
                 "Plain .figcraft files on your own disk. SVG, PNG, JPEG, WebP and PDF in and out, and .fig files open, best effort.",
             ),
+        ],
+        shots: &[],
+        platforms: PLATFORMS,
+    },
+    AppDetails {
+        id: "texturecraft",
+        headline: "Paint textures on 3D models.",
+        about: "Paint materials on 3D models and export textures.",
+        features: &[
+            feature("Materials", "Paint materials on 3D models and export textures."),
+            feature("Mesh maps", "Bake mesh maps and use smart materials."),
+        ],
+        shots: &[],
+        platforms: PLATFORMS,
+    },
+    AppDetails {
+        id: "craft-anything",
+        headline: "See how any website, app or game works, then build your own.",
+        about: "Point it at a target and say what you want. It studies the original with real inspection tools, has a \
+                coding agent build a new project in the stack you ask for, checks the result against the original and \
+                refines it. Open source and clean-room.",
+        features: &[
+            feature(
+                "Study anything",
+                "Websites, desktop apps, phone apps, games and files: find out how they're built, with the evidence behind every answer.",
+            ),
+            feature("Build your own", "Say what you want and a coding agent builds a new project in the language or engine you name."),
+            feature(
+                "Checked, not guessed",
+                "Every build is compared with the original, at three screen widths for a page, and refined until it's close.",
+            ),
+            feature("Agent-ready", "Every tool is a CLI command and an MCP tool, and no AI is needed just to inspect."),
+        ],
+        shots: &[],
+        platforms: PLATFORMS,
+    },
+    AppDetails {
+        id: "solidcraft",
+        headline: "Parametric 3D CAD, with editable sketches and solids.",
+        about: "A parametric solid modeller by Tangency Labs. Sketch, constrain and build solids on an editable feature \
+                timeline: change a dimension and the model rebuilds. Early, but usable for simple parts. Open source, \
+                and it can be driven by AI agents through its MCP server.",
+        features: &[
+            feature(
+                "Sketches and constraints",
+                "Lines, arcs, splines and text, solved by SolidCraft's own constraint solver, with parameter-driven dimensions.",
+            ),
+            feature("Features", "Extrude, revolve, sweep, loft, fillet, chamfer, shell, holes, threads and patterns on a parametric timeline."),
+            feature("Files", "STEP, IGES, 3MF, STL, OBJ and glTF in and out where supported, and .sc designs."),
+            feature("Desktop, web and agents", "A desktop app, a browser app, a headless CLI and an MCP server, all running the same commands."),
         ],
         shots: &[],
         platforms: PLATFORMS,
@@ -552,6 +611,25 @@ mod tests {
         // Not a JPEG, or no frame header present.
         assert_eq!(jpeg_dimensions(b"<html>"), None);
         assert_eq!(jpeg_dimensions(&[0xFF, 0xD8]), None);
+
+        // Unsupported C3 frame marker is rejected (CWE-789).
+        let mut c3 = vec![0xFF, 0xD8, 0xFF, 0xC3, 0x00, 0x11, 0x08];
+        c3.extend_from_slice(&100u16.to_be_bytes());
+        c3.extend_from_slice(&100u16.to_be_bytes());
+        c3.push(0x03);
+        assert_eq!(jpeg_dimensions(&c3), None);
+
+        // Multiple / conflicting SOF markers are rejected.
+        let mut multi = vec![0xFF, 0xD8];
+        multi.extend_from_slice(&[0xFF, 0xC0, 0x00, 0x0B, 0x08]);
+        multi.extend_from_slice(&100u16.to_be_bytes());
+        multi.extend_from_slice(&100u16.to_be_bytes());
+        multi.extend_from_slice(&[0x01, 0x00, 0x00, 0x00]);
+        multi.extend_from_slice(&[0xFF, 0xC0, 0x00, 0x0B, 0x08]);
+        multi.extend_from_slice(&9000u16.to_be_bytes());
+        multi.extend_from_slice(&9000u16.to_be_bytes());
+        multi.extend_from_slice(&[0x01, 0x00, 0x00, 0x00]);
+        assert_eq!(jpeg_dimensions(&multi), None);
     }
 
     #[test]

@@ -2,7 +2,6 @@
 
 use std::io::{Read, Write};
 use std::path::Path;
-use std::sync::atomic::{AtomicU8, Ordering};
 
 use artcraft_launcher_core::protocol::{CANCELLED, PAUSED};
 use std::time::Duration;
@@ -12,6 +11,8 @@ use sha2::{Digest, Sha256};
 const USER_AGENT: &str = concat!("ArtCraftLauncher/", env!("CARGO_PKG_VERSION"));
 /// Largest JSON or text answer we read.
 const MAX_SMALL: u64 = 4 << 20;
+/// Largest GitHub API answer we read: 100 releases of an app with 49 assets are about 10 MB.
+const MAX_API: u64 = 16 << 20;
 
 /// What a GET of a small resource produced.
 #[derive(Debug, PartialEq, Eq)]
@@ -36,6 +37,8 @@ pub struct Http {
     feed: ureq::Agent,
     no_redirect: ureq::Agent,
     download: ureq::Agent,
+    direct: ureq::Agent,
+    direct_download: ureq::Agent,
     token: Option<String>,
 }
 
@@ -47,6 +50,15 @@ pub struct FeedError {
     pub throttled: bool,
     /// The server's `Retry-After`, in seconds.
     pub retry_after: Option<i64>,
+}
+
+/// `http://<loopback host>:<port>` and an optional path: the host must be exactly 127.0.0.1,
+/// localhost or [::1] (no `user@` in front of another host), with a numeric port.
+pub fn is_loopback(url: &str) -> bool {
+    let Some(rest) = url.strip_prefix("http://") else { return false };
+    let authority = rest.split(['/', '?', '#']).next().unwrap_or_default();
+    let Some((host, port)) = authority.rsplit_once(':') else { return false };
+    matches!(host, "127.0.0.1" | "localhost" | "[::1]") && !port.is_empty() && port.parse::<u16>().is_ok()
 }
 
 impl Http {
@@ -95,10 +107,29 @@ impl Http {
             .user_agent(USER_AGENT)
             .build()
             .new_agent();
+        let direct = ureq::Agent::config_builder()
+            .proxy(None)
+            .tls_config(tls())
+            .timeout_connect(Some(Duration::from_secs(5)))
+            .timeout_global(Some(Duration::from_secs(20)))
+            .http_status_as_error(false)
+            .user_agent(USER_AGENT)
+            .build()
+            .new_agent();
+        let direct_download = ureq::Agent::config_builder()
+            .proxy(None)
+            .tls_config(tls())
+            .timeout_connect(Some(Duration::from_secs(20)))
+            .timeout_recv_response(Some(Duration::from_secs(60)))
+            .timeout_recv_body(Some(ATTEMPT_BODY_TIME))
+            .http_status_as_error(false)
+            .user_agent(USER_AGENT)
+            .build()
+            .new_agent();
         // An optional token raises GitHub's limit from 60 to 5000 requests an hour. Only ever sent
         // to api.github.com.
         let token = std::env::var("ARTCRAFT_LAUNCHER_GITHUB_TOKEN").ok().map(|t| t.trim().to_string()).filter(|t| !t.is_empty());
-        Ok(Self { small, feed, no_redirect, download, token })
+        Ok(Self { small, feed, no_redirect, download, direct, direct_download, token })
     }
 
     /// GET a GitHub API resource, revalidating with `etag` when given.
@@ -118,7 +149,7 @@ impl Http {
         match status {
             200 => {
                 let etag = header("etag");
-                let text = read_text_capped(&mut resp, MAX_SMALL).map_err(|e| format!("unreadable answer from GitHub ({e})"))?;
+                let text = read_text_capped(&mut resp, MAX_API).map_err(|e| format!("unreadable answer from GitHub ({e})"))?;
                 Ok(Fetched::Body { text, etag })
             }
             304 => Ok(Fetched::NotModified),
@@ -139,8 +170,9 @@ impl Http {
     /// ArtCraft's release feed, or why it couldn't be read. Never takes more than ~10 seconds.
     pub fn get_feed(&self, url: &str) -> Result<String, FeedError> {
         let failed = |why: String| FeedError { why, throttled: false, retry_after: None };
+        let agent = if is_loopback(url) { &self.direct } else { &self.feed };
         let mut resp =
-            self.feed.get(url).header("Accept", "application/json").call().map_err(|e| failed(format!("couldn't reach {} ({e})", host(url))))?;
+            agent.get(url).header("Accept", "application/json").call().map_err(|e| failed(format!("couldn't reach {} ({e})", host(url))))?;
         // Seconds only; an HTTP date falls back to our own backoff.
         let retry_after = resp.headers().get("retry-after").and_then(|v| v.to_str().ok()).and_then(|r| r.trim().parse::<i64>().ok());
         match resp.status().as_u16() {
@@ -151,7 +183,8 @@ impl Http {
 
     /// GET a small text file (following redirects).
     pub fn get_text(&self, url: &str) -> Result<Option<String>, String> {
-        let mut resp = self.small.get(url).call().map_err(|e| format!("couldn't reach {} ({e})", host(url)))?;
+        let agent = if is_loopback(url) { &self.direct } else { &self.small };
+        let mut resp = agent.get(url).call().map_err(|e| format!("couldn't reach {} ({e})", host(url)))?;
         match resp.status().as_u16() {
             200 => read_text_capped(&mut resp, MAX_SMALL).map(Some).map_err(|e| format!("unreadable answer ({e})")),
             404 => Ok(None),
@@ -163,7 +196,8 @@ impl Http {
     /// `max` bytes is refused: by its announced length before a byte is read, and by a hard limit
     /// on the body when the length wasn't announced or was wrong.
     pub fn get_bytes(&self, url: &str, max: usize) -> Result<Option<Vec<u8>>, String> {
-        let mut resp = self.small.get(url).call().map_err(|e| format!("couldn't reach {} ({e})", host(url)))?;
+        let agent = if is_loopback(url) { &self.direct } else { &self.small };
+        let mut resp = agent.get(url).call().map_err(|e| format!("couldn't reach {} ({e})", host(url)))?;
         match resp.status().as_u16() {
             200 => {
                 let announced = resp.headers().get("content-length").and_then(|v| v.to_str().ok()).and_then(|v| v.parse::<u64>().ok());
@@ -171,9 +205,9 @@ impl Http {
                 if announced.is_some_and(|n| n > max as u64) {
                     return Err(too_big());
                 }
-                // ureq errors once the limit is reached, so ask for one byte more than we accept.
-                let body = resp.body_mut().with_config().limit(max as u64 + 1).read_to_vec().map_err(|e| format!("unreadable answer ({e})"))?;
-                if body.len() > max { Err(too_big()) } else { Ok(Some(body)) }
+                let body = read_bytes_capped(&mut resp, max)
+                    .map_err(|e| if e.contains("larger than") { too_big() } else { format!("unreadable answer ({e})") })?;
+                Ok(Some(body))
             }
             404 => Ok(None),
             s => Err(format!("{} answered HTTP {s}", host(url))),
@@ -285,7 +319,8 @@ impl Http {
     fn attempt(&self, url: &str, part: &Path, have: u64, size: u64, stop: &Stop, progress: &mut dyn FnMut(Transfer)) -> Result<(), AttemptError> {
         let retry = |error: String, progressed: bool| AttemptError::Retry { error, progressed };
         // Binaries are already compressed; ask for the bytes exactly as published.
-        let mut req = self.download.get(url).header("Accept-Encoding", "identity");
+        let agent = if is_loopback(url) { &self.direct_download } else { &self.download };
+        let mut req = agent.get(url).header("Accept-Encoding", "identity");
         if have > 0 {
             req = req.header("Range", &format!("bytes={have}-"));
         }
@@ -312,6 +347,16 @@ impl Http {
         if size > 0 && total != size {
             return Err(AttemptError::Fatal(format!("the server offered {total} bytes, but the release lists {size}")));
         }
+        if let Some(enc) = header("content-encoding")
+            && !enc.eq_ignore_ascii_case("identity")
+        {
+            return Err(AttemptError::Fatal(format!("unexpected Content-Encoding '{enc}' on binary artifact download")));
+        }
+        let limit = if total > 0 { total } else { MAX_DOWNLOAD };
+        let appends = status == 206 && start == have;
+        if appends && have > limit {
+            return Err(AttemptError::Fatal(format!("the download exceeds the permitted size of {limit} bytes")));
+        }
         // Open the part file at the right place: a 200 restarts it, a 206 continues it.
         let mut file = match (status, start) {
             (206, s) if s == have => std::fs::OpenOptions::new().append(true).open(part),
@@ -321,7 +366,7 @@ impl Http {
         let mut done = if status == 206 && start == have { have } else { 0 };
         // We check the length and checksum ourselves; the reader's limit is only a backstop
         // against an endless body. (ureq errors once the limit is *reached*, so leave headroom.)
-        let remaining = if total > 0 { total.saturating_sub(done) } else { MAX_DOWNLOAD };
+        let remaining = limit.saturating_sub(done);
         let mut reader = resp.body_mut().with_config().limit(remaining.saturating_add(1 << 20)).reader();
         let mut buf = vec![0u8; 256 * 1024];
         let at_start = done;
@@ -338,12 +383,13 @@ impl Http {
             if n == 0 {
                 break;
             }
+            let next_done = done.saturating_add(n as u64);
+            if next_done > limit {
+                return Err(AttemptError::Fatal(format!("the server sent more than the permitted size of {limit} bytes")));
+            }
             let chunk = buf.get(..n).ok_or_else(|| AttemptError::Fatal("read past the buffer".into()))?;
             file.write_all(chunk).map_err(|e| AttemptError::Fatal(format!("couldn't save the download ({e}). Is the disk full?")))?;
-            done = done.saturating_add(n as u64);
-            if total > 0 && done > total {
-                return Err(retry("the server sent more than the file's size".into(), false));
-            }
+            done = next_done;
             progress(Transfer::Bytes { done, total });
         }
         file.sync_all().map_err(|e| AttemptError::Fatal(format!("couldn't save the download ({e})")))?;
@@ -375,32 +421,9 @@ pub enum Transfer {
     },
 }
 
-/// Asks a running download to pause (keeping its partial file) or cancel (deleting it).
-#[derive(Debug, Default)]
-pub struct Stop(AtomicU8);
-
-impl Stop {
-    const RUN: u8 = 0;
-    const PAUSE: u8 = 1;
-    const CANCEL: u8 = 2;
-
-    pub fn pause(&self) {
-        let _ = self.0.compare_exchange(Self::RUN, Self::PAUSE, Ordering::SeqCst, Ordering::SeqCst);
-    }
-
-    pub fn cancel(&self) {
-        self.0.store(Self::CANCEL, Ordering::SeqCst);
-    }
-
-    /// `Err(PAUSED | CANCELLED)` once asked to stop.
-    pub fn check(&self) -> Result<(), String> {
-        match self.0.load(Ordering::SeqCst) {
-            Self::PAUSE => Err(PAUSED.into()),
-            Self::CANCEL => Err(CANCELLED.into()),
-            _ => Ok(()),
-        }
-    }
-}
+/// Asks a running download to pause (keeping its partial file) or cancel (deleting it). Shared with
+/// `craft_update`, so a self-update sees the same pause and cancel.
+pub use craft_update::Stop;
 
 /// Whether a file on disk is the published one: its SHA-256 matches.
 fn matches_published(path: &Path, sha256: &str) -> bool {
@@ -543,8 +566,9 @@ fn refused_until(status: u16, remaining: Option<&str>, reset: Option<i64>, retry
     (status == 429).then_some(Some(now.saturating_add(60)))
 }
 
+/// The host of `url` for error messages, or all of it when it has no scheme.
 fn host(url: &str) -> &str {
-    url.split("://").nth(1).and_then(|r| r.split('/').next()).unwrap_or(url)
+    url.split_once("://").and_then(|(_, rest)| rest.split('/').next()).unwrap_or(url)
 }
 
 /// Reads a text body, rejecting one whose *decoded* size exceeds `max`.
@@ -564,12 +588,30 @@ fn read_text_capped(resp: &mut ureq::http::Response<ureq::Body>, max: u64) -> Re
     Ok(text)
 }
 
+/// Reads a binary body, rejecting one whose decoded size exceeds `max` (CWE-409).
+fn read_bytes_capped(resp: &mut ureq::http::Response<ureq::Body>, max: usize) -> Result<Vec<u8>, String> {
+    let mut reader = resp.body_mut().with_config().reader().take((max as u64).saturating_add(1));
+    let mut bytes = Vec::new();
+    reader.read_to_end(&mut bytes).map_err(|e| e.to_string())?;
+    if bytes.len() > max {
+        return Err(format!("the answer is larger than {max} bytes"));
+    }
+    Ok(bytes)
+}
+
 #[cfg(test)]
 pub(crate) mod tests {
     use super::*;
 
     const DAYS_30: Duration = Duration::from_secs(30 * 86_400);
     const DAYS_7: Duration = Duration::from_secs(7 * 86_400);
+
+    #[test]
+    fn host_is_what_follows_the_scheme() {
+        assert_eq!(host("https://api.github.com/repos/storytold/wordcraft"), "api.github.com");
+        assert_eq!(host("http://127.0.0.1:8080"), "127.0.0.1:8080");
+        assert_eq!(host("not a url"), "not a url");
+    }
 
     #[test]
     fn cleaning_keeps_current_partial_files_and_removes_leftovers() {
@@ -924,6 +966,19 @@ pub(crate) mod tests {
     }
 
     #[test]
+    fn a_long_release_list_is_read_up_to_the_api_cap() {
+        // SolidCraft's list was 6.5 MB, past MAX_SMALL (#1021).
+        let long = vec![b' '; (MAX_SMALL as usize) + 1024];
+        let (url, _) = serve(long.clone(), vec![Reply::Full]);
+        let http = Http::new().unwrap();
+        assert!(matches!(http.get_api(&url, None), Ok(Fetched::Body { text, .. }) if text.len() == long.len()));
+        // Past MAX_API it is refused outright, not truncated and parsed.
+        let (url, _) = serve(vec![b' '; (MAX_API as usize) + 1024], vec![Reply::Full]);
+        let err = http.get_api(&url, None).unwrap_err();
+        assert!(err.contains("larger than"), "{err}");
+    }
+
+    #[test]
     fn a_gzip_bomb_answer_is_refused_before_parsing() {
         // A few hundred bytes on the wire that decode to more than MAX_SMALL. ureq's own limit
         // sits below the transparent gzip decoder, so only a cap on the decoded stream (CWE-409)
@@ -1024,5 +1079,26 @@ pub(crate) mod tests {
     #[test]
     fn partial_files_are_named_after_the_file_and_size() {
         assert_eq!(part_path(Path::new("/d/photocraft.dmg"), 9), Path::new("/d/photocraft.dmg.9.part"));
+    }
+
+    #[test]
+    fn get_bytes_rejects_oversized_payload() {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = listener.local_addr().unwrap().port();
+        std::thread::spawn(move || {
+            let Ok((mut stream, _)) = listener.accept() else { return };
+            let mut line = String::new();
+            let mut reader = BufReader::new(stream.try_clone().unwrap());
+            while reader.read_line(&mut line).unwrap_or(0) > 0 && line != "\r\n" {
+                line.clear();
+            }
+            let body = vec![b'A'; 200];
+            let _ = write!(stream, "HTTP/1.1 200 OK\r\nContent-Length: 200\r\nConnection: close\r\n\r\n");
+            let _ = stream.write_all(&body);
+        });
+        let http = Http::new().unwrap();
+        let result = http.get_bytes(&format!("http://127.0.0.1:{port}/test.bin"), 100);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("more than 100 bytes"));
     }
 }

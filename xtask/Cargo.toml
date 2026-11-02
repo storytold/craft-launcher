@@ -10,3 +10,4 @@ workspace = true
 
 [dependencies]
 jiff = { workspace = true }
+semver = { workspace = true }
