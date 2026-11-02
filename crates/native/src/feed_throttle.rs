@@ -92,8 +92,9 @@ impl FeedThrottle {
         let mut saved = std::fs::read(file).ok().and_then(|b| serde_json::from_slice::<Saved>(&b).ok()).unwrap_or_default();
         // A saved wait outside the sane range means a broken file, an edited value or a clock
         // that jumped: drop it. A `not_before` near `i64::MIN` would otherwise wrap the
-        // subtraction in `wait` into a centuries-long wait (#774).
-        if !(0..=now.saturating_add(MAX_THROTTLE_BACKOFF * 2)).contains(&saved.not_before) {
+        // subtraction in `wait` into a centuries-long wait (#774). The upper limit covers the
+        // longest accepted Retry-After stretched by the maximum 429 spread.
+        if !(0..=now.saturating_add(MAX_RETRY_AFTER * 3 / 2)).contains(&saved.not_before) {
             saved.not_before = 0;
         }
         Self { saved, file: Some(file.to_path_buf()), ..Self::new() }
@@ -388,6 +389,28 @@ mod tests {
         assert_eq!(FeedThrottle::load(&file, NOW).wait(NOW), 0);
         std::fs::write(&file, br#"{"not_before": -60, "throttles": 1}"#).unwrap();
         assert_eq!(FeedThrottle::load(&file, NOW).wait(NOW), 0);
+    }
+
+    #[test]
+    fn saved_not_before_at_the_maximum_retry_after_spread_survives_but_one_second_more_does_not() {
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join("feed-throttle.json");
+        let max_wait = MAX_RETRY_AFTER * 3 / 2;
+        std::fs::write(&file, format!(r#"{{"not_before": {}, "throttles": 1}}"#, NOW + max_wait)).unwrap();
+        assert_eq!(FeedThrottle::load(&file, NOW).wait(NOW), max_wait);
+        std::fs::write(&file, format!(r#"{{"not_before": {}, "throttles": 1}}"#, NOW + max_wait + 1)).unwrap();
+        assert_eq!(FeedThrottle::load(&file, NOW).wait(NOW), 0);
+    }
+
+    #[test]
+    fn a_maximum_retry_after_with_maximum_429_spread_survives_a_restart() {
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join("feed-throttle.json");
+        let mut t = FeedThrottle::load(&file, NOW);
+        t.finished(Outcome::Throttled { retry_after: Some(MAX_RETRY_AFTER) }, NOW, 1.0);
+        assert_eq!(t.wait(NOW), MAX_RETRY_AFTER * 3 / 2);
+        let again = FeedThrottle::load(&file, NOW);
+        assert_eq!(again.wait(NOW), MAX_RETRY_AFTER * 3 / 2);
     }
 
     #[test]
