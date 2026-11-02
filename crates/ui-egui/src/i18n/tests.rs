@@ -610,17 +610,27 @@ fn turkish_casing_rules_preserve_dotted_and_dotless_i() {
     assert_eq!(super::to_lowercase_in(Lang::TR, "FilmCraft"), "filmcraft");
     assert_eq!(super::to_lowercase_in(Lang::TR, "GitHub ↗"), "github ↗");
 
+    // Embedded brand names preserve ASCII casing while surrounding Turkish words get Turkish casing:
+    assert_eq!(super::to_uppercase_in(Lang::TR, "GitHub'da Aç"), "GITHUB'DA AÇ");
+    assert_eq!(super::to_uppercase_in(Lang::TR, "GitHub'da Aç ↗"), "GITHUB'DA AÇ ↗");
+    assert_eq!(super::to_uppercase_in(Lang::TR, "Discord'a Katılın"), "DISCORD'A KATILIN");
+    assert_eq!(super::to_uppercase_in(Lang::TR, "ArtCraft Discord'una Katılın"), "ARTCRAFT DISCORD'UNA KATILIN");
+    assert_eq!(super::to_lowercase_in(Lang::TR, "GITHUB'DA AÇ"), "github'da aç");
+    assert_eq!(super::to_lowercase_in(Lang::TR, "DISCORD'A KATILIN"), "discord'a katılın");
+
     // Lowercasing preserves dotted and dotless i in Turkish:
     assert_eq!(super::to_lowercase_in(Lang::TR, "İNDİR"), "indir");
     assert_eq!(super::to_lowercase_in(Lang::TR, "AYRINTILAR"), "ayrıntılar");
     assert_eq!(super::to_lowercase_in(Lang::EN, "TITLE"), "title");
 
     // Protected name helper checks:
+    assert!(super::is_protected_name("ArtCraft Launcher"));
     assert!(super::is_protected_name("Craft App Suite"));
     assert!(super::is_protected_name("FilmCraft"));
     assert!(super::is_protected_name("PhotoCraft"));
     assert!(super::is_protected_name("GitHub"));
     assert!(super::is_protected_name("GitHub ↗"));
+    assert!(super::is_protected_name("Discord"));
     assert!(!super::is_protected_name("indir"));
     assert!(!super::is_protected_name("ayrıntılar"));
 }
