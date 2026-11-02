@@ -289,6 +289,22 @@ mod tests {
     }
 
     #[test]
+    fn texturecraft_selects_published_desktop_assets() {
+        let release =
+            crate::release::parse_github_release(include_str!("../tests/fixtures/texturecraft-release.json"), "storytold/texturecraft").unwrap();
+        for (os, kind, expected) in [
+            (Os::Windows, PackageKind::Msi, "texturecraft-0.1.0-windows-x64.msi"),
+            (Os::MacOs, PackageKind::Dmg, "texturecraft-0.1.0-macos-universal.dmg"),
+            (Os::Linux, PackageKind::Flatpak, "texturecraft-0.1.0-linux-x86_64.flatpak"),
+        ] {
+            let platform = Platform { os, arch: Arch::X64 };
+            let (asset, selected) = pick_asset(&release, &["texturecraft"], platform, &[kind]).unwrap();
+            assert_eq!(asset.name, expected);
+            assert_eq!(selected, kind);
+        }
+    }
+
+    #[test]
     fn freebsd_picks_the_tarball_for_the_processor() {
         // SoundCraft v0.10.0's GitHub metadata, trimmed to its FreeBSD tarballs.
         let r = crate::release::parse_github_release(include_str!("../tests/fixtures/soundcraft-release.json"), "storytold/soundcraft").unwrap();
