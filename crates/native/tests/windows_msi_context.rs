@@ -29,6 +29,7 @@ fn uncertain_msi_updates_do_not_download_or_start_an_installer() {
             package: code.map(str::to_owned),
             externally_managed: false,
             origin: None,
+            installation: None,
         };
         let mut phases = Vec::new();
         let mut phase = |phase| phases.push(phase);

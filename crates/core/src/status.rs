@@ -68,6 +68,9 @@ pub struct Installed {
     /// The remote repository or origin (`flatpark`, `<app>-origin`), when known.
     #[serde(default)]
     pub origin: Option<String>,
+    /// The installation scope or name (`user`, `system`, or a named installation), for Flatpak installs.
+    #[serde(default)]
+    pub installation: Option<String>,
 }
 
 impl Installed {
@@ -145,6 +148,7 @@ mod tests {
             package: None,
             externally_managed: false,
             origin: None,
+            installation: None,
         }
     }
 

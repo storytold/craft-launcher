@@ -379,6 +379,13 @@ impl NativeBackend {
             // One installer call can cover several apps, and fail after some of them went in.
             let latest = shared.latest.lock().unwrap_or_else(PoisonError::into_inner).get(app.id).cloned();
             let result = match (result, latest) {
+                (Ok(_), _)
+                    if existing.as_ref().is_some_and(|e| e.externally_managed)
+                        && found.is_some()
+                        && existing.as_ref().and_then(|e| e.version.as_ref()) == found.as_ref().and_then(|f| f.version.as_ref()) =>
+                {
+                    Ok(format!("{} is already up to date", app.name))
+                }
                 (Err(e), Some(release))
                     if !uninstall && release.version.as_ref().is_some_and(|v| landed_despite(&e, existing.as_ref(), found.as_ref(), v)) =>
                 {
@@ -520,8 +527,25 @@ fn run_install(
         {
             shared.emit(Event::Progress { app: app.id.to_string(), phase: JobPhase::Installing });
             let mut phase = |p| shared.emit(Event::Progress { app: app.id.to_string(), phase: p });
-            install::linux::update_flatpak_app(app, true, stop, &mut phase)?;
-            return Ok(format!("{} was updated through FlatPark", app.name));
+            let default_id = app.bundle_id();
+            let target_id = inst.package.as_deref().unwrap_or(&default_id);
+            let scope = match inst.installation.as_deref() {
+                Some("user") => "--user".to_string(),
+                Some("system") | None => "--system".to_string(),
+                Some(name) => format!("--installation={name}"),
+            };
+            let deployed_commit = || {
+                crate::process::capture_flatpak(&["info", &scope, "--show-commit", target_id], std::time::Duration::from_secs(15))
+                    .filter(|value| !value.trim().is_empty())
+            };
+            let before = deployed_commit();
+            install::linux::update_flatpak_app(app, target_id, inst.installation.as_deref(), stop, &mut phase)?;
+            let after = deployed_commit();
+            return Ok(match (before, after) {
+                (Some(before), Some(after)) if before.trim() == after.trim() => format!("{} is already up to date", app.name),
+                (Some(_), Some(_)) => format!("{} was updated through FlatPark", app.name),
+                _ => format!("Flatpak finished checking {} for updates", app.name),
+            });
         }
         #[cfg(not(target_os = "linux"))]
         return Err(format!("{} is a Flatpak, which is not supported on this platform", app.name));
@@ -1281,6 +1305,7 @@ mod tests {
             package: None,
             externally_managed: false,
             origin: None,
+            installation: None,
         };
         let pinned = VersionTrack::Pinned("v0.13.0".into());
         assert!(is_chosen_downgrade(&pinned, &tagged("0.13.0"), Some(&installed)));
@@ -1300,6 +1325,7 @@ mod tests {
             package: None,
             externally_managed: false,
             origin: None,
+            installation: None,
         };
         let pinned = VersionTrack::Pinned("v0.13.0".into());
         let never = || -> Result<Vec<Release>, String> { panic!("no list is needed") };
@@ -1687,6 +1713,7 @@ mod tests {
             package: None,
             externally_managed: false,
             origin: None,
+            installation: None,
         };
         assert_eq!(planned_asset(app, &release, platform, &portable_options, Some(&msi), None).unwrap().1, PackageKind::Msi);
         let launcher = Installed {
@@ -1696,6 +1723,7 @@ mod tests {
             package: None,
             externally_managed: false,
             origin: None,
+            installation: None,
         };
         let record = crate::manifest::Record {
             version: "0.4.0".into(),
@@ -1734,6 +1762,7 @@ mod tests {
             package: None,
             externally_managed: false,
             origin: None,
+            installation: None,
         };
         let system = BackendOptions { kinds: options.kinds.clone(), ..Default::default() };
         assert_eq!(
@@ -1941,6 +1970,7 @@ mod tests {
             package: None,
             externally_managed: false,
             origin: None,
+            installation: None,
         }
     }
 

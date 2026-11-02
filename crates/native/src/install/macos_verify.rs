@@ -223,6 +223,7 @@ mod tests {
             package: None,
             externally_managed: false,
             origin: None,
+            installation: None,
         };
         let expect = Expect { team: app.mac_team, version: None };
         // Injected tool outcomes exercise the real pre-swap boundary, not real signatures.

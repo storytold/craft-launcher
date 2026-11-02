@@ -96,6 +96,7 @@ fn events() -> Vec<Event> {
             package: None,
             externally_managed: false,
             origin: None,
+            installation: None,
         });
         ev.push(Event::Detected { app: app.id.into(), installed: inst });
     }

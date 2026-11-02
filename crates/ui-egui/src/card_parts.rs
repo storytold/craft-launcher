@@ -64,6 +64,7 @@ mod tests {
             package: None,
             externally_managed: false,
             origin: None,
+            installation: None,
         });
         e.latest = Some(LatestRelease::Found(Release { tag: format!("v{latest}"), version: version::parse(latest), ..Default::default() }));
         e
