@@ -791,6 +791,7 @@ mod inherited_pipe_tests {
 }
 
 /// Runs a helper while polling cancellation and draining its bounded output.
+#[cfg(target_os = "linux")]
 pub(crate) fn cancellable_output(mut cmd: Command, check: impl Fn() -> Result<(), String>) -> Result<std::process::Output, String> {
     check()?;
     let mut child =
@@ -823,7 +824,7 @@ pub(crate) fn cancellable_output(mut cmd: Command, check: impl Fn() -> Result<()
     Ok(std::process::Output { status, stdout: stdout.join().unwrap_or_default(), stderr: stderr.join().unwrap_or_default() })
 }
 
-#[cfg(all(test, unix))]
+#[cfg(all(test, target_os = "linux"))]
 mod update_cancel_tests {
     use super::*;
 
