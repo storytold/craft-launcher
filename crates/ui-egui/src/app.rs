@@ -841,7 +841,11 @@ impl LauncherUi {
                     ViewMode::Table => egui::ScrollArea::both(),
                 };
                 scroll.auto_shrink(false).show(ui, |ui| {
+                    // Escape must run even when search/filter leaves no rows (grid/table skipped).
+                    self.clear_pin_drag_on_escape(ui);
                     if ids.is_empty() {
+                        // No drop targets this frame — still end the drag on pointer up.
+                        self.clear_pin_drag_if_pointer_up(ui);
                         ui.add_space(40.0);
                         ui.vertical_centered(|ui| {
                             crate::widgets::hud(ui, tl!("No apps match"), tokens.muted);
@@ -877,6 +881,11 @@ impl LauncherUi {
     /// Test hook: whether a pin reorder drag is in progress.
     pub fn pin_dragging_for_test(&self) -> bool {
         self.pin_dragging.is_some()
+    }
+
+    /// Test hook: set the toolbar search string without driving the text field.
+    pub fn set_search_for_test(&mut self, needle: &str) {
+        self.search = needle.to_string();
     }
 
     /// The ids to show, filtered and sorted. Pinned apps stay first in the user's pin order;

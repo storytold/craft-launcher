@@ -1470,6 +1470,29 @@ fn escape_cancels_pin_drag_and_restores_order() {
 }
 
 #[test]
+/// Escape still restores pin order when search hides every app (grid/table never run).
+fn escape_cancels_pin_drag_with_empty_results() {
+    let (mut h, _) = harness(ViewMode::Grid, egui::Theme::Dark, true);
+    h.run_steps(6);
+    {
+        let ui = h.state_mut().as_mut().unwrap();
+        ui.settings.pin_app("photocraft");
+        ui.settings.pin_app("filmcraft");
+        ui.begin_pin_drag_for_test("photocraft");
+        ui.settings.pinned = vec!["filmcraft".into(), "photocraft".into()];
+        // Apply search without an intervening empty frame (pointer-up would end the drag).
+        ui.set_search_for_test("zzzz-no-match");
+        assert!(ui.visible_ids_for_test().is_empty());
+        assert!(ui.pin_dragging_for_test());
+    }
+    h.key_press(egui::Key::Escape);
+    h.run_steps(2);
+    let ui = h.state().as_ref().unwrap();
+    assert!(!ui.pin_dragging_for_test());
+    assert_eq!(ui.settings.pinned, ["photocraft", "filmcraft"]);
+}
+
+#[test]
 /// Grid shows a Pinned section label once at least one app is pinned.
 fn grid_shows_pinned_section_header() {
     let (mut h, _) = harness(ViewMode::Grid, egui::Theme::Dark, true);

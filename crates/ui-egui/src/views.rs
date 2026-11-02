@@ -415,7 +415,6 @@ impl LauncherUi {
 
     /// Pinned apps first (user order), then installed, then the rest under a "Not installed" header.
     pub(crate) fn grid(&mut self, ui: &mut Ui, ids: &[&'static str]) {
-        self.clear_pin_drag_on_escape(ui);
         let pinned_n = ids.iter().take_while(|id| self.settings.is_pinned(id)).count();
         let (pinned, rest) = ids.split_at(pinned_n);
         if !pinned.is_empty() {
@@ -592,7 +591,6 @@ impl LauncherUi {
 
     pub(crate) fn table(&mut self, ui: &mut Ui, ids: &[&'static str]) {
         use egui_extras::{Column, TableBuilder};
-        self.clear_pin_drag_on_escape(ui);
         let t = Tokens::get(ui.ctx());
         let now = self.backend.now();
         let mut sort_clicked = None;
@@ -901,14 +899,23 @@ impl LauncherUi {
         self.menu(ui, entry, status, links_in_menu);
     }
 
-    /// Cancel an in-progress pin reorder (Escape) before drop targets run this frame, restoring
-    /// the pinned order from drag start (live hover already mutated `settings.pinned`).
-    fn clear_pin_drag_on_escape(&mut self, ui: &Ui) {
+    /// Cancel an in-progress pin reorder (Escape), restoring the pinned order from drag start
+    /// (live hover already mutated `settings.pinned`). Called from [`Self::ui`] before the
+    /// empty-results branch so Escape still works when search/filter hides every app mid-drag.
+    pub(crate) fn clear_pin_drag_on_escape(&mut self, ui: &Ui) {
         if self.pin_dragging.is_some()
             && ui.input(|i| i.key_pressed(egui::Key::Escape))
             && let Some((_, original)) = self.pin_dragging.take()
         {
             self.settings.pinned = original;
+        }
+    }
+
+    /// End a pin drag when the pointer is up (commit current order). Used when no grid/table
+    /// drop targets run — e.g. empty search results mid-drag.
+    pub(crate) fn clear_pin_drag_if_pointer_up(&mut self, ui: &Ui) {
+        if !ui.input(|i| i.pointer.primary_down()) {
+            self.pin_dragging = None;
         }
     }
 
