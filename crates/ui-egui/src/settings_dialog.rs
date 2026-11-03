@@ -329,7 +329,8 @@ impl LauncherUi {
     }
 
     /// Community links (Discord, website, GitHub and the social icons) opened through the safe
-    /// external-link path; it queues no app actions.
+    /// external-link path, and on a desktop host the Discord status choices (the open file's name
+    /// only on Windows, where the backend can read it); it queues no app actions.
     fn settings_community(&mut self, ui: &mut Ui) {
         let t = Tokens::get(ui.ctx());
         sheet::panel(ui, tl!("Community"), |ui| {

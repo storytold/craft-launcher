@@ -33,10 +33,12 @@ const MAX_STATE: usize = 128;
 /// Discord's replies are a few hundred bytes; anything far larger is not Discord.
 const MAX_FRAME: usize = 64 * 1024;
 
+/// Discord IPC opcodes: the hello, a command or its answer, and Discord hanging up.
 const OP_HANDSHAKE: u32 = 0;
 const OP_FRAME: u32 = 1;
 const OP_CLOSE: u32 = 2;
 
+/// What the backend tells the worker thread.
 enum Msg {
     Enable { on: bool, files: bool },
     Started { token: u64, app: &'static CraftApp, start: i64 },
@@ -87,10 +89,12 @@ impl Presence {
         self.send(Msg::Opened { token, pid });
     }
 
+    /// The app opened under `token` has quit, or never started.
     pub fn exited(&self, token: u64) {
         self.send(Msg::Exited { token });
     }
 
+    /// Hands `msg` to the worker; nothing happens when there is none (no [`CLIENT_ID`]).
     fn send(&self, msg: Msg) {
         if let Some(tx) = &self.tx {
             let _ = tx.send(msg);
@@ -213,6 +217,7 @@ fn open_file(_pid: u32, _app: &str) -> Option<String> {
     None
 }
 
+/// Discord's IPC connection: a named pipe on Windows, a Unix socket elsewhere.
 trait Pipe: Read + Write + Send {}
 impl<T: Read + Write + Send> Pipe for T {}
 
@@ -233,12 +238,15 @@ fn connect() -> Option<Box<dyn Pipe>> {
     }
 }
 
+/// Discord's pipe number `n` (Discord takes the first free one of 0 to 9).
 #[cfg(windows)]
 fn open(n: u8) -> Option<Box<dyn Pipe>> {
     let pipe = std::fs::OpenOptions::new().read(true).write(true).open(format!(r"\\.\pipe\discord-ipc-{n}")).ok()?;
     Some(Box::new(pipe))
 }
 
+/// Discord's socket number `n`, in the folders Discord, its Flatpak and its Snap put it in.
+/// Reads time out, so a socket that never answers can't hold the worker up.
 #[cfg(unix)]
 fn open(n: u8) -> Option<Box<dyn Pipe>> {
     let roots = ["XDG_RUNTIME_DIR", "TMPDIR", "TMP", "TEMP"].iter().filter_map(std::env::var_os).map(std::path::PathBuf::from);
@@ -253,6 +261,7 @@ fn open(n: u8) -> Option<Box<dyn Pipe>> {
     )
 }
 
+/// No Discord desktop app runs anywhere else.
 #[cfg(not(any(windows, unix)))]
 fn open(_n: u8) -> Option<Box<dyn Pipe>> {
     None
@@ -285,6 +294,8 @@ fn write_frame(w: &mut (impl Write + ?Sized), op: u32, body: &Value) -> io::Resu
     w.flush()
 }
 
+/// Reads one frame. Discord's answer is hostile input like anything else: a body over
+/// [`MAX_FRAME`], a short read or JSON that doesn't parse is an error, never a panic.
 fn read_frame(r: &mut (impl Read + ?Sized)) -> io::Result<(u32, Value)> {
     let mut op = [0; 4];
     let mut len = [0; 4];
