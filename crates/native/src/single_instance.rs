@@ -13,8 +13,11 @@
 //!   answer: it can't be asked to quit, so the newcomer starts anyway.
 //!
 //! Launchers from before the handshake send a bare `show`, which is still understood. The worst
-//! another local program can do with any of this is bring the window forward or make the launcher
-//! quit.
+//! another local program can do with any of this is bring the window forward.
+//!
+//! A newcomer only steps aside (exits) for a running launcher that proved it holds this account's
+//! token. Anything else on the port, including a listener that answers like a launcher but fails
+//! or skips the proof, is treated as unrelated, and the newcomer starts anyway.
 //!
 //! ## Upgrading over the published 0.7.0 build
 //!
@@ -129,12 +132,17 @@ pub enum Instance {
 /// How the running launcher answered our hello.
 #[derive(Clone, Debug, PartialEq, Eq)]
 enum Answer {
-    /// It's as new as we are, or newer, and shows its window: we exit.
+    /// It proved it is this account's launcher, as new as we are or newer, and shows its window:
+    /// we exit.
     Defer,
-    /// It's older and quits: we take over the port.
-    TakeOver,
+    /// It's older and quits: we take over the port. `proven` when it proved it is this account's
+    /// launcher; only then do we exit if it keeps the port.
+    TakeOver { proven: bool },
     /// It closed without an answer: a launcher from before the handshake.
     Legacy,
+    /// It didn't prove it is this account's launcher (failed or skipped the proof, or answered
+    /// something unreadable): another program, so we start anyway (CWE-287).
+    Unrelated,
 }
 
 type Wake = std::sync::Arc<std::sync::OnceLock<Box<dyn Fn() + Send + Sync>>>;
@@ -154,7 +162,7 @@ pub fn claim(wake: Wake) -> Instance {
     }
     match ask(addr, ours.as_ref(), token.as_deref()) {
         Ok(Answer::Defer) => Instance::Secondary,
-        Ok(Answer::TakeOver) => {
+        Ok(Answer::TakeOver { proven }) => {
             let deadline = Instant::now() + TAKE_OVER_WITHIN;
             while Instant::now() < deadline {
                 if let Ok(listener) = TcpListener::bind(addr) {
@@ -162,8 +170,17 @@ pub fn claim(wake: Wake) -> Instance {
                 }
                 std::thread::sleep(Duration::from_millis(100));
             }
-            // It stayed (busy installing) and showed its window instead.
-            Instance::Secondary
+            if proven {
+                // It stayed (busy installing) and showed its window instead.
+                Instance::Secondary
+            } else {
+                log::warn!("whatever holds the launcher's port didn't prove it is ArtCraft Launcher and kept the port; starting anyway");
+                Instance::Primary(channel().1)
+            }
+        }
+        Ok(Answer::Unrelated) => {
+            log::warn!("something on the launcher's port didn't prove it is this account's ArtCraft Launcher; starting anyway");
+            Instance::Primary(channel().1)
         }
         Ok(Answer::Legacy) => {
             log::warn!("an older ArtCraft Launcher is running and can't be asked to quit; starting anyway");
@@ -272,24 +289,11 @@ fn handle_incoming(stream: &mut TcpStream, ours: Option<&Version>, token: Option
 
     let reply_running = format!("{RUNNING}{}\n", ours.map_or_else(|| "unknown".to_string(), ToString::to_string));
 
-    if !newer {
-        let _ = stream.write_all(reply_running.as_bytes());
-        return Some(Request::Show);
-    }
-
-    // Newcomer is newer and asks to replace us.
-    // Mutual challenge-response: require proof of token possession before granting Replace.
-    let Some(ours_token) = token.filter(|t| !t.is_empty()) else {
-        let _ = stream.write_all(reply_running.as_bytes());
-        return Some(Request::Show);
-    };
-
-    let Some(client_nonce) = client_nonce else {
-        let _ = stream.write_all(reply_running.as_bytes());
-        return Some(Request::Show);
-    };
-
-    let Some(server_nonce) = fresh_secret() else {
+    // Mutual challenge-response whenever the newcomer offers a nonce, whatever its version: a
+    // newer one must prove itself before we grant Replace, and every newcomer needs our proof
+    // before it exits in our favour. Without a token or a nonce nothing can be proven: answer,
+    // and only show the window.
+    let (Some(ours_token), Some(client_nonce), Some(server_nonce)) = (token.filter(|t| !t.is_empty()), client_nonce, fresh_secret()) else {
         let _ = stream.write_all(reply_running.as_bytes());
         return Some(Request::Show);
     };
@@ -307,7 +311,7 @@ fn handle_incoming(stream: &mut TcpStream, ours: Option<&Version>, token: Option
 
     let _ = stream.write_all(reply_running.as_bytes());
 
-    if constant_time_eq(client_proof, &expected_client_proof) { Some(Request::Replace) } else { Some(Request::Show) }
+    if newer && constant_time_eq(client_proof, &expected_client_proof) { Some(Request::Replace) } else { Some(Request::Show) }
 }
 
 /// The new start's side: says hello to whatever holds the port and reads the answer.
@@ -345,7 +349,7 @@ fn ask_once(addr: SocketAddr, ours: &Version, token: Option<&str>, with_nonce: b
 
     let reply_str = match std::str::from_utf8(&reply) {
         Ok(s) => s.trim(),
-        Err(_) => return Ok(Answer::Defer),
+        Err(_) => return Ok(Answer::Unrelated),
     };
 
     if let Some(challenge_rest) = reply_str.strip_prefix(CHALLENGE) {
@@ -353,13 +357,13 @@ fn ask_once(addr: SocketAddr, ours: &Version, token: Option<&str>, with_nonce: b
         let server_nonce = parts.next().unwrap_or("");
         let server_proof = parts.next().unwrap_or("");
         let (Some(client_nonce), Some(tok)) = (client_nonce.as_deref(), token) else {
-            return Ok(Answer::Defer);
+            return Ok(Answer::Unrelated);
         };
         let expected_server_proof = compute_proof("server", tok, client_nonce, server_nonce);
         if !constant_time_eq(server_proof, &expected_server_proof) {
             // Server failed to prove it knows the shared token (untrusted peer).
-            // Do NOT disclose client proof; abort immediately.
-            return Ok(Answer::Defer);
+            // Do NOT disclose client proof; abort immediately, and don't step aside for it.
+            return Ok(Answer::Unrelated);
         }
 
         // Server is authentic. Prove our identity to server:
@@ -368,22 +372,24 @@ fn ask_once(addr: SocketAddr, ours: &Version, token: Option<&str>, with_nonce: b
         stream.write_all(auth_msg.as_bytes())?;
 
         let final_reply = read_message(&mut stream);
-        return Ok(verdict(&final_reply, ours));
+        return Ok(verdict(&final_reply, ours, true));
     }
 
-    Ok(verdict(&reply, ours))
+    Ok(verdict(&reply, ours, false))
 }
 
-/// Reads the running launcher's answer.
-fn verdict(reply: &[u8], ours: &Version) -> Answer {
+/// Reads the running launcher's answer. `proven` when it proved it holds this account's token:
+/// only then is an answer that it is as new as we are a reason to exit.
+fn verdict(reply: &[u8], ours: &Version, proven: bool) -> Answer {
     if reply.is_empty() {
         return Answer::Legacy;
     }
     let trimmed = std::str::from_utf8(reply).ok().map(str::trim);
     let running = trimmed.and_then(|r| r.strip_prefix(RUNNING)).and_then(version::parse);
     match running {
-        Some(running) if version::is_newer(ours, &running) => Answer::TakeOver,
-        _ => Answer::Defer,
+        Some(running) if version::is_newer(ours, &running) => Answer::TakeOver { proven },
+        _ if proven => Answer::Defer,
+        _ => Answer::Unrelated,
     }
 }
 
@@ -411,7 +417,7 @@ mod tests {
     #[test]
     fn a_newer_start_replaces_an_older_running_launcher() {
         let (addr, rx) = primary("0.1.0");
-        assert_eq!(ask(addr, Some(&v("0.1.2")), Some(TOK)).ok(), Some(Answer::TakeOver));
+        assert_eq!(ask(addr, Some(&v("0.1.2")), Some(TOK)).ok(), Some(Answer::TakeOver { proven: true }));
         assert_eq!(next(&rx), Request::Replace);
     }
 
@@ -469,7 +475,7 @@ mod tests {
         });
 
         let ans = ask(addr, Some(&v("0.1.2")), Some(TOK)).unwrap();
-        assert_eq!(ans, Answer::Defer);
+        assert_eq!(ans, Answer::Unrelated, "a peer that fails the proof must not make us exit");
         let bytes_received = handle.join().unwrap();
         assert_eq!(bytes_received, 0, "client must immediately disconnect and send no auth proof");
     }
@@ -509,7 +515,7 @@ mod tests {
             stream.write_all(format!("{rest}\n").as_bytes()).unwrap();
             let mut reply = Vec::new();
             stream.read_to_end(&mut reply).unwrap();
-            assert_eq!(verdict(&reply, &v(version)), Answer::TakeOver);
+            assert_eq!(verdict(&reply, &v(version), false), Answer::TakeOver { proven: false });
             assert_eq!(next(&rx), Request::Show);
         }
     }
@@ -522,7 +528,7 @@ mod tests {
         stream.write_all(format!("{HELLO}0.1.2\n").as_bytes()).unwrap();
         let mut reply = Vec::new();
         stream.read_to_end(&mut reply).unwrap();
-        assert_eq!(verdict(&reply, &v("0.1.2")), Answer::TakeOver);
+        assert_eq!(verdict(&reply, &v("0.1.2"), false), Answer::TakeOver { proven: false });
         assert_eq!(next(&rx), Request::Show);
     }
 
@@ -600,7 +606,7 @@ mod tests {
                 }
             }
         });
-        assert_eq!(ask(addr, Some(&v("0.6.2")), Some(TOK)).ok(), Some(Answer::TakeOver));
+        assert_eq!(ask(addr, Some(&v("0.6.2")), Some(TOK)).ok(), Some(Answer::TakeOver { proven: false }));
         let _ = old.join();
     }
 
@@ -615,10 +621,49 @@ mod tests {
 
     #[test]
     fn verdict_reads_defensively() {
-        assert_eq!(verdict(b"artcraft-launcher:running 0.1.0\n", &v("0.1.2")), Answer::TakeOver);
-        assert_eq!(verdict(b"artcraft-launcher:running 0.1.2\n", &v("0.1.2")), Answer::Defer);
-        assert_eq!(verdict(b"artcraft-launcher:running unknown\n", &v("0.1.2")), Answer::Defer);
-        assert_eq!(verdict(b"garbage\n", &v("0.1.2")), Answer::Defer);
-        assert_eq!(verdict(b"", &v("0.1.2")), Answer::Legacy);
+        assert_eq!(verdict(b"artcraft-launcher:running 0.1.0\n", &v("0.1.2"), true), Answer::TakeOver { proven: true });
+        assert_eq!(verdict(b"artcraft-launcher:running 0.1.2\n", &v("0.1.2"), true), Answer::Defer);
+        assert_eq!(verdict(b"artcraft-launcher:running unknown\n", &v("0.1.2"), true), Answer::Defer);
+        assert_eq!(verdict(b"garbage\n", &v("0.1.2"), true), Answer::Defer);
+        assert_eq!(verdict(b"", &v("0.1.2"), true), Answer::Legacy);
+        // Without the proof, nothing makes us exit.
+        assert_eq!(verdict(b"artcraft-launcher:running 0.1.0\n", &v("0.1.2"), false), Answer::TakeOver { proven: false });
+        assert_eq!(verdict(b"artcraft-launcher:running 0.1.2\n", &v("0.1.2"), false), Answer::Unrelated);
+        assert_eq!(verdict(b"artcraft-launcher:running 9.9.9\n", &v("0.1.2"), false), Answer::Unrelated);
+        assert_eq!(verdict(b"garbage\n", &v("0.1.2"), false), Answer::Unrelated);
+        assert_eq!(verdict(b"", &v("0.1.2"), false), Answer::Legacy);
+    }
+
+    /// A listener that answers like a newer launcher but never proves it holds our token (it
+    /// skips the challenge) is unrelated: the newcomer doesn't exit for it (CWE-287).
+    #[test]
+    fn an_unproven_running_answer_does_not_make_a_start_exit() {
+        let listener = TcpListener::bind((Ipv4Addr::LOCALHOST, 0)).unwrap();
+        let addr = listener.local_addr().unwrap();
+        let imposter = std::thread::spawn(move || {
+            let (mut s, _) = listener.accept().unwrap();
+            let _ = read_message(&mut s);
+            let _ = s.write_all(b"artcraft-launcher:running 9.9.9\n");
+        });
+        assert_eq!(ask(addr, Some(&v("0.1.2")), Some(TOK)).ok(), Some(Answer::Unrelated));
+        imposter.join().unwrap();
+    }
+
+    /// A same-version start is challenged too, and steps aside only after the running launcher
+    /// proved itself; it never gets to replace it.
+    #[test]
+    fn a_same_version_start_is_challenged_and_cannot_replace() {
+        let (addr, rx) = primary("0.1.2");
+        let nonce = fresh_secret().unwrap();
+        let mut stream = TcpStream::connect(addr).unwrap();
+        stream.write_all(format!("{HELLO}0.1.2 {nonce}\n").as_bytes()).unwrap();
+        let challenge = read_message(&mut stream);
+        let rest = std::str::from_utf8(&challenge).unwrap().strip_prefix(CHALLENGE).unwrap().to_string();
+        let mut parts = rest.split_whitespace();
+        let (server_nonce, server_proof) = (parts.next().unwrap(), parts.next().unwrap());
+        assert_eq!(server_proof, compute_proof("server", TOK, &nonce, server_nonce));
+        stream.write_all(format!("{AUTH}{}\n", compute_proof("client", TOK, &nonce, server_nonce)).as_bytes()).unwrap();
+        assert!(std::str::from_utf8(&read_message(&mut stream)).unwrap().starts_with(RUNNING));
+        assert_eq!(next(&rx), Request::Show, "a same-version start must never replace the running one");
     }
 }
