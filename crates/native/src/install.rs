@@ -1847,12 +1847,13 @@ mod freebsd {
             let list = root_record::stage(&tree, app.id, &rel)?;
             // The copy carries the archive's modes and the user's umask into the prefix: take
             // group and world write off the list and the folders holding it in the same root call,
-            // or the uninstall would refuse to trust it.
+            // or the uninstall would refuse to trust it, and let everyone read it, or the
+            // uninstall (running as the user) couldn't open it.
             let protect = root_record::protected_paths(&prefix, app.id);
             let mut args: Vec<&OsStr> = vec![
                 OsStr::new("/bin/sh"),
                 OsStr::new("-c"),
-                OsStr::new(r#"/bin/cp -R "$1" "$2" && shift 2 && /bin/chmod go-w "$@""#),
+                OsStr::new(r#"/bin/cp -R "$1" "$2" && shift 2 && /bin/chmod go-w,a+rX "$@""#),
                 OsStr::new("sh"),
                 source.as_os_str(),
                 prefix.as_os_str(),
@@ -1888,17 +1889,23 @@ mod freebsd {
         Ok((bin, rel.iter().map(|r| prefix.join(r)).collect(), false))
     }
 
-    /// Removes the files a tree install of `app_id` put down. A system-wide install only loses
-    /// files that the root-owned list it installed names: `files` comes from the user's own record,
-    /// which anything running as the user can rewrite.
+    /// Removes the files a tree install of `app_id` put down. A system-wide install removes the
+    /// files that the root-owned list it installed names, not `files`: that comes from the user's
+    /// own record, which anything running as the user can rewrite.
     pub fn remove_files(app_id: &str, files: &[PathBuf], needs_root: bool) -> Result<(), String> {
-        if files.is_empty() {
+        if !needs_root && files.is_empty() {
             return Err("the launcher has no record of these files".into());
         }
         let prefix = if needs_root { PathBuf::from(ROOT_PREFIX) } else { dirs::home_dir().ok_or("no home folder")?.join(".local") };
-        let owned = if needs_root { Some(root_record::owned(&prefix, app_id, 0)?) } else { None };
+        let targets: Vec<PathBuf> = if needs_root {
+            let mut owned: Vec<PathBuf> = root_record::owned(&prefix, app_id, 0)?.into_iter().collect();
+            owned.sort();
+            owned
+        } else {
+            files.to_vec()
+        };
         let mut safe_files = Vec::new();
-        for f in files {
+        for f in &targets {
             // Refuse paths that climb or escape install prefix (CWE-59).
             if !f.starts_with(&prefix) || f.components().any(|c| matches!(c, std::path::Component::ParentDir)) {
                 return Err(format!("refusing to remove file outside install prefix: {}", f.display()));
@@ -1915,10 +1922,6 @@ mod freebsd {
                     }
                     check.push(part);
                 }
-            }
-            if owned.as_ref().is_some_and(|owned| !owned.contains(f)) {
-                log::warn!("not removing {}: the app's installed-files list doesn't name it", f.display());
-                continue;
             }
             if !has_symlink_ancestor {
                 safe_files.push(f);

@@ -184,7 +184,7 @@ mod tests {
             std::fs::set_permissions(&p, std::fs::Permissions::from_mode(mode)).unwrap();
         }
         assert!(owned(&prefix, "wordcraft", uid).is_err());
-        // What the install's `chmod go-w` does to them.
+        // What the write half of the install's `chmod go-w,a+rX` does to them.
         for p in protected_paths(&prefix, "wordcraft") {
             let mode = std::fs::metadata(&p).unwrap().mode() & 0o7777 & !0o022;
             std::fs::set_permissions(&p, std::fs::Permissions::from_mode(mode)).unwrap();
