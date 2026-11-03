@@ -334,37 +334,93 @@ function New-MsiApi {
     return $type.CreateType()
 }
 
+function Invoke-MsiApi($api, [string]$name, [object[]]$arguments) {
+    $method = $api.GetMethod($name)
+    if ($null -eq $method) { throw "MSI API method $name was not declared" }
+    # Keep the caller's exact array instance so ref/out values can be copied back into it.
+    $source = $arguments
+    if ($source -isnot [Array]) { throw "MSI API $name arguments were not a CLR array" }
+    $parameters = $method.GetParameters()
+    if ($source.Length -ne $parameters.Length) {
+        throw "MSI API $name expected $($parameters.Length) arguments but received $($source.Length)"
+    }
+
+    # PowerShell can retain PSObject adapters inside object[] arrays. Reflection.Emit P/Invoke
+    # stubs require the actual CLR values, so unwrap each item and check it against the native
+    # declaration before invoking. Reflection writes ref/out values back into callArguments.
+    $callArguments = [Array]::CreateInstance([object], $parameters.Length)
+    for ($index = 0; $index -lt $parameters.Length; $index++) {
+        $value = $source.GetValue($index)
+        if ($null -ne $value) { $value = [System.Management.Automation.PSObject]::Base($value) }
+        while ($value -is [System.Management.Automation.PSObject]) {
+            $baseValue = [System.Management.Automation.PSObject]::Base($value)
+            if ([object]::ReferenceEquals($value, $baseValue)) { break }
+            $value = $baseValue
+        }
+        $expectedType = $parameters[$index].ParameterType
+        if ($expectedType.IsByRef) { $expectedType = $expectedType.GetElementType() }
+        if (($null -eq $value -and $expectedType.IsValueType) -or
+            ($null -ne $value -and -not $expectedType.IsInstanceOfType($value))) {
+            $actualType = if ($null -eq $value) { '<null>' } else { $value.GetType().FullName }
+            throw "MSI API $name argument $index expected CLR $($expectedType.FullName), received $actualType"
+        }
+        $callArguments.SetValue([object]$value, $index)
+    }
+
+    try {
+        $result = $method.Invoke($null, $callArguments)
+    } catch {
+        $failure = $_.Exception
+        while ($null -ne $failure.InnerException) { $failure = $failure.InnerException }
+        throw "MSI API $name reflection invocation failed: $($failure.GetType().FullName): $($failure.Message)"
+    }
+
+    # Preserve native by-ref outputs in the caller's original array for handle/status use.
+    for ($index = 0; $index -lt $parameters.Length; $index++) {
+        $value = $callArguments.GetValue($index)
+        if ($null -ne $value) { $value = [System.Management.Automation.PSObject]::Base($value) }
+        while ($value -is [System.Management.Automation.PSObject]) {
+            $baseValue = [System.Management.Automation.PSObject]::Base($value)
+            if ([object]::ReferenceEquals($value, $baseValue)) { break }
+            $value = $baseValue
+        }
+        $source.SetValue($value, $index)
+    }
+    $result = [System.Management.Automation.PSObject]::Base($result)
+    return $result
+}
+
 function Get-MsiTemplate($api, [uint32]$db) {
     # PID_TEMPLATE (7) records the actual package platform independently of its filename.
     $arguments = [object[]]@($db, [string]$null, [uint32]0, [uint32]0)
     Set-ArtCraftValidationStage 'msi-summary-open'
-    $status = $api.GetMethod('MsiGetSummaryInformationW').Invoke($null, $arguments)
+    $status = Invoke-MsiApi $api 'MsiGetSummaryInformationW' $arguments
     if ($status -ne 0) { throw "MsiGetSummaryInformationW failed with Windows Installer status $status" }
     $summary = [uint32]$arguments[3]
     try {
         $template = [Text.StringBuilder]::new(256)
         $arguments = [object[]]@($summary, [uint32]7, [uint32]0, [int32]0, [IntPtr]::Zero, $template, [uint32]256)
         Set-ArtCraftValidationStage 'msi-summary-template'
-        $status = $api.GetMethod('MsiSummaryInfoGetPropertyW').Invoke($null, $arguments)
+        $status = Invoke-MsiApi $api 'MsiSummaryInfoGetPropertyW' $arguments
         if ($status -ne 0) { throw "MsiSummaryInfoGetPropertyW failed with Windows Installer status $status" }
         return $template.ToString().Split(';')[0]
-    } finally { $null = $api.GetMethod('MsiCloseHandle').Invoke($null, [object[]]@($summary)) }
+    } finally { $null = Invoke-MsiApi $api 'MsiCloseHandle' ([object[]]@($summary)) }
 }
 
 function Get-MsiProperty($api, [uint32]$db, [string]$name) {
     # name is a program literal. MSI APIs open the protected staged file READ-ONLY.
     Set-ArtCraftValidationStage "msi-property-open:$name"
     $arguments = [object[]]@($db, "SELECT Value FROM Property WHERE Property='$name'", [uint32]0)
-    $status = $api.GetMethod('MsiDatabaseOpenViewW').Invoke($null, $arguments)
+    $status = Invoke-MsiApi $api 'MsiDatabaseOpenViewW' $arguments
     if ($status -ne 0) { throw "MsiDatabaseOpenViewW failed for property $name with Windows Installer status $status" }
     $view = [uint32]$arguments[2]
     try {
         Set-ArtCraftValidationStage "msi-property-execute:$name"
-        $status = $api.GetMethod('MsiViewExecute').Invoke($null, [object[]]@($view, [uint32]0))
+        $status = Invoke-MsiApi $api 'MsiViewExecute' ([object[]]@($view, [uint32]0))
         if ($status -ne 0) { throw "MsiViewExecute failed for property $name with Windows Installer status $status" }
         $arguments = [object[]]@($view, [uint32]0)
         Set-ArtCraftValidationStage "msi-property-fetch:$name"
-        $status = $api.GetMethod('MsiViewFetch').Invoke($null, $arguments)
+        $status = Invoke-MsiApi $api 'MsiViewFetch' $arguments
         if ($status -eq 259) { return '' }
         if ($status -ne 0) { throw "MsiViewFetch failed for property $name with Windows Installer status $status" }
         $record = [uint32]$arguments[1]
@@ -372,23 +428,23 @@ function Get-MsiProperty($api, [uint32]$db, [string]$name) {
             $value = [Text.StringBuilder]::new(1024)
             $arguments = [object[]]@($record, [uint32]1, $value, [uint32]1024)
             Set-ArtCraftValidationStage "msi-property-read:$name"
-            $status = $api.GetMethod('MsiRecordGetStringW').Invoke($null, $arguments)
+            $status = Invoke-MsiApi $api 'MsiRecordGetStringW' $arguments
             if ($status -ne 0) { throw "MsiRecordGetStringW failed for property $name with Windows Installer status $status" }
             return $value.ToString()
-        } finally { $null = $api.GetMethod('MsiCloseHandle').Invoke($null, [object[]]@($record)) }
+        } finally { $null = Invoke-MsiApi $api 'MsiCloseHandle' ([object[]]@($record)) }
     } finally {
-        $null = $api.GetMethod('MsiViewClose').Invoke($null, [object[]]@($view))
-        $null = $api.GetMethod('MsiCloseHandle').Invoke($null, [object[]]@($view))
+        $null = Invoke-MsiApi $api 'MsiViewClose' ([object[]]@($view))
+        $null = Invoke-MsiApi $api 'MsiCloseHandle' ([object[]]@($view))
     }
 }
 
 function Assert-MsiIdentity([string]$file, $app, [string]$version, [string]$asset) {
     Set-ArtCraftValidationStage 'msi-api-bindings'
     $api = New-MsiApi
-    # Reflection.Invoke must receive System.String, not PowerShell's PSObject wrapper.
+    # Invoke-MsiApi unwraps and validates every value before Reflection.Invoke.
     $arguments = [object[]]@([string]$file, [IntPtr]::Zero, [uint32]0)
     Set-ArtCraftValidationStage 'msi-database-open'
-    $status = $api.GetMethod('MsiOpenDatabaseW').Invoke($null, $arguments)
+    $status = Invoke-MsiApi $api 'MsiOpenDatabaseW' $arguments
     if ($status -ne 0) { throw "MsiOpenDatabaseW failed with Windows Installer status $status" }
     $db = [uint32]$arguments[2]
     try {
@@ -411,7 +467,7 @@ function Assert-MsiIdentity([string]$file, $app, [string]$version, [string]$asse
         if ((Get-MsiProperty $api $db 'ProductName') -cnotin $app.names) { throw 'MSI ProductName does not match the authorized app' }
         Set-ArtCraftValidationStage 'msi-property:ProductVersion'
         if ((Get-MsiProperty $api $db 'ProductVersion') -cne $version) { throw 'MSI ProductVersion does not match the authorized release' }
-    } finally { $null = $api.GetMethod('MsiCloseHandle').Invoke($null, [object[]]@($db)) }
+    } finally { $null = Invoke-MsiApi $api 'MsiCloseHandle' ([object[]]@($db)) }
 }
 
 function Assert-AuthenticodePublisher([string]$publisher) {
@@ -855,6 +911,12 @@ mod tests {
         assert!(POLICY.contains("$type.DefinePInvokeMethod($name, $dll, $name"), "native entry points are explicit");
         assert!(POLICY.contains("@($u, $u, $ref, $iref, [IntPtr], [Text.StringBuilder], $ref)"), "summary API includes FILETIME*");
         assert!(POLICY.contains("[int32]0, [IntPtr]::Zero, $template, [uint32]256"), "PID_TEMPLATE passes a null FILETIME*");
+        assert!(
+            POLICY.contains("function Invoke-MsiApi") && POLICY.contains("PSObject]::Base($value)"),
+            "reflection arguments are explicitly unwrapped"
+        );
+        assert!(POLICY.contains("$source.SetValue($value, $index)"), "native ref/out values are copied back to the caller");
+        assert_eq!(POLICY.matches("$method.Invoke($null, $callArguments)").count(), 1, "all MSI reflections use the typed invocation helper");
         assert!(POLICY.contains("diagnostics.jsonl") && POLICY.contains("rootHresult") && POLICY.contains("validation-failure"));
         assert!(POLICY.contains("ConsentPromptBehaviorAdmin") && POLICY.contains("requestingPowerShellWasElevated"));
         assert!(!POLICY.contains("Learning Machines LLC') -or"), "the certificate subject and MSI Manufacturer stay separate");
@@ -868,20 +930,25 @@ mod tests {
             r#"
 $api = New-MsiApi
 $expected = @{
-    MsiOpenDatabaseW = 3
-    MsiDatabaseOpenViewW = 3
-    MsiViewExecute = 2
-    MsiViewFetch = 2
-    MsiRecordGetStringW = 4
-    MsiGetSummaryInformationW = 4
-    MsiSummaryInfoGetPropertyW = 7
-    MsiViewClose = 1
-    MsiCloseHandle = 1
+    MsiOpenDatabaseW = @('System.String', 'System.IntPtr', 'System.UInt32&')
+    MsiDatabaseOpenViewW = @('System.UInt32', 'System.String', 'System.UInt32&')
+    MsiViewExecute = @('System.UInt32', 'System.UInt32')
+    MsiViewFetch = @('System.UInt32', 'System.UInt32&')
+    MsiRecordGetStringW = @('System.UInt32', 'System.UInt32', 'System.Text.StringBuilder', 'System.UInt32&')
+    MsiGetSummaryInformationW = @('System.UInt32', 'System.String', 'System.UInt32', 'System.UInt32&')
+    MsiSummaryInfoGetPropertyW = @('System.UInt32', 'System.UInt32', 'System.UInt32&', 'System.Int32&', 'System.IntPtr', 'System.Text.StringBuilder', 'System.UInt32&')
+    MsiViewClose = @('System.UInt32')
+    MsiCloseHandle = @('System.UInt32')
 }
 foreach ($entry in $expected.GetEnumerator()) {
     $method = $api.GetMethod([string]$entry.Key)
     if ($null -eq $method) { throw "Missing MSI method $($entry.Key)" }
-    if ($method.GetParameters().Length -ne [int]$entry.Value) { throw "Wrong arity for $($entry.Key)" }
+    $parameters = $method.GetParameters()
+    if ($parameters.Length -ne $entry.Value.Length) { throw "Wrong arity for $($entry.Key)" }
+    for ($index = 0; $index -lt $parameters.Length; $index++) {
+        $actualType = $parameters[$index].ParameterType.FullName
+        if ($actualType -cne [string]$entry.Value[$index]) { throw "Wrong parameter type for $($entry.Key) at index $($index): $actualType" }
+    }
     $attribute = @($method.GetCustomAttributes([Runtime.InteropServices.DllImportAttribute], $false))
     if ($attribute.Count -ne 1 -or $attribute[0].EntryPoint -cne [string]$entry.Key) {
         throw "Wrong native export for $($entry.Key)"
@@ -890,7 +957,8 @@ foreach ($entry in $expected.GetEnumerator()) {
 }
 $missing = Join-Path $env:TEMP ('ArtCraft-Missing-' + [Guid]::NewGuid().ToString('N') + '.msi')
 $arguments = [object[]]@($missing, [IntPtr]::Zero, [uint32]0)
-$status = $api.GetMethod('MsiOpenDatabaseW').Invoke($null, $arguments)
+if ([System.Management.Automation.PSObject]::Base($arguments[0]).GetType().FullName -cne 'System.String') { throw 'MsiOpenDatabaseW path did not unwrap to System.String' }
+$status = Invoke-MsiApi $api 'MsiOpenDatabaseW' $arguments
 if ([uint32]$status -ne 1619) { throw "MsiOpenDatabaseW returned unexpected status $status, expected 1619" }
 Set-ArtCraftValidationStage 'test-start'
 $caught = $false
