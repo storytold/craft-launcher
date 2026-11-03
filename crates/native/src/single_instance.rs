@@ -26,9 +26,9 @@
 //! second word equals its owner-only token file. A newer build sends `hello <version> <nonce>`
 //! instead, so 0.7.0 reads the nonce as a wrong token, replies `running 0.7.0`, and merely shows
 //! its window. If that reply arrives in time, a newer newcomer requests takeover but the old
-//! process does not release its port; a same-version newcomer defers. The old reader and new
-//! client have similar timeouts, so a delayed reply can instead reach the legacy fallback and
-//! leave another process running without the listening socket. These timing paths need an
+//! process does not release its port; since that reply carries no proof, the newcomer then starts
+//! anyway without the listening socket. The old reader and new client have similar timeouts, so a
+//! delayed reply can instead reach the legacy fallback, with the same result. These timing paths need an
 //! old-release interoperability test. Quit the running 0.7.0 launcher from its tray menu before
 //! starting the new version. Do not make the new side
 //! send the token to force a `Replace`: that would restore the clear-text shared-secret handshake
@@ -170,7 +170,7 @@ pub fn claim(wake: Wake) -> Instance {
                 }
                 std::thread::sleep(Duration::from_millis(100));
             }
-            if proven && holder_proves_itself(addr, token.as_deref()) {
+            if proven && holder_proves_itself(addr, ours.as_ref(), token.as_deref()) {
                 // It stayed (busy installing) and showed its window instead. The proof is asked
                 // again because the proven launcher may have quit and something else taken the port.
                 Instance::Secondary
@@ -192,11 +192,32 @@ pub fn claim(wake: Wake) -> Instance {
     }
 }
 
-/// Whether whatever holds the port now proves it is this account's launcher. The probe greets with
-/// the lowest version, so it can only bring the window forward, never ask the holder to quit.
-fn holder_proves_itself(addr: SocketAddr, token: Option<&str>) -> bool {
-    let Some(probe) = version::parse("0.0.0") else { return false };
-    matches!(ask_once(addr, &probe, token, true), Ok(Answer::Defer))
+/// Whether whatever holds the port now proves it is this account's launcher.
+///
+/// The probe greets with our own version, because launchers from 0.8.1 to 0.14.x only challenge a
+/// newer newcomer, and checks the holder's proof. It never answers the challenge, so the holder
+/// can't grant `Replace`: it can only bring its window forward.
+fn holder_proves_itself(addr: SocketAddr, ours: Option<&Version>, token: Option<&str>) -> bool {
+    let (Some(ours), Some(tok), Some(client_nonce)) = (ours, token.filter(|t| !t.is_empty()), fresh_secret()) else { return false };
+    let Ok(mut stream) = TcpStream::connect_timeout(&addr, Duration::from_secs(1)) else { return false };
+    let _ = stream.set_read_timeout(Some(Duration::from_secs(2)));
+    let _ = stream.set_write_timeout(Some(Duration::from_secs(1)));
+    if stream.write_all(format!("{HELLO}{ours} {client_nonce}\n").as_bytes()).is_err() {
+        return false;
+    }
+    let reply = read_message(&mut stream);
+    let proven =
+        std::str::from_utf8(&reply).ok().and_then(|r| r.trim().strip_prefix(CHALLENGE)).is_some_and(|rest| server_proved(rest, tok, &client_nonce));
+    let _ = stream.shutdown(std::net::Shutdown::Both);
+    proven
+}
+
+/// Whether a `challenge <nonce> <proof>` (without its prefix) proves the sender holds `token`.
+fn server_proved(challenge_rest: &str, token: &str, client_nonce: &str) -> bool {
+    let mut parts = challenge_rest.split_whitespace();
+    let server_nonce = parts.next().unwrap_or("");
+    let server_proof = parts.next().unwrap_or("");
+    constant_time_eq(server_proof, &compute_proof("server", token, client_nonce, server_nonce))
 }
 
 fn compute_proof(role: &str, token: &str, client_nonce: &str, server_nonce: &str) -> String {
@@ -361,14 +382,11 @@ fn ask_once(addr: SocketAddr, ours: &Version, token: Option<&str>, with_nonce: b
     };
 
     if let Some(challenge_rest) = reply_str.strip_prefix(CHALLENGE) {
-        let mut parts = challenge_rest.split_whitespace();
-        let server_nonce = parts.next().unwrap_or("");
-        let server_proof = parts.next().unwrap_or("");
+        let server_nonce = challenge_rest.split_whitespace().next().unwrap_or("");
         let (Some(client_nonce), Some(tok)) = (client_nonce.as_deref(), token) else {
             return Ok(Answer::Unrelated);
         };
-        let expected_server_proof = compute_proof("server", tok, client_nonce, server_nonce);
-        if !constant_time_eq(server_proof, &expected_server_proof) {
+        if !server_proved(challenge_rest, tok, client_nonce) {
             // Server failed to prove it knows the shared token (untrusted peer).
             // Do NOT disclose client proof; abort immediately, and don't step aside for it.
             return Ok(Answer::Unrelated);
@@ -643,16 +661,23 @@ mod tests {
     }
 
     /// After a proven takeover stalls, the newcomer exits only if the port's holder proves itself
-    /// again, and the probe never asks that holder to quit.
+    /// again, and the probe never asks that holder to quit, even though it greets as newer.
     #[test]
     fn the_port_holder_is_proven_again_before_stepping_aside() {
         let (addr, rx) = primary("0.1.0");
-        assert!(holder_proves_itself(addr, Some(TOK)));
+        assert!(holder_proves_itself(addr, Some(&v("0.1.2")), Some(TOK)));
         assert_eq!(next(&rx), Request::Show, "the probe must not ask the running launcher to quit");
+
+        // A holder of the same version (this build) is challenged too.
+        let (addr, rx) = primary("0.1.2");
+        assert!(holder_proves_itself(addr, Some(&v("0.1.2")), Some(TOK)));
+        assert_eq!(next(&rx), Request::Show);
 
         // Something that took the port without the token can't keep the newcomer from starting.
         let (addr, _rx) = primary("0.1.0");
-        assert!(!holder_proves_itself(addr, Some("another-accounts-token")));
+        assert!(!holder_proves_itself(addr, Some(&v("0.1.2")), Some("another-accounts-token")));
+        let (addr, _rx) = primary("0.1.0");
+        assert!(!holder_proves_itself(addr, Some(&v("0.1.2")), None));
 
         let listener = TcpListener::bind((Ipv4Addr::LOCALHOST, 0)).unwrap();
         let addr = listener.local_addr().unwrap();
@@ -661,8 +686,34 @@ mod tests {
             let _ = read_message(&mut s);
             let _ = s.write_all(b"artcraft-launcher:running 9.9.9\n");
         });
-        assert!(!holder_proves_itself(addr, Some(TOK)));
+        assert!(!holder_proves_itself(addr, Some(&v("0.1.2")), Some(TOK)));
         imposter.join().unwrap();
+    }
+
+    /// A busy 0.8.1 to 0.14.x launcher that stayed after a takeover only challenges a newer
+    /// newcomer. The probe greets as newer, so it is still proven, and it never sends a client proof.
+    #[test]
+    fn the_probe_proves_a_running_launcher_that_only_challenges_newer_starts() {
+        let listener = TcpListener::bind((Ipv4Addr::LOCALHOST, 0)).unwrap();
+        let addr = listener.local_addr().unwrap();
+        let old = std::thread::spawn(move || {
+            let (mut s, _) = listener.accept().unwrap();
+            let hello = String::from_utf8(read_message(&mut s)).unwrap();
+            let mut parts = hello.strip_prefix(HELLO).unwrap().split_whitespace();
+            let theirs = v(parts.next().unwrap());
+            let Some(client_nonce) = parts.next().filter(|_| version::is_newer(&theirs, &v("0.1.0"))) else {
+                let _ = s.write_all(b"artcraft-launcher:running 0.1.0\n");
+                return Vec::new();
+            };
+            let server_nonce = fresh_secret().unwrap();
+            let proof = compute_proof("server", TOK, client_nonce, &server_nonce);
+            s.write_all(format!("{CHALLENGE}{server_nonce} {proof}\n").as_bytes()).unwrap();
+            let auth = read_message(&mut s);
+            let _ = s.write_all(b"artcraft-launcher:running 0.1.0\n");
+            auth
+        });
+        assert!(holder_proves_itself(addr, Some(&v("0.1.2")), Some(TOK)));
+        assert!(old.join().unwrap().is_empty(), "the probe must never answer the challenge");
     }
 
     /// A listener that answers like a newer launcher but never proves it holds our token (it
