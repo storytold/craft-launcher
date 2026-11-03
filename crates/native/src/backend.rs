@@ -1937,7 +1937,15 @@ mod tests {
         std::fs::write(&exe, "#!/bin/sh\nexit 3\n").unwrap();
         std::fs::set_permissions(&exe, std::fs::Permissions::from_mode(0o755)).unwrap();
         let mut backend = backend(dir.path(), platform, None);
-        let installed = Installed { version: None, source: InstallSource::Binary, location: exe.to_string_lossy().into_owned(), package: None };
+        let installed = Installed {
+            version: None,
+            source: InstallSource::Binary,
+            location: exe.to_string_lossy().into_owned(),
+            package: None,
+            externally_managed: false,
+            installation: None,
+            origin: None,
+        };
         backend.shared.installed.lock().unwrap().insert(APP.to_string(), installed);
 
         backend.send(Command::Launch { app: APP.to_string() });

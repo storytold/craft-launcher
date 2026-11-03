@@ -313,7 +313,7 @@ pub(crate) fn which(name: &str) -> Option<std::path::PathBuf> {
 pub fn fuse_missing() -> bool {
     cfg!(target_os = "linux")
         && !in_sandbox()
-        && (!Path::new("/dev/fuse").exists() || (which_on_path("fusermount3").is_none() && which_on_path("fusermount").is_none()))
+        && (!Path::new("/dev/fuse").exists() || (which("fusermount3").is_none() && which("fusermount").is_none()))
 }
 
 /// The command that starts an app binary from its own folder with `env` added to its environment.
