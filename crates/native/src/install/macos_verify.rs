@@ -21,6 +21,8 @@ const TIMEOUT: Duration = Duration::from_secs(600);
 /// down and can run past the timeout together.
 static CHECKING: Mutex<()> = Mutex::new(());
 
+/// Runs the checks below on `bundle` in order and stops at the first that fails. `run` starts each
+/// helper with its timeout: the installer passes [`crate::process::run`], tests pass a stand-in.
 pub(super) fn verify_with(
     app: &CraftApp,
     bundle: &Path,
