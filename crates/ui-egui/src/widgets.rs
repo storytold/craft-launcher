@@ -201,14 +201,17 @@ enum WindowButton {
 pub fn window_buttons(ui: &mut Ui, height: f32) {
     let ctx = ui.ctx().clone();
     let maximized = ctx.input(|i| i.viewport().maximized.unwrap_or(false));
-    if window_button(ui, WindowButton::Close, height).clicked() {
+    // The first frame after a restore hit-tests the maximized buttons, so an edge press can land on them.
+    let inside = ctx.content_rect().shrink(resize_band(&ctx));
+    let clicked = |resp: Response| resp.clicked() && resp.interact_pointer_pos().is_none_or(|p| inside.contains(p));
+    if clicked(window_button(ui, WindowButton::Close, height)) {
         ctx.send_viewport_cmd(egui::ViewportCommand::Close);
     }
     let size = if maximized { WindowButton::Restore } else { WindowButton::Maximize };
-    if window_button(ui, size, height).clicked() {
+    if clicked(window_button(ui, size, height)) {
         ctx.send_viewport_cmd(egui::ViewportCommand::Maximized(!maximized));
     }
-    if window_button(ui, WindowButton::Minimize, height).clicked() {
+    if clicked(window_button(ui, WindowButton::Minimize, height)) {
         ctx.send_viewport_cmd(egui::ViewportCommand::Minimized(true));
     }
     rule(ui, height);
@@ -283,6 +286,17 @@ pub fn window_edges(ctx: &egui::Context) {
         t.hairline(),
         egui::StrokeKind::Inside,
     );
+    // Above every layer, so egui's click tolerance can't hand a resize's press to what's nearby (#571).
+    let e = RESIZE_EDGE;
+    let bands = [r.with_max_y(r.top() + e), r.with_min_y(r.bottom() - e), r.with_max_x(r.left() + e), r.with_min_x(r.right() - e)];
+    for (edge, rect) in bands.into_iter().enumerate() {
+        egui::Area::new(egui::Id::unique(("window-edge", edge)))
+            .order(egui::Order::Tooltip)
+            .movable(false)
+            .constrain(false)
+            .fixed_pos(rect.min)
+            .show(ctx, |ui| ui.allocate_response(rect.size(), egui::Sense::CLICK));
+    }
     let Some(p) = ctx.input(|i| i.pointer.hover_pos()).filter(|p| r.contains(*p)) else { return };
     let near = |d: f32| d < RESIZE_EDGE;
     // A corner takes a little of each edge next to it.

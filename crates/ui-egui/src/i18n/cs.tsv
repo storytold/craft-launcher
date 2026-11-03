@@ -134,6 +134,7 @@
 	Update cancelled	Aktualizace zrušena
 	Uninstall cancelled	Odinstalace zrušena
 	Retry install	Zkusit instalaci znovu
+	Retry update	Zkusit aktualizaci znovu
 	Retry update to {version}	Zkusit aktualizaci na {version} znovu
 	The download is still here. It's checked again, then installed.	Stažený soubor je stále k dispozici. Znovu se ověří a poté nainstaluje.
 	Waiting for another app…	Čekání na jinou aplikaci…

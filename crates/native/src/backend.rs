@@ -306,7 +306,7 @@ impl NativeBackend {
     }
 
     fn start_job(&self, app_id: &str, work: Work) {
-        let uninstall = work == Work::Uninstall;
+        let uninstall = matches!(work, Work::Uninstall);
         let Some(app) = CraftApp::by_id(app_id) else { return };
         log::info!("{}: starting {} job", app.name, if uninstall { "uninstall" } else { "install/update" });
         let stop = Arc::new(Stop::default());
@@ -361,7 +361,10 @@ impl NativeBackend {
                     existing.as_ref(),
                     record.as_ref(),
                     &stop,
-                    work == Work::Replace,
+                    match &work {
+                        Work::Replace(path) => Some(path.as_str()),
+                        Work::Install | Work::Uninstall => None,
+                    },
                     source.as_deref(),
                 );
                 // Stopped by the connection rather than by the user: say so, and how to go on.
@@ -456,10 +459,11 @@ impl NativeBackend {
     }
 }
 
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq)]
 enum Work {
     Install,
-    Replace,
+    /// Install over the path the user agreed to overwrite (see [`Command::Replace`]).
+    Replace(String),
     Uninstall,
 }
 
@@ -509,7 +513,7 @@ fn run_install(
     existing: Option<&Installed>,
     record: Option<&crate::manifest::Record>,
     stop: &Stop,
-    replace: bool,
+    approved: Option<&str>,
     source: Option<&dyn ReleaseSource>,
 ) -> Result<String, String> {
     if let Some(msg) = existing.and_then(|e| install::managed_elsewhere(app, e, false)) {
@@ -566,10 +570,15 @@ fn run_install(
     } else {
         previous.as_ref().zip(previous_asset.as_ref()).map(|(previous, asset)| install::Downgrade::Reinstall { previous, asset })
     };
-    if !replace && let Some(path) = install::occupied(app, &asset, kind, existing, record, &options.install_locations, paths)? {
-        shared.emit(Event::Occupied { app: app.id.to_string(), path: path.display().to_string() });
-        return Err(format!("{} already exists", path.display()));
-    }
+    let occupied = install::occupied(app, &asset, kind, existing, record, &options.install_locations, paths)?;
+    let replace = match replace_consent(occupied.as_deref(), approved) {
+        Consent::Free => false,
+        Consent::Given => true,
+        Consent::Ask(path) => {
+            shared.emit(Event::Occupied { app: app.id.to_string(), path: path.display().to_string() });
+            return Err(format!("{} already exists", path.display()));
+        }
+    };
     let mut last_emit = Instant::now() - Duration::from_secs(1);
     let mut phase = |p: JobPhase| {
         // Downloads report thousands of times; the UI needs ~20 a second.
@@ -604,6 +613,29 @@ fn run_install(
         }
     }
     Ok(installed_text(app, existing.is_some(), &release))
+}
+
+/// Whether an install may write over what is at its destination.
+#[derive(Debug, PartialEq, Eq)]
+enum Consent<'a> {
+    /// Nothing the launcher didn't put there is in the way.
+    Free,
+    /// The user agreed to overwrite exactly this destination.
+    Given,
+    /// Something is in the way and the user hasn't agreed to overwrite it: ask.
+    Ask(&'a std::path::Path),
+}
+
+/// The user's agreement to replace a file covers the path they were shown (`approved`), and only
+/// that one. The release can change between the question and the answer (a new version, another
+/// asset, another folder), and the install then writes somewhere else: it must not take the old
+/// "yes" as leave to overwrite a different file (CWE-367).
+fn replace_consent<'a>(occupied: Option<&'a std::path::Path>, approved: Option<&str>) -> Consent<'a> {
+    match occupied {
+        None => Consent::Free,
+        Some(path) if approved == Some(path.display().to_string().as_str()) => Consent::Given,
+        Some(path) => Consent::Ask(path),
+    }
 }
 
 /// What a finished install tells the user.
@@ -1146,7 +1178,7 @@ impl Backend for NativeBackend {
                 });
             }
             Command::Install { app } => self.start_job(&app, Work::Install),
-            Command::Replace { app } => self.start_job(&app, Work::Replace),
+            Command::Replace { app, path } => self.start_job(&app, Work::Replace(path)),
             Command::Uninstall { app } => self.start_job(&app, Work::Uninstall),
             Command::Pause { app } => {
                 if let Some(stop) = self.shared.jobs.lock().unwrap_or_else(PoisonError::into_inner).get(&app) {
@@ -1256,6 +1288,19 @@ mod tests {
 
     fn tagged(v: &str) -> Release {
         Release { tag: format!("v{v}"), version: version::parse(v), ..Default::default() }
+    }
+
+    /// A "Replace" answer covers the path that was shown, never a destination that changed since.
+    #[test]
+    fn replacing_needs_consent_for_the_exact_path_in_the_way() {
+        let shown = std::path::Path::new("/home/a/Applications/photocraft-0.5.0-linux-x86_64.AppImage");
+        let moved = std::path::Path::new("/home/a/Applications/photocraft-0.6.0-linux-x86_64.AppImage");
+        let approved = shown.display().to_string();
+        assert_eq!(replace_consent(None, None), Consent::Free);
+        assert_eq!(replace_consent(None, Some(&approved)), Consent::Free, "nothing in the way: nothing to overwrite");
+        assert_eq!(replace_consent(Some(shown), None), Consent::Ask(shown));
+        assert_eq!(replace_consent(Some(shown), Some(&approved)), Consent::Given);
+        assert_eq!(replace_consent(Some(moved), Some(&approved)), Consent::Ask(moved), "a yes for one file must not overwrite another");
     }
 
     #[test]
