@@ -1845,15 +1845,13 @@ mod freebsd {
             // Copied in with the app's files and owned by root, so an uninstall can tell which
             // files are the app's whatever happens to the user's own record of them.
             let list = root_record::stage(&tree, app.id, &rel)?;
-            // The copy carries the archive's modes and the user's umask into the prefix: take
-            // group and world write off the list and the folders holding it in the same root call,
-            // or the uninstall would refuse to trust it, and let everyone read it, or the
-            // uninstall (running as the user) couldn't open it.
+            // The copy carries the archive's modes and the user's umask into the prefix: the same
+            // root call fixes the list's and its folders' modes (see `COPY_AND_PROTECT`).
             let protect = root_record::protected_paths(&prefix, app.id);
             let mut args: Vec<&OsStr> = vec![
                 OsStr::new("/bin/sh"),
                 OsStr::new("-c"),
-                OsStr::new(r#"/bin/cp -R "$1" "$2" && shift 2 && /bin/chmod go-w,a+rX "$@""#),
+                OsStr::new(root_record::COPY_AND_PROTECT),
                 OsStr::new("sh"),
                 source.as_os_str(),
                 prefix.as_os_str(),

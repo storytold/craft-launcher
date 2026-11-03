@@ -38,6 +38,16 @@ pub(super) fn protected_paths(prefix: &Path, app_id: &str) -> Vec<PathBuf> {
         .collect()
 }
 
+/// The root step of a system-wide install, run as
+/// `sh -c COPY_AND_PROTECT sh <tree>/. <prefix> <protected_paths...>`. It copies the tree into the
+/// prefix, then takes group and world write off the list and the folders holding it, or the
+/// uninstall would refuse to trust it, and lets everyone read them, or the uninstall (running as
+/// the user) couldn't open it. `chmod` follows symlinks, so each path is checked first and a
+/// symlink stops the install instead of having its target's modes changed as root; going
+/// shallowest first, every folder is fixed before what's in it is checked, so only root can swap
+/// a path between its check and its `chmod`.
+pub(super) const COPY_AND_PROTECT: &str = r#"/bin/cp -R "$1" "$2" || exit; shift 2; for p; do if [ -L "$p" ]; then echo "$p is a symlink" >&2; exit 1; fi; /bin/chmod go-w,a+rX "$p" || exit; done"#;
+
 /// A path relative to the prefix that stays inside it: no root, `..` or empty parts.
 fn contained(rel: &Path) -> bool {
     !rel.as_os_str().is_empty() && rel.components().all(|c| matches!(c, Component::Normal(_)))
@@ -225,6 +235,64 @@ mod tests {
         std::fs::remove_file(&list).unwrap();
         std::os::unix::fs::symlink(&elsewhere, &list).unwrap();
         assert!(owned(&prefix, "wordcraft", uid).is_err(), "a symlinked list");
+    }
+
+    /// Runs [`COPY_AND_PROTECT`] as the test user: copies `tree` into `prefix`.
+    fn copy_and_protect(tree: &Path, prefix: &Path) -> bool {
+        let mut source = tree.as_os_str().to_os_string();
+        source.push("/.");
+        std::process::Command::new("/bin/sh")
+            .args([OsStr::new("-c"), OsStr::new(COPY_AND_PROTECT), OsStr::new("sh"), &source, prefix.as_os_str()])
+            .args(protected_paths(prefix, "wordcraft"))
+            .status()
+            .unwrap()
+            .success()
+    }
+
+    #[test]
+    fn the_root_step_copies_the_tree_and_leaves_a_list_the_uninstall_trusts() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = tempfile::tempdir().unwrap();
+        let tree = dir.path().join("tree");
+        std::fs::create_dir_all(tree.join("bin")).unwrap();
+        std::fs::write(tree.join("bin/wordcraft"), b"").unwrap();
+        stage(&tree, "wordcraft", &[PathBuf::from("bin/wordcraft")]).unwrap();
+        // As a loose archive or umask, or a restrictive umask, could leave the staged copy.
+        for (p, mode) in [("share", 0o777), ("share/artcraft-launcher", 0o700), ("share/artcraft-launcher/installed", 0o770)] {
+            std::fs::set_permissions(tree.join(p), std::fs::Permissions::from_mode(mode)).unwrap();
+        }
+        std::fs::set_permissions(tree.join(relative("wordcraft")), std::fs::Permissions::from_mode(0o600)).unwrap();
+        let prefix = dir.path().join("local");
+        std::fs::create_dir(&prefix).unwrap();
+        std::fs::set_permissions(&prefix, std::fs::Permissions::from_mode(0o755)).unwrap();
+
+        assert!(copy_and_protect(&tree, &prefix));
+        assert!(prefix.join("bin/wordcraft").is_file());
+        for p in protected_paths(&prefix, "wordcraft") {
+            let mode = std::fs::metadata(&p).unwrap().mode() & 0o777;
+            assert_eq!(mode, if p.is_dir() { 0o755 } else { 0o644 }, "{}", p.display());
+        }
+        let owned = owned(&prefix, "wordcraft", me(dir.path())).unwrap();
+        assert!(owned.contains(&prefix.join("bin/wordcraft")));
+    }
+
+    #[test]
+    fn the_root_step_refuses_a_symlinked_list_without_touching_its_target() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = tempfile::tempdir().unwrap();
+        let secret = dir.path().join("secret");
+        std::fs::write(&secret, b"").unwrap();
+        std::fs::set_permissions(&secret, std::fs::Permissions::from_mode(0o600)).unwrap();
+        // The staging tree swapped after `stage`, before the copy.
+        let tree = dir.path().join("tree");
+        let list = tree.join(relative("wordcraft"));
+        std::fs::create_dir_all(list.parent().unwrap()).unwrap();
+        std::os::unix::fs::symlink(&secret, &list).unwrap();
+        let prefix = dir.path().join("local");
+        std::fs::create_dir(&prefix).unwrap();
+
+        assert!(!copy_and_protect(&tree, &prefix));
+        assert_eq!(std::fs::metadata(&secret).unwrap().mode() & 0o777, 0o600);
     }
 
     #[test]
