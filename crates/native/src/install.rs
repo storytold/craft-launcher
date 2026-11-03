@@ -215,13 +215,15 @@ pub fn install_at(
         }
         #[cfg(target_os = "linux")]
         PackageKind::Deb | PackageKind::Rpm | PackageKind::ArchPkg | PackageKind::Flatpak => {
-            linux::install_package(kind, &file, job.stop, &mut *job.phase).map(|_| {
-                if kind == PackageKind::Flatpak {
-                    linux::configure_bundle_lookaside(app);
-                    linux::retire_former_flatpak(app, existing);
-                }
-                None
-            })
+            linux::install_package(kind, &file, existing.and_then(|installed| installed.installation.as_deref()), job.stop, &mut *job.phase).map(
+                |_| {
+                    if kind == PackageKind::Flatpak {
+                        linux::configure_bundle_lookaside(app, existing.and_then(|installed| installed.installation.as_deref()));
+                        linux::retire_former_flatpak(app, existing);
+                    }
+                    None
+                },
+            )
         }
         #[cfg(target_os = "linux")]
         PackageKind::AppImage => {
@@ -1148,27 +1150,41 @@ pub(crate) mod linux {
     }
 
     /// Installs (or upgrades) a downloaded package with the system's own tools.
-    pub fn install_package(kind: PackageKind, file: &Path, stop: &Stop, phase: &mut dyn FnMut(JobPhase)) -> Result<(), String> {
+    pub fn install_package(
+        kind: PackageKind,
+        file: &Path,
+        installation: Option<&str>,
+        stop: &Stop,
+        phase: &mut dyn FnMut(JobPhase),
+    ) -> Result<(), String> {
         if kind == PackageKind::Deb && system_tool("apt-get").is_none() {
             return Err("this system has no apt-get to install a Debian package with".into());
         }
         if kind == PackageKind::ArchPkg && system_tool("pacman").is_none() {
             return Err("this system has no pacman to install an Arch package with".into());
         }
-        install_package_via(&SYSTEM, kind, file, stop, phase)
+        install_package_via(&SYSTEM, kind, file, installation, stop, phase)
     }
 
-    pub fn install_package_via(root: &Root<'_>, kind: PackageKind, file: &Path, stop: &Stop, phase: &mut dyn FnMut(JobPhase)) -> Result<(), String> {
+    pub fn install_package_via(
+        root: &Root<'_>,
+        kind: PackageKind,
+        file: &Path,
+        installation: Option<&str>,
+        stop: &Stop,
+        phase: &mut dyn FnMut(JobPhase),
+    ) -> Result<(), String> {
         let f = file.as_os_str();
         if let Some(command) = install_command(kind) {
             return as_root(root, command, f, stop, phase, JobPhase::Installing);
         }
         match kind {
             PackageKind::Flatpak => {
+                let scope = installation.map_or_else(|| "--user".to_string(), |name| crate::packages::flatpak_scope(Some(name)));
                 let install_one = || {
                     log::info!("executing flatpak install --reinstall --bundle for {}", file.display());
                     let output = process::flatpak_command()
-                        .args(["install", "--user", "-y", "--noninteractive", "--reinstall", "--bundle"])
+                        .args(["install", &scope, "-y", "--noninteractive", "--reinstall", "--bundle"])
                         .arg(f)
                         .output()
                         .map_err(|e| format!("couldn't start Flatpak ({e})"))?;
@@ -1229,15 +1245,16 @@ pub(crate) mod linux {
     }
 
     /// Configure signature verification for a bundle-created ArtCraft OCI origin.
-    pub fn configure_bundle_lookaside(app: &CraftApp) {
+    pub fn configure_bundle_lookaside(app: &CraftApp, installation: Option<&str>) {
+        let scope = installation.map_or_else(|| "--user".to_string(), |name| crate::packages::flatpak_scope(Some(name)));
         let id = app.bundle_id();
-        let Some(origin) = process::capture_flatpak(&["info", "--user", "--show-origin", &id], std::time::Duration::from_secs(10)) else { return };
+        let Some(origin) = process::capture_flatpak(&["info", &scope, "--show-origin", &id], std::time::Duration::from_secs(10)) else { return };
         let origin = origin.trim();
         if !origin.ends_with("-origin") {
             return;
         }
         let Some(remotes) =
-            process::capture_flatpak(&["remotes", "--user", "--show-disabled", "--columns=name,url"], std::time::Duration::from_secs(10))
+            process::capture_flatpak(&["remotes", &scope, "--show-disabled", "--columns=name,url"], std::time::Duration::from_secs(10))
         else {
             return;
         };
@@ -1245,7 +1262,7 @@ pub(crate) mod linux {
             return;
         }
         let lookaside = format!("--signature-lookaside={}", crate::packages::ARTCRAFT_SIGNATURE_LOOKASIDE);
-        if process::capture_flatpak(&["remote-modify", "--user", &lookaside, origin], std::time::Duration::from_secs(10)).is_none() {
+        if process::capture_flatpak(&["remote-modify", &scope, &lookaside, origin], std::time::Duration::from_secs(10)).is_none() {
             log::warn!("Could not configure the Flatpak signature lookaside for {origin}");
         }
     }
@@ -3143,7 +3160,7 @@ mod tests {
                             waiting.send(()).unwrap();
                         }
                     };
-                    linux::install_package_via(root, PackageKind::Deb, Path::new(file), &Stop::default(), &mut phase)
+                    linux::install_package_via(root, PackageKind::Deb, Path::new(file), None, &Stop::default(), &mut phase)
                 })
             });
             waits.recv().unwrap();
@@ -3192,7 +3209,8 @@ mod tests {
         }
         let queue = crate::queue::Queue::new();
         let root = linux::Root { queue: &queue, run: &|_| Ok(()) };
-        let result = linux::install_package_via(&root, PackageKind::Flatpak, Path::new("/nonexistent/file.flatpak"), &Stop::default(), &mut |_| ());
+        let result =
+            linux::install_package_via(&root, PackageKind::Flatpak, Path::new("/nonexistent/file.flatpak"), None, &Stop::default(), &mut |_| ());
         assert!(result.is_err());
         let err = result.unwrap_err();
         assert!(err.starts_with("Flatpak couldn't install the bundle: "), "unexpected error: {err}");
