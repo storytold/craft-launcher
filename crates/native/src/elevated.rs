@@ -957,18 +957,19 @@ foreach ($entry in $expected.GetEnumerator()) {
     if ([IO.Path]::GetFileName($attribute[0].Value) -cne 'msi.dll') { throw "Wrong MSI library for $($entry.Key)" }
 }
 $missing = Join-Path $env:TEMP ('ArtCraft-Missing-' + [Guid]::NewGuid().ToString('N') + '.msi')
+if (Test-Path -LiteralPath $missing) { throw 'Generated missing-MSI test path unexpectedly exists' }
 $arguments = [object[]]@($missing, [IntPtr]::Zero, [uint32]0)
 $pathBase = $null
 if ($null -ne $arguments[0]) { $pathBase = $arguments[0].PSObject.BaseObject }
 if ($null -eq $pathBase -or $pathBase.GetType().FullName -cne 'System.String') { throw 'MsiOpenDatabaseW path did not unwrap to System.String' }
 $status = Invoke-MsiApi $api 'MsiOpenDatabaseW' $arguments
-if ([uint32]$status -ne 1619) { throw "MsiOpenDatabaseW returned unexpected status $status, expected 1619" }
+if ([uint32]$status -ne 110) { throw "MsiOpenDatabaseW returned unexpected status $status, expected 110" }
 Set-ArtCraftValidationStage 'test-start'
 $caught = $false
 try { Assert-MsiIdentity $missing @{ names = @('PhotoCraft') } '0.5.0' 'photocraft-0.5.0-windows-x64.msi' }
 catch {
     if ($script:ArtCraftValidationStage -cne 'msi-database-open') { throw "Unexpected failure stage $script:ArtCraftValidationStage" }
-    if ($_.Exception.Message -notmatch 'MsiOpenDatabaseW failed with Windows Installer status 1619') { throw }
+    if ($_.Exception.Message -notmatch 'MsiOpenDatabaseW failed with Windows Installer status 110') { throw }
     $caught = $true
 }
 if (-not $caught) { throw 'Assert-MsiIdentity unexpectedly accepted a missing MSI' }
