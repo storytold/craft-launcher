@@ -104,89 +104,109 @@ pub(crate) enum Inline<'a> {
     Link { text: &'a str, url: &'a str },
 }
 
-pub(crate) fn parse_inline(mut text: &str) -> Vec<Inline<'_>> {
+pub(crate) fn parse_inline(orig: &str) -> Vec<Inline<'_>> {
     let mut out = Vec::new();
-    while !text.is_empty() {
-        let next_special = [text.find("**").map(|i| (i, 0)), text.find('`').map(|i| (i, 1)), text.find('[').map(|i| (i, 2))]
-            .into_iter()
-            .flatten()
-            .min_by_key(|&(idx, _)| idx);
+    let mut cursor = 0;
+    let mut plain_start = 0;
+    let mut look_for_bold = true;
+    let mut look_for_code = true;
+    let mut look_for_brackets = true;
 
-        let Some((idx, kind)) = next_special else {
-            out.push(Inline::Plain(text));
+    while cursor < orig.len() {
+        let Some(rest) = orig.get(cursor..) else { break };
+
+        let next_bold = if look_for_bold { rest.find("**").map(|i| (cursor + i, 0)) } else { None };
+        let next_code = if look_for_code { rest.find('`').map(|i| (cursor + i, 1)) } else { None };
+        let next_bracket = if look_for_brackets { rest.find('[').map(|i| (cursor + i, 2)) } else { None };
+
+        let Some((special_idx, kind)) = [next_bold, next_code, next_bracket].into_iter().flatten().min_by_key(|&(idx, _)| idx) else {
             break;
         };
 
-        if idx > 0 {
-            if let Some(prefix) = text.get(..idx) {
-                out.push(Inline::Plain(prefix));
-            }
-            if let Some(rest) = text.get(idx..) {
-                text = rest;
-            } else {
-                break;
-            }
-        }
-
         match kind {
             0 => {
-                let mut matched = false;
-                if let Some(after_stars) = text.get(2..)
-                    && let Some(end) = after_stars.find("**")
-                    && let (Some(bold_text), Some(rest)) = (after_stars.get(..end), after_stars.get(end + 2..))
+                let Some(after_stars) = orig.get(special_idx + 2..) else { break };
+                if let Some(end) = after_stars.find("**")
+                    && let Some(bold_text) = after_stars.get(..end)
                 {
-                    out.push(Inline::Bold(bold_text));
-                    text = rest;
-                    matched = true;
-                }
-                if !matched {
-                    if let Some(first_two) = text.get(..2) {
-                        out.push(Inline::Plain(first_two));
+                    let end_pos = special_idx + 2 + end + 2;
+                    if plain_start < special_idx
+                        && let Some(plain) = orig.get(plain_start..special_idx)
+                    {
+                        out.push(Inline::Plain(plain));
                     }
-                    text = text.get(2..).unwrap_or("");
+                    out.push(Inline::Bold(bold_text));
+                    plain_start = end_pos;
+                    cursor = end_pos;
+                } else {
+                    look_for_bold = false;
+                    cursor = special_idx + 2;
                 }
             }
             1 => {
-                let mut matched = false;
-                if let Some(after_tick) = text.get(1..)
-                    && let Some(end) = after_tick.find('`')
-                    && let (Some(code_text), Some(rest)) = (after_tick.get(..end), after_tick.get(end + 1..))
+                let Some(after_tick) = orig.get(special_idx + 1..) else { break };
+                if let Some(end) = after_tick.find('`')
+                    && let Some(code_text) = after_tick.get(..end)
                 {
-                    out.push(Inline::Code(code_text));
-                    text = rest;
-                    matched = true;
-                }
-                if !matched {
-                    if let Some(tick) = text.get(..1) {
-                        out.push(Inline::Plain(tick));
+                    let end_pos = special_idx + 1 + end + 1;
+                    if plain_start < special_idx
+                        && let Some(plain) = orig.get(plain_start..special_idx)
+                    {
+                        out.push(Inline::Plain(plain));
                     }
-                    text = text.get(1..).unwrap_or("");
+                    out.push(Inline::Code(code_text));
+                    plain_start = end_pos;
+                    cursor = end_pos;
+                } else {
+                    look_for_code = false;
+                    cursor = special_idx + 1;
                 }
             }
             2 => {
-                let mut matched = false;
-                if let Some(after_bracket) = text.get(1..)
-                    && let Some(close_bracket) = after_bracket.find(']')
-                    && let (Some(link_text), Some(after_close)) = (after_bracket.get(..close_bracket), after_bracket.get(close_bracket + 1..))
-                    && after_close.starts_with('(')
-                    && let Some(after_paren) = after_close.get(1..)
-                    && let Some(close_paren) = after_paren.find(')')
-                    && let (Some(url), Some(rest)) = (after_paren.get(..close_paren), after_paren.get(close_paren + 1..))
+                let Some(after_bracket) = orig.get(special_idx + 1..) else { break };
+                if let Some(close_bracket) = after_bracket.find(']')
+                    && let Some(link_text_candidate) = after_bracket.get(..close_bracket)
+                    && let Some(after_close) = after_bracket.get(close_bracket + 1..)
                 {
-                    out.push(Inline::Link { text: link_text, url });
-                    text = rest;
-                    matched = true;
-                }
-                if !matched {
-                    if let Some(bracket) = text.get(..1) {
-                        out.push(Inline::Plain(bracket));
+                    let (actual_start, link_text) = if let Some(inner_open) = link_text_candidate.rfind('[')
+                        && let Some(inner_text) = link_text_candidate.get(inner_open + 1..)
+                    {
+                        (special_idx + 1 + inner_open, inner_text)
+                    } else {
+                        (special_idx, link_text_candidate)
+                    };
+
+                    if let Some(after_paren) = after_close.strip_prefix('(')
+                        && let Some(close_paren) = after_paren.find(')')
+                        && let Some(url) = after_paren.get(..close_paren)
+                    {
+                        let end_pos = special_idx + 1 + close_bracket + 1 + 1 + close_paren + 1;
+                        if plain_start < actual_start
+                            && let Some(plain) = orig.get(plain_start..actual_start)
+                        {
+                            out.push(Inline::Plain(plain));
+                        }
+                        out.push(Inline::Link { text: link_text, url });
+                        plain_start = end_pos;
+                        cursor = end_pos;
+                    } else {
+                        cursor = special_idx + 1 + close_bracket + 1;
                     }
-                    text = text.get(1..).unwrap_or("");
+                } else {
+                    look_for_brackets = false;
+                    cursor = special_idx + 1;
                 }
             }
             _ => break,
         }
     }
+
+    if plain_start < orig.len()
+        && let Some(remaining) = orig.get(plain_start..)
+    {
+        out.push(Inline::Plain(remaining));
+    }
+
     out
 }
 
@@ -289,8 +309,17 @@ mod tests {
                 Inline::Plain("."),
             ]
         );
-        assert_eq!(parse_inline("**unclosed"), vec![Inline::Plain("**"), Inline::Plain("unclosed")]);
-        assert_eq!(parse_inline("`unclosed"), vec![Inline::Plain("`"), Inline::Plain("unclosed")]);
-        assert_eq!(parse_inline("[unclosed](https://"), vec![Inline::Plain("["), Inline::Plain("unclosed](https://")]);
+        assert_eq!(parse_inline("**unclosed"), vec![Inline::Plain("**unclosed")]);
+        assert_eq!(parse_inline("`unclosed"), vec![Inline::Plain("`unclosed")]);
+        assert_eq!(parse_inline("[unclosed](https://"), vec![Inline::Plain("[unclosed](https://")]);
+        assert_eq!(parse_inline("[[[[[unclosed"), vec![Inline::Plain("[[[[[unclosed")]);
+        assert_eq!(
+            parse_inline("[unmatched [site](https://getartcraft.com)"),
+            vec![Inline::Plain("[unmatched "), Inline::Link { text: "site", url: "https://getartcraft.com" },]
+        );
+        assert_eq!(
+            parse_inline("[tag] and [site](https://getartcraft.com)"),
+            vec![Inline::Plain("[tag] and "), Inline::Link { text: "site", url: "https://getartcraft.com" },]
+        );
     }
 }
