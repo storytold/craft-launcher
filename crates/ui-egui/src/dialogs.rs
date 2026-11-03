@@ -248,7 +248,7 @@ impl LauncherUi {
         ui.horizontal(|ui| {
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 if widgets::button(ui, tl!("Replace"), Kind::Danger, 110.0).clicked() {
-                    self.act_command(Command::Replace { app: id.to_string() });
+                    self.act_command(Command::Replace { app: id.to_string(), path: path.to_string() });
                     close = true;
                 }
                 if widgets::button(ui, tl!("Cancel"), Kind::Secondary, 90.0).clicked() {
