@@ -125,6 +125,12 @@
 	Apps on this computer	このコンピューターのアプリ
 	Installed apps with a newer version	新しいバージョンがあるインストール済みアプリ
 	Apps you can install	インストールできるアプリ
+	Pin to top	上部にピン留め
+	Unpin	ピン留めを外す
+	Pinned	ピン留め
+	Reorder {name}	{name}の順序を変更
+	Move up	上へ
+	Move down	下へ
 	Hide App	アプリを非表示
 	Unhide App	アプリを再表示
 	Hidden Apps	非表示のアプリ

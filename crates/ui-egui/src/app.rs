@@ -205,6 +205,9 @@ pub struct LauncherUi {
     /// Toasts created from logic (which may run with an old input time) or the UI. Their expiry is
     /// fixed when the next `ui` pass actually shows them.
     pending_toasts: Vec<(String, bool)>,
+    /// While the user drags a pin handle: dragged catalog id and the pinned order at drag start
+    /// (so Escape can restore it after live mid-drag reorders).
+    pub(crate) pin_dragging: Option<(String, Vec<String>)>,
 }
 
 /// The language to draw in: the preference, or English where it needs a CJK font the system
@@ -294,6 +297,7 @@ impl LauncherUi {
             frame: None,
             flushed: Vec::new(),
             pending_toasts: Vec::new(),
+            pin_dragging: None,
         }
     }
 
@@ -844,6 +848,8 @@ impl LauncherUi {
                     ViewMode::Table => egui::ScrollArea::both(),
                 };
                 scroll.auto_shrink(false).show(ui, |ui| {
+                    // Escape must run even when search/filter leaves no rows (grid/table skipped).
+                    self.clear_pin_drag_on_escape(ui);
                     if ids.is_empty() {
                         ui.add_space(40.0);
                         ui.vertical_centered(|ui| {
@@ -856,6 +862,10 @@ impl LauncherUi {
                         }
                     }
                     ui.add_space(16.0);
+                    // The drop targets have seen this frame's pointer: a released drag ends here.
+                    if !ui.input(|i| i.pointer.primary_down()) {
+                        self.pin_dragging = None;
+                    }
                 });
             });
         self.details_drawer(&ctx);
@@ -867,7 +877,28 @@ impl LauncherUi {
         }
     }
 
-    /// The ids to show, filtered and sorted.
+    /// Test hook for the filtered/sorted catalog ids currently shown.
+    pub fn visible_ids_for_test(&self) -> Vec<&'static str> {
+        self.visible_ids()
+    }
+
+    /// Test hook: start a pin drag as if the grip had just been grabbed (stores a restore snapshot).
+    pub fn begin_pin_drag_for_test(&mut self, id: &str) {
+        self.pin_dragging = Some((id.to_string(), self.settings.pinned.clone()));
+    }
+
+    /// Test hook: whether a pin reorder drag is in progress.
+    pub fn pin_dragging_for_test(&self) -> bool {
+        self.pin_dragging.is_some()
+    }
+
+    /// Test hook: set the toolbar search string without driving the text field.
+    pub fn set_search_for_test(&mut self, needle: &str) {
+        self.search = needle.to_string();
+    }
+
+    /// The ids to show, filtered and sorted. Pinned apps stay first in the user's pin order;
+    /// the active sort (and the grid's installed / not-installed split) applies only to the rest.
     pub(crate) fn visible_ids(&self) -> Vec<&'static str> {
         let needle = self.search.trim().to_lowercase();
         let mut list: Vec<(usize, &AppEntry)> = self
@@ -895,7 +926,10 @@ impl LauncherUi {
         };
         let installed = |e: &AppEntry| e.installed.as_ref().and_then(|i| i.version.clone());
         let latest = |e: &AppEntry| e.release().and_then(|r| r.version.clone());
-        list.sort_by(|(ia, a), (ib, b)| {
+        let (mut pinned, mut rest) = list.into_iter().partition::<Vec<_>, _>(|(_, e)| self.settings.is_pinned(e.app.id));
+        // Keep the user's pin order, skipping ids that are not in the filtered set.
+        pinned.sort_by_key(|(_, e)| self.settings.pinned.iter().position(|p| p == e.app.id).unwrap_or(usize::MAX));
+        rest.sort_by(|(ia, a), (ib, b)| {
             let ord = match sort {
                 SortKey::Suite => dir(ia.cmp(ib)),
                 SortKey::Name => dir(a.app.name.cmp(b.app.name)),
@@ -923,11 +957,13 @@ impl LauncherUi {
             // Ties keep suite order.
             ord.then(ia.cmp(ib))
         });
-        // The grid shows installed apps first, then the rest under "Not installed" (the sort holds
-        // within each group; the sort is stable). The table keeps the order its column gives.
+        // The grid shows installed apps first among the unpinned set, then the rest under
+        // "Not installed" (the sort holds within each group; the sort is stable).
         if grid {
-            list.sort_by_key(|(_, e)| !e.status(platform, manage).is_installed());
+            rest.sort_by_key(|(_, e)| !e.status(platform, manage).is_installed());
         }
+        list = pinned;
+        list.append(&mut rest);
         list.into_iter().map(|(_, e)| e.app.id).collect()
     }
 
