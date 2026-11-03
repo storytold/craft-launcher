@@ -58,6 +58,27 @@ location /launcher/ {
 
 Local test: `python3 -m http.server 8765` inside the folder, then open http://localhost:8765/.
 
+## Opening self-hosted web apps (optional)
+
+A site that also hosts some Craft apps' web builds can make the launcher open them instead of
+offering a download. Put a `craft-links.json` next to `index.html`, mapping app ids to addresses:
+
+```json
+{
+  "photocraft": "https://example.com/apps/photocraft/",
+  "wordcraft": "{proto}//{host}:3108/"
+}
+```
+
+- An app listed there gets **Open** as its main button, which opens the address in a new tab;
+  its downloads stay in the `⋯` menu. Apps not listed keep the download button.
+- `{proto}` (`https:`), `{host}` (host name, no port) and `{app}` (the app id) are filled in from
+  the page's own address.
+- `https://` and `http://` addresses are accepted (home servers often have no certificate); other
+  schemes, credentials in the address and shell metacharacters are refused.
+- Without the file (or if it can't be read) nothing changes. Serve it with `Cache-Control:
+  no-cache` so edits show up.
+
 ## Embedding in a page (iframe)
 
 ```html

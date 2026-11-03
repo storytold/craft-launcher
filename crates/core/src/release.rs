@@ -78,6 +78,15 @@ pub fn safe_web_link(url: &str) -> bool {
         && !url.chars().any(is_shell_meta)
 }
 
+/// Whether `url` may be opened as a self-hosted app instance: like [`safe_web_link`], but plain
+/// `http://` is allowed too, since home servers often have no TLS certificate.
+pub fn safe_instance_link(url: &str) -> bool {
+    match url.strip_prefix("http://") {
+        Some(rest) => safe_web_link(&format!("https://{rest}")),
+        None => safe_web_link(url),
+    }
+}
+
 /// Characters a command interpreter (POSIX shells or `cmd.exe`) may treat specially. A real
 /// `https` URL never needs any of them unescaped in a browser-opened link. `%` matters because
 /// `cmd.exe` expands `%NAME%` references, and an expanded value could itself carry metacharacters.
@@ -362,6 +371,16 @@ mod tests {
             assert!(!safe_web_link(bad), "{bad:?}");
         }
     }
+
+    #[test]
+    fn instance_links_also_allow_plain_http() {
+        assert!(safe_instance_link("http://192.168.1.28:3101/"));
+        assert!(safe_instance_link("https://photo.example.com/"));
+        for bad in ["javascript:alert(1)", "http://", "http://user@evil.example/", "http://example.com/$(id)", "ftp://example.com/"] {
+            assert!(!safe_instance_link(bad), "{bad:?}");
+        }
+    }
+
     const HASH: &str = "8a5edab282632443219e051e4ade2d1d5bbc671c781051bf1437897cbdfea0f1";
 
     fn api_json(url: &str) -> String {

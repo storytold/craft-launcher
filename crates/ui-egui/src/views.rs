@@ -59,6 +59,8 @@ enum Primary {
         checked: bool,
     },
     Open,
+    /// A self-hosted web instance of the app: open it in a new tab.
+    OpenWeb(String),
     Download(String),
     Unavailable(&'static str),
 }
@@ -816,6 +818,9 @@ impl LauncherUi {
 
     fn primary_action(&self, entry: &AppEntry, status: &AppStatus) -> Primary {
         if !self.caps.manage_apps {
+            if let Some(url) = self.backend.web_url(entry.app.id) {
+                return Primary::OpenWeb(url);
+            }
             let platform = self.platform;
             let url = entry.release().zip(platform).and_then(|(r, p)| {
                 let stems: Vec<&str> = entry.app.stems().collect();
@@ -991,6 +996,15 @@ impl LauncherUi {
             Primary::Open => {
                 if widgets::button(ui, tl!("Open"), Kind::Secondary, main_w).clicked() {
                     self.launch_app(id);
+                }
+            }
+            Primary::OpenWeb(url) => {
+                if widgets::button(ui, tl!("Open"), Kind::Primary, main_w).on_hover_text(&url).clicked() {
+                    if artcraft_launcher_core::release::safe_instance_link(&url) {
+                        ui.ctx().open_url(egui::OpenUrl::new_tab(&url));
+                    } else {
+                        log::warn!("refusing to open unsafe URL: {url:?}");
+                    }
                 }
             }
             Primary::Download(url) => {
