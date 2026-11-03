@@ -785,6 +785,37 @@ fn read_results(path: &Path) -> Result<Option<String>, String> {
 mod tests {
     use super::*;
 
+    #[cfg(windows)]
+    fn run_powershell_test(script: &str) -> std::process::Output {
+        let script = format!("trap {{ [Console]::Error.WriteLine(($_ | Out-String)); exit 1 }}\n{script}");
+        let encoded = compressed_command(&script).unwrap_or_else(|error| panic!("could not prepare compressed PowerShell test command: {error}"));
+        assert!(encoded.len() < 30_000, "compressed PowerShell test command is too long for process launch: {} bytes", encoded.len());
+        let powershell = system_powershell().unwrap_or_else(|error| panic!("could not locate Windows PowerShell: {error}"));
+        let child = std::process::Command::new(&powershell)
+            .args(["-NoProfile", "-NonInteractive", "-EncodedCommand", &encoded])
+            .spawn()
+            .unwrap_or_else(|error| panic!("failed to launch {}: {error}", powershell.display()));
+        let output = child.wait_with_output().unwrap_or_else(|error| panic!("Windows PowerShell launched but collecting its output failed: {error}"));
+        assert!(
+            output.status.success(),
+            "Windows PowerShell launched but the test script failed with {}.\nstdout:\n{}\nstderr:\n{}",
+            output.status,
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+        output
+    }
+
+    #[cfg(windows)]
+    fn assert_powershell_output_contains(output: &std::process::Output, expected: &str) {
+        assert!(
+            String::from_utf8_lossy(&output.stdout).contains(expected),
+            "Windows PowerShell launched successfully but did not report expected test result {expected:?}.\nstdout:\n{}\nstderr:\n{}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+    }
+
     fn asset(url: &str) -> release::Asset {
         release::Asset { name: "photocraft-0.5.0-windows-x64.msi".into(), url: url.into(), ..Default::default() }
     }
@@ -871,13 +902,8 @@ if (-not $caught) {{ throw 'Assert-MsiIdentity unexpectedly accepted a missing M
 "MSI exports and signatures passed; missing-package status=$status"
 "#
         );
-        let encoded = encode_command(&test);
-        let output = std::process::Command::new(system_powershell().unwrap())
-            .args(["-NoProfile", "-NonInteractive", "-EncodedCommand", &encoded])
-            .output()
-            .unwrap();
-        assert!(output.status.success(), "stdout: {}\nstderr: {}", String::from_utf8_lossy(&output.stdout), String::from_utf8_lossy(&output.stderr));
-        assert!(String::from_utf8_lossy(&output.stdout).contains("MSI exports and signatures passed"));
+        let output = run_powershell_test(&test);
+        assert_powershell_output_contains(&output, "MSI exports and signatures passed");
     }
 
     #[cfg(windows)]
@@ -907,13 +933,8 @@ Remove-Item -LiteralPath $path -Force
 "#
             .replace("PATH_TOKEN", &path)
         );
-        let encoded = encode_command(&test);
-        let output = std::process::Command::new(system_powershell().unwrap())
-            .args(["-NoProfile", "-NonInteractive", "-EncodedCommand", &encoded])
-            .output()
-            .unwrap();
-        assert!(output.status.success(), "stdout: {}\nstderr: {}", String::from_utf8_lossy(&output.stdout), String::from_utf8_lossy(&output.stderr));
-        assert!(String::from_utf8_lossy(&output.stdout).contains("Protected diagnostic record shape passed"));
+        let output = run_powershell_test(&test);
+        assert_powershell_output_contains(&output, "Protected diagnostic record shape passed");
     }
 
     /// Opt-in real-release check for a disposable Windows test environment; it never installs.
@@ -970,12 +991,9 @@ Remove-Item -LiteralPath $path -Force
                Write-Output ($item.release.app + ' ' + $authorization.version + ' checksum/signature/MSI identity passed')\n\
              }}\n"
         );
-        let encoded = encode_command(&test);
-        let output = std::process::Command::new(system_powershell().unwrap())
-            .args(["-NoProfile", "-NonInteractive", "-EncodedCommand", &encoded])
-            .output()
-            .unwrap();
-        assert!(output.status.success(), "stdout: {}\nstderr: {}", String::from_utf8_lossy(&output.stdout), String::from_utf8_lossy(&output.stderr));
+        let output = run_powershell_test(&test);
+        assert_powershell_output_contains(&output, "photocraft 0.13.0 checksum/signature/MSI identity passed");
+        assert_powershell_output_contains(&output, "vectorcraft 0.15.0 checksum/signature/MSI identity passed");
     }
 
     #[test]
