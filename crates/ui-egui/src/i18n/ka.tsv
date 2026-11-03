@@ -390,15 +390,7 @@ filter	Installed	დაინსტალირებული
 	Last updated: {date}	ბოლო განახლება: {date}
 column	Version	ვერსია
 column	Author	ავტორი
-craft-anything	Find out how any software works, then craft your own	გაიგეთ, როგორ მუშაობს ნებისმიერი პროგრამა, და შექმენით საკუთარი
 	Choose version	ვერსიის არჩევა
 	latest {version}	უახლესი {version}
 	Launcher version	Launcher-ის ვერსია
 	Install version {version}	{version} ვერსიის ინსტალაცია
-	Download selected version	არჩეული ვერსიის ჩამოტვირთვა
-	Enable automatic installs in Settings to follow new nightly builds.	ახალი ღამის ვერსიების მისაღებად პარამეტრებში ჩართეთ ავტომატური ინსტალაცია.
-	Nightly	ღამის ვერსია
-	Nightly (none published yet)	ღამის ვერსია (ჯერ არ გამოქვეყნებულა)
-	Older launcher versions require a manual reinstall.	Launcher-ის ძველ ვერსიებს ხელით ხელახალი ინსტალაცია სჭირდება.
-	Your files may not open in older versions.	თქვენი ფაილები შეიძლება ძველ ვერსიებში არ გაიხსნას.
-	{version} (latest release)	{version} (უახლესი გამოშვება)
