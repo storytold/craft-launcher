@@ -43,7 +43,7 @@ fn read_limited(input: &mut impl BufRead, limit: usize) -> Result<Option<Vec<u8>
 }
 
 pub(crate) struct Client {
-    child: Child,
+    child: Option<Child>,
     input: SyncSender<Vec<u8>>,
     writes: Receiver<Result<(), String>>,
     replies: Receiver<Result<Value, String>>,
@@ -55,7 +55,7 @@ pub(crate) struct Client {
 impl Client {
     pub fn start(program: &Program) -> Result<Self, String> {
         let mut child = program
-            .command()
+            .command()?
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::inherit())
@@ -102,7 +102,7 @@ impl Client {
                 }
             }
         });
-        let mut client = Self { child, input: send_input, writes, replies, next_id: 0, tools: Vec::new(), healthy: true };
+        let mut client = Self { child: Some(child), input: send_input, writes, replies, next_id: 0, tools: Vec::new(), healthy: true };
         client.request("initialize", json!({"protocolVersion":"2025-06-18", "capabilities":{}, "clientInfo":{"name":"artcraft-launcher-mcp", "version":env!("CARGO_PKG_VERSION")}}))?;
         client.send(&json!({"jsonrpc":"2.0", "method":"notifications/initialized"}))?;
         let mut cursor = None;
@@ -201,9 +201,31 @@ fn response_result(id: u64, reply: Value) -> Result<Option<Value>, Failure> {
 impl Drop for Client {
     fn drop(&mut self) {
         // Own only the CLI. An attached desktop application is deliberately left open.
-        let _ = self.child.kill();
-        let _ = self.child.wait();
+        if let Some(child) = self.child.as_mut() {
+            let _ = child.kill();
+            let _ = child.wait();
+        }
     }
+}
+
+// Deterministic in-process peer: exercise the real request/queue state machine
+// without depending on an installed Craft App or waiting for a 60-second timeout.
+#[cfg(test)]
+pub(crate) struct TestPeer {
+    pub requests: Receiver<Vec<u8>>,
+    pub writes: SyncSender<Result<(), String>>,
+    pub replies: SyncSender<Result<Value, String>>,
+}
+
+#[cfg(test)]
+pub(crate) fn test_client() -> (Client, TestPeer) {
+    let (input, requests) = mpsc::sync_channel(1);
+    let (sent, writes) = mpsc::sync_channel(1);
+    let (responses, replies) = mpsc::sync_channel(1);
+    (
+        Client { child: None, input, writes, replies, next_id: 0, tools: vec![], healthy: true },
+        TestPeer { requests, writes: sent, replies: responses },
+    )
 }
 
 #[cfg(test)]
@@ -216,6 +238,58 @@ mod tests {
         assert!(read_limited(&mut b"12345\n".as_slice(), 4).is_err());
         assert!(read_limited(&mut b"{}".as_slice(), 4).is_err());
         assert_eq!(read_limited(&mut b"".as_slice(), 4).unwrap(), None);
+    }
+
+    #[test]
+    fn production_frame_limit_rejects_one_extra_byte() {
+        let mut bytes = vec![b' '; MAX_FRAME];
+        bytes.push(b'\n');
+        assert_eq!(read_frame(&mut bytes.as_slice()).unwrap().unwrap().len(), MAX_FRAME);
+        bytes.insert(MAX_FRAME, b' ');
+        assert!(read_frame(&mut bytes.as_slice()).unwrap_err().contains("size limit"));
+    }
+
+    #[test]
+    fn lost_reply_invalidates_the_session_and_never_replays_the_edit() {
+        let (mut client, peer) = test_client();
+        let worker = std::thread::spawn(move || {
+            let request: Value = serde_json::from_slice(&peer.requests.recv_timeout(Duration::from_secs(5)).unwrap()).unwrap();
+            assert_eq!(request["method"], "tools/call");
+            assert_eq!(request["params"]["name"], "edit");
+            peer.writes.send(Ok(())).unwrap();
+            // The native side completed the edit, then lost its reply.
+            peer.replies.send(Err("CLI closed its output".into())).unwrap();
+            assert!(matches!(peer.requests.recv_timeout(Duration::from_secs(5)), Err(mpsc::RecvTimeoutError::Disconnected)));
+            assert_eq!(peer.requests.try_iter().count(), 0);
+        });
+        let edit = json!({"name":"edit", "arguments":{"width":240}});
+        assert!(client.request("tools/call", edit.clone()).unwrap_err().contains("closed"));
+        assert!(!client.healthy);
+        assert!(client.request("tools/call", edit).unwrap_err().contains("reconnect explicitly"));
+        assert_eq!(client.next_id, 1);
+        drop(client);
+        worker.join().unwrap();
+    }
+
+    #[test]
+    fn native_rejection_preserves_policy_and_allows_the_next_request() {
+        let (mut client, peer) = test_client();
+        let worker = std::thread::spawn(move || {
+            for denied in [true, false] {
+                let request: Value = serde_json::from_slice(&peer.requests.recv_timeout(Duration::from_secs(5)).unwrap()).unwrap();
+                peer.writes.send(Ok(())).unwrap();
+                let reply = if denied {
+                    json!({"jsonrpc":"2.0", "id":request["id"], "error":{"code":-32602, "message":"denied by native confinement"}})
+                } else {
+                    json!({"jsonrpc":"2.0", "id":request["id"], "result":{"content":[]}})
+                };
+                peer.replies.send(Ok(reply)).unwrap();
+            }
+        });
+        assert!(client.request("tools/call", json!({"name":"write"})).unwrap_err().contains("native confinement"));
+        assert!(client.healthy);
+        assert_eq!(client.request("tools/call", json!({"name":"inspect"})).unwrap(), json!({"content":[]}));
+        worker.join().unwrap();
     }
 
     #[test]

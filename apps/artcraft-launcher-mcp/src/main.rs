@@ -1,6 +1,7 @@
 //! One local MCP connection for the installed Craft App Suite.
 #![deny(clippy::unwrap_used, clippy::expect_used, clippy::panic, clippy::unimplemented, clippy::todo, clippy::unreachable)]
 
+mod config;
 mod discovery;
 mod gateway;
 mod transport;
@@ -11,7 +12,7 @@ use std::process::ExitCode;
 
 use serde_json::{Value, json};
 
-const USAGE: &str = "ArtCraft Launcher MCP gateway\n\nUsage: artcraft-launcher-mcp [--cli-dir DIR]...\n\nRegister this executable once in an MCP client. apps_list scans installed Craft Apps on each\nrequest. app_connect opens a live FigCraft, DesignCraft or VectorCraft session, or an explicitly\nrequested headless session in another app. app_tools discovers the connected app's schemas;\napp_read and app_call dispatch its tools. --cli-dir adds a trusted folder of installed CLI binaries.\nSee docs/mcp.md for configuration, capabilities and limitations.\n";
+const USAGE: &str = "ArtCraft Launcher MCP gateway\n\nUsage: artcraft-launcher-mcp [--cli-dir DIR]... [--cli-args APP JSON]... [--gui-args APP JSON]...\n\nRegister this executable once in an MCP client. apps_list scans installed Craft Apps on each\nrequest. app_connect opens a live FigCraft, DesignCraft or VectorCraft session, or an explicitly\nrequested headless session in another app. app_tools discovers the connected app's schemas;\napp_read and app_call dispatch its tools. --cli-dir adds a trusted folder of installed CLI binaries.\n--cli-args / --gui-args set operator-owned native argument arrays for each app.\nSee docs/mcp.md for configuration, capabilities and limitations.\n";
 
 fn main() -> ExitCode {
     match run() {
@@ -24,7 +25,7 @@ fn main() -> ExitCode {
 }
 
 fn run() -> Result<(), String> {
-    let mut dirs = Vec::new();
+    let mut config = config::Config::default();
     let mut args = std::env::args().skip(1);
     while let Some(arg) = args.next() {
         match arg.as_str() {
@@ -42,12 +43,17 @@ fn run() -> Result<(), String> {
                 if !dir.is_dir() {
                     return Err(format!("CLI folder does not exist: {}", dir.display()));
                 }
-                dirs.push(dir.canonicalize().map_err(|e| e.to_string())?);
+                config.cli_dirs.push(dir.canonicalize().map_err(|e| e.to_string())?);
+            }
+            "--cli-args" | "--gui-args" => {
+                let app = args.next().ok_or_else(|| format!("{arg} needs an app id and a JSON array"))?;
+                let encoded = args.next().ok_or_else(|| format!("{arg} needs a JSON array"))?;
+                config.add_args(arg == "--gui-args", &app, &encoded)?;
             }
             _ => return Err(format!("unknown option {arg}\n{USAGE}")),
         }
     }
-    serve(&mut io::stdin().lock(), &mut io::stdout().lock(), &mut gateway::Gateway::new(dirs))
+    serve(&mut io::stdin().lock(), &mut io::stdout().lock(), &mut gateway::Gateway::new(config))
 }
 
 fn serve(input: &mut impl io::BufRead, output: &mut impl Write, gateway: &mut gateway::Gateway) -> Result<(), String> {
@@ -76,7 +82,7 @@ mod tests {
     fn malformed_json_does_not_prevent_the_next_request() {
         let input = b"{bad}\n{\"jsonrpc\":\"2.0\",\"id\":7,\"method\":\"ping\"}\n";
         let mut output = Vec::new();
-        serve(&mut input.as_slice(), &mut output, &mut gateway::Gateway::new(Vec::new())).unwrap();
+        serve(&mut input.as_slice(), &mut output, &mut gateway::Gateway::new(config::Config::default())).unwrap();
         let replies: Vec<Value> = output.split(|b| *b == b'\n').filter(|b| !b.is_empty()).map(|line| serde_json::from_slice(line).unwrap()).collect();
         assert_eq!(replies[0]["error"]["code"], -32700);
         assert_eq!(replies[1]["id"], 7);

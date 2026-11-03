@@ -2,12 +2,12 @@
 
 use std::collections::BTreeMap;
 use std::net::{Ipv4Addr, SocketAddrV4, TcpListener, TcpStream};
-use std::path::PathBuf;
 use std::time::{Duration, Instant};
 
 use artcraft_launcher_native::process;
 use serde_json::{Value, json};
 
+use crate::config::Config;
 use crate::discovery;
 use crate::transport::Client;
 
@@ -20,15 +20,15 @@ struct Session {
 }
 
 pub(crate) struct Gateway {
-    cli_dirs: Vec<PathBuf>,
+    config: Config,
     sessions: BTreeMap<String, Session>,
     next_session: u64,
     initialized: bool,
 }
 
 impl Gateway {
-    pub fn new(cli_dirs: Vec<PathBuf>) -> Self {
-        Self { cli_dirs, sessions: BTreeMap::new(), next_session: 0, initialized: false }
+    pub fn new(config: Config) -> Self {
+        Self { config, sessions: BTreeMap::new(), next_session: 0, initialized: false }
     }
 
     pub fn handle(&mut self, request: Value) -> Option<Value> {
@@ -84,7 +84,7 @@ impl Gateway {
         match name {
             "apps_list" => {
                 keys(&arguments, &[])?;
-                let apps: Vec<Value> = discovery::scan(&self.cli_dirs).iter().map(|a| a.describe()).collect();
+                let apps: Vec<Value> = discovery::scan(&self.config.cli_dirs).iter().map(|a| a.describe()).collect();
                 text(json!({"apps":apps}))
             }
             "app_connect" => self.connect(&arguments),
@@ -142,6 +142,9 @@ impl Gateway {
     fn connect(&mut self, arguments: &Value) -> Result<Value, String> {
         keys(arguments, &["app", "mode", "port"])?;
         let app = string(arguments, "app")?;
+        if artcraft_launcher_core::CraftApp::by_id(app).is_none() {
+            return Err("Unknown app; use an app id from apps_list".into());
+        }
         let mode = arguments.get("mode").map_or(Ok("live"), |v| v.as_str().ok_or("mode must be a string"))?;
         if !matches!(mode, "live" | "headless") {
             return Err("mode must be live or headless".into());
@@ -150,6 +153,11 @@ impl Gateway {
             .get("port")
             .map(|v| v.as_u64().and_then(|p| u16::try_from(p).ok()).filter(|p| *p != 0).ok_or("port must be an integer from 1 to 65535"))
             .transpose()?;
+        if mode == "headless" && !self.config.args(true, app).is_empty() {
+            return Err(
+                "Configured desktop restrictions cannot protect a headless session. Use a separate gateway configuration with --cli-args.".into()
+            );
+        }
         if mode == "headless" && supplied_port.is_some() {
             return Err("port is only valid in live mode".into());
         }
@@ -158,6 +166,9 @@ impl Gateway {
             return Err(format!(
                 "Live mode for {app} is not implemented in this gateway version. Explicitly choose mode=headless for file-based editing; it will not update a desktop window."
             ));
+        }
+        if mode == "live" && supplied_port.is_some() && !self.config.args(true, app).is_empty() {
+            return Err("Cannot apply configured desktop arguments to an existing endpoint. Omit port to launch a confined desktop, or configure the existing app directly and use a separate gateway configuration.".into());
         }
         let mut target_port = supplied_port;
         let mut replaced_session = None;
@@ -177,11 +188,13 @@ impl Gateway {
         if replaced_session.is_none() && self.sessions.len() >= 32 {
             return Err("This gateway already has 32 sessions. Save work and restart it before opening more.".into());
         }
-        let found = discovery::scan(&self.cli_dirs).into_iter().find(|a| a.app.id == app).ok_or("Unknown app; use an app id from apps_list")?;
+        let found =
+            discovery::scan(&self.config.cli_dirs).into_iter().find(|a| a.app.id == app).ok_or("Unknown app; use an app id from apps_list")?;
         let mut program = found.cli.clone().ok_or_else(|| {
             format!("{app}'s CLI was not found. Install it through ArtCraft Launcher, or supply its trusted folder with --cli-dir.")
         })?;
         program.args.push("mcp".into());
+        program.args.extend_from_slice(self.config.args(false, app));
         let port = if mode == "live" {
             let port = match target_port {
                 Some(port) => port,
@@ -189,7 +202,8 @@ impl Gateway {
                     let listener = TcpListener::bind(SocketAddrV4::new(Ipv4Addr::LOCALHOST, 0)).map_err(|e| e.to_string())?;
                     let port = listener.local_addr().map_err(|e| e.to_string())?.port();
                     drop(listener);
-                    let mut gui = found.gui()?.command();
+                    let mut gui = found.gui()?.command()?;
+                    gui.args(self.config.args(true, app));
                     gui.args(["--control", &port.to_string()]);
                     process::spawn_detached(gui)?;
                     wait_for_app(port).map_err(|e| format!("{e} (control port {port})"))?;
@@ -335,7 +349,7 @@ mod tests {
     use super::*;
 
     fn initialized() -> Gateway {
-        let mut gateway = Gateway::new(Vec::new());
+        let mut gateway = Gateway::new(Config::default());
         gateway.handle(json!({"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18"}}));
         gateway
     }
@@ -367,6 +381,9 @@ mod tests {
             json!({"app":"figcraft","port":0}),
             json!({"app":"figcraft","port":65536}),
             json!({"app":"figcraft","prot":12}),
+            json!({"app":"figcraft","port":"localhost:47800"}),
+            json!({"app":"figcraft","port":47800,"host":"localhost"}),
+            json!({"app":"figcraft","port":47800,"args":["--allow-commands","all"]}),
             json!({"app":"pdfcraft"}),
         ] {
             let reply =
@@ -374,6 +391,43 @@ mod tests {
             assert_eq!(reply["result"]["isError"], true);
             assert!(gateway.sessions.is_empty());
         }
+    }
+
+    #[test]
+    fn unknown_app_names_are_rejected_in_both_modes_before_discovery() {
+        let mut gateway = initialized();
+        for mode in ["live", "headless"] {
+            assert!(gateway.connect(&json!({"app":"unknown-app", "mode":mode})).unwrap_err().starts_with("Unknown app"));
+        }
+        assert!(gateway.sessions.is_empty());
+    }
+
+    #[test]
+    fn desktop_restrictions_cannot_be_skipped_by_attaching_or_choosing_headless() {
+        let mut gateway = initialized();
+        gateway.config.add_args(true, "figcraft", r#"["--automation-read-root","/projects"]"#).unwrap();
+        assert!(gateway.connect(&json!({"app":"figcraft", "port":47800})).unwrap_err().contains("existing endpoint"));
+        assert!(gateway.connect(&json!({"app":"figcraft", "mode":"headless"})).unwrap_err().contains("headless session"));
+        assert!(gateway.sessions.is_empty());
+    }
+
+    #[test]
+    fn session_limit_refuses_a_new_endpoint_but_keeps_existing_sessions_usable() {
+        let mut gateway = initialized();
+        for number in 1..=32 {
+            let (client, _peer) = crate::transport::test_client();
+            gateway.sessions.insert(
+                format!("figcraft-{number}"),
+                Session { app: "figcraft".into(), mode: "live".into(), port: Some(number), initial_document_inspection_error: None, client },
+            );
+        }
+        let reply = gateway.connect(&json!({"app":"figcraft", "port":33})).unwrap_err();
+        assert!(reply.contains("32 sessions"));
+        assert_eq!(gateway.sessions.len(), 32);
+        let reused = gateway.connect(&json!({"app":"figcraft", "port":32})).unwrap();
+        let session: Value = serde_json::from_str(reused["content"][0]["text"].as_str().unwrap()).unwrap();
+        assert_eq!(session["session"], "figcraft-32");
+        assert_eq!(gateway.sessions.len(), 32);
     }
 
     #[test]

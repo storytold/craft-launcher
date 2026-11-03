@@ -25,12 +25,55 @@ it in a stable folder before registering it. Restart the MCP client once after i
 registration; adding supported apps later does not change its five top-level tool schemas.
 
 The launcher detects installed apps from its manifest and the operating system. The gateway
-looks for `<app>-cli` beside the installed executable, in a tree's `bin` folder, then on `PATH`.
-`--cli-dir /trusted/folder` adds an explicit search folder and can be repeated. Use it for
-portable installations and macOS CLI archives separate from the `.app`. Only names from the
-built-in Craft App catalog are considered; no arbitrary program command is accepted over MCP.
-Flatpak CLIs are reached through the host when required. Missing CLIs are reported explicitly.
-AppImage CLI routing and live launching of sandboxed installation formats are not implemented.
+looks for `<app>-cli` beside the detected executable or in its `bin` / `Contents/MacOS` folder.
+It does **not search `PATH`**. `--cli-dir /trusted/folder` adds an explicitly trusted search folder
+with priority over detected locations and can be repeated. Use it for portable installations
+and macOS CLI archives separate from the `.app`. Detected locations must be absolute and exist;
+CLI and desktop executable paths are canonicalized before use. This identifies the file being
+launched; it is not a new signature check or protection against another process modifying that
+installation. Only names from the built-in Craft App catalog are considered; no arbitrary
+program command is accepted over MCP. Trust the installation and every explicit CLI folder.
+
+System helpers also use fixed absolute locations (`/usr/bin/open`, `/usr/bin/flatpak` and
+`/usr/bin/flatpak-spawn`), never a `PATH` lookup. Flatpak CLIs are reached through the host when
+required, with `/usr/bin/flatpak` selected on the host. Missing helpers/CLIs are reported instead
+of trying a same-named program elsewhere. AppImage CLI routing and live launching of sandboxed
+installation formats are not implemented.
+
+### Native access restrictions
+
+The operator can set native arguments separately for the CLI and desktop process at gateway
+startup. Each option takes a catalog app id and one JSON array of strings:
+
+```sh
+# Headless FigCraft: allow reads in an existing project folder, deny writes.
+artcraft-launcher-mcp --cli-args figcraft '["--automation-read-root","/absolute/projects"]'
+
+# Live FigCraft: its desktop process owns the confinement, so put roots there.
+artcraft-launcher-mcp --gui-args figcraft '["--automation-read-root","/absolute/projects"]'
+```
+
+These are separate gateway configurations. In an MCP client's configuration, put the JSON
+array in a single argument string. On Windows use existing absolute Windows folders and the
+quoting conventions of that client. Configure each app/target at most once; put repeated native
+options in its array. There is a limit of 64 arguments / 64 KiB per array.
+
+Arguments are passed unchanged, in order, with `Command.args`; no shell, string joining or
+command expansion is used. CLI arguments follow `mcp`; desktop arguments precede the generated
+`--control PORT`. The gateway does not invent a cross-app permission model, add broader grants,
+or retry without configured arguments. Supported native flags such as `--allow-commands` can
+be supplied in the appropriate array **only where that app/version supports them**. Check the
+native app's documentation for the exact semantics and target. Startup settings cannot be
+changed by MCP calls. `--attach`, `--connect`, `--control` (including `=value` forms) and the
+`--` terminator are reserved and rejected in these arrays.
+
+FigCraft's CLI roots apply to headless sessions; its `mcp --attach` refuses those flags because
+the desktop owns live restrictions. With desktop arguments configured, the gateway refuses
+headless mode and refuses a user-supplied port: it cannot retroactively apply startup restrictions
+to an existing app. Let it launch the configured desktop. To attach to an existing window,
+configure that app's restrictions directly and use a separate gateway configuration. Other
+apps may enforce restrictions differently. Native denials/errors are retained; no automatic
+unrestricted fallback is attempted. The gateway itself provides no filesystem sandbox.
 
 ## Prompt workflow
 
@@ -63,6 +106,14 @@ operator-selected localhost port:
 ```json
 {"app":"figcraft","mode":"live","port":47800}
 ```
+
+**Live control is unauthenticated in this increment.** The gateway adds no authentication or
+identity check to the local control endpoint. Loopback is a network boundary, not an access
+control: other local processes may connect to that port, and a listening port does not prove
+which app owns it. Use live mode only in a trusted local environment. Do not expose or forward
+the control port to other machines. The gateway accepts only an integer port (1-65535), constructs
+`127.0.0.1:PORT` itself and accepts no hostname, IP address or URL. Authenticated endpoint identity
+and session ownership remain future work.
 
 CLI initialization, tool discovery and a native document inspection must succeed before a live
 connection is reported as successful. If document inspection fails (for example, DesignCraft's
@@ -126,12 +177,17 @@ cargo test -p artcraft-launcher-mcp
 cargo clippy -p artcraft-launcher-mcp --all-targets -- -D warnings
 ```
 
-Unit tests cover bounded framing, malformed requests, initialization/notification handling,
-response correlation, read/edit annotations and detecting a CLI added after the first scan.
+Unit tests cover the production 32 MiB frame boundary, the 32-session limit and reuse at capacity,
+unknown app names, rejection of hostnames/extra tool arguments, unchanged native argument arrays,
+restriction bypass attempts, absolute executable paths, ignoring a matching CLI on `PATH`, and
+detecting a CLI added after the first scan. A deterministic channel peer exercises the real
+request state machine: an edit is delivered once, its reply is lost, and the failed session
+refuses another dispatch. Native rejections keep the session usable. These tests also cover
+malformed requests, initialization/notifications, response correlation and read/edit annotations.
 Live checks should use scratch documents: connect, inspect, mutate, render, undo, save and
 reopen. Install another app with the MCP client open, then discover and connect to it.
 
-Next increments can add authenticated live adapters for other apps, document-level targeting,
+Next increments can add authenticated live adapters, document-level targeting,
 shared session ownership, app-specific file roots, release packaging and an optional launcher
 setup dialog. The standalone generative ArtCraft studio needs a separate automation/provider
 audit; it is not assumed to follow these CLI conventions.
