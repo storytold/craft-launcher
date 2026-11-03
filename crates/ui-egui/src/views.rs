@@ -818,7 +818,8 @@ impl LauncherUi {
 
     fn primary_action(&self, entry: &AppEntry, status: &AppStatus) -> Primary {
         if !self.caps.manage_apps {
-            if let Some(url) = self.backend.web_url(entry.app.id) {
+            // An address the link check would refuse keeps the download instead of a dead Open.
+            if let Some(url) = self.backend.web_url(entry.app.id).filter(|url| artcraft_launcher_core::release::safe_instance_link(url)) {
                 return Primary::OpenWeb(url);
             }
             let platform = self.platform;

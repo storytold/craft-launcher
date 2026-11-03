@@ -76,6 +76,7 @@ offering a download. Put a `craft-links.json` next to `index.html`, mapping app 
   the page's own address.
 - `https://` and `http://` addresses are accepted (home servers often have no certificate); other
   schemes, credentials in the address and shell metacharacters are refused.
+- An address that fails that check is ignored, so the app keeps its download button.
 - Without the file (or if it can't be read) nothing changes. Serve it with `Cache-Control:
   no-cache` so edits show up.
 
@@ -94,4 +95,8 @@ offering a download. Put a `craft-links.json` next to `index.html`, mapping app 
 - The app fills the iframe and follows its size, so size the iframe and not the app.
 - **Sandboxed iframes** need at least `sandbox="allow-scripts allow-same-origin allow-popups"`;
   `allow-popups` lets download links open.
+- With `craft-links.json`, **Open** starts the app in a new tab, and a tab opened from a sandboxed
+  iframe inherits the sandbox: the app could lose downloads, form submission and more. When the
+  linked apps are your own (trusted) sites, add `allow-popups-to-escape-sandbox` so they open
+  unrestricted; otherwise expect them to run with the iframe's restrictions.
 - Don't send `X-Frame-Options: DENY` or a `frame-ancestors` CSP that excludes the embedding page.
