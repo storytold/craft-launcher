@@ -253,11 +253,13 @@ fn chinese_candidates() -> Vec<Candidate> {
 }
 
 /// The Noto files that carry a Traditional Chinese face, by family: the merged CJK collection, the
-/// CJK TC-only OTF, and the standalone Noto Sans TC.
-const NOTO_TC_FILES: [(&str, &str); 5] = [
+/// CJK TC-only OTF, the variable TC fonts, and the standalone Noto Sans TC.
+const NOTO_TC_FILES: [(&str, &str); 7] = [
     ("NotoSansCJKtc-Regular.otf", "Noto Sans CJK TC"),
     ("NotoSansCJK-Regular.ttc", "Noto Sans CJK TC"),
     ("NotoSansCJK-VF.ttc", "Noto Sans CJK TC"),
+    ("NotoSansCJKtc-VF.otf", "Noto Sans CJK TC"),
+    ("NotoSansCJKtc-VF.ttf", "Noto Sans CJK TC"),
     ("NotoSansTC-Regular.otf", "Noto Sans TC"),
     ("NotoSansTC-VF.ttf", "Noto Sans TC"),
 ];
@@ -271,8 +273,10 @@ fn traditional_chinese_candidates() -> Vec<Candidate> {
     // lets a user keep an updated file apart from an older installed face.
     for dir in user_font_dirs() {
         for (file, family) in NOTO_TC_FILES {
-            add(dir.join(file), family);
+            // The override subdirectory is checked first, so an updated file wins over the older
+            // face at the root.
             add(dir.join("NotoSansCJKtc").join(file), family);
+            add(dir.join(file), family);
         }
     }
     #[cfg(all(unix, not(target_os = "macos")))]
@@ -484,8 +488,25 @@ mod tests {
         let found = traditional_chinese_candidates();
         let first = found.first().expect("at least one Traditional Chinese candidate");
         assert!(first.family.starts_with("Noto Sans"), "first is {:?}", first.family);
-        let first_system = found.iter().position(|c| !c.family.starts_with("Noto Sans")).expect("a system face comes after Noto");
-        assert!(first_system > 0);
+        // macOS and Windows add their own face after the Noto candidates; the Unix list is all
+        // Noto, so there is no system face to order against there.
+        #[cfg(any(target_os = "macos", target_os = "windows"))]
+        {
+            let first_system = found.iter().position(|c| !c.family.starts_with("Noto Sans")).expect("a system face comes after Noto");
+            assert!(first_system > 0);
+        }
+    }
+
+    /// The `NotoSansCJKtc` override folder is read before the older file at the font folder's root.
+    #[test]
+    fn the_tc_override_folder_comes_before_the_root_file() {
+        let found = traditional_chinese_candidates();
+        let dir = user_font_dirs().into_iter().next().expect("a user font folder");
+        let override_file = dir.join("NotoSansCJKtc").join("NotoSansCJKtc-Regular.otf");
+        let root_file = dir.join("NotoSansCJKtc-Regular.otf");
+        let override_at = found.iter().position(|c| c.path == override_file).expect("the override path");
+        let root_at = found.iter().position(|c| c.path == root_file).expect("the root path");
+        assert!(override_at < root_at);
     }
 
     /// Inside Flatpak the host's fonts are under `/run/host` (#620), each right after its own path.
