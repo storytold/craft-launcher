@@ -768,6 +768,24 @@ impl LauncherUi {
         }
     }
 
+    /// Takes this pass's Ctrl+R / Command-R presses and says whether one was a fresh press. Shift
+    /// may be held (a browser's hard reload); Alt may not, since Windows reports AltGr as Ctrl+Alt.
+    /// A held key's auto-repeats are taken too, but would otherwise start a new check each time the
+    /// last one finished.
+    fn take_refresh_shortcut(input: &mut egui::InputState) -> bool {
+        let mut fresh = false;
+        input.events.retain(|event| match event {
+            egui::Event::Key { key: egui::Key::R, pressed: true, repeat, modifiers, .. }
+                if !modifiers.alt && modifiers.matches_logically(egui::Modifiers::COMMAND) =>
+            {
+                fresh |= !repeat;
+                false
+            }
+            _ => true,
+        });
+        fresh
+    }
+
     /// Draws the launcher.
     pub fn ui(&mut self, ui: &mut egui::Ui, host: &mut dyn Host) {
         let ctx = ui.ctx().clone();
@@ -777,7 +795,7 @@ impl LauncherUi {
         }
         // Ctrl+R (Command-R on macOS) checks for updates, as the toolbar's refresh button does, and
         // like it is ignored while a check is running. In a browser the page reloads instead.
-        if !self.checking && ctx.input_mut(|i| i.consume_key(egui::Modifiers::COMMAND, egui::Key::R)) {
+        if ctx.input_mut(Self::take_refresh_shortcut) && !self.checking {
             self.check_now_from_ui();
         }
         // `effective_lang` only picks a CJK language once the system's font has loaded; install
