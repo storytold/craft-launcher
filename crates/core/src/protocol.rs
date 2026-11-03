@@ -102,6 +102,10 @@ pub struct BackendOptions {
     pub launcher_version: VersionTrack,
     /// Offer pre-releases (`0.6.0-rc.1`) as updates.
     pub prereleases: bool,
+    /// Show the running Craft App on the person's Discord profile.
+    pub discord_presence: bool,
+    /// With it, also the name of the file the app has open (Windows: from its window title).
+    pub discord_file_names: bool,
 }
 
 /// The answer to "what's the latest release of this app?".
