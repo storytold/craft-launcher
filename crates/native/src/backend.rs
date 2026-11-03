@@ -516,6 +516,37 @@ fn run_install(
     approved: Option<&str>,
     source: Option<&dyn ReleaseSource>,
 ) -> Result<String, String> {
+    if let Some(inst) = existing
+        && inst.source == artcraft_launcher_core::InstallSource::Flatpak
+        && inst.externally_managed
+    {
+        // `flatpak update` only follows the repository's latest build, never a pinned or nightly track.
+        if !matches!(options.versions.get(app.id), None | Some(VersionTrack::Stable)) {
+            return Err(install::managed_elsewhere(app, inst, false).unwrap_or_else(|| "Update this app through its Flatpak repository".into()));
+        }
+        #[cfg(target_os = "linux")]
+        {
+            shared.emit(Event::Progress { app: app.id.to_string(), phase: JobPhase::Installing });
+            let mut phase = |p| shared.emit(Event::Progress { app: app.id.to_string(), phase: p });
+            let default_id = app.bundle_id();
+            let target_id = inst.package.as_deref().unwrap_or(&default_id);
+            let scope = crate::packages::flatpak_scope(inst.installation.as_deref());
+            let deployed_commit = || {
+                crate::process::capture_flatpak(&["info", &scope, "--show-commit", target_id], std::time::Duration::from_secs(15))
+                    .filter(|value| !value.trim().is_empty())
+            };
+            let before = deployed_commit();
+            install::linux::update_flatpak_app(app, target_id, inst.installation.as_deref(), inst.origin.as_deref(), stop, &mut phase)?;
+            let after = deployed_commit();
+            return Ok(match (before, after) {
+                (Some(before), Some(after)) if before.trim() == after.trim() => format!("{} is already up to date", app.name),
+                (Some(_), Some(_)) => format!("{} was updated through its Flatpak repository", app.name),
+                _ => format!("Flatpak finished checking {} for updates", app.name),
+            });
+        }
+        #[cfg(not(target_os = "linux"))]
+        return Err(format!("{} is a Flatpak, which is not supported on this platform", app.name));
+    }
     if let Some(msg) = existing.and_then(|e| install::managed_elsewhere(app, e, false)) {
         return Err(msg);
     }
@@ -1305,7 +1336,15 @@ mod tests {
 
     #[test]
     fn a_downgrade_is_only_a_version_chosen_by_name_below_the_installed_one() {
-        let installed = Installed { version: version::parse("0.14.0"), source: InstallSource::MacApp, location: String::new(), package: None };
+        let installed = Installed {
+            version: version::parse("0.14.0"),
+            source: InstallSource::MacApp,
+            location: String::new(),
+            package: None,
+            externally_managed: false,
+            origin: None,
+            installation: None,
+        };
         let pinned = VersionTrack::Pinned("v0.13.0".into());
         assert!(is_chosen_downgrade(&pinned, &tagged("0.13.0"), Some(&installed)));
         assert!(!is_chosen_downgrade(&VersionTrack::Stable, &tagged("0.13.0"), Some(&installed)));
@@ -1317,7 +1356,15 @@ mod tests {
     #[test]
     fn only_a_version_chosen_by_name_below_the_installed_one_looks_for_a_package_to_put_back() {
         let app = CraftApp::by_id("filmcraft").unwrap();
-        let installed = Installed { version: version::parse("0.14.0"), source: InstallSource::Msi, location: String::new(), package: None };
+        let installed = Installed {
+            version: version::parse("0.14.0"),
+            source: InstallSource::Msi,
+            location: String::new(),
+            package: None,
+            externally_managed: false,
+            origin: None,
+            installation: None,
+        };
         let pinned = VersionTrack::Pinned("v0.13.0".into());
         let never = || -> Result<Vec<Release>, String> { panic!("no list is needed") };
         // An update, the latest release, nothing installed, or a stale release: no downgrade.
@@ -1702,6 +1749,9 @@ mod tests {
             source: artcraft_launcher_core::InstallSource::Msi,
             location: r"C:\Apps\PhotoCraft\photocraft.exe".into(),
             package: None,
+            externally_managed: false,
+            origin: None,
+            installation: None,
         };
         assert_eq!(planned_asset(app, &release, platform, &portable_options, Some(&msi), None).unwrap().1, PackageKind::Msi);
         let launcher = Installed {
@@ -1709,6 +1759,9 @@ mod tests {
             source: artcraft_launcher_core::InstallSource::Launcher,
             location: r"D:\Craft Apps\PhotoCraft\photocraft.exe".into(),
             package: None,
+            externally_managed: false,
+            origin: None,
+            installation: None,
         };
         let record = crate::manifest::Record {
             version: "0.4.0".into(),
@@ -1740,8 +1793,15 @@ mod tests {
         assert_eq!(planned_asset(app, &release, platform, &options, None, None).unwrap().1, PackageKind::AppImage);
         release.assets.retain(|a| !a.name.ends_with(".AppImage"));
         assert!(planned_asset(app, &release, platform, &options, None, None).is_none());
-        let existing =
-            Installed { version: None, source: artcraft_launcher_core::InstallSource::Deb, location: "/usr/bin/photocraft".into(), package: None };
+        let existing = Installed {
+            version: None,
+            source: artcraft_launcher_core::InstallSource::Deb,
+            location: "/usr/bin/photocraft".into(),
+            package: None,
+            externally_managed: false,
+            origin: None,
+            installation: None,
+        };
         let system = BackendOptions { kinds: options.kinds.clone(), ..Default::default() };
         assert_eq!(
             planned_asset(app, &release, platform, &options, Some(&existing), None),
@@ -1941,7 +2001,15 @@ mod tests {
     }
 
     fn copy(v: &str) -> Installed {
-        Installed { version: version::parse(v), source: InstallSource::Deb, location: String::new(), package: None }
+        Installed {
+            version: version::parse(v),
+            source: InstallSource::Deb,
+            location: String::new(),
+            package: None,
+            externally_managed: false,
+            origin: None,
+            installation: None,
+        }
     }
 
     #[test]

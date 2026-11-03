@@ -189,6 +189,9 @@ fn events() -> Vec<Event> {
             source: InstallSource::MacApp,
             location: format!("/Applications/{}.app", app.name),
             package: None,
+            externally_managed: false,
+            origin: None,
+            installation: None,
         });
         ev.push(Event::Detected { app: app.id.into(), installed: inst });
     }
@@ -558,6 +561,9 @@ fn choosing_an_app_version_turns_its_main_action_into_install() {
             source: InstallSource::MacApp,
             location: "/Applications/PhotoCraft.app".into(),
             package: None,
+            externally_managed: false,
+            origin: None,
+            installation: None,
         }),
     });
     h.run_steps(4);
@@ -1413,6 +1419,198 @@ fn table_view_and_light_theme() {
     h.get_all_by_label("Open").next().unwrap().click();
     h.run_steps(2);
     assert!(sent.borrow().iter().any(|c| matches!(c, Command::Launch { .. })));
+}
+
+#[test]
+/// Pin floats an app above Name sort; reorder via settings is reflected; Hide clears the pin.
+fn pinning_an_app_keeps_it_on_top_until_unpinned() {
+    let (mut h, _) = harness(ViewMode::Table, egui::Theme::Dark, true);
+    h.run_steps(6);
+    // Name sort would put CADCraft before PhotoCraft; a pin must still win.
+    h.state_mut().as_mut().unwrap().settings.sort = artcraft_launcher_ui_egui::settings::SortKey::Name;
+    h.state_mut().as_mut().unwrap().settings.sort_descending = false;
+    h.run_steps(2);
+    h.get_by_label("More actions for PhotoCraft").click();
+    h.run_steps(3);
+    h.get_by_label("Pin to top").click();
+    h.run_steps(4);
+    assert_eq!(h.state().as_ref().unwrap().settings.pinned, vec!["photocraft".to_string()]);
+    let ids = h.state().as_ref().unwrap().visible_ids_for_test();
+    assert_eq!(ids.first().copied(), Some("photocraft"), "pinned app stays first under Name sort: {ids:?}");
+    h.state_mut().as_mut().unwrap().settings.pin_app("filmcraft");
+    h.state_mut().as_mut().unwrap().settings.reorder_pinned_to("photocraft", 2);
+    h.run_steps(2);
+    assert_eq!(h.state().as_ref().unwrap().settings.pinned, vec!["filmcraft".to_string(), "photocraft".to_string()]);
+    assert_eq!(&h.state().as_ref().unwrap().visible_ids_for_test()[..2], &["filmcraft", "photocraft"]);
+    h.get_all_by_label_contains("Reorder").next().expect("pinned rows expose reorder handles");
+}
+
+#[test]
+/// Hiding a pinned app also removes it from the pin list.
+fn hide_clears_pin() {
+    let (mut h, _) = harness(ViewMode::Grid, egui::Theme::Dark, true);
+    h.run_steps(6);
+    h.state_mut().as_mut().unwrap().settings.pin_app("photocraft");
+    h.run_steps(2);
+    h.get_by_label("More actions for PhotoCraft").click();
+    h.run_steps(3);
+    h.get_by_label("Hide App").click();
+    h.run_steps(4);
+    assert!(h.state().as_ref().unwrap().settings.pinned.is_empty());
+    assert!(h.state().as_ref().unwrap().settings.hidden.contains("photocraft"));
+}
+
+#[test]
+/// After pinning from the menu, opening it again offers Unpin and clears the pin.
+fn pinned_app_menu_offers_unpin() {
+    let (mut h, _) = harness(ViewMode::Grid, egui::Theme::Dark, true);
+    h.run_steps(6);
+    h.get_by_label("More actions for PhotoCraft").click();
+    h.run_steps(3);
+    h.get_by_label("Pin to top").click();
+    h.run_steps(4);
+    assert_eq!(h.state().as_ref().unwrap().settings.pinned, vec!["photocraft".to_string()]);
+    h.get_by_label("More actions for PhotoCraft").click();
+    h.run_steps(3);
+    assert!(h.query_by_label("Pin to top").is_none(), "pinned apps must not keep offering Pin to top");
+    h.get_by_label("Unpin").click();
+    h.run_steps(4);
+    assert!(h.state().as_ref().unwrap().settings.pinned.is_empty());
+}
+
+#[test]
+/// Escape during a pin drag restores the order from drag start (live hover already mutated pins).
+fn escape_cancels_pin_drag_and_restores_order() {
+    let (mut h, _) = harness(ViewMode::Grid, egui::Theme::Dark, true);
+    h.run_steps(6);
+    {
+        let ui = h.state_mut().as_mut().unwrap();
+        ui.settings.pin_app("photocraft");
+        ui.settings.pin_app("filmcraft");
+        ui.settings.pin_app("wordcraft");
+        assert_eq!(ui.settings.pinned, ["photocraft", "filmcraft", "wordcraft"]);
+        ui.begin_pin_drag_for_test("photocraft");
+        // Mid-drag: pointer has already reordered via drop targets.
+        ui.settings.pinned = vec!["filmcraft".into(), "photocraft".into(), "wordcraft".into()];
+    }
+    h.key_press(egui::Key::Escape);
+    h.run_steps(2);
+    let ui = h.state().as_ref().unwrap();
+    assert!(!ui.pin_dragging_for_test());
+    assert_eq!(ui.settings.pinned, ["photocraft", "filmcraft", "wordcraft"]);
+}
+
+#[test]
+/// Escape still restores pin order when search hides every app (grid/table never run).
+fn escape_cancels_pin_drag_with_empty_results() {
+    let (mut h, _) = harness(ViewMode::Grid, egui::Theme::Dark, true);
+    h.run_steps(6);
+    {
+        let ui = h.state_mut().as_mut().unwrap();
+        ui.settings.pin_app("photocraft");
+        ui.settings.pin_app("filmcraft");
+        ui.begin_pin_drag_for_test("photocraft");
+        ui.settings.pinned = vec!["filmcraft".into(), "photocraft".into()];
+        // Apply search without an intervening empty frame (pointer-up would end the drag).
+        ui.set_search_for_test("zzzz-no-match");
+        assert!(ui.visible_ids_for_test().is_empty());
+        assert!(ui.pin_dragging_for_test());
+    }
+    h.key_press(egui::Key::Escape);
+    h.run_steps(2);
+    let ui = h.state().as_ref().unwrap();
+    assert!(!ui.pin_dragging_for_test());
+    assert_eq!(ui.settings.pinned, ["photocraft", "filmcraft"]);
+}
+
+#[test]
+/// Grid shows a Pinned section label once at least one app is pinned.
+fn grid_shows_pinned_section_header() {
+    let (mut h, _) = harness(ViewMode::Grid, egui::Theme::Dark, true);
+    h.run_steps(6);
+    assert!(h.query_by_label("Pinned").is_none());
+    h.state_mut().as_mut().unwrap().settings.pin_app("photocraft");
+    h.run_steps(4);
+    h.get_by_label("Pinned");
+    h.get_all_by_label_contains("Reorder PhotoCraft").next().expect("pinned card exposes a reorder handle");
+}
+
+#[test]
+/// A pinned table row's grip leads its actions without taking room from them: its Open button is
+/// as wide as an unpinned row's, and the menus stay in one line (#956: a squeezed button pushes
+/// the menu out of the column).
+fn a_pinned_table_row_keeps_its_buttons_in_line() {
+    let (mut h, _) = harness(ViewMode::Table, egui::Theme::Dark, true);
+    h.run_steps(6);
+    // LightCraft and WordCraft are both installed and up to date: each row offers Open.
+    h.state_mut().as_mut().unwrap().settings.pin_app("lightcraft");
+    h.run_steps(4);
+    let grip = h.get_all_by_label_contains("Reorder LightCraft").next().expect("pinned row has a grip").rect();
+    let open_in_row = |menu: egui::Rect| {
+        let row = menu.y_range();
+        h.query_all_by_label("Open").map(|n| n.rect()).find(|r| row.contains(r.center().y)).expect("an Open button in the row")
+    };
+    let (pinned_menu, other_menu) = (h.get_by_label("More actions for LightCraft").rect(), h.get_by_label("More actions for WordCraft").rect());
+    let (pinned_open, other_open) = (open_in_row(pinned_menu), open_in_row(other_menu));
+    assert!(grip.right() <= pinned_open.left(), "grip {grip:?} leads the row's Open {pinned_open:?}");
+    assert!((pinned_open.width() - other_open.width()).abs() < 0.5, "pinned {pinned_open:?} vs unpinned {other_open:?}");
+    assert!((pinned_open.left() - other_open.left()).abs() < 0.5, "pinned {pinned_open:?} vs unpinned {other_open:?}");
+    assert!((pinned_menu.right() - other_menu.right()).abs() < 0.5, "pinned {pinned_menu:?} vs unpinned {other_menu:?}");
+}
+
+#[test]
+fn pin_drag_ignores_targets_clipped_by_the_scroll_viewport() {
+    for view in [ViewMode::Grid, ViewMode::Table] {
+        let (mut h, _) = harness(view, egui::Theme::Dark, true);
+        h.run_steps(6);
+        let pins = vec!["photocraft".to_string(), "lightcraft".to_string(), "wordcraft".to_string()];
+        h.state_mut().as_mut().unwrap().settings.pinned = pins.clone();
+        h.run_steps(4);
+        let grip = h.get_by_label("Reorder PhotoCraft").rect().center();
+        let target = h.get_by_label("WordCraft details").rect();
+        let at = match view {
+            ViewMode::Grid => egui::pos2(target.right() - 10.0, target.bottom() - 20.0),
+            ViewMode::Table => egui::pos2(h.get_by_label("Reorder WordCraft").rect().center().x, target.bottom() - 10.0),
+        };
+        h.hover_at(grip);
+        h.run_steps(2);
+        h.drag_at(grip);
+        h.run_steps(2);
+        h.hover_at(grip + egui::vec2(0.0, -8.0));
+        h.run_steps(2);
+        assert!(h.state().as_ref().unwrap().pin_dragging_for_test(), "{view:?}: real grip starts drag");
+        // Keep the target's layout position, but clip it behind the window footer.
+        h.set_size(egui::vec2(1180.0, at.y + 2.0));
+        h.hover_at(at);
+        h.run_steps(2);
+        assert_eq!(h.state().as_ref().unwrap().settings.pinned, pins, "{view:?}: clipped hover");
+        h.drop_at(at);
+        h.run_steps(2);
+        assert_eq!(h.state().as_ref().unwrap().settings.pinned, pins, "{view:?}: clipped release");
+        assert!(!h.state().as_ref().unwrap().pin_dragging_for_test());
+    }
+}
+
+#[test]
+fn pin_drag_accepts_the_table_grip_column() {
+    let (mut h, _) = harness(ViewMode::Table, egui::Theme::Dark, true);
+    h.run_steps(6);
+    h.state_mut().as_mut().unwrap().settings.pinned = vec!["photocraft".into(), "lightcraft".into(), "wordcraft".into()];
+    h.run_steps(4);
+    let from = h.get_by_label("Reorder PhotoCraft").rect().center();
+    let target = h.get_by_label("Reorder WordCraft").rect();
+    h.hover_at(from);
+    h.run_steps(2);
+    h.drag_at(from);
+    h.run_steps(2);
+    h.hover_at(from + egui::vec2(0.0, -8.0));
+    h.run_steps(2);
+    assert!(h.state().as_ref().unwrap().pin_dragging_for_test());
+    // Release directly in the last column, outside the first app cell's clip rectangle.
+    h.drop_at(egui::pos2(target.center().x, target.bottom() - 2.0));
+    h.run_steps(2);
+    assert_eq!(h.state().as_ref().unwrap().settings.pinned, ["lightcraft", "wordcraft", "photocraft"]);
+    assert!(!h.state().as_ref().unwrap().pin_dragging_for_test());
 }
 
 #[test]

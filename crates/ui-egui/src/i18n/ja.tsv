@@ -125,6 +125,12 @@
 	Apps on this computer	このコンピューターのアプリ
 	Installed apps with a newer version	新しいバージョンがあるインストール済みアプリ
 	Apps you can install	インストールできるアプリ
+	Pin to top	上部にピン留め
+	Unpin	ピン留めを外す
+	Pinned	ピン留め
+	Reorder {name}	{name}の順序を変更
+	Move up	上へ
+	Move down	下へ
 	Hide App	アプリを非表示
 	Unhide App	アプリを再表示
 	Hidden Apps	非表示のアプリ
@@ -414,3 +420,7 @@ materialcraft	Node graphs	ノードグラフ
 materialcraft	Combine noises, patterns and filters.	ノイズ、パターン、フィルターを組み合わせます。
 materialcraft	Live previews	リアルタイムプレビュー
 materialcraft	Preview materials in 2D and on 3D models.	マテリアルを2Dと3Dモデル上でプレビューします。
+	Advanced	詳細設定
+	Migrate Flatpak bundles to ArtCraft OCI (experimental)	Flatpak バンドルを ArtCraft OCI に移行する（実験的）
+	On update, switch first party apps when the matching package is available. Otherwise, keep using bundles.	更新時に対応するパッケージがあれば ArtCraft 公式アプリを移行します。なければ引き続きバンドルを使用します。
+	The OCI repository is a preview with GPG verification disabled.	OCI リポジトリはプレビュー版で、GPG 検証は無効になっています。

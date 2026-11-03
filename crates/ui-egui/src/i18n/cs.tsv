@@ -109,6 +109,12 @@
 	Apps on this computer	Aplikace v tomto počítači
 	Installed apps with a newer version	Nainstalované aplikace s novější verzí
 	Apps you can install	Aplikace, které lze nainstalovat
+	Pin to top	Připnout nahoru
+	Unpin	Odepnout
+	Pinned	Připnuté
+	Reorder {name}	Změnit pořadí: {name}
+	Move up	Posunout nahoru
+	Move down	Posunout dolů
 	Hide App	Skrýt aplikaci
 	Unhide App	Zobrazit aplikaci
 	Hidden Apps	Skryté aplikace
@@ -379,3 +385,7 @@ materialcraft	Node graphs	Uzlové grafy
 materialcraft	Combine noises, patterns and filters.	Kombinujte šumy, vzory a filtry.
 materialcraft	Live previews	Živé náhledy
 materialcraft	Preview materials in 2D and on 3D models.	Prohlížejte materiály ve 2D a na 3D modelech.
+	Advanced	Pokročilé
+	Migrate Flatpak bundles to ArtCraft OCI (experimental)	Převést balíčky Flatpak na ArtCraft OCI (experimentální)
+	On update, switch first party apps when the matching package is available. Otherwise, keep using bundles.	Při aktualizaci převést aplikace ArtCraft, pokud je dostupný odpovídající balíček. Jinak nadále používat samostatné balíčky.
+	The OCI repository is a preview with GPG verification disabled.	Repozitář OCI je předběžná verze s vypnutým ověřováním GPG.

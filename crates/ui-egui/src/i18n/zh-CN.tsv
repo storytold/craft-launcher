@@ -271,6 +271,12 @@ figcraft	Interface design and prototyping	界面设计与原型制作
 	Apps on this computer	此电脑上的应用
 	Installed apps with a newer version	有新版本的已安装应用
 	Apps you can install	可安装的应用
+	Pin to top	置顶
+	Unpin	取消置顶
+	Pinned	已置顶
+	Reorder {name}	重新排序 {name}
+	Move up	上移
+	Move down	下移
 	Hide App	隐藏应用
 	Unhide App	取消隐藏应用
 	Hidden Apps	已隐藏的应用
@@ -379,3 +385,7 @@ materialcraft	Node graphs	节点图
 materialcraft	Combine noises, patterns and filters.	组合噪声、图案和滤镜。
 materialcraft	Live previews	实时预览
 materialcraft	Preview materials in 2D and on 3D models.	在二维视图和三维模型上预览材质。
+	Advanced	高级
+	Migrate Flatpak bundles to ArtCraft OCI (experimental)	将 Flatpak 软件包迁移到 ArtCraft OCI（实验性）
+	On update, switch first party apps when the matching package is available. Otherwise, keep using bundles.	更新时，如果有对应的软件包，则迁移 ArtCraft 官方应用；否则继续使用独立软件包。
+	The OCI repository is a preview with GPG verification disabled.	OCI 仓库目前处于预览阶段，GPG 验证已禁用。

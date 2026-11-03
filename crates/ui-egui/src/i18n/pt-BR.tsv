@@ -111,6 +111,12 @@
 	Apps on this computer	Aplicativos neste computador
 	Installed apps with a newer version	Aplicativos instalados com nova versão
 	Apps you can install	Aplicativos que você pode instalar
+	Pin to top	Fixar no topo
+	Unpin	Desafixar
+	Pinned	Fixados
+	Reorder {name}	Reordenar {name}
+	Move up	Mover para cima
+	Move down	Mover para baixo
 	Hide App	Ocultar aplicativo
 	Unhide App	Mostrar aplicativo
 	Hidden Apps	Aplicativos ocultos
@@ -399,3 +405,7 @@ materialcraft	Node graphs	Grafos de nós
 materialcraft	Combine noises, patterns and filters.	Combine ruídos, padrões e filtros.
 materialcraft	Live previews	Pré-visualizações ao vivo
 materialcraft	Preview materials in 2D and on 3D models.	Visualize materiais em 2D e em modelos 3D.
+	Advanced	Avançado
+	Migrate Flatpak bundles to ArtCraft OCI (experimental)	Migrar pacotes Flatpak para ArtCraft OCI (experimental)
+	On update, switch first party apps when the matching package is available. Otherwise, keep using bundles.	Ao atualizar, migrar os aplicativos da ArtCraft quando o pacote correspondente estiver disponível. Caso contrário, continuar usando pacotes independentes.
+	The OCI repository is a preview with GPG verification disabled.	O repositório OCI é uma prévia com a verificação GPG desativada.

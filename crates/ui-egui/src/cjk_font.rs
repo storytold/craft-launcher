@@ -44,6 +44,7 @@ fn face_metrics(data: &[u8], index: u32) -> (f32, f32) {
 fn script_name(script: Script) -> &'static str {
     match script {
         Script::Chinese => "Chinese",
+        Script::TraditionalChinese => "Traditional Chinese",
         Script::Japanese => "Japanese",
         Script::Georgian => "Georgian",
     }
@@ -53,6 +54,7 @@ fn script_name(script: Script) -> &'static str {
 fn script_families(script: Script) -> &'static str {
     match script {
         Script::Chinese => "PingFang SC, Hiragino Sans GB, Heiti SC, Microsoft YaHei, SimSun, Noto Sans CJK SC, WenQuanYi and MiSans",
+        Script::TraditionalChinese => "Noto Sans CJK TC, Noto Sans TC, PingFang TC, Heiti TC, Microsoft JhengHei and MingLiU",
         Script::Japanese => "Hiragino Sans, Yu Gothic, Meiryo, MS Gothic, Noto Sans CJK JP, Noto Sans JP, IPAGothic and TakaoGothic",
         Script::Georgian => "SF Georgian, Arial Unicode MS, Sylfaen, Noto Sans Georgian and DejaVu Sans",
     }
@@ -149,6 +151,7 @@ fn chars_eq_ignore_ascii_case(mut chars: impl Iterator<Item = char>, wanted: &st
 fn candidates(script: Script) -> Vec<Candidate> {
     let found = match script {
         Script::Chinese => chinese_candidates(),
+        Script::TraditionalChinese => traditional_chinese_candidates(),
         Script::Japanese => japanese_candidates(),
         Script::Georgian => georgian_candidates(),
     };
@@ -273,6 +276,72 @@ fn chinese_candidates() -> Vec<Candidate> {
         for dir in user_font_dirs() {
             add(dir.join(file), "MiSans");
         }
+    }
+    out
+}
+
+/// The Noto files that carry a Traditional Chinese face, by family: the merged CJK collection, the
+/// CJK TC-only OTF, the variable TC fonts, and the standalone Noto Sans TC.
+const NOTO_TC_FILES: [(&str, &str); 7] = [
+    ("NotoSansCJKtc-Regular.otf", "Noto Sans CJK TC"),
+    ("NotoSansCJK-Regular.ttc", "Noto Sans CJK TC"),
+    ("NotoSansCJK-VF.ttc", "Noto Sans CJK TC"),
+    ("NotoSansCJKtc-VF.otf", "Noto Sans CJK TC"),
+    ("NotoSansCJKtc-VF.ttf", "Noto Sans CJK TC"),
+    ("NotoSansTC-Regular.otf", "Noto Sans TC"),
+    ("NotoSansTC-VF.ttf", "Noto Sans TC"),
+];
+
+/// Where each system keeps a Traditional Chinese font: an installed Noto CJK TC first (the face
+/// GridCraft prefers for Taiwan), then the system's own faces.
+fn traditional_chinese_candidates() -> Vec<Candidate> {
+    let mut out = Vec::new();
+    let mut add = |path: PathBuf, family: &'static str| out.push(Candidate { path, family });
+    // A Noto installed by hand or by the system's font manager. The `NotoSansCJKtc` subdirectory
+    // lets a user keep an updated file apart from an older installed face.
+    for dir in user_font_dirs() {
+        for (file, family) in NOTO_TC_FILES {
+            // The override subdirectory is checked first, so an updated file wins over the older
+            // face at the root.
+            add(dir.join("NotoSansCJKtc").join(file), family);
+            add(dir.join(file), family);
+        }
+    }
+    #[cfg(all(unix, not(target_os = "macos")))]
+    {
+        // Debian/Ubuntu, Arch, Fedora (static and variable), openSUSE and FreeBSD's ports.
+        const NOTO_DIRS: [&str; 10] = [
+            "/usr/share/fonts/opentype/noto",
+            "/usr/share/fonts/noto-cjk",
+            "/usr/share/fonts/google-noto-cjk",
+            "/usr/share/fonts/google-noto-sans-cjk-fonts",
+            "/usr/share/fonts/google-noto-sans-cjk-vf-fonts",
+            "/usr/share/fonts/noto",
+            "/usr/share/fonts/truetype/noto",
+            "/usr/share/fonts/truetype",
+            "/usr/local/share/fonts/noto",
+            "/usr/local/share/fonts/noto-cjk",
+        ];
+        for dir in NOTO_DIRS {
+            for (file, family) in NOTO_TC_FILES {
+                add(Path::new(dir).join(file), family);
+            }
+        }
+    }
+    #[cfg(target_os = "macos")]
+    {
+        // PingFang moved from the system fonts into a downloaded asset in later macOS versions.
+        add("/System/Library/Fonts/PingFang.ttc".into(), "PingFang TC");
+        for path in mac_font_assets("PingFang.ttc") {
+            add(path, "PingFang TC");
+        }
+        add("/System/Library/Fonts/STHeiti Medium.ttc".into(), "Heiti TC");
+    }
+    #[cfg(target_os = "windows")]
+    {
+        let root = std::env::var_os("SystemRoot").map_or_else(|| PathBuf::from(r"C:\Windows"), PathBuf::from);
+        add(root.join("Fonts").join("msjh.ttc"), "Microsoft JhengHei");
+        add(root.join("Fonts").join("mingliu.ttc"), "MingLiU");
     }
     out
 }
@@ -512,6 +581,43 @@ mod tests {
         assert!(first_misans > 0, "the system's own fonts come first");
     }
 
+    /// Traditional Chinese prefers an installed Noto CJK TC over the system's own face, matching
+    /// GridCraft's Taiwan font order.
+    #[test]
+    fn traditional_chinese_prefers_noto_cjk_tc() {
+        let found = traditional_chinese_candidates();
+        let first = found.first().expect("at least one Traditional Chinese candidate");
+        assert!(first.family.starts_with("Noto Sans"), "first is {:?}", first.family);
+        // macOS and Windows add their own face after the Noto candidates; the Unix list is all
+        // Noto, so there is no system face to order against there.
+        #[cfg(any(target_os = "macos", target_os = "windows"))]
+        {
+            let first_system = found.iter().position(|c| !c.family.starts_with("Noto Sans")).expect("a system face comes after Noto");
+            assert!(first_system > 0);
+        }
+    }
+
+    /// openSUSE's `google-noto-sans-tc-fonts` installs the variable CJK TC font directly in
+    /// `/usr/share/fonts/truetype`.
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn traditional_chinese_searches_the_opensuse_font_dir() {
+        let found = traditional_chinese_candidates();
+        assert!(found.iter().any(|c| c.path == Path::new("/usr/share/fonts/truetype/NotoSansCJKtc-VF.otf") && c.family == "Noto Sans CJK TC"));
+    }
+
+    /// The `NotoSansCJKtc` override folder is read before the older file at the font folder's root.
+    #[test]
+    fn the_tc_override_folder_comes_before_the_root_file() {
+        let found = traditional_chinese_candidates();
+        let dir = user_font_dirs().into_iter().next().expect("a user font folder");
+        let override_file = dir.join("NotoSansCJKtc").join("NotoSansCJKtc-Regular.otf");
+        let root_file = dir.join("NotoSansCJKtc-Regular.otf");
+        let override_at = found.iter().position(|c| c.path == override_file).expect("the override path");
+        let root_at = found.iter().position(|c| c.path == root_file).expect("the root path");
+        assert!(override_at < root_at);
+    }
+
     /// Inside Flatpak the host's fonts are under `/run/host` (#620), each right after its own path.
     #[cfg(target_os = "linux")]
     #[test]
@@ -525,7 +631,9 @@ mod tests {
         ] {
             assert_eq!(flatpak_host_path(Path::new(path)), host.map(PathBuf::from), "{path}");
         }
-        for (script, family) in [(Script::Chinese, "Noto Sans CJK SC"), (Script::Japanese, "Noto Sans CJK JP")] {
+        for (script, family) in
+            [(Script::Chinese, "Noto Sans CJK SC"), (Script::TraditionalChinese, "Noto Sans CJK TC"), (Script::Japanese, "Noto Sans CJK JP")]
+        {
             let found = candidates(script);
             let at = found.iter().position(|c| c.path == Path::new("/usr/share/fonts/noto-cjk/NotoSansCJK-Regular.ttc")).unwrap();
             assert_eq!(found[at + 1].path, Path::new("/run/host/fonts/noto-cjk/NotoSansCJK-Regular.ttc"));

@@ -790,3 +790,68 @@ mod inherited_pipe_tests {
         }
     }
 }
+
+/// Runs a helper while polling cancellation and draining its bounded output.
+#[cfg(target_os = "linux")]
+pub(crate) fn cancellable_output(mut cmd: Command, check: impl Fn() -> Result<(), String>) -> Result<std::process::Output, String> {
+    check()?;
+    let mut child =
+        cmd.stdin(Stdio::null()).stdout(Stdio::piped()).stderr(Stdio::piped()).spawn().map_err(|e| format!("couldn't run flatpak ({e})"))?;
+    let (stdout, stderr) = (read_all(child.stdout.take()), read_all(child.stderr.take()));
+    let started = Instant::now();
+    let status = loop {
+        if started.elapsed() >= Duration::from_secs(60 * 60) {
+            let _ = child.kill();
+            let _ = child.wait();
+            return Err("Flatpak did not finish within one hour".into());
+        }
+        if let Err(e) = check() {
+            let _ = child.kill();
+            let _ = child.wait();
+            return Err(e);
+        }
+        match child.try_wait() {
+            Ok(Some(status)) => break status,
+            Ok(None) => std::thread::sleep(Duration::from_millis(25)),
+            Err(e) => {
+                let _ = child.kill();
+                let _ = child.wait();
+                return Err(format!("couldn't wait for flatpak ({e})"));
+            }
+        }
+    };
+    let deadline = Instant::now();
+    while !stdout.is_finished() || !stderr.is_finished() {
+        check()?;
+        if deadline.elapsed() > Duration::from_secs(5) {
+            return Err("Flatpak output did not close after completion".into());
+        }
+        std::thread::sleep(Duration::from_millis(25));
+    }
+    Ok(std::process::Output { status, stdout: stdout.join().unwrap_or_default(), stderr: stderr.join().unwrap_or_default() })
+}
+
+#[cfg(all(test, target_os = "linux"))]
+mod update_cancel_tests {
+    use super::*;
+
+    #[test]
+    fn cancels_a_running_helper_promptly() {
+        let mut cmd = command("sleep");
+        cmd.arg("30");
+        let start = Instant::now();
+        let result = cancellable_output(cmd, || if start.elapsed() >= Duration::from_millis(100) { Err("cancelled".into()) } else { Ok(()) });
+        assert_eq!(result.unwrap_err(), "cancelled");
+        assert!(start.elapsed() < Duration::from_secs(5));
+    }
+
+    #[test]
+    fn retains_both_output_streams_and_exit_status() {
+        let mut cmd = command("sh");
+        cmd.args(["-c", "printf output; printf error >&2; exit 7"]);
+        let output = cancellable_output(cmd, || Ok(())).unwrap();
+        assert_eq!(output.status.code(), Some(7));
+        assert_eq!(output.stdout, b"output");
+        assert_eq!(output.stderr, b"error");
+    }
+}
