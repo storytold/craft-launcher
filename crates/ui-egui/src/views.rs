@@ -1166,10 +1166,6 @@ impl LauncherUi {
         });
     }
 
-<<<<<<< HEAD
-    /// The menu items for an installed app: open, reveal in the file manager, desktop shortcut,
-    /// reinstall, and uninstall (which asks first).
-=======
     /// Pin — or unpin — the app at the top of the list. Hidden apps are not offered Pin to top
     /// (they can still Unpin if somehow still pinned). Move up/down reorder for keyboard users.
     fn menu_pin(&mut self, ui: &mut Ui, entry: &AppEntry, id: &str) {
@@ -1204,7 +1200,6 @@ impl LauncherUi {
 
     /// The menu items for an installed app: open, reveal in the file manager, reinstall, and
     /// uninstall (which asks first).
->>>>>>> upstream/main
     fn menu_installed(&mut self, ui: &mut Ui, status: &AppStatus, id: &str, reveal: &'static str) {
         if ui.button(tl!("Open")).clicked() {
             self.launch_app(id);

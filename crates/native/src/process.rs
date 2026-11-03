@@ -459,13 +459,19 @@ fn explorer_select_arg(path: &Path) -> Option<std::ffi::OsString> {
 /// Creates a `.lnk` on the user's Desktop that opens `target`.
 ///
 /// Windows only. `name` is the shortcut's file name without `.lnk` (usually the app's display name).
+/// Does not overwrite an existing shortcut of the same name.
 #[cfg(windows)]
 pub fn create_desktop_shortcut(name: &str, target: &Path) -> Result<(), String> {
-    if !target.exists() {
+    // Must be a real executable path (not a missing path or a directory).
+    if !target.is_file() {
         return Err(format!("{} isn't where it was installed", target.display()));
     }
     let desktop = dirs::desktop_dir().ok_or_else(|| "couldn't find the Desktop folder".to_string())?;
     let lnk = desktop.join(format!("{name}.lnk"));
+    // Don't replace a shortcut the user may have made or customized.
+    if lnk.exists() {
+        return Err(format!("A desktop shortcut named {name} already exists"));
+    }
     let target = dunce::canonicalize(target).unwrap_or_else(|_| target.to_path_buf());
     let work_dir = target.parent().map(Path::to_path_buf).unwrap_or_else(|| PathBuf::from("."));
 

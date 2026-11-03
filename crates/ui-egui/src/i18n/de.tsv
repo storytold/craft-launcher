@@ -379,6 +379,9 @@ filter	Installed	Installiert
 @msg	custom install folders aren't supported on this system	eigene Installationsordner werden auf diesem System nicht unterstützt
 @msg	{path} already exists and wasn't installed by ArtCraft Launcher	{path} existiert bereits und wurde nicht von ArtCraft Launcher installiert
 @msg	couldn't move {path} to Trash ({reason}). Remove it in Finder instead.	{path} konnte nicht in den Papierkorb verschoben werden ({reason}). Entfernen Sie es stattdessen im Finder.
+@msg	Desktop shortcut created for {name}	Desktop-Verknüpfung für {name} erstellt
+@msg	Couldn't create the desktop shortcut: {e}	Desktop-Verknüpfung konnte nicht erstellt werden: {e}
+@msg	A desktop shortcut named {name} already exists	Eine Desktop-Verknüpfung namens {name} existiert bereits
 	Apps are placed inside this folder.	Apps werden in diesem Ordner abgelegt.
 	Replace what's there?	Vorhandenes ersetzen?
 	{path} already exists. Installing {name} will overwrite it.	{path} existiert bereits. Die Installation von {name} überschreibt es.

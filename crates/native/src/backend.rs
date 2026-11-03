@@ -1266,9 +1266,12 @@ impl Backend for NativeBackend {
                 let shared = self.shared.clone();
                 // PowerShell can take a moment; don't freeze the UI thread.
                 std::thread::spawn(move || {
-                    let result = crate::process::create_desktop_shortcut(name, &path)
-                        .map(|()| format!("Desktop shortcut created for {name}"))
-                        .map_err(|e| format!("Couldn't create the desktop shortcut: {e}"));
+                    let result = match crate::process::create_desktop_shortcut(name, &path) {
+                        Ok(()) => Ok(format!("Desktop shortcut created for {name}")),
+                        // Already-exists is a full toast key (and must not be double-wrapped).
+                        Err(e) if e.starts_with("A desktop shortcut named ") => Err(e),
+                        Err(e) => Err(format!("Couldn't create the desktop shortcut: {e}")),
+                    };
                     shared.emit(Event::JobFinished {
                         app: app_id,
                         result,
