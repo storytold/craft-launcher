@@ -128,6 +128,8 @@ pub fn status(installed: Option<&Installed>, latest: Latest<'_>) -> AppStatus {
         }
         (Some(_), Latest::Pending | Latest::Failed | Latest::NoRelease) => AppStatus::Installed,
         (Some(inst), Latest::Found { version: latest, .. }) => match (latest, inst.version.as_ref()) {
+            // A repository-managed copy updates to what its repository has, which GitHub doesn't say.
+            (Some(l), Some(i)) if version::is_update(l, i) && inst.externally_managed => AppStatus::Installed,
             (Some(l), Some(i)) if version::is_update(l, i) => AppStatus::UpdateAvailable,
             (Some(_), Some(_)) => AppStatus::UpToDate,
             // Version unknown on one side: we can't promise "up to date".
@@ -166,6 +168,9 @@ mod tests {
         assert_eq!(status(Some(&inst("0.6.0")), found(true)), AppStatus::UpToDate);
         assert_eq!(status(Some(&inst("0.4.0")), Latest::Failed), AppStatus::Installed);
         assert_eq!(status(Some(&inst("garbage")), found(true)), AppStatus::Installed);
+        let repo = Installed { externally_managed: true, ..inst("0.4.0") };
+        assert_eq!(status(Some(&repo), found(true)), AppStatus::Installed);
+        assert_eq!(status(Some(&Installed { externally_managed: true, ..inst("0.5.0") }), found(true)), AppStatus::UpToDate);
         assert!(AppStatus::UpdateAvailable.is_installed() && !AppStatus::Available.is_installed());
     }
 }

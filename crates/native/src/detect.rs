@@ -507,19 +507,8 @@ pub mod linux {
                     .iter_mut()
                     .filter(|(id, v, _, _)| v.is_empty() && artcraft_launcher_core::SUITE.iter().any(|a| a.bundle_ids().any(|b| b == *id)))
                 {
-                    let custom_scope;
-                    let scope_arg = if !scope.is_empty() {
-                        vec!["--user"]
-                    } else {
-                        match installation.as_deref() {
-                            Some("system") | None => vec!["--system"],
-                            Some(named) => {
-                                custom_scope = format!("--installation={named}");
-                                vec![custom_scope.as_str()]
-                            }
-                        }
-                    };
-                    let info_args = [&["info"][..], &scope_arg, &[&arch, id]].concat();
+                    let scope_arg = packages::flatpak_scope(if scope.is_empty() { installation.as_deref() } else { Some("user") });
+                    let info_args = ["info", &scope_arg, &arch, id];
                     if let Some(v) = crate::process::capture_flatpak(&info_args, t).as_deref().and_then(packages::parse_flatpak_info) {
                         *version = v;
                     }
@@ -624,11 +613,7 @@ pub mod linux {
                     if packages::is_flatpark_origin(origin) {
                         return true;
                     }
-                    let scope = match p.installation.as_deref() {
-                        Some("user") => "--user".to_string(),
-                        Some("system") | None => "--system".to_string(),
-                        Some(name) => format!("--installation={name}"),
-                    };
+                    let scope = packages::flatpak_scope(p.installation.as_deref());
                     crate::process::capture_flatpak(&["remotes", &scope, "--show-disabled", "--columns=name,url"], Duration::from_secs(10))
                         .is_none_or(|remotes| packages::remote_manages_flatpak(origin, &remotes))
                 });

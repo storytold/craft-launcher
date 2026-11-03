@@ -202,7 +202,7 @@ impl LauncherUi {
         });
     }
 
-    /// Where apps go and in what format, for the desktop builds that manage installs.
+    /// Opt-in Linux behaviour that is still experimental.
     fn settings_advanced(&mut self, ui: &mut Ui) {
         if !self.caps.manage_apps || !self.platform.is_some_and(|p| p.os == Os::Linux) {
             return;
@@ -214,6 +214,7 @@ impl LauncherUi {
         });
     }
 
+    /// Where apps go and in what format, for the desktop builds that manage installs.
     fn settings_install(&mut self, ui: &mut Ui, host: &mut dyn Host) {
         if !self.caps.manage_apps {
             return;

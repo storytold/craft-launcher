@@ -13,8 +13,6 @@ publish = false
 workspace = true
 
 [features]
-# Compatibility feature; migration now requires the saved Advanced setting.
-oci_migration = ["artcraft-launcher-native/oci_migration"]
 # Development only: install from `cargo xtask local serve` (see the README).
 local-mirror = ["artcraft-launcher-native/local-mirror"]
 

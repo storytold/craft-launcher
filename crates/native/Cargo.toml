@@ -11,8 +11,6 @@ publish = false
 workspace = true
 
 [features]
-# Compatibility feature; migration now requires the saved Advanced setting.
-oci_migration = []
 # Lets ARTCRAFT_LAUNCHER_DOWNLOAD_BASE point the launcher at a developer's own loopback mirror
 # (`cargo xtask local serve`). Development only: release builds never enable it, so a shipped
 # launcher can't be steered away from GitHub's releases by an environment variable.

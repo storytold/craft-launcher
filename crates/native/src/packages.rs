@@ -63,7 +63,12 @@ pub fn parse_flatpak_list_with_origin(text: &str) -> Vec<(String, String, Option
             }
             let version = f.next().unwrap_or("").trim().to_string();
             let origin = f.next().map(str::trim).filter(|o| !o.is_empty()).map(ToString::to_string);
-            let installation = f.next().map(str::trim).filter(|i| !i.is_empty()).map(ToString::to_string);
+            // A named installation lists as `system (<name>)`, but `--installation=` takes the bare name.
+            let installation = f
+                .next()
+                .map(str::trim)
+                .filter(|i| !i.is_empty())
+                .map(|i| i.strip_prefix("system (").and_then(|n| n.strip_suffix(')')).unwrap_or(i).to_string());
             Some((id.to_string(), version, origin, installation))
         })
         .collect()
@@ -77,8 +82,16 @@ pub fn parse_flatpak_list(text: &str) -> Vec<(String, String)> {
 
 /// Whether an origin string indicates an install from FlatPark.
 pub fn is_flatpark_origin(origin: &str) -> bool {
-    let o = origin.trim();
-    o.eq_ignore_ascii_case("flatpark") || o.to_ascii_lowercase().contains("flatpark")
+    origin.trim().eq_ignore_ascii_case("flatpark")
+}
+
+/// The `flatpak` argument that selects an installation (`user`, `system`, or a named one).
+pub fn flatpak_scope(installation: Option<&str>) -> String {
+    match installation {
+        Some("user") => "--user".into(),
+        Some("system") | None => "--system".into(),
+        Some(name) => format!("--installation={name}"),
+    }
 }
 
 /// The `Version:` line of `flatpak info <id>`.
@@ -224,7 +237,7 @@ mod tests {
 
     #[test]
     fn parses_flatpak_list_with_origin_and_spots_flatpark() {
-        let text = "ai.storyteller.photocraft\t0.19.0\tflatpark\tuser\nai.storyteller.cadcraft\t0.16.0\tcadcraft-origin\tsystem\nai.storyteller.wordcraft\t0.14.0\t\t\n";
+        let text = "ai.storyteller.photocraft\t0.19.0\tflatpark\tuser\nai.storyteller.cadcraft\t0.16.0\tcadcraft-origin\tsystem\nai.storyteller.wordcraft\t0.14.0\t\t\nai.storyteller.filmcraft\t0.3.0\tflatpark\tsystem (extra)\n";
         let list = parse_flatpak_list_with_origin(text);
         assert_eq!(
             list,
@@ -232,11 +245,15 @@ mod tests {
                 ("ai.storyteller.photocraft".into(), "0.19.0".into(), Some("flatpark".into()), Some("user".into())),
                 ("ai.storyteller.cadcraft".into(), "0.16.0".into(), Some("cadcraft-origin".into()), Some("system".into())),
                 ("ai.storyteller.wordcraft".into(), "0.14.0".into(), None, None),
+                ("ai.storyteller.filmcraft".into(), "0.3.0".into(), Some("flatpark".into()), Some("extra".into())),
             ]
         );
+        assert_eq!(flatpak_scope(Some("extra")), "--installation=extra");
+        assert_eq!(flatpak_scope(Some("user")), "--user");
+        assert_eq!(flatpak_scope(None), "--system");
         assert!(is_flatpark_origin("flatpark"));
         assert!(is_flatpark_origin("FlatPark"));
-        assert!(is_flatpark_origin("flatpark-origin"));
+        assert!(!is_flatpark_origin("flatpark-origin"));
         assert!(!is_flatpark_origin("cadcraft-origin"));
         assert!(!is_flatpark_origin("flathub"));
         assert!(!is_flatpark_origin(""));
@@ -251,6 +268,16 @@ pub fn is_artcraft_remote(origin: &str, remotes: &str) -> bool {
         let url = url.trim().trim_end_matches('/');
         name.trim() == origin && url == "oci+https://getartcraft.com"
     })
+}
+
+/// Where Flatpak finds the ArtCraft OCI images' signatures (artcraft-oci.flatpakrepo's
+/// `SignatureLookaside`), redirected to each release's `.oci.sig` asset.
+pub const ARTCRAFT_SIGNATURE_LOOKASIDE: &str = "https://getartcraft.com/signatures";
+
+/// Did an update fail only because `origin`, an ArtCraft OCI remote, has no signature lookaside
+/// (a signed bundle's origin, which `flatpak build-bundle` can't give one)?
+pub fn needs_signature_lookaside(stderr: &str, origin: &str, remotes: &str) -> bool {
+    stderr.contains(&format!("{origin}: no valid signatures for ")) && is_artcraft_remote(origin, remotes)
 }
 
 #[cfg(test)]
@@ -272,23 +299,29 @@ mod remote_url_tests {
         }
         assert!(!is_artcraft_remote("other", "custom\toci+https://getartcraft.com"));
     }
+
+    #[test]
+    fn only_an_artcraft_origin_missing_its_signatures_gets_the_lookaside() {
+        // Flatpak 1.18's error for a verified OCI remote with no lookaside.
+        let stderr = "error: Failed to update ai.storyteller.photocraft: photocraft-origin: no valid signatures for \
+                      ghcr.io/storytold/photocraft@sha256:968d75c9d16d5f7d089775f14a3b418d72a4c70d86986811ee2dd818da956b92";
+        let remotes = "photocraft-origin\toci+https://getartcraft.com\nflathub\thttps://dl.flathub.org/repo/\n";
+        assert!(needs_signature_lookaside(stderr, "photocraft-origin", remotes));
+        // Another remote, another origin's failure, or another error: leave the remote alone.
+        assert!(!needs_signature_lookaside(stderr, "photocraft-origin", "photocraft-origin\thttps://example.org\n"));
+        assert!(!needs_signature_lookaside(stderr, "flathub", remotes));
+        assert!(!needs_signature_lookaside("error: Server returned status 404", "photocraft-origin", remotes));
+    }
 }
 
-/// A missing ref permits bundle fallback; an unknown or different version must not replace it.
+/// Whether the remote lists `reference` at exactly `expected`; a missing ref, or one with no or
+/// another version (the AppStream catalog may list none), keeps the bundle.
 #[cfg(target_os = "linux")]
-pub(crate) fn oci_ref_available(reference: &str, expected: &version::Version, listing: &str) -> Result<bool, String> {
-    for line in listing.lines() {
+pub(crate) fn oci_ref_available(reference: &str, expected: &version::Version, listing: &str) -> bool {
+    listing.lines().any(|line| {
         let mut fields = line.split('\t');
-        if fields.next().map(str::trim) != Some(reference) {
-            continue;
-        }
-        let candidate = fields.next().and_then(|value| version::parse(value.trim()));
-        if candidate.as_ref() != Some(expected) {
-            return Err("The ArtCraft OCI repository does not yet provide the selected version".into());
-        }
-        return Ok(true);
-    }
-    Ok(false)
+        fields.next().map(str::trim) == Some(reference) && fields.next().and_then(|v| version::parse(v.trim())).as_ref() == Some(expected)
+    })
 }
 
 #[cfg(all(test, target_os = "linux"))]
@@ -298,10 +331,12 @@ mod migration_tests {
     fn migration_requires_the_exact_ref_and_selected_version() {
         let reference = "app/ai.storyteller.photocraft/x86_64/stable";
         let expected = version::parse("1.2.3").unwrap();
-        assert_eq!(oci_ref_available(reference, &expected, &format!("{reference}\t1.2.3")), Ok(true));
-        assert_eq!(oci_ref_available(reference, &expected, "app/ai.storyteller.photocraft/aarch64/stable\t1.2.3"), Ok(false));
+        assert!(oci_ref_available(reference, &expected, &format!("{reference}\t1.2.3")));
+        assert!(!oci_ref_available(reference, &expected, "app/ai.storyteller.photocraft/aarch64/stable\t1.2.3"));
+        // The live remote prints no version column at all.
+        assert!(!oci_ref_available(reference, &expected, reference));
         for value in ["", "1.2.2", "1.2.4", "unknown"] {
-            assert!(oci_ref_available(reference, &expected, &format!("{reference}\t{value}")).is_err());
+            assert!(!oci_ref_available(reference, &expected, &format!("{reference}\t{value}")));
         }
     }
 }
