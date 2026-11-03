@@ -282,13 +282,16 @@ fn chinese_candidates() -> Vec<Candidate> {
 
 /// The Noto files that carry a Traditional Chinese face, by family: the merged CJK collection, the
 /// CJK TC-only OTF, the variable TC fonts, and the standalone Noto Sans TC.
-const NOTO_TC_FILES: [(&str, &str); 7] = [
+const NOTO_TC_FILES: [(&str, &str); 10] = [
     ("NotoSansCJKtc-Regular.otf", "Noto Sans CJK TC"),
     ("NotoSansCJK-Regular.ttc", "Noto Sans CJK TC"),
     ("NotoSansCJK-VF.ttc", "Noto Sans CJK TC"),
+    ("NotoSansCJK-VF.otf.ttc", "Noto Sans CJK TC"),
+    ("NotoSansCJK-VF.ttf.ttc", "Noto Sans CJK TC"),
     ("NotoSansCJKtc-VF.otf", "Noto Sans CJK TC"),
     ("NotoSansCJKtc-VF.ttf", "Noto Sans CJK TC"),
     ("NotoSansTC-Regular.otf", "Noto Sans TC"),
+    ("NotoSansTC-VF.otf", "Noto Sans TC"),
     ("NotoSansTC-VF.ttf", "Noto Sans TC"),
 ];
 
