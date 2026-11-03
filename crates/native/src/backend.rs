@@ -64,8 +64,9 @@ struct Shared {
     /// A detection pass is running; another request waits for the next one.
     detecting: AtomicBool,
     last_check: Mutex<Option<i64>>,
-    /// The newer ArtCraft Launcher release, once a check has found one.
-    launcher_release: Mutex<Option<Release>>,
+    /// The newer ArtCraft Launcher release, once a check has found one, with the repo that check
+    /// read it from (the feed's rename, if any): its download links must be that repo's (#764).
+    launcher_release: Mutex<Option<(Release, String)>>,
     /// How this launcher is installed, when it can replace itself. Worked out on the check thread
     /// just before a newer launcher is announced: finding out can ask the host's Flatpak, which
     /// mustn't hold up the first frame.
@@ -413,7 +414,7 @@ impl NativeBackend {
             });
             return;
         };
-        let Some(release) = self.shared.launcher_release.lock().unwrap_or_else(PoisonError::into_inner).clone() else { return };
+        let Some((release, repo)) = self.shared.launcher_release.lock().unwrap_or_else(PoisonError::into_inner).clone() else { return };
         let stop = Arc::new(Stop::default());
         {
             let mut jobs = self.shared.jobs.lock().unwrap_or_else(PoisonError::into_inner);
@@ -439,9 +440,6 @@ impl NativeBackend {
                 let mut waiting = || shared.emit(Event::Progress { app: LAUNCHER_ID.to_string(), phase: JobPhase::Waiting });
                 claim_restart(&shared.jobs, &shared.restarting, &stop, RESTART_WAIT, &mut waiting)
             };
-            // The repo the release was read from, following the feed's renames as the check did;
-            // its download links must be that repo's (#764).
-            let repo = feed_repo(load_feed(&paths).as_ref(), &LAUNCHER);
             let result = match http.as_ref() {
                 Some(http) => crate::self_update::update(&install, &release, &repo, platform, http, &paths, &stop, &mut phase, &last),
                 None => Err("secure connections aren't available on this system".into()),
@@ -838,7 +836,7 @@ fn sweep(
                     if let Some(used) = used {
                         sources.lock().unwrap_or_else(PoisonError::into_inner).push(used);
                     }
-                    check_app(app, latest, from, shared, paths);
+                    check_app(app, latest, from, &feed_repo(feed, app), shared, paths);
                 }
             });
         }
@@ -848,9 +846,11 @@ fn sweep(
 
 /// Publishes one app's answer to the shared state, or handles the launcher's own update check
 /// first (it doesn't appear in the grid, so it has no card of its own to publish to).
-fn check_app(app: &'static CraftApp, latest: Option<LatestRelease>, from: Origin, shared: &Arc<Shared>, paths: &Paths) {
+///
+/// `repo` is the one this check asked about for `app` (the feed's rename, if any).
+fn check_app(app: &'static CraftApp, latest: Option<LatestRelease>, from: Origin, repo: &str, shared: &Arc<Shared>, paths: &Paths) {
     if app.id == LAUNCHER_ID {
-        launcher_update(paths, latest, shared);
+        launcher_update(paths, latest, repo, shared);
         return;
     }
     let Some(latest) = latest else { return };
@@ -863,13 +863,14 @@ fn check_app(app: &'static CraftApp, latest: Option<LatestRelease>, from: Origin
     shared.emit(Event::Latest { app: app.id.to_string(), latest, from });
 }
 
-/// Offers the launcher's own update when its answer is a newer release than the running one.
-fn launcher_update(paths: &Paths, latest: Option<LatestRelease>, shared: &Arc<Shared>) {
+/// Offers the launcher's own update when its answer is a newer release than the running one,
+/// keeping `repo`, the repo it was read from, for the download's link check.
+fn launcher_update(paths: &Paths, latest: Option<LatestRelease>, repo: &str, shared: &Arc<Shared>) {
     let Some(LatestRelease::Found(r)) = latest else { return };
     let (Some(newest), Some(current)) = (r.version.as_ref(), crate::self_update::current_version()) else { return };
     if version::is_newer(newest, &current) && !crate::self_update::just_updated_to(paths, &r) {
         shared.self_install.get_or_init(crate::self_update::current);
-        *shared.launcher_release.lock().unwrap_or_else(PoisonError::into_inner) = Some(r.clone());
+        *shared.launcher_release.lock().unwrap_or_else(PoisonError::into_inner) = Some((r.clone(), repo.to_string()));
         shared.emit(Event::LauncherUpdate(r));
     }
 }
