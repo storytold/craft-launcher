@@ -154,6 +154,12 @@
 	Retry install	ინსტალაციის ხელახლა ცდა
 	Retry update	განახლების ხელახლა ცდა
 	Retry update to {version}	განახლების ხელახლა ცდა: {version}
+	Move down	ქვემოთ გადატანა
+	Move up	ზემოთ გადატანა
+	Pin to top	ზევით დამაგრება
+	Pinned	დამაგრებული
+	Reorder {name}	{name}-ის თანმიმდევრობის შეცვლა
+	Unpin	დამაგრების მოხსნა
 	The download is still here. It's checked again, then installed.	ჩამოტვირთული ფაილი ისევ აქ არის. ჯერ ხელახლა შემოწმდება, შემდეგ დაინსტალირდება.
 	Waiting for another app…	სხვა აპლიკაციის მოლოდინი…
 	Waiting for other installs…	სხვა ინსტალაციების მოლოდინი…
