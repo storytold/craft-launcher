@@ -475,7 +475,7 @@ impl LauncherUi {
     /// pointer is over it.
     fn card(&mut self, ui: &mut Ui, id: &str, rect: Rect) {
         let Some(entry) = self.entry(id).cloned() else { return };
-        self.pin_drop_target(ui, id, rect, PinDropAxis::Horizontal);
+        self.pin_drop_target(ui, id, rect, ui.clip_rect(), PinDropAxis::Horizontal);
         let t = Tokens::get(ui.ctx());
         let app = entry.app;
         let hovered = ui.rect_contains_pointer(rect);
@@ -775,7 +775,7 @@ impl LauncherUi {
         }
         let row_rect = ui.max_rect();
         // Full-row target (covers the grip column too); only this target reorders in the table.
-        self.pin_drop_target(ui, id, Rect::from_x_y_ranges(span, row_rect.y_range()), PinDropAxis::Vertical);
+        self.pin_drop_target(ui, id, Rect::from_x_y_ranges(span, row_rect.y_range()), clip, PinDropAxis::Vertical);
         // Clicking the app's cell opens its page (the content is added after, so it wins any hit).
         if AppDetails::by_id(id).is_some() {
             let open = ui.interact(row_rect, ui.scope_id().with(("row-open", id)), Sense::click());
@@ -953,7 +953,7 @@ impl LauncherUi {
     /// Grid uses the horizontal half; table uses the vertical half. One target per surface — the
     /// table's full-row target already covers the grip column, so the grip itself does not reorder.
     /// A release over a target still counts: `LauncherUi::ui` ends the drag after the list.
-    fn pin_drop_target(&mut self, ui: &Ui, id: &str, rect: Rect, axis: PinDropAxis) {
+    fn pin_drop_target(&mut self, ui: &Ui, id: &str, rect: Rect, viewport: Rect, axis: PinDropAxis) {
         let Some((from, _)) = self.pin_dragging.as_ref() else {
             return;
         };
@@ -964,7 +964,9 @@ impl LauncherUi {
         let Some(pos) = ui.input(|i| i.pointer.interact_pos()) else {
             return;
         };
-        if !rect.contains(pos) {
+        // Layout includes clipped-off entries. Only the scroll viewport accepts drops; the
+        // table passes its full viewport rather than the narrower first-column clip.
+        if !rect.contains(pos) || !viewport.contains(pos) {
             return;
         }
         let Some(to_i) = self.settings.pinned.iter().position(|p| p == id) else {

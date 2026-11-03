@@ -1559,6 +1559,61 @@ fn a_pinned_table_row_keeps_its_buttons_in_line() {
 }
 
 #[test]
+fn pin_drag_ignores_targets_clipped_by_the_scroll_viewport() {
+    for view in [ViewMode::Grid, ViewMode::Table] {
+        let (mut h, _) = harness(view, egui::Theme::Dark, true);
+        h.run_steps(6);
+        let pins = vec!["photocraft".to_string(), "lightcraft".to_string(), "wordcraft".to_string()];
+        h.state_mut().as_mut().unwrap().settings.pinned = pins.clone();
+        h.run_steps(4);
+        let grip = h.get_by_label("Reorder PhotoCraft").rect().center();
+        let target = h.get_by_label("WordCraft details").rect();
+        let at = match view {
+            ViewMode::Grid => egui::pos2(target.right() - 10.0, target.bottom() - 20.0),
+            ViewMode::Table => egui::pos2(h.get_by_label("Reorder WordCraft").rect().center().x, target.bottom() - 10.0),
+        };
+        h.hover_at(grip);
+        h.run_steps(2);
+        h.drag_at(grip);
+        h.run_steps(2);
+        h.hover_at(grip + egui::vec2(0.0, -8.0));
+        h.run_steps(2);
+        assert!(h.state().as_ref().unwrap().pin_dragging_for_test(), "{view:?}: real grip starts drag");
+        // Keep the target's layout position, but clip it behind the window footer.
+        h.set_size(egui::vec2(1180.0, at.y + 2.0));
+        h.hover_at(at);
+        h.run_steps(2);
+        assert_eq!(h.state().as_ref().unwrap().settings.pinned, pins, "{view:?}: clipped hover");
+        h.drop_at(at);
+        h.run_steps(2);
+        assert_eq!(h.state().as_ref().unwrap().settings.pinned, pins, "{view:?}: clipped release");
+        assert!(!h.state().as_ref().unwrap().pin_dragging_for_test());
+    }
+}
+
+#[test]
+fn pin_drag_accepts_the_table_grip_column() {
+    let (mut h, _) = harness(ViewMode::Table, egui::Theme::Dark, true);
+    h.run_steps(6);
+    h.state_mut().as_mut().unwrap().settings.pinned = vec!["photocraft".into(), "lightcraft".into(), "wordcraft".into()];
+    h.run_steps(4);
+    let from = h.get_by_label("Reorder PhotoCraft").rect().center();
+    let target = h.get_by_label("Reorder WordCraft").rect();
+    h.hover_at(from);
+    h.run_steps(2);
+    h.drag_at(from);
+    h.run_steps(2);
+    h.hover_at(from + egui::vec2(0.0, -8.0));
+    h.run_steps(2);
+    assert!(h.state().as_ref().unwrap().pin_dragging_for_test());
+    // Release directly in the last column, outside the first app cell's clip rectangle.
+    h.drop_at(egui::pos2(target.center().x, target.bottom() - 2.0));
+    h.run_steps(2);
+    assert_eq!(h.state().as_ref().unwrap().settings.pinned, ["lightcraft", "wordcraft", "photocraft"]);
+    assert!(!h.state().as_ref().unwrap().pin_dragging_for_test());
+}
+
+#[test]
 /// Hide removes an app from All into Hidden Apps; Unhide restores it, clears the hidden set and
 /// returns the filter to All.
 fn hiding_an_app_removes_it_until_it_is_unhidden() {
