@@ -1,6 +1,8 @@
 //! A CJK font from the operating system, for the CJK interface languages. The bundled faces have
 //! no CJK glyphs, and a CJK font is too large to ship (10 MB or more), so the desktop build
 //! borrows the one every system that can show them already has. Desktop only.
+//!
+//! Georgian, which the bundled faces don't draw either, borrows its system face the same way.
 
 use std::path::{Path, PathBuf};
 
@@ -44,6 +46,7 @@ fn script_name(script: Script) -> &'static str {
         Script::Chinese => "Chinese",
         Script::TraditionalChinese => "Traditional Chinese",
         Script::Japanese => "Japanese",
+        Script::Georgian => "Georgian",
     }
 }
 
@@ -53,6 +56,7 @@ fn script_families(script: Script) -> &'static str {
         Script::Chinese => "PingFang SC, Hiragino Sans GB, Heiti SC, Microsoft YaHei, SimSun, Noto Sans CJK SC, WenQuanYi and MiSans",
         Script::TraditionalChinese => "Noto Sans CJK TC, Noto Sans TC, PingFang TC, Heiti TC, Microsoft JhengHei and MingLiU",
         Script::Japanese => "Hiragino Sans, Yu Gothic, Meiryo, MS Gothic, Noto Sans CJK JP, Noto Sans JP, IPAGothic and TakaoGothic",
+        Script::Georgian => "SF Georgian, Arial Unicode MS, Sylfaen, Noto Sans Georgian and DejaVu Sans",
     }
 }
 
@@ -81,6 +85,12 @@ pub(crate) fn load(script: Script) -> Option<FontData> {
             y_offset_factor: (body_ascent - face_ascent) + 0.5 * (face_height - body_height),
             ..Default::default()
         };
+        if matches!(script, Script::Georgian) {
+            // Upper-case labels use Mtavruli only where this face draws it.
+            let caps = FontRef::from_index(&bytes, index)
+                .is_ok_and(|f| ('\u{1c90}'..='\u{1cba}').chain('\u{1cbd}'..='\u{1cbf}').all(|c| f.charmap().map(c).is_some()));
+            crate::widgets::set_georgian_caps(caps);
+        }
         let mut font = FontData::from_owned(bytes).tweak(tweak);
         font.index = index;
         return Some(font);
@@ -143,6 +153,7 @@ fn candidates(script: Script) -> Vec<Candidate> {
         Script::Chinese => chinese_candidates(),
         Script::TraditionalChinese => traditional_chinese_candidates(),
         Script::Japanese => japanese_candidates(),
+        Script::Georgian => georgian_candidates(),
     };
     let mut out = Vec::with_capacity(found.len() * 2);
     for candidate in found {
@@ -405,6 +416,55 @@ fn japanese_candidates() -> Vec<Candidate> {
             for dir in JP_DIRS {
                 add(Path::new(dir).join(file), family);
             }
+        }
+    }
+    out
+}
+
+/// Where each system keeps a Georgian font, best first. These faces are small (about 0.1–1 MB),
+/// except Arial Unicode MS, which macOS ships too.
+fn georgian_candidates() -> Vec<Candidate> {
+    let mut out = Vec::new();
+    let mut add = |path: PathBuf, family: &'static str| out.push(Candidate { path, family });
+    #[cfg(target_os = "macos")]
+    {
+        // SF Georgian is the system UI face for Georgian; its family name starts with a dot, as
+        // macOS's hidden UI faces do.
+        add("/System/Library/Fonts/SFGeorgian.ttf".into(), ".SF Georgian");
+        add("/System/Library/Fonts/Supplemental/Arial Unicode.ttf".into(), "Arial Unicode MS");
+        add("/Library/Fonts/Arial Unicode.ttf".into(), "Arial Unicode MS");
+    }
+    #[cfg(target_os = "windows")]
+    {
+        let root = std::env::var_os("SystemRoot").map_or_else(|| PathBuf::from(r"C:\Windows"), PathBuf::from);
+        add(root.join("Fonts").join("sylfaen.ttf"), "Sylfaen");
+    }
+    #[cfg(all(unix, not(target_os = "macos")))]
+    {
+        // Debian/Ubuntu, Arch, Fedora (static and variable), openSUSE and FreeBSD's ports.
+        for path in [
+            "/usr/share/fonts/truetype/noto/NotoSansGeorgian-Regular.ttf",
+            "/usr/share/fonts/truetype/NotoSansGeorgian-Regular.ttf",
+            "/usr/share/fonts/noto/NotoSansGeorgian-Regular.ttf",
+            "/usr/share/fonts/google-noto/NotoSansGeorgian-Regular.ttf",
+            "/usr/share/fonts/google-noto-vf/NotoSansGeorgian[wght].ttf",
+            "/usr/local/share/fonts/noto/NotoSansGeorgian-Regular.ttf",
+        ] {
+            add(path.into(), "Noto Sans Georgian");
+        }
+        // A face the user installed by hand.
+        for dir in user_font_dirs() {
+            add(dir.join("NotoSansGeorgian-Regular.ttf"), "Noto Sans Georgian");
+        }
+        // DejaVu Sans draws Georgian too, and most desktops have it.
+        for path in [
+            "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+            "/usr/share/fonts/TTF/DejaVuSans.ttf",
+            "/usr/share/fonts/dejavu-sans-fonts/DejaVuSans.ttf",
+            "/usr/share/fonts/dejavu/DejaVuSans.ttf",
+            "/usr/local/share/fonts/dejavu/DejaVuSans.ttf",
+        ] {
+            add(path.into(), "DejaVu Sans");
         }
     }
     out
