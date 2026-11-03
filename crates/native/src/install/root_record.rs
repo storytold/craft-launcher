@@ -25,6 +25,19 @@ pub(super) fn relative(app_id: &str) -> PathBuf {
     Path::new("share/artcraft-launcher/installed").join(format!("{app_id}.files"))
 }
 
+/// The list for `app_id` under `prefix` and every folder below `prefix` that holds it: the paths
+/// `owned` requires nobody but root to be able to write, deepest last.
+pub(super) fn protected_paths(prefix: &Path, app_id: &str) -> Vec<PathBuf> {
+    let mut path = prefix.to_path_buf();
+    relative(app_id)
+        .components()
+        .map(|part| {
+            path.push(part);
+            path.clone()
+        })
+        .collect()
+}
+
 /// A path relative to the prefix that stays inside it: no root, `..` or empty parts.
 fn contained(rel: &Path) -> bool {
     !rel.as_os_str().is_empty() && rel.components().all(|c| matches!(c, Component::Normal(_)))
@@ -143,6 +156,40 @@ mod tests {
         assert_eq!(owned, expected);
         // Another app's files, or a protected file the app never installed, are not in it.
         assert!(!owned.contains(&prefix.join("bin/sudo")));
+    }
+
+    #[test]
+    fn protected_paths_are_the_list_and_its_folders_below_the_prefix() {
+        let prefix = Path::new("/usr/local");
+        let expected: Vec<PathBuf> = [
+            "/usr/local/share",
+            "/usr/local/share/artcraft-launcher",
+            "/usr/local/share/artcraft-launcher/installed",
+            "/usr/local/share/artcraft-launcher/installed/wordcraft.files",
+        ]
+        .iter()
+        .map(PathBuf::from)
+        .collect();
+        assert_eq!(protected_paths(prefix, "wordcraft"), expected);
+    }
+
+    #[test]
+    fn clearing_write_on_the_protected_paths_makes_a_loosely_copied_list_trusted() {
+        use std::os::unix::fs::PermissionsExt;
+        let (dir, prefix) = installed(&["bin/wordcraft"]);
+        let uid = me(dir.path());
+        // As a copy under a permissive umask, or of an archive with loose modes, could leave it.
+        for p in protected_paths(&prefix, "wordcraft") {
+            let mode = if p.is_dir() { 0o777 } else { 0o666 };
+            std::fs::set_permissions(&p, std::fs::Permissions::from_mode(mode)).unwrap();
+        }
+        assert!(owned(&prefix, "wordcraft", uid).is_err());
+        // What the install's `chmod go-w` does to them.
+        for p in protected_paths(&prefix, "wordcraft") {
+            let mode = std::fs::metadata(&p).unwrap().mode() & 0o7777 & !0o022;
+            std::fs::set_permissions(&p, std::fs::Permissions::from_mode(mode)).unwrap();
+        }
+        assert!(owned(&prefix, "wordcraft", uid).is_ok());
     }
 
     #[test]
