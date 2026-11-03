@@ -13,6 +13,7 @@ workspace = true
 [dependencies]
 artcraft-launcher-core = { workspace = true }
 egui = { workspace = true }
+craft-ui = { workspace = true }
 egui_extras = { workspace = true, features = ["image", "svg"] }
 image = { version = "0.25", default-features = false, features = ["png", "jpeg"] }
 serde = { workspace = true }
@@ -23,8 +24,19 @@ log = { workspace = true }
 sys-locale = "0.3"
 # Finding the Simplified Chinese face in a system font collection; egui already uses it.
 skrifa = { version = "0.44", default-features = false, features = ["std"] }
+# The system time zone, so dates read as this computer's calendar; already in the desktop build.
+jiff = { workspace = true }
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+# The browser's time zone, for the same dates.
+js-sys = "0.3"
+wasm-bindgen = "0.2"
 
 [dev-dependencies]
+# egui 0.37 no longer bundles its fallback faces by default; these tests install them
+# explicitly. Production also inherits `default_fonts` from eframe and the workspace's
+# `monochrome_emoji_fonts` feature.
+egui = { workspace = true, features = ["default_fonts"] }
 serde_json = { workspace = true }
 egui_kittest = { workspace = true, features = ["wgpu", "snapshot"] }
 image = { version = "0.25", default-features = false, features = ["png", "jpeg"] }

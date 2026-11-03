@@ -19,6 +19,7 @@
 
 	Launcher	Launcher
 	Craft App Suite	Craft App Suite
+	by {name}	par {name}
 	Open Source Tools for Creatives, Makers, and Builders	Des outils open source pour les créatifs, les makers et les bâtisseurs
 	Settings	Réglages
 	Check for updates	Rechercher des mises à jour
@@ -75,6 +76,7 @@
 	Dismiss	Ignorer
 	Update and restart	Mettre à jour et redémarrer
 	A new version is available. Would you like to relaunch with the updated version?	Une nouvelle version est disponible. Redémarrer avec la nouvelle version ?
+	A new version is available. Download it to replace this version?	Une nouvelle version est disponible. La télécharger pour remplacer cette version ?
 	Later	Plus tard
 	What's new	Nouveautés
 	No notes were published with this release.	Aucune note n'a été publiée avec cette version.
@@ -87,12 +89,15 @@
 	Notify me when an installed app has an update	Me prévenir quand une application installée a une mise à jour
 	Include pre-releases (betas and release candidates)	Inclure les préversions (bêtas et versions candidates)
 	Installing on Linux	Installation sous Linux
+	Installing on Windows	Installation sous Windows
 	Install new apps as	Installer les nouvelles applications en tant que
 	System package (recommended)	Paquet système (recommandé)
 	Updates always use the format an app was installed with.	Les mises à jour utilisent toujours le format avec lequel l'application a été installée.
 	Running in the background	Exécution en arrière-plan
 	Keep running in the tray when the window is closed	Rester actif dans la zone de notification à la fermeture de la fenêtre
 	Hide ArtCraft Launcher from the Dock while in the background	Masquer ArtCraft Launcher du Dock en arrière-plan
+	ArtCraft Launcher is still running	ArtCraft Launcher est toujours en cours
+	It's in the tray: open it or quit it from the tray icon, or turn this off in the settings.	Il est dans la zone de notification : ouvrez-le ou quittez-le depuis son icône, ou désactivez ceci dans les réglages.
 	Show the window on the current desktop	Afficher la fenêtre sur le bureau actuel
 	Start ArtCraft Launcher when I log in	Lancer ArtCraft Launcher à l'ouverture de session
 	Community	Communauté
@@ -117,6 +122,12 @@
 	Apps on this computer	Applications sur cet ordinateur
 	Installed apps with a newer version	Applications installées avec une version plus récente
 	Apps you can install	Applications que vous pouvez installer
+	Pin to top	Épingler en haut
+	Unpin	Désépingler
+	Pinned	Épinglés
+	Reorder {name}	Réordonner {name}
+	Move up	Monter
+	Move down	Descendre
 	Hide App	Masquer l'application
 	Unhide App	Afficher l'application
 	Hidden Apps	Applications masquées
@@ -142,6 +153,7 @@
 	Update cancelled	Mise à jour annulée
 	Uninstall cancelled	Désinstallation annulée
 	Retry install	Réessayer l'installation
+	Retry update	Réessayer la mise à jour
 	Retry update to {version}	Réessayer la mise à jour vers {version}
 	The download is still here. It's checked again, then installed.	Le téléchargement est toujours là. Il sera vérifié à nouveau, puis installé.
 	Waiting for another app…	En attente d'une autre application…
@@ -153,6 +165,7 @@
 	Disk image (.dmg)	Image disque (.dmg)
 	Debian package (.deb)	Paquet Debian (.deb)
 	RPM package (.rpm)	Paquet RPM (.rpm)
+	Arch package (.pkg.tar.zst)	Paquet Arch (.pkg.tar.zst)
 	Flatpak bundle	Paquet Flatpak
 	Tarball (.tar.gz)	Archive (.tar.gz)
 
@@ -167,6 +180,8 @@ designcraft	Page layout and publishing	Mise en page et édition
 wordcraft	Writing and document design	Rédaction et mise en forme de documents
 deckcraft	Presentations and slide shows	Présentations et diaporamas
 gridcraft	Spreadsheets and data	Tableurs et données
+craft-anything	Find out how any software works, then craft your own	Découvrez comment fonctionne n'importe quel logiciel, puis créez le vôtre
+solidcraft	Parametric 3D CAD	CAO paramétrique 3D
 cadcraft	Computer-aided design and drafting	Conception et dessin assistés par ordinateur
 soundcraft	Recording, editing and mixing audio	Enregistrement, édition et mixage audio
 figcraft	Interface design and prototyping	Design d'interfaces et prototypage
@@ -277,6 +292,10 @@ filter	Installed	Installées
 @msg	{name} installed: {version} (this release publishes no checksum, so only its size was checked)	{name} installé : {version} (cette version ne publie pas de somme de contrôle : seule sa taille a été vérifiée)
 @msg	{name} was removed	{name} a été supprimé
 @msg	{name} is running. Quit it, then try again.	{name} est en cours d'exécution. Quittez-le, puis réessayez.
+@msg	{name} was installed from the {repo} repository or the AUR ({pkg}). Update it with {cmd} or sudo pacman -Syu	{name} a été installé depuis le dépôt {repo} ou l'AUR ({pkg}). Mettez-le à jour avec {cmd} ou avec sudo pacman -Syu
+@msg	{name} was installed from the {repo} repository or the AUR ({pkg}). Update it with your AUR helper (for example: yay -S {pkg}) or sudo pacman -Syu	{name} a été installé depuis le dépôt {repo} ou l'AUR ({pkg}). Mettez-le à jour avec votre assistant AUR (par exemple : yay -S {pkg}) ou avec sudo pacman -Syu
+@msg	{name} was installed from the AUR ({pkg}). Update it with {cmd}	{name} a été installé depuis l'AUR ({pkg}). Mettez-le à jour avec {cmd}
+@msg	{name} was installed from the AUR ({pkg}). Update it with your AUR helper (for example: yay -S {pkg})	{name} a été installé depuis l'AUR ({pkg}). Mettez-le à jour avec votre assistant AUR (par exemple : yay -S {pkg})
 
 # Command IDs for menu items (@id)
 # Format: @id<TAB>command_id<TAB>translation
@@ -330,6 +349,7 @@ filter	Installed	Installées
 	ArtCraft on GitHub	ArtCraft sur GitHub
 	Join the ArtCraft Discord	Rejoindre le Discord d'ArtCraft
 	App details	Détails de l'application
+	More actions for {name}	Autres actions pour {name}
 	Close (Esc)	Fermer (Esc)
 	Features	Fonctionnalités
 	Latest release	Dernière version
@@ -343,3 +363,60 @@ filter	Installed	Installées
 	Loading pictures…	Chargement des images…
 	Pictures couldn't be loaded. Reopen this page to try again.	Impossible de charger les images. Rouvrir la page permet de réessayer.
 @plural	ArtCraft Launcher · {n} update available|ArtCraft Launcher · {n} updates available	ArtCraft Launcher · {n} mise à jour disponible|ArtCraft Launcher · {n} mises à jour disponibles
+	Install folder	Dossier d’installation
+	Default install folder	Dossier d’installation par défaut
+	System default	Par défaut du système
+	Browse…	Parcourir…
+	Use default	Par défaut
+	New installs use this folder. Updates stay in their current location.	Les nouvelles installations utilisent ce dossier. Les mises à jour conservent leur emplacement actuel.
+	Custom folders use AppImage on Linux.	Les dossiers personnalisés utilisent AppImage sous Linux.
+	On Linux, custom folders use AppImage format.	Les dossiers personnalisés utilisent AppImage sous Linux.
+	The system manages install locations here.	Le système gère les emplacements d’installation ici.
+@msg	couldn't use install folder {path}: {reason}	impossible d’utiliser le dossier d’installation {path} : {reason}
+@msg	this release has no AppImage for a custom install folder	cette version ne propose pas d’AppImage pour un dossier d’installation personnalisé
+@msg	custom install folders aren't supported on this system	les dossiers d’installation personnalisés ne sont pas pris en charge sur ce système
+@msg	{path} already exists and wasn't installed by ArtCraft Launcher	{path} existe déjà et n’a pas été installé par ArtCraft Launcher
+@msg	couldn't move {path} to Trash ({reason}). Remove it in Finder instead.	impossible de déplacer {path} vers la Corbeille ({reason}). Supprimez-le dans le Finder.
+	Apps are placed inside this folder.	Les applications sont placées dans ce dossier.
+	Replace what's there?	Remplacer l’existant ?
+	{path} already exists. Installing {name} will overwrite it.	{path} existe déjà. L’installation de {name} l’écrasera.
+	Replace	Remplacer
+	Recently updated	Récemment mises à jour
+	Name (A–Z)	Nom (A–Z)
+	Name (Z–A)	Nom (Z–A)
+	Frequently used	Les plus utilisées
+	Next app	Application suivante
+	Previous app	Application précédente
+	Show {n} more changes	Afficher {n} modifications de plus
+	Last updated: {date}	Dernière mise à jour : {date}
+column	Version	Version
+column	Author	Auteur
+	Choose version	Choisir une version
+	latest {version}	dernière {version}
+	{version} (latest release)	{version} (dernière version)
+	Launcher version	Version du lanceur
+	Nightly	Nocturne
+	Nightly (none published yet)	Nocturne (pas encore publiée)
+	Install version {version}	Installer la version {version}
+	Download selected version	Télécharger la version choisie
+	Older launcher versions require a manual reinstall.	Les anciennes versions du lanceur nécessitent une réinstallation manuelle.
+	Your files may not open in older versions.	Tes fichiers pourraient ne pas s’ouvrir avec une ancienne version.
+	Enable automatic installs in Settings to follow new nightly builds.	Active les installations automatiques dans les paramètres pour recevoir les nouvelles versions nocturnes.
+texturecraft	3D texture painting	Peinture de textures 3D
+texturecraft	Paint materials on 3D models and export textures.	Peignez des matériaux sur des modèles 3D et exportez les textures.
+texturecraft	Materials	Matériaux
+texturecraft	Mesh maps	Cartes de maillage
+texturecraft	Bake mesh maps and use smart materials.	Calculez des cartes de maillage et utilisez des matériaux intelligents.
+texturecraft	Paint textures on 3D models.	Peignez des textures sur des modèles 3D.
+	Hide community apps	Masquer les applications communautaires
+materialcraft	Procedural material design	Conception de matériaux procéduraux
+materialcraft	Build materials with node graphs.	Créez des matériaux avec des graphes de nœuds.
+materialcraft	Create tileable PBR materials and export texture maps.	Créez des matériaux PBR répétables sans raccord et exportez des cartes de textures.
+materialcraft	Node graphs	Graphes de nœuds
+materialcraft	Combine noises, patterns and filters.	Combinez bruits, motifs et filtres.
+materialcraft	Live previews	Aperçus en direct
+materialcraft	Preview materials in 2D and on 3D models.	Visualisez les matériaux en 2D et sur des modèles 3D.
+	Advanced	Avancé
+	Migrate Flatpak bundles to ArtCraft OCI (experimental)	Migrer les paquets Flatpak vers ArtCraft OCI (expérimental)
+	On update, switch first party apps when the matching package is available. Otherwise, keep using bundles.	Lors des mises à jour, migrer les applications ArtCraft si le paquet correspondant est disponible. Sinon, continuer à utiliser les paquets autonomes.
+	The OCI repository is a preview with GPG verification disabled.	Le dépôt OCI est une version préliminaire avec la vérification GPG désactivée.
