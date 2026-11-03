@@ -287,6 +287,47 @@ mod tests {
     }
 
     #[test]
+    fn mac_install_does_not_swap_an_app_that_was_opened_while_its_checks_waited() {
+        use crate::install::macos::{Expect, check_and_swap};
+        use artcraft_launcher_core::{InstallSource, Installed};
+        use std::io::{BufRead, BufReader};
+        use std::process::{Command, Stdio};
+        let app = solidcraft();
+        let dir = tempfile::tempdir().unwrap();
+        let staged = dir.path().join("new.app");
+        let old = dir.path().join("SolidCraft.app");
+        std::fs::write(&staged, b"new fixture bytes").unwrap();
+        std::fs::write(&old, b"old fixture bytes").unwrap();
+        let found = Installed {
+            version: None,
+            source: InstallSource::MacApp,
+            location: staged.display().to_string(),
+            package: None,
+            externally_managed: false,
+            origin: None,
+            installation: None,
+        };
+        let expect = Expect { team: app.mac_team, version: None };
+        // `install_at` found the app closed before the download; the user opened it while this
+        // install waited for its turn to be checked.
+        let mut opened = Command::new("/bin/sh")
+            .args(["-c", "printf 'ready\\n'; read line", old.to_str().unwrap()])
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .spawn()
+            .unwrap();
+        let mut ready = String::new();
+        BufReader::new(opened.stdout.take().unwrap()).read_line(&mut ready).unwrap();
+        let result =
+            check_and_swap(app, &staged, &old, &found, &expect, |program, _, _| Ok(if program == SPCTL { accepted() } else { String::new() }));
+        let _ = opened.kill();
+        let _ = opened.wait();
+        assert_eq!(result.unwrap_err(), format!("{} is running. Quit it, then try again.", app.name));
+        assert_eq!(std::fs::read(&old).unwrap(), b"old fixture bytes");
+        assert_eq!(std::fs::read(&staged).unwrap(), b"new fixture bytes");
+    }
+
+    #[test]
     #[ignore = "needs the independently staged real release; no app execution or swap"]
     fn mac_install_real_release_passes_the_production_verifier() {
         let bundle = std::env::var_os("ARTCRAFT_LAUNCHER_TEST_STAGED_APP").expect("set the owned staged release path");
