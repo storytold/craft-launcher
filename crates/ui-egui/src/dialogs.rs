@@ -119,7 +119,8 @@ impl LauncherUi {
         ui.set_width(size.x);
         ui.set_max_height(size.y);
         let date = release.published_at.map(|d| fmt(tl!("Released {date}"), &[("date", &crate::views::date_text(d))])).unwrap_or_default();
-        let hero_h = crate::sheet::hero(ui, crate::icons::app(id), &format!("{} {}", entry.app.name, release.version_label()), &date, |_| {});
+        let icon = if t.dark { crate::icons::app_on_dark(id) } else { crate::icons::app(id) };
+        let hero_h = crate::sheet::hero(ui, icon, &format!("{} {}", entry.app.name, release.version_label()), &date, |_| {});
         let footer_h = theme::CONTROL_H + 32.0;
         let body_h = (size.y - hero_h - footer_h - 2.0).max(0.0);
         let saved = crate::sheet::accent_scroll(ui, &t, t.accent);

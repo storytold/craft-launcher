@@ -44,6 +44,15 @@ fn desaturate(pixels: &mut [u8]) {
     }
 }
 
+/// A Craft App's icon on a dark or coloured background, using a white-on-transparent variant when
+/// one is bundled; falls back to the regular colour icon so this is always `Some` for known apps.
+pub fn app_on_dark(id: &str) -> Option<ImageSource<'static>> {
+    match id {
+        "asuscraft" => Some(egui::include_image!("../../../assets/app-icons/asuscraft-white.svg")),
+        _ => app(id),
+    }
+}
+
 /// The ArtCraft wordmark, as supplied: dark ink for light backgrounds, white for dark ones.
 /// An ArtCraft trademark, not covered by the MIT/Apache license (`docs/brand/LICENSE-brand.txt`).
 pub fn artcraft_logo(dark_background: bool) -> ImageSource<'static> {

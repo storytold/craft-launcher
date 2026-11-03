@@ -272,7 +272,7 @@ impl LauncherUi {
         ui.painter().rect_filled(rect, CornerRadius::ZERO, t.sunken);
         ui.painter().rect_stroke(rect, CornerRadius::ZERO, t.hairline(), egui::StrokeKind::Inside);
         ui.painter().rect_filled(Rect::from_min_size(rect.min, vec2(rect.width(), 2.0)), CornerRadius::ZERO, app_color);
-        if let Some(icon) = crate::icons::app(entry.app.id) {
+        if let Some(icon) = crate::icons::app_on_dark(entry.app.id) {
             egui::Image::new(icon)
                 .fit_to_exact_size(vec2(88.0, 88.0))
                 .paint_at(ui, Rect::from_center_size(rect.center() - vec2(0.0, 26.0), vec2(88.0, 88.0)));

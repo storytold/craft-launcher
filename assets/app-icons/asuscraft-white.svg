@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-labelledby="title desc">
+  <title id="title">ASUSCraft (white)</title>
+  <desc id="desc">ASUSCraft logo mark in white, for use on dark and colored backgrounds.</desc>
+  <path d="m256 95 132 237h-53l-79-142-79 142h-53z" fill="none" stroke="#ffffff" stroke-linecap="round" stroke-linejoin="round" stroke-width="25"/>
+  <path d="M207 279h98l27 49h-152z" fill="none" stroke="#ffffff" stroke-linejoin="round" stroke-width="11"/>
+  <path d="M110 362h292l-22 42H132z" fill="none" stroke="#ffffff" stroke-linejoin="round" stroke-width="12"/>
+  <path d="M175 362h162l-15 20H190z" fill="#ffffff" fill-opacity="0.15"/>
+  <circle cx="365" cy="380" r="7" fill="#ffffff"/>
+</svg>
