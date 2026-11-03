@@ -304,6 +304,7 @@ filter	Installed	დაინსტალირებული
 
 # Message templates (@msg): toasts from the backend. {placeholders} match any text.
 @msg	Couldn't open {name}: {e}	{name} ვერ გაიხსნა: {e}
+@msg	ArtCraft Launcher couldn't start its window on {backend}: {e}	ArtCraft Launcher-ის ფანჯარა ვერ გაეშვა {backend}-ზე: {e}
 @msg	Download cancelled	ჩამოტვირთვა გაუქმდა
 @msg	{name} updated to {version}	{name} განახლდა ვერსიამდე {version}
 @msg	{name} installed: {version}	{name} დაინსტალირდა: {version}

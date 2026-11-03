@@ -26,6 +26,7 @@ use std::time::Duration;
 use artcraft_launcher_core::protocol::Backend;
 use artcraft_launcher_native::single_instance::{self, Instance};
 use artcraft_launcher_native::{NativeBackend, login};
+use artcraft_launcher_ui_egui::i18n;
 use artcraft_launcher_ui_egui::theme::Tokens;
 use artcraft_launcher_ui_egui::{Host, LauncherUi, Settings, TitleBar};
 use eframe::wgpu::rwh::{HasDisplayHandle, RawDisplayHandle};
@@ -133,11 +134,12 @@ fn main() -> ExitCode {
     // launcher carries on without one until the window is asked for again.
     loop {
         if window {
+            let attempt = backends.current();
             let result = {
                 let (waker, launcher) = (waker.clone(), &mut launcher);
                 eframe::run_native(
                     "ArtCraft Launcher",
-                    native_options(hidden, backends.current()),
+                    native_options(hidden, attempt),
                     Box::new(move |cc| {
                         launcher.open(cc, &waker);
                         Ok(Box::new(Shell::new(cc, launcher, hidden)))
@@ -150,7 +152,7 @@ fn main() -> ExitCode {
                     log::warn!("the window didn't start: {e}; trying {next:?} instead");
                     continue;
                 }
-                log::error!("{e}");
+                report_startup_failure(attempt, &e);
                 return ExitCode::FAILURE;
             }
             if !std::mem::take(&mut launcher.closed_to_tray) {
@@ -276,6 +278,58 @@ impl StartupBackends {
         self.current()
     }
 }
+
+/// Tells the user why no window appeared: the backend that was tried and the error wgpu reported
+/// (#1081). The log file says the same thing, but someone whose launcher only ever fails to start
+/// never sees a log, and a silent exit code 1 reads as "the launcher is broken" with nothing to
+/// act on.
+fn report_startup_failure(backend: Option<eframe::wgpu::Backends>, error: &eframe::Error) {
+    let message = startup_failure_message(i18n::current(), &backend_label(backend), &error.to_string());
+    log::error!("{message}");
+    rfd::MessageDialog::new()
+        .set_title("ArtCraft Launcher")
+        .set_description(message)
+        .set_level(rfd::MessageLevel::Error)
+        .set_buttons(rfd::MessageButtons::Ok)
+        .show();
+}
+
+/// The startup-failure dialog's text in `lang`: the English message is the lookup key, and the
+/// `@msg` row carries the placeholders over into the translation, as every status message does.
+fn startup_failure_message(lang: i18n::Lang, backend: &str, error: &str) -> String {
+    let english = format!("ArtCraft Launcher couldn't start its window on {backend}: {error}");
+    i18n::message(lang, &english)
+}
+
+/// Names the backend set a start asked wgpu for, for the dialog. `WGPU_BACKEND` outranks the
+/// fallback, so a start that names one is described by it.
+fn backend_label(backends: Option<eframe::wgpu::Backends>) -> String {
+    match backends.or_else(eframe::wgpu::Backends::from_env) {
+        Some(backends) => name_backends(backends),
+        None => DEFAULT_BACKENDS_LABEL.to_owned(),
+    }
+}
+
+/// "Direct3D 12 and OpenGL": the names users of the platform's graphics stack know. These are
+/// proper names, so they stay in English in every language, like the app names.
+fn name_backends(backends: eframe::wgpu::Backends) -> String {
+    use eframe::wgpu::Backends;
+    let names: Vec<&str> = [(Backends::VULKAN, "Vulkan"), (Backends::DX12, "Direct3D 12"), (Backends::METAL, "Metal"), (Backends::GL, "OpenGL")]
+        .into_iter()
+        .filter(|(backend, _)| backends.contains(*backend))
+        .map(|(_, name)| name)
+        .collect();
+    if names.is_empty() { "the graphics backend".to_owned() } else { names.join(" and ") }
+}
+
+/// wgpu's own backend list, as [`wgpu_options`] configures it. The only other place that knows
+/// which backends a start with no override asks for.
+#[cfg(windows)]
+const DEFAULT_BACKENDS_LABEL: &str = "Direct3D 12 and OpenGL";
+#[cfg(not(any(windows, target_os = "macos")))]
+const DEFAULT_BACKENDS_LABEL: &str = "Vulkan and OpenGL";
+#[cfg(target_os = "macos")]
+const DEFAULT_BACKENDS_LABEL: &str = "Metal";
 
 /// [`StartupBackends`]' order: wgpu's own list, then the fallback.
 fn startup_plan(named_by_env: bool) -> Vec<Option<eframe::wgpu::Backends>> {
@@ -1250,6 +1304,39 @@ mod tests {
         shell.put_away(&ctx);
         assert!(!shell.visible);
         assert!(!shell.launcher.closed_to_tray);
+    }
+
+    #[test]
+    fn the_startup_failure_message_names_the_backend_and_the_error() {
+        let error = "The parameter is incorrect. (0x80070057)";
+        // English is the lookup key, so the dialog reads the same before a catalog has the row.
+        assert_eq!(
+            startup_failure_message(i18n::Lang::EN, "Direct3D 12", error),
+            "ArtCraft Launcher couldn't start its window on Direct3D 12: The parameter is incorrect. (0x80070057)"
+        );
+        // A catalog translates the sentence and carries the two placeholders' text over.
+        assert_eq!(
+            startup_failure_message(i18n::Lang::DE, "Direct3D 12", error),
+            "ArtCraft Launcher konnte sein Fenster auf Direct3D 12 nicht starten: The parameter is incorrect. (0x80070057)"
+        );
+        assert_eq!(
+            startup_failure_message(i18n::Lang::JA, "OpenGL", error),
+            "ArtCraft Launcher のウィンドウを OpenGL で起動できませんでした: The parameter is incorrect. (0x80070057)"
+        );
+    }
+
+    #[test]
+    fn the_dialog_names_the_backend_it_tried() {
+        use eframe::wgpu::Backends;
+        assert_eq!(name_backends(Backends::GL), "OpenGL");
+        assert_eq!(name_backends(Backends::DX12 | Backends::GL), "Direct3D 12 and OpenGL");
+        assert_eq!(name_backends(Backends::VULKAN | Backends::GL), "Vulkan and OpenGL");
+        // An attempt that names no backend is the platform's own list (`wgpu_options`).
+        if Backends::from_env().is_none() {
+            assert_eq!(backend_label(None), DEFAULT_BACKENDS_LABEL);
+        }
+        // The fallback names itself.
+        assert_eq!(backend_label(Some(Backends::GL)), "OpenGL");
     }
 
     #[test]

@@ -301,6 +301,7 @@ filter	Installed	Telepítve
 
 # Message templates (@msg): toasts from the backend. {placeholders} match any text.
 @msg	Couldn't open {name}: {e}	{name} nem nyitható meg: {e}
+@msg	ArtCraft Launcher couldn't start its window on {backend}: {e}	Nem sikerült elindítani az ArtCraft Launcher ablakát ({backend}): {e}
 @msg	Download cancelled	Letöltés megszakítva
 @msg	{name} updated to {version}	{name} frissítve. Verzió: {version}
 @msg	{name} installed: {version}	{name} telepítve: {version}
