@@ -2816,7 +2816,7 @@ fn an_occupied_folder_asks_before_replacing_it() {
     sent.borrow_mut().clear();
     h.get_by_label("Replace").click();
     h.run_steps(2);
-    assert_eq!(*sent.borrow(), [Command::Replace { app: "photocraft".into() }]);
+    assert_eq!(*sent.borrow(), [Command::Replace { app: "photocraft".into(), path: path.into() }]);
     assert!(h.query_by_label("Replace").is_none());
 }
 
