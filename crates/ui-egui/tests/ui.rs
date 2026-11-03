@@ -189,6 +189,9 @@ fn events() -> Vec<Event> {
             source: InstallSource::MacApp,
             location: format!("/Applications/{}.app", app.name),
             package: None,
+            externally_managed: false,
+            origin: None,
+            installation: None,
         });
         ev.push(Event::Detected { app: app.id.into(), installed: inst });
     }
@@ -558,6 +561,9 @@ fn choosing_an_app_version_turns_its_main_action_into_install() {
             source: InstallSource::MacApp,
             location: "/Applications/PhotoCraft.app".into(),
             package: None,
+            externally_managed: false,
+            origin: None,
+            installation: None,
         }),
     });
     h.run_steps(4);

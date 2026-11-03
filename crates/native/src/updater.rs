@@ -495,7 +495,15 @@ mod tests {
     }
 
     fn installed(source: InstallSource, v: &str) -> Installed {
-        Installed { version: version::parse(v), source, location: r"C:\Program Files\PhotoCraft\photocraft.exe".into(), package: None }
+        Installed {
+            version: version::parse(v),
+            source,
+            location: r"C:\Program Files\PhotoCraft\photocraft.exe".into(),
+            package: None,
+            externally_managed: false,
+            origin: None,
+            installation: None,
+        }
     }
 
     fn release(v: &str) -> Release {

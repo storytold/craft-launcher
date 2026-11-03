@@ -642,6 +642,9 @@ mod tests {
             source: artcraft_launcher_core::InstallSource::Msi,
             location: String::new(),
             package: None,
+            externally_managed: false,
+            origin: None,
+            installation: None,
         });
         let latest = Some(Release { tag: "v0.8.2".into(), version: artcraft_launcher_core::version::parse("0.8.2"), ..Release::default() });
         Found { app: CraftApp::by_id(id).unwrap(), installed, latest, plan }
