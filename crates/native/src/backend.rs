@@ -306,7 +306,7 @@ impl NativeBackend {
     }
 
     fn start_job(&self, app_id: &str, work: Work) {
-        let uninstall = work == Work::Uninstall;
+        let uninstall = matches!(work, Work::Uninstall);
         let Some(app) = CraftApp::by_id(app_id) else { return };
         log::info!("{}: starting {} job", app.name, if uninstall { "uninstall" } else { "install/update" });
         let stop = Arc::new(Stop::default());
@@ -361,7 +361,10 @@ impl NativeBackend {
                     existing.as_ref(),
                     record.as_ref(),
                     &stop,
-                    work == Work::Replace,
+                    match &work {
+                        Work::Replace(path) => Some(path.as_str()),
+                        Work::Install | Work::Uninstall => None,
+                    },
                     source.as_deref(),
                 );
                 // Stopped by the connection rather than by the user: say so, and how to go on.
@@ -456,10 +459,11 @@ impl NativeBackend {
     }
 }
 
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq)]
 enum Work {
     Install,
-    Replace,
+    /// Install over the path the user agreed to overwrite (see [`Command::Replace`]).
+    Replace(String),
     Uninstall,
 }
 
@@ -509,9 +513,40 @@ fn run_install(
     existing: Option<&Installed>,
     record: Option<&crate::manifest::Record>,
     stop: &Stop,
-    replace: bool,
+    approved: Option<&str>,
     source: Option<&dyn ReleaseSource>,
 ) -> Result<String, String> {
+    if let Some(inst) = existing
+        && inst.source == artcraft_launcher_core::InstallSource::Flatpak
+        && inst.externally_managed
+    {
+        // `flatpak update` only follows the repository's latest build, never a pinned or nightly track.
+        if !matches!(options.versions.get(app.id), None | Some(VersionTrack::Stable)) {
+            return Err(install::managed_elsewhere(app, inst, false).unwrap_or_else(|| "Update this app through its Flatpak repository".into()));
+        }
+        #[cfg(target_os = "linux")]
+        {
+            shared.emit(Event::Progress { app: app.id.to_string(), phase: JobPhase::Installing });
+            let mut phase = |p| shared.emit(Event::Progress { app: app.id.to_string(), phase: p });
+            let default_id = app.bundle_id();
+            let target_id = inst.package.as_deref().unwrap_or(&default_id);
+            let scope = crate::packages::flatpak_scope(inst.installation.as_deref());
+            let deployed_commit = || {
+                crate::process::capture_flatpak(&["info", &scope, "--show-commit", target_id], std::time::Duration::from_secs(15))
+                    .filter(|value| !value.trim().is_empty())
+            };
+            let before = deployed_commit();
+            install::linux::update_flatpak_app(app, target_id, inst.installation.as_deref(), inst.origin.as_deref(), stop, &mut phase)?;
+            let after = deployed_commit();
+            return Ok(match (before, after) {
+                (Some(before), Some(after)) if before.trim() == after.trim() => format!("{} is already up to date", app.name),
+                (Some(_), Some(_)) => format!("{} was updated through its Flatpak repository", app.name),
+                _ => format!("Flatpak finished checking {} for updates", app.name),
+            });
+        }
+        #[cfg(not(target_os = "linux"))]
+        return Err(format!("{} is a Flatpak, which is not supported on this platform", app.name));
+    }
     if let Some(msg) = existing.and_then(|e| install::managed_elsewhere(app, e, false)) {
         return Err(msg);
     }
@@ -566,10 +601,15 @@ fn run_install(
     } else {
         previous.as_ref().zip(previous_asset.as_ref()).map(|(previous, asset)| install::Downgrade::Reinstall { previous, asset })
     };
-    if !replace && let Some(path) = install::occupied(app, &asset, kind, existing, record, &options.install_locations, paths)? {
-        shared.emit(Event::Occupied { app: app.id.to_string(), path: path.display().to_string() });
-        return Err(format!("{} already exists", path.display()));
-    }
+    let occupied = install::occupied(app, &asset, kind, existing, record, &options.install_locations, paths)?;
+    let replace = match replace_consent(occupied.as_deref(), approved) {
+        Consent::Free => false,
+        Consent::Given => true,
+        Consent::Ask(path) => {
+            shared.emit(Event::Occupied { app: app.id.to_string(), path: path.display().to_string() });
+            return Err(format!("{} already exists", path.display()));
+        }
+    };
     let mut last_emit = Instant::now() - Duration::from_secs(1);
     let mut phase = |p: JobPhase| {
         // Downloads report thousands of times; the UI needs ~20 a second.
@@ -618,6 +658,29 @@ fn start_failed(shared: Arc<Shared>, app: String) -> impl FnOnce(String) + Send 
         shared.events.lock().unwrap_or_else(PoisonError::into_inner).push(Event::JobFinished { app, result: Err(e) });
         drop(jobs);
         (shared.waker)();
+    }
+}
+
+/// Whether an install may write over what is at its destination.
+#[derive(Debug, PartialEq, Eq)]
+enum Consent<'a> {
+    /// Nothing the launcher didn't put there is in the way.
+    Free,
+    /// The user agreed to overwrite exactly this destination.
+    Given,
+    /// Something is in the way and the user hasn't agreed to overwrite it: ask.
+    Ask(&'a std::path::Path),
+}
+
+/// The user's agreement to replace a file covers the path they were shown (`approved`), and only
+/// that one. The release can change between the question and the answer (a new version, another
+/// asset, another folder), and the install then writes somewhere else: it must not take the old
+/// "yes" as leave to overwrite a different file (CWE-367).
+fn replace_consent<'a>(occupied: Option<&'a std::path::Path>, approved: Option<&str>) -> Consent<'a> {
+    match occupied {
+        None => Consent::Free,
+        Some(path) if approved == Some(path.display().to_string().as_str()) => Consent::Given,
+        Some(path) => Consent::Ask(path),
     }
 }
 
@@ -1161,7 +1224,7 @@ impl Backend for NativeBackend {
                 });
             }
             Command::Install { app } => self.start_job(&app, Work::Install),
-            Command::Replace { app } => self.start_job(&app, Work::Replace),
+            Command::Replace { app, path } => self.start_job(&app, Work::Replace(path)),
             Command::Uninstall { app } => self.start_job(&app, Work::Uninstall),
             Command::Pause { app } => {
                 if let Some(stop) = self.shared.jobs.lock().unwrap_or_else(PoisonError::into_inner).get(&app) {
@@ -1273,9 +1336,30 @@ mod tests {
         Release { tag: format!("v{v}"), version: version::parse(v), ..Default::default() }
     }
 
+    /// A "Replace" answer covers the path that was shown, never a destination that changed since.
+    #[test]
+    fn replacing_needs_consent_for_the_exact_path_in_the_way() {
+        let shown = std::path::Path::new("/home/a/Applications/photocraft-0.5.0-linux-x86_64.AppImage");
+        let moved = std::path::Path::new("/home/a/Applications/photocraft-0.6.0-linux-x86_64.AppImage");
+        let approved = shown.display().to_string();
+        assert_eq!(replace_consent(None, None), Consent::Free);
+        assert_eq!(replace_consent(None, Some(&approved)), Consent::Free, "nothing in the way: nothing to overwrite");
+        assert_eq!(replace_consent(Some(shown), None), Consent::Ask(shown));
+        assert_eq!(replace_consent(Some(shown), Some(&approved)), Consent::Given);
+        assert_eq!(replace_consent(Some(moved), Some(&approved)), Consent::Ask(moved), "a yes for one file must not overwrite another");
+    }
+
     #[test]
     fn a_downgrade_is_only_a_version_chosen_by_name_below_the_installed_one() {
-        let installed = Installed { version: version::parse("0.14.0"), source: InstallSource::MacApp, location: String::new(), package: None };
+        let installed = Installed {
+            version: version::parse("0.14.0"),
+            source: InstallSource::MacApp,
+            location: String::new(),
+            package: None,
+            externally_managed: false,
+            origin: None,
+            installation: None,
+        };
         let pinned = VersionTrack::Pinned("v0.13.0".into());
         assert!(is_chosen_downgrade(&pinned, &tagged("0.13.0"), Some(&installed)));
         assert!(!is_chosen_downgrade(&VersionTrack::Stable, &tagged("0.13.0"), Some(&installed)));
@@ -1287,7 +1371,15 @@ mod tests {
     #[test]
     fn only_a_version_chosen_by_name_below_the_installed_one_looks_for_a_package_to_put_back() {
         let app = CraftApp::by_id("filmcraft").unwrap();
-        let installed = Installed { version: version::parse("0.14.0"), source: InstallSource::Msi, location: String::new(), package: None };
+        let installed = Installed {
+            version: version::parse("0.14.0"),
+            source: InstallSource::Msi,
+            location: String::new(),
+            package: None,
+            externally_managed: false,
+            origin: None,
+            installation: None,
+        };
         let pinned = VersionTrack::Pinned("v0.13.0".into());
         let never = || -> Result<Vec<Release>, String> { panic!("no list is needed") };
         // An update, the latest release, nothing installed, or a stale release: no downgrade.
@@ -1672,6 +1764,9 @@ mod tests {
             source: artcraft_launcher_core::InstallSource::Msi,
             location: r"C:\Apps\PhotoCraft\photocraft.exe".into(),
             package: None,
+            externally_managed: false,
+            origin: None,
+            installation: None,
         };
         assert_eq!(planned_asset(app, &release, platform, &portable_options, Some(&msi), None).unwrap().1, PackageKind::Msi);
         let launcher = Installed {
@@ -1679,6 +1774,9 @@ mod tests {
             source: artcraft_launcher_core::InstallSource::Launcher,
             location: r"D:\Craft Apps\PhotoCraft\photocraft.exe".into(),
             package: None,
+            externally_managed: false,
+            origin: None,
+            installation: None,
         };
         let record = crate::manifest::Record {
             version: "0.4.0".into(),
@@ -1710,8 +1808,15 @@ mod tests {
         assert_eq!(planned_asset(app, &release, platform, &options, None, None).unwrap().1, PackageKind::AppImage);
         release.assets.retain(|a| !a.name.ends_with(".AppImage"));
         assert!(planned_asset(app, &release, platform, &options, None, None).is_none());
-        let existing =
-            Installed { version: None, source: artcraft_launcher_core::InstallSource::Deb, location: "/usr/bin/photocraft".into(), package: None };
+        let existing = Installed {
+            version: None,
+            source: artcraft_launcher_core::InstallSource::Deb,
+            location: "/usr/bin/photocraft".into(),
+            package: None,
+            externally_managed: false,
+            origin: None,
+            installation: None,
+        };
         let system = BackendOptions { kinds: options.kinds.clone(), ..Default::default() };
         assert_eq!(
             planned_asset(app, &release, platform, &options, Some(&existing), None),
@@ -1950,7 +2055,15 @@ mod tests {
     }
 
     fn copy(v: &str) -> Installed {
-        Installed { version: version::parse(v), source: InstallSource::Deb, location: String::new(), package: None }
+        Installed {
+            version: version::parse(v),
+            source: InstallSource::Deb,
+            location: String::new(),
+            package: None,
+            externally_managed: false,
+            origin: None,
+            installation: None,
+        }
     }
 
     #[test]
