@@ -115,7 +115,7 @@ impl LauncherUi {
         let Some(entry) = self.entry(id).cloned() else { return true };
         let Some(release) = entry.release().cloned() else { return true };
         let t = Tokens::get(ui.ctx());
-        let size = crate::sheet::size(ui.ctx(), vec2(880.0, 760.0));
+        let size = crate::sheet::size(ui.ctx(), vec2(880.0, 760.0) * self.notes_zoom.max(1.0));
         ui.set_width(size.x);
         ui.set_max_height(size.y);
         let date = release.published_at.map(|d| fmt(tl!("Released {date}"), &[("date", &crate::views::date_text(d))])).unwrap_or_default();
@@ -248,7 +248,7 @@ impl LauncherUi {
         ui.horizontal(|ui| {
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 if widgets::button(ui, tl!("Replace"), Kind::Danger, 110.0).clicked() {
-                    self.act_command(Command::Replace { app: id.to_string() });
+                    self.act_command(Command::Replace { app: id.to_string(), path: path.to_string() });
                     close = true;
                 }
                 if widgets::button(ui, tl!("Cancel"), Kind::Secondary, 90.0).clicked() {
