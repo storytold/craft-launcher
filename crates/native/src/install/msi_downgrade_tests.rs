@@ -145,6 +145,22 @@ fn only_a_real_product_code_reaches_the_elevated_session() {
     }
 }
 
+/// A per-user uninstall record, which the user's own programs can write, never names what the
+/// elevated session removes.
+#[test]
+fn only_machine_wide_records_name_what_the_elevated_session_removes() {
+    use crate::install::MsiScope;
+    const OURS: &str = "{3D425FF2-3EB2-4950-9833-95B01B102845}";
+    const PLANTED: &str = "{11111111-2222-3333-4444-555555555555}";
+    assert_eq!(
+        elevated_removals("FilmCraft", [(PLANTED, MsiScope::PerUser), (OURS, MsiScope::PerMachine)]),
+        Ok(vec![format!("/x {OURS} /passive /norestart")])
+    );
+    let none = elevated_removals("FilmCraft", [(PLANTED, MsiScope::PerUser)]).unwrap_err();
+    assert!(none.contains("FilmCraft isn't registered"), "{none}");
+    assert!(elevated_removals("FilmCraft", [("{x' ; calc ; '}", MsiScope::PerMachine)]).is_err());
+}
+
 /// Runs the generated elevated script for real, but not elevated and with `cmd.exe` standing in
 /// for `msiexec`: each step writes a marker file named after it and exits with a chosen code.
 #[cfg(windows)]

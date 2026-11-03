@@ -127,6 +127,8 @@ pub struct Settings {
     pub tray_hint_shown: bool,
     /// How many times each app was opened from the launcher (catalog id → count), for "Frequently used".
     pub launches: BTreeMap<String, u32>,
+    /// Catalog ids pinned to the top of the grid/table, in the order the user chose.
+    pub pinned: Vec<String>,
 }
 
 impl Settings {
@@ -138,6 +140,54 @@ impl Settings {
         if !matches!(self.filter, Filter::All | Filter::Hidden) {
             self.filter = Filter::All;
         }
+    }
+
+    /// Whether `id` is in the pinned list.
+    pub fn is_pinned(&self, id: &str) -> bool {
+        self.pinned.iter().any(|p| p == id)
+    }
+
+    /// Pin `id` at the end of the pinned list (no-op if already pinned).
+    pub fn pin_app(&mut self, id: &str) {
+        if id.is_empty() || self.is_pinned(id) {
+            return;
+        }
+        self.pinned.push(id.to_string());
+    }
+
+    /// Remove `id` from the pinned list.
+    pub fn unpin_app(&mut self, id: &str) {
+        self.pinned.retain(|p| p != id);
+    }
+
+    /// The index of the next pinned id above (`delta = -1`) or below (`delta = 1`) `id` that passes
+    /// `available`. Skips stale catalog ids left in `pinned` so Move up/down still change the
+    /// visible order.
+    pub fn pinned_neighbor(&self, id: &str, delta: isize, available: impl Fn(&str) -> bool) -> Option<usize> {
+        let mut j = self.pinned.iter().position(|p| p == id)?;
+        loop {
+            j = j.checked_add_signed(delta)?;
+            if available(self.pinned.get(j)?) {
+                return Some(j);
+            }
+        }
+    }
+
+    /// Move `from_id` to insertion slot `to_index` (`0..=len`, before remove). Used by drag-and-drop.
+    pub fn reorder_pinned_to(&mut self, from_id: &str, mut to_index: usize) {
+        let Some(from) = self.pinned.iter().position(|p| p == from_id) else {
+            return;
+        };
+        to_index = to_index.min(self.pinned.len());
+        // Already in this slot (including the no-op "insert immediately after self").
+        if to_index == from || to_index == from + 1 {
+            return;
+        }
+        let item = self.pinned.remove(from);
+        if from < to_index {
+            to_index -= 1;
+        }
+        self.pinned.insert(to_index, item);
     }
 
     /// Display name for a language `code`: a language's name in itself, from the registry
@@ -212,6 +262,71 @@ impl Default for Settings {
             hidden: std::collections::BTreeSet::new(),
             tray_hint_shown: false,
             launches: BTreeMap::new(),
+            pinned: Vec::new(),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn pin_appends_once_and_unpin_removes() {
+        let mut s = Settings::default();
+        s.pin_app("photocraft");
+        s.pin_app("photocraft");
+        s.pin_app("filmcraft");
+        assert_eq!(s.pinned, vec!["photocraft", "filmcraft"]);
+        s.unpin_app("photocraft");
+        assert_eq!(s.pinned, vec!["filmcraft"]);
+        s.unpin_app("missing");
+        assert_eq!(s.pinned, vec!["filmcraft"]);
+    }
+
+    #[test]
+    fn reorder_pinned_to_uses_insertion_slot() {
+        let mut s = Settings { pinned: vec!["a".into(), "b".into(), "c".into()], ..Settings::default() };
+        // Insert c before a (slot 0).
+        s.reorder_pinned_to("c", 0);
+        assert_eq!(s.pinned, vec!["c", "a", "b"]);
+        // Insert c after b (slot 3).
+        s.reorder_pinned_to("c", 3);
+        assert_eq!(s.pinned, vec!["a", "b", "c"]);
+        // Insert a before c (slot 2) → [b, a, c].
+        s.reorder_pinned_to("a", 2);
+        assert_eq!(s.pinned, vec!["b", "a", "c"]);
+        // Insert a after itself (slot 2) is a no-op, and so is an unknown id; a slot past the end
+        // means the end.
+        s.reorder_pinned_to("a", 2);
+        s.reorder_pinned_to("missing", 0);
+        assert_eq!(s.pinned, vec!["b", "a", "c"]);
+        s.reorder_pinned_to("b", 99);
+        assert_eq!(s.pinned, vec!["a", "c", "b"]);
+    }
+
+    #[test]
+    fn old_settings_json_loads_with_empty_pinned() {
+        let s: Settings = serde_json::from_str(r#"{"view":"Grid"}"#).expect("legacy settings");
+        assert!(s.pinned.is_empty());
+    }
+
+    #[test]
+    fn pinned_neighbor_steps_within_bounds() {
+        let s = Settings { pinned: vec!["a".into(), "b".into(), "c".into()], ..Settings::default() };
+        let any = |_: &str| true;
+        assert_eq!(s.pinned_neighbor("b", -1, any), Some(0));
+        assert_eq!(s.pinned_neighbor("b", 1, any), Some(2));
+        assert_eq!(s.pinned_neighbor("a", -1, any), None);
+        assert_eq!(s.pinned_neighbor("c", 1, any), None);
+        assert_eq!(s.pinned_neighbor("missing", 1, any), None);
+    }
+
+    #[test]
+    fn pinned_neighbor_skips_unavailable_ids() {
+        let s = Settings { pinned: vec!["a".into(), "gone".into(), "b".into()], ..Settings::default() };
+        let live = |id: &str| id != "gone";
+        assert_eq!(s.pinned_neighbor("a", 1, live), Some(2));
+        assert_eq!(s.pinned_neighbor("b", -1, live), Some(0));
     }
 }

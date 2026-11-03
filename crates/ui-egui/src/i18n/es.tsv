@@ -122,6 +122,12 @@
 	Apps on this computer	Aplicaciones en este equipo
 	Installed apps with a newer version	Aplicaciones instaladas con una versión más reciente
 	Apps you can install	Aplicaciones que puedes instalar
+	Pin to top	Fijar arriba
+	Unpin	Quitar fijación
+	Pinned	Fijadas
+	Reorder {name}	Reordenar {name}
+	Move up	Subir
+	Move down	Bajar
 	Hide App	Ocultar aplicación
 	Unhide App	Mostrar aplicación
 	Hidden Apps	Aplicaciones ocultas
@@ -147,6 +153,7 @@
 	Update cancelled	Actualización cancelada
 	Uninstall cancelled	Desinstalación cancelada
 	Retry install	Reintentar la instalación
+	Retry update	Reintentar la actualización
 	Retry update to {version}	Reintentar la actualización a {version}
 	The download is still here. It's checked again, then installed.	La descarga sigue aquí. Se vuelve a comprobar y luego se instala.
 	Waiting for another app…	Esperando a otra aplicación…
@@ -384,3 +391,14 @@ texturecraft	Mesh maps	Mapas de malla
 texturecraft	Bake mesh maps and use smart materials.	Hornea mapas de malla y usa materiales inteligentes.
 texturecraft	Paint textures on 3D models.	Pinta texturas en modelos 3D.
 	Hide community apps	Ocultar aplicaciones de la comunidad
+materialcraft	Procedural material design	Diseño de materiales procedurales
+materialcraft	Build materials with node graphs.	Crea materiales con grafos de nodos.
+materialcraft	Create tileable PBR materials and export texture maps.	Crea materiales PBR repetibles sin costuras y exporta mapas de texturas.
+materialcraft	Node graphs	Grafos de nodos
+materialcraft	Combine noises, patterns and filters.	Combina ruidos, patrones y filtros.
+materialcraft	Live previews	Vistas previas en vivo
+materialcraft	Preview materials in 2D and on 3D models.	Previsualiza materiales en 2D y sobre modelos 3D.
+	Advanced	Avanzado
+	Migrate Flatpak bundles to ArtCraft OCI (experimental)	Migrar paquetes Flatpak a ArtCraft OCI (experimental)
+	On update, switch first party apps when the matching package is available. Otherwise, keep using bundles.	Al actualizar, migrar las aplicaciones de ArtCraft si está disponible el paquete correspondiente. De lo contrario, seguir usando paquetes independientes.
+	The OCI repository is a preview with GPG verification disabled.	El repositorio OCI es una versión preliminar con la verificación GPG desactivada.
