@@ -15,8 +15,8 @@ use crate::i18n::Script;
 const MAX_FONT_BYTES: u64 = 100 * 1024 * 1024;
 /// Faces looked at in one collection file (PingFang has 24).
 const MAX_FACES: u32 = 64;
-/// Name records compared per lookup (family or style) in one face. Real fonts carry a few dozen
-/// translations of each name; the cap bounds the decoding a crafted name table can ask for.
+/// Name records compared per name ID in one face. Real fonts carry a few dozen translations of
+/// each name; the cap bounds the decoding a crafted name table can ask for.
 const MAX_NAME_RECORDS: usize = 256;
 
 /// The bundled body font (Inter), whose baseline a fallback face is nudged onto.
@@ -116,11 +116,11 @@ pub(crate) fn face_index(data: &[u8], family: &str) -> Option<u32> {
     first
 }
 
-/// Whether one of the first [`MAX_NAME_RECORDS`] `ids` names of `font` is `wanted` (ASCII case
-/// ignored). Each name is decoded only as far as it still matches, and never kept: a name table
+/// Whether one of the first [`MAX_NAME_RECORDS`] names of each of `ids` in `font` is `wanted`
+/// (ASCII case ignored). Each name is decoded only as far as it still matches, and never kept: a name table
 /// can point many records at the same long string.
 fn has_name(font: &FontRef<'_>, ids: [StringId; 2], wanted: &str) -> bool {
-    ids.into_iter().flat_map(|id| font.localized_strings(id)).take(MAX_NAME_RECORDS).any(|name| chars_eq_ignore_ascii_case(name.chars(), wanted))
+    ids.into_iter().any(|id| font.localized_strings(id).take(MAX_NAME_RECORDS).any(|name| chars_eq_ignore_ascii_case(name.chars(), wanted)))
 }
 
 /// `chars` spells `wanted`, ignoring ASCII case. Reads at most one char past `wanted`'s length.
