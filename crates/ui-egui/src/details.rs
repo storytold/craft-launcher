@@ -156,19 +156,28 @@ impl LauncherUi {
 
                 ui.set_min_size(panel.size());
                 ui.set_max_size(panel.size());
+                ui.spacing_mut().item_spacing.y = 0.0;
+                let header_h = self.details_header_bar(ui, &entry, t, (previous.as_deref(), next.as_deref()));
+                let body_rect = Rect::from_min_max(pos2(panel.min.x + 1.0, panel.min.y + header_h), pos2(panel.max.x - 1.0, panel.max.y - 1.0));
                 // A bar that stays on screen says there is more below the fold; in the app's colour.
                 let page_visuals = crate::sheet::accent_scroll(ui, t, t.app_ink(entry.app));
+                let mut child_ui = ui.new_child(egui::UiBuilder::new().max_rect(body_rect).layout(*ui.layout()));
                 // One scroll position per app, so the next app opens at its top.
-                egui::ScrollArea::vertical().id_salt(("details-scroll", id.to_string())).auto_shrink([false, false]).show(ui, |ui| {
-                    // The bar's colours are for the bar alone.
-                    *ui.visuals_mut() = page_visuals;
-                    ui.set_width(ui.available_width());
-                    ui.spacing_mut().item_spacing.y = 8.0;
-                    self.details_hero(ui, &entry, details, t, (previous.as_deref(), next.as_deref()), wide);
-                    egui::Frame::new().inner_margin(Margin::same(PAD as i8)).show(ui, |ui| {
-                        self.details_body(ui, &entry, details, wide, t);
+                egui::ScrollArea::vertical()
+                    .id_salt(("details-scroll", id.to_string()))
+                    .max_height(body_rect.height())
+                    .scroll_bar_rect(body_rect)
+                    .auto_shrink([false, false])
+                    .show(&mut child_ui, |ui| {
+                        // The bar's colours are for the bar alone.
+                        *ui.visuals_mut() = page_visuals;
+                        ui.set_width(ui.available_width());
+                        ui.spacing_mut().item_spacing.y = 8.0;
+                        self.details_hero(ui, &entry, details, t, wide);
+                        egui::Frame::new().inner_margin(Margin::same(PAD as i8)).show(ui, |ui| {
+                            self.details_body(ui, &entry, details, wide, t);
+                        });
                     });
-                });
             });
     }
 
@@ -302,18 +311,36 @@ impl LauncherUi {
         });
     }
 
-    /// The drawer's top: a wash of the app's colour under a 2 px rule, the close button, the name,
-    /// version and main button, and the app's links.
-    fn details_hero(&mut self, ui: &mut Ui, entry: &AppEntry, details: &AppDetails, t: &Tokens, around: (Option<&str>, Option<&str>), wide: bool) {
+    /// The drawer's sticky header: the 2 px accent rule in the app's colour, "App details", and the
+    /// previous / next / close buttons, pinned at the top so they stay visible when scrolled.
+    /// Returns its height.
+    fn details_header_bar(&mut self, ui: &mut Ui, entry: &AppEntry, t: &Tokens, around: (Option<&str>, Option<&str>)) -> f32 {
+        let app = entry.app;
+        let app_color = rgb(app.color);
+        let top = ui.cursor().top();
+        let bar = egui::Frame::new().fill(tint(app_color, if t.dark { 0.09 } else { 0.07 })).inner_margin(Margin::symmetric(PAD as i8, 10)).show(
+            ui,
+            |ui| {
+                ui.set_width(ui.available_width());
+                ui.horizontal(|ui| {
+                    widgets::hud(ui, tl!("App details"), t.faint);
+                    self.hero_top_row(ui, around, t);
+                });
+            },
+        );
+        let r = bar.response.rect;
+        ui.painter().rect_filled(Rect::from_min_size(r.min, vec2(r.width(), 2.0)), CornerRadius::ZERO, app_color);
+        ui.painter().hline(r.x_range(), r.bottom() - 0.5, t.hairline());
+        ui.cursor().top() - top
+    }
+
+    /// The drawer's hero section: the app icon, name, version, main action button, and external links.
+    fn details_hero(&mut self, ui: &mut Ui, entry: &AppEntry, details: &AppDetails, t: &Tokens, wide: bool) {
         let app = entry.app;
         let app_color = rgb(app.color);
         let status = entry.status(self.platform, self.caps.manage_apps);
         let hero = egui::Frame::new().fill(tint(app_color, if t.dark { 0.09 } else { 0.07 })).inner_margin(Margin::same(PAD as i8)).show(ui, |ui| {
             ui.set_width(ui.available_width());
-            ui.horizontal(|ui| {
-                widgets::hud(ui, tl!("App details"), t.faint);
-                self.hero_top_row(ui, around, t);
-            });
             self.hero_identity(ui, entry, details, &status, t, wide);
             ui.add_space(14.0);
             // The menu leaves out the links: they are the buttons right below.
@@ -324,7 +351,6 @@ impl LauncherUi {
             link_buttons(ui, app);
         });
         let r = hero.response.rect;
-        ui.painter().rect_filled(Rect::from_min_size(r.min, vec2(r.width(), 2.0)), CornerRadius::ZERO, app_color);
         ui.painter().hline(r.x_range(), r.bottom() - 0.5, t.hairline());
     }
 

@@ -1,6 +1,6 @@
 //! Release notes: GitHub's generated Markdown, shown readably without a Markdown engine.
 
-use egui::{RichText, Ui};
+use egui::{Color32, RichText, Ui};
 
 use crate::theme::Tokens;
 
@@ -96,6 +96,128 @@ fn full_changelog<'a>(line: &Line<'a>) -> Option<&'a str> {
     text.strip_prefix("**Full Changelog**: ").map(str::trim).filter(|url| artcraft_launcher_core::release::safe_web_link(url))
 }
 
+#[derive(Debug, PartialEq, Eq)]
+pub(crate) enum Inline<'a> {
+    Plain(&'a str),
+    Bold(&'a str),
+    Code(&'a str),
+    Link { text: &'a str, url: &'a str },
+}
+
+pub(crate) fn parse_inline(mut text: &str) -> Vec<Inline<'_>> {
+    let mut out = Vec::new();
+    while !text.is_empty() {
+        let next_special = [text.find("**").map(|i| (i, 0)), text.find('`').map(|i| (i, 1)), text.find('[').map(|i| (i, 2))]
+            .into_iter()
+            .flatten()
+            .min_by_key(|&(idx, _)| idx);
+
+        let Some((idx, kind)) = next_special else {
+            out.push(Inline::Plain(text));
+            break;
+        };
+
+        if idx > 0 {
+            if let Some(prefix) = text.get(..idx) {
+                out.push(Inline::Plain(prefix));
+            }
+            if let Some(rest) = text.get(idx..) {
+                text = rest;
+            } else {
+                break;
+            }
+        }
+
+        match kind {
+            0 => {
+                let mut matched = false;
+                if let Some(after_stars) = text.get(2..)
+                    && let Some(end) = after_stars.find("**")
+                    && let (Some(bold_text), Some(rest)) = (after_stars.get(..end), after_stars.get(end + 2..))
+                {
+                    out.push(Inline::Bold(bold_text));
+                    text = rest;
+                    matched = true;
+                }
+                if !matched {
+                    if let Some(first_two) = text.get(..2) {
+                        out.push(Inline::Plain(first_two));
+                    }
+                    text = text.get(2..).unwrap_or("");
+                }
+            }
+            1 => {
+                let mut matched = false;
+                if let Some(after_tick) = text.get(1..)
+                    && let Some(end) = after_tick.find('`')
+                    && let (Some(code_text), Some(rest)) = (after_tick.get(..end), after_tick.get(end + 1..))
+                {
+                    out.push(Inline::Code(code_text));
+                    text = rest;
+                    matched = true;
+                }
+                if !matched {
+                    if let Some(tick) = text.get(..1) {
+                        out.push(Inline::Plain(tick));
+                    }
+                    text = text.get(1..).unwrap_or("");
+                }
+            }
+            2 => {
+                let mut matched = false;
+                if let Some(after_bracket) = text.get(1..)
+                    && let Some(close_bracket) = after_bracket.find(']')
+                    && let (Some(link_text), Some(after_close)) = (after_bracket.get(..close_bracket), after_bracket.get(close_bracket + 1..))
+                    && after_close.starts_with('(')
+                    && let Some(after_paren) = after_close.get(1..)
+                    && let Some(close_paren) = after_paren.find(')')
+                    && let (Some(url), Some(rest)) = (after_paren.get(..close_paren), after_paren.get(close_paren + 1..))
+                {
+                    out.push(Inline::Link { text: link_text, url });
+                    text = rest;
+                    matched = true;
+                }
+                if !matched {
+                    if let Some(bracket) = text.get(..1) {
+                        out.push(Inline::Plain(bracket));
+                    }
+                    text = text.get(1..).unwrap_or("");
+                }
+            }
+            _ => break,
+        }
+    }
+    out
+}
+
+fn render_inline(ui: &mut Ui, text: &str, color: Color32, t: &Tokens, scale: f32) {
+    let tokens = parse_inline(text);
+    for token in tokens {
+        match token {
+            Inline::Plain(plain) => {
+                for word in plain.split_whitespace() {
+                    ui.label(RichText::new(word).size(13.5 * scale).color(color));
+                }
+            }
+            Inline::Bold(bold) => {
+                for word in bold.split_whitespace() {
+                    ui.label(RichText::new(word).strong().size(13.5 * scale).color(t.ink_strong));
+                }
+            }
+            Inline::Code(code) => {
+                ui.label(RichText::new(code).monospace().size(12.0 * scale).color(t.ink));
+            }
+            Inline::Link { text, url } => {
+                if artcraft_launcher_core::release::safe_web_link(url) {
+                    ui.hyperlink_to(RichText::new(text).size(13.5 * scale), url);
+                } else {
+                    ui.label(RichText::new(text).size(13.5 * scale).color(color));
+                }
+            }
+        }
+    }
+}
+
 fn draw(ui: &mut Ui, line: &Line<'_>, t: &Tokens, scale: f32) {
     match line {
         Line::Heading(h) => {
@@ -108,7 +230,7 @@ fn draw(ui: &mut Ui, line: &Line<'_>, t: &Tokens, scale: f32) {
             ui.horizontal_wrapped(|ui| {
                 ui.spacing_mut().item_spacing.x = 4.0;
                 ui.label(RichText::new("•").color(t.faint));
-                ui.label(RichText::new(text).color(t.ink));
+                render_inline(ui, text, t.ink, t, scale);
                 if let Some(url) = link.filter(|u| artcraft_launcher_core::release::safe_web_link(u)) {
                     let short = url.rsplit('/').next().map_or_else(|| tl!("link").to_string(), |n| format!("#{n}"));
                     ui.hyperlink_to(RichText::new(short).size(12.0 * scale), url);
@@ -116,7 +238,10 @@ fn draw(ui: &mut Ui, line: &Line<'_>, t: &Tokens, scale: f32) {
             });
         }
         Line::Text(text) => {
-            ui.label(RichText::new(*text).color(t.muted));
+            ui.horizontal_wrapped(|ui| {
+                ui.spacing_mut().item_spacing.x = 4.0;
+                render_inline(ui, text, t.muted, t, scale);
+            });
         }
         Line::Blank => {
             ui.add_space(2.0);
@@ -148,5 +273,24 @@ mod tests {
         let few: Vec<Line> = (0..7).map(|_| Line::Bullet("change", None)).collect();
         assert_eq!(fold_at(&few), None);
         assert_eq!(fold_at(&[]), None);
+    }
+
+    #[test]
+    fn parses_inline_markdown() {
+        assert_eq!(
+            parse_inline("Hello **world** and `code` with [site](https://getartcraft.com)."),
+            vec![
+                Inline::Plain("Hello "),
+                Inline::Bold("world"),
+                Inline::Plain(" and "),
+                Inline::Code("code"),
+                Inline::Plain(" with "),
+                Inline::Link { text: "site", url: "https://getartcraft.com" },
+                Inline::Plain("."),
+            ]
+        );
+        assert_eq!(parse_inline("**unclosed"), vec![Inline::Plain("**"), Inline::Plain("unclosed")]);
+        assert_eq!(parse_inline("`unclosed"), vec![Inline::Plain("`"), Inline::Plain("unclosed")]);
+        assert_eq!(parse_inline("[unclosed](https://"), vec![Inline::Plain("["), Inline::Plain("unclosed](https://")]);
     }
 }
