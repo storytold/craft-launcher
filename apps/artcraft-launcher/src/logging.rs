@@ -206,11 +206,44 @@ fn builder(sink: Arc<Mutex<Sink>>, stderr: bool) -> env_logger::Builder {
     b
 }
 
+/// Whether a record is a raw HTTP wire dump. `ureq_proto` traces every byte it sends and
+/// receives as hex-and-ASCII rows, `Authorization` header included (the optional
+/// `ARTCRAFT_LAUNCHER_GITHUB_TOKEN`). The rows split the header across lines, so
+/// [`redact_credentials`] can't find the token in them.
+fn is_wire_dump(metadata: &log::Metadata<'_>) -> bool {
+    let target = metadata.target();
+    metadata.level() == log::Level::Trace && (target == "ureq_proto" || target.starts_with("ureq_proto::"))
+}
+
+/// env_logger behind a gate that drops wire dumps whatever `RUST_LOG` says. A filter directive
+/// alone isn't enough: env_logger lets the longest matching module win, so
+/// `RUST_LOG=ureq_proto::util=trace` outranks a `ureq_proto=debug` cap (CWE-532).
+struct Guarded(env_logger::Logger);
+
+impl log::Log for Guarded {
+    fn enabled(&self, metadata: &log::Metadata<'_>) -> bool {
+        !is_wire_dump(metadata) && self.0.enabled(metadata)
+    }
+
+    fn log(&self, record: &log::Record<'_>) {
+        if !is_wire_dump(record.metadata()) {
+            self.0.log(record);
+        }
+    }
+
+    fn flush(&self) {
+        self.0.flush();
+    }
+}
+
 /// Install the logger; `None` when another logger was installed first. Call
 /// [`Logs::attach_dir`] (or [`Logs::no_file`]) once it is known whether this run keeps a log.
 pub fn install() -> Option<Logs> {
     let sink = Arc::new(Mutex::new(Sink::new(MAX_FILE_BYTES)));
-    builder(sink.clone(), true).try_init().ok()?;
+    let logger = builder(sink.clone(), true).build();
+    let max = logger.filter();
+    log::set_boxed_logger(Box::new(Guarded(logger))).ok()?;
+    log::set_max_level(max);
     Some(Logs { sink })
 }
 
@@ -368,6 +401,29 @@ mod tests {
         assert!(text.contains("WARN  wgpu_hal::vulkan] a real warning\n"), "{text}");
         assert!(text.contains("artcraft_launcher_native::proxy] proxy in use\n"), "{text}");
         assert!(!text.contains("too chatty") && !text.contains("below info") && !text.contains('\u{1b}'), "{text}");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// A wire dump never reaches the file, even when `RUST_LOG` names `ureq_proto`'s own module
+    /// at `trace`, which outranks the builder's `ureq_proto=debug` cap.
+    #[test]
+    fn http_wire_dumps_are_dropped_whatever_rust_log_says() {
+        let dir = temp_dir("wire");
+        let sink = Arc::new(Mutex::new(Sink::new(MAX_FILE_BYTES)));
+        let logger = Guarded(builder(sink.clone(), false).parse_filters("trace,ureq_proto::util=trace,ureq_proto=trace").build());
+        let logs = Logs { sink };
+        let path = logs.attach_dir(&dir).unwrap();
+        let record = |level, target: &'static str, msg: &'static str| {
+            logger.log(&log::Record::builder().level(level).target(target).args(format_args!("{msg}")).build());
+        };
+        record(log::Level::Trace, "ureq_proto::util", "4175 7468 6f72 697a Authoriz");
+        record(log::Level::Trace, "ureq_proto", "Bearer.ghp_secret");
+        record(log::Level::Debug, "ureq_proto::client", "Call<SendRequest>");
+        record(log::Level::Trace, "ureq_protocol_lookalike", "not a wire dump");
+        let text = read(&path);
+        assert!(!text.contains("Authoriz") && !text.contains("ghp_secret"), "{text}");
+        assert!(text.contains("Call<SendRequest>") && text.contains("not a wire dump"), "{text}");
+        assert!(!logger.enabled(&log::Metadata::builder().level(log::Level::Trace).target("ureq_proto::util").build()));
         let _ = std::fs::remove_dir_all(&dir);
     }
 
