@@ -4,13 +4,22 @@
 //! acceptance at check time. They do not promise a fresh OCSP response for every certificate.
 
 use std::path::Path;
+use std::sync::{Mutex, PoisonError};
 use std::time::Duration;
 
 use artcraft_launcher_core::CraftApp;
 
 const CODESIGN: &str = "/usr/bin/codesign";
 const SPCTL: &str = "/usr/sbin/spctl";
-const TIMEOUT: Duration = Duration::from_secs(60);
+/// Only stops a helper that hangs. `codesign --deep` reads every file of the bundle: on a 2014
+/// MacBook Pro, PdfCraft's checks took over three minutes with nothing else running, so a tighter
+/// bound refuses good apps on older Macs.
+const TIMEOUT: Duration = Duration::from_secs(600);
+
+/// One app's checks at a time. Downloads that finish together would otherwise run their deep
+/// signature checks at once; they share the disk and `CodeSigningHelper`, so all of them slow
+/// down and can run past the timeout together.
+static CHECKING: Mutex<()> = Mutex::new(());
 
 pub(super) fn verify_with(
     app: &CraftApp,
@@ -20,6 +29,8 @@ pub(super) fn verify_with(
 ) -> Result<(), String> {
     let path = bundle.to_str().ok_or("couldn't check the app's unusual path, so it wasn't installed")?;
     let requirement = identity_requirement(app, team)?;
+    // The guard holds no data, so a panic elsewhere can't leave anything half-updated.
+    let _one_app_at_a_time = CHECKING.lock().unwrap_or_else(PoisonError::into_inner);
     for (check, program, args) in [
         // Do not apply the outer app's team or identifier requirement to its nested code.
         ("signature integrity", CODESIGN, vec!["--verify", "--all-architectures", "--deep", "--strict", path]),
@@ -123,7 +134,8 @@ mod tests {
         let app = solidcraft();
         let mut calls = Vec::new();
         verify_with(app, Path::new("/private/owned/SolidCraft.app"), app.mac_team.unwrap(), |program, args, timeout| {
-            assert_eq!(timeout, Duration::from_secs(60));
+            assert_eq!(timeout, TIMEOUT);
+            assert!(timeout >= Duration::from_secs(300), "deep checks of large apps take minutes on older Macs");
             calls.push((program.to_string(), args.iter().map(|s| s.to_string()).collect::<Vec<_>>()));
             Ok(if program == SPCTL { accepted() } else { String::new() })
         })
@@ -142,6 +154,28 @@ mod tests {
         for flag in ["--ignore-cache", "--no-cache", "--raw"] {
             assert!(calls[3].1.iter().any(|a| a == flag));
         }
+    }
+
+    #[test]
+    fn mac_install_checks_run_one_app_at_a_time() {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        // Several downloads can finish together. Their deep signature checks must not overlap,
+        // or on a slow Mac they all slow down and run past the timeout together.
+        let (running, most) = (AtomicUsize::new(0), AtomicUsize::new(0));
+        std::thread::scope(|scope| {
+            for _ in 0..4 {
+                scope.spawn(|| {
+                    verify_with(solidcraft(), Path::new("/private/owned/SolidCraft.app"), "G5QA5U5X2S", |program, _, _| {
+                        most.fetch_max(running.fetch_add(1, Ordering::SeqCst) + 1, Ordering::SeqCst);
+                        std::thread::sleep(Duration::from_millis(25));
+                        running.fetch_sub(1, Ordering::SeqCst);
+                        Ok(if program == SPCTL { accepted() } else { String::new() })
+                    })
+                    .unwrap();
+                });
+            }
+        });
+        assert_eq!(most.load(Ordering::SeqCst), 1);
     }
 
     #[test]
