@@ -1306,6 +1306,8 @@ mod tests {
         assert!(!shell.launcher.closed_to_tray);
     }
 
+    /// The dialog names the backend and the error, and a catalog translates the sentence while
+    /// carrying both placeholders' text over (#1081).
     #[test]
     fn the_startup_failure_message_names_the_backend_and_the_error() {
         let error = "The parameter is incorrect. (0x80070057)";
@@ -1325,6 +1327,7 @@ mod tests {
         );
     }
 
+    /// The dialog names what the attempt actually asked wgpu for, not a fixed list.
     #[test]
     fn the_dialog_names_the_backend_it_tried() {
         use eframe::wgpu::Backends;
@@ -1339,6 +1342,8 @@ mod tests {
         assert_eq!(backend_label(Some(Backends::GL)), "OpenGL");
     }
 
+    /// A renderer that couldn't be created is retried once, on the fallback, and then the
+    /// launcher reports the failure. macOS has no second backend, so it retries nothing.
     #[test]
     fn a_renderer_that_cannot_start_is_retried_on_the_fallback() {
         // What eframe returns when the driver refuses the UI pipeline (#111, #1081).
@@ -1356,6 +1361,8 @@ mod tests {
         }
     }
 
+    /// `WGPU_BACKEND` is the user's own choice, so a failure on it ends the start rather than
+    /// being overruled by the fallback.
     #[test]
     fn a_start_that_names_a_backend_is_not_overruled() {
         // `WGPU_BACKEND` is the user's own choice, so a failure on it ends the start.
@@ -1365,6 +1372,8 @@ mod tests {
         assert_eq!(backends.after_failure(&failure), None);
     }
 
+    /// Only a renderer failure earns another backend: a window that failed for another reason
+    /// fails the same way on all of them, and retrying would bury its error.
     #[test]
     fn a_window_that_fails_for_another_reason_is_not_retried() {
         // No event loop, no display: every backend fails the same way, and retrying would only
@@ -1374,6 +1383,7 @@ mod tests {
         assert_eq!(backends.after_failure(&error), None);
     }
 
+    /// The fallback is OpenGL wherever it exists, never Vulkan (`wgpu_options` says why).
     #[cfg(not(target_os = "macos"))]
     #[test]
     fn the_fallback_backend_is_opengl() {
@@ -1382,10 +1392,12 @@ mod tests {
         assert_eq!(fallback_backends(), Some(eframe::wgpu::Backends::GL));
     }
 
+    /// A fallback attempt configures wgpu with GL alone, rather than the default list.
     #[cfg(windows)]
     #[test]
     fn a_fallback_attempt_starts_only_that_backend() {
         use eframe::egui_wgpu::WgpuSetup;
+        /// The backend list the configuration asks wgpu for.
         fn backends(config: eframe::WgpuConfiguration) -> eframe::wgpu::Backends {
             match config.wgpu_setup {
                 WgpuSetup::CreateNew(setup) => setup.instance_descriptor.backends,
