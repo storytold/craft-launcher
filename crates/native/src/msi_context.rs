@@ -361,12 +361,12 @@ mod tests {
     /// that says so, whether the Windows Installer lookup or the uninstall records find the two.
     #[test]
     fn a_copy_for_this_account_and_one_for_everyone_stop_the_update() {
-        for contexts in ["4\r\n1\r\n", "2\n4\n"] {
-            let result = update_scope(true, Some(CODE), |_| parse_contexts(contexts), |_| panic!("must not consult the record"));
+        for contexts in [[4, 1], [2, 4]] {
+            let result = update_scope(true, Some(CODE), |_| scope_of(&contexts), |_| panic!("must not consult the record"));
             assert_eq!(result, Err(CONFLICTING_CONTEXT.to_string()), "{contexts:?}");
         }
         let records = || single_scope([MsiScope::PerMachine, MsiScope::PerUser]);
-        let result = update_scope(true, Some(CODE), |_| Err(ProbeError::Unavailable("PowerShell is blocked".into())), |_| records());
+        let result = update_scope(true, Some(CODE), |_| Err(ProbeError::Unavailable("registration key access denied".into())), |_| records());
         assert_eq!(result, Err(UNKNOWN_CONTEXT.to_string()));
     }
 
