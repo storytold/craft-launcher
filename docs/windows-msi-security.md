@@ -10,10 +10,21 @@ The launcher GUI is never elevated. The MSI batch uses the Windows PowerShell ho
 `GetSystemDirectory`; it starts unelevated and asks Windows to run that same OS executable through
 `Start-Process -Verb RunAs`. The elevated process receives a fixed policy embedded in the Rust
 binary and base64-encoded request data. No launcher executable, DLL, script file, or user-owned
-module is loaded as administrator. UAC stays enabled. One PowerShell session stages and verifies
-the eligible packages and invokes the system `msiexec.exe` sequentially, so `msiexec` inherits
-that session's approval rather than requesting a prompt for each MSI. The MSI `/passive` progress
-window retains Windows Installer's own Cancel button. Declining UAC cancels the pending batch.
+module is loaded as administrator. The application does not change UAC settings. One PowerShell
+session stages and verifies the eligible packages and invokes the system `msiexec.exe`
+sequentially, so `msiexec` inherits that session's authorization rather than requesting elevation
+for each MSI. The MSI `/passive` progress window retains Windows Installer's own Cancel button.
+Declining UAC cancels the pending batch.
+
+Windows decides whether a `RunAs` request displays a consent UI. Launching the launcher or its
+requesting PowerShell process already elevated can suppress a second prompt. UAC policy can also
+allow elevation without visible consent (for example, administrator elevation without prompting,
+or a policy that prompts only for non-Windows binaries while the target is Windows PowerShell).
+The protected `diagnostics.jsonl` records the requesting process's observed elevation, the elevated
+child's administrator status, `EnableLUA`, and administrator/standard-user prompt policy values.
+Those observations distinguish app launch behavior from machine policy; they do not claim that a
+user saw or accepted a prompt. The manual acceptance test must use an unelevated session and a
+policy that asks for consent or credentials.
 
 This addresses the central objections in [upstream PR #68](https://github.com/storytold/craft-launcher/pull/68):
 the old proposal elevated the per-user launcher, accepted caller-selected package paths and
@@ -49,9 +60,12 @@ independently report Manufacturer `Learning Machines LLC`, an allowed app Produc
 authorized release ProductVersion, a platform matching the x64/x86/ARM64 filename, `ALLUSERS=1`,
 and `MSIINSTALLPERUSER` absent or zero. The MSI database is read through the absolute system
 `msi.dll` using in-memory P/Invoke declarations, avoiding elevated COM activation and a
-user-writable temporary assembly. The PowerShell reflection call explicitly boxes paths as
-`System.String`; this fixes the `PSObject` argument-marshalling failure from the previous real-MSI
-test.
+user-writable temporary assembly. Reflection names each native export explicitly.
+`MsiSummaryInfoGetPropertyW` uses its complete seven-argument signature, including `FILETIME*`
+(passed as null for PID_TEMPLATE); the previous declaration omitted that argument and could
+misalign the native call before MSI logging or installation began. `MsiOpenDatabaseW` continues to
+receive an explicitly boxed `System.String` path to avoid PowerShell `PSObject`
+argument-marshalling failures.
 
 The full subject, issuer, serial, thumbprint, published hash, and inspected MSI properties for
 the four documented PhotoCraft and VectorCraft packages are in
@@ -63,11 +77,14 @@ installed or added as a trust anchor.
 Custom install destinations must be local, contain no reparse points, and have a safe leaf name.
 The nearest existing directory must prevent unprivileged creation/replacement; ancestors must
 prevent deletion, ACL, and owner changes. Unsafe destinations fail closed. The elevated process
-checks whether each app is running immediately before installing it. Protected logs and result
-files live beside the staged package under the OS system directory. The parent reads only this
+checks whether each app is running immediately before installing it. Protected diagnostics, MSI
+logs and results live beside the staged package under the OS system directory. `diagnostics.jsonl`
+is created with a SYSTEM/Administrators-only ACL and records the validation stage, outer and root
+exception types, both HRESULTs, and the root exception's actionable reason. The UI still receives
+only fixed result codes and generic sanitized validation errors. The parent reads only this
 administrator-owned result path after the elevated child exits; it never trusts a user-cache file
-for privileged results. Results use bounded fixed codes, and success is only reported after
-normal installation detection sees the advertised version.
+for privileged results. Success is only reported after normal installation detection sees the
+advertised version.
 
 The batch uses the same RAII Windows Installer queue as ordinary MSI installs, MSI removals, and
 downgrade sessions. Self-update waits for all app jobs before replacing the launcher. Jobs can be
@@ -82,9 +99,10 @@ Only ArtCraft's official `storytold/` releases enter the new batched elevated pa
 community apps retain their existing single-package installer path; this change does not infer a
 publisher from a URL or broaden the privileged publisher policy. Per-user MSI updates keep their
 existing non-elevated scope and do not join the elevated package set. Portable ZIP installs do
-not use MSI batching. Consequently, the one-prompt guarantee applies to eligible official,
-machine-wide MSI updates in one `Update all` action; a separately handled community install may
-still use its existing permission flow.
+not use MSI batching. Consequently, one consent operation applies to eligible official,
+machine-wide MSI updates in one `Update all` action when the launcher is unelevated and Windows
+policy is configured to prompt; a separately handled community install may still use its existing
+permission flow. Windows policy may suppress visible UI, as described above.
 
 The approaches in [PR #311](https://github.com/storytold/craft-launcher/pull/311) and
 [PR #345](https://github.com/storytold/craft-launcher/pull/345) were also reviewed. PR #311's
@@ -105,10 +123,14 @@ runner that is already elevated can test protected staging and the production po
 prove that an interactive UAC prompt appears exactly once. The manual acceptance steps are in
 [windows-vm-test.md](windows-vm-test.md).
 
-Windows-native tests exercise the real system PowerShell, MSI Property APIs, scope and identity
-policy, signature rejection, held-file sharing, and the loopback staging path without installing
-an app MSI. The System32 staging test reports a skip from a local shell that is not already
-elevated; the hosted Windows runner supplies the admin context and no test requests UAC.
+Windows-native tests exercise system PowerShell's reflection-generated MSI exports and argument
+counts, call the real `MsiOpenDatabaseW` export, and cover scope/identity policy, signature
+rejection, held-file sharing, and loopback staging without installing an app MSI. An opt-in ignored
+test validates the documented PhotoCraft v0.13.0 and VectorCraft v0.15.0 release files using the
+published checksums, the Windows Authenticode chain/publisher, and real MSI database APIs; run it
+with `ARTCRAFT_TEST_OFFICIAL_MSI_DIR` set to the directory containing those files. The System32
+staging test reports a skip from a local shell that is not already elevated; the hosted Windows
+runner supplies the admin context and no test requests UAC.
 
 An unsigned development launcher is safe to use for this test because the launcher is not the
 elevated process or a trust input. The elevated path still independently requires the official

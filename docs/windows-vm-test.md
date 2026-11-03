@@ -63,19 +63,45 @@ are separate from the update test.
 1. Extract the whole portable ZIP into a writable folder in the VM. Keep `portable.txt` beside
    `artcraft-launcher.exe`; the launcher stores its profile and download cache under
    `ArtCraftLauncherData` beside itself.
-2. Start `artcraft-launcher.exe` normally from the standard user desktop. Verify it identifies
+2. Before launching, record the UAC settings without changing them:
+
+   ```powershell
+   Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System' |
+     Select-Object EnableLUA,ConsentPromptBehaviorAdmin,ConsentPromptBehaviorUser
+   ```
+
+   `EnableLUA` must be `1`. A launcher or requesting PowerShell process already running elevated
+   will not cause a second approval. Administrator policy `ConsentPromptBehaviorAdmin=0` elevates
+   without prompting; value `5` prompts only for non-Windows binaries and may not show a prompt for
+   Windows PowerShell. To test an interactive approval, use an unelevated session with a policy
+   that prompts for consent/credentials (for an administrator, value `2` or `4`). Do not disable
+   UAC. If policy is domain-managed, record it and do not override it.
+3. Start `artcraft-launcher.exe` normally from the standard user desktop. Verify it identifies
    PhotoCraft v0.13.0 and VectorCraft v0.15.0 and offers updates.
-3. Choose **Update all**. Let both downloads complete and watch the verification/install phases.
+4. Choose **Update all**. Let both downloads complete and watch the verification/install phases.
    Expect exactly one interactive UAC approval for Windows PowerShell, followed by the two
    Windows Installer progress windows. The launcher itself must remain unelevated. Each MSI
    progress window has a Cancel button; cancelling one item should be reported for that app while
    the batch proceeds to the other authorized item.
-4. Confirm the launcher reports each app's individual result, detects PhotoCraft v0.14.0 and
+5. Confirm the launcher reports each app's individual result, detects PhotoCraft v0.14.0 and
    VectorCraft v0.16.0 (or the newer selected versions), and both apps launch. Check the Windows
    uninstall/install records for the new `DisplayVersion` values and per-machine registrations.
-5. Inspect logs/results under `%SystemRoot%\System32\ArtCraft-MSI-*` if any item fails. They are
-   administrator-owned and are retained for diagnosis. Remove them only from an administrator
-   session or discard the VM.
+6. If an item is rejected before Windows Installer starts, inspect
+   `%SystemRoot%\System32\ArtCraft-MSI-<session>\diagnostics.jsonl` from an administrator session.
+   It records the validation stage, exception types, HRESULTs, actionable reason, and UAC context.
+   MSI verbose logs (`<index>.log`) exist only after validation succeeds and Windows Installer is
+   launched. The diagnostics and logs are administrator-owned and retained; remove them only from
+   an administrator session or discard the VM.
+
+To exercise real signed-package validation without installing the apps, set the folder containing
+the two downloaded MSIs and run the opt-in Windows test from a normal PowerShell session in the
+checkout. It retrieves the published checksum files, validates Authenticode with Windows, and reads
+the actual MSI database using the production reflection declarations:
+
+```powershell
+$env:ARTCRAFT_TEST_OFFICIAL_MSI_DIR = (Resolve-Path .\official-msis).Path
+cargo test --locked -p artcraft-launcher-native validates_documented_official_msi_packages_with_windows_signature_and_database_apis -- --ignored --nocapture
+```
 
 ## Repeatable negative cases
 

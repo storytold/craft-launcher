@@ -88,6 +88,91 @@ Set-Location -LiteralPath $system
 $env:PSModulePath = [IO.Path]::Combine($PSHOME, 'Modules')
 Import-Module ([IO.Path]::Combine($PSHOME, 'Modules\Microsoft.PowerShell.Security\Microsoft.PowerShell.Security.psd1'))
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+$script:ArtCraftValidationStage = 'startup'
+
+function Set-ArtCraftValidationStage([string]$stage) {
+    $script:ArtCraftValidationStage = $stage
+}
+
+function Get-ArtCraftRootException($exception) {
+    while ($null -ne $exception.InnerException) { $exception = $exception.InnerException }
+    return $exception
+}
+
+function Format-ArtCraftHResult($exception) {
+    return ('0x{0:X8}' -f ($exception.HResult -band 0xffffffffL))
+}
+
+function Write-ArtCraftDiagnostic($writer, [string]$kind, $index, $details) {
+    if ($null -eq $writer) { return }
+    try {
+        $entry = [ordered]@{
+            timeUtc = [DateTime]::UtcNow.ToString('o')
+            kind = $kind
+            item = $index
+            stage = $script:ArtCraftValidationStage
+            details = $details
+        }
+        $writer.WriteLine(($entry | ConvertTo-Json -Compress -Depth 8))
+        $writer.Flush()
+    } catch {
+        # Diagnostics are best-effort and must not change the fail-closed install decision.
+    }
+}
+
+function Write-ArtCraftFailure($writer, [int]$index, $record) {
+    $outer = $record.Exception
+    $root = Get-ArtCraftRootException $outer
+    $reason = ([string]$root.Message) -replace '[\r\n\t]+', ' '
+    if ($reason.Length -gt 2048) { $reason = $reason.Substring(0, 2048) }
+    Write-ArtCraftDiagnostic $writer 'validation-failure' $index @{
+        exceptionType = $outer.GetType().FullName
+        hresult = Format-ArtCraftHResult $outer
+        rootExceptionType = $root.GetType().FullName
+        rootHresult = Format-ArtCraftHResult $root
+        reason = $reason
+    }
+}
+
+function Get-ArtCraftUacContext {
+    $key = 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System'
+    $policy = Get-ItemProperty -LiteralPath $key -ErrorAction SilentlyContinue
+    $parentElevated = $null
+    if ($env:ARTCRAFT_BATCH_PARENT_ELEVATED -cin @('True', 'False')) {
+        $parentElevated = [bool]::Parse($env:ARTCRAFT_BATCH_PARENT_ELEVATED)
+    }
+    $enableLUA = $null
+    $adminPrompt = $null
+    $userPrompt = $null
+    if ($null -ne $policy) {
+        $value = $policy.PSObject.Properties['EnableLUA']
+        if ($null -ne $value) { $enableLUA = [int]$value.Value }
+        $value = $policy.PSObject.Properties['ConsentPromptBehaviorAdmin']
+        if ($null -ne $value) { $adminPrompt = [int]$value.Value }
+        $value = $policy.PSObject.Properties['ConsentPromptBehaviorUser']
+        if ($null -ne $value) { $userPrompt = [int]$value.Value }
+    }
+    $identity = [Security.Principal.WindowsIdentity]::GetCurrent()
+    $principal = [Security.Principal.WindowsPrincipal]::new($identity)
+    $observation = 'RunAs was requested; prompt visibility depends on the caller token and Windows policy.'
+    if ($parentElevated -eq $true) {
+        $observation = 'The requesting PowerShell process was already elevated, so RunAs may not display another approval.'
+    } elseif ($enableLUA -eq 0) {
+        $observation = 'EnableLUA is 0; User Account Control is disabled by machine policy.'
+    } elseif ($adminPrompt -eq 0) {
+        $observation = 'ConsentPromptBehaviorAdmin is 0; administrator elevation is configured without an interactive prompt.'
+    } elseif ($adminPrompt -eq 5) {
+        $observation = 'ConsentPromptBehaviorAdmin is 5; this policy prompts only for non-Windows binaries, so inspect whether Windows PowerShell was auto-approved.'
+    }
+    return [ordered]@{
+        requestingPowerShellWasElevated = $parentElevated
+        elevatedPowerShellIsAdministrator = $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+        enableLUA = $enableLUA
+        consentPromptBehaviorAdmin = $adminPrompt
+        consentPromptBehaviorUser = $userPrompt
+        observation = $observation
+    }
+}
 
 function Assert-LocalPath([string]$path) {
     # No UNC/device paths, alternate streams, quotes, control characters or relative paths.
@@ -232,11 +317,14 @@ function New-MsiApi {
         @('MsiViewFetch', @($u, $ref)),
         @('MsiRecordGetStringW', @($u, $u, [Text.StringBuilder], $ref)),
         @('MsiGetSummaryInformationW', @($u, [string], $u, $ref)),
-        @('MsiSummaryInfoGetPropertyW', @($u, $u, $ref, $iref, [Text.StringBuilder], $ref)),
+        # FILETIME* is required even for string properties such as PID_TEMPLATE.
+        @('MsiSummaryInfoGetPropertyW', @($u, $u, $ref, $iref, [IntPtr], [Text.StringBuilder], $ref)),
         @('MsiViewClose', @($u)),
         @('MsiCloseHandle', @($u)))
     foreach ($definition in $definitions) {
-        $method = $type.DefinePInvokeMethod($definition[0], $dll,
+        $name = [string]$definition[0]
+        # Use the overload with a separately named export to keep the native entry point explicit.
+        $method = $type.DefinePInvokeMethod($name, $dll, $name,
             [Reflection.MethodAttributes]'Public, Static, PinvokeImpl',
             [Reflection.CallingConventions]::Standard, $u, [Type[]]$definition[1],
             [Runtime.InteropServices.CallingConvention]::Winapi,
@@ -249,32 +337,43 @@ function New-MsiApi {
 function Get-MsiTemplate($api, [uint32]$db) {
     # PID_TEMPLATE (7) records the actual package platform independently of its filename.
     $arguments = [object[]]@($db, [string]$null, [uint32]0, [uint32]0)
-    if ($api.GetMethod('MsiGetSummaryInformationW').Invoke($null, $arguments) -ne 0) { throw 'MSI summary query failed' }
+    Set-ArtCraftValidationStage 'msi-summary-open'
+    $status = $api.GetMethod('MsiGetSummaryInformationW').Invoke($null, $arguments)
+    if ($status -ne 0) { throw "MsiGetSummaryInformationW failed with Windows Installer status $status" }
     $summary = [uint32]$arguments[3]
     try {
         $template = [Text.StringBuilder]::new(256)
-        $arguments = [object[]]@($summary, [uint32]7, [uint32]0, [int32]0, $template, [uint32]256)
-        if ($api.GetMethod('MsiSummaryInfoGetPropertyW').Invoke($null, $arguments) -ne 0) { throw 'MSI platform metadata is unreadable' }
+        $arguments = [object[]]@($summary, [uint32]7, [uint32]0, [int32]0, [IntPtr]::Zero, $template, [uint32]256)
+        Set-ArtCraftValidationStage 'msi-summary-template'
+        $status = $api.GetMethod('MsiSummaryInfoGetPropertyW').Invoke($null, $arguments)
+        if ($status -ne 0) { throw "MsiSummaryInfoGetPropertyW failed with Windows Installer status $status" }
         return $template.ToString().Split(';')[0]
     } finally { $null = $api.GetMethod('MsiCloseHandle').Invoke($null, [object[]]@($summary)) }
 }
 
 function Get-MsiProperty($api, [uint32]$db, [string]$name) {
     # name is a program literal. MSI APIs open the protected staged file READ-ONLY.
+    Set-ArtCraftValidationStage "msi-property-open:$name"
     $arguments = [object[]]@($db, "SELECT Value FROM Property WHERE Property='$name'", [uint32]0)
-    if ($api.GetMethod('MsiDatabaseOpenViewW').Invoke($null, $arguments) -ne 0) { throw 'MSI query failed' }
+    $status = $api.GetMethod('MsiDatabaseOpenViewW').Invoke($null, $arguments)
+    if ($status -ne 0) { throw "MsiDatabaseOpenViewW failed for property $name with Windows Installer status $status" }
     $view = [uint32]$arguments[2]
     try {
-        if ($api.GetMethod('MsiViewExecute').Invoke($null, [object[]]@($view, [uint32]0)) -ne 0) { throw 'MSI query failed' }
+        Set-ArtCraftValidationStage "msi-property-execute:$name"
+        $status = $api.GetMethod('MsiViewExecute').Invoke($null, [object[]]@($view, [uint32]0))
+        if ($status -ne 0) { throw "MsiViewExecute failed for property $name with Windows Installer status $status" }
         $arguments = [object[]]@($view, [uint32]0)
+        Set-ArtCraftValidationStage "msi-property-fetch:$name"
         $status = $api.GetMethod('MsiViewFetch').Invoke($null, $arguments)
         if ($status -eq 259) { return '' }
-        if ($status -ne 0) { throw 'MSI record failed' }
+        if ($status -ne 0) { throw "MsiViewFetch failed for property $name with Windows Installer status $status" }
         $record = [uint32]$arguments[1]
         try {
             $value = [Text.StringBuilder]::new(1024)
             $arguments = [object[]]@($record, [uint32]1, $value, [uint32]1024)
-            if ($api.GetMethod('MsiRecordGetStringW').Invoke($null, $arguments) -ne 0) { throw 'MSI property too long or unreadable' }
+            Set-ArtCraftValidationStage "msi-property-read:$name"
+            $status = $api.GetMethod('MsiRecordGetStringW').Invoke($null, $arguments)
+            if ($status -ne 0) { throw "MsiRecordGetStringW failed for property $name with Windows Installer status $status" }
             return $value.ToString()
         } finally { $null = $api.GetMethod('MsiCloseHandle').Invoke($null, [object[]]@($record)) }
     } finally {
@@ -284,10 +383,13 @@ function Get-MsiProperty($api, [uint32]$db, [string]$name) {
 }
 
 function Assert-MsiIdentity([string]$file, $app, [string]$version, [string]$asset) {
+    Set-ArtCraftValidationStage 'msi-api-bindings'
     $api = New-MsiApi
     # Reflection.Invoke must receive System.String, not PowerShell's PSObject wrapper.
     $arguments = [object[]]@([string]$file, [IntPtr]::Zero, [uint32]0)
-    if ($api.GetMethod('MsiOpenDatabaseW').Invoke($null, $arguments) -ne 0) { throw 'Cannot open MSI read-only' }
+    Set-ArtCraftValidationStage 'msi-database-open'
+    $status = $api.GetMethod('MsiOpenDatabaseW').Invoke($null, $arguments)
+    if ($status -ne 0) { throw "MsiOpenDatabaseW failed with Windows Installer status $status" }
     $db = [uint32]$arguments[2]
     try {
         $packageArch = switch -Regex ($asset) {
@@ -296,35 +398,43 @@ function Assert-MsiIdentity([string]$file, $app, [string]$version, [string]$asse
             '-windows-arm64\.msi$' { 'Arm64'; break }
             default { throw 'MSI architecture is not authorized' }
         }
-        if ((Get-MsiTemplate $api $db) -cne $packageArch -or
-            (Get-MsiProperty $api $db 'ALLUSERS') -cne '1' -or
-            (Get-MsiProperty $api $db 'MSIINSTALLPERUSER') -notin @('', '0') -or
-            (Get-MsiProperty $api $db 'Manufacturer') -cne 'Learning Machines LLC' -or
-            (Get-MsiProperty $api $db 'ProductName') -cnotin $app.names -or
-            (Get-MsiProperty $api $db 'ProductVersion') -cne $version) { throw 'MSI identity/scope mismatch' }
+        Set-ArtCraftValidationStage 'msi-template'
+        $template = Get-MsiTemplate $api $db
+        if ($template -cne $packageArch) { throw 'MSI platform does not match the release asset architecture' }
+        Set-ArtCraftValidationStage 'msi-property:ALLUSERS'
+        if ((Get-MsiProperty $api $db 'ALLUSERS') -cne '1') { throw 'MSI must declare ALLUSERS=1' }
+        Set-ArtCraftValidationStage 'msi-property:MSIINSTALLPERUSER'
+        if ((Get-MsiProperty $api $db 'MSIINSTALLPERUSER') -notin @('', '0')) { throw 'MSI declares per-user installation scope' }
+        Set-ArtCraftValidationStage 'msi-property:Manufacturer'
+        if ((Get-MsiProperty $api $db 'Manufacturer') -cne 'Learning Machines LLC') { throw 'MSI Manufacturer is not the approved ArtCraft value' }
+        Set-ArtCraftValidationStage 'msi-property:ProductName'
+        if ((Get-MsiProperty $api $db 'ProductName') -cnotin $app.names) { throw 'MSI ProductName does not match the authorized app' }
+        Set-ArtCraftValidationStage 'msi-property:ProductVersion'
+        if ((Get-MsiProperty $api $db 'ProductVersion') -cne $version) { throw 'MSI ProductVersion does not match the authorized release' }
     } finally { $null = $api.GetMethod('MsiCloseHandle').Invoke($null, [object[]]@($db)) }
 }
 
 function Assert-AuthenticodePublisher([string]$publisher) {
     # Signing identity is independent of the authored MSI Manufacturer (Learning Machines LLC).
     # Exact identity, not an alias/prefix/wildcard. Windows validates the certificate chain first.
-    if ($publisher -cne 'Learning Machines Inc') { throw 'Official Authenticode publisher required' }
+    if ($publisher -cne 'Learning Machines Inc') { throw "Authenticode signer '$publisher' is not the approved publisher" }
 }
 
 function Assert-OfficialSignature([string]$file) {
     try { $sig = Microsoft.PowerShell.Security\Get-AuthenticodeSignature -LiteralPath $file }
-    catch { throw 'Official Authenticode signature required' }
+    catch { throw "Authenticode inspection failed: $($_.Exception.Message)" }
     if ($sig.Status -ne 'Valid' -or $null -eq $sig.SignerCertificate) {
-        throw 'Official Authenticode signature required'
+        throw "Authenticode status is $($sig.Status); a valid Windows certificate chain is required"
     }
     $certificate = $sig.SignerCertificate
-    Assert-AuthenticodePublisher ($certificate.GetNameInfo([Security.Cryptography.X509Certificates.X509NameType]::SimpleName, $false))
-    if ($certificate.GetNameInfo([Security.Cryptography.X509Certificates.X509NameType]::OrganizationName, $false) -cne 'Learning Machines Inc') {
-        throw 'Official Authenticode organization required'
-    }
+    $simpleName = $certificate.GetNameInfo([Security.Cryptography.X509Certificates.X509NameType]::SimpleName, $false)
+    $organization = $certificate.GetNameInfo([Security.Cryptography.X509Certificates.X509NameType]::OrganizationName, $false)
+    Assert-AuthenticodePublisher $simpleName
+    if ($organization -cne 'Learning Machines Inc') { throw "Authenticode signer organization '$organization' is not the approved publisher" }
 }
 
 function Get-ReleaseAuthorization($item, $catalog) {
+    Set-ArtCraftValidationStage 'release-catalog-identity'
     $app = @($catalog | Where-Object { $_.id -ceq $item.release.app })
     if ($app.Count -ne 1) { throw 'Unknown app' }
     $app = $app[0]
@@ -345,13 +455,18 @@ function Get-ReleaseAuthorization($item, $catalog) {
     # The catalog is compiled into the policy. No caller-supplied repository, URL or digest is
     # authoritative. Fetch SHA256SUMS.txt independently after elevation over Windows TLS.
     $url = "https://github.com/$($app.repo)/releases/download/$tag/SHA256SUMS.txt"
-    $sha = Get-PublishedHash (Read-OfficialChecksums $url) $asset
+    Set-ArtCraftValidationStage 'published-checksum-download'
+    $checksumFile = Read-OfficialChecksums $url
+    Set-ArtCraftValidationStage 'published-checksum-entry'
+    $sha = Get-PublishedHash $checksumFile $asset
+    Set-ArtCraftValidationStage 'published-checksum-match'
     if ($item.sha256 -cne $sha) { throw 'Caller checksum disagrees with official publication' }
     return @{ app = $app; sha = $sha; version = $numeric; asset = $asset }
 }
 
 function Copy-VerifiedPackage($item, $authorization, [string]$root, [int]$index, [int]$port, [string]$session) {
     $target = [IO.Path]::Combine($root, "$index.msi")
+    Set-ArtCraftValidationStage 'loopback-package-stream'
     # Never open a caller-owned path as administrator: even an initially local path could
     # race through a junction to an SMB share and leak elevated network credentials.
     # A loopback-only byte source runs unelevated. Its bytes remain entirely untrusted.
@@ -382,11 +497,14 @@ function Copy-VerifiedPackage($item, $authorization, [string]$root, [int]$index,
     } finally { $response.Dispose() }
     $locked = [IO.File]::Open($target, [IO.FileMode]::Open, [IO.FileAccess]::Read, [IO.FileShare]::Read)
     try {
+        Set-ArtCraftValidationStage 'staged-package-hash'
         $hash = [Security.Cryptography.SHA256]::Create()
         try { $actual = ([BitConverter]::ToString($hash.ComputeHash($locked))).Replace('-', '').ToLowerInvariant() }
         finally { $hash.Dispose() }
         if ($actual -cne $authorization.sha) { throw 'Changed package' }
+        Set-ArtCraftValidationStage 'authenticode-chain-and-publisher'
         Assert-OfficialSignature $target
+        Set-ArtCraftValidationStage 'msi-identity-and-scope'
         Assert-MsiIdentity ([string]$target) $authorization.app $authorization.version $authorization.asset
     } finally { $locked.Dispose() }
     return $target
@@ -402,23 +520,35 @@ function Test-AppRunning($app) {
 }
 
 function Invoke-ArtCraftBatch($request, $catalog) {
+    Set-ArtCraftValidationStage 'batch-request'
     if ($request.items.Count -lt 1 -or $request.items.Count -gt 64) { throw 'Invalid batch size' }
     if ($request.port -lt 1 -or $request.port -gt 65535) { throw 'Invalid local source port' }
     $root = New-ProtectedRun ([string]$request.session)
-    $results = New-ProtectedFile ([IO.Path]::Combine($root, 'results')) $true
-    $writer = [IO.StreamWriter]::new($results, [Text.UTF8Encoding]::new($false))
-    $writer.AutoFlush = $true
+    $diagnosticsHandle = New-ProtectedFile ([IO.Path]::Combine($root, 'diagnostics.jsonl'))
+    $diagnosticsWriter = [IO.StreamWriter]::new($diagnosticsHandle, [Text.UTF8Encoding]::new($false))
+    $script:ArtCraftDiagnosticWriter = $diagnosticsWriter
+    $results = $null
+    $writer = $null
     try {
+        Set-ArtCraftValidationStage 'uac-context'
+        $uacContext = Get-ArtCraftUacContext
+        Write-ArtCraftDiagnostic $diagnosticsWriter 'batch-context' $null $uacContext
+        $results = New-ProtectedFile ([IO.Path]::Combine($root, 'results')) $true
+        $writer = [IO.StreamWriter]::new($results, [Text.UTF8Encoding]::new($false))
+        $writer.AutoFlush = $true
         for ($i = 0; $i -lt $request.items.Count; $i++) {
             $item = $request.items[$i]
             $code = 'rejected'
             $staged = [IO.Path]::Combine($root, "$i.msi")
             try {
+                Set-ArtCraftValidationStage 'release-authorization'
                 $authorization = Get-ReleaseAuthorization $item $catalog
                 $staged = Copy-VerifiedPackage $item $authorization $root $i $request.port $request.session
                 # Check immediately before each installation, including apps started during UAC.
+                Set-ArtCraftValidationStage 'running-application-check'
                 if (Test-AppRunning $authorization.app) { $code = 'running' }
                 else {
+                    Set-ArtCraftValidationStage 'installer-file-lock'
                     $locked = [IO.File]::Open($staged, [IO.FileMode]::Open, [IO.FileAccess]::Read, [IO.FileShare]::Read)
                     try {
                         $start = New-Object Diagnostics.ProcessStartInfo
@@ -433,25 +563,38 @@ function Invoke-ArtCraftBatch($request, $catalog) {
                         # remains in the same single UAC session for each sequential MSI.
                         $start.Arguments = '/i "' + $staged + '" /passive /norestart ALLUSERS=1 /l*v "' + $log + '"'
                         if ($null -ne $item.destination) {
+                            Set-ArtCraftValidationStage 'install-destination-acl'
                             $destination = Assert-InstallDestination ([string]$item.destination) $authorization.app
                             # Always pass a trailing separator, doubled before the closing quote
                             # for Windows argument decoding (including a drive-root folder).
                             $start.Arguments += ' INSTALLFOLDER="' + $destination.TrimEnd('\') + '\\"'
                         }
+                        Set-ArtCraftValidationStage 'windows-installer-launch'
                         $child = [Diagnostics.Process]::Start($start)
                         try { $child.WaitForExit(); $code = [string]$child.ExitCode }
                         finally { $child.Dispose() }
+                        Write-ArtCraftDiagnostic $diagnosticsWriter 'installer-exit' $i @{ exitCode = $code; log = "$i.log" }
                     } finally { $locked.Dispose() }
                 }
             } catch {
-                # Deliberately return fixed codes, not exception text containing source data.
+                # Keep the launcher message fixed and sanitized; full failure data stays in the
+                # administrator-owned diagnostics file, never in the user-writable UI channel.
+                Write-ArtCraftFailure $diagnosticsWriter $i $_
                 $code = 'rejected'
             } finally {
                 [IO.File]::Delete($staged)
             }
             $writer.WriteLine("$i $code")
         }
-    } finally { $writer.Dispose(); $results.Dispose() }
+    } catch {
+        Write-ArtCraftFailure $diagnosticsWriter -1 $_
+        throw
+    } finally {
+        if ($null -ne $writer) { $writer.Dispose() }
+        if ($null -ne $results) { $results.Dispose() }
+        $diagnosticsWriter.Dispose()
+        $script:ArtCraftDiagnosticWriter = $null
+    }
 }
 "#;
 
@@ -463,11 +606,18 @@ fn encode_command(script: &str) -> String {
 }
 
 #[cfg(any(windows, test))]
+fn compact_policy(script: &str) -> String {
+    script.lines().filter(|line| !line.trim().is_empty() && !line.trim_start().starts_with('#')).collect::<Vec<_>>().join("\n")
+}
+
+#[cfg(any(windows, test))]
 fn compressed_command(script: &str) -> Result<String, String> {
     use base64::Engine as _;
     use std::io::Write as _;
-    let mut gzip = flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::default());
-    gzip.write_all(script.as_bytes()).map_err(|e| e.to_string())?;
+    let mut gzip = flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::best());
+    // Source comments/blank lines do not affect the fixed PowerShell policy and waste space
+    // in the bounded ShellExecute command line.
+    gzip.write_all(compact_policy(script).as_bytes()).map_err(|e| e.to_string())?;
     let data = base64::engine::general_purpose::STANDARD.encode(gzip.finish().map_err(|e| e.to_string())?);
     Ok(encode_command(&format!(
         "$m=[IO.MemoryStream]::new([Convert]::FromBase64String('{data}')); \
@@ -549,6 +699,9 @@ pub fn install(items: &[Item], report: &mut dyn FnMut(usize, crate::msi_batch::R
         let management = management.to_str().ok_or("unusual Windows system path")?.replace('\'', "''");
         let outer = format!(
             "$ErrorActionPreference='Stop'; try {{ Import-Module '{management}'; \
+             $parentIdentity = [Security.Principal.WindowsIdentity]::GetCurrent(); \
+             $parentPrincipal = [Security.Principal.WindowsPrincipal]::new($parentIdentity); \
+             $env:ARTCRAFT_BATCH_PARENT_ELEVATED = [string]$parentPrincipal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator); \
              $p = Microsoft.PowerShell.Management\\Start-Process -FilePath '{host}' -WorkingDirectory '{cwd}' \
              -ArgumentList '-NoProfile -NonInteractive -EncodedCommand {script}' -Verb RunAs -Wait -PassThru; exit $p.ExitCode \
              }} catch {{ $e=$_.Exception; while ($e) {{ if ($e.NativeErrorCode -eq 1223) {{ exit 1223 }}; $e=$e.InnerException }}; exit 1 }}"
@@ -660,13 +813,169 @@ mod tests {
     #[test]
     fn fixed_policy_keeps_publisher_metadata_and_architecture_checks_independent() {
         assert!(POLICY.contains("Learning Machines Inc"), "Authenticode signer policy");
-        assert!(POLICY.contains("X509NameType]::OrganizationName") && POLICY.contains("Official Authenticode organization required"));
+        assert!(POLICY.contains("X509NameType]::OrganizationName") && POLICY.contains("Authenticode signer organization"));
         assert!(POLICY.contains("'Manufacturer') -cne 'Learning Machines LLC'"), "MSI Manufacturer policy");
         assert!(POLICY.contains("Get-MsiTemplate") && POLICY.contains("MSI architecture is not authorized"));
-        assert!(POLICY.contains("(Get-MsiProperty $api $db 'ALLUSERS') -cne '1'"));
-        assert!(POLICY.contains("(Get-MsiProperty $api $db 'MSIINSTALLPERUSER') -notin @('', '0')"));
+        assert!(POLICY.contains("if ((Get-MsiProperty $api $db 'ALLUSERS') -cne '1')"));
+        assert!(POLICY.contains("if ((Get-MsiProperty $api $db 'MSIINSTALLPERUSER') -notin @('', '0'))"));
         assert!(POLICY.contains("[object[]]@([string]$file, [IntPtr]::Zero, [uint32]0)"));
+        assert!(POLICY.contains("$type.DefinePInvokeMethod($name, $dll, $name"), "native entry points are explicit");
+        assert!(POLICY.contains("@($u, $u, $ref, $iref, [IntPtr], [Text.StringBuilder], $ref)"), "summary API includes FILETIME*");
+        assert!(POLICY.contains("[int32]0, [IntPtr]::Zero, $template, [uint32]256"), "PID_TEMPLATE passes a null FILETIME*");
+        assert!(POLICY.contains("diagnostics.jsonl") && POLICY.contains("rootHresult") && POLICY.contains("validation-failure"));
+        assert!(POLICY.contains("ConsentPromptBehaviorAdmin") && POLICY.contains("requestingPowerShellWasElevated"));
         assert!(!POLICY.contains("Learning Machines LLC') -or"), "the certificate subject and MSI Manufacturer stay separate");
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn powershell_binds_real_msi_exports_with_the_documented_argument_counts() {
+        let test = format!(
+            "{POLICY}\n{}",
+            r#"
+$api = New-MsiApi
+$expected = @{{
+    MsiOpenDatabaseW = 3
+    MsiDatabaseOpenViewW = 3
+    MsiViewExecute = 2
+    MsiViewFetch = 2
+    MsiRecordGetStringW = 4
+    MsiGetSummaryInformationW = 4
+    MsiSummaryInfoGetPropertyW = 7
+    MsiViewClose = 1
+    MsiCloseHandle = 1
+}}
+foreach ($entry in $expected.GetEnumerator()) {{
+    $method = $api.GetMethod([string]$entry.Key)
+    if ($null -eq $method) {{ throw "Missing MSI method $($entry.Key)" }}
+    if ($method.GetParameters().Length -ne [int]$entry.Value) {{ throw "Wrong arity for $($entry.Key)" }}
+    $attribute = @($method.GetCustomAttributes([Runtime.InteropServices.DllImportAttribute], $false))
+    if ($attribute.Count -ne 1 -or $attribute[0].EntryPoint -cne [string]$entry.Key) {{
+        throw "Wrong native export for $($entry.Key)"
+    }}
+    if ([IO.Path]::GetFileName($attribute[0].Value) -cne 'msi.dll') {{ throw "Wrong MSI library for $($entry.Key)" }}
+}}
+$missing = Join-Path $env:TEMP ('ArtCraft-Missing-' + [Guid]::NewGuid().ToString('N') + '.msi')
+$arguments = [object[]]@($missing, [IntPtr]::Zero, [uint32]0)
+$status = $api.GetMethod('MsiOpenDatabaseW').Invoke($null, $arguments)
+if ([uint32]$status -ne 1619) {{ throw "MsiOpenDatabaseW returned unexpected status $status, expected 1619" }}
+Set-ArtCraftValidationStage 'test-start'
+$caught = $false
+try {{ Assert-MsiIdentity $missing @{{ names = @('PhotoCraft') }} '0.5.0' 'photocraft-0.5.0-windows-x64.msi' }}
+catch {{
+    if ($script:ArtCraftValidationStage -cne 'msi-database-open') {{ throw "Unexpected failure stage $script:ArtCraftValidationStage" }}
+    if ($_.Exception.Message -notmatch 'MsiOpenDatabaseW failed with Windows Installer status 1619') {{ throw }}
+    $caught = $true
+}}
+if (-not $caught) {{ throw 'Assert-MsiIdentity unexpectedly accepted a missing MSI' }}
+"MSI exports and signatures passed; missing-package status=$status"
+"#
+        );
+        let encoded = encode_command(&test);
+        let output = std::process::Command::new(system_powershell().unwrap())
+            .args(["-NoProfile", "-NonInteractive", "-EncodedCommand", &encoded])
+            .output()
+            .unwrap();
+        assert!(output.status.success(), "stdout: {}\nstderr: {}", String::from_utf8_lossy(&output.stdout), String::from_utf8_lossy(&output.stderr));
+        assert!(String::from_utf8_lossy(&output.stdout).contains("MSI exports and signatures passed"));
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn powershell_diagnostics_record_stage_exception_hresult_and_actionable_reason() {
+        let nonce = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos();
+        let path = std::env::temp_dir().join(format!("ArtCraft-diagnostics-{}-{nonce}.jsonl", std::process::id()));
+        let path = path.to_string_lossy().replace('\'', "''");
+        let test = format!(
+            "{POLICY}\n{}",
+            r#"
+$path = 'PATH_TOKEN'
+$writer = [IO.StreamWriter]::new($path, $false, [Text.UTF8Encoding]::new($false))
+try {
+    Set-ArtCraftValidationStage 'test-msi-database-open'
+    $record = [PSCustomObject]@{ Exception = [IO.FileNotFoundException]::new('MSI database could not be opened') }
+    Write-ArtCraftFailure $writer 4 $record
+} finally { $writer.Dispose() }
+$entry = Get-Content -LiteralPath $path | ConvertFrom-Json
+if ($entry.kind -cne 'validation-failure' -or $entry.item -ne 4) { throw 'Wrong diagnostic kind/item' }
+if ($entry.stage -cne 'test-msi-database-open') { throw 'Wrong validation stage' }
+if ($entry.details.rootExceptionType -cne 'System.IO.FileNotFoundException') { throw 'Wrong root exception type' }
+if ($entry.details.rootHresult -cne '0x80070002') { throw "Wrong root HRESULT $($entry.details.rootHresult)" }
+if ($entry.details.reason -cne 'MSI database could not be opened') { throw 'Wrong actionable reason' }
+Remove-Item -LiteralPath $path -Force
+'Protected diagnostic record shape passed'
+"#
+            .replace("PATH_TOKEN", &path)
+        );
+        let encoded = encode_command(&test);
+        let output = std::process::Command::new(system_powershell().unwrap())
+            .args(["-NoProfile", "-NonInteractive", "-EncodedCommand", &encoded])
+            .output()
+            .unwrap();
+        assert!(output.status.success(), "stdout: {}\nstderr: {}", String::from_utf8_lossy(&output.stdout), String::from_utf8_lossy(&output.stderr));
+        assert!(String::from_utf8_lossy(&output.stdout).contains("Protected diagnostic record shape passed"));
+    }
+
+    /// Opt-in real-release check for a disposable Windows test environment; it never installs.
+    #[cfg(windows)]
+    #[test]
+    #[ignore = "requires the official PhotoCraft v0.13.0 and VectorCraft v0.15.0 MSI files"]
+    fn validates_documented_official_msi_packages_with_windows_signature_and_database_apis() {
+        #[derive(Serialize)]
+        struct CatalogApp {
+            id: &'static str,
+            repo: &'static str,
+            names: Vec<&'static str>,
+            stems: Vec<&'static str>,
+        }
+
+        let dir = std::env::var_os("ARTCRAFT_TEST_OFFICIAL_MSI_DIR")
+            .expect("set ARTCRAFT_TEST_OFFICIAL_MSI_DIR to the folder containing the documented releases");
+        let dir = std::path::PathBuf::from(dir);
+        let identities: serde_json::Value = serde_json::from_str(include_str!("../../../docs/windows-msi-identities.json")).unwrap();
+        let mut cases = Vec::new();
+        for asset_name in ["photocraft-0.13.0-windows-x64.msi", "vectorcraft-0.15.0-windows-x64.msi"] {
+            let package = identities["packages"].as_array().unwrap().iter().find(|package| package["asset"] == asset_name).unwrap();
+            let path = dir.join(asset_name);
+            let actual_hash = crate::http::sha256_file(&path).unwrap();
+            assert_eq!(actual_hash, package["sha256"].as_str().unwrap(), "official checksum mismatch: {asset_name}");
+            let app_id = if asset_name.starts_with("photo") { "photocraft" } else { "vectorcraft" };
+            let app = CraftApp::by_id(app_id).unwrap();
+            let asset = release::Asset { name: asset_name.to_owned(), url: package["url"].as_str().unwrap().to_owned(), ..Default::default() };
+            let release = release_identity(app, &asset).unwrap();
+            cases.push(serde_json::json!({
+                "path": path,
+                "release": release,
+                "sha256": actual_hash,
+            }));
+        }
+        let catalog: Vec<_> = artcraft_launcher_core::catalog::SUITE
+            .iter()
+            .filter(|app| app.kind == AppKind::Official && app.repo.starts_with("storytold/"))
+            .map(|app| CatalogApp { id: app.id, repo: app.repo, names: app.names().collect(), stems: app.stems().collect() })
+            .collect();
+        use base64::Engine as _;
+        let case_data = base64::engine::general_purpose::STANDARD.encode(serde_json::to_vec(&cases).unwrap());
+        let catalog_data = base64::engine::general_purpose::STANDARD.encode(serde_json::to_vec(&catalog).unwrap());
+        let test = format!(
+            "{POLICY}\n$cases=[Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('{case_data}')) | ConvertFrom-Json\n\
+             $catalog=[Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('{catalog_data}')) | ConvertFrom-Json\n\
+             foreach ($item in $cases) {{\n\
+               $authorization=Get-ReleaseAuthorization $item $catalog\n\
+               $file=[string]$item.path\n\
+               $locked=[IO.File]::Open($file,[IO.FileMode]::Open,[IO.FileAccess]::Read,[IO.FileShare]::Read)\n\
+               try {{ $hash=[Security.Cryptography.SHA256]::Create(); try {{ $actual=([BitConverter]::ToString($hash.ComputeHash($locked))).Replace('-','').ToLowerInvariant() }} finally {{ $hash.Dispose() }}; if ($actual -cne $authorization.sha) {{ throw 'MSI checksum differs from official publication' }} }} finally {{ $locked.Dispose() }}\n\
+               Assert-OfficialSignature $file\n\
+               Assert-MsiIdentity $file $authorization.app $authorization.version $authorization.asset\n\
+               Write-Output ($item.release.app + ' ' + $authorization.version + ' checksum/signature/MSI identity passed')\n\
+             }}\n"
+        );
+        let encoded = encode_command(&test);
+        let output = std::process::Command::new(system_powershell().unwrap())
+            .args(["-NoProfile", "-NonInteractive", "-EncodedCommand", &encoded])
+            .output()
+            .unwrap();
+        assert!(output.status.success(), "stdout: {}\nstderr: {}", String::from_utf8_lossy(&output.stdout), String::from_utf8_lossy(&output.stderr));
     }
 
     #[test]
@@ -699,7 +1008,7 @@ mod tests {
         let mut decoder = flate2::read::GzDecoder::new(gzip.as_slice());
         let mut decoded = String::new();
         std::io::Read::read_to_string(&mut decoder, &mut decoded).unwrap();
-        assert_eq!(decoded, script);
+        assert_eq!(decoded, compact_policy(&script));
     }
 
     #[test]
