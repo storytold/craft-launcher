@@ -351,9 +351,9 @@ function Invoke-MsiApi($api, [string]$name, [object[]]$arguments) {
     $callArguments = [Array]::CreateInstance([object], $parameters.Length)
     for ($index = 0; $index -lt $parameters.Length; $index++) {
         $value = $source.GetValue($index)
-        if ($null -ne $value) { $value = [System.Management.Automation.PSObject]::AsPSObject($value).BaseObject }
+        if ($null -ne $value) { $value = $value.PSObject.BaseObject }
         while ($null -ne $value -and $value -is [System.Management.Automation.PSObject]) {
-            $baseValue = [System.Management.Automation.PSObject]::AsPSObject($value).BaseObject
+            $baseValue = $value.PSObject.BaseObject
             if ([object]::ReferenceEquals($value, $baseValue)) { break }
             $value = $baseValue
         }
@@ -378,15 +378,15 @@ function Invoke-MsiApi($api, [string]$name, [object[]]$arguments) {
     # Preserve native by-ref outputs in the caller's original array for handle/status use.
     for ($index = 0; $index -lt $parameters.Length; $index++) {
         $value = $callArguments.GetValue($index)
-        if ($null -ne $value) { $value = [System.Management.Automation.PSObject]::AsPSObject($value).BaseObject }
+        if ($null -ne $value) { $value = $value.PSObject.BaseObject }
         while ($null -ne $value -and $value -is [System.Management.Automation.PSObject]) {
-            $baseValue = [System.Management.Automation.PSObject]::AsPSObject($value).BaseObject
+            $baseValue = $value.PSObject.BaseObject
             if ([object]::ReferenceEquals($value, $baseValue)) { break }
             $value = $baseValue
         }
         $source.SetValue($value, $index)
     }
-    if ($null -ne $result) { $result = [System.Management.Automation.PSObject]::AsPSObject($result).BaseObject }
+    if ($null -ne $result) { $result = $result.PSObject.BaseObject }
     return $result
 }
 
@@ -912,10 +912,10 @@ mod tests {
         assert!(POLICY.contains("@($u, $u, $ref, $iref, [IntPtr], [Text.StringBuilder], $ref)"), "summary API includes FILETIME*");
         assert!(POLICY.contains("[int32]0, [IntPtr]::Zero, $template, [uint32]256"), "PID_TEMPLATE passes a null FILETIME*");
         assert!(
-            POLICY.contains("function Invoke-MsiApi") && POLICY.contains("PSObject]::AsPSObject($value).BaseObject"),
+            POLICY.contains("function Invoke-MsiApi") && POLICY.contains("$value.PSObject.BaseObject"),
             "reflection arguments are explicitly unwrapped"
         );
-        assert!(!POLICY.contains("PSObject]::Base("), "do not call the nonexistent PSObject::Base API");
+        assert!(!POLICY.contains("AsPSObject(") && !POLICY.contains("PSObject]::Base("), "use PowerShell's intrinsic PSObject member only");
         assert!(POLICY.contains("$source.SetValue($value, $index)"), "native ref/out values are copied back to the caller");
         assert_eq!(POLICY.matches("$method.Invoke($null, $callArguments)").count(), 1, "all MSI reflections use the typed invocation helper");
         assert!(POLICY.contains("diagnostics.jsonl") && POLICY.contains("rootHresult") && POLICY.contains("validation-failure"));
@@ -958,7 +958,8 @@ foreach ($entry in $expected.GetEnumerator()) {
 }
 $missing = Join-Path $env:TEMP ('ArtCraft-Missing-' + [Guid]::NewGuid().ToString('N') + '.msi')
 $arguments = [object[]]@($missing, [IntPtr]::Zero, [uint32]0)
-$pathBase = if ($null -ne $arguments[0]) { [System.Management.Automation.PSObject]::AsPSObject($arguments[0]).BaseObject }
+$pathBase = $null
+if ($null -ne $arguments[0]) { $pathBase = $arguments[0].PSObject.BaseObject }
 if ($null -eq $pathBase -or $pathBase.GetType().FullName -cne 'System.String') { throw 'MsiOpenDatabaseW path did not unwrap to System.String' }
 $status = Invoke-MsiApi $api 'MsiOpenDatabaseW' $arguments
 if ([uint32]$status -ne 1619) { throw "MsiOpenDatabaseW returned unexpected status $status, expected 1619" }

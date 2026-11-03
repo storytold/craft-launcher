@@ -65,7 +65,7 @@ user-writable temporary assembly. Reflection names each native export explicitly
 (passed as null for PID_TEMPLATE); the previous declaration omitted that argument and could
 misalign the native call before MSI logging or installation began. `MsiOpenDatabaseW` continues to
 receive CLR values through `Invoke-MsiApi`. That helper unwraps non-null PowerShell adapters with
-`PSObject.AsPSObject(value).BaseObject`, checks each runtime type against the reflected signature,
+`$value.PSObject.BaseObject`, checks each runtime type against the reflected signature,
 and copies native by-reference outputs back to the caller's array. This handles `PSObject` values
 retained inside PowerShell-created `object[]` arrays instead of relying on a string cast alone.
 
