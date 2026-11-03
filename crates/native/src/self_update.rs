@@ -28,8 +28,11 @@ fn to_update_paths(paths: &Paths) -> craft_update::Paths {
     craft_update::Paths { data: paths.data.clone(), cache: paths.cache.clone() }
 }
 
-fn to_update_release(release: &Release) -> craft_update::Release {
+/// craft-update's copy of `release`, read from `repo` (`""` for the launcher's own; the download
+/// links must be that repository's, craft-launcher#764).
+fn to_update_release(release: &Release, repo: &str) -> craft_update::Release {
     craft_update::Release {
+        repo: repo.to_string(),
         tag: release.tag.clone(),
         version: release.version.clone(),
         name: release.name.clone(),
@@ -65,7 +68,7 @@ fn to_update_platform(platform: Platform) -> craft_update::Platform {
 /// Whether `release` is the version this launcher just updated itself to.
 pub fn just_updated_to(paths: &Paths, release: &Release) -> bool {
     let update_paths = to_update_paths(paths);
-    let update_release = to_update_release(release);
+    let update_release = to_update_release(release, "");
     craft_update::self_update::just_updated_to(&update_paths, &update_release)
 }
 
@@ -75,13 +78,15 @@ pub fn take_failure(paths: &Paths) -> Option<String> {
     craft_update::self_update::take_failure(&update_paths)
 }
 
-/// Downloads `release` for `platform`, puts it in place and starts the helper that relaunches
-/// it once this process has exited. On success the caller must quit promptly. `last` is called
-/// once the download is ready and returns when the launcher may replace itself and restart.
+/// Downloads `release`, read from `repo` (the launcher's, or the one the feed renamed it to), for
+/// `platform`, puts it in place and starts the helper that relaunches it once this process has
+/// exited. On success the caller must quit promptly. `last` is called once the download is ready
+/// and returns when the launcher may replace itself and restart.
 #[allow(clippy::too_many_arguments)]
 pub fn update(
     install: &Install,
     release: &Release,
+    repo: &str,
     platform: Platform,
     _http: &Http,
     paths: &Paths,
@@ -89,7 +94,7 @@ pub fn update(
     phase: &mut dyn FnMut(JobPhase),
     last: &dyn Fn() -> Result<(), String>,
 ) -> Result<(), String> {
-    let update_release = to_update_release(release);
+    let update_release = to_update_release(release, repo);
     let update_platform = to_update_platform(platform);
     let update_paths = to_update_paths(paths);
     let update_http = craft_update::Http::new("ArtCraft-Launcher/SelfUpdate")?;
@@ -125,6 +130,31 @@ pub fn finish(args: &[OsString]) -> Option<Result<(), String>> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// #764: craft-update downloads only links in the repository the release was read from. A
+    /// release the feed renamed the launcher's repository to passes once it carries that
+    /// repository, and is refused as the launcher's own. A plain `+`, as the launcher's own
+    /// `release_from_sums` writes it, passes too.
+    #[test]
+    fn the_update_checks_links_against_the_repo_the_release_came_from() {
+        let app = &craft_update::suite::LAUNCHER;
+        let sums = |name: &str| [("a".repeat(64), name.to_string())];
+        let renamed = artcraft_launcher_core::release::release_from_sums(
+            "storytold/artcraft-launcher-next",
+            "v0.9.0",
+            &sums("artcraft-launcher-0.9.0-linux-x86_64.AppImage"),
+        );
+        let carried = to_update_release(&renamed, "storytold/artcraft-launcher-next");
+        assert!(craft_update::install::check_download_link(app, &carried, &carried.assets[0]).is_ok());
+        let own = to_update_release(&renamed, "");
+        assert!(craft_update::install::check_download_link(app, &own, &own.assets[0]).is_err());
+
+        let plus =
+            artcraft_launcher_core::release::release_from_sums(app.repo, "v0.9.0+b.1", &sums("artcraft-launcher-0.9.0+b.1-linux-x86_64.AppImage"));
+        assert!(plus.assets[0].url.contains("/v0.9.0+b.1/"), "{}", plus.assets[0].url);
+        let plus = to_update_release(&plus, app.repo);
+        assert!(craft_update::install::check_download_link(app, &plus, &plus.assets[0]).is_ok());
+    }
 
     #[test]
     fn a_development_build_does_not_update_itself() {
