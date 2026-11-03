@@ -411,3 +411,7 @@ materialcraft	Node graphs	Knotengraphen
 materialcraft	Combine noises, patterns and filters.	Rauschen, Muster und Filter kombinieren.
 materialcraft	Live previews	Live-Vorschauen
 materialcraft	Preview materials in 2D and on 3D models.	Materialien in 2D und auf 3D-Modellen anzeigen.
+	Advanced	Erweitert
+	Migrate Flatpak bundles to ArtCraft OCI (experimental)	Flatpak-Bundles zu ArtCraft OCI migrieren (experimentell)
+	On update, switch first party apps when the matching package is available. Otherwise, keep using bundles.	ArtCraft-Apps beim Aktualisieren umstellen, wenn das passende Paket verfügbar ist. Andernfalls weiterhin Bundles verwenden.
+	The OCI repository is a preview with GPG verification disabled.	Das OCI-Repository ist eine Vorschau mit deaktivierter GPG-Prüfung.
