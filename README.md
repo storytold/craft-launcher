@@ -92,7 +92,7 @@ The web version shows the same catalog in the browser, with the latest download 
 ## Interface languages
 
 The interface is in English, Brazilian Portuguese (Português (Brasil)), Czech (Čeština), French
-(Français), Georgian (ქართული), German (Deutsch), Hungarian (Magyar), Japanese (日本語), Polish
+(Français), Georgian (ქართული), German (Deutsch), Hungarian (Magyar), Italian (Italiano), Japanese (日本語), Polish
 (Polski), Russian (Русский), Simplified Chinese (简体中文), Traditional Chinese (繁體中文) or Spanish
 (Español). **Auto**, the default, follows the system or browser language; **Settings → Language**
 picks one and switches at once, and the choice is kept between runs. Czech locales (`cs-CZ`,
@@ -352,3 +352,5 @@ Forks and modified versions must remove them.
   <a href="https://getartcraft.com/"><img alt="ArtCraft" src="docs/brand/artcraft-mark.svg" width="28"></a><br>
   <sub>Made by the <a href="https://getartcraft.com/">ArtCraft</a> team and community.</sub>
 </p>
+
+Italian locales (`it`, `it-IT`, `it-CH`, `it_IT.UTF-8`) select Italiano. See `docs/localization-it.md`.
