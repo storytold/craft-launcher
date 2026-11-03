@@ -211,28 +211,56 @@ pub(crate) fn parse_inline(orig: &str) -> Vec<Inline<'_>> {
 }
 
 fn render_inline(ui: &mut Ui, text: &str, color: Color32, t: &Tokens, scale: f32) {
+    let space_w = (ui.spacing().item_spacing.x * scale).max(2.0);
+    ui.spacing_mut().item_spacing.x = 0.0;
+    let mut needs_space = text.starts_with(char::is_whitespace);
+
     let tokens = parse_inline(text);
     for token in tokens {
         match token {
             Inline::Plain(plain) => {
-                for word in plain.split_whitespace() {
+                if plain.starts_with(char::is_whitespace) {
+                    needs_space = true;
+                }
+                let mut words = plain.split_whitespace().peekable();
+                while let Some(word) = words.next() {
+                    if needs_space {
+                        ui.add_space(space_w);
+                    }
                     ui.label(RichText::new(word).size(13.5 * scale).color(color));
+                    needs_space = if words.peek().is_some() { true } else { plain.ends_with(char::is_whitespace) };
                 }
             }
             Inline::Bold(bold) => {
-                for word in bold.split_whitespace() {
+                if bold.starts_with(char::is_whitespace) {
+                    needs_space = true;
+                }
+                let mut words = bold.split_whitespace().peekable();
+                while let Some(word) = words.next() {
+                    if needs_space {
+                        ui.add_space(space_w);
+                    }
                     ui.label(RichText::new(word).strong().size(13.5 * scale).color(t.ink_strong));
+                    needs_space = if words.peek().is_some() { true } else { bold.ends_with(char::is_whitespace) };
                 }
             }
             Inline::Code(code) => {
+                if needs_space || code.starts_with(char::is_whitespace) {
+                    ui.add_space(space_w);
+                }
                 ui.label(RichText::new(code).monospace().size(12.0 * scale).color(t.ink));
+                needs_space = code.ends_with(char::is_whitespace);
             }
             Inline::Link { text, url } => {
+                if needs_space || text.starts_with(char::is_whitespace) {
+                    ui.add_space(space_w);
+                }
                 if artcraft_launcher_core::release::safe_web_link(url) {
                     ui.hyperlink_to(RichText::new(text).size(13.5 * scale), url);
                 } else {
                     ui.label(RichText::new(text).size(13.5 * scale).color(color));
                 }
+                needs_space = text.ends_with(char::is_whitespace);
             }
         }
     }
@@ -253,6 +281,7 @@ fn draw(ui: &mut Ui, line: &Line<'_>, t: &Tokens, scale: f32) {
                 render_inline(ui, text, t.ink, t, scale);
                 if let Some(url) = link.filter(|u| artcraft_launcher_core::release::safe_web_link(u)) {
                     let short = url.rsplit('/').next().map_or_else(|| tl!("link").to_string(), |n| format!("#{n}"));
+                    ui.add_space(4.0 * scale);
                     ui.hyperlink_to(RichText::new(short).size(12.0 * scale), url);
                 }
             });
