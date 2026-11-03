@@ -12,6 +12,7 @@ mod motion;
 mod settings_file;
 #[cfg(target_os = "macos")]
 mod spaces;
+mod start_failure;
 #[cfg(target_os = "linux")]
 mod system_theme;
 mod tray;
@@ -142,7 +143,8 @@ fn main() -> ExitCode {
             };
             waker.set_window(None);
             if let Err(e) = result {
-                log::error!("{e}");
+                // Say why instead of exiting silently; also logs it (`start_failure`).
+                start_failure::report(&e);
                 return ExitCode::FAILURE;
             }
             if !std::mem::take(&mut launcher.closed_to_tray) {
