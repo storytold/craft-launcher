@@ -823,7 +823,8 @@ pub fn launch(app: &CraftApp, installed: &Installed, paths: &Paths, failed: impl
 /// What to tell the user when `name` quit in error right after it started.
 fn start_failure(name: &str, status: std::process::ExitStatus, appimage: bool) -> String {
     let mut msg = format!("{name} quit right after starting ({status}).");
-    if appimage && process::fuse_missing() {
+    // Set at all, this makes the AppImage runtime extract itself instead of mounting with FUSE.
+    if appimage && std::env::var_os("APPIMAGE_EXTRACT_AND_RUN").is_none() && process::fuse_missing() {
         msg.push_str(" AppImages need FUSE to run, and it isn't set up on this system.");
     }
     msg
