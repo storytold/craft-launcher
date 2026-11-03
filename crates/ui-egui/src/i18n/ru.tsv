@@ -411,3 +411,6 @@ materialcraft	Preview materials in 2D and on 3D models.	Просматривай
 	Migrate Flatpak bundles to ArtCraft OCI (experimental)	Переводить пакеты Flatpak на ArtCraft OCI (экспериментально)
 	On update, switch first party apps when the matching package is available. Otherwise, keep using bundles.	При обновлении переводить приложения ArtCraft на репозиторий, если доступен соответствующий пакет. Иначе продолжать использовать отдельные пакеты.
 	The OCI repository is a preview with GPG verification disabled.	Репозиторий OCI работает в предварительном режиме с отключённой проверкой GPG.
+	Show the app I'm using on my Discord profile	Показывать в моём профиле Discord приложение, которым я пользуюсь
+	Discord shows the app's name and how long it has been open. Never a folder.	Discord показывает название приложения и сколько времени оно открыто. Папки — никогда.
+	Also show the name of the open file	Показывать также имя открытого файла

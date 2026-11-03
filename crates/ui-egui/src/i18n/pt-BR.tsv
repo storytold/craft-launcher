@@ -403,3 +403,6 @@ materialcraft	Preview materials in 2D and on 3D models.	Visualize materiais em 2
 	Migrate Flatpak bundles to ArtCraft OCI (experimental)	Migrar pacotes Flatpak para ArtCraft OCI (experimental)
 	On update, switch first party apps when the matching package is available. Otherwise, keep using bundles.	Ao atualizar, migrar os aplicativos da ArtCraft quando o pacote correspondente estiver disponível. Caso contrário, continuar usando pacotes independentes.
 	The OCI repository is a preview with GPG verification disabled.	O repositório OCI é uma prévia com a verificação GPG desativada.
+	Show the app I'm using on my Discord profile	Mostrar no meu perfil do Discord o app que estou usando
+	Discord shows the app's name and how long it has been open. Never a folder.	O Discord mostra o nome do app e há quanto tempo ele está aberto. Nunca uma pasta.
+	Also show the name of the open file	Mostrar também o nome do arquivo aberto

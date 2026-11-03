@@ -127,6 +127,10 @@ pub struct Settings {
     pub tray_hint_shown: bool,
     /// How many times each app was opened from the launcher (catalog id → count), for "Frequently used".
     pub launches: BTreeMap<String, u32>,
+    /// Show the Craft App opened from the launcher on the person's Discord profile.
+    pub discord_presence: bool,
+    /// With it, the name of the file the app has open.
+    pub discord_file_names: bool,
 }
 
 impl Settings {
@@ -212,6 +216,8 @@ impl Default for Settings {
             hidden: std::collections::BTreeSet::new(),
             tray_hint_shown: false,
             launches: BTreeMap::new(),
+            discord_presence: false,
+            discord_file_names: false,
         }
     }
 }

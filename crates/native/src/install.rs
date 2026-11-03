@@ -757,8 +757,9 @@ fn remove_appimage(app: &CraftApp, path: &Path, record: Option<&Record>) -> Resu
     Ok(())
 }
 
-/// Starts an installed app.
-pub fn launch(app: &CraftApp, installed: &Installed, paths: &Paths) -> Result<(), String> {
+/// Starts an installed app, calling `on_exit` once it has quit. Gives the id of the process it
+/// started (the app itself, or what runs it: `flatpak`, macOS' `open`).
+pub fn launch(app: &CraftApp, installed: &Installed, paths: &Paths, on_exit: impl FnOnce() + Send + 'static) -> Result<u32, String> {
     let _ = paths;
     let path = Path::new(&installed.location);
     // Every app is told where the shared version-choice file is (see `craft_update::pins`), so
@@ -766,18 +767,18 @@ pub fn launch(app: &CraftApp, installed: &Installed, paths: &Paths) -> Result<()
     // or a launcher whose data folder moved.
     let pins = craft_update::pins::Pins::default_path();
     let env: Vec<(&str, &std::ffi::OsStr)> = pins.iter().map(|p| (craft_update::pins::PATH_ENV, p.as_os_str())).collect();
-    match installed.source {
+    let cmd = match installed.source {
         InstallSource::Flatpak => {
             let mut cmd = process::flatpak_command();
             cmd.arg("run");
             cmd.args(process::env_args(&env));
             // The id detection found it under, which may be one of the app's older ones.
             cmd.arg(installed.package.clone().unwrap_or_else(|| app.bundle_id()));
-            process::spawn_detached(cmd)
+            cmd
         }
         // `open` starts the app through Launch Services, which gives it the user's real home, so
         // it finds the file at its default path; not every macOS `open` takes an environment.
-        InstallSource::MacApp => process::open(path.as_os_str()),
+        InstallSource::MacApp => process::open_app(path),
         // A tarball the launcher unpacked into its own folder: run it here, against its own
         // home, rather than on the host through `flatpak-spawn` (which is what `launch_binary`
         // would do inside the sandbox). Its settings then land beside it instead of in the
@@ -796,9 +797,9 @@ pub fn launch(app: &CraftApp, installed: &Installed, paths: &Paths) -> Result<()
             if let Some(dir) = path.parent() {
                 cmd.current_dir(dir);
             }
-            process::spawn_detached(cmd)
+            cmd
         }
-        _ if cfg!(target_os = "macos") && path.extension().is_some_and(|e| e == "app") => process::open(path.as_os_str()),
+        _ if cfg!(target_os = "macos") && path.extension().is_some_and(|e| e == "app") => process::open_app(path),
         _ => {
             if !path.exists() {
                 if cfg!(windows) && installed.source == InstallSource::Msi && path.components().count() < 2 {
@@ -809,10 +810,10 @@ pub fn launch(app: &CraftApp, installed: &Installed, paths: &Paths) -> Result<()
                 }
                 return Err(format!("{} isn't where it was installed ({})", app.name, path.display()));
             }
-            process::launch_binary_with_env(path, &[], &env)
+            process::binary_command(path, &[], &env)
         }
-    }
-    .map_err(|e| format!("Couldn't open {}: {e}", app.name))
+    };
+    process::spawn_watched(cmd, on_exit).map_err(|e| format!("Couldn't open {}: {e}", app.name))
 }
 
 /// The environment a Craft App unpacked by the launcher runs with: its own `HOME` and the XDG
