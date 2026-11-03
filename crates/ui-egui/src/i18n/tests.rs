@@ -5,7 +5,19 @@ use std::collections::{BTreeSet, HashSet};
 
 use super::catalog::{Catalog, unescape};
 use super::lang::{name_sort_key, plural_czech, plural_east_slavic, plural_polish};
-use super::{LANGUAGES, Lang, LangInfo, lang_from_tag, message, tr, trn};
+use super::{LANGUAGES, Lang, LangInfo, fmt, lang_from_tag, message, tr, trn};
+
+#[test]
+fn a_filled_in_value_is_never_read_as_a_placeholder() {
+    assert_eq!(fmt("{name}: {error}", &[("name", "{error}"), ("error", "disk full")]), "{error}: disk full");
+    assert_eq!(fmt("{a} and {a}", &[("a", "{a}")]), "{a} and {a}");
+}
+
+#[test]
+fn placeholders_nobody_filled_stay_as_written() {
+    assert_eq!(fmt("{a} {b} { {} }{", &[("a", "1")]), "1 {b} { {} }{");
+    assert_eq!(fmt("{{a}", &[("a", "1")]), "{1");
+}
 
 /// Each catalog's rows as (line number, context, source, translation), split exactly as the
 /// parser does: `trim_end` only, since a plain row *starts* with a TAB.
