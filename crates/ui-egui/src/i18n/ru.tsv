@@ -122,6 +122,12 @@
 	Apps on this computer	Приложения на этом компьютере
 	Installed apps with a newer version	Установленные приложения, у которых есть новая версия
 	Apps you can install	Приложения, которые можно установить
+	Pin to top	Закрепить сверху
+	Unpin	Открепить
+	Pinned	Закреплённые
+	Reorder {name}	Изменить порядок: {name}
+	Move up	Выше
+	Move down	Ниже
 	Hide App	Скрыть приложение
 	Unhide App	Показать приложение
 	Hidden Apps	Скрытые приложения
@@ -147,6 +153,7 @@
 	Update cancelled	Обновление отменено
 	Uninstall cancelled	Удаление отменено
 	Retry install	Повторить установку
+	Retry update	Повторить обновление
 	Retry update to {version}	Повторить обновление до {version}
 	The download is still here. It's checked again, then installed.	Скачанный файл сохранён. Он будет проверен ещё раз, затем установлен.
 	Waiting for another app…	Ожидание другого приложения…
@@ -173,6 +180,7 @@ designcraft	Page layout and publishing	Вёрстка и издательско�
 wordcraft	Writing and document design	Тексты и оформление документов
 deckcraft	Presentations and slide shows	Презентации и слайд-шоу
 gridcraft	Spreadsheets and data	Электронные таблицы и данные
+craft-anything	Find out how any software works, then craft your own	Узнайте, как устроена любая программа, и создайте свою
 solidcraft	Parametric 3D CAD	Параметрический 3D CAD
 cadcraft	Computer-aided design and drafting	Автоматизированное проектирование и черчение
 soundcraft	Recording, editing and mixing audio	Запись, редактирование и сведение звука
@@ -392,3 +400,21 @@ column	Author	Автор
 	Older launcher versions require a manual reinstall.	Для возврата к старой версии лаунчера нужна переустановка вручную.
 	Your files may not open in older versions.	В старой версии ваши файлы могут не открыться.
 	Enable automatic installs in Settings to follow new nightly builds.	Чтобы получать новые ночные сборки, включите автоматическую установку в настройках.
+texturecraft	3D texture painting	Рисование 3D-текстур
+texturecraft	Paint materials on 3D models and export textures.	Рисуйте материалы на 3D-моделях и экспортируйте текстуры.
+texturecraft	Materials	Материалы
+texturecraft	Mesh maps	Карты сетки
+texturecraft	Bake mesh maps and use smart materials.	Запекайте карты сетки и используйте умные материалы.
+texturecraft	Paint textures on 3D models.	Рисуйте текстуры на 3D-моделях.
+	Hide community apps	Скрыть приложения сообщества
+materialcraft	Procedural material design	Создание процедурных материалов
+materialcraft	Build materials with node graphs.	Создавайте материалы с помощью графов узлов.
+materialcraft	Create tileable PBR materials and export texture maps.	Создавайте бесшовные PBR-материалы и экспортируйте карты текстур.
+materialcraft	Node graphs	Графы узлов
+materialcraft	Combine noises, patterns and filters.	Комбинируйте шумы, узоры и фильтры.
+materialcraft	Live previews	Предпросмотр в реальном времени
+materialcraft	Preview materials in 2D and on 3D models.	Просматривайте материалы в 2D и на 3D-моделях.
+	Advanced	Дополнительно
+	Migrate Flatpak bundles to ArtCraft OCI (experimental)	Переводить пакеты Flatpak на ArtCraft OCI (экспериментально)
+	On update, switch first party apps when the matching package is available. Otherwise, keep using bundles.	При обновлении переводить приложения ArtCraft на репозиторий, если доступен соответствующий пакет. Иначе продолжать использовать отдельные пакеты.
+	The OCI repository is a preview with GPG verification disabled.	Репозиторий OCI работает в предварительном режиме с отключённой проверкой GPG.

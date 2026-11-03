@@ -29,9 +29,12 @@ pub enum Command {
     Install {
         app: String,
     },
-    /// `Install`, writing over what [`Event::Occupied`] reported.
+    /// `Install`, writing over what [`Event::Occupied`] reported. `path` is the path the user
+    /// agreed to overwrite: if the install would now write somewhere else, nothing is replaced and
+    /// the user is asked again.
     Replace {
         app: String,
+        path: String,
     },
     Uninstall {
         app: String,

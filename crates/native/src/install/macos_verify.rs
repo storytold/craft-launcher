@@ -216,7 +216,15 @@ mod tests {
         std::fs::write(&old, b"old fixture bytes").unwrap();
         std::fs::write(&manifest, b"old install record").unwrap();
         std::fs::write(&download, b"cached download").unwrap();
-        let found = Installed { version: None, source: InstallSource::MacApp, location: staged.display().to_string(), package: None };
+        let found = Installed {
+            version: None,
+            source: InstallSource::MacApp,
+            location: staged.display().to_string(),
+            package: None,
+            externally_managed: false,
+            origin: None,
+            installation: None,
+        };
         let expect = Expect { team: app.mac_team, version: None };
         // Injected tool outcomes exercise the real pre-swap boundary, not real signatures.
         for failed in 0..4 {
