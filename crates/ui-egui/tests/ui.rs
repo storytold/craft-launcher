@@ -1550,8 +1550,7 @@ fn a_pinned_table_row_keeps_its_buttons_in_line() {
         let row = menu.y_range();
         h.query_all_by_label("Open").map(|n| n.rect()).find(|r| row.contains(r.center().y)).expect("an Open button in the row")
     };
-    let (pinned_menu, other_menu) =
-        (h.get_by_label("More actions for LightCraft").rect(), h.get_by_label("More actions for WordCraft").rect());
+    let (pinned_menu, other_menu) = (h.get_by_label("More actions for LightCraft").rect(), h.get_by_label("More actions for WordCraft").rect());
     let (pinned_open, other_open) = (open_in_row(pinned_menu), open_in_row(other_menu));
     assert!(grip.right() <= pinned_open.left(), "grip {grip:?} leads the row's Open {pinned_open:?}");
     assert!((pinned_open.width() - other_open.width()).abs() < 0.5, "pinned {pinned_open:?} vs unpinned {other_open:?}");
