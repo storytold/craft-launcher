@@ -24,8 +24,8 @@ impl Script {
 
 /// One supported UI language.
 pub struct LangInfo {
-    /// Canonical BCP 47 code (`en`, `ru`, `zh-CN`, `zh-TW`, `de`, `fr`, `pt-BR`, `es`, `cs`, `pl`, `hu`, `ja`).
-    /// Also the `interfaceLanguage` value.
+    /// Canonical BCP 47 code (`en`, `ru`, `zh-CN`, `zh-TW`, `de`, `fr`, `pt-BR`, `es`, `cs`, `pl`, `hu`, `ja`,
+    /// `ka`). Also the `interfaceLanguage` value.
     pub code: &'static str,
     /// The language's name in itself, shown in the Preferences dropdown.
     pub name: &'static str,
@@ -36,9 +36,9 @@ pub struct LangInfo {
     pub script: Option<Script>,
     /// Catalog file contents (empty for the built-in English).
     pub source: &'static str,
-    /// Plural form index for a count (English, German, Spanish and Hungarian: 0 = one, 1 = other;
-    /// Russian: 0 = one, 1 = few, 2 = many; Czech: 0 = one, 1 = few, 2 = other; Polish: 0 = one only
-    /// for 1, 1 = few, 2 = many; French: 0 = one for 0 and 1; a language whose nouns don't inflect
+    /// Plural form index for a count (English, German, Spanish, Hungarian and Georgian: 0 = one,
+    /// 1 = other; Russian: 0 = one, 1 = few, 2 = many; Czech: 0 = one, 1 = few, 2 = other; Polish:
+    /// 0 = one only for 1, 1 = few, 2 = many; French: 0 = one for 0 and 1; a language whose nouns don't inflect
     /// for number: always 0).
     pub plural: fn(u64) -> usize,
     /// Number of plural forms the catalog's `@plural` rows carry (checked by tests).
@@ -97,7 +97,7 @@ pub(super) fn plural_polish(n: u64) -> usize {
 }
 
 /// The registry. English first: it is the fallback and the source language.
-pub static LANGUAGES: [LangInfo; 12] = [
+pub static LANGUAGES: [LangInfo; 13] = [
     LangInfo {
         code: "en",
         name: "English",
@@ -230,6 +230,17 @@ pub static LANGUAGES: [LangInfo; 12] = [
         complete_menus: true,
         catalog: OnceLock::new(),
     },
+    LangInfo {
+        code: "ka",
+        name: "ქართული",
+        english_name: "Georgian",
+        script: Some(Script::Georgian),
+        source: include_str!("ka.tsv"),
+        plural: plural_one_other,
+        plural_forms: 2,
+        complete_menus: true,
+        catalog: OnceLock::new(),
+    },
 ];
 
 impl LangInfo {
@@ -269,6 +280,7 @@ impl Lang {
     pub const PL: Lang = Lang(&LANGUAGES[9]);
     pub const HU: Lang = Lang(&LANGUAGES[10]);
     pub const JA: Lang = Lang(&LANGUAGES[11]);
+    pub const KA: Lang = Lang(&LANGUAGES[12]);
 
     pub fn code(self) -> &'static str {
         self.0.code
