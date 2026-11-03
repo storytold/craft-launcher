@@ -656,7 +656,7 @@ function Invoke-ArtCraftBatch($request, $catalog) {
 }
 "#;
 
-#[cfg(any(windows, test))]
+#[cfg(test)]
 fn encode_command(script: &str) -> String {
     use base64::Engine as _;
     let bytes: Vec<_> = script.encode_utf16().flat_map(u16::to_le_bytes).collect();
@@ -669,38 +669,67 @@ fn compact_policy(script: &str) -> String {
 }
 
 #[cfg(any(windows, test))]
-fn compressed_command(script: &str) -> Result<String, String> {
+fn compressed_payload(script: &str) -> Result<String, String> {
     use base64::Engine as _;
     use std::io::Write as _;
     let mut gzip = flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::best());
     // Source comments/blank lines do not affect the fixed PowerShell policy and waste space
     // in the bounded ShellExecute command line.
     gzip.write_all(compact_policy(script).as_bytes()).map_err(|e| e.to_string())?;
-    let data = base64::engine::general_purpose::STANDARD.encode(gzip.finish().map_err(|e| e.to_string())?);
-    Ok(encode_command(&format!(
-        "$m=[IO.MemoryStream]::new([Convert]::FromBase64String('{data}')); \
+    Ok(base64::engine::general_purpose::STANDARD.encode(gzip.finish().map_err(|e| e.to_string())?))
+}
+
+#[cfg(any(windows, test))]
+fn powershell_bootstrap(payload: &str) -> Result<String, String> {
+    use base64::Engine as _;
+    if payload.is_empty() || !payload.bytes().all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'+' | b'/' | b'=')) {
+        return Err("the compressed PowerShell payload is not Base64 data".into());
+    }
+    let bytes = base64::engine::general_purpose::STANDARD.decode(payload).map_err(|_| "the compressed PowerShell payload is invalid Base64")?;
+    if !bytes.starts_with(&[0x1f, 0x8b]) {
+        return Err("the compressed PowerShell payload is not GZip data".into());
+    }
+    Ok(format!(
+        "$ErrorActionPreference='Stop'; try {{ \
+         $m=[IO.MemoryStream]::new([Convert]::FromBase64String('{payload}')); \
          $g=[IO.Compression.GZipStream]::new($m,[IO.Compression.CompressionMode]::Decompress); \
-         $r=[IO.StreamReader]::new($g); & ([ScriptBlock]::Create($r.ReadToEnd()))"
-    )))
+         $r=[IO.StreamReader]::new($g); & ([ScriptBlock]::Create($r.ReadToEnd())) \
+         }} catch {{ exit 1 }}"
+    ))
 }
 
 #[cfg(any(windows, test))]
 const WINDOWS_COMMAND_LIMIT: usize = 30_000;
 
 #[cfg(any(windows, test))]
-fn batch_outer_command(host: &str, cwd: &str, management: &str, script: &str) -> String {
-    let host = host.replace('\'', "''");
-    let cwd = cwd.replace('\'', "''");
-    let management = management.replace('\'', "''");
-    format!(
-        "$ErrorActionPreference='Stop'; try {{ Import-Module '{management}'; \
+fn powershell_single_quoted(value: &str) -> String {
+    format!("'{}'", value.replace('\'', "''"))
+}
+
+#[cfg(any(windows, test))]
+fn elevated_child_arguments(payload: &str) -> Result<String, String> {
+    let bootstrap = powershell_bootstrap(payload)?;
+    if bootstrap.contains('"') || bootstrap.contains('\r') || bootstrap.contains('\n') {
+        return Err("the fixed PowerShell bootstrap contains unsupported command-line characters".into());
+    }
+    Ok(format!("-NoProfile -NonInteractive -Command \"{bootstrap}\""))
+}
+
+#[cfg(any(windows, test))]
+fn batch_outer_command(host: &str, cwd: &str, management: &str, payload: &str) -> Result<String, String> {
+    let host = powershell_single_quoted(host);
+    let cwd = powershell_single_quoted(cwd);
+    let management = powershell_single_quoted(management);
+    let arguments = powershell_single_quoted(&elevated_child_arguments(payload)?);
+    Ok(format!(
+        "$ErrorActionPreference='Stop'; try {{ Import-Module {management}; \
          $parentIdentity = [Security.Principal.WindowsIdentity]::GetCurrent(); \
          $parentPrincipal = [Security.Principal.WindowsPrincipal]::new($parentIdentity); \
          $env:ARTCRAFT_BATCH_PARENT_ELEVATED = [string]$parentPrincipal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator); \
-         $p = Microsoft.PowerShell.Management\\Start-Process -FilePath '{host}' -WorkingDirectory '{cwd}' \
-         -ArgumentList '-NoProfile -NonInteractive -EncodedCommand {script}' -Verb RunAs -Wait -PassThru; exit $p.ExitCode \
+         $p = Microsoft.PowerShell.Management\\Start-Process -FilePath {host} -WorkingDirectory {cwd} \
+         -ArgumentList {arguments} -Verb RunAs -Wait -PassThru; exit $p.ExitCode \
          }} catch {{ $e=$_.Exception; while ($e) {{ if ($e.NativeErrorCode -eq 1223) {{ exit 1223 }}; $e=$e.InnerException }}; exit 1 }}"
-    )
+    ))
 }
 
 #[cfg(any(windows, test))]
@@ -766,7 +795,7 @@ pub fn install(items: &[Item], report: &mut dyn FnMut(usize, crate::msi_batch::R
         let source = crate::msi_source::Source::new(items, &session)?;
         let system = system_directory()?;
         let powershell = system_powershell()?;
-        let script = compressed_command(&batch_script(&session, source.port, items)?)?;
+        let payload = compressed_payload(&batch_script(&session, source.port, items)?)?;
         // The unelevated launcher asks the OS to elevate ONLY its system PowerShell executable.
         // Both paths/code are data, never interpolation of MSI/path strings into shell source.
         let modules = powershell.parent().ok_or("unusual Windows system path")?.join("Modules");
@@ -774,7 +803,7 @@ pub fn install(items: &[Item], report: &mut dyn FnMut(usize, crate::msi_batch::R
         let cwd = system.to_str().ok_or("unusual Windows system path")?;
         let management = modules.join(r"Microsoft.PowerShell.Management\Microsoft.PowerShell.Management.psd1");
         let management = management.to_str().ok_or("unusual Windows system path")?;
-        let outer = batch_outer_command(host, cwd, management, &script);
+        let outer = batch_outer_command(host, cwd, management, &payload)?;
         // Avoid the Windows 32K command line limit before asking for UAC.
         if outer.len() > WINDOWS_COMMAND_LIMIT {
             return Err("the MSI batch command is too large for Windows".into());
@@ -874,7 +903,9 @@ mod tests {
     #[cfg(any(windows, test))]
     fn powershell_test_transport(script: &str) -> Result<PowerShellTestTransport, String> {
         let script = format!("trap {{ [Console]::Error.WriteLine(($_ | Out-String)); exit 1 }}\n{script}");
-        let encoded = compressed_command(&script)?;
+        let payload = compressed_payload(&script)?;
+        let bootstrap = powershell_bootstrap(&payload)?;
+        let encoded = encode_command(&bootstrap);
         if encoded.len() < WINDOWS_COMMAND_LIMIT {
             Ok(PowerShellTestTransport::Encoded(encoded))
         } else {
@@ -1144,7 +1175,7 @@ Remove-Item -LiteralPath $path -Force
     }
 
     #[test]
-    fn encoded_policy_has_no_request_code_or_per_user_executable() {
+    fn compressed_policy_reconstructs_exactly_and_has_no_per_user_executable() {
         use base64::Engine as _;
         let encoded = encode_command("hello '\u{1f600}'");
         let bytes = base64::engine::general_purpose::STANDARD.decode(encoded).unwrap();
@@ -1153,17 +1184,17 @@ Remove-Item -LiteralPath $path -Force
         let script = batch_script(&"a".repeat(32), 12345, &[]).unwrap();
         assert!(script.contains("Read-OfficialChecksums"));
         assert!(!script.contains("current_exe"));
-        let compressed = compressed_command(&script).unwrap();
-        assert!(compressed.len() < 30000, "the fixed policy must leave room under the command-line guard: {}", compressed.len());
-        let bytes = base64::engine::general_purpose::STANDARD.decode(compressed).unwrap();
-        let utf16: Vec<_> = bytes.as_chunks::<2>().0.iter().map(|b| u16::from_le_bytes(*b)).collect();
-        let bootstrap = String::from_utf16(&utf16).unwrap();
-        let gzip = bootstrap.split('\'').nth(1).unwrap();
-        let gzip = base64::engine::general_purpose::STANDARD.decode(gzip).unwrap();
+        let payload = compressed_payload(&script).unwrap();
+        assert!(payload.len() < WINDOWS_COMMAND_LIMIT, "the compressed policy payload should be short: {}", payload.len());
+        let gzip = base64::engine::general_purpose::STANDARD.decode(&payload).unwrap();
         let mut decoder = flate2::read::GzDecoder::new(gzip.as_slice());
         let mut decoded = String::new();
         std::io::Read::read_to_string(&mut decoder, &mut decoded).unwrap();
         assert_eq!(decoded, compact_policy(&script));
+        assert!(decoded.starts_with(&compact_policy(POLICY)));
+        let bootstrap = powershell_bootstrap(&payload).unwrap();
+        assert!(bootstrap.contains(&format!("FromBase64String('{payload}')")));
+        assert!(bootstrap.contains("[ScriptBlock]::Create($r.ReadToEnd())"));
     }
 
     #[test]
@@ -1219,18 +1250,102 @@ Remove-Item -LiteralPath $path -Force
             },
         ];
         let script = batch_script("0123456789abcdef0123456789abcdef", 54_321, &items).unwrap();
-        let encoded = compressed_command(&script).unwrap();
+        let payload = compressed_payload(&script).unwrap();
         let command = batch_outer_command(
             r"C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe",
             r"C:\Windows\System32",
             r"C:\Windows\System32\WindowsPowerShell\v1.0\Modules\Microsoft.PowerShell.Management\Microsoft.PowerShell.Management.psd1",
-            &encoded,
-        );
+            &payload,
+        )
+        .unwrap();
         assert!(
             command.len() <= WINDOWS_COMMAND_LIMIT,
             "representative two-package Update all command exceeds the production limit: {} bytes",
             command.len()
         );
+    }
+
+    #[test]
+    fn full_official_catalog_batch_fits_with_command_line_headroom() {
+        let version = "0.14.0";
+        let tag = format!("v{version}");
+        let items: Vec<_> = artcraft_launcher_core::catalog::SUITE
+            .iter()
+            .filter(|app| app.kind == AppKind::Official && app.repo.starts_with("storytold/"))
+            .enumerate()
+            .map(|(index, app)| {
+                let stem = app.stems().next().expect("official app has a release asset stem");
+                let asset = format!("{stem}-{version}-windows-x64.msi");
+                let release = release_identity(
+                    app,
+                    &release::Asset {
+                        name: asset.clone(),
+                        url: format!("https://github.com/{}/releases/download/{tag}/{asset}", app.repo),
+                        ..Default::default()
+                    },
+                )
+                .expect("official catalog asset must qualify for x64 MSI batching");
+                Item {
+                    msi: Path::new(&format!(r"C:\Users\ArtCraftTest\AppData\Local\ArtCraftLauncher\downloads\{asset}")).into(),
+                    sha256: format!("{:064x}", index + 1),
+                    destination: Some(Path::new(&format!(r"C:\Program Files\ArtCraft Apps\{}", app.id)).into()),
+                    release,
+                }
+            })
+            .collect();
+        assert!(items.len() >= 8, "exercise a substantial eligible batch");
+
+        let script = batch_script("0123456789abcdef0123456789abcdef", 54_321, &items).unwrap();
+        let payload = compressed_payload(&script).unwrap();
+        let command = batch_outer_command(
+            r"C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe",
+            r"C:\Windows\System32",
+            r"C:\Windows\System32\WindowsPowerShell\v1.0\Modules\Microsoft.PowerShell.Management\Microsoft.PowerShell.Management.psd1",
+            &payload,
+        )
+        .unwrap();
+        let headroom = 5_000;
+        assert!(
+            command.len() + headroom <= WINDOWS_COMMAND_LIMIT,
+            "full official catalog batch leaves less than {headroom} characters of command-line headroom: {} bytes",
+            command.len()
+        );
+    }
+
+    #[test]
+    fn production_outer_command_quotes_paths_and_child_arguments() {
+        let payload = compressed_payload("Write-Output 'embedded script'").unwrap();
+        let arguments = elevated_child_arguments(&payload).unwrap();
+        let host = r"C:\Program Files\O'Brien Tools\WindowsPowerShell\v1.0\powershell.exe";
+        let cwd = r"C:\Windows\System32";
+        let management = r"C:\Windows\System32\Modules\O'Brien\PowerShell.psd1";
+        let outer = batch_outer_command(host, cwd, management, &payload).unwrap();
+
+        assert!(outer.contains(r"-FilePath 'C:\Program Files\O''Brien Tools\WindowsPowerShell\v1.0\powershell.exe'"));
+        assert!(outer.contains(r"-WorkingDirectory 'C:\Windows\System32'"));
+        assert!(outer.contains(&format!("-ArgumentList {} -Verb RunAs -Wait -PassThru", powershell_single_quoted(&arguments))));
+        assert!(outer.contains("-NoProfile -NonInteractive -Command \""));
+        assert!(!outer.contains("-EncodedCommand"));
+        assert!(elevated_child_arguments("not-base64'").is_err());
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn powershell_51_start_process_reconstructs_policy_without_elevation() {
+        let system = system_directory().unwrap();
+        let powershell = system_powershell().unwrap();
+        let payload = compressed_payload(&format!("{POLICY}\nexit 0")).unwrap();
+        let arguments = elevated_child_arguments(&payload).unwrap();
+        let host = powershell_single_quoted(powershell.to_str().unwrap());
+        let cwd = powershell_single_quoted(system.to_str().unwrap());
+        let arguments = powershell_single_quoted(&arguments);
+        let test = format!(
+            "$p = Microsoft.PowerShell.Management\\Start-Process -FilePath {host} -WorkingDirectory {cwd} -ArgumentList {arguments} -Wait -PassThru -NoNewWindow\n\
+             if ($p.ExitCode -ne 0) {{ throw \"compressed child returned $($p.ExitCode)\" }}\n\
+             'PowerShell -Command bootstrap parsed and reconstructed the embedded policy'"
+        );
+        let output = run_powershell_test(&test);
+        assert_powershell_output_contains(&output, "PowerShell -Command bootstrap parsed and reconstructed the embedded policy");
     }
 
     #[test]
