@@ -228,6 +228,17 @@ pub static LANGUAGES: [LangInfo; 12] = [
         complete_menus: true,
         catalog: OnceLock::new(),
     },
+    LangInfo {
+        code: "it",
+        name: "Italiano",
+        english_name: "Italian",
+        script: None,
+        source: include_str!("it.tsv"),
+        plural: plural_one_other,
+        plural_forms: 2,
+        complete_menus: true,
+        catalog: OnceLock::new(),
+    },
 ];
 
 impl LangInfo {
