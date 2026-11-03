@@ -1,6 +1,7 @@
-//! A CJK font from the operating system, for the CJK interface languages. The bundled faces have
-//! no CJK glyphs, and a CJK font is too large to ship (10 MB or more), so the desktop build
-//! borrows the one every system that can show them already has. Desktop only.
+//! A system font from the operating system, for the interface languages the bundled faces
+//! cannot draw: the CJK scripts and Devanagari. Those fonts are too large to ship (10 MB or
+//! more), so the desktop build borrows the one every system that can show them already has.
+//! Desktop only.
 
 use std::path::{Path, PathBuf};
 
@@ -40,6 +41,7 @@ fn script_name(script: Script) -> &'static str {
     match script {
         Script::Chinese => "Chinese",
         Script::Japanese => "Japanese",
+        Script::Devanagari => "Devanagari",
     }
 }
 
@@ -48,6 +50,7 @@ fn script_families(script: Script) -> &'static str {
     match script {
         Script::Chinese => "PingFang SC, Hiragino Sans GB, Heiti SC, Microsoft YaHei, SimSun, Noto Sans CJK SC, WenQuanYi and MiSans",
         Script::Japanese => "Hiragino Sans, Yu Gothic, Meiryo, MS Gothic, Noto Sans CJK JP, Noto Sans JP, IPAGothic and TakaoGothic",
+        Script::Devanagari => "Kohinoor Devanagari, Devanagari MT, Nirmala UI, Noto Sans Devanagari, Lohit Devanagari and Mangal",
     }
 }
 
@@ -123,6 +126,7 @@ fn candidates(script: Script) -> Vec<Candidate> {
     let found = match script {
         Script::Chinese => chinese_candidates(),
         Script::Japanese => japanese_candidates(),
+        Script::Devanagari => devanagari_candidates(),
     };
     let mut out = Vec::with_capacity(found.len() * 2);
     for candidate in found {
@@ -317,6 +321,49 @@ fn japanese_candidates() -> Vec<Candidate> {
         }
         for (file, family) in [("VL-Gothic-Regular.ttf", "VL Gothic"), ("VL-PGothic-Regular.ttf", "VL PGothic")] {
             for dir in JP_DIRS {
+                add(Path::new(dir).join(file), family);
+            }
+        }
+    }
+    out
+}
+
+/// Where each system keeps a Devanagari font, best first.
+fn devanagari_candidates() -> Vec<Candidate> {
+    let mut out = Vec::new();
+    let mut add = |path: PathBuf, family: &'static str| out.push(Candidate { path, family });
+    #[cfg(target_os = "macos")]
+    {
+        add("/System/Library/Fonts/KohinoorDevanagari.ttc".into(), "Kohinoor Devanagari");
+        for path in mac_font_assets("KohinoorDevanagari.ttc") {
+            add(path, "Kohinoor Devanagari");
+        }
+        add("/System/Library/Fonts/Supplemental/DevanagariMT.ttc".into(), "Devanagari MT");
+    }
+    #[cfg(target_os = "windows")]
+    {
+        let root = std::env::var_os("SystemRoot").map_or_else(|| PathBuf::from(r"C:\Windows"), PathBuf::from);
+        add(root.join("Fonts").join("nirmala.ttf"), "Nirmala UI");
+        add(root.join("Fonts").join("mangal.ttf"), "Mangal");
+    }
+    #[cfg(all(unix, not(target_os = "macos")))]
+    {
+        // Debian/Ubuntu, Arch and Fedora's google-noto packs, then the classic Lohit face.
+        const NOTO_DIRS: [&str; 6] = [
+            "/usr/share/fonts/truetype/noto",
+            "/usr/share/fonts/noto",
+            "/usr/share/fonts/opentype/noto",
+            "/usr/share/fonts/google-noto-sans-devanagari-fonts",
+            "/usr/local/share/fonts",
+            "/usr/share/fonts",
+        ];
+        for file in ["NotoSansDevanagari-Regular.ttf", "NotoSansDevanagari-VF.ttf"] {
+            for dir in NOTO_DIRS {
+                add(Path::new(dir).join(file), "Noto Sans Devanagari");
+            }
+        }
+        for (file, family) in [("Lohit-Devanagari.ttf", "Lohit Devanagari"), ("lohit_devanagari.ttf", "Lohit Devanagari")] {
+            for dir in ["/usr/share/fonts/lohit-devanagari", "/usr/share/fonts/lohit", "/usr/local/share/fonts"] {
                 add(Path::new(dir).join(file), family);
             }
         }
