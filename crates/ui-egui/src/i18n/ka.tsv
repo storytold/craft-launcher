@@ -152,6 +152,7 @@
 	Update cancelled	განახლება გაუქმდა
 	Uninstall cancelled	დეინსტალაცია გაუქმდა
 	Retry install	ინსტალაციის ხელახლა ცდა
+	Retry update	განახლების ხელახლა ცდა
 	Retry update to {version}	განახლების ხელახლა ცდა: {version}
 	The download is still here. It's checked again, then installed.	ჩამოტვირთული ფაილი ისევ აქ არის. ჯერ ხელახლა შემოწმდება, შემდეგ დაინსტალირდება.
 	Waiting for another app…	სხვა აპლიკაციის მოლოდინი…
