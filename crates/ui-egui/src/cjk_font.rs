@@ -281,8 +281,8 @@ fn traditional_chinese_candidates() -> Vec<Candidate> {
     }
     #[cfg(all(unix, not(target_os = "macos")))]
     {
-        // Debian/Ubuntu, Arch, Fedora (static and variable) and FreeBSD's ports.
-        const NOTO_DIRS: [&str; 9] = [
+        // Debian/Ubuntu, Arch, Fedora (static and variable), openSUSE and FreeBSD's ports.
+        const NOTO_DIRS: [&str; 10] = [
             "/usr/share/fonts/opentype/noto",
             "/usr/share/fonts/noto-cjk",
             "/usr/share/fonts/google-noto-cjk",
@@ -290,6 +290,7 @@ fn traditional_chinese_candidates() -> Vec<Candidate> {
             "/usr/share/fonts/google-noto-sans-cjk-vf-fonts",
             "/usr/share/fonts/noto",
             "/usr/share/fonts/truetype/noto",
+            "/usr/share/fonts/truetype",
             "/usr/local/share/fonts/noto",
             "/usr/local/share/fonts/noto-cjk",
         ];
@@ -495,6 +496,15 @@ mod tests {
             let first_system = found.iter().position(|c| !c.family.starts_with("Noto Sans")).expect("a system face comes after Noto");
             assert!(first_system > 0);
         }
+    }
+
+    /// openSUSE's `google-noto-sans-tc-fonts` installs the variable CJK TC font directly in
+    /// `/usr/share/fonts/truetype`.
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn traditional_chinese_searches_the_opensuse_font_dir() {
+        let found = traditional_chinese_candidates();
+        assert!(found.iter().any(|c| c.path == Path::new("/usr/share/fonts/truetype/NotoSansCJKtc-VF.otf") && c.family == "Noto Sans CJK TC"));
     }
 
     /// The `NotoSansCJKtc` override folder is read before the older file at the font folder's root.
