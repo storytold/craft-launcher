@@ -224,6 +224,24 @@ pub(super) fn removal(product_code: &str) -> Result<String, String> {
     Ok(format!("/x {product_code} /passive /norestart"))
 }
 
+/// The removals the elevated session runs: one per product code that a machine-wide uninstall
+/// record (HKLM) names as the app. Those records are writable only by administrators. A record in
+/// the current account's own hive (HKCU) is writable without elevation, so anything running as
+/// the user could make one carry the app's name and an unrelated all-users product's code, and
+/// have that product removed under the app's permission prompt (CWE-863). An all-users downgrade
+/// replaces an all-users copy, which a per-user record never names, so those records are left out.
+pub(super) fn elevated_removals<'a>(app: &str, installs: impl IntoIterator<Item = (&'a str, super::MsiScope)>) -> Result<Vec<String>, String> {
+    let removals = installs
+        .into_iter()
+        .filter(|(_, scope)| *scope == super::MsiScope::PerMachine)
+        .map(|(code, _)| removal(code))
+        .collect::<Result<Vec<_>, _>>()?;
+    if removals.is_empty() {
+        return Err(format!("{app} isn't registered with the Windows Installer for all users"));
+    }
+    Ok(removals)
+}
+
 #[cfg(test)]
 #[path = "msi_downgrade_tests.rs"]
 mod tests;
