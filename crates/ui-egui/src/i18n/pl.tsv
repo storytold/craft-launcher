@@ -177,6 +177,7 @@ designcraft	Page layout and publishing	Skład stron i publikowanie
 wordcraft	Writing and document design	Pisanie i projektowanie dokumentów
 deckcraft	Presentations and slide shows	Prezentacje i pokazy slajdów
 gridcraft	Spreadsheets and data	Arkusze kalkulacyjne i dane
+craft-anything	Find out how any software works, then craft your own	Dowiedz się, jak działa dowolne oprogramowanie, i stwórz własne
 solidcraft	Parametric 3D CAD	Parametryczny CAD 3D
 cadcraft	Computer-aided design and drafting	Projektowanie i kreślenie wspomagane komputerowo
 soundcraft	Recording, editing and mixing audio	Nagrywanie, edycja i miksowanie dźwięku
@@ -399,3 +400,17 @@ column	Author	Autor
 	Older launcher versions require a manual reinstall.	Starsze wersje programu uruchamiającego wymagają ręcznej ponownej instalacji.
 	Your files may not open in older versions.	Starsza wersja może nie otwierać Twoich plików.
 	Enable automatic installs in Settings to follow new nightly builds.	Włącz automatyczne instalacje w Ustawieniach, aby otrzymywać nowe wersje nocne.
+texturecraft	3D texture painting	Malowanie tekstur 3D
+texturecraft	Paint materials on 3D models and export textures.	Maluj materiały na modelach 3D i eksportuj tekstury.
+texturecraft	Materials	Materiały
+texturecraft	Mesh maps	Mapy siatki
+texturecraft	Bake mesh maps and use smart materials.	Wypiekaj mapy siatki i używaj inteligentnych materiałów.
+texturecraft	Paint textures on 3D models.	Maluj tekstury na modelach 3D.
+	Hide community apps	Ukryj aplikacje społeczności
+materialcraft	Procedural material design	Projektowanie materiałów proceduralnych
+materialcraft	Build materials with node graphs.	Twórz materiały za pomocą grafów węzłów.
+materialcraft	Create tileable PBR materials and export texture maps.	Twórz bezszwowe materiały PBR i eksportuj mapy tekstur.
+materialcraft	Node graphs	Grafy węzłów
+materialcraft	Combine noises, patterns and filters.	Łącz szumy, wzory i filtry.
+materialcraft	Live previews	Podgląd na żywo
+materialcraft	Preview materials in 2D and on 3D models.	Przeglądaj materiały w 2D i na modelach 3D.

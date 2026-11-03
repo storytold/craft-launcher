@@ -164,6 +164,7 @@ designcraft	Page layout and publishing	Diagramação de páginas e publicação
 wordcraft	Writing and document design	Escrita e design de documentos
 deckcraft	Presentations and slide shows	Apresentações e slides
 gridcraft	Spreadsheets and data	Planilhas e dados
+craft-anything	Find out how any software works, then craft your own	Descubra como qualquer software funciona e crie o seu
 solidcraft	Parametric 3D CAD	CAD 3D paramétrico
 cadcraft	Computer-aided design and drafting	Desenho técnico e projeto assistido por computador (CAD)
 soundcraft	Recording, editing and mixing audio	Gravação, edição e mixagem de áudio
@@ -385,3 +386,17 @@ column	Author	Autor
 	Older launcher versions require a manual reinstall.	Versões antigas do inicializador exigem reinstalação manual.
 	Your files may not open in older versions.	Seus arquivos podem não abrir em versões antigas.
 	Enable automatic installs in Settings to follow new nightly builds.	Ative as instalações automáticas nas Configurações para receber as novas versões noturnas.
+texturecraft	3D texture painting	Pintura de texturas 3D
+texturecraft	Paint materials on 3D models and export textures.	Pinte materiais em modelos 3D e exporte texturas.
+texturecraft	Materials	Materiais
+texturecraft	Mesh maps	Mapas de malha
+texturecraft	Bake mesh maps and use smart materials.	Gere mapas de malha e use materiais inteligentes.
+texturecraft	Paint textures on 3D models.	Pinte texturas em modelos 3D.
+	Hide community apps	Ocultar aplicativos da comunidade
+materialcraft	Procedural material design	Design de materiais procedurais
+materialcraft	Build materials with node graphs.	Crie materiais com grafos de nós.
+materialcraft	Create tileable PBR materials and export texture maps.	Crie materiais PBR repetíveis sem emendas e exporte mapas de texturas.
+materialcraft	Node graphs	Grafos de nós
+materialcraft	Combine noises, patterns and filters.	Combine ruídos, padrões e filtros.
+materialcraft	Live previews	Pré-visualizações ao vivo
+materialcraft	Preview materials in 2D and on 3D models.	Visualize materiais em 2D e em modelos 3D.

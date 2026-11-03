@@ -176,6 +176,7 @@ designcraft	Page layout and publishing	Seitenlayout und Publishing
 wordcraft	Writing and document design	Schreiben und Dokumentgestaltung
 deckcraft	Presentations and slide shows	Präsentationen und Diashows
 gridcraft	Spreadsheets and data	Tabellenkalkulation und Daten
+craft-anything	Find out how any software works, then craft your own	Verstehen, wie jede Software funktioniert, und die eigene bauen
 solidcraft	Parametric 3D CAD	Parametrisches 3D-CAD
 cadcraft	Computer-aided design and drafting	Computergestütztes Konstruieren und Zeichnen
 soundcraft	Recording, editing and mixing audio	Audio aufnehmen, bearbeiten und mischen
@@ -397,3 +398,17 @@ column	Author	Autor
 	Older launcher versions require a manual reinstall.	Ältere Launcher-Versionen müssen manuell neu installiert werden.
 	Your files may not open in older versions.	Ältere Versionen können deine Dateien möglicherweise nicht öffnen.
 	Enable automatic installs in Settings to follow new nightly builds.	Aktiviere automatische Installationen in den Einstellungen, um neuen Nightly-Builds zu folgen.
+texturecraft	3D texture painting	3D-Texturmalerei
+texturecraft	Paint materials on 3D models and export textures.	Materialien auf 3D-Modelle malen und Texturen exportieren.
+texturecraft	Materials	Materialien
+texturecraft	Mesh maps	Mesh-Maps
+texturecraft	Bake mesh maps and use smart materials.	Mesh-Maps backen und intelligente Materialien verwenden.
+texturecraft	Paint textures on 3D models.	Texturen auf 3D-Modelle malen.
+	Hide community apps	Community-Apps ausblenden
+materialcraft	Procedural material design	Prozedurales Materialdesign
+materialcraft	Build materials with node graphs.	Materialien mit Knotengraphen erstellen.
+materialcraft	Create tileable PBR materials and export texture maps.	Nahtlos kachelbare PBR-Materialien erstellen und Textur-Maps exportieren.
+materialcraft	Node graphs	Knotengraphen
+materialcraft	Combine noises, patterns and filters.	Rauschen, Muster und Filter kombinieren.
+materialcraft	Live previews	Live-Vorschauen
+materialcraft	Preview materials in 2D and on 3D models.	Materialien in 2D und auf 3D-Modellen anzeigen.

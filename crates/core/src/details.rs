@@ -139,7 +139,7 @@ pub fn screenshot_within_budget(bytes: &[u8]) -> bool {
 /// Where every Craft App runs (getartcraft.com lists the same for each of them).
 const PLATFORMS: &str = "macOS, Windows, Linux, FreeBSD, web";
 
-pub const DETAILS: [AppDetails; 14] = [
+pub const DETAILS: [AppDetails; 17] = [
     AppDetails {
         id: "photocraft",
         headline: "The image editor you already know how to use.",
@@ -467,6 +467,49 @@ pub const DETAILS: [AppDetails; 14] = [
                 "Your files",
                 "Plain .figcraft files on your own disk. SVG, PNG, JPEG, WebP and PDF in and out, and .fig files open, best effort.",
             ),
+        ],
+        shots: &[],
+        platforms: PLATFORMS,
+    },
+    AppDetails {
+        id: "texturecraft",
+        headline: "Paint textures on 3D models.",
+        about: "Paint materials on 3D models and export textures.",
+        features: &[
+            feature("Materials", "Paint materials on 3D models and export textures."),
+            feature("Mesh maps", "Bake mesh maps and use smart materials."),
+        ],
+        shots: &[],
+        platforms: PLATFORMS,
+    },
+    AppDetails {
+        id: "materialcraft",
+        headline: "Build materials with node graphs.",
+        about: "Create tileable PBR materials and export texture maps.",
+        features: &[
+            feature("Node graphs", "Combine noises, patterns and filters."),
+            feature("Live previews", "Preview materials in 2D and on 3D models."),
+        ],
+        shots: &[],
+        platforms: PLATFORMS,
+    },
+    AppDetails {
+        id: "craft-anything",
+        headline: "See how any website, app or game works, then build your own.",
+        about: "Point it at a target and say what you want. It studies the original with real inspection tools, has a \
+                coding agent build a new project in the stack you ask for, checks the result against the original and \
+                refines it. Open source and clean-room.",
+        features: &[
+            feature(
+                "Study anything",
+                "Websites, desktop apps, phone apps, games and files: find out how they're built, with the evidence behind every answer.",
+            ),
+            feature("Build your own", "Say what you want and a coding agent builds a new project in the language or engine you name."),
+            feature(
+                "Checked, not guessed",
+                "Every build is compared with the original, at three screen widths for a page, and refined until it's close.",
+            ),
+            feature("Agent-ready", "Every tool is a CLI command and an MCP tool, and no AI is needed just to inspect."),
         ],
         shots: &[],
         platforms: PLATFORMS,

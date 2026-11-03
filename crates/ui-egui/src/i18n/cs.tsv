@@ -158,6 +158,7 @@ designcraft	Page layout and publishing	Sazba stránek a publikování
 wordcraft	Writing and document design	Psaní a návrh dokumentů
 deckcraft	Presentations and slide shows	Prezentace a promítání snímků
 gridcraft	Spreadsheets and data	Tabulky a data
+craft-anything	Find out how any software works, then craft your own	Zjistěte, jak funguje jakýkoli software, a vytvořte si vlastní
 solidcraft	Parametric 3D CAD	Parametrické 3D CAD
 cadcraft	Computer-aided design and drafting	Počítačem podporované navrhování a kreslení
 soundcraft	Recording, editing and mixing audio	Nahrávání, úpravy a mixování zvuku
@@ -365,3 +366,17 @@ column	Author	Autor
 	Older launcher versions require a manual reinstall.	Starší verze spouštěče vyžadují ruční přeinstalaci.
 	Your files may not open in older versions.	Starší verze nemusí vaše soubory otevřít.
 	Enable automatic installs in Settings to follow new nightly builds.	Chcete-li automaticky dostávat nová noční sestavení, zapněte v nastavení automatické instalace.
+texturecraft	3D texture painting	Malování textur ve 3D
+texturecraft	Paint materials on 3D models and export textures.	Malujte materiály na 3D modely a exportujte textury.
+texturecraft	Materials	Materiály
+texturecraft	Mesh maps	Mapy sítí
+texturecraft	Bake mesh maps and use smart materials.	Vypékejte mapy sítí a používejte inteligentní materiály.
+texturecraft	Paint textures on 3D models.	Malujte textury na 3D modely.
+	Hide community apps	Skrýt komunitní aplikace
+materialcraft	Procedural material design	Návrh procedurálních materiálů
+materialcraft	Build materials with node graphs.	Vytvářejte materiály pomocí uzlových grafů.
+materialcraft	Create tileable PBR materials and export texture maps.	Vytvářejte bezešvé PBR materiály a exportujte texturové mapy.
+materialcraft	Node graphs	Uzlové grafy
+materialcraft	Combine noises, patterns and filters.	Kombinujte šumy, vzory a filtry.
+materialcraft	Live previews	Živé náhledy
+materialcraft	Preview materials in 2D and on 3D models.	Prohlížejte materiály ve 2D a na 3D modelech.
