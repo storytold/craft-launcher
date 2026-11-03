@@ -48,6 +48,38 @@ pub(super) fn protected_paths(prefix: &Path, app_id: &str) -> Vec<PathBuf> {
 /// a path between its check and its `chmod`.
 pub(super) const COPY_AND_PROTECT: &str = r#"/bin/cp -R "$1" "$2" || exit; shift 2; for p; do if [ -L "$p" ]; then echo "$p is a symlink" >&2; exit 1; fi; /bin/chmod go-w,a+rX "$p" || exit; done"#;
 
+/// The root step of a system-wide uninstall, run as `sh -c REMOVE_LIST_LAST sh <list> <files...>`:
+/// the app's files go first, and the list only if they all went, so a failed removal leaves the
+/// list that a retry needs (`rm -f` goes on past an operand it can't remove).
+pub(super) const REMOVE_LIST_LAST: &str = r#"list=$1; shift; /bin/rm -f -- "$@" && /bin/rm -f -- "$list""#;
+
+/// Whether `prefix` or a folder between it and `file` is a symlink.
+pub(super) fn has_symlink_ancestor(prefix: &Path, file: &Path) -> bool {
+    let Ok(rel) = file.strip_prefix(prefix) else { return false };
+    let mut check = prefix.to_path_buf();
+    for part in rel.components() {
+        if std::fs::symlink_metadata(&check).is_ok_and(|m| m.file_type().is_symlink()) {
+            return true;
+        }
+        check.push(part);
+    }
+    false
+}
+
+/// The arguments of the root call that removes `targets` (the files `owned` read from the list of
+/// `app_id`, under `prefix`), the list last. An error, with nothing removed, when a target sits
+/// behind a symlink: it would stay installed with its list gone.
+pub(super) fn removal_args(prefix: &Path, app_id: &str, targets: &[PathBuf]) -> Result<Vec<std::ffi::OsString>, String> {
+    let list = prefix.join(relative(app_id));
+    if let Some(f) = targets.iter().find(|f| has_symlink_ancestor(prefix, f)) {
+        return Err(format!("refusing to uninstall: {} is behind a symbolic link, so it would stay installed", f.display()));
+    }
+    let mut args: Vec<std::ffi::OsString> = ["/bin/sh", "-c", REMOVE_LIST_LAST, "sh"].iter().map(Into::into).collect();
+    args.push(list.clone().into());
+    args.extend(targets.iter().filter(|f| **f != list).map(|f| f.clone().into_os_string()));
+    Ok(args)
+}
+
 /// A path relative to the prefix that stays inside it: no root, `..` or empty parts.
 fn contained(rel: &Path) -> bool {
     !rel.as_os_str().is_empty() && rel.components().all(|c| matches!(c, Component::Normal(_)))
@@ -166,6 +198,40 @@ mod tests {
         assert_eq!(owned, expected);
         // Another app's files, or a protected file the app never installed, are not in it.
         assert!(!owned.contains(&prefix.join("bin/sudo")));
+    }
+
+    fn run(args: &[std::ffi::OsString]) -> bool {
+        std::process::Command::new(&args[0]).args(&args[1..]).status().unwrap().success()
+    }
+
+    #[test]
+    fn the_list_is_removed_last_and_only_when_the_other_files_went() {
+        let (_dir, prefix) = installed(&["bin/wordcraft", "bin/stuck"]);
+        let list = prefix.join(relative("wordcraft"));
+        std::fs::create_dir_all(prefix.join("bin")).unwrap();
+        std::fs::write(prefix.join("bin/wordcraft"), b"x").unwrap();
+        // a target `rm -f` can't remove (a folder): the list must stay for a retry
+        std::fs::create_dir(prefix.join("bin/stuck")).unwrap();
+        let targets: Vec<PathBuf> = ["bin/wordcraft", "bin/stuck"].iter().map(|f| prefix.join(f)).chain([list.clone()]).collect();
+        let args = removal_args(&prefix, "wordcraft", &targets).unwrap();
+        assert_eq!(args[4], list.clone().into_os_string());
+        assert!(!run(&args));
+        assert!(list.exists() && !prefix.join("bin/wordcraft").exists());
+        std::fs::remove_dir(prefix.join("bin/stuck")).unwrap();
+        assert!(run(&removal_args(&prefix, "wordcraft", &targets[..1]).unwrap()));
+        assert!(!list.exists());
+    }
+
+    #[test]
+    fn a_target_behind_a_symlink_refuses_the_uninstall() {
+        let (dir, prefix) = installed(&["bin/wordcraft", "lib/x"]);
+        std::fs::create_dir(dir.path().join("elsewhere")).unwrap();
+        std::os::unix::fs::symlink(dir.path().join("elsewhere"), prefix.join("lib")).unwrap();
+        assert!(has_symlink_ancestor(&prefix, &prefix.join("lib/x")));
+        assert!(!has_symlink_ancestor(&prefix, &prefix.join("bin/wordcraft")));
+        let targets = [prefix.join("bin/wordcraft"), prefix.join("lib/x")];
+        assert!(removal_args(&prefix, "wordcraft", &targets).is_err());
+        assert!(removal_args(&prefix, "wordcraft", &targets[..1]).is_ok());
     }
 
     #[test]

@@ -1902,36 +1902,22 @@ mod freebsd {
         } else {
             files.to_vec()
         };
-        let mut safe_files = Vec::new();
         for f in &targets {
             // Refuse paths that climb or escape install prefix (CWE-59).
             if !f.starts_with(&prefix) || f.components().any(|c| matches!(c, std::path::Component::ParentDir)) {
                 return Err(format!("refusing to remove file outside install prefix: {}", f.display()));
             }
-            let mut has_symlink_ancestor = false;
-            if let Ok(rel) = f.strip_prefix(&prefix) {
-                let mut check = prefix.clone();
-                for part in rel.components() {
-                    if let Ok(meta) = std::fs::symlink_metadata(&check)
-                        && meta.file_type().is_symlink()
-                    {
-                        has_symlink_ancestor = true;
-                        break;
-                    }
-                    check.push(part);
-                }
-            }
-            if !has_symlink_ancestor {
-                safe_files.push(f);
-            }
-        }
-        if safe_files.is_empty() {
-            return Ok(());
         }
         if needs_root {
-            let mut args: Vec<&OsStr> = vec![OsStr::new("/bin/rm"), OsStr::new("-f"), OsStr::new("--")];
-            args.extend(safe_files.iter().map(|f| f.as_os_str()));
+            // Refuses when a target is behind a symlink, and removes the root-owned list last.
+            let args = root_record::removal_args(&prefix, app_id, &targets)?;
+            let args: Vec<&OsStr> = args.iter().map(|a| a.as_os_str()).collect();
             return run_as_root(&args);
+        }
+        // Files behind a symlink are left alone.
+        let safe_files: Vec<&PathBuf> = targets.iter().filter(|f| !root_record::has_symlink_ancestor(&prefix, f)).collect();
+        if safe_files.is_empty() {
+            return Ok(());
         }
         for f in safe_files {
             let _ = std::fs::remove_file(f);
