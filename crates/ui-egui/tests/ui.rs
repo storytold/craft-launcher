@@ -189,6 +189,9 @@ fn events() -> Vec<Event> {
             source: InstallSource::MacApp,
             location: format!("/Applications/{}.app", app.name),
             package: None,
+            externally_managed: false,
+            origin: None,
+            installation: None,
         });
         ev.push(Event::Detected { app: app.id.into(), installed: inst });
     }
@@ -558,6 +561,9 @@ fn choosing_an_app_version_turns_its_main_action_into_install() {
             source: InstallSource::MacApp,
             location: "/Applications/PhotoCraft.app".into(),
             package: None,
+            externally_managed: false,
+            origin: None,
+            installation: None,
         }),
     });
     h.run_steps(4);
@@ -1282,9 +1288,9 @@ fn a_dismissed_install_prompt_is_not_called_a_cancelled_download() {
 }
 
 #[test]
-/// A ready update names its version and installs on Retry, while an up-to-date app offers
-/// Reinstall instead of Download again.
-fn a_kept_update_names_its_version_and_an_up_to_date_app_is_not_downloaded_again() {
+/// A ready update installs on Retry (the table's narrow button leaves the version to its column),
+/// while an up-to-date app offers Reinstall instead of Download again.
+fn a_kept_update_installs_on_retry_and_an_up_to_date_app_is_not_downloaded_again() {
     let mut ev = events();
     for app in ["effectcraft", "wordcraft"] {
         ev.push(Event::ReadyToInstall { app: app.into(), ready: true });
@@ -1294,7 +1300,7 @@ fn a_kept_update_names_its_version_and_an_up_to_date_app_is_not_downloaded_again
     snapshot(&mut h, "table-retry-update-dark");
     sent.borrow_mut().clear();
     assert!(h.query_by_label("Update to 0.6.0").is_none());
-    h.get_by_label("Retry update to 0.6.0").click();
+    h.get_by_label("Retry update").click();
     h.run_steps(2);
     assert_eq!(*sent.borrow(), [Command::Install { app: "effectcraft".into() }]);
     // WordCraft is up to date: its menu offers Reinstall, which uses the kept file.
@@ -1304,6 +1310,31 @@ fn a_kept_update_names_its_version_and_an_up_to_date_app_is_not_downloaded_again
     h.get_by_label("Reinstall");
     h.check_accessibility();
     assert!(h.query_by_label("Download again").is_none());
+}
+
+#[test]
+/// A Retry update button too wide for its slot drops the version instead of pushing the menu out
+/// of the row (#956): it is no wider than an Install button in the same view. A card with room
+/// for the version keeps it.
+fn a_retry_update_button_keeps_to_its_slot_and_leaves_room_for_the_menu() {
+    for view in [ViewMode::Table, ViewMode::Grid] {
+        let mut ev = events();
+        // Two-digit minor, as in the report: "Retry update to 0.12.0".
+        ev.push(Event::Latest {
+            app: "effectcraft".into(),
+            latest: LatestRelease::Found(release("effectcraft", "0.12.0", NOW)),
+            from: Origin::ArtCraftApi,
+        });
+        ev.push(Event::ReadyToInstall { app: "effectcraft".into(), ready: true });
+        let (mut h, _) = harness_with(ev, view, egui::Theme::Dark, true, 1.0);
+        h.run_steps(8);
+        let label = if view == ViewMode::Table { "Retry update" } else { "Retry update to 0.12.0" };
+        let retry = h.get_by_label(label).rect();
+        let install = h.query_all_by_label("Install").next().unwrap().rect();
+        let menu = h.get_by_label("More actions for EffectCraft").rect();
+        assert!(retry.width() <= install.width() + 0.5, "{view:?}: retry {retry:?} wider than install {install:?}");
+        assert!(retry.right() <= menu.left(), "{view:?}: retry {retry:?} overlaps menu {menu:?}");
+    }
 }
 
 #[test]
@@ -2273,6 +2304,110 @@ fn maximized_the_close_button_reaches_the_screens_corner() {
     assert!(asked.iter().any(|c| matches!(c, egui::ViewportCommand::BeginResize(_))), "{asked:?}");
 }
 
+/// A quick drag on an edge only resizes: egui sees it as one spot, so nothing nearby may click (#571).
+#[test]
+fn a_press_on_the_window_edge_only_resizes() {
+    use egui::ViewportCommand as Asked;
+    struct FramelessHost;
+    impl Host for FramelessHost {
+        fn title_bar(&self) -> artcraft_launcher_ui_egui::TitleBar {
+            artcraft_launcher_ui_egui::TitleBar::Custom
+        }
+    }
+    artcraft_launcher_ui_egui::i18n::set_test_lang(artcraft_launcher_ui_egui::i18n::Lang::EN);
+    let mut backend = Some(Fake {
+        events: events(),
+        sent: Rc::new(RefCell::new(Vec::new())),
+        manage: true,
+        pictures: Rc::default(),
+        asked: Vec::new(),
+        clock: Rc::new(Cell::new(NOW)),
+    });
+    let mut h = test_harness_builder(egui::Theme::Dark).with_size(egui::vec2(1180.0, 1200.0)).build_ui_state(
+        move |ui, state: &mut Option<LauncherUi>| {
+            if state.is_none()
+                && let Some(b) = backend.take()
+            {
+                *state = Some(LauncherUi::new(ui.ctx(), Box::new(b), Settings { notify: false, ..Settings::default() }));
+            }
+            if let Some(l) = state.as_mut() {
+                l.logic(&ui.ctx().clone(), &mut FramelessHost);
+                // The harness keeps its app 8 px in; a real header starts at the window's top.
+                let window = ui.ctx().content_rect();
+                ui.scope_builder(egui::UiBuilder::new().max_rect(window), |ui| l.ui(ui, &mut FramelessHost));
+            }
+        },
+        None,
+    );
+    h.run_steps(6);
+    let press = |h: &mut Harness<'_, Option<LauncherUi>>, pos: egui::Pos2| -> Vec<Asked> {
+        let mut asked = Vec::new();
+        for pressed in [true, false] {
+            let input = h.input_mut();
+            input.events.push(egui::Event::PointerMoved(pos));
+            input.events.push(egui::Event::PointerButton { pos, button: egui::PointerButton::Primary, pressed, modifiers: egui::Modifiers::NONE });
+            h.step();
+            asked.extend(h.output().viewport_output.values().flat_map(|v| v.commands.iter().cloned()));
+        }
+        h.run_steps(2);
+        asked
+    };
+    let settings_open =
+        |h: &Harness<'_, Option<LauncherUi>>| h.query_by_role_and_label(egui::accesskit::Role::ComboBox, "Launcher version").is_some();
+    for label in ["Minimize", "Maximize", "Close", "Settings"] {
+        let x = h.get_by_label(label).rect().center().x;
+        let asked = press(&mut h, egui::pos2(x, 2.0));
+        assert!(asked.iter().any(|c| matches!(c, Asked::BeginResize(_))), "{label}: {asked:?}");
+        assert!(!asked.iter().any(|c| matches!(c, Asked::Minimized(_) | Asked::Maximized(_) | Asked::Close)), "{label}: {asked:?}");
+    }
+    assert!(!settings_open(&h), "the gear was pressed through the edge");
+    // The first frame at a new size already covers the new edge, or Close slips out from under it.
+    h.set_size(egui::vec2(1300.0, 1200.0));
+    h.step();
+    let x = h.get_by_label("Close").rect().center().x;
+    let asked = press(&mut h, egui::pos2(x, 2.0));
+    assert!(!asked.iter().any(|c| matches!(c, Asked::Close)), "after growing: {asked:?}");
+    // The first frame after a restore has no edge areas to hit yet, only last frame's full buttons.
+    let press_on_restore = |h: &mut Harness<'_, Option<LauncherUi>>, label: &str, y: f32| -> Vec<Asked> {
+        h.input_mut().viewports.entry(egui::ViewportId::ROOT).or_default().maximized = Some(true);
+        h.run_steps(3);
+        let x = h.get_by_label(label).rect().center().x;
+        h.input_mut().viewports.entry(egui::ViewportId::ROOT).or_default().maximized = Some(false);
+        press(h, egui::pos2(x, y))
+    };
+    for label in ["Minimize", "Restore", "Close"] {
+        let asked = press_on_restore(&mut h, label, 4.5);
+        assert!(!asked.iter().any(|c| matches!(c, Asked::Minimized(_) | Asked::Maximized(_) | Asked::Close)), "{label} after restoring: {asked:?}");
+    }
+    // Just below the band, that frame's click is the button's.
+    let asked = press_on_restore(&mut h, "Minimize", 5.5);
+    assert!(asked.contains(&Asked::Minimized(true)), "below the band after restoring: {asked:?}");
+    // A key press still works with the pointer resting on the band, and so does a click below it.
+    let x = h.get_by_label("Minimize").rect().center().x;
+    press(&mut h, egui::pos2(x, 4.5));
+    h.get_by_label("Minimize").focus();
+    h.run_steps(2);
+    h.key_down(egui::Key::Enter);
+    h.step();
+    let asked: Vec<_> = h.output().viewport_output.values().flat_map(|v| v.commands.iter().cloned()).collect();
+    assert!(asked.contains(&Asked::Minimized(true)), "by key: {asked:?}");
+    h.key_up(egui::Key::Enter);
+    h.step();
+    for (label, want) in [("Minimize", Asked::Minimized(true)), ("Maximize", Asked::Maximized(true)), ("Close", Asked::Close)] {
+        let x = h.get_by_label(label).rect().center().x;
+        let asked = press(&mut h, egui::pos2(x, 5.5));
+        assert!(asked.contains(&want), "{label} below the band: {asked:?}");
+        assert!(!asked.iter().any(|c| matches!(c, Asked::BeginResize(_))), "{label} below the band: {asked:?}");
+    }
+    // A dialog's backdrop reaches the edges too; the press doesn't dismiss it.
+    h.get_by_label("Settings").click();
+    h.run_steps(4);
+    assert!(settings_open(&h));
+    let asked = press(&mut h, egui::pos2(590.0, 1198.0));
+    assert!(asked.iter().any(|c| matches!(c, Asked::BeginResize(_))), "{asked:?}");
+    assert!(settings_open(&h), "the dialog closed on a resize");
+}
+
 #[test]
 /// Clicking a card opens its details drawer with the page links, wrapping picture arrows and
 /// Esc-to-close.
@@ -2923,6 +3058,78 @@ fn changelog_shortcuts_zoom_only_the_notes_text() {
 }
 
 #[test]
+/// The notes card grows with the zoomed text, stops at the window, and comes back on reset (#594).
+fn the_notes_card_follows_the_zoom_within_the_window() {
+    let (mut h, _) = harness(ViewMode::Grid, egui::Theme::Dark, true);
+    h.run_steps(4);
+    h.get_by_label("More actions for PhotoCraft").click();
+    h.run_steps(2);
+    h.get_by_label("Release notes").click();
+    h.run_steps(4);
+    let span = |h: &Harness<'_, Option<LauncherUi>>| h.get_by_label("Close").rect().right() - h.get_by_label("Open on GitHub").rect().left();
+    let usual = span(&h);
+    for _ in 0..3 {
+        h.key_press_modifiers(egui::Modifiers::COMMAND, egui::Key::Plus);
+        h.run_steps(3);
+    }
+    assert!(span(&h) > usual * 1.2, "the card kept its width: {usual} -> {}", span(&h));
+    for _ in 0..30 {
+        h.key_press_modifiers(egui::Modifiers::COMMAND, egui::Key::Plus);
+        h.run_steps(3);
+    }
+    let in_window = |h: &Harness<'_, Option<LauncherUi>>| {
+        let window = h.ctx.content_rect();
+        for label in ["Close", "Open on GitHub"] {
+            assert!(window.contains_rect(h.get_by_label(label).rect()), "{label} left {window:?}");
+        }
+    };
+    in_window(&h);
+    // The launcher's smallest window.
+    let full = h.ctx.content_rect().size();
+    h.set_size(egui::vec2(720.0, 500.0));
+    h.run_steps(3);
+    in_window(&h);
+    h.set_size(full);
+    h.key_press_modifiers(egui::Modifiers::COMMAND, egui::Key::Num0);
+    h.run_steps(3);
+    assert!((span(&h) - usual).abs() < 0.5, "reset left the card at {}, was {usual}", span(&h));
+    // Below 100% only the text shrinks.
+    for _ in 0..3 {
+        h.key_press_modifiers(egui::Modifiers::COMMAND, egui::Key::Minus);
+        h.run_steps(3);
+    }
+    assert!((span(&h) - usual).abs() < 0.5, "zooming out left the card at {}, was {usual}", span(&h));
+}
+
+#[test]
+/// Notes too long to fit take the zoom's extra height too (#594).
+fn long_notes_get_a_taller_card_when_zoomed() {
+    let notes: String = (0..200).map(|n| format!("Line {n}\n\n")).collect();
+    let mut ev = events();
+    for e in &mut ev {
+        if let Event::Latest { latest: LatestRelease::Found(r), .. } = e {
+            r.notes.clone_from(&notes);
+        }
+    }
+    let (mut h, _) = harness_with(ev, ViewMode::Grid, egui::Theme::Dark, true, 1.0);
+    h.run_steps(4);
+    h.get_by_label("More actions for PhotoCraft").click();
+    h.run_steps(2);
+    h.get_by_label("Release notes").click();
+    h.run_steps(4);
+    let bottom = |h: &Harness<'_, Option<LauncherUi>>| h.get_by_label("Close").rect().bottom();
+    let usual = bottom(&h);
+    for _ in 0..3 {
+        h.key_press_modifiers(egui::Modifiers::COMMAND, egui::Key::Plus);
+        h.run_steps(3);
+    }
+    assert!(bottom(&h) > usual + 60.0, "the card kept its height: {usual} -> {}", bottom(&h));
+    h.key_press_modifiers(egui::Modifiers::COMMAND, egui::Key::Num0);
+    h.run_steps(3);
+    assert!((bottom(&h) - usual).abs() < 0.5, "reset left the card at {}, was {usual}", bottom(&h));
+}
+
+#[test]
 fn command_m_minimizes_the_mac_window_only() {
     use artcraft_launcher_ui_egui::TitleBar;
     for bar in [TitleBar::MacOs, TitleBar::Native, TitleBar::Custom] {
@@ -2954,7 +3161,7 @@ fn an_occupied_folder_asks_before_replacing_it() {
     sent.borrow_mut().clear();
     h.get_by_label("Replace").click();
     h.run_steps(2);
-    assert_eq!(*sent.borrow(), [Command::Replace { app: "photocraft".into() }]);
+    assert_eq!(*sent.borrow(), [Command::Replace { app: "photocraft".into(), path: path.into() }]);
     assert!(h.query_by_label("Replace").is_none());
 }
 

@@ -154,6 +154,7 @@
 	Update cancelled	Update abgebrochen
 	Uninstall cancelled	Deinstallation abgebrochen
 	Retry install	Installation wiederholen
+	Retry update	Update wiederholen
 	Retry update to {version}	Update auf {version} wiederholen
 	The download is still here. It's checked again, then installed.	Der Download ist noch da. Er wird erneut geprüft und dann installiert.
 	Waiting for another app…	Warten auf eine andere App…
@@ -409,3 +410,14 @@ texturecraft	Mesh maps	Mesh-Maps
 texturecraft	Bake mesh maps and use smart materials.	Mesh-Maps backen und intelligente Materialien verwenden.
 texturecraft	Paint textures on 3D models.	Texturen auf 3D-Modelle malen.
 	Hide community apps	Community-Apps ausblenden
+materialcraft	Procedural material design	Prozedurales Materialdesign
+materialcraft	Build materials with node graphs.	Materialien mit Knotengraphen erstellen.
+materialcraft	Create tileable PBR materials and export texture maps.	Nahtlos kachelbare PBR-Materialien erstellen und Textur-Maps exportieren.
+materialcraft	Node graphs	Knotengraphen
+materialcraft	Combine noises, patterns and filters.	Rauschen, Muster und Filter kombinieren.
+materialcraft	Live previews	Live-Vorschauen
+materialcraft	Preview materials in 2D and on 3D models.	Materialien in 2D und auf 3D-Modellen anzeigen.
+	Advanced	Erweitert
+	Migrate Flatpak bundles to ArtCraft OCI (experimental)	Flatpak-Bundles zu ArtCraft OCI migrieren (experimentell)
+	On update, switch first party apps when the matching package is available. Otherwise, keep using bundles.	ArtCraft-Apps beim Aktualisieren umstellen, wenn das passende Paket verfügbar ist. Andernfalls weiterhin Bundles verwenden.
+	The OCI repository is a preview with GPG verification disabled.	Das OCI-Repository ist eine Vorschau mit deaktivierter GPG-Prüfung.

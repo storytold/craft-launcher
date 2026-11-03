@@ -57,7 +57,15 @@ mod tests {
 
     fn entry(installed: &str, latest: &str) -> AppEntry {
         let mut e = AppEntry::new(CraftApp::by_id("photocraft").unwrap());
-        e.installed = Some(Installed { version: version::parse(installed), source: InstallSource::Msi, location: String::new(), package: None });
+        e.installed = Some(Installed {
+            version: version::parse(installed),
+            source: InstallSource::Msi,
+            location: String::new(),
+            package: None,
+            externally_managed: false,
+            origin: None,
+            installation: None,
+        });
         e.latest = Some(LatestRelease::Found(Release { tag: format!("v{latest}"), version: version::parse(latest), ..Default::default() }));
         e
     }
