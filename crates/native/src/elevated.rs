@@ -1,8 +1,10 @@
 //! MSI batch elevation uses only the OS PowerShell host and Windows Installer. The GUI
 //! executable is NEVER elevated. See docs/windows-msi-security.md for the trust boundary.
 
+#[cfg(any(windows, test))]
+use std::path::Path;
 #[cfg(windows)]
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 use artcraft_launcher_core::catalog::AppKind;
 use artcraft_launcher_core::{CraftApp, PackageKind, release, version};
@@ -683,6 +685,25 @@ fn compressed_command(script: &str) -> Result<String, String> {
 }
 
 #[cfg(any(windows, test))]
+const WINDOWS_COMMAND_LIMIT: usize = 30_000;
+
+#[cfg(any(windows, test))]
+fn batch_outer_command(host: &str, cwd: &str, management: &str, script: &str) -> String {
+    let host = host.replace('\'', "''");
+    let cwd = cwd.replace('\'', "''");
+    let management = management.replace('\'', "''");
+    format!(
+        "$ErrorActionPreference='Stop'; try {{ Import-Module '{management}'; \
+         $parentIdentity = [Security.Principal.WindowsIdentity]::GetCurrent(); \
+         $parentPrincipal = [Security.Principal.WindowsPrincipal]::new($parentIdentity); \
+         $env:ARTCRAFT_BATCH_PARENT_ELEVATED = [string]$parentPrincipal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator); \
+         $p = Microsoft.PowerShell.Management\\Start-Process -FilePath '{host}' -WorkingDirectory '{cwd}' \
+         -ArgumentList '-NoProfile -NonInteractive -EncodedCommand {script}' -Verb RunAs -Wait -PassThru; exit $p.ExitCode \
+         }} catch {{ $e=$_.Exception; while ($e) {{ if ($e.NativeErrorCode -eq 1223) {{ exit 1223 }}; $e=$e.InnerException }}; exit 1 }}"
+    )
+}
+
+#[cfg(any(windows, test))]
 fn batch_script(session: &str, port: u16, items: &[Item]) -> Result<String, String> {
     use base64::Engine as _;
     #[derive(Serialize)]
@@ -748,22 +769,14 @@ pub fn install(items: &[Item], report: &mut dyn FnMut(usize, crate::msi_batch::R
         let script = compressed_command(&batch_script(&session, source.port, items)?)?;
         // The unelevated launcher asks the OS to elevate ONLY its system PowerShell executable.
         // Both paths/code are data, never interpolation of MSI/path strings into shell source.
-        let host = powershell.to_str().ok_or("unusual Windows system path")?.replace('\'', "''");
-        let cwd = system.to_str().ok_or("unusual Windows system path")?.replace('\'', "''");
         let modules = powershell.parent().ok_or("unusual Windows system path")?.join("Modules");
+        let host = powershell.to_str().ok_or("unusual Windows system path")?;
+        let cwd = system.to_str().ok_or("unusual Windows system path")?;
         let management = modules.join(r"Microsoft.PowerShell.Management\Microsoft.PowerShell.Management.psd1");
-        let management = management.to_str().ok_or("unusual Windows system path")?.replace('\'', "''");
-        let outer = format!(
-            "$ErrorActionPreference='Stop'; try {{ Import-Module '{management}'; \
-             $parentIdentity = [Security.Principal.WindowsIdentity]::GetCurrent(); \
-             $parentPrincipal = [Security.Principal.WindowsPrincipal]::new($parentIdentity); \
-             $env:ARTCRAFT_BATCH_PARENT_ELEVATED = [string]$parentPrincipal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator); \
-             $p = Microsoft.PowerShell.Management\\Start-Process -FilePath '{host}' -WorkingDirectory '{cwd}' \
-             -ArgumentList '-NoProfile -NonInteractive -EncodedCommand {script}' -Verb RunAs -Wait -PassThru; exit $p.ExitCode \
-             }} catch {{ $e=$_.Exception; while ($e) {{ if ($e.NativeErrorCode -eq 1223) {{ exit 1223 }}; $e=$e.InnerException }}; exit 1 }}"
-        );
+        let management = management.to_str().ok_or("unusual Windows system path")?;
+        let outer = batch_outer_command(host, cwd, management, &script);
         // Avoid the Windows 32K command line limit before asking for UAC.
-        if outer.len() > 30000 {
+        if outer.len() > WINDOWS_COMMAND_LIMIT {
             return Err("the MSI batch command is too large for Windows".into());
         }
         let results = system.join(format!("ArtCraft-MSI-{session}")).join("results");
@@ -841,18 +854,68 @@ fn read_results(path: &Path) -> Result<Option<String>, String> {
 mod tests {
     use super::*;
 
+    #[cfg(any(windows, test))]
+    enum PowerShellTestTransport {
+        Encoded(String),
+        StandardInput(String),
+    }
+
+    #[cfg(any(windows, test))]
+    fn powershell_stdin_bootstrap() -> String {
+        encode_command(
+            "$ErrorActionPreference='Stop'; \
+             [Console]::InputEncoding=[System.Text.UTF8Encoding]::new($false); \
+             $source=[Console]::In.ReadToEnd(); \
+             try { & ([ScriptBlock]::Create($source)); exit 0 } \
+             catch { [Console]::Error.WriteLine(($_ | Out-String)); exit 1 }",
+        )
+    }
+
+    #[cfg(any(windows, test))]
+    fn powershell_test_transport(script: &str) -> Result<PowerShellTestTransport, String> {
+        let script = format!("trap {{ [Console]::Error.WriteLine(($_ | Out-String)); exit 1 }}\n{script}");
+        let encoded = compressed_command(&script)?;
+        if encoded.len() < WINDOWS_COMMAND_LIMIT {
+            Ok(PowerShellTestTransport::Encoded(encoded))
+        } else {
+            Ok(PowerShellTestTransport::StandardInput(script))
+        }
+    }
+
     #[cfg(windows)]
     fn run_powershell_test(script: &str) -> std::process::Output {
-        let script = format!("trap {{ [Console]::Error.WriteLine(($_ | Out-String)); exit 1 }}\n{script}");
-        let encoded = compressed_command(&script).unwrap_or_else(|error| panic!("could not prepare compressed PowerShell test command: {error}"));
-        assert!(encoded.len() < 30_000, "compressed PowerShell test command is too long for process launch: {} bytes", encoded.len());
+        use std::io::Write as _;
+
+        let (encoded, stdin_script) =
+            match powershell_test_transport(script).unwrap_or_else(|error| panic!("could not prepare PowerShell test transport: {error}")) {
+                PowerShellTestTransport::Encoded(encoded) => (encoded, None),
+                PowerShellTestTransport::StandardInput(script) => (powershell_stdin_bootstrap(), Some(script)),
+            };
         let powershell = system_powershell().unwrap_or_else(|error| panic!("could not locate Windows PowerShell: {error}"));
-        let child = std::process::Command::new(&powershell)
+        let mut child = std::process::Command::new(&powershell)
             .args(["-NoProfile", "-NonInteractive", "-EncodedCommand", &encoded])
+            .stdin(std::process::Stdio::piped())
             .stdout(std::process::Stdio::piped())
             .stderr(std::process::Stdio::piped())
             .spawn()
             .unwrap_or_else(|error| panic!("failed to launch {}: {error}", powershell.display()));
+        let mut stdin = child.stdin.take().unwrap_or_else(|| panic!("Windows PowerShell launched without the configured stdin pipe"));
+        if let Some(script) = stdin_script {
+            if let Err(error) = stdin.write_all(script.as_bytes()) {
+                drop(stdin);
+                let output = child
+                    .wait_with_output()
+                    .unwrap_or_else(|wait_error| panic!("PowerShell stdin failed ({error}) and output collection also failed: {wait_error}"));
+                panic!(
+                    "Windows PowerShell launched but reading the test script from stdin failed: {error}. Exit status: {}.\nstdout:\n{}\nstderr:\n{}",
+                    output.status,
+                    String::from_utf8_lossy(&output.stdout),
+                    String::from_utf8_lossy(&output.stderr)
+                );
+            }
+        }
+        // Closing the pipe signals EOF to Console.In.ReadToEnd() in the bootstrap.
+        drop(stdin);
         let output = child.wait_with_output().unwrap_or_else(|error| panic!("Windows PowerShell launched but collecting its output failed: {error}"));
         assert!(
             output.status.success(),
@@ -1101,6 +1164,73 @@ Remove-Item -LiteralPath $path -Force
         let mut decoded = String::new();
         std::io::Read::read_to_string(&mut decoder, &mut decoded).unwrap();
         assert_eq!(decoded, compact_policy(&script));
+    }
+
+    #[test]
+    fn oversized_powershell_test_scripts_use_utf8_stdin_transport() {
+        use base64::Engine as _;
+
+        let PowerShellTestTransport::Encoded(encoded) = powershell_test_transport("Write-Output 'small test'").unwrap() else {
+            panic!("small PowerShell tests should retain compressed-command transport");
+        };
+        assert!(encoded.len() < WINDOWS_COMMAND_LIMIT);
+
+        let alphabet = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
+        let mut state = 0x6d2b_79f5_u32;
+        let mut payload = String::with_capacity(80_000);
+        for _ in 0..80_000 {
+            state ^= state << 13;
+            state ^= state >> 17;
+            state ^= state << 5;
+            payload.push(alphabet[(state as usize) % alphabet.len()] as char);
+        }
+        let source = format!("Write-Output '{payload}'\nWrite-Output 'Málaga 日本語'");
+        let transported = powershell_test_transport(&source).unwrap();
+        let PowerShellTestTransport::StandardInput(script) = transported else {
+            panic!("expected oversized script to use stdin transport");
+        };
+        assert!(script.ends_with(&source), "stdin transport must preserve the complete UTF-8 source");
+
+        let bootstrap = powershell_stdin_bootstrap();
+        let bytes = base64::engine::general_purpose::STANDARD.decode(bootstrap).unwrap();
+        let utf16: Vec<_> = bytes.as_chunks::<2>().0.iter().map(|bytes| u16::from_le_bytes(*bytes)).collect();
+        let bootstrap = String::from_utf16(&utf16).unwrap();
+        assert!(bootstrap.contains("[System.Text.UTF8Encoding]::new($false)"));
+        assert!(bootstrap.contains("[Console]::In.ReadToEnd()"));
+        assert!(bootstrap.contains("[ScriptBlock]::Create($source)"));
+        assert!(bootstrap.contains("[Console]::Error.WriteLine"));
+        assert!(bootstrap.contains("exit 1"));
+    }
+
+    #[test]
+    fn representative_two_package_update_all_fits_the_production_command_budget() {
+        let items = vec![
+            Item {
+                msi: Path::new(r"C:\Users\Test\AppData\Local\Temp\photocraft.msi").into(),
+                sha256: "a".repeat(64),
+                destination: Some(Path::new(r"C:\Program Files\PhotoCraft").into()),
+                release: ReleaseIdentity { app: "photocraft".into(), tag: "v0.14.0".into(), asset: "photocraft-0.14.0-windows-x64.msi".into() },
+            },
+            Item {
+                msi: Path::new(r"C:\Users\Test\AppData\Local\Temp\vectorcraft.msi").into(),
+                sha256: "b".repeat(64),
+                destination: Some(Path::new(r"C:\Program Files\VectorCraft").into()),
+                release: ReleaseIdentity { app: "vectorcraft".into(), tag: "v0.16.0".into(), asset: "vectorcraft-0.16.0-windows-x64.msi".into() },
+            },
+        ];
+        let script = batch_script("0123456789abcdef0123456789abcdef", 54_321, &items).unwrap();
+        let encoded = compressed_command(&script).unwrap();
+        let command = batch_outer_command(
+            r"C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe",
+            r"C:\Windows\System32",
+            r"C:\Windows\System32\WindowsPowerShell\v1.0\Modules\Microsoft.PowerShell.Management\Microsoft.PowerShell.Management.psd1",
+            &encoded,
+        );
+        assert!(
+            command.len() <= WINDOWS_COMMAND_LIMIT,
+            "representative two-package Update all command exceeds the production limit: {} bytes",
+            command.len()
+        );
     }
 
     #[test]
