@@ -411,3 +411,7 @@ materialcraft	Node graphs	Csomópontgráfok
 materialcraft	Combine noises, patterns and filters.	Kombinálj zajokat, mintákat és szűrőket.
 materialcraft	Live previews	Élő előnézetek
 materialcraft	Preview materials in 2D and on 3D models.	Tekintsd meg az anyagokat 2D-ben és 3D modelleken.
+texturecraft	The TextureCraft workspace	A TextureCraft munkaterülete
+texturecraft	Baking mesh maps	Hálótérképek kisütése
+texturecraft	Exporting textures	Textúrák exportálása
+texturecraft	Rendering a material	Anyag renderelése

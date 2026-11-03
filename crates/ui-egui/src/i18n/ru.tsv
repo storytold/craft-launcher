@@ -406,3 +406,7 @@ materialcraft	Node graphs	Графы узлов
 materialcraft	Combine noises, patterns and filters.	Комбинируйте шумы, узоры и фильтры.
 materialcraft	Live previews	Предпросмотр в реальном времени
 materialcraft	Preview materials in 2D and on 3D models.	Просматривайте материалы в 2D и на 3D-моделях.
+texturecraft	The TextureCraft workspace	Рабочее пространство TextureCraft
+texturecraft	Baking mesh maps	Запекание карт сетки
+texturecraft	Exporting textures	Экспорт текстур
+texturecraft	Rendering a material	Рендеринг материала

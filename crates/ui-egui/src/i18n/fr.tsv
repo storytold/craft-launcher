@@ -408,3 +408,7 @@ materialcraft	Node graphs	Graphes de nœuds
 materialcraft	Combine noises, patterns and filters.	Combinez bruits, motifs et filtres.
 materialcraft	Live previews	Aperçus en direct
 materialcraft	Preview materials in 2D and on 3D models.	Visualisez les matériaux en 2D et sur des modèles 3D.
+texturecraft	The TextureCraft workspace	L’espace de travail TextureCraft
+texturecraft	Baking mesh maps	Calcul des cartes de maillage
+texturecraft	Exporting textures	Exportation des textures
+texturecraft	Rendering a material	Rendu d’un matériau

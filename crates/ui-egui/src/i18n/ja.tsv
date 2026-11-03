@@ -413,3 +413,7 @@ materialcraft	Node graphs	ノードグラフ
 materialcraft	Combine noises, patterns and filters.	ノイズ、パターン、フィルターを組み合わせます。
 materialcraft	Live previews	リアルタイムプレビュー
 materialcraft	Preview materials in 2D and on 3D models.	マテリアルを2Dと3Dモデル上でプレビューします。
+texturecraft	The TextureCraft workspace	TextureCraftのワークスペース
+texturecraft	Baking mesh maps	メッシュマップのベイク
+texturecraft	Exporting textures	テクスチャの書き出し
+texturecraft	Rendering a material	マテリアルのレンダリング

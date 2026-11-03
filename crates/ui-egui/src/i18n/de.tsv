@@ -410,3 +410,7 @@ materialcraft	Node graphs	Knotengraphen
 materialcraft	Combine noises, patterns and filters.	Rauschen, Muster und Filter kombinieren.
 materialcraft	Live previews	Live-Vorschauen
 materialcraft	Preview materials in 2D and on 3D models.	Materialien in 2D und auf 3D-Modellen anzeigen.
+texturecraft	The TextureCraft workspace	Die TextureCraft-Arbeitsfläche
+texturecraft	Baking mesh maps	Mesh-Maps backen
+texturecraft	Exporting textures	Texturen exportieren
+texturecraft	Rendering a material	Ein Material rendern
