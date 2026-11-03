@@ -793,6 +793,8 @@ mod tests {
         let powershell = system_powershell().unwrap_or_else(|error| panic!("could not locate Windows PowerShell: {error}"));
         let child = std::process::Command::new(&powershell)
             .args(["-NoProfile", "-NonInteractive", "-EncodedCommand", &encoded])
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::piped())
             .spawn()
             .unwrap_or_else(|error| panic!("failed to launch {}: {error}", powershell.display()));
         let output = child.wait_with_output().unwrap_or_else(|error| panic!("Windows PowerShell launched but collecting its output failed: {error}"));
