@@ -170,8 +170,9 @@ pub fn claim(wake: Wake) -> Instance {
                 }
                 std::thread::sleep(Duration::from_millis(100));
             }
-            if proven {
-                // It stayed (busy installing) and showed its window instead.
+            if proven && holder_proves_itself(addr, token.as_deref()) {
+                // It stayed (busy installing) and showed its window instead. The proof is asked
+                // again because the proven launcher may have quit and something else taken the port.
                 Instance::Secondary
             } else {
                 log::warn!("whatever holds the launcher's port didn't prove it is ArtCraft Launcher and kept the port; starting anyway");
@@ -189,6 +190,13 @@ pub fn claim(wake: Wake) -> Instance {
         // The port is taken by something else: run anyway rather than refuse to start.
         Err(_) => Instance::Primary(channel().1),
     }
+}
+
+/// Whether whatever holds the port now proves it is this account's launcher. The probe greets with
+/// the lowest version, so it can only bring the window forward, never ask the holder to quit.
+fn holder_proves_itself(addr: SocketAddr, token: Option<&str>) -> bool {
+    let Some(probe) = version::parse("0.0.0") else { return false };
+    matches!(ask_once(addr, &probe, token, true), Ok(Answer::Defer))
 }
 
 fn compute_proof(role: &str, token: &str, client_nonce: &str, server_nonce: &str) -> String {
@@ -632,6 +640,29 @@ mod tests {
         assert_eq!(verdict(b"artcraft-launcher:running 9.9.9\n", &v("0.1.2"), false), Answer::Unrelated);
         assert_eq!(verdict(b"garbage\n", &v("0.1.2"), false), Answer::Unrelated);
         assert_eq!(verdict(b"", &v("0.1.2"), false), Answer::Legacy);
+    }
+
+    /// After a proven takeover stalls, the newcomer exits only if the port's holder proves itself
+    /// again, and the probe never asks that holder to quit.
+    #[test]
+    fn the_port_holder_is_proven_again_before_stepping_aside() {
+        let (addr, rx) = primary("0.1.0");
+        assert!(holder_proves_itself(addr, Some(TOK)));
+        assert_eq!(next(&rx), Request::Show, "the probe must not ask the running launcher to quit");
+
+        // Something that took the port without the token can't keep the newcomer from starting.
+        let (addr, _rx) = primary("0.1.0");
+        assert!(!holder_proves_itself(addr, Some("another-accounts-token")));
+
+        let listener = TcpListener::bind((Ipv4Addr::LOCALHOST, 0)).unwrap();
+        let addr = listener.local_addr().unwrap();
+        let imposter = std::thread::spawn(move || {
+            let (mut s, _) = listener.accept().unwrap();
+            let _ = read_message(&mut s);
+            let _ = s.write_all(b"artcraft-launcher:running 9.9.9\n");
+        });
+        assert!(!holder_proves_itself(addr, Some(TOK)));
+        imposter.join().unwrap();
     }
 
     /// A listener that answers like a newer launcher but never proves it holds our token (it
