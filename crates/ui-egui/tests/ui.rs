@@ -1407,7 +1407,7 @@ fn pinning_an_app_keeps_it_on_top_until_unpinned() {
     let ids = h.state().as_ref().unwrap().visible_ids_for_test();
     assert_eq!(ids.first().copied(), Some("photocraft"), "pinned app stays first under Name sort: {ids:?}");
     h.state_mut().as_mut().unwrap().settings.pin_app("filmcraft");
-    h.state_mut().as_mut().unwrap().settings.reorder_pinned("photocraft", "filmcraft");
+    h.state_mut().as_mut().unwrap().settings.reorder_pinned_to("photocraft", 2);
     h.run_steps(2);
     assert_eq!(h.state().as_ref().unwrap().settings.pinned, vec!["filmcraft".to_string(), "photocraft".to_string()]);
     assert_eq!(&h.state().as_ref().unwrap().visible_ids_for_test()[..2], &["filmcraft", "photocraft"]);
@@ -1502,6 +1502,30 @@ fn grid_shows_pinned_section_header() {
     h.run_steps(4);
     h.get_by_label("Pinned");
     h.get_all_by_label_contains("Reorder PhotoCraft").next().expect("pinned card exposes a reorder handle");
+}
+
+#[test]
+/// A pinned table row's grip leads its actions without taking room from them: its Open button is
+/// as wide as an unpinned row's, and the menus stay in one line (#956: a squeezed button pushes
+/// the menu out of the column).
+fn a_pinned_table_row_keeps_its_buttons_in_line() {
+    let (mut h, _) = harness(ViewMode::Table, egui::Theme::Dark, true);
+    h.run_steps(6);
+    // LightCraft and WordCraft are both installed and up to date: each row offers Open.
+    h.state_mut().as_mut().unwrap().settings.pin_app("lightcraft");
+    h.run_steps(4);
+    let grip = h.get_all_by_label_contains("Reorder LightCraft").next().expect("pinned row has a grip").rect();
+    let open_in_row = |menu: egui::Rect| {
+        let row = menu.y_range();
+        h.query_all_by_label("Open").map(|n| n.rect()).find(|r| row.contains(r.center().y)).expect("an Open button in the row")
+    };
+    let (pinned_menu, other_menu) =
+        (h.get_by_label("More actions for LightCraft").rect(), h.get_by_label("More actions for WordCraft").rect());
+    let (pinned_open, other_open) = (open_in_row(pinned_menu), open_in_row(other_menu));
+    assert!(grip.right() <= pinned_open.left(), "grip {grip:?} leads the row's Open {pinned_open:?}");
+    assert!((pinned_open.width() - other_open.width()).abs() < 0.5, "pinned {pinned_open:?} vs unpinned {other_open:?}");
+    assert!((pinned_open.left() - other_open.left()).abs() < 0.5, "pinned {pinned_open:?} vs unpinned {other_open:?}");
+    assert!((pinned_menu.right() - other_menu.right()).abs() < 0.5, "pinned {pinned_menu:?} vs unpinned {other_menu:?}");
 }
 
 #[test]

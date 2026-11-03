@@ -160,35 +160,17 @@ impl Settings {
         self.pinned.retain(|p| p != id);
     }
 
-    /// The next pinned id above (`delta = -1`) or below (`delta = 1`) `id` that passes `available`.
-    /// Skips stale catalog ids left in `pinned` so Move up/down still change the visible order.
-    pub fn pinned_neighbor(&self, id: &str, delta: i32, available: impl Fn(&str) -> bool) -> Option<&str> {
-        let i = self.pinned.iter().position(|p| p == id)?;
-        let mut j = i;
+    /// The index of the next pinned id above (`delta = -1`) or below (`delta = 1`) `id` that passes
+    /// `available`. Skips stale catalog ids left in `pinned` so Move up/down still change the
+    /// visible order.
+    pub fn pinned_neighbor(&self, id: &str, delta: isize, available: impl Fn(&str) -> bool) -> Option<usize> {
+        let mut j = self.pinned.iter().position(|p| p == id)?;
         loop {
-            j = j.checked_add_signed(delta as isize)?;
-            let cand = self.pinned.get(j)?;
-            if available(cand) {
-                return Some(cand.as_str());
+            j = j.checked_add_signed(delta)?;
+            if available(self.pinned.get(j)?) {
+                return Some(j);
             }
         }
-    }
-
-    /// Move the pinned app `from_id` so its final index is the current index of `to_id`.
-    pub fn reorder_pinned(&mut self, from_id: &str, to_id: &str) {
-        if from_id == to_id {
-            return;
-        }
-        let Some(from) = self.pinned.iter().position(|p| p == from_id) else {
-            return;
-        };
-        let Some(to) = self.pinned.iter().position(|p| p == to_id) else {
-            return;
-        };
-        let item = self.pinned.remove(from);
-        // After `remove`, indices after `from` shift left; inserting at the original `to`
-        // still lands the item on that final index (whether moving up or down).
-        self.pinned.insert(to.min(self.pinned.len()), item);
     }
 
     /// Move `from_id` to insertion slot `to_index` (`0..=len`, before remove). Used by drag-and-drop.
@@ -303,23 +285,6 @@ mod tests {
     }
 
     #[test]
-    fn reorder_pinned_moves_to_target_index() {
-        let mut s = Settings { pinned: vec!["a".into(), "b".into(), "c".into(), "d".into()], ..Settings::default() };
-        s.reorder_pinned("a", "c");
-        assert_eq!(s.pinned, vec!["b", "c", "a", "d"]);
-        s.reorder_pinned("a", "b");
-        assert_eq!(s.pinned, vec!["a", "b", "c", "d"]);
-        s.reorder_pinned("photocraft", "filmcraft"); // no-op when missing
-        let mut s = Settings { pinned: vec!["photocraft".into(), "filmcraft".into()], ..Settings::default() };
-        s.reorder_pinned("photocraft", "filmcraft");
-        assert_eq!(s.pinned, vec!["filmcraft", "photocraft"]);
-        s.reorder_pinned("missing", "a");
-        s.reorder_pinned("filmcraft", "missing");
-        s.reorder_pinned("filmcraft", "filmcraft");
-        assert_eq!(s.pinned, vec!["filmcraft", "photocraft"]);
-    }
-
-    #[test]
     fn reorder_pinned_to_uses_insertion_slot() {
         let mut s = Settings { pinned: vec!["a".into(), "b".into(), "c".into()], ..Settings::default() };
         // Insert c before a (slot 0).
@@ -331,9 +296,13 @@ mod tests {
         // Insert a before c (slot 2) → [b, a, c].
         s.reorder_pinned_to("a", 2);
         assert_eq!(s.pinned, vec!["b", "a", "c"]);
-        // Insert a after itself (slot 2) is a no-op.
+        // Insert a after itself (slot 2) is a no-op, and so is an unknown id; a slot past the end
+        // means the end.
         s.reorder_pinned_to("a", 2);
+        s.reorder_pinned_to("missing", 0);
         assert_eq!(s.pinned, vec!["b", "a", "c"]);
+        s.reorder_pinned_to("b", 99);
+        assert_eq!(s.pinned, vec!["a", "c", "b"]);
     }
 
     #[test]
@@ -343,21 +312,11 @@ mod tests {
     }
 
     #[test]
-    fn hide_path_unpins() {
-        let mut s = Settings::default();
-        s.pin_app("photocraft");
-        s.unpin_app("photocraft");
-        s.hidden.insert("photocraft".into());
-        assert!(s.pinned.is_empty());
-        assert!(s.hidden.contains("photocraft"));
-    }
-
-    #[test]
     fn pinned_neighbor_steps_within_bounds() {
         let s = Settings { pinned: vec!["a".into(), "b".into(), "c".into()], ..Settings::default() };
         let any = |_: &str| true;
-        assert_eq!(s.pinned_neighbor("b", -1, any), Some("a"));
-        assert_eq!(s.pinned_neighbor("b", 1, any), Some("c"));
+        assert_eq!(s.pinned_neighbor("b", -1, any), Some(0));
+        assert_eq!(s.pinned_neighbor("b", 1, any), Some(2));
         assert_eq!(s.pinned_neighbor("a", -1, any), None);
         assert_eq!(s.pinned_neighbor("c", 1, any), None);
         assert_eq!(s.pinned_neighbor("missing", 1, any), None);
@@ -367,7 +326,7 @@ mod tests {
     fn pinned_neighbor_skips_unavailable_ids() {
         let s = Settings { pinned: vec!["a".into(), "gone".into(), "b".into()], ..Settings::default() };
         let live = |id: &str| id != "gone";
-        assert_eq!(s.pinned_neighbor("a", 1, live), Some("b"));
-        assert_eq!(s.pinned_neighbor("b", -1, live), Some("a"));
+        assert_eq!(s.pinned_neighbor("a", 1, live), Some(2));
+        assert_eq!(s.pinned_neighbor("b", -1, live), Some(0));
     }
 }

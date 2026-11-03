@@ -844,8 +844,6 @@ impl LauncherUi {
                     // Escape must run even when search/filter leaves no rows (grid/table skipped).
                     self.clear_pin_drag_on_escape(ui);
                     if ids.is_empty() {
-                        // No drop targets this frame — still end the drag on pointer up.
-                        self.clear_pin_drag_if_pointer_up(ui);
                         ui.add_space(40.0);
                         ui.vertical_centered(|ui| {
                             crate::widgets::hud(ui, tl!("No apps match"), tokens.muted);
@@ -857,6 +855,10 @@ impl LauncherUi {
                         }
                     }
                     ui.add_space(16.0);
+                    // The drop targets have seen this frame's pointer: a released drag ends here.
+                    if !ui.input(|i| i.pointer.primary_down()) {
+                        self.pin_dragging = None;
+                    }
                 });
             });
         self.details_drawer(&ctx);

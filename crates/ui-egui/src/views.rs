@@ -437,9 +437,6 @@ impl LauncherUi {
         }
         self.grid_block(ui, rest);
         ui.add_space(24.0);
-        if !ui.input(|i| i.pointer.primary_down()) {
-            self.pin_dragging = None;
-        }
     }
 
     fn grid_block(&mut self, ui: &mut Ui, ids: &[&'static str]) {
@@ -601,6 +598,7 @@ impl LauncherUi {
         // clipped to the scroll area.
         let clip = ui.clip_rect();
         let span = ui.available_rect_before_wrap().x_range();
+        let grip_w = self.grip_w(ui, ids);
 
         egui::Frame::new().fill(t.bg).stroke(t.hairline()).inner_margin(egui::Margin::symmetric(16, 0)).show(ui, |ui| {
             TableBuilder::new(ui)
@@ -612,7 +610,7 @@ impl LauncherUi {
                 .column(Column::exact(150.0))
                 .column(Column::exact(132.0))
                 .column(Column::exact(104.0))
-                .column(Column::exact(206.0))
+                .column(Column::exact(206.0 + grip_w))
                 .header(42.0, |header| self.table_header(header, &mut sort_clicked, &t, span, clip))
                 .body(|body| self.table_rows(body, ids, &t, (title_h, tagline_h), now, (span, clip)));
         });
@@ -623,9 +621,6 @@ impl LauncherUi {
                 self.settings.sort = k;
                 self.settings.sort_descending = k.starts_descending();
             }
-        }
-        if !ui.input(|i| i.pointer.primary_down()) {
-            self.pin_dragging = None;
         }
     }
 
@@ -723,6 +718,7 @@ impl LauncherUi {
         rule: (egui::emath::Rangef, egui::Rect),
     ) {
         let last = ids.len().saturating_sub(1);
+        let grip_w = self.grip_w(body.ui_mut(), ids);
         for (i, id) in ids.iter().enumerate() {
             let Some(entry) = self.entry(id).cloned() else { continue };
             let status = entry.status(self.platform, self.caps.manage_apps);
@@ -734,7 +730,16 @@ impl LauncherUi {
                 row.col(|ui| {
                     ui.label(RichText::new(entry.app.publisher).color(t.muted));
                 });
-                row.col(|ui| self.actions(ui, &entry, &status, 204.0));
+                // A pinned row's grip leads its actions; the other rows leave its room empty, so
+                // every row's buttons stay in line.
+                row.col(|ui| {
+                    if self.settings.is_pinned(id) {
+                        self.actions(ui, &entry, &status, 204.0 + grip_w);
+                    } else {
+                        ui.add_space(grip_w);
+                        self.actions(ui, &entry, &status, 204.0);
+                    }
+                });
             });
         }
     }
@@ -877,14 +882,18 @@ impl LauncherUi {
     }
 
     /// The main button and the `⋯` menu beside it. `links_in_menu` is false where the page shows
-    /// the website, GitHub and releases links as buttons of its own. Pinned apps also get a drag
-    /// handle for reordering.
-    pub(crate) fn actions_in(&mut self, ui: &mut Ui, entry: &AppEntry, status: &AppStatus, width: f32, links_in_menu: bool) {
+    /// the website, GitHub and releases links as buttons of its own. In the grid and the table
+    /// (`links_in_menu`), a pinned app's actions start with the handle that reorders it, which takes
+    /// one square of `width` (the table widens its column by [`Self::grip_w`] for it).
+    pub(crate) fn actions_in(&mut self, ui: &mut Ui, entry: &AppEntry, status: &AppStatus, mut width: f32, links_in_menu: bool) {
         let id = entry.app.id.to_string();
         let gap = ui.spacing().item_spacing.x;
-        let pinned = self.settings.is_pinned(entry.app.id);
-        let squares = 1.0 + if pinned { 1.0 } else { 0.0 };
-        let main_w = (width - squares * (theme::CONTROL_H + gap) + gap).max(90.0);
+        if links_in_menu && self.settings.is_pinned(entry.app.id) {
+            self.pin_grip(ui, entry);
+            width -= theme::CONTROL_H + gap;
+        }
+        // One square button (the menu) beside the main one.
+        let main_w = (width - theme::CONTROL_H - gap).max(120.0);
         if entry.job.is_some() {
             self.job_actions(ui, entry, &id, main_w, width);
             return;
@@ -893,10 +902,13 @@ impl LauncherUi {
             return;
         }
         self.primary_button(ui, entry, &id, status, main_w);
-        if pinned {
-            self.pin_grip(ui, entry);
-        }
         self.menu(ui, entry, status, links_in_menu);
+    }
+
+    /// The room a pin grip takes: one square and a gap while the list shows a pinned app (they come
+    /// first), else none.
+    fn grip_w(&self, ui: &Ui, ids: &[&'static str]) -> f32 {
+        if ids.first().is_some_and(|id| self.settings.is_pinned(id)) { theme::CONTROL_H + ui.spacing().item_spacing.x } else { 0.0 }
     }
 
     /// Cancel an in-progress pin reorder (Escape), restoring the pinned order from drag start
@@ -911,14 +923,6 @@ impl LauncherUi {
         }
     }
 
-    /// End a pin drag when the pointer is up (commit current order). Used when no grid/table
-    /// drop targets run — e.g. empty search results mid-drag.
-    pub(crate) fn clear_pin_drag_if_pointer_up(&mut self, ui: &Ui) {
-        if !ui.input(|i| i.pointer.primary_down()) {
-            self.pin_dragging = None;
-        }
-    }
-
     /// Drag handle that reorders this pinned app among the other pinned apps.
     fn pin_grip(&mut self, ui: &mut Ui, entry: &AppEntry) {
         let tip = fmt(tl!("Reorder {name}"), &[("name", entry.app.name)]);
@@ -926,7 +930,7 @@ impl LauncherUi {
         // Only latch on drag start: after a reorder, the same egui widget id can sit on a
         // different app's row, and `dragged()` would steal `pin_dragging` mid-gesture.
         // Do not clear on `drag_stopped` here — drop targets must see the release first;
-        // `grid`/`table` clear `pin_dragging` when the pointer is up (Escape restores earlier).
+        // `LauncherUi::ui` clears `pin_dragging` after the list once the pointer is up.
         if resp.drag_started() {
             self.pin_dragging = Some((entry.app.id.to_string(), self.settings.pinned.clone()));
         }
@@ -935,7 +939,7 @@ impl LauncherUi {
     /// While a pin handle is dragged, hovering another pinned card/row moves the dragged app there.
     /// Grid uses the horizontal half; table uses the vertical half. One target per surface — the
     /// table's full-row target already covers the grip column, so the grip itself does not reorder.
-    /// A release over a target still counts (process before clearing `pin_dragging`).
+    /// A release over a target still counts: `LauncherUi::ui` ends the drag after the list.
     fn pin_drop_target(&mut self, ui: &Ui, id: &str, rect: Rect, axis: PinDropAxis) {
         let Some((from, _)) = self.pin_dragging.as_ref() else {
             return;
@@ -944,7 +948,6 @@ impl LauncherUi {
         if from == id || !self.settings.is_pinned(id) {
             return;
         }
-        let primary_down = ui.input(|i| i.pointer.primary_down());
         let Some(pos) = ui.input(|i| i.pointer.interact_pos()) else {
             return;
         };
@@ -960,9 +963,6 @@ impl LauncherUi {
         };
         let insertion_index = if insert_before { to_i } else { to_i.saturating_add(1) };
         self.settings.reorder_pinned_to(&from, insertion_index);
-        if !primary_down {
-            self.pin_dragging = None;
-        }
     }
 
     /// A running job's row: one progress bar, with pause and cancel while its download is under
@@ -1031,9 +1031,8 @@ impl LauncherUi {
             return false;
         }
         let pct = if p.total > 0 { format!(" · {:.0}%", p.done as f32 / p.total as f32 * 100.0) } else { String::new() };
-        // Resume, then discard, optional pin grip, and the menu.
-        let squares = 2.0 + if self.settings.is_pinned(entry.app.id) { 1.0 } else { 0.0 };
-        let resume_w = (width - squares * (theme::CONTROL_H + gap) + gap).max(0.0);
+        // Resume, then discard and the menu (two squares).
+        let resume_w = (width - 2.0 * (theme::CONTROL_H + gap)).max(90.0);
         // Narrow (the table): just tl!("Resume"); the tooltip says how far it got.
         let label = match resume_w {
             w if w < 150.0 => tl!("Resume").to_string(),
@@ -1051,9 +1050,6 @@ impl LauncherUi {
         }
         if widgets::glyph_button(ui, widgets::Glyph::Close, tl!("Discard download")).clicked() {
             self.act_command(Command::Cancel { app: id.to_string() });
-        }
-        if self.settings.is_pinned(entry.app.id) {
-            self.pin_grip(ui, entry);
         }
         self.menu(ui, entry, status, links_in_menu);
         true
@@ -1169,19 +1165,16 @@ impl LauncherUi {
             // would let Move skip over a filtered pin with no visible change.
             let visible: std::collections::HashSet<&str> = self.visible_ids().into_iter().collect();
             let known = |pid: &str| visible.contains(pid);
-            let prev = self.settings.pinned_neighbor(id, -1, known).map(str::to_owned);
-            let next = self.settings.pinned_neighbor(id, 1, known).map(str::to_owned);
-            if prev.is_some() && ui.button(tl!("Move up")).clicked() {
-                if let Some(prev) = prev.as_deref() {
-                    self.settings.reorder_pinned(id, prev);
+            // Up: into the slot before the neighbour above; down: into the slot after the one below.
+            let up = self.settings.pinned_neighbor(id, -1, known);
+            let down = self.settings.pinned_neighbor(id, 1, known).map(|j| j + 1);
+            for (slot, label) in [(up, tl!("Move up")), (down, tl!("Move down"))] {
+                if let Some(slot) = slot
+                    && ui.button(label).clicked()
+                {
+                    self.settings.reorder_pinned_to(id, slot);
+                    ui.close();
                 }
-                ui.close();
-            }
-            if next.is_some() && ui.button(tl!("Move down")).clicked() {
-                if let Some(next) = next.as_deref() {
-                    self.settings.reorder_pinned(id, next);
-                }
-                ui.close();
             }
         } else if !hidden && ui.button(tl!("Pin to top")).clicked() {
             self.settings.pin_app(id);
