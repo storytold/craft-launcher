@@ -94,6 +94,108 @@ pub fn install(
     install_at(app, release, asset, kind, existing, previous, job, None)
 }
 
+#[cfg(windows)]
+pub(crate) const MIGRATION_CHANGED: &str = "The installation or selected version changed. Check for updates and choose again; nothing was removed.";
+pub(crate) const MIGRATION_UNAVAILABLE: &str = "Migration is unavailable for this version. Keep the current location; nothing was removed.";
+#[cfg(any(windows, test))]
+const MIGRATION_PATH: &str =
+    "The installation folders could not be verified or the destination is occupied. Keep the current location; nothing was removed.";
+/// Only a verified all-users MSI offers a scope change. Never infer scope from its folder.
+#[cfg(windows)]
+pub(crate) fn msi_update_plan(
+    app: &CraftApp,
+    kind: PackageKind,
+    existing: Option<&Installed>,
+    release: &Release,
+) -> Result<Option<artcraft_launcher_core::protocol::MsiUpdatePlan>, String> {
+    let Some(inst) = existing.filter(|i| kind == PackageKind::Msi && i.source == InstallSource::Msi) else { return Ok(None) };
+    let scope = crate::msi_context::update_scope(true, inst.package.as_deref(), crate::msi_context::probe, |code| {
+        crate::detect::windows::record_scope(app, code)
+    })?;
+    if scope != Some(MsiScope::PerMachine) {
+        return Ok(None);
+    }
+    let user_folder = msi_user_folder().ok_or(MIGRATION_CHANGED)?.join(app.name);
+    Ok(Some(artcraft_launcher_core::protocol::MsiUpdatePlan {
+        installed: inst.clone(),
+        release_tag: release.tag.clone(),
+        user_folder: user_folder.to_string_lossy().into_owned(),
+    }))
+}
+
+/// Downloads and checks both installers before removing anything. Profile data is not moved:
+/// it is independent of the executable's location. Portable installations require manual migration.
+#[cfg(windows)]
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn migrate_msi_to_user(
+    app: &CraftApp,
+    release: &Release,
+    asset: &Asset,
+    previous: &Release,
+    previous_asset: &Asset,
+    plan: &artcraft_launcher_core::protocol::MsiUpdatePlan,
+    job: &mut Job<'_>,
+) -> Result<(), String> {
+    bind_artifact_version(app, release, asset)?;
+    bind_artifact_version(app, previous, previous_asset)?;
+    if release.tag != plan.release_tag || previous.version != plan.installed.version {
+        return Err(MIGRATION_CHANGED.into());
+    }
+    let destination = msi_user_folder().ok_or(MIGRATION_CHANGED)?.join(app.name);
+    if destination.to_string_lossy() != plan.user_folder {
+        return Err(MIGRATION_CHANGED.into());
+    }
+    validate_migration_paths(Path::new(&plan.installed.location), &destination)?;
+    if process::is_running(Path::new(&plan.installed.location)) {
+        return Err(format!("{} is running. Quit it, then try again.", app.name));
+    }
+    let (old_file, old_sha) = download(previous, previous_asset, job)?;
+    let (new_file, new_sha) = download(release, asset, job)?;
+    if !crate::msi_context::package_installs_per_user(&new_file)? {
+        return Err(MIGRATION_UNAVAILABLE.into());
+    }
+    windows::migrate_msi(
+        app,
+        windows::Package { file: &new_file, sha256: &new_sha, version: &release.version_label() },
+        windows::Package { file: &old_file, sha256: &old_sha, version: &previous.version_label() },
+        &plan.installed,
+        &destination,
+        job.stop,
+        job.phase,
+    )
+}
+
+/// Never overwrite an existing user installation or silently abandon portable data.
+#[cfg(any(windows, test))]
+fn validate_migration_paths(executable: &Path, destination: &Path) -> Result<(), String> {
+    let old = executable.parent().filter(|_| executable.is_absolute()).ok_or(MIGRATION_PATH)?;
+    if !executable.is_file() {
+        return Err(MIGRATION_PATH.into());
+    }
+    match std::fs::symlink_metadata(destination) {
+        Ok(_) => return Err(MIGRATION_PATH.to_string()),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+        Err(e) => {
+            log::warn!("Could not check migration destination: {e}");
+            return Err(MIGRATION_PATH.into());
+        }
+    }
+    let entries = std::fs::read_dir(old).map_err(|e| {
+        log::warn!("Could not check migration source: {e}");
+        MIGRATION_PATH.to_string()
+    })?;
+    for entry in entries {
+        let entry = entry.map_err(|e| {
+            log::warn!("Could not inspect migration source: {e}");
+            MIGRATION_PATH.to_string()
+        })?;
+        let name = entry.file_name().to_string_lossy().to_ascii_lowercase();
+        if name == "portable.txt" || name.ends_with(".portable") || name.ends_with("craftdata") {
+            return Err("Portable data was found beside the program. Keep the current location and move that data manually first.".into());
+        }
+    }
+    Ok(())
+}
 type RecordCommit<'a> = Option<&'a mut dyn FnMut(&Record) -> Result<(), String>>;
 
 #[allow(clippy::too_many_arguments)]
@@ -2278,6 +2380,53 @@ pub mod windows {
         Ok((ended != msi_downgrade::Ended::LaunchFailed).then_some(ended))
     }
 
+    /// Keep removal, user install and rollback in one installer-queue turn. Only removal and
+    /// rollback may elevate; the user MSI is started by this account, never by an elevated helper.
+    #[allow(clippy::too_many_arguments)]
+    pub(super) fn migrate_msi(
+        app: &CraftApp,
+        chosen: Package<'_>,
+        previous: Package<'_>,
+        expected: &artcraft_launcher_core::Installed,
+        destination: &Path,
+        stop: &Stop,
+        phase: &mut dyn FnMut(JobPhase),
+    ) -> Result<(), String> {
+        in_turn(stop, phase, JobPhase::Installing, || {
+            let _held = (msi_batch::hold(chosen.file, chosen.sha256)?, msi_batch::hold(previous.file, previous.sha256)?);
+            let installs = crate::detect::windows::msi_installs(app);
+            let [installed] = installs.as_slice() else {
+                return Err(super::MIGRATION_CHANGED.into());
+            };
+            if installed.scope != MsiScope::PerMachine
+                || Some(installed.product_code.as_str()) != expected.package.as_deref()
+                || installed.version != expected.version
+                || installed.exe.as_ref().is_none_or(|p| p.to_string_lossy() != expected.location)
+            {
+                return Err(super::MIGRATION_CHANGED.into());
+            }
+            super::validate_migration_paths(Path::new(&expected.location), destination)?;
+            if process::is_running(Path::new(&expected.location)) {
+                return Err(format!("{} is running. Quit it, then try again.", app.name));
+            }
+            let old_folder = Path::new(&expected.location).parent().ok_or(super::MIGRATION_CHANGED)?;
+            msi_downgrade::run(msi_downgrade::Steps {
+                app: app.name,
+                chosen: chosen.version,
+                previous: previous.version,
+                remove: &mut || {
+                    process::command(msiexec())
+                        .args(["/x", &installed.product_code, "/passive", "/norestart"])
+                        .status()
+                        .map_err(|e| format!("couldn't start the Windows Installer ({e})"))
+                        .and_then(|status| explain(status.code()))
+                        .map_err(|error| msi_downgrade::Removal { error, partly: false })
+                },
+                install_chosen: &mut || run_direct(chosen.file, Some(destination), Some(MsiScope::PerUser)),
+                reinstall_previous: &mut || run_direct(previous.file, Some(old_folder), Some(MsiScope::PerMachine)),
+            })
+        })
+    }
     pub fn uninstall_msi(app: &CraftApp, stop: &Stop, phase: &mut dyn FnMut(JobPhase)) -> Result<(), String> {
         in_turn(stop, phase, JobPhase::Removing, || remove_registrations(app).map_err(|removal| removal.error))
     }
@@ -2306,6 +2455,30 @@ pub mod windows {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn migration_preserves_profile_and_rejects_portable_or_occupied_destinations() {
+        let root = tempfile::tempdir().unwrap();
+        let old = root.path().join("shared");
+        std::fs::create_dir(&old).unwrap();
+        let exe = old.join("photocraft.exe");
+        std::fs::write(&exe, b"fixture").unwrap();
+        let profile = root.path().join("profile");
+        std::fs::create_dir(&profile).unwrap();
+        std::fs::write(profile.join("brush.preset"), b"my brush").unwrap();
+        let target = root.path().join("user-install");
+        assert!(validate_migration_paths(&exe, &target).is_ok());
+        for marker in ["portable.txt", "PhotoCraft.portable", "PhotoCraftData"] {
+            let path = old.join(marker);
+            std::fs::write(&path, b"").unwrap();
+            assert!(validate_migration_paths(&exe, &target).unwrap_err().contains("Portable"));
+            std::fs::remove_file(path).unwrap();
+        }
+        std::fs::create_dir(&target).unwrap();
+        assert!(validate_migration_paths(&exe, &target).unwrap_err().contains("destination is occupied"));
+        assert_eq!(std::fs::read(profile.join("brush.preset")).unwrap(), b"my brush");
+        assert_eq!(std::fs::read(&exe).unwrap(), b"fixture");
+        assert!(validate_migration_paths(&old.join("missing.exe"), &target).is_err());
+    }
     use super::*;
 
     /// A folder found only by the launch fallback, in another scope, never reaches the installer.

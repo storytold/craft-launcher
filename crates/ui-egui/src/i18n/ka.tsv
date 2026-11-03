@@ -432,3 +432,17 @@ materialcraft	Node graphs	კვანძების გრაფები
 materialcraft	Combine noises, patterns and filters.	ხმაურების, პატერნებისა და ფილტრების კომბინირება.
 materialcraft	Live previews	ცოცხალი წინასწარი ნახვა
 materialcraft	Preview materials in 2D and on 3D models.	მასალების წინასწარი ნახვა 2D-ში და 3D მოდელებზე.
+
+# Update installation scope
+	Choose how to update {name}	აირჩიეთ {name}-ის განახლების მეთოდი
+	Keep the current location	მიმდინარე მდებარეობის შენარჩუნება
+	Administrator permission is required for each update.	ყოველი განახლება ადმინისტრატორის ნებართვას მოითხოვს.
+	Install only for me	ინსტალაცია მხოლოდ ჩემთვის
+	Windows will ask once more for administrator permission to uninstall the old shared copy. After migration, updates and uninstalling for this account normally need no administrator permission. Other Windows users will lose access.	ძველი საერთო ასლის წასაშლელად Windows კიდევ ერთხელ მოითხოვს ადმინისტრატორის ნებართვას. გადატანის შემდეგ ამ ანგარიშზე განახლებასა და წაშლას ჩვეულებრივ ეს ნებართვა აღარ დასჭირდება. Windows-ის სხვა მომხმარებლები წვდომას დაკარგავენ.
+	Profile settings and presets stay where they are. Add-ons beside the program may need reinstalling; back them up first.	პროფილის პარამეტრები და წინასწარი ნაკრებები ადგილზე დარჩება. პროგრამის საქაღალდეში არსებულ დამატებებს შესაძლოა ხელახლა ინსტალაცია დასჭირდეს; ჯერ მათი ასლი შექმენით.
+	I accept removal of the shared copy and the risk to add-ons beside it.	ვეთანხმები საერთო ინსტალაციის წაშლას და მის საქაღალდეში არსებული დამატებების რისკს.
+
+@msg	The installation or selected version changed. Check for updates and choose again; nothing was removed.	ინსტალაცია ან არჩეული ვერსია შეიცვალა. შეამოწმეთ განახლებები და ხელახლა აირჩიეთ; არაფერი წაშლილა.
+@msg	Migration is unavailable for this version. Keep the current location; nothing was removed.	ამ ვერსიის გადატანა მიუწვდომელია. შეინარჩუნეთ მიმდინარე მდებარეობა; არაფერი წაშლილა.
+@msg	The installation folders could not be verified or the destination is occupied. Keep the current location; nothing was removed.	ინსტალაციის საქაღალდეები ვერ შემოწმდა ან სამიზნე დაკავებულია. შეინარჩუნეთ მიმდინარე მდებარეობა; არაფერი წაშლილა.
+@msg	Portable data was found beside the program. Keep the current location and move that data manually first.	პროგრამის გვერდით პორტატული ვერსიის მონაცემები მოიძებნა. შეინარჩუნეთ მიმდინარე მდებარეობა და ჯერ ეს მონაცემები ხელით გადაიტანეთ.

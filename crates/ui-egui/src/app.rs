@@ -113,6 +113,7 @@ pub(crate) enum Dialog {
     ConfirmUninstall(String),
     Install { app: String, folder: String },
     Replace { app: String, path: String },
+    MsiUpdate { app: String, plan: artcraft_launcher_core::protocol::MsiUpdatePlan, migrate: bool, accepted: bool },
     Settings,
     LauncherUpdate(artcraft_launcher_core::Release),
     Versions(String),
@@ -128,6 +129,7 @@ impl Dialog {
             Dialog::ConfirmUninstall(id) => ("uninstall", id),
             Dialog::Install { app, .. } => ("install", app),
             Dialog::Replace { app, .. } => ("replace", app),
+            Dialog::MsiUpdate { app, .. } => ("msi-update", app),
             Dialog::Settings => ("settings", ""),
             Dialog::LauncherUpdate(r) => ("launcher-update", &r.tag),
             Dialog::Versions(id) => ("versions", id),
@@ -162,6 +164,7 @@ pub struct LauncherUi {
     pub(crate) search: String,
     pub(crate) toasts: Vec<Toast>,
     pub(crate) dialog: Option<Dialog>,
+    pub(crate) update_choices: std::collections::VecDeque<Dialog>,
     /// Release-note text scale for this session, independent of the main UI zoom.
     pub(crate) notes_zoom: f32,
     /// The app whose details drawer is open (or closing: see `detail_shown`).
@@ -277,6 +280,7 @@ impl LauncherUi {
             search: String::new(),
             toasts: Vec::new(),
             dialog: None,
+            update_choices: Default::default(),
             notes_zoom: 1.0,
             detail: None,
             detail_shown: None,
@@ -605,6 +609,14 @@ impl LauncherUi {
                     e.installable = Some(installable);
                 }
                 true
+            }
+            Event::MsiUpdateChoice { app, plan } => {
+                if let Some(e) = self.entry_mut(&app) {
+                    e.job = None;
+                }
+                self.update_choices.retain(|d| !matches!(d, Dialog::MsiUpdate { app: a, .. } if a == &app));
+                self.update_choices.push_back(Dialog::MsiUpdate { app, plan, migrate: false, accepted: false });
+                false
             }
             Event::Occupied { app, path } => {
                 self.dialog = Some(Dialog::Replace { app, path });

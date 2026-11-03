@@ -393,6 +393,7 @@ impl NativeBackend {
             let job = job;
             let existing = shared.installed.lock().unwrap_or_else(PoisonError::into_inner).get(app.id).cloned();
             let record = shared.manifest.lock().unwrap_or_else(PoisonError::into_inner).apps.get(app.id).cloned();
+            let mut update_choice = None;
             let result = if uninstall {
                 shared.emit(Event::Progress { app: app.id.to_string(), phase: JobPhase::Removing });
                 let mut phase = |phase| shared.emit(Event::Progress { app: app.id.to_string(), phase });
@@ -407,7 +408,7 @@ impl NativeBackend {
                     None => Err(format!("{} isn't installed", app.name)),
                 }
             } else {
-                let r = run_install(
+                let r = run_install_with_choice(
                     app,
                     &shared,
                     &paths,
@@ -419,9 +420,14 @@ impl NativeBackend {
                     &stop,
                     match &work {
                         Work::Replace(path) => Some(path.as_str()),
-                        Work::Install | Work::Uninstall => None,
+                        Work::Install | Work::Uninstall | Work::Update(..) => None,
                     },
                     source.as_deref(),
+                    match &work {
+                        Work::Update(plan, migrate) => Some((plan, *migrate)),
+                        _ => None,
+                    },
+                    &mut update_choice,
                 );
                 // Stopped by the connection rather than by the user: say so, and how to go on.
                 match r {
@@ -448,7 +454,12 @@ impl NativeBackend {
             };
             publish_detected(app, found, &shared, platform);
             drop(job);
-            shared.emit(Event::JobFinished { app: app.id.to_string(), result });
+            if let Some(plan) = update_choice {
+                shared.emit(Event::MsiUpdateChoice { app: app.id.to_string(), plan });
+            }
+            if result.as_ref().err().is_none_or(|e| e != UPDATE_CHOICE_REQUIRED) {
+                shared.emit(Event::JobFinished { app: app.id.to_string(), result });
+            }
         });
     }
 
@@ -511,6 +522,7 @@ impl NativeBackend {
 #[derive(Clone, PartialEq, Eq)]
 enum Work {
     Install,
+    Update(artcraft_launcher_core::protocol::MsiUpdatePlan, bool),
     /// Install over the path the user agreed to overwrite (see [`Command::Replace`]).
     Replace(String),
     Uninstall,
@@ -554,7 +566,7 @@ fn downgrade_previous(
 /// What an install does with a Flatpak its repository updates: `flatpak update`, on Linux, and
 /// only on the stable track (it follows the repository's latest build, never a pinned or nightly
 /// one). `None` for any other copy, which [`install_plan`] decides; else the copy, or why the
-/// update can't run. [`run_install`] and the UI's [`Event::Installable`] both ask this.
+/// update can't run. [`run_install_with_choice`] and the UI's [`Event::Installable`] both ask this.
 fn repository_update<'a>(app: &CraftApp, existing: Option<&'a Installed>, options: &BackendOptions) -> Option<Result<&'a Installed, String>> {
     let inst = existing.filter(|i| i.source == artcraft_launcher_core::InstallSource::Flatpak && i.externally_managed)?;
     Some(if !matches!(options.versions.get(app.id), None | Some(VersionTrack::Stable)) {
@@ -593,7 +605,7 @@ struct InstallPlan {
 /// The checks an install makes before it downloads anything: a copy installed outside the
 /// launcher (a system binary, a repository package) isn't replaced; the release must be known and
 /// on the chosen version track; and it must have a package that can replace the copy the way it
-/// was installed. [`run_install`] and the UI's [`Event::Installable`] both ask this, so the UI
+/// was installed. [`run_install_with_choice`] and the UI's [`Event::Installable`] both ask this, so the UI
 /// never offers an update the install would refuse.
 fn install_plan(
     app: &CraftApp,
@@ -635,8 +647,10 @@ fn install_plan(
     Ok(InstallPlan { release, platform, asset, kind })
 }
 
+const UPDATE_CHOICE_REQUIRED: &str = "msi-update-choice-required";
+
 #[allow(clippy::too_many_arguments)]
-fn run_install(
+fn run_install_with_choice(
     app: &CraftApp,
     shared: &Shared,
     paths: &Paths,
@@ -648,7 +662,15 @@ fn run_install(
     stop: &Stop,
     approved: Option<&str>,
     source: Option<&dyn ReleaseSource>,
+    update: Option<(&artcraft_launcher_core::protocol::MsiUpdatePlan, bool)>,
+    update_choice: &mut Option<artcraft_launcher_core::protocol::MsiUpdatePlan>,
 ) -> Result<String, String> {
+    #[cfg(not(windows))]
+    let _ = &update_choice;
+    #[cfg(not(windows))]
+    if update.is_some() {
+        return Err(install::MIGRATION_UNAVAILABLE.into());
+    }
     if let Some(update) = repository_update(app, existing, options) {
         let inst = update?;
         #[cfg(target_os = "linux")]
@@ -681,6 +703,33 @@ fn run_install(
     let InstallPlan { release, platform, asset, kind } = install_plan(app, latest, platform, options, (existing, record), Asking::Install)?;
     let http = http.ok_or("secure connections aren't available on this system")?;
     let track = options.versions.get(app.id).unwrap_or(&VersionTrack::Stable);
+    #[cfg(windows)]
+    if let Some(plan) = install::msi_update_plan(app, kind, existing, &release)? {
+        let Some((approved_plan, migrate)) = update.filter(|(approved_plan, _)| **approved_plan == plan) else {
+            *update_choice = Some(plan);
+            return Err(UPDATE_CHOICE_REQUIRED.into());
+        };
+        if migrate {
+            let installed_version = approved_plan.installed.version.as_ref().ok_or(install::MIGRATION_UNAVAILABLE)?;
+            let next_version = release.version.as_ref().ok_or(install::MIGRATION_UNAVAILABLE)?;
+            if next_version < installed_version {
+                return Err(install::MIGRATION_UNAVAILABLE.into());
+            }
+            let versions = source.ok_or("secure connections aren't available")?.versions(&feed_repo(load_feed(paths).as_ref(), app))?;
+            let previous = versions.into_iter().find(|r| r.version == approved_plan.installed.version).ok_or(install::MIGRATION_UNAVAILABLE)?;
+            let previous_asset = planned_asset(app, &previous, platform, options, existing, record)
+                .filter(|(_, k)| *k == PackageKind::Msi)
+                .map(|(a, _)| a)
+                .ok_or(install::MIGRATION_UNAVAILABLE)?;
+            let mut phase = |phase| shared.emit(Event::Progress { app: app.id.to_string(), phase });
+            let mut job =
+                Job { http, paths, stop, phase: &mut phase, install_locations: &options.install_locations, replace: false, downgrade: None };
+            install::migrate_msi_to_user(app, &release, &asset, &previous, &previous_asset, approved_plan, &mut job)?;
+            return Ok(installed_text(app, true, &release));
+        }
+    } else if update.is_some() {
+        return Err(install::MIGRATION_CHANGED.into());
+    }
     // Going back to a version chosen by name. A macOS bundle or a launcher AppImage keeps the old
     // copy until the new one is in place. Otherwise the installed version's own package is found
     // first, so a downgrade that fails can put it back. Without it nothing changes.
@@ -1392,6 +1441,7 @@ impl Backend for NativeBackend {
                 });
             }
             Command::Install { app } => self.start_job(&app, Work::Install),
+            Command::ConfirmMsiUpdate { app, plan, migrate } => self.start_job(&app, Work::Update(plan, migrate)),
             Command::Replace { app, path } => self.start_job(&app, Work::Replace(path)),
             Command::Uninstall { app } => self.start_job(&app, Work::Uninstall),
             Command::Pause { app } => {

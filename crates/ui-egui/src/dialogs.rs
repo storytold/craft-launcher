@@ -15,6 +15,9 @@ impl LauncherUi {
     /// so a smaller prompt cannot inherit a taller one's last size, and closing (button, Escape or
     /// a click outside) discards the dialog.
     pub(crate) fn dialogs(&mut self, ctx: &egui::Context, host: &mut dyn Host) {
+        if self.dialog.is_none() {
+            self.dialog = self.update_choices.pop_front();
+        }
         let Some(mut dialog) = self.dialog.clone() else {
             self.alert_popup(ctx);
             return;
@@ -35,6 +38,9 @@ impl LauncherUi {
             Dialog::ConfirmUninstall(id) => modal.show(ctx, |ui| close = self.uninstall_dialog(ui, id)),
             Dialog::Install { app, folder } => modal.show(ctx, |ui| close = self.install_dialog(ui, app, folder, host)),
             Dialog::Replace { app, path } => modal.show(ctx, |ui| close = self.replace_dialog(ui, app, path)),
+            Dialog::MsiUpdate { app, plan, migrate, accepted } => {
+                modal.show(ctx, |ui| close = self.msi_update_dialog(ui, app, plan, migrate, accepted))
+            }
             Dialog::Settings => modal.show(ctx, |ui| close = self.settings_dialog(ui, host)),
             Dialog::LauncherUpdate(r) => modal.show(ctx, |ui| close = self.launcher_update_dialog(ui, r)),
             Dialog::Versions(id) => modal.show(ctx, |ui| close = self.version_dialog(ui, id)),
@@ -109,6 +115,55 @@ impl LauncherUi {
             });
         });
         ui.add_space(14.0);
+    }
+
+    /// An all-users update is never silently converted to a user install. Only the migration
+    /// option needs destructive consent; Cancel or Escape sends no install command.
+    fn msi_update_dialog(
+        &mut self,
+        ui: &mut egui::Ui,
+        id: &str,
+        plan: &artcraft_launcher_core::protocol::MsiUpdatePlan,
+        migrate: &mut bool,
+        accepted: &mut bool,
+    ) -> bool {
+        let Some(app) = self.entry(id).map(|e| e.app) else { return true };
+        let t = Tokens::get(ui.ctx());
+        ui.set_width(540.0f32.min((ui.ctx().content_rect().width() - 80.0).max(240.0)));
+        Self::title(ui, crate::icons::app(id), &fmt(tl!("Choose how to update {name}"), &[("name", app.name)]), "");
+        egui::ScrollArea::vertical().max_height((ui.ctx().content_rect().height() - 240.0).max(160.0)).show(ui, |ui| {
+            ui.radio_value(migrate, false, tl!("Keep the current location"));
+            ui.label(RichText::new(tl!("Administrator permission is required for each update.")).color(t.muted));
+            ui.label(RichText::new(&plan.installed.location).small().color(t.faint));
+            ui.add_space(14.0);
+            ui.radio_value(migrate, true, tl!("Install only for me"));
+            ui.label(RichText::new(&plan.user_folder).small().color(t.faint));
+            ui.label(tl!("Windows will ask once more for administrator permission to uninstall the old shared copy. After migration, updates and uninstalling for this account normally need no administrator permission. Other Windows users will lose access."));
+            if *migrate {
+                ui.add_space(10.0);
+                ui.label(tl!("Profile settings and presets stay where they are. Add-ons beside the program may need reinstalling; back them up first."));
+                ui.add_space(8.0);
+                ui.checkbox(accepted, tl!("I accept removal of the shared copy and the risk to add-ons beside it."));
+            } else {
+                *accepted = false;
+            }
+        });
+        ui.add_space(16.0);
+        let mut close = false;
+        ui.horizontal(|ui| {
+            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                ui.add_enabled_ui(!*migrate || *accepted, |ui| {
+                    if widgets::button(ui, tl!("Update"), Kind::Primary, 110.0).clicked() {
+                        self.act_command(Command::ConfirmMsiUpdate { app: id.to_string(), plan: plan.clone(), migrate: *migrate });
+                        close = true;
+                    }
+                });
+                if widgets::button(ui, tl!("Cancel"), Kind::Secondary, 90.0).clicked() {
+                    close = true;
+                }
+            });
+        });
+        close
     }
 
     /// An app's release notes: a large card like the app page, the notes in a scrolling body.

@@ -400,3 +400,17 @@ materialcraft	Preview materials in 2D and on 3D models.	Prohlížejte materiály
 	Migrate Flatpak bundles to ArtCraft OCI (experimental)	Převést balíčky Flatpak na ArtCraft OCI (experimentální)
 	On update, switch first party apps when the matching package is available. Otherwise, keep using bundles.	Při aktualizaci převést aplikace ArtCraft, pokud je dostupný odpovídající balíček. Jinak nadále používat samostatné balíčky.
 	The OCI repository is a preview with GPG verification disabled.	Repozitář OCI je předběžná verze s vypnutým ověřováním GPG.
+
+# Update installation scope
+	Choose how to update {name}	Vyberte způsob aktualizace {name}
+	Keep the current location	Ponechat aktuální umístění
+	Administrator permission is required for each update.	Každá aktualizace vyžaduje oprávnění správce.
+	Install only for me	Nainstalovat pouze pro mě
+	Windows will ask once more for administrator permission to uninstall the old shared copy. After migration, updates and uninstalling for this account normally need no administrator permission. Other Windows users will lose access.	Windows ještě jednou požádá o oprávnění správce k odinstalaci staré sdílené kopie. Po přesunu aktualizace a odinstalace pro tento účet obvykle již oprávnění správce nevyžadují. Ostatní uživatelé Windows ztratí přístup.
+	Profile settings and presets stay where they are. Add-ons beside the program may need reinstalling; back them up first.	Nastavení a předvolby profilu zůstanou na místě. Doplňky ve složce programu mohou vyžadovat novou instalaci; nejprve je zálohujte.
+	I accept removal of the shared copy and the risk to add-ons beside it.	Souhlasím s odstraněním sdílené instalace a s rizikem pro doplňky v její složce.
+
+@msg	The installation or selected version changed. Check for updates and choose again; nothing was removed.	Instalace nebo vybraná verze se změnila. Vyhledejte aktualizace a vyberte znovu; nic nebylo odstraněno.
+@msg	Migration is unavailable for this version. Keep the current location; nothing was removed.	Přesun není pro tuto verzi dostupný. Zachovejte aktuální umístění; nic nebylo odstraněno.
+@msg	The installation folders could not be verified or the destination is occupied. Keep the current location; nothing was removed.	Složky instalace nelze ověřit nebo je cíl obsazený. Zachovejte aktuální umístění; nic nebylo odstraněno.
+@msg	Portable data was found beside the program. Keep the current location and move that data manually first.	Vedle programu byla nalezena data přenosné verze. Zachovejte aktuální umístění a nejprve tato data přesuňte ručně.

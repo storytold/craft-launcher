@@ -83,8 +83,12 @@ fn events() -> Vec<Event> {
 }
 
 fn harness(view: ViewMode) -> Harness<'static, Option<LauncherUi>> {
+    harness_with(view, events())
+}
+
+fn harness_with(view: ViewMode, events: Vec<Event>) -> Harness<'static, Option<LauncherUi>> {
     artcraft_launcher_ui_egui::i18n::set_test_lang(artcraft_launcher_ui_egui::i18n::Lang::EN);
-    let mut backend = Some(Fake { events: events(), clock: Rc::new(Cell::new(NOW)) });
+    let mut backend = Some(Fake { events, clock: Rc::new(Cell::new(NOW)) });
     let settings =
         Settings { view, notify: false, language: "pl".into(), theme: artcraft_launcher_ui_egui::theme::ThemeChoice::Dark, ..Settings::default() };
     Harness::builder().with_size(egui::vec2(1180.0, 900.0)).with_theme(egui::Theme::Dark).build_ui_state(
@@ -129,4 +133,28 @@ fn polish_ui_translates_labels_dates_and_messages() {
     snapshot(&mut table, "table-pl-dark");
     table.get_by_label("Zainstalowana");
     assert!(table.query_all_by_label_contains("sie 2026").count() >= 1);
+    let mut ev = events();
+    ev.push(Event::MsiUpdateChoice {
+        app: "photocraft".into(),
+        plan: artcraft_launcher_core::protocol::MsiUpdatePlan {
+            installed: Installed {
+                version: version::parse("0.4.1"),
+                source: InstallSource::Msi,
+                location: r"C:\Program Files\ArtCraft\PhotoCraft\photocraft.exe".into(),
+                package: Some("{TEST-PRODUCT}".into()),
+                externally_managed: false,
+                origin: None,
+                installation: None,
+            },
+            release_tag: "v0.5.0".into(),
+            user_folder: r"C:\Users\tester\AppData\Local\Programs\ArtCraft\PhotoCraft".into(),
+        },
+    });
+    let mut migration = harness_with(ViewMode::Grid, ev);
+    migration.run_steps(8);
+    migration.get_by_label("Wybierz sposób aktualizacji PhotoCraft");
+    migration.get_by_label("Zainstaluj tylko dla mnie").click();
+    migration.run_steps(8);
+    migration.get_by_label("Akceptuję usunięcie wspólnej instalacji i ryzyko dotyczące dodatków w jej katalogu.");
+    snapshot(&mut migration, "msi-migration-pl");
 }
