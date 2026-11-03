@@ -48,6 +48,9 @@ const SERIOUS_FEED_OUTAGE: i64 = 60 * 60;
 /// Requests in flight at once during a check.
 const WORKERS: usize = 4;
 
+#[cfg(windows)]
+type BatchSlot = Option<crate::msi_batch::Slot<'static>>;
+
 type Waker = Arc<dyn Fn() + Send + Sync>;
 
 struct Shared {
@@ -306,6 +309,13 @@ impl NativeBackend {
     }
 
     fn start_job(&self, app_id: &str, work: Work) {
+        #[cfg(windows)]
+        self.start_job_with_slot(app_id, work, None);
+        #[cfg(not(windows))]
+        self.start_job_with_slot(app_id, work);
+    }
+
+    fn start_job_with_slot(&self, app_id: &str, work: Work, #[cfg(windows)] batch_slot: BatchSlot) {
         let uninstall = matches!(work, Work::Uninstall);
         let Some(app) = CraftApp::by_id(app_id) else { return };
         log::info!("{}: starting {} job", app.name, if uninstall { "uninstall" } else { "install/update" });
@@ -366,6 +376,8 @@ impl NativeBackend {
                         Work::Install | Work::Uninstall => None,
                     },
                     source.as_deref(),
+                    #[cfg(windows)]
+                    batch_slot,
                 );
                 // Stopped by the connection rather than by the user: say so, and how to go on.
                 match r {
@@ -381,6 +393,17 @@ impl NativeBackend {
             let found = crate::detect::detect(app, &manifest, &crate::detect::Snapshot::take());
             // One installer call can cover several apps, and fail after some of them went in.
             let latest = shared.latest.lock().unwrap_or_else(PoisonError::into_inner).get(app.id).cloned();
+            #[cfg(windows)]
+            let result = if uninstall {
+                result
+            } else {
+                verify_confirmed_install(
+                    result,
+                    app.name,
+                    found.as_ref().and_then(|installed| installed.version.as_ref()),
+                    latest.as_ref().and_then(|release| release.version.as_ref()),
+                )
+            };
             let result = match (result, latest) {
                 (Err(e), Some(release))
                     if !uninstall && release.version.as_ref().is_some_and(|v| landed_despite(&e, existing.as_ref(), found.as_ref(), v)) =>
@@ -459,6 +482,24 @@ impl NativeBackend {
     }
 }
 
+/// Don't tell the user an install succeeded until detection sees the advertised version.
+/// On Windows, MSI success codes alone don't prove the product registration changed.
+#[cfg(any(windows, test))]
+fn verify_confirmed_install(
+    result: Result<String, String>,
+    app_name: &str,
+    installed: Option<&version::Version>,
+    target: Option<&version::Version>,
+) -> Result<String, String> {
+    if result.is_ok()
+        && let Some(target) = target
+        && !installed.is_some_and(|actual| !version::is_update(target, actual))
+    {
+        return Err(format!("{app_name} finished, but version {target} could not be confirmed as installed."));
+    }
+    result
+}
+
 #[derive(Clone, PartialEq, Eq)]
 enum Work {
     Install,
@@ -515,6 +556,7 @@ fn run_install(
     stop: &Stop,
     approved: Option<&str>,
     source: Option<&dyn ReleaseSource>,
+    #[cfg(windows)] batch_slot: BatchSlot,
 ) -> Result<String, String> {
     if let Some(inst) = existing
         && inst.source == artcraft_launcher_core::InstallSource::Flatpak
@@ -628,6 +670,9 @@ fn run_install(
         *manifest = updated;
         Ok(())
     };
+    #[cfg(windows)]
+    let new_record = install::install_at_with_batch(app, &release, &asset, kind, existing, record, &mut job, Some(&mut commit_record), batch_slot)?;
+    #[cfg(not(windows))]
     let new_record = install::install_at(app, &release, &asset, kind, existing, record, &mut job, Some(&mut commit_record))?;
     {
         let mut m = shared.manifest.lock().unwrap_or_else(PoisonError::into_inner);
@@ -1209,6 +1254,21 @@ impl Backend for NativeBackend {
                 });
             }
             Command::Install { app } => self.start_job(&app, Work::Install),
+            Command::InstallAll { apps } => {
+                #[cfg(windows)]
+                {
+                    // Reserve every selected app before a worker can finish a cached download.
+                    let grouped = crate::msi_batch::BATCH.begin(apps.len());
+                    for app in apps {
+                        let slot = grouped.then(|| crate::msi_batch::BATCH.slot());
+                        self.start_job_with_slot(&app, Work::Install, slot);
+                    }
+                }
+                #[cfg(not(windows))]
+                for app in apps {
+                    self.start_job(&app, Work::Install);
+                }
+            }
             Command::Replace { app, path } => self.start_job(&app, Work::Replace(path)),
             Command::Uninstall { app } => self.start_job(&app, Work::Uninstall),
             Command::Pause { app } => {
@@ -1319,6 +1379,22 @@ mod tests {
 
     fn tagged(v: &str) -> Release {
         Release { tag: format!("v{v}"), version: version::parse(v), ..Default::default() }
+    }
+
+    #[test]
+    fn install_success_requires_detecting_the_advertised_version() {
+        let target = version::parse("0.14.0").unwrap();
+        let current = version::parse("0.14.0").unwrap();
+        let newer = version::parse("0.15.0").unwrap();
+        let older = version::parse("0.13.0").unwrap();
+        assert_eq!(verify_confirmed_install(Ok("updated".into()), "PhotoCraft", Some(&current), Some(&target)), Ok("updated".into()));
+        assert_eq!(verify_confirmed_install(Ok("updated".into()), "PhotoCraft", Some(&newer), Some(&target)), Ok("updated".into()));
+        assert!(
+            verify_confirmed_install(Ok("updated".into()), "PhotoCraft", Some(&older), Some(&target)).unwrap_err().contains("could not be confirmed")
+        );
+        assert!(verify_confirmed_install(Ok("updated".into()), "PhotoCraft", None, Some(&target)).is_err());
+        assert_eq!(verify_confirmed_install(Ok("updated".into()), "PhotoCraft", None, None), Ok("updated".into()));
+        assert_eq!(verify_confirmed_install(Err("installer failed".into()), "PhotoCraft", None, Some(&target)), Err("installer failed".into()));
     }
 
     /// A "Replace" answer covers the path that was shown, never a destination that changed since.

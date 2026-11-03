@@ -108,6 +108,45 @@ pub fn install_at(
     commit: RecordCommit<'_>,
 ) -> Result<Option<Record>, String> {
     #[cfg(windows)]
+    {
+        install_at_inner(app, release, asset, kind, existing, previous, job, commit, None)
+    }
+    #[cfg(not(windows))]
+    {
+        install_at_inner(app, release, asset, kind, existing, previous, job, commit)
+    }
+}
+
+/// Install through a slot reserved synchronously for one explicit Windows Update all batch.
+#[cfg(windows)]
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn install_at_with_batch(
+    app: &CraftApp,
+    release: &Release,
+    asset: &Asset,
+    kind: PackageKind,
+    existing: Option<&Installed>,
+    previous: Option<&Record>,
+    job: &mut Job<'_>,
+    commit: RecordCommit<'_>,
+    batch_slot: Option<crate::msi_batch::Slot<'static>>,
+) -> Result<Option<Record>, String> {
+    install_at_inner(app, release, asset, kind, existing, previous, job, commit, batch_slot)
+}
+
+#[allow(clippy::too_many_arguments)]
+fn install_at_inner(
+    app: &CraftApp,
+    release: &Release,
+    asset: &Asset,
+    kind: PackageKind,
+    existing: Option<&Installed>,
+    previous: Option<&Record>,
+    job: &mut Job<'_>,
+    commit: RecordCommit<'_>,
+    #[cfg(windows)] batch_slot: Option<crate::msi_batch::Slot<'static>>,
+) -> Result<Option<Record>, String> {
+    #[cfg(windows)]
     let mut commit = commit;
     #[cfg(not(windows))]
     let _ = commit;
@@ -154,6 +193,19 @@ pub fn install_at(
     } else {
         None
     };
+    #[cfg(windows)]
+    let msi_ticket = if kind == PackageKind::Msi
+        && msi_scope == Some(MsiScope::PerMachine)
+        && app.kind == artcraft_launcher_core::catalog::AppKind::Official
+        && job.downgrade.is_none()
+    {
+        batch_slot.map(crate::msi_batch::Slot::join)
+    } else {
+        // Per-user and community installs retain their existing single-package route. In
+        // particular, they do not enter the privileged ArtCraft-only trust policy.
+        drop(batch_slot);
+        None
+    };
     // The package to put back comes first: without it, nothing is removed.
     #[cfg_attr(not(windows), allow(unused_variables))]
     let rollback = match job.downgrade {
@@ -196,9 +248,20 @@ pub fn install_at(
                     job.stop,
                     &mut *job.phase,
                 ),
-                None => windows::run_msi(&file, destination.as_deref(), msi_scope, job.stop, &mut *job.phase),
+                None => match msi_ticket {
+                    Some(ticket) => {
+                        let release = crate::elevated::release_identity(app, asset)?;
+                        ticket.install(
+                            crate::msi_batch::Item { msi: file.clone(), sha256: sha256.clone(), destination: destination.clone(), release },
+                            &cancelled(job.stop),
+                            &mut *job.phase,
+                            &|items, report| crate::elevated::install(items, report),
+                        )
+                    }
+                    None => windows::run_msi(&file, destination.as_deref(), msi_scope, job.stop, &mut *job.phase),
+                },
             }
-            .map(|_| None)
+            .map(|()| None)
         }
         #[cfg(windows)]
         PackageKind::PortableZip => {
@@ -992,8 +1055,10 @@ pub fn failed_in_shared_call(error: &str) -> bool {
 }
 
 /// The system's installer runs one job at a time; the others wait their turn here.
-#[cfg(any(target_os = "linux", windows))]
+#[cfg(target_os = "linux")]
 static INSTALLER: crate::queue::Queue = crate::queue::Queue::new();
+#[cfg(windows)]
+static INSTALLER: &crate::queue::Queue = &crate::queue::WINDOWS_INSTALLER;
 
 /// For [`INSTALLER`]: reports [`JobPhase::Waiting`] while a job waits, then `working` again.
 #[cfg(any(target_os = "linux", windows))]
@@ -2244,6 +2309,12 @@ pub mod windows {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[cfg(windows)]
+    #[test]
+    fn windows_msi_operations_use_the_queue_reserved_by_update_all() {
+        assert!(std::ptr::eq(INSTALLER, &crate::queue::WINDOWS_INSTALLER));
+    }
 
     /// A folder found only by the launch fallback, in another scope, never reaches the installer.
     #[cfg(windows)]

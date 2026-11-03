@@ -29,6 +29,11 @@ pub enum Command {
     Install {
         app: String,
     },
+    /// Install every app selected by one Update all action. Windows reserves the full set before
+    /// starting workers so eligible machine-wide MSIs share one consent session.
+    InstallAll {
+        apps: Vec<String>,
+    },
     /// `Install`, writing over what [`Event::Occupied`] reported. `path` is the path the user
     /// agreed to overwrite: if the install would now write somewhere else, nothing is replaced and
     /// the user is asked again.
@@ -129,6 +134,8 @@ pub enum JobPhase {
     Verifying,
     /// The system's installer is busy with another app; this one goes next.
     Waiting,
+    /// The one operating-system approval for a batch of machine-wide MSI updates is pending.
+    Permission,
     /// Waiting on the OS installer (MSI) or copying files.
     Installing,
     Removing,
