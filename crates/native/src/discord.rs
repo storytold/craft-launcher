@@ -187,6 +187,8 @@ fn activity(app: &CraftApp, start: i64, file: Option<&str>) -> Value {
 /// or not in that shape at all, so nothing else a window says reaches Discord.
 fn file_from_title(title: &str, app: &str) -> Option<String> {
     let file = [" — ", " – ", " - "].iter().find_map(|sep| title.strip_suffix(app)?.strip_suffix(sep))?;
+    // Only the last part of a path, so a folder never reaches Discord.
+    let file = file.rsplit(['\\', '/']).next().unwrap_or(file);
     let file = file.trim().trim_start_matches('*').trim_end_matches(['*', '•']).trim();
     // Discord wants 2 to 128 characters here.
     (file.chars().count() >= 2).then(|| file.chars().take(MAX_STATE).collect())
@@ -263,9 +265,9 @@ fn set_activity(pipe: &mut dyn Pipe, activity: Option<&Value>) -> io::Result<()>
     write_frame(pipe, OP_FRAME, &body)?;
     match read_frame(pipe)? {
         (OP_CLOSE, reply) => Err(io::Error::other(format!("Discord closed the connection: {reply}"))),
+        // Dropping the connection makes the worker try again.
         (_, reply) if reply.get("evt").and_then(Value::as_str) == Some("ERROR") => {
-            log::warn!("Discord didn't take the presence: {reply}");
-            Ok(())
+            Err(io::Error::other(format!("Discord didn't take the presence: {reply}")))
         }
         _ => Ok(()),
     }
@@ -336,6 +338,8 @@ mod tests {
         assert_eq!(file_from_title("images.pdf — PdfCraft", "PdfCraft").as_deref(), Some("images.pdf"));
         assert_eq!(file_from_title("*Untitled-1 - PhotoCraft", "PhotoCraft").as_deref(), Some("Untitled-1"));
         assert_eq!(file_from_title("plan.svg • — VectorCraft", "VectorCraft").as_deref(), Some("plan.svg"));
+        assert_eq!(file_from_title(r"C:\Users\me\plan.pdf — PdfCraft", "PdfCraft").as_deref(), Some("plan.pdf"));
+        assert_eq!(file_from_title("/home/me/plan.pdf — PdfCraft", "PdfCraft").as_deref(), Some("plan.pdf"));
         assert_eq!(file_from_title("PdfCraft", "PdfCraft"), None);
         assert_eq!(file_from_title("Open file", "PdfCraft"), None);
         assert_eq!(file_from_title("x — PdfCraft", "PdfCraft"), None);
