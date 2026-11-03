@@ -27,6 +27,9 @@ fn uncertain_msi_updates_do_not_download_or_start_an_installer() {
             source: InstallSource::Msi,
             location: root.path().join("not-running-context-regression.exe").display().to_string(),
             package: code.map(str::to_owned),
+            externally_managed: false,
+            origin: None,
+            installation: None,
         };
         let mut phases = Vec::new();
         let mut phase = |phase| phases.push(phase);
