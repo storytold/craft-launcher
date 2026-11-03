@@ -14,7 +14,7 @@
 # name "Craft App Suite",
 # app names (PhotoCraft, LightCraft, FilmCraft, DesignCraft, VectorCraft, PdfCraft, EffectCraft,
 # WordCraft, DeckCraft, GridCraft, CADCraft, SoundCraft, FigCraft, Craft Anything, TextureCraft,
-# SolidCraft), "GitHub" and "Discord".
+# MaterialCraft, SolidCraft), "GitHub" and "Discord".
 # Shortcut keys keep their key-cap names (Shift, Alt, Ctrl, Cmd, Esc).
 # Trailing "…" (U+2026) must be preserved. Placeholders {name}, {n}, {version}, {count}, {v},
 # {what}, {unit}, {real}, {e} must appear in translation.
@@ -126,6 +126,12 @@
 	Unhide App	Показати застосунок
 	Hidden Apps	Сховані застосунки
 	Apps you hid	Застосунки, які ви сховали
+	Pin to top	Закріпити вгорі
+	Unpin	Відкріпити
+	Pinned	Закріплені
+	Reorder {name}	Змінити порядок: {name}
+	Move up	Вище
+	Move down	Нижче
 	Checked {ago} · using {sources}	Перевірено {ago} · джерела: {sources}
 	{a} and {b}	{a} і {b}
 	Join the Discord	Приєднатися до Discord
@@ -148,6 +154,7 @@
 	Uninstall cancelled	Видалення скасовано
 	Retry install	Повторити встановлення
 	Retry update to {version}	Повторити оновлення до {version}
+	Retry update	Повторити оновлення
 	The download is still here. It's checked again, then installed.	Завантажений файл усе ще на місці. Його перевірять ще раз, а потім встановлять.
 	Waiting for another app…	Очікування іншого застосунку…
 	Waiting for other installs…	Очікування інших встановлень…
@@ -399,4 +406,11 @@ texturecraft	Materials	Матеріали
 texturecraft	Mesh maps	Карти сітки
 texturecraft	Bake mesh maps and use smart materials.	Запікайте карти сітки та використовуйте розумні матеріали.
 texturecraft	Paint textures on 3D models.	Малюйте текстури на 3D-моделях.
+materialcraft	Procedural material design	Процедурний дизайн матеріалів
+materialcraft	Build materials with node graphs.	Створюйте матеріали за допомогою графів вузлів.
+materialcraft	Create tileable PBR materials and export texture maps.	Створюйте безшовні PBR-матеріали та експортуйте карти текстур.
+materialcraft	Node graphs	Графи вузлів
+materialcraft	Combine noises, patterns and filters.	Поєднуйте шуми, візерунки та фільтри.
+materialcraft	Live previews	Перегляд у реальному часі
+materialcraft	Preview materials in 2D and on 3D models.	Переглядайте матеріали у 2D та на 3D-моделях.
 	Hide community apps	Приховати застосунки спільноти
