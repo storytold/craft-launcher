@@ -1282,9 +1282,9 @@ fn a_dismissed_install_prompt_is_not_called_a_cancelled_download() {
 }
 
 #[test]
-/// A ready update names its version and installs on Retry, while an up-to-date app offers
-/// Reinstall instead of Download again.
-fn a_kept_update_names_its_version_and_an_up_to_date_app_is_not_downloaded_again() {
+/// A ready update installs on Retry (the table's narrow button leaves the version to its column),
+/// while an up-to-date app offers Reinstall instead of Download again.
+fn a_kept_update_installs_on_retry_and_an_up_to_date_app_is_not_downloaded_again() {
     let mut ev = events();
     for app in ["effectcraft", "wordcraft"] {
         ev.push(Event::ReadyToInstall { app: app.into(), ready: true });
@@ -1294,7 +1294,7 @@ fn a_kept_update_names_its_version_and_an_up_to_date_app_is_not_downloaded_again
     snapshot(&mut h, "table-retry-update-dark");
     sent.borrow_mut().clear();
     assert!(h.query_by_label("Update to 0.6.0").is_none());
-    h.get_by_label("Retry update to 0.6.0").click();
+    h.get_by_label("Retry update").click();
     h.run_steps(2);
     assert_eq!(*sent.borrow(), [Command::Install { app: "effectcraft".into() }]);
     // WordCraft is up to date: its menu offers Reinstall, which uses the kept file.
@@ -1304,6 +1304,31 @@ fn a_kept_update_names_its_version_and_an_up_to_date_app_is_not_downloaded_again
     h.get_by_label("Reinstall");
     h.check_accessibility();
     assert!(h.query_by_label("Download again").is_none());
+}
+
+#[test]
+/// A Retry update button too wide for its slot drops the version instead of pushing the menu out
+/// of the row (#956): it is no wider than an Install button in the same view. A card with room
+/// for the version keeps it.
+fn a_retry_update_button_keeps_to_its_slot_and_leaves_room_for_the_menu() {
+    for view in [ViewMode::Table, ViewMode::Grid] {
+        let mut ev = events();
+        // Two-digit minor, as in the report: "Retry update to 0.12.0".
+        ev.push(Event::Latest {
+            app: "effectcraft".into(),
+            latest: LatestRelease::Found(release("effectcraft", "0.12.0", NOW)),
+            from: Origin::ArtCraftApi,
+        });
+        ev.push(Event::ReadyToInstall { app: "effectcraft".into(), ready: true });
+        let (mut h, _) = harness_with(ev, view, egui::Theme::Dark, true, 1.0);
+        h.run_steps(8);
+        let label = if view == ViewMode::Table { "Retry update" } else { "Retry update to 0.12.0" };
+        let retry = h.get_by_label(label).rect();
+        let install = h.query_all_by_label("Install").next().unwrap().rect();
+        let menu = h.get_by_label("More actions for EffectCraft").rect();
+        assert!(retry.width() <= install.width() + 0.5, "{view:?}: retry {retry:?} wider than install {install:?}");
+        assert!(retry.right() <= menu.left(), "{view:?}: retry {retry:?} overlaps menu {menu:?}");
+    }
 }
 
 #[test]
