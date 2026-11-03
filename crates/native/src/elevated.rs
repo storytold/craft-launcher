@@ -351,9 +351,9 @@ function Invoke-MsiApi($api, [string]$name, [object[]]$arguments) {
     $callArguments = [Array]::CreateInstance([object], $parameters.Length)
     for ($index = 0; $index -lt $parameters.Length; $index++) {
         $value = $source.GetValue($index)
-        if ($null -ne $value) { $value = [System.Management.Automation.PSObject]::Base($value) }
-        while ($value -is [System.Management.Automation.PSObject]) {
-            $baseValue = [System.Management.Automation.PSObject]::Base($value)
+        if ($null -ne $value) { $value = [System.Management.Automation.PSObject]::AsPSObject($value).BaseObject }
+        while ($null -ne $value -and $value -is [System.Management.Automation.PSObject]) {
+            $baseValue = [System.Management.Automation.PSObject]::AsPSObject($value).BaseObject
             if ([object]::ReferenceEquals($value, $baseValue)) { break }
             $value = $baseValue
         }
@@ -378,15 +378,15 @@ function Invoke-MsiApi($api, [string]$name, [object[]]$arguments) {
     # Preserve native by-ref outputs in the caller's original array for handle/status use.
     for ($index = 0; $index -lt $parameters.Length; $index++) {
         $value = $callArguments.GetValue($index)
-        if ($null -ne $value) { $value = [System.Management.Automation.PSObject]::Base($value) }
-        while ($value -is [System.Management.Automation.PSObject]) {
-            $baseValue = [System.Management.Automation.PSObject]::Base($value)
+        if ($null -ne $value) { $value = [System.Management.Automation.PSObject]::AsPSObject($value).BaseObject }
+        while ($null -ne $value -and $value -is [System.Management.Automation.PSObject]) {
+            $baseValue = [System.Management.Automation.PSObject]::AsPSObject($value).BaseObject
             if ([object]::ReferenceEquals($value, $baseValue)) { break }
             $value = $baseValue
         }
         $source.SetValue($value, $index)
     }
-    $result = [System.Management.Automation.PSObject]::Base($result)
+    if ($null -ne $result) { $result = [System.Management.Automation.PSObject]::AsPSObject($result).BaseObject }
     return $result
 }
 
@@ -912,9 +912,10 @@ mod tests {
         assert!(POLICY.contains("@($u, $u, $ref, $iref, [IntPtr], [Text.StringBuilder], $ref)"), "summary API includes FILETIME*");
         assert!(POLICY.contains("[int32]0, [IntPtr]::Zero, $template, [uint32]256"), "PID_TEMPLATE passes a null FILETIME*");
         assert!(
-            POLICY.contains("function Invoke-MsiApi") && POLICY.contains("PSObject]::Base($value)"),
+            POLICY.contains("function Invoke-MsiApi") && POLICY.contains("PSObject]::AsPSObject($value).BaseObject"),
             "reflection arguments are explicitly unwrapped"
         );
+        assert!(!POLICY.contains("PSObject]::Base("), "do not call the nonexistent PSObject::Base API");
         assert!(POLICY.contains("$source.SetValue($value, $index)"), "native ref/out values are copied back to the caller");
         assert_eq!(POLICY.matches("$method.Invoke($null, $callArguments)").count(), 1, "all MSI reflections use the typed invocation helper");
         assert!(POLICY.contains("diagnostics.jsonl") && POLICY.contains("rootHresult") && POLICY.contains("validation-failure"));
@@ -957,7 +958,8 @@ foreach ($entry in $expected.GetEnumerator()) {
 }
 $missing = Join-Path $env:TEMP ('ArtCraft-Missing-' + [Guid]::NewGuid().ToString('N') + '.msi')
 $arguments = [object[]]@($missing, [IntPtr]::Zero, [uint32]0)
-if ([System.Management.Automation.PSObject]::Base($arguments[0]).GetType().FullName -cne 'System.String') { throw 'MsiOpenDatabaseW path did not unwrap to System.String' }
+$pathBase = if ($null -ne $arguments[0]) { [System.Management.Automation.PSObject]::AsPSObject($arguments[0]).BaseObject }
+if ($null -eq $pathBase -or $pathBase.GetType().FullName -cne 'System.String') { throw 'MsiOpenDatabaseW path did not unwrap to System.String' }
 $status = Invoke-MsiApi $api 'MsiOpenDatabaseW' $arguments
 if ([uint32]$status -ne 1619) { throw "MsiOpenDatabaseW returned unexpected status $status, expected 1619" }
 Set-ArtCraftValidationStage 'test-start'
