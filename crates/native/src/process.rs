@@ -159,7 +159,7 @@ pub fn is_flatpak_available() -> bool {
     if in_sandbox() {
         capture("flatpak-spawn", &["--host", "flatpak", "--version"], Duration::from_secs(3)).is_some()
     } else {
-        which_on_path("flatpak").is_some()
+        which("flatpak").is_some()
     }
 }
 
@@ -290,7 +290,8 @@ fn detect_discord_scheme_handler() -> bool {
     false
 }
 
-fn which_on_path(name: &str) -> Option<std::path::PathBuf> {
+/// Finds a program on `PATH`.
+pub(crate) fn which(name: &str) -> Option<std::path::PathBuf> {
     let path = std::env::var_os("PATH")?;
     std::env::split_paths(&path).map(|d| d.join(name)).find(|p| p.is_file())
 }
