@@ -109,6 +109,12 @@
 	Apps on this computer	Aplikacije na ovom računaru
 	Installed apps with a newer version	Instalirane aplikacije s novijom verzijom
 	Apps you can install	Aplikacije koje možete instalirati
+	Pin to top	Prikači na vrh
+	Unpin	Otkači
+	Pinned	Prikačeno
+	Reorder {name}	Promijeni redoslijed: {name}
+	Move up	Pomjeri gore
+	Move down	Pomjeri dolje
 	Hide App	Sakrij aplikaciju
 	Unhide App	Otkrij aplikaciju
 	Hidden Apps	Skrivene aplikacije
@@ -134,6 +140,7 @@
 	Update cancelled	Ažuriranje otkazano
 	Uninstall cancelled	Deinstalacija otkazana
 	Retry install	Ponovi instalaciju
+	Retry update	Ponovo pokušaj ažuriranje
 	Retry update to {version}	Ponovi ažuriranje na {version}
 	The download is still here. It's checked again, then installed.	Preuzimanje je još ovdje. Ponovo se provjerava, a zatim instalira.
 	Waiting for another app…	Čeka se druga aplikacija…
@@ -364,3 +371,21 @@ column	Author	Autor
 	Older launcher versions require a manual reinstall.	Starije verzije Launchera zahtijevaju ručnu ponovnu instalaciju.
 	Your files may not open in older versions.	Vaše datoteke se možda neće otvoriti u starijim verzijama.
 	Enable automatic installs in Settings to follow new nightly builds.	Omogućite automatske instalacije u Postavkama da pratite nove noćne verzije.
+texturecraft	3D texture painting	3D slikanje tekstura
+texturecraft	Paint materials on 3D models and export textures.	Slikajte materijale na 3D modelima i izvezite teksture.
+texturecraft	Materials	Materijali
+texturecraft	Mesh maps	Mape mreže
+texturecraft	Bake mesh maps and use smart materials.	Pecite mape mreže i koristite pametne materijale.
+texturecraft	Paint textures on 3D models.	Slikajte teksture na 3D modelima.
+	Hide community apps	Sakrij aplikacije zajednice
+materialcraft	Procedural material design	Proceduralni dizajn materijala
+materialcraft	Build materials with node graphs.	Pravite materijale pomoću grafova čvorova.
+materialcraft	Create tileable PBR materials and export texture maps.	Kreirajte PBR materijale koji se mogu popločavati i izvezite mape tekstura.
+materialcraft	Node graphs	Grafovi čvorova
+materialcraft	Combine noises, patterns and filters.	Kombinujte šumove, uzorke i filtere.
+materialcraft	Live previews	Pregledi uživo
+materialcraft	Preview materials in 2D and on 3D models.	Pregledajte materijale u 2D i na 3D modelima.
+	Advanced	Napredno
+	Migrate Flatpak bundles to ArtCraft OCI (experimental)	Premjesti Flatpak pakete u ArtCraft OCI (eksperimentalno)
+	On update, switch first party apps when the matching package is available. Otherwise, keep using bundles.	Pri ažuriranju prebaci vlastite aplikacije kada je odgovarajući paket dostupan. U suprotnom nastavi koristiti pakete.
+	The OCI repository is a preview with GPG verification disabled.	OCI repozitorij je pretpregled s isključenom GPG provjerom.
