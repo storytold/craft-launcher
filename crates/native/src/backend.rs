@@ -1254,7 +1254,7 @@ impl Backend for NativeBackend {
             Command::CreateDesktopShortcut { app } => {
                 let Some(def) = CraftApp::by_id(&app) else { return };
                 let Some(inst) = self.installed(&app) else {
-                    self.shared.emit(Event::JobFinished {
+                    self.shared.emit(Event::Notice {
                         app,
                         result: Err(format!("{} isn't installed", def.name)),
                     });
@@ -1272,7 +1272,8 @@ impl Backend for NativeBackend {
                         Err(e) if e.starts_with("A desktop shortcut named ") => Err(e),
                         Err(e) => Err(format!("Couldn't create the desktop shortcut: {e}")),
                     };
-                    shared.emit(Event::JobFinished {
+                    // Notice: toast only — never clears an install/uninstall job phase.
+                    shared.emit(Event::Notice {
                         app: app_id,
                         result,
                     });

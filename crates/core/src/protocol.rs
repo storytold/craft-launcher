@@ -246,7 +246,14 @@ pub enum Event {
         path: String,
     },
     /// A job ended: `Ok` carries a short success message, `Err` what went wrong.
+    /// Clears the app's in-progress job phase in the UI.
     JobFinished {
+        app: String,
+        result: Result<String, String>,
+    },
+    /// A short status toast that is not tied to an install/uninstall job phase
+    /// (e.g. creating a desktop shortcut). Does not clear `Progress` state.
+    Notice {
         app: String,
         result: Result<String, String>,
     },
