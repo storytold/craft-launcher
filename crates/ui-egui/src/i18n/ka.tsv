@@ -49,7 +49,6 @@
 	Website	ვებსაიტი
 	Classic apps	კლასიკური აპლიკაციები
 	New apps	ახალი აპლიკაციები
-	Classic	კლასიკური
 	NEW	ახალი
 	Install	ინსტალაცია
 	Update to {v}	განახლება ვერსიამდე {v}
@@ -179,6 +178,7 @@ designcraft	Page layout and publishing	გვერდების მაკე�
 wordcraft	Writing and document design	წერა და დოკუმენტების დიზაინი
 deckcraft	Presentations and slide shows	პრეზენტაციები და სლაიდშოუები
 gridcraft	Spreadsheets and data	ელცხრილები და მონაცემები
+craft-anything	Find out how any software works, then craft your own	გაიგეთ, როგორ მუშაობს ნებისმიერი პროგრამა, და შექმენით საკუთარი
 cadcraft	Computer-aided design and drafting	დაპროექტება და ნახაზები
 soundcraft	Recording, editing and mixing audio	აუდიოს ჩაწერა, რედაქტირება და მიქსირება
 figcraft	Interface design and prototyping	ინტერფეისის დიზაინი და პროტოტიპირება
@@ -244,7 +244,6 @@ month	Dec	დეკ
 	Checking for updates…	განახლებების შემოწმება…
 	Downloads the new version, replaces this one and opens it again	ჩამოტვირთავს ახალ ვერსიას, ჩაანაცვლებს ამას და ხელახლა გახსნის
 	Couldn't check for updates: {f}	განახლებების შემოწმება ვერ მოხერხდა: {f}
-	Website (coming soon)	ვებსაიტი (მალე)
 	GitHub repository	GitHub-ის რეპოზიტორია
 	ArtCraft	ArtCraft
 	Update 1 app	1 აპლიკაციის განახლება
@@ -392,5 +391,26 @@ column	Version	ვერსია
 column	Author	ავტორი
 	Choose version	ვერსიის არჩევა
 	latest {version}	უახლესი {version}
+	{version} (latest release)	{version} (უახლესი გამოშვება)
 	Launcher version	Launcher-ის ვერსია
+	Nightly	ღამის ვერსია
+	Nightly (none published yet)	ღამის ვერსია (ჯერ არ გამოქვეყნებულა)
 	Install version {version}	{version} ვერსიის ინსტალაცია
+	Download selected version	არჩეული ვერსიის ჩამოტვირთვა
+	Older launcher versions require a manual reinstall.	Launcher-ის ძველ ვერსიებს ხელით ხელახალი ინსტალაცია სჭირდება.
+	Your files may not open in older versions.	თქვენი ფაილები შეიძლება ძველ ვერსიებში არ გაიხსნას.
+	Enable automatic installs in Settings to follow new nightly builds.	ახალი ღამის ვერსიების მისაღებად პარამეტრებში ჩართეთ ავტომატური ინსტალაცია.
+texturecraft	3D texture painting	3D ტექსტურების ხატვა
+texturecraft	Paint materials on 3D models and export textures.	3D მოდელებზე მასალებით ხატვა და ტექსტურების ექსპორტი.
+texturecraft	Materials	მასალები
+texturecraft	Mesh maps	ბადის რუკები
+texturecraft	Bake mesh maps and use smart materials.	ბადის რუკების გამოცხობა და ჭკვიანი მასალების გამოყენება.
+texturecraft	Paint textures on 3D models.	3D მოდელებზე ტექსტურების ხატვა.
+	Hide community apps	საზოგადოების აპლიკაციების დამალვა
+materialcraft	Procedural material design	პროცედურული მასალების დიზაინი
+materialcraft	Build materials with node graphs.	მასალების აწყობა კვანძების გრაფებით.
+materialcraft	Create tileable PBR materials and export texture maps.	უნაკერო PBR მასალების შექმნა და ტექსტურების რუკების ექსპორტი.
+materialcraft	Node graphs	კვანძების გრაფები
+materialcraft	Combine noises, patterns and filters.	ხმაურების, პატერნებისა და ფილტრების კომბინირება.
+materialcraft	Live previews	ცოცხალი წინასწარი ნახვა
+materialcraft	Preview materials in 2D and on 3D models.	მასალების წინასწარი ნახვა 2D-ში და 3D მოდელებზე.
