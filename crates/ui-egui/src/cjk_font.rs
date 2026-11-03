@@ -15,6 +15,9 @@ use crate::i18n::Script;
 const MAX_FONT_BYTES: u64 = 100 * 1024 * 1024;
 /// Faces looked at in one collection file (PingFang has 24).
 const MAX_FACES: u32 = 64;
+/// Name records compared per lookup (family or style) in one face. Real fonts carry a few dozen
+/// translations of each name; the cap bounds the decoding a crafted name table can ask for.
+const MAX_NAME_RECORDS: usize = 256;
 
 /// The bundled body font (Inter), whose baseline a fallback face is nudged onto.
 const BODY_FONT: &[u8] = include_bytes!("../../../assets/fonts/Inter-Variable.ttf");
@@ -99,23 +102,37 @@ fn read(path: &Path) -> Option<Vec<u8>> {
 /// The face of `family` in a font file or collection: its Regular face, else the first face of
 /// that family. Matches the (typographic) family name in any language the file gives it in.
 pub(crate) fn face_index(data: &[u8], family: &str) -> Option<u32> {
-    let names = |font: &FontRef<'_>, ids: [StringId; 2]| -> Vec<String> {
-        ids.into_iter().flat_map(|id| font.localized_strings(id).map(|s| s.to_string())).collect()
-    };
     let mut first = None;
     for index in 0..MAX_FACES {
         let Ok(font) = FontRef::from_index(data, index) else { break };
-        let families = names(&font, [StringId::TYPOGRAPHIC_FAMILY_NAME, StringId::FAMILY_NAME]);
-        if !families.iter().any(|f| f.eq_ignore_ascii_case(family)) {
+        if !has_name(&font, [StringId::TYPOGRAPHIC_FAMILY_NAME, StringId::FAMILY_NAME], family) {
             continue;
         }
-        let styles = names(&font, [StringId::TYPOGRAPHIC_SUBFAMILY_NAME, StringId::SUBFAMILY_NAME]);
-        if styles.iter().any(|s| s.eq_ignore_ascii_case("Regular")) {
+        if has_name(&font, [StringId::TYPOGRAPHIC_SUBFAMILY_NAME, StringId::SUBFAMILY_NAME], "Regular") {
             return Some(index);
         }
         first.get_or_insert(index);
     }
     first
+}
+
+/// Whether one of the first [`MAX_NAME_RECORDS`] `ids` names of `font` is `wanted` (ASCII case
+/// ignored). Each name is decoded only as far as it still matches, and never kept: a name table
+/// can point many records at the same long string.
+fn has_name(font: &FontRef<'_>, ids: [StringId; 2], wanted: &str) -> bool {
+    ids.into_iter().flat_map(|id| font.localized_strings(id)).take(MAX_NAME_RECORDS).any(|name| chars_eq_ignore_ascii_case(name.chars(), wanted))
+}
+
+/// `chars` spells `wanted`, ignoring ASCII case. Reads at most one char past `wanted`'s length.
+fn chars_eq_ignore_ascii_case(mut chars: impl Iterator<Item = char>, wanted: &str) -> bool {
+    let mut want = wanted.chars();
+    loop {
+        match (chars.next(), want.next()) {
+            (None, None) => return true,
+            (Some(a), Some(b)) if a.eq_ignore_ascii_case(&b) => {}
+            _ => return false,
+        }
+    }
 }
 
 /// Where each system keeps a font for `script`, best first.
@@ -356,6 +373,28 @@ mod tests {
         assert_eq!(face_index(b"", "PingFang SC"), None);
         assert_eq!(face_index(b"ttcf\0\0\0\0garbage", "PingFang SC"), None);
         assert_eq!(face_index(&[0u8; 64], "PingFang SC"), None);
+    }
+
+    /// Names compare without regard to ASCII case, and a long name stops being read once it
+    /// runs past the wanted one.
+    #[test]
+    fn names_compare_incrementally() {
+        assert!(chars_eq_ignore_ascii_case("PingFang SC".chars(), "pingfang sc"));
+        assert!(!chars_eq_ignore_ascii_case("PingFang".chars(), "PingFang SC"));
+        assert!(!chars_eq_ignore_ascii_case("PingFang SCX".chars(), "PingFang SC"));
+        let mut read = 0;
+        let endless = std::iter::repeat('a').inspect(|_| read += 1);
+        assert!(!chars_eq_ignore_ascii_case(endless, "aaa"));
+        assert_eq!(read, 4);
+    }
+
+    /// The bundled body font is found by its own family, in any ASCII case, and not by a prefix.
+    #[test]
+    fn face_index_finds_a_family_by_name() {
+        assert_eq!(face_index(BODY_FONT, "Inter"), Some(0));
+        assert_eq!(face_index(BODY_FONT, "inter"), Some(0));
+        assert_eq!(face_index(BODY_FONT, "Inte"), None);
+        assert_eq!(face_index(BODY_FONT, "PingFang SC"), None);
     }
 
     /// The baseline nudge reads a face's ascent and height; the reference is Inter's.
