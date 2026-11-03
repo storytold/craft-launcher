@@ -559,17 +559,6 @@ fn run_install(
     if !release_matches_track(&release, track, options.prereleases) {
         return Err("the selected version isn't available yet. Check for updates before installing.".into());
     }
-    #[cfg(target_os = "linux")]
-    if options.oci_migration
-        && matches!(track, VersionTrack::Stable)
-        && !release.prerelease
-        && !replace
-        && let Some(installed) = existing
-        && let Some(expected) = release.version.as_ref()
-        && install::linux::migrate_bundle_to_oci(app, installed, expected, stop)?
-    {
-        return Ok(format!("{} now updates through the ArtCraft OCI repository", app.name));
-    }
     let (asset, kind) = planned_asset(app, &release, platform, options, existing, record).ok_or_else(|| {
         if platform.os == artcraft_launcher_core::Os::Linux
             && options.install_locations.folder(app.id).is_some()

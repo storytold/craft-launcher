@@ -108,8 +108,6 @@ pub struct Settings {
     /// Show a system notification when an installed app has an update.
     pub notify: bool,
     pub prereleases: bool,
-    /// Opt in to migrating first party Flatpak bundles to the ArtCraft OCI repository.
-    pub oci_migration: bool,
     /// Version track per app. Missing entries follow stable releases.
     pub versions: BTreeMap<String, artcraft_launcher_core::protocol::VersionTrack>,
     pub launcher_version: artcraft_launcher_core::protocol::VersionTrack,
@@ -204,7 +202,6 @@ impl Default for Settings {
             auto_update: false,
             notify: true,
             prereleases: false,
-            oci_migration: false,
             versions: BTreeMap::new(),
             launcher_version: Default::default(),
             preferred_kinds: default_preferred_kinds(),
@@ -216,19 +213,5 @@ impl Default for Settings {
             tray_hint_shown: false,
             launches: BTreeMap::new(),
         }
-    }
-}
-
-#[cfg(test)]
-mod oci_settings_tests {
-    use super::*;
-
-    #[test]
-    fn migration_requires_opt_in_and_survives_settings_roundtrip() {
-        let old: Settings = serde_json::from_str("{}").unwrap();
-        assert!(!old.oci_migration);
-        let enabled = Settings { oci_migration: true, ..old };
-        let restored: Settings = serde_json::from_str(&serde_json::to_string(&enabled).unwrap()).unwrap();
-        assert!(restored.oci_migration);
     }
 }

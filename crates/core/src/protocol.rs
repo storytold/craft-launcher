@@ -99,8 +99,6 @@ pub struct BackendOptions {
     pub launcher_version: VersionTrack,
     /// Offer pre-releases (`0.6.0-rc.1`) as updates.
     pub prereleases: bool,
-    /// Opt in to migrating first party Flatpak bundles to the ArtCraft OCI repository.
-    pub oci_migration: bool,
 }
 
 /// The answer to "what's the latest release of this app?".

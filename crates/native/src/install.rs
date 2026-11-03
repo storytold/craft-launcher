@@ -217,6 +217,7 @@ pub fn install_at(
         PackageKind::Deb | PackageKind::Rpm | PackageKind::ArchPkg | PackageKind::Flatpak => {
             linux::install_package(kind, &file, job.stop, &mut *job.phase).map(|_| {
                 if kind == PackageKind::Flatpak {
+                    linux::configure_bundle_lookaside(app);
                     linux::retire_former_flatpak(app, existing);
                 }
                 None
@@ -1227,94 +1228,26 @@ pub(crate) mod linux {
         }
     }
 
-    /// Opt-in OCI migration. Ok(false) keeps the bundle: anything that fails before the reinstall
-    /// starts (no matching ref or version, polkit refusal, offline) falls back to the bundle update.
-    pub fn migrate_bundle_to_oci(app: &CraftApp, installed: &Installed, expected: &super::version::Version, stop: &Stop) -> Result<bool, String> {
-        if installed.source != InstallSource::Flatpak || installed.externally_managed || !app.repo.starts_with("storytold/") {
-            return Ok(false);
+    /// Configure signature verification for a bundle-created ArtCraft OCI origin.
+    pub fn configure_bundle_lookaside(app: &CraftApp) {
+        let id = app.bundle_id();
+        let Some(origin) = process::capture_flatpak(&["info", "--user", "--show-origin", &id], std::time::Duration::from_secs(10)) else { return };
+        let origin = origin.trim();
+        if !origin.ends_with("-origin") {
+            return;
         }
-        // Only bundle-created origins qualify; never redirect another repository's install.
-        if !installed.origin.as_deref().is_some_and(|origin| origin.ends_with("-origin")) {
-            return Ok(false);
-        }
-        let (Some(id), Some(installation)) = (installed.package.as_deref(), installed.installation.as_deref()) else {
-            return Ok(false);
+        let Some(remotes) =
+            process::capture_flatpak(&["remotes", "--user", "--show-disabled", "--columns=name,url"], std::time::Duration::from_secs(10))
+        else {
+            return;
         };
-        let scope = crate::packages::flatpak_scope(Some(installation));
-        // `cancellable` is false for steps that must not stop part-way: killing flatpak-spawn
-        // doesn't wait for the host transaction, and `--reinstall` removes the old ref first.
-        let flatpak = |args: &[&str], cancellable: bool| -> Result<String, String> {
-            let mut cmd = if process::in_sandbox() {
-                let mut cmd = process::command("flatpak-spawn");
-                cmd.args(["--host", "--watch-bus", "flatpak"]);
-                cmd
-            } else {
-                process::command("flatpak")
-            };
-            cmd.arg(&scope).args(args);
-            let output = process::cancellable_output(cmd, || if cancellable { stop.check() } else { Ok(()) })?;
-            if !output.status.success() {
-                return Err(format!("Flatpak OCI migration failed: {}", String::from_utf8_lossy(&output.stderr).trim()));
-            }
-            Ok(String::from_utf8_lossy(&output.stdout).into_owned())
-        };
-        let run = |args: &[&str]| flatpak(args, true);
-        let precheck = || -> Result<Option<(String, String)>, String> {
-            let reference = run(&["info", "--show-ref", id])?.trim().to_string();
-            if !reference.starts_with(&format!("app/{id}/")) || !reference.ends_with("/stable") {
-                return Ok(None);
-            }
-            let remotes = run(&["remotes", "--show-disabled", "--columns=name,url"])?;
-            let remote = remotes.lines().find_map(|line| {
-                let (name, _) = line.split_once('\t')?;
-                crate::packages::is_artcraft_remote(name, line).then(|| name.to_string())
-            });
-            let remote = match remote {
-                Some(remote) => remote,
-                None => {
-                    if remotes.lines().any(|line| line.split('\t').next() == Some("artcraft-oci")) {
-                        return Ok(None);
-                    }
-                    // Another app's migration may add the remote first; the URL is checked below.
-                    run(&["remote-add", "--if-not-exists", "artcraft-oci", "https://getartcraft.com/artcraft-oci.flatpakrepo"])?;
-                    let remotes = run(&["remotes", "--show-disabled", "--columns=name,url"])?;
-                    if !crate::packages::is_artcraft_remote("artcraft-oci", &remotes) {
-                        return Ok(None);
-                    }
-                    "artcraft-oci".to_string()
-                }
-            };
-            // The Version column comes from the remote's AppStream catalog, which Flatpak only fetches
-            // on demand; without a refresh a new remote lists refs with empty versions.
-            run(&["update", "--appstream", &remote])?;
-            let refs = run(&["remote-ls", "--app", "--columns=ref,version", &remote])?;
-            Ok(crate::packages::oci_ref_available(&reference, expected, &refs).then_some((remote, reference)))
-        };
-        let (remote, reference) = match precheck() {
-            Ok(Some(found)) => found,
-            Err(e) if e == CANCELLED => return Err(e),
-            Ok(None) | Err(_) => return Ok(false),
-        };
-        // `install_at` won't replace a running app either; the reinstall can't be cancelled.
-        if process::capture_flatpak(&["ps", "--columns=application"], std::time::Duration::from_secs(10))
-            .is_some_and(|ps| ps.lines().any(|line| line.trim() == id))
-        {
-            return Err(format!("{} is running. Quit it, then try again.", app.name));
+        if !crate::packages::is_artcraft_remote(origin, &remotes) {
+            return;
         }
-        stop.check()?;
-        if let Err(e) = flatpak(&["install", "--reinstall", "-y", "--noninteractive", &remote, &reference], false) {
-            // The bundle origin has no repository to restore from, so point at the bundle itself.
-            if flatpak(&["info", id], false).is_err() {
-                return Err(format!("{e}. {} is no longer installed; reinstall it from the .flatpak bundle at {}", app.name, app.releases_url()));
-            }
-            return Err(e);
+        let lookaside = format!("--signature-lookaside={}", crate::packages::ARTCRAFT_SIGNATURE_LOOKASIDE);
+        if process::capture_flatpak(&["remote-modify", "--user", &lookaside, origin], std::time::Duration::from_secs(10)).is_none() {
+            log::warn!("Could not configure the Flatpak signature lookaside for {origin}");
         }
-        // Past the reinstall, a cancel would misreport a finished migration.
-        let origin = flatpak(&["info", "--show-origin", id], false)?;
-        if origin.trim() != remote {
-            return Err("Flatpak did not switch the installed app to the ArtCraft OCI remote".into());
-        }
-        Ok(true)
     }
 
     /// Updates an installed Flatpak from its remote repository (such as FlatPark).

@@ -123,7 +123,6 @@ impl LauncherUi {
                 this.settings_install(ui, &mut **host);
                 this.settings_background(ui, &mut **host);
                 this.settings_community(ui);
-                this.settings_advanced(ui);
             },
         );
     }
@@ -199,18 +198,6 @@ impl LauncherUi {
                 self.version_combo(ui, launcher_id, &artcraft_launcher_core::catalog::LAUNCHER, 200.0, label);
             });
             self.launcher_version_notes(ui);
-        });
-    }
-
-    /// Opt-in Linux behaviour that is still experimental.
-    fn settings_advanced(&mut self, ui: &mut Ui) {
-        if !self.caps.manage_apps || !self.platform.is_some_and(|p| p.os == Os::Linux) {
-            return;
-        }
-        sheet::panel(ui, tl!("Advanced"), |ui| {
-            ui.checkbox(&mut self.settings.oci_migration, tl!("Migrate Flatpak bundles to ArtCraft OCI (experimental)"));
-            note(ui, tl!("On update, switch first party apps when the matching package is available. Otherwise, keep using bundles."));
-            note(ui, tl!("The OCI repository is a preview with GPG verification disabled."));
         });
     }
 

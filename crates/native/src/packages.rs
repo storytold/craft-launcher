@@ -314,36 +314,12 @@ mod remote_url_tests {
     }
 }
 
-/// Whether the remote lists `reference` at exactly `expected`; a missing ref, or one with no or
-/// another version (the AppStream catalog may list none), keeps the bundle.
-#[cfg(target_os = "linux")]
-pub(crate) fn oci_ref_available(reference: &str, expected: &version::Version, listing: &str) -> bool {
-    listing.lines().any(|line| {
-        let mut fields = line.split('\t');
-        fields.next().map(str::trim) == Some(reference) && fields.next().and_then(|v| version::parse(v.trim())).as_ref() == Some(expected)
-    })
-}
-
-#[cfg(all(test, target_os = "linux"))]
-mod migration_tests {
-    use super::*;
-    #[test]
-    fn migration_requires_the_exact_ref_and_selected_version() {
-        let reference = "app/ai.storyteller.photocraft/x86_64/stable";
-        let expected = version::parse("1.2.3").unwrap();
-        assert!(oci_ref_available(reference, &expected, &format!("{reference}\t1.2.3")));
-        assert!(!oci_ref_available(reference, &expected, "app/ai.storyteller.photocraft/aarch64/stable\t1.2.3"));
-        // The live remote prints no version column at all.
-        assert!(!oci_ref_available(reference, &expected, reference));
-        for value in ["", "1.2.2", "1.2.4", "unknown"] {
-            assert!(!oci_ref_available(reference, &expected, &format!("{reference}\t{value}")));
-        }
-    }
-}
-
-/// Only a confirmed bundle origin with no repository URL permits bundle replacement.
+/// A bundle origin permits replacement when its URL is empty or points at ArtCraft OCI.
 /// Missing rows are unknown, so preserve remote ownership conservatively.
 pub fn remote_manages_flatpak(origin: &str, remotes: &str) -> bool {
+    if origin.ends_with("-origin") && is_artcraft_remote(origin, remotes) {
+        return false;
+    }
     remotes
         .lines()
         .find_map(|line| {
@@ -364,6 +340,7 @@ mod remote_ownership_tests {
         assert!(!remote_manages_flatpak("app-origin", "app-origin\t\n"));
         assert!(remote_manages_flatpak("renamed", "renamed\thttps://example.org/repo\n"));
         assert!(remote_manages_flatpak("renamed", "renamed\toci+https://getartcraft.com\n"));
+        assert!(!remote_manages_flatpak("app-origin", "app-origin\toci+https://getartcraft.com\n"));
         assert!(remote_manages_flatpak("missing", "other\t\n"));
         assert!(!remote_manages_flatpak("app-origin", "app-origin"));
     }
