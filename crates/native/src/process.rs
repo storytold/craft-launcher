@@ -108,12 +108,19 @@ fn read_all<R: std::io::Read + Send + 'static>(pipe: Option<R>) -> std::thread::
 }
 
 /// Starts `cmd` without waiting for it, and reaps it when it exits.
-pub fn spawn_detached(mut cmd: Command) -> Result<(), String> {
+pub fn spawn_detached(cmd: Command) -> Result<(), String> {
+    spawn_watched(cmd, || {}).map(|_| ())
+}
+
+/// [`spawn_detached`], calling `on_exit` once the process has ended. Gives the process id.
+pub fn spawn_watched(mut cmd: Command, on_exit: impl FnOnce() + Send + 'static) -> Result<u32, String> {
     let mut child = cmd.stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null()).spawn().map_err(|e| format!("couldn't start it ({e})"))?;
+    let pid = child.id();
     std::thread::spawn(move || {
         let _ = child.wait();
+        on_exit();
     });
-    Ok(())
+    Ok(pid)
 }
 
 /// Waits up to `timeout` for the process `pid` to exit, and says whether it has. A process that
@@ -305,6 +312,11 @@ pub fn launch_binary(exe: &Path, args: &[&str]) -> Result<(), String> {
 /// sandbox `flatpak-spawn` does not pass the launcher's environment on, so each one becomes an
 /// `--env=` argument instead.
 pub fn launch_binary_with_env(exe: &Path, args: &[&str], env: &[(&str, &std::ffi::OsStr)]) -> Result<(), String> {
+    spawn_detached(binary_command(exe, args, env))
+}
+
+/// The command [`launch_binary_with_env`] runs.
+pub fn binary_command(exe: &Path, args: &[&str], env: &[(&str, &std::ffi::OsStr)]) -> Command {
     let mut cmd = if in_sandbox() {
         let mut c = command("flatpak-spawn");
         c.arg("--host");
@@ -320,7 +332,15 @@ pub fn launch_binary_with_env(exe: &Path, args: &[&str], env: &[(&str, &std::ffi
     if let Some(dir) = exe.parent() {
         cmd.current_dir(dir);
     }
-    spawn_detached(cmd)
+    cmd
+}
+
+/// macOS: opens an app bundle through Launch Services, and keeps running until the app quits
+/// (`open -W`), so the launcher can tell when it has.
+pub fn open_app(bundle: &Path) -> Command {
+    let mut cmd = command("open");
+    cmd.arg("-W").arg(bundle);
+    cmd
 }
 
 /// `--env=NAME=VALUE` for each of `env`, as `flatpak run` and `flatpak-spawn` take them.
