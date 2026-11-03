@@ -135,7 +135,7 @@ fn test_harness_builder<State>(theme: egui::Theme) -> egui_kittest::HarnessBuild
         .with_context_setup(move |ctx| {
             artcraft_launcher_ui_egui::theme::install_fonts(ctx, None);
             egui_extras::install_image_loaders(ctx);
-            artcraft_launcher_ui_egui::theme::apply(ctx, choice);
+            artcraft_launcher_ui_egui::theme::apply(ctx, choice, None);
         })
 }
 

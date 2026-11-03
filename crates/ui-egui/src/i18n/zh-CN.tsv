@@ -163,6 +163,8 @@ month	Dec	12月
 	🔍  Search apps	🔍  搜索应用
 	{name} {version}	{name} {version}
 	Match system	跟随系统
+	Accent color	强调色
+	Reset accent	重置强调色
 	Dark	深色
 	Light	浅色
 	Full changelog	完整更新日志

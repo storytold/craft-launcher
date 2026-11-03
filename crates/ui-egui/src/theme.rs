@@ -10,6 +10,9 @@ use serde::{Deserialize, Serialize};
 
 use crate::i18n::Lang;
 
+pub const DEFAULT_ACCENT: [u8; 3] = [45, 129, 255];
+pub const CONTRAST_RATIO_MIN: f32 = 4.5;
+
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub enum ThemeChoice {
     /// Follow the system's light or dark setting.
@@ -117,7 +120,17 @@ impl Tokens {
     };
 
     pub fn get(ctx: &egui::Context) -> Self {
-        if ctx.theme() == egui::Theme::Dark { Self::DARK } else { Self::LIGHT }
+        let tokens = if ctx.theme() == egui::Theme::Dark { Self::DARK } else { Self::LIGHT };
+        let accent = ctx.data(|data| data.get_temp::<Option<[u8; 3]>>(egui::Id::unique("artcraft-theme-accent"))).flatten();
+        tokens.with_accent(accent)
+    }
+
+    fn with_accent(mut self, accent: Option<[u8; 3]>) -> Self {
+        if let Some(accent) = accent {
+            self.accent = rgb(accent);
+            self.accent_ink = contrasting_ink(self.accent, self.bg, self.dark);
+        }
+        self
     }
 
     pub fn hairline(&self) -> Stroke {
@@ -128,6 +141,63 @@ impl Tokens {
     pub fn app_ink(&self, app: &artcraft_launcher_core::CraftApp) -> Color32 {
         rgb(if self.dark { app.ink_dark } else { app.ink_light })
     }
+}
+
+fn contrasting_ink(accent: Color32, background: Color32, dark: bool) -> Color32 {
+    let target = if dark { Color32::WHITE } else { Color32::BLACK };
+    if contrast_ratio(accent, background) >= 4.5 {
+        return accent;
+    }
+
+    let mut low = 0.0;
+    let mut high = 1.0;
+    for _ in 0..8 {
+        let amount = (low + high) / 2.0;
+        if contrast_ratio(mix(accent, target, amount), background) >= 4.5 {
+            high = amount;
+        } else {
+            low = amount;
+        }
+    }
+    mix(accent, target, high)
+}
+
+fn selection_ink(accent: Color32) -> Color32 {
+    let red = f32::from(accent.r()) / 255.0;
+    let green = f32::from(accent.g()) / 255.0;
+    let blue = f32::from(accent.b()) / 255.0;
+    let max_channel = accent.r().max(accent.g()).max(accent.b());
+    let min_channel = accent.r().min(accent.g()).min(accent.b());
+    let saturation = if max_channel == 0 { 0.0 } else { f32::from(max_channel - min_channel) / f32::from(max_channel) };
+    let perceived_brightness = 0.299 * red + 0.587 * green + 0.114 * blue;
+    // The channel weights account for hue; the saturation bias favors light ink on vivid colors.
+    let prefers_light_ink = perceived_brightness < 0.46 + 0.08 * saturation;
+    let preferred = if prefers_light_ink { Color32::WHITE } else { Color32::BLACK };
+    if contrast_ratio(preferred, accent) >= CONTRAST_RATIO_MIN {
+        return preferred;
+    }
+
+    let white_contrast = contrast_ratio(Color32::WHITE, accent);
+    let black_contrast = contrast_ratio(Color32::BLACK, accent);
+    if white_contrast >= black_contrast { Color32::WHITE } else { Color32::BLACK }
+}
+
+fn mix(from: Color32, to: Color32, amount: f32) -> Color32 {
+    let channel = |a: u8, b: u8| (f32::from(a) + (f32::from(b) - f32::from(a)) * amount).round() as u8;
+    Color32::from_rgb(channel(from.r(), to.r()), channel(from.g(), to.g()), channel(from.b(), to.b()))
+}
+
+fn contrast_ratio(a: Color32, b: Color32) -> f32 {
+    fn luminance(color: Color32) -> f32 {
+        let linear = |channel: u8| {
+            let value = f32::from(channel) / 255.0;
+            if value <= 0.04045 { value / 12.92 } else { ((value + 0.055) / 1.055).powf(2.4) }
+        };
+        0.2126 * linear(color.r()) + 0.7152 * linear(color.g()) + 0.0722 * linear(color.b())
+    }
+
+    let (lighter, darker) = if luminance(a) >= luminance(b) { (luminance(a), luminance(b)) } else { (luminance(b), luminance(a)) };
+    (lighter + 0.05) / (darker + 0.05)
 }
 
 /// Mixes `c` into the background at `alpha` (0â€“1): tinted washes.
@@ -182,7 +252,7 @@ fn visuals(t: &Tokens) -> Visuals {
     v.override_text_color = Some(t.ink);
     v.hyperlink_color = t.accent_ink;
     v.selection.bg_fill = t.accent;
-    v.selection.stroke = Stroke::new(1.0, Color32::WHITE);
+    v.selection.stroke = Stroke::new(1.0, selection_ink(t.accent));
     v.warn_fg_color = t.warn;
     v.error_fg_color = t.bad;
     for (w, fill, stroke, fg) in [
@@ -203,9 +273,10 @@ fn visuals(t: &Tokens) -> Visuals {
 }
 
 /// Applies both appearances (egui switches between them with the theme preference).
-pub fn apply(ctx: &egui::Context, choice: ThemeChoice) {
-    ctx.set_visuals_of(egui::Theme::Dark, visuals(&Tokens::DARK));
-    ctx.set_visuals_of(egui::Theme::Light, visuals(&Tokens::LIGHT));
+pub fn apply(ctx: &egui::Context, choice: ThemeChoice, accent: Option<[u8; 3]>) {
+    ctx.data_mut(|data| data.insert_temp(egui::Id::unique("artcraft-theme-accent"), accent));
+    ctx.set_visuals_of(egui::Theme::Dark, visuals(&Tokens::DARK.with_accent(accent)));
+    ctx.set_visuals_of(egui::Theme::Light, visuals(&Tokens::LIGHT.with_accent(accent)));
     ctx.set_theme(match choice {
         ThemeChoice::System => egui::ThemePreference::System,
         ThemeChoice::Dark => egui::ThemePreference::Dark,
@@ -446,6 +517,54 @@ pub fn cjk_font_available(lang: Lang) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn accent_override_is_shared_and_its_ink_is_readable() {
+        let accent = [20, 120, 220];
+        for tokens in [Tokens::DARK, Tokens::LIGHT].map(|tokens| tokens.with_accent(Some(accent))) {
+            assert_eq!(tokens.accent, rgb(accent));
+            assert!(contrast_ratio(tokens.accent_ink, tokens.bg) >= 4.5);
+        }
+    }
+
+    #[test]
+    fn selection_ink_contrasts_with_custom_accent_in_both_themes() {
+        for accent in [[20, 120, 220], [240, 200, 30], [30, 30, 30]] {
+            for tokens in [Tokens::DARK, Tokens::LIGHT].map(|tokens| tokens.with_accent(Some(accent))) {
+                let selection = visuals(&tokens).selection;
+                assert_eq!(selection.stroke.color, selection_ink(tokens.accent));
+                assert!(contrast_ratio(selection.stroke.color, selection.bg_fill) >= 4.5);
+            }
+        }
+    }
+
+    #[test]
+    fn selection_ink_accounts_for_hue_and_saturation() {
+        let saturated_blue = rgb([0, 80, 200]);
+        let neutral_gray = rgb([118, 118, 118]);
+        let blue_below_minimum = rgb([0, 128, 255]);
+
+        assert_eq!(selection_ink(saturated_blue), Color32::WHITE);
+        assert_eq!(selection_ink(neutral_gray), Color32::BLACK);
+        assert_eq!(selection_ink(blue_below_minimum), Color32::BLACK);
+        assert!(contrast_ratio(selection_ink(saturated_blue), saturated_blue) >= 4.5);
+        assert!(contrast_ratio(selection_ink(neutral_gray), neutral_gray) >= 4.5);
+        assert!(contrast_ratio(selection_ink(blue_below_minimum), blue_below_minimum) >= 4.5);
+    }
+
+    #[test]
+    fn theme_application_exposes_the_accent_to_tokens() {
+        let ctx = egui::Context::default();
+        let accent = [20, 120, 220];
+
+        apply(&ctx, ThemeChoice::Dark, Some(accent));
+        assert_eq!(Tokens::get(&ctx).accent, rgb(accent));
+        assert!(Tokens::get(&ctx).dark);
+
+        apply(&ctx, ThemeChoice::Light, Some(accent));
+        assert_eq!(Tokens::get(&ctx).accent, rgb(accent));
+        assert!(!Tokens::get(&ctx).dark);
+    }
 
     /// The app's bundled font set is deliberate and bounded: our three families, egui's Latin
     /// fallbacks, its small monochrome icon face and the two attributed monochrome emoji faces.

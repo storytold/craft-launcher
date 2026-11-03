@@ -20,6 +20,11 @@ pub fn tone_color(t: &Tokens, tone: Tone) -> Color32 {
     }
 }
 
+pub fn selected_item_text(ui: &Ui, selected: bool, text: impl Into<egui::WidgetText>) -> egui::WidgetText {
+    let text = text.into();
+    if selected { text.color(ui.visuals().selection.stroke.color) } else { text }
+}
+
 /// `text` laid out upper case in `family`, `spacing` points between letters.
 pub fn caps(ui: &Ui, text: &str, size: f32, family: egui::FontFamily, spacing: f32, color: Color32) -> Arc<Galley> {
     let format = egui::TextFormat { font_id: egui::FontId::new(size, family), color, extra_letter_spacing: spacing, ..Default::default() };
