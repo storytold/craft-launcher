@@ -328,6 +328,9 @@ fn name_backends(backends: eframe::wgpu::Backends) -> String {
 const DEFAULT_BACKENDS_LABEL: &str = "Direct3D 12 and OpenGL";
 #[cfg(not(any(windows, target_os = "macos")))]
 const DEFAULT_BACKENDS_LABEL: &str = "Vulkan and OpenGL";
+/// macOS leaves egui-wgpu's `PRIMARY | GL` mask alone, but that doesn't put OpenGL in reach: wgpu's
+/// GL backend loads `libEGL.dylib`, which macOS doesn't ship, so it finds no OpenGL adapter to pick
+/// and Metal is what a start there can use. The label names what can actually be tried.
 #[cfg(target_os = "macos")]
 const DEFAULT_BACKENDS_LABEL: &str = "Metal";
 
@@ -1392,14 +1395,16 @@ mod tests {
         assert_eq!(fallback_backends(), Some(eframe::wgpu::Backends::GL));
     }
 
-    /// A fallback attempt configures wgpu with GL alone, rather than the default list.
+    /// A fallback attempt configures wgpu with GL alone, rather than the default list — read
+    /// through `native_options`, so a regression that drops the attempt before `run_native` fails
+    /// here instead of retrying the backend that just failed.
     #[cfg(windows)]
     #[test]
     fn a_fallback_attempt_starts_only_that_backend() {
         use eframe::egui_wgpu::WgpuSetup;
-        /// The backend list the configuration asks wgpu for.
-        fn backends(config: eframe::WgpuConfiguration) -> eframe::wgpu::Backends {
-            match config.wgpu_setup {
+        /// The backend list `native_options` asks wgpu for: the path a start actually takes.
+        fn backends(requested: Option<eframe::wgpu::Backends>) -> eframe::wgpu::Backends {
+            match native_options(false, requested).wgpu_options.wgpu_setup {
                 WgpuSetup::CreateNew(setup) => setup.instance_descriptor.backends,
                 WgpuSetup::Existing(_) => panic!("the launcher creates its own wgpu instance"),
             }
@@ -1409,8 +1414,8 @@ mod tests {
             // covers that it is then the only attempt.
             return;
         }
-        assert_eq!(backends(wgpu_options(None)), eframe::wgpu::Backends::DX12 | eframe::wgpu::Backends::GL);
-        assert_eq!(backends(wgpu_options(Some(eframe::wgpu::Backends::GL))), eframe::wgpu::Backends::GL);
+        assert_eq!(backends(None), eframe::wgpu::Backends::DX12 | eframe::wgpu::Backends::GL);
+        assert_eq!(backends(Some(eframe::wgpu::Backends::GL)), eframe::wgpu::Backends::GL);
     }
 
     #[test]
