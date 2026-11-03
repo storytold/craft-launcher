@@ -76,6 +76,9 @@ fn events() -> Vec<Event> {
             source: InstallSource::Launcher,
             location: format!("/opt/{}.tar.gz", app.name),
             package: None,
+            externally_managed: false,
+            origin: None,
+            installation: None,
         });
         ev.push(Event::Detected { app: app.id.into(), installed });
     }

@@ -124,6 +124,12 @@
 	Apps on this computer	Bu bilgisayardaki uygulamalar
 	Installed apps with a newer version	Daha yeni sürümü bulunan yüklü uygulamalar
 	Apps you can install	Yükleyebileceğiniz uygulamalar
+	Pin to top	Başa tuttur
+	Unpin	Sabitlemeyi kaldır
+	Pinned	Sabitlendi
+	Reorder {name}	{name} uygulamasını yeniden sırala
+	Move up	Yukarı taşı
+	Move down	Aşağı taşı
 	Hide App	Uygulamayı Gizle
 	Unhide App	Uygulamayı Göster
 	Hidden Apps	Gizlenen Uygulamalar
@@ -149,6 +155,7 @@
 	Update cancelled	Güncelleme iptal edildi
 	Uninstall cancelled	Kaldırma iptal edildi
 	Retry install	Yüklemeyi tekrar dene
+	Retry update	Güncellemeyi tekrar dene
 	Retry update to {version}	{version} sürümüne güncellemeyi tekrar dene
 	The download is still here. It's checked again, then installed.	İndirilen dosya hala burada. Tekrar kontrol edilecek ve ardından yüklenecek.
 	Waiting for another app…	Başka bir uygulama bekleniyor…
@@ -403,4 +410,11 @@ texturecraft	Materials	Materyaller
 texturecraft	Mesh maps	Mesh haritaları
 texturecraft	Bake mesh maps and use smart materials.	Mesh haritalarını derleyin ve akıllı materyaller kullanın.
 texturecraft	Paint textures on 3D models.	3B modeller üzerine doku boyayın.
+materialcraft	Procedural material design	Yordamsal materyal tasarımı
+materialcraft	Build materials with node graphs.	Düğüm grafikleriyle materyaller oluşturun.
+materialcraft	Create tileable PBR materials and export texture maps.	Döşenebilir PBR materyalleri oluşturun ve doku haritalarını dışa aktarın.
+materialcraft	Node graphs	Düğüm grafikleri
+materialcraft	Combine noises, patterns and filters.	Gürültüleri, desenleri ve filtreleri birleştirin.
+materialcraft	Live previews	Canlı önizlemeler
+materialcraft	Preview materials in 2D and on 3D models.	Materyalleri 2B'de ve 3B modeller üzerinde önizleyin.
 	Hide community apps	Topluluk uygulamalarını gizle
