@@ -139,7 +139,7 @@ pub fn screenshot_within_budget(bytes: &[u8]) -> bool {
 /// Where every Craft App runs (getartcraft.com lists the same for each of them).
 const PLATFORMS: &str = "macOS, Windows, Linux, FreeBSD, web";
 
-pub const DETAILS: [AppDetails; 15] = [
+pub const DETAILS: [AppDetails; 17] = [
     AppDetails {
         id: "photocraft",
         headline: "The image editor you already know how to use.",
@@ -467,6 +467,28 @@ pub const DETAILS: [AppDetails; 15] = [
                 "Your files",
                 "Plain .figcraft files on your own disk. SVG, PNG, JPEG, WebP and PDF in and out, and .fig files open, best effort.",
             ),
+        ],
+        shots: &[],
+        platforms: PLATFORMS,
+    },
+    AppDetails {
+        id: "texturecraft",
+        headline: "Paint textures on 3D models.",
+        about: "Paint materials on 3D models and export textures.",
+        features: &[
+            feature("Materials", "Paint materials on 3D models and export textures."),
+            feature("Mesh maps", "Bake mesh maps and use smart materials."),
+        ],
+        shots: &[],
+        platforms: PLATFORMS,
+    },
+    AppDetails {
+        id: "materialcraft",
+        headline: "Build materials with node graphs.",
+        about: "Create tileable PBR materials and export texture maps.",
+        features: &[
+            feature("Node graphs", "Combine noises, patterns and filters."),
+            feature("Live previews", "Preview materials in 2D and on 3D models."),
         ],
         shots: &[],
         platforms: PLATFORMS,

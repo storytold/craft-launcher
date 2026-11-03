@@ -186,15 +186,18 @@ pub fn window_buttons(ui: &mut Ui, height: f32) {
         // Pointer only: Tab stays in the dialog.
         sense = Sense::CLICK;
     }
+    // The first frame after a restore hit-tests the maximized buttons, so an edge press can land on them.
+    let inside = ctx.content_rect().shrink(resize_band(&ctx));
+    let clicked = |resp: Response| resp.clicked() && resp.interact_pointer_pos().is_none_or(|p| inside.contains(p));
     ui.scope_builder(row, |ui| {
-        if window_button(ui, WindowButton::Minimize, height, sense).clicked() {
+        if clicked(window_button(ui, WindowButton::Minimize, height, sense)) {
             ctx.send_viewport_cmd(egui::ViewportCommand::Minimized(true));
         }
         let size = if maximized { WindowButton::Restore } else { WindowButton::Maximize };
-        if window_button(ui, size, height, sense).clicked() {
+        if clicked(window_button(ui, size, height, sense)) {
             ctx.send_viewport_cmd(egui::ViewportCommand::Maximized(!maximized));
         }
-        if window_button(ui, WindowButton::Close, height, sense).clicked() {
+        if clicked(window_button(ui, WindowButton::Close, height, sense)) {
             ctx.send_viewport_cmd(egui::ViewportCommand::Close);
         }
     });
@@ -270,6 +273,17 @@ pub fn window_edges(ctx: &egui::Context) {
         t.hairline(),
         egui::StrokeKind::Inside,
     );
+    // Above every layer, so egui's click tolerance can't hand a resize's press to what's nearby (#571).
+    let e = RESIZE_EDGE;
+    let bands = [r.with_max_y(r.top() + e), r.with_min_y(r.bottom() - e), r.with_max_x(r.left() + e), r.with_min_x(r.right() - e)];
+    for (edge, rect) in bands.into_iter().enumerate() {
+        egui::Area::new(egui::Id::unique(("window-edge", edge)))
+            .order(egui::Order::Tooltip)
+            .movable(false)
+            .constrain(false)
+            .fixed_pos(rect.min)
+            .show(ctx, |ui| ui.allocate_response(rect.size(), egui::Sense::CLICK));
+    }
     let Some(p) = ctx.input(|i| i.pointer.hover_pos()).filter(|p| r.contains(*p)) else { return };
     let near = |d: f32| d < RESIZE_EDGE;
     // A corner takes a little of each edge next to it.
@@ -530,6 +544,8 @@ pub enum Glyph {
     Close,
     Settings,
     Refresh,
+    /// Six-dot grip for reordering pinned apps.
+    Grip,
 }
 
 /// Paints one of the launcher's symbols with the painter, centred in `rect`.
@@ -586,7 +602,32 @@ fn glyph_shapes(rect: Rect, glyph: Glyph, color: Color32) -> Vec<egui::Shape> {
                 egui::Shape::convex_polygon(vec![tip + vec2(-2.4, -0.6), tip + vec2(1.6, -3.0), tip + vec2(1.2, 1.8)], color, Stroke::NONE),
             ]
         }
+        Glyph::Grip => {
+            let mut shapes = Vec::with_capacity(6);
+            for (dx, dy) in [(-3.0, -3.5), (3.0, -3.5), (-3.0, 0.0), (3.0, 0.0), (-3.0, 3.5), (3.0, 3.5)] {
+                shapes.push(egui::Shape::circle_filled(m + vec2(dx, dy), 1.35, color));
+            }
+            shapes
+        }
     }
+}
+
+/// A drag handle for reordering pinned apps: same outline as [`glyph_button`], grab cursor.
+pub fn grip_button(ui: &mut Ui, tip: &str) -> Response {
+    let t = Tokens::get(ui.ctx());
+    let (rect, resp) = ui.allocate_exact_size(vec2(theme::CONTROL_H, theme::CONTROL_H), Sense::drag());
+    let hovered = resp.hovered() || resp.dragged();
+    let p = ui.painter();
+    if hovered {
+        p.rect_filled(rect, CornerRadius::ZERO, t.invert_bg);
+    } else {
+        p.rect_stroke(rect, CornerRadius::ZERO, t.hairline(), egui::StrokeKind::Inside);
+    }
+    let c = if hovered { t.invert_fg } else { t.muted };
+    paint_glyph(p, rect, Glyph::Grip, c);
+    resp.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, true, tip));
+    let cursor = if resp.dragged() { egui::CursorIcon::Grabbing } else { egui::CursorIcon::Grab };
+    resp.on_hover_text(tip).on_hover_cursor(cursor)
 }
 
 /// A small outlined square button with a drawn glyph; inverts on hover.
@@ -712,7 +753,7 @@ mod tests {
     /// the tool-button and header-cell sizes, or a click target would draw outside its hit rect.
     #[test]
     fn every_painter_glyph_stays_inside_its_control() {
-        for glyph in [Glyph::Pause, Glyph::Close, Glyph::Settings, Glyph::Refresh] {
+        for glyph in [Glyph::Pause, Glyph::Close, Glyph::Settings, Glyph::Refresh, Glyph::Grip] {
             for side in [crate::theme::CONTROL_H, 48.0] {
                 let rect = Rect::from_min_size(egui::pos2(100.0, 200.0), egui::vec2(side, side));
                 let shapes = glyph_shapes(rect, glyph, Color32::WHITE);
@@ -770,11 +811,11 @@ mod tests {
         assert_eq!(opened_urls(&ctx), vec![artcraft_launcher_core::catalog::DISCORD_APP_URL.to_string()]);
     }
 
-    /// Each glyph must be distinct geometry, not the same fallback shape for all four.
+    /// Each glyph must be distinct geometry, not the same fallback shape for every variant.
     #[test]
     fn each_glyph_has_its_own_shapes() {
         let rect = Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(crate::theme::CONTROL_H, crate::theme::CONTROL_H));
-        let bounds: Vec<[u32; 4]> = [Glyph::Pause, Glyph::Close, Glyph::Settings, Glyph::Refresh]
+        let bounds: Vec<[u32; 4]> = [Glyph::Pause, Glyph::Close, Glyph::Settings, Glyph::Refresh, Glyph::Grip]
             .into_iter()
             .map(|glyph| {
                 let union = glyph_shapes(rect, glyph, Color32::WHITE)
