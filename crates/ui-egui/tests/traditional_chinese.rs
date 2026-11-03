@@ -168,7 +168,8 @@ fn traditional_chinese_switches_persists_and_keeps_install_actions() {
     h.run_steps(3);
     if !artcraft_launcher_ui_egui::theme::cjk_font_available(Lang::ZH_TW) {
         // No font for Traditional Chinese: choosing it keeps the UI in English, and Settings says
-        // why.
+        // why. Ubuntu CI exercises this branch; Windows CI ships Microsoft JhengHei and runs the
+        // translated branch below, so both are covered per platform.
         assert_eq!(h.state().as_ref().unwrap().settings.language, "zh-TW");
         h.get_by_label_contains("No font for this language was found");
         h.get_by_label("Notify me when an installed app has an update");
