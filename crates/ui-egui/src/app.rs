@@ -755,10 +755,18 @@ impl LauncherUi {
                 if self.auto_update_attempted.contains(&(e.app.id.to_string(), v.clone())) { None } else { Some((e.app.id.to_string(), v)) }
             })
             .collect();
-        for (id, version) in to_update {
-            log::info!("auto-update: queuing update for {id} to {version}");
-            self.auto_update_attempted.insert((id.clone(), version));
-            self.send(Command::Install { app: id });
+        if self.settings.batch_updates && !to_update.is_empty() {
+            log::info!("auto-update: queuing {} updates together behind one prompt", to_update.len());
+            for (id, version) in &to_update {
+                self.auto_update_attempted.insert((id.clone(), version.clone()));
+            }
+            self.send(Command::InstallAll { apps: to_update.into_iter().map(|(id, _)| id).collect() });
+        } else {
+            for (id, version) in to_update {
+                log::info!("auto-update: queuing update for {id} to {version}");
+                self.auto_update_attempted.insert((id.clone(), version));
+                self.send(Command::Install { app: id });
+            }
         }
         if self.caps.self_update
             && let Some(r) = &self.launcher_update
