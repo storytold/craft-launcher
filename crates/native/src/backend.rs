@@ -617,8 +617,11 @@ impl NativeBackend {
                 let mut waiting = || shared.emit(Event::Progress { app: LAUNCHER_ID.to_string(), phase: JobPhase::Waiting });
                 claim_restart(&shared.jobs, &shared.restarting, &stop, RESTART_WAIT, &mut waiting)
             };
+            // The repo the release was read from, following the feed's renames as the check did;
+            // its download links must be that repo's (#764).
+            let repo = feed_repo(load_feed(&paths).as_ref(), &LAUNCHER);
             let result = match http.as_ref() {
-                Some(http) => crate::self_update::update(&install, &release, platform, http, &paths, &stop, &mut phase, &last),
+                Some(http) => crate::self_update::update(&install, &release, &repo, platform, http, &paths, &stop, &mut phase, &last),
                 None => Err("secure connections aren't available on this system".into()),
             };
             drop(job);
