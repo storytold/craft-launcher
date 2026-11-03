@@ -410,7 +410,9 @@ mod tests {
     fn http_wire_dumps_are_dropped_whatever_rust_log_says() {
         let dir = temp_dir("wire");
         let sink = Arc::new(Mutex::new(Sink::new(MAX_FILE_BYTES)));
-        let logger = Guarded(builder(sink.clone(), false).parse_filters("trace,ureq_proto::util=trace,ureq_proto=trace").build());
+        // Name both allowed targets so an inherited `RUST_LOG` directive for them can't hide them.
+        let filters = "trace,ureq_proto::util=trace,ureq_proto=trace,ureq_proto::client=trace,ureq_protocol_lookalike=trace";
+        let logger = Guarded(builder(sink.clone(), false).parse_filters(filters).build());
         let logs = Logs { sink };
         let path = logs.attach_dir(&dir).unwrap();
         let record = |level, target: &'static str, msg: &'static str| {
