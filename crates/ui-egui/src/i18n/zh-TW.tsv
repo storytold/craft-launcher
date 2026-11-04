@@ -1,0 +1,383 @@
+# Traditional Chinese (Taiwan) catalog for ArtCraft Launcher.
+# Format: context<TAB>English source<TAB>translation.
+# Original translations from the English UI. Product and app names (ArtCraft Launcher and its
+# "Launcher" tag, Craft App Suite, PhotoCraft...) stay unchanged.
+# Shown with the system's Traditional Chinese font (Noto Sans CJK TC, PingFang TC, Microsoft
+# JhengHei...: see cjk_font.rs). Chinese has one plural form. Placeholders and trailing ellipses
+# are preserved.
+
+	Launcher	Launcher
+	Craft App Suite	Craft App Suite
+	by {name}	由 {name} 製作
+	Open Source Tools for Creatives, Makers, and Builders	為創作者、自造者與打造者而生的開源工具
+	Settings	設定
+	Check for updates	檢查更新
+	Grid	網格
+	Table	表格
+	Show apps as cards	以卡片檢視應用程式
+	Show apps as a table	以表格檢視應用程式
+	All	全部
+	Updates	更新
+	Not installed	未安裝
+	Search apps	搜尋應用程式
+	Sort	排序
+	Suite order	系列順序
+	Name	名稱
+	Status	狀態
+	Installed version	已安裝版本
+	Latest version	最新版本
+	Newest release	最新發行版
+	Discord	Discord
+	GitHub	GitHub
+	Website	網站
+	Classic apps	經典應用程式
+	New apps	全新應用程式
+	NEW	新
+	Install	安裝
+	Update to {v}	更新至 {v}
+	Open	開啟
+	Download for {os}	下載 {os} 版
+	Download	下載
+	Coming soon	即將推出
+	Checking…	檢查中…
+	Not available	無法使用
+	Offline	離線
+	Downloading {done} of {total}	正在下載 {done}／{total}
+	Downloading…	下載中…
+	Reconnecting…	重新連線中…
+	Verifying…	驗證中…
+	Installing, then restarting…	安裝中，隨後重新啟動…
+	Installing…	安裝中…
+	Removing…	移除中…
+	Pause download	暫停下載
+	Cancel download	取消下載
+	Resume download	繼續下載
+	Discard download	捨棄下載
+	Release notes	更新說明
+	Reinstall	重新安裝
+	Uninstall…	解除安裝…
+	All releases	所有版本
+	ArtCraft Launcher {version} is available.	ArtCraft Launcher {version} 已推出。
+	Dismiss	關閉
+	Update and restart	更新並重新啟動
+	A new version is available. Would you like to relaunch with the updated version?	有新版本可以使用。要使用更新後的版本重新啟動嗎？
+	A new version is available. Download it to replace this version?	有新版本可以使用。要下載並取代目前版本嗎？
+	Later	稍後
+	What's new	新功能
+	No notes were published with this release.	此版本未提供任何更新說明。
+	Released {date}	發行於 {date}
+	Open on GitHub	在 GitHub 上開啟
+	Close	關閉
+	ArtCraft Launcher {version}	ArtCraft Launcher {version}
+	Only when I ask	僅在我要求時
+	Automatically download and install updates	自動下載並安裝更新
+	Notify me when an installed app has an update	已安裝的應用程式有更新時通知我
+	Include pre-releases (betas and release candidates)	包含預先發行版（Beta 版與候選發行版）
+	Installing on Linux	在 Linux 上安裝
+	Installing on Windows	在 Windows 上安裝
+	Install new apps as	安裝新應用程式的方式
+	System package (recommended)	系統套件（建議）
+	Updates always use the format an app was installed with.	更新一律沿用應用程式安裝時的格式。
+	Running in the background	在背景執行
+	Keep running in the tray when the window is closed	關閉視窗後仍在系統匣中執行
+	ArtCraft Launcher is still running	ArtCraft Launcher 仍在執行
+	It's in the tray: open it or quit it from the tray icon, or turn this off in the settings.	它位於系統匣中：請從系統匣圖示開啟或結束，或在設定中關閉此功能。
+	Show the window on the current desktop	在目前的桌面顯示視窗
+	Start ArtCraft Launcher when I log in	登入時啟動 ArtCraft Launcher
+	Community	社群
+	Questions, ideas and news from the ArtCraft team	來自 ArtCraft 團隊的提問、想法與最新消息
+	Appearance	外觀
+	Quit ArtCraft Launcher	結束 ArtCraft Launcher
+	Done	完成
+	Uninstall {name}?	要解除安裝 {name} 嗎？
+	The app will be moved to the Trash. Your documents and settings stay.	應用程式會移到垃圾桶，你的文件與設定會保留。
+	Windows will remove it like any installed program. Your documents and settings stay.	Windows 會像移除任何已安裝程式一樣將它移除，你的文件與設定會保留。
+	Your system's package manager will remove it, and may ask for your password. Your documents and settings stay.	系統的套件管理員會將它移除，並可能要求你輸入密碼。你的文件與設定會保留。
+	The app will be removed. Your documents and settings stay.	應用程式會被移除，你的文件與設定會保留。
+	Uninstall	解除安裝
+	Cancel	取消
+	Checked {ago}	上次檢查：{ago}
+	just now	剛剛
+	yesterday	昨天
+	{month} {day}, {year}	{year}年{month}{day}日
+month	Jan	1月
+month	Feb	2月
+month	Mar	3月
+month	Apr	4月
+month	May	5月
+month	Jun	6月
+month	Jul	7月
+month	Aug	8月
+month	Sep	9月
+month	Oct	10月
+month	Nov	11月
+month	Dec	12月
+	Not checked yet	尚未檢查
+	GitHub's hourly limit was reached; full details return in {min} min	已達到 GitHub 的每小時上限；完整資訊將在 {min} 分鐘後恢復
+	GitHub limit hit; back in {min} min	已觸及 GitHub 上限；{min} 分鐘後恢復
+	Installing for {platform}	正在為 {platform} 安裝
+	Downloads for {platform}	{platform} 適用的下載項目
+	No downloads for this system	此系統沒有可下載的項目
+	Join the ArtCraft community on Discord	在 Discord 加入 ArtCraft 社群
+	ArtCraft on {name}	ArtCraft 在 {name}
+	Available to install	可安裝
+	Available	可用
+	Installed · up to date	已安裝 · 已是最新版本
+	Update available	有可用更新
+	Installed	已安裝
+	Not available here	此處無法使用
+	Updating…	更新中…
+	Update paused	更新已暫停
+	Download paused	下載已暫停
+	{version} installed → {latest} released	{version} 已安裝 → {latest} 已發行
+	Version {version}	版本 {version}
+	{installed} installed · latest {latest}	已安裝 {installed} · 最新版本 {latest}
+	Installed · latest {latest}	已安裝 · 最新版本 {latest}
+	Version {version} installed	已安裝版本 {version}
+	Version {latest}	版本 {latest}
+	No release published yet	尚未發行任何版本
+	ArtCraft Launcher	ArtCraft Launcher
+	App	應用程式
+	Latest	最新
+	Released	發行日期
+	Auto	自動
+	Language	語言
+	Ascending	遞增
+	Descending	遞減
+	Click to reverse the order	按一下以反轉順序
+	Click to sort by this column	按一下以依此欄排序
+	{done} of {total}	{done}／{total}
+	Downloading	下載中
+	Verifying checksum…	正在驗證檢查碼…
+	Resume	繼續
+	{done} of {total} downloaded	已下載 {done}，共 {total}
+	{done} downloaded	已下載 {done}
+	Checking for updates…	正在檢查更新…
+	Downloads the new version, replaces this one and opens it again	下載新版本、取代目前版本並重新開啟
+	Couldn't check for updates: {f}	無法檢查更新：{f}
+	GitHub repository	GitHub 儲存庫
+	ArtCraft	ArtCraft
+	Update 1 app	更新 1 個應用程式
+	Update all ({count})	全部更新（{count}）
+	⊞  Grid	⊞  網格
+	☰  Table	☰  表格
+	🔍  Search apps	🔍  搜尋應用程式
+	{name} {version}	{name} {version}
+	Match system	跟隨系統
+	Dark	深色
+	Light	淺色
+	Full changelog	完整變更記錄
+	link	連結
+	No apps match	沒有符合的應用程式
+	Open ArtCraft Launcher to update.	開啟 ArtCraft Launcher 以進行更新。
+	{name} {v} is available	{name} {v} 已推出
+	{count} updates are available	有 {count} 項更新可用
+	These notes weren't fetched (GitHub's request limit was reached). They're on the release page.	無法擷取這些說明（已達到 GitHub 的請求上限）。請至發行頁面查看。
+	When on, opening the launcher from the menu bar brings its window to the desktop you're on. When off, macOS switches you to the desktop the window was on.	開啟時，從選單列開啟啟動器會將其視窗帶到你目前所在的桌面。關閉時，macOS 會將你切換到視窗所在的桌面。
+	Couldn't change the login item: {e}	無法變更登入項目：{e}
+column	App	應用程式
+column	Installed	已安裝
+column	Latest	最新版本
+column	Released	發行日期
+filter	Installed	已安裝
+	{name} details	{name} 詳細資訊
+@plural	{n} min ago|{n} min ago	{n} 分鐘前
+@plural	{n} h ago|{n} h ago	{n} 小時前
+@plural	{n} day ago|{n} days ago	{n} 天前
+@id	app.install	安裝
+@id	app.update	更新至 {v}
+@id	app.open	開啟
+@id	app.download	下載 {os} 版
+@id	app.reveal	在 Finder 中顯示
+@id	app.reinstall	重新安裝
+@id	app.uninstall	解除安裝
+@id	app.notes	更新說明
+@id	app.website	網站
+@id	app.github	GitHub
+@id	app.releases	所有版本
+@id	launcher.update	更新並重新啟動
+@id	launcher.download	下載
+@id	launcher.notes	更新說明
+@id	launcher.dismiss	關閉
+@id	settings.open	設定
+@id	settings.quit	結束 ArtCraft Launcher
+@id	view.grid	網格
+@id	view.table	表格
+@id	filter.all	全部
+@id	filter.installed	已安裝
+@id	filter.updates	更新
+@id	filter.notinstalled	未安裝
+@id	sort.suite	系列順序
+@id	sort.name	名稱
+@id	sort.status	狀態
+@id	sort.installed	已安裝版本
+@id	sort.latest	最新版本
+@id	sort.released	發行日期
+@id	help.discord	Discord
+@id	help.github	GitHub
+@id	help.website	網站
+@id	update.check	檢查更新
+@id	update.check_auto	自動檢查更新
+@id	update.notify	已安裝的應用程式有更新時通知我
+@id	update.prereleases	包含預先發行版（Beta 版與候選發行版）
+@id	linux.preferred_kind	新應用程式安裝格式
+@id	tray.close_to_tray	關閉視窗後繼續在系統匣執行
+@id	tray.show_on_current_desktop	在目前桌面顯示視窗
+@id	tray.login_item	登入時啟動 ArtCraft Launcher
+@id	appearance.theme	外觀
+	Update	更新
+	New	新
+	Classic	經典
+	Join the Discord	加入 Discord
+	Minimize	最小化
+	Maximize	最大化
+	Restore	還原
+	Show in Finder	在 Finder 中顯示
+	Show in Explorer	在檔案總管中顯示
+	Show ArtCraft Launcher	顯示 ArtCraft Launcher
+	Check for Updates	檢查更新
+	Visit getartcraft.com	前往 getartcraft.com
+	ArtCraft on GitHub	GitHub 上的 ArtCraft
+	Join the ArtCraft Discord	加入 ArtCraft Discord
+@plural	ArtCraft Launcher · {n} update available|ArtCraft Launcher · {n} updates available	ArtCraft Launcher · {n} 個更新可用
+@plural	{n} app|{n} apps	{n} 個應用程式
+photocraft	Image editing	影像編輯
+vectorcraft	Vector illustration	向量插畫
+filmcraft	Video editing, color and sound	影片剪輯、調色與音效
+lightcraft	Photo library and raw development	相片圖庫與 RAW 顯像
+pdfcraft	Reading, organizing and protecting PDFs	閱讀、整理與保護 PDF
+effectcraft	Motion graphics and visual effects	動態圖像與視覺特效
+designcraft	Page layout and publishing	版面配置與出版
+wordcraft	Writing and document design	寫作與文件設計
+deckcraft	Presentations and slide shows	簡報與幻燈片放映
+gridcraft	Spreadsheets and data	試算表與資料
+craft-anything	Find out how any software works, then craft your own	了解任何軟體如何運作，然後打造屬於你自己的版本
+solidcraft	Parametric 3D CAD	參數式 3D CAD
+cadcraft	Computer-aided design and drafting	電腦輔助設計與製圖
+soundcraft	Recording, editing and mixing audio	錄音、剪輯與混音
+figcraft	Interface design and prototyping	介面設計與原型製作
+	Show in Files	在檔案管理員中顯示
+	Loading ArtCraft Launcher…	正在載入 ArtCraft Launcher…
+	Download cancelled	已取消下載
+	Automatically	自動
+	Checked {ago} · using {sources}	上次檢查：{ago} · 使用 {sources}
+	{a} and {b}	{a} 與 {b}
+	Learn more	瞭解更多
+	OK	確定
+	Open link	開啟連結
+	{name} icon	{name} 圖示
+	installed	已安裝
+	Every Craft app	所有 Craft 應用程式
+	Apps on this computer	這台電腦上的應用程式
+	Installed apps with a newer version	有較新版本的已安裝應用程式
+	Apps you can install	可安裝的應用程式
+	Pin to top	置頂
+	Unpin	取消置頂
+	Pinned	已置頂
+	Reorder {name}	重新排序 {name}
+	Move up	上移
+	Move down	下移
+	Hide App	隱藏應用程式
+	Unhide App	取消隱藏應用程式
+	Hidden Apps	已隱藏的應用程式
+	Apps you hid	你隱藏的應用程式
+	Cancel update	取消更新
+	Stop waiting; the update can be started again later	停止等待；稍後可以再次開始更新
+	Download again	重新下載
+	Install cancelled	已取消安裝
+	Install cancelled. The download is kept for the next try.	已取消安裝。下載的檔案會保留供下次嘗試使用。
+	Update cancelled	已取消更新
+	Uninstall cancelled	已取消解除安裝
+	Retry install	重試安裝
+	Retry update	重試更新
+	Retry update to {version}	重試更新至 {version}
+	The download is still here. It's checked again, then installed.	下載的檔案仍在。會再次檢查，然後安裝。
+	Waiting for another app…	正在等待另一個應用程式…
+	Waiting for other installs…	正在等待其他安裝…
+	Installer (.msi)	安裝程式（.msi）
+	Portable (.zip)	免安裝版（.zip）
+	Disk image (.dmg)	磁碟影像（.dmg）
+	Debian package (.deb)	Debian 套件（.deb）
+	RPM package (.rpm)	RPM 套件（.rpm）
+	Arch package (.pkg.tar.zst)	Arch 套件（.pkg.tar.zst）
+	Flatpak bundle	Flatpak 組合包
+	Tarball (.tar.gz)	Tarball（.tar.gz）
+	App details	應用程式詳細資訊
+	More actions for {name}	{name} 的其他動作
+	Close (Esc)	關閉（Esc）
+	Features	功能
+	Latest release	最新發行版
+	Version	版本
+	Platforms	平台
+	Releases	發行版本
+	Enlarge picture	放大圖片
+	Click to enlarge	按一下以放大
+	Previous picture (←)	上一張圖片（←）
+	Next picture (→)	下一張圖片（→）
+	Loading pictures…	正在載入圖片…
+	Pictures couldn't be loaded. Reopen this page to try again.	無法載入圖片。請重新開啟此頁面再試一次。
+@msg	Couldn't open {name}: {e}	無法開啟 {name}：{e}
+@msg	Download cancelled	已取消下載
+@msg	{name} updated to {version}	{name} 已更新至 {version}
+@msg	{name} installed: {version}	{name} 已安裝：{version}
+@msg	{name} updated to {version} (this release publishes no checksum, so only its size was checked)	{name} 已更新至 {version}（此版本未公布檢查碼，因此僅核對檔案大小）
+@msg	{name} installed: {version} (this release publishes no checksum, so only its size was checked)	{name} 已安裝：{version}（此版本未公布檢查碼，因此僅核對檔案大小）
+@msg	{name} was removed	{name} 已解除安裝
+@msg	{name} is running. Quit it, then try again.	{name} 正在執行。請結束後再試一次。
+@msg	{name} was installed from the {repo} repository or the AUR ({pkg}). Update it with {cmd} or sudo pacman -Syu	{name} 是從 {repo} 儲存庫或 AUR 安裝的（{pkg}）。請使用 {cmd} 或 sudo pacman -Syu 更新。
+@msg	{name} was installed from the {repo} repository or the AUR ({pkg}). Update it with your AUR helper (for example: yay -S {pkg}) or sudo pacman -Syu	{name} 是從 {repo} 儲存庫或 AUR 安裝的（{pkg}）。請使用你的 AUR 助手（例如：yay -S {pkg}）或 sudo pacman -Syu 更新。
+@msg	{name} was installed from the AUR ({pkg}). Update it with {cmd}	{name} 是從 AUR 安裝的（{pkg}）。請使用 {cmd} 更新。
+@msg	{name} was installed from the AUR ({pkg}). Update it with your AUR helper (for example: yay -S {pkg})	{name} 是從 AUR 安裝的（{pkg}）。請使用你的 AUR 助手（例如：yay -S {pkg}）更新。
+	Install folder	安裝資料夾
+	Default install folder	預設安裝資料夾
+	System default	系統預設
+	Browse…	瀏覽…
+	Use default	使用預設值
+	New installs use this folder. Updates stay in their current location.	新的安裝會使用此資料夾。更新會保留在原來的位置。
+	Custom folders use AppImage on Linux.	在 Linux 上，自訂資料夾會使用 AppImage。
+	On Linux, custom folders use AppImage format.	在 Linux 上，自訂資料夾會使用 AppImage 格式。
+	The system manages install locations here.	安裝位置由系統管理。
+@msg	couldn't use install folder {path}: {reason}	無法使用安裝資料夾 {path}：{reason}
+@msg	this release has no AppImage for a custom install folder	此版本沒有適用於自訂安裝資料夾的 AppImage
+@msg	custom install folders aren't supported on this system	此系統不支援自訂安裝資料夾
+@msg	{path} already exists and wasn't installed by ArtCraft Launcher	{path} 已存在，且不是由 ArtCraft Launcher 安裝的
+@msg	couldn't move {path} to Trash ({reason}). Remove it in Finder instead.	無法將 {path} 移至垃圾桶（{reason}）。請改在 Finder 中將其移除。
+	Apps are placed inside this folder.	應用程式會放在此資料夾內。
+	Replace what's there?	要取代現有內容嗎？
+	{path} already exists. Installing {name} will overwrite it.	{path} 已存在。安裝 {name} 將會覆寫它。
+	Replace	取代
+	Recently updated	最近更新
+	Name (A–Z)	名稱（A–Z）
+	Name (Z–A)	名稱（Z–A）
+	Frequently used	常用
+	Next app	下一個應用程式
+	Previous app	上一個應用程式
+	Show {n} more changes	再顯示 {n} 項變更
+	Last updated: {date}	上次更新：{date}
+column	Author	作者
+column	Version	版本
+	Choose version	選擇版本
+	latest {version}	最新 {version}
+	{version} (latest release)	{version}（最新版本）
+	Launcher version	啟動器版本
+	Nightly	Nightly
+	Nightly (none published yet)	Nightly（尚未發行）
+	Install version {version}	安裝版本 {version}
+	Download selected version	下載所選版本
+	Older launcher versions require a manual reinstall.	較舊的啟動器版本需要手動重新安裝。
+	Your files may not open in older versions.	你的檔案可能無法在較舊的版本中開啟。
+	Enable automatic installs in Settings to follow new nightly builds.	在設定中啟用自動安裝，即可跟隨新的 Nightly 建置。
+texturecraft	3D texture painting	3D 紋理繪製
+texturecraft	Paint materials on 3D models and export textures.	在 3D 模型上繪製材質並匯出紋理。
+texturecraft	Materials	材質
+texturecraft	Mesh maps	網格貼圖
+texturecraft	Bake mesh maps and use smart materials.	烘焙網格貼圖並使用智慧材質。
+texturecraft	Paint textures on 3D models.	在 3D 模型上繪製紋理。
+	Hide community apps	隱藏社群應用程式
+materialcraft	Procedural material design	程序化材質設計
+materialcraft	Build materials with node graphs.	使用節點圖建構材質。
+materialcraft	Create tileable PBR materials and export texture maps.	建立可拼接的 PBR 材質並匯出紋理貼圖。
+materialcraft	Node graphs	節點圖
+materialcraft	Combine noises, patterns and filters.	組合雜訊、圖樣與濾鏡。
+materialcraft	Live previews	即時預覽
+materialcraft	Preview materials in 2D and on 3D models.	在 2D 與 3D 模型上預覽材質。

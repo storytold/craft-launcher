@@ -45,8 +45,18 @@ pub fn rotate(dir: &Path) -> std::io::Result<(PathBuf, File)> {
         }
     }
     let path = numbered(dir, 0);
-    let file = File::create(&path)?;
+    let file = create_private(&path)?;
     Ok((path, file))
+}
+
+/// A log names the user's folders, so only the user may read it.
+fn create_private(path: &Path) -> std::io::Result<File> {
+    let mut options = std::fs::OpenOptions::new();
+    // The mode only applies to a new file, so never open one that's already there.
+    options.write(true).create_new(true);
+    #[cfg(unix)]
+    std::os::unix::fs::OpenOptionsExt::mode(&mut options, 0o600);
+    options.open(path)
 }
 
 /// Where formatted records go besides standard error: kept in memory until a file is attached,
@@ -119,6 +129,30 @@ impl Sink {
     }
 }
 
+/// Suppresses sensitive authorization tokens in log output (CWE-532).
+pub(crate) fn redact_credentials(text: &str) -> String {
+    let mut result = String::with_capacity(text.len());
+    let mut remaining = text;
+    while let Some(idx) = remaining.to_ascii_lowercase().find("bearer ") {
+        let prefix_len = idx + 7;
+        result.push_str(&remaining[..prefix_len]);
+        let mut token_rest = &remaining[prefix_len..];
+        // Stop at the first byte that is not ordinary horizontal whitespace. `find` returns a
+        // byte index, so multi-byte Unicode whitespace (NBSP, em space, ideographic space) is
+        // copied whole instead of being cut at a non-char boundary.
+        let spaces_end = token_rest.find(|c: char| !(c.is_whitespace() && c != '\r' && c != '\n')).unwrap_or(token_rest.len());
+        if spaces_end > 0 {
+            result.push_str(&token_rest[..spaces_end]);
+            token_rest = &token_rest[spaces_end..];
+        }
+        let end_token = token_rest.find(|c: char| c.is_whitespace() || c == '"' || c == '\'' || c == '\r' || c == '\n').unwrap_or(token_rest.len());
+        result.push_str("[REDACTED]");
+        remaining = &token_rest[end_token..];
+    }
+    result.push_str(remaining);
+    result
+}
+
 /// env_logger's output: each formatted record to standard error and to the [`Sink`].
 struct Tee {
     sink: Arc<Mutex<Sink>>,
@@ -127,10 +161,12 @@ struct Tee {
 
 impl Write for Tee {
     fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+        let text = String::from_utf8_lossy(buf);
+        let sanitized = redact_credentials(&text);
         if self.stderr {
-            let _ = std::io::stderr().write_all(buf);
+            let _ = std::io::stderr().write_all(sanitized.as_bytes());
         }
-        self.sink.lock().unwrap_or_else(PoisonError::into_inner).write(&String::from_utf8_lossy(buf));
+        self.sink.lock().unwrap_or_else(PoisonError::into_inner).write(&sanitized);
         Ok(buf.len())
     }
 
@@ -164,15 +200,50 @@ impl Logs {
 /// An env_logger builder (filter from `RUST_LOG`, else [`DEFAULT_FILTER`]) writing through a [`Tee`].
 fn builder(sink: Arc<Mutex<Sink>>, stderr: bool) -> env_logger::Builder {
     let mut b = env_logger::Builder::from_env(env_logger::Env::default().default_filter_or(DEFAULT_FILTER));
+    // Suppress raw HTTP wire TRACE records before formatting and output, regardless of RUST_LOG (CWE-532).
+    b.filter_module("ureq_proto", log::LevelFilter::Debug);
     b.target(env_logger::Target::Pipe(Box::new(Tee { sink, stderr })));
     b
+}
+
+/// Whether a record is a raw HTTP wire dump. `ureq_proto` traces every byte it sends and
+/// receives as hex-and-ASCII rows, `Authorization` header included (the optional
+/// `ARTCRAFT_LAUNCHER_GITHUB_TOKEN`). The rows split the header across lines, so
+/// [`redact_credentials`] can't find the token in them.
+fn is_wire_dump(metadata: &log::Metadata<'_>) -> bool {
+    let target = metadata.target();
+    metadata.level() == log::Level::Trace && (target == "ureq_proto" || target.starts_with("ureq_proto::"))
+}
+
+/// env_logger behind a gate that drops wire dumps whatever `RUST_LOG` says. A filter directive
+/// alone isn't enough: env_logger lets the longest matching module win, so
+/// `RUST_LOG=ureq_proto::util=trace` outranks a `ureq_proto=debug` cap (CWE-532).
+struct Guarded(env_logger::Logger);
+
+impl log::Log for Guarded {
+    fn enabled(&self, metadata: &log::Metadata<'_>) -> bool {
+        !is_wire_dump(metadata) && self.0.enabled(metadata)
+    }
+
+    fn log(&self, record: &log::Record<'_>) {
+        if !is_wire_dump(record.metadata()) {
+            self.0.log(record);
+        }
+    }
+
+    fn flush(&self) {
+        self.0.flush();
+    }
 }
 
 /// Install the logger; `None` when another logger was installed first. Call
 /// [`Logs::attach_dir`] (or [`Logs::no_file`]) once it is known whether this run keeps a log.
 pub fn install() -> Option<Logs> {
     let sink = Arc::new(Mutex::new(Sink::new(MAX_FILE_BYTES)));
-    builder(sink.clone(), true).try_init().ok()?;
+    let logger = builder(sink.clone(), true).build();
+    let max = logger.filter();
+    log::set_boxed_logger(Box::new(Guarded(logger))).ok()?;
+    log::set_max_level(max);
     Some(Logs { sink })
 }
 
@@ -224,6 +295,27 @@ mod tests {
         assert_eq!(read(&dir.join("artcraft-launcher.1.log")), "run 3");
         assert_eq!(read(&dir.join("artcraft-launcher.2.log")), "run 2");
         assert!(!dir.join("artcraft-launcher.3.log").exists(), "only {KEEP} old logs are kept");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn only_the_user_can_read_the_log() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = temp_dir("private");
+        let (path, _file) = rotate(&dir).unwrap();
+        assert_eq!(std::fs::metadata(&path).unwrap().permissions().mode() & 0o777, 0o600);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn a_log_path_someone_else_made_is_not_opened() {
+        let dir = temp_dir("taken");
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join(LOG_FILE);
+        std::fs::write(&path, "not ours").unwrap();
+        assert_eq!(create_private(&path).unwrap_err().kind(), std::io::ErrorKind::AlreadyExists);
+        assert_eq!(read(&path), "not ours");
         let _ = std::fs::remove_dir_all(&dir);
     }
 
@@ -312,6 +404,31 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
+    /// A wire dump never reaches the file, even when `RUST_LOG` names `ureq_proto`'s own module
+    /// at `trace`, which outranks the builder's `ureq_proto=debug` cap.
+    #[test]
+    fn http_wire_dumps_are_dropped_whatever_rust_log_says() {
+        let dir = temp_dir("wire");
+        let sink = Arc::new(Mutex::new(Sink::new(MAX_FILE_BYTES)));
+        // Name both allowed targets so an inherited `RUST_LOG` directive for them can't hide them.
+        let filters = "trace,ureq_proto::util=trace,ureq_proto=trace,ureq_proto::client=trace,ureq_protocol_lookalike=trace";
+        let logger = Guarded(builder(sink.clone(), false).parse_filters(filters).build());
+        let logs = Logs { sink };
+        let path = logs.attach_dir(&dir).unwrap();
+        let record = |level, target: &'static str, msg: &'static str| {
+            logger.log(&log::Record::builder().level(level).target(target).args(format_args!("{msg}")).build());
+        };
+        record(log::Level::Trace, "ureq_proto::util", "4175 7468 6f72 697a Authoriz");
+        record(log::Level::Trace, "ureq_proto", "Bearer.ghp_secret");
+        record(log::Level::Debug, "ureq_proto::client", "Call<SendRequest>");
+        record(log::Level::Trace, "ureq_protocol_lookalike", "not a wire dump");
+        let text = read(&path);
+        assert!(!text.contains("Authoriz") && !text.contains("ghp_secret"), "{text}");
+        assert!(text.contains("Call<SendRequest>") && text.contains("not a wire dump"), "{text}");
+        assert!(!logger.enabled(&log::Metadata::builder().level(log::Level::Trace).target("ureq_proto::util").build()));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
     #[test]
     fn a_poisoned_lock_does_not_stop_logging() {
         let dir = temp_dir("poison");
@@ -328,5 +445,22 @@ mod tests {
         tee.write_all(b"after the panic\n").unwrap();
         assert!(read(&path).contains("after the panic\n"));
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn redact_credentials_replaces_bearer_tokens() {
+        assert_eq!(redact_credentials("Authorization: Bearer ghp_secretToken1234567890"), "Authorization: Bearer [REDACTED]");
+        assert_eq!(redact_credentials("Authorization: Bearer  secret_double_space"), "Authorization: Bearer  [REDACTED]");
+        assert_eq!(redact_credentials("header \"authorization: bearer my_secret\" and more"), "header \"authorization: bearer [REDACTED]\" and more");
+        assert_eq!(redact_credentials("normal log line without tokens"), "normal log line without tokens");
+    }
+
+    #[test]
+    fn redact_credentials_copies_unicode_whitespace_whole() {
+        // NBSP (U+00A0), em space (U+2003) and ideographic space (U+3000) are each multiple
+        // UTF-8 bytes; a character count must not be used as a byte slice index.
+        assert_eq!(redact_credentials("Authorization: Bearer \u{a0}secretToken"), "Authorization: Bearer \u{a0}[REDACTED]");
+        assert_eq!(redact_credentials("Bearer \u{2003}\u{3000}tok\u{a0}tail"), "Bearer \u{2003}\u{3000}[REDACTED]\u{a0}tail");
+        assert_eq!(redact_credentials("Bearer \u{a0}\u{a0}multi\u{2003}gap"), "Bearer \u{a0}\u{a0}[REDACTED]\u{2003}gap");
     }
 }
