@@ -108,18 +108,31 @@ pub(crate) fn parse_inline(orig: &str) -> Vec<Inline<'_>> {
     let mut out = Vec::new();
     let mut cursor = 0;
     let mut plain_start = 0;
-    let mut look_for_bold = true;
-    let mut look_for_code = true;
-    let mut look_for_brackets = true;
+
+    let mut next_bold = orig.find("**");
+    let mut next_code = orig.find('`');
+    let mut next_bracket = orig.find('[');
 
     while cursor < orig.len() {
-        let Some(rest) = orig.get(cursor..) else { break };
+        if let Some(pos) = next_bold
+            && pos < cursor
+        {
+            next_bold = orig.get(cursor..).and_then(|r| r.find("**")).map(|i| cursor + i);
+        }
+        if let Some(pos) = next_code
+            && pos < cursor
+        {
+            next_code = orig.get(cursor..).and_then(|r| r.find('`')).map(|i| cursor + i);
+        }
+        if let Some(pos) = next_bracket
+            && pos < cursor
+        {
+            next_bracket = orig.get(cursor..).and_then(|r| r.find('[')).map(|i| cursor + i);
+        }
 
-        let next_bold = if look_for_bold { rest.find("**").map(|i| (cursor + i, 0)) } else { None };
-        let next_code = if look_for_code { rest.find('`').map(|i| (cursor + i, 1)) } else { None };
-        let next_bracket = if look_for_brackets { rest.find('[').map(|i| (cursor + i, 2)) } else { None };
+        let candidates = [next_bold.map(|i| (i, 0)), next_code.map(|i| (i, 1)), next_bracket.map(|i| (i, 2))];
 
-        let Some((special_idx, kind)) = [next_bold, next_code, next_bracket].into_iter().flatten().min_by_key(|&(idx, _)| idx) else {
+        let Some((special_idx, kind)) = candidates.into_iter().flatten().min_by_key(|&(idx, _)| idx) else {
             break;
         };
 
@@ -139,7 +152,7 @@ pub(crate) fn parse_inline(orig: &str) -> Vec<Inline<'_>> {
                     plain_start = end_pos;
                     cursor = end_pos;
                 } else {
-                    look_for_bold = false;
+                    next_bold = None;
                     cursor = special_idx + 2;
                 }
             }
@@ -158,7 +171,7 @@ pub(crate) fn parse_inline(orig: &str) -> Vec<Inline<'_>> {
                     plain_start = end_pos;
                     cursor = end_pos;
                 } else {
-                    look_for_code = false;
+                    next_code = None;
                     cursor = special_idx + 1;
                 }
             }
@@ -193,7 +206,7 @@ pub(crate) fn parse_inline(orig: &str) -> Vec<Inline<'_>> {
                         cursor = special_idx + 1 + close_bracket + 1;
                     }
                 } else {
-                    look_for_brackets = false;
+                    next_bracket = None;
                     cursor = special_idx + 1;
                 }
             }
