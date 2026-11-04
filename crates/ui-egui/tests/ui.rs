@@ -3158,7 +3158,12 @@ fn install_and_update_actions_preview_download_sizes() {
             if view == ViewMode::Grid {
                 assert!(h.query_all_by_label("Download size: 150 MB").count() >= 2);
             }
-            let pos = h.get_all_by_label(label).next().unwrap().rect().center();
+            // Keep the action visible as the suite gains more cards.
+            h.get_by_role(egui::accesskit::Role::TextInput).click();
+            h.get_by_role(egui::accesskit::Role::TextInput).type_text(if label == "Install" { "VectorCraft" } else { "PhotoCraft" });
+            h.run_steps(4);
+            let pos = h.get_by_label(label).rect().center();
+            assert!(h.ctx.content_rect().contains(pos), "the download action must be visible before hovering");
             h.hover_at(pos);
             h.run_steps(40);
             h.get_by_label("Disk image (.dmg) · 150 MB");
