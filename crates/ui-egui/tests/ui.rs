@@ -3433,3 +3433,86 @@ fn scrolling_an_apps_page_compacts_the_hero_and_keeps_navigation_and_actions_vis
     assert!(h.query_all_by_label_contains(headline).count() >= 2, "dragging the scroll bar back to the top restores the headline");
     assert!((lead_dragged_up.top() - lead_before.top()).abs() < 2.0, "body returns to the top after dragging the scroll bar up: {lead_dragged_up:?}");
 }
+
+#[test]
+fn details_hero_collapse_threshold_transitions_bar_before_body_scrolls() {
+    use artcraft_launcher_core::details::AppDetails;
+    let mut h = short_window(Rc::new(Cell::new(false)));
+    h.set_size(egui::vec2(1180.0, 720.0));
+    h.run_steps(16);
+    h.get_by_label("PhotoCraft details").click();
+    h.run_steps(45);
+
+    let headline = AppDetails::by_id("photocraft").unwrap().headline;
+    let close = h.get_by_label("Close (Esc)").rect();
+    let lead_before = h.get_by_label("Enlarge picture").rect();
+    let bar_x = close.right() + 24.0 + 5.0;
+    let start_pos = egui::pos2(bar_x, 60.0);
+
+    // Initial state: fully expanded hero shows headline and external links.
+    assert!(h.query_all_by_label_contains(headline).count() >= 2);
+    assert!(h.query_by_label("Website ↗").is_some());
+
+    // Drag slightly down, staying below the collapse threshold:
+    // the bar starts compacting, but external links remain visible.
+    h.hover_at(start_pos);
+    h.run_steps(2);
+    h.drag_at(start_pos);
+    h.run_steps(2);
+    h.hover_at(egui::pos2(bar_x, 100.0));
+    h.run_steps(4);
+    assert!(h.query_by_label("Website ↗").is_some(), "below collapse threshold, external links remain visible");
+    let lead_sub_threshold = h.get_by_label("Enlarge picture").rect();
+    assert!(
+        lead_sub_threshold.top() > lead_before.top() - 80.0,
+        "below collapse threshold, body stays near top: {lead_sub_threshold:?}"
+    );
+
+    // Drag past the collapse threshold: hero bar reaches compact height and hides external links.
+    h.hover_at(egui::pos2(bar_x, 160.0));
+    h.run_steps(4);
+    assert!(h.query_by_label("Website ↗").is_none(), "past collapse threshold, hero is compact");
+    let lead_past_threshold = h.get_by_label("Enlarge picture").rect();
+    assert!(
+        lead_past_threshold.top() < lead_before.top() - 140.0,
+        "past collapse threshold, body scrolls up: {lead_past_threshold:?}"
+    );
+
+    // Dragging back up across the threshold restores the full expanded hero.
+    h.hover_at(start_pos);
+    h.drop_at(start_pos);
+    h.run_steps(45);
+    assert!(h.query_by_label("Website ↗").is_some(), "returning above threshold restores external links");
+    assert!(h.query_all_by_label_contains(headline).count() >= 2, "returning above threshold restores headline");
+    let lead_restored = h.get_by_label("Enlarge picture").rect();
+    assert!((lead_restored.top() - lead_before.top()).abs() < 2.0, "body returns to top: {lead_restored:?}");
+}
+
+#[test]
+fn short_details_page_with_no_scroll_does_not_collapse() {
+    use artcraft_launcher_core::details::AppDetails;
+    let mut h = short_window(Rc::new(Cell::new(false)));
+    // Tall window where the details card (capped at 1000px) comfortably fits
+    // a short app's content (e.g. PdfCraft, with no screenshots) without scrolling.
+    h.set_size(egui::vec2(1280.0, 1040.0));
+    h.run_steps(16);
+    h.get_by_label("PdfCraft details").scroll_to_me();
+    h.run_steps(3);
+    h.get_by_label("PdfCraft details").click();
+    h.run_steps(45);
+
+    let headline = AppDetails::by_id("pdfcraft").unwrap().headline;
+    let count_before = h.query_all_by_label_contains(headline).count();
+    assert!(count_before >= 2, "expanded hero shows headline");
+    assert!(h.query_by_label("Website ↗").is_some(), "expanded hero shows external links");
+
+    // Mouse wheel turns on a page with no scroll range do not collapse the hero.
+    turn_wheel(&mut h, 8.0);
+    h.run_steps(45);
+    turn_wheel(&mut h, 8.0);
+    h.run_steps(45);
+
+    let count_after = h.query_all_by_label_contains(headline).count();
+    assert_eq!(count_after, count_before, "headline remains visible; no collapse occurred");
+    assert!(h.query_by_label("Website ↗").is_some(), "external links remain visible; no collapse occurred");
+}
