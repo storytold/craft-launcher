@@ -96,6 +96,9 @@ pub struct BackendOptions {
     pub install_locations: InstallLocations,
     /// Package formats to install, best first (empty: the platform default).
     pub kinds: Vec<PackageKind>,
+    /// Linux: delegate installed AppImages' app menu entries and icons to an external manager.
+    /// Does not change the launcher's own desktop integration.
+    pub external_appimage_desktop_integration: bool,
     /// Per-app version choices; an absent entry follows stable releases.
     pub versions: BTreeMap<String, VersionTrack>,
     /// The launcher's own version choice.

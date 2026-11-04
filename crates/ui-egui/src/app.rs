@@ -446,6 +446,7 @@ impl LauncherUi {
     pub(crate) fn configure(&mut self) {
         let options = BackendOptions {
             kinds: self.settings.preferred_kinds.clone(),
+            external_appimage_desktop_integration: self.settings.external_appimage_desktop_integration,
             prereleases: self.settings.prereleases,
             versions: self.settings.versions.clone(),
             launcher_version: self.settings.launcher_version.clone(),

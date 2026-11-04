@@ -3,7 +3,7 @@
 //! An AppImage installs nothing by itself, so without an entry the app is missing from the
 //! desktop's menu and, on Wayland, the dock can't match the window's app id to an icon. The
 //! launcher writes `<data>/applications/ai.storyteller.<app>.desktop` (the id each app's window
-//! reports) and marks it as its own, so it only ever replaces or removes entries it wrote.
+//! reports). Only a manifest ledger entry plus the exact rendered contents proves ownership.
 //!
 //! The text is built by pure functions, tested on every platform; only Linux writes the files.
 
@@ -13,8 +13,8 @@ use std::path::Path;
 
 use artcraft_launcher_core::CraftApp;
 
-/// The key that marks an entry as written by the launcher.
-pub const MARKER: &str = "X-ArtCraft-Launcher=true";
+/// A descriptive marker, not sufficient proof of ownership for replacement or removal.
+const MARKER: &str = "X-ArtCraft-Launcher=true";
 
 /// The menu categories and the window class each app's own `.desktop` file declares.
 pub fn meta(app: &CraftApp) -> (&'static str, Option<&'static str>) {
@@ -91,53 +91,8 @@ pub fn render(app: &CraftApp, appimage: &Path, icon: bool) -> Option<String> {
     Some(text)
 }
 
-/// Whether the launcher wrote this entry.
-pub fn is_ours(text: &str) -> bool {
-    text.lines().any(|l| l.trim() == MARKER)
-}
-
-/// The program an entry's `Exec=` runs: its first argument, unquoted. Reads the launcher's own
-/// quoting and the plain `Exec="<path>" %F` the apps' AppImages write for themselves.
-pub fn exec_program(text: &str) -> Option<String> {
-    let line = text.lines().find_map(|l| l.strip_prefix("Exec="))?;
-    // String-value escapes first, then the quoting rule.
-    let mut unescaped = String::with_capacity(line.len());
-    let mut chars = line.chars();
-    while let Some(c) = chars.next() {
-        if c == '\\' {
-            match chars.next() {
-                Some('s') => unescaped.push(' '),
-                Some('n') => unescaped.push('\n'),
-                Some('t') => unescaped.push('\t'),
-                Some('r') => unescaped.push('\r'),
-                Some(other) => unescaped.push(other),
-                None => unescaped.push('\\'),
-            }
-        } else {
-            unescaped.push(c);
-        }
-    }
-    let mut out = String::new();
-    let mut chars = unescaped.trim_start().chars();
-    if unescaped.trim_start().starts_with('"') {
-        chars.next();
-        loop {
-            match chars.next()? {
-                '"' => break,
-                '\\' => out.push(chars.next()?),
-                c => out.push(c),
-            }
-        }
-    } else {
-        out.extend(chars.take_while(|c| !c.is_whitespace()));
-    }
-    Some(out.replace("%%", "%"))
-}
-
 #[cfg(test)]
 mod tests {
-    use std::path::PathBuf;
-
     use super::*;
 
     fn app(id: &str) -> &'static CraftApp {
@@ -155,7 +110,6 @@ mod tests {
             app("photocraft").tagline
         );
         assert_eq!(text, expected);
-        assert!(is_ours(&text));
         let no_icon = render(app("wordcraft"), Path::new("/x/w.AppImage"), false).unwrap();
         assert!(!no_icon.contains("Icon="));
         assert!(no_icon.contains("StartupWMClass=ai.storyteller.wordcraft\n"));
@@ -171,19 +125,5 @@ mod tests {
         // The spec forbids `=` in the executable name or path, even quoted.
         assert_eq!(exec_quote(Path::new("/opt/artcraft=beta/app")), None);
         assert!(render(app("photocraft"), Path::new("/a/line\nbreak.AppImage"), true).is_none());
-    }
-
-    #[test]
-    fn reads_back_the_program_it_wrote_and_the_apps_own_entries() {
-        for p in ["/home/ana/My Apps/p.AppImage", "/a/\"q\" $HOME `x`.AppImage", r"/a\b/100%.AppImage", "/plain.AppImage"] {
-            let text = render(app("gridcraft"), Path::new(p), false).unwrap();
-            assert_eq!(exec_program(&text).map(PathBuf::from), Some(PathBuf::from(p)), "{p}");
-        }
-        // PhotoCraft's AppRun writes its own entry, unmarked.
-        let theirs = "[Desktop Entry]\nName=PhotoCraft\nExec=\"/home/ana/Applications/photocraft-0.5.0-linux-x86_64.AppImage\" %F\n";
-        assert_eq!(exec_program(theirs).as_deref(), Some("/home/ana/Applications/photocraft-0.5.0-linux-x86_64.AppImage"));
-        assert!(!is_ours(theirs));
-        assert_eq!(exec_program("[Desktop Entry]\nExec=photocraft %F\n").as_deref(), Some("photocraft"));
-        assert_eq!(exec_program("[Desktop Entry]\nName=x\n"), None);
     }
 }

@@ -60,6 +60,16 @@ struct Shared {
     restarting: AtomicBool,
     manifest: Mutex<Manifest>,
     options: Mutex<BackendOptions>,
+    /// Worker-only gate: a job takes this before reading its starting record; reconciliation
+    /// takes it before checking active jobs. Never hold it during a download or on the UI thread.
+    #[cfg(target_os = "linux")]
+    desktop_integration: Mutex<()>,
+    /// Initialized on a worker; an isolated backend may supply its runtime data directory first.
+    #[cfg(target_os = "linux")]
+    desktop_data: OnceLock<Option<std::path::PathBuf>>,
+    /// A failed save left recoverable ownership in memory; retry it on the next reconciliation.
+    #[cfg(target_os = "linux")]
+    desktop_manifest_dirty: AtomicBool,
     checking: AtomicBool,
     /// A detection pass is running; another request waits for the next one.
     detecting: AtomicBool,
@@ -110,11 +120,15 @@ impl Drop for BusyGuard {
 struct JobGuard {
     shared: Arc<Shared>,
     app_id: String,
+    #[cfg(target_os = "linux")]
+    paths: Paths,
 }
 
 impl Drop for JobGuard {
     fn drop(&mut self) {
         self.shared.jobs.lock().unwrap_or_else(PoisonError::into_inner).remove(&self.app_id);
+        #[cfg(target_os = "linux")]
+        reconcile_desktop_integration(&self.shared, &self.paths);
     }
 }
 
@@ -122,6 +136,64 @@ impl Shared {
     fn emit(&self, event: Event) {
         self.events.lock().unwrap_or_else(PoisonError::into_inner).push(event);
         (self.waker)();
+    }
+}
+
+/// Runs only on configure/job workers. Re-read policy after acquiring the gate, and never hold
+/// the jobs or manifest locks while inspecting desktop resources. A newly registered job waits
+/// at the same gate before reading its record, so reconciliation cannot race its starting state.
+#[cfg(target_os = "linux")]
+fn reconcile_desktop_integration(shared: &Shared, paths: &Paths) {
+    let _gate = shared.desktop_integration.lock().unwrap_or_else(PoisonError::into_inner);
+    if shared.desktop_manifest_dirty.load(Ordering::SeqCst) {
+        let manifest = shared.manifest.lock().unwrap_or_else(PoisonError::into_inner);
+        match manifest.save(&paths.manifest()) {
+            Ok(()) => shared.desktop_manifest_dirty.store(false, Ordering::SeqCst),
+            Err(error) => log::warn!("couldn't persist retained desktop integration ownership: {error}"),
+        }
+    }
+    let external = shared.options.lock().unwrap_or_else(PoisonError::into_inner).external_appimage_desktop_integration;
+    let Some(data) = shared.desktop_data.get_or_init(install::linux::host_data_dir) else { return };
+    for app in &SUITE {
+        if shared.jobs.lock().unwrap_or_else(PoisonError::into_inner).contains_key(app.id) {
+            continue;
+        }
+        let previous = shared.manifest.lock().unwrap_or_else(PoisonError::into_inner).apps.get(app.id).cloned();
+        let Some(previous) = previous.filter(|record| record.kind == PackageKind::AppImage) else { continue };
+        if !std::fs::symlink_metadata(&previous.path).is_ok_and(|meta| meta.is_file()) {
+            continue;
+        }
+        let integration = install::linux::integrate_into(data, app, &previous.path, Some(&previous), external);
+        if integration.files == previous.files && integration.ownership == previous.appimage_desktop {
+            continue;
+        }
+        let candidate = integration.into_record(&previous);
+        let mut manifest = shared.manifest.lock().unwrap_or_else(PoisonError::into_inner);
+        if manifest.apps.get(app.id) != Some(&previous) {
+            continue;
+        }
+        let mut updated = manifest.clone();
+        updated.apps.insert(app.id.to_string(), candidate);
+        match updated.save(&paths.manifest()) {
+            Ok(()) => *manifest = updated,
+            Err(error) => {
+                log::warn!("{}: couldn't save desktop integration ownership: {error}", app.name);
+                drop(manifest);
+                let Some(candidate) = updated.apps.get(app.id) else { continue };
+                let recovered = install::linux::rollback_new(data, app, &previous, candidate).into_record(&previous);
+                if recovered != previous {
+                    let mut manifest = shared.manifest.lock().unwrap_or_else(PoisonError::into_inner);
+                    if manifest.apps.get(app.id) == Some(&previous) {
+                        manifest.apps.insert(app.id.to_string(), recovered);
+                        shared.desktop_manifest_dirty.store(true, Ordering::SeqCst);
+                        log::warn!(
+                            "{}: retaining recoverable in-memory desktop ownership after the failed save; persistence will be retried",
+                            app.name
+                        );
+                    }
+                }
+            }
+        }
     }
 }
 
@@ -162,6 +234,12 @@ impl NativeBackend {
             restarting: AtomicBool::new(false),
             manifest: Mutex::new(Manifest::load(&paths.manifest())),
             options: Mutex::new(BackendOptions::default()),
+            #[cfg(target_os = "linux")]
+            desktop_integration: Mutex::new(()),
+            #[cfg(target_os = "linux")]
+            desktop_data: OnceLock::new(),
+            #[cfg(target_os = "linux")]
+            desktop_manifest_dirty: AtomicBool::new(false),
             checking: AtomicBool::new(false),
             detecting: AtomicBool::new(false),
             launcher_release: Mutex::new(None),
@@ -327,7 +405,12 @@ impl NativeBackend {
             return;
         }
         let shared = self.shared.clone();
-        let job = JobGuard { shared: shared.clone(), app_id: app.id.to_string() };
+        let job = JobGuard {
+            shared: shared.clone(),
+            app_id: app.id.to_string(),
+            #[cfg(target_os = "linux")]
+            paths: self.paths.clone(),
+        };
         let paths = self.paths.clone();
         let http = self.http.clone();
         let platform = self.platform;
@@ -335,16 +418,26 @@ impl NativeBackend {
         let source = self.source.clone();
         std::thread::spawn(move || {
             let job = job;
+            #[cfg(target_os = "linux")]
+            let integration = shared.desktop_integration.lock().unwrap_or_else(PoisonError::into_inner);
             let existing = shared.installed.lock().unwrap_or_else(PoisonError::into_inner).get(app.id).cloned();
             let record = shared.manifest.lock().unwrap_or_else(PoisonError::into_inner).apps.get(app.id).cloned();
+            #[cfg(target_os = "linux")]
+            drop(integration);
             let result = if uninstall {
                 shared.emit(Event::Progress { app: app.id.to_string(), phase: JobPhase::Removing });
                 let mut phase = |phase| shared.emit(Event::Progress { app: app.id.to_string(), phase });
                 match &existing {
                     Some(inst) => install::uninstall(app, inst, record.as_ref(), &paths, &stop, &mut phase).map(|()| {
                         let mut m = shared.manifest.lock().unwrap_or_else(PoisonError::into_inner);
-                        if m.apps.remove(app.id).is_some() {
-                            let _ = m.save(&paths.manifest());
+                        if m.apps.remove(app.id).is_some()
+                            && let Err(error) = m.save(&paths.manifest())
+                        {
+                            log::warn!("{}: couldn't save the removed install record: {error}", app.name);
+                            #[cfg(target_os = "linux")]
+                            if record.as_ref().is_some_and(|record| record.kind == PackageKind::AppImage) {
+                                shared.desktop_manifest_dirty.store(true, Ordering::SeqCst);
+                            }
                         }
                         format!("{} was removed", app.name)
                     }),
@@ -422,7 +515,12 @@ impl NativeBackend {
             }
             jobs.insert(id.clone(), stop.clone());
         }
-        let job = JobGuard { shared: self.shared.clone(), app_id: id.clone() };
+        let job = JobGuard {
+            shared: self.shared.clone(),
+            app_id: id.clone(),
+            #[cfg(target_os = "linux")]
+            paths: self.paths.clone(),
+        };
         let (shared, paths, http) = (self.shared.clone(), self.paths.clone(), self.http.clone());
         std::thread::spawn(move || {
             let job = job;
@@ -619,7 +717,16 @@ fn run_install(
         last_emit = Instant::now();
         shared.emit(Event::Progress { app: app.id.to_string(), phase: p });
     };
-    let mut job = Job { http, paths, stop, phase: &mut phase, install_locations: &options.install_locations, replace, downgrade };
+    let mut job = Job {
+        http,
+        paths,
+        stop,
+        phase: &mut phase,
+        install_locations: &options.install_locations,
+        external_appimage_desktop_integration: options.external_appimage_desktop_integration,
+        replace,
+        downgrade,
+    };
     let mut commit_record = |record: &crate::manifest::Record| {
         let mut manifest = shared.manifest.lock().unwrap_or_else(PoisonError::into_inner);
         let mut updated = manifest.clone();
@@ -641,6 +748,10 @@ fn run_install(
         };
         if changed && let Err(e) = m.save(&paths.manifest()) {
             log::warn!("couldn't save the install record: {e}");
+            #[cfg(target_os = "linux")]
+            if kind == PackageKind::AppImage {
+                shared.desktop_manifest_dirty.store(true, Ordering::SeqCst);
+            }
         }
     }
     Ok(installed_text(app, existing.is_some(), &release))
@@ -1261,6 +1372,14 @@ impl Backend for NativeBackend {
                     *o = options;
                     changed
                 };
+                #[cfg(target_os = "linux")]
+                {
+                    let shared = self.shared.clone();
+                    let paths = self.paths.clone();
+                    // Also run on first Configure: saved policy must migrate current installs,
+                    // without waiting for a reinstall, update, or a third-party watcher tick.
+                    std::thread::spawn(move || reconcile_desktop_integration(&shared, &paths));
+                }
                 // Every Configure, not only on a change: the first one carries the choices saved
                 // before the shared file existed, and the file may have been deleted since.
                 if let Some(path) = &self.pins {
@@ -1478,6 +1597,12 @@ mod tests {
             restarting: AtomicBool::new(false),
             manifest: Mutex::new(Manifest::default()),
             options: Mutex::new(BackendOptions::default()),
+            #[cfg(target_os = "linux")]
+            desktop_integration: Mutex::new(()),
+            #[cfg(target_os = "linux")]
+            desktop_data: OnceLock::new(),
+            #[cfg(target_os = "linux")]
+            desktop_manifest_dirty: AtomicBool::new(false),
             checking: AtomicBool::new(false),
             detecting: AtomicBool::new(false),
             last_check: Mutex::new(None),
@@ -1769,6 +1894,7 @@ mod tests {
             path: launcher.location.clone().into(),
             installed_at: 1,
             files: vec![],
+            appimage_desktop: None,
             needs_root: false,
         };
         let msi_options = BackendOptions { kinds: vec![PackageKind::Msi], ..Default::default() };
@@ -2101,5 +2227,276 @@ mod tests {
             assert_eq!(claim.join().unwrap(), Err(CANCELLED.to_string()));
         });
         assert!(!restarting.load(Ordering::SeqCst));
+    }
+
+    #[cfg(target_os = "linux")]
+    fn appimage_desktop_fixture(root: &std::path::Path) -> (Arc<Shared>, Paths, std::path::PathBuf) {
+        let app = CraftApp::by_id("wordcraft").unwrap();
+        let paths = Paths::under(root);
+        let data = root.join("desktop-data");
+        let image = root.join("wordcraft-0.2.0-linux-x86_64.AppImage");
+        std::fs::write(&image, b"old AppImage").unwrap();
+        let integration = install::linux::integrate_into(&data, app, &image, None, false);
+        let shared = Arc::new(shared());
+        shared.desktop_data.set(Some(data.clone())).unwrap();
+        shared.manifest.lock().unwrap().apps.insert(
+            app.id.into(),
+            crate::manifest::Record {
+                version: "0.2.0".into(),
+                kind: PackageKind::AppImage,
+                path: image.clone(),
+                installed_at: 1,
+                files: integration.files,
+                appimage_desktop: integration.ownership,
+                needs_root: false,
+            },
+        );
+        shared.installed.lock().unwrap().insert(
+            app.id.into(),
+            Installed {
+                version: version::parse("0.2.0"),
+                source: InstallSource::Launcher,
+                location: image.display().to_string(),
+                package: None,
+                externally_managed: false,
+                origin: None,
+                installation: None,
+            },
+        );
+        shared.manifest.lock().unwrap().save(&paths.manifest()).unwrap();
+        (shared, paths, data)
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn saved_appimages_migrate_and_restore_with_atomic_ownership_records() {
+        let root = tempfile::tempdir().unwrap();
+        let (shared, paths, data) = appimage_desktop_fixture(root.path());
+        let original = Manifest::load(&paths.manifest());
+        let other = root.path().join("package-owned.desktop");
+        std::fs::write(&other, b"package integration").unwrap();
+        let mut package = original.apps["wordcraft"].clone();
+        package.kind = PackageKind::TarGz;
+        package.files = vec![other.clone()];
+        shared.manifest.lock().unwrap().apps.insert("pdfcraft".into(), package.clone());
+        shared.options.lock().unwrap().external_appimage_desktop_integration = true;
+        reconcile_desktop_integration(&shared, &paths);
+        let migrated = Manifest::load(&paths.manifest());
+        assert!(migrated.apps["wordcraft"].files.is_empty());
+        assert!(migrated.apps["wordcraft"].path.is_file());
+        assert!(!data.join("applications/ai.storyteller.wordcraft.desktop").exists());
+        assert!(!data.join("icons/hicolor/128x128/apps/ai.storyteller.wordcraft.png").exists());
+        assert_eq!(migrated.apps["pdfcraft"], package);
+        assert_eq!(std::fs::read(&other).unwrap(), b"package integration");
+        *shared.manifest.lock().unwrap() = migrated;
+        shared.options.lock().unwrap().external_appimage_desktop_integration = false;
+        reconcile_desktop_integration(&shared, &paths);
+        let restored = Manifest::load(&paths.manifest());
+        assert_eq!(restored.apps["wordcraft"], original.apps["wordcraft"]);
+        assert!(restored.apps["wordcraft"].files.iter().all(|file| file.is_file()));
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn reconciliation_reads_policy_after_its_gate_and_after_active_jobs_drop() {
+        let root = tempfile::tempdir().unwrap();
+        let (shared, paths, data) = appimage_desktop_fixture(root.path());
+        let desktop = data.join("applications/ai.storyteller.wordcraft.desktop");
+        let gate = shared.desktop_integration.lock().unwrap();
+        std::thread::scope(|scope| {
+            let shared = &shared;
+            let paths = &paths;
+            let (started, waiting) = mpsc::channel();
+            let worker = scope.spawn(move || {
+                started.send(()).unwrap();
+                reconcile_desktop_integration(shared, paths);
+            });
+            waiting.recv().unwrap();
+            shared.options.lock().unwrap().external_appimage_desktop_integration = true;
+            drop(gate);
+            worker.join().unwrap();
+        });
+        assert!(!desktop.exists());
+        shared.options.lock().unwrap().external_appimage_desktop_integration = false;
+        reconcile_desktop_integration(&shared, &paths);
+        shared.jobs.lock().unwrap().insert("wordcraft".into(), Arc::new(Stop::default()));
+        let job = JobGuard { shared: shared.clone(), app_id: "wordcraft".into(), paths: paths.clone() };
+        shared.options.lock().unwrap().external_appimage_desktop_integration = true;
+        reconcile_desktop_integration(&shared, &paths);
+        assert!(desktop.exists(), "an active install or uninstall keeps its starting record stable");
+        drop(job);
+        assert!(!desktop.exists(), "dropping the active job applies the latest policy immediately");
+        assert!(Manifest::load(&paths.manifest()).apps["wordcraft"].files.is_empty());
+
+        shared.jobs.lock().unwrap().insert("wordcraft".into(), Arc::new(Stop::default()));
+        let job = JobGuard { shared: shared.clone(), app_id: "wordcraft".into(), paths: paths.clone() };
+        shared.options.lock().unwrap().external_appimage_desktop_integration = false;
+        reconcile_desktop_integration(&shared, &paths);
+        assert!(!desktop.exists());
+        // A completed uninstall removes its record before JobGuard drops. A queued configure
+        // must never recreate an entry for the removed app.
+        let record = shared.manifest.lock().unwrap().apps.remove("wordcraft").unwrap();
+        std::fs::remove_file(&record.path).unwrap();
+        shared.manifest.lock().unwrap().save(&paths.manifest()).unwrap();
+        drop(job);
+        assert!(!desktop.exists());
+        assert!(!Manifest::load(&paths.manifest()).apps.contains_key("wordcraft"));
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn a_policy_toggle_during_a_real_download_wins_before_job_finished() {
+        use std::io::{Read, Write};
+
+        let root = tempfile::tempdir().unwrap();
+        let (mut shared, paths, data) = appimage_desktop_fixture(root.path());
+        shared.options.lock().unwrap().external_appimage_desktop_integration = true;
+        reconcile_desktop_integration(&shared, &paths);
+        let (wake, wakes) = mpsc::channel();
+        Arc::get_mut(&mut shared).unwrap().waker = Arc::new(move || {
+            let _ = wake.send(());
+        });
+        let (body, sha) = crate::http::tests::body();
+        let expected = body.clone();
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let url = format!("http://{}/wordcraft.AppImage", listener.local_addr().unwrap());
+        let (requested, requests) = mpsc::channel();
+        let (resume, resumed) = mpsc::channel();
+        let size = body.len() as u64;
+        let server = std::thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            let mut request = [0; 4096];
+            assert!(stream.read(&mut request).unwrap() > 0);
+            requested.send(()).unwrap();
+            resumed.recv().unwrap();
+            write!(stream, "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n", body.len()).unwrap();
+            stream.write_all(&body).unwrap();
+        });
+        let app = CraftApp::by_id("wordcraft").unwrap();
+        let asset = Asset { name: "wordcraft-0.3.0-linux-x86_64.AppImage".into(), size, url, sha256: Some(sha) };
+        shared
+            .latest
+            .lock()
+            .unwrap()
+            .insert(app.id.into(), Release { tag: "v0.3.0".into(), version: version::parse("0.3.0"), assets: vec![asset], ..Release::default() });
+        let mut backend = NativeBackend {
+            shared,
+            paths: paths.clone(),
+            http: Some(Http::new().unwrap()),
+            source: None,
+            platform: Some(Platform { os: Os::Linux, arch: Arch::X64 }),
+            pins: None,
+        };
+        backend.send(Command::Install { app: app.id.into() });
+        requests.recv_timeout(Duration::from_secs(10)).unwrap();
+        backend.send(Command::Configure(BackendOptions::default()));
+        resume.send(()).unwrap();
+        let result = loop {
+            if let Some(result) = backend.poll().into_iter().find_map(|event| match event {
+                Event::JobFinished { app: id, result } if id == app.id => Some(result),
+                _ => None,
+            }) {
+                break result;
+            }
+            wakes.recv_timeout(Duration::from_secs(10)).unwrap();
+        };
+        server.join().unwrap();
+        assert!(result.is_ok(), "{result:?}");
+        let manifest = Manifest::load(&paths.manifest());
+        let record = &manifest.apps[app.id];
+        assert_eq!(record.version, "0.3.0");
+        assert_eq!(std::fs::read(&record.path).unwrap(), expected);
+        assert!(!root.path().join("wordcraft-0.2.0-linux-x86_64.AppImage").exists());
+        assert_eq!(record.files.len(), 2);
+        let desktop = data.join("applications/ai.storyteller.wordcraft.desktop");
+        assert_eq!(std::fs::read_to_string(desktop).unwrap(), crate::desktop_entry::render(app, &record.path, true).unwrap());
+        assert!(record.files.iter().all(|file| file.starts_with(&data) && file.is_file()));
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn failed_restoration_save_rolls_back_only_new_resources_and_can_be_retried() {
+        for keep_tracked_icon in [false, true] {
+            let root = tempfile::tempdir().unwrap();
+            let (shared, paths, data) = appimage_desktop_fixture(root.path());
+            let desktop = data.join("applications/ai.storyteller.wordcraft.desktop");
+            let icon = data.join("icons/hicolor/128x128/apps/ai.storyteller.wordcraft.png");
+            if keep_tracked_icon {
+                std::fs::remove_file(&desktop).unwrap();
+                let mut manifest = shared.manifest.lock().unwrap();
+                let record = manifest.apps.get_mut("wordcraft").unwrap();
+                record.files.retain(|file| file == &icon);
+                record.appimage_desktop.as_mut().unwrap().desktop_text = None;
+                manifest.save(&paths.manifest()).unwrap();
+            } else {
+                shared.options.lock().unwrap().external_appimage_desktop_integration = true;
+                reconcile_desktop_integration(&shared, &paths);
+            }
+            let before = shared.manifest.lock().unwrap().apps["wordcraft"].clone();
+            let old_icon = keep_tracked_icon.then(|| std::fs::read(&icon).unwrap());
+            std::fs::remove_file(paths.manifest()).unwrap();
+            std::fs::create_dir(paths.manifest()).unwrap();
+            let blocker = paths.manifest().join("keep-user-file");
+            std::fs::write(&blocker, b"keep manifest directory contents").unwrap();
+            shared.options.lock().unwrap().external_appimage_desktop_integration = false;
+            reconcile_desktop_integration(&shared, &paths);
+            assert!(!desktop.exists(), "a failed ownership save must not orphan a newly restored entry");
+            assert_eq!(icon.exists(), keep_tracked_icon);
+            if let Some(old_icon) = old_icon {
+                assert_eq!(std::fs::read(&icon).unwrap(), old_icon);
+            }
+            assert_eq!(shared.manifest.lock().unwrap().apps["wordcraft"], before);
+            assert_eq!(std::fs::read(&blocker).unwrap(), b"keep manifest directory contents");
+            assert!(before.path.is_file());
+            std::fs::remove_file(&blocker).unwrap();
+            std::fs::remove_dir(paths.manifest()).unwrap();
+            reconcile_desktop_integration(&shared, &paths);
+            let persisted = Manifest::load(&paths.manifest());
+            assert_eq!(persisted.apps["wordcraft"].files.len(), 2);
+            assert!(desktop.is_file() && icon.is_file());
+            shared.options.lock().unwrap().external_appimage_desktop_integration = true;
+            reconcile_desktop_integration(&shared, &paths);
+            assert!(!desktop.exists() && !icon.exists(), "the retry must preserve removable ownership");
+        }
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn failed_rollback_keeps_recoverable_ownership_and_retries_its_save() {
+        let root = tempfile::tempdir().unwrap();
+        let (shared, paths, data) = appimage_desktop_fixture(root.path());
+        let app = CraftApp::by_id("wordcraft").unwrap();
+        let desktop = data.join("applications/ai.storyteller.wordcraft.desktop");
+        let icon = data.join("icons/hicolor/128x128/apps/ai.storyteller.wordcraft.png");
+        std::fs::remove_file(&icon).unwrap();
+        {
+            let mut manifest = shared.manifest.lock().unwrap();
+            let record = manifest.apps.get_mut(app.id).unwrap();
+            let text = crate::desktop_entry::render(app, &record.path, false).unwrap();
+            std::fs::write(&desktop, &text).unwrap();
+            record.files.retain(|file| file == &desktop);
+            let ownership = record.appimage_desktop.as_mut().unwrap();
+            ownership.desktop_text = Some(text);
+            ownership.icon_sha256 = None;
+            manifest.save(&paths.manifest()).unwrap();
+        }
+        std::fs::remove_file(paths.manifest()).unwrap();
+        std::fs::create_dir(paths.manifest()).unwrap();
+        reconcile_desktop_integration(&shared, &paths);
+        // The newly acquired icon now supports a pre-existing tracked desktop entry. Safe
+        // rollback must retain both, rather than deleting either dependency or its owner.
+        assert!(desktop.is_file() && icon.is_file());
+        let recovered = shared.manifest.lock().unwrap().apps[app.id].clone();
+        assert_eq!(recovered.files.len(), 2);
+        assert!(recovered.appimage_desktop.as_ref().unwrap().desktop_text.as_ref().unwrap().contains("Icon=ai.storyteller.wordcraft\n"));
+        assert!(shared.desktop_manifest_dirty.load(Ordering::SeqCst));
+        std::fs::remove_dir(paths.manifest()).unwrap();
+        reconcile_desktop_integration(&shared, &paths);
+        assert_eq!(Manifest::load(&paths.manifest()).apps[app.id], recovered);
+        assert!(!shared.desktop_manifest_dirty.load(Ordering::SeqCst));
+        shared.options.lock().unwrap().external_appimage_desktop_integration = true;
+        reconcile_desktop_integration(&shared, &paths);
+        assert!(!desktop.exists() && !icon.exists());
+        assert!(recovered.path.is_file());
     }
 }

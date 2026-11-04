@@ -95,6 +95,8 @@
 	Install new apps as	Neue Apps installieren als
 	System package (recommended)	Systempaket (empfohlen)
 	Updates always use the format an app was installed with.	Updates verwenden immer das Format, mit dem eine App installiert wurde.
+	Let an external AppImage manager handle app menu entries and icons	App-Menüeinträge und Symbole von einem externen AppImage-Manager verwalten lassen
+	Only for installed AppImages, not ArtCraft Launcher. The manager must watch the install folders. Customized entries are kept.	Nur für installierte AppImages, nicht für ArtCraft Launcher selbst. Der Manager muss die Installationsordner überwachen. Angepasste Einträge bleiben erhalten.
 	Running in the background	Im Hintergrund ausführen
 	Keep running in the tray when the window is closed	Beim Schließen des Fensters im Infobereich weiterlaufen
 	ArtCraft Launcher is still running	ArtCraft Launcher läuft weiter

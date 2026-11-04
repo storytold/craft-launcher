@@ -257,6 +257,7 @@ pub fn install(
         path: destination.join(executable),
         installed_at: crate::now(),
         files: files.iter().map(|relative| destination.join(relative)).collect(),
+        appimage_desktop: None,
         needs_root: false,
     };
     let mut moved = Vec::new();
@@ -710,6 +711,7 @@ mod tests {
             path: alias_root.join("photocraft.exe"),
             installed_at: 0,
             files: vec![alias_root.join("photocraft.exe")],
+            appimage_desktop: None,
             needs_root: false,
         };
         std::process::Command::new("cmd.exe").args(["/C", "rmdir"]).arg(&link).status().unwrap();
