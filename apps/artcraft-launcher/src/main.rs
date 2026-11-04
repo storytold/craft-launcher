@@ -5,6 +5,8 @@
 #![cfg_attr(windows, windows_subsystem = "windows")]
 #![deny(clippy::unwrap_used, clippy::expect_used, clippy::panic, clippy::unimplemented, clippy::todo, clippy::unreachable)]
 
+#[cfg(target_os = "macos")]
+mod hiding;
 mod logging;
 mod motion;
 mod settings_file;
@@ -454,6 +456,13 @@ fn tray_step(requests: &[Request]) -> TrayStep {
     }
 }
 
+/// The nearest folder at or above `initial` that exists, so Browse starts near a default that is
+/// often created only by the first install (`Program Files\ArtCraft`).
+fn nearest_existing_folder(initial: Option<&str>) -> Option<std::path::PathBuf> {
+    let folder = initial.map(std::path::PathBuf::from)?;
+    folder.ancestors().find(|candidate| candidate.is_dir()).map(|folder| folder.to_path_buf())
+}
+
 /// What `LauncherUi::logic` is told about its window while there is none: it isn't focused.
 fn no_window() -> egui::RawInput {
     let viewport = egui::ViewportInfo { focused: Some(false), ..Default::default() };
@@ -475,9 +484,16 @@ fn claim_notification_identity() -> &'static Result<(), String> {
     })
 }
 
+/// A default-folder question (format and architecture) with the host's answer.
+type DefaultFolderAnswer = ((artcraft_launcher_core::PackageKind, Option<artcraft_launcher_core::Arch>), Option<String>);
+
 struct DesktopHost {
     tray: bool,
     quit: bool,
+    /// Default-folder answers by question: the fields redraw often while a dialog is open,
+    /// Settings asks once per app's package, and the macOS answer probes the disk. There are
+    /// only a handful of distinct questions (format and architecture).
+    default_folders: Vec<DefaultFolderAnswer>,
 }
 
 impl Host for DesktopHost {
@@ -521,10 +537,21 @@ impl Host for DesktopHost {
 
     fn pick_folder(&mut self, initial: Option<&str>) -> Option<String> {
         let mut dialog = rfd::FileDialog::new();
-        if let Some(folder) = initial.filter(|p| std::path::Path::new(p).is_dir()) {
+        if let Some(folder) = nearest_existing_folder(initial) {
             dialog = dialog.set_directory(folder);
         }
         dialog.pick_folder().and_then(|p| p.to_str().map(str::to_string))
+    }
+
+    fn default_install_folder(&mut self, kind: artcraft_launcher_core::PackageKind, arch: Option<artcraft_launcher_core::Arch>) -> Option<String> {
+        if let Some((_, answer)) = self.default_folders.iter().find(|(question, _)| *question == (kind, arch)) {
+            return answer.clone();
+        }
+        let answer = artcraft_launcher_native::paths::Paths::new().ok().and_then(|paths| {
+            artcraft_launcher_native::install::default_folder(kind, arch, &paths).and_then(|folder| folder.to_str().map(str::to_string))
+        });
+        self.default_folders.push(((kind, arch), answer.clone()));
+        answer
     }
 
     fn reduce_motion(&self) -> bool {
@@ -576,7 +603,7 @@ impl Launcher {
             system_theme: system_theme::Monitor::default(),
             ui: LauncherUi::new(&windowless, backend, Settings::default()),
             tray: None,
-            host: DesktopHost { tray: false, quit: false },
+            host: DesktopHost { tray: false, quit: false, default_folders: Vec::new() },
             starts,
             windowless,
             run_again,
@@ -720,6 +747,9 @@ impl Launcher {
 struct Shell<'a> {
     launcher: &'a mut Launcher,
     window_hides: bool,
+    /// Whether the launcher last showed its window or put it away. On macOS the Dock, Finder and
+    /// ⌘Tab can bring the window back without the launcher knowing; that only matters for the
+    /// tray's left-click toggle, which macOS never sends, as a left click opens the tray menu.
     visible: bool,
     quitting: bool,
     /// The "show on the current desktop" setting last applied to the window (macOS).
@@ -733,7 +763,13 @@ impl<'a> Shell<'a> {
         // Started hidden at login but there's no tray to come back from: show the window.
         let visible = !hidden || launcher.tray.is_none();
         let mut shell = Self { launcher, window_hides, visible: true, quitting: false, applied_follow: None };
-        if !visible {
+        if !visible && window_hides {
+            // Started in the tray: the window stays out of sight. On macOS this doesn't hide the
+            // app as `put_away` does, since the app is still being activated as it starts, which
+            // would unhide it, window and all.
+            shell.visible = false;
+            cc.egui_ctx.send_viewport_cmd(egui::ViewportCommand::Visible(false));
+        } else if !visible {
             shell.put_away(&cc.egui_ctx);
         } else if hidden {
             cc.egui_ctx.send_viewport_cmd(egui::ViewportCommand::Visible(true));
@@ -750,6 +786,8 @@ impl<'a> Shell<'a> {
             let on = self.launcher.ui.settings.show_on_current_desktop;
             spaces::follow_current_desktop(on);
             self.applied_follow = Some(on);
+            // Back from `put_away`, which hides the whole app here.
+            hiding::unhide();
         }
         if self.window_hides {
             ctx.send_viewport_cmd(egui::ViewportCommand::Visible(true));
@@ -761,10 +799,14 @@ impl<'a> Shell<'a> {
         }
     }
 
-    /// Puts the window away in the tray: hidden where it can hide, closed where it can't.
+    /// Puts the window away in the tray: hidden where it can hide, closed where it can't. On macOS
+    /// the whole app hides, so its Dock icon brings the window back (`hiding`).
     fn put_away(&mut self, ctx: &egui::Context) {
         if self.window_hides {
             self.visible = false;
+            #[cfg(target_os = "macos")]
+            hiding::hide();
+            #[cfg(not(target_os = "macos"))]
             ctx.send_viewport_cmd(egui::ViewportCommand::Visible(false));
         } else {
             self.launcher.closed_to_tray = true;
@@ -909,6 +951,17 @@ mod tests {
         let seen = Arc::new(Seen { clock: AtomicI64::new(NOW), ..Seen::default() });
         let (show, show_requests) = channel();
         (Launcher::new(Box::new(Quiet(seen.clone())), show_requests, None), show, seen)
+    }
+
+    #[test]
+    fn browse_starts_at_the_nearest_folder_that_exists() {
+        let existing = std::env::temp_dir();
+        assert_eq!(nearest_existing_folder(None), None);
+        // A default like `Program Files\ArtCraft` is often created only by the first install:
+        // Browse then starts one level up, where the eye can find it again.
+        let missing = existing.join("artcraft-launcher-does-not-exist-yet");
+        assert_eq!(nearest_existing_folder(missing.to_str()), Some(existing.clone()));
+        assert_eq!(nearest_existing_folder(existing.to_str()), Some(existing));
     }
 
     #[test]

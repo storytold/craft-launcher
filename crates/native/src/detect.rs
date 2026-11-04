@@ -67,6 +67,9 @@ fn from_manifest(app: &CraftApp, manifest: &Manifest) -> Option<Installed> {
         source: InstallSource::Launcher,
         location: rec.path.display().to_string(),
         package: None,
+        externally_managed: false,
+        origin: None,
+        installation: None,
     })
 }
 
@@ -88,7 +91,8 @@ pub(crate) fn appimage_version(name: &str, stems: &[&str]) -> Option<Option<Stri
     (parsed.kind == artcraft_launcher_core::PackageKind::AppImage && parsed.token.starts_with("linux-")).then_some(Some(parsed.version))
 }
 
-/// Who our Windows Installer packages name as their publisher.
+/// Who our Windows Installer packages name as their publisher. A community app's names its own
+/// ([`CraftApp::msi_publisher`]).
 #[cfg_attr(not(windows), allow(dead_code))]
 const PUBLISHER: &str = "Learning Machines LLC";
 
@@ -96,7 +100,7 @@ const PUBLISHER: &str = "Learning Machines LLC";
 /// installers have registered.
 #[cfg_attr(not(windows), allow(dead_code))]
 fn is_installer_entry(app: &CraftApp, display_name: &str, publisher: &str) -> bool {
-    publisher == PUBLISHER && app.names().any(|n| n == display_name)
+    publisher == app.msi_publisher.unwrap_or(PUBLISHER) && app.names().any(|n| n == display_name)
 }
 
 /// Where a Windows install of `app` may keep its exe, in the order to try: the entry's
@@ -183,7 +187,9 @@ pub mod macos {
     pub fn read_bundle(app: &CraftApp, path: &Path) -> Option<Installed> {
         let plist = plist::Value::from_file(path.join("Contents/Info.plist")).ok()?;
         let dict = plist.as_dictionary()?;
-        if dict.get("CFBundleIdentifier")?.as_string()? != app.bundle_id() {
+        // Its current bundle id or an older one (SolidCraft was ai.storyteller.solidcraft).
+        let id = dict.get("CFBundleIdentifier")?.as_string()?;
+        if !app.bundle_ids().any(|b| b == id) {
             return None;
         }
         // `<App>Version` carries the full version including a pre-release suffix;
@@ -191,7 +197,26 @@ pub mod macos {
         let full_key = format!("{}Version", app.name);
         let text =
             [full_key.as_str(), "CFBundleShortVersionString", "CFBundleVersion"].iter().find_map(|k| dict.get(k).and_then(plist::Value::as_string));
-        Some(Installed { version: text.and_then(version::parse), source: InstallSource::MacApp, location: path.display().to_string(), package: None })
+        Some(Installed {
+            version: text.and_then(version::parse),
+            source: InstallSource::MacApp,
+            location: path.display().to_string(),
+            package: None,
+            externally_managed: false,
+            origin: None,
+            installation: None,
+        })
+    }
+}
+
+/// Newest version first; an entry with no version comes after every entry with one.
+#[cfg(any(windows, test))]
+fn newest_first(a: Option<&version::Version>, b: Option<&version::Version>) -> std::cmp::Ordering {
+    match (b, a) {
+        (Some(x), Some(y)) => version::compare(x, y),
+        (Some(_), None) => std::cmp::Ordering::Greater,
+        (None, Some(_)) => std::cmp::Ordering::Less,
+        (None, None) => std::cmp::Ordering::Equal,
     }
 }
 
@@ -256,6 +281,19 @@ pub mod windows {
         crate::msi_context::single_scope(scopes)
     }
 
+    /// How an exe path is stored in `Installed::location`. One function builds it for `detect` and for
+    /// the comparison below, so the two can never disagree on spelling.
+    fn location_text(exe: &std::path::Path) -> String {
+        exe.display().to_string()
+    }
+
+    /// Whether `location` is the exe the record `product_code` resolves in its own scope. False for
+    /// a path that only the launch fallback (`exe_in_any_scope`) found, so an update never takes its
+    /// folder from another scope.
+    pub fn location_is_in_record_scope(app: &CraftApp, product_code: &str, location: &str) -> bool {
+        msi_installs(app).into_iter().find(|m| m.product_code == product_code).and_then(|m| m.exe).is_some_and(|exe| location_text(&exe) == location)
+    }
+
     /// Every Windows Installer entry for `app`, newest first.
     pub fn msi_installs(app: &CraftApp) -> Vec<MsiInstall> {
         let mut out = Vec::new();
@@ -279,12 +317,7 @@ pub mod windows {
                 out.push(MsiInstall { product_code: code, version, exe, scope: record_context(hive) });
             }
         }
-        out.sort_by(|a, b| match (&b.version, &a.version) {
-            (Some(x), Some(y)) => version::compare(x, y),
-            (Some(_), None) => std::cmp::Ordering::Less,
-            (None, Some(_)) => std::cmp::Ordering::Greater,
-            (None, None) => std::cmp::Ordering::Equal,
-        });
+        out.sort_by(|a, b| super::newest_first(a.version.as_ref(), b.version.as_ref()));
         out
     }
 
@@ -332,22 +365,81 @@ pub mod windows {
             }
             roots
         };
-        let launcher_folders = suite_folders(app, &roots);
-        if let Some(found) = launcher_folders.iter().find_map(|dir| exe_candidates(app, Some(dir), &[]).into_iter().find(|p| p.exists())) {
-            return Some(found);
+        exe_in_roots(app, roots)
+    }
+
+    /// Where the exe may be under the given install roots, best first: the launcher's own folder, then
+    /// the `ArtCraft` suite folder of each root, then the bare roots (older installs). Not checked on
+    /// disk.
+    fn candidates_in_roots(app: &CraftApp, roots: &[PathBuf]) -> Vec<PathBuf> {
+        let mut out: Vec<PathBuf> = suite_folders(app, roots).iter().flat_map(|dir| exe_candidates(app, Some(dir), &[])).collect();
+        let mut dirs: Vec<PathBuf> = roots.iter().map(|root| root.join("ArtCraft")).collect();
+        dirs.extend(roots.iter().cloned());
+        out.extend(exe_candidates(app, None, &dirs));
+        out
+    }
+
+    /// The first exe under the given install roots.
+    pub(super) fn exe_in_roots(app: &CraftApp, roots: Vec<PathBuf>) -> Option<PathBuf> {
+        candidates_in_roots(app, &roots).into_iter().find(|p| p.exists())
+    }
+
+    /// Every exe under the given install roots, in the order `exe_in_roots` prefers them.
+    pub(super) fn exe_all_in_roots(app: &CraftApp, roots: Vec<PathBuf>) -> Vec<PathBuf> {
+        candidates_in_roots(app, &roots).into_iter().filter(|p| p.exists()).collect()
+    }
+
+    /// The app's exe directly in `folder`, under any name it has shipped as.
+    pub(super) fn exe_in_folder(app: &CraftApp, folder: &std::path::Path) -> Option<PathBuf> {
+        exe_candidates(app, Some(folder), &[]).into_iter().find(|p| p.exists())
+    }
+
+    /// Last resort for opening an app whose uninstall record names no folder and whose exe is not in
+    /// the record's own scope. The package records its folder (`InstallDir`) in the hive of the account
+    /// that installed it, which need not be the hive of its uninstall record: a per-user install can
+    /// leave a per-machine record. So the folder any hive or view recorded is tried first (this finds
+    /// a custom folder), then the usual folders of every scope. This only decides which exe "Open"
+    /// runs and where "Show in folder" goes. An update never takes its folder from here
+    /// (`location_is_in_record_scope`), and the record's scope is unchanged. Every candidate is
+    /// collected and the one whose own version is the record's is chosen, so a leftover older copy in
+    /// another scope is not opened under the newer record's version (`pick_candidate`).
+    fn exe_in_any_scope(app: &CraftApp, version: Option<&version::Version>) -> Option<PathBuf> {
+        let mut found: Vec<PathBuf> =
+            UNINSTALL_ROOTS.into_iter().filter_map(|(hive, flags)| exe_in_folder(app, &install_dir(app, hive, flags)?)).collect();
+        let mut roots: Vec<PathBuf> = std::env::var_os("LOCALAPPDATA").map(|local| PathBuf::from(local).join("Programs")).into_iter().collect();
+        for var in ["ProgramW6432", "ProgramFiles", "ProgramFiles(x86)"] {
+            if let Some(pf) = std::env::var_os(var).map(PathBuf::from)
+                && !roots.contains(&pf)
+            {
+                roots.push(pf);
+            }
         }
-        let mut candidates: Vec<PathBuf> = roots.iter().map(|root| root.join("ArtCraft")).collect();
-        candidates.extend(roots);
-        exe_candidates(app, None, &candidates).into_iter().find(|p| p.exists())
+        found.extend(exe_all_in_roots(app, roots));
+        pick_candidate(found, version, executable_version)
+    }
+
+    /// The first candidate whose version is `wanted`; with no match (or no version to match, or exes
+    /// without version info) the first candidate, in the order they were found.
+    pub(super) fn pick_candidate(
+        candidates: Vec<PathBuf>,
+        wanted: Option<&version::Version>,
+        version_of: impl Fn(&std::path::Path) -> Option<version::Version>,
+    ) -> Option<PathBuf> {
+        let matching = wanted.and_then(|want| candidates.iter().find(|c| version_of(c).as_ref() == Some(want)));
+        matching.or_else(|| candidates.first()).cloned()
     }
 
     pub fn detect(app: &CraftApp) -> Option<Installed> {
         let m = msi_installs(app).into_iter().next()?;
+        let location = m.exe.or_else(|| exe_in_any_scope(app, m.version.as_ref())).map_or_else(|| app.name.to_string(), |p| location_text(&p));
         Some(Installed {
             version: m.version,
             source: InstallSource::Msi,
-            location: m.exe.map_or_else(|| app.name.to_string(), |p| p.display().to_string()),
+            location,
             package: Some(m.product_code),
+            externally_managed: false,
+            origin: None,
+            installation: None,
         })
     }
 }
@@ -373,32 +465,61 @@ pub mod linux {
         };
         let t = Duration::from_secs(10);
         let mut out = Vec::new();
-        let mut add = |manager, list: Vec<(String, String)>| {
-            out.extend(list.into_iter().filter(|(n, _)| ours(n)).map(|(name, version)| Package { manager, name, version }));
+        let mut add = |manager, user, list: Vec<(String, String)>| {
+            out.extend(list.into_iter().filter(|(n, _)| ours(n)).map(|(name, version)| Package {
+                manager,
+                name,
+                version,
+                user,
+                origin: None,
+                installation: None,
+            }));
         };
         if let Some(list) = capture("dpkg-query", &["-W", "-f", "${Package}|${db:Status-Status}|${Version}\n"], t) {
-            add(InstallSource::Deb, packages::parse_dpkg(&list));
+            add(InstallSource::Deb, false, packages::parse_dpkg(&list));
         }
         if let Some(list) = capture("rpm", &["-qa", "--qf", "%{NAME}|%{VERSION}\n"], t) {
-            add(InstallSource::Rpm, packages::parse_rpm(&list));
+            add(InstallSource::Rpm, false, packages::parse_rpm(&list));
         }
         // Only run `pacman` where its database exists: elsewhere `pacman` on PATH may be an unrelated program
         // (the Pac-Man game in /usr/games on Debian-family systems).
         if has_pacman_db()
             && let Some(list) = capture("pacman", &["-Q"], t)
         {
-            add(InstallSource::Pacman, packages::parse_pacman(&list));
+            add(InstallSource::Pacman, false, packages::parse_pacman(&list));
         }
         let arch = format!("--arch={}", std::env::consts::ARCH);
-        if let Some(list) = crate::process::capture_flatpak(&["list", "--app", &arch, "--columns=application,version"], t) {
-            let mut flatpaks = packages::parse_flatpak_list(&list);
-            // Bundles built from a release tarball often list no version: ask Flatpak directly.
-            for (id, version) in flatpaks.iter_mut().filter(|(id, v)| v.is_empty() && id.starts_with("ai.storyteller.")) {
-                if let Some(v) = crate::process::capture_flatpak(&["info", &arch, id], t).as_deref().and_then(packages::parse_flatpak_info) {
-                    *version = v;
+        // User installs are marked so `packages::find` reads the user copy the launcher updates, not a
+        // stale system one (#881). The unscoped list after it still covers every system installation,
+        // named ones included (`--system` is only the default one).
+        let mut user_ids = Vec::new();
+        for scope in [&["--user"][..], &[]] {
+            let list_args = [&["list", "--app"][..], scope, &[&arch, "--columns=application,version,origin,installation"]].concat();
+            if let Some(list) = crate::process::capture_flatpak(&list_args, t) {
+                let mut flatpaks = packages::parse_flatpak_list_with_origin(&list);
+                // The unscoped list repeats the user installs: the user pass already has them.
+                flatpaks.retain(|(id, _, _, _)| !user_ids.contains(id));
+                if !scope.is_empty() {
+                    user_ids.extend(flatpaks.iter().map(|(id, _, _, _)| id.clone()));
                 }
+                // Bundles built from a release tarball often list no version: ask Flatpak directly.
+                for (id, version, _, installation) in flatpaks
+                    .iter_mut()
+                    .filter(|(id, v, _, _)| v.is_empty() && artcraft_launcher_core::SUITE.iter().any(|a| a.bundle_ids().any(|b| b == *id)))
+                {
+                    let scope_arg = packages::flatpak_scope(if scope.is_empty() { installation.as_deref() } else { Some("user") });
+                    let info_args = ["info", &scope_arg, &arch, id];
+                    if let Some(v) = crate::process::capture_flatpak(&info_args, t).as_deref().and_then(packages::parse_flatpak_info) {
+                        *version = v;
+                    }
+                }
+                let is_user = !scope.is_empty();
+                out.extend(flatpaks.into_iter().filter(|(n, _, _, _)| ours(n)).map(|(name, version, origin, installation)| {
+                    let user_install = is_user || installation.as_deref() == Some("user");
+                    let resolved_installation = installation.or_else(|| if user_install { Some("user".into()) } else { Some("system".into()) });
+                    Package { manager: InstallSource::Flatpak, name, version, user: user_install, origin, installation: resolved_installation }
+                }));
             }
-            add(InstallSource::Flatpak, flatpaks);
         }
         out
     }
@@ -418,11 +539,7 @@ pub mod linux {
 
     /// Where a package put the app's binary: on `PATH`, else `/usr/bin/<id>`.
     fn binary_on_path(id: &str) -> String {
-        std::env::var_os("PATH")
-            .and_then(|path| std::env::split_paths(&path).map(|d| d.join(id)).find(|p| p.is_file()))
-            .unwrap_or_else(|| PathBuf::from("/usr/bin").join(id))
-            .display()
-            .to_string()
+        crate::process::which(id).unwrap_or_else(|| PathBuf::from("/usr/bin").join(id)).display().to_string()
     }
 
     /// `~/Applications`, where the launcher puts AppImages (the AppImageLauncher convention).
@@ -471,14 +588,42 @@ pub mod linux {
         appimages_in(app, &appimage_dirs())
     }
 
+    /// How the app is installed, in this order: an AppImage the launcher put down, a package
+    /// (deb, rpm, pacman or Flatpak), else a binary found on disk.
     pub fn detect(app: &CraftApp, snapshot: &Snapshot) -> Option<Installed> {
         if let Some((path, version)) = appimages(app).into_iter().next() {
-            return Some(Installed { version, source: InstallSource::AppImage, location: path.display().to_string(), package: None });
+            return Some(Installed {
+                version,
+                source: InstallSource::AppImage,
+                location: path.display().to_string(),
+                package: None,
+                externally_managed: false,
+                origin: None,
+                installation: None,
+            });
         }
         let order = [InstallSource::Deb, InstallSource::Rpm, InstallSource::Pacman, InstallSource::Flatpak];
         if let Some(p) = packages::find(app, &snapshot.packages, &order) {
-            let location = if p.manager == InstallSource::Flatpak { app.bundle_id() } else { binary_on_path(app.id) };
-            return Some(Installed { version: packages::version_of(p), source: p.manager, location, package: Some(p.name.clone()) });
+            // A Flatpak runs under the id it was found under, which may be an older one.
+            let location = if p.manager == InstallSource::Flatpak { p.name.clone() } else { binary_on_path(app.id) };
+            let externally_managed = p.manager == InstallSource::Flatpak
+                && p.origin.as_deref().is_none_or(|origin| {
+                    if packages::is_flatpark_origin(origin) {
+                        return true;
+                    }
+                    let scope = packages::flatpak_scope(p.installation.as_deref());
+                    crate::process::capture_flatpak(&["remotes", &scope, "--show-disabled", "--columns=name,url"], Duration::from_secs(10))
+                        .is_none_or(|remotes| packages::remote_manages_flatpak(origin, &remotes))
+                });
+            return Some(Installed {
+                version: packages::version_of(p),
+                source: p.manager,
+                location,
+                package: Some(p.name.clone()),
+                externally_managed,
+                origin: p.origin.clone(),
+                installation: p.installation.clone(),
+            });
         }
         detect_system_install(app)
     }
@@ -489,15 +634,26 @@ pub mod linux {
     /// to whatever installed it, since it can't tell which package manager that was.
     fn detect_system_install(app: &CraftApp) -> Option<Installed> {
         let bin = find_binary(app.id)?;
-        Some(Installed { version: binary_version(&bin, app), source: InstallSource::Binary, location: bin.display().to_string(), package: None })
+        Some(Installed {
+            version: binary_version(&bin, app),
+            source: InstallSource::Binary,
+            location: bin.display().to_string(),
+            package: None,
+            externally_managed: false,
+            origin: None,
+            installation: None,
+        })
     }
 
+    /// The app's binary on `PATH`, else in `/usr/bin`, `/usr/local/bin` or `~/.local/bin`.
     fn find_binary(id: &str) -> Option<PathBuf> {
-        let on_path = std::env::var_os("PATH").and_then(|path| std::env::split_paths(&path).map(|d| d.join(id)).find(|p| p.is_file()));
+        let on_path = crate::process::which(id);
         let usual = ["/usr/bin", "/usr/local/bin"].into_iter().map(PathBuf::from).chain(dirs::home_dir().map(|h| h.join(".local/bin")));
         on_path.or_else(|| usual.map(|d| d.join(id)).find(|p| p.is_file()))
     }
 
+    /// The version `bin --version` prints, or `None` when it can't be started, doesn't finish
+    /// within 5 seconds (it is then killed), exits with an error, or prints no version.
     pub(crate) fn binary_version(bin: &Path, app: &CraftApp) -> Option<version::Version> {
         let out = crate::process::capture(bin.to_str()?, &["--version"], Duration::from_secs(5))?;
         parse_cli_version(out.trim(), app)
@@ -516,7 +672,15 @@ pub mod freebsd {
         if !bin.exists() {
             return None;
         }
-        Some(Installed { version: binary_version(&bin, app), source: InstallSource::Binary, location: bin.display().to_string(), package: None })
+        Some(Installed {
+            version: binary_version(&bin, app),
+            source: InstallSource::Binary,
+            location: bin.display().to_string(),
+            package: None,
+            externally_managed: false,
+            origin: None,
+            installation: None,
+        })
     }
 
     /// `<app> --version` prints `<app> 0.5.0 (sha, date)`.
@@ -541,6 +705,9 @@ mod linux_tests {
         };
         assert!(ours("photocraft"));
         assert!(ours("ai.storyteller.photocraft"));
+        assert!(ours("io.tangencylabs.solidcraft"));
+        assert!(ours("ai.storyteller.solidcraft"));
+        assert!(ours("ai.storyteller.solvecraft"));
         assert!(!ours("unrelated-package"));
     }
 
@@ -599,6 +766,21 @@ mod tests {
     use artcraft_launcher_core::SUITE;
 
     use super::*;
+
+    #[test]
+    fn msi_entries_sort_newest_first_and_unversioned_last() {
+        use std::cmp::Ordering::{Equal, Greater, Less};
+        let (old, new) = (version::parse("0.4.0"), version::parse("0.5.0"));
+        // Each arm by hand: the sort below never asks about None against Some in that order.
+        assert_eq!(newest_first(new.as_ref(), old.as_ref()), Less);
+        assert_eq!(newest_first(old.as_ref(), new.as_ref()), Greater);
+        assert_eq!(newest_first(new.as_ref(), None), Less);
+        assert_eq!(newest_first(None, new.as_ref()), Greater);
+        assert_eq!(newest_first(None, None), Equal);
+        let mut versions = vec![None, old.clone(), new.clone(), None];
+        versions.sort_by(|a, b| newest_first(a.as_ref(), b.as_ref()));
+        assert_eq!(versions, vec![new, old, None, None]);
+    }
 
     /// A file without VERSIONINFO, or one that isn't there, has no version.
     #[cfg(windows)]
@@ -816,6 +998,14 @@ mod tests {
     }
 
     #[test]
+    fn solidcraft_matches_its_own_installer_publisher_only() {
+        let sc = CraftApp::by_id("solidcraft").unwrap();
+        assert!(is_installer_entry(sc, "SolidCraft", "SolidCraft contributors"));
+        assert!(!is_installer_entry(sc, "SolidCraft", LEARNING_MACHINES));
+        assert!(!is_installer_entry(CraftApp::by_id("cadcraft").unwrap(), "CADCraft", "SolidCraft contributors"));
+    }
+
+    #[test]
     fn pdfcraft_exe_is_sought_under_every_name_it_has_shipped_as() {
         let pdf = CraftApp::by_id("pdfcraft").unwrap();
         let location = PathBuf::from(r"D:\Apps\PrintCraft");
@@ -835,15 +1025,79 @@ mod tests {
         let roots = roots();
         let location = PathBuf::from(r"D:\Apps\Somewhere");
         for a in SUITE.iter().filter(|a| a.former_ids.is_empty() && a.former_names.is_empty()) {
-            assert!(is_installer_entry(a, a.name, LEARNING_MACHINES), "{}", a.name);
+            let publisher = a.msi_publisher.unwrap_or(LEARNING_MACHINES);
+            assert!(is_installer_entry(a, a.name, publisher), "{}", a.name);
             assert!(!is_installer_entry(a, a.name, "Some Other Publisher"), "{}", a.name);
-            assert!(!is_installer_entry(a, &a.name.to_lowercase(), LEARNING_MACHINES), "{}", a.name);
+            assert!(!is_installer_entry(a, &a.name.to_lowercase(), publisher), "{}", a.name);
             let exe = format!("{}.exe", a.id);
             let in_program_files: Vec<PathBuf> = roots.iter().map(|r| r.join(a.name).join(&exe)).collect();
             assert_eq!(exe_candidates(a, None, &roots), in_program_files);
             let with_location: Vec<PathBuf> = std::iter::once(location.join(&exe)).chain(in_program_files).collect();
             assert_eq!(exe_candidates(a, Some(&location), &roots), with_location);
         }
+    }
+
+    /// An app unpacked into the suite folder of a root is found from that root alone, so "Open" works
+    /// for a record whose folder is not the one its scope would name.
+    #[cfg(windows)]
+    #[test]
+    fn an_exe_in_the_suite_folder_of_any_root_is_found() {
+        let dir = tempfile::tempdir().unwrap();
+        let deck = CraftApp::by_id("deckcraft").unwrap();
+        let folder = dir.path().join("ArtCraft").join("DeckCraft");
+        std::fs::create_dir_all(&folder).unwrap();
+        std::fs::write(folder.join("deckcraft.exe"), "x").unwrap();
+        assert_eq!(windows::exe_in_roots(deck, vec![dir.path().to_path_buf()]), Some(folder.join("deckcraft.exe")));
+        assert_eq!(windows::exe_in_roots(deck, vec![dir.path().join("elsewhere")]), None);
+    }
+
+    /// A folder the package recorded is searched as it is, whatever it is called, so an app installed
+    /// to a folder of the user's choosing is found.
+    #[cfg(windows)]
+    #[test]
+    fn an_exe_in_a_custom_recorded_folder_is_found() {
+        let dir = tempfile::tempdir().unwrap();
+        let deck = CraftApp::by_id("deckcraft").unwrap();
+        let custom = dir.path().join("My Slides");
+        std::fs::create_dir_all(&custom).unwrap();
+        assert_eq!(windows::exe_in_folder(deck, &custom), None);
+        std::fs::write(custom.join("deckcraft.exe"), "x").unwrap();
+        assert_eq!(windows::exe_in_folder(deck, &custom), Some(custom.join("deckcraft.exe")));
+    }
+
+    /// With two copies in different scopes, the one that is the record's version is chosen, wherever it
+    /// was found; with no match, the first found.
+    #[cfg(windows)]
+    #[test]
+    fn the_copy_with_the_records_version_is_the_one_opened() {
+        let v = |s: &str| version::parse(s);
+        let old = PathBuf::from(r"D:\Old\deckcraft.exe");
+        let new = PathBuf::from(r"C:\Users\a\AppData\Local\Programs\ArtCraft\DeckCraft\deckcraft.exe");
+        let version_of = |p: &std::path::Path| if p == old { v("0.11.1") } else { v("0.12.0") };
+        let both = vec![old.clone(), new.clone()];
+        assert_eq!(windows::pick_candidate(both.clone(), v("0.12.0").as_ref(), version_of), Some(new.clone()));
+        assert_eq!(windows::pick_candidate(both.clone(), v("0.11.1").as_ref(), version_of), Some(old.clone()));
+        assert_eq!(windows::pick_candidate(both.clone(), v("0.99.0").as_ref(), version_of), Some(old.clone()));
+        assert_eq!(windows::pick_candidate(both, None, version_of), Some(old.clone()));
+        assert_eq!(windows::pick_candidate(Vec::new(), v("0.12.0").as_ref(), version_of), None);
+    }
+
+    /// Every exe under the given roots, in the order `exe_in_roots` prefers them, so a version match
+    /// can see a copy that an earlier root's older copy would otherwise hide.
+    #[cfg(windows)]
+    #[test]
+    fn every_root_is_searched_for_a_version_match() {
+        let dir = tempfile::tempdir().unwrap();
+        let deck = CraftApp::by_id("deckcraft").unwrap();
+        let (a, b) = (dir.path().join("a"), dir.path().join("b"));
+        let exes: Vec<PathBuf> = [&a, &b].iter().map(|r| r.join("ArtCraft").join("DeckCraft").join("deckcraft.exe")).collect();
+        for exe in &exes {
+            std::fs::create_dir_all(exe.parent().unwrap()).unwrap();
+            std::fs::write(exe, "x").unwrap();
+        }
+        assert_eq!(windows::exe_all_in_roots(deck, vec![a.clone(), b.clone()]), exes);
+        assert_eq!(windows::exe_in_roots(deck, vec![a, b]), exes.first().cloned());
+        assert!(windows::exe_all_in_roots(deck, vec![dir.path().join("none")]).is_empty());
     }
 
     #[test]

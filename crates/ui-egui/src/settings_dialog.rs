@@ -159,7 +159,7 @@ impl LauncherUi {
         if pref.needs_cjk_font() && !theme::cjk_font_available(pref) {
             // In English on purpose: the language asked for can't be drawn.
             let text = "No font for this language was found on this system, so the interface stays in English. \
-                        Installing one (for example Noto Sans CJK) and restarting fixes it.";
+                        Installing one (for example Noto Sans CJK or Noto Sans Georgian) and restarting fixes it.";
             ui.add(egui::Label::new(RichText::new(text).size(12.0).color(t.warn)).wrap());
             ui.add_space(14.0);
         }
@@ -169,6 +169,8 @@ impl LauncherUi {
     /// backend manages apps runs a pass over pending updates at once. The automatic-update checkbox
     /// is hidden on hosts that cannot manage apps.
     fn settings_updates(&mut self, ui: &mut Ui) {
+        let launcher_id = artcraft_launcher_core::catalog::LAUNCHER_ID;
+        self.request_versions(launcher_id);
         sheet::panel(ui, tl!("Updates"), |ui| {
             let mut every = self.settings.check_every;
             row(ui, tl!("Check for updates"), 150.0, &mut |ui, label| {
@@ -192,6 +194,10 @@ impl LauncherUi {
             }
             ui.checkbox(&mut self.settings.notify, tl!("Notify me when an installed app has an update"));
             ui.checkbox(&mut self.settings.prereleases, tl!("Include pre-releases (betas and release candidates)"));
+            row(ui, tl!("Launcher version"), 200.0, &mut |ui, label| {
+                self.version_combo(ui, launcher_id, &artcraft_launcher_core::catalog::LAUNCHER, 200.0, label);
+            });
+            self.launcher_version_notes(ui);
         });
     }
 
@@ -203,7 +209,8 @@ impl LauncherUi {
         sheet::panel(ui, tl!("Default install folder"), |ui| {
             if self.custom_install_folders() {
                 let mut folder = self.settings.install_locations.root.clone().unwrap_or_default();
-                Self::folder_field(ui, &mut folder, None, host);
+                let default = self.suite_default_folder(host);
+                Self::folder_field(ui, &mut folder, default.as_deref(), host);
                 self.settings.install_locations.root = (!folder.is_empty()).then_some(folder);
                 note(ui, tl!("New installs use this folder. Updates stay in their current location."));
                 if self.platform.is_some_and(|p| p.os == Os::Linux) {
@@ -354,6 +361,7 @@ impl LauncherUi {
             ui.horizontal(|ui| {
                 widgets::cells(ui, &mut theme_choice, &ThemeChoice::ALL.map(|c| (c, Cell { label: c.label(), tip: c.label(), count: None })));
             });
+            ui.checkbox(&mut self.settings.hide_community_apps, tl!("Hide community apps"));
         });
         self.settings.theme = theme_choice;
     }

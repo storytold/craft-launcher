@@ -12,6 +12,7 @@ use artcraft_launcher_core::protocol::Command;
 use egui::{Color32, CornerRadius, Id, Margin, Order, Rect, RichText, Sense, Stroke, Ui, emath::easing, pos2, vec2};
 
 use crate::app::LauncherUi;
+use crate::i18n::{current, tr_ctx};
 use crate::model::AppEntry;
 use crate::theme::{self, Tokens, rgb, tint};
 use crate::views::date_text;
@@ -377,7 +378,7 @@ impl LauncherUi {
                     ui.set_width(left_w);
                     ui.spacing_mut().item_spacing.y = 8.0;
                     for p in details.paragraphs() {
-                        ui.add(egui::Label::new(RichText::new(p).size(14.5).color(t.ink)).wrap());
+                        ui.add(egui::Label::new(RichText::new(tr_ctx(current(), details.id, p)).size(14.5).color(t.ink)).wrap());
                     }
                     ui.add_space(14.0);
                     features(ui, details, entry.app, t);
@@ -401,7 +402,7 @@ impl LauncherUi {
                     self.gallery(ui, details, t, app_color);
                     ui.add_space(8.0);
                     for p in details.paragraphs() {
-                        ui.add(egui::Label::new(RichText::new(p).size(14.5).color(t.ink)).wrap());
+                        ui.add(egui::Label::new(RichText::new(tr_ctx(current(), details.id, p)).size(14.5).color(t.ink)).wrap());
                     }
                 });
                 ui.vertical(|ui| {
@@ -419,7 +420,7 @@ impl LauncherUi {
             self.gallery(ui, details, t, app_color);
             ui.add_space(8.0);
             for p in details.paragraphs() {
-                ui.add(egui::Label::new(RichText::new(p).size(14.5).color(t.ink)).wrap());
+                ui.add(egui::Label::new(RichText::new(tr_ctx(current(), details.id, p)).size(14.5).color(t.ink)).wrap());
             }
             ui.add_space(14.0);
             features(ui, details, entry.app, t);
@@ -501,7 +502,8 @@ impl LauncherUi {
 
         let wordmark_exp_h = ui.fonts_mut(|f| f.row_height(&egui::FontId::new(theme::PAGE_TITLE, theme::display())));
         let wordmark_cmp_h = ui.fonts_mut(|f| f.row_height(&egui::FontId::new(COMPACT_TITLE, theme::display())));
-        let headline_h = ui.painter().layout(details.headline.to_string(), egui::FontId::proportional(15.0), t.ink, text_w).size().y;
+        let headline = tr_ctx(current(), details.id, details.headline);
+        let headline_h = ui.painter().layout(headline.to_string(), egui::FontId::proportional(15.0), t.ink, text_w).size().y;
         let version = crate::views::version_line(entry, &status);
         let has_version = !version.trim().is_empty();
         let version_h = if has_version { 5.0 + ui.fonts_mut(|f| f.row_height(&egui::FontId::proportional(12.5))) } else { 0.0 };
@@ -657,7 +659,7 @@ impl LauncherUi {
                 ui.set_opacity(base_opacity * fade);
                 ui.set_width(text_w);
                 ui.spacing_mut().item_spacing.y = 5.0;
-                ui.add(egui::Label::new(RichText::new(details.headline).size(15.0).color(t.ink)).wrap());
+                ui.add(egui::Label::new(RichText::new(tr_ctx(current(), details.id, details.headline)).size(15.0).color(t.ink)).wrap());
                 if has_version {
                     ui.label(RichText::new(&geom.version).size(12.5).color(t.muted));
                 }
@@ -925,9 +927,9 @@ fn features(ui: &mut Ui, details: &AppDetails, app: &CraftApp, t: &Tokens) {
             ui.spacing_mut().item_spacing.y = 3.0;
             ui.horizontal(|ui| {
                 widgets::hud(ui, &format!("{:02}", i + 1), t.app_ink(app));
-                ui.label(RichText::new(f.title).size(15.0).family(theme::semibold()).color(t.ink_strong));
+                ui.label(RichText::new(tr_ctx(current(), details.id, f.title)).size(15.0).family(theme::semibold()).color(t.ink_strong));
             });
-            ui.add(egui::Label::new(RichText::new(f.text).size(13.5).color(t.muted)).wrap());
+            ui.add(egui::Label::new(RichText::new(tr_ctx(current(), details.id, f.text)).size(13.5).color(t.muted)).wrap());
         });
     }
 }
