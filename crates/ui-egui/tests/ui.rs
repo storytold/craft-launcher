@@ -901,7 +901,7 @@ fn drive_launcher(launcher: &mut LauncherUi, ctx: &egui::Context, events: Vec<eg
         events,
         ..Default::default()
     };
-    let _ = ctx.run_ui(input, |root| {
+    let mut out = ctx.run_ui(input, |root| {
         if first {
             first = false;
             root.ctx().request_discard("test: force a second pass");
@@ -909,6 +909,8 @@ fn drive_launcher(launcher: &mut LauncherUi, ctx: &egui::Context, events: Vec<eg
         launcher.logic(&root.ctx().clone(), &mut NoHost);
         launcher.ui(root, &mut NoHost);
     });
+    // Headless: no renderer consumes texture deltas (pin icons, fonts). Clear before drop.
+    out.textures_delta.clear();
 }
 
 /// Drives one pointer gesture as move, press and release over separate frames, optionally
@@ -960,7 +962,8 @@ fn drive_accesskit_click(
     two_passes: bool,
 ) {
     let screen_rect = egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(1180.0, 1200.0));
-    let _ = ctx.run_ui(egui::RawInput { screen_rect: Some(screen_rect), time: Some(time), ..Default::default() }, |_| {});
+    let mut priming = ctx.run_ui(egui::RawInput { screen_rect: Some(screen_rect), time: Some(time), ..Default::default() }, |_| {});
+    priming.textures_delta.clear();
     let passes = if two_passes { 2 } else { 1 };
     for pass in 0..passes {
         ctx.begin_pass(egui::RawInput {
@@ -982,7 +985,8 @@ fn drive_accesskit_click(
                 });
             });
         });
-        let _ = ctx.end_pass();
+        let mut out = ctx.end_pass();
+        out.textures_delta.clear();
     }
 }
 
