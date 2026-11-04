@@ -19,7 +19,7 @@ use crate::feed_throttle::{self, FeedThrottle, Outcome};
 use crate::http::{self, Http, Stop};
 use crate::install::{self, Job};
 use crate::manifest::Manifest;
-use crate::paths::Paths;
+use crate::paths::{LauncherPaths, Paths};
 use crate::process;
 use crate::source::{GitHubSource, ReleaseSource};
 
@@ -64,8 +64,9 @@ struct Shared {
     /// A detection pass is running; another request waits for the next one.
     detecting: AtomicBool,
     last_check: Mutex<Option<i64>>,
-    /// The newer ArtCraft Launcher release, once a check has found one.
-    launcher_release: Mutex<Option<Release>>,
+    /// The newer ArtCraft Launcher release, once a check has found one, with the repo that check
+    /// read it from (the feed's rename, if any): its download links must be that repo's (#764).
+    launcher_release: Mutex<Option<(Release, String)>>,
     /// How this launcher is installed, when it can replace itself. Worked out on the check thread
     /// just before a newer launcher is announced: finding out can ask the host's Flatpak, which
     /// mustn't hold up the first frame.
@@ -140,11 +141,11 @@ impl NativeBackend {
     /// `waker` is called (from any thread) whenever events are waiting; it should repaint the UI.
     pub fn new(waker: impl Fn() + Send + Sync + 'static) -> Self {
         let waker: Waker = Arc::new(waker);
-        let paths = Paths::new().unwrap_or_else(|e| {
+        let paths = crate::paths::for_launcher().unwrap_or_else(|e| {
             log::error!("{e}; keeping files in the temporary folder");
             Paths::under(&std::env::temp_dir().join("artcraft-launcher"))
         });
-        let http = match Http::new() {
+        let http = match crate::http::for_launcher() {
             Ok(h) => Some(h),
             Err(e) => {
                 log::error!("HTTPS unavailable: {e}");
@@ -413,7 +414,7 @@ impl NativeBackend {
             });
             return;
         };
-        let Some(release) = self.shared.launcher_release.lock().unwrap_or_else(PoisonError::into_inner).clone() else { return };
+        let Some((release, repo)) = self.shared.launcher_release.lock().unwrap_or_else(PoisonError::into_inner).clone() else { return };
         let stop = Arc::new(Stop::default());
         {
             let mut jobs = self.shared.jobs.lock().unwrap_or_else(PoisonError::into_inner);
@@ -440,7 +441,7 @@ impl NativeBackend {
                 claim_restart(&shared.jobs, &shared.restarting, &stop, RESTART_WAIT, &mut waiting)
             };
             let result = match http.as_ref() {
-                Some(http) => crate::self_update::update(&install, &release, platform, http, &paths, &stop, &mut phase, &last),
+                Some(http) => crate::self_update::update(&install, &release, &repo, platform, http, &paths, &stop, &mut phase, &last),
                 None => Err("secure connections aren't available on this system".into()),
             };
             drop(job);
@@ -835,7 +836,7 @@ fn sweep(
                     if let Some(used) = used {
                         sources.lock().unwrap_or_else(PoisonError::into_inner).push(used);
                     }
-                    check_app(app, latest, from, shared, paths);
+                    check_app(app, latest, from, &feed_repo(feed, app), shared, paths);
                 }
             });
         }
@@ -845,9 +846,11 @@ fn sweep(
 
 /// Publishes one app's answer to the shared state, or handles the launcher's own update check
 /// first (it doesn't appear in the grid, so it has no card of its own to publish to).
-fn check_app(app: &'static CraftApp, latest: Option<LatestRelease>, from: Origin, shared: &Arc<Shared>, paths: &Paths) {
+///
+/// `repo` is the one this check asked about for `app` (the feed's rename, if any).
+fn check_app(app: &'static CraftApp, latest: Option<LatestRelease>, from: Origin, repo: &str, shared: &Arc<Shared>, paths: &Paths) {
     if app.id == LAUNCHER_ID {
-        launcher_update(paths, latest, shared);
+        launcher_update(paths, latest, repo, shared);
         return;
     }
     let Some(latest) = latest else { return };
@@ -860,13 +863,14 @@ fn check_app(app: &'static CraftApp, latest: Option<LatestRelease>, from: Origin
     shared.emit(Event::Latest { app: app.id.to_string(), latest, from });
 }
 
-/// Offers the launcher's own update when its answer is a newer release than the running one.
-fn launcher_update(paths: &Paths, latest: Option<LatestRelease>, shared: &Arc<Shared>) {
+/// Offers the launcher's own update when its answer is a newer release than the running one,
+/// keeping `repo`, the repo it was read from, for the download's link check.
+fn launcher_update(paths: &Paths, latest: Option<LatestRelease>, repo: &str, shared: &Arc<Shared>) {
     let Some(LatestRelease::Found(r)) = latest else { return };
     let (Some(newest), Some(current)) = (r.version.as_ref(), crate::self_update::current_version()) else { return };
     if version::is_newer(newest, &current) && !crate::self_update::just_updated_to(paths, &r) {
         shared.self_install.get_or_init(crate::self_update::current);
-        *shared.launcher_release.lock().unwrap_or_else(PoisonError::into_inner) = Some(r.clone());
+        *shared.launcher_release.lock().unwrap_or_else(PoisonError::into_inner) = Some((r.clone(), repo.to_string()));
         shared.emit(Event::LauncherUpdate(r));
     }
 }
@@ -1407,7 +1411,7 @@ mod tests {
         let Some(platform) = native_platform() else { return };
         let dir = tempfile::tempdir().unwrap();
         let mut backend = backend(dir.path(), platform, Some(Arc::new(Published)));
-        backend.http = Some(Http::new().unwrap());
+        backend.http = Some(Http::new(crate::http::USER_AGENT).unwrap());
         {
             let mut options = backend.shared.options.lock().unwrap();
             options.prereleases = true; // asks the source directly, never ArtCraft's API
@@ -1519,7 +1523,7 @@ mod tests {
         let (url, hits) = serve("429 Too Many Requests");
         let dir = tempfile::tempdir().unwrap();
         let paths = Paths::under(dir.path());
-        let http = Http::new().unwrap();
+        let http = Http::new(crate::http::USER_AGENT).unwrap();
         let throttle = Mutex::new(FeedThrottle::load(&paths.feed_throttle(), crate::now()));
         assert!(matches!(fetch_feed(&http, &paths, &url, &throttle, FEED_ATTEMPTS), FeedFetch::Failed));
         assert_eq!(hits.load(Ordering::SeqCst), 1);
@@ -1535,7 +1539,7 @@ mod tests {
         let (url, hits) = serve("503 Service Unavailable");
         let dir = tempfile::tempdir().unwrap();
         let paths = Paths::under(dir.path());
-        let http = Http::new().unwrap();
+        let http = Http::new(crate::http::USER_AGENT).unwrap();
         let throttle = Mutex::new(FeedThrottle::new());
         // First load: three tries, a couple of seconds apart.
         assert!(matches!(fetch_feed(&http, &paths, &url, &throttle, FEED_ATTEMPTS), FeedFetch::Failed));
@@ -1868,7 +1872,7 @@ mod tests {
         let Some(platform) = native_platform() else { return };
         let dir = tempfile::tempdir().unwrap();
         let mut backend = backend(dir.path(), platform, Some(Arc::new(CountingGitHub::default())));
-        backend.http = Some(Http::new().unwrap());
+        backend.http = Some(Http::new(crate::http::USER_AGENT).unwrap());
         let (waker, woke) = panic_on_wake();
         Arc::get_mut(&mut backend.shared).unwrap().waker = waker;
 
@@ -1984,7 +1988,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let mut backend = backend(dir.path(), platform, Some(Arc::new(Newer)));
         // A check needs a client; with pre-releases on it asks only `Newer`, never ArtCraft's API.
-        backend.http = Some(Http::new().unwrap());
+        backend.http = Some(Http::new(crate::http::USER_AGENT).unwrap());
         backend.shared.options.lock().unwrap().prereleases = true;
         keep_file(&backend);
         assert_eq!(ready(&mut backend), Some(true));

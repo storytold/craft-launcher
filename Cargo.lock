@@ -300,8 +300,8 @@ dependencies = [
 name = "artcraft-launcher-core"
 version = "0.14.0"
 dependencies = [
+ "craft-update",
  "jiff",
- "semver",
  "serde",
  "serde_json",
 ]
@@ -323,11 +323,8 @@ dependencies = [
  "sha2",
  "tar",
  "tempfile",
- "ureq",
- "verifysign",
  "winreg",
  "winsafe",
- "zip",
 ]
 
 [[package]]
@@ -1024,7 +1021,7 @@ dependencies = [
 [[package]]
 name = "craft-update"
 version = "0.1.0"
-source = "git+https://github.com/storytold/craft-libs?rev=4323a0f90e69e6e7a064607daacc25d081f58e1d#4323a0f90e69e6e7a064607daacc25d081f58e1d"
+source = "git+https://github.com/smittie2000/craft-libs?rev=6327923b3bb81c2debaef5c2ecdd5c6b59fe204a#6327923b3bb81c2debaef5c2ecdd5c6b59fe204a"
 dependencies = [
  "chrono",
  "dunce",
@@ -6226,6 +6223,7 @@ version = "0.14.0"
 dependencies = [
  "jiff",
  "semver",
+ "sha2",
  "tempfile",
 ]
 

@@ -10,20 +10,17 @@
 pub mod backend;
 pub mod desktop_entry;
 pub mod detect;
+pub mod discord;
 pub mod feed_throttle;
 pub mod http;
 pub mod install;
 pub mod login;
-pub mod manifest;
 #[cfg(any(windows, test))]
 mod msi_context;
 pub mod packages;
 pub mod paths;
 pub mod pins;
-#[cfg(windows)]
-pub mod portable;
 pub mod process;
-pub mod proxy;
 pub mod queue;
 pub mod screenshots;
 pub mod self_update;
@@ -31,8 +28,9 @@ pub mod single_instance;
 pub mod source;
 
 pub use backend::NativeBackend;
-
-/// Unix seconds now.
-pub fn now() -> i64 {
-    std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| i64::try_from(d.as_secs()).unwrap_or(i64::MAX))
-}
+// Shared with every Craft app's installer through craft-update: the launcher's record of what it
+// installed, and the system proxy settings downloads go through.
+pub use craft_update::{manifest, now, proxy};
+// Portable zip installs on Windows.
+#[cfg(windows)]
+pub use craft_update::portable;

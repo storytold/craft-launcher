@@ -7,7 +7,7 @@ use std::path::Path;
 use artcraft_launcher_core::details::{AppDetails, MAX_SCREENSHOT_BYTES, looks_like_jpeg, screenshot_within_budget};
 
 use crate::http::Http;
-use crate::paths::{Paths, write_atomic};
+use crate::paths::{LauncherPaths, Paths, write_atomic};
 
 /// The picture saved at `saved`, if there is one and it's still a JPEG of a sane size. A damaged or
 /// swapped file is ignored, and the picture is fetched again over it.
@@ -117,7 +117,7 @@ mod tests {
     fn a_downloaded_picture_is_saved_where_it_will_be_read_from() {
         let dir = tempfile::tempdir().unwrap();
         let saved = dir.path().join("x").join("pic.jpg");
-        let http = Http::new().unwrap();
+        let http = Http::new(crate::http::USER_AGENT).unwrap();
         let (url, _) = serve(jpeg(), vec![Reply::Full]);
         assert_eq!(download(&http, &url, &saved).unwrap(), jpeg());
         assert_eq!(saved_copy(&saved), Some(jpeg()));
@@ -127,7 +127,7 @@ mod tests {
     fn what_is_not_a_picture_is_not_kept() {
         let dir = tempfile::tempdir().unwrap();
         let saved = dir.path().join("pic.jpg");
-        let http = Http::new().unwrap();
+        let http = Http::new(crate::http::USER_AGENT).unwrap();
         let (url, _) = serve(b"<html>Sign in to the Wi-Fi</html>".to_vec(), vec![Reply::Full]);
         assert_eq!(download(&http, &url, &saved), Err(Failure::Picture("the answer isn't a JPEG picture".into())));
         assert!(!saved.exists());
@@ -143,7 +143,7 @@ mod tests {
     fn a_picture_declaring_enormous_dimensions_is_refused_and_not_saved() {
         let dir = tempfile::tempdir().unwrap();
         let saved = dir.path().join("pic.jpg");
-        let http = Http::new().unwrap();
+        let http = Http::new(crate::http::USER_AGENT).unwrap();
         let (url, _) = serve(huge_jpeg(), vec![Reply::Full]);
         assert_eq!(download(&http, &url, &saved), Err(Failure::Picture("the picture's dimensions are too large".into())));
         assert!(!saved.exists());

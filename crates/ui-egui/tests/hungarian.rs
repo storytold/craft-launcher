@@ -51,6 +51,7 @@ impl Host for DesktopHost {
 fn release(id: &str, v: &str, at: i64) -> Release {
     let name = format!("{id}-{v}-macos-universal.dmg");
     Release {
+        repo: format!("storytold/{id}"),
         tag: format!("v{v}"),
         version: version::parse(v),
         name: format!("v{v}"),
