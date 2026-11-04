@@ -173,6 +173,7 @@ impl LauncherUi {
             // In English on purpose: the language asked for can't be drawn.
             let font_example = match pref.script() {
                 Some(crate::i18n::Script::Hebrew) => "Noto Sans Hebrew",
+                Some(crate::i18n::Script::Georgian) => "Noto Sans Georgian",
                 _ => "Noto Sans CJK",
             };
             let text = format!(

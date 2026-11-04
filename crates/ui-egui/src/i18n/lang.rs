@@ -7,38 +7,41 @@ use super::detect::system_lang;
 
 /// The writing system a language is drawn in, and so the system font it needs. Languages that
 /// share one can share a face; Simplified and Traditional Chinese do not (they want different
-/// faces), so each script is its own. The bundled faces have no CJK glyphs, so a language with a
-/// script borrows a system font for it (`crate::theme::cjk_font`).
+/// faces), so each script is its own. The bundled faces have no CJK or Georgian glyphs, so a
+/// language with a script borrows a system font for it (`crate::theme::cjk_font`).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Script {
     Chinese,
+    TraditionalChinese,
     Japanese,
     Hebrew,
+    Georgian,
 }
 
 impl Script {
     /// Every script a language can be written in.
-    pub const ALL: [Script; 3] = [Script::Chinese, Script::Japanese, Script::Hebrew];
+    pub const ALL: [Script; 5] = [Script::Chinese, Script::TraditionalChinese, Script::Japanese, Script::Hebrew, Script::Georgian];
 }
 
 /// One supported UI language.
 pub struct LangInfo {
-    /// Canonical BCP 47 code (`en`, `ru`, `zh-CN`, `de`, `fr`, `pt-BR`, `es`, `cs`, `pl`, `hu`, `ja`, `he`).
-    /// Also the `interfaceLanguage` value.
+    /// Canonical BCP 47 code (`en`, `ru`, `zh-CN`, `zh-TW`, `de`, `fr`, `pt-BR`, `es`, `cs`, `pl`, `hu`, `ja`,
+    /// `ka`, `he`). Also the `interfaceLanguage` value.
     pub code: &'static str,
     /// The language's name in itself, shown in the Preferences dropdown.
     pub name: &'static str,
     /// The language's name in English, shown instead where its own script can't be drawn.
     pub english_name: &'static str,
-    /// The writing system this language is drawn in, or `None` if it needs no system font.
+    /// The writing system this language is drawn in, or `None` if it needs no system font
+    /// (CJK, Georgian, Hebrew).
     pub script: Option<Script>,
     /// Whether this language is written right-to-left (Hebrew, Arabic).
     pub rtl: bool,
     /// Catalog file contents (empty for the built-in English).
     pub source: &'static str,
-    /// Plural form index for a count (English, German, Spanish and Hungarian: 0 = one, 1 = other;
-    /// Russian: 0 = one, 1 = few, 2 = many; Czech: 0 = one, 1 = few, 2 = other; Polish: 0 = one only
-    /// for 1, 1 = few, 2 = many; Hebrew: 0 = one, 1 = two, 2 = other; French: 0 = one for 0 and 1;
+    /// Plural form index for a count (English, German, Spanish, Hungarian and Georgian: 0 = one,
+    /// 1 = other; Russian: 0 = one, 1 = few, 2 = many; Czech: 0 = one, 1 = few, 2 = other; Polish:
+    /// 0 = one only for 1, 1 = few, 2 = many; Hebrew: 0 = one, 1 = two, 2 = other; French: 0 = one for 0 and 1;
     /// a language whose nouns don't inflect for number: always 0).
     pub plural: fn(u64) -> usize,
     /// Number of plural forms the catalog's `@plural` rows carry (checked by tests).
@@ -106,7 +109,7 @@ pub(super) fn plural_hebrew(n: u64) -> usize {
 }
 
 /// The registry. English first: it is the fallback and the source language.
-pub static LANGUAGES: [LangInfo; 12] = [
+pub static LANGUAGES: [LangInfo; 14] = [
     LangInfo {
         code: "en",
         name: "English",
@@ -138,6 +141,18 @@ pub static LANGUAGES: [LangInfo; 12] = [
         script: Some(Script::Chinese),
         rtl: false,
         source: include_str!("zh-CN.tsv"),
+        plural: plural_none,
+        plural_forms: 1,
+        complete_menus: true,
+        catalog: OnceLock::new(),
+    },
+    LangInfo {
+        code: "zh-TW",
+        name: "繁體中文",
+        english_name: "Traditional Chinese (Taiwan)",
+        script: Some(Script::TraditionalChinese),
+        rtl: false,
+        source: include_str!("zh-TW.tsv"),
         plural: plural_none,
         plural_forms: 1,
         complete_menus: true,
@@ -240,6 +255,18 @@ pub static LANGUAGES: [LangInfo; 12] = [
         catalog: OnceLock::new(),
     },
     LangInfo {
+        code: "ka",
+        name: "ქართული",
+        english_name: "Georgian",
+        script: Some(Script::Georgian),
+        rtl: false,
+        source: include_str!("ka.tsv"),
+        plural: plural_one_other,
+        plural_forms: 2,
+        complete_menus: true,
+        catalog: OnceLock::new(),
+    },
+    LangInfo {
         code: "he",
         name: "עברית",
         english_name: "Hebrew",
@@ -282,15 +309,17 @@ impl Lang {
     pub const EN: Lang = Lang(&LANGUAGES[0]);
     pub const RU: Lang = Lang(&LANGUAGES[1]);
     pub const ZH_CN: Lang = Lang(&LANGUAGES[2]);
-    pub const DE: Lang = Lang(&LANGUAGES[3]);
-    pub const FR: Lang = Lang(&LANGUAGES[4]);
-    pub const PT_BR: Lang = Lang(&LANGUAGES[5]);
-    pub const ES: Lang = Lang(&LANGUAGES[6]);
-    pub const CS: Lang = Lang(&LANGUAGES[7]);
-    pub const PL: Lang = Lang(&LANGUAGES[8]);
-    pub const HU: Lang = Lang(&LANGUAGES[9]);
-    pub const JA: Lang = Lang(&LANGUAGES[10]);
-    pub const HE: Lang = Lang(&LANGUAGES[11]);
+    pub const ZH_TW: Lang = Lang(&LANGUAGES[3]);
+    pub const DE: Lang = Lang(&LANGUAGES[4]);
+    pub const FR: Lang = Lang(&LANGUAGES[5]);
+    pub const PT_BR: Lang = Lang(&LANGUAGES[6]);
+    pub const ES: Lang = Lang(&LANGUAGES[7]);
+    pub const CS: Lang = Lang(&LANGUAGES[8]);
+    pub const PL: Lang = Lang(&LANGUAGES[9]);
+    pub const HU: Lang = Lang(&LANGUAGES[10]);
+    pub const JA: Lang = Lang(&LANGUAGES[11]);
+    pub const KA: Lang = Lang(&LANGUAGES[12]);
+    pub const HE: Lang = Lang(&LANGUAGES[13]);
 
     /// Canonical BCP 47 language code (`en`, `he`, `zh-CN`, …).
     pub fn code(self) -> &'static str {
@@ -334,7 +363,7 @@ impl Lang {
         self.0.english_name
     }
 
-    /// Does drawing this language need a CJK font from the system?
+    /// Does drawing this language need a font from the system (CJK, Georgian)?
     pub fn needs_cjk_font(self) -> bool {
         self.0.script.is_some()
     }
@@ -402,14 +431,19 @@ pub fn lang_from_tag(tag: &str) -> Option<Lang> {
     }
 }
 
-/// Chinese by script: Simplified for `zh-Hans`, and for a bare `zh` or the regions that write
-/// Simplified (mainland China, Singapore) when no script is given. An explicit script wins over
-/// the region (`zh-Hant-CN` is Traditional); Traditional Chinese isn't offered.
+/// Chinese by script: Traditional for an explicit `Hant`, and for Taiwan, Hong Kong and Macao when
+/// no script is given; Simplified for an explicit `Hans`, a bare `zh`, and the regions that write
+/// Simplified (mainland China, Singapore). An explicit script wins over the region
+/// (`zh-Hant-CN` is Traditional).
 fn chinese(tag: &str) -> Option<Lang> {
     let parts: Vec<&str> = tag.split('-').collect();
     if parts.contains(&"hant") {
-        None
-    } else if parts.contains(&"hans") || parts.len() == 1 || parts.iter().any(|p| matches!(*p, "cn" | "sg")) {
+        Some(Lang::ZH_TW)
+    } else if parts.contains(&"hans") {
+        Some(Lang::ZH_CN)
+    } else if parts.iter().any(|p| matches!(*p, "tw" | "hk" | "mo")) {
+        Some(Lang::ZH_TW)
+    } else if parts.len() == 1 || parts.iter().any(|p| matches!(*p, "cn" | "sg")) {
         Some(Lang::ZH_CN)
     } else {
         None

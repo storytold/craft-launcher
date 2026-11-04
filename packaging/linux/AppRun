@@ -8,7 +8,8 @@
 # (and whenever the AppImage's path changes) install the .desktop entry and the
 # hicolor icons into $XDG_DATA_HOME, then launch. Every failure here must leave
 # the launch untouched. AppImage managers can opt out with DESKTOPINTEGRATION=1,
-# and users with ARTCRAFT_LAUNCHER_NO_DESKTOP_INTEGRATION=1.
+# and users with ARTCRAFT_LAUNCHER_NO_DESKTOP_INTEGRATION=1. Nothing is installed
+# while another entry (appimaged, AppImageLauncher, Gear Lever) runs this AppImage.
 
 set -u
 
@@ -38,10 +39,17 @@ integrate() {
   data="${XDG_DATA_HOME:-$home/.local/share}"
   src_desktop="$APPDIR/usr/share/applications/$DESK_ID.desktop"
   [ -f "$src_desktop" ] || return 0
+  apps="$data/applications"
+  # A second entry would list the app twice; drop the one we wrote if it is unchanged.
+  if other_entry_runs "$apps" "$appimage"; then
+    if own_entry "$apps/$DESK_ID.desktop" && rm -f "$apps/$DESK_ID.desktop"; then
+      command -v update-desktop-database >/dev/null 2>&1 && update-desktop-database "$apps" >/dev/null 2>&1
+    fi
+    return 0
+  fi
 
   # Rewrite Exec to this AppImage (the binary is not on the host PATH) and drop
   # TryExec, which would hide the entry; everything else is shipped as packaged.
-  apps="$data/applications"
   mkdir -p "$apps" 2>/dev/null || return 0
   tmp="$apps/.$DESK_ID.tmp.$$"
   esc="$(printf '%s' "$appimage" | sed 's/[\\&|]/\\&/g')"
@@ -97,7 +105,36 @@ own_entry() {
   [ "$existing_exec" = "$generated_exec" ] || return 1
   expected_body="$(sed -e '/^Exec=/d' -e '/^TryExec=/d' "$src_desktop")" || return 1
   existing_body="$(sed -e '/^Exec=/d' -e '/^X-ArtCraft-Launcher-Generated-Exec=/d' "$1")" || return 1
-  [ "$expected_body" = "$existing_body" ]
+  # Entries written before the StartupWMClass fix differ only in that line.
+  old_body="$(printf '%s\n' "$expected_body" | sed 's/^StartupWMClass=.*/StartupWMClass=artcraft-launcher/')"
+  [ "$expected_body" = "$existing_body" ] || [ "$old_body" = "$existing_body" ]
+}
+
+# True when a visible entry in $1 other than ours runs the AppImage $2 and has our window class.
+other_entry_runs() {
+  grep -lF -e "$2" "$1"/*.desktop 2>/dev/null | (
+    while IFS= read -r f; do
+      [ "$f" = "$1/$DESK_ID.desktop" ] && continue
+      main=false runs=false class=false
+      while IFS= read -r line || [ -n "$line" ]; do
+        # Only the [Desktop Entry] group; an action's Exec isn't what the entry launches.
+        case "$line" in
+          "[Desktop Entry]") main=true && continue ;;
+          "["*) main=false ;;
+        esac
+        [ "$main" = true ] || continue
+        case "$line" in
+          # Menu editors hide an entry this way; it lists nothing.
+          Hidden=true | NoDisplay=true) runs=false && break ;;
+          # A class from before an in-place update can't match the window, so ours has to stay.
+          "StartupWMClass=$DESK_ID") class=true ;;
+          Exec=*"$2" | Exec=*"$2 "* | Exec=*"$2\""* | Exec=*"$2'"*) runs=true ;;
+        esac
+      done <"$f"
+      [ "$runs" = true ] && [ "$class" = true ] && exit 0
+    done
+    exit 1
+  )
 }
 
 integrate

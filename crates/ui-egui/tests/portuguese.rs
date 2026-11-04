@@ -67,6 +67,9 @@ fn events() -> Vec<Event> {
             source: InstallSource::Msi,
             location: format!("C:\\Program Files\\{}\\{}.exe", app.name, app.id),
             package: None,
+            externally_managed: false,
+            origin: None,
+            installation: None,
         });
         ev.push(Event::Detected { app: app.id.into(), installed });
     }
