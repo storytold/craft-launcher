@@ -112,6 +112,36 @@ fn stored_program(stored: &str) -> &str {
     }
 }
 
+/// `text` with each `%NAME%` replaced by `lookup(NAME)`, as Windows does for an expandable (`REG_EXPAND_SZ`) `Run` value.
+/// A name `lookup` doesn't know stays as written.
+#[cfg_attr(not(windows), allow(dead_code))]
+fn expand_env(text: &str, lookup: impl Fn(&str) -> Option<String>) -> String {
+    let mut out = String::new();
+    let mut rest = text;
+    while let Some(start) = rest.find('%') {
+        out.push_str(&rest[..start]);
+        let after = &rest[start + 1..];
+        match after.find('%') {
+            Some(end) => match lookup(&after[..end]).filter(|_| end > 0) {
+                Some(value) => {
+                    out.push_str(&value);
+                    rest = &after[end + 1..];
+                }
+                None => {
+                    out.push('%');
+                    rest = after;
+                }
+            },
+            None => {
+                out.push_str(&rest[start..]);
+                rest = "";
+            }
+        }
+    }
+    out.push_str(rest);
+    out
+}
+
 /// The `Run` value to write instead of `stored` for a launcher at `exe`, if `stored` starts a program that
 /// no longer exists. A value whose program is still there is left alone, so a second copy (portable, dev
 /// build) can't take over the entry.
@@ -137,7 +167,8 @@ pub fn refresh() {
                 return;
             }
         };
-        if let Some(value) = repointed(&stored, &exe, |p| p.exists()) {
+        let exists = |p: &std::path::Path| std::path::Path::new(&expand_env(&p.to_string_lossy(), |name| std::env::var(name).ok())).exists();
+        if let Some(value) = repointed(&stored, &exe, exists) {
             match set_enabled(true) {
                 Ok(()) => log::info!("start at login now points at {value} (was {stored})"),
                 Err(e) => log::warn!("start at login not refreshed: {e}"),
@@ -188,6 +219,23 @@ mod tests {
         let other = run_value(Path::new("C:/Program Files/ArtCraft/launcher.exe"));
         let existing = Path::new("C:/Program Files/ArtCraft/launcher.exe");
         assert_eq!(repointed(&other, Path::new("D:/Portable/launcher.exe"), |p| p == existing), None);
+    }
+
+    #[test]
+    fn expand_env_replaces_known_names_and_keeps_unknown_ones() {
+        let lookup = |name: &str| (name == "LOCALAPPDATA").then(|| "C:/Users/a/AppData/Local".to_string());
+        assert_eq!(expand_env("%LOCALAPPDATA%/ArtCraft/launcher.exe", lookup), "C:/Users/a/AppData/Local/ArtCraft/launcher.exe");
+        assert_eq!(expand_env("%NOPE%/launcher.exe", lookup), "%NOPE%/launcher.exe");
+        assert_eq!(expand_env("100%/x", lookup), "100%/x");
+    }
+
+    #[test]
+    fn an_expandable_run_value_whose_program_exists_is_left_alone() {
+        let lookup = |name: &str| (name == "LOCALAPPDATA").then(|| "C:/Users/a/AppData/Local".to_string());
+        let existing = Path::new("C:/Users/a/AppData/Local/ArtCraft/launcher.exe");
+        let exists = |p: &Path| p.to_str().is_some_and(|t| Path::new(&expand_env(t, lookup)) == existing);
+        let stored = "\"%LOCALAPPDATA%/ArtCraft/launcher.exe\" --hidden";
+        assert_eq!(repointed(stored, Path::new("D:/Portable/launcher.exe"), exists), None);
     }
 
     #[test]
