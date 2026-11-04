@@ -61,7 +61,11 @@
           pname = "artcraft-launcher";
           version = version;
           src = ./.;
-          cargoLock.lockFile = ./Cargo.lock;
+          cargoLock = {
+            lockFile = ./Cargo.lock;
+            # Resolve Git dependencies at the immutable revisions in Cargo.lock.
+            allowBuiltinFetchGit = true;
+          };
 
           nativeBuildInputs = with pkgs; [
             pkg-config

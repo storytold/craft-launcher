@@ -1,6 +1,8 @@
 //! A CJK font from the operating system, for the CJK interface languages. The bundled faces have
 //! no CJK glyphs, and a CJK font is too large to ship (10 MB or more), so the desktop build
 //! borrows the one every system that can show them already has. Desktop only.
+//!
+//! Georgian, which the bundled faces don't draw either, borrows its system face the same way.
 
 use std::path::{Path, PathBuf};
 
@@ -15,6 +17,9 @@ use crate::i18n::Script;
 const MAX_FONT_BYTES: u64 = 100 * 1024 * 1024;
 /// Faces looked at in one collection file (PingFang has 24).
 const MAX_FACES: u32 = 64;
+/// Name records compared per name ID in one face. Real fonts carry a few dozen translations of
+/// each name; the cap bounds the decoding a crafted name table can ask for.
+const MAX_NAME_RECORDS: usize = 256;
 
 /// The bundled body font (Inter), whose baseline a fallback face is nudged onto.
 const BODY_FONT: &[u8] = include_bytes!("../../../assets/fonts/Inter-Variable.ttf");
@@ -39,15 +44,19 @@ fn face_metrics(data: &[u8], index: u32) -> (f32, f32) {
 fn script_name(script: Script) -> &'static str {
     match script {
         Script::Chinese => "Chinese",
+        Script::TraditionalChinese => "Traditional Chinese",
         Script::Japanese => "Japanese",
+        Script::Georgian => "Georgian",
     }
 }
 
 /// The families looked for, for the "none found" log line.
 fn script_families(script: Script) -> &'static str {
     match script {
-        Script::Chinese => "PingFang SC, Hiragino Sans GB, Heiti SC, Microsoft YaHei, SimSun, Noto Sans CJK SC and WenQuanYi",
+        Script::Chinese => "PingFang SC, Hiragino Sans GB, Heiti SC, Microsoft YaHei, SimSun, Noto Sans CJK SC, WenQuanYi and MiSans",
+        Script::TraditionalChinese => "Noto Sans CJK TC, Noto Sans TC, PingFang TC, Heiti TC, Microsoft JhengHei and MingLiU",
         Script::Japanese => "Hiragino Sans, Yu Gothic, Meiryo, MS Gothic, Noto Sans CJK JP, Noto Sans JP, IPAGothic and TakaoGothic",
+        Script::Georgian => "SF Georgian, Arial Unicode MS, Sylfaen, Noto Sans Georgian and DejaVu Sans",
     }
 }
 
@@ -76,6 +85,12 @@ pub(crate) fn load(script: Script) -> Option<FontData> {
             y_offset_factor: (body_ascent - face_ascent) + 0.5 * (face_height - body_height),
             ..Default::default()
         };
+        if matches!(script, Script::Georgian) {
+            // Upper-case labels use Mtavruli only where this face draws it.
+            let caps = FontRef::from_index(&bytes, index)
+                .is_ok_and(|f| ('\u{1c90}'..='\u{1cba}').chain('\u{1cbd}'..='\u{1cbf}').all(|c| f.charmap().map(c).is_some()));
+            crate::widgets::set_georgian_caps(caps);
+        }
         let mut font = FontData::from_owned(bytes).tweak(tweak);
         font.index = index;
         return Some(font);
@@ -99,18 +114,13 @@ fn read(path: &Path) -> Option<Vec<u8>> {
 /// The face of `family` in a font file or collection: its Regular face, else the first face of
 /// that family. Matches the (typographic) family name in any language the file gives it in.
 pub(crate) fn face_index(data: &[u8], family: &str) -> Option<u32> {
-    let names = |font: &FontRef<'_>, ids: [StringId; 2]| -> Vec<String> {
-        ids.into_iter().flat_map(|id| font.localized_strings(id).map(|s| s.to_string())).collect()
-    };
     let mut first = None;
     for index in 0..MAX_FACES {
         let Ok(font) = FontRef::from_index(data, index) else { break };
-        let families = names(&font, [StringId::TYPOGRAPHIC_FAMILY_NAME, StringId::FAMILY_NAME]);
-        if !families.iter().any(|f| f.eq_ignore_ascii_case(family)) {
+        if !has_name(&font, [StringId::TYPOGRAPHIC_FAMILY_NAME, StringId::FAMILY_NAME], family) {
             continue;
         }
-        let styles = names(&font, [StringId::TYPOGRAPHIC_SUBFAMILY_NAME, StringId::SUBFAMILY_NAME]);
-        if styles.iter().any(|s| s.eq_ignore_ascii_case("Regular")) {
+        if has_name(&font, [StringId::TYPOGRAPHIC_SUBFAMILY_NAME, StringId::SUBFAMILY_NAME], "Regular") {
             return Some(index);
         }
         first.get_or_insert(index);
@@ -118,12 +128,96 @@ pub(crate) fn face_index(data: &[u8], family: &str) -> Option<u32> {
     first
 }
 
+/// Whether one of the first [`MAX_NAME_RECORDS`] names of each of `ids` in `font` is `wanted`
+/// (ASCII case ignored). Each name is decoded only as far as it still matches, and never kept: a name table
+/// can point many records at the same long string.
+fn has_name(font: &FontRef<'_>, ids: [StringId; 2], wanted: &str) -> bool {
+    ids.into_iter().any(|id| font.localized_strings(id).take(MAX_NAME_RECORDS).any(|name| chars_eq_ignore_ascii_case(name.chars(), wanted)))
+}
+
+/// `chars` spells `wanted`, ignoring ASCII case. Reads at most one char past `wanted`'s length.
+fn chars_eq_ignore_ascii_case(mut chars: impl Iterator<Item = char>, wanted: &str) -> bool {
+    let mut want = wanted.chars();
+    loop {
+        match (chars.next(), want.next()) {
+            (None, None) => return true,
+            (Some(a), Some(b)) if a.eq_ignore_ascii_case(&b) => {}
+            _ => return false,
+        }
+    }
+}
+
 /// Where each system keeps a font for `script`, best first.
 fn candidates(script: Script) -> Vec<Candidate> {
-    match script {
+    let found = match script {
         Script::Chinese => chinese_candidates(),
+        Script::TraditionalChinese => traditional_chinese_candidates(),
         Script::Japanese => japanese_candidates(),
+        Script::Georgian => georgian_candidates(),
+    };
+    let mut out = Vec::with_capacity(found.len() * 2);
+    for candidate in found {
+        // A Flatpak sandbox sees the host's fonts only there; its own folders hold the runtime's (#620).
+        let host = flatpak_host_path(&candidate.path).map(|path| Candidate { path, family: candidate.family });
+        out.push(candidate);
+        out.extend(host);
     }
+    out
+}
+
+/// Where Flatpak mounts the host's system font folder holding `path` (`add_font_path_args`, `common/flatpak-run.c`).
+fn flatpak_host_path(path: &Path) -> Option<PathBuf> {
+    if !cfg!(target_os = "linux") {
+        return None;
+    }
+    // User fonts need no twin: both manifests grant `--filesystem=home`.
+    [("/usr/share/fonts", "/run/host/fonts"), ("/usr/local/share/fonts", "/run/host/local-fonts")]
+        .into_iter()
+        .find_map(|(dir, host)| path.strip_prefix(dir).ok().map(|rest| Path::new(host).join(rest)))
+}
+
+/// The MiSans files a user installs by hand (Xiaomi's free Chinese face: the one some systems
+/// have in place of any of the above), by weight preference. Its family name is `MiSans`.
+const MISANS_FILES: [&str; 3] = ["MiSans-Regular.ttf", "MiSans-Normal.ttf", "MiSans-Medium.ttf"];
+
+/// Where fonts a user installs by hand go on this system: the user's font folders, then the
+/// system-wide ones, each as the font managers lay them out.
+fn user_font_dirs() -> Vec<PathBuf> {
+    let mut dirs = Vec::new();
+    #[cfg(target_os = "macos")]
+    {
+        if let Some(home) = std::env::var_os("HOME") {
+            dirs.push(PathBuf::from(home).join("Library/Fonts"));
+        }
+        dirs.push("/Library/Fonts".into());
+    }
+    #[cfg(target_os = "windows")]
+    {
+        // Fonts installed "for me" (the default since Windows 10 1809) go under the user's profile.
+        if let Some(local) = std::env::var_os("LOCALAPPDATA") {
+            dirs.push(PathBuf::from(local).join(r"Microsoft\Windows\Fonts"));
+        }
+        let root = std::env::var_os("SystemRoot").map_or_else(|| PathBuf::from(r"C:\Windows"), PathBuf::from);
+        dirs.push(root.join("Fonts"));
+    }
+    #[cfg(all(unix, not(target_os = "macos")))]
+    {
+        if let Some(home) = std::env::var_os("HOME").map(PathBuf::from) {
+            for sub in [".local/share/fonts", ".local/share/fonts/MiSans", ".local/share/fonts/misans", ".fonts"] {
+                dirs.push(home.join(sub));
+            }
+        }
+        for dir in [
+            "/usr/share/fonts/MiSans",
+            "/usr/share/fonts/misans",
+            "/usr/share/fonts/truetype/misans",
+            "/usr/share/fonts/TTF",
+            "/usr/local/share/fonts/MiSans",
+        ] {
+            dirs.push(dir.into());
+        }
+    }
+    dirs
 }
 
 /// Where each system keeps a Simplified Chinese font, best first.
@@ -176,6 +270,81 @@ fn chinese_candidates() -> Vec<Candidate> {
                 add(Path::new(dir).join(file), family);
             }
         }
+    }
+    // Last, a MiSans the user installed themselves, on any system (#378).
+    for file in MISANS_FILES {
+        for dir in user_font_dirs() {
+            add(dir.join(file), "MiSans");
+        }
+    }
+    out
+}
+
+/// The Noto files that carry a Traditional Chinese face, by family: the merged CJK collection, the
+/// CJK TC-only OTF, the variable TC fonts, and the standalone Noto Sans TC.
+const NOTO_TC_FILES: [(&str, &str); 10] = [
+    ("NotoSansCJKtc-Regular.otf", "Noto Sans CJK TC"),
+    ("NotoSansCJK-Regular.ttc", "Noto Sans CJK TC"),
+    ("NotoSansCJK-VF.ttc", "Noto Sans CJK TC"),
+    ("NotoSansCJK-VF.otf.ttc", "Noto Sans CJK TC"),
+    ("NotoSansCJK-VF.ttf.ttc", "Noto Sans CJK TC"),
+    ("NotoSansCJKtc-VF.otf", "Noto Sans CJK TC"),
+    ("NotoSansCJKtc-VF.ttf", "Noto Sans CJK TC"),
+    ("NotoSansTC-Regular.otf", "Noto Sans TC"),
+    ("NotoSansTC-VF.otf", "Noto Sans TC"),
+    ("NotoSansTC-VF.ttf", "Noto Sans TC"),
+];
+
+/// Where each system keeps a Traditional Chinese font: an installed Noto CJK TC first (the face
+/// GridCraft prefers for Taiwan), then the system's own faces.
+fn traditional_chinese_candidates() -> Vec<Candidate> {
+    let mut out = Vec::new();
+    let mut add = |path: PathBuf, family: &'static str| out.push(Candidate { path, family });
+    // A Noto installed by hand or by the system's font manager. The `NotoSansCJKtc` subdirectory
+    // lets a user keep an updated file apart from an older installed face.
+    for dir in user_font_dirs() {
+        for (file, family) in NOTO_TC_FILES {
+            // The override subdirectory is checked first, so an updated file wins over the older
+            // face at the root.
+            add(dir.join("NotoSansCJKtc").join(file), family);
+            add(dir.join(file), family);
+        }
+    }
+    #[cfg(all(unix, not(target_os = "macos")))]
+    {
+        // Debian/Ubuntu, Arch, Fedora (static and variable), openSUSE and FreeBSD's ports.
+        const NOTO_DIRS: [&str; 10] = [
+            "/usr/share/fonts/opentype/noto",
+            "/usr/share/fonts/noto-cjk",
+            "/usr/share/fonts/google-noto-cjk",
+            "/usr/share/fonts/google-noto-sans-cjk-fonts",
+            "/usr/share/fonts/google-noto-sans-cjk-vf-fonts",
+            "/usr/share/fonts/noto",
+            "/usr/share/fonts/truetype/noto",
+            "/usr/share/fonts/truetype",
+            "/usr/local/share/fonts/noto",
+            "/usr/local/share/fonts/noto-cjk",
+        ];
+        for dir in NOTO_DIRS {
+            for (file, family) in NOTO_TC_FILES {
+                add(Path::new(dir).join(file), family);
+            }
+        }
+    }
+    #[cfg(target_os = "macos")]
+    {
+        // PingFang moved from the system fonts into a downloaded asset in later macOS versions.
+        add("/System/Library/Fonts/PingFang.ttc".into(), "PingFang TC");
+        for path in mac_font_assets("PingFang.ttc") {
+            add(path, "PingFang TC");
+        }
+        add("/System/Library/Fonts/STHeiti Medium.ttc".into(), "Heiti TC");
+    }
+    #[cfg(target_os = "windows")]
+    {
+        let root = std::env::var_os("SystemRoot").map_or_else(|| PathBuf::from(r"C:\Windows"), PathBuf::from);
+        add(root.join("Fonts").join("msjh.ttc"), "Microsoft JhengHei");
+        add(root.join("Fonts").join("mingliu.ttc"), "MingLiU");
     }
     out
 }
@@ -255,6 +424,55 @@ fn japanese_candidates() -> Vec<Candidate> {
     out
 }
 
+/// Where each system keeps a Georgian font, best first. These faces are small (about 0.1–1 MB),
+/// except Arial Unicode MS, which macOS ships too.
+fn georgian_candidates() -> Vec<Candidate> {
+    let mut out = Vec::new();
+    let mut add = |path: PathBuf, family: &'static str| out.push(Candidate { path, family });
+    #[cfg(target_os = "macos")]
+    {
+        // SF Georgian is the system UI face for Georgian; its family name starts with a dot, as
+        // macOS's hidden UI faces do.
+        add("/System/Library/Fonts/SFGeorgian.ttf".into(), ".SF Georgian");
+        add("/System/Library/Fonts/Supplemental/Arial Unicode.ttf".into(), "Arial Unicode MS");
+        add("/Library/Fonts/Arial Unicode.ttf".into(), "Arial Unicode MS");
+    }
+    #[cfg(target_os = "windows")]
+    {
+        let root = std::env::var_os("SystemRoot").map_or_else(|| PathBuf::from(r"C:\Windows"), PathBuf::from);
+        add(root.join("Fonts").join("sylfaen.ttf"), "Sylfaen");
+    }
+    #[cfg(all(unix, not(target_os = "macos")))]
+    {
+        // Debian/Ubuntu, Arch, Fedora (static and variable), openSUSE and FreeBSD's ports.
+        for path in [
+            "/usr/share/fonts/truetype/noto/NotoSansGeorgian-Regular.ttf",
+            "/usr/share/fonts/truetype/NotoSansGeorgian-Regular.ttf",
+            "/usr/share/fonts/noto/NotoSansGeorgian-Regular.ttf",
+            "/usr/share/fonts/google-noto/NotoSansGeorgian-Regular.ttf",
+            "/usr/share/fonts/google-noto-vf/NotoSansGeorgian[wght].ttf",
+            "/usr/local/share/fonts/noto/NotoSansGeorgian-Regular.ttf",
+        ] {
+            add(path.into(), "Noto Sans Georgian");
+        }
+        // A face the user installed by hand.
+        for dir in user_font_dirs() {
+            add(dir.join("NotoSansGeorgian-Regular.ttf"), "Noto Sans Georgian");
+        }
+        // DejaVu Sans draws Georgian too, and most desktops have it.
+        for path in [
+            "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+            "/usr/share/fonts/TTF/DejaVuSans.ttf",
+            "/usr/share/fonts/dejavu-sans-fonts/DejaVuSans.ttf",
+            "/usr/share/fonts/dejavu/DejaVuSans.ttf",
+            "/usr/local/share/fonts/dejavu/DejaVuSans.ttf",
+        ] {
+            add(path.into(), "DejaVu Sans");
+        }
+    }
+    out
+}
+
 /// `file` in macOS's downloaded font assets:
 /// `/System/Library/AssetsV2/com_apple_MobileAsset_Font*/*.asset/AssetData/<file>`.
 #[cfg(target_os = "macos")]
@@ -287,6 +505,28 @@ mod tests {
         assert_eq!(face_index(b"", "PingFang SC"), None);
         assert_eq!(face_index(b"ttcf\0\0\0\0garbage", "PingFang SC"), None);
         assert_eq!(face_index(&[0u8; 64], "PingFang SC"), None);
+    }
+
+    /// Names compare without regard to ASCII case, and a long name stops being read once it
+    /// runs past the wanted one.
+    #[test]
+    fn names_compare_incrementally() {
+        assert!(chars_eq_ignore_ascii_case("PingFang SC".chars(), "pingfang sc"));
+        assert!(!chars_eq_ignore_ascii_case("PingFang".chars(), "PingFang SC"));
+        assert!(!chars_eq_ignore_ascii_case("PingFang SCX".chars(), "PingFang SC"));
+        let mut read = 0;
+        let endless = std::iter::repeat('a').inspect(|_| read += 1);
+        assert!(!chars_eq_ignore_ascii_case(endless, "aaa"));
+        assert_eq!(read, 4);
+    }
+
+    /// The bundled body font is found by its own family, in any ASCII case, and not by a prefix.
+    #[test]
+    fn face_index_finds_a_family_by_name() {
+        assert_eq!(face_index(BODY_FONT, "Inter"), Some(0));
+        assert_eq!(face_index(BODY_FONT, "inter"), Some(0));
+        assert_eq!(face_index(BODY_FONT, "Inte"), None);
+        assert_eq!(face_index(BODY_FONT, "PingFang SC"), None);
     }
 
     /// The baseline nudge reads a face's ascent and height; the reference is Inter's.
@@ -332,6 +572,78 @@ mod tests {
         }
     }
 
+    /// A hand-installed MiSans is looked for in the user's font folders on every system (#378).
+    #[test]
+    fn misans_is_looked_for_where_users_install_fonts() {
+        let names: Vec<String> = chinese_candidates().iter().filter_map(|c| c.path.file_name().map(|n| n.to_string_lossy().into_owned())).collect();
+        assert!(names.iter().any(|n| n == "MiSans-Regular.ttf"), "{names:?}");
+        assert!(chinese_candidates().iter().filter(|c| c.family == "MiSans").all(|c| c.path.is_absolute() || c.path.starts_with("/")));
+        // After the system's own faces: those are complete families with hinting the system tuned.
+        let first_misans = chinese_candidates().iter().position(|c| c.family == "MiSans").unwrap();
+        assert!(chinese_candidates()[..first_misans].iter().all(|c| c.family != "MiSans"));
+        assert!(first_misans > 0, "the system's own fonts come first");
+    }
+
+    /// Traditional Chinese prefers an installed Noto CJK TC over the system's own face, matching
+    /// GridCraft's Taiwan font order.
+    #[test]
+    fn traditional_chinese_prefers_noto_cjk_tc() {
+        let found = traditional_chinese_candidates();
+        let first = found.first().expect("at least one Traditional Chinese candidate");
+        assert!(first.family.starts_with("Noto Sans"), "first is {:?}", first.family);
+        // macOS and Windows add their own face after the Noto candidates; the Unix list is all
+        // Noto, so there is no system face to order against there.
+        #[cfg(any(target_os = "macos", target_os = "windows"))]
+        {
+            let first_system = found.iter().position(|c| !c.family.starts_with("Noto Sans")).expect("a system face comes after Noto");
+            assert!(first_system > 0);
+        }
+    }
+
+    /// openSUSE's `google-noto-sans-tc-fonts` installs the variable CJK TC font directly in
+    /// `/usr/share/fonts/truetype`.
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn traditional_chinese_searches_the_opensuse_font_dir() {
+        let found = traditional_chinese_candidates();
+        assert!(found.iter().any(|c| c.path == Path::new("/usr/share/fonts/truetype/NotoSansCJKtc-VF.otf") && c.family == "Noto Sans CJK TC"));
+    }
+
+    /// The `NotoSansCJKtc` override folder is read before the older file at the font folder's root.
+    #[test]
+    fn the_tc_override_folder_comes_before_the_root_file() {
+        let found = traditional_chinese_candidates();
+        let dir = user_font_dirs().into_iter().next().expect("a user font folder");
+        let override_file = dir.join("NotoSansCJKtc").join("NotoSansCJKtc-Regular.otf");
+        let root_file = dir.join("NotoSansCJKtc-Regular.otf");
+        let override_at = found.iter().position(|c| c.path == override_file).expect("the override path");
+        let root_at = found.iter().position(|c| c.path == root_file).expect("the root path");
+        assert!(override_at < root_at);
+    }
+
+    /// Inside Flatpak the host's fonts are under `/run/host` (#620), each right after its own path.
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn flatpak_host_fonts_follow_the_paths_they_mirror() {
+        for (path, host) in [
+            ("/usr/share/fonts/noto-cjk/NotoSansCJK-Regular.ttc", Some("/run/host/fonts/noto-cjk/NotoSansCJK-Regular.ttc")),
+            ("/usr/local/share/fonts/noto/NotoSansCJK-Regular.ttc", Some("/run/host/local-fonts/noto/NotoSansCJK-Regular.ttc")),
+            ("/home/u/.local/share/fonts/MiSans-Regular.ttf", None),
+            ("/usr/share/fontsx/a.ttf", None),
+            ("/run/host/fonts/a.ttf", None),
+        ] {
+            assert_eq!(flatpak_host_path(Path::new(path)), host.map(PathBuf::from), "{path}");
+        }
+        for (script, family) in
+            [(Script::Chinese, "Noto Sans CJK SC"), (Script::TraditionalChinese, "Noto Sans CJK TC"), (Script::Japanese, "Noto Sans CJK JP")]
+        {
+            let found = candidates(script);
+            let at = found.iter().position(|c| c.path == Path::new("/usr/share/fonts/noto-cjk/NotoSansCJK-Regular.ttc")).unwrap();
+            assert_eq!(found[at + 1].path, Path::new("/run/host/fonts/noto-cjk/NotoSansCJK-Regular.ttc"));
+            assert_eq!(found[at + 1].family, family);
+        }
+    }
+
     #[test]
     fn face_index_finds_families_in_real_fonts() {
         // The bundled Latin faces stand in for system fonts the test machine may not have.
@@ -347,7 +659,7 @@ mod tests {
             if let Some(font) = load(script) {
                 let family = candidates(script).into_iter().find(|c| c.path.is_file()).map(|c| c.family);
                 assert!(family.is_some());
-                assert!(FontRef::from_index(&font.font, font.index).is_ok());
+                assert!(FontRef::from_index(font.bytes(), font.index).is_ok());
             }
         }
     }

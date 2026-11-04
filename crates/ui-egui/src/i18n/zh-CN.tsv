@@ -7,6 +7,7 @@
 
 	Launcher	Launcher
 	Craft App Suite	Craft App Suite
+	by {name}	由 {name} 提供
 	Open Source Tools for Creatives, Makers, and Builders	为创作者和开发者打造的开源工具
 	Settings	设置
 	Check for updates	检查更新
@@ -78,6 +79,8 @@
 	Updates always use the format an app was installed with.	更新时始终使用应用原来的安装格式。
 	Running in the background	后台运行
 	Keep running in the tray when the window is closed	关闭窗口后继续在系统托盘中运行
+	ArtCraft Launcher is still running	ArtCraft Launcher 仍在运行
+	It's in the tray: open it or quit it from the tray icon, or turn this off in the settings.	它已进入系统托盘：可通过托盘图标打开或退出，也可在设置中关闭此行为。
 	Show the window on the current desktop	在当前桌面显示窗口
 	Start ArtCraft Launcher when I log in	登录时启动 ArtCraft Launcher
 	Community	社区
@@ -247,6 +250,8 @@ designcraft	Page layout and publishing	页面排版与出版
 wordcraft	Writing and document design	写作与文档设计
 deckcraft	Presentations and slide shows	演示文稿与幻灯片
 gridcraft	Spreadsheets and data	电子表格与数据处理
+craft-anything	Find out how any software works, then craft your own	了解任何软件的工作原理，然后打造你自己的版本
+solidcraft	Parametric 3D CAD	参数化三维 CAD
 cadcraft	Computer-aided design and drafting	计算机辅助设计与制图
 soundcraft	Recording, editing and mixing audio	音频录制、编辑与混音
 figcraft	Interface design and prototyping	界面设计与原型制作
@@ -266,6 +271,12 @@ figcraft	Interface design and prototyping	界面设计与原型制作
 	Apps on this computer	此电脑上的应用
 	Installed apps with a newer version	有新版本的已安装应用
 	Apps you can install	可安装的应用
+	Pin to top	置顶
+	Unpin	取消置顶
+	Pinned	已置顶
+	Reorder {name}	重新排序 {name}
+	Move up	上移
+	Move down	下移
 	Hide App	隐藏应用
 	Unhide App	取消隐藏应用
 	Hidden Apps	已隐藏的应用
@@ -278,6 +289,7 @@ figcraft	Interface design and prototyping	界面设计与原型制作
 	Update cancelled	更新已取消
 	Uninstall cancelled	卸载已取消
 	Retry install	重试安装
+	Retry update	重试更新
 	Retry update to {version}	重试更新至 {version}
 	The download is still here. It's checked again, then installed.	已下载的文件仍在。会先重新校验，然后安装。
 	Waiting for another app…	正在等待其他应用…
@@ -293,6 +305,7 @@ figcraft	Interface design and prototyping	界面设计与原型制作
 	Flatpak bundle	Flatpak 包
 	Tarball (.tar.gz)	压缩包 (.tar.gz)
 	App details	应用详情
+	More actions for {name}	{name} 的更多操作
 	Close (Esc)	关闭（Esc）
 	Features	功能特性
 	Latest release	最新发布
@@ -347,4 +360,34 @@ figcraft	Interface design and prototyping	界面设计与原型制作
 	Previous app	上一个应用
 	Show {n} more changes	显示另外 {n} 项更改
 	Last updated: {date}	最后更新：{date}
+column	Author	作者
 column	Version	版本
+	Choose version	选择版本
+	latest {version}	最新 {version}
+	{version} (latest release)	{version}（最新发布）
+	Launcher version	启动器版本
+	Nightly	每日构建版
+	Nightly (none published yet)	每日构建版（尚未发布）
+	Install version {version}	安装版本 {version}
+	Download selected version	下载所选版本
+	Older launcher versions require a manual reinstall.	旧版启动器需要手动重新安装。
+	Your files may not open in older versions.	旧版可能无法打开你的文件。
+	Enable automatic installs in Settings to follow new nightly builds.	在设置中启用自动安装，即可跟进新的每日构建版。
+texturecraft	3D texture painting	3D 纹理绘制
+texturecraft	Paint materials on 3D models and export textures.	在 3D 模型上绘制材质并导出纹理。
+texturecraft	Materials	材质
+texturecraft	Mesh maps	网格贴图
+texturecraft	Bake mesh maps and use smart materials.	烘焙网格贴图并使用智能材质。
+texturecraft	Paint textures on 3D models.	在 3D 模型上绘制纹理。
+	Hide community apps	隐藏社区应用
+materialcraft	Procedural material design	程序化材质设计
+materialcraft	Build materials with node graphs.	使用节点图构建材质。
+materialcraft	Create tileable PBR materials and export texture maps.	创建可无缝平铺的 PBR 材质并导出纹理贴图。
+materialcraft	Node graphs	节点图
+materialcraft	Combine noises, patterns and filters.	组合噪声、图案和滤镜。
+materialcraft	Live previews	实时预览
+materialcraft	Preview materials in 2D and on 3D models.	在二维视图和三维模型上预览材质。
+	Advanced	高级
+	Migrate Flatpak bundles to ArtCraft OCI (experimental)	将 Flatpak 软件包迁移到 ArtCraft OCI（实验性）
+	On update, switch first party apps when the matching package is available. Otherwise, keep using bundles.	更新时，如果有对应的软件包，则迁移 ArtCraft 官方应用；否则继续使用独立软件包。
+	The OCI repository is a preview with GPG verification disabled.	OCI 仓库目前处于预览阶段，GPG 验证已禁用。
