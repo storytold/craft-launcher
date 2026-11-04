@@ -71,7 +71,7 @@
 	Open on GitHub	GitHub에서 열기
 	Close	닫기
 	ArtCraft Launcher {version}	ArtCraft Launcher {version}
-	Only when I ask	직접 확인할 때만
+	Only when I ask	수동으로 확인
 	Automatically download and install updates	업데이트 자동 다운로드 및 설치
 	Notify me when an installed app has an update	설치된 앱의 업데이트 알림 받기
 	Include pre-releases (betas and release candidates)	시험판 포함(베타 및 릴리스 후보)
@@ -93,8 +93,8 @@
 	Done	완료
 	Uninstall {name}?	{name} 앱을 제거할까요?
 	The app will be moved to the Trash. Your documents and settings stay.	앱이 휴지통으로 이동합니다. 문서와 설정은 유지됩니다.
-	Windows will remove it like any installed program. Your documents and settings stay.	Windows가 다른 설치된 프로그램과 같은 방식으로 제거합니다. 문서와 설정은 유지됩니다.
-	Your system's package manager will remove it, and may ask for your password. Your documents and settings stay.	시스템 패키지 관리자가 제거하며 비밀번호를 요청할 수 있습니다. 문서와 설정은 유지됩니다.
+	Windows will remove it like any installed program. Your documents and settings stay.	Windows가 앱을 제거합니다. 문서와 설정은 유지됩니다.
+	Your system's package manager will remove it, and may ask for your password. Your documents and settings stay.	시스템 패키지 관리자가 앱을 제거합니다. 비밀번호를 요청할 수 있으며, 문서와 설정은 유지됩니다.
 	The app will be removed. Your documents and settings stay.	앱이 제거됩니다. 문서와 설정은 유지됩니다.
 	Uninstall	제거
 	Cancel	취소
@@ -140,7 +140,7 @@
 	Retry install	설치 재시도
 	Retry update	업데이트 재시도
 	Retry update to {version}	{version} 업데이트 재시도
-	The download is still here. It's checked again, then installed.	다운로드한 파일이 보관되어 있습니다. 다시 검증한 후 설치합니다.
+	The download is still here. It's checked again, then installed.	다운로드한 파일을 다시 검증한 후 설치합니다.
 	Waiting for another app…	다른 앱을 기다리는 중…
 	Waiting for other installs…	다른 설치를 기다리는 중…
 	Installer (.msi)	설치 프로그램(.msi)
@@ -152,20 +152,20 @@
 	Flatpak bundle	Flatpak 번들
 	Tarball (.tar.gz)	압축 파일(.tar.gz)
 photocraft	Image editing	이미지 편집
-vectorcraft	Vector illustration	벡터 일러스트
+vectorcraft	Vector illustration	벡터 그래픽 제작
 filmcraft	Video editing, color and sound	영상 편집, 색 보정 및 사운드
-lightcraft	Photo library and raw development	사진 관리 및 RAW 현상
+lightcraft	Photo library and raw development	사진 관리 및 RAW 사진 보정
 pdfcraft	Reading, organizing and protecting PDFs	PDF 열람, 정리 및 보호
 effectcraft	Motion graphics and visual effects	모션 그래픽 및 시각 효과
 designcraft	Page layout and publishing	페이지 레이아웃 및 출판
-wordcraft	Writing and document design	글쓰기 및 문서 디자인
-deckcraft	Presentations and slide shows	프레젠테이션 및 슬라이드 쇼
+wordcraft	Writing and document design	문서 작성 및 서식 편집
+deckcraft	Presentations and slide shows	발표 자료 및 슬라이드 쇼
 gridcraft	Spreadsheets and data	스프레드시트 및 데이터
-craft-anything	Find out how any software works, then craft your own	소프트웨어의 작동 방식을 알아보고 직접 만들어 보세요
-solidcraft	Parametric 3D CAD	파라메트릭 3D CAD
-cadcraft	Computer-aided design and drafting	컴퓨터 지원 설계 및 제도
+craft-anything	Find out how any software works, then craft your own	소프트웨어 분석 및 AI 기반 프로젝트 제작
+solidcraft	Parametric 3D CAD	치수·조건 기반 3D CAD
+cadcraft	Computer-aided design and drafting	CAD 설계 및 도면 작성
 soundcraft	Recording, editing and mixing audio	오디오 녹음, 편집 및 믹싱
-figcraft	Interface design and prototyping	인터페이스 디자인 및 프로토타이핑
+figcraft	Interface design and prototyping	화면 디자인 및 프로토타입 제작
 month	Jan	1월
 month	Feb	2월
 month	Mar	3월
@@ -357,7 +357,7 @@ filter	Installed	설치됨
 	Show {n} more changes	변경 사항 {n}개 더 보기
 	Last updated: {date}	마지막 업데이트: {date}
 column	Version	버전
-column	Author	작성자
+column	Author	제작자
 	Choose version	버전 선택
 	latest {version}	최신 {version}
 	{version} (latest release)	{version}(최신 릴리스)
@@ -374,10 +374,10 @@ texturecraft	Paint materials on 3D models and export textures.	3D 모델에 재�
 texturecraft	Materials	재질
 texturecraft	Mesh maps	메시 맵
 texturecraft	Bake mesh maps and use smart materials.	메시 맵을 베이크하고 스마트 재질을 사용합니다.
-texturecraft	Paint textures on 3D models.	3D 모델에 텍스처를 칠합니다.
+texturecraft	Paint textures on 3D models.	3D 모델에 텍스처를 칠하는 도구.
 	Hide community apps	커뮤니티 앱 숨기기
-materialcraft	Procedural material design	절차적 재질 디자인
-materialcraft	Build materials with node graphs.	노드 그래프로 재질을 만듭니다.
+materialcraft	Procedural material design	노드 기반 재질 제작
+materialcraft	Build materials with node graphs.	노드 그래프로 재질을 만드는 도구.
 materialcraft	Create tileable PBR materials and export texture maps.	반복 가능한 PBR 재질을 만들고 텍스처 맵을 내보냅니다.
 materialcraft	Node graphs	노드 그래프
 materialcraft	Combine noises, patterns and filters.	노이즈, 패턴 및 필터를 조합합니다.
@@ -385,22 +385,22 @@ materialcraft	Live previews	실시간 미리 보기
 materialcraft	Preview materials in 2D and on 3D models.	2D 및 3D 모델에서 재질을 미리 봅니다.
 	Advanced	고급
 	Migrate Flatpak bundles to ArtCraft OCI (experimental)	Flatpak 번들을 ArtCraft OCI로 전환(실험적)
-	On update, switch first party apps when the matching package is available. Otherwise, keep using bundles.	업데이트 시 호환 패키지가 있으면 공식 앱을 전환합니다. 없으면 번들을 계속 사용합니다.
+	On update, switch first party apps when the matching package is available. Otherwise, keep using bundles.	업데이트 시 공식 앱의 호환 OCI 패키지가 있으면 해당 형식으로 전환하고, 없으면 기존 번들을 유지합니다.
 	The OCI repository is a preview with GPG verification disabled.	OCI 저장소는 미리 보기 단계이며 GPG 검증이 비활성화되어 있습니다.
 
 # App-card headlines (also used in the details page).
-photocraft	The image editor you already know how to use.	익숙한 방식으로 사용하는 이미지 편집기.
-vectorcraft	Vector illustration, with familiar tools and editable effects.	익숙한 도구와 수정 가능한 효과로 만드는 벡터 일러스트.
-filmcraft	Professional video editing, rebuilt from scratch.	처음부터 새로 만든 전문 영상 편집기.
-lightcraft	Your photos. Your pixels. Your machine.	내 사진을 내 컴퓨터에서 직접 관리하세요.
-pdfcraft	The open-source PDF workbench.	오픈 소스 PDF 작업 도구.
-effectcraft	Motion graphics and visual effects.	모션 그래픽 및 시각 효과.
-designcraft	Page layout and publishing.	페이지 레이아웃 및 출판.
-wordcraft	The familiar word processor, native and offline.	오프라인에서 실행되는 익숙한 문서 작성 도구.
-deckcraft	Create slides, tell stories and present.	슬라이드를 만들고 이야기를 전하며 발표하세요.
-gridcraft	Spreadsheets you already know how to use.	익숙한 방식으로 사용하는 스프레드시트.
-cadcraft	Computer-aided drafting, with a familiar workflow.	익숙한 작업 방식으로 사용하는 컴퓨터 지원 제도 도구.
-soundcraft	Record, edit and mix your audio.	오디오를 녹음하고 편집하고 믹싱하세요.
-figcraft	Interface design and prototyping.	인터페이스 디자인 및 프로토타이핑.
-craft-anything	See how any website, app or game works, then build your own.	웹사이트, 앱, 게임의 작동 방식을 알아보고 직접 만들어 보세요.
-solidcraft	Parametric 3D CAD, with editable sketches and solids.	스케치와 솔리드를 수정할 수 있는 파라메트릭 3D CAD.
+photocraft	The image editor you already know how to use.	레이어와 마스크를 지원하는 이미지 편집기.
+vectorcraft	Vector illustration, with familiar tools and editable effects.	벡터 도형을 그리고 효과를 편집하는 도구.
+filmcraft	Professional video editing, rebuilt from scratch.	영상 편집, 색 보정, 오디오 작업을 위한 편집기.
+lightcraft	Your photos. Your pixels. Your machine.	사진 라이브러리 관리와 원본을 보존하는 RAW 사진 보정.
+pdfcraft	The open-source PDF workbench.	PDF 열람, 페이지 정리, 병합·분할 도구.
+effectcraft	Motion graphics and visual effects.	레이어 합성과 키프레임 애니메이션, 시각 효과 제작.
+designcraft	Page layout and publishing.	책자와 잡지의 페이지를 구성하는 편집·출판 도구.
+wordcraft	The familiar word processor, native and offline.	문서 작성과 편집을 지원하는 오프라인 워드프로세서.
+deckcraft	Create slides, tell stories and present.	발표 슬라이드 작성, 애니메이션 편집, 슬라이드 쇼.
+gridcraft	Spreadsheets you already know how to use.	수식 계산, 표·차트 작성, 데이터 분석용 스프레드시트.
+cadcraft	Computer-aided drafting, with a familiar workflow.	도면 작성, 치수 표기, 도면 파일 편집을 위한 CAD.
+soundcraft	Record, edit and mix your audio.	오디오 녹음, 편집, 믹싱 도구.
+figcraft	Interface design and prototyping.	화면 디자인, 컴포넌트 편집, 프로토타입 제작.
+craft-anything	See how any website, app or game works, then build your own.	기존 웹사이트·앱·게임을 분석하고 AI로 새 프로젝트를 만드는 도구.
+solidcraft	Parametric 3D CAD, with editable sketches and solids.	치수와 조건을 바꿔 3D 형상을 조정하는 CAD.

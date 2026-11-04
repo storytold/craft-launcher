@@ -6,7 +6,8 @@ POSIX locale names such as `ko_KR.UTF-8` in Auto mode. Set
 The preference uses `ko` and survives a restart.
 
 The catalog is `crates/ui-egui/src/i18n/ko.tsv`, translated from the English source
-labels. Korean uses one plural form. Product names, release notes, keyboard names,
+labels. App-card headlines describe concrete functions from the same app’s English
+details page instead of literally repeating vague familiarity or marketing claims. Korean uses one plural form. Product names, release notes, keyboard names,
 paths and diagnostics without a matching message template stay as published.
 “Grid / Table” is rendered as “카드 / 표” to describe the two app-list layouts.
 

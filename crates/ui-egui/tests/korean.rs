@@ -177,7 +177,7 @@ fn korean_switches_persists_and_keeps_install_actions() {
     h.get_by_label("완료").click_accesskit();
     h.run_steps(3);
     h.get_by_label("이미지 편집");
-    h.get_by_label("익숙한 방식으로 사용하는 이미지 편집기.");
+    h.get_by_label("레이어와 마스크를 지원하는 이미지 편집기.");
     h.get_by_label_contains("확인: 3분 전 · 출처: ArtCraft API");
     h.get_by_label("0.5.0 업데이트");
     snapshot(&mut h, "grid-ko-dark");
