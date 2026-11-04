@@ -1,0 +1,27 @@
+{
+  "tag_name": "v0.4.0",
+  "name": "ASUSCraft v0.4.0",
+  "html_url": "https://github.com/Mostafamomen/asus-control-center/releases/tag/v0.4.0",
+  "prerelease": false,
+  "body": "ASUSCraft 0.4.0",
+  "assets": [
+    {
+      "name": "asus-control-center-0.4.0-1.fc44.x86_64.rpm",
+      "size": 0,
+      "browser_download_url": "https://github.com/Mostafamomen/asus-control-center/releases/download/v0.4.0/asus-control-center-0.4.0-1.fc44.x86_64.rpm",
+      "digest": "sha256:2ac9bc897a0479650b8e7b2c8f4ef2181815cdd15dac17a75166f00d3e4d50a1"
+    },
+    {
+      "name": "asus-control-center_0.4.0_amd64.deb",
+      "size": 0,
+      "browser_download_url": "https://github.com/Mostafamomen/asus-control-center/releases/download/v0.4.0/asus-control-center_0.4.0_amd64.deb",
+      "digest": "sha256:9dda51beb5cd1bbfb81699c701c3bdda12e568a38f2a70a998b85ed393b1253a"
+    },
+    {
+      "name": "SHA256SUMS",
+      "size": 0,
+      "browser_download_url": "https://github.com/Mostafamomen/asus-control-center/releases/download/v0.4.0/SHA256SUMS",
+      "digest": "sha256:680fd8e21604021447d4ce349205a9714f9cf7f73a64af36ca88139b55c5cbc7"
+    }
+  ]
+}

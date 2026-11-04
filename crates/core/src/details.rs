@@ -19,10 +19,17 @@ pub struct Feature {
 pub struct Shot {
     pub key: &'static str,
     pub caption: &'static str,
+    /// Whether the screenshot is bundled with the launcher instead of fetched from ArtCraft's
+    /// screenshot repository.
+    pub bundled: bool,
 }
 
 const fn shot(key: &'static str, caption: &'static str) -> Shot {
-    Shot { key, caption }
+    Shot { key, caption, bundled: false }
+}
+
+const fn bundled_shot(key: &'static str, caption: &'static str) -> Shot {
+    Shot { key, caption, bundled: true }
 }
 
 /// The editorial half of an app's page.
@@ -139,7 +146,7 @@ pub fn screenshot_within_budget(bytes: &[u8]) -> bool {
 /// Where every Craft App runs (getartcraft.com lists the same for each of them).
 const PLATFORMS: &str = "macOS, Windows, Linux, FreeBSD, web";
 
-pub const DETAILS: [AppDetails; 17] = [
+pub const DETAILS: [AppDetails; 18] = [
     AppDetails {
         id: "photocraft",
         headline: "The image editor you already know how to use.",
@@ -532,13 +539,39 @@ pub const DETAILS: [AppDetails; 17] = [
         shots: &[],
         platforms: PLATFORMS,
     },
+    AppDetails {
+        id: "asuscraft",
+        headline: "Complete ASUS Laptop Control Center",
+        about: "ASUSCraft brings supported ASUS laptop controls together in one native Linux application. \
+                A live dashboard covers the device, CPU/GPU load, memory, storage, battery health, temperatures \
+                and fans, while Customization groups performance, battery care, graphics and display controls.\n\n\
+                Hardware and System Diagnosis are read-only live views: they show real kernel and service data \
+                and never invent a value. Controls depend on the laptop model, firmware and installed components.",
+        features: &[
+            feature("Live dashboard", "Device model, CPU/GPU status, memory, storage, battery, temperatures, fans and display information."),
+            feature("Customization", "Performance profiles, battery charge limits, GPU modes, keyboard backlight and display controls in one place."),
+            feature("Hardware details", "CPU, GPU, memory, storage, battery health, cooling and display telemetry read from this machine."),
+            feature("System Diagnosis", "Battery, thermal, storage, memory, fan and service checks with a real diagnostic report."),
+            feature("Updates & Support", "Software status, Fedora update guidance and official ASUS driver and service links."),
+            feature("Privacy and safety", "Privileged writes stay inside a fixed Polkit helper; unsupported hardware is labelled clearly."),
+        ],
+        shots: &[
+            bundled_shot("home", "ASUSCraft dashboard"),
+            bundled_shot("performance", "Performance profiles"),
+            bundled_shot("battery", "Battery health and charge limits"),
+            bundled_shot("gpu", "GPU MUX controls"),
+            bundled_shot("display", "Display brightness and dimming"),
+            bundled_shot("settings", "Application settings"),
+        ],
+        platforms: "Linux (ASUS laptops)",
+    },
 ];
 
 impl AppDetails {
     /// Where the picture `key` of this app is published, or `None` if the page has no such picture.
     /// The only way to turn a request into an address: callers never build one from their own text.
     pub fn screenshot_url(&self, key: &str) -> Option<String> {
-        self.shots.iter().find(|s| s.key == key).map(|s| format!("{SCREENSHOTS_BASE}/{SCREENSHOTS_REV}/{}/{}.jpg", self.id, s.key))
+        self.shots.iter().find(|s| s.key == key && !s.bundled).map(|s| format!("{SCREENSHOTS_BASE}/{SCREENSHOTS_REV}/{}/{}.jpg", self.id, s.key))
     }
 
     pub fn by_id(id: &str) -> Option<&'static AppDetails> {
@@ -553,7 +586,7 @@ impl AppDetails {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{CraftApp, SUITE};
+    use crate::CraftApp;
 
     #[test]
     fn every_page_belongs_to_a_suite_app_once() {
@@ -568,8 +601,27 @@ mod tests {
 
     #[test]
     fn every_app_has_a_page() {
-        for a in &SUITE {
+        for a in crate::craft_apps() {
             assert!(AppDetails::by_id(a.id).is_some(), "{}", a.id);
+        }
+    }
+
+    #[test]
+    fn asuscraft_details_use_project_links_and_bundled_screenshots() {
+        let app = CraftApp::by_id("asuscraft").unwrap();
+        let page = AppDetails::by_id("asuscraft").unwrap();
+        let local = app.local_app.unwrap();
+        assert_eq!(page.headline, "Complete ASUS Laptop Control Center");
+        assert_eq!(local.version, None);
+        assert_eq!(local.release_date, None);
+        assert_eq!(app.website_url(), None);
+        assert_eq!(app.repo_url(), "https://github.com/Mostafamomen/asus-control-center");
+        assert_eq!(app.releases_page_url().as_deref(), Some("https://github.com/Mostafamomen/asus-control-center/releases"));
+        assert_eq!(page.features.len(), 6);
+        assert_eq!(page.shots.len(), 6);
+        for shot in page.shots {
+            assert!(shot.bundled);
+            assert_eq!(page.screenshot_url(shot.key), None);
         }
     }
 
@@ -586,7 +638,10 @@ mod tests {
         // Every picture of every page has an address of the one shape, with nothing to escape.
         for d in &DETAILS {
             for s in d.shots {
-                let url = d.screenshot_url(s.key).unwrap();
+                let Some(url) = d.screenshot_url(s.key) else {
+                    assert!(s.bundled);
+                    continue;
+                };
                 let path = url.strip_prefix(&format!("{SCREENSHOTS_BASE}/{SCREENSHOTS_REV}/")).unwrap();
                 assert_eq!(path, format!("{}/{}.jpg", d.id, s.key));
                 assert!(path.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || matches!(c, '/' | '-' | '.')), "{path}");

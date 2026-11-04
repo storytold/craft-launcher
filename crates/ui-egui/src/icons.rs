@@ -44,6 +44,15 @@ fn desaturate(pixels: &mut [u8]) {
     }
 }
 
+/// A Craft App's icon on a dark or coloured background, using a white-on-transparent variant when
+/// one is bundled; falls back to the regular colour icon so this is always `Some` for known apps.
+pub fn app_on_dark(id: &str) -> Option<ImageSource<'static>> {
+    match id {
+        "asuscraft" => Some(egui::include_image!("../../../assets/app-icons/asuscraft-white.svg")),
+        _ => app(id),
+    }
+}
+
 /// The ArtCraft wordmark, as supplied: dark ink for light backgrounds, white for dark ones.
 /// An ArtCraft trademark, not covered by the MIT/Apache license (`docs/brand/LICENSE-brand.txt`).
 pub fn artcraft_logo(dark_background: bool) -> ImageSource<'static> {
@@ -80,6 +89,7 @@ pub fn artcraft_mark() -> ImageSource<'static> {
 #[cfg(test)]
 mod tests {
     use super::desaturate;
+    use image::GenericImageView;
 
     #[test]
     fn grey_pixels_have_no_colour_and_keep_their_alpha() {
@@ -91,5 +101,12 @@ mod tests {
         assert_eq!([px[3], px[7], px[11]], [200, 17, 255]);
         // Pure red is darker than pure white and pure grey stays put.
         assert!(px[0] < 255 && px[8] == 10);
+    }
+
+    #[test]
+    fn asuscraft_icon_decodes_at_its_native_square_size() {
+        let bytes = artcraft_launcher_core::catalog::app_icon_png("asuscraft").expect("ASUSCraft icon is bundled");
+        let icon = image::load_from_memory(bytes).expect("ASUSCraft icon is a readable image");
+        assert_eq!(icon.dimensions(), (128, 128));
     }
 }

@@ -182,11 +182,11 @@ designcraft	Page layout and publishing	Skład stron i publikowanie
 wordcraft	Writing and document design	Pisanie i projektowanie dokumentów
 deckcraft	Presentations and slide shows	Prezentacje i pokazy slajdów
 gridcraft	Spreadsheets and data	Arkusze kalkulacyjne i dane
-craft-anything	Find out how any software works, then craft your own	Dowiedz się, jak działa dowolne oprogramowanie, i stwórz własne
 solidcraft	Parametric 3D CAD	Parametryczny CAD 3D
 cadcraft	Computer-aided design and drafting	Projektowanie i kreślenie wspomagane komputerowo
 soundcraft	Recording, editing and mixing audio	Nagrywanie, edycja i miksowanie dźwięku
 figcraft	Interface design and prototyping	Projektowanie interfejsów i prototypowanie
+asuscraft	Complete ASUS Laptop Control Center	Centrum sterowania sprzętem dla obsługiwanych laptopów ASUS z systemem Linux.
 
 # Contextual: month abbreviations for date rendering
 month	Jan	sty
@@ -423,3 +423,4 @@ materialcraft	Preview materials in 2D and on 3D models.	Przeglądaj materiały w
 	Migrate Flatpak bundles to ArtCraft OCI (experimental)	Przenoś pakiety Flatpak do ArtCraft OCI (eksperymentalne)
 	On update, switch first party apps when the matching package is available. Otherwise, keep using bundles.	Podczas aktualizacji przenoś aplikacje ArtCraft, gdy dostępny jest odpowiedni pakiet. W przeciwnym razie nadal używaj samodzielnych pakietów.
 	The OCI repository is a preview with GPG verification disabled.	Repozytorium OCI jest wersją testową z wyłączoną weryfikacją GPG.
+	Back to CraftApps	Wróć do CraftApps

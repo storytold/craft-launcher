@@ -92,7 +92,7 @@ fn harness(view: ViewMode) -> Harness<'static, Option<LauncherUi>> {
             if state.is_none()
                 && let Some(b) = backend.take()
             {
-                *state = Some(LauncherUi::new(ui.ctx(), Box::new(b), settings.clone()));
+                *state = Some(LauncherUi::with_catalog(ui.ctx(), Box::new(b), settings.clone(), SUITE.iter()));
             }
             if let Some(l) = state.as_mut() {
                 l.logic(&ui.ctx().clone(), &mut NoHost);
@@ -127,6 +127,6 @@ fn polish_ui_translates_labels_dates_and_messages() {
     let mut table = harness(ViewMode::Table);
     table.run_steps(8);
     snapshot(&mut table, "table-pl-dark");
-    table.get_by_label("Zainstalowana");
+    assert!(table.query_all_by_label("Zainstalowana").count() >= 1);
     assert!(table.query_all_by_label_contains("sie 2026").count() >= 1);
 }

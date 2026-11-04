@@ -13,11 +13,23 @@ use artcraft_launcher_core::status::AppStatus;
 use egui::{Color32, CornerRadius, Id, Margin, Order, Rect, RichText, Sense, Stroke, Ui, emath::easing, pos2, vec2};
 
 use crate::app::LauncherUi;
-use crate::i18n::{current, tr_ctx};
+use crate::i18n::fmt;
 use crate::model::AppEntry;
 use crate::theme::{self, Tokens, rgb, tint};
 use crate::views::date_text;
 use crate::widgets::{self, Glyph, Kind};
+
+fn bundled_screenshot(app: &str, key: &str) -> Option<&'static [u8]> {
+    Some(match (app, key) {
+        ("asuscraft", "home") => include_bytes!("../../../assets/app-screenshots/asuscraft/home.jpg"),
+        ("asuscraft", "performance") => include_bytes!("../../../assets/app-screenshots/asuscraft/performance.jpg"),
+        ("asuscraft", "battery") => include_bytes!("../../../assets/app-screenshots/asuscraft/battery.jpg"),
+        ("asuscraft", "gpu") => include_bytes!("../../../assets/app-screenshots/asuscraft/gpu.jpg"),
+        ("asuscraft", "display") => include_bytes!("../../../assets/app-screenshots/asuscraft/display.jpg"),
+        ("asuscraft", "settings") => include_bytes!("../../../assets/app-screenshots/asuscraft/settings.jpg"),
+        _ => return None,
+    })
+}
 
 /// Screenshots are 8:5.
 const SHOT_ASPECT: f32 = 0.625;
@@ -59,6 +71,16 @@ impl LauncherUi {
         let mut missing = false;
         for shot in details.shots {
             let key = (details.id.to_string(), shot.key.to_string());
+            if shot.bundled {
+                if !matches!(self.pictures.get(&key), Some(Picture::Ready(_))) {
+                    if let Some(bytes) = bundled_screenshot(details.id, shot.key) {
+                        self.pictures.insert(key, Picture::Ready(Arc::from(bytes)));
+                    } else {
+                        self.pictures.insert(key, Picture::Failed("Bundled preview image is missing".into()));
+                    }
+                }
+                continue;
+            }
             if !matches!(self.pictures.get(&key), Some(Picture::Ready(_) | Picture::Loading)) {
                 self.pictures.insert(key, Picture::Loading);
                 missing = true;
@@ -179,8 +201,8 @@ impl LauncherUi {
         ui.set_width(ui.available_width());
         let app_color = rgb(entry.app.color);
         if wide && details.shots.is_empty() {
-            // No pictures to fill the left side: the story and features share it, and the
-            // release facts take the right, so neither side is left empty.
+            // Keep a proper preview area for apps without screenshots, using only their own icon
+            // and copy. The rest of the page shares the column beside it.
             let gap = theme::COLUMN_GAP;
             let total = ui.available_width();
             let left_w = ((total - gap) * 0.58).floor();
@@ -190,18 +212,20 @@ impl LauncherUi {
                 ui.vertical(|ui| {
                     ui.set_width(left_w);
                     ui.spacing_mut().item_spacing.y = 8.0;
-                    for p in details.paragraphs() {
-                        ui.add(egui::Label::new(RichText::new(tr_ctx(current(), details.id, p)).size(14.5).color(t.ink)).wrap());
-                    }
-                    ui.add_space(14.0);
-                    features(ui, details, entry.app, t);
+                    self.preview_placeholder(ui, entry, details, t, app_color);
                 });
                 ui.vertical(|ui| {
                     ui.set_width(right_w);
                     ui.spacing_mut().item_spacing.y = 8.0;
-                    self.release_section(ui, entry, details, t, 2);
+                    for p in details.paragraphs() {
+                        ui.add(egui::Label::new(RichText::new(p).size(14.5).color(t.ink)).wrap());
+                    }
+                    ui.add_space(14.0);
+                    features(ui, details, entry.app, t);
                 });
             });
+            ui.add_space(22.0);
+            self.release_section(ui, entry, details, t, 4);
         } else if wide {
             let gap = theme::COLUMN_GAP;
             let total = ui.available_width();
@@ -215,7 +239,7 @@ impl LauncherUi {
                     self.gallery(ui, details, t, app_color);
                     ui.add_space(8.0);
                     for p in details.paragraphs() {
-                        ui.add(egui::Label::new(RichText::new(tr_ctx(current(), details.id, p)).size(14.5).color(t.ink)).wrap());
+                        ui.add(egui::Label::new(RichText::new(p).size(14.5).color(t.ink)).wrap());
                     }
                 });
                 ui.vertical(|ui| {
@@ -233,13 +257,37 @@ impl LauncherUi {
             self.gallery(ui, details, t, app_color);
             ui.add_space(8.0);
             for p in details.paragraphs() {
-                ui.add(egui::Label::new(RichText::new(tr_ctx(current(), details.id, p)).size(14.5).color(t.ink)).wrap());
+                ui.add(egui::Label::new(RichText::new(p).size(14.5).color(t.ink)).wrap());
             }
             ui.add_space(14.0);
             features(ui, details, entry.app, t);
             ui.add_space(14.0);
             self.release_section(ui, entry, details, t, 2);
         }
+    }
+
+    fn preview_placeholder(&self, ui: &mut Ui, entry: &AppEntry, details: &AppDetails, t: &Tokens, app_color: Color32) {
+        let width = ui.available_width();
+        let (rect, _) = ui.allocate_exact_size(vec2(width, width * SHOT_ASPECT), Sense::hover());
+        ui.painter().rect_filled(rect, CornerRadius::ZERO, t.sunken);
+        ui.painter().rect_stroke(rect, CornerRadius::ZERO, t.hairline(), egui::StrokeKind::Inside);
+        ui.painter().rect_filled(Rect::from_min_size(rect.min, vec2(rect.width(), 2.0)), CornerRadius::ZERO, app_color);
+        if let Some(icon) = crate::icons::app_on_dark(entry.app.id) {
+            egui::Image::new(icon)
+                .fit_to_exact_size(vec2(88.0, 88.0))
+                .paint_at(ui, Rect::from_center_size(rect.center() - vec2(0.0, 26.0), vec2(88.0, 88.0)));
+        }
+        let ink = t.ink_strong;
+        ui.painter().text(
+            pos2(rect.center().x, rect.center().y + 38.0),
+            egui::Align2::CENTER_CENTER,
+            entry.app.name,
+            egui::FontId::new(20.0, theme::display()),
+            ink,
+        );
+        let description =
+            ui.painter().layout(details.headline.to_string(), egui::FontId::proportional(13.5), t.muted, (rect.width() - 40.0).max(1.0));
+        ui.painter().galley(pos2(rect.center().x - description.size().x / 2.0, rect.center().y + 58.0), description, t.muted);
     }
 
     /// The apps before and after `id` in the order the grid shows them (wrapping round), among
@@ -335,6 +383,9 @@ impl LauncherUi {
             if widgets::glyph_button(ui, Glyph::Close, tl!("Close (Esc)")).clicked() {
                 self.detail = None;
             }
+            if widgets::button(ui, tl!("Back to CraftApps"), Kind::Secondary, 0.0).clicked() {
+                self.detail = None;
+            }
             if let (_, Some(next)) = around
                 && step_button(ui, false, tl!("Next app"), t)
             {
@@ -365,9 +416,19 @@ impl LauncherUi {
                 ui.set_width(text_w);
                 ui.spacing_mut().item_spacing.y = 5.0;
                 widgets::wordmark(ui, app, theme::PAGE_TITLE);
-                ui.add(egui::Label::new(RichText::new(tr_ctx(current(), details.id, details.headline)).size(15.0).color(t.ink)).wrap());
+                ui.add(egui::Label::new(RichText::new(details.headline).size(15.0).color(t.ink)).wrap());
                 // "Version 0.5.0 · Oct 8, 2026", or the installed-versus-latest line.
-                let version = crate::views::version_line(entry, status);
+                let version = entry
+                    .app
+                    .local_app
+                    .filter(|local| !local.release_managed)
+                    .and_then(|local| {
+                        local.version.map(|version| {
+                            let released = local.release_date.map(|date| format!(" · {}", crate::views::date_text(date))).unwrap_or_default();
+                            format!("{}{released}", fmt(tl!("Version {version}"), &[("version", version)]))
+                        })
+                    })
+                    .unwrap_or_else(|| crate::views::version_line(entry, status));
                 if !version.trim().is_empty() {
                     ui.label(RichText::new(version).size(12.5).color(t.muted));
                 }
@@ -385,6 +446,22 @@ impl LauncherUi {
 
     /// The facts of the latest release in cells, then its notes.
     fn release_section(&self, ui: &mut Ui, entry: &AppEntry, details: &AppDetails, t: &Tokens, per_row: usize) {
+        if let Some(local) = entry.app.local_app.filter(|local| !local.release_managed) {
+            widgets::eyebrow(ui, "02", tl!("Status"));
+            ui.add_space(4.0);
+            let installed = crate::model::entry_status_text(entry, &entry.status(self.platform, self.caps.manage_apps), self.caps.manage_apps).0;
+            let facts: Vec<(&str, String)> = [
+                (tl!("Status"), Some(installed)),
+                (tl!("Version"), local.version.map(|version| version.to_string())),
+                (tl!("Released"), local.release_date.map(crate::views::date_text)),
+                (tl!("Platforms"), Some(details.platforms.to_string())),
+            ]
+            .into_iter()
+            .filter_map(|(label, value)| value.map(|v| (label, v)))
+            .collect();
+            show_facts(ui, &facts, per_row, t);
+            return;
+        }
         widgets::eyebrow(ui, "02", tl!("Latest release"));
         ui.add_space(4.0);
         let Some(r) = entry.release() else {
@@ -404,18 +481,7 @@ impl LauncherUi {
         .into_iter()
         .filter_map(|(label, value)| value.map(|v| (label, v)))
         .collect();
-        for pair in facts.chunks(per_row) {
-            ui.columns(per_row, |cols| {
-                for (col, (label, value)) in cols.iter_mut().zip(pair) {
-                    egui::Frame::new().stroke(t.hairline()).inner_margin(theme::BOX_MARGIN).show(col, |ui| {
-                        ui.set_width(ui.available_width());
-                        ui.spacing_mut().item_spacing.y = 2.0;
-                        widgets::hud(ui, label, t.faint);
-                        ui.add(egui::Label::new(RichText::new(value).size(14.0).color(t.ink_strong)).wrap());
-                    });
-                }
-            });
-        }
+        show_facts(ui, &facts, per_row, t);
         ui.add_space(8.0);
         crate::notes::show(ui, &r.notes);
     }
@@ -481,7 +547,11 @@ impl LauncherUi {
     /// The lead screenshot, its caption, and a row of thumbnails to switch between them. A picture
     /// that hasn't arrived is a frame of the same size saying so, so nothing moves when it does.
     fn gallery(&mut self, ui: &mut Ui, details: &AppDetails, t: &Tokens, app_color: Color32) {
-        let Some(&current) = details.shots.get(self.detail_shot).or(details.shots.first()) else { return };
+        let Some(&current) = details.shots.get(self.detail_shot).or(details.shots.first()) else {
+            let Some(entry) = self.entry(details.id).cloned() else { return };
+            self.preview_placeholder(ui, &entry, details, t, app_color);
+            return;
+        };
         let w = ui.available_width();
         let pic = match self.picture_source(details.id, current.key) {
             Some(lead) => {
@@ -584,10 +654,14 @@ fn step_button(ui: &mut Ui, left: bool, tip: &str, t: &Tokens) -> bool {
 /// The app's links as a row of buttons each as wide as its label; the ↗ says each opens the
 /// browser, like the links on the cards.
 fn link_buttons(ui: &mut Ui, app: &CraftApp) {
-    let links = [(tl!("Website"), app.website()), (tl!("GitHub"), app.repo_url()), (tl!("Releases"), app.releases_url())];
+    let links = [
+        app.website_url().map(|url| (tl!("Website"), url)),
+        (!app.repo.is_empty()).then(|| (tl!("GitHub"), app.repo_url())),
+        app.releases_page_url().map(|url| (tl!("Releases"), url)),
+    ];
     ui.horizontal(|ui| {
         ui.spacing_mut().item_spacing.x = 8.0;
-        for (label, url) in links {
+        for (label, url) in links.into_iter().flatten() {
             if widgets::button(ui, &format!("{label} ↗"), Kind::Secondary, 0.0).on_hover_text(url.as_str()).clicked() {
                 widgets::open_external_link(ui.ctx(), &url);
             }
@@ -605,9 +679,24 @@ fn features(ui: &mut Ui, details: &AppDetails, app: &CraftApp, t: &Tokens) {
             ui.spacing_mut().item_spacing.y = 3.0;
             ui.horizontal(|ui| {
                 widgets::hud(ui, &format!("{:02}", i + 1), t.app_ink(app));
-                ui.label(RichText::new(tr_ctx(current(), details.id, f.title)).size(15.0).family(theme::semibold()).color(t.ink_strong));
+                ui.label(RichText::new(f.title).size(15.0).family(theme::semibold()).color(t.ink_strong));
             });
-            ui.add(egui::Label::new(RichText::new(tr_ctx(current(), details.id, f.text)).size(13.5).color(t.muted)).wrap());
+            ui.add(egui::Label::new(RichText::new(f.text).size(13.5).color(t.muted)).wrap());
+        });
+    }
+}
+
+fn show_facts(ui: &mut Ui, facts: &[(&str, String)], per_row: usize, t: &Tokens) {
+    for pair in facts.chunks(per_row.max(1)) {
+        ui.columns(per_row.max(1), |cols| {
+            for (col, (label, value)) in cols.iter_mut().zip(pair) {
+                egui::Frame::new().stroke(t.hairline()).inner_margin(theme::BOX_MARGIN).show(col, |ui| {
+                    ui.set_width(ui.available_width());
+                    ui.spacing_mut().item_spacing.y = 2.0;
+                    widgets::hud(ui, label, t.faint);
+                    ui.add(egui::Label::new(RichText::new(value).size(14.0).color(t.ink_strong)).wrap());
+                });
+            }
         });
     }
 }

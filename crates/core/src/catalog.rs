@@ -1,4 +1,4 @@
-//! The Craft App Suite: the seventeen apps the launcher knows about.
+//! The Craft App Suite: eighteen apps, including community apps such as ASUSCraft.
 //!
 //! The list is data so a later version can fetch it from an API; [`SUITE`] is the built-in copy.
 //!
@@ -49,6 +49,8 @@ pub struct CraftApp {
     /// while those builds carry no signature the launcher can check: it then opens a copy that's
     /// there and links to the releases, but installs nothing.
     pub mac_team: Option<&'static str>,
+    /// Optional desktop integration metadata for apps with a known installed executable.
+    pub local_app: Option<LocalApp>,
 }
 
 impl CraftApp {
@@ -68,6 +70,21 @@ impl CraftApp {
     /// The app's website: its page on getartcraft.com, or a community app's own site.
     pub fn website(&self) -> String {
         self.site.map_or_else(|| format!("https://getartcraft.com/apps/{}", self.id), str::to_string)
+    }
+
+    /// A website link that is actually published for this app. Official Craft Apps use their
+    /// catalog page; community apps only expose a website when one is recorded explicitly.
+    pub fn website_url(&self) -> Option<String> {
+        self.site.map(str::to_string).or_else(|| (self.kind == AppKind::Official).then(|| format!("https://getartcraft.com/apps/{}", self.id)))
+    }
+
+    /// A release page where one is part of the app's metadata. Release-managed suite apps retain
+    /// the standard GitHub releases route; locally integrated apps opt in explicitly.
+    pub fn releases_page_url(&self) -> Option<String> {
+        match self.local_app {
+            Some(local) => local.releases_url.map(str::to_string),
+            None => Some(self.releases_url()),
+        }
     }
 
     /// Whether the launcher installs this app from a `kind` package.
@@ -119,11 +136,12 @@ const fn app(
         former_bundles: &[],
         site: None,
         mac_team: Some(ARTCRAFT_TEAM_ID),
+        local_app: None,
     }
 }
 
 /// The Craft App Suite, in display order matching getartcraft.com, then the community apps:
-pub const SUITE: [CraftApp; 17] = [
+pub const SUITE: [CraftApp; 18] = [
     app("photocraft", "PhotoCraft", "Image editing", [[0x2f, 0x7b, 0xf5], [0x1a, 0x5b, 0xc4], [0x7f, 0xb0, 0xff]], "storytold/photocraft"),
     app("vectorcraft", "VectorCraft", "Vector illustration", [[0xe8, 0x57, 0x3f], [0xb8, 0x3a, 0x24], [0xff, 0x8a, 0x70]], "storytold/vectorcraft"),
     app(
@@ -238,7 +256,38 @@ pub const SUITE: [CraftApp; 17] = [
             "tangency-labs/solidcraft",
         )
     },
+    CraftApp {
+        kind: AppKind::Community,
+        publisher: "Mostafa Momen",
+        site: None,
+        mac_team: None,
+        local_app: Some(LocalApp {
+            id: "asuscraft",
+            name: "ASUSCraft",
+            tagline: "Complete ASUS Laptop Control Center",
+            desktop_entry: "io.github.asuscontrolcenter.AsusControlCenter.desktop",
+            icon: "io.github.asuscontrolcenter.AsusControlCenter",
+            executable: Some("/usr/bin/asus-control-center"),
+            version: None,
+            release_date: None,
+            releases_url: Some("https://github.com/Mostafamomen/asus-control-center/releases"),
+            release_managed: true,
+        }),
+        former_ids: &["asus-control-center"],
+        ..app(
+            "asuscraft",
+            "ASUSCraft",
+            "Complete ASUS Laptop Control Center",
+            [[0x20, 0xc8, 0xd7], [0x0c, 0x8d, 0xa2], [0x72, 0xe6, 0xeb]],
+            "Mostafamomen/asus-control-center",
+        )
+    },
 ];
+
+/// Catalog shown in the Craft Apps view.
+pub fn craft_apps() -> impl Iterator<Item = &'static CraftApp> {
+    SUITE.iter()
+}
 
 /// The Apple Developer team that signs every official Craft App and ArtCraft Launcher (Learning
 /// Machines LLC): the macOS side of the Windows publisher check.
@@ -302,6 +351,7 @@ pub fn app_icon_png(id: &str) -> Option<&'static [u8]> {
         "cadcraft" => include_bytes!("../../../assets/app-icons/cadcraft.png"),
         "soundcraft" => include_bytes!("../../../assets/app-icons/soundcraft.png"),
         "figcraft" => include_bytes!("../../../assets/app-icons/figcraft.png"),
+        "asuscraft" => include_bytes!("../../../assets/app-icons/asuscraft.png"),
         _ => return None,
     })
 }
@@ -321,20 +371,41 @@ mod tests {
 
     /// Every catalog entry must have a distinct lookup key.
     #[test]
-    fn suite_has_seventeen_apps_with_unique_ids() {
-        assert_eq!(SUITE.len(), 17);
+    fn suite_has_eighteen_apps_with_unique_ids() {
+        assert_eq!(SUITE.len(), 18);
         let mut ids: Vec<_> = SUITE.iter().map(|a| a.id).collect();
         ids.sort_unstable();
         ids.dedup();
         assert_eq!(ids.len(), SUITE.len());
         for a in &SUITE {
-            // `Craft Anything` is `craft-anything`.
             assert_eq!(a.name.to_lowercase().replace(' ', "-"), a.id);
             match a.kind {
                 AppKind::Official => assert_eq!(a.repo, format!("storytold/{}", a.id)),
                 AppKind::Community => assert!(!a.repo.starts_with("storytold/"), "{} is community", a.id),
             }
         }
+    }
+
+    #[test]
+    fn asuscraft_is_a_single_builtin_craftapp_with_its_icon_and_executable() {
+        let app = CraftApp::by_id("asuscraft").unwrap();
+        let local = app.local_app.unwrap();
+        assert_eq!(app.kind, AppKind::Community);
+        assert_eq!(app.name, "ASUSCraft");
+        assert_eq!(app.tagline, "Complete ASUS Laptop Control Center");
+        assert_eq!(local.executable, Some("/usr/bin/asus-control-center"));
+        assert_eq!(local.desktop_entry, "io.github.asuscontrolcenter.AsusControlCenter.desktop");
+        assert!(local.release_managed);
+        assert_eq!(app.stems().collect::<Vec<_>>(), ["asuscraft", "asus-control-center"]);
+        assert!(app_icon_png(app.id).unwrap().starts_with(b"\x89PNG\r\n\x1a\n"));
+        assert_eq!(craft_apps().filter(|a| a.id == "asuscraft").count(), 1);
+    }
+
+    #[test]
+    fn all_builtin_craft_apps_are_visible_once() {
+        let visible: Vec<_> = craft_apps().map(|app| app.id).collect();
+        assert_eq!(visible.len(), SUITE.len());
+        assert_eq!(visible.iter().filter(|&&id| id == "asuscraft").count(), 1);
     }
 
     #[test]
@@ -389,5 +460,52 @@ mod tests {
         assert_eq!(pdf.names().collect::<Vec<_>>(), ["PdfCraft", "PrintCraft"]);
         assert_eq!(pdf.website(), "https://getartcraft.com/apps/pdfcraft");
         assert_eq!(CraftApp::by_id("wordcraft").unwrap().website(), "https://getartcraft.com/apps/wordcraft");
+    }
+}
+
+/// Desktop metadata used by a Craft App that has a known Linux executable and desktop entry. An
+/// app may also opt into the normal GitHub release/install lifecycle with [`Self::release_managed`].
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct LocalApp {
+    /// Stable machine id (used as a key in settings, search, etc.).
+    pub id: &'static str,
+    /// Display name shown on the tile.
+    pub name: &'static str,
+    /// Short description shown under the name.
+    pub tagline: &'static str,
+    /// Freedesktop `.desktop` file name (resolved through XDG application dirs at runtime).
+    pub desktop_entry: &'static str,
+    /// Icon name as declared by the `.desktop` file's `Icon=` key (resolved via the icon theme).
+    pub icon: &'static str,
+    /// Optional explicit executable for CraftApps integrations that must launch a known install.
+    pub executable: Option<&'static str>,
+    /// Version declared by the locally installed project's own metadata, when available.
+    pub version: Option<&'static str>,
+    /// Unix timestamp of the project's release date, when available.
+    pub release_date: Option<i64>,
+    /// The project's real release page.
+    pub releases_url: Option<&'static str>,
+    /// This Craft App has a normal GitHub release/install lifecycle as well as a known executable.
+    pub release_managed: bool,
+}
+
+/// Launch-only local applications shown in the separate Local Apps section.
+/// ASUSCraft is deliberately not listed here: it is a release-managed Craft App in [`SUITE`],
+/// so a second shortcut would duplicate it. ChatGPT is intentionally not shown in the launcher.
+pub const LOCAL_APPS: [LocalApp; 0] = [];
+
+#[cfg(test)]
+mod local_app_tests {
+    use super::LOCAL_APPS;
+
+    #[test]
+    fn local_apps_are_empty() {
+        assert_eq!(LOCAL_APPS.len(), 0);
+    }
+
+    #[test]
+    fn asuscraft_is_not_duplicated_in_local_apps() {
+        assert!(!LOCAL_APPS.iter().any(|app| app.id == "asus-control-center" || app.id == "asuscraft"));
+        assert!(!LOCAL_APPS.iter().any(|app| app.desktop_entry.to_ascii_lowercase().contains("asus")));
     }
 }

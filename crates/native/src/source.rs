@@ -2,7 +2,7 @@
 //!
 //! [`GitHubSource`] asks the GitHub REST API (one request per app, revalidated with ETags) and,
 //! when the API is out of quota, falls back to github.com's release pages: the
-//! `releases/latest` redirect names the tag and `SHA256SUMS.txt` lists every file with its
+//! `releases/latest` redirect names the tag and `SHA256SUMS[.txt]` lists every file with its
 //! checksum, which costs no API quota at all. A later [`ReleaseSource`] will ask the ArtCraft
 //! catalog API for every app in one request.
 
@@ -147,8 +147,14 @@ impl GitHubSource {
         {
             return Ok(Answer { latest: LatestRelease::Found(r.clone()), source: Source::GitHubPages });
         }
-        let sums_url = format!("{}{tag}/SHA256SUMS.txt", release::download_prefix(repo));
-        let sums = self.http.get_text(&sums_url)?.map(|t| release::parse_sha256sums(&t)).unwrap_or_default();
+        let prefix = release::download_prefix(repo);
+        let sums_url = format!("{}{tag}/SHA256SUMS.txt", prefix);
+        let sums = match self.http.get_text(&sums_url)? {
+            Some(text) => Some(text),
+            None => self.http.get_text(&format!("{}{tag}/SHA256SUMS", prefix))?,
+        }
+        .map(|text| release::parse_sha256sums(&text))
+        .unwrap_or_default();
         let r = release::release_from_sums(repo, &tag, &sums);
         self.store(repo, Entry { etag: None, release: Some(r.clone()), prereleases: false, fetched_at: crate::now() });
         Ok(Answer { latest: LatestRelease::Found(r), source: Source::GitHubPages })

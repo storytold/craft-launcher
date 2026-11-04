@@ -210,6 +210,16 @@ mod tests {
     }
 
     #[test]
+    fn asuscraft_package_installs_are_detected_by_the_release_package_name() {
+        let app = CraftApp::by_id("asuscraft").unwrap();
+        let rpm = pkgs(InstallSource::Rpm, parse_rpm("asus-control-center|0.4.0-1.fc44\n"));
+        let found = find(app, &rpm, &[InstallSource::Rpm]).unwrap();
+        assert_eq!(found.name, "asus-control-center");
+        assert_eq!(version_of(found).map(|v| v.to_string()).as_deref(), Some("0.4.0"));
+        assert!(candidate_names(app, InstallSource::Deb).contains(&"asus-control-center".into()));
+    }
+
+    #[test]
     fn finds_aur_packages_in_every_flavour() {
         let photo = CraftApp::by_id("photocraft").unwrap();
         let pdf = CraftApp::by_id("pdfcraft").unwrap();

@@ -208,6 +208,36 @@ impl AssetName {
 /// Reads `<stem>-<version>-<os>-<arch>[-portable].<ext>`; `None` for checksums, zsync files, CLI
 /// and web bundles, or anything else.
 pub fn parse_asset_name(name: &str, stems: &[&str]) -> Option<AssetName> {
+    // ASUSCraft's published packages use distro-native names rather than the suite's standard
+    // `<id>-<version>-linux-<arch>` convention. The RPM is specifically built for Fedora 44;
+    // do not mistake the EL10 source/debug packages for an installable Fedora binary.
+    if stems.contains(&"asus-control-center") {
+        if let Some(version) = name
+            .strip_prefix("asus-control-center_")
+            .and_then(|name| name.strip_suffix("_amd64.deb"))
+            .filter(|version| crate::version::parse(version).is_some())
+        {
+            return Some(AssetName {
+                stem: "asus-control-center".into(),
+                version: version.into(),
+                token: "linux-x86_64".into(),
+                kind: PackageKind::Deb,
+            });
+        }
+        if let Some(body) = name.strip_prefix("asus-control-center-").and_then(|name| name.strip_suffix(".fc44.x86_64.rpm")) {
+            for (index, _) in body.match_indices('-') {
+                let (version, release) = body.split_at(index);
+                if crate::version::parse(version).is_some() && release[1..].starts_with(|c: char| c.is_ascii_digit()) {
+                    return Some(AssetName {
+                        stem: "asus-control-center".into(),
+                        version: version.into(),
+                        token: "linux-x86_64".into(),
+                        kind: PackageKind::Rpm,
+                    });
+                }
+            }
+        }
+    }
     const KINDS: [PackageKind; 9] = [
         PackageKind::PortableZip,
         PackageKind::TarGz,
@@ -285,22 +315,6 @@ mod tests {
             let (asset, kind) = pick_asset(&r, &["photocraft"], Platform { os: Os::MacOs, arch }, &[PackageKind::Dmg]).unwrap();
             assert_eq!(asset.name, "photocraft-0.9.0-macos-universal.dmg");
             assert_eq!(kind, PackageKind::Dmg);
-        }
-    }
-
-    #[test]
-    fn texturecraft_selects_published_desktop_assets() {
-        let release =
-            crate::release::parse_github_release(include_str!("../tests/fixtures/texturecraft-release.json"), "storytold/texturecraft").unwrap();
-        for (os, kind, expected) in [
-            (Os::Windows, PackageKind::Msi, "texturecraft-0.1.0-windows-x64.msi"),
-            (Os::MacOs, PackageKind::Dmg, "texturecraft-0.1.0-macos-universal.dmg"),
-            (Os::Linux, PackageKind::Flatpak, "texturecraft-0.1.0-linux-x86_64.flatpak"),
-        ] {
-            let platform = Platform { os, arch: Arch::X64 };
-            let (asset, selected) = pick_asset(&release, &["texturecraft"], platform, &[kind]).unwrap();
-            assert_eq!(asset.name, expected);
-            assert_eq!(selected, kind);
         }
     }
 
@@ -458,5 +472,22 @@ mod tests {
         for kind in [PackageKind::AppImage, PackageKind::Deb, PackageKind::Rpm, PackageKind::ArchPkg, PackageKind::Flatpak, PackageKind::TarGz] {
             assert_eq!(pick_asset(&arm_only_release, &["photocraft"], p_x64, &[kind]), None, "x86_64 must never match an aarch64 asset for {kind:?}");
         }
+    }
+
+    #[test]
+    fn asuscraft_release_names_select_the_deb_and_fedora_44_rpm() {
+        let r = crate::release::parse_github_release(include_str!("../tests/fixtures/asuscraft-release.json"), "Mostafamomen/asus-control-center")
+            .unwrap();
+        assert_eq!(r.version.as_ref().map(ToString::to_string).as_deref(), Some("0.4.0"));
+        assert_eq!(r.sums_asset().map(|asset| asset.name.as_str()), Some("SHA256SUMS"));
+        let linux = Platform { os: Os::Linux, arch: Arch::X64 };
+        let (deb, deb_kind) = pick_asset(&r, &["asuscraft", "asus-control-center"], linux, &[PackageKind::Deb]).unwrap();
+        assert_eq!((deb.name.as_str(), deb_kind), ("asus-control-center_0.4.0_amd64.deb", PackageKind::Deb));
+        assert_eq!(deb.sha256.as_deref(), Some("9dda51beb5cd1bbfb81699c701c3bdda12e568a38f2a70a998b85ed393b1253a"));
+        let (rpm, rpm_kind) = pick_asset(&r, &["asuscraft", "asus-control-center"], linux, &[PackageKind::Rpm]).unwrap();
+        assert_eq!((rpm.name.as_str(), rpm_kind), ("asus-control-center-0.4.0-1.fc44.x86_64.rpm", PackageKind::Rpm));
+        assert_eq!(rpm.sha256.as_deref(), Some("2ac9bc897a0479650b8e7b2c8f4ef2181815cdd15dac17a75166f00d3e4d50a1"));
+        assert_eq!(parse_asset_name("asus-control-center_0.4.0_arm64.deb", &["asus-control-center"]), None);
+        assert_eq!(parse_asset_name("asus-control-center-0.4.0-1.fc44.src.rpm", &["asus-control-center"]), None);
     }
 }

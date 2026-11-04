@@ -7,10 +7,10 @@ use artcraft_launcher_core::protocol::{
 };
 use artcraft_launcher_core::release::Release;
 use artcraft_launcher_core::status::AppStatus;
-use artcraft_launcher_core::{Arch, PackageKind, Platform, SUITE};
+use artcraft_launcher_core::{Arch, CraftApp, PackageKind, Platform, craft_apps};
 
 use crate::i18n::set_current;
-use crate::model::AppEntry;
+use crate::model::{AppEntry, LocalAppEntry};
 use crate::motion;
 use crate::settings::{Filter, Settings, SortKey, ViewMode};
 use crate::theme::{self, Tokens};
@@ -138,6 +138,9 @@ pub struct LauncherUi {
     pub(crate) backend: Box<dyn Backend>,
     pub settings: Settings,
     pub(crate) entries: Vec<AppEntry>,
+    pub(crate) local_entries: Vec<LocalAppEntry>,
+    /// When each local app was last asked to launch, so the button can say so and not repeat.
+    pub(crate) local_launching: std::collections::HashMap<String, std::time::Instant>,
     pub(crate) caps: Capabilities,
     pub(crate) platform: Option<Platform>,
     pub(crate) checking: bool,
@@ -247,6 +250,18 @@ impl LauncherUi {
     /// `fonts_ready` starts false, so the first `ui` pass is a gate that draws nothing and flushes
     /// any action queued before it.
     pub fn new(ctx: &egui::Context, backend: Box<dyn Backend>, settings: Settings) -> Self {
+        Self::with_catalog(ctx, backend, settings, craft_apps())
+    }
+
+    /// Builds the launcher from an explicit app catalog. The shell uses [`Self::new`] and the
+    /// visible built-in catalog; alternate catalogs can reuse the same UI without changing card
+    /// rendering or app behavior.
+    pub fn with_catalog(
+        ctx: &egui::Context,
+        backend: Box<dyn Backend>,
+        settings: Settings,
+        apps: impl IntoIterator<Item = &'static CraftApp>,
+    ) -> Self {
         let lang = effective_lang(&settings.language);
         let cjk_font = lang.needs_cjk_font().then_some(lang);
         theme::install_fonts(ctx, cjk_font);
@@ -258,7 +273,9 @@ impl LauncherUi {
         Self {
             backend,
             settings,
-            entries: SUITE.iter().map(AppEntry::new).collect(),
+            entries: apps.into_iter().map(AppEntry::new).collect(),
+            local_entries: artcraft_launcher_core::LOCAL_APPS.iter().map(LocalAppEntry::new).collect(),
+            local_launching: std::collections::HashMap::new(),
             caps,
             platform,
             checking: false,
@@ -396,6 +413,60 @@ impl LauncherUi {
             match action {
                 UiAction::Command(command) => self.backend.send(command.clone()),
                 UiAction::Launch(id) => {
+                    if let Some(executable) = self.entry(id).and_then(|entry| entry.app.local_app).and_then(|app| app.executable) {
+                        #[cfg(not(target_arch = "wasm32"))]
+                        {
+                            if !crate::model::is_executable(executable) {
+                                self.toast(format!("ASUSCraft isn't installed at {executable}"), true);
+                                continue;
+                            }
+                            match std::process::Command::new(executable).spawn() {
+                                Ok(_) => {
+                                    let opened = self.settings.launches.entry(id.clone()).or_insert(0);
+                                    *opened = opened.saturating_add(1);
+                                }
+                                Err(error) => self.toast(format!("Could not launch ASUSCraft: {error}"), true),
+                            }
+                        }
+                        #[cfg(target_arch = "wasm32")]
+                        self.toast("Launching local apps is not supported in the web build.".to_string(), true);
+                        continue;
+                    }
+                    // Launch-only local applications never go through the
+                    // Craft backend: resolve the desktop entry and ask the host to open it.
+                    if self.local_entries.iter().any(|e| e.app.id == id) {
+                        // One launch at a time: a second click while it starts is ignored.
+                        if self.local_launching.contains_key(id) {
+                            continue;
+                        }
+                        self.local_launching.insert(id.clone(), std::time::Instant::now());
+                        #[cfg(not(target_arch = "wasm32"))]
+                        {
+                            let desktop = self
+                                .local_entries
+                                .iter()
+                                .find(|e| e.app.id == id)
+                                .map(|e| e.app.desktop_entry.trim_end_matches(".desktop").to_string())
+                                .unwrap_or_default();
+                            // Spawn and return: the UI stays responsive while the app starts.
+                            match std::process::Command::new("gtk-launch").arg(&desktop).spawn() {
+                                Ok(_) => {
+                                    let opened = self.settings.launches.entry(id.clone()).or_insert(0);
+                                    *opened = opened.saturating_add(1);
+                                }
+                                Err(e) => {
+                                    self.local_launching.remove(id);
+                                    self.toast(format!("Could not launch {id}: {e}"), true);
+                                }
+                            }
+                        }
+                        #[cfg(target_arch = "wasm32")]
+                        {
+                            self.local_launching.remove(id);
+                            self.toast("Launching local apps is not supported in the web build.".to_string(), true);
+                        }
+                        continue;
+                    }
                     let opened = self.settings.launches.entry(id.clone()).or_insert(0);
                     *opened = opened.saturating_add(1);
                     self.backend.send(Command::Launch { app: id.clone() });
@@ -861,6 +932,9 @@ impl LauncherUi {
                             ViewMode::Table => self.table(ui, &ids),
                         }
                     }
+                    if self.settings.view == ViewMode::Grid {
+                        self.local_grid(ui);
+                    }
                     ui.add_space(16.0);
                     // The drop targets have seen this frame's pointer: a released drag ends here.
                     if !ui.input(|i| i.pointer.primary_down()) {
@@ -907,7 +981,6 @@ impl LauncherUi {
             .enumerate()
             .filter(|(_, e)| {
                 self.in_filter(e, self.settings.filter)
-                    && !(self.settings.hide_community_apps && e.app.kind == artcraft_launcher_core::catalog::AppKind::Community)
                     && (needle.is_empty() || e.app.name.to_lowercase().contains(&needle) || e.app.tagline.to_lowercase().contains(&needle))
             })
             .collect();
@@ -1119,6 +1192,19 @@ mod tests {
         let settings = Settings { language: "en".into(), notify: false, ..Settings::default() };
         let ctx = egui::Context::default();
         (LauncherUi::new(&ctx, Box::new(backend), settings), sent, ctx)
+    }
+
+    #[test]
+    fn asuscraft_is_in_craftapps_and_not_in_local_apps() {
+        let (launcher, _sent, _ctx) = launcher();
+        assert!(launcher.entry("asuscraft").is_some());
+        assert_eq!(launcher.entries.len(), artcraft_launcher_core::SUITE.len());
+        assert!(launcher.visible_ids().contains(&"asuscraft"));
+        assert!(!launcher.local_entries.iter().any(|e| e.app.id == "asuscraft"));
+        assert!(!launcher.local_entries.iter().any(|e| e.app.id == "asus-control-center"));
+        assert!(!launcher.local_entries.iter().any(|e| e.app.id == "chatgpt"));
+        assert!(!launcher.local_entries.iter().any(|e| e.app.desktop_entry.to_ascii_lowercase().contains("asus")));
+        assert_eq!(launcher.local_entries.len(), artcraft_launcher_core::LOCAL_APPS.len());
     }
 
     /// One `run_ui` pass at a chosen input time, exactly like the native shell's callback order.

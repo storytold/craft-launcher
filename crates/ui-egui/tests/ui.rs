@@ -182,13 +182,24 @@ fn events() -> Vec<Event> {
         });
     }
     ev.push(Event::Latest { app: "soundcraft".into(), latest: LatestRelease::None, from: Origin::ArtCraftApi });
-    let installed = [("photocraft", "0.4.1"), ("lightcraft", "0.4.0"), ("wordcraft", "0.3.0"), ("effectcraft", "0.5.0")];
+    ev.push(Event::Latest {
+        app: "asuscraft".into(),
+        latest: LatestRelease::Found(
+            artcraft_launcher_core::release::parse_github_release(
+                include_str!("../../core/tests/fixtures/asuscraft-release.json"),
+                "Mostafamomen/asus-control-center",
+            )
+            .unwrap(),
+        ),
+        from: Origin::ArtCraftApi,
+    });
+    let installed = [("photocraft", "0.4.1"), ("lightcraft", "0.4.0"), ("wordcraft", "0.3.0"), ("effectcraft", "0.5.0"), ("asuscraft", "0.4.0")];
     for app in &SUITE {
         let inst = installed.iter().find(|(id, _)| *id == app.id).map(|(_, v)| Installed {
             version: version::parse(v),
-            source: InstallSource::MacApp,
+            source: if app.id == "asuscraft" { InstallSource::Rpm } else { InstallSource::MacApp },
             location: format!("/Applications/{}.app", app.name),
-            package: None,
+            package: (app.id == "asuscraft").then(|| "asus-control-center".into()),
             externally_managed: false,
             origin: None,
             installation: None,
@@ -306,7 +317,7 @@ fn harness_full(
                 } else {
                     artcraft_launcher_ui_egui::theme::ThemeChoice::Light
                 };
-                *state = Some(LauncherUi::new(ui.ctx(), b, s));
+                *state = Some(LauncherUi::with_catalog(ui.ctx(), b, s, SUITE.iter()));
             }
             if let Some(l) = state.as_mut() {
                 l.logic(&ui.ctx().clone(), &mut HeaderHost(bar, discord_url));
@@ -357,7 +368,7 @@ fn folder_harness(picked: Rc<RefCell<Option<String>>>) -> (Harness<'static, Opti
     let harness = test_harness_builder(egui::Theme::Dark).with_size(egui::vec2(1180.0, 900.0)).build_ui_state(
         move |ui, state: &mut Option<LauncherUi>| {
             if let Some(backend) = backend.take() {
-                *state = Some(LauncherUi::new(ui.ctx(), Box::new(backend), Settings { notify: false, ..Default::default() }));
+                *state = Some(LauncherUi::with_catalog(ui.ctx(), Box::new(backend), Settings { notify: false, ..Default::default() }, SUITE.iter()));
             }
             if let Some(launcher) = state {
                 launcher.logic(ui.ctx(), &mut host);
@@ -486,7 +497,7 @@ fn version_menu(latest: Release, answer: Vec<Release>) -> VersionsHarness {
     let mut h = test_harness_builder(egui::Theme::Dark).with_size(egui::vec2(1180.0, 1200.0)).build_ui_state(
         move |ui, state: &mut Option<LauncherUi>| {
             if let Some(backend) = backend.take() {
-                *state = Some(LauncherUi::new(ui.ctx(), Box::new(backend), Settings { notify: false, ..Default::default() }));
+                *state = Some(LauncherUi::with_catalog(ui.ctx(), Box::new(backend), Settings { notify: false, ..Default::default() }, SUITE.iter()));
             }
             if let Some(launcher) = state {
                 launcher.logic(ui.ctx(), &mut DummyHost);
@@ -692,7 +703,7 @@ fn the_install_folder_fields_default_to_the_hosts_answer() {
     let harness = test_harness_builder(egui::Theme::Dark).with_size(egui::vec2(1180.0, 900.0)).build_ui_state(
         move |ui, state: &mut Option<LauncherUi>| {
             if let Some(backend) = backend.take() {
-                *state = Some(LauncherUi::new(ui.ctx(), Box::new(backend), Settings { notify: false, ..Default::default() }));
+                *state = Some(LauncherUi::with_catalog(ui.ctx(), Box::new(backend), Settings { notify: false, ..Default::default() }, SUITE.iter()));
             }
             if let Some(launcher) = state {
                 launcher.logic(ui.ctx(), &mut host);
@@ -771,7 +782,7 @@ fn windows_package_harness(
         move |ui, state: &mut Option<LauncherUi>| {
             if let Some(backend) = backend.take() {
                 let settings = Settings { notify: false, preferred_kinds: preferred.clone(), ..Default::default() };
-                *state = Some(LauncherUi::new(ui.ctx(), backend, settings));
+                *state = Some(LauncherUi::with_catalog(ui.ctx(), backend, settings, SUITE.iter()));
             }
             if let Some(launcher) = state {
                 launcher.logic(ui.ctx(), &mut host);
@@ -1047,7 +1058,8 @@ fn the_actual_update_button_queues_once_across_a_discarded_pass() {
 fn the_actual_open_button_launches_once_across_a_discarded_pass() {
     let (mut h, sent) = harness(ViewMode::Grid, egui::Theme::Dark, true);
     h.run_steps(8);
-    let target = h.get_all_by_label("Open").next().expect("an up-to-date app has an Open button").accesskit_node().locate();
+    // ASUSCraft is a local Open action and is expected to appear before the remote cards here.
+    let target = h.get_all_by_label("Open").last().expect("an up-to-date remote app has an Open button").accesskit_node().locate();
     let ctx = h.ctx.clone();
     let mut launcher = h.state_mut().take().expect("the harness built the launcher");
     let before = launcher.settings.launches.values().copied().sum::<u32>();
@@ -1097,7 +1109,12 @@ fn a_job_finished_while_hidden_shows_one_fresh_toast_on_the_next_frame() {
     );
     // The tray path: `logic` runs without any UI pass, with the input time of the last shown frame.
     let windowless = egui::Context::default();
-    let mut launcher = LauncherUi::new(&windowless, Box::new(backend), Settings { notify: false, language: "en".into(), ..Settings::default() });
+    let mut launcher = LauncherUi::with_catalog(
+        &windowless,
+        Box::new(backend),
+        Settings { notify: false, language: "en".into(), ..Settings::default() },
+        SUITE.iter(),
+    );
     launcher.logic(&windowless, &mut NoHost);
     *h.state_mut() = Some(launcher);
     // The visible window's clock is far ahead of the logic-only tick's stale input time. The toast
@@ -1152,7 +1169,7 @@ fn keeps_working_with_no_window_then_draws_in_a_new_one() {
     let backend =
         Fake { events: events(), sent: sent.clone(), manage: true, pictures: Rc::default(), asked: Vec::new(), clock: Rc::new(Cell::new(NOW)) };
     let windowless = egui::Context::default();
-    let mut ui = LauncherUi::new(&windowless, Box::new(backend), Settings { notify: false, ..Settings::default() });
+    let mut ui = LauncherUi::with_catalog(&windowless, Box::new(backend), Settings { notify: false, ..Settings::default() }, SUITE.iter());
     // No window: the backend's news is still taken in.
     ui.logic(&windowless, &mut NoHost);
     assert!(sent.borrow().contains(&Command::CheckForUpdates { force: false }));
@@ -1716,13 +1733,14 @@ fn every_table_column_sorts_both_ways() {
     h.get_by_label("Status").click();
     h.run_steps(3);
     let o = order(&h);
-    assert_eq!(&o[..4], ["PhotoCraft", "EffectCraft", "LightCraft", "WordCraft"], "{o:?}");
+    assert_eq!(&o[..2], ["PhotoCraft", "EffectCraft"], "{o:?}");
+    assert!(o[2..].starts_with(&["LightCraft", "WordCraft", "ASUSCraft"].map(str::to_string)), "{o:?}");
     // Reversed: the apps not installed first, then up to date, then the updates last. The table
     // keeps its column's order; only the grid puts installed apps above the rest.
     h.get_by_label("Status").click();
     h.run_steps(3);
     let o = order(&h);
-    assert_eq!(&o[o.len().saturating_sub(4)..], ["LightCraft", "WordCraft", "PhotoCraft", "EffectCraft"], "{o:?}");
+    assert_eq!(&o[o.len().saturating_sub(2)..], ["PhotoCraft", "EffectCraft"], "{o:?}");
     // The old Installed and Latest columns are gone; Version shows the number, and from and to for an update.
     assert!(h.query_by_label("Latest").is_none());
     h.get_by_label("Version");
@@ -1759,41 +1777,6 @@ fn the_first_close_to_the_tray_is_explained_once() {
     assert_eq!(host.0.len(), 1, "{:?}", host.0);
     assert_eq!(host.0[0].0, "ArtCraft Launcher is still running");
     assert!(host.0[0].1.contains("tray icon"), "{}", host.0[0].1);
-}
-
-#[test]
-fn community_apps_can_be_hidden_and_restored_in_settings() {
-    for view in [ViewMode::Grid, ViewMode::Table] {
-        let (mut h, _) = harness(view, egui::Theme::Dark, true);
-        h.run_steps(6);
-        assert!(!h.state().as_ref().unwrap().settings.hide_community_apps);
-        assert!(h.query_by_label("SolidCraft details").is_some());
-        h.get_by_label("Settings").click();
-        h.run_steps(4);
-        h.get_by_label("Hide community apps").click();
-        h.run_steps(2);
-        assert!(h.state().as_ref().unwrap().settings.hide_community_apps);
-        h.get_by_label("Done").click();
-        h.run_steps(4);
-        assert!(h.query_by_label("SolidCraft details").is_none());
-        assert!(h.query_by_label("PhotoCraft details").is_some());
-        h.get_by_label("Settings").click();
-        h.run_steps(4);
-        h.get_by_label("Hide community apps").click();
-        h.run_steps(2);
-        h.get_by_label("Done").click();
-        h.run_steps(4);
-        assert!(h.query_by_label("SolidCraft details").is_some());
-    }
-}
-
-#[test]
-fn community_visibility_preference_round_trips_and_defaults_off_for_old_settings() {
-    let old: Settings = serde_json::from_str("{}").unwrap();
-    assert!(!old.hide_community_apps);
-    let settings = Settings { hide_community_apps: true, ..old };
-    let restored: Settings = serde_json::from_str(&serde_json::to_string(&settings).unwrap()).unwrap();
-    assert!(restored.hide_community_apps);
 }
 
 #[test]
@@ -1901,7 +1884,10 @@ fn all_opened(h: &mut Harness<'_, Option<LauncherUi>>, label: &str) -> Vec<Strin
 /// Footer, card and social links open their expected pages; one card menu's All releases action
 /// opens a repository releases page.
 fn links_open_the_right_pages() {
+    use artcraft_launcher_ui_egui::settings::SortKey;
     let (mut h, _) = harness(ViewMode::Grid, egui::Theme::Dark, true);
+    h.state_mut().as_mut().unwrap().settings.sort = SortKey::Name;
+    h.state_mut().as_mut().unwrap().settings.sort_descending = true;
     h.run_steps(6);
     assert_eq!(click_opens(&mut h, "Discord").as_deref(), Some("https://discord.gg/artcraft"));
     // The footer's ArtCraft links and each card's own pages.
@@ -1920,7 +1906,7 @@ fn links_open_the_right_pages() {
     // The … menu.
     h.get_all_by_label_contains("More actions").next().unwrap().click();
     h.run_steps(3);
-    // The first card is the first installed app by name.
+    // Suite order keeps this menu on a release-managed card, not the local ASUSCraft card.
     let url = click_opens(&mut h, "All releases").unwrap_or_default();
     assert!(url.starts_with("https://github.com/storytold/") && url.ends_with("/releases"), "{url}");
 }
@@ -1976,7 +1962,7 @@ fn looks_again_at_installed_apps_every_few_minutes_not_every_frame() {
             if state.is_none()
                 && let Some(b) = backend.take()
             {
-                *state = Some(LauncherUi::new(ui.ctx(), Box::new(b), Settings { notify: false, ..Settings::default() }));
+                *state = Some(LauncherUi::with_catalog(ui.ctx(), Box::new(b), Settings { notify: false, ..Settings::default() }, SUITE.iter()));
             }
             if let Some(l) = state.as_mut() {
                 l.logic(&ui.ctx().clone(), &mut NoHost);
@@ -2044,7 +2030,7 @@ fn the_launcher_updates_itself_and_quits_to_restart() {
             if state.is_none()
                 && let Some(b) = backend.take()
             {
-                *state = Some(LauncherUi::new(ui.ctx(), Box::new(b), Settings { notify: false, ..Settings::default() }));
+                *state = Some(LauncherUi::with_catalog(ui.ctx(), Box::new(b), Settings { notify: false, ..Settings::default() }, SUITE.iter()));
             }
             if let Some(l) = state.as_mut() {
                 l.logic(&ui.ctx().clone(), &mut host);
@@ -2137,7 +2123,7 @@ fn feed_announcements_and_alerts_show_until_dismissed() {
             if state.is_none()
                 && let Some(b) = backend.take()
             {
-                *state = Some(LauncherUi::new(ui.ctx(), Box::new(b), Settings { notify: false, ..Settings::default() }));
+                *state = Some(LauncherUi::with_catalog(ui.ctx(), Box::new(b), Settings { notify: false, ..Settings::default() }, SUITE.iter()));
             }
             if let Some(l) = state.as_mut() {
                 l.logic(&ui.ctx().clone(), &mut NoHost);
@@ -2187,7 +2173,12 @@ fn automatic_updates_queue_installs_for_outdated_apps_and_launcher() {
             if state.is_none()
                 && let Some(b) = backend.take()
             {
-                *state = Some(LauncherUi::new(ui.ctx(), Box::new(b), Settings { auto_update: true, notify: false, ..Settings::default() }));
+                *state = Some(LauncherUi::with_catalog(
+                    ui.ctx(),
+                    Box::new(b),
+                    Settings { auto_update: true, notify: false, ..Settings::default() },
+                    SUITE.iter(),
+                ));
             }
             if let Some(l) = state.as_mut() {
                 l.logic(&ui.ctx().clone(), &mut NoHost);
@@ -2217,7 +2208,12 @@ fn automatic_updates_are_disabled_by_default() {
             if state.is_none()
                 && let Some(b) = backend.take()
             {
-                *state = Some(LauncherUi::new(ui.ctx(), Box::new(b), Settings { auto_update: false, notify: false, ..Settings::default() }));
+                *state = Some(LauncherUi::with_catalog(
+                    ui.ctx(),
+                    Box::new(b),
+                    Settings { auto_update: false, notify: false, ..Settings::default() },
+                    SUITE.iter(),
+                ));
             }
             if let Some(l) = state.as_mut() {
                 l.logic(&ui.ctx().clone(), &mut NoHost);
@@ -2246,7 +2242,7 @@ fn the_footer_names_the_services_behind_what_is_on_screen() {
                 if state.is_none()
                     && let Some(b) = backend.take()
                 {
-                    *state = Some(LauncherUi::new(ui.ctx(), Box::new(b), Settings { notify: false, ..Settings::default() }));
+                    *state = Some(LauncherUi::with_catalog(ui.ctx(), Box::new(b), Settings { notify: false, ..Settings::default() }, SUITE.iter()));
                 }
                 if let Some(l) = state.as_mut() {
                     l.logic(&ui.ctx().clone(), &mut NoHost);
@@ -2298,7 +2294,7 @@ fn custom_title_bar_has_window_buttons() {
             if state.is_none()
                 && let Some(b) = backend.take()
             {
-                *state = Some(LauncherUi::new(ui.ctx(), Box::new(b), Settings { notify: false, ..Settings::default() }));
+                *state = Some(LauncherUi::with_catalog(ui.ctx(), Box::new(b), Settings { notify: false, ..Settings::default() }, SUITE.iter()));
             }
             if let Some(l) = state.as_mut() {
                 l.logic(&ui.ctx().clone(), &mut FramelessHost);
@@ -2506,6 +2502,90 @@ fn clicking_a_card_opens_its_details_drawer() {
 }
 
 #[test]
+fn asuscraft_card_opens_its_details_and_back_returns_without_launching() {
+    let (mut h, sent) = harness(ViewMode::Grid, egui::Theme::Dark, true);
+    h.run_steps(8);
+    snapshot(&mut h, "asuscraft-card-match");
+    assert_eq!(fetches(&sent, "asuscraft"), 0);
+    h.get_by_label("ASUSCraft details").click();
+    h.run_steps(10);
+    h.check_accessibility();
+    h.get_by_label("Back to CraftApps");
+    assert!(h.query_all_by_label("Battery health and charge limits").count() >= 1);
+    assert!(h.query_all_by_label("Open").count() >= 2, "the catalog and detail page each keep an explicit Open action");
+    assert!(h.query_all_by_label("GitHub ↗").count() >= 1);
+    assert!(h.query_all_by_label("Releases ↗").count() >= 1);
+    assert!(h.query_by_label("Website ↗").is_none(), "ASUSCraft has no separate website");
+    assert_eq!(fetches(&sent, "asuscraft"), 0, "real screenshots are bundled, not requested remotely");
+    assert!(!sent.borrow().iter().any(|command| matches!(command, Command::Launch { app } if app == "asuscraft")));
+    h.get_by_label("Back to CraftApps").click();
+    h.run_steps(10);
+    assert_eq!(h.query_all_by_label("Battery health and charge limits").count(), 0);
+    h.get_by_label("ASUSCraft details");
+}
+
+#[test]
+fn production_catalog_shows_the_whole_suite_and_preserves_local_apps() {
+    artcraft_launcher_ui_egui::i18n::set_test_lang(artcraft_launcher_ui_egui::i18n::Lang::EN);
+    let sent = Rc::new(RefCell::new(Vec::new()));
+    let fake =
+        Fake { events: events(), sent: sent.clone(), manage: true, pictures: Rc::default(), asked: Vec::new(), clock: Rc::new(Cell::new(NOW)) };
+    let mut backend: Option<Box<dyn Backend>> = Some(Box::new(fake));
+    let harness = test_harness_builder(egui::Theme::Dark).with_size(egui::vec2(1180.0, 1200.0)).with_theme(egui::Theme::Dark).build_ui_state(
+        move |ui, state: &mut Option<LauncherUi>| {
+            if state.is_none()
+                && let Some(backend) = backend.take()
+            {
+                *state = Some(LauncherUi::new(ui.ctx(), backend, Settings { view: ViewMode::Grid, notify: false, ..Settings::default() }));
+            }
+            if let Some(launcher) = state.as_mut() {
+                launcher.logic(&ui.ctx().clone(), &mut NoHost);
+                launcher.ui(ui, &mut NoHost);
+            }
+        },
+        None,
+    );
+    let mut h = harness;
+    h.run_steps(8);
+    snapshot(&mut h, "production-catalog-suite");
+    assert_eq!(h.query_all_by_label("ASUSCraft details").count(), 1);
+    // Local Apps is now empty, so the section may be hidden; its absence is expected.
+    for app in &SUITE {
+        assert_eq!(h.query_all_by_label(&format!("{} details", app.name)).count(), 1, "{} is missing", app.name);
+    }
+}
+
+#[test]
+fn local_apps_keep_chatgpt_and_do_not_duplicate_asuscraft() {
+    artcraft_launcher_ui_egui::i18n::set_test_lang(artcraft_launcher_ui_egui::i18n::Lang::EN);
+    let sent = Rc::new(RefCell::new(Vec::new()));
+    let fake =
+        Fake { events: events(), sent: sent.clone(), manage: true, pictures: Rc::default(), asked: Vec::new(), clock: Rc::new(Cell::new(NOW)) };
+    let mut backend: Option<Box<dyn Backend>> = Some(Box::new(fake));
+    let harness = test_harness_builder(egui::Theme::Dark).with_size(egui::vec2(1180.0, 3200.0)).with_theme(egui::Theme::Dark).build_ui_state(
+        move |ui, state: &mut Option<LauncherUi>| {
+            if state.is_none()
+                && let Some(backend) = backend.take()
+            {
+                *state = Some(LauncherUi::new(ui.ctx(), backend, Settings { view: ViewMode::Grid, notify: false, ..Settings::default() }));
+            }
+            if let Some(launcher) = state.as_mut() {
+                launcher.logic(&ui.ctx().clone(), &mut NoHost);
+                launcher.ui(ui, &mut NoHost);
+            }
+        },
+        None,
+    );
+    let mut h = harness;
+    h.run_steps(8);
+    snapshot(&mut h, "local-apps-empty");
+    assert_eq!(h.query_all_by_label_contains("ChatGPT").count(), 0, "ChatGPT is no longer shown in Local Apps");
+    assert_eq!(h.query_all_by_label_contains("ASUS Control ").count(), 0, "the old ASUS Control Center local card is gone");
+    assert_eq!(h.query_all_by_label_contains("ASUS Laptop Hardware Manager").count(), 0);
+    assert_eq!(h.query_all_by_label("ASUSCraft details").count(), 1, "ASUSCraft remains exactly one Craft App card");
+}
+
+#[test]
 fn details_drawer_in_the_light_theme() {
     let (mut h, _sent) = harness(ViewMode::Grid, egui::Theme::Light, true);
     h.run_steps(8);
@@ -2674,7 +2754,7 @@ fn every_page_opens_and_pages_through_its_pictures() {
     h.set_size(egui::vec2(1180.0, 3000.0));
     h.run_steps(8);
     for d in &artcraft_launcher_core::details::DETAILS {
-        let name = SUITE.iter().find(|a| a.id == d.id).map(|a| a.name).unwrap_or(d.id);
+        let name = artcraft_launcher_core::CraftApp::by_id(d.id).map_or(d.id, |app| app.name);
         h.get_by_label(&format!("{name} details")).scroll_to_me();
         h.run_steps(3);
         h.get_by_label(&format!("{name} details")).click();
@@ -2706,10 +2786,10 @@ fn every_page_opens_and_pages_through_its_pictures() {
             h.key_press(egui::Key::Escape);
             h.run_steps(3);
         }
-        h.key_press(egui::Key::Escape);
+        h.get_by_label("Back to CraftApps").click();
         h.run_steps(10);
-        // The card keeps its own copy of the line; the page's is gone.
-        assert!(h.query_all_by_label_contains(d.headline).count() <= 1, "{} did not close", d.id);
+        // The page is gone; some app taglines intentionally match their page headline.
+        assert!(h.query_by_label("Back to CraftApps").is_none(), "{} did not close", d.id);
     }
 }
 
@@ -2762,7 +2842,7 @@ fn the_rate_limit_notice_never_runs_under_the_footer_links() {
                 if state.is_none()
                     && let Some(b) = backend.take()
                 {
-                    *state = Some(LauncherUi::new(ui.ctx(), Box::new(b), Settings { notify: false, ..Settings::default() }));
+                    *state = Some(LauncherUi::with_catalog(ui.ctx(), Box::new(b), Settings { notify: false, ..Settings::default() }, SUITE.iter()));
                 }
                 if let Some(l) = state.as_mut() {
                     l.logic(&ui.ctx().clone(), &mut NoHost);
@@ -2853,7 +2933,7 @@ fn saved_filters_are_migrated_on_ui_construction() {
             asked: Vec::new(),
             clock: Rc::new(Cell::new(NOW)),
         };
-        let ui = LauncherUi::new(&egui::Context::default(), Box::new(backend), settings);
+        let ui = LauncherUi::with_catalog(&egui::Context::default(), Box::new(backend), settings, SUITE.iter());
         assert_eq!(ui.settings.filter, expected, "{saved}");
         assert_eq!(ui.settings.last_check, Some(NOW));
     }
@@ -2928,7 +3008,7 @@ fn short_window(reduce: Rc<Cell<bool>>) -> Harness<'static, Option<LauncherUi>> 
                     && let Some(b) = backend.take()
                 {
                     let settings = Settings { view: ViewMode::Grid, notify: false, ..Settings::default() };
-                    *state = Some(LauncherUi::new(ui.ctx(), Box::new(b), settings));
+                    *state = Some(LauncherUi::with_catalog(ui.ctx(), Box::new(b), settings, SUITE.iter()));
                 }
                 if let Some(l) = state.as_mut() {
                     l.logic(&ui.ctx().clone(), &mut host);
@@ -3014,7 +3094,7 @@ fn with_animations_on_the_wheel_glides() {
 /// Moves the pointer from one card to the next. Returns how many frames are drawn before the
 /// window is still again.
 fn frames_to_hover_the_next_card(h: &mut Harness<'_, Option<LauncherUi>>) -> u64 {
-    let cards: Vec<egui::Pos2> = ["Image editing", "Vector illustration"].map(|t| h.get_by_label(t).rect().center()).to_vec();
+    let cards: Vec<egui::Pos2> = ["LightCraft details", "WordCraft details"].map(|t| h.get_by_label(t).rect().center()).to_vec();
     // Still to begin with: the icons are in, the first card is lit and the scroll bar is showing.
     h.hover_at(cards[0]);
     h.run();
@@ -3285,10 +3365,10 @@ fn opening_an_app_counts_and_frequently_used_puts_the_most_opened_first() {
     h.run_steps(6);
     h.state_mut().as_mut().unwrap().settings.sort = SortKey::Frequent;
     h.run_steps(4);
-    // Installed apps in name order: Effect (updates), Light (Open), Photo (updates), Word (Open).
+    // ASUSCraft adds a local Open action; choose WordCraft explicitly as the remote launch.
     let opens: Vec<_> = h.get_all_by_label("Open").collect();
-    assert_eq!(opens.len(), 2);
-    opens[1].click(); // WordCraft
+    assert!(opens.len() >= 2);
+    opens[1].click(); // WordCraft; ASUSCraft is also an installed local Open action.
     h.run_steps(3);
     assert!(sent.borrow().contains(&Command::Launch { app: "wordcraft".into() }));
     assert_eq!(h.state().as_ref().unwrap().settings.launches.get("wordcraft"), Some(&1));

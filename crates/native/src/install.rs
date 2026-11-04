@@ -215,13 +215,16 @@ pub fn install_at(
         }
         #[cfg(target_os = "linux")]
         PackageKind::Deb | PackageKind::Rpm | PackageKind::ArchPkg | PackageKind::Flatpak => {
-            linux::install_package(kind, &file, existing.and_then(|installed| installed.installation.as_deref()), job.stop, &mut *job.phase).map(
+            linux::install_package(kind, &file, existing.and_then(|installed| installed.installation.as_deref()), job.stop, &mut *job.phase).and_then(
                 |_| {
                     if kind == PackageKind::Flatpak {
                         linux::configure_bundle_lookaside(app, existing.and_then(|installed| installed.installation.as_deref()));
                         linux::retire_former_flatpak(app, existing);
                     }
-                    None
+                    if app.id == "asuscraft" && matches!(kind, PackageKind::Deb | PackageKind::Rpm) {
+                        linux::verify_asuscraft_package()?;
+                    }
+                    Ok(None)
                 },
             )
         }
@@ -583,7 +586,7 @@ pub fn available_kinds() -> Vec<PackageKind> {
 }
 
 /// Fetches `asset` into the download folder, checked against its published SHA-256: the feed's
-/// or GitHub's per-file digest, else the release's `SHA256SUMS.txt`. A release with neither is
+/// or GitHub's per-file digest, else the release's `SHA256SUMS[.txt]`. A release with neither is
 /// refused before anything is fetched: a file nothing vouches for is never installed (#90).
 /// Returns the file and the checksum it was checked against.
 pub(crate) fn download(release: &Release, asset: &Asset, job: &mut Job<'_>) -> Result<(PathBuf, String), String> {
@@ -610,7 +613,7 @@ pub(crate) fn download(release: &Release, asset: &Asset, job: &mut Job<'_>) -> R
     Ok((dest, sha))
 }
 
-/// The file's line in the release's `SHA256SUMS.txt`. `Ok(None)` only when the release really
+/// The file's line in the release's `SHA256SUMS[.txt]`. `Ok(None)` only when the release really
 /// publishes no checksum for it; a list that exists but can't be fetched is an error, so a
 /// network hiccup never downgrades the check.
 fn published_checksum(release: &Release, asset: &Asset, http: &Http) -> Result<Option<String>, String> {
@@ -963,8 +966,11 @@ fn pkexec() -> Option<PathBuf> {
 fn run_as_root(args: &[&std::ffi::OsStr]) -> Result<(), String> {
     let args = with_absolute_program(&SYSTEM_BIN_DIRS, args)?;
     let pkexec = pkexec().ok_or("installing system-wide needs polkit (pkexec), which isn't installed")?;
-    let status = process::command(pkexec).args(&args).status().map_err(|e| format!("couldn't ask for permission ({e})"))?;
-    root_outcome(status.code())
+    let output = process::command(pkexec).args(&args).output().map_err(|e| format!("couldn't ask for permission ({e})"))?;
+    let details = String::from_utf8_lossy(&output.stderr);
+    let details = if details.trim().is_empty() { String::from_utf8_lossy(&output.stdout) } else { details };
+    let details = details.lines().rev().take(12).collect::<Vec<_>>().into_iter().rev().collect::<Vec<_>>().join("\n");
+    root_outcome_with_details(output.status.code(), &details)
 }
 
 /// What `pkexec`'s exit code says about the command it ran.
@@ -978,6 +984,17 @@ fn root_outcome(code: Option<i32>) -> Result<(), String> {
         Some(127) => Err("the system installer stopped with error 127 (usually refused permission or no polkit authentication agent)".into()),
         Some(c) => Err(format!("the system installer stopped with error {c}")),
         None => Err("the system installer was interrupted".into()),
+    }
+}
+
+#[cfg(any(target_os = "linux", target_os = "freebsd"))]
+fn root_outcome_with_details(code: Option<i32>, details: &str) -> Result<(), String> {
+    match root_outcome(code) {
+        Err(error) if error != "cancelled" && !details.trim().is_empty() => {
+            let details = details.chars().take(1600).collect::<String>();
+            Err(format!("{error}: {details}"))
+        }
+        other => other,
     }
 }
 
@@ -1019,6 +1036,26 @@ pub(crate) mod linux {
         CraftApp, INSTALLER, InstallSource, Installed, JobPhase, PackageKind, Path, PathBuf, Paths, Record, SHARED_CALL, SYSTEM_BIN_DIRS, Stop,
         cancelled, find_in, pkexec, process, run_as_root, swap_into_place, tree, turn,
     };
+
+    const ASUSCRAFT_BINARY: &str = "/usr/bin/asus-control-center";
+    const ASUSCRAFT_DESKTOP: &str = "/usr/share/applications/io.github.asuscontrolcenter.AsusControlCenter.desktop";
+
+    /// Don't report a package install as complete until the actual application entry points exist.
+    pub fn verify_asuscraft_package() -> Result<(), String> {
+        verify_asuscraft_files(Path::new(ASUSCRAFT_BINARY), Path::new(ASUSCRAFT_DESKTOP))
+    }
+
+    pub(super) fn verify_asuscraft_files(binary: &Path, desktop: &Path) -> Result<(), String> {
+        use std::os::unix::fs::PermissionsExt;
+        let executable = std::fs::metadata(binary).is_ok_and(|m| m.is_file() && m.permissions().mode() & 0o111 != 0);
+        if !executable {
+            return Err(format!("ASUSCraft's package manager finished, but {} is missing or not executable", binary.display()));
+        }
+        if !desktop.is_file() {
+            return Err(format!("ASUSCraft's package manager finished, but its desktop entry is missing at {}", desktop.display()));
+        }
+        Ok(())
+    }
 
     /// apt waits this long for another package tool (a software centre, automatic updates) to
     /// let go of its lock, instead of failing at once.
@@ -2245,6 +2282,32 @@ pub mod windows {
 mod tests {
     use super::*;
 
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn failed_package_manager_output_explains_missing_dependencies() {
+        let error = root_outcome_with_details(Some(1), "Error: nothing provides libadwaita-1.0.so.0").unwrap_err();
+        assert!(error.contains("system installer stopped with error 1"));
+        assert!(error.contains("nothing provides libadwaita-1.0.so.0"));
+        assert_eq!(root_outcome_with_details(Some(126), "cancelled by user"), Err("cancelled".into()));
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn asuscraft_package_success_requires_an_executable_and_desktop_entry() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let dir = tempfile::tempdir().unwrap();
+        let binary = dir.path().join("asus-control-center");
+        let desktop = dir.path().join("AsusControlCenter.desktop");
+        std::fs::write(&binary, b"binary").unwrap();
+        std::fs::set_permissions(&binary, std::fs::Permissions::from_mode(0o755)).unwrap();
+        assert!(super::linux::verify_asuscraft_files(&binary, &desktop).unwrap_err().contains("desktop entry is missing"));
+        std::fs::write(&desktop, b"[Desktop Entry]\nExec=asus-control-center\n").unwrap();
+        assert!(super::linux::verify_asuscraft_files(&binary, &desktop).is_ok());
+        std::fs::set_permissions(&binary, std::fs::Permissions::from_mode(0o644)).unwrap();
+        assert!(super::linux::verify_asuscraft_files(&binary, &desktop).unwrap_err().contains("not executable"));
+    }
+
     /// A folder found only by the launch fallback, in another scope, never reaches the installer.
     #[cfg(windows)]
     #[test]
@@ -2864,7 +2927,7 @@ mod tests {
         let app = CraftApp::by_id("wordcraft").unwrap();
         let (body, _) = body();
         let (url, requests) = serve(body.clone(), vec![Reply::Full]);
-        // Neither a per-file digest nor a SHA256SUMS.txt in the release.
+        // Neither a per-file digest nor a SHA256SUMS manifest in the release.
         let asset = Asset { name: "wordcraft-0.3.1-test.pkg".into(), size: body.len() as u64, url, sha256: None };
         let release = Release { assets: vec![asset.clone()], ..Release::default() };
         let dir = tempfile::tempdir().unwrap();
