@@ -433,3 +433,4 @@ materialcraft	Node graphs	კვანძების გრაფები
 materialcraft	Combine noises, patterns and filters.	ხმაურების, პატერნებისა და ფილტრების კომბინირება.
 materialcraft	Live previews	ცოცხალი წინასწარი ნახვა
 materialcraft	Preview materials in 2D and on 3D models.	მასალების წინასწარი ნახვა 2D-ში და 3D მოდელებზე.
+	ArtCraft Launcher's window could not start or stopped with an error: {e}\n\nIf this keeps happening, updating the graphics driver often fixes it.	ArtCraft Launcher-ის ფანჯარა ვერ გაიხსნა ან შეცდომის გამო დაიხურა: {e}\n\nთუ ეს კვლავ მოხდება, ხშირად ეხმარება გრაფიკული დრაივერის განახლება.
