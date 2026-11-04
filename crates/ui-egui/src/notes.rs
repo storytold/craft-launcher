@@ -48,12 +48,11 @@ pub(crate) fn classify(line: &str) -> Line<'_> {
     }
     // Table row: starts and ends with '|', has at least two pipes (header or data).
     if l.starts_with('|') && l.ends_with('|') && l.matches('|').count() >= 3 {
-        // Split by '|', drop first and last (empty), trim each cell.
-        let cells: Vec<&str> = l.split('|').skip(1).map(|c| c.trim()).collect();
-        // Trailing empty cell from the final '|' (e.g. "|a|b|" -> ["", "a", "b", ""]).
-        let cells = cells.into_iter().filter(|c| !c.is_empty()).collect::<Vec<_>>();
-        // If all cells are just dashes (separator row), treat as Text so it's drawn but we can
-        // skip it in draw. The caller will still get a Table variant for the header/data rows.
+        // Split by '|', drop first and last (empty fields from boundary pipes), trim each cell.
+        // Interior empty cells are preserved so column positions stay correct: "| A | | C |"
+        // must yield ["A", "", "C"], not ["A", "C"].
+        let parts: Vec<&str> = l.split('|').collect();
+        let cells: Vec<&str> = if parts.len() > 2 { parts[1..parts.len() - 1].iter().map(|c| c.trim()).collect() } else { Vec::new() };
         return Line::Table(cells);
     }
     if let Some(b) = l.strip_prefix("* ").or_else(|| l.strip_prefix("- ")) {
@@ -248,8 +247,8 @@ fn show_lines(ui: &mut Ui, notes: &str, scale: f32) {
 /// Only bullets that appear after a "What's Changed" (or similar) heading are counted.
 /// A short list has SHOWN + 1 or fewer relevant bullets; a long list folds at the (SHOWN + 1)th.
 fn fold_at(lines: &[Line<'_>]) -> Option<usize> {
-    // Find the index of the first "What's Changed" heading (case-insensitive, any # level).
-    let whats_changed_idx = lines.iter().position(|l| matches!(l, Line::Heading(h) if h.eq_ignore_ascii_case("What's Changed")));
+    // Find the index of the first "What's Changed" or "Whats Changed" heading (case-insensitive, any # level).
+    let whats_changed_idx = lines.iter().position(|l| matches!(l, Line::Heading(h) if h.eq_ignore_ascii_case("What's Changed") || h.eq_ignore_ascii_case("Whats Changed")));
     let start = whats_changed_idx.map_or(0, |i| i + 1);
     let bullets = lines[start..].iter().filter(|l| matches!(l, Line::Bullet(..))).count();
     if bullets <= SHOWN + 1 {
@@ -290,8 +289,9 @@ fn draw(ui: &mut Ui, line: &Line<'_>, t: &Tokens, scale: f32) {
             });
         }
         Line::Table(cells) => {
-            // Skip the separator row (all cells are dashes or empty after trim).
-            if cells.iter().all(|c| c.trim().chars().all(|ch| ch == '-') || c.trim().is_empty()) {
+            // Skip the separator row (all cells are dashes or empty after trim, with optional
+            // leading/trailing alignment colons like "| :--- | ---: |").
+            if cells.iter().all(|c| c.trim_matches(|ch| ch == '-' || ch == ':').is_empty()) {
                 return;
             }
             ui.add_space(4.0);
