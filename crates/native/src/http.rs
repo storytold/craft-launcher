@@ -233,12 +233,30 @@ impl Http {
     /// giving up. When the connection stays down, the download ends paused (`PAUSED`), never
     /// losing what it has. `stop` pauses or cancels it between reads.
     pub fn download(&self, url: &str, dest: &Path, size: u64, sha256: &str, stop: &Stop, progress: &mut dyn FnMut(Transfer)) -> Result<(), String> {
+        self.download_capped(url, dest, size, sha256, stop, progress, MAX_DOWNLOAD)
+    }
+
+    /// Enforce a hard body limit even when the server omits or lies about its length.
+    #[allow(clippy::too_many_arguments)]
+    pub fn download_capped(
+        &self,
+        url: &str,
+        dest: &Path,
+        size: u64,
+        sha256: &str,
+        stop: &Stop,
+        progress: &mut dyn FnMut(Transfer),
+        max: u64,
+    ) -> Result<(), String> {
+        if size > max {
+            return Err("the download exceeds the allowed size".into());
+        }
         if let Some(dir) = dest.parent() {
             std::fs::create_dir_all(dir).map_err(|e| format!("couldn't create {} ({e})", dir.display()))?;
         }
         // A finished copy from an earlier attempt that never got installed. Marking it as just
         // used, before checking it, keeps `clean_downloads` away from it while it's installed.
-        if dest.is_file() && touch(dest) && matches_published(dest, sha256) {
+        if dest.is_file() && std::fs::metadata(dest).is_ok_and(|m| m.len() <= max) && touch(dest) && matches_published(dest, sha256) {
             progress(Transfer::Bytes { done: size, total: size });
             return Ok(());
         }
@@ -247,7 +265,7 @@ impl Http {
         let part = part_path(dest, size);
         let mut fresh_start_used = false;
         loop {
-            if let Err(e) = self.fetch_resuming(url, &part, size, stop, progress) {
+            if let Err(e) = self.fetch_resuming(url, &part, size, stop, progress, max) {
                 if e == CANCELLED {
                     let _ = std::fs::remove_file(&part);
                 } else if e != PAUSED {
@@ -277,11 +295,14 @@ impl Http {
     /// Fetches `url` into `part`, resuming from whatever `part` already holds. Retries while the
     /// transfer keeps making progress; after several attempts in a row get nowhere, it stops and
     /// reports `PAUSED` so the user can resume later.
-    fn fetch_resuming(&self, url: &str, part: &Path, size: u64, stop: &Stop, progress: &mut dyn FnMut(Transfer)) -> Result<(), String> {
+    fn fetch_resuming(&self, url: &str, part: &Path, size: u64, stop: &Stop, progress: &mut dyn FnMut(Transfer), max: u64) -> Result<(), String> {
         let mut fruitless = 0u32;
         loop {
             stop.check()?;
             let have = std::fs::metadata(part).map(|m| m.len()).unwrap_or(0);
+            if have > max {
+                return Err("the download exceeds the allowed size".into());
+            }
             if fruitless >= MAX_FRUITLESS_ATTEMPTS {
                 log::warn!("{url}: no progress after {fruitless} attempts; pausing");
                 return Err(PAUSED.into());
@@ -303,7 +324,7 @@ impl Http {
                 std::fs::remove_file(part).map_err(|e| format!("couldn't save the download ({e})"))?;
                 continue;
             }
-            match self.attempt(url, part, have, size, stop, progress) {
+            match self.attempt(url, part, have, size, stop, progress, max) {
                 Ok(()) => return Ok(()),
                 Err(AttemptError::Stopped(e)) => return Err(e),
                 Err(AttemptError::Fatal(e)) => return Err(e),
@@ -316,7 +337,17 @@ impl Http {
     }
 
     /// One request: appends to `part` from byte `have`.
-    fn attempt(&self, url: &str, part: &Path, have: u64, size: u64, stop: &Stop, progress: &mut dyn FnMut(Transfer)) -> Result<(), AttemptError> {
+    #[allow(clippy::too_many_arguments)]
+    fn attempt(
+        &self,
+        url: &str,
+        part: &Path,
+        have: u64,
+        size: u64,
+        stop: &Stop,
+        progress: &mut dyn FnMut(Transfer),
+        max: u64,
+    ) -> Result<(), AttemptError> {
         let retry = |error: String, progressed: bool| AttemptError::Retry { error, progressed };
         // Binaries are already compressed; ask for the bytes exactly as published.
         let agent = if is_loopback(url) { &self.direct_download } else { &self.download };
@@ -388,6 +419,9 @@ impl Http {
                 return Err(AttemptError::Fatal(format!("the server sent more than the permitted size of {limit} bytes")));
             }
             let chunk = buf.get(..n).ok_or_else(|| AttemptError::Fatal("read past the buffer".into()))?;
+            if (n as u64) > max.saturating_sub(done) {
+                return Err(AttemptError::Fatal("the download exceeds the allowed size".into()));
+            }
             file.write_all(chunk).map_err(|e| AttemptError::Fatal(format!("couldn't save the download ({e}). Is the disk full?")))?;
             done = next_done;
             progress(Transfer::Bytes { done, total });
@@ -944,7 +978,7 @@ pub(crate) mod tests {
                     watchdog_stop.cancel();
                 }
             });
-            let result = http.fetch_resuming("http://127.0.0.1:9/file.bin", &part, 1, &stop, &mut |_| {});
+            let result = http.fetch_resuming("http://127.0.0.1:9/file.bin", &part, 1, &stop, &mut |_| {}, MAX_DOWNLOAD);
             let _ = finished.send(());
             result.unwrap_err()
         });

@@ -15,6 +15,13 @@ use crate::status::Installed;
 /// Asks the backend to do something. Results arrive later as [`Event`]s.
 #[derive(Clone, Debug, PartialEq)]
 pub enum Command {
+    /// Build a new portable suite folder for this machine's OS and architecture.
+    ExportSuite {
+        destination: String,
+        apps: Vec<String>,
+    },
+    CancelSuiteExport,
+    RevealSuiteExport,
     /// Look up the latest releases. `force` skips the freshness window (the user pressed Refresh).
     CheckForUpdates {
         force: bool,
@@ -195,6 +202,13 @@ impl Source {
 /// Something the backend wants the UI to know.
 #[derive(Clone, Debug, PartialEq)]
 pub enum Event {
+    SuiteExportProgress {
+        app: String,
+        phase: JobPhase,
+    },
+    SuiteExportFinished {
+        result: Result<String, String>,
+    },
     Latest {
         app: String,
         latest: LatestRelease,
@@ -279,6 +293,10 @@ pub struct Capabilities {
 
 /// The UI's view of a backend.
 pub trait Backend {
+    /// A self-contained suite stays offline and cannot modify host installations.
+    fn offline_suite(&self) -> bool {
+        false
+    }
     fn send(&mut self, command: Command);
     /// Events since the last call, oldest first.
     fn poll(&mut self) -> Vec<Event>;

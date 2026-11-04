@@ -290,6 +290,7 @@ dependencies = [
  "rfd",
  "ron",
  "serde",
+ "serde_json",
  "tray-icon",
  "winreg",
  "winresource",

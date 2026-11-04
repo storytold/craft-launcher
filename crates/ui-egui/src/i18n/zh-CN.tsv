@@ -389,3 +389,20 @@ materialcraft	Preview materials in 2D and on 3D models.	在二维视图和三维
 	Migrate Flatpak bundles to ArtCraft OCI (experimental)	将 Flatpak 软件包迁移到 ArtCraft OCI（实验性）
 	On update, switch first party apps when the matching package is available. Otherwise, keep using bundles.	更新时，如果有对应的软件包，则迁移 ArtCraft 官方应用；否则继续使用独立软件包。
 	The OCI repository is a preview with GPG verification disabled.	OCI 仓库目前处于预览阶段，GPG 验证已禁用。
+	Offline suite	离线套件
+	Create portable suite…	创建便携套件…
+	This is an offline snapshot. Export a new suite to update it.	这是离线快照。要更新，请导出新套件。
+	Bundle ArtCraft Launcher and selected apps for use without an internet connection.	将 ArtCraft Launcher 和选定应用打包，以便在没有网络连接时使用。
+	Target: {platform}. Create each suite on its target operating system.	目标：{platform}。请在目标操作系统上创建对应套件。
+	Select all	全选
+	Select none	全部取消
+	New suite folder (absolute path)	新套件文件夹（绝对路径）
+	The parent folder must exist. Existing folders are never replaced.	父文件夹必须存在。不会替换已有文件夹。
+	Official stable releases are verified. Your settings and projects are not copied.	会验证官方稳定版本。不会复制你的设置和项目。
+	Checking portable releases…	正在检查便携版本…
+	Preparing suite…	正在准备套件…
+	Suite ready. Move the entire folder to keep apps and data together.	套件已就绪。请移动整个文件夹，以保留应用和数据。
+	Export cancelled	导出已取消
+	Cancel export	取消导出
+	Create suite	创建套件
+	Show suite folder	显示套件文件夹

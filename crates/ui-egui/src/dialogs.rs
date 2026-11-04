@@ -31,6 +31,7 @@ impl LauncherUi {
         });
         let mut close = false;
         let response = match &mut dialog {
+            Dialog::SuiteExport => modal.show(ctx, |ui| close = self.suite_export_dialog(ui)),
             Dialog::Notes(id) => modal.show(ctx, |ui| close = self.notes_dialog(ui, id)),
             Dialog::ConfirmUninstall(id) => modal.show(ctx, |ui| close = self.uninstall_dialog(ui, id)),
             Dialog::Install { app, folder } => modal.show(ctx, |ui| close = self.install_dialog(ui, app, folder, host)),

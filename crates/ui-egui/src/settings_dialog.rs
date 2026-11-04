@@ -1,6 +1,7 @@
 //! The Settings dialog: a large card in the shape of the app page (see `sheet.rs`), with the
 //! groups of settings in boxes, two columns once the window is wide enough.
 
+use crate::app::Dialog;
 use artcraft_launcher_core::{Os, PackageKind};
 use egui::{RichText, Ui, vec2};
 
@@ -114,6 +115,7 @@ impl LauncherUi {
                 let Ok(mut state) = state.try_borrow_mut() else { return };
                 let (this, _) = &mut *state;
                 this.settings_language(ui);
+                this.settings_suite(ui);
                 this.settings_updates(ui);
                 this.settings_appearance(ui);
             },
@@ -168,6 +170,23 @@ impl LauncherUi {
     /// Update scheduling and opt-ins. Values are written live; enabling automatic updates while the
     /// backend manages apps runs a pass over pending updates at once. The automatic-update checkbox
     /// is hidden on hosts that cannot manage apps.
+    /// The offline-suite status and export entry: inside a suite the launcher shows it is an
+    /// offline snapshot (apps change only through a fresh export), outside it offers creating
+    /// one. FreeBSD is left out (its app packaging does not travel as a suite).
+    fn settings_suite(&mut self, ui: &mut Ui) {
+        let t = Tokens::get(ui.ctx());
+        sheet::panel(ui, tl!("Offline suite"), |ui| {
+            if self.backend.offline_suite() {
+                ui.label(tl!("This is an offline snapshot. Export a new suite to update it."));
+            } else if self.platform.is_some_and(|p| p.os != Os::FreeBsd)
+                && widgets::button(ui, tl!("Create portable suite…"), Kind::Secondary, 0.0).clicked()
+            {
+                self.dialog = Some(Dialog::SuiteExport);
+            }
+            let _ = t;
+        });
+    }
+
     fn settings_updates(&mut self, ui: &mut Ui) {
         let launcher_id = artcraft_launcher_core::catalog::LAUNCHER_ID;
         self.request_versions(launcher_id);

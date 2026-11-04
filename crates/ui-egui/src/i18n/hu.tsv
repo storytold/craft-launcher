@@ -422,3 +422,20 @@ materialcraft	Preview materials in 2D and on 3D models.	Tekintsd meg az anyagoka
 	Migrate Flatpak bundles to ArtCraft OCI (experimental)	Flatpak-csomagok átállítása ArtCraft OCI-ra (kísérleti)
 	On update, switch first party apps when the matching package is available. Otherwise, keep using bundles.	Frissítéskor állítsa át az ArtCraft alkalmazásait, ha elérhető a megfelelő csomag. Egyébként továbbra is önálló csomagokat használjon.
 	The OCI repository is a preview with GPG verification disabled.	Az OCI-tároló előzetes verzió, kikapcsolt GPG-ellenőrzéssel.
+	Offline suite	Offline csomag
+	Create portable suite…	Hordozható csomag létrehozása…
+	This is an offline snapshot. Export a new suite to update it.	Ez egy offline pillanatkép. Frissítéséhez exportálj új csomagot.
+	Bundle ArtCraft Launcher and selected apps for use without an internet connection.	Csomagold össze az ArtCraft Launcher alkalmazást és a kiválasztott appokat internet nélküli használatra.
+	Target: {platform}. Create each suite on its target operating system.	Cél: {platform}. Minden csomagot a cél operációs rendszeren hozz létre.
+	Select all	Összes kijelölése
+	Select none	Kijelölés törlése
+	New suite folder (absolute path)	Új csomagmappa (abszolút útvonal)
+	The parent folder must exist. Existing folders are never replaced.	A szülőmappának léteznie kell. A meglévő mappákat nem írjuk felül.
+	Official stable releases are verified. Your settings and projects are not copied.	A hivatalos stabil kiadásokat ellenőrizzük. A beállításaid és projektjeid nem kerülnek át.
+	Checking portable releases…	Hordozható kiadások ellenőrzése…
+	Preparing suite…	Csomag előkészítése…
+	Suite ready. Move the entire folder to keep apps and data together.	A csomag kész. Az egész mappát mozgasd, hogy az appok és adatok együtt maradjanak.
+	Export cancelled	Exportálás megszakítva
+	Cancel export	Exportálás megszakítása
+	Create suite	Csomag létrehozása
+	Show suite folder	Csomagmappa megnyitása
