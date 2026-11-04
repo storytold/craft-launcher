@@ -610,7 +610,25 @@ impl LauncherUi {
         let hero_h = egui::lerp(expanded_h..=compact_h, collapse);
         let nav_rect = lerp_rect(exp_nav_rect, cmp_nav_rect);
         let icon_rect = lerp_rect(exp_icon_rect, cmp_icon_rect);
-        let action_rect = lerp_rect(exp_action_rect, cmp_action_rect);
+        // The primary action button glides horizontally to clear the navigation buttons
+        // before ascending into the compact row, avoiding collision between the menu and nav buttons.
+        let action_cx = 1.0 - (1.0 - collapse) * (1.0 - collapse);
+        let action_cy = collapse * collapse;
+        let action_min = pos2(
+            egui::lerp(exp_action_rect.min.x..=cmp_action_rect.min.x, action_cx),
+            egui::lerp(exp_action_rect.min.y..=cmp_action_rect.min.y, action_cy),
+        );
+        let action_max = pos2(
+            egui::lerp(exp_action_rect.max.x..=cmp_action_rect.max.x, action_cx),
+            egui::lerp(exp_action_rect.max.y..=cmp_action_rect.max.y, action_cy),
+        );
+        let mut action_rect = Rect::from_min_max(action_min, action_max);
+        if !compact_stack {
+            let clearance = nav_rect.left() - 12.0;
+            if action_rect.top() < nav_rect.bottom() + 4.0 && action_rect.right() > clearance {
+                action_rect = action_rect.translate(vec2(clearance - action_rect.right(), 0.0));
+            }
+        }
         let wordmark_pos = exp_wordmark_pos.lerp(cmp_wordmark_pos, collapse);
         let title_s = egui::lerp(theme::PAGE_TITLE..=COMPACT_TITLE, collapse);
         let fade = (1.0 - collapse * 1.8).clamp(0.0, 1.0);

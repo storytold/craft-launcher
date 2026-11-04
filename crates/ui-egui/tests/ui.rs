@@ -3416,6 +3416,12 @@ fn scrolling_an_apps_page_compacts_the_hero_and_keeps_navigation_and_actions_vis
         let y = 60.0 + (step as f32) * 20.0;
         h.hover_at(egui::pos2(bar_x, y));
         h.run_steps(2);
+        let action = hero_action(&h);
+        let prev = h.get_by_label("Previous app").rect();
+        assert!(
+            !action.intersects(prev),
+            "action button must never overlap previous button while dragging: action={action:?} prev={prev:?}"
+        );
     }
     let lead_dragged_down = h.get_by_label("Enlarge picture").rect();
     assert!(h.query_by_label("Website ↗").is_none(), "dragging the scroll bar down compacts the hero");
@@ -3425,6 +3431,12 @@ fn scrolling_an_apps_page_compacts_the_hero_and_keeps_navigation_and_actions_vis
         let y = 60.0 + (step as f32) * 20.0;
         h.hover_at(egui::pos2(bar_x, y));
         h.run_steps(2);
+        let action = hero_action(&h);
+        let prev = h.get_by_label("Previous app").rect();
+        assert!(
+            !action.intersects(prev),
+            "action button must never overlap previous button while dragging up: action={action:?} prev={prev:?}"
+        );
     }
     h.drop_at(start_pos);
     h.run_steps(4);
