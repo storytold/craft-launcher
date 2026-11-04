@@ -28,17 +28,8 @@ fn detect_language() {
     let mut tags = Vec::new();
 
     // ?lang=xx in the URL takes priority.
-    if let Ok(href) = window.location().href()
-        && let Some(idx) = href.find('?')
-    {
-        for pair in href[idx + 1..].split('&') {
-            if let Some((k, v)) = pair.split_once('=')
-                && k == "lang"
-                && !v.is_empty()
-            {
-                tags.push(v.to_string());
-            }
-        }
+    if let Ok(href) = window.location().href() {
+        tags.extend(crate::lang_params(&href));
     }
 
     // Then the browser's preferred languages.
