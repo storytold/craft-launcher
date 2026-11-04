@@ -383,6 +383,7 @@ impl NativeBackend {
         });
     }
 
+    /// Start at most one background install or removal per app, reconciling policy before completion.
     fn start_job(&self, app_id: &str, work: Work) {
         let uninstall = matches!(work, Work::Uninstall);
         let Some(app) = CraftApp::by_id(app_id) else { return };
@@ -600,6 +601,8 @@ fn downgrade_previous(
     })
 }
 
+/// Resolve and execute the approved install, retaining its resulting binary and desktop ownership.
+/// The caller reconciles the latest desktop preference after the snapshotted job finishes.
 #[allow(clippy::too_many_arguments)]
 fn run_install(
     app: &CraftApp,
@@ -1305,6 +1308,7 @@ impl NativeBackend {
 }
 
 impl Backend for NativeBackend {
+    /// Dispatch UI commands and schedule desktop-policy reconciliation off the UI thread.
     fn send(&mut self, command: Command) {
         match command {
             Command::CheckForUpdates { force } => self.check(force),
@@ -2229,6 +2233,7 @@ mod tests {
         assert!(!restarting.load(Ordering::SeqCst));
     }
 
+    /// Create a filesystem-backed AppImage record with an isolated resource root for policy tests.
     #[cfg(target_os = "linux")]
     fn appimage_desktop_fixture(root: &std::path::Path) -> (Arc<Shared>, Paths, std::path::PathBuf) {
         let app = CraftApp::by_id("wordcraft").unwrap();
@@ -2267,6 +2272,7 @@ mod tests {
         (shared, paths, data)
     }
 
+    /// Persist handoff and restoration without changing binaries or non-AppImage records.
     #[cfg(target_os = "linux")]
     #[test]
     fn saved_appimages_migrate_and_restore_with_atomic_ownership_records() {
@@ -2296,6 +2302,7 @@ mod tests {
         assert!(restored.apps["wordcraft"].files.iter().all(|file| file.is_file()));
     }
 
+    /// Queued work uses the latest policy, skips active jobs, and cannot resurrect an uninstall.
     #[cfg(target_os = "linux")]
     #[test]
     fn reconciliation_reads_policy_after_its_gate_and_after_active_jobs_drop() {
@@ -2343,6 +2350,7 @@ mod tests {
         assert!(!Manifest::load(&paths.manifest()).apps.contains_key("wordcraft"));
     }
 
+    /// A checksum-verified download finishes under the latest policy even if it changes mid-job.
     #[cfg(target_os = "linux")]
     #[test]
     fn a_policy_toggle_during_a_real_download_wins_before_job_finished() {
@@ -2413,6 +2421,7 @@ mod tests {
         assert!(record.files.iter().all(|file| file.starts_with(&data) && file.is_file()));
     }
 
+    /// A failed save rolls back new resources, preserves tracked files, and permits a clean retry.
     #[cfg(target_os = "linux")]
     #[test]
     fn failed_restoration_save_rolls_back_only_new_resources_and_can_be_retried() {
@@ -2460,6 +2469,7 @@ mod tests {
         }
     }
 
+    /// A partial rollback retains in-memory ownership until persistence can recover.
     #[cfg(target_os = "linux")]
     #[test]
     fn failed_rollback_keeps_recoverable_ownership_and_retries_its_save() {

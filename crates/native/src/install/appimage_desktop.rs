@@ -10,6 +10,7 @@ use sha2::{Digest, Sha256};
 
 use crate::manifest::{AppImageDesktopOwnership, Record};
 
+/// Resource paths and producer expectations that must be persisted as one ownership result.
 #[derive(Default)]
 pub(crate) struct Integration {
     pub files: Vec<PathBuf>,
@@ -17,11 +18,13 @@ pub(crate) struct Integration {
 }
 
 impl Integration {
+    /// Replace a record's desktop ledger and expectations without changing its binary metadata.
     pub fn apply(self, record: &mut Record) {
         record.files = self.files;
         record.appimage_desktop = self.ownership;
     }
 
+    /// Preserve installation metadata while returning a record with this integration result.
     pub fn into_record(self, previous: &Record) -> Record {
         Record {
             version: previous.version.clone(),
@@ -34,17 +37,20 @@ impl Integration {
         }
     }
 
+    /// Track a desktop resource together with the producer text expected on disk.
     fn desktop(&mut self, path: PathBuf, text: Cow<'_, str>) {
         self.files.push(path);
         self.ownership.get_or_insert_with(AppImageDesktopOwnership::default).desktop_text = Some(text.into_owned());
     }
 
+    /// Track a native icon together with its producer fingerprint.
     fn icon(&mut self, path: PathBuf, hash: Cow<'_, str>) {
         self.files.push(path);
         self.ownership.get_or_insert_with(AppImageDesktopOwnership::default).icon_sha256 = Some(hash.into_owned());
     }
 }
 
+/// Encode the lowercase digest stored in an AppImage icon ownership snapshot.
 fn sha256(bytes: &[u8]) -> String {
     format!("{:x}", Sha256::digest(bytes))
 }
@@ -71,10 +77,12 @@ pub(crate) fn rollback_new(data: &Path, app: &CraftApp, previous: &Record, candi
     Integration { files, ownership }
 }
 
+/// Locate the child's fixed bundle-ID desktop entry in the configured data root.
 fn desktop_path(data: &Path, app: &CraftApp) -> PathBuf {
     data.join("applications").join(format!("{}.desktop", app.bundle_id()))
 }
 
+/// Locate the native icon associated with the same fixed desktop identity.
 fn icon_path(data: &Path, app: &CraftApp) -> PathBuf {
     data.join("icons/hicolor/128x128/apps").join(format!("{}.png", app.bundle_id()))
 }
@@ -93,20 +101,25 @@ fn safe_path(data: &Path, path: &Path) -> bool {
         })
 }
 
+/// Treat a resource as vacant only when it is safely inside the root and genuinely missing.
 fn absent(data: &Path, path: &Path) -> bool {
     safe_path(data, path) && std::fs::symlink_metadata(path).is_err_and(|error| error.kind() == std::io::ErrorKind::NotFound)
 }
 
+/// Require a safe regular file whose complete contents match the expected producer bytes.
 fn matches_bytes(data: &Path, path: &Path, bytes: &[u8]) -> bool {
     safe_path(data, path)
         && std::fs::symlink_metadata(path).is_ok_and(|meta| meta.is_file() && meta.len() == bytes.len() as u64)
         && std::fs::read(path).is_ok_and(|actual| actual == bytes)
 }
 
+/// Limit ownership candidates to AppImage resources already named by the installation ledger.
 fn recorded(record: Option<&Record>, path: &Path) -> bool {
     record.is_some_and(|record| record.kind == PackageKind::AppImage && record.files.iter().any(|file| file == path))
 }
 
+/// Recover expected desktop text only when its ledger entry and current bytes agree.
+/// Legacy records acquire expectations only from an exact known native render.
 fn owned_desktop<'a>(data: &Path, path: &Path, app: &CraftApp, record: Option<&'a Record>) -> Option<Cow<'a, str>> {
     let record = record.filter(|record| recorded(Some(record), path))?;
     if let Some(ownership) = &record.appimage_desktop {
@@ -120,6 +133,8 @@ fn owned_desktop<'a>(data: &Path, path: &Path, app: &CraftApp, record: Option<&'
     })
 }
 
+/// Recover a producer fingerprint only for an unchanged recorded icon, with bounded reads.
+/// Legacy ownership is initialized only from the bundled PNG bytes.
 fn owned_icon<'a>(data: &Path, path: &Path, app: &CraftApp, record: Option<&'a Record>) -> Option<Cow<'a, str>> {
     let record = record.filter(|record| recorded(Some(record), path))?;
     if let Some(ownership) = &record.appimage_desktop {
@@ -148,6 +163,8 @@ pub(crate) fn integrate_into(data: &Path, app: &CraftApp, appimage: &Path, previ
     integrate_into_with(data, app, appimage, previous, external, crate::paths::write_atomic, |path| std::fs::remove_file(path))
 }
 
+/// Apply native or external ownership while preserving customized and foreign resources.
+/// Injected filesystem operations exercise the same state transitions under deterministic failures.
 fn integrate_into_with(
     data: &Path,
     app: &CraftApp,
@@ -242,6 +259,7 @@ fn integrate_into_with(
     result
 }
 
+/// Report stale ledger paths without treating them as authority over unrelated resources.
 fn report_unrecognized(app: &CraftApp, record: Option<&Record>, desktop: &Path, icon: &Path) {
     if let Some(record) = record {
         for path in &record.files {
@@ -259,6 +277,8 @@ pub(crate) fn remove_owned_from(data: &Path, app: &CraftApp, record: Option<&Rec
     remove_owned_from_with(data, app, record, |path| std::fs::remove_file(path))
 }
 
+/// Remove proven native resources while retaining expectations for failed removals.
+/// Keep an owned icon while a preserved desktop entry may still depend on it.
 fn remove_owned_from_with(data: &Path, app: &CraftApp, record: Option<&Record>, remove: impl Fn(&Path) -> std::io::Result<()>) -> Integration {
     let desktop = desktop_path(data, app);
     let icon = icon_path(data, app);
@@ -292,10 +312,12 @@ fn remove_owned_from_with(data: &Path, app: &CraftApp, record: Option<&Record>, 
 mod tests {
     use super::*;
 
+    /// Use a catalog-backed app so resource identities and bundled icon bytes match production.
     fn app() -> &'static CraftApp {
         CraftApp::by_id("wordcraft").unwrap()
     }
 
+    /// Pair an AppImage path with the ownership result that an installation would persist.
     fn record(path: &Path, integration: Integration) -> Record {
         Record {
             version: "0.3.0".into(),
@@ -308,6 +330,7 @@ mod tests {
         }
     }
 
+    /// Native upgrades, external handoff, restoration, and uninstall preserve the resource ledger.
     #[test]
     fn native_install_upgrade_handoff_restore_and_removal() {
         let root = tempfile::tempdir().unwrap();
@@ -342,6 +365,7 @@ mod tests {
         assert!(!desktop.exists() && !icon.exists());
     }
 
+    /// Configured root and HOME links keep lexical ownership paths usable across the lifecycle.
     #[test]
     fn configured_root_and_home_symlinks_preserve_native_lifecycle_and_lexical_ownership() {
         use std::os::unix::fs::symlink;
@@ -406,6 +430,7 @@ mod tests {
         }
     }
 
+    /// Matching executables and stale ledger paths never authorize adopting external resources.
     #[test]
     fn foreign_same_target_metadata_and_stale_icon_ledgers_survive() {
         let root = tempfile::tempdir().unwrap();
@@ -435,6 +460,7 @@ mod tests {
         assert_eq!(std::fs::read(&other_icon).unwrap(), b"external recorded icon");
     }
 
+    /// Handoff and uninstall preserve a customized entry and the unchanged icon it still uses.
     #[test]
     fn a_customized_marked_entry_keeps_its_icon_without_being_reclaimed() {
         let root = tempfile::tempdir().unwrap();
@@ -462,6 +488,7 @@ mod tests {
         assert!(icon.is_file());
     }
 
+    /// A marker or matching bytes cannot establish ownership without a recorded resource path.
     #[test]
     fn marker_or_matching_bytes_without_a_record_do_not_establish_ownership() {
         let root = tempfile::tempdir().unwrap();
@@ -479,6 +506,7 @@ mod tests {
         assert!(desktop.is_file() && icon.is_file());
     }
 
+    /// Resource and internal-directory links cannot redirect writes or removals outside the root.
     #[test]
     fn links_in_resources_or_their_parents_are_never_followed_or_replaced() {
         use std::os::unix::fs::symlink;
@@ -532,6 +560,7 @@ mod tests {
         assert_eq!(std::fs::read(&icon_target).unwrap(), artcraft_launcher_core::catalog::app_icon_png(app().id).unwrap());
     }
 
+    /// An unrenderable executable path cannot leave an orphaned icon or desktop entry.
     #[test]
     fn invalid_exec_paths_do_not_leave_orphaned_icons() {
         let root = tempfile::tempdir().unwrap();
@@ -542,6 +571,7 @@ mod tests {
         }
     }
 
+    /// External-mode installs and changed-path updates leave desktop and MIME resources intact.
     #[test]
     fn external_fresh_install_and_changed_path_upgrade_do_not_write_desktop_resources() {
         let root = tempfile::tempdir().unwrap();
@@ -575,6 +605,7 @@ mod tests {
         assert_eq!(std::fs::read(&mime).unwrap(), b"external MIME registration");
     }
 
+    /// A replaced icon stays external through handoff, native restoration, and uninstall.
     #[test]
     fn an_externally_replaced_icon_survives_handoff_restore_and_uninstall() {
         let root = tempfile::tempdir().unwrap();
@@ -596,6 +627,7 @@ mod tests {
         assert_eq!(std::fs::read(&icon).unwrap(), b"personal icon");
     }
 
+    /// Stage a changed-path upgrade with native resources for deterministic failure scenarios.
     fn upgrade_fixture(root: &Path) -> (PathBuf, Record, PathBuf) {
         let apps = root.join("Apps");
         let data = root.join("share");
@@ -625,6 +657,7 @@ mod tests {
         result
     }
 
+    /// Force an unlink error with a directory, then restore the original resource for recovery.
     fn fail_removal(path: &Path) -> std::io::Result<()> {
         let saved = path.with_extension("saved-resource");
         std::fs::rename(path, &saved).unwrap();
@@ -636,6 +669,7 @@ mod tests {
         result
     }
 
+    /// Round-trip ownership through the JSON manifest to exercise recovery after a reload.
     fn persist(root: &Path, current: Record) -> Record {
         let path = root.join("installed.json");
         let mut manifest = crate::manifest::Manifest::default();
@@ -644,6 +678,7 @@ mod tests {
         crate::manifest::Manifest::load(&path).apps.remove(app().id).unwrap()
     }
 
+    /// Failed rewrites retain the old expected text until a later update or handoff succeeds.
     #[test]
     fn failed_upgrade_desktop_rewrite_keeps_the_old_expectation_until_retry_or_handoff() {
         for legacy in [false, true] {
@@ -678,6 +713,7 @@ mod tests {
         }
     }
 
+    /// Failed upgrade cleanup keeps old entries recognizable after the installed path changes.
     #[test]
     fn failed_external_cleanup_during_upgrade_keeps_removable_old_expectations() {
         for legacy in [false, true] {
@@ -700,6 +736,7 @@ mod tests {
         }
     }
 
+    /// Historical producer snapshots, not current catalog metadata, determine resource ownership.
     #[test]
     fn saved_expectations_survive_native_catalog_text_and_icon_changes() {
         for external in [false, true] {
@@ -728,6 +765,7 @@ mod tests {
         }
     }
 
+    /// Post-write external replacements are never adopted as the producer's expected contents.
     #[test]
     fn resources_replaced_after_a_write_are_not_adopted_as_native_expectations() {
         for replace_icon in [false, true] {

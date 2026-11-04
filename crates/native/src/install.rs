@@ -98,6 +98,8 @@ pub fn install(
 
 type RecordCommit<'a> = Option<&'a mut dyn FnMut(&Record) -> Result<(), String>>;
 
+/// Install an asset into its resolved destination using the job's desktop ownership policy.
+/// AppImage records retain binary ownership when an external manager owns desktop integration.
 #[allow(clippy::too_many_arguments)]
 pub fn install_at(
     app: &CraftApp,
@@ -1499,6 +1501,8 @@ pub(crate) mod linux {
         }
     }
 
+    /// Remove only resources whose ledger and producer expectations prove ownership of this AppImage.
+    /// External and customized files are not claimed merely because they share its executable.
     pub(crate) fn unintegrate_from(data: &Path, app: &CraftApp, appimage: &Path, record: Option<&Record>) {
         let record = record.filter(|record| record.kind == PackageKind::AppImage && record.path == appimage);
         let _ = super::appimage_desktop::remove_owned_from(data, app, record);

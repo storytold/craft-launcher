@@ -1131,6 +1131,7 @@ fn a_narrow_toolbar_names_its_controls_and_passes_strict_accessibility() {
     h.check_accessibility();
 }
 
+/// Persist external integration with install folders while older settings retain native ownership.
 #[test]
 fn install_preferences_survive_settings_save_and_older_settings_keep_native_appimage_integration() {
     let old: Settings = serde_json::from_str(r#"{"auto_update":true}"#).unwrap();
