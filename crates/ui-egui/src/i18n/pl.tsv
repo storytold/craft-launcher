@@ -423,3 +423,19 @@ materialcraft	Preview materials in 2D and on 3D models.	Przeglądaj materiały w
 	Migrate Flatpak bundles to ArtCraft OCI (experimental)	Przenoś pakiety Flatpak do ArtCraft OCI (eksperymentalne)
 	On update, switch first party apps when the matching package is available. Otherwise, keep using bundles.	Podczas aktualizacji przenoś aplikacje ArtCraft, gdy dostępny jest odpowiedni pakiet. W przeciwnym razie nadal używaj samodzielnych pakietów.
 	The OCI repository is a preview with GPG verification disabled.	Repozytorium OCI jest wersją testową z wyłączoną weryfikacją GPG.
+
+# Optional CraftLink binding status (source-only integration).
+	Broker port	Port brokera
+	Credential file	Plik poświadczeń
+	Inspect links	Sprawdź powiązania
+	No linked objects	Brak powiązanych obiektów
+	CraftLink is unavailable	CraftLink jest niedostępny
+	Waiting for CraftLink	Oczekiwanie na CraftLink
+	Current	Aktualne
+	Stale	Nieaktualne
+	Conflicted	Konflikt
+	Missing	Brak
+	Applying	Stosowanie
+	Local changes	Zmiany lokalne
+	Frozen	Zamrożone
+	Unknown	Nieznane

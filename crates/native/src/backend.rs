@@ -84,12 +84,16 @@ struct Shared {
     feed_throttle: Mutex<FeedThrottle>,
     /// Apps whose details pictures are on their way (a second request meanwhile does nothing).
     pictures_busy: Mutex<std::collections::HashSet<&'static str>>,
+    #[cfg(feature = "craftlink-status")]
+    craftlink_busy: AtomicBool,
 }
 
 #[derive(Clone, Copy)]
 enum BusyFlag {
     Checking,
     Detecting,
+    #[cfg(feature = "craftlink-status")]
+    CraftLink,
 }
 
 struct BusyGuard {
@@ -102,6 +106,8 @@ impl Drop for BusyGuard {
         let flag = match self.flag {
             BusyFlag::Checking => &self.shared.checking,
             BusyFlag::Detecting => &self.shared.detecting,
+            #[cfg(feature = "craftlink-status")]
+            BusyFlag::CraftLink => &self.shared.craftlink_busy,
         };
         flag.store(false, Ordering::SeqCst);
     }
@@ -173,6 +179,8 @@ impl NativeBackend {
             feed_ok_at: Mutex::new(None),
             feed_throttle: Mutex::new(FeedThrottle::load(&paths.feed_throttle(), crate::now())),
             pictures_busy: Mutex::new(std::collections::HashSet::new()),
+            #[cfg(feature = "craftlink-status")]
+            craftlink_busy: AtomicBool::new(false),
             last_check: Mutex::new(None),
         });
         let pins = craft_update::pins::Pins::default_path();
@@ -1196,6 +1204,26 @@ impl NativeBackend {
 impl Backend for NativeBackend {
     fn send(&mut self, command: Command) {
         match command {
+            Command::InspectCraftLinks { request, port, credential_file } => {
+                #[cfg(feature = "craftlink-status")]
+                {
+                    let shared = self.shared.clone();
+                    if shared.craftlink_busy.swap(true, Ordering::SeqCst) {
+                        shared.emit(Event::CraftLinks { request, result: Err("CraftLink request is already running".into()) });
+                        return;
+                    }
+                    std::thread::spawn(move || {
+                        let _guard = BusyGuard { shared: shared.clone(), flag: BusyFlag::CraftLink };
+                        let result = crate::craftlink::inspect(port, std::path::Path::new(&credential_file));
+                        shared.emit(Event::CraftLinks { request, result });
+                    });
+                }
+                #[cfg(not(feature = "craftlink-status"))]
+                {
+                    let _ = (port, credential_file);
+                    self.shared.emit(Event::CraftLinks { request, result: Err("CraftLink status feature is disabled".into()) });
+                }
+            }
             Command::CheckForUpdates { force } => self.check(force),
             Command::Detect => self.detect_all(),
             Command::ListVersions { app } => {
@@ -1490,6 +1518,8 @@ mod tests {
             feed_ok_at: Mutex::new(None),
             feed_throttle: Mutex::new(FeedThrottle::new()),
             pictures_busy: Mutex::new(std::collections::HashSet::new()),
+            #[cfg(feature = "craftlink-status")]
+            craftlink_busy: AtomicBool::new(false),
         }
     }
 

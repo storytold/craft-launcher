@@ -389,3 +389,19 @@ materialcraft	Preview materials in 2D and on 3D models.	在二维视图和三维
 	Migrate Flatpak bundles to ArtCraft OCI (experimental)	将 Flatpak 软件包迁移到 ArtCraft OCI（实验性）
 	On update, switch first party apps when the matching package is available. Otherwise, keep using bundles.	更新时，如果有对应的软件包，则迁移 ArtCraft 官方应用；否则继续使用独立软件包。
 	The OCI repository is a preview with GPG verification disabled.	OCI 仓库目前处于预览阶段，GPG 验证已禁用。
+
+# Optional CraftLink binding status (source-only integration).
+	Broker port	代理端口
+	Credential file	凭据文件
+	Inspect links	检查链接
+	No linked objects	没有链接的对象
+	CraftLink is unavailable	CraftLink 不可用
+	Waiting for CraftLink	正在等待 CraftLink
+	Current	最新
+	Stale	已过期
+	Conflicted	存在冲突
+	Missing	缺失
+	Applying	正在应用
+	Local changes	本地更改
+	Frozen	已冻结
+	Unknown	未知

@@ -421,3 +421,19 @@ materialcraft	Node graphs	კვანძების გრაფები
 materialcraft	Combine noises, patterns and filters.	ხმაურების, პატერნებისა და ფილტრების კომბინირება.
 materialcraft	Live previews	ცოცხალი წინასწარი ნახვა
 materialcraft	Preview materials in 2D and on 3D models.	მასალების წინასწარი ნახვა 2D-ში და 3D მოდელებზე.
+
+# Optional CraftLink binding status (source-only integration).
+	Broker port	შუამავლის პორტი
+	Credential file	ავთენტიფიკაციის ფაილი
+	Inspect links	ბმულების შემოწმება
+	No linked objects	დაკავშირებული ობიექტები არ არის
+	CraftLink is unavailable	CraftLink მიუწვდომელია
+	Waiting for CraftLink	CraftLink-ის მოლოდინი
+	Current	განახლებული
+	Stale	მოძველებული
+	Conflicted	კონფლიქტი
+	Missing	აკლია
+	Applying	მიმდინარეობს გამოყენება
+	Local changes	ლოკალური ცვლილებები
+	Frozen	გაყინული
+	Unknown	უცნობი

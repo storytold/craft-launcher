@@ -15,6 +15,7 @@ workspace = true
 [features]
 # Development only: install from `cargo xtask local serve` (see the README).
 local-mirror = ["artcraft-launcher-native/local-mirror"]
+craftlink-status = ["artcraft-launcher-native/craftlink-status", "artcraft-launcher-ui-egui/craftlink-status"]
 
 [dependencies]
 artcraft-launcher-core = { workspace = true }
