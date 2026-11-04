@@ -118,10 +118,16 @@ pub fn app_name(id: &AppId) -> String {
     artcraft_launcher_core::CraftApp::by_id(id.as_str()).map_or_else(|| id.as_str().to_string(), |a| a.name.to_string())
 }
 
-/// The apps wearing a theme, by name and in a stable order, or `None` when no app does.
-pub fn in_use_line(row: &Row) -> Option<String> {
+/// The names of the apps wearing a theme, in a stable order (empty when none does).
+pub fn worn_names(row: &Row) -> Vec<String> {
     let mut names: Vec<String> = row.worn.iter().map(app_name).collect();
     names.sort();
+    names
+}
+
+/// The apps wearing a theme, by name and in a stable order, or `None` when no app does.
+pub fn in_use_line(row: &Row) -> Option<String> {
+    let names = worn_names(row);
     if names.is_empty() { None } else { Some(names.join(", ")) }
 }
 

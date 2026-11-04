@@ -84,7 +84,87 @@ impl Default for SampleSource {
     }
 }
 
+/// Something installed that is not a theme (no colours), switched on for every app it is made for.
+fn thing(kind: Kind, id: &str, name: &str, tier: Tier, apps: &[&str]) -> Option<Row> {
+    let mut r = row(id, name, tier, apps, palette(true, [0; 6]))?;
+    r.kind = kind;
+    r.palette = None;
+    Some(r)
+}
+
 impl SampleSource {
+    /// A fuller list to see how the page lays out with a real person's collection: more themes (some
+    /// in use), plug-ins and resources from each kind of source, and a few switched off. Names and
+    /// colours are made up. The desktop app shows it only when started with `--demo-data`.
+    pub fn demo() -> Self {
+        let mut source = Self::default();
+        let suite = ["photocraft", "lightcraft", "pdfcraft"];
+        let more = [
+            row(
+                "org.storytold.high-contrast",
+                "High Contrast",
+                Tier::FirstParty,
+                &suite,
+                palette(true, [0x000000, 0x0d0d0d, 0xffffff, 0xd9d9d9, 0x8c8c8c, 0xffd400]),
+            ),
+            row(
+                "org.example.forest",
+                "Forest",
+                Tier::FromFile,
+                &["photocraft", "lightcraft"],
+                palette(true, [0x10201a, 0x183228, 0xe4efe8, 0xa4bdb0, 0x2f5646, 0x6fcf97]),
+            ),
+            row(
+                "org.example.sunset",
+                "Sunset",
+                Tier::FromFile,
+                &["photocraft"],
+                palette(false, [0xfbeee3, 0xf4dccb, 0x2a1a14, 0x6a4a3c, 0xe0bfa6, 0xd9541e]),
+            ),
+            row(
+                "org.example.rose",
+                "Rose Quartz",
+                Tier::FromFile,
+                &suite,
+                palette(false, [0xf8eef1, 0xf0dde3, 0x2b1a20, 0x6b4a55, 0xdcbcc7, 0xb83b66]),
+            ),
+            row(
+                "org.example.graphite",
+                "Graphite",
+                Tier::ReviewedThirdParty,
+                &["photocraft", "pdfcraft"],
+                palette(true, [0x1b1d21, 0x25282e, 0xdfe3ea, 0x9aa3b2, 0x3a3f49, 0x7aa2ff]),
+            ),
+        ];
+        let other = [
+            thing(Kind::Plugin, "org.storytold.contact-sheet", "Contact Sheet", Tier::FirstParty, &["photocraft", "lightcraft"]),
+            thing(Kind::Plugin, "org.example.batch-rename", "Batch Rename", Tier::FromFile, &["photocraft", "lightcraft", "pdfcraft"]),
+            thing(Kind::Plugin, "org.example.watermark-stamp", "Watermark Stamp", Tier::FromFile, &["photocraft", "pdfcraft"]),
+            thing(Kind::Plugin, "org.example.palette-from-photo", "Palette From Photo", Tier::ReviewedThirdParty, &["photocraft"]),
+            thing(Kind::Resource, "org.storytold.film-grain", "Film Grain Textures", Tier::FirstParty, &["photocraft", "lightcraft"]),
+            thing(Kind::Resource, "org.example.paper-textures", "Paper Textures", Tier::FromFile, &["photocraft"]),
+            thing(Kind::Resource, "org.example.charcoal-brushes", "Charcoal Brush Pack", Tier::FromFile, &["photocraft"]),
+            thing(Kind::Resource, "org.example.print-profiles", "Print Paper Profiles", Tier::FromFile, &["lightcraft", "pdfcraft"]),
+        ];
+        source.rows.extend(more.into_iter().flatten().chain(other.into_iter().flatten()));
+        // A few switched off for one app, and two themes in use.
+        for (id, app, on) in [
+            ("org.example.batch-rename", "pdfcraft", false),
+            ("org.example.watermark-stamp", "pdfcraft", false),
+            ("org.example.forest", "lightcraft", false),
+        ] {
+            if let (Ok(id), Ok(app)) = (ExtensionId::new(id), AppId::new(app)) {
+                let _ = source.set_enabled(&app, &id, on);
+            }
+        }
+        for (app, id) in [("photocraft", "org.storytold.midnight"), ("lightcraft", "org.storytold.paper"), ("pdfcraft", "org.example.rose")] {
+            if let (Ok(id), Ok(app)) = (ExtensionId::new(id), AppId::new(app)) {
+                let _ = source.wear(&app, Some(&id));
+            }
+        }
+        source
+    }
+
     fn change<T>(&mut self, f: impl FnOnce(&mut Vec<Row>) -> Result<T, String>) -> Result<T, String> {
         let out = f(&mut self.rows)?;
         self.generation += 1;

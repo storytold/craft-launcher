@@ -406,3 +406,7 @@ filter	Installed	インストール済み
 	plug-ins	プラグイン
 	resources	リソース
 	Show all	すべて表示
+	Built into your apps	アプリに組み込み済み
+	Built into {app}	{app} に組み込み
+	Choose it inside {app}	{app} の中で選びます
+	In use	使用中

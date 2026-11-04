@@ -99,6 +99,11 @@ fn open(store: &Shared, picked: Option<PathBuf>) -> Harness<'static, Option<Laun
     h
 }
 
+/// How many things on the page are announced with exactly this label.
+fn count(h: &Harness<'static, Option<LauncherUi>>, label: &str) -> usize {
+    h.query_all_by_label(label).count()
+}
+
 fn app(s: &str) -> AppId {
     AppId::new(s).unwrap()
 }
@@ -120,9 +125,16 @@ fn a_build_with_no_store_has_no_extensions_page() {
 fn the_page_lists_every_theme_and_changes_nobodys_look_by_itself() {
     let store = Shared::default();
     let h = open(&store, None);
-    for name in ["Midnight", "Ocean", "Paper"] {
-        h.get_by_label(name);
+    // Added themes, and the apps' own built-in ones that share a name (LightCraft has a Midnight and a Paper).
+    assert_eq!((count(&h, "Midnight"), count(&h, "Ocean"), count(&h, "Paper")), (2, 1, 2));
+    h.get_by_label("Built into your apps");
+    assert_eq!(count(&h, "Built into PhotoCraft"), 14);
+    assert_eq!(count(&h, "Built into LightCraft"), 4);
+    assert_eq!(count(&h, "Built into ArtCraft Launcher"), 2);
+    for name in ["Pro (Dark)", "Soft Light", "Charcoal", "Silver", "Launcher Dark", "Launcher Light"] {
+        assert_eq!(count(&h, name), 1, "{name}");
     }
+    assert_eq!(count(&h, "Choose it inside PhotoCraft"), 14);
     assert_eq!(h.get_all_by_label("Made by ArtCraft").count(), 2);
     h.get_by_label("Added from a file");
     assert!(worn_by(&store, "photocraft").is_empty(), "opening the page chose nothing");
@@ -138,11 +150,14 @@ fn choosing_a_theme_from_the_use_in_menu_makes_that_app_wear_it_and_clicking_aga
     h.get_by_label("PhotoCraft").click();
     h.run();
     assert_eq!(worn_by(&store, "photocraft"), ["Ocean"]);
-    h.get_by_label("In use: PhotoCraft");
+    // The theme is marked in use, and the chip says where.
+    h.get_by_label("In use");
+    h.get_by_label("PhotoCraft");
 
     h.get_all_by_label("USE IN…").nth(1).unwrap().click();
     h.run();
-    h.get_by_label("PhotoCraft").click();
+    // The chip and the menu's tick box share the name; the menu is drawn last.
+    h.get_all_by_label("PhotoCraft").last().unwrap().click();
     h.run();
     assert!(worn_by(&store, "photocraft").is_empty());
 }
@@ -218,12 +233,15 @@ fn another_app_sending_the_person_here_shows_only_what_works_with_it() {
     h.run();
     assert!(h.query_by_label("Add from file").is_none(), "still on the apps page");
     go_to(&mut h, Some("lightcraft"), Some("theme"));
-    h.get_by_label("Midnight");
-    h.get_by_label("Paper");
+    assert_eq!((count(&h, "Midnight"), count(&h, "Paper")), (2, 2));
     assert!(h.query_by_label("Ocean").is_none(), "Ocean is only made for PhotoCraft");
+    h.get_by_label("Charcoal");
+    assert_eq!(count(&h, "Pro (Dark)") + count(&h, "Launcher Dark"), 0, "other apps' own themes are left out");
     h.get_by_label("Showing only works with LightCraft, themes");
     go_to(&mut h, Some("photocraft"), None);
     h.get_by_label("Ocean");
+    h.get_by_label("Pro (Dark)");
+    assert_eq!(count(&h, "Charcoal"), 0);
     h.get_by_label("Showing only works with PhotoCraft");
     assert!(worn_by(&store, "photocraft").is_empty(), "arriving chose nothing");
 }
@@ -234,12 +252,13 @@ fn show_all_lifts_the_narrowing_and_the_banner_goes() {
     h.run();
     go_to(&mut h, Some("lightcraft"), None);
     assert!(h.query_by_label("Ocean").is_none());
-    h.get_by_label("Themes 2");
+    // Two added themes made for LightCraft and the four it carries; the Installed list holds added ones only.
+    h.get_by_label("Themes 6");
     h.get_by_label("Installed 2");
     h.get_by_label("Show all").click();
     h.run_steps(3);
     h.get_by_label("Ocean");
-    h.get_by_label("Themes 3");
+    h.get_by_label(&format!("Themes {}", 3 + artcraft_launcher_ui_egui::features::extensions::builtin::all().len()));
     h.get_by_label("Installed 3");
     assert!(h.query_by_label("Show all").is_none());
     assert!(h.query_by_label_contains("Showing only").is_none());
@@ -253,6 +272,7 @@ fn a_kind_other_than_themes_lands_on_the_installed_list_and_says_so() {
     h.get_by_label("Showing only plug-ins");
     h.get_by_label("Nothing added yet");
     assert!(h.query_by_label("Midnight").is_none());
+    assert_eq!(count(&h, "Pro (Dark)") + count(&h, "Built into your apps"), 0, "built-in themes are themes, not plug-ins");
 }
 
 #[test]
@@ -260,9 +280,8 @@ fn a_place_with_nonsense_in_it_opens_the_page_unnarrowed() {
     let mut h = harness(WithStore { store: Shared::default(), picked: None });
     h.run();
     go_to(&mut h, Some("Photo Craft"), Some("nonsense"));
-    for name in ["Midnight", "Ocean", "Paper"] {
-        h.get_by_label(name);
-    }
+    assert_eq!((count(&h, "Midnight"), count(&h, "Ocean"), count(&h, "Paper")), (2, 1, 2));
+    h.get_by_label("Pro (Dark)");
     assert!(h.query_by_label_contains("Showing only").is_none());
 }
 
@@ -273,4 +292,100 @@ fn a_build_with_no_store_ignores_a_request_to_open_the_page() {
     go_to(&mut h, Some("photocraft"), None);
     assert!(h.query_by_label("Add from file").is_none());
     assert!(h.query_by_label("Extensions").is_none());
+}
+
+/// Options that fit side by side are never stacked: same top edge, one after the other.
+#[test]
+fn the_page_switch_and_the_tabs_sit_side_by_side() {
+    let h = open(&Shared::default(), None);
+    for (first, second) in [("Apps", "Extensions"), ("Themes 23", "Installed 3")] {
+        let rect = |label: &str| h.get_all_by_label(label).next().unwrap_or_else(|| panic!("no {label}")).rect();
+        let (a, b) = (rect(first), rect(second));
+        assert!((a.top() - b.top()).abs() < 1.0, "{first} and {second} are on different lines: {a:?} {b:?}");
+        assert!(b.left() >= a.right() - 1.0, "{second} should follow {first}: {a:?} {b:?}");
+    }
+}
+
+#[test]
+fn the_demo_list_has_every_kind_from_every_source_and_some_in_use() {
+    use craft_ext_core::manifest::Kind;
+    use craft_ext_core::tier::Tier;
+    let rows = SampleSource::demo().rows().unwrap();
+    let of = |k: Kind| rows.iter().filter(|r| r.kind == k).count();
+    assert_eq!((of(Kind::Theme), of(Kind::Plugin), of(Kind::Resource)), (8, 4, 4), "an invalid sample id would drop a row silently");
+    for tier in [Tier::FirstParty, Tier::FromFile, Tier::ReviewedThirdParty] {
+        assert!(rows.iter().any(|r| r.tier == tier && r.kind != Kind::Theme), "{tier:?} has a plug-in or resource");
+    }
+    assert!(rows.iter().filter(|r| r.kind != Kind::Theme).all(|r| r.palette.is_none()));
+    let worn: Vec<_> = rows.iter().flat_map(|r| r.worn.iter().map(AppId::as_str)).collect();
+    assert_eq!(worn.len(), 3);
+    assert!(rows.iter().any(|r| r.apps.iter().any(|a| !r.enabled.contains(a))), "some are switched off for an app");
+    let ids: std::collections::BTreeSet<_> = rows.iter().map(|r| r.id.clone()).collect();
+    assert_eq!(ids.len(), rows.len());
+}
+
+#[test]
+fn the_demo_list_fills_both_tabs() {
+    let store = Shared(Rc::new(RefCell::new(SampleSource::demo())));
+    let h = open(&store, None);
+    h.get_by_label("Themes 28");
+    h.get_by_label("Installed 16");
+    for name in ["High Contrast", "Forest", "Sunset", "Rose Quartz", "Graphite"] {
+        assert_eq!(count(&h, name), 1, "{name}");
+    }
+}
+
+#[test]
+fn a_theme_in_use_is_tagged_and_says_where_and_one_that_is_not_has_no_tag() {
+    let store = Shared::default();
+    let mut h = open(&store, None);
+    assert_eq!(count(&h, "In use"), 0, "nothing is in use yet");
+    assert_eq!(count(&h, "Not used yet"), 3);
+    store.0.borrow_mut().wear(&app("photocraft"), Some(&ExtensionId::new("org.storytold.midnight").unwrap())).unwrap();
+    store.0.borrow_mut().wear(&app("lightcraft"), Some(&ExtensionId::new("org.storytold.midnight").unwrap())).unwrap();
+    store.0.borrow_mut().wear(&app("pdfcraft"), Some(&ExtensionId::new("org.storytold.paper").unwrap())).unwrap();
+    h.run_steps(90);
+    assert_eq!(count(&h, "In use"), 2, "Midnight and Paper, not Ocean");
+    assert_eq!(count(&h, "Not used yet"), 1, "Ocean");
+    assert_eq!((count(&h, "PhotoCraft"), count(&h, "LightCraft"), count(&h, "PdfCraft")), (1, 1, 1), "one chip per app, on its theme");
+    // The same marks on the Installed list.
+    h.get_by_label("Installed 3").click();
+    h.run_steps(3);
+    assert_eq!((count(&h, "PhotoCraft"), count(&h, "LightCraft"), count(&h, "PdfCraft")), (1, 1, 1));
+    assert_eq!(count(&h, "In use"), 0, "the tag belongs on a picture, the list has chips");
+    // Taking the theme back removes the marks.
+    store.0.borrow_mut().wear(&app("photocraft"), None).unwrap();
+    store.0.borrow_mut().wear(&app("lightcraft"), None).unwrap();
+    store.0.borrow_mut().wear(&app("pdfcraft"), None).unwrap();
+    h.run_steps(90);
+    assert_eq!((count(&h, "PhotoCraft"), count(&h, "LightCraft"), count(&h, "PdfCraft")), (0, 0, 0));
+}
+
+#[test]
+fn cards_have_a_gap_between_them_and_do_not_touch() {
+    let h = open(&Shared::default(), None);
+    let rect = |label: &str| h.query_all_by_label(label).next().unwrap_or_else(|| panic!("no {label}")).rect();
+    let (a, b) = (rect("Preview of Midnight"), rect("Preview of Ocean"));
+    assert!((a.top() - b.top()).abs() < 1.0, "the first two cards share a row");
+    let gap = b.left() - a.right();
+    assert!((15.0..=19.0).contains(&gap), "gap between cards is {gap}");
+}
+
+/// Nothing on a card may sit on top of anything else, in the busiest case: a theme worn by three apps.
+#[test]
+fn the_chips_never_touch_the_buttons_below_them() {
+    let store = Shared::default();
+    let mut h = open(&store, None);
+    for app_id in ["photocraft", "lightcraft", "pdfcraft"] {
+        store.0.borrow_mut().wear(&app(app_id), Some(&ExtensionId::new("org.storytold.midnight").unwrap())).unwrap();
+    }
+    h.run_steps(90);
+    let rect = |label: &str| h.query_all_by_label(label).next().unwrap_or_else(|| panic!("no {label}")).rect();
+    let chips = ["PhotoCraft", "LightCraft", "PdfCraft"].map(|n| h.query_all_by_label(n).next().unwrap().rect());
+    let buttons = h.get_all_by_label("USE IN…").next().unwrap().rect();
+    let badge = rect("Dark");
+    for chip in chips {
+        assert!(chip.bottom() + 8.0 <= buttons.top(), "chip {chip:?} is too close to the buttons {buttons:?}");
+        assert!(chip.top() >= badge.bottom() + 6.0, "chip {chip:?} is too close to the badges {badge:?}");
+    }
 }

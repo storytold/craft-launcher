@@ -46,6 +46,7 @@ fn main() -> ExitCode {
         return ExitCode::SUCCESS;
     }
     let mut hidden = args.iter().any(|a| a == login::HIDDEN_FLAG);
+    DEMO.store(args.iter().any(|a| a == "--demo-data"), Ordering::Relaxed);
 
     let wake: Wake = Arc::new(OnceLock::new());
     // `--open extensions?app=photocraft&kind=theme`: another Craft app sending the person to a place here.
@@ -135,7 +136,7 @@ fn native_options(hidden: bool) -> eframe::NativeOptions {
     let icon =
         eframe::icon_data::from_png_bytes(include_bytes!("../../../assets/app-icon/hicolor/256x256/apps/ai.storyteller.artcraft-launcher.png")).ok();
     let mut viewport = egui::ViewportBuilder::default()
-        .with_title("ArtCraft Launcher")
+        .with_title(if DEMO.load(Ordering::Relaxed) { "ArtCraft Launcher (sample data)" } else { "ArtCraft Launcher" })
         .with_app_id(APP_ID)
         .with_inner_size([1120.0, 760.0])
         .with_min_inner_size([720.0, 500.0])
@@ -393,8 +394,9 @@ fn claim_notification_identity() -> &'static Result<(), String> {
 struct DesktopHost {
     tray: bool,
     quit: bool,
-    /// The shared extensions store; `None` when this computer has no place to keep one.
-    extensions: Option<extensions::DesktopStore>,
+    /// The shared extensions store; `None` when this computer has no place to keep one. With
+    /// `--demo-data` it is a made-up list kept in memory instead, so nothing real is read or changed.
+    extensions: Option<Box<dyn artcraft_launcher_ui_egui::features::extensions::ExtensionSource>>,
 }
 
 impl Host for DesktopHost {
@@ -449,7 +451,7 @@ impl Host for DesktopHost {
     }
 
     fn extensions(&mut self) -> Option<&mut dyn artcraft_launcher_ui_egui::features::extensions::ExtensionSource> {
-        self.extensions.as_mut().map(|store| store as &mut dyn artcraft_launcher_ui_egui::features::extensions::ExtensionSource)
+        self.extensions.as_mut().map(|store| &mut **store as &mut dyn artcraft_launcher_ui_egui::features::extensions::ExtensionSource)
     }
 
     fn reduce_motion(&self) -> bool {
@@ -462,9 +464,19 @@ impl Host for DesktopHost {
 }
 
 /// The shared extensions store, or `None` (with a note in the log) where there is no place for one.
-fn open_extensions() -> Option<extensions::DesktopStore> {
-    extensions::DesktopStore::open().inspect_err(|e| log::warn!("extensions are unavailable: {e}")).ok()
+fn open_extensions() -> Option<Box<dyn artcraft_launcher_ui_egui::features::extensions::ExtensionSource>> {
+    if DEMO.load(Ordering::Relaxed) {
+        return Some(Box::new(artcraft_launcher_ui_egui::features::extensions::sample::SampleSource::demo()));
+    }
+    extensions::DesktopStore::open()
+        .inspect_err(|e| log::warn!("extensions are unavailable: {e}"))
+        .ok()
+        .map(|store| Box::new(store) as Box<dyn artcraft_launcher_ui_egui::features::extensions::ExtensionSource>)
 }
+
+/// Started with `--demo-data`: pages that read per-person data show made-up data instead, to see how
+/// they lay out. Set once, before anything is opened; nothing real is read or written for those pages.
+static DEMO: AtomicBool = AtomicBool::new(false);
 
 /// Everything that outlives a window: the UI state and its backend, the tray icon, and the work
 /// that goes on with or without a window.

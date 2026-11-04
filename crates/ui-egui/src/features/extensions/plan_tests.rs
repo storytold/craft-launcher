@@ -196,3 +196,14 @@ fn the_place_another_app_asks_for_becomes_a_focus_and_a_tab() {
     assert_eq!(focus_for(Some(""), Some("")), (Focus::default(), true));
     assert_eq!(focus_for(Some("../x"), Some("Theme")), (Focus::default(), true));
 }
+
+#[test]
+fn the_apps_wearing_a_theme_are_named_in_a_stable_order() {
+    let none = row("a.t", "T", &["photocraft", "lightcraft"], &[], &[]);
+    assert!(worn_names(&none).is_empty());
+    let both = row("a.t", "T", &["photocraft", "lightcraft"], &["photocraft", "lightcraft"], &["photocraft", "lightcraft"]);
+    assert_eq!(worn_names(&both), ["LightCraft", "PhotoCraft"]);
+    let unknown = row("a.t", "T", &["zzcraft", "photocraft"], &["zzcraft", "photocraft"], &["zzcraft", "photocraft"]);
+    assert_eq!(worn_names(&unknown), ["PhotoCraft", "zzcraft"], "an app this launcher does not know shows its id");
+    assert_eq!(in_use_line(&both).as_deref(), Some("LightCraft, PhotoCraft"));
+}

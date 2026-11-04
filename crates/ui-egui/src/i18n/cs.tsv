@@ -371,3 +371,7 @@ filter	Installed	Nainstalováno
 	plug-ins	doplňky
 	resources	zdroje
 	Show all	Zobrazit vše
+	Built into your apps	Součást vašich aplikací
+	Built into {app}	Součást aplikace {app}
+	Choose it inside {app}	Vyberte ho v aplikaci {app}
+	In use	Používá se
