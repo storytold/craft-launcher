@@ -29,6 +29,8 @@ const ARROW: f32 = 36.0;
 const SLIDE_SECS: f32 = 0.22;
 /// The width of the main button and its menu in the page's top, when the page is wide.
 const ACTION_W: f32 = 300.0;
+/// The height of the pinned header bar (accent line, controls and padding).
+const HEADER_H: f32 = theme::CONTROL_H + 20.0;
 
 /// A details picture, as the backend has sent it.
 pub(crate) enum Picture {
@@ -157,15 +159,22 @@ impl LauncherUi {
                 ui.set_min_size(panel.size());
                 ui.set_max_size(panel.size());
                 ui.spacing_mut().item_spacing.y = 0.0;
-                let header_h = self.details_header_bar(ui, &entry, t, (previous.as_deref(), next.as_deref()));
-                let body_rect = Rect::from_min_max(pos2(panel.min.x + 1.0, panel.min.y + header_h), pos2(panel.max.x - 1.0, panel.max.y - 1.0));
+                let pinned = panel.height() > HEADER_H + 2.0;
+                let body_top = if pinned {
+                    let header_h = self.details_header_bar(ui, &entry, t, (previous.as_deref(), next.as_deref()));
+                    panel.min.y + header_h
+                } else {
+                    panel.min.y + 1.0
+                };
+                let body_bottom = (panel.max.y - 1.0).max(body_top);
+                let body_rect = Rect::from_min_max(pos2(panel.min.x + 1.0, body_top), pos2(panel.max.x - 1.0, body_bottom));
                 // A bar that stays on screen says there is more below the fold; in the app's colour.
                 let page_visuals = crate::sheet::accent_scroll(ui, t, t.app_ink(entry.app));
                 let mut child_ui = ui.new_child(egui::UiBuilder::new().max_rect(body_rect).layout(*ui.layout()));
                 // One scroll position per app, so the next app opens at its top.
                 egui::ScrollArea::vertical()
                     .id_salt(("details-scroll", id.to_string()))
-                    .max_height(body_rect.height())
+                    .max_height(body_rect.height().max(1.0))
                     .scroll_bar_rect(body_rect)
                     .auto_shrink([false, false])
                     .show(&mut child_ui, |ui| {
@@ -173,6 +182,9 @@ impl LauncherUi {
                         *ui.visuals_mut() = page_visuals;
                         ui.set_width(ui.available_width());
                         ui.spacing_mut().item_spacing.y = 8.0;
+                        if !pinned {
+                            self.details_header_bar(ui, &entry, t, (previous.as_deref(), next.as_deref()));
+                        }
                         self.details_hero(ui, &entry, details, t, wide);
                         egui::Frame::new().inner_margin(Margin::same(PAD as i8)).show(ui, |ui| {
                             self.details_body(ui, &entry, details, wide, t);
