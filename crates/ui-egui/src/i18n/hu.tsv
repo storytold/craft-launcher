@@ -123,6 +123,12 @@
 	Apps on this computer	Alkalmazások ezen a számítógépen
 	Installed apps with a newer version	Telepített alkalmazások, amelyekhez frissítés érhető el
 	Apps you can install	Telepíthető alkalmazások
+	Pin to top	Rögzítés felülre
+	Unpin	Rögzítés feloldása
+	Pinned	Rögzítettek
+	Reorder {name}	Átrendezés: {name}
+	Move up	Feljebb
+	Move down	Lejjebb
 	Hide App	Alkalmazás elrejtése
 	Unhide App	Alkalmazás megjelenítése
 	Hidden Apps	Rejtett alkalmazások
@@ -148,6 +154,7 @@
 	Update cancelled	Frissítés megszakítva
 	Uninstall cancelled	Eltávolítás megszakítva
 	Retry install	Telepítés újrapróbálása
+	Retry update	Frissítés újrapróbálása
 	Retry update to {version}	Frissítés újrapróbálása: {version}
 	The download is still here. It's checked again, then installed.	A letöltött fájl megmaradt. Újra ellenőrizzük, majd telepítjük.
 	Waiting for another app…	Várakozás egy másik alkalmazásra…
@@ -174,6 +181,7 @@ designcraft	Page layout and publishing	Oldaltervezés és kiadványszerkesztés
 wordcraft	Writing and document design	Írás és dokumentumtervezés
 deckcraft	Presentations and slide shows	Prezentációk és diavetítések
 gridcraft	Spreadsheets and data	Táblázatok és adatok
+craft-anything	Find out how any software works, then craft your own	Ismerd meg, hogyan működik bármely szoftver, majd készítsd el a sajátodat
 solidcraft	Parametric 3D CAD	Paraméteres 3D CAD
 cadcraft	Computer-aided design and drafting	Számítógépes tervezés és műszaki rajz
 soundcraft	Recording, editing and mixing audio	Hangrögzítés, hangszerkesztés és keverés
@@ -396,3 +404,21 @@ column	Author	Szerző
 	Older launcher versions require a manual reinstall.	Az indító régebbi verzióit kézzel kell újratelepíteni.
 	Your files may not open in older versions.	Előfordulhat, hogy a régebbi verziók nem tudják megnyitni a fájljaidat.
 	Enable automatic installs in Settings to follow new nightly builds.	Az új éjszakai kiadások követéséhez kapcsold be az automatikus telepítést a beállításokban.
+texturecraft	3D texture painting	3D textúrafestés
+texturecraft	Paint materials on 3D models and export textures.	Fess anyagokat 3D modellekre, és exportáld a textúrákat.
+texturecraft	Materials	Anyagok
+texturecraft	Mesh maps	Hálótérképek
+texturecraft	Bake mesh maps and use smart materials.	Süss ki hálótérképeket, és használj intelligens anyagokat.
+texturecraft	Paint textures on 3D models.	Fess textúrákat 3D modellekre.
+	Hide community apps	Közösségi alkalmazások elrejtése
+materialcraft	Procedural material design	Procedurális anyagtervezés
+materialcraft	Build materials with node graphs.	Készíts anyagokat csomópontgráfokkal.
+materialcraft	Create tileable PBR materials and export texture maps.	Készíts hézagmentesen ismételhető PBR-anyagokat, és exportálj textúratérképeket.
+materialcraft	Node graphs	Csomópontgráfok
+materialcraft	Combine noises, patterns and filters.	Kombinálj zajokat, mintákat és szűrőket.
+materialcraft	Live previews	Élő előnézetek
+materialcraft	Preview materials in 2D and on 3D models.	Tekintsd meg az anyagokat 2D-ben és 3D modelleken.
+	Advanced	Haladó
+	Migrate Flatpak bundles to ArtCraft OCI (experimental)	Flatpak-csomagok átállítása ArtCraft OCI-ra (kísérleti)
+	On update, switch first party apps when the matching package is available. Otherwise, keep using bundles.	Frissítéskor állítsa át az ArtCraft alkalmazásait, ha elérhető a megfelelő csomag. Egyébként továbbra is önálló csomagokat használjon.
+	The OCI repository is a preview with GPG verification disabled.	Az OCI-tároló előzetes verzió, kikapcsolt GPG-ellenőrzéssel.

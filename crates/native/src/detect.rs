@@ -67,6 +67,9 @@ fn from_manifest(app: &CraftApp, manifest: &Manifest) -> Option<Installed> {
         source: InstallSource::Launcher,
         location: rec.path.display().to_string(),
         package: None,
+        externally_managed: false,
+        origin: None,
+        installation: None,
     })
 }
 
@@ -194,7 +197,26 @@ pub mod macos {
         let full_key = format!("{}Version", app.name);
         let text =
             [full_key.as_str(), "CFBundleShortVersionString", "CFBundleVersion"].iter().find_map(|k| dict.get(k).and_then(plist::Value::as_string));
-        Some(Installed { version: text.and_then(version::parse), source: InstallSource::MacApp, location: path.display().to_string(), package: None })
+        Some(Installed {
+            version: text.and_then(version::parse),
+            source: InstallSource::MacApp,
+            location: path.display().to_string(),
+            package: None,
+            externally_managed: false,
+            origin: None,
+            installation: None,
+        })
+    }
+}
+
+/// Newest version first; an entry with no version comes after every entry with one.
+#[cfg(any(windows, test))]
+fn newest_first(a: Option<&version::Version>, b: Option<&version::Version>) -> std::cmp::Ordering {
+    match (b, a) {
+        (Some(x), Some(y)) => version::compare(x, y),
+        (Some(_), None) => std::cmp::Ordering::Greater,
+        (None, Some(_)) => std::cmp::Ordering::Less,
+        (None, None) => std::cmp::Ordering::Equal,
     }
 }
 
@@ -295,12 +317,7 @@ pub mod windows {
                 out.push(MsiInstall { product_code: code, version, exe, scope: record_context(hive) });
             }
         }
-        out.sort_by(|a, b| match (&b.version, &a.version) {
-            (Some(x), Some(y)) => version::compare(x, y),
-            (Some(_), None) => std::cmp::Ordering::Less,
-            (None, Some(_)) => std::cmp::Ordering::Greater,
-            (None, None) => std::cmp::Ordering::Equal,
-        });
+        out.sort_by(|a, b| super::newest_first(a.version.as_ref(), b.version.as_ref()));
         out
     }
 
@@ -415,7 +432,15 @@ pub mod windows {
     pub fn detect(app: &CraftApp) -> Option<Installed> {
         let m = msi_installs(app).into_iter().next()?;
         let location = m.exe.or_else(|| exe_in_any_scope(app, m.version.as_ref())).map_or_else(|| app.name.to_string(), |p| location_text(&p));
-        Some(Installed { version: m.version, source: InstallSource::Msi, location, package: Some(m.product_code) })
+        Some(Installed {
+            version: m.version,
+            source: InstallSource::Msi,
+            location,
+            package: Some(m.product_code),
+            externally_managed: false,
+            origin: None,
+            installation: None,
+        })
     }
 }
 
@@ -441,7 +466,14 @@ pub mod linux {
         let t = Duration::from_secs(10);
         let mut out = Vec::new();
         let mut add = |manager, user, list: Vec<(String, String)>| {
-            out.extend(list.into_iter().filter(|(n, _)| ours(n)).map(|(name, version)| Package { manager, name, version, user }));
+            out.extend(list.into_iter().filter(|(n, _)| ours(n)).map(|(name, version)| Package {
+                manager,
+                name,
+                version,
+                user,
+                origin: None,
+                installation: None,
+            }));
         };
         if let Some(list) = capture("dpkg-query", &["-W", "-f", "${Package}|${db:Status-Status}|${Version}\n"], t) {
             add(InstallSource::Deb, false, packages::parse_dpkg(&list));
@@ -462,25 +494,31 @@ pub mod linux {
         // named ones included (`--system` is only the default one).
         let mut user_ids = Vec::new();
         for scope in [&["--user"][..], &[]] {
-            let list_args = [&["list", "--app"][..], scope, &[&arch, "--columns=application,version"]].concat();
+            let list_args = [&["list", "--app"][..], scope, &[&arch, "--columns=application,version,origin,installation"]].concat();
             if let Some(list) = crate::process::capture_flatpak(&list_args, t) {
-                let mut flatpaks = packages::parse_flatpak_list(&list);
+                let mut flatpaks = packages::parse_flatpak_list_with_origin(&list);
                 // The unscoped list repeats the user installs: the user pass already has them.
-                flatpaks.retain(|(id, _)| !user_ids.contains(id));
+                flatpaks.retain(|(id, _, _, _)| !user_ids.contains(id));
                 if !scope.is_empty() {
-                    user_ids.extend(flatpaks.iter().map(|(id, _)| id.clone()));
+                    user_ids.extend(flatpaks.iter().map(|(id, _, _, _)| id.clone()));
                 }
                 // Bundles built from a release tarball often list no version: ask Flatpak directly.
-                for (id, version) in flatpaks
+                for (id, version, _, installation) in flatpaks
                     .iter_mut()
-                    .filter(|(id, v)| v.is_empty() && artcraft_launcher_core::SUITE.iter().any(|a| a.bundle_ids().any(|b| b == *id)))
+                    .filter(|(id, v, _, _)| v.is_empty() && artcraft_launcher_core::SUITE.iter().any(|a| a.bundle_ids().any(|b| b == *id)))
                 {
-                    let info_args = [&["info"][..], scope, &[&arch, id]].concat();
+                    let scope_arg = packages::flatpak_scope(if scope.is_empty() { installation.as_deref() } else { Some("user") });
+                    let info_args = ["info", &scope_arg, &arch, id];
                     if let Some(v) = crate::process::capture_flatpak(&info_args, t).as_deref().and_then(packages::parse_flatpak_info) {
                         *version = v;
                     }
                 }
-                add(InstallSource::Flatpak, !scope.is_empty(), flatpaks);
+                let is_user = !scope.is_empty();
+                out.extend(flatpaks.into_iter().filter(|(n, _, _, _)| ours(n)).map(|(name, version, origin, installation)| {
+                    let user_install = is_user || installation.as_deref() == Some("user");
+                    let resolved_installation = installation.or_else(|| if user_install { Some("user".into()) } else { Some("system".into()) });
+                    Package { manager: InstallSource::Flatpak, name, version, user: user_install, origin, installation: resolved_installation }
+                }));
             }
         }
         out
@@ -501,11 +539,7 @@ pub mod linux {
 
     /// Where a package put the app's binary: on `PATH`, else `/usr/bin/<id>`.
     fn binary_on_path(id: &str) -> String {
-        std::env::var_os("PATH")
-            .and_then(|path| std::env::split_paths(&path).map(|d| d.join(id)).find(|p| p.is_file()))
-            .unwrap_or_else(|| PathBuf::from("/usr/bin").join(id))
-            .display()
-            .to_string()
+        crate::process::which(id).unwrap_or_else(|| PathBuf::from("/usr/bin").join(id)).display().to_string()
     }
 
     /// `~/Applications`, where the launcher puts AppImages (the AppImageLauncher convention).
@@ -554,15 +588,42 @@ pub mod linux {
         appimages_in(app, &appimage_dirs())
     }
 
+    /// How the app is installed, in this order: an AppImage the launcher put down, a package
+    /// (deb, rpm, pacman or Flatpak), else a binary found on disk.
     pub fn detect(app: &CraftApp, snapshot: &Snapshot) -> Option<Installed> {
         if let Some((path, version)) = appimages(app).into_iter().next() {
-            return Some(Installed { version, source: InstallSource::AppImage, location: path.display().to_string(), package: None });
+            return Some(Installed {
+                version,
+                source: InstallSource::AppImage,
+                location: path.display().to_string(),
+                package: None,
+                externally_managed: false,
+                origin: None,
+                installation: None,
+            });
         }
         let order = [InstallSource::Deb, InstallSource::Rpm, InstallSource::Pacman, InstallSource::Flatpak];
         if let Some(p) = packages::find(app, &snapshot.packages, &order) {
             // A Flatpak runs under the id it was found under, which may be an older one.
             let location = if p.manager == InstallSource::Flatpak { p.name.clone() } else { binary_on_path(app.id) };
-            return Some(Installed { version: packages::version_of(p), source: p.manager, location, package: Some(p.name.clone()) });
+            let externally_managed = p.manager == InstallSource::Flatpak
+                && p.origin.as_deref().is_none_or(|origin| {
+                    if packages::is_flatpark_origin(origin) {
+                        return true;
+                    }
+                    let scope = packages::flatpak_scope(p.installation.as_deref());
+                    crate::process::capture_flatpak(&["remotes", &scope, "--show-disabled", "--columns=name,url"], Duration::from_secs(10))
+                        .is_none_or(|remotes| packages::remote_manages_flatpak(origin, &remotes))
+                });
+            return Some(Installed {
+                version: packages::version_of(p),
+                source: p.manager,
+                location,
+                package: Some(p.name.clone()),
+                externally_managed,
+                origin: p.origin.clone(),
+                installation: p.installation.clone(),
+            });
         }
         detect_system_install(app)
     }
@@ -573,15 +634,26 @@ pub mod linux {
     /// to whatever installed it, since it can't tell which package manager that was.
     fn detect_system_install(app: &CraftApp) -> Option<Installed> {
         let bin = find_binary(app.id)?;
-        Some(Installed { version: binary_version(&bin, app), source: InstallSource::Binary, location: bin.display().to_string(), package: None })
+        Some(Installed {
+            version: binary_version(&bin, app),
+            source: InstallSource::Binary,
+            location: bin.display().to_string(),
+            package: None,
+            externally_managed: false,
+            origin: None,
+            installation: None,
+        })
     }
 
+    /// The app's binary on `PATH`, else in `/usr/bin`, `/usr/local/bin` or `~/.local/bin`.
     fn find_binary(id: &str) -> Option<PathBuf> {
-        let on_path = std::env::var_os("PATH").and_then(|path| std::env::split_paths(&path).map(|d| d.join(id)).find(|p| p.is_file()));
+        let on_path = crate::process::which(id);
         let usual = ["/usr/bin", "/usr/local/bin"].into_iter().map(PathBuf::from).chain(dirs::home_dir().map(|h| h.join(".local/bin")));
         on_path.or_else(|| usual.map(|d| d.join(id)).find(|p| p.is_file()))
     }
 
+    /// The version `bin --version` prints, or `None` when it can't be started, doesn't finish
+    /// within 5 seconds (it is then killed), exits with an error, or prints no version.
     pub(crate) fn binary_version(bin: &Path, app: &CraftApp) -> Option<version::Version> {
         let out = crate::process::capture(bin.to_str()?, &["--version"], Duration::from_secs(5))?;
         parse_cli_version(out.trim(), app)
@@ -600,7 +672,15 @@ pub mod freebsd {
         if !bin.exists() {
             return None;
         }
-        Some(Installed { version: binary_version(&bin, app), source: InstallSource::Binary, location: bin.display().to_string(), package: None })
+        Some(Installed {
+            version: binary_version(&bin, app),
+            source: InstallSource::Binary,
+            location: bin.display().to_string(),
+            package: None,
+            externally_managed: false,
+            origin: None,
+            installation: None,
+        })
     }
 
     /// `<app> --version` prints `<app> 0.5.0 (sha, date)`.
@@ -686,6 +766,21 @@ mod tests {
     use artcraft_launcher_core::SUITE;
 
     use super::*;
+
+    #[test]
+    fn msi_entries_sort_newest_first_and_unversioned_last() {
+        use std::cmp::Ordering::{Equal, Greater, Less};
+        let (old, new) = (version::parse("0.4.0"), version::parse("0.5.0"));
+        // Each arm by hand: the sort below never asks about None against Some in that order.
+        assert_eq!(newest_first(new.as_ref(), old.as_ref()), Less);
+        assert_eq!(newest_first(old.as_ref(), new.as_ref()), Greater);
+        assert_eq!(newest_first(new.as_ref(), None), Less);
+        assert_eq!(newest_first(None, new.as_ref()), Greater);
+        assert_eq!(newest_first(None, None), Equal);
+        let mut versions = vec![None, old.clone(), new.clone(), None];
+        versions.sort_by(|a, b| newest_first(a.as_ref(), b.as_ref()));
+        assert_eq!(versions, vec![new, old, None, None]);
+    }
 
     /// A file without VERSIONINFO, or one that isn't there, has no version.
     #[cfg(windows)]

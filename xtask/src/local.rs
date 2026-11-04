@@ -32,6 +32,9 @@ const APPS: &[(&str, &str)] = &[
     ("deckcraft", "DeckCraft"),
     ("cadcraft", "CADCraft"),
     ("gridcraft", "GridCraft"),
+    ("craft-anything", "Craft Anything"),
+    ("texturecraft", "TextureCraft"),
+    ("materialcraft", "MaterialCraft"),
 ];
 
 const DEFAULT_PORT: u16 = 8787;
@@ -784,7 +787,10 @@ mod tests {
 
     #[test]
     fn writes_a_feed_the_launcher_reads() {
-        let mirror = std::env::temp_dir().join(format!("xtask-local-{}", std::process::id()));
+        // A fresh private directory with an unpredictable name: a predictable one in the shared
+        // temp root could be pre-created by another user, with symlinks where the fixture writes.
+        let tmp = tempfile::tempdir().unwrap();
+        let mirror = tmp.path().to_path_buf();
         let dir = mirror.join("photocraft").join("0.6.0");
         std::fs::create_dir_all(&dir).unwrap();
         std::fs::write(dir.join("photocraft-0.6.0-macos-aarch64.dmg"), b"dmg").unwrap();
@@ -794,7 +800,6 @@ mod tests {
         std::fs::create_dir_all(mirror.join("photocraft").join("0.7.0")).unwrap();
         std::fs::write(dir.join(COMPLETE), "").unwrap();
         let json = feed(&mirror, "http://127.0.0.1:8787/");
-        let _ = std::fs::remove_dir_all(&mirror);
         assert!(json.contains(r#""tag":"v0.6.0""#), "{json}");
         assert!(json.contains(r#""download_url":"http://127.0.0.1:8787/photocraft/0.6.0/photocraft-0.6.0-macos-aarch64.dmg""#));
         assert!(json.contains(r#""size_bytes":3"#) && json.contains(&"ab".repeat(32)));

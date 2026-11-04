@@ -1,8 +1,9 @@
 # Incident: antivirus flagged ArtCraft Launcher during Update all on Windows
 
-Status (2026-10-31): the Update all route is reverted (#1077) and released in v0.11.1. All-users
-downgrades no longer use PowerShell on this branch, and no test has confirmed that the revert stops
-the detection. See [Still open](#still-open).
+Status (2026-11-04): the Update all route is reverted (#1077) and released in v0.11.1. The launcher's
+own source no longer starts PowerShell on this branch (#1082 and the signed helper). The craft-update
+library it pins still can, and no test has confirmed that the revert stops the detection. See
+[Still open](#still-open).
 
 ## Summary
 
@@ -84,10 +85,10 @@ the route.
 - v0.11.0 was revoked. v0.11.1 ships #1077, so Update all no longer starts PowerShell. Its
   all-users downgrades still do, until the change below is released.
 - #1076, an alternative that also removed the downgrade route, was closed in favour of #1077.
-
-## Still open
-
-- **All-users downgrades:** replaced by a signed helper (`install/elevated.rs`): the launcher starts
+- #1082: `msi_context.rs` ran a hidden, non-elevated PowerShell lookup on MSI updates. It now
+  reads Windows Installer's own registration keys for this account and the machine instead, so no
+  update through the launcher's own install code starts PowerShell.
+- All-users downgrades: replaced by a signed helper (`install/elevated.rs`): the launcher starts
   `artcraft-launcher-helper.exe`, installed beside it, elevated, so the one prompt names ArtCraft
   Launcher. The helper is a small separate program that imports no graphics code and limits every
   DLL load to System32 before it does anything else, so a DLL planted in the launcher's per-user
@@ -96,14 +97,18 @@ the route.
   publisher, copies it into a new folder under `Program Files\ArtCraft`, where ordinary accounts can
   read but not add, change or delete files, installs only into a folder the app is already
   registered in for all users, and runs `msiexec` directly. No PowerShell, script or encoded
-  command remains in the downgrade path; one lookup is left elsewhere (see Remaining lookup).
-  Not yet released, and not yet run against behavioural antivirus (see Confirmation).
+  command remains in the downgrade path. Not yet released, and not yet run against behavioural
+  antivirus (see Confirmation).
+
+## Still open
+
+- **craft-update:** the launcher pins craft-libs at `4323a0f`, whose `msi_context::probe` still
+  starts a non-elevated PowerShell lookup. craft-libs#465 removes it (merged as `40751df`). Until
+  the launcher moves to that revision, the launcher's own source starts no PowerShell but the
+  library it links still can.
 - **Confirmation:** test on a Windows VM with Kaspersky and behaviour detection on. Run Update all
   with two or more outdated all-users apps on an affected build, then on a build with #1077. The
   test only counts if the affected build reproduces the flag.
-- **Remaining lookup:** `msi_context.rs` runs a hidden, non-elevated PowerShell lookup on MSI
-  updates. It runs for single-app updates too, which #1027 says are fine, so it was left in place.
-  If flags continue, look there next.
 - **Affected users:** the revert does not repair installs the antivirus has already damaged. The
   "isn't where it was installed" errors are tracked in #993.
 
