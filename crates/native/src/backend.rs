@@ -912,6 +912,7 @@ fn feed_and_fallback(http: &Http, paths: &Paths, shared: &Shared) -> (Option<Fee
     let attempts = if first_time { 1 } else { FEED_ATTEMPTS };
     let fetched = fetch_feed(http, paths, &feed_url(), &shared.feed_throttle, attempts);
     let now = crate::now();
+    let backing_off = shared.feed_throttle.lock().unwrap_or_else(PoisonError::into_inner).failing(now);
     let (fresh, answered, failures, feed_failed) = {
         let mut failures = shared.feed_failures.lock().unwrap_or_else(PoisonError::into_inner);
         match fetched {
@@ -925,7 +926,7 @@ fn feed_and_fallback(http: &Http, paths: &Paths, shared: &Shared) -> (Option<Fee
                 (None, false, *failures, true)
             }
             // Not asked this time: things stand as the last request left them.
-            FeedFetch::Held => (None, *failures == 0 && saved.is_some(), *failures, *failures > 0),
+            FeedFetch::Held => (None, *failures == 0 && saved.is_some(), *failures, *failures > 0 || backing_off),
         }
     };
     let ok_at = *shared.feed_ok_at.lock().unwrap_or_else(PoisonError::into_inner);
@@ -1535,6 +1536,18 @@ mod tests {
         let http = Http::new().unwrap();
         let shared = shared();
         *shared.feed_failures.lock().unwrap() = 1;
+        shared.feed_throttle.lock().unwrap().finished(Outcome::Failed { retry_after: Some(600) }, crate::now(), 0.0);
+        let (_, _, feed_failed) = feed_and_fallback(&http, &paths, &shared);
+        assert!(feed_failed);
+    }
+
+    #[test]
+    fn a_feed_held_back_by_a_backoff_from_an_earlier_run_counts_as_failed() {
+        // After a restart `feed_failures` is zero, but the saved backoff still holds the request back.
+        let dir = tempfile::tempdir().unwrap();
+        let paths = Paths::under(dir.path());
+        let http = Http::new().unwrap();
+        let shared = shared();
         shared.feed_throttle.lock().unwrap().finished(Outcome::Failed { retry_after: Some(600) }, crate::now(), 0.0);
         let (_, _, feed_failed) = feed_and_fallback(&http, &paths, &shared);
         assert!(feed_failed);

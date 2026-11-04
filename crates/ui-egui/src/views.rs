@@ -356,11 +356,15 @@ impl LauncherUi {
         let status = if self.checking {
             tl!("Checking for updates…").to_string()
         } else if let Some(at) = self.settings.last_check {
-            let ago = ago_text(at, now);
-            // Nothing was reached: the cards show saved answers, whichever service they came from.
+            // Nothing was reached: the cards show saved answers, whichever service they came from,
+            // so the time is that of the last check that really got an answer.
             if self.last_source == Some(Source::Cache) {
-                fmt(tl!("Checked {ago} · showing saved results"), &[("ago", &ago)])
+                match self.settings.last_fresh_check {
+                    Some(fresh) => fmt(tl!("Checked {ago} · showing saved results"), &[("ago", &ago_text(fresh, now))]),
+                    None => tl!("Showing saved results").to_string(),
+                }
             } else {
+                let ago = ago_text(at, now);
                 match self.sources_label() {
                     Some(using) => fmt(tl!("Checked {ago} · using {sources}"), &[("ago", &ago), ("sources", &using)]),
                     None => fmt(tl!("Checked {ago}"), &[("ago", &ago)]),

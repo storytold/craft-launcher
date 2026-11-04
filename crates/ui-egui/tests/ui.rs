@@ -2256,16 +2256,16 @@ fn the_footer_names_the_services_behind_what_is_on_screen() {
             None,
         );
         h.run_steps(6);
-        let label =
-            h.get_by_label_contains("Checked ").accesskit_node().label().or_else(|| h.get_by_label_contains("Checked ").accesskit_node().value());
-        label.unwrap_or_default()
+        let node = h.query_by_label_contains("Checked ").or_else(|| h.query_by_label_contains("Showing saved results"));
+        node.and_then(|n| n.accesskit_node().label().or_else(|| n.accesskit_node().value())).unwrap_or_default()
     };
     assert_eq!(footer(Vec::new()), "Checked 3 min ago · using ArtCraft API");
     let from_github =
         vec![Event::Latest { app: "wordcraft".into(), latest: LatestRelease::Found(release("wordcraft", "0.3.1", NOW)), from: Origin::GitHub }];
     assert_eq!(footer(from_github), "Checked 3 min ago · using ArtCraft API and GitHub");
-    // Nothing could be reached: the cards show saved answers, so no service is named.
-    let offline = vec![Event::CheckFinished { at: NOW - 180, source: Source::Cache, rate_limited_until: None }];
+    // Nothing could be reached: the cards show saved answers, so no service is named, and the time
+    // is that of the last check that did get an answer (the one in `events()`), not the failed attempt.
+    let offline = vec![Event::CheckFinished { at: NOW - 30, source: Source::Cache, rate_limited_until: None }];
     assert_eq!(footer(offline), "Checked 3 min ago · showing saved results");
 }
 
