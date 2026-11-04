@@ -53,21 +53,29 @@ The staged MSI is re-hashed, checked for a valid Windows Authenticode signature,
 write/delete sharing while inspected and installed. The only executed installer is the system
 `msiexec.exe`.
 
-Signer identity and MSI-authored metadata are separate checks. The signer must have the exact
-simple name and organization `Learning Machines Inc`, and Windows must report the Authenticode
-status as `Valid` (including its platform chain and timestamp validation). The MSI database must
-independently report Manufacturer `Learning Machines LLC`, an allowed app ProductName, the
-authorized release ProductVersion, a platform matching the x64/x86/ARM64 filename, `ALLUSERS=1`,
-and `MSIINSTALLPERUSER` absent or zero. The MSI database is read through the absolute system
+Signer identity and MSI-authored metadata are separate checks. Windows must report the
+Authenticode status as `Valid` (including its platform chain and timestamp validation), and the
+certificate simple name must exactly equal `Learning Machines Inc`. The certificate Organization
+is independently extracted from the subject using the absolute system `crypt32.dll` export
+`CertGetNameStringW`, `CERT_NAME_ATTR_TYPE` (3), and attribute OID `2.5.4.10`. The OID pointer is
+allocated as ANSI data and released in a `finally` block; the API's required length is queried
+first, capped at 1024 characters, and checked again after filling a bounded `StringBuilder`.
+Missing, empty, oversized, or inconsistent values fail closed. The extracted Organization must
+exactly equal `Learning Machines Inc`; text in the common name or another subject field cannot
+satisfy this check. This is separate from the MSI database, which must independently report
+Manufacturer `Learning Machines LLC`, an allowed app ProductName, the authorized release
+ProductVersion, a platform matching the x64/x86/ARM64 filename, `ALLUSERS=1`, and
+`MSIINSTALLPERUSER` absent or zero. The MSI database is read through the absolute system
 `msi.dll` using in-memory P/Invoke declarations, avoiding elevated COM activation and a
 user-writable temporary assembly. Reflection names each native export explicitly.
 `MsiSummaryInfoGetPropertyW` uses its complete seven-argument signature, including `FILETIME*`
 (passed as null for PID_TEMPLATE); the previous declaration omitted that argument and could
-misalign the native call before MSI logging or installation began. `MsiOpenDatabaseW` continues to
-receive CLR values through `Invoke-MsiApi`. That helper unwraps non-null PowerShell adapters with
-`$value.PSObject.BaseObject`, checks each runtime type against the reflected signature,
-and copies native by-reference outputs back to the caller's array. This handles `PSObject` values
-retained inside PowerShell-created `object[]` arrays instead of relying on a string cast alone.
+misalign the native call before MSI logging or installation began. `MsiOpenDatabaseW` and the
+Crypt32 call receive CLR values through the shared typed reflection helper. It unwraps non-null
+PowerShell adapters with `$value.PSObject.BaseObject`, checks each runtime type against the
+reflected signature, and copies native by-reference outputs back to the caller's array. This
+handles `PSObject` values retained inside PowerShell-created `object[]` arrays instead of relying
+on a string cast alone.
 
 The full subject, issuer, serial, thumbprint, published hash, and inspected MSI properties for
 the four documented PhotoCraft and VectorCraft packages are in

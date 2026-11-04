@@ -336,15 +336,34 @@ function New-MsiApi {
     return $type.CreateType()
 }
 
-function Invoke-MsiApi($api, [string]$name, [object[]]$arguments) {
+function New-Crypt32Api {
+    # Resolve Crypt32 from the Windows system directory, never through user-controlled DLL search paths.
+    $assembly = [AppDomain]::CurrentDomain.DefineDynamicAssembly(
+        [Reflection.AssemblyName]::new('ArtCraftCrypt32' + [Guid]::NewGuid().ToString('N')), [Reflection.Emit.AssemblyBuilderAccess]::Run)
+    $module = $assembly.DefineDynamicModule('ArtCraftCrypt32')
+    $type = $module.DefineType('ArtCraftCrypt32', [Reflection.TypeAttributes]'Public, Abstract, Sealed')
+    $dll = [IO.Path]::Combine([Environment]::SystemDirectory, 'crypt32.dll')
+    $u = [uint32]
+    $method = $type.DefinePInvokeMethod('CertGetNameStringW', $dll, 'CertGetNameStringW',
+        [Reflection.MethodAttributes]'Public, Static, PinvokeImpl',
+        [Reflection.CallingConventions]::Standard, $u,
+        [Type[]]@([IntPtr], $u, $u, [IntPtr], [Text.StringBuilder], $u),
+        [Runtime.InteropServices.CallingConvention]::Winapi,
+        [Runtime.InteropServices.CharSet]::Unicode)
+    $method.SetImplementationFlags([Reflection.MethodImplAttributes]::PreserveSig)
+    return $type.CreateType()
+}
+
+function Invoke-NativeApi($api, [string]$kind, [string]$name, [object[]]$arguments) {
+    $label = "$kind API"
     $method = $api.GetMethod($name)
-    if ($null -eq $method) { throw "MSI API method $name was not declared" }
+    if ($null -eq $method) { throw "$label method $name was not declared" }
     # Keep the caller's exact array instance so ref/out values can be copied back into it.
     $source = $arguments
-    if ($source -isnot [Array]) { throw "MSI API $name arguments were not a CLR array" }
+    if ($source -isnot [Array]) { throw "$label $name arguments were not a CLR array" }
     $parameters = $method.GetParameters()
     if ($source.Length -ne $parameters.Length) {
-        throw "MSI API $name expected $($parameters.Length) arguments but received $($source.Length)"
+        throw "$label $name expected $($parameters.Length) arguments but received $($source.Length)"
     }
 
     # PowerShell can retain PSObject adapters inside object[] arrays. Reflection.Emit P/Invoke
@@ -364,7 +383,7 @@ function Invoke-MsiApi($api, [string]$name, [object[]]$arguments) {
         if (($null -eq $value -and $expectedType.IsValueType) -or
             ($null -ne $value -and -not $expectedType.IsInstanceOfType($value))) {
             $actualType = if ($null -eq $value) { '<null>' } else { $value.GetType().FullName }
-            throw "MSI API $name argument $index expected CLR $($expectedType.FullName), received $actualType"
+            throw "$label $name argument $index expected CLR $($expectedType.FullName), received $actualType"
         }
         $callArguments.SetValue([object]$value, $index)
     }
@@ -374,7 +393,7 @@ function Invoke-MsiApi($api, [string]$name, [object[]]$arguments) {
     } catch {
         $failure = $_.Exception
         while ($null -ne $failure.InnerException) { $failure = $failure.InnerException }
-        throw "MSI API $name reflection invocation failed: $($failure.GetType().FullName): $($failure.Message)"
+        throw "$label $name reflection invocation failed: $($failure.GetType().FullName): $($failure.Message)"
     }
 
     # Preserve native by-ref outputs in the caller's original array for handle/status use.
@@ -390,6 +409,61 @@ function Invoke-MsiApi($api, [string]$name, [object[]]$arguments) {
     }
     if ($null -ne $result) { $result = $result.PSObject.BaseObject }
     return $result
+}
+
+function Invoke-MsiApi($api, [string]$name, [object[]]$arguments) {
+    return Invoke-NativeApi $api 'MSI' $name $arguments
+}
+
+function Invoke-Crypt32Api($api, [string]$name, [object[]]$arguments) {
+    return Invoke-NativeApi $api 'Crypt32' $name $arguments
+}
+
+function Get-CertificateOrganization($certificate) {
+    if ($null -eq $certificate) { throw 'Authenticode signer certificate is missing' }
+    if ($certificate -isnot [Security.Cryptography.X509Certificates.X509Certificate2]) {
+        throw 'Authenticode signer certificate has an invalid CLR type'
+    }
+    $context = [IntPtr]$certificate.Handle
+    if ($context -eq [IntPtr]::Zero) { throw 'Authenticode signer certificate context is invalid' }
+
+    # CERT_NAME_ATTR_TYPE (3) with the subject Organization OID reads the actual
+    # distinguished-name attribute. The OID is ASCII and Crypt32 does not own this pointer.
+    $certNameAttrType = [uint32]3
+    $oid = [Runtime.InteropServices.Marshal]::StringToHGlobalAnsi('2.5.4.10')
+    try {
+        $api = New-Crypt32Api
+        $query = [object[]]@($context, $certNameAttrType, [uint32]0, $oid, $null, [uint32]0)
+        Set-ArtCraftValidationStage 'authenticode-organization-query'
+        $required = [uint32](Invoke-Crypt32Api $api 'CertGetNameStringW' $query)
+        if ($required -eq 0) {
+            throw 'Crypt32 could not read the Authenticode signer Organization (2.5.4.10) attribute'
+        }
+        if ($required -eq 1) {
+            throw 'Authenticode signer certificate is missing the Organization (2.5.4.10) attribute'
+        }
+        if ($required -gt 1024) {
+            throw 'Authenticode signer Organization (2.5.4.10) attribute exceeds the supported size'
+        }
+
+        $buffer = [Text.StringBuilder]::new([int]$required)
+        $read = [object[]]@($context, $certNameAttrType, [uint32]0, $oid, $buffer, $required)
+        Set-ArtCraftValidationStage 'authenticode-organization-read'
+        $written = [uint32](Invoke-Crypt32Api $api 'CertGetNameStringW' $read)
+        if ($written -eq 0 -or $written -gt $required) {
+            throw 'Crypt32 returned an invalid Authenticode signer Organization (2.5.4.10) attribute length'
+        }
+        $organization = $buffer.ToString()
+        if ($written -eq 1 -or [string]::IsNullOrEmpty($organization)) {
+            throw 'Authenticode signer certificate is missing the Organization (2.5.4.10) attribute'
+        }
+        if ($written -ne ($organization.Length + 1)) {
+            throw 'Crypt32 returned an invalid Authenticode signer Organization (2.5.4.10) attribute'
+        }
+        return $organization
+    } finally {
+        [Runtime.InteropServices.Marshal]::FreeHGlobal($oid)
+    }
 }
 
 function Get-MsiTemplate($api, [uint32]$db) {
@@ -478,6 +552,11 @@ function Assert-AuthenticodePublisher([string]$publisher) {
     if ($publisher -cne 'Learning Machines Inc') { throw "Authenticode signer '$publisher' is not the approved publisher" }
 }
 
+function Assert-AuthenticodeOrganization([string]$organization) {
+    # Compare the Organization attribute itself, independently of the simple name and MSI metadata.
+    if ($organization -cne 'Learning Machines Inc') { throw "Authenticode signer organization '$organization' is not the approved publisher" }
+}
+
 function Assert-OfficialSignature([string]$file) {
     try { $sig = Microsoft.PowerShell.Security\Get-AuthenticodeSignature -LiteralPath $file }
     catch { throw "Authenticode inspection failed: $($_.Exception.Message)" }
@@ -486,9 +565,10 @@ function Assert-OfficialSignature([string]$file) {
     }
     $certificate = $sig.SignerCertificate
     $simpleName = $certificate.GetNameInfo([Security.Cryptography.X509Certificates.X509NameType]::SimpleName, $false)
-    $organization = $certificate.GetNameInfo([Security.Cryptography.X509Certificates.X509NameType]::OrganizationName, $false)
     Assert-AuthenticodePublisher $simpleName
-    if ($organization -cne 'Learning Machines Inc') { throw "Authenticode signer organization '$organization' is not the approved publisher" }
+    Set-ArtCraftValidationStage 'authenticode-organization-attribute'
+    $organization = Get-CertificateOrganization $certificate
+    Assert-AuthenticodeOrganization $organization
 }
 
 function Get-ReleaseAuthorization($item, $catalog) {
@@ -996,7 +1076,12 @@ mod tests {
     #[test]
     fn fixed_policy_keeps_publisher_metadata_and_architecture_checks_independent() {
         assert!(POLICY.contains("Learning Machines Inc"), "Authenticode signer policy");
-        assert!(POLICY.contains("X509NameType]::OrganizationName") && POLICY.contains("Authenticode signer organization"));
+        assert!(POLICY.contains("X509NameType]::SimpleName") && POLICY.contains("Authenticode signer organization"));
+        assert!(POLICY.contains("CertGetNameStringW") && POLICY.contains("[uint32]3") && POLICY.contains("2.5.4.10"));
+        assert!(POLICY.contains("[IO.Path]::Combine([Environment]::SystemDirectory, 'crypt32.dll')"));
+        assert!(POLICY.contains("$required -gt 1024") && POLICY.contains("Marshal]::FreeHGlobal($oid)"));
+        assert!(!POLICY.contains("X509NameType]::OrganizationName"), "organization is read from the subject attribute OID");
+        assert!(POLICY.contains("$organization -cne 'Learning Machines Inc'"), "certificate Organization is exact-matched");
         assert!(POLICY.contains("'Manufacturer') -cne 'Learning Machines LLC'"), "MSI Manufacturer policy");
         assert!(POLICY.contains("Get-MsiTemplate") && POLICY.contains("MSI architecture is not authorized"));
         assert!(POLICY.contains("if ((Get-MsiProperty $api $db 'ALLUSERS') -cne '1')"));
@@ -1006,15 +1091,93 @@ mod tests {
         assert!(POLICY.contains("@($u, $u, $ref, $iref, [IntPtr], [Text.StringBuilder], $ref)"), "summary API includes FILETIME*");
         assert!(POLICY.contains("[int32]0, [IntPtr]::Zero, $template, [uint32]256"), "PID_TEMPLATE passes a null FILETIME*");
         assert!(
-            POLICY.contains("function Invoke-MsiApi") && POLICY.contains("$value.PSObject.BaseObject"),
+            POLICY.contains("function Invoke-MsiApi")
+                && POLICY.contains("function Invoke-Crypt32Api")
+                && POLICY.contains("$value.PSObject.BaseObject"),
             "reflection arguments are explicitly unwrapped"
         );
         assert!(!POLICY.contains("AsPSObject(") && !POLICY.contains("PSObject]::Base("), "use PowerShell's intrinsic PSObject member only");
         assert!(POLICY.contains("$source.SetValue($value, $index)"), "native ref/out values are copied back to the caller");
-        assert_eq!(POLICY.matches("$method.Invoke($null, $callArguments)").count(), 1, "all MSI reflections use the typed invocation helper");
+        assert_eq!(POLICY.matches("$method.Invoke($null, $callArguments)").count(), 1, "native reflections use the typed invocation helper");
         assert!(POLICY.contains("diagnostics.jsonl") && POLICY.contains("rootHresult") && POLICY.contains("validation-failure"));
         assert!(POLICY.contains("ConsentPromptBehaviorAdmin") && POLICY.contains("requestingPowerShellWasElevated"));
         assert!(!POLICY.contains("Learning Machines LLC') -or"), "the certificate subject and MSI Manufacturer stay separate");
+    }
+
+    #[cfg(windows)]
+    #[test]
+    /// Synthetic, untrusted certificate subjects exercise attribute parsing only; they are never treated as trusted signers.
+    fn powershell_extracts_authenticode_organization_from_certificate_subject_attributes() {
+        use base64::Engine as _;
+        let no_organization = base64::engine::general_purpose::STANDARD.encode(include_bytes!("../tests/fixtures/authenticode-no-organization.der"));
+        let wrong_organization =
+            base64::engine::general_purpose::STANDARD.encode(include_bytes!("../tests/fixtures/authenticode-wrong-organization.der"));
+        let misleading_organization =
+            base64::engine::general_purpose::STANDARD.encode(include_bytes!("../tests/fixtures/authenticode-misleading-organization.der"));
+        let test = format!(
+            "{POLICY}\n{}",
+            r#"
+$api = New-Crypt32Api
+$method = $api.GetMethod('CertGetNameStringW')
+if ($null -eq $method) { throw 'CertGetNameStringW was not declared' }
+$parameters = @($method.GetParameters() | ForEach-Object { $_.ParameterType.FullName })
+$expected = @('System.IntPtr', 'System.UInt32', 'System.UInt32', 'System.IntPtr', 'System.Text.StringBuilder', 'System.UInt32')
+if ($parameters.Length -ne $expected.Length) { throw 'CertGetNameStringW has the wrong argument count' }
+for ($index = 0; $index -lt $expected.Length; $index++) {
+    if ($parameters[$index] -cne $expected[$index]) { throw "CertGetNameStringW has the wrong type at index $index" }
+}
+$attribute = @($method.GetCustomAttributes([Runtime.InteropServices.DllImportAttribute], $false))
+if ($attribute.Count -ne 1 -or [IO.Path]::GetFileName($attribute[0].Value) -cne 'crypt32.dll' -or $attribute[0].EntryPoint -cne 'CertGetNameStringW') {
+    throw 'CertGetNameStringW is not bound to the system Crypt32 export'
+}
+$noOrg = [Security.Cryptography.X509Certificates.X509Certificate2]::new([Convert]::FromBase64String('NO_ORG_TOKEN'))
+$wrongOrg = [Security.Cryptography.X509Certificates.X509Certificate2]::new([Convert]::FromBase64String('WRONG_ORG_TOKEN'))
+$misleading = [Security.Cryptography.X509Certificates.X509Certificate2]::new([Convert]::FromBase64String('MISLEADING_ORG_TOKEN'))
+try {
+    if ($noOrg.GetNameInfo([Security.Cryptography.X509Certificates.X509NameType]::SimpleName, $false) -cne 'Learning Machines Inc') { throw 'No-organization fixture has unexpected signer simple name' }
+    $missingRejected = $false
+    try { $null = Get-CertificateOrganization $noOrg; throw 'Missing organization attribute was accepted' }
+    catch {
+        if ($_.Exception.Message -cne 'Authenticode signer certificate is missing the Organization (2.5.4.10) attribute') { throw }
+        $missingRejected = $true
+    }
+    if (-not $missingRejected) { throw 'Missing organization attribute was not rejected' }
+
+    if ($wrongOrg.GetNameInfo([Security.Cryptography.X509Certificates.X509NameType]::SimpleName, $false) -cne 'Learning Machines Inc') { throw 'Wrong-organization fixture has unexpected signer simple name' }
+    $wrong = Get-CertificateOrganization $wrongOrg
+    if ($wrong -cne 'Learning Machines Incorporated') { throw "Wrong certificate Organization extraction: '$wrong'" }
+    $wrongRejected = $false
+    try { Assert-AuthenticodeOrganization $wrong; throw 'Incorrect organization was accepted' }
+    catch {
+        if ($_.Exception.Message -cne "Authenticode signer organization '$wrong' is not the approved publisher") { throw }
+        $wrongRejected = $true
+    }
+    if (-not $wrongRejected) { throw 'Incorrect organization was not rejected' }
+
+    if ($misleading.GetNameInfo([Security.Cryptography.X509Certificates.X509NameType]::SimpleName, $false) -cne 'Learning Machines Inc') { throw 'Misleading fixture has unexpected signer simple name' }
+    if (-not $misleading.Subject.Contains('OU=Learning Machines Inc')) { throw 'Misleading fixture does not contain the approved text in another subject field' }
+    $actualOrganization = Get-CertificateOrganization $misleading
+    if ($actualOrganization -cne 'Wrong Organization') { throw "Crypt32 selected a non-Organization subject field: '$actualOrganization'" }
+    $misleadingRejected = $false
+    try { Assert-AuthenticodeOrganization $actualOrganization; throw 'Text in another subject field was accepted as Organization' }
+    catch {
+        if ($_.Exception.Message -cne "Authenticode signer organization '$actualOrganization' is not the approved publisher") { throw }
+        $misleadingRejected = $true
+    }
+    if (-not $misleadingRejected) { throw 'Misleading subject field was not rejected' }
+    'Crypt32 signer Organization extraction and rejection cases passed'
+} finally {
+    $noOrg.Dispose()
+    $wrongOrg.Dispose()
+    $misleading.Dispose()
+}
+"#
+        )
+        .replace("NO_ORG_TOKEN", &no_organization)
+        .replace("WRONG_ORG_TOKEN", &wrong_organization)
+        .replace("MISLEADING_ORG_TOKEN", &misleading_organization);
+        let output = run_powershell_test(&test);
+        assert_powershell_output_contains(&output, "Crypt32 signer Organization extraction and rejection cases passed");
     }
 
     #[cfg(windows)]
@@ -1155,13 +1318,16 @@ Remove-Item -LiteralPath $path -Force
                $locked=[IO.File]::Open($file,[IO.FileMode]::Open,[IO.FileAccess]::Read,[IO.FileShare]::Read)\n\
                try {{ $hash=[Security.Cryptography.SHA256]::Create(); try {{ $actual=([BitConverter]::ToString($hash.ComputeHash($locked))).Replace('-','').ToLowerInvariant() }} finally {{ $hash.Dispose() }}; if ($actual -cne $authorization.sha) {{ throw 'MSI checksum differs from official publication' }} }} finally {{ $locked.Dispose() }}\n\
                Assert-OfficialSignature $file\n\
+               $signature = Microsoft.PowerShell.Security\\Get-AuthenticodeSignature -LiteralPath $file\n\
+               $signerOrganization = Get-CertificateOrganization $signature.SignerCertificate\n\
+               if ($signerOrganization -cne 'Learning Machines Inc') {{ throw 'Crypt32 signer Organization did not match the approved publisher' }}\n\
                Assert-MsiIdentity $file $authorization.app $authorization.version $authorization.asset\n\
-               Write-Output ($item.release.app + ' ' + $authorization.version + ' checksum/signature/MSI identity passed')\n\
+               Write-Output ($item.release.app + ' ' + $authorization.version + ' checksum/signature/MSI identity passed; organization=' + $signerOrganization)\n\
              }}\n"
         );
         let output = run_powershell_test(&test);
-        assert_powershell_output_contains(&output, "photocraft 0.13.0 checksum/signature/MSI identity passed");
-        assert_powershell_output_contains(&output, "vectorcraft 0.15.0 checksum/signature/MSI identity passed");
+        assert_powershell_output_contains(&output, "photocraft 0.13.0 checksum/signature/MSI identity passed; organization=Learning Machines Inc");
+        assert_powershell_output_contains(&output, "vectorcraft 0.15.0 checksum/signature/MSI identity passed; organization=Learning Machines Inc");
     }
 
     #[test]
