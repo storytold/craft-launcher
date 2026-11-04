@@ -891,31 +891,46 @@ impl LauncherUi {
 
     /// The main button (or progress) and the … menu, within `width`.
     pub(crate) fn actions(&mut self, ui: &mut Ui, entry: &AppEntry, status: &AppStatus, width: f32) {
-        self.actions_in(ui, entry, status, width, true);
+        self.actions_in(ui, entry, status, width, true, true);
     }
 
     /// The main button and the `⋯` menu beside it. `links_in_menu` is false where the page shows
-    /// the website, GitHub and releases links as buttons of its own. In the grid and the table
-    /// (`links_in_menu`), a pinned app's actions start with the handle that reorders it, which takes
-    /// one square of `width` (the table widens its column by [`Self::grip_w`] for it).
-    pub(crate) fn actions_in(&mut self, ui: &mut Ui, entry: &AppEntry, status: &AppStatus, mut width: f32, links_in_menu: bool) {
+    /// the website, GitHub and releases links as buttons of its own. Non-hidden apps get a pin
+    /// toggle; when `allow_reorder` is set, a pinned app's actions start with the reorder grip
+    /// (grid/table only — the details drawer has no siblings to drop onto). The table widens its
+    /// column by [`Self::grip_w`] for that leading grip.
+    pub(crate) fn actions_in(
+        &mut self,
+        ui: &mut Ui,
+        entry: &AppEntry,
+        status: &AppStatus,
+        mut width: f32,
+        links_in_menu: bool,
+        allow_reorder: bool,
+    ) {
         let id = entry.app.id.to_string();
         let gap = ui.spacing().item_spacing.x;
-        if links_in_menu && self.settings.is_pinned(entry.app.id) {
+        let show_pin = !self.settings.hidden.contains(entry.app.id);
+        let show_grip = allow_reorder && self.settings.is_pinned(entry.app.id);
+        // Leading grip (list only), then primary, pin toggle, menu — matches main's table layout.
+        if show_grip {
             self.pin_grip(ui, entry);
             width -= theme::CONTROL_H + gap;
         }
-        // One square button (the menu) beside the main one.
-        let main_w = (width - theme::CONTROL_H - gap).max(120.0);
+        let squares = 1.0 + if show_pin { 1.0 } else { 0.0 };
+        let main_w = (width - squares * (theme::CONTROL_H + gap) + gap).max(120.0);
         if entry.job.is_some() {
             self.job_actions(ui, entry, &id, main_w, width);
             return;
         }
-        if self.paused_actions(ui, entry, &id, status, width, links_in_menu) {
+        if self.paused_actions(ui, entry, status, width, links_in_menu, allow_reorder) {
             return;
         }
         self.primary_button(ui, entry, &id, status, main_w);
-        self.menu(ui, entry, status, links_in_menu);
+        if show_pin {
+            self.pin_toggle_button(ui, entry);
+        }
+        self.menu(ui, entry, status, links_in_menu, allow_reorder);
     }
 
     /// The room a pin grip takes: one square and a gap while the list shows a pinned app (they come
@@ -933,6 +948,29 @@ impl LauncherUi {
             && let Some((_, original)) = self.pin_dragging.take()
         {
             self.settings.pinned = original;
+        }
+    }
+
+    /// Outline/filled bookmark: pin or unpin without opening the `…` menu. Named per app so
+    /// many cards do not share one accessible label (same pattern as the reorder grip).
+    fn pin_toggle_button(&mut self, ui: &mut Ui, entry: &AppEntry) {
+        let id = entry.app.id;
+        let pinned = self.settings.is_pinned(id);
+        let tip = if pinned {
+            fmt(tl!("Unpin {name}"), &[("name", entry.app.name)])
+        } else {
+            fmt(tl!("Pin {name} to top"), &[("name", entry.app.name)])
+        };
+        if widgets::pin_button(ui, pinned, &tip).clicked() {
+            if pinned {
+                self.settings.unpin_app(id);
+                // Drop an in-progress reorder if its source is no longer pinned.
+                if self.pin_dragging.as_ref().is_some_and(|(dragged, _)| dragged == id || !self.settings.is_pinned(dragged)) {
+                    self.pin_dragging = None;
+                }
+            } else {
+                self.settings.pin_app(id);
+            }
         }
     }
 
@@ -1039,15 +1077,27 @@ impl LauncherUi {
     /// A paused download's row (where the launcher manages installs here): resume, then discard
     /// and the `⋯` menu — two squares and a main button. Returns `false` otherwise, so the main
     /// button shows instead.
-    fn paused_actions(&mut self, ui: &mut Ui, entry: &AppEntry, id: &str, status: &AppStatus, width: f32, links_in_menu: bool) -> bool {
+    fn paused_actions(
+        &mut self,
+        ui: &mut Ui,
+        entry: &AppEntry,
+        status: &AppStatus,
+        width: f32,
+        links_in_menu: bool,
+        allow_reorder: bool,
+    ) -> bool {
         let gap = ui.spacing().item_spacing.x;
         let Some(p) = entry.paused else { return false };
         if !self.caps.manage_apps {
             return false;
         }
+        let id = entry.app.id;
         let pct = if p.total > 0 { format!(" · {:.0}%", p.done as f32 / p.total as f32 * 100.0) } else { String::new() };
-        // Resume, then discard and the menu (two squares).
-        let resume_w = (width - 2.0 * (theme::CONTROL_H + gap)).max(90.0);
+        // Resume, discard, pin toggle (unless hidden), optional pin grip, and the menu.
+        let show_pin = !self.settings.hidden.contains(entry.app.id);
+        let show_grip = allow_reorder && self.settings.is_pinned(entry.app.id);
+        let squares = 2.0 + if show_pin { 1.0 } else { 0.0 } + if show_grip { 1.0 } else { 0.0 };
+        let resume_w = (width - squares * (theme::CONTROL_H + gap) + gap).max(90.0);
         // Narrow (the table): just tl!("Resume"); the tooltip says how far it got.
         let label = match resume_w {
             w if w < 150.0 => tl!("Resume").to_string(),
@@ -1066,7 +1116,13 @@ impl LauncherUi {
         if widgets::glyph_button(ui, widgets::Glyph::Close, tl!("Discard download")).clicked() {
             self.act_command(Command::Cancel { app: id.to_string() });
         }
-        self.menu(ui, entry, status, links_in_menu);
+        if show_pin {
+            self.pin_toggle_button(ui, entry);
+        }
+        if show_grip {
+            self.pin_grip(ui, entry);
+        }
+        self.menu(ui, entry, status, links_in_menu, allow_reorder);
         true
     }
 
@@ -1121,7 +1177,7 @@ impl LauncherUi {
     /// only for a kept download in a ready available/update state and cancels before installing;
     /// `links` adds the website/repository/releases rows, which the details drawer omits because it
     /// shows them as buttons.
-    fn menu(&mut self, ui: &mut Ui, entry: &AppEntry, status: &AppStatus, links: bool) {
+    fn menu(&mut self, ui: &mut Ui, entry: &AppEntry, status: &AppStatus, links: bool, allow_reorder: bool) {
         let id = entry.app.id.to_string();
         let manage = self.caps.manage_apps;
         let reveal = self.caps.reveal_label;
@@ -1161,14 +1217,15 @@ impl LauncherUi {
                 link(ui, tl!("GitHub repository"), entry.app.repo_url());
                 link(ui, tl!("All releases"), entry.app.releases_url());
             }
-            self.menu_pin(ui, entry, &id);
+            self.menu_pin(ui, entry, &id, allow_reorder);
             self.menu_hide(ui, entry, &id);
         });
     }
 
     /// Pin — or unpin — the app at the top of the list. Hidden apps are not offered Pin to top
-    /// (they can still Unpin if somehow still pinned). Move up/down reorder for keyboard users.
-    fn menu_pin(&mut self, ui: &mut Ui, entry: &AppEntry, id: &str) {
+    /// (they can still Unpin if somehow still pinned). Move up/down only where reordering is
+    /// allowed (grid/table), same rule as the drag grip.
+    fn menu_pin(&mut self, ui: &mut Ui, entry: &AppEntry, id: &str, allow_reorder: bool) {
         ui.separator();
         let pinned = self.settings.is_pinned(entry.app.id);
         let hidden = self.settings.hidden.contains(entry.app.id);
@@ -1177,19 +1234,21 @@ impl LauncherUi {
                 self.settings.unpin_app(id);
                 ui.close();
             }
-            // Neighbors must be on screen under the current search/filter — catalog presence alone
-            // would let Move skip over a filtered pin with no visible change.
-            let visible: std::collections::HashSet<&str> = self.visible_ids().into_iter().collect();
-            let known = |pid: &str| visible.contains(pid);
-            // Up: into the slot before the neighbour above; down: into the slot after the one below.
-            let up = self.settings.pinned_neighbor(id, -1, known);
-            let down = self.settings.pinned_neighbor(id, 1, known).map(|j| j + 1);
-            for (slot, label) in [(up, tl!("Move up")), (down, tl!("Move down"))] {
-                if let Some(slot) = slot
-                    && ui.button(label).clicked()
-                {
-                    self.settings.reorder_pinned_to(id, slot);
-                    ui.close();
+            if allow_reorder {
+                // Neighbors must be on screen under the current search/filter — catalog presence alone
+                // would let Move skip over a filtered pin with no visible change.
+                let visible: std::collections::HashSet<&str> = self.visible_ids().into_iter().collect();
+                let known = |pid: &str| visible.contains(pid);
+                // Up: into the slot before the neighbour above; down: into the slot after the one below.
+                let up = self.settings.pinned_neighbor(id, -1, known);
+                let down = self.settings.pinned_neighbor(id, 1, known).map(|j| j + 1);
+                for (slot, label) in [(up, tl!("Move up")), (down, tl!("Move down"))] {
+                    if let Some(slot) = slot
+                        && ui.button(label).clicked()
+                    {
+                        self.settings.reorder_pinned_to(id, slot);
+                        ui.close();
+                    }
                 }
             }
         } else if !hidden && ui.button(tl!("Pin to top")).clicked() {

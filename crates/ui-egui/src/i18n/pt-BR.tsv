@@ -114,6 +114,8 @@
 	Pin to top	Fixar no topo
 	Unpin	Desafixar
 	Pinned	Fixados
+	Pin {name} to top	Fixar {name} no topo
+	Unpin {name}	Desafixar {name}
 	Reorder {name}	Reordenar {name}
 	Move up	Mover para cima
 	Move down	Mover para baixo

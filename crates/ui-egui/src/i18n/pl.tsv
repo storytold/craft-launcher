@@ -127,6 +127,8 @@
 	Pin to top	Przypnij na górze
 	Unpin	Odepnij
 	Pinned	Przypięte
+	Pin {name} to top	Przypnij {name} na górze
+	Unpin {name}	Odepnij {name}
 	Reorder {name}	Zmień kolejność: {name}
 	Move up	W górę
 	Move down	W dół

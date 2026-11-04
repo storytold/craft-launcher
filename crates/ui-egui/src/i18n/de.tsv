@@ -126,6 +126,8 @@
 	Pin to top	Oben anheften
 	Unpin	Lösen
 	Pinned	Angeheftet
+	Pin {name} to top	{name} oben anheften
+	Unpin {name}	{name} loslösen
 	Reorder {name}	{name} neu anordnen
 	Move up	Nach oben
 	Move down	Nach unten

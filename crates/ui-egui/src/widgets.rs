@@ -559,6 +559,10 @@ pub enum Glyph {
     Refresh,
     /// Six-dot grip for reordering pinned apps.
     Grip,
+    /// Outline bookmark: pin an unpinned app to the top.
+    Pin,
+    /// Filled bookmark: unpin a pinned app.
+    PinFilled,
 }
 
 /// Paints one of the launcher's symbols with the painter, centred in `rect`.
@@ -622,6 +626,35 @@ fn glyph_shapes(rect: Rect, glyph: Glyph, color: Color32) -> Vec<egui::Shape> {
             }
             shapes
         }
+        Glyph::Pin | Glyph::PinFilled => {
+            // Bookmark ribbon with a V cut at the bottom — reads clearly at CONTROL_H.
+            let half_w = 4.2;
+            let top = m.y - 6.5;
+            let notch_y = m.y + 3.0;
+            let tip = egui::pos2(m.x, m.y + 6.5);
+            let left = m.x - half_w;
+            let right = m.x + half_w;
+            let tl = egui::pos2(left, top);
+            let tr = egui::pos2(right, top);
+            let bl = egui::pos2(left, notch_y);
+            let br = egui::pos2(right, notch_y);
+            if glyph == Glyph::PinFilled {
+                // Fill is convex-only: body rect + tip triangle (the outline path is concave).
+                vec![
+                    egui::Shape::rect_filled(
+                        Rect::from_min_max(tl, br),
+                        CornerRadius::ZERO,
+                        color,
+                    ),
+                    egui::Shape::convex_polygon(vec![bl, br, tip], color, Stroke::NONE),
+                ]
+            } else {
+                vec![egui::Shape::closed_line(
+                    vec![tl, tr, br, tip, bl],
+                    Stroke::new(1.5, color),
+                )]
+            }
+        }
     }
 }
 
@@ -655,6 +688,32 @@ pub fn glyph_button(ui: &mut Ui, glyph: Glyph, tip: &str) -> Response {
         p.rect_stroke(rect, CornerRadius::ZERO, t.hairline(), egui::StrokeKind::Inside);
     }
     let c = if hovered { t.invert_fg } else { t.muted };
+    paint_glyph(p, rect, glyph, c);
+    resp.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, true, tip));
+    resp.on_hover_text(tip).on_hover_cursor(egui::CursorIcon::PointingHand)
+}
+
+/// Pin toggle: outline bookmark when unpinned, filled accent bookmark when pinned.
+pub fn pin_button(ui: &mut Ui, pinned: bool, tip: &str) -> Response {
+    let t = Tokens::get(ui.ctx());
+    let (rect, resp) = ui.allocate_exact_size(vec2(theme::CONTROL_H, theme::CONTROL_H), Sense::click());
+    let hovered = resp.hovered();
+    let p = ui.painter();
+    if hovered {
+        p.rect_filled(rect, CornerRadius::ZERO, t.invert_bg);
+    } else if pinned {
+        p.rect_stroke(rect, CornerRadius::ZERO, Stroke::new(1.0, t.accent), egui::StrokeKind::Inside);
+    } else {
+        p.rect_stroke(rect, CornerRadius::ZERO, t.hairline(), egui::StrokeKind::Inside);
+    }
+    let c = if hovered {
+        t.invert_fg
+    } else if pinned {
+        t.accent
+    } else {
+        t.muted
+    };
+    let glyph = if pinned { Glyph::PinFilled } else { Glyph::Pin };
     paint_glyph(p, rect, glyph, c);
     resp.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, true, tip));
     resp.on_hover_text(tip).on_hover_cursor(egui::CursorIcon::PointingHand)
@@ -766,7 +825,7 @@ mod tests {
     /// the tool-button and header-cell sizes, or a click target would draw outside its hit rect.
     #[test]
     fn every_painter_glyph_stays_inside_its_control() {
-        for glyph in [Glyph::Pause, Glyph::Close, Glyph::Settings, Glyph::Refresh, Glyph::Grip] {
+        for glyph in [Glyph::Pause, Glyph::Close, Glyph::Settings, Glyph::Refresh, Glyph::Grip, Glyph::Pin, Glyph::PinFilled] {
             for side in [crate::theme::CONTROL_H, 48.0] {
                 let rect = Rect::from_min_size(egui::pos2(100.0, 200.0), egui::vec2(side, side));
                 let shapes = glyph_shapes(rect, glyph, Color32::WHITE);
@@ -828,22 +887,25 @@ mod tests {
     #[test]
     fn each_glyph_has_its_own_shapes() {
         let rect = Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(crate::theme::CONTROL_H, crate::theme::CONTROL_H));
-        let bounds: Vec<[u32; 4]> = [Glyph::Pause, Glyph::Close, Glyph::Settings, Glyph::Refresh, Glyph::Grip]
-            .into_iter()
-            .map(|glyph| {
-                let union = glyph_shapes(rect, glyph, Color32::WHITE)
-                    .into_iter()
-                    .map(|shape| shape.visual_bounding_rect())
-                    .reduce(|a, b| a.union(b))
-                    .expect("every glyph draws at least one shape");
-                [union.min.x.to_bits(), union.min.y.to_bits(), union.max.x.to_bits(), union.max.y.to_bits()]
-            })
-            .collect();
-        for (i, a) in bounds.iter().enumerate() {
-            for b in &bounds[i + 1..] {
-                assert_ne!(a, b, "two glyphs share one bounding box");
+        let box_of = |glyph: Glyph| {
+            let union = glyph_shapes(rect, glyph, Color32::WHITE)
+                .into_iter()
+                .map(|shape| shape.visual_bounding_rect())
+                .reduce(|a, b| a.union(b))
+                .expect("every glyph draws at least one shape");
+            [union.min.x.to_bits(), union.min.y.to_bits(), union.max.x.to_bits(), union.max.y.to_bits()]
+        };
+        // PinFilled is outline vs fill of Pin — may differ by stroke width; treat Pin as the
+        // representative and require every other glyph pair to differ.
+        let distinct = [Glyph::Pause, Glyph::Close, Glyph::Settings, Glyph::Refresh, Glyph::Grip, Glyph::Pin];
+        let bounds: Vec<_> = distinct.iter().map(|g| (*g, box_of(*g))).collect();
+        for (i, (ga, a)) in bounds.iter().enumerate() {
+            for (gb, b) in &bounds[i + 1..] {
+                assert_ne!(a, b, "{ga:?} and {gb:?} share one bounding box");
             }
         }
+        // PinFilled still draws (covered by every_painter_glyph_stays_inside_its_control).
+        let _ = box_of(Glyph::PinFilled);
     }
 
     #[test]

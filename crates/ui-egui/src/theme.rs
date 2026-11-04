@@ -219,6 +219,8 @@ pub fn apply(ctx: &egui::Context, choice: ThemeChoice) {
         style.spacing.interact_size.y = CONTROL_H;
         style.spacing.menu_margin = egui::Margin::same(4);
         style.spacing.window_margin = egui::Margin::same(4);
+        // Keep egui's default delay so scanning many pin/grip squares does not flash tips.
+        style.interaction.tooltip_delay = 0.5;
         style.text_styles = [
             (TextStyle::Heading, FontId::new(24.0, display())),
             (TextStyle::Body, FontId::new(14.0, FontFamily::Proportional)),
