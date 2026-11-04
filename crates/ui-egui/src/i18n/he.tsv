@@ -371,3 +371,17 @@ texturecraft	Mesh maps	מפות רשת
 texturecraft	Bake mesh maps and use smart materials.	אפיית מפות רשת ושימוש בחומרים חכמים.
 texturecraft	Paint textures on 3D models.	ציור טקסטורות על גבי מודלים בתלת־ממד.
 	Hide community apps	הסתרת יישומי קהילה
+	Pin to top	הצמד לראש
+	Unpin	בטל הצמדה
+	Pinned	מוצמד
+	Reorder {name}	סדר מחדש את {name}
+	Move up	הזז למעלה
+	Move down	הזז למטה
+	Retry update	נסה שוב לעדכן
+materialcraft	Procedural material design	עיצוב חומרים פרוצדורלי
+materialcraft	Build materials with node graphs.	בנה חומרים באמצעות גרפי צמתים.
+materialcraft	Create tileable PBR materials and export texture maps.	צור חומרי PBR מרוצפים וייצא מפות טקסטורה.
+materialcraft	Node graphs	גרפי צמתים
+materialcraft	Combine noises, patterns and filters.	שלב רעשים, דוגמאות ומסננים.
+materialcraft	Live previews	תצוגות מקדימות חיות
+materialcraft	Preview materials in 2D and on 3D models.	הצג תצוגה מקדימה של חומרים בדו-ממד ועל גבי מודלים בתלת-ממד.

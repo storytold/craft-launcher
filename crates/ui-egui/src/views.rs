@@ -39,6 +39,17 @@ fn ago_text(secs: i64, now: i64) -> String {
     }
 }
 
+/// `long`, or the first of `shorter` whose button fits `width` (the last one if none does): a
+/// wider button would push the `⋯` menu beside it out of the row (#956). The table's version
+/// column and the card's top strip show the version, so the shorter labels can leave it out.
+fn fitted<'a>(ui: &Ui, long: &'a str, shorter: &[&'a str], width: f32) -> &'a str {
+    std::iter::once(long)
+        .chain(shorter.iter().copied())
+        .find(|label| widgets::button_width(ui, label, 0.0) <= width)
+        .or_else(|| shorter.last().copied())
+        .unwrap_or(long)
+}
+
 /// Translate an absolute date ("Oct 8, 2026" → "8 окт. 2026") into the current language, on this
 /// computer's calendar (`local_time`). Every date the launcher shows is written by this.
 pub(crate) fn date_text(secs: i64) -> String {
@@ -50,8 +61,9 @@ pub(crate) fn date_text(secs: i64) -> String {
 /// What the main button of an app does.
 enum Primary {
     Install,
-    /// The download is already here; only the install step is left. Carries the button's label.
-    Retry(String),
+    /// The download is already here; only the install step is left. Carries the button's label
+    /// and shorter ones for when it doesn't fit.
+    Retry(String, Vec<&'static str>),
     Update(String),
     /// A pinned release only installs after the backend has checked that exact tag.
     SelectedVersion {
@@ -84,34 +96,58 @@ impl LauncherUi {
     pub(crate) fn header(&mut self, ui: &mut Ui, bar: TitleBar) {
         let t = Tokens::get(ui.ctx());
         let h = HEADER_H;
+        let rtl = current().rtl();
         if bar != TitleBar::Native {
             widgets::title_bar_drag(ui);
         }
-        ui.horizontal(|ui| {
+        ui.allocate_ui_with_layout(vec2(ui.available_width(), h), egui::Layout::left_to_right(egui::Align::Center), |ui| {
             ui.spacing_mut().item_spacing.x = 0.0;
             if bar == TitleBar::MacOs {
                 ui.add_space(TRAFFIC_LIGHTS_W);
             }
-            // The ArtCraft wordmark exactly as supplied, in its own cell.
-            let logo = vec2(14.0 * crate::icons::ARTCRAFT_LOGO_ASPECT, 14.0);
-            let (cell, _) = ui.allocate_exact_size(vec2(logo.x + 40.0, h), Sense::hover());
-            egui::Image::new(crate::icons::artcraft_logo(t.dark)).alt_text(tl!("ArtCraft")).paint_at(ui, Rect::from_center_size(cell.center(), logo));
-            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                if bar == TitleBar::Custom {
-                    widgets::window_buttons(ui, h);
-                }
+            if rtl {
                 if widgets::nav_icon(ui, widgets::Glyph::Settings, tl!("Settings"), h, false).clicked() {
                     self.dialog = Some(Dialog::Settings);
                 }
-                // The controls reserve their actual widths before the secondary text gets space.
-                ui.with_layout(egui::Layout::left_to_right(egui::Align::Center), |ui| {
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    if bar == TitleBar::Custom {
+                        widgets::window_buttons(ui, h);
+                    }
+                    let logo = vec2(14.0 * crate::icons::ARTCRAFT_LOGO_ASPECT, 14.0);
+                    let (cell, _) = ui.allocate_exact_size(vec2(logo.x + 40.0, h), Sense::hover());
+                    egui::Image::new(crate::icons::artcraft_logo(t.dark))
+                        .alt_text(tl!("ArtCraft"))
+                        .paint_at(ui, Rect::from_center_size(cell.center(), logo));
                     if ui.available_width() >= 17.0 + widgets::hud_galley(ui, tl!("Craft App Suite"), t.muted).size().x {
                         widgets::rule(ui, h);
                         ui.add_space(16.0);
                         widgets::hud(ui, tl!("Craft App Suite"), t.muted);
                     }
                 });
-            });
+            } else {
+                // The ArtCraft wordmark exactly as supplied, in its own cell.
+                let logo = vec2(14.0 * crate::icons::ARTCRAFT_LOGO_ASPECT, 14.0);
+                let (cell, _) = ui.allocate_exact_size(vec2(logo.x + 40.0, h), Sense::hover());
+                egui::Image::new(crate::icons::artcraft_logo(t.dark))
+                    .alt_text(tl!("ArtCraft"))
+                    .paint_at(ui, Rect::from_center_size(cell.center(), logo));
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    if bar == TitleBar::Custom {
+                        widgets::window_buttons(ui, h);
+                    }
+                    if widgets::nav_icon(ui, widgets::Glyph::Settings, tl!("Settings"), h, false).clicked() {
+                        self.dialog = Some(Dialog::Settings);
+                    }
+                    // The controls reserve their actual widths before the secondary text gets space.
+                    ui.with_layout(egui::Layout::left_to_right(egui::Align::Center), |ui| {
+                        if ui.available_width() >= 17.0 + widgets::hud_galley(ui, tl!("Craft App Suite"), t.muted).size().x {
+                            widgets::rule(ui, h);
+                            ui.add_space(16.0);
+                            widgets::hud(ui, tl!("Craft App Suite"), t.muted);
+                        }
+                    });
+                });
+            }
         });
     }
 
@@ -208,7 +244,10 @@ impl LauncherUi {
     /// whether the window is narrow enough that a second row follows.
     fn toolbar_row(&mut self, ui: &mut Ui, t: &Tokens, updates: usize) -> bool {
         let mut compact = false;
-        ui.horizontal(|ui| {
+        let rtl = current().rtl();
+        let outer = if rtl { egui::Layout::right_to_left(egui::Align::Center) } else { egui::Layout::left_to_right(egui::Align::Center) };
+        let inner = if rtl { egui::Layout::left_to_right(egui::Align::Center) } else { egui::Layout::right_to_left(egui::Align::Center) };
+        ui.allocate_ui_with_layout(vec2(ui.available_width(), theme::CONTROL_H), outer, |ui| {
             self.refresh_button(ui);
             // Hiding an app is only undone from here, so the way back to the hidden ones stays
             // while there are any: a toggle, lit while the hidden apps are what the page shows.
@@ -223,8 +262,8 @@ impl LauncherUi {
                 }
             }
             compact = ui.available_width() < theme::TOOLBAR_COMPACT_BELOW;
-            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                // Right to left: the view switch at the far right, then the search.
+            ui.with_layout(inner, |ui| {
+                // Opposite side: the view switch at the far edge, then the search.
                 crate::bar::view_toggle(ui, &mut self.settings.view, [tl!("Show apps as cards"), tl!("Show apps as a table")]);
                 ui.add_space(4.0);
                 ui.add(
@@ -232,7 +271,7 @@ impl LauncherUi {
                         .hint_text(tl!("Search apps"))
                         .desired_width(200.0)
                         .min_size(vec2(0.0, theme::CONTROL_H))
-                        .align(egui::Align2::LEFT_CENTER)
+                        .align(if rtl { egui::Align2::RIGHT_CENTER } else { egui::Align2::LEFT_CENTER })
                         .margin(vec2(10.0, 0.0)),
                 )
                 .accessible_name(tl!("Search apps"));
@@ -254,14 +293,17 @@ impl LauncherUi {
 
     /// The toolbar's second row on narrow windows: the sort picker, then update-all.
     fn toolbar_compact_row(&mut self, ui: &mut Ui, t: &Tokens, updates: usize) {
+        let rtl = current().rtl();
+        let outer = if rtl { egui::Layout::right_to_left(egui::Align::Center) } else { egui::Layout::left_to_right(egui::Align::Center) };
+        let inner = if rtl { egui::Layout::left_to_right(egui::Align::Center) } else { egui::Layout::right_to_left(egui::Align::Center) };
         ui.add_space(6.0);
-        ui.horizontal(|ui| {
+        ui.allocate_ui_with_layout(vec2(ui.available_width(), theme::CONTROL_H), outer, |ui| {
             if self.settings.view == ViewMode::Grid {
                 // "Sort" before the picker, as in the full-width row.
                 widgets::hud(ui, tl!("Sort"), t.faint);
                 self.sort_picker(ui);
             }
-            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+            ui.with_layout(inner, |ui| {
                 if self.caps.manage_apps && updates > 0 {
                     self.update_all_button(ui, updates);
                 }
@@ -381,12 +423,15 @@ impl LauncherUi {
         }));
         let icon = 13.0;
         let spacing = ui.spacing().item_spacing.x;
-        // The icons on the right keep their size; the status on the left gets what is left and
+        let rtl = current().rtl();
+        let outer = if rtl { egui::Layout::left_to_right(egui::Align::Center) } else { egui::Layout::right_to_left(egui::Align::Center) };
+        let inner = if rtl { egui::Layout::right_to_left(egui::Align::Center) } else { egui::Layout::left_to_right(egui::Align::Center) };
+        // The icons on the opposite edge keep their size; the status gets what is left and
         // is cut short with "…", never drawn under them.
-        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+        ui.allocate_ui_with_layout(vec2(ui.available_width(), ui.spacing().interact_size.y), outer, |ui| {
             widgets::icon_links(ui, icon, &links);
             ui.add_space(8.0);
-            ui.with_layout(egui::Layout::left_to_right(egui::Align::Center), |ui| {
+            ui.with_layout(inner, |ui| {
                 // While GitHub is rate limited, saying so matters more than when we last checked.
                 let avail = ui.available_width();
                 let text = |s: &str| RichText::new(s).size(12.0).color(t.warn);
@@ -413,25 +458,44 @@ impl LauncherUi {
 
     // ---- grid ----------------------------------------------------------------------------
 
-    /// Installed apps first (`ids` arrives that way), then the rest under a "Not installed" header.
+    /// Pinned apps first (user order), then installed, then the rest under a "Not installed" header.
     pub(crate) fn grid(&mut self, ui: &mut Ui, ids: &[&'static str]) {
-        let installed = ids.iter().take_while(|id| self.is_installed(id)).count();
-        let (top, rest) = ids.split_at(installed);
+        let pinned_n = ids.iter().take_while(|id| self.settings.is_pinned(id)).count();
+        let (pinned, rest) = ids.split_at(pinned_n);
+        if !pinned.is_empty() {
+            let t = Tokens::get(ui.ctx());
+            widgets::hud(ui, tl!("Pinned"), t.faint);
+            ui.add_space(12.0);
+            self.grid_block(ui, pinned);
+            if !rest.is_empty() {
+                ui.add_space(28.0);
+            }
+        }
+        let installed = rest.iter().take_while(|id| self.is_installed(id)).count();
+        let (top, rest) = rest.split_at(installed);
         self.grid_block(ui, top);
         if !top.is_empty() && !rest.is_empty() {
             let t = Tokens::get(ui.ctx());
             ui.add_space(28.0);
-            widgets::hud(ui, tl!("Not installed"), t.faint);
+            if current().rtl() {
+                ui.with_layout(egui::Layout::top_down(egui::Align::Max), |ui| {
+                    widgets::hud(ui, tl!("Not installed"), t.faint);
+                });
+            } else {
+                widgets::hud(ui, tl!("Not installed"), t.faint);
+            }
             ui.add_space(12.0);
         }
         self.grid_block(ui, rest);
         ui.add_space(24.0);
     }
 
+    /// Lays out one block of app cards in a shared-hairline grid, ordering columns right-to-left when the UI locale is RTL.
     fn grid_block(&mut self, ui: &mut Ui, ids: &[&'static str]) {
         if ids.is_empty() {
             return;
         }
+        let rtl = current().rtl();
         let width = ui.available_width();
         // Neighbouring cards share their 1 px hairline, like the site's `gap-px` grid.
         let cols = ((width / CARD_MIN_W).floor() as usize).max(1);
@@ -441,7 +505,8 @@ impl LauncherUi {
         let (area, _) = ui.allocate_exact_size(vec2(width, height), Sense::hover());
         for (i, id) in ids.iter().enumerate() {
             let (row, col) = (i / cols, i % cols);
-            let min = area.min + vec2(col as f32 * (card_w - 1.0), row as f32 * (CARD_H - 1.0));
+            let visual_col = if rtl { cols - 1 - col } else { col };
+            let min = area.min + vec2(visual_col as f32 * (card_w - 1.0), row as f32 * (CARD_H - 1.0));
             self.card(ui, id, Rect::from_min_size(min, vec2(card_w, CARD_H)));
         }
     }
@@ -452,6 +517,7 @@ impl LauncherUi {
     /// pointer is over it.
     fn card(&mut self, ui: &mut Ui, id: &str, rect: Rect) {
         let Some(entry) = self.entry(id).cloned() else { return };
+        self.pin_drop_target(ui, id, rect, ui.clip_rect(), PinDropAxis::Horizontal);
         let t = Tokens::get(ui.ctx());
         let app = entry.app;
         let hovered = ui.rect_contains_pointer(rect);
@@ -484,15 +550,17 @@ impl LauncherUi {
         }
 
         // The top strip: the version in the app's colour, and its GitHub page.
+        let rtl = current().rtl();
+        let align = if rtl { egui::Align::Max } else { egui::Align::Min };
         let status = entry.status(self.platform, self.caps.manage_apps);
         let behind = self.behind_latest(&entry);
         let version = crate::card_parts::strip_version(&entry, &status, behind.as_deref());
         let strip = Rect::from_min_size(rect.min, vec2(rect.width(), STRIP_H));
         painter.hline(strip.x_range(), strip.bottom() - 0.5, t.hairline());
         {
-            let mut strip_ui = ui.new_child(
-                egui::UiBuilder::new().max_rect(strip.shrink2(vec2(CARD_PAD, 0.0))).layout(egui::Layout::left_to_right(egui::Align::Center)),
-            );
+            let strip_layout = if rtl { egui::Layout::right_to_left(egui::Align::Center) } else { egui::Layout::left_to_right(egui::Align::Center) };
+            let link_layout = if rtl { egui::Layout::left_to_right(egui::Align::Center) } else { egui::Layout::right_to_left(egui::Align::Center) };
+            let mut strip_ui = ui.new_child(egui::UiBuilder::new().max_rect(strip.shrink2(vec2(CARD_PAD, 0.0))).layout(strip_layout));
             if !version.is_empty() {
                 let github_w = widgets::hud_galley(&strip_ui, &format!("{} ↗", tl!("GitHub")), t.muted).size().x;
                 let room = (strip_ui.available_width() - github_w - 16.0).max(0.0);
@@ -501,7 +569,7 @@ impl LauncherUi {
                     version.iter().map(|(text, lit)| (text.as_str(), if *lit { highlight } else { t.muted })).collect();
                 widgets::hud_elided_spans(&mut strip_ui, &spans, room);
             }
-            strip_ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+            strip_ui.with_layout(link_layout, |ui| {
                 ui.spacing_mut().item_spacing.x = 16.0;
                 widgets::hud_link(ui, tl!("GitHub"), &app.repo_url());
             });
@@ -509,7 +577,7 @@ impl LauncherUi {
 
         let inner = Rect::from_min_max(egui::pos2(rect.left() + CARD_PAD, strip.bottom() + 18.0), rect.max - vec2(CARD_PAD, CARD_PAD));
         // A detached child: the card's contents never move the next card along.
-        let mut child = ui.new_child(egui::UiBuilder::new().max_rect(inner).layout(egui::Layout::top_down(egui::Align::Min)));
+        let mut child = ui.new_child(egui::UiBuilder::new().max_rect(inner).layout(egui::Layout::top_down(align)));
         child.set_clip_rect(rect.intersect(ui.clip_rect()));
         let ui = &mut child;
         ui.horizontal(|ui| {
@@ -567,7 +635,7 @@ impl LauncherUi {
             ui.add_space(6.0);
             ui.add(egui::Label::new(RichText::new(line).size(12.5).color(t.faint)).selectable(false));
         }
-        ui.with_layout(egui::Layout::bottom_up(egui::Align::Min), |ui| {
+        ui.with_layout(egui::Layout::bottom_up(align), |ui| {
             ui.horizontal(|ui| self.actions(ui, &entry, &status, inner.width()));
         });
     }
@@ -586,6 +654,7 @@ impl LauncherUi {
         // clipped to the scroll area.
         let clip = ui.clip_rect();
         let span = ui.available_rect_before_wrap().x_range();
+        let grip_w = self.grip_w(ui, ids);
 
         egui::Frame::new().fill(t.bg).stroke(t.hairline()).inner_margin(egui::Margin::symmetric(16, 0)).show(ui, |ui| {
             TableBuilder::new(ui)
@@ -597,7 +666,7 @@ impl LauncherUi {
                 .column(Column::exact(150.0))
                 .column(Column::exact(132.0))
                 .column(Column::exact(104.0))
-                .column(Column::exact(206.0))
+                .column(Column::exact(206.0 + grip_w))
                 .header(42.0, |header| self.table_header(header, &mut sort_clicked, &t, span, clip))
                 .body(|body| self.table_rows(body, ids, &t, (title_h, tagline_h), now, (span, clip)));
         });
@@ -705,6 +774,7 @@ impl LauncherUi {
         rule: (egui::emath::Rangef, egui::Rect),
     ) {
         let last = ids.len().saturating_sub(1);
+        let grip_w = self.grip_w(body.ui_mut(), ids);
         for (i, id) in ids.iter().enumerate() {
             let Some(entry) = self.entry(id).cloned() else { continue };
             let status = entry.status(self.platform, self.caps.manage_apps);
@@ -716,7 +786,16 @@ impl LauncherUi {
                 row.col(|ui| {
                     ui.label(RichText::new(entry.app.publisher).color(t.muted));
                 });
-                row.col(|ui| self.actions(ui, &entry, &status, 204.0));
+                // A pinned row's grip leads its actions; the other rows leave its room empty, so
+                // every row's buttons stay in line.
+                row.col(|ui| {
+                    if self.settings.is_pinned(id) {
+                        self.actions(ui, &entry, &status, 204.0 + grip_w);
+                    } else {
+                        ui.add_space(grip_w);
+                        self.actions(ui, &entry, &status, 204.0);
+                    }
+                });
             });
         }
     }
@@ -738,9 +817,12 @@ impl LauncherUi {
         if rule {
             Self::table_rule(ui, t, span, clip);
         }
+        let row_rect = ui.max_rect();
+        // Full-row target (covers the grip column too); only this target reorders in the table.
+        self.pin_drop_target(ui, id, Rect::from_x_y_ranges(span, row_rect.y_range()), clip, PinDropAxis::Vertical);
         // Clicking the app's cell opens its page (the content is added after, so it wins any hit).
         if AppDetails::by_id(id).is_some() {
-            let open = ui.interact(ui.max_rect(), ui.scope_id().with(("row-open", id)), Sense::click());
+            let open = ui.interact(row_rect, ui.scope_id().with(("row-open", id)), Sense::click());
             open.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, true, fmt(tl!("{name} details"), &[("name", entry.app.name)])));
             if open.on_hover_cursor(egui::CursorIcon::PointingHand).clicked() {
                 self.detail = Some(id.to_string());
@@ -837,10 +919,11 @@ impl LauncherUi {
             return Primary::SelectedVersion { tag: tag.clone(), checked };
         }
         match status {
-            AppStatus::Available if entry.ready => Primary::Retry(tl!("Retry install").into()),
-            AppStatus::UpdateAvailable if entry.ready => {
-                Primary::Retry(fmt(tl!("Retry update to {version}"), &[("version", &entry.latest_label().unwrap_or_default())]))
-            }
+            AppStatus::Available if entry.ready => Primary::Retry(tl!("Retry install").into(), vec![tl!("Install")]),
+            AppStatus::UpdateAvailable if entry.ready => Primary::Retry(
+                fmt(tl!("Retry update to {version}"), &[("version", &entry.latest_label().unwrap_or_default())]),
+                vec![tl!("Retry update"), tl!("Update")],
+            ),
             AppStatus::Available => Primary::Install,
             AppStatus::UpdateAvailable => Primary::Update(entry.latest_label().unwrap_or_default()),
             AppStatus::UpToDate | AppStatus::Installed => Primary::Open,
@@ -856,11 +939,17 @@ impl LauncherUi {
     }
 
     /// The main button and the `⋯` menu beside it. `links_in_menu` is false where the page shows
-    /// the website, GitHub and releases links as buttons of its own.
-    pub(crate) fn actions_in(&mut self, ui: &mut Ui, entry: &AppEntry, status: &AppStatus, width: f32, links_in_menu: bool) {
+    /// the website, GitHub and releases links as buttons of its own. In the grid and the table
+    /// (`links_in_menu`), a pinned app's actions start with the handle that reorders it, which takes
+    /// one square of `width` (the table widens its column by [`Self::grip_w`] for it).
+    pub(crate) fn actions_in(&mut self, ui: &mut Ui, entry: &AppEntry, status: &AppStatus, mut width: f32, links_in_menu: bool) {
         let id = entry.app.id.to_string();
-        // One square button (the menu) beside the main one.
         let gap = ui.spacing().item_spacing.x;
+        if links_in_menu && self.settings.is_pinned(entry.app.id) {
+            self.pin_grip(ui, entry);
+            width -= theme::CONTROL_H + gap;
+        }
+        // One square button (the menu) beside the main one.
         let main_w = (width - theme::CONTROL_H - gap).max(120.0);
         if entry.job.is_some() {
             self.job_actions(ui, entry, &id, main_w, width);
@@ -871,6 +960,68 @@ impl LauncherUi {
         }
         self.primary_button(ui, entry, &id, status, main_w);
         self.menu(ui, entry, status, links_in_menu);
+    }
+
+    /// The room a pin grip takes: one square and a gap while the list shows a pinned app (they come
+    /// first), else none.
+    fn grip_w(&self, ui: &Ui, ids: &[&'static str]) -> f32 {
+        if ids.first().is_some_and(|id| self.settings.is_pinned(id)) { theme::CONTROL_H + ui.spacing().item_spacing.x } else { 0.0 }
+    }
+
+    /// Cancel an in-progress pin reorder (Escape), restoring the pinned order from drag start
+    /// (live hover already mutated `settings.pinned`). Called from [`Self::ui`] before the
+    /// empty-results branch so Escape still works when search/filter hides every app mid-drag.
+    pub(crate) fn clear_pin_drag_on_escape(&mut self, ui: &Ui) {
+        if self.pin_dragging.is_some()
+            && ui.input(|i| i.key_pressed(egui::Key::Escape))
+            && let Some((_, original)) = self.pin_dragging.take()
+        {
+            self.settings.pinned = original;
+        }
+    }
+
+    /// Drag handle that reorders this pinned app among the other pinned apps.
+    fn pin_grip(&mut self, ui: &mut Ui, entry: &AppEntry) {
+        let tip = fmt(tl!("Reorder {name}"), &[("name", entry.app.name)]);
+        let resp = widgets::grip_button(ui, &tip);
+        // Only latch on drag start: after a reorder, the same egui widget id can sit on a
+        // different app's row, and `dragged()` would steal `pin_dragging` mid-gesture.
+        // Do not clear on `drag_stopped` here — drop targets must see the release first;
+        // `LauncherUi::ui` clears `pin_dragging` after the list once the pointer is up.
+        if resp.drag_started() {
+            self.pin_dragging = Some((entry.app.id.to_string(), self.settings.pinned.clone()));
+        }
+    }
+
+    /// While a pin handle is dragged, hovering another pinned card/row moves the dragged app there.
+    /// Grid uses the horizontal half; table uses the vertical half. One target per surface — the
+    /// table's full-row target already covers the grip column, so the grip itself does not reorder.
+    /// A release over a target still counts: `LauncherUi::ui` ends the drag after the list.
+    fn pin_drop_target(&mut self, ui: &Ui, id: &str, rect: Rect, viewport: Rect, axis: PinDropAxis) {
+        let Some((from, _)) = self.pin_dragging.as_ref() else {
+            return;
+        };
+        let from = from.clone();
+        if from == id || !self.settings.is_pinned(id) {
+            return;
+        }
+        let Some(pos) = ui.input(|i| i.pointer.interact_pos()) else {
+            return;
+        };
+        // Layout includes clipped-off entries. Only the scroll viewport accepts drops; the
+        // table passes its full viewport rather than the narrower first-column clip.
+        if !rect.contains(pos) || !viewport.contains(pos) {
+            return;
+        }
+        let Some(to_i) = self.settings.pinned.iter().position(|p| p == id) else {
+            return;
+        };
+        let insert_before = match axis {
+            PinDropAxis::Horizontal => pos.x < rect.center().x,
+            PinDropAxis::Vertical => pos.y < rect.center().y,
+        };
+        let insertion_index = if insert_before { to_i } else { to_i.saturating_add(1) };
+        self.settings.reorder_pinned_to(&from, insertion_index);
     }
 
     /// A running job's row: one progress bar, with pause and cancel while its download is under
@@ -971,14 +1122,15 @@ impl LauncherUi {
                     self.install_app(id);
                 }
             }
-            Primary::Retry(label) => {
+            Primary::Retry(label, shorter) => {
                 let tip = tl!("The download is still here. It's checked again, then installed.");
-                if widgets::button(ui, &label, Kind::Primary, main_w).on_hover_text(tip).clicked() {
+                if widgets::button(ui, fitted(ui, &label, &shorter, main_w), Kind::Primary, main_w).on_hover_text(tip).clicked() {
                     self.install_app(id);
                 }
             }
             Primary::Update(v) => {
-                if widgets::button(ui, &fmt(tl!("Update to {v}"), &[("v", &v)]), Kind::Primary, main_w).clicked() {
+                let label = fmt(tl!("Update to {v}"), &[("v", &v)]);
+                if widgets::button(ui, fitted(ui, &label, &[tl!("Update")], main_w), Kind::Primary, main_w).clicked() {
                     self.install_app(id);
                 }
             }
@@ -1053,8 +1205,41 @@ impl LauncherUi {
                 link(ui, tl!("GitHub repository"), entry.app.repo_url());
                 link(ui, tl!("All releases"), entry.app.releases_url());
             }
+            self.menu_pin(ui, entry, &id);
             self.menu_hide(ui, entry, &id);
         });
+    }
+
+    /// Pin — or unpin — the app at the top of the list. Hidden apps are not offered Pin to top
+    /// (they can still Unpin if somehow still pinned). Move up/down reorder for keyboard users.
+    fn menu_pin(&mut self, ui: &mut Ui, entry: &AppEntry, id: &str) {
+        ui.separator();
+        let pinned = self.settings.is_pinned(entry.app.id);
+        let hidden = self.settings.hidden.contains(entry.app.id);
+        if pinned {
+            if ui.button(tl!("Unpin")).clicked() {
+                self.settings.unpin_app(id);
+                ui.close();
+            }
+            // Neighbors must be on screen under the current search/filter — catalog presence alone
+            // would let Move skip over a filtered pin with no visible change.
+            let visible: std::collections::HashSet<&str> = self.visible_ids().into_iter().collect();
+            let known = |pid: &str| visible.contains(pid);
+            // Up: into the slot before the neighbour above; down: into the slot after the one below.
+            let up = self.settings.pinned_neighbor(id, -1, known);
+            let down = self.settings.pinned_neighbor(id, 1, known).map(|j| j + 1);
+            for (slot, label) in [(up, tl!("Move up")), (down, tl!("Move down"))] {
+                if let Some(slot) = slot
+                    && ui.button(label).clicked()
+                {
+                    self.settings.reorder_pinned_to(id, slot);
+                    ui.close();
+                }
+            }
+        } else if !hidden && ui.button(tl!("Pin to top")).clicked() {
+            self.settings.pin_app(id);
+            ui.close();
+        }
     }
 
     /// The menu items for an installed app: open, reveal in the file manager, reinstall, and
@@ -1105,6 +1290,7 @@ impl LauncherUi {
     }
 
     /// Hide — or unhide — the app, keeping the Hidden filter sane when the hidden set empties.
+    /// Hiding also clears a pin so a hidden app cannot float back into the main list.
     fn menu_hide(&mut self, ui: &mut Ui, entry: &AppEntry, id: &str) {
         ui.separator();
         let hidden = self.settings.hidden.contains(entry.app.id);
@@ -1115,11 +1301,21 @@ impl LauncherUi {
                     self.settings.filter = Filter::All;
                 }
             } else {
+                self.settings.unpin_app(id);
                 self.settings.hidden.insert(id.to_string());
             }
             ui.close();
         }
     }
+}
+
+/// Which half of a pin drop target decides insert-before vs insert-after.
+#[derive(Clone, Copy, Debug)]
+enum PinDropAxis {
+    /// Grid cards: left/right of the card.
+    Horizontal,
+    /// Table rows: above/below the row midline.
+    Vertical,
 }
 
 /// What the grid's sort dropdown offers: the order and, for names, which way. The installed apps
@@ -1184,7 +1380,8 @@ pub(crate) fn launcher_download(r: &artcraft_launcher_core::Release, p: artcraft
 /// Each line is measured as an empty galley, which is rounded to the pixel like a label, unlike `Fonts::row_height`.
 fn centered_lines(ui: &mut Ui, fonts: &[&FontId], gap: f32, add_contents: impl FnOnce(&mut Ui)) {
     let height = lines_height(ui, fonts, gap);
-    ui.allocate_ui_with_layout(vec2(ui.available_width(), height), egui::Layout::top_down(egui::Align::Min), |ui| {
+    let align = if current().rtl() { egui::Align::Max } else { egui::Align::Min };
+    ui.allocate_ui_with_layout(vec2(ui.available_width(), height), egui::Layout::top_down(align), |ui| {
         ui.spacing_mut().item_spacing.y = gap;
         add_contents(ui);
     });
