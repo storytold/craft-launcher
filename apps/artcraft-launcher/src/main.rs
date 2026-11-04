@@ -154,6 +154,11 @@ fn main() -> ExitCode {
             };
             waker.set_window(None);
             if let Err(e) = result {
+                // Drop the launcher first: it holds the single-instance receiver, so while the
+                // dialog is open a second launch would be queued there, unanswered, and exit.
+                // Dropping it lets the listener notice and free the port. It was dropped on
+                // return anyway; this only moves that before the dialog.
+                drop(launcher);
                 // Say why instead of exiting silently; also logs it (`start_failure`).
                 start_failure::report(&e);
                 return ExitCode::FAILURE;

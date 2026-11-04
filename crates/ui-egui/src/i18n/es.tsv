@@ -425,3 +425,4 @@ anicraft	Familiar by design	Diseño familiar
 anicraft	Stage, tools, timeline, layers, keyframes, Properties and Library sit where animators expect them, with onion skinning for in-betweening.	Escenario, herramientas, línea de tiempo, capas, fotogramas clave, Propiedades y Biblioteca donde los animadores esperan, con papel cebolla.
 anicraft	Tweens that ease	Interpolaciones suaves
 anicraft	Classic tweens with eight easing presets and custom ease curves, plus shape tweens that morph one vector contour into another.	Interpolaciones clásicas con ocho preajustes de aceleración y curvas personalizadas, además de interpolación de forma.
+	ArtCraft Launcher's window could not start or stopped with an error: {e}\n\nIf this keeps happening, updating the graphics driver often fixes it.	La ventana de ArtCraft Launcher no pudo iniciarse o se cerró por un error: {e}\n\nSi vuelve a ocurrir, actualizar el controlador de gráficos suele solucionarlo.
