@@ -230,7 +230,7 @@ fn ask_once(dir: &Path, manifest: &Path, apps: usize) -> Prompt {
     log::info!("asking once for permission to install {apps} apps together");
     match ShellExecuteEx(&SHELLEXECUTEINFO {
         verb: Some("runas"),
-        file: exe.as_str(),
+        file: exe,
         parameters: Some(parameters.as_str()),
         directory: Some(dir),
         show: co::SW::SHOW,
