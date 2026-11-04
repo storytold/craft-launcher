@@ -613,7 +613,9 @@ impl LauncherUi {
         // The primary action button glides horizontally to clear the navigation buttons
         // before ascending into the compact row, avoiding collision between the menu and nav buttons.
         let action_cx = 1.0 - (1.0 - collapse) * (1.0 - collapse);
-        let action_cy = collapse * collapse;
+        // For non-wide panels, action starts lower down (at after_identity_y); linear vertical progression
+        // ensures it stays fully within hero_bounds at every intermediate collapse offset.
+        let action_cy = if wide { collapse * collapse } else { collapse };
         let action_min = pos2(
             egui::lerp(exp_action_rect.min.x..=cmp_action_rect.min.x, action_cx),
             egui::lerp(exp_action_rect.min.y..=cmp_action_rect.min.y, action_cy),

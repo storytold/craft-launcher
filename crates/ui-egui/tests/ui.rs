@@ -3418,10 +3418,7 @@ fn scrolling_an_apps_page_compacts_the_hero_and_keeps_navigation_and_actions_vis
         h.run_steps(2);
         let action = hero_action(&h);
         let prev = h.get_by_label("Previous app").rect();
-        assert!(
-            !action.intersects(prev),
-            "action button must never overlap previous button while dragging: action={action:?} prev={prev:?}"
-        );
+        assert!(!action.intersects(prev), "action button must never overlap previous button while dragging: action={action:?} prev={prev:?}");
     }
     let lead_dragged_down = h.get_by_label("Enlarge picture").rect();
     assert!(h.query_by_label("Website ↗").is_none(), "dragging the scroll bar down compacts the hero");
@@ -3433,10 +3430,7 @@ fn scrolling_an_apps_page_compacts_the_hero_and_keeps_navigation_and_actions_vis
         h.run_steps(2);
         let action = hero_action(&h);
         let prev = h.get_by_label("Previous app").rect();
-        assert!(
-            !action.intersects(prev),
-            "action button must never overlap previous button while dragging up: action={action:?} prev={prev:?}"
-        );
+        assert!(!action.intersects(prev), "action button must never overlap previous button while dragging up: action={action:?} prev={prev:?}");
     }
     h.drop_at(start_pos);
     h.run_steps(4);
@@ -3475,20 +3469,14 @@ fn details_hero_collapse_threshold_transitions_bar_before_body_scrolls() {
     h.run_steps(4);
     assert!(h.query_by_label("Website ↗").is_some(), "below collapse threshold, external links remain visible");
     let lead_sub_threshold = h.get_by_label("Enlarge picture").rect();
-    assert!(
-        lead_sub_threshold.top() > lead_before.top() - 80.0,
-        "below collapse threshold, body stays near top: {lead_sub_threshold:?}"
-    );
+    assert!(lead_sub_threshold.top() > lead_before.top() - 80.0, "below collapse threshold, body stays near top: {lead_sub_threshold:?}");
 
     // Drag past the collapse threshold: hero bar reaches compact height and hides external links.
     h.hover_at(egui::pos2(bar_x, 160.0));
     h.run_steps(4);
     assert!(h.query_by_label("Website ↗").is_none(), "past collapse threshold, hero is compact");
     let lead_past_threshold = h.get_by_label("Enlarge picture").rect();
-    assert!(
-        lead_past_threshold.top() < lead_before.top() - 140.0,
-        "past collapse threshold, body scrolls up: {lead_past_threshold:?}"
-    );
+    assert!(lead_past_threshold.top() < lead_before.top() - 140.0, "past collapse threshold, body scrolls up: {lead_past_threshold:?}");
 
     // Dragging back up across the threshold restores the full expanded hero.
     h.hover_at(start_pos);
@@ -3527,4 +3515,57 @@ fn short_details_page_with_no_scroll_does_not_collapse() {
     let count_after = h.query_all_by_label_contains(headline).count();
     assert_eq!(count_after, count_before, "headline remains visible; no collapse occurred");
     assert!(h.query_by_label("Website ↗").is_some(), "external links remain visible; no collapse occurred");
+}
+
+#[test]
+fn non_wide_non_stacked_panel_keeps_action_within_hero_bounds_and_clears_nav() {
+    let mut h = short_window(Rc::new(Cell::new(false)));
+    // Window width 760 produces panel width ~696, which is non-wide (< 880)
+    // and non-stacked (>= 572).
+    h.set_size(egui::vec2(760.0, 720.0));
+    h.run_steps(16);
+    h.get_by_label("PhotoCraft details").click();
+    h.run_steps(45);
+
+    let close_exp = h.get_by_label("Close (Esc)").rect();
+    let panel_top = close_exp.top() - 24.0;
+    let bar_x = close_exp.right() + 24.0 + 5.0;
+    let start_pos = egui::pos2(bar_x, 60.0);
+
+    let hero_action = |h: &Harness<'_, _>| {
+        h.query_all_by_label("More actions for PhotoCraft").map(|n| n.rect()).min_by(|a, b| a.top().total_cmp(&b.top())).expect("hero action button")
+    };
+
+    let expanded_h = 308.0;
+    let compact_h = 58.0;
+    let initial_action = hero_action(&h);
+    let initial_hero_bottom = panel_top + expanded_h;
+    assert!(initial_action.bottom() <= initial_hero_bottom, "initially action must stay within hero bounds");
+
+    h.hover_at(start_pos);
+    h.run_steps(2);
+    h.drag_at(start_pos);
+    h.run_steps(2);
+
+    for step in 1..=20 {
+        let y = 60.0 + (step as f32) * 12.0;
+        h.hover_at(egui::pos2(bar_x, y));
+        h.run_steps(2);
+
+        let action = hero_action(&h);
+        let prev = h.get_by_label("Previous app").rect();
+        let close = h.get_by_label("Close (Esc)").rect();
+        assert!(!action.intersects(prev), "step {step}: action button must never overlap previous button: action={action:?} prev={prev:?}");
+
+        // Derive collapse from close button y offset:
+        // close.top() moves from panel_top + 24.0 down to panel_top + 12.0.
+        let collapse = ((panel_top + 24.0 - close.top()) / 12.0).clamp(0.0, 1.0);
+        let hero_bottom = panel_top + egui::lerp(expanded_h..=compact_h, collapse);
+        assert!(
+            action.bottom() <= hero_bottom + 1.0,
+            "step {step} (collapse={collapse:.2}): action button must stay within hero bounds: action.bottom={} hero_bottom={}",
+            action.bottom(),
+            hero_bottom
+        );
+    }
 }
