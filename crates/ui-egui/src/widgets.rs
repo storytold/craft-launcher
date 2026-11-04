@@ -641,18 +641,11 @@ fn glyph_shapes(rect: Rect, glyph: Glyph, color: Color32) -> Vec<egui::Shape> {
             if glyph == Glyph::PinFilled {
                 // Fill is convex-only: body rect + tip triangle (the outline path is concave).
                 vec![
-                    egui::Shape::rect_filled(
-                        Rect::from_min_max(tl, br),
-                        CornerRadius::ZERO,
-                        color,
-                    ),
+                    egui::Shape::rect_filled(Rect::from_min_max(tl, br), CornerRadius::ZERO, color),
                     egui::Shape::convex_polygon(vec![bl, br, tip], color, Stroke::NONE),
                 ]
             } else {
-                vec![egui::Shape::closed_line(
-                    vec![tl, tr, br, tip, bl],
-                    Stroke::new(1.5, color),
-                )]
+                vec![egui::Shape::closed_line(vec![tl, tr, br, tip, bl], Stroke::new(1.5, color))]
             }
         }
     }

@@ -2505,11 +2505,7 @@ fn details_drawer_hides_reorder_grip_for_pinned_apps() {
     h.get_by_label("PhotoCraft details").click();
     h.run_steps(10);
     // Exactly one Reorder control remains (the grid card behind the drawer), not a second in details.
-    assert_eq!(
-        h.query_all_by_label_contains("Reorder PhotoCraft").count(),
-        1,
-        "details must not add a reorder grip"
-    );
+    assert_eq!(h.query_all_by_label_contains("Reorder PhotoCraft").count(), 1, "details must not add a reorder grip");
     // Pin toggle still appears in both the card and the drawer.
     assert!(h.query_all_by_label("Unpin PhotoCraft").count() >= 2);
     // Prefer the details … control (last in the tree) over the grid card's.

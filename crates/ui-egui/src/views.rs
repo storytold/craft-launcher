@@ -611,6 +611,7 @@ impl LauncherUi {
         let clip = ui.clip_rect();
         let span = ui.available_rect_before_wrap().x_range();
         let grip_w = self.grip_w(ui, ids);
+        let pin_w = self.pin_slot_w(ui);
 
         egui::Frame::new().fill(t.bg).stroke(t.hairline()).inner_margin(egui::Margin::symmetric(16, 0)).show(ui, |ui| {
             TableBuilder::new(ui)
@@ -622,7 +623,7 @@ impl LauncherUi {
                 .column(Column::exact(150.0))
                 .column(Column::exact(132.0))
                 .column(Column::exact(104.0))
-                .column(Column::exact(206.0 + grip_w))
+                .column(Column::exact(206.0 + grip_w + pin_w))
                 .header(42.0, |header| self.table_header(header, &mut sort_clicked, &t, span, clip))
                 .body(|body| self.table_rows(body, ids, &t, (title_h, tagline_h), now, (span, clip)));
         });
@@ -731,6 +732,7 @@ impl LauncherUi {
     ) {
         let last = ids.len().saturating_sub(1);
         let grip_w = self.grip_w(body.ui_mut(), ids);
+        let pin_w = self.pin_slot_w(body.ui_mut());
         for (i, id) in ids.iter().enumerate() {
             let Some(entry) = self.entry(id).cloned() else { continue };
             let status = entry.status(self.platform, self.caps.manage_apps);
@@ -743,13 +745,14 @@ impl LauncherUi {
                     ui.label(RichText::new(entry.app.publisher).color(t.muted));
                 });
                 // A pinned row's grip leads its actions; the other rows leave its room empty, so
-                // every row's buttons stay in line.
+                // every row's buttons stay in line. Every row also reserves the pin-toggle square.
                 row.col(|ui| {
+                    let action_w = 204.0 + pin_w;
                     if self.settings.is_pinned(id) {
-                        self.actions(ui, &entry, &status, 204.0 + grip_w);
+                        self.actions(ui, &entry, &status, action_w + grip_w);
                     } else {
                         ui.add_space(grip_w);
-                        self.actions(ui, &entry, &status, 204.0);
+                        self.actions(ui, &entry, &status, action_w);
                     }
                 });
             });
@@ -899,15 +902,7 @@ impl LauncherUi {
     /// toggle; when `allow_reorder` is set, a pinned app's actions start with the reorder grip
     /// (grid/table only — the details drawer has no siblings to drop onto). The table widens its
     /// column by [`Self::grip_w`] for that leading grip.
-    pub(crate) fn actions_in(
-        &mut self,
-        ui: &mut Ui,
-        entry: &AppEntry,
-        status: &AppStatus,
-        mut width: f32,
-        links_in_menu: bool,
-        allow_reorder: bool,
-    ) {
+    pub(crate) fn actions_in(&mut self, ui: &mut Ui, entry: &AppEntry, status: &AppStatus, mut width: f32, links_in_menu: bool, allow_reorder: bool) {
         let id = entry.app.id.to_string();
         let gap = ui.spacing().item_spacing.x;
         let show_pin = !self.settings.hidden.contains(entry.app.id);
@@ -939,6 +934,11 @@ impl LauncherUi {
         if ids.first().is_some_and(|id| self.settings.is_pinned(id)) { theme::CONTROL_H + ui.spacing().item_spacing.x } else { 0.0 }
     }
 
+    /// Square + gap reserved for the pin toggle on every non-hidden table row.
+    fn pin_slot_w(&self, ui: &Ui) -> f32 {
+        theme::CONTROL_H + ui.spacing().item_spacing.x
+    }
+
     /// Cancel an in-progress pin reorder (Escape), restoring the pinned order from drag start
     /// (live hover already mutated `settings.pinned`). Called from [`Self::ui`] before the
     /// empty-results branch so Escape still works when search/filter hides every app mid-drag.
@@ -956,11 +956,8 @@ impl LauncherUi {
     fn pin_toggle_button(&mut self, ui: &mut Ui, entry: &AppEntry) {
         let id = entry.app.id;
         let pinned = self.settings.is_pinned(id);
-        let tip = if pinned {
-            fmt(tl!("Unpin {name}"), &[("name", entry.app.name)])
-        } else {
-            fmt(tl!("Pin {name} to top"), &[("name", entry.app.name)])
-        };
+        let tip =
+            if pinned { fmt(tl!("Unpin {name}"), &[("name", entry.app.name)]) } else { fmt(tl!("Pin {name} to top"), &[("name", entry.app.name)]) };
         if widgets::pin_button(ui, pinned, &tip).clicked() {
             if pinned {
                 self.settings.unpin_app(id);
@@ -1077,15 +1074,7 @@ impl LauncherUi {
     /// A paused download's row (where the launcher manages installs here): resume, then discard
     /// and the `⋯` menu — two squares and a main button. Returns `false` otherwise, so the main
     /// button shows instead.
-    fn paused_actions(
-        &mut self,
-        ui: &mut Ui,
-        entry: &AppEntry,
-        status: &AppStatus,
-        width: f32,
-        links_in_menu: bool,
-        allow_reorder: bool,
-    ) -> bool {
+    fn paused_actions(&mut self, ui: &mut Ui, entry: &AppEntry, status: &AppStatus, width: f32, links_in_menu: bool, allow_reorder: bool) -> bool {
         let gap = ui.spacing().item_spacing.x;
         let Some(p) = entry.paused else { return false };
         if !self.caps.manage_apps {
@@ -1093,10 +1082,10 @@ impl LauncherUi {
         }
         let id = entry.app.id;
         let pct = if p.total > 0 { format!(" · {:.0}%", p.done as f32 / p.total as f32 * 100.0) } else { String::new() };
-        // Resume, discard, pin toggle (unless hidden), optional pin grip, and the menu.
+        // Resume, discard, pin toggle (unless hidden), and the menu. The reorder grip — if any —
+        // was already drawn and subtracted by `actions_in`; do not reserve or draw it again.
         let show_pin = !self.settings.hidden.contains(entry.app.id);
-        let show_grip = allow_reorder && self.settings.is_pinned(entry.app.id);
-        let squares = 2.0 + if show_pin { 1.0 } else { 0.0 } + if show_grip { 1.0 } else { 0.0 };
+        let squares = 2.0 + if show_pin { 1.0 } else { 0.0 };
         let resume_w = (width - squares * (theme::CONTROL_H + gap) + gap).max(90.0);
         // Narrow (the table): just tl!("Resume"); the tooltip says how far it got.
         let label = match resume_w {
@@ -1118,9 +1107,6 @@ impl LauncherUi {
         }
         if show_pin {
             self.pin_toggle_button(ui, entry);
-        }
-        if show_grip {
-            self.pin_grip(ui, entry);
         }
         self.menu(ui, entry, status, links_in_menu, allow_reorder);
         true
