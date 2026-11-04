@@ -664,3 +664,62 @@ fn picker_lists_english_first_then_names_alphabetically() {
     assert!(pos("ru") < pos("ja"), "Cyrillic names come before CJK");
     assert_eq!(name_sort_key("Čeština"), "cestina");
 }
+
+#[test]
+fn korean_locales_counts_and_messages_work() {
+    for tag in ["ko", "ko-KR", "ko_KR.UTF-8", "KO_kr", "ko-KP"] {
+        assert_eq!(lang_from_tag(tag), Some(Lang::KO), "{tag}");
+    }
+    assert_eq!(super::detect::first_supported(["xx-XX", "ko-KR", "en-US"]), Some(Lang::KO));
+    assert_eq!(Lang::from_pref("ko"), Lang::KO);
+    for n in [0, 1, 2, 11, 100] {
+        assert_eq!(trn(Lang::KO, n, "{n} app", "{n} apps"), format!("앱 {n}개"));
+        assert_eq!(trn(Lang::KO, n, "{n} day ago", "{n} days ago"), format!("{n}일 전"));
+    }
+    assert_eq!(tr(Lang::KO, "Settings"), "설정");
+    assert_eq!(tr(Lang::KO, "Launcher"), "Launcher");
+    assert_eq!(tr(Lang::KO, "{month} {day}, {year}"), "{year}년 {month} {day}일");
+    assert_eq!(super::tr_ctx(Lang::KO, "month", "Mar"), "3월");
+    assert_eq!(message(Lang::KO, "PhotoCraft updated to 0.5.0"), "PhotoCraft 업데이트 완료: 0.5.0");
+    assert_eq!(tr(Lang::KO, "Untranslated diagnostic"), "Untranslated diagnostic");
+    assert_eq!(trn(Lang::KO, 2, "{n} unknown item", "{n} unknown items"), "2 unknown items");
+}
+
+#[test]
+fn system_font_covers_korean_in_every_ui_family() {
+    use egui::{FontFamily, FontId};
+    if !crate::theme::cjk_font_available(Lang::KO) {
+        return;
+    }
+    let ctx = egui::Context::default();
+    crate::theme::install_fonts(&ctx, Some(Lang::KO));
+    let mut output = ctx.run_ui(egui::RawInput::default(), |_| {});
+    output.textures_delta.clear();
+    let text: String = Lang::KO
+        .0
+        .source
+        .lines()
+        .filter_map(|line| line.split('\t').nth(2))
+        .flat_map(str::chars)
+        .filter(|c| ('\u{ac00}'..='\u{d7a3}').contains(c))
+        .collect();
+    assert!(text.chars().count() > 500);
+    for family in [
+        FontFamily::Proportional,
+        FontFamily::Monospace,
+        crate::theme::medium(),
+        crate::theme::semibold(),
+        crate::theme::display(),
+        crate::theme::mono(),
+        crate::theme::mono_bold(),
+    ] {
+        ctx.fonts_mut(|fonts| assert!(fonts.has_glyphs(&FontId::new(14.0, family.clone()), &text), "missing glyph in {family:?}"));
+    }
+}
+
+#[test]
+fn korean_covers_every_app_card_headline() {
+    for details in &artcraft_launcher_core::details::DETAILS {
+        assert_ne!(super::tr_ctx(Lang::KO, details.id, details.headline), details.headline, "{}", details.id);
+    }
+}

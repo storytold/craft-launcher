@@ -47,6 +47,7 @@ fn script_name(script: Script) -> &'static str {
         Script::TraditionalChinese => "Traditional Chinese",
         Script::Japanese => "Japanese",
         Script::Georgian => "Georgian",
+        Script::Korean => "Korean",
     }
 }
 
@@ -57,6 +58,7 @@ fn script_families(script: Script) -> &'static str {
         Script::TraditionalChinese => "Noto Sans CJK TC, Noto Sans TC, PingFang TC, Heiti TC, Microsoft JhengHei and MingLiU",
         Script::Japanese => "Hiragino Sans, Yu Gothic, Meiryo, MS Gothic, Noto Sans CJK JP, Noto Sans JP, IPAGothic and TakaoGothic",
         Script::Georgian => "SF Georgian, Arial Unicode MS, Sylfaen, Noto Sans Georgian and DejaVu Sans",
+        Script::Korean => "Apple SD Gothic Neo, Malgun Gothic, Noto Sans CJK KR, Noto Sans KR and NanumGothic",
     }
 }
 
@@ -154,6 +156,7 @@ fn candidates(script: Script) -> Vec<Candidate> {
         Script::TraditionalChinese => traditional_chinese_candidates(),
         Script::Japanese => japanese_candidates(),
         Script::Georgian => georgian_candidates(),
+        Script::Korean => korean_candidates(),
     };
     let mut out = Vec::with_capacity(found.len() * 2);
     for candidate in found {
@@ -496,6 +499,56 @@ fn mac_font_assets(file: &str) -> Vec<PathBuf> {
     out
 }
 
+/// Korean faces: use the KR face of CJK collections rather than a Chinese/Japanese face.
+fn korean_candidates() -> Vec<Candidate> {
+    let mut out = Vec::new();
+    let mut add = |path: PathBuf, family: &'static str| out.push(Candidate { path, family });
+    #[cfg(target_os = "macos")]
+    {
+        add("/System/Library/Fonts/AppleSDGothicNeo.ttc".into(), "Apple SD Gothic Neo");
+        for path in mac_font_assets("AppleSDGothicNeo.ttc") {
+            add(path, "Apple SD Gothic Neo");
+        }
+    }
+    #[cfg(target_os = "windows")]
+    {
+        let root = std::env::var_os("SystemRoot").map_or_else(|| PathBuf::from(r"C:\Windows"), PathBuf::from);
+        add(root.join("Fonts").join("malgun.ttf"), "Malgun Gothic");
+    }
+    let files = [
+        ("NotoSansCJK-Regular.ttc", "Noto Sans CJK KR"),
+        ("NotoSansCJKkr-Regular.otf", "Noto Sans CJK KR"),
+        ("NotoSansCJK-VF.ttc", "Noto Sans CJK KR"),
+        ("NotoSansKR-Regular.ttf", "Noto Sans KR"),
+        ("NotoSansKR-Regular.otf", "Noto Sans KR"),
+        ("NotoSansKR-VF.ttf", "Noto Sans KR"),
+        ("NanumGothic.ttf", "NanumGothic"),
+    ];
+    for dir in user_font_dirs() {
+        for (file, family) in files {
+            add(dir.join(file), family);
+        }
+    }
+    #[cfg(all(unix, not(target_os = "macos")))]
+    for dir in [
+        "/usr/share/fonts/opentype/noto",
+        "/usr/share/fonts/noto-cjk",
+        "/usr/share/fonts/google-noto-cjk",
+        "/usr/share/fonts/google-noto-sans-cjk-fonts",
+        "/usr/share/fonts/google-noto-sans-cjk-vf-fonts",
+        "/usr/share/fonts/noto",
+        "/usr/share/fonts/truetype/noto",
+        "/usr/share/fonts/truetype/nanum",
+        "/usr/local/share/fonts/noto",
+        "/usr/local/share/fonts/noto-cjk",
+    ] {
+        for (file, family) in files {
+            add(Path::new(dir).join(file), family);
+        }
+    }
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -634,9 +687,12 @@ mod tests {
         ] {
             assert_eq!(flatpak_host_path(Path::new(path)), host.map(PathBuf::from), "{path}");
         }
-        for (script, family) in
-            [(Script::Chinese, "Noto Sans CJK SC"), (Script::TraditionalChinese, "Noto Sans CJK TC"), (Script::Japanese, "Noto Sans CJK JP")]
-        {
+        for (script, family) in [
+            (Script::Chinese, "Noto Sans CJK SC"),
+            (Script::TraditionalChinese, "Noto Sans CJK TC"),
+            (Script::Japanese, "Noto Sans CJK JP"),
+            (Script::Korean, "Noto Sans CJK KR"),
+        ] {
             let found = candidates(script);
             let at = found.iter().position(|c| c.path == Path::new("/usr/share/fonts/noto-cjk/NotoSansCJK-Regular.ttc")).unwrap();
             assert_eq!(found[at + 1].path, Path::new("/run/host/fonts/noto-cjk/NotoSansCJK-Regular.ttc"));
