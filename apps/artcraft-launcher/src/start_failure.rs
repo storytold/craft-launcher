@@ -10,9 +10,12 @@
 //! Now the reason also goes to an error dialog, as FilmCraft does since 0.14.0. The dialog keeps
 //! the process alive until it is dismissed; the exit code afterwards is still the error's.
 
-/// What the dialog and the log say.
+/// What the dialog and the log say. Any error `run_native` returns lands here, also one after the
+/// window was up, so graphics is only the likely cause, not the certain one.
 pub(crate) fn message(error: &eframe::Error) -> String {
-    format!("ArtCraft Launcher could not start its window: {error}\n\nUpdating the graphics driver usually fixes this.")
+    format!(
+        "ArtCraft Launcher's window could not start or stopped with an error: {error}\n\nIf this keeps happening, updating the graphics driver often fixes it."
+    )
 }
 
 /// Logs the failure and shows it in a dialog, which stays until the user closes it.
@@ -29,7 +32,7 @@ mod tests {
     #[test]
     fn the_message_names_the_cause_and_what_to_do() {
         let text = message(&eframe::Error::AppCreation("no adapter".into()));
-        assert!(text.starts_with("ArtCraft Launcher could not start its window"), "{text}");
+        assert!(text.starts_with("ArtCraft Launcher's window could not start or stopped"), "{text}");
         assert!(text.contains("no adapter"), "{text}");
         assert!(text.contains("graphics driver"), "{text}");
     }
