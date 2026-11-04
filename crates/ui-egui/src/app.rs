@@ -326,8 +326,8 @@ impl LauncherUi {
         }
     }
 
-    /// Installed apps with an update waiting (the tray shows the count). Hidden apps are left out,
-    /// so the badge matches the Updates list.
+    /// Updates offered here (the tray shows the count). Hidden apps and external Windows copies
+    /// are left out, so the badge matches the available update actions.
     pub fn update_count(&self) -> usize {
         self.entries.iter().filter(|e| self.in_filter(e, Filter::Updates)).count()
     }
@@ -483,6 +483,9 @@ impl LauncherUi {
     /// installed, it opens the folder dialog and sends nothing until that is confirmed; otherwise
     /// it queues `Install` immediately, including for an already installed app (update/reinstall).
     pub(crate) fn install_app(&mut self, id: &str) {
+        if self.entry(id).is_some_and(|e| e.external_windows_copy(self.platform)) {
+            return;
+        }
         if !self.custom_install_folders() || self.entry(id).is_some_and(|e| e.installed.is_some()) {
             self.act_command(Command::Install { app: id.to_string() });
             return;
@@ -1000,10 +1003,6 @@ impl LauncherUi {
         }
     }
 
-    pub(crate) fn count(&self, filter: Filter) -> usize {
-        self.entries.iter().filter(|e| self.in_filter(e, filter)).count()
-    }
-
     /// Whether `entry` belongs in `filter`. Hidden apps stay out of every list except Hidden.
     pub(crate) fn in_filter(&self, entry: &AppEntry, filter: Filter) -> bool {
         let hidden = self.settings.hidden.contains(entry.app.id);
@@ -1012,7 +1011,7 @@ impl LauncherUi {
             Filter::Hidden => hidden,
             Filter::All => !hidden,
             Filter::Installed => !hidden && status.is_installed(),
-            Filter::Updates => !hidden && status == AppStatus::UpdateAvailable,
+            Filter::Updates => !hidden && status == AppStatus::UpdateAvailable && !entry.external_windows_copy(self.platform),
             Filter::NotInstalled => !hidden && !status.is_installed(),
         }
     }

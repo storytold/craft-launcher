@@ -139,7 +139,7 @@ impl LauncherUi {
             ui.add_space(14.0);
         }
         self.announcements(ui);
-        let updates = self.count(Filter::Updates);
+        let updates = self.update_count();
         let compact = self.toolbar_row(ui, &t, updates);
         if compact {
             self.toolbar_compact_row(ui, &t, updates);
@@ -866,6 +866,9 @@ impl LauncherUi {
                 (_, None) => Primary::Unavailable(tl!("Not available")),
             };
         }
+        if status.is_installed() && entry.external_windows_copy(self.platform) {
+            return Primary::Open;
+        }
         // Once the pinned version is the installed one, the normal statuses (Open) take over again.
         if let Some(artcraft_launcher_core::protocol::VersionTrack::Pinned(tag)) = self.settings.versions.get(entry.app.id)
             && entry.installed.as_ref().and_then(|i| i.version.as_ref()) != artcraft_launcher_core::version::parse(tag).as_ref()
@@ -1042,7 +1045,7 @@ impl LauncherUi {
     fn paused_actions(&mut self, ui: &mut Ui, entry: &AppEntry, id: &str, status: &AppStatus, width: f32, links_in_menu: bool) -> bool {
         let gap = ui.spacing().item_spacing.x;
         let Some(p) = entry.paused else { return false };
-        if !self.caps.manage_apps {
+        if !self.caps.manage_apps || entry.external_windows_copy(self.platform) {
             return false;
         }
         let pct = if p.total > 0 { format!(" · {:.0}%", p.done as f32 / p.total as f32 * 100.0) } else { String::new() };
@@ -1124,9 +1127,10 @@ impl LauncherUi {
     fn menu(&mut self, ui: &mut Ui, entry: &AppEntry, status: &AppStatus, links: bool) {
         let id = entry.app.id.to_string();
         let manage = self.caps.manage_apps;
+        let external = entry.external_windows_copy(self.platform);
         let reveal = self.caps.reveal_label;
         widgets::more_menu(ui, entry.app.name, |ui| {
-            if ui.button(tl!("Choose version")).clicked() {
+            if !external && ui.button(tl!("Choose version")).clicked() {
                 self.open_versions(&id);
                 ui.close();
             }
@@ -1136,14 +1140,14 @@ impl LauncherUi {
             }
             // Only where Install would download: an up-to-date app would be reinstalled.
             let can_download_again =
-                manage && entry.ready && entry.paused.is_none() && matches!(status, AppStatus::Available | AppStatus::UpdateAvailable);
+                manage && !external && entry.ready && entry.paused.is_none() && matches!(status, AppStatus::Available | AppStatus::UpdateAvailable);
             if can_download_again && ui.button(tl!("Download again")).clicked() {
                 self.act_command(Command::Cancel { app: id.clone() });
                 self.install_app(&id);
                 ui.close();
             }
             if manage && status.is_installed() {
-                self.menu_installed(ui, status, &id, reveal);
+                self.menu_installed(ui, status, &id, reveal, external);
             }
             if !manage {
                 self.menu_downloads(ui, entry);
@@ -1200,7 +1204,7 @@ impl LauncherUi {
 
     /// The menu items for an installed app: open, reveal in the file manager, reinstall, and
     /// uninstall (which asks first).
-    fn menu_installed(&mut self, ui: &mut Ui, status: &AppStatus, id: &str, reveal: &'static str) {
+    fn menu_installed(&mut self, ui: &mut Ui, status: &AppStatus, id: &str, reveal: &'static str, external: bool) {
         if ui.button(tl!("Open")).clicked() {
             self.launch_app(id);
             ui.close();
@@ -1208,6 +1212,9 @@ impl LauncherUi {
         if ui.button(t(reveal)).clicked() {
             self.act_command(Command::Reveal { app: id.to_string() });
             ui.close();
+        }
+        if external {
+            return;
         }
         if *status == AppStatus::UpToDate && ui.button(tl!("Reinstall")).clicked() {
             self.install_app(id);

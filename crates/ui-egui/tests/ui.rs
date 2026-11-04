@@ -3336,3 +3336,164 @@ fn an_apps_page_is_a_card_in_the_middle_with_next_and_previous_arrows_and_closes
     h.run_steps(30);
     assert!(!showing(&h, "photocraft"), "a click outside did not close it");
 }
+
+/// A Windows backend with an external portable PhotoCraft and a normal MSI EffectCraft.
+fn external_windows_harness(auto_update: bool) -> (Harness<'static, Option<LauncherUi>>, Rc<RefCell<Vec<Command>>>) {
+    external_windows_harness_with_notifications(auto_update, false, Rc::default())
+}
+
+fn external_windows_harness_with_notifications(
+    auto_update: bool,
+    notify: bool,
+    notices: Rc<RefCell<Vec<(String, String)>>>,
+) -> (Harness<'static, Option<LauncherUi>>, Rc<RefCell<Vec<Command>>>) {
+    struct Notifications(Rc<RefCell<Vec<(String, String)>>>);
+    impl Host for Notifications {
+        fn notify(&mut self, title: &str, body: &str) {
+            self.0.borrow_mut().push((title.into(), body.into()));
+        }
+    }
+    struct Windows(Fake);
+    impl Backend for Windows {
+        fn send(&mut self, command: Command) {
+            self.0.send(command);
+        }
+        fn poll(&mut self) -> Vec<Event> {
+            self.0.poll()
+        }
+        fn capabilities(&self) -> Capabilities {
+            Capabilities { manage_apps: true, reveal_label: "Show in Explorer", self_update: true }
+        }
+        fn platform(&self) -> Option<Platform> {
+            Some(Platform { os: Os::Windows, arch: Arch::X64 })
+        }
+        fn now(&self) -> i64 {
+            NOW
+        }
+    }
+    artcraft_launcher_ui_egui::i18n::set_test_lang(artcraft_launcher_ui_egui::i18n::Lang::EN);
+    let ev = events()
+        .into_iter()
+        .filter_map(|event| match event {
+            Event::Detected { app, installed } => Some(Event::Detected {
+                installed: installed.map(|copy| Installed {
+                    source: if app == "photocraft" || app == "lightcraft" { InstallSource::Binary } else { InstallSource::Msi },
+                    location: format!("D:\\CreativeApps\\{app}\\{app}.exe"),
+                    ..copy
+                }),
+                app,
+            }),
+            Event::Latest { app, latest: LatestRelease::Found(mut release), from } => {
+                for asset in &mut release.assets {
+                    asset.name = format!("{app}-{}-windows-x64.msi", release.tag.trim_start_matches('v'));
+                }
+                Some(Event::Latest { app, latest: LatestRelease::Found(release), from })
+            }
+            Event::Progress { .. } | Event::Paused { .. } | Event::ReadyToInstall { .. } => None,
+            other => Some(other),
+        })
+        .collect();
+    let sent = Rc::new(RefCell::new(Vec::new()));
+    let mut backend = Some(Windows(Fake {
+        events: ev,
+        sent: sent.clone(),
+        manage: true,
+        pictures: Rc::default(),
+        asked: Vec::new(),
+        clock: Rc::new(Cell::new(NOW)),
+    }));
+    let h = test_harness_builder(egui::Theme::Dark).with_size(egui::vec2(1180.0, 1200.0)).build_ui_state(
+        move |ui, state: &mut Option<LauncherUi>| {
+            if state.is_none()
+                && let Some(b) = backend.take()
+            {
+                *state = Some(LauncherUi::new(ui.ctx(), Box::new(b), Settings { view: ViewMode::Table, auto_update, notify, ..Settings::default() }));
+            }
+            if let Some(l) = state.as_mut() {
+                l.logic(&ui.ctx().clone(), &mut Notifications(notices.clone()));
+                l.ui(ui, &mut Notifications(notices.clone()));
+            }
+        },
+        None,
+    );
+    (h, sent)
+}
+
+#[test]
+fn external_windows_copies_open_and_stay_out_of_update_all_and_removal() {
+    let (mut h, sent) = external_windows_harness(false);
+    h.run_steps(8);
+    assert!(h.query_by_label("Update to 0.5.0").is_none());
+    h.get_by_label("Update to 0.6.0");
+    let row = h.get_all_by_label("PhotoCraft").next().unwrap().rect().center().y;
+    h.get_all_by_label("Open").find(|n| (n.rect().center().y - row).abs() < 25.0).unwrap().click();
+    h.run_steps(2);
+    assert!(sent.borrow().contains(&Command::Launch { app: "photocraft".into() }));
+    h.get_by_label("Update 1 app").click();
+    h.run_steps(2);
+    let installs: Vec<_> = sent.borrow().iter().filter_map(|c| if let Command::Install { app } = c { Some(app.clone()) } else { None }).collect();
+    assert_eq!(installs, ["effectcraft"]);
+    for name in ["PhotoCraft", "LightCraft"] {
+        h.get_by_label(&format!("More actions for {name}")).click();
+        h.run_steps(3);
+        assert!(h.query_by_label("Uninstall…").is_none());
+        assert!(h.query_by_label("Reinstall").is_none());
+        assert!(h.query_by_label("Choose version").is_none());
+        h.get_by_label("Show in Explorer").click();
+        h.run_steps(2);
+    }
+    assert!(sent.borrow().contains(&Command::Reveal { app: "photocraft".into() }));
+    assert!(sent.borrow().contains(&Command::Reveal { app: "lightcraft".into() }));
+}
+
+#[test]
+/// The tray count follows actionable updates while external copies retain passive version info.
+fn external_windows_updates_do_not_inflate_the_tray_count() {
+    let (mut h, _sent) = external_windows_harness(false);
+    h.run_steps(8);
+    assert_eq!(h.state().as_ref().unwrap().update_count(), 1);
+    h.get_by_label("Update 1 app");
+    h.get_all_by_label("PhotoCraft").next().unwrap();
+    h.state_mut().as_mut().unwrap().settings.hidden.insert("effectcraft".into());
+    h.run_steps(3);
+    assert_eq!(h.state().as_ref().unwrap().update_count(), 0);
+    assert!(h.query_by_label("Update 1 app").is_none());
+    let row = h.get_all_by_label("PhotoCraft").next().unwrap().rect().center().y;
+    h.get_by_label("0.4.1 → 0.5.0");
+    h.get_all_by_label("Open").find(|n| (n.rect().center().y - row).abs() < 25.0).unwrap();
+}
+
+#[test]
+fn an_external_windows_copy_keeps_open_when_a_different_version_was_pinned() {
+    let (mut h, sent) = external_windows_harness(false);
+    h.run_steps(8);
+    h.state_mut()
+        .as_mut()
+        .unwrap()
+        .settings
+        .versions
+        .insert("photocraft".into(), artcraft_launcher_core::protocol::VersionTrack::Pinned("v0.5.0".into()));
+    h.run_steps(3);
+    assert!(h.query_by_label("Install version v0.5.0").is_none());
+    let row = h.get_all_by_label("PhotoCraft").next().unwrap().rect().center().y;
+    h.get_all_by_label("Open").find(|n| (n.rect().center().y - row).abs() < 25.0).unwrap().click();
+    h.run_steps(2);
+    assert!(sent.borrow().contains(&Command::Launch { app: "photocraft".into() }));
+    assert!(!sent.borrow().iter().any(|c| matches!(c, Command::Install { app } if app == "photocraft")));
+}
+
+#[test]
+fn automatic_updates_skip_external_windows_copies_but_keep_msi_updates() {
+    let (mut h, sent) = external_windows_harness(true);
+    h.run_steps(4);
+    let installs: Vec<_> = sent.borrow().iter().filter_map(|c| if let Command::Install { app } = c { Some(app.clone()) } else { None }).collect();
+    assert_eq!(installs, ["effectcraft"]);
+}
+
+#[test]
+fn update_notifications_skip_external_windows_copies_but_keep_msi_updates() {
+    let notices = Rc::new(RefCell::new(Vec::new()));
+    let (mut h, _) = external_windows_harness_with_notifications(false, true, notices.clone());
+    h.run_steps(4);
+    assert_eq!(*notices.borrow(), [("EffectCraft 0.6.0 is available".into(), "Open ArtCraft Launcher to update.".into())]);
+}

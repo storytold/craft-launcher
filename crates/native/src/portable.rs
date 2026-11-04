@@ -743,7 +743,7 @@ mod tests {
             manifest.apps.insert(app.id.into(), record.clone());
             manifest.save(&paths.manifest()).unwrap();
             let restored = crate::manifest::Manifest::load(&paths.manifest());
-            let detected = crate::detect::detect(app, &restored, &crate::detect::Snapshot::take()).unwrap();
+            let detected = crate::detect::detect(app, &restored, &crate::detect::Snapshot::take(&paths)).unwrap();
             assert_eq!(detected.version, artcraft_launcher_core::version::parse(version));
             assert_eq!(detected.location, record.path.to_string_lossy());
         }

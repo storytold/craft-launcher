@@ -33,6 +33,27 @@ use crate::manifest::Record;
 use crate::paths::Paths;
 use crate::process;
 
+#[cfg(all(test, windows))]
+#[allow(clippy::unwrap_used)]
+mod external_windows_tests;
+
+/// Refuse external Windows copies even when an install caller has no detection result yet.
+/// Existing launcher/MSI installs retain precedence; an absent result is checked against the
+/// current manifest and registration before work begins and again before files can change.
+#[cfg(windows)]
+fn check_external_install(app: &CraftApp, existing: Option<&Installed>, paths: &Paths) -> Result<(), String> {
+    let fresh = if existing.is_none() {
+        let manifest = crate::manifest::Manifest::load(&paths.manifest());
+        crate::detect::detect(app, &manifest, &crate::detect::Snapshot::take(paths))
+    } else {
+        None
+    };
+    match existing.or(fresh.as_ref()).and_then(|installed| managed_elsewhere(app, installed, false)) {
+        Some(reason) => Err(reason),
+        None => Ok(()),
+    }
+}
+
 /// What an install needs from the backend.
 pub struct Job<'a> {
     pub http: &'a Http,
@@ -108,6 +129,8 @@ pub fn install_at(
     commit: RecordCommit<'_>,
 ) -> Result<Option<Record>, String> {
     #[cfg(windows)]
+    check_external_install(app, existing, job.paths)?;
+    #[cfg(windows)]
     let mut commit = commit;
     #[cfg(not(windows))]
     let _ = commit;
@@ -165,6 +188,10 @@ pub fn install_at(
     };
     #[cfg_attr(not(windows), allow(unused_variables))]
     let (file, sha256) = download(release, asset, job)?;
+    // Ownership can change during download, even when a managed copy existed at the start.
+    // Always detect again: Replace does not authorize adopting a newly registered external copy.
+    #[cfg(windows)]
+    check_external_install(app, None, job.paths)?;
     log::info!("{}: download ready ({}), running installer...", app.name, file.display());
     // Past this point the install can't be interrupted halfway.
     (job.phase)(JobPhase::Installing);
@@ -767,6 +794,11 @@ pub fn launch(app: &CraftApp, installed: &Installed, paths: &Paths) -> Result<()
     let pins = craft_update::pins::Pins::default_path();
     let env: Vec<(&str, &std::ffi::OsStr)> = pins.iter().map(|p| (craft_update::pins::PATH_ENV, p.as_os_str())).collect();
     match installed.source {
+        #[cfg(windows)]
+        InstallSource::Binary => {
+            let (path, _verified_file) = crate::detect::external_windows::verify(app, installed, paths)?;
+            process::launch_binary_with_env(&path, &[], &env)
+        }
         InstallSource::Flatpak => {
             let mut cmd = process::flatpak_command();
             cmd.arg("run");

@@ -64,7 +64,7 @@ impl LauncherUi {
     /// nothing to install (no choice the backend can answer, or a job already running).
     fn chosen_install(&self, id: &str) -> Option<(String, bool)> {
         let entry = self.entry(id)?;
-        if !self.caps.manage_apps || entry.job.is_some() {
+        if !self.caps.manage_apps || entry.external_windows_copy(self.platform) || entry.job.is_some() {
             return None;
         }
         let release = entry.release();
