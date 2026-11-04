@@ -175,10 +175,24 @@ mod tests {
              $root=New-ProtectedRun '{session}'\n\
              try {{\n\
              $caught=$false; try {{ Copy-VerifiedPackage $null @{{sha='{sha}'}} $root 0 {} '{session}' }} \
-             catch {{ if ($_.Exception.Message -ne 'Official Authenticode signature required') {{ throw }}; $caught=$true }}\n\
+             catch {{\n\
+                 if ($script:ArtCraftValidationStage -cne 'authenticode-chain-and-publisher') {{ throw ('Unsigned stream failed at unexpected stage: ' + $script:ArtCraftValidationStage) }}\n\
+                 $message=[string]$_.Exception.Message\n\
+                 $prefix='Authenticode status is '\n\
+                 $suffix='; a valid Windows certificate chain is required'\n\
+                 if (-not $message.StartsWith($prefix,[StringComparison]::Ordinal) -or -not $message.EndsWith($suffix,[StringComparison]::Ordinal)) {{ throw ('Unexpected unsigned stream rejection: ' + $message) }}\n\
+                 $status=$message.Substring($prefix.Length,$message.Length-$prefix.Length-$suffix.Length)\n\
+                 $knownStatuses=[Enum]::GetNames([System.Management.Automation.SignatureStatus])\n\
+                 if ($status -notin $knownStatuses -or $status -ieq 'Valid') {{ throw ('Invalid Authenticode rejection status: ' + $status) }}\n\
+                 $caught=$true\n\
+             }}\n\
              if (-not $caught) {{ throw 'Unsigned stream was accepted' }}\n\
              $caught=$false; try {{ Copy-VerifiedPackage $null @{{sha=('0'*64)}} $root 1 {} '{session}' }} \
-             catch {{ if ($_.Exception.Message -ne 'Changed package') {{ throw }}; $caught=$true }}\n\
+             catch {{\n\
+                 if ($script:ArtCraftValidationStage -cne 'staged-package-hash') {{ throw ('Changed stream failed at unexpected stage: ' + $script:ArtCraftValidationStage) }}\n\
+                 if ($_.Exception.Message -cne 'Changed package') {{ throw }}\n\
+                 $caught=$true\n\
+             }}\n\
              if (-not $caught) {{ throw 'Changed stream was accepted' }}\n\
              }} finally {{ [IO.Directory]::Delete($root,$true) }}",
             crate::elevated::POLICY,
