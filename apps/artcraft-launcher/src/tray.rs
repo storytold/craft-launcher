@@ -52,18 +52,6 @@ fn identity(builder: TrayIconBuilder) -> TrayIconBuilder {
     if cfg!(any(target_os = "macos", target_os = "windows")) { builder } else { builder.with_id("artcraft-launcher").with_title("ArtCraft Launcher") }
 }
 
-/// macOS draws the black mark as a template image, recoloured to the menu bar; elsewhere the icon
-/// is shown as supplied.
-#[cfg(target_os = "macos")]
-fn with_icon(builder: TrayIconBuilder, icon: tray_icon::Icon) -> TrayIconBuilder {
-    builder.with_icon_templated(icon)
-}
-
-#[cfg(not(target_os = "macos"))]
-fn with_icon(builder: TrayIconBuilder, icon: tray_icon::Icon) -> TrayIconBuilder {
-    builder.with_icon(icon)
-}
-
 impl Tray {
     /// Creates the tray icon. `wake` repaints the UI so it sees the action, even when hidden.
     /// `on_quit` runs when Quit is picked, before the UI can see it: the UI may never get to.
@@ -80,12 +68,14 @@ impl Tray {
             .map_err(|e| e.to_string())?;
         let links = [(website.id().clone(), WEBSITE_URL), (github.id().clone(), GITHUB_URL)];
         let discord_id = discord.id().clone();
-        let icon = with_icon(identity(TrayIconBuilder::new()), load_icon()?)
-            .with_menu(Box::new(menu))
-            .with_menu_on_left_click(cfg!(target_os = "macos"))
-            .with_tooltip("ArtCraft Launcher")
-            .build()
-            .map_err(|e| e.to_string())?;
+        let image = load_icon()?;
+        let builder = identity(TrayIconBuilder::new()).with_menu(Box::new(menu));
+        // macOS draws the icon as a template image (recoloured for light and dark menu bars).
+        #[cfg(target_os = "macos")]
+        let builder = builder.with_icon_templated(image);
+        #[cfg(not(target_os = "macos"))]
+        let builder = builder.with_icon(image);
+        let icon = builder.with_menu_on_left_click(cfg!(target_os = "macos")).with_tooltip("ArtCraft Launcher").build().map_err(|e| e.to_string())?;
         let (tx, rx): (Sender<TrayAction>, Receiver<TrayAction>) = channel();
         let (show_id, check_id, quit_id) = (show.id().clone(), check.id().clone(), quit.id().clone());
         {

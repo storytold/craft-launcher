@@ -51,7 +51,7 @@ impl Arch {
 /// A package format a release ships.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum PackageKind {
-    /// Windows Installer package (installs for all users into Program Files).
+    /// Windows Installer package (per user by default; an existing per-machine copy stays per-machine).
     Msi,
     /// Windows zip with the exe at the top level.
     PortableZip,
@@ -156,6 +156,7 @@ impl Platform {
             (Os::Linux, Arch::Riscv64) => &["linux-riscv64"],
             (Os::Linux, Arch::X86) => &[],
             (Os::FreeBsd, Arch::X64) => &["freebsd-x86_64"],
+            (Os::FreeBsd, Arch::Arm64) => &["freebsd-aarch64"],
             (Os::FreeBsd, _) => &[],
         }
     }
@@ -188,6 +189,20 @@ pub struct AssetName {
     pub version: String,
     pub token: String,
     pub kind: PackageKind,
+}
+
+impl AssetName {
+    /// The architecture the asset is built for: the last part of its token (`windows-x86` → x86).
+    /// `None` for a token that names none (`macos-universal`).
+    pub fn arch(&self) -> Option<Arch> {
+        match self.token.rsplit('-').next()? {
+            "x64" | "x86_64" => Some(Arch::X64),
+            "x86" => Some(Arch::X86),
+            "arm64" | "aarch64" => Some(Arch::Arm64),
+            "riscv64" => Some(Arch::Riscv64),
+            _ => None,
+        }
+    }
 }
 
 /// Reads `<stem>-<version>-<os>-<arch>[-portable].<ext>`; `None` for checksums, zsync files, CLI
@@ -274,6 +289,42 @@ mod tests {
     }
 
     #[test]
+    fn texturecraft_selects_published_desktop_assets() {
+        let release =
+            crate::release::parse_github_release(include_str!("../tests/fixtures/texturecraft-release.json"), "storytold/texturecraft").unwrap();
+        for (os, kind, expected) in [
+            (Os::Windows, PackageKind::Msi, "texturecraft-0.1.0-windows-x64.msi"),
+            (Os::MacOs, PackageKind::Dmg, "texturecraft-0.1.0-macos-universal.dmg"),
+            (Os::Linux, PackageKind::Flatpak, "texturecraft-0.1.0-linux-x86_64.flatpak"),
+        ] {
+            let platform = Platform { os, arch: Arch::X64 };
+            let (asset, selected) = pick_asset(&release, &["texturecraft"], platform, &[kind]).unwrap();
+            assert_eq!(asset.name, expected);
+            assert_eq!(selected, kind);
+        }
+    }
+
+    #[test]
+    fn freebsd_picks_the_tarball_for_the_processor() {
+        // SoundCraft v0.10.0's GitHub metadata, trimmed to its FreeBSD tarballs.
+        let r = crate::release::parse_github_release(include_str!("../tests/fixtures/soundcraft-release.json"), "storytold/soundcraft").unwrap();
+        let pick = |arch| {
+            let platform = Platform { os: Os::FreeBsd, arch };
+            pick_asset(&r, &["soundcraft"], platform, platform.default_kinds()).map(|(a, k)| (a.name.as_str(), k))
+        };
+        assert_eq!(pick(Arch::X64), Some(("soundcraft-0.10.0-freebsd-x86_64.tar.gz", PackageKind::TarGz)));
+        assert_eq!(pick(Arch::Arm64), Some(("soundcraft-0.10.0-freebsd-aarch64.tar.gz", PackageKind::TarGz)));
+        for arch in [Arch::X86, Arch::Riscv64] {
+            assert_eq!(pick(arch), None);
+        }
+        // An x86_64 machine never takes the ARM tarball, nor an ARM machine the x86_64 one.
+        let only_arm = release(&["soundcraft-0.10.0-freebsd-aarch64.tar.gz"]);
+        assert_eq!(pick_asset(&only_arm, &["soundcraft"], Platform { os: Os::FreeBsd, arch: Arch::X64 }, &[PackageKind::TarGz]), None);
+        let only_x64 = release(&["soundcraft-0.10.0-freebsd-x86_64.tar.gz"]);
+        assert_eq!(pick_asset(&only_x64, &["soundcraft"], Platform { os: Os::FreeBsd, arch: Arch::Arm64 }, &[PackageKind::TarGz]), None);
+    }
+
+    #[test]
     fn macos_split_builds_match_the_processor() {
         let r = release(&["photocraft-0.5.0-macos-arm64.dmg", "photocraft-0.5.0-macos-x86_64.dmg"]);
         let pick = |arch| pick_asset(&r, &["photocraft"], Platform { os: Os::MacOs, arch }, &[PackageKind::Dmg]).map(|(a, _)| a.name.as_str());
@@ -304,6 +355,15 @@ mod tests {
         for arch in [Arch::X86, Arch::Riscv64] {
             assert_eq!(pick_asset(&r, &["photocraft"], Platform { os: Os::MacOs, arch }, &[PackageKind::Dmg]), None);
         }
+    }
+
+    #[test]
+    fn asset_names_carry_their_architecture() {
+        let arch = |name: &str| parse_asset_name(name, &["photocraft"]).unwrap().arch();
+        assert_eq!(arch("photocraft-0.5.0-windows-x64.msi"), Some(Arch::X64));
+        assert_eq!(arch("photocraft-0.5.0-windows-x86.msi"), Some(Arch::X86));
+        assert_eq!(arch("photocraft-0.5.0-linux-aarch64.tar.gz"), Some(Arch::Arm64));
+        assert_eq!(arch("photocraft-0.5.0-macos-universal.dmg"), None);
     }
 
     #[test]
