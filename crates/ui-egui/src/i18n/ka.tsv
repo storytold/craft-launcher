@@ -421,3 +421,19 @@ materialcraft	Node graphs	კვანძების გრაფები
 materialcraft	Combine noises, patterns and filters.	ხმაურების, პატერნებისა და ფილტრების კომბინირება.
 materialcraft	Live previews	ცოცხალი წინასწარი ნახვა
 materialcraft	Preview materials in 2D and on 3D models.	მასალების წინასწარი ნახვა 2D-ში და 3D მოდელებზე.
+# Diagnostic reports
+	Diagnostic report	დიაგნოსტიკური ანგარიში
+	Review this local report before sharing it. Nothing is uploaded automatically.	გაზიარებამდე გადაამოწმეთ ეს ლოკალური ანგარიში. ავტომატურად არაფერი იტვირთება.
+	Paths, URLs and recognizable secrets are removed. Other personal details may remain in error messages.	გზები, URL-ები და ამოცნობადი საიდუმლოებები იშლება. შეცდომის შეტყობინებებში შეიძლება დარჩეს სხვა პირადი ინფორმაცია.
+	Include recent warning and error logs	ბოლო გაფრთხილებებისა და შეცდომების ჟურნალის ჩართვა
+	Preparing report…	ანგარიში მზადდება…
+	Couldn't prepare the report. Try again.	ანგარიშის მომზადება ვერ მოხერხდა. კვლავ სცადეთ.
+	Couldn't save the report. Check disk space and folder permissions.	ანგარიშის შენახვა ვერ მოხერხდა. შეამოწმეთ დისკის სივრცე და საქაღალდის წვდომები.
+	Saving report…	ანგარიში ინახება…
+	Saved to {path}	შენახულია აქ: {path}
+	Copy report	ანგარიშის კოპირება
+	Save report	ანგარიშის შენახვა
+	Refresh report	ანგარიშის განახლება
+	Report copied	ანგარიში დაკოპირდა
+	Troubleshooting	პრობლემების გადაჭრა
+	Prepare a report to help maintainers investigate installation and startup problems.	მოამზადეთ ანგარიში, რომ მხარდამჭერებმა დაინახონ ინსტალაციისა და გაშვების პრობლემები.

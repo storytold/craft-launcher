@@ -6,6 +6,153 @@
 # Product and app names, shortcuts, units, file formats, placeholders and trailing ellipses are kept.
 
 	Launcher	Launcher
+	Craft App Suite	Craft App Suite
+	by {name}	od {name}
+	Open Source Tools for Creatives, Makers, and Builders	Open-source nástroje pro kreativce, tvůrce a vývojáře
+	Settings	Nastavení
+	Check for updates	Zkontrolovat aktualizace
+	Grid	Mřížka
+	Table	Tabulka
+	Show apps as cards	Zobrazit aplikace jako karty
+	Show apps as a table	Zobrazit aplikace v tabulce
+	All	Vše
+	Updates	Aktualizace
+	Not installed	Nenainstalované
+	Search apps	Hledat aplikace
+	Sort	Seřadit
+	Suite order	Pořadí v sadě
+	Name	Název
+	Inspired by	Inspirace
+	Status	Stav
+	Installed version	Nainstalovaná verze
+	Latest version	Nejnovější verze
+	Newest release	Nejnovější vydání
+	Discord	Discord
+	GitHub	GitHub
+	Website	Web
+	Classic apps	Klasické aplikace
+	Classic	Klasické
+	New apps	Nové aplikace
+	NEW	NOVÉ
+	Install	Nainstalovat
+	Update to {v}	Aktualizovat na {v}
+	Open	Otevřít
+	Download for {os}	Stáhnout pro {os}
+	Download	Stáhnout
+	Coming soon	Již brzy
+	Checking…	Kontrola…
+	Not available	Není k dispozici
+	Offline	Bez připojení
+	Downloading {done} of {total}	Stahování {done} z {total}
+	Downloading…	Stahování…
+	Reconnecting…	Obnovování připojení…
+	Verifying…	Ověřování…
+	Installing, then restarting…	Instalace a restart…
+	Installing…	Instalace…
+	Removing…	Odebírání…
+	Pause download	Pozastavit stahování
+	Cancel download	Zrušit stahování
+	Resume download	Pokračovat ve stahování
+	Discard download	Zahodit stahování
+	Release notes	Poznámky k vydání
+	Show in Finder	Zobrazit ve Finderu
+	Show in Explorer	Zobrazit v Průzkumníku
+	Show in Files	Zobrazit v Souborech
+	Reinstall	Znovu nainstalovat
+	Uninstall…	Odinstalovat…
+	All releases	Všechna vydání
+	ArtCraft Launcher {version} is available.	Je k dispozici ArtCraft Launcher {version}.
+	Dismiss	Skrýt
+	Update and restart	Aktualizovat a restartovat
+	A new version is available. Would you like to relaunch with the updated version?	Je k dispozici nová verze. Chcete aplikaci znovu spustit s aktualizovanou verzí?
+	A new version is available. Download it to replace this version?	Je k dispozici nová verze. Chcete ji stáhnout a nahradit jí tuto verzi?
+	Later	Později
+	What's new	Co je nového
+	No notes were published with this release.	K tomuto vydání nebyly zveřejněny žádné poznámky.
+	Released {date}	Vydáno {date}
+	Open on GitHub	Otevřít na GitHubu
+	Close	Zavřít
+	ArtCraft Launcher {version}	ArtCraft Launcher {version}
+	Only when I ask	Pouze na vyžádání
+	Automatically download and install updates	Automaticky stahovat a instalovat aktualizace
+	Notify me when an installed app has an update	Upozornit, když má nainstalovaná aplikace aktualizaci
+	Include pre-releases (betas and release candidates)	Zahrnout předběžná vydání (beta verze a kandidáty na vydání)
+	Installing on Linux	Instalace v Linuxu
+	Installing on Windows	Instalace ve Windows
+	Install new apps as	Instalovat nové aplikace jako
+	System package (recommended)	Systémový balíček (doporučeno)
+	Updates always use the format an app was installed with.	Aktualizace vždy použijí formát, ve kterém byla aplikace nainstalována.
+	Running in the background	Běh na pozadí
+	Keep running in the tray when the window is closed	Po zavření okna ponechat spuštěné v oznamovací oblasti
+	ArtCraft Launcher is still running	ArtCraft Launcher stále běží
+	It's in the tray: open it or quit it from the tray icon, or turn this off in the settings.	Je v oznamovací oblasti: otevřete ho nebo ukončete přes ikonu v ní, nebo to vypněte v nastavení.
+	Show the window on the current desktop	Zobrazit okno na aktuální ploše
+	Start ArtCraft Launcher when I log in	Spouštět ArtCraft Launcher po přihlášení
+	Community	Komunita
+	Questions, ideas and news from the ArtCraft team	Dotazy, nápady a novinky od týmu ArtCraft
+	Appearance	Vzhled
+	Quit ArtCraft Launcher	Ukončit ArtCraft Launcher
+	Done	Hotovo
+	Uninstall {name}?	Odinstalovat {name}?
+	The app will be moved to the Trash. Your documents and settings stay.	Aplikace bude přesunuta do Koše. Vaše dokumenty a nastavení zůstanou zachovány.
+	Windows will remove it like any installed program. Your documents and settings stay.	Windows ji odebere jako každý nainstalovaný program. Vaše dokumenty a nastavení zůstanou zachovány.
+	Your system's package manager will remove it, and may ask for your password. Your documents and settings stay.	Odebere ji správce balíčků systému a může požádat o heslo. Vaše dokumenty a nastavení zůstanou zachovány.
+	The app will be removed. Your documents and settings stay.	Aplikace bude odebrána. Vaše dokumenty a nastavení zůstanou zachovány.
+	Uninstall	Odinstalovat
+	Cancel	Zrušit
+	Checked {ago}	Zkontrolováno {ago}
+	just now	právě teď
+	yesterday	včera
+	{month} {day}, {year}	{day}. {month} {year}
+	Automatically	Automaticky
+	Every Craft app	Všechny aplikace Craft
+	Apps on this computer	Aplikace v tomto počítači
+	Installed apps with a newer version	Nainstalované aplikace s novější verzí
+	Apps you can install	Aplikace, které lze nainstalovat
+	Pin to top	Připnout nahoru
+	Unpin	Odepnout
+	Pinned	Připnuté
+	Reorder {name}	Změnit pořadí: {name}
+	Move up	Posunout nahoru
+	Move down	Posunout dolů
+	Hide App	Skrýt aplikaci
+	Unhide App	Zobrazit aplikaci
+	Hidden Apps	Skryté aplikace
+	Apps you hid	Aplikace, které jste skryli
+	Checked {ago} · using {sources}	Zkontrolováno {ago} · zdroje: {sources}
+	{a} and {b}	{a} a {b}
+	Join the Discord	Připojit se na Discord
+	Learn more	Další informace
+	Minimize	Minimalizovat
+	Maximize	Maximalizovat
+	Restore	Obnovit
+	New	Nové
+	OK	OK
+	Open link	Otevřít odkaz
+	Update	Aktualizovat
+	{name} icon	Ikona aplikace {name}
+	Loading ArtCraft Launcher…	Načítání aplikace ArtCraft Launcher…
+	Cancel update	Zrušit aktualizaci
+	Stop waiting; the update can be started again later	Přestat čekat; aktualizaci lze spustit znovu později
+	Download again	Stáhnout znovu
+	Install cancelled	Instalace zrušena
+	Install cancelled. The download is kept for the next try.	Instalace zrušena. Stažený soubor zůstane připravený pro další pokus.
+	Update cancelled	Aktualizace zrušena
+	Uninstall cancelled	Odinstalace zrušena
+	Retry install	Zkusit instalaci znovu
+	Retry update	Zkusit aktualizaci znovu
+	Retry update to {version}	Zkusit aktualizaci na {version} znovu
+	The download is still here. It's checked again, then installed.	Stažený soubor je stále k dispozici. Znovu se ověří a poté nainstaluje.
+	Waiting for another app…	Čekání na jinou aplikaci…
+	Waiting for other installs…	Čekání na dokončení ostatních instalací…
+	Installer (.msi)	Instalační program (.msi)
+	Portable (.zip)	Přenosná verze (.zip)
+	Disk image (.dmg)	Obraz disku (.dmg)
+	Debian package (.deb)	Balíček Debian (.deb)
+	RPM package (.rpm)	Balíček RPM (.rpm)
+	Arch package (.pkg.tar.zst)	Balíček Arch (.pkg.tar.zst)
+	Flatpak bundle	Balíček Flatpak
+	Tarball (.tar.gz)	Archiv tar (.tar.gz)
 photocraft	Image editing	Úpravy obrázků
 vectorcraft	Vector illustration	Vektorová ilustrace
 filmcraft	Video editing, color and sound	Střih videa, barvy a zvuk
@@ -22,12 +169,240 @@ cadcraft	Computer-aided design and drafting	Počítačem podporované navrhován
 soundcraft	Recording, editing and mixing audio	Nahrávání, úpravy a mixování zvuku
 figcraft	Interface design and prototyping	Návrh rozhraní a prototypování
 month	Jan	1.
+month	Feb	2.
+month	Mar	3.
+month	Apr	4.
+month	May	5.
+month	Jun	6.
+month	Jul	7.
+month	Aug	8.
+month	Sep	9.
+month	Oct	10.
+month	Nov	11.
+month	Dec	12.
+	Not checked yet	Zatím nezkontrolováno
+	GitHub's hourly limit was reached; full details return in {min} min	Byl dosažen hodinový limit GitHubu; úplné informace budou znovu dostupné za {min} min
+	GitHub limit hit; back in {min} min	Dosažen limit GitHubu; obnovení za {min} min
+	Installing for {platform}	Instalace pro {platform}
+	Downloads for {platform}	Stažení pro {platform}
+	No downloads for this system	Pro tento systém nejsou k dispozici žádné soubory ke stažení
+	Join the ArtCraft community on Discord	Připojit se ke komunitě ArtCraft na Discordu
+	ArtCraft on {name}	ArtCraft na {name}
+	Couldn't open {name}: {e}	{name} nelze otevřít: {e}
+	Download cancelled	Stahování zrušeno
+	Available to install	K dispozici k instalaci
+	Available	K dispozici
+	Installed · up to date	Nainstalováno · aktuální
+	Update available	Je k dispozici aktualizace
+	Installed	Nainstalováno
+	installed	nainstalováno
+	Not available here	Zde není k dispozici
+	Updating…	Aktualizuje se…
+	Update paused	Aktualizace pozastavena
+	Download paused	Stahování pozastaveno
+	{version} installed → {latest} released	Nainstalována verze {version} → vydána {latest}
+	Version {version}	Verze {version}
+	{installed} installed · latest {latest}	Nainstalována verze {installed} · nejnovější {latest}
+	Installed · latest {latest}	Nainstalováno · nejnovější {latest}
+	Version {version} installed	Nainstalována verze {version}
+	Version {latest}	Verze {latest}
+	No release published yet	Zatím nebylo zveřejněno žádné vydání
+	ArtCraft Launcher	ArtCraft Launcher
+	App	Aplikace
+	Latest	Nejnovější
+	Released	Vydáno
+	Auto	Automaticky
+	Language	Jazyk
+	Ascending	Vzestupně
+	Descending	Sestupně
+	Click to reverse the order	Kliknutím obrátíte pořadí
+	Click to sort by this column	Kliknutím seřadíte podle tohoto sloupce
+	Like {name}	Obdoba {name}
+	{done} of {total}	{done} z {total}
+	Downloading	Stahuje se
+	Verifying checksum…	Ověřování kontrolního součtu…
+	Resume	Pokračovat
+	{done} of {total} downloaded	Staženo {done} z {total}
+	{done} downloaded	Staženo {done}
+	Checking for updates…	Kontrola aktualizací…
+	Downloads the new version, replaces this one and opens it again	Stáhne novou verzi, nahradí tuto verzi a znovu ji otevře
+	Couldn't check for updates: {f}	Aktualizace nelze zkontrolovat: {f}
+	Website (coming soon)	Web (již brzy)
+	GitHub repository	Repozitář na GitHubu
+	ArtCraft	ArtCraft
+	Update 1 app	Aktualizovat 1 aplikaci
+	Update all ({count})	Aktualizovat vše ({count})
+	⊞  Grid	⊞  Mřížka
+	☰  Table	☰  Tabulka
+	🔍  Search apps	🔍  Hledat aplikace
+	{name} {version}	{name} {version}
+	Match system	Podle systému
+	Dark	Tmavý
+	Light	Světlý
+	Full changelog	Úplný přehled změn
+	link	odkaz
+	No apps match	Žádné aplikace neodpovídají hledání
+	Open ArtCraft Launcher to update.	Aktualizujte otevřením aplikace ArtCraft Launcher.
+	{name} {v} is available	Je k dispozici {name} {v}
+	{count} updates are available	Počet dostupných aktualizací: {count}
+	These notes weren't fetched (GitHub's request limit was reached). They're on the release page.	Tyto poznámky se nepodařilo načíst (byl dosažen limit požadavků GitHubu). Najdete je na stránce vydání.
+	When on, opening the launcher from the menu bar brings its window to the desktop you're on. When off, macOS switches you to the desktop the window was on.	Je-li tato volba zapnutá, otevření launcheru z řádku nabídek zobrazí jeho okno na aktuální ploše. Je-li vypnutá, macOS přepne na plochu, na které se okno nacházelo.
+	Couldn't change the login item: {e}	Položku po přihlášení nelze změnit: {e}
 column	App	Aplikace
+column	Installed	Nainstalováno
+column	Latest	Nejnovější
+column	Released	Vydáno
 filter	Installed	Nainstalováno
+	App details	Podrobnosti o aplikaci
+	More actions for {name}	Další akce pro {name}
+	Close (Esc)	Zavřít (Esc)
+	Features	Funkce
+	Latest release	Nejnovější verze
+	Version	Verze
+	Platforms	Platformy
+	Releases	Vydání
+	Enlarge picture	Zvětšit obrázek
+	Click to enlarge	Kliknutím zvětšíte
+	Previous picture (←)	Předchozí obrázek (←)
+	Next picture (→)	Další obrázek (→)
+	Loading pictures…	Načítání obrázků…
+	Pictures couldn't be loaded. Reopen this page to try again.	Obrázky se nepodařilo načíst. Po opětovném otevření stránky se načtení zkusí znovu.
+	{name} details	Podrobnosti: {name}
 @plural	{n} app|{n} apps	{n} aplikace|{n} aplikace|{n} aplikací
+@plural	{n} min ago|{n} min ago	před {n} min|před {n} min|před {n} min
+@plural	{n} h ago|{n} h ago	před {n} h|před {n} h|před {n} h
+@plural	{n} day ago|{n} days ago	před {n} dnem|před {n} dny|před {n} dny
 @msg	Couldn't open {name}: {e}	{name} nelze otevřít: {e}
+@msg	Download cancelled	Stahování zrušeno
+@msg	{name} updated to {version}	Aplikace {name} byla aktualizována na verzi {version}
+@msg	{name} installed: {version}	Aplikace {name} byla nainstalována ve verzi {version}
+@msg	{name} updated to {version} (this release publishes no checksum, so only its size was checked)	Aplikace {name} byla aktualizována na verzi {version} (toto vydání neobsahuje kontrolní součet, ověřena byla pouze velikost)
+@msg	{name} installed: {version} (this release publishes no checksum, so only its size was checked)	Aplikace {name} byla nainstalována ve verzi {version} (toto vydání neobsahuje kontrolní součet, ověřena byla pouze velikost)
+@msg	{name} was removed	Aplikace {name} byla odebrána
+@msg	{name} is running. Quit it, then try again.	Aplikace {name} je spuštěná. Ukončete ji a zkuste to znovu.
+@msg	{name} was installed from the {repo} repository or the AUR ({pkg}). Update it with {cmd} or sudo pacman -Syu	Aplikace {name} byla nainstalována z repozitáře {repo} nebo z AUR ({pkg}). Aktualizujte ji příkazem {cmd} nebo sudo pacman -Syu
+@msg	{name} was installed from the {repo} repository or the AUR ({pkg}). Update it with your AUR helper (for example: yay -S {pkg}) or sudo pacman -Syu	Aplikace {name} byla nainstalována z repozitáře {repo} nebo z AUR ({pkg}). Aktualizujte ji pomocí pomocníka AUR (například: yay -S {pkg}) nebo příkazem sudo pacman -Syu
+@msg	{name} was installed from the AUR ({pkg}). Update it with {cmd}	Aplikace {name} byla nainstalována z AUR ({pkg}). Aktualizujte ji příkazem {cmd}
+@msg	{name} was installed from the AUR ({pkg}). Update it with your AUR helper (for example: yay -S {pkg})	Aplikace {name} byla nainstalována z AUR ({pkg}). Aktualizujte ji pomocí pomocníka AUR (například: yay -S {pkg})
 @id	app.install	Nainstalovat
+@id	app.update	Aktualizovat na {v}
+@id	app.open	Otevřít
+@id	app.download	Stáhnout pro {os}
+@id	app.reveal	Zobrazit v umístění
+@id	app.reinstall	Znovu nainstalovat
+@id	app.uninstall	Odinstalovat…
+@id	app.notes	Poznámky k vydání
+@id	app.website	Web
+@id	app.github	Repozitář na GitHubu
+@id	app.releases	Všechna vydání
+@id	launcher.update	Aktualizovat a restartovat
+@id	launcher.download	Stáhnout
+@id	launcher.notes	Co je nového
+@id	launcher.dismiss	Zavřít
+@id	settings.open	Nastavení
+@id	settings.quit	Ukončit ArtCraft Launcher
+@id	view.grid	Mřížka
+@id	view.table	Tabulka
+@id	filter.all	Vše
+@id	filter.installed	Nainstalované
+@id	filter.updates	Aktualizace
+@id	filter.notinstalled	Nenainstalované
+@id	sort.suite	Pořadí v sadě
+@id	sort.name	Název
+@id	sort.inspired	Inspirace
+@id	sort.status	Stav
+@id	sort.installed	Nainstalovaná verze
+@id	sort.latest	Nejnovější verze
+@id	sort.released	Nejnovější vydání
+@id	help.discord	Discord
+@id	help.github	GitHub
+@id	help.website	Web
+@id	update.check	Zkontrolovat aktualizace
+@id	update.check_auto	Automaticky kontrolovat aktualizace
+@id	update.notify	Upozornit, když má nainstalovaná aplikace aktualizaci
+@id	update.prereleases	Zahrnout předběžná vydání (beta verze a kandidáty na vydání)
+@id	linux.preferred_kind	Instalovat nové aplikace jako
+@id	tray.close_to_tray	Po zavření okna ponechat spuštěné v oznamovací oblasti
+@id	tray.show_on_current_desktop	Zobrazit okno na aktuální ploše
+@id	tray.login_item	Spouštět ArtCraft Launcher po přihlášení
+@id	appearance.theme	Vzhled
+	Show ArtCraft Launcher	Zobrazit ArtCraft Launcher
+	Check for Updates	Zkontrolovat aktualizace
+	Visit getartcraft.com	Navštívit getartcraft.com
+	ArtCraft on GitHub	ArtCraft na GitHubu
+	Join the ArtCraft Discord	Připojit se na ArtCraft Discord
+@plural	ArtCraft Launcher · {n} update available|ArtCraft Launcher · {n} updates available	ArtCraft Launcher · {n} dostupná aktualizace|ArtCraft Launcher · {n} dostupné aktualizace|ArtCraft Launcher · {n} dostupných aktualizací
+	Install folder	Instalační složka
+	Default install folder	Výchozí instalační složka
+	System default	Výchozí nastavení systému
+	Browse…	Procházet…
+	Use default	Použít výchozí
+	New installs use this folder. Updates stay in their current location.	Nové instalace používají tuto složku. Aktualizace zůstávají v aktuálním umístění.
+	Custom folders use AppImage on Linux.	Vlastní složky používají v Linuxu formát AppImage.
+	On Linux, custom folders use AppImage format.	Vlastní složky používají v Linuxu formát AppImage.
+	The system manages install locations here.	Umístění instalací zde spravuje systém.
+@msg	couldn't use install folder {path}: {reason}	instalační složku {path} nelze použít: {reason}
+@msg	this release has no AppImage for a custom install folder	toto vydání nemá AppImage pro vlastní instalační složku
+@msg	custom install folders aren't supported on this system	vlastní instalační složky nejsou v tomto systému podporovány
+@msg	{path} already exists and wasn't installed by ArtCraft Launcher	{path} již existuje a nebylo nainstalováno aplikací ArtCraft Launcher
+@msg	couldn't move {path} to Trash ({reason}). Remove it in Finder instead.	{path} nelze přesunout do koše ({reason}). Odstraňte položku ve Finderu.
+	Apps are placed inside this folder.	Aplikace se umístí do této složky.
+	Replace what's there?	Nahradit, co tam je?
+	{path} already exists. Installing {name} will overwrite it.	{path} už existuje. Instalace aplikace {name} ho přepíše.
+	Replace	Nahradit
+	Recently updated	Nedávno aktualizované
+	Name (A–Z)	Název (A–Z)
+	Name (Z–A)	Název (Z–A)
+	Frequently used	Nejčastěji používané
+	Next app	Další aplikace
+	Previous app	Předchozí aplikace
+	Show {n} more changes	Zobrazit dalších změn: {n}
+	Last updated: {date}	Naposledy aktualizováno: {date}
+column	Version	Verze
+column	Author	Autor
+	Choose version	Vybrat verzi
+	latest {version}	nejnovější {version}
+	{version} (latest release)	{version} (nejnovější verze)
+	Launcher version	Verze spouštěče
+	Nightly	Noční sestavení
+	Nightly (none published yet)	Noční sestavení (zatím žádné)
+	Install version {version}	Nainstalovat verzi {version}
+	Download selected version	Stáhnout vybranou verzi
+	Older launcher versions require a manual reinstall.	Starší verze spouštěče vyžadují ruční přeinstalaci.
+	Your files may not open in older versions.	Starší verze nemusí vaše soubory otevřít.
+	Enable automatic installs in Settings to follow new nightly builds.	Chcete-li automaticky dostávat nová noční sestavení, zapněte v nastavení automatické instalace.
 texturecraft	3D texture painting	Malování textur ve 3D
+texturecraft	Paint materials on 3D models and export textures.	Malujte materiály na 3D modely a exportujte textury.
+texturecraft	Materials	Materiály
+texturecraft	Mesh maps	Mapy sítí
+texturecraft	Bake mesh maps and use smart materials.	Vypékejte mapy sítí a používejte inteligentní materiály.
+texturecraft	Paint textures on 3D models.	Malujte textury na 3D modely.
+	Hide community apps	Skrýt komunitní aplikace
 materialcraft	Procedural material design	Návrh procedurálních materiálů
+materialcraft	Build materials with node graphs.	Vytvářejte materiály pomocí uzlových grafů.
+materialcraft	Create tileable PBR materials and export texture maps.	Vytvářejte bezešvé PBR materiály a exportujte texturové mapy.
+materialcraft	Node graphs	Uzlové grafy
+materialcraft	Combine noises, patterns and filters.	Kombinujte šumy, vzory a filtry.
+materialcraft	Live previews	Živé náhledy
+materialcraft	Preview materials in 2D and on 3D models.	Prohlížejte materiály ve 2D a na 3D modelech.
+	Advanced	Pokročilé
+	Migrate Flatpak bundles to ArtCraft OCI (experimental)	Převést balíčky Flatpak na ArtCraft OCI (experimentální)
+	On update, switch first party apps when the matching package is available. Otherwise, keep using bundles.	Při aktualizaci převést aplikace ArtCraft, pokud je dostupný odpovídající balíček. Jinak nadále používat samostatné balíčky.
+	The OCI repository is a preview with GPG verification disabled.	Repozitář OCI je předběžná verze s vypnutým ověřováním GPG.
 
 # Diagnostic reports
+	Diagnostic report	Diagnostická zpráva
+	Review this local report before sharing it. Nothing is uploaded automatically.	Před sdílením tuto místní zprávu zkontrolujte. Nic se automaticky neodesílá.
+	Paths, URLs and recognizable secrets are removed. Other personal details may remain in error messages.	Cesty, adresy URL a rozpoznatelné tajné údaje se odstraní. V chybových zprávách mohou zůstat další osobní údaje.
+	Include recent warning and error logs	Zahrnout nedávná varování a chyby z protokolů
+	Preparing report…	Připravuje se zpráva…
+	Couldn't prepare the report. Try again.	Zprávu se nepodařilo připravit. Zkuste to znovu.
+	Couldn't save the report. Check disk space and folder permissions.	Zprávu se nepodařilo uložit. Zkontrolujte místo na disku a oprávnění složky.
+	Saving report…	Ukládá se zpráva…
+	Saved to {path}	Uloženo do {path}
+	Copy report	Kopírovat zprávu
+	Save report	Uložit zprávu
+	Refresh report	Obnovit zprávu
+	Report copied	Zpráva zkopírována
+	Troubleshooting	Řešení problémů
+	Prepare a report to help maintainers investigate installation and startup problems.	Připravte zprávu, která pomůže správcům projektu prozkoumat problémy s instalací a spouštěním.

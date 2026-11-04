@@ -19,9 +19,154 @@
 # {what}, {unit}, {real}, {e} must appear in translation.
 
 	Launcher	Launcher
+	Craft App Suite	Craft App Suite
+	by {name}	от {name}
+	Open Source Tools for Creatives, Makers, and Builders	Инструменты с открытым кодом для творцов, мастеров и создателей
+	Settings	Настройки
+	Check for updates	Проверить обновления
+	Grid	Сетка
+	Table	Таблица
+	Show apps as cards	Показывать приложения карточками
+	Show apps as a table	Показывать приложения таблицей
+	All	Все
+	Updates	Обновления
+	Not installed	Не установлены
+	Search apps	Поиск приложений
+	Sort	Сортировка
+	Suite order	По классу приложений
+	Name	Имя
+	Status	Статус
+	Installed version	Установленная версия
+	Latest version	Последняя версия
+	Newest release	Новый релиз
+	Discord	Discord
+	GitHub	GitHub
+	Website	Веб-сайт
+	Classic apps	Классические приложения
+	New apps	Новые приложения
+	NEW	НОВОЕ
+	Install	Установить
+	Update to {v}	Обновить до {v}
+	Open	Открыть
+	Download for {os}	Скачать для {os}
+	Download	Скачать
+	Coming soon	Скоро
+	Checking…	Проверка…
+	Not available	Недоступно
+	Offline	Офлайн
+	Downloading {done} of {total}	Скачивание {done} из {total}
+	Downloading…	Скачивание…
+	Reconnecting…	Переподключение…
+	Verifying…	Проверка целостности…
+	Installing, then restarting…	Установка, затем перезапуск…
+	Installing…	Установка…
+	Removing…	Удаление…
+	Pause download	Приостановить скачивание
+	Cancel download	Отменить скачивание
+	Resume download	Продолжить скачивание
+	Discard download	Удалить скачанное
+	Release notes	Заметки к релизу
+	Show in Finder	Показать в Finder
+	Show in Explorer	Показать в Проводнике
+	Show in Files	Показать в файловом менеджере
+	Reinstall	Переустановить
+	Uninstall…	Удалить…
+	All releases	Все релизы
+	ArtCraft Launcher {version} is available.	Доступен ArtCraft Launcher {version}.
+	Dismiss	Закрыть
+	Update and restart	Обновить и перезапустить
+	A new version is available. Would you like to relaunch with the updated version?	Доступна новая версия. Перезапустить с обновленной версией?
+	A new version is available. Download it to replace this version?	Доступна новая версия. Скачать её, чтобы заменить эту версию?
+	Later	Позже
+	What's new	Что нового
+	No notes were published with this release.	Заметки к этому релизу не публиковались.
+	Released {date}	Релиз {date}
+	Open on GitHub	Открыть на GitHub
+	Close	Закрыть
+	ArtCraft Launcher {version}	ArtCraft Launcher {version}
+	Only when I ask	Только по запросу
+	Automatically download and install updates	Автоматически скачивать и устанавливать обновления
+	Notify me when an installed app has an update	Уведомлять, когда у установленного приложения есть обновление
+	Include pre-releases (betas and release candidates)	Включать предварительные релизы (бета и RC)
+	Installing on Linux	Установка в Linux
+	Installing on Windows	Установка в Windows
+	Install new apps as	Устанавливать новые приложения как
+	System package (recommended)	Системный пакет (рек.)
+	Updates always use the format an app was installed with.	Обновления всегда используют формат, с которым приложение было установлено.
+	Running in the background	Работа в фоне
+	Keep running in the tray when the window is closed	Оставаться в трее при закрытии окна
+	ArtCraft Launcher is still running	ArtCraft Launcher продолжает работать
+	It's in the tray: open it or quit it from the tray icon, or turn this off in the settings.	Он в трее: откройте или закройте его через значок в трее, либо отключите это в настройках.
+	Show the window on the current desktop	Показывать окно на текущем рабочем столе
+	Start ArtCraft Launcher when I log in	Запускать ArtCraft Launcher при входе в систему
+	Community	Сообщество
+	Questions, ideas and news from the ArtCraft team	Вопросы, идеи и новости от команды ArtCraft
+	Appearance	Внешний вид
+	Quit ArtCraft Launcher	Выйти из ArtCraft Launcher
+	Done	Готово
+	Uninstall {name}?	Удалить {name}?
+	The app will be moved to the Trash. Your documents and settings stay.	Приложение будет перемещено в Корзину. Ваши документы и настройки сохранятся.
+	Windows will remove it like any installed program. Your documents and settings stay.	Windows удалит его как любую установленную программу. Ваши документы и настройки сохранятся.
+	Your system's package manager will remove it, and may ask for your password. Your documents and settings stay.	Ваш системный менеджер пакетов удалит его и может запросить пароль. Ваши документы и настройки сохранятся.
+	The app will be removed. Your documents and settings stay.	Приложение будет удалено. Ваши документы и настройки сохранятся.
+	Uninstall	Удалить
+	Cancel	Отмена
+	Checked {ago}	Проверено {ago}
+	just now	только что
+	yesterday	вчера
+	{month} {day}, {year}	{day} {month} {year}
 
+	Automatically	Автоматически
+	Every Craft app	Все приложения Craft
+	Apps on this computer	Приложения на этом компьютере
+	Installed apps with a newer version	Установленные приложения, у которых есть новая версия
+	Apps you can install	Приложения, которые можно установить
+	Pin to top	Закрепить сверху
+	Unpin	Открепить
+	Pinned	Закреплённые
+	Reorder {name}	Изменить порядок: {name}
+	Move up	Выше
+	Move down	Ниже
+	Hide App	Скрыть приложение
+	Unhide App	Показать приложение
+	Hidden Apps	Скрытые приложения
+	Apps you hid	Приложения, которые вы скрыли
+	Checked {ago} · using {sources}	Проверено {ago} · через {sources}
+	{a} and {b}	{a} и {b}
+	Join the Discord	Присоединиться к Discord
+	Learn more	Подробнее
+	Minimize	Свернуть
+	Maximize	Развернуть
+	Restore	Восстановить
+	New	Новое
+	OK	ОК
+	Open link	Открыть ссылку
+	Update	Обновить
+	{name} icon	Значок {name}
+	Loading ArtCraft Launcher…	Загрузка ArtCraft Launcher…
+	Cancel update	Отменить обновление
+	Stop waiting; the update can be started again later	Не ждать; обновление можно будет запустить позже
+	Download again	Скачать заново
+	Install cancelled	Установка отменена
+	Install cancelled. The download is kept for the next try.	Установка отменена. Скачанный файл сохранён для следующей попытки.
+	Update cancelled	Обновление отменено
+	Uninstall cancelled	Удаление отменено
+	Retry install	Повторить установку
+	Retry update	Повторить обновление
+	Retry update to {version}	Повторить обновление до {version}
+	The download is still here. It's checked again, then installed.	Скачанный файл сохранён. Он будет проверен ещё раз, затем установлен.
+	Waiting for another app…	Ожидание другого приложения…
+	Waiting for other installs…	Ожидание других установок…
 
 # Package formats offered for download (PackageKind::label)
+	Installer (.msi)	Установщик (.msi)
+	Portable (.zip)	Портативная версия (.zip)
+	Disk image (.dmg)	Образ диска (.dmg)
+	Debian package (.deb)	Пакет Debian (.deb)
+	RPM package (.rpm)	Пакет RPM (.rpm)
+	Arch package (.pkg.tar.zst)	Пакет Arch (.pkg.tar.zst)
+	Flatpak bundle	Пакет Flatpak
+	Tarball (.tar.gz)	Архив (.tar.gz)
 
 # Contextual: each app's tagline, keyed by app id
 photocraft	Image editing	Редактирование изображений
@@ -42,25 +187,250 @@ figcraft	Interface design and prototyping	Дизайн интерфейсов и
 
 # Contextual: month abbreviations for date rendering
 month	Jan	янв.
+month	Feb	февр.
+month	Mar	март
+month	Apr	апр.
+month	May	май
+month	Jun	июнь
+month	Jul	июль
+month	Aug	авг.
+month	Sep	сент.
+month	Oct	окт.
+month	Nov	нояб.
+month	Dec	дек.
+	Not checked yet	Ещё не проверялось
+	GitHub's hourly limit was reached; full details return in {min} min	Достигнут часовой лимит GitHub; полные детали вернутся через {min} мин
+	GitHub limit hit; back in {min} min	Лимит GitHub исчерпан; вернётся через {min} мин
+	Installing for {platform}	Установка для {platform}
+	Downloads for {platform}	Скачивание для {platform}
+	No downloads for this system	Нет загрузок для этой системы
+	Join the ArtCraft community on Discord	Присоединиться к сообществу ArtCraft в Discord
+	ArtCraft on {name}	ArtCraft в {name}
+	Couldn't open {name}: {e}	Не удалось открыть {name}: {e}
+	Download cancelled	Скачивание отменено
+	Available to install	Доступно для установки
+	Available	Доступно
+	Installed · up to date	Установлено · актуально
+	Update available	Доступно обновление
+	Installed	Установлено
+	installed	установлено
+	Not available here	Недоступно здесь
+	Updating…	Обновление…
+	Update paused	Обновление приостановлено
+	Download paused	Скачивание приостановлено
+	{version} installed → {latest} released	{version} установлено → {latest} выпущено
+	Version {version}	Версия {version}
+	{installed} installed · latest {latest}	{installed} установлено · последняя {latest}
+	Installed · latest {latest}	Установлено · последняя {latest}
+	Version {version} installed	Версия {version} установлена
+	Version {latest}	Версия {latest}
+	No release published yet	Релиз ещё не опубликован
+	ArtCraft Launcher	ArtCraft Launcher
+	App	Приложение
+	Latest	Последняя
+	Released	Релиз
+	Auto	Авто
+	Language	Язык
+	Ascending	По возрастанию
+	Descending	По убыванию
+	Click to reverse the order	Нажмите, чтобы изменить порядок
+	Click to sort by this column	Нажмите, чтобы сортировать по этому столбцу
+	{done} of {total}	{done} из {total}
+	Downloading	Скачивание
+	Verifying checksum…	Проверка контрольной суммы…
+	Resume	Продолжить
+	{done} of {total} downloaded	{done} из {total} скачано
+	{done} downloaded	Скачано {done}
+	Checking for updates…	Проверка обновлений…
+	Downloads the new version, replaces this one and opens it again	Скачивает новую версию, заменяет текущую и открывает её заново
+	Couldn't check for updates: {f}	Не удалось проверить обновления: {f}
+	GitHub repository	Репозиторий GitHub
+	ArtCraft	ArtCraft
+	Update 1 app	Обновить 1 приложение
+	Update all ({count})	Обновить все ({count})
+	⊞  Grid	⊞  Сетка
+	☰  Table	☰  Таблица
+	🔍  Search apps	🔍  Поиск приложений
+	{name} {version}	{name} {version}
+	Match system	Как в системе
+	Dark	Тёмная
+	Light	Светлая
+	Full changelog	Полный список изменений
+	link	ссылка
+	No apps match	Нет подходящих приложений
+	Open ArtCraft Launcher to update.	Откройте ArtCraft Launcher, чтобы обновить.
+	{name} {v} is available	Доступно обновление {name} {v}
+	{count} updates are available	Доступны обновления ({count})
+	These notes weren't fetched (GitHub's request limit was reached). They're on the release page.	Заметки не были загружены (достигнут лимит запросов GitHub). Они есть на странице релиза.
+	When on, opening the launcher from the menu bar brings its window to the desktop you're on. When off, macOS switches you to the desktop the window was on.	Когда включено, открытие лаунчера из строки меню переносит его окно на текущий рабочий стол. Когда выключено, macOS переключает вас на рабочий стол, где находилось окно.
+	Couldn't change the login item: {e}	Не удалось изменить пункт автозагрузки: {e}
 
 # Contextual: table column headers
 column	App	Приложение
+column	Installed	Текущая
+column	Latest	Последняя
+column	Released	Дата релиза
 
 # Contextual: the filter tab names a group (the status pill says "Installed")
 filter	Installed	Установлены
+	{name} details	{name}: подробности
 
 # Plural forms for Russian (one|few|many)
 @plural	{n} app|{n} apps	{n} приложение|{n} приложения|{n} приложений
+@plural	{n} min ago|{n} min ago	{n} минуту назад|{n} минуты назад|{n} минут назад
+@plural	{n} h ago|{n} h ago	{n} час назад|{n} часа назад|{n} часов назад
+@plural	{n} day ago|{n} days ago	{n} день назад|{n} дня назад|{n} дней назад
 
 # Message templates (@msg): toasts from the backend. {placeholders} match any text.
 @msg	Couldn't open {name}: {e}	Не удалось открыть {name}: {e}
+@msg	Download cancelled	Скачивание отменено
+@msg	{name} updated to {version}	Приложение {name} обновлено до {version}
+@msg	{name} installed: {version}	Приложение {name} установлено: {version}
+@msg	{name} updated to {version} (this release publishes no checksum, so only its size was checked)	Приложение {name} обновлено до {version} (в этом релизе нет контрольных сумм, поэтому проверен только размер)
+@msg	{name} installed: {version} (this release publishes no checksum, so only its size was checked)	Приложение {name} установлено: {version} (в этом релизе нет контрольных сумм, поэтому проверен только размер)
+@msg	{name} was removed	Приложение {name} удалено
+@msg	{name} is running. Quit it, then try again.	Приложение {name} запущено. Закройте его и попробуйте снова.
+@msg	{name} was installed from the {repo} repository or the AUR ({pkg}). Update it with {cmd} or sudo pacman -Syu	Приложение {name} установлено из репозитория {repo} или из AUR ({pkg}). Обновите его командой {cmd} или sudo pacman -Syu
+@msg	{name} was installed from the {repo} repository or the AUR ({pkg}). Update it with your AUR helper (for example: yay -S {pkg}) or sudo pacman -Syu	Приложение {name} установлено из репозитория {repo} или из AUR ({pkg}). Обновите его с помощью вашего помощника AUR (например: yay -S {pkg}) или командой sudo pacman -Syu
+@msg	{name} was installed from the AUR ({pkg}). Update it with {cmd}	Приложение {name} установлено из AUR ({pkg}). Обновите его командой {cmd}
+@msg	{name} was installed from the AUR ({pkg}). Update it with your AUR helper (for example: yay -S {pkg})	Приложение {name} установлено из AUR ({pkg}). Обновите его с помощью вашего помощника AUR (например: yay -S {pkg})
 
 # Command IDs for menu items (@id)
 # Format: @id<TAB>command_id<TAB>translation
 @id	app.install	Установить
+@id	app.update	Обновить до {v}
+@id	app.open	Открыть
+@id	app.download	Скачать для {os}
+@id	app.reveal	Показать в Finder
+@id	app.reinstall	Переустановить
+@id	app.uninstall	Удалить…
+@id	app.notes	Заметки к релизу
+@id	app.website	Веб-сайт
+@id	app.github	Репозиторий на GitHub
+@id	app.releases	Все релизы
+@id	launcher.update	Обновить и перезапустить
+@id	launcher.download	Скачать
+@id	launcher.notes	Что нового
+@id	launcher.dismiss	Закрыть
+@id	settings.open	Настройки
+@id	settings.quit	Выйти из ArtCraft Launcher
+@id	view.grid	Сетка
+@id	view.table	Таблица
+@id	filter.all	Все
+@id	filter.installed	Установленные
+@id	filter.updates	Обновления
+@id	filter.notinstalled	Не установленные
+@id	sort.suite	По классу приложений
+@id	sort.name	Имя
+@id	sort.status	Статус
+@id	sort.installed	Установленная версия
+@id	sort.latest	Последняя версия
+@id	sort.released	Новый релиз
+@id	help.discord	Discord
+@id	help.github	GitHub
+@id	help.website	Веб-сайт
+@id	update.check	Проверить обновления
+@id	update.check_auto	Проверять обновления автоматически
+@id	update.notify	Уведомлять, когда у установленного приложения есть обновление
+@id	update.prereleases	Включать предварительные релизы (бета и RC)
+@id	linux.preferred_kind	Устанавливать новые приложения как
+@id	tray.close_to_tray	Оставаться в трее при закрытии окна
+@id	tray.show_on_current_desktop	Показывать окно на текущем рабочем столе
+@id	tray.login_item	Запускать ArtCraft Launcher при входе в систему
+@id	appearance.theme	Внешний вид
 
 # Tray (menu bar) menu and tooltip
+	Show ArtCraft Launcher	Показать ArtCraft Launcher
+	Check for Updates	Проверить обновления
+	Visit getartcraft.com	Открыть getartcraft.com
+	ArtCraft on GitHub	ArtCraft на GitHub
+	Join the ArtCraft Discord	Присоединиться к Discord ArtCraft
+	App details	О приложении
+	More actions for {name}	Другие действия для {name}
+	Close (Esc)	Закрыть (Esc)
+	Features	Возможности
+	Latest release	Последний релиз
+	Version	Версия
+	Platforms	Платформы
+	Releases	Релизы
+	Enlarge picture	Увеличить изображение
+	Click to enlarge	Нажмите, чтобы увеличить
+	Previous picture (←)	Предыдущее изображение (←)
+	Next picture (→)	Следующее изображение (→)
+	Loading pictures…	Загрузка изображений…
+	Pictures couldn't be loaded. Reopen this page to try again.	Не удалось загрузить изображения. Откройте страницу снова, чтобы повторить попытку.
+@plural	ArtCraft Launcher · {n} update available|ArtCraft Launcher · {n} updates available	ArtCraft Launcher · {n} обновление|ArtCraft Launcher · {n} обновления|ArtCraft Launcher · {n} обновлений
+	Install folder	Папка установки
+	Default install folder	Папка установки по умолчанию
+	System default	По умолчанию в системе
+	Browse…	Обзор…
+	Use default	Использовать по умолчанию
+	New installs use this folder. Updates stay in their current location.	Новые приложения устанавливаются в эту папку. При обновлении текущее расположение сохраняется.
+	Custom folders use AppImage on Linux.	В Linux для установки в выбранную папку используется AppImage.
+	On Linux, custom folders use AppImage format.	В Linux для установки в выбранную папку используется AppImage.
+	The system manages install locations here.	В этой среде расположением приложений управляет система.
+@msg	couldn't use install folder {path}: {reason}	не удалось использовать папку установки {path}: {reason}
+@msg	this release has no AppImage for a custom install folder	в этом выпуске нет AppImage для установки в выбранную папку
+@msg	custom install folders aren't supported on this system	в этой системе выбор папки установки не поддерживается
+@msg	{path} already exists and wasn't installed by ArtCraft Launcher	{path} уже существует и не был установлен через ArtCraft Launcher
+@msg	couldn't move {path} to Trash ({reason}). Remove it in Finder instead.	не удалось переместить {path} в Корзину ({reason}). Удалите его через Finder.
+	Apps are placed inside this folder.	Приложения размещаются внутри этой папки.
+	Replace what's there?	Заменить существующее?
+	{path} already exists. Installing {name} will overwrite it.	{path} уже существует. Установка {name} перезапишет его.
+	Replace	Заменить
+	Recently updated	Недавно обновлённые
+	Name (A–Z)	Имя (А–Я)
+	Name (Z–A)	Имя (Я–А)
+	Frequently used	Часто используемые
+	Next app	Следующее приложение
+	Previous app	Предыдущее приложение
+	Show {n} more changes	Показать ещё изменений: {n}
+	Last updated: {date}	Последнее обновление: {date}
+column	Version	Версия
+column	Author	Автор
+	Choose version	Выбрать версию
+	latest {version}	последняя {version}
+	{version} (latest release)	{version} (последний релиз)
+	Launcher version	Версия лаунчера
+	Nightly	Ночная сборка
+	Nightly (none published yet)	Ночная сборка (пока нет)
+	Install version {version}	Установить версию {version}
+	Download selected version	Скачать выбранную версию
+	Older launcher versions require a manual reinstall.	Для возврата к старой версии лаунчера нужна переустановка вручную.
+	Your files may not open in older versions.	В старой версии ваши файлы могут не открыться.
+	Enable automatic installs in Settings to follow new nightly builds.	Чтобы получать новые ночные сборки, включите автоматическую установку в настройках.
 texturecraft	3D texture painting	Рисование 3D-текстур
+texturecraft	Paint materials on 3D models and export textures.	Рисуйте материалы на 3D-моделях и экспортируйте текстуры.
+texturecraft	Materials	Материалы
+texturecraft	Mesh maps	Карты сетки
+texturecraft	Bake mesh maps and use smart materials.	Запекайте карты сетки и используйте умные материалы.
+texturecraft	Paint textures on 3D models.	Рисуйте текстуры на 3D-моделях.
+	Hide community apps	Скрыть приложения сообщества
 materialcraft	Procedural material design	Создание процедурных материалов
+materialcraft	Build materials with node graphs.	Создавайте материалы с помощью графов узлов.
+materialcraft	Create tileable PBR materials and export texture maps.	Создавайте бесшовные PBR-материалы и экспортируйте карты текстур.
+materialcraft	Node graphs	Графы узлов
+materialcraft	Combine noises, patterns and filters.	Комбинируйте шумы, узоры и фильтры.
+materialcraft	Live previews	Предпросмотр в реальном времени
+materialcraft	Preview materials in 2D and on 3D models.	Просматривайте материалы в 2D и на 3D-моделях.
+	Advanced	Дополнительно
+	Migrate Flatpak bundles to ArtCraft OCI (experimental)	Переводить пакеты Flatpak на ArtCraft OCI (экспериментально)
+	On update, switch first party apps when the matching package is available. Otherwise, keep using bundles.	При обновлении переводить приложения ArtCraft на репозиторий, если доступен соответствующий пакет. Иначе продолжать использовать отдельные пакеты.
+	The OCI repository is a preview with GPG verification disabled.	Репозиторий OCI работает в предварительном режиме с отключённой проверкой GPG.
 
 # Diagnostic reports
+	Diagnostic report	Диагностический отчёт
+	Review this local report before sharing it. Nothing is uploaded automatically.	Просмотрите этот локальный отчёт перед отправкой. Ничего не загружается автоматически.
+	Paths, URLs and recognizable secrets are removed. Other personal details may remain in error messages.	Пути, URL и распознаваемые секретные данные удаляются. В сообщениях об ошибках могут остаться другие личные сведения.
+	Include recent warning and error logs	Включить последние предупреждения и ошибки из журналов
+	Preparing report…	Подготовка отчёта…
+	Couldn't prepare the report. Try again.	Не удалось подготовить отчёт. Попробуйте ещё раз.
+	Couldn't save the report. Check disk space and folder permissions.	Не удалось сохранить отчёт. Проверьте свободное место и права доступа к папке.
+	Saving report…	Сохранение отчёта…
+	Saved to {path}	Сохранено в {path}
+	Copy report	Копировать отчёт
+	Save report	Сохранить отчёт
+	Refresh report	Обновить отчёт
+	Report copied	Отчёт скопирован
+	Troubleshooting	Диагностика проблем
+	Prepare a report to help maintainers investigate installation and startup problems.	Подготовьте отчёт, чтобы помочь разработчикам разобраться с проблемами установки и запуска.

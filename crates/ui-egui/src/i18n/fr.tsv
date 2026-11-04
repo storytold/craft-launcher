@@ -18,9 +18,155 @@
 # {what}, {unit}, {real}, {e} must appear in translation.
 
 	Launcher	Launcher
+	Craft App Suite	Craft App Suite
+	by {name}	par {name}
+	Open Source Tools for Creatives, Makers, and Builders	Des outils open source pour les créatifs, les makers et les bâtisseurs
+	Settings	Réglages
+	Check for updates	Rechercher des mises à jour
+	Grid	Grille
+	Table	Tableau
+	Show apps as cards	Afficher les applications en cartes
+	Show apps as a table	Afficher les applications en tableau
+	All	Toutes
+	Updates	Mises à jour
+	Not installed	Non installées
+	Search apps	Rechercher des applications
+	Sort	Tri
+	Suite order	Ordre de la suite
+	Name	Nom
+	Inspired by	Inspirée de
+	Status	État
+	Installed version	Version installée
+	Latest version	Dernière version
+	Newest release	Version la plus récente
+	Discord	Discord
+	GitHub	GitHub
+	Website	Site web
+	Classic apps	Applications classiques
+	New apps	Nouvelles applications
+	NEW	NOUVEAU
+	Install	Installer
+	Update to {v}	Mettre à jour vers {v}
+	Open	Ouvrir
+	Download for {os}	Télécharger pour {os}
+	Download	Télécharger
+	Coming soon	Bientôt disponible
+	Checking…	Vérification…
+	Not available	Indisponible
+	Offline	Hors ligne
+	Downloading {done} of {total}	Téléchargement de {done} sur {total}
+	Downloading…	Téléchargement…
+	Reconnecting…	Reconnexion…
+	Verifying…	Vérification…
+	Installing, then restarting…	Installation, puis redémarrage…
+	Installing…	Installation…
+	Removing…	Suppression…
+	Pause download	Mettre le téléchargement en pause
+	Cancel download	Annuler le téléchargement
+	Resume download	Reprendre le téléchargement
+	Discard download	Supprimer le téléchargement
+	Release notes	Notes de version
+	Show in Finder	Afficher dans le Finder
+	Show in Explorer	Afficher dans l'Explorateur
+	Show in Files	Afficher dans Fichiers
+	Reinstall	Réinstaller
+	Uninstall…	Désinstaller…
+	All releases	Toutes les versions
+	ArtCraft Launcher {version} is available.	ArtCraft Launcher {version} est disponible.
+	Dismiss	Ignorer
+	Update and restart	Mettre à jour et redémarrer
+	A new version is available. Would you like to relaunch with the updated version?	Une nouvelle version est disponible. Redémarrer avec la nouvelle version ?
+	A new version is available. Download it to replace this version?	Une nouvelle version est disponible. La télécharger pour remplacer cette version ?
+	Later	Plus tard
+	What's new	Nouveautés
+	No notes were published with this release.	Aucune note n'a été publiée avec cette version.
+	Released {date}	Publiée le {date}
+	Open on GitHub	Ouvrir sur GitHub
+	Close	Fermer
+	ArtCraft Launcher {version}	ArtCraft Launcher {version}
+	Only when I ask	Seulement à ma demande
+	Automatically download and install updates	Télécharger et installer les mises à jour automatiquement
+	Notify me when an installed app has an update	Me prévenir quand une application installée a une mise à jour
+	Include pre-releases (betas and release candidates)	Inclure les préversions (bêtas et versions candidates)
+	Installing on Linux	Installation sous Linux
+	Installing on Windows	Installation sous Windows
+	Install new apps as	Installer les nouvelles applications en tant que
+	System package (recommended)	Paquet système (recommandé)
+	Updates always use the format an app was installed with.	Les mises à jour utilisent toujours le format avec lequel l'application a été installée.
+	Running in the background	Exécution en arrière-plan
+	Keep running in the tray when the window is closed	Rester actif dans la zone de notification à la fermeture de la fenêtre
+	ArtCraft Launcher is still running	ArtCraft Launcher est toujours en cours
+	It's in the tray: open it or quit it from the tray icon, or turn this off in the settings.	Il est dans la zone de notification : ouvrez-le ou quittez-le depuis son icône, ou désactivez ceci dans les réglages.
+	Show the window on the current desktop	Afficher la fenêtre sur le bureau actuel
+	Start ArtCraft Launcher when I log in	Lancer ArtCraft Launcher à l'ouverture de session
+	Community	Communauté
+	Questions, ideas and news from the ArtCraft team	Questions, idées et actualités de l'équipe ArtCraft
+	Appearance	Apparence
+	Quit ArtCraft Launcher	Quitter ArtCraft Launcher
+	Done	Terminé
+	Uninstall {name}?	Désinstaller {name} ?
+	The app will be moved to the Trash. Your documents and settings stay.	L'application sera placée dans la Corbeille. Vos documents et réglages sont conservés.
+	Windows will remove it like any installed program. Your documents and settings stay.	Windows la supprimera comme n'importe quel programme installé. Vos documents et réglages sont conservés.
+	Your system's package manager will remove it, and may ask for your password. Your documents and settings stay.	Le gestionnaire de paquets de votre système la supprimera et pourra vous demander votre mot de passe. Vos documents et réglages sont conservés.
+	The app will be removed. Your documents and settings stay.	L'application sera supprimée. Vos documents et réglages sont conservés.
+	Uninstall	Désinstaller
+	Cancel	Annuler
+	Checked {ago}	Vérifié {ago}
+	just now	à l'instant
+	yesterday	hier
+	{month} {day}, {year}	{day} {month} {year}
 
+	Automatically	Automatiquement
+	Every Craft app	Toutes les applications Craft
+	Apps on this computer	Applications sur cet ordinateur
+	Installed apps with a newer version	Applications installées avec une version plus récente
+	Apps you can install	Applications que vous pouvez installer
+	Pin to top	Épingler en haut
+	Unpin	Désépingler
+	Pinned	Épinglés
+	Reorder {name}	Réordonner {name}
+	Move up	Monter
+	Move down	Descendre
+	Hide App	Masquer l'application
+	Unhide App	Afficher l'application
+	Hidden Apps	Applications masquées
+	Apps you hid	Applications que vous avez masquées
+	Checked {ago} · using {sources}	Vérifié {ago} · via {sources}
+	{a} and {b}	{a} et {b}
+	Join the Discord	Rejoindre le Discord
+	Learn more	En savoir plus
+	Minimize	Réduire
+	Maximize	Agrandir
+	Restore	Restaurer
+	New	Nouveau
+	OK	OK
+	Open link	Ouvrir le lien
+	Update	Mettre à jour
+	{name} icon	Icône de {name}
+	Loading ArtCraft Launcher…	Chargement d'ArtCraft Launcher…
+	Cancel update	Annuler la mise à jour
+	Stop waiting; the update can be started again later	Ne plus attendre ; la mise à jour pourra être relancée plus tard
+	Download again	Télécharger à nouveau
+	Install cancelled	Installation annulée
+	Install cancelled. The download is kept for the next try.	Installation annulée. Le téléchargement est conservé pour la prochaine tentative.
+	Update cancelled	Mise à jour annulée
+	Uninstall cancelled	Désinstallation annulée
+	Retry install	Réessayer l'installation
+	Retry update	Réessayer la mise à jour
+	Retry update to {version}	Réessayer la mise à jour vers {version}
+	The download is still here. It's checked again, then installed.	Le téléchargement est toujours là. Il sera vérifié à nouveau, puis installé.
+	Waiting for another app…	En attente d'une autre application…
+	Waiting for other installs…	En attente d'autres installations…
 
 # Package formats offered for download (PackageKind::label)
+	Installer (.msi)	Programme d'installation (.msi)
+	Portable (.zip)	Version portable (.zip)
+	Disk image (.dmg)	Image disque (.dmg)
+	Debian package (.deb)	Paquet Debian (.deb)
+	RPM package (.rpm)	Paquet RPM (.rpm)
+	Arch package (.pkg.tar.zst)	Paquet Arch (.pkg.tar.zst)
+	Flatpak bundle	Paquet Flatpak
+	Tarball (.tar.gz)	Archive (.tar.gz)
 
 # Contextual: each app's tagline, keyed by app id
 photocraft	Image editing	Retouche d'images
@@ -41,25 +187,252 @@ figcraft	Interface design and prototyping	Design d'interfaces et prototypage
 
 # Contextual: month abbreviations for date rendering
 month	Jan	janv.
+month	Feb	févr.
+month	Mar	mars
+month	Apr	avr.
+month	May	mai
+month	Jun	juin
+month	Jul	juil.
+month	Aug	août
+month	Sep	sept.
+month	Oct	oct.
+month	Nov	nov.
+month	Dec	déc.
+	Not checked yet	Pas encore vérifié
+	GitHub's hourly limit was reached; full details return in {min} min	La limite horaire de GitHub a été atteinte ; les détails complets reviennent dans {min} min
+	GitHub limit hit; back in {min} min	Limite GitHub atteinte ; retour dans {min} min
+	Installing for {platform}	Installation pour {platform}
+	Downloads for {platform}	Téléchargements pour {platform}
+	No downloads for this system	Aucun téléchargement pour ce système
+	Join the ArtCraft community on Discord	Rejoindre la communauté ArtCraft sur Discord
+	ArtCraft on {name}	ArtCraft sur {name}
+	Couldn't open {name}: {e}	Impossible d'ouvrir {name} : {e}
+	Download cancelled	Téléchargement annulé
+	Available to install	Disponible à l'installation
+	Available	Disponible
+	Installed · up to date	Installé · à jour
+	Update available	Mise à jour disponible
+	Installed	Installé
+	installed	installé
+	Not available here	Indisponible ici
+	Updating…	Mise à jour…
+	Update paused	Mise à jour en pause
+	Download paused	Téléchargement en pause
+	{version} installed → {latest} released	{version} installée → {latest} publiée
+	Version {version}	Version {version}
+	{installed} installed · latest {latest}	{installed} installée · dernière {latest}
+	Installed · latest {latest}	Installée · dernière {latest}
+	Version {version} installed	Version {version} installée
+	Version {latest}	Version {latest}
+	No release published yet	Aucune version publiée pour l'instant
+	ArtCraft Launcher	ArtCraft Launcher
+	App	Application
+	Latest	Dernière
+	Released	Publiée
+	Auto	Auto
+	Language	Langue
+	Ascending	Croissant
+	Descending	Décroissant
+	Click to reverse the order	Cliquez pour inverser l'ordre
+	Click to sort by this column	Cliquez pour trier selon cette colonne
+	Like {name}	Comme {name}
+	{done} of {total}	{done} sur {total}
+	Downloading	Téléchargement
+	Verifying checksum…	Vérification de la somme de contrôle…
+	Resume	Reprendre
+	{done} of {total} downloaded	{done} sur {total} téléchargés
+	{done} downloaded	{done} téléchargés
+	Checking for updates…	Recherche de mises à jour…
+	Downloads the new version, replaces this one and opens it again	Télécharge la nouvelle version, remplace celle-ci et la rouvre
+	Couldn't check for updates: {f}	Impossible de rechercher les mises à jour : {f}
+	GitHub repository	Dépôt GitHub
+	ArtCraft	ArtCraft
+	Update 1 app	Mettre à jour 1 application
+	Update all ({count})	Tout mettre à jour ({count})
+	⊞  Grid	⊞  Grille
+	☰  Table	☰  Tableau
+	🔍  Search apps	🔍  Rechercher des applications
+	{name} {version}	{name} {version}
+	Match system	Comme le système
+	Dark	Sombre
+	Light	Clair
+	Full changelog	Journal des modifications complet
+	link	lien
+	No apps match	Aucune application ne correspond
+	Open ArtCraft Launcher to update.	Ouvrez ArtCraft Launcher pour mettre à jour.
+	{name} {v} is available	{name} {v} est disponible
+	{count} updates are available	{count} mises à jour sont disponibles
+	These notes weren't fetched (GitHub's request limit was reached). They're on the release page.	Ces notes n'ont pas pu être récupérées (la limite de requêtes de GitHub a été atteinte). Elles sont sur la page de la version.
+	When on, opening the launcher from the menu bar brings its window to the desktop you're on. When off, macOS switches you to the desktop the window was on.	Si cette option est activée, ouvrir le launcher depuis la barre des menus amène sa fenêtre sur le bureau où vous êtes. Sinon, macOS vous renvoie sur le bureau où se trouvait la fenêtre.
+	Couldn't change the login item: {e}	Impossible de modifier l'élément d'ouverture de session : {e}
 
 # Contextual: table column headers
 column	App	Application
+column	Installed	Installée
+column	Latest	Dernière
+column	Released	Date de publication
 
 # Contextual: the filter tab names a group (the status pill says "Installed")
 filter	Installed	Installées
+	{name} details	Détails de {name}
 
 # Plural forms for French (one|other)
 @plural	{n} app|{n} apps	{n} application|{n} applications
+@plural	{n} min ago|{n} min ago	il y a {n} min|il y a {n} min
+@plural	{n} h ago|{n} h ago	il y a {n} h|il y a {n} h
+@plural	{n} day ago|{n} days ago	il y a {n} jour|il y a {n} jours
 
 # Message templates (@msg): toasts from the backend. {placeholders} match any text.
 @msg	Couldn't open {name}: {e}	Impossible d'ouvrir {name} : {e}
+@msg	Download cancelled	Téléchargement annulé
+@msg	{name} updated to {version}	{name} mis à jour vers {version}
+@msg	{name} installed: {version}	{name} installé : {version}
+@msg	{name} updated to {version} (this release publishes no checksum, so only its size was checked)	{name} mis à jour vers {version} (cette version ne publie pas de somme de contrôle : seule sa taille a été vérifiée)
+@msg	{name} installed: {version} (this release publishes no checksum, so only its size was checked)	{name} installé : {version} (cette version ne publie pas de somme de contrôle : seule sa taille a été vérifiée)
+@msg	{name} was removed	{name} a été supprimé
+@msg	{name} is running. Quit it, then try again.	{name} est en cours d'exécution. Quittez-le, puis réessayez.
+@msg	{name} was installed from the {repo} repository or the AUR ({pkg}). Update it with {cmd} or sudo pacman -Syu	{name} a été installé depuis le dépôt {repo} ou l'AUR ({pkg}). Mettez-le à jour avec {cmd} ou avec sudo pacman -Syu
+@msg	{name} was installed from the {repo} repository or the AUR ({pkg}). Update it with your AUR helper (for example: yay -S {pkg}) or sudo pacman -Syu	{name} a été installé depuis le dépôt {repo} ou l'AUR ({pkg}). Mettez-le à jour avec votre assistant AUR (par exemple : yay -S {pkg}) ou avec sudo pacman -Syu
+@msg	{name} was installed from the AUR ({pkg}). Update it with {cmd}	{name} a été installé depuis l'AUR ({pkg}). Mettez-le à jour avec {cmd}
+@msg	{name} was installed from the AUR ({pkg}). Update it with your AUR helper (for example: yay -S {pkg})	{name} a été installé depuis l'AUR ({pkg}). Mettez-le à jour avec votre assistant AUR (par exemple : yay -S {pkg})
 
 # Command IDs for menu items (@id)
 # Format: @id<TAB>command_id<TAB>translation
 @id	app.install	Installer
+@id	app.update	Mettre à jour vers {v}
+@id	app.open	Ouvrir
+@id	app.download	Télécharger pour {os}
+@id	app.reveal	Afficher dans le Finder
+@id	app.reinstall	Réinstaller
+@id	app.uninstall	Désinstaller…
+@id	app.notes	Notes de version
+@id	app.website	Site web
+@id	app.github	Dépôt GitHub
+@id	app.releases	Toutes les versions
+@id	launcher.update	Mettre à jour et redémarrer
+@id	launcher.download	Télécharger
+@id	launcher.notes	Nouveautés
+@id	launcher.dismiss	Ignorer
+@id	settings.open	Réglages
+@id	settings.quit	Quitter ArtCraft Launcher
+@id	view.grid	Grille
+@id	view.table	Tableau
+@id	filter.all	Toutes
+@id	filter.installed	Installées
+@id	filter.updates	Mises à jour
+@id	filter.notinstalled	Non installées
+@id	sort.suite	Ordre de la suite
+@id	sort.name	Nom
+@id	sort.inspired	Inspirée de
+@id	sort.status	État
+@id	sort.installed	Version installée
+@id	sort.latest	Dernière version
+@id	sort.released	Version la plus récente
+@id	help.discord	Discord
+@id	help.github	GitHub
+@id	help.website	Site web
+@id	update.check	Rechercher des mises à jour
+@id	update.check_auto	Rechercher automatiquement les mises à jour
+@id	update.notify	Me prévenir quand une application installée a une mise à jour
+@id	update.prereleases	Inclure les préversions (bêtas et versions candidates)
+@id	linux.preferred_kind	Installer les nouvelles applications en tant que
+@id	tray.close_to_tray	Rester actif dans la zone de notification à la fermeture de la fenêtre
+@id	tray.show_on_current_desktop	Afficher la fenêtre sur le bureau actuel
+@id	tray.login_item	Lancer ArtCraft Launcher à l'ouverture de session
+@id	appearance.theme	Apparence
 
 # Tray (menu bar) menu and tooltip
+	Show ArtCraft Launcher	Afficher ArtCraft Launcher
+	Check for Updates	Rechercher des mises à jour
+	Visit getartcraft.com	Visiter getartcraft.com
+	ArtCraft on GitHub	ArtCraft sur GitHub
+	Join the ArtCraft Discord	Rejoindre le Discord d'ArtCraft
+	App details	Détails de l'application
+	More actions for {name}	Autres actions pour {name}
+	Close (Esc)	Fermer (Esc)
+	Features	Fonctionnalités
+	Latest release	Dernière version
+	Version	Version
+	Platforms	Plateformes
+	Releases	Versions
+	Enlarge picture	Agrandir l'image
+	Click to enlarge	Cliquer pour agrandir
+	Previous picture (←)	Image précédente (←)
+	Next picture (→)	Image suivante (→)
+	Loading pictures…	Chargement des images…
+	Pictures couldn't be loaded. Reopen this page to try again.	Impossible de charger les images. Rouvrir la page permet de réessayer.
+@plural	ArtCraft Launcher · {n} update available|ArtCraft Launcher · {n} updates available	ArtCraft Launcher · {n} mise à jour disponible|ArtCraft Launcher · {n} mises à jour disponibles
+	Install folder	Dossier d’installation
+	Default install folder	Dossier d’installation par défaut
+	System default	Par défaut du système
+	Browse…	Parcourir…
+	Use default	Par défaut
+	New installs use this folder. Updates stay in their current location.	Les nouvelles installations utilisent ce dossier. Les mises à jour conservent leur emplacement actuel.
+	Custom folders use AppImage on Linux.	Les dossiers personnalisés utilisent AppImage sous Linux.
+	On Linux, custom folders use AppImage format.	Les dossiers personnalisés utilisent AppImage sous Linux.
+	The system manages install locations here.	Le système gère les emplacements d’installation ici.
+@msg	couldn't use install folder {path}: {reason}	impossible d’utiliser le dossier d’installation {path} : {reason}
+@msg	this release has no AppImage for a custom install folder	cette version ne propose pas d’AppImage pour un dossier d’installation personnalisé
+@msg	custom install folders aren't supported on this system	les dossiers d’installation personnalisés ne sont pas pris en charge sur ce système
+@msg	{path} already exists and wasn't installed by ArtCraft Launcher	{path} existe déjà et n’a pas été installé par ArtCraft Launcher
+@msg	couldn't move {path} to Trash ({reason}). Remove it in Finder instead.	impossible de déplacer {path} vers la Corbeille ({reason}). Supprimez-le dans le Finder.
+	Apps are placed inside this folder.	Les applications sont placées dans ce dossier.
+	Replace what's there?	Remplacer l’existant ?
+	{path} already exists. Installing {name} will overwrite it.	{path} existe déjà. L’installation de {name} l’écrasera.
+	Replace	Remplacer
+	Recently updated	Récemment mises à jour
+	Name (A–Z)	Nom (A–Z)
+	Name (Z–A)	Nom (Z–A)
+	Frequently used	Les plus utilisées
+	Next app	Application suivante
+	Previous app	Application précédente
+	Show {n} more changes	Afficher {n} modifications de plus
+	Last updated: {date}	Dernière mise à jour : {date}
+column	Version	Version
+column	Author	Auteur
+	Choose version	Choisir une version
+	latest {version}	dernière {version}
+	{version} (latest release)	{version} (dernière version)
+	Launcher version	Version du lanceur
+	Nightly	Nocturne
+	Nightly (none published yet)	Nocturne (pas encore publiée)
+	Install version {version}	Installer la version {version}
+	Download selected version	Télécharger la version choisie
+	Older launcher versions require a manual reinstall.	Les anciennes versions du lanceur nécessitent une réinstallation manuelle.
+	Your files may not open in older versions.	Tes fichiers pourraient ne pas s’ouvrir avec une ancienne version.
+	Enable automatic installs in Settings to follow new nightly builds.	Active les installations automatiques dans les paramètres pour recevoir les nouvelles versions nocturnes.
 texturecraft	3D texture painting	Peinture de textures 3D
+texturecraft	Paint materials on 3D models and export textures.	Peignez des matériaux sur des modèles 3D et exportez les textures.
+texturecraft	Materials	Matériaux
+texturecraft	Mesh maps	Cartes de maillage
+texturecraft	Bake mesh maps and use smart materials.	Calculez des cartes de maillage et utilisez des matériaux intelligents.
+texturecraft	Paint textures on 3D models.	Peignez des textures sur des modèles 3D.
+	Hide community apps	Masquer les applications communautaires
 materialcraft	Procedural material design	Conception de matériaux procéduraux
+materialcraft	Build materials with node graphs.	Créez des matériaux avec des graphes de nœuds.
+materialcraft	Create tileable PBR materials and export texture maps.	Créez des matériaux PBR répétables sans raccord et exportez des cartes de textures.
+materialcraft	Node graphs	Graphes de nœuds
+materialcraft	Combine noises, patterns and filters.	Combinez bruits, motifs et filtres.
+materialcraft	Live previews	Aperçus en direct
+materialcraft	Preview materials in 2D and on 3D models.	Visualisez les matériaux en 2D et sur des modèles 3D.
+	Advanced	Avancé
+	Migrate Flatpak bundles to ArtCraft OCI (experimental)	Migrer les paquets Flatpak vers ArtCraft OCI (expérimental)
+	On update, switch first party apps when the matching package is available. Otherwise, keep using bundles.	Lors des mises à jour, migrer les applications ArtCraft si le paquet correspondant est disponible. Sinon, continuer à utiliser les paquets autonomes.
+	The OCI repository is a preview with GPG verification disabled.	Le dépôt OCI est une version préliminaire avec la vérification GPG désactivée.
 
 # Diagnostic reports
+	Diagnostic report	Rapport de diagnostic
+	Review this local report before sharing it. Nothing is uploaded automatically.	Vérifiez ce rapport local avant de le partager. Rien n’est envoyé automatiquement.
+	Paths, URLs and recognizable secrets are removed. Other personal details may remain in error messages.	Les chemins, URL et secrets reconnaissables sont supprimés. D’autres données personnelles peuvent rester dans les messages d’erreur.
+	Include recent warning and error logs	Inclure les avertissements et erreurs récents des journaux
+	Preparing report…	Préparation du rapport…
+	Couldn't prepare the report. Try again.	Impossible de préparer le rapport. Réessayez.
+	Couldn't save the report. Check disk space and folder permissions.	Impossible d’enregistrer le rapport. Vérifiez l’espace disque et les permissions du dossier.
+	Saving report…	Enregistrement du rapport…
+	Saved to {path}	Enregistré dans {path}
+	Copy report	Copier le rapport
+	Save report	Enregistrer le rapport
+	Refresh report	Actualiser le rapport
+	Report copied	Rapport copié
+	Troubleshooting	Dépannage
+	Prepare a report to help maintainers investigate installation and startup problems.	Préparez un rapport pour aider les responsables du projet à examiner les problèmes d’installation et de démarrage.

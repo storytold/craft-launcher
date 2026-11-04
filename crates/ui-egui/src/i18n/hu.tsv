@@ -20,9 +20,155 @@
 # {what}, {unit}, {real}, {e} must appear in translation.
 
 	Launcher	Launcher
+	Craft App Suite	Craft App Suite
+	by {name}	készítette: {name}
+	Open Source Tools for Creatives, Makers, and Builders	Nyílt forráskódú eszközök alkotóknak, barkácsolóknak és fejlesztőknek
+	Settings	Beállítások
+	Check for updates	Frissítések keresése
+	Grid	Rács
+	Table	Táblázat
+	Show apps as cards	Alkalmazások megjelenítése kártyákként
+	Show apps as a table	Alkalmazások megjelenítése táblázatként
+	All	Összes
+	Updates	Frissítések
+	Not installed	Nincs telepítve
+	Search apps	Alkalmazások keresése
+	Sort	Rendezés
+	Suite order	Alapértelmezett sorrend
+	Name	Név
+	Inspired by	Mintául szolgált
+	Status	Állapot
+	Installed version	Telepített verzió
+	Latest version	Legújabb verzió
+	Newest release	Legújabb kiadás
+	Discord	Discord
+	GitHub	GitHub
+	Website	Webhely
+	Classic apps	Eredeti alkalmazások
+	New apps	Új alkalmazások
+	NEW	ÚJ
+	Install	Telepítés
+	Update to {v}	Frissítés: {v}
+	Open	Megnyitás
+	Download for {os}	Letöltés {os} rendszerre
+	Download	Letöltés
+	Coming soon	Hamarosan
+	Checking…	Ellenőrzés…
+	Not available	Nem elérhető
+	Offline	Nincs kapcsolat
+	Downloading {done} of {total}	Letöltés: {done} / {total}
+	Downloading…	Letöltés…
+	Reconnecting…	Újracsatlakozás…
+	Verifying…	Fájl ellenőrzése…
+	Installing, then restarting…	Telepítés, majd újraindítás…
+	Installing…	Telepítés…
+	Removing…	Eltávolítás…
+	Pause download	Letöltés szüneteltetése
+	Cancel download	Letöltés megszakítása
+	Resume download	Letöltés folytatása
+	Discard download	Letöltött fájl törlése
+	Release notes	Kiadási információk
+	Show in Finder	Megjelenítés a Finderben
+	Show in Explorer	Megjelenítés a Fájlkezelőben
+	Show in Files	Megjelenítés a fájlkezelőben
+	Reinstall	Újratelepítés
+	Uninstall…	Eltávolítás…
+	All releases	Minden kiadás
+	ArtCraft Launcher {version} is available.	Elérhető az ArtCraft Launcher új verziója: {version}.
+	Dismiss	Elrejtés
+	Update and restart	Frissítés és újraindítás
+	A new version is available. Would you like to relaunch with the updated version?	Új verzió érhető el. Újraindítod az alkalmazást a frissítéshez?
+	A new version is available. Download it to replace this version?	Új verzió érhető el. Letöltöd, hogy lecseréld vele ezt a verziót?
+	Later	Később
+	What's new	Újdonságok
+	No notes were published with this release.	Ehhez a kiadáshoz nem tettek közzé kiadási információkat.
+	Released {date}	Megjelent: {date}
+	Open on GitHub	Megnyitás a GitHubon
+	Close	Bezárás
+	ArtCraft Launcher {version}	ArtCraft Launcher {version}
+	Only when I ask	Csak kézi kereséskor
+	Automatically download and install updates	Frissítések automatikus letöltése és telepítése
+	Notify me when an installed app has an update	Értesítés a telepített alkalmazásokhoz elérhető frissítésekről
+	Include pre-releases (betas and release candidates)	Előzetes kiadások engedélyezése (béta- és kiadásra jelölt verziók)
+	Installing on Linux	Telepítés Linuxon
+	Installing on Windows	Telepítés Windowson
+	Install new apps as	Új alkalmazások csomagformátuma
+	System package (recommended)	Rendszercsomag (ajánlott)
+	Updates always use the format an app was installed with.	A frissítések mindig az eredeti telepítés csomagformátumát használják.
+	Running in the background	Futtatás a háttérben
+	Keep running in the tray when the window is closed	Az ablak bezárásakor kerüljön a tálcára
+	ArtCraft Launcher is still running	Az ArtCraft Launcher továbbra is fut
+	It's in the tray: open it or quit it from the tray icon, or turn this off in the settings.	A tálcára került: az ikonjáról megnyitható vagy bezárható, vagy kapcsolja ki ezt a beállításokban.
+	Show the window on the current desktop	Ablak megjelenítése az aktuális asztalon
+	Start ArtCraft Launcher when I log in	ArtCraft Launcher indítása bejelentkezéskor
+	Community	Közösség
+	Questions, ideas and news from the ArtCraft team	Kérdések, ötletek és hírek az ArtCraft csapatától
+	Appearance	Megjelenés
+	Quit ArtCraft Launcher	Kilépés az ArtCraft Launcherből
+	Done	Kész
+	Uninstall {name}?	{name} eltávolítása?
+	The app will be moved to the Trash. Your documents and settings stay.	Az alkalmazás a Kukába kerül. A dokumentumaid és beállításaid megmaradnak.
+	Windows will remove it like any installed program. Your documents and settings stay.	A Windows úgy távolítja el az alkalmazást, mint bármely más telepített programot. A dokumentumaid és beállításaid megmaradnak.
+	Your system's package manager will remove it, and may ask for your password. Your documents and settings stay.	Az alkalmazást a rendszer csomagkezelője távolítja el. Ehhez szükség lehet a jelszavadra. A dokumentumaid és beállításaid megmaradnak.
+	The app will be removed. Your documents and settings stay.	Eltávolítjuk az alkalmazást. A dokumentumaid és beállításaid megmaradnak.
+	Uninstall	Eltávolítás
+	Cancel	Mégse
+	Checked {ago}	Ellenőrizve: {ago}
+	just now	épp most
+	yesterday	tegnap
+	{month} {day}, {year}	{year}. {month} {day}.
 
+	Automatically	Automatikusan
+	Every Craft app	Minden Craft-alkalmazás
+	Apps on this computer	Alkalmazások ezen a számítógépen
+	Installed apps with a newer version	Telepített alkalmazások, amelyekhez frissítés érhető el
+	Apps you can install	Telepíthető alkalmazások
+	Pin to top	Rögzítés felülre
+	Unpin	Rögzítés feloldása
+	Pinned	Rögzítettek
+	Reorder {name}	Átrendezés: {name}
+	Move up	Feljebb
+	Move down	Lejjebb
+	Hide App	Alkalmazás elrejtése
+	Unhide App	Alkalmazás megjelenítése
+	Hidden Apps	Rejtett alkalmazások
+	Apps you hid	Az általad elrejtett alkalmazások
+	Checked {ago} · using {sources}	Ellenőrizve: {ago} · {sources}
+	{a} and {b}	{a} és {b}
+	Join the Discord	Csatlakozás a Discordhoz
+	Learn more	További információ
+	Minimize	Kis méret
+	Maximize	Teljes méret
+	Restore	Előző méret
+	New	Új
+	OK	OK
+	Open link	Hivatkozás megnyitása
+	Update	Frissítés
+	{name} icon	{name} ikonja
+	Loading ArtCraft Launcher…	ArtCraft Launcher betöltése…
+	Cancel update	Frissítés megszakítása
+	Stop waiting; the update can be started again later	Megszakítja a várakozást. A frissítést később újra elindíthatod.
+	Download again	Újbóli letöltés
+	Install cancelled	Telepítés megszakítva
+	Install cancelled. The download is kept for the next try.	Telepítés megszakítva. A letöltött fájl megmarad a következő próbálkozáshoz.
+	Update cancelled	Frissítés megszakítva
+	Uninstall cancelled	Eltávolítás megszakítva
+	Retry install	Telepítés újrapróbálása
+	Retry update	Frissítés újrapróbálása
+	Retry update to {version}	Frissítés újrapróbálása: {version}
+	The download is still here. It's checked again, then installed.	A letöltött fájl megmaradt. Újra ellenőrizzük, majd telepítjük.
+	Waiting for another app…	Várakozás egy másik alkalmazásra…
+	Waiting for other installs…	Várakozás a többi telepítésre…
 
 # Package formats offered for download (PackageKind::label)
+	Installer (.msi)	Telepítő (.msi)
+	Portable (.zip)	Hordozható (.zip)
+	Disk image (.dmg)	Lemezkép (.dmg)
+	Debian package (.deb)	Debian-csomag (.deb)
+	RPM package (.rpm)	RPM-csomag (.rpm)
+	Arch package (.pkg.tar.zst)	Arch-csomag (.pkg.tar.zst)
+	Flatpak bundle	Flatpak-csomag
+	Tarball (.tar.gz)	Tömörített archívum (.tar.gz)
 
 # Contextual: each app's tagline, keyed by app id
 photocraft	Image editing	Képszerkesztés
@@ -43,25 +189,253 @@ figcraft	Interface design and prototyping	Felülettervezés és prototípus-kés
 
 # Contextual: month abbreviations for date rendering
 month	Jan	jan.
+month	Feb	febr.
+month	Mar	márc.
+month	Apr	ápr.
+month	May	máj.
+month	Jun	jún.
+month	Jul	júl.
+month	Aug	aug.
+month	Sep	szept.
+month	Oct	okt.
+month	Nov	nov.
+month	Dec	dec.
+	Not checked yet	Még nem történt ellenőrzés
+	GitHub's hourly limit was reached; full details return in {min} min	Elértük a GitHub óránkénti lekérdezési korlátját; a részletes adatok {min} perc múlva lesznek újra elérhetők
+	GitHub limit hit; back in {min} min	GitHub-korlát elérve; újrapróbálás {min} perc múlva
+	Installing for {platform}	Telepítés {platform} rendszerre
+	Downloads for {platform}	Letöltések {platform} rendszerre
+	No downloads for this system	Nincsenek letöltések ehhez a rendszerhez
+	Join the ArtCraft community on Discord	Csatlakozz az ArtCraft közösségéhez a Discordon
+	ArtCraft on {name}	ArtCraft – {name}
+	Couldn't open {name}: {e}	{name} nem nyitható meg: {e}
+	Download cancelled	Letöltés megszakítva
+	Available to install	Telepíthető
+	Available	Elérhető
+	Installed · up to date	Telepítve · naprakész
+	Update available	Frissítés elérhető
+	Installed	Telepítve
+	installed	telepítve
+	Not available here	Ezen a rendszeren nem érhető el
+	Updating…	Frissítés…
+	Update paused	Frissítés szüneteltetve
+	Download paused	Letöltés szüneteltetve
+	{version} installed → {latest} released	Telepítve: {version} → megjelent: {latest}
+	Version {version}	Verzió: {version}
+	{installed} installed · latest {latest}	Telepítve: {installed} · legújabb: {latest}
+	Installed · latest {latest}	Telepítve · legújabb: {latest}
+	Version {version} installed	Telepített verzió: {version}
+	Version {latest}	Verzió: {latest}
+	No release published yet	Még nem jelent meg kiadás
+	ArtCraft Launcher	ArtCraft Launcher
+	App	Alkalmazás
+	Latest	Legújabb
+	Released	Megjelent
+	Auto	Automatikus
+	Language	Nyelv
+	Ascending	Növekvő
+	Descending	Csökkenő
+	Click to reverse the order	Kattints a sorrend megfordításához
+	Click to sort by this column	Kattints az oszlop szerinti rendezéshez
+	Like {name}	Mintául szolgált: {name}
+	{done} of {total}	{done} / {total}
+	Downloading	Letöltés folyamatban
+	Verifying checksum…	Ellenőrzőösszeg ellenőrzése…
+	Resume	Folytatás
+	{done} of {total} downloaded	{done} / {total} letöltve
+	{done} downloaded	{done} letöltve
+	Checking for updates…	Frissítések keresése…
+	Downloads the new version, replaces this one and opens it again	Letölti és telepíti az új verziót, majd újraindítja az alkalmazást
+	Couldn't check for updates: {f}	Nem sikerült frissítéseket keresni: {f}
+	Website (coming soon)	Webhely (hamarosan)
+	GitHub repository	GitHub-tároló
+	ArtCraft	ArtCraft
+	Update 1 app	1 alkalmazás frissítése
+	Update all ({count})	Összes frissítése ({count})
+	⊞  Grid	⊞  Rács
+	☰  Table	☰  Táblázat
+	🔍  Search apps	🔍  Alkalmazások keresése
+	{name} {version}	{name} {version}
+	Match system	Rendszerbeállítás szerint
+	Dark	Sötét
+	Light	Világos
+	Full changelog	Teljes változásnapló
+	link	hivatkozás
+	No apps match	Nincs találat
+	Open ArtCraft Launcher to update.	Nyisd meg az ArtCraft Launchert a frissítéshez.
+	{name} {v} is available	Elérhető: {name} {v}
+	{count} updates are available	{count} frissítés elérhető
+	These notes weren't fetched (GitHub's request limit was reached). They're on the release page.	A kiadási információkat nem sikerült betölteni, mert elértük a GitHub lekérdezési korlátját. A kiadás oldalán megtalálod őket.
+	When on, opening the launcher from the menu bar brings its window to the desktop you're on. When off, macOS switches you to the desktop the window was on.	Ha be van kapcsolva, a menüsorból megnyitott ArtCraft Launcher ablaka az aktuális asztalon jelenik meg. Ha ki van kapcsolva, a macOS arra az asztalra vált, ahol az ablak található.
+	Couldn't change the login item: {e}	Az automatikus indítás beállítását nem sikerült módosítani: {e}
 
 # Contextual: table column headers
 column	App	Alkalmazás
+column	Installed	Telepített
+column	Latest	Legújabb
+column	Released	Dátum
 
 # Contextual: the filter tab names a group (the status pill says "Installed")
 filter	Installed	Telepítve
+	App details	Alkalmazás részletei
+	More actions for {name}	További műveletek: {name}
+	Close (Esc)	Bezárás (Esc)
+	Features	Funkciók
+	Latest release	Legújabb kiadás
+	Version	Verzió
+	Platforms	Platformok
+	Releases	Kiadások
+	Enlarge picture	Kép nagyítása
+	Click to enlarge	Kattints a nagyításhoz
+	Previous picture (←)	Előző kép (←)
+	Next picture (→)	Következő kép (→)
+	Loading pictures…	Képek betöltése…
+	Pictures couldn't be loaded. Reopen this page to try again.	A képeket nem sikerült betölteni. Nyisd meg újra az oldalt, és újra megpróbáljuk.
+	{name} details	{name} – részletek
 
 # Plural forms for Hungarian (one|other). After a number the noun stays singular.
 @plural	{n} app|{n} apps	{n} alkalmazás|{n} alkalmazás
+@plural	{n} min ago|{n} min ago	{n} perce|{n} perce
+@plural	{n} h ago|{n} h ago	{n} órája|{n} órája
+@plural	{n} day ago|{n} days ago	{n} napja|{n} napja
 
 # Message templates (@msg): toasts from the backend. {placeholders} match any text.
 @msg	Couldn't open {name}: {e}	{name} nem nyitható meg: {e}
+@msg	Download cancelled	Letöltés megszakítva
+@msg	{name} updated to {version}	{name} frissítve. Verzió: {version}
+@msg	{name} installed: {version}	{name} telepítve: {version}
+@msg	{name} updated to {version} (this release publishes no checksum, so only its size was checked)	{name} frissítve. Verzió: {version} (ehhez a kiadáshoz nem adtak meg ellenőrzőösszeget, ezért csak a fájl méretét ellenőriztük)
+@msg	{name} installed: {version} (this release publishes no checksum, so only its size was checked)	{name} telepítve: {version} (ehhez a kiadáshoz nem adtak meg ellenőrzőösszeget, ezért csak a fájl méretét ellenőriztük)
+@msg	{name} was removed	{name} eltávolítva
+@msg	{name} is running. Quit it, then try again.	{name} fut. Zárd be, majd próbáld újra.
+@msg	{name} was installed from the {repo} repository or the AUR ({pkg}). Update it with {cmd} or sudo pacman -Syu	{name} a(z) {repo} tárolóból vagy az AUR-ból lett telepítve ({pkg}). Frissítsd ezzel: {cmd} vagy sudo pacman -Syu
+@msg	{name} was installed from the {repo} repository or the AUR ({pkg}). Update it with your AUR helper (for example: yay -S {pkg}) or sudo pacman -Syu	{name} a(z) {repo} tárolóból vagy az AUR-ból lett telepítve ({pkg}). Frissítsd az AUR-segédeddel (például: yay -S {pkg}) vagy ezzel: sudo pacman -Syu
+@msg	{name} was installed from the AUR ({pkg}). Update it with {cmd}	{name} az AUR-ból lett telepítve ({pkg}). Frissítsd ezzel: {cmd}
+@msg	{name} was installed from the AUR ({pkg}). Update it with your AUR helper (for example: yay -S {pkg})	{name} az AUR-ból lett telepítve ({pkg}). Frissítsd az AUR-segédeddel (például: yay -S {pkg})
 
 # Command IDs for menu items (@id)
 # Format: @id<TAB>command_id<TAB>translation
 @id	app.install	Telepítés
+@id	app.update	Frissítés: {v}
+@id	app.open	Megnyitás
+@id	app.download	Letöltés {os} rendszerre
+@id	app.reveal	Megjelenítés a Finderben
+@id	app.reinstall	Újratelepítés
+@id	app.uninstall	Eltávolítás…
+@id	app.notes	Kiadási információk
+@id	app.website	Webhely
+@id	app.github	GitHub-tároló
+@id	app.releases	Minden kiadás
+@id	launcher.update	Frissítés és újraindítás
+@id	launcher.download	Letöltés
+@id	launcher.notes	Újdonságok
+@id	launcher.dismiss	Elrejtés
+@id	settings.open	Beállítások
+@id	settings.quit	Kilépés az ArtCraft Launcherből
+@id	view.grid	Rács
+@id	view.table	Táblázat
+@id	filter.all	Összes
+@id	filter.installed	Telepítve
+@id	filter.updates	Frissítések
+@id	filter.notinstalled	Nincs telepítve
+@id	sort.suite	Alapértelmezett sorrend
+@id	sort.name	Név
+@id	sort.inspired	Mintául szolgált
+@id	sort.status	Állapot
+@id	sort.installed	Telepített verzió
+@id	sort.latest	Legújabb verzió
+@id	sort.released	Legújabb kiadás
+@id	help.discord	Discord
+@id	help.github	GitHub
+@id	help.website	Webhely
+@id	update.check	Frissítések keresése
+@id	update.check_auto	Frissítések automatikus keresése
+@id	update.notify	Értesítés a telepített alkalmazásokhoz elérhető frissítésekről
+@id	update.prereleases	Előzetes kiadások engedélyezése (béta- és kiadásra jelölt verziók)
+@id	linux.preferred_kind	Új alkalmazások csomagformátuma
+@id	tray.close_to_tray	Az ablak bezárásakor kerüljön a tálcára
+@id	tray.show_on_current_desktop	Ablak megjelenítése az aktuális asztalon
+@id	tray.login_item	ArtCraft Launcher indítása bejelentkezéskor
+@id	appearance.theme	Megjelenés
 
 # Tray (menu bar) menu and tooltip
+	Show ArtCraft Launcher	ArtCraft Launcher megjelenítése
+	Check for Updates	Frissítések keresése
+	Visit getartcraft.com	getartcraft.com megnyitása
+	ArtCraft on GitHub	ArtCraft a GitHubon
+	Join the ArtCraft Discord	Csatlakozás az ArtCraft Discord-közösségéhez
+@plural	ArtCraft Launcher · {n} update available|ArtCraft Launcher · {n} updates available	ArtCraft Launcher · {n} frissítés elérhető|ArtCraft Launcher · {n} frissítés elérhető
+	Install folder	Telepítési mappa
+	Default install folder	Alapértelmezett telepítési mappa
+	System default	Rendszer alapértelmezése
+	Browse…	Tallózás…
+	Use default	Alapértelmezett használata
+	New installs use this folder. Updates stay in their current location.	Az új telepítések ezt a mappát használják. A frissítések a jelenlegi helyükön maradnak.
+	Custom folders use AppImage on Linux.	Linuxon az egyéni mappákhoz AppImage szükséges.
+	On Linux, custom folders use AppImage format.	Linuxon az egyéni mappákhoz AppImage szükséges.
+	The system manages install locations here.	Itt a rendszer kezeli a telepítési helyeket.
+@msg	couldn't use install folder {path}: {reason}	a(z) {path} telepítési mappa nem használható: {reason}
+@msg	this release has no AppImage for a custom install folder	ez a kiadás nem tartalmaz AppImage-fájlt egyéni telepítési mappához
+@msg	custom install folders aren't supported on this system	ezen a rendszeren nem támogatottak az egyéni telepítési mappák
+@msg	{path} already exists and wasn't installed by ArtCraft Launcher	a(z) {path} már létezik, és nem az ArtCraft Launcher telepítette
+@msg	couldn't move {path} to Trash ({reason}). Remove it in Finder instead.	a(z) {path} nem helyezhető a Kukába ({reason}). Távolítsa el a Finderben.
+	Apps are placed inside this folder.	Az alkalmazások ebbe a mappába kerülnek.
+	Replace what's there?	Lecseréli, ami ott van?
+	{path} already exists. Installing {name} will overwrite it.	{path} már létezik. A(z) {name} telepítése felülírja.
+	Replace	Csere
+	Recently updated	Nemrég frissítve
+	Name (A–Z)	Név (A–Z)
+	Name (Z–A)	Név (Z–A)
+	Frequently used	Leggyakrabban használt
+	Next app	Következő alkalmazás
+	Previous app	Előző alkalmazás
+	Show {n} more changes	{n} további változás megjelenítése
+	Last updated: {date}	Utoljára frissítve: {date}
+column	Version	Verzió
+column	Author	Szerző
+	Choose version	Verzió kiválasztása
+	latest {version}	legújabb: {version}
+	{version} (latest release)	{version} (legújabb kiadás)
+	Launcher version	Az indító verziója
+	Nightly	Éjszakai kiadás
+	Nightly (none published yet)	Éjszakai kiadás (még nincs)
+	Install version {version}	A(z) {version} verzió telepítése
+	Download selected version	Kiválasztott verzió letöltése
+	Older launcher versions require a manual reinstall.	Az indító régebbi verzióit kézzel kell újratelepíteni.
+	Your files may not open in older versions.	Előfordulhat, hogy a régebbi verziók nem tudják megnyitni a fájljaidat.
+	Enable automatic installs in Settings to follow new nightly builds.	Az új éjszakai kiadások követéséhez kapcsold be az automatikus telepítést a beállításokban.
 texturecraft	3D texture painting	3D textúrafestés
+texturecraft	Paint materials on 3D models and export textures.	Fess anyagokat 3D modellekre, és exportáld a textúrákat.
+texturecraft	Materials	Anyagok
+texturecraft	Mesh maps	Hálótérképek
+texturecraft	Bake mesh maps and use smart materials.	Süss ki hálótérképeket, és használj intelligens anyagokat.
+texturecraft	Paint textures on 3D models.	Fess textúrákat 3D modellekre.
+	Hide community apps	Közösségi alkalmazások elrejtése
 materialcraft	Procedural material design	Procedurális anyagtervezés
+materialcraft	Build materials with node graphs.	Készíts anyagokat csomópontgráfokkal.
+materialcraft	Create tileable PBR materials and export texture maps.	Készíts hézagmentesen ismételhető PBR-anyagokat, és exportálj textúratérképeket.
+materialcraft	Node graphs	Csomópontgráfok
+materialcraft	Combine noises, patterns and filters.	Kombinálj zajokat, mintákat és szűrőket.
+materialcraft	Live previews	Élő előnézetek
+materialcraft	Preview materials in 2D and on 3D models.	Tekintsd meg az anyagokat 2D-ben és 3D modelleken.
+	Advanced	Haladó
+	Migrate Flatpak bundles to ArtCraft OCI (experimental)	Flatpak-csomagok átállítása ArtCraft OCI-ra (kísérleti)
+	On update, switch first party apps when the matching package is available. Otherwise, keep using bundles.	Frissítéskor állítsa át az ArtCraft alkalmazásait, ha elérhető a megfelelő csomag. Egyébként továbbra is önálló csomagokat használjon.
+	The OCI repository is a preview with GPG verification disabled.	Az OCI-tároló előzetes verzió, kikapcsolt GPG-ellenőrzéssel.
 
 # Diagnostic reports
+	Diagnostic report	Diagnosztikai jelentés
+	Review this local report before sharing it. Nothing is uploaded automatically.	Megosztás előtt nézd át ezt a helyi jelentést. Semmi sem töltődik fel automatikusan.
+	Paths, URLs and recognizable secrets are removed. Other personal details may remain in error messages.	Az útvonalak, URL-ek és felismerhető titkos adatok eltávolításra kerülnek. A hibaüzenetekben más személyes adatok megmaradhatnak.
+	Include recent warning and error logs	Legutóbbi figyelmeztetések és hibák hozzáadása a naplókból
+	Preparing report…	Jelentés készítése…
+	Couldn't prepare the report. Try again.	Nem sikerült elkészíteni a jelentést. Próbáld újra.
+	Couldn't save the report. Check disk space and folder permissions.	Nem sikerült menteni a jelentést. Ellenőrizd a lemezterületet és a mappa jogosultságait.
+	Saving report…	Jelentés mentése…
+	Saved to {path}	Mentve ide: {path}
+	Copy report	Jelentés másolása
+	Save report	Jelentés mentése
+	Refresh report	Jelentés frissítése
+	Report copied	Jelentés másolva
+	Troubleshooting	Hibaelhárítás
+	Prepare a report to help maintainers investigate installation and startup problems.	Készíts jelentést, hogy segíts a karbantartóknak kivizsgálni a telepítési és indítási problémákat.

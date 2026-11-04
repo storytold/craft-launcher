@@ -371,6 +371,9 @@ mod tests {
                 source: InstallSource::Msi,
                 location: dir.path().join("Alice Private.exe").to_string_lossy().into(),
                 package: None,
+                externally_managed: false,
+                origin: None,
+                installation: None,
             },
         );
         data.failures.push(Failure::new("photocraft", "job", r"couldn't start C:\Users\Alice\private.exe (error 5)"));
