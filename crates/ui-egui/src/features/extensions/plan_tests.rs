@@ -38,6 +38,7 @@ fn row(id: &str, name: &str, apps: &[&str], enabled: &[&str], worn: &[&str]) -> 
         enabled: set(enabled),
         worn: set(worn),
         palette: Some(palette()),
+        thumbnail: None,
     }
 }
 

@@ -12,6 +12,7 @@
 pub mod builtin;
 pub mod card;
 mod cards;
+mod lists;
 pub mod plan;
 pub mod sample;
 mod screen;
@@ -22,13 +23,14 @@ mod tests;
 use craft_ext_core::id::ExtensionId;
 
 pub use plan::Focus;
-pub use source::{ExtensionSource, Row};
+pub use source::{ExtensionSource, Row, Thumbnail};
 
 /// Which list the screen shows.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub(crate) enum Tab {
     #[default]
     Themes,
+    Plugins,
     Installed,
 }
 
@@ -45,9 +47,13 @@ pub(crate) struct State {
     /// The Extensions page is showing instead of the apps.
     pub open: bool,
     pub tab: Tab,
+    /// Cards or rows, once the person has chosen; until then themes are cards and the rest rows.
+    pub view: Option<crate::settings::ViewMode>,
     /// What another app asked the page to narrow to; empty when the person opened it themselves.
     pub focus: Focus,
     pub rows: Vec<Row>,
+    /// This source contains examples only, not installed packages.
+    pub demo: bool,
     /// The store's generation when `rows` was read.
     pub generation: u64,
     /// `rows` has been read at least once since the page opened.

@@ -97,6 +97,26 @@ pub fn ordered_in<'a>(rows: &'a [Row], focus: &Focus) -> Vec<&'a Row> {
     out
 }
 
+/// Plug-ins under each compatible app, with apps and names in display order. A plug-in that
+/// works in several apps appears in each section but remains one installed extension.
+pub fn plugins_by_app<'a>(rows: &'a [Row], focus: &Focus) -> Vec<(AppId, Vec<&'a Row>)> {
+    let mut groups = std::collections::BTreeMap::<AppId, Vec<&Row>>::new();
+    for row in rows.iter().filter(|r| r.kind == Kind::Plugin && focus.keeps(r)) {
+        for app in &row.apps {
+            if focus.app.as_ref().is_none_or(|chosen| chosen == app) {
+                groups.entry(app.clone()).or_default().push(row);
+            }
+        }
+    }
+    let mut groups: Vec<_> = groups.into_iter().collect();
+    for (_, plugins) in &mut groups {
+        plugins.sort_by(by_name);
+        plugins.dedup_by(|a, b| a.id == b.id);
+    }
+    groups.sort_by(|(a, _), (b, _)| app_name(a).to_lowercase().cmp(&app_name(b).to_lowercase()).then_with(|| a.cmp(b)));
+    groups
+}
+
 /// The tab and focus for a place another app asked for. A kind other than themes lands on the
 /// full list; a value that is not an app id or a kind is dropped, and the page opens unfocused.
 /// Returns the focus together with the tab to show.

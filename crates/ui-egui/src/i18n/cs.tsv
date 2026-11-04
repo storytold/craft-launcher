@@ -13,12 +13,22 @@
 	Grid	Mřížka
 	Table	Tabulka
 	Show apps as cards	Zobrazit aplikace jako karty
+	Show add-ons as cards	Zobrazit rozšíření jako karty
+	Show add-ons as a list	Zobrazit rozšíření jako seznam
 	Show apps as a table	Zobrazit aplikace v tabulce
 	All	Vše
 	Updates	Aktualizace
 	Not installed	Nenainstalované
 	Search apps	Hledat aplikace
 	Sort	Seřadit
+	Recently updated	Nedávno aktualizované
+	Name (A–Z)	Název (A–Z)
+	Name (Z–A)	Název (Z–A)
+	Frequently used	Nejčastěji používané
+	Next app	Další aplikace
+	Previous app	Předchozí aplikace
+	Show {n} more changes	Zobrazit dalších změn: {n}
+	Last updated: {date}	Naposledy aktualizováno: {date}
 	Suite order	Pořadí v sadě
 	Name	Název
 	Inspired by	Inspirace
@@ -237,6 +247,7 @@ month	Dec	12.
 column	App	Aplikace
 column	Installed	Nainstalováno
 column	Latest	Nejnovější
+column	Version	Verze
 column	Released	Vydáno
 filter	Installed	Nainstalováno
 	App details	Podrobnosti o aplikaci
@@ -331,6 +342,7 @@ filter	Installed	Nainstalováno
 	{path} already exists. Installing {name} will overwrite it.	{path} už existuje. Instalace aplikace {name} ho přepíše.
 	Replace	Nahradit
 # Extensions screen
+	Example data, not installed	Ukázková data, nejsou nainstalována
 	Apps	Aplikace
 	Install and update Craft apps	Instalace a aktualizace aplikací Craft
 	Extensions	Rozšíření
@@ -340,6 +352,10 @@ filter	Installed	Nainstalováno
 	Themes	Motivy
 	Colour themes for your Craft apps	Barevné motivy pro aplikace Craft
 	Everything you have added	Vše, co jste přidali
+	Add-ons	Rozšíření
+	Couldn't read your installed add-ons: {reason}	Nepodařilo se načíst nainstalovaná rozšíření: {reason}
+	Themes, plug-ins and resources for your Craft apps	Motivy, doplňky a prostředky pro vaše aplikace Craft
+	Thumbnail for {name}	Náhled: {name}
 	Couldn't read the installed extensions: {reason}	Nainstalovaná rozšíření se nepodařilo načíst: {reason}
 	Add an extension	Přidat rozšíření
 	Added {name}	Přidáno: {name}
@@ -537,6 +553,7 @@ filter	Installed	Nainstalováno
 	Showing only {what}	Zobrazeno pouze: {what}
 	works with {app}	funguje s {app}
 	themes	motivy
+	Plug-ins	Doplňky
 	plug-ins	doplňky
 	resources	zdroje
 	Show all	Zobrazit vše
@@ -544,3 +561,5 @@ filter	Installed	Nainstalováno
 	Built into {app}	Součást aplikace {app}
 	Choose it inside {app}	Vyberte ho v aplikaci {app}
 	In use	Používá se
+	Model folders	Složky modelů
+	Where you keep your models on this computer	Kde na tomto počítači uchováváte své modely

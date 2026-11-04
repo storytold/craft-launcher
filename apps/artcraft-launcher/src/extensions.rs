@@ -6,12 +6,13 @@
 
 use std::collections::HashMap;
 use std::fs::File;
-use std::io::Read;
+use std::io::{Cursor, Read};
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 
-use artcraft_launcher_ui_egui::features::extensions::{ExtensionSource, Row};
+use artcraft_launcher_ui_egui::features::extensions::{ExtensionSource, Row, Thumbnail};
 use craft_ext_core::id::{AppId, ExtensionId};
-use craft_ext_core::manifest::{Kind, THEME_FILE};
+use craft_ext_core::manifest::{Kind, MAX_THUMBNAIL_BYTES, PLUGIN_THUMBNAIL_FILE, THEME_FILE};
 use craft_ext_core::palette::{MAX_THEME_BYTES, Palette, ThemeFile};
 use craft_ext_core::tier::Tier;
 use craft_ext_core::version::Version;
@@ -24,6 +25,8 @@ pub struct DesktopStore {
     reader: Reader,
     /// Palettes already read, by extension and version. A package folder is never edited after install.
     palettes: HashMap<(ExtensionId, Version), Palette>,
+    /// Validated PNGs are decoded once, and cheap shared bytes go to each compatible app row.
+    thumbnails: HashMap<(ExtensionId, Version), Thumbnail>,
 }
 
 impl DesktopStore {
@@ -33,7 +36,7 @@ impl DesktopStore {
     }
 
     pub fn at(root: PathBuf) -> Self {
-        Self { store: Store::at(&root), reader: Reader::open(root), palettes: HashMap::new() }
+        Self { store: Store::at(&root), reader: Reader::open(root), palettes: HashMap::new(), thumbnails: HashMap::new() }
     }
 
     fn palette(&mut self, id: &ExtensionId, version: Version) -> Option<Palette> {
@@ -47,6 +50,29 @@ impl DesktopStore {
         self.palettes.insert((id.clone(), version), palette.clone());
         Some(palette)
     }
+
+    fn thumbnail(&mut self, id: &ExtensionId, version: Version) -> Option<Thumbnail> {
+        if let Some(found) = self.thumbnails.get(&(id.clone(), version)) {
+            return Some(found.clone());
+        }
+        let path = self.store.package_dir(id, version).join(PLUGIN_THUMBNAIL_FILE);
+        let mut bytes = Vec::new();
+        File::open(path).ok()?.take(MAX_THUMBNAIL_BYTES + 1).read_to_end(&mut bytes).ok()?;
+        if bytes.len() as u64 > MAX_THUMBNAIL_BYTES {
+            return None;
+        }
+        // The store checked it at install; check again in case its files were edited afterwards.
+        let mut reader = image::ImageReader::with_format(Cursor::new(&bytes), image::ImageFormat::Png);
+        let mut limits = image::Limits::default();
+        limits.max_image_width = Some(512);
+        limits.max_image_height = Some(512);
+        limits.max_alloc = Some(8 * 1024 * 1024);
+        reader.limits(limits);
+        reader.decode().ok()?;
+        let thumbnail = Thumbnail::from_bytes(Arc::from(bytes));
+        self.thumbnails.insert((id.clone(), version), thumbnail.clone());
+        Some(thumbnail)
+    }
 }
 
 impl ExtensionSource for DesktopStore {
@@ -59,6 +85,7 @@ impl ExtensionSource for DesktopStore {
         let mut rows = Vec::with_capacity(state.installed.len());
         for i in &state.installed {
             let palette = if i.kind == Kind::Theme { self.palette(&i.id, i.version) } else { None };
+            let thumbnail = if i.kind == Kind::Plugin && i.thumbnail { self.thumbnail(&i.id, i.version) } else { None };
             rows.push(Row {
                 id: i.id.clone(),
                 version: i.version,
@@ -69,9 +96,11 @@ impl ExtensionSource for DesktopStore {
                 enabled: i.apps.iter().filter(|a| state.is_enabled(a, &i.id)).cloned().collect(),
                 worn: state.active_theme.iter().filter(|(_, chosen)| **chosen == i.id).map(|(app, _)| app.clone()).collect(),
                 palette,
+                thumbnail,
             });
         }
         self.palettes.retain(|(id, version), _| state.installed.iter().any(|i| &i.id == id && i.version == *version));
+        self.thumbnails.retain(|(id, version), _| state.installed.iter().any(|i| &i.id == id && i.version == *version));
         Ok(rows)
     }
 

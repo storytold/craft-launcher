@@ -92,7 +92,7 @@ impl ConnectionsPort for DesktopConnections {
         };
         self.unstartable = None;
         runner.start(match target {
-            TestTarget::Draft(d) => craft_ai_client::TestTarget::Draft(d),
+            TestTarget::Draft(d) => craft_ai_client::TestTarget::Draft(*d),
             TestTarget::Saved(id) => craft_ai_client::TestTarget::Saved(id),
         });
     }
@@ -186,7 +186,7 @@ mod tests {
         let l = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
         d.endpoint = format!("http://127.0.0.1:{}/v1", l.local_addr().unwrap().port());
         drop(l);
-        port.start_test(TestTarget::Draft(d));
+        port.start_test(TestTarget::Draft(Box::new(d)));
         let answer = wait(&mut port).expect("an answer within 10 s");
         assert!(answer.is_err());
     }
@@ -196,7 +196,7 @@ mod tests {
         let (mut port, _dir) = adapter();
         // Two tests started back to back: only the second one's answer is wanted.
         let bad = ConnectionDraft::from_preset(&PRESETS[0]); // no key: fails fast, as the first test
-        port.start_test(TestTarget::Draft(bad));
+        port.start_test(TestTarget::Draft(Box::new(bad)));
         port.start_test(TestTarget::Saved(ConnectionId::new("nope").unwrap()));
         let answer = wait(&mut port).unwrap().unwrap_err();
         assert!(answer.contains("nope"), "the answer is the second test's: {answer}");

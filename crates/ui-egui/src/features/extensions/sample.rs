@@ -4,6 +4,7 @@
 
 use std::collections::BTreeSet;
 use std::path::Path;
+use std::sync::Arc;
 
 use craft_ext_core::id::{AppId, ExtensionId};
 use craft_ext_core::manifest::Kind;
@@ -11,12 +12,13 @@ use craft_ext_core::palette::{Palette, Rgb};
 use craft_ext_core::tier::Tier;
 use craft_ext_core::version::Version;
 
-use super::source::{ExtensionSource, Row};
+use super::source::{ExtensionSource, Row, Thumbnail};
 
 #[derive(Clone, Debug)]
 pub struct SampleSource {
     rows: Vec<Row>,
     generation: u64,
+    demo: bool,
 }
 
 fn rgb(hex: u32) -> Rgb {
@@ -51,6 +53,7 @@ fn row(id: &str, name: &str, tier: Tier, apps: &[&str], palette: Palette) -> Opt
         apps,
         worn: BTreeSet::new(),
         palette: Some(palette),
+        thumbnail: None,
     })
 }
 
@@ -80,8 +83,20 @@ impl Default for SampleSource {
                 palette(true, [0x0b2530, 0x12384a, 0xe6f4f7, 0xa6c8d2, 0x2c5b6e, 0x3fd6b8]),
             ),
         ];
-        Self { rows: rows.into_iter().flatten().collect(), generation: 1 }
+        Self { rows: rows.into_iter().flatten().collect(), generation: 1, demo: false }
     }
+}
+
+/// Original, made-up pictures for the example plug-ins, never shown as installed packages.
+fn demo_thumbnail(id: &str) -> Option<Thumbnail> {
+    let bytes: &'static [u8] = match id {
+        "org.storytold.contact-sheet" => include_bytes!("../../../assets/demo/plugin-thumbnails/contact-sheet.png"),
+        "org.example.batch-rename" => include_bytes!("../../../assets/demo/plugin-thumbnails/batch-rename.png"),
+        "org.example.watermark-stamp" => include_bytes!("../../../assets/demo/plugin-thumbnails/watermark-stamp.png"),
+        "org.example.palette-from-photo" => include_bytes!("../../../assets/demo/plugin-thumbnails/palette-from-photo.png"),
+        _ => return None,
+    };
+    Some(Thumbnail::from_bytes(Arc::from(bytes)))
 }
 
 /// Something installed that is not a theme (no colours), switched on for every app it is made for.
@@ -89,6 +104,9 @@ fn thing(kind: Kind, id: &str, name: &str, tier: Tier, apps: &[&str]) -> Option<
     let mut r = row(id, name, tier, apps, palette(true, [0; 6]))?;
     r.kind = kind;
     r.palette = None;
+    if kind == Kind::Plugin {
+        r.thumbnail = demo_thumbnail(id);
+    }
     Some(r)
 }
 
@@ -97,7 +115,7 @@ impl SampleSource {
     /// in use), plug-ins and resources from each kind of source, and a few switched off. Names and
     /// colours are made up. The desktop app shows it only when started with `--demo-data`.
     pub fn demo() -> Self {
-        let mut source = Self::default();
+        let mut source = Self { demo: true, ..Self::default() };
         let suite = ["photocraft", "lightcraft", "pdfcraft"];
         let more = [
             row(
@@ -173,6 +191,10 @@ impl SampleSource {
 }
 
 impl ExtensionSource for SampleSource {
+    fn is_demo(&self) -> bool {
+        self.demo
+    }
+
     fn generation(&mut self) -> u64 {
         self.generation
     }

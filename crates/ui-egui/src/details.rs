@@ -1,5 +1,6 @@
-//! An app's details drawer: it slides in from the right over a dimmed grid. Hand-written copy and
-//! screenshots come from `core::details`; the live facts (version, date, download size, release
+//! An app's details page: a card that pops up in the middle of the window over a dimmed grid, with
+//! arrows to the next and previous app and a click anywhere outside it to close. Hand-written copy
+//! and screenshots come from `core::details`; the live facts (version, date, download size, release
 //! notes) from the app's latest GitHub release.
 
 use artcraft_launcher_core::CraftApp;
@@ -13,17 +14,19 @@ use egui::{Color32, CornerRadius, Id, Margin, Order, Rect, RichText, Sense, Stro
 use crate::app::LauncherUi;
 use crate::model::AppEntry;
 use crate::theme::{self, Tokens, rgb, tint};
-use crate::views::{FOOTER_H, HEADER_H, date_text};
+use crate::views::date_text;
 use crate::widgets::{self, Glyph, Kind};
 
 /// Screenshots are 8:5.
 const SHOT_ASPECT: f32 = 0.625;
-const PAD: f32 = 24.0;
+const PAD: f32 = theme::PAD;
 /// As tall as the name, headline, "Like …" and version lines beside it, so the icon fills the row.
 const ICON: f32 = 112.0;
 /// The previous / next buttons over a picture.
 const ARROW: f32 = 36.0;
 const SLIDE_SECS: f32 = 0.22;
+/// The width of the main button and its menu in the page's top, when the page is wide.
+const ACTION_W: f32 = 300.0;
 
 /// A details picture, as the backend has sent it.
 pub(crate) enum Picture {
@@ -113,46 +116,120 @@ impl LauncherUi {
         self.details_keys(ctx, details, open);
 
         let t = Tokens::get(ctx);
-        let area = drawer_area(ctx);
-        let width = (area.width() * 0.5).clamp(440.0, 680.0).min(area.width());
-        let left = area.right() - width * k;
+        // The whole window is the backdrop; the card sits in the middle and rises a little as it fades in.
+        let area = ctx.content_rect();
+        let width = (area.width() - 64.0).clamp(480.0, 1280.0).min((area.width() - 16.0).max(1.0));
+        let height = (area.height() - 40.0).clamp(320.0, 1000.0).min((area.height() - 8.0).max(1.0));
+        // Wide enough, the page reads in two columns: the pictures and the story, then the facts.
+        let wide = width >= theme::PAGE_COLUMNS_FROM;
+        let panel = Rect::from_center_size(area.center() + vec2(0.0, (1.0 - k) * 24.0), vec2(width, height));
+        let (previous, next) = self.neighbour_apps(&id);
         self.details_scrim(ctx, area, k, &t);
-
-        // Not constrained to the screen: the drawer is partly off it while it slides, and a constrained
-        // area would keep its contents in place while only the panel behind them moved.
-        egui::Area::new(Id::new("details-drawer")).order(Order::Foreground).fixed_pos(pos2(left, area.top())).constrain(false).show(ctx, |ui| {
-            let panel = Rect::from_min_size(pos2(left, area.top()), vec2(width, area.height()));
+        egui::Area::new(Id::new("details-drawer")).order(Order::Foreground).fixed_pos(panel.min).constrain(false).show(ctx, |ui| {
+            ui.set_opacity(k.clamp(0.0, 1.0));
             let painter = ui.painter();
             painter.add(theme::shadow(&t).as_shape(panel, CornerRadius::ZERO));
             painter.rect_filled(panel, CornerRadius::ZERO, t.bg);
-            painter.vline(panel.left() + 0.5, panel.y_range(), Stroke::new(1.0, t.line_strong));
+            painter.rect_stroke(panel, CornerRadius::ZERO, Stroke::new(1.0, t.line_strong), egui::StrokeKind::Inside);
 
             ui.set_min_size(panel.size());
             ui.set_max_size(panel.size());
-            // A bar that stays on screen says there is more below the fold. egui's default one is
-            // floating and invisible until the pointer is over it, so the drawer uses the solid style.
-            ui.spacing_mut().scroll = egui::style::ScrollStyle::solid();
-            egui::ScrollArea::vertical().auto_shrink([false, false]).show(ui, |ui| {
+            // A bar that stays on screen says there is more below the fold; in the app's colour.
+            let page_visuals = crate::sheet::accent_scroll(ui, &t, t.app_ink(entry.app));
+            // One scroll position per app, so the next app opens at its top.
+            egui::ScrollArea::vertical().id_salt(("details-scroll", id.clone())).auto_shrink([false, false]).show(ui, |ui| {
+                // The bar's colours are for the bar alone.
+                *ui.visuals_mut() = page_visuals;
                 ui.set_width(ui.available_width());
                 ui.spacing_mut().item_spacing.y = 8.0;
-                self.details_hero(ui, &entry, details, &t);
+                self.details_hero(ui, &entry, details, &t, (previous.as_deref(), next.as_deref()), wide);
                 egui::Frame::new().inner_margin(Margin::same(PAD as i8)).show(ui, |ui| {
                     ui.set_width(ui.available_width());
-                    self.gallery(ui, details, &t, rgb(entry.app.color));
-                    ui.add_space(8.0);
-                    for p in details.paragraphs() {
-                        ui.add(egui::Label::new(RichText::new(p).size(14.5).color(t.ink)).wrap());
+                    let app_color = rgb(entry.app.color);
+                    if wide && details.shots.is_empty() {
+                        // No pictures to fill the left side: the story and features share it, and the
+                        // release facts take the right, so neither side is left empty.
+                        let gap = theme::COLUMN_GAP;
+                        let total = ui.available_width();
+                        let left_w = ((total - gap) * 0.58).floor();
+                        let right_w = total - gap - left_w;
+                        ui.horizontal_top(|ui| {
+                            ui.spacing_mut().item_spacing.x = gap;
+                            ui.vertical(|ui| {
+                                ui.set_width(left_w);
+                                ui.spacing_mut().item_spacing.y = 8.0;
+                                for p in details.paragraphs() {
+                                    ui.add(egui::Label::new(RichText::new(p).size(14.5).color(t.ink)).wrap());
+                                }
+                                ui.add_space(14.0);
+                                features(ui, details, entry.app, &t);
+                            });
+                            ui.vertical(|ui| {
+                                ui.set_width(right_w);
+                                ui.spacing_mut().item_spacing.y = 8.0;
+                                self.release_section(ui, &entry, details, &t, 2);
+                            });
+                        });
+                    } else if wide {
+                        let gap = theme::COLUMN_GAP;
+                        let total = ui.available_width();
+                        let left_w = ((total - gap) * 0.58).floor();
+                        let right_w = total - gap - left_w;
+                        ui.horizontal_top(|ui| {
+                            ui.spacing_mut().item_spacing.x = gap;
+                            ui.vertical(|ui| {
+                                ui.set_width(left_w);
+                                ui.spacing_mut().item_spacing.y = 8.0;
+                                self.gallery(ui, details, &t, app_color);
+                                ui.add_space(8.0);
+                                for p in details.paragraphs() {
+                                    ui.add(egui::Label::new(RichText::new(p).size(14.5).color(t.ink)).wrap());
+                                }
+                            });
+                            ui.vertical(|ui| {
+                                ui.set_width(right_w);
+                                ui.spacing_mut().item_spacing.y = 8.0;
+                                features(ui, details, entry.app, &t);
+                            });
+                        });
+                        // The release gets the full width under both columns, so neither column
+                        // is left with an empty tail: its facts sit in one row of four.
+                        ui.add_space(22.0);
+                        ui.painter().hline(ui.max_rect().x_range(), ui.cursor().top() - 11.0, t.hairline());
+                        self.release_section(ui, &entry, details, &t, 4);
+                    } else {
+                        self.gallery(ui, details, &t, app_color);
+                        ui.add_space(8.0);
+                        for p in details.paragraphs() {
+                            ui.add(egui::Label::new(RichText::new(p).size(14.5).color(t.ink)).wrap());
+                        }
+                        ui.add_space(14.0);
+                        features(ui, details, entry.app, &t);
+                        ui.add_space(14.0);
+                        self.release_section(ui, &entry, details, &t, 2);
                     }
-                    ui.add_space(14.0);
-                    features(ui, details, entry.app, &t);
-                    ui.add_space(14.0);
-                    self.release_section(ui, &entry, details, &t);
                 });
             });
         });
         if self.detail_zoom && open {
             self.lightbox(ctx, details, &t);
         }
+    }
+
+    /// The apps before and after `id` in the order the grid shows them (wrapping round), among
+    /// those that have a page.
+    fn neighbour_apps(&self, id: &str) -> (Option<String>, Option<String>) {
+        let mut ids: Vec<&str> = self.visible_ids().into_iter().filter(|i| AppDetails::by_id(i).is_some()).collect();
+        if !ids.contains(&id) {
+            ids = artcraft_launcher_core::SUITE.iter().map(|a| a.id).filter(|i| AppDetails::by_id(i).is_some()).collect();
+        }
+        let Some(at) = ids.iter().position(|i| *i == id) else { return (None, None) };
+        if ids.len() < 2 {
+            return (None, None);
+        }
+        let n = ids.len();
+        let around = |i: usize| ids.get(i % n).map(|s| (*s).to_string());
+        (around(at + n - 1), around(at + 1))
     }
 
     /// Esc closes the enlarged picture first, then the drawer; ← and → flip through the pictures.
@@ -201,7 +278,7 @@ impl LauncherUi {
 
     /// The drawer's top: a wash of the app's colour under a 2 px rule, the close button, the name,
     /// version and main button, and the app's links.
-    fn details_hero(&mut self, ui: &mut Ui, entry: &AppEntry, details: &AppDetails, t: &Tokens) {
+    fn details_hero(&mut self, ui: &mut Ui, entry: &AppEntry, details: &AppDetails, t: &Tokens, around: (Option<&str>, Option<&str>), wide: bool) {
         let app = entry.app;
         let app_color = rgb(app.color);
         let status = entry.status(self.platform, self.caps.manage_apps);
@@ -213,17 +290,32 @@ impl LauncherUi {
                     if widgets::glyph_button(ui, Glyph::Close, tl!("Close (Esc)")).clicked() {
                         self.detail = None;
                     }
+                    // Right to left: next, then previous, so they read as a pair before the close.
+                    if let (_, Some(next)) = around
+                        && step_button(ui, false, tl!("Next app"), t)
+                    {
+                        self.detail = Some(next.to_string());
+                    }
+                    if let (Some(previous), _) = around
+                        && step_button(ui, true, tl!("Previous app"), t)
+                    {
+                        self.detail = Some(previous.to_string());
+                    }
                 });
             });
             ui.add_space(10.0);
+            let hero_w = ui.available_width();
             ui.horizontal(|ui| {
                 if let Some(icon) = crate::icons::app(app.id) {
                     ui.add(egui::Image::new(icon).fit_to_exact_size(vec2(ICON, ICON)));
                 }
                 ui.add_space(8.0);
+                // Beside the buttons when the page is wide: the text keeps what they leave.
+                let text_w = if wide { (hero_w - ICON - 16.0 - ACTION_W - 24.0).max(200.0) } else { (hero_w - ICON - 16.0).max(40.0) };
                 ui.vertical(|ui| {
+                    ui.set_width(text_w);
                     ui.spacing_mut().item_spacing.y = 5.0;
-                    widgets::wordmark(ui, app, 32.0);
+                    widgets::wordmark(ui, app, theme::PAGE_TITLE);
                     ui.add(egui::Label::new(RichText::new(details.headline).size(15.0).color(t.ink)).wrap());
                     // "Version 0.5.0 · Oct 8, 2026", or the installed-versus-latest line.
                     let version = crate::views::version_line(entry, &status);
@@ -231,12 +323,22 @@ impl LauncherUi {
                         ui.label(RichText::new(version).size(12.5).color(t.muted));
                     }
                 });
+                if wide {
+                    // The main button and its menu, at the right, level with the name.
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        ui.allocate_ui_with_layout(vec2(ACTION_W, theme::CONTROL_H), egui::Layout::left_to_right(egui::Align::Center), |ui| {
+                            self.actions_in(ui, entry, &status, ACTION_W, false);
+                        });
+                    });
+                }
             });
             ui.add_space(14.0);
             // The menu leaves out the links: they are the buttons right below.
-            let row_w = ui.available_width();
-            ui.horizontal(|ui| self.actions_in(ui, entry, &status, row_w, false));
-            link_buttons(ui, app, row_w);
+            if !wide {
+                let row_w = ui.available_width();
+                ui.horizontal(|ui| self.actions_in(ui, entry, &status, row_w, false));
+            }
+            link_buttons(ui, app);
         });
         let r = hero.response.rect;
         ui.painter().rect_filled(Rect::from_min_size(r.min, vec2(r.width(), 2.0)), CornerRadius::ZERO, app_color);
@@ -244,7 +346,7 @@ impl LauncherUi {
     }
 
     /// The facts of the latest release in cells, then its notes.
-    fn release_section(&self, ui: &mut Ui, entry: &AppEntry, details: &AppDetails, t: &Tokens) {
+    fn release_section(&self, ui: &mut Ui, entry: &AppEntry, details: &AppDetails, t: &Tokens, per_row: usize) {
         widgets::eyebrow(ui, "02", tl!("Latest release"));
         ui.add_space(4.0);
         let Some(r) = entry.release() else {
@@ -264,10 +366,10 @@ impl LauncherUi {
         .into_iter()
         .filter_map(|(label, value)| value.map(|v| (label, v)))
         .collect();
-        for pair in facts.chunks(2) {
-            ui.columns(2, |cols| {
+        for pair in facts.chunks(per_row) {
+            ui.columns(per_row, |cols| {
                 for (col, (label, value)) in cols.iter_mut().zip(pair) {
-                    egui::Frame::new().stroke(t.hairline()).inner_margin(Margin::same(12)).show(col, |ui| {
+                    egui::Frame::new().stroke(t.hairline()).inner_margin(theme::BOX_MARGIN).show(col, |ui| {
                         ui.set_width(ui.available_width());
                         ui.spacing_mut().item_spacing.y = 2.0;
                         widgets::hud(ui, label, t.faint);
@@ -420,23 +522,29 @@ fn placeholder(ui: &mut Ui, rect: Rect, id: Id, failed: Option<&str>, t: &Tokens
     }
 }
 
-/// Between the header and the footer, which stay usable. In a window shorter than the two bars
-/// together there is no room left: an empty area, never a negative one.
-fn drawer_area(ctx: &egui::Context) -> Rect {
-    let full = ctx.content_rect();
-    let top = (full.top() + HEADER_H).min(full.bottom());
-    let bottom = (full.bottom() - FOOTER_H).max(top);
-    Rect::from_min_max(pos2(full.left(), top), pos2(full.right(), bottom))
+/// A square header-style button with a chevron: previous (`left`) or next app. True when clicked.
+fn step_button(ui: &mut Ui, left: bool, tip: &str, t: &Tokens) -> bool {
+    let (rect, resp) = ui.allocate_exact_size(vec2(theme::CONTROL_H, theme::CONTROL_H), Sense::click());
+    let (fill, ink) = if resp.hovered() { (t.invert_bg, t.invert_fg) } else { (Color32::TRANSPARENT, t.muted) };
+    let painter = ui.painter();
+    painter.rect(rect, CornerRadius::ZERO, fill, t.hairline(), egui::StrokeKind::Inside);
+    let (c, s) = (rect.center(), if left { -1.0 } else { 1.0 });
+    painter.add(egui::Shape::line(
+        vec![pos2(c.x - s * 3.0, c.y - 5.5), pos2(c.x + s * 3.0, c.y), pos2(c.x - s * 3.0, c.y + 5.5)],
+        Stroke::new(1.75, ink),
+    ));
+    resp.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Button, true, tip));
+    resp.on_hover_cursor(egui::CursorIcon::PointingHand).on_hover_text(tip).clicked()
 }
 
-/// The app's links as a row of buttons sharing `row_w`; the ↗ says each opens the browser, like the links on the cards.
-fn link_buttons(ui: &mut Ui, app: &CraftApp, row_w: f32) {
+/// The app's links as a row of buttons each as wide as its label; the ↗ says each opens the
+/// browser, like the links on the cards.
+fn link_buttons(ui: &mut Ui, app: &CraftApp) {
     let links = [(tl!("Website"), app.website()), (tl!("GitHub"), app.repo_url()), (tl!("Releases"), app.releases_url())];
-    let gap = ui.spacing().item_spacing.x;
-    let link_w = ((row_w - gap * (links.len() as f32 - 1.0)) / links.len() as f32).floor();
     ui.horizontal(|ui| {
+        ui.spacing_mut().item_spacing.x = 8.0;
         for (label, url) in links {
-            if widgets::button(ui, &format!("{label} ↗"), Kind::Secondary, link_w).on_hover_text(url.as_str()).clicked() {
+            if widgets::button(ui, &format!("{label} ↗"), Kind::Secondary, 0.0).on_hover_text(url.as_str()).clicked() {
                 ui.ctx().open_url(egui::OpenUrl::new_tab(url));
             }
         }
@@ -448,7 +556,7 @@ fn features(ui: &mut Ui, details: &AppDetails, app: &CraftApp, t: &Tokens) {
     widgets::eyebrow(ui, "01", tl!("Features"));
     ui.add_space(4.0);
     for (i, f) in details.features.iter().enumerate() {
-        egui::Frame::new().stroke(t.hairline()).inner_margin(Margin::symmetric(14, 12)).show(ui, |ui| {
+        egui::Frame::new().stroke(t.hairline()).inner_margin(theme::BOX_MARGIN).show(ui, |ui| {
             ui.set_width(ui.available_width());
             ui.spacing_mut().item_spacing.y = 3.0;
             ui.horizontal(|ui| {

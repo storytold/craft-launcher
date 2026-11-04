@@ -5,13 +5,30 @@
 //! panics and reports every failure as a sentence a person can read.
 
 use std::collections::BTreeSet;
+use std::hash::{Hash, Hasher};
 use std::path::Path;
+use std::sync::Arc;
 
 use craft_ext_core::id::{AppId, ExtensionId};
 use craft_ext_core::manifest::Kind;
 use craft_ext_core::palette::Palette;
 use craft_ext_core::tier::Tier;
 use craft_ext_core::version::Version;
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Thumbnail {
+    pub bytes: Arc<[u8]>,
+    /// Distinguishes a replacement picture even when the plug-in id and version are unchanged.
+    pub cache_key: u64,
+}
+
+impl Thumbnail {
+    pub fn from_bytes(bytes: Arc<[u8]>) -> Self {
+        let mut hasher = std::collections::hash_map::DefaultHasher::new();
+        bytes.hash(&mut hasher);
+        Self { bytes, cache_key: hasher.finish() }
+    }
+}
 
 /// One installed extension with everything the screen draws.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -30,10 +47,16 @@ pub struct Row {
     pub worn: BTreeSet<AppId>,
     /// The colours of a theme, when its file could be read and passed the checks.
     pub palette: Option<Palette>,
+    /// Bounded, publisher-provided PNG bytes, or no picture for a plug-in without one.
+    pub thumbnail: Option<Thumbnail>,
 }
 
 /// The shared store as the screen sees it.
 pub trait ExtensionSource {
+    /// Example rows used by a preview build, not packages installed on this computer.
+    fn is_demo(&self) -> bool {
+        false
+    }
     /// Changes whenever anything is installed, removed, switched or chosen, in any app.
     fn generation(&mut self) -> u64;
     /// Everything installed.

@@ -206,7 +206,6 @@ impl FeaturesUi {
     /// scrolling body so Back, Export and Clear are always in reach.
     pub(crate) fn history_footer(&mut self, ui: &mut Ui, port: &mut dyn FeaturesPort) {
         let t = Tokens::get(ui.ctx());
-        let mut back = false;
         let mut refresh = false;
         let mut export = false;
         let mut clear = false;
@@ -218,7 +217,6 @@ impl FeaturesUi {
 
         ui.add_space(8.0);
         ui.horizontal(|ui| {
-            back = widgets::button(ui, tl!("Back"), Kind::Secondary, 90.0).clicked();
             refresh = widgets::button(ui, tl!("Refresh"), Kind::Secondary, 0.0).clicked();
             ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                 if h.confirming {
@@ -239,9 +237,7 @@ impl FeaturesUi {
                 }
             });
         });
-        if back {
-            self.back();
-        } else if refresh {
+        if refresh {
             self.history.reload(port);
         } else if export {
             self.history.export(port);

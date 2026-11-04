@@ -327,8 +327,8 @@ dependencies = [
  "artcraft-launcher-ui-egui",
  "craft-ai-client",
  "craft-ai-comfy-env",
+ "craft-ai-core",
  "craft-ai-features",
- "craft-ai-model",
  "craft-ai-native",
  "craft-ai-openai",
  "craft-ext-core",
@@ -390,18 +390,21 @@ name = "artcraft-launcher-ui-egui"
 version = "0.4.1"
 dependencies = [
  "artcraft-launcher-core",
+ "craft-ai-core",
  "craft-ai-features",
- "craft-ai-model",
  "craft-ext-core",
  "egui",
  "egui_extras",
  "egui_kittest",
  "image",
+ "jiff",
+ "js-sys",
  "log",
  "serde",
  "serde_json",
  "skrifa",
  "sys-locale",
+ "wasm-bindgen",
 ]
 
 [[package]]
@@ -1120,8 +1123,8 @@ dependencies = [
 name = "craft-ai-artcraft"
 version = "0.1.0"
 dependencies = [
+ "craft-ai-core",
  "craft-ai-http",
- "craft-ai-model",
  "serde_json",
  "ureq",
  "uuid",
@@ -1131,8 +1134,8 @@ dependencies = [
 name = "craft-ai-bfl"
 version = "0.1.0"
 dependencies = [
+ "craft-ai-core",
  "craft-ai-http",
- "craft-ai-model",
  "serde_json",
  "ureq",
 ]
@@ -1143,11 +1146,12 @@ version = "0.1.0"
 dependencies = [
  "craft-ai-artcraft",
  "craft-ai-bfl",
+ "craft-ai-comfy-env",
  "craft-ai-comfyui",
+ "craft-ai-core",
  "craft-ai-declarative",
  "craft-ai-features",
  "craft-ai-media",
- "craft-ai-model",
  "craft-ai-native",
  "craft-ai-openai",
  "craft-ai-sam3",
@@ -1159,10 +1163,10 @@ dependencies = [
 name = "craft-ai-comfy-env"
 version = "0.1.0"
 dependencies = [
+ "craft-ai-core",
  "craft-ai-features",
  "craft-ai-http",
  "craft-ai-media",
- "craft-ai-model",
  "dirs 7.0.0",
  "flate2",
  "fs4",
@@ -1181,9 +1185,9 @@ name = "craft-ai-comfyui"
 version = "0.1.0"
 dependencies = [
  "base64 0.22.1",
+ "craft-ai-core",
  "craft-ai-http",
  "craft-ai-media",
- "craft-ai-model",
  "craft-ai-native",
  "png 0.17.16",
  "serde",
@@ -1194,12 +1198,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "craft-ai-core"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "craft-ai-declarative"
 version = "0.1.0"
 dependencies = [
+ "craft-ai-core",
  "craft-ai-http",
  "craft-ai-media",
- "craft-ai-model",
  "serde_json",
  "ureq",
 ]
@@ -1208,7 +1220,7 @@ dependencies = [
 name = "craft-ai-features"
 version = "0.1.0"
 dependencies = [
- "craft-ai-model",
+ "craft-ai-core",
  "serde",
  "serde_json",
 ]
@@ -1224,19 +1236,11 @@ dependencies = [
 name = "craft-ai-media"
 version = "0.1.0"
 dependencies = [
+ "craft-ai-core",
  "craft-ai-http",
- "craft-ai-model",
  "tempfile",
  "ureq",
  "url",
-]
-
-[[package]]
-name = "craft-ai-model"
-version = "0.1.0"
-dependencies = [
- "serde",
- "serde_json",
 ]
 
 [[package]]
@@ -1245,7 +1249,7 @@ version = "0.1.0"
 dependencies = [
  "argon2",
  "chacha20poly1305",
- "craft-ai-model",
+ "craft-ai-core",
  "dirs 7.0.0",
  "getrandom 0.4.3",
  "keyring",
@@ -1257,8 +1261,8 @@ dependencies = [
 name = "craft-ai-openai"
 version = "0.1.0"
 dependencies = [
+ "craft-ai-core",
  "craft-ai-http",
- "craft-ai-model",
  "serde",
  "serde_json",
  "ureq",
@@ -1268,8 +1272,8 @@ dependencies = [
 name = "craft-ai-sam3"
 version = "0.1.0"
 dependencies = [
+ "craft-ai-core",
  "craft-ai-http",
- "craft-ai-model",
  "serde_json",
  "ureq",
 ]
@@ -1278,8 +1282,8 @@ dependencies = [
 name = "craft-ai-seedance"
 version = "0.1.0"
 dependencies = [
+ "craft-ai-core",
  "craft-ai-http",
- "craft-ai-model",
  "serde_json",
  "ureq",
 ]
@@ -1288,8 +1292,8 @@ dependencies = [
 name = "craft-ai-vertex"
 version = "0.1.0"
 dependencies = [
+ "craft-ai-core",
  "craft-ai-http",
- "craft-ai-model",
  "serde_json",
  "ureq",
 ]
@@ -1316,6 +1320,7 @@ version = "0.1.0"
 dependencies = [
  "craft-atomic",
  "craft-ext-core",
+ "image",
  "serde",
  "serde_json",
  "sha2 0.11.1",
@@ -2823,6 +2828,7 @@ dependencies = [
  "defmt",
  "jiff-core",
  "jiff-static",
+ "jiff-tzdb-platform",
  "log",
  "portable-atomic",
  "portable-atomic-util",
@@ -2850,6 +2856,21 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn 2.0.119",
+]
+
+[[package]]
+name = "jiff-tzdb"
+version = "0.1.9"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "fa8377070c6bae868759445e5a77f66d84f0b72f3a054bfb00e6d038b8282da7"
+
+[[package]]
+name = "jiff-tzdb-platform"
+version = "0.1.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "875a5a69ac2bab1a891711cf5eccbec1ce0341ea805560dcd90b7a2e925132e8"
+dependencies = [
+ "jiff-tzdb",
 ]
 
 [[package]]

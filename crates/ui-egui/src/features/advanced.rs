@@ -89,8 +89,5 @@ impl FeaturesUi {
             ui.add(egui::Label::new(RichText::new(text).color(if *error { t.bad } else { t.muted })).wrap());
             ui.add_space(8.0);
         }
-        if widgets::button(ui, tl!("Back"), Kind::Secondary, 90.0).clicked() {
-            self.back();
-        }
     }
 }

@@ -27,12 +27,22 @@
 	Grid	Raster
 	Table	Tabelle
 	Show apps as cards	Apps als Karten anzeigen
+	Show add-ons as cards	Erweiterungen als Karten anzeigen
+	Show add-ons as a list	Erweiterungen als Liste anzeigen
 	Show apps as a table	Apps als Tabelle anzeigen
 	All	Alle
 	Updates	Updates
 	Not installed	Nicht installiert
 	Search apps	Apps durchsuchen
 	Sort	Sortieren
+	Recently updated	Zuletzt aktualisiert
+	Name (A–Z)	Name (A–Z)
+	Name (Z–A)	Name (Z–A)
+	Frequently used	Am häufigsten genutzt
+	Next app	Nächste App
+	Previous app	Vorherige App
+	Show {n} more changes	{n} weitere Änderungen anzeigen
+	Last updated: {date}	Zuletzt aktualisiert: {date}
 	Suite order	Suite-Reihenfolge
 	Name	Name
 	Inspired by	Inspiriert von
@@ -258,6 +268,7 @@ month	Dec	Dez.
 column	App	App
 column	Installed	Lokal
 column	Latest	Neueste
+column	Version	Version
 column	Released	Datum
 
 # Contextual: the filter tab names a group (the status pill says "Installed")
@@ -363,6 +374,7 @@ filter	Installed	Installiert
 	{path} already exists. Installing {name} will overwrite it.	{path} existiert bereits. Die Installation von {name} überschreibt es.
 	Replace	Ersetzen
 # Extensions screen
+	Example data, not installed	Beispieldaten, nicht installiert
 	Apps	Apps
 	Install and update Craft apps	Craft-Apps installieren und aktualisieren
 	Extensions	Erweiterungen
@@ -372,6 +384,10 @@ filter	Installed	Installiert
 	Themes	Designs
 	Colour themes for your Craft apps	Farbdesigns für deine Craft-Apps
 	Everything you have added	Alles, was du hinzugefügt hast
+	Add-ons	Erweiterungen
+	Couldn't read your installed add-ons: {reason}	Die installierten Erweiterungen konnten nicht gelesen werden: {reason}
+	Themes, plug-ins and resources for your Craft apps	Designs, Plug-ins und Ressourcen für deine Craft-Apps
+	Thumbnail for {name}	Vorschaubild für {name}
 	Couldn't read the installed extensions: {reason}	Die installierten Erweiterungen konnten nicht gelesen werden: {reason}
 	Add an extension	Erweiterung hinzufügen
 	Added {name}	{name} hinzugefügt
@@ -572,6 +588,7 @@ filter	Installed	Installiert
 	Showing only {what}	Nur {what}
 	works with {app}	funktioniert mit {app}
 	themes	Designs
+	Plug-ins	Plug-ins
 	plug-ins	Plug-ins
 	resources	Ressourcen
 	Show all	Alle anzeigen
@@ -579,3 +596,5 @@ filter	Installed	Installiert
 	Built into {app}	In {app} eingebaut
 	Choose it inside {app}	Wähle es in {app}
 	In use	In Benutzung
+	Model folders	Modellordner
+	Where you keep your models on this computer	Wo deine Modelle auf diesem Computer liegen

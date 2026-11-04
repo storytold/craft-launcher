@@ -37,6 +37,9 @@ impl Backend for Quiet {
 struct Shared(Rc<RefCell<SampleSource>>);
 
 impl ExtensionSource for Shared {
+    fn is_demo(&self) -> bool {
+        self.0.borrow().is_demo()
+    }
     fn generation(&mut self) -> u64 {
         self.0.borrow_mut().generation()
     }
@@ -94,7 +97,7 @@ fn harness<H: Host + 'static>(mut host: H) -> Harness<'static, Option<LauncherUi
 fn open(store: &Shared, picked: Option<PathBuf>) -> Harness<'static, Option<LauncherUi>> {
     let mut h = harness(WithStore { store: store.clone(), picked });
     h.run();
-    h.get_by_label("Extensions").click();
+    h.get_by_label("Add-ons").click();
     h.run();
     h
 }
@@ -111,6 +114,17 @@ fn app(s: &str) -> AppId {
 fn worn_by(store: &Shared, app_id: &str) -> Vec<String> {
     let rows = store.0.borrow_mut().rows().unwrap();
     rows.iter().filter(|r| r.worn.contains(&app(app_id))).map(|r| r.name.clone()).collect()
+}
+
+#[test]
+fn the_shared_catalogue_is_called_add_ons_in_navigation() {
+    let store = Shared::default();
+    let mut h = harness(WithStore { store, picked: None });
+    h.run();
+    h.get_by_label("Add-ons").click();
+    h.run();
+    h.get_by_value("Themes 23");
+    assert!(h.query_by_label("Extensions").is_none());
 }
 
 #[test]
@@ -179,6 +193,8 @@ fn use_in_all_apps_makes_every_app_the_theme_is_made_for_wear_it() {
 fn removing_asks_first_and_then_removes_the_extension_from_the_list() {
     let store = Shared::default();
     let mut h = open(&store, None);
+    h.get_by_value("Themes 23").click();
+    h.run();
     h.get_by_label("Installed 3").click();
     h.run();
     h.get_all_by_label("Remove").nth(1).unwrap().click();
@@ -253,12 +269,18 @@ fn show_all_lifts_the_narrowing_and_the_banner_goes() {
     go_to(&mut h, Some("lightcraft"), None);
     assert!(h.query_by_label("Ocean").is_none());
     // Two added themes made for LightCraft and the four it carries; the Installed list holds added ones only.
-    h.get_by_label("Themes 6");
+    h.get_by_value("Themes 6");
+    h.get_by_value("Themes 6").click();
+    h.run();
     h.get_by_label("Installed 2");
+    h.get_by_value("Themes 6").click();
+    h.run();
     h.get_by_label("Show all").click();
     h.run_steps(3);
     h.get_by_label("Ocean");
-    h.get_by_label(&format!("Themes {}", 3 + artcraft_launcher_ui_egui::features::extensions::builtin::all().len()));
+    h.get_by_value(&format!("Themes {}", 3 + artcraft_launcher_ui_egui::features::extensions::builtin::all().len()));
+    h.get_by_value(&format!("Themes {}", 3 + artcraft_launcher_ui_egui::features::extensions::builtin::all().len())).click();
+    h.run();
     h.get_by_label("Installed 3");
     assert!(h.query_by_label("Show all").is_none());
     assert!(h.query_by_label_contains("Showing only").is_none());
@@ -298,11 +320,27 @@ fn a_build_with_no_store_ignores_a_request_to_open_the_page() {
 #[test]
 fn the_page_switch_and_the_tabs_sit_side_by_side() {
     let h = open(&Shared::default(), None);
-    for (first, second) in [("Apps", "Extensions"), ("Themes 23", "Installed 3")] {
-        let rect = |label: &str| h.get_all_by_label(label).next().unwrap_or_else(|| panic!("no {label}")).rect();
+    for (first, second) in [("Apps", "Add-ons"), ("Add-ons", "Themes 23")] {
+        let rect = |label: &str| if label.starts_with("Themes") { h.get_by_value(label).rect() } else { h.get_by_label(label).rect() };
         let (a, b) = (rect(first), rect(second));
         assert!((a.top() - b.top()).abs() < 1.0, "{first} and {second} are on different lines: {a:?} {b:?}");
         assert!(b.left() >= a.right() - 1.0, "{second} should follow {first}: {a:?} {b:?}");
+    }
+}
+
+/// Navigation and the list filter share one row even at the smallest supported window width.
+#[test]
+fn extension_navigation_and_filter_fit_narrow_windows() {
+    let mut h = open(&Shared::default(), None);
+    for width in [720.0, 800.0, 1180.0] {
+        h.set_size(egui::vec2(width, 900.0));
+        h.run_steps(3);
+        let nav = h.get_by_label("Add-ons").rect();
+        let filter = h.get_by_value("Themes 23").rect();
+        let add = h.get_by_label("Add from file").rect();
+        assert!((nav.top() - filter.top()).abs() < 2.0, "{width}: navigation and filter on different rows");
+        assert!(nav.right() <= filter.left() + 1.0 && filter.right() <= add.left() + 1.0, "{width}: controls overlap");
+        assert!(add.right() <= width, "{width}: Add from file clipped");
     }
 }
 
@@ -325,10 +363,68 @@ fn the_demo_list_has_every_kind_from_every_source_and_some_in_use() {
 }
 
 #[test]
+fn plug_ins_are_reachable_from_the_list_dropdown_without_showing_resources() {
+    let store = Shared(Rc::new(RefCell::new(SampleSource::demo())));
+    let mut h = open(&store, None);
+    h.get_by_value("Themes 28").click();
+    h.run();
+    h.get_by_label("Plug-ins 4").click();
+    h.run_steps(3);
+    assert_eq!(count(&h, "Contact Sheet"), 2);
+    assert_eq!(count(&h, "Batch Rename"), 3);
+    assert!(h.query_by_label("Film Grain Textures").is_none());
+    assert!(h.query_by_label("High Contrast").is_none());
+    h.get_by_value("Plug-ins 4");
+}
+
+#[test]
+fn plug_ins_are_grouped_by_app_and_a_shared_plugin_appears_in_each_app() {
+    let store = Shared(Rc::new(RefCell::new(SampleSource::demo())));
+    let mut h = open(&store, None);
+    h.set_size(egui::vec2(1180.0, 1600.0));
+    h.run_steps(3);
+    h.get_by_value("Themes 28").click();
+    h.run();
+    h.get_by_label("Plug-ins 4").click();
+    h.run_steps(3);
+    let positions = ["LightCraft", "PdfCraft", "PhotoCraft"].map(|label| h.get_by_label(label).rect().top());
+    assert!(positions[0] < positions[1] && positions[1] < positions[2], "app sections are ordered by name: {positions:?}");
+    let batch: Vec<_> = h.get_all_by_label("Batch Rename").map(|node| node.rect().top()).collect();
+    assert_eq!(batch.len(), 3, "a shared plug-in belongs to each compatible app section");
+    assert!(positions.iter().zip(batch.iter()).all(|(section, plugin)| plugin > section));
+    assert!(batch[0] < positions[1] && batch[1] < positions[2]);
+    assert_eq!(count(&h, "Palette From Photo"), 1);
+    assert_eq!(count(&h, "Contact Sheet"), 2);
+}
+
+#[test]
+fn a_publishers_plugin_picture_is_shown_in_each_compatible_app_section() {
+    let store = Shared(Rc::new(RefCell::new(SampleSource::demo())));
+    let mut h = open(&store, None);
+    h.get_by_value("Themes 28").click();
+    h.run();
+    h.get_by_label("Plug-ins 4").click();
+    h.run_steps(3);
+    assert_eq!(count(&h, "Thumbnail for Contact Sheet"), 2);
+    assert_eq!(count(&h, "Thumbnail for Batch Rename"), 3);
+}
+
+#[test]
+fn demo_plugins_are_marked_as_examples_not_installed_plugins() {
+    let demo = Shared(Rc::new(RefCell::new(SampleSource::demo())));
+    let h = open(&demo, None);
+    h.get_by_label("Example data, not installed");
+    let real = open(&Shared::default(), None);
+    assert!(real.query_by_label("Example data, not installed").is_none());
+}
+
+#[test]
 fn the_demo_list_fills_both_tabs() {
     let store = Shared(Rc::new(RefCell::new(SampleSource::demo())));
-    let h = open(&store, None);
-    h.get_by_label("Themes 28");
+    let mut h = open(&store, None);
+    h.get_by_value("Themes 28");
+    h.get_by_value("Themes 28").click();
+    h.run();
     h.get_by_label("Installed 16");
     for name in ["High Contrast", "Forest", "Sunset", "Rose Quartz", "Graphite"] {
         assert_eq!(count(&h, name), 1, "{name}");
@@ -349,6 +445,8 @@ fn a_theme_in_use_is_tagged_and_says_where_and_one_that_is_not_has_no_tag() {
     assert_eq!(count(&h, "Not used yet"), 1, "Ocean");
     assert_eq!((count(&h, "PhotoCraft"), count(&h, "LightCraft"), count(&h, "PdfCraft")), (1, 1, 1), "one chip per app, on its theme");
     // The same marks on the Installed list.
+    h.get_by_value("Themes 23").click();
+    h.run();
     h.get_by_label("Installed 3").click();
     h.run_steps(3);
     assert_eq!((count(&h, "PhotoCraft"), count(&h, "LightCraft"), count(&h, "PdfCraft")), (1, 1, 1));
@@ -388,4 +486,70 @@ fn the_chips_never_touch_the_buttons_below_them() {
         assert!(chip.bottom() + 8.0 <= buttons.top(), "chip {chip:?} is too close to the buttons {buttons:?}");
         assert!(chip.top() >= badge.bottom() + 6.0, "chip {chip:?} is too close to the badges {badge:?}");
     }
+}
+
+#[test]
+fn apps_add_ons_and_refresh_are_separate_boxes_with_equal_gaps() {
+    let store = Shared::default();
+    let mut h = harness(WithStore { store, picked: None });
+    h.run();
+    let apps = h.get_by_label("Apps").rect();
+    let add_ons = h.get_by_label("Add-ons").rect();
+    let refresh = h.get_by_label("Check for updates").rect();
+    let (first, second) = (add_ons.left() - apps.right(), refresh.left() - add_ons.right());
+    assert!(first >= 4.0, "Apps and Add-ons must not touch: {apps:?} {add_ons:?}");
+    assert!((first - second).abs() <= 1.0, "gaps differ: {first} vs {second}");
+    assert!((apps.center().y - refresh.center().y).abs() <= 1.0 && (apps.height() - refresh.height()).abs() <= 1.0);
+}
+
+#[test]
+fn the_list_offers_plug_ins_then_installed_then_themes() {
+    let mut h = open(&Shared::default(), None);
+    h.get_by_value("Themes 23").click();
+    h.run();
+    let top = |prefix: &str| h.query_all_by_label_contains(prefix).map(|n| n.rect().top()).fold(f32::INFINITY, f32::min);
+    let (plugins, installed, themes) = (top("Plug-ins "), top("Installed "), top("Themes "));
+    assert!(plugins < installed && installed < themes, "{plugins} {installed} {themes}");
+}
+
+#[test]
+fn themes_and_plug_ins_can_be_cards_or_rows() {
+    let previews = |h: &Harness<'static, Option<LauncherUi>>| h.query_all_by_label_contains("Preview of ").count();
+    let mut h = open(&Shared(Rc::new(RefCell::new(SampleSource::demo()))), None);
+    // Themes open as cards; the switch turns them into rows.
+    assert!(previews(&h) > 0);
+    h.get_by_label("Show add-ons as a list").click();
+    h.run();
+    assert_eq!(previews(&h), 0, "rows have no big pictures");
+    h.get_by_label("Show add-ons as cards").click();
+    h.run();
+    assert!(previews(&h) > 0);
+    // Plug-ins open as rows; the switch turns them into cards. (Once chosen, a view holds for every tab.)
+    let mut h = open(&Shared(Rc::new(RefCell::new(SampleSource::demo()))), None);
+    h.get_by_value("Themes 28").click();
+    h.run();
+    h.get_by_label_contains("Plug-ins ").click();
+    h.run();
+    assert_eq!(previews(&h), 0, "plug-ins open as rows");
+    h.get_by_label("Show add-ons as cards").click();
+    h.run();
+    assert!(previews(&h) > 0, "plug-ins as cards");
+}
+
+#[test]
+fn an_add_on_card_without_a_picture_starts_at_its_name_and_is_short() {
+    let mut h = open(&Shared(Rc::new(RefCell::new(SampleSource::demo()))), None);
+    h.get_by_value("Themes 28").click();
+    h.run();
+    h.get_by_label_contains("Installed ").click();
+    h.run();
+    h.get_by_label("Show add-ons as cards").click();
+    h.run();
+    // A resource has no picture: its details line sits right under its name, and its Remove button
+    // is within a short card (a picture card is 336 tall).
+    h.query_all_by_label_contains("Resource · ").next().unwrap().scroll_to_me();
+    h.run();
+    let details = h.query_all_by_label_contains("Resource · ").next().unwrap().rect();
+    let remove = h.get_all_by_label("Remove").map(|n| n.rect()).find(|r| (r.top() - details.top()).abs() < 160.0 && r.top() > details.top()).unwrap();
+    assert!(remove.bottom() - details.top() < 140.0, "{remove:?} {details:?}");
 }

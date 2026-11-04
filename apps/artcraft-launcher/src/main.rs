@@ -8,6 +8,7 @@
 mod connections;
 mod extensions;
 mod features;
+mod features_folders;
 mod features_tools;
 mod history_demo;
 mod history_port;
@@ -460,6 +461,9 @@ impl Host for DesktopHost {
     }
 
     fn extensions(&mut self) -> Option<&mut dyn artcraft_launcher_ui_egui::features::extensions::ExtensionSource> {
+        if cfg!(feature = "without-add-ons-and-ai") {
+            return None;
+        }
         self.extensions.as_mut().map(|store| &mut **store as &mut dyn artcraft_launcher_ui_egui::features::extensions::ExtensionSource)
     }
 
@@ -472,10 +476,10 @@ impl Host for DesktopHost {
     }
 
     fn features(&mut self) -> Option<&mut dyn artcraft_launcher_ui_egui::FeaturesPort> {
-        Some(&mut self.features)
+        (!cfg!(feature = "without-add-ons-and-ai")).then_some(&mut self.features as &mut dyn artcraft_launcher_ui_egui::FeaturesPort)
     }
     fn connections(&mut self) -> Option<&mut dyn artcraft_launcher_ui_egui::ConnectionsPort> {
-        Some(&mut self.connections)
+        (!cfg!(feature = "without-add-ons-and-ai")).then_some(&mut self.connections as &mut dyn artcraft_launcher_ui_egui::ConnectionsPort)
     }
 }
 

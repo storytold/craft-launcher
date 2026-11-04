@@ -122,6 +122,15 @@ fn settle(h: &mut Harness<'_, State>) {
 }
 
 #[test]
+fn connections_link_is_centred_between_its_dividers() {
+    let mut h = harness(Some(Port::default()));
+    settle(&mut h);
+    let connections = h.get_by_label("Connections").rect();
+    let settings = h.get_by_label("Settings").rect();
+    assert!((connections.right() - settings.left()).abs() <= 1.0, "unexpected gap: {connections:?} {settings:?}");
+}
+
+#[test]
 fn the_header_link_only_exists_where_the_shell_can_keep_connections() {
     let mut without = harness(None);
     settle(&mut without);

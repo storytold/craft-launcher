@@ -48,6 +48,47 @@ fn write_package(dir: &Path, file: &str, bytes: &[u8]) -> PathBuf {
     path
 }
 
+fn plugin_package(thumbnail: &[u8]) -> Vec<u8> {
+    let wasm = b"\0asm\x01\0\0\0";
+    let digest = |data: &[u8]| -> String { Sha256::digest(data).iter().map(|b| format!("{b:02x}")).collect() };
+    let manifest = serde_json::json!({
+        "schema": 1, "id": "org.example.contact-sheet", "name": "Contact Sheet", "version": "1.0.0",
+        "kind": "plugin", "publisher": {"name": "Example"}, "compat": {"photocraft": {"interface": 1}},
+        "thumbnail": "thumbnail.png",
+        "files": [
+            {"path": "plugin.wasm", "sha256": digest(wasm), "size": wasm.len()},
+            {"path": "thumbnail.png", "sha256": digest(thumbnail), "size": thumbnail.len()}
+        ]
+    })
+    .to_string();
+    let mut zip = ZipWriter::new(Cursor::new(Vec::new()));
+    let options = SimpleFileOptions::default().compression_method(CompressionMethod::Deflated);
+    for (name, content) in [("craft-extension.json", manifest.as_bytes()), ("plugin.wasm", wasm.as_slice()), ("thumbnail.png", thumbnail)] {
+        zip.start_file(name, options).unwrap();
+        zip.write_all(content).unwrap();
+    }
+    zip.finish().unwrap().into_inner()
+}
+
+#[test]
+fn installed_plugin_thumbnails_appear_in_the_launcher_and_disappear_when_removed() {
+    let picture = include_bytes!("../../../../crates/ui-egui/assets/demo/plugin-thumbnails/contact-sheet.png");
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path().join("ext");
+    let mut launcher = DesktopStore::at(root.clone());
+    let file = write_package(dir.path(), "contact.zip", &plugin_package(picture));
+    launcher.add_file(&file).unwrap();
+    let rows = launcher.rows().unwrap();
+    assert_eq!(rows.len(), 1);
+    assert!(rows[0].thumbnail.as_ref().is_some_and(|t| t.bytes.as_ref() == picture.as_slice()), "the publisher's exact PNG bytes are shown");
+    let path = root.join("packages").join(rows[0].id.as_str()).join("1.0.0").join("thumbnail.png");
+    std::fs::write(&path, b"changed after install").unwrap();
+    let mut fresh = DesktopStore::at(root);
+    assert!(fresh.rows().unwrap()[0].thumbnail.is_none(), "a damaged picture falls back without hiding the plug-in");
+    launcher.remove(&rows[0].id).unwrap();
+    assert!(launcher.rows().unwrap().is_empty());
+}
+
 #[test]
 fn a_file_added_in_the_launcher_is_listed_chosen_and_seen_by_an_app() {
     let dir = tempfile::tempdir().unwrap();

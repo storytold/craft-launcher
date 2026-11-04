@@ -399,19 +399,27 @@ fn nothing_is_drawn_on_top_of_anything_else() {
 }
 
 #[test]
-fn a_short_history_does_not_leave_a_gap_under_its_buttons() {
+fn the_window_keeps_its_size_and_back_takes_the_place_of_close() {
     let mut records = job("a", T0, "photocraft", "flux", Some(Outcome::Done), None);
     records.extend(job("b", T0 + 60_000, "photocraft", "flux", Some(Outcome::Done), None));
-    let short = open_history(&world(merge(records, 0)));
-    let mut many = Vec::new();
-    for i in 0..30u64 {
-        many.extend(job(&format!("r{i}"), T0 + i * 60_000, "photocraft", "flux", Some(Outcome::Done), None));
-    }
-    let long = open_history(&world(merge(many, 0)));
-    // Two jobs and thirty jobs show the same six rows at most, so the footer of the short page
-    // sits no lower than the long page's: the window is as tall as its content, not a fixed size.
-    let footer = |h: &Harness<'static, State>| h.get_by_role_and_label(Role::Button, "Back").rect().bottom();
-    assert!(footer(&short) < footer(&long) - 100.0, "short footer at {}, long at {}", footer(&short), footer(&long));
+    let f = world(merge(records, 0));
+    let mut h = harness_sized(f.clone(), 1400.0);
+    settle(&mut h);
+    h.get_by_label("Set up AI").click();
+    settle(&mut h);
+    let title = |h: &Harness<'static, State>| h.get_all_by_label("Set up AI").map(|n| n.rect().top()).fold(f32::MIN, f32::max);
+    let (home_title, close) = (title(&h), h.get_by_role_and_label(Role::Button, "Close").rect());
+    press(&mut h, "History");
+    // The header did not move (so the card kept its size), and Back is exactly where Close was.
+    assert_eq!(home_title, title(&h), "the header moved when History opened: it resized");
+    let back = h.get_by_role_and_label(Role::Button, "Back").rect();
+    assert_eq!(close, back, "Back should sit where Close did");
+    assert!(h.query_by_role_and_label(Role::Button, "Close").is_none());
+    assert_eq!(h.get_all_by_role_and_label(Role::Button, "Back").count(), 1, "no second Back in the footer");
+    h.get_by_role_and_label(Role::Button, "Back").click();
+    settle(&mut h);
+    assert_eq!(home_title, title(&h), "the header moved when going back");
+    assert_eq!(close, h.get_by_role_and_label(Role::Button, "Close").rect());
 }
 
 #[test]

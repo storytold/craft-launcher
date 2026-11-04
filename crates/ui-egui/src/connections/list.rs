@@ -25,7 +25,9 @@ pub(crate) fn title(ui: &mut Ui, title: &str, subtitle: &str) {
 impl ConnectionsUi {
     /// Draws the dialog's contents. Returns true when the person closed it.
     pub fn show(&mut self, ui: &mut Ui, port: &mut dyn ConnectionsPort) -> bool {
-        self.show_sized(ui, port, 640.0f32.min(ui.ctx().content_rect().width() - 80.0))
+        // As wide as the place it is in allows, up to a comfortable measure.
+        let width = ui.available_width().min(880.0).min(ui.ctx().content_rect().width() - 80.0);
+        self.show_sized(ui, port, width)
     }
 
     fn show_sized(&mut self, ui: &mut Ui, port: &mut dyn ConnectionsPort, width: f32) -> bool {

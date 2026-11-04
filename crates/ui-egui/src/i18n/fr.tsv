@@ -25,12 +25,22 @@
 	Grid	Grille
 	Table	Tableau
 	Show apps as cards	Afficher les applications en cartes
+	Show add-ons as cards	Afficher les modules complémentaires en cartes
+	Show add-ons as a list	Afficher les modules complémentaires en liste
 	Show apps as a table	Afficher les applications en tableau
 	All	Toutes
 	Updates	Mises à jour
 	Not installed	Non installées
 	Search apps	Rechercher des applications
 	Sort	Tri
+	Recently updated	Récemment mises à jour
+	Name (A–Z)	Nom (A–Z)
+	Name (Z–A)	Nom (Z–A)
+	Frequently used	Les plus utilisées
+	Next app	Application suivante
+	Previous app	Application précédente
+	Show {n} more changes	Afficher {n} modifications de plus
+	Last updated: {date}	Dernière mise à jour : {date}
 	Suite order	Ordre de la suite
 	Name	Nom
 	Inspired by	Inspirée de
@@ -256,6 +266,7 @@ month	Dec	déc.
 column	App	Application
 column	Installed	Installée
 column	Latest	Dernière
+column	Version	Version
 column	Released	Date de publication
 
 # Contextual: the filter tab names a group (the status pill says "Installed")
@@ -361,6 +372,7 @@ filter	Installed	Installées
 	{path} already exists. Installing {name} will overwrite it.	{path} existe déjà. L’installation de {name} l’écrasera.
 	Replace	Remplacer
 # Extensions screen
+	Example data, not installed	Données d’exemple, non installées
 	Apps	Applications
 	Install and update Craft apps	Installer et mettre à jour les applications Craft
 	Extensions	Extensions
@@ -370,6 +382,10 @@ filter	Installed	Installées
 	Themes	Thèmes
 	Colour themes for your Craft apps	Thèmes de couleurs pour vos applications Craft
 	Everything you have added	Tout ce que vous avez ajouté
+	Add-ons	Modules complémentaires
+	Couldn't read your installed add-ons: {reason}	Impossible de lire vos modules complémentaires installés : {reason}
+	Themes, plug-ins and resources for your Craft apps	Thèmes, modules et ressources pour vos applications Craft
+	Thumbnail for {name}	Miniature de {name}
 	Couldn't read the installed extensions: {reason}	Impossible de lire les extensions installées : {reason}
 	Add an extension	Ajouter une extension
 	Added {name}	{name} ajouté
@@ -570,6 +586,7 @@ filter	Installed	Installées
 	Showing only {what}	Uniquement {what}
 	works with {app}	compatible avec {app}
 	themes	thèmes
+	Plug-ins	Modules
 	plug-ins	modules
 	resources	ressources
 	Show all	Tout afficher
@@ -577,3 +594,5 @@ filter	Installed	Installées
 	Built into {app}	Intégré à {app}
 	Choose it inside {app}	À choisir dans {app}
 	In use	Utilisé
+	Model folders	Dossiers de modèles
+	Where you keep your models on this computer	Où vous conservez vos modèles sur cet ordinateur

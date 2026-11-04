@@ -27,12 +27,22 @@
 	Grid	Rács
 	Table	Táblázat
 	Show apps as cards	Alkalmazások megjelenítése kártyákként
+	Show add-ons as cards	Kiegészítők megjelenítése kártyákként
+	Show add-ons as a list	Kiegészítők megjelenítése listaként
 	Show apps as a table	Alkalmazások megjelenítése táblázatként
 	All	Összes
 	Updates	Frissítések
 	Not installed	Nincs telepítve
 	Search apps	Alkalmazások keresése
 	Sort	Rendezés
+	Recently updated	Nemrég frissítve
+	Name (A–Z)	Név (A–Z)
+	Name (Z–A)	Név (Z–A)
+	Frequently used	Leggyakrabban használt
+	Next app	Következő alkalmazás
+	Previous app	Előző alkalmazás
+	Show {n} more changes	{n} további változás megjelenítése
+	Last updated: {date}	Utoljára frissítve: {date}
 	Suite order	Alapértelmezett sorrend
 	Name	Név
 	Inspired by	Mintául szolgált
@@ -259,6 +269,7 @@ month	Dec	dec.
 column	App	Alkalmazás
 column	Installed	Telepített
 column	Latest	Legújabb
+column	Version	Verzió
 column	Released	Dátum
 
 # Contextual: the filter tab names a group (the status pill says "Installed")
@@ -364,6 +375,7 @@ filter	Installed	Telepítve
 	{path} already exists. Installing {name} will overwrite it.	{path} már létezik. A(z) {name} telepítése felülírja.
 	Replace	Csere
 # Extensions screen
+	Example data, not installed	Példaadatok, nincsenek telepítve
 	Apps	Alkalmazások
 	Install and update Craft apps	Craft-alkalmazások telepítése és frissítése
 	Extensions	Bővítmények
@@ -373,6 +385,10 @@ filter	Installed	Telepítve
 	Themes	Témák
 	Colour themes for your Craft apps	Színtémák a Craft-alkalmazásokhoz
 	Everything you have added	Minden, amit hozzáadtál
+	Add-ons	Kiegészítők
+	Couldn't read your installed add-ons: {reason}	Nem sikerült beolvasni a telepített kiegészítőket: {reason}
+	Themes, plug-ins and resources for your Craft apps	Témák, bővítmények és erőforrások a Craft-alkalmazásaidhoz
+	Thumbnail for {name}	{name} bélyegképe
 	Couldn't read the installed extensions: {reason}	A telepített bővítményeket nem sikerült beolvasni: {reason}
 	Add an extension	Bővítmény hozzáadása
 	Added {name}	Hozzáadva: {name}
@@ -570,6 +586,7 @@ filter	Installed	Telepítve
 	Showing only {what}	Csak ezek láthatók: {what}
 	works with {app}	működik ezzel: {app}
 	themes	témák
+	Plug-ins	Bővítmények
 	plug-ins	bővítmények
 	resources	erőforrások
 	Show all	Összes megjelenítése
@@ -577,3 +594,5 @@ filter	Installed	Telepítve
 	Built into {app}	Beépítve ebbe: {app}
 	Choose it inside {app}	Válaszd ki itt: {app}
 	In use	Használatban
+	Model folders	Modellmappák
+	Where you keep your models on this computer	Hol tárolod a modelleidet ezen a számítógépen

@@ -29,12 +29,22 @@
 	Grid	グリッド
 	Table	テーブル
 	Show apps as cards	アプリをカードで表示
+	Show add-ons as cards	アドオンをカードで表示
+	Show add-ons as a list	アドオンをリストで表示
 	Show apps as a table	アプリをテーブルで表示
 	All	すべて
 	Updates	更新
 	Not installed	未インストール
 	Search apps	アプリを検索
 	Sort	並べ替え
+	Recently updated	最近更新
+	Name (A–Z)	名前 (A–Z)
+	Name (Z–A)	名前 (Z–A)
+	Frequently used	よく使う順
+	Next app	次のアプリ
+	Previous app	前のアプリ
+	Show {n} more changes	さらに{n}件の変更を表示
+	Last updated: {date}	最終更新: {date}
 	Suite order	スイート順
 	Name	名前
 	Inspired by	参考アプリ
@@ -261,6 +271,7 @@ month	Dec	12月
 column	App	アプリ
 column	Installed	インストール済みバージョン
 column	Latest	最新バージョン
+column	Version	バージョン
 column	Released	公開日
 
 # Contextual: the filter tab names a group (the status pill says "Installed")
@@ -366,6 +377,7 @@ filter	Installed	インストール済み
 	{path} already exists. Installing {name} will overwrite it.	{path} は既に存在します。{name} をインストールすると上書きされます。
 	Replace	置き換える
 # Extensions screen
+	Example data, not installed	サンプルデータ、未インストール
 	Apps	アプリ
 	Install and update Craft apps	Craftアプリのインストールと更新
 	Extensions	拡張機能
@@ -375,6 +387,10 @@ filter	Installed	インストール済み
 	Themes	テーマ
 	Colour themes for your Craft apps	Craftアプリ用のカラーテーマ
 	Everything you have added	追加したものすべて
+	Add-ons	アドオン
+	Couldn't read your installed add-ons: {reason}	インストール済みのアドオンを読み込めませんでした: {reason}
+	Themes, plug-ins and resources for your Craft apps	Craftアプリ用のテーマ、プラグイン、リソース
+	Thumbnail for {name}	{name}のサムネイル
 	Couldn't read the installed extensions: {reason}	インストール済みの拡張機能を読み込めませんでした: {reason}
 	Add an extension	拡張機能を追加
 	Added {name}	{name} を追加しました
@@ -572,6 +588,7 @@ filter	Installed	インストール済み
 	Showing only {what}	表示中: {what}
 	works with {app}	{app} で使えるもの
 	themes	テーマ
+	Plug-ins	プラグイン
 	plug-ins	プラグイン
 	resources	リソース
 	Show all	すべて表示
@@ -579,3 +596,5 @@ filter	Installed	インストール済み
 	Built into {app}	{app} に組み込み
 	Choose it inside {app}	{app} の中で選びます
 	In use	使用中
+	Model folders	モデルフォルダー
+	Where you keep your models on this computer	このコンピューターでモデルを保存している場所

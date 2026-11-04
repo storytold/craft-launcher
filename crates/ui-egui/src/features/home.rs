@@ -19,9 +19,6 @@ use crate::i18n::fmt;
 use crate::theme::Tokens;
 use crate::widgets::{self, Kind};
 
-/// Room kept under a pinned page's scrolling body for its footer (rule, notice, buttons).
-const PINNED_FOOTER_H: f32 = 110.0;
-
 /// What a press on the home page asks for.
 pub(super) enum Act {
     None,
@@ -62,67 +59,100 @@ impl FeaturesUi {
         }
 
         let t = Tokens::get(ui.ctx());
-        let screen = ui.ctx().content_rect();
-        // The history is a table and a chart: it gets a wider, taller window than the setup cards.
+        // A large card like the app page. One size for every page (home, advanced, history), so
+        // moving between them never resizes the window.
         let on_history = self.page == Page::History;
-        let on_advanced = self.page == Page::Advanced;
-        let width = (if on_history { 920.0f32 } else { 760.0 }).min(screen.width() - 80.0);
-        let height = if on_history { (screen.height() * 0.84).clamp(360.0, 880.0) } else { (screen.height() * 0.74).clamp(320.0, 640.0) };
+        let on_advanced = matches!(self.page, Page::Advanced | Page::Folders);
+        let size = crate::sheet::size(ui.ctx(), vec2(1120.0, 880.0));
+        let (width, height) = (size.x, size.y);
         ui.set_width(width);
+        ui.set_max_height(height);
 
         let mut close = false;
         let mut advanced = false;
         let mut history = false;
-        ui.horizontal(|ui| {
-            ui.vertical(|ui| {
-                ui.spacing_mut().item_spacing.y = 4.0;
-                ui.label(widgets::heading(tl!("Set up AI"), 22.0, t.ink_strong));
-                widgets::hud(ui, tl!("For every Craft app"), t.faint);
-            });
-            ui.with_layout(egui::Layout::right_to_left(egui::Align::Min), |ui| {
+        let mut folders = false;
+        let page_home = self.page == Page::Home;
+        let mut go_back = false;
+        let hero_h = crate::sheet::hero(ui, None, tl!("Set up AI"), tl!("For every Craft app"), |ui| {
+            // On History and Advanced the button that leaves the page sits where Close does.
+            if on_history || on_advanced {
+                go_back = widgets::button(ui, tl!("Back"), Kind::Secondary, 90.0).clicked();
+            } else {
                 close = widgets::button(ui, tl!("Close"), Kind::Secondary, 90.0).clicked();
-                if self.page == Page::Home {
-                    advanced = widgets::button(ui, tl!("Advanced"), Kind::Secondary, 0.0)
-                        .on_hover_text(tl!("Add another server, or choose which model each tool uses"))
-                        .clicked();
-                    history = widgets::button(ui, tl!("History"), Kind::Secondary, 0.0)
-                        .on_hover_text(tl!("Every AI job your Craft apps have run, and what it cost"))
-                        .clicked();
-                }
-            });
+            }
+            if page_home {
+                advanced = widgets::button(ui, tl!("Advanced"), Kind::Secondary, 0.0)
+                    .on_hover_text(tl!("Add another server, or choose which model each tool uses"))
+                    .clicked();
+                history = widgets::button(ui, tl!("History"), Kind::Secondary, 0.0)
+                    .on_hover_text(tl!("Every AI job your Craft apps have run, and what it cost"))
+                    .clicked();
+                folders = widgets::button(ui, tl!("Model folders"), Kind::Secondary, 0.0)
+                    .on_hover_text(tl!("Where you keep your models on this computer"))
+                    .clicked();
+            }
         });
-        ui.add_space(14.0);
+        if go_back {
+            self.back();
+        }
         if advanced {
             self.page = Page::Advanced;
         }
         if history && let Some(port) = host.features() {
             self.open_history(port);
         }
-
-        if on_history || on_advanced {
-            // These pages size to what they show, up to the height limit, so a short list does
-            // not leave an empty gap under its buttons. The footer sits outside the scroll area,
-            // so it stays in view however long the page.
-            egui::ScrollArea::vertical().id_salt("setup-ai").max_height(height - PINNED_FOOTER_H).auto_shrink([false, true]).show(ui, |ui| {
-                ui.set_width(width - 16.0);
-                self.page_contents(ui, host, conns, &snapshot);
-            });
-            ui.add_space(14.0);
-            super::tool::hline(ui);
-            ui.add_space(12.0);
-            if on_history && let Some(port) = host.features() {
-                self.history_footer(ui, port);
-            } else if on_advanced {
-                self.advanced_footer(ui);
-            }
-        } else {
-            ui.allocate_ui_with_layout(vec2(width, height), egui::Layout::top_down(egui::Align::Min), |ui| {
-                egui::ScrollArea::vertical().id_salt("setup-ai").auto_shrink([false, false]).show(ui, |ui| {
-                    ui.set_width(width - 16.0);
-                    self.page_contents(ui, host, conns, &snapshot);
-                });
-            });
+        if folders {
+            self.folders.refresh();
+            self.notice = None;
+            self.page = Page::Folders;
         }
+        // Under the header, the page sits in a padded body whose bar is in the brand colour.
+        let body_h = (height - hero_h - 2.0).max(0.0);
+        let saved = crate::sheet::accent_scroll(ui, &t, t.accent);
+        let pad = 24.0;
+        let inner_w = width - 2.0 * pad - 16.0;
+
+        egui::Frame::new().inner_margin(egui::Margin::same(pad as i8)).show(ui, |ui| {
+            let body = vec2(width - 2.0 * pad, (body_h - 2.0 * pad).max(0.0));
+            if on_history || on_advanced {
+                // The footer is pinned to the bottom of the card and the page scrolls above it, so
+                // a short page leaves room under it rather than shrinking the card. The footer's
+                // height is what it drew last frame (it varies with a notice), so the card is
+                // `body` tall in total once settled.
+                let key = egui::Id::new("setup-ai-footer-h");
+                let footer_h = ui.ctx().data(|d| d.get_temp::<f32>(key)).unwrap_or(60.0);
+                ui.allocate_ui_with_layout(vec2(body.x, (body.y - footer_h).max(0.0)), egui::Layout::top_down(egui::Align::Min), |ui| {
+                    egui::ScrollArea::vertical().id_salt("setup-ai").auto_shrink([false, false]).show(ui, |ui| {
+                        *ui.visuals_mut() = saved.clone();
+                        ui.set_width(inner_w);
+                        self.page_contents(ui, host, conns, &snapshot);
+                    });
+                });
+                let top = ui.cursor().top();
+                ui.add_space(12.0);
+                super::tool::hline(ui);
+                ui.add_space(12.0);
+                if on_history && let Some(port) = host.features() {
+                    self.history_footer(ui, port);
+                } else if on_advanced {
+                    self.advanced_footer(ui);
+                }
+                let drawn = ui.cursor().top() - top;
+                if (drawn - footer_h).abs() > 0.5 {
+                    ui.ctx().data_mut(|d| d.insert_temp(key, drawn));
+                    ui.ctx().request_repaint();
+                }
+            } else {
+                ui.allocate_ui_with_layout(body, egui::Layout::top_down(egui::Align::Min), |ui| {
+                    egui::ScrollArea::vertical().id_salt("setup-ai").auto_shrink([false, false]).show(ui, |ui| {
+                        *ui.visuals_mut() = saved.clone();
+                        ui.set_width(inner_w);
+                        self.page_contents(ui, host, conns, &snapshot);
+                    });
+                });
+            }
+        });
         close
     }
 
@@ -148,6 +178,7 @@ impl FeaturesUi {
                 }
             }
             Page::History => self.history_body(ui),
+            Page::Folders => self.folders_body(ui, host),
             Page::Advanced => {
                 let Some(port) = host.features() else { return };
                 let (outcome, act) = self.advanced_body(ui, snapshot, port, &conns.rows);
@@ -217,10 +248,16 @@ impl FeaturesUi {
             }
             widgets::hud(ui, heading, t.faint);
             ui.add_space(6.0);
-            for option in options {
-                ui.push_id(&option.id, |ui| {
-                    if let Some(next) = self.card(ui, option, snapshot, conns) {
-                        act = next;
+            // Side by side once there is room for two, so the list is half as long.
+            let per_row = if ui.available_width() >= 720.0 { 2 } else { 1 };
+            for pair in options.chunks(per_row) {
+                ui.columns(per_row, |cols| {
+                    for (col, option) in cols.iter_mut().zip(pair) {
+                        col.push_id(&option.id, |ui| {
+                            if let Some(next) = self.card(ui, option, snapshot, conns) {
+                                act = next;
+                            }
+                        });
                     }
                 });
                 ui.add_space(8.0);
@@ -268,13 +305,24 @@ impl FeaturesUi {
         let mut act = None;
         egui::Frame::new().stroke(t.hairline()).inner_margin(14).show(ui, |ui| {
             ui.set_width(ui.available_width());
-            ui.horizontal(|ui| {
+            if ui.available_width() < 560.0 {
+                // Half a window wide: the title, then the status and its buttons under it.
                 ui.label(widgets::heading(crate::i18n::t(&option.title), 16.0, t.ink_strong));
-                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| match &option.route {
+                ui.add_space(4.0);
+                ui.horizontal_wrapped(|ui| match &option.route {
                     Route::Local { feature } => act = self.local_status(ui, feature, snapshot),
                     Route::Service { preset } => act = service_status(ui, preset, conns),
                 });
-            });
+                ui.add_space(4.0);
+            } else {
+                ui.horizontal(|ui| {
+                    ui.label(widgets::heading(crate::i18n::t(&option.title), 16.0, t.ink_strong));
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| match &option.route {
+                        Route::Local { feature } => act = self.local_status(ui, feature, snapshot),
+                        Route::Service { preset } => act = service_status(ui, preset, conns),
+                    });
+                });
+            }
             let note = match &option.route {
                 Route::Local { .. } => tl!("Runs on this computer through ComfyUI. Your pictures never leave it.").to_owned(),
                 Route::Service { .. } => crate::i18n::t(&option.note).to_owned(),

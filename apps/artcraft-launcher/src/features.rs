@@ -10,10 +10,11 @@
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard};
 
+use crate::features_folders::DesktopFolders;
 use crate::features_tools::Tools;
 use crate::history_port::DesktopHistory;
 use artcraft_launcher_ui_egui::FeaturesPort;
-use artcraft_launcher_ui_egui::features::{Clock, Install, Snapshot};
+use artcraft_launcher_ui_egui::features::{Clock, FolderCard, Install, Snapshot};
 use craft_ai_client::{AiClient, ToolDesk};
 use craft_ai_comfy_env::{ComfyInstall, DownloadConfig, Downloader, Phase, scan};
 use craft_ai_features::{Feature, Inventory, State, plan};
@@ -39,6 +40,7 @@ pub struct DesktopFeatures {
     cancel: Arc<AtomicBool>,
     tools: Tools,
     history: DesktopHistory,
+    folders: DesktopFolders,
 }
 
 fn lock(shared: &Mutex<Shared>) -> MutexGuard<'_, Shared> {
@@ -60,6 +62,7 @@ impl DesktopFeatures {
             shared: Arc::default(),
             cancel: Arc::default(),
             tools,
+            folders: DesktopFolders::new(),
             history: if crate::DEMO.load(std::sync::atomic::Ordering::Relaxed) { DesktopHistory::demo() } else { DesktopHistory::new() },
         }
     }
@@ -171,6 +174,30 @@ impl FeaturesPort for DesktopFeatures {
 
     fn cancel_install(&mut self) {
         self.cancel.store(true, Ordering::Relaxed);
+    }
+
+    fn model_folders(&mut self) -> Vec<FolderCard> {
+        self.folders.cards()
+    }
+
+    fn suggested_model_folder(&self) -> Option<String> {
+        self.folders.suggested()
+    }
+
+    fn add_model_folder(&mut self, path: &str, create: bool) -> Result<String, String> {
+        self.folders.add(path, create)
+    }
+
+    fn rescan_model_folder(&mut self, id: &str) -> Result<String, String> {
+        self.folders.rescan(id)
+    }
+
+    fn set_default_model_folder(&mut self, id: &str) -> Result<(), String> {
+        self.folders.set_default(id)
+    }
+
+    fn remove_model_folder(&mut self, id: &str) -> Result<(), String> {
+        self.folders.remove(id)
     }
 }
 

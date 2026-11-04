@@ -45,15 +45,52 @@ pub fn grid(ui: &mut Ui, count: usize, height: f32, mut draw: impl FnMut(&mut Ui
     }
 }
 
+/// Like [`grid`], but card `i` is `heights[i]` tall: a row is as tall as its tallest card and the
+/// shorter ones keep their own height, so a card with less to show has no empty tail.
+pub fn grid_sized(ui: &mut Ui, heights: &[f32], mut draw: impl FnMut(&mut Ui, usize, Rect)) {
+    let width = ui.available_width();
+    let cols = columns(width);
+    let card_w = (width - GAP * (cols as f32 - 1.0)) / cols as f32;
+    let row_heights: Vec<f32> = heights.chunks(cols).map(|row| row.iter().copied().fold(0.0, f32::max)).collect();
+    let total = row_heights.iter().sum::<f32>() + row_heights.len().saturating_sub(1) as f32 * GAP;
+    let (area, _) = ui.allocate_exact_size(vec2(width, total), Sense::hover());
+    let mut y = area.top();
+    for (r, row_h) in row_heights.iter().enumerate() {
+        for c in 0..cols {
+            let i = r * cols + c;
+            let Some(height) = heights.get(i) else { break };
+            let min = pos2(area.left() + c as f32 * (card_w + GAP), y);
+            draw(ui, i, Rect::from_min_size(min, vec2(card_w, *height)));
+        }
+        y += row_h + GAP;
+    }
+}
+
+/// The frame and the name of a card with no picture: the details start right under the name.
+pub fn top_plain(ui: &mut Ui, rect: Rect, name: &str) -> Ui {
+    let t = Tokens::get(ui.ctx());
+    ui.painter_at(rect.expand(1.0)).rect(rect, CornerRadius::ZERO, t.bg, t.hairline(), StrokeKind::Inside);
+    let inner = Rect::from_min_max(pos2(rect.left() + CARD_PAD, rect.top() + CARD_PAD), rect.max - vec2(CARD_PAD, CARD_PAD));
+    let mut child = ui.new_child(egui::UiBuilder::new().max_rect(inner).layout(Layout::top_down(Align::Min)));
+    child.set_clip_rect(rect.intersect(ui.clip_rect()));
+    child.add(egui::Label::new(RichText::new(name).size(16.0).family(theme::semibold()).color(t.ink_strong)).truncate());
+    child
+}
+
 /// The frame, the picture and the name every theme card starts with. `active` outlines the card in
 /// the accent colour and puts an "In use" tag on the picture. Returns the space below the name.
 pub fn top(ui: &mut Ui, rect: Rect, key: &str, name: &str, palette: &Palette, active: bool) -> Ui {
+    top_with(ui, rect, key, name, active, |ui, picture| card::paint_preview(ui, picture, palette))
+}
+
+/// [`top`] with the picture painted by `paint_picture` into the rectangle it is given.
+pub fn top_with(ui: &mut Ui, rect: Rect, key: &str, name: &str, active: bool, paint_picture: impl FnOnce(&mut Ui, Rect)) -> Ui {
     let t = Tokens::get(ui.ctx());
     let outline = if active { Stroke::new(2.0, t.accent) } else { t.hairline() };
     ui.painter_at(rect.expand(1.0)).rect(rect, CornerRadius::ZERO, t.bg, outline, StrokeKind::Inside);
     let inset = if active { 2.0 } else { 1.0 };
     let picture = Rect::from_min_size(rect.min + vec2(inset, inset), vec2(rect.width() - 2.0 * inset, PREVIEW_H));
-    card::paint_preview(ui, picture, palette);
+    paint_picture(ui, picture);
     ui.painter().hline(picture.x_range(), picture.bottom(), if active { Stroke::new(1.0, t.accent) } else { t.hairline() });
     if active {
         in_use_tag(ui, picture);

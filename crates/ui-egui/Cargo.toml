@@ -14,13 +14,19 @@ workspace = true
 artcraft-launcher-core = { workspace = true }
 craft-ext-core = { workspace = true }
 # Interim: a path dependency until the shared AI layer has a home (craft-libs). Pure data, wasm-safe.
-craft-ai-model = { path = "../../../craft-ai-model/crates/ai-model" }
-craft-ai-features = { path = "../../../craft-ai-model/crates/ai-features" }
+craft-ai-model = { path = "../../../craft-ai-wt-folders/crates/ai-core", package = "craft-ai-core" }
+craft-ai-features = { path = "../../../craft-ai-wt-folders/crates/ai-features" }
 egui = { workspace = true }
 egui_extras = { workspace = true, features = ["image", "svg"] }
 image = { version = "0.25", default-features = false, features = ["png", "jpeg"] }
 serde = { workspace = true }
 log = { workspace = true }
+# Local calendar dates, matching the current launcher UI PR.
+jiff = "0.2"
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+js-sys = "0.3"
+wasm-bindgen = "0.2"
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 # The OS's preferred UI languages, without spawning `defaults` or `reg.exe`.
@@ -29,7 +35,7 @@ sys-locale = "0.3"
 skrifa = { version = "0.44", default-features = false, features = ["std"] }
 
 [dev-dependencies]
-craft-ai-features = { path = "../../../craft-ai-model/crates/ai-features" }
+craft-ai-features = { path = "../../../craft-ai-wt-folders/crates/ai-features" }
 serde_json = { workspace = true }
 egui_kittest = { workspace = true, features = ["wgpu", "snapshot"] }
 image = { version = "0.25", default-features = false, features = ["png", "jpeg"] }

@@ -281,6 +281,33 @@ fn press(h: &mut Harness<'_, State>, label: &str) {
 // ---- the list ----
 
 #[test]
+fn the_ai_link_is_centred_between_its_dividers() {
+    let mut h = harness(Features::default(), Connections::default());
+    settle(&mut h);
+    for width in [720.0, 800.0, 1180.0] {
+        h.set_size(egui::vec2(width, 900.0));
+        settle(&mut h);
+        let ai = h.get_by_label("Set up AI").rect();
+        let settings = h.get_by_label("Settings").rect();
+        assert!((ai.right() - settings.left()).abs() <= 1.0, "no extra space between AI and the Settings divider: {width} {ai:?} {settings:?}");
+        if width == 1180.0 {
+            // On hover the whole cell fills, from one divider to the other and top to bottom.
+            h.hover_at(egui::pos2(ai.center().x, ai.top() + 3.0));
+            settle(&mut h);
+            let image = h.render().unwrap();
+            let (left, right, y) = (ai.left().round() as u32, ai.right().round() as u32, ai.center().y as u32);
+            let pixel = |x, y| image.get_pixel(x, y).0;
+            for x in [left, left + 2, right - 1, right - 3] {
+                assert!(pixel(x, y)[0] > 240, "the highlight stops short at x = {x}");
+            }
+            for y in [ai.top().round() as u32 + 1, ai.bottom().round() as u32 - 2] {
+                assert!(pixel(left + 2, y)[0] > 240, "the highlight stops short at y = {y}");
+            }
+        }
+    }
+}
+
+#[test]
 fn set_up_ai_lists_what_can_be_set_up_not_the_tools() {
     let f = Features::default();
     f.0.borrow_mut().inventory = bare_comfy();
@@ -599,9 +626,14 @@ fn open_advanced(f: &Features) -> Harness<'static, State> {
     h
 }
 
-/// The model pickers. The launcher's own "Suite order" box is behind the dialog.
+/// The model pickers. The apps' sort box stays behind the dialog.
 fn pickers<'a>(h: &'a Harness<'_, State>) -> Vec<egui_kittest::Node<'a>> {
-    h.query_all_by_role(Role::ComboBox).filter(|n| n.accesskit_node().value().as_deref() != Some("Suite order")).collect()
+    h.query_all_by_role(Role::ComboBox)
+        .filter(|n| {
+            let value = n.accesskit_node().value();
+            !value.as_deref().is_some_and(|v| v.starts_with("Name (") || v == "Recently updated" || v == "Frequently used")
+        })
+        .collect()
 }
 
 fn picker_text(h: &Harness<'_, State>) -> String {
@@ -794,14 +826,14 @@ fn a_sample_for_one_tool_does_not_show_on_another() {
 }
 
 #[test]
-fn advanced_sizes_to_its_content_with_back_pinned_under_it() {
+fn advanced_keeps_the_window_size_with_back_pinned_at_the_bottom() {
     let empty = open_advanced(&Features::default());
     let f = Features::default();
     ready_image_tool(&f);
     let full = open_advanced(&f);
     let back = |h: &Harness<'static, State>| h.get_by_role_and_label(Role::Button, "Back").rect().bottom();
-    // The window is as tall as what it shows: a page with a tool card ends lower than an empty one.
-    assert!(back(&full) > back(&empty) + 60.0, "empty ends at {}, full at {}", back(&empty), back(&full));
+    // The window does not resize with its content: Back sits in the same place either way.
+    assert_eq!(back(&full), back(&empty), "empty ends at {}, full at {}", back(&empty), back(&full));
 }
 
 #[test]

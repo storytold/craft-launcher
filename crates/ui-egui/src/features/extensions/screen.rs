@@ -10,16 +10,18 @@ use egui::{Align, Layout, Rect, RichText, Ui, pos2, vec2};
 
 use super::builtin;
 use super::cards::{self, CARD_H, CARD_H_SHORT};
+use super::lists;
 use super::plan::{self, Step};
 use super::source::{ExtensionSource, Row};
 use super::{Page, State, Tab};
 use crate::app::{Host, LauncherUi};
 use crate::i18n::{current, fmt, tr_ctx};
+use crate::settings::ViewMode;
 use crate::theme::{self, Tokens};
 use crate::widgets::{self, Cell, Kind};
 
 /// Something the person asked for while the page was drawn.
-enum Action {
+pub(super) enum Action {
     Tab(Tab),
     AddFile,
     AskRemove(ExtensionId),
@@ -29,25 +31,23 @@ enum Action {
 }
 
 impl LauncherUi {
-    /// The Apps | Extensions switch at the top of the page. Nothing is drawn, and the apps stay
-    /// in view, where this build has no extensions store.
-    pub(crate) fn page_switch(&mut self, ui: &mut Ui, host: &mut dyn Host) {
-        if host.extensions().is_none() {
-            self.extensions.open = false;
+    /// The Apps | Extensions switch, drawn inside the toolbar row of whichever page is showing.
+    /// Nothing is drawn where this build has no extensions store.
+    pub(crate) fn page_cells(&mut self, ui: &mut Ui, has_extensions: bool) {
+        if !has_extensions {
             return;
         }
         let mut page = if self.extensions.open { Page::Extensions } else { Page::Apps };
         let options = [
             (Page::Apps, Cell { label: tl!("Apps"), tip: tl!("Install and update Craft apps"), count: None }),
-            (Page::Extensions, Cell { label: tl!("Extensions"), tip: tl!("Themes for your Craft apps"), count: None }),
+            (Page::Extensions, Cell { label: tl!("Add-ons"), tip: tl!("Themes, plug-ins and resources for your Craft apps"), count: None }),
         ];
-        // `cells` lays out in the parent's direction: a row, so the options sit side by side.
-        if ui.horizontal(|ui| widgets::cells(ui, &mut page, &options)).inner {
+        // Laid out in the parent's direction: a row, so the options sit side by side, a gap apart.
+        if widgets::cells_apart(ui, &mut page, &options, widgets::NAV_GAP) {
             self.extensions.open = page == Page::Extensions;
             self.extensions.loaded = false;
             self.extensions.confirm_remove = None;
         }
-        ui.add_space(14.0);
     }
 
     /// Goes to the Extensions page, narrowed to what another app asked for: only what works with
@@ -58,7 +58,11 @@ impl LauncherUi {
         self.extensions.open = true;
         self.extensions.loaded = false;
         self.extensions.confirm_remove = None;
-        self.extensions.tab = if themes_tab { Tab::Themes } else { Tab::Installed };
+        self.extensions.tab = match focus.kind {
+            Some(craft_ext_core::manifest::Kind::Plugin) => Tab::Plugins,
+            _ if themes_tab => Tab::Themes,
+            _ => Tab::Installed,
+        };
         self.extensions.focus = focus;
     }
 
@@ -73,54 +77,68 @@ impl LauncherUi {
         self.sync_extensions(&ctx, host);
         let t = Tokens::get(&ctx);
         let mut actions = Vec::new();
-        let state = &self.extensions;
+        let (themes_n, plugins_n, installed_n) = {
+            let state = &self.extensions;
+            (
+                plan::themes_in(&state.rows, &state.focus).len() + builtin::shown(&state.focus).len(),
+                plan::ordered_in(&state.rows, &state.focus).iter().filter(|r| r.kind == craft_ext_core::manifest::Kind::Plugin).count(),
+                plan::ordered_in(&state.rows, &state.focus).len(),
+            )
+        };
+        let mut tab = self.extensions.tab;
+        // Plug-ins, then everything installed, then themes.
+        let tabs = [
+            (Tab::Plugins, Cell { label: tl!("Plug-ins"), tip: tl!("Plug-ins"), count: Some((plugins_n, None)) }),
+            (
+                Tab::Installed,
+                Cell { label: tr_ctx(current(), "filter", "Installed"), tip: tl!("Everything you have added"), count: Some((installed_n, None)) },
+            ),
+            (Tab::Themes, Cell { label: tl!("Themes"), tip: tl!("Colour themes for your Craft apps"), count: Some((themes_n, None)) }),
+        ];
+        // Themes open as cards and the lists as rows, until the person picks one for them all.
+        let mut view = self.extensions.view.unwrap_or(if self.extensions.tab == Tab::Themes { ViewMode::Grid } else { ViewMode::Table });
+        let before = view;
+        // One row, like the apps page: Apps | Extensions, the list to show, and Add from file.
         ui.horizontal(|ui| {
-            ui.label(widgets::heading(tl!("Extensions"), 24.0, t.ink_strong));
+            self.page_cells(ui, true);
+            if crate::bar::dropdown(ui, "extensions_list", &mut tab, &tabs) {
+                actions.push(Action::Tab(tab));
+            }
             ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                if widgets::button(ui, tl!("Add from file"), Kind::Primary, 0.0).clicked() {
+                crate::bar::view_toggle(ui, &mut view, [tl!("Show add-ons as cards"), tl!("Show add-ons as a list")]);
+                ui.add_space(4.0);
+                if widgets::button(ui, tl!("Add from file"), Kind::Primary, 0.0)
+                    .on_hover_text(tl!("Themes change how your Craft apps look. Only add files from people you trust."))
+                    .clicked()
+                {
                     actions.push(Action::AddFile);
                 }
             });
         });
-        ui.add_space(4.0);
-        ui.add(
-            egui::Label::new(RichText::new(tl!("Themes change how your Craft apps look. Only add files from people you trust.")).color(t.muted))
-                .wrap(),
-        );
         ui.add_space(14.0);
-        focus_banner(ui, &state.focus, &mut actions);
-        let mut tab = state.tab;
-        let tabs = [
-            (
-                Tab::Themes,
-                Cell {
-                    label: tl!("Themes"),
-                    tip: tl!("Colour themes for your Craft apps"),
-                    count: Some((plan::themes_in(&state.rows, &state.focus).len() + builtin::shown(&state.focus).len(), None)),
-                },
-            ),
-            (
-                Tab::Installed,
-                Cell {
-                    label: tr_ctx(current(), "filter", "Installed"),
-                    tip: tl!("Everything you have added"),
-                    count: Some((plan::ordered_in(&state.rows, &state.focus).len(), None)),
-                },
-            ),
-        ];
-        if ui.horizontal(|ui| widgets::cells(ui, &mut tab, &tabs)).inner {
-            actions.push(Action::Tab(tab));
+        if view != before {
+            self.extensions.view = Some(view);
         }
+        let state = &self.extensions;
+        if state.demo {
+            ui.label(RichText::new(tl!("Example data, not installed")).size(12.0).color(t.warn));
+            ui.add_space(10.0);
+        }
+        focus_banner(ui, &state.focus, &mut actions);
         ui.add_space(18.0);
         if let Some(reason) = &state.error {
-            let text = fmt(tl!("Couldn't read the installed extensions: {reason}"), &[("reason", reason)]);
+            let text = fmt(tl!("Couldn't read your installed add-ons: {reason}"), &[("reason", reason)]);
             ui.add(egui::Label::new(RichText::new(text).color(t.bad)).wrap());
             ui.add_space(10.0);
         }
         egui::ScrollArea::vertical().auto_shrink(false).show(ui, |ui| {
-            match state.tab {
-                Tab::Themes => themes_grid(ui, state, &mut actions),
-                Tab::Installed => installed_list(ui, state, &mut actions),
+            match (state.tab, view) {
+                (Tab::Themes, ViewMode::Grid) => themes_grid(ui, state, &mut actions),
+                (Tab::Themes, ViewMode::Table) => lists::themes_list(ui, state, &mut actions),
+                (Tab::Plugins, ViewMode::Table) => installed_list(ui, state, &mut actions, true),
+                (Tab::Installed, ViewMode::Table) => installed_list(ui, state, &mut actions, false),
+                (Tab::Plugins, ViewMode::Grid) => lists::items_grid(ui, state, &mut actions, true),
+                (Tab::Installed, ViewMode::Grid) => lists::items_grid(ui, state, &mut actions, false),
             }
             ui.add_space(16.0);
         });
@@ -202,6 +220,7 @@ impl LauncherUi {
 impl State {
     /// Reads the generation and then the rows, so a change made in between is noticed next time.
     pub(super) fn reload(&mut self, source: &mut dyn ExtensionSource) {
+        self.demo = source.is_demo();
         self.generation = source.generation();
         match source.rows() {
             Ok(rows) => {
@@ -215,7 +234,7 @@ impl State {
 }
 
 /// A button that opens a menu, drawn like the other square controls.
-fn menu_button(ui: &mut Ui, label: &str, add_contents: impl FnOnce(&mut Ui)) {
+pub(super) fn menu_button(ui: &mut Ui, label: &str, add_contents: impl FnOnce(&mut Ui)) {
     let t = Tokens::get(ui.ctx());
     let text = RichText::new(label.to_uppercase()).family(theme::mono_bold()).size(theme::HUD_SIZE).color(t.ink);
     let button = egui::Button::new(text).min_size(vec2(0.0, theme::CONTROL_H));
@@ -250,7 +269,7 @@ fn focus_banner(ui: &mut Ui, focus: &plan::Focus, actions: &mut Vec<Action>) {
     ui.add_space(10.0);
 }
 
-fn sorted_apps(row: &Row) -> Vec<&AppId> {
+pub(super) fn sorted_apps(row: &Row) -> Vec<&AppId> {
     let mut apps: Vec<&AppId> = row.apps.iter().collect();
     apps.sort_by_key(|a| plan::app_name(a).to_lowercase());
     apps
@@ -278,7 +297,7 @@ fn themes_grid(ui: &mut Ui, state: &State, actions: &mut Vec<Action>) {
     }
 }
 
-fn theme_card(ui: &mut Ui, row: &Row, rect: Rect, actions: &mut Vec<Action>) {
+pub(super) fn theme_card(ui: &mut Ui, row: &Row, rect: Rect, actions: &mut Vec<Action>) {
     let Some(palette) = &row.palette else { return };
     let t = Tokens::get(ui.ctx());
     let worn = plan::worn_names(row);
@@ -318,27 +337,58 @@ fn theme_card(ui: &mut Ui, row: &Row, rect: Rect, actions: &mut Vec<Action>) {
     });
 }
 
-fn installed_list(ui: &mut Ui, state: &State, actions: &mut Vec<Action>) {
+fn installed_list(ui: &mut Ui, state: &State, actions: &mut Vec<Action>, only_plugins: bool) {
     let t = Tokens::get(ui.ctx());
-    let shown = plan::ordered_in(&state.rows, &state.focus);
-    if shown.is_empty() {
-        ui.add_space(40.0);
-        ui.vertical_centered(|ui| {
-            widgets::hud(ui, tl!("Nothing added yet"), t.muted);
-        });
+    if only_plugins {
+        let groups = plan::plugins_by_app(&state.rows, &state.focus);
+        if groups.is_empty() {
+            empty_list(ui, &t);
+            return;
+        }
+        for (app, rows) in groups {
+            widgets::hud(ui, &plan::app_name(&app), t.muted);
+            ui.add_space(8.0);
+            installed_rows(ui, state, actions, rows);
+            ui.add_space(18.0);
+        }
         return;
     }
+    let shown = plan::ordered_in(&state.rows, &state.focus);
+    if shown.is_empty() {
+        empty_list(ui, &t);
+        return;
+    }
+    installed_rows(ui, state, actions, shown);
+}
+
+fn empty_list(ui: &mut Ui, t: &Tokens) {
+    ui.add_space(40.0);
+    ui.vertical_centered(|ui| widgets::hud(ui, tl!("Nothing added yet"), t.muted));
+}
+
+fn installed_rows<'a>(ui: &mut Ui, state: &State, actions: &mut Vec<Action>, shown: impl IntoIterator<Item = &'a Row>) {
+    framed_rows(ui, shown, |ui, row| {
+        let confirming = state.confirm_remove.as_ref() == Some(&row.id);
+        installed_row(ui, row, confirming, actions);
+        !row.worn.is_empty()
+    });
+}
+
+/// Rows in one hairline box, each divided by a hairline. `draw` paints a row's contents and says
+/// whether it is in use, which marks it with an accent bar at its left edge.
+pub(super) fn framed_rows<T>(ui: &mut Ui, shown: impl IntoIterator<Item = T>, mut draw: impl FnMut(&mut Ui, T) -> bool) {
+    let t = Tokens::get(ui.ctx());
     egui::Frame::new().stroke(t.hairline()).show(ui, |ui| {
         ui.set_width(ui.available_width());
         ui.spacing_mut().item_spacing.y = 0.0;
-        for row in shown {
-            let confirming = state.confirm_remove.as_ref() == Some(&row.id);
+        for item in shown {
+            let mut in_use = false;
             let line = egui::Frame::new().inner_margin(egui::Margin::symmetric(16, 12)).show(ui, |ui| {
                 ui.set_width(ui.available_width());
-                ui.horizontal(|ui| installed_row(ui, row, confirming, actions));
+                ui.horizontal(|ui| in_use = draw(ui, item));
             });
             ui.painter().hline(line.response.rect.x_range(), line.response.rect.bottom(), t.hairline());
-            if !row.worn.is_empty() {
+            if in_use {
                 let r = line.response.rect;
                 ui.painter().rect_filled(Rect::from_min_max(r.min, pos2(r.left() + 3.0, r.bottom())), egui::CornerRadius::ZERO, t.accent);
             }
@@ -348,6 +398,15 @@ fn installed_list(ui: &mut Ui, state: &State, actions: &mut Vec<Action>) {
 
 fn installed_row(ui: &mut Ui, row: &Row, confirming: bool, actions: &mut Vec<Action>) {
     let t = Tokens::get(ui.ctx());
+    if row.kind == craft_ext_core::manifest::Kind::Plugin {
+        // With no picture there is no empty box: the text starts at the row's edge.
+        if let Some(thumbnail) = &row.thumbnail {
+            let uri = format!("bytes://craft-plugin-thumbnail/{}/{}/{:016x}.png", row.id, row.version, thumbnail.cache_key);
+            let alt = fmt(tl!("Thumbnail for {name}"), &[("name", &row.name)]);
+            ui.add(egui::Image::from_bytes(uri, thumbnail.bytes.clone()).fit_to_exact_size(vec2(48.0, 48.0)).corner_radius(6).alt_text(alt));
+            ui.add_space(4.0);
+        }
+    }
     ui.vertical(|ui| {
         ui.spacing_mut().item_spacing.y = 2.0;
         ui.add(egui::Label::new(RichText::new(&row.name).size(15.0).family(theme::semibold()).color(t.ink_strong)).truncate());

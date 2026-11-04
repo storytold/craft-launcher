@@ -56,7 +56,7 @@ pub struct Failure {
 #[derive(Clone, Debug)]
 pub enum TestTarget {
     /// The form as typed, before saving.
-    Draft(ConnectionDraft),
+    Draft(Box<ConnectionDraft>),
     /// A saved connection; the models found are remembered.
     Saved(ConnectionId),
 }
@@ -213,7 +213,7 @@ impl ConnectionsUi {
         form.test = TestState::Running;
         form.error = None;
         self.pending = Some(Pending::Form);
-        port.start_test(TestTarget::Draft(form.draft.clone()));
+        port.start_test(TestTarget::Draft(Box::new(form.draft.clone())));
     }
 
     /// Test pressed on a saved connection.

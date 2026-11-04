@@ -12,6 +12,7 @@
 
 mod advanced;
 pub mod extensions;
+mod folders;
 mod history;
 mod history_overview;
 mod history_table;
@@ -88,6 +89,22 @@ pub struct ToolState {
     pub can_test: bool,
     /// The sample is likely to cost noticeably more than a few pennies at hosted prices.
     pub costly: bool,
+}
+
+/// One folder of model files, as the Model folders page shows it.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct FolderCard {
+    pub id: String,
+    pub label: String,
+    pub path: String,
+    /// New downloads are saved here.
+    pub default: bool,
+    /// Read from another program's settings, so nothing is ever saved into it.
+    pub read_only: bool,
+    /// The folder is not on disk right now (a drive that is unplugged, or a folder that was moved).
+    pub missing: bool,
+    /// The kinds of model found, each with how many places in the folder hold that kind.
+    pub kinds: Vec<(String, usize)>,
 }
 
 /// The state of the one sample that can run at a time.
@@ -170,6 +187,31 @@ pub trait FeaturesPort {
     fn export_history(&mut self, csv: &str) -> Result<String, String>;
     /// The time now and the local offset from UTC.
     fn clock(&self) -> Clock;
+    /// The folders the person keeps models in, default first.
+    fn model_folders(&mut self) -> Vec<FolderCard> {
+        Vec::new()
+    }
+    /// The folder proposed when there are none, if this computer has a place for one.
+    fn suggested_model_folder(&self) -> Option<String> {
+        None
+    }
+    /// Registers a folder and reads what is in it. `create` makes it first if it is not there (for
+    /// the proposed folder). Returns a sentence saying what was found.
+    fn add_model_folder(&mut self, _path: &str, _create: bool) -> Result<String, String> {
+        Err("Model folders are not available here.".to_owned())
+    }
+    /// Reads a folder again. Returns a sentence saying what was found.
+    fn rescan_model_folder(&mut self, _id: &str) -> Result<String, String> {
+        Err("Model folders are not available here.".to_owned())
+    }
+    /// Makes new downloads go to this folder.
+    fn set_default_model_folder(&mut self, _id: &str) -> Result<(), String> {
+        Err("Model folders are not available here.".to_owned())
+    }
+    /// Forgets a folder. Its files are not touched.
+    fn remove_model_folder(&mut self, _id: &str) -> Result<(), String> {
+        Err("Model folders are not available here.".to_owned())
+    }
 }
 
 /// What a tool's pane asks of its window.
@@ -196,6 +238,8 @@ pub(crate) enum Page {
     Advanced,
     /// Every AI job the apps have run, and what it cost.
     History,
+    /// Where the person keeps model files.
+    Folders,
 }
 
 /// State of the Set up AI window.
@@ -213,6 +257,7 @@ pub struct FeaturesUi {
     /// A line under the screen: `(text, is_error)`.
     pub(crate) notice: Option<(String, bool)>,
     pub(crate) history: history::HistoryUi,
+    pub(crate) folders: folders::FoldersUi,
 }
 
 impl FeaturesUi {
@@ -223,6 +268,7 @@ impl FeaturesUi {
         self.refresh_pending = false;
         self.accepted = false;
         self.notice = None;
+        self.folders.refresh();
     }
 
     pub(crate) fn begin_setup(&mut self, feature: &str) {

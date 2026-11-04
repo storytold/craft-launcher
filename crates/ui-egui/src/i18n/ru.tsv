@@ -26,12 +26,22 @@
 	Grid	Сетка
 	Table	Таблица
 	Show apps as cards	Показывать приложения карточками
+	Show add-ons as cards	Показать дополнения карточками
+	Show add-ons as a list	Показать дополнения списком
 	Show apps as a table	Показывать приложения таблицей
 	All	Все
 	Updates	Обновления
 	Not installed	Не установлены
 	Search apps	Поиск приложений
 	Sort	Сортировка
+	Recently updated	Недавно обновлённые
+	Name (A–Z)	Имя (А–Я)
+	Name (Z–A)	Имя (Я–А)
+	Frequently used	Часто используемые
+	Next app	Следующее приложение
+	Previous app	Предыдущее приложение
+	Show {n} more changes	Показать ещё изменений: {n}
+	Last updated: {date}	Последнее обновление: {date}
 	Suite order	По классу приложений
 	Name	Имя
 	Status	Статус
@@ -255,6 +265,7 @@ month	Dec	дек.
 column	App	Приложение
 column	Installed	Текущая
 column	Latest	Последняя
+column	Version	Версия
 column	Released	Дата релиза
 
 # Contextual: the filter tab names a group (the status pill says "Installed")
@@ -359,6 +370,7 @@ filter	Installed	Установлены
 	{path} already exists. Installing {name} will overwrite it.	{path} уже существует. Установка {name} перезапишет его.
 	Replace	Заменить
 # Extensions screen
+	Example data, not installed	Примерные данные, не установлены
 	Apps	Приложения
 	Install and update Craft apps	Установка и обновление приложений Craft
 	Extensions	Расширения
@@ -368,6 +380,10 @@ filter	Installed	Установлены
 	Themes	Темы
 	Colour themes for your Craft apps	Цветовые темы для приложений Craft
 	Everything you have added	Всё, что вы добавили
+	Add-ons	Дополнения
+	Couldn't read your installed add-ons: {reason}	Не удалось прочитать установленные дополнения: {reason}
+	Themes, plug-ins and resources for your Craft apps	Темы, плагины и ресурсы для ваших приложений Craft
+	Thumbnail for {name}	Миниатюра: {name}
 	Couldn't read the installed extensions: {reason}	Не удалось прочитать установленные расширения: {reason}
 	Add an extension	Добавить расширение
 	Added {name}	Добавлено: {name}
@@ -656,6 +672,7 @@ filter	Installed	Установлены
 	Showing only {what}	Показано только: {what}
 	works with {app}	работает с {app}
 	themes	темы
+	Plug-ins	Плагины
 	plug-ins	плагины
 	resources	ресурсы
 	Show all	Показать все
@@ -663,3 +680,5 @@ filter	Installed	Установлены
 	Built into {app}	Встроена в {app}
 	Choose it inside {app}	Выберите её в {app}
 	In use	Используется
+	Model folders	Папки моделей
+	Where you keep your models on this computer	Где хранятся ваши модели на этом компьютере

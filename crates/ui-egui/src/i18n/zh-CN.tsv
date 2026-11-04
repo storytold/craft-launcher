@@ -13,12 +13,22 @@
 	Grid	网格
 	Table	表格
 	Show apps as cards	以卡片显示应用
+	Show add-ons as cards	以卡片显示附加组件
+	Show add-ons as a list	以列表显示附加组件
 	Show apps as a table	以表格显示应用
 	All	全部
 	Updates	更新
 	Not installed	未安装
 	Search apps	搜索应用
 	Sort	排序
+	Recently updated	最近更新
+	Name (A–Z)	名称 (A–Z)
+	Name (Z–A)	名称 (Z–A)
+	Frequently used	最常使用
+	Next app	下一个应用
+	Previous app	上一个应用
+	Show {n} more changes	显示另外 {n} 项更改
+	Last updated: {date}	最后更新：{date}
 	Suite order	默认顺序
 	Name	名称
 	Status	状态
@@ -173,6 +183,7 @@ month	Dec	12月
 column	App	应用
 column	Installed	已安装版本
 column	Latest	最新版本
+column	Version	版本
 column	Released	发布日期
 filter	Installed	已安装
 	{name} details	{name} 详情
@@ -331,6 +342,7 @@ figcraft	Interface design and prototyping	界面设计与原型制作
 	{path} already exists. Installing {name} will overwrite it.	{path} 已存在。安装 {name} 将覆盖它。
 	Replace	替换
 # Extensions screen
+	Example data, not installed	示例数据，未安装
 	Apps	应用
 	Install and update Craft apps	安装和更新 Craft 应用
 	Extensions	扩展
@@ -340,6 +352,10 @@ figcraft	Interface design and prototyping	界面设计与原型制作
 	Themes	主题
 	Colour themes for your Craft apps	Craft 应用的配色主题
 	Everything you have added	你添加的所有内容
+	Add-ons	附加组件
+	Couldn't read your installed add-ons: {reason}	无法读取已安装的附加组件：{reason}
+	Themes, plug-ins and resources for your Craft apps	适用于你的 Craft 应用的主题、插件和资源
+	Thumbnail for {name}	{name} 的缩略图
 	Couldn't read the installed extensions: {reason}	无法读取已安装的扩展：{reason}
 	Add an extension	添加扩展
 	Added {name}	已添加 {name}
@@ -628,6 +644,7 @@ figcraft	Interface design and prototyping	界面设计与原型制作
 	Showing only {what}	仅显示：{what}
 	works with {app}	适用于 {app}
 	themes	主题
+	Plug-ins	插件
 	plug-ins	插件
 	resources	资源
 	Show all	显示全部
@@ -635,3 +652,5 @@ figcraft	Interface design and prototyping	界面设计与原型制作
 	Built into {app}	{app} 内置
 	Choose it inside {app}	请在 {app} 中选择
 	In use	使用中
+	Model folders	模型文件夹
+	Where you keep your models on this computer	你在这台电脑上存放模型的位置
