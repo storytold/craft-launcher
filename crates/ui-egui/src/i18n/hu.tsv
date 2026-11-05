@@ -50,6 +50,10 @@
 	Install	Telepítés
 	Update to {v}	Frissítés: {v}
 	Open	Megnyitás
+	Open {version}	{version} megnyitása
+	Open {installed} without updating. {latest} stays available.	{installed} megnyitása frissítés nélkül. A(z) {latest} továbbra is elérhető.
+	{latest} is out, but ArtCraft Launcher can't install it over this copy.	Megjelent a(z) {latest}, de az ArtCraft Launcher nem tudja ennek a példánynak a helyére telepíteni.
+	ArtCraft Launcher can't install version {version} over this copy.	Az ArtCraft Launcher nem tudja a(z) {version} verziót ennek a példánynak a helyére telepíteni.
 	Download for {os}	Letöltés {os} rendszerre
 	Download	Letöltés
 	Coming soon	Hamarosan
@@ -73,6 +77,13 @@
 	Show in Files	Megjelenítés a fájlkezelőben
 	Reinstall	Újratelepítés
 	Uninstall…	Eltávolítás…
+	Launch options…	Indítási beállítások…
+	{name} launch options	{name} indítási beállításai
+	Flags added each time the app is opened	Kapcsolók, amelyeket az alkalmazás minden megnyitásakor átad
+	Separate flags with spaces. Quote a value that has spaces in it.	A kapcsolókat szóközzel válassza el. A szóközt tartalmazó értéket tegye idézőjelbe.
+	A quote isn't closed.	Egy idézőjel nincs lezárva.
+	{name} wasn't opened: a quote in its launch options isn't closed.	A(z) {name} nem nyílt meg: az indítási beállításaiban egy idézőjel nincs lezárva.
+	Save	Mentés
 	All releases	Minden kiadás
 	ArtCraft Launcher {version} is available.	Elérhető az ArtCraft Launcher új verziója: {version}.
 	Dismiss	Elrejtés

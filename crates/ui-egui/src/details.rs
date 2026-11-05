@@ -692,7 +692,7 @@ impl LauncherUi {
         }
 
         child.scope_builder(egui::UiBuilder::new().max_rect(action_rect).layout(egui::Layout::left_to_right(egui::Align::Center)), |ui| {
-            self.actions_in(ui, entry, &status, action_rect.width(), false);
+            self.actions_in(ui, entry, &status, action_rect.width(), crate::views::Place::Details);
         });
 
         if fade > 0.0 {

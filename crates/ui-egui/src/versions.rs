@@ -1,8 +1,9 @@
 //! Published-release selector. A choice changes the release used by future checks, not a running install.
 use artcraft_launcher_core::catalog::{CraftApp, LAUNCHER, LAUNCHER_ID};
+use artcraft_launcher_core::platform::pick_asset;
 use artcraft_launcher_core::protocol::VersionTrack;
-use artcraft_launcher_core::release::{Release, choose_version, is_nightly};
-use artcraft_launcher_core::version;
+use artcraft_launcher_core::release::{Asset, Release, choose_version, is_nightly};
+use artcraft_launcher_core::{Os, version};
 use egui::{RichText, Ui};
 
 use crate::app::LauncherUi;
@@ -27,9 +28,14 @@ impl LauncherUi {
         let (mut close, mut install) = (false, false);
         ui.horizontal(|ui| {
             close = widgets::button(ui, tl!("Close"), Kind::Secondary, 100.0).clicked();
-            if let Some((label, ready)) = self.chosen_install(id) {
+            if let Some((label, ready, why)) = self.chosen_install(id) {
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    install = ui.add_enabled_ui(ready, |ui| widgets::button(ui, &label, Kind::Primary, 220.0)).inner.clicked();
+                    let resp = ui.add_enabled_ui(ready, |ui| widgets::button(ui, &label, Kind::Primary, 220.0)).inner;
+                    let resp = match why {
+                        Some(why) => resp.on_disabled_hover_text(why),
+                        None => resp,
+                    };
+                    install = resp.clicked();
                 });
             }
         });
@@ -59,10 +65,11 @@ impl LauncherUi {
         self.check_now_from_ui();
     }
 
-    /// The dialog's Install button for the chosen version: its label, and whether that exact release
-    /// has been checked, can be downloaded here and isn't the installed copy. `None` when there is
-    /// nothing to install (no choice the backend can answer, or a job already running).
-    fn chosen_install(&self, id: &str) -> Option<(String, bool)> {
+    /// The dialog's Install button for the chosen version: its label, whether that exact release has
+    /// been checked, would install here ([`Self::version_installs`]) and isn't the installed copy,
+    /// and why not when the install would be refused ([`Self::version_refusal`]). `None` when there
+    /// is nothing to install (no choice the backend can answer, or a job already running).
+    fn chosen_install(&self, id: &str) -> Option<(String, bool, Option<String>)> {
         let entry = self.entry(id)?;
         if !self.caps.manage_apps || entry.job.is_some() {
             return None;
@@ -72,17 +79,33 @@ impl LauncherUi {
             VersionTrack::Pinned(tag) => tag,
             VersionTrack::Nightly => match release {
                 Some(r) if is_nightly(r) => r.tag.clone(),
-                _ if self.checking => return Some((tl!("Checking…").to_string(), false)),
+                _ if self.checking => return Some((tl!("Checking…").to_string(), false, None)),
                 _ => return None,
             },
             VersionTrack::Stable => release.filter(|r| !r.prerelease)?.tag.clone(),
         };
         let installed = entry.installed.as_ref().and_then(|i| i.version.as_ref());
         if installed.is_some() && installed == version::parse(&tag).as_ref() {
-            return Some((tl!("Installed").to_string(), false));
+            return Some((tl!("Installed").to_string(), false, None));
         }
-        let ready = release.is_some_and(|r| r.tag == tag) && entry.has_download(self.platform);
-        Some((crate::fmt(tl!("Install version {version}"), &[("version", &tag)]), ready))
+        let ready = self.version_installs(entry, &tag) == Some(true);
+        Some((crate::fmt(tl!("Install version {version}"), &[("version", &tag)]), ready, self.version_refusal(entry, &tag)))
+    }
+
+    /// Whether version `tag` of `entry` can be installed now: `None` until the release on screen
+    /// is that version (it is still being checked); else whether an install of it would go ahead
+    /// here ([`AppEntry::installs_here`](crate::model::AppEntry::installs_here)). The card's
+    /// "Install version X" and the version dialog's Install button both ask this.
+    pub(crate) fn version_installs(&self, entry: &crate::model::AppEntry, tag: &str) -> Option<bool> {
+        entry.release().filter(|r| r.tag == tag).map(|_| entry.installs_here(self.platform))
+    }
+
+    /// Why "Install version X" is disabled, for an installed copy the install would refuse to
+    /// replace with it (a system binary, a repository package, a format the release doesn't
+    /// have). The button can't explain on click, so its hover does.
+    pub(crate) fn version_refusal(&self, entry: &crate::model::AppEntry, tag: &str) -> Option<String> {
+        (entry.installed.is_some() && self.version_installs(entry, tag) == Some(false))
+            .then(|| crate::fmt(tl!("ArtCraft Launcher can't install version {version} over this copy."), &[("version", tag)]))
     }
 
     pub(crate) fn version_combo(&mut self, ui: &mut Ui, id: &str, app: &CraftApp, width: f32, label: egui::Id) -> bool {
@@ -151,7 +174,7 @@ impl LauncherUi {
                             } else {
                                 (choice == pin, r.tag.clone(), pin)
                             };
-                            if ui.add(egui::Button::selectable(selected, text).min_size(option_size)).clicked() {
+                            if self.version_row(ui, selected, text, app, r, option_size).clicked() {
                                 picked = Some(track);
                             }
                         }
@@ -198,18 +221,83 @@ impl LauncherUi {
         }
     }
 
+    /// One release in the version list: its tag, and at the right, muted, the day it came out and
+    /// the size of the package this machine would download, each left out when unknown. On the
+    /// selected row they take the row's own text colour, as muted grey is unreadable on the
+    /// accent. The row stays named by its tag; the date and size are its description.
+    fn version_row(&self, ui: &mut Ui, selected: bool, text: String, app: &CraftApp, r: &Release, size: egui::Vec2) -> egui::Response {
+        let facts = version_facts(r.published_at.map(crate::views::date_text), self.version_asset(app, r).map(|a| a.size));
+        let mut button = egui::Button::selectable(selected, text).min_size(size);
+        if !facts.is_empty() {
+            let galley = egui::WidgetText::from(RichText::new(&facts).size(12.5).color(egui::Color32::PLACEHOLDER)).into_galley(
+                ui,
+                Some(egui::TextWrapMode::Extend),
+                f32::INFINITY,
+                egui::TextStyle::Body,
+            );
+            let muted = Tokens::get(ui.ctx()).muted;
+            // Painted, not a text atom: a text atom would join the row's name.
+            button = button.right_text(egui::Atom::paint(galley.size(), move |ui, args| {
+                let at = egui::Align2::LEFT_CENTER.align_size_within_rect(galley.size(), args.rect).min;
+                ui.painter().galley(at, galley.clone(), if selected { args.fallback_text_color } else { muted });
+            }));
+        }
+        let response = ui.add(button);
+        if !facts.is_empty() {
+            ui.ctx().accesskit_node_builder(response.id, |node| node.set_description(facts));
+        }
+        response
+    }
+
+    /// The package this machine would download for `r`: the one the launcher updates itself from
+    /// or the app installs or updates from. `None` where the UI can't tell which.
+    fn version_asset<'r>(&self, app: &CraftApp, r: &'r Release) -> Option<&'r Asset> {
+        if app.id == LAUNCHER_ID {
+            return self.launcher_version_asset(r);
+        }
+        self.install_asset(self.entry(app.id)?, r)
+    }
+
+    /// The launcher's own package of `r`: the format the running copy was installed as, which its
+    /// self-update downloads. Until the backend knows that, the manual download (on the web, the
+    /// only one), except on Linux, where the running copy's format is anyone's guess.
+    fn launcher_version_asset<'r>(&self, r: &'r Release) -> Option<&'r Asset> {
+        let platform = self.platform?;
+        match self.backend.launcher_kind() {
+            Some(kind) => pick_asset(r, &[LAUNCHER_ID], platform, &[kind]).map(|(asset, _)| asset),
+            None if self.caps.manage_apps && platform.os == Os::Linux => None,
+            None => crate::views::launcher_asset(r, platform, crate::settings::is_flatpak_sandbox()),
+        }
+    }
+
     fn has_version_download(&self, app: &CraftApp, r: &Release) -> bool {
         let Some(platform) = self.platform else { return false };
         let stems: Vec<&str> = app.stems().collect();
-        artcraft_launcher_core::platform::pick_asset(r, &stems, platform, platform.download_kinds())
-            .is_some_and(|(asset, _)| asset.sha256.is_some() || r.sums_asset().is_some())
+        pick_asset(r, &stems, platform, platform.download_kinds()).is_some_and(|(asset, _)| asset.sha256.is_some() || r.sums_asset().is_some())
     }
 
-    /// The newer release a version kept on purpose is behind, for a quiet note beside it on the
-    /// card. `None` unless the app is kept on an exact version and its published list (fetched in
-    /// the background by [`request_pinned_lists`](Self::request_pinned_lists)) has a newer stable
-    /// release. It is never an update: no badge, Update all or notification counts it.
+    /// The newer release an installed copy is behind without it being an update, for a quiet note
+    /// beside its version: a version kept on purpose (its published list, fetched in the
+    /// background by [`request_pinned_lists`](Self::request_pinned_lists), has a newer stable
+    /// release), or a newer release the launcher can't install over this copy
+    /// ([`AppEntry::newer_out_of_reach`](crate::model::AppEntry::newer_out_of_reach)). It is never
+    /// an update: no badge, Update all or notification counts it.
     pub(crate) fn behind_latest(&self, entry: &crate::model::AppEntry) -> Option<String> {
+        self.kept_behind(entry).or_else(|| self.out_of_reach(entry))
+    }
+
+    /// [`AppEntry::newer_out_of_reach`](crate::model::AppEntry::newer_out_of_reach), for an app
+    /// following the latest release. Right after another version is chosen, the release on screen
+    /// is the old track's until the check finishes, and an install of it is refused for that
+    /// reason alone, so the note would wrongly say it can't install.
+    pub(crate) fn out_of_reach(&self, entry: &crate::model::AppEntry) -> Option<String> {
+        matches!(self.settings.versions.get(entry.app.id), None | Some(VersionTrack::Stable))
+            .then(|| entry.newer_out_of_reach(self.platform))
+            .flatten()
+    }
+
+    /// The newer stable release a version kept on purpose is behind.
+    fn kept_behind(&self, entry: &crate::model::AppEntry) -> Option<String> {
         let track = self.settings.versions.get(entry.app.id)?;
         let releases = self.version_lists.get(entry.app.id)?.as_ref().ok()?;
         behind(track, entry.installed.as_ref()?.version.as_ref()?, releases)
@@ -224,6 +312,13 @@ impl LauncherUi {
             self.request_versions(&id);
         }
     }
+}
+
+/// "Oct 8, 2026 · 150 MB": what a version row says beside its tag, from the release's date and its
+/// download's published size. A size of zero means none was published, not an empty file.
+fn version_facts(date: Option<String>, size: Option<u64>) -> String {
+    let size = size.filter(|bytes| *bytes > 0).map(widgets::human_bytes);
+    [date, size].into_iter().flatten().collect::<Vec<_>>().join(" · ")
 }
 
 /// The newest stable release in `releases`, when `track` keeps an exact version and that release is
@@ -242,6 +337,16 @@ mod tests {
 
     fn tagged(v: &str, prerelease: bool) -> Release {
         Release { tag: format!("v{v}"), version: version::parse(v), prerelease, ..Default::default() }
+    }
+
+    #[test]
+    fn a_version_row_names_only_what_the_release_publishes() {
+        let date = || Some("Oct 8, 2026".to_string());
+        assert_eq!(version_facts(date(), Some(150 << 20)), "Oct 8, 2026 · 150 MB");
+        assert_eq!(version_facts(date(), None), "Oct 8, 2026");
+        assert_eq!(version_facts(date(), Some(0)), "Oct 8, 2026", "an unpublished size is not 1 KB");
+        assert_eq!(version_facts(None, Some(3 << 30)), "3.0 GB");
+        assert_eq!(version_facts(None, None), "");
     }
 
     #[test]
