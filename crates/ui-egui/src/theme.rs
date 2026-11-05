@@ -221,9 +221,10 @@ pub fn apply(ctx: &egui::Context, choice: ThemeChoice) {
         style.spacing.window_margin = egui::Margin::same(4);
         style.text_styles = [
             (TextStyle::Heading, FontId::new(24.0, display())),
+            // Plain labels stay at 14: the table's columns are sized to it (the longest dates fit).
             (TextStyle::Body, FontId::new(14.0, FontFamily::Proportional)),
-            (TextStyle::Button, FontId::new(13.5, medium())),
-            (TextStyle::Small, FontId::new(12.0, FontFamily::Proportional)),
+            (TextStyle::Button, FontId::new(TEXT_BODY, medium())),
+            (TextStyle::Small, FontId::new(TEXT_CAPTION, FontFamily::Proportional)),
             (TextStyle::Monospace, FontId::new(13.0, FontFamily::Monospace)),
         ]
         .into();
@@ -231,14 +232,21 @@ pub fn apply(ctx: &egui::Context, choice: ThemeChoice) {
 }
 
 // ---- type scale --------------------------------------------------------------------------------
-// The card's text steps, largest first. The name and the tagline share a size with the
-// description and are set apart by weight and colour, not by near-equal sizes.
+// Every text size the UI uses, largest first, about a tenth apart, so neighbouring steps read as
+// different sizes (no 14 next to 14.5). Within a step, weight and colour set text apart. The page,
+// sheet and dialog titles above these are `PAGE_TITLE`, `SHEET_TITLE` and `DIALOG_TITLE`.
 
 /// An app's name on its card (Archivo display).
 pub const TEXT_NAME: f32 = 22.0;
-/// The tagline beside the name (Inter 500, ink) and the description under it (Inter 400, muted).
+/// A small dialog's title (Inter 600).
+pub const TEXT_TITLE: f32 = 18.0;
+/// An app page's headline and a feature's title.
+pub const TEXT_LEAD: f32 = 16.0;
+/// Long-form reading: an app page's paragraphs and facts.
+pub const TEXT_READING: f32 = 14.5;
+/// The tagline beside a name (Inter 500, ink), descriptions (Inter 400, muted), buttons' text style.
 pub const TEXT_BODY: f32 = 13.5;
-/// Dates and small notes (Inter 400, muted).
+/// Dates, notes and captions (Inter 400, muted).
 pub const TEXT_CAPTION: f32 = 12.0;
 /// Line height of wrapped body text, as a multiple of its size.
 pub const BODY_LEADING: f32 = 1.45;
@@ -249,8 +257,9 @@ pub const CONTROL_H: f32 = 34.0;
 /// The site's `.hud-label`: 11 px Geist Mono 500, upper case, 0.15 em apart.
 pub const HUD_SIZE: f32 = 11.0;
 pub const HUD_SPACING: f32 = HUD_SIZE * 0.15;
-/// Buttons: 11 px Geist Mono 700, upper case, 0.12 em apart.
-pub const BUTTON_SPACING: f32 = HUD_SIZE * 0.12;
+/// Buttons: 11 px Geist Mono 700, upper case, 0.10 em apart: a touch tighter than the labels, as
+/// bold capitals read wider than medium ones.
+pub const BUTTON_SPACING: f32 = HUD_SIZE * 0.10;
 
 // ---- layout ------------------------------------------------------------------------------------
 // The app page and the large dialogs (Settings, release notes) share these, so they read as one

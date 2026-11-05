@@ -96,9 +96,9 @@ const CARD_H: f32 = 314.0;
 const CARD_MIN_H: f32 = 236.0;
 /// The room between a card's last line of text and its buttons.
 const CARD_ACTIONS_GAP: f32 = 20.0;
-/// The app column's name and tagline sizes, to centre them on the icon.
-const TITLE_SIZE: f32 = 16.0;
-const TAGLINE_SIZE: f32 = 12.0;
+/// The table's app column: name and tagline sizes, to centre them on the icon.
+const TITLE_SIZE: f32 = theme::TEXT_LEAD;
+const TAGLINE_SIZE: f32 = theme::TEXT_CAPTION;
 /// The card's top strip: number tab and links.
 const STRIP_H: f32 = 40.0;
 const CARD_PAD: f32 = 20.0;
@@ -307,7 +307,7 @@ impl LauncherUi {
     /// action queue) and carries an accessible "Sort" name.
     fn sort_picker(&mut self, ui: &mut Ui) {
         craft_ui::ComboBox::from_id_salt("sort")
-            .selected_text(RichText::new(grid_sort_label(grid_sort_now(&self.settings))).size(13.0))
+            .selected_text(RichText::new(grid_sort_label(grid_sort_now(&self.settings))).size(theme::TEXT_BODY))
             .width(190.0)
             .show_ui(ui, |ui| {
                 let current = grid_sort_now(&self.settings);
@@ -415,7 +415,7 @@ impl LauncherUi {
             ui.with_layout(egui::Layout::left_to_right(egui::Align::Center), |ui| {
                 // While GitHub is rate limited, saying so matters more than when we last checked.
                 let avail = ui.available_width();
-                let text = |s: &str| RichText::new(s).size(12.0).color(t.warn);
+                let text = |s: &str| RichText::new(s).size(theme::TEXT_CAPTION).color(t.warn);
                 let width = |ui: &Ui, s: &str| {
                     egui::WidgetText::from(text(s)).into_galley(ui, Some(egui::TextWrapMode::Extend), f32::INFINITY, egui::TextStyle::Body).size().x
                         + spacing
@@ -529,8 +529,10 @@ impl LauncherUi {
         let app_color = if installed { rgb(app.color) } else { t.muted.lerp_to_gamma(rgb(app.color), lift) };
         // The whole card opens the app's page. Added before the card's own links and buttons, so
         // they sit on top of it and keep their clicks.
+        let mut card_focused = false;
         if AppDetails::by_id(id).is_some() {
             let open = ui.interact(rect, ui.scope_id().with(("card-open", id)), Sense::click());
+            card_focused = open.has_focus();
             open.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, true, fmt(tl!("{name} details"), &[("name", app.name)])));
             if open.on_hover_cursor(egui::CursorIcon::PointingHand).clicked() {
                 self.detail = Some(id.to_string());
@@ -650,6 +652,11 @@ impl LauncherUi {
         ui.with_layout(egui::Layout::bottom_up(egui::Align::Min), |ui| {
             ui.horizontal(|ui| self.actions(ui, &entry, &status, inner.width()));
         });
+        // Reached with the keyboard, the whole card (which opens the app's page) shows the focus,
+        // drawn last so the card's own fill doesn't cover it.
+        if card_focused {
+            painter.rect_stroke(rect, CornerRadius::ZERO, Stroke::new(2.0, t.accent_ink), egui::StrokeKind::Inside);
+        }
         Some(needed)
     }
 

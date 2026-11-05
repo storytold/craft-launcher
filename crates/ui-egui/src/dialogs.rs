@@ -65,7 +65,7 @@ impl LauncherUi {
         let mut ok = false;
         modal.show(ctx, |ui| {
             ui.set_width(440.0f32.min(ctx.content_rect().width() - 80.0));
-            ui.label(RichText::new(&alert.title).size(18.0).family(theme::semibold()).color(t.ink_strong));
+            ui.label(RichText::new(&alert.title).size(theme::TEXT_TITLE).family(theme::semibold()).color(t.ink_strong));
             ui.add_space(6.0);
             egui::ScrollArea::vertical().max_height(ctx.content_rect().height() * 0.5).show(ui, |ui| {
                 ui.add(egui::Label::new(RichText::new(&alert.body).color(t.muted)).wrap());
