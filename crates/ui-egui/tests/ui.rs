@@ -1536,6 +1536,11 @@ fn grid_shows_pinned_section_header() {
     h.run_steps(4);
     h.get_by_label("Pinned · 1");
     h.get_by_label("Installed · 3");
+    // A search that leaves only the pinned app leaves one group, which needs no heading.
+    h.state_mut().as_mut().unwrap().set_search_for_test("PhotoCraft");
+    h.run_steps(4);
+    assert_eq!(h.state().as_ref().unwrap().visible_ids_for_test(), ["photocraft"]);
+    assert!(h.query_by_label_contains("Pinned").is_none(), "a single group is not labelled");
     h.get_all_by_label_contains("Reorder PhotoCraft").next().expect("pinned card exposes a reorder handle");
 }
 

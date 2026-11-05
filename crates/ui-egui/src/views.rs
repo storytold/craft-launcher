@@ -444,20 +444,22 @@ impl LauncherUi {
     pub(crate) fn grid(&mut self, ui: &mut Ui, ids: &[&'static str]) {
         let pinned_n = ids.iter().take_while(|id| self.settings.is_pinned(id)).count();
         let (pinned, rest) = ids.split_at(pinned_n);
+        let installed = rest.iter().take_while(|id| self.is_installed(id)).count();
+        let (top, rest) = rest.split_at(installed);
+        // Once the page has more than one group, each one is named, with how many apps it holds; a
+        // page of one group (a search that leaves only pinned apps, say) needs no heading.
+        let named = [!pinned.is_empty(), !top.is_empty(), !rest.is_empty()].into_iter().filter(|g| *g).count() > 1;
+        let t = Tokens::get(ui.ctx());
         if !pinned.is_empty() {
-            let t = Tokens::get(ui.ctx());
-            widgets::hud(ui, &group_label(tl!("Pinned"), pinned.len()), t.faint);
-            ui.add_space(12.0);
+            if named {
+                widgets::hud(ui, &group_label(tl!("Pinned"), pinned.len()), t.faint);
+                ui.add_space(12.0);
+            }
             self.grid_block(ui, pinned);
-            if !rest.is_empty() {
+            if !top.is_empty() || !rest.is_empty() {
                 ui.add_space(28.0);
             }
         }
-        let installed = rest.iter().take_while(|id| self.is_installed(id)).count();
-        let (top, rest) = rest.split_at(installed);
-        // Once the page has more than one group, each one is named, with how many apps it holds.
-        let named = [!pinned.is_empty(), !top.is_empty(), !rest.is_empty()].into_iter().filter(|g| *g).count() > 1;
-        let t = Tokens::get(ui.ctx());
         if named && !top.is_empty() {
             widgets::hud(ui, &group_label(tr_ctx(current(), "filter", "Installed"), top.len()), t.faint);
             ui.add_space(12.0);
