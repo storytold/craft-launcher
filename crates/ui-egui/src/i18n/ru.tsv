@@ -48,6 +48,10 @@
 	Install	Установить
 	Update to {v}	Обновить до {v}
 	Open	Открыть
+	Open {version}	Открыть {version}
+	Open {installed} without updating. {latest} stays available.	Открыть {installed} без обновления. Версия {latest} останется доступной.
+	{latest} is out, but ArtCraft Launcher can't install it over this copy.	Вышла версия {latest}, но ArtCraft Launcher не может установить её поверх этой копии.
+	ArtCraft Launcher can't install version {version} over this copy.	ArtCraft Launcher не может установить версию {version} поверх этой копии.
 	Download for {os}	Скачать для {os}
 	Download	Скачать
 	Coming soon	Скоро
@@ -71,6 +75,13 @@
 	Show in Files	Показать в файловом менеджере
 	Reinstall	Переустановить
 	Uninstall…	Удалить…
+	Launch options…	Параметры запуска…
+	{name} launch options	Параметры запуска {name}
+	Flags added each time the app is opened	Флаги, добавляемые при каждом открытии приложения
+	Separate flags with spaces. Quote a value that has spaces in it.	Разделяйте флаги пробелами. Значение с пробелами заключите в кавычки.
+	A quote isn't closed.	Кавычка не закрыта.
+	{name} wasn't opened: a quote in its launch options isn't closed.	{name} не открыто: в параметрах запуска не закрыта кавычка.
+	Save	Сохранить
 	All releases	Все релизы
 	ArtCraft Launcher {version} is available.	Доступен ArtCraft Launcher {version}.
 	Dismiss	Закрыть
@@ -121,6 +132,12 @@
 	Apps on this computer	Приложения на этом компьютере
 	Installed apps with a newer version	Установленные приложения, у которых есть новая версия
 	Apps you can install	Приложения, которые можно установить
+	Pin to top	Закрепить сверху
+	Unpin	Открепить
+	Pinned	Закреплённые
+	Reorder {name}	Изменить порядок: {name}
+	Move up	Выше
+	Move down	Ниже
 	Hide App	Скрыть приложение
 	Unhide App	Показать приложение
 	Hidden Apps	Скрытые приложения
@@ -400,3 +417,14 @@ texturecraft	Mesh maps	Карты сетки
 texturecraft	Bake mesh maps and use smart materials.	Запекайте карты сетки и используйте умные материалы.
 texturecraft	Paint textures on 3D models.	Рисуйте текстуры на 3D-моделях.
 	Hide community apps	Скрыть приложения сообщества
+materialcraft	Procedural material design	Создание процедурных материалов
+materialcraft	Build materials with node graphs.	Создавайте материалы с помощью графов узлов.
+materialcraft	Create tileable PBR materials and export texture maps.	Создавайте бесшовные PBR-материалы и экспортируйте карты текстур.
+materialcraft	Node graphs	Графы узлов
+materialcraft	Combine noises, patterns and filters.	Комбинируйте шумы, узоры и фильтры.
+materialcraft	Live previews	Предпросмотр в реальном времени
+materialcraft	Preview materials in 2D and on 3D models.	Просматривайте материалы в 2D и на 3D-моделях.
+	Advanced	Дополнительно
+	Migrate Flatpak bundles to ArtCraft OCI (experimental)	Переводить пакеты Flatpak на ArtCraft OCI (экспериментально)
+	On update, switch first party apps when the matching package is available. Otherwise, keep using bundles.	При обновлении переводить приложения ArtCraft на репозиторий, если доступен соответствующий пакет. Иначе продолжать использовать отдельные пакеты.
+	The OCI repository is a preview with GPG verification disabled.	Репозиторий OCI работает в предварительном режиме с отключённой проверкой GPG.

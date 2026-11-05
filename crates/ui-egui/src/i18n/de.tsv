@@ -50,6 +50,10 @@
 	Install	Installieren
 	Update to {v}	Auf {v} aktualisieren
 	Open	Öffnen
+	Open {version}	{version} öffnen
+	Open {installed} without updating. {latest} stays available.	{installed} ohne Aktualisierung öffnen. {latest} bleibt verfügbar.
+	{latest} is out, but ArtCraft Launcher can't install it over this copy.	{latest} ist erschienen, aber ArtCraft Launcher kann es nicht über diese Installation installieren.
+	ArtCraft Launcher can't install version {version} over this copy.	ArtCraft Launcher kann Version {version} nicht über diese Installation installieren.
 	Download for {os}	Für {os} herunterladen
 	Download	Herunterladen
 	Coming soon	Demnächst
@@ -73,6 +77,13 @@
 	Show in Files	Im Dateimanager zeigen
 	Reinstall	Neu installieren
 	Uninstall…	Deinstallieren…
+	Launch options…	Startoptionen…
+	{name} launch options	Startoptionen für {name}
+	Flags added each time the app is opened	Flags, die bei jedem Öffnen der App angehängt werden
+	Separate flags with spaces. Quote a value that has spaces in it.	Flags durch Leerzeichen trennen. Werte mit Leerzeichen in Anführungszeichen setzen.
+	A quote isn't closed.	Ein Anführungszeichen wird nicht geschlossen.
+	{name} wasn't opened: a quote in its launch options isn't closed.	{name} wurde nicht geöffnet: Ein Anführungszeichen in den Startoptionen wird nicht geschlossen.
+	Save	Speichern
 	All releases	Alle Versionen
 	ArtCraft Launcher {version} is available.	ArtCraft Launcher {version} ist verfügbar.
 	Dismiss	Ausblenden
@@ -123,6 +134,12 @@
 	Apps on this computer	Apps auf diesem Computer
 	Installed apps with a newer version	Installierte Apps mit neuerer Version
 	Apps you can install	Apps, die du installieren kannst
+	Pin to top	Oben anheften
+	Unpin	Lösen
+	Pinned	Angeheftet
+	Reorder {name}	{name} neu anordnen
+	Move up	Nach oben
+	Move down	Nach unten
 	Hide App	App ausblenden
 	Unhide App	App einblenden
 	Hidden Apps	Ausgeblendete Apps
@@ -404,3 +421,14 @@ texturecraft	Mesh maps	Mesh-Maps
 texturecraft	Bake mesh maps and use smart materials.	Mesh-Maps backen und intelligente Materialien verwenden.
 texturecraft	Paint textures on 3D models.	Texturen auf 3D-Modelle malen.
 	Hide community apps	Community-Apps ausblenden
+materialcraft	Procedural material design	Prozedurales Materialdesign
+materialcraft	Build materials with node graphs.	Materialien mit Knotengraphen erstellen.
+materialcraft	Create tileable PBR materials and export texture maps.	Nahtlos kachelbare PBR-Materialien erstellen und Textur-Maps exportieren.
+materialcraft	Node graphs	Knotengraphen
+materialcraft	Combine noises, patterns and filters.	Rauschen, Muster und Filter kombinieren.
+materialcraft	Live previews	Live-Vorschauen
+materialcraft	Preview materials in 2D and on 3D models.	Materialien in 2D und auf 3D-Modellen anzeigen.
+	Advanced	Erweitert
+	Migrate Flatpak bundles to ArtCraft OCI (experimental)	Flatpak-Bundles zu ArtCraft OCI migrieren (experimentell)
+	On update, switch first party apps when the matching package is available. Otherwise, keep using bundles.	ArtCraft-Apps beim Aktualisieren umstellen, wenn das passende Paket verfügbar ist. Andernfalls weiterhin Bundles verwenden.
+	The OCI repository is a preview with GPG verification disabled.	Das OCI-Repository ist eine Vorschau mit deaktivierter GPG-Prüfung.
