@@ -599,6 +599,13 @@ impl LauncherUi {
                 }
                 false
             }
+            // Can turn an update on or off, so updates are announced (or started) again.
+            Event::Installable { app, installable } => {
+                if let Some(e) = self.entry_mut(&app) {
+                    e.installable = Some(installable);
+                }
+                true
+            }
             Event::Occupied { app, path } => {
                 self.dialog = Some(Dialog::Replace { app, path });
                 false
