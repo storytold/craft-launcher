@@ -141,6 +141,10 @@ pub struct LauncherUi {
     pub(crate) caps: Capabilities,
     pub(crate) platform: Option<Platform>,
     pub(crate) checking: bool,
+    /// Automatic app installs wait for CheckFinished once a refresh starts, so independently
+    /// fetched release results can be collected into one Windows InstallAll request. Cached
+    /// releases remain usable if the host cannot start a refresh at all.
+    automatic_updates_ready: bool,
     pub(crate) last_source: Option<Source>,
     pub(crate) rate_limited_until: Option<i64>,
     pub(crate) launcher_update: Option<Release>,
@@ -194,6 +198,9 @@ pub struct LauncherUi {
     /// Versions of apps or the launcher already queued for auto-update during this session,
     /// preventing repeated install loops if an update fails or is in progress.
     pub(crate) auto_update_attempted: std::collections::BTreeSet<(String, String)>,
+    /// App operations sent to the backend but not yet finished. Progress events can arrive after
+    /// another check or Update all action, so this closes that gap.
+    pending_app_operations: std::collections::HashSet<String>,
     /// The URL or deep link to open when Discord is clicked.
     pub(crate) discord_url: &'static str,
     /// UI actions drawn in this pass, not sent yet.
@@ -262,6 +269,7 @@ impl LauncherUi {
             caps,
             platform,
             checking: false,
+            automatic_updates_ready: true,
             last_source: None,
             rate_limited_until: None,
             launcher_update: None,
@@ -292,6 +300,7 @@ impl LauncherUi {
             last_detect: 0,
             was_focused: true,
             auto_update_attempted: std::collections::BTreeSet::new(),
+            pending_app_operations: std::collections::HashSet::new(),
             discord_url: artcraft_launcher_core::catalog::DISCORD_URL,
             pending: Vec::new(),
             frame: None,
@@ -335,7 +344,7 @@ impl LauncherUi {
     /// Something is downloading or installing, the launcher's own update included: quitting now
     /// would cut it short.
     pub fn busy(&self) -> bool {
-        self.launcher_job.is_some() || self.entries.iter().any(|e| e.job.is_some())
+        self.launcher_job.is_some() || !self.pending_app_operations.is_empty() || self.entries.iter().any(|e| e.job.is_some())
     }
 
     /// Looks for updates now (the tray's "Check for Updates").
@@ -347,7 +356,81 @@ impl LauncherUi {
     }
 
     pub(crate) fn send(&mut self, command: Command) {
-        self.backend.send(command);
+        match command {
+            Command::Install { app } => self.send_app_install(app),
+            Command::InstallAll { apps } => self.send_app_install_batch(apps),
+            Command::Replace { app, path } => {
+                if self.pending_app_operations.insert(app.clone()) {
+                    self.backend.send(Command::Replace { app, path });
+                } else {
+                    log::debug!("update routing: skipped duplicate pending operation for {app}");
+                }
+            }
+            Command::Uninstall { app } => {
+                if self.pending_app_operations.insert(app.clone()) {
+                    self.backend.send(Command::Uninstall { app });
+                } else {
+                    log::debug!("update routing: skipped duplicate pending operation for {app}");
+                }
+            }
+            command => self.backend.send(command),
+        }
+    }
+
+    /// Reserves an app operation before sending it, so another check cannot queue a competing
+    /// install while the backend's first Progress event is still in transit.
+    fn send_app_install(&mut self, app: String) {
+        if self.pending_app_operations.insert(app.clone()) {
+            self.backend.send(Command::Install { app });
+        } else {
+            log::debug!("update routing: skipped duplicate pending operation for {app}");
+        }
+    }
+
+    /// Sends one batch after removing duplicate IDs and operations already queued through another
+    /// route. Each newly selected app still receives its own backend job and result.
+    fn send_app_install_batch(&mut self, apps: Vec<String>) {
+        let mut selected = Vec::with_capacity(apps.len());
+        for app in apps {
+            if self.pending_app_operations.insert(app.clone()) {
+                selected.push(app);
+            } else {
+                log::debug!("update routing: skipped duplicate pending operation for {app}");
+            }
+        }
+        if !selected.is_empty() {
+            self.backend.send(Command::InstallAll { apps: selected });
+        }
+    }
+
+    fn windows_update_platform(&self) -> bool {
+        self.platform.is_some_and(|platform| platform.os == artcraft_launcher_core::Os::Windows)
+    }
+
+    /// Apps currently eligible for the toolbar's Update all action. An update already sent to the
+    /// backend is excluded even before its first progress event reaches the UI.
+    fn update_apps(&self) -> Vec<String> {
+        self.entries
+            .iter()
+            .filter(|entry| self.in_filter(entry, Filter::Updates) && entry.job.is_none() && !self.pending_app_operations.contains(entry.app.id))
+            .map(|entry| entry.app.id.to_string())
+            .collect()
+    }
+
+    /// Queues the toolbar's full update action using the Windows batch coordinator where
+    /// available. Other operating systems retain one Install command per app.
+    pub(crate) fn request_update_all(&mut self) {
+        let apps = self.update_apps();
+        if apps.is_empty() {
+            return;
+        }
+        if self.windows_update_platform() {
+            self.act_command(Command::InstallAll { apps });
+        } else {
+            for app in apps {
+                self.act_command(Command::Install { app });
+            }
+        }
     }
 
     /// The toolbar's check button. The side effects run once, when the pass flushes.
@@ -356,14 +439,15 @@ impl LauncherUi {
     }
 
     /// Queues one user action. Distinct controls may queue equal payloads in the same pass; the
-    /// per-frame duplicate check happens in [`Self::flush_actions`] when the draw order is known.
+    /// per-frame duplicate check happens in [`Self::flush_actions`] when the draw order is known;
+    /// app mutations also pass through the pending-operation guard.
     fn act(&mut self, action: UiAction) {
         self.pending.push(action);
     }
 
     /// Queues a backend command at this pass's action boundary. [`Self::flush_actions`] delivers it
-    /// once per visible frame; equal commands queued by distinct controls in one pass are separate
-    /// intents and are both kept.
+    /// once per visible frame. Equal commands from distinct controls remain distinct intents, but
+    /// app mutations for an ID already in flight are coalesced by [`Self::send`].
     pub(crate) fn act_command(&mut self, command: Command) {
         self.act(UiAction::Command(command));
     }
@@ -380,10 +464,10 @@ impl LauncherUi {
 
     /// Sends the actions collected by this pass, exactly once per visible frame.
     ///
-    /// Actions are compared by their `rank` among equal actions in this pass: the first Install in
-    /// a pass is the first Install that frame, the second is the second. A re-run pass produces the
-    /// same ranks in the same draw order, so anything at or below the number already sent is a
-    /// repeat; a genuinely new second intent of the same kind still gets its own rank and is sent.
+    /// Actions are compared by their `rank` among equal actions in this pass. A re-run pass
+    /// produces the same ranks in the same draw order, so anything at or below the number already
+    /// sent is a repeat. A distinct intent reaches `send`, where pending app mutations are
+    /// coalesced by app ID.
     fn flush_actions(&mut self) {
         let pending = std::mem::take(&mut self.pending);
         for (index, action) in pending.iter().enumerate() {
@@ -394,7 +478,7 @@ impl LauncherUi {
                 continue;
             }
             match action {
-                UiAction::Command(command) => self.backend.send(command.clone()),
+                UiAction::Command(command) => self.send(command.clone()),
                 UiAction::Launch(id) => {
                     let opened = self.settings.launches.entry(id.clone()).or_insert(0);
                     *opened = opened.saturating_add(1);
@@ -599,10 +683,12 @@ impl LauncherUi {
             Event::LauncherUpdate(r) => self.on_launcher_update(r),
             Event::CheckStarted => {
                 self.checking = true;
+                self.automatic_updates_ready = false;
                 false
             }
             Event::CheckFinished { at, source, rate_limited_until } => {
                 self.checking = false;
+                self.automatic_updates_ready = true;
                 self.settings.last_check = Some(at);
                 self.last_source = Some(source);
                 self.rate_limited_until = rate_limited_until;
@@ -636,6 +722,7 @@ impl LauncherUi {
     /// Summarizes a job's end as a toast; cancellations have their own messages.
     fn on_job_finished(&mut self, app: String, result: Result<String, String>) {
         let launcher = app == artcraft_launcher_core::catalog::LAUNCHER_ID;
+        self.pending_app_operations.remove(&app);
         // What the job was doing when it ended says what a cancellation called off.
         let last = if launcher { self.launcher_job.take() } else { self.entry(&app).and_then(|e| e.job) };
         if let Some(e) = self.entry_mut(&app) {
@@ -725,22 +812,32 @@ impl LauncherUi {
 
     /// When auto-updates are enabled, automatically downloads and installs pending updates.
     pub(crate) fn trigger_auto_updates(&mut self) {
-        if !self.caps.manage_apps || !self.settings.auto_update {
+        if !self.caps.manage_apps || !self.settings.auto_update || self.checking || !self.automatic_updates_ready {
             return;
         }
         let to_update: Vec<(String, String)> = self
             .entries
             .iter()
-            .filter(|e| self.in_filter(e, Filter::Updates) && e.job.is_none() && !e.ready)
+            .filter(|e| self.in_filter(e, Filter::Updates) && e.job.is_none() && !e.ready && !self.pending_app_operations.contains(e.app.id))
             .filter_map(|e| {
                 let v = e.latest_label()?;
                 if self.auto_update_attempted.contains(&(e.app.id.to_string(), v.clone())) { None } else { Some((e.app.id.to_string(), v)) }
             })
             .collect();
-        for (id, version) in to_update {
-            log::info!("auto-update: queuing update for {id} to {version}");
-            self.auto_update_attempted.insert((id.clone(), version));
-            self.send(Command::Install { app: id });
+        if self.windows_update_platform() && !to_update.is_empty() {
+            let apps = to_update.iter().map(|(id, _)| id.clone()).collect::<Vec<_>>();
+            log::info!("auto-update: routing {} app updates through Windows InstallAll", apps.len());
+            for (id, version) in &to_update {
+                log::info!("auto-update: selected {id} {version} for the Windows batch coordinator");
+                self.auto_update_attempted.insert((id.clone(), version.clone()));
+            }
+            self.send(Command::InstallAll { apps });
+        } else {
+            for (id, version) in to_update {
+                log::info!("auto-update: queuing update for {id} to {version}");
+                self.auto_update_attempted.insert((id.clone(), version));
+                self.send(Command::Install { app: id });
+            }
         }
         if self.caps.self_update
             && let Some(r) = &self.launcher_update
@@ -1152,17 +1249,16 @@ mod tests {
     }
 
     #[test]
-    /// Two controls queueing the same command in one pass are two gestures and must both reach the
-    /// backend.
-    fn two_distinct_intents_with_the_same_command_are_both_delivered() {
+    /// Install actions for an app already queued through another control do not start a competing
+    /// installer operation while the original request is pending.
+    fn duplicate_install_intents_for_a_pending_app_are_suppressed() {
         let (mut launcher, sent, _ctx) = launcher();
         launcher.frame = Some(1);
-        // Two different controls in one pass can ask for the same command (the card's Update and
-        // the banner's Update, say). Their payload is equal, but they are not one gesture.
+        // Two controls can ask for the same install in one pass (a card and Update all).
         launcher.act_command(Command::Install { app: "photocraft".into() });
         launcher.act_command(Command::Install { app: "photocraft".into() });
         launcher.flush_actions();
-        assert_eq!(installs(&sent), 2, "both intents must reach the backend: {:?}", sent.borrow());
+        assert_eq!(installs(&sent), 1, "only one operation may be pending for an app: {:?}", sent.borrow());
     }
 
     #[test]
@@ -1199,7 +1295,8 @@ mod tests {
         launcher.act_command(Command::Install { app: "photocraft".into() });
         launcher.flush_actions();
         assert_eq!(installs(&sent), 1, "a second pass over the same gesture must not repeat it: {:?}", sent.borrow());
-        // The next visible frame is a new gesture.
+        // Once the job finishes, the next visible frame may request a retry.
+        launcher.on_job_finished("photocraft".into(), Ok("PhotoCraft updated".into()));
         launcher.frame = Some(2);
         launcher.flushed.clear();
         launcher.act_command(Command::Install { app: "photocraft".into() });
@@ -1272,6 +1369,111 @@ mod tests {
         launcher.toast("PhotoCraft updated", false);
         launcher.attach(&ctx);
         assert_eq!(launcher.pending_toasts.len(), 1, "a message from logic is not tied to the old window");
+    }
+
+    fn update_entry(launcher: &mut LauncherUi, id: &str, version: &str) {
+        let entry = launcher.entry_mut(id).unwrap();
+        entry.detected = true;
+        entry.installed = Some(artcraft_launcher_core::Installed {
+            version: Some(artcraft_launcher_core::version::Version::new(0, 1, 0)),
+            source: artcraft_launcher_core::InstallSource::Msi,
+            location: format!(r"C:\Program Files\ArtCraft\{id}"),
+            package: None,
+            externally_managed: false,
+            origin: None,
+            installation: None,
+        });
+        let asset = artcraft_launcher_core::release::Asset {
+            name: format!("{id}-{version}-windows-x64.msi"),
+            url: format!("https://github.com/storytold/{id}/releases/download/v{version}/{id}-{version}-windows-x64.msi"),
+            ..Default::default()
+        };
+        entry.latest = Some(LatestRelease::Found(Release {
+            tag: format!("v{version}"),
+            version: Some(artcraft_launcher_core::version::Version::new(0, 2, 0)),
+            name: format!("{id} {version}"),
+            assets: vec![asset],
+            ..Default::default()
+        }));
+    }
+
+    fn windows_updates() -> (LauncherUi, Rc<RefCell<Vec<Command>>>) {
+        let (mut launcher, sent, _ctx) = launcher();
+        launcher.caps.manage_apps = true;
+        launcher.platform = Some(Platform { os: artcraft_launcher_core::Os::Windows, arch: artcraft_launcher_core::Arch::X64 });
+        launcher.settings.auto_update = true;
+        launcher.automatic_updates_ready = true;
+        update_entry(&mut launcher, "photocraft", "0.2.0");
+        update_entry(&mut launcher, "vectorcraft", "0.2.0");
+        (launcher, sent)
+    }
+
+    #[test]
+    fn automatic_windows_updates_route_multiple_official_msi_candidates_through_one_batch() {
+        let (mut launcher, sent) = windows_updates();
+        launcher.trigger_auto_updates();
+        assert_eq!(
+            *sent.borrow(),
+            [Command::InstallAll { apps: vec!["photocraft".into(), "vectorcraft".into()] }],
+            "the automatic path must make one batch request for both official updates"
+        );
+        assert_eq!(launcher.pending_app_operations.len(), 2, "each app remains independently tracked until its result");
+    }
+
+    #[test]
+    fn automatic_updates_wait_for_all_release_results_before_reserving_the_batch() {
+        let (mut launcher, sent) = windows_updates();
+        let vectorcraft = launcher.entry("vectorcraft").unwrap().latest.clone().unwrap();
+        launcher.entry_mut("vectorcraft").unwrap().latest = None;
+        launcher.handle(Event::CheckStarted);
+        launcher.trigger_auto_updates();
+        assert!(sent.borrow().is_empty(), "an in-progress check may still have more releases to discover");
+
+        launcher.handle(Event::Latest { app: "vectorcraft".into(), latest: vectorcraft, from: artcraft_launcher_core::protocol::Origin::GitHub });
+        launcher.trigger_auto_updates();
+        assert!(sent.borrow().is_empty(), "release workers must not race into separate elevated batches");
+
+        launcher.handle(Event::CheckFinished { at: 0, source: Source::GitHubApi, rate_limited_until: None });
+        launcher.trigger_auto_updates();
+        assert_eq!(
+            *sent.borrow(),
+            [Command::InstallAll { apps: vec!["photocraft".into(), "vectorcraft".into()] }],
+            "after CheckFinished all detected updates should share one InstallAll request"
+        );
+    }
+
+    #[test]
+    fn automatic_detection_and_manual_update_all_close_together_do_not_duplicate_installs() {
+        let (mut launcher, sent) = windows_updates();
+        // Automatic detection wins the race; the manual button sees both requests as pending.
+        launcher.trigger_auto_updates();
+        launcher.request_update_all();
+        launcher.flush_actions();
+        assert_eq!(
+            *sent.borrow(),
+            [Command::InstallAll { apps: vec!["photocraft".into(), "vectorcraft".into()] }],
+            "a close manual click must not create a second installer request"
+        );
+
+        // In the reverse order, the flushed manual action reserves each app before auto-update
+        // detection can observe delayed Progress events.
+        let (mut launcher, sent) = windows_updates();
+        launcher.request_update_all();
+        launcher.flush_actions();
+        launcher.trigger_auto_updates();
+        assert_eq!(
+            *sent.borrow(),
+            [Command::InstallAll { apps: vec!["photocraft".into(), "vectorcraft".into()] }],
+            "automatic detection must not duplicate a just-sent manual batch"
+        );
+    }
+
+    #[test]
+    fn non_windows_automatic_updates_keep_individual_install_commands() {
+        let (mut launcher, sent) = windows_updates();
+        launcher.platform = Some(Platform { os: artcraft_launcher_core::Os::MacOs, arch: artcraft_launcher_core::Arch::X64 });
+        launcher.trigger_auto_updates();
+        assert_eq!(*sent.borrow(), [Command::Install { app: "photocraft".into() }, Command::Install { app: "vectorcraft".into() }]);
     }
 
     /// A UI driven through the real toolbar → Settings → language picker path, with the test-only

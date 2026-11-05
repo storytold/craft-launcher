@@ -103,6 +103,23 @@ $env:ARTCRAFT_TEST_OFFICIAL_MSI_DIR = (Resolve-Path .\official-msis).Path
 cargo test --locked -p artcraft-launcher-native validates_documented_official_msi_packages_with_windows_signature_and_database_apis -- --ignored --nocapture
 ```
 
+The broader current-release check covers the x64 MSI releases recorded in
+[windows-current-msi-releases.json](windows-current-msi-releases.json), including FigCraft and
+LightCraft. The manifest was checked against each official repository's latest release and
+`SHA256SUMS.txt` on 2026-11-05. Download those exact MSI assets into one folder, then run this
+non-installing production-policy test from the same unelevated checkout:
+
+```powershell
+$env:ARTCRAFT_TEST_CURRENT_MSI_DIR = (Resolve-Path .\current-official-msis).Path
+cargo test --locked -p artcraft-launcher-native validates_current_official_x64_msi_releases_with_windows_security_apis -- --ignored --nocapture
+```
+
+It checks the local files against the recorded published hashes and independently has the
+production policy fetch the official release checksum again, then verifies Authenticode,
+certificate Organization, app/release identity, and MSI database properties. It deliberately
+does not install anything. Refresh the manifest when testing later releases; a checksum or
+metadata incompatibility must fail the test rather than relaxing the production policy.
+
 ## Repeatable negative cases
 
 Restore the snapshot between cases and record which step and result you observed:

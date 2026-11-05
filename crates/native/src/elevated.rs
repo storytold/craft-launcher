@@ -963,6 +963,35 @@ fn read_results(path: &Path) -> Result<Option<String>, String> {
 mod tests {
     use super::*;
 
+    #[test]
+    fn current_windows_msi_manifest_only_authorizes_official_catalog_releases() {
+        let manifest: serde_json::Value = serde_json::from_str(include_str!("../../../docs/windows-current-msi-releases.json")).unwrap();
+        let packages = manifest["packages"].as_array().unwrap();
+        assert!(packages.len() >= 12);
+        let mut app_ids = std::collections::HashSet::new();
+        for package in packages {
+            let app_id = package["app"].as_str().unwrap();
+            let tag = package["tag"].as_str().unwrap();
+            let asset_name = package["asset"].as_str().unwrap();
+            let sha256 = package["sha256"].as_str().unwrap();
+            assert!(app_ids.insert(app_id), "duplicate manifest app {app_id}");
+            assert!(sha256.len() == 64 && sha256.bytes().all(|byte| byte.is_ascii_hexdigit()), "invalid SHA256 for {app_id}");
+            let app = CraftApp::by_id(app_id).unwrap();
+            assert_eq!(app.kind, AppKind::Official, "community apps stay outside the official MSI policy");
+            let asset = release::Asset {
+                name: asset_name.to_owned(),
+                url: format!("https://github.com/{}/releases/download/{tag}/{asset_name}", app.repo),
+                ..Default::default()
+            };
+            let identity = release_identity(app, &asset).unwrap();
+            assert_eq!(identity.app, app_id);
+            assert_eq!(identity.tag, tag);
+            assert_eq!(identity.asset, asset_name);
+        }
+        assert!(app_ids.contains("figcraft"));
+        assert!(app_ids.contains("lightcraft"));
+    }
+
     #[cfg(any(windows, test))]
     enum PowerShellTestTransport {
         Encoded(String),
@@ -1328,6 +1357,84 @@ Remove-Item -LiteralPath $path -Force
         let output = run_powershell_test(&test);
         assert_powershell_output_contains(&output, "photocraft 0.13.0 checksum/signature/MSI identity passed; organization=Learning Machines Inc");
         assert_powershell_output_contains(&output, "vectorcraft 0.15.0 checksum/signature/MSI identity passed; organization=Learning Machines Inc");
+    }
+
+    /// Validates the official x64 release set recorded from each repository's latest release on
+    /// 2026-11-05. This does not install packages; the production policy fetches and checks each
+    /// release's current published checksum file again.
+    #[cfg(windows)]
+    #[test]
+    #[ignore = "requires every x64 MSI listed in docs/windows-current-msi-releases.json"]
+    fn validates_current_official_x64_msi_releases_with_windows_security_apis() {
+        #[derive(Serialize)]
+        struct CatalogApp {
+            id: &'static str,
+            repo: &'static str,
+            names: Vec<&'static str>,
+            stems: Vec<&'static str>,
+        }
+
+        let dir = std::env::var_os("ARTCRAFT_TEST_CURRENT_MSI_DIR")
+            .expect("set ARTCRAFT_TEST_CURRENT_MSI_DIR to the folder containing the current official MSIs");
+        let dir = std::path::PathBuf::from(dir);
+        let manifest: serde_json::Value = serde_json::from_str(include_str!("../../../docs/windows-current-msi-releases.json")).unwrap();
+        assert_eq!(manifest["architecture"], "windows-x64");
+        let packages = manifest["packages"].as_array().expect("current MSI manifest has a packages array");
+        assert!(packages.len() >= 12, "the fixture should cover the current multi-app Update all population");
+        let mut cases = Vec::new();
+        for package in packages {
+            let app_id = package["app"].as_str().expect("manifest app ID");
+            let tag = package["tag"].as_str().expect("manifest release tag");
+            let asset_name = package["asset"].as_str().expect("manifest MSI asset");
+            let expected_hash = package["sha256"].as_str().expect("manifest checksum");
+            let app = CraftApp::by_id(app_id).expect("manifest app is in the compiled catalog");
+            assert_eq!(app.kind, AppKind::Official, "community packages cannot enter this test: {app_id}");
+            let url = format!("https://github.com/{}/releases/download/{tag}/{asset_name}", app.repo);
+            let asset = release::Asset { name: asset_name.to_owned(), url, ..Default::default() };
+            let release = release_identity(app, &asset).unwrap();
+            let path = dir.join(asset_name);
+            let actual_hash = crate::http::sha256_file(&path).unwrap();
+            assert_eq!(actual_hash, expected_hash, "published checksum mismatch: {app_id} {tag}");
+            cases.push(serde_json::json!({
+                "path": path,
+                "release": release,
+                "sha256": actual_hash,
+            }));
+        }
+        let catalog: Vec<_> = artcraft_launcher_core::catalog::SUITE
+            .iter()
+            .filter(|app| app.kind == AppKind::Official && app.repo.starts_with("storytold/"))
+            .map(|app| CatalogApp { id: app.id, repo: app.repo, names: app.names().collect(), stems: app.stems().collect() })
+            .collect();
+        use base64::Engine as _;
+        let case_data = base64::engine::general_purpose::STANDARD.encode(serde_json::to_vec(&cases).unwrap());
+        let catalog_data = base64::engine::general_purpose::STANDARD.encode(serde_json::to_vec(&catalog).unwrap());
+        let test = format!(
+            "{POLICY}\n$cases=[Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('{case_data}')) | ConvertFrom-Json\n\
+             $catalog=[Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('{catalog_data}')) | ConvertFrom-Json\n\
+             foreach ($item in $cases) {{\n\
+               $authorization=Get-ReleaseAuthorization $item $catalog\n\
+               $file=[string]$item.path\n\
+               $locked=[IO.File]::Open($file,[IO.FileMode]::Open,[IO.FileAccess]::Read,[IO.FileShare]::Read)\n\
+               try {{ $hash=[Security.Cryptography.SHA256]::Create(); try {{ $actual=([BitConverter]::ToString($hash.ComputeHash($locked))).Replace('-','').ToLowerInvariant() }} finally {{ $hash.Dispose() }}; if ($actual -cne $authorization.sha) {{ throw 'MSI checksum differs from official publication' }} }} finally {{ $locked.Dispose() }}\n\
+               Assert-OfficialSignature $file\n\
+               $signature = Microsoft.PowerShell.Security\\Get-AuthenticodeSignature -LiteralPath $file\n\
+               $signerOrganization = Get-CertificateOrganization $signature.SignerCertificate\n\
+               if ($signerOrganization -cne 'Learning Machines Inc') {{ throw 'Crypt32 signer Organization did not match the approved publisher' }}\n\
+               Assert-MsiIdentity $file $authorization.app $authorization.version $authorization.asset\n\
+               Write-Output ($item.release.app + ' ' + $authorization.version + ' checksum/signature/MSI identity passed; organization=' + $signerOrganization)\n\
+             }}\n"
+        );
+        let output = run_powershell_test(&test);
+        for package in packages {
+            let app_id = package["app"].as_str().unwrap();
+            let tag = package["tag"].as_str().unwrap();
+            let version = tag.strip_prefix('v').unwrap_or(tag);
+            assert_powershell_output_contains(
+                &output,
+                &format!("{app_id} {version} checksum/signature/MSI identity passed; organization=Learning Machines Inc"),
+            );
+        }
     }
 
     #[test]

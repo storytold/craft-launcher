@@ -1,10 +1,13 @@
 # Windows MSI batch security design
 
 `Update all` is a single explicit operation. On Windows the UI sends one `InstallAll` command;
-the native backend reserves a slot for every selected app synchronously before starting any
-worker. Eligible official, per-machine MSI jobs join that batch after downloading. Each download
-is checked against its published SHA-256 before it reaches this code. Failed, cancelled, per-user,
-portable, and community app jobs release their slots without authorizing an elevated install.
+automatic app updates use that same route. The UI tracks app operations as soon as a command is
+sent, so automatic detection and a manual click cannot queue duplicate work while the first
+progress event is still in transit. The native backend reserves a slot for every selected app
+synchronously before starting any worker. Eligible official, per-machine MSI jobs join that batch
+after downloading. Each download is checked against its published SHA-256 before it reaches this
+code. Failed, cancelled, per-user, portable, and community app jobs release their slots without
+authorizing an elevated install.
 
 The launcher GUI is never elevated. The MSI batch uses the Windows PowerShell host from
 `GetSystemDirectory`; it starts unelevated and asks Windows to run that same OS executable through
@@ -113,6 +116,12 @@ not use MSI batching. Consequently, one consent operation applies to eligible of
 machine-wide MSI updates in one `Update all` action when the launcher is unelevated and Windows
 policy is configured to prompt; a separately handled community install may still use its existing
 permission flow. Windows policy may suppress visible UI, as described above.
+
+The native install log records the selected package format, detected MSI scope, official/community
+classification, whether the package met the official machine-wide policy, whether it joined a
+reserved batch slot, and an explicit fallback reason. It does not log user paths, package contents,
+or checksum values as part of this routing decision. This makes per-user, community, non-MSI,
+downgrade, and individual-install routes distinguishable without broadening the trust policy.
 
 The approaches in [PR #311](https://github.com/storytold/craft-launcher/pull/311) and
 [PR #345](https://github.com/storytold/craft-launcher/pull/345) were also reviewed. PR #311's

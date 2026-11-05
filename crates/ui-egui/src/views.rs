@@ -313,14 +313,7 @@ impl LauncherUi {
     fn update_all_button(&mut self, ui: &mut Ui, updates: usize) {
         let label = if updates == 1 { tl!("Update 1 app").to_string() } else { fmt(tl!("Update all ({count})"), &[("count", &updates.to_string())]) };
         if widgets::button(ui, &label, Kind::Primary, 0.0).clicked() {
-            let apps: Vec<String> =
-                self.entries.iter().filter(|e| self.in_filter(e, Filter::Updates) && e.job.is_none()).map(|e| e.app.id.to_string()).collect();
-            #[cfg(windows)]
-            self.act_command(Command::InstallAll { apps });
-            #[cfg(not(windows))]
-            for app in apps {
-                self.act_command(Command::Install { app });
-            }
+            self.request_update_all();
         }
     }
 

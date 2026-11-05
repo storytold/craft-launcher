@@ -991,7 +991,7 @@ fn drive_accesskit_click(
 /// bypasses the action boundary. The AccessKit-click tests below re-deliver the same semantic click
 /// on every pass and therefore exercise the actual UI call sites twice in one visible frame.
 #[test]
-fn the_same_download_is_sent_once_across_discarded_passes_but_again_next_frame() {
+fn the_same_download_is_sent_once_and_not_requeued_while_its_job_is_pending() {
     let (mut h, sent) = harness(ViewMode::Grid, egui::Theme::Dark, true);
     h.run_steps(8);
     let at = h.get_by_label("Update to 0.5.0").rect().center();
@@ -1002,10 +1002,11 @@ fn the_same_download_is_sent_once_across_discarded_passes_but_again_next_frame()
     click_steps(&mut launcher, &ctx, at, 100.0, true);
     assert_eq!(install_count(&sent), 1, "one visible frame must send one install, not one per pass: {:?}", sent.borrow());
 
-    // A new frame is a new user gesture: the guard from the previous frame must not swallow it.
+    // A new frame is a new gesture, but the same app's operation is still running. Do not ask the
+    // backend to start a competing install until JobFinished clears the pending operation.
     sent.borrow_mut().clear();
     click_steps(&mut launcher, &ctx, at, 200.0, false);
-    assert_eq!(install_count(&sent), 1, "the next frame must accept the same action again: {:?}", sent.borrow());
+    assert_eq!(install_count(&sent), 0, "a pending install must not be queued twice: {:?}", sent.borrow());
 }
 
 #[test]
@@ -1025,7 +1026,7 @@ fn opening_an_app_counts_once_across_discarded_passes() {
 
 #[test]
 /// The real Update button, clicked through AccessKit on every pass, crosses the action boundary
-/// once per frame and again on the next frame.
+/// once per frame and remains suppressed while that app's operation is pending.
 fn the_actual_update_button_queues_once_across_a_discarded_pass() {
     let (mut h, sent) = harness(ViewMode::Grid, egui::Theme::Dark, true);
     h.run_steps(8);
@@ -1035,10 +1036,10 @@ fn the_actual_update_button_queues_once_across_a_discarded_pass() {
     sent.borrow_mut().clear();
     drive_accesskit_click(&mut launcher, &ctx, target, 100.0, true);
     assert_eq!(install_count(&sent), 1, "the real Update button must cross the action boundary once: {:?}", sent.borrow());
-    // The next visible frame is a new gesture, not a repeated pass.
+    // The next visible frame is a new gesture, but cannot queue a second install before completion.
     sent.borrow_mut().clear();
     drive_accesskit_click(&mut launcher, &ctx, target, 200.0, false);
-    assert_eq!(install_count(&sent), 1, "the next frame must accept the same action again: {:?}", sent.borrow());
+    assert_eq!(install_count(&sent), 0, "a pending update must not start a competing install: {:?}", sent.borrow());
 }
 
 #[test]
@@ -1270,7 +1271,7 @@ fn a_kept_download_offers_retry_install_and_download_again() {
     assert_eq!(*sent.borrow(), [Command::Cancel { app: "cadcraft".into() }]);
     h.get_all_by_role_and_label(egui::accesskit::Role::Button, "Install").last().unwrap().click();
     h.run_steps(2);
-    assert_eq!(*sent.borrow(), [Command::Cancel { app: "cadcraft".into() }, Command::Install { app: "cadcraft".into() }]);
+    assert_eq!(*sent.borrow(), [Command::Cancel { app: "cadcraft".into() }], "wait for the cancelled job to finish before retrying");
     // Apps without a kept download don't offer it.
     assert_eq!(h.query_all_by_label("Retry install").count(), 1);
 }

@@ -182,27 +182,80 @@ fn install_at_inner(
     log::info!("{}: starting {} to {} ({})", app.name, if existing.is_some() { "update" } else { "install" }, release.version_label(), kind.label());
     #[cfg(windows)]
     let msi_scope = if kind == PackageKind::Msi {
-        let updated = crate::msi_context::update_scope(
+        let updated = match crate::msi_context::update_scope(
             existing.is_some_and(|inst| inst.source == InstallSource::Msi),
             existing.and_then(|inst| inst.package.as_deref()),
             crate::msi_context::probe,
             |code| crate::detect::windows::record_scope(app, code),
-        )?;
+        ) {
+            Ok(scope) => scope,
+            Err(error) => {
+                let app_kind = if app.kind == artcraft_launcher_core::catalog::AppKind::Official { "official" } else { "community" };
+                log::info!(
+                    "install routing: app={} package_format={} msi_scope=unknown app_kind={} official_msi_eligible={} batch_participation=no fallback_reason=scope-detection-failed",
+                    app.id,
+                    kind.label(),
+                    app_kind,
+                    false
+                );
+                return Err(error);
+            }
+        };
         // A fresh install is machine-wide (Program Files); an update keeps the context of the copy it replaces.
         crate::msi_context::install_scope(updated, existing.is_none())
     } else {
         None
     };
     #[cfg(windows)]
-    let msi_ticket = if kind == PackageKind::Msi
+    let batch_eligible = kind == PackageKind::Msi
         && msi_scope == Some(MsiScope::PerMachine)
         && app.kind == artcraft_launcher_core::catalog::AppKind::Official
-        && job.downgrade.is_none()
+        && job.downgrade.is_none();
+    #[cfg(windows)]
+    let fallback_reason = if batch_eligible && batch_slot.is_some() {
+        "none"
+    } else if kind != PackageKind::Msi {
+        "package-format-not-msi"
+    } else if msi_scope == Some(MsiScope::PerUser) {
+        "per-user-scope"
+    } else if msi_scope.is_none() {
+        "scope-not-authorized"
+    } else if app.kind != artcraft_launcher_core::catalog::AppKind::Official {
+        "community-package-restriction"
+    } else if job.downgrade.is_some() {
+        "downgrade-flow"
+    } else if batch_slot.is_none() {
+        "no-update-all-slot"
+    } else {
+        "not-eligible"
+    };
+    #[cfg(windows)]
     {
+        let app_kind = if app.kind == artcraft_launcher_core::catalog::AppKind::Official { "official" } else { "community" };
+        let scope = match msi_scope {
+            Some(MsiScope::PerMachine) => "per-machine",
+            Some(MsiScope::PerUser) => "per-user",
+            None if kind == PackageKind::Msi => "unknown",
+            None => "not-applicable",
+        };
+        let participating = batch_eligible && batch_slot.is_some();
+        log::info!(
+            "install routing: app={} package_format={} msi_scope={} app_kind={} official_msi_eligible={} batch_participation={} fallback_reason={}",
+            app.id,
+            kind.label(),
+            scope,
+            app_kind,
+            batch_eligible,
+            participating,
+            fallback_reason
+        );
+    }
+    #[cfg(windows)]
+    let msi_ticket = if batch_eligible && batch_slot.is_some() {
         batch_slot.map(crate::msi_batch::Slot::join)
     } else {
-        // Per-user and community installs retain their existing single-package route. In
-        // particular, they do not enter the privileged ArtCraft-only trust policy.
+        // Non-eligible installs retain their existing single-package route. In particular,
+        // per-user and community packages do not enter the privileged ArtCraft-only trust policy.
         drop(batch_slot);
         None
     };

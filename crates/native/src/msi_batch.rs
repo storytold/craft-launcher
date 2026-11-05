@@ -256,11 +256,15 @@ mod tests {
     use super::*;
 
     fn item(name: &str) -> Item {
+        item_for("photocraft", name)
+    }
+
+    fn item_for(app: &str, name: &str) -> Item {
         Item {
             msi: PathBuf::from(name),
             sha256: "0".repeat(64),
             destination: None,
-            release: crate::elevated::ReleaseIdentity { app: "photocraft".into(), tag: "v0.5.0".into(), asset: name.into() },
+            release: crate::elevated::ReleaseIdentity { app: app.into(), tag: "v0.5.0".into(), asset: name.into() },
         }
     }
 
@@ -296,6 +300,44 @@ mod tests {
         });
         assert_eq!(calls.lock().unwrap().len(), 1);
         assert_eq!(results, [Ok(()), Err("failed".into()), Ok(())]);
+    }
+
+    #[test]
+    fn two_reserved_update_all_items_use_one_installer_call_and_keep_individual_results() {
+        let batch = Batch::new();
+        assert!(batch.begin(2));
+        let slots = [batch.slot(), batch.slot()];
+        let calls = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let results = std::thread::scope(|scope| {
+            let handles: Vec<_> = slots
+                .into_iter()
+                .zip([("photocraft", "photocraft.msi"), ("vectorcraft", "vectorcraft.msi")])
+                .map(|(slot, (app, name))| {
+                    let calls = calls.clone();
+                    scope.spawn(move || {
+                        let result = slot.join().install(item_for(app, name), &|| false, &mut |_| {}, &|items, report| {
+                            calls.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                            assert_eq!(items.len(), 2, "one elevated batch should contain both eligible MSIs");
+                            for (index, item) in items.iter().enumerate() {
+                                let outcome = if item.release.app == "vectorcraft" { Err("VectorCraft failed".into()) } else { Ok(()) };
+                                report(index, Report::Done(outcome));
+                            }
+                        });
+                        (app.to_string(), result)
+                    })
+                })
+                .collect();
+            handles.into_iter().map(|handle| handle.join().unwrap()).collect::<Vec<_>>()
+        });
+
+        assert_eq!(calls.load(std::sync::atomic::Ordering::SeqCst), 1, "one eligible InstallAll batch makes one installer call");
+        let mut results = results;
+        results.sort_by(|left, right| left.0.cmp(&right.0));
+        assert_eq!(
+            results,
+            [("photocraft".into(), Ok(())), ("vectorcraft".into(), Err("VectorCraft failed".into()))],
+            "each app receives its own installer result"
+        );
     }
 
     #[test]
