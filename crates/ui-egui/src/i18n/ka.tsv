@@ -117,6 +117,13 @@
 	The app will be removed. Your documents and settings stay.	აპლიკაცია წაიშლება. თქვენი დოკუმენტები და პარამეტრები შენარჩუნდება.
 	Uninstall	დეინსტალაცია
 	Cancel	გაუქმება
+	Save	შენახვა
+	Launch options…	გაშვების პარამეტრები…
+	{name} launch options	{name}-ის გაშვების პარამეტრები
+	Flags added each time the app is opened	ფლაგები, რომლებიც აპლიკაციის ყოველ გახსნისას ემატება
+	Separate flags with spaces. Quote a value that has spaces in it.	ფლაგები ჰარით გამოყავით. ჰარის შემცველი მნიშვნელობა ბრჭყალებში ჩასვით.
+	A quote isn't closed.	ბრჭყალი არ არის დახურული.
+	{name} wasn't opened: a quote in its launch options isn't closed.	{name} არ გაიხსნა: მისი გაშვების პარამეტრებში ბრჭყალი არ არის დახურული.
 	Checked {ago}	ბოლო შემოწმება: {ago}
 	just now	ახლახან
 	yesterday	გუშინ

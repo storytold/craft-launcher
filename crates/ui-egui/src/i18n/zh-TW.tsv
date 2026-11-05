@@ -96,6 +96,13 @@
 	The app will be removed. Your documents and settings stay.	應用程式會被移除，你的文件與設定會保留。
 	Uninstall	解除安裝
 	Cancel	取消
+	Save	儲存
+	Launch options…	啟動選項…
+	{name} launch options	{name} 啟動選項
+	Flags added each time the app is opened	每次開啟應用程式時附加的參數
+	Separate flags with spaces. Quote a value that has spaces in it.	以空格分隔各個參數。含有空格的值請加上引號。
+	A quote isn't closed.	有引號未閉合。
+	{name} wasn't opened: a quote in its launch options isn't closed.	未開啟 {name}：其啟動選項中有引號未閉合。
 	Checked {ago}	上次檢查：{ago}
 	just now	剛剛
 	yesterday	昨天
