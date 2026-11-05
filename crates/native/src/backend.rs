@@ -2186,8 +2186,10 @@ mod tests {
     }
 
     /// A report uses the settings as they are when it is worked out, not as the worker that sends
-    /// it found them: after the preferred format changes, the kept MSI is no longer the file an
-    /// install would use. (Windows only: it has two formats to choose between.)
+    /// it found them. A worker that started before the preferred format changed (and, before this
+    /// was fixed, carried the settings it started with) waits behind a report in progress; by the
+    /// time it reports, the kept MSI is no longer the file an install would use, and its report is
+    /// the last word. (Windows only: it has two formats to choose between.)
     #[cfg(windows)]
     #[test]
     fn a_kept_download_report_follows_the_current_settings() {
@@ -2201,8 +2203,16 @@ mod tests {
         std::fs::create_dir_all(backend.paths.downloads()).unwrap();
         std::fs::write(&dest, vec![0u8; size as usize]).unwrap();
         assert_eq!(ready(&mut backend), Some(true), "the kept MSI is the planned file");
+
+        // A report is in progress; an older worker starts and waits behind it.
+        let in_progress = backend.shared.planning.lock().unwrap();
+        let (shared, paths) = (backend.shared.clone(), backend.paths.clone());
+        let older = std::thread::spawn(move || report_partial(app, &shared, &paths, Some(platform)));
+        // The preferred format changes while it waits, then the report in progress finishes.
         backend.shared.options.lock().unwrap().kinds = vec![PackageKind::PortableZip];
-        assert_eq!(ready(&mut backend), Some(false), "a portable zip is planned now");
+        drop(in_progress);
+        older.join().unwrap();
+        assert_eq!(last_ready(backend.poll()), Some(false), "the older worker's report has the new settings: a portable zip is planned");
     }
 
     #[test]
