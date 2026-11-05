@@ -51,6 +51,7 @@
 	Open {version}	Ouvrir {version}
 	Open {installed} without updating. {latest} stays available.	Ouvrir {installed} sans mettre à jour. {latest} reste disponible.
 	{latest} is out, but ArtCraft Launcher can't install it over this copy.	{latest} est sortie, mais ArtCraft Launcher ne peut pas l’installer par-dessus cette copie.
+	ArtCraft Launcher can't install version {version} over this copy.	ArtCraft Launcher ne peut pas installer la version {version} par-dessus cette copie.
 	Download for {os}	Télécharger pour {os}
 	Download	Télécharger
 	Coming soon	Bientôt disponible

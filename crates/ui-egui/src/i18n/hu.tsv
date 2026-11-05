@@ -53,6 +53,7 @@
 	Open {version}	{version} megnyitása
 	Open {installed} without updating. {latest} stays available.	{installed} megnyitása frissítés nélkül. A(z) {latest} továbbra is elérhető.
 	{latest} is out, but ArtCraft Launcher can't install it over this copy.	Megjelent a(z) {latest}, de az ArtCraft Launcher nem tudja ennek a példánynak a helyére telepíteni.
+	ArtCraft Launcher can't install version {version} over this copy.	Az ArtCraft Launcher nem tudja a(z) {version} verziót ennek a példánynak a helyére telepíteni.
 	Download for {os}	Letöltés {os} rendszerre
 	Download	Letöltés
 	Coming soon	Hamarosan

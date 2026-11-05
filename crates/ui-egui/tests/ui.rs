@@ -1157,6 +1157,66 @@ fn the_backends_installability_answer_decides_an_update() {
 }
 
 #[test]
+/// The note beside a copy behind a release it can't take shows in the table too.
+fn the_table_notes_a_newer_release_that_cant_install_here() {
+    let mut ev = events();
+    ev.push(Event::Installable { app: "photocraft".into(), installable: false });
+    let (mut h, _) = harness_with(ev, ViewMode::Table, egui::Theme::Dark, true, 1.0);
+    h.run_steps(8);
+    h.get_by_label("0.4.1 · latest 0.5.0");
+}
+
+#[test]
+/// Kept on an exact version, the release on screen can be the old track's until the check
+/// finishes, so an install of it is refused for that alone: no "can't install it" note then. And
+/// "Install version X" for a version that can't replace this copy is greyed out with the reason.
+fn a_kept_version_gets_no_out_of_reach_note_and_says_why_it_cant_install() {
+    let mut ev = events();
+    ev.push(Event::Installable { app: "photocraft".into(), installable: false });
+    let (mut h, _) = harness_with(ev, ViewMode::Grid, egui::Theme::Dark, true, 1.0);
+    h.run_steps(8);
+    h.get_by_label_contains("0.4.1 · latest 0.5.0");
+    h.state_mut()
+        .as_mut()
+        .expect("the harness built the launcher")
+        .settings
+        .versions
+        .insert("photocraft".into(), artcraft_launcher_core::protocol::VersionTrack::Pinned("v0.5.0".into()));
+    h.run_steps(4);
+    assert!(h.query_by_label_contains("latest 0.5.0").is_none(), "no note while a version is kept");
+    let install = h.get_by_label("Install version v0.5.0");
+    assert!(install.accesskit_node().is_disabled(), "it can't replace this copy");
+    install.hover();
+    h.run_steps(4);
+    h.get_by_label_contains("can't install version v0.5.0 over this copy");
+}
+
+#[test]
+/// A Flatpak its repository updates keeps Reinstall, the launcher's way to run `flatpak update`
+/// on it, where the backend says that update would run.
+fn a_repository_flatpak_keeps_reinstall() {
+    let mut ev = events();
+    ev.push(Event::Detected {
+        app: "lightcraft".into(),
+        installed: Some(Installed {
+            version: version::parse("0.4.0"),
+            source: InstallSource::Flatpak,
+            location: "ai.storyteller.lightcraft".into(),
+            package: None,
+            externally_managed: true,
+            origin: Some("flatpark".into()),
+            installation: Some("user".into()),
+        }),
+    });
+    ev.push(Event::Installable { app: "lightcraft".into(), installable: true });
+    let (mut h, _) = harness_with(ev, ViewMode::Grid, egui::Theme::Dark, true, 1.0);
+    h.run_steps(8);
+    h.get_by_label("More actions for LightCraft").click();
+    h.run_steps(3);
+    h.get_by_label("Reinstall");
+}
+
+#[test]
 /// Reinstall only shows where an install would go ahead: an up-to-date copy the backend can't
 /// replace (installed outside the launcher, say) has none, so it can't end in "has no download".
 fn reinstall_needs_an_install_that_would_go_ahead() {

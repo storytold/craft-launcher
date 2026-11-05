@@ -212,7 +212,17 @@ impl LauncherUi {
     /// ([`AppEntry::newer_out_of_reach`](crate::model::AppEntry::newer_out_of_reach)). It is never
     /// an update: no badge, Update all or notification counts it.
     pub(crate) fn behind_latest(&self, entry: &crate::model::AppEntry) -> Option<String> {
-        self.kept_behind(entry).or_else(|| entry.newer_out_of_reach(self.platform))
+        self.kept_behind(entry).or_else(|| self.out_of_reach(entry))
+    }
+
+    /// [`AppEntry::newer_out_of_reach`](crate::model::AppEntry::newer_out_of_reach), for an app
+    /// following the latest release. Right after another version is chosen, the release on screen
+    /// is the old track's until the check finishes, and an install of it is refused for that
+    /// reason alone, so the note would wrongly say it can't install.
+    pub(crate) fn out_of_reach(&self, entry: &crate::model::AppEntry) -> Option<String> {
+        matches!(self.settings.versions.get(entry.app.id), None | Some(VersionTrack::Stable))
+            .then(|| entry.newer_out_of_reach(self.platform))
+            .flatten()
     }
 
     /// The newer stable release a version kept on purpose is behind.

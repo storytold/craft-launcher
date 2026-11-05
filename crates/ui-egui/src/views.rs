@@ -130,11 +130,10 @@ fn update_split<'a>(ui: &Ui, place: Place, main_w: f32, open: &'a str, update: &
     widgets::split_layout(ui, main_w, &[open, tl!("Open")], &rights, place == Place::Row)
 }
 
-/// Why a newer release noted beside an installed copy isn't offered as an update
-/// ([`AppEntry::newer_out_of_reach`]).
-fn out_of_reach_tip(entry: &AppEntry, platform: Option<artcraft_launcher_core::platform::Platform>) -> Option<String> {
-    let newer = entry.newer_out_of_reach(platform)?;
-    Some(fmt(tl!("{latest} is out, but ArtCraft Launcher can't install it over this copy."), &[("latest", &newer)]))
+/// Why a newer release noted beside an installed copy isn't offered as an update: `newer` from
+/// [`LauncherUi::out_of_reach`].
+fn out_of_reach_tip(newer: Option<String>) -> Option<String> {
+    Some(fmt(tl!("{latest} is out, but ArtCraft Launcher can't install it over this copy."), &[("latest", &newer?)]))
 }
 
 /// The width of the main button: what's left of `width` beside the square `⋯` menu.
@@ -596,7 +595,7 @@ impl LauncherUi {
                 let spans: Vec<(&str, egui::Color32)> =
                     version.iter().map(|(text, lit)| (text.as_str(), if *lit { highlight } else { t.muted })).collect();
                 let r = widgets::hud_elided_spans(&mut strip_ui, &spans, room);
-                if let Some(tip) = out_of_reach_tip(&entry, self.platform) {
+                if let Some(tip) = out_of_reach_tip(self.out_of_reach(&entry)) {
                     r.on_hover_text(tip);
                 }
             }
@@ -915,7 +914,7 @@ impl LauncherUi {
             part.append_to(&mut job, &style, egui::FontSelection::Default, egui::Align::Center);
         }
         let r = ui.label(job);
-        if let Some(tip) = out_of_reach_tip(entry, self.platform) {
+        if let Some(tip) = out_of_reach_tip(self.out_of_reach(entry)) {
             r.on_hover_text(tip);
         }
     }
@@ -1175,7 +1174,16 @@ impl LauncherUi {
             }
             Primary::SelectedVersion { tag, checked } => {
                 let label = fmt(tl!("Install version {version}"), &[("version", &tag)]);
-                if ui.add_enabled_ui(checked, |ui| widgets::button(ui, &label, Kind::Primary, main_w)).inner.clicked() {
+                let resp = ui.add_enabled_ui(checked, |ui| widgets::button(ui, &label, Kind::Primary, main_w)).inner;
+                // The version is known but an install of it wouldn't go ahead: say so, since the
+                // button can't (it used to explain on click, with the install's refusal).
+                let refused = entry.release().is_some_and(|r| r.tag == tag) && !entry.installs_here(self.platform);
+                let resp = if refused {
+                    resp.on_disabled_hover_text(fmt(tl!("ArtCraft Launcher can't install version {version} over this copy."), &[("version", &tag)]))
+                } else {
+                    resp
+                };
+                if resp.clicked() {
                     self.install_app(id);
                 }
             }
