@@ -1001,14 +1001,19 @@ fn publish_detected(app: &CraftApp, found: Option<Installed>, shared: &Shared, p
 /// that started before a settings change never has the last word.
 fn report_partial(app: &CraftApp, shared: &Shared, paths: &Paths, platform: Option<Platform>) {
     let _one_at_a_time = shared.planning.lock().unwrap_or_else(PoisonError::into_inner);
-    // Capture the revision before the options: Configure invalidates it while changing options.
-    let revision = shared.download_revision(app.id);
-    let options = shared.options.lock().unwrap_or_else(PoisonError::into_inner).clone();
-    report_installable(app, shared, platform);
-    let planned = planned_download(app, shared, paths, platform, &options);
-    let download = planned.as_ref().and_then(|(dest, _, size)| Some(PausedDownload { done: http::partial_bytes(dest, *size)?, total: *size }));
-    let ready = planned.as_ref().is_some_and(|(dest, _, size)| http::finished(dest, *size));
-    shared.report_download(app.id, revision, planned.as_ref().map(|(_, kind, size)| (*kind, *size)), download, ready);
+    // A release or detection can change during planning; retry any rejected report.
+    loop {
+        // Capture the revision before the options: Configure invalidates it while changing options.
+        let revision = shared.download_revision(app.id);
+        let options = shared.options.lock().unwrap_or_else(PoisonError::into_inner).clone();
+        report_installable(app, shared, platform);
+        let planned = planned_download(app, shared, paths, platform, &options);
+        let download = planned.as_ref().and_then(|(dest, _, size)| Some(PausedDownload { done: http::partial_bytes(dest, *size)?, total: *size }));
+        let ready = planned.as_ref().is_some_and(|(dest, _, size)| http::finished(dest, *size));
+        if shared.report_download(app.id, revision, planned.as_ref().map(|(_, kind, size)| (*kind, *size)), download, ready) {
+            return;
+        }
+    }
 }
 
 /// Where the planned download of `app` is kept, its package format and published size.
@@ -2486,6 +2491,34 @@ mod tests {
         );
         report_partial(CraftApp::by_id(APP).unwrap(), &backend.shared, &backend.paths, backend.platform);
         assert_eq!(backend.download_size(APP), Some((PackageKind::Msi, 100)));
+    }
+
+    #[test]
+    fn a_plan_report_retries_when_a_release_changes_while_it_is_worked_out() {
+        let Some(platform) = native_platform() else { return };
+        let dir = tempfile::tempdir().unwrap();
+        let mut backend = backend(dir.path(), platform, None);
+        let shared: Arc<Mutex<Option<std::sync::Weak<Shared>>>> = Arc::new(Mutex::new(None));
+        let shared_for_waker = shared.clone();
+        let changed = AtomicBool::new(false);
+        Arc::get_mut(&mut backend.shared).unwrap().waker = Arc::new(move || {
+            // The installability publication is between capturing the revision and the plan.
+            if !changed.swap(true, Ordering::SeqCst) {
+                let shared = shared_for_waker.lock().unwrap().as_ref().unwrap().upgrade().unwrap();
+                let mut latest = release("0.6.0");
+                for asset in &mut latest.assets {
+                    asset.size = 300;
+                }
+                shared.store_latest(APP, &latest);
+            }
+        });
+        *shared.lock().unwrap() = Some(Arc::downgrade(&backend.shared));
+
+        report_partial(CraftApp::by_id(APP).unwrap(), &backend.shared, &backend.paths, Some(platform));
+        assert_eq!(backend.download_size(APP).map(|(_, size)| size), Some(300));
+        let events = backend.poll();
+        assert!(events.iter().any(|e| matches!(e, Event::Paused { app, download: None } if app == APP)));
+        assert_eq!(last_ready(events), Some(false));
     }
 
     #[test]
