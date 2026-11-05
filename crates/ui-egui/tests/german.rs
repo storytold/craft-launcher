@@ -219,6 +219,31 @@ fn german_switches_persists_and_keeps_install_actions() {
     for language in &artcraft_launcher_ui_egui::i18n::LANGUAGES {
         main_buttons_fit_the_narrowest_window(language.code);
     }
+    a_table_update_too_narrow_to_split_keeps_open_in_the_menu();
+}
+
+/// German's "ÖFFNEN | AKTUALISIEREN" doesn't fit the table's action slot, so PhotoCraft's update
+/// shows alone there; its installed copy still opens from the `⋯` menu. Called from the one test
+/// above: the UI language is process-wide, so the German checks share a test.
+fn a_table_update_too_narrow_to_split_keeps_open_in_the_menu() {
+    let (mut h, _) = harness_language(ViewMode::Table, egui::Theme::Dark, true, "de", Vec::new());
+    h.run_steps(8);
+    // The single button, shortened to fit the table's slot.
+    let row = h.get_by_label("Weitere Aktionen für PhotoCraft").rect().center().y;
+    assert!(h.get_all_by_label("Aktualisieren").any(|n| (n.rect().center().y - row).abs() < 1.0), "PhotoCraft's update button");
+    assert!(h.query_by_label_contains("ohne Aktualisierung").is_none(), "no split in the German table");
+    let before = open_buttons(&h);
+    h.get_by_label("Weitere Aktionen für PhotoCraft").click();
+    h.run_steps(3);
+    assert_eq!(open_buttons(&h), before + 1, "the menu offers Open");
+}
+
+/// How many buttons read "Öffnen" (Open). A role query: an open menu's items don't answer a plain
+/// label query.
+fn open_buttons(h: &Harness<'static, Option<LauncherUi>>) -> usize {
+    h.query_all_by_role(egui::accesskit::Role::Button)
+        .filter(|n| egui_kittest::kittest::NodeT::accesskit_node(n).label().as_deref() == Some("Öffnen"))
+        .count()
 }
 
 /// At the launcher's narrowest, no main button outgrows its slot or crowds out the `⋯` menu (#956):

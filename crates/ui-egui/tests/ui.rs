@@ -1121,7 +1121,28 @@ fn only_a_waiting_update_splits_the_main_button() {
 /// A newer release with nothing for this computer is no update: the app opens as it is, isn't
 /// counted in Update all, and has no Update button that would fail with "has no download".
 fn a_newer_release_without_a_download_here_is_not_offered_as_an_update() {
-    let mut ev = events();
+    let ev = no_photocraft_download_here(events());
+    let (mut h, sent) = harness_with(ev, ViewMode::Grid, egui::Theme::Dark, true, 1.0);
+    h.run_steps(8);
+    assert!(h.query_by_label("Update to 0.5.0").is_none(), "nothing to install here");
+    assert!(h.query_by_label(KEEP_PHOTOCRAFT).is_none(), "no split without an update");
+    h.get_by_label("Update to 0.6.0");
+    h.get_by_label("Update 1 app");
+    // PhotoCraft's main button is a plain Open, which launches it.
+    // Cards share a row, so PhotoCraft's Open is the one right before its own menu.
+    let menu = h.get_by_label("More actions for PhotoCraft").rect();
+    sent.borrow_mut().clear();
+    h.get_all_by_label("Open")
+        .filter(|n| (n.rect().center().y - menu.center().y).abs() < 1.0 && n.rect().right() <= menu.left())
+        .max_by(|a, b| a.rect().right().total_cmp(&b.rect().right()))
+        .expect("PhotoCraft's Open")
+        .click();
+    h.run_steps(2);
+    assert_eq!(launches_and_installs(&sent, "photocraft"), (1, 0), "{:?}", sent.borrow());
+}
+
+/// `events`, with PhotoCraft's 0.5.0 published for Windows only: nothing the test's Mac can install.
+fn no_photocraft_download_here(mut ev: Vec<Event>) -> Vec<Event> {
     for e in &mut ev {
         if let Event::Latest { app, latest: LatestRelease::Found(r), .. } = e
             && app == "photocraft"
@@ -1132,12 +1153,22 @@ fn a_newer_release_without_a_download_here_is_not_offered_as_an_update() {
             }
         }
     }
-    let (mut h, _sent) = harness_with(ev, ViewMode::Grid, egui::Theme::Dark, true, 1.0);
+    ev
+}
+
+#[test]
+/// The details drawer's actions split the same way, and its Open half only opens the app.
+fn the_details_drawer_splits_a_waiting_update_too() {
+    let (mut h, sent) = harness(ViewMode::Grid, egui::Theme::Dark, true);
     h.run_steps(8);
-    assert!(h.query_by_label("Update to 0.5.0").is_none(), "nothing to install here");
-    assert!(h.query_by_label(KEEP_PHOTOCRAFT).is_none(), "no split without an update");
-    h.get_by_label("Update to 0.6.0");
-    h.get_by_label("Update 1 app");
+    let card = h.get_by_label(KEEP_PHOTOCRAFT).rect();
+    h.get_by_label("PhotoCraft details").click();
+    h.run_steps(10);
+    assert_eq!(h.query_all_by_label(KEEP_PHOTOCRAFT).count(), 2, "the card's and the drawer's");
+    sent.borrow_mut().clear();
+    h.get_all_by_label(KEEP_PHOTOCRAFT).find(|n| n.rect() != card).expect("the drawer's Open half").click();
+    h.run_steps(2);
+    assert_eq!(launches_and_installs(&sent, "photocraft"), (1, 0), "{:?}", sent.borrow());
 }
 
 #[test]
@@ -2345,6 +2376,36 @@ fn automatic_updates_queue_installs_for_outdated_apps_and_launcher() {
 }
 
 #[test]
+/// Automatic updates and update notices skip a newer release with nothing for this computer: its
+/// install could only fail. The other update still goes ahead.
+fn automatic_updates_skip_a_release_without_a_download_here() {
+    let ev = no_photocraft_download_here(events());
+    let sent = Rc::new(RefCell::new(Vec::new()));
+    let sent2 = sent.clone();
+    let mut backend =
+        Some(Fake { events: ev, sent: sent2, manage: true, pictures: Rc::default(), asked: Vec::new(), clock: Rc::new(Cell::new(NOW)) });
+    let mut h = test_harness_builder(egui::Theme::Dark).with_size(egui::vec2(1180.0, 1200.0)).build_ui_state(
+        move |ui, state: &mut Option<LauncherUi>| {
+            if state.is_none()
+                && let Some(b) = backend.take()
+            {
+                *state = Some(LauncherUi::new(ui.ctx(), Box::new(b), Settings { auto_update: true, notify: false, ..Settings::default() }));
+            }
+            if let Some(l) = state.as_mut() {
+                l.logic(&ui.ctx().clone(), &mut NoHost);
+                l.ui(ui, &mut NoHost);
+            }
+        },
+        None,
+    );
+    h.run_steps(4);
+    assert_eq!(launches_and_installs(&sent, "photocraft"), (0, 0), "{:?}", sent.borrow());
+    assert_eq!(launches_and_installs(&sent, "effectcraft"), (0, 1), "{:?}", sent.borrow());
+    let notified = &h.state().as_ref().expect("the harness built the launcher").settings.notified;
+    assert!(!notified.contains_key("photocraft") && notified.contains_key("effectcraft"), "{notified:?}");
+}
+
+#[test]
 /// With auto-update off, no app install or launcher update is queued.
 fn automatic_updates_are_disabled_by_default() {
     let mut ev = events();
@@ -2414,6 +2475,7 @@ fn web_build_offers_downloads() {
     snapshot(&mut h, "web-grid-dark");
     assert!(h.query_all_by_label("Download for macOS").count() >= 8);
     assert!(h.query_by_label("Install").is_none());
+    assert!(h.query_by_label_contains("without updating").is_none(), "nothing installed to open on the web");
 }
 
 #[test]
