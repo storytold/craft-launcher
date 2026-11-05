@@ -154,6 +154,11 @@ overwriting someone else's entry. If a pinned launcher or a default-application 
 to a removed native entry, select the external manager's entry instead. This setting does not
 change ArtCraft Launcher's own menu entry, system packages, Flatpaks or tarball installs.
 
+Uninstall keeps a cleanup-only ownership record when a native resource cannot be removed safely.
+Later reconciliation retries that cleanup without restoring menu entries or claiming another
+binary at the former path. A temporarily unavailable AppImage is not treated as an uninstall.
+Failed record saves are also retried after an AppImage is replaced by another package format.
+
 The launcher writes its log to `logs/artcraft-launcher.log` in its data folder
 (`~/.local/share/artcraft-launcher` on Linux, `~/Library/Application Support/ArtCraft Launcher`
 on macOS, `%LOCALAPPDATA%\ArtCraft Launcher` on Windows, `ArtCraftLauncherData` beside the

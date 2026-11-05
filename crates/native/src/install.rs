@@ -63,11 +63,14 @@ pub enum Downgrade<'a> {
 /// way an update does. A macOS bundle is moved aside and moved back if the swap fails. An
 /// AppImage the launcher installed (`previous` records it) is renamed in whole, and the old file
 /// is removed only after that. A tarball is left out: its `bin` and `share` swap one at a time.
+/// A cleanup-only desktop ledger never grants ownership of a binary at its former path.
 pub fn keeps_old_copy(kind: PackageKind, existing: Option<&Installed>, previous: Option<&Record>) -> bool {
     let source = existing.map(|inst| inst.source);
     match kind {
         PackageKind::Dmg => source == Some(InstallSource::MacApp),
-        PackageKind::AppImage => source == Some(InstallSource::Launcher) && previous.is_some_and(|r| r.kind == PackageKind::AppImage),
+        PackageKind::AppImage => {
+            source == Some(InstallSource::Launcher) && previous.is_some_and(|r| r.kind == PackageKind::AppImage && !r.desktop_cleanup_pending)
+        }
         _ => false,
     }
 }
@@ -309,7 +312,7 @@ pub fn occupied(
     locations: &InstallLocations,
     paths: &Paths,
 ) -> Result<Option<PathBuf>, String> {
-    if existing.is_some() || previous.is_some() {
+    if existing.is_some() || previous.is_some_and(|record| !record.desktop_cleanup_pending) {
         return Ok(None);
     }
     let folder = destination(app, kind, None, None, locations)?;
@@ -352,6 +355,7 @@ fn destination(
     previous: Option<&Record>,
     locations: &InstallLocations,
 ) -> Result<Option<PathBuf>, String> {
+    let previous = previous.filter(|record| !record.desktop_cleanup_pending);
     if kind == PackageKind::PortableZip && previous.is_some_and(|record| record.kind == PackageKind::PortableZip) {
         return Ok(None);
     }
@@ -499,7 +503,16 @@ pub fn download_path(paths: &Paths, asset: &Asset) -> PathBuf {
 
 #[allow(dead_code)]
 fn record(version: &str, kind: PackageKind, path: PathBuf, files: Vec<PathBuf>, needs_root: bool) -> Record {
-    Record { appimage_desktop: None, version: version.to_string(), kind, path, installed_at: crate::now(), files, needs_root }
+    Record {
+        appimage_desktop: None,
+        desktop_cleanup_pending: false,
+        version: version.to_string(),
+        kind,
+        path,
+        installed_at: crate::now(),
+        files,
+        needs_root,
+    }
 }
 
 /// The package format to install `app` with: the format of the copy that's there (an update
@@ -513,6 +526,7 @@ pub fn choose_kinds(app: &CraftApp, existing: Option<&Installed>, record: Option
     choose_kinds_with(app, existing, record, preferred, &available, can_pacman)
 }
 
+/// Resolve supported formats without treating cleanup-only ownership as an installed binary.
 pub(crate) fn choose_kinds_with(
     app: &CraftApp,
     existing: Option<&Installed>,
@@ -521,6 +535,7 @@ pub(crate) fn choose_kinds_with(
     available: &[PackageKind],
     can_pacman: bool,
 ) -> Vec<PackageKind> {
+    let record = record.filter(|record| !record.desktop_cleanup_pending);
     // Formats the launcher can't verify for this app (a macOS build with no `mac_team`) never count.
     let available: Vec<PackageKind> = available.iter().copied().filter(|k| app.installs(*k)).collect();
     let available = available.as_slice();
@@ -694,6 +709,8 @@ fn parse_pacman_repo(si: &str) -> Option<String> {
 
 /// Removes an installed copy. `phase` hears when the removal has to wait for another install;
 /// `stop` cancels it while it waits.
+/// A returned record tracks desktop resources retained after AppImage removal. Persist it until
+/// cleanup succeeds; `None` means the installation record can be removed.
 pub fn uninstall(
     app: &CraftApp,
     installed: &Installed,
@@ -701,7 +718,7 @@ pub fn uninstall(
     paths: &Paths,
     stop: &Stop,
     phase: &mut dyn FnMut(JobPhase),
-) -> Result<(), String> {
+) -> Result<Option<Record>, String> {
     let _ = (record, stop, &phase, paths);
     let path = PathBuf::from(&installed.location);
     if let Some(msg) = managed_elsewhere(app, installed, true) {
@@ -731,33 +748,40 @@ pub fn uninstall(
             None => Err("the launcher has no record of these files".into()),
         },
         #[cfg(target_os = "linux")]
-        InstallSource::AppImage => remove_appimage(app, &path, record),
+        InstallSource::AppImage => return remove_appimage(app, &path, record),
         // A tarball the launcher unpacked into its own folder: take the tree out and leave the
         // app's settings (`home/`) alone, so a reinstall finds its projects where they were.
         #[cfg(target_os = "linux")]
         InstallSource::Launcher if record.is_some_and(|r| r.kind == PackageKind::TarGz) => linux::remove_tree(app, paths),
         #[cfg(target_os = "linux")]
-        InstallSource::Launcher => remove_appimage(app, &path, record),
+        InstallSource::Launcher => return remove_appimage(app, &path, record),
         other => Err(format!("{} can't be removed from here", other.label())),
     }
+    .map(|()| None)
 }
 
 /// Deletes the recorded AppImage and only provably unchanged launcher-owned desktop resources.
+/// Return retained desktop ownership even though the AppImage itself has already been removed.
 #[cfg(target_os = "linux")]
-fn remove_appimage(app: &CraftApp, path: &Path, record: Option<&Record>) -> Result<(), String> {
+fn remove_appimage(app: &CraftApp, path: &Path, record: Option<&Record>) -> Result<Option<Record>, String> {
     if path.extension().is_none_or(|e| !e.eq_ignore_ascii_case("AppImage")) || !path.is_file() {
         return Err(format!("{} isn't an AppImage, so it was left alone", path.display()));
     }
     // AppImages found elsewhere (Gear Lever's ~/AppImages, ~/.local/bin) are the user's own:
     // remove only the launcher's folder or a copy the launcher recorded installing.
-    let ours =
-        path.parent().is_some_and(|dir| crate::detect::linux::appimage_dir().is_some_and(|own| own == dir)) || record.is_some_and(|r| r.path == path);
+    let ours = path.parent().is_some_and(|dir| crate::detect::linux::appimage_dir().is_some_and(|own| own == dir))
+        || record.is_some_and(|r| !r.desktop_cleanup_pending && r.path == path);
     if !ours {
         return Err(format!("{} wasn't installed by the launcher. Remove it the way it was added.", path.display()));
     }
     std::fs::remove_file(path).map_err(|e| format!("couldn't remove {} ({e})", path.display()))?;
-    linux::unintegrate(app, path, record);
-    Ok(())
+    let record = record.filter(|record| record.kind == PackageKind::AppImage && record.path == path);
+    let retained = linux::unintegrate(app, path, record);
+    Ok(record.filter(|_| !retained.files.is_empty()).map(|record| {
+        let mut retained = retained.into_record(record);
+        retained.desktop_cleanup_pending = true;
+        retained
+    }))
 }
 
 /// Starts an installed app.
@@ -1348,6 +1372,7 @@ pub(crate) mod linux {
         log::warn!("{}: couldn't remove the old Flatpak {old}; `flatpak uninstall {old}` removes it", app.name);
     }
 
+    /// Replace only installed binaries, not files appearing at a pending cleanup record's old path.
     pub fn install_appimage(
         file: &Path,
         name: &str,
@@ -1355,6 +1380,7 @@ pub(crate) mod linux {
         previous: Option<&Record>,
         replace: bool,
     ) -> Result<(PathBuf, Vec<PathBuf>), String> {
+        let previous = previous.filter(|record| !record.desktop_cleanup_pending);
         let dir = match destination {
             Some(dir) => dir.to_path_buf(),
             None => {
@@ -1495,17 +1521,22 @@ pub(crate) mod linux {
     }
 
     /// Uninstall never treats a marker, matching Exec, or stale manifest icon path as ownership.
-    pub fn unintegrate(app: &CraftApp, appimage: &Path, record: Option<&Record>) {
-        if let Some(data) = host_data_dir() {
-            unintegrate_from(&data, app, appimage, record);
+    /// Return failed cleanup ownership, retaining the ledger if the data root is unavailable.
+    pub fn unintegrate(app: &CraftApp, appimage: &Path, record: Option<&Record>) -> Integration {
+        match host_data_dir() {
+            Some(data) => unintegrate_from(&data, app, appimage, record),
+            None => record
+                .filter(|record| record.kind == PackageKind::AppImage && record.path == appimage)
+                .map_or_else(Integration::default, |record| Integration { files: record.files.clone(), ownership: record.appimage_desktop.clone() }),
         }
     }
 
     /// Remove only resources whose ledger and producer expectations prove ownership of this AppImage.
     /// External and customized files are not claimed merely because they share its executable.
-    pub(crate) fn unintegrate_from(data: &Path, app: &CraftApp, appimage: &Path, record: Option<&Record>) {
+    /// The result keeps the paths and expectations needed to retry incomplete cleanup.
+    pub(crate) fn unintegrate_from(data: &Path, app: &CraftApp, appimage: &Path, record: Option<&Record>) -> Integration {
         let record = record.filter(|record| record.kind == PackageKind::AppImage && record.path == appimage);
-        let _ = super::appimage_desktop::remove_owned_from(data, app, record);
+        super::appimage_desktop::remove_owned_from(data, app, record)
     }
 }
 
@@ -2636,6 +2667,7 @@ mod tests {
             installed_at: 0,
             files: Vec::new(),
             appimage_desktop: None,
+            desktop_cleanup_pending: false,
             needs_root: false,
         };
         let (appimage, tarball) = (record(PackageKind::AppImage), record(PackageKind::TarGz));
@@ -2679,6 +2711,7 @@ mod tests {
             installed_at: 0,
             files: Vec::new(),
             appimage_desktop: None,
+            desktop_cleanup_pending: false,
             needs_root: false,
         };
         let cases = [

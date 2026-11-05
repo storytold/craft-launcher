@@ -139,9 +139,32 @@ impl Shared {
     }
 }
 
+/// Persist an install or cleanup result. Failed saves retry when either the previous or new
+/// record owns AppImage integration, including replacement by the platform's own packages.
+fn save_install_record(shared: &Shared, paths: &Paths, app: &CraftApp, record: Option<crate::manifest::Record>) {
+    let mut manifest = shared.manifest.lock().unwrap_or_else(PoisonError::into_inner);
+    #[cfg(target_os = "linux")]
+    let appimage = record.as_ref().is_some_and(|record| record.kind == PackageKind::AppImage);
+    let inserting = record.is_some();
+    let previous = match record {
+        Some(record) => manifest.apps.insert(app.id.to_string(), record),
+        None => manifest.apps.remove(app.id),
+    };
+    if (inserting || previous.is_some())
+        && let Err(error) = manifest.save(&paths.manifest())
+    {
+        log::warn!("{}: couldn't save the install record: {error}", app.name);
+        #[cfg(target_os = "linux")]
+        if appimage || previous.as_ref().is_some_and(|record| record.kind == PackageKind::AppImage) {
+            shared.desktop_manifest_dirty.store(true, Ordering::SeqCst);
+        }
+    }
+}
+
 /// Runs only on configure/job workers. Re-read policy after acquiring the gate, and never hold
 /// the jobs or manifest locks while inspecting desktop resources. A newly registered job waits
 /// at the same gate before reading its record, so reconciliation cannot race its starting state.
+/// Explicit pending cleanup may run without a binary, but must never restore desktop resources.
 #[cfg(target_os = "linux")]
 fn reconcile_desktop_integration(shared: &Shared, paths: &Paths) {
     let _gate = shared.desktop_integration.lock().unwrap_or_else(PoisonError::into_inner);
@@ -160,14 +183,27 @@ fn reconcile_desktop_integration(shared: &Shared, paths: &Paths) {
         }
         let previous = shared.manifest.lock().unwrap_or_else(PoisonError::into_inner).apps.get(app.id).cloned();
         let Some(previous) = previous.filter(|record| record.kind == PackageKind::AppImage) else { continue };
-        if !std::fs::symlink_metadata(&previous.path).is_ok_and(|meta| meta.is_file()) {
+        let cleanup = previous.desktop_cleanup_pending;
+        if !cleanup && !std::fs::symlink_metadata(&previous.path).is_ok_and(|meta| meta.is_file()) {
             continue;
         }
-        let integration = install::linux::integrate_into(data, app, &previous.path, Some(&previous), external);
+        let integration = if cleanup {
+            install::linux::unintegrate_from(data, app, &previous.path, Some(&previous))
+        } else {
+            install::linux::integrate_into(data, app, &previous.path, Some(&previous), external)
+        };
+        if cleanup && integration.files.is_empty() {
+            save_install_record(shared, paths, app, None);
+            continue;
+        }
         if integration.files == previous.files && integration.ownership == previous.appimage_desktop {
             continue;
         }
         let candidate = integration.into_record(&previous);
+        if cleanup {
+            save_install_record(shared, paths, app, Some(candidate));
+            continue;
+        }
         let mut manifest = shared.manifest.lock().unwrap_or_else(PoisonError::into_inner);
         if manifest.apps.get(app.id) != Some(&previous) {
             continue;
@@ -429,17 +465,8 @@ impl NativeBackend {
                 shared.emit(Event::Progress { app: app.id.to_string(), phase: JobPhase::Removing });
                 let mut phase = |phase| shared.emit(Event::Progress { app: app.id.to_string(), phase });
                 match &existing {
-                    Some(inst) => install::uninstall(app, inst, record.as_ref(), &paths, &stop, &mut phase).map(|()| {
-                        let mut m = shared.manifest.lock().unwrap_or_else(PoisonError::into_inner);
-                        if m.apps.remove(app.id).is_some()
-                            && let Err(error) = m.save(&paths.manifest())
-                        {
-                            log::warn!("{}: couldn't save the removed install record: {error}", app.name);
-                            #[cfg(target_os = "linux")]
-                            if record.as_ref().is_some_and(|record| record.kind == PackageKind::AppImage) {
-                                shared.desktop_manifest_dirty.store(true, Ordering::SeqCst);
-                            }
-                        }
+                    Some(inst) => install::uninstall(app, inst, record.as_ref(), &paths, &stop, &mut phase).map(|retained| {
+                        save_install_record(&shared, &paths, app, retained);
                         format!("{} was removed", app.name)
                     }),
                     None => Err(format!("{} isn't installed", app.name)),
@@ -739,24 +766,7 @@ fn run_install(
         Ok(())
     };
     let new_record = install::install_at(app, &release, &asset, kind, existing, record, &mut job, Some(&mut commit_record))?;
-    {
-        let mut m = shared.manifest.lock().unwrap_or_else(PoisonError::into_inner);
-        let changed = match new_record {
-            Some(r) => {
-                m.apps.insert(app.id.to_string(), r);
-                true
-            }
-            // Installed the platform's own way: any old launcher record is stale.
-            None => m.apps.remove(app.id).is_some(),
-        };
-        if changed && let Err(e) = m.save(&paths.manifest()) {
-            log::warn!("couldn't save the install record: {e}");
-            #[cfg(target_os = "linux")]
-            if kind == PackageKind::AppImage {
-                shared.desktop_manifest_dirty.store(true, Ordering::SeqCst);
-            }
-        }
-    }
+    save_install_record(shared, paths, app, new_record);
     Ok(installed_text(app, existing.is_some(), &release))
 }
 
@@ -862,6 +872,7 @@ fn planned_asset(
     existing: Option<&Installed>,
     record: Option<&crate::manifest::Record>,
 ) -> Option<(Asset, PackageKind)> {
+    let record = record.filter(|record| !record.desktop_cleanup_pending);
     let stems: Vec<&str> = app.stems().collect();
     let custom_linux = platform.os == artcraft_launcher_core::Os::Linux
         && !process::in_sandbox()
@@ -1899,6 +1910,7 @@ mod tests {
             installed_at: 1,
             files: vec![],
             appimage_desktop: None,
+            desktop_cleanup_pending: false,
             needs_root: false,
         };
         let msi_options = BackendOptions { kinds: vec![PackageKind::Msi], ..Default::default() };
@@ -2253,6 +2265,7 @@ mod tests {
                 installed_at: 1,
                 files: integration.files,
                 appimage_desktop: integration.ownership,
+                desktop_cleanup_pending: false,
                 needs_root: false,
             },
         );
@@ -2508,5 +2521,131 @@ mod tests {
         reconcile_desktop_integration(&shared, &paths);
         assert!(!desktop.exists() && !icon.exists());
         assert!(recovered.path.is_file());
+    }
+
+    /// A missing AppImage finishes retained ownership cleanup instead of restoring its menu entry.
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn appimage_cleanup_retries_for_missing_binaries_without_resurrection() {
+        let root = tempfile::tempdir().unwrap();
+        let (shared, paths, data) = appimage_desktop_fixture(root.path());
+        let app = CraftApp::by_id("wordcraft").unwrap();
+        let mut previous = Manifest::load(&paths.manifest()).apps.remove(app.id).unwrap();
+        let desktop = data.join("applications/ai.storyteller.wordcraft.desktop");
+        let icon = data.join("icons/hicolor/128x128/apps/ai.storyteller.wordcraft.png");
+        std::fs::remove_file(&previous.path).unwrap();
+        previous.desktop_cleanup_pending = true;
+        save_install_record(&shared, &paths, app, Some(previous.clone()));
+        reconcile_desktop_integration(&shared, &paths);
+        assert!(!desktop.exists() && !icon.exists(), "retained resources must be removed even after the binary is gone");
+        assert!(!Manifest::load(&paths.manifest()).apps.contains_key(app.id));
+        shared.options.lock().unwrap().external_appimage_desktop_integration = true;
+        reconcile_desktop_integration(&shared, &paths);
+        shared.options.lock().unwrap().external_appimage_desktop_integration = false;
+        reconcile_desktop_integration(&shared, &paths);
+        assert!(!previous.path.exists() && !desktop.exists() && !icon.exists());
+    }
+
+    /// Both removal and replacement of an AppImage record must survive a failed save and restart.
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn appimage_cleanup_retries_saving_non_appimage_replacements() {
+        for tarball in [false, true] {
+            let root = tempfile::tempdir().unwrap();
+            let (shared, paths, data) = appimage_desktop_fixture(root.path());
+            let app = CraftApp::by_id("wordcraft").unwrap();
+            shared.options.lock().unwrap().external_appimage_desktop_integration = true;
+            reconcile_desktop_integration(&shared, &paths);
+            let original = Manifest::load(&paths.manifest());
+            let previous = &original.apps[app.id];
+            let replacement = tarball.then(|| {
+                let mut record = previous.clone();
+                record.kind = PackageKind::TarGz;
+                record.path = root.path().join("unpacked-app");
+                std::fs::create_dir(&record.path).unwrap();
+                record.files.clear();
+                record.appimage_desktop = None;
+                record
+            });
+            let saved = root.path().join("previous-manifest.json");
+            std::fs::rename(paths.manifest(), &saved).unwrap();
+            std::fs::create_dir(paths.manifest()).unwrap();
+            save_install_record(&shared, &paths, app, replacement.clone());
+            assert_eq!(shared.manifest.lock().unwrap().apps.get(app.id), replacement.as_ref());
+            assert_eq!(Manifest::load(&saved), original);
+            std::fs::remove_dir(paths.manifest()).unwrap();
+            std::fs::rename(saved, paths.manifest()).unwrap();
+            reconcile_desktop_integration(&shared, &paths);
+            let persisted = Manifest::load(&paths.manifest());
+            assert_eq!(persisted.apps.get(app.id), replacement.as_ref(), "a retry must replace the stale on-disk AppImage record");
+            assert!(previous.path.is_file());
+            let restarted = super::tests::shared();
+            restarted.desktop_data.set(Some(data.clone())).unwrap();
+            *restarted.manifest.lock().unwrap() = persisted;
+            reconcile_desktop_integration(&restarted, &paths);
+            assert!(!data.join("applications/ai.storyteller.wordcraft.desktop").exists());
+            assert!(!data.join("icons/hicolor/128x128/apps/ai.storyteller.wordcraft.png").exists());
+        }
+    }
+
+    /// A temporarily unavailable installation is not an uninstall request.
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn appimage_cleanup_leaves_temporarily_missing_installs_alone() {
+        let root = tempfile::tempdir().unwrap();
+        let (shared, paths, _) = appimage_desktop_fixture(root.path());
+        let before = Manifest::load(&paths.manifest());
+        let record = &before.apps["wordcraft"];
+        let resources: Vec<_> = record.files.iter().map(|path| (path.clone(), std::fs::read(path).unwrap())).collect();
+        std::fs::remove_file(&record.path).unwrap();
+        reconcile_desktop_integration(&shared, &paths);
+        assert_eq!(Manifest::load(&paths.manifest()), before);
+        for (path, bytes) in resources {
+            assert_eq!(std::fs::read(path).unwrap(), bytes);
+        }
+    }
+
+    /// Pending cleanup survives reloads, custom-entry dependencies, and a failed final save.
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn appimage_cleanup_preserves_dependencies_and_retries_its_final_save() {
+        let root = tempfile::tempdir().unwrap();
+        let (shared, paths, data) = appimage_desktop_fixture(root.path());
+        let app = CraftApp::by_id("wordcraft").unwrap();
+        let mut previous = Manifest::load(&paths.manifest()).apps.remove(app.id).unwrap();
+        let desktop = data.join("applications/ai.storyteller.wordcraft.desktop");
+        let icon = data.join("icons/hicolor/128x128/apps/ai.storyteller.wordcraft.png");
+        let custom = format!("{}Actions=Personal;\n", std::fs::read_to_string(&desktop).unwrap());
+        std::fs::write(&desktop, &custom).unwrap();
+        std::fs::remove_file(&previous.path).unwrap();
+        previous.desktop_cleanup_pending = true;
+        save_install_record(&shared, &paths, app, Some(previous.clone()));
+        reconcile_desktop_integration(&shared, &paths);
+        let persisted = Manifest::load(&paths.manifest());
+        let retained = &persisted.apps[app.id];
+        assert!(retained.desktop_cleanup_pending);
+        assert_eq!(retained.files, std::slice::from_ref(&icon));
+        assert!(retained.appimage_desktop.as_ref().unwrap().desktop_text.is_none());
+        assert_eq!(std::fs::read_to_string(&desktop).unwrap(), custom);
+        assert!(icon.is_file());
+        let restarted = super::tests::shared();
+        restarted.desktop_data.set(Some(data.clone())).unwrap();
+        *restarted.manifest.lock().unwrap() = persisted;
+        std::fs::write(&previous.path, b"unrelated replacement at the former binary path").unwrap();
+        reconcile_desktop_integration(&restarted, &paths);
+        assert_eq!(std::fs::read_to_string(&desktop).unwrap(), custom);
+        assert!(icon.is_file());
+        std::fs::remove_file(&desktop).unwrap();
+        let saved = root.path().join("retained-cleanup.json");
+        std::fs::rename(paths.manifest(), &saved).unwrap();
+        std::fs::create_dir(paths.manifest()).unwrap();
+        reconcile_desktop_integration(&restarted, &paths);
+        assert!(!icon.exists());
+        std::fs::remove_dir(paths.manifest()).unwrap();
+        std::fs::rename(saved, paths.manifest()).unwrap();
+        reconcile_desktop_integration(&restarted, &paths);
+        assert!(!Manifest::load(&paths.manifest()).apps.contains_key(app.id));
+        assert_eq!(std::fs::read(&previous.path).unwrap(), b"unrelated replacement at the former binary path");
+        assert!(!desktop.exists() && !icon.exists());
     }
 }

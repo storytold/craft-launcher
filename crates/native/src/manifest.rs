@@ -23,6 +23,10 @@ pub struct Record {
     /// Older manifests lack this snapshot and use conservative legacy-content validation.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub appimage_desktop: Option<AppImageDesktopOwnership>,
+    /// The AppImage was removed; this record authorizes only retrying desktop-resource cleanup.
+    /// Its former binary path is retained for legacy ownership checks, not binary replacement.
+    #[serde(default)]
+    pub desktop_cleanup_pending: bool,
     /// The files are in a system prefix and removing them needs root.
     #[serde(default)]
     pub needs_root: bool,
@@ -71,6 +75,7 @@ mod tests {
                 installed_at: 1,
                 files: vec![],
                 appimage_desktop: None,
+                desktop_cleanup_pending: false,
                 needs_root: false,
             },
         );
@@ -78,12 +83,14 @@ mod tests {
         assert_eq!(Manifest::load(&path), m);
         let mut legacy: serde_json::Value = serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
         legacy["apps"]["photocraft"].as_object_mut().unwrap().remove("appimage_desktop");
+        legacy["apps"]["photocraft"].as_object_mut().unwrap().remove("desktop_cleanup_pending");
         std::fs::write(&path, serde_json::to_vec(&legacy).unwrap()).unwrap();
         assert_eq!(Manifest::load(&path), m, "old records without the snapshot remain readable");
         m.apps.get_mut("photocraft").unwrap().appimage_desktop = Some(AppImageDesktopOwnership {
             desktop_text: Some("generated desktop contents from an earlier catalog".into()),
             icon_sha256: Some("expected icon digest".into()),
         });
+        m.apps.get_mut("photocraft").unwrap().desktop_cleanup_pending = true;
         m.save(&path).unwrap();
         assert_eq!(Manifest::load(&path), m);
         std::fs::write(&path, b"{not json").unwrap();

@@ -33,6 +33,7 @@ impl Integration {
             installed_at: previous.installed_at,
             files: self.files,
             appimage_desktop: self.ownership,
+            desktop_cleanup_pending: previous.desktop_cleanup_pending,
             needs_root: previous.needs_root,
         }
     }
@@ -326,6 +327,7 @@ mod tests {
             installed_at: 0,
             files: integration.files,
             appimage_desktop: integration.ownership,
+            desktop_cleanup_pending: false,
             needs_root: false,
         }
     }
@@ -477,7 +479,9 @@ mod tests {
         assert!(icon.is_file());
         integrate_into(&data, app(), &image, Some(&previous), false).apply(&mut previous);
         assert_eq!(previous.files, std::slice::from_ref(&icon));
-        super::super::linux::unintegrate_from(&data, app(), &image, Some(&previous));
+        let retained = super::super::linux::unintegrate_from(&data, app(), &image, Some(&previous));
+        assert_eq!(retained.files, std::slice::from_ref(&icon));
+        assert_eq!(retained.ownership, previous.appimage_desktop);
         assert_eq!(std::fs::read_to_string(&desktop).unwrap(), custom);
         assert!(icon.is_file());
         // After handoff, even an exact marked render is not reclaimed without its ledger entry.
@@ -798,5 +802,36 @@ mod tests {
             let replaced = if replace_icon { &icon } else { &desktop };
             assert_eq!(std::fs::read(replaced).unwrap(), b"external manager replacement");
         }
+    }
+
+    /// A cleanup-only record cannot authorize replacing or removing another AppImage at its old path.
+    #[test]
+    fn pending_cleanup_does_not_claim_a_reoccupied_binary_path() {
+        let root = tempfile::tempdir().unwrap();
+        let apps = root.path().join("Apps");
+        let data = root.path().join("share");
+        std::fs::create_dir(&apps).unwrap();
+        let image = apps.join("wordcraft-0.3.0.AppImage");
+        std::fs::write(&image, b"formerly installed AppImage").unwrap();
+        let mut previous = record(&image, integrate_into(&data, app(), &image, None, false));
+        previous.desktop_cleanup_pending = true;
+        std::fs::write(&image, b"unrelated replacement").unwrap();
+        let locations = artcraft_launcher_core::protocol::InstallLocations { root: Some(apps.display().to_string()), ..Default::default() };
+        let asset = artcraft_launcher_core::release::Asset { name: "wordcraft-0.3.0.AppImage".into(), ..Default::default() };
+        assert_eq!(
+            super::super::occupied(app(), &asset, PackageKind::AppImage, None, Some(&previous), &locations, &crate::paths::Paths::under(root.path()))
+                .unwrap(),
+            Some(image.clone())
+        );
+        let download = root.path().join("download");
+        std::fs::write(&download, b"new downloaded AppImage").unwrap();
+        assert!(super::super::linux::install_appimage(&download, &asset.name, Some(&apps), Some(&previous), false).is_err());
+        assert!(super::super::remove_appimage(app(), &image, Some(&previous)).is_err());
+        assert_eq!(std::fs::read(&image).unwrap(), b"unrelated replacement");
+        let (new, removed) =
+            super::super::linux::install_appimage(&download, "wordcraft-0.4.0.AppImage", Some(&apps), Some(&previous), false).unwrap();
+        assert!(removed.is_empty());
+        assert_eq!(std::fs::read(&new).unwrap(), b"new downloaded AppImage");
+        assert_eq!(std::fs::read(&image).unwrap(), b"unrelated replacement");
     }
 }
