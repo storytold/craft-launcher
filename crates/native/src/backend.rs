@@ -509,16 +509,17 @@ struct InstallPlan {
 /// launcher (a system binary, a repository package) isn't replaced; the release must be known and
 /// on the chosen version track; and it must have a package that can replace the copy the way it
 /// was installed. [`run_install`] and the UI's [`Event::Installable`] both ask this, so the UI
-/// never offers an update the install would refuse.
+/// never offers an update the install would refuse. `managed` says why a copy is left to whatever
+/// installed it ([`install::managed_elsewhere`]), or `None` when the launcher can replace it.
 fn install_plan(
     app: &CraftApp,
     latest: Option<Release>,
     platform: Option<Platform>,
     options: &BackendOptions,
-    existing: Option<&Installed>,
-    record: Option<&crate::manifest::Record>,
+    (existing, record): (Option<&Installed>, Option<&crate::manifest::Record>),
+    managed: impl FnOnce(&Installed) -> Option<String>,
 ) -> Result<InstallPlan, String> {
-    if let Some(msg) = existing.and_then(|e| install::managed_elsewhere(app, e, false)) {
+    if let Some(msg) = existing.and_then(managed) {
         return Err(msg);
     }
     let platform = platform.ok_or("this system isn't supported")?;
@@ -587,7 +588,8 @@ fn run_install(
         return Err(format!("{} is a Flatpak, which is not supported on this platform", app.name));
     }
     let latest = shared.latest.lock().unwrap_or_else(PoisonError::into_inner).get(app.id).cloned();
-    let InstallPlan { release, platform, asset, kind } = install_plan(app, latest, platform, options, existing, record)?;
+    let InstallPlan { release, platform, asset, kind } =
+        install_plan(app, latest, platform, options, (existing, record), |e| install::managed_elsewhere(app, e, false))?;
     let http = http.ok_or("secure connections aren't available on this system")?;
     let track = options.versions.get(app.id).unwrap_or(&VersionTrack::Stable);
     // Going back to a version chosen by name. A macOS bundle or a launcher AppImage keeps the old
@@ -794,7 +796,9 @@ fn installable_event(app: &CraftApp, shared: &Shared, platform: Option<Platform>
     let release = shared.latest.lock().unwrap_or_else(PoisonError::into_inner).get(app.id).cloned()?;
     let existing = shared.installed.lock().unwrap_or_else(PoisonError::into_inner).get(app.id).cloned();
     let record = shared.manifest.lock().unwrap_or_else(PoisonError::into_inner).apps.get(app.id).cloned();
-    let installable = install_plan(app, Some(release), platform, options, existing.as_ref(), record.as_ref()).is_ok();
+    // Only yes or no: no pacman lookup for the wording of a refusal, under `reporting`.
+    let managed = |e: &Installed| install::is_managed_elsewhere(app, e).then(String::new);
+    let installable = install_plan(app, Some(release), platform, options, (existing.as_ref(), record.as_ref()), managed).is_ok();
     Some(Event::Installable { app: app.id.to_string(), installable })
 }
 
@@ -1912,7 +1916,7 @@ mod tests {
         // One poll right after each answer: the pair is already there together.
         assert_eq!(order(backend.poll()), ["installable false", "latest"]);
         // Whether this host can install the Mac build depends on the host; the answer is the plan's.
-        let expected = install_plan(app, Some(stable()), Some(platform), &options, None, None).is_ok();
+        let expected = install_plan(app, Some(stable()), Some(platform), &options, (None, None), |_| None).is_ok();
         check_app(app, Some(LatestRelease::Found(stable())), Origin::GitHub, &backend.shared, &backend.paths, (Some(platform), &options));
         assert_eq!(order(backend.poll()), [format!("installable {expected}"), "latest".to_string()]);
         // A detection is told with its answer the same way.
@@ -1945,7 +1949,9 @@ mod tests {
         assert!(release.assets.iter().any(|a| a.name.ends_with("-freebsd-x86_64.tar.gz")), "the release has a matching tarball");
         assert!(release_matches_track(&release, &VersionTrack::Stable, false), "a stable release: only the copy stands in the way");
 
-        let refused = install_plan(app, Some(release.clone()), Some(platform), &options, Some(&system), None).err();
+        let refused =
+            install_plan(app, Some(release.clone()), Some(platform), &options, (Some(&system), None), |e| install::managed_elsewhere(app, e, false))
+                .err();
         assert_eq!(refused, install::managed_elsewhere(app, &system, false), "an install refuses it as installed outside the launcher");
 
         publish_detected(app, Some(system), &backend.shared, (Some(platform), &options));

@@ -630,6 +630,13 @@ pub fn managed_elsewhere(app: &CraftApp, installed: &Installed, uninstall: bool)
     managed_elsewhere_with(app, installed, uninstall, pacman_repo)
 }
 
+/// Whether the launcher leaves `installed` to whatever installed it, as [`managed_elsewhere`]
+/// says, without asking pacman which repository to name in the message: for a question that only
+/// needs the answer, such as whether an update can be installed.
+pub fn is_managed_elsewhere(app: &CraftApp, installed: &Installed) -> bool {
+    managed_elsewhere_with(app, installed, false, |_| None).is_some()
+}
+
 fn managed_elsewhere_with(app: &CraftApp, installed: &Installed, uninstall: bool, repo_fn: impl Fn(&str) -> Option<String>) -> Option<String> {
     match installed.source {
         InstallSource::Pacman if !uninstall && !is_release_arch_package(app, installed) => {
