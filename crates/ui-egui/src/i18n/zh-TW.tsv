@@ -36,6 +36,10 @@
 	Install	安裝
 	Update to {v}	更新至 {v}
 	Open	開啟
+	Open {version}	開啟 {version}
+	Open {installed} without updating. {latest} stays available.	開啟 {installed}，不更新。{latest} 仍可稍後安裝。
+	{latest} is out, but ArtCraft Launcher can't install it over this copy.	{latest} 已發布，但 ArtCraft Launcher 無法用它取代此副本。
+	ArtCraft Launcher can't install version {version} over this copy.	ArtCraft Launcher 無法用版本 {version} 取代此副本。
 	Download for {os}	下載 {os} 版
 	Download	下載
 	Coming soon	即將推出
@@ -96,6 +100,13 @@
 	The app will be removed. Your documents and settings stay.	應用程式會被移除，你的文件與設定會保留。
 	Uninstall	解除安裝
 	Cancel	取消
+	Save	儲存
+	Launch options…	啟動選項…
+	{name} launch options	{name} 啟動選項
+	Flags added each time the app is opened	每次開啟應用程式時附加的參數
+	Separate flags with spaces. Quote a value that has spaces in it.	以空格分隔各個參數。含有空格的值請加上引號。
+	A quote isn't closed.	有引號未閉合。
+	{name} wasn't opened: a quote in its launch options isn't closed.	未開啟 {name}：其啟動選項中有引號未閉合。
 	Checked {ago}	上次檢查：{ago}
 	just now	剛剛
 	yesterday	昨天

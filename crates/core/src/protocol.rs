@@ -39,8 +39,10 @@ pub enum Command {
     Uninstall {
         app: String,
     },
+    /// Start an installed app, passing `args` (the user's launch flags) on its command line.
     Launch {
         app: String,
+        args: Vec<String>,
     },
     /// Show the installed app in the file manager.
     Reveal {
@@ -175,7 +177,8 @@ pub enum Source {
     Feed,
     /// The GitHub REST API.
     GitHubApi,
-    /// github.com release pages (no API quota; used when the API is rate-limited).
+    /// github.com release pages (no API quota; used whenever the API gave no answer, whether it
+    /// was out of quota or couldn't be reached).
     GitHubPages,
     /// Saved answers from an earlier check.
     Cache,
@@ -235,6 +238,19 @@ pub enum Event {
         app: String,
         ready: bool,
     },
+    /// Whether installing `app`'s latest release over the installed copy would go ahead: the copy
+    /// isn't one the launcher leaves to whatever installed it (a system binary, a repository
+    /// package), the release is on the chosen version track, and it has a package that can
+    /// replace the copy the way it was installed (an AppImage with an AppImage, an MSI with an
+    /// MSI), or the copy is a repository Flatpak that `flatpak update` refreshes. Only sent while
+    /// a copy is installed. When the release or the copy changes, it comes in the same batch as,
+    /// and before, the `Latest` or `Detected` that says so, so no update is offered, announced or
+    /// started automatically before this is known; when only the plan changes (a settings change,
+    /// a check or an install ending), it comes on its own.
+    Installable {
+        app: String,
+        installable: bool,
+    },
     /// A new install stopped before downloading because `path` already exists and the launcher
     /// didn't put it there. `Command::Replace` installs over it.
     Occupied {
@@ -282,6 +298,12 @@ pub trait Backend {
     fn send(&mut self, command: Command);
     /// Events since the last call, oldest first.
     fn poll(&mut self) -> Vec<Event>;
+    /// The package format the running launcher was installed as, which updating itself
+    /// downloads. `None` while unknown (the desktop finds out once a newer launcher is out) or
+    /// where it doesn't update itself.
+    fn launcher_kind(&self) -> Option<PackageKind> {
+        None
+    }
     fn capabilities(&self) -> Capabilities;
     /// The machine apps would be installed on (on the web: the visitor's, best guess).
     fn platform(&self) -> Option<Platform>;
