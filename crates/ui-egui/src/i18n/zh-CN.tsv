@@ -35,6 +35,8 @@
 	Install	安装
 	Update to {v}	更新至 {v}
 	Open	打开
+	Open {version}	打开 {version}
+	Open {installed} without updating. {latest} stays available.	打开 {installed}，不更新。{latest} 仍可稍后安装。
 	Download for {os}	下载 {os} 版
 	Download	下载
 	Coming soon	即将推出

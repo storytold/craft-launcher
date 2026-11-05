@@ -52,6 +52,8 @@
 	Install	インストール
 	Update to {v}	{v} に更新
 	Open	開く
+	Open {version}	{version} を開く
+	Open {installed} without updating. {latest} stays available.	更新せずに {installed} を開きます。{latest} は後からでもインストールできます。
 	Download for {os}	{os} 版をダウンロード
 	Download	ダウンロード
 	Coming soon	近日公開

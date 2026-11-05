@@ -1080,15 +1080,11 @@ impl LauncherUi {
             }
             Primary::Retry(label, shorter) => {
                 let tip = tl!("The download is still here. It's checked again, then installed.");
-                if widgets::button(ui, fitted(ui, &label, &shorter, main_w), Kind::Primary, main_w).on_hover_text(tip).clicked() {
-                    self.install_app(id);
-                }
+                self.update_button(ui, entry, status, (&label, &shorter), Some(tip), main_w);
             }
             Primary::Update(v) => {
                 let label = fmt(tl!("Update to {v}"), &[("v", &v)]);
-                if widgets::button(ui, fitted(ui, &label, &[tl!("Update")], main_w), Kind::Primary, main_w).clicked() {
-                    self.install_app(id);
-                }
+                self.update_button(ui, entry, status, (&label, &[tl!("Update")]), None, main_w);
             }
             Primary::SelectedVersion { tag, checked } => {
                 let label = fmt(tl!("Install version {version}"), &[("version", &tag)]);
@@ -1113,6 +1109,57 @@ impl LauncherUi {
             Primary::Unavailable(label) => {
                 ui.add_enabled_ui(false, |ui| widgets::button(ui, label, Kind::Secondary, main_w));
             }
+        }
+    }
+
+    /// The button that installs an update: `label`, or one of the `shorter` ones that fits. While the
+    /// update waits, an installed copy can still be opened as it is: an Open half, naming its
+    /// version where there's room, sits before the update half. Where even "Open" and the shortest
+    /// update label don't fit, the update button shows alone and Open stays in the `⋯` menu.
+    fn update_button(
+        &mut self,
+        ui: &mut Ui,
+        entry: &AppEntry,
+        status: &AppStatus,
+        (label, shorter): (&str, &[&str]),
+        tip: Option<&str>,
+        main_w: f32,
+    ) {
+        let id = entry.app.id;
+        let rights: Vec<&str> = std::iter::once(label).chain(shorter.iter().copied()).collect();
+        let current = (*status == AppStatus::UpdateAvailable).then(|| entry.installed_label().zip(entry.latest_label())).flatten();
+        if let Some((installed, latest)) = current {
+            let open = fmt(tl!("Open {version}"), &[("version", &installed)]);
+            let lefts = [open.as_str(), tl!("Open")];
+            if let Some(fit) = widgets::split_fit(ui, main_w, &lefts, &rights) {
+                let about =
+                    fmt(tl!("Open {installed} without updating. {latest} stays available."), &[("installed", &installed), ("latest", &latest)]);
+                let (open, update) = widgets::split_button(
+                    ui,
+                    widgets::Half { label: &about, kind: Kind::Secondary },
+                    widgets::Half { label, kind: Kind::Primary },
+                    fit,
+                );
+                if open.on_hover_text(&about).clicked() {
+                    self.launch_app(id);
+                }
+                let update = match tip {
+                    Some(tip) => update.on_hover_text(tip),
+                    None => update,
+                };
+                if update.clicked() {
+                    self.install_app(id);
+                }
+                return;
+            }
+        }
+        let resp = widgets::button(ui, fitted(ui, label, shorter, main_w), Kind::Primary, main_w);
+        let resp = match tip {
+            Some(tip) => resp.on_hover_text(tip),
+            None => resp,
+        };
+        if resp.clicked() {
+            self.install_app(id);
         }
     }
 

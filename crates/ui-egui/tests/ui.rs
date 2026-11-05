@@ -1058,6 +1058,88 @@ fn the_actual_open_button_launches_once_across_a_discarded_pass() {
     assert_eq!(launcher.settings.launches.values().copied().sum::<u32>(), before + 1, "the launch count increments once");
 }
 
+/// What the Open half beside PhotoCraft's update reads out (0.4.1 installed, 0.5.0 out).
+const KEEP_PHOTOCRAFT: &str = "Open 0.4.1 without updating. 0.5.0 stays available.";
+
+/// The commands `sent` holds for `app`: how many launches and how many installs.
+fn launches_and_installs(sent: &RefCell<Vec<Command>>, app: &str) -> (usize, usize) {
+    let sent = sent.borrow();
+    let launches = sent.iter().filter(|c| matches!(c, Command::Launch { app: a, .. } if a == app)).count();
+    let installs = sent.iter().filter(|c| matches!(c, Command::Install { app: a } if a == app)).count();
+    (launches, installs)
+}
+
+#[test]
+/// While an update waits, the main button is split: Open keeps the installed copy and only opens
+/// it, Update installs. Open, Update and the `⋯` menu sit in that order on one line in the grid
+/// and in the table's narrower action column.
+fn an_update_can_open_the_installed_copy_without_updating() {
+    for view in [ViewMode::Grid, ViewMode::Table] {
+        let (mut h, sent) = harness(view, egui::Theme::Dark, true);
+        h.run_steps(8);
+        let open = h.get_by_label(KEEP_PHOTOCRAFT).rect();
+        let update = h.get_by_label("Update to 0.5.0").rect();
+        let menu = h.get_by_label("More actions for PhotoCraft").rect();
+        assert!((open.center().y - update.center().y).abs() < 1.0, "{view:?}: one line: {open:?} {update:?}");
+        assert!(open.right() < update.left() && update.right() < menu.left(), "{view:?}: Open, Update, menu: {open:?} {update:?} {menu:?}");
+
+        sent.borrow_mut().clear();
+        h.get_by_label(KEEP_PHOTOCRAFT).click();
+        h.run_steps(2);
+        assert_eq!(launches_and_installs(&sent, "photocraft"), (1, 0), "{view:?}: Open launches and installs nothing: {:?}", sent.borrow());
+
+        sent.borrow_mut().clear();
+        h.get_by_label("Update to 0.5.0").click();
+        h.run_steps(2);
+        assert_eq!(launches_and_installs(&sent, "photocraft"), (0, 1), "{view:?}: Update installs: {:?}", sent.borrow());
+    }
+}
+
+#[test]
+/// Only an update offers the split: up-to-date apps keep their single Open, and an app not
+/// installed has nothing to open. An update whose download is already here (Retry update) is
+/// split too.
+fn only_a_waiting_update_splits_the_main_button() {
+    let mut ev = events();
+    ev.push(Event::ReadyToInstall { app: "effectcraft".into(), ready: true });
+    let (mut h, sent) = harness_with(ev, ViewMode::Grid, egui::Theme::Dark, true, 1.0);
+    h.run_steps(8);
+    let splits: Vec<String> = h.query_all_by_label_contains("without updating").filter_map(|n| n.accesskit_node().label()).collect();
+    assert_eq!(splits.len(), 2, "PhotoCraft and EffectCraft wait for updates: {splits:?}");
+    assert!(splits.iter().any(|l| l == "Open 0.5.0 without updating. 0.6.0 stays available."), "{splits:?}");
+    // LightCraft and WordCraft are up to date: each still has one plain Open.
+    assert!(h.query_all_by_label("Open").count() >= 2);
+    h.get_by_label("Retry install");
+
+    sent.borrow_mut().clear();
+    h.get_by_label("Retry update to 0.6.0").click();
+    h.run_steps(2);
+    assert_eq!(launches_and_installs(&sent, "effectcraft"), (0, 1), "{:?}", sent.borrow());
+}
+
+#[test]
+/// A newer release with nothing for this computer is no update: the app opens as it is, isn't
+/// counted in Update all, and has no Update button that would fail with "has no download".
+fn a_newer_release_without_a_download_here_is_not_offered_as_an_update() {
+    let mut ev = events();
+    for e in &mut ev {
+        if let Event::Latest { app, latest: LatestRelease::Found(r), .. } = e
+            && app == "photocraft"
+        {
+            for a in &mut r.assets {
+                a.name = "photocraft-0.5.0-windows-x64.msi".into();
+                a.url = "https://github.com/storytold/photocraft/releases/download/v0.5.0/photocraft-0.5.0-windows-x64.msi".into();
+            }
+        }
+    }
+    let (mut h, _sent) = harness_with(ev, ViewMode::Grid, egui::Theme::Dark, true, 1.0);
+    h.run_steps(8);
+    assert!(h.query_by_label("Update to 0.5.0").is_none(), "nothing to install here");
+    assert!(h.query_by_label(KEEP_PHOTOCRAFT).is_none(), "no split without an update");
+    h.get_by_label("Update to 0.6.0");
+    h.get_by_label("Update 1 app");
+}
+
 #[test]
 /// A toast created by logic while no window ran is shown once on the first drawing pass and
 /// expires relative to that pass.
@@ -1288,8 +1370,9 @@ fn a_dismissed_install_prompt_is_not_called_a_cancelled_download() {
 }
 
 #[test]
-/// A ready update installs on Retry (the table's narrow button leaves the version to its column),
-/// while an up-to-date app offers Reinstall instead of Download again.
+/// A ready update installs on Retry (the table's narrow button leaves the version to its column,
+/// while its accessible name keeps it), while an up-to-date app offers Reinstall instead of
+/// Download again.
 fn a_kept_update_installs_on_retry_and_an_up_to_date_app_is_not_downloaded_again() {
     let mut ev = events();
     for app in ["effectcraft", "wordcraft"] {
@@ -1300,7 +1383,7 @@ fn a_kept_update_installs_on_retry_and_an_up_to_date_app_is_not_downloaded_again
     snapshot(&mut h, "table-retry-update-dark");
     sent.borrow_mut().clear();
     assert!(h.query_by_label("Update to 0.6.0").is_none());
-    h.get_by_label("Retry update").click();
+    h.get_by_label("Retry update to 0.6.0").click();
     h.run_steps(2);
     assert_eq!(*sent.borrow(), [Command::Install { app: "effectcraft".into() }]);
     // WordCraft is up to date: its menu offers Reinstall, which uses the kept file.
@@ -1314,8 +1397,8 @@ fn a_kept_update_installs_on_retry_and_an_up_to_date_app_is_not_downloaded_again
 
 #[test]
 /// A Retry update button too wide for its slot drops the version instead of pushing the menu out
-/// of the row (#956): it is no wider than an Install button in the same view. A card with room
-/// for the version keeps it.
+/// of the row (#956): it is no wider than an Install button in the same view. Its accessible name
+/// keeps the full label either way.
 fn a_retry_update_button_keeps_to_its_slot_and_leaves_room_for_the_menu() {
     for view in [ViewMode::Table, ViewMode::Grid] {
         let mut ev = events();
@@ -1328,8 +1411,7 @@ fn a_retry_update_button_keeps_to_its_slot_and_leaves_room_for_the_menu() {
         ev.push(Event::ReadyToInstall { app: "effectcraft".into(), ready: true });
         let (mut h, _) = harness_with(ev, view, egui::Theme::Dark, true, 1.0);
         h.run_steps(8);
-        let label = if view == ViewMode::Table { "Retry update" } else { "Retry update to 0.12.0" };
-        let retry = h.get_by_label(label).rect();
+        let retry = h.get_by_label("Retry update to 0.12.0").rect();
         let install = h.query_all_by_label("Install").next().unwrap().rect();
         let menu = h.get_by_label("More actions for EffectCraft").rect();
         assert!(retry.width() <= install.width() + 0.5, "{view:?}: retry {retry:?} wider than install {install:?}");

@@ -50,6 +50,8 @@
 	Install	Instalar
 	Update to {v}	Actualizar a {v}
 	Open	Abrir
+	Open {version}	Abrir {version}
+	Open {installed} without updating. {latest} stays available.	Abrir {installed} sin actualizar. {latest} sigue disponible.
 	Download for {os}	Descargar para {os}
 	Download	Descargar
 	Coming soon	Próximamente

@@ -38,6 +38,8 @@
 	Install	Instalar
 	Update to {v}	Atualizar para {v}
 	Open	Abrir
+	Open {version}	Abrir {version}
+	Open {installed} without updating. {latest} stays available.	Abrir {installed} sem atualizar. A {latest} continua disponível.
 	Download for {os}	Baixar para {os}
 	Download	Baixar
 	Coming soon	Em breve

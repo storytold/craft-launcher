@@ -51,6 +51,8 @@
 	Install	Instaluj
 	Update to {v}	Zaktualizuj do {v}
 	Open	Otwórz
+	Open {version}	Otwórz {version}
+	Open {installed} without updating. {latest} stays available.	Otwórz {installed} bez aktualizacji. Wersja {latest} pozostanie dostępna.
 	Download for {os}	Pobierz dla {os}
 	Download	Pobierz
 	Coming soon	Wkrótce

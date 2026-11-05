@@ -403,6 +403,11 @@ pub fn button_width(ui: &Ui, text: &str, minimum: f32) -> f32 {
 
 /// A square button with a mono upper-case label, at least `width` wide.
 pub fn button(ui: &mut Ui, text: &str, kind: Kind, width: f32) -> Response {
+    labelled_button(ui, text, text, kind, width)
+}
+
+/// [`button`], read out by assistive technology as `label` rather than its (shortened) `text`.
+fn labelled_button(ui: &mut Ui, text: &str, label: &str, kind: Kind, width: f32) -> Response {
     let t = Tokens::get(ui.ctx());
     let galley = button_label(ui, text);
     let size = vec2(button_width_of(&galley, width), theme::CONTROL_H);
@@ -419,8 +424,64 @@ pub fn button(ui: &mut Ui, text: &str, kind: Kind, width: f32) -> Response {
     let fade = |c: Color32| if enabled { c } else { c.gamma_multiply(0.5) };
     ui.painter().rect(rect, CornerRadius::ZERO, fade(fill), Stroke::new(stroke.width, fade(stroke.color)), egui::StrokeKind::Inside);
     paint_centred(ui, rect, galley, fade(color));
-    resp.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, enabled, text));
+    resp.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, enabled, label));
     if enabled { resp.on_hover_cursor(egui::CursorIcon::PointingHand) } else { resp }
+}
+
+/// The gap between the halves of a [`split_button`]: a hairline of background, so a hovered
+/// outlined half (which fills in) never runs into a solid neighbour.
+const SPLIT_SEAM: f32 = 1.0;
+
+/// One half of a [`split_button`]: the `label` assistive technology reads (the visible text is
+/// the one [`split_fit`] chose), and its look.
+pub struct Half<'a> {
+    pub label: &'a str,
+    pub kind: Kind,
+}
+
+/// The labels a [`split_button`] shows, and the width each half takes.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct SplitFit<'a> {
+    pub left: &'a str,
+    pub right: &'a str,
+    pub left_w: f32,
+    pub right_w: f32,
+}
+
+/// Picks the first pair of labels, longest first and the left one shortened last, that fits two
+/// halves within `width`: equal halves when both labels fit half the room, else halves sized to
+/// their labels with the room left over shared. `None` when even the shortest pair doesn't fit,
+/// so the caller shows a single button instead.
+pub fn split_fit<'a>(ui: &Ui, width: f32, lefts: &[&'a str], rights: &[&'a str]) -> Option<SplitFit<'a>> {
+    let room = width - SPLIT_SEAM;
+    let half = room / 2.0;
+    let rights: Vec<(&str, f32)> = rights.iter().map(|&r| (r, button_width(ui, r, 0.0))).collect();
+    for &left in lefts {
+        let lw = button_width(ui, left, 0.0);
+        for &(right, rw) in &rights {
+            let left_w = if lw.max(rw) <= half {
+                half
+            } else if lw + rw <= room {
+                lw + (room - lw - rw) / 2.0
+            } else {
+                continue;
+            };
+            return Some(SplitFit { left, right, left_w, right_w: room - left_w });
+        }
+    }
+    None
+}
+
+/// Two buttons as one control, `left` then `right` (also the keyboard order), at the widths a
+/// [`split_fit`] chose. Returns each half's response.
+pub fn split_button(ui: &mut Ui, left: Half<'_>, right: Half<'_>, fit: SplitFit<'_>) -> (Response, Response) {
+    ui.scope(|ui| {
+        ui.spacing_mut().item_spacing.x = SPLIT_SEAM;
+        let l = labelled_button(ui, fit.left, left.label, left.kind, fit.left_w);
+        let r = labelled_button(ui, fit.right, right.label, right.kind, fit.right_w);
+        (l, r)
+    })
+    .inner
 }
 
 /// One option in a [`cells`] group.
@@ -777,6 +838,38 @@ mod tests {
                 }
             }
         }
+    }
+
+    /// A split button's labels always fit its halves, which fill the width less the seam; the
+    /// left label keeps its version longest, and below the shortest pair there is no split at all.
+    #[test]
+    fn a_split_fits_its_width_and_steps_down_to_one_button() {
+        let ctx = egui::Context::default();
+        crate::theme::install_fonts(&ctx, None);
+        ctx.run_ui(egui::RawInput::default(), |_| {}).drop_without_applying_deltas();
+        let lefts = ["Open 0.4.1", "Open"];
+        let rights = ["Update to 0.5.0", "Update"];
+        ctx.run_ui(egui::RawInput::default(), |ui| {
+            let natural = |s: &str| button_width(ui, s, 0.0);
+            let wide = split_fit(ui, 400.0, &lefts, &rights).expect("400 px fits the full labels");
+            assert_eq!((wide.left, wide.right), (lefts[0], rights[0]));
+            assert_eq!(wide.left_w, wide.right_w, "room for both: equal halves");
+
+            let shortest = natural("Open") + natural("Update") + SPLIT_SEAM;
+            for w in (0..=80).map(|i| 60.5 + i as f32 * 5.0) {
+                let fit = split_fit(ui, w, &lefts, &rights);
+                assert_eq!(fit.is_none(), w < shortest, "at {w} px (shortest pair {shortest} px): {fit:?}");
+                if let Some(f) = fit {
+                    assert!(natural(f.left) <= f.left_w + 0.01 && natural(f.right) <= f.right_w + 0.01, "at {w} px: {f:?}");
+                    assert!((f.left_w + f.right_w + SPLIT_SEAM - w).abs() < 0.01, "at {w} px the halves fill the width: {f:?}");
+                }
+            }
+
+            let tight = natural("Open 0.4.1") + natural("Update") + SPLIT_SEAM + 0.5;
+            let f = split_fit(ui, tight, &lefts, &rights).expect("the version and the short update label fit");
+            assert_eq!((f.left, f.right), ("Open 0.4.1", "Update"), "the update label shortens before Open loses its version");
+        })
+        .drop_without_applying_deltas();
     }
 
     /// The URLs the context has asked to open in its current output, for asserting that the opener

@@ -48,6 +48,8 @@
 	Install	Установить
 	Update to {v}	Обновить до {v}
 	Open	Открыть
+	Open {version}	Открыть {version}
+	Open {installed} without updating. {latest} stays available.	Открыть {installed} без обновления. Версия {latest} останется доступной.
 	Download for {os}	Скачать для {os}
 	Download	Скачать
 	Coming soon	Скоро
