@@ -16,7 +16,7 @@ mod spaces;
 mod system_theme;
 mod tray;
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{Receiver, RecvTimeoutError, SyncSender, channel, sync_channel};
@@ -122,7 +122,7 @@ fn main() -> ExitCode {
     // so no window flashes up. Without a tray to come back from, the window opens after all.
     let mut window = true;
     if hidden && !window_can_hide_here(|name| std::env::var_os(name)) {
-        let settings = settings_path.as_deref().and_then(|p| settings_file::load(p, SETTINGS_KEY));
+        let settings = saved_settings(settings_path.as_deref());
         launcher.start(settings, &waker);
         window = launcher.tray.is_none();
     }
@@ -152,7 +152,7 @@ fn main() -> ExitCode {
                     log::warn!("the window didn't start: {e}; trying {next:?} instead");
                     continue;
                 }
-                report_startup_failure(attempt, &e);
+                report_startup_failure(attempt, &e, startup_language(saved_settings(settings_path.as_deref())));
                 return ExitCode::FAILURE;
             }
             if !std::mem::take(&mut launcher.closed_to_tray) {
@@ -279,12 +279,31 @@ impl StartupBackends {
     }
 }
 
+/// The settings the launcher saved, for the places that need them without a window having loaded
+/// them (a tray start, and a start that never got a window at all).
+fn saved_settings(path: Option<&Path>) -> Option<Settings> {
+    path.and_then(|path| settings_file::load(path, SETTINGS_KEY))
+}
+
+/// The language the startup-failure dialog speaks.
+///
+/// The UI's language is set per frame from the saved preference (`LauncherUi::logic` calls
+/// `i18n::set_current`), so a start that never got a frame has set nothing and `i18n::current()`
+/// is still English: the dialog would answer a German user in English. Read the preference itself
+/// instead.
+///
+/// It is used as saved, without the UI's CJK-font gate (`effective_lang`): this dialog is a native
+/// one, drawn with the system's own faces, so a language egui could not have drawn is readable.
+fn startup_language(saved: Option<Settings>) -> i18n::Lang {
+    saved.map(|settings| i18n::Lang::from_pref(&settings.language)).unwrap_or_else(i18n::current)
+}
+
 /// Tells the user why no window appeared: the backend that was tried and the error wgpu reported
 /// (#1081). The log file says the same thing, but someone whose launcher only ever fails to start
 /// never sees a log, and a silent exit code 1 reads as "the launcher is broken" with nothing to
 /// act on.
-fn report_startup_failure(backend: Option<eframe::wgpu::Backends>, error: &eframe::Error) {
-    let message = startup_failure_message(i18n::current(), &backend_label(backend), &error.to_string());
+fn report_startup_failure(backend: Option<eframe::wgpu::Backends>, error: &eframe::Error, lang: i18n::Lang) {
+    let message = startup_failure_message(lang, &backend_label(backend), &error.to_string());
     log::error!("{message}");
     rfd::MessageDialog::new()
         .set_title("ArtCraft Launcher")
@@ -1307,6 +1326,19 @@ mod tests {
         shell.put_away(&ctx);
         assert!(!shell.visible);
         assert!(!shell.launcher.closed_to_tray);
+    }
+
+    /// The failure dialog speaks the saved preference. A start that never got a frame has set no
+    /// language, so reading `i18n::current()` there would answer every user in English.
+    #[test]
+    fn the_failure_dialog_speaks_the_saved_language() {
+        let german = Settings { language: "de".to_owned(), ..Settings::default() };
+        assert_eq!(startup_language(Some(german)), i18n::Lang::DE);
+        // `auto` follows the system, as the UI's own preference handling does.
+        let automatic = Settings { language: "auto".to_owned(), ..Settings::default() };
+        assert_eq!(startup_language(Some(automatic)), i18n::system_lang());
+        // Nothing saved: whatever this process already speaks.
+        assert_eq!(startup_language(None), i18n::current());
     }
 
     /// The dialog names the backend and the error, and a catalog translates the sentence while
