@@ -10,6 +10,7 @@
 pub mod backend;
 pub mod desktop_entry;
 pub mod detect;
+mod diagnostics;
 pub mod feed_throttle;
 pub mod http;
 pub mod install;

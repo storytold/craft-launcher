@@ -430,3 +430,20 @@ materialcraft	Preview materials in 2D and on 3D models.	Przeglądaj materiały w
 	Migrate Flatpak bundles to ArtCraft OCI (experimental)	Przenoś pakiety Flatpak do ArtCraft OCI (eksperymentalne)
 	On update, switch first party apps when the matching package is available. Otherwise, keep using bundles.	Podczas aktualizacji przenoś aplikacje ArtCraft, gdy dostępny jest odpowiedni pakiet. W przeciwnym razie nadal używaj samodzielnych pakietów.
 	The OCI repository is a preview with GPG verification disabled.	Repozytorium OCI jest wersją testową z wyłączoną weryfikacją GPG.
+
+# Diagnostic reports
+	Diagnostic report	Raport diagnostyczny
+	Review this local report before sharing it. Nothing is uploaded automatically.	Sprawdź ten lokalny raport przed udostępnieniem. Nic nie jest wysyłane automatycznie.
+	Paths, URLs and recognizable secrets are removed. Other personal details may remain in error messages.	Ścieżki, adresy URL i rozpoznawalne dane poufne są usuwane. Komunikaty o błędach mogą nadal zawierać inne dane osobowe.
+	Include recent warning and error logs	Dołącz ostatnie ostrzeżenia i błędy z dzienników
+	Preparing report…	Przygotowywanie raportu…
+	Couldn't prepare the report. Try again.	Nie udało się przygotować raportu. Spróbuj ponownie.
+	Couldn't save the report. Check disk space and folder permissions.	Nie udało się zapisać raportu. Sprawdź miejsce na dysku i uprawnienia folderu.
+	Saving report…	Zapisywanie raportu…
+	Saved to {path}	Zapisano w {path}
+	Copy report	Kopiuj raport
+	Save report	Zapisz raport
+	Refresh report	Odśwież raport
+	Report copied	Raport skopiowany
+	Troubleshooting	Rozwiązywanie problemów
+	Prepare a report to help maintainers investigate installation and startup problems.	Przygotuj raport, aby pomóc opiekunom projektu zbadać problemy z instalacją i uruchamianiem.

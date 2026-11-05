@@ -36,6 +36,7 @@ impl LauncherUi {
             Dialog::Install { app, folder } => modal.show(ctx, |ui| close = self.install_dialog(ui, app, folder, host)),
             Dialog::Replace { app, path } => modal.show(ctx, |ui| close = self.replace_dialog(ui, app, path)),
             Dialog::Settings => modal.show(ctx, |ui| close = self.settings_dialog(ui, host)),
+            Dialog::Diagnostics => modal.show(ctx, |ui| close = self.diagnostics_dialog(ui)),
             Dialog::LauncherUpdate(r) => modal.show(ctx, |ui| close = self.launcher_update_dialog(ui, r)),
             Dialog::Versions(id) => modal.show(ctx, |ui| close = self.version_dialog(ui, id)),
             Dialog::LaunchFlags { app, flags } => modal.show(ctx, |ui| close = self.launch_flags_dialog(ui, app, flags)),

@@ -9,6 +9,7 @@
 pub mod args;
 pub mod catalog;
 pub mod details;
+pub mod diagnostics;
 pub mod distro;
 pub mod feed;
 pub mod platform;

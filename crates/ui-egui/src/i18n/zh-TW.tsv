@@ -388,3 +388,19 @@ materialcraft	Node graphs	節點圖
 materialcraft	Combine noises, patterns and filters.	組合雜訊、圖樣與濾鏡。
 materialcraft	Live previews	即時預覽
 materialcraft	Preview materials in 2D and on 3D models.	在 2D 與 3D 模型上預覽材質。
+# Diagnostic reports
+	Diagnostic report	診斷報告
+	Review this local report before sharing it. Nothing is uploaded automatically.	分享前請先檢查此本機報告。不會自動上傳任何內容。
+	Paths, URLs and recognizable secrets are removed. Other personal details may remain in error messages.	路徑、URL 與可識別的機密資訊會被移除。錯誤訊息中可能仍有其他個人資訊。
+	Include recent warning and error logs	包含最近的警告與錯誤記錄
+	Preparing report…	正在產生報告…
+	Couldn't prepare the report. Try again.	無法產生報告。請再試一次。
+	Couldn't save the report. Check disk space and folder permissions.	無法儲存報告。請檢查磁碟空間與資料夾權限。
+	Saving report…	正在儲存報告…
+	Saved to {path}	已儲存到 {path}
+	Copy report	複製報告
+	Save report	儲存報告
+	Refresh report	重新整理報告
+	Report copied	報告已複製
+	Troubleshooting	疑難排解
+	Prepare a report to help maintainers investigate installation and startup problems.	產生報告，協助維護者調查安裝與啟動問題。
