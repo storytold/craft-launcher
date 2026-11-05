@@ -134,8 +134,10 @@ const SYSTEM_KINDS_FOR: Duration = Duration::from_secs(60);
 impl Shared {
     /// What this system can install, asked again at most once a [`SYSTEM_KINDS_FOR`]: inside the
     /// Flatpak sandbox asking runs a program on the host (up to 3 s), and the installability answer
-    /// is worked out for each installed app on every check. An install still asks afresh. Never
-    /// called while holding another lock here.
+    /// is worked out for each installed app on every check. An install still asks afresh. Asked
+    /// before `reporting` is taken, except in [`installable_event`]'s rare race (a copy appeared
+    /// after the caller looked); [`report_partial`] asks it holding `planning`. Neither lock is
+    /// wanted by what asking does, so neither can deadlock.
     fn system_kinds(&self) -> install::SystemKinds {
         if let Some((at, kinds)) = self.system.lock().unwrap_or_else(PoisonError::into_inner).as_ref()
             && at.elapsed() < SYSTEM_KINDS_FOR
@@ -538,6 +540,26 @@ fn downgrade_previous(
     })
 }
 
+/// What an install does with a Flatpak its repository updates: `flatpak update`, on Linux, and
+/// only on the stable track (it follows the repository's latest build, never a pinned or nightly
+/// one). `None` for any other copy, which [`install_plan`] decides; else the copy, or why the
+/// update can't run. [`run_install`] and the UI's [`Event::Installable`] both ask this.
+fn repository_update<'a>(app: &CraftApp, existing: Option<&'a Installed>, options: &BackendOptions) -> Option<Result<&'a Installed, String>> {
+    let inst = existing.filter(|i| i.source == artcraft_launcher_core::InstallSource::Flatpak && i.externally_managed)?;
+    Some(if !matches!(options.versions.get(app.id), None | Some(VersionTrack::Stable)) {
+        Err(install::managed_elsewhere(app, inst, false).unwrap_or_else(|| "Update this app through its Flatpak repository".into()))
+    } else if !cfg!(target_os = "linux") {
+        Err(flatpak_unsupported(app))
+    } else {
+        Ok(inst)
+    })
+}
+
+/// Why a Flatpak can't be updated on a system without Flatpak.
+fn flatpak_unsupported(app: &CraftApp) -> String {
+    format!("{} is a Flatpak, which is not supported on this platform", app.name)
+}
+
 /// Who asks [`install_plan`].
 #[derive(Clone, Copy, Debug)]
 enum Asking<'a> {
@@ -616,14 +638,8 @@ fn run_install(
     approved: Option<&str>,
     source: Option<&dyn ReleaseSource>,
 ) -> Result<String, String> {
-    if let Some(inst) = existing
-        && inst.source == artcraft_launcher_core::InstallSource::Flatpak
-        && inst.externally_managed
-    {
-        // `flatpak update` only follows the repository's latest build, never a pinned or nightly track.
-        if !matches!(options.versions.get(app.id), None | Some(VersionTrack::Stable)) {
-            return Err(install::managed_elsewhere(app, inst, false).unwrap_or_else(|| "Update this app through its Flatpak repository".into()));
-        }
+    if let Some(update) = repository_update(app, existing, options) {
+        let inst = update?;
         #[cfg(target_os = "linux")]
         {
             shared.emit(Event::Progress { app: app.id.to_string(), phase: JobPhase::Installing });
@@ -645,7 +661,10 @@ fn run_install(
             });
         }
         #[cfg(not(target_os = "linux"))]
-        return Err(format!("{} is a Flatpak, which is not supported on this platform", app.name));
+        {
+            let _ = inst;
+            return Err(flatpak_unsupported(app));
+        }
     }
     let latest = shared.latest.lock().unwrap_or_else(PoisonError::into_inner).get(app.id).cloned();
     let InstallPlan { release, platform, asset, kind } = install_plan(app, latest, platform, options, (existing, record), Asking::Install)?;
@@ -874,8 +893,14 @@ fn installable_event(app: &CraftApp, shared: &Shared, platform: Option<Platform>
     let release = shared.latest.lock().unwrap_or_else(PoisonError::into_inner).get(app.id).cloned()?;
     let record = shared.manifest.lock().unwrap_or_else(PoisonError::into_inner).apps.get(app.id).cloned();
     let options = shared.options.lock().unwrap_or_else(PoisonError::into_inner).clone();
-    let system = system.unwrap_or_else(|| shared.system_kinds());
-    let installable = install_plan(app, Some(release), platform, &options, (Some(&existing), record.as_ref()), Asking::Answer(&system)).is_ok();
+    let installable = match repository_update(app, Some(&existing), &options) {
+        // Updated with `flatpak update`: nothing is downloaded, so nothing to ask the system.
+        Some(update) => update.is_ok(),
+        None => {
+            let system = system.unwrap_or_else(|| shared.system_kinds());
+            install_plan(app, Some(release), platform, &options, (Some(&existing), record.as_ref()), Asking::Answer(&system)).is_ok()
+        }
+    };
     Some(Event::Installable { app: app.id.to_string(), installable })
 }
 
@@ -2051,6 +2076,30 @@ mod tests {
         backend.shared.options.lock().unwrap().versions.insert(APP.to_string(), VersionTrack::Pinned("v0.7.0".into()));
         publish_detected(app, Some(installed), &backend.shared, Some(platform));
         assert_eq!(told(backend.poll()), ["installable false", "detected"]);
+    }
+
+    /// A Flatpak its repository updates is updated with `flatpak update` (Linux, stable track), as
+    /// an install does, so the answer says yes there and keeps Reinstall, the launcher's route to
+    /// that update. Kept on another version it says no, as the install refuses.
+    #[test]
+    fn a_repository_flatpak_is_installable_where_flatpak_update_runs() {
+        let app = CraftApp::by_id(APP).unwrap();
+        let platform = Platform { os: Os::Linux, arch: Arch::X64 };
+        let dir = tempfile::tempdir().unwrap();
+        let mut backend = backend(dir.path(), platform, None);
+        // Nothing this system could download: only `flatpak update` can say yes.
+        system_installs(&backend, Vec::new());
+        backend.shared.latest.lock().unwrap().insert(APP.to_string(), stable("0.5.0"));
+        let flatpark = Installed { externally_managed: true, ..copy_of("0.5.0", InstallSource::Flatpak, "ai.storyteller.photocraft") };
+        let options = BackendOptions::default();
+        assert_eq!(repository_update(app, Some(&flatpark), &options).map(|u| u.is_ok()), Some(cfg!(target_os = "linux")));
+
+        publish_detected(app, Some(flatpark.clone()), &backend.shared, Some(platform));
+        assert_eq!(told(backend.poll()), [format!("installable {}", cfg!(target_os = "linux")), "detected".to_string()]);
+
+        backend.shared.options.lock().unwrap().versions.insert(APP.to_string(), VersionTrack::Pinned("v0.4.0".into()));
+        publish_detected(app, Some(flatpark), &backend.shared, Some(platform));
+        assert_eq!(told(backend.poll()), ["installable false", "detected"], "flatpak update can't follow a pinned version");
     }
 
     /// A copy installed outside the launcher (FreeBSD's `/usr/local/bin/<app>`, a system binary)
