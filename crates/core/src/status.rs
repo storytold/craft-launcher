@@ -93,7 +93,7 @@ pub enum AppStatus {
     UpdateAvailable,
     /// Installed, but the launcher has no update to offer: the latest release couldn't be checked
     /// (offline, rate-limited), a version is unknown, the copy is updated by its own repository, or
-    /// the newer release has nothing this platform can install.
+    /// an install of the newer release wouldn't go ahead here.
     Installed,
     /// Not installed and nothing is published for this platform.
     Unavailable,
@@ -132,7 +132,8 @@ pub fn status(installed: Option<&Installed>, latest: Latest<'_>) -> AppStatus {
         (Some(inst), Latest::Found { version: latest, has_asset }) => match (latest, inst.version.as_ref()) {
             // A repository-managed copy updates to what its repository has, which GitHub doesn't say.
             (Some(l), Some(i)) if version::is_update(l, i) && inst.externally_managed => AppStatus::Installed,
-            // A newer release with nothing for this platform is no update here: installing it fails.
+            // A newer release an install can't put here (no package for this copy, a copy left to
+            // what installed it) is no update: installing it would fail.
             (Some(l), Some(i)) if version::is_update(l, i) && !has_asset => AppStatus::Installed,
             (Some(l), Some(i)) if version::is_update(l, i) => AppStatus::UpdateAvailable,
             (Some(_), Some(_)) => AppStatus::UpToDate,

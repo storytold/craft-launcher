@@ -134,10 +134,9 @@ const SYSTEM_KINDS_FOR: Duration = Duration::from_secs(60);
 impl Shared {
     /// What this system can install, asked again at most once a [`SYSTEM_KINDS_FOR`]: inside the
     /// Flatpak sandbox asking runs a program on the host (up to 3 s), and the installability answer
-    /// is worked out for each installed app on every check. An install still asks afresh. Asked
-    /// before `reporting` is taken, except in [`installable_event`]'s rare race (a copy appeared
-    /// after the caller looked); [`report_partial`] asks it holding `planning`. Neither lock is
-    /// wanted by what asking does, so neither can deadlock.
+    /// is worked out for each installed app on every check. An install still asks afresh. Always
+    /// asked before `reporting` is taken. [`report_partial`] asks it holding `planning`, which only
+    /// its own worker threads take.
     fn system_kinds(&self) -> install::SystemKinds {
         if let Some((at, kinds)) = self.system.lock().unwrap_or_else(PoisonError::into_inner).as_ref()
             && at.elapsed() < SYSTEM_KINDS_FOR
@@ -147,6 +146,18 @@ impl Shared {
         let kinds = install::SystemKinds::now();
         *self.system.lock().unwrap_or_else(PoisonError::into_inner) = Some((Instant::now(), kinds.clone()));
         kinds
+    }
+
+    /// What this system could install when last asked, however long ago, for an answer worked out
+    /// holding `reporting`: no probe runs there. A copy only enters `installed` through
+    /// [`publish_detected`], which asks [`Self::system_kinds`] first, so with a copy installed
+    /// there is always a view; without one (never in practice) nothing installs.
+    fn last_system_kinds(&self) -> install::SystemKinds {
+        self.system
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .as_ref()
+            .map_or_else(|| install::SystemKinds { available: Vec::new(), can_pacman: false }, |(_, kinds)| kinds.clone())
     }
 
     /// Whether some copy of `app` is installed (as last detected).
@@ -886,8 +897,8 @@ fn report_installable(app: &CraftApp, shared: &Shared, platform: Option<Platform
 
 /// [`report_installable`]'s answer from the shared state as it is, with the current settings:
 /// whether [`install_plan`] would let an install go ahead. `system` is what this system can
-/// install, asked before `reporting` was taken; when a copy appeared since, it is asked here. The
-/// caller holds `reporting`.
+/// install, asked before `reporting` was taken; when a copy appeared since, the view its detection
+/// asked for is used, so nothing is probed here. The caller holds `reporting`.
 fn installable_event(app: &CraftApp, shared: &Shared, platform: Option<Platform>, system: Option<install::SystemKinds>) -> Option<Event> {
     let existing = shared.installed.lock().unwrap_or_else(PoisonError::into_inner).get(app.id).cloned()?;
     let release = shared.latest.lock().unwrap_or_else(PoisonError::into_inner).get(app.id).cloned()?;
@@ -897,7 +908,8 @@ fn installable_event(app: &CraftApp, shared: &Shared, platform: Option<Platform>
         // Updated with `flatpak update`: nothing is downloaded, so nothing to ask the system.
         Some(update) => update.is_ok(),
         None => {
-            let system = system.unwrap_or_else(|| shared.system_kinds());
+            // A copy appeared after the caller looked: what was asked moments ago, not a probe here.
+            let system = system.unwrap_or_else(|| shared.last_system_kinds());
             install_plan(app, Some(release), platform, &options, (Some(&existing), record.as_ref()), Asking::Answer(&system)).is_ok()
         }
     };
@@ -2054,6 +2066,86 @@ mod tests {
 
         publish_detected(app, None, &backend.shared, Some(platform));
         assert_eq!(told(backend.poll()), ["detected"], "removed: no answer");
+    }
+
+    /// A report made when only the plan changed (a settings change, a check or an install ending)
+    /// still tells the UI whether an install would go ahead, on its own, with the settings as
+    /// they are then.
+    #[test]
+    fn a_plan_report_answers_installability_with_the_current_settings() {
+        let app = CraftApp::by_id(APP).unwrap();
+        let platform = Platform { os: Os::MacOs, arch: Arch::Arm64 };
+        let dir = tempfile::tempdir().unwrap();
+        let mut backend = backend(dir.path(), platform, None);
+        system_installs(&backend, vec![PackageKind::Dmg]);
+        backend.shared.latest.lock().unwrap().insert(APP.to_string(), stable("0.6.0"));
+        backend.shared.installed.lock().unwrap().insert(APP.to_string(), copy_of("0.4.0", InstallSource::Launcher, "/Applications/PhotoCraft.app"));
+        let installable = |events: Vec<Event>| told(events).into_iter().filter(|t| t.starts_with("installable")).collect::<Vec<_>>();
+
+        report_partial(app, &backend.shared, &backend.paths, Some(platform));
+        assert_eq!(installable(backend.poll()), ["installable true"]);
+        backend.shared.options.lock().unwrap().versions.insert(APP.to_string(), VersionTrack::Pinned("v0.7.0".into()));
+        report_partial(app, &backend.shared, &backend.paths, Some(platform));
+        assert_eq!(installable(backend.poll()), ["installable false"], "kept on another version: not what an install would take");
+    }
+
+    /// When a copy appears between a publisher looking and taking `reporting`, the answer uses
+    /// the view of the system its detection asked for, however old: nothing is probed while
+    /// `reporting` is held.
+    #[test]
+    fn an_answer_under_the_reporting_lock_never_probes_the_system() {
+        let app = CraftApp::by_id(APP).unwrap();
+        let platform = Platform { os: Os::MacOs, arch: Arch::Arm64 };
+        let dir = tempfile::tempdir().unwrap();
+        let backend = backend(dir.path(), platform, None);
+        let asked = Instant::now().checked_sub(SYSTEM_KINDS_FOR * 2).unwrap_or_else(Instant::now);
+        *backend.shared.system.lock().unwrap() = Some((asked, install::SystemKinds { available: vec![PackageKind::Dmg], can_pacman: false }));
+        backend.shared.latest.lock().unwrap().insert(APP.to_string(), stable("0.6.0"));
+        backend.shared.installed.lock().unwrap().insert(APP.to_string(), copy_of("0.4.0", InstallSource::Launcher, "/Applications/PhotoCraft.app"));
+
+        let answer = {
+            let _reporting = backend.shared.reporting.lock().unwrap();
+            installable_event(app, &backend.shared, Some(platform), None)
+        };
+        assert_eq!(answer, Some(Event::Installable { app: APP.to_string(), installable: true }), "from the view it had");
+        let kept = backend.shared.system.lock().unwrap().as_ref().map(|(at, _)| *at);
+        assert_eq!(kept, Some(asked), "the expired view wasn't asked again under the lock");
+    }
+
+    /// However polls and publications interleave, a poll never holds a `Latest` or `Detected`
+    /// without the answer queued with it, just before it.
+    #[test]
+    fn a_poll_never_splits_an_answer_from_its_release_or_copy() {
+        let app = CraftApp::by_id(APP).unwrap();
+        let platform = Platform { os: Os::MacOs, arch: Arch::Arm64 };
+        let dir = tempfile::tempdir().unwrap();
+        let backend = backend(dir.path(), platform, None);
+        system_installs(&backend, vec![PackageKind::Dmg]);
+        let installed = copy_of("0.4.0", InstallSource::Launcher, "/Applications/PhotoCraft.app");
+        publish_detected(app, Some(installed.clone()), &backend.shared, Some(platform));
+        let shared = backend.shared.clone();
+        let publisher = std::thread::spawn(move || {
+            for i in 0..300 {
+                if i % 2 == 0 {
+                    publish_latest(app, LatestRelease::Found(stable("0.6.0")), Origin::GitHub, &shared, Some(platform));
+                } else {
+                    publish_detected(app, Some(installed.clone()), &shared, Some(platform));
+                }
+            }
+        });
+        let mut seen = 0;
+        while !publisher.is_finished() || !backend.shared.events.lock().unwrap().is_empty() {
+            let events = std::mem::take(&mut *backend.shared.events.lock().unwrap());
+            for (i, e) in events.iter().enumerate() {
+                if matches!(e, Event::Latest { app, .. } | Event::Detected { app, .. } if app == APP) {
+                    seen += 1;
+                    let before = i.checked_sub(1).and_then(|j| events.get(j));
+                    assert!(matches!(before, Some(Event::Installable { app, .. }) if app == APP), "a poll split a pair: {events:?}");
+                }
+            }
+        }
+        publisher.join().unwrap();
+        assert_eq!(seen, 301, "every publication was seen");
     }
 
     /// The answer uses the settings as they are when it is worked out, not as a long job found
