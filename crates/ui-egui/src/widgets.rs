@@ -407,7 +407,7 @@ pub fn button(ui: &mut Ui, text: &str, kind: Kind, width: f32) -> Response {
 }
 
 /// [`button`], read out by assistive technology as `label` rather than its (shortened) `text`.
-fn labelled_button(ui: &mut Ui, text: &str, label: &str, kind: Kind, width: f32) -> Response {
+pub fn labelled_button(ui: &mut Ui, text: &str, label: &str, kind: Kind, width: f32) -> Response {
     let t = Tokens::get(ui.ctx());
     let galley = button_label(ui, text);
     let size = vec2(button_width_of(&galley, width), theme::CONTROL_H);

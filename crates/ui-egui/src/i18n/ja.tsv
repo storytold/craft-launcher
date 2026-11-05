@@ -54,6 +54,7 @@
 	Open	開く
 	Open {version}	{version} を開く
 	Open {installed} without updating. {latest} stays available.	更新せずに {installed} を開きます。{latest} は後からでもインストールできます。
+	{latest} is out, but ArtCraft Launcher can't install it over this copy.	{latest} が公開されていますが、ArtCraft Launcher はこのコピーに上書きしてインストールできません。
 	Download for {os}	{os} 版をダウンロード
 	Download	ダウンロード
 	Coming soon	近日公開

@@ -1152,6 +1152,23 @@ fn the_backends_installability_answer_decides_an_update() {
     assert!(h.query_by_label("Update to 0.5.0").is_none(), "the backend can't install it");
     assert!(h.query_by_label(KEEP_PHOTOCRAFT).is_none());
     h.get_by_label("Update 1 app");
+    // Still a sign the release is out: a quiet note beside the installed version.
+    h.get_by_label_contains("0.4.1 · latest 0.5.0");
+}
+
+#[test]
+/// Reinstall only shows where an install would go ahead: an up-to-date copy the backend can't
+/// replace (installed outside the launcher, say) has none, so it can't end in "has no download".
+fn reinstall_needs_an_install_that_would_go_ahead() {
+    for installable in [true, false] {
+        let mut ev = events();
+        ev.push(Event::Installable { app: "lightcraft".into(), installable });
+        let (mut h, _) = harness_with(ev, ViewMode::Grid, egui::Theme::Dark, true, 1.0);
+        h.run_steps(8);
+        h.get_by_label("More actions for LightCraft").click();
+        h.run_steps(3);
+        assert_eq!(h.query_by_label("Reinstall").is_some(), installable, "installable: {installable}");
+    }
 }
 
 /// `events`, with PhotoCraft's 0.5.0 published for Windows only: nothing the test's Mac can install.

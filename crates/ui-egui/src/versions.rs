@@ -205,11 +205,18 @@ impl LauncherUi {
             .is_some_and(|(asset, _)| asset.sha256.is_some() || r.sums_asset().is_some())
     }
 
-    /// The newer release a version kept on purpose is behind, for a quiet note beside it on the
-    /// card. `None` unless the app is kept on an exact version and its published list (fetched in
-    /// the background by [`request_pinned_lists`](Self::request_pinned_lists)) has a newer stable
-    /// release. It is never an update: no badge, Update all or notification counts it.
+    /// The newer release an installed copy is behind without it being an update, for a quiet note
+    /// beside its version: a version kept on purpose (its published list, fetched in the
+    /// background by [`request_pinned_lists`](Self::request_pinned_lists), has a newer stable
+    /// release), or a newer release the launcher can't install over this copy
+    /// ([`AppEntry::newer_out_of_reach`](crate::model::AppEntry::newer_out_of_reach)). It is never
+    /// an update: no badge, Update all or notification counts it.
     pub(crate) fn behind_latest(&self, entry: &crate::model::AppEntry) -> Option<String> {
+        self.kept_behind(entry).or_else(|| entry.newer_out_of_reach(self.platform))
+    }
+
+    /// The newer stable release a version kept on purpose is behind.
+    fn kept_behind(&self, entry: &crate::model::AppEntry) -> Option<String> {
         let track = self.settings.versions.get(entry.app.id)?;
         let releases = self.version_lists.get(entry.app.id)?.as_ref().ok()?;
         behind(track, entry.installed.as_ref()?.version.as_ref()?, releases)

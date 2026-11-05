@@ -130,6 +130,13 @@ fn update_split<'a>(ui: &Ui, place: Place, main_w: f32, open: &'a str, update: &
     widgets::split_layout(ui, main_w, &[open, tl!("Open")], &rights, place == Place::Row)
 }
 
+/// Why a newer release noted beside an installed copy isn't offered as an update
+/// ([`AppEntry::newer_out_of_reach`]).
+fn out_of_reach_tip(entry: &AppEntry, platform: Option<artcraft_launcher_core::platform::Platform>) -> Option<String> {
+    let newer = entry.newer_out_of_reach(platform)?;
+    Some(fmt(tl!("{latest} is out, but ArtCraft Launcher can't install it over this copy."), &[("latest", &newer)]))
+}
+
 /// The width of the main button: what's left of `width` beside the square `⋯` menu.
 fn main_width(ui: &Ui, width: f32) -> f32 {
     (width - theme::CONTROL_H - ui.spacing().item_spacing.x).max(120.0)
@@ -588,7 +595,10 @@ impl LauncherUi {
                 let highlight = if in_colour { t.app_ink(app) } else { t.muted };
                 let spans: Vec<(&str, egui::Color32)> =
                     version.iter().map(|(text, lit)| (text.as_str(), if *lit { highlight } else { t.muted })).collect();
-                widgets::hud_elided_spans(&mut strip_ui, &spans, room);
+                let r = widgets::hud_elided_spans(&mut strip_ui, &spans, room);
+                if let Some(tip) = out_of_reach_tip(&entry, self.platform) {
+                    r.on_hover_text(tip);
+                }
             }
             strip_ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 ui.spacing_mut().item_spacing.x = 16.0;
@@ -904,7 +914,10 @@ impl LauncherUi {
         for part in std::iter::once(first).chain(second) {
             part.append_to(&mut job, &style, egui::FontSelection::Default, egui::Align::Center);
         }
-        ui.label(job);
+        let r = ui.label(job);
+        if let Some(tip) = out_of_reach_tip(entry, self.platform) {
+            r.on_hover_text(tip);
+        }
     }
 
     /// The released column: the release date, or an em dash, with "how long ago" in its tooltip.
@@ -936,8 +949,10 @@ impl LauncherUi {
         if let Some(artcraft_launcher_core::protocol::VersionTrack::Pinned(tag)) = self.settings.versions.get(entry.app.id)
             && entry.installed.as_ref().and_then(|i| i.version.as_ref()) != artcraft_launcher_core::version::parse(tag).as_ref()
         {
+            // Checked by the backend, and an install of it would go ahead here.
             let checked = entry.release().is_some_and(|r| &r.tag == tag)
-                && !matches!(status, AppStatus::Checking | AppStatus::NoRelease | AppStatus::Unavailable);
+                && !matches!(status, AppStatus::Checking | AppStatus::NoRelease | AppStatus::Unavailable)
+                && entry.installs_here(self.platform);
             return Primary::SelectedVersion { tag: tag.clone(), checked };
         }
         match status {
@@ -1211,7 +1226,8 @@ impl LauncherUi {
             }
             return;
         }
-        let resp = widgets::button(ui, fitted(ui, &update.label, &update.shorter, main_w), Kind::Primary, main_w);
+        // Shortened to fit, it is still read out in full.
+        let resp = widgets::labelled_button(ui, fitted(ui, &update.label, &update.shorter, main_w), &update.label, Kind::Primary, main_w);
         let resp = match update.tip {
             Some(tip) => resp.on_hover_text(tip),
             None => resp,
@@ -1248,7 +1264,7 @@ impl LauncherUi {
                 ui.close();
             }
             if manage && status.is_installed() {
-                self.menu_installed(ui, status, &id, reveal);
+                self.menu_installed(ui, entry, status, reveal);
             }
             if !manage {
                 self.menu_downloads(ui, entry);
@@ -1304,8 +1320,9 @@ impl LauncherUi {
     }
 
     /// The menu items for an installed app: open, launch options, reveal in the file manager,
-    /// reinstall, and uninstall (which asks first).
-    fn menu_installed(&mut self, ui: &mut Ui, status: &AppStatus, id: &str, reveal: &'static str) {
+    /// reinstall (where an install would go ahead), and uninstall (which asks first).
+    fn menu_installed(&mut self, ui: &mut Ui, entry: &AppEntry, status: &AppStatus, reveal: &'static str) {
+        let id = entry.app.id;
         if ui.button(tl!("Open")).clicked() {
             self.launch_app(id);
             ui.close();
@@ -1319,7 +1336,7 @@ impl LauncherUi {
             self.act_command(Command::Reveal { app: id.to_string() });
             ui.close();
         }
-        if *status == AppStatus::UpToDate && ui.button(tl!("Reinstall")).clicked() {
+        if *status == AppStatus::UpToDate && entry.installs_here(self.platform) && ui.button(tl!("Reinstall")).clicked() {
             self.install_app(id);
             ui.close();
         }
