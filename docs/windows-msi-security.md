@@ -33,9 +33,16 @@ This addresses the central objections in [upstream PR #68](https://github.com/st
 the old proposal elevated the per-user launcher, accepted caller-selected package paths and
 hashes, and trusted results in a user-writable cache. It also addresses the reviewer's concern
 about an administrator-credential prompt installing into another user's profile by admitting
-only packages whose MSI database declares `ALLUSERS=1` and no effective `MSIINSTALLPERUSER`.
-`ALLUSERS=1` on the `msiexec` command line is not used as a substitute for inspecting package
-metadata.
+only packages whose MSI Property table declares one of two exact, reviewed scope pairs: a legacy
+machine-only package has `ALLUSERS=1` with `MSIINSTALLPERUSER` absent or `0`; a verified official
+dual-scope package has `ALLUSERS=2` and `MSIINSTALLPERUSER=1`. Mismatched and other values fail
+closed. Only official release packages that also pass the repository, release, checksum,
+signature, publisher, identity, and architecture checks can use the dual-scope pair. The launcher
+admits an update to the elevated batch only after Windows Installer registration confirms the
+existing product is per-machine. The elevated command explicitly passes `ALLUSERS=1` and an
+empty `MSIINSTALLPERUSER` value, matching the package's machine-scope selection and overriding
+its per-user default. The authored
+properties are still inspected; command-line overrides do not substitute for MSI metadata checks.
 
 ## Authorization and protected files
 
@@ -74,8 +81,10 @@ Missing, empty, oversized, or inconsistent values fail closed. The extracted Org
 exactly equal `Learning Machines Inc`; text in the common name or another subject field cannot
 satisfy this check. This is separate from the MSI database, which must independently report
 Manufacturer `Learning Machines LLC`, an allowed app ProductName, the authorized release
-ProductVersion, a platform matching the x64/x86/ARM64 filename, `ALLUSERS=1`, and
-`MSIINSTALLPERUSER` absent or zero. The MSI database is read through the absolute system
+ProductVersion, a platform matching the x64/x86/ARM64 filename, and one of those exact legacy or
+dual-scope MSI Property pairs. Per-user registrations continue to use
+`ALLUSERS=2 MSIINSTALLPERUSER=1` on the existing non-elevated route. The MSI database is read
+through the absolute system
 `msi.dll` using in-memory P/Invoke declarations, avoiding elevated COM activation and a
 user-writable temporary assembly. Reflection names each native export explicitly.
 `MsiSummaryInfoGetPropertyW` uses its complete seven-argument signature, including `FILETIME*`
@@ -88,8 +97,11 @@ handles `PSObject` values retained inside PowerShell-created `object[]` arrays i
 on a string cast alone.
 
 The full subject, issuer, serial, thumbprint, published hash, and inspected MSI properties for
-the four documented PhotoCraft and VectorCraft packages are in
-[windows-msi-identities.json](windows-msi-identities.json). Those certificate values record the
+the four documented legacy PhotoCraft and VectorCraft packages are in
+[windows-msi-identities.json](windows-msi-identities.json). Current PhotoCraft v0.20.2 and
+VectorCraft v0.21.1 dual-scope values (`ALLUSERS=2`, `MSIINSTALLPERUSER=1`) are recorded with
+their official hashes in [windows-current-msi-releases.json](windows-current-msi-releases.json)
+and checked by the non-installing Windows integration test. The certificate values record the
 inspected signing certificate; they are not a permanent leaf-certificate pin. Signer rotation
 still requires a Windows-valid chain and the exact publisher identity. No certificate is
 installed or added as a trust anchor.
@@ -118,7 +130,8 @@ preserved as successful installer outcomes, with `/norestart` preventing an auto
 Only ArtCraft's official `storytold/` releases enter the new batched elevated path. Approved
 community apps retain their existing single-package installer path; this change does not infer a
 publisher from a URL or broaden the privileged publisher policy. Per-user MSI updates keep their
-existing non-elevated scope and do not join the elevated package set. Portable ZIP installs do
+existing non-elevated scope (`ALLUSERS=2 MSIINSTALLPERUSER=1`) and do not join the elevated
+package set. Portable ZIP installs do
 not use MSI batching. Consequently, one consent operation applies to eligible official,
 machine-wide MSI updates in one `Update all` action when the launcher is unelevated and Windows
 policy is configured to prompt; a separately handled community install may still use its existing

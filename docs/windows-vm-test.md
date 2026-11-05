@@ -35,8 +35,8 @@ Download these official x64 packages and the `SHA256SUMS.txt` file from each rel
 
 | App | Starting package | Expected update |
 | --- | --- | --- |
-| PhotoCraft | [v0.13.0 release](https://github.com/storytold/photocraft/releases/tag/v0.13.0), `photocraft-0.13.0-windows-x64.msi` | v0.14.0 or newer |
-| VectorCraft | [v0.15.0 release](https://github.com/storytold/vectorcraft/releases/tag/v0.15.0), `vectorcraft-0.15.0-windows-x64.msi` | v0.16.0 or newer |
+| PhotoCraft | [v0.13.0 release](https://github.com/storytold/photocraft/releases/tag/v0.13.0), `photocraft-0.13.0-windows-x64.msi` | [v0.20.2](https://github.com/storytold/photocraft/releases/tag/v0.20.2) or newer |
+| VectorCraft | [v0.15.0 release](https://github.com/storytold/vectorcraft/releases/tag/v0.15.0), `vectorcraft-0.15.0-windows-x64.msi` | [v0.21.1](https://github.com/storytold/vectorcraft/releases/tag/v0.21.1) or newer |
 
 Before opening either MSI, compare its SHA-256 with the exact entry in that release's published
 checksum file and confirm its signature in a normal PowerShell session:
@@ -54,9 +54,10 @@ Require a checksum match, `Status : Valid`, and signer `Learning Machines Inc`. 
 certificate's exact inspected subject, issuer, and thumbprint are recorded in
 [windows-msi-identities.json](windows-msi-identities.json). Stop if the release no longer has
 these files or if either security check differs. Install both MSIs normally with their default
-per-machine scope, accepting their ordinary setup UAC requests. Confirm each app launches, close
-both apps, and check their registered versions before continuing. These initial install prompts
-are separate from the update test.
+per-machine scope, accepting their ordinary setup UAC requests. These older packages are the
+legacy `ALLUSERS=1` form. Confirm each app launches, close both apps, and check their registered
+versions and per-machine installer contexts before continuing. These initial install prompts are
+separate from the update test.
 
 ## Run the batch test
 
@@ -77,15 +78,22 @@ are separate from the update test.
    that prompts for consent/credentials (for an administrator, value `2` or `4`). Do not disable
    UAC. If policy is domain-managed, record it and do not override it.
 3. Start `artcraft-launcher.exe` normally from the standard user desktop. Verify it identifies
-   PhotoCraft v0.13.0 and VectorCraft v0.15.0 and offers updates.
+   PhotoCraft v0.13.0 and VectorCraft v0.15.0 and offers the current dual-scope releases.
 4. Choose **Update all**. Let both downloads complete and watch the verification/install phases.
    Expect exactly one interactive UAC approval for Windows PowerShell, followed by the two
-   Windows Installer progress windows. The launcher itself must remain unelevated. Each MSI
+   Windows Installer progress windows. The v0.20.2 PhotoCraft and v0.21.1 VectorCraft MSI
+   Property tables declare `ALLUSERS=2` and `MSIINSTALLPERUSER=1` (dual-scope, per-user default).
+   The elevated batch must explicitly invoke each with `ALLUSERS=1 MSIINSTALLPERUSER=` (empty)
+   to keep the already-verified machine context, matching the package's machine-scope selection.
+   The launcher itself must remain unelevated. Each MSI
    progress window has a Cancel button; cancelling one item should be reported for that app while
    the batch proceeds to the other authorized item.
-5. Confirm the launcher reports each app's individual result, detects PhotoCraft v0.14.0 and
-   VectorCraft v0.16.0 (or the newer selected versions), and both apps launch. Check the Windows
-   uninstall/install records for the new `DisplayVersion` values and per-machine registrations.
+5. Confirm the launcher reports each app's individual result, detects PhotoCraft v0.20.2 and
+   VectorCraft v0.21.1 (or the newer selected versions), and both apps launch. Check the Windows
+   uninstall/install records for the new `DisplayVersion` values. Confirm each product remains
+   registered per-machine, with no new per-user registration or second copy under the user's
+   profile. The launcher must not silently migrate a per-user installation into the machine scope;
+   per-user updates should remain on the unelevated route.
 6. If an item is rejected before Windows Installer starts, inspect
    `%SystemRoot%\System32\ArtCraft-MSI-<session>\diagnostics.jsonl` from an administrator session.
    It records the validation stage, exception types, HRESULTs, actionable reason, and UAC context.
@@ -135,8 +143,8 @@ Restore the snapshot between cases and record which step and result you observed
   must not overlap or produce error 1618.
 - Cancel a download or close the launcher while one package download is still pending. A failed
   download should not prevent a valid ready package from installing.
-- Install a per-user copy and verify its update stays per-user and requires no unnecessary
-  elevation. Try a mixed per-user/per-machine Update all action and confirm only the eligible
+- Install a per-user copy of a dual-scope app and verify its update stays per-user and requires no
+  unnecessary elevation. Try a mixed per-user/per-machine Update all action and confirm only the eligible
   machine-wide ArtCraft packages join the elevated session.
 - Use a separate snapshot to verify that a custom install location with an unsafe ACL or a
   reparse point fails closed.

@@ -586,20 +586,17 @@ pub enum MsiScope {
     PerMachine,
 }
 
-/// The `msiexec` properties that ask a dual-scope package for `scope`. Passing the context
-/// explicitly on every update also keeps a per-machine update working when the package's own
-/// default has since changed.
+/// The `msiexec` properties that select `scope` for a dual-scope package. Passing both properties
+/// explicitly on every update prevents the package-authored default from changing the context.
 ///
-/// `ALLUSERS=1` is what the current per-machine-only packages already set themselves, so it
-/// changes nothing for them; `ALLUSERS=2` with `MSIINSTALLPERUSER=1` is the documented
-/// single-package way to request a per-user install of a dual-scope package. A per-user
-/// registered copy can only come from a dual-scope package, so its updates can safely ask for
-/// one.
+/// Machine installs explicitly pass `ALLUSERS=1 MSIINSTALLPERUSER=` (empty), overriding the
+/// `2/1` defaults authored by dual-scope MSIs. A per-user registered copy can only come from a
+/// dual-scope package, so its updates safely pass `ALLUSERS=2 MSIINSTALLPERUSER=1`.
 #[cfg(any(windows, test))]
 fn msi_scope_arguments(scope: Option<MsiScope>) -> Vec<&'static str> {
     match scope {
         Some(MsiScope::PerUser) => vec!["ALLUSERS=2", "MSIINSTALLPERUSER=1"],
-        Some(MsiScope::PerMachine) => vec!["ALLUSERS=1"],
+        Some(MsiScope::PerMachine) => vec!["ALLUSERS=1", "MSIINSTALLPERUSER="],
         None => Vec::new(),
     }
 }
@@ -2585,9 +2582,8 @@ mod tests {
         assert_eq!(msi_scope_arguments(None), Vec::<&str>::new());
         // A per-user update asks for the documented single-package per-user install...
         assert_eq!(msi_scope_arguments(Some(MsiScope::PerUser)), vec!["ALLUSERS=2", "MSIINSTALLPERUSER=1"]);
-        // ...and a per-machine update asks for what per-machine-only packages already set
-        // themselves, so it changes nothing for the current releases.
-        assert_eq!(msi_scope_arguments(Some(MsiScope::PerMachine)), vec!["ALLUSERS=1"]);
+        // ...and a per-machine update overrides both the legacy and dual-scope package defaults.
+        assert_eq!(msi_scope_arguments(Some(MsiScope::PerMachine)), vec!["ALLUSERS=1", "MSIINSTALLPERUSER="]);
     }
 
     #[cfg(target_os = "linux")]

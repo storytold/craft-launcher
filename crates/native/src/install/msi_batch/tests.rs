@@ -41,7 +41,10 @@ fn the_command_line_is_the_single_app_route_with_the_same_parts() {
     let folder = Path::new(r"C:\Program Files\ArtCraft\CADCraft");
 
     let all_users = line(&msi, Some(folder), Some(MsiScope::PerMachine)).unwrap();
-    assert_eq!(all_users, format!("/i \"{package}\" /passive /norestart /l*v \"{log}\" INSTALLFOLDER=\"{}\" ALLUSERS=1", folder.display()));
+    assert_eq!(
+        all_users,
+        format!("/i \"{package}\" /passive /norestart /l*v \"{log}\" INSTALLFOLDER=\"{}\" ALLUSERS=1 MSIINSTALLPERUSER=", folder.display())
+    );
     // No folder and no scope: only the package and the log.
     assert_eq!(line(&msi, None, None).unwrap(), format!("/i \"{package}\" /passive /norestart /l*v \"{log}\""));
     // The same package, as the single-app route builds it.

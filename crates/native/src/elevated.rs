@@ -514,6 +514,17 @@ function Get-MsiProperty($api, [uint32]$db, [string]$name) {
     }
 }
 
+function Assert-MsiScopeProperties([string]$allUsers, [string]$msiInstallPerUser) {
+    # Older ArtCraft MSIs are machine-only. New WiX perUserOrMachine releases author 2/1
+    # (dual-scope, with per-user as their default). Only these two exact property pairs are
+    # authorized; the batch later overrides both values to select the verified machine context.
+    $legacyMachine = $allUsers -ceq '1' -and $msiInstallPerUser -in @('', '0')
+    $dualScope = $allUsers -ceq '2' -and $msiInstallPerUser -ceq '1'
+    if (-not ($legacyMachine -or $dualScope)) {
+        throw 'MSI has unsupported installation scope properties'
+    }
+}
+
 function Assert-MsiIdentity([string]$file, $app, [string]$version, [string]$asset) {
     Set-ArtCraftValidationStage 'msi-api-bindings'
     $api = New-MsiApi
@@ -534,9 +545,11 @@ function Assert-MsiIdentity([string]$file, $app, [string]$version, [string]$asse
         $template = Get-MsiTemplate $api $db
         if ($template -cne $packageArch) { throw 'MSI platform does not match the release asset architecture' }
         Set-ArtCraftValidationStage 'msi-property:ALLUSERS'
-        if ((Get-MsiProperty $api $db 'ALLUSERS') -cne '1') { throw 'MSI must declare ALLUSERS=1' }
+        $allUsers = Get-MsiProperty $api $db 'ALLUSERS'
         Set-ArtCraftValidationStage 'msi-property:MSIINSTALLPERUSER'
-        if ((Get-MsiProperty $api $db 'MSIINSTALLPERUSER') -notin @('', '0')) { throw 'MSI declares per-user installation scope' }
+        $msiInstallPerUser = Get-MsiProperty $api $db 'MSIINSTALLPERUSER'
+        Set-ArtCraftValidationStage 'msi-scope-policy'
+        Assert-MsiScopeProperties $allUsers $msiInstallPerUser
         Set-ArtCraftValidationStage 'msi-property:Manufacturer'
         if ((Get-MsiProperty $api $db 'Manufacturer') -cne 'Learning Machines LLC') { throw 'MSI Manufacturer is not the approved ArtCraft value' }
         Set-ArtCraftValidationStage 'msi-property:ProductName'
@@ -708,7 +721,7 @@ function Invoke-ArtCraftBatch($request, $catalog) {
                         $logHandle.Dispose()
                         # Keep Windows Installer's cancel button available. The elevated parent
                         # remains in the same single UAC session for each sequential MSI.
-                        $start.Arguments = '/i "' + $staged + '" /passive /norestart ALLUSERS=1 /l*v "' + $log + '"'
+                        $start.Arguments = '/i "' + $staged + '" /passive /norestart ALLUSERS=1 MSIINSTALLPERUSER= /l*v "' + $log + '"'
                         if ($null -ne $item.destination) {
                             Set-ArtCraftValidationStage 'install-destination-acl'
                             $destination = Assert-InstallDestination ([string]$item.destination) $authorization.app
@@ -972,6 +985,25 @@ fn read_results(path: &Path) -> Result<Option<String>, String> {
 mod tests {
     use super::*;
 
+    #[cfg(windows)]
+    const ASSERT_EXPECTED_MSI_PROPERTIES: &str = r#"
+function Assert-ExpectedMsiProperties($file, $expectedProperties) {
+    if ($null -eq $expectedProperties) { return }
+    $api = New-MsiApi
+    $arguments = [object[]]@([string]$file, [IntPtr]::Zero, [uint32]0)
+    $status = Invoke-MsiApi $api 'MsiOpenDatabaseW' $arguments
+    if ($status -ne 0) { throw "MsiOpenDatabaseW failed with Windows Installer status $status" }
+    $db = [uint32]$arguments[2]
+    try {
+        foreach ($property in $expectedProperties.PSObject.Properties) {
+            $expected = if ($null -eq $property.Value) { '' } else { [string]$property.Value }
+            $actual = Get-MsiProperty $api $db $property.Name
+            if ($actual -cne $expected) { throw "Unexpected MSI property $($property.Name): '$actual', expected '$expected'" }
+        }
+    } finally { $null = Invoke-MsiApi $api 'MsiCloseHandle' ([object[]]@($db)) }
+}
+"#;
+
     #[test]
     fn current_windows_msi_manifest_only_authorizes_official_catalog_releases() {
         let manifest: serde_json::Value = serde_json::from_str(include_str!("../../../docs/windows-current-msi-releases.json")).unwrap();
@@ -999,6 +1031,14 @@ mod tests {
         }
         assert!(app_ids.contains("figcraft"));
         assert!(app_ids.contains("lightcraft"));
+        for (app, tag, name, version) in [("photocraft", "v0.20.2", "PhotoCraft", "0.20.2"), ("vectorcraft", "v0.21.1", "VectorCraft", "0.21.1")] {
+            let package = packages.iter().find(|package| package["app"] == app).unwrap();
+            assert_eq!(package["tag"], tag);
+            assert_eq!(package["properties"]["ALLUSERS"], "2");
+            assert_eq!(package["properties"]["MSIINSTALLPERUSER"], "1");
+            assert_eq!(package["properties"]["ProductName"], name);
+            assert_eq!(package["properties"]["ProductVersion"], version);
+        }
     }
 
     #[cfg(any(windows, test))]
@@ -1122,8 +1162,10 @@ mod tests {
         assert!(POLICY.contains("$organization -cne 'Learning Machines Inc'"), "certificate Organization is exact-matched");
         assert!(POLICY.contains("'Manufacturer') -cne 'Learning Machines LLC'"), "MSI Manufacturer policy");
         assert!(POLICY.contains("Get-MsiTemplate") && POLICY.contains("MSI architecture is not authorized"));
-        assert!(POLICY.contains("if ((Get-MsiProperty $api $db 'ALLUSERS') -cne '1')"));
-        assert!(POLICY.contains("if ((Get-MsiProperty $api $db 'MSIINSTALLPERUSER') -notin @('', '0'))"));
+        assert!(POLICY.contains("function Assert-MsiScopeProperties"));
+        assert!(POLICY.contains("$allUsers -ceq '1' -and $msiInstallPerUser -in @('', '0')"));
+        assert!(POLICY.contains("$allUsers -ceq '2' -and $msiInstallPerUser -ceq '1'"));
+        assert!(POLICY.contains("ALLUSERS=1 MSIINSTALLPERUSER= "), "the elevated batch clears the per-user selector for machine context");
         assert!(POLICY.contains("[object[]]@([string]$file, [IntPtr]::Zero, [uint32]0)"));
         assert!(POLICY.contains("$type.DefinePInvokeMethod($name, $dll, $name"), "native entry points are explicit");
         assert!(POLICY.contains("@($u, $u, $ref, $iref, [IntPtr], [Text.StringBuilder], $ref)"), "summary API includes FILETIME*");
@@ -1140,6 +1182,37 @@ mod tests {
         assert!(POLICY.contains("diagnostics.jsonl") && POLICY.contains("rootHresult") && POLICY.contains("validation-failure"));
         assert!(POLICY.contains("ConsentPromptBehaviorAdmin") && POLICY.contains("requestingPowerShellWasElevated"));
         assert!(!POLICY.contains("Learning Machines LLC') -or"), "the certificate subject and MSI Manufacturer stay separate");
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn windows_policy_accepts_only_legacy_machine_or_official_dual_scope_properties() {
+        let test = format!(
+            "{POLICY}\n{}",
+            r#"
+Assert-MsiScopeProperties '1' ''
+Assert-MsiScopeProperties '1' '0'
+Assert-MsiScopeProperties '2' '1'
+foreach ($pair in @(
+    [PSCustomObject]@{ allUsers = '1'; perUser = '1' },
+    [PSCustomObject]@{ allUsers = '2'; perUser = '' },
+    [PSCustomObject]@{ allUsers = '2'; perUser = '0' },
+    [PSCustomObject]@{ allUsers = ''; perUser = '1' },
+    [PSCustomObject]@{ allUsers = '3'; perUser = '1' }
+)) {
+    $rejected = $false
+    try { Assert-MsiScopeProperties $pair.allUsers $pair.perUser }
+    catch {
+        if ($_.Exception.Message -cne 'MSI has unsupported installation scope properties') { throw }
+        $rejected = $true
+    }
+    if (-not $rejected) { throw "Unexpectedly accepted scope pair $($pair.allUsers)/$($pair.perUser)" }
+}
+'MSI scope property allowlist passed'
+"#
+        );
+        let output = run_powershell_test(&test);
+        assert_powershell_output_contains(&output, "MSI scope property allowlist passed");
     }
 
     #[cfg(windows)]
@@ -1337,6 +1410,7 @@ Remove-Item -LiteralPath $path -Force
                 "path": path,
                 "release": release,
                 "sha256": actual_hash,
+                "expectedProperties": package["properties"],
             }));
         }
         let catalog: Vec<_> = artcraft_launcher_core::catalog::SUITE
@@ -1348,7 +1422,7 @@ Remove-Item -LiteralPath $path -Force
         let case_data = base64::engine::general_purpose::STANDARD.encode(serde_json::to_vec(&cases).unwrap());
         let catalog_data = base64::engine::general_purpose::STANDARD.encode(serde_json::to_vec(&catalog).unwrap());
         let test = format!(
-            "{POLICY}\n$cases=[Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('{case_data}')) | ConvertFrom-Json\n\
+            "{POLICY}\n{ASSERT_EXPECTED_MSI_PROPERTIES}\n$cases=[Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('{case_data}')) | ConvertFrom-Json\n\
              $catalog=[Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('{catalog_data}')) | ConvertFrom-Json\n\
              foreach ($item in $cases) {{\n\
                $authorization=Get-ReleaseAuthorization $item $catalog\n\
@@ -1359,6 +1433,7 @@ Remove-Item -LiteralPath $path -Force
                $signature = Microsoft.PowerShell.Security\\Get-AuthenticodeSignature -LiteralPath $file\n\
                $signerOrganization = Get-CertificateOrganization $signature.SignerCertificate\n\
                if ($signerOrganization -cne 'Learning Machines Inc') {{ throw 'Crypt32 signer Organization did not match the approved publisher' }}\n\
+               Assert-ExpectedMsiProperties $file $item.expectedProperties\n\
                Assert-MsiIdentity $file $authorization.app $authorization.version $authorization.asset\n\
                Write-Output ($item.release.app + ' ' + $authorization.version + ' checksum/signature/MSI identity passed; organization=' + $signerOrganization)\n\
              }}\n"
@@ -1408,6 +1483,7 @@ Remove-Item -LiteralPath $path -Force
                 "path": path,
                 "release": release,
                 "sha256": actual_hash,
+                "expectedProperties": package["properties"],
             }));
         }
         let catalog: Vec<_> = artcraft_launcher_core::catalog::SUITE
@@ -1419,7 +1495,7 @@ Remove-Item -LiteralPath $path -Force
         let case_data = base64::engine::general_purpose::STANDARD.encode(serde_json::to_vec(&cases).unwrap());
         let catalog_data = base64::engine::general_purpose::STANDARD.encode(serde_json::to_vec(&catalog).unwrap());
         let test = format!(
-            "{POLICY}\n$cases=[Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('{case_data}')) | ConvertFrom-Json\n\
+            "{POLICY}\n{ASSERT_EXPECTED_MSI_PROPERTIES}\n$cases=[Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('{case_data}')) | ConvertFrom-Json\n\
              $catalog=[Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('{catalog_data}')) | ConvertFrom-Json\n\
              foreach ($item in $cases) {{\n\
                $authorization=Get-ReleaseAuthorization $item $catalog\n\
@@ -1430,6 +1506,7 @@ Remove-Item -LiteralPath $path -Force
                $signature = Microsoft.PowerShell.Security\\Get-AuthenticodeSignature -LiteralPath $file\n\
                $signerOrganization = Get-CertificateOrganization $signature.SignerCertificate\n\
                if ($signerOrganization -cne 'Learning Machines Inc') {{ throw 'Crypt32 signer Organization did not match the approved publisher' }}\n\
+               Assert-ExpectedMsiProperties $file $item.expectedProperties\n\
                Assert-MsiIdentity $file $authorization.app $authorization.version $authorization.asset\n\
                Write-Output ($item.release.app + ' ' + $authorization.version + ' checksum/signature/MSI identity passed; organization=' + $signerOrganization)\n\
              }}\n"
