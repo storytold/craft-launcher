@@ -93,6 +93,8 @@ fn main() -> ExitCode {
             }
         }
     }
+    // A moved or reinstalled launcher would otherwise leave the login entry pointing at the old path.
+    login::refresh();
     if let Some(error) =
         artcraft_launcher_native::paths::Paths::new().ok().and_then(|paths| artcraft_launcher_native::self_update::take_failure(&paths))
     {
