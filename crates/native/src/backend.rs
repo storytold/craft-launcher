@@ -486,7 +486,6 @@ impl NativeBackend {
                     other => other,
                 }
             };
-            report_partial(app, &shared, &paths, platform);
             // Look again: the result is whatever is on disk now.
             let manifest = shared.manifest.lock().unwrap_or_else(PoisonError::into_inner).clone();
             let found = crate::detect::detect(app, &manifest, &crate::detect::Snapshot::take());
@@ -504,6 +503,7 @@ impl NativeBackend {
             // The manifest may change the package plan even when detection finds the same copy.
             shared.invalidate_download_size(app.id);
             publish_detected(app, found, &shared, platform);
+            report_partial(app, &shared, &paths, platform);
             drop(job);
             shared.emit(Event::JobFinished { app: app.id.to_string(), result });
         });
@@ -2362,7 +2362,7 @@ mod tests {
     }
 
     #[test]
-    fn job_finished_is_emitted_after_its_busy_entry_is_removed() {
+    fn job_finished_follows_busy_cleanup_and_download_plan_publication() {
         let Some(platform) = native_platform() else { return };
         let dir = tempfile::tempdir().unwrap();
         let mut backend = backend(dir.path(), platform, None);
@@ -2374,13 +2374,17 @@ mod tests {
             let finished = shared.events.lock().unwrap().iter().any(|event| matches!(event, Event::JobFinished { app, .. } if app == APP));
             if finished {
                 let busy = shared.jobs.lock().unwrap().contains_key(APP);
-                let _ = sent.send(busy);
+                let plan = shared.download_sizes.lock().unwrap().get(APP).and_then(|cached| cached.plan);
+                let _ = sent.send((busy, plan));
             }
         });
         *shared.lock().unwrap() = Some(Arc::downgrade(&backend.shared));
 
         backend.start_job(APP, Work::Uninstall);
-        assert!(!received.recv_timeout(Duration::from_secs(2)).unwrap());
+        let (busy, plan) = received.recv_timeout(Duration::from_secs(2)).unwrap();
+        assert!(!busy);
+        assert!(matches!(plan, Some((_, 3))), "JobFinished observers need the final download plan: {plan:?}");
+        assert_eq!(backend.download_size(APP), plan);
     }
 
     /// Puts the planned download on disk, as a failed install leaves it.
