@@ -40,9 +40,13 @@ pub(crate) fn last_updated(e: &AppEntry) -> Option<String> {
 
 /// Does the description only repeat the tagline beside the app's name ("Page layout and
 /// publishing." under "Page layout and publishing")? Compared in English, before translation, so
-/// every language hides the same lines; case, spaces and a closing full stop don't count.
+/// every language hides the same lines; case, spaces and one closing full stop don't count (an
+/// ellipsis does: "Processing..." is not "Processing").
 pub(crate) fn repeats_tagline(headline: &str, tagline: &str) -> bool {
-    let plain = |s: &str| s.trim().trim_end_matches('.').trim_end().to_lowercase();
+    let plain = |s: &str| {
+        let s = s.trim();
+        s.strip_suffix('.').unwrap_or(s).trim_end().to_lowercase()
+    };
     plain(headline) == plain(tagline)
 }
 
@@ -83,6 +87,8 @@ mod tests {
         assert!(repeats_tagline("Page layout and publishing.", "Page layout and publishing"));
         assert!(repeats_tagline(" Interface design and prototyping. ", "interface design and prototyping"));
         assert!(!repeats_tagline("Spreadsheets you already know how to use.", "Spreadsheets and data"));
+        assert!(!repeats_tagline("Processing...", "Processing"), "only one closing full stop is ignored");
+        assert!(!repeats_tagline("Processing..", "Processing"));
     }
 
     #[test]
