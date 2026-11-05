@@ -56,6 +56,8 @@ struct Shared {
     /// is worked out and queued, so no answer from older state lands after a newer one. Always
     /// taken first, before any other lock here.
     reporting: Mutex<()>,
+    /// Held while a settings change works out every app's download again ([`NativeBackend::replan`]).
+    replanning: Mutex<()>,
     /// What this system could install, and when that was asked ([`Shared::system_kinds`]).
     system: Mutex<Option<(Instant, install::SystemKinds)>>,
     waker: Waker,
@@ -191,6 +193,7 @@ impl NativeBackend {
             events: Mutex::new(Vec::new()),
             reporting: Mutex::new(()),
             system: Mutex::new(None),
+            replanning: Mutex::new(()),
             waker,
             latest: Mutex::new(HashMap::new()),
             installed: Mutex::new(HashMap::new()),
@@ -241,6 +244,23 @@ impl NativeBackend {
         if let Some(f) = feed {
             self.shared.emit(Event::Notices { announcements: f.announcements, alerts: f.alerts });
         }
+    }
+
+    /// Works out again, off the UI thread, what each app's install would download, and tells the
+    /// UI ([`report_partial`]): inside the Flatpak sandbox that asks the host (up to 3 s an app).
+    /// One at a time, each with the settings as they are when it starts, so the last word is
+    /// always the newest settings'.
+    fn replan(&self) {
+        let shared = self.shared.clone();
+        let paths = self.paths.clone();
+        let platform = self.platform;
+        std::thread::spawn(move || {
+            let _one_at_a_time = shared.replanning.lock().unwrap_or_else(PoisonError::into_inner);
+            let options = shared.options.lock().unwrap_or_else(PoisonError::into_inner).clone();
+            for app in &SUITE {
+                report_partial(app, &shared, &paths, platform, &options);
+            }
+        });
     }
 
     fn options(&self) -> BackendOptions {
@@ -1397,10 +1417,7 @@ impl Backend for NativeBackend {
                     }
                 }
                 // Another package format means another file to download.
-                let options = self.options();
-                for app in &SUITE {
-                    report_partial(app, &self.shared, &self.paths, self.platform, &options);
-                }
+                self.replan();
                 if changed_pre {
                     self.check(true);
                 }
@@ -1599,6 +1616,7 @@ mod tests {
             events: Mutex::new(Vec::new()),
             reporting: Mutex::new(()),
             system: Mutex::new(None),
+            replanning: Mutex::new(()),
             waker: Arc::new(|| {}),
             latest: Mutex::new(HashMap::new()),
             installed: Mutex::new(HashMap::new()),
@@ -2191,7 +2209,13 @@ mod tests {
         // The planned file changed under the UI; only a new report can tell it.
         backend.shared.latest.lock().unwrap().insert(APP.to_string(), release("0.6.0"));
         backend.send(Command::Configure(BackendOptions::default()));
-        assert_eq!(last_ready(backend.poll()), Some(false));
+        // Worked out off the UI thread: the report follows shortly.
+        let mut seen = None;
+        wait_until(|| {
+            seen = last_ready(backend.poll()).or(seen);
+            seen.is_some()
+        });
+        assert_eq!(seen, Some(false));
     }
 
     #[test]
