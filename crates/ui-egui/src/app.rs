@@ -2,6 +2,7 @@
 
 use std::time::Duration;
 
+use artcraft_launcher_core::details::AppDetails;
 use artcraft_launcher_core::protocol::{
     Backend, BackendOptions, CANCELLED, Capabilities, Command, Event, INSTALL_CANCELLED, JobPhase, LatestRelease, PAUSED, Source,
 };
@@ -943,7 +944,10 @@ impl LauncherUi {
                     && (needle.is_empty()
                         || search_key(e.app.name).contains(&needle)
                         || search_key(e.app.tagline).contains(&needle)
-                        || search_key(crate::i18n::tr_ctx(crate::i18n::current(), e.app.id, e.app.tagline)).contains(&needle))
+                        || search_key(crate::i18n::tr_ctx(crate::i18n::current(), e.app.id, e.app.tagline)).contains(&needle)
+                        || AppDetails::by_id(e.app.id).is_some_and(|details| {
+                            search_key(crate::i18n::tr_ctx(crate::i18n::current(), details.id, details.headline)).contains(&needle)
+                        }))
             })
             .collect();
         let platform = self.platform;

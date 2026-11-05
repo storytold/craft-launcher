@@ -145,6 +145,13 @@ fn persian_content_preserves_chrome_and_interactions() {
         h.run_steps(2);
         assert!(h.state().as_ref().unwrap().visible_ids_for_test().contains(&"photocraft"), "query: {query}");
     }
+    // This word occurs in PhotoCraft's displayed headline, not its name or tagline.
+    for query in ["ویرایشگر", "ويرايشگر", "وی\u{200c}رایشگر", "ویرایشگر تصویری که"] {
+        h.state_mut().as_mut().unwrap().set_search_for_test(query);
+        h.run_steps(2);
+        assert!(h.state().as_ref().unwrap().visible_ids_for_test().contains(&"photocraft"), "headline query: {query}");
+        h.get_by_label("PhotoCraft");
+    }
     let input = h.get_by_role(egui::accesskit::Role::TextInput);
     input.focus();
     h.key_press_modifiers(egui::Modifiers::COMMAND, egui::Key::A);
