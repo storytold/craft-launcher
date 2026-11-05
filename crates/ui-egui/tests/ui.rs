@@ -2419,6 +2419,85 @@ fn automatic_updates_skip_a_release_without_a_download_here() {
 }
 
 #[test]
+/// FreeBSD: PhotoCraft 0.4.1 sits in /usr/local/bin, installed outside the launcher, and 0.5.0
+/// publishes a matching FreeBSD tarball. The launcher won't replace a system binary, and its
+/// backend says so, so with notifications and automatic updates on there is no Update button or
+/// count, no notice (and 0.5.0 isn't recorded as announced), no install queued; Open still opens it.
+fn a_freebsd_system_binary_is_not_offered_an_update_it_would_refuse() {
+    struct Notices(Rc<RefCell<Vec<String>>>);
+    impl Host for Notices {
+        fn notify(&mut self, title: &str, _body: &str) {
+            self.0.borrow_mut().push(title.to_string());
+        }
+    }
+    let name = "photocraft-0.5.0-freebsd-x86_64.tar.gz";
+    let tarball = Release {
+        assets: vec![Asset {
+            name: name.into(),
+            size: 150 << 20,
+            url: format!("https://github.com/storytold/photocraft/releases/download/v0.5.0/{name}"),
+            sha256: None,
+        }],
+        ..release("photocraft", "0.5.0", NOW - 86_400)
+    };
+    let system = Installed {
+        version: version::parse("0.4.1"),
+        source: InstallSource::Binary,
+        location: "/usr/local/bin/photocraft".into(),
+        package: None,
+        externally_managed: false,
+        origin: None,
+        installation: None,
+    };
+    let mut ev = vec![Event::Latest { app: "photocraft".into(), latest: LatestRelease::Found(tarball), from: Origin::ArtCraftApi }];
+    for app in &SUITE {
+        ev.push(Event::Detected { app: app.id.into(), installed: (app.id == "photocraft").then(|| system.clone()) });
+    }
+    // What the native backend answers for this copy: an install would refuse it.
+    ev.push(Event::Installable { app: "photocraft".into(), installable: false });
+    ev.push(Event::CheckFinished { at: NOW - 180, source: Source::GitHubApi, rate_limited_until: None });
+
+    let sent = Rc::new(RefCell::new(Vec::new()));
+    let notices = Rc::new(RefCell::new(Vec::new()));
+    let fake = Fake { events: ev, sent: sent.clone(), manage: true, pictures: Rc::default(), asked: Vec::new(), clock: Rc::new(Cell::new(NOW)) };
+    let mut backend = Some(PlatformFake { inner: fake, platform: Platform { os: Os::FreeBsd, arch: Arch::X64 } });
+    let host_notices = notices.clone();
+    let mut h = test_harness_builder(egui::Theme::Dark).with_size(egui::vec2(1180.0, 1200.0)).build_ui_state(
+        move |ui, state: &mut Option<LauncherUi>| {
+            if state.is_none()
+                && let Some(b) = backend.take()
+            {
+                *state = Some(LauncherUi::new(ui.ctx(), Box::new(b), Settings { auto_update: true, notify: true, ..Settings::default() }));
+            }
+            let mut host = Notices(host_notices.clone());
+            if let Some(l) = state.as_mut() {
+                l.logic(&ui.ctx().clone(), &mut host);
+                l.ui(ui, &mut host);
+            }
+        },
+        None,
+    );
+    h.run_steps(8);
+
+    assert!(h.query_by_label("Update to 0.5.0").is_none(), "no Update button");
+    assert!(h.query_by_label_contains("without updating").is_none(), "no split");
+    assert!(h.query_by_label_contains("Update all").is_none() && h.query_by_label("Update 1 app").is_none(), "no update count");
+    assert!(notices.borrow().is_empty(), "no update notice: {:?}", notices.borrow());
+    let launcher = h.state().as_ref().expect("the harness built the launcher");
+    assert!(!launcher.settings.notified.contains_key("photocraft"), "0.5.0 isn't recorded as announced");
+    assert_eq!(launches_and_installs(&sent, "photocraft"), (0, 0), "no automatic install: {:?}", sent.borrow());
+
+    let menu = h.get_by_label("More actions for PhotoCraft").rect();
+    h.get_all_by_label("Open")
+        .filter(|n| (n.rect().center().y - menu.center().y).abs() < 1.0 && n.rect().right() <= menu.left())
+        .max_by(|a, b| a.rect().right().total_cmp(&b.rect().right()))
+        .expect("PhotoCraft's Open")
+        .click();
+    h.run_steps(2);
+    assert_eq!(launches_and_installs(&sent, "photocraft"), (1, 0), "Open still opens it: {:?}", sent.borrow());
+}
+
+#[test]
 /// With auto-update off, no app install or launcher update is queued.
 fn automatic_updates_are_disabled_by_default() {
     let mut ev = events();

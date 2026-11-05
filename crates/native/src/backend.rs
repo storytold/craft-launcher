@@ -496,6 +496,51 @@ fn downgrade_previous(
     })
 }
 
+/// What an install of `app` would download, worked out from what is installed and chosen
+/// before anything is fetched.
+struct InstallPlan {
+    release: Release,
+    platform: Platform,
+    asset: Asset,
+    kind: PackageKind,
+}
+
+/// The checks an install makes before it downloads anything: a copy installed outside the
+/// launcher (a system binary, a repository package) isn't replaced; the release must be known and
+/// on the chosen version track; and it must have a package that can replace the copy the way it
+/// was installed. [`run_install`] and the UI's [`Event::Installable`] both ask this, so the UI
+/// never offers an update the install would refuse.
+fn install_plan(
+    app: &CraftApp,
+    latest: Option<Release>,
+    platform: Option<Platform>,
+    options: &BackendOptions,
+    existing: Option<&Installed>,
+    record: Option<&crate::manifest::Record>,
+) -> Result<InstallPlan, String> {
+    if let Some(msg) = existing.and_then(|e| install::managed_elsewhere(app, e, false)) {
+        return Err(msg);
+    }
+    let platform = platform.ok_or("this system isn't supported")?;
+    let release = latest.ok_or("the selected release hasn't been found yet. Check for updates first.")?;
+    let track = options.versions.get(app.id).unwrap_or(&VersionTrack::Stable);
+    if !release_matches_track(&release, track, options.prereleases) {
+        return Err("the selected version isn't available yet. Check for updates before installing.".into());
+    }
+    let (asset, kind) = planned_asset(app, &release, platform, options, existing, record).ok_or_else(|| {
+        if platform.os == artcraft_launcher_core::Os::Linux
+            && options.install_locations.folder(app.id).is_some()
+            && existing.is_none()
+            && record.is_none()
+        {
+            "this release has no AppImage for a custom install folder".to_string()
+        } else {
+            format!("{} {} has no download for {}", app.name, release.version_label(), platform.label())
+        }
+    })?;
+    Ok(InstallPlan { release, platform, asset, kind })
+}
+
 #[allow(clippy::too_many_arguments)]
 fn run_install(
     app: &CraftApp,
@@ -541,33 +586,10 @@ fn run_install(
         #[cfg(not(target_os = "linux"))]
         return Err(format!("{} is a Flatpak, which is not supported on this platform", app.name));
     }
-    if let Some(msg) = existing.and_then(|e| install::managed_elsewhere(app, e, false)) {
-        return Err(msg);
-    }
+    let latest = shared.latest.lock().unwrap_or_else(PoisonError::into_inner).get(app.id).cloned();
+    let InstallPlan { release, platform, asset, kind } = install_plan(app, latest, platform, options, existing, record)?;
     let http = http.ok_or("secure connections aren't available on this system")?;
-    let platform = platform.ok_or("this system isn't supported")?;
-    let release = shared
-        .latest
-        .lock()
-        .unwrap_or_else(PoisonError::into_inner)
-        .get(app.id)
-        .cloned()
-        .ok_or("the selected release hasn't been found yet. Check for updates first.")?;
     let track = options.versions.get(app.id).unwrap_or(&VersionTrack::Stable);
-    if !release_matches_track(&release, track, options.prereleases) {
-        return Err("the selected version isn't available yet. Check for updates before installing.".into());
-    }
-    let (asset, kind) = planned_asset(app, &release, platform, options, existing, record).ok_or_else(|| {
-        if platform.os == artcraft_launcher_core::Os::Linux
-            && options.install_locations.folder(app.id).is_some()
-            && existing.is_none()
-            && record.is_none()
-        {
-            "this release has no AppImage for a custom install folder".to_string()
-        } else {
-            format!("{} {} has no download for {}", app.name, release.version_label(), platform.label())
-        }
-    })?;
     // Going back to a version chosen by name. A macOS bundle or a launcher AppImage keeps the old
     // copy until the new one is in place. Otherwise the installed version's own package is found
     // first, so a downgrade that fails can put it back. Without it nothing changes.
@@ -758,20 +780,21 @@ fn planned_asset(
     pick_asset(release, &stems, platform, &kinds).map(|(a, k)| (a.clone(), k))
 }
 
-/// Tells the UI whether installing `app` would find a file for it now ([`Event::Installable`]):
-/// the same plan an install makes, for the copy that is installed. Nothing is said until its
+/// Tells the UI whether installing `app` would go ahead now ([`Event::Installable`]): the same
+/// [`install_plan`] an install makes, for the copy that is installed. Nothing is said until its
 /// release is known.
 fn report_installable(app: &CraftApp, shared: &Shared, platform: Option<Platform>, options: &BackendOptions) {
     let _reporting = shared.reporting.lock().unwrap_or_else(PoisonError::into_inner);
     shared.emit_all(installable_event(app, shared, platform, options));
 }
 
-/// [`report_installable`]'s answer from the shared state as it is; the caller holds `reporting`.
+/// [`report_installable`]'s answer from the shared state as it is: whether [`install_plan`] would
+/// let an install go ahead. The caller holds `reporting`.
 fn installable_event(app: &CraftApp, shared: &Shared, platform: Option<Platform>, options: &BackendOptions) -> Option<Event> {
     let release = shared.latest.lock().unwrap_or_else(PoisonError::into_inner).get(app.id).cloned()?;
     let existing = shared.installed.lock().unwrap_or_else(PoisonError::into_inner).get(app.id).cloned();
     let record = shared.manifest.lock().unwrap_or_else(PoisonError::into_inner).apps.get(app.id).cloned();
-    let installable = platform.is_some_and(|p| planned_asset(app, &release, p, options, existing.as_ref(), record.as_ref()).is_some());
+    let installable = install_plan(app, Some(release), platform, options, existing.as_ref(), record.as_ref()).is_ok();
     Some(Event::Installable { app: app.id.to_string(), installable })
 }
 
@@ -1882,18 +1905,60 @@ mod tests {
                 .collect()
         };
         let options = BackendOptions::default();
-        let mut windows_only = release("0.6.0");
+        let stable = || Release { version: artcraft_launcher_core::version::parse("0.6.0"), ..release("0.6.0") };
+        let mut windows_only = stable();
         windows_only.assets.retain(|a| a.name.contains("windows"));
         check_app(app, Some(LatestRelease::Found(windows_only)), Origin::GitHub, &backend.shared, &backend.paths, (Some(platform), &options));
         // One poll right after each answer: the pair is already there together.
         assert_eq!(order(backend.poll()), ["installable false", "latest"]);
-        let expected = planned_asset(app, &release("0.6.0"), platform, &options, None, None).is_some();
-        check_app(app, Some(LatestRelease::Found(release("0.6.0"))), Origin::GitHub, &backend.shared, &backend.paths, (Some(platform), &options));
+        // Whether this host can install the Mac build depends on the host; the answer is the plan's.
+        let expected = install_plan(app, Some(stable()), Some(platform), &options, None, None).is_ok();
+        check_app(app, Some(LatestRelease::Found(stable())), Origin::GitHub, &backend.shared, &backend.paths, (Some(platform), &options));
         assert_eq!(order(backend.poll()), [format!("installable {expected}"), "latest".to_string()]);
         // A detection is told with its answer the same way.
         publish_detected(app, None, &backend.shared, (Some(platform), &options));
         let detected: Vec<bool> = backend.poll().into_iter().map(|e| matches!(e, Event::Installable { .. })).collect();
         assert_eq!(detected, [true, false], "Installable, then Detected");
+    }
+
+    /// A copy installed outside the launcher (FreeBSD's `/usr/local/bin/<app>`, a system binary)
+    /// is never replaced, so a newer release with a matching FreeBSD tarball is not installable for
+    /// it: the UI is told no, and an install is refused for the same reason. Without such a copy
+    /// the tarball installs.
+    #[test]
+    fn a_system_binary_is_not_installable_even_with_a_matching_tarball() {
+        let app = CraftApp::by_id(APP).unwrap();
+        let platform = Platform { os: Os::FreeBsd, arch: Arch::X64 };
+        let dir = tempfile::tempdir().unwrap();
+        let mut backend = backend(dir.path(), platform, None);
+        let options = BackendOptions::default();
+        let system = Installed {
+            version: artcraft_launcher_core::version::parse("0.4.0"),
+            source: artcraft_launcher_core::InstallSource::Binary,
+            location: format!("/usr/local/bin/{APP}"),
+            package: None,
+            externally_managed: false,
+            origin: None,
+            installation: None,
+        };
+        let release = Release { version: artcraft_launcher_core::version::parse("0.6.0"), ..release("0.6.0") };
+        assert!(release.assets.iter().any(|a| a.name.ends_with("-freebsd-x86_64.tar.gz")), "the release has a matching tarball");
+        assert!(release_matches_track(&release, &VersionTrack::Stable, false), "a stable release: only the copy stands in the way");
+
+        let refused = install_plan(app, Some(release.clone()), Some(platform), &options, Some(&system), None).err();
+        assert_eq!(refused, install::managed_elsewhere(app, &system, false), "an install refuses it as installed outside the launcher");
+
+        publish_detected(app, Some(system), &backend.shared, (Some(platform), &options));
+        publish_latest(app, LatestRelease::Found(release), Origin::GitHub, &backend.shared, (Some(platform), &options));
+        let told: Vec<bool> = backend
+            .poll()
+            .into_iter()
+            .filter_map(|e| match e {
+                Event::Installable { app, installable } if app == APP => Some(installable),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(told, [false, false], "not installable, with the copy and with the release");
     }
 
     /// Reports again, and returns what the UI was last told about a kept download.
