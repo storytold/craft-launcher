@@ -572,6 +572,31 @@ fn choosing_an_app_version_turns_its_main_action_into_install() {
 }
 
 #[test]
+/// The version dialog's Install follows the same answer as the card's "Install version X": for a
+/// copy the backend can't replace with the chosen version (installed outside the launcher, say),
+/// it is greyed out, says why on hover, and clicking it sends no install.
+fn the_version_dialog_wont_install_a_version_the_install_would_refuse() {
+    let pin = signed_photocraft("0.4.0");
+    let (mut h, sent, queue) = version_menu(pin.clone(), vec![signed_photocraft("0.5.0"), pin]);
+    queue.borrow_mut().push(Event::Installable { app: "photocraft".into(), installable: false });
+    h.query_all_by_role_and_label(egui::accesskit::Role::Button, "v0.4.0").next().unwrap().click();
+    h.run_steps(8);
+    sent.borrow_mut().clear();
+    let row = h.get_by_label("Close").rect().center().y;
+    let install = h
+        .get_all_by_label("Install version v0.4.0")
+        .find(|n| (n.rect().center().y - row).abs() < 4.0)
+        .expect("the dialog shows Install for the chosen version");
+    assert!(install.accesskit_node().is_disabled(), "the install would be refused");
+    install.hover();
+    h.run_steps(4);
+    assert!(h.query_all_by_label_contains("can't install version v0.4.0 over this copy").next().is_some(), "it says why");
+    h.get_all_by_label("Install version v0.4.0").find(|n| (n.rect().center().y - row).abs() < 4.0).unwrap().click();
+    h.run_steps(4);
+    assert!(!sent.borrow().iter().any(|c| matches!(c, Command::Install { .. })), "{:?}", sent.borrow());
+}
+
+#[test]
 /// A custom-folder install opens a confirmation dialog with no command until Install; the
 /// chosen root and per-app folder are persisted, Configure precedes Install, and Cancel keeps
 /// no override.
@@ -1128,6 +1153,7 @@ fn a_newer_release_without_a_download_here_is_not_offered_as_an_update() {
     assert!(h.query_by_label(KEEP_PHOTOCRAFT).is_none(), "no split without an update");
     h.get_by_label("Update to 0.6.0");
     h.get_by_label("Update 1 app");
+    h.get_by_label_contains("0.4.1 · latest 0.5.0");
     // PhotoCraft's main button is a plain Open, which launches it.
     // Cards share a row, so PhotoCraft's Open is the one right before its own menu.
     let menu = h.get_by_label("More actions for PhotoCraft").rect();
@@ -1152,9 +1178,14 @@ fn the_backends_installability_answer_decides_an_update() {
     assert!(h.query_by_label("Update to 0.5.0").is_none(), "the backend can't install it");
     assert!(h.query_by_label(KEEP_PHOTOCRAFT).is_none());
     h.get_by_label("Update 1 app");
-    // Still a sign the release is out: a quiet note beside the installed version.
-    h.get_by_label_contains("0.4.1 · latest 0.5.0");
+    // Still a sign the release is out: a quiet note beside the installed version, saying why.
+    h.get_by_label_contains("0.4.1 · latest 0.5.0").hover();
+    h.run_steps(4);
+    h.get_by_label_contains(OUT_OF_REACH_TIP);
 }
+
+/// The tooltip on the note beside a copy behind a release it can't take.
+const OUT_OF_REACH_TIP: &str = "0.5.0 is out, but ArtCraft Launcher can't install it over this copy.";
 
 #[test]
 /// The note beside a copy behind a release it can't take shows in the table too.
@@ -1163,7 +1194,33 @@ fn the_table_notes_a_newer_release_that_cant_install_here() {
     ev.push(Event::Installable { app: "photocraft".into(), installable: false });
     let (mut h, _) = harness_with(ev, ViewMode::Table, egui::Theme::Dark, true, 1.0);
     h.run_steps(8);
-    h.get_by_label("0.4.1 · latest 0.5.0");
+    h.get_by_label("0.4.1 · latest 0.5.0").hover();
+    h.run_steps(4);
+    h.get_by_label_contains(OUT_OF_REACH_TIP);
+}
+
+#[test]
+/// A copy its repository updates (a Flatpak from FlatPark) knows nothing of GitHub's latest, so a
+/// newer release there gets no "can't install" note: its repository may well have it.
+fn a_repository_copy_gets_no_out_of_reach_note() {
+    let mut ev = events();
+    ev.push(Event::Detected {
+        app: "lightcraft".into(),
+        installed: Some(Installed {
+            version: version::parse("0.3.0"),
+            source: InstallSource::Flatpak,
+            location: "ai.storyteller.lightcraft".into(),
+            package: None,
+            externally_managed: true,
+            origin: Some("flatpark".into()),
+            installation: Some("user".into()),
+        }),
+    });
+    ev.push(Event::Installable { app: "lightcraft".into(), installable: false });
+    let (mut h, _) = harness_with(ev, ViewMode::Table, egui::Theme::Dark, true, 1.0);
+    h.run_steps(8);
+    assert!(h.query_all_by_label("0.3.0").next().is_some(), "LightCraft's version shows");
+    assert!(h.query_by_label_contains("0.3.0 · latest").is_none(), "no note for a repository copy");
 }
 
 #[test]
@@ -1173,7 +1230,7 @@ fn the_table_notes_a_newer_release_that_cant_install_here() {
 fn a_kept_version_gets_no_out_of_reach_note_and_says_why_it_cant_install() {
     let mut ev = events();
     ev.push(Event::Installable { app: "photocraft".into(), installable: false });
-    let (mut h, _) = harness_with(ev, ViewMode::Grid, egui::Theme::Dark, true, 1.0);
+    let (mut h, sent) = harness_with(ev, ViewMode::Grid, egui::Theme::Dark, true, 1.0);
     h.run_steps(8);
     h.get_by_label_contains("0.4.1 · latest 0.5.0");
     h.state_mut()
@@ -1189,6 +1246,10 @@ fn a_kept_version_gets_no_out_of_reach_note_and_says_why_it_cant_install() {
     install.hover();
     h.run_steps(4);
     h.get_by_label_contains("can't install version v0.5.0 over this copy");
+    sent.borrow_mut().clear();
+    h.get_by_label("Install version v0.5.0").click();
+    h.run_steps(2);
+    assert_eq!(launches_and_installs(&sent, "photocraft"), (0, 0), "a greyed-out Install sends nothing: {:?}", sent.borrow());
 }
 
 #[test]
@@ -1223,11 +1284,17 @@ fn reinstall_needs_an_install_that_would_go_ahead() {
     for installable in [true, false] {
         let mut ev = events();
         ev.push(Event::Installable { app: "lightcraft".into(), installable });
-        let (mut h, _) = harness_with(ev, ViewMode::Grid, egui::Theme::Dark, true, 1.0);
+        let (mut h, sent) = harness_with(ev, ViewMode::Grid, egui::Theme::Dark, true, 1.0);
         h.run_steps(8);
         h.get_by_label("More actions for LightCraft").click();
         h.run_steps(3);
         assert_eq!(h.query_by_label("Reinstall").is_some(), installable, "installable: {installable}");
+        if installable {
+            sent.borrow_mut().clear();
+            h.get_by_label("Reinstall").click();
+            h.run_steps(2);
+            assert_eq!(launches_and_installs(&sent, "lightcraft"), (0, 1), "Reinstall installs: {:?}", sent.borrow());
+        }
     }
 }
 

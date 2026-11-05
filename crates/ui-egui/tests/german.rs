@@ -194,18 +194,9 @@ fn german_switches_persists_and_keeps_install_actions() {
     let slot = retry.query_all_by_label("Installieren").next().unwrap().rect().width();
     for app in ["PhotoCraft", "VectorCraft"] {
         let menu = retry.get_by_label(&format!("Weitere Aktionen für {app}")).rect();
-        // The main button is the one ending just left of the menu (or overlapping it); a stacked
-        // Open and Update sit half a button above and below the menu's middle.
-        let main = retry
-            .query_all_by_role(egui::accesskit::Role::Button)
-            .filter(|n| {
-                (n.rect().center().y - menu.center().y).abs() < STACKED_OFFSET
-                    && n.rect().left() < menu.left()
-                    && n.rect().right() > menu.left() - 20.0
-            })
-            .find(|n| n.rect().height() < 40.0)
-            .unwrap();
-        assert!(main.rect().width() <= slot + 0.5, "{app}: {:?} wider than Installieren ({slot})", main.rect());
+        let main = main_button_in_line(&retry, menu, app);
+        assert!(main.right() > menu.left() - 20.0, "{app}: {main:?} isn't beside the menu {menu:?}");
+        assert!(main.width() <= slot + 0.5, "{app}: {main:?} wider than Installieren ({slot})");
     }
     let (mut web, _) = harness_language(ViewMode::Grid, egui::Theme::Dark, false, &restored.language, Vec::new());
     web.run_steps(6);
@@ -244,6 +235,14 @@ fn a_table_update_too_narrow_to_sit_side_by_side_stacks() {
     // Up-to-date LightCraft keeps a one-line row.
     let light = h.get_by_label("Weitere Aktionen für LightCraft").rect();
     assert!(update.bottom() - open.top() > light.height() * 1.5, "PhotoCraft's row grew for two buttons");
+    // The pair stays inside its own row: the next row's controls start below it.
+    let next = h
+        .query_all_by_label_contains("Weitere Aktionen für")
+        .map(|n| n.rect())
+        .filter(|r| r.top() > menu.top())
+        .min_by(|a, b| a.top().total_cmp(&b.top()))
+        .expect("a row below PhotoCraft's");
+    assert!(update.bottom() < next.top(), "Update {update:?} runs into the next row {next:?}");
 
     sent.borrow_mut().clear();
     h.get_by_label(keep).click();
@@ -257,6 +256,24 @@ fn a_table_update_too_narrow_to_sit_side_by_side_stacks() {
 /// half a button (and half the seam) above and below it. Rows are further apart than this.
 const STACKED_OFFSET: f32 = 20.0;
 
+/// The main button of the row whose `⋯` menu is `menu` (the one ending nearest the menu), after
+/// checking it is in line with the menu: centred on it, or, stacked over its twin (the button of
+/// the same width ending at the same place), the pair centred on it. Only a stacked pair may sit
+/// off the menu's middle.
+fn main_button_in_line(h: &Harness<'static, Option<LauncherUi>>, menu: egui::Rect, what: &str) -> egui::Rect {
+    let near: Vec<egui::Rect> = h
+        .query_all_by_role(egui::accesskit::Role::Button)
+        .map(|n| n.rect())
+        .filter(|r| (r.center().y - menu.center().y).abs() < STACKED_OFFSET && r.left() < menu.left() && r.height() < 40.0)
+        .collect();
+    let main = *near.iter().max_by(|a, b| a.right().total_cmp(&b.right())).unwrap_or_else(|| panic!("{what}: no main button by {menu:?}"));
+    let column: Vec<&egui::Rect> = near.iter().filter(|r| (r.right() - main.right()).abs() < 0.5 && (r.left() - main.left()).abs() < 0.5).collect();
+    let (top, bottom) = column.iter().fold((f32::INFINITY, f32::NEG_INFINITY), |(t, b), r| (t.min(r.top()), b.max(r.bottom())));
+    let middle = (top + bottom) / 2.0;
+    assert!((middle - menu.center().y).abs() < 1.0, "{what}: {column:?} not in line with the menu {menu:?}");
+    main
+}
+
 /// At the launcher's narrowest, no main button outgrows its slot or crowds out the `⋯` menu (#956):
 /// a kept update, a kept install and a plain update, in both views, whichever label `language` has.
 fn main_buttons_fit_the_narrowest_window(language: &str) {
@@ -269,12 +286,7 @@ fn main_buttons_fit_the_narrowest_window(language: &str) {
         let slot = h.query_all_by_label(t("Install")).next().unwrap().rect().width();
         for app in ["PhotoCraft", "VectorCraft", "EffectCraft"] {
             let menu = h.get_by_label(&fmt(t("More actions for {name}"), &[("name", app)])).rect();
-            let main = h
-                .query_all_by_role(egui::accesskit::Role::Button)
-                .filter(|n| (n.rect().center().y - menu.center().y).abs() < STACKED_OFFSET && n.rect().left() < menu.left())
-                .max_by(|a, b| a.rect().right().total_cmp(&b.rect().right()))
-                .unwrap()
-                .rect();
+            let main = main_button_in_line(&h, menu, &format!("{language} {view:?} {app}"));
             assert!(main.width() <= slot + 0.5, "{language} {view:?} {app}: {main:?} wider than Install ({slot})");
             assert!(main.right() <= menu.left(), "{language} {view:?} {app}: {main:?} overlaps the menu {menu:?}");
             // The table scrolls sideways, with a fixed slot; cards have to fit the window.
