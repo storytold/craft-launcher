@@ -439,7 +439,7 @@ pub struct Half<'a> {
     pub kind: Kind,
 }
 
-/// The labels a [`split_button`] shows, and the width each half takes.
+/// The labels of a side-by-side [`split_button`], and the width each half takes.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct SplitFit<'a> {
     pub left: &'a str,
@@ -448,11 +448,38 @@ pub struct SplitFit<'a> {
     pub right_w: f32,
 }
 
+/// How a [`split_button`] is laid out.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum Split<'a> {
+    /// Side by side, left then right.
+    Side(SplitFit<'a>),
+    /// One above the other, each the full `width`: for labels too long to sit side by side (a
+    /// language with long words in a narrow slot), where the place has the height to spare.
+    Stacked { top: &'a str, bottom: &'a str, width: f32 },
+}
+
+/// The height of a [`Split::Stacked`] button: two buttons and the seam between them.
+pub const STACKED_H: f32 = 2.0 * theme::CONTROL_H + SPLIT_SEAM;
+
+/// Lays out a [`split_button`] within `width`: side by side when a pair of labels fits
+/// ([`split_fit`]); else, where `can_stack`, stacked, with the first pair whose labels each fit the
+/// width. `None` when neither fits, so the caller shows a single button instead.
+pub fn split_layout<'a>(ui: &Ui, width: f32, lefts: &[&'a str], rights: &[&'a str], can_stack: bool) -> Option<Split<'a>> {
+    if let Some(fit) = split_fit(ui, width, lefts, rights) {
+        return Some(Split::Side(fit));
+    }
+    if !can_stack {
+        return None;
+    }
+    let top = lefts.iter().copied().find(|l| button_width(ui, l, 0.0) <= width)?;
+    let bottom = rights.iter().copied().find(|r| button_width(ui, r, 0.0) <= width)?;
+    Some(Split::Stacked { top, bottom, width })
+}
+
 /// Picks the first pair of labels, longest first and the left one shortened last, that fits two
 /// halves within `width`: equal halves when both labels fit half the room, else halves sized to
-/// their labels with the room left over shared. `None` when even the shortest pair doesn't fit,
-/// so the caller shows a single button instead.
-pub fn split_fit<'a>(ui: &Ui, width: f32, lefts: &[&'a str], rights: &[&'a str]) -> Option<SplitFit<'a>> {
+/// their labels with the room left over shared. `None` when even the shortest pair doesn't fit.
+fn split_fit<'a>(ui: &Ui, width: f32, lefts: &[&'a str], rights: &[&'a str]) -> Option<SplitFit<'a>> {
     let room = width - SPLIT_SEAM;
     let half = room / 2.0;
     let rights: Vec<(&str, f32)> = rights.iter().map(|&r| (r, button_width(ui, r, 0.0))).collect();
@@ -472,14 +499,25 @@ pub fn split_fit<'a>(ui: &Ui, width: f32, lefts: &[&'a str], rights: &[&'a str])
     None
 }
 
-/// Two buttons as one control, `left` then `right` (also the keyboard order), at the widths a
-/// [`split_fit`] chose. Returns each half's response.
-pub fn split_button(ui: &mut Ui, left: Half<'_>, right: Half<'_>, fit: SplitFit<'_>) -> (Response, Response) {
-    ui.scope(|ui| {
-        ui.spacing_mut().item_spacing.x = SPLIT_SEAM;
-        let l = labelled_button(ui, fit.left, left.label, left.kind, fit.left_w);
-        let r = labelled_button(ui, fit.right, right.label, right.kind, fit.right_w);
-        (l, r)
+/// Two buttons as one control, laid out as [`split_layout`] chose: `left` first (on top when
+/// stacked), which is also the keyboard order. Returns each half's response.
+pub fn split_button(ui: &mut Ui, left: Half<'_>, right: Half<'_>, split: Split<'_>) -> (Response, Response) {
+    ui.scope(|ui| match split {
+        Split::Side(fit) => {
+            ui.spacing_mut().item_spacing.x = SPLIT_SEAM;
+            let l = labelled_button(ui, fit.left, left.label, left.kind, fit.left_w);
+            let r = labelled_button(ui, fit.right, right.label, right.kind, fit.right_w);
+            (l, r)
+        }
+        Split::Stacked { top, bottom, width } => {
+            ui.vertical(|ui| {
+                ui.spacing_mut().item_spacing.y = SPLIT_SEAM;
+                let l = labelled_button(ui, top, left.label, left.kind, width);
+                let r = labelled_button(ui, bottom, right.label, right.kind, width);
+                (l, r)
+            })
+            .inner
+        }
     })
     .inner
 }
@@ -868,6 +906,19 @@ mod tests {
             let tight = natural("Open 0.4.1") + natural("Update") + SPLIT_SEAM + 0.5;
             let f = split_fit(ui, tight, &lefts, &rights).expect("the version and the short update label fit");
             assert_eq!((f.left, f.right), ("Open 0.4.1", "Update"), "the update label shortens before Open loses its version");
+
+            // Too narrow to sit side by side: stacked where the place allows, each label fitting.
+            let narrow = shortest - 10.0;
+            assert_eq!(split_layout(ui, narrow, &lefts, &rights, false), None);
+            match split_layout(ui, narrow, &lefts, &rights, true) {
+                Some(Split::Stacked { top, bottom, width }) => {
+                    assert!(natural(top) <= width && natural(bottom) <= width, "{top} / {bottom} in {width}");
+                    assert_eq!(top, "Open 0.4.1", "a stacked Open has the whole width for its version");
+                }
+                other => panic!("expected a stacked split, got {other:?}"),
+            }
+            assert!(matches!(split_layout(ui, 400.0, &lefts, &rights, true), Some(Split::Side(_))), "side by side when it fits");
+            assert_eq!(split_layout(ui, 20.0, &lefts, &rights, true), None, "nothing fits 20 px");
         })
         .drop_without_applying_deltas();
     }

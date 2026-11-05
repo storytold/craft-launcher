@@ -194,10 +194,15 @@ fn german_switches_persists_and_keeps_install_actions() {
     let slot = retry.query_all_by_label("Installieren").next().unwrap().rect().width();
     for app in ["PhotoCraft", "VectorCraft"] {
         let menu = retry.get_by_label(&format!("Weitere Aktionen für {app}")).rect();
-        // The main button is the one ending just left of the menu (or overlapping it).
+        // The main button is the one ending just left of the menu (or overlapping it); a stacked
+        // Open and Update sit half a button above and below the menu's middle.
         let main = retry
             .query_all_by_role(egui::accesskit::Role::Button)
-            .filter(|n| (n.rect().center().y - menu.center().y).abs() < 1.0 && n.rect().left() < menu.left() && n.rect().right() > menu.left() - 20.0)
+            .filter(|n| {
+                (n.rect().center().y - menu.center().y).abs() < STACKED_OFFSET
+                    && n.rect().left() < menu.left()
+                    && n.rect().right() > menu.left() - 20.0
+            })
             .find(|n| n.rect().height() < 40.0)
             .unwrap();
         assert!(main.rect().width() <= slot + 0.5, "{app}: {:?} wider than Installieren ({slot})", main.rect());
@@ -219,32 +224,38 @@ fn german_switches_persists_and_keeps_install_actions() {
     for language in &artcraft_launcher_ui_egui::i18n::LANGUAGES {
         main_buttons_fit_the_narrowest_window(language.code);
     }
-    a_table_update_too_narrow_to_split_keeps_open_in_the_menu();
+    a_table_update_too_narrow_to_sit_side_by_side_stacks();
 }
 
-/// German's "ÖFFNEN | AKTUALISIEREN" doesn't fit the table's action slot, so PhotoCraft's update
-/// shows alone there; its installed copy still opens from the `⋯` menu. Called from the one test
-/// above: the UI language is process-wide, so the German checks share a test.
-fn a_table_update_too_narrow_to_split_keeps_open_in_the_menu() {
-    let (mut h, _) = harness_language(ViewMode::Table, egui::Theme::Dark, true, "de", Vec::new());
+/// German's "ÖFFNEN | AKTUALISIEREN" doesn't fit side by side in the table's action slot, so
+/// PhotoCraft's row stacks them: Open, naming its version, above Update, both clear of the `⋯`
+/// menu, in a row tall enough for both. Open only opens. Called from the one test above: the UI
+/// language is process-wide, so the German checks share a test.
+fn a_table_update_too_narrow_to_sit_side_by_side_stacks() {
+    let (mut h, sent) = harness_language(ViewMode::Table, egui::Theme::Dark, true, "de", Vec::new());
     h.run_steps(8);
-    // The single button, shortened to fit the table's slot.
-    let row = h.get_by_label("Weitere Aktionen für PhotoCraft").rect().center().y;
-    assert!(h.get_all_by_label("Aktualisieren").any(|n| (n.rect().center().y - row).abs() < 1.0), "PhotoCraft's update button");
-    assert!(h.query_by_label_contains("ohne Aktualisierung").is_none(), "no split in the German table");
-    let before = open_buttons(&h);
-    h.get_by_label("Weitere Aktionen für PhotoCraft").click();
-    h.run_steps(3);
-    assert_eq!(open_buttons(&h), before + 1, "the menu offers Open");
+    let keep = "0.4.1 ohne Aktualisierung öffnen. 0.5.0 bleibt verfügbar.";
+    let open = h.get_by_label(keep).rect();
+    let update = h.get_by_label("Auf 0.5.0 aktualisieren").rect();
+    let menu = h.get_by_label("Weitere Aktionen für PhotoCraft").rect();
+    assert!(open.bottom() <= update.top() && (open.left() - update.left()).abs() < 0.5, "Open above Update: {open:?} {update:?}");
+    assert!(open.right() <= menu.left() && update.right() <= menu.left(), "both clear of the menu {menu:?}: {open:?} {update:?}");
+    assert!(open.top() < menu.center().y && update.bottom() > menu.center().y, "the menu sits beside the pair: {menu:?}");
+    // Up-to-date LightCraft keeps a one-line row.
+    let light = h.get_by_label("Weitere Aktionen für LightCraft").rect();
+    assert!(update.bottom() - open.top() > light.height() * 1.5, "PhotoCraft's row grew for two buttons");
+
+    sent.borrow_mut().clear();
+    h.get_by_label(keep).click();
+    h.run_steps(2);
+    let sent = sent.borrow();
+    assert!(sent.iter().any(|c| matches!(c, Command::Launch { app, .. } if app == "photocraft")), "{sent:?}");
+    assert!(!sent.iter().any(|c| matches!(c, Command::Install { .. })), "{sent:?}");
 }
 
-/// How many buttons read "Öffnen" (Open). A role query: an open menu's items don't answer a plain
-/// label query.
-fn open_buttons(h: &Harness<'static, Option<LauncherUi>>) -> usize {
-    h.query_all_by_role(egui::accesskit::Role::Button)
-        .filter(|n| egui_kittest::kittest::NodeT::accesskit_node(n).label().as_deref() == Some("Öffnen"))
-        .count()
-}
+/// How far from the `⋯` menu's middle a row's main button can be: a stacked Open and Update sit
+/// half a button (and half the seam) above and below it. Rows are further apart than this.
+const STACKED_OFFSET: f32 = 20.0;
 
 /// At the launcher's narrowest, no main button outgrows its slot or crowds out the `⋯` menu (#956):
 /// a kept update, a kept install and a plain update, in both views, whichever label `language` has.
@@ -260,7 +271,7 @@ fn main_buttons_fit_the_narrowest_window(language: &str) {
             let menu = h.get_by_label(&fmt(t("More actions for {name}"), &[("name", app)])).rect();
             let main = h
                 .query_all_by_role(egui::accesskit::Role::Button)
-                .filter(|n| (n.rect().center().y - menu.center().y).abs() < 1.0 && n.rect().left() < menu.left())
+                .filter(|n| (n.rect().center().y - menu.center().y).abs() < STACKED_OFFSET && n.rect().left() < menu.left())
                 .max_by(|a, b| a.rect().right().total_cmp(&b.rect().right()))
                 .unwrap()
                 .rect();
