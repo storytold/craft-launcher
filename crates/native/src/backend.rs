@@ -56,8 +56,10 @@ struct Shared {
     /// is worked out and queued, so no answer from older state lands after a newer one. Always
     /// taken first, before any other lock here.
     reporting: Mutex<()>,
-    /// Held while a settings change works out every app's download again ([`NativeBackend::replan`]).
-    replanning: Mutex<()>,
+    /// Held while a report of what an app's install would download is worked out and sent
+    /// ([`report_partial`]), so one worked out from older settings or state can't land after a newer
+    /// one. Taken before `reporting`.
+    planning: Mutex<()>,
     /// What this system could install, and when that was asked ([`Shared::system_kinds`]).
     system: Mutex<Option<(Instant, install::SystemKinds)>>,
     waker: Waker,
@@ -193,7 +195,7 @@ impl NativeBackend {
             events: Mutex::new(Vec::new()),
             reporting: Mutex::new(()),
             system: Mutex::new(None),
-            replanning: Mutex::new(()),
+            planning: Mutex::new(()),
             waker,
             latest: Mutex::new(HashMap::new()),
             installed: Mutex::new(HashMap::new()),
@@ -248,17 +250,13 @@ impl NativeBackend {
 
     /// Works out again, off the UI thread, what each app's install would download, and tells the
     /// UI ([`report_partial`]): inside the Flatpak sandbox that asks the host (up to 3 s an app).
-    /// One at a time, each with the settings as they are when it starts, so the last word is
-    /// always the newest settings'.
     fn replan(&self) {
         let shared = self.shared.clone();
         let paths = self.paths.clone();
         let platform = self.platform;
         std::thread::spawn(move || {
-            let _one_at_a_time = shared.replanning.lock().unwrap_or_else(PoisonError::into_inner);
-            let options = shared.options.lock().unwrap_or_else(PoisonError::into_inner).clone();
             for app in &SUITE {
-                report_partial(app, &shared, &paths, platform, &options);
+                report_partial(app, &shared, &paths, platform);
             }
         });
     }
@@ -275,7 +273,6 @@ impl NativeBackend {
         let busy = BusyGuard { shared: shared.clone(), flag: BusyFlag::Detecting };
         let paths = self.paths.clone();
         let platform = self.platform;
-        let options = self.options();
         std::thread::spawn(move || {
             let busy = busy;
             // Leftovers from interrupted installs or older versions of the launcher. A paused
@@ -289,7 +286,7 @@ impl NativeBackend {
             }
             // Downloads paused (or cut off by quitting) in an earlier run.
             for app in &SUITE {
-                report_partial(app, &shared, &paths, platform, &options);
+                report_partial(app, &shared, &paths, platform);
             }
             drop(busy);
         });
@@ -339,9 +336,8 @@ impl NativeBackend {
                 }
             }
             // A newer release changes which file an install would use.
-            let options = shared.options.lock().unwrap_or_else(PoisonError::into_inner).clone();
             for app in &SUITE {
-                report_partial(app, &shared, &paths, platform, &options);
+                report_partial(app, &shared, &paths, platform);
             }
             let source_used = source_used_of(&sources);
             let at = crate::now();
@@ -422,7 +418,7 @@ impl NativeBackend {
                     other => other,
                 }
             };
-            report_partial(app, &shared, &paths, platform, &options);
+            report_partial(app, &shared, &paths, platform);
             // Look again: the result is whatever is on disk now.
             let manifest = shared.manifest.lock().unwrap_or_else(PoisonError::into_inner).clone();
             let found = crate::detect::detect(app, &manifest, &crate::detect::Snapshot::take());
@@ -912,10 +908,14 @@ fn publish_detected(app: &CraftApp, found: Option<Installed>, shared: &Shared, p
 }
 
 /// Tells the UI whether `app` has a paused download waiting, or a finished one to install, and
-/// whether an install would find a file at all (the package choices may have changed).
-fn report_partial(app: &CraftApp, shared: &Shared, paths: &Paths, platform: Option<Platform>, options: &BackendOptions) {
+/// whether an install would go ahead at all (the package choices may have changed). Worked out
+/// with the settings and state as they are now, one report at a time (`planning`), so a worker
+/// that started before a settings change never has the last word.
+fn report_partial(app: &CraftApp, shared: &Shared, paths: &Paths, platform: Option<Platform>) {
+    let _one_at_a_time = shared.planning.lock().unwrap_or_else(PoisonError::into_inner);
+    let options = shared.options.lock().unwrap_or_else(PoisonError::into_inner).clone();
     report_installable(app, shared, platform);
-    let planned = planned_download(app, shared, paths, platform, options);
+    let planned = planned_download(app, shared, paths, platform, &options);
     let download = planned.as_ref().and_then(|(dest, size)| Some(PausedDownload { done: http::partial_bytes(dest, *size)?, total: *size }));
     shared.emit(Event::Paused { app: app.id.to_string(), download });
     let ready = planned.is_some_and(|(dest, size)| http::finished(&dest, size));
@@ -1616,7 +1616,7 @@ mod tests {
             events: Mutex::new(Vec::new()),
             reporting: Mutex::new(()),
             system: Mutex::new(None),
-            replanning: Mutex::new(()),
+            planning: Mutex::new(()),
             waker: Arc::new(|| {}),
             latest: Mutex::new(HashMap::new()),
             installed: Mutex::new(HashMap::new()),
@@ -2084,7 +2084,7 @@ mod tests {
     /// Reports again, and returns what the UI was last told about a kept download.
     fn ready(backend: &mut NativeBackend) -> Option<bool> {
         let app = CraftApp::by_id(APP).unwrap();
-        report_partial(app, &backend.shared, &backend.paths, backend.platform, &BackendOptions::default());
+        report_partial(app, &backend.shared, &backend.paths, backend.platform);
         last_ready(backend.poll())
     }
 
@@ -2183,6 +2183,26 @@ mod tests {
         std::fs::create_dir_all(backend.paths.downloads()).unwrap();
         std::fs::write(&dest, vec![0u8; size as usize]).unwrap();
         dest
+    }
+
+    /// A report uses the settings as they are when it is worked out, not as the worker that sends
+    /// it found them: after the preferred format changes, the kept MSI is no longer the file an
+    /// install would use. (Windows only: it has two formats to choose between.)
+    #[cfg(windows)]
+    #[test]
+    fn a_kept_download_report_follows_the_current_settings() {
+        let platform = Platform { os: Os::Windows, arch: Arch::X64 };
+        let dir = tempfile::tempdir().unwrap();
+        let mut backend = backend(dir.path(), platform, None);
+        *backend.shared.options.lock().unwrap() = BackendOptions { kinds: vec![PackageKind::Msi], ..Default::default() };
+        let app = CraftApp::by_id(APP).unwrap();
+        let options = backend.shared.options.lock().unwrap().clone();
+        let (dest, size) = planned_download(app, &backend.shared, &backend.paths, backend.platform, &options).unwrap();
+        std::fs::create_dir_all(backend.paths.downloads()).unwrap();
+        std::fs::write(&dest, vec![0u8; size as usize]).unwrap();
+        assert_eq!(ready(&mut backend), Some(true), "the kept MSI is the planned file");
+        backend.shared.options.lock().unwrap().kinds = vec![PackageKind::PortableZip];
+        assert_eq!(ready(&mut backend), Some(false), "a portable zip is planned now");
     }
 
     #[test]
