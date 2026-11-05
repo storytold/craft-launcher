@@ -21,6 +21,7 @@ concurrency:
 jobs:
   release:
     # Intentionally tracked at @main (not SHA-pinned) so org-wide CI improvements, security fixes, and build optimizations propagate without PR churn across all craftapp repos.
+    environment: release
     uses: storytold/craft-common-actions/.github/workflows/release.yml@main
     with:
       app-name: craft-launcher
