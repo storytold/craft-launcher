@@ -2462,10 +2462,11 @@ mod tests {
         let old_revision = backend.shared.download_revision(APP);
         let options = BackendOptions { kinds: vec![PackageKind::PortableZip], ..Default::default() };
         backend.send(Command::Configure(options));
-        assert_eq!(backend.download_size(APP), Some((PackageKind::PortableZip, 200)));
+        // Configuration now replans off the UI thread; observe the new answer before testing stale reports.
+        wait_until(|| backend.download_size(APP) == Some((PackageKind::PortableZip, 200)));
         backend.poll();
         assert!(!backend.shared.report_download(APP, old_revision, Some((PackageKind::Msi, 100)), None, false));
-        assert!(backend.poll().is_empty());
+        assert!(!backend.poll().iter().any(|event| matches!(event, Event::Paused { app, .. } | Event::ReadyToInstall { app, .. } if app == APP)));
         assert_eq!(backend.download_size(APP), Some((PackageKind::PortableZip, 200)));
         backend.shared.installed.lock().unwrap().insert(
             APP.to_string(),
