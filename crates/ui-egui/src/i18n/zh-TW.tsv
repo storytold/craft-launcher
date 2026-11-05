@@ -78,6 +78,8 @@
 	Install new apps as	安裝新應用程式的方式
 	System package (recommended)	系統套件（建議）
 	Updates always use the format an app was installed with.	更新一律沿用應用程式安裝時的格式。
+	Let an external AppImage manager handle app menu entries and icons	讓外部 AppImage 管理工具處理應用程式選單項目和圖示
+	Only for installed AppImages, not ArtCraft Launcher. The manager must watch the install folders. Customized entries are kept.	僅適用於已安裝的 AppImage，不影響 ArtCraft Launcher 本身。管理工具必須監控安裝資料夾。自訂選單項目會保留。
 	Running in the background	在背景執行
 	Keep running in the tray when the window is closed	關閉視窗後仍在系統匣中執行
 	ArtCraft Launcher is still running	ArtCraft Launcher 仍在執行

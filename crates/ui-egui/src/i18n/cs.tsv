@@ -89,6 +89,8 @@
 	Install new apps as	Instalovat nové aplikace jako
 	System package (recommended)	Systémový balíček (doporučeno)
 	Updates always use the format an app was installed with.	Aktualizace vždy použijí formát, ve kterém byla aplikace nainstalována.
+	Let an external AppImage manager handle app menu entries and icons	Přenechat položky nabídky aplikací a ikony externímu správci AppImage
+	Only for installed AppImages, not ArtCraft Launcher. The manager must watch the install folders. Customized entries are kept.	Pouze pro nainstalované aplikace AppImage, ne pro samotný ArtCraft Launcher. Správce musí sledovat instalační složky. Upravené položky zůstanou zachovány.
 	Running in the background	Běh na pozadí
 	Keep running in the tray when the window is closed	Po zavření okna ponechat spuštěné v oznamovací oblasti
 	ArtCraft Launcher is still running	ArtCraft Launcher stále běží

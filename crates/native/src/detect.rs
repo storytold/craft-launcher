@@ -52,9 +52,10 @@ pub fn detect(app: &CraftApp, manifest: &Manifest, snapshot: &Snapshot) -> Optio
     None
 }
 
+/// Report recorded installed binaries, excluding cleanup-only ledgers and missing paths.
 fn from_manifest(app: &CraftApp, manifest: &Manifest) -> Option<Installed> {
     let rec = manifest.apps.get(app.id)?;
-    if !rec.path.exists() {
+    if rec.desktop_cleanup_pending || !rec.path.exists() {
         return None;
     }
     // On macOS the bundle itself is the truth (the app may have updated itself).
@@ -1117,5 +1118,29 @@ mod tests {
         );
         let photo = CraftApp::by_id("photocraft").unwrap();
         assert_eq!(install_dir_keys(photo), [r"SOFTWARE\PhotoCraft".to_string()]);
+    }
+
+    /// An ownership retry is not an installed app, even if another file occupies its former path.
+    #[test]
+    fn cleanup_records_do_not_report_a_reoccupied_binary_as_installed() {
+        let root = tempfile::tempdir().unwrap();
+        let app = CraftApp::by_id("wordcraft").unwrap();
+        let image = root.path().join("wordcraft.AppImage");
+        std::fs::write(&image, b"unrelated replacement").unwrap();
+        let mut manifest = Manifest::default();
+        manifest.apps.insert(
+            app.id.into(),
+            crate::manifest::Record {
+                version: "0.3.0".into(),
+                kind: artcraft_launcher_core::PackageKind::AppImage,
+                path: image,
+                installed_at: 1,
+                files: Vec::new(),
+                appimage_desktop: None,
+                desktop_cleanup_pending: true,
+                needs_root: false,
+            },
+        );
+        assert_eq!(from_manifest(app, &manifest), None);
     }
 }

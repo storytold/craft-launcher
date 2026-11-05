@@ -113,6 +113,9 @@ pub struct Settings {
     pub launcher_version: artcraft_launcher_core::protocol::VersionTrack,
     /// Linux: the package format to prefer for new installs (empty: the system's own).
     pub preferred_kinds: Vec<PackageKind>,
+    /// Linux: an external manager handles installed AppImages' app menu entries and icons,
+    /// not ArtCraft Launcher's own desktop integration.
+    pub external_appimage_desktop_integration: bool,
     /// Announcements and alerts from the release feed the user dismissed (by notice id).
     pub dismissed_notices: std::collections::BTreeSet<String>,
     /// Updates already announced, so each version is announced once: app id → version.
@@ -258,6 +261,7 @@ impl Default for Settings {
             versions: BTreeMap::new(),
             launcher_version: Default::default(),
             preferred_kinds: default_preferred_kinds(),
+            external_appimage_desktop_integration: false,
             dismissed_notices: std::collections::BTreeSet::new(),
             notified: BTreeMap::new(),
             last_check: None,

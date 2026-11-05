@@ -1389,17 +1389,21 @@ fn a_narrow_toolbar_names_its_controls_and_passes_strict_accessibility() {
     h.check_accessibility();
 }
 
+/// Persist external integration with install folders while older settings retain native ownership.
 #[test]
-fn install_locations_survive_settings_save_and_older_settings_use_system_default() {
+fn install_preferences_survive_settings_save_and_older_settings_keep_native_appimage_integration() {
     let old: Settings = serde_json::from_str(r#"{"auto_update":true}"#).unwrap();
     assert!(old.auto_update);
     assert_eq!(old.install_locations, Default::default());
+    assert!(!old.external_appimage_desktop_integration);
     let mut settings = old;
     settings.install_locations.root = Some("/Volumes/Craft Apps".into());
     settings.install_locations.per_app.insert("photocraft".into(), "/Volumes/Photo".into());
+    settings.external_appimage_desktop_integration = true;
     let restored: Settings = serde_json::from_str(&serde_json::to_string(&settings).unwrap()).unwrap();
     assert_eq!(restored.install_locations.folder("photocraft"), Some("/Volumes/Photo"));
     assert_eq!(restored.install_locations.folder("filmcraft"), Some("/Volumes/Craft Apps"));
+    assert!(restored.external_appimage_desktop_integration);
 }
 
 #[test]

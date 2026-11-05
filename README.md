@@ -138,6 +138,27 @@ package or portable folder, the AppImage, or the `.deb`/`.rpm`) and reopens it.
 Updates use the same format an app was installed with. Every download is checked against the
 release's published SHA-256 before it is installed, and a running app is never replaced.
 
+On Linux, **Settings → Installing on Linux → Let an external AppImage manager handle app menu
+entries and icons** delegates installed AppImages' desktop integration to a tool such as
+AppImageLauncher. It is off by default. Enable it only when that manager watches every folder
+where you install AppImages; the launcher does not start or configure the manager for you.
+ArtCraft Launcher still installs, updates and removes the AppImage binaries and keeps their
+installation records. The external manager is responsible for its menu entries, icons and file
+associations.
+
+The choice is applied to existing recorded AppImages as well as later installs and updates.
+Enabling it removes only provably unchanged menu entries and icons that ArtCraft Launcher owns;
+customized, unrecorded, symlinked and externally replaced resources are kept. Review any retained
+custom entries yourself. Turning it off restores native integration where that can be done without
+overwriting someone else's entry. If a pinned launcher or a default-application choice referred
+to a removed native entry, select the external manager's entry instead. This setting does not
+change ArtCraft Launcher's own menu entry, system packages, Flatpaks or tarball installs.
+
+Uninstall keeps a cleanup-only ownership record when a native resource cannot be removed safely.
+Later reconciliation retries that cleanup without restoring menu entries or claiming another
+binary at the former path. A temporarily unavailable AppImage is not treated as an uninstall.
+Failed record saves are also retried after an AppImage is replaced by another package format.
+
 The launcher writes its log to `logs/artcraft-launcher.log` in its data folder
 (`~/.local/share/artcraft-launcher` on Linux, `~/Library/Application Support/ArtCraft Launcher`
 on macOS, `%LOCALAPPDATA%\ArtCraft Launcher` on Windows, `ArtCraftLauncherData` beside the

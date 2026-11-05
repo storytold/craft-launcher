@@ -299,6 +299,15 @@ impl LauncherUi {
             });
             self.settings.preferred_kinds = choice.into_iter().collect();
             note(ui, tl!("Updates always use the format an app was installed with."));
+            ui.add_space(6.0);
+            ui.checkbox(
+                &mut self.settings.external_appimage_desktop_integration,
+                tl!("Let an external AppImage manager handle app menu entries and icons"),
+            );
+            note(
+                ui,
+                tl!("Only for installed AppImages, not ArtCraft Launcher. The manager must watch the install folders. Customized entries are kept."),
+            );
         });
     }
 

@@ -104,6 +104,8 @@
 	Install new apps as	新しいアプリのインストール形式
 	System package (recommended)	システムパッケージ（推奨）
 	Updates always use the format an app was installed with.	更新は常に、アプリをインストールしたときの形式で行われます。
+	Let an external AppImage manager handle app menu entries and icons	外部の AppImage マネージャーにアプリメニューの項目とアイコンの管理を任せる
+	Only for installed AppImages, not ArtCraft Launcher. The manager must watch the install folders. Customized entries are kept.	インストール済みの AppImage のみに適用され、ArtCraft Launcher 自体には適用されません。マネージャーがインストール先フォルダーを監視している必要があります。カスタマイズされた項目は保持されます。
 	Running in the background	バックグラウンドで実行
 	Keep running in the tray when the window is closed	ウィンドウを閉じてもトレイで実行し続ける
 	ArtCraft Launcher is still running	ArtCraft Launcher は実行中です
