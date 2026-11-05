@@ -21,6 +21,50 @@ pub fn tone_color(t: &Tokens, tone: Tone) -> Color32 {
     }
 }
 
+/// Whether the UI reads right to left (Arabic): the window is mirrored and rows start at the right.
+pub fn rtl() -> bool {
+    crate::i18n::current().right_to_left()
+}
+
+/// A row filled from its end, pushing what it holds to the far side: from the right, or from the
+/// left when the UI reads right to left.
+pub fn to_end(align: egui::Align) -> egui::Layout {
+    if rtl() { egui::Layout::left_to_right(align) } else { egui::Layout::right_to_left(align) }
+}
+
+/// A row filled from where reading starts: the left, or the right when the UI reads right to left.
+pub fn from_start(align: egui::Align) -> egui::Layout {
+    if rtl() { egui::Layout::right_to_left(align) } else { egui::Layout::left_to_right(align) }
+}
+
+/// Where reading starts on a line: the left, or the right when the UI reads right to left.
+pub fn start() -> egui::Align {
+    if rtl() { egui::Align::Max } else { egui::Align::Min }
+}
+
+/// Top to bottom, lined up where reading starts; the rows (`ui.horizontal`) inside start there too.
+pub fn down() -> egui::Layout {
+    egui::Layout::top_down(start())
+}
+
+/// Draws `f` lined up where reading starts. Panels, windows and areas lay their contents out from
+/// the left whatever the language, so what fills one goes through this.
+pub fn reading<R>(ui: &mut Ui, f: impl FnOnce(&mut Ui) -> R) -> R {
+    if rtl() { ui.with_layout(down(), f).inner } else { f(ui) }
+}
+
+/// For hand-painted widgets: `r`, laid out from the left of `within`, moved to the same place from
+/// its right when the UI reads right to left.
+pub fn mirror(within: Rect, r: Rect) -> Rect {
+    if rtl() { r.translate(vec2(within.left() + within.right() - r.left() - r.right(), 0.0)) } else { r }
+}
+
+/// `spacing` between the letters of `text`, or none where it has Arabic: its letters join, and
+/// spacing would pull them apart.
+fn tracking(text: &str, spacing: f32) -> f32 {
+    if text.chars().any(|c| ('\u{0600}'..='\u{06ff}').contains(&c)) { 0.0 } else { spacing }
+}
+
 /// Whether the Georgian face in use draws Mtavruli (U+1C90–U+1CBF), the capitals Unicode maps
 /// Georgian letters to. Set when the face loads; until then, and without one, Georgian stays as
 /// written, since a face without them (DejaVu Sans, older Sylfaen) would draw boxes.
@@ -50,7 +94,8 @@ fn upper_with(text: &str, georgian_caps: bool) -> String {
 
 /// `text` laid out upper case in `family`, `spacing` points between letters.
 pub fn caps(ui: &Ui, text: &str, size: f32, family: egui::FontFamily, spacing: f32, color: Color32) -> Arc<Galley> {
-    let format = egui::TextFormat { font_id: egui::FontId::new(size, family), color, extra_letter_spacing: spacing, ..Default::default() };
+    let format =
+        egui::TextFormat { font_id: egui::FontId::new(size, family), color, extra_letter_spacing: tracking(text, spacing), ..Default::default() };
     ui.painter().layout_job(egui::text::LayoutJob::single_section(upper(text), format))
 }
 
@@ -59,9 +104,11 @@ pub fn hud_galley(ui: &Ui, text: &str, color: Color32) -> Arc<Galley> {
     caps(ui, text, theme::HUD_SIZE, theme::mono(), theme::HUD_SPACING, color)
 }
 
-/// Paints `galley` at the left of `rect`, centred vertically.
+/// Paints `galley` where reading starts in `rect` (its left, or its right when the UI reads right
+/// to left), centred vertically.
 fn paint_left(ui: &Ui, rect: Rect, galley: Arc<Galley>, color: Color32) {
-    let pos = egui::pos2(rect.left(), rect.center().y - galley.size().y / 2.0);
+    let x = if rtl() { rect.right() - galley.size().x } else { rect.left() };
+    let pos = egui::pos2(x, rect.center().y - galley.size().y / 2.0);
     ui.painter().galley_with_override_text_color(pos, galley, color);
 }
 
@@ -92,7 +139,7 @@ pub fn hud_elided_spans(ui: &mut Ui, spans: &[(&str, Color32)], max_width: f32) 
         let format = egui::TextFormat {
             font_id: egui::FontId::new(theme::HUD_SIZE, theme::mono()),
             color: *color,
-            extra_letter_spacing: theme::HUD_SPACING,
+            extra_letter_spacing: tracking(text, theme::HUD_SPACING),
             ..Default::default()
         };
         job.append(&upper(text), 0.0, format);
@@ -148,7 +195,7 @@ pub fn nav_icon(ui: &mut Ui, glyph: Glyph, tip: &str, height: f32, busy: bool) -
     if hovered {
         p.rect_filled(rect, CornerRadius::ZERO, t.invert_bg);
     }
-    p.vline(rect.left() + 0.5, rect.y_range(), t.hairline());
+    p.vline(if rtl() { rect.right() - 0.5 } else { rect.left() + 0.5 }, rect.y_range(), t.hairline());
     if busy {
         egui::Spinner::new().size(16.0).color(t.muted).paint_at(ui, Rect::from_center_size(rect.center(), vec2(16.0, 16.0)));
     } else {
@@ -196,8 +243,8 @@ enum WindowButton {
     Close,
 }
 
-/// Minimize, maximize (or restore) and close, `height` tall, for a right-to-left layout: close
-/// ends up at the right.
+/// Minimize, maximize (or restore) and close, `height` tall, for a row filled from its end
+/// ([`to_end`]): close ends up at the right, or at the left when the UI reads right to left.
 pub fn window_buttons(ui: &mut Ui, height: f32) {
     let ctx = ui.ctx().clone();
     let maximized = ctx.input(|i| i.viewport().maximized.unwrap_or(false));
@@ -227,8 +274,9 @@ fn window_button(ui: &mut Ui, button: WindowButton, height: f32) -> Response {
     // Clickable below the resize band along the top (and, for close, the right edge); maximized,
     // there is no band and the close button takes the screen's corner, as Windows' own does.
     let band = resize_band(ui.ctx());
-    let right = if button == WindowButton::Close { band } else { 0.0 };
-    let hit = Rect::from_min_max(rect.min + vec2(0.0, band), rect.max - vec2(right, 0.0));
+    let edge = if button == WindowButton::Close { band } else { 0.0 };
+    let (left, right) = if rtl() { (edge, 0.0) } else { (0.0, edge) };
+    let hit = Rect::from_min_max(rect.min + vec2(left, band), rect.max - vec2(right, 0.0));
     let resp = ui.interact(hit, ui.scope_id().with(("window-button", button as u8)), Sense::click());
     let (fill, ink) = match (button, resp.hovered()) {
         (WindowButton::Close, true) => (Color32::from_rgb(0xc4, 0x2b, 0x1c), Color32::WHITE),
@@ -442,9 +490,9 @@ pub fn cells<T: PartialEq + Copy>(ui: &mut Ui, value: &mut T, options: &[(T, Cel
 pub fn cells_apart<T: PartialEq + Copy>(ui: &mut Ui, value: &mut T, options: &[(T, Cell<'_>)], gap: f32) -> bool {
     let t = Tokens::get(ui.ctx());
     let mut changed = false;
-    // In a right-to-left parent the row fills from the right: keep the options' order.
+    // In a right-to-left parent the row fills from the right: keep the options in reading order.
     let rtl = ui.layout().prefer_right_to_left();
-    let ordered: Vec<&(T, Cell<'_>)> = if rtl { options.iter().rev().collect() } else { options.iter().collect() };
+    let ordered: Vec<&(T, Cell<'_>)> = if rtl != self::rtl() { options.iter().rev().collect() } else { options.iter().collect() };
     let mut rects = Vec::with_capacity(options.len());
     ui.scope(|ui| {
         ui.spacing_mut().item_spacing.x = gap;
@@ -494,7 +542,9 @@ fn paint_cell<T: PartialEq + Copy>(ui: &mut Ui, value: &mut T, opt: &T, cell: &C
     let label_w = label.size().x;
     paint_left(ui, text_rect, label, ink);
     if let Some((g, c)) = count {
-        paint_left(ui, text_rect.with_min_x(text_rect.left() + label_w + 8.0), g, c);
+        let rest =
+            if rtl() { text_rect.with_max_x(text_rect.right() - label_w - 8.0) } else { text_rect.with_min_x(text_rect.left() + label_w + 8.0) };
+        paint_left(ui, rest, g, c);
     }
     let name = match cell.count {
         Some((n, _)) => format!("{} {n}", cell.label),
@@ -517,7 +567,7 @@ pub fn progress(ui: &mut Ui, fraction: Option<f32>, caption: &str, color: Color3
     p.rect_filled(bar, CornerRadius::ZERO, t.line);
     match fraction {
         Some(f) => {
-            p.rect_filled(Rect::from_min_size(bar.min, vec2(bar.width() * f.clamp(0.0, 1.0), bar.height())), CornerRadius::ZERO, color);
+            p.rect_filled(mirror(bar, Rect::from_min_size(bar.min, vec2(bar.width() * f.clamp(0.0, 1.0), bar.height()))), CornerRadius::ZERO, color);
         }
         None => {
             // Keep the segment moving through the track boundary without resetting visibly.
@@ -527,13 +577,14 @@ pub fn progress(ui: &mut Ui, fraction: Option<f32>, caption: &str, color: Color3
             for left in [x, x - width] {
                 let seg = Rect::from_min_size(egui::pos2(bar.left() + left, bar.top()), vec2(segment_width, bar.height())).intersect(bar);
                 if seg.is_positive() {
-                    p.rect_filled(seg, CornerRadius::ZERO, color);
+                    p.rect_filled(mirror(bar, seg), CornerRadius::ZERO, color);
                 }
             }
             ui.ctx().request_repaint();
         }
     }
-    p.text(egui::pos2(rect.left(), rect.top() + 9.0), egui::Align2::LEFT_CENTER, caption, egui::FontId::new(12.0, theme::medium()), t.muted);
+    let (x, anchor) = if rtl() { (rect.right(), egui::Align2::RIGHT_CENTER) } else { (rect.left(), egui::Align2::LEFT_CENTER) };
+    p.text(egui::pos2(x, rect.top() + 9.0), anchor, caption, egui::FontId::new(12.0, theme::medium()), t.muted);
     let resp = ui.interact(rect, ui.scope_id().with(("progress", caption)), Sense::hover());
     resp.widget_info(|| egui::WidgetInfo::labeled(egui::Role::ProgressIndicator, true, caption));
 }
@@ -674,7 +725,7 @@ pub fn more_menu<R>(ui: &mut Ui, app_name: &str, add_contents: impl FnOnce(&mut 
 }
 
 /// ArtCraft's social accounts as a row of small monochrome icons (faint, brighter on hover).
-/// In a right-to-left layout they still read left to right.
+/// In a right-to-left layout they still read in the UI's reading direction.
 pub fn social_icons(ui: &mut Ui, size: f32) {
     let links: Vec<IconLink> = artcraft_launcher_core::catalog::SOCIAL
         .iter()
@@ -700,7 +751,7 @@ pub fn icon_links_width(count: usize, size: f32) -> f32 {
 
 /// A row of logo links, given in reading order; each is `size` wide, spaced by the theme's
 /// `ICON_LINK_PAD` and `ICON_LINK_GAP` wherever the row is. In a right-to-left parent they still
-/// read in the order given.
+/// read in the order given, in the UI's reading direction.
 pub fn icon_links(ui: &mut Ui, size: f32, links: &[IconLink<'_>]) {
     ui.scope(|ui| {
         ui.spacing_mut().item_spacing.x = crate::theme::ICON_LINK_GAP;
@@ -711,7 +762,7 @@ pub fn icon_links(ui: &mut Ui, size: f32, links: &[IconLink<'_>]) {
 }
 
 fn links_in_order<'l, 'a>(ui: &Ui, links: &'l [IconLink<'a>]) -> Vec<&'l IconLink<'a>> {
-    if ui.layout().prefer_right_to_left() { links.iter().rev().collect() } else { links.iter().collect() }
+    if ui.layout().prefer_right_to_left() != rtl() { links.iter().rev().collect() } else { links.iter().collect() }
 }
 
 /// Draws one social logo as a link: `Role::Link` with its label and tip, a pointer cursor, and
@@ -754,7 +805,7 @@ pub fn wordmark_in(ui: &mut Ui, app: &artcraft_launcher_core::CraftApp, size: f3
 
 /// A heading in the display face, tracked in like the site's (`tracking-[-0.02em]`).
 pub fn heading(text: &str, size: f32, color: Color32) -> RichText {
-    RichText::new(text).size(size).family(theme::display()).color(color).extra_letter_spacing(-0.02 * size)
+    RichText::new(text).size(size).family(theme::display()).color(color).extra_letter_spacing(tracking(text, -0.02 * size))
 }
 
 #[cfg(test)]
@@ -852,5 +903,11 @@ mod tests {
         assert_eq!(super::upper_with("Update all (2)", false), "UPDATE ALL (2)");
         assert_eq!(super::upper_with("ყველას განახლება (2) · ArtCraft", false), "ყველას განახლება (2) · ARTCRAFT");
         assert_eq!(super::upper_with("ყველას განახლება · ArtCraft", true), "ᲧᲕᲔᲚᲐᲡ ᲒᲐᲜᲐᲮᲚᲔᲑᲐ · ARTCRAFT");
+    }
+
+    #[test]
+    fn arabic_letters_are_never_spaced_apart() {
+        assert_eq!(super::tracking("Update all (2)", 1.5), 1.5);
+        assert_eq!(super::tracking("تحديث الكل (2)", 1.5), 0.0);
     }
 }

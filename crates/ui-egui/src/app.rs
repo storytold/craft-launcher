@@ -816,6 +816,12 @@ impl LauncherUi {
         // Set the current language only after the font gate: a face installed by `set_fonts`
         // becomes active next pass, so drawing with it in the pass that installed it would panic.
         set_current(drawable_lang(&self.settings.language, self.cjk_font));
+        // egui's own parts (scroll bars, menus, popups) follow the language's direction too.
+        let rtl = crate::widgets::rtl();
+        if ctx.global_style().right_to_left != rtl {
+            ctx.all_styles_mut(|style| style.right_to_left = rtl);
+            ui.style_mut().right_to_left = rtl;
+        }
         self.zoom_input(&ctx);
         if self.applied_theme != Some(self.settings.theme) {
             theme::apply(&ctx, self.settings.theme);
@@ -841,7 +847,7 @@ impl LauncherUi {
             .frame(egui::Frame::new().fill(tokens.bg))
             .exact_size(crate::views::HEADER_H)
             .resizable(false)
-            .show(ui, |ui| self.header(ui, host.title_bar()));
+            .show(ui, |ui| crate::widgets::reading(ui, |ui| self.header(ui, host.title_bar())));
         egui::Panel::bottom("footer")
             .frame(egui::Frame::new().fill(tokens.bg).inner_margin(egui::Margin::symmetric(20, 0)))
             .exact_size(crate::views::FOOTER_H)
@@ -850,34 +856,36 @@ impl LauncherUi {
         egui::CentralPanel::default()
             .frame(egui::Frame::new().fill(tokens.bg).inner_margin(egui::Margin { left: 20, right: 20, top: 18, bottom: 0 }))
             .show(ui, |ui| {
-                self.toolbar(ui);
-                ui.add_space(18.0);
-                let ids = self.visible_ids();
-                // The table is wider than a narrow window: let it scroll sideways too.
-                let scroll = match self.settings.view {
-                    ViewMode::Grid => egui::ScrollArea::vertical(),
-                    ViewMode::Table => egui::ScrollArea::both(),
-                };
-                scroll.auto_shrink(false).show(ui, |ui| {
-                    // Escape must run even when search/filter leaves no rows (grid/table skipped).
-                    self.clear_pin_drag_on_escape(ui);
-                    if ids.is_empty() {
-                        ui.add_space(40.0);
-                        ui.vertical_centered(|ui| {
-                            crate::widgets::hud(ui, tl!("No apps match"), tokens.muted);
-                        });
-                    } else {
-                        match self.settings.view {
-                            ViewMode::Grid => self.grid(ui, &ids),
-                            ViewMode::Table => self.table(ui, &ids),
+                crate::widgets::reading(ui, |ui| {
+                    self.toolbar(ui);
+                    ui.add_space(18.0);
+                    let ids = self.visible_ids();
+                    // The table is wider than a narrow window: let it scroll sideways too.
+                    let scroll = match self.settings.view {
+                        ViewMode::Grid => egui::ScrollArea::vertical(),
+                        ViewMode::Table => egui::ScrollArea::both(),
+                    };
+                    scroll.auto_shrink(false).show(ui, |ui| {
+                        // Escape must run even when search/filter leaves no rows (grid/table skipped).
+                        self.clear_pin_drag_on_escape(ui);
+                        if ids.is_empty() {
+                            ui.add_space(40.0);
+                            ui.vertical_centered(|ui| {
+                                crate::widgets::hud(ui, tl!("No apps match"), tokens.muted);
+                            });
+                        } else {
+                            match self.settings.view {
+                                ViewMode::Grid => self.grid(ui, &ids),
+                                ViewMode::Table => self.table(ui, &ids),
+                            }
                         }
-                    }
-                    ui.add_space(16.0);
-                    // The drop targets have seen this frame's pointer: a released drag ends here.
-                    if !ui.input(|i| i.pointer.primary_down()) {
-                        self.pin_dragging = None;
-                    }
-                });
+                        ui.add_space(16.0);
+                        // The drop targets have seen this frame's pointer: a released drag ends here.
+                        if !ui.input(|i| i.pointer.primary_down()) {
+                            self.pin_dragging = None;
+                        }
+                    });
+                })
             });
         self.details_drawer(&ctx);
         self.dialogs(&ctx, host);
@@ -1047,36 +1055,40 @@ impl LauncherUi {
         }
         ctx.request_repaint_after(Duration::from_millis(250));
         let t = Tokens::get(ctx);
-        let anchor = egui::vec2(-20.0, -(crate::views::FOOTER_H + 12.0));
+        // In the corner where reading ends: the bottom right, or the bottom left right to left.
+        let rtl = crate::widgets::rtl();
+        let anchor = egui::vec2(if rtl { 20.0 } else { -20.0 }, -(crate::views::FOOTER_H + 12.0));
         egui::Area::new(egui::Id::unique("toasts"))
             .role(egui::Role::Alert)
-            .anchor(egui::Align2::RIGHT_BOTTOM, anchor)
+            .anchor(if rtl { egui::Align2::LEFT_BOTTOM } else { egui::Align2::RIGHT_BOTTOM }, anchor)
             .order(egui::Order::Foreground)
             .show(ctx, |ui| {
                 ui.set_max_width(380.0);
-                let mut dismiss = None;
-                for (i, toast) in self.toasts.iter().enumerate() {
-                    let accent = if toast.error { t.bad } else { t.good };
-                    let r = egui::Frame::new()
-                        .fill(t.bg)
-                        .stroke(egui::Stroke::new(1.0, t.line_strong))
-                        .shadow(theme::shadow(&t))
-                        .inner_margin(egui::Margin::symmetric(14, 10))
-                        .show(ui, |ui| {
-                            ui.horizontal(|ui| {
-                                let (rect, _) = ui.allocate_exact_size(egui::vec2(6.0, 6.0), egui::Sense::hover());
-                                ui.painter().rect_filled(rect, egui::CornerRadius::ZERO, accent);
-                                ui.add(egui::Label::new(egui::RichText::new(crate::i18n::msg(&toast.text)).color(t.ink)).wrap());
+                crate::widgets::reading(ui, |ui| {
+                    let mut dismiss = None;
+                    for (i, toast) in self.toasts.iter().enumerate() {
+                        let accent = if toast.error { t.bad } else { t.good };
+                        let r = egui::Frame::new()
+                            .fill(t.bg)
+                            .stroke(egui::Stroke::new(1.0, t.line_strong))
+                            .shadow(theme::shadow(&t))
+                            .inner_margin(egui::Margin::symmetric(14, 10))
+                            .show(ui, |ui| {
+                                ui.horizontal(|ui| {
+                                    let (rect, _) = ui.allocate_exact_size(egui::vec2(6.0, 6.0), egui::Sense::hover());
+                                    ui.painter().rect_filled(rect, egui::CornerRadius::ZERO, accent);
+                                    ui.add(egui::Label::new(egui::RichText::new(crate::i18n::msg(&toast.text)).color(t.ink)).wrap());
+                                });
                             });
-                        });
-                    if r.response.interact(egui::Sense::click()).clicked() {
-                        dismiss = Some(i);
+                        if r.response.interact(egui::Sense::click()).clicked() {
+                            dismiss = Some(i);
+                        }
+                        ui.add_space(6.0);
                     }
-                    ui.add_space(6.0);
-                }
-                if let Some(i) = dismiss {
-                    self.toasts.remove(i);
-                }
+                    if let Some(i) = dismiss {
+                        self.toasts.remove(i);
+                    }
+                });
             });
     }
 }

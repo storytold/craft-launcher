@@ -164,9 +164,11 @@ impl LauncherUi {
                     *ui.visuals_mut() = page_visuals;
                     ui.set_width(ui.available_width());
                     ui.spacing_mut().item_spacing.y = 8.0;
-                    self.details_hero(ui, &entry, details, t, (previous.as_deref(), next.as_deref()), wide);
-                    egui::Frame::new().inner_margin(Margin::same(PAD as i8)).show(ui, |ui| {
-                        self.details_body(ui, &entry, details, wide, t);
+                    widgets::reading(ui, |ui| {
+                        self.details_hero(ui, &entry, details, t, (previous.as_deref(), next.as_deref()), wide);
+                        egui::Frame::new().inner_margin(Margin::same(PAD as i8)).show(ui, |ui| {
+                            self.details_body(ui, &entry, details, wide, t);
+                        });
                     });
                 });
             });
@@ -187,7 +189,7 @@ impl LauncherUi {
             let right_w = total - gap - left_w;
             ui.horizontal_top(|ui| {
                 ui.spacing_mut().item_spacing.x = gap;
-                ui.vertical(|ui| {
+                ui.with_layout(widgets::down(), |ui| {
                     ui.set_width(left_w);
                     ui.spacing_mut().item_spacing.y = 8.0;
                     for p in details.paragraphs() {
@@ -196,7 +198,7 @@ impl LauncherUi {
                     ui.add_space(14.0);
                     features(ui, details, entry.app, t);
                 });
-                ui.vertical(|ui| {
+                ui.with_layout(widgets::down(), |ui| {
                     ui.set_width(right_w);
                     ui.spacing_mut().item_spacing.y = 8.0;
                     self.release_section(ui, entry, details, t, 2);
@@ -209,7 +211,7 @@ impl LauncherUi {
             let right_w = total - gap - left_w;
             ui.horizontal_top(|ui| {
                 ui.spacing_mut().item_spacing.x = gap;
-                ui.vertical(|ui| {
+                ui.with_layout(widgets::down(), |ui| {
                     ui.set_width(left_w);
                     ui.spacing_mut().item_spacing.y = 8.0;
                     self.gallery(ui, details, t, app_color);
@@ -218,7 +220,7 @@ impl LauncherUi {
                         ui.add(egui::Label::new(RichText::new(tr_ctx(current(), details.id, p)).size(14.5).color(t.ink)).wrap());
                     }
                 });
-                ui.vertical(|ui| {
+                ui.with_layout(widgets::down(), |ui| {
                     ui.set_width(right_w);
                     ui.spacing_mut().item_spacing.y = 8.0;
                     features(ui, details, entry.app, t);
@@ -258,7 +260,8 @@ impl LauncherUi {
         (around(at + n - 1), around(at + 1))
     }
 
-    /// Esc closes the enlarged picture first, then the drawer; ← and → flip through the pictures.
+    /// Esc closes the enlarged picture first, then the drawer; ← and → flip through the pictures
+    /// (→ goes back where the UI reads right to left).
     /// Nothing happens under a dialog, and the arrows leave a text field alone.
     fn details_keys(&mut self, ctx: &egui::Context, details: &AppDetails, open: bool) {
         if !open || self.dialog.is_some() {
@@ -273,10 +276,12 @@ impl LauncherUi {
         }
         let shots = details.shots.len();
         if shots > 1 && !ctx.egui_wants_keyboard_input() {
-            if ctx.input(|i| i.key_pressed(egui::Key::ArrowRight)) {
+            let (forward, back) =
+                if widgets::rtl() { (egui::Key::ArrowLeft, egui::Key::ArrowRight) } else { (egui::Key::ArrowRight, egui::Key::ArrowLeft) };
+            if ctx.input(|i| i.key_pressed(forward)) {
                 self.flip_shot(shots, true);
             }
-            if ctx.input(|i| i.key_pressed(egui::Key::ArrowLeft)) {
+            if ctx.input(|i| i.key_pressed(back)) {
                 self.flip_shot(shots, false);
             }
         }
@@ -328,10 +333,10 @@ impl LauncherUi {
         ui.painter().hline(r.x_range(), r.bottom() - 0.5, t.hairline());
     }
 
-    /// The close button and the previous / next pair, right-aligned in the hero's top row.
+    /// The close button and the previous / next pair, at the end of the hero's top row.
     fn hero_top_row(&mut self, ui: &mut Ui, around: (Option<&str>, Option<&str>), t: &Tokens) {
-        // Right to left: next, then previous, so they read as a pair before the close.
-        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+        // From the end: next, then previous, so they read as a pair before the close.
+        ui.with_layout(widgets::to_end(egui::Align::Center), |ui| {
             if widgets::glyph_button(ui, Glyph::Close, tl!("Close (Esc)")).clicked() {
                 self.detail = None;
             }
@@ -361,7 +366,7 @@ impl LauncherUi {
             ui.add_space(8.0);
             // Beside the buttons when the page is wide: the text keeps what they leave.
             let text_w = if wide { (hero_w - ICON - 16.0 - ACTION_W - 24.0).max(200.0) } else { (hero_w - ICON - 16.0).max(40.0) };
-            ui.vertical(|ui| {
+            ui.with_layout(widgets::down(), |ui| {
                 ui.set_width(text_w);
                 ui.spacing_mut().item_spacing.y = 5.0;
                 widgets::wordmark(ui, app, theme::PAGE_TITLE);
@@ -373,9 +378,9 @@ impl LauncherUi {
                 }
             });
             if wide {
-                // The main button and its menu, at the right, level with the name.
-                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    ui.allocate_ui_with_layout(vec2(ACTION_W, theme::CONTROL_H), egui::Layout::left_to_right(egui::Align::Center), |ui| {
+                // The main button and its menu, at the end, level with the name.
+                ui.with_layout(widgets::to_end(egui::Align::Center), |ui| {
+                    ui.allocate_ui_with_layout(vec2(ACTION_W, theme::CONTROL_H), widgets::from_start(egui::Align::Center), |ui| {
                         self.actions_in(ui, entry, status, ACTION_W, false);
                     });
                 });
@@ -406,12 +411,19 @@ impl LauncherUi {
         .collect();
         for pair in facts.chunks(per_row) {
             ui.columns(per_row, |cols| {
-                for (col, (label, value)) in cols.iter_mut().zip(pair) {
+                // egui's columns run from the left; the facts read from the right right to left.
+                let mut cols: Vec<&mut Ui> = cols.iter_mut().collect();
+                if widgets::rtl() {
+                    cols.reverse();
+                }
+                for (col, (label, value)) in cols.into_iter().zip(pair) {
                     egui::Frame::new().stroke(t.hairline()).inner_margin(theme::BOX_MARGIN).show(col, |ui| {
                         ui.set_width(ui.available_width());
-                        ui.spacing_mut().item_spacing.y = 2.0;
-                        widgets::hud(ui, label, t.faint);
-                        ui.add(egui::Label::new(RichText::new(value).size(14.0).color(t.ink_strong)).wrap());
+                        widgets::reading(ui, |ui| {
+                            ui.spacing_mut().item_spacing.y = 2.0;
+                            widgets::hud(ui, label, t.faint);
+                            ui.add(egui::Label::new(RichText::new(value).size(14.0).color(t.ink_strong)).wrap());
+                        });
                     });
                 }
             });
@@ -457,8 +469,8 @@ impl LauncherUi {
 
                 if count > 1 {
                     let y = pic.center().y - ARROW / 2.0;
-                    let prev = Rect::from_min_size(pos2(pic.left() - 16.0 - ARROW, y), vec2(ARROW, ARROW));
-                    let next = Rect::from_min_size(pos2(pic.right() + 16.0, y), vec2(ARROW, ARROW));
+                    let prev = widgets::mirror(pic, Rect::from_min_size(pos2(pic.left() - 16.0 - ARROW, y), vec2(ARROW, ARROW)));
+                    let next = widgets::mirror(pic, Rect::from_min_size(pos2(pic.right() + 16.0, y), vec2(ARROW, ARROW)));
                     if arrow_button(ui, prev, Id::unique("zoom-prev"), true, tl!("Previous picture (←)"), t) {
                         self.flip_shot(count, false);
                     }
@@ -466,8 +478,10 @@ impl LauncherUi {
                         self.flip_shot(count, true);
                     }
                 }
-                let close =
-                    Rect::from_min_size(pos2(rect.right() - 16.0 - theme::CONTROL_H, rect.top() + 16.0), vec2(theme::CONTROL_H, theme::CONTROL_H));
+                let close = widgets::mirror(
+                    rect,
+                    Rect::from_min_size(pos2(rect.right() - 16.0 - theme::CONTROL_H, rect.top() + 16.0), vec2(theme::CONTROL_H, theme::CONTROL_H)),
+                );
                 let mut done = backdrop.clicked();
                 ui.scope_builder(egui::UiBuilder::new().max_rect(close), |ui| {
                     done |= widgets::glyph_button(ui, Glyph::Close, tl!("Close (Esc)")).clicked();
@@ -509,8 +523,8 @@ impl LauncherUi {
         }
         // Previous and next, over the sides of the picture.
         let y = pic.center().y - ARROW / 2.0;
-        let prev = Rect::from_min_size(pos2(pic.left() + 10.0, y), vec2(ARROW, ARROW));
-        let next = Rect::from_min_size(pos2(pic.right() - 10.0 - ARROW, y), vec2(ARROW, ARROW));
+        let prev = widgets::mirror(pic, Rect::from_min_size(pos2(pic.left() + 10.0, y), vec2(ARROW, ARROW)));
+        let next = widgets::mirror(pic, Rect::from_min_size(pos2(pic.right() - 10.0 - ARROW, y), vec2(ARROW, ARROW)));
         if arrow_button(ui, prev, Id::unique("shot-prev"), true, tl!("Previous picture (←)"), t) {
             self.flip_shot(count, false);
         }
@@ -566,13 +580,14 @@ fn placeholder(ui: &mut Ui, rect: Rect, id: Id, failed: Option<&str>, t: &Tokens
     }
 }
 
-/// A square header-style button with a chevron: previous (`left`) or next app. True when clicked.
+/// A square header-style button with a chevron: previous (`left`, pointing right where the UI reads
+/// right to left) or next app. True when clicked.
 fn step_button(ui: &mut Ui, left: bool, tip: &str, t: &Tokens) -> bool {
     let (rect, resp) = ui.allocate_exact_size(vec2(theme::CONTROL_H, theme::CONTROL_H), Sense::click());
     let (fill, ink) = if resp.hovered() { (t.invert_bg, t.invert_fg) } else { (Color32::TRANSPARENT, t.muted) };
     let painter = ui.painter();
     painter.rect(rect, CornerRadius::ZERO, fill, t.hairline(), egui::StrokeKind::Inside);
-    let (c, s) = (rect.center(), if left { -1.0 } else { 1.0 });
+    let (c, s) = (rect.center(), if left != widgets::rtl() { -1.0 } else { 1.0 });
     painter.add(egui::Shape::line(
         vec![pos2(c.x - s * 3.0, c.y - 5.5), pos2(c.x + s * 3.0, c.y), pos2(c.x - s * 3.0, c.y + 5.5)],
         Stroke::new(1.75, ink),
@@ -613,13 +628,14 @@ fn features(ui: &mut Ui, details: &AppDetails, app: &CraftApp, t: &Tokens) {
 }
 
 /// A square button with a chevron, drawn over a picture: opaque enough to read on any image,
-/// inverted on hover like the site's outlined buttons. True when clicked.
+/// inverted on hover like the site's outlined buttons. `left` is previous, which points right where
+/// the UI reads right to left. True when clicked.
 fn arrow_button(ui: &mut Ui, rect: Rect, id: Id, left: bool, tip: &str, t: &Tokens) -> bool {
     let resp = ui.interact(rect, id, Sense::click());
     let (fill, ink) = if resp.hovered() { (t.invert_bg, t.invert_fg) } else { (t.bg.gamma_multiply(0.92), t.ink) };
     let painter = ui.painter();
     painter.rect(rect, CornerRadius::ZERO, fill, Stroke::new(1.0, t.line_strong), egui::StrokeKind::Inside);
-    let (c, s) = (rect.center(), if left { -1.0 } else { 1.0 });
+    let (c, s) = (rect.center(), if left != widgets::rtl() { -1.0 } else { 1.0 });
     let points = vec![pos2(c.x - s * 3.5, c.y - 6.0), pos2(c.x + s * 3.5, c.y), pos2(c.x - s * 3.5, c.y + 6.0)];
     painter.add(egui::Shape::line(points, Stroke::new(1.75, ink)));
     resp.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, true, tip));

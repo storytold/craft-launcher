@@ -28,7 +28,7 @@ impl LauncherUi {
         ui.horizontal(|ui| {
             close = widgets::button(ui, tl!("Close"), Kind::Secondary, 100.0).clicked();
             if let Some((label, ready)) = self.chosen_install(id) {
-                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                ui.with_layout(widgets::to_end(egui::Align::Center), |ui| {
                     install = ui.add_enabled_ui(ready, |ui| widgets::button(ui, &label, Kind::Primary, 220.0)).inner.clicked();
                 });
             }
