@@ -1141,6 +1141,19 @@ fn a_newer_release_without_a_download_here_is_not_offered_as_an_update() {
     assert_eq!(launches_and_installs(&sent, "photocraft"), (1, 0), "{:?}", sent.borrow());
 }
 
+#[test]
+/// The backend's answer outranks the UI's guess: a release with a Mac download that can't replace
+/// how PhotoCraft was installed (say an AppImage when only a .deb is out) is no update either.
+fn the_backends_installability_answer_decides_an_update() {
+    let mut ev = events();
+    ev.push(Event::Installable { app: "photocraft".into(), installable: false });
+    let (mut h, _sent) = harness_with(ev, ViewMode::Grid, egui::Theme::Dark, true, 1.0);
+    h.run_steps(8);
+    assert!(h.query_by_label("Update to 0.5.0").is_none(), "the backend can't install it");
+    assert!(h.query_by_label(KEEP_PHOTOCRAFT).is_none());
+    h.get_by_label("Update 1 app");
+}
+
 /// `events`, with PhotoCraft's 0.5.0 published for Windows only: nothing the test's Mac can install.
 fn no_photocraft_download_here(mut ev: Vec<Event>) -> Vec<Event> {
     for e in &mut ev {

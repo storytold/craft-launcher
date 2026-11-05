@@ -188,7 +188,8 @@ impl NativeBackend {
     /// Shows the saved answers from the last run straight away, before any network request: the
     /// release feed's where they're still fresh, GitHub's otherwise.
     fn replay_cache(&self) {
-        let pre = self.options().prereleases;
+        let options = self.options();
+        let pre = options.prereleases;
         let feed = if pre { None } else { load_feed(&self.paths) };
         let now = crate::now();
         for app in &SUITE {
@@ -201,6 +202,7 @@ impl NativeBackend {
                 if let LatestRelease::Found(r) = &latest {
                     self.shared.latest.lock().unwrap_or_else(PoisonError::into_inner).insert(app.id.to_string(), r.clone());
                 }
+                report_installable(app, &self.shared, self.platform, &options);
                 self.shared.emit(Event::Latest { app: app.id.to_string(), latest, from });
             }
         }
@@ -238,6 +240,7 @@ impl NativeBackend {
                         None => map.remove(app.id),
                     };
                 }
+                report_installable(app, &shared, platform, &options);
                 shared.emit(Event::Detected { app: app.id.to_string(), installed: found });
             }
             // Downloads paused (or cut off by quitting) in an earlier run.
@@ -283,7 +286,7 @@ impl NativeBackend {
             }
             let now = crate::now();
             let queue = Mutex::new(SUITE.iter().chain(std::iter::once(&LAUNCHER)).collect::<Vec<&CraftApp>>());
-            let sources = sweep(&queue, &mirror, feed.as_ref(), fallback, &source, &shared, &paths, &options, force, now);
+            let sources = sweep(&queue, &mirror, feed.as_ref(), fallback, &source, &shared, &paths, (platform, &options), force, now);
             source.save();
             {
                 let answered = shared.answered.lock().unwrap_or_else(PoisonError::into_inner);
@@ -397,6 +400,7 @@ impl NativeBackend {
                     None => map.remove(app.id),
                 };
             }
+            report_installable(app, &shared, platform, &options);
             shared.emit(Event::Detected { app: app.id.to_string(), installed: found });
             drop(job);
             shared.emit(Event::JobFinished { app: app.id.to_string(), result });
@@ -764,8 +768,21 @@ fn planned_asset(
     pick_asset(release, &stems, platform, &kinds).map(|(a, k)| (a.clone(), k))
 }
 
-/// Tells the UI whether `app` has a paused download waiting, or a finished one to install.
+/// Tells the UI whether installing `app` would find a file for it now ([`Event::Installable`]):
+/// the same plan an install makes, for the copy that is installed. Nothing is said until its
+/// release is known.
+fn report_installable(app: &CraftApp, shared: &Shared, platform: Option<Platform>, options: &BackendOptions) {
+    let Some(release) = shared.latest.lock().unwrap_or_else(PoisonError::into_inner).get(app.id).cloned() else { return };
+    let existing = shared.installed.lock().unwrap_or_else(PoisonError::into_inner).get(app.id).cloned();
+    let record = shared.manifest.lock().unwrap_or_else(PoisonError::into_inner).apps.get(app.id).cloned();
+    let installable = platform.is_some_and(|p| planned_asset(app, &release, p, options, existing.as_ref(), record.as_ref()).is_some());
+    shared.emit(Event::Installable { app: app.id.to_string(), installable });
+}
+
+/// Tells the UI whether `app` has a paused download waiting, or a finished one to install, and
+/// whether an install would find a file at all (the package choices may have changed).
 fn report_partial(app: &CraftApp, shared: &Shared, paths: &Paths, platform: Option<Platform>, options: &BackendOptions) {
+    report_installable(app, shared, platform, options);
     let planned = planned_download(app, shared, paths, platform, options);
     let download = planned.as_ref().and_then(|(dest, size)| Some(PausedDownload { done: http::partial_bytes(dest, *size)?, total: *size }));
     shared.emit(Event::Paused { app: app.id.to_string(), download });
@@ -812,7 +829,7 @@ fn sweep(
     source: &Arc<dyn ReleaseSource>,
     shared: &Arc<Shared>,
     paths: &Paths,
-    options: &BackendOptions,
+    (platform, options): (Option<Platform>, &BackendOptions),
     force: bool,
     now: i64,
 ) -> Vec<Source> {
@@ -835,7 +852,7 @@ fn sweep(
                     if let Some(used) = used {
                         sources.lock().unwrap_or_else(PoisonError::into_inner).push(used);
                     }
-                    check_app(app, latest, from, shared, paths);
+                    check_app(app, latest, from, shared, paths, (platform, options));
                 }
             });
         }
@@ -844,8 +861,16 @@ fn sweep(
 }
 
 /// Publishes one app's answer to the shared state, or handles the launcher's own update check
-/// first (it doesn't appear in the grid, so it has no card of its own to publish to).
-fn check_app(app: &'static CraftApp, latest: Option<LatestRelease>, from: Origin, shared: &Arc<Shared>, paths: &Paths) {
+/// first (it doesn't appear in the grid, so it has no card of its own to publish to). `plan` is
+/// what an install would use, for [`report_installable`].
+fn check_app(
+    app: &'static CraftApp,
+    latest: Option<LatestRelease>,
+    from: Origin,
+    shared: &Arc<Shared>,
+    paths: &Paths,
+    (platform, options): (Option<Platform>, &BackendOptions),
+) {
     if app.id == LAUNCHER_ID {
         launcher_update(paths, latest, shared);
         return;
@@ -857,6 +882,7 @@ fn check_app(app: &'static CraftApp, latest: Option<LatestRelease>, from: Origin
     if !matches!(latest, LatestRelease::Failed(_)) {
         shared.answered.lock().unwrap_or_else(PoisonError::into_inner).insert(app.id.to_string());
     }
+    report_installable(app, shared, platform, options);
     shared.emit(Event::Latest { app: app.id.to_string(), latest, from });
 }
 
@@ -1815,6 +1841,34 @@ mod tests {
         shared.latest.lock().unwrap().insert(APP.to_string(), release("0.5.0"));
         let shared = Arc::new(shared);
         NativeBackend { shared, paths: Paths::under(root), http: None, source, platform: Some(platform), pins: Some(root.join("versions.json")) }
+    }
+
+    /// Each answer tells the UI whether an install would find a file before it says the release
+    /// is out, so the UI never offers (or starts) an update it can't install. A release with
+    /// nothing for this computer is not installable; a later answer with a file is.
+    #[test]
+    fn installability_is_told_before_the_release_it_depends_on() {
+        let app = CraftApp::by_id(APP).unwrap();
+        let platform = Platform { os: Os::MacOs, arch: Arch::Arm64 };
+        let dir = tempfile::tempdir().unwrap();
+        let mut backend = backend(dir.path(), platform, None);
+        let order = |events: Vec<Event>| -> Vec<String> {
+            events
+                .into_iter()
+                .filter_map(|e| match e {
+                    Event::Installable { app, installable } if app == APP => Some(format!("installable {installable}")),
+                    Event::Latest { app, .. } if app == APP => Some("latest".to_string()),
+                    _ => None,
+                })
+                .collect()
+        };
+        let options = BackendOptions::default();
+        let mut windows_only = release("0.6.0");
+        windows_only.assets.retain(|a| a.name.contains("windows"));
+        check_app(app, Some(LatestRelease::Found(windows_only)), Origin::GitHub, &backend.shared, &backend.paths, (Some(platform), &options));
+        let expected = planned_asset(app, &release("0.6.0"), platform, &options, None, None).is_some();
+        check_app(app, Some(LatestRelease::Found(release("0.6.0"))), Origin::GitHub, &backend.shared, &backend.paths, (Some(platform), &options));
+        assert_eq!(order(backend.poll()), ["installable false", "latest", &format!("installable {expected}"), "latest"]);
     }
 
     /// Reports again, and returns what the UI was last told about a kept download.

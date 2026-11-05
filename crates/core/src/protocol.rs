@@ -237,6 +237,15 @@ pub enum Event {
         app: String,
         ready: bool,
     },
+    /// Whether installing `app` now would find a file for it: its release has a package this
+    /// computer can use and, for an installed copy, one that can replace it the way it was
+    /// installed (an AppImage with an AppImage, an MSI with an MSI). Sent before the `Latest` or
+    /// `Detected` it depends on, so no update is offered, announced or started automatically
+    /// before this is known.
+    Installable {
+        app: String,
+        installable: bool,
+    },
     /// A new install stopped before downloading because `path` already exists and the launcher
     /// didn't put it there. `Command::Replace` installs over it.
     Occupied {

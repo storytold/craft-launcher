@@ -22,11 +22,15 @@ pub struct AppEntry {
     pub paused: Option<PausedDownload>,
     /// A finished download waiting for another try at installing it.
     pub ready: bool,
+    /// The backend's word on whether an install would find a file that can replace the installed
+    /// copy ([`Event::Installable`](artcraft_launcher_core::protocol::Event::Installable)); `None`
+    /// where it gives none (the web build), and then [`Self::has_download`] decides.
+    pub installable: Option<bool>,
 }
 
 impl AppEntry {
     pub fn new(app: &'static CraftApp) -> Self {
-        Self { app, latest: None, installed: None, detected: false, job: None, origin: None, paused: None, ready: false }
+        Self { app, latest: None, installed: None, detected: false, job: None, origin: None, paused: None, ready: false, installable: None }
     }
 
     pub fn release(&self) -> Option<&Release> {
@@ -52,7 +56,15 @@ impl AppEntry {
             None => Latest::Pending,
             Some(LatestRelease::Failed(_)) => Latest::Failed,
             Some(LatestRelease::None) => Latest::NoRelease,
-            Some(LatestRelease::Found(r)) => Latest::Found { version: r.version.as_ref(), has_asset: self.has_download(platform) },
+            Some(LatestRelease::Found(r)) => {
+                // Only the backend knows which package can replace an installed copy (an AppImage
+                // with an AppImage); for an app not installed yet, any download this platform takes.
+                let has_asset = match (&self.installed, self.installable) {
+                    (Some(_), Some(installable)) => installable,
+                    _ => self.has_download(platform),
+                };
+                Latest::Found { version: r.version.as_ref(), has_asset }
+            }
         };
         status::status(self.installed.as_ref(), latest)
     }
