@@ -230,6 +230,19 @@ pub fn apply(ctx: &egui::Context, choice: ThemeChoice) {
     });
 }
 
+// ---- type scale --------------------------------------------------------------------------------
+// The card's text steps, largest first. The name and the tagline share a size with the
+// description and are set apart by weight and colour, not by near-equal sizes.
+
+/// An app's name on its card (Archivo display).
+pub const TEXT_NAME: f32 = 22.0;
+/// The tagline beside the name (Inter 500, ink) and the description under it (Inter 400, muted).
+pub const TEXT_BODY: f32 = 13.5;
+/// Dates and small notes (Inter 400, muted).
+pub const TEXT_CAPTION: f32 = 12.0;
+/// Line height of wrapped body text, as a multiple of its size.
+pub const BODY_LEADING: f32 = 1.45;
+
 /// Height of buttons, inputs and filter cells (the site's medium button).
 pub const CONTROL_H: f32 = 34.0;
 

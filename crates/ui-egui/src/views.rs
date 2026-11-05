@@ -27,6 +27,11 @@ fn kind_badge(ui: &mut Ui, app: &artcraft_launcher_core::CraftApp, t: &Tokens) {
     widgets::badge(ui, &text, color);
 }
 
+/// Where a card keeps the height its contents needed on the last frame.
+fn card_height_id(id: &str) -> egui::Id {
+    egui::Id::unique(("card-height", id))
+}
+
 /// A group's heading in the grid with its size: "Not installed · 13".
 fn group_label(name: &str, count: usize) -> String {
     format!("{name} · {count}")
@@ -86,7 +91,11 @@ pub(crate) const HEADER_H: f32 = 48.0;
 pub(crate) const FOOTER_H: f32 = 34.0;
 
 const CARD_MIN_W: f32 = 320.0;
+/// A card's height before its contents have been measured, and the least it shrinks to.
 const CARD_H: f32 = 314.0;
+const CARD_MIN_H: f32 = 236.0;
+/// The room between a card's last line of text and its buttons.
+const CARD_ACTIONS_GAP: f32 = 20.0;
 /// The app column's name and tagline sizes, to centre them on the icon.
 const TITLE_SIZE: f32 = 16.0;
 const TAGLINE_SIZE: f32 = 12.0;
@@ -473,13 +482,27 @@ impl LauncherUi {
         // Neighbouring cards share their 1 px hairline, like the site's `gap-px` grid.
         let cols = ((width / CARD_MIN_W).floor() as usize).max(1);
         let card_w = (width + (cols as f32 - 1.0)) / cols as f32;
-        let rows = ids.len().div_ceil(cols);
-        let height = rows as f32 * (CARD_H - 1.0) + 1.0;
+        // Each row is as tall as its fullest card needs (measured on the last frame), so a row of
+        // short cards leaves no hole above its buttons; cards in one row keep their buttons aligned.
+        let ctx = ui.ctx().clone();
+        let measured = |id: &str| ctx.data(|d| d.get_temp::<f32>(card_height_id(id)));
+        let row_h: Vec<f32> =
+            ids.chunks(cols).map(|row| row.iter().map(|id| measured(id).unwrap_or(CARD_H)).fold(CARD_MIN_H, f32::max).round()).collect();
+        let height = row_h.iter().map(|h| h - 1.0).sum::<f32>() + 1.0;
         let (area, _) = ui.allocate_exact_size(vec2(width, height), Sense::hover());
-        for (i, id) in ids.iter().enumerate() {
-            let (row, col) = (i / cols, i % cols);
-            let min = area.min + vec2(col as f32 * (card_w - 1.0), row as f32 * (CARD_H - 1.0));
-            self.card(ui, id, Rect::from_min_size(min, vec2(card_w, CARD_H)));
+        let mut top = area.min.y;
+        for (ids, h) in ids.chunks(cols).zip(&row_h) {
+            for (col, id) in ids.iter().enumerate() {
+                let min = egui::pos2(area.min.x + col as f32 * (card_w - 1.0), top);
+                let needed = self.card(ui, id, Rect::from_min_size(min, vec2(card_w, *h)));
+                if let Some(needed) = needed
+                    && measured(id).is_none_or(|old| (old - needed).abs() > 0.5)
+                {
+                    ctx.data_mut(|d| d.insert_temp(card_height_id(id), needed));
+                    ctx.request_repaint();
+                }
+            }
+            top += h - 1.0;
         }
     }
 
@@ -487,8 +510,9 @@ impl LauncherUi {
     /// a click target over the whole rect before its own links and buttons, so those sit on top and
     /// keep their clicks. An installed card is drawn in colour; a missing one greys out until the
     /// pointer is over it.
-    fn card(&mut self, ui: &mut Ui, id: &str, rect: Rect) {
-        let Some(entry) = self.entry(id).cloned() else { return };
+    /// Returns the height the card's contents need, for the next frame's row heights.
+    fn card(&mut self, ui: &mut Ui, id: &str, rect: Rect) -> Option<f32> {
+        let entry = self.entry(id).cloned()?;
         self.pin_drop_target(ui, id, rect, ui.clip_rect(), PinDropAxis::Horizontal);
         let t = Tokens::get(ui.ctx());
         let app = entry.app;
@@ -552,10 +576,20 @@ impl LauncherUi {
         let ui = &mut child;
         ui.horizontal(|ui| {
             const ICON: f32 = 56.0;
-            let [name, tagline] = [FontId::new(22.0, theme::display()), FontId::proportional(13.5)];
+            const ICON_GAP: f32 = 6.0;
+            let name = FontId::new(theme::TEXT_NAME, theme::display());
             const GAP: f32 = 4.0;
+            // The tagline wraps to a second line before it is cut short.
+            let tagline = {
+                let format = egui::TextFormat { font_id: FontId::new(theme::TEXT_BODY, theme::medium()), color: t.ink, ..Default::default() };
+                let mut job = egui::text::LayoutJob::single_section(tr_ctx(current(), app.id, app.tagline).to_string(), format);
+                job.wrap.max_width = (ui.available_width() - ICON - ICON_GAP).max(0.0);
+                job.wrap.max_rows = 2;
+                job.wrap.overflow_character = Some('…');
+                ui.fonts_mut(|f| f.layout_job(job))
+            };
             // The slot is as tall as the text beside it when that is taller, so the two share a centre.
-            let block = lines_height(ui, &[&name, &tagline], GAP);
+            let block = lines_height(ui, &[&name], GAP) + GAP + tagline.size().y;
             let (slot, icon_response) = ui.allocate_exact_size(vec2(ICON, block.max(ICON)), Sense::hover());
             icon_response.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Image, true, fmt(tl!("{name} icon"), &[("name", app.name)])));
             // The icon rises a little on hover, over a soft drop shadow (the site's only shadow).
@@ -567,15 +601,16 @@ impl LauncherUi {
             if let Some(icon) = crate::icons::app_image(ui.ctx(), app.id, in_colour) {
                 icon.paint_at(ui, icon_rect);
             }
-            ui.add_space(6.0);
-            centered_lines(ui, &[&name, &tagline], GAP, |ui| {
+            ui.add_space(ICON_GAP);
+            ui.allocate_ui_with_layout(vec2(ui.available_width(), block), egui::Layout::top_down(egui::Align::Min), |ui| {
+                ui.spacing_mut().item_spacing.y = GAP;
                 // The name's row is as tall as its text, not as a button.
                 ui.spacing_mut().interact_size.y = 0.0;
                 ui.horizontal(|ui| {
-                    widgets::wordmark_in(ui, app, 22.0, in_colour);
+                    widgets::wordmark_in(ui, app, theme::TEXT_NAME, in_colour);
                     kind_badge(ui, app, &t);
                 });
-                ui.add(egui::Label::new(RichText::new(tr_ctx(current(), app.id, app.tagline)).font(tagline.clone()).color(t.muted)).truncate());
+                ui.add(egui::Label::new(tagline).selectable(false));
             });
         });
         ui.add_space(14.0);
@@ -594,7 +629,7 @@ impl LauncherUi {
         if version.is_empty() {
             let line = version_line(&entry, &status);
             if !line.trim().is_empty() {
-                ui.label(RichText::new(line).size(12.5).color(t.muted));
+                ui.label(RichText::new(line).size(theme::TEXT_CAPTION).color(t.muted));
                 ui.add_space(8.0);
             }
         }
@@ -606,11 +641,14 @@ impl LauncherUi {
         }
         if let Some(line) = crate::card_parts::last_updated(&entry) {
             ui.add_space(6.0);
-            ui.add(egui::Label::new(RichText::new(line).size(12.5).color(t.faint)).selectable(false));
+            ui.add(egui::Label::new(RichText::new(line).size(theme::TEXT_CAPTION).color(t.muted)).selectable(false));
         }
+        // What the text needs, from the card's top down to its bottom edge, buttons included.
+        let needed = ui.min_rect().bottom() - rect.top() + CARD_ACTIONS_GAP + theme::CONTROL_H + CARD_PAD;
         ui.with_layout(egui::Layout::bottom_up(egui::Align::Min), |ui| {
             ui.horizontal(|ui| self.actions(ui, &entry, &status, inner.width()));
         });
+        Some(needed)
     }
 
     // ---- table ---------------------------------------------------------------------------
@@ -1091,7 +1129,9 @@ impl LauncherUi {
     fn primary_button(&mut self, ui: &mut Ui, entry: &AppEntry, id: &str, status: &AppStatus, main_w: f32) {
         match self.primary_action(entry, status) {
             Primary::Install => {
-                if widgets::button(ui, tl!("Install"), Kind::Primary, main_w).clicked() {
+                // Installing is offered, not urged: outlined, so the page's solid buttons are the
+                // ones that open an app or bring it up to date.
+                if widgets::button(ui, tl!("Install"), Kind::Secondary, main_w).clicked() {
                     self.install_app(id);
                 }
             }
@@ -1114,7 +1154,8 @@ impl LauncherUi {
                 }
             }
             Primary::Open => {
-                if widgets::button(ui, tl!("Open"), Kind::Secondary, main_w).clicked() {
+                // Opening an installed app is what the launcher is for: the solid button.
+                if widgets::button(ui, tl!("Open"), Kind::Primary, main_w).clicked() {
                     self.launch_app(id);
                 }
             }
@@ -1353,18 +1394,8 @@ pub(crate) fn launcher_download(r: &artcraft_launcher_core::Release, p: artcraft
     pick_asset(r, &[artcraft_launcher_core::catalog::LAUNCHER_ID], p, kinds).map(|(a, _)| a.url.clone())
 }
 
-/// A column of single-line texts, one per font and `gap` apart, centred across the row it is in.
-/// `ui.vertical` starts at the top of the row instead: a row only centres what it knows the height of.
-/// Each line is measured as an empty galley, which is rounded to the pixel like a label, unlike `Fonts::row_height`.
-fn centered_lines(ui: &mut Ui, fonts: &[&FontId], gap: f32, add_contents: impl FnOnce(&mut Ui)) {
-    let height = lines_height(ui, fonts, gap);
-    ui.allocate_ui_with_layout(vec2(ui.available_width(), height), egui::Layout::top_down(egui::Align::Min), |ui| {
-        ui.spacing_mut().item_spacing.y = gap;
-        add_contents(ui);
-    });
-}
-
-/// The height of [`centered_lines`] with these fonts.
+/// The height of single-line texts, one per font and `gap` apart. Each line is measured as an
+/// empty galley, which is rounded to the pixel like a label, unlike `Fonts::row_height`.
 fn lines_height(ui: &Ui, fonts: &[&FontId], gap: f32) -> f32 {
     let line = |font: &FontId| ui.fonts_mut(|f| f.layout_no_wrap(String::new(), font.clone(), Color32::PLACEHOLDER)).size().y;
     (fonts.iter().map(|font| line(font) + gap).sum::<f32>() - gap).max(0.0)

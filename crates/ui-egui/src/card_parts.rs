@@ -48,7 +48,11 @@ pub(crate) fn repeats_tagline(headline: &str, tagline: &str) -> bool {
 
 /// `text` in at most `rows` lines, ending in "…" when it is cut.
 pub(crate) fn blurb(ui: &mut Ui, text: &str, color: Color32, rows: usize) {
-    let mut job = egui::text::LayoutJob::simple(text.to_string(), FontId::proportional(13.0), color, ui.available_width());
+    let size = crate::theme::TEXT_BODY;
+    let format =
+        egui::TextFormat { font_id: FontId::proportional(size), color, line_height: Some(size * crate::theme::BODY_LEADING), ..Default::default() };
+    let mut job = egui::text::LayoutJob::single_section(text.to_string(), format);
+    job.wrap.max_width = ui.available_width();
     job.wrap.max_rows = rows;
     job.wrap.break_anywhere = false;
     job.wrap.overflow_character = Some('…');
