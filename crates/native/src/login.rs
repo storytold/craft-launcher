@@ -42,7 +42,10 @@ pub fn is_enabled() -> bool {
     #[cfg(windows)]
     return windows_run().and_then(|k| k.get_value::<String, _>("ArtCraft Launcher").ok()).is_some();
     #[cfg(not(any(target_os = "macos", windows)))]
-    return autostart(this_flatpak().as_deref()).is_ok_and(|p| p.exists());
+    return {
+        let flatpak = this_flatpak();
+        autostart(flatpak.as_deref()).is_ok_and(|p| is_enabled_at(&p, flatpak.as_deref()))
+    };
 }
 
 pub fn set_enabled(on: bool) -> Result<(), String> {
@@ -91,12 +94,41 @@ pub fn set_enabled(on: bool) -> Result<(), String> {
         if !on {
             return remove(&path);
         }
-        let entry = match flatpak.as_deref() {
-            Some(app_id) => flatpak_autostart_entry(app_id),
-            None => autostart_entry(&program()?).ok_or("this program's path can't be used in a startup entry")?,
-        };
-        crate::paths::write_atomic(&path, entry.as_bytes())
+        enable_at(&path, flatpak.as_deref(), program)
     }
+}
+
+/// Write the entry at `path`, replacing whatever is there: the host build's entry has the same
+/// file name, so a user who moved to the Flatpak gets the Flatpak form.
+#[cfg_attr(any(target_os = "macos", windows), allow(dead_code))]
+fn enable_at(path: &Path, flatpak: Option<&str>, program: impl FnOnce() -> Result<PathBuf, String>) -> Result<(), String> {
+    let entry = match flatpak {
+        Some(app_id) => flatpak_autostart_entry(app_id),
+        None => autostart_entry(&program()?).ok_or("this program's path can't be used in a startup entry")?,
+    };
+    crate::paths::write_atomic(path, entry.as_bytes())
+}
+
+/// Whether the entry at `path` starts this launcher. In the Flatpak only its own form counts: an
+/// entry left by the host build (same file name) starts the host program, which may be gone.
+#[cfg_attr(any(target_os = "macos", windows), allow(dead_code))]
+fn is_enabled_at(path: &Path, flatpak: Option<&str>) -> bool {
+    let Some(app_id) = flatpak else {
+        return path.exists();
+    };
+    use std::io::Read as _;
+    // Ours is a few hundred bytes; don't read a large file someone else put there.
+    let mut text = String::new();
+    let read = std::fs::File::open(path).and_then(|f| f.take(64 * 1024).read_to_string(&mut text));
+    read.is_ok() && is_flatpak_entry(&text, app_id)
+}
+
+/// Whether `entry` is the Flatpak form for `app_id` (see `flatpak_autostart_entry`).
+#[cfg_attr(any(target_os = "macos", windows), allow(dead_code))]
+fn is_flatpak_entry(entry: &str, app_id: &str) -> bool {
+    let mut lines = entry.lines().map(str::trim_end);
+    let x_flatpak = format!("X-Flatpak={app_id}");
+    lines.clone().any(|l| l == x_flatpak) && lines.any(|l| l.starts_with("Exec=flatpak run "))
 }
 
 #[cfg(windows)]
@@ -125,8 +157,9 @@ fn flatpak_app(flatpak_info: bool, env_id: Option<&str>) -> Option<&str> {
 }
 
 /// Where the XDG autostart entry goes: `autostart/` in the user's config folder. Inside the Flatpak
-/// (`flatpak` is its app id) that is the host's ($HOST_XDG_CONFIG_HOME, else ~/.config, writable
-/// through `--filesystem=home`), not the sandbox's own $XDG_CONFIG_HOME (~/.var/app/<id>/config),
+/// (`flatpak` is its app id) that is the host's ($HOST_XDG_CONFIG_HOME, else ~/.config; the
+/// manifests' `--filesystem=xdg-config/autostart:create` exposes its `autostart/` at that host
+/// path, wherever it is), not the sandbox's own $XDG_CONFIG_HOME (~/.var/app/<id>/config),
 /// which the host session never reads (#1204); the file is named after the app id, as the XDG
 /// Background portal names it, so a renamed build (….Devel) beside the stable one has its own.
 #[cfg_attr(any(target_os = "macos", windows), allow(dead_code))]
@@ -237,6 +270,36 @@ mod tests {
         );
         let host = autostart_path(None, env(&[("FLATPAK_ID", devel)]), home);
         assert_eq!(host, dirs::config_dir().map(|c| c.join("autostart").join("ai.storyteller.artcraft-launcher.desktop")));
+    }
+
+    /// An entry left by the host build doesn't count in the Flatpak, and turning the setting on
+    /// replaces it with the Flatpak form.
+    #[test]
+    fn flatpak_replaces_the_host_builds_entry() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("autostart").join(format!("{ID}.desktop"));
+        assert!(!is_enabled_at(&path, None));
+        assert!(!is_enabled_at(&path, Some(ID)));
+
+        enable_at(&path, None, || Ok(PathBuf::from("/usr/bin/artcraft-launcher"))).unwrap();
+        assert!(is_enabled_at(&path, None));
+        assert!(!is_enabled_at(&path, Some(ID)));
+
+        enable_at(&path, Some(ID), || Err("the Flatpak form doesn't name this program".into())).unwrap();
+        assert!(is_enabled_at(&path, Some(ID)));
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), flatpak_autostart_entry(ID));
+    }
+
+    #[test]
+    fn flatpak_entry_is_recognised_only_for_its_own_app_id() {
+        let entry = flatpak_autostart_entry(ID);
+        assert!(is_flatpak_entry(&entry, ID));
+        assert!(is_flatpak_entry(&entry.replace('\n', "\r\n"), ID));
+        assert!(!is_flatpak_entry(&entry, "ai.storyteller.artcraft-launcher.Devel"));
+        assert!(!is_flatpak_entry(&autostart_entry(Path::new("/usr/bin/artcraft-launcher")).unwrap(), ID));
+        // Flatpak-looking id but a host Exec line: not ours.
+        let host_exec = entry.replace("Exec=flatpak run --command=artcraft-launcher", "Exec=/usr/bin/artcraft-launcher");
+        assert!(!is_flatpak_entry(&host_exec, ID));
     }
 
     /// Only a real sandbox (/.flatpak-info) counts: a $FLATPAK_ID inherited on the host, e.g. from a
