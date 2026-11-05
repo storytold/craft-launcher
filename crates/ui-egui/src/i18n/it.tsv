@@ -5,19 +5,19 @@
 	Launcher	Launcher
 	Craft App Suite	Craft App Suite
 	by {name}	di {name}
-	Open Source Tools for Creatives, Makers, and Builders	Strumenti open source per creativi, artigiani e progettisti
+	Open Source Tools for Creatives, Makers, and Builders	Strumenti open source per creativi, maker e progettisti
 	Settings	Impostazioni
 	Check for updates	Cerca aggiornamenti
 	Grid	Griglia
 	Table	Tabella
-	Show apps as cards	Mostra le app come schede
+	Show apps as cards	Mostra le app come riquadri
 	Show apps as a table	Mostra le app in una tabella
 	All	Tutte
 	Updates	Aggiornamenti
 	Not installed	Non installate
 	Search apps	Cerca app
 	Sort	Ordina
-	Suite order	Ordine della raccolta
+	Suite order	Ordine della suite
 	Name	Nome
 	Inspired by	Ispirata a
 	Status	Stato
@@ -29,33 +29,40 @@
 	Website	Sito web
 	Classic apps	App classiche
 	New apps	Nuove app
-	NEW	NOVITÀ
+	NEW	NUOVA
 	Install	Installa
 	Update to {v}	Aggiorna alla {v}
 	Open	Apri
 	Download for {os}	Scarica per {os}
 	Download	Scarica
 	Coming soon	In arrivo
-	Checking…	Ricerca…
+	Checking…	Controllo…
 	Not available	Non disponibile
-	Offline	Non in linea
-	Downloading {done} of {total}	Scaricamento: {done} di {total}
-	Downloading…	Scaricamento…
+	Offline	Offline
+	Downloading {done} of {total}	Download: {done} di {total}
+	Downloading…	Download in corso…
 	Reconnecting…	Riconnessione…
 	Verifying…	Verifica…
 	Installing, then restarting…	Installazione e riavvio…
 	Installing…	Installazione…
 	Removing…	Rimozione…
-	Pause download	Sospendi scaricamento
-	Cancel download	Annulla scaricamento
-	Resume download	Riprendi scaricamento
-	Discard download	Elimina scaricamento
+	Pause download	Sospendi download
+	Cancel download	Annulla download
+	Resume download	Riprendi download
+	Discard download	Elimina download
 	Release notes	Note di versione
 	Show in Finder	Mostra nel Finder
 	Show in Explorer	Mostra in Esplora file
 	Show in Files	Mostra in File
 	Reinstall	Reinstalla
 	Uninstall…	Disinstalla…
+	Launch options…	Opzioni di avvio…
+	{name} launch options	Opzioni di avvio di {name}
+	Flags added each time the app is opened	Parametri aggiunti a ogni apertura dell’app
+	Separate flags with spaces. Quote a value that has spaces in it.	Separa i parametri con spazi. Racchiudi tra virgolette i valori che contengono spazi.
+	A quote isn't closed.	Manca una virgoletta di chiusura.
+	{name} wasn't opened: a quote in its launch options isn't closed.	{name} non è stata aperta: nelle opzioni di avvio manca una virgoletta di chiusura.
+	Save	Salva
 	All releases	Tutte le versioni
 	ArtCraft Launcher {version} is available.	È disponibile ArtCraft Launcher {version}.
 	Dismiss	Ignora
@@ -64,7 +71,7 @@
 	A new version is available. Download it to replace this version?	È disponibile una nuova versione. Vuoi scaricarla per sostituire questa versione?
 	Later	Più tardi
 	What's new	Novità
-	No notes were published with this release.	Questa versione non include note di rilascio.
+	No notes were published with this release.	Nessuna nota pubblicata per questa versione.
 	Released {date}	Pubblicata il {date}
 	Open on GitHub	Apri su GitHub
 	Close	Chiudi
@@ -72,7 +79,7 @@
 	Only when I ask	Solo su mia richiesta
 	Automatically download and install updates	Scarica e installa automaticamente gli aggiornamenti
 	Notify me when an installed app has an update	Avvisami quando è disponibile un aggiornamento per un’app installata
-	Include pre-releases (betas and release candidates)	Includi le versioni preliminari (beta e candidate al rilascio)
+	Include pre-releases (betas and release candidates)	Includi le versioni preliminari (beta e release candidate)
 	Installing on Linux	Installazione su Linux
 	Installing on Windows	Installazione su Windows
 	Install new apps as	Installa le nuove app come
@@ -106,7 +113,7 @@
 	Installed apps with a newer version	App installate con una versione più recente disponibile
 	Apps you can install	App che puoi installare
 	Pin to top	Fissa in alto
-	Unpin	Rimuovi fissaggio
+	Unpin	Non fissare più
 	Pinned	Fissate
 	Reorder {name}	Riordina {name}
 	Move up	Sposta in alto
@@ -129,7 +136,7 @@
 	{name} icon	Icona di {name}
 	Loading ArtCraft Launcher…	Caricamento di ArtCraft Launcher…
 	Cancel update	Annulla aggiornamento
-	Stop waiting; the update can be started again later	Interrompi l’attesa; potrai riavviare l’aggiornamento più tardi
+	Stop waiting; the update can be started again later	Interrompi l’attesa; potrai avviare di nuovo l’aggiornamento più tardi
 	Download again	Scarica di nuovo
 	Install cancelled	Installazione annullata
 	Install cancelled. The download is kept for the next try.	Installazione annullata. Il file scaricato verrà conservato per il prossimo tentativo.
@@ -156,14 +163,14 @@ lightcraft	Photo library and raw development	Libreria fotografica e sviluppo RAW
 pdfcraft	Reading, organizing and protecting PDFs	Lettura, organizzazione e protezione dei PDF
 effectcraft	Motion graphics and visual effects	Grafica animata ed effetti visivi
 designcraft	Page layout and publishing	Impaginazione ed editoria
-wordcraft	Writing and document design	Scrittura e progettazione dei documenti
+wordcraft	Writing and document design	Scrittura e formattazione dei documenti
 deckcraft	Presentations and slide shows	Presentazioni e diapositive
 gridcraft	Spreadsheets and data	Fogli di calcolo e dati
 craft-anything	Find out how any software works, then craft your own	Scopri come funziona un software e poi creane uno tuo
 solidcraft	Parametric 3D CAD	CAD 3D parametrico
 cadcraft	Computer-aided design and drafting	Progettazione e disegno assistiti da computer
 soundcraft	Recording, editing and mixing audio	Registrazione, montaggio e missaggio audio
-figcraft	Interface design and prototyping	Progettazione di interfacce e prototipi
+figcraft	Interface design and prototyping	Progettazione e prototipazione di interfacce
 month	Jan	gen
 month	Feb	feb
 month	Mar	mar
@@ -178,14 +185,14 @@ month	Nov	nov
 month	Dec	dic
 	Not checked yet	Nessun controllo eseguito
 	GitHub's hourly limit was reached; full details return in {min} min	È stato raggiunto il limite orario di GitHub; i dettagli completi torneranno disponibili tra {min} min
-	GitHub limit hit; back in {min} min	Limite GitHub raggiunto; riprova tra {min} min
+	GitHub limit hit; back in {min} min	Limite GitHub raggiunto; ripristino tra {min} min
 	Installing for {platform}	Installazione per {platform}
 	Downloads for {platform}	Download per {platform}
 	No downloads for this system	Nessun download per questo sistema
 	Join the ArtCraft community on Discord	Unisciti alla community ArtCraft su Discord
 	ArtCraft on {name}	ArtCraft su {name}
 	Couldn't open {name}: {e}	Impossibile aprire {name}: {e}
-	Download cancelled	Scaricamento annullato
+	Download cancelled	Download annullato
 	Available to install	Disponibile per l’installazione
 	Available	Disponibile
 	Installed · up to date	Installata · aggiornata
@@ -195,7 +202,7 @@ month	Dec	dic
 	Not available here	Non disponibile su questo sistema
 	Updating…	Aggiornamento…
 	Update paused	Aggiornamento sospeso
-	Download paused	Scaricamento sospeso
+	Download paused	Download sospeso
 	{version} installed → {latest} released	{version} installata → {latest} pubblicata
 	Version {version}	Versione {version}
 	{installed} installed · latest {latest}	{installed} installata · ultima {latest}
@@ -215,7 +222,7 @@ month	Dec	dic
 	Click to sort by this column	Fai clic per ordinare in base a questa colonna
 	Like {name}	Come {name}
 	{done} of {total}	{done} di {total}
-	Downloading	Scaricamento
+	Downloading	Download in corso
 	Verifying checksum…	Verifica della somma di controllo…
 	Resume	Riprendi
 	{done} of {total} downloaded	Scaricati {done} di {total}
@@ -251,20 +258,20 @@ filter	Installed	Installate
 	{name} details	Dettagli di {name}
 @plural	{n} app|{n} apps	{n} app|{n} app
 @plural	{n} min ago|{n} min ago	{n} min fa|{n} min fa
-@plural	{n} h ago|{n} h ago	{n} h fa|{n} h fa
+@plural	{n} h ago|{n} h ago	{n} ora fa|{n} ore fa
 @plural	{n} day ago|{n} days ago	{n} giorno fa|{n} giorni fa
 @msg	Couldn't open {name}: {e}	Impossibile aprire {name}: {e}
-@msg	Download cancelled	Scaricamento annullato
+@msg	Download cancelled	Download annullato
 @msg	{name} updated to {version}	{name} aggiornata alla {version}
 @msg	{name} installed: {version}	{name} installata: {version}
 @msg	{name} updated to {version} (this release publishes no checksum, so only its size was checked)	{name} aggiornata alla {version} (questa versione non pubblica una somma di controllo, quindi è stata verificata solo la dimensione)
 @msg	{name} installed: {version} (this release publishes no checksum, so only its size was checked)	{name} installata: {version} (questa versione non pubblica una somma di controllo, quindi è stata verificata solo la dimensione)
 @msg	{name} was removed	{name} è stata rimossa
 @msg	{name} is running. Quit it, then try again.	{name} è in esecuzione. Chiudila e riprova.
-@msg	{name} was installed from the {repo} repository or the AUR ({pkg}). Update it with {cmd} or sudo pacman -Syu	{name} è stata installata dal repository {repo} o da AUR ({pkg}). Aggiornala con {cmd} o sudo pacman -Syu
-@msg	{name} was installed from the {repo} repository or the AUR ({pkg}). Update it with your AUR helper (for example: yay -S {pkg}) or sudo pacman -Syu	{name} è stata installata dal repository {repo} o da AUR ({pkg}). Aggiornala con il tuo gestore AUR (ad esempio: yay -S {pkg}) o sudo pacman -Syu
-@msg	{name} was installed from the AUR ({pkg}). Update it with {cmd}	{name} è stata installata da AUR ({pkg}). Aggiornala con {cmd}
-@msg	{name} was installed from the AUR ({pkg}). Update it with your AUR helper (for example: yay -S {pkg})	{name} è stata installata da AUR ({pkg}). Aggiornala con il tuo gestore AUR (ad esempio: yay -S {pkg})
+@msg	{name} was installed from the {repo} repository or the AUR ({pkg}). Update it with {cmd} or sudo pacman -Syu	{name} è stata installata dal repository {repo} o dall’AUR ({pkg}). Aggiornala con {cmd} o sudo pacman -Syu
+@msg	{name} was installed from the {repo} repository or the AUR ({pkg}). Update it with your AUR helper (for example: yay -S {pkg}) or sudo pacman -Syu	{name} è stata installata dal repository {repo} o dall’AUR ({pkg}). Aggiornala con il tuo gestore AUR (ad esempio: yay -S {pkg}) o sudo pacman -Syu
+@msg	{name} was installed from the AUR ({pkg}). Update it with {cmd}	{name} è stata installata dall’AUR ({pkg}). Aggiornala con {cmd}
+@msg	{name} was installed from the AUR ({pkg}). Update it with your AUR helper (for example: yay -S {pkg})	{name} è stata installata dall’AUR ({pkg}). Aggiornala con il tuo gestore AUR (ad esempio: yay -S {pkg})
 @id	app.install	Installa
 @id	app.update	Aggiorna
 @id	app.open	Apri
@@ -288,7 +295,7 @@ filter	Installed	Installate
 @id	filter.installed	Installate
 @id	filter.updates	Aggiornamenti
 @id	filter.notinstalled	Non installate
-@id	sort.suite	Ordine della raccolta
+@id	sort.suite	Ordine della suite
 @id	sort.name	Nome
 @id	sort.inspired	Ispirata a
 @id	sort.status	Stato
@@ -339,11 +346,11 @@ filter	Installed	Installate
 @msg	couldn't use install folder {path}: {reason}	impossibile usare la cartella di installazione {path}: {reason}
 @msg	this release has no AppImage for a custom install folder	questa versione non include un’AppImage per una cartella di installazione personalizzata
 @msg	custom install folders aren't supported on this system	le cartelle di installazione personalizzate non sono supportate su questo sistema
-@msg	{path} already exists and wasn't installed by ArtCraft Launcher	{path} esiste già e non è stata installata da ArtCraft Launcher
-@msg	couldn't move {path} to Trash ({reason}). Remove it in Finder instead.	impossibile spostare {path} nel Cestino ({reason}). Rimuovila dal Finder.
+@msg	{path} already exists and wasn't installed by ArtCraft Launcher	{path} esiste già e non proviene da ArtCraft Launcher
+@msg	couldn't move {path} to Trash ({reason}). Remove it in Finder instead.	impossibile spostare {path} nel Cestino ({reason}). Rimuovi l’elemento dal Finder.
 	Apps are placed inside this folder.	Le app vengono inserite in questa cartella.
 	Replace what's there?	Sostituire il contenuto esistente?
-	{path} already exists. Installing {name} will overwrite it.	{path} esiste già. Installando {name} verrà sovrascritto.
+	{path} already exists. Installing {name} will overwrite it.	{path} esiste già. Installando {name}, il contenuto esistente verrà sovrascritto.
 	Replace	Sostituisci
 	Recently updated	Aggiornate di recente
 	Name (A–Z)	Nome (A–Z)
@@ -359,13 +366,13 @@ column	Author	Autore
 	latest {version}	ultima {version}
 	{version} (latest release)	{version} (ultima versione)
 	Launcher version	Versione del launcher
-	Nightly	Compilazione notturna
-	Nightly (none published yet)	Compilazione notturna (nessuna pubblicata)
+	Nightly	Nightly
+	Nightly (none published yet)	Nightly (nessuna pubblicata)
 	Install version {version}	Installa versione {version}
 	Download selected version	Scarica la versione selezionata
 	Older launcher versions require a manual reinstall.	Le versioni precedenti del launcher richiedono una reinstallazione manuale.
 	Your files may not open in older versions.	I tuoi file potrebbero non aprirsi nelle versioni precedenti.
-	Enable automatic installs in Settings to follow new nightly builds.	Attiva le installazioni automatiche nelle impostazioni per seguire le nuove compilazioni notturne.
+	Enable automatic installs in Settings to follow new nightly builds.	Attiva le installazioni automatiche nelle impostazioni per seguire le nuove build nightly.
 texturecraft	3D texture painting	Pittura di texture 3D
 texturecraft	Paint materials on 3D models and export textures.	Dipingi materiali sui modelli 3D ed esporta le texture.
 texturecraft	Materials	Materiali

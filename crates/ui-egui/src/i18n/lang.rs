@@ -280,7 +280,6 @@ impl Eq for Lang {}
 
 impl Lang {
     pub const EN: Lang = Lang(&LANGUAGES[0]);
-    pub const IT: Lang = Lang(&LANGUAGES[13]);
     pub const RU: Lang = Lang(&LANGUAGES[1]);
     pub const ZH_CN: Lang = Lang(&LANGUAGES[2]);
     pub const ZH_TW: Lang = Lang(&LANGUAGES[3]);
@@ -293,6 +292,7 @@ impl Lang {
     pub const HU: Lang = Lang(&LANGUAGES[10]);
     pub const JA: Lang = Lang(&LANGUAGES[11]);
     pub const KA: Lang = Lang(&LANGUAGES[12]);
+    pub const IT: Lang = Lang(&LANGUAGES[13]);
 
     pub fn code(self) -> &'static str {
         self.0.code
