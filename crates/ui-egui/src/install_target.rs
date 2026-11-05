@@ -5,22 +5,33 @@
 //! preferred formats first, then every other format this platform installs, each tried against
 //! every asset token. Choosing only the preferred format would show the portable `apps` folder
 //! for a release that ships only an MSI, which the backend then installs into Program Files.
-//! The UI cannot see a Linux machine's package managers, so there it answers nothing and the
-//! field keeps saying "System default".
+//! The UI cannot see a Linux machine's package managers, so there a fresh install answers nothing
+//! and the field keeps saying "System default".
 
 use artcraft_launcher_core::platform::{parse_asset_name, pick_asset};
 use artcraft_launcher_core::protocol::LatestRelease;
-use artcraft_launcher_core::{Arch, CraftApp, Os, PackageKind};
+use artcraft_launcher_core::{Arch, Asset, CraftApp, InstallSource, Installed, Os, PackageKind, Release};
 
 use crate::app::{Host, LauncherUi};
 use crate::model::AppEntry;
 
-/// The formats a fresh install can use on `os`, best first: native `available_kinds`.
+/// The formats a fresh install can use on `os`, best first: native `available_kinds`. Linux's
+/// depend on its package managers, so none are certain.
 fn platform_kinds(os: Os) -> &'static [PackageKind] {
     match os {
         Os::Windows => &[PackageKind::Msi, PackageKind::PortableZip],
         Os::MacOs => &[PackageKind::Dmg],
-        _ => &[],
+        Os::FreeBsd => &[PackageKind::TarGz],
+        Os::Linux => &[],
+    }
+}
+
+/// The formats native `available_kinds` offers on `os` whatever the machine has: on Linux the
+/// AppImage, whichever package managers are there.
+fn certain_kinds(os: Os) -> &'static [PackageKind] {
+    match os {
+        Os::Linux => &[PackageKind::AppImage],
+        _ => platform_kinds(os),
     }
 }
 
@@ -36,7 +47,41 @@ fn fresh_kinds(app: &CraftApp, os: Os, preferred: &[PackageKind]) -> Vec<Package
     kinds
 }
 
+/// The format the copy that's there was installed as, where the UI can tell: on Windows an MSI is
+/// found in the registry and anything the launcher records is its portable ZIP (MSI installs
+/// leave no record); on macOS every copy is the DMG's app; an AppImage found on Linux is one.
+/// What the launcher put on Linux (an AppImage or a tarball) it alone knows.
+fn installed_kind(os: Os, source: InstallSource) -> Option<PackageKind> {
+    match (os, source) {
+        (Os::Windows, InstallSource::Msi) => Some(PackageKind::Msi),
+        (Os::Windows, InstallSource::Launcher) => Some(PackageKind::PortableZip),
+        (Os::MacOs, InstallSource::MacApp | InstallSource::Launcher) => Some(PackageKind::Dmg),
+        (Os::Linux, InstallSource::AppImage) => Some(PackageKind::AppImage),
+        _ => None,
+    }
+}
+
+/// The formats an install or update of `app` tries, best first, as `native::install::choose_kinds`
+/// orders them: the installed copy's format alone when the backend surely installs it here, else
+/// [`fresh_kinds`]. Empty where the UI can't tell (a fresh install on Linux).
+fn install_kinds(app: &CraftApp, os: Os, installed: Option<&Installed>, preferred: &[PackageKind]) -> Vec<PackageKind> {
+    let kept = installed.and_then(|inst| installed_kind(os, inst.source)).filter(|kind| certain_kinds(os).contains(kind) && app.installs(*kind));
+    match kept {
+        Some(kind) => vec![kind],
+        None => fresh_kinds(app, os, preferred),
+    }
+}
+
 impl LauncherUi {
+    /// The asset of `release` that installing or updating `entry` here would download. `None`
+    /// when none would be, or the UI can't tell which (see [`install_kinds`]).
+    pub(crate) fn install_asset<'r>(&self, entry: &AppEntry, release: &'r Release) -> Option<&'r Asset> {
+        let platform = self.platform?;
+        let kinds = install_kinds(entry.app, platform.os, entry.installed.as_ref(), &self.settings.preferred_kinds);
+        let stems: Vec<&str> = entry.app.stems().collect();
+        pick_asset(release, &stems, platform, &kinds).map(|(asset, _)| asset)
+    }
+
     /// The format and architecture of the package a fresh install of `entry` would use. Before
     /// the release is known, the first format with no architecture (an MSI then answers
     /// nothing, as its Program Files depends on it). `None` when nothing installs it here.
@@ -88,5 +133,32 @@ mod tests {
         // A preference this platform cannot install is skipped, as the backend does.
         assert_eq!(fresh_kinds(app, Os::Windows, &[PackageKind::Deb]), [PackageKind::Msi, PackageKind::PortableZip]);
         assert!(fresh_kinds(app, Os::Linux, &[PackageKind::AppImage]).is_empty());
+    }
+
+    fn installed(source: InstallSource) -> Installed {
+        Installed { version: None, source, location: String::new(), package: None, externally_managed: false, origin: None, installation: None }
+    }
+
+    #[test]
+    fn an_update_keeps_the_installed_copys_format_as_the_backend_does() {
+        use PackageKind::{Dmg, Msi, PortableZip};
+        let app = &artcraft_launcher_core::SUITE[0];
+        let kinds = |os, source: Option<InstallSource>, preferred: &[PackageKind]| install_kinds(app, os, source.map(installed).as_ref(), preferred);
+        // The launcher's own copy on Windows is its portable ZIP, even with MSI preferred.
+        assert_eq!(kinds(Os::Windows, Some(InstallSource::Launcher), &[Msi]), [PortableZip]);
+        // An MSI install updates as an MSI, even with the portable ZIP preferred.
+        assert_eq!(kinds(Os::Windows, Some(InstallSource::Msi), &[PortableZip]), [Msi]);
+        // Nothing installed: the preference, then the rest.
+        assert_eq!(kinds(Os::Windows, None, &[PortableZip]), [PortableZip, Msi]);
+        assert_eq!(kinds(Os::MacOs, Some(InstallSource::MacApp), &[]), [Dmg]);
+        // FreeBSD installs only the tarball.
+        assert_eq!(kinds(Os::FreeBsd, None, &[]), [PackageKind::TarGz]);
+        assert_eq!(kinds(Os::FreeBsd, Some(InstallSource::Binary), &[]), [PackageKind::TarGz]);
+        // An AppImage is always installable on Linux, so an AppImage copy updates as one.
+        assert_eq!(kinds(Os::Linux, Some(InstallSource::AppImage), &[PackageKind::Deb]), [PackageKind::AppImage]);
+        // Other Linux formats depend on package managers the UI can't see: no answer.
+        assert!(kinds(Os::Linux, Some(InstallSource::Deb), &[]).is_empty());
+        assert!(kinds(Os::Linux, Some(InstallSource::Launcher), &[]).is_empty());
+        assert!(kinds(Os::Linux, None, &[PackageKind::AppImage]).is_empty());
     }
 }

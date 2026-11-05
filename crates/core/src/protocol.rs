@@ -285,6 +285,12 @@ pub trait Backend {
     fn send(&mut self, command: Command);
     /// Events since the last call, oldest first.
     fn poll(&mut self) -> Vec<Event>;
+    /// The package format the running launcher was installed as, which updating itself
+    /// downloads. `None` while unknown (the desktop finds out once a newer launcher is out) or
+    /// where it doesn't update itself.
+    fn launcher_kind(&self) -> Option<PackageKind> {
+        None
+    }
     fn capabilities(&self) -> Capabilities;
     /// The machine apps would be installed on (on the web: the visitor's, best guess).
     fn platform(&self) -> Option<Platform>;

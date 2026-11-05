@@ -1286,6 +1286,11 @@ impl Backend for NativeBackend {
         std::mem::take(&mut *self.shared.events.lock().unwrap_or_else(PoisonError::into_inner))
     }
 
+    fn launcher_kind(&self) -> Option<PackageKind> {
+        // Looked up (it can run package-manager queries) with a newer launcher release; never here.
+        self.shared.self_install.get().and_then(Option::as_ref).map(crate::self_update::kind)
+    }
+
     fn capabilities(&self) -> Capabilities {
         let reveal_label = match self.platform.map(|p| p.os) {
             Some(Os::MacOs) => "Show in Finder",

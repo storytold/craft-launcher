@@ -1327,13 +1327,22 @@ pub(crate) fn version_line(e: &AppEntry, status: &AppStatus) -> String {
 /// Flatpak; such a copy's download stays the `.flatpak` bundle — offering it an AppImage (or a
 /// `.deb`) would point at replacing the sandboxed install with a different one.
 pub(crate) fn launcher_download(r: &artcraft_launcher_core::Release, p: artcraft_launcher_core::Platform, flatpak: bool) -> Option<String> {
+    launcher_asset(r, p, flatpak).map(|a| a.url.clone())
+}
+
+/// The asset behind [`launcher_download`].
+pub(crate) fn launcher_asset(
+    r: &artcraft_launcher_core::Release,
+    p: artcraft_launcher_core::Platform,
+    flatpak: bool,
+) -> Option<&artcraft_launcher_core::release::Asset> {
     use artcraft_launcher_core::PackageKind;
     let kinds: &[PackageKind] = match p.os {
         artcraft_launcher_core::Os::Linux if flatpak => &[PackageKind::Flatpak],
         artcraft_launcher_core::Os::Linux => &[PackageKind::AppImage, PackageKind::Deb],
         _ => p.default_kinds(),
     };
-    pick_asset(r, &[artcraft_launcher_core::catalog::LAUNCHER_ID], p, kinds).map(|(a, _)| a.url.clone())
+    pick_asset(r, &[artcraft_launcher_core::catalog::LAUNCHER_ID], p, kinds).map(|(a, _)| a)
 }
 
 /// A column of single-line texts, one per font and `gap` apart, centred across the row it is in.
