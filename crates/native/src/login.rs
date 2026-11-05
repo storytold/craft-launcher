@@ -123,12 +123,35 @@ fn is_enabled_at(path: &Path, flatpak: Option<&str>) -> bool {
     read.is_ok() && is_flatpak_entry(&text, app_id)
 }
 
-/// Whether `entry` is the Flatpak form for `app_id` (see `flatpak_autostart_entry`).
+/// Whether `entry` is the Flatpak form for `app_id` (see `flatpak_autostart_entry`) and the
+/// desktop will run it: not hidden (a startup manager's "off"), and its Exec starts this app.
 #[cfg_attr(any(target_os = "macos", windows), allow(dead_code))]
 fn is_flatpak_entry(entry: &str, app_id: &str) -> bool {
-    let mut lines = entry.lines().map(str::trim_end);
-    let x_flatpak = format!("X-Flatpak={app_id}");
-    lines.clone().any(|l| l == x_flatpak) && lines.any(|l| l.starts_with("Exec=flatpak run "))
+    let key = |name| desktop_entry_key(entry, name);
+    key("Hidden") != Some("true")
+        && key("X-GNOME-Autostart-enabled") != Some("false")
+        && key("X-Flatpak") == Some(app_id)
+        && key("Exec") == Some(format!("{} {HIDDEN_FLAG}", flatpak_exec(app_id)).as_str())
+}
+
+/// The value of `key` in the entry's `[Desktop Entry]` group, as desktop-entry parsers read it:
+/// other groups and comments don't count, space around `=` is ignored, and the last value wins.
+#[cfg_attr(any(target_os = "macos", windows), allow(dead_code))]
+fn desktop_entry_key<'a>(entry: &'a str, key: &str) -> Option<&'a str> {
+    let mut in_group = false;
+    let mut value = None;
+    for line in entry.lines().map(str::trim) {
+        if line.starts_with('[') {
+            in_group = line == "[Desktop Entry]";
+        } else if in_group
+            && !line.starts_with('#')
+            && let Some((name, v)) = line.split_once('=')
+            && name.trim_end() == key
+        {
+            value = Some(v.trim_start());
+        }
+    }
+    value
 }
 
 #[cfg(windows)]
@@ -188,7 +211,13 @@ fn autostart_entry(program: &Path) -> Option<String> {
 /// starts the app through `flatpak run` on the host, as Flatpak's own exported entries do.
 #[cfg_attr(any(target_os = "macos", windows), allow(dead_code))]
 fn flatpak_autostart_entry(app_id: &str) -> String {
-    entry_text(&format!("flatpak run --command={FLATPAK_COMMAND} {app_id}"), &format!("X-Flatpak={app_id}\n"))
+    entry_text(&flatpak_exec(app_id), &format!("X-Flatpak={app_id}\n"))
+}
+
+/// The command that starts the Flatpak `app_id` from the host (the entry adds `--hidden`).
+#[cfg_attr(any(target_os = "macos", windows), allow(dead_code))]
+fn flatpak_exec(app_id: &str) -> String {
+    format!("flatpak run --command={FLATPAK_COMMAND} {app_id}")
 }
 
 #[cfg_attr(any(target_os = "macos", windows), allow(dead_code))]
@@ -294,12 +323,53 @@ mod tests {
     fn flatpak_entry_is_recognised_only_for_its_own_app_id() {
         let entry = flatpak_autostart_entry(ID);
         assert!(is_flatpak_entry(&entry, ID));
-        assert!(is_flatpak_entry(&entry.replace('\n', "\r\n"), ID));
+        assert!(is_flatpak_entry(&entry.replace('\n', " \r\n"), ID));
         assert!(!is_flatpak_entry(&entry, "ai.storyteller.artcraft-launcher.Devel"));
         assert!(!is_flatpak_entry(&autostart_entry(Path::new("/usr/bin/artcraft-launcher")).unwrap(), ID));
         // Flatpak-looking id but a host Exec line: not ours.
         let host_exec = entry.replace("Exec=flatpak run --command=artcraft-launcher", "Exec=/usr/bin/artcraft-launcher");
         assert!(!is_flatpak_entry(&host_exec, ID));
+    }
+
+    /// A startup manager turns an entry off by hiding it; the desktop then skips it.
+    #[test]
+    fn hidden_flatpak_entry_is_off() {
+        let entry = flatpak_autostart_entry(ID);
+        assert!(!is_flatpak_entry(&format!("{entry}Hidden=true\n"), ID));
+        assert!(!is_flatpak_entry(&format!("{entry}Hidden = true\n"), ID));
+        assert!(!is_flatpak_entry(&entry.replace("X-GNOME-Autostart-enabled=true", "X-GNOME-Autostart-enabled=false"), ID));
+        assert!(is_flatpak_entry(&format!("{entry}Hidden=false\n"), ID));
+        assert!(is_flatpak_entry(&format!("{entry}#Hidden=true\n"), ID));
+        // The last value is the one that counts.
+        assert!(is_flatpak_entry(&format!("{entry}Hidden=true\nHidden=false\n"), ID));
+    }
+
+    /// Our X-Flatpak isn't enough: the Exec has to start this app, hidden.
+    #[test]
+    fn flatpak_entry_must_start_this_app() {
+        let entry = flatpak_autostart_entry(ID);
+        let other = entry.replace(
+            "Exec=flatpak run --command=artcraft-launcher ai.storyteller.artcraft-launcher --hidden",
+            "Exec=flatpak run --command=other com.example.Other --hidden",
+        );
+        assert!(!is_flatpak_entry(&other, ID));
+        assert!(!is_flatpak_entry(&entry.replace(" --hidden", ""), ID));
+        assert!(!is_flatpak_entry(&format!("{entry}Exec=flatpak run com.example.Other --hidden\n"), ID));
+    }
+
+    /// Only the [Desktop Entry] group's keys count.
+    #[test]
+    fn keys_in_other_groups_dont_count() {
+        let flatpak = flatpak_autostart_entry(ID);
+        let in_action = format!(
+            "{}[Desktop Action flatpak]\n{}",
+            autostart_entry(Path::new("/usr/bin/artcraft-launcher")).unwrap(),
+            flatpak.replace("[Desktop Entry]\n", "")
+        );
+        assert!(!is_flatpak_entry(&in_action, ID));
+        assert!(is_flatpak_entry(&format!("{flatpak}[X-Other]\nHidden=true\nExec=/usr/bin/other\n"), ID));
+        assert!(!is_flatpak_entry(&format!("[X-Other]\n{}", flatpak.replace("[Desktop Entry]\n", "")), ID));
+        assert_eq!(desktop_entry_key("[A]\nExec=a\n[Desktop Entry]\n# Exec=b\nExec[de]=c\n Exec = d \n", "Exec"), Some("d"));
     }
 
     /// Only a real sandbox (/.flatpak-info) counts: a $FLATPAK_ID inherited on the host, e.g. from a
