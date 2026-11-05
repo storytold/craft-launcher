@@ -1201,9 +1201,7 @@ fn grid_shows_every_status_and_installs_on_click() {
     h.get_by_label_contains("48 MB of 131 MB");
     h.get_by_label("Update all (2)").click();
     h.run_steps(2);
-    let installs: Vec<_> = sent.borrow().iter().filter_map(|c| if let Command::Install { app } = c { Some(app.clone()) } else { None }).collect();
-    assert_eq!(installs.len(), 2, "{installs:?}");
-    assert!(installs.contains(&"photocraft".to_string()) && installs.contains(&"effectcraft".to_string()));
+    assert!(sent.borrow().contains(&Command::InstallBatch { apps: vec!["photocraft".into(), "effectcraft".into()] }));
 }
 
 #[test]
@@ -2232,7 +2230,7 @@ fn automatic_checks_run_every_twelve_minutes() {
 }
 
 #[test]
-/// With auto-update on, outdated apps are queued for Install and the launcher for
+/// With auto-update on, outdated apps are queued as one batch and the launcher for
 /// `UpdateLauncher`.
 fn automatic_updates_queue_installs_for_outdated_apps_and_launcher() {
     let mut ev = events();
@@ -2257,8 +2255,10 @@ fn automatic_updates_queue_installs_for_outdated_apps_and_launcher() {
     );
     h.run_steps(4);
     let commands = sent.borrow().clone();
-    assert!(commands.contains(&Command::Install { app: "photocraft".into() }), "outdated photocraft should be queued for install: {commands:?}");
-    assert!(commands.contains(&Command::Install { app: "effectcraft".into() }), "outdated effectcraft should be queued for install: {commands:?}");
+    assert!(
+        commands.contains(&Command::InstallBatch { apps: vec!["photocraft".into(), "effectcraft".into()] }),
+        "outdated apps should be queued together: {commands:?}"
+    );
     assert!(commands.contains(&Command::UpdateLauncher), "launcher update should be queued: {commands:?}");
 }
 

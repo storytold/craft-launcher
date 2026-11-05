@@ -29,6 +29,10 @@ pub enum Command {
     Install {
         app: String,
     },
+    /// Install or update several apps as one user-selected batch.
+    InstallBatch {
+        apps: Vec<String>,
+    },
     /// `Install`, writing over what [`Event::Occupied`] reported. `path` is the path the user
     /// agreed to overwrite: if the install would now write somewhere else, nothing is replaced and
     /// the user is asked again.
@@ -129,7 +133,7 @@ pub enum JobPhase {
         total: u64,
     },
     Verifying,
-    /// The system's installer is busy with another app; this one goes next.
+    /// Waiting for the other downloads in a batch or for the system installer.
     Waiting,
     /// Waiting on the OS installer (MSI) or copying files.
     Installing,

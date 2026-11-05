@@ -748,10 +748,16 @@ impl LauncherUi {
                 if self.auto_update_attempted.contains(&(e.app.id.to_string(), v.clone())) { None } else { Some((e.app.id.to_string(), v)) }
             })
             .collect();
+        let mut batch = Vec::with_capacity(to_update.len());
         for (id, version) in to_update {
             log::info!("auto-update: queuing update for {id} to {version}");
             self.auto_update_attempted.insert((id.clone(), version));
-            self.send(Command::Install { app: id });
+            batch.push(id);
+        }
+        match batch.as_slice() {
+            [] => {}
+            [app] => self.send(Command::Install { app: app.clone() }),
+            _ => self.send(Command::InstallBatch { apps: batch }),
         }
         if self.caps.self_update
             && let Some(r) = &self.launcher_update
