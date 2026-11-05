@@ -132,6 +132,8 @@
 	Pin to top	Fijar arriba
 	Unpin	Quitar fijación
 	Pinned	Fijadas
+	Pin {name} to top	Fijar {name} arriba
+	Unpin {name}	Quitar fijación de {name}
 	Reorder {name}	Reordenar {name}
 	Move up	Subir
 	Move down	Bajar

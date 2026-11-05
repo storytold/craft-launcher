@@ -133,6 +133,8 @@
 	Pin to top	Rögzítés felülre
 	Unpin	Rögzítés feloldása
 	Pinned	Rögzítettek
+	Pin {name} to top	{name} rögzítése felülre
+	Unpin {name}	{name} rögzítésének feloldása
 	Reorder {name}	Átrendezés: {name}
 	Move up	Feljebb
 	Move down	Lejjebb

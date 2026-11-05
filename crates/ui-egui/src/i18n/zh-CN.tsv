@@ -281,6 +281,8 @@ figcraft	Interface design and prototyping	界面设计与原型制作
 	Pin to top	置顶
 	Unpin	取消置顶
 	Pinned	已置顶
+	Pin {name} to top	将 {name} 置顶
+	Unpin {name}	取消置顶 {name}
 	Reorder {name}	重新排序 {name}
 	Move up	上移
 	Move down	下移

@@ -131,6 +131,8 @@
 	Pin to top	Закрепить сверху
 	Unpin	Открепить
 	Pinned	Закреплённые
+	Pin {name} to top	Закрепить {name} сверху
+	Unpin {name}	Открепить {name}
 	Reorder {name}	Изменить порядок: {name}
 	Move up	Выше
 	Move down	Ниже

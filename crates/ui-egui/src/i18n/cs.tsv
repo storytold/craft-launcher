@@ -119,6 +119,8 @@
 	Pin to top	Připnout nahoru
 	Unpin	Odepnout
 	Pinned	Připnuté
+	Pin {name} to top	Připnout {name} nahoru
+	Unpin {name}	Odepnout {name}
 	Reorder {name}	Změnit pořadí: {name}
 	Move up	Posunout nahoru
 	Move down	Posunout dolů

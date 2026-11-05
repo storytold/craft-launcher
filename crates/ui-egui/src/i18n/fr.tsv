@@ -131,6 +131,8 @@
 	Pin to top	Épingler en haut
 	Unpin	Désépingler
 	Pinned	Épinglés
+	Pin {name} to top	Épingler {name} en haut
+	Unpin {name}	Désépingler {name}
 	Reorder {name}	Réordonner {name}
 	Move up	Monter
 	Move down	Descendre

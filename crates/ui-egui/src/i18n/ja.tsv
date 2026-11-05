@@ -135,6 +135,8 @@
 	Pin to top	上部にピン留め
 	Unpin	ピン留めを外す
 	Pinned	ピン留め
+	Pin {name} to top	{name}を上部にピン留め
+	Unpin {name}	{name}のピン留めを外す
 	Reorder {name}	{name}の順序を変更
 	Move up	上へ
 	Move down	下へ

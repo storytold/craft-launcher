@@ -165,6 +165,8 @@
 	Move up	ზემოთ გადატანა
 	Pin to top	ზევით დამაგრება
 	Pinned	დამაგრებული
+	Pin {name} to top	{name}-ის ზევით დამაგრება
+	Unpin {name}	{name}-ის დამაგრების მოხსნა
 	Reorder {name}	{name}-ის თანმიმდევრობის შეცვლა
 	Unpin	დამაგრების მოხსნა
 	The download is still here. It's checked again, then installed.	ჩამოტვირთული ფაილი ისევ აქ არის. ჯერ ხელახლა შემოწმდება, შემდეგ დაინსტალირდება.
