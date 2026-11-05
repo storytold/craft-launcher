@@ -48,6 +48,9 @@ finish-args:
   # org.freedesktop.Flatpak is a sandbox escape that Flathub reviews case by case; the AppImage,
   # .deb and .rpm builds are the recommended way to run the launcher on Linux.
   - --talk-name=org.freedesktop.Flatpak
+  # The home grant is also where "Start on login" writes its entry: the host's ~/.config/autostart
+  # (crates/native/src/login.rs), since the host session never reads the sandbox's own config
+  # folder. Narrowing the grant breaks that setting.
   - --filesystem=home
   # The version each app should follow (craft_update::pins), in a host folder of its own so the
   # Craft apps' Flatpaks can be granted read access to it alone. Usually inside home, but
