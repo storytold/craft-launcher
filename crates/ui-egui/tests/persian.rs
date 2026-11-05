@@ -73,6 +73,9 @@ fn events() -> Vec<Event> {
             source: InstallSource::MacApp,
             location: format!("/Applications/{}.app", app.name),
             package: None,
+            externally_managed: false,
+            origin: None,
+            installation: None,
         });
         ev.push(Event::Detected { app: app.id.into(), installed });
     }
@@ -137,6 +140,7 @@ fn persian_content_preserves_chrome_and_interactions() {
     h.key_press(egui::Key::Backspace);
     h.run_steps(5);
     check_popups(&mut h);
+    check_current_upstream_interactions(&mut h);
     check_details(&mut h);
     h.get_by_label("تنظیمات").click();
     h.run_steps(4);
@@ -323,4 +327,42 @@ fn check_popups(h: &mut Harness<'_, Option<LauncherUi>>) {
     h.run_steps(6);
     h.get_by_label("بستن").click();
     h.run_steps(6);
+}
+
+/// New upstream pin gestures follow the Persian card order, while launch flags retain their value.
+fn check_current_upstream_interactions(h: &mut Harness<'_, Option<LauncherUi>>) {
+    let original = ["photocraft", "lightcraft", "wordcraft"];
+    for (right_half, expected) in [(true, ["lightcraft", "photocraft", "wordcraft"]), (false, ["lightcraft", "wordcraft", "photocraft"])] {
+        h.state_mut().as_mut().unwrap().settings.pinned = original.map(str::to_string).to_vec();
+        h.run_steps(6);
+        let from = h.get_by_label("تغییر جای PhotoCraft").rect().center();
+        let target = h.get_by_label("جزئیات WordCraft").rect();
+        h.hover_at(from);
+        h.run_steps(2);
+        h.drag_at(from);
+        h.run_steps(2);
+        h.hover_at(from + egui::vec2(0.0, -8.0));
+        h.run_steps(2);
+        assert!(h.state().as_ref().unwrap().pin_dragging_for_test());
+        let x = if right_half { target.right() - 12.0 } else { target.left() + 12.0 };
+        h.drop_at(egui::pos2(x, target.center().y));
+        h.run_steps(2);
+        assert_eq!(h.state().as_ref().unwrap().settings.pinned, expected, "RTL drop half");
+    }
+    snapshot(h, "pins-fa-dark");
+    h.state_mut().as_mut().unwrap().settings.pinned.clear();
+    h.run_steps(6);
+    h.get_by_label("گزینه‌های بیشتر برای PhotoCraft").click();
+    h.run_steps(4);
+    h.get_by_label("گزینه‌های اجرا…").click();
+    h.run_steps(4);
+    let flags = "--name \"نمونه فارسی\"";
+    h.get_by_role_and_label(egui::accesskit::Role::TextInput, "پارامترهایی که هر بار هنگام اجرای برنامه افزوده می‌شوند").click();
+    h.run_steps(2);
+    h.get_by_role_and_label(egui::accesskit::Role::TextInput, "پارامترهایی که هر بار هنگام اجرای برنامه افزوده می‌شوند").type_text(flags);
+    h.run_steps(4);
+    snapshot(h, "launch-options-fa-dark");
+    h.get_by_label("ذخیره").click();
+    h.run_steps(4);
+    assert_eq!(h.state().as_ref().unwrap().settings.launch_flags.get("photocraft").map(String::as_str), Some(flags));
 }

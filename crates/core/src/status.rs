@@ -61,6 +61,23 @@ pub struct Installed {
     /// The package that installed it, for package-manager installs (`photocraft-bin`).
     #[serde(default)]
     pub package: Option<String>,
+    /// Whether this copy is managed externally (such as a Flatpak from FlatPark) and
+    /// will not be replaced with a downloaded bundle.
+    #[serde(default)]
+    pub externally_managed: bool,
+    /// The remote repository or origin (`flatpark`, `<app>-origin`), when known.
+    #[serde(default)]
+    pub origin: Option<String>,
+    /// The installation scope or name (`user`, `system`, or a named installation), for Flatpak installs.
+    #[serde(default)]
+    pub installation: Option<String>,
+}
+
+impl Installed {
+    /// Whether this copy is managed externally and should not be replaced by a downloaded bundle.
+    pub fn is_externally_managed(&self) -> bool {
+        self.externally_managed
+    }
 }
 
 /// The status shown on an app's card or row.
@@ -111,6 +128,8 @@ pub fn status(installed: Option<&Installed>, latest: Latest<'_>) -> AppStatus {
         }
         (Some(_), Latest::Pending | Latest::Failed | Latest::NoRelease) => AppStatus::Installed,
         (Some(inst), Latest::Found { version: latest, .. }) => match (latest, inst.version.as_ref()) {
+            // A repository-managed copy updates to what its repository has, which GitHub doesn't say.
+            (Some(l), Some(i)) if version::is_update(l, i) && inst.externally_managed => AppStatus::Installed,
             (Some(l), Some(i)) if version::is_update(l, i) => AppStatus::UpdateAvailable,
             (Some(_), Some(_)) => AppStatus::UpToDate,
             // Version unknown on one side: we can't promise "up to date".
@@ -124,7 +143,15 @@ mod tests {
     use super::*;
 
     fn inst(v: &str) -> Installed {
-        Installed { version: version::parse(v), source: InstallSource::Launcher, location: String::new(), package: None }
+        Installed {
+            version: version::parse(v),
+            source: InstallSource::Launcher,
+            location: String::new(),
+            package: None,
+            externally_managed: false,
+            origin: None,
+            installation: None,
+        }
     }
 
     #[test]
@@ -141,6 +168,9 @@ mod tests {
         assert_eq!(status(Some(&inst("0.6.0")), found(true)), AppStatus::UpToDate);
         assert_eq!(status(Some(&inst("0.4.0")), Latest::Failed), AppStatus::Installed);
         assert_eq!(status(Some(&inst("garbage")), found(true)), AppStatus::Installed);
+        let repo = Installed { externally_managed: true, ..inst("0.4.0") };
+        assert_eq!(status(Some(&repo), found(true)), AppStatus::Installed);
+        assert_eq!(status(Some(&Installed { externally_managed: true, ..inst("0.5.0") }), found(true)), AppStatus::UpToDate);
         assert!(AppStatus::UpdateAvailable.is_installed() && !AppStatus::Available.is_installed());
     }
 }

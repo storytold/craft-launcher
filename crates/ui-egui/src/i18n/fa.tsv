@@ -543,3 +543,27 @@ solidcraft	Parametric 3D CAD	طراحی سه‌بعدی پارامتریک
 @msg	{name} was installed from the AUR ({pkg}). Update it with {cmd}	{name} از AUR نصب شده است ({pkg}). آن را با {cmd} به‌روز کنید
 @msg	{name} was installed from the {repo} repository or the AUR ({pkg}). Update it with your AUR helper (for example: yay -S {pkg}) or sudo pacman -Syu	{name} از مخزن {repo} یا AUR نصب شده است ({pkg}). آن را با ابزار مدیریت AUR خود (برای نمونه: yay -S {pkg}) یا sudo pacman -Syu به‌روز کنید
 @msg	{name} was installed from the {repo} repository or the AUR ({pkg}). Update it with {cmd} or sudo pacman -Syu	{name} از مخزن {repo} یا AUR نصب شده است ({pkg}). آن را با {cmd} یا sudo pacman -Syu به‌روز کنید
+
+# Interface additions from upstream 0.14.
+	Launch options…	گزینه‌های اجرا…
+	{name} launch options	گزینه‌های اجرای {name}
+	Flags added each time the app is opened	پارامترهایی که هر بار هنگام اجرای برنامه افزوده می‌شوند
+	Separate flags with spaces. Quote a value that has spaces in it.	پارامترها را با فاصله جدا کنید. مقداری را که فاصله دارد داخل علامت نقل‌قول بگذارید.
+	A quote isn't closed.	یک علامت نقل‌قول بسته نشده است.
+	{name} wasn't opened: a quote in its launch options isn't closed.	{name} اجرا نشد: یک علامت نقل‌قول در گزینه‌های اجرای آن بسته نشده است.
+	Save	ذخیره
+	Pin to top	سنجاق به بالا
+	Unpin	برداشتن سنجاق
+	Pinned	سنجاق‌شده
+	Reorder {name}	تغییر جای {name}
+	Move up	انتقال به بالا
+	Move down	انتقال به پایین
+	Retry update	تلاش دوباره برای به‌روزرسانی
+	Hide community apps	پنهان‌کردن برنامه‌های جامعهٔ کاربران
+	Advanced	پیشرفته
+	Migrate Flatpak bundles to ArtCraft OCI (experimental)	انتقال بسته‌های Flatpak به ArtCraft OCI (آزمایشی)
+	On update, switch first party apps when the matching package is available. Otherwise, keep using bundles.	هنگام به‌روزرسانی، اگر بستهٔ سازگار موجود باشد، برنامه‌های رسمی منتقل می‌شوند؛ در غیر این صورت، استفاده از بسته‌های فعلی ادامه می‌یابد.
+	The OCI repository is a preview with GPG verification disabled.	مخزن OCI در مرحلهٔ پیش‌نمایش است و بررسی GPG در آن غیرفعال است.
+texturecraft	3D texture painting	نقاشی بافت سه‌بعدی
+materialcraft	Procedural material design	طراحی رویه‌ای متریال
+craft-anything	Find out how any software works, then craft your own	کارکرد هر نرم‌افزاری را بشناسید و نرم‌افزار خودتان را بسازید

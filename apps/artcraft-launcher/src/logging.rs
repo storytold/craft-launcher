@@ -45,8 +45,18 @@ pub fn rotate(dir: &Path) -> std::io::Result<(PathBuf, File)> {
         }
     }
     let path = numbered(dir, 0);
-    let file = File::create(&path)?;
+    let file = create_private(&path)?;
     Ok((path, file))
+}
+
+/// A log names the user's folders, so only the user may read it.
+fn create_private(path: &Path) -> std::io::Result<File> {
+    let mut options = std::fs::OpenOptions::new();
+    // The mode only applies to a new file, so never open one that's already there.
+    options.write(true).create_new(true);
+    #[cfg(unix)]
+    std::os::unix::fs::OpenOptionsExt::mode(&mut options, 0o600);
+    options.open(path)
 }
 
 /// Where formatted records go besides standard error: kept in memory until a file is attached,
@@ -196,11 +206,44 @@ fn builder(sink: Arc<Mutex<Sink>>, stderr: bool) -> env_logger::Builder {
     b
 }
 
+/// Whether a record is a raw HTTP wire dump. `ureq_proto` traces every byte it sends and
+/// receives as hex-and-ASCII rows, `Authorization` header included (the optional
+/// `ARTCRAFT_LAUNCHER_GITHUB_TOKEN`). The rows split the header across lines, so
+/// [`redact_credentials`] can't find the token in them.
+fn is_wire_dump(metadata: &log::Metadata<'_>) -> bool {
+    let target = metadata.target();
+    metadata.level() == log::Level::Trace && (target == "ureq_proto" || target.starts_with("ureq_proto::"))
+}
+
+/// env_logger behind a gate that drops wire dumps whatever `RUST_LOG` says. A filter directive
+/// alone isn't enough: env_logger lets the longest matching module win, so
+/// `RUST_LOG=ureq_proto::util=trace` outranks a `ureq_proto=debug` cap (CWE-532).
+struct Guarded(env_logger::Logger);
+
+impl log::Log for Guarded {
+    fn enabled(&self, metadata: &log::Metadata<'_>) -> bool {
+        !is_wire_dump(metadata) && self.0.enabled(metadata)
+    }
+
+    fn log(&self, record: &log::Record<'_>) {
+        if !is_wire_dump(record.metadata()) {
+            self.0.log(record);
+        }
+    }
+
+    fn flush(&self) {
+        self.0.flush();
+    }
+}
+
 /// Install the logger; `None` when another logger was installed first. Call
 /// [`Logs::attach_dir`] (or [`Logs::no_file`]) once it is known whether this run keeps a log.
 pub fn install() -> Option<Logs> {
     let sink = Arc::new(Mutex::new(Sink::new(MAX_FILE_BYTES)));
-    builder(sink.clone(), true).try_init().ok()?;
+    let logger = builder(sink.clone(), true).build();
+    let max = logger.filter();
+    log::set_boxed_logger(Box::new(Guarded(logger))).ok()?;
+    log::set_max_level(max);
     Some(Logs { sink })
 }
 
@@ -252,6 +295,27 @@ mod tests {
         assert_eq!(read(&dir.join("artcraft-launcher.1.log")), "run 3");
         assert_eq!(read(&dir.join("artcraft-launcher.2.log")), "run 2");
         assert!(!dir.join("artcraft-launcher.3.log").exists(), "only {KEEP} old logs are kept");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn only_the_user_can_read_the_log() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = temp_dir("private");
+        let (path, _file) = rotate(&dir).unwrap();
+        assert_eq!(std::fs::metadata(&path).unwrap().permissions().mode() & 0o777, 0o600);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn a_log_path_someone_else_made_is_not_opened() {
+        let dir = temp_dir("taken");
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join(LOG_FILE);
+        std::fs::write(&path, "not ours").unwrap();
+        assert_eq!(create_private(&path).unwrap_err().kind(), std::io::ErrorKind::AlreadyExists);
+        assert_eq!(read(&path), "not ours");
         let _ = std::fs::remove_dir_all(&dir);
     }
 
@@ -337,6 +401,31 @@ mod tests {
         assert!(text.contains("WARN  wgpu_hal::vulkan] a real warning\n"), "{text}");
         assert!(text.contains("artcraft_launcher_native::proxy] proxy in use\n"), "{text}");
         assert!(!text.contains("too chatty") && !text.contains("below info") && !text.contains('\u{1b}'), "{text}");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// A wire dump never reaches the file, even when `RUST_LOG` names `ureq_proto`'s own module
+    /// at `trace`, which outranks the builder's `ureq_proto=debug` cap.
+    #[test]
+    fn http_wire_dumps_are_dropped_whatever_rust_log_says() {
+        let dir = temp_dir("wire");
+        let sink = Arc::new(Mutex::new(Sink::new(MAX_FILE_BYTES)));
+        // Name both allowed targets so an inherited `RUST_LOG` directive for them can't hide them.
+        let filters = "trace,ureq_proto::util=trace,ureq_proto=trace,ureq_proto::client=trace,ureq_protocol_lookalike=trace";
+        let logger = Guarded(builder(sink.clone(), false).parse_filters(filters).build());
+        let logs = Logs { sink };
+        let path = logs.attach_dir(&dir).unwrap();
+        let record = |level, target: &'static str, msg: &'static str| {
+            logger.log(&log::Record::builder().level(level).target(target).args(format_args!("{msg}")).build());
+        };
+        record(log::Level::Trace, "ureq_proto::util", "4175 7468 6f72 697a Authoriz");
+        record(log::Level::Trace, "ureq_proto", "Bearer.ghp_secret");
+        record(log::Level::Debug, "ureq_proto::client", "Call<SendRequest>");
+        record(log::Level::Trace, "ureq_protocol_lookalike", "not a wire dump");
+        let text = read(&path);
+        assert!(!text.contains("Authoriz") && !text.contains("ghp_secret"), "{text}");
+        assert!(text.contains("Call<SendRequest>") && text.contains("not a wire dump"), "{text}");
+        assert!(!logger.enabled(&log::Metadata::builder().level(log::Level::Trace).target("ureq_proto::util").build()));
         let _ = std::fs::remove_dir_all(&dir);
     }
 

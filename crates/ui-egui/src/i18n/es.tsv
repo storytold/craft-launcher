@@ -73,6 +73,13 @@
 	Show in Files	Mostrar en Archivos
 	Reinstall	Reinstalar
 	Uninstall…	Desinstalar…
+	Launch options…	Opciones de inicio…
+	{name} launch options	Opciones de inicio de {name}
+	Flags added each time the app is opened	Parámetros que se añaden cada vez que se abre la aplicación
+	Separate flags with spaces. Quote a value that has spaces in it.	Separa los parámetros con espacios. Pon entre comillas un valor que contenga espacios.
+	A quote isn't closed.	Hay unas comillas sin cerrar.
+	{name} wasn't opened: a quote in its launch options isn't closed.	{name} no se abrió: hay unas comillas sin cerrar en sus opciones de inicio.
+	Save	Guardar
 	All releases	Todas las versiones
 	ArtCraft Launcher {version} is available.	ArtCraft Launcher {version} está disponible.
 	Dismiss	Descartar
@@ -122,6 +129,12 @@
 	Apps on this computer	Aplicaciones en este equipo
 	Installed apps with a newer version	Aplicaciones instaladas con una versión más reciente
 	Apps you can install	Aplicaciones que puedes instalar
+	Pin to top	Fijar arriba
+	Unpin	Quitar fijación
+	Pinned	Fijadas
+	Reorder {name}	Reordenar {name}
+	Move up	Subir
+	Move down	Bajar
 	Hide App	Ocultar aplicación
 	Unhide App	Mostrar aplicación
 	Hidden Apps	Aplicaciones ocultas
@@ -147,6 +160,7 @@
 	Update cancelled	Actualización cancelada
 	Uninstall cancelled	Desinstalación cancelada
 	Retry install	Reintentar la instalación
+	Retry update	Reintentar la actualización
 	Retry update to {version}	Reintentar la actualización a {version}
 	The download is still here. It's checked again, then installed.	La descarga sigue aquí. Se vuelve a comprobar y luego se instala.
 	Waiting for another app…	Esperando a otra aplicación…
@@ -169,6 +183,7 @@ designcraft	Page layout and publishing	Maquetación y publicación
 wordcraft	Writing and document design	Escritura y diseño de documentos
 deckcraft	Presentations and slide shows	Presentaciones y diapositivas
 gridcraft	Spreadsheets and data	Hojas de cálculo y datos
+craft-anything	Find out how any software works, then craft your own	Descubre cómo funciona cualquier software y crea el tuyo
 solidcraft	Parametric 3D CAD	CAD 3D paramétrico
 cadcraft	Computer-aided design and drafting	CAD: diseño y dibujo técnico
 soundcraft	Recording, editing and mixing audio	Grabación, edición y mezcla de audio
@@ -376,3 +391,21 @@ column	Author	Autor
 	Older launcher versions require a manual reinstall.	Las versiones anteriores del iniciador requieren una reinstalación manual.
 	Your files may not open in older versions.	Es posible que tus archivos no se abran en versiones antiguas.
 	Enable automatic installs in Settings to follow new nightly builds.	Activa las instalaciones automáticas en Ajustes para recibir las nuevas versiones nocturnas.
+texturecraft	3D texture painting	Pintura de texturas 3D
+texturecraft	Paint materials on 3D models and export textures.	Pinta materiales en modelos 3D y exporta texturas.
+texturecraft	Materials	Materiales
+texturecraft	Mesh maps	Mapas de malla
+texturecraft	Bake mesh maps and use smart materials.	Hornea mapas de malla y usa materiales inteligentes.
+texturecraft	Paint textures on 3D models.	Pinta texturas en modelos 3D.
+	Hide community apps	Ocultar aplicaciones de la comunidad
+materialcraft	Procedural material design	Diseño de materiales procedurales
+materialcraft	Build materials with node graphs.	Crea materiales con grafos de nodos.
+materialcraft	Create tileable PBR materials and export texture maps.	Crea materiales PBR repetibles sin costuras y exporta mapas de texturas.
+materialcraft	Node graphs	Grafos de nodos
+materialcraft	Combine noises, patterns and filters.	Combina ruidos, patrones y filtros.
+materialcraft	Live previews	Vistas previas en vivo
+materialcraft	Preview materials in 2D and on 3D models.	Previsualiza materiales en 2D y sobre modelos 3D.
+	Advanced	Avanzado
+	Migrate Flatpak bundles to ArtCraft OCI (experimental)	Migrar paquetes Flatpak a ArtCraft OCI (experimental)
+	On update, switch first party apps when the matching package is available. Otherwise, keep using bundles.	Al actualizar, migrar las aplicaciones de ArtCraft si está disponible el paquete correspondiente. De lo contrario, seguir usando paquetes independientes.
+	The OCI repository is a preview with GPG verification disabled.	El repositorio OCI es una versión preliminar con la verificación GPG desactivada.
