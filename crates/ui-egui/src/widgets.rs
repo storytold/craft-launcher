@@ -51,7 +51,11 @@ fn upper_with(text: &str, georgian_caps: bool) -> String {
 /// `text` laid out upper case in `family`, `spacing` points between letters.
 pub fn caps(ui: &Ui, text: &str, size: f32, family: egui::FontFamily, spacing: f32, color: Color32) -> Arc<Galley> {
     let format = egui::TextFormat { font_id: egui::FontId::new(size, family), color, extra_letter_spacing: spacing, ..Default::default() };
-    ui.painter().layout_job(egui::text::LayoutJob::single_section(upper(text), format))
+    let mut job = egui::text::LayoutJob::single_section(upper(text), format);
+    if crate::i18n::current().rtl() {
+        job.direction = egui::epaint::text::TextDirection::RightToLeft;
+    }
+    ui.painter().layout_job(job)
 }
 
 /// A `.hud-label`: 11 px Geist Mono, upper case, widely spaced.
@@ -96,6 +100,9 @@ pub fn hud_elided_spans(ui: &mut Ui, spans: &[(&str, Color32)], max_width: f32) 
             ..Default::default()
         };
         job.append(&upper(text), 0.0, format);
+    }
+    if crate::i18n::current().rtl() {
+        job.direction = egui::epaint::text::TextDirection::RightToLeft;
     }
     job.wrap = egui::text::TextWrapping::truncate_at_width(max_width.min(ui.available_width()).max(0.0));
     let galley = ui.painter().layout_job(job);
@@ -740,7 +747,7 @@ pub fn wordmark(ui: &mut Ui, app: &artcraft_launcher_core::CraftApp, size: f32) 
 pub fn wordmark_in(ui: &mut Ui, app: &artcraft_launcher_core::CraftApp, size: f32, in_colour: bool) -> Response {
     let t = Tokens::get(ui.ctx());
     let (prefix, craft) = app.name.strip_suffix("Craft").map_or((app.name, ""), |p| (p, "Craft"));
-    let mut job = egui::text::LayoutJob::default();
+    let mut job = egui::text::LayoutJob { direction: egui::epaint::text::TextDirection::LeftToRight, ..Default::default() };
     let format = |color| egui::TextFormat {
         font_id: egui::FontId::new(size, theme::display()),
         color,
