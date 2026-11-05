@@ -602,6 +602,27 @@ function Get-ReleaseAuthorization($item, $catalog) {
     return @{ app = $app; sha = $sha; version = $numeric; asset = $asset }
 }
 
+function Copy-ArtCraftLoopbackResponse($response, $output) {
+    if ([int]$response.StatusCode -ne 200 -or $response.ContentLength -lt 0 -or $response.ContentLength -gt 17179869184) {
+        throw 'Invalid package stream'
+    }
+    $expected = [long]$response.ContentLength
+    $inputFile = $response.GetResponseStream()
+    $transferred = [long]0
+    try {
+        $buffer = New-Object byte[] 65536
+        while ($transferred -lt $expected) {
+            try { $n = $inputFile.Read($buffer, 0, [int][Math]::Min($expected - $transferred, $buffer.Length)) }
+            catch { throw [IO.InvalidDataException]::new('Truncated package stream', $_.Exception) }
+            if ($n -eq 0) { throw 'Truncated package stream' }
+            $output.Write($buffer, 0, $n)
+            $transferred += $n
+        }
+    } finally { $inputFile.Dispose() }
+    if ($transferred -ne $expected) { throw 'Truncated package stream' }
+    return $transferred
+}
+
 function Copy-VerifiedPackage($item, $authorization, [string]$root, [int]$index, [int]$port, [string]$session) {
     $target = [IO.Path]::Combine($root, "$index.msi")
     Set-ArtCraftValidationStage 'loopback-package-stream'
@@ -613,25 +634,13 @@ function Copy-VerifiedPackage($item, $authorization, [string]$root, [int]$index,
     $req.Credentials=$null
     $req.UserAgent='ArtCraft-Launcher/MSI'
     $req.AllowAutoRedirect=$false
-    $req.Timeout=20000
-    $req.ReadWriteTimeout=20000
+    $req.Timeout=60000
+    $req.ReadWriteTimeout=60000
     $response=$req.GetResponse()
     try {
-        if ([int]$response.StatusCode -ne 200 -or $response.ContentLength -lt 0 -or $response.ContentLength -gt 17179869184) {
-            throw 'Invalid package stream'
-        }
-        $inputFile=$response.GetResponseStream()
         $output = New-ProtectedFile $target
-        try {
-            $remaining=$response.ContentLength
-            $buffer=New-Object byte[] 65536
-            while ($remaining -gt 0) {
-                $n=$inputFile.Read($buffer,0,[int][Math]::Min($remaining,$buffer.Length))
-                if ($n -eq 0) { throw 'Truncated package stream' }
-                $output.Write($buffer,0,$n)
-                $remaining-=$n
-            }
-        } finally { $output.Dispose(); $inputFile.Dispose() }
+        try { $null = Copy-ArtCraftLoopbackResponse $response $output }
+        finally { $output.Dispose() }
     } finally { $response.Dispose() }
     $locked = [IO.File]::Open($target, [IO.FileMode]::Open, [IO.FileAccess]::Read, [IO.FileShare]::Read)
     try {
@@ -1619,6 +1628,135 @@ Remove-Item -LiteralPath $path -Force
         );
         let output = run_powershell_test(&test);
         assert_powershell_output_contains(&output, "PowerShell -Command bootstrap parsed and reconstructed the embedded policy");
+    }
+
+    /// The real Windows PowerShell 5.1 HTTP client must consume full-size local package streams
+    /// sequentially without elevation or installation. The source bytes are untrusted fixtures.
+    #[cfg(windows)]
+    #[test]
+    fn powershell_51_reads_twelve_binary_loopback_packages_exactly() {
+        use base64::Engine as _;
+
+        let temp = tempfile::tempdir().unwrap();
+        let session = "0123456789abcdef0123456789abcdef";
+        let mut items = Vec::new();
+        let mut cases = Vec::new();
+        for index in 0..12 {
+            let path = temp.path().join(format!("package-{index}.msi"));
+            let size = if index == 0 { 8 * 1024 * 1024 } else { 1024 * 1024 };
+            let bytes: Vec<u8> = (0..size).map(|byte| (byte.wrapping_mul(37).wrapping_add(index * 19) & 0xff) as u8).collect();
+            std::fs::write(&path, &bytes).unwrap();
+            let sha256 = crate::http::sha256_file(&path).unwrap();
+            cases.push(serde_json::json!({ "index": index, "length": size, "sha256": sha256 }));
+            items.push(crate::msi_batch::Item {
+                msi: path,
+                sha256,
+                destination: None,
+                release: ReleaseIdentity {
+                    app: "photocraft".into(),
+                    tag: "v0.5.0".into(),
+                    asset: format!("photocraft-0.5.0-windows-x64-{index}.msi"),
+                },
+            });
+        }
+        let source = crate::msi_source::Source::new(&items, session).unwrap();
+        let case_data = base64::engine::general_purpose::STANDARD.encode(serde_json::to_vec(&cases).unwrap());
+        let script = r#"
+$ErrorActionPreference = 'Stop'
+$cases = [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('CASES_TOKEN')) | ConvertFrom-Json
+foreach ($case in $cases) {
+    $request = [Net.HttpWebRequest]::Create("http://127.0.0.1:PORT_TOKEN/SESSION_TOKEN/$($case.index)")
+    $request.Proxy = $null
+    $request.Credentials = $null
+    $request.AllowAutoRedirect = $false
+    $request.Timeout = 60000
+    $request.ReadWriteTimeout = 60000
+    $response = $request.GetResponse()
+    try {
+        if ([int]$response.StatusCode -ne 200) { throw "Unexpected status for item $($case.index)" }
+        if ($response.ContentLength -ne [long]$case.length) { throw "Wrong advertised length for item $($case.index)" }
+        $memory = [IO.MemoryStream]::new()
+        try {
+            $transferred = Copy-ArtCraftLoopbackResponse $response $memory
+            if ([long]$transferred -ne [long]$case.length -or $memory.Length -ne [long]$case.length) {
+                throw "Truncated item $($case.index): expected $($case.length), got $($memory.Length)"
+            }
+            $hash = [Security.Cryptography.SHA256]::Create()
+            try { $actual = ([BitConverter]::ToString($hash.ComputeHash($memory.ToArray()))).Replace('-', '').ToLowerInvariant() }
+            finally { $hash.Dispose() }
+            if ($actual -cne [string]$case.sha256) { throw "SHA-256 mismatch for item $($case.index)" }
+            Write-Output ("item=$($case.index) expected=$($case.length) transferred=$transferred sha256=$actual")
+        } finally { $memory.Dispose() }
+    } finally { $response.Dispose() }
+}
+'Windows PowerShell 5.1 loopback batch transfer passed'
+"#
+        .replace("CASES_TOKEN", &case_data)
+        .replace("PORT_TOKEN", &source.port.to_string())
+        .replace("SESSION_TOKEN", session);
+        let output = run_powershell_test(&script);
+        for case in &cases {
+            let index = case["index"].as_u64().unwrap();
+            let length = case["length"].as_u64().unwrap();
+            assert_powershell_output_contains(
+                &output,
+                &format!("item={index} expected={length} transferred={length} sha256={}", case["sha256"].as_str().unwrap()),
+            );
+        }
+        assert_powershell_output_contains(&output, "Windows PowerShell 5.1 loopback batch transfer passed");
+    }
+
+    /// Exercise the same production reader against an intentionally truncated HTTP body.
+    /// This is a local, non-elevated PowerShell test and cannot reach Windows Installer.
+    #[cfg(windows)]
+    #[test]
+    fn powershell_51_rejects_truncated_loopback_response_before_msi_validation() {
+        use std::io::{Read as _, Write as _};
+
+        let listener = std::net::TcpListener::bind((std::net::Ipv4Addr::LOCALHOST, 0)).unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let server = std::thread::spawn(move || {
+            let (mut socket, _) = listener.accept().unwrap();
+            socket.set_read_timeout(Some(std::time::Duration::from_secs(10))).unwrap();
+            let mut request = Vec::new();
+            let mut byte = [0u8; 1];
+            while !request.ends_with(b"\r\n\r\n") {
+                socket.read_exact(&mut byte).unwrap();
+                request.push(byte[0]);
+                assert!(request.len() <= 8192, "test HTTP request header exceeded its limit");
+            }
+            socket.write_all(b"HTTP/1.1 200 OK\r\nContent-Length: 100\r\nConnection: close\r\n\r\nshort").unwrap();
+            socket.shutdown(std::net::Shutdown::Write).unwrap();
+        });
+
+        let test = format!(
+            "{POLICY}\n{}",
+            r#"
+$request = [Net.HttpWebRequest]::Create('http://127.0.0.1:PORT_TOKEN/truncated')
+$request.Proxy = $null
+$request.Credentials = $null
+$request.AllowAutoRedirect = $false
+$request.Timeout = 60000
+$request.ReadWriteTimeout = 60000
+$response = $request.GetResponse()
+$memory = [IO.MemoryStream]::new()
+try {
+    $caught = $false
+    try { $null = Copy-ArtCraftLoopbackResponse $response $memory }
+    catch {
+        if ($_.Exception.Message -cne 'Truncated package stream') { throw "Unexpected truncated-stream error: $($_.Exception)" }
+        $caught = $true
+    }
+    if (-not $caught) { throw 'The production loopback reader accepted a short body' }
+    if ($memory.Length -ne 5) { throw "Unexpected staged byte count $($memory.Length)" }
+    'Windows PowerShell 5.1 production reader rejected truncated HTTP body before MSI validation'
+} finally { $memory.Dispose(); $response.Dispose() }
+"#
+            .replace("PORT_TOKEN", &port.to_string())
+        );
+        let output = run_powershell_test(&test);
+        server.join().expect("truncated response server failed");
+        assert_powershell_output_contains(&output, "rejected truncated HTTP body before MSI validation");
     }
 
     #[test]

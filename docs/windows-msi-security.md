@@ -52,6 +52,13 @@ handles. The source path never crosses the privilege boundary. The elevated Powe
 does not use a proxy, credentials, or redirects. It copies the bounded stream into a newly
 created protected directory under the Windows system directory. SYSTEM and Administrators own
 that directory and its files; ordinary Users have read access only where needed for results.
+The listener uses nonblocking accept polling, but every accepted socket is explicitly returned to
+blocking mode. Request-header reads and response writes have separate bounded timeouts. The source
+loops over partial writes until the advertised file length is sent, treats premature local EOF or
+an incomplete transfer as an I/O failure, and logs the random session, item index, expected and
+transferred byte counts, and underlying socket/file error without logging paths. The elevated
+PowerShell reader independently requires all `Content-Length` bytes before hashing or validating
+the staged MSI; a stream failure has no direct-path fallback.
 The staged MSI is re-hashed, checked for a valid Windows Authenticode signature, and held against
 write/delete sharing while inspected and installed. The only executed installer is the system
 `msiexec.exe`.
