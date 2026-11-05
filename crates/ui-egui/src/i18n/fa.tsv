@@ -567,3 +567,8 @@ solidcraft	Parametric 3D CAD	طراحی سه‌بعدی پارامتریک
 texturecraft	3D texture painting	نقاشی بافت سه‌بعدی
 materialcraft	Procedural material design	طراحی رویه‌ای متریال
 craft-anything	Find out how any software works, then craft your own	کارکرد هر نرم‌افزاری را بشناسید و نرم‌افزار خودتان را بسازید
+
+	Open {version}	باز کردن {version}
+	Open {installed} without updating. {latest} stays available.	باز کردن {installed} بدون به‌روزرسانی. نسخهٔ {latest} همچنان در دسترس می‌ماند.
+	{latest} is out, but ArtCraft Launcher can't install it over this copy.	نسخهٔ {latest} منتشر شده، اما ArtCraft Launcher نمی‌تواند آن را روی این نصب اعمال کند.
+	ArtCraft Launcher can't install version {version} over this copy.	ArtCraft Launcher نمی‌تواند نسخهٔ {version} را روی این نصب اعمال کند.

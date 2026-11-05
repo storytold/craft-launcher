@@ -134,6 +134,17 @@ fn persian_content_preserves_chrome_and_interactions() {
     h.run_steps(5);
     h.get_by_label("VectorCraft");
     assert!(h.query_by_label("PhotoCraft").is_none(), "search matches the displayed Persian description");
+    // Both keyboard variants and formatting-only differences must match the displayed tagline.
+    for query in ["وکتور", "وكتور", "و\u{200c}کتور", "و\u{0640}کتور", "VECTORCRAFT"] {
+        h.state_mut().as_mut().unwrap().set_search_for_test(query);
+        h.run_steps(2);
+        assert_eq!(h.state().as_ref().unwrap().visible_ids_for_test(), vec!["vectorcraft"], "query: {query}");
+    }
+    for query in ["ویرایش", "ويرايش", "وىراىش"] {
+        h.state_mut().as_mut().unwrap().set_search_for_test(query);
+        h.run_steps(2);
+        assert!(h.state().as_ref().unwrap().visible_ids_for_test().contains(&"photocraft"), "query: {query}");
+    }
     let input = h.get_by_role(egui::accesskit::Role::TextInput);
     input.focus();
     h.key_press_modifiers(egui::Modifiers::COMMAND, egui::Key::A);

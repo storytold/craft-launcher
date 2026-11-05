@@ -15,6 +15,20 @@ use crate::motion;
 use crate::settings::{Filter, Settings, SortKey, ViewMode};
 use crate::theme::{self, Tokens};
 
+/// A comparison key for catalog search: fold common Persian/Arabic keyboard variants,
+/// ignore ZWNJ and tatweel, and retain case-insensitive matching. Displayed text is unchanged.
+fn search_key(text: &str) -> String {
+    text.chars()
+        .filter(|c| !matches!(c, '\u{200c}' | '\u{0640}'))
+        .map(|c| match c {
+            'ي' | 'ى' => 'ی',
+            'ك' => 'ک',
+            c => c,
+        })
+        .flat_map(char::to_lowercase)
+        .collect()
+}
+
 /// Who draws the window's title bar.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum TitleBar {
@@ -599,6 +613,13 @@ impl LauncherUi {
                 }
                 false
             }
+            // Can turn an update on or off, so updates are announced (or started) again.
+            Event::Installable { app, installable } => {
+                if let Some(e) = self.entry_mut(&app) {
+                    e.installable = Some(installable);
+                }
+                true
+            }
             Event::Occupied { app, path } => {
                 self.dialog = Some(Dialog::Replace { app, path });
                 false
@@ -911,7 +932,7 @@ impl LauncherUi {
     /// The ids to show, filtered and sorted. Pinned apps stay first in the user's pin order;
     /// the active sort (and the grid's installed / not-installed split) applies only to the rest.
     pub(crate) fn visible_ids(&self) -> Vec<&'static str> {
-        let needle = self.search.trim().to_lowercase();
+        let needle = search_key(self.search.trim());
         let mut list: Vec<(usize, &AppEntry)> = self
             .entries
             .iter()
@@ -920,9 +941,9 @@ impl LauncherUi {
                 self.in_filter(e, self.settings.filter)
                     && !(self.settings.hide_community_apps && e.app.kind == artcraft_launcher_core::catalog::AppKind::Community)
                     && (needle.is_empty()
-                        || e.app.name.to_lowercase().contains(&needle)
-                        || e.app.tagline.to_lowercase().contains(&needle)
-                        || crate::i18n::tr_ctx(crate::i18n::current(), e.app.id, e.app.tagline).to_lowercase().contains(&needle))
+                        || search_key(e.app.name).contains(&needle)
+                        || search_key(e.app.tagline).contains(&needle)
+                        || search_key(crate::i18n::tr_ctx(crate::i18n::current(), e.app.id, e.app.tagline)).contains(&needle))
             })
             .collect();
         let platform = self.platform;
