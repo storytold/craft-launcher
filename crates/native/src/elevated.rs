@@ -1694,6 +1694,7 @@ foreach ($case in $cases) {
         .replace("CASES_TOKEN", &case_data)
         .replace("PORT_TOKEN", &source.port.to_string())
         .replace("SESSION_TOKEN", session);
+        let script = format!("{POLICY}\n{script}");
         let output = run_powershell_test(&script);
         for case in &cases {
             let index = case["index"].as_u64().unwrap();
