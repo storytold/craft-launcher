@@ -39,10 +39,23 @@ dual-scope package has `ALLUSERS=2` and `MSIINSTALLPERUSER=1`. Mismatched and ot
 closed. Only official release packages that also pass the repository, release, checksum,
 signature, publisher, identity, and architecture checks can use the dual-scope pair. The launcher
 admits an update to the elevated batch only after Windows Installer registration confirms the
-existing product is per-machine. The elevated command explicitly passes `ALLUSERS=1` and an
-empty `MSIINSTALLPERUSER` value, matching the package's machine-scope selection and overriding
-its per-user default. The authored
-properties are still inspected; command-line overrides do not substitute for MSI metadata checks.
+existing product is per-machine. For a dual-scope MSI, the elevated command explicitly passes
+`ALLUSERS=2 MSIINSTALLPERUSER=""`, the documented machine selection for this package mode. For a
+legacy machine-only MSI, it passes `ALLUSERS=1 MSIINSTALLPERUSER=""`. The empty value must retain
+its quotes in the Windows Installer command line; the unquoted `MSIINSTALLPERUSER=` form is
+invalid and can produce error 1639. The authored properties are still inspected; command-line
+overrides do not substitute for MSI metadata checks. The single-app and downgrade paths do not
+run the elevated package-policy inspection, so their per-machine request uses `ALLUSERS=1` plus
+the correctly quoted empty selector; the per-user route continues to use `2/1`.
+
+This follows Microsoft's [`ALLUSERS`](https://learn.microsoft.com/windows/win32/msi/allusers) and
+[`MSIINSTALLPERUSER`](https://learn.microsoft.com/windows/win32/msi/msiinstallperuser) property
+rules: `ALLUSERS=1` independently selects per-machine context, but Windows Installer ignores
+`MSIINSTALLPERUSER` unless `ALLUSERS=2`. The current PhotoCraft and VectorCraft dual-scope
+packages author `2/1`, so the MSI-table-aware elevated batch uses the documented `2/""` pair;
+the older machine-only packages continue to use their `1` mode. The direct route has no MSI
+identity-policy result to distinguish authored mode, so it uses the documented `ALLUSERS=1`
+per-machine selector for all its machine operations.
 
 ## Authorization and protected files
 

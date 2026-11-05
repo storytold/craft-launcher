@@ -33,7 +33,7 @@ fn the_launcher_side_asks_once_and_reports_a_declined_prompt() {
 
 #[test]
 fn the_command_line_is_the_single_app_route_with_the_same_parts() {
-    let dir = tempfile::tempdir().unwrap();
+    let dir = tempfile::Builder::new().prefix("Art Craft MSI ").tempdir().unwrap();
     let msi = dir.path().join("cad craft.msi");
     std::fs::write(&msi, b"x").unwrap();
     let resolved = crate::install::msi_path(&msi).unwrap();
@@ -41,9 +41,11 @@ fn the_command_line_is_the_single_app_route_with_the_same_parts() {
     let folder = Path::new(r"C:\Program Files\ArtCraft\CADCraft");
 
     let all_users = line(&msi, Some(folder), Some(MsiScope::PerMachine)).unwrap();
+    let direct_route_properties = super::super::msi_extra_arguments(Some(folder), Some(MsiScope::PerMachine)).unwrap();
+    assert_eq!(direct_route_properties, format!("INSTALLFOLDER=\"{}\" ALLUSERS=1 MSIINSTALLPERUSER=\"\"", folder.display()));
     assert_eq!(
         all_users,
-        format!("/i \"{package}\" /passive /norestart /l*v \"{log}\" INSTALLFOLDER=\"{}\" ALLUSERS=1 MSIINSTALLPERUSER=", folder.display())
+        format!("/i \"{package}\" /passive /norestart /l*v \"{log}\" INSTALLFOLDER=\"{}\" ALLUSERS=1 MSIINSTALLPERUSER=\"\"", folder.display())
     );
     // No folder and no scope: only the package and the log.
     assert_eq!(line(&msi, None, None).unwrap(), format!("/i \"{package}\" /passive /norestart /l*v \"{log}\""));

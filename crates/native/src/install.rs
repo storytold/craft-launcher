@@ -586,19 +586,33 @@ pub enum MsiScope {
     PerMachine,
 }
 
-/// The `msiexec` properties that select `scope` for a dual-scope package. Passing both properties
-/// explicitly on every update prevents the package-authored default from changing the context.
+/// The `msiexec` properties that select `scope`. The direct route does not inspect the incoming
+/// MSI's authored mode, so it requests the documented per-machine context with `ALLUSERS=1` and
+/// also quotes the empty selector value. The validated elevated batch can preserve the exact
+/// package mode and uses `ALLUSERS=2 MSIINSTALLPERUSER=""` for dual-scope packages.
 ///
-/// Machine installs explicitly pass `ALLUSERS=1 MSIINSTALLPERUSER=` (empty), overriding the
-/// `2/1` defaults authored by dual-scope MSIs. A per-user registered copy can only come from a
-/// dual-scope package, so its updates safely pass `ALLUSERS=2 MSIINSTALLPERUSER=1`.
+/// A per-user registered copy can only come from a dual-scope package, so its updates pass
+/// `ALLUSERS=2 MSIINSTALLPERUSER=1` without elevation.
 #[cfg(any(windows, test))]
 fn msi_scope_arguments(scope: Option<MsiScope>) -> Vec<&'static str> {
     match scope {
         Some(MsiScope::PerUser) => vec!["ALLUSERS=2", "MSIINSTALLPERUSER=1"],
-        Some(MsiScope::PerMachine) => vec!["ALLUSERS=1", "MSIINSTALLPERUSER="],
+        Some(MsiScope::PerMachine) => vec!["ALLUSERS=1", "MSIINSTALLPERUSER=\"\""],
         None => Vec::new(),
     }
+}
+
+/// The raw Windows Installer properties appended after the quoted package and log arguments.
+/// This exact string is shared by the direct installer path and the elevated/downgrade command
+/// builders so that empty public-property values keep their required quotes in both paths.
+#[cfg(any(windows, test))]
+fn msi_extra_arguments(destination: Option<&Path>, scope: Option<MsiScope>) -> Result<String, String> {
+    let mut arguments = Vec::new();
+    if let Some(folder) = destination {
+        arguments.push(msi_folder_argument(folder)?);
+    }
+    arguments.extend(msi_scope_arguments(scope).into_iter().map(str::to_owned));
+    Ok(arguments.join(" "))
 }
 
 /// Where `asset` is downloaded to (and its partial file kept while unfinished).
@@ -2189,8 +2203,8 @@ pub mod windows {
     use artcraft_launcher_core::protocol::CANCELLED;
 
     use super::{
-        CraftApp, INSTALLER, JobPhase, MsiScope, Path, PathBuf, Stop, cancelled, explain, msi_batch, msi_command, msi_downgrade, msi_folder_argument,
-        msi_log, msi_scope_arguments, process, turn,
+        CraftApp, INSTALLER, JobPhase, MsiScope, Path, PathBuf, Stop, cancelled, explain, msi_batch, msi_command, msi_downgrade, msi_extra_arguments,
+        msi_log, process, turn,
     };
 
     fn msiexec() -> PathBuf {
@@ -2215,11 +2229,9 @@ pub mod windows {
     fn run_direct(msi: &Path, destination: Option<&Path>, scope: Option<MsiScope>) -> Result<(), String> {
         use std::os::windows::process::CommandExt;
         let mut command = msi_command(&msiexec(), msi)?;
-        if let Some(dir) = destination {
-            command.raw_arg(msi_folder_argument(dir)?);
-        }
-        for argument in msi_scope_arguments(scope) {
-            command.raw_arg(argument);
+        let arguments = msi_extra_arguments(destination, scope)?;
+        if !arguments.is_empty() {
+            command.raw_arg(arguments);
         }
         let status = command.status().map_err(|e| format!("couldn't start the Windows Installer ({e})"))?;
         explain(status.code()).map_err(|e| match status.code() {
@@ -2582,8 +2594,9 @@ mod tests {
         assert_eq!(msi_scope_arguments(None), Vec::<&str>::new());
         // A per-user update asks for the documented single-package per-user install...
         assert_eq!(msi_scope_arguments(Some(MsiScope::PerUser)), vec!["ALLUSERS=2", "MSIINSTALLPERUSER=1"]);
-        // ...and a per-machine update overrides both the legacy and dual-scope package defaults.
-        assert_eq!(msi_scope_arguments(Some(MsiScope::PerMachine)), vec!["ALLUSERS=1", "MSIINSTALLPERUSER="]);
+        // ...and a direct per-machine update uses the documented machine context with an
+        // explicitly quoted empty selector. The verified batch uses its MSI-table-aware mode.
+        assert_eq!(msi_scope_arguments(Some(MsiScope::PerMachine)), vec!["ALLUSERS=1", "MSIINSTALLPERUSER=\"\""]);
     }
 
     #[cfg(target_os = "linux")]

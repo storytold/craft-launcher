@@ -83,9 +83,10 @@ separate from the update test.
    Expect exactly one interactive UAC approval for Windows PowerShell, followed by the two
    Windows Installer progress windows. The v0.20.2 PhotoCraft and v0.21.1 VectorCraft MSI
    Property tables declare `ALLUSERS=2` and `MSIINSTALLPERUSER=1` (dual-scope, per-user default).
-   The elevated batch must explicitly invoke each with `ALLUSERS=1 MSIINSTALLPERUSER=` (empty)
-   to keep the already-verified machine context, matching the package's machine-scope selection.
-   The launcher itself must remain unelevated. Each MSI
+   The elevated batch must explicitly invoke each with
+   `ALLUSERS=2 MSIINSTALLPERUSER=""` to select per-machine context. The quotes around the empty
+   property value are required by Windows Installer; an unquoted empty assignment can fail with
+   error 1639. The launcher itself must remain unelevated. Each MSI
    progress window has a Cancel button; cancelling one item should be reported for that app while
    the batch proceeds to the other authorized item.
 5. Confirm the launcher reports each app's individual result, detects PhotoCraft v0.20.2 and

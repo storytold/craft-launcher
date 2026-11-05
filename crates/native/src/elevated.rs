@@ -517,12 +517,32 @@ function Get-MsiProperty($api, [uint32]$db, [string]$name) {
 function Assert-MsiScopeProperties([string]$allUsers, [string]$msiInstallPerUser) {
     # Older ArtCraft MSIs are machine-only. New WiX perUserOrMachine releases author 2/1
     # (dual-scope, with per-user as their default). Only these two exact property pairs are
-    # authorized; the batch later overrides both values to select the verified machine context.
+    # authorized; the batch later clears the selector and explicitly preserves the authored
+    # ALLUSERS mode when selecting the verified machine context.
     $legacyMachine = $allUsers -ceq '1' -and $msiInstallPerUser -in @('', '0')
     $dualScope = $allUsers -ceq '2' -and $msiInstallPerUser -ceq '1'
-    if (-not ($legacyMachine -or $dualScope)) {
-        throw 'MSI has unsupported installation scope properties'
+    if ($legacyMachine) { return 'legacy-machine' }
+    if ($dualScope) { return 'dual-scope' }
+    throw 'MSI has unsupported installation scope properties'
+}
+
+function Get-ArtCraftMsiMachineScopeArguments([string]$scopeKind) {
+    # Preserve legacy machine-only authoring, and use Microsoft's documented ALLUSERS=2,
+    # empty MSIINSTALLPERUSER pair for dual-purpose releases.
+    if ($scopeKind -ceq 'legacy-machine') { return 'ALLUSERS=1 MSIINSTALLPERUSER=""' }
+    if ($scopeKind -ceq 'dual-scope') { return 'ALLUSERS=2 MSIINSTALLPERUSER=""' }
+    throw 'MSI has unsupported installation scope properties'
+}
+
+function New-ArtCraftMsiArguments([string]$msi, [string]$log, [AllowNull()][string]$destination, [string]$scopeKind) {
+    $scopeArguments = Get-ArtCraftMsiMachineScopeArguments $scopeKind
+    $arguments = '/i "' + $msi + '" /passive /norestart ' + $scopeArguments + ' /l*v "' + $log + '"'
+    if (-not [string]::IsNullOrEmpty($destination)) {
+        # Keep the double trailing slash needed for Windows command-line decoding of a path
+        # ending in a separator, including when the original destination is a drive root.
+        $arguments += ' INSTALLFOLDER="' + $destination.TrimEnd('\') + '\\"'
     }
+    return $arguments
 }
 
 function Assert-MsiIdentity([string]$file, $app, [string]$version, [string]$asset) {
@@ -534,6 +554,7 @@ function Assert-MsiIdentity([string]$file, $app, [string]$version, [string]$asse
     $status = Invoke-MsiApi $api 'MsiOpenDatabaseW' $arguments
     if ($status -ne 0) { throw "MsiOpenDatabaseW failed with Windows Installer status $status" }
     $db = [uint32]$arguments[2]
+    $scopeKind = $null
     try {
         $packageArch = switch -Regex ($asset) {
             '-windows-x64\.msi$' { 'x64'; break }
@@ -549,7 +570,7 @@ function Assert-MsiIdentity([string]$file, $app, [string]$version, [string]$asse
         Set-ArtCraftValidationStage 'msi-property:MSIINSTALLPERUSER'
         $msiInstallPerUser = Get-MsiProperty $api $db 'MSIINSTALLPERUSER'
         Set-ArtCraftValidationStage 'msi-scope-policy'
-        Assert-MsiScopeProperties $allUsers $msiInstallPerUser
+        $scopeKind = Assert-MsiScopeProperties $allUsers $msiInstallPerUser
         Set-ArtCraftValidationStage 'msi-property:Manufacturer'
         if ((Get-MsiProperty $api $db 'Manufacturer') -cne 'Learning Machines LLC') { throw 'MSI Manufacturer is not the approved ArtCraft value' }
         Set-ArtCraftValidationStage 'msi-property:ProductName'
@@ -557,6 +578,7 @@ function Assert-MsiIdentity([string]$file, $app, [string]$version, [string]$asse
         Set-ArtCraftValidationStage 'msi-property:ProductVersion'
         if ((Get-MsiProperty $api $db 'ProductVersion') -cne $version) { throw 'MSI ProductVersion does not match the authorized release' }
     } finally { $null = Invoke-MsiApi $api 'MsiCloseHandle' ([object[]]@($db)) }
+    return $scopeKind
 }
 
 function Assert-AuthenticodePublisher([string]$publisher) {
@@ -665,9 +687,9 @@ function Copy-VerifiedPackage($item, $authorization, [string]$root, [int]$index,
         Set-ArtCraftValidationStage 'authenticode-chain-and-publisher'
         Assert-OfficialSignature $target
         Set-ArtCraftValidationStage 'msi-identity-and-scope'
-        Assert-MsiIdentity ([string]$target) $authorization.app $authorization.version $authorization.asset
+        $scopeKind = Assert-MsiIdentity ([string]$target) $authorization.app $authorization.version $authorization.asset
     } finally { $locked.Dispose() }
-    return $target
+    return @{ path = $target; scopeKind = $scopeKind }
 }
 
 function Test-AppRunning($app) {
@@ -703,7 +725,8 @@ function Invoke-ArtCraftBatch($request, $catalog) {
             try {
                 Set-ArtCraftValidationStage 'release-authorization'
                 $authorization = Get-ReleaseAuthorization $item $catalog
-                $staged = Copy-VerifiedPackage $item $authorization $root $i $request.port $request.session
+                $verifiedPackage = Copy-VerifiedPackage $item $authorization $root $i $request.port $request.session
+                $staged = [string]$verifiedPackage.path
                 # Check immediately before each installation, including apps started during UAC.
                 Set-ArtCraftValidationStage 'running-application-check'
                 if (Test-AppRunning $authorization.app) { $code = 'running' }
@@ -721,14 +744,12 @@ function Invoke-ArtCraftBatch($request, $catalog) {
                         $logHandle.Dispose()
                         # Keep Windows Installer's cancel button available. The elevated parent
                         # remains in the same single UAC session for each sequential MSI.
-                        $start.Arguments = '/i "' + $staged + '" /passive /norestart ALLUSERS=1 MSIINSTALLPERUSER= /l*v "' + $log + '"'
+                        $destination = $null
                         if ($null -ne $item.destination) {
                             Set-ArtCraftValidationStage 'install-destination-acl'
                             $destination = Assert-InstallDestination ([string]$item.destination) $authorization.app
-                            # Always pass a trailing separator, doubled before the closing quote
-                            # for Windows argument decoding (including a drive-root folder).
-                            $start.Arguments += ' INSTALLFOLDER="' + $destination.TrimEnd('\') + '\\"'
                         }
+                        $start.Arguments = New-ArtCraftMsiArguments $staged $log $destination ([string]$verifiedPackage.scopeKind)
                         Set-ArtCraftValidationStage 'windows-installer-launch'
                         $child = [Diagnostics.Process]::Start($start)
                         try { $child.WaitForExit(); $code = [string]$child.ExitCode }
@@ -1165,7 +1186,10 @@ function Assert-ExpectedMsiProperties($file, $expectedProperties) {
         assert!(POLICY.contains("function Assert-MsiScopeProperties"));
         assert!(POLICY.contains("$allUsers -ceq '1' -and $msiInstallPerUser -in @('', '0')"));
         assert!(POLICY.contains("$allUsers -ceq '2' -and $msiInstallPerUser -ceq '1'"));
-        assert!(POLICY.contains("ALLUSERS=1 MSIINSTALLPERUSER= "), "the elevated batch clears the per-user selector for machine context");
+        assert!(POLICY.contains("function Get-ArtCraftMsiMachineScopeArguments"));
+        assert!(POLICY.contains("ALLUSERS=1 MSIINSTALLPERUSER=\"\""), "legacy machine scope uses a properly quoted empty property");
+        assert!(POLICY.contains("ALLUSERS=2 MSIINSTALLPERUSER=\"\""), "dual-scope machine selection uses the documented property pair");
+        assert!(POLICY.contains("function New-ArtCraftMsiArguments"));
         assert!(POLICY.contains("[object[]]@([string]$file, [IntPtr]::Zero, [uint32]0)"));
         assert!(POLICY.contains("$type.DefinePInvokeMethod($name, $dll, $name"), "native entry points are explicit");
         assert!(POLICY.contains("@($u, $u, $ref, $iref, [IntPtr], [Text.StringBuilder], $ref)"), "summary API includes FILETIME*");
@@ -1190,9 +1214,9 @@ function Assert-ExpectedMsiProperties($file, $expectedProperties) {
         let test = format!(
             "{POLICY}\n{}",
             r#"
-Assert-MsiScopeProperties '1' ''
-Assert-MsiScopeProperties '1' '0'
-Assert-MsiScopeProperties '2' '1'
+if ((Assert-MsiScopeProperties '1' '') -cne 'legacy-machine') { throw 'Wrong legacy machine classification' }
+if ((Assert-MsiScopeProperties '1' '0') -cne 'legacy-machine') { throw 'Wrong legacy zero classification' }
+if ((Assert-MsiScopeProperties '2' '1') -cne 'dual-scope') { throw 'Wrong dual-scope classification' }
 foreach ($pair in @(
     [PSCustomObject]@{ allUsers = '1'; perUser = '1' },
     [PSCustomObject]@{ allUsers = '2'; perUser = '' },
@@ -1213,6 +1237,35 @@ foreach ($pair in @(
         );
         let output = run_powershell_test(&test);
         assert_powershell_output_contains(&output, "MSI scope property allowlist passed");
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn windows_msi_command_quotes_empty_scope_property_and_paths_with_spaces() {
+        let test = format!(
+            "{POLICY}\n{}",
+            r#"
+$msi = 'C:\Program Files\ArtCraft\staged app.msi'
+$log = 'C:\Windows\System32\ArtCraft-MSI-session\0.log'
+$destination = 'D:\Program Files\ArtCraft\PhotoCraft'
+$dual = New-ArtCraftMsiArguments $msi $log $destination 'dual-scope'
+$expectedDual = '/i "C:\Program Files\ArtCraft\staged app.msi" /passive /norestart ALLUSERS=2 MSIINSTALLPERUSER="" /l*v "C:\Windows\System32\ArtCraft-MSI-session\0.log" INSTALLFOLDER="D:\Program Files\ArtCraft\PhotoCraft\\"'
+if ($dual -cne $expectedDual) { throw "Wrong dual-scope command line: $dual" }
+$legacy = New-ArtCraftMsiArguments $msi $log $null 'legacy-machine'
+$expectedLegacy = '/i "C:\Program Files\ArtCraft\staged app.msi" /passive /norestart ALLUSERS=1 MSIINSTALLPERUSER="" /l*v "C:\Windows\System32\ArtCraft-MSI-session\0.log"'
+if ($legacy -cne $expectedLegacy) { throw "Wrong legacy machine command line: $legacy" }
+$rejected = $false
+try { New-ArtCraftMsiArguments $msi $log $null 'unknown' }
+catch {
+    if ($_.Exception.Message -cne 'MSI has unsupported installation scope properties') { throw }
+    $rejected = $true
+}
+if (-not $rejected) { throw 'Unknown scope was accepted for MSI execution' }
+'MSI machine command lines passed'
+"#
+        );
+        let output = run_powershell_test(&test);
+        assert_powershell_output_contains(&output, "MSI machine command lines passed");
     }
 
     #[cfg(windows)]
