@@ -509,8 +509,10 @@ pub fn split_button(ui: &mut Ui, left: Half<'_>, right: Half<'_>, split: Split<'
             let r = labelled_button(ui, fit.right, right.label, right.kind, fit.right_w);
             (l, r)
         }
+        // Its exact size, so the row centres the pair on its line like any other control (a plain
+        // vertical group would start at the top of the row).
         Split::Stacked { top, bottom, width } => {
-            ui.vertical(|ui| {
+            ui.allocate_ui_with_layout(vec2(width, STACKED_H), egui::Layout::top_down(egui::Align::Min), |ui| {
                 ui.spacing_mut().item_spacing.y = SPLIT_SEAM;
                 let l = labelled_button(ui, top, left.label, left.kind, width);
                 let r = labelled_button(ui, bottom, right.label, right.kind, width);

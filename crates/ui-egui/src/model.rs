@@ -22,9 +22,10 @@ pub struct AppEntry {
     pub paused: Option<PausedDownload>,
     /// A finished download waiting for another try at installing it.
     pub ready: bool,
-    /// The backend's word on whether an install would find a file that can replace the installed
-    /// copy ([`Event::Installable`](artcraft_launcher_core::protocol::Event::Installable)); `None`
-    /// where it gives none (the web build), and then [`Self::has_download`] decides.
+    /// The backend's word on whether an install of the latest release over the installed copy
+    /// would go ahead ([`Event::Installable`](artcraft_launcher_core::protocol::Event::Installable));
+    /// `None` where it gives none (the web build), and then [`Self::has_download`] decides. Only
+    /// read while a copy is installed.
     pub installable: Option<bool>,
 }
 

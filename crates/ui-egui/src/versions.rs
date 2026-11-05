@@ -27,9 +27,14 @@ impl LauncherUi {
         let (mut close, mut install) = (false, false);
         ui.horizontal(|ui| {
             close = widgets::button(ui, tl!("Close"), Kind::Secondary, 100.0).clicked();
-            if let Some((label, ready)) = self.chosen_install(id) {
+            if let Some((label, ready, why)) = self.chosen_install(id) {
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    install = ui.add_enabled_ui(ready, |ui| widgets::button(ui, &label, Kind::Primary, 220.0)).inner.clicked();
+                    let resp = ui.add_enabled_ui(ready, |ui| widgets::button(ui, &label, Kind::Primary, 220.0)).inner;
+                    let resp = match why {
+                        Some(why) => resp.on_disabled_hover_text(why),
+                        None => resp,
+                    };
+                    install = resp.clicked();
                 });
             }
         });
@@ -59,10 +64,11 @@ impl LauncherUi {
         self.check_now_from_ui();
     }
 
-    /// The dialog's Install button for the chosen version: its label, and whether that exact release
-    /// has been checked, can be downloaded here and isn't the installed copy. `None` when there is
-    /// nothing to install (no choice the backend can answer, or a job already running).
-    fn chosen_install(&self, id: &str) -> Option<(String, bool)> {
+    /// The dialog's Install button for the chosen version: its label, whether that exact release has
+    /// been checked, would install here ([`Self::version_installs`]) and isn't the installed copy,
+    /// and why not when the install would be refused ([`Self::version_refusal`]). `None` when there
+    /// is nothing to install (no choice the backend can answer, or a job already running).
+    fn chosen_install(&self, id: &str) -> Option<(String, bool, Option<String>)> {
         let entry = self.entry(id)?;
         if !self.caps.manage_apps || entry.job.is_some() {
             return None;
@@ -72,17 +78,33 @@ impl LauncherUi {
             VersionTrack::Pinned(tag) => tag,
             VersionTrack::Nightly => match release {
                 Some(r) if is_nightly(r) => r.tag.clone(),
-                _ if self.checking => return Some((tl!("Checking…").to_string(), false)),
+                _ if self.checking => return Some((tl!("Checking…").to_string(), false, None)),
                 _ => return None,
             },
             VersionTrack::Stable => release.filter(|r| !r.prerelease)?.tag.clone(),
         };
         let installed = entry.installed.as_ref().and_then(|i| i.version.as_ref());
         if installed.is_some() && installed == version::parse(&tag).as_ref() {
-            return Some((tl!("Installed").to_string(), false));
+            return Some((tl!("Installed").to_string(), false, None));
         }
-        let ready = release.is_some_and(|r| r.tag == tag) && entry.has_download(self.platform);
-        Some((crate::fmt(tl!("Install version {version}"), &[("version", &tag)]), ready))
+        let ready = self.version_installs(entry, &tag) == Some(true);
+        Some((crate::fmt(tl!("Install version {version}"), &[("version", &tag)]), ready, self.version_refusal(entry, &tag)))
+    }
+
+    /// Whether version `tag` of `entry` can be installed now: `None` until the release on screen
+    /// is that version (it is still being checked); else whether an install of it would go ahead
+    /// here ([`AppEntry::installs_here`](crate::model::AppEntry::installs_here)). The card's
+    /// "Install version X" and the version dialog's Install button both ask this.
+    pub(crate) fn version_installs(&self, entry: &crate::model::AppEntry, tag: &str) -> Option<bool> {
+        entry.release().filter(|r| r.tag == tag).map(|_| entry.installs_here(self.platform))
+    }
+
+    /// Why "Install version X" is disabled, for an installed copy the install would refuse to
+    /// replace with it (a system binary, a repository package, a format the release doesn't
+    /// have). The button can't explain on click, so its hover does.
+    pub(crate) fn version_refusal(&self, entry: &crate::model::AppEntry, tag: &str) -> Option<String> {
+        (entry.installed.is_some() && self.version_installs(entry, tag) == Some(false))
+            .then(|| crate::fmt(tl!("ArtCraft Launcher can't install version {version} over this copy."), &[("version", tag)]))
     }
 
     pub(crate) fn version_combo(&mut self, ui: &mut Ui, id: &str, app: &CraftApp, width: f32, label: egui::Id) -> bool {

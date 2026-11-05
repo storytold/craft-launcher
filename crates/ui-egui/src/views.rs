@@ -949,9 +949,8 @@ impl LauncherUi {
             && entry.installed.as_ref().and_then(|i| i.version.as_ref()) != artcraft_launcher_core::version::parse(tag).as_ref()
         {
             // Checked by the backend, and an install of it would go ahead here.
-            let checked = entry.release().is_some_and(|r| &r.tag == tag)
-                && !matches!(status, AppStatus::Checking | AppStatus::NoRelease | AppStatus::Unavailable)
-                && entry.installs_here(self.platform);
+            let checked = self.version_installs(entry, tag) == Some(true)
+                && !matches!(status, AppStatus::Checking | AppStatus::NoRelease | AppStatus::Unavailable);
             return Primary::SelectedVersion { tag: tag.clone(), checked };
         }
         match status {
@@ -1175,13 +1174,9 @@ impl LauncherUi {
             Primary::SelectedVersion { tag, checked } => {
                 let label = fmt(tl!("Install version {version}"), &[("version", &tag)]);
                 let resp = ui.add_enabled_ui(checked, |ui| widgets::button(ui, &label, Kind::Primary, main_w)).inner;
-                // The version is known but an install of it wouldn't go ahead: say so, since the
-                // button can't (it used to explain on click, with the install's refusal).
-                let refused = entry.release().is_some_and(|r| r.tag == tag) && !entry.installs_here(self.platform);
-                let resp = if refused {
-                    resp.on_disabled_hover_text(fmt(tl!("ArtCraft Launcher can't install version {version} over this copy."), &[("version", &tag)]))
-                } else {
-                    resp
+                let resp = match self.version_refusal(entry, &tag) {
+                    Some(why) => resp.on_disabled_hover_text(why),
+                    None => resp,
                 };
                 if resp.clicked() {
                     self.install_app(id);
