@@ -21,7 +21,9 @@
 //! Every download is checked against its published SHA-256 before anything is unpacked, a
 //! running app is never replaced, and a new copy is fully in place before the old one goes.
 
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
+use std::sync::{Arc, Condvar, Mutex, PoisonError};
 
 use artcraft_launcher_core::Arch;
 use artcraft_launcher_core::protocol::{CANCELLED, INSTALL_CANCELLED, InstallLocations, JobPhase};
@@ -32,6 +34,87 @@ use crate::http::{Http, Stop, Transfer};
 use crate::manifest::Record;
 use crate::paths::Paths;
 use crate::process;
+use crate::queue::BatchGroup;
+
+struct BatchState {
+    arrived: usize,
+    commands: Vec<Option<Vec<std::ffi::OsString>>>,
+    groups: Vec<Option<BatchGroup>>,
+    ready: bool,
+}
+
+/// Coordinates a user-selected group so every system-package download is ready before any
+/// package-manager call begins.
+pub struct InstallBatch {
+    expected: usize,
+    next: std::sync::atomic::AtomicUsize,
+    state: Mutex<BatchState>,
+    changed: Condvar,
+}
+
+impl InstallBatch {
+    pub fn new(expected: usize) -> Arc<Self> {
+        Arc::new(Self {
+            expected,
+            next: std::sync::atomic::AtomicUsize::new(0),
+            state: Mutex::new(BatchState { arrived: 0, commands: vec![None; expected], groups: vec![None; expected], ready: expected == 0 }),
+            changed: Condvar::new(),
+        })
+    }
+
+    pub fn participant(self: &Arc<Self>) -> BatchParticipant {
+        BatchParticipant { batch: self.clone(), index: self.next.fetch_add(1, std::sync::atomic::Ordering::Relaxed), arrived: false }
+    }
+}
+
+pub struct BatchParticipant {
+    batch: Arc<InstallBatch>,
+    index: usize,
+    arrived: bool,
+}
+
+impl BatchParticipant {
+    #[cfg(target_os = "linux")]
+    fn wait_for_package(&mut self, kind: PackageKind) -> Option<BatchGroup> {
+        let command = linux::install_command(kind).map(|parts| parts.iter().map(std::ffi::OsString::from).collect());
+        self.arrive(command, true)
+    }
+
+    fn arrive(&mut self, command: Option<Vec<std::ffi::OsString>>, wait: bool) -> Option<BatchGroup> {
+        let mut state = self.batch.state.lock().unwrap_or_else(PoisonError::into_inner);
+        if !self.arrived {
+            if let Some(slot) = state.commands.get_mut(self.index) {
+                *slot = command;
+                state.arrived += 1;
+            }
+            self.arrived = true;
+            if state.arrived == self.batch.expected {
+                let mut counts = HashMap::<Vec<std::ffi::OsString>, usize>::new();
+                for command in state.commands.iter().flatten() {
+                    *counts.entry(command.clone()).or_default() += 1;
+                }
+                let groups: HashMap<_, _> = counts.into_iter().map(|(command, count)| (command, BatchGroup::new(count))).collect();
+                state.groups = state.commands.iter().map(|command| command.as_ref().and_then(|command| groups.get(command)).copied()).collect();
+                state.ready = true;
+                self.batch.changed.notify_all();
+            }
+        }
+        if wait {
+            while !state.ready {
+                state = self.batch.changed.wait(state).unwrap_or_else(PoisonError::into_inner);
+            }
+        }
+        state.groups.get(self.index).copied().flatten()
+    }
+}
+
+impl Drop for BatchParticipant {
+    fn drop(&mut self) {
+        if !self.arrived {
+            self.arrive(None, false);
+        }
+    }
+}
 
 /// What an install needs from the backend.
 pub struct Job<'a> {
@@ -91,7 +174,7 @@ pub fn install(
     previous: Option<&Record>,
     job: &mut Job<'_>,
 ) -> Result<Option<Record>, String> {
-    install_at(app, release, asset, kind, existing, previous, job, None)
+    install_at(app, release, asset, kind, existing, previous, job, None, None)
 }
 
 type RecordCommit<'a> = Option<&'a mut dyn FnMut(&Record) -> Result<(), String>>;
@@ -105,6 +188,7 @@ pub fn install_at(
     existing: Option<&Installed>,
     previous: Option<&Record>,
     job: &mut Job<'_>,
+    batch: Option<&mut BatchParticipant>,
     commit: RecordCommit<'_>,
 ) -> Result<Option<Record>, String> {
     #[cfg(windows)]
@@ -166,6 +250,16 @@ pub fn install_at(
     #[cfg_attr(not(windows), allow(unused_variables))]
     let (file, sha256) = download(release, asset, job)?;
     log::info!("{}: download ready ({}), running installer...", app.name, file.display());
+    #[cfg(target_os = "linux")]
+    let batch_group = match batch {
+        Some(batch) if matches!(kind, PackageKind::Deb | PackageKind::Rpm | PackageKind::ArchPkg) => {
+            (job.phase)(JobPhase::Waiting);
+            batch.wait_for_package(kind)
+        }
+        _ => None,
+    };
+    #[cfg(not(target_os = "linux"))]
+    let _ = batch;
     // Past this point the install can't be interrupted halfway.
     (job.phase)(JobPhase::Installing);
     #[allow(unused_variables)]
@@ -214,17 +308,21 @@ pub fn install_at(
             .map(Some)
         }
         #[cfg(target_os = "linux")]
-        PackageKind::Deb | PackageKind::Rpm | PackageKind::ArchPkg | PackageKind::Flatpak => {
-            linux::install_package(kind, &file, existing.and_then(|installed| installed.installation.as_deref()), job.stop, &mut *job.phase).map(
-                |_| {
-                    if kind == PackageKind::Flatpak {
-                        linux::configure_bundle_lookaside(app, existing.and_then(|installed| installed.installation.as_deref()));
-                        linux::retire_former_flatpak(app, existing);
-                    }
-                    None
-                },
-            )
-        }
+        PackageKind::Deb | PackageKind::Rpm | PackageKind::ArchPkg | PackageKind::Flatpak => linux::install_package_batched(
+            kind,
+            &file,
+            existing.and_then(|installed| installed.installation.as_deref()),
+            job.stop,
+            &mut *job.phase,
+            batch_group,
+        )
+        .map(|_| {
+            if kind == PackageKind::Flatpak {
+                linux::configure_bundle_lookaside(app, existing.and_then(|installed| installed.installation.as_deref()));
+                linux::retire_former_flatpak(app, existing);
+            }
+            None
+        }),
         #[cfg(target_os = "linux")]
         PackageKind::AppImage => {
             linux::install_appimage(&file, &asset.name, destination.as_deref(), previous, job.replace).map(|(path, replaced)| {
@@ -1016,8 +1114,8 @@ pub(crate) mod linux {
     use artcraft_launcher_core::protocol::CANCELLED;
 
     use super::{
-        CraftApp, INSTALLER, InstallSource, Installed, JobPhase, PackageKind, Path, PathBuf, Paths, Record, SHARED_CALL, SYSTEM_BIN_DIRS, Stop,
-        cancelled, find_in, pkexec, process, run_as_root, swap_into_place, tree, turn,
+        BatchGroup, CraftApp, INSTALLER, InstallSource, Installed, JobPhase, PackageKind, Path, PathBuf, Paths, Record, SHARED_CALL, SYSTEM_BIN_DIRS,
+        Stop, cancelled, find_in, pkexec, process, run_as_root, swap_into_place, tree, turn,
     };
 
     /// apt waits this long for another package tool (a software centre, automatic updates) to
@@ -1046,12 +1144,17 @@ pub(crate) mod linux {
         stop: &Stop,
         phase: &mut dyn FnMut(JobPhase),
         working: JobPhase,
+        group: Option<BatchGroup>,
     ) -> Result<(), String> {
         let command = command.iter().map(OsString::from).collect();
-        root.queue.batched(command, target.to_os_string(), &cancelled(stop), &mut turn(phase, working), &|command, targets| {
+        let exec = |command: &[OsString], targets: &[OsString]| {
             let args: Vec<&OsStr> = command.iter().chain(targets).map(OsString::as_os_str).collect();
             shared_outcome((root.run)(&args), targets.len())
-        })
+        };
+        match group {
+            Some(group) => root.queue.batched_group(command, target.to_os_string(), group, &cancelled(stop), &mut turn(phase, working), &exec),
+            None => root.queue.batched(command, target.to_os_string(), &cancelled(stop), &mut turn(phase, working), &exec),
+        }
     }
 
     /// What one call's result means for each of the `count` apps it handled: a failure can't be
@@ -1166,6 +1269,26 @@ pub(crate) mod linux {
         install_package_via(&SYSTEM, kind, file, installation, stop, phase)
     }
 
+    pub fn install_package_batched(
+        kind: PackageKind,
+        file: &Path,
+        installation: Option<&str>,
+        stop: &Stop,
+        phase: &mut dyn FnMut(JobPhase),
+        group: Option<BatchGroup>,
+    ) -> Result<(), String> {
+        let Some(group) = group else {
+            return install_package(kind, file, installation, stop, phase);
+        };
+        if kind == PackageKind::Deb && system_tool("apt-get").is_none() {
+            return Err("this system has no apt-get to install a Debian package with".into());
+        }
+        if kind == PackageKind::ArchPkg && system_tool("pacman").is_none() {
+            return Err("this system has no pacman to install an Arch package with".into());
+        }
+        install_package_via_batched(&SYSTEM, kind, file, installation, stop, phase, Some(group))
+    }
+
     pub fn install_package_via(
         root: &Root<'_>,
         kind: PackageKind,
@@ -1174,9 +1297,21 @@ pub(crate) mod linux {
         stop: &Stop,
         phase: &mut dyn FnMut(JobPhase),
     ) -> Result<(), String> {
+        install_package_via_batched(root, kind, file, installation, stop, phase, None)
+    }
+
+    pub(super) fn install_package_via_batched(
+        root: &Root<'_>,
+        kind: PackageKind,
+        file: &Path,
+        installation: Option<&str>,
+        stop: &Stop,
+        phase: &mut dyn FnMut(JobPhase),
+        group: Option<BatchGroup>,
+    ) -> Result<(), String> {
         let f = file.as_os_str();
         if let Some(command) = install_command(kind) {
-            return as_root(root, command, f, stop, phase, JobPhase::Installing);
+            return as_root(root, command, f, stop, phase, JobPhase::Installing, group);
         }
         match kind {
             PackageKind::Flatpak => {
@@ -1210,7 +1345,7 @@ pub(crate) mod linux {
     }
 
     pub fn remove_package(app: &CraftApp, installed: &Installed, stop: &Stop, phase: &mut dyn FnMut(JobPhase)) -> Result<(), String> {
-        let mut remove = |command: &[&str], package: &str| as_root(&SYSTEM, command, OsStr::new(package), stop, phase, JobPhase::Removing);
+        let mut remove = |command: &[&str], package: &str| as_root(&SYSTEM, command, OsStr::new(package), stop, phase, JobPhase::Removing, None);
         let package = installed.package.as_deref().unwrap_or(app.id);
         match installed.source {
             // The package detected (photocraft, or ai.storyteller.photocraft).
@@ -3203,6 +3338,43 @@ mod tests {
 
     #[cfg(target_os = "linux")]
     #[test]
+    fn selected_package_downloads_wait_and_install_as_one_call() {
+        use std::sync::Mutex;
+
+        let queue = crate::queue::Queue::new();
+        let ran = Mutex::new(Vec::new());
+        let run = |args: &[&std::ffi::OsStr]| {
+            ran.lock().unwrap().push(args.iter().map(|arg| arg.to_string_lossy().into_owned()).collect::<Vec<_>>());
+            Ok(())
+        };
+        let root = linux::Root { queue: &queue, run: &run };
+        let root = &root;
+        let batch = InstallBatch::new(3);
+        let first = batch.participant();
+        let second = batch.participant();
+        drop(batch.participant());
+        let results = std::thread::scope(|scope| {
+            let first = scope.spawn(move || {
+                let mut participant = first;
+                let group = participant.wait_for_package(PackageKind::Deb);
+                linux::install_package_via_batched(root, PackageKind::Deb, Path::new("/downloads/a.deb"), None, &Stop::default(), &mut |_| (), group)
+            });
+            let second = scope.spawn(move || {
+                let mut participant = second;
+                let group = participant.wait_for_package(PackageKind::Deb);
+                linux::install_package_via_batched(root, PackageKind::Deb, Path::new("/downloads/b.deb"), None, &Stop::default(), &mut |_| (), group)
+            });
+            [first.join().unwrap(), second.join().unwrap()]
+        });
+        assert_eq!(results, [Ok(()), Ok(())]);
+        let ran = ran.lock().unwrap();
+        assert_eq!(ran.len(), 1, "{ran:?}");
+        assert!(ran[0].contains(&"/downloads/a.deb".to_string()));
+        assert!(ran[0].contains(&"/downloads/b.deb".to_string()));
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
     fn flatpak_bundle_install_failure_reports_clean_error() {
         if !crate::process::is_flatpak_available() {
             return;
@@ -3508,7 +3680,7 @@ mod tests {
         };
         let stop = Stop::default();
         let mut job = Job { http: &http, paths: &paths, stop: &stop, phase, install_locations: &locations, replace: false, downgrade: None };
-        let result = install_at(app, &release, &asset, PackageKind::AppImage, Some(&installed), None, &mut job, None);
+        let result = install_at(app, &release, &asset, PackageKind::AppImage, Some(&installed), None, &mut job, None, None);
         assert!(result.is_err());
         assert!(result.unwrap_err().contains("installed version 0.5.0 is newer"));
     }
@@ -3531,7 +3703,7 @@ mod tests {
         };
         let stop = Stop::default();
         let mut job = Job { http: &http, paths: &paths, stop: &stop, phase, install_locations: &locations, replace: false, downgrade: None };
-        let result = install_at(app, &release, &asset, PackageKind::AppImage, None, None, &mut job, None);
+        let result = install_at(app, &release, &asset, PackageKind::AppImage, None, None, &mut job, None, None);
         assert!(result.is_err(), "mismatched artifact version must be rejected");
         assert!(result.unwrap_err().contains("does not match the advertised version"));
 

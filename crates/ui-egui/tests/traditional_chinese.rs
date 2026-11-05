@@ -195,8 +195,7 @@ fn traditional_chinese_switches_persists_and_keeps_install_actions() {
     snapshot(&mut h, "grid-zh-tw-dark");
     h.get_by_label("全部更新（2）").click();
     h.run_steps(2);
-    let installs: Vec<_> = sent.borrow().iter().filter_map(|c| if let Command::Install { app } = c { Some(app.clone()) } else { None }).collect();
-    assert_eq!(installs, ["photocraft", "effectcraft"]);
+    assert!(sent.borrow().contains(&Command::InstallBatch { apps: vec!["photocraft".into(), "effectcraft".into()] }));
 
     let (mut table, _) = harness_language(ViewMode::Table, egui::Theme::Light, true, &restored.language);
     table.run_steps(6);

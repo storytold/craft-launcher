@@ -306,6 +306,20 @@ impl NativeBackend {
     }
 
     fn start_job(&self, app_id: &str, work: Work) {
+        self.start_job_in_batch(app_id, work, None);
+    }
+
+    fn start_batch(&self, apps: &[String]) {
+        if apps.is_empty() {
+            return;
+        }
+        let batch = install::InstallBatch::new(apps.len());
+        for app in apps {
+            self.start_job_in_batch(app, Work::Install, Some(batch.participant()));
+        }
+    }
+
+    fn start_job_in_batch(&self, app_id: &str, work: Work, batch: Option<install::BatchParticipant>) {
         let uninstall = matches!(work, Work::Uninstall);
         let Some(app) = CraftApp::by_id(app_id) else { return };
         log::info!("{}: starting {} job", app.name, if uninstall { "uninstall" } else { "install/update" });
@@ -335,6 +349,7 @@ impl NativeBackend {
         let source = self.source.clone();
         std::thread::spawn(move || {
             let job = job;
+            let mut batch = batch;
             let existing = shared.installed.lock().unwrap_or_else(PoisonError::into_inner).get(app.id).cloned();
             let record = shared.manifest.lock().unwrap_or_else(PoisonError::into_inner).apps.get(app.id).cloned();
             let result = if uninstall {
@@ -366,6 +381,7 @@ impl NativeBackend {
                         Work::Install | Work::Uninstall => None,
                     },
                     source.as_deref(),
+                    batch.as_mut(),
                 );
                 // Stopped by the connection rather than by the user: say so, and how to go on.
                 match r {
@@ -375,6 +391,7 @@ impl NativeBackend {
                     other => other,
                 }
             };
+            drop(batch);
             report_partial(app, &shared, &paths, platform, &options);
             // Look again: the result is whatever is on disk now.
             let manifest = shared.manifest.lock().unwrap_or_else(PoisonError::into_inner).clone();
@@ -515,6 +532,7 @@ fn run_install(
     stop: &Stop,
     approved: Option<&str>,
     source: Option<&dyn ReleaseSource>,
+    batch: Option<&mut install::BatchParticipant>,
 ) -> Result<String, String> {
     if let Some(inst) = existing
         && inst.source == artcraft_launcher_core::InstallSource::Flatpak
@@ -628,7 +646,7 @@ fn run_install(
         *manifest = updated;
         Ok(())
     };
-    let new_record = install::install_at(app, &release, &asset, kind, existing, record, &mut job, Some(&mut commit_record))?;
+    let new_record = install::install_at(app, &release, &asset, kind, existing, record, &mut job, batch, Some(&mut commit_record))?;
     {
         let mut m = shared.manifest.lock().unwrap_or_else(PoisonError::into_inner);
         let changed = match new_record {
@@ -1209,6 +1227,7 @@ impl Backend for NativeBackend {
                 });
             }
             Command::Install { app } => self.start_job(&app, Work::Install),
+            Command::InstallBatch { apps } => self.start_batch(&apps),
             Command::Replace { app, path } => self.start_job(&app, Work::Replace(path)),
             Command::Uninstall { app } => self.start_job(&app, Work::Uninstall),
             Command::Pause { app } => {

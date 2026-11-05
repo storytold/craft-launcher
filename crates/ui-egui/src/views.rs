@@ -313,8 +313,10 @@ impl LauncherUi {
         let label = if updates == 1 { tl!("Update 1 app").to_string() } else { fmt(tl!("Update all ({count})"), &[("count", &updates.to_string())]) };
         if widgets::button(ui, &label, Kind::Primary, 0.0).clicked() {
             let ids: Vec<&str> = self.entries.iter().filter(|e| self.in_filter(e, Filter::Updates) && e.job.is_none()).map(|e| e.app.id).collect();
-            for id in ids {
-                self.act_command(Command::Install { app: id.to_string() });
+            match ids.as_slice() {
+                [] => {}
+                [id] => self.act_command(Command::Install { app: (*id).to_string() }),
+                _ => self.act_command(Command::InstallBatch { apps: ids.into_iter().map(str::to_string).collect() }),
             }
         }
     }

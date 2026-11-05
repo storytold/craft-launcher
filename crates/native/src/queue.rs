@@ -6,6 +6,7 @@
 //! asked for once.
 
 use std::ffi::OsString;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Condvar, Mutex, MutexGuard, PoisonError};
 use std::time::Duration;
 
@@ -17,6 +18,20 @@ struct Waiting {
     id: u64,
     command: Vec<OsString>,
     target: OsString,
+    group: Option<u64>,
+}
+
+#[derive(Clone, Copy)]
+pub(crate) struct BatchGroup {
+    id: u64,
+    expected: usize,
+}
+
+impl BatchGroup {
+    pub(crate) fn new(expected: usize) -> Self {
+        static NEXT_ID: AtomicU64 = AtomicU64::new(0);
+        Self { id: NEXT_ID.fetch_add(1, Ordering::Relaxed), expected }
+    }
 }
 
 struct State {
@@ -26,6 +41,7 @@ struct State {
     /// The jobs of the call in progress.
     running: Vec<u64>,
     finished: Vec<(u64, Outcome)>,
+    cancelled_groups: Vec<(u64, usize)>,
 }
 
 pub struct Queue {
@@ -61,7 +77,7 @@ impl Default for Queue {
 
 impl Queue {
     pub const fn new() -> Self {
-        let state = State { busy: false, next_id: 0, waiting: Vec::new(), running: Vec::new(), finished: Vec::new() };
+        let state = State { busy: false, next_id: 0, waiting: Vec::new(), running: Vec::new(), finished: Vec::new(), cancelled_groups: Vec::new() };
         Self { state: Mutex::new(state), changed: Condvar::new() }
     }
 
@@ -119,10 +135,45 @@ impl Queue {
         turn: &mut dyn FnMut(bool),
         exec: &dyn Fn(&[OsString], &[OsString]) -> Outcome,
     ) -> Outcome {
+        self.batched_inner(command, target, None, cancelled, turn, exec)
+    }
+
+    pub(crate) fn batched_group(
+        &self,
+        command: Vec<OsString>,
+        target: OsString,
+        group: BatchGroup,
+        cancelled: &dyn Fn() -> bool,
+        turn: &mut dyn FnMut(bool),
+        exec: &dyn Fn(&[OsString], &[OsString]) -> Outcome,
+    ) -> Outcome {
+        self.batched_inner(command, target, Some(group), cancelled, turn, exec)
+    }
+
+    fn batched_inner(
+        &self,
+        command: Vec<OsString>,
+        target: OsString,
+        group: Option<BatchGroup>,
+        cancelled: &dyn Fn() -> bool,
+        turn: &mut dyn FnMut(bool),
+        exec: &dyn Fn(&[OsString], &[OsString]) -> Outcome,
+    ) -> Outcome {
         let mut state = self.lock();
         let id = state.next_id;
         state.next_id = state.next_id.wrapping_add(1);
-        state.waiting.push(Waiting { id, command: command.clone(), target });
+        if let Some(group) = group
+            && let Some(index) = state.cancelled_groups.iter().position(|(id, _)| *id == group.id)
+        {
+            if state.cancelled_groups[index].1 <= 1 {
+                state.cancelled_groups.remove(index);
+            } else {
+                state.cancelled_groups[index].1 -= 1;
+            }
+            return Err(CANCELLED.into());
+        }
+        state.waiting.push(Waiting { id, command: command.clone(), target, group: group.map(|g| g.id) });
+        self.changed.notify_all();
         let (mut waited, mut started) = (false, false);
         loop {
             if let Some(at) = state.finished.iter().position(|(done, _)| *done == id) {
@@ -131,10 +182,25 @@ impl Queue {
             // Another job took this one into its call.
             let running = state.running.contains(&id);
             if !running && waited && cancelled() {
-                state.waiting.retain(|w| w.id != id);
+                if let Some(group) = group {
+                    let members: Vec<u64> = state.waiting.iter().filter(|w| w.group == Some(group.id)).map(|w| w.id).collect();
+                    state.waiting.retain(|w| w.group != Some(group.id));
+                    let not_arrived = group.expected.saturating_sub(members.len());
+                    if not_arrived > 0 {
+                        state.cancelled_groups.push((group.id, not_arrived));
+                    }
+                    for member in members.into_iter().filter(|member| *member != id) {
+                        state.finished.push((member, Err(CANCELLED.into())));
+                    }
+                    self.changed.notify_all();
+                } else {
+                    state.waiting.retain(|w| w.id != id);
+                }
                 return Err(CANCELLED.into());
             }
-            if !running && !state.busy {
+            let waiting_count = state.waiting.iter().filter(|w| w.command == command && w.group == group.map(|g| g.id)).count();
+            let expected = group.map_or(1, |g| g.expected);
+            if !running && !state.busy && waiting_count >= expected {
                 break;
             }
             let tell = if running { waited && !started } else { !waited };
@@ -147,7 +213,8 @@ impl Queue {
                 state = self.wait(state);
             }
         }
-        let (batch, rest): (Vec<Waiting>, Vec<Waiting>) = std::mem::take(&mut state.waiting).into_iter().partition(|w| w.command == command);
+        let (batch, rest): (Vec<Waiting>, Vec<Waiting>) =
+            std::mem::take(&mut state.waiting).into_iter().partition(|w| w.command == command && w.group == group.map(|g| g.id));
         state.waiting = rest;
         state.busy = true;
         state.running = batch.iter().map(|w| w.id).collect();
@@ -258,6 +325,74 @@ mod tests {
         });
         assert_eq!(results, vec![Some(Ok(())); 4]);
         assert_eq!(calls.taken(), [line(&["apt-get", "install", "-y", "a.deb", "b.deb", "c.deb"]), line(&["apt-get", "remove", "-y", "photocraft"])]);
+    }
+
+    #[test]
+    fn a_batch_group_waits_for_every_member_before_running() {
+        let queue = Queue::new();
+        let group = BatchGroup::new(2);
+        let calls = Calls::default();
+        let (waiting, waits) = mpsc::channel();
+        std::thread::scope(|scope| {
+            let (queue, calls) = (&queue, &calls);
+            let first = scope.spawn(move || {
+                queue.batched_group(
+                    install(),
+                    os("a.deb"),
+                    group,
+                    &|| false,
+                    &mut |is_waiting| {
+                        if is_waiting {
+                            waiting.send(()).unwrap();
+                        }
+                    },
+                    &|command, targets| {
+                        calls.record(command, targets);
+                        Ok(())
+                    },
+                )
+            });
+            waits.recv().unwrap();
+            assert!(calls.0.lock().unwrap().is_empty(), "the first member must wait for the full group");
+            let second = scope.spawn(move || {
+                queue.batched_group(install(), os("b.deb"), group, &|| false, &mut |_| {}, &|command, targets| {
+                    calls.record(command, targets);
+                    Ok(())
+                })
+            });
+            assert_eq!(first.join().unwrap(), Ok(()));
+            assert_eq!(second.join().unwrap(), Ok(()));
+        });
+        assert_eq!(calls.taken(), [line(&["apt-get", "install", "-y", "a.deb", "b.deb"])]);
+    }
+
+    #[test]
+    fn cancelling_a_waiting_batch_releases_members_that_arrive_later() {
+        let queue = Queue::new();
+        let group = BatchGroup::new(2);
+        let cancelled = AtomicBool::new(false);
+        let (waiting, waits) = mpsc::channel();
+        let first = std::thread::scope(|scope| {
+            let first = scope.spawn(|| {
+                queue.batched_group(
+                    install(),
+                    os("a.deb"),
+                    group,
+                    &|| cancelled.load(Ordering::SeqCst),
+                    &mut |is_waiting| {
+                        if is_waiting {
+                            waiting.send(()).unwrap();
+                        }
+                    },
+                    &|_, _| Ok(()),
+                )
+            });
+            waits.recv().unwrap();
+            cancelled.store(true, Ordering::SeqCst);
+            first.join().unwrap()
+        });
+        assert_eq!(first, Err(CANCELLED.into()));
+        assert_eq!(queue.batched_group(install(), os("b.deb"), group, &|| false, &mut |_| {}, &|_, _| Ok(())), Err(CANCELLED.into()));
     }
 
     #[test]
