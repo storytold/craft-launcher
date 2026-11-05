@@ -1641,9 +1641,9 @@ Remove-Item -LiteralPath $path -Force
         let session = "0123456789abcdef0123456789abcdef";
         let mut items = Vec::new();
         let mut cases = Vec::new();
-        for index in 0..12 {
+        for index in 0usize..12 {
             let path = temp.path().join(format!("package-{index}.msi"));
-            let size = if index == 0 { 8 * 1024 * 1024 } else { 1024 * 1024 };
+            let size: usize = if index == 0 { 8 * 1024 * 1024 } else { 1024 * 1024 };
             let bytes: Vec<u8> = (0..size).map(|byte| (byte.wrapping_mul(37).wrapping_add(index * 19) & 0xff) as u8).collect();
             std::fs::write(&path, &bytes).unwrap();
             let sha256 = crate::http::sha256_file(&path).unwrap();
