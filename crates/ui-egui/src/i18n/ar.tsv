@@ -55,6 +55,10 @@
 	Install	تثبيت
 	Update to {v}	تحديث إلى {v}
 	Open	فتح
+	Open {version}	فتح {version}
+	Open {installed} without updating. {latest} stays available.	فتح {installed} دون تحديث. يبقى {latest} متوفرًا.
+	{latest} is out, but ArtCraft Launcher can't install it over this copy.	صدر {latest}، لكن يتعذّر على ArtCraft Launcher تثبيته فوق هذه النسخة.
+	ArtCraft Launcher can't install version {version} over this copy.	يتعذّر على ArtCraft Launcher تثبيت الإصدار {version} فوق هذه النسخة.
 	Download for {os}	تنزيل لنظام {os}
 	Download	تنزيل
 	Coming soon	قريبًا

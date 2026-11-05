@@ -184,7 +184,10 @@ fn arabic_switches_persists_mirrors_and_keeps_install_actions() {
     assert!(h.ctx.global_style().right_to_left);
     h.get_by_label("تحرير الصور");
     h.get_by_label_contains("آخر تحقق قبل 3 دقائق · المصدر: ArtCraft API");
-    h.get_by_label("تحديث إلى 0.5.0");
+    // A waiting update's Open half reads first: at the right of the update half.
+    let open = h.get_by_label("فتح 0.4.1 دون تحديث. يبقى 0.5.0 متوفرًا.").rect();
+    let update = h.get_by_label("تحديث إلى 0.5.0").rect();
+    assert!(open.left() >= update.right(), "{open:?} {update:?}");
     // Mirrored: the settings button sits at the left, the first card at the right.
     let width = h.ctx.content_rect().width();
     assert!(h.get_by_label("الإعدادات").rect().center().x < width / 2.0);
