@@ -39,8 +39,10 @@ pub enum Command {
     Uninstall {
         app: String,
     },
+    /// Start an installed app, passing `args` (the user's launch flags) on its command line.
     Launch {
         app: String,
+        args: Vec<String>,
     },
     /// Show the installed app in the file manager.
     Reveal {
@@ -175,7 +177,8 @@ pub enum Source {
     Feed,
     /// The GitHub REST API.
     GitHubApi,
-    /// github.com release pages (no API quota; used when the API is rate-limited).
+    /// github.com release pages (no API quota; used whenever the API gave no answer, whether it
+    /// was out of quota or couldn't be reached).
     GitHubPages,
     /// Saved answers from an earlier check.
     Cache,
