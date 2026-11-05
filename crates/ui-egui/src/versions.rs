@@ -1,8 +1,9 @@
 //! Published-release selector. A choice changes the release used by future checks, not a running install.
 use artcraft_launcher_core::catalog::{CraftApp, LAUNCHER, LAUNCHER_ID};
+use artcraft_launcher_core::platform::pick_asset;
 use artcraft_launcher_core::protocol::VersionTrack;
-use artcraft_launcher_core::release::{Release, choose_version, is_nightly};
-use artcraft_launcher_core::version;
+use artcraft_launcher_core::release::{Asset, Release, choose_version, is_nightly};
+use artcraft_launcher_core::{Os, version};
 use egui::{RichText, Ui};
 
 use crate::app::LauncherUi;
@@ -151,7 +152,7 @@ impl LauncherUi {
                             } else {
                                 (choice == pin, r.tag.clone(), pin)
                             };
-                            if ui.add(egui::Button::selectable(selected, text).min_size(option_size)).clicked() {
+                            if self.version_row(ui, selected, text, app, r, option_size).clicked() {
                                 picked = Some(track);
                             }
                         }
@@ -198,11 +199,59 @@ impl LauncherUi {
         }
     }
 
+    /// One release in the version list: its tag, and at the right, muted, the day it came out and
+    /// the size of the package this machine would download, each left out when unknown. On the
+    /// selected row they take the row's own text colour, as muted grey is unreadable on the
+    /// accent. The row stays named by its tag; the date and size are its description.
+    fn version_row(&self, ui: &mut Ui, selected: bool, text: String, app: &CraftApp, r: &Release, size: egui::Vec2) -> egui::Response {
+        let facts = version_facts(r.published_at.map(crate::views::date_text), self.version_asset(app, r).map(|a| a.size));
+        let mut button = egui::Button::selectable(selected, text).min_size(size);
+        if !facts.is_empty() {
+            let galley = egui::WidgetText::from(RichText::new(&facts).size(12.5).color(egui::Color32::PLACEHOLDER)).into_galley(
+                ui,
+                Some(egui::TextWrapMode::Extend),
+                f32::INFINITY,
+                egui::TextStyle::Body,
+            );
+            let muted = Tokens::get(ui.ctx()).muted;
+            // Painted, not a text atom: a text atom would join the row's name.
+            button = button.right_text(egui::Atom::paint(galley.size(), move |ui, args| {
+                let at = egui::Align2::LEFT_CENTER.align_size_within_rect(galley.size(), args.rect).min;
+                ui.painter().galley(at, galley.clone(), if selected { args.fallback_text_color } else { muted });
+            }));
+        }
+        let response = ui.add(button);
+        if !facts.is_empty() {
+            ui.ctx().accesskit_node_builder(response.id, |node| node.set_description(facts));
+        }
+        response
+    }
+
+    /// The package this machine would download for `r`: the one the launcher updates itself from
+    /// or the app installs or updates from. `None` where the UI can't tell which.
+    fn version_asset<'r>(&self, app: &CraftApp, r: &'r Release) -> Option<&'r Asset> {
+        if app.id == LAUNCHER_ID {
+            return self.launcher_version_asset(r);
+        }
+        self.install_asset(self.entry(app.id)?, r)
+    }
+
+    /// The launcher's own package of `r`: the format the running copy was installed as, which its
+    /// self-update downloads. Until the backend knows that, the manual download (on the web, the
+    /// only one), except on Linux, where the running copy's format is anyone's guess.
+    fn launcher_version_asset<'r>(&self, r: &'r Release) -> Option<&'r Asset> {
+        let platform = self.platform?;
+        match self.backend.launcher_kind() {
+            Some(kind) => pick_asset(r, &[LAUNCHER_ID], platform, &[kind]).map(|(asset, _)| asset),
+            None if self.caps.manage_apps && platform.os == Os::Linux => None,
+            None => crate::views::launcher_asset(r, platform, crate::settings::is_flatpak_sandbox()),
+        }
+    }
+
     fn has_version_download(&self, app: &CraftApp, r: &Release) -> bool {
         let Some(platform) = self.platform else { return false };
         let stems: Vec<&str> = app.stems().collect();
-        artcraft_launcher_core::platform::pick_asset(r, &stems, platform, platform.download_kinds())
-            .is_some_and(|(asset, _)| asset.sha256.is_some() || r.sums_asset().is_some())
+        pick_asset(r, &stems, platform, platform.download_kinds()).is_some_and(|(asset, _)| asset.sha256.is_some() || r.sums_asset().is_some())
     }
 
     /// The newer release a version kept on purpose is behind, for a quiet note beside it on the
@@ -226,6 +275,13 @@ impl LauncherUi {
     }
 }
 
+/// "Oct 8, 2026 · 150 MB": what a version row says beside its tag, from the release's date and its
+/// download's published size. A size of zero means none was published, not an empty file.
+fn version_facts(date: Option<String>, size: Option<u64>) -> String {
+    let size = size.filter(|bytes| *bytes > 0).map(widgets::human_bytes);
+    [date, size].into_iter().flatten().collect::<Vec<_>>().join(" · ")
+}
+
 /// The newest stable release in `releases`, when `track` keeps an exact version and that release is
 /// newer than `installed`.
 fn behind(track: &VersionTrack, installed: &version::Version, releases: &[Release]) -> Option<String> {
@@ -242,6 +298,16 @@ mod tests {
 
     fn tagged(v: &str, prerelease: bool) -> Release {
         Release { tag: format!("v{v}"), version: version::parse(v), prerelease, ..Default::default() }
+    }
+
+    #[test]
+    fn a_version_row_names_only_what_the_release_publishes() {
+        let date = || Some("Oct 8, 2026".to_string());
+        assert_eq!(version_facts(date(), Some(150 << 20)), "Oct 8, 2026 · 150 MB");
+        assert_eq!(version_facts(date(), None), "Oct 8, 2026");
+        assert_eq!(version_facts(date(), Some(0)), "Oct 8, 2026", "an unpublished size is not 1 KB");
+        assert_eq!(version_facts(None, Some(3 << 30)), "3.0 GB");
+        assert_eq!(version_facts(None, None), "");
     }
 
     #[test]

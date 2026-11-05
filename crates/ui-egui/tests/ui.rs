@@ -441,6 +441,8 @@ struct VersionsFake {
     events: Rc<RefCell<Vec<Event>>>,
     sent: Rc<RefCell<Vec<Command>>>,
     answer: Vec<Release>,
+    platform: Platform,
+    launcher_kind: Option<artcraft_launcher_core::PackageKind>,
 }
 
 impl Backend for VersionsFake {
@@ -453,11 +455,14 @@ impl Backend for VersionsFake {
     fn poll(&mut self) -> Vec<Event> {
         std::mem::take(&mut *self.events.borrow_mut())
     }
+    fn launcher_kind(&self) -> Option<artcraft_launcher_core::PackageKind> {
+        self.launcher_kind
+    }
     fn capabilities(&self) -> Capabilities {
         Capabilities { manage_apps: true, reveal_label: "Show in Finder", self_update: true }
     }
     fn platform(&self) -> Option<Platform> {
-        Some(Platform { os: Os::MacOs, arch: Arch::Arm64 })
+        Some(self.platform)
     }
     fn now(&self) -> i64 {
         NOW
@@ -473,20 +478,48 @@ fn signed_photocraft(v: &str) -> Release {
 
 type VersionsHarness = (Harness<'static, Option<LauncherUi>>, Rc<RefCell<Vec<Command>>>, Rc<RefCell<Vec<Event>>>);
 
-/// The suite (PhotoCraft 0.4.1 installed) with `latest` as PhotoCraft's checked release and
-/// `answer` as its published versions, opened on PhotoCraft's expanded version menu.
-fn version_menu(latest: Release, answer: Vec<Release>) -> VersionsHarness {
+/// The machine a [`VersionsFake`] harness stands for.
+struct Machine {
+    platform: Platform,
+    theme: egui::Theme,
+    preferred: Vec<artcraft_launcher_core::PackageKind>,
+    /// Events after the suite's (such as how PhotoCraft is installed).
+    more: Vec<Event>,
+    /// What the backend says the running launcher was installed as.
+    launcher_kind: Option<artcraft_launcher_core::PackageKind>,
+}
+
+impl Default for Machine {
+    fn default() -> Self {
+        Machine {
+            platform: Platform { os: Os::MacOs, arch: Arch::Arm64 },
+            theme: egui::Theme::Dark,
+            preferred: Settings::default().preferred_kinds,
+            more: vec![],
+            launcher_kind: None,
+        }
+    }
+}
+
+/// The suite on `machine` with `latest` as PhotoCraft's checked release (if any) and `answer` as
+/// every version list.
+fn versions_harness(machine: Machine, latest: Option<Release>, answer: Vec<Release>) -> VersionsHarness {
     struct DummyHost;
     impl Host for DummyHost {}
+    let Machine { platform, theme, preferred, more, launcher_kind } = machine;
     let mut ev = events();
-    ev.push(Event::Latest { app: "photocraft".into(), latest: LatestRelease::Found(latest), from: Origin::GitHub });
+    ev.extend(more);
+    if let Some(latest) = latest {
+        ev.push(Event::Latest { app: "photocraft".into(), latest: LatestRelease::Found(latest), from: Origin::GitHub });
+    }
     let sent = Rc::new(RefCell::new(Vec::new()));
     let queue = Rc::new(RefCell::new(ev));
-    let mut backend = Some(VersionsFake { events: queue.clone(), sent: sent.clone(), answer });
-    let mut h = test_harness_builder(egui::Theme::Dark).with_size(egui::vec2(1180.0, 1200.0)).build_ui_state(
+    let mut backend = Some(VersionsFake { events: queue.clone(), sent: sent.clone(), answer, platform, launcher_kind });
+    let mut h = test_harness_builder(theme).with_size(egui::vec2(1180.0, 1200.0)).build_ui_state(
         move |ui, state: &mut Option<LauncherUi>| {
             if let Some(backend) = backend.take() {
-                *state = Some(LauncherUi::new(ui.ctx(), Box::new(backend), Settings { notify: false, ..Default::default() }));
+                let settings = Settings { notify: false, preferred_kinds: preferred.clone(), ..Default::default() };
+                *state = Some(LauncherUi::new(ui.ctx(), Box::new(backend), settings));
             }
             if let Some(launcher) = state {
                 launcher.logic(ui.ctx(), &mut DummyHost);
@@ -496,12 +529,37 @@ fn version_menu(latest: Release, answer: Vec<Release>) -> VersionsHarness {
         None,
     );
     h.run_steps(6);
+    (h, sent, queue)
+}
+
+/// The suite (PhotoCraft 0.4.1 installed) with `latest` as PhotoCraft's checked release and
+/// `answer` as its published versions, opened on PhotoCraft's expanded version menu.
+fn version_menu(latest: Release, answer: Vec<Release>) -> VersionsHarness {
+    version_menu_on(Machine::default(), latest, answer)
+}
+
+/// [`version_menu`] on `machine`.
+fn version_menu_on(machine: Machine, latest: Release, answer: Vec<Release>) -> VersionsHarness {
+    let (mut h, sent, queue) = versions_harness(machine, Some(latest), answer);
+    // Not installed, PhotoCraft's card is further down.
+    h.get_by_label("More actions for PhotoCraft").scroll_to_me();
+    h.run_steps(3);
     h.get_by_label("More actions for PhotoCraft").click();
     h.run_steps(3);
     h.get_by_label("Choose version").click();
     h.run_steps(4);
     h.get_by_role_and_label(egui::accesskit::Role::ComboBox, "Version").click();
     h.run_steps(4);
+    (h, sent, queue)
+}
+
+/// The launcher's own version list in Settings on `machine`, expanded, with `answer` published.
+fn launcher_menu_on(machine: Machine, answer: Vec<Release>) -> VersionsHarness {
+    let (mut h, sent, queue) = versions_harness(machine, None, answer);
+    h.get_by_label("Settings").click();
+    h.run_steps(4);
+    h.get_by_role_and_label(egui::accesskit::Role::ComboBox, "Launcher version").click();
+    h.run_steps(5);
     (h, sent, queue)
 }
 
@@ -569,6 +627,206 @@ fn choosing_an_app_version_turns_its_main_action_into_install() {
     h.run_steps(4);
     assert!(h.query_by_label("Install version v0.4.0").is_none(), "an installed pin is not offered again");
     assert_eq!(h.query_all_by_label("Open").count(), opens + 1, "PhotoCraft shows Open");
+}
+
+/// The date and size painted beside the version row named `label`, and their colour. `None` when
+/// the row paints nothing beside its name.
+fn painted_facts(h: &Harness<'static, Option<LauncherUi>>, label: &str) -> Option<(String, egui::Color32)> {
+    fn texts(shape: &egui::Shape, out: &mut Vec<(egui::Pos2, String, egui::Color32)>) {
+        match shape {
+            egui::Shape::Vec(shapes) => shapes.iter().for_each(|s| texts(s, out)),
+            egui::Shape::Text(t) => out.push((t.pos, t.galley.text().to_string(), t.override_text_color.unwrap_or(t.fallback_color))),
+            _ => {}
+        }
+    }
+    let row = h.query_all_by_role_and_label(egui::accesskit::Role::Button, label).next()?.rect();
+    let mut found = Vec::new();
+    h.output().shapes.iter().for_each(|clipped| texts(&clipped.shape, &mut found));
+    // Shapes come in paint order: what the row paints beside its name comes right after the name,
+    // which keeps out the text under the open menu.
+    let name = found.iter().rposition(|(pos, text, _)| row.contains(*pos) && text == label).expect("the row paints its name");
+    found.into_iter().skip(name + 1).find(|(pos, _, _)| row.contains(*pos)).map(|(_, text, color)| (text, color))
+}
+
+/// The accessible description of the version row named `label` (its date and size).
+fn row_facts(h: &Harness<'static, Option<LauncherUi>>, label: &str) -> Option<String> {
+    h.query_all_by_role_and_label(egui::accesskit::Role::Button, label).next()?.accesskit_node().description()
+}
+
+/// WCAG contrast ratio of two opaque colours.
+fn contrast(a: egui::Color32, b: egui::Color32) -> f32 {
+    let lum = |c: egui::Color32| {
+        let ch = |v: u8| {
+            let v = f32::from(v) / 255.0;
+            if v <= 0.039_28 { v / 12.92 } else { ((v + 0.055) / 1.055).powf(2.4) }
+        };
+        0.2126 * ch(c.r()) + 0.7152 * ch(c.g()) + 0.0722 * ch(c.b())
+    };
+    let (x, y) = (lum(a), lum(b));
+    (x.max(y) + 0.05) / (x.min(y) + 0.05)
+}
+
+#[test]
+fn version_rows_show_the_release_date_and_download_size() {
+    // A release that publishes neither a date nor its size keeps a plain row.
+    let mut undated = signed_photocraft("0.4.0");
+    undated.published_at = None;
+    undated.assets[0].size = 0;
+    for theme in [egui::Theme::Dark, egui::Theme::Light] {
+        let answer = vec![signed_photocraft("0.5.0"), undated.clone(), signed_photocraft("0.3.0")];
+        let (mut h, _, _) = version_menu_on(Machine { theme, ..Machine::default() }, signed_photocraft("0.5.0"), answer);
+        // The row's name stays the version; its date and the size of this Mac's download ride beside
+        // it, drawn and as its description. The day itself depends on the zone the test runs in.
+        let facts = row_facts(&h, "v0.5.0 (latest release)").unwrap_or_default();
+        assert!(facts.starts_with("Oct ") && facts.ends_with(", 2026 · 150 MB"), "{theme:?}: {facts:?}");
+        let (painted, on_accent) = painted_facts(&h, "v0.5.0 (latest release)").expect("the selected row paints its date and size");
+        assert_eq!(painted, facts);
+        // The selected row sits on the accent, where the muted grey can't be read: its date and
+        // size take the row's own text colour there.
+        let style = h.ctx.global_style();
+        let (accent, muted) = (style.visuals.selection.bg_fill, artcraft_launcher_ui_egui::theme::Tokens::get(&h.ctx).muted);
+        assert_eq!(on_accent, style.visuals.selection.stroke.color, "{theme:?}: the selected row's text colour");
+        assert!(contrast(on_accent, accent) > contrast(muted, accent) + 1.0, "{theme:?}: {on_accent:?} on {accent:?}");
+        // Other rows keep the muted colour.
+        let (_, plain) = painted_facts(&h, "v0.3.0").expect("an older row paints its date and size");
+        assert_eq!(plain, muted, "{theme:?}");
+        assert_eq!(row_facts(&h, "v0.4.0"), None, "nothing to add beside a bare tag");
+        assert_eq!(painted_facts(&h, "v0.4.0"), None);
+        h.check_accessibility();
+        if theme == egui::Theme::Dark {
+            snapshot(&mut h, "version-list-dates-and-sizes");
+        }
+    }
+}
+
+/// A release named `stem`-`v` with one signed asset per `(name tail, MB)`.
+fn release_with(stem: &str, v: &str, assets: &[(&str, u64)]) -> Release {
+    let mut r = release(stem, v, NOW);
+    r.assets = assets
+        .iter()
+        .map(|(tail, mb)| {
+            let name = format!("{stem}-{v}-{tail}");
+            Asset { url: format!("https://x/{name}"), name, size: mb << 20, sha256: Some("0".repeat(64)) }
+        })
+        .collect();
+    r
+}
+
+/// A PhotoCraft release for Windows with an MSI of 120 MB and a portable ZIP of 90 MB.
+fn windows_photocraft(v: &str) -> Release {
+    release_with("photocraft", v, &[("windows-x64.msi", 120), ("windows-x64-portable.zip", 90)])
+}
+
+fn photocraft_installed(source: InstallSource) -> Event {
+    let installed = Installed {
+        version: version::parse("0.4.1"),
+        source,
+        location: "C:/Users/me/PhotoCraft".into(),
+        package: None,
+        externally_managed: false,
+        origin: None,
+        installation: None,
+    };
+    Event::Detected { app: "photocraft".into(), installed: Some(installed) }
+}
+
+fn photocraft_not_installed() -> Event {
+    Event::Detected { app: "photocraft".into(), installed: None }
+}
+
+/// The size is that of the package the backend would install: the installed copy's format first,
+/// then the preferred one, so a portable copy shows the ZIP even where the MSI is preferred.
+#[test]
+fn a_version_row_sizes_the_package_this_install_would_use() {
+    use artcraft_launcher_core::PackageKind::{Msi, PortableZip};
+    let windows = Platform { os: Os::Windows, arch: Arch::X64 };
+    let cases = [
+        (Some(InstallSource::Launcher), vec![Msi], "90 MB", "the launcher's portable copy updates from the ZIP"),
+        (Some(InstallSource::Msi), vec![PortableZip], "120 MB", "an MSI install updates from the MSI"),
+        (None, vec![PortableZip], "90 MB", "a fresh install takes the preferred ZIP"),
+        (None, vec![], "120 MB", "a fresh install takes the MSI by default"),
+    ];
+    for (source, preferred, size, why) in cases {
+        let more = vec![source.map_or_else(photocraft_not_installed, photocraft_installed)];
+        let machine = Machine { platform: windows, preferred, more, ..Machine::default() };
+        let (h, _, _) = version_menu_on(machine, windows_photocraft("0.5.0"), vec![windows_photocraft("0.5.0")]);
+        let facts = row_facts(&h, "v0.5.0 (latest release)").unwrap_or_default();
+        assert!(facts.ends_with(&format!(" · {size}")), "{why}: {facts:?}");
+        assert_eq!(painted_facts(&h, "v0.5.0 (latest release)").map(|(text, _)| text), Some(facts), "{why}");
+    }
+}
+
+/// On Linux a fresh install's format, and a package's, depend on the package managers the backend
+/// finds, which the UI can't see: the row gives the date and no size rather than a guess. An
+/// AppImage, which the backend always installs, updates as one, so its size is certain.
+#[test]
+fn a_linux_version_row_sizes_only_a_certain_package() {
+    let linux = Platform { os: Os::Linux, arch: Arch::X64 };
+    let r = release_with("photocraft", "0.5.0", &[("linux-x86_64.AppImage", 150), ("linux-x86_64.deb", 100)]);
+    let cases = [
+        (photocraft_not_installed(), None, "a fresh install depends on the package managers"),
+        (photocraft_installed(InstallSource::Deb), None, "a package depends on the package managers"),
+        (photocraft_installed(InstallSource::AppImage), Some("150 MB"), "an AppImage updates as an AppImage"),
+    ];
+    for (detected, size, why) in cases {
+        let machine = Machine { platform: linux, more: vec![detected], ..Machine::default() };
+        let (h, _, _) = version_menu_on(machine, r.clone(), vec![r.clone()]);
+        let facts = row_facts(&h, "v0.5.0 (latest release)").unwrap_or_default();
+        let tail = size.map_or_else(|| ", 2026".to_string(), |size| format!(", 2026 · {size}"));
+        assert!(facts.starts_with("Oct ") && facts.ends_with(&tail), "{why}: {facts:?}");
+    }
+}
+
+/// FreeBSD installs only the tarball, so its size is certain.
+#[test]
+fn a_freebsd_version_row_sizes_the_tarball() {
+    let freebsd = Platform { os: Os::FreeBsd, arch: Arch::X64 };
+    let r = release_with("photocraft", "0.5.0", &[("freebsd-x86_64.tar.gz", 140)]);
+    let machine = Machine { platform: freebsd, more: vec![photocraft_not_installed()], ..Machine::default() };
+    let (h, _, _) = version_menu_on(machine, r.clone(), vec![r]);
+    let facts = row_facts(&h, "v0.5.0 (latest release)").unwrap_or_default();
+    assert!(facts.ends_with(", 2026 · 140 MB"), "{facts:?}");
+}
+
+/// The launcher's own list in Settings sizes the launcher's download for this machine.
+#[test]
+fn the_launcher_version_list_sizes_the_launchers_download() {
+    let mut r = release("artcraft-launcher", "0.9.0", NOW);
+    r.assets[0].sha256 = Some("0".repeat(64));
+    let mut ev = events();
+    ev.push(Event::Versions { app: artcraft_launcher_core::catalog::LAUNCHER_ID.into(), result: Ok(vec![r]) });
+    let (mut h, _) = harness_with(ev, ViewMode::Grid, egui::Theme::Dark, true, 1.0);
+    h.run_steps(6);
+    h.get_by_label("Settings").click();
+    h.run_steps(4);
+    h.get_by_role_and_label(egui::accesskit::Role::ComboBox, "Launcher version").click();
+    h.run_steps(5);
+    let facts = row_facts(&h, "v0.9.0 (latest release)").unwrap_or_default();
+    assert!(facts.starts_with("Oct ") && facts.ends_with(", 2026 · 150 MB"), "{facts:?}");
+    assert_eq!(painted_facts(&h, "v0.9.0 (latest release)").map(|(text, _)| text), Some(facts));
+}
+
+/// The launcher updates itself from the format it was installed as; until the backend knows it,
+/// the manual download stands in, but not on Linux, where any format could be running.
+#[test]
+fn the_launcher_version_list_sizes_what_its_self_update_downloads() {
+    use artcraft_launcher_core::PackageKind::{AppImage, PortableZip};
+    let windows = Platform { os: Os::Windows, arch: Arch::X64 };
+    let linux = Platform { os: Os::Linux, arch: Arch::X64 };
+    let on_windows = release_with("artcraft-launcher", "0.9.0", &[("windows-x64.msi", 120), ("windows-x64-portable.zip", 90)]);
+    let on_linux = release_with("artcraft-launcher", "0.9.0", &[("linux-x86_64.AppImage", 150), ("linux-x86_64.deb", 100)]);
+    let cases = [
+        (windows, Some(PortableZip), &on_windows, Some("90 MB"), "a portable launcher updates from the ZIP"),
+        (windows, None, &on_windows, Some("120 MB"), "not known yet: the manual download, the MSI"),
+        (linux, Some(AppImage), &on_linux, Some("150 MB"), "an AppImage launcher updates from the AppImage"),
+        (linux, None, &on_linux, None, "not known on Linux: no guess"),
+    ];
+    for (platform, launcher_kind, r, size, why) in cases {
+        let (h, _, _) = launcher_menu_on(Machine { platform, launcher_kind, ..Machine::default() }, vec![r.clone()]);
+        let facts = row_facts(&h, "v0.9.0 (latest release)").unwrap_or_default();
+        let tail = size.map_or_else(|| ", 2026".to_string(), |size| format!(", 2026 · {size}"));
+        assert!(facts.starts_with("Oct ") && facts.ends_with(&tail), "{why}: {facts:?}");
+    }
 }
 
 #[test]
