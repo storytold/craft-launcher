@@ -549,7 +549,7 @@ fn choosing_an_app_version_turns_its_main_action_into_install() {
         .click();
     h.run_steps(4);
     assert!(sent.borrow().iter().any(|c| matches!(c, Command::Install { app } if app == "photocraft")));
-    assert!(!sent.borrow().iter().any(|c| matches!(c, Command::Launch { app } if app == "photocraft")));
+    assert!(!sent.borrow().iter().any(|c| matches!(c, Command::Launch { app, .. } if app == "photocraft")));
     assert!(h.query_by_label("Version").is_none(), "installing closes the dialog");
     assert!(h.query_by_label("Install version v0.4.0").is_some(), "installing from the dialog keeps the chosen version");
     // Once the pinned version is the installed copy, the card opens it again.
@@ -1637,6 +1637,65 @@ fn hiding_an_app_removes_it_until_it_is_unhidden() {
     assert!(h.query_by_label("Hidden Apps 1").is_none());
     assert!(h.state().as_ref().unwrap().settings.hidden.is_empty());
     assert_eq!(h.state().as_ref().unwrap().settings.filter, artcraft_launcher_ui_egui::settings::Filter::All);
+}
+
+#[test]
+fn launch_options_are_saved_per_app_and_passed_when_it_opens() {
+    use egui::accesskit::Role;
+    let (mut h, sent) = harness(ViewMode::Table, egui::Theme::Dark, true);
+    h.run_steps(6);
+    let menu = |h: &mut Harness<'static, Option<LauncherUi>>| {
+        h.get_by_label("More actions for WordCraft").click();
+        h.run_steps(3);
+    };
+    menu(&mut h);
+    h.get_by_label("Launch options…").click();
+    h.run_steps(3);
+    let field = "Flags added each time the app is opened";
+    h.get_by_role_and_label(Role::TextInput, field).click();
+    h.get_by_role_and_label(Role::TextInput, field).type_text(r#"--dir "My Docs" --open"#);
+    h.run_steps(3);
+    h.get_by_label("Save").click();
+    h.run_steps(3);
+    assert_eq!(h.state().as_ref().unwrap().settings.launch_flags.get("wordcraft").map(String::as_str), Some(r#"--dir "My Docs" --open"#));
+
+    menu(&mut h);
+    h.get_all_by_label("Open").last().unwrap().click(); // the menu's
+    h.run_steps(3);
+    let args: Vec<String> = ["--dir", "My Docs", "--open"].map(String::from).into();
+    assert!(sent.borrow().contains(&Command::Launch { app: "wordcraft".into(), args }));
+    // The other apps open with nothing added.
+    assert!(!h.state().as_ref().unwrap().settings.launch_flags.contains_key("lightcraft"));
+}
+
+#[test]
+fn launch_options_with_an_unclosed_quote_are_not_saved_or_launched() {
+    use egui::accesskit::Role;
+    let (mut h, sent) = harness(ViewMode::Table, egui::Theme::Dark, true);
+    h.run_steps(6);
+    h.get_by_label("More actions for WordCraft").click();
+    h.run_steps(3);
+    h.get_by_label("Launch options…").click();
+    h.run_steps(3);
+    let field = "Flags added each time the app is opened";
+    h.get_by_role_and_label(Role::TextInput, field).click();
+    h.get_by_role_and_label(Role::TextInput, field).type_text(r#"--dir "My Docs"#);
+    h.run_steps(3);
+    h.get_by_label("A quote isn't closed.");
+    h.get_by_label("Save").click();
+    h.run_steps(3);
+    assert!(h.state().as_ref().unwrap().settings.launch_flags.is_empty());
+    h.get_by_label("Cancel").click();
+    h.run_steps(3);
+
+    // Flags edited by hand in the settings file: the app isn't opened with half of them.
+    h.state_mut().as_mut().unwrap().settings.launch_flags.insert("wordcraft".into(), "'oops".into());
+    sent.borrow_mut().clear();
+    h.get_by_label("More actions for WordCraft").click();
+    h.run_steps(3);
+    h.get_all_by_label("Open").last().unwrap().click(); // the menu's
+    h.run_steps(3);
+    assert!(!sent.borrow().iter().any(|c| matches!(c, Command::Launch { .. })));
 }
 
 #[test]
@@ -3290,7 +3349,7 @@ fn opening_an_app_counts_and_frequently_used_puts_the_most_opened_first() {
     assert_eq!(opens.len(), 2);
     opens[1].click(); // WordCraft
     h.run_steps(3);
-    assert!(sent.borrow().contains(&Command::Launch { app: "wordcraft".into() }));
+    assert!(sent.borrow().contains(&Command::Launch { app: "wordcraft".into(), args: vec![] }));
     assert_eq!(h.state().as_ref().unwrap().settings.launches.get("wordcraft"), Some(&1));
     h.run_steps(4);
     let word = h.get_by_label("WordCraft details").rect();
