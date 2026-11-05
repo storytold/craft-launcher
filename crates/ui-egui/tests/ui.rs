@@ -2860,8 +2860,15 @@ fn automatic_updates_skip_a_release_without_a_download_here() {
     let ev = no_photocraft_download_here(events());
     let sent = Rc::new(RefCell::new(Vec::new()));
     let sent2 = sent.clone();
-    let mut backend =
-        Some(Fake { events: ev, sent: sent2, manage: true, pictures: Rc::default(), asked: Vec::new(), clock: Rc::new(Cell::new(NOW)) });
+    let mut backend = Some(Fake {
+        events: ev,
+        sent: sent2,
+        manage: true,
+        pictures: Rc::default(),
+        asked: Vec::new(),
+        downloads: Default::default(),
+        clock: Rc::new(Cell::new(NOW)),
+    });
     let mut h = test_harness_builder(egui::Theme::Dark).with_size(egui::vec2(1180.0, 1200.0)).build_ui_state(
         move |ui, state: &mut Option<LauncherUi>| {
             if state.is_none()
@@ -2924,7 +2931,15 @@ fn a_freebsd_system_binary_is_not_offered_an_update_it_would_refuse() {
 
     let sent = Rc::new(RefCell::new(Vec::new()));
     let notices = Rc::new(RefCell::new(Vec::new()));
-    let fake = Fake { events: ev, sent: sent.clone(), manage: true, pictures: Rc::default(), asked: Vec::new(), clock: Rc::new(Cell::new(NOW)) };
+    let fake = Fake {
+        events: ev,
+        sent: sent.clone(),
+        manage: true,
+        pictures: Rc::default(),
+        asked: Vec::new(),
+        downloads: Default::default(),
+        clock: Rc::new(Cell::new(NOW)),
+    };
     let mut backend = Some(PlatformFake { inner: fake, platform: Platform { os: Os::FreeBsd, arch: Arch::X64 } });
     let host_notices = notices.clone();
     let mut h = test_harness_builder(egui::Theme::Dark).with_size(egui::vec2(1180.0, 1200.0)).build_ui_state(
