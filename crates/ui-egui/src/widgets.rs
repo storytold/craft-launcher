@@ -162,6 +162,8 @@ pub fn nav_icon(ui: &mut Ui, glyph: Glyph, tip: &str, height: f32, busy: bool) -
 /// How far in from the window's edges a custom title bar's window resizes ([`window_edges`]).
 /// The title bar's own controls leave this band alone.
 const RESIZE_EDGE: f32 = 5.0;
+/// Width of one caption button, as Windows' own.
+const CAPTION_W: f32 = 46.0;
 
 /// How wide the resize band along the window's edges is right now: nothing while the window is
 /// maximized or full screen, when `window_edges` offers no resizing and the edges are the screen's,
@@ -197,23 +199,36 @@ enum WindowButton {
 }
 
 /// Minimize, maximize (or restore) and close, `height` tall, for a right-to-left layout: close
-/// ends up at the right.
+/// ends up at the right. Under a dialog egui ignores the header, so there they are drawn in a
+/// layer above the dialog's backdrop, as a system title bar is: the first click on Close closes
+/// the window, not the dialog (#853). The details drawer and the lightbox still cover them, since
+/// their own controls and the apps' menus can sit in that corner.
 pub fn window_buttons(ui: &mut Ui, height: f32) {
     let ctx = ui.ctx().clone();
     let maximized = ctx.input(|i| i.viewport().maximized.unwrap_or(false));
+    let (rect, _) = ui.allocate_exact_size(vec2(3.0 * CAPTION_W, height), Sense::hover());
+    let mut row = egui::UiBuilder::new().max_rect(rect).layout(egui::Layout::left_to_right(egui::Align::Center));
+    let mut sense = Sense::click();
+    if !ctx.memory(|m| m.is_above_modal_layer(ui.layer_id())) {
+        row = row.layer_id(egui::LayerId::new(egui::Order::Tooltip, egui::Id::unique("window-buttons")));
+        // Pointer only: Tab stays in the dialog.
+        sense = Sense::CLICK;
+    }
     // The first frame after a restore hit-tests the maximized buttons, so an edge press can land on them.
     let inside = ctx.content_rect().shrink(resize_band(&ctx));
     let clicked = |resp: Response| resp.clicked() && resp.interact_pointer_pos().is_none_or(|p| inside.contains(p));
-    if clicked(window_button(ui, WindowButton::Close, height)) {
-        ctx.send_viewport_cmd(egui::ViewportCommand::Close);
-    }
-    let size = if maximized { WindowButton::Restore } else { WindowButton::Maximize };
-    if clicked(window_button(ui, size, height)) {
-        ctx.send_viewport_cmd(egui::ViewportCommand::Maximized(!maximized));
-    }
-    if clicked(window_button(ui, WindowButton::Minimize, height)) {
-        ctx.send_viewport_cmd(egui::ViewportCommand::Minimized(true));
-    }
+    ui.scope_builder(row, |ui| {
+        if clicked(window_button(ui, WindowButton::Minimize, height, sense)) {
+            ctx.send_viewport_cmd(egui::ViewportCommand::Minimized(true));
+        }
+        let size = if maximized { WindowButton::Restore } else { WindowButton::Maximize };
+        if clicked(window_button(ui, size, height, sense)) {
+            ctx.send_viewport_cmd(egui::ViewportCommand::Maximized(!maximized));
+        }
+        if clicked(window_button(ui, WindowButton::Close, height, sense)) {
+            ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+        }
+    });
     rule(ui, height);
 }
 
@@ -221,15 +236,15 @@ pub fn window_buttons(ui: &mut Ui, height: f32) {
 /// command. Hit-testing excludes the top resize band (and, for close, the right-edge band) so
 /// the window edges stay resizable; when maximized there is no band and close reaches the
 /// corner.
-fn window_button(ui: &mut Ui, button: WindowButton, height: f32) -> Response {
+fn window_button(ui: &mut Ui, button: WindowButton, height: f32, sense: Sense) -> Response {
     let t = Tokens::get(ui.ctx());
-    let (rect, _) = ui.allocate_exact_size(vec2(46.0, height), Sense::hover());
+    let (rect, _) = ui.allocate_exact_size(vec2(CAPTION_W, height), Sense::hover());
     // Clickable below the resize band along the top (and, for close, the right edge); maximized,
     // there is no band and the close button takes the screen's corner, as Windows' own does.
     let band = resize_band(ui.ctx());
     let right = if button == WindowButton::Close { band } else { 0.0 };
     let hit = Rect::from_min_max(rect.min + vec2(0.0, band), rect.max - vec2(right, 0.0));
-    let resp = ui.interact(hit, ui.scope_id().with(("window-button", button as u8)), Sense::click());
+    let resp = ui.interact(hit, ui.scope_id().with(("window-button", button as u8)), sense);
     let (fill, ink) = match (button, resp.hovered()) {
         (WindowButton::Close, true) => (Color32::from_rgb(0xc4, 0x2b, 0x1c), Color32::WHITE),
         (_, true) => (t.line, t.ink_strong),
