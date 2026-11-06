@@ -481,27 +481,16 @@ pub fn create_desktop_shortcut(name: &str, target: &Path) -> Result<(), String> 
     if lnk.exists() {
         return Err(format!("A desktop shortcut named {name} already exists"));
     }
+    // Prefer a normal path without the `\\?\` prefix — .lnk targets work better that way.
     let target = dunce::canonicalize(target).unwrap_or_else(|_| target.to_path_buf());
-    let work_dir = target.parent().map(Path::to_path_buf).unwrap_or_else(|| PathBuf::from("."));
 
-    let target_s = target.to_str().ok_or_else(|| "path isn't valid Unicode".to_string())?;
-    let lnk_s = lnk.to_str().ok_or_else(|| "path isn't valid Unicode".to_string())?;
-    let dir_s = work_dir.to_str().ok_or_else(|| "path isn't valid Unicode".to_string())?;
-
-    // Single-quote escape for PowerShell string literals.
-    let esc = |s: &str| s.replace('\'', "''");
-    let script = format!(
-        "$s=(New-Object -ComObject WScript.Shell).CreateShortcut('{}');$s.TargetPath='{}';$s.WorkingDirectory='{}';$s.Save()",
-        esc(lnk_s),
-        esc(target_s),
-        esc(dir_s),
-    );
-
-    // Absolute system path (same pattern as explorer/tasklist) — avoids PATH search and is faster to start.
-    let powershell = windows_system_program(r"System32\WindowsPowerShell\v1.0\powershell.exe")?;
-    let mut cmd = command(powershell);
-    cmd.args(["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command", &script]);
-    run_command(cmd, "powershell", Duration::from_secs(10)).map(|_| ())?;
+    // Pure Rust MS-SHLINK writer (no PowerShell). See docs/incident-2026-10-windows-antivirus.md
+    // and the project preference to avoid hidden/bypass PowerShell for shell actions.
+    let mut link = mslnk::ShellLink::new(&target).map_err(|e| e.to_string())?;
+    if let Some(dir) = target.parent().and_then(|p| p.to_str()) {
+        link.set_working_dir(Some(dir.to_string()));
+    }
+    link.create_lnk(&lnk).map_err(|e| e.to_string())?;
     if !lnk.exists() {
         return Err("the shortcut was not created".into());
     }
@@ -509,6 +498,7 @@ pub fn create_desktop_shortcut(name: &str, target: &Path) -> Result<(), String> 
 }
 
 #[cfg(not(windows))]
+
 pub fn create_desktop_shortcut(_name: &str, _target: &Path) -> Result<(), String> {
     Err("desktop shortcuts are only supported on Windows".into())
 }
