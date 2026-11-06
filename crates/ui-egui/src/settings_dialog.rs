@@ -6,6 +6,7 @@ use egui::{RichText, Ui, vec2};
 
 use crate::app::{Host, LauncherUi};
 use crate::i18n::fmt;
+use crate::rtl::LocalizedTooltip as _;
 use crate::settings::{CheckEvery, Settings};
 use crate::sheet;
 use crate::theme::{self, ThemeChoice, Tokens};
@@ -18,14 +19,14 @@ use crate::widgets::{self, Cell, Kind};
 fn row(ui: &mut Ui, label: &str, control_width: f32, add: &mut dyn FnMut(&mut Ui, egui::Id)) {
     let t = Tokens::get(ui.ctx());
     let font = egui::TextStyle::Body.resolve(ui.style());
-    let label_width = ui.painter().layout_no_wrap(label.to_string(), font, t.ink).size().x;
+    let label_width = ui.painter().layout_no_wrap(label.to_string(), font.clone(), t.ink).size().x;
     if label_width + control_width + ui.spacing().item_spacing.x > ui.available_width() {
-        let label = ui.label(label);
+        let label = crate::rtl::label(ui, label, font.clone(), t.ink);
         add(ui, label.id);
     } else {
-        ui.horizontal(|ui| {
-            let label = ui.label(label);
-            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+        crate::rtl::row(ui, |ui| {
+            let label = crate::rtl::label(ui, label, font.clone(), t.ink);
+            ui.with_layout(crate::rtl::content_trailing(egui::Align::Center), |ui| {
                 // A ComboBox grows to the width its layout offers, so leaving it loose made it
                 // start at the label's last glyph and paint over the words at a narrow dialog
                 // width. A fixed-width allocation at the right keeps it clear of the label and
@@ -39,12 +40,14 @@ fn row(ui: &mut Ui, label: &str, control_width: f32, add: &mut dyn FnMut(&mut Ui
     }
 }
 
+/// Render secondary settings guidance with localized wrapping and alignment.
 fn note(ui: &mut Ui, text: &str) {
     let t = Tokens::get(ui.ctx());
-    ui.label(RichText::new(text).size(12.0).color(t.muted));
+    crate::rtl::paragraph(ui, text, egui::FontId::proportional(12.0), t.muted);
 }
 
 impl LauncherUi {
+    /// Keep the settings header and footer fixed while the localized body scrolls.
     pub(crate) fn settings_dialog(&mut self, ui: &mut Ui, host: &mut dyn Host) -> bool {
         let t = Tokens::get(ui.ctx());
         let size = sheet::size(ui.ctx(), vec2(1000.0, 820.0));
@@ -66,6 +69,9 @@ impl LauncherUi {
 
         let wide = size.x >= theme::DIALOG_COLUMNS_FROM;
         let saved = sheet::accent_scroll(ui, &t, t.accent);
+        if crate::i18n::current().is_rtl() {
+            ui.spacing_mut().scroll.bar_inner_margin = 12.0;
+        }
         egui::ScrollArea::vertical().id_salt("settings-body").max_height(body_h).auto_shrink([false, true]).show(ui, |ui| {
             *ui.visuals_mut() = saved;
             egui::Frame::new().inner_margin(egui::Margin::same(theme::PAD as i8)).show(ui, |ui| {
@@ -101,6 +107,7 @@ impl LauncherUi {
         close
     }
 
+    /// Place settings groups in the upstream columns with localized alignment inside each.
     fn settings_contents(&mut self, ui: &mut Ui, host: &mut dyn Host, wide: bool) {
         // The columns are drawn from two closures that both need `self` and `host`: the pieces
         // are drawn one after the other, through a cell, never at the same time (were they ever,
@@ -113,16 +120,22 @@ impl LauncherUi {
             |ui| {
                 let Ok(mut state) = state.try_borrow_mut() else { return };
                 let (this, _) = &mut *state;
-                this.settings_language(ui);
-                this.settings_updates(ui);
-                this.settings_appearance(ui);
+                ui.with_layout(crate::rtl::content_column(), |ui| {
+                    ui.style_mut().right_to_left = crate::i18n::current().is_rtl();
+                    this.settings_language(ui);
+                    this.settings_updates(ui);
+                    this.settings_appearance(ui);
+                });
             },
             |ui| {
                 let Ok(mut state) = state.try_borrow_mut() else { return };
                 let (this, host) = &mut *state;
-                this.settings_install(ui, &mut **host);
-                this.settings_background(ui, &mut **host);
-                this.settings_community(ui);
+                ui.with_layout(crate::rtl::content_column(), |ui| {
+                    ui.style_mut().right_to_left = crate::i18n::current().is_rtl();
+                    this.settings_install(ui, &mut **host);
+                    this.settings_background(ui, &mut **host);
+                    this.settings_community(ui);
+                });
             },
         );
     }
@@ -139,10 +152,11 @@ impl LauncherUi {
             craft_ui::ComboBox::from_id_salt("language")
                 .selected_text(Settings::language_label(&lang_code, installed))
                 .width(width)
+                .popup_style(widgets::locale_popup_style())
                 .show_ui(ui, |ui| {
-                    ui.selectable_value(&mut lang_code, Settings::LANGUAGE_AUTO.to_string(), tl!("Auto"));
+                    widgets::popup_value(ui, &mut lang_code, Settings::LANGUAGE_AUTO.to_string(), tl!("Auto"));
                     for lang in crate::i18n::Lang::for_picker() {
-                        ui.selectable_value(&mut lang_code, lang.code().to_string(), Settings::language_label(lang.code(), installed));
+                        widgets::popup_value(ui, &mut lang_code, lang.code().to_string(), &Settings::language_label(lang.code(), installed));
                     }
                 })
                 .response
@@ -177,9 +191,10 @@ impl LauncherUi {
                 craft_ui::ComboBox::from_id_salt("every")
                     .selected_text(every.label())
                     .width(150.0)
+                    .popup_style(widgets::locale_popup_style())
                     .show_ui(ui, |ui| {
                         for e in CheckEvery::ALL {
-                            ui.selectable_value(&mut every, e, e.label());
+                            widgets::popup_value(ui, &mut every, e, &e.label());
                         }
                     })
                     .response
@@ -187,13 +202,13 @@ impl LauncherUi {
             });
             self.settings.check_every = every;
             if self.caps.manage_apps
-                && ui.checkbox(&mut self.settings.auto_update, tl!("Automatically download and install updates")).changed()
+                && widgets::localized_checkbox(ui, &mut self.settings.auto_update, tl!("Automatically download and install updates")).changed()
                 && self.settings.auto_update
             {
                 self.trigger_auto_updates();
             }
-            ui.checkbox(&mut self.settings.notify, tl!("Notify me when an installed app has an update"));
-            ui.checkbox(&mut self.settings.prereleases, tl!("Include pre-releases (betas and release candidates)"));
+            widgets::localized_checkbox(ui, &mut self.settings.notify, tl!("Notify me when an installed app has an update"));
+            widgets::localized_checkbox(ui, &mut self.settings.prereleases, tl!("Include pre-releases (betas and release candidates)"));
             row(ui, tl!("Launcher version"), 200.0, &mut |ui, label| {
                 self.version_combo(ui, launcher_id, &artcraft_launcher_core::catalog::LAUNCHER, 200.0, label);
             });
@@ -245,9 +260,10 @@ impl LauncherUi {
                 craft_ui::ComboBox::from_id_salt("windows-kind")
                     .selected_text(shown)
                     .width(210.0)
+                    .popup_style(widgets::locale_popup_style())
                     .show_ui(ui, |ui| {
                         for kind in [PackageKind::Msi, PackageKind::PortableZip] {
-                            ui.selectable_value(&mut choice, Some(kind), crate::i18n::t(kind.label()));
+                            widgets::popup_value(ui, &mut choice, Some(kind), crate::i18n::t(kind.label()));
                         }
                     })
                     .response
@@ -281,17 +297,18 @@ impl LauncherUi {
                 craft_ui::ComboBox::from_id_salt("kind")
                     .selected_text(shown)
                     .width(210.0)
+                    .popup_style(widgets::locale_popup_style())
                     .show_ui(ui, |ui| {
                         if !is_flatpak && !is_appimage {
-                            ui.selectable_value(&mut choice, None, tl!("System package (recommended)"));
+                            widgets::popup_value(ui, &mut choice, None, tl!("System package (recommended)"));
                         }
                         for k in [PackageKind::Deb, PackageKind::Rpm, PackageKind::ArchPkg, PackageKind::Flatpak, PackageKind::AppImage] {
-                            ui.selectable_value(&mut choice, Some(k), crate::i18n::t(k.label()));
+                            widgets::popup_value(ui, &mut choice, Some(k), crate::i18n::t(k.label()));
                         }
                         // The tarball is unpacked and run inside the launcher's own sandbox, so it
                         // is only ever on offer there (as the fallback when the host has no Flatpak).
                         if is_flatpak {
-                            ui.selectable_value(&mut choice, Some(PackageKind::TarGz), crate::i18n::t(PackageKind::TarGz.label()));
+                            widgets::popup_value(ui, &mut choice, Some(PackageKind::TarGz), crate::i18n::t(PackageKind::TarGz.label()));
                         }
                     })
                     .response
@@ -312,15 +329,15 @@ impl LauncherUi {
         }
         sheet::panel(ui, tl!("Running in the background"), |ui| {
             if host.has_tray() {
-                ui.checkbox(&mut self.settings.close_to_tray, tl!("Keep running in the tray when the window is closed"));
+                widgets::localized_checkbox(ui, &mut self.settings.close_to_tray, tl!("Keep running in the tray when the window is closed"));
             }
             if host.has_desktops() {
-                ui.checkbox(&mut self.settings.show_on_current_desktop, tl!("Show the window on the current desktop")).on_hover_text(tl!(
+                widgets::localized_checkbox(ui, &mut self.settings.show_on_current_desktop, tl!("Show the window on the current desktop")).localized_hover_text(tl!(
                     "When on, opening the launcher from the menu bar brings its window to the desktop you're on. When off, macOS switches you to the desktop the window was on."
                 ));
             }
             if let Some(mut on) = host.login_item()
-                && ui.checkbox(&mut on, tl!("Start ArtCraft Launcher when I log in")).changed()
+                && widgets::localized_checkbox(ui, &mut on, tl!("Start ArtCraft Launcher when I log in")).changed()
                 && let Err(e) = host.set_login_item(on)
             {
                 self.toast_from_ui(fmt(tl!("Couldn't change the login item: {e}"), &[("e", &e)]), true);
@@ -337,13 +354,13 @@ impl LauncherUi {
             ui.add_space(6.0);
             ui.horizontal_wrapped(|ui| {
                 use artcraft_launcher_core::catalog::{GITHUB_URL, WEBSITE_URL};
-                if widgets::button(ui, tl!("Join the Discord"), Kind::Primary, 0.0).on_hover_text(self.discord_url).clicked() {
+                if widgets::button(ui, tl!("Join the Discord"), Kind::Primary, 0.0).localized_hover_text(self.discord_url).clicked() {
                     widgets::open_external_link(ui.ctx(), self.discord_url);
                 }
-                if widgets::button(ui, tl!("Website"), Kind::Secondary, 0.0).on_hover_text(WEBSITE_URL).clicked() {
+                if widgets::button(ui, tl!("Website"), Kind::Secondary, 0.0).localized_hover_text(WEBSITE_URL).clicked() {
                     widgets::open_external_link(ui.ctx(), WEBSITE_URL);
                 }
-                if widgets::button(ui, tl!("GitHub"), Kind::Secondary, 0.0).on_hover_text(GITHUB_URL).clicked() {
+                if widgets::button(ui, tl!("GitHub"), Kind::Secondary, 0.0).localized_hover_text(GITHUB_URL).clicked() {
                     widgets::open_external_link(ui.ctx(), GITHUB_URL);
                 }
                 // Wrap the social links as a group so their icons stay together.
@@ -355,6 +372,7 @@ impl LauncherUi {
         });
     }
 
+    /// Present theme choices in the existing segmented control.
     fn settings_appearance(&mut self, ui: &mut Ui) {
         let mut theme_choice = self.settings.theme;
         sheet::panel(ui, tl!("Appearance"), |ui| {

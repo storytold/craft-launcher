@@ -97,7 +97,7 @@ pub(super) fn plural_polish(n: u64) -> usize {
 }
 
 /// The registry. English first: it is the fallback and the source language.
-pub static LANGUAGES: [LangInfo; 13] = [
+pub static LANGUAGES: [LangInfo; 14] = [
     LangInfo {
         code: "en",
         name: "English",
@@ -241,6 +241,17 @@ pub static LANGUAGES: [LangInfo; 13] = [
         complete_menus: true,
         catalog: OnceLock::new(),
     },
+    LangInfo {
+        code: "fa",
+        name: "فارسی",
+        english_name: "Persian",
+        script: None,
+        source: include_str!("fa.tsv"),
+        plural: plural_zero_one,
+        plural_forms: 2,
+        complete_menus: true,
+        catalog: OnceLock::new(),
+    },
 ];
 
 impl LangInfo {
@@ -281,6 +292,7 @@ impl Lang {
     pub const HU: Lang = Lang(&LANGUAGES[10]);
     pub const JA: Lang = Lang(&LANGUAGES[11]);
     pub const KA: Lang = Lang(&LANGUAGES[12]);
+    pub const FA: Lang = Lang(&LANGUAGES[13]);
 
     pub fn code(self) -> &'static str {
         self.0.code
@@ -320,6 +332,11 @@ impl Lang {
     /// The language's name in English.
     pub fn english_name(self) -> &'static str {
         self.0.english_name
+    }
+
+    /// Whether interface content flows from right to left.
+    pub fn is_rtl(self) -> bool {
+        self.code() == "fa"
     }
 
     /// Does drawing this language need a font from the system (CJK, Georgian)?

@@ -6,6 +6,7 @@ use artcraft_launcher_core::protocol::Command;
 use egui::{RichText, vec2};
 
 use crate::app::{Dialog, Host, LauncherUi};
+use crate::rtl::LocalizedTooltip as _;
 use crate::theme::{self, Tokens};
 use crate::widgets::{self, Kind};
 
@@ -76,7 +77,7 @@ impl LauncherUi {
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     ok = widgets::button(ui, tl!("OK"), Kind::Primary, 90.0).clicked();
                     if let Some(link) = &alert.link
-                        && widgets::button(ui, tl!("Open link"), Kind::Secondary, 110.0).on_hover_text(link.as_str()).clicked()
+                        && widgets::button(ui, tl!("Open link"), Kind::Secondary, 110.0).localized_hover_text(link.as_str()).clicked()
                     {
                         widgets::open_external_link(ui.ctx(), link);
                     }
@@ -170,7 +171,7 @@ impl LauncherUi {
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 if self.caps.self_update {
                     if widgets::button(ui, tl!("Update and restart"), Kind::Primary, 0.0)
-                        .on_hover_text(tl!("Downloads the new version, replaces this one and opens it again"))
+                        .localized_hover_text(tl!("Downloads the new version, replaces this one and opens it again"))
                         .clicked()
                     {
                         self.act_command(Command::UpdateLauncher);
@@ -238,7 +239,11 @@ impl LauncherUi {
         let t = Tokens::get(ui.ctx());
         ui.set_width(460.0f32.min(ui.ctx().content_rect().width() - 80.0));
         Self::title(ui, crate::icons::app(id), &fmt(tl!("{name} launch options"), &[("name", app.name)]), "");
-        let label = ui.label(tl!("Flags added each time the app is opened"));
+        let label = ui
+            .with_layout(crate::rtl::content_column(), |ui| {
+                crate::rtl::paragraph(ui, tl!("Flags added each time the app is opened"), egui::TextStyle::Body.resolve(ui.style()), t.ink)
+            })
+            .inner;
         ui.add(egui::TextEdit::singleline(flags).id_salt("launch_flags").hint_text("--flag \"…\"").desired_width(f32::INFINITY))
             .labelled_by(label.id);
         let split = artcraft_launcher_core::args::split(flags);
@@ -246,7 +251,9 @@ impl LauncherUi {
             Ok(_) => (tl!("Separate flags with spaces. Quote a value that has spaces in it."), t.muted),
             Err(_) => (tl!("A quote isn't closed."), t.bad),
         };
-        ui.label(RichText::new(note).color(color));
+        ui.with_layout(crate::rtl::content_column(), |ui| {
+            crate::rtl::paragraph(ui, note, egui::TextStyle::Body.resolve(ui.style()), color);
+        });
         ui.add_space(14.0);
         let mut close = false;
         ui.horizontal(|ui| {

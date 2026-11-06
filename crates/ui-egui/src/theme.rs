@@ -342,6 +342,32 @@ fn font_definitions(cjk: Option<Lang>) -> FontDefinitions {
             stack.push("CJK".to_owned());
         }
     }
+    // A small OFL Persian fallback also works offline and in WASM. Keep the Latin faces
+    // first, and map its variable weight to each existing typography role.
+    const PERSIAN: &[u8] = include_bytes!("../../../assets/fonts/Vazirmatn-Variable.ttf");
+    for (family, stack) in &mut fonts.families {
+        let weight = if *family == mono_bold() {
+            700
+        } else if *family == display() {
+            620
+        } else if *family == semibold() {
+            600
+        } else if *family == medium() || *family == mono() {
+            500
+        } else {
+            400
+        };
+        let name = format!("Vazirmatn-{weight}");
+        fonts.font_data.entry(name.clone()).or_insert_with(|| {
+            Arc::new(FontData::from_static(PERSIAN).tweak(FontTweak {
+                coords: VariationCoords::new([(*b"wght", weight as f32)]),
+                subpixel_binning: Some(false),
+                ..Default::default()
+            }))
+        });
+        let at = stack.iter().position(|face| face == "emoji-icon-font").unwrap_or(stack.len());
+        stack.insert(at, name);
+    }
     fonts
 }
 
@@ -448,7 +474,8 @@ mod tests {
     use super::*;
 
     /// The app's bundled font set is deliberate and bounded: our three families, egui's Latin
-    /// fallbacks, its small monochrome icon face and the two attributed monochrome emoji faces.
+    /// fallbacks, five weighted instances of the Persian fallback, its small monochrome icon face
+    /// and the two attributed monochrome emoji faces.
     /// The same function is used by the desktop and web builds, so this upper bound holds for both.
     #[test]
     fn production_fonts_are_latin_plus_attributed_monochrome_fallbacks() {
@@ -459,7 +486,7 @@ mod tests {
         for fallback in ["Ubuntu-Light", "Hack", "egui-icons", "NotoEmoji-Regular", "emoji-icon-font"] {
             assert!(fonts.font_data.contains_key(fallback), "missing egui fallback {fallback}");
         }
-        assert_eq!(fonts.font_data.len(), 12, "unexpected extra faces: {:?}", fonts.font_data.keys().collect::<Vec<_>>());
+        assert_eq!(fonts.font_data.len(), 17, "unexpected extra faces: {:?}", fonts.font_data.keys().collect::<Vec<_>>());
         for family in [egui::FontFamily::Proportional, egui::FontFamily::Monospace, medium(), semibold(), display(), mono(), mono_bold()] {
             let stack = fonts.families.get(&family).unwrap_or_else(|| panic!("family {family:?} missing"));
             assert_eq!(
@@ -484,7 +511,7 @@ mod tests {
         let fonts = font_definitions(None);
         assert_eq!(
             fonts.font_data.len(),
-            12,
+            17,
             "the coverage test is only meaningful for the bundled stack: {:?}",
             fonts.font_data.keys().collect::<Vec<_>>()
         );

@@ -2,6 +2,7 @@
 
 use std::time::Duration;
 
+use artcraft_launcher_core::details::AppDetails;
 use artcraft_launcher_core::protocol::{
     Backend, BackendOptions, CANCELLED, Capabilities, Command, Event, INSTALL_CANCELLED, JobPhase, LatestRelease, PAUSED, Source,
 };
@@ -14,6 +15,20 @@ use crate::model::AppEntry;
 use crate::motion;
 use crate::settings::{Filter, Settings, SortKey, ViewMode};
 use crate::theme::{self, Tokens};
+
+/// A comparison key for catalog search: fold common Persian/Arabic keyboard variants,
+/// ignore ZWNJ and tatweel, and retain case-insensitive matching. Displayed text is unchanged.
+fn search_key(text: &str) -> String {
+    text.chars()
+        .filter(|c| !matches!(c, '\u{200c}' | '\u{0640}'))
+        .map(|c| match c {
+            'ي' | 'ى' => 'ی',
+            'ك' => 'ک',
+            c => c,
+        })
+        .flat_map(char::to_lowercase)
+        .collect()
+}
 
 /// Who draws the window's title bar.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -918,7 +933,7 @@ impl LauncherUi {
     /// The ids to show, filtered and sorted. Pinned apps stay first in the user's pin order;
     /// the active sort (and the grid's installed / not-installed split) applies only to the rest.
     pub(crate) fn visible_ids(&self) -> Vec<&'static str> {
-        let needle = self.search.trim().to_lowercase();
+        let needle = search_key(self.search.trim());
         let mut list: Vec<(usize, &AppEntry)> = self
             .entries
             .iter()
@@ -926,7 +941,13 @@ impl LauncherUi {
             .filter(|(_, e)| {
                 self.in_filter(e, self.settings.filter)
                     && !(self.settings.hide_community_apps && e.app.kind == artcraft_launcher_core::catalog::AppKind::Community)
-                    && (needle.is_empty() || e.app.name.to_lowercase().contains(&needle) || e.app.tagline.to_lowercase().contains(&needle))
+                    && (needle.is_empty()
+                        || search_key(e.app.name).contains(&needle)
+                        || search_key(e.app.tagline).contains(&needle)
+                        || search_key(crate::i18n::tr_ctx(crate::i18n::current(), e.app.id, e.app.tagline)).contains(&needle)
+                        || AppDetails::by_id(e.app.id).is_some_and(|details| {
+                            search_key(crate::i18n::tr_ctx(crate::i18n::current(), details.id, details.headline)).contains(&needle)
+                        }))
             })
             .collect();
         let platform = self.platform;
@@ -1073,7 +1094,7 @@ impl LauncherUi {
                             ui.horizontal(|ui| {
                                 let (rect, _) = ui.allocate_exact_size(egui::vec2(6.0, 6.0), egui::Sense::hover());
                                 ui.painter().rect_filled(rect, egui::CornerRadius::ZERO, accent);
-                                ui.add(egui::Label::new(egui::RichText::new(crate::i18n::msg(&toast.text)).color(t.ink)).wrap());
+                                crate::rtl::paragraph(ui, &crate::i18n::msg(&toast.text), egui::FontId::proportional(14.0), t.ink);
                             });
                         });
                     if r.response.interact(egui::Sense::click()).clicked() {

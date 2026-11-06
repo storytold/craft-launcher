@@ -92,7 +92,7 @@ The web version shows the same catalog in the browser, with the latest download 
 ## Interface languages
 
 The interface is in English, Brazilian Portuguese (Português (Brasil)), Czech (Čeština), French
-(Français), Georgian (ქართული), German (Deutsch), Hungarian (Magyar), Japanese (日本語), Polish
+(Français), Georgian (ქართული), German (Deutsch), Hungarian (Magyar), Japanese (日本語), Persian (فارسی), Polish
 (Polski), Russian (Русский), Simplified Chinese (简体中文), Traditional Chinese (繁體中文) or Spanish
 (Español). **Auto**, the default, follows the system or browser language; **Settings → Language**
 picks one and switches at once, and the choice is kept between runs. Czech locales (`cs-CZ`,
@@ -106,6 +106,11 @@ select Simplified Chinese; Traditional Chinese ones (`zh-TW`, `zh-HK`, `zh-MO`, 
 forms such as `zh_TW.UTF-8`) select Traditional Chinese, with an explicit script winning over the
 region. To try a language without changing the setting, start the desktop app with
 `ARTCRAFT_LAUNCHER_LOCALE=pt-BR`, or add `?lang=ru` to the web address.
+
+Persian locales (`fa`, `fa-IR`, `fa_IR.UTF-8`…) select Persian. Persian content reads right to
+left while the main header and dialog actions keep their original positions. A small bundled
+OFL Vazirmatn fallback supplies Persian glyphs; Latin fonts are unchanged. See
+[Persian localization](docs/persian-localization.md) for direction, typography and maintenance.
 
 The CJK languages are drawn with the system's own CJK font (Hiragino Sans or PingFang on macOS,
 Yu Gothic, Meiryo or Microsoft YaHei on Windows, Noto Sans CJK, IPA, Takao or WenQuanYi on Linux and

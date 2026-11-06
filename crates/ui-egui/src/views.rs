@@ -12,6 +12,7 @@ use egui::{Color32, CornerRadius, FontId, Rect, RichText, Sense, Stroke, Ui, vec
 use crate::app::{Dialog, LauncherUi, TitleBar};
 use crate::i18n::{current, fmt, t, tn, tr_ctx};
 use crate::model::{self, AppEntry};
+use crate::rtl::LocalizedTooltip as _;
 use crate::settings::{Filter, SortKey, ViewMode};
 use crate::theme::{self, Tokens, rgb, tint};
 use crate::widgets::{self, Kind};
@@ -198,6 +199,7 @@ impl LauncherUi {
         });
     }
 
+    /// Render the fixed toolbar with localized search, sorting and update controls.
     pub(crate) fn toolbar(&mut self, ui: &mut Ui) {
         if self.settings.filter == Filter::Hidden && self.settings.hidden.is_empty() {
             self.settings.filter = Filter::All;
@@ -256,7 +258,7 @@ impl LauncherUi {
                 // Another app's install can hang on a password prompt: the wait can be called off.
                 if phase == JobPhase::Waiting
                     && widgets::glyph_button(ui, widgets::Glyph::Close, tl!("Cancel update"))
-                        .on_hover_text(tl!("Stop waiting; the update can be started again later"))
+                        .localized_hover_text(tl!("Stop waiting; the update can be started again later"))
                         .clicked()
                 {
                     self.act_command(Command::Cancel { app: artcraft_launcher_core::catalog::LAUNCHER_ID.to_string() });
@@ -269,7 +271,7 @@ impl LauncherUi {
             }
             if self.caps.self_update {
                 if widgets::button(ui, tl!("Update and restart"), Kind::Primary, 0.0)
-                    .on_hover_text(tl!("Downloads the new version, replaces this one and opens it again"))
+                    .localized_hover_text(tl!("Downloads the new version, replaces this one and opens it again"))
                     .clicked()
                 {
                     self.act_command(Command::UpdateLauncher);
@@ -299,7 +301,7 @@ impl LauncherUi {
                 let showing = self.settings.filter == Filter::Hidden;
                 let label = format!("{} {}", tl!("Hidden Apps"), self.settings.hidden.len());
                 if widgets::button(ui, &label, if showing { Kind::Primary } else { Kind::Secondary }, 0.0)
-                    .on_hover_text(tl!("Apps you hid"))
+                    .localized_hover_text(tl!("Apps you hid"))
                     .clicked()
                 {
                     self.settings.filter = if showing { Filter::All } else { Filter::Hidden };
@@ -365,11 +367,12 @@ impl LauncherUi {
     fn sort_picker(&mut self, ui: &mut Ui) {
         craft_ui::ComboBox::from_id_salt("sort")
             .selected_text(RichText::new(grid_sort_label(grid_sort_now(&self.settings))).size(13.0))
+            .popup_style(widgets::locale_popup_style())
             .width(190.0)
             .show_ui(ui, |ui| {
                 let current = grid_sort_now(&self.settings);
                 for choice in GRID_SORTS {
-                    if ui.selectable_label(current == choice, grid_sort_label(choice)).clicked() {
+                    if widgets::popup_item(ui, grid_sort_label(choice), Some(current == choice), None).clicked() {
                         self.settings.sort = choice.0;
                         self.settings.sort_descending = choice.1;
                     }
@@ -421,6 +424,7 @@ impl LauncherUi {
         }
     }
 
+    /// Render source status and project links without mirroring their shell positions.
     pub(crate) fn footer(&mut self, ui: &mut Ui) {
         let t = Tokens::get(ui.ctx());
         let now = self.backend.now();
@@ -487,7 +491,7 @@ impl LauncherUi {
                 if let Some((shown, full, _)) = notice {
                     let resp = ui.add(egui::Label::new(text(&shown)).truncate());
                     if let Some(full) = full {
-                        resp.on_hover_text(full);
+                        resp.localized_hover_text(full);
                     }
                 }
             });
@@ -522,6 +526,7 @@ impl LauncherUi {
         ui.add_space(24.0);
     }
 
+    /// Lay out cards in reading order, including a right-aligned partial RTL row.
     fn grid_block(&mut self, ui: &mut Ui, ids: &[&'static str]) {
         if ids.is_empty() {
             return;
@@ -534,7 +539,10 @@ impl LauncherUi {
         let height = rows as f32 * (CARD_H - 1.0) + 1.0;
         let (area, _) = ui.allocate_exact_size(vec2(width, height), Sense::hover());
         for (i, id) in ids.iter().enumerate() {
-            let (row, col) = (i / cols, i % cols);
+            let (row, mut col) = (i / cols, i % cols);
+            if current().is_rtl() {
+                col = cols - 1 - col;
+            }
             let min = area.min + vec2(col as f32 * (card_w - 1.0), row as f32 * (CARD_H - 1.0));
             self.card(ui, id, Rect::from_min_size(min, vec2(card_w, CARD_H)));
         }
@@ -589,7 +597,7 @@ impl LauncherUi {
                 egui::UiBuilder::new().max_rect(strip.shrink2(vec2(CARD_PAD, 0.0))).layout(egui::Layout::left_to_right(egui::Align::Center)),
             );
             if !version.is_empty() {
-                let github_w = widgets::hud_galley(&strip_ui, &format!("{} ↗", tl!("GitHub")), t.muted).size().x;
+                let github_w = widgets::external_link_width(&strip_ui, tl!("GitHub"));
                 let room = (strip_ui.available_width() - github_w - 16.0).max(0.0);
                 let highlight = if in_colour { t.app_ink(app) } else { t.muted };
                 let spans: Vec<(&str, egui::Color32)> =
@@ -607,10 +615,10 @@ impl LauncherUi {
 
         let inner = Rect::from_min_max(egui::pos2(rect.left() + CARD_PAD, strip.bottom() + 18.0), rect.max - vec2(CARD_PAD, CARD_PAD));
         // A detached child: the card's contents never move the next card along.
-        let mut child = ui.new_child(egui::UiBuilder::new().max_rect(inner).layout(egui::Layout::top_down(egui::Align::Min)));
+        let mut child = ui.new_child(egui::UiBuilder::new().max_rect(inner).layout(crate::rtl::content_column()));
         child.set_clip_rect(rect.intersect(ui.clip_rect()));
         let ui = &mut child;
-        ui.horizontal(|ui| {
+        crate::rtl::row(ui, |ui| {
             const ICON: f32 = 56.0;
             let [name, tagline] = [FontId::new(22.0, theme::display()), FontId::proportional(13.5)];
             const GAP: f32 = 4.0;
@@ -631,7 +639,7 @@ impl LauncherUi {
             centered_lines(ui, &[&name, &tagline], GAP, |ui| {
                 // The name's row is as tall as its text, not as a button.
                 ui.spacing_mut().interact_size.y = 0.0;
-                ui.horizontal(|ui| {
+                crate::rtl::row(ui, |ui| {
                     widgets::wordmark_in(ui, app, 22.0, in_colour);
                     kind_badge(ui, app, &t);
                 });
@@ -641,11 +649,11 @@ impl LauncherUi {
         ui.add_space(14.0);
         // Installed and up to date needs no badge: the strip has the version, and the group says the rest.
         if !matches!(status, AppStatus::UpToDate | AppStatus::Installed) {
-            ui.horizontal(|ui| {
+            crate::rtl::row(ui, |ui| {
                 let (text, tone) = model::entry_status_text(&entry, &status, self.caps.manage_apps);
                 let r = widgets::badge(ui, &text, widgets::tone_color(&t, tone));
                 if let Some(f) = entry.failure() {
-                    r.on_hover_text(fmt(tl!("Couldn't check for updates: {f}"), &[("f", f)]));
+                    r.localized_hover_text(fmt(tl!("Couldn't check for updates: {f}"), &[("f", f)]));
                 }
             });
             ui.add_space(8.0);
@@ -654,16 +662,16 @@ impl LauncherUi {
         if version.is_empty() {
             let line = version_line(&entry, &status);
             if !line.trim().is_empty() {
-                ui.label(RichText::new(line).size(12.5).color(t.muted));
+                crate::rtl::label(ui, line, FontId::proportional(12.5), t.muted);
                 ui.add_space(8.0);
             }
         }
         if let Some(details) = AppDetails::by_id(id) {
-            crate::card_parts::blurb(ui, details.headline, t.muted, 4);
+            crate::card_parts::blurb(ui, tr_ctx(current(), details.id, details.headline), t.muted, 4);
         }
         if let Some(line) = crate::card_parts::last_updated(&entry) {
             ui.add_space(6.0);
-            ui.add(egui::Label::new(RichText::new(line).size(12.5).color(t.faint)).selectable(false));
+            crate::rtl::label(ui, line, FontId::proportional(12.5), t.faint);
         }
         ui.with_layout(egui::Layout::bottom_up(egui::Align::Min), |ui| {
             ui.horizontal(|ui| self.actions_in(ui, &entry, &status, inner.width(), Place::Card));
@@ -760,7 +768,7 @@ impl LauncherUi {
             Self::draw_sort_arrow(p, egui::pos2(arrow_x + 4.0, rect.center().y), down, arrow_color);
         }
         resp.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, true, label));
-        if resp.on_hover_text(tip).on_hover_cursor(egui::CursorIcon::PointingHand).clicked() { Some(k) } else { None }
+        if resp.localized_hover_text(tip).on_hover_cursor(egui::CursorIcon::PointingHand).clicked() { Some(k) } else { None }
     }
 
     /// The header row: the four sortable column labels with their arrows, and the two that are
@@ -886,7 +894,7 @@ impl LauncherUi {
         };
         let r = widgets::badge(ui, &text, widgets::tone_color(t, tone));
         if let Some(f) = entry.failure() {
-            r.on_hover_text(fmt(tl!("Couldn't check for updates: {f}"), &[("f", f)]));
+            r.localized_hover_text(fmt(tl!("Couldn't check for updates: {f}"), &[("f", f)]));
         }
     }
 
@@ -924,7 +932,7 @@ impl LauncherUi {
         let when = entry.release().and_then(|r| r.published_at);
         let r = ui.label(RichText::new(when.map_or_else(|| "—".into(), date_text)).color(t.muted));
         if let Some(w) = when {
-            r.on_hover_text(ago_text(w, now));
+            r.localized_hover_text(ago_text(w, now));
         }
     }
 
@@ -1038,7 +1046,7 @@ impl LauncherUi {
     }
 
     /// While a pin handle is dragged, hovering another pinned card/row moves the dragged app there.
-    /// Grid uses the horizontal half; table uses the vertical half. One target per surface — the
+    /// Grid uses the horizontal half in reading order; table uses the vertical half. One target per surface — the
     /// table's full-row target already covers the grip column, so the grip itself does not reorder.
     /// A release over a target still counts: `LauncherUi::ui` ends the drag after the list.
     fn pin_drop_target(&mut self, ui: &Ui, id: &str, rect: Rect, viewport: Rect, axis: PinDropAxis) {
@@ -1061,7 +1069,13 @@ impl LauncherUi {
             return;
         };
         let insert_before = match axis {
-            PinDropAxis::Horizontal => pos.x < rect.center().x,
+            PinDropAxis::Horizontal => {
+                if current().is_rtl() {
+                    pos.x > rect.center().x
+                } else {
+                    pos.x < rect.center().x
+                }
+            }
             PinDropAxis::Vertical => pos.y < rect.center().y,
         };
         let insertion_index = if insert_before { to_i } else { to_i.saturating_add(1) };
@@ -1148,7 +1162,7 @@ impl LauncherUi {
         } else {
             fmt(tl!("{done} downloaded"), &[("done", &widgets::human_bytes(p.done))])
         };
-        if resp.on_hover_text(tip).clicked() {
+        if resp.localized_hover_text(tip).clicked() {
             self.install_app(id);
         }
         if widgets::glyph_button(ui, widgets::Glyph::Close, tl!("Discard download")).clicked() {
@@ -1217,11 +1231,11 @@ impl LauncherUi {
                 widgets::Half { label: &update.label, kind: Kind::Primary },
                 split,
             );
-            if open.on_hover_text(&about).clicked() {
+            if open.localized_hover_text(&about).clicked() {
                 self.launch_app(id);
             }
             let install = match update.tip {
-                Some(tip) => install.on_hover_text(tip),
+                Some(tip) => install.localized_hover_text(tip),
                 None => install,
             };
             if install.clicked() {
@@ -1232,7 +1246,7 @@ impl LauncherUi {
         // Shortened to fit, it is still read out in full.
         let resp = widgets::labelled_button(ui, fitted(ui, &update.label, &update.shorter, main_w), &update.label, Kind::Primary, main_w);
         let resp = match update.tip {
-            Some(tip) => resp.on_hover_text(tip),
+            Some(tip) => resp.localized_hover_text(tip),
             None => resp,
         };
         if resp.clicked() {
@@ -1250,18 +1264,18 @@ impl LauncherUi {
         let manage = self.caps.manage_apps;
         let reveal = self.caps.reveal_label;
         widgets::more_menu(ui, entry.app.name, |ui| {
-            if ui.button(tl!("Choose version")).clicked() {
+            if widgets::popup_item(ui, tl!("Choose version"), None, None).clicked() {
                 self.open_versions(&id);
                 ui.close();
             }
-            if entry.release().is_some() && ui.button(tl!("Release notes")).clicked() {
+            if entry.release().is_some() && widgets::popup_item(ui, tl!("Release notes"), None, None).clicked() {
                 self.dialog = Some(Dialog::Notes(id.clone()));
                 ui.close();
             }
             // Only where Install would download: an up-to-date app would be reinstalled.
             let can_download_again =
                 manage && entry.ready && entry.paused.is_none() && matches!(status, AppStatus::Available | AppStatus::UpdateAvailable);
-            if can_download_again && ui.button(tl!("Download again")).clicked() {
+            if can_download_again && widgets::popup_item(ui, tl!("Download again"), None, None).clicked() {
                 self.act_command(Command::Cancel { app: id.clone() });
                 self.install_app(&id);
                 ui.close();
@@ -1276,7 +1290,7 @@ impl LauncherUi {
             if links {
                 ui.separator();
                 let link = |ui: &mut Ui, label: &str, url: String| {
-                    if ui.button(label).clicked() {
+                    if widgets::popup_item(ui, label, None, None).clicked() {
                         widgets::open_external_link(ui.ctx(), &url);
                         ui.close();
                     }
@@ -1297,7 +1311,7 @@ impl LauncherUi {
         let pinned = self.settings.is_pinned(entry.app.id);
         let hidden = self.settings.hidden.contains(entry.app.id);
         if pinned {
-            if ui.button(tl!("Unpin")).clicked() {
+            if widgets::popup_item(ui, tl!("Unpin"), None, None).clicked() {
                 self.settings.unpin_app(id);
                 ui.close();
             }
@@ -1310,13 +1324,13 @@ impl LauncherUi {
             let down = self.settings.pinned_neighbor(id, 1, known).map(|j| j + 1);
             for (slot, label) in [(up, tl!("Move up")), (down, tl!("Move down"))] {
                 if let Some(slot) = slot
-                    && ui.button(label).clicked()
+                    && widgets::popup_item(ui, label, None, None).clicked()
                 {
                     self.settings.reorder_pinned_to(id, slot);
                     ui.close();
                 }
             }
-        } else if !hidden && ui.button(tl!("Pin to top")).clicked() {
+        } else if !hidden && widgets::popup_item(ui, tl!("Pin to top"), None, None).clicked() {
             self.settings.pin_app(id);
             ui.close();
         }
@@ -1326,25 +1340,25 @@ impl LauncherUi {
     /// reinstall (where an install would go ahead), and uninstall (which asks first).
     fn menu_installed(&mut self, ui: &mut Ui, entry: &AppEntry, status: &AppStatus, reveal: &'static str) {
         let id = entry.app.id;
-        if ui.button(tl!("Open")).clicked() {
+        if widgets::popup_item(ui, tl!("Open"), None, None).clicked() {
             self.launch_app(id);
             ui.close();
         }
-        if ui.button(tl!("Launch options…")).clicked() {
+        if widgets::popup_item(ui, tl!("Launch options…"), None, None).clicked() {
             let flags = self.settings.launch_flags.get(id).cloned().unwrap_or_default();
             self.dialog = Some(Dialog::LaunchFlags { app: id.to_string(), flags });
             ui.close();
         }
-        if ui.button(t(reveal)).clicked() {
+        if widgets::popup_item(ui, t(reveal), None, None).clicked() {
             self.act_command(Command::Reveal { app: id.to_string() });
             ui.close();
         }
-        if *status == AppStatus::UpToDate && entry.installs_here(self.platform) && ui.button(tl!("Reinstall")).clicked() {
+        if *status == AppStatus::UpToDate && entry.installs_here(self.platform) && widgets::popup_item(ui, tl!("Reinstall"), None, None).clicked() {
             self.install_app(id);
             ui.close();
         }
         ui.separator();
-        if ui.button(RichText::new(tl!("Uninstall…")).color(Tokens::get(ui.ctx()).bad)).clicked() {
+        if widgets::popup_item(ui, tl!("Uninstall…"), None, Some(Tokens::get(ui.ctx()).bad)).clicked() {
             self.dialog = Some(Dialog::ConfirmUninstall(id.to_string()));
             ui.close();
         }
@@ -1367,7 +1381,7 @@ impl LauncherUi {
         if !options.is_empty() {
             ui.separator();
             for (label, url) in options {
-                if ui.button(label).clicked() {
+                if widgets::popup_item(ui, &label, None, None).clicked() {
                     widgets::open_external_link(ui.ctx(), &url);
                     ui.close();
                 }
@@ -1380,7 +1394,7 @@ impl LauncherUi {
     fn menu_hide(&mut self, ui: &mut Ui, entry: &AppEntry, id: &str) {
         ui.separator();
         let hidden = self.settings.hidden.contains(entry.app.id);
-        if ui.button(if hidden { tl!("Unhide App") } else { tl!("Hide App") }).clicked() {
+        if widgets::popup_item(ui, if hidden { tl!("Unhide App") } else { tl!("Hide App") }, None, None).clicked() {
             if hidden {
                 self.settings.hidden.remove(entry.app.id);
                 if self.settings.hidden.is_empty() && self.settings.filter == Filter::Hidden {
@@ -1419,6 +1433,7 @@ pub(crate) fn grid_sort_now(s: &crate::settings::Settings) -> (SortKey, bool) {
     }
 }
 
+/// Return the translated label for the selected grid sorting direction.
 fn grid_sort_label((key, descending): (SortKey, bool)) -> &'static str {
     match (key, descending) {
         (SortKey::Released, _) => tl!("Recently updated"),

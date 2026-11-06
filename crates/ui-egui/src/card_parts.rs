@@ -45,7 +45,8 @@ pub(crate) fn blurb(ui: &mut Ui, text: &str, color: Color32, rows: usize) {
     job.wrap.break_anywhere = false;
     job.wrap.overflow_character = Some('…');
     // Not selectable, so a click on the text still opens the app's page.
-    ui.add(egui::Label::new(job).selectable(false));
+    let label = egui::Label::new(job).selectable(false);
+    ui.add(if crate::i18n::current().is_rtl() { label.halign(egui::Align::Max) } else { label });
 }
 
 #[cfg(test)]
