@@ -1268,14 +1268,17 @@ pub(crate) mod linux {
                 if user.is_ok_and(|s| s.success()) {
                     return Ok(());
                 }
+                // The recorded installation, not only the default system one: an app in a named
+                // installation (`--installation=extra`) is otherwise never removed.
+                let scope = crate::packages::flatpak_uninstall_scope(installed.installation.as_deref());
                 if process::in_sandbox() {
-                    let system = process::flatpak_command().args(["uninstall", "--system", "-y", "--noninteractive", &id]).status();
+                    let system = process::flatpak_command().args(["uninstall", scope.as_str(), "-y", "--noninteractive", &id]).status();
                     if system.is_ok_and(|s| s.success()) {
                         return Ok(());
                     }
                     return Err(format!("couldn't uninstall {id}"));
                 }
-                remove(&["flatpak", "uninstall", "--system", "-y", "--noninteractive"], &id)
+                remove(&["flatpak", "uninstall", scope.as_str(), "-y", "--noninteractive"], &id)
             }
             other => Err(format!("{} isn't a system package", other.label())),
         }
