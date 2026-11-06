@@ -828,6 +828,16 @@ impl<'a> Shell<'a> {
         }
     }
 
+    /// Takes this pass's window focus (macOS): a gain while the window is put away means macOS
+    /// brought it back by itself ([`window_came_back`]), so it counts as shown again.
+    #[cfg_attr(not(target_os = "macos"), allow(dead_code))]
+    fn track_focus(&mut self, focused: bool) {
+        if window_came_back(self.visible, self.window_hides, self.was_focused, focused) {
+            self.visible = true;
+        }
+        self.was_focused = focused;
+    }
+
     /// Puts the window away in the tray: hidden where it can hide, closed where it can't. On macOS
     /// the whole app hides, so its Dock icon brings the window back (`hiding`).
     fn put_away(&mut self, ctx: &egui::Context) {
@@ -860,13 +870,7 @@ impl eframe::App for Shell<'_> {
             self.applied_follow = Some(on);
         }
         #[cfg(target_os = "macos")]
-        {
-            let focused = ctx.input(|i| i.viewport().focused) == Some(true);
-            if window_came_back(self.visible, self.window_hides, self.was_focused, focused) {
-                self.visible = true;
-            }
-            self.was_focused = focused;
-        }
+        self.track_focus(ctx.input(|i| i.viewport().focused) == Some(true));
         for request in requests {
             match request {
                 Request::Toggle if self.visible => self.put_away(ctx),
@@ -1256,6 +1260,39 @@ mod tests {
         shell.put_away(&ctx);
         assert!(!shell.visible);
         assert!(!shell.launcher.closed_to_tray);
+    }
+
+    #[test]
+    fn a_window_macos_brings_back_shows_until_it_is_closed_again() {
+        let (mut launcher, _show, _) = launcher();
+        let ctx = launcher.windowless.clone();
+        let mut shell = Shell {
+            launcher: &mut launcher,
+            window_hides: true,
+            visible: true,
+            quitting: false,
+            applied_follow: None,
+            applied_dock: None,
+            was_focused: false,
+        };
+        // With the tray and the Dock choice on.
+        let dock = |shell: &Shell<'_>| shows_dock_icon(shell.visible, true, true, true);
+        // Closed to the menu bar while focused; the window keeps its focus for a pass.
+        shell.track_focus(true);
+        shell.put_away(&ctx);
+        shell.track_focus(true);
+        shell.track_focus(false);
+        assert!(!shell.visible);
+        assert!(!dock(&shell));
+        // Opened again from Finder: macOS unhides the app and the window gains focus.
+        shell.track_focus(true);
+        assert!(shell.visible);
+        assert!(dock(&shell));
+        // Closed again: the Dock icon goes again.
+        shell.put_away(&ctx);
+        shell.track_focus(true);
+        assert!(!shell.visible);
+        assert!(!dock(&shell));
     }
 
     #[test]
