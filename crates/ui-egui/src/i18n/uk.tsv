@@ -49,6 +49,10 @@
 	Install	Встановити
 	Update to {v}	Оновити до {v}
 	Open	Відкрити
+	Open {version}	Відкрити {version}
+	Open {installed} without updating. {latest} stays available.	Відкрити {installed} без оновлення. Версія {latest} залишиться доступною.
+	{latest} is out, but ArtCraft Launcher can't install it over this copy.	Версія {latest} уже вийшла, але ArtCraft Launcher не може встановити її поверх цієї копії.
+	ArtCraft Launcher can't install version {version} over this copy.	ArtCraft Launcher не може встановити версію {version} поверх цієї копії.
 	Download for {os}	Завантажити для {os}
 	Download	Завантажити
 	Coming soon	Незабаром
@@ -72,6 +76,13 @@
 	Show in Files	Показати у файловому менеджері
 	Reinstall	Перевстановити
 	Uninstall…	Видалити…
+	Launch options…	Параметри запуску…
+	{name} launch options	Параметри запуску {name}
+	Flags added each time the app is opened	Прапорці, які додаються щоразу під час відкриття застосунку
+	Separate flags with spaces. Quote a value that has spaces in it.	Розділяйте прапорці пробілами. Значення з пробілами беріть у лапки.
+	A quote isn't closed.	Лапку не закрито.
+	{name} wasn't opened: a quote in its launch options isn't closed.	{name} не відкрито: у параметрах запуску не закрито лапку.
+	Save	Зберегти
 	All releases	Усі випуски
 	ArtCraft Launcher {version} is available.	Доступний ArtCraft Launcher {version}.
 	Dismiss	Закрити
