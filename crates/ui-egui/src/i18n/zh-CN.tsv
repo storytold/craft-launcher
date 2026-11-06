@@ -35,6 +35,10 @@
 	Install	安装
 	Update to {v}	更新至 {v}
 	Open	打开
+	Open {version}	打开 {version}
+	Open {installed} without updating. {latest} stays available.	打开 {installed}，不更新。{latest} 仍可稍后安装。
+	{latest} is out, but ArtCraft Launcher can't install it over this copy.	{latest} 已发布，但 ArtCraft Launcher 无法用它替换此副本。
+	ArtCraft Launcher can't install version {version} over this copy.	ArtCraft Launcher 无法用版本 {version} 替换此副本。
 	Download for {os}	下载 {os} 版
 	Download	下载
 	Coming soon	即将推出

@@ -53,6 +53,10 @@
 	Install	ინსტალაცია
 	Update to {v}	განახლება ვერსიამდე {v}
 	Open	გახსნა
+	Open {version}	{version} ვერსიის გახსნა
+	Open {installed} without updating. {latest} stays available.	{installed} ვერსიის გახსნა განახლების გარეშე. {latest} ვერსია ხელმისაწვდომი რჩება.
+	{latest} is out, but ArtCraft Launcher can't install it over this copy.	{latest} უკვე გამოვიდა, მაგრამ ArtCraft Launcher ვერ დააინსტალირებს მას ამ ასლის ნაცვლად.
+	ArtCraft Launcher can't install version {version} over this copy.	ArtCraft Launcher ვერ დააინსტალირებს {version} ვერსიას ამ ასლის ნაცვლად.
 	Download for {os}	ჩამოტვირთვა {os}-ისთვის
 	Download	ჩამოტვირთვა
 	Coming soon	მალე

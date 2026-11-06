@@ -504,9 +504,36 @@ fn record(version: &str, kind: PackageKind, path: PathBuf, files: Vec<PathBuf>, 
 /// Returns an empty `Vec` when `app` is already installed outside the launcher (such as an AUR
 /// or repository Arch package) and must not be updated or replaced by the launcher.
 pub fn choose_kinds(app: &CraftApp, existing: Option<&Installed>, record: Option<&Record>, preferred: &[PackageKind]) -> Vec<PackageKind> {
-    let available = available_kinds();
-    let can_pacman = available.contains(&PackageKind::ArchPkg) || can_pacman();
-    choose_kinds_with(app, existing, record, preferred, &available, can_pacman)
+    choose_kinds_on(app, existing, record, preferred, &SystemKinds::now())
+}
+
+/// What this system can install: its package formats ([`available_kinds`]) and whether pacman can
+/// take the release's own Arch package. Asking can run a program on the host (inside the Flatpak
+/// sandbox), so a question asked for every app on every check keeps one for a while.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct SystemKinds {
+    pub available: Vec<PackageKind>,
+    pub can_pacman: bool,
+}
+
+impl SystemKinds {
+    /// Asks this system now.
+    pub fn now() -> Self {
+        let available = available_kinds();
+        let can_pacman = available.contains(&PackageKind::ArchPkg) || can_pacman();
+        Self { available, can_pacman }
+    }
+}
+
+/// [`choose_kinds`] on what `system` can install, without asking it again.
+pub fn choose_kinds_on(
+    app: &CraftApp,
+    existing: Option<&Installed>,
+    record: Option<&Record>,
+    preferred: &[PackageKind],
+    system: &SystemKinds,
+) -> Vec<PackageKind> {
+    choose_kinds_with(app, existing, record, preferred, &system.available, system.can_pacman)
 }
 
 pub(crate) fn choose_kinds_with(
@@ -628,6 +655,13 @@ fn published_checksum(release: &Release, asset: &Asset, http: &Http) -> Result<O
 /// builds as the user and can't run behind the password prompt) for anything else.
 pub fn managed_elsewhere(app: &CraftApp, installed: &Installed, uninstall: bool) -> Option<String> {
     managed_elsewhere_with(app, installed, uninstall, pacman_repo)
+}
+
+/// Whether the launcher leaves `installed` to whatever installed it, as [`managed_elsewhere`]
+/// says, without asking pacman which repository to name in the message: for a question that only
+/// needs the answer, such as whether an update can be installed.
+pub fn is_managed_elsewhere(app: &CraftApp, installed: &Installed) -> bool {
+    managed_elsewhere_with(app, installed, false, |_| None).is_some()
 }
 
 fn managed_elsewhere_with(app: &CraftApp, installed: &Installed, uninstall: bool, repo_fn: impl Fn(&str) -> Option<String>) -> Option<String> {
