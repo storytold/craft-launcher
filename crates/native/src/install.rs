@@ -1247,7 +1247,19 @@ pub(crate) mod linux {
     }
 
     pub fn remove_package(app: &CraftApp, installed: &Installed, stop: &Stop, phase: &mut dyn FnMut(JobPhase)) -> Result<(), String> {
-        let mut remove = |command: &[&str], package: &str| as_root(&SYSTEM, command, OsStr::new(package), stop, phase, JobPhase::Removing);
+        remove_package_with(&SYSTEM, app, installed, stop, phase)
+    }
+
+    /// [`remove_package`] with the root runner supplied, so a test can assert the exact command
+    /// that would reach it.
+    pub(super) fn remove_package_with(
+        root: &Root<'_>,
+        app: &CraftApp,
+        installed: &Installed,
+        stop: &Stop,
+        phase: &mut dyn FnMut(JobPhase),
+    ) -> Result<(), String> {
+        let mut remove = |command: &[&str], package: &str| as_root(root, command, OsStr::new(package), stop, phase, JobPhase::Removing);
         let package = installed.package.as_deref().unwrap_or(app.id);
         match installed.source {
             // The package detected (photocraft, or ai.storyteller.photocraft).
@@ -3507,6 +3519,37 @@ mod tests {
         assert!(!bundle_installed.is_externally_managed());
         assert_eq!(choose_kinds_with(app, Some(&bundle_installed), None, &[], &[PackageKind::Flatpak], false), vec![PackageKind::Flatpak]);
         assert_eq!(managed_elsewhere_with(app, &bundle_installed, false, |_| None), None);
+    }
+
+    /// The Flatpak uninstall command carries the installation the app was detected in, not only
+    /// the default system one. A fake root records what would be run; the app id is guaranteed not
+    /// to exist, so the initial user-scope probe is harmless.
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn a_named_flatpak_is_removed_with_its_installation() {
+        use std::sync::Mutex;
+        let app = CraftApp::by_id("photocraft").unwrap();
+        let installed = Installed {
+            version: None,
+            source: InstallSource::Flatpak,
+            location: "ai.storyteller.photocraft".into(),
+            package: Some("ai.storyteller.test-does-not-exist".into()),
+            externally_managed: false,
+            origin: None,
+            installation: Some("extra".into()),
+        };
+        let queue = crate::queue::Queue::new();
+        let ran = Mutex::new(Vec::new());
+        let run = |args: &[&std::ffi::OsStr]| {
+            ran.lock().unwrap().push(args.iter().map(|a| a.to_string_lossy().into_owned()).collect::<Vec<_>>());
+            Ok(())
+        };
+        let root = linux::Root { queue: &queue, run: &run };
+        linux::remove_package_with(&root, app, &installed, &Stop::default(), &mut |_| ()).unwrap();
+        assert_eq!(
+            ran.into_inner().unwrap(),
+            [["flatpak", "uninstall", "--installation=extra", "-y", "--noninteractive", "ai.storyteller.test-does-not-exist"]]
+        );
     }
 
     #[test]
