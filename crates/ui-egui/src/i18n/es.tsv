@@ -50,6 +50,10 @@
 	Install	Instalar
 	Update to {v}	Actualizar a {v}
 	Open	Abrir
+	Open {version}	Abrir {version}
+	Open {installed} without updating. {latest} stays available.	Abrir {installed} sin actualizar. {latest} sigue disponible.
+	{latest} is out, but ArtCraft Launcher can't install it over this copy.	{latest} ya está disponible, pero ArtCraft Launcher no puede instalarla sobre esta copia.
+	ArtCraft Launcher can't install version {version} over this copy.	ArtCraft Launcher no puede instalar la versión {version} sobre esta copia.
 	Download for {os}	Descargar para {os}
 	Download	Descargar
 	Coming soon	Próximamente
@@ -73,6 +77,13 @@
 	Show in Files	Mostrar en Archivos
 	Reinstall	Reinstalar
 	Uninstall…	Desinstalar…
+	Launch options…	Opciones de inicio…
+	{name} launch options	Opciones de inicio de {name}
+	Flags added each time the app is opened	Parámetros que se añaden cada vez que se abre la aplicación
+	Separate flags with spaces. Quote a value that has spaces in it.	Separa los parámetros con espacios. Pon entre comillas un valor que contenga espacios.
+	A quote isn't closed.	Hay unas comillas sin cerrar.
+	{name} wasn't opened: a quote in its launch options isn't closed.	{name} no se abrió: hay unas comillas sin cerrar en sus opciones de inicio.
+	Save	Guardar
 	All releases	Todas las versiones
 	ArtCraft Launcher {version} is available.	ArtCraft Launcher {version} está disponible.
 	Dismiss	Descartar

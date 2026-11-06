@@ -48,6 +48,10 @@
 	Install	Установить
 	Update to {v}	Обновить до {v}
 	Open	Открыть
+	Open {version}	Открыть {version}
+	Open {installed} without updating. {latest} stays available.	Открыть {installed} без обновления. Версия {latest} останется доступной.
+	{latest} is out, but ArtCraft Launcher can't install it over this copy.	Вышла версия {latest}, но ArtCraft Launcher не может установить её поверх этой копии.
+	ArtCraft Launcher can't install version {version} over this copy.	ArtCraft Launcher не может установить версию {version} поверх этой копии.
 	Download for {os}	Скачать для {os}
 	Download	Скачать
 	Coming soon	Скоро
@@ -71,6 +75,13 @@
 	Show in Files	Показать в файловом менеджере
 	Reinstall	Переустановить
 	Uninstall…	Удалить…
+	Launch options…	Параметры запуска…
+	{name} launch options	Параметры запуска {name}
+	Flags added each time the app is opened	Флаги, добавляемые при каждом открытии приложения
+	Separate flags with spaces. Quote a value that has spaces in it.	Разделяйте флаги пробелами. Значение с пробелами заключите в кавычки.
+	A quote isn't closed.	Кавычка не закрыта.
+	{name} wasn't opened: a quote in its launch options isn't closed.	{name} не открыто: в параметрах запуска не закрыта кавычка.
+	Save	Сохранить
 	All releases	Все релизы
 	ArtCraft Launcher {version} is available.	Доступен ArtCraft Launcher {version}.
 	Dismiss	Закрыть
