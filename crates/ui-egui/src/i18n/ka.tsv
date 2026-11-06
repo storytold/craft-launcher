@@ -288,6 +288,7 @@ column	App	აპლიკაცია
 column	Installed	დაინსტალირებული
 column	Latest	უახლესი
 column	Released	გამოშვება
+column	Size	ზომა
 
 # Contextual: the filter tab names a group (the status pill says "Installed")
 filter	Installed	დაინსტალირებული
@@ -405,6 +406,9 @@ filter	Installed	დაინსტალირებული
 	Previous app	წინა აპლიკაცია
 	Show {n} more changes	კიდევ {n} ცვლილების ჩვენება
 	Last updated: {date}	ბოლო განახლება: {date}
+	Size on disk	ზომა დისკზე
+	Total: {size}	ჯამი: {size}
+	Disk space used by the installed apps	დაინსტალირებული აპლიკაციების დაკავებული ადგილი დისკზე
 column	Version	ვერსია
 column	Author	ავტორი
 	Choose version	ვერსიის არჩევა

@@ -43,13 +43,15 @@ pub enum SortKey {
     Released,
     /// How often the app has been opened from here, most first.
     Frequent,
+    /// Disk space the installed copy takes.
+    Size,
 }
 
 impl SortKey {
     /// The direction a first click sorts in: newest and highest first for dates and versions,
     /// A to Z for text.
     pub fn starts_descending(self) -> bool {
-        matches!(self, Self::Installed | Self::Latest | Self::Released | Self::Frequent)
+        matches!(self, Self::Installed | Self::Latest | Self::Released | Self::Frequent | Self::Size)
     }
 }
 
