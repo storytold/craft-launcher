@@ -469,13 +469,24 @@ fn explorer_select_arg(path: &Path) -> Option<std::ffi::OsString> {
 ///
 /// Windows only. `name` is the shortcut's file name without `.lnk` (usually the app's display name).
 /// Does not overwrite an existing shortcut of the same name.
+/// Creates a `.lnk` on the user's Desktop that opens `target`.
+///
+/// Windows only. Uses the shell Desktop folder (`dirs::desktop_dir`), which follows OneDrive
+/// redirection. Does not overwrite an existing shortcut of the same name.
 #[cfg(windows)]
 pub fn create_desktop_shortcut(name: &str, target: &Path) -> Result<(), String> {
+    let desktop = dirs::desktop_dir().ok_or_else(|| "couldn't find the Desktop folder".to_string())?;
+    create_desktop_shortcut_in(&desktop, name, target)
+}
+
+/// Same as [`create_desktop_shortcut`], but writes into `desktop` (for tests and callers that
+/// already resolved the Desktop folder).
+#[cfg(windows)]
+pub(crate) fn create_desktop_shortcut_in(desktop: &Path, name: &str, target: &Path) -> Result<(), String> {
     // Must be a real executable path (not a missing path or a directory).
     if !target.is_file() {
         return Err(format!("{} isn't where it was installed", target.display()));
     }
-    let desktop = dirs::desktop_dir().ok_or_else(|| "couldn't find the Desktop folder".to_string())?;
     let lnk = desktop.join(format!("{name}.lnk"));
     // Don't replace a shortcut the user may have made or customized.
     if lnk.exists() {
@@ -498,9 +509,82 @@ pub fn create_desktop_shortcut(name: &str, target: &Path) -> Result<(), String> 
 }
 
 #[cfg(not(windows))]
-
 pub fn create_desktop_shortcut(_name: &str, _target: &Path) -> Result<(), String> {
     Err("desktop shortcuts are only supported on Windows".into())
+}
+
+#[cfg(all(test, windows))]
+mod desktop_shortcut_tests {
+    use super::*;
+    use std::fs;
+    use std::io::Write;
+
+    fn write_fake_exe(dir: &Path, file_name: &str) -> PathBuf {
+        let path = dir.join(file_name);
+        let mut f = fs::File::create(&path).unwrap();
+        // mslnk only needs a real file on disk; content is irrelevant for .lnk creation.
+        f.write_all(b"MZ").unwrap();
+        path
+    }
+
+    #[test]
+    fn rejects_missing_target() {
+        let desktop = tempfile::tempdir().unwrap();
+        let missing = desktop.path().join("gone.exe");
+        let err = create_desktop_shortcut_in(desktop.path(), "App", &missing).unwrap_err();
+        assert!(err.contains("isn't where it was installed"), "{err}");
+    }
+
+    #[test]
+    fn rejects_directory_as_target() {
+        let desktop = tempfile::tempdir().unwrap();
+        let dir = desktop.path().join("not-an-exe");
+        fs::create_dir(&dir).unwrap();
+        let err = create_desktop_shortcut_in(desktop.path(), "App", &dir).unwrap_err();
+        assert!(err.contains("isn't where it was installed"), "{err}");
+    }
+
+    #[test]
+    fn refuses_to_overwrite_existing_shortcut() {
+        let desktop = tempfile::tempdir().unwrap();
+        let target = write_fake_exe(desktop.path(), "app.exe");
+        let lnk = desktop.path().join("PhotoCraft.lnk");
+        fs::write(&lnk, b"existing").unwrap();
+        let err = create_desktop_shortcut_in(desktop.path(), "PhotoCraft", &target).unwrap_err();
+        assert!(err.contains("already exists"), "{err}");
+        assert_eq!(fs::read(&lnk).unwrap(), b"existing");
+    }
+
+    #[test]
+    fn creates_shortcut_for_name_with_spaces() {
+        let desktop = tempfile::tempdir().unwrap();
+        let target = write_fake_exe(desktop.path(), "my app.exe");
+        create_desktop_shortcut_in(desktop.path(), "My App", &target).unwrap();
+        let lnk = desktop.path().join("My App.lnk");
+        assert!(lnk.is_file());
+        assert!(lnk.metadata().unwrap().len() > 0);
+    }
+
+    #[test]
+    fn creates_shortcut_for_name_with_quote_character() {
+        // File names cannot contain `"`, but the display name passed in may; we only put `name`
+        // into the .lnk file name. Use an apostrophe-like safe case that still stresses Unicode.
+        let desktop = tempfile::tempdir().unwrap();
+        let target = write_fake_exe(desktop.path(), "app.exe");
+        create_desktop_shortcut_in(desktop.path(), "App's Tool", &target).unwrap();
+        assert!(desktop.path().join("App's Tool.lnk").is_file());
+    }
+
+    #[test]
+    fn uses_provided_desktop_folder_not_a_hardcoded_path() {
+        // Stand-in for a redirected Desktop (OneDrive, etc.): any folder we pass is used.
+        let redirected = tempfile::tempdir().unwrap();
+        let target = write_fake_exe(redirected.path(), "app.exe");
+        create_desktop_shortcut_in(redirected.path(), "Redirected", &target).unwrap();
+        assert!(redirected.path().join("Redirected.lnk").is_file());
+        // Must not have written beside a guessed ~/Desktop path from this test's CWD alone.
+        assert!(!PathBuf::from("Redirected.lnk").exists());
+    }
 }
 
 /// Whether a process started from inside `path` (an exe, an AppImage, or a `.app`) is running.
