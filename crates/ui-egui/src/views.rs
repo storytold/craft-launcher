@@ -811,6 +811,7 @@ impl LauncherUi {
         let tip = if active { tl!("Click to reverse the order") } else { tl!("Click to sort by this column") };
         // Measure first so the whole header cell (label + arrow) is the target.
         let (rect, resp) = ui.allocate_exact_size(ui.available_size(), Sense::click());
+        widgets::focus_ring(ui, &resp);
         let hovered = resp.hovered();
         let color = if active || hovered { t.ink_strong } else { t.faint };
         let galley = widgets::hud_galley(ui, label, color);
@@ -919,6 +920,7 @@ impl LauncherUi {
         if AppDetails::by_id(id).is_some() {
             let open = ui.interact(row_rect, ui.scope_id().with(("row-open", id)), Sense::click());
             open.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, true, fmt(tl!("{name} details"), &[("name", entry.app.name)])));
+            widgets::focus_ring(ui, &open);
             if open.on_hover_cursor(egui::CursorIcon::PointingHand).clicked() {
                 self.detail = Some(id.to_string());
             }
