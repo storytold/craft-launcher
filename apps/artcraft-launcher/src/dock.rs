@@ -9,13 +9,16 @@ use objc2::MainThreadMarker;
 use objc2_app_kit::{NSApplication, NSApplicationActivationPolicy};
 
 /// Shows (`true`) or hides (`false`) the launcher's Dock icon, which also adds it to or takes it
-/// out of the app switcher (Cmd-Tab). Must run on the main thread, as the UI does; elsewhere it
-/// does nothing.
-pub fn show_icon(on: bool) {
-    let Some(mtm) = MainThreadMarker::new() else { return };
+/// out of the app switcher (Cmd-Tab). Returns whether the icon is now as asked, so a caller can
+/// try again when macOS refuses the change. Must run on the main thread, as the UI does;
+/// elsewhere it does nothing and returns `false`.
+pub fn show_icon(on: bool) -> bool {
+    let Some(mtm) = MainThreadMarker::new() else { return false };
     let policy = if on { NSApplicationActivationPolicy::Regular } else { NSApplicationActivationPolicy::Accessory };
     let app = NSApplication::sharedApplication(mtm);
-    if app.activationPolicy() != policy && !app.setActivationPolicy(policy) {
-        log::warn!("couldn't {} the Dock icon", if on { "show" } else { "hide" });
+    if app.activationPolicy() == policy || app.setActivationPolicy(policy) {
+        return true;
     }
+    log::warn!("couldn't {} the Dock icon", if on { "show" } else { "hide" });
+    false
 }

@@ -878,8 +878,8 @@ impl eframe::App for Shell<'_> {
         {
             let settings = &self.launcher.ui.settings;
             let on = shows_dock_icon(self.visible, self.launcher.tray.is_some(), settings.close_to_tray, settings.hide_dock_icon);
-            if self.applied_dock != Some(on) {
-                dock::show_icon(on);
+            // Recorded only once macOS accepts it, so a refused change is tried again next pass.
+            if self.applied_dock != Some(on) && dock::show_icon(on) {
                 self.applied_dock = Some(on);
             }
         }
