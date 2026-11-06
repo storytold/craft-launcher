@@ -918,15 +918,21 @@ impl LauncherUi {
     /// The ids to show, filtered and sorted. Pinned apps stay first in the user's pin order;
     /// the active sort (and the grid's installed / not-installed split) applies only to the rest.
     pub(crate) fn visible_ids(&self) -> Vec<&'static str> {
-        let needle = self.search.trim().to_lowercase();
+        let needle = crate::i18n::to_lowercase(self.search.trim());
+        let needle_neutral = self.search.trim().to_lowercase();
+        let lang = crate::i18n::current();
         let mut list: Vec<(usize, &AppEntry)> = self
             .entries
             .iter()
             .enumerate()
             .filter(|(_, e)| {
+                let tagline = crate::i18n::tr_ctx(lang, e.app.id, e.app.tagline);
                 self.in_filter(e, self.settings.filter)
                     && !(self.settings.hide_community_apps && e.app.kind == artcraft_launcher_core::catalog::AppKind::Community)
-                    && (needle.is_empty() || e.app.name.to_lowercase().contains(&needle) || e.app.tagline.to_lowercase().contains(&needle))
+                    && (needle.is_empty()
+                        || e.app.name.to_lowercase().contains(&needle_neutral)
+                        || crate::i18n::to_lowercase(tagline).contains(&needle)
+                        || e.app.tagline.to_lowercase().contains(&needle_neutral))
             })
             .collect();
         let platform = self.platform;

@@ -32,12 +32,16 @@ pub(crate) fn set_georgian_caps(on: bool) {
 }
 
 /// `text` in upper case. Georgian goes to Mtavruli only when the face draws it.
+/// Respects language-specific rules (e.g. Turkish dotted and dotless i) and protects brand names.
 fn upper(text: &str) -> String {
     upper_with(text, GEORGIAN_CAPS.load(Ordering::Relaxed))
 }
 
 /// [`upper`] with the face's Georgian capitals given rather than read from [`GEORGIAN_CAPS`].
 fn upper_with(text: &str, georgian_caps: bool) -> String {
+    if crate::i18n::current() == crate::i18n::Lang::TR {
+        return crate::i18n::to_uppercase(text);
+    }
     text.chars().fold(String::with_capacity(text.len()), |mut out, c| {
         if !georgian_caps && ('\u{10d0}'..='\u{10ff}').contains(&c) {
             out.push(c);
