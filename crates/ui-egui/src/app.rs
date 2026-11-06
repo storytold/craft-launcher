@@ -209,6 +209,11 @@ pub struct LauncherUi {
     /// Versions of apps or the launcher already queued for auto-update during this session,
     /// preventing repeated install loops if an update fails or is in progress.
     pub(crate) auto_update_attempted: std::collections::BTreeSet<(String, String)>,
+    /// Versions a person deferred, paired with the check generation after which they can be
+    /// offered again.
+    deferred_auto_updates: std::collections::BTreeMap<(String, String), u64>,
+    /// Number of update checks that have started during this session.
+    auto_update_check_generation: u64,
     /// App operations sent to the backend but not yet finished. Progress events can arrive after
     /// another check or Update all action, so this closes that gap.
     pending_app_operations: std::collections::HashSet<String>,
@@ -313,6 +318,8 @@ impl LauncherUi {
             last_detect: 0,
             was_focused: true,
             auto_update_attempted: std::collections::BTreeSet::new(),
+            deferred_auto_updates: std::collections::BTreeMap::new(),
+            auto_update_check_generation: 0,
             pending_app_operations: std::collections::HashSet::new(),
             pending_windows_auto_update_notice: None,
             discord_url: artcraft_launcher_core::catalog::DISCORD_URL,
@@ -364,6 +371,7 @@ impl LauncherUi {
     /// Looks for updates now (the tray's "Check for Updates").
     pub fn check_now(&mut self) {
         self.auto_update_attempted.clear();
+        self.deferred_auto_updates.clear();
         self.backend.send(Command::CheckForUpdates { force: true });
         self.backend.send(Command::Detect);
         self.last_detect = self.backend.now();
@@ -525,6 +533,7 @@ impl LauncherUi {
                 }
                 UiAction::CheckNow => {
                     self.auto_update_attempted.clear();
+                    self.deferred_auto_updates.clear();
                     self.backend.send(Command::CheckForUpdates { force: true });
                     self.backend.send(Command::Detect);
                     self.last_detect = self.backend.now();
@@ -663,8 +672,7 @@ impl LauncherUi {
         ctx.request_repaint_after(Duration::from_secs(60));
     }
 
-    /// Returns whether app state changed.
-    /// Applies one backend event and reports whether app data changed enough to refresh notices.
+    /// Applies a backend event and reports whether app data changed enough to refresh notices.
     fn handle(&mut self, event: Event) -> bool {
         match event {
             Event::Latest { app, latest, from } => {
@@ -728,6 +736,7 @@ impl LauncherUi {
             Event::CheckStarted => {
                 self.checking = true;
                 self.automatic_updates_ready = false;
+                self.auto_update_check_generation = self.auto_update_check_generation.saturating_add(1);
                 false
             }
             Event::CheckFinished { at, source, rate_limited_until } => {
@@ -736,6 +745,7 @@ impl LauncherUi {
                 self.settings.last_check = Some(at);
                 self.last_source = Some(source);
                 self.rate_limited_until = rate_limited_until;
+                self.release_deferred_auto_updates();
                 true
             }
         }
@@ -797,6 +807,34 @@ impl LauncherUi {
     /// Reports a failed launch or reveal without touching the app's independent install job state.
     fn on_app_action_failed(&mut self, error: String) {
         self.toast(error, true);
+    }
+
+    /// Makes explicitly deferred Windows updates eligible after a later check finishes, without
+    /// clearing their attempt markers while the current notice is still being dismissed.
+    pub(crate) fn defer_windows_auto_update_notice(&mut self, apps: &[String]) {
+        // A check already in flight when the notice is deferred will finish later and can serve
+        // as the follow-up. Otherwise wait for the next check to start and finish.
+        let after_generation = if self.checking { self.auto_update_check_generation } else { self.auto_update_check_generation.saturating_add(1) };
+        for (app, version) in &self.auto_update_attempted {
+            if apps.contains(app) {
+                self.deferred_auto_updates.insert((app.clone(), version.clone()), after_generation);
+            }
+        }
+    }
+
+    /// Releases only deferred versions whose follow-up check has completed; the normal automatic
+    /// update pass can then collect them into a fresh notice without reopening it immediately.
+    fn release_deferred_auto_updates(&mut self) {
+        let ready: Vec<_> = self
+            .deferred_auto_updates
+            .iter()
+            .filter(|(_, after_generation)| **after_generation <= self.auto_update_check_generation)
+            .map(|(attempt, _)| attempt.clone())
+            .collect();
+        for attempt in ready {
+            self.auto_update_attempted.remove(&attempt);
+            self.deferred_auto_updates.remove(&attempt);
+        }
     }
 
     /// Offers the launcher's own update once per new version, unless automatic updates install it.
@@ -1517,6 +1555,56 @@ mod tests {
             "the automatic path must make one batch request for both official updates"
         );
         assert_eq!(launcher.pending_app_operations.len(), 2, "each app remains independently tracked until its result");
+    }
+
+    #[test]
+    fn deferred_windows_auto_updates_reappear_after_a_later_check_not_immediately() {
+        let (mut launcher, sent) = windows_updates();
+        launcher.trigger_auto_updates();
+        assert_eq!(
+            launcher.pending_windows_auto_update_notice,
+            Some(vec!["photocraft".into(), "vectorcraft".into()]),
+            "the original automatic batch is offered before it can be deferred"
+        );
+        let apps = launcher.pending_windows_auto_update_notice.take().unwrap_or_default();
+        launcher.defer_windows_auto_update_notice(&apps);
+
+        // Other release events in the same session must not immediately reopen the notice.
+        let latest = launcher.entry("photocraft").unwrap().latest.clone().unwrap();
+        launcher.handle(Event::Latest { app: "photocraft".into(), latest, from: artcraft_launcher_core::protocol::Origin::GitHub });
+        launcher.trigger_auto_updates();
+        assert!(launcher.pending_windows_auto_update_notice.is_none());
+        assert!(sent.borrow().is_empty(), "defer must never start the batch");
+
+        // The next completed check releases those version markers to the ordinary notice flow.
+        launcher.handle(Event::CheckStarted);
+        launcher.handle(Event::CheckFinished { at: 1, source: Source::GitHubApi, rate_limited_until: None });
+        launcher.trigger_auto_updates();
+        assert_eq!(
+            launcher.pending_windows_auto_update_notice,
+            Some(vec!["photocraft".into(), "vectorcraft".into()]),
+            "a scheduled check makes the deferred apps eligible for a new notice"
+        );
+        assert!(sent.borrow().is_empty(), "the later offer still waits for acknowledgement");
+    }
+
+    #[test]
+    fn deferred_windows_auto_updates_reappear_after_a_check_already_in_flight() {
+        let (mut launcher, sent) = windows_updates();
+        launcher.trigger_auto_updates();
+        let apps = launcher.pending_windows_auto_update_notice.take().unwrap_or_default();
+        launcher.handle(Event::CheckStarted);
+        launcher.defer_windows_auto_update_notice(&apps);
+        assert!(launcher.pending_windows_auto_update_notice.is_none());
+
+        launcher.handle(Event::CheckFinished { at: 1, source: Source::GitHubApi, rate_limited_until: None });
+        launcher.trigger_auto_updates();
+        assert_eq!(
+            launcher.pending_windows_auto_update_notice,
+            Some(vec!["photocraft".into(), "vectorcraft".into()]),
+            "the already-running check can re-offer a notice after it completes"
+        );
+        assert!(sent.borrow().is_empty(), "the follow-up check does not bypass acknowledgement");
     }
 
     #[test]

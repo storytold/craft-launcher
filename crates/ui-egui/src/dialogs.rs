@@ -50,6 +50,13 @@ impl LauncherUi {
             return;
         }
         if close || response.should_close() {
+            if response.should_close()
+                && !close
+                && let Dialog::WindowsAutoUpdateNotice { apps } = &dialog
+            {
+                // Escape and clicking outside defer the notice just like the Later button.
+                self.defer_windows_auto_update_notice(apps);
+            }
             self.dialog = None;
             if matches!(dialog, Dialog::Versions(_)) {
                 // Close, Escape or a click outside: a version chosen there is dropped.
@@ -81,6 +88,7 @@ impl LauncherUi {
                     close = true;
                 }
                 if widgets::button(ui, tl!("Later"), Kind::Secondary, 80.0).clicked() {
+                    self.defer_windows_auto_update_notice(apps);
                     close = true;
                 }
             });

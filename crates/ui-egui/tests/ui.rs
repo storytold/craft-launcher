@@ -1330,6 +1330,31 @@ fn automatic_windows_batch_shows_permission_notice_before_any_uac_phase() {
 }
 
 #[test]
+/// Deferring the automatic batch closes its notice without starting installation or reopening it.
+fn automatic_windows_notice_later_defers_without_installing() {
+    let settings = Settings { view: ViewMode::Grid, notify: false, auto_update: true, ..Settings::default() };
+    let (mut h, sent) = harness_full_with_settings(
+        windows_update_events(),
+        ViewMode::Grid,
+        egui::Theme::Dark,
+        true,
+        1.0,
+        artcraft_launcher_ui_egui::TitleBar::Native,
+        Rc::default(),
+        Some(Platform { os: Os::Windows, arch: Arch::X64 }),
+        None,
+        settings,
+    );
+    h.run_steps(5);
+    h.get_by_label("Automatic Windows updates");
+    h.get_by_label("Later").click();
+    h.run_steps(3);
+
+    assert!(h.query_by_label("Automatic Windows updates").is_none(), "Later must dismiss the current notice");
+    assert!(!sent.borrow().iter().any(|command| matches!(command, Command::InstallAll { .. })), "Later must not start an update batch");
+}
+
+#[test]
 fn downloads_can_be_paused_resumed_and_discarded() {
     let (mut h, sent) = harness(ViewMode::Grid, egui::Theme::Dark, true);
     h.run_steps(4);
