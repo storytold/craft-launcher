@@ -450,9 +450,35 @@ impl LauncherUi {
         }
     }
 
-    /// Starts the batch only after the user has seen the automatic Windows update notice.
+    /// Rechecks the selected Windows updates before elevation: a background detection or update
+    /// check may have made some apps current while their permission notice was open.
     pub(crate) fn start_acknowledged_windows_auto_updates(&mut self, apps: Vec<String>) {
-        self.send(Command::InstallAll { apps });
+        if self.checking || !self.automatic_updates_ready {
+            // Never start a potentially stale batch while release results are still arriving.
+            // A completed check will make the deferred apps eligible for a fresh notice.
+            self.defer_windows_auto_update_notice(&apps);
+            return;
+        }
+
+        let mut eligible = Vec::new();
+        for app in apps {
+            let still_needs_update = self.entry(&app).is_some_and(|entry| {
+                self.in_filter(entry, Filter::Updates) && entry.job.is_none() && !entry.ready
+            }) && !self.pending_app_operations.contains(&app);
+
+            if still_needs_update {
+                eligible.push(app);
+            } else {
+                // Do not strand skipped versions in the attempted/deferred sets. If the state
+                // changes later, the ordinary update discovery can offer them again.
+                self.auto_update_attempted.retain(|(attempted_app, _)| attempted_app != &app);
+                self.deferred_auto_updates.retain(|(deferred_app, _), _| deferred_app != &app);
+            }
+        }
+
+        if !eligible.is_empty() {
+            self.send(Command::InstallAll { apps: eligible });
+        }
     }
 
     fn windows_update_platform(&self) -> bool {
@@ -1587,6 +1613,67 @@ mod tests {
             "the automatic path must make one batch request for both official updates"
         );
         assert_eq!(launcher.pending_app_operations.len(), 2, "each app remains independently tracked until its result");
+    }
+
+    #[test]
+    /// An update that became current while its notice was open is excluded from the elevated batch.
+    fn acknowledged_windows_updates_skip_apps_that_became_current() {
+        let (mut launcher, sent) = windows_updates();
+        launcher.trigger_auto_updates();
+        let apps = launcher.pending_windows_auto_update_notice.take().unwrap();
+        launcher.entry_mut("photocraft").unwrap().installed.as_mut().unwrap().version =
+            Some(artcraft_launcher_core::version::Version::new(0, 2, 0));
+
+        launcher.start_acknowledged_windows_auto_updates(apps);
+
+        assert_eq!(*sent.borrow(), [Command::InstallAll { apps: vec!["vectorcraft".into()] }]);
+        assert!(!launcher.pending_app_operations.contains("photocraft"));
+        assert!(launcher.pending_app_operations.contains("vectorcraft"));
+        assert!(!launcher.auto_update_attempted.iter().any(|(app, _)| app == "photocraft"));
+
+        // If the installed copy later becomes outdated again, the skipped version is offerable.
+        launcher.entry_mut("photocraft").unwrap().installed.as_mut().unwrap().version =
+            Some(artcraft_launcher_core::version::Version::new(0, 1, 0));
+        launcher.handle(Event::CheckStarted);
+        launcher.handle(Event::CheckFinished { at: 1, source: Source::GitHubApi, rate_limited_until: None });
+        launcher.trigger_auto_updates();
+        assert_eq!(launcher.pending_windows_auto_update_notice, Some(vec!["photocraft".into()]));
+    }
+
+    #[test]
+    /// When every selected app is now current, acknowledgement must not send an empty batch.
+    fn acknowledged_windows_updates_skip_the_batch_when_all_apps_are_current() {
+        let (mut launcher, sent) = windows_updates();
+        launcher.trigger_auto_updates();
+        let apps = launcher.pending_windows_auto_update_notice.take().unwrap();
+        for app in &apps {
+            launcher.entry_mut(app).unwrap().installed.as_mut().unwrap().version =
+                Some(artcraft_launcher_core::version::Version::new(0, 2, 0));
+        }
+
+        launcher.start_acknowledged_windows_auto_updates(apps);
+
+        assert!(sent.borrow().is_empty());
+        assert!(launcher.pending_app_operations.is_empty());
+        assert!(launcher.auto_update_attempted.is_empty());
+    }
+
+    #[test]
+    /// An in-progress release check defers acknowledgement until the new results are available.
+    fn acknowledged_windows_updates_wait_for_a_check_to_finish() {
+        let (mut launcher, sent) = windows_updates();
+        launcher.trigger_auto_updates();
+        let apps = launcher.pending_windows_auto_update_notice.take().unwrap();
+        launcher.handle(Event::CheckStarted);
+
+        launcher.start_acknowledged_windows_auto_updates(apps);
+        assert!(sent.borrow().is_empty());
+        assert_eq!(launcher.deferred_auto_updates.len(), 2);
+
+        launcher.handle(Event::CheckFinished { at: 1, source: Source::GitHubApi, rate_limited_until: None });
+        launcher.trigger_auto_updates();
+        assert_eq!(launcher.pending_windows_auto_update_notice, Some(vec!["photocraft".into(), "vectorcraft".into()]));
+        assert!(sent.borrow().is_empty(), "the renewed notice still requires acknowledgement");
     }
 
     #[test]
