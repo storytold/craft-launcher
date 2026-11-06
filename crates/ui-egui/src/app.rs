@@ -1451,6 +1451,7 @@ mod tests {
     }
 
     #[test]
+    /// App-action failures leave an active install pending until its real completion event arrives.
     fn failed_launch_or_reveal_does_not_finish_an_active_update() {
         let (mut launcher, sent, _ctx) = launcher();
         launcher.frame = Some(1);

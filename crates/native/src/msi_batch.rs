@@ -61,6 +61,7 @@ impl Default for Batch {
 }
 
 impl Batch {
+    /// Creates a batch coordinator that serializes installs through `installer` with other MSI work.
     pub const fn with_installer(installer: &'static crate::queue::Queue) -> Self {
         let state = State { slots: 0, downloading: 0, next_id: 0, ready: Vec::new(), busy: false, running: Vec::new(), finished: Vec::new() };
         Self { state: Mutex::new(state), changed: Condvar::new(), installer }
@@ -99,6 +100,7 @@ impl Batch {
         true
     }
 
+    /// Reserves one previously admitted Update all item; dropping the slot releases that admission.
     pub fn slot(&self) -> Slot<'_> {
         Slot { batch: self, used: false }
     }
@@ -112,6 +114,7 @@ pub struct Slot<'a> {
 }
 
 impl<'a> Slot<'a> {
+    /// Converts an admitted item into a download ticket that blocks installation until it finishes.
     pub fn join(mut self) -> Ticket<'a> {
         self.used = true;
         let batch = self.batch;
@@ -269,6 +272,7 @@ mod tests {
     }
 
     #[test]
+    /// Holds installation until all joined downloads finish, then distributes results by item index.
     fn files_wait_for_every_download_and_keep_individual_results() {
         let batch = Batch::new();
         let calls = std::sync::Arc::new(Mutex::new(Vec::new()));
@@ -303,6 +307,7 @@ mod tests {
     }
 
     #[test]
+    /// Proves two reserved Update all items invoke one installer callback and retain separate outcomes.
     fn two_reserved_update_all_items_use_one_installer_call_and_keep_individual_results() {
         let batch = Batch::new();
         assert!(batch.begin(2));
@@ -341,6 +346,7 @@ mod tests {
     }
 
     #[test]
+    /// Confirms a failed download releases its ticket so a ready package can proceed.
     fn a_failed_download_does_not_hold_the_batch() {
         let batch = Batch::new();
         let failed = batch.join();
@@ -350,6 +356,7 @@ mod tests {
     }
 
     #[test]
+    /// Confirms a waiting app can cancel without installation while remaining batch items continue.
     fn waiting_jobs_can_cancel_and_are_not_installed() {
         let batch = Batch::new();
         let first = batch.join();
@@ -377,6 +384,7 @@ mod tests {
     }
 
     #[test]
+    /// Prevents a cached first package from starting before every synchronous Update all slot joins.
     fn explicit_update_all_slots_close_the_race_before_a_cached_download_runs() {
         let batch = Batch::new();
         assert!(batch.begin(2));
@@ -409,6 +417,7 @@ mod tests {
     }
 
     #[test]
+    /// Releases a reserved slot when an app fails before MSI selection or selects another format.
     fn a_failed_or_non_msi_app_releases_its_reserved_slot() {
         let batch = Batch::new();
         assert!(batch.begin(2));
@@ -429,6 +438,7 @@ mod tests {
     }
 
     #[test]
+    /// Serializes the batch installer callback and MSI uninstall through the same permit.
     fn an_msi_batch_and_an_uninstall_share_the_same_installer_permit() {
         let batch = Batch::new();
         let ticket = batch.join();
@@ -463,6 +473,7 @@ mod tests {
     }
 
     #[test]
+    /// Keeps a batch waiting on an uninstall cancellable, then allows a later MSI ticket to run.
     fn a_batch_waiting_for_uninstall_stays_cancellable() {
         let batch = Batch::new();
         let permit = batch.installer.try_claim().unwrap();

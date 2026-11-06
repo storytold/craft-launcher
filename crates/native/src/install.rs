@@ -2412,6 +2412,7 @@ mod tests {
 
     #[cfg(windows)]
     #[test]
+    /// Keeps individual Windows MSI operations on the same queue reserved by Update all.
     fn windows_msi_operations_use_the_queue_reserved_by_update_all() {
         assert!(std::ptr::eq(INSTALLER, &crate::queue::WINDOWS_INSTALLER));
     }

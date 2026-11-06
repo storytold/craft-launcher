@@ -265,6 +265,7 @@ mod tests {
     }
 
     #[test]
+    /// Serves each batch index once and stops the worker when its owner is dropped.
     fn loopback_source_serves_only_fixed_session_indices_and_stops_on_drop() {
         let temp = tempfile::tempdir().unwrap();
         let file = temp.path().join("app.msi");
@@ -294,6 +295,7 @@ mod tests {
     }
 
     #[test]
+    /// Transfers twelve large binary packages through a slow reader and compares lengths and hashes.
     fn serves_twelve_large_binary_packages_sequentially_with_slow_reader_and_matching_hashes() {
         use sha2::Digest as _;
 
@@ -324,6 +326,7 @@ mod tests {
     }
 
     #[test]
+    /// Shows a malformed request cannot consume a later authorized package slot.
     fn a_broken_request_does_not_stop_later_authorized_items() {
         let temp = tempfile::tempdir().unwrap();
         let first = temp.path().join("first.msi");
@@ -346,6 +349,7 @@ mod tests {
     }
 
     #[test]
+    /// Fails the interrupted item after a reader disconnects while serving the next valid package.
     fn a_reader_disconnect_during_package_body_fails_that_item_and_serves_the_next_one() {
         let temp = tempfile::tempdir().unwrap();
         let first = temp.path().join("large-first.msi");
@@ -387,6 +391,7 @@ mod tests {
     }
 
     #[test]
+    /// Detects a local source ending early and counts partial destination writes exactly.
     fn exact_transfer_reports_early_file_eof_and_partial_socket_writes() {
         let stopped = AtomicBool::new(false);
         let mut bytes_written = Vec::new();
@@ -427,6 +432,7 @@ mod tests {
 
     #[cfg(windows)]
     #[test]
+    /// Keeps open source handles stable against package replacement until elevated copying finishes.
     fn source_handles_prevent_package_replacement_until_the_elevated_copy_finishes() {
         let temp = tempfile::tempdir().unwrap();
         let file = temp.path().join("app.msi");
@@ -447,6 +453,7 @@ mod tests {
 
     #[cfg(windows)]
     #[test]
+    /// Uses Windows PowerShell 5.1 to read binary loopback packages without installing or elevating.
     fn windows_policy_copies_loopback_bytes_but_rejects_unsigned_or_changed_packages() {
         use base64::Engine as _;
         let temp = tempfile::tempdir().unwrap();

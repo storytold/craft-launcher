@@ -1587,6 +1587,7 @@ mod tests {
     }
 
     #[test]
+    /// Confirms install success against the release snapshot even if a later check publishes another version.
     fn install_success_requires_detecting_the_advertised_version() {
         let target = version::parse("0.14.0").unwrap();
         let current = version::parse("0.14.0").unwrap();

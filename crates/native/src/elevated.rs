@@ -785,6 +785,7 @@ function Invoke-ArtCraftBatch($request, $catalog) {
 "#;
 
 #[cfg(test)]
+/// Encodes a test script using PowerShell's UTF-16LE Base64 command transport.
 fn encode_command(script: &str) -> String {
     use base64::Engine as _;
     let bytes: Vec<_> = script.encode_utf16().flat_map(u16::to_le_bytes).collect();
@@ -1041,6 +1042,7 @@ function Assert-ExpectedMsiProperties($file, $expectedProperties) {
 "#;
 
     #[test]
+    /// Confirms the checked-in package manifest maps only to official catalog release identities.
     fn current_windows_msi_manifest_only_authorizes_official_catalog_releases() {
         let manifest: serde_json::Value = serde_json::from_str(include_str!("../../../docs/windows-current-msi-releases.json")).unwrap();
         let packages = manifest["packages"].as_array().unwrap();
@@ -1084,6 +1086,7 @@ function Assert-ExpectedMsiProperties($file, $expectedProperties) {
     }
 
     #[cfg(any(windows, test))]
+    /// The oversized-test fallback reads the full UTF-8 script from stdin inside a fresh script block.
     fn powershell_stdin_bootstrap() -> String {
         encode_command(
             "$ErrorActionPreference='Stop'; \
@@ -1095,6 +1098,7 @@ function Assert-ExpectedMsiProperties($file, $expectedProperties) {
     }
 
     #[cfg(any(windows, test))]
+    /// Uses the production compressed command for normal tests and a stdin fallback only when oversized.
     fn powershell_test_transport(script: &str) -> Result<PowerShellTestTransport, String> {
         let script = format!("trap {{ [Console]::Error.WriteLine(($_ | Out-String)); exit 1 }}\n{script}");
         let payload = compressed_payload(&script)?;
@@ -1108,6 +1112,7 @@ function Assert-ExpectedMsiProperties($file, $expectedProperties) {
     }
 
     #[cfg(windows)]
+    /// Runs test-only PowerShell unelevated, capturing output and separating launch from script failures.
     fn run_powershell_test(script: &str) -> std::process::Output {
         use std::io::Write as _;
 
@@ -1153,6 +1158,7 @@ function Assert-ExpectedMsiProperties($file, $expectedProperties) {
     }
 
     #[cfg(windows)]
+    /// Reports a failed Windows assertion with both captured PowerShell streams.
     fn assert_powershell_output_contains(output: &std::process::Output, expected: &str) {
         assert!(
             String::from_utf8_lossy(&output.stdout).contains(expected),
@@ -1162,11 +1168,13 @@ function Assert-ExpectedMsiProperties($file, $expectedProperties) {
         );
     }
 
+    /// Builds a PhotoCraft MSI fixture using the supplied release URL.
     fn asset(url: &str) -> release::Asset {
         release::Asset { name: "photocraft-0.5.0-windows-x64.msi".into(), url: url.into(), ..Default::default() }
     }
 
     #[test]
+    /// Rejects release URLs that change the official repository, release tag, asset name, or package type.
     fn authorization_identity_is_pinned_to_app_repository_version_and_asset() {
         let app = CraftApp::by_id("photocraft").unwrap();
         let prefix = "https://github.com/storytold/photocraft/releases/download/v0.5.0/";
@@ -1188,6 +1196,7 @@ function Assert-ExpectedMsiProperties($file, $expectedProperties) {
     }
 
     #[test]
+    /// Guards the production policy's distinct signature, certificate organization, metadata, and architecture checks.
     fn fixed_policy_keeps_publisher_metadata_and_architecture_checks_independent() {
         assert!(POLICY.contains("Learning Machines Inc"), "Authenticode signer policy");
         assert!(POLICY.contains("X509NameType]::SimpleName") && POLICY.contains("Authenticode signer organization"));
@@ -1225,6 +1234,7 @@ function Assert-ExpectedMsiProperties($file, $expectedProperties) {
 
     #[cfg(windows)]
     #[test]
+    /// Executes the policy allowlist against valid legacy and official dual-scope property pairs.
     fn windows_policy_accepts_only_legacy_machine_or_official_dual_scope_properties() {
         let test = format!(
             "{POLICY}\n{}",
@@ -1256,6 +1266,7 @@ foreach ($pair in @(
 
     #[cfg(windows)]
     #[test]
+    /// Verifies the exact Windows Installer arguments for paths with spaces and empty scope properties.
     fn windows_msi_command_quotes_empty_scope_property_and_paths_with_spaces() {
         let test = format!(
             "{POLICY}\n{}",
@@ -1361,6 +1372,7 @@ try {
 
     #[cfg(windows)]
     #[test]
+    /// Calls real MSI exports through the production reflection helper and checks missing-file rejection.
     fn powershell_binds_real_msi_exports_with_the_documented_argument_counts() {
         let test = format!(
             "{POLICY}\n{}",
@@ -1418,6 +1430,7 @@ if (-not $caught) { throw 'Assert-MsiIdentity unexpectedly accepted a missing MS
 
     #[cfg(windows)]
     #[test]
+    /// Confirms administrator-side failure diagnostics retain their stage, HRESULT, and actionable cause.
     fn powershell_diagnostics_record_stage_exception_hresult_and_actionable_reason() {
         let nonce = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos();
         let path = std::env::temp_dir().join(format!("ArtCraft-diagnostics-{}-{nonce}.jsonl", std::process::id()));
@@ -1592,6 +1605,7 @@ Remove-Item -LiteralPath $path -Force
     }
 
     #[test]
+    /// Keeps only the first complete in-range result for each batch item and maps its outcome.
     fn results_reject_torn_duplicate_and_out_of_range_reports() {
         let results = parse_results("0 0\n1 rejected\n0 1603\n9 0\n2 3010\n3 running\n4 1602\n5 0", 6);
         assert_eq!(results.len(), 5);
@@ -1602,6 +1616,7 @@ Remove-Item -LiteralPath $path -Force
     }
 
     #[test]
+    /// Reconstructs the embedded policy byte-for-byte and checks its command-line security boundary.
     fn compressed_policy_reconstructs_exactly_and_has_no_per_user_executable() {
         use base64::Engine as _;
         let encoded = encode_command("hello '\u{1f600}'");
@@ -1625,6 +1640,7 @@ Remove-Item -LiteralPath $path -Force
     }
 
     #[test]
+    /// Exercises the test-only UTF-8 stdin fallback while preserving compressed transport for smaller scripts.
     fn oversized_powershell_test_scripts_use_utf8_stdin_transport() {
         use base64::Engine as _;
 
@@ -1661,6 +1677,7 @@ Remove-Item -LiteralPath $path -Force
     }
 
     #[test]
+    /// Ensures a representative two-app production request remains below the fixed process limit.
     fn representative_two_package_update_all_fits_the_production_command_budget() {
         let items = vec![
             Item {
@@ -1693,6 +1710,7 @@ Remove-Item -LiteralPath $path -Force
     }
 
     #[test]
+    /// Ensures the largest current official batch leaves headroom under the Windows command-line limit.
     fn full_official_catalog_batch_fits_with_command_line_headroom() {
         let version = "0.14.0";
         let tag = format!("v{version}");
@@ -1740,6 +1758,7 @@ Remove-Item -LiteralPath $path -Force
     }
 
     #[test]
+    /// Checks that nested PowerShell arguments quote system paths and apostrophes without shell interpolation.
     fn production_outer_command_quotes_paths_and_child_arguments() {
         let payload = compressed_payload("Write-Output 'embedded script'").unwrap();
         let arguments = elevated_child_arguments(&payload).unwrap();
@@ -1758,6 +1777,7 @@ Remove-Item -LiteralPath $path -Force
 
     #[cfg(windows)]
     #[test]
+    /// Runs the compressed child bootstrap with Windows PowerShell 5.1 without requesting elevation.
     fn powershell_51_start_process_reconstructs_policy_without_elevation() {
         let system = system_directory().unwrap();
         let powershell = system_powershell().unwrap();
@@ -1906,6 +1926,7 @@ try {
     }
 
     #[test]
+    /// Preserves cancellation and reboot-required codes as distinct per-app outcomes.
     fn cancellation_and_reboot_codes_are_preserved() {
         assert_eq!(msi_outcome(Some(3010)), Ok(()));
         assert_eq!(msi_outcome(Some(1641)), Ok(()));
