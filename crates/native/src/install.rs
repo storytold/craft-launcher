@@ -1565,11 +1565,28 @@ pub(crate) mod linux {
                     continue;
                 }
                 let Some(app) = CraftApp::by_id(id) else { continue };
+                // An earlier launcher never wrote an entry, so one that isn't marked is someone
+                // else's, even when it runs this copy: leave it alone.
+                let desktop = desktop_path(data, app);
+                let foreign = match std::fs::read_to_string(&desktop) {
+                    Ok(text) => !crate::desktop_entry::is_ours(&text),
+                    Err(_) => desktop.exists(),
+                };
+                if foreign {
+                    log::info!("{}: leaving the existing menu entry {} alone", app.name, desktop.display());
+                    continue;
+                }
                 let files = integrate_into(data, app, &rec.path, &[], Some(&*rec));
-                if !files.is_empty() {
+                if files.contains(&desktop) {
                     log::info!("{}: added the menu entry an earlier launcher didn't", app.name);
                     rec.files = files;
                     changed = true;
+                } else {
+                    // Only the icon was written: take it back so the next start repairs the whole
+                    // record, instead of saving a file list that marks it as done.
+                    for file in files {
+                        let _ = std::fs::remove_file(file);
+                    }
                 }
             }
         });
@@ -3373,6 +3390,61 @@ mod tests {
         assert!(reloaded.apps["gridcraft"].files.contains(&desktop));
         assert!(!linux::repair_menu_entries_in(&data, &mut reloaded, &std::sync::Once::new()));
         assert!(!desktop.exists());
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn legacy_menu_repair_leaves_an_entry_the_launcher_did_not_write() {
+        use crate::manifest::Manifest;
+
+        let root = tempfile::tempdir().unwrap();
+        let data = root.path().join("share");
+        let appimage = root.path().join("gridcraft.AppImage");
+        std::fs::write(&appimage, b"").unwrap();
+        let desktop = data.join("applications/ai.storyteller.gridcraft.desktop");
+        std::fs::create_dir_all(desktop.parent().unwrap()).unwrap();
+        // The user's own entry runs the same copy, with settings of their own.
+        let theirs = format!("[Desktop Entry]\nName=My Grid\nExec={}\n", appimage.display());
+        std::fs::write(&desktop, &theirs).unwrap();
+        let mut manifest = Manifest::default();
+        manifest.apps.insert("gridcraft".into(), record("0.5.0", PackageKind::AppImage, appimage, vec![], false));
+
+        assert!(!linux::repair_menu_entries_in(&data, &mut manifest, &std::sync::Once::new()));
+        assert_eq!(std::fs::read_to_string(&desktop).unwrap(), theirs);
+        assert!(manifest.apps["gridcraft"].files.is_empty());
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn legacy_menu_repair_retries_when_only_the_icon_could_be_written() {
+        use crate::manifest::Manifest;
+
+        let root = tempfile::tempdir().unwrap();
+        let data = root.path().join("share");
+        let appimage = root.path().join("gridcraft.AppImage");
+        std::fs::write(&appimage, b"").unwrap();
+        let mut manifest = Manifest::default();
+        manifest.apps.insert("gridcraft".into(), record("0.5.0", PackageKind::AppImage, appimage, vec![], false));
+        // A file where the menu folder belongs: the icon can be written, the entry cannot.
+        std::fs::create_dir_all(&data).unwrap();
+        std::fs::write(data.join("applications"), b"").unwrap();
+
+        assert!(!linux::repair_menu_entries_in(&data, &mut manifest, &std::sync::Once::new()));
+        assert!(manifest.apps["gridcraft"].files.is_empty(), "an icon-only repair is not recorded as done");
+        assert!(!data.join("icons").exists() || walk_files(&data.join("icons")).is_empty(), "the icon was taken back");
+
+        // Once the obstruction is gone, the next start repairs the whole record.
+        std::fs::remove_file(data.join("applications")).unwrap();
+        assert!(linux::repair_menu_entries_in(&data, &mut manifest, &std::sync::Once::new()));
+        let desktop = data.join("applications/ai.storyteller.gridcraft.desktop");
+        assert!(desktop_entry_is_ours(&desktop));
+        assert!(manifest.apps["gridcraft"].files.contains(&desktop));
+    }
+
+    #[cfg(target_os = "linux")]
+    fn walk_files(dir: &Path) -> Vec<PathBuf> {
+        let Ok(entries) = std::fs::read_dir(dir) else { return Vec::new() };
+        entries.flatten().flat_map(|e| if e.path().is_dir() { walk_files(&e.path()) } else { vec![e.path()] }).collect()
     }
 
     #[cfg(target_os = "linux")]
