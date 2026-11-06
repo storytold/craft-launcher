@@ -202,17 +202,13 @@ pub const SUITE: [CraftApp; 17] = [
         [[0xc2, 0x67, 0x2b], [0x9c, 0x4a, 0x15], [0xe5, 0x8a, 0x4e]],
         "storytold/texturecraft",
     ),
-    CraftApp {
-        // Use the project repository until its getartcraft.com page is published.
-        site: Some("https://github.com/storytold/materialcraft"),
-        ..app(
-            "materialcraft",
-            "MaterialCraft",
-            "Procedural material design",
-            [[0x17, 0x8a, 0x9c], [0x10, 0x65, 0x73], [0x63, 0xc5, 0xd3]],
-            "storytold/materialcraft",
-        )
-    },
+    app(
+        "materialcraft",
+        "MaterialCraft",
+        "Procedural material design",
+        [[0x17, 0x8a, 0x9c], [0x10, 0x65, 0x73], [0x63, 0xc5, 0xd3]],
+        "storytold/materialcraft",
+    ),
     // The raven's tile blue, with its README's deep (#1659c4) and light (#74aaff) accents for text.
     app(
         "craft-anything",
@@ -368,7 +364,7 @@ mod tests {
         assert_eq!(app.kind, AppKind::Official);
         assert_eq!(app.repo, "storytold/materialcraft");
         assert_eq!(app.bundle_id(), "ai.storyteller.materialcraft");
-        assert_eq!(app.website(), "https://github.com/storytold/materialcraft");
+        assert_eq!(app.website(), "https://getartcraft.com/apps/materialcraft");
         assert_eq!(app.mac_team, Some(ARTCRAFT_TEAM_ID));
     }
 
