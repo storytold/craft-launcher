@@ -77,6 +77,7 @@
 	Show in Explorer	Pokaż w Eksploratorze plików
 	Show in Files	Pokaż w menedżerze plików
 	Reinstall	Przeinstaluj
+	Add desktop shortcut	Dodaj skrót na pulpicie
 	Uninstall…	Odinstaluj…
 	Launch options…	Opcje uruchamiania…
 	{name} launch options	Opcje uruchamiania aplikacji {name}
@@ -391,6 +392,9 @@ filter	Installed	Zainstalowane
 @msg	custom install folders aren't supported on this system	własne foldery instalacji nie są obsługiwane w tym systemie
 @msg	{path} already exists and wasn't installed by ArtCraft Launcher	{path} już istnieje i nie został zainstalowany przez ArtCraft Launcher
 @msg	couldn't move {path} to Trash ({reason}). Remove it in Finder instead.	nie można przenieść {path} do Kosza ({reason}). Usuń go w Finderze.
+@msg	Desktop shortcut created for {name}	Utworzono skrót na pulpicie dla {name}
+@msg	Couldn't create the desktop shortcut: {e}	Nie można utworzyć skrótu na pulpicie: {e}
+@msg	A desktop shortcut named {name} already exists	Skrót na pulpicie o nazwie {name} już istnieje
 	Apps are placed inside this folder.	Aplikacje są umieszczane w tym folderze.
 	Replace what's there?	Zastąpić to, co tam jest?
 	{path} already exists. Installing {name} will overwrite it.	{path} już istnieje. Instalacja {name} go nadpisze.

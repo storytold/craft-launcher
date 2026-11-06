@@ -58,6 +58,7 @@
 	Discard download	丢弃下载
 	Release notes	更新说明
 	Reinstall	重新安装
+	Add desktop shortcut	添加桌面快捷方式
 	Uninstall…	卸载…
 	Launch options…	启动选项…
 	{name} launch options	{name} 启动选项
@@ -357,6 +358,9 @@ figcraft	Interface design and prototyping	界面设计与原型制作
 @msg	custom install folders aren't supported on this system	此系统不支持自定义安装文件夹
 @msg	{path} already exists and wasn't installed by ArtCraft Launcher	{path} 已存在，且并非由 ArtCraft Launcher 安装
 @msg	couldn't move {path} to Trash ({reason}). Remove it in Finder instead.	无法将 {path} 移到废纸篓（{reason}）。请在 Finder 中移除。
+@msg	Desktop shortcut created for {name}	已为 {name} 创建桌面快捷方式
+@msg	Couldn't create the desktop shortcut: {e}	无法创建桌面快捷方式：{e}
+@msg	A desktop shortcut named {name} already exists	名为 {name} 的桌面快捷方式已存在
 	Apps are placed inside this folder.	应用会放置在此文件夹内。
 	Replace what's there?	替换现有内容？
 	{path} already exists. Installing {name} will overwrite it.	{path} 已存在。安装 {name} 将覆盖它。

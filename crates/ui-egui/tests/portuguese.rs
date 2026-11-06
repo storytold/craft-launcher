@@ -25,7 +25,7 @@ impl Backend for Fake {
         std::mem::take(&mut self.events)
     }
     fn capabilities(&self) -> Capabilities {
-        Capabilities { manage_apps: true, reveal_label: "Show in Explorer", self_update: true }
+        Capabilities { manage_apps: true, reveal_label: "Show in Explorer", self_update: true, desktop_shortcuts: false }
     }
     fn platform(&self) -> Option<Platform> {
         Some(Platform { os: Os::Windows, arch: Arch::X64 })

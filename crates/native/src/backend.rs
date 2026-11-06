@@ -1434,6 +1434,34 @@ impl Backend for NativeBackend {
                     }
                 }
             }
+            Command::CreateDesktopShortcut { app } => {
+                let Some(def) = CraftApp::by_id(&app) else { return };
+                let Some(inst) = self.installed(&app) else {
+                    self.shared.emit(Event::Notice {
+                        app,
+                        result: Err(format!("{} isn't installed", def.name)),
+                    });
+                    return;
+                };
+                let path = std::path::PathBuf::from(&inst.location);
+                let name = def.name;
+                let app_id = app;
+                let shared = self.shared.clone();
+                // PowerShell can take a moment; don't freeze the UI thread.
+                std::thread::spawn(move || {
+                    let result = match crate::process::create_desktop_shortcut(name, &path) {
+                        Ok(()) => Ok(format!("Desktop shortcut created for {name}")),
+                        // Already-exists is a full toast key (and must not be double-wrapped).
+                        Err(e) if e.starts_with("A desktop shortcut named ") => Err(e),
+                        Err(e) => Err(format!("Couldn't create the desktop shortcut: {e}")),
+                    };
+                    // Notice: toast only — never clears an install/uninstall job phase.
+                    shared.emit(Event::Notice {
+                        app: app_id,
+                        result,
+                    });
+                });
+            }
             Command::UpdateLauncher => self.update_launcher(),
             Command::FetchScreenshots { app } => self.fetch_screenshots(&app),
             Command::Configure(options) => {
@@ -1477,7 +1505,12 @@ impl Backend for NativeBackend {
             Some(Os::Windows) => "Show in Explorer",
             _ => "Show in Files",
         };
-        Capabilities { manage_apps: true, reveal_label, self_update: self.shared.self_install.get().is_some_and(Option::is_some) }
+        Capabilities {
+            manage_apps: true,
+            reveal_label,
+            self_update: self.shared.self_install.get().is_some_and(Option::is_some),
+            desktop_shortcuts: matches!(self.platform.map(|p| p.os), Some(Os::Windows)),
+        }
     }
 
     fn platform(&self) -> Option<Platform> {

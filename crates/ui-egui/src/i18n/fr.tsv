@@ -74,6 +74,7 @@
 	Show in Explorer	Afficher dans l'Explorateur
 	Show in Files	Afficher dans Fichiers
 	Reinstall	Réinstaller
+	Add desktop shortcut	Ajouter un raccourci bureau
 	Uninstall…	Désinstaller…
 	Launch options…	Options de lancement…
 	{name} launch options	Options de lancement de {name}
@@ -387,6 +388,9 @@ filter	Installed	Installées
 @msg	custom install folders aren't supported on this system	les dossiers d’installation personnalisés ne sont pas pris en charge sur ce système
 @msg	{path} already exists and wasn't installed by ArtCraft Launcher	{path} existe déjà et n’a pas été installé par ArtCraft Launcher
 @msg	couldn't move {path} to Trash ({reason}). Remove it in Finder instead.	impossible de déplacer {path} vers la Corbeille ({reason}). Supprimez-le dans le Finder.
+@msg	Desktop shortcut created for {name}	Raccourci bureau créé pour {name}
+@msg	Couldn't create the desktop shortcut: {e}	Impossible de créer le raccourci bureau : {e}
+@msg	A desktop shortcut named {name} already exists	Un raccourci bureau nommé {name} existe déjà
 	Apps are placed inside this folder.	Les applications sont placées dans ce dossier.
 	Replace what's there?	Remplacer l’existant ?
 	{path} already exists. Installing {name} will overwrite it.	{path} existe déjà. L’installation de {name} l’écrasera.

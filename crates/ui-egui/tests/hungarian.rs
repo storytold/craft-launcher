@@ -28,7 +28,7 @@ impl Backend for Fake {
         std::mem::take(&mut self.events)
     }
     fn capabilities(&self) -> Capabilities {
-        Capabilities { manage_apps: true, reveal_label: "Show in Finder", self_update: true }
+        Capabilities { manage_apps: true, reveal_label: "Show in Finder", self_update: true, desktop_shortcuts: false }
     }
     fn platform(&self) -> Option<Platform> {
         Some(Platform { os: self.os, arch: Arch::Arm64 })
