@@ -171,6 +171,7 @@
 	Retry update to {version}	{version} への更新を再試行
 	The download is still here. It's checked again, then installed.	ダウンロードしたファイルはそのまま残っています。もう一度検証してからインストールします。
 	Waiting for another app…	他のアプリを待機中…
+	Waiting for permission…	許可を待機中…
 	Waiting for other installs…	他のインストールを待機中…
 
 # Package formats offered for download (PackageKind::label)
@@ -435,3 +436,6 @@ materialcraft	Preview materials in 2D and on 3D models.	マテリアルを2Dと3
 	Migrate Flatpak bundles to ArtCraft OCI (experimental)	Flatpak バンドルを ArtCraft OCI に移行する（実験的）
 	On update, switch first party apps when the matching package is available. Otherwise, keep using bundles.	更新時に対応するパッケージがあれば ArtCraft 公式アプリを移行します。なければ引き続きバンドルを使用します。
 	The OCI repository is a preview with GPG verification disabled.	OCI リポジトリはプレビュー版で、GPG 検証は無効になっています。
+	Automatic Windows updates	Windows の自動更新
+	Some automatic Windows updates install apps for everyone on this PC and may require administrator permission. Your system may handle permission without showing a prompt.	一部の Windows 自動更新では、この PC のすべてのユーザー向けにアプリをインストールするため、管理者の許可が必要になることがあります。システムによっては確認画面を表示せずに許可を処理します。
+	Install updates	更新をインストール

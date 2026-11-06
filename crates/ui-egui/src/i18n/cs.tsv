@@ -155,6 +155,7 @@
 	Retry update to {version}	Zkusit aktualizaci na {version} znovu
 	The download is still here. It's checked again, then installed.	Stažený soubor je stále k dispozici. Znovu se ověří a poté nainstaluje.
 	Waiting for another app…	Čekání na jinou aplikaci…
+	Waiting for permission…	Čekání na oprávnění…
 	Waiting for other installs…	Čekání na dokončení ostatních instalací…
 	Installer (.msi)	Instalační program (.msi)
 	Portable (.zip)	Přenosná verze (.zip)
@@ -400,3 +401,6 @@ materialcraft	Preview materials in 2D and on 3D models.	Prohlížejte materiály
 	Migrate Flatpak bundles to ArtCraft OCI (experimental)	Převést balíčky Flatpak na ArtCraft OCI (experimentální)
 	On update, switch first party apps when the matching package is available. Otherwise, keep using bundles.	Při aktualizaci převést aplikace ArtCraft, pokud je dostupný odpovídající balíček. Jinak nadále používat samostatné balíčky.
 	The OCI repository is a preview with GPG verification disabled.	Repozitář OCI je předběžná verze s vypnutým ověřováním GPG.
+	Automatic Windows updates	Automatické aktualizace aplikací ve Windows
+	Some automatic Windows updates install apps for everyone on this PC and may require administrator permission. Your system may handle permission without showing a prompt.	Některé automatické aktualizace aplikací ve Windows instalují aplikace pro všechny uživatele tohoto počítače a mohou vyžadovat oprávnění správce. Systém může oprávnění vyřídit i bez zobrazení výzvy.
+	Install updates	Instalovat aktualizace

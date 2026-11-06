@@ -126,6 +126,7 @@ pub fn status_text(status: &AppStatus, manage_apps: bool) -> (String, Tone) {
 pub fn entry_status_text(e: &AppEntry, status: &AppStatus, manage_apps: bool) -> (String, Tone) {
     match (e.job, e.paused) {
         (Some(JobPhase::Reconnecting { .. }), _) => (t("Reconnecting…").to_string(), Tone::Warn),
+        (Some(JobPhase::Permission), _) => (t("Waiting for permission…").to_string(), Tone::Info),
         (Some(JobPhase::Downloading { .. }), _) if status.is_installed() => (t("Updating…").to_string(), Tone::Info),
         (Some(JobPhase::Downloading { .. }), _) => (t("Downloading…").to_string(), Tone::Info),
         (None, Some(_)) if status.is_installed() => (t("Update paused").to_string(), Tone::Warn),

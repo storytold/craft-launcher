@@ -251,6 +251,7 @@ impl LauncherUi {
                     JobPhase::Downloading { .. } | JobPhase::Reconnecting { .. } => (None, tl!("Downloading…").to_string()),
                     JobPhase::Verifying => (None, tl!("Verifying…").to_string()),
                     JobPhase::Waiting => (None, tl!("Waiting for other installs…").to_string()),
+                    JobPhase::Permission => (None, tl!("Waiting for permission…").to_string()),
                     JobPhase::Installing | JobPhase::Removing => (None, tl!("Installing, then restarting…").to_string()),
                 };
                 // Another app's install can hang on a password prompt: the wait can be called off.
@@ -383,10 +384,7 @@ impl LauncherUi {
     fn update_all_button(&mut self, ui: &mut Ui, updates: usize) {
         let label = if updates == 1 { tl!("Update 1 app").to_string() } else { fmt(tl!("Update all ({count})"), &[("count", &updates.to_string())]) };
         if widgets::button(ui, &label, Kind::Primary, 0.0).clicked() {
-            let ids: Vec<&str> = self.entries.iter().filter(|e| self.in_filter(e, Filter::Updates) && e.job.is_none()).map(|e| e.app.id).collect();
-            for id in ids {
-                self.act_command(Command::Install { app: id.to_string() });
-            }
+            self.request_update_all();
         }
     }
 
@@ -1106,6 +1104,7 @@ impl LauncherUi {
             }
             JobPhase::Verifying => (None, tl!("Verifying checksum…").into(), rgb(entry.app.color)),
             JobPhase::Waiting => (None, tl!("Waiting for another app…").into(), rgb(entry.app.color)),
+            JobPhase::Permission => (None, tl!("Waiting for permission…").into(), rgb(entry.app.color)),
             JobPhase::Installing => (None, tl!("Installing…").into(), rgb(entry.app.color)),
             JobPhase::Removing => (None, tl!("Removing…").into(), rgb(entry.app.color)),
         };

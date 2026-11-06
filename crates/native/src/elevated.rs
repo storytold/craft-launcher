@@ -1,0 +1,1936 @@
+//! MSI batch elevation uses only the OS PowerShell host and Windows Installer. The GUI
+//! executable is NEVER elevated. See docs/windows-msi-security.md for the trust boundary.
+
+#[cfg(any(windows, test))]
+use std::path::Path;
+#[cfg(windows)]
+use std::path::PathBuf;
+
+use artcraft_launcher_core::catalog::AppKind;
+use artcraft_launcher_core::{CraftApp, PackageKind, release, version};
+use serde::Serialize;
+
+#[cfg(any(windows, test))]
+use crate::msi_batch::Item;
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+pub struct ReleaseIdentity {
+    pub app: String,
+    pub tag: String,
+    pub asset: String,
+}
+
+/// Derive the release identity from the catalog and official URL, never from a caller's hash.
+pub fn release_identity(app: &CraftApp, asset: &release::Asset) -> Result<ReleaseIdentity, String> {
+    if app.kind != AppKind::Official || !app.repo.starts_with("storytold/") {
+        return Err("only official ArtCraft releases may use the batched elevated MSI path".into());
+    }
+    let prefix = release::download_prefix(app.repo);
+    if !release::download_url_under(&asset.url, &prefix) {
+        return Err("the MSI must come from the app's official GitHub release".into());
+    }
+    let rest = asset.url.strip_prefix(&prefix).ok_or("invalid release URL")?;
+    let (tag, name) = rest.split_once('/').ok_or("invalid release URL")?;
+    let stems: Vec<_> = app.stems().collect();
+    let parsed = artcraft_launcher_core::platform::parse_asset_name(name, &stems).ok_or("invalid MSI release name")?;
+    if name != asset.name
+        || !tag.bytes().all(|b| b.is_ascii_alphanumeric() || b"._-+".contains(&b))
+        || version::parse(tag) != version::parse(&parsed.version)
+        || parsed.kind != PackageKind::Msi
+        || !matches!(parsed.token.as_str(), "windows-x64" | "windows-x86" | "windows-arm64")
+    {
+        return Err("the MSI does not match the official Windows release".into());
+    }
+    Ok(ReleaseIdentity { app: app.id.into(), tag: tag.into(), asset: name.into() })
+}
+
+/// Converts a Windows Installer process exit code into the launcher's per-app result.
+///
+/// Reboot-required codes count as successful installs; user cancellation and common permission
+/// failures get stable messages, while every other nonzero code remains visible to the user.
+pub fn msi_outcome(code: Option<i32>) -> Result<(), String> {
+    match code {
+        Some(0 | 3010 | 1641) => Ok(()),
+        Some(1602 | 1223) => Err("cancelled".into()),
+        Some(1618) => Err("another installation is in progress. Wait for it to finish, then try again.".into()),
+        Some(1925 | 1303) => Err("Windows didn't allow the install (administrator permission is needed)".into()),
+        Some(c) => Err(format!("the Windows Installer stopped with error {c}")),
+        None => Err("the Windows Installer was interrupted".into()),
+    }
+}
+
+/// Maps one administrator-written result token to a sanitized app result.
+fn result_outcome(value: &str) -> Result<(), String> {
+    match value {
+        "rejected" => Err("Windows refused an MSI that failed official release, signature, identity, scope, or file integrity checks".into()),
+        "running" => Err("the app is running. Quit it, then try again.".into()),
+        value => msi_outcome(value.parse().ok()),
+    }
+}
+
+/// Ignore torn lines and duplicate/out-of-range indices. The transport is in an
+/// administrator-owned directory; parsing alone is not an authentication mechanism.
+pub fn parse_results(text: &str, count: usize) -> Vec<(usize, Result<(), String>)> {
+    let mut seen = vec![false; count];
+    text.split_inclusive('\n')
+        .filter_map(|line| {
+            let (index, value) = line.strip_suffix('\n')?.trim().split_once(' ')?;
+            let index = index.parse::<usize>().ok()?;
+            let seen = seen.get_mut(index).filter(|seen| !**seen)?;
+            *seen = true;
+            Some((index, result_outcome(value)))
+        })
+        .collect()
+}
+
+/// The script is fixed program code embedded in Rust, not a downloaded/file-based script.
+/// All request data is base64 JSON. Only Windows system executables execute with elevation.
+#[cfg(any(windows, test))]
+pub const POLICY: &str = r#"
+$ErrorActionPreference = 'Stop'
+Set-StrictMode -Version 2
+$system = [Environment]::SystemDirectory
+[Environment]::CurrentDirectory = $system
+Set-Location -LiteralPath $system
+$env:PSModulePath = [IO.Path]::Combine($PSHOME, 'Modules')
+Import-Module ([IO.Path]::Combine($PSHOME, 'Modules\Microsoft.PowerShell.Security\Microsoft.PowerShell.Security.psd1'))
+[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+$script:ArtCraftValidationStage = 'startup'
+
+function Set-ArtCraftValidationStage([string]$stage) {
+    $script:ArtCraftValidationStage = $stage
+}
+
+function Get-ArtCraftRootException($exception) {
+    while ($null -ne $exception.InnerException) { $exception = $exception.InnerException }
+    return $exception
+}
+
+function Format-ArtCraftHResult($exception) {
+    return ('0x{0:X8}' -f ($exception.HResult -band 0xffffffffL))
+}
+
+function Write-ArtCraftDiagnostic($writer, [string]$kind, $index, $details) {
+    if ($null -eq $writer) { return }
+    try {
+        $entry = [ordered]@{
+            timeUtc = [DateTime]::UtcNow.ToString('o')
+            kind = $kind
+            item = $index
+            stage = $script:ArtCraftValidationStage
+            details = $details
+        }
+        $writer.WriteLine(($entry | ConvertTo-Json -Compress -Depth 8))
+        $writer.Flush()
+    } catch {
+        # Diagnostics are best-effort and must not change the fail-closed install decision.
+    }
+}
+
+function Write-ArtCraftFailure($writer, [int]$index, $record) {
+    $outer = $record.Exception
+    $root = Get-ArtCraftRootException $outer
+    $reason = ([string]$root.Message) -replace '[\r\n\t]+', ' '
+    if ($reason.Length -gt 2048) { $reason = $reason.Substring(0, 2048) }
+    Write-ArtCraftDiagnostic $writer 'validation-failure' $index @{
+        exceptionType = $outer.GetType().FullName
+        hresult = Format-ArtCraftHResult $outer
+        rootExceptionType = $root.GetType().FullName
+        rootHresult = Format-ArtCraftHResult $root
+        reason = $reason
+    }
+}
+
+function Get-ArtCraftUacContext {
+    $key = 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System'
+    $policy = Get-ItemProperty -LiteralPath $key -ErrorAction SilentlyContinue
+    $parentElevated = $null
+    if ($env:ARTCRAFT_BATCH_PARENT_ELEVATED -cin @('True', 'False')) {
+        $parentElevated = [bool]::Parse($env:ARTCRAFT_BATCH_PARENT_ELEVATED)
+    }
+    $enableLUA = $null
+    $adminPrompt = $null
+    $userPrompt = $null
+    if ($null -ne $policy) {
+        $value = $policy.PSObject.Properties['EnableLUA']
+        if ($null -ne $value) { $enableLUA = [int]$value.Value }
+        $value = $policy.PSObject.Properties['ConsentPromptBehaviorAdmin']
+        if ($null -ne $value) { $adminPrompt = [int]$value.Value }
+        $value = $policy.PSObject.Properties['ConsentPromptBehaviorUser']
+        if ($null -ne $value) { $userPrompt = [int]$value.Value }
+    }
+    $identity = [Security.Principal.WindowsIdentity]::GetCurrent()
+    $principal = [Security.Principal.WindowsPrincipal]::new($identity)
+    $observation = 'RunAs was requested; prompt visibility depends on the caller token and Windows policy.'
+    if ($parentElevated -eq $true) {
+        $observation = 'The requesting PowerShell process was already elevated, so RunAs may not display another approval.'
+    } elseif ($enableLUA -eq 0) {
+        $observation = 'EnableLUA is 0; User Account Control is disabled by machine policy.'
+    } elseif ($adminPrompt -eq 0) {
+        $observation = 'ConsentPromptBehaviorAdmin is 0; administrator elevation is configured without an interactive prompt.'
+    } elseif ($adminPrompt -eq 5) {
+        $observation = 'ConsentPromptBehaviorAdmin is 5; this policy prompts only for non-Windows binaries, so inspect whether Windows PowerShell was auto-approved.'
+    }
+    return [ordered]@{
+        requestingPowerShellWasElevated = $parentElevated
+        elevatedPowerShellIsAdministrator = $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+        enableLUA = $enableLUA
+        consentPromptBehaviorAdmin = $adminPrompt
+        consentPromptBehaviorUser = $userPrompt
+        observation = $observation
+    }
+}
+
+function Assert-LocalPath([string]$path) {
+    # No UNC/device paths, alternate streams, quotes, control characters or relative paths.
+    if ($path -notmatch '^[A-Za-z]:\\' -or $path.Substring(2) -match '[:"\x00-\x1f]' -or $path.Length -gt 240) {
+        throw 'Invalid local path'
+    }
+    $full = [IO.Path]::GetFullPath($path)
+    $cursor = $full
+    while ($cursor) {
+        if ([IO.File]::Exists($cursor) -or [IO.Directory]::Exists($cursor)) {
+            if (([IO.File]::GetAttributes($cursor) -band [IO.FileAttributes]::ReparsePoint) -ne 0) {
+                throw 'Reparse points are not allowed'
+            }
+        }
+        $cursor = [IO.Path]::GetDirectoryName($cursor)
+    }
+    return $full
+}
+
+function Assert-InstallDestination([string]$path, $app) {
+    $full = Assert-LocalPath $path
+    $leaf = [IO.Path]::GetFileName($full.TrimEnd('\'))
+    if ($leaf -notin $app.names) { throw 'Install destination does not match the app' }
+    $windows = [IO.Path]::GetFullPath([Environment]::GetFolderPath('Windows')).TrimEnd('\')
+    if ($full.StartsWith($windows + '\', [StringComparison]::OrdinalIgnoreCase) -or
+        $full.Equals($windows, [StringComparison]::OrdinalIgnoreCase)) { throw 'Windows folders are not install destinations' }
+    $cursor = $full
+    $nearest = $true
+    $trusted = @('S-1-5-18', 'S-1-5-32-544',
+        'S-1-5-80-956008885-3418522649-1831038044-1853292631-2271478464')
+    while ($cursor) {
+        if ([IO.Directory]::Exists($cursor)) {
+            $acl = Microsoft.PowerShell.Security\Get-Acl -LiteralPath $cursor
+            if ($acl.GetOwner([Security.Principal.SecurityIdentifier]).Value -notin $trusted) {
+                throw 'Install destination has an untrusted owner'
+            }
+            foreach ($rule in $acl.GetAccessRules($true, $true, [Security.Principal.SecurityIdentifier])) {
+                if (($rule.PropagationFlags -band [Security.AccessControl.PropagationFlags]::InheritOnly) -ne 0) { continue }
+                if ($rule.AccessControlType -eq 'Allow' -and $rule.IdentityReference.Value -notin $trusted) {
+                    # Ancestors must not permit deletion/replacement or ACL/owner changes.
+                    # The closest existing directory must also forbid creating/replacing files.
+                    $mask = 0x000d0040
+                    if ($nearest) { $mask = 0x000d0156 }
+                    if (([int]$rule.FileSystemRights -band $mask) -ne 0) { throw 'Install destination is user-writable' }
+                }
+            }
+            $nearest = $false
+        } elseif ([IO.File]::Exists($cursor)) { throw 'Install destination is a file' }
+        $cursor = [IO.Path]::GetDirectoryName($cursor)
+    }
+    return $full
+}
+
+function New-ProtectedRun([string]$session) {
+    if ($session -cnotmatch '^[a-f0-9]{32}$') { throw 'Invalid session' }
+    # SystemDirectory is an OS API result, not SystemRoot/PATH/LOCALAPPDATA from the caller.
+    $root = [IO.Path]::Combine([Environment]::SystemDirectory, "ArtCraft-MSI-$session")
+    $null = Assert-LocalPath $root
+    if ([IO.Directory]::Exists($root) -or [IO.File]::Exists($root)) { throw 'Session already exists' }
+    $acl = New-Object Security.AccessControl.DirectorySecurity
+    # SYSTEM/Administrators own all writes. Users have read/execute only for progress/results.
+    $acl.SetSecurityDescriptorSddlForm('O:BAG:BAD:P(A;OICI;FA;;;SY)(A;OICI;FA;;;BA)(A;OICI;0x1200a9;;;BU)')
+    $null = [IO.Directory]::CreateDirectory($root, $acl)
+    return $root
+}
+
+function New-ProtectedFile([string]$path, [bool]$readable = $false) {
+    # Ownership does not inherit from a directory. Set it atomically at creation, rather than
+    # relying on the elevated account's default owner (which could be its unelevated user SID).
+    $acl = New-Object Security.AccessControl.FileSecurity
+    $sddl = 'O:BAG:BAD:P(A;;FA;;;SY)(A;;FA;;;BA)'
+    if ($readable) { $sddl += '(A;;0x120089;;;BU)' }
+    $acl.SetSecurityDescriptorSddlForm($sddl)
+    return [IO.FileStream]::new($path, [IO.FileMode]::CreateNew,
+        [Security.AccessControl.FileSystemRights]::Write, [IO.FileShare]::Read,
+        4096, [IO.FileOptions]::None, $acl)
+}
+
+function Read-OfficialChecksums([string]$url) {
+    for ($redirect = 0; $redirect -lt 6; $redirect++) {
+        $uri = [Uri]$url
+        if ($uri.Scheme -cne 'https' -or -not $uri.IsDefaultPort -or $uri.UserInfo -ne '' -or
+            $uri.Host -notin @('github.com', 'release-assets.githubusercontent.com', 'objects.githubusercontent.com')) {
+            throw 'Untrusted checksum redirect'
+        }
+        $req = [Net.HttpWebRequest]::Create($uri)
+        $req.AllowAutoRedirect = $false
+        $req.Timeout = 20000
+        $req.ReadWriteTimeout = 20000
+        $req.UserAgent = 'ArtCraft-Launcher/MSI'
+        $response = $req.GetResponse()
+        try {
+            if ([int]$response.StatusCode -ge 300 -and [int]$response.StatusCode -lt 400) {
+                $url = [Uri]::new($uri, $response.Headers['Location']).AbsoluteUri
+                continue
+            }
+            if ([int]$response.StatusCode -ne 200) { throw 'No official checksums' }
+            $stream = $response.GetResponseStream()
+            $memory = New-Object IO.MemoryStream
+            try {
+                $buffer = New-Object byte[] 8192
+                while (($n = $stream.Read($buffer, 0, $buffer.Length)) -gt 0) {
+                    if ($memory.Length + $n -gt 4194304) { throw 'Oversized checksums' }
+                    $memory.Write($buffer, 0, $n)
+                }
+                return [Text.Encoding]::UTF8.GetString($memory.ToArray())
+            } finally { $memory.Dispose(); $stream.Dispose() }
+        } finally { $response.Dispose() }
+    }
+    throw 'Too many checksum redirects'
+}
+
+function Get-PublishedHash([string]$text, [string]$asset) {
+    $found = @()
+    foreach ($line in ($text -split "\n")) {
+        if ($line -match '^([0-9a-fA-F]{64})\s+\*?([^\r\n]+)\r?$' -and $Matches[2].TrimEnd("`r") -ceq $asset) {
+            $found += $Matches[1].ToLowerInvariant()
+        }
+    }
+    if ($found.Count -ne 1) { throw 'Missing or ambiguous published checksum' }
+    return $found[0]
+}
+
+function New-MsiApi {
+    # Call the absolute system MSI library directly. COM activation is deliberately avoided:
+    # caller-owned HKCU COM registrations must never influence an elevated DLL load.
+    # Reflection.Emit supplies managed P/Invoke declarations, without C# compilation or
+    # writing/loading an assembly in a user-owned temporary directory.
+    $assembly = [AppDomain]::CurrentDomain.DefineDynamicAssembly(
+        [Reflection.AssemblyName]::new('ArtCraftMsi' + [Guid]::NewGuid().ToString('N')), [Reflection.Emit.AssemblyBuilderAccess]::Run)
+    $module = $assembly.DefineDynamicModule('ArtCraftMsi')
+    $type = $module.DefineType('ArtCraftMsi', [Reflection.TypeAttributes]'Public, Abstract, Sealed')
+    $dll = [IO.Path]::Combine([Environment]::SystemDirectory, 'msi.dll')
+    $u = [uint32]
+    $ref = $u.MakeByRefType()
+    $i = [int32]
+    $iref = $i.MakeByRefType()
+    $definitions = @(
+        @('MsiOpenDatabaseW', @([string], [IntPtr], $ref)),
+        @('MsiDatabaseOpenViewW', @($u, [string], $ref)),
+        @('MsiViewExecute', @($u, $u)),
+        @('MsiViewFetch', @($u, $ref)),
+        @('MsiRecordGetStringW', @($u, $u, [Text.StringBuilder], $ref)),
+        @('MsiGetSummaryInformationW', @($u, [string], $u, $ref)),
+        # FILETIME* is required even for string properties such as PID_TEMPLATE.
+        @('MsiSummaryInfoGetPropertyW', @($u, $u, $ref, $iref, [IntPtr], [Text.StringBuilder], $ref)),
+        @('MsiViewClose', @($u)),
+        @('MsiCloseHandle', @($u)))
+    foreach ($definition in $definitions) {
+        $name = [string]$definition[0]
+        # Use the overload with a separately named export to keep the native entry point explicit.
+        $method = $type.DefinePInvokeMethod($name, $dll, $name,
+            [Reflection.MethodAttributes]'Public, Static, PinvokeImpl',
+            [Reflection.CallingConventions]::Standard, $u, [Type[]]$definition[1],
+            [Runtime.InteropServices.CallingConvention]::Winapi,
+            [Runtime.InteropServices.CharSet]::Unicode)
+        $method.SetImplementationFlags([Reflection.MethodImplAttributes]::PreserveSig)
+    }
+    return $type.CreateType()
+}
+
+function New-Crypt32Api {
+    # Resolve Crypt32 from the Windows system directory, never through user-controlled DLL search paths.
+    $assembly = [AppDomain]::CurrentDomain.DefineDynamicAssembly(
+        [Reflection.AssemblyName]::new('ArtCraftCrypt32' + [Guid]::NewGuid().ToString('N')), [Reflection.Emit.AssemblyBuilderAccess]::Run)
+    $module = $assembly.DefineDynamicModule('ArtCraftCrypt32')
+    $type = $module.DefineType('ArtCraftCrypt32', [Reflection.TypeAttributes]'Public, Abstract, Sealed')
+    $dll = [IO.Path]::Combine([Environment]::SystemDirectory, 'crypt32.dll')
+    $u = [uint32]
+    $method = $type.DefinePInvokeMethod('CertGetNameStringW', $dll, 'CertGetNameStringW',
+        [Reflection.MethodAttributes]'Public, Static, PinvokeImpl',
+        [Reflection.CallingConventions]::Standard, $u,
+        [Type[]]@([IntPtr], $u, $u, [IntPtr], [Text.StringBuilder], $u),
+        [Runtime.InteropServices.CallingConvention]::Winapi,
+        [Runtime.InteropServices.CharSet]::Unicode)
+    $method.SetImplementationFlags([Reflection.MethodImplAttributes]::PreserveSig)
+    return $type.CreateType()
+}
+
+function Invoke-NativeApi($api, [string]$kind, [string]$name, [object[]]$arguments) {
+    $label = "$kind API"
+    $method = $api.GetMethod($name)
+    if ($null -eq $method) { throw "$label method $name was not declared" }
+    # Keep the caller's exact array instance so ref/out values can be copied back into it.
+    $source = $arguments
+    if ($source -isnot [Array]) { throw "$label $name arguments were not a CLR array" }
+    $parameters = $method.GetParameters()
+    if ($source.Length -ne $parameters.Length) {
+        throw "$label $name expected $($parameters.Length) arguments but received $($source.Length)"
+    }
+
+    # PowerShell can retain PSObject adapters inside object[] arrays. Reflection.Emit P/Invoke
+    # stubs require the actual CLR values, so unwrap each item and check it against the native
+    # declaration before invoking. Reflection writes ref/out values back into callArguments.
+    $callArguments = [Array]::CreateInstance([object], $parameters.Length)
+    for ($index = 0; $index -lt $parameters.Length; $index++) {
+        $value = $source.GetValue($index)
+        if ($null -ne $value) { $value = $value.PSObject.BaseObject }
+        while ($null -ne $value -and $value -is [System.Management.Automation.PSObject]) {
+            $baseValue = $value.PSObject.BaseObject
+            if ([object]::ReferenceEquals($value, $baseValue)) { break }
+            $value = $baseValue
+        }
+        $expectedType = $parameters[$index].ParameterType
+        if ($expectedType.IsByRef) { $expectedType = $expectedType.GetElementType() }
+        if (($null -eq $value -and $expectedType.IsValueType) -or
+            ($null -ne $value -and -not $expectedType.IsInstanceOfType($value))) {
+            $actualType = if ($null -eq $value) { '<null>' } else { $value.GetType().FullName }
+            throw "$label $name argument $index expected CLR $($expectedType.FullName), received $actualType"
+        }
+        $callArguments.SetValue([object]$value, $index)
+    }
+
+    try {
+        $result = $method.Invoke($null, $callArguments)
+    } catch {
+        $failure = $_.Exception
+        while ($null -ne $failure.InnerException) { $failure = $failure.InnerException }
+        throw "$label $name reflection invocation failed: $($failure.GetType().FullName): $($failure.Message)"
+    }
+
+    # Preserve native by-ref outputs in the caller's original array for handle/status use.
+    for ($index = 0; $index -lt $parameters.Length; $index++) {
+        $value = $callArguments.GetValue($index)
+        if ($null -ne $value) { $value = $value.PSObject.BaseObject }
+        while ($null -ne $value -and $value -is [System.Management.Automation.PSObject]) {
+            $baseValue = $value.PSObject.BaseObject
+            if ([object]::ReferenceEquals($value, $baseValue)) { break }
+            $value = $baseValue
+        }
+        $source.SetValue($value, $index)
+    }
+    if ($null -ne $result) { $result = $result.PSObject.BaseObject }
+    return $result
+}
+
+function Invoke-MsiApi($api, [string]$name, [object[]]$arguments) {
+    return Invoke-NativeApi $api 'MSI' $name $arguments
+}
+
+function Invoke-Crypt32Api($api, [string]$name, [object[]]$arguments) {
+    return Invoke-NativeApi $api 'Crypt32' $name $arguments
+}
+
+function Get-CertificateOrganization($certificate) {
+    if ($null -eq $certificate) { throw 'Authenticode signer certificate is missing' }
+    if ($certificate -isnot [Security.Cryptography.X509Certificates.X509Certificate2]) {
+        throw 'Authenticode signer certificate has an invalid CLR type'
+    }
+    $context = [IntPtr]$certificate.Handle
+    if ($context -eq [IntPtr]::Zero) { throw 'Authenticode signer certificate context is invalid' }
+
+    # CERT_NAME_ATTR_TYPE (3) with the subject Organization OID reads the actual
+    # distinguished-name attribute. The OID is ASCII and Crypt32 does not own this pointer.
+    $certNameAttrType = [uint32]3
+    $oid = [Runtime.InteropServices.Marshal]::StringToHGlobalAnsi('2.5.4.10')
+    try {
+        $api = New-Crypt32Api
+        $query = [object[]]@($context, $certNameAttrType, [uint32]0, $oid, $null, [uint32]0)
+        Set-ArtCraftValidationStage 'authenticode-organization-query'
+        $required = [uint32](Invoke-Crypt32Api $api 'CertGetNameStringW' $query)
+        if ($required -eq 0) {
+            throw 'Crypt32 could not read the Authenticode signer Organization (2.5.4.10) attribute'
+        }
+        if ($required -eq 1) {
+            throw 'Authenticode signer certificate is missing the Organization (2.5.4.10) attribute'
+        }
+        if ($required -gt 1024) {
+            throw 'Authenticode signer Organization (2.5.4.10) attribute exceeds the supported size'
+        }
+
+        $buffer = [Text.StringBuilder]::new([int]$required)
+        $read = [object[]]@($context, $certNameAttrType, [uint32]0, $oid, $buffer, $required)
+        Set-ArtCraftValidationStage 'authenticode-organization-read'
+        $written = [uint32](Invoke-Crypt32Api $api 'CertGetNameStringW' $read)
+        if ($written -eq 0 -or $written -gt $required) {
+            throw 'Crypt32 returned an invalid Authenticode signer Organization (2.5.4.10) attribute length'
+        }
+        $organization = $buffer.ToString()
+        if ($written -eq 1 -or [string]::IsNullOrEmpty($organization)) {
+            throw 'Authenticode signer certificate is missing the Organization (2.5.4.10) attribute'
+        }
+        if ($written -ne ($organization.Length + 1)) {
+            throw 'Crypt32 returned an invalid Authenticode signer Organization (2.5.4.10) attribute'
+        }
+        return $organization
+    } finally {
+        [Runtime.InteropServices.Marshal]::FreeHGlobal($oid)
+    }
+}
+
+function Get-MsiTemplate($api, [uint32]$db) {
+    # PID_TEMPLATE (7) records the actual package platform independently of its filename.
+    $arguments = [object[]]@($db, [string]$null, [uint32]0, [uint32]0)
+    Set-ArtCraftValidationStage 'msi-summary-open'
+    $status = Invoke-MsiApi $api 'MsiGetSummaryInformationW' $arguments
+    if ($status -ne 0) { throw "MsiGetSummaryInformationW failed with Windows Installer status $status" }
+    $summary = [uint32]$arguments[3]
+    try {
+        $template = [Text.StringBuilder]::new(256)
+        $arguments = [object[]]@($summary, [uint32]7, [uint32]0, [int32]0, [IntPtr]::Zero, $template, [uint32]256)
+        Set-ArtCraftValidationStage 'msi-summary-template'
+        $status = Invoke-MsiApi $api 'MsiSummaryInfoGetPropertyW' $arguments
+        if ($status -ne 0) { throw "MsiSummaryInfoGetPropertyW failed with Windows Installer status $status" }
+        return $template.ToString().Split(';')[0]
+    } finally { $null = Invoke-MsiApi $api 'MsiCloseHandle' ([object[]]@($summary)) }
+}
+
+function Get-MsiProperty($api, [uint32]$db, [string]$name) {
+    # name is a program literal. MSI APIs open the protected staged file READ-ONLY.
+    Set-ArtCraftValidationStage "msi-property-open:$name"
+    $arguments = [object[]]@($db, "SELECT Value FROM Property WHERE Property='$name'", [uint32]0)
+    $status = Invoke-MsiApi $api 'MsiDatabaseOpenViewW' $arguments
+    if ($status -ne 0) { throw "MsiDatabaseOpenViewW failed for property $name with Windows Installer status $status" }
+    $view = [uint32]$arguments[2]
+    try {
+        Set-ArtCraftValidationStage "msi-property-execute:$name"
+        $status = Invoke-MsiApi $api 'MsiViewExecute' ([object[]]@($view, [uint32]0))
+        if ($status -ne 0) { throw "MsiViewExecute failed for property $name with Windows Installer status $status" }
+        $arguments = [object[]]@($view, [uint32]0)
+        Set-ArtCraftValidationStage "msi-property-fetch:$name"
+        $status = Invoke-MsiApi $api 'MsiViewFetch' $arguments
+        if ($status -eq 259) { return '' }
+        if ($status -ne 0) { throw "MsiViewFetch failed for property $name with Windows Installer status $status" }
+        $record = [uint32]$arguments[1]
+        try {
+            $value = [Text.StringBuilder]::new(1024)
+            $arguments = [object[]]@($record, [uint32]1, $value, [uint32]1024)
+            Set-ArtCraftValidationStage "msi-property-read:$name"
+            $status = Invoke-MsiApi $api 'MsiRecordGetStringW' $arguments
+            if ($status -ne 0) { throw "MsiRecordGetStringW failed for property $name with Windows Installer status $status" }
+            return $value.ToString()
+        } finally { $null = Invoke-MsiApi $api 'MsiCloseHandle' ([object[]]@($record)) }
+    } finally {
+        $null = Invoke-MsiApi $api 'MsiViewClose' ([object[]]@($view))
+        $null = Invoke-MsiApi $api 'MsiCloseHandle' ([object[]]@($view))
+    }
+}
+
+function Assert-MsiScopeProperties([string]$allUsers, [string]$msiInstallPerUser) {
+    # Older ArtCraft MSIs are machine-only. New WiX perUserOrMachine releases author 2/1
+    # (dual-scope, with per-user as their default). Only these two exact property pairs are
+    # authorized; the batch later clears the selector and explicitly preserves the authored
+    # ALLUSERS mode when selecting the verified machine context.
+    $legacyMachine = $allUsers -ceq '1' -and $msiInstallPerUser -in @('', '0')
+    $dualScope = $allUsers -ceq '2' -and $msiInstallPerUser -ceq '1'
+    if ($legacyMachine) { return 'legacy-machine' }
+    if ($dualScope) { return 'dual-scope' }
+    throw 'MSI has unsupported installation scope properties'
+}
+
+function Get-ArtCraftMsiMachineScopeArguments([string]$scopeKind) {
+    # Preserve legacy machine-only authoring, and use Microsoft's documented ALLUSERS=2,
+    # empty MSIINSTALLPERUSER pair for dual-purpose releases.
+    if ($scopeKind -ceq 'legacy-machine') { return 'ALLUSERS=1 MSIINSTALLPERUSER=""' }
+    if ($scopeKind -ceq 'dual-scope') { return 'ALLUSERS=2 MSIINSTALLPERUSER=""' }
+    throw 'MSI has unsupported installation scope properties'
+}
+
+function New-ArtCraftMsiArguments([string]$msi, [string]$log, [AllowNull()][string]$destination, [string]$scopeKind) {
+    $scopeArguments = Get-ArtCraftMsiMachineScopeArguments $scopeKind
+    $arguments = '/i "' + $msi + '" /passive /norestart ' + $scopeArguments + ' /l*v "' + $log + '"'
+    if (-not [string]::IsNullOrEmpty($destination)) {
+        # Keep the double trailing slash needed for Windows command-line decoding of a path
+        # ending in a separator, including when the original destination is a drive root.
+        $arguments += ' INSTALLFOLDER="' + $destination.TrimEnd('\') + '\\"'
+    }
+    return $arguments
+}
+
+function Assert-MsiIdentity([string]$file, $app, [string]$version, [string]$asset) {
+    Set-ArtCraftValidationStage 'msi-api-bindings'
+    $api = New-MsiApi
+    # Invoke-MsiApi unwraps and validates every value before Reflection.Invoke.
+    $arguments = [object[]]@([string]$file, [IntPtr]::Zero, [uint32]0)
+    Set-ArtCraftValidationStage 'msi-database-open'
+    $status = Invoke-MsiApi $api 'MsiOpenDatabaseW' $arguments
+    if ($status -ne 0) { throw "MsiOpenDatabaseW failed with Windows Installer status $status" }
+    $db = [uint32]$arguments[2]
+    $scopeKind = $null
+    try {
+        $packageArch = switch -Regex ($asset) {
+            '-windows-x64\.msi$' { 'x64'; break }
+            '-windows-x86\.msi$' { 'Intel'; break }
+            '-windows-arm64\.msi$' { 'Arm64'; break }
+            default { throw 'MSI architecture is not authorized' }
+        }
+        Set-ArtCraftValidationStage 'msi-template'
+        $template = Get-MsiTemplate $api $db
+        if ($template -cne $packageArch) { throw 'MSI platform does not match the release asset architecture' }
+        Set-ArtCraftValidationStage 'msi-property:ALLUSERS'
+        $allUsers = Get-MsiProperty $api $db 'ALLUSERS'
+        Set-ArtCraftValidationStage 'msi-property:MSIINSTALLPERUSER'
+        $msiInstallPerUser = Get-MsiProperty $api $db 'MSIINSTALLPERUSER'
+        Set-ArtCraftValidationStage 'msi-scope-policy'
+        $scopeKind = Assert-MsiScopeProperties $allUsers $msiInstallPerUser
+        Set-ArtCraftValidationStage 'msi-property:Manufacturer'
+        if ((Get-MsiProperty $api $db 'Manufacturer') -cne 'Learning Machines LLC') { throw 'MSI Manufacturer is not the approved ArtCraft value' }
+        Set-ArtCraftValidationStage 'msi-property:ProductName'
+        if ((Get-MsiProperty $api $db 'ProductName') -cnotin $app.names) { throw 'MSI ProductName does not match the authorized app' }
+        Set-ArtCraftValidationStage 'msi-property:ProductVersion'
+        if ((Get-MsiProperty $api $db 'ProductVersion') -cne $version) { throw 'MSI ProductVersion does not match the authorized release' }
+    } finally { $null = Invoke-MsiApi $api 'MsiCloseHandle' ([object[]]@($db)) }
+    return $scopeKind
+}
+
+function Assert-AuthenticodePublisher([string]$publisher) {
+    # Signing identity is independent of the authored MSI Manufacturer (Learning Machines LLC).
+    # Exact identity, not an alias/prefix/wildcard. Windows validates the certificate chain first.
+    if ($publisher -cne 'Learning Machines Inc') { throw "Authenticode signer '$publisher' is not the approved publisher" }
+}
+
+function Assert-AuthenticodeOrganization([string]$organization) {
+    # Compare the Organization attribute itself, independently of the simple name and MSI metadata.
+    if ($organization -cne 'Learning Machines Inc') { throw "Authenticode signer organization '$organization' is not the approved publisher" }
+}
+
+function Assert-OfficialSignature([string]$file) {
+    try { $sig = Microsoft.PowerShell.Security\Get-AuthenticodeSignature -LiteralPath $file }
+    catch { throw "Authenticode inspection failed: $($_.Exception.Message)" }
+    if ($sig.Status -ne 'Valid' -or $null -eq $sig.SignerCertificate) {
+        throw "Authenticode status is $($sig.Status); a valid Windows certificate chain is required"
+    }
+    $certificate = $sig.SignerCertificate
+    $simpleName = $certificate.GetNameInfo([Security.Cryptography.X509Certificates.X509NameType]::SimpleName, $false)
+    Assert-AuthenticodePublisher $simpleName
+    Set-ArtCraftValidationStage 'authenticode-organization-attribute'
+    $organization = Get-CertificateOrganization $certificate
+    Assert-AuthenticodeOrganization $organization
+}
+
+function Get-ReleaseAuthorization($item, $catalog) {
+    Set-ArtCraftValidationStage 'release-catalog-identity'
+    $app = @($catalog | Where-Object { $_.id -ceq $item.release.app })
+    if ($app.Count -ne 1) { throw 'Unknown app' }
+    $app = $app[0]
+    $tag = [string]$item.release.tag
+    $asset = [string]$item.release.asset
+    if ($tag.Length -gt 64 -or $tag -cnotmatch '^v?([0-9]+\.[0-9]+\.[0-9]+)(-[0-9A-Za-z.-]+)?(\+[0-9A-Za-z.-]+)?$') {
+        throw 'Invalid official release tag'
+    }
+    $numeric = $Matches[1]
+    $releaseVersion = $tag -creplace '^v', ''
+    $valid = $false
+    foreach ($stem in $app.stems) {
+        foreach ($arch in @('x64', 'x86', 'arm64')) {
+            if ($asset -ceq "$stem-$releaseVersion-windows-$arch.msi") { $valid = $true }
+        }
+    }
+    if (-not $valid) { throw 'MSI does not match its app and version' }
+    # The catalog is compiled into the policy. No caller-supplied repository, URL or digest is
+    # authoritative. Fetch SHA256SUMS.txt independently after elevation over Windows TLS.
+    $url = "https://github.com/$($app.repo)/releases/download/$tag/SHA256SUMS.txt"
+    Set-ArtCraftValidationStage 'published-checksum-download'
+    $checksumFile = Read-OfficialChecksums $url
+    Set-ArtCraftValidationStage 'published-checksum-entry'
+    $sha = Get-PublishedHash $checksumFile $asset
+    Set-ArtCraftValidationStage 'published-checksum-match'
+    if ($item.sha256 -cne $sha) { throw 'Caller checksum disagrees with official publication' }
+    return @{ app = $app; sha = $sha; version = $numeric; asset = $asset }
+}
+
+function Copy-ArtCraftLoopbackResponse($response, $output) {
+    if ([int]$response.StatusCode -ne 200 -or $response.ContentLength -lt 0 -or $response.ContentLength -gt 17179869184) {
+        throw 'Invalid package stream'
+    }
+    $expected = [long]$response.ContentLength
+    $inputFile = $response.GetResponseStream()
+    $transferred = [long]0
+    try {
+        $buffer = New-Object byte[] 65536
+        while ($transferred -lt $expected) {
+            try { $n = $inputFile.Read($buffer, 0, [int][Math]::Min($expected - $transferred, $buffer.Length)) }
+            catch { throw [IO.InvalidDataException]::new('Truncated package stream', $_.Exception) }
+            if ($n -eq 0) { throw 'Truncated package stream' }
+            $output.Write($buffer, 0, $n)
+            $transferred += $n
+        }
+    } finally { $inputFile.Dispose() }
+    if ($transferred -ne $expected) { throw 'Truncated package stream' }
+    return $transferred
+}
+
+function Copy-VerifiedPackage($item, $authorization, [string]$root, [int]$index, [int]$port, [string]$session) {
+    $target = [IO.Path]::Combine($root, "$index.msi")
+    Set-ArtCraftValidationStage 'loopback-package-stream'
+    # Never open a caller-owned path as administrator: even an initially local path could
+    # race through a junction to an SMB share and leak elevated network credentials.
+    # A loopback-only byte source runs unelevated. Its bytes remain entirely untrusted.
+    $req=[Net.HttpWebRequest]::Create("http://127.0.0.1:$port/$session/$index")
+    $req.Proxy=$null
+    $req.Credentials=$null
+    $req.UserAgent='ArtCraft-Launcher/MSI'
+    $req.AllowAutoRedirect=$false
+    $req.Timeout=60000
+    $req.ReadWriteTimeout=60000
+    $response=$req.GetResponse()
+    try {
+        $output = New-ProtectedFile $target
+        try { $null = Copy-ArtCraftLoopbackResponse $response $output }
+        finally { $output.Dispose() }
+    } finally { $response.Dispose() }
+    $locked = [IO.File]::Open($target, [IO.FileMode]::Open, [IO.FileAccess]::Read, [IO.FileShare]::Read)
+    try {
+        Set-ArtCraftValidationStage 'staged-package-hash'
+        $hash = [Security.Cryptography.SHA256]::Create()
+        try { $actual = ([BitConverter]::ToString($hash.ComputeHash($locked))).Replace('-', '').ToLowerInvariant() }
+        finally { $hash.Dispose() }
+        if ($actual -cne $authorization.sha) { throw 'Changed package' }
+        Set-ArtCraftValidationStage 'authenticode-chain-and-publisher'
+        Assert-OfficialSignature $target
+        Set-ArtCraftValidationStage 'msi-identity-and-scope'
+        $scopeKind = Assert-MsiIdentity ([string]$target) $authorization.app $authorization.version $authorization.asset
+    } finally { $locked.Dispose() }
+    return @{ path = $target; scopeKind = $scopeKind }
+}
+
+function Test-AppRunning($app) {
+    foreach ($process in [Diagnostics.Process]::GetProcesses()) {
+        try {
+            if ($process.ProcessName -in $app.stems) { return $true }
+        } finally { $process.Dispose() }
+    }
+    return $false
+}
+
+function Invoke-ArtCraftBatch($request, $catalog) {
+    Set-ArtCraftValidationStage 'batch-request'
+    if ($request.items.Count -lt 1 -or $request.items.Count -gt 64) { throw 'Invalid batch size' }
+    if ($request.port -lt 1 -or $request.port -gt 65535) { throw 'Invalid local source port' }
+    $root = New-ProtectedRun ([string]$request.session)
+    $diagnosticsHandle = New-ProtectedFile ([IO.Path]::Combine($root, 'diagnostics.jsonl'))
+    $diagnosticsWriter = [IO.StreamWriter]::new($diagnosticsHandle, [Text.UTF8Encoding]::new($false))
+    $script:ArtCraftDiagnosticWriter = $diagnosticsWriter
+    $results = $null
+    $writer = $null
+    try {
+        Set-ArtCraftValidationStage 'uac-context'
+        $uacContext = Get-ArtCraftUacContext
+        Write-ArtCraftDiagnostic $diagnosticsWriter 'batch-context' $null $uacContext
+        $results = New-ProtectedFile ([IO.Path]::Combine($root, 'results')) $true
+        $writer = [IO.StreamWriter]::new($results, [Text.UTF8Encoding]::new($false))
+        $writer.AutoFlush = $true
+        for ($i = 0; $i -lt $request.items.Count; $i++) {
+            $item = $request.items[$i]
+            $code = 'rejected'
+            $staged = [IO.Path]::Combine($root, "$i.msi")
+            try {
+                Set-ArtCraftValidationStage 'release-authorization'
+                $authorization = Get-ReleaseAuthorization $item $catalog
+                $verifiedPackage = Copy-VerifiedPackage $item $authorization $root $i $request.port $request.session
+                $staged = [string]$verifiedPackage.path
+                # Check immediately before each installation, including apps started during UAC.
+                Set-ArtCraftValidationStage 'running-application-check'
+                if (Test-AppRunning $authorization.app) { $code = 'running' }
+                else {
+                    Set-ArtCraftValidationStage 'installer-file-lock'
+                    $locked = [IO.File]::Open($staged, [IO.FileMode]::Open, [IO.FileAccess]::Read, [IO.FileShare]::Read)
+                    try {
+                        $start = New-Object Diagnostics.ProcessStartInfo
+                        $start.FileName = [IO.Path]::Combine([Environment]::SystemDirectory, 'msiexec.exe')
+                        $start.WorkingDirectory = [Environment]::SystemDirectory
+                        $start.UseShellExecute = $false
+                        # Logs live with the protected staged package; no user-writable log paths.
+                        $log = [IO.Path]::Combine($root, "$i.log")
+                        $logHandle = New-ProtectedFile $log
+                        $logHandle.Dispose()
+                        # Keep Windows Installer's cancel button available. The elevated parent
+                        # remains in the same single UAC session for each sequential MSI.
+                        $destination = $null
+                        if ($null -ne $item.destination) {
+                            Set-ArtCraftValidationStage 'install-destination-acl'
+                            $destination = Assert-InstallDestination ([string]$item.destination) $authorization.app
+                        }
+                        $start.Arguments = New-ArtCraftMsiArguments $staged $log $destination ([string]$verifiedPackage.scopeKind)
+                        Set-ArtCraftValidationStage 'windows-installer-launch'
+                        $child = [Diagnostics.Process]::Start($start)
+                        try { $child.WaitForExit(); $code = [string]$child.ExitCode }
+                        finally { $child.Dispose() }
+                        Write-ArtCraftDiagnostic $diagnosticsWriter 'installer-exit' $i @{ exitCode = $code; log = "$i.log" }
+                    } finally { $locked.Dispose() }
+                }
+            } catch {
+                # Keep the launcher message fixed and sanitized; full failure data stays in the
+                # administrator-owned diagnostics file, never in the user-writable UI channel.
+                Write-ArtCraftFailure $diagnosticsWriter $i $_
+                $code = 'rejected'
+            } finally {
+                [IO.File]::Delete($staged)
+            }
+            $writer.WriteLine("$i $code")
+        }
+    } catch {
+        Write-ArtCraftFailure $diagnosticsWriter -1 $_
+        throw
+    } finally {
+        if ($null -ne $writer) { $writer.Dispose() }
+        if ($null -ne $results) { $results.Dispose() }
+        $diagnosticsWriter.Dispose()
+        $script:ArtCraftDiagnosticWriter = $null
+    }
+}
+"#;
+
+#[cfg(test)]
+/// Encodes a test script using PowerShell's UTF-16LE Base64 command transport.
+fn encode_command(script: &str) -> String {
+    use base64::Engine as _;
+    let bytes: Vec<_> = script.encode_utf16().flat_map(u16::to_le_bytes).collect();
+    base64::engine::general_purpose::STANDARD.encode(bytes)
+}
+
+#[cfg(any(windows, test))]
+/// Removes comments and blank lines before compressing the fixed privileged policy.
+fn compact_policy(script: &str) -> String {
+    script.lines().filter(|line| !line.trim().is_empty() && !line.trim_start().starts_with('#')).collect::<Vec<_>>().join("\n")
+}
+
+#[cfg(any(windows, test))]
+/// Compresses fixed PowerShell policy text for the bounded Windows process command line.
+fn compressed_payload(script: &str) -> Result<String, String> {
+    use base64::Engine as _;
+    use std::io::Write as _;
+    let mut gzip = flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::best());
+    // Source comments/blank lines do not affect the fixed PowerShell policy and waste space
+    // in the bounded ShellExecute command line.
+    gzip.write_all(compact_policy(script).as_bytes()).map_err(|e| e.to_string())?;
+    Ok(base64::engine::general_purpose::STANDARD.encode(gzip.finish().map_err(|e| e.to_string())?))
+}
+
+#[cfg(any(windows, test))]
+/// Builds the restricted child command that reconstructs and runs only a validated GZip payload.
+fn powershell_bootstrap(payload: &str) -> Result<String, String> {
+    use base64::Engine as _;
+    if payload.is_empty() || !payload.bytes().all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'+' | b'/' | b'=')) {
+        return Err("the compressed PowerShell payload is not Base64 data".into());
+    }
+    let bytes = base64::engine::general_purpose::STANDARD.decode(payload).map_err(|_| "the compressed PowerShell payload is invalid Base64")?;
+    if !bytes.starts_with(&[0x1f, 0x8b]) {
+        return Err("the compressed PowerShell payload is not GZip data".into());
+    }
+    Ok(format!(
+        "$ErrorActionPreference='Stop'; try {{ \
+         $m=[IO.MemoryStream]::new([Convert]::FromBase64String('{payload}')); \
+         $g=[IO.Compression.GZipStream]::new($m,[IO.Compression.CompressionMode]::Decompress); \
+         $r=[IO.StreamReader]::new($g); & ([ScriptBlock]::Create($r.ReadToEnd())) \
+         }} catch {{ exit 1 }}"
+    ))
+}
+
+#[cfg(any(windows, test))]
+const WINDOWS_COMMAND_LIMIT: usize = 30_000;
+
+#[cfg(any(windows, test))]
+/// Quotes a value as a PowerShell single-quoted string, doubling embedded quote characters.
+fn powershell_single_quoted(value: &str) -> String {
+    format!("'{}'", value.replace('\'', "''"))
+}
+
+#[cfg(any(windows, test))]
+/// Formats the fixed arguments used to start the elevated child PowerShell process.
+fn elevated_child_arguments(payload: &str) -> Result<String, String> {
+    let bootstrap = powershell_bootstrap(payload)?;
+    if bootstrap.contains('"') || bootstrap.contains('\r') || bootstrap.contains('\n') {
+        return Err("the fixed PowerShell bootstrap contains unsupported command-line characters".into());
+    }
+    Ok(format!("-NoProfile -NonInteractive -Command \"{bootstrap}\""))
+}
+
+#[cfg(any(windows, test))]
+/// Creates the unelevated launcher command that asks Windows to elevate the system PowerShell.
+fn batch_outer_command(host: &str, cwd: &str, management: &str, payload: &str) -> Result<String, String> {
+    let host = powershell_single_quoted(host);
+    let cwd = powershell_single_quoted(cwd);
+    let management = powershell_single_quoted(management);
+    let arguments = powershell_single_quoted(&elevated_child_arguments(payload)?);
+    Ok(format!(
+        "$ErrorActionPreference='Stop'; try {{ Import-Module {management}; \
+         $parentIdentity = [Security.Principal.WindowsIdentity]::GetCurrent(); \
+         $parentPrincipal = [Security.Principal.WindowsPrincipal]::new($parentIdentity); \
+         $env:ARTCRAFT_BATCH_PARENT_ELEVATED = [string]$parentPrincipal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator); \
+         $p = Microsoft.PowerShell.Management\\Start-Process -FilePath {host} -WorkingDirectory {cwd} \
+         -ArgumentList {arguments} -Verb RunAs -Wait -PassThru; exit $p.ExitCode \
+         }} catch {{ $e=$_.Exception; while ($e) {{ if ($e.NativeErrorCode -eq 1223) {{ exit 1223 }}; $e=$e.InnerException }}; exit 1 }}"
+    ))
+}
+
+#[cfg(any(windows, test))]
+/// Serializes a fixed catalog and batch request as data appended to the embedded verifier policy.
+fn batch_script(session: &str, port: u16, items: &[Item]) -> Result<String, String> {
+    use base64::Engine as _;
+    #[derive(Serialize)]
+    struct CatalogApp {
+        id: &'static str,
+        repo: &'static str,
+        names: Vec<&'static str>,
+        stems: Vec<&'static str>,
+    }
+    let catalog: Vec<_> = artcraft_launcher_core::catalog::SUITE
+        .iter()
+        .filter(|app| app.kind == AppKind::Official && app.repo.starts_with("storytold/"))
+        .map(|app| CatalogApp { id: app.id, repo: app.repo, names: app.names().collect(), stems: app.stems().collect() })
+        .collect();
+    // Filesystem source paths never cross the privilege boundary.
+    let items: Vec<_> = items
+        .iter()
+        .map(|item| {
+            serde_json::json!({
+                "release": item.release, "sha256": item.sha256, "destination": item.destination
+            })
+        })
+        .collect();
+    let request = serde_json::json!({ "session": session, "port": port, "items": items });
+    let json = serde_json::to_vec(&request).map_err(|e| e.to_string())?;
+    let catalog = serde_json::to_vec(&catalog).map_err(|e| e.to_string())?;
+    let data = base64::engine::general_purpose::STANDARD.encode(json);
+    let catalog = base64::engine::general_purpose::STANDARD.encode(catalog);
+    Ok(format!(
+        "{POLICY}\ntry {{\n$request = [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('{data}')) | ConvertFrom-Json\n\
+         $catalog = [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('{catalog}')) | ConvertFrom-Json\n\
+         Invoke-ArtCraftBatch $request $catalog\nexit 0\n}} catch {{ exit 1 }}\n"
+    ))
+}
+
+#[cfg(windows)]
+/// Returns the PowerShell executable beneath the Windows system directory.
+pub fn system_powershell() -> Result<PathBuf, String> {
+    system_directory().map(|dir| dir.join(r"WindowsPowerShell\v1.0\powershell.exe"))
+}
+
+#[cfg(windows)]
+/// Resolves the trusted system directory used as the elevated process working directory.
+fn system_directory() -> Result<PathBuf, String> {
+    winsafe::GetSystemDirectory().map(PathBuf::from).map_err(|e| format!("couldn't locate Windows' system directory ({e})"))
+}
+
+#[cfg(windows)]
+/// Starts one verified PowerShell session for the batch and reports every item's result.
+pub fn install(items: &[Item], report: &mut dyn FnMut(usize, crate::msi_batch::Report)) {
+    use crate::msi_batch::Report;
+    use artcraft_launcher_core::protocol::JobPhase;
+
+    let fail = |error: String, report: &mut dyn FnMut(usize, Report)| {
+        for i in 0..items.len() {
+            report(i, Report::Done(Err(error.clone())));
+        }
+    };
+    let prepared = (|| {
+        let mut random = [0u8; 16];
+        getrandom::fill(&mut random).map_err(|e| format!("couldn't create an installer session ({e})"))?;
+        let session = crate::http::hex(&random);
+        let source = crate::msi_source::Source::new(items, &session)?;
+        let system = system_directory()?;
+        let powershell = system_powershell()?;
+        let payload = compressed_payload(&batch_script(&session, source.port, items)?)?;
+        // The unelevated launcher asks the OS to elevate ONLY its system PowerShell executable.
+        // Both paths/code are data, never interpolation of MSI/path strings into shell source.
+        let modules = powershell.parent().ok_or("unusual Windows system path")?.join("Modules");
+        let host = powershell.to_str().ok_or("unusual Windows system path")?;
+        let cwd = system.to_str().ok_or("unusual Windows system path")?;
+        let management = modules.join(r"Microsoft.PowerShell.Management\Microsoft.PowerShell.Management.psd1");
+        let management = management.to_str().ok_or("unusual Windows system path")?;
+        let outer = batch_outer_command(host, cwd, management, &payload)?;
+        // Avoid the Windows 32K command line limit before asking for UAC.
+        if outer.len() > WINDOWS_COMMAND_LIMIT {
+            return Err("the MSI batch command is too large for Windows".into());
+        }
+        let results = system.join(format!("ArtCraft-MSI-{session}")).join("results");
+        let mut command = crate::process::command(powershell);
+        command.env_clear().current_dir(&system);
+        if let Some(root) = system.parent() {
+            command.env("SystemRoot", root).env("WINDIR", root);
+        }
+        command.env("PATH", &system).env("PSModulePath", modules);
+        command.args(["-NoProfile", "-NonInteractive", "-Command", &outer]);
+        command.stdin(std::process::Stdio::null()).stdout(std::process::Stdio::null()).stderr(std::process::Stdio::null());
+        Ok((command, results, source))
+    })();
+    let (mut command, results, _source) = match prepared {
+        Ok(prepared) => prepared,
+        Err(e) => return fail(e, report),
+    };
+    for i in 0..items.len() {
+        report(i, Report::Phase(JobPhase::Permission));
+    }
+    let mut child = match command.spawn() {
+        Ok(child) => child,
+        Err(e) => return fail(format!("couldn't ask Windows for permission ({e})"), report),
+    };
+    let mut done = vec![false; items.len()];
+    let mut started = false;
+    let exit = loop {
+        let exit = child.try_wait();
+        if let Ok(Some(text)) = read_results(&results) {
+            if !started {
+                started = true;
+                for i in 0..items.len() {
+                    report(i, Report::Phase(JobPhase::Installing));
+                }
+            }
+            for (i, result) in parse_results(&text, items.len()) {
+                if let Some(finished) = done.get_mut(i).filter(|finished| !**finished) {
+                    *finished = true;
+                    report(i, Report::Done(result));
+                }
+            }
+        }
+        match exit {
+            Ok(Some(status)) => break status.code(),
+            Err(_) => break None,
+            Ok(None) => std::thread::sleep(std::time::Duration::from_millis(150)),
+        }
+    };
+    for (i, _) in done.iter().enumerate().filter(|(_, done)| !**done) {
+        let error = if exit == Some(1223) {
+            "cancelled".into()
+        } else {
+            "Windows didn't complete the verified MSI batch. Check the protected installer logs or try again.".into()
+        };
+        report(i, Report::Done(Err(error)));
+    }
+}
+
+/// Results never pass through a user-owned cache path. Bound reads even if another administrator
+/// tampers with the protocol. The protected system-directory parent supplies authenticity.
+#[cfg(windows)]
+fn read_results(path: &Path) -> Result<Option<String>, String> {
+    use std::io::Read as _;
+    let file = match std::fs::File::open(path) {
+        Ok(file) => file,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+        Err(e) => return Err(e.to_string()),
+    };
+    let mut text = String::new();
+    file.take(65536).read_to_string(&mut text).map_err(|e| e.to_string())?;
+    Ok(Some(text))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[cfg(windows)]
+    const ASSERT_EXPECTED_MSI_PROPERTIES: &str = r#"
+function Assert-ExpectedMsiProperties($file, $expectedProperties) {
+    if ($null -eq $expectedProperties) { return }
+    $api = New-MsiApi
+    $arguments = [object[]]@([string]$file, [IntPtr]::Zero, [uint32]0)
+    $status = Invoke-MsiApi $api 'MsiOpenDatabaseW' $arguments
+    if ($status -ne 0) { throw "MsiOpenDatabaseW failed with Windows Installer status $status" }
+    $db = [uint32]$arguments[2]
+    try {
+        foreach ($property in $expectedProperties.PSObject.Properties) {
+            $expected = if ($null -eq $property.Value) { '' } else { [string]$property.Value }
+            $actual = Get-MsiProperty $api $db $property.Name
+            if ($actual -cne $expected) { throw "Unexpected MSI property $($property.Name): '$actual', expected '$expected'" }
+        }
+    } finally { $null = Invoke-MsiApi $api 'MsiCloseHandle' ([object[]]@($db)) }
+}
+"#;
+
+    #[test]
+    /// Confirms the checked-in package manifest maps only to official catalog release identities.
+    fn current_windows_msi_manifest_only_authorizes_official_catalog_releases() {
+        let manifest: serde_json::Value = serde_json::from_str(include_str!("../../../docs/windows-current-msi-releases.json")).unwrap();
+        let packages = manifest["packages"].as_array().unwrap();
+        assert!(packages.len() >= 12);
+        let mut app_ids = std::collections::HashSet::new();
+        for package in packages {
+            let app_id = package["app"].as_str().unwrap();
+            let tag = package["tag"].as_str().unwrap();
+            let asset_name = package["asset"].as_str().unwrap();
+            let sha256 = package["sha256"].as_str().unwrap();
+            assert!(app_ids.insert(app_id), "duplicate manifest app {app_id}");
+            assert!(sha256.len() == 64 && sha256.bytes().all(|byte| byte.is_ascii_hexdigit()), "invalid SHA256 for {app_id}");
+            let app = CraftApp::by_id(app_id).unwrap();
+            assert_eq!(app.kind, AppKind::Official, "community apps stay outside the official MSI policy");
+            let asset = release::Asset {
+                name: asset_name.to_owned(),
+                url: format!("https://github.com/{}/releases/download/{tag}/{asset_name}", app.repo),
+                ..Default::default()
+            };
+            let identity = release_identity(app, &asset).unwrap();
+            assert_eq!(identity.app, app_id);
+            assert_eq!(identity.tag, tag);
+            assert_eq!(identity.asset, asset_name);
+        }
+        assert!(app_ids.contains("figcraft"));
+        assert!(app_ids.contains("lightcraft"));
+        for (app, tag, name, version) in [("photocraft", "v0.20.2", "PhotoCraft", "0.20.2"), ("vectorcraft", "v0.21.1", "VectorCraft", "0.21.1")] {
+            let package = packages.iter().find(|package| package["app"] == app).unwrap();
+            assert_eq!(package["tag"], tag);
+            assert_eq!(package["properties"]["ALLUSERS"], "2");
+            assert_eq!(package["properties"]["MSIINSTALLPERUSER"], "1");
+            assert_eq!(package["properties"]["ProductName"], name);
+            assert_eq!(package["properties"]["ProductVersion"], version);
+        }
+    }
+
+    #[cfg(any(windows, test))]
+    enum PowerShellTestTransport {
+        Encoded(String),
+        StandardInput(String),
+    }
+
+    #[cfg(any(windows, test))]
+    /// The oversized-test fallback reads the full UTF-8 script from stdin inside a fresh script block.
+    fn powershell_stdin_bootstrap() -> String {
+        encode_command(
+            "$ErrorActionPreference='Stop'; \
+             [Console]::InputEncoding=[System.Text.UTF8Encoding]::new($false); \
+             $source=[Console]::In.ReadToEnd(); \
+             try { & ([ScriptBlock]::Create($source)); exit 0 } \
+             catch { [Console]::Error.WriteLine(($_ | Out-String)); exit 1 }",
+        )
+    }
+
+    #[cfg(any(windows, test))]
+    /// Uses the production compressed command for normal tests and a stdin fallback only when oversized.
+    fn powershell_test_transport(script: &str) -> Result<PowerShellTestTransport, String> {
+        let script = format!("trap {{ [Console]::Error.WriteLine(($_ | Out-String)); exit 1 }}\n{script}");
+        let payload = compressed_payload(&script)?;
+        let bootstrap = powershell_bootstrap(&payload)?;
+        let encoded = encode_command(&bootstrap);
+        if encoded.len() < WINDOWS_COMMAND_LIMIT {
+            Ok(PowerShellTestTransport::Encoded(encoded))
+        } else {
+            Ok(PowerShellTestTransport::StandardInput(script))
+        }
+    }
+
+    #[cfg(windows)]
+    /// Runs test-only PowerShell unelevated, capturing output and separating launch from script failures.
+    fn run_powershell_test(script: &str) -> std::process::Output {
+        use std::io::Write as _;
+
+        let (encoded, stdin_script) =
+            match powershell_test_transport(script).unwrap_or_else(|error| panic!("could not prepare PowerShell test transport: {error}")) {
+                PowerShellTestTransport::Encoded(encoded) => (encoded, None),
+                PowerShellTestTransport::StandardInput(script) => (powershell_stdin_bootstrap(), Some(script)),
+            };
+        let powershell = system_powershell().unwrap_or_else(|error| panic!("could not locate Windows PowerShell: {error}"));
+        let mut child = std::process::Command::new(&powershell)
+            .args(["-NoProfile", "-NonInteractive", "-EncodedCommand", &encoded])
+            .stdin(std::process::Stdio::piped())
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::piped())
+            .spawn()
+            .unwrap_or_else(|error| panic!("failed to launch {}: {error}", powershell.display()));
+        let mut stdin = child.stdin.take().unwrap_or_else(|| panic!("Windows PowerShell launched without the configured stdin pipe"));
+        if let Some(script) = stdin_script {
+            if let Err(error) = stdin.write_all(script.as_bytes()) {
+                drop(stdin);
+                let output = child
+                    .wait_with_output()
+                    .unwrap_or_else(|wait_error| panic!("PowerShell stdin failed ({error}) and output collection also failed: {wait_error}"));
+                panic!(
+                    "Windows PowerShell launched but reading the test script from stdin failed: {error}. Exit status: {}.\nstdout:\n{}\nstderr:\n{}",
+                    output.status,
+                    String::from_utf8_lossy(&output.stdout),
+                    String::from_utf8_lossy(&output.stderr)
+                );
+            }
+        }
+        // Closing the pipe signals EOF to Console.In.ReadToEnd() in the bootstrap.
+        drop(stdin);
+        let output = child.wait_with_output().unwrap_or_else(|error| panic!("Windows PowerShell launched but collecting its output failed: {error}"));
+        assert!(
+            output.status.success(),
+            "Windows PowerShell launched but the test script failed with {}.\nstdout:\n{}\nstderr:\n{}",
+            output.status,
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+        output
+    }
+
+    #[cfg(windows)]
+    /// Reports a failed Windows assertion with both captured PowerShell streams.
+    fn assert_powershell_output_contains(output: &std::process::Output, expected: &str) {
+        assert!(
+            String::from_utf8_lossy(&output.stdout).contains(expected),
+            "Windows PowerShell launched successfully but did not report expected test result {expected:?}.\nstdout:\n{}\nstderr:\n{}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+    }
+
+    /// Builds a PhotoCraft MSI fixture using the supplied release URL.
+    fn asset(url: &str) -> release::Asset {
+        release::Asset { name: "photocraft-0.5.0-windows-x64.msi".into(), url: url.into(), ..Default::default() }
+    }
+
+    #[test]
+    /// Rejects release URLs that change the official repository, release tag, asset name, or package type.
+    fn authorization_identity_is_pinned_to_app_repository_version_and_asset() {
+        let app = CraftApp::by_id("photocraft").unwrap();
+        let prefix = "https://github.com/storytold/photocraft/releases/download/v0.5.0/";
+        let good = asset(&format!("{prefix}photocraft-0.5.0-windows-x64.msi"));
+        assert_eq!(release_identity(app, &good).unwrap().tag, "v0.5.0");
+        for bad in [
+            good.url.replace("storytold/", "attacker/"),
+            good.url.replace("/v0.5.0/", "/v0.6.0/"),
+            good.url.replace("/v0.5.0/", "/../"),
+            good.url.replace("/v0.5.0/", "/%2e%2e/"),
+            good.url.replace("photocraft/releases", "filmcraft/releases"),
+            format!("{}?x=1", good.url),
+            good.url.replace("windows-x64.msi", "windows-x64.exe"),
+        ] {
+            assert!(release_identity(app, &asset(&bad)).is_err(), "{bad}");
+        }
+        let community = CraftApp::by_id("solidcraft").unwrap();
+        assert!(release_identity(community, &good).is_err(), "community packages need a separately reviewed publisher policy");
+    }
+
+    #[test]
+    /// Guards the production policy's distinct signature, certificate organization, metadata, and architecture checks.
+    fn fixed_policy_keeps_publisher_metadata_and_architecture_checks_independent() {
+        assert!(POLICY.contains("Learning Machines Inc"), "Authenticode signer policy");
+        assert!(POLICY.contains("X509NameType]::SimpleName") && POLICY.contains("Authenticode signer organization"));
+        assert!(POLICY.contains("CertGetNameStringW") && POLICY.contains("[uint32]3") && POLICY.contains("2.5.4.10"));
+        assert!(POLICY.contains("[IO.Path]::Combine([Environment]::SystemDirectory, 'crypt32.dll')"));
+        assert!(POLICY.contains("$required -gt 1024") && POLICY.contains("Marshal]::FreeHGlobal($oid)"));
+        assert!(!POLICY.contains("X509NameType]::OrganizationName"), "organization is read from the subject attribute OID");
+        assert!(POLICY.contains("$organization -cne 'Learning Machines Inc'"), "certificate Organization is exact-matched");
+        assert!(POLICY.contains("'Manufacturer') -cne 'Learning Machines LLC'"), "MSI Manufacturer policy");
+        assert!(POLICY.contains("Get-MsiTemplate") && POLICY.contains("MSI architecture is not authorized"));
+        assert!(POLICY.contains("function Assert-MsiScopeProperties"));
+        assert!(POLICY.contains("$allUsers -ceq '1' -and $msiInstallPerUser -in @('', '0')"));
+        assert!(POLICY.contains("$allUsers -ceq '2' -and $msiInstallPerUser -ceq '1'"));
+        assert!(POLICY.contains("function Get-ArtCraftMsiMachineScopeArguments"));
+        assert!(POLICY.contains("ALLUSERS=1 MSIINSTALLPERUSER=\"\""), "legacy machine scope uses a properly quoted empty property");
+        assert!(POLICY.contains("ALLUSERS=2 MSIINSTALLPERUSER=\"\""), "dual-scope machine selection uses the documented property pair");
+        assert!(POLICY.contains("function New-ArtCraftMsiArguments"));
+        assert!(POLICY.contains("[object[]]@([string]$file, [IntPtr]::Zero, [uint32]0)"));
+        assert!(POLICY.contains("$type.DefinePInvokeMethod($name, $dll, $name"), "native entry points are explicit");
+        assert!(POLICY.contains("@($u, $u, $ref, $iref, [IntPtr], [Text.StringBuilder], $ref)"), "summary API includes FILETIME*");
+        assert!(POLICY.contains("[int32]0, [IntPtr]::Zero, $template, [uint32]256"), "PID_TEMPLATE passes a null FILETIME*");
+        assert!(
+            POLICY.contains("function Invoke-MsiApi")
+                && POLICY.contains("function Invoke-Crypt32Api")
+                && POLICY.contains("$value.PSObject.BaseObject"),
+            "reflection arguments are explicitly unwrapped"
+        );
+        assert!(!POLICY.contains("AsPSObject(") && !POLICY.contains("PSObject]::Base("), "use PowerShell's intrinsic PSObject member only");
+        assert!(POLICY.contains("$source.SetValue($value, $index)"), "native ref/out values are copied back to the caller");
+        assert_eq!(POLICY.matches("$method.Invoke($null, $callArguments)").count(), 1, "native reflections use the typed invocation helper");
+        assert!(POLICY.contains("diagnostics.jsonl") && POLICY.contains("rootHresult") && POLICY.contains("validation-failure"));
+        assert!(POLICY.contains("ConsentPromptBehaviorAdmin") && POLICY.contains("requestingPowerShellWasElevated"));
+        assert!(!POLICY.contains("Learning Machines LLC') -or"), "the certificate subject and MSI Manufacturer stay separate");
+    }
+
+    #[cfg(windows)]
+    #[test]
+    /// Executes the policy allowlist against valid legacy and official dual-scope property pairs.
+    fn windows_policy_accepts_only_legacy_machine_or_official_dual_scope_properties() {
+        let test = format!(
+            "{POLICY}\n{}",
+            r#"
+if ((Assert-MsiScopeProperties '1' '') -cne 'legacy-machine') { throw 'Wrong legacy machine classification' }
+if ((Assert-MsiScopeProperties '1' '0') -cne 'legacy-machine') { throw 'Wrong legacy zero classification' }
+if ((Assert-MsiScopeProperties '2' '1') -cne 'dual-scope') { throw 'Wrong dual-scope classification' }
+foreach ($pair in @(
+    [PSCustomObject]@{ allUsers = '1'; perUser = '1' },
+    [PSCustomObject]@{ allUsers = '2'; perUser = '' },
+    [PSCustomObject]@{ allUsers = '2'; perUser = '0' },
+    [PSCustomObject]@{ allUsers = ''; perUser = '1' },
+    [PSCustomObject]@{ allUsers = '3'; perUser = '1' }
+)) {
+    $rejected = $false
+    try { Assert-MsiScopeProperties $pair.allUsers $pair.perUser }
+    catch {
+        if ($_.Exception.Message -cne 'MSI has unsupported installation scope properties') { throw }
+        $rejected = $true
+    }
+    if (-not $rejected) { throw "Unexpectedly accepted scope pair $($pair.allUsers)/$($pair.perUser)" }
+}
+'MSI scope property allowlist passed'
+"#
+        );
+        let output = run_powershell_test(&test);
+        assert_powershell_output_contains(&output, "MSI scope property allowlist passed");
+    }
+
+    #[cfg(windows)]
+    #[test]
+    /// Verifies the exact Windows Installer arguments for paths with spaces and empty scope properties.
+    fn windows_msi_command_quotes_empty_scope_property_and_paths_with_spaces() {
+        let test = format!(
+            "{POLICY}\n{}",
+            r#"
+$msi = 'C:\Program Files\ArtCraft\staged app.msi'
+$log = 'C:\Windows\System32\ArtCraft-MSI-session\0.log'
+$destination = 'D:\Program Files\ArtCraft\PhotoCraft'
+$dual = New-ArtCraftMsiArguments $msi $log $destination 'dual-scope'
+$expectedDual = '/i "C:\Program Files\ArtCraft\staged app.msi" /passive /norestart ALLUSERS=2 MSIINSTALLPERUSER="" /l*v "C:\Windows\System32\ArtCraft-MSI-session\0.log" INSTALLFOLDER="D:\Program Files\ArtCraft\PhotoCraft\\"'
+if ($dual -cne $expectedDual) { throw "Wrong dual-scope command line: $dual" }
+$legacy = New-ArtCraftMsiArguments $msi $log $null 'legacy-machine'
+$expectedLegacy = '/i "C:\Program Files\ArtCraft\staged app.msi" /passive /norestart ALLUSERS=1 MSIINSTALLPERUSER="" /l*v "C:\Windows\System32\ArtCraft-MSI-session\0.log"'
+if ($legacy -cne $expectedLegacy) { throw "Wrong legacy machine command line: $legacy" }
+$rejected = $false
+try { New-ArtCraftMsiArguments $msi $log $null 'unknown' }
+catch {
+    if ($_.Exception.Message -cne 'MSI has unsupported installation scope properties') { throw }
+    $rejected = $true
+}
+if (-not $rejected) { throw 'Unknown scope was accepted for MSI execution' }
+'MSI machine command lines passed'
+"#
+        );
+        let output = run_powershell_test(&test);
+        assert_powershell_output_contains(&output, "MSI machine command lines passed");
+    }
+
+    #[cfg(windows)]
+    #[test]
+    /// Synthetic, untrusted certificate subjects exercise attribute parsing only; they are never treated as trusted signers.
+    fn powershell_extracts_authenticode_organization_from_certificate_subject_attributes() {
+        use base64::Engine as _;
+        let no_organization = base64::engine::general_purpose::STANDARD.encode(include_bytes!("../tests/fixtures/authenticode-no-organization.der"));
+        let wrong_organization =
+            base64::engine::general_purpose::STANDARD.encode(include_bytes!("../tests/fixtures/authenticode-wrong-organization.der"));
+        let misleading_organization =
+            base64::engine::general_purpose::STANDARD.encode(include_bytes!("../tests/fixtures/authenticode-misleading-organization.der"));
+        let test = format!(
+            "{POLICY}\n{}",
+            r#"
+$api = New-Crypt32Api
+$method = $api.GetMethod('CertGetNameStringW')
+if ($null -eq $method) { throw 'CertGetNameStringW was not declared' }
+$parameters = @($method.GetParameters() | ForEach-Object { $_.ParameterType.FullName })
+$expected = @('System.IntPtr', 'System.UInt32', 'System.UInt32', 'System.IntPtr', 'System.Text.StringBuilder', 'System.UInt32')
+if ($parameters.Length -ne $expected.Length) { throw 'CertGetNameStringW has the wrong argument count' }
+for ($index = 0; $index -lt $expected.Length; $index++) {
+    if ($parameters[$index] -cne $expected[$index]) { throw "CertGetNameStringW has the wrong type at index $index" }
+}
+$attribute = @($method.GetCustomAttributes([Runtime.InteropServices.DllImportAttribute], $false))
+if ($attribute.Count -ne 1 -or [IO.Path]::GetFileName($attribute[0].Value) -cne 'crypt32.dll' -or $attribute[0].EntryPoint -cne 'CertGetNameStringW') {
+    throw 'CertGetNameStringW is not bound to the system Crypt32 export'
+}
+$noOrg = [Security.Cryptography.X509Certificates.X509Certificate2]::new([Convert]::FromBase64String('NO_ORG_TOKEN'))
+$wrongOrg = [Security.Cryptography.X509Certificates.X509Certificate2]::new([Convert]::FromBase64String('WRONG_ORG_TOKEN'))
+$misleading = [Security.Cryptography.X509Certificates.X509Certificate2]::new([Convert]::FromBase64String('MISLEADING_ORG_TOKEN'))
+try {
+    if ($noOrg.GetNameInfo([Security.Cryptography.X509Certificates.X509NameType]::SimpleName, $false) -cne 'Learning Machines Inc') { throw 'No-organization fixture has unexpected signer simple name' }
+    $missingRejected = $false
+    try { $null = Get-CertificateOrganization $noOrg; throw 'Missing organization attribute was accepted' }
+    catch {
+        if ($_.Exception.Message -cne 'Authenticode signer certificate is missing the Organization (2.5.4.10) attribute') { throw }
+        $missingRejected = $true
+    }
+    if (-not $missingRejected) { throw 'Missing organization attribute was not rejected' }
+
+    if ($wrongOrg.GetNameInfo([Security.Cryptography.X509Certificates.X509NameType]::SimpleName, $false) -cne 'Learning Machines Inc') { throw 'Wrong-organization fixture has unexpected signer simple name' }
+    $wrong = Get-CertificateOrganization $wrongOrg
+    if ($wrong -cne 'Learning Machines Incorporated') { throw "Wrong certificate Organization extraction: '$wrong'" }
+    $wrongRejected = $false
+    try { Assert-AuthenticodeOrganization $wrong; throw 'Incorrect organization was accepted' }
+    catch {
+        if ($_.Exception.Message -cne "Authenticode signer organization '$wrong' is not the approved publisher") { throw }
+        $wrongRejected = $true
+    }
+    if (-not $wrongRejected) { throw 'Incorrect organization was not rejected' }
+
+    if ($misleading.GetNameInfo([Security.Cryptography.X509Certificates.X509NameType]::SimpleName, $false) -cne 'Learning Machines Inc') { throw 'Misleading fixture has unexpected signer simple name' }
+    if (-not $misleading.Subject.Contains('OU=Learning Machines Inc')) { throw 'Misleading fixture does not contain the approved text in another subject field' }
+    $actualOrganization = Get-CertificateOrganization $misleading
+    if ($actualOrganization -cne 'Wrong Organization') { throw "Crypt32 selected a non-Organization subject field: '$actualOrganization'" }
+    $misleadingRejected = $false
+    try { Assert-AuthenticodeOrganization $actualOrganization; throw 'Text in another subject field was accepted as Organization' }
+    catch {
+        if ($_.Exception.Message -cne "Authenticode signer organization '$actualOrganization' is not the approved publisher") { throw }
+        $misleadingRejected = $true
+    }
+    if (-not $misleadingRejected) { throw 'Misleading subject field was not rejected' }
+    'Crypt32 signer Organization extraction and rejection cases passed'
+} finally {
+    $noOrg.Dispose()
+    $wrongOrg.Dispose()
+    $misleading.Dispose()
+}
+"#
+        )
+        .replace("NO_ORG_TOKEN", &no_organization)
+        .replace("WRONG_ORG_TOKEN", &wrong_organization)
+        .replace("MISLEADING_ORG_TOKEN", &misleading_organization);
+        let output = run_powershell_test(&test);
+        assert_powershell_output_contains(&output, "Crypt32 signer Organization extraction and rejection cases passed");
+    }
+
+    #[cfg(windows)]
+    #[test]
+    /// Calls real MSI exports through the production reflection helper and checks missing-file rejection.
+    fn powershell_binds_real_msi_exports_with_the_documented_argument_counts() {
+        let test = format!(
+            "{POLICY}\n{}",
+            r#"
+$api = New-MsiApi
+$expected = @{
+    MsiOpenDatabaseW = @('System.String', 'System.IntPtr', 'System.UInt32&')
+    MsiDatabaseOpenViewW = @('System.UInt32', 'System.String', 'System.UInt32&')
+    MsiViewExecute = @('System.UInt32', 'System.UInt32')
+    MsiViewFetch = @('System.UInt32', 'System.UInt32&')
+    MsiRecordGetStringW = @('System.UInt32', 'System.UInt32', 'System.Text.StringBuilder', 'System.UInt32&')
+    MsiGetSummaryInformationW = @('System.UInt32', 'System.String', 'System.UInt32', 'System.UInt32&')
+    MsiSummaryInfoGetPropertyW = @('System.UInt32', 'System.UInt32', 'System.UInt32&', 'System.Int32&', 'System.IntPtr', 'System.Text.StringBuilder', 'System.UInt32&')
+    MsiViewClose = @('System.UInt32')
+    MsiCloseHandle = @('System.UInt32')
+}
+foreach ($entry in $expected.GetEnumerator()) {
+    $method = $api.GetMethod([string]$entry.Key)
+    if ($null -eq $method) { throw "Missing MSI method $($entry.Key)" }
+    $parameters = $method.GetParameters()
+    if ($parameters.Length -ne $entry.Value.Length) { throw "Wrong arity for $($entry.Key)" }
+    for ($index = 0; $index -lt $parameters.Length; $index++) {
+        $actualType = $parameters[$index].ParameterType.FullName
+        if ($actualType -cne [string]$entry.Value[$index]) { throw "Wrong parameter type for $($entry.Key) at index $($index): $actualType" }
+    }
+    $attribute = @($method.GetCustomAttributes([Runtime.InteropServices.DllImportAttribute], $false))
+    if ($attribute.Count -ne 1 -or $attribute[0].EntryPoint -cne [string]$entry.Key) {
+        throw "Wrong native export for $($entry.Key)"
+    }
+    if ([IO.Path]::GetFileName($attribute[0].Value) -cne 'msi.dll') { throw "Wrong MSI library for $($entry.Key)" }
+}
+$missing = Join-Path $env:TEMP ('ArtCraft-Missing-' + [Guid]::NewGuid().ToString('N') + '.msi')
+if (Test-Path -LiteralPath $missing) { throw 'Generated missing-MSI test path unexpectedly exists' }
+$arguments = [object[]]@($missing, [IntPtr]::Zero, [uint32]0)
+$pathBase = $null
+if ($null -ne $arguments[0]) { $pathBase = $arguments[0].PSObject.BaseObject }
+if ($null -eq $pathBase -or $pathBase.GetType().FullName -cne 'System.String') { throw 'MsiOpenDatabaseW path did not unwrap to System.String' }
+$status = Invoke-MsiApi $api 'MsiOpenDatabaseW' $arguments
+if ([uint32]$status -ne 110) { throw "MsiOpenDatabaseW returned unexpected status $status, expected 110" }
+Set-ArtCraftValidationStage 'test-start'
+$caught = $false
+try { Assert-MsiIdentity $missing @{ names = @('PhotoCraft') } '0.5.0' 'photocraft-0.5.0-windows-x64.msi' }
+catch {
+    if ($script:ArtCraftValidationStage -cne 'msi-database-open') { throw "Unexpected failure stage $script:ArtCraftValidationStage" }
+    if ($_.Exception.Message -notmatch 'MsiOpenDatabaseW failed with Windows Installer status 110') { throw }
+    $caught = $true
+}
+if (-not $caught) { throw 'Assert-MsiIdentity unexpectedly accepted a missing MSI' }
+"MSI exports and signatures passed; missing-package status=$status"
+"#
+        );
+        let output = run_powershell_test(&test);
+        assert_powershell_output_contains(&output, "MSI exports and signatures passed");
+    }
+
+    #[cfg(windows)]
+    #[test]
+    /// Confirms administrator-side failure diagnostics retain their stage, HRESULT, and actionable cause.
+    fn powershell_diagnostics_record_stage_exception_hresult_and_actionable_reason() {
+        let nonce = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos();
+        let path = std::env::temp_dir().join(format!("ArtCraft-diagnostics-{}-{nonce}.jsonl", std::process::id()));
+        let path = path.to_string_lossy().replace('\'', "''");
+        let test = format!(
+            "{POLICY}\n{}",
+            r#"
+$path = 'PATH_TOKEN'
+$writer = [IO.StreamWriter]::new($path, $false, [Text.UTF8Encoding]::new($false))
+try {
+    Set-ArtCraftValidationStage 'test-msi-database-open'
+    $record = [PSCustomObject]@{ Exception = [IO.FileNotFoundException]::new('MSI database could not be opened') }
+    Write-ArtCraftFailure $writer 4 $record
+} finally { $writer.Dispose() }
+$entry = Get-Content -LiteralPath $path | ConvertFrom-Json
+if ($entry.kind -cne 'validation-failure' -or $entry.item -ne 4) { throw 'Wrong diagnostic kind/item' }
+if ($entry.stage -cne 'test-msi-database-open') { throw 'Wrong validation stage' }
+if ($entry.details.rootExceptionType -cne 'System.IO.FileNotFoundException') { throw 'Wrong root exception type' }
+if ($entry.details.rootHresult -cne '0x80070002') { throw "Wrong root HRESULT $($entry.details.rootHresult)" }
+if ($entry.details.reason -cne 'MSI database could not be opened') { throw 'Wrong actionable reason' }
+Remove-Item -LiteralPath $path -Force
+'Protected diagnostic record shape passed'
+"#
+            .replace("PATH_TOKEN", &path)
+        );
+        let output = run_powershell_test(&test);
+        assert_powershell_output_contains(&output, "Protected diagnostic record shape passed");
+    }
+
+    /// Opt-in real-release check for a disposable Windows test environment; it never installs.
+    #[cfg(windows)]
+    #[test]
+    #[ignore = "requires the official PhotoCraft v0.13.0 and VectorCraft v0.15.0 MSI files"]
+    fn validates_documented_official_msi_packages_with_windows_signature_and_database_apis() {
+        #[derive(Serialize)]
+        struct CatalogApp {
+            id: &'static str,
+            repo: &'static str,
+            names: Vec<&'static str>,
+            stems: Vec<&'static str>,
+        }
+
+        let dir = std::env::var_os("ARTCRAFT_TEST_OFFICIAL_MSI_DIR")
+            .expect("set ARTCRAFT_TEST_OFFICIAL_MSI_DIR to the folder containing the documented releases");
+        let dir = std::path::PathBuf::from(dir);
+        let identities: serde_json::Value = serde_json::from_str(include_str!("../../../docs/windows-msi-identities.json")).unwrap();
+        let mut cases = Vec::new();
+        for asset_name in ["photocraft-0.13.0-windows-x64.msi", "vectorcraft-0.15.0-windows-x64.msi"] {
+            let package = identities["packages"].as_array().unwrap().iter().find(|package| package["asset"] == asset_name).unwrap();
+            let path = dir.join(asset_name);
+            let actual_hash = crate::http::sha256_file(&path).unwrap();
+            assert_eq!(actual_hash, package["sha256"].as_str().unwrap(), "official checksum mismatch: {asset_name}");
+            let app_id = if asset_name.starts_with("photo") { "photocraft" } else { "vectorcraft" };
+            let app = CraftApp::by_id(app_id).unwrap();
+            let asset = release::Asset { name: asset_name.to_owned(), url: package["url"].as_str().unwrap().to_owned(), ..Default::default() };
+            let release = release_identity(app, &asset).unwrap();
+            cases.push(serde_json::json!({
+                "path": path,
+                "release": release,
+                "sha256": actual_hash,
+                "expectedProperties": package["properties"],
+            }));
+        }
+        let catalog: Vec<_> = artcraft_launcher_core::catalog::SUITE
+            .iter()
+            .filter(|app| app.kind == AppKind::Official && app.repo.starts_with("storytold/"))
+            .map(|app| CatalogApp { id: app.id, repo: app.repo, names: app.names().collect(), stems: app.stems().collect() })
+            .collect();
+        use base64::Engine as _;
+        let case_data = base64::engine::general_purpose::STANDARD.encode(serde_json::to_vec(&cases).unwrap());
+        let catalog_data = base64::engine::general_purpose::STANDARD.encode(serde_json::to_vec(&catalog).unwrap());
+        let test = format!(
+            "{POLICY}\n{ASSERT_EXPECTED_MSI_PROPERTIES}\n$cases=[Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('{case_data}')) | ConvertFrom-Json\n\
+             $catalog=[Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('{catalog_data}')) | ConvertFrom-Json\n\
+             foreach ($item in $cases) {{\n\
+               $authorization=Get-ReleaseAuthorization $item $catalog\n\
+               $file=[string]$item.path\n\
+               $locked=[IO.File]::Open($file,[IO.FileMode]::Open,[IO.FileAccess]::Read,[IO.FileShare]::Read)\n\
+               try {{ $hash=[Security.Cryptography.SHA256]::Create(); try {{ $actual=([BitConverter]::ToString($hash.ComputeHash($locked))).Replace('-','').ToLowerInvariant() }} finally {{ $hash.Dispose() }}; if ($actual -cne $authorization.sha) {{ throw 'MSI checksum differs from official publication' }} }} finally {{ $locked.Dispose() }}\n\
+               Assert-OfficialSignature $file\n\
+               $signature = Microsoft.PowerShell.Security\\Get-AuthenticodeSignature -LiteralPath $file\n\
+               $signerOrganization = Get-CertificateOrganization $signature.SignerCertificate\n\
+               if ($signerOrganization -cne 'Learning Machines Inc') {{ throw 'Crypt32 signer Organization did not match the approved publisher' }}\n\
+               Assert-ExpectedMsiProperties $file $item.expectedProperties\n\
+               Assert-MsiIdentity $file $authorization.app $authorization.version $authorization.asset\n\
+               Write-Output ($item.release.app + ' ' + $authorization.version + ' checksum/signature/MSI identity passed; organization=' + $signerOrganization)\n\
+             }}\n"
+        );
+        let output = run_powershell_test(&test);
+        assert_powershell_output_contains(&output, "photocraft 0.13.0 checksum/signature/MSI identity passed; organization=Learning Machines Inc");
+        assert_powershell_output_contains(&output, "vectorcraft 0.15.0 checksum/signature/MSI identity passed; organization=Learning Machines Inc");
+    }
+
+    /// Validates the official x64 release set recorded from each repository's latest release on
+    /// 2026-11-05. This does not install packages; the production policy fetches and checks each
+    /// release's current published checksum file again.
+    #[cfg(windows)]
+    #[test]
+    #[ignore = "requires every x64 MSI listed in docs/windows-current-msi-releases.json"]
+    fn validates_current_official_x64_msi_releases_with_windows_security_apis() {
+        #[derive(Serialize)]
+        struct CatalogApp {
+            id: &'static str,
+            repo: &'static str,
+            names: Vec<&'static str>,
+            stems: Vec<&'static str>,
+        }
+
+        let dir = std::env::var_os("ARTCRAFT_TEST_CURRENT_MSI_DIR")
+            .expect("set ARTCRAFT_TEST_CURRENT_MSI_DIR to the folder containing the current official MSIs");
+        let dir = std::path::PathBuf::from(dir);
+        let manifest: serde_json::Value = serde_json::from_str(include_str!("../../../docs/windows-current-msi-releases.json")).unwrap();
+        assert_eq!(manifest["architecture"], "windows-x64");
+        let packages = manifest["packages"].as_array().expect("current MSI manifest has a packages array");
+        assert!(packages.len() >= 12, "the fixture should cover the current multi-app Update all population");
+        let mut cases = Vec::new();
+        for package in packages {
+            let app_id = package["app"].as_str().expect("manifest app ID");
+            let tag = package["tag"].as_str().expect("manifest release tag");
+            let asset_name = package["asset"].as_str().expect("manifest MSI asset");
+            let expected_hash = package["sha256"].as_str().expect("manifest checksum");
+            let app = CraftApp::by_id(app_id).expect("manifest app is in the compiled catalog");
+            assert_eq!(app.kind, AppKind::Official, "community packages cannot enter this test: {app_id}");
+            let url = format!("https://github.com/{}/releases/download/{tag}/{asset_name}", app.repo);
+            let asset = release::Asset { name: asset_name.to_owned(), url, ..Default::default() };
+            let release = release_identity(app, &asset).unwrap();
+            let path = dir.join(asset_name);
+            let actual_hash = crate::http::sha256_file(&path).unwrap();
+            assert_eq!(actual_hash, expected_hash, "published checksum mismatch: {app_id} {tag}");
+            cases.push(serde_json::json!({
+                "path": path,
+                "release": release,
+                "sha256": actual_hash,
+                "expectedProperties": package["properties"],
+            }));
+        }
+        let catalog: Vec<_> = artcraft_launcher_core::catalog::SUITE
+            .iter()
+            .filter(|app| app.kind == AppKind::Official && app.repo.starts_with("storytold/"))
+            .map(|app| CatalogApp { id: app.id, repo: app.repo, names: app.names().collect(), stems: app.stems().collect() })
+            .collect();
+        use base64::Engine as _;
+        let case_data = base64::engine::general_purpose::STANDARD.encode(serde_json::to_vec(&cases).unwrap());
+        let catalog_data = base64::engine::general_purpose::STANDARD.encode(serde_json::to_vec(&catalog).unwrap());
+        let test = format!(
+            "{POLICY}\n{ASSERT_EXPECTED_MSI_PROPERTIES}\n$cases=[Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('{case_data}')) | ConvertFrom-Json\n\
+             $catalog=[Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('{catalog_data}')) | ConvertFrom-Json\n\
+             foreach ($item in $cases) {{\n\
+               $authorization=Get-ReleaseAuthorization $item $catalog\n\
+               $file=[string]$item.path\n\
+               $locked=[IO.File]::Open($file,[IO.FileMode]::Open,[IO.FileAccess]::Read,[IO.FileShare]::Read)\n\
+               try {{ $hash=[Security.Cryptography.SHA256]::Create(); try {{ $actual=([BitConverter]::ToString($hash.ComputeHash($locked))).Replace('-','').ToLowerInvariant() }} finally {{ $hash.Dispose() }}; if ($actual -cne $authorization.sha) {{ throw 'MSI checksum differs from official publication' }} }} finally {{ $locked.Dispose() }}\n\
+               Assert-OfficialSignature $file\n\
+               $signature = Microsoft.PowerShell.Security\\Get-AuthenticodeSignature -LiteralPath $file\n\
+               $signerOrganization = Get-CertificateOrganization $signature.SignerCertificate\n\
+               if ($signerOrganization -cne 'Learning Machines Inc') {{ throw 'Crypt32 signer Organization did not match the approved publisher' }}\n\
+               Assert-ExpectedMsiProperties $file $item.expectedProperties\n\
+               Assert-MsiIdentity $file $authorization.app $authorization.version $authorization.asset\n\
+               Write-Output ($item.release.app + ' ' + $authorization.version + ' checksum/signature/MSI identity passed; organization=' + $signerOrganization)\n\
+             }}\n"
+        );
+        let output = run_powershell_test(&test);
+        for package in packages {
+            let app_id = package["app"].as_str().unwrap();
+            let tag = package["tag"].as_str().unwrap();
+            let version = tag.strip_prefix('v').unwrap_or(tag);
+            assert_powershell_output_contains(
+                &output,
+                &format!("{app_id} {version} checksum/signature/MSI identity passed; organization=Learning Machines Inc"),
+            );
+        }
+    }
+
+    #[test]
+    /// Keeps only the first complete in-range result for each batch item and maps its outcome.
+    fn results_reject_torn_duplicate_and_out_of_range_reports() {
+        let results = parse_results("0 0\n1 rejected\n0 1603\n9 0\n2 3010\n3 running\n4 1602\n5 0", 6);
+        assert_eq!(results.len(), 5);
+        assert_eq!(results[0], (0, Ok(())));
+        assert!(results[1].1.is_err());
+        assert_eq!(results[2], (2, Ok(())));
+        assert_eq!(results[4], (4, Err("cancelled".into())));
+    }
+
+    #[test]
+    /// Reconstructs the embedded policy byte-for-byte and checks its command-line security boundary.
+    fn compressed_policy_reconstructs_exactly_and_has_no_per_user_executable() {
+        use base64::Engine as _;
+        let encoded = encode_command("hello '\u{1f600}'");
+        let bytes = base64::engine::general_purpose::STANDARD.decode(encoded).unwrap();
+        let utf16: Vec<_> = bytes.as_chunks::<2>().0.iter().map(|b| u16::from_le_bytes(*b)).collect();
+        assert_eq!(String::from_utf16(&utf16).unwrap(), "hello '\u{1f600}'");
+        let script = batch_script(&"a".repeat(32), 12345, &[]).unwrap();
+        assert!(script.contains("Read-OfficialChecksums"));
+        assert!(!script.contains("current_exe"));
+        let payload = compressed_payload(&script).unwrap();
+        assert!(payload.len() < WINDOWS_COMMAND_LIMIT, "the compressed policy payload should be short: {}", payload.len());
+        let gzip = base64::engine::general_purpose::STANDARD.decode(&payload).unwrap();
+        let mut decoder = flate2::read::GzDecoder::new(gzip.as_slice());
+        let mut decoded = String::new();
+        std::io::Read::read_to_string(&mut decoder, &mut decoded).unwrap();
+        assert_eq!(decoded, compact_policy(&script));
+        assert!(decoded.starts_with(&compact_policy(POLICY)));
+        let bootstrap = powershell_bootstrap(&payload).unwrap();
+        assert!(bootstrap.contains(&format!("FromBase64String('{payload}')")));
+        assert!(bootstrap.contains("[ScriptBlock]::Create($r.ReadToEnd())"));
+    }
+
+    #[test]
+    /// Exercises the test-only UTF-8 stdin fallback while preserving compressed transport for smaller scripts.
+    fn oversized_powershell_test_scripts_use_utf8_stdin_transport() {
+        use base64::Engine as _;
+
+        let PowerShellTestTransport::Encoded(encoded) = powershell_test_transport("Write-Output 'small test'").unwrap() else {
+            panic!("small PowerShell tests should retain compressed-command transport");
+        };
+        assert!(encoded.len() < WINDOWS_COMMAND_LIMIT);
+
+        let alphabet = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
+        let mut state = 0x6d2b_79f5_u32;
+        let mut payload = String::with_capacity(80_000);
+        for _ in 0..80_000 {
+            state ^= state << 13;
+            state ^= state >> 17;
+            state ^= state << 5;
+            payload.push(alphabet[(state as usize) % alphabet.len()] as char);
+        }
+        let source = format!("Write-Output '{payload}'\nWrite-Output 'Málaga 日本語'");
+        let transported = powershell_test_transport(&source).unwrap();
+        let PowerShellTestTransport::StandardInput(script) = transported else {
+            panic!("expected oversized script to use stdin transport");
+        };
+        assert!(script.ends_with(&source), "stdin transport must preserve the complete UTF-8 source");
+
+        let bootstrap = powershell_stdin_bootstrap();
+        let bytes = base64::engine::general_purpose::STANDARD.decode(bootstrap).unwrap();
+        let utf16: Vec<_> = bytes.as_chunks::<2>().0.iter().map(|bytes| u16::from_le_bytes(*bytes)).collect();
+        let bootstrap = String::from_utf16(&utf16).unwrap();
+        assert!(bootstrap.contains("[System.Text.UTF8Encoding]::new($false)"));
+        assert!(bootstrap.contains("[Console]::In.ReadToEnd()"));
+        assert!(bootstrap.contains("[ScriptBlock]::Create($source)"));
+        assert!(bootstrap.contains("[Console]::Error.WriteLine"));
+        assert!(bootstrap.contains("exit 1"));
+    }
+
+    #[test]
+    /// Ensures a representative two-app production request remains below the fixed process limit.
+    fn representative_two_package_update_all_fits_the_production_command_budget() {
+        let items = vec![
+            Item {
+                msi: Path::new(r"C:\Users\Test\AppData\Local\Temp\photocraft.msi").into(),
+                sha256: "a".repeat(64),
+                destination: Some(Path::new(r"C:\Program Files\PhotoCraft").into()),
+                release: ReleaseIdentity { app: "photocraft".into(), tag: "v0.14.0".into(), asset: "photocraft-0.14.0-windows-x64.msi".into() },
+            },
+            Item {
+                msi: Path::new(r"C:\Users\Test\AppData\Local\Temp\vectorcraft.msi").into(),
+                sha256: "b".repeat(64),
+                destination: Some(Path::new(r"C:\Program Files\VectorCraft").into()),
+                release: ReleaseIdentity { app: "vectorcraft".into(), tag: "v0.16.0".into(), asset: "vectorcraft-0.16.0-windows-x64.msi".into() },
+            },
+        ];
+        let script = batch_script("0123456789abcdef0123456789abcdef", 54_321, &items).unwrap();
+        let payload = compressed_payload(&script).unwrap();
+        let command = batch_outer_command(
+            r"C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe",
+            r"C:\Windows\System32",
+            r"C:\Windows\System32\WindowsPowerShell\v1.0\Modules\Microsoft.PowerShell.Management\Microsoft.PowerShell.Management.psd1",
+            &payload,
+        )
+        .unwrap();
+        assert!(
+            command.len() <= WINDOWS_COMMAND_LIMIT,
+            "representative two-package Update all command exceeds the production limit: {} bytes",
+            command.len()
+        );
+    }
+
+    #[test]
+    /// Ensures the largest current official batch leaves headroom under the Windows command-line limit.
+    fn full_official_catalog_batch_fits_with_command_line_headroom() {
+        let version = "0.14.0";
+        let tag = format!("v{version}");
+        let items: Vec<_> = artcraft_launcher_core::catalog::SUITE
+            .iter()
+            .filter(|app| app.kind == AppKind::Official && app.repo.starts_with("storytold/"))
+            .enumerate()
+            .map(|(index, app)| {
+                let stem = app.stems().next().expect("official app has a release asset stem");
+                let asset = format!("{stem}-{version}-windows-x64.msi");
+                let release = release_identity(
+                    app,
+                    &release::Asset {
+                        name: asset.clone(),
+                        url: format!("https://github.com/{}/releases/download/{tag}/{asset}", app.repo),
+                        ..Default::default()
+                    },
+                )
+                .expect("official catalog asset must qualify for x64 MSI batching");
+                Item {
+                    msi: Path::new(&format!(r"C:\Users\ArtCraftTest\AppData\Local\ArtCraftLauncher\downloads\{asset}")).into(),
+                    sha256: format!("{:064x}", index + 1),
+                    destination: Some(Path::new(&format!(r"C:\Program Files\ArtCraft Apps\{}", app.id)).into()),
+                    release,
+                }
+            })
+            .collect();
+        assert!(items.len() >= 8, "exercise a substantial eligible batch");
+
+        let script = batch_script("0123456789abcdef0123456789abcdef", 54_321, &items).unwrap();
+        let payload = compressed_payload(&script).unwrap();
+        let command = batch_outer_command(
+            r"C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe",
+            r"C:\Windows\System32",
+            r"C:\Windows\System32\WindowsPowerShell\v1.0\Modules\Microsoft.PowerShell.Management\Microsoft.PowerShell.Management.psd1",
+            &payload,
+        )
+        .unwrap();
+        let headroom = 5_000;
+        assert!(
+            command.len() + headroom <= WINDOWS_COMMAND_LIMIT,
+            "full official catalog batch leaves less than {headroom} characters of command-line headroom: {} bytes",
+            command.len()
+        );
+    }
+
+    #[test]
+    /// Checks that nested PowerShell arguments quote system paths and apostrophes without shell interpolation.
+    fn production_outer_command_quotes_paths_and_child_arguments() {
+        let payload = compressed_payload("Write-Output 'embedded script'").unwrap();
+        let arguments = elevated_child_arguments(&payload).unwrap();
+        let host = r"C:\Program Files\O'Brien Tools\WindowsPowerShell\v1.0\powershell.exe";
+        let cwd = r"C:\Windows\System32";
+        let management = r"C:\Windows\System32\Modules\O'Brien\PowerShell.psd1";
+        let outer = batch_outer_command(host, cwd, management, &payload).unwrap();
+
+        assert!(outer.contains(r"-FilePath 'C:\Program Files\O''Brien Tools\WindowsPowerShell\v1.0\powershell.exe'"));
+        assert!(outer.contains(r"-WorkingDirectory 'C:\Windows\System32'"));
+        assert!(outer.contains(&format!("-ArgumentList {} -Verb RunAs -Wait -PassThru", powershell_single_quoted(&arguments))));
+        assert!(outer.contains("-NoProfile -NonInteractive -Command \""));
+        assert!(!outer.contains("-EncodedCommand"));
+        assert!(elevated_child_arguments("not-base64'").is_err());
+    }
+
+    #[cfg(windows)]
+    #[test]
+    /// Runs the compressed child bootstrap with Windows PowerShell 5.1 without requesting elevation.
+    fn powershell_51_start_process_reconstructs_policy_without_elevation() {
+        let system = system_directory().unwrap();
+        let powershell = system_powershell().unwrap();
+        let payload = compressed_payload(&format!("{POLICY}\nexit 0")).unwrap();
+        let arguments = elevated_child_arguments(&payload).unwrap();
+        let host = powershell_single_quoted(powershell.to_str().unwrap());
+        let cwd = powershell_single_quoted(system.to_str().unwrap());
+        let arguments = powershell_single_quoted(&arguments);
+        let test = format!(
+            "$p = Microsoft.PowerShell.Management\\Start-Process -FilePath {host} -WorkingDirectory {cwd} -ArgumentList {arguments} -Wait -PassThru -NoNewWindow\n\
+             if ($p.ExitCode -ne 0) {{ throw \"compressed child returned $($p.ExitCode)\" }}\n\
+             'PowerShell -Command bootstrap parsed and reconstructed the embedded policy'"
+        );
+        let output = run_powershell_test(&test);
+        assert_powershell_output_contains(&output, "PowerShell -Command bootstrap parsed and reconstructed the embedded policy");
+    }
+
+    /// The real Windows PowerShell 5.1 HTTP client must consume full-size local package streams
+    /// sequentially without elevation or installation. The source bytes are untrusted fixtures.
+    #[cfg(windows)]
+    #[test]
+    fn powershell_51_reads_twelve_binary_loopback_packages_exactly() {
+        use base64::Engine as _;
+
+        let temp = tempfile::tempdir().unwrap();
+        let session = "0123456789abcdef0123456789abcdef";
+        let mut items = Vec::new();
+        let mut cases = Vec::new();
+        for index in 0usize..12 {
+            let path = temp.path().join(format!("package-{index}.msi"));
+            let size: usize = if index == 0 { 8 * 1024 * 1024 } else { 1024 * 1024 };
+            let bytes: Vec<u8> = (0..size).map(|byte| (byte.wrapping_mul(37).wrapping_add(index * 19) & 0xff) as u8).collect();
+            std::fs::write(&path, &bytes).unwrap();
+            let sha256 = crate::http::sha256_file(&path).unwrap();
+            cases.push(serde_json::json!({ "index": index, "length": size, "sha256": sha256 }));
+            items.push(crate::msi_batch::Item {
+                msi: path,
+                sha256,
+                destination: None,
+                release: ReleaseIdentity {
+                    app: "photocraft".into(),
+                    tag: "v0.5.0".into(),
+                    asset: format!("photocraft-0.5.0-windows-x64-{index}.msi"),
+                },
+            });
+        }
+        let source = crate::msi_source::Source::new(&items, session).unwrap();
+        let case_data = base64::engine::general_purpose::STANDARD.encode(serde_json::to_vec(&cases).unwrap());
+        let script = r#"
+$ErrorActionPreference = 'Stop'
+$cases = [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('CASES_TOKEN')) | ConvertFrom-Json
+foreach ($case in $cases) {
+    $request = [Net.HttpWebRequest]::Create("http://127.0.0.1:PORT_TOKEN/SESSION_TOKEN/$($case.index)")
+    $request.Proxy = $null
+    $request.Credentials = $null
+    $request.AllowAutoRedirect = $false
+    $request.Timeout = 60000
+    $request.ReadWriteTimeout = 60000
+    $response = $request.GetResponse()
+    try {
+        if ([int]$response.StatusCode -ne 200) { throw "Unexpected status for item $($case.index)" }
+        if ($response.ContentLength -ne [long]$case.length) { throw "Wrong advertised length for item $($case.index)" }
+        $memory = [IO.MemoryStream]::new()
+        try {
+            $transferred = Copy-ArtCraftLoopbackResponse $response $memory
+            if ([long]$transferred -ne [long]$case.length -or $memory.Length -ne [long]$case.length) {
+                throw "Truncated item $($case.index): expected $($case.length), got $($memory.Length)"
+            }
+            $hash = [Security.Cryptography.SHA256]::Create()
+            try { $actual = ([BitConverter]::ToString($hash.ComputeHash($memory.ToArray()))).Replace('-', '').ToLowerInvariant() }
+            finally { $hash.Dispose() }
+            if ($actual -cne [string]$case.sha256) { throw "SHA-256 mismatch for item $($case.index)" }
+            Write-Output ("item=$($case.index) expected=$($case.length) transferred=$transferred sha256=$actual")
+        } finally { $memory.Dispose() }
+    } finally { $response.Dispose() }
+}
+'Windows PowerShell 5.1 loopback batch transfer passed'
+"#
+        .replace("CASES_TOKEN", &case_data)
+        .replace("PORT_TOKEN", &source.port.to_string())
+        .replace("SESSION_TOKEN", session);
+        let script = format!("{POLICY}\n{script}");
+        let output = run_powershell_test(&script);
+        for case in &cases {
+            let index = case["index"].as_u64().unwrap();
+            let length = case["length"].as_u64().unwrap();
+            assert_powershell_output_contains(
+                &output,
+                &format!("item={index} expected={length} transferred={length} sha256={}", case["sha256"].as_str().unwrap()),
+            );
+        }
+        assert_powershell_output_contains(&output, "Windows PowerShell 5.1 loopback batch transfer passed");
+    }
+
+    /// Exercise the same production reader against an intentionally truncated HTTP body.
+    /// This is a local, non-elevated PowerShell test and cannot reach Windows Installer.
+    #[cfg(windows)]
+    #[test]
+    fn powershell_51_rejects_truncated_loopback_response_before_msi_validation() {
+        use std::io::{Read as _, Write as _};
+
+        let listener = std::net::TcpListener::bind((std::net::Ipv4Addr::LOCALHOST, 0)).unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let server = std::thread::spawn(move || {
+            let (mut socket, _) = listener.accept().unwrap();
+            socket.set_read_timeout(Some(std::time::Duration::from_secs(10))).unwrap();
+            let mut request = Vec::new();
+            let mut byte = [0u8; 1];
+            while !request.ends_with(b"\r\n\r\n") {
+                socket.read_exact(&mut byte).unwrap();
+                request.push(byte[0]);
+                assert!(request.len() <= 8192, "test HTTP request header exceeded its limit");
+            }
+            socket.write_all(b"HTTP/1.1 200 OK\r\nContent-Length: 100\r\nConnection: close\r\n\r\nshort").unwrap();
+            socket.shutdown(std::net::Shutdown::Write).unwrap();
+        });
+
+        let test = format!(
+            "{POLICY}\n{}",
+            r#"
+$request = [Net.HttpWebRequest]::Create('http://127.0.0.1:PORT_TOKEN/truncated')
+$request.Proxy = $null
+$request.Credentials = $null
+$request.AllowAutoRedirect = $false
+$request.Timeout = 60000
+$request.ReadWriteTimeout = 60000
+$response = $request.GetResponse()
+$memory = [IO.MemoryStream]::new()
+try {
+    $caught = $false
+    try { $null = Copy-ArtCraftLoopbackResponse $response $memory }
+    catch {
+        if ($_.Exception.Message -cne 'Truncated package stream') { throw "Unexpected truncated-stream error: $($_.Exception)" }
+        $caught = $true
+    }
+    if (-not $caught) { throw 'The production loopback reader accepted a short body' }
+    if ($memory.Length -ne 5) { throw "Unexpected staged byte count $($memory.Length)" }
+    'Windows PowerShell 5.1 production reader rejected truncated HTTP body before MSI validation'
+} finally { $memory.Dispose(); $response.Dispose() }
+"#
+            .replace("PORT_TOKEN", &port.to_string())
+        );
+        let output = run_powershell_test(&test);
+        server.join().expect("truncated response server failed");
+        assert_powershell_output_contains(&output, "rejected truncated HTTP body before MSI validation");
+    }
+
+    #[test]
+    /// Preserves cancellation and reboot-required codes as distinct per-app outcomes.
+    fn cancellation_and_reboot_codes_are_preserved() {
+        assert_eq!(msi_outcome(Some(3010)), Ok(()));
+        assert_eq!(msi_outcome(Some(1641)), Ok(()));
+        assert_eq!(msi_outcome(Some(1223)), Err("cancelled".into()));
+        assert!(msi_outcome(Some(1618)).unwrap_err().contains("another installation"));
+    }
+}

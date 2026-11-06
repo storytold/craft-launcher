@@ -169,6 +169,7 @@
 	Retry update to {version}	Update auf {version} wiederholen
 	The download is still here. It's checked again, then installed.	Der Download ist noch da. Er wird erneut geprüft und dann installiert.
 	Waiting for another app…	Warten auf eine andere App…
+	Waiting for permission…	Warten auf Berechtigung…
 	Waiting for other installs…	Warten auf andere Installationen…
 
 # Package formats offered for download (PackageKind::label)
@@ -432,3 +433,6 @@ materialcraft	Preview materials in 2D and on 3D models.	Materialien in 2D und au
 	Migrate Flatpak bundles to ArtCraft OCI (experimental)	Flatpak-Bundles zu ArtCraft OCI migrieren (experimentell)
 	On update, switch first party apps when the matching package is available. Otherwise, keep using bundles.	ArtCraft-Apps beim Aktualisieren umstellen, wenn das passende Paket verfügbar ist. Andernfalls weiterhin Bundles verwenden.
 	The OCI repository is a preview with GPG verification disabled.	Das OCI-Repository ist eine Vorschau mit deaktivierter GPG-Prüfung.
+	Automatic Windows updates	Automatische Windows-Updates
+	Some automatic Windows updates install apps for everyone on this PC and may require administrator permission. Your system may handle permission without showing a prompt.	Einige automatische Windows-Updates installieren Apps für alle Nutzer dieses PCs und benötigen möglicherweise Administratorrechte. Das System kann die Berechtigung auch ohne angezeigte Rückfrage erteilen.
+	Install updates	Updates installieren

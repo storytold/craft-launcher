@@ -29,6 +29,11 @@ pub enum Command {
     Install {
         app: String,
     },
+    /// Install every app selected by one Update all action. Windows reserves the full set before
+    /// starting workers so eligible machine-wide MSIs share one consent session.
+    InstallAll {
+        apps: Vec<String>,
+    },
     /// `Install`, writing over what [`Event::Occupied`] reported. `path` is the path the user
     /// agreed to overwrite: if the install would now write somewhere else, nothing is replaced and
     /// the user is asked again.
@@ -131,9 +136,20 @@ pub enum JobPhase {
     Verifying,
     /// The system's installer is busy with another app; this one goes next.
     Waiting,
+    /// The one operating-system approval for a batch of machine-wide MSI updates is pending.
+    Permission,
     /// Waiting on the OS installer (MSI) or copying files.
     Installing,
     Removing,
+}
+
+/// A one-off action on an installed app, distinct from an install/update job.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum AppAction {
+    /// Open the installed application.
+    Launch,
+    /// Show the installed application's location in the file manager.
+    Reveal,
 }
 
 /// A partly downloaded file waiting to be resumed.
@@ -257,10 +273,17 @@ pub enum Event {
         app: String,
         path: String,
     },
-    /// A job ended: `Ok` carries a short success message, `Err` what went wrong.
+    /// An install, update, replace, uninstall or launcher-update job ended: `Ok` carries a short
+    /// success message, `Err` what went wrong. Launch and reveal actions use [`Event::AppActionFailed`].
     JobFinished {
         app: String,
         result: Result<String, String>,
+    },
+    /// A launch or reveal action failed. This does not finish an install, update or uninstall job.
+    AppActionFailed {
+        app: String,
+        action: AppAction,
+        error: String,
     },
     /// One picture of an app's details page, or why it couldn't be had (offline, not published,
     /// not a JPEG). `key` is the [`crate::details::Shot::key`].

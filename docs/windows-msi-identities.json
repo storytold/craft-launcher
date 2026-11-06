@@ -1,0 +1,87 @@
+{
+  "inspection_date": "2026-10-23",
+  "methods": [
+    "Published SHA256SUMS.txt matched using hashlib SHA-256",
+    "MSI Property table independently read using libmsi/msiinfo 0.106",
+    "Signer extracted from Authenticode CMS using osslsigncode 2.9 and OpenSSL; issuer/serial matched to the signer",
+    "Windows Authenticode Valid status must be confirmed by native E2E; Linux CA roots were not changed"
+  ],
+  "packages": [
+    {
+      "asset": "photocraft-0.13.0-windows-x64.msi",
+      "sha256": "394d59361459eb2ff5d7e0aaff4f121c1ae04c17a2d7fb41bc929cc737d5820b",
+      "certificate": {
+        "subject": "CN=Learning Machines Inc,O=Learning Machines Inc,L=Atlanta,ST=Georgia,C=US",
+        "issuer": "CN=Microsoft ID Verified CS AOC CA 03,O=Microsoft Corporation,C=US",
+        "serial": "330009192821474F0E21EDFC8B000000091928",
+        "thumbprint": "0F52B93A635EFA09AF6036A4DD4977683B4FB7E2"
+      },
+      "properties": {
+        "ALLUSERS": "1",
+        "Manufacturer": "Learning Machines LLC",
+        "ProductCode": "{01877E0F-A286-4F0A-AE27-ABCCA3398717}",
+        "ProductName": "PhotoCraft",
+        "ProductVersion": "0.13.0",
+        "MSIINSTALLPERUSER": null
+      },
+      "url": "https://github.com/storytold/photocraft/releases/download/v0.13.0/photocraft-0.13.0-windows-x64.msi"
+    },
+    {
+      "asset": "photocraft-0.14.0-windows-x64.msi",
+      "sha256": "a25a2a15c85dd0563f817e206da125ef594a7c8020f34301c1ff67767b2b8d6f",
+      "certificate": {
+        "subject": "CN=Learning Machines Inc,O=Learning Machines Inc,L=Atlanta,ST=Georgia,C=US",
+        "issuer": "CN=Microsoft ID Verified CS AOC CA 03,O=Microsoft Corporation,C=US",
+        "serial": "330009192821474F0E21EDFC8B000000091928",
+        "thumbprint": "0F52B93A635EFA09AF6036A4DD4977683B4FB7E2"
+      },
+      "properties": {
+        "ALLUSERS": "1",
+        "Manufacturer": "Learning Machines LLC",
+        "ProductCode": "{7A01945A-BA31-4D22-8887-490732BE22D0}",
+        "ProductName": "PhotoCraft",
+        "ProductVersion": "0.14.0",
+        "MSIINSTALLPERUSER": null
+      },
+      "url": "https://github.com/storytold/photocraft/releases/download/v0.14.0/photocraft-0.14.0-windows-x64.msi"
+    },
+    {
+      "asset": "vectorcraft-0.15.0-windows-x64.msi",
+      "sha256": "1dcba92d3ccbd758ed27df294081350a2a5192557e7af61df41f7ae0a5fa58c0",
+      "certificate": {
+        "subject": "CN=Learning Machines Inc,O=Learning Machines Inc,L=Atlanta,ST=Georgia,C=US",
+        "issuer": "CN=Microsoft ID Verified CS AOC CA 03,O=Microsoft Corporation,C=US",
+        "serial": "330009192821474F0E21EDFC8B000000091928",
+        "thumbprint": "0F52B93A635EFA09AF6036A4DD4977683B4FB7E2"
+      },
+      "properties": {
+        "ALLUSERS": "1",
+        "Manufacturer": "Learning Machines LLC",
+        "ProductCode": "{C943F536-94CF-4C3A-8CED-980934ECA5F7}",
+        "ProductName": "VectorCraft",
+        "ProductVersion": "0.15.0",
+        "MSIINSTALLPERUSER": null
+      },
+      "url": "https://github.com/storytold/vectorcraft/releases/download/v0.15.0/vectorcraft-0.15.0-windows-x64.msi"
+    },
+    {
+      "asset": "vectorcraft-0.16.0-windows-x64.msi",
+      "sha256": "49106b24990d508115fe86165d56cca511b2eda24d7324b3c6d40f81eb6f472d",
+      "certificate": {
+        "subject": "CN=Learning Machines Inc,O=Learning Machines Inc,L=Atlanta,ST=Georgia,C=US",
+        "issuer": "CN=Microsoft ID Verified CS AOC CA 03,O=Microsoft Corporation,C=US",
+        "serial": "330009192821474F0E21EDFC8B000000091928",
+        "thumbprint": "0F52B93A635EFA09AF6036A4DD4977683B4FB7E2"
+      },
+      "properties": {
+        "ALLUSERS": "1",
+        "Manufacturer": "Learning Machines LLC",
+        "ProductCode": "{FA495386-5672-4531-A90C-478ED8384DA2}",
+        "ProductName": "VectorCraft",
+        "ProductVersion": "0.16.0",
+        "MSIINSTALLPERUSER": null
+      },
+      "url": "https://github.com/storytold/vectorcraft/releases/download/v0.16.0/vectorcraft-0.16.0-windows-x64.msi"
+    }
+  ]
+}
