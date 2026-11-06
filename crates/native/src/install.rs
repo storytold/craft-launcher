@@ -504,9 +504,36 @@ fn record(version: &str, kind: PackageKind, path: PathBuf, files: Vec<PathBuf>, 
 /// Returns an empty `Vec` when `app` is already installed outside the launcher (such as an AUR
 /// or repository Arch package) and must not be updated or replaced by the launcher.
 pub fn choose_kinds(app: &CraftApp, existing: Option<&Installed>, record: Option<&Record>, preferred: &[PackageKind]) -> Vec<PackageKind> {
-    let available = available_kinds();
-    let can_pacman = available.contains(&PackageKind::ArchPkg) || can_pacman();
-    choose_kinds_with(app, existing, record, preferred, &available, can_pacman)
+    choose_kinds_on(app, existing, record, preferred, &SystemKinds::now())
+}
+
+/// What this system can install: its package formats ([`available_kinds`]) and whether pacman can
+/// take the release's own Arch package. Asking can run a program on the host (inside the Flatpak
+/// sandbox), so a question asked for every app on every check keeps one for a while.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct SystemKinds {
+    pub available: Vec<PackageKind>,
+    pub can_pacman: bool,
+}
+
+impl SystemKinds {
+    /// Asks this system now.
+    pub fn now() -> Self {
+        let available = available_kinds();
+        let can_pacman = available.contains(&PackageKind::ArchPkg) || can_pacman();
+        Self { available, can_pacman }
+    }
+}
+
+/// [`choose_kinds`] on what `system` can install, without asking it again.
+pub fn choose_kinds_on(
+    app: &CraftApp,
+    existing: Option<&Installed>,
+    record: Option<&Record>,
+    preferred: &[PackageKind],
+    system: &SystemKinds,
+) -> Vec<PackageKind> {
+    choose_kinds_with(app, existing, record, preferred, &system.available, system.can_pacman)
 }
 
 pub(crate) fn choose_kinds_with(
@@ -628,6 +655,13 @@ fn published_checksum(release: &Release, asset: &Asset, http: &Http) -> Result<O
 /// builds as the user and can't run behind the password prompt) for anything else.
 pub fn managed_elsewhere(app: &CraftApp, installed: &Installed, uninstall: bool) -> Option<String> {
     managed_elsewhere_with(app, installed, uninstall, pacman_repo)
+}
+
+/// Whether the launcher leaves `installed` to whatever installed it, as [`managed_elsewhere`]
+/// says, without asking pacman which repository to name in the message: for a question that only
+/// needs the answer, such as whether an update can be installed.
+pub fn is_managed_elsewhere(app: &CraftApp, installed: &Installed) -> bool {
+    managed_elsewhere_with(app, installed, false, |_| None).is_some()
 }
 
 fn managed_elsewhere_with(app: &CraftApp, installed: &Installed, uninstall: bool, repo_fn: impl Fn(&str) -> Option<String>) -> Option<String> {
@@ -757,8 +791,8 @@ fn remove_appimage(app: &CraftApp, path: &Path, record: Option<&Record>) -> Resu
     Ok(())
 }
 
-/// Starts an installed app.
-pub fn launch(app: &CraftApp, installed: &Installed, paths: &Paths) -> Result<(), String> {
+/// Starts an installed app with `args` (the user's launch flags) on its command line.
+pub fn launch(app: &CraftApp, installed: &Installed, paths: &Paths, args: &[String]) -> Result<(), String> {
     let _ = paths;
     let path = Path::new(&installed.location);
     // Every app is told where the shared version-choice file is (see `craft_update::pins`), so
@@ -773,11 +807,13 @@ pub fn launch(app: &CraftApp, installed: &Installed, paths: &Paths) -> Result<()
             cmd.args(process::env_args(&env));
             // The id detection found it under, which may be one of the app's older ones.
             cmd.arg(installed.package.clone().unwrap_or_else(|| app.bundle_id()));
+            // After the app's id: flags before it would go to `flatpak run` itself.
+            cmd.args(args);
             process::spawn_detached(cmd)
         }
         // `open` starts the app through Launch Services, which gives it the user's real home, so
         // it finds the file at its default path; not every macOS `open` takes an environment.
-        InstallSource::MacApp => process::open(path.as_os_str()),
+        InstallSource::MacApp => process::open_app(path, args),
         // A tarball the launcher unpacked into its own folder: run it here, against its own
         // home, rather than on the host through `flatpak-spawn` (which is what `launch_binary`
         // would do inside the sandbox). Its settings then land beside it instead of in the
@@ -787,6 +823,7 @@ pub fn launch(app: &CraftApp, installed: &Installed, paths: &Paths) -> Result<()
             let home = paths.app_home(app.id);
             prepare_home(&home);
             let mut cmd = process::command(path);
+            cmd.args(args);
             for (name, value) in home_env(&home) {
                 cmd.env(name, value);
             }
@@ -798,7 +835,7 @@ pub fn launch(app: &CraftApp, installed: &Installed, paths: &Paths) -> Result<()
             }
             process::spawn_detached(cmd)
         }
-        _ if cfg!(target_os = "macos") && path.extension().is_some_and(|e| e == "app") => process::open(path.as_os_str()),
+        _ if cfg!(target_os = "macos") && path.extension().is_some_and(|e| e == "app") => process::open_app(path, args),
         _ => {
             if !path.exists() {
                 if cfg!(windows) && installed.source == InstallSource::Msi && path.components().count() < 2 {
@@ -809,7 +846,7 @@ pub fn launch(app: &CraftApp, installed: &Installed, paths: &Paths) -> Result<()
                 }
                 return Err(format!("{} isn't where it was installed ({})", app.name, path.display()));
             }
-            process::launch_binary_with_env(path, &[], &env)
+            process::launch_binary_with_env(path, args, &env)
         }
     }
     .map_err(|e| format!("Couldn't open {}: {e}", app.name))

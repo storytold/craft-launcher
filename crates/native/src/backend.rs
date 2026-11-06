@@ -52,6 +52,16 @@ type Waker = Arc<dyn Fn() + Send + Sync>;
 
 struct Shared {
     events: Mutex<Vec<Event>>,
+    /// Held while an app's latest release or installed copy changes and its [`Event::Installable`]
+    /// is worked out and queued, so no answer from older state lands after a newer one. Always
+    /// taken first, before any other lock here.
+    reporting: Mutex<()>,
+    /// Held while a report of what an app's install would download is worked out and sent
+    /// ([`report_partial`]), so one worked out from older settings or state can't land after a newer
+    /// one. Taken before `reporting`.
+    planning: Mutex<()>,
+    /// What this system could install, and when that was asked ([`Shared::system_kinds`]).
+    system: Mutex<Option<(Instant, install::SystemKinds)>>,
     waker: Waker,
     latest: Mutex<HashMap<String, Release>>,
     installed: Mutex<HashMap<String, Installed>>,
@@ -118,9 +128,50 @@ impl Drop for JobGuard {
     }
 }
 
+/// How long the installability answer trusts what this system could install ([`Shared::system_kinds`]).
+const SYSTEM_KINDS_FOR: Duration = Duration::from_secs(60);
+
 impl Shared {
+    /// What this system can install, asked again at most once a [`SYSTEM_KINDS_FOR`]: inside the
+    /// Flatpak sandbox asking runs a program on the host (up to 3 s), and the installability answer
+    /// is worked out for each installed app on every check. An install still asks afresh. Always
+    /// asked before `reporting` is taken. [`report_partial`] asks it holding `planning`, which only
+    /// its own worker threads take.
+    fn system_kinds(&self) -> install::SystemKinds {
+        if let Some((at, kinds)) = self.system.lock().unwrap_or_else(PoisonError::into_inner).as_ref()
+            && at.elapsed() < SYSTEM_KINDS_FOR
+        {
+            return kinds.clone();
+        }
+        let kinds = install::SystemKinds::now();
+        *self.system.lock().unwrap_or_else(PoisonError::into_inner) = Some((Instant::now(), kinds.clone()));
+        kinds
+    }
+
+    /// What this system could install when last asked, however long ago, for an answer worked out
+    /// holding `reporting`: no probe runs there. A copy only enters `installed` through
+    /// [`publish_detected`], which asks [`Self::system_kinds`] first, so with a copy installed
+    /// there is always a view; without one (never in practice) nothing installs.
+    fn last_system_kinds(&self) -> install::SystemKinds {
+        self.system
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .as_ref()
+            .map_or_else(|| install::SystemKinds { available: Vec::new(), can_pacman: false }, |(_, kinds)| kinds.clone())
+    }
+
+    /// Whether some copy of `app` is installed (as last detected).
+    fn has_copy(&self, app: &CraftApp) -> bool {
+        self.installed.lock().unwrap_or_else(PoisonError::into_inner).contains_key(app.id)
+    }
+
     fn emit(&self, event: Event) {
-        self.events.lock().unwrap_or_else(PoisonError::into_inner).push(event);
+        self.emit_all([event]);
+    }
+
+    /// Queues `events` together: a poll sees all of them or none.
+    fn emit_all(&self, events: impl IntoIterator<Item = Event>) {
+        self.events.lock().unwrap_or_else(PoisonError::into_inner).extend(events);
         (self.waker)();
     }
 }
@@ -155,6 +206,9 @@ impl NativeBackend {
             http.clone().map(|h| Arc::new(GitHubSource::new(h, paths.release_cache())) as Arc<dyn ReleaseSource>);
         let shared = Arc::new(Shared {
             events: Mutex::new(Vec::new()),
+            reporting: Mutex::new(()),
+            system: Mutex::new(None),
+            planning: Mutex::new(()),
             waker,
             latest: Mutex::new(HashMap::new()),
             installed: Mutex::new(HashMap::new()),
@@ -188,7 +242,8 @@ impl NativeBackend {
     /// Shows the saved answers from the last run straight away, before any network request: the
     /// release feed's where they're still fresh, GitHub's otherwise.
     fn replay_cache(&self) {
-        let pre = self.options().prereleases;
+        let options = self.options();
+        let pre = options.prereleases;
         let feed = if pre { None } else { load_feed(&self.paths) };
         let now = crate::now();
         for app in &SUITE {
@@ -198,15 +253,25 @@ impl NativeBackend {
                 _ => self.source.as_ref().and_then(|s| s.cached(&feed_repo(feed.as_ref(), app), pre)).map(|l| (l, Origin::GitHub)),
             };
             if let Some((latest, from)) = answer {
-                if let LatestRelease::Found(r) = &latest {
-                    self.shared.latest.lock().unwrap_or_else(PoisonError::into_inner).insert(app.id.to_string(), r.clone());
-                }
-                self.shared.emit(Event::Latest { app: app.id.to_string(), latest, from });
+                publish_latest(app, latest, from, &self.shared, self.platform);
             }
         }
         if let Some(f) = feed {
             self.shared.emit(Event::Notices { announcements: f.announcements, alerts: f.alerts });
         }
+    }
+
+    /// Works out again, off the UI thread, what each app's install would download, and tells the
+    /// UI ([`report_partial`]): inside the Flatpak sandbox that asks the host (up to 3 s an app).
+    fn replan(&self) {
+        let shared = self.shared.clone();
+        let paths = self.paths.clone();
+        let platform = self.platform;
+        std::thread::spawn(move || {
+            for app in &SUITE {
+                report_partial(app, &shared, &paths, platform);
+            }
+        });
     }
 
     fn options(&self) -> BackendOptions {
@@ -221,7 +286,6 @@ impl NativeBackend {
         let busy = BusyGuard { shared: shared.clone(), flag: BusyFlag::Detecting };
         let paths = self.paths.clone();
         let platform = self.platform;
-        let options = self.options();
         std::thread::spawn(move || {
             let busy = busy;
             // Leftovers from interrupted installs or older versions of the launcher. A paused
@@ -231,18 +295,11 @@ impl NativeBackend {
             let manifest = shared.manifest.lock().unwrap_or_else(PoisonError::into_inner).clone();
             for app in &SUITE {
                 let found = crate::detect::detect(app, &manifest, &snapshot);
-                {
-                    let mut map = shared.installed.lock().unwrap_or_else(PoisonError::into_inner);
-                    match &found {
-                        Some(i) => map.insert(app.id.to_string(), i.clone()),
-                        None => map.remove(app.id),
-                    };
-                }
-                shared.emit(Event::Detected { app: app.id.to_string(), installed: found });
+                publish_detected(app, found, &shared, platform);
             }
             // Downloads paused (or cut off by quitting) in an earlier run.
             for app in &SUITE {
-                report_partial(app, &shared, &paths, platform, &options);
+                report_partial(app, &shared, &paths, platform);
             }
             drop(busy);
         });
@@ -283,7 +340,7 @@ impl NativeBackend {
             }
             let now = crate::now();
             let queue = Mutex::new(SUITE.iter().chain(std::iter::once(&LAUNCHER)).collect::<Vec<&CraftApp>>());
-            let sources = sweep(&queue, &mirror, feed.as_ref(), fallback, &source, &shared, &paths, &options, force, now);
+            let sources = sweep(&queue, &mirror, feed.as_ref(), fallback, &source, &shared, &paths, (platform, &options), force, now);
             source.save();
             {
                 let answered = shared.answered.lock().unwrap_or_else(PoisonError::into_inner);
@@ -292,9 +349,8 @@ impl NativeBackend {
                 }
             }
             // A newer release changes which file an install would use.
-            let options = shared.options.lock().unwrap_or_else(PoisonError::into_inner).clone();
             for app in &SUITE {
-                report_partial(app, &shared, &paths, platform, &options);
+                report_partial(app, &shared, &paths, platform);
             }
             let source_used = source_used_of(&sources);
             let at = crate::now();
@@ -375,7 +431,7 @@ impl NativeBackend {
                     other => other,
                 }
             };
-            report_partial(app, &shared, &paths, platform, &options);
+            report_partial(app, &shared, &paths, platform);
             // Look again: the result is whatever is on disk now.
             let manifest = shared.manifest.lock().unwrap_or_else(PoisonError::into_inner).clone();
             let found = crate::detect::detect(app, &manifest, &crate::detect::Snapshot::take());
@@ -390,14 +446,7 @@ impl NativeBackend {
                 }
                 (result, _) => result,
             };
-            {
-                let mut map = shared.installed.lock().unwrap_or_else(PoisonError::into_inner);
-                match &found {
-                    Some(i) => map.insert(app.id.to_string(), i.clone()),
-                    None => map.remove(app.id),
-                };
-            }
-            shared.emit(Event::Detected { app: app.id.to_string(), installed: found });
+            publish_detected(app, found, &shared, platform);
             drop(job);
             shared.emit(Event::JobFinished { app: app.id.to_string(), result });
         });
@@ -502,6 +551,90 @@ fn downgrade_previous(
     })
 }
 
+/// What an install does with a Flatpak its repository updates: `flatpak update`, on Linux, and
+/// only on the stable track (it follows the repository's latest build, never a pinned or nightly
+/// one). `None` for any other copy, which [`install_plan`] decides; else the copy, or why the
+/// update can't run. [`run_install`] and the UI's [`Event::Installable`] both ask this.
+fn repository_update<'a>(app: &CraftApp, existing: Option<&'a Installed>, options: &BackendOptions) -> Option<Result<&'a Installed, String>> {
+    let inst = existing.filter(|i| i.source == artcraft_launcher_core::InstallSource::Flatpak && i.externally_managed)?;
+    Some(if !matches!(options.versions.get(app.id), None | Some(VersionTrack::Stable)) {
+        Err(install::managed_elsewhere(app, inst, false).unwrap_or_else(|| "Update this app through its Flatpak repository".into()))
+    } else if !cfg!(target_os = "linux") {
+        Err(flatpak_unsupported(app))
+    } else {
+        Ok(inst)
+    })
+}
+
+/// Why a Flatpak can't be updated on a system without Flatpak.
+fn flatpak_unsupported(app: &CraftApp) -> String {
+    format!("{} is a Flatpak, which is not supported on this platform", app.name)
+}
+
+/// Who asks [`install_plan`].
+#[derive(Clone, Copy, Debug)]
+enum Asking<'a> {
+    /// An install: it asks this system what it can install now, and explains a refusal in full.
+    Install,
+    /// The installability answer: what this system could install a moment ago
+    /// ([`Shared::system_kinds`]), and only whether a refusal would come.
+    Answer(&'a install::SystemKinds),
+}
+
+/// What an install of `app` would download, worked out from what is installed and chosen
+/// before anything is fetched.
+struct InstallPlan {
+    release: Release,
+    platform: Platform,
+    asset: Asset,
+    kind: PackageKind,
+}
+
+/// The checks an install makes before it downloads anything: a copy installed outside the
+/// launcher (a system binary, a repository package) isn't replaced; the release must be known and
+/// on the chosen version track; and it must have a package that can replace the copy the way it
+/// was installed. [`run_install`] and the UI's [`Event::Installable`] both ask this, so the UI
+/// never offers an update the install would refuse.
+fn install_plan(
+    app: &CraftApp,
+    latest: Option<Release>,
+    platform: Option<Platform>,
+    options: &BackendOptions,
+    (existing, record): (Option<&Installed>, Option<&crate::manifest::Record>),
+    asking: Asking<'_>,
+) -> Result<InstallPlan, String> {
+    let managed = existing.and_then(|e| match asking {
+        Asking::Install => install::managed_elsewhere(app, e, false),
+        // No pacman lookup for the wording of a refusal: only yes or no is wanted.
+        Asking::Answer(_) => install::is_managed_elsewhere(app, e).then(String::new),
+    });
+    if let Some(msg) = managed {
+        return Err(msg);
+    }
+    let platform = platform.ok_or("this system isn't supported")?;
+    let release = latest.ok_or("the selected release hasn't been found yet. Check for updates first.")?;
+    let track = options.versions.get(app.id).unwrap_or(&VersionTrack::Stable);
+    if !release_matches_track(&release, track, options.prereleases) {
+        return Err("the selected version isn't available yet. Check for updates before installing.".into());
+    }
+    let system = match asking {
+        Asking::Install => None,
+        Asking::Answer(system) => Some(system),
+    };
+    let (asset, kind) = planned_asset_on(app, &release, platform, options, (existing, record), system).ok_or_else(|| {
+        if platform.os == artcraft_launcher_core::Os::Linux
+            && options.install_locations.folder(app.id).is_some()
+            && existing.is_none()
+            && record.is_none()
+        {
+            "this release has no AppImage for a custom install folder".to_string()
+        } else {
+            format!("{} {} has no download for {}", app.name, release.version_label(), platform.label())
+        }
+    })?;
+    Ok(InstallPlan { release, platform, asset, kind })
+}
+
 #[allow(clippy::too_many_arguments)]
 fn run_install(
     app: &CraftApp,
@@ -516,14 +649,8 @@ fn run_install(
     approved: Option<&str>,
     source: Option<&dyn ReleaseSource>,
 ) -> Result<String, String> {
-    if let Some(inst) = existing
-        && inst.source == artcraft_launcher_core::InstallSource::Flatpak
-        && inst.externally_managed
-    {
-        // `flatpak update` only follows the repository's latest build, never a pinned or nightly track.
-        if !matches!(options.versions.get(app.id), None | Some(VersionTrack::Stable)) {
-            return Err(install::managed_elsewhere(app, inst, false).unwrap_or_else(|| "Update this app through its Flatpak repository".into()));
-        }
+    if let Some(update) = repository_update(app, existing, options) {
+        let inst = update?;
         #[cfg(target_os = "linux")]
         {
             shared.emit(Event::Progress { app: app.id.to_string(), phase: JobPhase::Installing });
@@ -545,35 +672,15 @@ fn run_install(
             });
         }
         #[cfg(not(target_os = "linux"))]
-        return Err(format!("{} is a Flatpak, which is not supported on this platform", app.name));
-    }
-    if let Some(msg) = existing.and_then(|e| install::managed_elsewhere(app, e, false)) {
-        return Err(msg);
-    }
-    let http = http.ok_or("secure connections aren't available on this system")?;
-    let platform = platform.ok_or("this system isn't supported")?;
-    let release = shared
-        .latest
-        .lock()
-        .unwrap_or_else(PoisonError::into_inner)
-        .get(app.id)
-        .cloned()
-        .ok_or("the selected release hasn't been found yet. Check for updates first.")?;
-    let track = options.versions.get(app.id).unwrap_or(&VersionTrack::Stable);
-    if !release_matches_track(&release, track, options.prereleases) {
-        return Err("the selected version isn't available yet. Check for updates before installing.".into());
-    }
-    let (asset, kind) = planned_asset(app, &release, platform, options, existing, record).ok_or_else(|| {
-        if platform.os == artcraft_launcher_core::Os::Linux
-            && options.install_locations.folder(app.id).is_some()
-            && existing.is_none()
-            && record.is_none()
         {
-            "this release has no AppImage for a custom install folder".to_string()
-        } else {
-            format!("{} {} has no download for {}", app.name, release.version_label(), platform.label())
+            let _ = inst;
+            return Err(flatpak_unsupported(app));
         }
-    })?;
+    }
+    let latest = shared.latest.lock().unwrap_or_else(PoisonError::into_inner).get(app.id).cloned();
+    let InstallPlan { release, platform, asset, kind } = install_plan(app, latest, platform, options, (existing, record), Asking::Install)?;
+    let http = http.ok_or("secure connections aren't available on this system")?;
+    let track = options.versions.get(app.id).unwrap_or(&VersionTrack::Stable);
     // Going back to a version chosen by name. A macOS bundle or a launcher AppImage keeps the old
     // copy until the new one is in place. Otherwise the installed version's own package is found
     // first, so a downgrade that fails can put it back. Without it nothing changes.
@@ -748,6 +855,18 @@ fn planned_asset(
     existing: Option<&Installed>,
     record: Option<&crate::manifest::Record>,
 ) -> Option<(Asset, PackageKind)> {
+    planned_asset_on(app, release, platform, options, (existing, record), None)
+}
+
+/// [`planned_asset`], on what `system` can install when given (else asking this system now).
+fn planned_asset_on(
+    app: &CraftApp,
+    release: &Release,
+    platform: Platform,
+    options: &BackendOptions,
+    (existing, record): (Option<&Installed>, Option<&crate::manifest::Record>),
+    system: Option<&install::SystemKinds>,
+) -> Option<(Asset, PackageKind)> {
     let stems: Vec<&str> = app.stems().collect();
     let custom_linux = platform.os == artcraft_launcher_core::Os::Linux
         && !process::in_sandbox()
@@ -759,14 +878,81 @@ fn planned_asset(
     } else if custom_linux {
         vec![artcraft_launcher_core::PackageKind::AppImage]
     } else {
-        install::choose_kinds(app, existing, record, &options.kinds)
+        match system {
+            Some(system) => install::choose_kinds_on(app, existing, record, &options.kinds, system),
+            None => install::choose_kinds(app, existing, record, &options.kinds),
+        }
     };
     pick_asset(release, &stems, platform, &kinds).map(|(a, k)| (a.clone(), k))
 }
 
-/// Tells the UI whether `app` has a paused download waiting, or a finished one to install.
-fn report_partial(app: &CraftApp, shared: &Shared, paths: &Paths, platform: Option<Platform>, options: &BackendOptions) {
-    let planned = planned_download(app, shared, paths, platform, options);
+/// Tells the UI whether installing `app` would go ahead now ([`Event::Installable`]): the same
+/// [`install_plan`] an install makes, for the copy that is installed. Nothing is said until its
+/// release is known, or while nothing is installed (the UI only uses it for an installed copy).
+fn report_installable(app: &CraftApp, shared: &Shared, platform: Option<Platform>) {
+    let system = shared.has_copy(app).then(|| shared.system_kinds());
+    let _reporting = shared.reporting.lock().unwrap_or_else(PoisonError::into_inner);
+    shared.emit_all(installable_event(app, shared, platform, system));
+}
+
+/// [`report_installable`]'s answer from the shared state as it is, with the current settings:
+/// whether [`install_plan`] would let an install go ahead. `system` is what this system can
+/// install, asked before `reporting` was taken; when a copy appeared since, the view its detection
+/// asked for is used, so nothing is probed here. The caller holds `reporting`.
+fn installable_event(app: &CraftApp, shared: &Shared, platform: Option<Platform>, system: Option<install::SystemKinds>) -> Option<Event> {
+    let existing = shared.installed.lock().unwrap_or_else(PoisonError::into_inner).get(app.id).cloned()?;
+    let release = shared.latest.lock().unwrap_or_else(PoisonError::into_inner).get(app.id).cloned()?;
+    let record = shared.manifest.lock().unwrap_or_else(PoisonError::into_inner).apps.get(app.id).cloned();
+    let options = shared.options.lock().unwrap_or_else(PoisonError::into_inner).clone();
+    let installable = match repository_update(app, Some(&existing), &options) {
+        // Updated with `flatpak update`: nothing is downloaded, so nothing to ask the system.
+        Some(update) => update.is_ok(),
+        None => {
+            // A copy appeared after the caller looked: what was asked moments ago, not a probe here.
+            let system = system.unwrap_or_else(|| shared.last_system_kinds());
+            install_plan(app, Some(release), platform, &options, (Some(&existing), record.as_ref()), Asking::Answer(&system)).is_ok()
+        }
+    };
+    Some(Event::Installable { app: app.id.to_string(), installable })
+}
+
+/// Records `app`'s latest release and tells the UI, with whether an install would go ahead with
+/// it, in one batch: the UI never sees the release without its answer.
+fn publish_latest(app: &CraftApp, latest: LatestRelease, from: Origin, shared: &Shared, platform: Option<Platform>) {
+    let system = shared.has_copy(app).then(|| shared.system_kinds());
+    let _reporting = shared.reporting.lock().unwrap_or_else(PoisonError::into_inner);
+    if let LatestRelease::Found(r) = &latest {
+        shared.latest.lock().unwrap_or_else(PoisonError::into_inner).insert(app.id.to_string(), r.clone());
+    }
+    let installable = installable_event(app, shared, platform, system);
+    shared.emit_all(installable.into_iter().chain([Event::Latest { app: app.id.to_string(), latest, from }]));
+}
+
+/// Records what is installed of `app` (`found`) and tells the UI, with whether an install would
+/// go ahead to replace it, in one batch.
+fn publish_detected(app: &CraftApp, found: Option<Installed>, shared: &Shared, platform: Option<Platform>) {
+    let system = found.is_some().then(|| shared.system_kinds());
+    let _reporting = shared.reporting.lock().unwrap_or_else(PoisonError::into_inner);
+    {
+        let mut map = shared.installed.lock().unwrap_or_else(PoisonError::into_inner);
+        match &found {
+            Some(i) => map.insert(app.id.to_string(), i.clone()),
+            None => map.remove(app.id),
+        };
+    }
+    let installable = installable_event(app, shared, platform, system);
+    shared.emit_all(installable.into_iter().chain([Event::Detected { app: app.id.to_string(), installed: found }]));
+}
+
+/// Tells the UI whether `app` has a paused download waiting, or a finished one to install, and
+/// whether an install would go ahead at all (the package choices may have changed). Worked out
+/// with the settings and state as they are now, one report at a time (`planning`), so a worker
+/// that started before a settings change never has the last word.
+fn report_partial(app: &CraftApp, shared: &Shared, paths: &Paths, platform: Option<Platform>) {
+    let _one_at_a_time = shared.planning.lock().unwrap_or_else(PoisonError::into_inner);
+    let options = shared.options.lock().unwrap_or_else(PoisonError::into_inner).clone();
+    report_installable(app, shared, platform);
+    let planned = planned_download(app, shared, paths, platform, &options);
     let download = planned.as_ref().and_then(|(dest, size)| Some(PausedDownload { done: http::partial_bytes(dest, *size)?, total: *size }));
     shared.emit(Event::Paused { app: app.id.to_string(), download });
     let ready = planned.is_some_and(|(dest, size)| http::finished(&dest, size));
@@ -812,7 +998,7 @@ fn sweep(
     source: &Arc<dyn ReleaseSource>,
     shared: &Arc<Shared>,
     paths: &Paths,
-    options: &BackendOptions,
+    (platform, options): (Option<Platform>, &BackendOptions),
     force: bool,
     now: i64,
 ) -> Vec<Source> {
@@ -835,7 +1021,7 @@ fn sweep(
                     if let Some(used) = used {
                         sources.lock().unwrap_or_else(PoisonError::into_inner).push(used);
                     }
-                    check_app(app, latest, from, shared, paths);
+                    check_app(app, latest, from, shared, paths, platform);
                 }
             });
         }
@@ -845,19 +1031,16 @@ fn sweep(
 
 /// Publishes one app's answer to the shared state, or handles the launcher's own update check
 /// first (it doesn't appear in the grid, so it has no card of its own to publish to).
-fn check_app(app: &'static CraftApp, latest: Option<LatestRelease>, from: Origin, shared: &Arc<Shared>, paths: &Paths) {
+fn check_app(app: &'static CraftApp, latest: Option<LatestRelease>, from: Origin, shared: &Arc<Shared>, paths: &Paths, platform: Option<Platform>) {
     if app.id == LAUNCHER_ID {
         launcher_update(paths, latest, shared);
         return;
     }
     let Some(latest) = latest else { return };
-    if let LatestRelease::Found(r) = &latest {
-        shared.latest.lock().unwrap_or_else(PoisonError::into_inner).insert(app.id.to_string(), r.clone());
-    }
     if !matches!(latest, LatestRelease::Failed(_)) {
         shared.answered.lock().unwrap_or_else(PoisonError::into_inner).insert(app.id.to_string());
     }
-    shared.emit(Event::Latest { app: app.id.to_string(), latest, from });
+    publish_latest(app, latest, from, shared, platform);
 }
 
 /// Offers the launcher's own update when its answer is a newer release than the running one.
@@ -1232,10 +1415,10 @@ impl Backend for NativeBackend {
                     }
                 }
             }
-            Command::Launch { app } => {
+            Command::Launch { app, args } => {
                 let Some(def) = CraftApp::by_id(&app) else { return };
                 let result = match self.installed(&app) {
-                    Some(inst) => install::launch(def, &inst, &self.paths),
+                    Some(inst) => install::launch(def, &inst, &self.paths, &args),
                     None => Err(format!("{} isn't installed", def.name)),
                 };
                 if let Err(e) = result {
@@ -1271,10 +1454,7 @@ impl Backend for NativeBackend {
                     }
                 }
                 // Another package format means another file to download.
-                let options = self.options();
-                for app in &SUITE {
-                    report_partial(app, &self.shared, &self.paths, self.platform, &options);
-                }
+                self.replan();
                 if changed_pre {
                     self.check(true);
                 }
@@ -1284,6 +1464,11 @@ impl Backend for NativeBackend {
 
     fn poll(&mut self) -> Vec<Event> {
         std::mem::take(&mut *self.shared.events.lock().unwrap_or_else(PoisonError::into_inner))
+    }
+
+    fn launcher_kind(&self) -> Option<PackageKind> {
+        // Looked up (it can run package-manager queries) with a newer launcher release; never here.
+        self.shared.self_install.get().and_then(Option::as_ref).map(crate::self_update::kind)
     }
 
     fn capabilities(&self) -> Capabilities {
@@ -1471,6 +1656,9 @@ mod tests {
     fn shared() -> Shared {
         Shared {
             events: Mutex::new(Vec::new()),
+            reporting: Mutex::new(()),
+            system: Mutex::new(None),
+            planning: Mutex::new(()),
             waker: Arc::new(|| {}),
             latest: Mutex::new(HashMap::new()),
             installed: Mutex::new(HashMap::new()),
@@ -1817,10 +2005,232 @@ mod tests {
         NativeBackend { shared, paths: Paths::under(root), http: None, source, platform: Some(platform), pins: Some(root.join("versions.json")) }
     }
 
+    /// What the installability answers in `events` said about [`APP`], and which `Latest` and
+    /// `Detected` came with them, in order.
+    fn told(events: Vec<Event>) -> Vec<String> {
+        events
+            .into_iter()
+            .filter_map(|e| match e {
+                Event::Installable { app, installable } if app == APP => Some(format!("installable {installable}")),
+                Event::Latest { app, .. } if app == APP => Some("latest".to_string()),
+                Event::Detected { app, .. } if app == APP => Some("detected".to_string()),
+                _ => None,
+            })
+            .collect()
+    }
+
+    /// A copy of [`APP`] at `version`, installed the way `source` says.
+    fn copy_of(version: &str, source: InstallSource, location: &str) -> Installed {
+        Installed {
+            version: artcraft_launcher_core::version::parse(version),
+            source,
+            location: location.into(),
+            package: None,
+            externally_managed: false,
+            origin: None,
+            installation: None,
+        }
+    }
+
+    /// `release(v)` with its version known, so it is on the stable track.
+    fn stable(v: &str) -> Release {
+        Release { version: artcraft_launcher_core::version::parse(v), ..release(v) }
+    }
+
+    /// Makes the backend's view of what this system can install `available` (as if just asked),
+    /// so an answer doesn't depend on the computer the test runs on.
+    fn system_installs(backend: &NativeBackend, available: Vec<PackageKind>) {
+        *backend.shared.system.lock().unwrap() = Some((Instant::now(), install::SystemKinds { available, can_pacman: false }));
+    }
+
+    /// Each answer tells the UI whether an install would go ahead before it says the release is
+    /// out or what is installed, in the same poll, so the UI never offers (or starts) an update it
+    /// can't install. A release with nothing for this computer is not installable; one with a
+    /// file is. Nothing is said for an app that isn't installed (the UI doesn't use it there), so
+    /// nothing is asked of the system for it either, as at startup before detection.
+    #[test]
+    fn installability_is_told_with_the_release_or_copy_it_depends_on() {
+        let app = CraftApp::by_id(APP).unwrap();
+        let platform = Platform { os: Os::MacOs, arch: Arch::Arm64 };
+        let dir = tempfile::tempdir().unwrap();
+        let mut backend = backend(dir.path(), platform, None);
+        system_installs(&backend, vec![PackageKind::Dmg]);
+
+        publish_latest(app, LatestRelease::Found(stable("0.5.0")), Origin::GitHub, &backend.shared, Some(platform));
+        assert_eq!(told(backend.poll()), ["latest"], "nothing installed: no answer");
+
+        publish_detected(app, Some(copy_of("0.4.0", InstallSource::Launcher, "/Applications/PhotoCraft.app")), &backend.shared, Some(platform));
+        assert_eq!(told(backend.poll()), ["installable true", "detected"]);
+
+        let mut windows_only = stable("0.6.0");
+        windows_only.assets.retain(|a| a.name.contains("windows"));
+        check_app(app, Some(LatestRelease::Found(windows_only)), Origin::GitHub, &backend.shared, &backend.paths, Some(platform));
+        assert_eq!(told(backend.poll()), ["installable false", "latest"]);
+        check_app(app, Some(LatestRelease::Found(stable("0.6.0"))), Origin::GitHub, &backend.shared, &backend.paths, Some(platform));
+        assert_eq!(told(backend.poll()), ["installable true", "latest"]);
+
+        publish_detected(app, None, &backend.shared, Some(platform));
+        assert_eq!(told(backend.poll()), ["detected"], "removed: no answer");
+    }
+
+    /// A report made when only the plan changed (a settings change, a check or an install ending)
+    /// still tells the UI whether an install would go ahead, on its own, with the settings as
+    /// they are then.
+    #[test]
+    fn a_plan_report_answers_installability_with_the_current_settings() {
+        let app = CraftApp::by_id(APP).unwrap();
+        let platform = Platform { os: Os::MacOs, arch: Arch::Arm64 };
+        let dir = tempfile::tempdir().unwrap();
+        let mut backend = backend(dir.path(), platform, None);
+        system_installs(&backend, vec![PackageKind::Dmg]);
+        backend.shared.latest.lock().unwrap().insert(APP.to_string(), stable("0.6.0"));
+        backend.shared.installed.lock().unwrap().insert(APP.to_string(), copy_of("0.4.0", InstallSource::Launcher, "/Applications/PhotoCraft.app"));
+        let installable = |events: Vec<Event>| told(events).into_iter().filter(|t| t.starts_with("installable")).collect::<Vec<_>>();
+
+        report_partial(app, &backend.shared, &backend.paths, Some(platform));
+        assert_eq!(installable(backend.poll()), ["installable true"]);
+        backend.shared.options.lock().unwrap().versions.insert(APP.to_string(), VersionTrack::Pinned("v0.7.0".into()));
+        report_partial(app, &backend.shared, &backend.paths, Some(platform));
+        assert_eq!(installable(backend.poll()), ["installable false"], "kept on another version: not what an install would take");
+    }
+
+    /// When a copy appears between a publisher looking and taking `reporting`, the answer uses
+    /// the view of the system its detection asked for, however old: nothing is probed while
+    /// `reporting` is held.
+    #[test]
+    fn an_answer_under_the_reporting_lock_never_probes_the_system() {
+        let app = CraftApp::by_id(APP).unwrap();
+        let platform = Platform { os: Os::MacOs, arch: Arch::Arm64 };
+        let dir = tempfile::tempdir().unwrap();
+        let backend = backend(dir.path(), platform, None);
+        let asked = Instant::now().checked_sub(SYSTEM_KINDS_FOR * 2).unwrap_or_else(Instant::now);
+        *backend.shared.system.lock().unwrap() = Some((asked, install::SystemKinds { available: vec![PackageKind::Dmg], can_pacman: false }));
+        backend.shared.latest.lock().unwrap().insert(APP.to_string(), stable("0.6.0"));
+        backend.shared.installed.lock().unwrap().insert(APP.to_string(), copy_of("0.4.0", InstallSource::Launcher, "/Applications/PhotoCraft.app"));
+
+        let answer = {
+            let _reporting = backend.shared.reporting.lock().unwrap();
+            installable_event(app, &backend.shared, Some(platform), None)
+        };
+        assert_eq!(answer, Some(Event::Installable { app: APP.to_string(), installable: true }), "from the view it had");
+        let kept = backend.shared.system.lock().unwrap().as_ref().map(|(at, _)| *at);
+        assert_eq!(kept, Some(asked), "the expired view wasn't asked again under the lock");
+    }
+
+    /// However polls and publications interleave, a poll never holds a `Latest` or `Detected`
+    /// without the answer queued with it, just before it.
+    #[test]
+    fn a_poll_never_splits_an_answer_from_its_release_or_copy() {
+        let app = CraftApp::by_id(APP).unwrap();
+        let platform = Platform { os: Os::MacOs, arch: Arch::Arm64 };
+        let dir = tempfile::tempdir().unwrap();
+        let backend = backend(dir.path(), platform, None);
+        system_installs(&backend, vec![PackageKind::Dmg]);
+        let installed = copy_of("0.4.0", InstallSource::Launcher, "/Applications/PhotoCraft.app");
+        publish_detected(app, Some(installed.clone()), &backend.shared, Some(platform));
+        let shared = backend.shared.clone();
+        let publisher = std::thread::spawn(move || {
+            for i in 0..300 {
+                if i % 2 == 0 {
+                    publish_latest(app, LatestRelease::Found(stable("0.6.0")), Origin::GitHub, &shared, Some(platform));
+                } else {
+                    publish_detected(app, Some(installed.clone()), &shared, Some(platform));
+                }
+            }
+        });
+        let mut seen = 0;
+        while !publisher.is_finished() || !backend.shared.events.lock().unwrap().is_empty() {
+            let events = std::mem::take(&mut *backend.shared.events.lock().unwrap());
+            for (i, e) in events.iter().enumerate() {
+                if matches!(e, Event::Latest { app, .. } | Event::Detected { app, .. } if app == APP) {
+                    seen += 1;
+                    let before = i.checked_sub(1).and_then(|j| events.get(j));
+                    assert!(matches!(before, Some(Event::Installable { app, .. }) if app == APP), "a poll split a pair: {events:?}");
+                }
+            }
+        }
+        publisher.join().unwrap();
+        assert_eq!(seen, 301, "every publication was seen");
+    }
+
+    /// The answer uses the settings as they are when it is worked out, not as a long job found
+    /// them when it started: a job that ends after the version track changed answers for the new
+    /// track.
+    #[test]
+    fn installability_follows_the_current_settings() {
+        let app = CraftApp::by_id(APP).unwrap();
+        let platform = Platform { os: Os::MacOs, arch: Arch::Arm64 };
+        let dir = tempfile::tempdir().unwrap();
+        let mut backend = backend(dir.path(), platform, None);
+        system_installs(&backend, vec![PackageKind::Dmg]);
+        backend.shared.latest.lock().unwrap().insert(APP.to_string(), stable("0.6.0"));
+        let installed = copy_of("0.4.0", InstallSource::Launcher, "/Applications/PhotoCraft.app");
+
+        publish_detected(app, Some(installed.clone()), &backend.shared, Some(platform));
+        assert_eq!(told(backend.poll()), ["installable true", "detected"]);
+
+        // Kept on another version now: 0.6.0 isn't what an install would take.
+        backend.shared.options.lock().unwrap().versions.insert(APP.to_string(), VersionTrack::Pinned("v0.7.0".into()));
+        publish_detected(app, Some(installed), &backend.shared, Some(platform));
+        assert_eq!(told(backend.poll()), ["installable false", "detected"]);
+    }
+
+    /// A Flatpak its repository updates is updated with `flatpak update` (Linux, stable track), as
+    /// an install does, so the answer says yes there and keeps Reinstall, the launcher's route to
+    /// that update. Kept on another version it says no, as the install refuses.
+    #[test]
+    fn a_repository_flatpak_is_installable_where_flatpak_update_runs() {
+        let app = CraftApp::by_id(APP).unwrap();
+        let platform = Platform { os: Os::Linux, arch: Arch::X64 };
+        let dir = tempfile::tempdir().unwrap();
+        let mut backend = backend(dir.path(), platform, None);
+        // Nothing this system could download: only `flatpak update` can say yes.
+        system_installs(&backend, Vec::new());
+        backend.shared.latest.lock().unwrap().insert(APP.to_string(), stable("0.5.0"));
+        let flatpark = Installed { externally_managed: true, ..copy_of("0.5.0", InstallSource::Flatpak, "ai.storyteller.photocraft") };
+        let options = BackendOptions::default();
+        assert_eq!(repository_update(app, Some(&flatpark), &options).map(|u| u.is_ok()), Some(cfg!(target_os = "linux")));
+
+        publish_detected(app, Some(flatpark.clone()), &backend.shared, Some(platform));
+        assert_eq!(told(backend.poll()), [format!("installable {}", cfg!(target_os = "linux")), "detected".to_string()]);
+
+        backend.shared.options.lock().unwrap().versions.insert(APP.to_string(), VersionTrack::Pinned("v0.4.0".into()));
+        publish_detected(app, Some(flatpark), &backend.shared, Some(platform));
+        assert_eq!(told(backend.poll()), ["installable false", "detected"], "flatpak update can't follow a pinned version");
+    }
+
+    /// A copy installed outside the launcher (FreeBSD's `/usr/local/bin/<app>`, a system binary)
+    /// is never replaced, so a newer release with a matching FreeBSD tarball is not installable
+    /// for it: the UI is told no, and an install is refused for the same reason. A copy the
+    /// launcher installed takes the same tarball.
+    #[test]
+    fn a_system_binary_is_not_installable_even_with_a_matching_tarball() {
+        let app = CraftApp::by_id(APP).unwrap();
+        let platform = Platform { os: Os::FreeBsd, arch: Arch::X64 };
+        let dir = tempfile::tempdir().unwrap();
+        let mut backend = backend(dir.path(), platform, None);
+        system_installs(&backend, vec![PackageKind::TarGz]);
+        let options = BackendOptions::default();
+        let system = copy_of("0.4.0", InstallSource::Binary, &format!("/usr/local/bin/{APP}"));
+        let release = stable("0.6.0");
+        assert!(release.assets.iter().any(|a| a.name.ends_with("-freebsd-x86_64.tar.gz")), "the release has a matching tarball");
+
+        let refused = install_plan(app, Some(release.clone()), Some(platform), &options, (Some(&system), None), Asking::Install).err();
+        assert_eq!(refused, install::managed_elsewhere(app, &system, false), "an install refuses it as installed outside the launcher");
+
+        publish_detected(app, Some(system), &backend.shared, Some(platform));
+        publish_latest(app, LatestRelease::Found(release), Origin::GitHub, &backend.shared, Some(platform));
+        assert_eq!(told(backend.poll()), ["installable false", "detected", "installable false", "latest"]);
+
+        let ours = copy_of("0.4.0", InstallSource::Launcher, &format!("/usr/local/bin/{APP}"));
+        publish_detected(app, Some(ours), &backend.shared, Some(platform));
+        assert_eq!(told(backend.poll()), ["installable true", "detected"], "the launcher's own copy takes the tarball");
+    }
+
     /// Reports again, and returns what the UI was last told about a kept download.
     fn ready(backend: &mut NativeBackend) -> Option<bool> {
         let app = CraftApp::by_id(APP).unwrap();
-        report_partial(app, &backend.shared, &backend.paths, backend.platform, &BackendOptions::default());
+        report_partial(app, &backend.shared, &backend.paths, backend.platform);
         last_ready(backend.poll())
     }
 
@@ -1921,6 +2331,36 @@ mod tests {
         dest
     }
 
+    /// A report uses the settings as they are when it is worked out, not as the worker that sends
+    /// it found them. A worker that started before the preferred format changed (and, before this
+    /// was fixed, carried the settings it started with) waits behind a report in progress; by the
+    /// time it reports, the kept MSI is no longer the file an install would use, and its report is
+    /// the last word. (Windows only: it has two formats to choose between.)
+    #[cfg(windows)]
+    #[test]
+    fn a_kept_download_report_follows_the_current_settings() {
+        let platform = Platform { os: Os::Windows, arch: Arch::X64 };
+        let dir = tempfile::tempdir().unwrap();
+        let mut backend = backend(dir.path(), platform, None);
+        *backend.shared.options.lock().unwrap() = BackendOptions { kinds: vec![PackageKind::Msi], ..Default::default() };
+        let app = CraftApp::by_id(APP).unwrap();
+        let options = backend.shared.options.lock().unwrap().clone();
+        let (dest, size) = planned_download(app, &backend.shared, &backend.paths, backend.platform, &options).unwrap();
+        std::fs::create_dir_all(backend.paths.downloads()).unwrap();
+        std::fs::write(&dest, vec![0u8; size as usize]).unwrap();
+        assert_eq!(ready(&mut backend), Some(true), "the kept MSI is the planned file");
+
+        // A report is in progress; an older worker starts and waits behind it.
+        let in_progress = backend.shared.planning.lock().unwrap();
+        let (shared, paths) = (backend.shared.clone(), backend.paths.clone());
+        let older = std::thread::spawn(move || report_partial(app, &shared, &paths, Some(platform)));
+        // The preferred format changes while it waits, then the report in progress finishes.
+        backend.shared.options.lock().unwrap().kinds = vec![PackageKind::PortableZip];
+        drop(in_progress);
+        older.join().unwrap();
+        assert_eq!(last_ready(backend.poll()), Some(false), "the older worker's report has the new settings: a portable zip is planned");
+    }
+
     #[test]
     fn a_kept_download_is_reported_and_can_be_thrown_away() {
         let Some(platform) = native_platform() else { return };
@@ -1945,7 +2385,13 @@ mod tests {
         // The planned file changed under the UI; only a new report can tell it.
         backend.shared.latest.lock().unwrap().insert(APP.to_string(), release("0.6.0"));
         backend.send(Command::Configure(BackendOptions::default()));
-        assert_eq!(last_ready(backend.poll()), Some(false));
+        // Worked out off the UI thread: the report follows shortly.
+        let mut seen = None;
+        wait_until(|| {
+            seen = last_ready(backend.poll()).or(seen);
+            seen.is_some()
+        });
+        assert_eq!(seen, Some(false));
     }
 
     #[test]
