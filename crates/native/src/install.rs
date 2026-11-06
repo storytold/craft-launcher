@@ -135,6 +135,7 @@ pub(crate) fn install_at_with_batch(
 }
 
 #[allow(clippy::too_many_arguments)]
+/// Downloads and installs the selected release, then commits its record only after success.
 fn install_at_inner(
     app: &CraftApp,
     release: &Release,

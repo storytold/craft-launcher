@@ -44,6 +44,10 @@ pub fn release_identity(app: &CraftApp, asset: &release::Asset) -> Result<Releas
     Ok(ReleaseIdentity { app: app.id.into(), tag: tag.into(), asset: name.into() })
 }
 
+/// Converts a Windows Installer process exit code into the launcher's per-app result.
+///
+/// Reboot-required codes count as successful installs; user cancellation and common permission
+/// failures get stable messages, while every other nonzero code remains visible to the user.
 pub fn msi_outcome(code: Option<i32>) -> Result<(), String> {
     match code {
         Some(0 | 3010 | 1641) => Ok(()),
@@ -55,6 +59,7 @@ pub fn msi_outcome(code: Option<i32>) -> Result<(), String> {
     }
 }
 
+/// Maps one administrator-written result token to a sanitized app result.
 fn result_outcome(value: &str) -> Result<(), String> {
     match value {
         "rejected" => Err("Windows refused an MSI that failed official release, signature, identity, scope, or file integrity checks".into()),
@@ -787,11 +792,13 @@ fn encode_command(script: &str) -> String {
 }
 
 #[cfg(any(windows, test))]
+/// Removes comments and blank lines before compressing the fixed privileged policy.
 fn compact_policy(script: &str) -> String {
     script.lines().filter(|line| !line.trim().is_empty() && !line.trim_start().starts_with('#')).collect::<Vec<_>>().join("\n")
 }
 
 #[cfg(any(windows, test))]
+/// Compresses fixed PowerShell policy text for the bounded Windows process command line.
 fn compressed_payload(script: &str) -> Result<String, String> {
     use base64::Engine as _;
     use std::io::Write as _;
@@ -803,6 +810,7 @@ fn compressed_payload(script: &str) -> Result<String, String> {
 }
 
 #[cfg(any(windows, test))]
+/// Builds the restricted child command that reconstructs and runs only a validated GZip payload.
 fn powershell_bootstrap(payload: &str) -> Result<String, String> {
     use base64::Engine as _;
     if payload.is_empty() || !payload.bytes().all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'+' | b'/' | b'=')) {
@@ -825,11 +833,13 @@ fn powershell_bootstrap(payload: &str) -> Result<String, String> {
 const WINDOWS_COMMAND_LIMIT: usize = 30_000;
 
 #[cfg(any(windows, test))]
+/// Quotes a value as a PowerShell single-quoted string, doubling embedded quote characters.
 fn powershell_single_quoted(value: &str) -> String {
     format!("'{}'", value.replace('\'', "''"))
 }
 
 #[cfg(any(windows, test))]
+/// Formats the fixed arguments used to start the elevated child PowerShell process.
 fn elevated_child_arguments(payload: &str) -> Result<String, String> {
     let bootstrap = powershell_bootstrap(payload)?;
     if bootstrap.contains('"') || bootstrap.contains('\r') || bootstrap.contains('\n') {
@@ -839,6 +849,7 @@ fn elevated_child_arguments(payload: &str) -> Result<String, String> {
 }
 
 #[cfg(any(windows, test))]
+/// Creates the unelevated launcher command that asks Windows to elevate the system PowerShell.
 fn batch_outer_command(host: &str, cwd: &str, management: &str, payload: &str) -> Result<String, String> {
     let host = powershell_single_quoted(host);
     let cwd = powershell_single_quoted(cwd);
@@ -856,6 +867,7 @@ fn batch_outer_command(host: &str, cwd: &str, management: &str, payload: &str) -
 }
 
 #[cfg(any(windows, test))]
+/// Serializes a fixed catalog and batch request as data appended to the embedded verifier policy.
 fn batch_script(session: &str, port: u16, items: &[Item]) -> Result<String, String> {
     use base64::Engine as _;
     #[derive(Serialize)]
@@ -892,16 +904,19 @@ fn batch_script(session: &str, port: u16, items: &[Item]) -> Result<String, Stri
 }
 
 #[cfg(windows)]
+/// Returns the PowerShell executable beneath the Windows system directory.
 pub fn system_powershell() -> Result<PathBuf, String> {
     system_directory().map(|dir| dir.join(r"WindowsPowerShell\v1.0\powershell.exe"))
 }
 
 #[cfg(windows)]
+/// Resolves the trusted system directory used as the elevated process working directory.
 fn system_directory() -> Result<PathBuf, String> {
     winsafe::GetSystemDirectory().map(PathBuf::from).map_err(|e| format!("couldn't locate Windows' system directory ({e})"))
 }
 
 #[cfg(windows)]
+/// Starts one verified PowerShell session for the batch and reports every item's result.
 pub fn install(items: &[Item], report: &mut dyn FnMut(usize, crate::msi_batch::Report)) {
     use crate::msi_batch::Report;
     use artcraft_launcher_core::protocol::JobPhase;

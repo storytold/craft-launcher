@@ -28,6 +28,10 @@ pub(crate) struct Source {
 }
 
 impl Source {
+    /// Opens and holds each authorized package, then serves its bytes once on loopback only.
+    ///
+    /// The session token and fixed item indices bind requests to this batch. Files stay open for
+    /// the source lifetime so callers cannot replace a package after authorization.
     pub fn new(items: &[crate::msi_batch::Item], session: &str) -> Result<Self, String> {
         let mut files = Vec::new();
         for item in items {
@@ -100,6 +104,7 @@ impl Drop for Source {
     }
 }
 
+/// Records bounded transfer diagnostics without including local package paths.
 fn log_source_failure(session: &str, item_index: Option<usize>, expected_bytes: Option<u64>, transferred_bytes: u64, error: &std::io::Error) {
     let item_index = item_index.map_or_else(|| "unknown".to_string(), |index| index.to_string());
     let expected_bytes = expected_bytes.map_or_else(|| "unknown".to_string(), |bytes| bytes.to_string());
@@ -114,6 +119,7 @@ fn log_source_failure(session: &str, item_index: Option<usize>, expected_bytes: 
     );
 }
 
+/// Handles one loopback request and consumes its authorized file slot before sending any bytes.
 fn serve(
     client: &mut TcpStream,
     session: &str,
@@ -163,6 +169,7 @@ fn serve(
     })
 }
 
+/// Copies exactly the advertised package length and fails closed on cancellation or early EOF.
 fn transfer_exact(
     source: &mut impl Read,
     destination: &mut impl Write,
@@ -186,6 +193,7 @@ fn transfer_exact(
     Ok(())
 }
 
+/// Completes partial socket writes while counting only bytes accepted by the destination.
 fn write_all_counted(destination: &mut impl Write, mut bytes: &[u8], transferred_bytes: &mut u64) -> std::io::Result<()> {
     while !bytes.is_empty() {
         match destination.write(bytes) {

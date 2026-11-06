@@ -126,7 +126,10 @@ pub(crate) enum Dialog {
         apps: Vec<String>,
     },
     Versions(String),
-    LaunchFlags { app: String, flags: String },
+    LaunchFlags {
+        app: String,
+        flags: String,
+    },
 }
 
 impl Dialog {
@@ -739,6 +742,11 @@ impl LauncherUi {
                 true
             }
             Event::Occupied { app, path } => {
+                // This backend prompt interrupts the required Windows batch acknowledgement.
+                // Keep its versions eligible after a later check before showing replacement consent.
+                if let Some(Dialog::WindowsAutoUpdateNotice { apps }) = self.dialog.clone() {
+                    self.defer_windows_auto_update_notice(&apps);
+                }
                 self.dialog = Some(Dialog::Replace { app, path });
                 false
             }
@@ -862,6 +870,8 @@ impl LauncherUi {
         let fresh = self.launcher_update.as_ref().is_none_or(|cur| cur.version != r.version);
         self.launcher_update = Some(r.clone());
         let automatic = self.settings.auto_update && self.caps.self_update;
+        // Background release results may open this prompt, but must never replace another modal
+        // such as the required Windows batch acknowledgement.
         if fresh && !automatic && self.dialog.is_none() && self.launcher_job.is_none() {
             self.dialog = Some(Dialog::LauncherUpdate(r));
         }
@@ -1518,6 +1528,7 @@ mod tests {
         assert_eq!(launcher.pending_toasts.len(), 1, "a message from logic is not tied to the old window");
     }
 
+    /// Gives `id` an installed MSI version and a newer official x64 Windows MSI release.
     fn update_entry(launcher: &mut LauncherUi, id: &str, version: &str) {
         let entry = launcher.entry_mut(id).unwrap();
         entry.detected = true;
@@ -1544,6 +1555,7 @@ mod tests {
         }));
     }
 
+    /// Builds a Windows launcher fixture with two eligible per-machine official MSI updates.
     fn windows_updates() -> (LauncherUi, Rc<RefCell<Vec<Command>>>) {
         let (mut launcher, sent, _ctx) = launcher();
         launcher.caps.manage_apps = true;
@@ -1556,6 +1568,7 @@ mod tests {
     }
 
     #[test]
+    /// Automatic Windows MSI candidates wait for one explicit batch acknowledgement.
     fn automatic_windows_updates_route_multiple_official_msi_candidates_through_one_batch() {
         let (mut launcher, sent) = windows_updates();
         launcher.trigger_auto_updates();
@@ -1576,6 +1589,7 @@ mod tests {
     }
 
     #[test]
+    /// Deferred versions stay suppressed until a later update check completes.
     fn deferred_windows_auto_updates_reappear_after_a_later_check_not_immediately() {
         let (mut launcher, sent) = windows_updates();
         launcher.trigger_auto_updates();
@@ -1607,6 +1621,7 @@ mod tests {
     }
 
     #[test]
+    /// A check already in progress when a notice is deferred may re-offer it on completion.
     fn deferred_windows_auto_updates_reappear_after_a_check_already_in_flight() {
         let (mut launcher, sent) = windows_updates();
         launcher.trigger_auto_updates();
@@ -1626,6 +1641,51 @@ mod tests {
     }
 
     #[test]
+    /// An occupied-path prompt interrupts the notice but preserves its apps for a later offer.
+    fn occupied_path_interrupting_windows_notice_defers_the_batch() {
+        let (mut launcher, sent) = windows_updates();
+        launcher.trigger_auto_updates();
+        let apps = launcher.pending_windows_auto_update_notice.take().unwrap_or_default();
+        launcher.dialog = Some(Dialog::WindowsAutoUpdateNotice { apps });
+
+        let path = r"C:\Program Files\ArtCraft\PhotoCraft";
+        let changed = launcher.handle(Event::Occupied { app: "photocraft".into(), path: path.into() });
+        assert!(!changed, "replacement consent doesn't report an app-data refresh");
+        assert_eq!(launcher.dialog, Some(Dialog::Replace { app: "photocraft".into(), path: path.into() }));
+        assert_eq!(launcher.deferred_auto_updates.len(), 2, "both selected versions are retained");
+        assert!(sent.borrow().is_empty(), "an interruption cannot start the batch");
+
+        launcher.handle(Event::CheckStarted);
+        launcher.handle(Event::CheckFinished { at: 1, source: Source::GitHubApi, rate_limited_until: None });
+        launcher.trigger_auto_updates();
+
+        assert_eq!(launcher.dialog, Some(Dialog::Replace { app: "photocraft".into(), path: path.into() }), "replacement consent remains in front");
+        assert_eq!(
+            launcher.pending_windows_auto_update_notice,
+            Some(vec!["photocraft".into(), "vectorcraft".into()]),
+            "the batch is queued for a new acknowledgement after the check"
+        );
+        assert!(sent.borrow().is_empty(), "re-offering doesn't bypass acknowledgement or duplicate the install");
+    }
+
+    #[test]
+    /// Another background release prompt must leave the Windows acknowledgement in place.
+    fn launcher_update_does_not_replace_windows_auto_update_notice() {
+        let (mut launcher, sent) = windows_updates();
+        launcher.trigger_auto_updates();
+        let apps = launcher.pending_windows_auto_update_notice.take().unwrap_or_default();
+        launcher.dialog = Some(Dialog::WindowsAutoUpdateNotice { apps: apps.clone() });
+        launcher.settings.auto_update = false;
+
+        let release = Release { tag: "v0.3.0".into(), ..Release::default() };
+        launcher.handle(Event::LauncherUpdate(release));
+
+        assert_eq!(launcher.dialog, Some(Dialog::WindowsAutoUpdateNotice { apps }));
+        assert!(sent.borrow().is_empty(), "another release result cannot bypass the notice");
+    }
+
+    #[test]
+    /// Automatic Windows updates wait for every release result before reserving one batch.
     fn automatic_updates_wait_for_all_release_results_before_reserving_the_batch() {
         let (mut launcher, sent) = windows_updates();
         let vectorcraft = launcher.entry("vectorcraft").unwrap().latest.clone().unwrap();
@@ -1649,6 +1709,7 @@ mod tests {
     }
 
     #[test]
+    /// Automatic detection and a manual Update all click reserve at most one batch.
     fn automatic_detection_and_manual_update_all_close_together_do_not_duplicate_installs() {
         let (mut launcher, sent) = windows_updates();
         // Automatic detection wins the race; the manual button sees both requests as pending.
@@ -1676,9 +1737,25 @@ mod tests {
     }
 
     #[test]
+    /// Other platforms keep issuing the existing individual install commands.
     fn non_windows_automatic_updates_keep_individual_install_commands() {
         let (mut launcher, sent) = windows_updates();
         launcher.platform = Some(Platform { os: artcraft_launcher_core::Os::MacOs, arch: artcraft_launcher_core::Arch::X64 });
+        for id in ["photocraft", "vectorcraft"] {
+            let entry = launcher.entry_mut(id).unwrap();
+            if let Some(installed) = &mut entry.installed {
+                installed.source = artcraft_launcher_core::InstallSource::MacApp;
+                installed.location = format!("/Applications/{id}.app");
+            }
+            if let Some(LatestRelease::Found(release)) = &mut entry.latest {
+                let name = format!("{id}-0.2.0-macos-universal.dmg");
+                release.assets = vec![artcraft_launcher_core::release::Asset {
+                    url: format!("https://github.com/storytold/{id}/releases/download/v0.2.0/{name}"),
+                    name,
+                    ..Default::default()
+                }];
+            }
+        }
         launcher.trigger_auto_updates();
         assert_eq!(*sent.borrow(), [Command::Install { app: "photocraft".into() }, Command::Install { app: "vectorcraft".into() }]);
     }

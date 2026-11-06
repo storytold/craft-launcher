@@ -4048,6 +4048,7 @@ fn command_m_minimizes_the_mac_window_only() {
 }
 
 #[test]
+/// Replacement consent still queues `Replace` only after the user confirms the path.
 fn an_occupied_folder_asks_before_replacing_it() {
     let path = "/Volumes/Craft Apps/PhotoCraft.app";
     let mut ev = events();
@@ -4057,11 +4058,31 @@ fn an_occupied_folder_asks_before_replacing_it() {
     h.run_steps(6);
     h.get_by_label(&format!("{path} already exists. Installing PhotoCraft will overwrite it."));
     assert!(h.query_by_label(&format!("{path} already exists")).is_none());
+    assert!(!sent.borrow().iter().any(|command| matches!(command, Command::Replace { .. })), "showing consent must not start replacement");
     sent.borrow_mut().clear();
     h.get_by_label("Replace").click();
     h.run_steps(2);
     assert_eq!(*sent.borrow(), [Command::Replace { app: "photocraft".into(), path: path.into() }]);
     assert!(h.query_by_label("Replace").is_none());
+}
+
+#[test]
+/// Canceling replacement consent leaves the occupied path untouched.
+fn cancelling_an_occupied_folder_replacement_sends_no_replace_command() {
+    let path = "/Volumes/Craft Apps/PhotoCraft.app";
+    let mut ev = events();
+    ev.push(Event::Occupied { app: "photocraft".into(), path: path.into() });
+    ev.push(Event::JobFinished { app: "photocraft".into(), result: Err(format!("{path} already exists")) });
+    let (mut h, sent) = harness_with(ev, ViewMode::Grid, egui::Theme::Dark, true, 1.0);
+    h.run_steps(6);
+    h.get_by_label(&format!("{path} already exists. Installing PhotoCraft will overwrite it."));
+    sent.borrow_mut().clear();
+
+    h.get_by_label("Cancel").click();
+    h.run_steps(2);
+
+    assert!(sent.borrow().is_empty(), "cancel closes the consent prompt without starting replacement");
+    assert!(h.query_by_label("Replace").is_none(), "the replacement prompt is dismissed");
 }
 
 #[test]

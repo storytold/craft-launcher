@@ -368,6 +368,8 @@ impl LauncherUi {
         close
     }
 
+    /// Edits an install-folder value, uses `default` as the empty-field hint, and adopts a folder
+    /// selected through the host's picker. Choosing Use default clears the override value.
     pub(crate) fn folder_field(ui: &mut egui::Ui, folder: &mut String, default: Option<&str>, host: &mut dyn Host) {
         let label = ui.label(tl!("Install folder"));
         ui.add(
