@@ -390,3 +390,6 @@ materialcraft	Preview materials in 2D and on 3D models.	在二维视图和三维
 	Migrate Flatpak bundles to ArtCraft OCI (experimental)	将 Flatpak 软件包迁移到 ArtCraft OCI（实验性）
 	On update, switch first party apps when the matching package is available. Otherwise, keep using bundles.	更新时，如果有对应的软件包，则迁移 ArtCraft 官方应用；否则继续使用独立软件包。
 	The OCI repository is a preview with GPG verification disabled.	OCI 仓库目前处于预览阶段，GPG 验证已禁用。
+	Automatic Windows updates	Windows 自动更新
+	Some automatic Windows updates install apps for everyone on this PC and may require administrator permission. Your system may handle permission without showing a prompt.	部分 Windows 自动更新会为这台电脑上的所有用户安装应用，可能需要管理员权限。系统也可能在不显示提示的情况下处理权限。
+	Install updates	安装更新

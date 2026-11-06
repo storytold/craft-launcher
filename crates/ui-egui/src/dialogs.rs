@@ -15,6 +15,11 @@ impl LauncherUi {
     /// so a smaller prompt cannot inherit a taller one's last size, and closing (button, Escape or
     /// a click outside) discards the dialog.
     pub(crate) fn dialogs(&mut self, ctx: &egui::Context, host: &mut dyn Host) {
+        if self.dialog.is_none()
+            && let Some(apps) = self.pending_windows_auto_update_notice.take()
+        {
+            self.dialog = Some(Dialog::WindowsAutoUpdateNotice { apps });
+        }
         let Some(mut dialog) = self.dialog.clone() else {
             self.alert_popup(ctx);
             return;
@@ -37,6 +42,7 @@ impl LauncherUi {
             Dialog::Replace { app, path } => modal.show(ctx, |ui| close = self.replace_dialog(ui, app, path)),
             Dialog::Settings => modal.show(ctx, |ui| close = self.settings_dialog(ui, host)),
             Dialog::LauncherUpdate(r) => modal.show(ctx, |ui| close = self.launcher_update_dialog(ui, r)),
+            Dialog::WindowsAutoUpdateNotice { apps } => modal.show(ctx, |ui| close = self.windows_auto_update_notice(ui, apps)),
             Dialog::Versions(id) => modal.show(ctx, |ui| close = self.version_dialog(ui, id)),
         };
         if self.dialog.as_ref().is_some_and(|active| active.key() != dialog.key()) {
@@ -52,6 +58,34 @@ impl LauncherUi {
         } else {
             self.dialog = Some(dialog);
         }
+    }
+
+    /// Explains the possible machine-wide permission request and starts the collected automatic
+    /// batch only after the person explicitly chooses to proceed.
+    fn windows_auto_update_notice(&mut self, ui: &mut egui::Ui, apps: &[String]) -> bool {
+        let t = Tokens::get(ui.ctx());
+        ui.set_width(480.0f32.min(ui.ctx().content_rect().width() - 80.0));
+        Self::title(ui, None, tl!("Automatic Windows updates"), "");
+        ui.add(
+            egui::Label::new(
+                RichText::new(tl!("Some automatic Windows updates install apps for everyone on this PC and may require administrator permission. Your system may handle permission without showing a prompt.")).color(t.muted),
+            )
+            .wrap(),
+        );
+        ui.add_space(20.0);
+        let mut close = false;
+        ui.horizontal(|ui| {
+            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                if widgets::button(ui, tl!("Install updates"), Kind::Primary, 0.0).clicked() {
+                    self.start_acknowledged_windows_auto_updates(apps.to_vec());
+                    close = true;
+                }
+                if widgets::button(ui, tl!("Later"), Kind::Secondary, 80.0).clicked() {
+                    close = true;
+                }
+            });
+        });
+        close
     }
 
     /// The first alert from the release feed the user hasn't acknowledged, as a popup.

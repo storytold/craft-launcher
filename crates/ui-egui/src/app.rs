@@ -111,10 +111,20 @@ pub(crate) enum UiAction {
 pub(crate) enum Dialog {
     Notes(String),
     ConfirmUninstall(String),
-    Install { app: String, folder: String },
-    Replace { app: String, path: String },
+    Install {
+        app: String,
+        folder: String,
+    },
+    Replace {
+        app: String,
+        path: String,
+    },
     Settings,
     LauncherUpdate(artcraft_launcher_core::Release),
+    /// A required acknowledgement before automatic Windows app updates can start.
+    WindowsAutoUpdateNotice {
+        apps: Vec<String>,
+    },
     Versions(String),
 }
 
@@ -129,6 +139,7 @@ impl Dialog {
             Dialog::Replace { app, .. } => ("replace", app),
             Dialog::Settings => ("settings", ""),
             Dialog::LauncherUpdate(r) => ("launcher-update", &r.tag),
+            Dialog::WindowsAutoUpdateNotice { .. } => ("windows-auto-update-notice", ""),
             Dialog::Versions(id) => ("versions", id),
         }
     }
@@ -201,6 +212,8 @@ pub struct LauncherUi {
     /// App operations sent to the backend but not yet finished. Progress events can arrive after
     /// another check or Update all action, so this closes that gap.
     pending_app_operations: std::collections::HashSet<String>,
+    /// Automatic Windows batches wait here until their administrator-permission notice is shown.
+    pub(crate) pending_windows_auto_update_notice: Option<Vec<String>>,
     /// The URL or deep link to open when Discord is clicked.
     pub(crate) discord_url: &'static str,
     /// UI actions drawn in this pass, not sent yet.
@@ -301,6 +314,7 @@ impl LauncherUi {
             was_focused: true,
             auto_update_attempted: std::collections::BTreeSet::new(),
             pending_app_operations: std::collections::HashSet::new(),
+            pending_windows_auto_update_notice: None,
             discord_url: artcraft_launcher_core::catalog::DISCORD_URL,
             pending: Vec::new(),
             frame: None,
@@ -360,6 +374,7 @@ impl LauncherUi {
             Command::Install { app } => self.send_app_install(app),
             Command::InstallAll { apps } => self.send_app_install_batch(apps),
             Command::Replace { app, path } => {
+                self.remove_auto_update_notice_apps(std::slice::from_ref(&app));
                 if self.pending_app_operations.insert(app.clone()) {
                     self.backend.send(Command::Replace { app, path });
                 } else {
@@ -367,6 +382,7 @@ impl LauncherUi {
                 }
             }
             Command::Uninstall { app } => {
+                self.remove_auto_update_notice_apps(std::slice::from_ref(&app));
                 if self.pending_app_operations.insert(app.clone()) {
                     self.backend.send(Command::Uninstall { app });
                 } else {
@@ -380,6 +396,7 @@ impl LauncherUi {
     /// Reserves an app operation before sending it, so another check cannot queue a competing
     /// install while the backend's first Progress event is still in transit.
     fn send_app_install(&mut self, app: String) {
+        self.remove_auto_update_notice_apps(std::slice::from_ref(&app));
         if self.pending_app_operations.insert(app.clone()) {
             self.backend.send(Command::Install { app });
         } else {
@@ -390,6 +407,7 @@ impl LauncherUi {
     /// Sends one batch after removing duplicate IDs and operations already queued through another
     /// route. Each newly selected app still receives its own backend job and result.
     fn send_app_install_batch(&mut self, apps: Vec<String>) {
+        self.remove_auto_update_notice_apps(&apps);
         let mut selected = Vec::with_capacity(apps.len());
         for app in apps {
             if self.pending_app_operations.insert(app.clone()) {
@@ -401,6 +419,27 @@ impl LauncherUi {
         if !selected.is_empty() {
             self.backend.send(Command::InstallAll { apps: selected });
         }
+    }
+
+    /// Removes app IDs that another route has already started from any queued automatic notice.
+    fn remove_auto_update_notice_apps(&mut self, started: &[String]) {
+        if let Some(Dialog::WindowsAutoUpdateNotice { apps }) = &mut self.dialog {
+            apps.retain(|app| !started.contains(app));
+            if apps.is_empty() {
+                self.dialog = None;
+            }
+        }
+        if let Some(apps) = &mut self.pending_windows_auto_update_notice {
+            apps.retain(|app| !started.contains(app));
+            if apps.is_empty() {
+                self.pending_windows_auto_update_notice = None;
+            }
+        }
+    }
+
+    /// Starts the batch only after the user has seen the automatic Windows update notice.
+    pub(crate) fn start_acknowledged_windows_auto_updates(&mut self, apps: Vec<String>) {
+        self.send(Command::InstallAll { apps });
     }
 
     fn windows_update_platform(&self) -> bool {
@@ -625,6 +664,7 @@ impl LauncherUi {
     }
 
     /// Returns whether app state changed.
+    /// Applies one backend event and reports whether app data changed enough to refresh notices.
     fn handle(&mut self, event: Event) -> bool {
         match event {
             Event::Latest { app, latest, from } => {
@@ -680,6 +720,10 @@ impl LauncherUi {
                 self.on_job_finished(app, result);
                 true
             }
+            Event::AppActionFailed { app: _, action: _, error } => {
+                self.on_app_action_failed(error);
+                false
+            }
             Event::LauncherUpdate(r) => self.on_launcher_update(r),
             Event::CheckStarted => {
                 self.checking = true;
@@ -719,7 +763,7 @@ impl LauncherUi {
         }
     }
 
-    /// Summarizes a job's end as a toast; cancellations have their own messages.
+    /// Summarizes an install, update, replace or uninstall job; only this event clears its busy state.
     fn on_job_finished(&mut self, app: String, result: Result<String, String>) {
         let launcher = app == artcraft_launcher_core::catalog::LAUNCHER_ID;
         self.pending_app_operations.remove(&app);
@@ -748,6 +792,11 @@ impl LauncherUi {
             Err(_) if matches!(&self.dialog, Some(Dialog::Replace { app: a, .. }) if *a == app) => {}
             Err(e) => self.toast(e, true),
         }
+    }
+
+    /// Reports a failed launch or reveal without touching the app's independent install job state.
+    fn on_app_action_failed(&mut self, error: String) {
+        self.toast(error, true);
     }
 
     /// Offers the launcher's own update once per new version, unless automatic updates install it.
@@ -810,7 +859,8 @@ impl LauncherUi {
         );
     }
 
-    /// When auto-updates are enabled, automatically downloads and installs pending updates.
+    /// Finds automatic updates; Windows app batches wait for the user to acknowledge the
+    /// administrator-permission notice before their install command is sent.
     pub(crate) fn trigger_auto_updates(&mut self) {
         if !self.caps.manage_apps || !self.settings.auto_update || self.checking || !self.automatic_updates_ready {
             return;
@@ -826,12 +876,12 @@ impl LauncherUi {
             .collect();
         if self.windows_update_platform() && !to_update.is_empty() {
             let apps = to_update.iter().map(|(id, _)| id.clone()).collect::<Vec<_>>();
-            log::info!("auto-update: routing {} app updates through Windows InstallAll", apps.len());
+            log::info!("auto-update: holding {} app updates for the Windows permission notice", apps.len());
             for (id, version) in &to_update {
-                log::info!("auto-update: selected {id} {version} for the Windows batch coordinator");
+                log::info!("auto-update: selected {id} {version} for the acknowledged Windows batch");
                 self.auto_update_attempted.insert((id.clone(), version.clone()));
             }
-            self.send(Command::InstallAll { apps });
+            self.queue_windows_auto_update_notice(apps);
         } else {
             for (id, version) in to_update {
                 log::info!("auto-update: queuing update for {id} to {version}");
@@ -849,6 +899,20 @@ impl LauncherUi {
                 log::info!("auto-update: queuing launcher self-update to {v}");
                 self.auto_update_attempted.insert((id, v));
                 self.send(Command::UpdateLauncher);
+            }
+        }
+    }
+
+    /// Adds newly discovered automatic updates to the active or queued Windows notice without
+    /// replacing another dialog or allowing the batch to start before acknowledgement.
+    fn queue_windows_auto_update_notice(&mut self, apps: Vec<String>) {
+        let target = match self.dialog.as_mut() {
+            Some(Dialog::WindowsAutoUpdateNotice { apps }) => apps,
+            _ => self.pending_windows_auto_update_notice.get_or_insert_with(Vec::new),
+        };
+        for app in apps {
+            if !target.contains(&app) {
+                target.push(app);
             }
         }
     }
@@ -1172,6 +1236,7 @@ mod tests {
     use std::cell::RefCell;
     use std::rc::Rc;
 
+    use artcraft_launcher_core::protocol::AppAction;
     use egui_kittest::Harness;
 
     use super::*;
@@ -1320,6 +1385,32 @@ mod tests {
     }
 
     #[test]
+    fn failed_launch_or_reveal_does_not_finish_an_active_update() {
+        let (mut launcher, sent, _ctx) = launcher();
+        launcher.frame = Some(1);
+        launcher.send(Command::Install { app: "photocraft".into() });
+        launcher.on_progress("photocraft".into(), JobPhase::Downloading { done: 20, total: 100 });
+        assert!(launcher.busy());
+
+        for action in [AppAction::Launch, AppAction::Reveal] {
+            assert!(!launcher.handle(Event::AppActionFailed { app: "photocraft".into(), action, error: "the action failed".into() }));
+            assert!(launcher.pending_app_operations.contains("photocraft"), "{action:?} failure must preserve the pending update");
+            assert_eq!(launcher.entry("photocraft").and_then(|entry| entry.job), Some(JobPhase::Downloading { done: 20, total: 100 }));
+            assert!(launcher.busy(), "{action:?} failure must not make the launcher idle");
+
+            launcher.send(Command::Install { app: "photocraft".into() });
+            assert_eq!(installs(&sent), 1, "{action:?} failure must not permit a duplicate update");
+        }
+
+        assert!(launcher.handle(Event::JobFinished { app: "photocraft".into(), result: Ok("PhotoCraft updated".into()) }));
+        assert!(!launcher.pending_app_operations.contains("photocraft"));
+        assert_eq!(launcher.entry("photocraft").and_then(|entry| entry.job), None);
+        assert!(!launcher.busy(), "the legitimate completion event releases the app operation");
+        launcher.send(Command::Install { app: "photocraft".into() });
+        assert_eq!(installs(&sent), 2, "the next update can start after the real job completion");
+    }
+
+    #[test]
     /// The font-gate pass flushes an action queued before it exactly once, and the following pass
     /// does not repeat it.
     fn a_pending_action_survives_the_fonts_ready_early_return_exactly_once() {
@@ -1412,6 +1503,14 @@ mod tests {
     fn automatic_windows_updates_route_multiple_official_msi_candidates_through_one_batch() {
         let (mut launcher, sent) = windows_updates();
         launcher.trigger_auto_updates();
+        assert!(sent.borrow().is_empty(), "automatic updates wait for the required permission notice");
+        assert!(launcher.pending_app_operations.is_empty(), "no installer is busy before the user acknowledges the notice");
+        assert!(matches!(
+            &launcher.pending_windows_auto_update_notice,
+            Some(apps) if apps == &["photocraft".to_string(), "vectorcraft".to_string()]
+        ));
+        let apps = launcher.pending_windows_auto_update_notice.take().unwrap_or_default();
+        launcher.start_acknowledged_windows_auto_updates(apps);
         assert_eq!(
             *sent.borrow(),
             [Command::InstallAll { apps: vec!["photocraft".into(), "vectorcraft".into()] }],
@@ -1435,10 +1534,11 @@ mod tests {
 
         launcher.handle(Event::CheckFinished { at: 0, source: Source::GitHubApi, rate_limited_until: None });
         launcher.trigger_auto_updates();
+        assert!(sent.borrow().is_empty(), "a complete Windows batch still waits for acknowledgement");
         assert_eq!(
-            *sent.borrow(),
-            [Command::InstallAll { apps: vec!["photocraft".into(), "vectorcraft".into()] }],
-            "after CheckFinished all detected updates should share one InstallAll request"
+            launcher.pending_windows_auto_update_notice,
+            Some(vec!["photocraft".into(), "vectorcraft".into()]),
+            "after CheckFinished all detected updates should be collected into one notice"
         );
     }
 
@@ -1454,6 +1554,7 @@ mod tests {
             [Command::InstallAll { apps: vec!["photocraft".into(), "vectorcraft".into()] }],
             "a close manual click must not create a second installer request"
         );
+        assert!(launcher.pending_windows_auto_update_notice.is_none(), "the manual batch supersedes its queued automatic notice");
 
         // In the reverse order, the flushed manual action reserves each app before auto-update
         // detection can observe delayed Progress events.

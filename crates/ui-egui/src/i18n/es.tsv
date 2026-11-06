@@ -403,3 +403,6 @@ materialcraft	Preview materials in 2D and on 3D models.	Previsualiza materiales 
 	Migrate Flatpak bundles to ArtCraft OCI (experimental)	Migrar paquetes Flatpak a ArtCraft OCI (experimental)
 	On update, switch first party apps when the matching package is available. Otherwise, keep using bundles.	Al actualizar, migrar las aplicaciones de ArtCraft si está disponible el paquete correspondiente. De lo contrario, seguir usando paquetes independientes.
 	The OCI repository is a preview with GPG verification disabled.	El repositorio OCI es una versión preliminar con la verificación GPG desactivada.
+	Automatic Windows updates	Actualizaciones automáticas de Windows
+	Some automatic Windows updates install apps for everyone on this PC and may require administrator permission. Your system may handle permission without showing a prompt.	Algunas actualizaciones automáticas de Windows instalan aplicaciones para todas las personas que usan este PC y pueden requerir permisos de administrador. Es posible que el sistema gestione el permiso sin mostrar un aviso.
+	Install updates	Instalar actualizaciones

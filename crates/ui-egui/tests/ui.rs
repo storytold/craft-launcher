@@ -203,6 +203,44 @@ fn events() -> Vec<Event> {
     ev
 }
 
+/// Two installed Windows MSI apps with independently published x64 MSI update assets.
+fn windows_update_events() -> Vec<Event> {
+    let mut out = Vec::new();
+    for (id, display, installed, latest) in [("photocraft", "PhotoCraft", "0.4.1", "0.5.0"), ("effectcraft", "EffectCraft", "0.5.0", "0.6.0")] {
+        let name = format!("{id}-{latest}-windows-x64.msi");
+        out.push(Event::Latest {
+            app: id.into(),
+            latest: LatestRelease::Found(Release {
+                tag: format!("v{latest}"),
+                version: version::parse(latest),
+                name: format!("{display} {latest}"),
+                assets: vec![Asset {
+                    name: name.clone(),
+                    size: 20 << 20,
+                    url: format!("https://github.com/storytold/{id}/releases/download/v{latest}/{name}"),
+                    sha256: None,
+                }],
+                ..Default::default()
+            }),
+            from: Origin::GitHub,
+        });
+        out.push(Event::Detected {
+            app: id.into(),
+            installed: Some(Installed {
+                version: version::parse(installed),
+                source: InstallSource::Msi,
+                location: format!(r"C:\Program Files\ArtCraft\{display}"),
+                package: None,
+                externally_managed: false,
+                origin: None,
+                installation: None,
+            }),
+        });
+    }
+    out.push(Event::CheckFinished { at: NOW, source: Source::GitHubApi, rate_limited_until: None });
+    out
+}
+
 fn harness(view: ViewMode, theme: egui::Theme, manage: bool) -> (Harness<'static, Option<LauncherUi>>, Rc<RefCell<Vec<Command>>>) {
     harness_at(view, theme, manage, 1.0)
 }
@@ -273,6 +311,25 @@ fn harness_full(
     platform: Option<Platform>,
     discord_url: Option<&'static str>,
 ) -> (Harness<'static, Option<LauncherUi>>, Rc<RefCell<Vec<Command>>>) {
+    let settings = Settings { view, notify: false, ..Settings::default() };
+    harness_full_with_settings(events, view, theme, manage, scale, bar, pictures, platform, discord_url, settings)
+}
+
+#[allow(clippy::too_many_arguments)]
+/// Builds a UI harness with caller-selected settings for platform and automatic-update scenarios.
+fn harness_full_with_settings(
+    events: Vec<Event>,
+    view: ViewMode,
+    theme: egui::Theme,
+    manage: bool,
+    scale: f32,
+    bar: artcraft_launcher_ui_egui::TitleBar,
+    pictures: Rc<Cell<Pictures>>,
+    platform: Option<Platform>,
+    discord_url: Option<&'static str>,
+    settings: Settings,
+) -> (Harness<'static, Option<LauncherUi>>, Rc<RefCell<Vec<Command>>>) {
+    let settings = Settings { view, ..settings };
     struct HeaderHost(artcraft_launcher_ui_egui::TitleBar, Option<&'static str>);
     impl Host for HeaderHost {
         fn title_bar(&self) -> artcraft_launcher_ui_egui::TitleBar {
@@ -292,7 +349,6 @@ fn harness_full(
         Some(platform) => Box::new(PlatformFake { inner: fake, platform }),
         None => Box::new(fake),
     });
-    let settings = Settings { view, notify: false, ..Settings::default() };
     // No `.wgpu()`: it gives every test its own GPU device, and those segfault on parallel test threads (see above).
     // The default renderer creates one only when a test renders.
     let harness = test_harness_builder(theme).with_size(egui::vec2(1180.0, 1200.0)).with_pixels_per_point(scale).with_theme(theme).build_ui_state(
@@ -1178,8 +1234,19 @@ fn keeps_working_with_no_window_then_draws_in_a_new_one() {
 }
 
 #[test]
+/// A fixed non-Windows host keeps the ordinary Update all path deterministic on every runner OS.
 fn grid_shows_every_status_and_installs_on_click() {
-    let (mut h, sent) = harness(ViewMode::Grid, egui::Theme::Dark, true);
+    let (mut h, sent) = harness_full(
+        events(),
+        ViewMode::Grid,
+        egui::Theme::Dark,
+        true,
+        1.0,
+        artcraft_launcher_ui_egui::TitleBar::Native,
+        Rc::default(),
+        Some(Platform { os: Os::MacOs, arch: Arch::Arm64 }),
+        None,
+    );
     h.run_steps(8);
     snapshot(&mut h, "grid-dark");
     // Statuses the user asked for: available, installed and up to date, update with version.
@@ -1202,14 +1269,64 @@ fn grid_shows_every_status_and_installs_on_click() {
     h.get_by_label_contains("48 MB of 131 MB");
     h.get_by_label("Update all (2)").click();
     h.run_steps(2);
-    #[cfg(windows)]
+    let installs: Vec<_> = sent.borrow().iter().filter_map(|c| if let Command::Install { app } = c { Some(app.clone()) } else { None }).collect();
+    assert_eq!(installs.len(), 2, "{installs:?}");
+    assert!(installs.contains(&"photocraft".to_string()) && installs.contains(&"effectcraft".to_string()));
+    assert!(!sent.borrow().iter().any(|command| matches!(command, Command::InstallAll { .. })));
+}
+
+#[test]
+/// The Windows platform fixture routes two x64 MSI updates through one `InstallAll` command.
+fn windows_update_all_uses_one_batch_with_an_explicit_windows_fixture() {
+    let (mut h, sent) = harness_full(
+        windows_update_events(),
+        ViewMode::Grid,
+        egui::Theme::Dark,
+        true,
+        1.0,
+        artcraft_launcher_ui_egui::TitleBar::Native,
+        Rc::default(),
+        Some(Platform { os: Os::Windows, arch: Arch::X64 }),
+        None,
+    );
+    h.run_steps(8);
+    h.get_by_label("Update all (2)").click();
+    h.run_steps(3);
     assert!(sent.borrow().contains(&Command::InstallAll { apps: vec!["photocraft".into(), "effectcraft".into()] }));
-    #[cfg(not(windows))]
-    {
-        let installs: Vec<_> = sent.borrow().iter().filter_map(|c| if let Command::Install { app } = c { Some(app.clone()) } else { None }).collect();
-        assert_eq!(installs.len(), 2, "{installs:?}");
-        assert!(installs.contains(&"photocraft".to_string()) && installs.contains(&"effectcraft".to_string()));
-    }
+    assert!(!sent.borrow().iter().any(|command| matches!(command, Command::Install { .. })));
+}
+
+#[test]
+/// The required notice appears before any permission phase, even with optional notifications off.
+fn automatic_windows_batch_shows_permission_notice_before_any_uac_phase() {
+    let settings = Settings { view: ViewMode::Grid, notify: false, auto_update: true, ..Settings::default() };
+    let (mut h, sent) = harness_full_with_settings(
+        windows_update_events(),
+        ViewMode::Grid,
+        egui::Theme::Dark,
+        true,
+        1.0,
+        artcraft_launcher_ui_egui::TitleBar::Native,
+        Rc::default(),
+        Some(Platform { os: Os::Windows, arch: Arch::X64 }),
+        None,
+        settings,
+    );
+    h.run_steps(5);
+    h.get_by_label("Automatic Windows updates");
+    h.get_by_label("Some automatic Windows updates install apps for everyone on this PC and may require administrator permission. Your system may handle permission without showing a prompt.");
+    assert!(!sent.borrow().iter().any(|command| matches!(command, Command::InstallAll { .. })), "the batch must wait for acknowledgement");
+    // The fixture sends no Permission phase, so the accessible notice does not depend on Windows
+    // displaying a UAC prompt or on the install job having started.
+    h.get_by_label("Install updates").click();
+    h.run_steps(3);
+    assert_eq!(
+        sent.borrow()
+            .iter()
+            .filter(|command| matches!(command, Command::InstallAll { apps } if apps == &["photocraft".to_string(), "effectcraft".to_string()]))
+            .count(),
+        1
+    );
 }
 
 #[test]

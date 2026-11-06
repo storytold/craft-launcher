@@ -9,8 +9,8 @@ use artcraft_launcher_core::catalog::{LAUNCHER, LAUNCHER_ID};
 use artcraft_launcher_core::feed::{Feed, FeedAnswer};
 use artcraft_launcher_core::platform::{Arch, Os, Platform, pick_asset};
 use artcraft_launcher_core::protocol::{
-    Backend, BackendOptions, CANCELLED, Capabilities, Command, Event, INSTALL_CANCELLED, JobPhase, LatestRelease, Origin, PAUSED, PausedDownload,
-    Source, VersionTrack,
+    AppAction, Backend, BackendOptions, CANCELLED, Capabilities, Command, Event, INSTALL_CANCELLED, JobPhase, LatestRelease, Origin, PAUSED,
+    PausedDownload, Source, VersionTrack,
 };
 use artcraft_launcher_core::release::{Asset, Release};
 use artcraft_launcher_core::{CraftApp, Installed, PackageKind, SUITE, version};
@@ -347,6 +347,9 @@ impl NativeBackend {
             let job = job;
             let existing = shared.installed.lock().unwrap_or_else(PoisonError::into_inner).get(app.id).cloned();
             let record = shared.manifest.lock().unwrap_or_else(PoisonError::into_inner).apps.get(app.id).cloned();
+            // Keep the release snapshot used by the install. A later release check may update
+            // `shared.latest` while this worker is downloading or installing.
+            let mut selected_release = None;
             let result = if uninstall {
                 shared.emit(Event::Progress { app: app.id.to_string(), phase: JobPhase::Removing });
                 let mut phase = |phase| shared.emit(Event::Progress { app: app.id.to_string(), phase });
@@ -370,6 +373,7 @@ impl NativeBackend {
                     &options,
                     existing.as_ref(),
                     record.as_ref(),
+                    &mut selected_release,
                     &stop,
                     match &work {
                         Work::Replace(path) => Some(path.as_str()),
@@ -392,7 +396,8 @@ impl NativeBackend {
             let manifest = shared.manifest.lock().unwrap_or_else(PoisonError::into_inner).clone();
             let found = crate::detect::detect(app, &manifest, &crate::detect::Snapshot::take());
             // One installer call can cover several apps, and fail after some of them went in.
-            let latest = shared.latest.lock().unwrap_or_else(PoisonError::into_inner).get(app.id).cloned();
+            // Use the selected job release for confirmation and recovery, never a later check.
+            let target_release = selected_release.as_ref();
             #[cfg(windows)]
             let result = if uninstall {
                 result
@@ -401,15 +406,15 @@ impl NativeBackend {
                     result,
                     app.name,
                     found.as_ref().and_then(|installed| installed.version.as_ref()),
-                    latest.as_ref().and_then(|release| release.version.as_ref()),
+                    target_release.and_then(|release| release.version.as_ref()),
                 )
             };
-            let result = match (result, latest) {
+            let result = match (result, target_release) {
                 (Err(e), Some(release))
                     if !uninstall && release.version.as_ref().is_some_and(|v| landed_despite(&e, existing.as_ref(), found.as_ref(), v)) =>
                 {
                     log::warn!("{}: {e}; the new version is installed all the same", app.id);
-                    Ok(installed_text(app, existing.is_some(), &release))
+                    Ok(installed_text(app, existing.is_some(), release))
                 }
                 (result, _) => result,
             };
@@ -482,8 +487,8 @@ impl NativeBackend {
     }
 }
 
-/// Don't tell the user an install succeeded until detection sees the advertised version.
-/// On Windows, MSI success codes alone don't prove the product registration changed.
+/// Don't tell the user an install succeeded until detection sees the version selected by that
+/// worker. On Windows, MSI success codes alone don't prove the product registration changed.
 #[cfg(any(windows, test))]
 fn verify_confirmed_install(
     result: Result<String, String>,
@@ -543,6 +548,19 @@ fn downgrade_previous(
     })
 }
 
+/// Snapshots the release a worker will install so later release checks cannot change its target.
+fn select_install_release(shared: &Shared, app: &str) -> Result<Release, String> {
+    shared
+        .latest
+        .lock()
+        .unwrap_or_else(PoisonError::into_inner)
+        .get(app)
+        .cloned()
+        .ok_or_else(|| "the selected release hasn't been found yet. Check for updates first.".into())
+}
+
+/// Runs one install using a release snapshot and returns that snapshot through `selected_release`
+/// so later detection and partial-install recovery compare against the exact target this job used.
 #[allow(clippy::too_many_arguments)]
 fn run_install(
     app: &CraftApp,
@@ -553,6 +571,7 @@ fn run_install(
     options: &BackendOptions,
     existing: Option<&Installed>,
     record: Option<&crate::manifest::Record>,
+    selected_release: &mut Option<Release>,
     stop: &Stop,
     approved: Option<&str>,
     source: Option<&dyn ReleaseSource>,
@@ -594,13 +613,8 @@ fn run_install(
     }
     let http = http.ok_or("secure connections aren't available on this system")?;
     let platform = platform.ok_or("this system isn't supported")?;
-    let release = shared
-        .latest
-        .lock()
-        .unwrap_or_else(PoisonError::into_inner)
-        .get(app.id)
-        .cloned()
-        .ok_or("the selected release hasn't been found yet. Check for updates first.")?;
+    let release = select_install_release(shared, app.id)?;
+    *selected_release = Some(release.clone());
     let track = options.versions.get(app.id).unwrap_or(&VersionTrack::Stable);
     if !release_matches_track(&release, track, options.prereleases) {
         return Err("the selected version isn't available yet. Check for updates before installing.".into());
@@ -1299,7 +1313,7 @@ impl Backend for NativeBackend {
                     None => Err(format!("{} isn't installed", def.name)),
                 };
                 if let Err(e) = result {
-                    self.shared.emit(Event::JobFinished { app, result: Err(e) });
+                    self.shared.emit(Event::AppActionFailed { app, action: AppAction::Launch, error: e });
                 }
             }
             Command::Reveal { app } => {
@@ -1307,7 +1321,7 @@ impl Backend for NativeBackend {
                     let path = std::path::PathBuf::from(&inst.location);
                     let result = if path.exists() { crate::process::reveal(&path) } else { Err("it isn't a file on this computer".into()) };
                     if let Err(e) = result {
-                        self.shared.emit(Event::JobFinished { app, result: Err(format!("Couldn't show it: {e}")) });
+                        self.shared.emit(Event::AppActionFailed { app, action: AppAction::Reveal, error: format!("Couldn't show it: {e}") });
                     }
                 }
             }
@@ -1395,6 +1409,28 @@ mod tests {
         assert!(verify_confirmed_install(Ok("updated".into()), "PhotoCraft", None, Some(&target)).is_err());
         assert_eq!(verify_confirmed_install(Ok("updated".into()), "PhotoCraft", None, None), Ok("updated".into()));
         assert_eq!(verify_confirmed_install(Err("installer failed".into()), "PhotoCraft", None, Some(&target)), Err("installer failed".into()));
+    }
+
+    /// A concurrent release refresh must not make a successfully installed job target look stale.
+    #[test]
+    fn confirmation_uses_the_release_captured_before_a_concurrent_update_check() {
+        let shared = shared();
+        shared.latest.lock().unwrap().insert(APP.into(), tagged("0.14.0"));
+        let release_for_job = select_install_release(&shared, APP).unwrap();
+        // A check finishes while the install is running and replaces the shared latest answer.
+        shared.latest.lock().unwrap().insert(APP.into(), tagged("0.15.0"));
+        let published_latest = shared.latest.lock().unwrap().get(APP).cloned().unwrap();
+        let installed = version::parse("0.14.0");
+
+        assert_eq!(
+            verify_confirmed_install(Ok("PhotoCraft updated".into()), "PhotoCraft", installed.as_ref(), release_for_job.version.as_ref(),),
+            Ok("PhotoCraft updated".into()),
+            "the installed version matches the job's captured release"
+        );
+        assert!(
+            verify_confirmed_install(Ok("PhotoCraft updated".into()), "PhotoCraft", installed.as_ref(), published_latest.version.as_ref(),).is_err(),
+            "the later published version must not become this job's confirmation target"
+        );
     }
 
     /// A "Replace" answer covers the path that was shown, never a destination that changed since.
@@ -1891,6 +1927,36 @@ mod tests {
         shared.latest.lock().unwrap().insert(APP.to_string(), release("0.5.0"));
         let shared = Arc::new(shared);
         NativeBackend { shared, paths: Paths::under(root), http: None, source, platform: Some(platform), pins: Some(root.join("versions.json")) }
+    }
+
+    /// Native launch and reveal errors use their own event and cannot masquerade as job completion.
+    #[test]
+    fn launch_and_reveal_failures_emit_action_events_not_job_completion() {
+        let Some(platform) = native_platform() else { return };
+        let dir = tempfile::tempdir().unwrap();
+        let mut backend = backend(dir.path(), platform, None);
+
+        backend.send(Command::Launch { app: APP.into() });
+        let launch_events = backend.poll();
+        assert!(launch_events.iter().any(|event| matches!(event, Event::AppActionFailed { app, action: AppAction::Launch, .. } if app == APP)));
+        assert!(!launch_events.iter().any(|event| matches!(event, Event::JobFinished { app, .. } if app == APP)));
+
+        backend.shared.installed.lock().unwrap().insert(
+            APP.into(),
+            Installed {
+                version: None,
+                source: InstallSource::Msi,
+                location: dir.path().join("missing-app").display().to_string(),
+                package: None,
+                externally_managed: false,
+                origin: None,
+                installation: None,
+            },
+        );
+        backend.send(Command::Reveal { app: APP.into() });
+        let reveal_events = backend.poll();
+        assert!(reveal_events.iter().any(|event| matches!(event, Event::AppActionFailed { app, action: AppAction::Reveal, .. } if app == APP)));
+        assert!(!reveal_events.iter().any(|event| matches!(event, Event::JobFinished { app, .. } if app == APP)));
     }
 
     /// Reports again, and returns what the UI was last told about a kept download.
