@@ -2052,14 +2052,23 @@ fn escape_cancels_pin_drag_with_empty_results() {
 }
 
 #[test]
-/// Grid shows a Pinned section label once at least one app is pinned.
+/// Grid shows a Pinned section label once at least one app is pinned, and names every group with
+/// its size.
 fn grid_shows_pinned_section_header() {
     let (mut h, _) = harness(ViewMode::Grid, egui::Theme::Dark, true);
     h.run_steps(6);
-    assert!(h.query_by_label("Pinned").is_none());
+    assert!(h.query_by_label_contains("Pinned").is_none());
+    h.get_by_label("Installed · 4");
+    h.get_by_label("Not installed · 13");
     h.state_mut().as_mut().unwrap().settings.pin_app("photocraft");
     h.run_steps(4);
-    h.get_by_label("Pinned");
+    h.get_by_label("Pinned · 1");
+    h.get_by_label("Installed · 3");
+    // A search that leaves only the pinned app leaves one group, which needs no heading.
+    h.state_mut().as_mut().unwrap().set_search_for_test("PhotoCraft");
+    h.run_steps(4);
+    assert_eq!(h.state().as_ref().unwrap().visible_ids_for_test(), ["photocraft"]);
+    assert!(h.query_by_label_contains("Pinned").is_none(), "a single group is not labelled");
     h.get_all_by_label_contains("Reorder PhotoCraft").next().expect("pinned card exposes a reorder handle");
 }
 
@@ -3478,7 +3487,13 @@ fn the_rate_limit_notice_never_runs_under_the_footer_links() {
         // Everything on the footer's right: the website, GitHub and Discord icons and the social icons.
         let mut right = Vec::new();
         for label in ["Website", "GitHub", "Discord", "X", "YouTube", "TikTok", "Instagram", "LinkedIn"] {
-            right.extend(h.query_all_by_label(label).map(|n| n.rect()).filter(|r| (r.center().y - notice.center().y).abs() < 12.0));
+            // The footer's links are square logos; a card's "GitHub ↗" text link scrolled beneath the
+            // footer can share its row, and is not one of them.
+            right.extend(
+                h.query_all_by_label(label)
+                    .map(|n| n.rect())
+                    .filter(|r| (r.center().y - notice.center().y).abs() < 12.0 && (r.width() - r.height()).abs() < 1.0),
+            );
         }
         assert_eq!(right.len(), 8, "{width}: {right:?}");
         assert!(h.query_by_label_contains("Installing for").is_none(), "{width}: the footer no longer names the platform");

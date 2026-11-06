@@ -44,6 +44,7 @@ pub fn view_toggle(ui: &mut Ui, view: &mut ViewMode, tips: [&str; 2]) {
                 }
             }
             resp.widget_info(|| egui::WidgetInfo::selected(egui::Role::Button, true, on, tip));
+            crate::widgets::focus_ring(ui, &resp);
             if resp.on_hover_text(tip).on_hover_cursor(egui::CursorIcon::PointingHand).clicked() {
                 *view = mode;
             }
@@ -78,6 +79,7 @@ pub fn refresh_button(ui: &mut Ui, tip: &str, busy: bool) -> egui::Response {
         crate::widgets::paint_glyph(p, rect, crate::widgets::Glyph::Refresh, if hovered { t.ink_strong } else { t.muted });
     }
     resp.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, !busy, tip));
+    crate::widgets::focus_ring(ui, &resp);
     let resp = resp.on_hover_text(tip);
     if busy { resp } else { resp.on_hover_cursor(egui::CursorIcon::PointingHand) }
 }

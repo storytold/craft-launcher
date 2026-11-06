@@ -191,7 +191,7 @@ impl LauncherUi {
                     ui.set_width(left_w);
                     ui.spacing_mut().item_spacing.y = 8.0;
                     for p in details.paragraphs() {
-                        ui.add(egui::Label::new(RichText::new(tr_ctx(current(), details.id, p)).size(14.5).color(t.ink)).wrap());
+                        ui.add(egui::Label::new(RichText::new(tr_ctx(current(), details.id, p)).size(theme::TEXT_READING).color(t.ink)).wrap());
                     }
                     ui.add_space(14.0);
                     features(ui, details, entry.app, t);
@@ -215,7 +215,7 @@ impl LauncherUi {
                     self.gallery(ui, details, t, app_color);
                     ui.add_space(8.0);
                     for p in details.paragraphs() {
-                        ui.add(egui::Label::new(RichText::new(tr_ctx(current(), details.id, p)).size(14.5).color(t.ink)).wrap());
+                        ui.add(egui::Label::new(RichText::new(tr_ctx(current(), details.id, p)).size(theme::TEXT_READING).color(t.ink)).wrap());
                     }
                 });
                 ui.vertical(|ui| {
@@ -233,7 +233,7 @@ impl LauncherUi {
             self.gallery(ui, details, t, app_color);
             ui.add_space(8.0);
             for p in details.paragraphs() {
-                ui.add(egui::Label::new(RichText::new(tr_ctx(current(), details.id, p)).size(14.5).color(t.ink)).wrap());
+                ui.add(egui::Label::new(RichText::new(tr_ctx(current(), details.id, p)).size(theme::TEXT_READING).color(t.ink)).wrap());
             }
             ui.add_space(14.0);
             features(ui, details, entry.app, t);
@@ -365,11 +365,11 @@ impl LauncherUi {
                 ui.set_width(text_w);
                 ui.spacing_mut().item_spacing.y = 5.0;
                 widgets::wordmark(ui, app, theme::PAGE_TITLE);
-                ui.add(egui::Label::new(RichText::new(tr_ctx(current(), details.id, details.headline)).size(15.0).color(t.ink)).wrap());
+                ui.add(egui::Label::new(RichText::new(tr_ctx(current(), details.id, details.headline)).size(theme::TEXT_LEAD).color(t.ink)).wrap());
                 // "Version 0.5.0 · Oct 8, 2026", or the installed-versus-latest line.
                 let version = crate::views::version_line(entry, status);
                 if !version.trim().is_empty() {
-                    ui.label(RichText::new(version).size(12.5).color(t.muted));
+                    ui.label(RichText::new(version).size(theme::TEXT_CAPTION).color(t.muted));
                 }
             });
             if wide {
@@ -411,7 +411,7 @@ impl LauncherUi {
                         ui.set_width(ui.available_width());
                         ui.spacing_mut().item_spacing.y = 2.0;
                         widgets::hud(ui, label, t.faint);
-                        ui.add(egui::Label::new(RichText::new(value).size(14.0).color(t.ink_strong)).wrap());
+                        ui.add(egui::Label::new(RichText::new(value).size(theme::TEXT_READING).color(t.ink_strong)).wrap());
                     });
                 }
             });
@@ -557,7 +557,7 @@ fn placeholder(ui: &mut Ui, rect: Rect, id: Id, failed: Option<&str>, t: &Tokens
     let text = if failed.is_some() { tl!("Pictures couldn't be loaded. Reopen this page to try again.") } else { tl!("Loading pictures…") };
     ui.painter().rect_filled(rect, CornerRadius::ZERO, if over_backdrop { theme::backdrop_panel() } else { t.sunken });
     let ink = if over_backdrop { theme::backdrop_ink(190) } else { t.faint };
-    let galley = ui.painter().layout(text.to_string(), egui::FontId::proportional(13.5), ink, (rect.width() - 32.0).max(1.0));
+    let galley = ui.painter().layout(text.to_string(), egui::FontId::proportional(theme::TEXT_BODY), ink, (rect.width() - 32.0).max(1.0));
     ui.painter().galley(rect.center() - galley.size() / 2.0, galley, ink);
     let resp = ui.interact(rect, id, Sense::hover());
     resp.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Label, true, text));
@@ -605,9 +605,9 @@ fn features(ui: &mut Ui, details: &AppDetails, app: &CraftApp, t: &Tokens) {
             ui.spacing_mut().item_spacing.y = 3.0;
             ui.horizontal(|ui| {
                 widgets::hud(ui, &format!("{:02}", i + 1), t.app_ink(app));
-                ui.label(RichText::new(tr_ctx(current(), details.id, f.title)).size(15.0).family(theme::semibold()).color(t.ink_strong));
+                ui.label(RichText::new(tr_ctx(current(), details.id, f.title)).size(theme::TEXT_LEAD).family(theme::semibold()).color(t.ink_strong));
             });
-            ui.add(egui::Label::new(RichText::new(tr_ctx(current(), details.id, f.text)).size(13.5).color(t.muted)).wrap());
+            ui.add(egui::Label::new(RichText::new(tr_ctx(current(), details.id, f.text)).size(theme::TEXT_BODY).color(t.muted)).wrap());
         });
     }
 }
