@@ -48,7 +48,7 @@ impl Host for DesktopHost {
 }
 
 fn release(id: &str, v: &str, at: i64) -> Release {
-    let name = format!("{id}-{v}-linux-x86_64.tar.gz");
+    let name = format!("{id}-{v}-linux-aarch64.AppImage");
     Release {
         tag: format!("v{v}"),
         version: version::parse(v),
@@ -74,7 +74,7 @@ fn events() -> Vec<Event> {
         let installed = matches!(app.id, "photocraft" | "lightcraft").then(|| Installed {
             version: version::parse(if app.id == "photocraft" { "0.4.1" } else { "0.5.0" }),
             source: InstallSource::Launcher,
-            location: format!("/opt/{}.tar.gz", app.name),
+            location: format!("/opt/{}.AppImage", app.name),
             package: None,
             externally_managed: false,
             origin: None,

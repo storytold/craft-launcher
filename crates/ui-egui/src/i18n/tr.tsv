@@ -51,6 +51,10 @@
 	Install	Yükle
 	Update to {v}	{v} sürümüne güncelle
 	Open	Aç
+	Open {version}	{version} sürümünü aç
+	Open {installed} without updating. {latest} stays available.	Güncellemeden {installed} sürümünü aç. {latest} sürümü kullanılabilir kalır.
+	{latest} is out, but ArtCraft Launcher can't install it over this copy.	{latest} yayımlandı, ancak ArtCraft Launcher bu kopyanın üzerine yükleyemiyor.
+	ArtCraft Launcher can't install version {version} over this copy.	ArtCraft Launcher, {version} sürümünü bu kopyanın üzerine yükleyemiyor.
 	Download for {os}	{os} için indir
 	Download	İndir
 	Coming soon	Çok yakında
@@ -74,6 +78,13 @@
 	Show in Files	Dosyalar'da Göster
 	Reinstall	Yeniden yükle
 	Uninstall…	Kaldır…
+	Launch options…	Başlatma seçenekleri…
+	{name} launch options	{name} başlatma seçenekleri
+	Flags added each time the app is opened	Uygulama her açıldığında eklenen bayraklar
+	Separate flags with spaces. Quote a value that has spaces in it.	Bayrakları boşlukla ayırın. Boşluk içeren bir değeri tırnak içine alın.
+	A quote isn't closed.	Bir tırnak işareti kapatılmamış.
+	{name} wasn't opened: a quote in its launch options isn't closed.	{name} açılamadı: başlatma seçeneklerindeki bir tırnak işareti kapatılmamış.
+	Save	Kaydet
 	All releases	Tüm sürümler
 	ArtCraft Launcher {version} is available.	ArtCraft Launcher {version} kullanıma hazır.
 	Dismiss	Kapat

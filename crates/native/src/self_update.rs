@@ -4,6 +4,7 @@
 
 use std::ffi::OsString;
 
+use artcraft_launcher_core::PackageKind;
 use artcraft_launcher_core::platform::Platform;
 use artcraft_launcher_core::protocol::JobPhase;
 use artcraft_launcher_core::release::Release;
@@ -117,6 +118,31 @@ pub fn update(
     )
 }
 
+/// The package format updating `install` downloads: the one it was installed from. Mirrors the
+/// private `Install::kind` in `craft_update::self_update`, which picks the update's asset by it.
+pub fn kind(install: &Install) -> PackageKind {
+    match install {
+        Install::MacApp(_) => PackageKind::Dmg,
+        Install::Msi(_) => PackageKind::Msi,
+        Install::Portable(_) => PackageKind::PortableZip,
+        Install::AppImage(_) => PackageKind::AppImage,
+        Install::Package(kind, _) => match kind {
+            craft_update::PackageKind::Msi => PackageKind::Msi,
+            craft_update::PackageKind::PortableZip => PackageKind::PortableZip,
+            craft_update::PackageKind::Dmg => PackageKind::Dmg,
+            craft_update::PackageKind::AppImage => PackageKind::AppImage,
+            craft_update::PackageKind::Deb => PackageKind::Deb,
+            craft_update::PackageKind::Rpm => PackageKind::Rpm,
+            craft_update::PackageKind::ArchPkg => PackageKind::ArchPkg,
+            craft_update::PackageKind::Flatpak => PackageKind::Flatpak,
+            craft_update::PackageKind::TarGz => PackageKind::TarGz,
+        },
+        Install::Flatpak => PackageKind::Flatpak,
+        Install::Standalone(_) if cfg!(windows) => PackageKind::PortableZip,
+        Install::Standalone(_) => PackageKind::TarGz,
+    }
+}
+
 /// Finishes an update when this program was started as the update helper.
 pub fn finish(args: &[OsString]) -> Option<Result<(), String>> {
     craft_update::self_update::finish(&craft_update::suite::LAUNCHER, args)
@@ -129,5 +155,18 @@ mod tests {
     #[test]
     fn a_development_build_does_not_update_itself() {
         assert_eq!(current(), None);
+    }
+
+    #[test]
+    fn an_update_downloads_the_format_the_copy_was_installed_from() {
+        use std::path::PathBuf;
+        assert_eq!(kind(&Install::Msi(PathBuf::new())), PackageKind::Msi);
+        assert_eq!(kind(&Install::Portable(PathBuf::new())), PackageKind::PortableZip);
+        assert_eq!(kind(&Install::MacApp(PathBuf::new())), PackageKind::Dmg);
+        assert_eq!(kind(&Install::AppImage(PathBuf::new())), PackageKind::AppImage);
+        assert_eq!(kind(&Install::Package(craft_update::PackageKind::Rpm, PathBuf::new())), PackageKind::Rpm);
+        assert_eq!(kind(&Install::Flatpak), PackageKind::Flatpak);
+        let standalone = if cfg!(windows) { PackageKind::PortableZip } else { PackageKind::TarGz };
+        assert_eq!(kind(&Install::Standalone(PathBuf::new())), standalone);
     }
 }
