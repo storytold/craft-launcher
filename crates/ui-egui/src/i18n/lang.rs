@@ -16,13 +16,11 @@ pub enum Script {
     Japanese,
     Georgian,
     Arabic,
-
 }
 
 impl Script {
     /// Every script a language can be written in.
-    pub const ALL: [Script; 4] = [Script::Chinese, Script::TraditionalChinese, Script::Japanese, Script::Georgian];
-    pub const ALL: [Script; 3] = [Script::Chinese, Script::Japanese, Script::Arabic];
+    pub const ALL: [Script; 5] = [Script::Chinese, Script::TraditionalChinese, Script::Japanese, Script::Georgian, Script::Arabic];
 
 }
 
@@ -266,6 +264,17 @@ pub static LANGUAGES: [LangInfo; 12] = [
     // Arabic (Modern Standard, Western digits); every `ar-*` locale (`ar-MA`, `ar-EG`, `ar-SA`…)
     // resolves here. Drawn with the system's Arabic font and right to left (see `LangInfo::rtl`).
     LangInfo {
+        code: "ka",
+        name: "ქართული",
+        english_name: "Georgian",
+        script: Some(Script::Georgian),
+        source: include_str!("ka.tsv"),
+        plural: plural_one_other,
+        plural_forms: 2,
+        complete_menus: true,
+        catalog: OnceLock::new(),
+    },
+    LangInfo {
         code: "ar",
         name: "العربية",
         english_name: "Arabic",
@@ -275,17 +284,6 @@ pub static LANGUAGES: [LangInfo; 12] = [
         plural_forms: 6,
         complete_menus: true,
         rtl: true,
-        catalog: OnceLock::new(),
-    },
-    LangInfo {
-        code: "ka",
-        name: "ქართული",
-        english_name: "Georgian",
-        script: Some(Script::Georgian),
-        source: include_str!("ka.tsv"),
-        plural: plural_one_other,
-        plural_forms: 2,
-        complete_menus: true,
         catalog: OnceLock::new(),
     },
 ];
@@ -334,15 +332,7 @@ impl Lang {
     pub const HU: Lang = Lang(&LANGUAGES[10]);
     pub const JA: Lang = Lang(&LANGUAGES[11]);
     pub const KA: Lang = Lang(&LANGUAGES[12]);
-    pub const DE: Lang = Lang(&LANGUAGES[3]);
-    pub const FR: Lang = Lang(&LANGUAGES[4]);
-    pub const PT_BR: Lang = Lang(&LANGUAGES[5]);
-    pub const ES: Lang = Lang(&LANGUAGES[6]);
-    pub const CS: Lang = Lang(&LANGUAGES[7]);
-    pub const PL: Lang = Lang(&LANGUAGES[8]);
-    pub const HU: Lang = Lang(&LANGUAGES[9]);
-    pub const JA: Lang = Lang(&LANGUAGES[10]);
-    pub const AR: Lang = Lang(&LANGUAGES[11]);
+    pub const AR: Lang = Lang(&LANGUAGES[13]);
 
 
     pub fn code(self) -> &'static str {
