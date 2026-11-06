@@ -123,7 +123,12 @@ const fn app(
 }
 
 /// The Craft App Suite, in display order matching getartcraft.com, then the community apps:
-pub const SUITE: [CraftApp; 17] = [
+pub const SUITE: [CraftApp; 18] = [
+    CraftApp {
+        former_names: &["ArtCraft"],
+        bundle: Some("ai.artcraft.app"),
+        ..app("artcraft", "ArtCraft Studio", "AI image and video creation", [[47, 123, 245], [26, 91, 196], [127, 176, 255]], "storytold/artcraft")
+    },
     app("photocraft", "PhotoCraft", "Image editing", [[0x2f, 0x7b, 0xf5], [0x1a, 0x5b, 0xc4], [0x7f, 0xb0, 0xff]], "storytold/photocraft"),
     app("vectorcraft", "VectorCraft", "Vector illustration", [[0xe8, 0x57, 0x3f], [0xb8, 0x3a, 0x24], [0xff, 0x8a, 0x70]], "storytold/vectorcraft"),
     app(
@@ -302,6 +307,7 @@ pub fn app_icon_png(id: &str) -> Option<&'static [u8]> {
         "cadcraft" => include_bytes!("../../../assets/app-icons/cadcraft.png"),
         "soundcraft" => include_bytes!("../../../assets/app-icons/soundcraft.png"),
         "figcraft" => include_bytes!("../../../assets/app-icons/figcraft.png"),
+        "artcraft" => include_bytes!("../../../assets/app-icons/artcraft.png"),
         _ => return None,
     })
 }
@@ -321,15 +327,17 @@ mod tests {
 
     /// Every catalog entry must have a distinct lookup key.
     #[test]
-    fn suite_has_seventeen_apps_with_unique_ids() {
-        assert_eq!(SUITE.len(), 17);
+    fn suite_has_eighteen_apps_with_unique_ids() {
+        assert_eq!(SUITE.len(), 18);
         let mut ids: Vec<_> = SUITE.iter().map(|a| a.id).collect();
         ids.sort_unstable();
         ids.dedup();
         assert_eq!(ids.len(), SUITE.len());
         for a in &SUITE {
             // `Craft Anything` is `craft-anything`.
-            assert_eq!(a.name.to_lowercase().replace(' ', "-"), a.id);
+            if a.id != "artcraft" {
+                assert_eq!(a.name.to_lowercase().replace(' ', "-"), a.id);
+            }
             match a.kind {
                 AppKind::Official => assert_eq!(a.repo, format!("storytold/{}", a.id)),
                 AppKind::Community => assert!(!a.repo.starts_with("storytold/"), "{} is community", a.id),
