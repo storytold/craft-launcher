@@ -430,6 +430,15 @@ fn shows_dock_icon(window_visible: bool, has_tray: bool, close_to_tray: bool, hi
     window_visible || !(has_tray && close_to_tray && hide_dock_icon)
 }
 
+/// Whether macOS brought a put-away window back by itself (macOS): it gained focus while the
+/// launcher had it hidden. Opening the app again from Finder or Spotlight, the Dock or ⌘Tab unhides
+/// it without a request to the launcher. Only a gain counts, as a window being put away still has
+/// focus for a pass or two.
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
+fn window_came_back(visible: bool, window_hides: bool, was_focused: bool, focused: bool) -> bool {
+    !visible && window_hides && !was_focused && focused
+}
+
 fn on_close(has_tray: bool, close_to_tray: bool, window_hides: bool) -> OnClose {
     if !(has_tray && close_to_tray) {
         OnClose::Quit
@@ -762,8 +771,8 @@ struct Shell<'a> {
     launcher: &'a mut Launcher,
     window_hides: bool,
     /// Whether the launcher last showed its window or put it away. On macOS the Dock, Finder and
-    /// ⌘Tab can bring the window back without the launcher knowing; that only matters for the
-    /// tray's left-click toggle, which macOS never sends, as a left click opens the tray menu.
+    /// ⌘Tab can bring the window back without the launcher being asked; it notices when the window
+    /// gains focus ([`window_came_back`]), so the Dock icon follows.
     visible: bool,
     quitting: bool,
     /// The "show on the current desktop" setting last applied to the window (macOS).
@@ -772,6 +781,9 @@ struct Shell<'a> {
     /// Whether the Dock icon was last shown (macOS).
     #[cfg_attr(not(target_os = "macos"), allow(dead_code))]
     applied_dock: Option<bool>,
+    /// Whether the window had focus on the last pass (macOS), to see it gain focus.
+    #[cfg_attr(not(target_os = "macos"), allow(dead_code))]
+    was_focused: bool,
 }
 
 impl<'a> Shell<'a> {
@@ -779,7 +791,7 @@ impl<'a> Shell<'a> {
         let window_hides = window_can_hide(cc.display_handle().ok().map(|d| d.as_raw()));
         // Started hidden at login but there's no tray to come back from: show the window.
         let visible = !hidden || launcher.tray.is_none();
-        let mut shell = Self { launcher, window_hides, visible: true, quitting: false, applied_follow: None, applied_dock: None };
+        let mut shell = Self { launcher, window_hides, visible: true, quitting: false, applied_follow: None, applied_dock: None, was_focused: false };
         if !visible && window_hides {
             // Started in the tray: the window stays out of sight. On macOS this doesn't hide the
             // app as `put_away` does, since the app is still being activated as it starts, which
@@ -846,6 +858,14 @@ impl eframe::App for Shell<'_> {
             let on = self.launcher.ui.settings.show_on_current_desktop;
             spaces::follow_current_desktop(on);
             self.applied_follow = Some(on);
+        }
+        #[cfg(target_os = "macos")]
+        {
+            let focused = ctx.input(|i| i.viewport().focused) == Some(true);
+            if window_came_back(self.visible, self.window_hides, self.was_focused, focused) {
+                self.visible = true;
+            }
+            self.was_focused = focused;
         }
         for request in requests {
             match request {
@@ -1065,6 +1085,17 @@ mod tests {
     }
 
     #[test]
+    fn a_hidden_window_that_gains_focus_has_come_back() {
+        assert!(window_came_back(false, true, false, true));
+        // Shown by the launcher, still focused while being put away, or no focus yet.
+        assert!(!window_came_back(true, true, false, true));
+        assert!(!window_came_back(false, true, true, true));
+        assert!(!window_came_back(false, true, false, false));
+        // A window that can't hide is closed instead, and comes back only through `show`.
+        assert!(!window_came_back(false, false, false, true));
+    }
+
+    #[test]
     fn the_tray_alone_waits_until_asked() {
         assert_eq!(tray_step(&[]), TrayStep::Stay);
     }
@@ -1194,8 +1225,15 @@ mod tests {
     fn quitting_overrides_a_close_to_the_tray() {
         let (mut launcher, _show, _) = launcher();
         let ctx = launcher.windowless.clone();
-        let mut shell =
-            Shell { launcher: &mut launcher, window_hides: false, visible: true, quitting: false, applied_follow: None, applied_dock: None };
+        let mut shell = Shell {
+            launcher: &mut launcher,
+            window_hides: false,
+            visible: true,
+            quitting: false,
+            applied_follow: None,
+            applied_dock: None,
+            was_focused: false,
+        };
         shell.put_away(&ctx);
         assert!(shell.launcher.closed_to_tray);
         shell.quit(&ctx);
@@ -1206,8 +1244,15 @@ mod tests {
     fn a_window_that_hides_is_not_closed_to_the_tray() {
         let (mut launcher, _show, _) = launcher();
         let ctx = launcher.windowless.clone();
-        let mut shell =
-            Shell { launcher: &mut launcher, window_hides: true, visible: true, quitting: false, applied_follow: None, applied_dock: None };
+        let mut shell = Shell {
+            launcher: &mut launcher,
+            window_hides: true,
+            visible: true,
+            quitting: false,
+            applied_follow: None,
+            applied_dock: None,
+            was_focused: false,
+        };
         shell.put_away(&ctx);
         assert!(!shell.visible);
         assert!(!shell.launcher.closed_to_tray);
