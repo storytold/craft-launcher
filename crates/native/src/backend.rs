@@ -724,6 +724,7 @@ fn run_install(
             return Err(format!("{} already exists", path.display()));
         }
     };
+    let approved_path = occupied.as_deref().filter(|_| replace);
     let mut last_emit = Instant::now() - Duration::from_secs(1);
     let mut phase = |p: JobPhase| {
         // Downloads report thousands of times; the UI needs ~20 a second.
@@ -733,7 +734,7 @@ fn run_install(
         last_emit = Instant::now();
         shared.emit(Event::Progress { app: app.id.to_string(), phase: p });
     };
-    let mut job = Job { http, paths, stop, phase: &mut phase, install_locations: &options.install_locations, replace, downgrade };
+    let mut job = Job { http, paths, stop, phase: &mut phase, install_locations: &options.install_locations, replace, approved_path, downgrade };
     let mut commit_record = |record: &crate::manifest::Record| {
         let mut manifest = shared.manifest.lock().unwrap_or_else(PoisonError::into_inner);
         let mut updated = manifest.clone();
