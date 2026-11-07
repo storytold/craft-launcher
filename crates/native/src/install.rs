@@ -97,36 +97,24 @@ pub fn install_at(
         }
         #[cfg(windows)]
         PackageKind::Msi => {
-            let r = windows::run_msi(&file, destination.as_deref(), job.stop, &mut *job.phase).map(|_| None);
-            if r.is_ok() {
-                if let Some(r) = previous {
-                    let _ = crate::portable::remove(app, r);
-                } else if let Some(r) = crate::manifest::Manifest::load(&job.paths.manifest()).apps.get(app.id) {
-                    let _ = crate::portable::remove(app, r);
-                } else if let Some(inst) = existing.filter(|i| i.source == InstallSource::Launcher) {
-                    let bin = Path::new(&inst.location);
-                    if let Some(parent) = bin.parent() {
-                        for stem in app.stems() {
-                            let exe = parent.join(format!("{stem}.exe"));
-                            let _ = std::fs::remove_file(&exe);
-                        }
-                        let _ = std::fs::remove_file(bin);
-                        let _ = std::fs::remove_file(parent.join("portable.txt"));
-                        let _ = std::fs::remove_dir(parent);
-                    }
-                }
+            let previous_portable = previous
+                .cloned()
+                .or_else(|| crate::manifest::Manifest::load(&job.paths.manifest()).apps.get(app.id).cloned())
+                .filter(|r| r.kind == PackageKind::PortableZip);
+            if let Some(ref r) = previous_portable {
+                crate::portable::remove(app, r)?;
             }
-            r
+            windows::run_msi(&file, destination.as_deref(), job.stop, &mut *job.phase).map(|_| None)
         }
         #[cfg(windows)]
         PackageKind::PortableZip => {
-            if existing.is_some_and(|i| i.source == InstallSource::Msi) {
-                windows::uninstall_msi(app, job.stop, &mut *job.phase)?;
-            }
             let expected_sha = asset.sha256.as_deref();
             crate::portable::install(app, &file, &version, expected_sha, previous, job.paths, destination.as_deref(), job.replace, &mut |record| {
                 if release.version.is_some() && crate::detect::windows::executable_version(&record.path).as_ref() != release.version.as_ref() {
                     return Err("The portable executable does not match the selected version. The installation was rolled back.".into());
+                }
+                if existing.is_some_and(|i| i.source == InstallSource::Msi) {
+                    windows::uninstall_msi(app, job.stop, &mut *job.phase)?;
                 }
                 match commit.as_deref_mut() {
                     Some(commit) => commit(record),

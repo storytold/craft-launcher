@@ -25,7 +25,7 @@ impl LauncherUi {
         let response = match &mut dialog {
             Dialog::Notes(id) => modal.show(ctx, |ui| close = self.notes_dialog(ui, id)),
             Dialog::ConfirmUninstall(id) => modal.show(ctx, |ui| close = self.uninstall_dialog(ui, id)),
-            Dialog::Install { app, folder } => modal.show(ctx, |ui| close = self.install_dialog(ui, app, folder, host)),
+            Dialog::Install { app, folder, kind } => modal.show(ctx, |ui| close = self.install_dialog(ui, app, folder, kind, host)),
             Dialog::Replace { app, path } => modal.show(ctx, |ui| close = self.replace_dialog(ui, app, path)),
             Dialog::Settings => modal.show(ctx, |ui| close = self.settings_dialog(ui, host)),
             Dialog::LauncherUpdate(r) => modal.show(ctx, |ui| close = self.launcher_update_dialog(ui, r)),
@@ -209,25 +209,24 @@ impl LauncherUi {
         close
     }
 
-    fn install_dialog(&mut self, ui: &mut egui::Ui, id: &str, folder: &mut String, host: &mut dyn Host) -> bool {
+    fn install_dialog(&mut self, ui: &mut egui::Ui, id: &str, folder: &mut String, kind: &mut Option<PackageKind>, host: &mut dyn Host) -> bool {
         let Some(app) = self.entry(id).map(|e| e.app) else { return true };
         ui.set_width(440.0f32.min(ui.ctx().content_rect().width() - 80.0));
         Self::title(ui, None, app.name, tl!("Install folder"));
         let default = self.settings.install_locations.root.as_deref().unwrap_or(tl!("System default"));
         Self::folder_field(ui, folder, Some(default), host);
         if self.platform.is_some_and(|p| p.os == Os::Windows) {
-            let mut choice = self.settings.effective_windows_kind(id);
+            let choice = kind.get_or_insert_with(|| self.settings.effective_windows_kind(id));
             ui.add_space(8.0);
             ui.horizontal(|ui| {
                 ui.label(tl!("Install new apps as"));
                 let label = crate::i18n::t(choice.label());
                 egui::ComboBox::from_id_salt(("install-windows-kind", id)).selected_text(label).width(200.0).show_ui(ui, |ui| {
                     for k in [PackageKind::Msi, PackageKind::PortableZip] {
-                        ui.selectable_value(&mut choice, k, crate::i18n::t(k.label()));
+                        ui.selectable_value(choice, k, crate::i18n::t(k.label()));
                     }
                 });
             });
-            self.settings.app_kinds.insert(id.to_string(), choice);
         }
         if self.platform.is_some_and(|p| p.os == Os::Linux) {
             ui.label(tl!("Custom folders use AppImage on Linux."));
@@ -240,6 +239,11 @@ impl LauncherUi {
                     self.settings.install_locations.per_app.remove(id);
                 } else {
                     self.settings.install_locations.per_app.insert(id.to_string(), folder.clone());
+                }
+                if self.platform.is_some_and(|p| p.os == Os::Windows)
+                    && let Some(choice) = kind
+                {
+                    self.settings.app_kinds.insert(id.to_string(), *choice);
                 }
                 self.configure();
                 self.send(Command::Install { app: id.to_string() });

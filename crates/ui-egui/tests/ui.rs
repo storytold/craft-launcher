@@ -1763,6 +1763,18 @@ fn windows_settings_offers_installer_and_portable_package_formats() {
     );
     h.run_steps(6);
 
+    // 0. Install dialog package choice is not persisted if cancelled, only when Installed.
+    h.get_all_by_label("Install").next().unwrap().click();
+    h.run_steps(3);
+    h.get_by_label("Install new apps as");
+    h.get_by_value("Installer (.msi)").click();
+    h.run_steps(2);
+    h.get_by_label("Portable (.zip)").click();
+    h.run_steps(3);
+    h.get_by_label("Cancel").click();
+    h.run_steps(3);
+    assert_eq!(h.state().as_ref().unwrap().settings.app_kinds.get("vectorcraft"), None);
+
     // 1. Per-app menu on an uninstalled app offers "Install as Portable (.zip)".
     let install_btn = h.get_all_by_label("Install").next().unwrap().rect();
     let beside =

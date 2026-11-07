@@ -303,7 +303,7 @@ pub mod windows {
             }
             if let Some(exe) = app.stems().map(|s| dir.join(format!("{s}.exe"))).find(|p| p.is_file()) {
                 return Some(Installed {
-                    version: binary_version(&exe, app),
+                    version: executable_version(&exe),
                     source: InstallSource::Launcher,
                     location: exe.display().to_string(),
                     package: None,
@@ -319,11 +319,6 @@ pub mod windows {
         } else {
             detect_msi(app).or_else(|| detect_portable_in(app, &portable_dirs(app)))
         }
-    }
-
-    pub(crate) fn binary_version(bin: &Path, app: &CraftApp) -> Option<version::Version> {
-        let out = crate::process::capture(bin.to_str()?, &["--version"], std::time::Duration::from_secs(5))?;
-        parse_cli_version(out.trim(), app)
     }
 }
 

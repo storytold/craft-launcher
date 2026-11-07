@@ -257,22 +257,33 @@ pub fn install(
     }
     std::fs::create_dir_all(&destination).map_err(|e| e.to_string())?;
     let marker = destination.join("portable.txt");
-    if !marker.exists() {
-        let _ = std::fs::write(&marker, b"");
-    }
+    let created_marker = if !marker.exists() {
+        std::fs::write(&marker, b"").map_err(|e| e.to_string())?;
+        true
+    } else {
+        false
+    };
+    let track_marker = created_marker || old_files.iter().any(|old| old == Path::new("portable.txt"));
     let backup = staging.0.join("backup");
+    let mut record_files: Vec<PathBuf> = files.iter().map(|relative| destination.join(relative)).collect();
+    if track_marker {
+        record_files.push(marker.clone());
+    }
     let record = Record {
         version: version.to_string(),
         kind: PackageKind::PortableZip,
         path: destination.join(executable),
         installed_at: crate::now(),
-        files: files.iter().map(|relative| destination.join(relative)).collect(),
+        files: record_files,
         needs_root: false,
     };
     let mut moved = Vec::new();
     let mut copied = Vec::new();
     let transaction = (|| {
         for relative in &old_files {
+            if relative == Path::new("portable.txt") {
+                continue;
+            }
             let old = destination.join(relative);
             if !old.exists() {
                 continue;
@@ -296,6 +307,9 @@ pub fn install(
         Ok::<(), String>(())
     })();
     if let Err(error) = transaction {
+        if created_marker {
+            let _ = std::fs::remove_file(&marker);
+        }
         for relative in copied {
             let _ = std::fs::remove_file(destination.join(relative));
         }
@@ -330,11 +344,7 @@ pub fn remove(app: &CraftApp, record: &Record) -> Result<(), String> {
             directory = path.parent().map(Path::to_path_buf);
         }
     }
-    let marker = root.join("portable.txt");
-    if marker.is_file() {
-        let _ = std::fs::remove_file(&marker);
-        let _ = std::fs::remove_dir(root);
-    }
+    let _ = std::fs::remove_dir(root);
     Ok(())
 }
 
@@ -540,6 +550,37 @@ mod tests {
         let record = install(app, &zip, "0.5.0", Some(&actual_hash), None, &paths, None, false, &mut |_| Ok(())).unwrap();
         assert_eq!(std::fs::read(&record.path).unwrap(), b"program");
         assert!(record.path.parent().unwrap().join("portable.txt").is_file());
+        assert!(record.files.contains(&record.path.parent().unwrap().join("portable.txt")));
+    }
+
+    #[test]
+    fn portable_txt_marker_lifecycle() {
+        let dir = tempfile::tempdir().unwrap();
+        let app = CraftApp::by_id("photocraft").unwrap();
+        let paths = Paths::under(dir.path());
+        let zip = archive(dir.path(), "app.zip", &[("photocraft.exe", b"program")]);
+
+        // Case 1: Fresh install creates portable.txt and tracks it; remove deletes it and root folder.
+        let rec1 = install(app, &zip, "0.5.0", None, None, &paths, None, false, &mut |_| Ok(())).unwrap();
+        let marker = rec1.path.parent().unwrap().join("portable.txt");
+        assert!(marker.is_file());
+        assert!(rec1.files.contains(&marker));
+        remove(app, &rec1).unwrap();
+        assert!(!marker.exists());
+        assert!(!rec1.path.parent().unwrap().exists());
+
+        // Case 2: Pre-existing portable.txt (created by user) is NOT tracked; remove preserves it.
+        let custom_parent = dir.path().join("Custom");
+        let app_dir = custom_parent.join("photocraft");
+        std::fs::create_dir_all(&app_dir).unwrap();
+        let user_marker = app_dir.join("portable.txt");
+        std::fs::write(&user_marker, b"custom marker").unwrap();
+
+        let rec2 = install(app, &zip, "0.5.0", None, None, &paths, Some(&custom_parent), false, &mut |_| Ok(())).unwrap();
+        assert!(!rec2.files.contains(&user_marker));
+        remove(app, &rec2).unwrap();
+        assert!(user_marker.is_file());
+        assert_eq!(std::fs::read(&user_marker).unwrap(), b"custom marker");
     }
 
     #[test]
