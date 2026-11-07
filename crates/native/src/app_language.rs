@@ -276,11 +276,11 @@ fn prepare_control_endpoint(paths: &Paths, app_id: &str) -> Option<ControlEndpoi
     let port = addr.port();
     drop(listener);
     let endpoint = ControlEndpoint { port, token };
-    if let Ok(bytes) = serde_json::to_vec(&endpoint)
-        && write_atomic(&file, &bytes).is_ok()
-        && !secure_control_file(&file)
-    {
+    let bytes = serde_json::to_vec(&endpoint).ok()?;
+    write_atomic(&file, &bytes).ok()?;
+    if !secure_control_file(&file) {
         let _ = std::fs::remove_file(&file);
+        return None;
     }
     Some(endpoint)
 }
@@ -589,6 +589,19 @@ mod tests {
         assert_eq!(reused.port, endpoint.port);
         assert_eq!(reused.token, endpoint.token);
         drop(listener);
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn prepare_control_endpoint_returns_none_when_file_cannot_be_saved() {
+        let dir = std::env::temp_dir().join(format!("craft-launcher-launch-env-fail-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let paths = Paths::under(&dir);
+        std::fs::create_dir_all(&paths.data).unwrap();
+        std::fs::write(paths.data.join("control"), "not a dir").unwrap();
+
+        assert!(prepare_control_endpoint(&paths, "photocraft").is_none());
 
         let _ = std::fs::remove_dir_all(&dir);
     }
