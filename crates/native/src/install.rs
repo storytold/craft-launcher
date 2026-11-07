@@ -312,7 +312,9 @@ pub fn occupied(
     let target = match kind {
         PackageKind::Msi => folder,
         PackageKind::PortableZip => Some(folder.unwrap_or_else(|| paths.apps()).join(app.id)),
-        PackageKind::Dmg => folder.map(|f| f.join(format!("{}.app", app.name))),
+        PackageKind::Dmg => {
+            folder.and_then(|f| app.mac_bundle_names().map(|n| f.join(format!("{n}.app"))).find(|t| std::fs::symlink_metadata(t).is_ok()))
+        }
         #[cfg(target_os = "linux")]
         PackageKind::AppImage => folder.or_else(crate::detect::linux::appimage_dir).map(|f| f.join(&asset.name)),
         _ => None,
@@ -1723,6 +1725,7 @@ pub mod macos {
         result
     }
 
+    /// Copies the `.app` bundle from `mount` into staging, verifies it, and swaps it into Applications.
     fn copy_app(
         app: &CraftApp,
         mount: &Path,
@@ -1731,11 +1734,14 @@ pub mod macos {
         replace: bool,
         expect: &Expect<'_>,
     ) -> Result<PathBuf, String> {
-        let bundle = format!("{}.app", app.name);
-        let src = mount.join(&bundle);
-        if !std::fs::symlink_metadata(&src).is_ok_and(|m| m.is_dir()) {
-            return Err("the disk image does not contain an app directory".into());
-        }
+        let (src, bundle) = app
+            .mac_bundle_names()
+            .map(|n| {
+                let bundle = format!("{n}.app");
+                (mount.join(&bundle), bundle)
+            })
+            .find(|(src, _)| std::fs::symlink_metadata(src).is_ok_and(|m| m.is_dir()))
+            .ok_or_else(|| "the disk image does not contain an app directory".to_string())?;
         crate::detect::macos::read_bundle(app, &src).ok_or("the disk image doesn't contain the app")?;
         let dir = applications_dir(existing, destination)?;
         let dest = existing.filter(|i| i.source == InstallSource::MacApp).map_or_else(|| dir.join(&bundle), |i| PathBuf::from(&i.location));
@@ -2557,6 +2563,7 @@ mod tests {
         assert_eq!(std::fs::read_dir(&folder).unwrap().count(), 2, "staging was left behind");
     }
 
+    /// Checks that `occupied` detects existing targets for portable zips and macOS bundle variants.
     #[test]
     fn a_new_install_reports_what_it_would_write_over() {
         let dir = tempfile::tempdir().unwrap();
@@ -2564,12 +2571,24 @@ mod tests {
         let paths = Paths::under(dir.path());
         let locations = InstallLocations { root: Some(dir.path().display().to_string()), ..Default::default() };
         let asset = Asset { name: "photocraft.zip".into(), ..Default::default() };
-        let occupied = |previous| occupied(app, &asset, PackageKind::PortableZip, None, previous, &locations, &paths).unwrap();
-        assert_eq!(occupied(None), None);
+        let is_occupied = |previous| occupied(app, &asset, PackageKind::PortableZip, None, previous, &locations, &paths).unwrap();
+        assert_eq!(is_occupied(None), None);
         std::fs::create_dir(dir.path().join("photocraft")).unwrap();
-        assert_eq!(occupied(None), Some(dir.path().join("photocraft")));
+        assert_eq!(is_occupied(None), Some(dir.path().join("photocraft")));
         let old = record("0.5.0", PackageKind::PortableZip, dir.path().join("photocraft/photocraft.exe"), vec![], false);
-        assert_eq!(occupied(Some(&old)), None);
+        assert_eq!(is_occupied(Some(&old)), None);
+
+        let studio = CraftApp::by_id("artcraft").unwrap();
+        let dmg_asset = Asset { name: "ArtCraft_0.41.1_universal.dmg".into(), ..Default::default() };
+        assert_eq!(occupied(studio, &dmg_asset, PackageKind::Dmg, None, None, &locations, &paths).unwrap(), None);
+        std::fs::create_dir(dir.path().join("ArtCraft.app")).unwrap();
+        assert_eq!(occupied(studio, &dmg_asset, PackageKind::Dmg, None, None, &locations, &paths).unwrap(), Some(dir.path().join("ArtCraft.app")));
+        std::fs::remove_dir(dir.path().join("ArtCraft.app")).unwrap();
+        std::fs::create_dir(dir.path().join("ArtCraft Studio.app")).unwrap();
+        assert_eq!(
+            occupied(studio, &dmg_asset, PackageKind::Dmg, None, None, &locations, &paths).unwrap(),
+            Some(dir.path().join("ArtCraft Studio.app"))
+        );
     }
 
     #[test]

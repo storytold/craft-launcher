@@ -205,8 +205,9 @@ impl AssetName {
     }
 }
 
+/// Strips `<stem><sep>` (ASCII case-insensitively) from the start of `base`, returning the rest.
 fn strip_stem_prefix<'a>(base: &'a str, stem: &str, sep: char) -> Option<&'a str> {
-    if base.len() > stem.len() && base[..stem.len()].eq_ignore_ascii_case(stem) && base.as_bytes()[stem.len()] == sep as u8 {
+    if base.get(..stem.len()).is_some_and(|prefix| prefix.eq_ignore_ascii_case(stem)) && base.as_bytes().get(stem.len()) == Some(&(sep as u8)) {
         Some(&base[stem.len() + 1..])
     } else {
         None
@@ -239,12 +240,12 @@ pub fn parse_asset_name(name: &str, stems: &[&str]) -> Option<AssetName> {
             return Some(AssetName { stem: (*stem).to_string(), version: version.to_string(), token: format!("{os}-{arch}"), kind });
         }
         if let Some(rest) = strip_stem_prefix(base, stem, '_') {
-            // Studio / Tauri format: <version>_<arch>[_<locale>]
-            let mut parts = rest.split('_');
-            let (Some(version), Some(arch_token)) = (parts.next(), parts.next()) else { continue };
+            // Studio / Tauri format: <version>_<arch>[_<locale>] where <arch> may be `x86_64`.
+            let Some((version, suffix)) = rest.split_once('_') else { continue };
             if crate::version::parse(version).is_none() || !version.starts_with(|c: char| c.is_ascii_digit()) {
                 continue;
             }
+            let arch_token = if suffix == "x86_64" || suffix.starts_with("x86_64_") { "x86_64" } else { suffix.split('_').next().unwrap_or("") };
             let token = match (kind, arch_token) {
                 (PackageKind::Dmg, "universal") => Some("macos-universal".to_string()),
                 (PackageKind::Dmg, "x86_64" | "x64") => Some("macos-x86_64".to_string()),
@@ -333,6 +334,7 @@ mod tests {
         }
     }
 
+    /// ArtCraft Studio's release fixture resolves the right asset across macOS, Windows, and Linux.
     #[test]
     fn artcraft_studio_selects_published_desktop_assets() {
         let release = crate::release::parse_github_release(include_str!("../tests/fixtures/artcraft-release.json"), "storytold/artcraft").unwrap();
@@ -431,13 +433,22 @@ mod tests {
         assert!(parse_asset_name("figcraft-0.5.1-linux-x86_64.tar.gz", &["figcraft"]).is_some());
     }
 
+    /// Studio's underscore-form MSI and DMG names parse cleanly, including `x86_64` and non-ASCII prefixes.
     #[test]
     fn reads_artcraft_studio_asset_names() {
         let dmg = parse_asset_name("ArtCraft_0.41.1_universal.dmg", &["artcraft"]).unwrap();
         assert_eq!((dmg.version.as_str(), dmg.token.as_str(), dmg.kind), ("0.41.1", "macos-universal", PackageKind::Dmg));
 
+        let x86_64_dmg = parse_asset_name("ArtCraft_0.41.1_x86_64.dmg", &["artcraft"]).unwrap();
+        assert_eq!((x86_64_dmg.version.as_str(), x86_64_dmg.token.as_str(), x86_64_dmg.kind), ("0.41.1", "macos-x86_64", PackageKind::Dmg));
+
         let msi = parse_asset_name("ArtCraft_0.41.1_x64_en-US.msi", &["artcraft"]).unwrap();
         assert_eq!((msi.version.as_str(), msi.token.as_str(), msi.kind), ("0.41.1", "windows-x64", PackageKind::Msi));
+
+        let x86_64_msi = parse_asset_name("ArtCraft_0.41.1_x86_64.msi", &["artcraft"]).unwrap();
+        assert_eq!((x86_64_msi.version.as_str(), x86_64_msi.token.as_str(), x86_64_msi.kind), ("0.41.1", "windows-x64", PackageKind::Msi));
+
+        assert_eq!(parse_asset_name("artcrafé_0.41.1_x64.msi", &["artcraft"]), None);
     }
 
     #[test]

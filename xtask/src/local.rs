@@ -19,7 +19,6 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 /// Every Craft App: (id = folder name, display name). Keep in step with `catalog::SUITE`.
 const APPS: &[(&str, &str)] = &[
-    ("artcraft", "ArtCraft Studio"),
     ("photocraft", "PhotoCraft"),
     ("vectorcraft", "VectorCraft"),
     ("filmcraft", "FilmCraft"),

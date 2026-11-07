@@ -788,6 +788,7 @@ fn a_freebsd_version_row_sizes_the_tarball() {
     assert!(facts.ends_with(", 2026 · 140 MB"), "{facts:?}");
 }
 
+/// FreeBSD hides ArtCraft Studio while keeping supported Craft Apps visible.
 #[test]
 fn freebsd_skips_artcraft_studio() {
     let freebsd = Platform { os: Os::FreeBsd, arch: Arch::X64 };

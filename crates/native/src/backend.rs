@@ -278,6 +278,7 @@ impl NativeBackend {
         self.shared.options.lock().unwrap_or_else(PoisonError::into_inner).clone()
     }
 
+    /// Scans for installed Craft Apps and paused downloads on a background thread.
     fn detect_all(&self) {
         if self.shared.detecting.swap(true, Ordering::SeqCst) {
             return;
@@ -363,6 +364,7 @@ impl NativeBackend {
         });
     }
 
+    /// Starts an install, update, or uninstall job for `app_id` on a background thread.
     fn start_job(&self, app_id: &str, work: Work) {
         let uninstall = matches!(work, Work::Uninstall);
         let Some(app) = CraftApp::by_id(app_id) else { return };
