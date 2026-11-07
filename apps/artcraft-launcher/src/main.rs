@@ -82,9 +82,9 @@ fn main() -> ExitCode {
     let mut hidden = args.iter().any(|a| a == login::HIDDEN_FLAG);
 
     let wake: Wake = Arc::new(OnceLock::new());
-    let starts = match single_instance::claim(wake.clone()) {
+    let (starts, answering) = match single_instance::claim(wake.clone()) {
         Instance::Secondary => return ExitCode::SUCCESS,
-        Instance::Primary(rx) => rx,
+        Instance::Primary(rx, answering) => (rx, answering),
     };
     // The log file lives in the launcher's data folder (beside the executable in portable mode);
     // opened after the arguments (so `--version` leaves no file behind) and once this is the only
@@ -154,10 +154,11 @@ fn main() -> ExitCode {
             };
             waker.set_window(None);
             if let Err(e) = result {
-                // Drop the launcher first: it holds the single-instance receiver, so while the
-                // dialog is open a second launch would be queued there, unanswered, and exit.
-                // Dropping it lets the listener notice and free the port. It was dropped on
-                // return anyway; this only moves that before the dialog.
+                // Stop answering other starts first: while the dialog is open, a second start
+                // would otherwise defer to this launcher and exit with nothing on screen. Now it
+                // gets no answer and starts on its own (`Answering::stop`).
+                answering.stop();
+                // The tray icon and the rest go before the dialog, not after it.
                 drop(launcher);
                 // Say why instead of exiting silently; also logs it (`start_failure`).
                 start_failure::report(&e);
