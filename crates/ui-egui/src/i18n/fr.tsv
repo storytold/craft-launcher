@@ -431,3 +431,17 @@ materialcraft	Preview materials in 2D and on 3D models.	Visualisez les matériau
 	Migrate Flatpak bundles to ArtCraft OCI (experimental)	Migrer les paquets Flatpak vers ArtCraft OCI (expérimental)
 	On update, switch first party apps when the matching package is available. Otherwise, keep using bundles.	Lors des mises à jour, migrer les applications ArtCraft si le paquet correspondant est disponible. Sinon, continuer à utiliser les paquets autonomes.
 	The OCI repository is a preview with GPG verification disabled.	Le dépôt OCI est une version préliminaire avec la vérification GPG désactivée.
+
+# Update installation scope
+	Choose how to update {name}	Choisir comment mettre à jour {name}
+	Keep the current location	Conserver l’emplacement actuel
+	Administrator permission is required for each update.	Chaque mise à jour nécessite une autorisation administrateur.
+	Install only for me	Installer uniquement pour moi
+	Windows will ask once more for administrator permission to uninstall the old shared copy. After migration, updates and uninstalling for this account normally need no administrator permission. Other Windows users will lose access.	Windows demandera encore une fois les droits administrateur pour désinstaller l’ancienne copie partagée. Après la migration, les mises à jour et la désinstallation pour ce compte ne nécessitent normalement plus ces droits. Les autres utilisateurs Windows perdront l’accès.
+	Profile settings and presets stay where they are. Add-ons beside the program may need reinstalling; back them up first.	Les paramètres et préréglages du profil restent en place. Les extensions du dossier du programme peuvent nécessiter une réinstallation ; sauvegardez-les d’abord.
+	I accept removal of the shared copy and the risk to add-ons beside it.	J’accepte la suppression de l’installation partagée et le risque pour les extensions de son dossier.
+
+@msg	The installation or selected version changed. Check for updates and choose again; nothing was removed.	L’installation ou la version sélectionnée a changé. Recherchez les mises à jour et choisissez à nouveau ; rien n’a été supprimé.
+@msg	Migration is unavailable for this version. Keep the current location; nothing was removed.	La migration n’est pas disponible pour cette version. Conservez l’emplacement actuel ; rien n’a été supprimé.
+@msg	The installation folders could not be verified or the destination is occupied. Keep the current location; nothing was removed.	Les dossiers d’installation n’ont pas pu être vérifiés ou la destination est occupée. Conservez l’emplacement actuel ; rien n’a été supprimé.
+@msg	Portable data was found beside the program. Keep the current location and move that data manually first.	Des données de version portable ont été trouvées à côté du programme. Conservez l’emplacement actuel et déplacez d’abord ces données manuellement.

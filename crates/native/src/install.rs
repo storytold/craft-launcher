@@ -96,6 +96,108 @@ pub fn install(
     install_at(app, release, asset, kind, existing, previous, job, None)
 }
 
+#[cfg(windows)]
+pub(crate) const MIGRATION_CHANGED: &str = "The installation or selected version changed. Check for updates and choose again; nothing was removed.";
+pub(crate) const MIGRATION_UNAVAILABLE: &str = "Migration is unavailable for this version. Keep the current location; nothing was removed.";
+#[cfg(any(windows, test))]
+const MIGRATION_PATH: &str =
+    "The installation folders could not be verified or the destination is occupied. Keep the current location; nothing was removed.";
+/// Only a verified all-users MSI offers a scope change. Never infer scope from its folder.
+#[cfg(windows)]
+pub(crate) fn msi_update_plan(
+    app: &CraftApp,
+    kind: PackageKind,
+    existing: Option<&Installed>,
+    release: &Release,
+) -> Result<Option<artcraft_launcher_core::protocol::MsiUpdatePlan>, String> {
+    let Some(inst) = existing.filter(|i| kind == PackageKind::Msi && i.source == InstallSource::Msi) else { return Ok(None) };
+    let scope = crate::msi_context::update_scope(true, inst.package.as_deref(), crate::msi_context::probe, |code| {
+        crate::detect::windows::record_scope(app, code)
+    })?;
+    if scope != Some(MsiScope::PerMachine) {
+        return Ok(None);
+    }
+    let user_folder = msi_user_folder().ok_or(MIGRATION_CHANGED)?.join(app.name);
+    Ok(Some(artcraft_launcher_core::protocol::MsiUpdatePlan {
+        installed: inst.clone(),
+        release_tag: release.tag.clone(),
+        user_folder: user_folder.to_string_lossy().into_owned(),
+    }))
+}
+
+/// Downloads and checks both installers before removing anything. Profile data is not moved:
+/// it is independent of the executable's location. Portable installations require manual migration.
+#[cfg(windows)]
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn migrate_msi_to_user(
+    app: &CraftApp,
+    release: &Release,
+    asset: &Asset,
+    previous: &Release,
+    previous_asset: &Asset,
+    plan: &artcraft_launcher_core::protocol::MsiUpdatePlan,
+    job: &mut Job<'_>,
+) -> Result<(), String> {
+    bind_artifact_version(app, release, asset)?;
+    bind_artifact_version(app, previous, previous_asset)?;
+    if release.tag != plan.release_tag || previous.version != plan.installed.version {
+        return Err(MIGRATION_CHANGED.into());
+    }
+    let destination = msi_user_folder().ok_or(MIGRATION_CHANGED)?.join(app.name);
+    if destination.to_string_lossy() != plan.user_folder {
+        return Err(MIGRATION_CHANGED.into());
+    }
+    validate_migration_paths(Path::new(&plan.installed.location), &destination)?;
+    if process::is_running(Path::new(&plan.installed.location)) {
+        return Err(format!("{} is running. Quit it, then try again.", app.name));
+    }
+    let (old_file, old_sha) = download(previous, previous_asset, job)?;
+    let (new_file, new_sha) = download(release, asset, job)?;
+    if !crate::msi_context::package_installs_per_user(&new_file)? {
+        return Err(MIGRATION_UNAVAILABLE.into());
+    }
+    windows::migrate_msi(
+        app,
+        windows::Package { file: &new_file, sha256: &new_sha, version: &release.version_label() },
+        windows::Package { file: &old_file, sha256: &old_sha, version: &previous.version_label() },
+        &plan.installed,
+        &destination,
+        job.stop,
+        job.phase,
+    )
+}
+
+/// Never overwrite an existing user installation or silently abandon portable data.
+#[cfg(any(windows, test))]
+fn validate_migration_paths(executable: &Path, destination: &Path) -> Result<(), String> {
+    let old = executable.parent().filter(|_| executable.is_absolute()).ok_or(MIGRATION_PATH)?;
+    if !executable.is_file() {
+        return Err(MIGRATION_PATH.into());
+    }
+    match std::fs::symlink_metadata(destination) {
+        Ok(_) => return Err(MIGRATION_PATH.to_string()),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+        Err(e) => {
+            log::warn!("Could not check migration destination: {e}");
+            return Err(MIGRATION_PATH.into());
+        }
+    }
+    let entries = std::fs::read_dir(old).map_err(|e| {
+        log::warn!("Could not check migration source: {e}");
+        MIGRATION_PATH.to_string()
+    })?;
+    for entry in entries {
+        let entry = entry.map_err(|e| {
+            log::warn!("Could not inspect migration source: {e}");
+            MIGRATION_PATH.to_string()
+        })?;
+        let name = entry.file_name().to_string_lossy().to_ascii_lowercase();
+        if name == "portable.txt" || name.ends_with(".portable") || name.ends_with("craftdata") {
+            return Err("Portable data was found beside the program. Keep the current location and move that data manually first.".into());
+        }
+    }
+    Ok(())
+}
 type RecordCommit<'a> = Option<&'a mut dyn FnMut(&Record) -> Result<(), String>>;
 
 #[allow(clippy::too_many_arguments)]
@@ -151,7 +253,7 @@ pub fn install_at(
             crate::msi_context::probe,
             |code| crate::detect::windows::record_scope(app, code),
         )?;
-        // A fresh install is machine-wide (Program Files); an update keeps the context of the copy it replaces.
+        // A fresh install needs only this account; an update keeps the context of the copy it replaces.
         crate::msi_context::install_scope(updated, existing.is_none())
     } else {
         None
@@ -168,6 +270,15 @@ pub fn install_at(
     #[cfg_attr(not(windows), allow(unused_variables))]
     let (file, sha256) = download(release, asset, job)?;
     log::info!("{}: download ready ({}), running installer...", app.name, file.display());
+    // A fresh install asks the downloaded package whether it can install for one account.
+    #[cfg(windows)]
+    let (msi_scope, destination) = if kind == PackageKind::Msi && existing.is_none() {
+        let scope = crate::msi_context::fresh_scope(crate::msi_context::package_installs_per_user(&file));
+        log::info!("{}: installing {}", app.name, if scope == MsiScope::PerUser { "for this account" } else { "for everyone" });
+        (Some(scope), fresh_msi_folder(scope, job.install_locations.folder(app.id).is_some(), destination))
+    } else {
+        (msi_scope, destination)
+    };
     // Past this point the install can't be interrupted halfway.
     (job.phase)(JobPhase::Installing);
     #[allow(unused_variables)]
@@ -193,7 +304,7 @@ pub fn install_at(
         PackageKind::Msi => {
             // An update lands in the same Windows Installer context as the copy being replaced:
             // per-machine needs elevation, per-user must not duplicate itself per-machine. A
-            // fresh install passes no context and takes the package's own default.
+            // fresh install explicitly requests per-user scope.
             match &rollback {
                 Some((previous, previous_sha256, previous_version)) => windows::downgrade_msi(
                     app,
@@ -369,7 +480,15 @@ fn destination(
             _ => None,
         });
     }
-    let Some(folder) = locations.folder(app.id) else { return Ok(None) };
+    let Some(folder) = locations.folder(app.id) else {
+        #[cfg(windows)]
+        if kind == PackageKind::Msi {
+            // /passive skips the installer's folder wizard. Give it the same per-user folder
+            // the launcher displays, instead of relying on UI-only MSI directory actions.
+            return Ok(Some(msi_user_folder().ok_or("no per-user applications folder on this system")?.join(app.name)));
+        }
+        return Ok(None);
+    };
     if !matches!(kind, PackageKind::Dmg | PackageKind::AppImage | PackageKind::Msi | PackageKind::PortableZip) || process::in_sandbox() {
         return Err("custom install folders aren't supported on this system".into());
     }
@@ -379,9 +498,8 @@ fn destination(
 
 /// The folder a new install goes inside when the person hasn't chosen one, so the UI can show
 /// that folder instead of only saying "System default". The answer follows the package: a
-/// Windows MSI installs for everyone into `Program Files\ArtCraft\<App>`, and a 32-bit package
-/// into the 32-bit Program Files, so `arch` is the package's architecture when the release names
-/// one and `None` (the release is unknown) answers nothing. A portable ZIP unpacks into the
+/// Windows MSI installs for this account into `%LOCALAPPDATA%\Programs\ArtCraft\<App>`,
+/// independent of package architecture. A portable ZIP unpacks into the
 /// launcher's own `apps` folder. A macOS app goes wherever the installer would put it
 /// (`/Applications`, or `~/Applications` when the system folder is not writable). Formats the
 /// system itself manages (the distro's packages on Linux, Flatpak) have no single folder, so
@@ -389,14 +507,9 @@ fn destination(
 pub fn default_folder(kind: PackageKind, arch: Option<Arch>, paths: &Paths) -> Option<PathBuf> {
     #[cfg(windows)]
     {
+        let _ = arch;
         match kind {
-            PackageKind::Msi => match arch {
-                Some(Arch::X86) => {
-                    Some(PathBuf::from(std::env::var_os("ProgramFiles(x86)").or_else(|| std::env::var_os("ProgramFiles"))?).join("ArtCraft"))
-                }
-                Some(_) => Some(PathBuf::from(std::env::var_os("ProgramFiles")?).join("ArtCraft")),
-                None => None,
-            },
+            PackageKind::Msi => msi_user_folder(),
             PackageKind::PortableZip => Some(paths.apps()),
             _ => None,
         }
@@ -411,6 +524,21 @@ pub fn default_folder(kind: PackageKind, arch: Option<Arch>, paths: &Paths) -> O
         let _ = (kind, arch, paths);
         None
     }
+}
+
+/// The suite folder shared by the MSI command and the default-folder hint. Does not create it.
+#[cfg(windows)]
+fn msi_user_folder() -> Option<PathBuf> {
+    dirs::data_local_dir().map(|folder| folder.join("Programs").join("ArtCraft"))
+}
+
+/// The folder for a fresh MSI install in `scope`. The account folder is only the default of a
+/// per-user install: a per-machine-only package goes where it was authored to (Program Files), as
+/// before per-user installs. A folder the person chose (`chosen`) is kept either way, even when it
+/// is the account folder itself.
+#[cfg(windows)]
+fn fresh_msi_folder(scope: MsiScope, chosen: bool, destination: Option<PathBuf>) -> Option<PathBuf> {
+    if scope == MsiScope::PerMachine && !chosen { None } else { destination }
 }
 
 fn selected_folder(folder: &str, writable: bool) -> Result<PathBuf, String> {
@@ -472,7 +600,7 @@ fn msi_folder_argument(path: &Path) -> Result<String, String> {
 
 /// The Windows Installer context an update must keep. A per-machine install elevates and writes
 /// HKLM registrations; a per-user one must not silently become a second, per-machine copy (or
-/// the other way round). A fresh install is always `PerMachine`.
+/// the other way round). A fresh install requests `PerUser`.
 #[cfg(any(windows, test))]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum MsiScope {
@@ -2272,6 +2400,53 @@ pub mod windows {
         Ok((ended != msi_downgrade::Ended::LaunchFailed).then_some(ended))
     }
 
+    /// Keep removal, user install and rollback in one installer-queue turn. Only removal and
+    /// rollback may elevate; the user MSI is started by this account, never by an elevated helper.
+    #[allow(clippy::too_many_arguments)]
+    pub(super) fn migrate_msi(
+        app: &CraftApp,
+        chosen: Package<'_>,
+        previous: Package<'_>,
+        expected: &artcraft_launcher_core::Installed,
+        destination: &Path,
+        stop: &Stop,
+        phase: &mut dyn FnMut(JobPhase),
+    ) -> Result<(), String> {
+        in_turn(stop, phase, JobPhase::Installing, || {
+            let _held = (msi_batch::hold(chosen.file, chosen.sha256)?, msi_batch::hold(previous.file, previous.sha256)?);
+            let installs = crate::detect::windows::msi_installs(app);
+            let [installed] = installs.as_slice() else {
+                return Err(super::MIGRATION_CHANGED.into());
+            };
+            if installed.scope != MsiScope::PerMachine
+                || Some(installed.product_code.as_str()) != expected.package.as_deref()
+                || installed.version != expected.version
+                || installed.exe.as_ref().is_none_or(|p| p.to_string_lossy() != expected.location)
+            {
+                return Err(super::MIGRATION_CHANGED.into());
+            }
+            super::validate_migration_paths(Path::new(&expected.location), destination)?;
+            if process::is_running(Path::new(&expected.location)) {
+                return Err(format!("{} is running. Quit it, then try again.", app.name));
+            }
+            let old_folder = Path::new(&expected.location).parent().ok_or(super::MIGRATION_CHANGED)?;
+            msi_downgrade::run(msi_downgrade::Steps {
+                app: app.name,
+                chosen: chosen.version,
+                previous: previous.version,
+                remove: &mut || {
+                    process::command(msiexec())
+                        .args(["/x", &installed.product_code, "/passive", "/norestart"])
+                        .status()
+                        .map_err(|e| format!("couldn't start the Windows Installer ({e})"))
+                        .and_then(|status| explain(status.code()))
+                        .map_err(|error| msi_downgrade::Removal { error, partly: false })
+                },
+                install_chosen: &mut || run_direct(chosen.file, Some(destination), Some(MsiScope::PerUser)),
+                reinstall_previous: &mut || run_direct(previous.file, Some(old_folder), Some(MsiScope::PerMachine)),
+            })
+        })
+    }
     pub fn uninstall_msi(app: &CraftApp, stop: &Stop, phase: &mut dyn FnMut(JobPhase)) -> Result<(), String> {
         in_turn(stop, phase, JobPhase::Removing, || remove_registrations(app).map_err(|removal| removal.error))
     }
@@ -2300,6 +2475,30 @@ pub mod windows {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn migration_preserves_profile_and_rejects_portable_or_occupied_destinations() {
+        let root = tempfile::tempdir().unwrap();
+        let old = root.path().join("shared");
+        std::fs::create_dir(&old).unwrap();
+        let exe = old.join("photocraft.exe");
+        std::fs::write(&exe, b"fixture").unwrap();
+        let profile = root.path().join("profile");
+        std::fs::create_dir(&profile).unwrap();
+        std::fs::write(profile.join("brush.preset"), b"my brush").unwrap();
+        let target = root.path().join("user-install");
+        assert!(validate_migration_paths(&exe, &target).is_ok());
+        for marker in ["portable.txt", "PhotoCraft.portable", "PhotoCraftData"] {
+            let path = old.join(marker);
+            std::fs::write(&path, b"").unwrap();
+            assert!(validate_migration_paths(&exe, &target).unwrap_err().contains("Portable"));
+            std::fs::remove_file(path).unwrap();
+        }
+        std::fs::create_dir(&target).unwrap();
+        assert!(validate_migration_paths(&exe, &target).unwrap_err().contains("destination is occupied"));
+        assert_eq!(std::fs::read(profile.join("brush.preset")).unwrap(), b"my brush");
+        assert_eq!(std::fs::read(&exe).unwrap(), b"fixture");
+        assert!(validate_migration_paths(&old.join("missing.exe"), &target).is_err());
+    }
     use super::*;
 
     /// A folder found only by the launch fallback, in another scope, never reaches the installer.
@@ -2315,23 +2514,57 @@ mod tests {
     /// The default folder shown in the UI is the one a fresh install really uses.
     #[cfg(windows)]
     #[test]
-    fn the_default_folder_is_the_artcraft_suite_folder_in_program_files() {
+    fn the_default_folder_is_the_artcraft_suite_folder_for_this_account() {
         let paths = Paths::under(std::path::Path::new(r"C:\scratch"));
-        let program_files = std::env::var_os("ProgramFiles").map(PathBuf::from).unwrap();
-        assert_eq!(default_folder(PackageKind::Msi, Some(Arch::X64), &paths), Some(program_files.join("ArtCraft")));
+        let folder = dirs::data_local_dir().unwrap().join("Programs").join("ArtCraft");
+        assert_eq!(default_folder(PackageKind::Msi, Some(Arch::X64), &paths), Some(folder));
         assert_eq!(default_folder(PackageKind::PortableZip, Some(Arch::X64), &paths), Some(paths.apps()));
         assert_eq!(default_folder(PackageKind::Dmg, Some(Arch::X64), &paths), None);
     }
 
-    /// A 32-bit package installs under the 32-bit Program Files; an unknown architecture answers
-    /// nothing, so the UI says "System default" instead of guessing the destination.
+    /// Every package architecture uses the account's folder, even before the release is known.
     #[cfg(windows)]
     #[test]
-    fn a_32_bit_package_uses_the_32_bit_program_files_and_an_unknown_architecture_answers_nothing() {
+    fn every_msi_architecture_uses_the_account_folder() {
         let paths = Paths::under(std::path::Path::new(r"C:\scratch"));
-        let x86 = std::env::var_os("ProgramFiles(x86)").or_else(|| std::env::var_os("ProgramFiles")).map(PathBuf::from).unwrap();
-        assert_eq!(default_folder(PackageKind::Msi, Some(Arch::X86), &paths), Some(x86.join("ArtCraft")));
-        assert_eq!(default_folder(PackageKind::Msi, None, &paths), None);
+        let folder = dirs::data_local_dir().unwrap().join("Programs").join("ArtCraft");
+        for arch in [Some(Arch::X86), Some(Arch::X64), Some(Arch::Arm64), None] {
+            assert_eq!(default_folder(PackageKind::Msi, arch, &paths), Some(folder.clone()));
+        }
+    }
+
+    /// Passive fresh installs receive the displayed account folder and never request all-users scope.
+    #[cfg(windows)]
+    #[test]
+    fn fresh_msi_commands_use_the_displayed_account_folder_and_scope() {
+        let paths = Paths::under(Path::new(r"C:\scratch"));
+        let package = tempfile::NamedTempFile::new().unwrap();
+        let parent = default_folder(PackageKind::Msi, None, &paths).unwrap();
+        for id in ["gridcraft", "lightcraft", "photocraft", "wordcraft"] {
+            let app = CraftApp::by_id(id).unwrap();
+            let folder = destination(app, PackageKind::Msi, None, None, &InstallLocations::default()).unwrap().unwrap();
+            assert_eq!(folder, parent.join(app.name));
+            let scope = crate::msi_context::install_scope(None, true);
+            let command = msi_batch::line(package.path(), Some(&folder), scope).unwrap();
+            assert!(command.contains(&msi_folder_argument(&folder).unwrap()));
+            assert!(command.contains("ALLUSERS=2 MSIINSTALLPERUSER=1"));
+            assert!(!command.contains("ALLUSERS=1"));
+        }
+    }
+
+    /// A per-machine-only package drops the account folder default and keeps a chosen folder,
+    /// including a chosen folder that is the account folder itself.
+    #[cfg(windows)]
+    #[test]
+    fn a_per_machine_only_package_installs_where_it_was_authored_to() {
+        let app = CraftApp::by_id("gridcraft").unwrap();
+        let account = default_folder(PackageKind::Msi, None, &Paths::under(Path::new(r"C:\scratch"))).unwrap().join(app.name);
+        let chosen = PathBuf::from(r"D:\Tools\GridCraft");
+        assert_eq!(fresh_msi_folder(MsiScope::PerMachine, false, Some(account.clone())), None);
+        assert_eq!(fresh_msi_folder(MsiScope::PerMachine, true, Some(account.clone())), Some(account.clone()));
+        assert_eq!(fresh_msi_folder(MsiScope::PerMachine, true, Some(chosen.clone())), Some(chosen.clone()));
+        assert_eq!(fresh_msi_folder(MsiScope::PerUser, false, Some(account.clone())), Some(account));
+        assert_eq!(fresh_msi_folder(MsiScope::PerUser, true, Some(chosen.clone())), Some(chosen));
     }
 
     #[cfg(target_os = "macos")]

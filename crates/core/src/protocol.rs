@@ -29,6 +29,12 @@ pub enum Command {
     Install {
         app: String,
     },
+    /// Answers a specific all-users update offer, accepting its migration warning when requested.
+    ConfirmMsiUpdate {
+        app: String,
+        plan: MsiUpdatePlan,
+        migrate: bool,
+    },
     /// `Install`, writing over what [`Event::Occupied`] reported. `path` is the path the user
     /// agreed to overwrite: if the install would now write somewhere else, nothing is replaced and
     /// the user is asked again.
@@ -66,6 +72,14 @@ pub enum Command {
     },
     /// Change how the backend behaves.
     Configure(BackendOptions),
+}
+
+/// The installation and release shown before choosing where to update.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct MsiUpdatePlan {
+    pub installed: Installed,
+    pub release_tag: String,
+    pub user_folder: String,
 }
 
 /// Parent folders for new installs. Existing installations keep their recorded location.
@@ -256,6 +270,11 @@ pub enum Event {
     Occupied {
         app: String,
         path: String,
+    },
+    /// An all-users update waits here, also for Update all and automatic updates.
+    MsiUpdateChoice {
+        app: String,
+        plan: MsiUpdatePlan,
     },
     /// A job ended: `Ok` carries a short success message, `Err` what went wrong.
     JobFinished {

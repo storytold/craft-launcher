@@ -434,3 +434,17 @@ materialcraft	Preview materials in 2D and on 3D models.	Tekintsd meg az anyagoka
 	Migrate Flatpak bundles to ArtCraft OCI (experimental)	Flatpak-csomagok átállítása ArtCraft OCI-ra (kísérleti)
 	On update, switch first party apps when the matching package is available. Otherwise, keep using bundles.	Frissítéskor állítsa át az ArtCraft alkalmazásait, ha elérhető a megfelelő csomag. Egyébként továbbra is önálló csomagokat használjon.
 	The OCI repository is a preview with GPG verification disabled.	Az OCI-tároló előzetes verzió, kikapcsolt GPG-ellenőrzéssel.
+
+# Update installation scope
+	Choose how to update {name}	Válassza ki a(z) {name} frissítésének módját
+	Keep the current location	A jelenlegi hely megtartása
+	Administrator permission is required for each update.	Minden frissítéshez rendszergazdai engedély szükséges.
+	Install only for me	Telepítés csak nekem
+	Windows will ask once more for administrator permission to uninstall the old shared copy. After migration, updates and uninstalling for this account normally need no administrator permission. Other Windows users will lose access.	A Windows még egyszer rendszergazdai engedélyt kér a régi közös példány eltávolításához. Az áttelepítés után a frissítések és az eltávolítás ennél a fióknál általában már nem igényelnek ilyen engedélyt. A többi Windows-felhasználó elveszíti a hozzáférést.
+	Profile settings and presets stay where they are. Add-ons beside the program may need reinstalling; back them up first.	A profil beállításai és készletei a helyükön maradnak. A program mappájában lévő bővítményeket esetleg újra kell telepíteni; előbb készítsen róluk másolatot.
+	I accept removal of the shared copy and the risk to add-ons beside it.	Elfogadom a közös telepítés eltávolítását és a mappájában lévő bővítményeket érintő kockázatot.
+
+@msg	The installation or selected version changed. Check for updates and choose again; nothing was removed.	A telepítés vagy a kiválasztott verzió megváltozott. Keressen frissítéseket, és válasszon újra; semmi sem lett eltávolítva.
+@msg	Migration is unavailable for this version. Keep the current location; nothing was removed.	Ehhez a verzióhoz nem érhető el áttelepítés. Tartsa meg a jelenlegi helyet; semmi sem lett eltávolítva.
+@msg	The installation folders could not be verified or the destination is occupied. Keep the current location; nothing was removed.	A telepítési mappák nem ellenőrizhetők, vagy a cél foglalt. Tartsa meg a jelenlegi helyet; semmi sem lett eltávolítva.
+@msg	Portable data was found beside the program. Keep the current location and move that data manually first.	Hordozható adatokat találtunk a program mellett. Tartsa meg a jelenlegi helyet, és előbb helyezze át kézzel ezeket az adatokat.

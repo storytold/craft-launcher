@@ -393,3 +393,17 @@ materialcraft	Node graphs	節點圖
 materialcraft	Combine noises, patterns and filters.	組合雜訊、圖樣與濾鏡。
 materialcraft	Live previews	即時預覽
 materialcraft	Preview materials in 2D and on 3D models.	在 2D 與 3D 模型上預覽材質。
+
+# Update installation scope
+	Choose how to update {name}	選擇如何更新 {name}
+	Keep the current location	保留目前位置
+	Administrator permission is required for each update.	每次更新都需要管理員授權。
+	Install only for me	僅為我安裝
+	Windows will ask once more for administrator permission to uninstall the old shared copy. After migration, updates and uninstalling for this account normally need no administrator permission. Other Windows users will lose access.	Windows 將再次要求管理員權限，以解除安裝舊的共用副本。遷移後，此帳戶的更新和解除安裝通常不再需要管理員權限。其他 Windows 使用者將失去存取權限。
+	Profile settings and presets stay where they are. Add-ons beside the program may need reinstalling; back them up first.	使用者設定檔中的設定和預設集將保留原位。程式資料夾中的附加元件可能需要重新安裝，請先備份。
+	I accept removal of the shared copy and the risk to add-ons beside it.	我同意移除共用安裝，並接受其資料夾中附加元件可能受影響的風險。
+
+@msg	The installation or selected version changed. Check for updates and choose again; nothing was removed.	安裝狀態或所選版本已變更。請檢查更新並重新選擇；未刪除任何內容。
+@msg	Migration is unavailable for this version. Keep the current location; nothing was removed.	此版本不支援遷移。請保留目前位置；未刪除任何內容。
+@msg	The installation folders could not be verified or the destination is occupied. Keep the current location; nothing was removed.	無法驗證安裝資料夾，或目的地已被占用。請保留目前位置；未刪除任何內容。
+@msg	Portable data was found beside the program. Keep the current location and move that data manually first.	在程式旁發現可攜版資料。請保留目前位置，並先手動移動這些資料。

@@ -429,3 +429,17 @@ materialcraft	Preview materials in 2D and on 3D models.	Просматривай
 	Migrate Flatpak bundles to ArtCraft OCI (experimental)	Переводить пакеты Flatpak на ArtCraft OCI (экспериментально)
 	On update, switch first party apps when the matching package is available. Otherwise, keep using bundles.	При обновлении переводить приложения ArtCraft на репозиторий, если доступен соответствующий пакет. Иначе продолжать использовать отдельные пакеты.
 	The OCI repository is a preview with GPG verification disabled.	Репозиторий OCI работает в предварительном режиме с отключённой проверкой GPG.
+
+# Update installation scope
+	Choose how to update {name}	Выберите способ обновления {name}
+	Keep the current location	Оставить в текущей папке
+	Administrator permission is required for each update.	Для каждого обновления требуется разрешение администратора.
+	Install only for me	Установить только для меня
+	Windows will ask once more for administrator permission to uninstall the old shared copy. After migration, updates and uninstalling for this account normally need no administrator permission. Other Windows users will lose access.	Windows ещё раз запросит разрешение администратора для удаления старой общей копии. После переноса обновления и удаление для этой учётной записи обычно больше не требуют такого разрешения. Другие пользователи Windows потеряют доступ.
+	Profile settings and presets stay where they are. Add-ons beside the program may need reinstalling; back them up first.	Настройки и наборы в профиле останутся на месте. Дополнения в папке программы может потребоваться переустановить; сначала сделайте их копию.
+	I accept removal of the shared copy and the risk to add-ons beside it.	Я согласен на удаление общей установки и принимаю риск для дополнений в её папке.
+
+@msg	The installation or selected version changed. Check for updates and choose again; nothing was removed.	Установка или выбранная версия изменилась. Проверьте обновления и выберите снова; ничего не удалено.
+@msg	Migration is unavailable for this version. Keep the current location; nothing was removed.	Перенос недоступен для этой версии. Сохраните текущее расположение; ничего не удалено.
+@msg	The installation folders could not be verified or the destination is occupied. Keep the current location; nothing was removed.	Не удалось проверить папки установки, либо папка назначения занята. Сохраните текущее расположение; ничего не удалено.
+@msg	Portable data was found beside the program. Keep the current location and move that data manually first.	Рядом с программой найдены данные переносной версии. Сохраните текущее расположение и сначала перенесите эти данные вручную.
