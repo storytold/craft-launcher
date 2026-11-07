@@ -54,6 +54,7 @@ fn validate_owned_directory(root: &Path, path: &Path) -> Result<(), String> {
     Ok(())
 }
 
+/// Resolves the deepest existing directory component and appends any non-existent tail.
 fn resolve_missing(path: &Path) -> Result<PathBuf, String> {
     for ancestor in path.ancestors() {
         match std::fs::canonicalize(ancestor) {
@@ -72,6 +73,7 @@ fn resolve_missing(path: &Path) -> Result<PathBuf, String> {
     Err("The installation folder has no existing ancestor.".into())
 }
 
+/// Compares two Windows paths for equivalence, ignoring case and trailing slashes.
 fn same_windows_path(left: &Path, right: &Path) -> bool {
     fn normalized(path: &Path) -> String {
         let text = path.to_string_lossy();
@@ -81,6 +83,7 @@ fn same_windows_path(left: &Path, right: &Path) -> bool {
     normalized(left) == normalized(right)
 }
 
+/// Checks whether file metadata indicates a symbolic link or reparse point.
 fn linked(meta: &std::fs::Metadata) -> bool {
     #[cfg(windows)]
     {
@@ -100,6 +103,7 @@ impl Drop for Staging {
     }
 }
 
+/// Unpacks `file` into `destination` with zip slip prevention and resource limits.
 fn extract(file: &Path, destination: &Path) -> Result<Vec<PathBuf>, String> {
     use zip::read::HasZipMetadata;
 
@@ -161,6 +165,7 @@ fn extract(file: &Path, destination: &Path) -> Result<Vec<PathBuf>, String> {
     Ok(files)
 }
 
+/// Returns the validated root and relative paths of all files recorded in `record`.
 fn recorded_files<'a>(app: &CraftApp, record: &'a Record) -> Result<(&'a Path, Vec<PathBuf>), String> {
     let root = record.path.parent().ok_or("The portable installation has no parent folder.")?;
     if record.kind != PackageKind::PortableZip || root.file_name().is_none_or(|n| n != app.id) {
@@ -257,13 +262,14 @@ pub fn install(
     }
     std::fs::create_dir_all(&destination).map_err(|e| e.to_string())?;
     let marker = destination.join("portable.txt");
-    let created_marker = if !marker.exists() {
+    let archive_has_marker = files.iter().any(|relative| relative == Path::new("portable.txt"));
+    let created_marker = if !archive_has_marker && !marker.exists() {
         std::fs::write(&marker, b"").map_err(|e| e.to_string())?;
         true
     } else {
         false
     };
-    let track_marker = created_marker || old_files.iter().any(|old| old == Path::new("portable.txt"));
+    let track_marker = !archive_has_marker && (created_marker || old_files.iter().any(|old| old == Path::new("portable.txt")));
     let backup = staging.0.join("backup");
     let mut record_files: Vec<PathBuf> = files.iter().map(|relative| destination.join(relative)).collect();
     if track_marker {
@@ -281,7 +287,7 @@ pub fn install(
     let mut copied = Vec::new();
     let transaction = (|| {
         for relative in &old_files {
-            if relative == Path::new("portable.txt") {
+            if !archive_has_marker && relative == Path::new("portable.txt") {
                 continue;
             }
             let old = destination.join(relative);
@@ -581,6 +587,29 @@ mod tests {
         remove(app, &rec2).unwrap();
         assert!(user_marker.is_file());
         assert_eq!(std::fs::read(&user_marker).unwrap(), b"custom marker");
+    }
+
+    #[test]
+    fn archive_with_portable_txt_installs_and_updates_successfully() {
+        let dir = tempfile::tempdir().unwrap();
+        let app = CraftApp::by_id("photocraft").unwrap();
+        let paths = Paths::under(dir.path());
+        let zip1 = archive(dir.path(), "app1.zip", &[("photocraft.exe", b"exe1"), ("portable.txt", b"from zip 1")]);
+        let record1 = install(app, &zip1, "1.0.0", None, None, &paths, None, false, &mut |_| Ok(())).unwrap();
+        let dest = record1.path.parent().unwrap();
+        let marker = dest.join("portable.txt");
+        assert!(marker.is_file());
+        assert_eq!(std::fs::read(&marker).unwrap(), b"from zip 1");
+        assert_eq!(record1.files.iter().filter(|f| *f == &marker).count(), 1, "marker tracked exactly once");
+
+        let zip2 = archive(dir.path(), "app2.zip", &[("photocraft.exe", b"exe2"), ("portable.txt", b"from zip 2")]);
+        let record2 = install(app, &zip2, "2.0.0", None, Some(&record1), &paths, None, false, &mut |_| Ok(())).unwrap();
+        assert_eq!(std::fs::read(&marker).unwrap(), b"from zip 2");
+        assert_eq!(record2.files.iter().filter(|f| *f == &marker).count(), 1, "marker tracked exactly once after update");
+
+        remove(app, &record2).unwrap();
+        assert!(!marker.exists());
+        assert!(!dest.exists());
     }
 
     #[test]
