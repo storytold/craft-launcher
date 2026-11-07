@@ -229,10 +229,11 @@ if ($dlg.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) {
         };
         if !out.status.success() {
             let err = String::from_utf8_lossy(&out.stderr).trim().to_string();
-            if err.is_empty() || out.status.code() == Some(1) {
+            if out.status.code() == Some(1) {
                 return Ok(None);
             }
-            return Err(err);
+            let msg = if !err.is_empty() { err } else { format!("picker failed with {}", out.status) };
+            return Err(msg);
         }
         let path_str = String::from_utf8_lossy(&out.stdout).trim().to_string();
         if path_str.is_empty() { Ok(None) } else { Ok(Some(PathBuf::from(path_str))) }

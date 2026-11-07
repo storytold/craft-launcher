@@ -1015,34 +1015,54 @@ impl Backend for NativeBackend {
                 }
             }
             Command::DetectPlugins => {
-                let plugins = crate::plugins::detect_plugins(&self.paths);
-                self.shared.emit(Event::PluginsDetected(plugins));
+                let shared = self.shared.clone();
+                let paths = self.paths.clone();
+                std::thread::spawn(move || {
+                    let plugins = crate::plugins::detect_plugins(&paths);
+                    shared.emit(Event::PluginsDetected(plugins));
+                });
             }
             Command::RepairPlugin { id } => {
-                let res = crate::plugins::repair_plugin(&self.paths, &id).map(|p| format!("Repaired {} {}", p.name, p.version));
-                self.shared.emit(Event::PluginsDetected(crate::plugins::detect_plugins(&self.paths)));
-                self.shared.emit(Event::PluginJobFinished { id, result: res });
+                let shared = self.shared.clone();
+                let paths = self.paths.clone();
+                std::thread::spawn(move || {
+                    let res = crate::plugins::repair_plugin(&paths, &id).map(|p| format!("Repaired {} {}", p.name, p.version));
+                    shared.emit(Event::PluginsDetected(crate::plugins::detect_plugins(&paths)));
+                    shared.emit(Event::PluginJobFinished { id, result: res });
+                });
             }
             Command::UninstallPlugin { id } => {
-                let res = crate::plugins::uninstall_plugin(&self.paths, &id).map(|()| "Removed plugin".into());
-                self.shared.emit(Event::PluginsDetected(crate::plugins::detect_plugins(&self.paths)));
-                self.shared.emit(Event::PluginJobFinished { id, result: res });
+                let shared = self.shared.clone();
+                let paths = self.paths.clone();
+                std::thread::spawn(move || {
+                    let res = crate::plugins::uninstall_plugin(&paths, &id).map(|()| "Removed plugin".into());
+                    shared.emit(Event::PluginsDetected(crate::plugins::detect_plugins(&paths)));
+                    shared.emit(Event::PluginJobFinished { id, result: res });
+                });
             }
             Command::ImportPlugin { app, path } => {
-                let res = crate::plugins::import_plugin_file(&self.paths, &app, std::path::Path::new(&path))
-                    .map(|p| format!("Imported {} ({})", p.name, p.format.label()));
-                self.shared.emit(Event::PluginsDetected(crate::plugins::detect_plugins(&self.paths)));
-                self.shared.emit(Event::PluginJobFinished { id: app, result: res });
+                let shared = self.shared.clone();
+                let paths = self.paths.clone();
+                std::thread::spawn(move || {
+                    let res = crate::plugins::import_plugin_file(&paths, &app, std::path::Path::new(&path))
+                        .map(|p| format!("Imported {} ({})", p.name, p.format.label()));
+                    shared.emit(Event::PluginsDetected(crate::plugins::detect_plugins(&paths)));
+                    shared.emit(Event::PluginJobFinished { id: app, result: res });
+                });
             }
             Command::RevealPlugin { id } => {
-                let plugins = crate::plugins::detect_plugins(&self.paths);
-                if let Some(inst) = plugins.iter().find(|p| p.id == id) {
-                    let path = std::path::PathBuf::from(&inst.location);
-                    let result = if path.exists() { crate::process::reveal(&path) } else { Err("it isn't a file on this computer".into()) };
-                    if let Err(e) = result {
-                        self.shared.emit(Event::PluginJobFinished { id, result: Err(format!("Couldn't show it: {e}")) });
+                let shared = self.shared.clone();
+                let paths = self.paths.clone();
+                std::thread::spawn(move || {
+                    let plugins = crate::plugins::detect_plugins(&paths);
+                    if let Some(inst) = plugins.iter().find(|p| p.id == id) {
+                        let path = std::path::PathBuf::from(&inst.location);
+                        let result = if path.exists() { crate::process::reveal(&path) } else { Err("it isn't a file on this computer".into()) };
+                        if let Err(e) = result {
+                            shared.emit(Event::PluginJobFinished { id, result: Err(format!("Couldn't show it: {e}")) });
+                        }
                     }
-                }
+                });
             }
             Command::PickPluginFile => {
                 if self.shared.picking_plugin.swap(true, Ordering::SeqCst) {

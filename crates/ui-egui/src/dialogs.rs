@@ -517,6 +517,7 @@ impl LauncherUi {
         });
 
         if *path_str != prev_path
+            && !std::path::Path::new(path_str.as_str()).extension().is_some_and(|ext| ext.eq_ignore_ascii_case("wasm"))
             && let Some(det) = artcraft_launcher_core::plugins::detect_app_from_path(std::path::Path::new(path_str.as_str()), None)
         {
             *app_id = det.to_string();

@@ -103,7 +103,14 @@ pub fn write_atomic(path: &std::path::Path, bytes: &[u8]) -> Result<(), String> 
     let mut tmp =
         tempfile::Builder::new().prefix(".atomic-").tempfile_in(dir).map_err(|e| format!("couldn't create temp file in {} ({e})", dir.display()))?;
     tmp.write_all(bytes).map_err(|e| format!("couldn't write temp file ({e})"))?;
+    tmp.as_file().sync_all().map_err(|e| format!("couldn't sync temp file ({e})"))?;
     tmp.persist(path).map_err(|e| format!("couldn't replace {} ({e})", path.display()))?;
+    #[cfg(unix)]
+    {
+        if let Ok(dir_file) = std::fs::File::open(dir) {
+            dir_file.sync_all().ok();
+        }
+    }
     Ok(())
 }
 
