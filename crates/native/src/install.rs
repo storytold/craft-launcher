@@ -195,13 +195,10 @@ pub fn install_at(
                 .cloned()
                 .or_else(|| crate::manifest::Manifest::load(&job.paths.manifest()).apps.get(app.id).cloned())
                 .filter(|r| r.kind == PackageKind::PortableZip);
-            if let Some(ref r) = previous_portable {
-                crate::portable::remove(app, r)?;
-            }
             // An update lands in the same Windows Installer context as the copy being replaced:
             // per-machine needs elevation, per-user must not duplicate itself per-machine. A
             // fresh install passes no context and takes the package's own default.
-            match &rollback {
+            let result = match &rollback {
                 Some((previous, previous_sha256, previous_version)) => windows::downgrade_msi(
                     app,
                     windows::Package { file: &file, sha256: &sha256, version: &version },
@@ -212,8 +209,12 @@ pub fn install_at(
                     &mut *job.phase,
                 ),
                 None => windows::run_msi(&file, destination.as_deref(), msi_scope, job.stop, &mut *job.phase),
+            };
+            result?;
+            if let Some(ref r) = previous_portable {
+                crate::portable::remove(app, r)?;
             }
-            .map(|_| None)
+            Ok(None)
         }
         #[cfg(windows)]
         PackageKind::PortableZip => {

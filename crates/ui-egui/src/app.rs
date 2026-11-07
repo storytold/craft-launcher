@@ -399,7 +399,12 @@ impl LauncherUi {
                 continue;
             }
             match action {
-                UiAction::Command(command) => self.backend.send(command.clone()),
+                UiAction::Command(command) => {
+                    if matches!(command, Command::Install { .. } | Command::Uninstall { .. }) {
+                        self.configure();
+                    }
+                    self.backend.send(command.clone())
+                }
                 UiAction::Launch(id) => {
                     let flags = self.settings.launch_flags.get(id).map_or("", String::as_str);
                     // The dialog only saves flags that split, but the settings file can be edited by hand.

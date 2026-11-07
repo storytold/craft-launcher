@@ -1270,7 +1270,8 @@ impl LauncherUi {
                 };
                 if ui.button(label).clicked() {
                     self.settings.app_kinds.insert(id.clone(), alt_kind);
-                    self.send(Command::Install { app: id.clone() });
+                    self.configure();
+                    self.act_command(Command::Install { app: id.clone() });
                     ui.close();
                 }
             }
