@@ -4,7 +4,7 @@
 use std::collections::{BTreeSet, HashSet};
 
 use super::catalog::{Catalog, unescape};
-use super::lang::{name_sort_key, plural_czech, plural_east_slavic, plural_polish};
+use super::lang::{name_sort_key, plural_arabic, plural_czech, plural_east_slavic, plural_polish};
 use super::{LANGUAGES, Lang, LangInfo, fmt, lang_from_tag, message, tr, trn};
 
 #[test]
@@ -459,6 +459,32 @@ fn georgian_locales_and_counts_work() {
     assert!(!Lang::KA.0.source.chars().any(|c| ('\u{1c90}'..='\u{1cbf}').contains(&c)));
 }
 
+#[test]
+fn arabic_plural_rule_works() {
+    for (n, form) in [(0, 0), (1, 1), (2, 2), (3, 3), (10, 3), (103, 3), (11, 4), (99, 4), (111, 4), (100, 5), (101, 5), (102, 5), (200, 5)] {
+        assert_eq!(plural_arabic(n), form, "{n}");
+    }
+}
+
+#[test]
+fn arabic_locales_counts_and_direction_work() {
+    for tag in ["ar", "ar-IQ", "ar_SA.UTF-8", "AR_eg"] {
+        assert_eq!(lang_from_tag(tag), Some(Lang::AR), "{tag}");
+    }
+    assert_eq!(super::detect::first_supported(["xx-XX", "ar-IQ", "en-US"]), Some(Lang::AR));
+    for (n, text) in [(0, "0 تطبيق"), (1, "تطبيق واحد"), (2, "تطبيقان"), (5, "5 تطبيقات"), (11, "11 تطبيقًا"), (100, "100 تطبيق")]
+    {
+        assert_eq!(trn(Lang::AR, n, "{n} app", "{n} apps"), text, "{n}");
+    }
+    assert_eq!(trn(Lang::AR, 3, "{n} min ago", "{n} min ago"), "قبل 3 دقائق");
+    assert_eq!(trn(Lang::AR, 2, "{n} unknown item", "{n} unknown items"), "2 unknown items");
+    assert_eq!(super::tr_ctx(Lang::AR, "month", "Mar"), "مارس");
+    assert_eq!(tr(Lang::AR, "{month} {day}, {year}"), "{day} {month} {year}");
+    assert_eq!(message(Lang::AR, "PhotoCraft updated to 0.5.0"), "تم تحديث PhotoCraft إلى 0.5.0");
+    // Only Arabic mirrors the window.
+    assert_eq!(Lang::all().filter(|l| l.right_to_left()).collect::<Vec<_>>(), [Lang::AR]);
+}
+
 /// With the system's Chinese font installed, every UI family can draw the whole Simplified and
 /// Traditional Chinese catalogs. Machines without one (CI, the web) skip this; the UI then stays
 /// in English.
@@ -566,6 +592,40 @@ fn system_font_covers_georgian_in_every_ui_family() {
     }
 }
 
+/// With a system Arabic font installed, every UI family can draw the whole Arabic catalog.
+/// Machines without one (the web, minimal Linux installs) skip this.
+#[test]
+fn system_font_covers_arabic_in_every_ui_family() {
+    use egui::{FontFamily, FontId};
+    if !crate::theme::cjk_font_available(Lang::AR) {
+        return;
+    }
+    let ctx = egui::Context::default();
+    crate::theme::install_fonts(&ctx, Some(Lang::AR));
+    let mut output = ctx.run_ui(egui::RawInput::default(), |_| {});
+    output.textures_delta.clear();
+    let text: String = Lang::AR
+        .0
+        .source
+        .lines()
+        .filter_map(|line| line.split('\t').nth(2))
+        .flat_map(str::chars)
+        .filter(|c| ('\u{0600}'..='\u{06ff}').contains(c))
+        .collect();
+    assert!(text.chars().count() > 1000);
+    for family in [
+        FontFamily::Proportional,
+        FontFamily::Monospace,
+        crate::theme::medium(),
+        crate::theme::semibold(),
+        crate::theme::display(),
+        crate::theme::mono(),
+        crate::theme::mono_bold(),
+    ] {
+        ctx.fonts_mut(|fonts| assert!(fonts.has_glyphs(&FontId::new(14.0, family.clone()), &text), "missing glyph in {family:?}"));
+    }
+}
+
 #[test]
 fn language_labels_come_from_the_registry() {
     use crate::settings::Settings;
@@ -582,6 +642,8 @@ fn language_labels_come_from_the_registry() {
     assert_eq!(Settings::language_label(Lang::JA.code(), Some(Lang::JA)), "Japanese (日本語)");
     assert_eq!(Settings::language_label(Lang::KA.code(), None), "Georgian");
     assert_eq!(Settings::language_label(Lang::KA.code(), Some(Lang::KA)), "Georgian (ქართული)");
+    assert_eq!(Settings::language_label(Lang::AR.code(), None), "Arabic");
+    assert_eq!(Settings::language_label(Lang::AR.code(), Some(Lang::AR)), "Arabic (العربية)");
     assert_eq!(Settings::language_label(Settings::LANGUAGE_AUTO, None), "Auto");
     assert_eq!(Settings::language_label("xx", None), "Auto");
 }

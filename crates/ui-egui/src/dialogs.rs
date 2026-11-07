@@ -31,14 +31,14 @@ impl LauncherUi {
         });
         let mut close = false;
         let response = match &mut dialog {
-            Dialog::Notes(id) => modal.show(ctx, |ui| close = self.notes_dialog(ui, id)),
-            Dialog::ConfirmUninstall(id) => modal.show(ctx, |ui| close = self.uninstall_dialog(ui, id)),
-            Dialog::Install { app, folder } => modal.show(ctx, |ui| close = self.install_dialog(ui, app, folder, host)),
-            Dialog::Replace { app, path } => modal.show(ctx, |ui| close = self.replace_dialog(ui, app, path)),
-            Dialog::Settings => modal.show(ctx, |ui| close = self.settings_dialog(ui, host)),
-            Dialog::LauncherUpdate(r) => modal.show(ctx, |ui| close = self.launcher_update_dialog(ui, r)),
-            Dialog::Versions(id) => modal.show(ctx, |ui| close = self.version_dialog(ui, id)),
-            Dialog::LaunchFlags { app, flags } => modal.show(ctx, |ui| close = self.launch_flags_dialog(ui, app, flags)),
+            Dialog::Notes(id) => modal.show(ctx, |ui| close = widgets::reading(ui, |ui| self.notes_dialog(ui, id))),
+            Dialog::ConfirmUninstall(id) => modal.show(ctx, |ui| close = widgets::reading(ui, |ui| self.uninstall_dialog(ui, id))),
+            Dialog::Install { app, folder } => modal.show(ctx, |ui| close = widgets::reading(ui, |ui| self.install_dialog(ui, app, folder, host))),
+            Dialog::Replace { app, path } => modal.show(ctx, |ui| close = widgets::reading(ui, |ui| self.replace_dialog(ui, app, path))),
+            Dialog::Settings => modal.show(ctx, |ui| close = widgets::reading(ui, |ui| self.settings_dialog(ui, host))),
+            Dialog::LauncherUpdate(r) => modal.show(ctx, |ui| close = widgets::reading(ui, |ui| self.launcher_update_dialog(ui, r))),
+            Dialog::Versions(id) => modal.show(ctx, |ui| close = widgets::reading(ui, |ui| self.version_dialog(ui, id))),
+            Dialog::LaunchFlags { app, flags } => modal.show(ctx, |ui| close = widgets::reading(ui, |ui| self.launch_flags_dialog(ui, app, flags))),
         };
         if self.dialog.as_ref().is_some_and(|active| active.key() != dialog.key()) {
             // A control inside a dialog opened a different one; don't restore the old dialog.
@@ -65,21 +65,23 @@ impl LauncherUi {
         let mut ok = false;
         modal.show(ctx, |ui| {
             ui.set_width(440.0f32.min(ctx.content_rect().width() - 80.0));
-            ui.label(RichText::new(&alert.title).size(18.0).family(theme::semibold()).color(t.ink_strong));
-            ui.add_space(6.0);
-            egui::ScrollArea::vertical().max_height(ctx.content_rect().height() * 0.5).show(ui, |ui| {
-                ui.add(egui::Label::new(RichText::new(&alert.body).color(t.muted)).wrap());
-            });
-            ui.add_space(14.0);
-            // A row: a right-to-left layout straight in the column would fill the height left.
-            ui.horizontal(|ui| {
-                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    ok = widgets::button(ui, tl!("OK"), Kind::Primary, 90.0).clicked();
-                    if let Some(link) = &alert.link
-                        && widgets::button(ui, tl!("Open link"), Kind::Secondary, 110.0).on_hover_text(link.as_str()).clicked()
-                    {
-                        widgets::open_external_link(ui.ctx(), link);
-                    }
+            widgets::reading(ui, |ui| {
+                ui.label(RichText::new(&alert.title).size(18.0).family(theme::semibold()).color(t.ink_strong));
+                ui.add_space(6.0);
+                egui::ScrollArea::vertical().max_height(ctx.content_rect().height() * 0.5).show(ui, |ui| {
+                    ui.add(egui::Label::new(RichText::new(&alert.body).color(t.muted)).wrap());
+                });
+                ui.add_space(14.0);
+                // A row: a right-to-left layout straight in the column would fill the height left.
+                ui.horizontal(|ui| {
+                    ui.with_layout(widgets::to_end(egui::Align::Center), |ui| {
+                        ok = widgets::button(ui, tl!("OK"), Kind::Primary, 90.0).clicked();
+                        if let Some(link) = &alert.link
+                            && widgets::button(ui, tl!("Open link"), Kind::Secondary, 110.0).on_hover_text(link.as_str()).clicked()
+                        {
+                            widgets::open_external_link(ui.ctx(), link);
+                        }
+                    });
                 });
             });
         });
@@ -100,7 +102,7 @@ impl LauncherUi {
                 ui.add(egui::Image::new(icon).fit_to_exact_size(vec2(40.0, 40.0)));
             }
             ui.add_space(4.0);
-            ui.vertical(|ui| {
+            ui.with_layout(widgets::down(), |ui| {
                 ui.spacing_mut().item_spacing.y = 4.0;
                 ui.label(widgets::heading(title, theme::DIALOG_TITLE, t.ink_strong));
                 if !subtitle.is_empty() {
@@ -141,7 +143,7 @@ impl LauncherUi {
             ui.set_width(ui.available_width());
             ui.horizontal(|ui| {
                 widgets::hud_link(ui, tl!("Open on GitHub"), &release.html_url);
-                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                ui.with_layout(widgets::to_end(egui::Align::Center), |ui| {
                     close = widgets::button(ui, tl!("Close"), Kind::Secondary, 90.0).clicked();
                 });
             });
@@ -167,7 +169,7 @@ impl LauncherUi {
         let mut close = false;
         ui.horizontal(|ui| {
             widgets::hud_link(ui, tl!("What's new"), &r.html_url);
-            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+            ui.with_layout(widgets::to_end(egui::Align::Center), |ui| {
                 if self.caps.self_update {
                     if widgets::button(ui, tl!("Update and restart"), Kind::Primary, 0.0)
                         .on_hover_text(tl!("Downloads the new version, replaces this one and opens it again"))
@@ -219,7 +221,7 @@ impl LauncherUi {
         let mut close = false;
         // A row: a right-to-left layout straight in the column would fill the height left.
         ui.horizontal(|ui| {
-            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+            ui.with_layout(widgets::to_end(egui::Align::Center), |ui| {
                 if widgets::button(ui, tl!("Uninstall"), Kind::Danger, 110.0).clicked() {
                     self.act_command(Command::Uninstall { app: id.to_string() });
                     close = true;
@@ -250,7 +252,7 @@ impl LauncherUi {
         ui.add_space(14.0);
         let mut close = false;
         ui.horizontal(|ui| {
-            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+            ui.with_layout(widgets::to_end(egui::Align::Center), |ui| {
                 let save = ui.add_enabled_ui(split.is_ok(), |ui| widgets::button(ui, tl!("Save"), Kind::Primary, 90.0)).inner;
                 if save.clicked() {
                     let trimmed = flags.trim();
@@ -282,7 +284,7 @@ impl LauncherUi {
         ui.add_space(20.0);
         let mut close = false;
         ui.horizontal(|ui| {
-            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+            ui.with_layout(widgets::to_end(egui::Align::Center), |ui| {
                 if widgets::button(ui, tl!("Replace"), Kind::Danger, 110.0).clicked() {
                     self.act_command(Command::Replace { app: id.to_string(), path: path.to_string() });
                     close = true;

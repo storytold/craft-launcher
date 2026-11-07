@@ -9,12 +9,12 @@ use crate::settings::ViewMode;
 use crate::theme::{self, Tokens};
 
 /// Grid and table as two square icons in one hairline box; the chosen one is inverted. In a
-/// right-to-left parent they still read grid, then table.
+/// right-to-left parent they still read grid, then table, in the UI's reading direction.
 pub fn view_toggle(ui: &mut Ui, view: &mut ViewMode, tips: [&str; 2]) {
     let t = Tokens::get(ui.ctx());
     let rtl = ui.layout().prefer_right_to_left();
     let mut modes = [(ViewMode::Grid, tips[0]), (ViewMode::Table, tips[1])];
-    if rtl {
+    if rtl != crate::widgets::rtl() {
         modes.reverse();
     }
     let mut rects = Vec::with_capacity(2);

@@ -154,7 +154,8 @@ the English text, never through another catalog. Product and app names (ArtCraft
 App Suite, PhotoCraft…) stay in English.
 A CJK language is drawn with the system's own CJK font (`crates/ui-egui/src/cjk_font.rs`, desktop
 only; English where there is none): never bundle a CJK font, they are 10 MB and more. Georgian
-borrows the system's Georgian font the same way.
+and Arabic borrow the system's font the same way. Arabic mirrors the window: lay rows out with
+`widgets::to_end`, `from_start`, `down` and `reading`, not a fixed `Layout::right_to_left`.
 
 ### Other rules
 

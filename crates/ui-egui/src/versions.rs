@@ -29,7 +29,7 @@ impl LauncherUi {
         ui.horizontal(|ui| {
             close = widgets::button(ui, tl!("Close"), Kind::Secondary, 100.0).clicked();
             if let Some((label, ready, why)) = self.chosen_install(id) {
-                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                ui.with_layout(widgets::to_end(egui::Align::Center), |ui| {
                     let resp = ui.add_enabled_ui(ready, |ui| widgets::button(ui, &label, Kind::Primary, 220.0)).inner;
                     let resp = match why {
                         Some(why) => resp.on_disabled_hover_text(why),
@@ -221,14 +221,16 @@ impl LauncherUi {
         }
     }
 
-    /// One release in the version list: its tag, and at the right, muted, the day it came out and
-    /// the size of the package this machine would download, each left out when unknown. On the
-    /// selected row they take the row's own text colour, as muted grey is unreadable on the
-    /// accent. The row stays named by its tag; the date and size are its description.
+    /// One release in the version list: its tag, and at the end of the row (its right, or its left
+    /// when the UI reads right to left), muted, the day it came out and the size of the package
+    /// this machine would download, each left out when unknown. On the selected row they take the
+    /// row's own text colour, as muted grey is unreadable on the accent. The row stays named by its
+    /// tag; the date and size are its description.
     fn version_row(&self, ui: &mut Ui, selected: bool, text: String, app: &CraftApp, r: &Release, size: egui::Vec2) -> egui::Response {
         let facts = version_facts(r.published_at.map(crate::views::date_text), self.version_asset(app, r).map(|a| a.size));
-        let mut button = egui::Button::selectable(selected, text).min_size(size);
-        if !facts.is_empty() {
+        let button = if facts.is_empty() {
+            egui::Button::selectable(selected, text)
+        } else {
             let galley = egui::WidgetText::from(RichText::new(&facts).size(12.5).color(egui::Color32::PLACEHOLDER)).into_galley(
                 ui,
                 Some(egui::TextWrapMode::Extend),
@@ -237,12 +239,18 @@ impl LauncherUi {
             );
             let muted = Tokens::get(ui.ctx()).muted;
             // Painted, not a text atom: a text atom would join the row's name.
-            button = button.right_text(egui::Atom::paint(galley.size(), move |ui, args| {
+            let painted = egui::Atom::paint(galley.size(), move |ui, args| {
                 let at = egui::Align2::LEFT_CENTER.align_size_within_rect(galley.size(), args.rect).min;
                 ui.painter().galley(at, galley.clone(), if selected { args.fallback_text_color } else { muted });
-            }));
-        }
-        let response = ui.add(button);
+            });
+            // A button lays its parts out from the left whatever the language.
+            if widgets::rtl() {
+                egui::Button::selectable(selected, (painted, egui::Atom::grow(), text))
+            } else {
+                egui::Button::selectable(selected, text).right_text(painted)
+            }
+        };
+        let response = ui.add(button.min_size(size));
         if !facts.is_empty() {
             ui.ctx().accesskit_node_builder(response.id, |node| node.set_description(facts));
         }

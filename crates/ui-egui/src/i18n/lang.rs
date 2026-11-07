@@ -7,39 +7,40 @@ use super::detect::system_lang;
 
 /// The writing system a language is drawn in, and so the system font it needs. Languages that
 /// share one can share a face; Simplified and Traditional Chinese do not (they want different
-/// faces), so each script is its own. The bundled faces have no CJK or Georgian glyphs, so a
-/// language with a script borrows a system font for it (`crate::theme::cjk_font`).
+/// faces), so each script is its own. The bundled faces have no CJK, Georgian or Arabic glyphs, so
+/// a language with a script borrows a system font for it (`crate::theme::cjk_font`).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Script {
     Chinese,
     TraditionalChinese,
     Japanese,
     Georgian,
+    Arabic,
 }
 
 impl Script {
     /// Every script a language can be written in.
-    pub const ALL: [Script; 4] = [Script::Chinese, Script::TraditionalChinese, Script::Japanese, Script::Georgian];
+    pub const ALL: [Script; 5] = [Script::Chinese, Script::TraditionalChinese, Script::Japanese, Script::Georgian, Script::Arabic];
 }
 
 /// One supported UI language.
 pub struct LangInfo {
     /// Canonical BCP 47 code (`en`, `ru`, `zh-CN`, `zh-TW`, `de`, `fr`, `pt-BR`, `es`, `cs`, `pl`, `hu`, `ja`,
-    /// `ka`). Also the `interfaceLanguage` value.
+    /// `ka`, `ar`). Also the `interfaceLanguage` value.
     pub code: &'static str,
     /// The language's name in itself, shown in the Preferences dropdown.
     pub name: &'static str,
     /// The language's name in English, shown instead where its own script can't be drawn.
     pub english_name: &'static str,
     /// The writing system this language is drawn in, or `None` if it needs no system font
-    /// (CJK, Georgian).
+    /// (CJK, Georgian, Arabic).
     pub script: Option<Script>,
     /// Catalog file contents (empty for the built-in English).
     pub source: &'static str,
     /// Plural form index for a count (English, German, Spanish, Hungarian and Georgian: 0 = one,
     /// 1 = other; Russian: 0 = one, 1 = few, 2 = many; Czech: 0 = one, 1 = few, 2 = other; Polish:
-    /// 0 = one only for 1, 1 = few, 2 = many; French: 0 = one for 0 and 1; a language whose nouns don't inflect
-    /// for number: always 0).
+    /// 0 = one only for 1, 1 = few, 2 = many; French: 0 = one for 0 and 1; Arabic: 0 = zero, 1 = one,
+    /// 2 = two, 3 = few, 4 = many, 5 = other; a language whose nouns don't inflect for number: always 0).
     pub plural: fn(u64) -> usize,
     /// Number of plural forms the catalog's `@plural` rows carry (checked by tests).
     pub plural_forms: usize,
@@ -96,8 +97,23 @@ pub(super) fn plural_polish(n: u64) -> usize {
     }
 }
 
+/// Arabic integer counts: 0, 1 and 2 each have their own form (`zero`, `one`, `two`); 3–10 in the
+/// last two digits are `few`, 11–99 `many`, everything else (100, 101, 102…) `other`.
+pub(super) fn plural_arabic(n: u64) -> usize {
+    match n {
+        0 => 0,
+        1 => 1,
+        2 => 2,
+        _ => match n % 100 {
+            3..=10 => 3,
+            11..=99 => 4,
+            _ => 5,
+        },
+    }
+}
+
 /// The registry. English first: it is the fallback and the source language.
-pub static LANGUAGES: [LangInfo; 13] = [
+pub static LANGUAGES: [LangInfo; 14] = [
     LangInfo {
         code: "en",
         name: "English",
@@ -241,6 +257,17 @@ pub static LANGUAGES: [LangInfo; 13] = [
         complete_menus: true,
         catalog: OnceLock::new(),
     },
+    LangInfo {
+        code: "ar",
+        name: "العربية",
+        english_name: "Arabic",
+        script: Some(Script::Arabic),
+        source: include_str!("ar.tsv"),
+        plural: plural_arabic,
+        plural_forms: 6,
+        complete_menus: true,
+        catalog: OnceLock::new(),
+    },
 ];
 
 impl LangInfo {
@@ -281,6 +308,7 @@ impl Lang {
     pub const HU: Lang = Lang(&LANGUAGES[10]);
     pub const JA: Lang = Lang(&LANGUAGES[11]);
     pub const KA: Lang = Lang(&LANGUAGES[12]);
+    pub const AR: Lang = Lang(&LANGUAGES[13]);
 
     pub fn code(self) -> &'static str {
         self.0.code
@@ -305,8 +333,8 @@ impl Lang {
     /// Every registered language in the order the Settings picker lists them: English first
     /// (the source language and the fallback), then the rest by their own name with accents
     /// folded, so Čeština sits under C rather than after Z. Names in other scripts follow the
-    /// Latin ones in code point order: Cyrillic, then the CJK languages. The order follows the
-    /// native name even where the picker shows a CJK language's English name instead.
+    /// Latin ones in code point order: Cyrillic, Arabic, then the CJK languages. The order follows
+    /// the native name even where the picker shows a CJK language's English name instead.
     pub fn for_picker() -> Vec<Lang> {
         let mut rest: Vec<Lang> = Lang::all().filter(|l| l.code() != "en").collect();
         rest.sort_by_cached_key(|l| name_sort_key(l.name()));
@@ -322,7 +350,7 @@ impl Lang {
         self.0.english_name
     }
 
-    /// Does drawing this language need a font from the system (CJK, Georgian)?
+    /// Does drawing this language need a font from the system (CJK, Georgian, Arabic)?
     pub fn needs_cjk_font(self) -> bool {
         self.0.script.is_some()
     }
@@ -330,6 +358,11 @@ impl Lang {
     /// The writing system this language is drawn in, if it needs a system font.
     pub fn script(self) -> Option<Script> {
         self.0.script
+    }
+
+    /// Is this language written right to left (Arabic)? The window is then mirrored.
+    pub fn right_to_left(self) -> bool {
+        self.0.script == Some(Script::Arabic)
     }
 
     /// Does this language's catalog claim to cover every `tl!` literal?

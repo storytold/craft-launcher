@@ -256,17 +256,20 @@ fn a_table_update_too_narrow_to_sit_side_by_side_stacks() {
 /// half a button (and half the seam) above and below it. Rows are further apart than this.
 const STACKED_OFFSET: f32 = 20.0;
 
-/// The main button of the row whose `⋯` menu is `menu` (the one ending nearest the menu), after
-/// checking it is in line with the menu: centred on it, or, stacked over its twin (the button of
-/// the same width ending at the same place), the pair centred on it. Only a stacked pair may sit
-/// off the menu's middle.
+/// The main button of the row whose `⋯` menu is `menu` (the one before it nearest it: at its left,
+/// or at its right right to left), after checking it is in line with the menu: centred on it, or,
+/// stacked over its twin (the button of the same width ending at the same place), the pair centred
+/// on it. Only a stacked pair may sit off the menu's middle.
 fn main_button_in_line(h: &Harness<'static, Option<LauncherUi>>, menu: egui::Rect, what: &str) -> egui::Rect {
+    let rtl = artcraft_launcher_ui_egui::i18n::current().right_to_left();
+    let before = |r: &egui::Rect| if rtl { r.right() > menu.right() } else { r.left() < menu.left() };
+    let gap = |r: &egui::Rect| if rtl { r.left() - menu.right() } else { menu.left() - r.right() };
     let near: Vec<egui::Rect> = h
         .query_all_by_role(egui::accesskit::Role::Button)
         .map(|n| n.rect())
-        .filter(|r| (r.center().y - menu.center().y).abs() < STACKED_OFFSET && r.left() < menu.left() && r.height() < 40.0)
+        .filter(|r| (r.center().y - menu.center().y).abs() < STACKED_OFFSET && before(r) && r.height() < 40.0)
         .collect();
-    let main = *near.iter().max_by(|a, b| a.right().total_cmp(&b.right())).unwrap_or_else(|| panic!("{what}: no main button by {menu:?}"));
+    let main = *near.iter().min_by(|a, b| gap(a).total_cmp(&gap(b))).unwrap_or_else(|| panic!("{what}: no main button by {menu:?}"));
     let column: Vec<&egui::Rect> = near.iter().filter(|r| (r.right() - main.right()).abs() < 0.5 && (r.left() - main.left()).abs() < 0.5).collect();
     let (top, bottom) = column.iter().fold((f32::INFINITY, f32::NEG_INFINITY), |(t, b), r| (t.min(r.top()), b.max(r.bottom())));
     let middle = (top + bottom) / 2.0;
@@ -287,10 +290,15 @@ fn main_buttons_fit_the_narrowest_window(language: &str) {
         for app in ["PhotoCraft", "VectorCraft", "EffectCraft"] {
             let menu = h.get_by_label(&fmt(t("More actions for {name}"), &[("name", app)])).rect();
             let main = main_button_in_line(&h, menu, &format!("{language} {view:?} {app}"));
+            let rtl = artcraft_launcher_ui_egui::i18n::current().right_to_left();
+            let before = |r: egui::Rect| if rtl { r.left() >= menu.right() } else { r.right() <= menu.left() };
             assert!(main.width() <= slot + 0.5, "{language} {view:?} {app}: {main:?} wider than Install ({slot})");
-            assert!(main.right() <= menu.left(), "{language} {view:?} {app}: {main:?} overlaps the menu {menu:?}");
+            assert!(before(main), "{language} {view:?} {app}: {main:?} overlaps the menu {menu:?}");
             // The table scrolls sideways, with a fixed slot; cards have to fit the window.
-            assert!(view == ViewMode::Table || menu.right() <= 720.0, "{language} {view:?} {app}: the menu left the window: {menu:?}");
+            assert!(
+                view == ViewMode::Table || (menu.left() >= 0.0 && menu.right() <= 720.0),
+                "{language} {view:?} {app}: the menu left the window: {menu:?}"
+            );
         }
     }
 }
