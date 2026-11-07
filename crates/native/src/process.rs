@@ -143,6 +143,20 @@ pub fn flatpak_command() -> Command {
     }
 }
 
+/// [`flatpak_command`] in the C locale, for output the launcher reads: Flatpak translates its
+/// messages.
+pub fn flatpak_command_c() -> Command {
+    if in_sandbox() {
+        let mut cmd = command("flatpak-spawn");
+        cmd.args(["--host", "--env=LC_ALL=C", "flatpak"]);
+        cmd
+    } else {
+        let mut cmd = command("flatpak");
+        cmd.env("LC_ALL", "C");
+        cmd
+    }
+}
+
 /// Runs a flatpak command and captures its standard output.
 pub fn capture_flatpak(args: &[&str], timeout: Duration) -> Option<String> {
     if in_sandbox() {
@@ -621,6 +635,15 @@ mod run_tests {
         let err = run("yes", &[], Duration::from_millis(100)).unwrap_err();
         assert!(err.contains("didn't finish within"), "{err}");
         assert!(start.elapsed() < Duration::from_secs(5));
+    }
+
+    #[test]
+    fn flatpak_output_the_launcher_reads_stays_in_english() {
+        if in_sandbox() {
+            return;
+        }
+        let cmd = flatpak_command_c();
+        assert!(cmd.get_envs().any(|(name, value)| name == "LC_ALL" && value == Some(std::ffi::OsStr::new("C"))));
     }
 
     #[test]

@@ -223,15 +223,15 @@ pub fn install_at(
         }
         #[cfg(target_os = "linux")]
         PackageKind::Deb | PackageKind::Rpm | PackageKind::ArchPkg | PackageKind::Flatpak => {
-            linux::install_package(kind, &file, existing.and_then(|installed| installed.installation.as_deref()), job.stop, &mut *job.phase).map(
-                |_| {
-                    if kind == PackageKind::Flatpak {
-                        linux::configure_bundle_lookaside(app, existing.and_then(|installed| installed.installation.as_deref()));
-                        linux::retire_former_flatpak(app, existing);
-                    }
-                    None
-                },
-            )
+            let id = app.bundle_id();
+            let installation = existing.and_then(|installed| installed.installation.as_deref());
+            linux::install_package(kind, &file, Some(&id), installation, job.stop, &mut *job.phase).map(|_| {
+                if kind == PackageKind::Flatpak {
+                    linux::configure_bundle_lookaside(app, installation);
+                    linux::retire_former_flatpak(app, existing);
+                }
+                None
+            })
         }
         #[cfg(target_os = "linux")]
         PackageKind::AppImage => {
@@ -1058,9 +1058,11 @@ fn cancelled(stop: &Stop) -> impl Fn() -> bool + '_ {
 pub(crate) mod linux {
     use std::ffi::{OsStr, OsString};
     use std::os::unix::fs::PermissionsExt;
+    use std::time::Duration;
 
     use artcraft_launcher_core::distro;
     use artcraft_launcher_core::protocol::CANCELLED;
+    use artcraft_launcher_core::version::{self, Version};
 
     use super::{
         CraftApp, INSTALLER, InstallSource, Installed, JobPhase, PackageKind, Path, PathBuf, Paths, Record, SHARED_CALL, SYSTEM_BIN_DIRS, Stop,
@@ -1080,9 +1082,10 @@ pub(crate) mod linux {
     pub struct Root<'a> {
         pub queue: &'a crate::queue::Queue,
         pub run: &'a (dyn Fn(&[&OsStr]) -> Result<(), String> + Sync),
+        pub flatpak: &'a (dyn Fn() -> std::process::Command + Sync),
     }
 
-    const SYSTEM: Root<'static> = Root { queue: &INSTALLER, run: &run_as_root };
+    const SYSTEM: Root<'static> = Root { queue: &INSTALLER, run: &run_as_root, flatpak: &process::flatpak_command_c };
 
     /// Runs `command target` as root. Jobs waiting for the same command go into one call
     /// (`apt-get install a.deb b.deb`), so the password is asked for once.
@@ -1196,10 +1199,12 @@ pub(crate) mod linux {
         kinds
     }
 
-    /// Installs (or upgrades) a downloaded package with the system's own tools.
+    /// Installs (or upgrades) a downloaded package with the system's own tools. `bundle` is the app
+    /// id a Flatpak bundle holds.
     pub fn install_package(
         kind: PackageKind,
         file: &Path,
+        bundle: Option<&str>,
         installation: Option<&str>,
         stop: &Stop,
         phase: &mut dyn FnMut(JobPhase),
@@ -1210,13 +1215,14 @@ pub(crate) mod linux {
         if kind == PackageKind::ArchPkg && system_tool("pacman").is_none() {
             return Err("this system has no pacman to install an Arch package with".into());
         }
-        install_package_via(&SYSTEM, kind, file, installation, stop, phase)
+        install_package_via(&SYSTEM, kind, file, bundle, installation, stop, phase)
     }
 
     pub fn install_package_via(
         root: &Root<'_>,
         kind: PackageKind,
         file: &Path,
+        bundle: Option<&str>,
         installation: Option<&str>,
         stop: &Stop,
         phase: &mut dyn FnMut(JobPhase),
@@ -1230,7 +1236,8 @@ pub(crate) mod linux {
                 let scope = installation.map_or_else(|| "--user".to_string(), |name| crate::packages::flatpak_scope(Some(name)));
                 let install_one = || {
                     log::info!("executing flatpak install --reinstall --bundle for {}", file.display());
-                    let output = process::flatpak_command()
+                    // The C locale keeps the "already installed" error below readable.
+                    let output = (root.flatpak)()
                         .args(["install", &scope, "-y", "--noninteractive", "--reinstall", "--bundle"])
                         .arg(f)
                         .output()
@@ -1250,10 +1257,49 @@ pub(crate) mod linux {
                         }
                     }
                 };
-                root.queue.alone(&cancelled(stop), &mut turn(phase, JobPhase::Installing), install_one).unwrap_or(Err(CANCELLED.into()))
+                // Inside the queue: an uninstall racing another bundle install can drop its remote (#326).
+                let install = || {
+                    let result = install_one();
+                    match bundle {
+                        Some(id) if result.as_ref().is_err_and(|e| already_installed(e, id)) && reinstall_by_hand(root) => {
+                            log::info!("{id} is already installed and this Flatpak can't reinstall a bundle: uninstalling it first");
+                            // No `--delete-data`: the app's files stay for the next install.
+                            if !(root.flatpak)().args(["uninstall", &scope, "-y", "--noninteractive", id]).status().is_ok_and(|s| s.success()) {
+                                log::warn!("couldn't uninstall {id} to install its bundle again");
+                                return result;
+                            }
+                            install_one().map_err(|e| {
+                                format!("{e} (It was uninstalled first. Its data is kept, and Install tries again with the same download.)")
+                            })
+                        }
+                        _ => result,
+                    }
+                };
+                root.queue.alone(&cancelled(stop), &mut turn(phase, JobPhase::Installing), install).unwrap_or(Err(CANCELLED.into()))
             }
             other => Err(format!("{} isn't a system package", other.label())),
         }
+    }
+
+    /// Whether a bundle install of `id` failed because its installation already has the
+    /// bundle's commit: Flatpak's "already installed", in the C locale `install_one` runs it in.
+    /// Any other failure leaves the installed copy alone.
+    pub(crate) fn already_installed(err: &str, id: &str) -> bool {
+        err.contains(&format!("{id} already installed"))
+    }
+
+    /// Whether the installed copy has to be uninstalled before its bundle installs again: Flatpak
+    /// before 1.16.2 ignores `--reinstall` for a bundle.
+    fn reinstall_by_hand(root: &Root<'_>) -> bool {
+        let mut cmd = (root.flatpak)();
+        cmd.arg("--version");
+        process::run_command(cmd, "flatpak", Duration::from_secs(10)).is_ok_and(|v| ignores_bundle_reinstall(&v))
+    }
+
+    /// Whether `flatpak --version` names a Flatpak that ignores `--reinstall` for a bundle (flatpak
+    /// commit 4c5693b8 added it in 1.16.2).
+    pub(crate) fn ignores_bundle_reinstall(flatpak_version: &str) -> bool {
+        flatpak_version.split_whitespace().last().and_then(version::parse).is_some_and(|v| v < Version::new(1, 16, 2))
     }
 
     pub fn remove_package(app: &CraftApp, installed: &Installed, stop: &Stop, phase: &mut dyn FnMut(JobPhase)) -> Result<(), String> {
@@ -3214,7 +3260,7 @@ mod tests {
             ran.lock().unwrap().push(args.iter().map(|a| a.to_string_lossy().into_owned()).collect::<Vec<_>>());
             root_outcome(Some(code))
         };
-        let root = linux::Root { queue: &queue, run: &run };
+        let root = linux::Root { queue: &queue, run: &run, flatpak: &process::flatpak_command_c };
         let (started, has_started) = mpsc::channel();
         let (release, released) = mpsc::channel::<()>();
         let (waiting, waits) = mpsc::channel();
@@ -3235,7 +3281,7 @@ mod tests {
                             waiting.send(()).unwrap();
                         }
                     };
-                    linux::install_package_via(root, PackageKind::Deb, Path::new(file), None, &Stop::default(), &mut phase)
+                    linux::install_package_via(root, PackageKind::Deb, Path::new(file), None, None, &Stop::default(), &mut phase)
                 })
             });
             waits.recv().unwrap();
@@ -3283,12 +3329,130 @@ mod tests {
             return;
         }
         let queue = crate::queue::Queue::new();
-        let root = linux::Root { queue: &queue, run: &|_| Ok(()) };
-        let result =
-            linux::install_package_via(&root, PackageKind::Flatpak, Path::new("/nonexistent/file.flatpak"), None, &Stop::default(), &mut |_| ());
+        let root = linux::Root { queue: &queue, run: &|_| Ok(()), flatpak: &process::flatpak_command_c };
+        let result = linux::install_package_via(
+            &root,
+            PackageKind::Flatpak,
+            Path::new("/nonexistent/file.flatpak"),
+            None,
+            None,
+            &Stop::default(),
+            &mut |_| (),
+        );
         assert!(result.is_err());
         let err = result.unwrap_err();
         assert!(err.starts_with("Flatpak couldn't install the bundle: "), "unexpected error: {err}");
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn only_flatpaks_already_installed_error_reinstalls_a_bundle_by_hand() {
+        let id = "ai.storyteller.soundcraft";
+        let failed = |why: &str| format!("Flatpak couldn't install the bundle: Failed to install bundle {id}: {why}");
+        assert!(linux::already_installed(&failed("ai.storyteller.soundcraft already installed"), id));
+        // A bundle Flatpak can't use, or one for another app, keeps the installed copy.
+        assert!(!linux::already_installed(&failed("Can't change remote during bundle install"), id));
+        assert!(!linux::already_installed(&failed("Invalid checksum of length 0 expected 32"), id));
+        assert!(!linux::already_installed(&failed("ai.storyteller.photocraft already installed"), id));
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn only_a_flatpak_before_1_16_2_needs_a_bundle_reinstalled_by_hand() {
+        assert!(linux::ignores_bundle_reinstall("Flatpak 1.14.6\n"));
+        assert!(linux::ignores_bundle_reinstall("Flatpak 1.16.1"));
+        assert!(!linux::ignores_bundle_reinstall("Flatpak 1.16.2"));
+        assert!(!linux::ignores_bundle_reinstall("Flatpak 1.18.4"));
+        // An unreadable version leaves the failed install as it is.
+        assert!(!linux::ignores_bundle_reinstall(""));
+    }
+
+    /// Runs a bundle install into `installation` against a stand-in `flatpak` that logs its calls
+    /// and fails its first `failures` installs with `why`. Returns the result and the calls.
+    #[cfg(target_os = "linux")]
+    fn with_fake_flatpak(
+        version: &str,
+        failures: u32,
+        why: &str,
+        uninstall_exit: u32,
+        bundle: Option<&str>,
+        installation: Option<&str>,
+    ) -> (Result<(), String>, Vec<String>) {
+        let dir = tempfile::tempdir().unwrap();
+        let (script, calls) = (dir.path().join("flatpak"), dir.path().join("calls"));
+        let log = calls.display();
+        std::fs::write(
+            &script,
+            format!(
+                r#"echo "$*" >> "{log}"
+case "$1" in
+--version) echo "Flatpak {version}" ;;
+uninstall) exit {uninstall_exit} ;;
+install)
+    [ "$(grep -c '^install' "{log}")" -gt {failures} ] && exit 0
+    echo "error: Failed to install bundle: {why}" >&2
+    exit 1 ;;
+esac
+"#
+            ),
+        )
+        .unwrap();
+        let flatpak = || {
+            let mut cmd = std::process::Command::new("/bin/sh");
+            cmd.arg(&script);
+            cmd
+        };
+        let queue = crate::queue::Queue::new();
+        let root = linux::Root { queue: &queue, run: &|_| Ok(()), flatpak: &flatpak };
+        let result =
+            linux::install_package_via(&root, PackageKind::Flatpak, Path::new("/x.flatpak"), bundle, installation, &Stop::default(), &mut |_| {});
+        (result, std::fs::read_to_string(calls).unwrap().lines().map(str::to_string).collect())
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn a_bundle_goes_in_again_by_hand_only_when_flatpak_needs_it() {
+        const ID: &str = "ai.storyteller.soundcraft";
+        const TAKEN: &str = "ai.storyteller.soundcraft already installed";
+        let install = "install --user -y --noninteractive --reinstall --bundle /x.flatpak";
+        let uninstall = format!("uninstall --user -y --noninteractive {ID}");
+        let refused = format!("Flatpak couldn't install the bundle: Failed to install bundle: {TAKEN}");
+
+        // An old Flatpak: the data stays, because nothing else goes on the uninstall's command line.
+        let (result, calls) = with_fake_flatpak("1.14.6", 1, TAKEN, 0, Some(ID), None);
+        assert_eq!(result, Ok(()));
+        assert_eq!(calls, [install, "--version", &uninstall, install]);
+
+        // A copy in the system installation goes out of and back into that one.
+        let (result, calls) = with_fake_flatpak("1.14.6", 1, TAKEN, 0, Some(ID), Some("system"));
+        assert_eq!(result, Ok(()));
+        let system = "install --system -y --noninteractive --reinstall --bundle /x.flatpak";
+        assert_eq!(calls, [system, "--version", &format!("uninstall --system -y --noninteractive {ID}"), system]);
+
+        // A first install that works, or a call with no bundle id, asks nothing more.
+        assert_eq!(with_fake_flatpak("1.14.6", 0, TAKEN, 0, Some(ID), None), (Ok(()), vec![install.to_string()]));
+        assert_eq!(with_fake_flatpak("1.14.6", 1, TAKEN, 0, None, None), (Err(refused.clone()), vec![install.to_string()]));
+
+        // A Flatpak that can reinstall a bundle meant the refusal, so the installed copy stays.
+        let (result, calls) = with_fake_flatpak("1.16.2", 1, TAKEN, 0, Some(ID), None);
+        assert_eq!(result, Err(refused.clone()));
+        assert_eq!(calls, [install, "--version"]);
+
+        // Any other failure leaves it alone too.
+        let (result, calls) = with_fake_flatpak("1.14.6", 1, "Invalid checksum", 0, Some(ID), None);
+        assert_eq!(result, Err("Flatpak couldn't install the bundle: Failed to install bundle: Invalid checksum".to_string()));
+        assert_eq!(calls, [install]);
+
+        // A failed uninstall reports the first error, and the app is still there.
+        let (result, calls) = with_fake_flatpak("1.14.6", 1, TAKEN, 1, Some(ID), None);
+        assert_eq!(result, Err(refused.clone()));
+        assert_eq!(calls, [install, "--version", &uninstall]);
+
+        // A failure after the uninstall says what happened and what to do next.
+        let (result, calls) = with_fake_flatpak("1.14.6", 2, TAKEN, 0, Some(ID), None);
+        let error = result.unwrap_err();
+        assert!(error.starts_with(&refused) && error.contains("uninstalled first") && error.contains("Install tries again"), "{error}");
+        assert_eq!(calls, [install, "--version", &uninstall, install]);
     }
 
     #[cfg(target_os = "linux")]
