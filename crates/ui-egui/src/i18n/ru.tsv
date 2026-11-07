@@ -440,3 +440,19 @@ anicraft	Familiar by design	Привычный интерфейс
 anicraft	Stage, tools, timeline, layers, keyframes, Properties and Library sit where animators expect them, with onion skinning for in-betweening.	Сцена, инструменты, шкала времени, слои, ключевые кадры, Свойства и Библиотека там, где их ждут аниматоры, со шлейфом калькирования.
 anicraft	Tweens that ease	Плавные твины
 anicraft	Classic tweens with eight easing presets and custom ease curves, plus shape tweens that morph one vector contour into another.	Классические твины с восемью пресетами замедления и кривыми, а также твины формы.
+
+	Local services	Локальные службы
+
+	Expose Craft AI apps as MCP servers so LM Studio / Bionic can drive their tools.	Предоставить приложения Craft AI в качестве MCP-серверов, чтобы LM Studio / Bionic могли управлять их инструментами.
+
+	Craft apps	Приложения Craft
+
+	No installed Craft app has a usable CLI yet.	Установленное приложение Craft пока не имеет доступного CLI.
+
+	Unified bridge	Единый мост
+
+	Not found on this machine	Не найдено на этом компьютере
+
+	Found	Найдено
+
+	Port	Порт

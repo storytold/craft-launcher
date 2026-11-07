@@ -447,3 +447,19 @@ anicraft	Familiar by design	直感的なデザイン
 anicraft	Stage, tools, timeline, layers, keyframes, Properties and Library sit where animators expect them, with onion skinning for in-betweening.	ステージ、ツール、タイムライン、レイヤー、キーフレーム、プロパティ、ライブラリが期待通りの場所に配置され、オニオンスキンも備えています。
 anicraft	Tweens that ease	滑らかなトゥイーン
 anicraft	Classic tweens with eight easing presets and custom ease curves, plus shape tweens that morph one vector contour into another.	8つのイージングプリセットとカスタム曲線を持つクラシックトゥイーン、そしてシェイプトゥイーンに対応。
+
+	Local services	ローカルサービス
+
+	Expose Craft AI apps as MCP servers so LM Studio / Bionic can drive their tools.	Craft AI アプリを MCP サーバーとして公開し、LM Studio / Bionic がそのツールを操作できるようにします。
+
+	Craft apps	Craft アプリ
+
+	No installed Craft app has a usable CLI yet.	インストールされた Craft アプリにまだ利用可能な CLI がありません。
+
+	Unified bridge	統一ブリッジ
+
+	Not found on this machine	このマシンでは見つかりません
+
+	Found	見つかりました
+
+	Port	ポート

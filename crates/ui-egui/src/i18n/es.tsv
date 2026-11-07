@@ -425,3 +425,19 @@ anicraft	Familiar by design	Diseño familiar
 anicraft	Stage, tools, timeline, layers, keyframes, Properties and Library sit where animators expect them, with onion skinning for in-betweening.	Escenario, herramientas, línea de tiempo, capas, fotogramas clave, Propiedades y Biblioteca donde los animadores esperan, con papel cebolla.
 anicraft	Tweens that ease	Interpolaciones suaves
 anicraft	Classic tweens with eight easing presets and custom ease curves, plus shape tweens that morph one vector contour into another.	Interpolaciones clásicas con ocho preajustes de aceleración y curvas personalizadas, además de interpolación de forma.
+
+	Local services	Servicios locales
+
+	Expose Craft AI apps as MCP servers so LM Studio / Bionic can drive their tools.	Exponga las aplicaciones de Craft AI como servidores MCP para que LM Studio / Bionic pueda controlar sus herramientas.
+
+	Craft apps	Aplicaciones Craft
+
+	No installed Craft app has a usable CLI yet.	Ninguna aplicación de Craft instalada tiene aún un CLI utilizável.
+
+	Unified bridge	Puente unificado
+
+	Not found on this machine	No encontrado en esta máquina
+
+	Found	Encontrado
+
+	Port	Puerto

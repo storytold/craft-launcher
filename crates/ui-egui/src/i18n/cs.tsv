@@ -412,3 +412,19 @@ anicraft	Familiar by design	Navrženo tak, jak jste zvyklí
 anicraft	Stage, tools, timeline, layers, keyframes, Properties and Library sit where animators expect them, with onion skinning for in-betweening.	Scéna, nástroje, časová osa, vrstvy, klíčové snímky, Vlastnosti i Knihovna jsou tam, kde je animátoři čekají, včetně cibulového pauzáku.
 anicraft	Tweens that ease	Plynulé mezilehlé pohyby (tweens)
 anicraft	Classic tweens with eight easing presets and custom ease curves, plus shape tweens that morph one vector contour into another.	Klasické mezilehlé pohyby s osmi předvolbami zpomalení a vlastními křivkami, plus tvarové mezilehlé pohyby pro morphing.
+
+	Local services	Lokální služby
+
+	Expose Craft AI apps as MCP servers so LM Studio / Bionic can drive their tools.	Zveřejněte aplikace Craft AI jako MCP servery, aby LM Studio / Bionic mohlo ovládat jejich nástroje.
+
+	Craft apps	Aplikace Craft
+
+	No installed Craft app has a usable CLI yet.	Žádná nainstalovaná aplikace Craft zatím nemá dostupné CLI.
+
+	Unified bridge	Jednotný most
+
+	Not found on this machine	Není nalezeno na tomto počítači
+
+	Found	Nalezeno
+
+	Port	Port

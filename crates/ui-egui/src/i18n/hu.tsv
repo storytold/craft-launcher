@@ -445,3 +445,19 @@ anicraft	Familiar by design	Ismerős kialakítás
 anicraft	Stage, tools, timeline, layers, keyframes, Properties and Library sit where animators expect them, with onion skinning for in-betweening.	Színpad, eszközök, idővonal, rétegek, kulcsképkockák, Tulajdonságok és Könyvtár a megszokott helyen, hagymabőr funkcióval.
 anicraft	Tweens that ease	Finom mozgásinterpolációk
 anicraft	Classic tweens with eight easing presets and custom ease curves, plus shape tweens that morph one vector contour into another.	Klasszikus mozgásinterpolációk nyolc görbe-előbeállítással és egyéni görbékkel, valamint alakos interpolációk.
+
+	Local services	Helyi szolgáltatások
+
+	Expose Craft AI apps as MCP servers so LM Studio / Bionic can drive their tools.	Javítsd ki a Craft AI alkalmazásokat MCP szerverként, hogy az LM Studio / Bionic kezelje a eszközeiket.
+
+	Craft apps	Craft alkalmazások
+
+	No installed Craft app has a usable CLI yet.	Egy nincsen még használható CLI-vel rendelkező telepített Craft alkalmazás.
+
+	Unified bridge	Egységes híd
+
+	Not found on this machine	Nem található ezen a gépen
+
+	Found	Találva
+
+	Port	Port
