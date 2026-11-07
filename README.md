@@ -197,7 +197,7 @@ artcraft-launcher
 
 ## Build from source
 
-You need a recent stable Rust (1.90 or newer). On Linux, install the windowing headers first
+You need a recent stable Rust (1.95 or newer). On Linux, install the windowing headers first
 (Debian/Ubuntu: `sudo apt install libxkbcommon-dev libwayland-dev libx11-dev libxrandr-dev libxi-dev libgl1-mesa-dev`).
 
 ```sh
