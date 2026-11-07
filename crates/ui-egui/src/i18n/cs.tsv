@@ -285,6 +285,7 @@ filter	Installed	Nainstalováno
 @plural	{n} h ago|{n} h ago	před {n} h|před {n} h|před {n} h
 @plural	{n} day ago|{n} days ago	před {n} dnem|před {n} dny|před {n} dny
 @msg	Couldn't open {name}: {e}	{name} nelze otevřít: {e}
+@msg	ArtCraft Launcher couldn't start its window on {backend}: {e}	ArtCraft Launcher nemohl spustit své okno na {backend}: {e}
 @msg	Download cancelled	Stahování zrušeno
 @msg	{name} updated to {version}	Aplikace {name} byla aktualizována na verzi {version}
 @msg	{name} installed: {version}	Aplikace {name} byla nainstalována ve verzi {version}

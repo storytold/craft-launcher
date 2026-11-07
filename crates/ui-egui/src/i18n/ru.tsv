@@ -295,6 +295,7 @@ filter	Installed	Установлены
 
 # Message templates (@msg): toasts from the backend. {placeholders} match any text.
 @msg	Couldn't open {name}: {e}	Не удалось открыть {name}: {e}
+@msg	ArtCraft Launcher couldn't start its window on {backend}: {e}	Не удалось открыть окно ArtCraft Launcher на {backend}: {e}
 @msg	Download cancelled	Скачивание отменено
 @msg	{name} updated to {version}	Приложение {name} обновлено до {version}
 @msg	{name} installed: {version}	Приложение {name} установлено: {version}

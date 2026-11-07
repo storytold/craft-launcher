@@ -296,6 +296,7 @@ filter	Installed	Installées
 
 # Message templates (@msg): toasts from the backend. {placeholders} match any text.
 @msg	Couldn't open {name}: {e}	Impossible d'ouvrir {name} : {e}
+@msg	ArtCraft Launcher couldn't start its window on {backend}: {e}	Impossible de démarrer la fenêtre d'ArtCraft Launcher avec {backend} : {e}
 @msg	Download cancelled	Téléchargement annulé
 @msg	{name} updated to {version}	{name} mis à jour vers {version}
 @msg	{name} installed: {version}	{name} installé : {version}
