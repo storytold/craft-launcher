@@ -78,9 +78,10 @@ pub fn run_command(mut cmd: Command, program: &str, timeout: Duration) -> Result
     };
     // A descendant may retain a pipe after the direct child exits. Keep reader completion
     // under the same deadline; on timeout the readers detach, as in the child timeout path.
+    // Say which deadline expired: the child's own, or the readers' after the child exited.
     while !stdout.is_finished() || !stderr.is_finished() {
         if start.elapsed() >= timeout {
-            return Err(format!("{program} didn't finish within {} seconds", timeout.as_secs()));
+            return Err(format!("{program} exited, but its output pipes stayed open for {} seconds", timeout.as_secs()));
         }
         std::thread::sleep(Duration::from_millis(15));
     }
@@ -773,6 +774,7 @@ mod inherited_pipe_tests {
         // The direct child has to start a second test process and fill both pipes before the
         // deadline, which can take seconds on a slow or emulated machine. An attempt where it
         // didn't get that far says nothing about inherited pipes: retry with a longer deadline.
+        const MAX_DEADLINE: Duration = Duration::from_secs(16);
         let mut deadline = Duration::from_secs(1);
         loop {
             let holder = StopHolder(tempfile::tempdir().unwrap());
@@ -781,16 +783,17 @@ mod inherited_pipe_tests {
             let start = Instant::now();
             let result = run(exe.to_str().unwrap(), &args, deadline);
             let elapsed = start.elapsed();
-            if !holder.0.path().join("parent-returning").exists() && deadline < Duration::from_secs(16) {
+            let parent_returned = holder.0.path().join("parent-returning").exists();
+            // The child timing out says nothing about the inherited pipes; its own deadline
+            // expired first, as does an attempt that never reached the marker.
+            let child_timeout = matches!(&result, Err(error) if error.contains("didn't finish within"));
+            if (!parent_returned || child_timeout) && deadline < MAX_DEADLINE {
                 deadline *= 4;
                 continue;
             }
-            assert!(holder.0.path().join("parent-returning").exists(), "direct child did not exit its fixture within {deadline:?}");
-            assert!(
-                matches!(&result, Err(error) if error.contains("didn't finish within")),
-                "expected a pipe deadline error; helper returned success: {}, elapsed: {elapsed:?}",
-                result.is_ok()
-            );
+            assert!(parent_returned, "direct child did not exit its fixture within {deadline:?}");
+            let pipe_timeout = matches!(&result, Err(error) if error.contains("output pipes stayed open"));
+            assert!(pipe_timeout, "expected the inherited-pipe deadline, not the child's; helper returned {result:?}, elapsed: {elapsed:?}");
             // The descendant would hold the pipes for HOLD, far past this bound.
             assert!(deadline * 2 < HOLD);
             assert!(elapsed < deadline * 2, "capture exceeded its caller deadline {deadline:?}: {elapsed:?}");
