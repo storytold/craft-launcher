@@ -356,8 +356,8 @@ filter	Installed	Zainstalowane
 	Repair	Napraw
 	Needs repair	Wymaga naprawy
 	No plugins match	Brak pasujących wtyczek
-	Plugin file path (.wasm, .abr, .grd, .aco, .cube)	Ścieżka do pliku wtyczki (.wasm, .abr, .grd, .aco, .cube)
-	Supports native WebAssembly (.wasm ABI v1) plugins and preset packs (.abr, .grd, .aco, .cube).	Obsługuje natywne wtyczki WebAssembly (.wasm ABI v1) oraz pakiety ustawień (.abr, .grd, .aco, .cube).
+	Plugin file path (.wasm, .abr, .grd, .aco, .ase, .kys, .cube)	Ścieżka do pliku wtyczki (.wasm, .abr, .grd, .aco, .ase, .kys, .cube)
+	Supports native WebAssembly (.wasm ABI v1) plugins and preset packs (.abr, .grd, .aco, .ase, .kys, .cube).	Obsługuje natywne wtyczki WebAssembly (.wasm ABI v1) oraz pakiety ustawień (.abr, .grd, .aco, .ase, .kys, .cube).
 	Browse…	Przeglądaj…
 	Choose a plugin file from your computer	Wybierz plik wtyczki z komputera
 	Auto-detected: {app}	Wykryto automatycznie: {app}

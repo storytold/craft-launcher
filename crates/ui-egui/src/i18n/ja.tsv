@@ -357,8 +357,8 @@ filter	Installed	インストール済み
 	Repair	修復
 	Needs repair	修復が必要
 	No plugins match	一致するプラグインがありません
-	Plugin file path (.wasm, .abr, .grd, .aco, .cube)	プラグインファイルのパス (.wasm, .abr, .grd, .aco, .cube)
-	Supports native WebAssembly (.wasm ABI v1) plugins and preset packs (.abr, .grd, .aco, .cube).	ネイティブ WebAssembly (.wasm ABI v1) プラグインおよびプリセットパック (.abr, .grd, .aco, .cube) に対応しています。
+	Plugin file path (.wasm, .abr, .grd, .aco, .ase, .kys, .cube)	プラグインファイルのパス (.wasm, .abr, .grd, .aco, .ase, .kys, .cube)
+	Supports native WebAssembly (.wasm ABI v1) plugins and preset packs (.abr, .grd, .aco, .ase, .kys, .cube).	ネイティブ WebAssembly (.wasm ABI v1) プラグインおよびプリセットパック (.abr, .grd, .aco, .ase, .kys, .cube) に対応しています。
 	Browse…	参照…
 	Choose a plugin file from your computer	コンピューターからプラグインファイルを選択
 	Auto-detected: {app}	自動検出: {app}

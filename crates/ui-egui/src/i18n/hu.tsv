@@ -355,8 +355,8 @@ filter	Installed	Telepítve
 	Repair	Javítás
 	Needs repair	Javításra szorul
 	No plugins match	Nincs találat a bővítmények között
-	Plugin file path (.wasm, .abr, .grd, .aco, .cube)	Bővítményfájl elérési útja (.wasm, .abr, .grd, .aco, .cube)
-	Supports native WebAssembly (.wasm ABI v1) plugins and preset packs (.abr, .grd, .aco, .cube).	Támogatja a natív WebAssembly (.wasm ABI v1) bővítményeket és az előbeállítás-csomagokat (.abr, .grd, .aco, .cube).
+	Plugin file path (.wasm, .abr, .grd, .aco, .ase, .kys, .cube)	Bővítményfájl elérési útja (.wasm, .abr, .grd, .aco, .ase, .kys, .cube)
+	Supports native WebAssembly (.wasm ABI v1) plugins and preset packs (.abr, .grd, .aco, .ase, .kys, .cube).	Támogatja a natív WebAssembly (.wasm ABI v1) bővítményeket és az előbeállítás-csomagokat (.abr, .grd, .aco, .ase, .kys, .cube).
 	Browse…	Tallózás…
 	Choose a plugin file from your computer	Válasszon egy bővítményfájlt a számítógépéről
 	Auto-detected: {app}	Automatikusan felismert: {app}

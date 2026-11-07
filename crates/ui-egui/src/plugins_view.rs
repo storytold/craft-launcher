@@ -48,7 +48,9 @@ impl LauncherUi {
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 if self.caps.manage_apps
                     && widgets::button(ui, tl!("Import plugin…"), Kind::Primary, 0.0)
-                        .on_hover_text(tl!("Supports native WebAssembly (.wasm ABI v1) plugins and preset packs (.abr, .grd, .aco, .cube)."))
+                        .on_hover_text(tl!(
+                            "Supports native WebAssembly (.wasm ABI v1) plugins and preset packs (.abr, .grd, .aco, .ase, .kys, .cube)."
+                        ))
                         .clicked()
                 {
                     let target_app = if self.plugin_app_filter == "all" { "photocraft".to_string() } else { self.plugin_app_filter.to_string() };

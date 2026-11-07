@@ -335,8 +335,8 @@ filter	Installed	Instaladas
 	Repair	Reparar
 	Needs repair	Requiere reparación
 	No plugins match	Ningún plug-in coincide
-	Plugin file path (.wasm, .abr, .grd, .aco, .cube)	Ruta del archivo de plug-in (.wasm, .abr, .grd, .aco, .cube)
-	Supports native WebAssembly (.wasm ABI v1) plugins and preset packs (.abr, .grd, .aco, .cube).	Compatible con plug-ins nativos WebAssembly (.wasm ABI v1) y paquetes de ajustes preestablecidos (.abr, .grd, .aco, .cube).
+	Plugin file path (.wasm, .abr, .grd, .aco, .ase, .kys, .cube)	Ruta del archivo de plug-in (.wasm, .abr, .grd, .aco, .ase, .kys, .cube)
+	Supports native WebAssembly (.wasm ABI v1) plugins and preset packs (.abr, .grd, .aco, .ase, .kys, .cube).	Compatible con plug-ins nativos WebAssembly (.wasm ABI v1) y paquetes de ajustes preestablecidos (.abr, .grd, .aco, .ase, .kys, .cube).
 	Browse…	Examinar…
 	Choose a plugin file from your computer	Elegir un archivo de plug-in de tu ordenador
 	Auto-detected: {app}	Detectado automáticamente: {app}
