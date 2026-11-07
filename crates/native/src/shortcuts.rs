@@ -1,16 +1,58 @@
 //! Per-app and global desktop and Start menu / application menu shortcut management.
 //!
-//! Supports creating, updating, detecting, and removing shortcuts across Windows (`.lnk` files in
-//! Desktop and Start Menu Programs), Linux (freedesktop `.desktop` files in `~/Desktop` and
+//! Supports creating, updating, detecting, and safely removing shortcuts across Windows (`.lnk` files in
+//! user Desktop and user Start Menu Programs), Linux (freedesktop `.desktop` files in `~/Desktop` and
 //! `~/.local/share/applications`), and macOS (symbolic links in `~/Desktop` and `~/Applications`).
+//!
+//! All shortcuts created by the launcher are recorded in [`ShortcutManifest`] (`shortcuts.json`),
+//! ensuring uninstalls and disabling settings only delete files the launcher itself created and
+//! never touch unrecorded files, third-party shortcuts, or system directories like `ProgramData`.
 
 use std::collections::{BTreeMap, HashMap};
 use std::path::{Path, PathBuf};
 
 use artcraft_launcher_core::protocol::{AppShortcutState, BackendOptions};
 use artcraft_launcher_core::{CraftApp, Installed, SUITE};
+use serde::{Deserialize, Serialize};
 
 use crate::paths::write_atomic;
+
+/// Recorded shortcuts created by the launcher for an application.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ShortcutRecord {
+    /// The desktop shortcut path, if created by the launcher.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub desktop: Option<PathBuf>,
+    /// The Start menu / application menu shortcut path, if created by the launcher.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub start_menu: Option<PathBuf>,
+}
+
+/// The persistent manifest of all shortcuts created by the launcher across the suite.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ShortcutManifest {
+    /// Mapping of app ID to recorded shortcuts.
+    #[serde(default)]
+    pub apps: BTreeMap<String, ShortcutRecord>,
+}
+
+impl ShortcutManifest {
+    /// Loads the shortcut manifest from `path`, or returns default if missing or unreadable.
+    pub fn load(path: &Path) -> Self {
+        std::fs::read(path).ok().and_then(|b| serde_json::from_slice(&b).ok()).unwrap_or_default()
+    }
+
+    /// Saves the shortcut manifest to `path` atomically.
+    pub fn save(&self, path: &Path) -> Result<(), String> {
+        let bytes = serde_json::to_vec_pretty(self).map_err(|e| e.to_string())?;
+        write_atomic(path, &bytes)
+    }
+}
+
+/// Returns the default shortcut manifest path (`<data>/shortcuts.json`).
+pub fn default_manifest_path() -> Option<PathBuf> {
+    crate::paths::Paths::new().ok().map(|p| p.shortcuts())
+}
 
 /// Resolves the effective `(desktop, start_menu)` shortcut preferences for `app_id`, combining
 /// per-app overrides with the global defaults in [`BackendOptions`].
@@ -65,25 +107,50 @@ pub fn detect_one(app: &CraftApp) -> AppShortcutState {
 /// Synchronizes the desktop and Start menu / application menu shortcuts for an installed `app`
 /// so they match `(desktop, start_menu)` and point to `installed.location`.
 pub fn sync_shortcuts(app: &CraftApp, installed: &Installed, desktop: bool, start_menu: bool) -> Result<AppShortcutState, String> {
+    let m_path = default_manifest_path();
+    sync_shortcuts_with_manifest(app, installed, desktop, start_menu, m_path.as_deref())
+}
+
+/// Synchronizes shortcuts using an explicit `manifest_path` to record and track created files.
+pub fn sync_shortcuts_with_manifest(
+    app: &CraftApp,
+    installed: &Installed,
+    desktop: bool,
+    start_menu: bool,
+    manifest_path: Option<&Path>,
+) -> Result<AppShortcutState, String> {
+    let mut manifest = manifest_path.map(ShortcutManifest::load).unwrap_or_default();
+    let mut record = manifest.apps.get(app.id).cloned().unwrap_or_default();
     let target = Path::new(&installed.location);
+
     #[cfg(windows)]
     {
-        sync_windows_shortcuts(app, target, desktop, start_menu)?;
+        sync_windows_shortcuts(app, target, desktop, start_menu, &mut record)?;
     }
     #[cfg(target_os = "linux")]
     {
         let desktop_dir = dirs::desktop_dir();
         let data_dir = crate::install::linux::host_data_dir();
-        sync_linux_shortcuts_in(desktop_dir.as_deref(), data_dir.as_deref(), app, target, desktop, start_menu)?;
+        sync_linux_shortcuts_in(desktop_dir.as_deref(), data_dir.as_deref(), app, target, desktop, start_menu, &mut record)?;
     }
     #[cfg(target_os = "macos")]
     {
-        sync_macos_shortcuts(app, target, desktop, start_menu)?;
+        sync_macos_shortcuts(app, target, desktop, start_menu, &mut record)?;
     }
     #[cfg(not(any(windows, target_os = "linux", target_os = "macos")))]
     {
-        let _ = (app, target, desktop, start_menu);
+        let _ = (app, target, desktop, start_menu, &mut record);
     }
+
+    if let Some(m_path) = manifest_path {
+        if record.desktop.is_none() && record.start_menu.is_none() {
+            manifest.apps.remove(app.id);
+        } else {
+            manifest.apps.insert(app.id.to_string(), record);
+        }
+        let _ = manifest.save(m_path);
+    }
+
     Ok(detect_one(app))
 }
 
@@ -98,17 +165,34 @@ pub fn apply_after_install(app: &CraftApp, installed: Option<&Installed>, option
 
 /// Removes any launcher-managed shortcuts for `app` when the application is uninstalled.
 pub fn remove_all(app: &CraftApp) {
+    let m_path = default_manifest_path();
+    remove_all_with_manifest(app, m_path.as_deref());
+}
+
+/// Removes any launcher-managed shortcuts for `app` recorded in `manifest_path` when uninstalled.
+pub fn remove_all_with_manifest(app: &CraftApp, manifest_path: Option<&Path>) {
+    let mut manifest = manifest_path.map(ShortcutManifest::load).unwrap_or_default();
+    let record = manifest.apps.remove(app.id);
+
     #[cfg(windows)]
     {
-        if let Some(lnk) = windows_desktop_lnk(app) {
-            let _ = std::fs::remove_file(lnk);
-        }
-        for lnk in windows_user_start_menu_lnks(app) {
-            let _ = std::fs::remove_file(&lnk);
-            if let Some(parent) = lnk.parent()
-                && parent.file_name().is_some_and(|n| n.eq_ignore_ascii_case(app.name))
+        if let Some(r) = &record {
+            if let Some(desktop_lnk) = &r.desktop
+                && is_safe_user_lnk(desktop_lnk)
+                && desktop_lnk.is_file()
             {
-                let _ = std::fs::remove_dir(parent);
+                let _ = std::fs::remove_file(desktop_lnk);
+            }
+            if let Some(start_menu_lnk) = &r.start_menu
+                && is_safe_user_lnk(start_menu_lnk)
+                && start_menu_lnk.is_file()
+            {
+                let _ = std::fs::remove_file(start_menu_lnk);
+                if let Some(parent) = start_menu_lnk.parent()
+                    && parent.file_name().is_some_and(|n| n.eq_ignore_ascii_case(app.name))
+                {
+                    let _ = std::fs::remove_dir(parent);
+                }
             }
         }
     }
@@ -120,28 +204,43 @@ pub fn remove_all(app: &CraftApp) {
     }
     #[cfg(target_os = "macos")]
     {
-        let bundle = format!("{}.app", app.name);
-        if let Some(desktop) = dirs::desktop_dir() {
-            for candidate in [desktop.join(&bundle), desktop.join(app.name)] {
-                if candidate.symlink_metadata().is_ok_and(|m| m.file_type().is_symlink()) {
-                    let _ = std::fs::remove_file(candidate);
+        if let Some(r) = &record {
+            if let Some(desktop_link) = &r.desktop {
+                if desktop_link.symlink_metadata().is_ok_and(|m| m.file_type().is_symlink()) {
+                    let _ = std::fs::remove_file(desktop_link);
                 }
             }
-        }
-        if let Some(home) = dirs::home_dir() {
-            let app_link = home.join("Applications").join(&bundle);
-            if app_link.symlink_metadata().is_ok_and(|m| m.file_type().is_symlink()) {
-                let _ = std::fs::remove_file(app_link);
+            if let Some(app_link) = &r.start_menu {
+                if app_link.symlink_metadata().is_ok_and(|m| m.file_type().is_symlink()) {
+                    let _ = std::fs::remove_file(app_link);
+                }
             }
         }
     }
     #[cfg(not(any(windows, target_os = "linux", target_os = "macos")))]
     {
-        let _ = app;
+        let _ = (app, &record);
+    }
+
+    if let Some(m_path) = manifest_path {
+        let _ = manifest.save(m_path);
     }
 }
 
 // ------------------------------------------------------------------ Windows implementation
+
+/// Verifies whether `path` is safely located within the current user's profile folders
+/// (Desktop or user Start Menu Programs) and is not inside system-wide directories such as `ProgramData`.
+#[cfg(windows)]
+pub fn is_safe_user_lnk(path: &Path) -> bool {
+    let program_data = std::env::var_os("ProgramData").map_or_else(|| PathBuf::from(r"C:\ProgramData"), PathBuf::from);
+    if path.starts_with(&program_data) {
+        return false;
+    }
+    let is_desktop = dirs::desktop_dir().is_some_and(|d| path.starts_with(d));
+    let is_user_start = dirs::data_dir().is_some_and(|d| path.starts_with(d.join(r"Microsoft\Windows\Start Menu\Programs")));
+    (is_desktop || is_user_start) && path.extension().is_some_and(|ext| ext.eq_ignore_ascii_case("lnk"))
+}
 
 #[cfg(windows)]
 fn windows_desktop_lnk(app: &CraftApp) -> Option<PathBuf> {
@@ -170,31 +269,45 @@ fn windows_start_menu_lnks(app: &CraftApp) -> Vec<PathBuf> {
 }
 
 #[cfg(windows)]
-fn sync_windows_shortcuts(app: &CraftApp, target: &Path, desktop: bool, start_menu: bool) -> Result<(), String> {
-    if let Some(desktop_lnk) = windows_desktop_lnk(app) {
-        if desktop {
+fn sync_windows_shortcuts(app: &CraftApp, target: &Path, desktop: bool, start_menu: bool, record: &mut ShortcutRecord) -> Result<(), String> {
+    if desktop {
+        if let Some(desktop_lnk) = windows_desktop_lnk(app) {
             create_windows_lnk(&desktop_lnk, target, app.tagline)?;
-        } else if desktop_lnk.is_file() {
-            std::fs::remove_file(&desktop_lnk).map_err(|e| format!("couldn't remove desktop shortcut ({e})"))?;
+            record.desktop = Some(desktop_lnk);
         }
+    } else if let Some(desktop_lnk) = record.desktop.take()
+        && is_safe_user_lnk(&desktop_lnk)
+        && desktop_lnk.is_file()
+    {
+        std::fs::remove_file(&desktop_lnk).map_err(|e| format!("couldn't remove desktop shortcut ({e})"))?;
     }
-    let user_lnks = windows_user_start_menu_lnks(app);
+
     if start_menu {
+        let user_lnks = windows_user_start_menu_lnks(app);
         if let Some(primary) = user_lnks.first() {
             create_windows_lnk(primary, target, app.tagline)?;
+            record.start_menu = Some(primary.clone());
         }
-    } else {
-        for lnk in windows_start_menu_lnks(app) {
-            if lnk.is_file() {
-                let _ = std::fs::remove_file(&lnk);
-            }
+    } else if let Some(start_lnk) = record.start_menu.take()
+        && is_safe_user_lnk(&start_lnk)
+        && start_lnk.is_file()
+    {
+        std::fs::remove_file(&start_lnk).map_err(|e| format!("couldn't remove Start menu shortcut ({e})"))?;
+        if let Some(parent) = start_lnk.parent()
+            && parent.file_name().is_some_and(|n| n.eq_ignore_ascii_case(app.name))
+        {
+            let _ = std::fs::remove_dir(parent);
         }
     }
+
     Ok(())
 }
 
 #[cfg(windows)]
 fn create_windows_lnk(lnk_path: &Path, target: &Path, description: &str) -> Result<(), String> {
+    if !is_safe_user_lnk(lnk_path) {
+        return Err(format!("shortcut destination {} is outside safe user profile directories", lnk_path.display()));
+    }
     if let Some(parent) = lnk_path.parent() {
         std::fs::create_dir_all(parent).map_err(|e| format!("couldn't create shortcut folder {} ({e})", parent.display()))?;
     }
@@ -203,25 +316,18 @@ fn create_windows_lnk(lnk_path: &Path, target: &Path, description: &str) -> Resu
     let target_s = target.to_str().ok_or("target path is not valid UTF-8")?;
     let work_dir = target.parent().and_then(Path::to_str).unwrap_or("");
     let script = format!(
-        "$ws = New-Object -ComObject WScript.Shell; \
-         $s = $ws.CreateShortcut({}); \
-         $s.TargetPath = {}; \
-         $s.WorkingDirectory = {}; \
-         $s.Description = {}; \
-         $s.IconLocation = {}; \
-         $s.Save()",
+        "$ws = New-Object -ComObject WScript.Shell;          $s = $ws.CreateShortcut({});          $s.TargetPath = {};          $s.WorkingDirectory = {};          $s.Description = {};          $s.IconLocation = {};          $s.Save()",
         ps_quote(lnk_s),
         ps_quote(target_s),
         ps_quote(work_dir),
         ps_quote(description),
         ps_quote(&format!("{target_s},0")),
     );
-    crate::process::run(
-        "powershell",
-        &["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command", &script],
-        std::time::Duration::from_secs(15),
-    )
-    .map(|_| ())
+    let root = std::env::var_os("SystemRoot").unwrap_or_else(|| "C:\\Windows".into());
+    let powershell = std::path::Path::new(&root).join(r"System32\WindowsPowerShell1.0\powershell.exe");
+    let mut cmd = crate::process::command(&powershell);
+    cmd.args(["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command", &script]);
+    crate::process::run_command(cmd, "powershell", std::time::Duration::from_secs(15)).map(|_| ())
 }
 
 // ------------------------------------------------------------------ Linux / XDG implementation
@@ -249,6 +355,7 @@ pub fn sync_linux_shortcuts_in(
     target: &Path,
     desktop: bool,
     start_menu: bool,
+    record: &mut ShortcutRecord,
 ) -> Result<(), String> {
     let bundle_desktop = format!("{}.desktop", app.bundle_id());
     let has_icon = data_dir.is_some_and(|d| d.join("icons/hicolor/128x128/apps").join(format!("{}.png", app.bundle_id())).is_file());
@@ -264,8 +371,15 @@ pub fn sync_linux_shortcuts_in(
                 use std::os::unix::fs::PermissionsExt;
                 let _ = std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755));
             }
-        } else if path.is_file() {
-            let _ = std::fs::remove_file(&path);
+            record.desktop = Some(path);
+        } else {
+            let to_remove = record.desktop.take().or_else(|| if path.is_file() { Some(path) } else { None });
+            if let Some(p) = to_remove
+                && let Ok(text) = std::fs::read_to_string(&p)
+                && crate::desktop_entry::is_ours(&text)
+            {
+                let _ = std::fs::remove_file(&p);
+            }
         }
     }
 
@@ -274,8 +388,15 @@ pub fn sync_linux_shortcuts_in(
         let path = apps_dir.join(&bundle_desktop);
         if start_menu {
             write_atomic(&path, rendered.as_bytes())?;
-        } else if path.is_file() {
-            let _ = std::fs::remove_file(&path);
+            record.start_menu = Some(path);
+        } else {
+            let to_remove = record.start_menu.take().or_else(|| if path.is_file() { Some(path) } else { None });
+            if let Some(p) = to_remove
+                && let Ok(text) = std::fs::read_to_string(&p)
+                && crate::desktop_entry::is_ours(&text)
+            {
+                let _ = std::fs::remove_file(&p);
+            }
         }
     }
     Ok(())
@@ -298,15 +419,18 @@ pub fn remove_linux_shortcuts_in(desktop_dir: Option<&Path>, data_dir: Option<&P
 // ------------------------------------------------------------------ macOS implementation
 
 #[cfg(target_os = "macos")]
-fn sync_macos_shortcuts(app: &CraftApp, target: &Path, desktop: bool, start_menu: bool) -> Result<(), String> {
+fn sync_macos_shortcuts(app: &CraftApp, target: &Path, desktop: bool, start_menu: bool, record: &mut ShortcutRecord) -> Result<(), String> {
     let bundle = format!("{}.app", app.name);
     if let Some(desktop_dir) = dirs::desktop_dir() {
         let link = desktop_dir.join(&bundle);
         if desktop {
             let _ = std::fs::remove_file(&link);
             std::os::unix::fs::symlink(target, &link).map_err(|e| format!("couldn't create desktop alias ({e})"))?;
-        } else if link.symlink_metadata().is_ok_and(|m| m.file_type().is_symlink()) {
-            let _ = std::fs::remove_file(&link);
+            record.desktop = Some(link);
+        } else if let Some(link) = record.desktop.take() {
+            if link.symlink_metadata().is_ok_and(|m| m.file_type().is_symlink()) {
+                let _ = std::fs::remove_file(&link);
+            }
         }
     }
     if let Some(home) = dirs::home_dir() {
@@ -317,9 +441,12 @@ fn sync_macos_shortcuts(app: &CraftApp, target: &Path, desktop: bool, start_menu
                 let _ = std::fs::create_dir_all(&user_apps);
                 let _ = std::fs::remove_file(&link);
                 let _ = std::os::unix::fs::symlink(target, &link);
+                record.start_menu = Some(link);
             }
-        } else if link.symlink_metadata().is_ok_and(|m| m.file_type().is_symlink()) {
-            let _ = std::fs::remove_file(&link);
+        } else if let Some(link) = record.start_menu.take() {
+            if link.symlink_metadata().is_ok_and(|m| m.file_type().is_symlink()) {
+                let _ = std::fs::remove_file(&link);
+            }
         }
     }
     Ok(())
@@ -342,20 +469,44 @@ mod tests {
     }
 
     #[test]
+    fn shortcut_manifest_roundtrips_and_survives_corrupted_json() {
+        let tmp = tempfile::tempdir().unwrap();
+        let path = tmp.path().join("shortcuts.json");
+        assert_eq!(ShortcutManifest::load(&path), ShortcutManifest::default());
+
+        let mut manifest = ShortcutManifest::default();
+        manifest.apps.insert(
+            "photocraft".into(),
+            ShortcutRecord {
+                desktop: Some(PathBuf::from("/home/user/Desktop/ai.storyteller.photocraft.desktop")),
+                start_menu: Some(PathBuf::from("/home/user/.local/share/applications/ai.storyteller.photocraft.desktop")),
+            },
+        );
+        manifest.save(&path).unwrap();
+        assert_eq!(ShortcutManifest::load(&path), manifest);
+
+        std::fs::write(&path, b"invalid json content").unwrap();
+        assert_eq!(ShortcutManifest::load(&path), ShortcutManifest::default());
+    }
+
+    #[test]
     fn creates_updates_and_removes_desktop_and_menu_entries_across_folder_changes() {
         let tmp = std::env::temp_dir().join(format!("artcraft-launcher-shortcuts-test-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&tmp);
         let desktop_dir = tmp.join("Desktop");
         let data_dir = tmp.join("data");
         let app = CraftApp::by_id("photocraft").unwrap();
+        let mut record = ShortcutRecord::default();
 
         let first_bin = Path::new("/opt/ArtCraft/photocraft/photocraft.AppImage");
-        sync_linux_shortcuts_in(Some(&desktop_dir), Some(&data_dir), app, first_bin, true, true).unwrap();
+        sync_linux_shortcuts_in(Some(&desktop_dir), Some(&data_dir), app, first_bin, true, true, &mut record).unwrap();
 
         let desktop_file = desktop_dir.join("ai.storyteller.photocraft.desktop");
         let menu_file = data_dir.join("applications/ai.storyteller.photocraft.desktop");
         assert!(desktop_file.is_file());
         assert!(menu_file.is_file());
+        assert_eq!(record.desktop.as_deref(), Some(desktop_file.as_path()));
+        assert_eq!(record.start_menu.as_deref(), Some(menu_file.as_path()));
         assert_eq!(
             crate::desktop_entry::exec_program(&std::fs::read_to_string(&desktop_file).unwrap()).as_deref(),
             Some("/opt/ArtCraft/photocraft/photocraft.AppImage")
@@ -363,9 +514,11 @@ mod tests {
 
         // Move app to a new installation directory and disable desktop shortcut while keeping menu shortcut.
         let moved_bin = Path::new("/mnt/work/CraftSuite/photocraft/photocraft.AppImage");
-        sync_linux_shortcuts_in(Some(&desktop_dir), Some(&data_dir), app, moved_bin, false, true).unwrap();
+        sync_linux_shortcuts_in(Some(&desktop_dir), Some(&data_dir), app, moved_bin, false, true, &mut record).unwrap();
         assert!(!desktop_file.exists(), "disabled desktop shortcut should be removed");
+        assert!(record.desktop.is_none());
         assert!(menu_file.is_file(), "enabled menu shortcut should stay");
+        assert_eq!(record.start_menu.as_deref(), Some(menu_file.as_path()));
         assert_eq!(
             crate::desktop_entry::exec_program(&std::fs::read_to_string(&menu_file).unwrap()).as_deref(),
             Some("/mnt/work/CraftSuite/photocraft/photocraft.AppImage"),
@@ -375,5 +528,21 @@ mod tests {
         remove_linux_shortcuts_in(Some(&desktop_dir), Some(&data_dir), app).unwrap();
         assert!(!menu_file.exists(), "uninstall cleanup removes launcher-written menu shortcut");
         let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn windows_safe_user_lnk_rejects_programdata_and_system_paths() {
+        let program_data = std::env::var_os("ProgramData").map_or_else(|| PathBuf::from(r"C:\ProgramData"), PathBuf::from);
+        let pd_lnk = program_data.join(r"Microsoft\Windows\Start Menu\Programs\PhotoCraft.lnk");
+        assert!(!is_safe_user_lnk(&pd_lnk), "ProgramData shortcuts must never be considered user shortcuts");
+
+        let sys_lnk = PathBuf::from(r"C:\Windows\System32\cmd.lnk");
+        assert!(!is_safe_user_lnk(&sys_lnk), "System shortcuts must never be considered user shortcuts");
+
+        if let Some(desktop) = dirs::desktop_dir() {
+            assert!(is_safe_user_lnk(&desktop.join("PhotoCraft.lnk")));
+            assert!(!is_safe_user_lnk(&desktop.join("PhotoCraft.exe")));
+        }
     }
 }
