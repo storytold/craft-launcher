@@ -340,6 +340,10 @@ figcraft	Interface design and prototyping	界面设计与原型制作
 @msg	{name} installed: {version} (this release publishes no checksum, so only its size was checked)	{name} 已安装：{version}（此版本未发布校验和，因此只检查了文件大小）
 @msg	{name} was removed	{name} 已卸载
 @msg	{name} is running. Quit it, then try again.	{name} 正在运行。请先退出，然后重试。
+	Install as Portable (.zip)	安装为便携版 (.zip)
+	Install as Windows Installer (.msi)	安装为 Windows 安装程序 (.msi)
+	Switch to Portable (.zip)	切换为便携版 (.zip)
+	Switch to Windows Installer (.msi)	切换为 Windows 安装程序 (.msi)
 @msg	{name} was installed from the {repo} repository or the AUR ({pkg}). Update it with {cmd} or sudo pacman -Syu	{name} 是从 {repo} 软件仓库或 AUR 安装的（{pkg}）。请使用 {cmd} 或 sudo pacman -Syu 更新。
 @msg	{name} was installed from the {repo} repository or the AUR ({pkg}). Update it with your AUR helper (for example: yay -S {pkg}) or sudo pacman -Syu	{name} 是从 {repo} 软件仓库或 AUR 安装的（{pkg}）。请使用您的 AUR 助手（例如：yay -S {pkg}）或 sudo pacman -Syu 更新。
 @msg	{name} was installed from the AUR ({pkg}). Update it with {cmd}	{name} 是从 AUR 安装的（{pkg}）。请使用 {cmd} 更新。

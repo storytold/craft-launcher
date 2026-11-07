@@ -55,6 +55,7 @@ fn validate_owned_directory(root: &Path, path: &Path) -> Result<(), String> {
     Ok(())
 }
 
+/// Resolves the deepest existing directory component and appends any non-existent tail.
 fn resolve_missing(path: &Path) -> Result<PathBuf, String> {
     for ancestor in path.ancestors() {
         match std::fs::canonicalize(ancestor) {
@@ -89,6 +90,7 @@ fn same_windows_path(left: &Path, right: &Path) -> bool {
     normalized(left) == normalized(right)
 }
 
+/// Checks whether file metadata indicates a symbolic link or reparse point.
 fn linked(meta: &std::fs::Metadata) -> bool {
     #[cfg(windows)]
     {
@@ -119,6 +121,7 @@ impl Drop for Staging {
     }
 }
 
+/// Unpacks `file` into `destination` with zip slip prevention and resource limits.
 fn extract(file: &Path, destination: &Path) -> Result<(Vec<PathBuf>, Vec<PathBuf>), String> {
     let file = std::fs::File::open(file).map_err(|e| e.to_string())?;
     let mut archive = zip::ZipArchive::new(file).map_err(|e| format!("couldn't read the portable ZIP ({e})"))?;
@@ -134,8 +137,17 @@ fn extract(file: &Path, destination: &Path) -> Result<(Vec<PathBuf>, Vec<PathBuf
         let relative = entry.enclosed_name().ok_or("The portable ZIP contains an unsafe path.")?;
         if relative.components().any(|c| !matches!(c, Component::Normal(_)))
             // zip 9: a name that doesn't decode is as unsafe as one with `\` or `:`.
-            || entry.name().map_or(true, |name| name.contains(['\\', ':']))
+            || entry.name().map_or(true, |name| {
+                name.is_empty()
+                    || name.starts_with('/')
+                    || name.starts_with('\\')
+                    || name.contains('\\')
+                    || name.contains(':')
+                    || name.contains("..")
+                    || name.chars().any(|c| c.is_control())
+            })
             || entry.unix_mode().is_some_and(|mode| mode & 0o170000 == 0o120000)
+            || entry.is_symlink()
         {
             return Err("The portable ZIP contains an unsafe path or link.".into());
         }
@@ -165,6 +177,7 @@ fn extract(file: &Path, destination: &Path) -> Result<(Vec<PathBuf>, Vec<PathBuf
     Ok((files, entries))
 }
 
+/// Returns the validated root and relative paths of all files recorded in `record`.
 fn recorded_files<'a>(app: &CraftApp, record: &'a Record) -> Result<(&'a Path, Vec<PathBuf>), String> {
     let root = record.path.parent().ok_or("The portable installation has no parent folder.")?;
     if record.kind != PackageKind::PortableZip || root.file_name().is_none_or(|n| n != app.id) {
@@ -199,12 +212,19 @@ pub fn install(
     app: &CraftApp,
     file: &Path,
     version: &str,
+    expected_sha256: Option<&str>,
     previous: Option<&Record>,
     paths: &Paths,
     directory: Option<&Path>,
     replace: bool,
     commit: &mut dyn FnMut(&Record) -> Result<(), String>,
 ) -> Result<Record, String> {
+    if let Some(expected) = expected_sha256 {
+        let actual = crate::http::sha256_file(file).map_err(|e| format!("couldn't verify checksum ({e})"))?;
+        if !actual.eq_ignore_ascii_case(expected) {
+            return Err("The portable ZIP checksum does not match the expected SHA-256.".into());
+        }
+    }
     let (destination, mut old_files) = match previous {
         Some(record) => {
             let (root, files) = recorded_files(app, record)?;
@@ -250,19 +270,39 @@ pub fn install(
         }
     }
     std::fs::create_dir_all(&destination).map_err(|e| e.to_string())?;
+    let marker = destination.join("portable.txt");
+    let is_marker = |p: &Path| same_windows_path(p, Path::new("portable.txt"));
+    let archive_has_marker = files.iter().any(|relative| is_marker(relative));
+    let created_marker = if archive_has_marker {
+        false
+    } else {
+        match std::fs::OpenOptions::new().write(true).create_new(true).open(&marker) {
+            Ok(_) => true,
+            Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => false,
+            Err(error) => return Err(error.to_string()),
+        }
+    };
+    let track_marker = !archive_has_marker && (created_marker || old_files.iter().any(|old| is_marker(old)));
     let backup = staging.0.join("backup");
+    let mut record_files: Vec<PathBuf> = files.iter().map(|relative| destination.join(relative)).collect();
+    if track_marker {
+        record_files.push(marker.clone());
+    }
     let record = Record {
         version: version.to_string(),
         kind: PackageKind::PortableZip,
         path: destination.join(executable),
         installed_at: crate::now(),
-        files: files.iter().map(|relative| destination.join(relative)).collect(),
+        files: record_files,
         needs_root: false,
     };
     let mut moved = Vec::new();
     let mut copied = Vec::new();
     let transaction = (|| {
         for relative in &old_files {
+            if !archive_has_marker && is_marker(relative) {
+                continue;
+            }
             let old = destination.join(relative);
             if !old.exists() {
                 continue;
@@ -286,6 +326,9 @@ pub fn install(
         Ok::<(), String>(())
     })();
     if let Err(error) = transaction {
+        if created_marker {
+            let _ = std::fs::remove_file(&marker);
+        }
         for relative in copied {
             let _ = std::fs::remove_file(destination.join(relative));
         }
@@ -348,6 +391,7 @@ pub fn remove(app: &CraftApp, record: &Record) -> Result<(), String> {
             directory = path.parent().map(Path::to_path_buf);
         }
     }
+    let _ = std::fs::remove_dir(root);
     Ok(())
 }
 
@@ -480,6 +524,7 @@ mod tests {
     /// A folder on a network share is the same folder after `canonicalize`.
     #[cfg(windows)]
     #[test]
+    /// Checks that Windows verbatim paths match their standard canonical forms.
     fn verbatim_paths_match_their_plain_form() {
         assert!(same_windows_path(Path::new(r"C:\Apps\ArtCraft"), Path::new(r"\\?\C:\apps\artcraft\")));
         assert!(same_windows_path(Path::new(r"\\server\share\Apps\ArtCraft"), Path::new(r"\\?\UNC\server\share\Apps\ArtCraft")));
@@ -489,6 +534,7 @@ mod tests {
 
     /// Previous files left in the staging folder by a failed update are never cleared by the next one.
     #[test]
+    /// Ensures failed self-updates preserve previous application files.
     fn a_self_update_keeps_the_previous_files_of_a_failed_one() {
         let dir = tempfile::tempdir().unwrap();
         let staging = dir.path().join("launcher-update");
@@ -505,6 +551,7 @@ mod tests {
 
     /// Validation of the installed copy is part of the transaction, while a backup still exists.
     #[test]
+    /// Verifies self-update rollback restores original files upon validation failure.
     fn a_self_update_that_fails_validation_puts_the_previous_files_back() {
         let dir = tempfile::tempdir().unwrap();
         let staging = dir.path().join("launcher-update");
@@ -548,21 +595,23 @@ mod tests {
     }
 
     #[test]
+    /// Validates that explicit directory entries in wrapped portable ZIP archives are checked.
     fn wrapped_layout_validates_explicit_directory_entries() {
         let dir = tempfile::tempdir().unwrap();
         let app = CraftApp::by_id("photocraft").unwrap();
         let paths = Paths::under(dir.path());
         let invalid = archive(dir.path(), "invalid-dirs.zip", &[("wrapper/", b""), ("wrapper/photocraft.exe", b"program"), ("outside/", b"")]);
-        let error = install(app, &invalid, "0.12.0", None, &paths, None, false, &mut |_| Ok(())).unwrap_err();
+        let error = install(app, &invalid, "0.12.0", None, None, &paths, None, false, &mut |_| Ok(())).unwrap_err();
         assert!(error.contains("unsupported directory layout"), "{error}");
         assert!(!paths.apps().join(app.id).exists());
 
         let valid = archive(dir.path(), "valid-dirs.zip", &[("wrapper/", b""), ("wrapper/photocraft.exe", b"program")]);
-        let record = install(app, &valid, "0.12.0", None, &paths, None, false, &mut |_| Ok(())).unwrap();
+        let record = install(app, &valid, "0.12.0", None, None, &paths, None, false, &mut |_| Ok(())).unwrap();
         assert!(record.path.exists());
     }
 
     #[test]
+    /// Tests that wrapped portable packages install, update, and clean up at a stable folder location.
     fn wrapped_packages_install_update_and_remove_at_a_stable_location() {
         let dir = tempfile::tempdir().unwrap();
         let app = CraftApp::by_id("photocraft").unwrap();
@@ -587,12 +636,15 @@ mod tests {
                     (&format!("{prefix}LICENSE-MIT"), b"license"),
                 ],
             );
-            let record = install(app, &zip, version, previous.as_ref(), &paths, Some(&parent), false, &mut |_| Ok(())).unwrap();
+            let record = install(app, &zip, version, None, previous.as_ref(), &paths, Some(&parent), false, &mut |_| Ok(())).unwrap();
             let root = std::fs::canonicalize(parent.join(app.id)).unwrap();
             assert_eq!(record.path, root.join("PhotoCraft.exe"));
             assert_eq!(std::fs::read(&record.path).unwrap(), version.as_bytes());
             assert_eq!(std::fs::read(root.join("lib/runtime.dll")).unwrap(), b"library");
-            assert_eq!(record.files, ["photocraft-cli.exe", "PhotoCraft.exe", "lib/runtime.dll", "LICENSE-MIT"].map(|p| root.join(p)));
+            assert_eq!(
+                record.files,
+                ["photocraft-cli.exe", "PhotoCraft.exe", "lib/runtime.dll", "LICENSE-MIT", "portable.txt"].map(|p| root.join(p))
+            );
             let personal = root.join("settings.json");
             if previous.is_some() {
                 assert_eq!(std::fs::read(&personal).unwrap(), b"personal");
@@ -608,6 +660,7 @@ mod tests {
     }
 
     #[test]
+    /// Ensures archives with missing root executables or ambiguous directory wrappers are rejected.
     fn rejects_missing_executables_and_ambiguous_or_deep_wrappers() {
         let dir = tempfile::tempdir().unwrap();
         let app = CraftApp::by_id("photocraft").unwrap();
@@ -622,25 +675,26 @@ mod tests {
         ] {
             let files: Vec<_> = names.iter().map(|name| (*name, b"content".as_slice())).collect();
             let zip = archive(dir.path(), "invalid.zip", &files);
-            assert!(install(app, &zip, "0.12.0", None, &paths, None, false, &mut |_| Ok(())).is_err(), "{names:?}");
+            assert!(install(app, &zip, "0.12.0", None, None, &paths, None, false, &mut |_| Ok(())).is_err(), "{names:?}");
             assert!(!paths.apps().join(app.id).exists());
         }
     }
 
     #[test]
+    /// Tests that updating wrapped portable packages rolls back safely on failure without touching existing files.
     fn wrapped_update_keeps_collision_checks_and_rolls_back_failed_commits() {
         let dir = tempfile::tempdir().unwrap();
         let app = CraftApp::by_id("photocraft").unwrap();
         let paths = Paths::under(dir.path());
         let old = archive(dir.path(), "old.zip", &[("photocraft.exe", b"old"), ("lib.dll", b"library")]);
-        let record = install(app, &old, "0.11.0", None, &paths, None, false, &mut |_| Ok(())).unwrap();
+        let record = install(app, &old, "0.11.0", None, None, &paths, None, false, &mut |_| Ok(())).unwrap();
         let personal = paths.apps().join("photocraft/settings.json");
         std::fs::write(&personal, b"keep").unwrap();
         let collision = archive(dir.path(), "collision.zip", &[("package/photocraft.exe", b"new"), ("package/settings.json", b"overwrite")]);
-        let error = install(app, &collision, "0.12.0", Some(&record), &paths, None, false, &mut |_| Ok(())).unwrap_err();
+        let error = install(app, &collision, "0.12.0", None, Some(&record), &paths, None, false, &mut |_| Ok(())).unwrap_err();
         assert_eq!(error, "The installation would overwrite an unrecorded file.");
         let next = archive(dir.path(), "next.zip", &[("package/photocraft.exe", b"new"), ("package/new.dll", b"new")]);
-        let error = install(app, &next, "0.12.0", Some(&record), &paths, None, false, &mut |_| Err("manifest disk full".into())).unwrap_err();
+        let error = install(app, &next, "0.12.0", None, Some(&record), &paths, None, false, &mut |_| Err("manifest disk full".into())).unwrap_err();
         assert_eq!(error, "manifest disk full");
         assert_eq!(std::fs::read(record.path).unwrap(), b"old");
         assert_eq!(std::fs::read(paths.apps().join("photocraft/lib.dll")).unwrap(), b"library");
@@ -650,6 +704,7 @@ mod tests {
 
     #[cfg(unix)]
     #[test]
+    /// Verifies host symlink validation rules during extraction.
     fn host_symlinks_are_allowed_but_owned_links_are_rejected() {
         use std::os::unix::fs::symlink;
 
@@ -665,7 +720,7 @@ mod tests {
         let app = CraftApp::by_id("photocraft").unwrap();
         let paths = Paths::under(&home);
         let zip = archive(dir.path(), "app.zip", &[("photocraft.exe", b"program"), ("lib/runtime.dll", b"library")]);
-        let record = install(app, &zip, "0.5.0", None, &paths, Some(&home), false, &mut |_| Ok(())).unwrap();
+        let record = install(app, &zip, "0.5.0", None, None, &paths, Some(&home), false, &mut |_| Ok(())).unwrap();
         assert_eq!(std::fs::read(&record.path).unwrap(), b"program");
 
         std::fs::remove_file(root.join("lib/runtime.dll")).unwrap();
@@ -673,7 +728,7 @@ mod tests {
         symlink(&host, root.join("lib")).unwrap();
         assert!(validate_owned_directory(&root, &root.join("lib/nested")).is_err());
         assert!(remove(app, &record).is_err());
-        assert!(install(app, &zip, "0.6.0", Some(&record), &paths, None, false, &mut |_| Ok(())).is_err());
+        assert!(install(app, &zip, "0.6.0", None, Some(&record), &paths, None, false, &mut |_| Ok(())).is_err());
         assert_eq!(std::fs::read(&record.path).unwrap(), b"program");
 
         let linked_root = home.join("linked-app");
@@ -686,6 +741,7 @@ mod tests {
     }
 
     #[test]
+    /// Tests that stale junction records cannot delete target directory files.
     fn stale_junction_record_cannot_remove_files_after_retargeting() {
         use std::process::Command;
 
@@ -722,19 +778,20 @@ mod tests {
     }
 
     #[test]
+    /// Ensures personal settings files remain intact across upgrades, downgrades, and removals.
     fn upgrade_downgrade_and_uninstall_preserve_personal_files_and_location() {
         let dir = tempfile::tempdir().unwrap();
         let app = CraftApp::by_id("photocraft").unwrap();
         let paths = Paths::under(dir.path());
         let parent = dir.path().join("My Tools");
         let first = archive(dir.path(), "first.zip", &[("photocraft.exe", b"first"), ("obsolete.dll", b"old")]);
-        let mut record = install(app, &first, "0.5.0", None, &paths, Some(&parent), false, &mut |_| Ok(())).unwrap();
+        let mut record = install(app, &first, "0.5.0", None, None, &paths, Some(&parent), false, &mut |_| Ok(())).unwrap();
         let personal = parent.join("photocraft").join("settings.json");
         std::fs::write(&personal, b"personal").unwrap();
         for (version, exe) in [("0.6.0", b"new".as_slice()), ("0.4.0", b"older".as_slice())] {
             let executable = if version == "0.4.0" { "PhotoCraft.exe" } else { "photocraft.exe" };
             let package = archive(dir.path(), "next.zip", &[(executable, exe), ("lib/runtime.dll", b"dll")]);
-            record = install(app, &package, version, Some(&record), &paths, Some(&dir.path().join("Ignored")), false, &mut |_| Ok(())).unwrap();
+            record = install(app, &package, version, None, Some(&record), &paths, Some(&dir.path().join("Ignored")), false, &mut |_| Ok(())).unwrap();
             assert_eq!(std::fs::read(&record.path).unwrap(), exe);
             assert_eq!(record.path.parent().unwrap(), std::fs::canonicalize(personal.parent().unwrap()).unwrap());
             assert!(!parent.join("photocraft/obsolete.dll").exists());
@@ -753,14 +810,15 @@ mod tests {
     }
 
     #[test]
+    /// Verifies that a failed manifest commit restores previous files properly.
     fn a_failed_manifest_commit_restores_the_previous_program() {
         let dir = tempfile::tempdir().unwrap();
         let app = CraftApp::by_id("photocraft").unwrap();
         let paths = Paths::under(dir.path());
         let old = archive(dir.path(), "old.zip", &[("photocraft.exe", b"old"), ("lib.dll", b"library")]);
-        let record = install(app, &old, "0.5.0", None, &paths, None, false, &mut |_| Ok(())).unwrap();
+        let record = install(app, &old, "0.5.0", None, None, &paths, None, false, &mut |_| Ok(())).unwrap();
         let next = archive(dir.path(), "next.zip", &[("photocraft.exe", b"new"), ("new.dll", b"new")]);
-        let result = install(app, &next, "0.6.0", Some(&record), &paths, None, false, &mut |_| Err("manifest disk full".into()));
+        let result = install(app, &next, "0.6.0", None, Some(&record), &paths, None, false, &mut |_| Err("manifest disk full".into()));
         assert_eq!(result.unwrap_err(), "manifest disk full");
         assert_eq!(std::fs::read(record.path).unwrap(), b"old");
         assert_eq!(std::fs::read(paths.apps().join("photocraft/lib.dll")).unwrap(), b"library");
@@ -768,21 +826,23 @@ mod tests {
     }
 
     #[test]
+    /// Tests that file collisions prevent any overwriting before extraction starts.
     fn collision_is_rejected_before_replacing_any_old_file() {
         let dir = tempfile::tempdir().unwrap();
         let app = CraftApp::by_id("photocraft").unwrap();
         let paths = Paths::under(dir.path());
         let old = archive(dir.path(), "old.zip", &[("photocraft.exe", b"old")]);
-        let record = install(app, &old, "0.5.0", None, &paths, None, false, &mut |_| Ok(())).unwrap();
+        let record = install(app, &old, "0.5.0", None, None, &paths, None, false, &mut |_| Ok(())).unwrap();
         let personal = paths.apps().join("photocraft/settings.json");
         std::fs::write(&personal, b"keep").unwrap();
         let next = archive(dir.path(), "next.zip", &[("photocraft.exe", b"new"), ("settings.json", b"overwrite")]);
-        assert!(install(app, &next, "0.6.0", Some(&record), &paths, None, false, &mut |_| Ok(())).is_err());
+        assert!(install(app, &next, "0.6.0", None, Some(&record), &paths, None, false, &mut |_| Ok(())).is_err());
         assert_eq!(std::fs::read(record.path).unwrap(), b"old");
         assert_eq!(std::fs::read(personal).unwrap(), b"keep");
     }
 
     #[test]
+    /// Checks that unrecorded files in target directory are overwritten only when replace is permitted.
     fn a_new_install_writes_over_unrecorded_files_only_when_asked_to() {
         let dir = tempfile::tempdir().unwrap();
         let app = CraftApp::by_id("photocraft").unwrap();
@@ -792,14 +852,15 @@ mod tests {
         std::fs::write(folder.join("photocraft.exe"), b"theirs").unwrap();
         std::fs::write(folder.join("notes.txt"), b"keep").unwrap();
         let zip = archive(dir.path(), "new.zip", &[("photocraft.exe", b"new")]);
-        assert!(install(app, &zip, "0.5.0", None, &paths, None, false, &mut |_| Ok(())).is_err());
+        assert!(install(app, &zip, "0.5.0", None, None, &paths, None, false, &mut |_| Ok(())).is_err());
         assert_eq!(std::fs::read(folder.join("photocraft.exe")).unwrap(), b"theirs");
-        install(app, &zip, "0.5.0", None, &paths, None, true, &mut |_| Ok(())).unwrap();
+        install(app, &zip, "0.5.0", None, None, &paths, None, true, &mut |_| Ok(())).unwrap();
         assert_eq!(std::fs::read(folder.join("photocraft.exe")).unwrap(), b"new");
         assert_eq!(std::fs::read(folder.join("notes.txt")).unwrap(), b"keep");
     }
 
     #[test]
+    /// Tests extraction and installation of standard single-directory portable archives.
     fn installs_official_single_directory_portable_zip() {
         let dir = tempfile::tempdir().unwrap();
         let app = CraftApp::by_id("photocraft").unwrap();
@@ -813,7 +874,7 @@ mod tests {
                 ("photocraft-0.6.1-windows-x64-portable/lib/runtime.dll", b"library"),
             ],
         );
-        let record = install(app, &zip, "0.6.1", None, &paths, None, false, &mut |_| Ok(())).unwrap();
+        let record = install(app, &zip, "0.6.1", None, None, &paths, None, false, &mut |_| Ok(())).unwrap();
         assert_eq!(record.path.file_name().unwrap(), "photocraft.exe");
         assert_eq!(record.path.parent().unwrap().file_name().unwrap(), "photocraft");
         assert_eq!(std::fs::read(&record.path).unwrap(), b"program");
@@ -824,6 +885,7 @@ mod tests {
     }
 
     #[test]
+    /// Rejects archives with multiple root folders or mixed root files.
     fn rejects_mixed_root_and_multiple_directory_archives() {
         let dir = tempfile::tempdir().unwrap();
         let app = CraftApp::by_id("photocraft").unwrap();
@@ -833,12 +895,13 @@ mod tests {
             ("nested.zip", vec![("wrapper/inner/photocraft.exe", b"program".as_slice())]),
         ] {
             let zip = archive(dir.path(), name, &entries);
-            assert!(install(app, &zip, "0.6.1", None, &paths, None, false, &mut |_| Ok(())).is_err(), "{name}");
+            assert!(install(app, &zip, "0.6.1", None, None, &paths, None, false, &mut |_| Ok(())).is_err(), "{name}");
             assert!(!paths.apps().join("photocraft/photocraft.exe").exists());
         }
     }
 
     #[test]
+    /// Rejects directory traversal paths and case-collision files in ZIP archives.
     fn rejects_traversal_and_case_collisions() {
         let dir = tempfile::tempdir().unwrap();
         for (name, files) in [
@@ -854,5 +917,109 @@ mod tests {
         assert!(!dir.path().join("escape.exe").exists());
         assert!(validate_directory(Path::new("relative/folder")).is_err());
         assert!(validate_directory(&dir.path().join("../escape")).is_err());
+    }
+    #[test]
+    /// Verifies that SHA-256 digests are validated before extracting any portable ZIP content.
+    fn portable_install_verifies_hash_before_extraction() {
+        let dir = tempfile::tempdir().unwrap();
+        let app = CraftApp::by_id("photocraft").unwrap();
+        let paths = Paths::under(dir.path());
+        let zip = archive(dir.path(), "app.zip", &[("photocraft.exe", b"program")]);
+        let actual_hash = crate::http::sha256_file(&zip).unwrap();
+
+        // Mismatched checksum fails before extraction without writing program files
+        let wrong_hash = "0000000000000000000000000000000000000000000000000000000000000000";
+        let err = install(app, &zip, "0.5.0", Some(wrong_hash), None, &paths, None, false, &mut |_| Ok(())).unwrap_err();
+        assert!(err.contains("checksum does not match"), "{err}");
+        assert!(!paths.apps().join("photocraft/photocraft.exe").exists());
+
+        // Correct checksum succeeds and ensures portable.txt marker
+        let record = install(app, &zip, "0.5.0", Some(&actual_hash), None, &paths, None, false, &mut |_| Ok(())).unwrap();
+        assert_eq!(std::fs::read(&record.path).unwrap(), b"program");
+        assert!(record.path.parent().unwrap().join("portable.txt").is_file());
+        assert!(record.files.contains(&record.path.parent().unwrap().join("portable.txt")));
+    }
+
+    #[test]
+    /// Tests the creation, tracking, and removal lifecycle of the portable.txt marker.
+    fn portable_txt_marker_lifecycle() {
+        let dir = tempfile::tempdir().unwrap();
+        let app = CraftApp::by_id("photocraft").unwrap();
+        let paths = Paths::under(dir.path());
+        let zip = archive(dir.path(), "app.zip", &[("photocraft.exe", b"program")]);
+
+        // Case 1: Fresh install creates portable.txt and tracks it; remove deletes it and root folder.
+        let rec1 = install(app, &zip, "0.5.0", None, None, &paths, None, false, &mut |_| Ok(())).unwrap();
+        let marker = rec1.path.parent().unwrap().join("portable.txt");
+        assert!(marker.is_file());
+        assert!(rec1.files.contains(&marker));
+        remove(app, &rec1).unwrap();
+        assert!(!marker.exists());
+        assert!(!rec1.path.parent().unwrap().exists());
+
+        // Case 2: Pre-existing portable.txt (created by user) is NOT tracked; remove preserves it.
+        let custom_parent = dir.path().join("Custom");
+        let app_dir = custom_parent.join("photocraft");
+        std::fs::create_dir_all(&app_dir).unwrap();
+        let user_marker = app_dir.join("portable.txt");
+        std::fs::write(&user_marker, b"custom marker").unwrap();
+
+        let rec2 = install(app, &zip, "0.5.0", None, None, &paths, Some(&custom_parent), false, &mut |_| Ok(())).unwrap();
+        assert!(!rec2.files.contains(&user_marker));
+        remove(app, &rec2).unwrap();
+        assert!(user_marker.is_file());
+        assert_eq!(std::fs::read(&user_marker).unwrap(), b"custom marker");
+    }
+
+    #[test]
+    /// Ensures archives natively providing portable.txt are installed and preserved properly.
+    fn archive_with_portable_txt_installs_and_updates_successfully() {
+        let dir = tempfile::tempdir().unwrap();
+        let app = CraftApp::by_id("photocraft").unwrap();
+        let paths = Paths::under(dir.path());
+        let zip1 = archive(dir.path(), "app1.zip", &[("photocraft.exe", b"exe1"), ("Portable.txt", b"from zip 1")]);
+        let record1 = install(app, &zip1, "1.0.0", None, None, &paths, None, false, &mut |_| Ok(())).unwrap();
+        let dest = record1.path.parent().unwrap();
+        let marker = dest.join("portable.txt");
+        assert!(marker.is_file());
+        assert_eq!(std::fs::read(&marker).unwrap(), b"from zip 1");
+        assert_eq!(record1.files.iter().filter(|f| same_windows_path(f, &marker)).count(), 1, "marker tracked exactly once");
+
+        let zip2 = archive(dir.path(), "app2.zip", &[("photocraft.exe", b"exe2"), ("portable.txt", b"from zip 2")]);
+        let record2 = install(app, &zip2, "2.0.0", None, Some(&record1), &paths, None, false, &mut |_| Ok(())).unwrap();
+        assert_eq!(std::fs::read(&marker).unwrap(), b"from zip 2");
+        assert_eq!(record2.files.iter().filter(|f| same_windows_path(f, &marker)).count(), 1, "marker tracked exactly once after update");
+
+        remove(app, &record2).unwrap();
+        assert!(!marker.exists());
+        assert!(!dest.exists());
+    }
+
+    #[test]
+    /// Rejects symlinks and illegal path traversals during ZIP extraction.
+    fn extract_rejects_symlinks_and_extra_traversal_paths() {
+        let dir = tempfile::tempdir().unwrap();
+
+        // Unix symlink via zip::ZipWriter::add_symlink
+        let sym_path = dir.path().join("symlink.zip");
+        {
+            let mut zip = zip::ZipWriter::new(std::fs::File::create(&sym_path).unwrap());
+            zip.add_symlink("photocraft.exe", "target.exe", zip::write::SimpleFileOptions::default()).unwrap();
+            zip.finish().unwrap();
+        }
+        let out = dir.path().join("out_sym");
+        std::fs::create_dir(&out).unwrap();
+        assert!(extract(&sym_path, &out).is_err(), "should reject symlink entry");
+
+        // Traversal path variants
+        for bad_name in ["../escape.exe", "sub/../../escape.exe", "/abs/path.exe", "C:/win.exe", r"back\slash.exe"] {
+            let p = dir.path().join("bad.zip");
+            let _ = std::fs::remove_file(&p);
+            let zip = archive(dir.path(), "bad.zip", &[(bad_name, b"bad")]);
+            let out_bad = dir.path().join("out_bad");
+            let _ = std::fs::remove_dir_all(&out_bad);
+            std::fs::create_dir(&out_bad).unwrap();
+            assert!(extract(&zip, &out_bad).is_err(), "should reject {bad_name}");
+        }
     }
 }

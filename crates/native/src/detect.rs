@@ -230,7 +230,7 @@ fn newest_first(a: Option<&version::Version>, b: Option<&version::Version>) -> s
 
 #[cfg(windows)]
 pub mod windows {
-    use std::path::PathBuf;
+    use std::path::{Path, PathBuf};
 
     use winreg::enums::{HKEY_CURRENT_USER, HKEY_LOCAL_MACHINE, KEY_READ, KEY_WOW64_32KEY, KEY_WOW64_64KEY};
     use winreg::{HKEY, RegKey};
@@ -437,7 +437,8 @@ pub mod windows {
         matching.or_else(|| candidates.first()).cloned()
     }
 
-    pub fn detect(app: &CraftApp) -> Option<Installed> {
+    /// Converts the newest installed MSI matching `app` into an [`Installed`] record.
+    fn detect_msi(app: &CraftApp) -> Option<Installed> {
         let m = msi_installs(app).into_iter().next()?;
         let location = m.exe.or_else(|| exe_in_any_scope(app, m.version.as_ref())).map_or_else(|| app.name.to_string(), |p| location_text(&p));
         Some(Installed {
@@ -449,6 +450,58 @@ pub mod windows {
             origin: None,
             installation: None,
         })
+    }
+
+    /// Candidate folders where a Windows portable copy of `app` may live (`<data>\apps\<app>`, or
+    /// next to a portable launcher executable).
+    pub(crate) fn portable_dirs(app: &CraftApp) -> Vec<PathBuf> {
+        let mut dirs = Vec::new();
+        if let Ok(paths) = crate::paths::Paths::new() {
+            dirs.push(paths.apps().join(app.id));
+        }
+        if crate::paths::portable_root().is_some()
+            && let Some(launcher_dir) = std::env::current_exe().ok().and_then(|e| e.parent().map(Path::to_path_buf))
+        {
+            dirs.push(launcher_dir.join("apps").join(app.id));
+            for name in app.names() {
+                dirs.push(launcher_dir.join("apps").join(name));
+                dirs.push(launcher_dir.join(name));
+            }
+            dirs.push(launcher_dir.join(app.id));
+        }
+        dirs
+    }
+
+    /// Detects a portable copy of `app` in `dirs` (requiring `portable.txt` unless under `apps\`).
+    pub(crate) fn detect_portable_in(app: &CraftApp, dirs: &[PathBuf]) -> Option<Installed> {
+        for dir in dirs {
+            let in_apps = dir.parent().and_then(|p| p.file_name()).is_some_and(|n| n.eq_ignore_ascii_case("apps"));
+            if !in_apps && !dir.join("portable.txt").is_file() {
+                continue;
+            }
+            if let Some(exe) = app.stems().map(|s| dir.join(format!("{s}.exe"))).find(|p| p.is_file()) {
+                return Some(Installed {
+                    version: executable_version(&exe),
+                    source: InstallSource::Launcher,
+                    location: exe.display().to_string(),
+                    package: None,
+                    externally_managed: false,
+                    origin: None,
+                    installation: None,
+                });
+            }
+        }
+        None
+    }
+
+    /// Detects what is installed of `app` on Windows: portable copies under the launcher or
+    /// standard apps directory, or an MSI install in the registry.
+    pub fn detect(app: &CraftApp) -> Option<Installed> {
+        if crate::paths::portable_root().is_some() {
+            detect_portable_in(app, &portable_dirs(app)).or_else(|| detect_msi(app))
+        } else {
+            detect_msi(app).or_else(|| detect_portable_in(app, &portable_dirs(app)))
+        }
     }
 }
 
