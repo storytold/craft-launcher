@@ -38,9 +38,25 @@ pub(crate) fn last_updated(e: &AppEntry) -> Option<String> {
     Some(fmt(tl!("Last updated: {date}"), &[("date", &crate::views::date_text(at))]))
 }
 
+/// Does the description only repeat the tagline beside the app's name ("Page layout and
+/// publishing." under "Page layout and publishing")? Compared in English, before translation, so
+/// every language hides the same lines; case, spaces and one closing full stop don't count (an
+/// ellipsis does: "Processing..." is not "Processing").
+pub(crate) fn repeats_tagline(headline: &str, tagline: &str) -> bool {
+    let plain = |s: &str| {
+        let s = s.trim();
+        s.strip_suffix('.').unwrap_or(s).trim_end().to_lowercase()
+    };
+    plain(headline) == plain(tagline)
+}
+
 /// `text` in at most `rows` lines, ending in "…" when it is cut.
 pub(crate) fn blurb(ui: &mut Ui, text: &str, color: Color32, rows: usize) {
-    let mut job = egui::text::LayoutJob::simple(text.to_string(), FontId::proportional(13.0), color, ui.available_width());
+    let size = crate::theme::TEXT_BODY;
+    let format =
+        egui::TextFormat { font_id: FontId::proportional(size), color, line_height: Some(size * crate::theme::BODY_LEADING), ..Default::default() };
+    let mut job = egui::text::LayoutJob::single_section(text.to_string(), format);
+    job.wrap.max_width = ui.available_width();
     job.wrap.max_rows = rows;
     job.wrap.break_anywhere = false;
     job.wrap.overflow_character = Some('…');
@@ -68,6 +84,15 @@ mod tests {
         });
         e.latest = Some(LatestRelease::Found(Release { tag: format!("v{latest}"), version: version::parse(latest), ..Default::default() }));
         e
+    }
+
+    #[test]
+    fn a_description_that_repeats_the_tagline_is_spotted() {
+        assert!(repeats_tagline("Page layout and publishing.", "Page layout and publishing"));
+        assert!(repeats_tagline(" Interface design and prototyping. ", "interface design and prototyping"));
+        assert!(!repeats_tagline("Spreadsheets you already know how to use.", "Spreadsheets and data"));
+        assert!(!repeats_tagline("Processing...", "Processing"), "only one closing full stop is ignored");
+        assert!(!repeats_tagline("Processing..", "Processing"));
     }
 
     #[test]
