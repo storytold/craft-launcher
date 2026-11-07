@@ -767,7 +767,7 @@ pub fn uninstall(
         }
         #[cfg(target_os = "freebsd")]
         InstallSource::Launcher => match record {
-            Some(r) => freebsd::remove_files(&r.files, r.needs_root),
+            Some(r) => freebsd::remove_files(app.id, &r.files, r.needs_root),
             None => Err("the launcher has no record of these files".into()),
         },
         #[cfg(target_os = "linux")]
@@ -1984,7 +1984,10 @@ mod tree {
 mod freebsd {
     use std::ffi::OsStr;
 
-    use super::{CraftApp, Path, PathBuf, Paths, pkexec, process, run_as_root, tree};
+    use super::{CraftApp, Path, PathBuf, Paths, pkexec, process, root_record, run_as_root, tree};
+
+    /// Where system-wide tree installs go.
+    const ROOT_PREFIX: &str = "/usr/local";
 
     /// Copies the release's tree into `/usr/local` (asking for permission through polkit), or
     /// into `~/.local` when polkit isn't installed. Returns the binary, every file installed,
@@ -1999,12 +2002,28 @@ mod freebsd {
     fn install_from(app: &CraftApp, file: &Path, staging: &Path) -> Result<(PathBuf, Vec<PathBuf>, bool), String> {
         let tree = tree::unpack(app, file, staging)?;
         let rel = tree::files(&tree)?;
-        let mut source = tree.into_os_string();
+        let mut source = tree.clone().into_os_string();
         source.push("/.");
         if pkexec().is_some() {
-            let prefix = PathBuf::from("/usr/local");
-            run_as_root(&[OsStr::new("/bin/cp"), OsStr::new("-R"), &source, prefix.as_os_str()])?;
-            return Ok((prefix.join("bin").join(app.id), rel.iter().map(|r| prefix.join(r)).collect(), true));
+            let prefix = PathBuf::from(ROOT_PREFIX);
+            // Copied in with the app's files and owned by root, so an uninstall can tell which
+            // files are the app's whatever happens to the user's own record of them.
+            let list = root_record::stage(&tree, app.id, &rel)?;
+            // The copy carries the archive's modes and the user's umask into the prefix: the same
+            // root call fixes the list's and its folders' modes (see `COPY_AND_PROTECT`).
+            let protect = root_record::protected_paths(&prefix, app.id);
+            let mut args: Vec<&OsStr> = vec![
+                OsStr::new("/bin/sh"),
+                OsStr::new("-c"),
+                OsStr::new(root_record::COPY_AND_PROTECT),
+                OsStr::new("sh"),
+                source.as_os_str(),
+                prefix.as_os_str(),
+            ];
+            args.extend(protect.iter().map(|p| p.as_os_str()));
+            run_as_root(&args)?;
+            let files = rel.iter().chain(std::iter::once(&list)).map(|r| prefix.join(r)).collect();
+            return Ok((prefix.join("bin").join(app.id), files, true));
         }
         let prefix = dirs::home_dir().ok_or("no home folder")?.join(".local");
         std::fs::create_dir_all(&prefix).map_err(|e| e.to_string())?;
@@ -2032,42 +2051,37 @@ mod freebsd {
         Ok((bin, rel.iter().map(|r| prefix.join(r)).collect(), false))
     }
 
-    /// Removes the files a tree install put down.
-    pub fn remove_files(files: &[PathBuf], needs_root: bool) -> Result<(), String> {
-        if files.is_empty() {
+    /// Removes the files a tree install of `app_id` put down. A system-wide install removes the
+    /// files that the root-owned list it installed names, not `files`: that comes from the user's
+    /// own record, which anything running as the user can rewrite.
+    pub fn remove_files(app_id: &str, files: &[PathBuf], needs_root: bool) -> Result<(), String> {
+        if !needs_root && files.is_empty() {
             return Err("the launcher has no record of these files".into());
         }
-        let prefix = if needs_root { PathBuf::from("/usr/local") } else { dirs::home_dir().ok_or("no home folder")?.join(".local") };
-        let mut safe_files = Vec::new();
-        for f in files {
+        let prefix = if needs_root { PathBuf::from(ROOT_PREFIX) } else { dirs::home_dir().ok_or("no home folder")?.join(".local") };
+        let targets: Vec<PathBuf> = if needs_root {
+            let mut owned: Vec<PathBuf> = root_record::owned(&prefix, app_id, 0)?.into_iter().collect();
+            owned.sort();
+            owned
+        } else {
+            files.to_vec()
+        };
+        for f in &targets {
             // Refuse paths that climb or escape install prefix (CWE-59).
             if !f.starts_with(&prefix) || f.components().any(|c| matches!(c, std::path::Component::ParentDir)) {
                 return Err(format!("refusing to remove file outside install prefix: {}", f.display()));
             }
-            let mut has_symlink_ancestor = false;
-            if let Ok(rel) = f.strip_prefix(&prefix) {
-                let mut check = prefix.clone();
-                for part in rel.components() {
-                    if let Ok(meta) = std::fs::symlink_metadata(&check)
-                        && meta.file_type().is_symlink()
-                    {
-                        has_symlink_ancestor = true;
-                        break;
-                    }
-                    check.push(part);
-                }
-            }
-            if !has_symlink_ancestor {
-                safe_files.push(f);
-            }
-        }
-        if safe_files.is_empty() {
-            return Ok(());
         }
         if needs_root {
-            let mut args: Vec<&OsStr> = vec![OsStr::new("/bin/rm"), OsStr::new("-f"), OsStr::new("--")];
-            args.extend(safe_files.iter().map(|f| f.as_os_str()));
+            // Refuses when a target is behind a symlink, and removes the root-owned list last.
+            let args = root_record::removal_args(&prefix, app_id, &targets)?;
+            let args: Vec<&OsStr> = args.iter().map(|a| a.as_os_str()).collect();
             return run_as_root(&args);
+        }
+        // Files behind a symlink are left alone.
+        let safe_files: Vec<&PathBuf> = targets.iter().filter(|f| !root_record::has_symlink_ancestor(&prefix, f)).collect();
+        if safe_files.is_empty() {
+            return Ok(());
         }
         for f in safe_files {
             let _ = std::fs::remove_file(f);
@@ -2092,6 +2106,10 @@ fn explain(code: Option<i32>) -> Result<(), String> {
 /// Going back to an older version of a Windows Installer app.
 #[cfg(any(windows, test))]
 mod msi_downgrade;
+
+/// The root-owned list of files a system-wide FreeBSD tree install put down.
+#[cfg(any(target_os = "freebsd", all(unix, test)))]
+mod root_record;
 
 /// Helpers for Windows Installer PowerShell scripts running under elevation.
 #[cfg(any(windows, test))]
@@ -3030,10 +3048,10 @@ mod tests {
     #[cfg(target_os = "freebsd")]
     #[test]
     fn remove_files_refuses_escaping_paths() {
-        assert!(freebsd::remove_files(&[PathBuf::from("/etc/shadow")], false).is_err());
+        assert!(freebsd::remove_files("wordcraft", &[PathBuf::from("/etc/shadow")], false).is_err());
         if let Some(home) = dirs::home_dir() {
             let prefix = home.join(".local");
-            assert!(freebsd::remove_files(&[prefix.join("../escaped")], false).is_err());
+            assert!(freebsd::remove_files("wordcraft", &[prefix.join("../escaped")], false).is_err());
         }
     }
 
