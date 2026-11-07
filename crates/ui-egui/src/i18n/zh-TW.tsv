@@ -273,6 +273,8 @@ figcraft	Interface design and prototyping	介面設計與原型製作
 	Download cancelled	已取消下載
 	Automatically	自動
 	Checked {ago} · using {sources}	上次檢查：{ago} · 使用 {sources}
+	Showing saved results	顯示已儲存的結果
+	Checked {ago} · showing saved results	上次檢查：{ago} · 顯示已儲存的結果
 	{a} and {b}	{a} 與 {b}
 	Learn more	瞭解更多
 	OK	確定

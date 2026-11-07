@@ -335,7 +335,7 @@ impl NativeBackend {
         std::thread::spawn(move || {
             let busy = busy;
             shared.emit(Event::CheckStarted);
-            let (feed, fallback) = check_plan(&http, mirror.as_ref(), pre, &paths, &shared);
+            let (feed, fallback, feed_failed) = check_plan(&http, mirror.as_ref(), pre, &paths, &shared);
             if let Some(f) = &feed {
                 shared.emit(Event::Notices { announcements: f.announcements.clone(), alerts: f.alerts.clone() });
             }
@@ -355,7 +355,7 @@ impl NativeBackend {
             for app in SUITE.iter().filter(|a| platform.is_none_or(|p| a.runs_on(p.os))) {
                 report_partial(app, &shared, &paths, platform);
             }
-            let source_used = source_used_of(&sources);
+            let source_used = source_used_of(&sources, feed_failed);
             let at = crate::now();
             *shared.last_check.lock().unwrap_or_else(PoisonError::into_inner) = Some(at);
             let rate_limited_until = limit_notice(source_used, source.rate_limited_until());
@@ -984,13 +984,13 @@ fn planned_download(
 
 /// What one check asks: which feed to poll (a local mirror trumps everything), and how much to
 /// lean on GitHub.
-fn check_plan(http: &Http, mirror: Option<&String>, pre: bool, paths: &Paths, shared: &Arc<Shared>) -> (Option<Feed>, Fallback) {
+fn check_plan(http: &Http, mirror: Option<&String>, pre: bool, paths: &Paths, shared: &Arc<Shared>) -> (Option<Feed>, Fallback, bool) {
     if let Some(base) = mirror {
         // A local mirror answers for everything: GitHub is never asked.
-        (local_feed(http, base), Fallback { trust_feed: true, github_every: GITHUB_FALLBACK_EVERY })
+        (local_feed(http, base), Fallback { trust_feed: true, github_every: GITHUB_FALLBACK_EVERY }, false)
     } else if pre {
         // The feed serves stable releases only; with pre-releases on, GitHub decides.
-        (None, Fallback { trust_feed: false, github_every: EARLY_GITHUB_EVERY })
+        (None, Fallback { trust_feed: false, github_every: EARLY_GITHUB_EVERY }, false)
     } else {
         feed_and_fallback(http, paths, shared)
     }
@@ -1063,8 +1063,10 @@ fn launcher_update(paths: &Paths, latest: Option<LatestRelease>, shared: &Arc<Sh
 }
 
 /// The weakest source that answered this check; it sets the wording of the "checked with" line.
-fn source_used_of(sources: &[Source]) -> Source {
-    if sources.contains(&Source::Cache) {
+/// Saved answers count if any app had to settle for them, and also when the feed is failing (asked
+/// this time or held back) and its saved copy answered every app.
+fn source_used_of(sources: &[Source], feed_failed: bool) -> Source {
+    if sources.contains(&Source::Cache) || (feed_failed && sources.iter().all(|s| *s == Source::Feed)) {
         Source::Cache
     } else if sources.contains(&Source::GitHubPages) {
         Source::GitHubPages
@@ -1094,32 +1096,33 @@ struct Fallback {
 /// - After that: the feed's last answer stands in while it fails, and GitHub is asked only for
 ///   apps the feed doesn't list or hasn't refreshed in a day, or once the feed has seriously
 ///   failed (several checks in a row and an hour without an answer); then hourly per app.
-fn feed_and_fallback(http: &Http, paths: &Paths, shared: &Shared) -> (Option<Feed>, Fallback) {
+fn feed_and_fallback(http: &Http, paths: &Paths, shared: &Shared) -> (Option<Feed>, Fallback, bool) {
     let saved = load_feed(paths);
     let loaded = shared.loaded.load(Ordering::SeqCst);
     let first_time = !loaded && saved.is_none();
     let attempts = if first_time { 1 } else { FEED_ATTEMPTS };
     let fetched = fetch_feed(http, paths, &feed_url(), &shared.feed_throttle, attempts);
     let now = crate::now();
-    let (fresh, answered, failures) = {
+    let backing_off = shared.feed_throttle.lock().unwrap_or_else(PoisonError::into_inner).failing(now);
+    let (fresh, answered, failures, feed_failed) = {
         let mut failures = shared.feed_failures.lock().unwrap_or_else(PoisonError::into_inner);
         match fetched {
             FeedFetch::Answered(feed) => {
                 *failures = 0;
                 *shared.feed_ok_at.lock().unwrap_or_else(PoisonError::into_inner) = Some(now);
-                (Some(feed), true, 0)
+                (Some(feed), true, 0, false)
             }
             FeedFetch::Failed => {
                 *failures = failures.saturating_add(1);
-                (None, false, *failures)
+                (None, false, *failures, true)
             }
             // Not asked this time: things stand as the last request left them.
-            FeedFetch::Held => (None, *failures == 0 && saved.is_some(), *failures),
+            FeedFetch::Held => (None, *failures == 0 && saved.is_some(), *failures, *failures > 0 || backing_off),
         }
     };
     let ok_at = *shared.feed_ok_at.lock().unwrap_or_else(PoisonError::into_inner);
     let fallback = decide_fallback(answered, loaded, first_time, failures, ok_at, now);
-    (fresh.or(saved), fallback)
+    (fresh.or(saved), fallback, feed_failed)
 }
 
 /// The policy in [`feed_and_fallback`], on its own so it can be tested.
@@ -1708,6 +1711,42 @@ mod tests {
             }
         });
         (url, hits)
+    }
+
+    #[test]
+    fn a_failed_feed_with_only_saved_answers_reports_saved_results() {
+        // Offline: the saved feed answered every app, but nothing was reached this time.
+        assert_eq!(source_used_of(&[Source::Feed, Source::Feed], true), Source::Cache);
+        assert_eq!(source_used_of(&[], true), Source::Cache);
+        // Online, or GitHub really answered: the live source is named.
+        assert_eq!(source_used_of(&[Source::Feed, Source::Feed], false), Source::Feed);
+        assert_eq!(source_used_of(&[Source::Feed, Source::GitHubApi], true), Source::GitHubApi);
+        assert_eq!(source_used_of(&[Source::GitHubApi, Source::Cache], false), Source::Cache);
+    }
+
+    #[test]
+    fn a_feed_held_back_after_failing_still_counts_as_failed() {
+        // A refresh soon after the feed failed doesn't ask it again: its saved copy is all there is.
+        let dir = tempfile::tempdir().unwrap();
+        let paths = Paths::under(dir.path());
+        let http = Http::new().unwrap();
+        let shared = shared();
+        *shared.feed_failures.lock().unwrap() = 1;
+        shared.feed_throttle.lock().unwrap().finished(Outcome::Failed { retry_after: Some(600) }, crate::now(), 0.0);
+        let (_, _, feed_failed) = feed_and_fallback(&http, &paths, &shared);
+        assert!(feed_failed);
+    }
+
+    #[test]
+    fn a_feed_held_back_by_a_backoff_from_an_earlier_run_counts_as_failed() {
+        // After a restart `feed_failures` is zero, but the saved backoff still holds the request back.
+        let dir = tempfile::tempdir().unwrap();
+        let paths = Paths::under(dir.path());
+        let http = Http::new().unwrap();
+        let shared = shared();
+        shared.feed_throttle.lock().unwrap().finished(Outcome::Failed { retry_after: Some(600) }, crate::now(), 0.0);
+        let (_, _, feed_failed) = feed_and_fallback(&http, &paths, &shared);
+        assert!(feed_failed);
     }
 
     #[test]

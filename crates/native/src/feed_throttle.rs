@@ -166,6 +166,11 @@ impl FeedThrottle {
         self.saved.throttles > 0 && self.saved.not_before > now
     }
 
+    /// A request failed or was throttled recently (possibly in an earlier run) and we're still waiting it out.
+    pub fn failing(&self, now: i64) -> bool {
+        (self.saved.failures > 0 || self.saved.throttles > 0) && self.saved.not_before > now
+    }
+
     fn save(&self) {
         let Some(file) = &self.file else { return };
         let saved = serde_json::to_vec(&self.saved).unwrap_or_default();
@@ -350,6 +355,19 @@ mod tests {
         }
         let j = jitter();
         assert!((0.0..1.0).contains(&j));
+    }
+
+    #[test]
+    fn a_failure_still_being_waited_out_counts_as_failing_after_a_restart() {
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join("feed-throttle.json");
+        let mut t = FeedThrottle::load(&file, NOW);
+        assert!(!t.failing(NOW));
+        t.sending(NOW);
+        t.finished(Outcome::Failed { retry_after: Some(600) }, NOW, 0.0);
+        assert!(t.failing(NOW));
+        assert!(FeedThrottle::load(&file, NOW + 60).failing(NOW + 60));
+        assert!(!FeedThrottle::load(&file, NOW + 601).failing(NOW + 601));
     }
 
     #[test]
