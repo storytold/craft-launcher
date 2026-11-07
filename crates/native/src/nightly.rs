@@ -158,7 +158,7 @@ pub(crate) fn launch(
     let profile = adapter.profile_root(paths)?;
     let _profile = crate::nightly_fs::Dir::ensure(&profile)?;
     adapter.validate_profile(paths)?;
-    crate::process::launch_binary(&record.path, &adapter.launch_arguments(paths, files)?)
+    crate::process::launch_binary(app.id, &record.path, &adapter.launch_arguments(paths, files)?)
 }
 
 /// Removal is program-only. Persistent profiles live outside this directory and are never
