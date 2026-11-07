@@ -1368,6 +1368,7 @@ impl LauncherUi {
                     _ => {}
                 }
             }
+            self.configure();
             self.install_app(id);
             ui.close();
         }
@@ -1389,6 +1390,7 @@ impl LauncherUi {
                 && ui.button(label).clicked()
             {
                 self.settings.app_kinds.insert(id.to_string(), target_kind);
+                self.configure();
                 self.act_command(Command::Install { app: id.to_string() });
                 ui.close();
             }
