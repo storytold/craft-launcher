@@ -9,7 +9,7 @@ use artcraft_launcher_core::catalog::{LAUNCHER, LAUNCHER_ID};
 use artcraft_launcher_core::feed::{Feed, FeedAnswer};
 use artcraft_launcher_core::platform::{Arch, Os, Platform, pick_asset};
 use artcraft_launcher_core::protocol::{
-    Backend, BackendOptions, CANCELLED, Capabilities, Command, Event, INSTALL_CANCELLED, JobPhase, LatestRelease, Origin, PAUSED, PausedDownload,
+    Backend, BackendOptions, CANCELLED, Capabilities, Command, Event, INSTALL_CANCELLED, JobPhase, LatestRelease, McpBridge, McpService, Origin, PAUSED, PausedDownload,
     Source, VersionTrack,
 };
 use artcraft_launcher_core::release::{Asset, Release};
@@ -18,6 +18,7 @@ use artcraft_launcher_core::{CraftApp, Installed, PackageKind, SUITE, version};
 use crate::feed_throttle::{self, FeedThrottle, Outcome};
 use crate::http::{self, Http, Stop};
 use crate::install::{self, Job};
+use crate::local_mcp;
 use crate::manifest::Manifest;
 use crate::paths::Paths;
 use crate::process;
@@ -301,6 +302,8 @@ impl NativeBackend {
             for app in &SUITE {
                 report_partial(app, &shared, &paths, platform);
             }
+            // Local MCP state: which installed apps can be exposed + the unified bridge.
+            shared.emit(mcp_state(&shared));
             drop(busy);
         });
     }
@@ -1459,6 +1462,38 @@ impl Backend for NativeBackend {
                     self.check(true);
                 }
             }
+            Command::McpState => {
+                self.shared.emit(mcp_state(&self.shared));
+            }
+            Command::McpSetService { service_id, enabled } => {
+                let manifest = self.shared.manifest.lock().unwrap_or_else(PoisonError::into_inner).clone();
+                let snapshot = crate::detect::Snapshot::take();
+                if let Some(p) = local_mcp::mcp_config_path() {
+                    let mut servers = local_mcp::load_servers(&p);
+                    // Rebuild from detection so the command path is current, then flip the flag.
+                    if let Some(s) = local_mcp::installed_services(&manifest, &snapshot).into_iter().find(|s| s.id == service_id) {
+                        if enabled {
+                            local_mcp::enable_service(&mut servers, &s);
+                        } else {
+                            local_mcp::disable_service(&mut servers, &s);
+                        }
+                    }
+                    let _ = local_mcp::save_servers(&p, &servers);
+                }
+                self.shared.emit(mcp_state(&self.shared));
+            }
+            Command::McpSetBridge { port, enabled } => {
+                if let Some(p) = local_mcp::mcp_config_path() {
+                    let mut servers = local_mcp::load_servers(&p);
+                    if enabled {
+                        local_mcp::enable_bridge(&mut servers, port);
+                    } else {
+                        local_mcp::disable_bridge(&mut servers);
+                    }
+                    let _ = local_mcp::save_servers(&p, &servers);
+                }
+                self.shared.emit(mcp_state(&self.shared));
+            }
         }
     }
 
@@ -1486,6 +1521,44 @@ impl Backend for NativeBackend {
 
     fn now(&self) -> i64 {
         crate::now()
+    }
+}
+
+/// The current local MCP state: installed apps with usable CLIs (with their on/off state in
+/// LM Studio's config) plus the unified HTTP bridge. Reads the manifest and ng-mcp.json, and takes
+/// a fresh detection snapshot so it reflects what's on disk now. Entries are matched by display
+/// name so those created under a different id (e.g. a UUID by an earlier launcher version) are
+/// recognized and reported as already present.
+fn mcp_state(shared: &Shared) -> Event {
+    let manifest = shared.manifest.lock().unwrap_or_else(PoisonError::into_inner).clone();
+    let snapshot = crate::detect::Snapshot::take();
+    let detected = local_mcp::installed_services(&manifest, &snapshot);
+
+    let existing: Vec<local_mcp::ServerEntry> = match local_mcp::mcp_config_path() {
+        Some(p) => local_mcp::load_servers(&p),
+        None => vec![],
+    };
+
+    let services = detected.into_iter().map(|s| {
+        // Read the current on/off state before moving `name` into the struct.
+        let enabled = local_mcp::service_enabled(&existing, &s.name);
+        McpService {
+            id: s.id,
+            name: s.name,
+            command: s.cli_path.map(|c| c.display().to_string()).unwrap_or_default(),
+            enabled,
+        }
+    }).collect();
+
+    let bridge_path = local_mcp::locate_bridge();
+    Event::Mcp {
+        services,
+        bridge: McpBridge {
+            found: bridge_path.is_some(),
+            version: bridge_path.as_deref().and_then(local_mcp::bridge_version).map(|v| v.to_string()),
+            port: local_mcp::bridge_port_current(&existing).unwrap_or(local_mcp::BRIDGE_PORT),
+            enabled: local_mcp::bridge_enabled(&existing),
+        },
     }
 }
 

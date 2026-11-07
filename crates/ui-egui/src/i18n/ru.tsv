@@ -428,3 +428,19 @@ materialcraft	Preview materials in 2D and on 3D models.	Просматривай
 	Migrate Flatpak bundles to ArtCraft OCI (experimental)	Переводить пакеты Flatpak на ArtCraft OCI (экспериментально)
 	On update, switch first party apps when the matching package is available. Otherwise, keep using bundles.	При обновлении переводить приложения ArtCraft на репозиторий, если доступен соответствующий пакет. Иначе продолжать использовать отдельные пакеты.
 	The OCI repository is a preview with GPG verification disabled.	Репозиторий OCI работает в предварительном режиме с отключённой проверкой GPG.
+
+	Local services	Локальные службы
+
+	Expose Craft AI apps as MCP servers so LM Studio / Bionic can drive their tools.	Предоставить приложения Craft AI в качестве MCP-серверов, чтобы LM Studio / Bionic могли управлять их инструментами.
+
+	Craft apps	Приложения Craft
+
+	No installed Craft app has a usable CLI yet.	Установленное приложение Craft пока не имеет доступного CLI.
+
+	Unified bridge	Единый мост
+
+	Not found on this machine	Не найдено на этом компьютере
+
+	Found	Найдено
+
+	Port	Порт
