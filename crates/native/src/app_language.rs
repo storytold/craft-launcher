@@ -266,21 +266,12 @@ pub fn apply_live_language(app: &CraftApp, paths: &Paths, language: &str) -> boo
 /// Returns `true` if the JSON-RPC reply indicates the requested method is not supported by the server.
 fn is_unsupported_method(reply: &Value) -> bool {
     if let Some(err) = reply.get("error") {
-        if let Some(code) = err.get("code").and_then(Value::as_i64)
-            && code == -32601
-        {
-            return true;
+        if let Some(code) = err.get("code").and_then(Value::as_i64) {
+            return code == -32601;
         }
         if let Some(msg) = err.get("message").and_then(Value::as_str).or_else(|| err.as_str()) {
             let lower = msg.to_ascii_lowercase();
-            if lower.contains("method not found")
-                || lower.contains("unsupported method")
-                || lower.contains("unknown method")
-                || lower.contains("not found")
-                || lower.contains("not supported")
-            {
-                return true;
-            }
+            return lower.contains("method not found") || lower.contains("unknown method");
         }
     }
     false
@@ -482,22 +473,24 @@ mod tests {
 
     #[test]
     fn auth_failure_is_rejected_without_sending_control_commands() {
-        let listener = TcpListener::bind(("127.0.0.1", 0)).unwrap();
-        let port = listener.local_addr().unwrap().port();
-        let token = "bad-token";
+        for rejection in ["unauthorized", "token not found", "invalid token"] {
+            let listener = TcpListener::bind(("127.0.0.1", 0)).unwrap();
+            let port = listener.local_addr().unwrap().port();
+            let token = "bad-token";
 
-        let server = std::thread::spawn(move || {
-            let (mut stream, _) = listener.accept().unwrap();
-            let mut reader = BufReader::new(stream.try_clone().unwrap());
-            let mut line = String::new();
-            reader.read_line(&mut line).unwrap();
-            let auth: Value = serde_json::from_str(&line).unwrap();
-            assert_eq!(auth["method"], "auth");
-            // Server supports auth, but rejects invalid token:
-            writeln!(stream, "{}", json!({"id": 1, "ok": false, "error": "unauthorized"})).unwrap();
-        });
+            let server = std::thread::spawn(move || {
+                let (mut stream, _) = listener.accept().unwrap();
+                let mut reader = BufReader::new(stream.try_clone().unwrap());
+                let mut line = String::new();
+                reader.read_line(&mut line).unwrap();
+                let auth: Value = serde_json::from_str(&line).unwrap();
+                assert_eq!(auth["method"], "auth");
+                // Server supports auth, but rejects invalid token:
+                writeln!(stream, "{}", json!({"id": 1, "ok": false, "error": rejection})).unwrap();
+            });
 
-        assert!(!send_control_language(port, token, "pt-br"));
-        server.join().unwrap();
+            assert!(!send_control_language(port, token, "pt-br"));
+            server.join().unwrap();
+        }
     }
 }
