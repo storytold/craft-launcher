@@ -173,6 +173,7 @@ pub fn remove_all(app: &CraftApp) {
 pub fn remove_all_with_manifest(app: &CraftApp, manifest_path: Option<&Path>) {
     let mut manifest = manifest_path.map(ShortcutManifest::load).unwrap_or_default();
     let record = manifest.apps.remove(app.id);
+    let _ = (&record, app);
 
     #[cfg(windows)]
     {
@@ -198,6 +199,20 @@ pub fn remove_all_with_manifest(app: &CraftApp, manifest_path: Option<&Path>) {
     }
     #[cfg(target_os = "linux")]
     {
+        if let Some(r) = &record {
+            if let Some(desktop_file) = &r.desktop
+                && let Ok(text) = std::fs::read_to_string(desktop_file)
+                && crate::desktop_entry::is_ours(&text)
+            {
+                let _ = std::fs::remove_file(desktop_file);
+            }
+            if let Some(menu_file) = &r.start_menu
+                && let Ok(text) = std::fs::read_to_string(menu_file)
+                && crate::desktop_entry::is_ours(&text)
+            {
+                let _ = std::fs::remove_file(menu_file);
+            }
+        }
         let desktop_dir = dirs::desktop_dir();
         let data_dir = crate::install::linux::host_data_dir();
         let _ = remove_linux_shortcuts_in(desktop_dir.as_deref(), data_dir.as_deref(), app);
