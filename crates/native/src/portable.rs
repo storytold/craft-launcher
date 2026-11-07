@@ -273,11 +273,14 @@ pub fn install(
     let marker = destination.join("portable.txt");
     let is_marker = |p: &Path| same_windows_path(p, Path::new("portable.txt"));
     let archive_has_marker = files.iter().any(|relative| is_marker(relative));
-    let created_marker = if !archive_has_marker && !marker.exists() {
-        std::fs::write(&marker, b"").map_err(|e| e.to_string())?;
-        true
-    } else {
+    let created_marker = if archive_has_marker {
         false
+    } else {
+        match std::fs::OpenOptions::new().write(true).create_new(true).open(&marker) {
+            Ok(_) => true,
+            Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => false,
+            Err(error) => return Err(error.to_string()),
+        }
     };
     let track_marker = !archive_has_marker && (created_marker || old_files.iter().any(|old| is_marker(old)));
     let backup = staging.0.join("backup");
