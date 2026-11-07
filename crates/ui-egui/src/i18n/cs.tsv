@@ -331,10 +331,13 @@ filter	Installed	Nainstalováno
 @msg	Repaired {name} {version}	Opraven modul {name} {version}
 @msg	Removed plugin	Zásuvný modul odebrán
 @msg	Imported {name} ({format})	Importován modul {name} ({format})
+@msg	unsupported plugin extension '.{ext}' (supported: .wasm, .abr, .grd, .aco, .ase, .kys, .cube)	nepodporovaná přípona zásuvného modulu '.{ext}' (podporované: .wasm, .abr, .grd, .aco, .ase, .kys, .cube)
 	Show plugins as a table	Zobrazit zásuvné moduly jako tabulku
 	Show plugins as cards	Zobrazit zásuvné moduly jako karty
 	Plugin	Zásuvný modul
 	Format	Formát
+	WASM ABI v1	WASM ABI v1
+	Preset Pack	Balíček předvoleb
 	Author	Autor
 	Install folder	Instalační složka
 	Default install folder	Výchozí instalační složka

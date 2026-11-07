@@ -82,6 +82,7 @@ impl LauncherUi {
                     || p.name.to_lowercase().contains(&needle)
                     || p.tagline.to_lowercase().contains(&needle)
                     || p.author.to_lowercase().contains(&needle)
+                    || format_label(p.format).to_lowercase().contains(&needle)
                     || p.format.label().to_lowercase().contains(&needle);
                 app_ok && text_ok
             })
@@ -231,7 +232,7 @@ impl LauncherUi {
                             });
                             row.col(|ui| {
                                 let (fmt_bg, fmt_fg) = format_colors(&t, plugin.format);
-                                widgets::tag(ui, plugin.format.label(), fmt_bg, fmt_fg);
+                                widgets::tag(ui, format_label(plugin.format), fmt_bg, fmt_fg);
                             });
                             row.col(|ui| {
                                 ui.add(egui::Label::new(RichText::new(&plugin.author).size(13.0).color(t.muted)).truncate());
@@ -279,7 +280,7 @@ impl LauncherUi {
             widgets::tag(&mut strip_ui, &number, app_color, Color32::BLACK);
             strip_ui.add_space(6.0);
             let (fmt_bg, fmt_fg) = format_colors(&t, plugin.format);
-            widgets::tag(&mut strip_ui, plugin.format.label(), fmt_bg, fmt_fg);
+            widgets::tag(&mut strip_ui, format_label(plugin.format), fmt_bg, fmt_fg);
         }
 
         let status = plugin_status(plugin);
@@ -377,6 +378,13 @@ impl LauncherUi {
                 ui.close();
             }
         });
+    }
+}
+
+fn format_label(format: PluginFormat) -> &'static str {
+    match format {
+        PluginFormat::NativeWasm => tl!("WASM ABI v1"),
+        PluginFormat::PresetPack => tl!("Preset Pack"),
     }
 }
 

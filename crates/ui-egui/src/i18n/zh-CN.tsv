@@ -331,10 +331,13 @@ figcraft	Interface design and prototyping	界面设计与原型制作
 @msg	Repaired {name} {version}	已修复 {name} {version}
 @msg	Removed plugin	插件已移除
 @msg	Imported {name} ({format})	已导入 {name} ({format})
+@msg	unsupported plugin extension '.{ext}' (supported: .wasm, .abr, .grd, .aco, .ase, .kys, .cube)	不支持的插件扩展名 '.{ext}'（支持: .wasm, .abr, .grd, .aco, .ase, .kys, .cube）
 	Show plugins as a table	以表格显示插件
 	Show plugins as cards	以卡片显示插件
 	Plugin	插件
 	Format	格式
+	WASM ABI v1	WASM ABI v1
+	Preset Pack	预设包
 	Author	作者
 	Install folder	安装文件夹
 	Default install folder	默认安装文件夹

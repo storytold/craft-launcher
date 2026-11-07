@@ -485,33 +485,26 @@ impl LauncherUi {
         self.settings.theme = theme_choice;
     }
 
-    fn import_plugin_dialog(&mut self, ui: &mut egui::Ui, current_app: &str, current_path: &str) -> bool {
+    fn import_plugin_dialog(&mut self, ui: &mut egui::Ui, app_id: &mut String, path_str: &mut String) -> bool {
         let t = Tokens::get(ui.ctx());
         ui.set_width(520.0f32.min(ui.ctx().content_rect().width() - 80.0));
 
-        let mut app_id = current_app.to_string();
-        let mut path_str = current_path.to_string();
+        let auto_detected = artcraft_launcher_core::plugins::detect_app_from_path(std::path::Path::new(path_str.as_str()), None);
 
-        let auto_detected = artcraft_launcher_core::plugins::detect_app_from_path(std::path::Path::new(&path_str), None);
-        if path_str != current_path
-            && let Some(det) = auto_detected
-        {
-            app_id = det.to_string();
-        }
-
-        let app_name = artcraft_launcher_core::CraftApp::by_id(&app_id).map_or("PhotoCraft", |a| a.name);
-        Self::title(ui, crate::icons::app(&app_id), tl!("Import plugin"), app_name);
+        let app_name = artcraft_launcher_core::CraftApp::by_id(app_id).map_or("PhotoCraft", |a| a.name);
+        Self::title(ui, crate::icons::app(app_id), tl!("Import plugin"), app_name);
         ui.label(RichText::new(tl!("Supports native WebAssembly (.wasm ABI v1) plugins and preset packs (.abr, .grd, .aco, .cube).")).color(t.muted));
         ui.add_space(14.0);
 
         widgets::hud(ui, tl!("Plugin file path (.wasm, .abr, .grd, .aco, .cube)"), t.faint);
         ui.add_space(4.0);
+        let prev_path = path_str.clone();
         ui.horizontal(|ui| {
             ui.spacing_mut().item_spacing.x = 6.0;
             let browse_w = 104.0;
             let edit_w = (ui.available_width() - browse_w - 6.0).max(160.0);
             ui.add(
-                egui::TextEdit::singleline(&mut path_str)
+                egui::TextEdit::singleline(path_str)
                     .desired_width(edit_w)
                     .min_size(vec2(edit_w, theme::CONTROL_H))
                     .vertical_align(egui::Align::Center)
@@ -522,6 +515,12 @@ impl LauncherUi {
                 self.send(Command::PickPluginFile);
             }
         });
+
+        if *path_str != prev_path
+            && let Some(det) = artcraft_launcher_core::plugins::detect_app_from_path(std::path::Path::new(path_str.as_str()), None)
+        {
+            *app_id = det.to_string();
+        }
 
         ui.add_space(12.0);
         ui.horizontal(|ui| {
@@ -535,15 +534,11 @@ impl LauncherUi {
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 egui::ComboBox::from_id_salt("import_plugin_app").selected_text(app_name).width(200.0).show_ui(ui, |ui| {
                     for a in &artcraft_launcher_core::SUITE {
-                        ui.selectable_value(&mut app_id, a.id.to_string(), a.name);
+                        ui.selectable_value(app_id, a.id.to_string(), a.name);
                     }
                 });
             });
         });
-
-        if app_id != current_app || path_str != current_path {
-            self.dialog = Some(Dialog::ImportPlugin { app: app_id.clone(), path: path_str.clone() });
-        }
 
         ui.add_space(20.0);
         let mut close = false;
@@ -551,7 +546,7 @@ impl LauncherUi {
             let can_import = !path_str.trim().is_empty();
             ui.add_enabled_ui(can_import, |ui| {
                 if widgets::button(ui, tl!("Import plugin"), Kind::Primary, 130.0).clicked() {
-                    self.send(Command::ImportPlugin { app: app_id, path: path_str.trim().to_string() });
+                    self.send(Command::ImportPlugin { app: app_id.clone(), path: path_str.trim().to_string() });
                     close = true;
                 }
             });

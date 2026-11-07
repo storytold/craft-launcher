@@ -355,10 +355,13 @@ filter	Installed	Instalados
 @msg	Repaired {name} {version}	{name} {version} reparado
 @msg	Removed plugin	Plug-in removido
 @msg	Imported {name} ({format})	{name} ({format}) importado
+@msg	unsupported plugin extension '.{ext}' (supported: .wasm, .abr, .grd, .aco, .ase, .kys, .cube)	extensão de plug-in não suportada '.{ext}' (suportadas: .wasm, .abr, .grd, .aco, .ase, .kys, .cube)
 	Show plugins as a table	Mostrar plug-ins em tabela
 	Show plugins as cards	Mostrar plug-ins em cartões
 	Plugin	Plug-in
 	Format	Formato
+	WASM ABI v1	WASM ABI v1
+	Preset Pack	Pacote de predefinições
 	Author	Autor
 	Install folder	Pasta de instalação
 	Default install folder	Pasta de instalação padrão

@@ -64,9 +64,7 @@ pub fn detect_app_from_path(path: &std::path::Path, raw_header: Option<&[u8]>) -
     let ext = path.extension().and_then(|s| s.to_str()).map(str::to_ascii_lowercase)?;
     match ext.as_str() {
         "abr" | "grd" | "aco" | "ase" | "kys" => Some("photocraft"),
-        "cube" | "3dl" | "xmp" => Some("lightcraft"),
-        "svg" => Some("vectorcraft"),
-        "vst3" | "lv2" | "clap" => Some("soundcraft"),
+        "cube" => Some("lightcraft"),
         "wasm" => {
             if let Some(bytes) = raw_header {
                 let text = String::from_utf8_lossy(bytes).to_ascii_lowercase();

@@ -7,10 +7,13 @@
 //!   **Filter › Plug-ins**).
 
 use std::path::{Path, PathBuf};
+use std::sync::Mutex;
 
 use artcraft_launcher_core::plugins::{InstalledPlugin, PluginFormat};
 
 use crate::paths::{Paths, write_atomic};
+
+static MANIFEST_LOCK: Mutex<()> = Mutex::new(());
 
 /// Per-pixel transformation compiled into a WebAssembly `pc_filter` export.
 #[derive(Clone, Copy, Debug)]
@@ -42,7 +45,14 @@ impl FilterKernel {
 /// discovering any `.wasm` files placed directly into the shared plugins folder, and checking
 /// the health of each file and host link.
 pub fn detect_plugins(paths: &Paths) -> Vec<InstalledPlugin> {
-    let raw_list = read_manifest(paths);
+    let _lock = MANIFEST_LOCK.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+    let raw_list = match read_manifest(paths) {
+        Ok(l) => l,
+        Err(e) => {
+            log::error!("{e}");
+            return Vec::new();
+        }
+    };
     let mut list = Vec::with_capacity(raw_list.len());
     let mut dirty = false;
 
@@ -108,7 +118,8 @@ pub fn detect_plugins(paths: &Paths) -> Vec<InstalledPlugin> {
 
 /// Repairs an installed local plugin (regenerating missing/corrupted files and restoring host links).
 pub fn repair_plugin(paths: &Paths, id: &str) -> Result<InstalledPlugin, String> {
-    let mut list = read_manifest(paths);
+    let _lock = MANIFEST_LOCK.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+    let mut list = read_manifest(paths)?;
     let idx = list.iter().position(|p| p.id == id).ok_or_else(|| format!("plugin '{id}' is not installed"))?;
     let mut item = list[idx].clone();
     let target = PathBuf::from(&item.location);
@@ -128,12 +139,16 @@ pub fn repair_plugin(paths: &Paths, id: &str) -> Result<InstalledPlugin, String>
     item.healthy = check_plugin_health(&item, is_photocraft_folder_linked(paths));
     list[idx] = item.clone();
     write_manifest(paths, &list)?;
+    if !item.healthy {
+        return Err(format!("plugin '{}' remains unhealthy after repair attempt", item.id));
+    }
     Ok(item)
 }
 
 /// Uninstalls an installed plugin and removes its binary/preset file from disk.
 pub fn uninstall_plugin(paths: &Paths, id: &str) -> Result<(), String> {
-    let mut list = read_manifest(paths);
+    let _lock = MANIFEST_LOCK.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+    let mut list = read_manifest(paths)?;
     if let Some(idx) = list.iter().position(|p| p.id == id) {
         let removed = list.remove(idx);
         let p = Path::new(&removed.location);
@@ -159,7 +174,7 @@ pub fn detect_plugin_file_app(path: &Path) -> Option<&'static str> {
 }
 
 /// Opens a native OS file-picker dialog for choosing a plugin or preset file.
-pub fn pick_plugin_file() -> Option<PathBuf> {
+pub fn pick_plugin_file() -> Result<Option<PathBuf>, String> {
     #[cfg(target_os = "windows")]
     {
         use std::os::windows::process::CommandExt;
@@ -169,7 +184,7 @@ Add-Type -AssemblyName System.Windows.Forms
 [System.Windows.Forms.Application]::EnableVisualStyles()
 $dlg = New-Object System.Windows.Forms.OpenFileDialog
 $dlg.Title = 'Select Plug-in or Preset'
-$dlg.Filter = 'ArtCraft Plug-ins (*.wasm;*.abr;*.grd;*.aco;*.ase;*.kys;*.cube;*.vst3)|*.wasm;*.abr;*.grd;*.aco;*.ase;*.kys;*.cube;*.vst3|All files (*.*)|*.*'
+$dlg.Filter = 'ArtCraft Plug-ins (*.wasm;*.abr;*.grd;*.aco;*.ase;*.kys;*.cube)|*.wasm;*.abr;*.grd;*.aco;*.ase;*.kys;*.cube|All files (*.*)|*.*'
 if ($dlg.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) {
     [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
     Write-Output $dlg.FileName
@@ -179,25 +194,48 @@ if ($dlg.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) {
             .args(["-NoProfile", "-NonInteractive", "-Sta", "-Command", script])
             .creation_flags(CREATE_NO_WINDOW)
             .output()
-            .ok()?;
+            .map_err(|e| format!("couldn't open file picker: {e}"))?;
+        if !out.status.success() {
+            let err = String::from_utf8_lossy(&out.stderr).trim().to_string();
+            return Err(if err.is_empty() { format!("file picker exited with status {}", out.status) } else { err });
+        }
         let path_str = String::from_utf8_lossy(&out.stdout).trim().to_string();
-        if path_str.is_empty() { None } else { Some(PathBuf::from(path_str)) }
+        if path_str.is_empty() { Ok(None) } else { Ok(Some(PathBuf::from(path_str))) }
     }
     #[cfg(target_os = "macos")]
     {
-        let out = std::process::Command::new("osascript").args(["-e", "POSIX path of (choose file with prompt \"Select Plug-in\")"]).output().ok()?;
+        let out = std::process::Command::new("osascript")
+            .args(["-e", "POSIX path of (choose file with prompt \"Select Plug-in\")"])
+            .output()
+            .map_err(|e| format!("couldn't open file picker: {e}"))?;
+        if !out.status.success() {
+            let err = String::from_utf8_lossy(&out.stderr).trim().to_string();
+            if err.contains("User canceled") || err.contains("(-128)") {
+                return Ok(None);
+            }
+            return Err(if err.is_empty() { format!("file picker exited with status {}", out.status) } else { err });
+        }
         let path_str = String::from_utf8_lossy(&out.stdout).trim().to_string();
-        if path_str.is_empty() { None } else { Some(PathBuf::from(path_str)) }
+        if path_str.is_empty() { Ok(None) } else { Ok(Some(PathBuf::from(path_str))) }
     }
     #[cfg(not(any(target_os = "windows", target_os = "macos")))]
     {
-        let out = std::process::Command::new("zenity")
-            .args(["--file-selection", "--title=Select Plug-in"])
-            .output()
-            .or_else(|_| std::process::Command::new("kdialog").args(["--getopenfilename"]).output())
-            .ok()?;
+        let out = match std::process::Command::new("zenity").args(["--file-selection", "--title=Select Plug-in"]).output() {
+            Ok(o) => o,
+            Err(_) => std::process::Command::new("kdialog")
+                .args(["--getopenfilename"])
+                .output()
+                .map_err(|e| format!("couldn't open file picker (neither zenity nor kdialog available): {e}"))?,
+        };
+        if !out.status.success() {
+            let err = String::from_utf8_lossy(&out.stderr).trim().to_string();
+            if err.is_empty() || out.status.code() == Some(1) {
+                return Ok(None);
+            }
+            return Err(err);
+        }
         let path_str = String::from_utf8_lossy(&out.stdout).trim().to_string();
-        if path_str.is_empty() { None } else { Some(PathBuf::from(path_str)) }
+        if path_str.is_empty() { Ok(None) } else { Ok(Some(PathBuf::from(path_str))) }
     }
 }
 
@@ -277,13 +315,25 @@ fn extract_wasm_manifest(raw: &[u8], fallback_id: &str, fallback_name: &str) -> 
     }
 }
 
+fn is_valid_app_component(app: &str) -> bool {
+    if app.is_empty() || app.contains('/') || app.contains('\\') || app.contains("..") {
+        return false;
+    }
+    let mut comps = Path::new(app).components();
+    matches!(comps.next(), Some(std::path::Component::Normal(_))) && comps.next().is_none()
+}
+
 /// Imports a local plugin file (`.wasm` or preset pack `.abr` / `.grd` / `.aco` / `.ase` / `.kys` / `.cube`)
 /// into `app`'s plugin folder. When `app` is `"auto"` or empty, the target Craft app is detected automatically.
 pub fn import_plugin_file(paths: &Paths, app: &str, source_path: &Path) -> Result<InstalledPlugin, String> {
+    let _lock = MANIFEST_LOCK.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
     if !source_path.is_file() {
         return Err(format!("file not found: {}", source_path.display()));
     }
     let resolved_app = if app.is_empty() || app == "auto" { detect_plugin_file_app(source_path).unwrap_or("photocraft") } else { app };
+    if !is_valid_app_component(resolved_app) {
+        return Err(format!("invalid app identifier '{resolved_app}': must be a single normal path component"));
+    }
     let app = resolved_app;
     let ext = source_path.extension().and_then(|s| s.to_str()).map(str::to_ascii_lowercase).unwrap_or_default();
 
@@ -296,7 +346,9 @@ pub fn import_plugin_file(paths: &Paths, app: &str, source_path: &Path) -> Resul
 
     let raw = std::fs::read(source_path).map_err(|e| format!("couldn't read {} ({e})", source_path.display()))?;
 
-    let (id, name, tagline, author, version, format, dest_path, out_bytes) = match ext.as_str() {
+    let manifest = read_manifest(paths)?;
+
+    let (mut id, name, tagline, author, version, format, mut dest_path, out_bytes) = match ext.as_str() {
         "wasm" => {
             if !raw.starts_with(b"\0asm\x01\0\0\0") {
                 return Err("not a valid WebAssembly (.wasm) binary module".into());
@@ -324,7 +376,40 @@ pub fn import_plugin_file(paths: &Paths, app: &str, source_path: &Path) -> Resul
         }
     };
 
-    write_atomic(&dest_path, &out_bytes)?;
+    // Avoid destination file collisions or silent overwriting:
+    // If destination already exists and differs from source, find a non-colliding destination filename.
+    let is_same_file = dest_path == source_path || (dest_path.is_file() && std::fs::read(&dest_path).ok().as_deref() == Some(&out_bytes));
+    if !is_same_file && dest_path.exists() {
+        let mut counter = 2;
+        let ext_with_dot = if ext.is_empty() { String::new() } else { format!(".{ext}") };
+        loop {
+            let candidate = dir.join(format!("{slug}_{counter}{ext_with_dot}"));
+            if !candidate.exists() || (candidate.is_file() && std::fs::read(&candidate).ok().as_deref() == Some(&out_bytes)) {
+                dest_path = candidate;
+                break;
+            }
+            counter += 1;
+        }
+    }
+
+    // Avoid ID collisions across different files:
+    let dest_str = dest_path.to_string_lossy();
+    if manifest.iter().any(|p| p.id == id && p.location != dest_str) {
+        let base_id = id.clone();
+        let mut counter = 2;
+        loop {
+            let candidate_id = format!("{base_id}_{counter}");
+            if !manifest.iter().any(|p| p.id == candidate_id && p.location != dest_str) {
+                id = candidate_id;
+                break;
+            }
+            counter += 1;
+        }
+    }
+
+    if !is_same_file {
+        write_atomic(&dest_path, &out_bytes)?;
+    }
     if app == "photocraft" {
         ensure_photocraft_folder_linked(paths)?;
     }
@@ -727,11 +812,13 @@ fn humanize_stem(stem: &str) -> String {
     if words.is_empty() { "Custom Plugin".into() } else { words.join(" ") }
 }
 
-fn read_manifest(paths: &Paths) -> Vec<InstalledPlugin> {
-    let Ok(text) = std::fs::read_to_string(paths.plugins_manifest()) else {
-        return Vec::new();
-    };
-    serde_json::from_str(&text).unwrap_or_default()
+fn read_manifest(paths: &Paths) -> Result<Vec<InstalledPlugin>, String> {
+    let path = paths.plugins_manifest();
+    match std::fs::read_to_string(&path) {
+        Ok(text) => serde_json::from_str(&text).map_err(|e| format!("couldn't parse {} ({e})", path.display())),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(Vec::new()),
+        Err(e) => Err(format!("couldn't read {} ({e})", path.display())),
+    }
 }
 
 fn write_manifest(paths: &Paths, plugins: &[InstalledPlugin]) -> Result<(), String> {
@@ -740,7 +827,7 @@ fn write_manifest(paths: &Paths, plugins: &[InstalledPlugin]) -> Result<(), Stri
 }
 
 fn upsert_manifest_entry(paths: &Paths, entry: InstalledPlugin) -> Result<(), String> {
-    let mut list = read_manifest(paths);
+    let mut list = read_manifest(paths)?;
     if let Some(existing) = list.iter_mut().find(|p| p.id == entry.id || p.location == entry.location) {
         *existing = entry;
     } else {
@@ -811,5 +898,55 @@ mod tests {
         assert_eq!(imported_abr.format, PluginFormat::PresetPack);
         assert_eq!(imported_abr.id, "org.photocraft.preset.ink_brushes");
         assert!(Path::new(&imported_abr.location).is_file());
+    }
+
+    #[test]
+    fn rejects_path_traversal_in_app() {
+        let tmp = tempfile::tempdir().unwrap();
+        let paths = Paths::under(tmp.path());
+        let abr_path = tmp.path().join("brush.abr");
+        std::fs::write(&abr_path, b"ABR").unwrap();
+
+        assert!(import_plugin_file(&paths, "../escape", &abr_path).is_err());
+        assert!(import_plugin_file(&paths, "a/b", &abr_path).is_err());
+        assert!(import_plugin_file(&paths, "a\\b", &abr_path).is_err());
+    }
+
+    #[test]
+    fn avoids_destination_and_id_collisions() {
+        let tmp = tempfile::tempdir().unwrap();
+        let paths = Paths::under(tmp.path());
+        let d1 = tmp.path().join("d1");
+        let d2 = tmp.path().join("d2");
+        std::fs::create_dir(&d1).unwrap();
+        std::fs::create_dir(&d2).unwrap();
+        let src1 = d1.join("pack.abr");
+        let src2 = d2.join("pack.abr");
+        std::fs::write(&src1, b"PACK-ONE").unwrap();
+        std::fs::write(&src2, b"PACK-TWO").unwrap();
+
+        let i1 = import_plugin_file(&paths, "photocraft", &src1).unwrap();
+        let i2 = import_plugin_file(&paths, "photocraft", &src2).unwrap();
+
+        assert_ne!(i1.id, i2.id);
+        assert_ne!(i1.location, i2.location);
+        assert!(Path::new(&i1.location).is_file());
+        assert!(Path::new(&i2.location).is_file());
+    }
+
+    #[test]
+    fn corrupt_manifest_returns_error_and_is_not_wiped() {
+        let tmp = tempfile::tempdir().unwrap();
+        let paths = Paths::under(tmp.path());
+        let manifest_path = paths.plugins_manifest();
+        if let Some(parent) = manifest_path.parent() {
+            std::fs::create_dir_all(parent).unwrap();
+        }
+        std::fs::write(&manifest_path, b"not valid json {{{").unwrap();
+
+        assert!(read_manifest(&paths).is_err());
+        assert_eq!(detect_plugins(&paths).len(), 0);
+        // Ensure manifest file content was not overwritten or wiped:
+        assert_eq!(std::fs::read(&manifest_path).unwrap(), b"not valid json {{{");
     }
 }

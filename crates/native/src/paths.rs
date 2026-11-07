@@ -97,11 +97,14 @@ impl Paths {
 
 /// Writes `bytes` to `path` via a temporary file and a rename, so a crash never leaves half a file.
 pub fn write_atomic(path: &std::path::Path, bytes: &[u8]) -> Result<(), String> {
+    use std::io::Write;
     let dir = path.parent().ok_or("no parent folder")?;
     std::fs::create_dir_all(dir).map_err(|e| format!("couldn't create {} ({e})", dir.display()))?;
-    let tmp = path.with_extension("tmp");
-    std::fs::write(&tmp, bytes).map_err(|e| format!("couldn't write {} ({e})", tmp.display()))?;
-    std::fs::rename(&tmp, path).map_err(|e| format!("couldn't replace {} ({e})", path.display()))
+    let mut tmp =
+        tempfile::Builder::new().prefix(".atomic-").tempfile_in(dir).map_err(|e| format!("couldn't create temp file in {} ({e})", dir.display()))?;
+    tmp.write_all(bytes).map_err(|e| format!("couldn't write temp file ({e})"))?;
+    tmp.persist(path).map_err(|e| format!("couldn't replace {} ({e})", path.display()))?;
+    Ok(())
 }
 
 /// Portable mode: a `portable.txt` beside the executable keeps everything in

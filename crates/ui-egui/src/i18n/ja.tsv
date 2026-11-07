@@ -366,10 +366,13 @@ filter	Installed	インストール済み
 @msg	Repaired {name} {version}	{name} {version} を修復しました
 @msg	Removed plugin	プラグインを削除しました
 @msg	Imported {name} ({format})	{name} ({format}) を読み込みました
+@msg	unsupported plugin extension '.{ext}' (supported: .wasm, .abr, .grd, .aco, .ase, .kys, .cube)	未対応のプラグイン拡張子 '.{ext}' です (対応: .wasm, .abr, .grd, .aco, .ase, .kys, .cube)
 	Show plugins as a table	プラグインをテーブルで表示
 	Show plugins as cards	プラグインをカードで表示
 	Plugin	プラグイン
 	Format	形式
+	WASM ABI v1	WASM ABI v1
+	Preset Pack	プリセットパック
 	Author	作成者
 	Install folder	インストール先フォルダー
 	Default install folder	既定のインストール先フォルダー

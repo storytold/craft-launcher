@@ -63,6 +63,8 @@ struct Shared {
     checking: AtomicBool,
     /// A detection pass is running; another request waits for the next one.
     detecting: AtomicBool,
+    /// An OS file-picker dialog is currently open.
+    picking_plugin: AtomicBool,
     last_check: Mutex<Option<i64>>,
     /// The newer ArtCraft Launcher release, once a check has found one.
     launcher_release: Mutex<Option<Release>>,
@@ -127,6 +129,7 @@ impl NativeBackend {
             options: Mutex::new(BackendOptions::default()),
             checking: AtomicBool::new(false),
             detecting: AtomicBool::new(false),
+            picking_plugin: AtomicBool::new(false),
             launcher_release: Mutex::new(None),
             github_asked: Mutex::new(HashMap::new()),
             answered: Mutex::new(std::collections::HashSet::new()),
@@ -1042,11 +1045,27 @@ impl Backend for NativeBackend {
                 }
             }
             Command::PickPluginFile => {
+                if self.shared.picking_plugin.swap(true, Ordering::SeqCst) {
+                    return;
+                }
                 let shared = self.shared.clone();
                 std::thread::spawn(move || {
-                    if let Some(picked) = crate::plugins::pick_plugin_file() {
-                        let detected_app = crate::plugins::detect_plugin_file_app(&picked).map(str::to_string);
-                        shared.emit(Event::PluginFilePicked { path: picked.to_string_lossy().into_owned(), detected_app });
+                    struct FlagGuard(Arc<Shared>);
+                    impl Drop for FlagGuard {
+                        fn drop(&mut self) {
+                            self.0.picking_plugin.store(false, Ordering::SeqCst);
+                        }
+                    }
+                    let _guard = FlagGuard(shared.clone());
+                    match crate::plugins::pick_plugin_file() {
+                        Ok(Some(picked)) => {
+                            let detected_app = crate::plugins::detect_plugin_file_app(&picked).map(str::to_string);
+                            shared.emit(Event::PluginFilePicked { path: picked.to_string_lossy().into_owned(), detected_app });
+                        }
+                        Ok(None) => {}
+                        Err(e) => {
+                            shared.emit(Event::PluginJobFinished { id: "picker".into(), result: Err(e) });
+                        }
                     }
                 });
             }
@@ -1117,6 +1136,7 @@ mod tests {
             options: Mutex::new(BackendOptions::default()),
             checking: AtomicBool::new(false),
             detecting: AtomicBool::new(false),
+            picking_plugin: AtomicBool::new(false),
             last_check: Mutex::new(None),
             launcher_release: Mutex::new(None),
             github_asked: Mutex::new(HashMap::new()),

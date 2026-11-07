@@ -359,10 +359,13 @@ filter	Installed	Установлены
 @msg	Repaired {name} {version}	Восстановлен плагин {name} {version}
 @msg	Removed plugin	Плагин удалён
 @msg	Imported {name} ({format})	Импортирован плагин {name} ({format})
+@msg	unsupported plugin extension '.{ext}' (supported: .wasm, .abr, .grd, .aco, .ase, .kys, .cube)	неподдерживаемое расширение плагина '.{ext}' (поддерживаются: .wasm, .abr, .grd, .aco, .ase, .kys, .cube)
 	Show plugins as a table	Показать плагины таблицей
 	Show plugins as cards	Показать плагины карточками
 	Plugin	Плагин
 	Format	Формат
+	WASM ABI v1	WASM ABI v1
+	Preset Pack	Набор пресетов
 	Author	Автор
 	Install folder	Папка установки
 	Default install folder	Папка установки по умолчанию

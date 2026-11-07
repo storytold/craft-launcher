@@ -365,10 +365,13 @@ filter	Installed	Zainstalowane
 @msg	Repaired {name} {version}	Naprawiono {name} {version}
 @msg	Removed plugin	Usunięto wtyczkę
 @msg	Imported {name} ({format})	Zaimportowano {name} ({format})
+@msg	unsupported plugin extension '.{ext}' (supported: .wasm, .abr, .grd, .aco, .ase, .kys, .cube)	nieobsługiwane rozszerzenie wtyczki '.{ext}' (obsługiwane: .wasm, .abr, .grd, .aco, .ase, .kys, .cube)
 	Show plugins as a table	Pokaż wtyczki jako tabelę
 	Show plugins as cards	Pokaż wtyczki jako karty
 	Plugin	Wtyczka
 	Format	Format
+	WASM ABI v1	WASM ABI v1
+	Preset Pack	Pakiet ustawień
 	Author	Autor
 	Install folder	Folder instalacji
 	Default install folder	Domyślny folder instalacji

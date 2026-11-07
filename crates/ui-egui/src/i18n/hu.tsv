@@ -364,10 +364,13 @@ filter	Installed	Telepítve
 @msg	Repaired {name} {version}	{name} {version} megjavítva
 @msg	Removed plugin	Bővítmény eltávolítva
 @msg	Imported {name} ({format})	{name} ({format}) importálva
+@msg	unsupported plugin extension '.{ext}' (supported: .wasm, .abr, .grd, .aco, .ase, .kys, .cube)	nem támogatott bővítménykiterjesztés: '.{ext}' (támogatott: .wasm, .abr, .grd, .aco, .ase, .kys, .cube)
 	Show plugins as a table	Bővítmények megjelenítése táblázatként
 	Show plugins as cards	Bővítmények megjelenítése kártyákként
 	Plugin	Bővítmény
 	Format	Formátum
+	WASM ABI v1	WASM ABI v1
+	Preset Pack	Előbeállítás-csomag
 	Author	Szerző
 	Install folder	Telepítési mappa
 	Default install folder	Alapértelmezett telepítési mappa
