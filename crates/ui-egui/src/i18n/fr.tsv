@@ -180,6 +180,7 @@
 	Tarball (.tar.gz)	Archive (.tar.gz)
 
 # Contextual: each app's tagline, keyed by app id
+artcraft	AI image and video creation	Création d'images et de vidéos par IA
 photocraft	Image editing	Retouche d'images
 vectorcraft	Vector illustration	Illustration vectorielle
 filmcraft	Video editing, color and sound	Montage vidéo, étalonnage et son
