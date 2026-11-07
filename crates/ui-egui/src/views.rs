@@ -1347,7 +1347,9 @@ impl LauncherUi {
             ui.close();
         }
         ui.separator();
-        if ui.button(RichText::new(tl!("Uninstall…")).color(Tokens::get(ui.ctx()).bad)).clicked() {
+        // An app installed from an offline suite is part of that portable folder: removing
+        // pieces of it would break the suite, so the item stays hidden there.
+        if !self.backend.offline_suite() && ui.button(RichText::new(tl!("Uninstall…")).color(Tokens::get(ui.ctx()).bad)).clicked() {
             self.dialog = Some(Dialog::ConfirmUninstall(id.to_string()));
             ui.close();
         }

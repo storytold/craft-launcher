@@ -433,3 +433,21 @@ materialcraft	Node graphs	კვანძების გრაფები
 materialcraft	Combine noises, patterns and filters.	ხმაურების, პატერნებისა და ფილტრების კომბინირება.
 materialcraft	Live previews	ცოცხალი წინასწარი ნახვა
 materialcraft	Preview materials in 2D and on 3D models.	მასალების წინასწარი ნახვა 2D-ში და 3D მოდელებზე.
+# Offline suites
+	Offline suite	ოფლაინ ნაკრები
+	Create portable suite…	პორტატული ნაკრების შექმნა…
+	This is an offline snapshot. Export a new suite to update it.	ეს ოფლაინ ანაბეჭდია. განსაახლებლად გადმოტანეთ ახალი ნაკრები.
+	Bundle ArtCraft Launcher and selected apps for use without an internet connection.	შეაფუთეთ ArtCraft Launcher და შერჩეული აპლიკაციები ინტერნეტის გარეშე გამოსაყენებლად.
+	Target: {platform}. Create each suite on its target operating system.	სამიზნე: {platform}. თითოეული ნაკრები შექმენით სამიზნე ოპერაციულ სისტემაზე.
+	Select all	ყველას მონიშვნა
+	Select none	არცერთის მონიშვნა
+	New suite folder (absolute path)	ახალი ნაკრების საქაღალდე (აბსოლუტური გზა)
+	The parent folder must exist. Existing folders are never replaced.	მშობელი საქაღალდე უნდა არსებობდეს. არსებული საქაღალდეები არასოდეს იცვლება.
+	Official stable releases are verified. Your settings and projects are not copied.	ოფიციალური სტაბილური ვერსიები გადამოწმდება. თქვენი პარამეტრები და პროექტები არ კოპირდება.
+	Checking portable releases…	მიმდინარეობს პორტატული ვერსიების შემოწმება…
+	Preparing suite…	ნაკრები მზადდება…
+	Suite ready. Move the entire folder to keep apps and data together.	ნაკრები მზადაა. გადააადგილეთ მთელი საქაღალდე, რომ აპლიკაციები და მონაცემები ერთად დარჩეს.
+	Export cancelled	გადმოტანა გაუქმდა
+	Cancel export	გადმოტანის გაუქმება
+	Create suite	ნაკრების შექმნა
+	Show suite folder	ნაკრების საქაღალდის ჩვენება

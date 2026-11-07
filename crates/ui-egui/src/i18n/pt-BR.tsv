@@ -421,3 +421,20 @@ materialcraft	Preview materials in 2D and on 3D models.	Visualize materiais em 2
 	Migrate Flatpak bundles to ArtCraft OCI (experimental)	Migrar pacotes Flatpak para ArtCraft OCI (experimental)
 	On update, switch first party apps when the matching package is available. Otherwise, keep using bundles.	Ao atualizar, migrar os aplicativos da ArtCraft quando o pacote correspondente estiver disponível. Caso contrário, continuar usando pacotes independentes.
 	The OCI repository is a preview with GPG verification disabled.	O repositório OCI é uma prévia com a verificação GPG desativada.
+	Offline suite	Suíte offline
+	Create portable suite…	Criar suíte portátil…
+	This is an offline snapshot. Export a new suite to update it.	Este é um retrato offline. Exporte uma nova suíte para atualizá-lo.
+	Bundle ArtCraft Launcher and selected apps for use without an internet connection.	Reúna ArtCraft Launcher e os apps selecionados para usar sem conexão com a internet.
+	Target: {platform}. Create each suite on its target operating system.	Destino: {platform}. Crie cada suíte no sistema operacional de destino.
+	Select all	Selecionar todos
+	Select none	Desmarcar todos
+	New suite folder (absolute path)	Nova pasta da suíte (caminho absoluto)
+	The parent folder must exist. Existing folders are never replaced.	A pasta superior deve existir. Pastas existentes nunca são substituídas.
+	Official stable releases are verified. Your settings and projects are not copied.	As versões estáveis oficiais são verificadas. Suas configurações e projetos não são copiados.
+	Checking portable releases…	Verificando versões portáteis…
+	Preparing suite…	Preparando suíte…
+	Suite ready. Move the entire folder to keep apps and data together.	Suíte pronta. Mova a pasta inteira para manter apps e dados juntos.
+	Export cancelled	Exportação cancelada
+	Cancel export	Cancelar exportação
+	Create suite	Criar suíte
+	Show suite folder	Mostrar pasta da suíte

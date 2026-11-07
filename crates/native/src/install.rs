@@ -572,6 +572,7 @@ pub(crate) fn choose_kinds_with(
             // Repository-managed Flatpaks are externally managed: the launcher will not
             // replace them with a downloaded local .flatpak bundle.
             InstallSource::Flatpak if inst.externally_managed => return Vec::new(),
+            InstallSource::OfflineSuite => None,
             InstallSource::Flatpak => Some(PackageKind::Flatpak),
             InstallSource::AppImage => Some(PackageKind::AppImage),
             InstallSource::Binary => Some(PackageKind::TarGz),

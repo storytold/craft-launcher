@@ -393,3 +393,21 @@ materialcraft	Node graphs	節點圖
 materialcraft	Combine noises, patterns and filters.	組合雜訊、圖樣與濾鏡。
 materialcraft	Live previews	即時預覽
 materialcraft	Preview materials in 2D and on 3D models.	在 2D 與 3D 模型上預覽材質。
+# Offline suites
+	Offline suite	離線套件
+	Create portable suite…	建立可攜套件…
+	This is an offline snapshot. Export a new suite to update it.	這是離線快照。如需更新，請匯出新套件。
+	Bundle ArtCraft Launcher and selected apps for use without an internet connection.	將 ArtCraft Launcher 與選定的應用程式打包，供沒有網路連線時使用。
+	Target: {platform}. Create each suite on its target operating system.	目標：{platform}。請在目標作業系統上建立對應的套件。
+	Select all	全選
+	Select none	全部取消
+	New suite folder (absolute path)	新套件資料夾（絕對路徑）
+	The parent folder must exist. Existing folders are never replaced.	上層資料夾必須存在。不會取代現有的資料夾。
+	Official stable releases are verified. Your settings and projects are not copied.	會驗證官方穩定版本。不會複製您的設定與專案。
+	Checking portable releases…	正在檢查可攜版本…
+	Preparing suite…	正在準備套件…
+	Suite ready. Move the entire folder to keep apps and data together.	套件已就緒。請移動整個資料夾，以保留應用程式與資料。
+	Export cancelled	匯出已取消
+	Cancel export	取消匯出
+	Create suite	建立套件
+	Show suite folder	顯示套件資料夾
