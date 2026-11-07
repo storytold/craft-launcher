@@ -111,13 +111,23 @@ pub(crate) enum UiAction {
 pub(crate) enum Dialog {
     Notes(String),
     ConfirmUninstall(String),
+    /// Options dialog for choosing an app's language.
     AppOptions(String),
-    Install { app: String, folder: String },
-    Replace { app: String, path: String },
+    Install {
+        app: String,
+        folder: String,
+    },
+    Replace {
+        app: String,
+        path: String,
+    },
     Settings,
     LauncherUpdate(artcraft_launcher_core::Release),
     Versions(String),
-    LaunchFlags { app: String, flags: String },
+    LaunchFlags {
+        app: String,
+        flags: String,
+    },
 }
 
 impl Dialog {
