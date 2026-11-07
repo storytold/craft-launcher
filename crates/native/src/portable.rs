@@ -524,6 +524,7 @@ mod tests {
     /// A folder on a network share is the same folder after `canonicalize`.
     #[cfg(windows)]
     #[test]
+    /// Checks that Windows verbatim paths match their standard canonical forms.
     fn verbatim_paths_match_their_plain_form() {
         assert!(same_windows_path(Path::new(r"C:\Apps\ArtCraft"), Path::new(r"\\?\C:\apps\artcraft\")));
         assert!(same_windows_path(Path::new(r"\\server\share\Apps\ArtCraft"), Path::new(r"\\?\UNC\server\share\Apps\ArtCraft")));
@@ -533,6 +534,7 @@ mod tests {
 
     /// Previous files left in the staging folder by a failed update are never cleared by the next one.
     #[test]
+    /// Ensures failed self-updates preserve previous application files.
     fn a_self_update_keeps_the_previous_files_of_a_failed_one() {
         let dir = tempfile::tempdir().unwrap();
         let staging = dir.path().join("launcher-update");
@@ -549,6 +551,7 @@ mod tests {
 
     /// Validation of the installed copy is part of the transaction, while a backup still exists.
     #[test]
+    /// Verifies self-update rollback restores original files upon validation failure.
     fn a_self_update_that_fails_validation_puts_the_previous_files_back() {
         let dir = tempfile::tempdir().unwrap();
         let staging = dir.path().join("launcher-update");
@@ -592,6 +595,7 @@ mod tests {
     }
 
     #[test]
+    /// Validates that explicit directory entries in wrapped portable ZIP archives are checked.
     fn wrapped_layout_validates_explicit_directory_entries() {
         let dir = tempfile::tempdir().unwrap();
         let app = CraftApp::by_id("photocraft").unwrap();
@@ -607,6 +611,7 @@ mod tests {
     }
 
     #[test]
+    /// Tests that wrapped portable packages install, update, and clean up at a stable folder location.
     fn wrapped_packages_install_update_and_remove_at_a_stable_location() {
         let dir = tempfile::tempdir().unwrap();
         let app = CraftApp::by_id("photocraft").unwrap();
@@ -655,6 +660,7 @@ mod tests {
     }
 
     #[test]
+    /// Ensures archives with missing root executables or ambiguous directory wrappers are rejected.
     fn rejects_missing_executables_and_ambiguous_or_deep_wrappers() {
         let dir = tempfile::tempdir().unwrap();
         let app = CraftApp::by_id("photocraft").unwrap();
@@ -675,6 +681,7 @@ mod tests {
     }
 
     #[test]
+    /// Tests that updating wrapped portable packages rolls back safely on failure without touching existing files.
     fn wrapped_update_keeps_collision_checks_and_rolls_back_failed_commits() {
         let dir = tempfile::tempdir().unwrap();
         let app = CraftApp::by_id("photocraft").unwrap();
@@ -697,6 +704,7 @@ mod tests {
 
     #[cfg(unix)]
     #[test]
+    /// Verifies host symlink validation rules during extraction.
     fn host_symlinks_are_allowed_but_owned_links_are_rejected() {
         use std::os::unix::fs::symlink;
 
@@ -733,6 +741,7 @@ mod tests {
     }
 
     #[test]
+    /// Tests that stale junction records cannot delete target directory files.
     fn stale_junction_record_cannot_remove_files_after_retargeting() {
         use std::process::Command;
 
@@ -769,6 +778,7 @@ mod tests {
     }
 
     #[test]
+    /// Ensures personal settings files remain intact across upgrades, downgrades, and removals.
     fn upgrade_downgrade_and_uninstall_preserve_personal_files_and_location() {
         let dir = tempfile::tempdir().unwrap();
         let app = CraftApp::by_id("photocraft").unwrap();
@@ -800,6 +810,7 @@ mod tests {
     }
 
     #[test]
+    /// Verifies that a failed manifest commit restores previous files properly.
     fn a_failed_manifest_commit_restores_the_previous_program() {
         let dir = tempfile::tempdir().unwrap();
         let app = CraftApp::by_id("photocraft").unwrap();
@@ -815,6 +826,7 @@ mod tests {
     }
 
     #[test]
+    /// Tests that file collisions prevent any overwriting before extraction starts.
     fn collision_is_rejected_before_replacing_any_old_file() {
         let dir = tempfile::tempdir().unwrap();
         let app = CraftApp::by_id("photocraft").unwrap();
@@ -830,6 +842,7 @@ mod tests {
     }
 
     #[test]
+    /// Checks that unrecorded files in target directory are overwritten only when replace is permitted.
     fn a_new_install_writes_over_unrecorded_files_only_when_asked_to() {
         let dir = tempfile::tempdir().unwrap();
         let app = CraftApp::by_id("photocraft").unwrap();
@@ -847,6 +860,7 @@ mod tests {
     }
 
     #[test]
+    /// Tests extraction and installation of standard single-directory portable archives.
     fn installs_official_single_directory_portable_zip() {
         let dir = tempfile::tempdir().unwrap();
         let app = CraftApp::by_id("photocraft").unwrap();
@@ -871,6 +885,7 @@ mod tests {
     }
 
     #[test]
+    /// Rejects archives with multiple root folders or mixed root files.
     fn rejects_mixed_root_and_multiple_directory_archives() {
         let dir = tempfile::tempdir().unwrap();
         let app = CraftApp::by_id("photocraft").unwrap();
@@ -886,6 +901,7 @@ mod tests {
     }
 
     #[test]
+    /// Rejects directory traversal paths and case-collision files in ZIP archives.
     fn rejects_traversal_and_case_collisions() {
         let dir = tempfile::tempdir().unwrap();
         for (name, files) in [
@@ -903,6 +919,7 @@ mod tests {
         assert!(validate_directory(&dir.path().join("../escape")).is_err());
     }
     #[test]
+    /// Verifies that SHA-256 digests are validated before extracting any portable ZIP content.
     fn portable_install_verifies_hash_before_extraction() {
         let dir = tempfile::tempdir().unwrap();
         let app = CraftApp::by_id("photocraft").unwrap();
@@ -924,6 +941,7 @@ mod tests {
     }
 
     #[test]
+    /// Tests the creation, tracking, and removal lifecycle of the portable.txt marker.
     fn portable_txt_marker_lifecycle() {
         let dir = tempfile::tempdir().unwrap();
         let app = CraftApp::by_id("photocraft").unwrap();
@@ -954,6 +972,7 @@ mod tests {
     }
 
     #[test]
+    /// Ensures archives natively providing portable.txt are installed and preserved properly.
     fn archive_with_portable_txt_installs_and_updates_successfully() {
         let dir = tempfile::tempdir().unwrap();
         let app = CraftApp::by_id("photocraft").unwrap();
@@ -977,6 +996,7 @@ mod tests {
     }
 
     #[test]
+    /// Rejects symlinks and illegal path traversals during ZIP extraction.
     fn extract_rejects_symlinks_and_extra_traversal_paths() {
         let dir = tempfile::tempdir().unwrap();
 

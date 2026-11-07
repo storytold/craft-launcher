@@ -348,6 +348,7 @@ impl LauncherUi {
         self.last_detect = self.backend.now();
     }
 
+    /// Sends a command to the backend, configuring options first when installing or uninstalling.
     pub(crate) fn send(&mut self, command: Command) {
         if matches!(command, Command::Install { .. } | Command::Uninstall { .. }) {
             self.configure();
@@ -457,6 +458,7 @@ impl LauncherUi {
         self.entries.iter_mut().find(|e| e.app.id == id)
     }
 
+    /// Synchronizes the latest user settings and package preferences with the backend if they changed.
     pub(crate) fn configure(&mut self) {
         let options = BackendOptions {
             kinds: self.settings.preferred_kinds.clone(),

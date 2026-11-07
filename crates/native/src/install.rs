@@ -99,6 +99,7 @@ pub fn install(
 type RecordCommit<'a> = Option<&'a mut dyn FnMut(&Record) -> Result<(), String>>;
 
 #[allow(clippy::too_many_arguments)]
+/// Installs or updates `app` from `asset` of format `kind`, optionally targeting `destination`.
 pub fn install_at(
     app: &CraftApp,
     release: &Release,
@@ -586,6 +587,7 @@ pub fn choose_kinds_for_on(
     choose_kinds_with(app, existing, record, preferred, &system.available, system.can_pacman)
 }
 
+/// Picks candidate package formats for `app` based on existing installation, preferences, and system capabilities.
 pub(crate) fn choose_kinds_with(
     app: &CraftApp,
     existing: Option<&Installed>,
@@ -2213,10 +2215,12 @@ pub mod windows {
         order_windows_kinds(crate::paths::portable_root().is_some())
     }
 
+    /// Orders supported Windows package formats based on whether the launcher runs in portable mode.
     pub(crate) fn order_windows_kinds(is_portable: bool) -> Vec<PackageKind> {
         if is_portable { vec![PackageKind::PortableZip, PackageKind::Msi] } else { vec![PackageKind::Msi, PackageKind::PortableZip] }
     }
 
+    /// Resolves the absolute path to `msiexec.exe` on Windows.
     fn msiexec() -> PathBuf {
         std::env::var_os("SystemRoot").map_or_else(|| PathBuf::from(r"C:\Windows"), PathBuf::from).join(r"System32\msiexec.exe")
     }
@@ -3445,6 +3449,7 @@ mod tests {
     }
 
     #[test]
+    /// Verifies that updating an existing installation keeps its established package format.
     fn updates_keep_the_installed_format() {
         let inst = |source| Installed {
             version: None,
@@ -3474,12 +3479,14 @@ mod tests {
 
     #[cfg(windows)]
     #[test]
+    /// Checks that Windows package format preferences match the launcher's portable or installed state.
     fn windows_package_kinds_order_matches_launcher_format() {
         assert_eq!(windows::order_windows_kinds(false), [PackageKind::Msi, PackageKind::PortableZip]);
         assert_eq!(windows::order_windows_kinds(true), [PackageKind::PortableZip, PackageKind::Msi]);
     }
 
     #[test]
+    /// Tests that an explicit app override strictly returns only the requested kind when supported.
     fn app_override_returns_only_requested_kind_when_available() {
         let app = artcraft_launcher_core::CraftApp::by_id("photocraft").unwrap();
         let system = SystemKinds { available: vec![PackageKind::Msi, PackageKind::PortableZip], can_pacman: false };
@@ -3489,6 +3496,7 @@ mod tests {
     }
 
     #[test]
+    /// Ensures that only official release Arch packages are managed and updated by the launcher.
     fn only_the_release_arch_package_is_updated_by_the_launcher() {
         let pacman = |name: &str| Installed {
             version: None,
