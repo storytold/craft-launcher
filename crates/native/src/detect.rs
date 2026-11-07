@@ -171,14 +171,19 @@ pub mod macos {
 
     /// Where a `.app` might be: the system and the user's Applications folders.
     pub fn candidates(app: &CraftApp) -> Vec<PathBuf> {
-        let bundle = format!("{}.app", app.name);
-        let mut out = vec![Path::new("/Applications").join(&bundle)];
-        if let Some(home) = dirs::home_dir() {
-            out.push(home.join("Applications").join(&bundle));
+        let home = dirs::home_dir();
+        let mut out = Vec::new();
+        for name in app.mac_bundle_names() {
+            let bundle = format!("{name}.app");
+            out.push(Path::new("/Applications").join(&bundle));
+            if let Some(home) = &home {
+                out.push(home.join("Applications").join(&bundle));
+            }
         }
         out
     }
 
+    /// Finds an installed `.app` bundle for `app` in the standard Applications folders.
     pub fn detect(app: &CraftApp) -> Option<Installed> {
         candidates(app).iter().find_map(|p| read_bundle(app, p))
     }
@@ -194,9 +199,12 @@ pub mod macos {
         }
         // `<App>Version` carries the full version including a pre-release suffix;
         // CFBundleShortVersionString only has the numbers.
-        let full_key = format!("{}Version", app.name);
-        let text =
-            [full_key.as_str(), "CFBundleShortVersionString", "CFBundleVersion"].iter().find_map(|k| dict.get(k).and_then(plist::Value::as_string));
+        let full_keys: Vec<String> = app.mac_bundle_names().map(|n| format!("{n}Version")).collect();
+        let text = full_keys
+            .iter()
+            .map(String::as_str)
+            .chain(["CFBundleShortVersionString", "CFBundleVersion"])
+            .find_map(|k| dict.get(k).and_then(plist::Value::as_string));
         Some(Installed {
             version: text.and_then(version::parse),
             source: InstallSource::MacApp,

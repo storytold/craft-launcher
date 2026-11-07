@@ -788,6 +788,26 @@ fn a_freebsd_version_row_sizes_the_tarball() {
     assert!(facts.ends_with(", 2026 · 140 MB"), "{facts:?}");
 }
 
+/// FreeBSD hides ArtCraft Studio while keeping supported Craft Apps visible.
+#[test]
+fn freebsd_skips_artcraft_studio() {
+    let freebsd = Platform { os: Os::FreeBsd, arch: Arch::X64 };
+    let (h, _) = harness_full(
+        events(),
+        ViewMode::Grid,
+        egui::Theme::Dark,
+        true,
+        1.0,
+        artcraft_launcher_ui_egui::TitleBar::Native,
+        Rc::default(),
+        Some(freebsd),
+        None,
+    );
+    let ids = h.state().as_ref().unwrap().visible_ids_for_test();
+    assert!(!ids.contains(&"artcraft"), "ArtCraft Studio must be skipped on FreeBSD: {ids:?}");
+    assert!(ids.contains(&"photocraft"), "PhotoCraft remains visible on FreeBSD");
+}
+
 /// The launcher's own list in Settings sizes the launcher's download for this machine.
 #[test]
 fn the_launcher_version_list_sizes_the_launchers_download() {

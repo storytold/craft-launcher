@@ -177,6 +177,7 @@
 	Arch package (.pkg.tar.zst)	Paquete Arch (.pkg.tar.zst)
 	Flatpak bundle	Paquete Flatpak
 	Tarball (.tar.gz)	Archivo tar (.tar.gz)
+artcraft	AI image and video creation	Creación de imágenes y vídeos con IA
 photocraft	Image editing	Edición de imágenes
 vectorcraft	Vector illustration	Ilustración vectorial
 filmcraft	Video editing, color and sound	Edición de video, color y sonido
