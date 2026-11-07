@@ -580,14 +580,8 @@ pub fn choose_kinds_for_on(
     system: &SystemKinds,
     app_override: Option<PackageKind>,
 ) -> Vec<PackageKind> {
-    if let Some(k) = app_override.filter(|k| system.available.contains(k) && app.installs(*k)) {
-        let mut kinds = vec![k];
-        for a in &system.available {
-            if app.installs(*a) && !kinds.contains(a) {
-                kinds.push(*a);
-            }
-        }
-        return kinds;
+    if let Some(k) = app_override {
+        return if system.available.contains(&k) && app.installs(k) { vec![k] } else { Vec::new() };
     }
     choose_kinds_with(app, existing, record, preferred, &system.available, system.can_pacman)
 }
@@ -665,7 +659,7 @@ pub fn available_kinds() -> Vec<PackageKind> {
     #[cfg(target_os = "macos")]
     return vec![PackageKind::Dmg];
     #[cfg(windows)]
-    return vec![PackageKind::Msi, PackageKind::PortableZip];
+    return windows::available_kinds();
     #[cfg(target_os = "linux")]
     return linux::available_kinds();
     #[cfg(target_os = "freebsd")]
@@ -3483,6 +3477,15 @@ mod tests {
     fn windows_package_kinds_order_matches_launcher_format() {
         assert_eq!(windows::order_windows_kinds(false), [PackageKind::Msi, PackageKind::PortableZip]);
         assert_eq!(windows::order_windows_kinds(true), [PackageKind::PortableZip, PackageKind::Msi]);
+    }
+
+    #[test]
+    fn app_override_returns_only_requested_kind_when_available() {
+        let app = artcraft_launcher_core::CraftApp::by_id("photocraft").unwrap();
+        let system = SystemKinds { available: vec![PackageKind::Msi, PackageKind::PortableZip], can_pacman: false };
+        assert_eq!(choose_kinds_for_on(app, None, None, &[], &system, Some(PackageKind::PortableZip)), [PackageKind::PortableZip]);
+        assert_eq!(choose_kinds_for_on(app, None, None, &[], &system, Some(PackageKind::Msi)), [PackageKind::Msi]);
+        assert_eq!(choose_kinds_for_on(app, None, None, &[], &system, Some(PackageKind::Dmg)), Vec::<PackageKind>::new());
     }
 
     #[test]
