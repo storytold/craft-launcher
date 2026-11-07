@@ -252,6 +252,7 @@ filter	Installed	已安裝
 	Join the ArtCraft Discord	加入 ArtCraft Discord
 @plural	ArtCraft Launcher · {n} update available|ArtCraft Launcher · {n} updates available	ArtCraft Launcher · {n} 個更新可用
 @plural	{n} app|{n} apps	{n} 個應用程式
+artcraft	AI image and video creation	AI 影像與影片創作
 photocraft	Image editing	影像編輯
 vectorcraft	Vector illustration	向量插畫
 filmcraft	Video editing, color and sound	影片剪輯、調色與音效
