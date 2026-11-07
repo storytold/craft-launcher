@@ -432,3 +432,28 @@ materialcraft	Node graphs	კვანძების გრაფები
 materialcraft	Combine noises, patterns and filters.	ხმაურების, პატერნებისა და ფილტრების კომბინირება.
 materialcraft	Live previews	ცოცხალი წინასწარი ნახვა
 materialcraft	Preview materials in 2D and on 3D models.	მასალების წინასწარი ნახვა 2D-ში და 3D მოდელებზე.
+	Apps	აპლიკაციები
+	Plugins	პლაგინები
+	Browse and manage plugins	პლაგინების დათვალიერება და მართვა
+	Search plugins	პლაგინების ძიება
+	Import plugin…	პლაგინის იმპორტი…
+	Import plugin	პლაგინის იმპორტი
+	Repair	შეკეთება
+	Needs repair	საჭიროებს შეკეთებას
+	No plugins match	შესაბამისი პლაგინები არ მოიძებნა
+	Plugin file path (.wasm, .abr, .grd, .aco, .ase, .kys, .cube)	პლაგინის ფაილის გზა (.wasm, .abr, .grd, .aco, .ase, .kys, .cube)
+	Supports native WebAssembly (.wasm ABI v1) plugins and preset packs (.abr, .grd, .aco, .ase, .kys, .cube).	მხარდაჭერილია WebAssembly (.wasm ABI v1) პლაგინები და წინასწარ პარამეტრთა პაკეტები (.abr, .grd, .aco, .ase, .kys, .cube).
+	Choose a plugin file from your computer	აირჩიეთ პლაგინის ფაილი თქვენი კომპიუტერიდან
+	Auto-detected: {app}	ავტომატურად ამოცნობილი: {app}
+@plural	{n} plugin|{n} plugins	{n} პლაგინი|{n} პლაგინი
+@msg	Repaired {name} {version}	შეკეთდა {name} {version}
+@msg	Removed plugin	პლაგინი წაიშალა
+@msg	Imported {name} ({format})	იმპორტირებულია {name} ({format})
+@msg	unsupported plugin extension '.{ext}' (supported: .wasm, .abr, .grd, .aco, .ase, .kys, .cube)	მხარდაუჭერელი პლაგინის გაფართოება '.{ext}' (მხარდაჭერილია: .wasm, .abr, .grd, .aco, .ase, .kys, .cube)
+	Show plugins as a table	პლაგინების ჩვენება ცხრილად
+	Show plugins as cards	პლაგინების ჩვენება ბარათებად
+	Plugin	პლაგინი
+	Format	ფორმატი
+	WASM ABI v1	WASM ABI v1
+	Preset Pack	წინასწარ პარამეტრთა პაკეტი
+	Author	ავტორი

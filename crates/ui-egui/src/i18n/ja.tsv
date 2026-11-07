@@ -378,10 +378,35 @@ filter	Installed	インストール済み
 	ArtCraft on GitHub	GitHub の ArtCraft
 	Join the ArtCraft Discord	ArtCraft Discord に参加
 @plural	ArtCraft Launcher · {n} update available|ArtCraft Launcher · {n} updates available	ArtCraft Launcher · {n} 件の更新があります
+	Apps	アプリ
+	Plugins	プラグイン
+	Browse and manage plugins	プラグインの参照と管理
+	Search plugins	プラグインを検索
+	Import plugin…	プラグインを読み込む…
+	Import plugin	プラグインを読み込む
+	Repair	修復
+	Needs repair	修復が必要
+	No plugins match	一致するプラグインがありません
+	Plugin file path (.wasm, .abr, .grd, .aco, .ase, .kys, .cube)	プラグインファイルのパス (.wasm, .abr, .grd, .aco, .ase, .kys, .cube)
+	Supports native WebAssembly (.wasm ABI v1) plugins and preset packs (.abr, .grd, .aco, .ase, .kys, .cube).	ネイティブ WebAssembly (.wasm ABI v1) プラグインおよびプリセットパック (.abr, .grd, .aco, .ase, .kys, .cube) に対応しています。
+	Browse…	参照…
+	Choose a plugin file from your computer	コンピューターからプラグインファイルを選択
+	Auto-detected: {app}	自動検出: {app}
+@plural	{n} plugin|{n} plugins	{n} 個のプラグイン
+@msg	Repaired {name} {version}	{name} {version} を修復しました
+@msg	Removed plugin	プラグインを削除しました
+@msg	Imported {name} ({format})	{name} ({format}) を読み込みました
+@msg	unsupported plugin extension '.{ext}' (supported: .wasm, .abr, .grd, .aco, .ase, .kys, .cube)	未対応のプラグイン拡張子 '.{ext}' です (対応: .wasm, .abr, .grd, .aco, .ase, .kys, .cube)
+	Show plugins as a table	プラグインをテーブルで表示
+	Show plugins as cards	プラグインをカードで表示
+	Plugin	プラグイン
+	Format	形式
+	WASM ABI v1	WASM ABI v1
+	Preset Pack	プリセットパック
+	Author	作成者
 	Install folder	インストール先フォルダー
 	Default install folder	既定のインストール先フォルダー
 	System default	システムの既定
-	Browse…	参照…
 	Use default	既定を使用
 	New installs use this folder. Updates stay in their current location.	新しいインストールにはこのフォルダーを使用します。更新時は現在の場所を維持します。
 	Custom folders use AppImage on Linux.	Linux では、任意のフォルダーにインストールする場合は AppImage を使用します。

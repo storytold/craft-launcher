@@ -392,3 +392,28 @@ materialcraft	Node graphs	節點圖
 materialcraft	Combine noises, patterns and filters.	組合雜訊、圖樣與濾鏡。
 materialcraft	Live previews	即時預覽
 materialcraft	Preview materials in 2D and on 3D models.	在 2D 與 3D 模型上預覽材質。
+	Apps	應用程式
+	Plugins	外掛程式
+	Browse and manage plugins	瀏覽和管理外掛程式
+	Search plugins	搜尋外掛程式
+	Import plugin…	匯入外掛程式…
+	Import plugin	匯入外掛程式
+	Repair	修復
+	Needs repair	需要修復
+	No plugins match	沒有相符的外掛程式
+	Plugin file path (.wasm, .abr, .grd, .aco, .ase, .kys, .cube)	外掛程式檔案路徑 (.wasm, .abr, .grd, .aco, .ase, .kys, .cube)
+	Supports native WebAssembly (.wasm ABI v1) plugins and preset packs (.abr, .grd, .aco, .ase, .kys, .cube).	支援原生 WebAssembly (.wasm ABI v1) 外掛程式與預設套件 (.abr, .grd, .aco, .ase, .kys, .cube)。
+	Choose a plugin file from your computer	從您的電腦選擇外掛程式檔案
+	Auto-detected: {app}	已自動偵測：{app}
+@plural	{n} plugin|{n} plugins	{n} 個外掛程式
+@msg	Repaired {name} {version}	已修復 {name} {version}
+@msg	Removed plugin	已移除外掛程式
+@msg	Imported {name} ({format})	已匯入 {name} ({format})
+@msg	unsupported plugin extension '.{ext}' (supported: .wasm, .abr, .grd, .aco, .ase, .kys, .cube)	不支援的外掛程式副檔名 '.{ext}'（支援：.wasm, .abr, .grd, .aco, .ase, .kys, .cube）
+	Show plugins as a table	以表格顯示外掛程式
+	Show plugins as cards	以資訊卡顯示外掛程式
+	Plugin	外掛程式
+	Format	格式
+	WASM ABI v1	WASM ABI v1
+	Preset Pack	預設套件
+	Author	作者

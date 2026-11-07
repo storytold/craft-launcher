@@ -1,6 +1,5 @@
 //! Where the launcher keeps its own files.
 
-use std::io::Write;
 use std::path::PathBuf;
 
 /// The launcher's folders.
@@ -75,15 +74,43 @@ impl Paths {
     pub fn app_home(&self, id: &str) -> PathBuf {
         self.apps().join(id).join("home")
     }
+
+    /// Record of installed and imported plugins (`<data>/plugins.json`).
+    pub fn plugins_manifest(&self) -> PathBuf {
+        self.data.join("plugins.json")
+    }
+
+    /// Folder holding installed plugin binaries/presets for a specific Craft app (`<data>/plugins/<app>`).
+    pub fn plugins_dir(&self, app: &str) -> PathBuf {
+        self.data.join("plugins").join(app)
+    }
+
+    /// Where PhotoCraft keeps its `preferences.json` so we can auto-register the `photocraft` plugins folder.
+    pub fn photocraft_prefs(&self) -> Option<PathBuf> {
+        let in_temp = std::env::temp_dir();
+        if cfg!(test) || self.data.starts_with(&in_temp) {
+            return Some(self.data.join("Photocraft").join("preferences.json"));
+        }
+        dirs::config_dir().map(|d| d.join("Photocraft").join("preferences.json"))
+    }
 }
 
 /// Writes `bytes` to `path` via a temporary file and a rename, so a crash never leaves half a file.
 pub fn write_atomic(path: &std::path::Path, bytes: &[u8]) -> Result<(), String> {
+    use std::io::Write;
     let dir = path.parent().ok_or("no parent folder")?;
     std::fs::create_dir_all(dir).map_err(|e| format!("couldn't create {} ({e})", dir.display()))?;
-    let mut tmp = tempfile::NamedTempFile::new_in(dir).map_err(|e| format!("couldn't create a temporary file in {} ({e})", dir.display()))?;
-    tmp.write_all(bytes).map_err(|e| format!("couldn't write {} ({e})", tmp.path().display()))?;
+    let mut tmp =
+        tempfile::Builder::new().prefix(".atomic-").tempfile_in(dir).map_err(|e| format!("couldn't create temp file in {} ({e})", dir.display()))?;
+    tmp.write_all(bytes).map_err(|e| format!("couldn't write temp file ({e})"))?;
+    tmp.as_file().sync_all().map_err(|e| format!("couldn't sync temp file ({e})"))?;
     tmp.persist(path).map_err(|e| format!("couldn't replace {} ({e})", path.display()))?;
+    #[cfg(unix)]
+    {
+        if let Ok(dir_file) = std::fs::File::open(dir) {
+            dir_file.sync_all().ok();
+        }
+    }
     Ok(())
 }
 

@@ -343,10 +343,35 @@ filter	Installed	Nainstalováno
 	ArtCraft on GitHub	ArtCraft na GitHubu
 	Join the ArtCraft Discord	Připojit se na ArtCraft Discord
 @plural	ArtCraft Launcher · {n} update available|ArtCraft Launcher · {n} updates available	ArtCraft Launcher · {n} dostupná aktualizace|ArtCraft Launcher · {n} dostupné aktualizace|ArtCraft Launcher · {n} dostupných aktualizací
+	Apps	Aplikace
+	Plugins	Zásuvné moduly
+	Browse and manage plugins	Procházet a spravovat zásuvné moduly
+	Search plugins	Hledat zásuvné moduly
+	Import plugin…	Importovat zásuvný modul…
+	Import plugin	Importovat zásuvný modul
+	Repair	Opravit
+	Needs repair	Vyžaduje opravu
+	No plugins match	Žádné odpovídající zásuvné moduly
+	Plugin file path (.wasm, .abr, .grd, .aco, .ase, .kys, .cube)	Cesta k souboru zásuvného modulu (.wasm, .abr, .grd, .aco, .ase, .kys, .cube)
+	Supports native WebAssembly (.wasm ABI v1) plugins and preset packs (.abr, .grd, .aco, .ase, .kys, .cube).	Podporuje nativní zásuvné moduly WebAssembly (.wasm ABI v1) a balíčky předvoleb (.abr, .grd, .aco, .ase, .kys, .cube).
+	Browse…	Procházet…
+	Choose a plugin file from your computer	Vyberte soubor zásuvného modulu z počítače
+	Auto-detected: {app}	Automaticky rozpoznáno: {app}
+@plural	{n} plugin|{n} plugins	{n} zásuvný modul|{n} zásuvné moduly|{n} zásuvných modulů
+@msg	Repaired {name} {version}	Opraven modul {name} {version}
+@msg	Removed plugin	Zásuvný modul odebrán
+@msg	Imported {name} ({format})	Importován modul {name} ({format})
+@msg	unsupported plugin extension '.{ext}' (supported: .wasm, .abr, .grd, .aco, .ase, .kys, .cube)	nepodporovaná přípona zásuvného modulu '.{ext}' (podporované: .wasm, .abr, .grd, .aco, .ase, .kys, .cube)
+	Show plugins as a table	Zobrazit zásuvné moduly jako tabulku
+	Show plugins as cards	Zobrazit zásuvné moduly jako karty
+	Plugin	Zásuvný modul
+	Format	Formát
+	WASM ABI v1	WASM ABI v1
+	Preset Pack	Balíček předvoleb
+	Author	Autor
 	Install folder	Instalační složka
 	Default install folder	Výchozí instalační složka
 	System default	Výchozí nastavení systému
-	Browse…	Procházet…
 	Use default	Použít výchozí
 	New installs use this folder. Updates stay in their current location.	Nové instalace používají tuto složku. Aktualizace zůstávají v aktuálním umístění.
 	Custom folders use AppImage on Linux.	Vlastní složky používají v Linuxu formát AppImage.
