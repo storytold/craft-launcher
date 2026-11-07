@@ -259,6 +259,32 @@ fn secure_control_file(_path: &Path) -> bool {
     true
 }
 
+/// Prepares or reuses the control channel endpoint for `app_id` under `paths.data`.
+/// Returns the allocated or existing `ControlEndpoint` recording the port and token.
+fn prepare_control_endpoint(paths: &Paths, app_id: &str) -> Option<ControlEndpoint> {
+    let file = control_file(paths, app_id);
+    if file.is_file()
+        && secure_control_file(&file)
+        && let Some(existing) = std::fs::read_to_string(&file).ok().and_then(|t| serde_json::from_str::<ControlEndpoint>(&t).ok())
+        && port_is_listening(existing.port)
+    {
+        return Some(existing);
+    }
+    let listener = TcpListener::bind(("127.0.0.1", 0)).ok()?;
+    let addr = listener.local_addr().ok()?;
+    let token = generate_hex_token()?;
+    let port = addr.port();
+    drop(listener);
+    let endpoint = ControlEndpoint { port, token };
+    if let Ok(bytes) = serde_json::to_vec(&endpoint)
+        && write_atomic(&file, &bytes).is_ok()
+        && !secure_control_file(&file)
+    {
+        let _ = std::fs::remove_file(&file);
+    }
+    Some(endpoint)
+}
+
 /// Allocates a loopback control port and token for `app` before launching it, saving them under
 /// the launcher's state directory and returning the environment variables to pass to the child.
 pub fn prepare_launch_env(app: &CraftApp, installed: Option<&Installed>, paths: &Paths, configured_lang: Option<&str>) -> Vec<(String, String)> {
@@ -272,29 +298,9 @@ pub fn prepare_launch_env(app: &CraftApp, installed: Option<&Installed>, paths: 
             envs.push((format!("{upper}_LOCALE"), app_code));
         }
     }
-    let file = control_file(paths, app.id);
-    if file.is_file()
-        && secure_control_file(&file)
-        && let Some(existing) = std::fs::read_to_string(&file).ok().and_then(|t| serde_json::from_str::<ControlEndpoint>(&t).ok())
-        && port_is_listening(existing.port)
-    {
-        envs.push((format!("{upper}_CONTROL_PORT"), existing.port.to_string()));
-        envs.push((format!("{upper}_CONTROL_TOKEN"), existing.token));
-        return envs;
-    }
-    if let Ok(listener) = TcpListener::bind(("127.0.0.1", 0))
-        && let Ok(addr) = listener.local_addr()
-        && let Some(token) = generate_hex_token()
-    {
-        let port = addr.port();
-        drop(listener);
-        let endpoint = ControlEndpoint { port, token: token.clone() };
-        if let Ok(bytes) = serde_json::to_vec(&endpoint) {
-            let _ = write_atomic(&file, &bytes);
-            let _ = secure_control_file(&file);
-        }
-        envs.push((format!("{upper}_CONTROL_PORT"), port.to_string()));
-        envs.push((format!("{upper}_CONTROL_TOKEN"), token));
+    if let Some(endpoint) = prepare_control_endpoint(paths, app.id) {
+        envs.push((format!("{upper}_CONTROL_PORT"), endpoint.port.to_string()));
+        envs.push((format!("{upper}_CONTROL_TOKEN"), endpoint.token));
     }
     envs
 }
@@ -568,29 +574,20 @@ mod tests {
     }
 
     #[test]
-    fn prepare_launch_env_creates_and_reuses_secure_control_file() {
+    fn prepare_control_endpoint_creates_and_reuses_secure_file() {
         let dir = std::env::temp_dir().join(format!("craft-launcher-launch-env-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         let paths = Paths::under(&dir);
 
-        let app = &SUITE[0];
-        let envs = prepare_launch_env(app, None, &paths, Some("en"));
-        let port_key = format!("{}_CONTROL_PORT", app.id.to_ascii_uppercase().replace('-', "_"));
-        let token_key = format!("{}_CONTROL_TOKEN", app.id.to_ascii_uppercase().replace('-', "_"));
-        let port = envs.iter().find(|(k, _)| k == &port_key).map(|(_, v)| v.clone()).unwrap();
-        let token = envs.iter().find(|(k, _)| k == &token_key).map(|(_, v)| v.clone()).unwrap();
-
-        let cfile = control_file(&paths, app.id);
+        let endpoint = prepare_control_endpoint(&paths, "photocraft").unwrap();
+        let cfile = control_file(&paths, "photocraft");
         assert!(cfile.is_file());
         assert!(secure_control_file(&cfile));
 
-        let port_num: u16 = port.parse().unwrap();
-        let listener = TcpListener::bind(("127.0.0.1", port_num)).unwrap();
-        let reused_envs = prepare_launch_env(app, None, &paths, Some("en"));
-        let reused_port = reused_envs.iter().find(|(k, _)| k == &port_key).map(|(_, v)| v.clone()).unwrap();
-        let reused_token = reused_envs.iter().find(|(k, _)| k == &token_key).map(|(_, v)| v.clone()).unwrap();
-        assert_eq!(reused_port, port);
-        assert_eq!(reused_token, token);
+        let listener = TcpListener::bind(("127.0.0.1", endpoint.port)).unwrap();
+        let reused = prepare_control_endpoint(&paths, "photocraft").unwrap();
+        assert_eq!(reused.port, endpoint.port);
+        assert_eq!(reused.token, endpoint.token);
         drop(listener);
 
         let _ = std::fs::remove_dir_all(&dir);
