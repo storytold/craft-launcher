@@ -27,6 +27,8 @@
 	Craft App Suite	Craft App Suite
 	Open Source Tools for Creatives, Makers, and Builders	ღია კოდის ხელსაწყოები შემოქმედთათვის, ოსტატებისა და მშენებლებისთვის
 	Settings	პარამეტრები
+	Proxy	პროქსი
+	Manual HTTP proxy, optional authentication; leave empty to use the system setting.	ხელით მითითებული HTTP პროქსი, არასავალდებულო ავთენტიფიკაციით; სისტემური პარამეტრის გამოსაყენებლად ცარიელი დატოვეთ.
 	Check for updates	განახლებების შემოწმება
 	Grid	ბადე
 	Table	ცხრილი

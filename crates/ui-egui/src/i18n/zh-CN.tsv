@@ -10,6 +10,8 @@
 	by {name}	由 {name} 提供
 	Open Source Tools for Creatives, Makers, and Builders	为创作者和开发者打造的开源工具
 	Settings	设置
+	Proxy	代理
+	Manual HTTP proxy, optional authentication; leave empty to use the system setting.	手动 HTTP 代理，可选认证；留空则使用系统设置。
 	Check for updates	检查更新
 	Grid	网格
 	Table	表格

@@ -108,6 +108,8 @@ pub struct Settings {
     /// Show a system notification when an installed app has an update.
     pub notify: bool,
     pub prereleases: bool,
+    /// HTTP proxy address typed by the user; empty means use the environment or OS setting.
+    pub proxy: String,
     /// Version track per app. Missing entries follow stable releases.
     pub versions: BTreeMap<String, artcraft_launcher_core::protocol::VersionTrack>,
     pub launcher_version: artcraft_launcher_core::protocol::VersionTrack,
@@ -255,6 +257,7 @@ impl Default for Settings {
             auto_update: false,
             notify: true,
             prereleases: false,
+            proxy: String::new(),
             versions: BTreeMap::new(),
             launcher_version: Default::default(),
             preferred_kinds: default_preferred_kinds(),
@@ -313,6 +316,7 @@ mod tests {
     fn old_settings_json_loads_with_empty_pinned() {
         let s: Settings = serde_json::from_str(r#"{"view":"Grid"}"#).expect("legacy settings");
         assert!(s.pinned.is_empty());
+        assert!(s.proxy.is_empty());
     }
 
     #[test]

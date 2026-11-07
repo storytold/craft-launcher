@@ -198,6 +198,11 @@ impl LauncherUi {
                 self.version_combo(ui, launcher_id, &artcraft_launcher_core::catalog::LAUNCHER, 200.0, label);
             });
             self.launcher_version_notes(ui);
+            row(ui, tl!("Proxy"), 260.0, &mut |ui, label| {
+                let response = ui.add(egui::TextEdit::singleline(&mut self.settings.proxy).hint_text("http://host:port"));
+                response.labelled_by(label);
+            });
+            note(ui, tl!("Manual HTTP proxy, optional authentication; leave empty to use the system setting."));
         });
     }
 

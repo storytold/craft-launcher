@@ -63,12 +63,16 @@ pub fn is_loopback(url: &str) -> bool {
 
 impl Http {
     pub fn new() -> Result<Self, String> {
+        Self::new_with_proxy(None)
+    }
+
+    pub fn new_with_proxy(manual_proxy: Option<&str>) -> Result<Self, String> {
         // The OS checks each certificate chain itself: Windows fetches roots it hasn't stored yet
         // and trusts what antivirus HTTPS scanning installs. Reading the store ourselves missed
         // both ("invalid peer certificate: UnknownIssuer").
         let tls = || ureq::tls::TlsConfig::builder().root_certs(ureq::tls::RootCerts::PlatformVerifier).build();
-        // Chosen once: the proxy environment variables, else the OS proxy setting.
-        let proxy = crate::proxy::pick();
+        // Chosen once: the manually entered address, then proxy environment variables, else the OS proxy setting.
+        let proxy = crate::proxy::pick_with(manual_proxy);
         let small = ureq::Agent::config_builder()
             .tls_config(tls())
             .proxy(proxy.clone())

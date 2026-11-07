@@ -11,6 +11,8 @@
 	by {name}	por {name}
 	Open Source Tools for Creatives, Makers, and Builders	Ferramentas de código aberto para criadores, artistas e desenvolvedores
 	Settings	Configurações
+	Proxy	Proxy
+	Manual HTTP proxy, optional authentication; leave empty to use the system setting.	Proxy HTTP manual, autenticação opcional; deixe vazio para usar a configuração do sistema.
 	Check for updates	Verificar atualizações
 	Grid	Grade
 	Table	Tabela

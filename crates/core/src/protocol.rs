@@ -104,6 +104,10 @@ pub struct BackendOptions {
     pub launcher_version: VersionTrack,
     /// Offer pre-releases (`0.6.0-rc.1`) as updates.
     pub prereleases: bool,
+    /// An HTTP proxy the user typed into Settings, as `http://[user[:password]@]host[:port]`
+    /// (`None` or empty: the proxy environment variables, else the OS proxy setting). Ignored by
+    /// backends that cannot take a proxy (the web build fetches through the browser).
+    pub proxy: Option<String>,
 }
 
 /// The answer to "what's the latest release of this app?".
@@ -332,5 +336,11 @@ mod tests {
         let options: BackendOptions = serde_json::from_str(r#"{"kinds":[],"prereleases":true}"#).unwrap();
         assert!(options.prereleases);
         assert_eq!(options.install_locations, InstallLocations::default());
+    }
+
+    #[test]
+    fn old_backend_options_have_no_manual_proxy() {
+        let options: BackendOptions = serde_json::from_str(r#"{"kinds":[],"prereleases":false}"#).unwrap();
+        assert_eq!(options.proxy, None);
     }
 }

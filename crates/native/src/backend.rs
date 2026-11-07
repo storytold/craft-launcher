@@ -1445,13 +1445,24 @@ impl Backend for NativeBackend {
             Command::UpdateLauncher => self.update_launcher(),
             Command::FetchScreenshots { app } => self.fetch_screenshots(&app),
             Command::Configure(options) => {
-                let changed_pre = {
+                let (changed_pre, changed_proxy) = {
                     let mut o = self.shared.options.lock().unwrap_or_else(PoisonError::into_inner);
-                    let changed =
+                    let changed_pre =
                         o.prereleases != options.prereleases || o.versions != options.versions || o.launcher_version != options.launcher_version;
+                    let changed_proxy = o.proxy != options.proxy;
                     *o = options;
-                    changed
+                    (changed_pre, changed_proxy)
                 };
+                if changed_proxy {
+                    match Http::new_with_proxy(self.options().proxy.as_deref()) {
+                        Ok(http) => {
+                            self.source = Some(Arc::new(GitHubSource::new(http.clone(), self.paths.release_cache())));
+                            self.http = Some(http);
+                            log::info!("HTTP client rebuilt after the proxy setting changed");
+                        }
+                        Err(e) => log::error!("HTTPS unavailable after changing the proxy setting: {e}"),
+                    }
+                }
                 // Every Configure, not only on a change: the first one carries the choices saved
                 // before the shared file existed, and the file may have been deleted since.
                 if let Some(path) = &self.pins {

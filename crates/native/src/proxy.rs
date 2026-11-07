@@ -1,6 +1,6 @@
-//! Which HTTP proxy the launcher uses: the proxy environment variables first, else the proxy set
-//! in the OS (Windows Internet Settings, macOS network settings). Automatic configuration (PAC
-//! scripts, WPAD) is not supported.
+//! Which HTTP proxy the launcher uses: the address typed in Settings first, else the proxy
+//! environment variables, else the proxy set in the OS (Windows Internet Settings, macOS network
+//! settings). Automatic configuration (PAC scripts, WPAD) is not supported.
 
 use ureq::{Proxy, ProxyProtocol};
 
@@ -54,6 +54,91 @@ pub fn pick() -> Option<Proxy> {
             log::warn!("ignoring the proxy in {} ({e}); connecting directly", system.source);
             None
         }
+    }
+}
+
+/// The proxy every agent uses: the address typed in Settings first, else the usual detection
+/// ([`pick`]). A malformed manual address is reported and the usual detection decides, so a typo
+/// never leaves the launcher without a way to reach the network. Logs the choice at info level,
+/// without any user name or password.
+pub fn pick_with(manual: Option<&str>) -> Option<Proxy> {
+    let Some(manual) = manual.map(str::trim).filter(|m| !m.is_empty()) else { return pick() };
+    match from_url(manual) {
+        Ok(Some(proxy)) => {
+            log::info!("HTTP proxy: {} {}:{} (from Settings)", proxy.protocol(), proxy.host(), proxy.port());
+            Some(proxy)
+        }
+        Ok(None) => pick(),
+        Err(e) => {
+            log::warn!("ignoring the proxy in Settings ({e}); falling back to the usual proxy settings");
+            pick()
+        }
+    }
+}
+
+/// Builds a ureq proxy from the address the user typed in Settings: `http://[user[:password]@]host[:port]`
+/// (the `http://` scheme may be left out). Empty or whitespace means no manual proxy (`Ok(None)`).
+/// Only HTTP proxies are supported, as everywhere else here. Loopback addresses always go direct,
+/// as they do on Windows and macOS. The error text is for the log and the UI: it never repeats
+/// the password.
+pub fn from_url(url: &str) -> Result<Option<Proxy>, String> {
+    let url = url.trim();
+    if url.is_empty() {
+        return Ok(None);
+    }
+    let rest = match url.split_once("://") {
+        Some((scheme, rest)) if scheme.eq_ignore_ascii_case("http") => rest,
+        Some((scheme, _)) => return Err(format!("{scheme} proxies aren't supported, only http://")),
+        None => url,
+    };
+    let rest = rest.trim_end_matches('/');
+    if rest.is_empty() {
+        return Ok(None);
+    }
+    if rest.contains(['/', '?', '#']) {
+        return Err("an address with a path or query isn't a proxy, only host and port belong here".into());
+    }
+    let (userinfo, hostport) = match rest.split_once('@') {
+        Some((userinfo, hostport)) if !hostport.is_empty() => (Some(userinfo), hostport),
+        _ => (None, rest),
+    };
+    let (host, port) = typed_host_port(hostport)?;
+    let mut builder = Proxy::builder(ProxyProtocol::Http).host(&host);
+    if let Some(port) = port {
+        builder = builder.port(port);
+    }
+    if let Some(userinfo) = userinfo {
+        match userinfo.split_once(':') {
+            Some((user, pass)) if !user.is_empty() => builder = builder.username(user).password(pass),
+            _ if !userinfo.is_empty() => builder = builder.username(userinfo),
+            _ => {}
+        }
+    }
+    for entry in ["localhost", "127.0.0.1", "[::1]"] {
+        builder = builder.no_proxy(entry);
+    }
+    builder.build().map(Some).map_err(|e| e.to_string())
+}
+
+/// Splits `host:port`, `[::1]:8080` or a bare host into a host and an optional port, rejecting
+/// anything else.
+fn typed_host_port(value: &str) -> Result<(String, Option<u16>), String> {
+    if value.starts_with('[') {
+        let (host, after) = value.split_once(']').ok_or("an [IPv6] address needs its closing ]")?;
+        let host = format!("{host}]");
+        return match after.strip_prefix(':') {
+            Some(port) => Ok((host, Some(port.parse().map_err(|_| "the port after ] must be a number")?))),
+            None if after.is_empty() => Ok((host, None)),
+            None => Err("only ]:port may follow an [IPv6] address".into()),
+        };
+    }
+    match value.split_once(':') {
+        Some((host, port)) if !host.is_empty() && !port.contains(':') => {
+            Ok((host.to_string(), Some(port.parse().map_err(|_| "the port must be a number")?)))
+        }
+        Some((_, _)) => Err("that looks like an IPv6 address; write it as [2001:db8::1]:8080".into()),
+        None if !value.is_empty() => Ok((value.to_string(), None)),
+        None => Err("a host is missing".into()),
     }
 }
 
@@ -266,6 +351,37 @@ mod tests {
         assert_eq!(parse_scutil("HTTPSEnable : 1\nHTTPSProxy : \nHTTPSPort : 1\n"), None);
     }
 
+    #[test]
+    fn manual_proxy_accepts_credentials_and_skips_loopback() {
+        let p = from_url("http://alice:secret@proxy.corp:3128").unwrap().unwrap();
+        assert_eq!((p.protocol(), p.host(), p.port()), (ProxyProtocol::Http, "proxy.corp", 3128));
+        assert_eq!(p.username(), Some("alice"));
+        assert_eq!(p.password(), Some("secret"));
+        assert!(p.is_no_proxy(&"http://127.0.0.1:1/".parse().unwrap()));
+        assert!(!p.is_no_proxy(&"https://github.com/".parse().unwrap()));
+    }
+
+    #[test]
+    fn manual_proxy_accepts_host_without_scheme_and_ipv6() {
+        let p = from_url("proxy.corp").unwrap().unwrap();
+        assert_eq!((p.host(), p.port()), ("proxy.corp", 80));
+        let p = from_url("http://[::1]:8080/").unwrap().unwrap();
+        assert_eq!((p.host(), p.port()), ("[::1]", 8080));
+    }
+
+    #[test]
+    fn manual_proxy_rejects_non_http_and_paths() {
+        assert_eq!(from_url("socks5://proxy.corp:1080").unwrap_err(), "socks5 proxies aren't supported, only http://");
+        assert!(from_url("http://proxy.corp/path").is_err());
+        assert!(from_url("http://proxy.corp:notaport").is_err());
+        assert_eq!(from_url("  ").unwrap(), None);
+    }
+
+    #[test]
+    fn manual_proxy_does_not_log_or_return_password_in_parse_errors() {
+        let error = from_url("http://alice:secret@proxy.corp:notaport").unwrap_err();
+        assert!(!error.contains("secret"));
+    }
     #[test]
     fn system_proxy_becomes_a_ureq_proxy_that_skips_loopback() {
         let p = to_proxy(&SystemProxy { host: "proxy.corp".into(), port: Some(8080), bypass: vec!["*.local".into()], source: "test" }).unwrap();
