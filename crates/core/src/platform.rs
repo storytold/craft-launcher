@@ -147,17 +147,14 @@ impl Platform {
             (Os::Windows, Arch::X64) => &["windows-x64", "windows-x86"],
             (Os::Windows, Arch::X86) => &["windows-x86"],
             (Os::Windows, Arch::Arm64) => &["windows-arm64", "windows-x64", "windows-x86"],
-            (Os::Windows, _) => &[],
             (Os::MacOs, Arch::X64) => &["macos-universal", "macos-x86_64"],
             (Os::MacOs, Arch::Arm64) => &["macos-universal", "macos-aarch64", "macos-arm64", "macos-x86_64"],
-            (Os::MacOs, _) => &[],
             (Os::Linux, Arch::X64) => &["linux-x86_64"],
             (Os::Linux, Arch::Arm64) => &["linux-aarch64"],
             (Os::Linux, Arch::Riscv64) => &["linux-riscv64"],
-            (Os::Linux, Arch::X86) => &[],
             (Os::FreeBsd, Arch::X64) => &["freebsd-x86_64"],
             (Os::FreeBsd, Arch::Arm64) => &["freebsd-aarch64"],
-            (Os::FreeBsd, _) => &[],
+            (Os::Windows | Os::MacOs | Os::FreeBsd, _) | (Os::Linux, Arch::X86) => &[],
         }
     }
 
