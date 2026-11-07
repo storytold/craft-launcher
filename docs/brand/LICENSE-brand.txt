@@ -22,7 +22,7 @@ The permission holds only while every one of these is true:
     stretch, rotate, animate, outline or add effects to them, extract parts of them, or combine
     them with any other name, mark or artwork.
   - They are used only in the context of ArtCraft Launcher, and only to say that the ArtCraft team makes it.
-    They must never suggest that the ArtCraft Team made, sponsors, endorses, certifies or supports
+    They must never suggest that the ArtCraft Team makes, sponsors, endorses, certifies or supports
     any other product, service, fork, modified version, plug-in, organization or person.
   - Neither the marks nor the ArtCraft name appear in the name, logo, icon, domain, social media
     handle, app-store listing, advertising or marketing of anything other than ArtCraft Launcher.
