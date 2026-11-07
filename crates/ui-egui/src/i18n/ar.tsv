@@ -187,6 +187,7 @@
 	Tarball (.tar.gz)	أرشيف tar (.tar.gz)
 
 # Contextual: each app's tagline, keyed by app id
+artcraft	AI image and video creation	إنشاء الصور والفيديو بالذكاء الاصطناعي
 photocraft	Image editing	تحرير الصور
 vectorcraft	Vector illustration	الرسم المتجهي
 filmcraft	Video editing, color and sound	تحرير الفيديو والألوان والصوت

@@ -182,6 +182,7 @@
 	Tarball (.tar.gz)	Tömörített archívum (.tar.gz)
 
 # Contextual: each app's tagline, keyed by app id
+artcraft	AI image and video creation	Képek és videók készítése MI-vel
 photocraft	Image editing	Képszerkesztés
 vectorcraft	Vector illustration	Vektoros illusztráció
 filmcraft	Video editing, color and sound	Videószerkesztés, színkorrekció és hang

@@ -19,6 +19,9 @@ use crate::widgets::{self, Kind};
 /// The byline that says who makes an app: "by ArtCraft" or "by <publisher>". Official apps take
 /// the accent colour, community apps the muted one.
 fn kind_badge(ui: &mut Ui, app: &artcraft_launcher_core::CraftApp, t: &Tokens) {
+    if app.id == "artcraft" {
+        return;
+    }
     let text = fmt(tl!("by {name}"), &[("name", app.publisher)]);
     let color = match app.kind {
         AppKind::Official => t.accent_ink,
