@@ -1,5 +1,5 @@
 //! The Plugins page: import, inspect, repair, and uninstall local WebAssembly (ABI v1)
-//! and compatible Adobe Photoshop (`.afs` / `.8bf` / preset) plug-ins per Craft app.
+//! and compatible preset plug-ins per Craft app.
 
 use artcraft_launcher_core::plugins::{InstalledPlugin, PluginFormat, PluginStatus, plugin_status};
 use artcraft_launcher_core::protocol::Command;
@@ -38,40 +38,20 @@ impl LauncherUi {
             }
 
             let mut cells: Vec<(&'static str, Cell<'_>)> = Vec::with_capacity(1 + filter_apps.len());
-            cells.push((
-                "all",
-                Cell {
-                    label: tl!("All"),
-                    tip: tl!("Browse and manage plugins"),
-                    count: Some((all_plugins.len(), None)),
-                },
-            ));
+            cells.push(("all", Cell { label: tl!("All"), tip: tl!("Browse and manage plugins"), count: Some((all_plugins.len(), None)) }));
             for app in filter_apps {
                 let count = all_plugins.iter().filter(|p| p.app == app.id).count();
-                cells.push((
-                    app.id,
-                    Cell {
-                        label: app.name,
-                        tip: tr_ctx(current(), app.id, app.tagline),
-                        count: Some((count, None)),
-                    },
-                ));
+                cells.push((app.id, Cell { label: app.name, tip: tr_ctx(current(), app.id, app.tagline), count: Some((count, None)) }));
             }
             widgets::cells(ui, &mut self.plugin_app_filter, &cells);
 
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 if self.caps.manage_apps
                     && widgets::button(ui, tl!("Import plugin…"), Kind::Primary, 0.0)
-                        .on_hover_text(tl!(
-                            "Supports native WebAssembly (.wasm ABI v1) plugins, Adobe Photoshop Filter Factory (.afs / .8bf) filters, and preset packs."
-                        ))
+                        .on_hover_text(tl!("Supports native WebAssembly (.wasm ABI v1) plugins and preset packs (.abr, .grd, .aco, .cube)."))
                         .clicked()
                 {
-                    let target_app = if self.plugin_app_filter == "all" {
-                        "photocraft".to_string()
-                    } else {
-                        self.plugin_app_filter.to_string()
-                    };
+                    let target_app = if self.plugin_app_filter == "all" { "photocraft".to_string() } else { self.plugin_app_filter.to_string() };
                     self.dialog = Some(Dialog::ImportPlugin { app: target_app, path: String::new() });
                 }
                 ui.add_space(6.0);
@@ -403,12 +383,10 @@ impl LauncherUi {
 fn format_colors(t: &Tokens, format: PluginFormat) -> (Color32, Color32) {
     let bg = match format {
         PluginFormat::NativeWasm => tint(t.accent, if t.dark { 0.22 } else { 0.14 }),
-        PluginFormat::PhotoshopFilter => tint(t.good, if t.dark { 0.22 } else { 0.14 }),
         PluginFormat::PresetPack => t.sunken,
     };
     let fg = match format {
         PluginFormat::NativeWasm => t.accent_ink,
-        PluginFormat::PhotoshopFilter => t.good,
         PluginFormat::PresetPack => t.muted,
     };
     (bg, fg)

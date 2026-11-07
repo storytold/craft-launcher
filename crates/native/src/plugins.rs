@@ -2,8 +2,6 @@
 //!
 //! Includes:
 //! - A pure-Rust WebAssembly (ABI v1) filter synthesizer and manifest reader for PhotoCraft.
-//! - A compatibility transpiler for classic Adobe Photoshop Filter Factory (`.afs`) and `.8bf`
-//!   filter plug-ins into sandboxed `.wasm` ABI v1 modules.
 //! - Automatic host-application configuration (registering the plugin directory inside
 //!   PhotoCraft's `preferences.json` so imported plugins appear immediately under
 //!   **Filter › Plug-ins**).
@@ -119,7 +117,7 @@ pub fn repair_plugin(paths: &Paths, id: &str) -> Result<InstalledPlugin, String>
         std::fs::create_dir_all(parent).map_err(|e| format!("couldn't create {} ({e})", parent.display()))?;
     }
 
-    if matches!(item.format, PluginFormat::NativeWasm | PluginFormat::PhotoshopFilter) && !is_valid_wasm_file(&target) {
+    if item.format == PluginFormat::NativeWasm && !is_valid_wasm_file(&target) {
         let manifest_json = build_manifest_json(&item.id, &item.name, &item.version, &item.author, &item.tagline);
         let wasm = build_filter_wasm(&manifest_json, FilterKernel::default_for_id(&item.id));
         write_atomic(&target, &wasm)?;
@@ -171,10 +169,7 @@ Add-Type -AssemblyName System.Windows.Forms
 [System.Windows.Forms.Application]::EnableVisualStyles()
 $dlg = New-Object System.Windows.Forms.OpenFileDialog
 $dlg.Title = 'Select Plug-in or Preset'
-$dlg.Filter = 'ArtCraft & Photoshop Plug-ins (*.wasm;*.afs;*.8bf;*.abr;*.grd;*.aco;*.ase;*.kys;*.cube;*.vst3)|*.wasm;*.afs;*.8bf;*.abr;*.grd;*.aco;*.ase;*.kys;*.cube;*.vst3|All files (*.*)|*.*'
-if (Test-Path 'D:\01_Jogos_e_Programas\Plugins Photoshop (Exemplos)') {
-    $dlg.InitialDirectory = 'D:\01_Jogos_e_Programas\Plugins Photoshop (Exemplos)'
-}
+$dlg.Filter = 'ArtCraft Plug-ins (*.wasm;*.abr;*.grd;*.aco;*.ase;*.kys;*.cube;*.vst3)|*.wasm;*.abr;*.grd;*.aco;*.ase;*.kys;*.cube;*.vst3|All files (*.*)|*.*'
 if ($dlg.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) {
     [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
     Write-Output $dlg.FileName
@@ -282,7 +277,7 @@ fn extract_wasm_manifest(raw: &[u8], fallback_id: &str, fallback_name: &str) -> 
     }
 }
 
-/// Imports a local plugin file (`.wasm`, Photoshop `.afs` / `.8bf`, or preset pack `.abr` / `.grd` / `.aco` / `.ase` / `.kys` / `.cube`)
+/// Imports a local plugin file (`.wasm` or preset pack `.abr` / `.grd` / `.aco` / `.ase` / `.kys` / `.cube`)
 /// into `app`'s plugin folder. When `app` is `"auto"` or empty, the target Craft app is detected automatically.
 pub fn import_plugin_file(paths: &Paths, app: &str, source_path: &Path) -> Result<InstalledPlugin, String> {
     if !source_path.is_file() {
@@ -311,22 +306,6 @@ pub fn import_plugin_file(paths: &Paths, app: &str, source_path: &Path) -> Resul
             let dest = dir.join(format!("{slug}.wasm"));
             (meta.id, meta.name, meta.description, meta.author, meta.version, PluginFormat::NativeWasm, dest, raw)
         }
-        "afs" => {
-            let parsed = parse_photoshop_afs(&raw, &display_title);
-            let id = format!("com.photoshop.imported.{slug}");
-            let manifest = build_manifest_json(&id, &parsed.name, "1.0.0", "Photoshop Filter Factory", &parsed.tagline);
-            let wasm = build_filter_wasm(&manifest, parsed.kernel);
-            let dest = dir.join(format!("{slug}.wasm"));
-            (id, parsed.name, parsed.tagline, "Photoshop Filter Factory".to_string(), "1.0.0".to_string(), PluginFormat::PhotoshopFilter, dest, wasm)
-        }
-        "8bf" => {
-            let parsed = parse_photoshop_8bf(&raw, &display_title);
-            let id = format!("com.photoshop.imported.{slug}");
-            let manifest = build_manifest_json(&id, &parsed.name, "1.0.0", &parsed.author, &parsed.tagline);
-            let wasm = build_filter_wasm(&manifest, parsed.kernel);
-            let dest = dir.join(format!("{slug}.wasm"));
-            (id, parsed.name, parsed.tagline, parsed.author, "1.0.0".to_string(), PluginFormat::PhotoshopFilter, dest, wasm)
-        }
         "abr" | "grd" | "aco" | "ase" | "kys" | "cube" => {
             let id = format!("org.{app}.preset.{slug}");
             let dest = dir.join(format!("{slug}.{ext}"));
@@ -341,7 +320,7 @@ pub fn import_plugin_file(paths: &Paths, app: &str, source_path: &Path) -> Resul
             (id, display_title, format!("Imported {kind_name}"), "Imported".to_string(), "1.0.0".to_string(), PluginFormat::PresetPack, dest, raw)
         }
         _ => {
-            return Err(format!("unsupported plugin extension '.{ext}' (supported: .wasm, .afs, .8bf, .abr, .grd, .aco, .ase, .kys, .cube)"));
+            return Err(format!("unsupported plugin extension '.{ext}' (supported: .wasm, .abr, .grd, .aco, .ase, .kys, .cube)"));
         }
     };
 
@@ -424,7 +403,7 @@ fn check_plugin_health(plugin: &InstalledPlugin, photocraft_linked: bool) -> boo
     if !path.is_file() {
         return false;
     }
-    if matches!(plugin.format, PluginFormat::NativeWasm | PluginFormat::PhotoshopFilter) && !is_valid_wasm_file(path) {
+    if plugin.format == PluginFormat::NativeWasm && !is_valid_wasm_file(path) {
         return false;
     }
     if plugin.app == "photocraft" && !photocraft_linked {
@@ -451,130 +430,6 @@ pub fn build_manifest_json(id: &str, name: &str, version: &str, author: &str, de
         "params": {}
     })
     .to_string()
-}
-
-struct ParsedPhotoshopFilter {
-    name: String,
-    author: String,
-    tagline: String,
-    kernel: FilterKernel,
-}
-
-/// Parses an Adobe Photoshop Filter Factory `.afs` text file (`%RGB-1.0`, `ctl(0)..ctl(7)` sliders,
-/// and channel expressions) and derives an equivalent `FilterKernel`.
-fn parse_photoshop_afs(raw: &[u8], fallback_title: &str) -> ParsedPhotoshopFilter {
-    let text = String::from_utf8_lossy(raw);
-    let mut lines = text.lines().map(str::trim).filter(|l| !l.is_empty() && !l.starts_with("//") && !l.starts_with('#'));
-
-    let header = lines.next().unwrap_or("");
-    let mut ctl = [128i32; 8];
-    for slot in &mut ctl {
-        if let Some(line) = lines.next()
-            && let Ok(v) = line.parse::<i32>()
-        {
-            *slot = v.clamp(0, 255);
-        }
-    }
-    let exprs: Vec<&str> = lines.collect();
-    let joined = exprs.join(" ").to_ascii_lowercase();
-
-    let kernel = if joined.contains("255-r") || joined.contains("255 - r") {
-        if joined.contains('?') {
-            FilterKernel::Solarize { threshold: 0.5 }
-        } else {
-            FilterKernel::ColorMatrix { m: [-1.0, 0.0, 0.0, 0.0, -1.0, 0.0, 0.0, 0.0, -1.0], offset: [1.0, 1.0, 1.0] }
-        }
-    } else if joined.contains("sepia") || (ctl[0] > 140 && ctl[2] < 115) {
-        let r_gain = (ctl[0] as f32 / 128.0).clamp(0.4, 1.8);
-        let g_gain = (ctl[1] as f32 / 128.0).clamp(0.4, 1.8);
-        let b_gain = (ctl[2] as f32 / 128.0).clamp(0.3, 1.8);
-        FilterKernel::ColorMatrix {
-            m: [
-                0.393 * r_gain,
-                0.769 * r_gain,
-                0.189 * r_gain,
-                0.349 * g_gain,
-                0.686 * g_gain,
-                0.168 * g_gain,
-                0.272 * b_gain,
-                0.534 * b_gain,
-                0.131 * b_gain,
-            ],
-            offset: [0.01, 0.0, -0.01],
-        }
-    } else {
-        let r_scale = (ctl[0] as f32 / 128.0).clamp(0.25, 2.0);
-        let g_scale = (ctl[1] as f32 / 128.0).clamp(0.25, 2.0);
-        let b_scale = (ctl[2] as f32 / 128.0).clamp(0.25, 2.0);
-        let r_off = ((ctl[3] - 128) as f32 / 255.0).clamp(-0.5, 0.5);
-        let g_off = ((ctl[4] - 128) as f32 / 255.0).clamp(-0.5, 0.5);
-        let b_off = ((ctl[5] - 128) as f32 / 255.0).clamp(-0.5, 0.5);
-        FilterKernel::ColorMatrix { m: [r_scale, 0.0, 0.0, 0.0, g_scale, 0.0, 0.0, 0.0, b_scale], offset: [r_off, g_off, b_off] }
-    };
-
-    let tag = if header.starts_with("%RGB") {
-        format!("Imported Photoshop Filter Factory (.afs) — ctl({},{},{})", ctl[0], ctl[1], ctl[2])
-    } else {
-        "Imported Photoshop Filter Factory (.afs) plug-in".to_string()
-    };
-
-    ParsedPhotoshopFilter { name: format!("{fallback_title} (PS Filter)"), author: "Photoshop Filter Factory".into(), tagline: tag, kernel }
-}
-
-/// Extracts metadata from a binary Adobe Photoshop `.8bf` filter module (`8BIM` PiPL properties)
-/// and transpiles its tone/channel transformation into a sandboxed WebAssembly ABI v1 filter.
-fn parse_photoshop_8bf(raw: &[u8], fallback_title: &str) -> ParsedPhotoshopFilter {
-    let ascii_strings = extract_printable_runs(raw, 4);
-    let mut detected_name: Option<String> = None;
-    let mut detected_author: Option<String> = None;
-
-    for s in &ascii_strings {
-        let trimmed = s.trim();
-        if trimmed.len() >= 4
-            && trimmed.len() <= 48
-            && !trimmed.contains("8BIM")
-            && !trimmed.contains("This program")
-            && !trimmed.contains(".dll")
-            && !trimmed.contains("KERNEL32")
-            && !trimmed.starts_with('.')
-        {
-            if detected_name.is_none() {
-                detected_name = Some(trimmed.to_string());
-            } else if detected_author.is_none() {
-                detected_author = Some(trimmed.to_string());
-                break;
-            }
-        }
-    }
-
-    let name = detected_name.unwrap_or_else(|| format!("{fallback_title} (8BF)"));
-    let author = detected_author.unwrap_or_else(|| "Photoshop 8BF Bridge".into());
-    let kernel = FilterKernel::default_for_id(&name);
-
-    ParsedPhotoshopFilter { name, author, tagline: "Bridged Adobe Photoshop 8BF filter plug-in (ABI v1)".into(), kernel }
-}
-
-fn extract_printable_runs(bytes: &[u8], min_len: usize) -> Vec<String> {
-    let mut out = Vec::new();
-    let mut cur = Vec::new();
-    for &b in bytes {
-        if (0x20..=0x7e).contains(&b) {
-            cur.push(b);
-        } else {
-            if cur.len() >= min_len
-                && let Ok(s) = String::from_utf8(cur.clone())
-            {
-                out.push(s);
-            }
-            cur.clear();
-        }
-    }
-    if cur.len() >= min_len
-        && let Ok(s) = String::from_utf8(cur)
-    {
-        out.push(s);
-    }
-    out
 }
 
 /// Synthesizes a standalone, zero-import WebAssembly module implementing PhotoCraft's Plug-in ABI v1:
@@ -903,12 +758,15 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
         let paths = Paths::under(tmp.path());
 
-        let afs_path = tmp.path().join("sepia_pro.afs");
-        std::fs::write(&afs_path, b"%RGB-1.0\n160\n135\n95\n128\n128\n128\n0\n0\nr*ctl(0)/128\ng*ctl(1)/128\nb*ctl(2)/128\na\n").unwrap();
+        let manifest = build_manifest_json("org.photocraft.example.sepia", "Sepia Toning", "1.0.0", "PhotoCraft", "Applies a warm sepia tone");
+        let wasm_bytes = build_filter_wasm(&manifest, FilterKernel::Solarize { threshold: 0.5 });
+        let wasm_src = tmp.path().join("sepia_src.wasm");
+        std::fs::write(&wasm_src, &wasm_bytes).unwrap();
 
-        let inst = import_plugin_file(&paths, "photocraft", &afs_path).unwrap();
+        let inst = import_plugin_file(&paths, "photocraft", &wasm_src).unwrap();
         assert!(inst.healthy);
         assert!(inst.imported);
+        assert_eq!(inst.format, PluginFormat::NativeWasm);
         assert!(Path::new(&inst.location).is_file());
         assert!(is_photocraft_folder_linked(&paths));
 
@@ -930,22 +788,28 @@ mod tests {
     }
 
     #[test]
-    fn imports_photoshop_afs_and_8bf_and_extracts_wasm_manifest() {
+    fn imports_wasm_and_preset_pack_and_extracts_manifest() {
         let tmp = tempfile::tempdir().unwrap();
         let paths = Paths::under(tmp.path());
 
-        let bf_path = tmp.path().join("solarize_pro.8bf");
-        std::fs::write(&bf_path, b"8BIMPiPL\0\0\0\0Solarize Darkroom\0Open Filter Studio\0").unwrap();
-        let imported_8bf = import_plugin_file(&paths, "photocraft", &bf_path).unwrap();
-        assert_eq!(imported_8bf.format, PluginFormat::PhotoshopFilter);
-        assert_eq!(imported_8bf.name, "Solarize Darkroom");
-        assert!(is_valid_wasm_file(Path::new(&imported_8bf.location)));
+        let manifest =
+            build_manifest_json("org.photocraft.custom.solarize", "Solarize Darkroom", "1.0.0", "Open Filter Studio", "Solarize filter module");
+        let wasm_bytes = build_filter_wasm(&manifest, FilterKernel::Solarize { threshold: 0.5 });
+        let wasm_path = tmp.path().join("solarize.wasm");
+        std::fs::write(&wasm_path, &wasm_bytes).unwrap();
 
-        // Import the generated .wasm directly and verify its embedded manifest is read back.
-        let wasm_copy = tmp.path().join("custom_copy.wasm");
-        std::fs::copy(&imported_8bf.location, &wasm_copy).unwrap();
-        let imported_wasm = import_plugin_file(&paths, "photocraft", &wasm_copy).unwrap();
-        assert_eq!(imported_wasm.id, imported_8bf.id);
+        let imported_wasm = import_plugin_file(&paths, "photocraft", &wasm_path).unwrap();
+        assert_eq!(imported_wasm.format, PluginFormat::NativeWasm);
         assert_eq!(imported_wasm.name, "Solarize Darkroom");
+        assert_eq!(imported_wasm.id, "org.photocraft.custom.solarize");
+        assert!(is_valid_wasm_file(Path::new(&imported_wasm.location)));
+
+        // Test importing preset pack (.abr)
+        let abr_path = tmp.path().join("ink_brushes.abr");
+        std::fs::write(&abr_path, b"ABR-PRESET-DATA").unwrap();
+        let imported_abr = import_plugin_file(&paths, "photocraft", &abr_path).unwrap();
+        assert_eq!(imported_abr.format, PluginFormat::PresetPack);
+        assert_eq!(imported_abr.id, "org.photocraft.preset.ink_brushes");
+        assert!(Path::new(&imported_abr.location).is_file());
     }
 }

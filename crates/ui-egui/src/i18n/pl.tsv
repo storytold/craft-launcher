@@ -356,8 +356,8 @@ filter	Installed	Zainstalowane
 	Repair	Napraw
 	Needs repair	Wymaga naprawy
 	No plugins match	Brak pasujących wtyczek
-	Plugin file path (.wasm, .afs, .8bf, .abr, .grd, .aco, .cube)	Ścieżka do pliku wtyczki (.wasm, .afs, .8bf, .abr, .grd, .aco, .cube)
-	Supports native WebAssembly (.wasm ABI v1) plugins, Adobe Photoshop Filter Factory (.afs / .8bf) filters, and preset packs.	Obsługuje natywne wtyczki WebAssembly (.wasm ABI v1), filtry Adobe Photoshop Filter Factory (.afs / .8bf) oraz pakiety ustawień.
+	Plugin file path (.wasm, .abr, .grd, .aco, .cube)	Ścieżka do pliku wtyczki (.wasm, .abr, .grd, .aco, .cube)
+	Supports native WebAssembly (.wasm ABI v1) plugins and preset packs (.abr, .grd, .aco, .cube).	Obsługuje natywne wtyczki WebAssembly (.wasm ABI v1) oraz pakiety ustawień (.abr, .grd, .aco, .cube).
 	Browse…	Przeglądaj…
 	Choose a plugin file from your computer	Wybierz plik wtyczki z komputera
 	Auto-detected: {app}	Wykryto automatycznie: {app}

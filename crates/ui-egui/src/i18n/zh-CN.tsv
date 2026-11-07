@@ -322,8 +322,8 @@ figcraft	Interface design and prototyping	界面设计与原型制作
 	Repair	修复
 	Needs repair	需要修复
 	No plugins match	没有匹配的插件
-	Plugin file path (.wasm, .afs, .8bf, .abr, .grd, .aco, .cube)	插件文件路径 (.wasm, .afs, .8bf, .abr, .grd, .aco, .cube)
-	Supports native WebAssembly (.wasm ABI v1) plugins, Adobe Photoshop Filter Factory (.afs / .8bf) filters, and preset packs.	支持原生 WebAssembly (.wasm ABI v1) 插件、Adobe Photoshop Filter Factory (.afs / .8bf) 滤镜和预设包。
+	Plugin file path (.wasm, .abr, .grd, .aco, .cube)	插件文件路径 (.wasm, .abr, .grd, .aco, .cube)
+	Supports native WebAssembly (.wasm ABI v1) plugins and preset packs (.abr, .grd, .aco, .cube).	支持原生 WebAssembly (.wasm ABI v1) 插件和预设包 (.abr, .grd, .aco, .cube)。
 	Browse…	浏览…
 	Choose a plugin file from your computer	从电脑中选择插件文件
 	Auto-detected: {app}	已自动识别：{app}

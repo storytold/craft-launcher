@@ -352,8 +352,8 @@ filter	Installed	Installées
 	Repair	Réparer
 	Needs repair	Réparation requise
 	No plugins match	Aucun plug-in correspondant
-	Plugin file path (.wasm, .afs, .8bf, .abr, .grd, .aco, .cube)	Chemin du fichier de plug-in (.wasm, .afs, .8bf, .abr, .grd, .aco, .cube)
-	Supports native WebAssembly (.wasm ABI v1) plugins, Adobe Photoshop Filter Factory (.afs / .8bf) filters, and preset packs.	Prend en charge les plug-ins WebAssembly natifs (.wasm ABI v1), les filtres Adobe Photoshop Filter Factory (.afs / .8bf) et les packs de paramètres prédéfinis.
+	Plugin file path (.wasm, .abr, .grd, .aco, .cube)	Chemin du fichier de plug-in (.wasm, .abr, .grd, .aco, .cube)
+	Supports native WebAssembly (.wasm ABI v1) plugins and preset packs (.abr, .grd, .aco, .cube).	Prend en charge les plug-ins WebAssembly natifs (.wasm ABI v1) et les packs de paramètres prédéfinis (.abr, .grd, .aco, .cube).
 	Browse…	Parcourir…
 	Choose a plugin file from your computer	Choisir un fichier de plug-in sur votre ordinateur
 	Auto-detected: {app}	Détecté automatiquement : {app}

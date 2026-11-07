@@ -355,8 +355,8 @@ filter	Installed	Telepítve
 	Repair	Javítás
 	Needs repair	Javításra szorul
 	No plugins match	Nincs találat a bővítmények között
-	Plugin file path (.wasm, .afs, .8bf, .abr, .grd, .aco, .cube)	Bővítményfájl elérési útja (.wasm, .afs, .8bf, .abr, .grd, .aco, .cube)
-	Supports native WebAssembly (.wasm ABI v1) plugins, Adobe Photoshop Filter Factory (.afs / .8bf) filters, and preset packs.	Támogatja a natív WebAssembly (.wasm ABI v1) bővítményeket, az Adobe Photoshop Filter Factory (.afs / .8bf) szűrőket és az előbeállítás-csomagokat.
+	Plugin file path (.wasm, .abr, .grd, .aco, .cube)	Bővítményfájl elérési útja (.wasm, .abr, .grd, .aco, .cube)
+	Supports native WebAssembly (.wasm ABI v1) plugins and preset packs (.abr, .grd, .aco, .cube).	Támogatja a natív WebAssembly (.wasm ABI v1) bővítményeket és az előbeállítás-csomagokat (.abr, .grd, .aco, .cube).
 	Browse…	Tallózás…
 	Choose a plugin file from your computer	Válasszon egy bővítményfájlt a számítógépéről
 	Auto-detected: {app}	Automatikusan felismert: {app}

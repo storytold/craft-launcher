@@ -350,8 +350,8 @@ filter	Installed	Установлены
 	Repair	Восстановить
 	Needs repair	Требует восстановления
 	No plugins match	Плагины не найдены
-	Plugin file path (.wasm, .afs, .8bf, .abr, .grd, .aco, .cube)	Путь к файлу плагина (.wasm, .afs, .8bf, .abr, .grd, .aco, .cube)
-	Supports native WebAssembly (.wasm ABI v1) plugins, Adobe Photoshop Filter Factory (.afs / .8bf) filters, and preset packs.	Поддерживает плагины WebAssembly (.wasm ABI v1), фильтры Adobe Photoshop Filter Factory (.afs / .8bf) и наборы пресетов.
+	Plugin file path (.wasm, .abr, .grd, .aco, .cube)	Путь к файлу плагина (.wasm, .abr, .grd, .aco, .cube)
+	Supports native WebAssembly (.wasm ABI v1) plugins and preset packs (.abr, .grd, .aco, .cube).	Поддерживает плагины WebAssembly (.wasm ABI v1) и наборы пресетов (.abr, .grd, .aco, .cube).
 	Browse…	Обзор…
 	Choose a plugin file from your computer	Выберите файл плагина на компьютере
 	Auto-detected: {app}	Автоопределение: {app}

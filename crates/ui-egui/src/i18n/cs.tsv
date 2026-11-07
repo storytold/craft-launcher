@@ -322,8 +322,8 @@ filter	Installed	Nainstalováno
 	Repair	Opravit
 	Needs repair	Vyžaduje opravu
 	No plugins match	Žádné odpovídající zásuvné moduly
-	Plugin file path (.wasm, .afs, .8bf, .abr, .grd, .aco, .cube)	Cesta k souboru zásuvného modulu (.wasm, .afs, .8bf, .abr, .grd, .aco, .cube)
-	Supports native WebAssembly (.wasm ABI v1) plugins, Adobe Photoshop Filter Factory (.afs / .8bf) filters, and preset packs.	Podporuje nativní zásuvné moduly WebAssembly (.wasm ABI v1), filtry Adobe Photoshop Filter Factory (.afs / .8bf) a balíčky předvoleb.
+	Plugin file path (.wasm, .abr, .grd, .aco, .cube)	Cesta k souboru zásuvného modulu (.wasm, .abr, .grd, .aco, .cube)
+	Supports native WebAssembly (.wasm ABI v1) plugins and preset packs (.abr, .grd, .aco, .cube).	Podporuje nativní zásuvné moduly WebAssembly (.wasm ABI v1) a balíčky předvoleb (.abr, .grd, .aco, .cube).
 	Browse…	Procházet…
 	Choose a plugin file from your computer	Vyberte soubor zásuvného modulu z počítače
 	Auto-detected: {app}	Automaticky rozpoznáno: {app}

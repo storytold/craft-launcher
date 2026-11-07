@@ -501,15 +501,10 @@ impl LauncherUi {
 
         let app_name = artcraft_launcher_core::CraftApp::by_id(&app_id).map_or("PhotoCraft", |a| a.name);
         Self::title(ui, crate::icons::app(&app_id), tl!("Import plugin"), app_name);
-        ui.label(
-            RichText::new(tl!(
-                "Supports native WebAssembly (.wasm ABI v1) plugins, Adobe Photoshop Filter Factory (.afs / .8bf) filters, and preset packs."
-            ))
-            .color(t.muted),
-        );
+        ui.label(RichText::new(tl!("Supports native WebAssembly (.wasm ABI v1) plugins and preset packs (.abr, .grd, .aco, .cube).")).color(t.muted));
         ui.add_space(14.0);
 
-        widgets::hud(ui, tl!("Plugin file path (.wasm, .afs, .8bf, .abr, .grd, .aco, .cube)"), t.faint);
+        widgets::hud(ui, tl!("Plugin file path (.wasm, .abr, .grd, .aco, .cube)"), t.faint);
         ui.add_space(4.0);
         ui.horizontal(|ui| {
             ui.spacing_mut().item_spacing.x = 6.0;

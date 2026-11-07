@@ -1,7 +1,6 @@
 //! Local plugin state model and file-format detection for the Craft App Suite.
 //!
-//! Supports native ArtCraft WebAssembly plug-ins (`*.wasm`, ABI v1), compatible third-party /
-//! Adobe Photoshop filters (`*.8bf` / `*.afs` Filter Factory), and preset packs
+//! Supports native ArtCraft WebAssembly plug-ins (`*.wasm`, ABI v1) and preset packs
 //! (`*.abr`, `*.grd`, `*.aco`, `*.ase`, `*.kys`, `*.cube`).
 
 use serde::{Deserialize, Serialize};
@@ -11,8 +10,6 @@ use serde::{Deserialize, Serialize};
 pub enum PluginFormat {
     /// Sandboxed ArtCraft WebAssembly module (`*.wasm`, ABI v1).
     NativeWasm,
-    /// Classic Adobe Photoshop filter (`*.8bf` / `*.afs` Filter Factory) bridged to ABI v1.
-    PhotoshopFilter,
     /// Compatible preset pack (`*.abr` brushes, `*.grd` gradients, `*.aco`/`*.ase` swatches, LUTs).
     PresetPack,
 }
@@ -21,7 +18,6 @@ impl PluginFormat {
     pub fn label(self) -> &'static str {
         match self {
             Self::NativeWasm => "WASM ABI v1",
-            Self::PhotoshopFilter => "Photoshop 8BF / AFS",
             Self::PresetPack => "Preset Pack",
         }
     }
@@ -40,7 +36,7 @@ pub struct InstalledPlugin {
     pub location: String,
     /// Whether the `.wasm` / preset file on disk passed integrity checks and host-app registration.
     pub healthy: bool,
-    /// True when imported from a local file (`.wasm`, `.afs`, `.8bf`, `.abr`, `.grd`, `.aco`, `.ase`, `.kys`, `.cube`).
+    /// True when imported from a local file (`.wasm`, `.abr`, `.grd`, `.aco`, `.ase`, `.kys`, `.cube`).
     #[serde(default = "default_true")]
     pub imported: bool,
 }
@@ -67,7 +63,7 @@ pub fn plugin_status(installed: &InstalledPlugin) -> PluginStatus {
 pub fn detect_app_from_path(path: &std::path::Path, raw_header: Option<&[u8]>) -> Option<&'static str> {
     let ext = path.extension().and_then(|s| s.to_str()).map(str::to_ascii_lowercase)?;
     match ext.as_str() {
-        "afs" | "8bf" | "abr" | "grd" | "aco" | "ase" | "kys" => Some("photocraft"),
+        "abr" | "grd" | "aco" | "ase" | "kys" => Some("photocraft"),
         "cube" | "3dl" | "xmp" => Some("lightcraft"),
         "svg" => Some("vectorcraft"),
         "vst3" | "lv2" | "clap" => Some("soundcraft"),
@@ -112,8 +108,7 @@ mod tests {
     #[test]
     fn detects_target_app_from_extension_and_wasm_manifest() {
         use std::path::Path;
-        assert_eq!(detect_app_from_path(Path::new("sepia.afs"), None), Some("photocraft"));
-        assert_eq!(detect_app_from_path(Path::new("solarize.8bf"), None), Some("photocraft"));
+        assert_eq!(detect_app_from_path(Path::new("brushes.abr"), None), Some("photocraft"));
         assert_eq!(detect_app_from_path(Path::new("kodak.cube"), None), Some("lightcraft"));
         assert_eq!(detect_app_from_path(Path::new("opt.wasm"), Some(b"\0asm\x01\0\0\0{\"id\":\"org.vectorcraft.opt\"}")), Some("vectorcraft"));
     }
