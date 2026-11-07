@@ -12,6 +12,10 @@ use wasm_bindgen::JsCast;
 use wasm_bindgen_futures::JsFuture;
 
 const SETTINGS_KEY: &str = "settings";
+/// Self-hosted instances, next to index.html: `{"photocraft": "{proto}//{host}:3101/", ...}`.
+/// `{proto}` (`https:`), `{host}` (host name, no port) and `{app}` (the app's id) are filled in
+/// from the page's own address. Missing or unreadable, every app offers its download as usual.
+const LINKS_FILE: &str = "craft-links.json";
 
 /// Tell the UI the browser's languages (`?lang=ru` in the address first, as `ARTCRAFT_LAUNCHER_LOCALE`
 /// does on the desktop) before the first frame, so the Automatic interface language follows the
@@ -126,11 +130,37 @@ struct WebBackend {
     prereleases: bool,
     /// Apps whose details pictures are on their way (a second request meanwhile does nothing).
     pictures_busy: Rc<RefCell<std::collections::HashSet<&'static str>>>,
+    /// Self-hosted web instances by app id, from [`LINKS_FILE`].
+    links: Rc<RefCell<std::collections::HashMap<String, String>>>,
 }
 
 impl WebBackend {
     fn new(ctx: egui::Context) -> Self {
-        Self { events: Rc::default(), ctx, platform: visitor_platform(), checking: Rc::default(), prereleases: false, pictures_busy: Rc::default() }
+        let backend = Self {
+            events: Rc::default(),
+            ctx,
+            platform: visitor_platform(),
+            checking: Rc::default(),
+            prereleases: false,
+            pictures_busy: Rc::default(),
+            links: Rc::default(),
+        };
+        backend.load_links();
+        backend
+    }
+
+    /// Reads [`LINKS_FILE`] once, then repaints so the cards switch to Open.
+    fn load_links(&self) {
+        let (links, ctx) = (self.links.clone(), self.ctx.clone());
+        wasm_bindgen_futures::spawn_local(async move {
+            match instance_links().await {
+                Ok(found) => {
+                    *links.borrow_mut() = found;
+                    ctx.request_repaint();
+                }
+                Err(why) => log::info!("no self-hosted instances: {why}"),
+            }
+        });
     }
 
     /// Fetches the pictures of an app's details page, lead first. The browser keeps them in its own
@@ -242,6 +272,35 @@ async fn picture(url: &str) -> Result<Vec<u8>, PictureError> {
     Ok(bytes)
 }
 
+/// The self-hosted instances listed in [`LINKS_FILE`], with the placeholders filled in.
+async fn instance_links() -> Result<std::collections::HashMap<String, String>, String> {
+    let window = web_sys::window().ok_or("no window")?;
+    let location = window.location();
+    let proto = location.protocol().map_err(|_| "no protocol")?;
+    let host = location.hostname().map_err(|_| "no host")?;
+    let init = web_sys::RequestInit::new();
+    init.set_method("GET");
+    init.set_cache(web_sys::RequestCache::NoCache);
+    let request = web_sys::Request::new_with_str_and_init(LINKS_FILE, &init).map_err(|_| "bad request")?;
+    let resp: web_sys::Response =
+        JsFuture::from(window.fetch_with_request(&request)).await.map_err(|_| "no connection")?.dyn_into().map_err(|_| "no answer")?;
+    if resp.status() != 200 {
+        return Err(format!("HTTP {}", resp.status()));
+    }
+    let json = JsFuture::from(resp.json().map_err(|_| "unreadable")?).await.map_err(|_| "not JSON")?;
+    let mut links = std::collections::HashMap::new();
+    for pair in js_sys::Object::entries(json.dyn_ref::<js_sys::Object>().ok_or("not an object")?).iter() {
+        let pair: js_sys::Array = pair.unchecked_into();
+        let (Some(app), Some(url)) = (pair.get(0).as_string(), pair.get(1).as_string()) else { continue };
+        let url = url.replace("{proto}", &proto).replace("{host}", &host).replace("{app}", &app);
+        if url.is_empty() {
+            continue;
+        }
+        links.insert(app, url);
+    }
+    Ok(links)
+}
+
 /// The latest release; `Err(Some(reset))` when rate-limited, `Err(None)` on other failures.
 async fn latest(repo: &str, prereleases: bool) -> Result<LatestRelease, Option<i64>> {
     let url = if prereleases {
@@ -329,5 +388,9 @@ impl Backend for WebBackend {
 
     fn now(&self) -> i64 {
         (js_sys::Date::now() / 1000.0) as i64
+    }
+
+    fn web_url(&self, app: &str) -> Option<String> {
+        self.links.borrow().get(app).cloned()
     }
 }
