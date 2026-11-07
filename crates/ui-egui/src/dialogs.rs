@@ -33,6 +33,7 @@ impl LauncherUi {
         let response = match &mut dialog {
             Dialog::Notes(id) => modal.show(ctx, |ui| close = self.notes_dialog(ui, id)),
             Dialog::ConfirmUninstall(id) => modal.show(ctx, |ui| close = self.uninstall_dialog(ui, id)),
+            Dialog::AppShortcuts(id) => modal.show(ctx, |ui| close = self.app_shortcuts_dialog(ui, id)),
             Dialog::Install { app, folder } => modal.show(ctx, |ui| close = self.install_dialog(ui, app, folder, host)),
             Dialog::Replace { app, path } => modal.show(ctx, |ui| close = self.replace_dialog(ui, app, path)),
             Dialog::Settings => modal.show(ctx, |ui| close = self.settings_dialog(ui, host)),
@@ -232,6 +233,56 @@ impl LauncherUi {
         close
     }
 
+    /// Edits desktop and Start menu / application menu shortcut preferences for `id`.
+    fn app_shortcuts_dialog(&mut self, ui: &mut egui::Ui, id: &str) -> bool {
+        let Some(entry) = self.entry(id).cloned() else { return true };
+        let t = Tokens::get(ui.ctx());
+        ui.set_width(440.0_f32.min((ui.ctx().content_rect().width() - 80.0).max(0.0)));
+        Self::title(ui, crate::icons::app(id), entry.app.name, tl!("Shortcuts"));
+        ui.label(
+            RichText::new(tl!(
+                "Choose which shortcuts to keep for this app. Changes apply immediately for installed apps and are preserved across updates."
+            ))
+            .color(t.muted),
+        );
+        ui.add_space(12.0);
+
+        let detected = self.detected_shortcuts.get(id).copied();
+        let (mut desktop, mut start_menu) = self.settings.effective_shortcuts(id, detected);
+        let desktop_changed = ui.checkbox(&mut desktop, tl!("Desktop shortcut")).changed();
+        let start_menu_changed = ui.checkbox(&mut start_menu, tl!("Start menu / application menu shortcut")).changed();
+        if desktop_changed || start_menu_changed {
+            self.settings
+                .app_shortcuts
+                .insert(id.to_string(), artcraft_launcher_core::protocol::AppShortcutPrefs { desktop: Some(desktop), start_menu: Some(start_menu) });
+            self.detected_shortcuts.insert(id.to_string(), artcraft_launcher_core::protocol::AppShortcutState { desktop, start_menu });
+            if entry.installed.is_some() {
+                self.act_command(Command::SyncShortcuts { app: id.to_string(), desktop, start_menu });
+            }
+        }
+
+        ui.add_space(20.0);
+        let mut close = false;
+        let has_override = self.settings.app_shortcuts.contains_key(id);
+        ui.horizontal(|ui| {
+            if has_override && widgets::button(ui, tl!("Use global defaults"), Kind::Secondary, 0.0).clicked() {
+                self.settings.app_shortcuts.remove(id);
+                let desktop = self.settings.create_desktop_shortcut;
+                let start_menu = self.settings.create_start_menu_shortcut;
+                self.detected_shortcuts.insert(id.to_string(), artcraft_launcher_core::protocol::AppShortcutState { desktop, start_menu });
+                if entry.installed.is_some() {
+                    self.act_command(Command::SyncShortcuts { app: id.to_string(), desktop, start_menu });
+                }
+            }
+            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                if widgets::button(ui, tl!("Done"), Kind::Primary, 90.0).clicked() {
+                    close = true;
+                }
+            });
+        });
+        close
+    }
+
     /// The extra command-line flags an app is opened with. Saved only when they split cleanly.
     fn launch_flags_dialog(&mut self, ui: &mut egui::Ui, id: &str, flags: &mut String) -> bool {
         let Some(app) = self.entry(id).map(|e| e.app) else { return true };
@@ -294,7 +345,6 @@ impl LauncherUi {
         });
         close
     }
-
     /// Lets the user choose this app's install folder and returns `true` when the dialog should
     /// close, including when the app entry is gone. An empty field removes the per-app override, a
     /// non-empty one persists it, and any changed configuration is sent before the install is queued. The path
