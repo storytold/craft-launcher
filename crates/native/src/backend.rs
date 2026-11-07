@@ -364,19 +364,20 @@ impl NativeBackend {
         });
     }
 
-    /// Starts an install, update, or uninstall job for `app_id` on a background thread.
-    fn start_job(&self, app_id: &str, work: Work) {
+    /// Starts the job, or returns `false` without starting one: the app is unknown, doesn't run
+    /// on this platform, is already running a job, or the launcher is restarting into an update.
+    fn start_job(&self, app_id: &str, work: Work) -> bool {
         let uninstall = matches!(work, Work::Uninstall);
-        let Some(app) = CraftApp::by_id(app_id) else { return };
+        let Some(app) = CraftApp::by_id(app_id) else { return false };
         if self.platform.is_some_and(|p| !app.runs_on(p.os)) {
-            return;
+            return false;
         }
         log::info!("{}: starting {} job", app.name, if uninstall { "uninstall" } else { "install/update" });
         let stop = Arc::new(Stop::default());
         let restarting = {
             let mut jobs = self.shared.jobs.lock().unwrap_or_else(PoisonError::into_inner);
             if jobs.contains_key(app.id) {
-                return;
+                return false;
             }
             let restarting = self.shared.restarting.load(Ordering::SeqCst);
             if !restarting {
@@ -387,7 +388,7 @@ impl NativeBackend {
         if restarting {
             let result = Err("ArtCraft Launcher is restarting to finish its update. Try again once it's back.".into());
             self.shared.emit(Event::JobFinished { app: app.id.to_string(), result });
-            return;
+            return false;
         }
         let shared = self.shared.clone();
         let job = JobGuard { shared: shared.clone(), app_id: app.id.to_string() };
@@ -414,6 +415,11 @@ impl NativeBackend {
                     None => Err(format!("{} isn't installed", app.name)),
                 }
             } else {
+                let (approved, batch) = match &work {
+                    Work::Replace(path) => (Some(path.as_str()), None),
+                    Work::Install(batch) => (None, batch.clone()),
+                    Work::Uninstall => (None, None),
+                };
                 let r = run_install(
                     app,
                     &shared,
@@ -424,11 +430,9 @@ impl NativeBackend {
                     existing.as_ref(),
                     record.as_ref(),
                     &stop,
-                    match &work {
-                        Work::Replace(path) => Some(path.as_str()),
-                        Work::Install | Work::Uninstall => None,
-                    },
+                    approved,
                     source.as_deref(),
+                    batch,
                 );
                 // Stopped by the connection rather than by the user: say so, and how to go on.
                 match r {
@@ -457,6 +461,41 @@ impl NativeBackend {
             drop(job);
             shared.emit(Event::JobFinished { app: app.id.to_string(), result });
         });
+        true
+    }
+
+    /// Starts one install per app, together (see [`Command::InstallAll`]): where the platform
+    /// needs a permission prompt, the batch shares one — each member waits for the others'
+    /// downloads before the system installer is asked once. Apps unknown or already running a
+    /// job are left out; a batch of one installs the same as a single [`Command::Install`].
+    fn install_all(&self, apps: &[String]) {
+        let running = self.shared.jobs.lock().unwrap_or_else(PoisonError::into_inner);
+        let mut ids: Vec<&str> = Vec::new();
+        for id in apps {
+            let Some(app) = CraftApp::by_id(id) else { continue };
+            if running.contains_key(app.id) || ids.contains(&app.id) {
+                continue;
+            }
+            ids.push(app.id);
+        }
+        drop(running);
+        #[cfg(any(target_os = "linux", windows))]
+        let batch = (!ids.is_empty()).then(|| install::INSTALLER.gather(ids.len()));
+        #[cfg(not(any(target_os = "linux", windows)))]
+        let batch = None;
+        let mut started = 0;
+        for id in &ids {
+            if self.start_job(id, Work::Install(batch.clone())) {
+                started += 1;
+            }
+        }
+        // Members that could not start after all (another job raced in for them) are not coming:
+        // their places in the batch are given back, so the rest don't wait for them.
+        for _ in started..ids.len() {
+            if let Some(batch) = &batch {
+                batch.leave();
+            }
+        }
     }
 
     /// Downloads the newer launcher, puts it in place and asks the UI to quit so it can start.
@@ -517,7 +556,9 @@ impl NativeBackend {
 
 #[derive(Clone, PartialEq, Eq)]
 enum Work {
-    Install,
+    /// Install or update. Carries the batch this job is part of, if any (see
+    /// [`Command::InstallAll`]): where the platform needs a permission prompt, the batch shares one.
+    Install(Option<crate::queue::Gather>),
     /// Install over the path the user agreed to overwrite (see [`Command::Replace`]).
     Replace(String),
     Uninstall,
@@ -655,7 +696,12 @@ fn run_install(
     stop: &Stop,
     approved: Option<&str>,
     source: Option<&dyn ReleaseSource>,
+    batch: Option<crate::queue::Gather>,
 ) -> Result<String, String> {
+    // The ways out below that never reach the installer (a repository-managed Flatpak, a missing
+    // release, the overwrite question, a paused download) free the rest of the batch at once;
+    // from `install_at` on, the same guard does it there.
+    let mut batch = install::BatchPlace(batch);
     if let Some(update) = repository_update(app, existing, options) {
         let inst = update?;
         #[cfg(target_os = "linux")]
@@ -734,7 +780,17 @@ fn run_install(
         last_emit = Instant::now();
         shared.emit(Event::Progress { app: app.id.to_string(), phase: p });
     };
-    let mut job = Job { http, paths, stop, phase: &mut phase, install_locations: &options.install_locations, replace, approved_path, downgrade };
+    let mut job = Job {
+        http,
+        paths,
+        stop,
+        phase: &mut phase,
+        install_locations: &options.install_locations,
+        replace,
+        approved_path,
+        downgrade,
+        batch: batch.take(),
+    };
     let mut commit_record = |record: &crate::manifest::Record| {
         let mut manifest = shared.manifest.lock().unwrap_or_else(PoisonError::into_inner);
         let mut updated = manifest.clone();
@@ -1399,9 +1455,16 @@ impl Backend for NativeBackend {
                     shared.emit(Event::Versions { app, result });
                 });
             }
-            Command::Install { app } => self.start_job(&app, Work::Install),
-            Command::Replace { app, path } => self.start_job(&app, Work::Replace(path)),
-            Command::Uninstall { app } => self.start_job(&app, Work::Uninstall),
+            Command::Install { app } => {
+                self.start_job(&app, Work::Install(None));
+            }
+            Command::InstallAll { apps } => self.install_all(&apps),
+            Command::Replace { app, path } => {
+                self.start_job(&app, Work::Replace(path));
+            }
+            Command::Uninstall { app } => {
+                self.start_job(&app, Work::Uninstall);
+            }
             Command::Pause { app } => {
                 if let Some(stop) = self.shared.jobs.lock().unwrap_or_else(PoisonError::into_inner).get(&app) {
                     stop.pause();
@@ -1509,6 +1572,20 @@ mod tests {
     use super::*;
 
     use crate::source::Answer;
+
+    /// A member of a batch that ends before it ever reaches the installer — its download failed,
+    /// or it turned out to need none of the batch's prompts — frees the rest of the batch at
+    /// once, rather than holding them back until the batch's wait runs out.
+    #[cfg(any(target_os = "linux", windows))]
+    #[test]
+    fn a_batch_member_that_never_reaches_the_installer_frees_the_rest() {
+        let gather = install::INSTALLER.gather(1);
+        {
+            let _place = install::BatchPlace(Some(gather.clone()));
+            assert!(!gather.open(), "the place is held while the job is on its way");
+        }
+        assert!(gather.open(), "dropping the place on the way out opens the gate");
+    }
 
     fn tagged(v: &str) -> Release {
         Release { tag: format!("v{v}"), version: version::parse(v), ..Default::default() }
