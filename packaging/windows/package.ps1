@@ -5,7 +5,8 @@
 .DESCRIPTION
   Produces, in $env:DIST (default: dist/release):
     artcraft-launcher-<version>-windows-<arch>.msi            per-user installer with a setup wizard (WiX v5)
-    artcraft-launcher-<version>-windows-<arch>-portable.zip   artcraft-launcher.exe + portable.txt
+    artcraft-launcher-<version>-windows-<arch>-portable.zip   artcraft-launcher.exe, its installer
+                                                              helper and portable.txt
 
   The binary links the C runtime statically (+crt-static), so neither the MSI nor the portable
   zip needs the Visual C++ redistributable. Signing is delegated to sign.ps1 (skipped with a
@@ -29,6 +30,7 @@ $Root = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
 
 # ---- app-specific values ----------------------------------------------------------------------
 $Pkg = 'artcraft-launcher'          # cargo package and binary
+$Helper = 'artcraft-launcher-helper' # the installer helper, the only program that runs elevated
 $AppName = 'ArtCraft Launcher'      # display name
 
 function Invoke-Native([string] $What, [scriptblock] $Block) {
@@ -67,7 +69,7 @@ if (-not $SkipBuild) {
   [Environment]::SetEnvironmentVariable($flagVar, '-C target-feature=+crt-static')
   # Fail the build (rather than warn) if the icon/VERSIONINFO can't be embedded.
   $env:ARTCRAFT_LAUNCHER_REQUIRE_WINRES = '1'
-  Invoke-Native "cargo build ($Target)" { cargo build --release --locked -p $Pkg --target $Target }
+  Invoke-Native "cargo build ($Target)" { cargo build --release --locked -p $Pkg -p $Helper --target $Target }
 }
 
 $Bin = Join-Path $TargetDir "$Target\release"
@@ -82,10 +84,13 @@ function Get-PeHeader([string] $Path) {
   return @{ Machine = [BitConverter]::ToUInt16($bytes, $pe + 4); Subsystem = [BitConverter]::ToUInt16($bytes, $pe + 0x5C) }
 }
 $Machine = switch ($Arch) { 'x64' { 0x8664 } 'x86' { 0x14C } 'arm64' { 0xAA64 } }
-$h = Get-PeHeader (Join-Path $Bin $Exe)
-if ($h.Machine -ne $Machine) { throw "$Exe is for machine 0x$('{0:X}' -f $h.Machine), expected 0x$('{0:X}' -f $Machine) ($Arch)" }
-if ($h.Subsystem -ne 2) { throw "$Exe has PE subsystem $($h.Subsystem), expected 2 (Windows GUI)" }
-Write-Output "ok ${Exe}: $Arch, PE subsystem $($h.Subsystem)"
+$HelperExe = "$Helper.exe"
+foreach ($e in $Exe, $HelperExe) {
+  $h = Get-PeHeader (Join-Path $Bin $e)
+  if ($h.Machine -ne $Machine) { throw "$e is for machine 0x$('{0:X}' -f $h.Machine), expected 0x$('{0:X}' -f $Machine) ($Arch)" }
+  if ($h.Subsystem -ne 2) { throw "$e has PE subsystem $($h.Subsystem), expected 2 (Windows GUI)" }
+  Write-Output "ok ${e}: $Arch, PE subsystem $($h.Subsystem)"
+}
 
 $Stage = Join-Path $TargetDir "windows-package\$Arch"
 Remove-Item -Recurse -Force $Stage -ErrorAction SilentlyContinue
@@ -93,8 +98,10 @@ New-Item -ItemType Directory -Force -Path $Stage | Out-Null
 # Dependency font notices are required even without optional craft-fonts.
 Copy-Item -LiteralPath (Join-Path $Root 'NOTICE') -Destination $Stage
 Copy-Item (Join-Path $Bin $Exe) $Stage
+Copy-Item (Join-Path $Bin $HelperExe) $Stage
 
-& (Join-Path $PSScriptRoot 'sign.ps1') (Join-Path $Stage $Exe)
+# The helper must be signed like the launcher: it checks each package against its own publisher.
+& (Join-Path $PSScriptRoot 'sign.ps1') (Join-Path $Stage $Exe) (Join-Path $Stage $HelperExe)
 
 # ---- MSI ---------------------------------------------------------------------------------------
 # The setup wizard's art, drawn here (System.Drawing) in getartcraft.com's style so the MSI shows
@@ -197,6 +204,7 @@ $Portable = Join-Path $TargetDir "windows-package\$Pkg-$Version-windows-$Arch-po
 Remove-Item -Recurse -Force $Portable -ErrorAction SilentlyContinue
 New-Item -ItemType Directory -Force -Path $Portable | Out-Null
 Copy-Item (Join-Path $Stage $Exe) $Portable
+Copy-Item (Join-Path $Stage $HelperExe) $Portable
 foreach ($f in 'README.md', 'LICENSE-MIT', 'LICENSE-APACHE', 'NOTICE', 'ATTRIBUTION.md') {
   $p = Join-Path $Root $f
   if (Test-Path $p) { Copy-Item $p $Portable }
