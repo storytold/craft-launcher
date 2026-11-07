@@ -392,3 +392,19 @@ materialcraft	Node graphs	節點圖
 materialcraft	Combine noises, patterns and filters.	組合雜訊、圖樣與濾鏡。
 materialcraft	Live previews	即時預覽
 materialcraft	Preview materials in 2D and on 3D models.	在 2D 與 3D 模型上預覽材質。
+
+	Local services	本地服務
+
+	Expose Craft AI apps as MCP servers so LM Studio / Bionic can drive their tools.	將 Craft AI 應用公開為 MCP 伺服器，以便 LM Studio / Bionic 可以驅動其工具。
+
+	Craft apps	Craft 應用
+
+	No installed Craft app has a usable CLI yet.	已安裝的 Craft 應用目前還沒有可用的 CLI。
+
+	Unified bridge	統一橋接
+
+	Not found on this machine	本機未找到
+
+	Found	已找到
+
+	Port	埠口

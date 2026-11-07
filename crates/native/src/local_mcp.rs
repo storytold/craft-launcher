@@ -236,7 +236,7 @@ pub fn remove_service(servers: &mut Vec<ServerEntry>, service_id: &str) -> bool 
 pub const BRIDGE_PORT: u16 = 12345;
 
 /// Stable id for the single unified-bridge entry in `ng-mcp.json`.
-const BRIDGE_ID: &str = "craft-ai-mcp";
+pub const BRIDGE_ID: &str = "craft-ai-mcp";
 
 /// Locate the unified `craft-ai-mcp` bridge binary, if present.
 ///
@@ -261,11 +261,10 @@ fn first_existing(override_path: Option<&Path>, candidates: &[PathBuf]) -> Optio
 /// hardcoded to one machine's layout; extend as the ship story settles.
 fn candidate_bridge_paths() -> Vec<PathBuf> {
     let mut out = Vec::new();
-    if let Some(exe) = std::env::current_exe().ok() {
-        if let Some(dir) = exe.parent() {
-            for name in ["craft-ai-mcp.exe", "craft-ai-mcp"] {
-                out.push(dir.join(name));
-            }
+    if let Some(exe) = std::env::current_exe().ok()
+        && let Some(dir) = exe.parent() {
+        for name in ["craft-ai-mcp.exe", "craft-ai-mcp"] {
+            out.push(dir.join(name));
         }
     }
     out

@@ -66,6 +66,19 @@ pub enum Command {
     },
     /// Change how the backend behaves.
     Configure(BackendOptions),
+
+    /// Ask for the current state of the local MCP services (installed apps + unified bridge).
+    McpState,
+    /// Turn an installed app's stdio MCP entry on or off in LM Studio's config.
+    McpSetService {
+        service_id: String,
+        enabled: bool,
+    },
+    /// Turn the unified-bridge HTTP MCP entry on or off at `port`.
+    McpSetBridge {
+        port: u16,
+        enabled: bool,
+    },
 }
 
 /// Parent folders for new installs. Existing installations keep their recorded location.
@@ -277,6 +290,33 @@ pub enum Event {
         /// GitHub refused more API calls until this time (Unix seconds).
         rate_limited_until: Option<i64>,
     },
+
+    /// The local MCP services: which installed apps can be exposed as stdio servers, their current
+    /// on/off state in LM Studio's config, plus the unified HTTP bridge (found? version? port?
+    /// enabled?). Sent after detection and after any change, so the settings panel is always in sync.
+    Mcp {
+        services: Vec<McpService>,
+        bridge: McpBridge,
+    },
+}
+
+/// One installed app that can be exposed as a stdio MCP server. `command` is the CLI path the
+/// host would spawn; `enabled` is its current state in LM Studio's config.
+#[derive(Clone, Debug, PartialEq)]
+pub struct McpService {
+    pub id: String,
+    pub name: String,
+    pub command: String,
+    pub enabled: bool,
+}
+
+/// The unified HTTP bridge. `found` when its binary exists on this machine; `version` when readable.
+#[derive(Clone, Debug, PartialEq, Default)]
+pub struct McpBridge {
+    pub found: bool,
+    pub version: Option<String>,
+    pub port: u16,
+    pub enabled: bool,
 }
 
 /// What a backend can do on this platform.

@@ -413,3 +413,19 @@ materialcraft	Preview materials in 2D and on 3D models.	Previsualiza materiales 
 	Migrate Flatpak bundles to ArtCraft OCI (experimental)	Migrar paquetes Flatpak a ArtCraft OCI (experimental)
 	On update, switch first party apps when the matching package is available. Otherwise, keep using bundles.	Al actualizar, migrar las aplicaciones de ArtCraft si está disponible el paquete correspondiente. De lo contrario, seguir usando paquetes independientes.
 	The OCI repository is a preview with GPG verification disabled.	El repositorio OCI es una versión preliminar con la verificación GPG desactivada.
+
+	Local services	Servicios locales
+
+	Expose Craft AI apps as MCP servers so LM Studio / Bionic can drive their tools.	Exponga las aplicaciones de Craft AI como servidores MCP para que LM Studio / Bionic pueda controlar sus herramientas.
+
+	Craft apps	Aplicaciones Craft
+
+	No installed Craft app has a usable CLI yet.	Ninguna aplicación de Craft instalada tiene aún un CLI utilizável.
+
+	Unified bridge	Puente unificado
+
+	Not found on this machine	No encontrado en esta máquina
+
+	Found	Encontrado
+
+	Port	Puerto
