@@ -38,6 +38,8 @@
 
 use std::io::{ErrorKind, Read, Write};
 use std::net::{Ipv4Addr, SocketAddr, TcpListener, TcpStream};
+use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{Receiver, channel};
 use std::time::{Duration, Instant};
 
@@ -123,10 +125,30 @@ pub enum Request {
 
 pub enum Instance {
     /// We're the only one. A request arrives on the receiver whenever another start asks
-    /// something; `wake` is called to repaint the (perhaps hidden) window.
-    Primary(Receiver<Request>),
+    /// something; `wake` is called to repaint the (perhaps hidden) window. [`Answering`] stops
+    /// the answers.
+    Primary(Receiver<Request>, Answering),
     /// Another launcher is running and has been asked to show itself.
     Secondary,
+}
+
+/// Stops this launcher answering other starts ([`Answering::stop`]).
+#[derive(Clone, Default)]
+pub struct Answering(Arc<AtomicBool>);
+
+impl Answering {
+    /// Answer no more starts, and free the port at the next one: the window failed for good and
+    /// the process only waits on its error dialog before it exits. A start during the dialog then
+    /// gets no answer, so it starts a launcher of its own instead of deferring to this one and
+    /// exiting with nothing on screen. Dropping the receiver isn't enough: the listener notices
+    /// only when it queues a request, after it has already answered that start.
+    pub fn stop(&self) {
+        self.0.store(true, Ordering::SeqCst);
+    }
+
+    fn stopped(&self) -> bool {
+        self.0.load(Ordering::SeqCst)
+    }
 }
 
 /// How the running launcher answered our hello.
@@ -158,7 +180,7 @@ pub fn claim(wake: Wake) -> Instance {
     let ours = ours();
     let token = token();
     if let Ok(listener) = TcpListener::bind(addr) {
-        return Instance::Primary(listen(listener, ours, token, wake));
+        return listen(listener, ours, token, wake);
     }
     match ask(addr, ours.as_ref(), token.as_deref()) {
         Ok(Answer::Defer) => Instance::Secondary,
@@ -166,7 +188,7 @@ pub fn claim(wake: Wake) -> Instance {
             let deadline = Instant::now() + TAKE_OVER_WITHIN;
             while Instant::now() < deadline {
                 if let Ok(listener) = TcpListener::bind(addr) {
-                    return Instance::Primary(listen(listener, ours, token, wake));
+                    return listen(listener, ours, token, wake);
                 }
                 std::thread::sleep(Duration::from_millis(100));
             }
@@ -176,19 +198,36 @@ pub fn claim(wake: Wake) -> Instance {
                 Instance::Secondary
             } else {
                 log::warn!("whatever holds the launcher's port didn't prove it is ArtCraft Launcher and kept the port; starting anyway");
-                Instance::Primary(channel().1)
+                Instance::Primary(channel().1, Answering::default())
             }
         }
         Ok(Answer::Unrelated) => {
             log::warn!("something on the launcher's port didn't prove it is this account's ArtCraft Launcher; starting anyway");
-            Instance::Primary(channel().1)
+            Instance::Primary(channel().1, Answering::default())
         }
         Ok(Answer::Legacy) => {
             log::warn!("an older ArtCraft Launcher is running and can't be asked to quit; starting anyway");
-            Instance::Primary(channel().1)
+            listen_if_freed(addr, ours, token, wake)
         }
         // The port is taken by something else: run anyway rather than refuse to start.
-        Err(_) => Instance::Primary(channel().1),
+        Err(_) => listen_if_freed(addr, ours, token, wake),
+    }
+}
+
+/// Listen after all if the port was freed while we asked; otherwise start without answering.
+/// A launcher showing its start-failure dialog hangs up on the start that asked and frees the
+/// port ([`Answering::stop`]): without this the newcomer would run without a listener, and the
+/// next start would become a second launcher next to it.
+fn listen_if_freed(addr: SocketAddr, ours: Option<Version>, token: Option<String>, wake: Wake) -> Instance {
+    let deadline = Instant::now() + Duration::from_millis(500);
+    loop {
+        if let Ok(listener) = TcpListener::bind(addr) {
+            return listen(listener, ours, token, wake);
+        }
+        if Instant::now() >= deadline {
+            return Instance::Primary(channel().1, Answering::default());
+        }
+        std::thread::sleep(Duration::from_millis(50));
     }
 }
 
@@ -246,11 +285,23 @@ fn constant_time_eq(a: &str, b: &str) -> bool {
     core::hint::black_box(diff) == 0
 }
 
-/// Answers other starts on `listener` until the receiver is dropped.
-fn listen(listener: TcpListener, ours: Option<Version>, token: Option<String>, wake: Wake) -> Receiver<Request> {
+/// Answers other starts on `listener` until the receiver is dropped or [`Answering::stop`].
+fn listen(listener: TcpListener, ours: Option<Version>, token: Option<String>, wake: Wake) -> Instance {
+    let (rx, answering) = serve(listener, ours, token, wake);
+    Instance::Primary(rx, answering)
+}
+
+/// [`listen`]'s receiver and stop handle.
+fn serve(listener: TcpListener, ours: Option<Version>, token: Option<String>, wake: Wake) -> (Receiver<Request>, Answering) {
     let (tx, rx) = channel();
+    let answering = Answering::default();
+    let stop = answering.clone();
     std::thread::spawn(move || {
         for mut stream in listener.incoming().flatten() {
+            if stop.stopped() {
+                // Hang up unanswered and free the port (the listener drops with this thread).
+                break;
+            }
             let Some(request) = handle_incoming(&mut stream, ours.as_ref(), token.as_deref()) else { continue };
             drop(stream);
             if tx.send(request).is_err() {
@@ -261,7 +312,7 @@ fn listen(listener: TcpListener, ours: Option<Version>, token: Option<String>, w
             }
         }
     });
-    rx
+    (rx, answering)
 }
 
 /// Reads a line or message up to `\n` or EOF, at most [`MAX_GREETING`] bytes and one second in total.
@@ -431,9 +482,15 @@ mod tests {
 
     /// A primary on a free loopback port, as version `running`, authenticating with [`TOK`].
     fn primary(running: &str) -> (SocketAddr, Receiver<Request>) {
+        let (addr, rx, _) = primary_answering(running);
+        (addr, rx)
+    }
+
+    fn primary_answering(running: &str) -> (SocketAddr, Receiver<Request>, Answering) {
         let listener = TcpListener::bind((Ipv4Addr::LOCALHOST, 0)).unwrap();
         let addr = listener.local_addr().unwrap();
-        (addr, listen(listener, Some(v(running)), Some(TOK.to_string()), Wake::default()))
+        let (rx, answering) = serve(listener, Some(v(running)), Some(TOK.to_string()), Wake::default());
+        (addr, rx, answering)
     }
 
     fn next(rx: &Receiver<Request>) -> Request {
@@ -581,6 +638,23 @@ mod tests {
         assert!(message.len() < 64, "the deadline should stop a slow greeting before the size limit");
         reader.join().unwrap();
         writer.join().unwrap();
+    }
+
+    #[test]
+    fn a_stopped_launcher_answers_no_start_and_frees_its_port() {
+        // The window failed and the error dialog is up: a start now must not defer to this
+        // launcher and exit with nothing on screen.
+        let (addr, rx, answering) = primary_answering("0.1.2");
+        answering.stop();
+        assert_ne!(ask(addr, Some(&v("0.1.2")), Some(TOK)).ok(), Some(Answer::Defer));
+        assert!(rx.try_recv().is_err(), "nothing queued for a window that won't show");
+        // The start that was hung up on listens on the freed port, so a third start defers to it
+        // instead of becoming a second launcher.
+        let Instance::Primary(next_rx, _) = listen_if_freed(addr, Some(v("0.1.2")), Some(TOK.to_string()), Wake::default()) else {
+            panic!("the hung-up start becomes the primary")
+        };
+        assert_eq!(ask(addr, Some(&v("0.1.2")), Some(TOK)).ok(), Some(Answer::Defer));
+        assert_eq!(next(&next_rx), Request::Show);
     }
 
     #[test]
