@@ -7,6 +7,7 @@
 
 	Launcher	Launcher
 	Craft App Suite	Craft App Suite
+	by {name}	od {name}
 	Open Source Tools for Creatives, Makers, and Builders	Open-source nástroje pro kreativce, tvůrce a vývojáře
 	Settings	Nastavení
 	Check for updates	Zkontrolovat aktualizace
@@ -36,6 +37,10 @@
 	Install	Nainstalovat
 	Update to {v}	Aktualizovat na {v}
 	Open	Otevřít
+	Open {version}	Otevřít {version}
+	Open {installed} without updating. {latest} stays available.	Otevřít {installed} bez aktualizace. Verze {latest} zůstane k dispozici.
+	{latest} is out, but ArtCraft Launcher can't install it over this copy.	Verze {latest} je venku, ale ArtCraft Launcher ji nemůže nainstalovat přes tuto kopii.
+	ArtCraft Launcher can't install version {version} over this copy.	ArtCraft Launcher nemůže verzi {version} nainstalovat přes tuto kopii.
 	Download for {os}	Stáhnout pro {os}
 	Download	Stáhnout
 	Coming soon	Již brzy
@@ -59,11 +64,19 @@
 	Show in Files	Zobrazit v Souborech
 	Reinstall	Znovu nainstalovat
 	Uninstall…	Odinstalovat…
+	Launch options…	Možnosti spuštění…
+	{name} launch options	Možnosti spuštění aplikace {name}
+	Flags added each time the app is opened	Přepínače přidané při každém otevření aplikace
+	Separate flags with spaces. Quote a value that has spaces in it.	Přepínače oddělte mezerami. Hodnotu s mezerami dejte do uvozovek.
+	A quote isn't closed.	Uvozovky nejsou uzavřené.
+	{name} wasn't opened: a quote in its launch options isn't closed.	Aplikace {name} nebyla otevřena: uvozovky v jejích možnostech spuštění nejsou uzavřené.
+	Save	Uložit
 	All releases	Všechna vydání
 	ArtCraft Launcher {version} is available.	Je k dispozici ArtCraft Launcher {version}.
 	Dismiss	Skrýt
 	Update and restart	Aktualizovat a restartovat
 	A new version is available. Would you like to relaunch with the updated version?	Je k dispozici nová verze. Chcete aplikaci znovu spustit s aktualizovanou verzí?
+	A new version is available. Download it to replace this version?	Je k dispozici nová verze. Chcete ji stáhnout a nahradit jí tuto verzi?
 	Later	Později
 	What's new	Co je nového
 	No notes were published with this release.	K tomuto vydání nebyly zveřejněny žádné poznámky.
@@ -82,6 +95,8 @@
 	Updates always use the format an app was installed with.	Aktualizace vždy použijí formát, ve kterém byla aplikace nainstalována.
 	Running in the background	Běh na pozadí
 	Keep running in the tray when the window is closed	Po zavření okna ponechat spuštěné v oznamovací oblasti
+	ArtCraft Launcher is still running	ArtCraft Launcher stále běží
+	It's in the tray: open it or quit it from the tray icon, or turn this off in the settings.	Je v oznamovací oblasti: otevřete ho nebo ukončete přes ikonu v ní, nebo to vypněte v nastavení.
 	Show the window on the current desktop	Zobrazit okno na aktuální ploše
 	Start ArtCraft Launcher when I log in	Spouštět ArtCraft Launcher po přihlášení
 	Community	Komunita
@@ -105,6 +120,12 @@
 	Apps on this computer	Aplikace v tomto počítači
 	Installed apps with a newer version	Nainstalované aplikace s novější verzí
 	Apps you can install	Aplikace, které lze nainstalovat
+	Pin to top	Připnout nahoru
+	Unpin	Odepnout
+	Pinned	Připnuté
+	Reorder {name}	Změnit pořadí: {name}
+	Move up	Posunout nahoru
+	Move down	Posunout dolů
 	Hide App	Skrýt aplikaci
 	Unhide App	Zobrazit aplikaci
 	Hidden Apps	Skryté aplikace
@@ -130,6 +151,7 @@
 	Update cancelled	Aktualizace zrušena
 	Uninstall cancelled	Odinstalace zrušena
 	Retry install	Zkusit instalaci znovu
+	Retry update	Zkusit aktualizaci znovu
 	Retry update to {version}	Zkusit aktualizaci na {version} znovu
 	The download is still here. It's checked again, then installed.	Stažený soubor je stále k dispozici. Znovu se ověří a poté nainstaluje.
 	Waiting for another app…	Čekání na jinou aplikaci…
@@ -139,8 +161,10 @@
 	Disk image (.dmg)	Obraz disku (.dmg)
 	Debian package (.deb)	Balíček Debian (.deb)
 	RPM package (.rpm)	Balíček RPM (.rpm)
+	Arch package (.pkg.tar.zst)	Balíček Arch (.pkg.tar.zst)
 	Flatpak bundle	Balíček Flatpak
 	Tarball (.tar.gz)	Archiv tar (.tar.gz)
+artcraft	AI image and video creation	Tvorba obrázků a videí pomocí AI
 photocraft	Image editing	Úpravy obrázků
 vectorcraft	Vector illustration	Vektorová ilustrace
 filmcraft	Video editing, color and sound	Střih videa, barvy a zvuk
@@ -151,6 +175,8 @@ designcraft	Page layout and publishing	Sazba stránek a publikování
 wordcraft	Writing and document design	Psaní a návrh dokumentů
 deckcraft	Presentations and slide shows	Prezentace a promítání snímků
 gridcraft	Spreadsheets and data	Tabulky a data
+craft-anything	Find out how any software works, then craft your own	Zjistěte, jak funguje jakýkoli software, a vytvořte si vlastní
+solidcraft	Parametric 3D CAD	Parametrické 3D CAD
 cadcraft	Computer-aided design and drafting	Počítačem podporované navrhování a kreslení
 soundcraft	Recording, editing and mixing audio	Nahrávání, úpravy a mixování zvuku
 figcraft	Interface design and prototyping	Návrh rozhraní a prototypování
@@ -240,6 +266,7 @@ column	Latest	Nejnovější
 column	Released	Vydáno
 filter	Installed	Nainstalováno
 	App details	Podrobnosti o aplikaci
+	More actions for {name}	Další akce pro {name}
 	Close (Esc)	Zavřít (Esc)
 	Features	Funkce
 	Latest release	Nejnovější verze
@@ -265,6 +292,10 @@ filter	Installed	Nainstalováno
 @msg	{name} installed: {version} (this release publishes no checksum, so only its size was checked)	Aplikace {name} byla nainstalována ve verzi {version} (toto vydání neobsahuje kontrolní součet, ověřena byla pouze velikost)
 @msg	{name} was removed	Aplikace {name} byla odebrána
 @msg	{name} is running. Quit it, then try again.	Aplikace {name} je spuštěná. Ukončete ji a zkuste to znovu.
+@msg	{name} was installed from the {repo} repository or the AUR ({pkg}). Update it with {cmd} or sudo pacman -Syu	Aplikace {name} byla nainstalována z repozitáře {repo} nebo z AUR ({pkg}). Aktualizujte ji příkazem {cmd} nebo sudo pacman -Syu
+@msg	{name} was installed from the {repo} repository or the AUR ({pkg}). Update it with your AUR helper (for example: yay -S {pkg}) or sudo pacman -Syu	Aplikace {name} byla nainstalována z repozitáře {repo} nebo z AUR ({pkg}). Aktualizujte ji pomocí pomocníka AUR (například: yay -S {pkg}) nebo příkazem sudo pacman -Syu
+@msg	{name} was installed from the AUR ({pkg}). Update it with {cmd}	Aplikace {name} byla nainstalována z AUR ({pkg}). Aktualizujte ji příkazem {cmd}
+@msg	{name} was installed from the AUR ({pkg}). Update it with your AUR helper (for example: yay -S {pkg})	Aplikace {name} byla nainstalována z AUR ({pkg}). Aktualizujte ji pomocí pomocníka AUR (například: yay -S {pkg})
 @id	app.install	Nainstalovat
 @id	app.update	Aktualizovat na {v}
 @id	app.open	Otevřít
@@ -324,6 +355,7 @@ filter	Installed	Nainstalováno
 	Use default	Použít výchozí
 	New installs use this folder. Updates stay in their current location.	Nové instalace používají tuto složku. Aktualizace zůstávají v aktuálním umístění.
 	Custom folders use AppImage on Linux.	Vlastní složky používají v Linuxu formát AppImage.
+	On Linux, custom folders use AppImage format.	Vlastní složky používají v Linuxu formát AppImage.
 	The system manages install locations here.	Umístění instalací zde spravuje systém.
 @msg	couldn't use install folder {path}: {reason}	instalační složku {path} nelze použít: {reason}
 @msg	this release has no AppImage for a custom install folder	toto vydání nemá AppImage pro vlastní instalační složku
@@ -334,3 +366,42 @@ filter	Installed	Nainstalováno
 	Replace what's there?	Nahradit, co tam je?
 	{path} already exists. Installing {name} will overwrite it.	{path} už existuje. Instalace aplikace {name} ho přepíše.
 	Replace	Nahradit
+	Recently updated	Nedávno aktualizované
+	Name (A–Z)	Název (A–Z)
+	Name (Z–A)	Název (Z–A)
+	Frequently used	Nejčastěji používané
+	Next app	Další aplikace
+	Previous app	Předchozí aplikace
+	Show {n} more changes	Zobrazit dalších změn: {n}
+	Last updated: {date}	Naposledy aktualizováno: {date}
+column	Version	Verze
+column	Author	Autor
+	Choose version	Vybrat verzi
+	latest {version}	nejnovější {version}
+	{version} (latest release)	{version} (nejnovější verze)
+	Launcher version	Verze spouštěče
+	Nightly	Noční sestavení
+	Nightly (none published yet)	Noční sestavení (zatím žádné)
+	Install version {version}	Nainstalovat verzi {version}
+	Download selected version	Stáhnout vybranou verzi
+	Older launcher versions require a manual reinstall.	Starší verze spouštěče vyžadují ruční přeinstalaci.
+	Your files may not open in older versions.	Starší verze nemusí vaše soubory otevřít.
+	Enable automatic installs in Settings to follow new nightly builds.	Chcete-li automaticky dostávat nová noční sestavení, zapněte v nastavení automatické instalace.
+texturecraft	3D texture painting	Malování textur ve 3D
+texturecraft	Paint materials on 3D models and export textures.	Malujte materiály na 3D modely a exportujte textury.
+texturecraft	Materials	Materiály
+texturecraft	Mesh maps	Mapy sítí
+texturecraft	Bake mesh maps and use smart materials.	Vypékejte mapy sítí a používejte inteligentní materiály.
+texturecraft	Paint textures on 3D models.	Malujte textury na 3D modely.
+	Hide community apps	Skrýt komunitní aplikace
+materialcraft	Procedural material design	Návrh procedurálních materiálů
+materialcraft	Build materials with node graphs.	Vytvářejte materiály pomocí uzlových grafů.
+materialcraft	Create tileable PBR materials and export texture maps.	Vytvářejte bezešvé PBR materiály a exportujte texturové mapy.
+materialcraft	Node graphs	Uzlové grafy
+materialcraft	Combine noises, patterns and filters.	Kombinujte šumy, vzory a filtry.
+materialcraft	Live previews	Živé náhledy
+materialcraft	Preview materials in 2D and on 3D models.	Prohlížejte materiály ve 2D a na 3D modelech.
+	Advanced	Pokročilé
+	Migrate Flatpak bundles to ArtCraft OCI (experimental)	Převést balíčky Flatpak na ArtCraft OCI (experimentální)
+	On update, switch first party apps when the matching package is available. Otherwise, keep using bundles.	Při aktualizaci převést aplikace ArtCraft, pokud je dostupný odpovídající balíček. Jinak nadále používat samostatné balíčky.
+	The OCI repository is a preview with GPG verification disabled.	Repozitář OCI je předběžná verze s vypnutým ověřováním GPG.
