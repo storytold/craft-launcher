@@ -186,11 +186,20 @@ impl LauncherUi {
                     .labelled_by(label);
             });
             self.settings.check_every = every;
-            if self.caps.manage_apps
-                && ui.checkbox(&mut self.settings.auto_update, tl!("Automatically download and install updates")).changed()
-                && self.settings.auto_update
-            {
-                self.trigger_auto_updates();
+            if self.caps.manage_apps {
+                // With the update service installed, this is the computer's setting: only an
+                // administrator changes it (Windows asks), and nobody when Group Policy sets it.
+                let machine = self.machine_auto_update;
+                let can_change = !machine.is_some_and(|m| m.managed) && !self.machine_auto_update_pending;
+                let mut on = self.settings.auto_update;
+                if ui.add_enabled(can_change, egui::Checkbox::new(&mut on, tl!("Automatically download and install updates"))).changed() {
+                    self.set_auto_update(on);
+                }
+                match machine {
+                    Some(m) if m.managed => note(ui, tl!("Set by your administrator.")),
+                    Some(_) => note(ui, tl!("For everyone on this computer. Changing it asks for administrator permission.")),
+                    None => {}
+                }
             }
             ui.checkbox(&mut self.settings.notify, tl!("Notify me when an installed app has an update"));
             ui.checkbox(&mut self.settings.prereleases, tl!("Include pre-releases (betas and release candidates)"));

@@ -1,0 +1,38 @@
+[package]
+name = "artcraft-launcher-updater"
+description = "ArtCraft Launcher Update Service and command line: keeps the Craft App Suite up to date without a UAC prompt for every update"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+build = "build.rs"
+publish = false
+
+[lints]
+workspace = true
+
+[features]
+# Development only: install from `cargo xtask local serve` (see the README).
+local-mirror = ["artcraft-launcher-native/local-mirror"]
+
+[dependencies]
+artcraft-launcher-core = { workspace = true }
+artcraft-launcher-native = { workspace = true }
+log = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+
+# Windows only: running as a Windows service (safe wrappers over the service control manager's
+# API), and the administrator's settings in HKLM (policy.rs). winreg is already in Cargo.lock
+# through artcraft-launcher-native.
+[target.'cfg(target_os = "windows")'.dependencies]
+windows-service = "0.8"
+winreg = "0.55"
+
+[build-dependencies]
+# Icon, VERSIONINFO and the asInvoker manifest for artcraft-launcher-updater.exe; build.rs only uses
+# it when targeting Windows.
+winresource = "0.1"
+
+[dev-dependencies]
+tempfile = "3"
