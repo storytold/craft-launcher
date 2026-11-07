@@ -221,14 +221,11 @@ impl LauncherUi {
             ui.horizontal(|ui| {
                 ui.label(tl!("Install new apps as"));
                 let label = crate::i18n::t(choice.label());
-                egui::ComboBox::from_id_salt(("install-windows-kind", id))
-                    .selected_text(label)
-                    .width(200.0)
-                    .show_ui(ui, |ui| {
-                        for k in [PackageKind::Msi, PackageKind::PortableZip] {
-                            ui.selectable_value(&mut choice, k, crate::i18n::t(k.label()));
-                        }
-                    });
+                egui::ComboBox::from_id_salt(("install-windows-kind", id)).selected_text(label).width(200.0).show_ui(ui, |ui| {
+                    for k in [PackageKind::Msi, PackageKind::PortableZip] {
+                        ui.selectable_value(&mut choice, k, crate::i18n::t(k.label()));
+                    }
+                });
             });
             self.settings.app_kinds.insert(id.to_string(), choice);
         }
