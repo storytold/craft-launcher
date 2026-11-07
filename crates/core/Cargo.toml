@@ -14,3 +14,5 @@ workspace = true
 serde = { workspace = true }
 serde_json = { workspace = true }
 semver = { workspace = true }
+# Calendar conversion (jiff); see AGENTS.md. Only civil-date math is used, no time zone.
+jiff = { workspace = true }

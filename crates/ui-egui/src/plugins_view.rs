@@ -46,6 +46,8 @@ impl LauncherUi {
             widgets::cells(ui, &mut self.plugin_app_filter, &cells);
 
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                crate::bar::view_toggle(ui, &mut self.settings.view, [tl!("Show apps as cards"), tl!("Show apps as a table")]);
+                ui.add_space(6.0);
                 if self.caps.manage_apps
                     && widgets::button(ui, tl!("Import plugin…"), Kind::Primary, 0.0)
                         .on_hover_text(tl!(
@@ -62,7 +64,7 @@ impl LauncherUi {
                         .hint_text(tl!("Search plugins"))
                         .desired_width(200.0)
                         .min_size(vec2(0.0, theme::CONTROL_H))
-                        .vertical_align(egui::Align::Center)
+                        .align(egui::Align2::LEFT_CENTER)
                         .margin(vec2(10.0, 0.0)),
                 );
             });
@@ -262,7 +264,7 @@ impl LauncherUi {
         let app_def = CraftApp::by_id(&plugin.app);
         let app_color = app_def.map_or(t.accent, |a| rgb(a.color));
         let hovered = ui.rect_contains_pointer(rect);
-        let lift = ui.ctx().animate_bool_with_time(ui.id().with(("plugin-card-hover", &plugin.id)), hovered, 0.3);
+        let lift = ui.ctx().animate_bool_with_time(ui.scope_id().with(("plugin-card-hover", &plugin.id)), hovered, 0.3);
 
         let painter = ui.painter_at(rect.expand(16.0));
         painter.rect(rect, CornerRadius::ZERO, t.bg, t.hairline(), egui::StrokeKind::Inside);
@@ -365,7 +367,7 @@ impl LauncherUi {
         }
 
         let reveal = self.caps.reveal_label;
-        widgets::more_menu(ui, |ui| {
+        widgets::more_menu(ui, &plugin.name, |ui| {
             if ui.button(tl!("Repair")).clicked() {
                 self.send(Command::RepairPlugin { id: plugin.id.clone() });
                 ui.close();

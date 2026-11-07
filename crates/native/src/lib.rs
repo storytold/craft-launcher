@@ -15,8 +15,11 @@ pub mod http;
 pub mod install;
 pub mod login;
 pub mod manifest;
+#[cfg(any(windows, test))]
+mod msi_context;
 pub mod packages;
 pub mod paths;
+pub mod pins;
 pub mod plugins;
 #[cfg(windows)]
 pub mod portable;
