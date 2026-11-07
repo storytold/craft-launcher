@@ -16,11 +16,20 @@ use serde_json::{Map, Value, json};
 
 use crate::paths::{Paths, write_atomic};
 
+/// Returns `true` when `tag` is a syntactically valid BCP 47 language tag (e.g. `en`, `pt-BR`, `zh-Hans-CN`).
+pub fn is_valid_bcp47(tag: &str) -> bool {
+    let trimmed = tag.trim();
+    if trimmed.is_empty() || trimmed.len() > 35 {
+        return false;
+    }
+    trimmed.split(['-', '_']).all(|sub| !sub.is_empty() && sub.len() <= 8 && sub.chars().all(|c| c.is_ascii_alphanumeric()))
+}
+
 /// Converts a launcher language code (`auto`, `pt-BR`, `zh-CN`, `en`, …) into the lowercase
 /// BCP 47 code stored by Craft Apps in `preferences.json` (`auto`, `pt-br`, `zh-hans`, `en`, …).
 pub fn to_app_code(code: &str) -> String {
     let trimmed = code.trim();
-    if trimmed.is_empty() || trimmed.eq_ignore_ascii_case("auto") {
+    if trimmed.is_empty() || trimmed.eq_ignore_ascii_case("auto") || !is_valid_bcp47(trimmed) {
         return "auto".to_string();
     }
     if trimmed.eq_ignore_ascii_case("zh-cn") || trimmed.eq_ignore_ascii_case("zh-hans") || trimmed.eq_ignore_ascii_case("zh") {
@@ -33,7 +42,7 @@ pub fn to_app_code(code: &str) -> String {
 /// canonical code used by the launcher's language selector (`zh-CN`, `pt-BR`, `auto`, …).
 pub fn from_app_code(code: &str) -> String {
     let trimmed = code.trim();
-    if trimmed.is_empty() || trimmed.eq_ignore_ascii_case("auto") {
+    if trimmed.is_empty() || trimmed.eq_ignore_ascii_case("auto") || !is_valid_bcp47(trimmed) {
         return "auto".to_string();
     }
     if trimmed.eq_ignore_ascii_case("zh-hans") || trimmed.eq_ignore_ascii_case("zh-cn") || trimmed.eq_ignore_ascii_case("zh") {
@@ -333,6 +342,10 @@ mod tests {
         assert_eq!(from_app_code("pt-br"), "pt-BR");
         assert_eq!(from_app_code("zh-hans"), "zh-CN");
         assert_eq!(from_app_code("de"), "de");
+
+        assert_eq!(to_app_code("../../etc/passwd"), "auto");
+        assert_eq!(to_app_code("rm -rf /"), "auto");
+        assert_eq!(from_app_code("malicious;cmd"), "auto");
     }
 
     #[test]
