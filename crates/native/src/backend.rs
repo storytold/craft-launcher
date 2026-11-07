@@ -698,6 +698,10 @@ fn run_install(
     source: Option<&dyn ReleaseSource>,
     batch: Option<crate::queue::Gather>,
 ) -> Result<String, String> {
+    // The ways out below that never reach the installer (a repository-managed Flatpak, a missing
+    // release, the overwrite question, a paused download) free the rest of the batch at once;
+    // from `install_at` on, the same guard does it there.
+    let mut batch = install::BatchPlace(batch);
     if let Some(update) = repository_update(app, existing, options) {
         let inst = update?;
         #[cfg(target_os = "linux")]
@@ -776,7 +780,17 @@ fn run_install(
         last_emit = Instant::now();
         shared.emit(Event::Progress { app: app.id.to_string(), phase: p });
     };
-    let mut job = Job { http, paths, stop, phase: &mut phase, install_locations: &options.install_locations, replace, approved_path, downgrade, batch };
+    let mut job = Job {
+        http,
+        paths,
+        stop,
+        phase: &mut phase,
+        install_locations: &options.install_locations,
+        replace,
+        approved_path,
+        downgrade,
+        batch: batch.take(),
+    };
     let mut commit_record = |record: &crate::manifest::Record| {
         let mut manifest = shared.manifest.lock().unwrap_or_else(PoisonError::into_inner);
         let mut updated = manifest.clone();
@@ -1558,6 +1572,20 @@ mod tests {
     use super::*;
 
     use crate::source::Answer;
+
+    /// A member of a batch that ends before it ever reaches the installer — its download failed,
+    /// or it turned out to need none of the batch's prompts — frees the rest of the batch at
+    /// once, rather than holding them back until the batch's wait runs out.
+    #[cfg(any(target_os = "linux", windows))]
+    #[test]
+    fn a_batch_member_that_never_reaches_the_installer_frees_the_rest() {
+        let gather = install::INSTALLER.gather(1);
+        {
+            let _place = install::BatchPlace(Some(gather.clone()));
+            assert!(!gather.open(), "the place is held while the job is on its way");
+        }
+        assert!(gather.open(), "dropping the place on the way out opens the gate");
+    }
 
     fn tagged(v: &str) -> Release {
         Release { tag: format!("v{v}"), version: version::parse(v), ..Default::default() }
