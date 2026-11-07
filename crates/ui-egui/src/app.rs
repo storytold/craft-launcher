@@ -461,6 +461,7 @@ impl LauncherUi {
             versions: self.settings.versions.clone(),
             launcher_version: self.settings.launcher_version.clone(),
             install_locations: self.settings.install_locations.clone(),
+            proxy: (!self.settings.proxy.trim().is_empty()).then(|| self.settings.proxy.trim().to_string()),
         };
         if self.sent_options.as_ref() != Some(&options) {
             self.backend.send(Command::Configure(options.clone()));

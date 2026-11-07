@@ -24,6 +24,8 @@
 	by {name}	von {name}
 	Open Source Tools for Creatives, Makers, and Builders	Open-Source-Werkzeuge für Kreative, Maker und Entwickler
 	Settings	Einstellungen
+	Proxy	Proxy
+	Manual HTTP proxy, optional authentication; leave empty to use the system setting.	Manueller HTTP-Proxy, optionale Authentifizierung; leer lassen, um die Systemeinstellung zu verwenden.
 	Check for updates	Nach Updates suchen
 	Grid	Raster
 	Table	Tabelle

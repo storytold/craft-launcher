@@ -24,6 +24,8 @@
 	by {name}	készítette: {name}
 	Open Source Tools for Creatives, Makers, and Builders	Nyílt forráskódú eszközök alkotóknak, barkácsolóknak és fejlesztőknek
 	Settings	Beállítások
+	Proxy	Proxy
+	Manual HTTP proxy, optional authentication; leave empty to use the system setting.	Kézi HTTP-proxy, opcionális hitelesítés; hagyd üresen a rendszerbeállítás használatához.
 	Check for updates	Frissítések keresése
 	Grid	Rács
 	Table	Táblázat

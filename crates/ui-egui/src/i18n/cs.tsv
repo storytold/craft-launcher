@@ -10,6 +10,8 @@
 	by {name}	od {name}
 	Open Source Tools for Creatives, Makers, and Builders	Open-source nástroje pro kreativce, tvůrce a vývojáře
 	Settings	Nastavení
+	Proxy	Proxy
+	Manual HTTP proxy, optional authentication; leave empty to use the system setting.	Ruční HTTP proxy, volitelné ověření; ponechte prázdné pro použití systémového nastavení.
 	Check for updates	Zkontrolovat aktualizace
 	Grid	Mřížka
 	Table	Tabulka

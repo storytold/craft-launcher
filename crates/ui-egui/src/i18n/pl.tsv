@@ -24,6 +24,8 @@
 	by {name}	przez {name}
 	Open Source Tools for Creatives, Makers, and Builders	Narzędzia open source dla artystów, twórców i konstruktorów
 	Settings	Ustawienia
+	Proxy	Proxy
+	Manual HTTP proxy, optional authentication; leave empty to use the system setting.	Ręczny serwer proxy HTTP, opcjonalne uwierzytelnianie; pozostaw puste, aby użyć ustawień systemowych.
 	Check for updates	Sprawdź dostępność aktualizacji
 	Grid	Siatka
 	Table	Tabela

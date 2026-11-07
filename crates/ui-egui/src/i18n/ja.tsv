@@ -26,6 +26,8 @@
 	by {name}	{name} 提供
 	Open Source Tools for Creatives, Makers, and Builders	クリエイター、メイカー、ビルダーのためのオープンソースツール
 	Settings	設定
+	Proxy	プロキシ
+	Manual HTTP proxy, optional authentication; leave empty to use the system setting.	手動HTTPプロキシ（認証は任意）。システム設定を使う場合は空欄にしてください。
 	Check for updates	更新を確認
 	Grid	グリッド
 	Table	テーブル

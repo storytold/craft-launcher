@@ -23,6 +23,8 @@
 	by {name}	от {name}
 	Open Source Tools for Creatives, Makers, and Builders	Инструменты с открытым кодом для творцов, мастеров и создателей
 	Settings	Настройки
+	Proxy	Прокси
+	Manual HTTP proxy, optional authentication; leave empty to use the system setting.	Ручной HTTP-прокси, необязательная аутентификация; оставьте пустым для использования системных настроек.
 	Check for updates	Проверить обновления
 	Grid	Сетка
 	Table	Таблица
