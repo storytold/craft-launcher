@@ -137,6 +137,8 @@ impl Dialog {
 }
 
 pub struct LauncherUi {
+    #[cfg(feature = "craftlink-status")]
+    pub(crate) craftlink: crate::craftlink::State,
     pub(crate) backend: Box<dyn Backend>,
     pub settings: Settings,
     pub(crate) entries: Vec<AppEntry>,
@@ -283,6 +285,8 @@ impl LauncherUi {
             detail_shot: 0,
             detail_zoom: false,
             pictures: std::collections::HashMap::new(),
+            #[cfg(feature = "craftlink-status")]
+            craftlink: crate::craftlink::State::default(),
             started: false,
             applied_theme: None,
             reduce_motion: false,
@@ -554,6 +558,13 @@ impl LauncherUi {
     /// Returns whether app state changed.
     fn handle(&mut self, event: Event) -> bool {
         match event {
+            Event::CraftLinks { request, result } => {
+                #[cfg(feature = "craftlink-status")]
+                self.craftlink.apply(request, result);
+                #[cfg(not(feature = "craftlink-status"))]
+                let _ = (request, result);
+                false
+            }
             Event::Latest { app, latest, from } => {
                 self.on_latest(app, latest, from);
                 true

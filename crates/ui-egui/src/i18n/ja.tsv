@@ -436,3 +436,19 @@ materialcraft	Preview materials in 2D and on 3D models.	マテリアルを2Dと3
 	Migrate Flatpak bundles to ArtCraft OCI (experimental)	Flatpak バンドルを ArtCraft OCI に移行する（実験的）
 	On update, switch first party apps when the matching package is available. Otherwise, keep using bundles.	更新時に対応するパッケージがあれば ArtCraft 公式アプリを移行します。なければ引き続きバンドルを使用します。
 	The OCI repository is a preview with GPG verification disabled.	OCI リポジトリはプレビュー版で、GPG 検証は無効になっています。
+
+# Optional CraftLink binding status (source-only integration).
+	Broker port	ブローカーのポート
+	Credential file	認証情報ファイル
+	Inspect links	リンクを確認
+	No linked objects	リンクされたオブジェクトはありません
+	CraftLink is unavailable	CraftLink を利用できません
+	Waiting for CraftLink	CraftLink を待機中
+	Current	最新
+	Stale	古い状態
+	Conflicted	競合
+	Missing	見つかりません
+	Applying	適用中
+	Local changes	ローカルの変更
+	Frozen	固定済み
+	Unknown	不明

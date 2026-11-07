@@ -8,6 +8,7 @@
 
 pub mod args;
 pub mod catalog;
+pub mod craftlink;
 pub mod details;
 pub mod distro;
 pub mod feed;

@@ -393,3 +393,19 @@ materialcraft	Node graphs	節點圖
 materialcraft	Combine noises, patterns and filters.	組合雜訊、圖樣與濾鏡。
 materialcraft	Live previews	即時預覽
 materialcraft	Preview materials in 2D and on 3D models.	在 2D 與 3D 模型上預覽材質。
+
+# Optional CraftLink binding status (source-only integration).
+	Broker port	代理連接埠
+	Credential file	認證檔案
+	Inspect links	檢查連結
+	No linked objects	沒有連結的物件
+	CraftLink is unavailable	CraftLink 無法使用
+	Waiting for CraftLink	正在等待 CraftLink
+	Current	最新
+	Stale	已過期
+	Conflicted	存在衝突
+	Missing	遺失
+	Applying	正在套用
+	Local changes	本機變更
+	Frozen	已凍結
+	Unknown	未知

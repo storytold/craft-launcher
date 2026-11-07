@@ -15,6 +15,7 @@ workspace = true
 # (`cargo xtask local serve`). Development only: release builds never enable it, so a shipped
 # launcher can't be steered away from GitHub's releases by an environment variable.
 local-mirror = []
+craftlink-status = []
 
 [dependencies]
 artcraft-launcher-core = { workspace = true }
