@@ -346,3 +346,58 @@ filter	Installed	ຕິດຕັ້ງແລ້ວ
 	ArtCraft on GitHub	ArtCraft ໃນ GitHub
 	Join the ArtCraft Discord	ເຂົ້າຮ່ວມ ArtCraft Discord
 @plural	ArtCraft Launcher · {n} update available|ArtCraft Launcher · {n} updates available	ArtCraft Launcher · ມີ {n} ອັບເດດ
+	A new version is available. Download it to replace this version?	ມີເວີຊັນໃໝ່. ດາວໂຫຼດເພື່ອແທນທີ່ເວີຊັນນີ້ບໍ?
+	Apps are placed inside this folder.	ແອັບຖືກວາງໄວ້ໃນໂຟນເດີນີ້.
+	ArtCraft Launcher is still running	ArtCraft Launcher ຍັງເຮັດວຽກຢູ່
+	Browse…	ເລືອກ…
+	Choose version	ເລືອກເວີຊັນ
+	Custom folders use AppImage on Linux.	ໂຟນເດີທີ່ກຳນົດເອງໃຊ້ AppImage ໃນ Linux.
+	Default install folder	ໂຟນເດີຕິດຕັ້ງເລີ່ມຕົ້ນ
+	Frequently used	ໃຊ້ເລື້ອຍໆ
+	Hide community apps	ເຊື່ອງແອັບຊຸມຊົນ
+	Install folder	ໂຟນເດີຕິດຕັ້ງ
+	Install version {version}	ຕິດຕັ້ງເວີຊັນ {version}
+	Installing on Windows	ການຕິດຕັ້ງໃນ Windows
+	It's in the tray: open it or quit it from the tray icon, or turn this off in the settings.	ມັນຢູ່ໃນຖາດລະບົບ: ເປີດ ຫຼື ອອກຈາກໄອຄອນໃນຖາດ ຫຼື ປິດຕົວເລືອກນີ້ໃນການຕັ້ງຄ່າ.
+	Last updated: {date}	ອັບເດດຫຼ້າສຸດ: {date}
+	Launcher version	ເວີຊັນ Launcher
+	More actions for {name}	ການດຳເນີນການເພີ່ມເຕີມສຳລັບ {name}
+	Name (A–Z)	ຊື່ (A–Z)
+	Name (Z–A)	ຊື່ (Z–A)
+	New installs use this folder. Updates stay in their current location.	ການຕິດຕັ້ງໃໝ່ຈະໃຊ້ໂຟນເດີນີ້. ການອັບເດດຍັງຢູ່ບ່ອນເດີມ.
+	Next app	ແອັບຖັດໄປ
+	On Linux, custom folders use AppImage format.	ໃນ Linux ໂຟນເດີທີ່ກຳນົດເອງໃຊ້ຮູບແບບ AppImage.
+	Previous app	ແອັບກ່ອນໜ້າ
+	Recently updated	ອັບເດດເມື່ອບໍ່ດົນມານີ້
+	Replace	ແທນທີ່
+	Replace what's there?	ແທນທີ່ສິ່ງທີ່ມີຢູ່ບໍ?
+	Show {n} more changes	ສະແດງອີກ {n} ການປ່ຽນແປງ
+	System default	ຄ່າເລີ່ມຕົ້ນຂອງລະບົບ
+	The system manages install locations here.	ລະບົບຈັດການບ່ອນຕິດຕັ້ງຢູ່ບ່ອນນີ້.
+	Use default	ໃຊ້ຄ່າເລີ່ມຕົ້ນ
+	by {name}	ໂດຍ {name}
+	latest {version}	ຫຼ້າສຸດ {version}
+	{path} already exists. Installing {name} will overwrite it.	{path} ມີຢູ່ແລ້ວ. ການຕິດຕັ້ງ {name} ຈະຂຽນທັບມັນ.
+	Arch package (.pkg.tar.zst)	ແພັກເກັດ Arch (.pkg.tar.zst)
+figcraft	Interface design and prototyping	ການອອກແບບສ່ວນຕິດຕໍ່ ແລະ ຕົ້ນແບບ
+@msg	couldn't use install folder {path}: {reason}	ບໍ່ສາມາດໃຊ້ໂຟນເດີຕິດຕັ້ງ {path} ໄດ້: {reason}
+@msg	custom install folders aren't supported on this system	ລະບົບນີ້ບໍ່ຮອງຮັບໂຟນເດີຕິດຕັ້ງທີ່ກຳນົດເອງ
+@msg	this release has no AppImage for a custom install folder	ເວີຊັນນີ້ບໍ່ມີ AppImage ສຳລັບໂຟນເດີຕິດຕັ້ງທີ່ກຳນົດເອງ
+@msg	{path} already exists and wasn't installed by ArtCraft Launcher	{path} ມີຢູ່ແລ້ວ ແລະ ບໍ່ໄດ້ຖືກຕິດຕັ້ງໂດຍ ArtCraft Launcher
+texturecraft	3D texture painting	ການທາສີເທັກເຈີ 3D
+texturecraft	Paint materials on 3D models and export textures.	ທາສີວັດສະດຸໃສ່ໂມເດວ 3D ແລະ ສົ່ງອອກເທັກເຈີ.
+texturecraft	Materials	ວັດສະດຸ
+texturecraft	Mesh maps	ແຜນທີ່ເມັດ
+texturecraft	Bake mesh maps and use smart materials.	ເບກແຜນທີ່ເມັດ ແລະ ໃຊ້ວັດສະດຸອັດສະລິຍະ.
+texturecraft	Paint textures on 3D models.	ທາສີເທັກເຈີໃສ່ໂມເດວ 3D.
+column	Version	ເວີຊັນ
+column	Author	ຜູ້ຂຽນ
+	{version} (latest release)	{version} (ເວີຊັນຫຼ້າສຸດ)
+	Nightly	Nightly
+	Nightly (none published yet)	Nightly (ຍັງບໍ່ມີການປ່ອຍ)
+	Download selected version	ດາວໂຫຼດເວີຊັນທີ່ເລືອກ
+	Older launcher versions require a manual reinstall.	Launcher ເວີຊັນເກົ່າຕ້ອງຕິດຕັ້ງຄືນໃໝ່ດ້ວຍຕົນເອງ.
+	Your files may not open in older versions.	ໄຟລ໌ຂອງທ່ານອາດເປີດບໍ່ໄດ້ໃນເວີຊັນເກົ່າ.
+	Enable automatic installs in Settings to follow new nightly builds.	ເປີດການຕິດຕັ້ງອັດຕະໂນມັດໃນການຕັ້ງຄ່າ ເພື່ອຕິດຕາມ nightly build ໃໝ່.
+craft-anything	Find out how any software works, then craft your own	ຮຽນຮູ້ວ່າຊອບແວໃດໆເຮັດວຽກແນວໃດ ແລ້ວສ້າງຂອງຕົນເອງ
+solidcraft	Parametric 3D CAD	CAD 3D ແບບພາຣາມິເຕີ
