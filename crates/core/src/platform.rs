@@ -205,8 +205,16 @@ impl AssetName {
     }
 }
 
-/// Reads `<stem>-<version>-<os>-<arch>[-portable].<ext>`; `None` for checksums, zsync files, CLI
-/// and web bundles, or anything else.
+fn strip_stem_prefix<'a>(base: &'a str, stem: &str, sep: char) -> Option<&'a str> {
+    if base.len() > stem.len() && base[..stem.len()].eq_ignore_ascii_case(stem) && base.as_bytes()[stem.len()] == sep as u8 {
+        Some(&base[stem.len() + 1..])
+    } else {
+        None
+    }
+}
+
+/// Reads `<stem>-<version>-<os>-<arch>[-portable].<ext>` or Studio's `<Stem>_<version>_<arch>[_<locale>].<ext>`;
+/// `None` for checksums, zsync files, CLI and web bundles, or anything else.
 pub fn parse_asset_name(name: &str, stems: &[&str]) -> Option<AssetName> {
     const KINDS: [PackageKind; 9] = [
         PackageKind::PortableZip,
@@ -221,14 +229,35 @@ pub fn parse_asset_name(name: &str, stems: &[&str]) -> Option<AssetName> {
     ];
     let (kind, base) = KINDS.iter().find_map(|k| name.strip_suffix(k.suffix()).map(|b| (*k, b)))?;
     for stem in stems {
-        let Some(rest) = base.strip_prefix(stem).and_then(|r| r.strip_prefix('-')) else { continue };
-        // rest = <version>-<os>-<arch>; os and arch never contain '-', versions may.
-        let mut parts = rest.rsplitn(3, '-');
-        let (arch, os, version) = (parts.next()?, parts.next()?, parts.next()?);
-        if crate::version::parse(version).is_none() || !version.starts_with(|c: char| c.is_ascii_digit()) {
-            continue;
+        if let Some(rest) = strip_stem_prefix(base, stem, '-') {
+            // rest = <version>-<os>-<arch>; os and arch never contain '-', versions may.
+            let mut parts = rest.rsplitn(3, '-');
+            let (Some(arch), Some(os), Some(version)) = (parts.next(), parts.next(), parts.next()) else { continue };
+            if crate::version::parse(version).is_none() || !version.starts_with(|c: char| c.is_ascii_digit()) {
+                continue;
+            }
+            return Some(AssetName { stem: (*stem).to_string(), version: version.to_string(), token: format!("{os}-{arch}"), kind });
         }
-        return Some(AssetName { stem: (*stem).to_string(), version: version.to_string(), token: format!("{os}-{arch}"), kind });
+        if let Some(rest) = strip_stem_prefix(base, stem, '_') {
+            // Studio / Tauri format: <version>_<arch>[_<locale>]
+            let mut parts = rest.split('_');
+            let (Some(version), Some(arch_token)) = (parts.next(), parts.next()) else { continue };
+            if crate::version::parse(version).is_none() || !version.starts_with(|c: char| c.is_ascii_digit()) {
+                continue;
+            }
+            let token = match (kind, arch_token) {
+                (PackageKind::Dmg, "universal") => Some("macos-universal".to_string()),
+                (PackageKind::Dmg, "x86_64" | "x64") => Some("macos-x86_64".to_string()),
+                (PackageKind::Dmg, "aarch64" | "arm64") => Some("macos-aarch64".to_string()),
+                (PackageKind::Msi | PackageKind::PortableZip, "x86_64" | "x64") => Some("windows-x64".to_string()),
+                (PackageKind::Msi | PackageKind::PortableZip, "x86") => Some("windows-x86".to_string()),
+                (PackageKind::Msi | PackageKind::PortableZip, "arm64" | "aarch64") => Some("windows-arm64".to_string()),
+                _ => None,
+            };
+            if let Some(token) = token {
+                return Some(AssetName { stem: (*stem).to_string(), version: version.to_string(), token, kind });
+            }
+        }
     }
     None
 }
@@ -299,6 +328,27 @@ mod tests {
         ] {
             let platform = Platform { os, arch: Arch::X64 };
             let (asset, selected) = pick_asset(&release, &["texturecraft"], platform, &[kind]).unwrap();
+            assert_eq!(asset.name, expected);
+            assert_eq!(selected, kind);
+        }
+    }
+
+    #[test]
+    fn artcraft_studio_selects_published_desktop_assets() {
+        let release =
+            crate::release::parse_github_release(include_str!("../tests/fixtures/artcraft-release.json"), "storytold/artcraft").unwrap();
+        assert_eq!(release.version, Some(crate::version::Version::new(0, 41, 1)));
+        for (os, arch, kind, expected) in [
+            (Os::Windows, Arch::X64, PackageKind::Msi, "ArtCraft_0.41.1_x64_en-US.msi"),
+            (Os::MacOs, Arch::Arm64, PackageKind::Dmg, "ArtCraft_0.41.1_universal.dmg"),
+            (Os::MacOs, Arch::X64, PackageKind::Dmg, "ArtCraft_0.41.1_universal.dmg"),
+            (Os::Linux, Arch::X64, PackageKind::AppImage, "artcraft-0.41.1-linux-x86_64.AppImage"),
+            (Os::Linux, Arch::X64, PackageKind::Flatpak, "artcraft-0.41.1-linux-x86_64.flatpak"),
+            (Os::Linux, Arch::X64, PackageKind::TarGz, "artcraft-0.41.1-linux-x86_64.tar.gz"),
+            (Os::Linux, Arch::Arm64, PackageKind::TarGz, "artcraft-0.41.1-linux-aarch64.tar.gz"),
+        ] {
+            let platform = Platform { os, arch };
+            let (asset, selected) = pick_asset(&release, &["artcraft"], platform, &[kind]).unwrap();
             assert_eq!(asset.name, expected);
             assert_eq!(selected, kind);
         }
@@ -380,6 +430,15 @@ mod tests {
         // FigCraft also ships its collaboration server; that tarball is not the app.
         assert_eq!(parse_asset_name("figcraft-server-0.5.1-linux-x86_64.tar.gz", &["figcraft"]), None);
         assert!(parse_asset_name("figcraft-0.5.1-linux-x86_64.tar.gz", &["figcraft"]).is_some());
+    }
+
+    #[test]
+    fn reads_artcraft_studio_asset_names() {
+        let dmg = parse_asset_name("ArtCraft_0.41.1_universal.dmg", &["artcraft"]).unwrap();
+        assert_eq!((dmg.version.as_str(), dmg.token.as_str(), dmg.kind), ("0.41.1", "macos-universal", PackageKind::Dmg));
+
+        let msi = parse_asset_name("ArtCraft_0.41.1_x64_en-US.msi", &["artcraft"]).unwrap();
+        assert_eq!((msi.version.as_str(), msi.token.as_str(), msi.kind), ("0.41.1", "windows-x64", PackageKind::Msi));
     }
 
     #[test]

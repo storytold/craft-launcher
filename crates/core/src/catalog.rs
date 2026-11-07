@@ -75,6 +75,14 @@ impl CraftApp {
         kind != crate::PackageKind::Dmg || self.mac_team.is_some()
     }
 
+    /// Whether this app runs on the given operating system.
+    pub fn runs_on(&self, os: crate::Os) -> bool {
+        match os {
+            crate::Os::FreeBsd => self.id != "artcraft",
+            _ => true,
+        }
+    }
+
     /// Bundle ids this app may be installed under, current first.
     pub fn bundle_ids(&self) -> impl Iterator<Item = String> + '_ {
         std::iter::once(self.bundle_id()).chain(self.former_bundles.iter().map(|b| b.to_string()))
@@ -397,5 +405,17 @@ mod tests {
         assert_eq!(pdf.names().collect::<Vec<_>>(), ["PdfCraft", "PrintCraft"]);
         assert_eq!(pdf.website(), "https://getartcraft.com/apps/pdfcraft");
         assert_eq!(CraftApp::by_id("wordcraft").unwrap().website(), "https://getartcraft.com/apps/wordcraft");
+    }
+
+    #[test]
+    fn artcraft_studio_does_not_run_on_freebsd() {
+        let studio = CraftApp::by_id("artcraft").unwrap();
+        assert!(!studio.runs_on(crate::Os::FreeBsd));
+        assert!(studio.runs_on(crate::Os::Linux));
+        assert!(studio.runs_on(crate::Os::MacOs));
+        assert!(studio.runs_on(crate::Os::Windows));
+
+        let photo = CraftApp::by_id("photocraft").unwrap();
+        assert!(photo.runs_on(crate::Os::FreeBsd));
     }
 }
