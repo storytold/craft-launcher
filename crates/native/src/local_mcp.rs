@@ -194,23 +194,51 @@ pub fn entry_for(service: &LocalService) -> Option<ServerEntry> {
     })
 }
 
-/// Add or update the entry for `service`, enabling it. Returns false when there was no usable CLI.
+/// Index of an entry whose display name matches `name`, or None. Matching by name (rather than
+/// id) lets us recognize and manage entries created with a different id, e.g. UUIDs from an
+/// earlier launcher version.
+fn find_by_name(servers: &[ServerEntry], name: &str) -> Option<usize> {
+    servers.iter().position(|e| e.name == name)
+}
+
+/// Add or update the entry for `service`, enabling it. Manages any existing entry with the same
+/// display name in place (keeping its id, refreshing the command); otherwise creates one under
+/// the deterministic id. Returns false when there was no usable CLI.
 pub fn enable_service(servers: &mut Vec<ServerEntry>, service: &LocalService) -> bool {
-    let Some(entry) = entry_for(service) else { return false };
-    match servers.iter_mut().find(|e| e.id == entry.id) {
-        Some(existing) => {
-            *existing = entry;
-            existing.enabled = true;
+    let Some(cli) = service.cli_path.as_deref() else { return false };
+    match find_by_name(servers, &service.name) {
+        Some(i) => {
+            servers[i].enabled = true;
+            if let Connection::Stdio { command: c, .. } = &mut servers[i].connection {
+                *c = cli.display().to_string();
+            }
         }
-        None => servers.push(entry),
+        None => servers.push(ServerEntry {
+            id: entry_id(&service.id),
+            name: service.name.clone(),
+            description: format!("{} built-in tools over MCP.", service.name),
+            enabled: true,
+            connection: Connection::Stdio {
+                command: cli.display().to_string(),
+                args: vec!["mcp".into()],
+                env: HashMap::new(),
+            },
+        }),
     }
     true
 }
 
-/// Disable the entry for `service_id`, leaving it in the list (Bionic keeps a disabled row).
-/// Returns false when there was nothing to disable.
-pub fn disable_service(servers: &mut Vec<ServerEntry>, service_id: &str) -> bool {
-    let id = entry_id(service_id);
+/// Disable the entry for `service`, leaving it in the list (Bionic keeps a disabled row). Matches
+/// by display name first, then the deterministic id. Returns false when there was nothing to disable.
+pub fn disable_service(servers: &mut Vec<ServerEntry>, service: &LocalService) -> bool {
+    if let Some(i) = find_by_name(servers, &service.name) {
+        if servers[i].enabled {
+            servers[i].enabled = false;
+            return true;
+        }
+        return false;
+    }
+    let id = entry_id(&service.id);
     match servers.iter_mut().find(|e| e.id == id) {
         Some(e) => {
             if e.enabled {
@@ -224,12 +252,22 @@ pub fn disable_service(servers: &mut Vec<ServerEntry>, service_id: &str) -> bool
     }
 }
 
-/// Remove the entry for `service_id` entirely. Returns false when there was nothing to remove.
-pub fn remove_service(servers: &mut Vec<ServerEntry>, service_id: &str) -> bool {
-    let id = entry_id(service_id);
+/// Remove the entry for `service`. Matches by display name first, then the deterministic id.
+/// Returns false when there was nothing to remove.
+pub fn remove_service(servers: &mut Vec<ServerEntry>, service: &LocalService) -> bool {
+    if let Some(i) = find_by_name(servers, &service.name) {
+        servers.remove(i);
+        return true;
+    }
+    let id = entry_id(&service.id);
     let before = servers.len();
     servers.retain(|e| e.id != id);
     servers.len() != before
+}
+
+/// Whether an entry with display name `name` is currently enabled.
+pub fn service_enabled(servers: &[ServerEntry], name: &str) -> bool {
+    find_by_name(servers, name).map_or(false, |i| servers[i].enabled)
 }
 
 /// Port the unified `craft-ai-mcp` bridge listens on by default.
@@ -282,11 +320,12 @@ pub fn bridge_version(_path: &Path) -> Option<artcraft_launcher_core::version::V
     None
 }
 
-/// The single `streamableHttp` entry for the unified bridge at `port`.
+/// The single `streamableHttp` entry for the unified bridge at `port`. Named "Craft AI" so it is
+/// recognized (and managed in place) even when an earlier launcher version created it under a UUID.
 pub fn bridge_entry(port: u16) -> ServerEntry {
     ServerEntry {
         id: BRIDGE_ID.to_string(),
-        name: "Craft AI (unified)".to_string(),
+        name: "Craft AI".to_string(),
         description: "All Craft AI tools over one MCP endpoint.".to_string(),
         enabled: true,
         connection: Connection::StreamableHttp {
@@ -297,28 +336,68 @@ pub fn bridge_entry(port: u16) -> ServerEntry {
     }
 }
 
-/// Add or update the unified-bridge entry, enabling it. Returns false for a zero port.
+/// Index of the unified-bridge entry, or None: one whose id is the deterministic bridge id, or a
+/// `streamableHttp` entry named "Craft AI" (created by an earlier launcher version under a UUID).
+fn find_bridge(servers: &[ServerEntry]) -> Option<usize> {
+    servers.iter().position(|e| e.id == BRIDGE_ID)
+        .or_else(|| {
+            servers.iter().position(|e| {
+                matches!(&e.connection, Connection::StreamableHttp { .. }) && e.name == "Craft AI"
+            })
+        })
+}
+
+/// The current port of the unified-bridge entry (parsed from its `streamableHttp` URL), or None
+/// when there is no bridge entry.
+pub fn bridge_port_current(servers: &[ServerEntry]) -> Option<u16> {
+    find_bridge(servers).and_then(|i| match &servers[i].connection {
+        Connection::StreamableHttp { url, .. } => parse_port(url),
+        _ => None,
+    })
+}
+
+/// Whether the unified-bridge entry is currently present and enabled.
+pub fn bridge_enabled(servers: &[ServerEntry]) -> bool {
+    find_bridge(servers).map_or(false, |i| servers[i].enabled)
+}
+
+/// Port from a `streamableHttp` URL like `http://127.0.0.1:12345/mcp`, or None when absent.
+fn parse_port(url: &str) -> Option<u16> {
+    let parts: Vec<&str> = url.split('/').collect();
+    if parts.len() < 3 {
+        return None;
+    }
+    // parts[0] is the scheme, parts[2] is `host[:port]`.
+    let host_port = parts[2];
+    let port_str = host_port.rsplit_once(':').map(|(_, p)| p)?;
+    port_str.parse::<u16>().ok()
+}
+
+/// Add or update the unified-bridge entry, enabling it. Manages any existing bridge entry in place
+/// (keeping its id, refreshing the URL); otherwise creates one under the deterministic id. Returns
+/// false for a zero port.
 pub fn enable_bridge(servers: &mut Vec<ServerEntry>, port: u16) -> bool {
     if port == 0 {
         return false;
     }
-    let entry = bridge_entry(port);
-    match servers.iter_mut().find(|e| e.id == BRIDGE_ID) {
-        Some(existing) => {
-            *existing = entry;
-            existing.enabled = true;
+    match find_bridge(servers) {
+        Some(i) => {
+            servers[i].enabled = true;
+            if let Connection::StreamableHttp { url, .. } = &mut servers[i].connection {
+                *url = format!("http://127.0.0.1:{port}/mcp");
+            }
         }
-        None => servers.push(entry),
+        None => servers.push(bridge_entry(port)),
     }
     true
 }
 
 /// Disable the unified-bridge entry (leaving it in the list). Returns false when absent or already off.
 pub fn disable_bridge(servers: &mut Vec<ServerEntry>) -> bool {
-    match servers.iter_mut().find(|e| e.id == BRIDGE_ID) {
-        Some(e) => {
-            if e.enabled {
-                e.enabled = false;
+    match find_bridge(servers) {
+        Some(i) => {
+            if servers[i].enabled {
+                servers[i].enabled = false;
                 true
             } else {
                 false
@@ -330,9 +409,13 @@ pub fn disable_bridge(servers: &mut Vec<ServerEntry>) -> bool {
 
 /// Remove the unified-bridge entry entirely. Returns false when absent.
 pub fn remove_bridge(servers: &mut Vec<ServerEntry>) -> bool {
-    let before = servers.len();
-    servers.retain(|e| e.id != BRIDGE_ID);
-    servers.len() != before
+    match find_bridge(servers) {
+        Some(i) => {
+            servers.remove(i);
+            true
+        }
+        None => false,
+    }
 }
 
 #[cfg(test)]
@@ -489,19 +572,19 @@ mod tests {
         assert!(enable_service(&mut servers, &service));
         assert_eq!(servers.len(), 1);
 
-        // Disable keeps the row but turns it off.
-        assert!(disable_service(&mut servers, "wordcraft"));
+        // Disable keeps the row but turns it off (matched by display name).
+        assert!(disable_service(&mut servers, &service));
         assert!(!servers[0].enabled);
         assert_eq!(servers.len(), 1);
 
         // Disabling again is a no-op that reports false.
-        assert!(!disable_service(&mut servers, "wordcraft"));
+        assert!(!disable_service(&mut servers, &service));
         assert!(!servers[0].enabled);
 
         // Remove takes the row out.
-        assert!(remove_service(&mut servers, "wordcraft"));
+        assert!(remove_service(&mut servers, &service));
         assert_eq!(servers.len(), 0);
-        assert!(!remove_service(&mut servers, "wordcraft"));
+        assert!(!remove_service(&mut servers, &service));
     }
 
     #[test]
@@ -538,7 +621,7 @@ mod tests {
     fn bridge_entry_matches_the_streamable_http_shape() {
         let entry = bridge_entry(BRIDGE_PORT);
         assert_eq!(entry.id, BRIDGE_ID);
-        assert_eq!(entry.name, "Craft AI (unified)");
+        assert_eq!(entry.name, "Craft AI");
         assert!(entry.enabled);
         match &entry.connection {
             Connection::StreamableHttp { url, auth, .. } => {
@@ -608,5 +691,148 @@ mod tests {
         assert_eq!(first_existing(None, &[missing.clone(), present.clone()]), Some(present));
         // Nothing exists -> None.
         assert_eq!(first_existing(None, &[missing]), None);
+    }
+
+    /// Enabling a service manages an existing entry by display name (keeping its id) rather than
+    /// creating a duplicate under the deterministic id.
+    #[test]
+    fn enable_service_manages_an_existing_entry_by_name() {
+        let mut servers = vec![ServerEntry {
+            id: "uuid-1".into(),
+            name: "WordCraft".into(),
+            description: "old".into(),
+            enabled: false,
+            connection: Connection::Stdio {
+                command: "/old/wordcraft-cli.exe".into(),
+                args: vec!["mcp".into()],
+                env: HashMap::new(),
+            },
+        }];
+        let service = LocalService {
+            id: "wordcraft".into(),
+            name: "WordCraft".into(),
+            location: "/x/wordcraft.exe".into(),
+            cli_path: Some("/x/wordcraft-cli.exe".into()),
+        };
+        assert!(enable_service(&mut servers, &service));
+        // Same single entry, original id preserved, command refreshed.
+        assert_eq!(servers.len(), 1);
+        assert_eq!(servers[0].id, "uuid-1");
+        assert!(servers[0].enabled);
+        match &servers[0].connection {
+            Connection::Stdio { command, .. } => assert_eq!(command, "/x/wordcraft-cli.exe"),
+            _ => panic!("expected stdio"),
+        }
+    }
+
+    /// Disabling matches by display name first (a UUID entry is found via its name).
+    #[test]
+    fn disable_service_matches_by_name_first() {
+        let mut servers = vec![ServerEntry {
+            id: "uuid-1".into(),
+            name: "WordCraft".into(),
+            description: String::new(),
+            enabled: true,
+            connection: Connection::Stdio {
+                command: "/x/wordcraft-cli.exe".into(),
+                args: vec!["mcp".into()],
+                env: HashMap::new(),
+            },
+        }];
+        let service = LocalService {
+            id: "wordcraft".into(),
+            name: "WordCraft".into(),
+            location: "/x/wordcraft.exe".into(),
+            cli_path: Some("/x/wordcraft-cli.exe".into()),
+        };
+        assert!(disable_service(&mut servers, &service));
+        assert!(!servers[0].enabled);
+        // The deterministic-id entry is not created.
+        assert_eq!(servers.len(), 1);
+    }
+
+    /// Removing matches by display name first.
+    #[test]
+    fn remove_service_matches_by_name_first() {
+        let mut servers = vec![ServerEntry {
+            id: "uuid-1".into(),
+            name: "WordCraft".into(),
+            description: String::new(),
+            enabled: true,
+            connection: Connection::Stdio {
+                command: "/x/wordcraft-cli.exe".into(),
+                args: vec!["mcp".into()],
+                env: HashMap::new(),
+            },
+        }];
+        let service = LocalService {
+            id: "wordcraft".into(),
+            name: "WordCraft".into(),
+            location: "/x/wordcraft.exe".into(),
+            cli_path: Some("/x/wordcraft-cli.exe".into()),
+        };
+        assert!(remove_service(&mut servers, &service));
+        assert_eq!(servers.len(), 0);
+    }
+
+    /// Enabling the bridge manages an existing "Craft AI" entry by name (keeping its id, refreshing
+    /// the URL) rather than creating a duplicate.
+    #[test]
+    fn enable_bridge_manages_an_existing_entry_by_name() {
+        let mut servers = vec![ServerEntry {
+            id: "uuid-bridge".into(),
+            name: "Craft AI".into(),
+            description: String::new(),
+            enabled: false,
+            connection: Connection::StreamableHttp {
+                url: "http://127.0.0.1:9999/mcp".into(),
+                headers: HashMap::new(),
+                auth: Some(Auth::None),
+            },
+        }];
+        assert!(enable_bridge(&mut servers, BRIDGE_PORT));
+        assert_eq!(servers.len(), 1);
+        assert_eq!(servers[0].id, "uuid-bridge");
+        assert!(servers[0].enabled);
+        match &servers[0].connection {
+            Connection::StreamableHttp { url, .. } => assert_eq!(url, "http://127.0.0.1:12345/mcp"),
+            _ => panic!("expected streamableHttp"),
+        }
+    }
+
+    /// bridge_port_current parses the port from an existing entry's URL.
+    #[test]
+    fn bridge_port_current_parses_the_url() {
+        let servers = vec![ServerEntry {
+            id: "uuid-bridge".into(),
+            name: "Craft AI".into(),
+            description: String::new(),
+            enabled: true,
+            connection: Connection::StreamableHttp {
+                url: "http://127.0.0.1:9876/mcp".into(),
+                headers: HashMap::new(),
+                auth: Some(Auth::None),
+            },
+        }];
+        assert_eq!(bridge_port_current(&servers), Some(9876));
+    }
+
+    /// bridge_enabled reports whether the existing entry is on.
+    #[test]
+    fn bridge_enabled_reports_the_existing_entry() {
+        let mut servers = vec![ServerEntry {
+            id: "uuid-bridge".into(),
+            name: "Craft AI".into(),
+            description: String::new(),
+            enabled: true,
+            connection: Connection::StreamableHttp {
+                url: "http://127.0.0.1:12345/mcp".into(),
+                headers: HashMap::new(),
+                auth: Some(Auth::None),
+            },
+        }];
+        assert!(bridge_enabled(&servers));
+        servers[0].enabled = false;
+        assert!(!bridge_enabled(&servers));
     }
 }
