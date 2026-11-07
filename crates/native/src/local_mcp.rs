@@ -835,4 +835,25 @@ mod tests {
         servers[0].enabled = false;
         assert!(!bridge_enabled(&servers));
     }
+
+    /// Against the real `ng-mcp.json` on this machine: existing Craft app + bridge entries (created
+    /// under UUID ids by an earlier launcher version) must be recognized by display name and reported
+    /// as present. Gated on an env var so it only runs where the real config exists (a dev box),
+    /// never in CI. Set ARTCRAFT_LAUNCHER_VERIFY_MCP=1 to run it.
+    #[test]
+    fn mcp_state_recognizes_existing_entries_on_this_machine_when_requested() {
+        if std::env::var("ARTCRAFT_LAUNCHER_VERIFY_MCP").is_err() {
+            return;
+        }
+        let Some(path) = mcp_config_path() else { return };
+        let servers = load_servers(&path);
+        // WordCraft and PdfCraft are installed here and already present as enabled stdio entries.
+        assert!(service_enabled(&servers, "WordCraft"),
+            "WordCraft entry not recognized (by name) or disabled");
+        assert!(service_enabled(&servers, "PdfCraft"),
+            "PdfCraft entry not recognized (by name) or disabled");
+        // The unified bridge is present at the default port and enabled.
+        assert_eq!(bridge_port_current(&servers), Some(BRIDGE_PORT));
+        assert!(bridge_enabled(&servers), "bridge entry not recognized (by name) or disabled");
+    }
 }
