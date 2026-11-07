@@ -281,6 +281,60 @@ pub fn release_from_sums(repo: &str, tag: &str, sums: &[(String, String)]) -> Re
     }
 }
 
+/// The release notes for `tag` in GitHub's public Atom feed, as safe plain text.
+///
+/// The feed is the quota-free companion to the `releases/latest` redirect. Its `content` is
+/// XML-escaped HTML, so this deliberately keeps the human-readable text and list structure while
+/// dropping markup and links. The caller has already capped the feed response.
+pub fn notes_from_atom(atom: &str, repo: &str, tag: &str) -> Option<String> {
+    let release_url = format!("https://github.com/{repo}/releases/tag/{tag}");
+    for entry in atom.split("<entry>").skip(1) {
+        let entry = entry.split_once("</entry>")?.0;
+        if !entry.contains(&format!("href=\"{release_url}\"")) {
+            continue;
+        }
+        let (_, content) = entry.split_once("<content")?;
+        let (_, content) = content.split_once('>')?;
+        let (content, _) = content.split_once("</content>")?;
+        let notes = html_text(&xml_unescape(content));
+        if !notes.is_empty() {
+            return Some(truncate(&notes, MAX_NOTES));
+        }
+    }
+    None
+}
+
+/// Decodes the XML entities GitHub uses around Atom's HTML content. Unknown entities remain
+/// literal rather than becoming a different character.
+fn xml_unescape(text: &str) -> String {
+    text.replace("&lt;", "<").replace("&gt;", ">").replace("&quot;", "\"").replace("&#39;", "'").replace("&amp;", "&")
+}
+
+/// Keeps release-note text and its useful block boundaries while ignoring HTML markup.
+fn html_text(html: &str) -> String {
+    let mut text = String::new();
+    let mut rest = html;
+    while let Some((before, after_open)) = rest.split_once('<') {
+        text.push_str(before);
+        let Some((tag, after_close)) = after_open.split_once('>') else {
+            text.push('<');
+            text.push_str(after_open);
+            break;
+        };
+        let tag = tag.trim_start().to_ascii_lowercase();
+        if tag.starts_with("li") {
+            text.push_str("\n- ");
+        } else if tag.starts_with("p") || tag.starts_with("h1") || tag.starts_with("h2") || tag.starts_with("h3") || tag.starts_with("br") {
+            text.push('\n');
+        }
+        rest = after_close;
+    }
+    if !rest.is_empty() {
+        text.push_str(rest);
+    }
+    text.lines().map(str::trim).filter(|line| !line.is_empty()).collect::<Vec<_>>().join("\n")
+}
+
 /// The tag in a `https://github.com/<repo>/releases/tag/<tag>` redirect target.
 pub fn tag_from_redirect(location: &str, repo: &str) -> Option<String> {
     let rest = location.strip_prefix(&format!("https://github.com/{repo}/releases/tag/"))?;
@@ -533,6 +587,19 @@ mod tests {
         let r = release_from_sums(REPO, "v0.5.0", &sums);
         assert_eq!(r.assets[0].url, "https://github.com/storytold/photocraft/releases/download/v0.5.0/photocraft-0.5.0-macos-universal.dmg");
         assert_eq!(r.version, Some(Version::new(0, 5, 0)));
+    }
+
+    #[test]
+    fn atom_feed_keeps_the_matching_release_notes_as_plain_text() {
+        let atom = r#"<feed><entry>
+            <link href="https://github.com/storytold/photocraft/releases/tag/v0.5.0"/>
+            <content type="html">&lt;h2&gt;What&#39;s Changed&lt;/h2&gt;&lt;ul&gt;&lt;li&gt;First &amp; second&lt;/li&gt;&lt;li&gt;Next&lt;/li&gt;&lt;/ul&gt;</content>
+        </entry><entry>
+            <link href="https://github.com/storytold/photocraft/releases/tag/v0.4.0"/>
+            <content type="html">older</content>
+        </entry></feed>"#;
+        assert_eq!(notes_from_atom(atom, REPO, "v0.5.0").as_deref(), Some("What's Changed\n- First & second\n- Next"));
+        assert_eq!(notes_from_atom(atom, REPO, "v0.6.0"), None);
     }
 
     #[test]
