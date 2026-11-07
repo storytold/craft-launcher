@@ -17,8 +17,10 @@
 //! quit.
 //!
 //! The Linux launcher inside WSL listens on its own port (issue #271). WSL shares loopback ports
-//! with Windows (WSL 2 forwards them, WSL 1 binds Windows' own), so on the shared port a WSL
-//! launcher answered the Windows launcher's hello and the Windows one exited without a window.
+//! with Windows (WSL 2 forwards them, WSL 1 binds Windows' own), so on the shared port a Windows
+//! launcher started after a WSL one said hello to the WSL launcher and couldn't verify its token:
+//! up to 0.14.0 it exited without a window, and from 0.14.1 it started without the port, so each
+//! further Windows start opened another launcher.
 //!
 //! ## Upgrading over the published 0.7.0 build
 //!
