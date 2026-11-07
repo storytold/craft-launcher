@@ -54,12 +54,12 @@ pub struct Job<'a> {
 /// A job's place in its batch (see [`Job::batch`]): the installer queue takes it where the batch
 /// shares one call ([`crate::queue::Queue::batched_when`]); a job that ends before that — failed,
 /// cancelled, or needing no prompt at all — gives the place back on its way out, so the rest of
-/// the batch never waits for it.
-struct BatchPlace(Option<crate::queue::Gather>);
+/// the batch never waits for it. [`install_at`](fn@install_at) takes it for the installer routes;
+/// the backend holds it the same way for every earlier way out of a job.
+pub(crate) struct BatchPlace(pub(crate) Option<crate::queue::Gather>);
 
 impl BatchPlace {
-    #[cfg_attr(not(any(target_os = "linux", windows)), allow(dead_code))]
-    fn take(&mut self) -> Option<crate::queue::Gather> {
+    pub(crate) fn take(&mut self) -> Option<crate::queue::Gather> {
         self.0.take()
     }
 }

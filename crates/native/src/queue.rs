@@ -73,7 +73,7 @@ impl Gather {
     }
 
     /// Whether the batch may make its call: everyone has arrived or left, or the wait is over.
-    fn open(&self) -> bool {
+    pub(crate) fn open(&self) -> bool {
         self.remaining.load(Ordering::SeqCst) == 0 || Instant::now() >= self.until
     }
 }
