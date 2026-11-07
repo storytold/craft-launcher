@@ -233,8 +233,7 @@ pub const SUITE: [CraftApp; 18] = [
         "storytold/texturecraft",
     ),
     CraftApp {
-        // Use the project repository until its getartcraft.com page is published.
-        site: Some("https://github.com/storytold/materialcraft"),
+        site: Some("https://getartcraft.com/apps/materialcraft"),
         ..app(
             "materialcraft",
             "MaterialCraft",
@@ -401,7 +400,7 @@ mod tests {
         assert_eq!(app.kind, AppKind::Official);
         assert_eq!(app.repo, "storytold/materialcraft");
         assert_eq!(app.bundle_id(), "ai.storyteller.materialcraft");
-        assert_eq!(app.website(), "https://github.com/storytold/materialcraft");
+        assert_eq!(app.website(), "https://getartcraft.com/apps/materialcraft");
         assert_eq!(app.mac_team, Some(ARTCRAFT_TEAM_ID));
     }
 
