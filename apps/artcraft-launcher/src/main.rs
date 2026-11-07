@@ -170,12 +170,20 @@ fn main() -> ExitCode {
                 return ExitCode::FAILURE;
             }
             if let Some(hidden_again) = launcher.reopen_window.take() {
-                if reopens.allow(std::time::Instant::now()) {
-                    hidden = hidden_again;
-                    continue;
+                match after_loss(&mut reopens, std::time::Instant::now(), hidden_again, launcher.tray.is_some()) {
+                    AfterLoss::Reopen { hidden: hidden_again } => {
+                        hidden = hidden_again;
+                        continue;
+                    }
+                    AfterLoss::Tray => {
+                        log::error!("the graphics device keeps being lost; carrying on in the tray without a window");
+                        launcher.closed_to_tray = true;
+                    }
+                    AfterLoss::Exit => {
+                        log::error!("the graphics device keeps being lost and there is no tray to carry on in; quitting");
+                        return ExitCode::FAILURE;
+                    }
                 }
-                log::error!("the graphics device keeps being lost; carrying on without a window");
-                launcher.closed_to_tray = launcher.tray.is_some();
             }
             if !std::mem::take(&mut launcher.closed_to_tray) {
                 return ExitCode::SUCCESS;
@@ -186,6 +194,28 @@ fn main() -> ExitCode {
         }
         hidden = false;
         window = true;
+    }
+}
+
+/// What follows a window that closed because its graphics device was lost (#274).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum AfterLoss {
+    /// Open a new window, with a fresh surface, device and renderer, hidden or not as the lost one was.
+    Reopen { hidden: bool },
+    /// The budget is spent: carry on in the tray, where asking for the window tries again.
+    Tray,
+    /// The budget is spent and there is no tray: quit with an error rather than loop.
+    Exit,
+}
+
+/// Decides [`AfterLoss`]: a new window while `budget` allows one at `now`, else the tray, else exit.
+fn after_loss(budget: &mut gpu_health::ReopenBudget, now: std::time::Instant, hidden: bool, has_tray: bool) -> AfterLoss {
+    if budget.allow(now) {
+        AfterLoss::Reopen { hidden }
+    } else if has_tray {
+        AfterLoss::Tray
+    } else {
+        AfterLoss::Exit
     }
 }
 
@@ -1004,6 +1034,21 @@ impl<'a> Shell<'a> {
     fn quit(&mut self, ctx: &egui::Context) {
         self.quitting = true;
         self.launcher.closed_to_tray = false;
+        self.launcher.reopen_window = None;
+        ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+    }
+
+    /// The window's graphics device is lost (#274): egui-wgpu can't draw on it, and a frame with
+    /// shapes panics inside it, so this frame draws nothing. The window then closes and the window
+    /// loop opens a new one with a fresh device, unless it is already closing to quit or to the
+    /// tray: those win, and a window opened from the tray later gets a fresh device anyway.
+    fn device_lost(&mut self, ctx: &egui::Context) {
+        ctx.graphics_mut(|g| *g = Default::default());
+        if self.quitting || self.launcher.closed_to_tray || self.launcher.reopen_window.is_some() {
+            return;
+        }
+        log::error!("opening a new window with a fresh graphics device");
+        self.launcher.reopen_window = Some(!self.visible);
         ctx.send_viewport_cmd(egui::ViewportCommand::Close);
     }
 }
@@ -1038,7 +1083,8 @@ impl eframe::App for Shell<'_> {
                     self.launcher.ui.hidden_to_tray(&mut self.launcher.host);
                     self.launcher.closed_to_tray = true;
                 }
-                OnClose::Quit => {}
+                // Closing to quit: a graphics device lost meanwhile must not reopen the window.
+                OnClose::Quit => self.quitting = true,
             }
         }
         craft_quit::on_close_request(ctx);
@@ -1059,15 +1105,9 @@ impl eframe::App for Shell<'_> {
                 true
             });
         });
-        // Last, after everything drawn this frame: egui-wgpu can't draw on a lost device, and a
-        // frame with shapes panics inside it. Draw nothing and swap in a new window (#274).
+        // Last, after everything drawn this frame, so none of it reaches a lost device.
         if self.gpu.as_ref().is_some_and(gpu_health::WindowGpu::lost) {
-            ui.ctx().graphics_mut(|g| *g = Default::default());
-            if self.launcher.reopen_window.is_none() {
-                log::error!("opening a new window with a fresh graphics device");
-                self.launcher.reopen_window = Some(!self.visible);
-                ui.ctx().send_viewport_cmd(egui::ViewportCommand::Close);
-            }
+            self.device_lost(ui.ctx());
         }
     }
 
@@ -1487,6 +1527,66 @@ mod tests {
         }
         assert_eq!(backends(None), eframe::wgpu::Backends::DX12 | eframe::wgpu::Backends::GL);
         assert_eq!(backends(Some(eframe::wgpu::Backends::GL)), eframe::wgpu::Backends::GL);
+    }
+
+    /// A lost device closes the window once, to reopen it as it was (hidden here); further frames
+    /// on the lost device ask for nothing more (#274).
+    #[test]
+    fn a_lost_device_reopens_the_window_once() {
+        let (mut launcher, _show, _) = launcher();
+        let ctx = launcher.windowless.clone();
+        let mut shell = Shell { launcher: &mut launcher, window_hides: true, visible: false, quitting: false, applied_follow: None, gpu: None };
+        shell.device_lost(&ctx);
+        assert_eq!(shell.launcher.reopen_window, Some(true));
+        shell.launcher.reopen_window = Some(false);
+        shell.device_lost(&ctx);
+        assert_eq!(shell.launcher.reopen_window, Some(false), "asked once, not every frame");
+    }
+
+    /// Quitting, or closing to the tray, wins over replacing a lost window, whichever comes first
+    /// (#612 review).
+    #[test]
+    fn quit_and_close_to_tray_win_over_a_lost_device() {
+        let (mut launcher, _show, _) = launcher();
+        let ctx = launcher.windowless.clone();
+        let mut shell = Shell { launcher: &mut launcher, window_hides: false, visible: true, quitting: false, applied_follow: None, gpu: None };
+        shell.quit(&ctx);
+        shell.device_lost(&ctx);
+        assert_eq!(shell.launcher.reopen_window, None);
+
+        let mut shell = Shell { launcher: &mut launcher, window_hides: false, visible: true, quitting: false, applied_follow: None, gpu: None };
+        shell.device_lost(&ctx);
+        assert!(shell.launcher.reopen_window.is_some());
+        shell.quit(&ctx);
+        assert_eq!(shell.launcher.reopen_window, None, "a quit after the loss still quits");
+
+        let mut shell = Shell { launcher: &mut launcher, window_hides: false, visible: true, quitting: false, applied_follow: None, gpu: None };
+        shell.put_away(&ctx);
+        shell.device_lost(&ctx);
+        assert_eq!(shell.launcher.reopen_window, None);
+        assert!(shell.launcher.closed_to_tray);
+    }
+
+    /// A device lost again and again ends: after the budget, in the tray, or with an error exit
+    /// where there is no tray, never in a loop of new windows (#274).
+    #[test]
+    fn repeated_losses_end_in_the_tray_or_an_error() {
+        let t = Instant::now();
+        for (has_tray, end) in [(true, AfterLoss::Tray), (false, AfterLoss::Exit)] {
+            let mut budget = gpu_health::ReopenBudget::default();
+            let reopened = (0..10).take_while(|_| after_loss(&mut budget, t, true, has_tray) == AfterLoss::Reopen { hidden: true }).count();
+            assert_eq!(reopened, gpu_health::ReopenBudget::MAX);
+            assert_eq!(after_loss(&mut budget, t, false, has_tray), end);
+        }
+    }
+
+    /// Each window's options ask eframe for a new wgpu instance, adapter and device, so nothing
+    /// from a lost device (its surface, device or egui renderer) is carried into the next window.
+    #[test]
+    fn every_window_creates_its_own_graphics_device() {
+        for hidden in [false, true] {
+            assert!(matches!(native_options(hidden, None).wgpu_options.wgpu_setup, eframe::egui_wgpu::WgpuSetup::CreateNew(_)));
+        }
     }
 
     #[test]

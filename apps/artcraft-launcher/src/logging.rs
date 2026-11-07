@@ -256,9 +256,10 @@ thread_local! {
 /// lost device). The panic hook logs such a panic as handled, not as an internal error; every
 /// other panic is still reported.
 pub fn catch_expected<R>(f: impl FnOnce() -> R) -> std::thread::Result<R> {
-    EXPECTED_PANIC.with(|e| e.set(true));
+    // Restores the outer value, so a nested call doesn't clear an outer one's mark.
+    let outer = EXPECTED_PANIC.with(|e| e.replace(true));
     let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(f));
-    EXPECTED_PANIC.with(|e| e.set(false));
+    EXPECTED_PANIC.with(|e| e.set(outer));
     result
 }
 
@@ -295,6 +296,15 @@ mod tests {
         assert!(catch_expected(|| panic!("expected")).is_err());
         assert!(!EXPECTED_PANIC.with(std::cell::Cell::get));
         assert_eq!(catch_expected(|| 7).ok(), Some(7));
+        assert!(!EXPECTED_PANIC.with(std::cell::Cell::get));
+        // Nested: the inner call leaves the outer one's mark in place.
+        assert!(
+            catch_expected(|| {
+                let _ = catch_expected(|| 1);
+                assert!(EXPECTED_PANIC.with(std::cell::Cell::get));
+            })
+            .is_ok()
+        );
         assert!(!EXPECTED_PANIC.with(std::cell::Cell::get));
     }
     use log::Log;
