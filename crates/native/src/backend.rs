@@ -340,11 +340,7 @@ impl NativeBackend {
             }
             let now = crate::now();
             let queue = Mutex::new(
-                SUITE
-                    .iter()
-                    .filter(|a| platform.is_none_or(|p| a.runs_on(p.os)))
-                    .chain(std::iter::once(&LAUNCHER))
-                    .collect::<Vec<&CraftApp>>(),
+                SUITE.iter().filter(|a| platform.is_none_or(|p| a.runs_on(p.os))).chain(std::iter::once(&LAUNCHER)).collect::<Vec<&CraftApp>>(),
             );
             let sources = sweep(&queue, &mirror, feed.as_ref(), fallback, &source, &shared, &paths, (platform, &options), force, now);
             source.save();

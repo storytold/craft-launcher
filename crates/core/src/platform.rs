@@ -335,8 +335,7 @@ mod tests {
 
     #[test]
     fn artcraft_studio_selects_published_desktop_assets() {
-        let release =
-            crate::release::parse_github_release(include_str!("../tests/fixtures/artcraft-release.json"), "storytold/artcraft").unwrap();
+        let release = crate::release::parse_github_release(include_str!("../tests/fixtures/artcraft-release.json"), "storytold/artcraft").unwrap();
         assert_eq!(release.version, Some(crate::version::Version::new(0, 41, 1)));
         for (os, arch, kind, expected) in [
             (Os::Windows, Arch::X64, PackageKind::Msi, "ArtCraft_0.41.1_x64_en-US.msi"),
