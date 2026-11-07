@@ -84,6 +84,7 @@
 	Updates always use the format an app was installed with.	更新一律沿用應用程式安裝時的格式。
 	Running in the background	在背景執行
 	Keep running in the tray when the window is closed	關閉視窗後仍在系統匣中執行
+	Hide ArtCraft Launcher from the Dock while in the background	在背景執行時從 Dock 隱藏 ArtCraft Launcher
 	ArtCraft Launcher is still running	ArtCraft Launcher 仍在執行
 	It's in the tray: open it or quit it from the tray icon, or turn this off in the settings.	它位於系統匣中：請從系統匣圖示開啟或結束，或在設定中關閉此功能。
 	Show the window on the current desktop	在目前的桌面顯示視窗
