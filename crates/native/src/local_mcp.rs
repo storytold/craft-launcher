@@ -232,6 +232,110 @@ pub fn remove_service(servers: &mut Vec<ServerEntry>, service_id: &str) -> bool 
     servers.len() != before
 }
 
+/// Port the unified `craft-ai-mcp` bridge listens on by default.
+pub const BRIDGE_PORT: u16 = 12345;
+
+/// Stable id for the single unified-bridge entry in `ng-mcp.json`.
+const BRIDGE_ID: &str = "craft-ai-mcp";
+
+/// Locate the unified `craft-ai-mcp` bridge binary, if present.
+///
+/// Checks, in order:
+/// - `ARTCRAFT_LAUNCHER_BRIDGE_PATH` (dev/test override);
+/// - a small set of derived install locations.
+/// Returns `None` when no bridge is found so callers can fall back to per-app stdio entries.
+pub fn locate_bridge() -> Option<PathBuf> {
+    let override_path = std::env::var("ARTCRAFT_LAUNCHER_BRIDGE_PATH").ok().map(PathBuf::from);
+    first_existing(override_path.as_deref(), &candidate_bridge_paths())
+}
+
+/// First existing path among `override` (checked first) then `candidates`.
+fn first_existing(override_path: Option<&Path>, candidates: &[PathBuf]) -> Option<PathBuf> {
+    if let Some(p) = override_path {
+        return p.is_file().then_some(PathBuf::from(p));
+    }
+    candidates.iter().find(|p| p.is_file()).cloned()
+}
+
+/// Candidate locations for the bridge binary. Derived from this launcher's own install, not
+/// hardcoded to one machine's layout; extend as the ship story settles.
+fn candidate_bridge_paths() -> Vec<PathBuf> {
+    let mut out = Vec::new();
+    if let Some(exe) = std::env::current_exe().ok() {
+        if let Some(dir) = exe.parent() {
+            for name in ["craft-ai-mcp.exe", "craft-ai-mcp"] {
+                out.push(dir.join(name));
+            }
+        }
+    }
+    out
+}
+
+/// The bridge binary's version, when readable. Reuses the launcher's existing PE-version reader so
+/// the two branches agree on how a version is read; `None` off-Windows or without version info.
+#[cfg(windows)]
+pub fn bridge_version(path: &Path) -> Option<artcraft_launcher_core::version::Version> {
+    crate::detect::windows::executable_version(path)
+}
+
+#[cfg(not(windows))]
+pub fn bridge_version(_path: &Path) -> Option<artcraft_launcher_core::version::Version> {
+    None
+}
+
+/// The single `streamableHttp` entry for the unified bridge at `port`.
+pub fn bridge_entry(port: u16) -> ServerEntry {
+    ServerEntry {
+        id: BRIDGE_ID.to_string(),
+        name: "Craft AI (unified)".to_string(),
+        description: "All Craft AI tools over one MCP endpoint.".to_string(),
+        enabled: true,
+        connection: Connection::StreamableHttp {
+            url: format!("http://127.0.0.1:{port}/mcp"),
+            headers: HashMap::new(),
+            auth: Some(Auth::None),
+        },
+    }
+}
+
+/// Add or update the unified-bridge entry, enabling it. Returns false for a zero port.
+pub fn enable_bridge(servers: &mut Vec<ServerEntry>, port: u16) -> bool {
+    if port == 0 {
+        return false;
+    }
+    let entry = bridge_entry(port);
+    match servers.iter_mut().find(|e| e.id == BRIDGE_ID) {
+        Some(existing) => {
+            *existing = entry;
+            existing.enabled = true;
+        }
+        None => servers.push(entry),
+    }
+    true
+}
+
+/// Disable the unified-bridge entry (leaving it in the list). Returns false when absent or already off.
+pub fn disable_bridge(servers: &mut Vec<ServerEntry>) -> bool {
+    match servers.iter_mut().find(|e| e.id == BRIDGE_ID) {
+        Some(e) => {
+            if e.enabled {
+                e.enabled = false;
+                true
+            } else {
+                false
+            }
+        }
+        None => false,
+    }
+}
+
+/// Remove the unified-bridge entry entirely. Returns false when absent.
+pub fn remove_bridge(servers: &mut Vec<ServerEntry>) -> bool {
+    let before = servers.len();
+    servers.retain(|e| e.id != BRIDGE_ID);
+    servers.len() != before
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -429,5 +533,81 @@ mod tests {
         // WordCraft and PdfCraft are installed on the machine this test runs against.
         assert!(services.iter().any(|s| s.id == "wordcraft"), "expected wordcraft to be detected");
         assert!(services.iter().any(|s| s.id == "pdfcraft"), "expected pdfcraft to be detected");
+    }
+
+    #[test]
+    fn bridge_entry_matches_the_streamable_http_shape() {
+        let entry = bridge_entry(BRIDGE_PORT);
+        assert_eq!(entry.id, BRIDGE_ID);
+        assert_eq!(entry.name, "Craft AI (unified)");
+        assert!(entry.enabled);
+        match &entry.connection {
+            Connection::StreamableHttp { url, auth, .. } => {
+                assert_eq!(url, "http://127.0.0.1:12345/mcp");
+                assert_eq!(*auth, Some(Auth::None));
+            }
+            _ => panic!("expected a streamableHttp connection"),
+        };
+    }
+
+    #[test]
+    fn bridge_entry_uses_the_requested_port() {
+        let entry = bridge_entry(9000);
+        match &entry.connection {
+            Connection::StreamableHttp { url, .. } => assert_eq!(url, "http://127.0.0.1:9000/mcp"),
+            _ => panic!("expected a streamableHttp connection"),
+        };
+    }
+
+    #[test]
+    fn enable_disable_remove_bridge_manage_the_entry() {
+        let mut servers: Vec<ServerEntry> = Vec::new();
+        assert!(!enable_bridge(&mut servers, 0)); // zero port is refused
+        assert_eq!(servers.len(), 0);
+
+        assert!(enable_bridge(&mut servers, BRIDGE_PORT));
+        assert_eq!(servers.len(), 1);
+        assert!(servers[0].enabled);
+        assert_eq!(servers[0].id, BRIDGE_ID);
+
+        // Enabling again is idempotent (no duplicate row).
+        assert!(enable_bridge(&mut servers, BRIDGE_PORT));
+        assert_eq!(servers.len(), 1);
+
+        // Disabling turns it off.
+        assert!(disable_bridge(&mut servers));
+        assert!(!servers[0].enabled);
+        // Disabling again is a no-op that reports false.
+        assert!(!disable_bridge(&mut servers));
+
+        // Remove takes the row out.
+        assert!(remove_bridge(&mut servers));
+        assert_eq!(servers.len(), 0);
+        assert!(!remove_bridge(&mut servers));
+    }
+
+    #[test]
+    fn first_existing_prefers_the_override() {
+        let dir = tempfile::tempdir().unwrap();
+        let present = dir.path().join("craft-ai-mcp.exe");
+        std::fs::write(&present, b"").unwrap();
+        let missing = dir.path().join("nope.exe");
+        // Override wins even when a candidate also exists.
+        assert_eq!(
+            first_existing(Some(present.as_ref()), &[missing.clone(), present.clone()]),
+            Some(present),
+        );
+    }
+
+    #[test]
+    fn first_existing_falls_back_to_candidates_and_reports_none_when_missing() {
+        let dir = tempfile::tempdir().unwrap();
+        let missing = dir.path().join("nope.exe");
+        let present = dir.path().join("craft-ai-mcp.exe");
+        std::fs::write(&present, b"").unwrap();
+        // No override: the first existing candidate wins.
+        assert_eq!(first_existing(None, &[missing.clone(), present.clone()]), Some(present));
+        // Nothing exists -> None.
+        assert_eq!(first_existing(None, &[missing]), None);
     }
 }
