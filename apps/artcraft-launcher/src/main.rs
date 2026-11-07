@@ -6,6 +6,8 @@
 #![deny(clippy::unwrap_used, clippy::expect_used, clippy::panic, clippy::unimplemented, clippy::todo, clippy::unreachable)]
 
 #[cfg(target_os = "macos")]
+mod dock;
+#[cfg(target_os = "macos")]
 mod hiding;
 mod logging;
 mod motion;
@@ -420,6 +422,23 @@ enum OnClose {
     Quit,
 }
 
+/// Whether the Dock icon shows (macOS): always while the window is out, and while it is put away in
+/// the menu bar unless the user chose to hide it then. The Dock choice only counts while "keep
+/// running in the tray" is on, as in Settings, which greys it out otherwise but keeps it for later.
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
+fn shows_dock_icon(window_visible: bool, has_tray: bool, close_to_tray: bool, hide_dock_icon: bool) -> bool {
+    window_visible || !(has_tray && close_to_tray && hide_dock_icon)
+}
+
+/// Whether macOS brought a put-away window back by itself (macOS): it gained focus while the
+/// launcher had it hidden. Opening the app again from Finder or Spotlight, the Dock or ⌘Tab unhides
+/// it without a request to the launcher. Only a gain counts, as a window being put away still has
+/// focus for a pass or two.
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
+fn window_came_back(visible: bool, window_hides: bool, was_focused: bool, focused: bool) -> bool {
+    !visible && window_hides && !was_focused && focused
+}
+
 fn on_close(has_tray: bool, close_to_tray: bool, window_hides: bool) -> OnClose {
     if !(has_tray && close_to_tray) {
         OnClose::Quit
@@ -524,6 +543,10 @@ impl Host for DesktopHost {
     }
 
     fn has_desktops(&self) -> bool {
+        cfg!(target_os = "macos")
+    }
+
+    fn has_dock(&self) -> bool {
         cfg!(target_os = "macos")
     }
 
@@ -748,13 +771,19 @@ struct Shell<'a> {
     launcher: &'a mut Launcher,
     window_hides: bool,
     /// Whether the launcher last showed its window or put it away. On macOS the Dock, Finder and
-    /// ⌘Tab can bring the window back without the launcher knowing; that only matters for the
-    /// tray's left-click toggle, which macOS never sends, as a left click opens the tray menu.
+    /// ⌘Tab can bring the window back without the launcher being asked; it notices when the window
+    /// gains focus ([`window_came_back`]), so the Dock icon follows.
     visible: bool,
     quitting: bool,
     /// The "show on the current desktop" setting last applied to the window (macOS).
     #[cfg_attr(not(target_os = "macos"), allow(dead_code))]
     applied_follow: Option<bool>,
+    /// Whether the Dock icon was last shown (macOS).
+    #[cfg_attr(not(target_os = "macos"), allow(dead_code))]
+    applied_dock: Option<bool>,
+    /// Whether the window had focus on the last pass (macOS), to see it gain focus.
+    #[cfg_attr(not(target_os = "macos"), allow(dead_code))]
+    was_focused: bool,
 }
 
 impl<'a> Shell<'a> {
@@ -762,7 +791,7 @@ impl<'a> Shell<'a> {
         let window_hides = window_can_hide(cc.display_handle().ok().map(|d| d.as_raw()));
         // Started hidden at login but there's no tray to come back from: show the window.
         let visible = !hidden || launcher.tray.is_none();
-        let mut shell = Self { launcher, window_hides, visible: true, quitting: false, applied_follow: None };
+        let mut shell = Self { launcher, window_hides, visible: true, quitting: false, applied_follow: None, applied_dock: None, was_focused: false };
         if !visible && window_hides {
             // Started in the tray: the window stays out of sight. On macOS this doesn't hide the
             // app as `put_away` does, since the app is still being activated as it starts, which
@@ -799,6 +828,16 @@ impl<'a> Shell<'a> {
         }
     }
 
+    /// Takes this pass's window focus (macOS): a gain while the window is put away means macOS
+    /// brought it back by itself ([`window_came_back`]), so it counts as shown again.
+    #[cfg_attr(not(target_os = "macos"), allow(dead_code))]
+    fn track_focus(&mut self, focused: bool) {
+        if window_came_back(self.visible, self.window_hides, self.was_focused, focused) {
+            self.visible = true;
+        }
+        self.was_focused = focused;
+    }
+
     /// Puts the window away in the tray: hidden where it can hide, closed where it can't. On macOS
     /// the whole app hides, so its Dock icon brings the window back (`hiding`).
     fn put_away(&mut self, ctx: &egui::Context) {
@@ -830,6 +869,8 @@ impl eframe::App for Shell<'_> {
             spaces::follow_current_desktop(on);
             self.applied_follow = Some(on);
         }
+        #[cfg(target_os = "macos")]
+        self.track_focus(ctx.input(|i| i.viewport().focused) == Some(true));
         for request in requests {
             match request {
                 Request::Toggle if self.visible => self.put_away(ctx),
@@ -852,6 +893,18 @@ impl eframe::App for Shell<'_> {
                     self.launcher.closed_to_tray = true;
                 }
                 OnClose::Quit => {}
+            }
+        }
+        // After the requests and the close button, so the icon matches what this pass did to the window:
+        // a window being shown gets its Dock icon back before it comes out, and one being put away
+        // loses it now rather than on some later pass.
+        #[cfg(target_os = "macos")]
+        {
+            let settings = &self.launcher.ui.settings;
+            let on = shows_dock_icon(self.visible, self.launcher.tray.is_some(), settings.close_to_tray, settings.hide_dock_icon);
+            // Recorded only once macOS accepts it, so a refused change is tried again next pass.
+            if self.applied_dock != Some(on) && dock::show_icon(on) {
+                self.applied_dock = Some(on);
             }
         }
         craft_quit::on_close_request(ctx);
@@ -1024,6 +1077,29 @@ mod tests {
     }
 
     #[test]
+    fn the_dock_icon_hides_only_while_the_window_is_away_in_the_menu_bar() {
+        assert!(!shows_dock_icon(false, true, true, true));
+        // The window is out, the user keeps the icon, or there's no menu bar icon to come back from.
+        assert!(shows_dock_icon(true, true, true, true));
+        assert!(shows_dock_icon(false, true, true, false));
+        assert!(shows_dock_icon(false, false, true, true));
+        // "Keep running in the tray" is off (the window was put away at login or from the tray
+        // menu): the greyed-out Dock choice doesn't apply.
+        assert!(shows_dock_icon(false, true, false, true));
+    }
+
+    #[test]
+    fn a_hidden_window_that_gains_focus_has_come_back() {
+        assert!(window_came_back(false, true, false, true));
+        // Shown by the launcher, still focused while being put away, or no focus yet.
+        assert!(!window_came_back(true, true, false, true));
+        assert!(!window_came_back(false, true, true, true));
+        assert!(!window_came_back(false, true, false, false));
+        // A window that can't hide is closed instead, and comes back only through `show`.
+        assert!(!window_came_back(false, false, false, true));
+    }
+
+    #[test]
     fn the_tray_alone_waits_until_asked() {
         assert_eq!(tray_step(&[]), TrayStep::Stay);
     }
@@ -1153,7 +1229,15 @@ mod tests {
     fn quitting_overrides_a_close_to_the_tray() {
         let (mut launcher, _show, _) = launcher();
         let ctx = launcher.windowless.clone();
-        let mut shell = Shell { launcher: &mut launcher, window_hides: false, visible: true, quitting: false, applied_follow: None };
+        let mut shell = Shell {
+            launcher: &mut launcher,
+            window_hides: false,
+            visible: true,
+            quitting: false,
+            applied_follow: None,
+            applied_dock: None,
+            was_focused: false,
+        };
         shell.put_away(&ctx);
         assert!(shell.launcher.closed_to_tray);
         shell.quit(&ctx);
@@ -1164,10 +1248,51 @@ mod tests {
     fn a_window_that_hides_is_not_closed_to_the_tray() {
         let (mut launcher, _show, _) = launcher();
         let ctx = launcher.windowless.clone();
-        let mut shell = Shell { launcher: &mut launcher, window_hides: true, visible: true, quitting: false, applied_follow: None };
+        let mut shell = Shell {
+            launcher: &mut launcher,
+            window_hides: true,
+            visible: true,
+            quitting: false,
+            applied_follow: None,
+            applied_dock: None,
+            was_focused: false,
+        };
         shell.put_away(&ctx);
         assert!(!shell.visible);
         assert!(!shell.launcher.closed_to_tray);
+    }
+
+    #[test]
+    fn a_window_macos_brings_back_shows_until_it_is_closed_again() {
+        let (mut launcher, _show, _) = launcher();
+        let ctx = launcher.windowless.clone();
+        let mut shell = Shell {
+            launcher: &mut launcher,
+            window_hides: true,
+            visible: true,
+            quitting: false,
+            applied_follow: None,
+            applied_dock: None,
+            was_focused: false,
+        };
+        // With the tray and the Dock choice on.
+        let dock = |shell: &Shell<'_>| shows_dock_icon(shell.visible, true, true, true);
+        // Closed to the menu bar while focused; the window keeps its focus for a pass.
+        shell.track_focus(true);
+        shell.put_away(&ctx);
+        shell.track_focus(true);
+        shell.track_focus(false);
+        assert!(!shell.visible);
+        assert!(!dock(&shell));
+        // Opened again from Finder: macOS unhides the app and the window gains focus.
+        shell.track_focus(true);
+        assert!(shell.visible);
+        assert!(dock(&shell));
+        // Closed again: the Dock icon goes again.
+        shell.put_away(&ctx);
+        shell.track_focus(true);
+        assert!(!shell.visible);
+        assert!(!dock(&shell));
     }
 
     #[test]
