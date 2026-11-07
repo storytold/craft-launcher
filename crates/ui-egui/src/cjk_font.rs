@@ -523,6 +523,12 @@ fn korean_candidates() -> Vec<Candidate> {
         ("NotoSansKR-Regular.otf", "Noto Sans KR"),
         ("NotoSansKR-VF.ttf", "Noto Sans KR"),
         ("NanumGothic.ttf", "NanumGothic"),
+        // Upstream variable exports; keep the existing candidates' preference order.
+        ("NotoSansCJKkr-VF.otf", "Noto Sans CJK KR"),
+        ("NotoSansCJKkr-VF.ttf", "Noto Sans CJK KR"),
+        ("NotoSansKR-VF.otf", "Noto Sans KR"),
+        ("NotoSansCJK-VF.otf.ttc", "Noto Sans CJK KR"),
+        ("NotoSansCJK-VF.ttf.ttc", "Noto Sans CJK KR"),
     ];
     for dir in user_font_dirs() {
         for (file, family) in files {
@@ -635,6 +641,74 @@ mod tests {
         let first_misans = chinese_candidates().iter().position(|c| c.family == "MiSans").unwrap();
         assert!(chinese_candidates()[..first_misans].iter().all(|c| c.family != "MiSans"));
         assert!(first_misans > 0, "the system's own fonts come first");
+    }
+
+    /// Published variable-font filenames must be searched even on a machine with no CJK fonts.
+    #[test]
+    fn korean_candidates_include_published_variable_fonts() {
+        let found = candidates(Script::Korean);
+        let dirs = user_font_dirs();
+        #[cfg(all(unix, not(target_os = "macos")))]
+        let dirs: Vec<_> = dirs
+            .into_iter()
+            .chain(
+                [
+                    "/usr/share/fonts/opentype/noto",
+                    "/usr/share/fonts/noto-cjk",
+                    "/usr/share/fonts/google-noto-cjk",
+                    "/usr/share/fonts/google-noto-sans-cjk-fonts",
+                    "/usr/share/fonts/google-noto-sans-cjk-vf-fonts",
+                    "/usr/share/fonts/noto",
+                    "/usr/share/fonts/truetype/noto",
+                    "/usr/share/fonts/truetype/nanum",
+                    "/usr/local/share/fonts/noto",
+                    "/usr/local/share/fonts/noto-cjk",
+                ]
+                .map(PathBuf::from),
+            )
+            .collect();
+        assert!(!dirs.is_empty());
+        for dir in dirs {
+            for (file, family) in [
+                ("NotoSansCJKkr-VF.otf", "Noto Sans CJK KR"),
+                ("NotoSansCJKkr-VF.ttf", "Noto Sans CJK KR"),
+                ("NotoSansKR-VF.otf", "Noto Sans KR"),
+                ("NotoSansCJK-VF.otf.ttc", "Noto Sans CJK KR"),
+                ("NotoSansCJK-VF.ttf.ttc", "Noto Sans CJK KR"),
+            ] {
+                let path = dir.join(file);
+                assert!(found.iter().any(|c| c.path == path && c.family == family), "missing {} ({family})", path.display());
+                if let Some(host) = flatpak_host_path(&path) {
+                    let at = found.iter().position(|c| c.path == path && c.family == family).unwrap();
+                    assert_eq!(found[at + 1].path, host);
+                    assert_eq!(found[at + 1].family, family);
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn korean_candidates_keep_existing_font_preference() {
+        let dir = user_font_dirs().into_iter().next().expect("a user font folder");
+        let found = korean_candidates();
+        let names: Vec<_> = found
+            .iter()
+            .filter(|c| c.path.parent() == Some(dir.as_path()) && matches!(c.family, "Noto Sans CJK KR" | "Noto Sans KR" | "NanumGothic"))
+            .map(|c| c.path.file_name().unwrap())
+            .collect();
+        let existing = [
+            "NotoSansCJK-Regular.ttc",
+            "NotoSansCJKkr-Regular.otf",
+            "NotoSansCJK-VF.ttc",
+            "NotoSansKR-Regular.ttf",
+            "NotoSansKR-Regular.otf",
+            "NotoSansKR-VF.ttf",
+            "NanumGothic.ttf",
+        ];
+        assert!(names.len() > existing.len());
+        for (actual, expected) in names.iter().zip(existing) {
+            assert_eq!(actual, &std::ffi::OsStr::new(expected));
+        }
     }
 
     /// Traditional Chinese prefers an installed Noto CJK TC over the system's own face, matching
