@@ -801,15 +801,18 @@ fn remove_appimage(app: &CraftApp, path: &Path, record: Option<&Record>) -> Resu
     Ok(())
 }
 
-/// Starts an installed app with `args` (the user's launch flags) on its command line.
-pub fn launch(app: &CraftApp, installed: &Installed, paths: &Paths, args: &[String]) -> Result<(), String> {
-    let _ = paths;
+/// Starts an installed app with `args` (the user's launch flags) on its command line and configured language.
+pub fn launch(app: &CraftApp, installed: &Installed, paths: &Paths, args: &[String], configured_lang: Option<&str>) -> Result<(), String> {
+    let envs = crate::app_language::prepare_launch_env(app, Some(installed), paths, configured_lang);
     let path = Path::new(&installed.location);
     // Every app is told where the shared version-choice file is (see `craft_update::pins`), so
     // it finds it even when its own data folder points elsewhere: a redirected home, a sandbox,
     // or a launcher whose data folder moved.
     let pins = craft_update::pins::Pins::default_path();
-    let env: Vec<(&str, &std::ffi::OsStr)> = pins.iter().map(|p| (craft_update::pins::PATH_ENV, p.as_os_str())).collect();
+    let mut env: Vec<(&str, &std::ffi::OsStr)> = pins.iter().map(|p| (craft_update::pins::PATH_ENV, p.as_os_str())).collect();
+    for (k, v) in &envs {
+        env.push((k.as_str(), std::ffi::OsStr::new(v.as_str())));
+    }
     match installed.source {
         InstallSource::Flatpak => {
             let mut cmd = process::flatpak_command();
