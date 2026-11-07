@@ -175,7 +175,10 @@ pub mod macos {
 
 #[cfg(windows)]
 pub mod windows {
-    use std::path::PathBuf;
+    use std::collections::HashMap;
+    use std::path::{Path, PathBuf};
+    use std::sync::{Mutex, PoisonError};
+    use std::time::SystemTime;
 
     use winreg::RegKey;
     use winreg::enums::{HKEY_CURRENT_USER, HKEY_LOCAL_MACHINE, KEY_READ, KEY_WOW64_32KEY, KEY_WOW64_64KEY};
@@ -184,17 +187,43 @@ pub mod windows {
 
     const UNINSTALL: &str = r"SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall";
 
+    type VersionCache = HashMap<PathBuf, (SystemTime, Option<artcraft_launcher_core::version::Version>)>;
+
+    static VERSION_CACHE: Mutex<Option<VersionCache>> = Mutex::new(None);
+
     /// Reads VERSIONINFO without executing the downloaded application. The path is data in
     /// a child-only environment variable, never interpolated into PowerShell source.
+    ///
+    /// Caches results keyed by canonical executable path and file modification time so repeated
+    /// detection passes do not spawn PowerShell for an unchanged executable.
     pub fn executable_version(path: &std::path::Path) -> Option<artcraft_launcher_core::version::Version> {
         let path = std::fs::canonicalize(path).ok()?;
+        let mtime = std::fs::metadata(&path).and_then(|m| m.modified()).ok();
+        if let Some(mtime) = mtime {
+            let mut guard = VERSION_CACHE.lock().unwrap_or_else(PoisonError::into_inner);
+            let cache = guard.get_or_insert_with(HashMap::new);
+            if let Some((cached_mtime, cached_ver)) = cache.get(&path)
+                && *cached_mtime == mtime
+            {
+                return cached_ver.clone();
+            }
+        }
+
         let mut command = crate::process::command("powershell.exe");
         command.args([
             "-NoLogo", "-NoProfile", "-NonInteractive", "-Command",
             "[Console]::OutputEncoding = [System.Text.Encoding]::UTF8; [System.Diagnostics.FileVersionInfo]::GetVersionInfo($env:ARTCRAFT_VERSION_FILE).ProductVersion",
-        ]).env("ARTCRAFT_VERSION_FILE", path);
-        let output = crate::process::run_command(command, "powershell.exe", std::time::Duration::from_secs(5)).ok()?;
-        version::parse(output.trim())
+        ]).env("ARTCRAFT_VERSION_FILE", &path);
+        let output = crate::process::run_command(command, "powershell.exe", std::time::Duration::from_secs(5)).ok();
+        let parsed = output.as_deref().map(str::trim).and_then(version::parse);
+
+        if let Some(mtime) = mtime {
+            let mut guard = VERSION_CACHE.lock().unwrap_or_else(PoisonError::into_inner);
+            let cache = guard.get_or_insert_with(HashMap::new);
+            cache.insert(path, (mtime, parsed.clone()));
+        }
+
+        parsed
     }
 
     /// An MSI install found in the registry.
@@ -264,6 +293,7 @@ pub mod windows {
         exe_candidates(app, location.as_deref(), &roots).into_iter().find(|p| p.exists())
     }
 
+    /// Converts the newest installed MSI matching `app` into an [`Installed`] record.
     fn detect_msi(app: &CraftApp) -> Option<Installed> {
         let m = msi_installs(app).into_iter().next()?;
         Some(Installed {
@@ -313,6 +343,8 @@ pub mod windows {
         None
     }
 
+    /// Detects what is installed of `app` on Windows: portable copies under the launcher or
+    /// standard apps directory, or an MSI install in the registry.
     pub fn detect(app: &CraftApp) -> Option<Installed> {
         if crate::paths::portable_root().is_some() {
             detect_portable_in(app, &portable_dirs(app)).or_else(|| detect_msi(app))
@@ -672,5 +704,17 @@ mod tests {
             let with_location: Vec<PathBuf> = std::iter::once(location.join(&exe)).chain(in_program_files).collect();
             assert_eq!(exe_candidates(a, Some(&location), &roots), with_location);
         }
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn executable_version_caches_by_path_and_mtime() {
+        let dir = tempfile::tempdir().unwrap();
+        let fake_exe = dir.path().join("fake.exe");
+        std::fs::write(&fake_exe, b"MZfake").unwrap();
+        let v1 = windows::executable_version(&fake_exe);
+        assert_eq!(v1, None);
+        let v2 = windows::executable_version(&fake_exe);
+        assert_eq!(v2, None);
     }
 }
