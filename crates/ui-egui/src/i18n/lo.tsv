@@ -110,7 +110,7 @@
 	The app will be removed. Your documents and settings stay.	ແອັບຈະຖືກລຶບອອກ. ເອກະສານ ແລະ ການຕັ້ງຄ່າຂອງທ່ານຍັງຢູ່ຄືເກົ່າ.
 	Uninstall	ຖອນການຕິດຕັ້ງ
 	Cancel	ຍົກເລີກ
-	Checked {ago}	ກວດເມື່ອ {ago}
+	Checked {ago}	ກວດສອບ {ago}
 	just now	ເມື່ອກີ້ນີ້
 	yesterday	ມື້ວານນີ້
 	{month} {day}, {year}	{day} {month} {year}
@@ -124,7 +124,7 @@
 	Unhide App	ສະແດງແອັບ
 	Hidden Apps	ແອັບທີ່ເຊື່ອງໄວ້
 	Apps you hid	ແອັບທີ່ທ່ານເຊື່ອງໄວ້
-	Checked {ago} · using {sources}	ກວດເມື່ອ {ago} · ໃຊ້ {sources}
+	Checked {ago} · using {sources}	ກວດສອບ {ago} · ໃຊ້ {sources}
 	{a} and {b}	{a} ແລະ {b}
 	Join the Discord	ເຂົ້າຮ່ວມ Discord
 	Learn more	ຮຽນຮູ້ເພີ່ມເຕີມ
