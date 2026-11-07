@@ -489,9 +489,9 @@ impl LauncherUi {
         let t = Tokens::get(ui.ctx());
         ui.set_width(520.0f32.min(ui.ctx().content_rect().width() - 80.0));
 
-        let is_wasm = std::path::Path::new(path_str.as_str()).extension().is_some_and(|ext| ext.eq_ignore_ascii_case("wasm"));
+        let is_wasm = std::path::Path::new(path_str.trim()).extension().is_some_and(|ext| ext.eq_ignore_ascii_case("wasm"));
         let auto_detected =
-            if is_wasm { None } else { artcraft_launcher_core::plugins::detect_app_from_path(std::path::Path::new(path_str.as_str()), None) };
+            if is_wasm { None } else { artcraft_launcher_core::plugins::detect_app_from_path(std::path::Path::new(path_str.trim()), None) };
 
         let app_name = artcraft_launcher_core::CraftApp::by_id(app_id).map_or("PhotoCraft", |a| a.name);
         Self::title(ui, crate::icons::app(app_id), tl!("Import plugin"), app_name);
@@ -522,8 +522,8 @@ impl LauncherUi {
         });
 
         if *path_str != prev_path
-            && !std::path::Path::new(path_str.as_str()).extension().is_some_and(|ext| ext.eq_ignore_ascii_case("wasm"))
-            && let Some(det) = artcraft_launcher_core::plugins::detect_app_from_path(std::path::Path::new(path_str.as_str()), None)
+            && !std::path::Path::new(path_str.trim()).extension().is_some_and(|ext| ext.eq_ignore_ascii_case("wasm"))
+            && let Some(det) = artcraft_launcher_core::plugins::detect_app_from_path(std::path::Path::new(path_str.trim()), None)
         {
             *app_id = det.to_string();
         }
