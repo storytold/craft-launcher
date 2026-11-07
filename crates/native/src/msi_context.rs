@@ -136,7 +136,7 @@ pub(crate) fn probe(product_code: &str) -> Result<MsiScope, ProbeError> {
 
 /// This account's SID, which names its managed (policy-installed) registrations.
 #[cfg(windows)]
-fn current_user_sid() -> Result<String, String> {
+pub(crate) fn current_user_sid() -> Result<String, String> {
     use winsafe::{HACCESSTOKEN, TokenInfo, co};
     let failed = |e: winsafe::co::ERROR| format!("couldn't identify this account ({e})");
     match HACCESSTOKEN::GetCurrentProcessToken().GetTokenInformation(co::TOKEN_INFORMATION_CLASS::User).map_err(failed)? {

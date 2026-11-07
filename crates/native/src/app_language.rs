@@ -206,6 +206,59 @@ fn generate_hex_token() -> Option<String> {
     Some(bytes.iter().map(|b| format!("{b:02x}")).collect())
 }
 
+/// Restricts access to `path` so only the current user account can read or write it,
+/// removing inherited permissions on Windows. Returns `false` when `path` is a symlink,
+/// cannot be secured, or is not a regular file.
+#[cfg(windows)]
+fn secure_control_file(path: &Path) -> bool {
+    let Ok(meta) = std::fs::symlink_metadata(path) else {
+        return false;
+    };
+    if meta.is_symlink() || !meta.is_file() {
+        return false;
+    }
+    let sid = match crate::msi_context::current_user_sid() {
+        Ok(sid) => sid,
+        Err(e) => {
+            log::warn!("couldn't get current user SID to secure {}: {e}", path.display());
+            return false;
+        }
+    };
+    let system_root = std::env::var_os("SystemRoot").map(PathBuf::from).unwrap_or_else(|| PathBuf::from(r"C:\Windows"));
+    let icacls = system_root.join(r"System32\icacls.exe");
+    let arg_grant = format!("*{sid}:(F)");
+    let Ok(output) = crate::process::command(&icacls).arg(path).arg("/inheritance:r").arg("/grant:r").arg(&arg_grant).output() else {
+        return false;
+    };
+    output.status.success()
+}
+
+/// Restricts access to `path` so only the owner can read or write it (mode 0o600).
+/// Returns `false` when `path` is a symlink, cannot be secured, or is not a regular file.
+#[cfg(unix)]
+fn secure_control_file(path: &Path) -> bool {
+    use std::os::unix::fs::PermissionsExt;
+    let Ok(meta) = std::fs::symlink_metadata(path) else {
+        return false;
+    };
+    if meta.is_symlink() || !meta.is_file() {
+        return false;
+    }
+    if std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o600)).is_err() {
+        return false;
+    }
+    let Ok(updated) = std::fs::metadata(path) else {
+        return false;
+    };
+    (updated.permissions().mode() & 0o077) == 0
+}
+
+/// Fallback for non-Windows, non-Unix platforms.
+#[cfg(not(any(windows, unix)))]
+fn secure_control_file(_path: &Path) -> bool {
+    true
+}
+
 /// Allocates a loopback control port and token for `app` before launching it, saving them under
 /// the launcher's state directory and returning the environment variables to pass to the child.
 pub fn prepare_launch_env(app: &CraftApp, installed: Option<&Installed>, paths: &Paths, configured_lang: Option<&str>) -> Vec<(String, String)> {
@@ -220,7 +273,9 @@ pub fn prepare_launch_env(app: &CraftApp, installed: Option<&Installed>, paths: 
         }
     }
     let file = control_file(paths, app.id);
-    if let Some(existing) = std::fs::read_to_string(&file).ok().and_then(|t| serde_json::from_str::<ControlEndpoint>(&t).ok())
+    if file.is_file()
+        && secure_control_file(&file)
+        && let Some(existing) = std::fs::read_to_string(&file).ok().and_then(|t| serde_json::from_str::<ControlEndpoint>(&t).ok())
         && port_is_listening(existing.port)
     {
         envs.push((format!("{upper}_CONTROL_PORT"), existing.port.to_string()));
@@ -236,6 +291,7 @@ pub fn prepare_launch_env(app: &CraftApp, installed: Option<&Installed>, paths: 
         let endpoint = ControlEndpoint { port, token: token.clone() };
         if let Ok(bytes) = serde_json::to_vec(&endpoint) {
             let _ = write_atomic(&file, &bytes);
+            let _ = secure_control_file(&file);
         }
         envs.push((format!("{upper}_CONTROL_PORT"), port.to_string()));
         envs.push((format!("{upper}_CONTROL_TOKEN"), token));
@@ -257,6 +313,9 @@ fn port_is_listening(port: u16) -> bool {
 /// Returns `true` when a running instance acknowledged the update.
 pub fn apply_live_language(app: &CraftApp, paths: &Paths, language: &str) -> bool {
     let file = control_file(paths, app.id);
+    if !file.is_file() || !secure_control_file(&file) {
+        return false;
+    }
     let Some(endpoint) = std::fs::read_to_string(&file).ok().and_then(|t| serde_json::from_str::<ControlEndpoint>(&t).ok()) else {
         return false;
     };
@@ -492,5 +551,48 @@ mod tests {
             assert!(!send_control_language(port, token, "pt-br"));
             server.join().unwrap();
         }
+    }
+
+    #[test]
+    fn secure_control_file_protects_file() {
+        let dir = std::env::temp_dir().join(format!("craft-launcher-secure-control-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let file = dir.join("test.json");
+        std::fs::write(&file, "{\"port\":1234,\"token\":\"abc\"}").unwrap();
+
+        assert!(secure_control_file(&file));
+        assert!(secure_control_file(&file));
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn prepare_launch_env_creates_and_reuses_secure_control_file() {
+        let dir = std::env::temp_dir().join(format!("craft-launcher-launch-env-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let paths = Paths::under(&dir);
+
+        let app = &SUITE[0];
+        let envs = prepare_launch_env(app, None, &paths, Some("en"));
+        let port_key = format!("{}_CONTROL_PORT", app.id.to_ascii_uppercase().replace('-', "_"));
+        let token_key = format!("{}_CONTROL_TOKEN", app.id.to_ascii_uppercase().replace('-', "_"));
+        let port = envs.iter().find(|(k, _)| k == &port_key).map(|(_, v)| v.clone()).unwrap();
+        let token = envs.iter().find(|(k, _)| k == &token_key).map(|(_, v)| v.clone()).unwrap();
+
+        let cfile = control_file(&paths, app.id);
+        assert!(cfile.is_file());
+        assert!(secure_control_file(&cfile));
+
+        let port_num: u16 = port.parse().unwrap();
+        let listener = TcpListener::bind(("127.0.0.1", port_num)).unwrap();
+        let reused_envs = prepare_launch_env(app, None, &paths, Some("en"));
+        let reused_port = reused_envs.iter().find(|(k, _)| k == &port_key).map(|(_, v)| v.clone()).unwrap();
+        let reused_token = reused_envs.iter().find(|(k, _)| k == &token_key).map(|(_, v)| v.clone()).unwrap();
+        assert_eq!(reused_port, port);
+        assert_eq!(reused_token, token);
+        drop(listener);
+
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }
