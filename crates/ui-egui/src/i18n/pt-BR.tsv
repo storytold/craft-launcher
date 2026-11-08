@@ -373,6 +373,8 @@ filter	Installed	Instalados
 	Create a desktop shortcut when installing apps	Criar um atalho na área de trabalho ao instalar aplicativos
 	Create a Start menu / application menu shortcut when installing apps	Criar um atalho no menu Iniciar / menu de aplicativos ao instalar aplicativos
 @msg	Couldn't update shortcuts for {name}: {e}	Não foi possível atualizar os atalhos de {name}: {e}
+	A system-wide desktop shortcut exists (not controlled by launcher)	Existe um atalho na área de trabalho em nível de sistema (não controlado pelo launcher)
+	A system-wide Start menu entry exists (not controlled by launcher)	Existe uma entrada no menu Iniciar em nível de sistema (não controlada pelo launcher)
 	Install folder	Pasta de instalação
 	Default install folder	Pasta de instalação padrão
 	System default	Padrão do sistema

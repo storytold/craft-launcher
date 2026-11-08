@@ -86,8 +86,16 @@ pub struct AppShortcutPrefs {
 /// Whether desktop and Start menu / application menu shortcuts currently exist on disk for an app.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct AppShortcutState {
+    /// Whether a launcher-managed desktop shortcut currently exists.
     pub desktop: bool,
+    /// Whether a launcher-managed Start menu / application menu shortcut currently exists.
     pub start_menu: bool,
+    /// Whether a system- or package-owned desktop entry exists (read-only, not managed by launcher).
+    #[serde(default)]
+    pub system_desktop: bool,
+    /// Whether a system- or package-owned Start menu / application menu entry exists (read-only, not managed by launcher).
+    #[serde(default)]
+    pub system_start_menu: bool,
 }
 
 /// Parent folders for new installs. Existing installations keep their recorded location.

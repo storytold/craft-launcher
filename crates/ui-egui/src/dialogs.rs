@@ -247,14 +247,29 @@ impl LauncherUi {
         );
         ui.add_space(12.0);
 
+        let detected = self.detected_shortcuts.get(id).copied().unwrap_or_default();
         let (mut desktop, mut start_menu) = self.settings.effective_shortcuts(id);
         let desktop_changed = ui.checkbox(&mut desktop, tl!("Desktop shortcut")).changed();
         let start_menu_changed = ui.checkbox(&mut start_menu, tl!("Start menu / application menu shortcut")).changed();
+        if detected.system_desktop {
+            ui.label(RichText::new(tl!("A system-wide desktop shortcut exists (not controlled by launcher)")).color(t.muted).small());
+        }
+        if detected.system_start_menu {
+            ui.label(RichText::new(tl!("A system-wide Start menu entry exists (not controlled by launcher)")).color(t.muted).small());
+        }
         if desktop_changed || start_menu_changed {
             self.settings
                 .app_shortcuts
                 .insert(id.to_string(), artcraft_launcher_core::protocol::AppShortcutPrefs { desktop: Some(desktop), start_menu: Some(start_menu) });
-            self.detected_shortcuts.insert(id.to_string(), artcraft_launcher_core::protocol::AppShortcutState { desktop, start_menu });
+            self.detected_shortcuts.insert(
+                id.to_string(),
+                artcraft_launcher_core::protocol::AppShortcutState {
+                    desktop,
+                    start_menu,
+                    system_desktop: detected.system_desktop,
+                    system_start_menu: detected.system_start_menu,
+                },
+            );
             if entry.installed.is_some() {
                 self.act_command(Command::SyncShortcuts { app: id.to_string(), desktop, start_menu });
             }
@@ -268,7 +283,15 @@ impl LauncherUi {
                 self.settings.app_shortcuts.remove(id);
                 let desktop = self.settings.create_desktop_shortcut;
                 let start_menu = self.settings.create_start_menu_shortcut;
-                self.detected_shortcuts.insert(id.to_string(), artcraft_launcher_core::protocol::AppShortcutState { desktop, start_menu });
+                self.detected_shortcuts.insert(
+                    id.to_string(),
+                    artcraft_launcher_core::protocol::AppShortcutState {
+                        desktop,
+                        start_menu,
+                        system_desktop: detected.system_desktop,
+                        system_start_menu: detected.system_start_menu,
+                    },
+                );
                 if entry.installed.is_some() {
                     self.act_command(Command::SyncShortcuts { app: id.to_string(), desktop, start_menu });
                 }
