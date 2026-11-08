@@ -25,6 +25,8 @@
 
 #![cfg_attr(not(windows), allow(dead_code))]
 
+use std::path::{Path, PathBuf};
+
 use artcraft_launcher_core::protocol::CANCELLED;
 
 use super::msi_batch::{self, DECLINED, LAUNCH_FAILED};
@@ -70,6 +72,40 @@ pub(super) fn run(steps: Steps<'_>) -> Result<(), String> {
     match reinstall_previous() {
         Ok(()) => Err(put_back(app, chosen, previous, &why)),
         Err(again) => Err(not_put_back(app, chosen, previous, &why, &reason(&again))),
+    }
+}
+
+/// A package going in or back: its file and version.
+pub(super) type Package<'a> = (&'a Path, &'a str);
+
+/// An `msiexec` exit code and the path of its log, once it has run.
+pub(super) type Exit = Option<(i32, PathBuf)>;
+
+/// [`run`] with `install` running one package's `msiexec`. `exit` gets the chosen package's exit
+/// code and log, so a failed downgrade can name what stopped it; the put-back's code is not kept.
+pub(super) fn run_packages(
+    app: &str,
+    chosen: Package<'_>,
+    previous: Package<'_>,
+    remove: &mut dyn FnMut() -> Result<(), Removal>,
+    install: &dyn Fn(&Path, &mut Exit) -> Result<(), String>,
+    exit: &mut Exit,
+) -> Result<(), String> {
+    run(Steps {
+        app,
+        chosen: chosen.1,
+        previous: previous.1,
+        remove,
+        install_chosen: &mut || install(chosen.0, exit),
+        reinstall_previous: &mut || install(previous.0, &mut None),
+    })
+}
+
+/// The chosen package's `msiexec` exit code in a finished elevated session, when it ran and failed.
+pub(super) fn chosen_exit(ended: &Ended) -> Option<i32> {
+    match ended {
+        Ended::PutBack(code) | Ended::NotPutBack { install: code, .. } => Some(*code),
+        _ => None,
     }
 }
 

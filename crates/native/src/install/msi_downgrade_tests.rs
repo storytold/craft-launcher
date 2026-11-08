@@ -80,6 +80,37 @@ fn when_putting_back_fails_too_the_person_is_told_how_to_recover() {
     assert!(message.contains("Install FilmCraft again from the launcher"), "{message}");
 }
 
+/// A step-by-step downgrade keeps the chosen package's exit code and log, so a 1618 or 1603 from it
+/// can name its cause; the put-back's code does not replace it.
+#[test]
+fn a_failed_chosen_install_keeps_its_exit_code_and_log() {
+    let (chosen, previous) = (Path::new(r"C:\Downloads\filmcraft-0.13.0.msi"), Path::new(r"C:\Downloads\filmcraft-0.14.0.msi"));
+    let install = |msi: &Path, exit: &mut Option<(i32, PathBuf)>| {
+        let code = if msi == chosen { 1618 } else { 1603 };
+        *exit = Some((code, msi.with_extension("log")));
+        Err(format!("the Windows Installer stopped with error {code}"))
+    };
+    let mut exit = None;
+    let result = run_packages("FilmCraft", (chosen, "0.13.0"), (previous, "0.14.0"), &mut || Ok(()), &install, &mut exit);
+    assert!(result.unwrap_err().contains("putting 0.14.0 back failed too"));
+    assert_eq!(exit, Some((1618, chosen.with_extension("log"))));
+    // Nothing ran: nothing is kept.
+    let mut exit = None;
+    let mut removal = || Err(Removal { error: "error 1603".to_string(), partly: false });
+    let _ = run_packages("FilmCraft", (chosen, "0.13.0"), (previous, "0.14.0"), &mut removal, &install, &mut exit);
+    assert_eq!(exit, None);
+}
+
+/// An elevated session that stopped on the chosen package names its code; other outcomes do not.
+#[test]
+fn an_elevated_session_names_the_chosen_package_code() {
+    assert_eq!(chosen_exit(&Ended::PutBack(1618)), Some(1618));
+    assert_eq!(chosen_exit(&Ended::NotPutBack { install: 1603, back: 1638 }), Some(1603));
+    for other in [Ended::Done, Ended::Declined, Ended::RemovalFailed(1603), Ended::PartlyRemovedPutBack(1603), Ended::Other(Some(5))] {
+        assert_eq!(chosen_exit(&other), None, "{other:?}");
+    }
+}
+
 /// The exit code the elevated script builds for `step`, as PowerShell computes it (a code outside
 /// the Windows Installer range reads as 4095).
 fn code(step: i32, first: i32, second: i32) -> i32 {

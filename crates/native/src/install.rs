@@ -220,6 +220,7 @@ pub fn install_at(
                     msi_scope,
                     job.stop,
                     &mut *job.phase,
+                    &mut msi_exit,
                 ),
                 None => windows::run_msi(&file, destination.as_deref(), msi_scope, job.stop, &mut *job.phase, &mut msi_exit),
             }
@@ -2340,7 +2341,9 @@ pub mod windows {
     /// over: removes it, installs `chosen` in the same folder and context, and puts `previous`
     /// back if that does not finish (see [`msi_downgrade`]). An all-users copy does all three
     /// under one permission prompt, or not at all; a per-user copy needs none, and runs them one
-    /// by one in a single turn of the installer queue.
+    /// by one in a single turn of the installer queue. `exit` gets the chosen package's exit code
+    /// and the path of its log once it has run.
+    #[allow(clippy::too_many_arguments)]
     pub(super) fn downgrade_msi(
         app: &CraftApp,
         chosen: Package<'_>,
@@ -2349,6 +2352,7 @@ pub mod windows {
         scope: Option<MsiScope>,
         stop: &Stop,
         phase: &mut dyn FnMut(JobPhase),
+        exit: &mut Option<(i32, PathBuf)>,
     ) -> Result<(), String> {
         if scope == Some(MsiScope::PerMachine) {
             let mut elevated = None;
@@ -2358,21 +2362,24 @@ pub mod windows {
             })?;
             // Separate prompts are no fallback: refusing a later one would leave no app at all.
             return match elevated {
-                Some(ended) => msi_downgrade::report(ended, app.name, chosen.version, previous.version),
+                Some(ended) => {
+                    *exit = msi_downgrade::chosen_exit(&ended).map(|code| (code, msi_log(chosen.file)));
+                    msi_downgrade::report(ended, app.name, chosen.version, previous.version)
+                }
                 None => Err(msi_downgrade::no_session(app.name, chosen.version)),
             };
         }
         // One turn for all three steps: once the copy is removed, nothing waiting in the queue
         // (another install, or a cancel while waiting) can stop the put-back.
         in_turn(stop, phase, JobPhase::Installing, || {
-            msi_downgrade::run(msi_downgrade::Steps {
-                app: app.name,
-                chosen: chosen.version,
-                previous: previous.version,
-                remove: &mut || remove_registrations(app),
-                install_chosen: &mut || run_direct(chosen.file, destination, scope, &mut None),
-                reinstall_previous: &mut || run_direct(previous.file, destination, scope, &mut None),
-            })
+            msi_downgrade::run_packages(
+                app.name,
+                (chosen.file, chosen.version),
+                (previous.file, previous.version),
+                &mut || remove_registrations(app),
+                &|msi, exit| run_direct(msi, destination, scope, exit),
+                exit,
+            )
         })
     }
 

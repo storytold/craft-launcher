@@ -306,7 +306,13 @@ pub fn install_noting(
             let saved = backup.join(relative);
             std::fs::create_dir_all(saved.parent().ok_or("no backup folder")?).map_err(|e| e.to_string())?;
             // Copy the rollback copy: cache and custom installation can be on different drives.
-            std::fs::copy(&old, &saved).map_err(|e| e.to_string())?;
+            // Opening the program file is recorded as a refusal; writing the backup is not. The
+            // handle is closed before the remove, so the file is not left pending deletion.
+            {
+                let mut input = std::fs::File::open(&old).map_err(|e| noted(e, &old, refused))?;
+                let mut output = std::fs::File::create(&saved).map_err(|e| e.to_string())?;
+                std::io::copy(&mut input, &mut output).map_err(|e| e.to_string())?;
+            }
             std::fs::remove_file(&old).map_err(|e| noted(e, &old, refused))?;
             moved.push(relative.clone());
         }
@@ -830,7 +836,7 @@ mod tests {
         let record = install(app, &old, "0.5.0", None, &paths, None, false, &mut |_| Ok(())).unwrap();
         let held = paths.apps().join("photocraft/lib.dll");
         // Shared for reading only, as a running program holds its libraries: it can't be removed.
-        let _holder = std::fs::OpenOptions::new().read(true).share_mode(1).open(&held).unwrap();
+        let shared = std::fs::OpenOptions::new().read(true).share_mode(1).open(&held).unwrap();
         let next = archive(dir.path(), "next.zip", &[("photocraft.exe", b"new"), ("lib.dll", b"new library")]);
         let mut refused = None;
         let result = install_noting(app, &next, "0.6.0", Some(&record), &paths, None, false, &mut |_| Ok(()), &mut refused);
@@ -839,6 +845,18 @@ mod tests {
         assert_eq!(refused.code, 32);
         assert!(same_windows_path(&refused.path, Path::new(&held.to_string_lossy().replace('/', "\\"))), "{}", refused.path.display());
         assert!(!refused.path.to_string_lossy().starts_with(r"\\?\"), "shown as a plain path: {}", refused.path.display());
+        assert_eq!(std::fs::read(&record.path).unwrap(), b"old");
+        assert_eq!(std::fs::read(&held).unwrap(), b"library");
+        drop(shared);
+        // Not shared at all: the file can't even be read for the backup, and is still named.
+        let holder = std::fs::OpenOptions::new().read(true).share_mode(0).open(&held).unwrap();
+        let mut refused = None;
+        let result = install_noting(app, &next, "0.6.0", Some(&record), &paths, None, false, &mut |_| Ok(()), &mut refused);
+        assert!(result.is_err());
+        let refused = refused.expect("a file another program holds unshared is named");
+        assert_eq!(refused.code, 32);
+        assert!(same_windows_path(&refused.path, Path::new(&held.to_string_lossy().replace('/', "\\"))), "{}", refused.path.display());
+        drop(holder);
         assert_eq!(std::fs::read(&record.path).unwrap(), b"old");
         assert_eq!(std::fs::read(&held).unwrap(), b"library");
     }
