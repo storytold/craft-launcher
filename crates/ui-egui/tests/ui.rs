@@ -1466,6 +1466,23 @@ fn a_blocked_install_of_a_kept_version_offers_retry() {
 }
 
 #[test]
+/// A Windows Installer step that stopped without writing a log, such as a downgrade's removal
+/// step, shows only its error code, and the card promises no log.
+fn a_failed_installer_step_without_a_log_promises_only_its_code() {
+    let mut ev = events();
+    ev.push(Event::Blocked {
+        app: "photocraft".into(),
+        failure: Some(InstallFailure { blocker: Blocker::InstallerFailed, details: "MSI 1603".into() }),
+    });
+    let (mut h, _) = harness_with(ev, ViewMode::Grid, egui::Theme::Dark, true, 1.0);
+    h.run_steps(8);
+    h.get_by_label("The Windows Installer couldn't finish. The details below give its error code.");
+    h.get_by_label("Details: MSI 1603");
+    assert!(h.query_by_label_contains("log").is_none(), "no log was written");
+    h.get_by_label("Retry update to 0.5.0");
+}
+
+#[test]
 /// A newer release with nothing for this computer is no update: the app opens as it is, isn't
 /// counted in Update all, and has no Update button that would fail with "has no download".
 fn a_newer_release_without_a_download_here_is_not_offered_as_an_update() {
