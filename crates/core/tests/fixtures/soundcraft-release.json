@@ -1,0 +1,22 @@
+{
+  "tag_name": "v0.10.0",
+  "name": "SoundCraft v0.10.0",
+  "html_url": "https://github.com/storytold/soundcraft/releases/tag/v0.10.0",
+  "published_at": "2026-10-20T14:34:31Z",
+  "prerelease": false,
+  "draft": false,
+  "assets": [
+    {
+      "name": "soundcraft-0.10.0-freebsd-aarch64.tar.gz",
+      "size": 14786997,
+      "browser_download_url": "https://github.com/storytold/soundcraft/releases/download/v0.10.0/soundcraft-0.10.0-freebsd-aarch64.tar.gz",
+      "digest": "sha256:6a791aa9afd693d701bdc80bc19839eabe0ccbc8d8424b5684ef1ac46d6d68e6"
+    },
+    {
+      "name": "soundcraft-0.10.0-freebsd-x86_64.tar.gz",
+      "size": 16384262,
+      "browser_download_url": "https://github.com/storytold/soundcraft/releases/download/v0.10.0/soundcraft-0.10.0-freebsd-x86_64.tar.gz",
+      "digest": "sha256:189d9e997cbab32d1672d824ee337a9447e54dd2be4934ff1537e2f53c52ea28"
+    }
+  ]
+}

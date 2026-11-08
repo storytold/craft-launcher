@@ -344,3 +344,76 @@ filter	Installed	Asennetut
 	{path} already exists. Installing {name} will overwrite it.	{path} on jo olemassa. Jos asennat kohteen {name}, se ylikirjoitetaan.
 	Replace	Korvaa
 	Installing on Windows	Asennus Windowsissa
+
+# Strings added on main since this catalog was written.
+	by {name}	tekijä: {name}
+	Open {version}	Avaa {version}
+	Open {installed} without updating. {latest} stays available.	Avaa {installed} päivittämättä. {latest} pysyy saatavilla.
+	{latest} is out, but ArtCraft Launcher can't install it over this copy.	{latest} on julkaistu, mutta ArtCraft Launcher ei voi asentaa sitä tämän kopion päälle.
+	ArtCraft Launcher can't install version {version} over this copy.	ArtCraft Launcher ei voi asentaa versiota {version} tämän kopion päälle.
+	Launch options…	Käynnistysasetukset…
+	{name} launch options	Sovelluksen {name} käynnistysasetukset
+	Flags added each time the app is opened	Liput, jotka lisätään aina sovellusta avattaessa
+	Separate flags with spaces. Quote a value that has spaces in it.	Erota liput välilyönneillä. Lainaa arvo, jossa on välilyöntejä.
+	A quote isn't closed.	Lainausmerkkiä ei ole suljettu.
+	{name} wasn't opened: a quote in its launch options isn't closed.	Sovellusta {name} ei avattu: käynnistysasetusten lainausmerkkiä ei ole suljettu.
+	Save	Tallenna
+	A new version is available. Download it to replace this version?	Uusi versio on saatavilla. Ladataanko se tämän version tilalle?
+	ArtCraft Launcher is still running	ArtCraft Launcher on yhä käynnissä
+	It's in the tray: open it or quit it from the tray icon, or turn this off in the settings.	Se on ilmoitusalueella: avaa tai sulje se ilmoitusalueen kuvakkeesta tai poista tämä käytöstä asetuksista.
+	Pin to top	Kiinnitä ylimmäksi
+	Unpin	Irrota
+	Pinned	Kiinnitetty
+	Reorder {name}	Järjestä {name} uudelleen
+	Move up	Siirrä ylös
+	Move down	Siirrä alas
+	Retry update	Yritä päivitystä uudelleen
+	Arch package (.pkg.tar.zst)	Arch-paketti (.pkg.tar.zst)
+artcraft	AI image and video creation	Kuvien ja videoiden luonti tekoälyllä
+craft-anything	Find out how any software works, then craft your own	Selvitä, miten mikä tahansa ohjelma toimii, ja tee sitten omasi
+solidcraft	Parametric 3D CAD	Parametrinen 3D-CAD
+@msg	{name} was installed from the {repo} repository or the AUR ({pkg}). Update it with {cmd} or sudo pacman -Syu	{name} on asennettu {repo}-varastosta tai AUR:sta ({pkg}). Päivitä se komennolla {cmd} tai sudo pacman -Syu
+@msg	{name} was installed from the {repo} repository or the AUR ({pkg}). Update it with your AUR helper (for example: yay -S {pkg}) or sudo pacman -Syu	{name} on asennettu {repo}-varastosta tai AUR:sta ({pkg}). Päivitä se AUR-apuohjelmalla (esimerkiksi: yay -S {pkg}) tai komennolla sudo pacman -Syu
+@msg	{name} was installed from the AUR ({pkg}). Update it with {cmd}	{name} on asennettu AUR:sta ({pkg}). Päivitä se komennolla {cmd}
+@msg	{name} was installed from the AUR ({pkg}). Update it with your AUR helper (for example: yay -S {pkg})	{name} on asennettu AUR:sta ({pkg}). Päivitä se AUR-apuohjelmalla (esimerkiksi: yay -S {pkg})
+	More actions for {name}	Lisää toimintoja: {name}
+	On Linux, custom folders use AppImage format.	Linuxissa mukautetut kansiot käyttävät AppImage-muotoa.
+	Recently updated	Viimeksi päivitetty
+	Name (A–Z)	Nimi (A–Ö)
+	Name (Z–A)	Nimi (Ö–A)
+	Frequently used	Usein käytetyt
+	Next app	Seuraava sovellus
+	Previous app	Edellinen sovellus
+	Show {n} more changes	Näytä {n} muutosta lisää
+	Last updated: {date}	Päivitetty viimeksi: {date}
+column	Version	Versio
+column	Author	Tekijä
+	Choose version	Valitse versio
+	latest {version}	uusin {version}
+	{version} (latest release)	{version} (uusin julkaisu)
+	Launcher version	Käynnistimen versio
+	Nightly	Yöversio
+	Nightly (none published yet)	Yöversio (ei vielä julkaistu)
+	Install version {version}	Asenna versio {version}
+	Download selected version	Lataa valittu versio
+	Older launcher versions require a manual reinstall.	Vanhemmat käynnistimen versiot on asennettava uudelleen käsin.
+	Your files may not open in older versions.	Tiedostosi eivät ehkä avaudu vanhemmissa versioissa.
+	Enable automatic installs in Settings to follow new nightly builds.	Ota automaattiset asennukset käyttöön asetuksissa, jotta saat uudet yöversiot.
+texturecraft	3D texture painting	3D-teksturien maalaus
+texturecraft	Paint materials on 3D models and export textures.	Maalaa materiaaleja 3D-malleihin ja vie tekstuureja.
+texturecraft	Materials	Materiaalit
+texturecraft	Mesh maps	Verkkokartat
+texturecraft	Bake mesh maps and use smart materials.	Paista verkkokarttoja ja käytä älymateriaaleja.
+texturecraft	Paint textures on 3D models.	Maalaa tekstuureja 3D-malleihin.
+	Hide community apps	Piilota yhteisön sovellukset
+materialcraft	Procedural material design	Proseduraalinen materiaalisuunnittelu
+materialcraft	Build materials with node graphs.	Rakenna materiaaleja solmukaavioilla.
+materialcraft	Create tileable PBR materials and export texture maps.	Luo saumattomia PBR-materiaaleja ja vie tekstuurikarttoja.
+materialcraft	Node graphs	Solmukaaviot
+materialcraft	Combine noises, patterns and filters.	Yhdistä kohinoita, kuvioita ja suodattimia.
+materialcraft	Live previews	Reaaliaikaiset esikatselut
+materialcraft	Preview materials in 2D and on 3D models.	Esikatsele materiaaleja 2D:nä ja 3D-malleissa.
+	Advanced	Lisäasetukset
+	Migrate Flatpak bundles to ArtCraft OCI (experimental)	Siirrä Flatpak-paketit ArtCraft OCI:hin (kokeellinen)
+	On update, switch first party apps when the matching package is available. Otherwise, keep using bundles.	Vaihda päivitettäessä omat sovellukset, kun vastaava paketti on saatavilla. Muuten jatketaan pakettien käyttöä.
+	The OCI repository is a preview with GPG verification disabled.	OCI-varasto on esiversio, jossa GPG-vahvistus on poistettu käytöstä.

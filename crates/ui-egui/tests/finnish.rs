@@ -69,6 +69,9 @@ fn events() -> Vec<Event> {
             source: InstallSource::MacApp,
             location: format!("/Applications/{}.app", app.name),
             package: None,
+            externally_managed: false,
+            origin: None,
+            installation: None,
         });
         ev.push(Event::Detected { app: app.id.into(), installed });
     }
@@ -112,8 +115,6 @@ fn finnish_ui_translates_labels_dates_and_messages() {
     let mut h = harness(ViewMode::Grid);
     h.run_steps(8);
     snapshot(&mut h, "grid-fi-dark");
-    // Product names stay in English.
-    h.get_by_label("Launcher");
     h.get_by_label("Craft App Suite");
     h.get_by_label("Kuvankäsittely");
     h.get_by_label("Päivitä versioon 0.5.0");

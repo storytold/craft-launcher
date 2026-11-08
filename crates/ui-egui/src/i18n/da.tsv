@@ -343,3 +343,76 @@ filter	Installed	Installerede
 	{path} already exists. Installing {name} will overwrite it.	{path} findes allerede. Installation af {name} overskriver den.
 	Replace	Erstat
 	Installing on Windows	Installation på Windows
+
+# Strings added on main since this catalog was written.
+	by {name}	af {name}
+	Open {version}	Åbn {version}
+	Open {installed} without updating. {latest} stays available.	Åbn {installed} uden at opdatere. {latest} forbliver tilgængelig.
+	{latest} is out, but ArtCraft Launcher can't install it over this copy.	{latest} er udkommet, men ArtCraft Launcher kan ikke installere den oven på denne kopi.
+	ArtCraft Launcher can't install version {version} over this copy.	ArtCraft Launcher kan ikke installere version {version} oven på denne kopi.
+	Launch options…	Startindstillinger…
+	{name} launch options	Startindstillinger for {name}
+	Flags added each time the app is opened	Flag, der tilføjes, hver gang appen åbnes
+	Separate flags with spaces. Quote a value that has spaces in it.	Adskil flag med mellemrum. Sæt anførselstegn om en værdi, der indeholder mellemrum.
+	A quote isn't closed.	Et anførselstegn er ikke lukket.
+	{name} wasn't opened: a quote in its launch options isn't closed.	{name} blev ikke åbnet: et anførselstegn i startindstillingerne er ikke lukket.
+	Save	Gem
+	A new version is available. Download it to replace this version?	En ny version er tilgængelig. Vil du hente den og erstatte denne version?
+	ArtCraft Launcher is still running	ArtCraft Launcher kører stadig
+	It's in the tray: open it or quit it from the tray icon, or turn this off in the settings.	Den ligger i systembakken: åbn eller afslut den fra bakkeikonet, eller slå dette fra i indstillingerne.
+	Pin to top	Fastgør øverst
+	Unpin	Frigør
+	Pinned	Fastgjort
+	Reorder {name}	Omarranger {name}
+	Move up	Flyt op
+	Move down	Flyt ned
+	Retry update	Prøv opdatering igen
+	Arch package (.pkg.tar.zst)	Arch-pakke (.pkg.tar.zst)
+artcraft	AI image and video creation	Billed- og videoskabelse med AI
+craft-anything	Find out how any software works, then craft your own	Find ud af, hvordan al software virker, og lav så din egen
+solidcraft	Parametric 3D CAD	Parametrisk 3D-CAD
+@msg	{name} was installed from the {repo} repository or the AUR ({pkg}). Update it with {cmd} or sudo pacman -Syu	{name} blev installeret fra {repo}-arkivet eller AUR ({pkg}). Opdater den med {cmd} eller sudo pacman -Syu
+@msg	{name} was installed from the {repo} repository or the AUR ({pkg}). Update it with your AUR helper (for example: yay -S {pkg}) or sudo pacman -Syu	{name} blev installeret fra {repo}-arkivet eller AUR ({pkg}). Opdater den med din AUR-hjælper (for eksempel: yay -S {pkg}) eller sudo pacman -Syu
+@msg	{name} was installed from the AUR ({pkg}). Update it with {cmd}	{name} blev installeret fra AUR ({pkg}). Opdater den med {cmd}
+@msg	{name} was installed from the AUR ({pkg}). Update it with your AUR helper (for example: yay -S {pkg})	{name} blev installeret fra AUR ({pkg}). Opdater den med din AUR-hjælper (for eksempel: yay -S {pkg})
+	More actions for {name}	Flere handlinger for {name}
+	On Linux, custom folders use AppImage format.	På Linux bruger brugerdefinerede mapper AppImage-formatet.
+	Recently updated	Senest opdateret
+	Name (A–Z)	Navn (A–Å)
+	Name (Z–A)	Navn (Å–A)
+	Frequently used	Ofte brugt
+	Next app	Næste app
+	Previous app	Forrige app
+	Show {n} more changes	Vis {n} ændringer mere
+	Last updated: {date}	Senest opdateret: {date}
+column	Version	Version
+column	Author	Forfatter
+	Choose version	Vælg version
+	latest {version}	nyeste {version}
+	{version} (latest release)	{version} (nyeste udgivelse)
+	Launcher version	Launcher-version
+	Nightly	Natlig
+	Nightly (none published yet)	Natlig (ingen udgivet endnu)
+	Install version {version}	Installer version {version}
+	Download selected version	Hent den valgte version
+	Older launcher versions require a manual reinstall.	Ældre launcher-versioner kræver en manuel geninstallation.
+	Your files may not open in older versions.	Dine filer kan muligvis ikke åbnes i ældre versioner.
+	Enable automatic installs in Settings to follow new nightly builds.	Slå automatiske installationer til i Indstillinger for at følge nye natlige versioner.
+texturecraft	3D texture painting	3D-teksturmaling
+texturecraft	Paint materials on 3D models and export textures.	Mal materialer på 3D-modeller, og eksporter teksturer.
+texturecraft	Materials	Materialer
+texturecraft	Mesh maps	Mesh-kort
+texturecraft	Bake mesh maps and use smart materials.	Bag mesh-kort, og brug smarte materialer.
+texturecraft	Paint textures on 3D models.	Mal teksturer på 3D-modeller.
+	Hide community apps	Skjul fællesskabsapps
+materialcraft	Procedural material design	Procedurelt materialedesign
+materialcraft	Build materials with node graphs.	Byg materialer med nodegrafer.
+materialcraft	Create tileable PBR materials and export texture maps.	Skab PBR-materialer, der kan gentages, og eksporter teksturkort.
+materialcraft	Node graphs	Nodegrafer
+materialcraft	Combine noises, patterns and filters.	Kombiner støj, mønstre og filtre.
+materialcraft	Live previews	Live-forhåndsvisninger
+materialcraft	Preview materials in 2D and on 3D models.	Se materialer i 2D og på 3D-modeller.
+	Advanced	Avanceret
+	Migrate Flatpak bundles to ArtCraft OCI (experimental)	Flyt Flatpak-bundter til ArtCraft OCI (eksperimentelt)
+	On update, switch first party apps when the matching package is available. Otherwise, keep using bundles.	Skift førstepartsapps ved opdatering, når den tilsvarende pakke er tilgængelig. Ellers bruges bundter fortsat.
+	The OCI repository is a preview with GPG verification disabled.	OCI-arkivet er en forhåndsversion med GPG-verifikation slået fra.

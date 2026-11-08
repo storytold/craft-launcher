@@ -21,19 +21,28 @@ pub enum Command {
     },
     /// Look again at what's installed.
     Detect,
+    /// Fetch published versions for the selector without starting an install.
+    ListVersions {
+        app: String,
+    },
     /// Install or update an app to its latest release.
     Install {
         app: String,
     },
-    /// `Install`, writing over what [`Event::Occupied`] reported.
+    /// `Install`, writing over what [`Event::Occupied`] reported. `path` is the path the user
+    /// agreed to overwrite: if the install would now write somewhere else, nothing is replaced and
+    /// the user is asked again.
     Replace {
         app: String,
+        path: String,
     },
     Uninstall {
         app: String,
     },
+    /// Start an installed app, passing `args` (the user's launch flags) on its command line.
     Launch {
         app: String,
+        args: Vec<String>,
     },
     /// Show the installed app in the file manager.
     Reveal {
@@ -73,6 +82,15 @@ impl InstallLocations {
     }
 }
 
+/// Which published build to follow. A pinned version never changes on its own.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub enum VersionTrack {
+    #[default]
+    Stable,
+    Nightly,
+    Pinned(String),
+}
+
 /// Settings the backend needs.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default)]
@@ -80,6 +98,10 @@ pub struct BackendOptions {
     pub install_locations: InstallLocations,
     /// Package formats to install, best first (empty: the platform default).
     pub kinds: Vec<PackageKind>,
+    /// Per-app version choices; an absent entry follows stable releases.
+    pub versions: BTreeMap<String, VersionTrack>,
+    /// The launcher's own version choice.
+    pub launcher_version: VersionTrack,
     /// Offer pre-releases (`0.6.0-rc.1`) as updates.
     pub prereleases: bool,
 }
@@ -155,7 +177,8 @@ pub enum Source {
     Feed,
     /// The GitHub REST API.
     GitHubApi,
-    /// github.com release pages (no API quota; used when the API is rate-limited).
+    /// github.com release pages (no API quota; used whenever the API gave no answer, whether it
+    /// was out of quota or couldn't be reached).
     GitHubPages,
     /// Saved answers from an earlier check.
     Cache,
@@ -180,6 +203,11 @@ pub enum Event {
         latest: LatestRelease,
         /// The service this answer came from.
         from: Origin,
+    },
+    /// The published versions of an app (or the launcher), bounded to the latest 100.
+    Versions {
+        app: String,
+        result: Result<Vec<Release>, String>,
     },
     /// The latest ArtCraft Launcher release, when it's newer than this one.
     LauncherUpdate(Release),
@@ -209,6 +237,19 @@ pub enum Event {
     ReadyToInstall {
         app: String,
         ready: bool,
+    },
+    /// Whether installing `app`'s latest release over the installed copy would go ahead: the copy
+    /// isn't one the launcher leaves to whatever installed it (a system binary, a repository
+    /// package), the release is on the chosen version track, and it has a package that can
+    /// replace the copy the way it was installed (an AppImage with an AppImage, an MSI with an
+    /// MSI), or the copy is a repository Flatpak that `flatpak update` refreshes. Only sent while
+    /// a copy is installed. When the release or the copy changes, it comes in the same batch as,
+    /// and before, the `Latest` or `Detected` that says so, so no update is offered, announced or
+    /// started automatically before this is known; when only the plan changes (a settings change,
+    /// a check or an install ending), it comes on its own.
+    Installable {
+        app: String,
+        installable: bool,
     },
     /// A new install stopped before downloading because `path` already exists and the launcher
     /// didn't put it there. `Command::Replace` installs over it.
@@ -246,7 +287,9 @@ pub struct Capabilities {
     /// What "show in file manager" is called here (`Show in Finder`).
     pub reveal_label: &'static str,
     /// The launcher can update itself in place and restart (an installed build, not a dev build or
-    /// a Flatpak). Without it the UI offers the download instead.
+    /// a Flatpak from anywhere but the release bundle). Without it the UI offers the download
+    /// instead. A backend may only know this once it has found a newer launcher, so the UI reads
+    /// it again on [`Event::LauncherUpdate`].
     pub self_update: bool,
 }
 
@@ -255,6 +298,12 @@ pub trait Backend {
     fn send(&mut self, command: Command);
     /// Events since the last call, oldest first.
     fn poll(&mut self) -> Vec<Event>;
+    /// The package format the running launcher was installed as, which updating itself
+    /// downloads. `None` while unknown (the desktop finds out once a newer launcher is out) or
+    /// where it doesn't update itself.
+    fn launcher_kind(&self) -> Option<PackageKind> {
+        None
+    }
     fn capabilities(&self) -> Capabilities;
     /// The machine apps would be installed on (on the web: the visitor's, best guess).
     fn platform(&self) -> Option<Platform>;

@@ -344,3 +344,76 @@ filter	Installed	Geïnstalleerd
 	{path} already exists. Installing {name} will overwrite it.	{path} bestaat al. Als je {name} installeert, wordt het overschreven.
 	Replace	Vervangen
 	Installing on Windows	Installeren op Windows
+
+# Strings added on main since this catalog was written.
+	by {name}	door {name}
+	Open {version}	{version} openen
+	Open {installed} without updating. {latest} stays available.	{installed} openen zonder bij te werken. {latest} blijft beschikbaar.
+	{latest} is out, but ArtCraft Launcher can't install it over this copy.	{latest} is uit, maar ArtCraft Launcher kan deze niet over dit exemplaar installeren.
+	ArtCraft Launcher can't install version {version} over this copy.	ArtCraft Launcher kan versie {version} niet over dit exemplaar installeren.
+	Launch options…	Startopties…
+	{name} launch options	Startopties voor {name}
+	Flags added each time the app is opened	Vlaggen die worden toegevoegd telkens wanneer de app wordt geopend
+	Separate flags with spaces. Quote a value that has spaces in it.	Scheid vlaggen met spaties. Zet een waarde met spaties tussen aanhalingstekens.
+	A quote isn't closed.	Een aanhalingsteken is niet gesloten.
+	{name} wasn't opened: a quote in its launch options isn't closed.	{name} is niet geopend: een aanhalingsteken in de startopties is niet gesloten.
+	Save	Opslaan
+	A new version is available. Download it to replace this version?	Er is een nieuwe versie beschikbaar. Wil je deze downloaden om deze versie te vervangen?
+	ArtCraft Launcher is still running	ArtCraft Launcher is nog actief
+	It's in the tray: open it or quit it from the tray icon, or turn this off in the settings.	Hij staat in het systeemvak: open of sluit hem via het pictogram, of schakel dit uit in de instellingen.
+	Pin to top	Bovenaan vastmaken
+	Unpin	Losmaken
+	Pinned	Vastgemaakt
+	Reorder {name}	{name} verplaatsen
+	Move up	Omhoog
+	Move down	Omlaag
+	Retry update	Update opnieuw proberen
+	Arch package (.pkg.tar.zst)	Arch-pakket (.pkg.tar.zst)
+artcraft	AI image and video creation	Beeld en video maken met AI
+craft-anything	Find out how any software works, then craft your own	Ontdek hoe alle software werkt en maak dan je eigen
+solidcraft	Parametric 3D CAD	Parametrische 3D-CAD
+@msg	{name} was installed from the {repo} repository or the AUR ({pkg}). Update it with {cmd} or sudo pacman -Syu	{name} is geïnstalleerd vanuit de {repo}-repository of de AUR ({pkg}). Werk bij met {cmd} of sudo pacman -Syu
+@msg	{name} was installed from the {repo} repository or the AUR ({pkg}). Update it with your AUR helper (for example: yay -S {pkg}) or sudo pacman -Syu	{name} is geïnstalleerd vanuit de {repo}-repository of de AUR ({pkg}). Werk bij met je AUR-helper (bijvoorbeeld: yay -S {pkg}) of sudo pacman -Syu
+@msg	{name} was installed from the AUR ({pkg}). Update it with {cmd}	{name} is geïnstalleerd vanuit de AUR ({pkg}). Werk bij met {cmd}
+@msg	{name} was installed from the AUR ({pkg}). Update it with your AUR helper (for example: yay -S {pkg})	{name} is geïnstalleerd vanuit de AUR ({pkg}). Werk bij met je AUR-helper (bijvoorbeeld: yay -S {pkg})
+	More actions for {name}	Meer acties voor {name}
+	On Linux, custom folders use AppImage format.	Op Linux gebruiken aangepaste mappen de AppImage-indeling.
+	Recently updated	Onlangs bijgewerkt
+	Name (A–Z)	Naam (A–Z)
+	Name (Z–A)	Naam (Z–A)
+	Frequently used	Vaak gebruikt
+	Next app	Volgende app
+	Previous app	Vorige app
+	Show {n} more changes	Nog {n} wijzigingen tonen
+	Last updated: {date}	Laatst bijgewerkt: {date}
+column	Version	Versie
+column	Author	Auteur
+	Choose version	Versie kiezen
+	latest {version}	nieuwste {version}
+	{version} (latest release)	{version} (nieuwste release)
+	Launcher version	Launcherversie
+	Nightly	Nachtelijk
+	Nightly (none published yet)	Nachtelijk (nog niet gepubliceerd)
+	Install version {version}	Versie {version} installeren
+	Download selected version	Geselecteerde versie downloaden
+	Older launcher versions require a manual reinstall.	Oudere launcherversies vereisen een handmatige herinstallatie.
+	Your files may not open in older versions.	Je bestanden worden mogelijk niet geopend in oudere versies.
+	Enable automatic installs in Settings to follow new nightly builds.	Schakel automatische installaties in via Instellingen om nieuwe nachtelijke builds te volgen.
+texturecraft	3D texture painting	3D-textuurschilderen
+texturecraft	Paint materials on 3D models and export textures.	Schilder materialen op 3D-modellen en exporteer texturen.
+texturecraft	Materials	Materialen
+texturecraft	Mesh maps	Meshmaps
+texturecraft	Bake mesh maps and use smart materials.	Bak meshmaps en gebruik slimme materialen.
+texturecraft	Paint textures on 3D models.	Schilder texturen op 3D-modellen.
+	Hide community apps	Community-apps verbergen
+materialcraft	Procedural material design	Procedureel materiaalontwerp
+materialcraft	Build materials with node graphs.	Bouw materialen met knooppuntgrafieken.
+materialcraft	Create tileable PBR materials and export texture maps.	Maak naadloze PBR-materialen en exporteer textuurmaps.
+materialcraft	Node graphs	Knooppuntgrafieken
+materialcraft	Combine noises, patterns and filters.	Combineer ruis, patronen en filters.
+materialcraft	Live previews	Live voorvertoningen
+materialcraft	Preview materials in 2D and on 3D models.	Bekijk materialen in 2D en op 3D-modellen.
+	Advanced	Geavanceerd
+	Migrate Flatpak bundles to ArtCraft OCI (experimental)	Flatpak-bundels migreren naar ArtCraft OCI (experimenteel)
+	On update, switch first party apps when the matching package is available. Otherwise, keep using bundles.	Schakel eigen apps bij een update over wanneer het bijbehorende pakket beschikbaar is. Blijf anders bundels gebruiken.
+	The OCI repository is a preview with GPG verification disabled.	De OCI-repository is een preview waarin GPG-verificatie is uitgeschakeld.

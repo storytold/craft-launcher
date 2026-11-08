@@ -8,9 +8,18 @@
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
-/// Where eframe keeps its state for `app_id`, as it picks it for a window with that app id.
+/// Where the settings file is. In portable mode it is inside `ArtCraftLauncherData`, so a suite
+/// carried on a stick keeps its settings when it is plugged into another computer. Without
+/// `portable.txt` it is eframe's own folder, which is in the user's profile and cannot travel.
 pub fn path(app_id: &str) -> Option<PathBuf> {
-    eframe::storage_dir(app_id).map(|dir| dir.join("app.ron"))
+    artcraft_launcher_native::paths::portable_root()
+        .map(|root| portable_settings(&root))
+        .or_else(|| eframe::storage_dir(app_id).map(|dir| dir.join("app.ron")))
+}
+
+/// The settings file inside a portable suite: the same `data` folder `Paths` already uses.
+fn portable_settings(root: &Path) -> PathBuf {
+    root.join("data").join("app.ron")
 }
 
 /// The value stored under `key`, if the file has one that still reads.
@@ -92,9 +101,17 @@ mod tests {
     }
 
     #[test]
+    fn a_portable_suite_keeps_its_settings_inside_itself() {
+        // Built with `join` so the test reads the same on Windows and on Linux CI.
+        let root = PathBuf::from("Suite").join("ArtCraftLauncherData");
+        assert_eq!(portable_settings(&root), root.join("data").join("app.ron"));
+    }
+
+    #[test]
     fn settings_saved_with_no_file_read_back() {
         let dir = Scratch::new("settings-round-trip");
-        let settings = Settings { last_check: Some(1_791_500_000), notify: false, ..Settings::default() };
+        let mut settings = Settings { last_check: Some(1_791_500_000), notify: false, ..Settings::default() };
+        settings.launch_flags.insert("photocraft".into(), r#"--dir "My Photos""#.into());
         assert_eq!(save(&dir.file(), "settings", &settings), Ok(()));
         assert_eq!(load::<Settings>(&dir.file(), "settings"), Some(settings));
     }
