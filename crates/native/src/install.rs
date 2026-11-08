@@ -137,11 +137,11 @@ pub fn install_at(
     let mut commit = commit;
     #[cfg(not(windows))]
     let _ = commit;
-    #[allow(unused_variables)]
-    let destination = destination(app, kind, existing, previous, job.install_locations)?;
     // Every early way out below gives the job's place in its batch back (see [`BatchPlace`]).
     #[cfg_attr(not(any(target_os = "linux", windows)), allow(unused_mut, unused_variables))]
     let mut batch = BatchPlace(job.batch.take());
+    #[allow(unused_variables)]
+    let destination = destination(app, kind, existing, previous, job.install_locations)?;
     #[cfg(windows)]
     let destination = msi_update_folder(app, kind, existing, destination);
     if let Some(inst) = existing
@@ -513,7 +513,7 @@ fn msi_folder_argument(path: &Path) -> Result<String, String> {
 /// HKLM registrations; a per-user one must not silently become a second, per-machine copy (or
 /// the other way round). A fresh install is always `PerMachine`.
 #[cfg(any(windows, test))]
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum MsiScope {
     PerUser,
     PerMachine,
@@ -1248,11 +1248,20 @@ pub(crate) mod linux {
         stop: &Stop,
         phase: &mut dyn FnMut(JobPhase),
     ) -> Result<(), String> {
-        if kind == PackageKind::Deb && system_tool("apt-get").is_none() {
-            return Err("this system has no apt-get to install a Debian package with".into());
-        }
-        if kind == PackageKind::ArchPkg && system_tool("pacman").is_none() {
-            return Err("this system has no pacman to install an Arch package with".into());
+        let missing = if kind == PackageKind::Deb && system_tool("apt-get").is_none() {
+            Some("this system has no apt-get to install a Debian package with")
+        } else if kind == PackageKind::ArchPkg && system_tool("pacman").is_none() {
+            Some("this system has no pacman to install an Arch package with")
+        } else {
+            None
+        };
+        if let Some(error) = missing {
+            // This member never reaches the shared prompt: its place in the batch goes back at
+            // once, so the rest don't wait for it (see [`Gather::leave`]).
+            if let Some(gather) = batch {
+                gather.leave();
+            }
+            return Err(error.into());
         }
         install_package_via(&SYSTEM, kind, file, installation, batch, stop, phase)
     }
@@ -2207,10 +2216,13 @@ pub mod windows {
         stop: &Stop,
         phase: &mut dyn FnMut(JobPhase),
     ) -> Result<(), String> {
-        if scope == Some(MsiScope::PerMachine)
-            && let Some(gather) = batch
-        {
-            return run_batched(Batched { app, package, destination, scope }, gather, stop, phase);
+        if let Some(gather) = batch {
+            if scope == Some(MsiScope::PerMachine) {
+                return run_batched(Batched { app, package, destination, scope }, gather, stop, phase);
+            }
+            // A per-user install asks Windows for nothing: its place in the batch goes back at
+            // once, so the per-machine members don't wait for it.
+            gather.leave();
         }
         in_turn(stop, phase, JobPhase::Installing, || run_direct(package.file, destination, scope))
     }

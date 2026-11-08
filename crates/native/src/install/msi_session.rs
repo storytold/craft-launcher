@@ -9,19 +9,22 @@
 //! behavioural antivirus flagged it (see `docs/incident-2026-10-windows-antivirus.md`).
 //!
 //! The elevated copy re-checks every package against the checksum its release published — with
-//! the file held open, so the checked bytes are the installed ones (CWE-367) — runs Windows
-//! Installer on each in turn, and writes each app's exit code to a results file beside the
-//! manifest. A declined prompt cancels the whole batch; a session that cannot start sends the
-//! members back to installing one by one, the way a single app always installs.
+//! the file held open, so the checked bytes are the installed ones (CWE-367) — builds each
+//! installer's arguments from that held package itself (the manifest says where and in which
+//! context a package installs, never *which* file installs), runs Windows Installer on each in
+//! turn, and writes each app's exit code to a results file beside the manifest. A declined
+//! prompt cancels the whole batch; a session that cannot start sends the members back to
+//! installing one by one, the way a single app always installs.
 //!
 //! The trust chain: the manifest is created anew (`create_new`) and then held open unmodified for
 //! the whole session, so its checksums are the launcher's own; the elevated side re-hashes every
-//! package through a held handle before Windows Installer touches it. The results file is bound
-//! to its session by a random token (written as the file's first line), so no leftover or
-//! planted file can pass for a session's report; the launcher's own re-detection after each job
-//! is the backstop against a report that lies. And the waiting side falls back to one-by-one
-//! installs only when the elevated session is *shown* to be over — its process waited out or its
-//! process id gone — never while it may still be installing.
+//! package through a held handle before Windows Installer touches it, and runs the installer on
+//! that same held file. The results file is bound to its session by a random token (written as
+//! the file's first line), so no leftover or planted file can pass for a session's report; the
+//! launcher's own re-detection after each job is the backstop against a report that lies. And
+//! the waiting side falls back to one-by-one installs only when the elevated session is *shown*
+//! to be over — its process waited out or its process id gone — never while it may still be
+//! installing.
 
 #![cfg_attr(not(windows), allow(dead_code))]
 
@@ -33,7 +36,6 @@ use std::path::PathBuf;
 use serde::Deserialize;
 use serde::Serialize;
 
-#[cfg(windows)]
 use super::MsiScope;
 
 /// What a member hears when the batch's one session could not run at all: install it by itself
@@ -54,7 +56,9 @@ const STARTED_WITHIN: std::time::Duration = std::time::Duration::from_secs(300);
 #[cfg(windows)]
 const OPEN_GRACE: std::time::Duration = std::time::Duration::from_secs(10);
 
-/// One package of the batch, as both sides of the session see it.
+/// One package of the batch, as both sides of the session see it. It carries no command line:
+/// the elevated side builds the installer's arguments from the held package itself
+/// ([`run_elevated`]), so the file Windows Installer runs is always the file that was checked.
 #[derive(Clone, Serialize, Deserialize)]
 pub(crate) struct Entry {
     /// The app the package belongs to: its key in the results.
@@ -64,8 +68,10 @@ pub(crate) struct Entry {
     /// The SHA-256 the package was downloaded against; the elevated side checks it again before
     /// Windows Installer touches the file.
     sha256: String,
-    /// The `msiexec` arguments for this package, the same ones a single install runs.
-    line: String,
+    /// Where the package installs, when a single install passes a folder (`INSTALLFOLDER`).
+    destination: Option<PathBuf>,
+    /// The Windows Installer context to keep; `None` takes the package's own default.
+    scope: Option<MsiScope>,
 }
 
 /// What the elevated copy is to do, written beside the packages and held unchanged while the
@@ -86,7 +92,8 @@ pub(super) fn command() -> Vec<OsString> {
 }
 
 /// One member's place in the session, as the installer queue's `target`. `Err` for a package the
-/// session cannot express (unusual characters in a path); the member then installs by itself.
+/// session cannot express (a package path that cannot be resolved); the member then installs by
+/// itself.
 #[cfg(windows)]
 pub(super) fn entry(
     app: &super::CraftApp,
@@ -98,7 +105,8 @@ pub(super) fn entry(
         app: app.id.to_string(),
         msi: super::msi_path(package.file)?,
         sha256: package.sha256.to_string(),
-        line: super::msi_batch::line(package.file, destination, scope)?,
+        destination: destination.map(Path::to_path_buf),
+        scope,
     };
     serde_json::to_string(&entry).map(OsString::from).map_err(|e| format!("couldn't describe the package for a shared prompt ({e})"))
 }
@@ -170,8 +178,11 @@ pub(super) fn call(_command: &[OsString], targets: &[OsString]) -> Vec<Result<()
             SessionEnd::Done(codes) => {
                 for (at, entry) in &joined {
                     outcomes[*at] = match codes.iter().find(|(app, _)| app == &entry.app) {
-                        Some((_, code)) => super::explain(Some(*code))
-                            .map_err(|e| if *code == 1602 { e } else { format!("{e}. Its log is at {}", super::msi_log(&entry.msi).display()) }),
+                        // A negative code is "no exit code" (see [`run_installer`]): no installer
+                        // ran, so there is no log to point at.
+                        Some((_, code)) => super::explain(Some(*code)).map_err(|e| {
+                            if *code == 1602 || *code < 0 { e } else { format!("{e}. Its log is at {}", super::msi_log(&entry.msi).display()) }
+                        }),
                         None => Err(format!("the shared install session never reported {}'s result", entry.app)),
                     };
                 }
@@ -192,6 +203,9 @@ pub(super) fn call(_command: &[OsString], targets: &[OsString]) -> Vec<Result<()
             }
         },
     }
+    // The held files close before the session's own are removed: an open handle would keep the
+    // manifest undeletable on Windows (its share mode allows reading only).
+    drop(held);
     for file in [&manifest, &pid_file, &results] {
         let _ = std::fs::remove_file(file);
     }
@@ -380,9 +394,11 @@ fn write_results(path: &Path, token: &str, codes: &[(String, i32)]) -> Result<()
 
 /// The elevated half of the session: what the launcher runs as `--install-msis <manifest>`.
 /// Re-checks every package against its published checksum (held open, so the checked bytes are
-/// the installed ones), runs Windows Installer on each in turn, and writes each app's exit code
-/// to the results file beside the manifest. `Ok` means the session ran, whatever the installers
-/// themselves decided: their outcomes are the codes in the file.
+/// the installed ones), builds each installer's arguments from that held package, runs Windows
+/// Installer on each in turn, and writes each app's exit code to the results file beside the
+/// manifest — every app's, however the others went, so one failed member never sends the whole
+/// batch back to one-by-one installs and their prompts. `Ok` means the session ran, whatever the
+/// installers themselves decided: their outcomes are the codes in the file.
 #[cfg(windows)]
 pub fn run_elevated(manifest: &Path) -> Result<(), String> {
     let text = std::fs::read_to_string(manifest).map_err(|e| format!("couldn't read the batch manifest ({e})"))?;
@@ -399,19 +415,33 @@ pub fn run_elevated(manifest: &Path) -> Result<(), String> {
     std::fs::write(&pid_file, std::process::id().to_string()).map_err(|e| format!("couldn't say the batch session had started ({e})"))?;
     let mut codes = Vec::new();
     for entry in &session.msis {
-        let held = super::msi_batch::hold(&entry.msi, &entry.sha256).inspect_err(|_| {
-            let _ = std::fs::remove_file(&pid_file);
-        })?;
-        log::info!("{}: installing under the shared prompt", entry.app);
-        let status = run_installer(&entry.line).inspect_err(|_| {
-            let _ = std::fs::remove_file(&pid_file);
-        })?;
-        codes.push((entry.app.clone(), status));
-        drop(held);
+        codes.push((entry.app.clone(), install_one(entry)));
     }
     write_results(&sibling(manifest, "results"), &session.token, &codes)?;
     let _ = std::fs::remove_file(&pid_file);
     Ok(())
+}
+
+/// One package of the session, held while its installer runs. The installer's arguments are
+/// built here, from the held package itself: a manifest can say where and in which context the
+/// checked file installs, never which file installs. A package that cannot be held, checked or
+/// described reports "no exit code" ([`run_installer`]'s `-1`); the rest of the session carries
+/// on under the one prompt.
+#[cfg(windows)]
+fn install_one(entry: &Entry) -> i32 {
+    let installed = (|| -> Result<i32, String> {
+        let held = super::msi_batch::hold(&entry.msi, &entry.sha256)?;
+        let line = super::msi_batch::line(&entry.msi, entry.destination.as_deref(), entry.scope)?;
+        log::info!("{}: installing under the shared prompt", entry.app);
+        run_installer(&line)
+    })();
+    match installed {
+        Ok(status) => status,
+        Err(e) => {
+            log::warn!("{}: {e}", entry.app);
+            -1
+        }
+    }
 }
 
 /// Windows Installer on one package of the session: a progress window and no restart, the same
@@ -432,18 +462,28 @@ mod tests {
     use super::*;
 
     fn entry(app: &str, msi: &Path) -> Entry {
-        Entry { app: app.to_string(), msi: msi.to_path_buf(), sha256: "abc123".into(), line: "/i \"msi\" /passive /norestart".into() }
+        Entry {
+            app: app.to_string(),
+            msi: msi.to_path_buf(),
+            sha256: "abc123".into(),
+            destination: Some(Path::new(r"C:\Program Files\Photocraft").to_path_buf()),
+            scope: Some(MsiScope::PerMachine),
+        }
     }
 
     #[test]
     fn an_entry_survives_the_queue_as_json() {
         let entry = entry("photocraft", Path::new(r"C:\Downloads\photocraft.msi"));
         let target = serde_json::to_string(&entry).unwrap();
+        // An entry carries where and in which context to install, never a command line: the
+        // elevated side builds the installer's arguments from the held package itself.
+        assert!(!target.contains("line"));
         let back = parse(&OsString::from(target)).unwrap();
         assert_eq!(back.app, entry.app);
         assert_eq!(back.msi, entry.msi);
         assert_eq!(back.sha256, entry.sha256);
-        assert_eq!(back.line, entry.line);
+        assert_eq!(back.destination, entry.destination);
+        assert_eq!(back.scope, entry.scope);
         assert!(parse(&OsString::from("not json")).is_none());
     }
 
@@ -452,7 +492,12 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let results = dir.path().join("batch.results");
         let token = "0123456789abcdef";
-        let codes = vec![(String::from("photocraft"), 0), (String::from("lightcraft"), 1603), (String::from("filmcraft"), 3010)];
+        let codes = vec![
+            (String::from("photocraft"), 0),
+            (String::from("lightcraft"), 1603),
+            (String::from("filmcraft"), 3010),
+            (String::from("wordcraft"), -1),
+        ];
         write_results(&results, token, &codes).unwrap();
         assert_eq!(parse_results(&std::fs::read_to_string(&results).unwrap(), token), codes);
         // A results file is never written over anything: a second session with the same name
