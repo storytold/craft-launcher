@@ -307,12 +307,10 @@ pub fn install_noting(
             std::fs::create_dir_all(saved.parent().ok_or("no backup folder")?).map_err(|e| e.to_string())?;
             // Copy the rollback copy: cache and custom installation can be on different drives.
             // Opening the program file is recorded as a refusal; writing the backup is not. The
-            // handle is closed before the remove, so the file is not left pending deletion.
-            {
-                let mut input = std::fs::File::open(&old).map_err(|e| noted(e, &old, refused))?;
-                let mut output = std::fs::File::create(&saved).map_err(|e| e.to_string())?;
-                std::io::copy(&mut input, &mut output).map_err(|e| e.to_string())?;
-            }
+            // handle is closed before the copy and the remove, so the file is not left pending
+            // deletion. The copy keeps the file's attributes and modified time for the rollback.
+            drop(std::fs::File::open(&old).map_err(|e| noted(e, &old, refused))?);
+            std::fs::copy(&old, &saved).map_err(|e| e.to_string())?;
             std::fs::remove_file(&old).map_err(|e| noted(e, &old, refused))?;
             moved.push(relative.clone());
         }
@@ -807,6 +805,32 @@ mod tests {
         assert_eq!(std::fs::read(record.path).unwrap(), b"old");
         assert_eq!(std::fs::read(paths.apps().join("photocraft/lib.dll")).unwrap(), b"library");
         assert!(!paths.apps().join("photocraft/new.dll").exists());
+    }
+
+    #[test]
+    fn a_failed_replace_restores_a_read_only_program_file_as_it_was() {
+        let dir = tempfile::tempdir().unwrap();
+        let app = CraftApp::by_id("photocraft").unwrap();
+        let paths = Paths::under(dir.path());
+        let old = archive(dir.path(), "old.zip", &[("photocraft.exe", b"old"), ("lib.dll", b"library")]);
+        let record = install(app, &old, "0.5.0", None, &paths, None, false, &mut |_| Ok(())).unwrap();
+        let library = paths.apps().join("photocraft/lib.dll");
+        let modified = std::time::SystemTime::UNIX_EPOCH + std::time::Duration::from_secs(1_600_000_000);
+        std::fs::File::options().write(true).open(&library).unwrap().set_modified(modified).unwrap();
+        let mut permissions = std::fs::metadata(&library).unwrap().permissions();
+        permissions.set_readonly(true);
+        std::fs::set_permissions(&library, permissions).unwrap();
+        let next = archive(dir.path(), "next.zip", &[("photocraft.exe", b"new"), ("lib.dll", b"new library")]);
+        let result = install(app, &next, "0.6.0", Some(&record), &paths, None, false, &mut |_| Err("manifest disk full".into()));
+        assert_eq!(result.unwrap_err(), "manifest disk full");
+        assert_eq!(std::fs::read(&library).unwrap(), b"library");
+        let restored = std::fs::metadata(&library).unwrap();
+        assert!(restored.permissions().readonly(), "the restored file is read-only again");
+        assert_eq!(restored.modified().unwrap(), modified);
+        let mut permissions = restored.permissions();
+        #[allow(clippy::permissions_set_readonly_false)]
+        permissions.set_readonly(false);
+        std::fs::set_permissions(&library, permissions).unwrap();
     }
 
     #[test]
