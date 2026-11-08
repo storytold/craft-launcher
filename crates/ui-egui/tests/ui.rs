@@ -1489,6 +1489,28 @@ fn a_blocked_reinstall_offers_retry() {
 }
 
 #[test]
+/// A stopped update whose release can no longer be found, and a stopped reinstall of a copy the
+/// launcher can't install, offer Open instead of Retry, so neither the card nor the status says
+/// to press Retry.
+fn a_stop_with_no_retry_offered_does_not_say_to_press_retry() {
+    let blocked = |app: &str, blocker| Event::Blocked { app: app.into(), failure: Some(InstallFailure { blocker, details: "MSI 1618".into() }) };
+    let mut ev = events();
+    ev.push(blocked("photocraft", Blocker::AppOpen));
+    ev.push(Event::Latest { app: "photocraft".into(), latest: LatestRelease::None, from: Origin::ArtCraftApi });
+    ev.push(Event::Installable { app: "lightcraft".into(), installable: false });
+    ev.push(blocked("lightcraft", Blocker::InstallerBusy));
+    for view in [ViewMode::Grid, ViewMode::Table] {
+        let (mut h, _) = harness_with(ev.clone(), view, egui::Theme::Dark, true, 1.0);
+        h.run_steps(8);
+        assert!(h.query_by_label_contains("press Retry").is_none(), "{view:?}: no Retry is offered");
+        assert!(h.query_by_label("Update stopped").is_none(), "{view:?}");
+        assert!(h.query_by_label("Install stopped").is_none(), "{view:?}");
+        assert!(h.query_by_label_contains("Retry update").is_none(), "{view:?}: Open stays the main button");
+        assert!(h.query_by_label("Retry reinstall").is_none(), "{view:?}: Open stays the main button");
+    }
+}
+
+#[test]
 /// A Windows Installer step that stopped without writing a log, such as a downgrade's removal
 /// step, shows only its error code, and the card promises no log.
 fn a_failed_installer_step_without_a_log_promises_only_its_code() {

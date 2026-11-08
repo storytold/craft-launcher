@@ -4,7 +4,7 @@
 use artcraft_launcher_core::catalog::AppKind;
 use artcraft_launcher_core::details::AppDetails;
 use artcraft_launcher_core::platform::pick_asset;
-use artcraft_launcher_core::protocol::{Command, JobPhase};
+use artcraft_launcher_core::protocol::{Command, InstallFailure, JobPhase};
 use artcraft_launcher_core::status::AppStatus;
 use artcraft_launcher_core::time;
 use egui::{Color32, CornerRadius, FontId, Rect, RichText, Sense, Stroke, Ui, vec2};
@@ -645,7 +645,8 @@ impl LauncherUi {
         // Installed and up to date needs no badge: the strip has the version, and the group says the rest.
         if !matches!(status, AppStatus::UpToDate | AppStatus::Installed) {
             ui.horizontal(|ui| {
-                let (text, tone) = model::entry_status_text(&entry, &status, self.caps.manage_apps);
+                let stopped = self.shown_blocker(&entry, &status).is_some();
+                let (text, tone) = model::entry_status_text(&entry, &status, stopped, self.caps.manage_apps);
                 let r = widgets::badge(ui, &text, widgets::tone_color(&t, tone));
                 if let Some(f) = entry.failure() {
                     r.on_hover_text(fmt(tl!("Couldn't check for updates: {f}"), &[("f", f)]));
@@ -653,8 +654,9 @@ impl LauncherUi {
             });
             ui.add_space(8.0);
         }
-        // What stopped the last try takes the place of the blurb until the next try.
-        let blocked = entry.blocked.as_ref().filter(|_| entry.job.is_none());
+        // What stopped the last try takes the place of the blurb until the next try, while the
+        // main button retries it.
+        let blocked = self.shown_blocker(&entry, &status);
         if let Some(failure) = blocked {
             crate::card_parts::blurb(ui, &model::blocker_text(failure.blocker, app.name), t.ink, 3);
             ui.add_space(4.0);
@@ -894,10 +896,10 @@ impl LauncherUi {
         let (text, tone) = if *status == AppStatus::UpToDate && entry.job.is_none() && entry.paused.is_none() {
             model::status_text(&AppStatus::Installed, self.caps.manage_apps)
         } else {
-            model::entry_status_text(entry, status, self.caps.manage_apps)
+            model::entry_status_text(entry, status, self.shown_blocker(entry, status).is_some(), self.caps.manage_apps)
         };
         let r = widgets::badge(ui, &text, widgets::tone_color(t, tone));
-        if let Some(failure) = entry.blocked.as_ref().filter(|_| entry.job.is_none()) {
+        if let Some(failure) = self.shown_blocker(entry, status) {
             r.on_hover_text(format!("{}\n{}", model::blocker_text(failure.blocker, entry.app.name), model::blocker_details(failure)));
         } else if let Some(f) = entry.failure() {
             r.on_hover_text(fmt(tl!("Couldn't check for updates: {f}"), &[("f", f)]));
@@ -943,6 +945,18 @@ impl LauncherUi {
     }
 
     // ---- actions -------------------------------------------------------------------------
+
+    /// What stopped the last try, while no job runs and the main button retries it. The card's
+    /// text, the status badge and its tooltip name the cause only then, since they say to press
+    /// Retry.
+    fn shown_blocker<'a>(&self, entry: &'a AppEntry, status: &AppStatus) -> Option<&'a InstallFailure> {
+        let retry = match self.primary_action(entry, status) {
+            Primary::Retry(..) => true,
+            Primary::SelectedVersion { retry, .. } => retry,
+            _ => false,
+        };
+        entry.blocked.as_ref().filter(|_| retry && entry.job.is_none())
+    }
 
     fn primary_action(&self, entry: &AppEntry, status: &AppStatus) -> Primary {
         if !self.caps.manage_apps {
