@@ -12,7 +12,7 @@ created on 2026-11-05 and has a short public history beginning with a sanitized
 0.10.37 source snapshot. It is not an official Craft App Suite application.
 Its own source is MIT; third-party notices are retained.
 
-- [Desktop 0.10.49 experimental release](https://github.com/ckiikc/musiccraft/releases/tag/v0.10.49): Apple silicon macOS ZIP and `SHA256SUMS.txt`.
+- [Desktop 0.10.50 experimental release](https://github.com/ckiikc/musiccraft/releases/tag/v0.10.50): Apple silicon macOS ZIP and `SHA256SUMS.txt`.
 - [Android 0.3.0 test release](https://github.com/ckiikc/musiccraft/releases/tag/android-v0.3.0): APK and `SHA256SUMS.txt`.
 - [Public source](https://github.com/ckiikc/musiccraft), including the separate `android/` project.
 - [Validation](https://github.com/ckiikc/musiccraft/blob/main/docs/VALIDATION.md), [release limitations](https://github.com/ckiikc/musiccraft/blob/main/docs/RELEASING.md) and [third-party components](https://github.com/ckiikc/musiccraft/blob/main/THIRD_PARTY.md).
@@ -42,7 +42,7 @@ the phone plays audio. No separate FTP application is required.
 
 ## Validation and privacy
 
-The public desktop tree passed 197 ordinary tests, Clippy with warnings denied,
+The public desktop tree passed 198 ordinary tests, Clippy with warnings denied,
 formatting, twelve synthetic loopback FTP integrations, Mach-O identity and
 document-association tests. The public Android tree passed its debug build,
 eleven unit tests and lint with zero errors. Native emulator checks cover
