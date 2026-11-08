@@ -2256,10 +2256,11 @@ fn msi_command(program: &Path, msi: &Path) -> Result<std::process::Command, Stri
     Ok(command)
 }
 
-/// Where `msi_command` asks Windows Installer to write its log.
+/// Where `msi_command` asks Windows Installer to write its log: beside the package as
+/// [`msi_path`] resolves it, or beside `msi` as given when it can't be resolved.
 #[cfg_attr(not(windows), allow(dead_code))]
 fn msi_log(msi: &Path) -> PathBuf {
-    msi.with_extension("log")
+    msi_path(msi).unwrap_or_else(|_| msi.to_path_buf()).with_extension("log")
 }
 
 /// Windows Installer's storage APIs can fail on paths through junctions or symlinks (#338).
@@ -2716,6 +2717,28 @@ mod tests {
         let missing = dir.path().join("missing.msi");
         let error = msi_command(Path::new("msiexec.exe"), &missing).unwrap_err();
         assert!(error.contains("couldn't resolve the Windows Installer package"), "{error}");
+    }
+
+    #[test]
+    fn the_msi_log_named_for_a_linked_package_is_the_one_the_installer_writes() {
+        let dir = tempfile::tempdir().unwrap();
+        let cache = dir.path().join("persistent cache");
+        std::fs::create_dir(&cache).unwrap();
+        std::fs::write(cache.join("PhotoCraft.msi"), b"test package").unwrap();
+        let link = dir.path().join("current cache");
+        #[cfg(windows)]
+        assert!(std::process::Command::new("cmd.exe").args(["/C", "mklink", "/J"]).arg(&link).arg(&cache).status().unwrap().success());
+        #[cfg(unix)]
+        std::os::unix::fs::symlink(&cache, &link).unwrap();
+        let linked = link.join("PhotoCraft.msi");
+        let resolved = msi_path(&linked).unwrap();
+        assert_ne!(resolved.parent(), linked.parent(), "the package is reached through the link");
+        assert_eq!(msi_log(&linked), resolved.with_extension("log"));
+        let command = msi_command(Path::new("msiexec.exe"), &linked).unwrap();
+        assert_eq!(command.get_args().last(), Some(msi_log(&linked).as_os_str()), "the log the installer is told to write");
+        // A package that can't be resolved still names a log beside it.
+        let missing = dir.path().join("missing.msi");
+        assert_eq!(msi_log(&missing), dir.path().join("missing.log"));
     }
 
     #[cfg(windows)]

@@ -405,6 +405,7 @@ column	Author	Autor
 	Nightly	Nocturna
 	Nightly (none published yet)	Nocturna (aún no publicada)
 	Install version {version}	Instalar la versión {version}
+	Retry install of version {version}	Reintentar la instalación de la versión {version}
 	Download selected version	Descargar la versión seleccionada
 	Older launcher versions require a manual reinstall.	Las versiones anteriores del iniciador requieren una reinstalación manual.
 	Your files may not open in older versions.	Es posible que tus archivos no se abran en versiones antiguas.

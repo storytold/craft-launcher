@@ -1440,6 +1440,32 @@ fn a_blocked_update_says_why_and_can_be_retried() {
 }
 
 #[test]
+/// A blocked install of a kept version offers Retry, as its card says, and the retry installs
+/// that version again.
+fn a_blocked_install_of_a_kept_version_offers_retry() {
+    let mut ev = events();
+    ev.push(Event::Blocked {
+        app: "photocraft".into(),
+        failure: Some(InstallFailure { blocker: Blocker::AppOpen, details: r"C:\Apps\PhotoCraft\photocraft-cli.exe".into() }),
+    });
+    let (mut h, sent) = harness_with(ev, ViewMode::Grid, egui::Theme::Dark, true, 1.0);
+    h.run_steps(8);
+    h.state_mut()
+        .as_mut()
+        .expect("the harness built the launcher")
+        .settings
+        .versions
+        .insert("photocraft".into(), artcraft_launcher_core::protocol::VersionTrack::Pinned("v0.5.0".into()));
+    h.run_steps(4);
+    h.get_by_label_contains("then press Retry");
+    assert!(h.query_by_label("Install version v0.5.0").is_none(), "the kept version's install is a retry");
+    sent.borrow_mut().clear();
+    h.get_by_label("Retry install of version v0.5.0").click();
+    h.run_steps(2);
+    assert_eq!(launches_and_installs(&sent, "photocraft"), (0, 1), "{:?}", sent.borrow());
+}
+
+#[test]
 /// A newer release with nothing for this computer is no update: the app opens as it is, isn't
 /// counted in Update all, and has no Update button that would fail with "has no download".
 fn a_newer_release_without_a_download_here_is_not_offered_as_an_update() {

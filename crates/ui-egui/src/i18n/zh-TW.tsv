@@ -388,6 +388,7 @@ column	Version	版本
 	Nightly	Nightly
 	Nightly (none published yet)	Nightly（尚未發行）
 	Install version {version}	安裝版本 {version}
+	Retry install of version {version}	重試安裝版本 {version}
 	Download selected version	下載所選版本
 	Older launcher versions require a manual reinstall.	較舊的啟動器版本需要手動重新安裝。
 	Your files may not open in older versions.	你的檔案可能無法在較舊的版本中開啟。

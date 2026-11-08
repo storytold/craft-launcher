@@ -428,6 +428,7 @@ column	Author	ავტორი
 	Nightly	ღამის ვერსია
 	Nightly (none published yet)	ღამის ვერსია (ჯერ არ გამოქვეყნებულა)
 	Install version {version}	{version} ვერსიის ინსტალაცია
+	Retry install of version {version}	{version} ვერსიის ინსტალაციის ხელახლა ცდა
 	Download selected version	არჩეული ვერსიის ჩამოტვირთვა
 	Older launcher versions require a manual reinstall.	Launcher-ის ძველ ვერსიებს ხელით ხელახალი ინსტალაცია სჭირდება.
 	Your files may not open in older versions.	თქვენი ფაილები შეიძლება ძველ ვერსიებში არ გაიხსნას.

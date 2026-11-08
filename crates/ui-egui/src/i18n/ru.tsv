@@ -420,6 +420,7 @@ column	Author	Автор
 	Nightly	Ночная сборка
 	Nightly (none published yet)	Ночная сборка (пока нет)
 	Install version {version}	Установить версию {version}
+	Retry install of version {version}	Повторить установку версии {version}
 	Download selected version	Скачать выбранную версию
 	Older launcher versions require a manual reinstall.	Для возврата к старой версии лаунчера нужна переустановка вручную.
 	Your files may not open in older versions.	В старой версии ваши файлы могут не открыться.

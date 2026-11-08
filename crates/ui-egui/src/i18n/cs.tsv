@@ -392,6 +392,7 @@ column	Author	Autor
 	Nightly	Noční sestavení
 	Nightly (none published yet)	Noční sestavení (zatím žádné)
 	Install version {version}	Nainstalovat verzi {version}
+	Retry install of version {version}	Zkusit instalaci verze {version} znovu
 	Download selected version	Stáhnout vybranou verzi
 	Older launcher versions require a manual reinstall.	Starší verze spouštěče vyžadují ruční přeinstalaci.
 	Your files may not open in older versions.	Starší verze nemusí vaše soubory otevřít.

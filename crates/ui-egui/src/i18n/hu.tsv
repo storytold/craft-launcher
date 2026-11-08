@@ -425,6 +425,7 @@ column	Author	Szerző
 	Nightly	Éjszakai kiadás
 	Nightly (none published yet)	Éjszakai kiadás (még nincs)
 	Install version {version}	A(z) {version} verzió telepítése
+	Retry install of version {version}	A(z) {version} verzió telepítésének újrapróbálása
 	Download selected version	Kiválasztott verzió letöltése
 	Older launcher versions require a manual reinstall.	Az indító régebbi verzióit kézzel kell újratelepíteni.
 	Your files may not open in older versions.	Előfordulhat, hogy a régebbi verziók nem tudják megnyitni a fájljaidat.

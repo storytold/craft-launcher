@@ -426,6 +426,7 @@ column	Author	Autor
 	Nightly	Wersja nocna
 	Nightly (none published yet)	Wersja nocna (jeszcze brak)
 	Install version {version}	Zainstaluj wersję {version}
+	Retry install of version {version}	Ponów instalację wersji {version}
 	Download selected version	Pobierz wybraną wersję
 	Older launcher versions require a manual reinstall.	Starsze wersje programu uruchamiającego wymagają ręcznej ponownej instalacji.
 	Your files may not open in older versions.	Starsza wersja może nie otwierać Twoich plików.

@@ -424,6 +424,7 @@ column	Author	Autor
 	Nightly	Nightly
 	Nightly (none published yet)	Nightly (noch keins veröffentlicht)
 	Install version {version}	Version {version} installieren
+	Retry install of version {version}	Installation von Version {version} wiederholen
 	Download selected version	Ausgewählte Version herunterladen
 	Older launcher versions require a manual reinstall.	Ältere Launcher-Versionen müssen manuell neu installiert werden.
 	Your files may not open in older versions.	Ältere Versionen können deine Dateien möglicherweise nicht öffnen.

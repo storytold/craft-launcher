@@ -66,10 +66,12 @@ enum Primary {
     /// doesn't fit, and whether the download is kept.
     Retry(String, Vec<&'static str>, bool),
     Update(String),
-    /// A pinned release only installs after the backend has checked that exact tag.
+    /// A pinned release only installs after the backend has checked that exact tag. `retry` is set
+    /// when the last try was stopped by a cause the card names, and the button then says Retry.
     SelectedVersion {
         tag: String,
         checked: bool,
+        retry: bool,
     },
     Open,
     Download(String),
@@ -963,7 +965,7 @@ impl LauncherUi {
             // Checked by the backend, and an install of it would go ahead here.
             let checked = self.version_installs(entry, tag) == Some(true)
                 && !matches!(status, AppStatus::Checking | AppStatus::NoRelease | AppStatus::Unavailable);
-            return Primary::SelectedVersion { tag: tag.clone(), checked };
+            return Primary::SelectedVersion { tag: tag.clone(), checked, retry: entry.blocked.is_some() };
         }
         // A kept download, or a named cause of the last failure, makes the next try a retry.
         let retry = entry.ready || entry.blocked.is_some();
@@ -1186,8 +1188,9 @@ impl LauncherUi {
                     self.update_button(ui, entry, status, &labels, main_w, place);
                 }
             }
-            Primary::SelectedVersion { tag, checked } => {
-                let label = fmt(tl!("Install version {version}"), &[("version", &tag)]);
+            Primary::SelectedVersion { tag, checked, retry } => {
+                let label =
+                    fmt(if retry { tl!("Retry install of version {version}") } else { tl!("Install version {version}") }, &[("version", &tag)]);
                 let resp = ui.add_enabled_ui(checked, |ui| widgets::button(ui, &label, Kind::Primary, main_w)).inner;
                 let resp = match self.version_refusal(entry, &tag) {
                     Some(why) => resp.on_disabled_hover_text(why),
