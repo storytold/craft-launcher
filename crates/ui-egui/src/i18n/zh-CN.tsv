@@ -60,6 +60,7 @@
 	Reinstall	重新安装
 	Uninstall…	卸载…
 	Launch options…	启动选项…
+	Set as default for its file types	设为其文件类型的默认应用
 	{name} launch options	{name} 启动选项
 	Flags added each time the app is opened	每次打开应用时附加的参数
 	Separate flags with spaces. Quote a value that has spaces in it.	用空格分隔各个参数。含有空格的值请用引号括起来。

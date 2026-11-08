@@ -65,6 +65,7 @@
 	Reinstall	Znovu nainstalovat
 	Uninstall…	Odinstalovat…
 	Launch options…	Možnosti spuštění…
+	Set as default for its file types	Nastavit jako výchozí pro jeho typy souborů
 	{name} launch options	Možnosti spuštění aplikace {name}
 	Flags added each time the app is opened	Přepínače přidané při každém otevření aplikace
 	Separate flags with spaces. Quote a value that has spaces in it.	Přepínače oddělte mezerami. Hodnotu s mezerami dejte do uvozovek.

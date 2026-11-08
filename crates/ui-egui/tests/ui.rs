@@ -2198,6 +2198,35 @@ fn launch_options_are_saved_per_app_and_passed_when_it_opens() {
     assert!(!h.state().as_ref().unwrap().settings.launch_flags.contains_key("lightcraft"));
 }
 
+/// Linux only: the installed app's menu makes it the default for its file types. Windows and
+/// macOS keep their own default-app settings, so the item isn't offered there.
+#[test]
+fn set_as_default_is_offered_for_installed_apps_on_linux_only() {
+    let item = "Set as default for its file types";
+    for (platform, offered) in [(Platform { os: Os::Linux, arch: Arch::X64 }, true), (Platform { os: Os::MacOs, arch: Arch::Arm64 }, false)] {
+        let (mut h, sent) = harness_full(
+            events(),
+            ViewMode::Table,
+            egui::Theme::Dark,
+            true,
+            1.0,
+            artcraft_launcher_ui_egui::TitleBar::Native,
+            Rc::default(),
+            Some(platform),
+            None,
+        );
+        h.run_steps(6);
+        h.get_by_label("More actions for WordCraft").click();
+        h.run_steps(3);
+        assert_eq!(h.query_by_label(item).is_some(), offered, "{:?}", platform.os);
+        if offered {
+            h.get_by_label(item).click();
+            h.run_steps(3);
+            assert!(sent.borrow().contains(&Command::SetDefault { app: "wordcraft".into() }));
+        }
+    }
+}
+
 #[test]
 fn launch_options_with_an_unclosed_quote_are_not_saved_or_launched() {
     use egui::accesskit::Role;

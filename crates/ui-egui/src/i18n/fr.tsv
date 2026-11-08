@@ -76,6 +76,7 @@
 	Reinstall	Réinstaller
 	Uninstall…	Désinstaller…
 	Launch options…	Options de lancement…
+	Set as default for its file types	Définir par défaut pour ses types de fichiers
 	{name} launch options	Options de lancement de {name}
 	Flags added each time the app is opened	Options ajoutées à chaque ouverture de l'application
 	Separate flags with spaces. Quote a value that has spaces in it.	Séparez les options par des espaces. Mettez entre guillemets une valeur qui contient des espaces.

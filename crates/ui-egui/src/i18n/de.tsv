@@ -78,6 +78,7 @@
 	Reinstall	Neu installieren
 	Uninstall…	Deinstallieren…
 	Launch options…	Startoptionen…
+	Set as default for its file types	Als Standard für seine Dateitypen festlegen
 	{name} launch options	Startoptionen für {name}
 	Flags added each time the app is opened	Flags, die bei jedem Öffnen der App angehängt werden
 	Separate flags with spaces. Quote a value that has spaces in it.	Flags durch Leerzeichen trennen. Werte mit Leerzeichen in Anführungszeichen setzen.

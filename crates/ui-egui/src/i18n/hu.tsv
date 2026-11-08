@@ -78,6 +78,7 @@
 	Reinstall	Újratelepítés
 	Uninstall…	Eltávolítás…
 	Launch options…	Indítási beállítások…
+	Set as default for its file types	Beállítás alapértelmezettként a fájltípusaihoz
 	{name} launch options	{name} indítási beállításai
 	Flags added each time the app is opened	Kapcsolók, amelyeket az alkalmazás minden megnyitásakor átad
 	Separate flags with spaces. Quote a value that has spaces in it.	A kapcsolókat szóközzel válassza el. A szóközt tartalmazó értéket tegye idézőjelbe.
