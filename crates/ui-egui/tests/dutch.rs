@@ -40,6 +40,7 @@ impl Backend for Fake {
 struct NoHost;
 impl Host for NoHost {}
 
+/// A release of `id` at version `v`, published at `at`, as the feed reports it.
 fn release(id: &str, v: &str, at: i64) -> Release {
     let name = format!("{id}-{v}-macos-universal.dmg");
     Release {
@@ -59,6 +60,7 @@ fn release(id: &str, v: &str, at: i64) -> Release {
     }
 }
 
+/// The backend events that fill the listing: installed apps, a job in progress and a message.
 fn events() -> Vec<Event> {
     let mut ev = Vec::new();
     for (i, app) in SUITE.iter().enumerate() {
@@ -82,6 +84,7 @@ fn events() -> Vec<Event> {
     ev
 }
 
+/// A launcher in this language, showing [`events`] in `view`.
 fn harness(view: ViewMode) -> Harness<'static, Option<LauncherUi>> {
     artcraft_launcher_ui_egui::i18n::set_test_lang(artcraft_launcher_ui_egui::i18n::Lang::EN);
     let mut backend = Some(Fake { events: events(), clock: Rc::new(Cell::new(NOW)) });
@@ -103,6 +106,7 @@ fn harness(view: ViewMode) -> Harness<'static, Option<LauncherUi>> {
     )
 }
 
+/// Save a screenshot when `ARTCRAFT_LAUNCHER_SNAPSHOTS` names a folder.
 fn snapshot(h: &mut Harness<'_, Option<LauncherUi>>, name: &str) {
     let Some(dir) = std::env::var_os("ARTCRAFT_LAUNCHER_SNAPSHOTS") else { return };
     let img = h.render().unwrap();
