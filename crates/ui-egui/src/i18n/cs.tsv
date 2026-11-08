@@ -214,6 +214,7 @@ month	Dec	12.
 	Update paused	Aktualizace pozastavena
 	Update stopped	Aktualizace zastavena
 	Install stopped	Instalace zastavena
+	Reinstall stopped	Přeinstalace zastavena
 	{name} or its command-line tool is open. Close it, then press Retry.	Aplikace {name} nebo její nástroj příkazového řádku je otevřený. Zavřete ho a zkuste to znovu.
 	A program with the same name as {name} is running. If it is this copy, close it, then press Retry.	Běží program se stejným názvem jako {name}. Pokud jde o tuto kopii, zavřete ho a zkuste to znovu.
 	Another installation is in progress. Wait for it to finish, then press Retry.	Probíhá jiná instalace. Počkejte, až skončí, a zkuste to znovu.

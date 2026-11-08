@@ -234,6 +234,7 @@ month	Dec	dec.
 	Update paused	Frissítés szüneteltetve
 	Update stopped	Frissítés leállt
 	Install stopped	Telepítés leállt
+	Reinstall stopped	Újratelepítés leállt
 	{name} or its command-line tool is open. Close it, then press Retry.	{name} vagy a parancssori eszköze meg van nyitva. Zárd be, majd próbáld újra.
 	A program with the same name as {name} is running. If it is this copy, close it, then press Retry.	Fut egy program, amelynek ugyanaz a neve, mint ennek: {name}. Ha ez az a példány, zárd be, majd próbáld újra.
 	Another installation is in progress. Wait for it to finish, then press Retry.	Egy másik telepítés van folyamatban. Várd meg, amíg befejeződik, majd próbáld újra.

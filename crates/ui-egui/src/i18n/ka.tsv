@@ -238,6 +238,7 @@ month	Dec	დეკ
 	Update paused	განახლება შეჩერებულია
 	Update stopped	განახლება შეწყდა
 	Install stopped	ინსტალაცია შეწყდა
+	Reinstall stopped	ხელახლა ინსტალაცია შეწყდა
 	{name} or its command-line tool is open. Close it, then press Retry.	{name} ან მისი ბრძანების ხაზის ხელსაწყო გახსნილია. დახურეთ და კვლავ სცადეთ.
 	A program with the same name as {name} is running. If it is this copy, close it, then press Retry.	გაშვებულია პროგრამა, რომელსაც იგივე სახელი აქვს, რაც {name}-ს. თუ ეს სწორედ ეს ასლია, დახურეთ და კვლავ სცადეთ.
 	Another installation is in progress. Wait for it to finish, then press Retry.	მიმდინარეობს სხვა ინსტალაცია. დაელოდეთ მის დასრულებას და კვლავ სცადეთ.

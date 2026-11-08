@@ -236,6 +236,7 @@ month	Dec	12月
 	Update paused	更新を一時停止
 	Update stopped	更新を停止しました
 	Install stopped	インストールを停止しました
+	Reinstall stopped	再インストールを停止しました
 	{name} or its command-line tool is open. Close it, then press Retry.	{name} またはそのコマンドラインツールが開いています。閉じてから再試行してください。
 	A program with the same name as {name} is running. If it is this copy, close it, then press Retry.	{name} と同じ名前のプログラムが実行中です。このコピーであれば、閉じてから再試行してください。
 	Another installation is in progress. Wait for it to finish, then press Retry.	別のインストールが進行中です。完了するまで待ってから再試行してください。

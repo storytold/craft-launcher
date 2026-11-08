@@ -232,6 +232,7 @@ month	Dec	дек.
 	Update paused	Обновление приостановлено
 	Update stopped	Обновление остановлено
 	Install stopped	Установка остановлена
+	Reinstall stopped	Переустановка остановлена
 	{name} or its command-line tool is open. Close it, then press Retry.	{name} или его инструмент командной строки открыт. Закройте его и повторите попытку.
 	A program with the same name as {name} is running. If it is this copy, close it, then press Retry.	Запущена программа с тем же именем, что и {name}. Если это именно эта копия, закройте её и повторите попытку.
 	Another installation is in progress. Wait for it to finish, then press Retry.	Выполняется другая установка. Дождитесь её завершения и повторите попытку.

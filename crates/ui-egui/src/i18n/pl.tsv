@@ -235,6 +235,7 @@ month	Dec	gru
 	Update paused	Aktualizacja wstrzymana
 	Update stopped	Aktualizacja zatrzymana
 	Install stopped	Instalacja zatrzymana
+	Reinstall stopped	Ponowna instalacja zatrzymana
 	{name} or its command-line tool is open. Close it, then press Retry.	{name} lub narzędzie wiersza poleceń tej aplikacji jest otwarte. Zamknij je i spróbuj ponownie.
 	A program with the same name as {name} is running. If it is this copy, close it, then press Retry.	Działa program o tej samej nazwie co {name}. Jeśli to ta kopia, zamknij go i spróbuj ponownie.
 	Another installation is in progress. Wait for it to finish, then press Retry.	Trwa inna instalacja. Poczekaj, aż się zakończy, i spróbuj ponownie.

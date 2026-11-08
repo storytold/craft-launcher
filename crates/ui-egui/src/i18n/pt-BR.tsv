@@ -222,6 +222,7 @@ month	Dec	dez.
 	Update paused	Atualização pausada
 	Update stopped	Atualização interrompida
 	Install stopped	Instalação interrompida
+	Reinstall stopped	Reinstalação interrompida
 	{name} or its command-line tool is open. Close it, then press Retry.	{name} ou sua ferramenta de linha de comando está aberto. Feche-o e tente novamente.
 	A program with the same name as {name} is running. If it is this copy, close it, then press Retry.	Um programa com o mesmo nome de {name} está em execução. Se for esta cópia, feche-o e tente novamente.
 	Another installation is in progress. Wait for it to finish, then press Retry.	Outra instalação está em andamento. Aguarde até que ela termine e tente novamente.

@@ -643,10 +643,11 @@ impl LauncherUi {
         });
         ui.add_space(14.0);
         // Installed and up to date needs no badge: the strip has the version, and the group says the rest.
-        if !matches!(status, AppStatus::UpToDate | AppStatus::Installed) {
+        // A stopped reinstall still gets one, so the status names the stop the card describes.
+        let blocked = self.shown_blocker(&entry, &status);
+        if blocked.is_some() || !matches!(status, AppStatus::UpToDate | AppStatus::Installed) {
             ui.horizontal(|ui| {
-                let stopped = self.shown_blocker(&entry, &status).is_some();
-                let (text, tone) = model::entry_status_text(&entry, &status, stopped, self.caps.manage_apps);
+                let (text, tone) = model::entry_status_text(&entry, &status, blocked.is_some(), self.caps.manage_apps);
                 let r = widgets::badge(ui, &text, widgets::tone_color(&t, tone));
                 if let Some(f) = entry.failure() {
                     r.on_hover_text(fmt(tl!("Couldn't check for updates: {f}"), &[("f", f)]));
@@ -656,7 +657,6 @@ impl LauncherUi {
         }
         // What stopped the last try takes the place of the blurb until the next try, while the
         // main button retries it.
-        let blocked = self.shown_blocker(&entry, &status);
         if let Some(failure) = blocked {
             crate::card_parts::blurb(ui, &model::blocker_text(failure.blocker, app.name), t.ink, 3);
             ui.add_space(4.0);
@@ -892,14 +892,16 @@ impl LauncherUi {
 
     /// The status column: one badge, with the check failure (if any) in its tooltip.
     fn table_status_cell(&self, ui: &mut Ui, entry: &AppEntry, status: &AppStatus, t: &Tokens) {
-        // Installed is all it says: being up to date is the absence of an update.
-        let (text, tone) = if *status == AppStatus::UpToDate && entry.job.is_none() && entry.paused.is_none() {
+        // Installed is all it says: being up to date is the absence of an update. A stopped
+        // reinstall says so instead.
+        let blocked = self.shown_blocker(entry, status);
+        let (text, tone) = if *status == AppStatus::UpToDate && entry.job.is_none() && entry.paused.is_none() && blocked.is_none() {
             model::status_text(&AppStatus::Installed, self.caps.manage_apps)
         } else {
-            model::entry_status_text(entry, status, self.shown_blocker(entry, status).is_some(), self.caps.manage_apps)
+            model::entry_status_text(entry, status, blocked.is_some(), self.caps.manage_apps)
         };
         let r = widgets::badge(ui, &text, widgets::tone_color(t, tone));
-        if let Some(failure) = self.shown_blocker(entry, status) {
+        if let Some(failure) = blocked {
             r.on_hover_text(format!("{}\n{}", model::blocker_text(failure.blocker, entry.app.name), model::blocker_details(failure)));
         } else if let Some(f) = entry.failure() {
             r.on_hover_text(fmt(tl!("Couldn't check for updates: {f}"), &[("f", f)]));

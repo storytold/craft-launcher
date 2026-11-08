@@ -1498,7 +1498,8 @@ fn a_blocked_app_kept_on_a_version_it_cant_install_does_not_say_to_press_retry()
 
 #[test]
 /// A reinstall of an up-to-date app stopped by another installation offers Retry, as its card
-/// says, in place of Open, and the retry installs again as Reinstall does.
+/// says, in place of Open, and the retry installs again as Reinstall does. The status says the
+/// reinstall stopped in both views.
 fn a_blocked_reinstall_offers_retry() {
     let mut ev = events();
     ev.push(Event::Installable { app: "lightcraft".into(), installable: true });
@@ -1509,6 +1510,8 @@ fn a_blocked_reinstall_offers_retry() {
     for view in [ViewMode::Grid, ViewMode::Table] {
         let (mut h, sent) = harness_with(ev.clone(), view, egui::Theme::Dark, true, 1.0);
         h.run_steps(8);
+        assert!(h.query_by_label("Reinstall stopped").is_some(), "{view:?}: the status names the stop");
+        assert!(h.query_by_label("Update stopped").is_none(), "{view:?}: it was a reinstall, not an update");
         if view == ViewMode::Grid {
             h.get_by_label("Another installation is in progress. Wait for it to finish, then press Retry.");
         }

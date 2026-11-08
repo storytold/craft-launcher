@@ -141,6 +141,7 @@ month	Dec	12月
 	Update paused	更新已暫停
 	Update stopped	更新已停止
 	Install stopped	安裝已停止
+	Reinstall stopped	重新安裝已停止
 	{name} or its command-line tool is open. Close it, then press Retry.	{name} 或其命令列工具已開啟。請將其關閉，然後再試一次。
 	A program with the same name as {name} is running. If it is this copy, close it, then press Retry.	正在執行與 {name} 同名的程式。如果它就是此複本，請將其關閉，然後再試一次。
 	Another installation is in progress. Wait for it to finish, then press Retry.	另一項安裝正在進行。請等候其完成，然後再試一次。

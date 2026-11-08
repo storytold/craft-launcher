@@ -137,7 +137,8 @@ pub fn status_text(status: &AppStatus, manage_apps: bool) -> (String, Tone) {
 }
 
 /// [`status_text`], but saying so when a download is paused or reconnecting, or, when `stopped`
-/// is set, that a cause the card names stopped the last try.
+/// is set, that a cause the card names stopped the last try (a reinstall, for an app that is up
+/// to date).
 pub fn entry_status_text(e: &AppEntry, status: &AppStatus, stopped: bool, manage_apps: bool) -> (String, Tone) {
     match (e.job, e.paused) {
         (Some(JobPhase::Reconnecting { .. }), _) => (t("Reconnecting…").to_string(), Tone::Warn),
@@ -145,6 +146,7 @@ pub fn entry_status_text(e: &AppEntry, status: &AppStatus, stopped: bool, manage
         (Some(JobPhase::Downloading { .. }), _) => (t("Downloading…").to_string(), Tone::Info),
         (None, Some(_)) if status.is_installed() => (t("Update paused").to_string(), Tone::Warn),
         (None, Some(_)) => (t("Download paused").to_string(), Tone::Warn),
+        (None, None) if stopped && *status == AppStatus::UpToDate => (t("Reinstall stopped").to_string(), Tone::Warn),
         (None, None) if stopped && status.is_installed() => (t("Update stopped").to_string(), Tone::Warn),
         (None, None) if stopped => (t("Install stopped").to_string(), Tone::Warn),
         _ => status_text(status, manage_apps),
