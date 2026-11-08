@@ -113,6 +113,26 @@ pub fn install_at(
     job: &mut Job<'_>,
     commit: RecordCommit<'_>,
 ) -> Result<Option<Record>, String> {
+    install_checking(app, release, asset, kind, existing, previous, job, commit, &process::app_running)
+}
+
+/// Tells whether any of the given executables (an app and its command-line tool) is running.
+type FindRunning<'a> = &'a dyn Fn(&[PathBuf]) -> process::Running;
+
+/// [`install_at`] with `find_running` telling whether the copy being replaced or its
+/// command-line tool is running.
+#[allow(clippy::too_many_arguments)]
+fn install_checking(
+    app: &CraftApp,
+    release: &Release,
+    asset: &Asset,
+    kind: PackageKind,
+    existing: Option<&Installed>,
+    previous: Option<&Record>,
+    job: &mut Job<'_>,
+    commit: RecordCommit<'_>,
+    find_running: FindRunning<'_>,
+) -> Result<Option<Record>, String> {
     #[cfg(windows)]
     let mut commit = commit;
     #[cfg(not(windows))]
@@ -124,7 +144,7 @@ pub fn install_at(
     // The copy being replaced, when a running app or command-line tool would stop the update.
     let running_copy = existing.filter(|inst| inst.source.launcher_can_update()).map(|inst| Path::new(&inst.location));
     if let Some(location) = running_copy
-        && let Some((error, failure)) = open_failure(app, location, &process::app_running(&running_targets(app, location)), None)
+        && let Some((error, failure)) = open_failure(app, location, &find_running(&running_targets(app, location)), None)
     {
         job.failure = Some(failure);
         return Err(error);
@@ -176,7 +196,7 @@ pub fn install_at(
     log::info!("{}: download ready ({}), running installer...", app.name, file.display());
     // The app may have been started while the download ran. The download stays for the next try.
     if let Some(location) = running_copy
-        && let Some((error, failure)) = open_failure(app, location, &process::app_running(&running_targets(app, location)), None)
+        && let Some((error, failure)) = open_failure(app, location, &find_running(&running_targets(app, location)), None)
     {
         job.failure = Some(failure);
         return Err(error);
@@ -276,7 +296,7 @@ pub fn install_at(
     #[cfg(windows)]
     let result = match result {
         Err(error) => {
-            let running = || running_copy.map_or(process::Running::No, |location| process::app_running(&running_targets(app, location)));
+            let running = || running_copy.map_or(process::Running::No, |location| find_running(&running_targets(app, location)));
             let classified = match (&refused, &msi_exit) {
                 (Some(refused), _) => Some(file_failure(app, running_copy, refused.code, &refused.path, &error, &running())),
                 (None, Some((code, log))) => msi_failure(app, running_copy, *code, log, rollback.as_ref().map(|_| error.as_str()), running),
@@ -890,15 +910,28 @@ pub fn uninstall(
     stop: &Stop,
     phase: &mut dyn FnMut(JobPhase),
 ) -> Result<(), String> {
+    uninstall_checking(app, installed, record, paths, stop, phase, &process::app_running)
+}
+
+/// [`uninstall`] with `find_running` telling whether the copy or its command-line tool is running.
+fn uninstall_checking(
+    app: &CraftApp,
+    installed: &Installed,
+    record: Option<&Record>,
+    paths: &Paths,
+    stop: &Stop,
+    phase: &mut dyn FnMut(JobPhase),
+    find_running: FindRunning<'_>,
+) -> Result<(), String> {
     let _ = (record, stop, &phase, paths);
     let path = PathBuf::from(&installed.location);
     if let Some(msg) = managed_elsewhere(app, installed, true) {
         return Err(msg);
     }
     if matches!(installed.source, InstallSource::MacApp | InstallSource::Msi | InstallSource::AppImage | InstallSource::Launcher)
-        && process::is_running(&path)
+        && let Some((error, _)) = open_failure(app, &path, &find_running(&running_targets(app, &path)), None)
     {
-        return Err(format!("{} is running. Quit it, then try again.", app.name));
+        return Err(error);
     }
     match installed.source {
         #[cfg(windows)]
@@ -2564,11 +2597,11 @@ mod tests {
         assert!(failure.details.ends_with(unrestored), "{}", failure.details);
     }
 
-    /// The running copy is found before anything is downloaded: here the copy is this test
-    /// program itself, which is running.
+    /// Runs an update of a copy at `C:\Apps\PhotoCraft` with `find_running` answering the process
+    /// checks, and returns its error, the card's cause, how many downloads were requested and the
+    /// phases it reported.
     #[cfg(windows)]
-    #[test]
-    fn a_running_copy_stops_an_update_before_the_download() {
+    fn update_with(find_running: FindRunning<'_>) -> (String, Option<InstallFailure>, usize, Vec<JobPhase>) {
         use crate::http::tests::{Reply, body, serve};
         let app = CraftApp::by_id("photocraft").unwrap();
         let (body, sha) = body();
@@ -2578,11 +2611,10 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let paths = Paths::under(dir.path());
         let http = Http::new().unwrap();
-        let running = std::env::current_exe().unwrap();
         let installed = Installed {
             version: version::parse("0.5.0"),
             source: InstallSource::Msi,
-            location: running.display().to_string(),
+            location: photocraft_copy().0.display().to_string(),
             package: None,
             externally_managed: false,
             origin: None,
@@ -2601,11 +2633,86 @@ mod tests {
             downgrade: None,
             failure: None,
         };
-        let error = install(app, &release, &asset, PackageKind::Dmg, Some(&installed), None, &mut job).unwrap_err();
-        assert_eq!(error, "PhotoCraft is running. Quit it, then try again.");
-        assert_eq!(job.failure, Some(InstallFailure { blocker: Blocker::AppOpen, details: running.display().to_string() }));
-        assert!(requests.lock().unwrap().is_empty(), "nothing was downloaded");
-        assert!(phases.is_empty());
+        let error = install_checking(app, &release, &asset, PackageKind::Dmg, Some(&installed), None, &mut job, None, find_running).unwrap_err();
+        let failure = job.failure.take();
+        let requested = requests.lock().unwrap().len();
+        (error, failure, requested, phases)
+    }
+
+    /// A running app or command-line tool is found before anything is downloaded.
+    #[cfg(windows)]
+    #[test]
+    fn a_running_copy_stops_an_update_before_the_download() {
+        let (exe, cli) = photocraft_copy();
+        for (running, error) in [
+            (exe.clone(), "PhotoCraft is running. Quit it, then try again."),
+            (cli.clone(), "PhotoCraft's command-line tool is running. Quit it, then try again."),
+        ] {
+            let checked = std::cell::RefCell::new(Vec::new());
+            let find_running = |targets: &[PathBuf]| {
+                checked.borrow_mut().push(targets.to_vec());
+                process::Running::Confirmed(running.clone())
+            };
+            let (message, failure, requested, phases) = update_with(&find_running);
+            assert_eq!(message, error);
+            assert_eq!(failure, Some(InstallFailure { blocker: Blocker::AppOpen, details: running.display().to_string() }));
+            assert_eq!(requested, 0, "nothing was downloaded");
+            assert!(phases.is_empty());
+            assert_eq!(checked.into_inner(), [vec![exe.clone(), cli.clone()]], "the app and its command-line tool are checked once");
+        }
+    }
+
+    /// An app started while the download ran stops the update before the installer runs.
+    #[cfg(windows)]
+    #[test]
+    fn an_app_started_during_the_download_stops_the_update_before_installing() {
+        let (exe, _) = photocraft_copy();
+        let checks = std::cell::Cell::new(0);
+        let find_running = |_: &[PathBuf]| {
+            checks.set(checks.get() + 1);
+            if checks.get() == 1 { process::Running::No } else { process::Running::Confirmed(exe.clone()) }
+        };
+        let (message, failure, requested, phases) = update_with(&find_running);
+        assert_eq!(message, "PhotoCraft is running. Quit it, then try again.");
+        assert_eq!(failure.map(|f| f.blocker), Some(Blocker::AppOpen));
+        assert_eq!(requested, 1, "the package was downloaded");
+        assert!(!phases.contains(&JobPhase::Installing), "{phases:?}");
+        assert_eq!(checks.get(), 2);
+    }
+
+    /// Removing a copy stops while the app or its command-line tool is running, the same check an
+    /// update makes.
+    #[cfg(windows)]
+    #[test]
+    fn a_running_app_or_command_line_tool_stops_an_uninstall() {
+        let app = CraftApp::by_id("photocraft").unwrap();
+        let (exe, cli) = photocraft_copy();
+        let dir = tempfile::tempdir().unwrap();
+        let paths = Paths::under(dir.path());
+        // A launcher copy without a record: once past the check, removing it fails without touching anything.
+        let installed = Installed {
+            version: version::parse("0.5.0"),
+            source: InstallSource::Launcher,
+            location: exe.display().to_string(),
+            package: None,
+            externally_managed: false,
+            origin: None,
+            installation: None,
+        };
+        let uninstall = |running: process::Running| {
+            let find_running = |targets: &[PathBuf]| {
+                assert_eq!(targets, [exe.clone(), cli.clone()]);
+                running.clone()
+            };
+            uninstall_checking(app, &installed, None, &paths, &Stop::default(), &mut |_| {}, &find_running).unwrap_err()
+        };
+        assert_eq!(uninstall(process::Running::Confirmed(cli.clone())), "PhotoCraft's command-line tool is running. Quit it, then try again.");
+        assert_eq!(uninstall(process::Running::Confirmed(exe.clone())), "PhotoCraft is running. Quit it, then try again.");
+        assert_eq!(
+            uninstall(process::Running::Possible("photocraft.exe".into())),
+            "A program named photocraft.exe is running. If it is PhotoCraft, quit it, then try again."
+        );
+        assert_ne!(uninstall(process::Running::No), "PhotoCraft is running. Quit it, then try again.");
     }
 
     /// A folder found only by the launch fallback, in another scope, never reaches the installer.
