@@ -326,3 +326,21 @@ filter	Installed	Geïnstalleerd
 	ArtCraft on GitHub	ArtCraft op GitHub
 	Join the ArtCraft Discord	Word lid van de ArtCraft Discord
 @plural	ArtCraft Launcher · {n} update available|ArtCraft Launcher · {n} updates available	ArtCraft Launcher · {n} update beschikbaar|ArtCraft Launcher · {n} updates beschikbaar
+	Install folder	Installatiemap
+	Default install folder	Standaard installatiemap
+	System default	Systeemstandaard
+	Browse…	Bladeren…
+	Use default	Standaard gebruiken
+	New installs use this folder. Updates stay in their current location.	Nieuwe installaties gebruiken deze map. Updates blijven op hun huidige locatie.
+	Custom folders use AppImage on Linux.	Aangepaste mappen gebruiken AppImage op Linux.
+	The system manages install locations here.	Het systeem beheert hier de installatielocaties.
+@msg	couldn't use install folder {path}: {reason}	kan installatiemap {path} niet gebruiken: {reason}
+@msg	this release has no AppImage for a custom install folder	deze release heeft geen AppImage voor een aangepaste installatiemap
+@msg	custom install folders aren't supported on this system	aangepaste installatiemappen worden op dit systeem niet ondersteund
+@msg	{path} already exists and wasn't installed by ArtCraft Launcher	{path} bestaat al en is niet geïnstalleerd via ArtCraft Launcher
+@msg	couldn't move {path} to Trash ({reason}). Remove it in Finder instead.	kan {path} niet naar de Prullenbak verplaatsen ({reason}). Verwijder het in Finder.
+	Apps are placed inside this folder.	Apps worden in deze map geplaatst.
+	Replace what's there?	Vervangen wat er staat?
+	{path} already exists. Installing {name} will overwrite it.	{path} bestaat al. Als je {name} installeert, wordt het overschreven.
+	Replace	Vervangen
+	Installing on Windows	Installeren op Windows

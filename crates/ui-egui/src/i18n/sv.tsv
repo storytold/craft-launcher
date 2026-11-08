@@ -326,3 +326,21 @@ filter	Installed	Installerade
 	ArtCraft on GitHub	ArtCraft på GitHub
 	Join the ArtCraft Discord	Gå med i ArtCrafts Discord
 @plural	ArtCraft Launcher · {n} update available|ArtCraft Launcher · {n} updates available	ArtCraft Launcher · {n} uppdatering tillgänglig|ArtCraft Launcher · {n} uppdateringar tillgängliga
+	Install folder	Installationsmapp
+	Default install folder	Standardinstallationsmapp
+	System default	Systemstandard
+	Browse…	Bläddra…
+	Use default	Använd standard
+	New installs use this folder. Updates stay in their current location.	Nya installationer använder den här mappen. Uppdateringar stannar på sin nuvarande plats.
+	Custom folders use AppImage on Linux.	Egna mappar använder AppImage på Linux.
+	The system manages install locations here.	Systemet hanterar installationsplatser här.
+@msg	couldn't use install folder {path}: {reason}	kunde inte använda installationsmapp {path}: {reason}
+@msg	this release has no AppImage for a custom install folder	den här utgåvan har ingen AppImage för en egen installationsmapp
+@msg	custom install folders aren't supported on this system	egna installationsmappar stöds inte på det här systemet
+@msg	{path} already exists and wasn't installed by ArtCraft Launcher	{path} finns redan och installerades inte via ArtCraft Launcher
+@msg	couldn't move {path} to Trash ({reason}). Remove it in Finder instead.	kunde inte flytta {path} till Papperskorgen ({reason}). Ta bort den i Finder i stället.
+	Apps are placed inside this folder.	Appar placeras i den här mappen.
+	Replace what's there?	Ersätta det som finns där?
+	{path} already exists. Installing {name} will overwrite it.	{path} finns redan. Om du installerar {name} skrivs den över.
+	Replace	Ersätt
+	Installing on Windows	Installation på Windows

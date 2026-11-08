@@ -326,3 +326,21 @@ filter	Installed	Asennetut
 	ArtCraft on GitHub	ArtCraft GitHubissa
 	Join the ArtCraft Discord	Liity ArtCraftin Discordiin
 @plural	ArtCraft Launcher · {n} update available|ArtCraft Launcher · {n} updates available	ArtCraft Launcher · {n} päivitys saatavilla|ArtCraft Launcher · {n} päivitystä saatavilla
+	Install folder	Asennuskansio
+	Default install folder	Oletusasennuskansio
+	System default	Järjestelmän oletus
+	Browse…	Selaa…
+	Use default	Käytä oletusta
+	New installs use this folder. Updates stay in their current location.	Uudet asennukset käyttävät tätä kansiota. Päivitykset pysyvät nykyisessä sijainnissaan.
+	Custom folders use AppImage on Linux.	Mukautetut kansiot käyttävät AppImagea Linuxilla.
+	The system manages install locations here.	Järjestelmä hallinnoi asennussijainteja tässä.
+@msg	couldn't use install folder {path}: {reason}	asennuskansion {path} käyttö ei onnistunut: {reason}
+@msg	this release has no AppImage for a custom install folder	tässä julkaisussa ei ole AppImagea mukautetulle asennuskansiolle
+@msg	custom install folders aren't supported on this system	mukautetut asennuskansiot eivät ole tuettuja tässä järjestelmässä
+@msg	{path} already exists and wasn't installed by ArtCraft Launcher	{path} on jo olemassa eikä sitä ollut asennettu ArtCraft Launcherilla
+@msg	couldn't move {path} to Trash ({reason}). Remove it in Finder instead.	kohdetta {path} ei voitu siirtää Roskakoriin ({reason}). Poista se Finderissa.
+	Apps are placed inside this folder.	Sovellukset sijoitetaan tähän kansioon.
+	Replace what's there?	Korvataanko siellä oleva?
+	{path} already exists. Installing {name} will overwrite it.	{path} on jo olemassa. Jos asennat kohteen {name}, se ylikirjoitetaan.
+	Replace	Korvaa
+	Installing on Windows	Asennus Windowsissa
