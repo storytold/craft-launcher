@@ -850,6 +850,7 @@ mod tests {
         assert_eq!(other, None);
     }
 
+    #[cfg(windows)]
     #[test]
     fn a_file_another_program_holds_is_named_and_the_previous_program_stays() {
         use std::os::windows::fs::OpenOptionsExt;

@@ -979,7 +979,8 @@ impl LauncherUi {
             // Checked by the backend, and an install of it would go ahead here.
             let checked = self.version_installs(entry, tag) == Some(true)
                 && !matches!(status, AppStatus::Checking | AppStatus::NoRelease | AppStatus::Unavailable);
-            return Primary::SelectedVersion { tag: tag.clone(), checked, retry: entry.blocked.is_some() };
+            // A named cause makes the install a retry only while that install can go ahead.
+            return Primary::SelectedVersion { tag: tag.clone(), checked, retry: checked && entry.blocked.is_some() };
         }
         // A kept download, or a named cause of the last failure, makes the next try a retry.
         let retry = entry.ready || entry.blocked.is_some();

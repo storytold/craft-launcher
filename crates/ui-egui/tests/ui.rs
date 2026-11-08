@@ -1466,6 +1466,37 @@ fn a_blocked_install_of_a_kept_version_offers_retry() {
 }
 
 #[test]
+/// A blocked app kept on a version that can't replace this copy offers a greyed-out Install of
+/// that version, not Retry, so neither the card nor the status says to press Retry.
+fn a_blocked_app_kept_on_a_version_it_cant_install_does_not_say_to_press_retry() {
+    let mut ev = events();
+    ev.push(Event::Installable { app: "photocraft".into(), installable: false });
+    ev.push(Event::Blocked {
+        app: "photocraft".into(),
+        failure: Some(InstallFailure { blocker: Blocker::AppOpen, details: r"C:\Apps\PhotoCraft\photocraft-cli.exe".into() }),
+    });
+    let (mut h, sent) = harness_with(ev, ViewMode::Grid, egui::Theme::Dark, true, 1.0);
+    h.run_steps(8);
+    h.state_mut()
+        .as_mut()
+        .expect("the harness built the launcher")
+        .settings
+        .versions
+        .insert("photocraft".into(), artcraft_launcher_core::protocol::VersionTrack::Pinned("v0.5.0".into()));
+    h.run_steps(4);
+    assert!(h.query_by_label_contains("then press Retry").is_none(), "no Retry is offered");
+    assert!(h.query_by_label("Update stopped").is_none(), "the status does not name a stop it can't retry");
+    assert!(h.query_by_label("Install stopped").is_none(), "the status does not name a stop it can't retry");
+    assert!(h.query_by_label("Retry install of version v0.5.0").is_none(), "the kept version can't install");
+    let install = h.get_by_label("Install version v0.5.0");
+    assert!(install.accesskit_node().is_disabled(), "it can't replace this copy");
+    sent.borrow_mut().clear();
+    install.click();
+    h.run_steps(2);
+    assert_eq!(launches_and_installs(&sent, "photocraft"), (0, 0), "a greyed-out Install sends nothing: {:?}", sent.borrow());
+}
+
+#[test]
 /// A reinstall of an up-to-date app stopped by another installation offers Retry, as its card
 /// says, in place of Open, and the retry installs again as Reinstall does.
 fn a_blocked_reinstall_offers_retry() {
