@@ -240,7 +240,7 @@ month	Dec	12月
 	Another installation is in progress. Wait for it to finish, then press Retry.	別のインストールが進行中です。完了するまで待ってから再試行してください。
 	Another program is using a file of {name}. Close that program, then press Retry.	別のプログラムが {name} のファイルを使用しています。そのプログラムを閉じてから再試行してください。
 	Windows denied access to a file of {name}. Check the folder's permissions, then press Retry.	Windows が {name} のファイルへのアクセスを拒否しました。フォルダーのアクセス許可を確認してから再試行してください。
-	The Windows Installer couldn't finish. The details below give its error code and log.	Windows インストーラーを完了できませんでした。下の詳細にエラーコードとログが表示されています。
+	The Windows Installer couldn't finish. The details below give its error code.	Windows インストーラーを完了できませんでした。下の詳細にエラーコードが表示されています。
 	Details: {details}	詳細: {details}
 	Download paused	ダウンロードを一時停止
 	{version} installed → {latest} released	{version} インストール済み → {latest} 公開

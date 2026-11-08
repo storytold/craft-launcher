@@ -158,7 +158,7 @@ pub fn blocker_text(blocker: Blocker, name: &str) -> String {
         Blocker::InstallerBusy => t("Another installation is in progress. Wait for it to finish, then press Retry."),
         Blocker::FileInUse => t("Another program is using a file of {name}. Close that program, then press Retry."),
         Blocker::AccessDenied => t("Windows denied access to a file of {name}. Check the folder's permissions, then press Retry."),
-        Blocker::InstallerFailed => t("The Windows Installer couldn't finish. The details below give its error code and log."),
+        Blocker::InstallerFailed => t("The Windows Installer couldn't finish. The details below give its error code."),
     };
     fmt(text, &[("name", name)])
 }

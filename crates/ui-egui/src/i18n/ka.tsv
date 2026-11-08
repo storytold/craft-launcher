@@ -242,7 +242,7 @@ month	Dec	დეკ
 	Another installation is in progress. Wait for it to finish, then press Retry.	მიმდინარეობს სხვა ინსტალაცია. დაელოდეთ მის დასრულებას და კვლავ სცადეთ.
 	Another program is using a file of {name}. Close that program, then press Retry.	სხვა პროგრამა იყენებს {name}-ის ფაილს. დახურეთ ის პროგრამა და კვლავ სცადეთ.
 	Windows denied access to a file of {name}. Check the folder's permissions, then press Retry.	Windows-მა არ დაუშვა წვდომა {name}-ის ფაილზე. შეამოწმეთ საქაღალდის ნებართვები და კვლავ სცადეთ.
-	The Windows Installer couldn't finish. The details below give its error code and log.	Windows Installer-მა ვერ დაასრულა მუშაობა. ქვემოთ მოცემულ დეტალებში მითითებულია შეცდომის კოდი და ჟურნალი.
+	The Windows Installer couldn't finish. The details below give its error code.	Windows Installer-მა ვერ დაასრულა მუშაობა. ქვემოთ მოცემულ დეტალებში მითითებულია შეცდომის კოდი.
 	Details: {details}	დეტალები: {details}
 	Download paused	ჩამოტვირთვა შეჩერებულია
 	{version} installed → {latest} released	დაინსტალირებულია {version} → გამოვიდა {latest}

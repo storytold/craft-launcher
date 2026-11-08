@@ -218,7 +218,7 @@ month	Dec	12.
 	Another installation is in progress. Wait for it to finish, then press Retry.	Probíhá jiná instalace. Počkejte, až skončí, a zkuste to znovu.
 	Another program is using a file of {name}. Close that program, then press Retry.	Jiný program používá soubor aplikace {name}. Zavřete tento program a zkuste to znovu.
 	Windows denied access to a file of {name}. Check the folder's permissions, then press Retry.	Windows odepřel přístup k souboru aplikace {name}. Zkontrolujte oprávnění složky a zkuste to znovu.
-	The Windows Installer couldn't finish. The details below give its error code and log.	Instalační služba systému Windows nemohla dokončit práci. Podrobnosti níže uvádějí kód chyby a protokol.
+	The Windows Installer couldn't finish. The details below give its error code.	Instalační služba systému Windows nemohla dokončit práci. Podrobnosti níže uvádějí kód chyby.
 	Details: {details}	Podrobnosti: {details}
 	Download paused	Stahování pozastaveno
 	{version} installed → {latest} released	Nainstalována verze {version} → vydána {latest}

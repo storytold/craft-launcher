@@ -146,7 +146,7 @@ month	Dec	12月
 	Another installation is in progress. Wait for it to finish, then press Retry.	另一項安裝正在進行。請等候其完成，然後再試一次。
 	Another program is using a file of {name}. Close that program, then press Retry.	另一個程式正在使用 {name} 的檔案。請關閉該程式，然後再試一次。
 	Windows denied access to a file of {name}. Check the folder's permissions, then press Retry.	Windows 拒絕存取 {name} 的檔案。請檢查該資料夾的權限，然後再試一次。
-	The Windows Installer couldn't finish. The details below give its error code and log.	Windows Installer 無法完成。下方詳細資料列出錯誤代碼與記錄檔。
+	The Windows Installer couldn't finish. The details below give its error code.	Windows Installer 無法完成。下方詳細資料列出錯誤代碼。
 	Details: {details}	詳細資料：{details}
 	Download paused	下載已暫停
 	{version} installed → {latest} released	{version} 已安裝 → {latest} 已發行

@@ -238,7 +238,7 @@ month	Dec	Dez.
 	Another installation is in progress. Wait for it to finish, then press Retry.	Eine andere Installation läuft gerade. Warte, bis sie fertig ist, und versuche es dann erneut.
 	Another program is using a file of {name}. Close that program, then press Retry.	Ein anderes Programm verwendet eine Datei von {name}. Schließe dieses Programm und versuche es dann erneut.
 	Windows denied access to a file of {name}. Check the folder's permissions, then press Retry.	Windows hat den Zugriff auf eine Datei von {name} verweigert. Prüfe die Berechtigungen des Ordners und versuche es dann erneut.
-	The Windows Installer couldn't finish. The details below give its error code and log.	Der Windows Installer konnte nicht abschließen. Die Details unten nennen den Fehlercode und das Protokoll.
+	The Windows Installer couldn't finish. The details below give its error code.	Der Windows Installer konnte nicht abschließen. Die Details unten nennen den Fehlercode.
 	Details: {details}	Details: {details}
 	Download paused	Download pausiert
 	{version} installed → {latest} released	{version} installiert → {latest} veröffentlicht

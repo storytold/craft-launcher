@@ -238,7 +238,7 @@ month	Dec	dec.
 	Another installation is in progress. Wait for it to finish, then press Retry.	Egy másik telepítés van folyamatban. Várd meg, amíg befejeződik, majd próbáld újra.
 	Another program is using a file of {name}. Close that program, then press Retry.	Egy másik program használja ennek egyik fájlját: {name}. Zárd be azt a programot, majd próbáld újra.
 	Windows denied access to a file of {name}. Check the folder's permissions, then press Retry.	A Windows megtagadta a hozzáférést ennek egyik fájljához: {name}. Ellenőrizd a mappa engedélyeit, majd próbáld újra.
-	The Windows Installer couldn't finish. The details below give its error code and log.	A Windows Installer nem tudta befejezni a műveletet. Az alábbi részletek megadják a hibakódot és a naplót.
+	The Windows Installer couldn't finish. The details below give its error code.	A Windows Installer nem tudta befejezni a műveletet. Az alábbi részletek megadják a hibakódot.
 	Details: {details}	Részletek: {details}
 	Download paused	Letöltés szüneteltetve
 	{version} installed → {latest} released	Telepítve: {version} → megjelent: {latest}
