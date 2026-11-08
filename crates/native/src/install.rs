@@ -2196,8 +2196,9 @@ pub mod windows {
     /// Runs an MSI with a progress window and no restart. Windows asks for permission itself.
     /// `scope`, from the copy being replaced's registration, keeps the update in the same
     /// Windows Installer context (see [`MsiScope`]). A per-machine package with a `batch` joins
-    /// it instead: the whole batch shares one permission prompt ([`run_batched`]).
-    pub fn run_msi(
+    /// it instead: the whole batch shares one permission prompt ([`run_batched`]). Only
+    /// [`install_at`](super::install_at) calls it, so it stays as private as its [`Package`].
+    pub(super) fn run_msi(
         app: &CraftApp,
         package: Package<'_>,
         destination: Option<&Path>,

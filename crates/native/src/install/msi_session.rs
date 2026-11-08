@@ -314,14 +314,12 @@ pub fn run_elevated(manifest: &Path) -> Result<(), String> {
     std::fs::write(&pid_file, std::process::id().to_string()).map_err(|e| format!("couldn't say the batch session had started ({e})"))?;
     let mut codes = Vec::new();
     for entry in &session.msis {
-        let held = super::msi_batch::hold(&entry.msi, &entry.sha256).map_err(|e| {
+        let held = super::msi_batch::hold(&entry.msi, &entry.sha256).inspect_err(|_| {
             let _ = std::fs::remove_file(&pid_file);
-            e
         })?;
         log::info!("{}: installing under the shared prompt", entry.app);
-        let status = run_installer(&entry.line).map_err(|e| {
+        let status = run_installer(&entry.line).inspect_err(|_| {
             let _ = std::fs::remove_file(&pid_file);
-            e
         })?;
         codes.push((entry.app.clone(), status));
         drop(held);
