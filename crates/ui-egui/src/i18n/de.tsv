@@ -165,6 +165,7 @@
 	Update cancelled	Update abgebrochen
 	Uninstall cancelled	Deinstallation abgebrochen
 	Retry install	Installation wiederholen
+	Retry reinstall	Neuinstallation wiederholen
 	Retry update	Update wiederholen
 	Retry update to {version}	Update auf {version} wiederholen
 	The download is still here. It's checked again, then installed.	Der Download ist noch da. Er wird erneut geprüft und dann installiert.

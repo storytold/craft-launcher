@@ -976,6 +976,11 @@ impl LauncherUi {
                 vec![tl!("Retry update"), tl!("Update")],
                 entry.ready,
             ),
+            // A reinstall stopped by a named cause is retried from the main button, as the card says;
+            // Open stays in the menu.
+            AppStatus::UpToDate if entry.blocked.is_some() && entry.installs_here(self.platform) => {
+                Primary::Retry(tl!("Retry reinstall").into(), vec![tl!("Reinstall")], entry.ready)
+            }
             AppStatus::Available => Primary::Install,
             AppStatus::UpdateAvailable => Primary::Update(entry.latest_label().unwrap_or_default()),
             AppStatus::UpToDate | AppStatus::Installed => Primary::Open,

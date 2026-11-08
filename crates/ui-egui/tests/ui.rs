@@ -1466,6 +1466,29 @@ fn a_blocked_install_of_a_kept_version_offers_retry() {
 }
 
 #[test]
+/// A reinstall of an up-to-date app stopped by another installation offers Retry, as its card
+/// says, in place of Open, and the retry installs again as Reinstall does.
+fn a_blocked_reinstall_offers_retry() {
+    let mut ev = events();
+    ev.push(Event::Installable { app: "lightcraft".into(), installable: true });
+    ev.push(Event::Blocked {
+        app: "lightcraft".into(),
+        failure: Some(InstallFailure { blocker: Blocker::InstallerBusy, details: "MSI 1618".into() }),
+    });
+    for view in [ViewMode::Grid, ViewMode::Table] {
+        let (mut h, sent) = harness_with(ev.clone(), view, egui::Theme::Dark, true, 1.0);
+        h.run_steps(8);
+        if view == ViewMode::Grid {
+            h.get_by_label("Another installation is in progress. Wait for it to finish, then press Retry.");
+        }
+        sent.borrow_mut().clear();
+        h.get_by_label("Retry reinstall").click();
+        h.run_steps(2);
+        assert_eq!(launches_and_installs(&sent, "lightcraft"), (0, 1), "{view:?}: {:?}", sent.borrow());
+    }
+}
+
+#[test]
 /// A Windows Installer step that stopped without writing a log, such as a downgrade's removal
 /// step, shows only its error code, and the card promises no log.
 fn a_failed_installer_step_without_a_log_promises_only_its_code() {
