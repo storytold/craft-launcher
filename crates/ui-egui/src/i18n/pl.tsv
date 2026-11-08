@@ -26,6 +26,14 @@
 	Settings	Ustawienia
 	Proxy	Proxy
 	Manual HTTP proxy, optional authentication; leave empty to use the system setting.	Ręczny serwer proxy HTTP, opcjonalne uwierzytelnianie; pozostaw puste, aby użyć ustawień systemowych.
+	Proxy host	Proxy host
+	Proxy port	Proxy port
+	Proxy username	Proxy username
+	Proxy password	Proxy password
+	Test proxy connection	Test proxy connection
+	Leave host empty to use the system proxy. The test requests GitHub through these settings.	Leave host empty to use the system proxy. The test requests GitHub through these settings.
+	Proxy connection succeeded	Proxy connection succeeded
+	Proxy connection failed	Proxy connection failed
 	Check for updates	Sprawdź dostępność aktualizacji
 	Grid	Siatka
 	Table	Tabela

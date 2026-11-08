@@ -13,6 +13,14 @@
 	Settings	設定
 	Proxy	代理伺服器
 	Manual HTTP proxy, optional authentication; leave empty to use the system setting.	手動 HTTP 代理伺服器，可選擇驗證；留空即可使用系統設定。
+	Proxy host	代理主機
+	Proxy port	代理連接埠
+	Proxy username	代理使用者名稱
+	Proxy password	代理密碼
+	Test proxy connection	測試代理連線
+	Leave host empty to use the system proxy. The test requests GitHub through these settings.	主機留空則使用系統代理。測試會透過這些設定請求 GitHub。
+	Proxy connection succeeded	代理連線成功
+	Proxy connection failed	代理連線失敗
 	Check for updates	檢查更新
 	Grid	網格
 	Table	表格

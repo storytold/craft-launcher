@@ -1444,6 +1444,13 @@ impl Backend for NativeBackend {
             }
             Command::UpdateLauncher => self.update_launcher(),
             Command::FetchScreenshots { app } => self.fetch_screenshots(&app),
+            Command::TestProxy { proxy } => {
+                let shared = self.shared.clone();
+                std::thread::spawn(move || {
+                    let result = Http::new_with_proxy(proxy.as_deref()).and_then(|http| http.test_proxy());
+                    shared.emit(Event::ProxyTestFinished { result });
+                });
+            }
             Command::Configure(options) => {
                 let (changed_pre, changed_proxy) = {
                     let mut o = self.shared.options.lock().unwrap_or_else(PoisonError::into_inner);

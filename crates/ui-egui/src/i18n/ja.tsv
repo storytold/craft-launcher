@@ -28,6 +28,14 @@
 	Settings	設定
 	Proxy	プロキシ
 	Manual HTTP proxy, optional authentication; leave empty to use the system setting.	手動HTTPプロキシ（認証は任意）。システム設定を使う場合は空欄にしてください。
+	Proxy host	Proxy host
+	Proxy port	Proxy port
+	Proxy username	Proxy username
+	Proxy password	Proxy password
+	Test proxy connection	Test proxy connection
+	Leave host empty to use the system proxy. The test requests GitHub through these settings.	Leave host empty to use the system proxy. The test requests GitHub through these settings.
+	Proxy connection succeeded	Proxy connection succeeded
+	Proxy connection failed	Proxy connection failed
 	Check for updates	更新を確認
 	Grid	グリッド
 	Table	テーブル

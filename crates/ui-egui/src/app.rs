@@ -241,6 +241,38 @@ fn update_check_due(last: Option<i64>, now: i64, every: i64) -> bool {
     last.is_none_or(|t| t > now || now.saturating_sub(t) >= every)
 }
 
+fn proxy_component(value: &str) -> String {
+    let mut encoded = String::with_capacity(value.len());
+    for byte in value.bytes() {
+        if byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'.' | b'_' | b'~') {
+            encoded.push(byte as char);
+        } else {
+            use std::fmt::Write;
+            let _ = write!(encoded, "%{byte:02X}");
+        }
+    }
+    encoded
+}
+
+pub(crate) fn configured_proxy(settings: &Settings) -> Option<String> {
+    let host = settings.proxy_host.trim();
+    if host.is_empty() {
+        return (!settings.proxy.trim().is_empty()).then(|| settings.proxy.trim().to_string());
+    }
+    let authority = match settings.proxy_port.trim() {
+        "" => host.to_string(),
+        port => format!("{host}:{port}"),
+    };
+    let authority = if settings.proxy_username.is_empty() {
+        authority
+    } else if settings.proxy_password.is_empty() {
+        format!("{}@{authority}", proxy_component(&settings.proxy_username))
+    } else {
+        format!("{}:{}@{authority}", proxy_component(&settings.proxy_username), proxy_component(&settings.proxy_password))
+    };
+    Some(format!("http://{authority}"))
+}
+
 impl LauncherUi {
     /// Builds the UI shell around `backend`: installs the bundled fonts and an available system
     /// CJK face when the effective language needs it, plus image loaders; snapshots capabilities and
@@ -461,7 +493,7 @@ impl LauncherUi {
             versions: self.settings.versions.clone(),
             launcher_version: self.settings.launcher_version.clone(),
             install_locations: self.settings.install_locations.clone(),
-            proxy: (!self.settings.proxy.trim().is_empty()).then(|| self.settings.proxy.trim().to_string()),
+            proxy: configured_proxy(&self.settings),
         };
         if self.sent_options.as_ref() != Some(&options) {
             self.backend.send(Command::Configure(options.clone()));
@@ -616,6 +648,13 @@ impl LauncherUi {
                 true
             }
             Event::LauncherUpdate(r) => self.on_launcher_update(r),
+            Event::ProxyTestFinished { result } => {
+                match result {
+                    Ok(message) => self.toast(format!("{}: {}", tl!("Proxy connection succeeded"), message), false),
+                    Err(error) => self.toast(format!("{}: {}", tl!("Proxy connection failed"), error), true),
+                }
+                false
+            }
             Event::CheckStarted => {
                 self.checking = true;
                 false
@@ -1098,6 +1137,34 @@ mod tests {
     use egui_kittest::Harness;
 
     use super::*;
+
+    #[test]
+    fn configured_proxy_builds_url_from_separate_fields() {
+        let settings = Settings {
+            proxy_host: "127.0.0.1".into(),
+            proxy_port: "7890".into(),
+            proxy_username: "alice".into(),
+            proxy_password: "secret".into(),
+            ..Settings::default()
+        };
+        assert_eq!(configured_proxy(&settings).as_deref(), Some("http://alice:secret@127.0.0.1:7890"));
+    }
+
+    #[test]
+    fn configured_proxy_encodes_credentials() {
+        let settings = Settings {
+            proxy_host: "proxy.example".into(),
+            proxy_username: "alice@example".into(),
+            proxy_password: "p@ss:word".into(),
+            ..Settings::default()
+        };
+        assert_eq!(configured_proxy(&settings).as_deref(), Some("http://alice%40example:p%40ss%3Aword@proxy.example"));
+    }
+    #[test]
+    fn configured_proxy_empty_host_uses_legacy_value_for_compatibility() {
+        let settings = Settings { proxy: "http://proxy.example:8080".into(), ..Settings::default() };
+        assert_eq!(configured_proxy(&settings).as_deref(), Some("http://proxy.example:8080"));
+    }
 
     struct NoHost;
     impl Host for NoHost {}

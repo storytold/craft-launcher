@@ -64,6 +64,10 @@ pub enum Command {
     FetchScreenshots {
         app: String,
     },
+    /// Test the configured proxy by requesting GitHub without blocking the UI.
+    TestProxy {
+        proxy: Option<String>,
+    },
     /// Change how the backend behaves.
     Configure(BackendOptions),
 }
@@ -272,6 +276,9 @@ pub enum Event {
         app: String,
         key: String,
         result: Result<Vec<u8>, String>,
+    },
+    ProxyTestFinished {
+        result: Result<String, String>,
     },
     CheckStarted,
     CheckFinished {

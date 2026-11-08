@@ -108,8 +108,12 @@ pub struct Settings {
     /// Show a system notification when an installed app has an update.
     pub notify: bool,
     pub prereleases: bool,
-    /// HTTP proxy address typed by the user; empty means use the environment or OS setting.
+    /// Legacy full proxy URL, retained so older settings can be migrated safely.
     pub proxy: String,
+    pub proxy_host: String,
+    pub proxy_port: String,
+    pub proxy_username: String,
+    pub proxy_password: String,
     /// Version track per app. Missing entries follow stable releases.
     pub versions: BTreeMap<String, artcraft_launcher_core::protocol::VersionTrack>,
     pub launcher_version: artcraft_launcher_core::protocol::VersionTrack,
@@ -144,6 +148,30 @@ impl Settings {
     pub fn migrate(&mut self) {
         if !matches!(self.filter, Filter::All | Filter::Hidden) {
             self.filter = Filter::All;
+        }
+        if self.proxy_host.is_empty() && self.proxy_port.is_empty() && !self.proxy.trim().is_empty() {
+            let mut rest = self.proxy.trim();
+            if let Some(value) = rest.strip_prefix("http://") {
+                rest = value;
+            }
+            if let Some((userinfo, hostport)) = rest.rsplit_once('@') {
+                rest = hostport;
+                if let Some((user, password)) = userinfo.split_once(':') {
+                    self.proxy_username = user.to_string();
+                    self.proxy_password = password.to_string();
+                } else {
+                    self.proxy_username = userinfo.to_string();
+                }
+            }
+            if let Some((host, port)) = rest.rsplit_once(':')
+                && !host.contains(':')
+            {
+                self.proxy_host = host.trim_matches(['[', ']']).to_string();
+                self.proxy_port = port.to_string();
+            } else {
+                self.proxy_host = rest.trim_matches(['[', ']']).to_string();
+            }
+            self.proxy.clear();
         }
     }
 
@@ -258,6 +286,10 @@ impl Default for Settings {
             notify: true,
             prereleases: false,
             proxy: String::new(),
+            proxy_host: String::new(),
+            proxy_port: String::new(),
+            proxy_username: String::new(),
+            proxy_password: String::new(),
             versions: BTreeMap::new(),
             launcher_version: Default::default(),
             preferred_kinds: default_preferred_kinds(),
@@ -278,6 +310,24 @@ impl Default for Settings {
 mod tests {
     use super::*;
 
+    #[test]
+    fn migrates_legacy_proxy_url_into_fields() {
+        let mut s: Settings = serde_json::from_str(r#"{"proxy":"http://alice:secret@127.0.0.1:7890"}"#).expect("legacy proxy settings");
+        s.migrate();
+        assert_eq!(s.proxy_host, "127.0.0.1");
+        assert_eq!(s.proxy_port, "7890");
+        assert_eq!(s.proxy_username, "alice");
+        assert_eq!(s.proxy_password, "secret");
+        assert!(s.proxy.is_empty());
+    }
+
+    #[test]
+    fn migrates_legacy_proxy_url_without_port() {
+        let mut s = Settings { proxy: "http://proxy.example".into(), ..Settings::default() };
+        s.migrate();
+        assert_eq!(s.proxy_host, "proxy.example");
+        assert!(s.proxy_port.is_empty());
+    }
     #[test]
     fn pin_appends_once_and_unpin_removes() {
         let mut s = Settings::default();

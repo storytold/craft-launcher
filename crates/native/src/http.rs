@@ -136,6 +136,16 @@ impl Http {
         Ok(Self { small, feed, no_redirect, download, direct, direct_download, token })
     }
 
+    /// Requests a small GitHub API resource through this client's configured proxy.
+    pub fn test_proxy(&self) -> Result<String, String> {
+        let started = std::time::Instant::now();
+        match self.get_api("https://api.github.com/rate_limit", None)? {
+            Fetched::Body { .. } | Fetched::NotModified | Fetched::NotFound | Fetched::RateLimited { .. } => {
+                Ok(format!("GitHub responded in {} ms", started.elapsed().as_millis()))
+            }
+        }
+    }
+
     /// GET a GitHub API resource, revalidating with `etag` when given.
     pub fn get_api(&self, url: &str, etag: Option<&str>) -> Result<Fetched, String> {
         let mut req = self.small.get(url).header("Accept", "application/vnd.github+json").header("X-GitHub-Api-Version", "2022-11-28");

@@ -1,7 +1,7 @@
 //! The Settings dialog: a large card in the shape of the app page (see `sheet.rs`), with the
 //! groups of settings in boxes, two columns once the window is wide enough.
 
-use artcraft_launcher_core::{Os, PackageKind};
+use artcraft_launcher_core::{Os, PackageKind, protocol::Command};
 use egui::{RichText, Ui, vec2};
 
 use crate::app::{Host, LauncherUi};
@@ -198,11 +198,23 @@ impl LauncherUi {
                 self.version_combo(ui, launcher_id, &artcraft_launcher_core::catalog::LAUNCHER, 200.0, label);
             });
             self.launcher_version_notes(ui);
-            row(ui, tl!("Proxy"), 260.0, &mut |ui, label| {
-                let response = ui.add(egui::TextEdit::singleline(&mut self.settings.proxy).hint_text("http://host:port"));
-                response.labelled_by(label);
+            ui.horizontal(|ui| {
+                ui.label(tl!("Proxy host"));
+                ui.add(egui::TextEdit::singleline(&mut self.settings.proxy_host).desired_width(150.0).hint_text("127.0.0.1"));
+                ui.label(tl!("Proxy port"));
+                ui.add(egui::TextEdit::singleline(&mut self.settings.proxy_port).desired_width(70.0).hint_text("7890"));
             });
-            note(ui, tl!("Manual HTTP proxy, optional authentication; leave empty to use the system setting."));
+            ui.horizontal(|ui| {
+                ui.label(tl!("Proxy username"));
+                ui.add(egui::TextEdit::singleline(&mut self.settings.proxy_username).desired_width(120.0));
+                ui.label(tl!("Proxy password"));
+                ui.add(egui::TextEdit::singleline(&mut self.settings.proxy_password).password(true).desired_width(120.0));
+            });
+            let proxy = crate::app::configured_proxy(&self.settings);
+            if widgets::button(ui, tl!("Test proxy connection"), Kind::Secondary, 0.0).clicked() {
+                self.act_command(Command::TestProxy { proxy });
+            }
+            note(ui, tl!("Leave host empty to use the system proxy. The test requests GitHub through these settings."));
         });
     }
 
