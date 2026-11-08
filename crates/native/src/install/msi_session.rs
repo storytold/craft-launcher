@@ -430,7 +430,10 @@ pub fn run_elevated(manifest: &Path) -> Result<(), String> {
 #[cfg(windows)]
 fn install_one(entry: &Entry) -> i32 {
     let installed = (|| -> Result<i32, String> {
-        let held = super::msi_batch::hold(&entry.msi, &entry.sha256)?;
+        // The hold is the point: it keeps the package unchanged through the installer run, so
+        // the checked bytes are the installed ones. Its name is never read — the file staying
+        // open until the end of this closure is the whole job.
+        let _held = super::msi_batch::hold(&entry.msi, &entry.sha256)?;
         let line = super::msi_batch::line(&entry.msi, entry.destination.as_deref(), entry.scope)?;
         log::info!("{}: installing under the shared prompt", entry.app);
         run_installer(&line)
