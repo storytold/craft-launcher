@@ -2592,15 +2592,15 @@ mod tests {
         let old = record("0.5.0", PackageKind::PortableZip, dir.path().join("photocraft/photocraft.exe"), vec![], false);
         assert_eq!(is_occupied(Some(&old)), None);
 
-        let studio = CraftApp::by_id("artcraft").unwrap();
+        let studio = CraftApp { name: "ArtCraft Studio", former_names: &["ArtCraft"], mac_bundle_name: Some("ArtCraft"), ..*app };
         let dmg_asset = Asset { name: "ArtCraft_0.41.1_universal.dmg".into(), ..Default::default() };
-        assert_eq!(occupied(studio, &dmg_asset, PackageKind::Dmg, None, None, &locations, &paths).unwrap(), None);
+        assert_eq!(occupied(&studio, &dmg_asset, PackageKind::Dmg, None, None, &locations, &paths).unwrap(), None);
         std::fs::create_dir(dir.path().join("ArtCraft.app")).unwrap();
-        assert_eq!(occupied(studio, &dmg_asset, PackageKind::Dmg, None, None, &locations, &paths).unwrap(), Some(dir.path().join("ArtCraft.app")));
+        assert_eq!(occupied(&studio, &dmg_asset, PackageKind::Dmg, None, None, &locations, &paths).unwrap(), Some(dir.path().join("ArtCraft.app")));
         std::fs::remove_dir(dir.path().join("ArtCraft.app")).unwrap();
         std::fs::create_dir(dir.path().join("ArtCraft Studio.app")).unwrap();
         assert_eq!(
-            occupied(studio, &dmg_asset, PackageKind::Dmg, None, None, &locations, &paths).unwrap(),
+            occupied(&studio, &dmg_asset, PackageKind::Dmg, None, None, &locations, &paths).unwrap(),
             Some(dir.path().join("ArtCraft Studio.app"))
         );
     }
