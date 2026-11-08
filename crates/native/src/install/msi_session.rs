@@ -13,6 +13,15 @@
 //! Installer on each in turn, and writes each app's exit code to a results file beside the
 //! manifest. A declined prompt cancels the whole batch; a session that cannot start sends the
 //! members back to installing one by one, the way a single app always installs.
+//!
+//! The trust chain: the manifest is created anew (`create_new`) and then held open unmodified for
+//! the whole session, so its checksums are the launcher's own; the elevated side re-hashes every
+//! package through a held handle before Windows Installer touches it. The results file is bound
+//! to its session by a random token (written as the file's first line), so no leftover or
+//! planted file can pass for a session's report; the launcher's own re-detection after each job
+//! is the backstop against a report that lies. And the waiting side falls back to one-by-one
+//! installs only when the elevated session is *shown* to be over — its process waited out or its
+//! process id gone — never while it may still be installing.
 
 #![cfg_attr(not(windows), allow(dead_code))]
 
@@ -33,9 +42,17 @@ use super::MsiScope;
 pub(super) const NO_SESSION: &str = "no batch session";
 
 /// How long the waiting side looks for the elevated copy's first act, writing its process id.
-/// A behavioural antivirus may hold a start-up up; past this, the session counts as not started.
+/// A behavioural antivirus may hold a start-up up for minutes; falling back before the elevated
+/// copy has even begun would race its installers, so the wait is patient and the failure is an
+/// error (never a fallback — see [`wait_until_done`]).
 #[cfg(windows)]
-const STARTED_WITHIN: std::time::Duration = std::time::Duration::from_secs(30);
+const STARTED_WITHIN: std::time::Duration = std::time::Duration::from_secs(300);
+
+/// How long a process id that cannot be opened is given the benefit of the doubt: opening a
+/// just-started elevated process can fail for a moment, and "cannot open" must never be read as
+/// "not running" while it keeps failing.
+#[cfg(windows)]
+const OPEN_GRACE: std::time::Duration = std::time::Duration::from_secs(10);
 
 /// One package of the batch, as both sides of the session see it.
 #[derive(Clone, Serialize, Deserialize)]
@@ -55,6 +72,10 @@ pub(crate) struct Entry {
 /// session runs. The results and the process id arrive in files beside it (see [`sibling`]).
 #[derive(Serialize, Deserialize)]
 struct Manifest {
+    /// Binds the results file to this session: the elevated copy writes it as the results'
+    /// first line, so no file from any other session (left over, or put in place) can pass as
+    /// this one's report.
+    token: String,
     msis: Vec<Entry>,
 }
 
@@ -126,8 +147,8 @@ pub(super) fn call(_command: &[OsString], targets: &[OsString]) -> Vec<Result<()
     let Some(dir) = first.msi.parent() else {
         return without_session(outcomes, &joined);
     };
-    let manifest = match prepare(&joined, dir, &mut held) {
-        Ok(manifest) => manifest,
+    let (manifest, token) = match prepare(&joined, dir, &mut held) {
+        Ok(prepared) => prepared,
         Err(e) => {
             log::warn!("the shared install session could not be prepared ({e}); installing one by one");
             return without_session(outcomes, &joined);
@@ -145,8 +166,8 @@ pub(super) fn call(_command: &[OsString], targets: &[OsString]) -> Vec<Result<()
             log::warn!("the elevated session could not start ({e}); installing one by one");
             outcomes = without_session(outcomes, &joined);
         }
-        Prompt::Given => match wait_until_done(&pid_file, &results) {
-            Some(codes) => {
+        Prompt::Given => match wait_until_done(&pid_file, &results, &token) {
+            SessionEnd::Done(codes) => {
                 for (at, entry) in &joined {
                     outcomes[*at] = match codes.iter().find(|(app, _)| app == &entry.app) {
                         Some((_, code)) => super::explain(Some(*code))
@@ -155,9 +176,19 @@ pub(super) fn call(_command: &[OsString], targets: &[OsString]) -> Vec<Result<()
                     };
                 }
             }
-            None => {
-                log::warn!("the elevated session didn't report; installing one by one");
+            // The session is over and said nothing: nothing of it is running, so the members may
+            // safely install one by one.
+            SessionEnd::OverWithoutReport => {
+                log::warn!("the elevated session ended without reporting; installing one by one");
                 outcomes = without_session(outcomes, &joined);
+            }
+            // The session was launched and cannot be shown to be over: falling back would race
+            // whatever it may still install, so the members hear an error instead.
+            SessionEnd::Unknown => {
+                log::warn!("the elevated session could not be watched; nothing was retried here");
+                for (at, _) in &joined {
+                    outcomes[*at] = Err("the shared install session couldn't be watched. Try again.".into());
+                }
             }
         },
     }
@@ -168,9 +199,10 @@ pub(super) fn call(_command: &[OsString], targets: &[OsString]) -> Vec<Result<()
 }
 
 /// Writes the manifest the elevated copy reads, holding it and every package unchanged for as
-/// long as the session runs.
+/// long as the session runs. The name is only taken once its results and process-id files are
+/// free too: a leftover of another session must never be mistaken for this one's.
 #[cfg(windows)]
-fn prepare(joined: &[(usize, Entry)], dir: &Path, held: &mut Vec<super::msi_batch::Held>) -> Result<PathBuf, String> {
+fn prepare(joined: &[(usize, Entry)], dir: &Path, held: &mut Vec<super::msi_batch::Held>) -> Result<(PathBuf, String), String> {
     use std::io::Write as _;
     use std::os::windows::fs::OpenOptionsExt;
 
@@ -180,9 +212,10 @@ fn prepare(joined: &[(usize, Entry)], dir: &Path, held: &mut Vec<super::msi_batc
     let base = format!("batch-{}-{}", std::process::id(), crate::now());
     let manifest = (0..)
         .map(|n| dir.join(format!("{base}{}.json", if n == 0 { String::new() } else { n.to_string() })))
-        .find(|p| !p.exists())
+        .find(|manifest| [manifest, &sibling(manifest, "results"), &sibling(manifest, "pid")].iter().all(|p| !p.exists()))
         .ok_or("no free name for the batch manifest")?;
-    let text = serde_json::to_string(&Manifest { msis: joined.iter().map(|(_, entry)| entry.clone()).collect() })
+    let token = session_token();
+    let text = serde_json::to_string(&Manifest { token: token.clone(), msis: joined.iter().map(|(_, entry)| entry.clone()).collect() })
         .map_err(|e| format!("couldn't describe the batch ({e})"))?;
     let mut file = std::fs::File::options()
         .write(true)
@@ -192,7 +225,14 @@ fn prepare(joined: &[(usize, Entry)], dir: &Path, held: &mut Vec<super::msi_batc
         .map_err(|e| format!("couldn't write the batch manifest ({e})"))?;
     file.write_all(text.as_bytes()).map_err(|e| format!("couldn't write the batch manifest ({e})"))?;
     held.push(super::msi_batch::Held::keep(file));
-    Ok(manifest)
+    Ok((manifest, token))
+}
+
+/// This session's unguessable name for its results, so a file from any other session (or put in
+/// one's place) cannot pass for this one's report.
+fn session_token() -> String {
+    let random = getrandom::u64().unwrap_or_else(|_| (std::process::id() as u64) ^ ((crate::now() as u64) << 32));
+    format!("{random:016x}")
 }
 
 /// The members of the session are told it never happened: each installs by itself, the way a
@@ -242,11 +282,25 @@ fn ask_once(dir: &Path, manifest: &Path, apps: usize) -> Prompt {
     }
 }
 
-/// Waits for the elevated copy: it writes its process id as its first act and its results as its
-/// last, so waiting for the process to end is waiting for the results. `None` when it never
-/// started or never reported: the members then install one by one.
+/// How the elevated session ended, as far as the waiting side can tell.
 #[cfg(windows)]
-fn wait_until_done(pid_file: &Path, results: &Path) -> Option<Vec<(String, i32)>> {
+enum SessionEnd {
+    /// It finished and reported; each app's installer exit code is here.
+    Done(Vec<(String, i32)>),
+    /// It is definitely over (its process is gone) but said nothing: the members may safely
+    /// install one by one, because nothing of the session is running any more.
+    OverWithoutReport,
+    /// It was launched and cannot be shown to be over. Falling back here would race whatever it
+    /// may still install, so the members hear an error instead.
+    Unknown,
+}
+
+/// Waits for the elevated copy: it writes its process id as its first act and its results as its
+/// last, so waiting for the process to end is waiting for the results. Only a session that is
+/// *shown* to be over (its process waited out, or its process id gone) lets the members fall
+/// back to installing one by one; one that merely cannot be seen is never fallen back from.
+#[cfg(windows)]
+fn wait_until_done(pid_file: &Path, results: &Path, token: &str) -> SessionEnd {
     use winsafe::HPROCESS;
     use winsafe::co;
 
@@ -258,24 +312,52 @@ fn wait_until_done(pid_file: &Path, results: &Path) -> Option<Vec<(String, i32)>
             break pid;
         }
         if std::time::Instant::now() > deadline {
-            return None;
+            // The prompt was answered and the copy launched, but it never even said it had
+            // started: whether a slow antivirus still has it, or it died at once, is not ours
+            // to guess. Falling back is not safe either way.
+            return SessionEnd::Unknown;
         }
         std::thread::sleep(std::time::Duration::from_millis(500));
     };
-    // None is INFINITE: the session ends when its last Windows Installer progress window closes.
-    if let Ok(process) = HPROCESS::OpenProcess(co::PROCESS::SYNCHRONIZE, false, pid)
-        && !process.WaitForSingleObject(None).is_ok_and(|wait| wait == co::WAIT::OBJECT_0)
-    {
-        log::warn!("the elevated session could not be waited for");
+    // The copy exists; its handle may not be ours at once. "Cannot open" that keeps failing past
+    // the grace means the session is there but cannot be watched — never that it is gone.
+    let opened_by = std::time::Instant::now() + OPEN_GRACE;
+    loop {
+        match HPROCESS::OpenProcess(co::PROCESS::SYNCHRONIZE, false, pid) {
+            Ok(process) => {
+                // None is INFINITE: the session ends when its last progress window closes.
+                if !process.WaitForSingleObject(None).is_ok_and(|wait| wait == co::WAIT::OBJECT_0) {
+                    log::warn!("waiting for the elevated session failed");
+                    return SessionEnd::Unknown;
+                }
+                break;
+            }
+            // ERROR_INVALID_PARAMETER is what a process id that no longer exists answers.
+            Err(e) if e == co::ERROR::INVALID_PARAMETER => break,
+            Err(e) if std::time::Instant::now() > opened_by => {
+                log::warn!("the elevated session could not be opened to be waited for ({e})");
+                return SessionEnd::Unknown;
+            }
+            Err(_) => std::thread::sleep(std::time::Duration::from_millis(500)),
+        }
     }
-    let reported = std::fs::read_to_string(results).ok()?;
-    let codes = parse_results(&reported);
-    (!codes.is_empty()).then_some(codes)
+    match std::fs::read_to_string(results) {
+        Ok(reported) => match parse_results(&reported, token) {
+            codes if codes.is_empty() => SessionEnd::OverWithoutReport,
+            codes => SessionEnd::Done(codes),
+        },
+        Err(_) => SessionEnd::OverWithoutReport,
+    }
 }
 
-/// The results file: one app and its installer's exit code per line.
-fn parse_results(text: &str) -> Vec<(String, i32)> {
-    text.lines()
+/// The results file: the session's token, then one app and its installer's exit code per line.
+/// A file whose first line is not this session's token is not this session's and is ignored.
+fn parse_results(text: &str, token: &str) -> Vec<(String, i32)> {
+    let Some((first, rest)) = text.split_once('\n') else { return Vec::new() };
+    if first != token {
+        return Vec::new();
+    }
+    rest.lines()
         .filter_map(|line| {
             let (app, code) = line.split_once('\t')?;
             let code = code.trim().parse::<i32>().ok()?;
@@ -285,10 +367,13 @@ fn parse_results(text: &str) -> Vec<(String, i32)> {
 }
 
 /// Writes the results file, never over anything that already exists.
-fn write_results(path: &Path, codes: &[(String, i32)]) -> Result<(), String> {
+fn write_results(path: &Path, token: &str, codes: &[(String, i32)]) -> Result<(), String> {
     use std::io::Write as _;
 
-    let text = codes.iter().map(|(app, code)| format!("{app}\t{code}")).collect::<Vec<_>>().join("\n");
+    let mut text = String::from(token);
+    for (app, code) in codes {
+        text.push_str(&format!("\n{app}\t{code}"));
+    }
     let mut file = std::fs::File::options().write(true).create_new(true).open(path).map_err(|e| format!("couldn't write the batch results ({e})"))?;
     file.write_all(text.as_bytes()).map_err(|e| format!("couldn't write the batch results ({e})"))
 }
@@ -324,7 +409,7 @@ pub fn run_elevated(manifest: &Path) -> Result<(), String> {
         codes.push((entry.app.clone(), status));
         drop(held);
     }
-    write_results(&sibling(manifest, "results"), &codes)?;
+    write_results(&sibling(manifest, "results"), &session.token, &codes)?;
     let _ = std::fs::remove_file(&pid_file);
     Ok(())
 }
@@ -366,16 +451,30 @@ mod tests {
     fn the_results_survive_their_file() {
         let dir = tempfile::tempdir().unwrap();
         let results = dir.path().join("batch.results");
+        let token = "0123456789abcdef";
         let codes = vec![(String::from("photocraft"), 0), (String::from("lightcraft"), 1603), (String::from("filmcraft"), 3010)];
-        write_results(&results, &codes).unwrap();
-        assert_eq!(parse_results(&std::fs::read_to_string(&results).unwrap()), codes);
+        write_results(&results, token, &codes).unwrap();
+        assert_eq!(parse_results(&std::fs::read_to_string(&results).unwrap(), token), codes);
         // A results file is never written over anything: a second session with the same name
         // refuses rather than report for it.
-        assert!(write_results(&results, &codes).is_err());
+        assert!(write_results(&results, token, &codes).is_err());
         assert_eq!(
-            parse_results("photocraft\t0\n\njunk\nlightcraft\t3010\n"),
+            parse_results("photocraft\t0\n\njunk\nlightcraft\t3010\n", token),
+            Vec::<(String, i32)>::new(),
+            "a report without this session's token is not this session's"
+        );
+        // A leftover from another session (a different token) is never read as this one's.
+        assert_eq!(parse_results(&std::fs::read_to_string(&results).unwrap(), "ffffffffffffffff"), Vec::<(String, i32)>::new());
+        assert_eq!(
+            parse_results(&format!("{token}\nphotocraft\t0\n\njunk\nlightcraft\t3010\n"), token),
             vec![(String::from("photocraft"), 0), (String::from("lightcraft"), 3010)]
         );
+    }
+
+    #[test]
+    fn session_tokens_differ() {
+        let seen: std::collections::HashSet<String> = (0..64).map(|_| session_token()).collect();
+        assert_eq!(seen.len(), 64, "every session's token is its own");
     }
 
     #[test]
