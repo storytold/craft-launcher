@@ -40,6 +40,8 @@ tar = { version = "0.4", default-features = false }
 
 [target.'cfg(target_os = "macos")'.dependencies]
 plist = "1"
+# Safe Network.framework path monitoring for Low Data Mode; no direct FFI in this workspace.
+cidre = { version = "0.29", default-features = false, features = ["nw"] }
 
 [target.'cfg(target_os = "windows")'.dependencies]
 winreg = "0.55"
