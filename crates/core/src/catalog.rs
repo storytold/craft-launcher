@@ -147,13 +147,7 @@ const fn app(
 }
 
 /// The Craft App Suite, in display order matching getartcraft.com, then the community apps:
-pub const SUITE: [CraftApp; 18] = [
-    CraftApp {
-        former_names: &["ArtCraft"],
-        mac_bundle_name: Some("ArtCraft"),
-        bundle: Some("ai.artcraft.app"),
-        ..app("artcraft", "ArtCraft Studio", "AI image and video creation", [[47, 123, 245], [26, 91, 196], [127, 176, 255]], "storytold/artcraft")
-    },
+pub const SUITE: [CraftApp; 17] = [
     app("photocraft", "PhotoCraft", "Image editing", [[0x2f, 0x7b, 0xf5], [0x1a, 0x5b, 0xc4], [0x7f, 0xb0, 0xff]], "storytold/photocraft"),
     app("vectorcraft", "VectorCraft", "Vector illustration", [[0xe8, 0x57, 0x3f], [0xb8, 0x3a, 0x24], [0xff, 0x8a, 0x70]], "storytold/vectorcraft"),
     app(
@@ -352,17 +346,15 @@ mod tests {
 
     /// Every catalog entry must have a distinct lookup key.
     #[test]
-    fn suite_has_eighteen_apps_with_unique_ids() {
-        assert_eq!(SUITE.len(), 18);
+    fn suite_has_seventeen_apps_with_unique_ids() {
+        assert_eq!(SUITE.len(), 17);
         let mut ids: Vec<_> = SUITE.iter().map(|a| a.id).collect();
         ids.sort_unstable();
         ids.dedup();
         assert_eq!(ids.len(), SUITE.len());
         for a in &SUITE {
             // `Craft Anything` is `craft-anything`.
-            if a.id != "artcraft" {
-                assert_eq!(a.name.to_lowercase().replace(' ', "-"), a.id);
-            }
+            assert_eq!(a.name.to_lowercase().replace(' ', "-"), a.id);
             match a.kind {
                 AppKind::Official => assert_eq!(a.repo, format!("storytold/{}", a.id)),
                 AppKind::Community => assert!(!a.repo.starts_with("storytold/"), "{} is community", a.id),
@@ -424,21 +416,33 @@ mod tests {
         assert_eq!(CraftApp::by_id("wordcraft").unwrap().website(), "https://getartcraft.com/apps/wordcraft");
     }
 
-    /// ArtCraft Studio is first in the suite, uses `ArtCraft` as its release macOS bundle stem, and skips FreeBSD.
+    /// Apps can specify custom macOS bundle names and platform support.
     #[test]
-    fn artcraft_studio_does_not_run_on_freebsd() {
-        assert_eq!(SUITE[0].id, "artcraft");
-        let studio = CraftApp::by_id("artcraft").unwrap();
-        assert_eq!(studio.mac_bundle_name(), "ArtCraft");
-        assert_eq!(studio.mac_bundle_names().collect::<Vec<_>>(), ["ArtCraft", "ArtCraft Studio"]);
-        assert!(!studio.runs_on(crate::Os::FreeBsd));
-        assert!(studio.runs_on(crate::Os::Linux));
-        assert!(studio.runs_on(crate::Os::MacOs));
-        assert!(studio.runs_on(crate::Os::Windows));
-
+    fn mac_bundle_names_and_platform_support() {
         let photo = CraftApp::by_id("photocraft").unwrap();
         assert_eq!(photo.mac_bundle_name(), "PhotoCraft");
         assert_eq!(photo.mac_bundle_names().collect::<Vec<_>>(), ["PhotoCraft"]);
         assert!(photo.runs_on(crate::Os::FreeBsd));
+        assert!(photo.runs_on(crate::Os::Linux));
+        assert!(photo.runs_on(crate::Os::MacOs));
+        assert!(photo.runs_on(crate::Os::Windows));
+
+        let custom = CraftApp {
+            former_names: &["ArtCraft"],
+            mac_bundle_name: Some("ArtCraft"),
+            ..app(
+                "artcraft",
+                "ArtCraft Studio",
+                "AI image and video creation",
+                [[47, 123, 245], [26, 91, 196], [127, 176, 255]],
+                "storytold/artcraft",
+            )
+        };
+        assert_eq!(custom.mac_bundle_name(), "ArtCraft");
+        assert_eq!(custom.mac_bundle_names().collect::<Vec<_>>(), ["ArtCraft", "ArtCraft Studio"]);
+        assert!(!custom.runs_on(crate::Os::FreeBsd));
+        assert!(custom.runs_on(crate::Os::Linux));
+        assert!(custom.runs_on(crate::Os::MacOs));
+        assert!(custom.runs_on(crate::Os::Windows));
     }
 }

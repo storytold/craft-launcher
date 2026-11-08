@@ -139,15 +139,7 @@ pub fn screenshot_within_budget(bytes: &[u8]) -> bool {
 /// Where every Craft App runs (getartcraft.com lists the same for each of them).
 const PLATFORMS: &str = "macOS, Windows, Linux, FreeBSD, web";
 
-pub const DETAILS: [AppDetails; 18] = [
-    AppDetails {
-        id: "artcraft",
-        headline: "Create images and video with AI.",
-        about: "ArtCraft Studio brings AI image and video generation into a desktop workspace.",
-        features: &[feature("Images and video", "Generate artwork with ArtCraft's connected AI providers.")],
-        shots: &[],
-        platforms: "macOS, Windows, Linux",
-    },
+pub const DETAILS: [AppDetails; 17] = [
     AppDetails {
         id: "photocraft",
         headline: "The image editor you already know how to use.",
