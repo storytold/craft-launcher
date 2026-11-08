@@ -2839,6 +2839,7 @@ mod tests {
                 replace: false,
                 approved_path: None,
                 downgrade: Some(Downgrade::Reinstall { previous: &newer, asset: &newer_msi }),
+                batch: None,
             };
             install(app, &older, &older_msi, PackageKind::Msi, Some(&portable), None, &mut job).unwrap_err()
         };
