@@ -1013,6 +1013,18 @@ mod tests {
         assert!(!is_installer_entry(CraftApp::by_id("cadcraft").unwrap(), "CADCraft", "SolidCraft contributors"));
     }
 
+    /// Studio's MSI names itself `artcraft` and registers `ArtCraft`, not `ArtCraft Studio` under
+    /// ArtCraft's publisher. Detection goes by that pair, so without it an installed Studio reads
+    /// as not installed (#1306).
+    #[test]
+    fn artcraft_studio_matches_its_own_installer_publisher_only() {
+        let studio = CraftApp::by_id("artcraft").unwrap();
+        assert!(is_installer_entry(studio, "ArtCraft", "artcraft"));
+        assert!(is_installer_entry(studio, "ArtCraft Studio", "artcraft"));
+        assert!(!is_installer_entry(studio, "ArtCraft", LEARNING_MACHINES));
+        assert!(!is_installer_entry(CraftApp::by_id("photocraft").unwrap(), "ArtCraft", "artcraft"));
+    }
+
     #[test]
     fn pdfcraft_exe_is_sought_under_every_name_it_has_shipped_as() {
         let pdf = CraftApp::by_id("pdfcraft").unwrap();

@@ -152,6 +152,9 @@ pub const SUITE: [CraftApp; 18] = [
         former_names: &["ArtCraft"],
         mac_bundle_name: Some("ArtCraft"),
         bundle: Some("ai.artcraft.app"),
+        // Studio's MSI names itself `artcraft`, not ArtCraft's `Learning Machines LLC`, so without
+        // this its uninstall entry never matches and an installed Studio reads as not installed.
+        msi_publisher: Some("artcraft"),
         ..app("artcraft", "ArtCraft Studio", "AI image and video creation", [[47, 123, 245], [26, 91, 196], [127, 176, 255]], "storytold/artcraft")
     },
     app("photocraft", "PhotoCraft", "Image editing", [[0x2f, 0x7b, 0xf5], [0x1a, 0x5b, 0xc4], [0x7f, 0xb0, 0xff]], "storytold/photocraft"),
@@ -431,6 +434,7 @@ mod tests {
         let studio = CraftApp::by_id("artcraft").unwrap();
         assert_eq!(studio.mac_bundle_name(), "ArtCraft");
         assert_eq!(studio.mac_bundle_names().collect::<Vec<_>>(), ["ArtCraft", "ArtCraft Studio"]);
+        assert_eq!(studio.msi_publisher, Some("artcraft"));
         assert!(!studio.runs_on(crate::Os::FreeBsd));
         assert!(studio.runs_on(crate::Os::Linux));
         assert!(studio.runs_on(crate::Os::MacOs));
