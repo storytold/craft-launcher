@@ -98,7 +98,7 @@ pub fn from_url(url: &str) -> Result<Option<Proxy>, String> {
     if rest.contains(['/', '?', '#']) {
         return Err("an address with a path or query isn't a proxy, only host and port belong here".into());
     }
-    let (userinfo, hostport) = match rest.split_once('@') {
+    let (userinfo, hostport) = match rest.rsplit_once('@') {
         Some((userinfo, hostport)) if !hostport.is_empty() => (Some(userinfo), hostport),
         _ => (None, rest),
     };
@@ -109,8 +109,10 @@ pub fn from_url(url: &str) -> Result<Option<Proxy>, String> {
     }
     if let Some(userinfo) = userinfo {
         match userinfo.split_once(':') {
-            Some((user, pass)) if !user.is_empty() => builder = builder.username(user).password(pass),
-            _ if !userinfo.is_empty() => builder = builder.username(userinfo),
+            Some((user, pass)) if !user.is_empty() => {
+                builder = builder.username(&percent_decode(user)?).password(&percent_decode(pass)?);
+            }
+            _ if !userinfo.is_empty() => builder = builder.username(&percent_decode(userinfo)?),
             _ => {}
         }
     }
@@ -120,6 +122,39 @@ pub fn from_url(url: &str) -> Result<Option<Proxy>, String> {
     builder.build().map(Some).map_err(|e| e.to_string())
 }
 
+/// Decodes percent escapes in a proxy username or password as UTF-8.
+fn percent_decode(value: &str) -> Result<String, String> {
+    let bytes = value.as_bytes();
+    let mut decoded = Vec::with_capacity(bytes.len());
+    let mut index = 0;
+    while index < bytes.len() {
+        if bytes[index] != b'%' {
+            decoded.push(bytes[index]);
+            index += 1;
+            continue;
+        }
+        if index + 2 >= bytes.len() {
+            return Err("proxy credentials contain an incomplete percent escape".into());
+        }
+        let high = hex_digit(bytes[index + 1]);
+        let low = hex_digit(bytes[index + 2]);
+        match (high, low) {
+            (Some(high), Some(low)) => decoded.push(high * 16 + low),
+            _ => return Err("proxy credentials contain an invalid percent escape".into()),
+        }
+        index += 3;
+    }
+    String::from_utf8(decoded).map_err(|_| "proxy credentials are not valid UTF-8".into())
+}
+
+fn hex_digit(byte: u8) -> Option<u8> {
+    match byte {
+        b'0'..=b'9' => Some(byte - b'0'),
+        b'a'..=b'f' => Some(byte - b'a' + 10),
+        b'A'..=b'F' => Some(byte - b'A' + 10),
+        _ => None,
+    }
+}
 /// Splits `host:port`, `[::1]:8080` or a bare host into a host and an optional port, rejecting
 /// anything else.
 fn typed_host_port(value: &str) -> Result<(String, Option<u16>), String> {
@@ -359,6 +394,18 @@ mod tests {
         assert_eq!(p.password(), Some("secret"));
         assert!(p.is_no_proxy(&"http://127.0.0.1:1/".parse().unwrap()));
         assert!(!p.is_no_proxy(&"https://github.com/".parse().unwrap()));
+
+        let p = from_url("http://user%40corp:p%40ss@proxy.corp").unwrap().unwrap();
+        assert_eq!(p.username(), Some("user@corp"));
+        assert_eq!(p.password(), Some("p@ss"));
+    }
+
+    #[test]
+    fn manual_proxy_uses_the_last_at_in_credentials() {
+        let p = from_url("http://user%40corp:p@ss@proxy.corp:3128").unwrap().unwrap();
+        assert_eq!(p.host(), "proxy.corp");
+        assert_eq!(p.username(), Some("user@corp"));
+        assert_eq!(p.password(), Some("p@ss"));
     }
 
     #[test]
