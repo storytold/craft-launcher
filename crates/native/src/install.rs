@@ -1807,6 +1807,11 @@ pub mod macos {
         {
             return Err(format!("the app inside isn't version {want}, so it wasn't installed"));
         }
+        // `install_at` checked before the download, but the checks above can wait minutes for
+        // their turn. The user may have opened the app since.
+        if process::is_running(destination) {
+            return Err(format!("{} is running. Quit it, then try again.", app.name));
+        }
         swap_into_place(bundle, destination)
     }
 
