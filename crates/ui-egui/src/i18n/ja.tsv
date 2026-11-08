@@ -388,6 +388,8 @@ filter	Installed	インストール済み
 	Create a desktop shortcut when installing apps	アプリのインストール時にデスクトップのショートカットを作成する
 	Create a Start menu / application menu shortcut when installing apps	アプリのインストール時にスタートメニュー／アプリケーションメニューのショートカットを作成する
 @msg	Couldn't update shortcuts for {name}: {e}	{name} のショートカットを更新できませんでした: {e}
+	A system-wide desktop shortcut exists (not controlled by launcher)	システム全体のデスクトップショートカットが存在します (ランチャーで管理されていません)
+	A system-wide Start menu entry exists (not controlled by launcher)	システム全体のスタートメニュー項目が存在します (ランチャーで管理されていません)
 	Install folder	インストール先フォルダー
 	Default install folder	既定のインストール先フォルダー
 	System default	システムの既定

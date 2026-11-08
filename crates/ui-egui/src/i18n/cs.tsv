@@ -353,6 +353,8 @@ filter	Installed	Nainstalováno
 	Create a desktop shortcut when installing apps	Vytvořit zástupce na ploše při instalaci aplikací
 	Create a Start menu / application menu shortcut when installing apps	Vytvořit zástupce v nabídce Start / nabídce aplikací při instalaci aplikací
 @msg	Couldn't update shortcuts for {name}: {e}	Nepodařilo se aktualizovat zástupce pro {name}: {e}
+	A system-wide desktop shortcut exists (not controlled by launcher)	Existuje systémový zástupce na ploše (není spravován launcherem)
+	A system-wide Start menu entry exists (not controlled by launcher)	Existuje systémový zástupce v nabídce Start (není spravován launcherem)
 	Install folder	Instalační složka
 	Default install folder	Výchozí instalační složka
 	System default	Výchozí nastavení systému

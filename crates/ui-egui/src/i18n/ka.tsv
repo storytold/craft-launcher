@@ -389,6 +389,8 @@ filter	Installed	დაინსტალირებული
 	Create a desktop shortcut when installing apps	აპლიკაციების ინსტალაციისას სამუშაო მაგიდის მალსახმობის შექმნა
 	Create a Start menu / application menu shortcut when installing apps	აპლიკაციების ინსტალაციისას Start მენიუს / აპლიკაციების მენიუს მალსახმობის შექმნა
 @msg	Couldn't update shortcuts for {name}: {e}	ვერ განახლდა მალსახმობები {name}-სთვის: {e}
+	A system-wide desktop shortcut exists (not controlled by launcher)	არსებობს სისტემური სამუშაო მაგიდის მალსახმობი (არ იმართება launcher-ის მიერ)
+	A system-wide Start menu entry exists (not controlled by launcher)	არსებობს სისტემური ჩანაწერი Start მენიუში (არ იმართება launcher-ის მიერ)
 	Install folder	ინსტალაციის საქაღალდე
 	Default install folder	ნაგულისხმევი ინსტალაციის საქაღალდე
 	System default	სისტემის ნაგულისხმევი

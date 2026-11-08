@@ -387,6 +387,8 @@ filter	Installed	Zainstalowane
 	Create a desktop shortcut when installing apps	Utwórz skrót na pulpicie podczas instalowania aplikacji
 	Create a Start menu / application menu shortcut when installing apps	Utwórz skrót w menu Start / menu aplikacji podczas instalowania aplikacji
 @msg	Couldn't update shortcuts for {name}: {e}	Nie udało się zaktualizować skrótów dla {name}: {e}
+	A system-wide desktop shortcut exists (not controlled by launcher)	Istnieje ogólnosystemowy skrót na pulpicie (niezarządzany przez launcher)
+	A system-wide Start menu entry exists (not controlled by launcher)	Istnieje ogólnosystemowy wpis w menu Start (niezarządzany przez launcher)
 	Install folder	Folder instalacji
 	Default install folder	Domyślny folder instalacji
 	System default	Domyślny systemowy

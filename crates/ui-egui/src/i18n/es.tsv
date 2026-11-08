@@ -366,6 +366,8 @@ filter	Installed	Instaladas
 	Create a desktop shortcut when installing apps	Crear un acceso directo en el escritorio al instalar aplicaciones
 	Create a Start menu / application menu shortcut when installing apps	Crear un acceso directo en el menú Inicio / menú de aplicaciones al instalar aplicaciones
 @msg	Couldn't update shortcuts for {name}: {e}	No se pudieron actualizar los accesos directos de {name}: {e}
+	A system-wide desktop shortcut exists (not controlled by launcher)	Existe un acceso directo en el escritorio a nivel de sistema (no controlado por el launcher)
+	A system-wide Start menu entry exists (not controlled by launcher)	Existe una entrada en el menú Inicio a nivel de sistema (no controlada por el launcher)
 	Install folder	Carpeta de instalación
 	Default install folder	Carpeta de instalación predeterminada
 	System default	Predeterminada del sistema

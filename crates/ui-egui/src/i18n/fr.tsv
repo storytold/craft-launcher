@@ -383,6 +383,8 @@ filter	Installed	Installées
 	Create a desktop shortcut when installing apps	Créer un raccourci sur le bureau lors de l'installation d'applications
 	Create a Start menu / application menu shortcut when installing apps	Créer un raccourci dans le menu Démarrer / menu des applications lors de l'installation
 @msg	Couldn't update shortcuts for {name}: {e}	Impossible de mettre à jour les raccourcis pour {name} : {e}
+	A system-wide desktop shortcut exists (not controlled by launcher)	Un raccourci sur le bureau existe au niveau système (non géré par le launcher)
+	A system-wide Start menu entry exists (not controlled by launcher)	Une entrée dans le menu Démarrer existe au niveau système (non gérée par le launcher)
 	Install folder	Dossier d’installation
 	Default install folder	Dossier d’installation par défaut
 	System default	Par défaut du système

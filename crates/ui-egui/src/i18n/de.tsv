@@ -385,6 +385,8 @@ filter	Installed	Installiert
 	Create a desktop shortcut when installing apps	Beim Installieren von Apps eine Desktop-Verknüpfung erstellen
 	Create a Start menu / application menu shortcut when installing apps	Beim Installieren von Apps eine Verknüpfung im Startmenü / Anwendungsmenü erstellen
 @msg	Couldn't update shortcuts for {name}: {e}	Verknüpfungen für {name} konnten nicht aktualisiert werden: {e}
+	A system-wide desktop shortcut exists (not controlled by launcher)	Eine systemweite Desktop-Verknüpfung existiert (nicht vom Launcher verwaltet)
+	A system-wide Start menu entry exists (not controlled by launcher)	Ein systemweiter Startmenü-Eintrag existiert (nicht vom Launcher verwaltet)
 	Install folder	Installationsordner
 	Default install folder	Standardordner für Installationen
 	System default	Systemstandard

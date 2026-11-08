@@ -381,6 +381,8 @@ filter	Installed	Установлены
 	Create a desktop shortcut when installing apps	Создавать ярлык на рабочем столе при установке приложений
 	Create a Start menu / application menu shortcut when installing apps	Создавать ярлык в меню «Пуск» / меню приложений при установке
 @msg	Couldn't update shortcuts for {name}: {e}	Не удалось обновить ярлыки для {name}: {e}
+	A system-wide desktop shortcut exists (not controlled by launcher)	Существует общесистемный ярлык на рабочем столе (не управляется лаунчером)
+	A system-wide Start menu entry exists (not controlled by launcher)	Существует общесистемный пункт в меню «Пуск» (не управляется лаунчером)
 	Install folder	Папка установки
 	Default install folder	Папка установки по умолчанию
 	System default	По умолчанию в системе

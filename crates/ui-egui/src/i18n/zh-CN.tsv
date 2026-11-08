@@ -353,6 +353,8 @@ figcraft	Interface design and prototyping	界面设计与原型制作
 	Create a desktop shortcut when installing apps	安装应用时创建桌面快捷方式
 	Create a Start menu / application menu shortcut when installing apps	安装应用时创建开始菜单 / 应用程序菜单快捷方式
 @msg	Couldn't update shortcuts for {name}: {e}	无法更新 {name} 的快捷方式：{e}
+	A system-wide desktop shortcut exists (not controlled by launcher)	存在系统级桌面快捷方式（非启动器管理）
+	A system-wide Start menu entry exists (not controlled by launcher)	存在系统级开始菜单项（非启动器管理）
 	Install folder	安装文件夹
 	Default install folder	默认安装文件夹
 	System default	系统默认
