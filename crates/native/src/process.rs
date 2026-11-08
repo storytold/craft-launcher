@@ -531,7 +531,9 @@ pub fn match_running(targets: &[PathBuf], programs: &[RunningProgram]) -> Runnin
 }
 
 /// Whether two executable paths name the same file, as Windows compares them: in any case, with
-/// either slash, and with or without the `\\?\` prefix.
+/// either slash, and with or without the `\\?\` prefix. Paths that differ as text are compared
+/// again after resolving both on disk, so a junction, a symbolic link or a short (8.3) name
+/// matches the file it leads to.
 fn same_program(left: &Path, right: &Path) -> bool {
     fn normalized(path: &Path) -> String {
         let text = path.to_string_lossy().replace('/', "\\").to_lowercase();
@@ -540,7 +542,13 @@ fn same_program(left: &Path, right: &Path) -> bool {
             None => text.strip_prefix(r"\\?\").unwrap_or(&text).to_string(),
         }
     }
-    normalized(left) == normalized(right)
+    if normalized(left) == normalized(right) {
+        return true;
+    }
+    match (std::fs::canonicalize(left), std::fs::canonicalize(right)) {
+        (Ok(left), Ok(right)) => normalized(&left) == normalized(&right),
+        _ => false,
+    }
 }
 
 /// Whether any of `targets` (an app's executable and its command-line tool) is running. On Windows
@@ -716,6 +724,24 @@ mod running_tests {
         assert_eq!(match_running(&targets(), &unknown), Running::Possible("PhotoCraft-CLI.exe".into()));
         let both = [program("photocraft.exe", None), program("photocraft.exe", Some(r"C:\Apps\PhotoCraft\photocraft.exe"))];
         assert_eq!(match_running(&targets(), &both), Running::Confirmed(targets()[0].clone()));
+    }
+
+    #[test]
+    fn a_program_reached_through_a_link_is_the_installed_one() {
+        let dir = tempfile::tempdir().unwrap();
+        let folder = dir.path().join("PhotoCraft");
+        std::fs::create_dir(&folder).unwrap();
+        std::fs::write(folder.join("photocraft.exe"), b"program").unwrap();
+        let link = dir.path().join("Linked");
+        #[cfg(windows)]
+        assert!(std::process::Command::new("cmd.exe").args(["/C", "mklink", "/J"]).arg(&link).arg(&folder).status().unwrap().success());
+        #[cfg(unix)]
+        std::os::unix::fs::symlink(&folder, &link).unwrap();
+        let installed = vec![link.join("photocraft.exe")];
+        let running = [program("photocraft.exe", Some(&folder.join("photocraft.exe").to_string_lossy()))];
+        assert_eq!(match_running(&installed, &running), Running::Confirmed(installed[0].clone()));
+        let missing = [program("photocraft.exe", Some(&dir.path().join("Other").join("photocraft.exe").to_string_lossy()))];
+        assert_eq!(match_running(&installed, &missing), Running::No);
     }
 }
 
