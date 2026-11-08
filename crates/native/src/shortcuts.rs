@@ -134,7 +134,13 @@ pub fn sync_shortcuts_with_manifest(
     {
         let desktop_dir = dirs::desktop_dir();
         let data_dir = crate::install::linux::host_data_dir();
-        sync_linux_shortcuts_in(desktop_dir.as_deref(), data_dir.as_deref(), app, target, desktop, start_menu, &mut record)?;
+        let linux_target = if installed.source == artcraft_launcher_core::InstallSource::Flatpak {
+            let pkg = installed.package.as_deref().unwrap_or(&installed.location);
+            LinuxTarget::Flatpak(pkg)
+        } else {
+            LinuxTarget::Path(target)
+        };
+        sync_linux_shortcuts_in(desktop_dir.as_deref(), data_dir.as_deref(), app, linux_target, desktop, start_menu, &mut record)?;
     }
     #[cfg(target_os = "macos")]
     {
@@ -386,25 +392,61 @@ fn linux_menu_dirs() -> Vec<PathBuf> {
     dirs
 }
 
+/// Target representation for Linux shortcut creation: a local binary path or a Flatpak package ID.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum LinuxTarget<'a> {
+    /// A path to a local binary or AppImage.
+    Path(&'a Path),
+    /// A Flatpak application ID or package name.
+    Flatpak(&'a str),
+}
+
+impl<'a> From<&'a Path> for LinuxTarget<'a> {
+    fn from(path: &'a Path) -> Self {
+        Self::Path(path)
+    }
+}
+
+impl<'a> From<&'a str> for LinuxTarget<'a> {
+    fn from(s: &'a str) -> Self {
+        Self::Flatpak(s)
+    }
+}
+
 /// Synchronizes `.desktop` shortcuts inside `desktop_dir` and `data_dir` (testable on all OSes).
 pub fn sync_linux_shortcuts_in(
     desktop_dir: Option<&Path>,
     data_dir: Option<&Path>,
     app: &CraftApp,
-    target: &Path,
+    target: LinuxTarget<'_>,
     desktop: bool,
     start_menu: bool,
     record: &mut ShortcutRecord,
 ) -> Result<(), String> {
     let bundle_desktop = format!("{}.desktop", app.bundle_id());
     let has_icon = data_dir.is_some_and(|d| d.join("icons/hicolor/128x128/apps").join(format!("{}.png", app.bundle_id())).is_file());
-    let bundle = app.bundle_id();
-    let is_flatpak = !target.has_root();
-    let rendered = if is_flatpak {
-        let pkg = target.to_str().unwrap_or(&bundle);
-        crate::desktop_entry::render_exec(app, &format!("flatpak run {pkg}"), has_icon)
-    } else {
-        crate::desktop_entry::render(app, target, has_icon).ok_or_else(|| format!("{} cannot be written into a desktop entry", target.display()))?
+    let (rendered, is_flatpak) = match target {
+        LinuxTarget::Flatpak(pkg) => {
+            let pkg_name = if pkg.is_empty() { app.bundle_id() } else { pkg.to_string() };
+            (crate::desktop_entry::render_exec(app, &format!("flatpak run {pkg_name}"), has_icon), true)
+        }
+        LinuxTarget::Path(path) => {
+            let is_rooted = path.has_root() || path.is_absolute();
+            let resolved = if is_rooted {
+                path.to_path_buf()
+            } else if let Some(bin) = crate::process::which(path.to_str().unwrap_or(app.id)) {
+                bin
+            } else if let Ok(cwd) = std::env::current_dir()
+                && cwd.join(path).exists()
+            {
+                cwd.join(path)
+            } else {
+                PathBuf::from("/usr/bin").join(path)
+            };
+            let text = crate::desktop_entry::render(app, &resolved, has_icon)
+                .ok_or_else(|| format!("{} cannot be written into a desktop entry", resolved.display()))?;
+            (text, false)
+        }
     };
 
     if let Some(d_dir) = desktop_dir {
@@ -558,7 +600,7 @@ mod tests {
         let mut record = ShortcutRecord::default();
 
         let first_bin = Path::new("/opt/ArtCraft/photocraft/photocraft.AppImage");
-        sync_linux_shortcuts_in(Some(&desktop_dir), Some(&data_dir), app, first_bin, true, true, &mut record).unwrap();
+        sync_linux_shortcuts_in(Some(&desktop_dir), Some(&data_dir), app, LinuxTarget::Path(first_bin), true, true, &mut record).unwrap();
 
         let desktop_file = desktop_dir.join("ai.storyteller.photocraft.desktop");
         let menu_file = data_dir.join("applications/ai.storyteller.photocraft.desktop");
@@ -573,7 +615,7 @@ mod tests {
 
         // Move app to a new installation directory and disable desktop shortcut while keeping menu shortcut.
         let moved_bin = Path::new("/mnt/work/CraftSuite/photocraft/photocraft.AppImage");
-        sync_linux_shortcuts_in(Some(&desktop_dir), Some(&data_dir), app, moved_bin, false, true, &mut record).unwrap();
+        sync_linux_shortcuts_in(Some(&desktop_dir), Some(&data_dir), app, LinuxTarget::Path(moved_bin), false, true, &mut record).unwrap();
         assert!(!desktop_file.exists(), "disabled desktop shortcut should be removed");
         assert!(record.desktop.is_none());
         assert!(menu_file.is_file(), "enabled menu shortcut should stay");
@@ -598,8 +640,8 @@ mod tests {
         let app = CraftApp::by_id("photocraft").unwrap();
         let mut record = ShortcutRecord::default();
 
-        let flatpak_target = Path::new("ai.storyteller.photocraft");
-        sync_linux_shortcuts_in(Some(&desktop_dir), Some(&data_dir), app, flatpak_target, true, true, &mut record).unwrap();
+        let flatpak_target = "ai.storyteller.photocraft";
+        sync_linux_shortcuts_in(Some(&desktop_dir), Some(&data_dir), app, LinuxTarget::Flatpak(flatpak_target), true, true, &mut record).unwrap();
 
         let desktop_file = desktop_dir.join("ai.storyteller.photocraft.desktop");
         let menu_file = data_dir.join("applications/ai.storyteller.photocraft.desktop");
@@ -608,6 +650,27 @@ mod tests {
         assert_eq!(crate::desktop_entry::exec_program(&std::fs::read_to_string(&desktop_file).unwrap()).as_deref(), Some("flatpak"));
         let content = std::fs::read_to_string(&desktop_file).unwrap();
         assert!(content.contains("Exec=flatpak run ai.storyteller.photocraft %F"));
+
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    #[test]
+    fn relative_binary_target_resolves_and_creates_application_menu_entry() {
+        let tmp = std::env::temp_dir().join(format!("artcraft-launcher-relative-test-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&tmp);
+        let desktop_dir = tmp.join("Desktop");
+        let data_dir = tmp.join("data");
+        let app = CraftApp::by_id("photocraft").unwrap();
+        let mut record = ShortcutRecord::default();
+
+        let rel_bin = Path::new("photocraft");
+        sync_linux_shortcuts_in(Some(&desktop_dir), Some(&data_dir), app, LinuxTarget::Path(rel_bin), true, true, &mut record).unwrap();
+
+        let desktop_file = desktop_dir.join("ai.storyteller.photocraft.desktop");
+        let menu_file = data_dir.join("applications/ai.storyteller.photocraft.desktop");
+        assert!(desktop_file.is_file(), "desktop shortcut should be created for relative binary target");
+        assert!(menu_file.is_file(), "application menu shortcut must be created for non-flatpak relative target");
+        assert!(record.start_menu.is_some());
 
         let _ = std::fs::remove_dir_all(&tmp);
     }
