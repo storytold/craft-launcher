@@ -36,6 +36,10 @@
 	Install	安裝
 	Update to {v}	更新至 {v}
 	Open	開啟
+	Open {version}	開啟 {version}
+	Open {installed} without updating. {latest} stays available.	開啟 {installed}，不更新。{latest} 仍可稍後安裝。
+	{latest} is out, but ArtCraft Launcher can't install it over this copy.	{latest} 已發布，但 ArtCraft Launcher 無法用它取代此副本。
+	ArtCraft Launcher can't install version {version} over this copy.	ArtCraft Launcher 無法用版本 {version} 取代此副本。
 	Download for {os}	下載 {os} 版
 	Download	下載
 	Coming soon	即將推出
@@ -248,6 +252,7 @@ filter	Installed	已安裝
 	Join the ArtCraft Discord	加入 ArtCraft Discord
 @plural	ArtCraft Launcher · {n} update available|ArtCraft Launcher · {n} updates available	ArtCraft Launcher · {n} 個更新可用
 @plural	{n} app|{n} apps	{n} 個應用程式
+artcraft	AI image and video creation	AI 影像與影片創作
 photocraft	Image editing	影像編輯
 vectorcraft	Vector illustration	向量插畫
 filmcraft	Video editing, color and sound	影片剪輯、調色與音效

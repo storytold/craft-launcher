@@ -37,6 +37,10 @@
 	Install	Nainstalovat
 	Update to {v}	Aktualizovat na {v}
 	Open	Otevřít
+	Open {version}	Otevřít {version}
+	Open {installed} without updating. {latest} stays available.	Otevřít {installed} bez aktualizace. Verze {latest} zůstane k dispozici.
+	{latest} is out, but ArtCraft Launcher can't install it over this copy.	Verze {latest} je venku, ale ArtCraft Launcher ji nemůže nainstalovat přes tuto kopii.
+	ArtCraft Launcher can't install version {version} over this copy.	ArtCraft Launcher nemůže verzi {version} nainstalovat přes tuto kopii.
 	Download for {os}	Stáhnout pro {os}
 	Download	Stáhnout
 	Coming soon	Již brzy
@@ -160,6 +164,7 @@
 	Arch package (.pkg.tar.zst)	Balíček Arch (.pkg.tar.zst)
 	Flatpak bundle	Balíček Flatpak
 	Tarball (.tar.gz)	Archiv tar (.tar.gz)
+artcraft	AI image and video creation	Tvorba obrázků a videí pomocí AI
 photocraft	Image editing	Úpravy obrázků
 vectorcraft	Vector illustration	Vektorová ilustrace
 filmcraft	Video editing, color and sound	Střih videa, barvy a zvuk

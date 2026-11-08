@@ -38,6 +38,10 @@
 	Install	Instalar
 	Update to {v}	Atualizar para {v}
 	Open	Abrir
+	Open {version}	Abrir {version}
+	Open {installed} without updating. {latest} stays available.	Abrir {installed} sem atualizar. A {latest} continua disponível.
+	{latest} is out, but ArtCraft Launcher can't install it over this copy.	A {latest} já saiu, mas o ArtCraft Launcher não consegue instalá-la sobre esta cópia.
+	ArtCraft Launcher can't install version {version} over this copy.	O ArtCraft Launcher não consegue instalar a versão {version} sobre esta cópia.
 	Download for {os}	Baixar para {os}
 	Download	Baixar
 	Coming soon	Em breve
@@ -166,6 +170,7 @@
 	Tarball (.tar.gz)	Arquivo (.tar.gz)
 
 # Contextual: each app's tagline, keyed by app id
+artcraft	AI image and video creation	Criação de imagens e vídeos com IA
 photocraft	Image editing	Edição de imagens
 vectorcraft	Vector illustration	Ilustração vetorial
 filmcraft	Video editing, color and sound	Edição de vídeo, cor e som

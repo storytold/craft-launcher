@@ -48,6 +48,10 @@
 	Install	Установить
 	Update to {v}	Обновить до {v}
 	Open	Открыть
+	Open {version}	Открыть {version}
+	Open {installed} without updating. {latest} stays available.	Открыть {installed} без обновления. Версия {latest} останется доступной.
+	{latest} is out, but ArtCraft Launcher can't install it over this copy.	Вышла версия {latest}, но ArtCraft Launcher не может установить её поверх этой копии.
+	ArtCraft Launcher can't install version {version} over this copy.	ArtCraft Launcher не может установить версию {version} поверх этой копии.
 	Download for {os}	Скачать для {os}
 	Download	Скачать
 	Coming soon	Скоро
@@ -176,6 +180,7 @@
 	Tarball (.tar.gz)	Архив (.tar.gz)
 
 # Contextual: each app's tagline, keyed by app id
+artcraft	AI image and video creation	Создание изображений и видео с помощью ИИ
 photocraft	Image editing	Редактирование изображений
 vectorcraft	Vector illustration	Векторная иллюстрация
 filmcraft	Video editing, color and sound	Монтаж видео, цветокоррекция и звук
