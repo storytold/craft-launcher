@@ -12,7 +12,7 @@ fn downgrade(remove: Result<(), (&str, bool)>, chosen: Result<(), &str>, back: R
         previous: "0.14.0",
         remove: &mut || {
             ran.borrow_mut().push("remove");
-            remove.map_err(|(error, partly)| Removal { error: error.to_string(), partly })
+            remove.map_err(|(error, partly)| Removal { error: error.to_string(), partly, code: None })
         },
         install_chosen: &mut || {
             ran.borrow_mut().push("install chosen");
@@ -80,34 +80,60 @@ fn when_putting_back_fails_too_the_person_is_told_how_to_recover() {
     assert!(message.contains("Install FilmCraft again from the launcher"), "{message}");
 }
 
-/// A step-by-step downgrade keeps the chosen package's exit code and log, so a 1618 or 1603 from it
-/// can name its cause; the put-back's code does not replace it.
+/// A step-by-step downgrade keeps the exit code of the step that stopped it, so a 1618 or 1603 can
+/// name its cause: the chosen package's code and log, or a removal's code, which has no log. The
+/// put-back's code does not replace either.
 #[test]
 fn a_failed_chosen_install_keeps_its_exit_code_and_log() {
     let (chosen, previous) = (Path::new(r"C:\Downloads\filmcraft-0.13.0.msi"), Path::new(r"C:\Downloads\filmcraft-0.14.0.msi"));
-    let install = |msi: &Path, exit: &mut Option<(i32, PathBuf)>| {
+    let install = |msi: &Path, exit: &mut Exit| {
         let code = if msi == chosen { 1618 } else { 1603 };
-        *exit = Some((code, msi.with_extension("log")));
+        *exit = Some((code, Some(msi.with_extension("log"))));
         Err(format!("the Windows Installer stopped with error {code}"))
     };
     let mut exit = None;
     let result = run_packages("FilmCraft", (chosen, "0.13.0"), (previous, "0.14.0"), &mut || Ok(()), &install, &mut exit);
     assert!(result.unwrap_err().contains("putting 0.14.0 back failed too"));
-    assert_eq!(exit, Some((1618, chosen.with_extension("log"))));
-    // Nothing ran: nothing is kept.
+    assert_eq!(exit, Some((1618, Some(chosen.with_extension("log")))));
+    // Another installation stopped the removal before it started: nothing was removed or
+    // installed, and its code is kept.
     let mut exit = None;
-    let mut removal = || Err(Removal { error: "error 1603".to_string(), partly: false });
+    let busy = "another installation is in progress. Wait for it to finish, then try again.";
+    let mut removal = || Err(Removal { error: busy.to_string(), partly: false, code: Some(1618) });
+    let result = run_packages(
+        "FilmCraft",
+        (chosen, "0.13.0"),
+        (previous, "0.14.0"),
+        &mut removal,
+        &|_: &Path, _: &mut Exit| panic!("nothing installs"),
+        &mut exit,
+    );
+    assert_eq!(result, Err(busy.to_string()));
+    assert_eq!(exit, Some((1618, None)));
+    // A removal that stopped after removing one registration keeps its code over the put-back's.
+    let mut exit = None;
+    let mut removal = || Err(Removal { error: "error 1603".to_string(), partly: true, code: Some(1603) });
+    let _ = run_packages("FilmCraft", (chosen, "0.13.0"), (previous, "0.14.0"), &mut removal, &install, &mut exit);
+    assert_eq!(exit, Some((1603, None)));
+    // Windows Installer never started: no code is kept.
+    let mut exit = None;
+    let mut removal = || Err(Removal { error: "couldn't start the Windows Installer".to_string(), partly: false, code: None });
     let _ = run_packages("FilmCraft", (chosen, "0.13.0"), (previous, "0.14.0"), &mut removal, &install, &mut exit);
     assert_eq!(exit, None);
 }
 
-/// An elevated session that stopped on the chosen package names its code; other outcomes do not.
+/// An elevated session that stopped names the code of the step that stopped it: the chosen
+/// package's with its log, or a removal's, which has none. Other outcomes name no code.
 #[test]
 fn an_elevated_session_names_the_chosen_package_code() {
-    assert_eq!(chosen_exit(&Ended::PutBack(1618)), Some(1618));
-    assert_eq!(chosen_exit(&Ended::NotPutBack { install: 1603, back: 1638 }), Some(1603));
-    for other in [Ended::Done, Ended::Declined, Ended::RemovalFailed(1603), Ended::PartlyRemovedPutBack(1603), Ended::Other(Some(5))] {
-        assert_eq!(chosen_exit(&other), None, "{other:?}");
+    let log = PathBuf::from(r"C:\Downloads\filmcraft-0.13.0.log");
+    assert_eq!(failed_exit(&Ended::PutBack(1618), log.clone()), Some((1618, Some(log.clone()))));
+    assert_eq!(failed_exit(&Ended::NotPutBack { install: 1603, back: 1638 }, log.clone()), Some((1603, Some(log.clone()))));
+    assert_eq!(failed_exit(&Ended::RemovalFailed(1618), log.clone()), Some((1618, None)));
+    assert_eq!(failed_exit(&Ended::PartlyRemovedPutBack(1603), log.clone()), Some((1603, None)));
+    assert_eq!(failed_exit(&Ended::PartlyRemovedNotPutBack { removal: 1618, back: 1638 }, log.clone()), Some((1618, None)));
+    for other in [Ended::Done, Ended::Declined, Ended::Other(Some(5))] {
+        assert_eq!(failed_exit(&other, log.clone()), None, "{other:?}");
     }
 }
 

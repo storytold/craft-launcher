@@ -299,7 +299,9 @@ fn install_checking(
             let running = || running_copy.map_or(process::Running::No, |location| find_running(&running_targets(app, location)));
             let classified = match (&refused, &msi_exit) {
                 (Some(refused), _) => Some(file_failure(app, running_copy, refused.code, &refused.path, &error, &running())),
-                (None, Some((code, log))) => msi_failure(app, running_copy, *code, log, rollback.as_ref().map(|_| error.as_str()), running),
+                (None, Some((code, log))) => {
+                    msi_failure(app, running_copy, *code, log.as_deref(), rollback.as_ref().map(|_| error.as_str()), running)
+                }
                 (None, None) => None,
             };
             Err(match classified {
@@ -362,42 +364,44 @@ fn open_failure(app: &CraftApp, location: &Path, running: &process::Running, det
 }
 
 /// The card's cause when the Windows Installer stopped an install with `code` (its log at
-/// `log`), and a message to show instead of the installer's own when a running app explains it.
+/// `log`; a downgrade's removal step writes none), and a message to show instead of the
+/// installer's own when a running app explains it.
 /// Error 1618 is another installation in progress. Error 1603 says only that the installation
 /// failed: it counts as the app being open only when `running`, checked after the installer
 /// stopped, finds the copy at `location` or its command-line tool. `downgrade` is the error of a
-/// downgrade whose chosen package stopped with `code`: it says whether the previous version was
-/// put back, so it stays the message and ends the details. `None` for success and for a dismissed
-/// prompt.
+/// downgrade that one of its steps stopped with `code`: it says what is installed now, so it
+/// stays the message and ends the details. `None` for success and for a dismissed prompt.
 #[cfg(any(windows, test))]
 fn msi_failure(
     app: &CraftApp,
     location: Option<&Path>,
     code: i32,
-    log: &Path,
+    log: Option<&Path>,
     downgrade: Option<&str>,
     running: impl FnOnce() -> process::Running,
 ) -> Option<(Option<String>, InstallFailure)> {
     let raw = format!("MSI {code}");
-    let failure = |blocker, details: Vec<String>| InstallFailure { blocker, details: details.join(" · ") };
+    let log = log.map(|log| log.display().to_string());
+    let details = |first: String| std::iter::once(first).chain(log.clone()).collect::<Vec<_>>().join(" · ");
+    let failure = |blocker| InstallFailure { blocker, details: details(raw.clone()) };
     match code {
         0 | 3010 | 1641 | 1602 => None,
-        1618 => Some((None, failure(Blocker::InstallerBusy, vec![raw, log.display().to_string()]))),
+        1618 => Some((None, failure(Blocker::InstallerBusy))),
         1603 => {
             let open = location.and_then(|location| open_failure(app, location, &running(), Some(&raw)));
             Some(match (open, downgrade) {
                 (Some((_, mut open)), Some(error)) => {
-                    open.details = format!("{} · {} · {error}", open.details, log.display());
+                    open.details = format!("{} · {error}", details(open.details));
                     (None, open)
                 }
                 (Some((error, mut open)), None) => {
-                    open.details = format!("{} · {}", open.details, log.display());
+                    open.details = details(open.details);
                     (Some(error), open)
                 }
-                (None, _) => (None, failure(Blocker::InstallerFailed, vec![raw, log.display().to_string()])),
+                (None, _) => (None, failure(Blocker::InstallerFailed)),
             })
         }
-        _ => Some((None, failure(Blocker::InstallerFailed, vec![raw, log.display().to_string()]))),
+        _ => Some((None, failure(Blocker::InstallerFailed))),
     }
 }
 
@@ -2331,14 +2335,14 @@ pub mod windows {
         scope: Option<MsiScope>,
         stop: &Stop,
         phase: &mut dyn FnMut(JobPhase),
-        exit: &mut Option<(i32, PathBuf)>,
+        exit: &mut msi_downgrade::Exit,
     ) -> Result<(), String> {
         in_turn(stop, phase, JobPhase::Installing, || run_direct(msi, destination, scope, exit))
     }
 
     /// Runs one MSI by itself: `msiexec` asks for permission itself, and the prompt names the package's
     /// publisher. `exit` gets its exit code and the path of its log.
-    fn run_direct(msi: &Path, destination: Option<&Path>, scope: Option<MsiScope>, exit: &mut Option<(i32, PathBuf)>) -> Result<(), String> {
+    fn run_direct(msi: &Path, destination: Option<&Path>, scope: Option<MsiScope>, exit: &mut msi_downgrade::Exit) -> Result<(), String> {
         use std::os::windows::process::CommandExt;
         let mut command = msi_command(&msiexec(), msi)?;
         if let Some(dir) = destination {
@@ -2348,7 +2352,7 @@ pub mod windows {
             command.raw_arg(argument);
         }
         let status = command.status().map_err(|e| format!("couldn't start the Windows Installer ({e})"))?;
-        *exit = status.code().map(|code| (code, msi_log(msi)));
+        *exit = status.code().map(|code| (code, Some(msi_log(msi))));
         explain(status.code()).map_err(|e| match status.code() {
             Some(1602) | None => e,
             _ => format!("{e}. Its log is at {}", msi_log(msi).display()),
@@ -2382,8 +2386,8 @@ pub mod windows {
     /// over: removes it, installs `chosen` in the same folder and context, and puts `previous`
     /// back if that does not finish (see [`msi_downgrade`]). An all-users copy does all three
     /// under one permission prompt, or not at all; a per-user copy needs none, and runs them one
-    /// by one in a single turn of the installer queue. `exit` gets the chosen package's exit code
-    /// and the path of its log once it has run.
+    /// by one in a single turn of the installer queue. `exit` gets the exit code of the step that
+    /// stopped it: a removal's, or the chosen package's with the path of its log.
     #[allow(clippy::too_many_arguments)]
     pub(super) fn downgrade_msi(
         app: &CraftApp,
@@ -2393,7 +2397,7 @@ pub mod windows {
         scope: Option<MsiScope>,
         stop: &Stop,
         phase: &mut dyn FnMut(JobPhase),
-        exit: &mut Option<(i32, PathBuf)>,
+        exit: &mut msi_downgrade::Exit,
     ) -> Result<(), String> {
         if scope == Some(MsiScope::PerMachine) {
             let mut elevated = None;
@@ -2404,7 +2408,7 @@ pub mod windows {
             // Separate prompts are no fallback: refusing a later one would leave no app at all.
             return match elevated {
                 Some(ended) => {
-                    *exit = msi_downgrade::chosen_exit(&ended).map(|code| (code, msi_log(chosen.file)));
+                    *exit = msi_downgrade::failed_exit(&ended, msi_log(chosen.file));
                     msi_downgrade::report(ended, app.name, chosen.version, previous.version)
                 }
                 None => Err(msi_downgrade::no_session(app.name, chosen.version)),
@@ -2473,16 +2477,20 @@ pub mod windows {
     fn remove_registrations(app: &CraftApp) -> Result<(), msi_downgrade::Removal> {
         let installs = crate::detect::windows::msi_installs(app);
         if installs.is_empty() {
-            return Err(msi_downgrade::Removal { error: format!("{} isn't registered with the Windows Installer", app.name), partly: false });
+            return Err(msi_downgrade::Removal {
+                error: format!("{} isn't registered with the Windows Installer", app.name),
+                partly: false,
+                code: None,
+            });
         }
         for (removed, m) in installs.iter().enumerate() {
             let status = process::command(msiexec())
                 .args(["/x", &m.product_code, "/passive", "/norestart"])
                 .status()
-                .map_err(|e| format!("couldn't start the Windows Installer ({e})"))
-                .and_then(|status| explain(status.code()));
-            if let Err(error) = status {
-                return Err(msi_downgrade::Removal { error, partly: removed > 0 });
+                .map_err(|e| (format!("couldn't start the Windows Installer ({e})"), None))
+                .and_then(|status| explain(status.code()).map_err(|error| (error, status.code())));
+            if let Err((error, code)) = status {
+                return Err(msi_downgrade::Removal { error, partly: removed > 0, code });
             }
         }
         Ok(())
@@ -2525,26 +2533,40 @@ mod tests {
         let app = CraftApp::by_id("photocraft").unwrap();
         let (exe, cli) = photocraft_copy();
         let log = Path::new(r"C:\Cache\photocraft-0.6.0-windows-x64.log");
-        let busy = msi_failure(app, Some(&exe), 1618, log, None, || panic!("1618 needs no process check")).unwrap();
+        let busy = msi_failure(app, Some(&exe), 1618, Some(log), None, || panic!("1618 needs no process check")).unwrap();
         assert_eq!(busy, (None, InstallFailure { blocker: Blocker::InstallerBusy, details: format!("MSI 1618 · {}", log.display()) }));
-        let failed = msi_failure(app, Some(&exe), 1603, log, None, || process::Running::No).unwrap();
+        let failed = msi_failure(app, Some(&exe), 1603, Some(log), None, || process::Running::No).unwrap();
         assert_eq!(failed, (None, InstallFailure { blocker: Blocker::InstallerFailed, details: format!("MSI 1603 · {}", log.display()) }));
-        let (error, open) = msi_failure(app, Some(&exe), 1603, log, None, || process::Running::Confirmed(cli.clone())).unwrap();
+        let (error, open) = msi_failure(app, Some(&exe), 1603, Some(log), None, || process::Running::Confirmed(cli.clone())).unwrap();
         assert_eq!(error.as_deref(), Some("PhotoCraft's command-line tool is running. Quit it, then try again."));
         assert_eq!(open, InstallFailure { blocker: Blocker::AppOpen, details: format!("MSI 1603 · {} · {}", cli.display(), log.display()) });
-        let (error, maybe) = msi_failure(app, Some(&exe), 1603, log, None, || process::Running::Possible("photocraft.exe".into())).unwrap();
+        let (error, maybe) = msi_failure(app, Some(&exe), 1603, Some(log), None, || process::Running::Possible("photocraft.exe".into())).unwrap();
         assert!(error.is_some_and(|e| e.starts_with("A program named photocraft.exe")));
         assert_eq!(maybe.blocker, Blocker::MaybeAppOpen);
         // A fresh install has no copy that could be open.
-        let fresh = msi_failure(app, None, 1603, log, None, || panic!("no copy to check")).unwrap();
+        let fresh = msi_failure(app, None, 1603, Some(log), None, || panic!("no copy to check")).unwrap();
         assert_eq!(fresh.1.blocker, Blocker::InstallerFailed);
         assert_eq!(
-            msi_failure(app, Some(&exe), 1925, log, None, || process::Running::No).unwrap().1.details,
+            msi_failure(app, Some(&exe), 1925, Some(log), None, || process::Running::No).unwrap().1.details,
             format!("MSI 1925 · {}", log.display())
         );
         for success_or_dismissed in [0, 3010, 1641, 1602] {
-            assert_eq!(msi_failure(app, Some(&exe), success_or_dismissed, log, None, || panic!("no failure")), None, "{success_or_dismissed}");
+            assert_eq!(msi_failure(app, Some(&exe), success_or_dismissed, Some(log), None, || panic!("no failure")), None, "{success_or_dismissed}");
         }
+    }
+
+    /// A downgrade's removal step writes no log: another installation stopping it is still
+    /// another installation, and the downgrade's own error (nothing was changed) stays the message.
+    #[test]
+    fn a_downgrade_removal_stopped_by_another_installation_can_be_retried() {
+        let app = CraftApp::by_id("photocraft").unwrap();
+        let (exe, _) = photocraft_copy();
+        let error = "PhotoCraft 0.6.0 couldn't be removed (another installation is in progress. Wait for it to finish, then try again.), so nothing was changed.";
+        let busy = msi_failure(app, Some(&exe), 1618, None, Some(error), || panic!("1618 needs no process check")).unwrap();
+        assert_eq!(busy, (None, InstallFailure { blocker: Blocker::InstallerBusy, details: "MSI 1618".to_string() }));
+        let (message, open) = msi_failure(app, Some(&exe), 1603, None, Some(error), || process::Running::Confirmed(exe.clone())).unwrap();
+        assert_eq!(message, None, "the downgrade's error stays the message");
+        assert_eq!(open, InstallFailure { blocker: Blocker::AppOpen, details: format!("MSI 1603 · {} · {error}", exe.display()) });
     }
 
     /// A downgrade whose chosen package stopped with 1603 while the app is running keeps its own
@@ -2558,7 +2580,7 @@ mod tests {
             "PhotoCraft 0.5.0 couldn't be installed (a fatal error occurred), and putting 0.6.0 back failed too (a fatal error occurred). Install PhotoCraft again from the launcher.",
             "PhotoCraft 0.5.0 couldn't be installed (a fatal error occurred). PhotoCraft 0.6.0 was put back.",
         ] {
-            let (message, open) = msi_failure(app, Some(&exe), 1603, log, Some(error), || process::Running::Confirmed(exe.clone())).unwrap();
+            let (message, open) = msi_failure(app, Some(&exe), 1603, Some(log), Some(error), || process::Running::Confirmed(exe.clone())).unwrap();
             assert_eq!(message, None, "the downgrade's error stays the message");
             assert_eq!(
                 open,
@@ -2566,7 +2588,8 @@ mod tests {
             );
         }
         // Without a running copy it is an installer failure, and the error stays the message too.
-        let (message, failed) = msi_failure(app, Some(&exe), 1603, log, Some("PhotoCraft 0.6.0 was put back."), || process::Running::No).unwrap();
+        let (message, failed) =
+            msi_failure(app, Some(&exe), 1603, Some(log), Some("PhotoCraft 0.6.0 was put back."), || process::Running::No).unwrap();
         assert_eq!((message, failed.blocker), (None, Blocker::InstallerFailed));
     }
 
