@@ -238,6 +238,11 @@ month	Dec	déc.
 	Another installation is in progress. Wait for it to finish, then press Retry.	Une autre installation est en cours. Attendez qu'elle se termine, puis réessayez.
 	Another program is using a file of {name}. Close that program, then press Retry.	Un autre programme utilise un fichier de {name}. Fermez ce programme, puis réessayez.
 	Windows denied access to a file of {name}. Check the folder's permissions, then press Retry.	Windows a refusé l'accès à un fichier de {name}. Vérifiez les autorisations du dossier, puis réessayez.
+	{name} or its command-line tool is open. Close it, then press Resume.	{name} ou son outil en ligne de commande est ouvert. Fermez-le, puis reprenez le téléchargement.
+	A program with the same name as {name} is running. If it is this copy, close it, then press Resume.	Un programme portant le même nom que {name} est en cours d'exécution. S'il s'agit de cette copie, fermez-le, puis reprenez le téléchargement.
+	Another installation is in progress. Wait for it to finish, then press Resume.	Une autre installation est en cours. Attendez qu'elle se termine, puis reprenez le téléchargement.
+	Another program is using a file of {name}. Close that program, then press Resume.	Un autre programme utilise un fichier de {name}. Fermez ce programme, puis reprenez le téléchargement.
+	Windows denied access to a file of {name}. Check the folder's permissions, then press Resume.	Windows a refusé l'accès à un fichier de {name}. Vérifiez les autorisations du dossier, puis reprenez le téléchargement.
 	The Windows Installer couldn't finish. The details below give its error code.	Windows Installer n'a pas pu terminer. Les détails ci-dessous indiquent son code d'erreur.
 	Details: {details}	Détails : {details}
 	Download paused	Téléchargement en pause

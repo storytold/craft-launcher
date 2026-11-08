@@ -242,6 +242,11 @@ month	Dec	12月
 	Another installation is in progress. Wait for it to finish, then press Retry.	別のインストールが進行中です。完了するまで待ってから再試行してください。
 	Another program is using a file of {name}. Close that program, then press Retry.	別のプログラムが {name} のファイルを使用しています。そのプログラムを閉じてから再試行してください。
 	Windows denied access to a file of {name}. Check the folder's permissions, then press Retry.	Windows が {name} のファイルへのアクセスを拒否しました。フォルダーのアクセス許可を確認してから再試行してください。
+	{name} or its command-line tool is open. Close it, then press Resume.	{name} またはそのコマンドラインツールが開いています。閉じてからダウンロードを再開してください。
+	A program with the same name as {name} is running. If it is this copy, close it, then press Resume.	{name} と同じ名前のプログラムが実行中です。このコピーであれば、閉じてからダウンロードを再開してください。
+	Another installation is in progress. Wait for it to finish, then press Resume.	別のインストールが進行中です。完了するまで待ってからダウンロードを再開してください。
+	Another program is using a file of {name}. Close that program, then press Resume.	別のプログラムが {name} のファイルを使用しています。そのプログラムを閉じてからダウンロードを再開してください。
+	Windows denied access to a file of {name}. Check the folder's permissions, then press Resume.	Windows が {name} のファイルへのアクセスを拒否しました。フォルダーのアクセス許可を確認してからダウンロードを再開してください。
 	The Windows Installer couldn't finish. The details below give its error code.	Windows インストーラーを完了できませんでした。下の詳細にエラーコードが表示されています。
 	Details: {details}	詳細: {details}
 	Download paused	ダウンロードを一時停止

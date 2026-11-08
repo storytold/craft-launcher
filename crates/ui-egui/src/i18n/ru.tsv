@@ -238,6 +238,11 @@ month	Dec	дек.
 	Another installation is in progress. Wait for it to finish, then press Retry.	Выполняется другая установка. Дождитесь её завершения и повторите попытку.
 	Another program is using a file of {name}. Close that program, then press Retry.	Другая программа использует файл {name}. Закройте эту программу и повторите попытку.
 	Windows denied access to a file of {name}. Check the folder's permissions, then press Retry.	Windows запретила доступ к файлу {name}. Проверьте права доступа к папке и повторите попытку.
+	{name} or its command-line tool is open. Close it, then press Resume.	{name} или его инструмент командной строки открыт. Закройте его и продолжите скачивание.
+	A program with the same name as {name} is running. If it is this copy, close it, then press Resume.	Запущена программа с тем же именем, что и {name}. Если это именно эта копия, закройте её и продолжите скачивание.
+	Another installation is in progress. Wait for it to finish, then press Resume.	Выполняется другая установка. Дождитесь её завершения и продолжите скачивание.
+	Another program is using a file of {name}. Close that program, then press Resume.	Другая программа использует файл {name}. Закройте эту программу и продолжите скачивание.
+	Windows denied access to a file of {name}. Check the folder's permissions, then press Resume.	Windows запретила доступ к файлу {name}. Проверьте права доступа к папке и продолжите скачивание.
 	The Windows Installer couldn't finish. The details below give its error code.	Установщику Windows не удалось завершить работу. Ниже указан код ошибки.
 	Details: {details}	Подробности: {details}
 	Download paused	Скачивание приостановлено

@@ -240,6 +240,11 @@ month	Dec	Dez.
 	Another installation is in progress. Wait for it to finish, then press Retry.	Eine andere Installation läuft gerade. Warte, bis sie fertig ist, und versuche es dann erneut.
 	Another program is using a file of {name}. Close that program, then press Retry.	Ein anderes Programm verwendet eine Datei von {name}. Schließe dieses Programm und versuche es dann erneut.
 	Windows denied access to a file of {name}. Check the folder's permissions, then press Retry.	Windows hat den Zugriff auf eine Datei von {name} verweigert. Prüfe die Berechtigungen des Ordners und versuche es dann erneut.
+	{name} or its command-line tool is open. Close it, then press Resume.	{name} oder sein Befehlszeilenwerkzeug ist geöffnet. Schließe es und setze dann den Download fort.
+	A program with the same name as {name} is running. If it is this copy, close it, then press Resume.	Ein Programm mit demselben Namen wie {name} läuft. Wenn es diese Kopie ist, schließe es und setze dann den Download fort.
+	Another installation is in progress. Wait for it to finish, then press Resume.	Eine andere Installation läuft gerade. Warte, bis sie fertig ist, und setze dann den Download fort.
+	Another program is using a file of {name}. Close that program, then press Resume.	Ein anderes Programm verwendet eine Datei von {name}. Schließe dieses Programm und setze dann den Download fort.
+	Windows denied access to a file of {name}. Check the folder's permissions, then press Resume.	Windows hat den Zugriff auf eine Datei von {name} verweigert. Prüfe die Berechtigungen des Ordners und setze dann den Download fort.
 	The Windows Installer couldn't finish. The details below give its error code.	Der Windows Installer konnte nicht abschließen. Die Details unten nennen den Fehlercode.
 	Details: {details}	Details: {details}
 	Download paused	Download pausiert

@@ -520,7 +520,7 @@ pub fn match_running(targets: &[PathBuf], programs: &[RunningProgram]) -> Runnin
                 }
             }
             None if possible.is_none()
-                && targets.iter().any(|target| target.file_name().is_some_and(|name| name.to_string_lossy().eq_ignore_ascii_case(&program.name))) =>
+                && targets.iter().any(|target| windows_file_name(target).is_some_and(|name| name.eq_ignore_ascii_case(&program.name))) =>
             {
                 possible = Some(program.name.clone());
             }
@@ -528,6 +528,12 @@ pub fn match_running(targets: &[PathBuf], programs: &[RunningProgram]) -> Runnin
         }
     }
     possible.map_or(Running::No, Running::Possible)
+}
+
+/// The file name at the end of a Windows path, after the last `\` or `/`, on every platform.
+fn windows_file_name(path: &Path) -> Option<String> {
+    let text = path.to_string_lossy();
+    text.rsplit(['\\', '/']).next().filter(|name| !name.is_empty()).map(str::to_string)
 }
 
 /// Whether two executable paths name the same file, as Windows compares them: in any case, with
@@ -724,6 +730,8 @@ mod running_tests {
         assert_eq!(match_running(&targets(), &unknown), Running::Possible("PhotoCraft-CLI.exe".into()));
         let both = [program("photocraft.exe", None), program("photocraft.exe", Some(r"C:\Apps\PhotoCraft\photocraft.exe"))];
         assert_eq!(match_running(&targets(), &both), Running::Confirmed(targets()[0].clone()));
+        let slashed = [PathBuf::from("C:/Apps/PhotoCraft/photocraft.exe")];
+        assert_eq!(match_running(&slashed, &[program("PHOTOCRAFT.EXE", None)]), Running::Possible("PHOTOCRAFT.EXE".into()));
     }
 
     #[test]

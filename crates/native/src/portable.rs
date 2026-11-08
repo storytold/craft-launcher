@@ -859,7 +859,9 @@ mod tests {
         let paths = Paths::under(dir.path());
         let old = archive(dir.path(), "old.zip", &[("photocraft.exe", b"old"), ("lib.dll", b"library")]);
         let record = install(app, &old, "0.5.0", None, &paths, None, false, &mut |_| Ok(())).unwrap();
-        let held = paths.apps().join("photocraft/lib.dll");
+        // In the folder as the install resolved it: a temporary folder reached through an alias
+        // (a short 8.3 name, a junction) is named differently.
+        let held = record.path.parent().unwrap().join("lib.dll");
         // Shared for reading only, as a running program holds its libraries: it can't be removed.
         let shared = std::fs::OpenOptions::new().read(true).share_mode(1).open(&held).unwrap();
         let next = archive(dir.path(), "next.zip", &[("photocraft.exe", b"new"), ("lib.dll", b"new library")]);

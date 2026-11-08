@@ -220,6 +220,11 @@ month	Dec	12.
 	Another installation is in progress. Wait for it to finish, then press Retry.	Probíhá jiná instalace. Počkejte, až skončí, a zkuste to znovu.
 	Another program is using a file of {name}. Close that program, then press Retry.	Jiný program používá soubor aplikace {name}. Zavřete tento program a zkuste to znovu.
 	Windows denied access to a file of {name}. Check the folder's permissions, then press Retry.	Windows odepřel přístup k souboru aplikace {name}. Zkontrolujte oprávnění složky a zkuste to znovu.
+	{name} or its command-line tool is open. Close it, then press Resume.	Aplikace {name} nebo její nástroj příkazového řádku je otevřený. Zavřete ho a pak pokračujte ve stahování.
+	A program with the same name as {name} is running. If it is this copy, close it, then press Resume.	Běží program se stejným názvem jako {name}. Pokud jde o tuto kopii, zavřete ho a pak pokračujte ve stahování.
+	Another installation is in progress. Wait for it to finish, then press Resume.	Probíhá jiná instalace. Počkejte, až skončí, a pak pokračujte ve stahování.
+	Another program is using a file of {name}. Close that program, then press Resume.	Jiný program používá soubor aplikace {name}. Zavřete tento program a pak pokračujte ve stahování.
+	Windows denied access to a file of {name}. Check the folder's permissions, then press Resume.	Windows odepřel přístup k souboru aplikace {name}. Zkontrolujte oprávnění složky a pak pokračujte ve stahování.
 	The Windows Installer couldn't finish. The details below give its error code.	Instalační služba systému Windows nemohla dokončit práci. Podrobnosti níže uvádějí kód chyby.
 	Details: {details}	Podrobnosti: {details}
 	Download paused	Stahování pozastaveno

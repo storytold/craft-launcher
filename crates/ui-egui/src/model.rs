@@ -27,8 +27,8 @@ pub struct AppEntry {
     /// `None` where it gives none (the web build), and then [`Self::has_download`] decides. Only
     /// read while a copy is installed.
     pub installable: Option<bool>,
-    /// What stopped the last install or update, shown until the next try
-    /// ([`Event::Blocked`](artcraft_launcher_core::protocol::Event::Blocked)).
+    /// What stopped the last install or update, shown until the next try or until the installed
+    /// copy changes ([`Event::Blocked`](artcraft_launcher_core::protocol::Event::Blocked)).
     pub blocked: Option<InstallFailure>,
 }
 
@@ -153,15 +153,35 @@ pub fn entry_status_text(e: &AppEntry, status: &AppStatus, stopped: bool, manage
     }
 }
 
-/// What stopped `name`'s last install or update, and what to do before trying again.
-pub fn blocker_text(blocker: Blocker, name: &str) -> String {
-    let text = match blocker {
-        Blocker::AppOpen => t("{name} or its command-line tool is open. Close it, then press Retry."),
-        Blocker::MaybeAppOpen => t("A program with the same name as {name} is running. If it is this copy, close it, then press Retry."),
-        Blocker::InstallerBusy => t("Another installation is in progress. Wait for it to finish, then press Retry."),
-        Blocker::FileInUse => t("Another program is using a file of {name}. Close that program, then press Retry."),
-        Blocker::AccessDenied => t("Windows denied access to a file of {name}. Check the folder's permissions, then press Retry."),
-        Blocker::InstallerFailed => t("The Windows Installer couldn't finish. The details below give its error code."),
+/// The button that tries a stopped install or update again.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum TryAgain {
+    /// The main button's Retry.
+    Retry,
+    /// A paused download's Resume, which shows in place of the main button.
+    Resume,
+}
+
+/// What stopped `name`'s last install or update, and what to do before trying again with `again`.
+pub fn blocker_text(blocker: Blocker, name: &str, again: TryAgain) -> String {
+    let text = match (blocker, again) {
+        (Blocker::AppOpen, TryAgain::Retry) => t("{name} or its command-line tool is open. Close it, then press Retry."),
+        (Blocker::AppOpen, TryAgain::Resume) => t("{name} or its command-line tool is open. Close it, then press Resume."),
+        (Blocker::MaybeAppOpen, TryAgain::Retry) => {
+            t("A program with the same name as {name} is running. If it is this copy, close it, then press Retry.")
+        }
+        (Blocker::MaybeAppOpen, TryAgain::Resume) => {
+            t("A program with the same name as {name} is running. If it is this copy, close it, then press Resume.")
+        }
+        (Blocker::InstallerBusy, TryAgain::Retry) => t("Another installation is in progress. Wait for it to finish, then press Retry."),
+        (Blocker::InstallerBusy, TryAgain::Resume) => t("Another installation is in progress. Wait for it to finish, then press Resume."),
+        (Blocker::FileInUse, TryAgain::Retry) => t("Another program is using a file of {name}. Close that program, then press Retry."),
+        (Blocker::FileInUse, TryAgain::Resume) => t("Another program is using a file of {name}. Close that program, then press Resume."),
+        (Blocker::AccessDenied, TryAgain::Retry) => t("Windows denied access to a file of {name}. Check the folder's permissions, then press Retry."),
+        (Blocker::AccessDenied, TryAgain::Resume) => {
+            t("Windows denied access to a file of {name}. Check the folder's permissions, then press Resume.")
+        }
+        (Blocker::InstallerFailed, _) => t("The Windows Installer couldn't finish. The details below give its error code."),
     };
     fmt(text, &[("name", name)])
 }

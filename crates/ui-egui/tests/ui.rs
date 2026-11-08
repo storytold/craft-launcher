@@ -1440,6 +1440,80 @@ fn a_blocked_update_says_why_and_can_be_retried() {
 }
 
 #[test]
+/// A stop is forgotten once the installed copy changes outside the launcher (updated or removed
+/// elsewhere), so the card does not offer to retry a try that no longer applies. Another look at
+/// the same copy keeps it.
+fn a_stop_is_forgotten_when_the_installed_copy_changes() {
+    let copy = |v: &str| Installed {
+        version: version::parse(v),
+        source: InstallSource::MacApp,
+        location: "/Applications/PhotoCraft.app".into(),
+        package: None,
+        externally_managed: false,
+        origin: None,
+        installation: None,
+    };
+    let stopped_then = |installed: Option<Installed>| {
+        let mut ev = events();
+        ev.push(Event::Installable { app: "photocraft".into(), installable: true });
+        ev.push(Event::Blocked {
+            app: "photocraft".into(),
+            failure: Some(InstallFailure { blocker: Blocker::AppOpen, details: r"C:\Apps\PhotoCraft\photocraft-cli.exe".into() }),
+        });
+        ev.push(Event::Detected { app: "photocraft".into(), installed });
+        ev
+    };
+    for view in [ViewMode::Grid, ViewMode::Table] {
+        // The same copy, looked at again: the stop stays.
+        let (mut h, _) = harness_with(stopped_then(Some(copy("0.4.1"))), view, egui::Theme::Dark, true, 1.0);
+        h.run_steps(8);
+        assert!(h.query_by_label("Update stopped").is_some(), "{view:?}: the same copy keeps the stop");
+        h.get_by_label("Retry update to 0.5.0");
+
+        // Updated elsewhere: up to date, with no stopped reinstall to retry.
+        let (mut h, _) = harness_with(stopped_then(Some(copy("0.5.0"))), view, egui::Theme::Dark, true, 1.0);
+        h.run_steps(8);
+        assert!(h.query_by_label("Reinstall stopped").is_none(), "{view:?}: no reinstall was tried");
+        assert!(h.query_by_label("Retry reinstall").is_none(), "{view:?}: Open is the main button");
+        assert!(h.query_by_label_contains("press Retry").is_none(), "{view:?}");
+
+        // Removed elsewhere: a plain install, not a stopped one.
+        let (mut h, _) = harness_with(stopped_then(None), view, egui::Theme::Dark, true, 1.0);
+        h.run_steps(8);
+        assert!(h.query_by_label("Install stopped").is_none(), "{view:?}: no install was tried");
+        // CadCraft's kept download is the only install to retry.
+        assert_eq!(h.query_all_by_label("Retry install").count(), 1, "{view:?}: Install is PhotoCraft's main button");
+        assert!(h.query_by_label_contains("press Retry").is_none(), "{view:?}");
+    }
+}
+
+#[test]
+/// A resumed update stopped by a running app before its download goes on keeps the partial
+/// download, so Resume tries again: the card still says why, and says to press Resume.
+fn a_stop_with_a_paused_download_says_to_press_resume() {
+    let mut ev = events();
+    ev.push(Event::Paused { app: "photocraft".into(), download: Some(PausedDownload { done: 20 << 20, total: 80 << 20 }) });
+    ev.push(Event::Blocked {
+        app: "photocraft".into(),
+        failure: Some(InstallFailure { blocker: Blocker::AppOpen, details: r"C:\Apps\PhotoCraft\photocraft-cli.exe".into() }),
+    });
+    let (mut h, sent) = harness_with(ev, ViewMode::Grid, egui::Theme::Dark, true, 1.0);
+    h.run_steps(8);
+    h.get_by_label("PhotoCraft or its command-line tool is open. Close it, then press Resume.");
+    h.get_by_label(r"Details: C:\Apps\PhotoCraft\photocraft-cli.exe");
+    assert!(h.query_by_label_contains("press Retry").is_none(), "no Retry is offered");
+    assert!(h.query_by_label_contains("Retry update").is_none(), "the paused download's controls show");
+    assert!(h.query_by_label("Update paused").is_some(), "the status says the download is paused");
+    sent.borrow_mut().clear();
+    h.query_all_by_label_contains("Resume")
+        .find(|n| n.accesskit_node().label().is_some_and(|l| l.starts_with("Resume")))
+        .expect("the paused download's Resume button")
+        .click();
+    h.run_steps(2);
+    assert_eq!(launches_and_installs(&sent, "photocraft"), (0, 1), "Resume tries the update again: {:?}", sent.borrow());
+}
+
+#[test]
 /// A blocked install of a kept version offers Retry, as its card says, and the retry installs
 /// that version again.
 fn a_blocked_install_of_a_kept_version_offers_retry() {

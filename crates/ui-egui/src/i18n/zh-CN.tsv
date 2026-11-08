@@ -146,6 +146,11 @@ month	Dec	12月
 	Another installation is in progress. Wait for it to finish, then press Retry.	另一个安装正在进行。请等待其完成，然后重试。
 	Another program is using a file of {name}. Close that program, then press Retry.	另一个程序正在使用 {name} 的文件。请关闭该程序，然后重试。
 	Windows denied access to a file of {name}. Check the folder's permissions, then press Retry.	Windows 拒绝访问 {name} 的文件。请检查该文件夹的权限，然后重试。
+	{name} or its command-line tool is open. Close it, then press Resume.	{name} 或其命令行工具已打开。请将其关闭，然后继续下载。
+	A program with the same name as {name} is running. If it is this copy, close it, then press Resume.	正在运行与 {name} 同名的程序。如果它就是此副本，请将其关闭，然后继续下载。
+	Another installation is in progress. Wait for it to finish, then press Resume.	另一个安装正在进行。请等待其完成，然后继续下载。
+	Another program is using a file of {name}. Close that program, then press Resume.	另一个程序正在使用 {name} 的文件。请关闭该程序，然后继续下载。
+	Windows denied access to a file of {name}. Check the folder's permissions, then press Resume.	Windows 拒绝访问 {name} 的文件。请检查该文件夹的权限，然后继续下载。
 	The Windows Installer couldn't finish. The details below give its error code.	Windows Installer 无法完成。下方详细信息给出了错误代码。
 	Details: {details}	详细信息：{details}
 	Download paused	下载已暂停

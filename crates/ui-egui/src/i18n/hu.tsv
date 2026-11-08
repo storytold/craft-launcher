@@ -240,6 +240,11 @@ month	Dec	dec.
 	Another installation is in progress. Wait for it to finish, then press Retry.	Egy másik telepítés van folyamatban. Várd meg, amíg befejeződik, majd próbáld újra.
 	Another program is using a file of {name}. Close that program, then press Retry.	Egy másik program használja ennek egyik fájlját: {name}. Zárd be azt a programot, majd próbáld újra.
 	Windows denied access to a file of {name}. Check the folder's permissions, then press Retry.	A Windows megtagadta a hozzáférést ennek egyik fájljához: {name}. Ellenőrizd a mappa engedélyeit, majd próbáld újra.
+	{name} or its command-line tool is open. Close it, then press Resume.	{name} vagy a parancssori eszköze meg van nyitva. Zárd be, majd folytasd a letöltést.
+	A program with the same name as {name} is running. If it is this copy, close it, then press Resume.	Fut egy program, amelynek ugyanaz a neve, mint ennek: {name}. Ha ez az a példány, zárd be, majd folytasd a letöltést.
+	Another installation is in progress. Wait for it to finish, then press Resume.	Egy másik telepítés van folyamatban. Várd meg, amíg befejeződik, majd folytasd a letöltést.
+	Another program is using a file of {name}. Close that program, then press Resume.	Egy másik program használja ennek egyik fájlját: {name}. Zárd be azt a programot, majd folytasd a letöltést.
+	Windows denied access to a file of {name}. Check the folder's permissions, then press Resume.	A Windows megtagadta a hozzáférést ennek egyik fájljához: {name}. Ellenőrizd a mappa engedélyeit, majd folytasd a letöltést.
 	The Windows Installer couldn't finish. The details below give its error code.	A Windows Installer nem tudta befejezni a műveletet. Az alábbi részletek megadják a hibakódot.
 	Details: {details}	Részletek: {details}
 	Download paused	Letöltés szüneteltetve

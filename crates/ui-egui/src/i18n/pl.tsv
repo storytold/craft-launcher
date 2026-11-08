@@ -241,6 +241,11 @@ month	Dec	gru
 	Another installation is in progress. Wait for it to finish, then press Retry.	Trwa inna instalacja. Poczekaj, aż się zakończy, i spróbuj ponownie.
 	Another program is using a file of {name}. Close that program, then press Retry.	Inny program używa pliku aplikacji {name}. Zamknij ten program i spróbuj ponownie.
 	Windows denied access to a file of {name}. Check the folder's permissions, then press Retry.	Windows odmówił dostępu do pliku aplikacji {name}. Sprawdź uprawnienia folderu i spróbuj ponownie.
+	{name} or its command-line tool is open. Close it, then press Resume.	{name} lub narzędzie wiersza poleceń tej aplikacji jest otwarte. Zamknij je i wznów pobieranie.
+	A program with the same name as {name} is running. If it is this copy, close it, then press Resume.	Działa program o tej samej nazwie co {name}. Jeśli to ta kopia, zamknij go i wznów pobieranie.
+	Another installation is in progress. Wait for it to finish, then press Resume.	Trwa inna instalacja. Poczekaj, aż się zakończy, i wznów pobieranie.
+	Another program is using a file of {name}. Close that program, then press Resume.	Inny program używa pliku aplikacji {name}. Zamknij ten program i wznów pobieranie.
+	Windows denied access to a file of {name}. Check the folder's permissions, then press Resume.	Windows odmówił dostępu do pliku aplikacji {name}. Sprawdź uprawnienia folderu i wznów pobieranie.
 	The Windows Installer couldn't finish. The details below give its error code.	Instalator Windows nie mógł dokończyć pracy. Poniższe szczegóły podają kod błędu.
 	Details: {details}	Szczegóły: {details}
 	Download paused	Pobieranie wstrzymane

@@ -244,6 +244,11 @@ month	Dec	დეკ
 	Another installation is in progress. Wait for it to finish, then press Retry.	მიმდინარეობს სხვა ინსტალაცია. დაელოდეთ მის დასრულებას და კვლავ სცადეთ.
 	Another program is using a file of {name}. Close that program, then press Retry.	სხვა პროგრამა იყენებს {name}-ის ფაილს. დახურეთ ის პროგრამა და კვლავ სცადეთ.
 	Windows denied access to a file of {name}. Check the folder's permissions, then press Retry.	Windows-მა არ დაუშვა წვდომა {name}-ის ფაილზე. შეამოწმეთ საქაღალდის ნებართვები და კვლავ სცადეთ.
+	{name} or its command-line tool is open. Close it, then press Resume.	{name} ან მისი ბრძანების ხაზის ხელსაწყო გახსნილია. დახურეთ და განაგრძეთ ჩამოტვირთვა.
+	A program with the same name as {name} is running. If it is this copy, close it, then press Resume.	გაშვებულია პროგრამა, რომელსაც იგივე სახელი აქვს, რაც {name}-ს. თუ ეს სწორედ ეს ასლია, დახურეთ და განაგრძეთ ჩამოტვირთვა.
+	Another installation is in progress. Wait for it to finish, then press Resume.	მიმდინარეობს სხვა ინსტალაცია. დაელოდეთ მის დასრულებას და განაგრძეთ ჩამოტვირთვა.
+	Another program is using a file of {name}. Close that program, then press Resume.	სხვა პროგრამა იყენებს {name}-ის ფაილს. დახურეთ ის პროგრამა და განაგრძეთ ჩამოტვირთვა.
+	Windows denied access to a file of {name}. Check the folder's permissions, then press Resume.	Windows-მა არ დაუშვა წვდომა {name}-ის ფაილზე. შეამოწმეთ საქაღალდის ნებართვები და განაგრძეთ ჩამოტვირთვა.
 	The Windows Installer couldn't finish. The details below give its error code.	Windows Installer-მა ვერ დაასრულა მუშაობა. ქვემოთ მოცემულ დეტალებში მითითებულია შეცდომის კოდი.
 	Details: {details}	დეტალები: {details}
 	Download paused	ჩამოტვირთვა შეჩერებულია

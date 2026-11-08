@@ -656,9 +656,9 @@ impl LauncherUi {
             ui.add_space(8.0);
         }
         // What stopped the last try takes the place of the blurb until the next try, while the
-        // main button retries it.
-        if let Some(failure) = blocked {
-            crate::card_parts::blurb(ui, &model::blocker_text(failure.blocker, app.name), t.ink, 3);
+        // main button retries it or a paused download's Resume tries it again.
+        if let Some((failure, again)) = blocked {
+            crate::card_parts::blurb(ui, &model::blocker_text(failure.blocker, app.name, again), t.ink, 3);
             ui.add_space(4.0);
             ui.add(egui::Label::new(RichText::new(model::blocker_details(failure)).size(12.0).color(t.muted)).truncate());
         }
@@ -901,8 +901,8 @@ impl LauncherUi {
             model::entry_status_text(entry, status, blocked.is_some(), self.caps.manage_apps)
         };
         let r = widgets::badge(ui, &text, widgets::tone_color(t, tone));
-        if let Some(failure) = blocked {
-            r.on_hover_text(format!("{}\n{}", model::blocker_text(failure.blocker, entry.app.name), model::blocker_details(failure)));
+        if let Some((failure, again)) = blocked {
+            r.on_hover_text(format!("{}\n{}", model::blocker_text(failure.blocker, entry.app.name, again), model::blocker_details(failure)));
         } else if let Some(f) = entry.failure() {
             r.on_hover_text(fmt(tl!("Couldn't check for updates: {f}"), &[("f", f)]));
         }
@@ -948,16 +948,21 @@ impl LauncherUi {
 
     // ---- actions -------------------------------------------------------------------------
 
-    /// What stopped the last try, while no job runs and the main button retries it. The card's
-    /// text, the status badge and its tooltip name the cause only then, since they say to press
-    /// Retry.
-    fn shown_blocker<'a>(&self, entry: &'a AppEntry, status: &AppStatus) -> Option<&'a InstallFailure> {
+    /// What stopped the last try, and the button that tries it again, while no job runs: a paused
+    /// download's Resume, which shows in place of the main button ([`Self::paused_actions`]), or
+    /// else the main button when it retries. The card's text, the status badge and its tooltip
+    /// name the cause only then, since they say which button to press.
+    fn shown_blocker<'a>(&self, entry: &'a AppEntry, status: &AppStatus) -> Option<(&'a InstallFailure, model::TryAgain)> {
+        let failure = entry.blocked.as_ref().filter(|_| entry.job.is_none())?;
+        if entry.paused.is_some() && self.caps.manage_apps {
+            return Some((failure, model::TryAgain::Resume));
+        }
         let retry = match self.primary_action(entry, status) {
             Primary::Retry(..) => true,
             Primary::SelectedVersion { retry, .. } => retry,
             _ => false,
         };
-        entry.blocked.as_ref().filter(|_| retry && entry.job.is_none())
+        retry.then_some((failure, model::TryAgain::Retry))
     }
 
     fn primary_action(&self, entry: &AppEntry, status: &AppStatus) -> Primary {
