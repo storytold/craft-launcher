@@ -221,11 +221,11 @@ impl Settings {
     }
 
     /// Resolves `(desktop, start_menu)` shortcut state for `app_id`, preferring an explicit
-    /// per-app override, then the detected on-disk state for an installed app, then global defaults.
-    pub fn effective_shortcuts(&self, app_id: &str, detected: Option<artcraft_launcher_core::protocol::AppShortcutState>) -> (bool, bool) {
+    /// per-app override, then global defaults, matching backend `resolve_prefs`.
+    pub fn effective_shortcuts(&self, app_id: &str) -> (bool, bool) {
         let prefs = self.app_shortcuts.get(app_id).copied().unwrap_or_default();
-        let desktop = prefs.desktop.or_else(|| detected.map(|d| d.desktop)).unwrap_or(self.create_desktop_shortcut);
-        let start_menu = prefs.start_menu.or_else(|| detected.map(|d| d.start_menu)).unwrap_or(self.create_start_menu_shortcut);
+        let desktop = prefs.desktop.unwrap_or(self.create_desktop_shortcut);
+        let start_menu = prefs.start_menu.unwrap_or(self.create_start_menu_shortcut);
         (desktop, start_menu)
     }
 }

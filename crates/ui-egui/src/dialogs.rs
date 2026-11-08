@@ -247,8 +247,7 @@ impl LauncherUi {
         );
         ui.add_space(12.0);
 
-        let detected = self.detected_shortcuts.get(id).copied();
-        let (mut desktop, mut start_menu) = self.settings.effective_shortcuts(id, detected);
+        let (mut desktop, mut start_menu) = self.settings.effective_shortcuts(id);
         let desktop_changed = ui.checkbox(&mut desktop, tl!("Desktop shortcut")).changed();
         let start_menu_changed = ui.checkbox(&mut start_menu, tl!("Start menu / application menu shortcut")).changed();
         if desktop_changed || start_menu_changed {

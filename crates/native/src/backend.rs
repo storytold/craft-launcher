@@ -462,7 +462,8 @@ impl NativeBackend {
                 (result, _) => result,
             };
             if !uninstall && result.is_ok() {
-                crate::shortcuts::apply_after_install(app, found.as_ref(), &options);
+                let current = shared.options.lock().unwrap_or_else(std::sync::PoisonError::into_inner).clone();
+                crate::shortcuts::apply_after_install(app, found.as_ref(), &current);
             }
             publish_detected(app, found.clone(), &shared, platform);
             if found.is_some() {
