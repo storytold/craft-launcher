@@ -229,6 +229,15 @@ month	Dec	déc.
 	Not available here	Indisponible ici
 	Updating…	Mise à jour…
 	Update paused	Mise à jour en pause
+	Update stopped	Mise à jour interrompue
+	Install stopped	Installation interrompue
+	{name} or its command-line tool is open. Close it, then press Retry.	{name} ou son outil en ligne de commande est ouvert. Fermez-le, puis réessayez.
+	A program with the same name as {name} is running. If it is this copy, close it, then press Retry.	Un programme portant le même nom que {name} est en cours d'exécution. S'il s'agit de cette copie, fermez-le, puis réessayez.
+	Another installation is in progress. Wait for it to finish, then press Retry.	Une autre installation est en cours. Attendez qu'elle se termine, puis réessayez.
+	Another program is using a file of {name}. Close that program, then press Retry.	Un autre programme utilise un fichier de {name}. Fermez ce programme, puis réessayez.
+	Windows denied access to a file of {name}. Check the folder's permissions, then press Retry.	Windows a refusé l'accès à un fichier de {name}. Vérifiez les autorisations du dossier, puis réessayez.
+	The Windows Installer couldn't finish. The details below give its error code and log.	Windows Installer n'a pas pu terminer. Les détails ci-dessous indiquent son code d'erreur et son journal.
+	Details: {details}	Détails : {details}
 	Download paused	Téléchargement en pause
 	{version} installed → {latest} released	{version} installée → {latest} publiée
 	Version {version}	Version {version}
@@ -303,6 +312,10 @@ filter	Installed	Installées
 @msg	{name} installed: {version} (this release publishes no checksum, so only its size was checked)	{name} installé : {version} (cette version ne publie pas de somme de contrôle : seule sa taille a été vérifiée)
 @msg	{name} was removed	{name} a été supprimé
 @msg	{name} is running. Quit it, then try again.	{name} est en cours d'exécution. Quittez-le, puis réessayez.
+@msg	{name}'s command-line tool is running. Quit it, then try again.	L'outil en ligne de commande de {name} est en cours d'exécution. Quittez-le, puis réessayez.
+@msg	A program named {program} is running. If it is {name}, quit it, then try again.	Un programme nommé {program} est en cours d'exécution. S'il s'agit de {name}, quittez-le, puis réessayez.
+@msg	Another program is using {file}. Close it, then try again.	Un autre programme utilise {file}. Fermez-le, puis réessayez.
+@msg	Windows denied access to {file}.	Windows a refusé l'accès à {file}.
 @msg	{name} was installed from the {repo} repository or the AUR ({pkg}). Update it with {cmd} or sudo pacman -Syu	{name} a été installé depuis le dépôt {repo} ou l'AUR ({pkg}). Mettez-le à jour avec {cmd} ou avec sudo pacman -Syu
 @msg	{name} was installed from the {repo} repository or the AUR ({pkg}). Update it with your AUR helper (for example: yay -S {pkg}) or sudo pacman -Syu	{name} a été installé depuis le dépôt {repo} ou l'AUR ({pkg}). Mettez-le à jour avec votre assistant AUR (par exemple : yay -S {pkg}) ou avec sudo pacman -Syu
 @msg	{name} was installed from the AUR ({pkg}). Update it with {cmd}	{name} a été installé depuis l'AUR ({pkg}). Mettez-le à jour avec {cmd}

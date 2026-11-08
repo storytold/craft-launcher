@@ -137,6 +137,9 @@ package or portable folder, the AppImage, or the `.deb`/`.rpm`) and reopens it.
 
 Updates use the same format an app was installed with. Every download is checked against the
 release's published SHA-256 before it is installed, and a running app is never replaced.
+When an update stops because the app or its command-line tool is open, another installation is
+in progress, or Windows refuses a file, the app's card says so, with the error code and the
+installer log in its details. **Retry** on the card tries the update again.
 
 The launcher writes its log to `logs/artcraft-launcher.log` in its data folder
 (`~/.local/share/artcraft-launcher` on Linux, `~/Library/Application Support/ArtCraft Launcher`

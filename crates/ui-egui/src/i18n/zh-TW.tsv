@@ -139,6 +139,15 @@ month	Dec	12月
 	Not available here	此處無法使用
 	Updating…	更新中…
 	Update paused	更新已暫停
+	Update stopped	更新已停止
+	Install stopped	安裝已停止
+	{name} or its command-line tool is open. Close it, then press Retry.	{name} 或其命令列工具已開啟。請將其關閉，然後再試一次。
+	A program with the same name as {name} is running. If it is this copy, close it, then press Retry.	正在執行與 {name} 同名的程式。如果它就是此複本，請將其關閉，然後再試一次。
+	Another installation is in progress. Wait for it to finish, then press Retry.	另一項安裝正在進行。請等候其完成，然後再試一次。
+	Another program is using a file of {name}. Close that program, then press Retry.	另一個程式正在使用 {name} 的檔案。請關閉該程式，然後再試一次。
+	Windows denied access to a file of {name}. Check the folder's permissions, then press Retry.	Windows 拒絕存取 {name} 的檔案。請檢查該資料夾的權限，然後再試一次。
+	The Windows Installer couldn't finish. The details below give its error code and log.	Windows Installer 無法完成。下方詳細資料列出錯誤代碼與記錄檔。
+	Details: {details}	詳細資料：{details}
 	Download paused	下載已暫停
 	{version} installed → {latest} released	{version} 已安裝 → {latest} 已發行
 	Version {version}	版本 {version}
@@ -336,6 +345,10 @@ figcraft	Interface design and prototyping	介面設計與原型製作
 @msg	{name} installed: {version} (this release publishes no checksum, so only its size was checked)	{name} 已安裝：{version}（此版本未公布檢查碼，因此僅核對檔案大小）
 @msg	{name} was removed	{name} 已解除安裝
 @msg	{name} is running. Quit it, then try again.	{name} 正在執行。請結束後再試一次。
+@msg	{name}'s command-line tool is running. Quit it, then try again.	{name} 的命令列工具正在執行。請結束後再試一次。
+@msg	A program named {program} is running. If it is {name}, quit it, then try again.	名為 {program} 的程式正在執行。如果它是 {name}，請結束後再試一次。
+@msg	Another program is using {file}. Close it, then try again.	另一個程式正在使用 {file}。請將其關閉，然後再試一次。
+@msg	Windows denied access to {file}.	Windows 拒絕存取 {file}。
 @msg	{name} was installed from the {repo} repository or the AUR ({pkg}). Update it with {cmd} or sudo pacman -Syu	{name} 是從 {repo} 儲存庫或 AUR 安裝的（{pkg}）。請使用 {cmd} 或 sudo pacman -Syu 更新。
 @msg	{name} was installed from the {repo} repository or the AUR ({pkg}). Update it with your AUR helper (for example: yay -S {pkg}) or sudo pacman -Syu	{name} 是從 {repo} 儲存庫或 AUR 安裝的（{pkg}）。請使用你的 AUR 助手（例如：yay -S {pkg}）或 sudo pacman -Syu 更新。
 @msg	{name} was installed from the AUR ({pkg}). Update it with {cmd}	{name} 是從 AUR 安裝的（{pkg}）。請使用 {cmd} 更新。

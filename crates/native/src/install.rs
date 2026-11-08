@@ -24,7 +24,7 @@
 use std::path::{Path, PathBuf};
 
 use artcraft_launcher_core::Arch;
-use artcraft_launcher_core::protocol::{CANCELLED, INSTALL_CANCELLED, InstallLocations, JobPhase};
+use artcraft_launcher_core::protocol::{Blocker, CANCELLED, INSTALL_CANCELLED, InstallFailure, InstallLocations, JobPhase};
 use artcraft_launcher_core::release::{self, Asset, Release};
 use artcraft_launcher_core::{CraftApp, InstallSource, Installed, PackageKind, version};
 
@@ -46,6 +46,10 @@ pub struct Job<'a> {
     pub approved_path: Option<&'a Path>,
     /// Set only when the person chose this older version by name over a newer installed copy.
     pub downgrade: Option<Downgrade<'a>>,
+    /// Set by [`install_at`] when it stops for a cause the app's card keeps until the next try:
+    /// the app or its command-line tool is running, another installation is in progress, a file
+    /// is in use or access to it is denied, or the Windows Installer failed.
+    pub failure: Option<InstallFailure>,
 }
 
 /// How a downgrade the person chose is undone if it fails.
@@ -117,11 +121,13 @@ pub fn install_at(
     let destination = destination(app, kind, existing, previous, job.install_locations)?;
     #[cfg(windows)]
     let destination = msi_update_folder(app, kind, existing, destination);
-    if let Some(inst) = existing
-        && inst.source.launcher_can_update()
-        && process::is_running(Path::new(&inst.location))
+    // The copy being replaced, when a running app or command-line tool would stop the update.
+    let running_copy = existing.filter(|inst| inst.source.launcher_can_update()).map(|inst| Path::new(&inst.location));
+    if let Some(location) = running_copy
+        && let Some((error, failure)) = open_failure(app, location, &process::app_running(&running_targets(app, location)), None)
     {
-        return Err(format!("{} is running. Quit it, then try again.", app.name));
+        job.failure = Some(failure);
+        return Err(error);
     }
     if kind == PackageKind::Flatpak
         && let Some(installed) = existing.filter(|installed| installed.source == InstallSource::Flatpak && installed.externally_managed)
@@ -168,8 +174,19 @@ pub fn install_at(
     #[cfg_attr(not(windows), allow(unused_variables))]
     let (file, sha256) = download(release, asset, job)?;
     log::info!("{}: download ready ({}), running installer...", app.name, file.display());
+    // The app may have been started while the download ran. The download stays for the next try.
+    if let Some(location) = running_copy
+        && let Some((error, failure)) = open_failure(app, location, &process::app_running(&running_targets(app, location)), None)
+    {
+        job.failure = Some(failure);
+        return Err(error);
+    }
     // Past this point the install can't be interrupted halfway.
     (job.phase)(JobPhase::Installing);
+    #[cfg(windows)]
+    let mut msi_exit = None;
+    #[cfg(windows)]
+    let mut refused = None;
     #[allow(unused_variables)]
     let version = release.version_label();
     let result = match kind {
@@ -204,13 +221,20 @@ pub fn install_at(
                     job.stop,
                     &mut *job.phase,
                 ),
-                None => windows::run_msi(&file, destination.as_deref(), msi_scope, job.stop, &mut *job.phase),
+                None => windows::run_msi(&file, destination.as_deref(), msi_scope, job.stop, &mut *job.phase, &mut msi_exit),
             }
             .map(|_| None)
         }
         #[cfg(windows)]
-        PackageKind::PortableZip => {
-            crate::portable::install(app, &file, &version, previous, job.paths, destination.as_deref(), job.replace, &mut |record| {
+        PackageKind::PortableZip => crate::portable::install_noting(
+            app,
+            &file,
+            &version,
+            previous,
+            job.paths,
+            destination.as_deref(),
+            job.replace,
+            &mut |record| {
                 if release.version.is_some() && crate::detect::windows::executable_version(&record.path).as_ref() != release.version.as_ref() {
                     return Err("The portable executable does not match the selected version. The installation was rolled back.".into());
                 }
@@ -218,9 +242,10 @@ pub fn install_at(
                     Some(commit) => commit(record),
                     None => Ok(()),
                 }
-            })
-            .map(Some)
-        }
+            },
+            &mut refused,
+        )
+        .map(Some),
         #[cfg(target_os = "linux")]
         PackageKind::Deb | PackageKind::Rpm | PackageKind::ArchPkg | PackageKind::Flatpak => {
             linux::install_package(kind, &file, existing.and_then(|installed| installed.installation.as_deref()), job.stop, &mut *job.phase).map(
@@ -246,6 +271,26 @@ pub fn install_at(
         PackageKind::TarGz => linux::install_tree(app, &file, job.paths).map(|path| Some(record(&version, kind, path, Vec::new(), false))),
         other => Err(format!("{} isn't supported on this system", other.label())),
     };
+    // Name what stopped it, checking again whether the app or its command-line tool is running.
+    #[cfg(windows)]
+    let result = match result {
+        Err(error) => {
+            let running = || running_copy.map_or(process::Running::No, |location| process::app_running(&running_targets(app, location)));
+            let classified = match (&refused, &msi_exit) {
+                (Some(refused), _) => Some(file_failure(app, running_copy, refused.code, &refused.path, &error, &running())),
+                (None, Some((code, log))) => msi_failure(app, running_copy, *code, log, running),
+                (None, None) => None,
+            };
+            Err(match classified {
+                Some((message, failure)) => {
+                    job.failure = Some(failure);
+                    message.unwrap_or(error)
+                }
+                None => error,
+            })
+        }
+        ok => ok,
+    };
     match &result {
         Ok(_) => log::info!("{}: successfully installed/updated to {}", app.name, release.version_label()),
         Err(e) if e == CANCELLED => log::info!("{}: installation cancelled", app.name),
@@ -261,6 +306,101 @@ pub fn install_at(
     }
     // The system's own prompt was dismissed: the download itself wasn't cancelled.
     result.map_err(|e| if e == CANCELLED { INSTALL_CANCELLED.to_string() } else { e })
+}
+
+/// The executables whose running process stops an update of the copy at `location`: the copy
+/// itself and, on Windows, the command-line tool beside it (`<app>-cli.exe`).
+fn running_targets(app: &CraftApp, location: &Path) -> Vec<PathBuf> {
+    let mut targets = vec![location.to_path_buf()];
+    if cfg!(windows)
+        && let Some(folder) = location.parent()
+    {
+        targets.extend(app.stems().map(|stem| folder.join(format!("{stem}-cli.exe"))));
+    }
+    targets
+}
+
+/// The message and the card's cause when `running` says the copy at `location` or its
+/// command-line tool is running; `None` when neither is. `details` (an error code, a file) goes
+/// before the program in the card's details.
+fn open_failure(app: &CraftApp, location: &Path, running: &process::Running, details: Option<&str>) -> Option<(String, InstallFailure)> {
+    let (error, blocker, program) = match running {
+        process::Running::No => return None,
+        process::Running::Confirmed(path) if path.as_path() == location => {
+            (format!("{} is running. Quit it, then try again.", app.name), Blocker::AppOpen, path.display().to_string())
+        }
+        process::Running::Confirmed(path) => {
+            (format!("{}'s command-line tool is running. Quit it, then try again.", app.name), Blocker::AppOpen, path.display().to_string())
+        }
+        process::Running::Possible(name) => {
+            (format!("A program named {name} is running. If it is {}, quit it, then try again.", app.name), Blocker::MaybeAppOpen, name.clone())
+        }
+    };
+    let details = details.into_iter().map(str::to_string).chain(std::iter::once(program)).collect::<Vec<_>>().join(" · ");
+    Some((error, InstallFailure { blocker, details }))
+}
+
+/// The card's cause when the Windows Installer stopped an install with `code` (its log at
+/// `log`), and a message to show instead of the installer's own when a running app explains it.
+/// Error 1618 is another installation in progress. Error 1603 says only that the installation
+/// failed: it counts as the app being open only when `running`, checked after the installer
+/// stopped, finds the copy at `location` or its command-line tool. `None` for success and for a
+/// dismissed prompt.
+#[cfg(any(windows, test))]
+fn msi_failure(
+    app: &CraftApp,
+    location: Option<&Path>,
+    code: i32,
+    log: &Path,
+    running: impl FnOnce() -> process::Running,
+) -> Option<(Option<String>, InstallFailure)> {
+    let raw = format!("MSI {code}");
+    let failure = |blocker, details: Vec<String>| InstallFailure { blocker, details: details.join(" · ") };
+    match code {
+        0 | 3010 | 1641 | 1602 => None,
+        1618 => Some((None, failure(Blocker::InstallerBusy, vec![raw, log.display().to_string()]))),
+        1603 => {
+            let open = location.and_then(|location| open_failure(app, location, &running(), Some(&raw)));
+            Some(match open {
+                Some((error, mut open)) => {
+                    open.details = format!("{} · {}", open.details, log.display());
+                    (Some(error), open)
+                }
+                None => (None, failure(Blocker::InstallerFailed, vec![raw, log.display().to_string()])),
+            })
+        }
+        _ => Some((None, failure(Blocker::InstallerFailed, vec![raw, log.display().to_string()]))),
+    }
+}
+
+/// The card's cause and the message when Windows refused to remove or write `file` with error
+/// `code` while replacing a portable copy. A running copy at `location` or its command-line tool
+/// explains either code; without one, 32 is a file another program has open and 5 a denied
+/// access. When the previous files couldn't be put back, `error` says so and where they are, so
+/// it stays the message and ends the details.
+#[cfg(any(windows, test))]
+fn file_failure(
+    app: &CraftApp,
+    location: Option<&Path>,
+    code: i32,
+    file: &Path,
+    error: &str,
+    running: &process::Running,
+) -> (Option<String>, InstallFailure) {
+    let raw = format!("Windows error {code} · {}", file.display());
+    let (message, mut failure) = match location.and_then(|location| open_failure(app, location, running, Some(&raw))) {
+        Some((message, failure)) => (message, failure),
+        None if code == 32 => (
+            format!("Another program is using {}. Close it, then try again.", file.display()),
+            InstallFailure { blocker: Blocker::FileInUse, details: raw },
+        ),
+        None => (format!("Windows denied access to {}.", file.display()), InstallFailure { blocker: Blocker::AccessDenied, details: raw }),
+    };
+    if error.contains("could not restore the previous version") {
+        failure.details = format!("{} · {error}", failure.details);
+        return (None, failure);
+    }
+    (Some(message), failure)
 }
 
 /// Rejects an artifact whose own identity disagrees with the release that authorized it.
@@ -2141,20 +2281,22 @@ pub mod windows {
 
     /// Runs an MSI with a progress window and no restart. Windows asks for permission itself.
     /// `scope`, from the copy being replaced's registration, keeps the update in the same
-    /// Windows Installer context (see [`MsiScope`]).
+    /// Windows Installer context (see [`MsiScope`]). `exit` gets the installer's exit code and
+    /// the path of its log once it has run.
     pub fn run_msi(
         msi: &Path,
         destination: Option<&Path>,
         scope: Option<MsiScope>,
         stop: &Stop,
         phase: &mut dyn FnMut(JobPhase),
+        exit: &mut Option<(i32, PathBuf)>,
     ) -> Result<(), String> {
-        in_turn(stop, phase, JobPhase::Installing, || run_direct(msi, destination, scope))
+        in_turn(stop, phase, JobPhase::Installing, || run_direct(msi, destination, scope, exit))
     }
 
     /// Runs one MSI by itself: `msiexec` asks for permission itself, and the prompt names the package's
-    /// publisher.
-    fn run_direct(msi: &Path, destination: Option<&Path>, scope: Option<MsiScope>) -> Result<(), String> {
+    /// publisher. `exit` gets its exit code and the path of its log.
+    fn run_direct(msi: &Path, destination: Option<&Path>, scope: Option<MsiScope>, exit: &mut Option<(i32, PathBuf)>) -> Result<(), String> {
         use std::os::windows::process::CommandExt;
         let mut command = msi_command(&msiexec(), msi)?;
         if let Some(dir) = destination {
@@ -2164,6 +2306,7 @@ pub mod windows {
             command.raw_arg(argument);
         }
         let status = command.status().map_err(|e| format!("couldn't start the Windows Installer ({e})"))?;
+        *exit = status.code().map(|code| (code, msi_log(msi)));
         explain(status.code()).map_err(|e| match status.code() {
             Some(1602) | None => e,
             _ => format!("{e}. Its log is at {}", msi_log(msi).display()),
@@ -2227,8 +2370,8 @@ pub mod windows {
                 chosen: chosen.version,
                 previous: previous.version,
                 remove: &mut || remove_registrations(app),
-                install_chosen: &mut || run_direct(chosen.file, destination, scope),
-                reinstall_previous: &mut || run_direct(previous.file, destination, scope),
+                install_chosen: &mut || run_direct(chosen.file, destination, scope, &mut None),
+                reinstall_previous: &mut || run_direct(previous.file, destination, scope, &mut None),
             })
         })
     }
@@ -2301,6 +2444,128 @@ pub mod windows {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn photocraft_copy() -> (PathBuf, PathBuf) {
+        (PathBuf::from(r"C:\Apps\PhotoCraft\photocraft.exe"), PathBuf::from(r"C:\Apps\PhotoCraft\photocraft-cli.exe"))
+    }
+
+    /// A running app or command-line tool stops an update and is named; a program known only by
+    /// its file name is not stated as this copy.
+    #[test]
+    fn a_running_app_or_command_line_tool_stops_an_update_and_says_which() {
+        let app = CraftApp::by_id("photocraft").unwrap();
+        let (exe, cli) = photocraft_copy();
+        if cfg!(windows) {
+            assert!(running_targets(app, &exe).contains(&cli), "the command-line tool beside the app is checked");
+        }
+        let (error, failure) = open_failure(app, &exe, &process::Running::Confirmed(exe.clone()), None).unwrap();
+        assert_eq!(error, "PhotoCraft is running. Quit it, then try again.");
+        assert_eq!(failure, InstallFailure { blocker: Blocker::AppOpen, details: exe.display().to_string() });
+        let (error, failure) = open_failure(app, &exe, &process::Running::Confirmed(cli.clone()), None).unwrap();
+        assert_eq!(error, "PhotoCraft's command-line tool is running. Quit it, then try again.");
+        assert_eq!(failure, InstallFailure { blocker: Blocker::AppOpen, details: cli.display().to_string() });
+        let (error, failure) = open_failure(app, &exe, &process::Running::Possible("photocraft.exe".into()), None).unwrap();
+        assert_eq!(error, "A program named photocraft.exe is running. If it is PhotoCraft, quit it, then try again.");
+        assert_eq!(failure, InstallFailure { blocker: Blocker::MaybeAppOpen, details: "photocraft.exe".into() });
+        assert_eq!(open_failure(app, &exe, &process::Running::No, None), None);
+    }
+
+    /// Windows Installer 1618 is another installation; 1603 is the app being open only when the
+    /// app or its command-line tool is found running afterwards.
+    #[test]
+    fn a_windows_installer_error_names_its_cause_only_with_evidence() {
+        let app = CraftApp::by_id("photocraft").unwrap();
+        let (exe, cli) = photocraft_copy();
+        let log = Path::new(r"C:\Cache\photocraft-0.6.0-windows-x64.log");
+        let busy = msi_failure(app, Some(&exe), 1618, log, || panic!("1618 needs no process check")).unwrap();
+        assert_eq!(busy, (None, InstallFailure { blocker: Blocker::InstallerBusy, details: format!("MSI 1618 · {}", log.display()) }));
+        let failed = msi_failure(app, Some(&exe), 1603, log, || process::Running::No).unwrap();
+        assert_eq!(failed, (None, InstallFailure { blocker: Blocker::InstallerFailed, details: format!("MSI 1603 · {}", log.display()) }));
+        let (error, open) = msi_failure(app, Some(&exe), 1603, log, || process::Running::Confirmed(cli.clone())).unwrap();
+        assert_eq!(error.as_deref(), Some("PhotoCraft's command-line tool is running. Quit it, then try again."));
+        assert_eq!(open, InstallFailure { blocker: Blocker::AppOpen, details: format!("MSI 1603 · {} · {}", cli.display(), log.display()) });
+        let (error, maybe) = msi_failure(app, Some(&exe), 1603, log, || process::Running::Possible("photocraft.exe".into())).unwrap();
+        assert!(error.is_some_and(|e| e.starts_with("A program named photocraft.exe")));
+        assert_eq!(maybe.blocker, Blocker::MaybeAppOpen);
+        // A fresh install has no copy that could be open.
+        let fresh = msi_failure(app, None, 1603, log, || panic!("no copy to check")).unwrap();
+        assert_eq!(fresh.1.blocker, Blocker::InstallerFailed);
+        assert_eq!(msi_failure(app, Some(&exe), 1925, log, || process::Running::No).unwrap().1.details, format!("MSI 1925 · {}", log.display()));
+        for success_or_dismissed in [0, 3010, 1641, 1602] {
+            assert_eq!(msi_failure(app, Some(&exe), success_or_dismissed, log, || panic!("no failure")), None, "{success_or_dismissed}");
+        }
+    }
+
+    /// A portable replacement refused with Windows error 32 or 5 keeps the code and file, and calls
+    /// the app open only when it is found running.
+    #[test]
+    fn a_refused_portable_file_names_its_cause_only_with_evidence() {
+        let app = CraftApp::by_id("photocraft").unwrap();
+        let (exe, cli) = photocraft_copy();
+        let file = Path::new(r"C:\Apps\PhotoCraft\lib.dll");
+        let (error, failure) = file_failure(app, Some(&exe), 32, file, "os error 32", &process::Running::No);
+        assert_eq!(error.as_deref(), Some(r"Another program is using C:\Apps\PhotoCraft\lib.dll. Close it, then try again."));
+        assert_eq!(failure, InstallFailure { blocker: Blocker::FileInUse, details: r"Windows error 32 · C:\Apps\PhotoCraft\lib.dll".into() });
+        let (error, failure) = file_failure(app, Some(&exe), 5, &exe, "os error 5", &process::Running::No);
+        assert_eq!(error.as_deref(), Some(r"Windows denied access to C:\Apps\PhotoCraft\photocraft.exe."));
+        assert_eq!(
+            failure,
+            InstallFailure { blocker: Blocker::AccessDenied, details: r"Windows error 5 · C:\Apps\PhotoCraft\photocraft.exe".into() }
+        );
+        let (error, failure) = file_failure(app, Some(&exe), 5, &exe, "os error 5", &process::Running::Confirmed(cli.clone()));
+        assert_eq!(error.as_deref(), Some("PhotoCraft's command-line tool is running. Quit it, then try again."));
+        assert_eq!(failure.blocker, Blocker::AppOpen);
+        assert_eq!(failure.details, format!(r"Windows error 5 · C:\Apps\PhotoCraft\photocraft.exe · {}", cli.display()));
+        // When the previous files couldn't be put back, the error that says where they are stays.
+        let unrestored = r"os error 32; could not restore the previous version (disk full). Recovery files: C:\Cache\staging\photocraft";
+        let (error, failure) = file_failure(app, Some(&exe), 32, file, unrestored, &process::Running::No);
+        assert_eq!(error, None);
+        assert!(failure.details.ends_with(unrestored), "{}", failure.details);
+    }
+
+    /// The running copy is found before anything is downloaded: here the copy is this test
+    /// program itself, which is running.
+    #[cfg(windows)]
+    #[test]
+    fn a_running_copy_stops_an_update_before_the_download() {
+        use crate::http::tests::{Reply, body, serve};
+        let app = CraftApp::by_id("photocraft").unwrap();
+        let (body, sha) = body();
+        let (url, requests) = serve(body.clone(), vec![Reply::Full]);
+        let asset = Asset { name: "photocraft-0.6.0-test.pkg".into(), size: body.len() as u64, url, sha256: Some(sha) };
+        let release = Release { assets: vec![asset.clone()], ..Release::default() };
+        let dir = tempfile::tempdir().unwrap();
+        let paths = Paths::under(dir.path());
+        let http = Http::new().unwrap();
+        let running = std::env::current_exe().unwrap();
+        let installed = Installed {
+            version: version::parse("0.5.0"),
+            source: InstallSource::Msi,
+            location: running.display().to_string(),
+            package: None,
+            externally_managed: false,
+            origin: None,
+            installation: None,
+        };
+        let mut phases = Vec::new();
+        let mut phase = |p: JobPhase| phases.push(p);
+        let mut job = Job {
+            http: &http,
+            paths: &paths,
+            stop: &Stop::default(),
+            phase: &mut phase,
+            install_locations: &InstallLocations::default(),
+            replace: false,
+            approved_path: None,
+            downgrade: None,
+            failure: None,
+        };
+        let error = install(app, &release, &asset, PackageKind::Dmg, Some(&installed), None, &mut job).unwrap_err();
+        assert_eq!(error, "PhotoCraft is running. Quit it, then try again.");
+        assert_eq!(job.failure, Some(InstallFailure { blocker: Blocker::AppOpen, details: running.display().to_string() }));
+        assert!(requests.lock().unwrap().is_empty(), "nothing was downloaded");
+        assert!(phases.is_empty());
+    }
 
     /// A folder found only by the launch fallback, in another scope, never reaches the installer.
     #[cfg(windows)]
@@ -2738,6 +3003,7 @@ mod tests {
                 replace: false,
                 approved_path: None,
                 downgrade: Some(Downgrade::Reinstall { previous: &newer, asset: &newer_msi }),
+                failure: None,
             };
             install(app, &older, &older_msi, PackageKind::Msi, Some(&portable), None, &mut job).unwrap_err()
         };
@@ -2852,6 +3118,7 @@ mod tests {
                     replace: false,
                     approved_path: None,
                     downgrade,
+                    failure: None,
                 };
                 install(app, &release, &asset, kind, Some(&installed), previous, &mut job).unwrap_err()
             };
@@ -2891,6 +3158,7 @@ mod tests {
                 replace: false,
                 approved_path: None,
                 downgrade: None,
+                failure: None,
             };
             let err = install(app, &release, &asset, kind, None, None, &mut job).unwrap_err();
             assert!(err.contains("isn't supported"), "{err}");
@@ -2924,6 +3192,7 @@ mod tests {
             replace: false,
             approved_path: None,
             downgrade: None,
+            failure: None,
         };
         let error = install(app, &release, &asset, PackageKind::AppImage, None, None, &mut job).unwrap_err();
         assert!(error.contains("folder is unavailable") || (process::in_sandbox() && error.contains("aren't supported")), "{error}");
@@ -2956,6 +3225,7 @@ mod tests {
             replace: false,
             approved_path: None,
             downgrade: None,
+            failure: None,
         };
         let err = install(app, &release, &asset, kind, None, None, &mut job).unwrap_err();
         assert!(err.contains("publishes no checksum"), "{err}");
@@ -3591,6 +3861,7 @@ mod tests {
             replace: false,
             approved_path: None,
             downgrade: None,
+            failure: None,
         };
         let result = install_at(app, &release, &asset, PackageKind::AppImage, Some(&installed), None, &mut job, None);
         assert!(result.is_err());
@@ -3623,6 +3894,7 @@ mod tests {
             replace: false,
             approved_path: None,
             downgrade: None,
+            failure: None,
         };
         let result = install_at(app, &release, &asset, PackageKind::AppImage, None, None, &mut job, None);
         assert!(result.is_err(), "mismatched artifact version must be rejected");

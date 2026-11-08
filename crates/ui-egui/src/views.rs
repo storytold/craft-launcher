@@ -64,9 +64,10 @@ pub(crate) fn date_text(secs: i64) -> String {
 /// What the main button of an app does.
 enum Primary {
     Install,
-    /// The download is already here; only the install step is left. Carries the button's label
-    /// and shorter ones for when it doesn't fit.
-    Retry(String, Vec<&'static str>),
+    /// The download is already here and only the install step is left, or the last try was
+    /// stopped by a cause the card names. Carries the button's label, shorter ones for when it
+    /// doesn't fit, and whether the download is kept.
+    Retry(String, Vec<&'static str>, bool),
     Update(String),
     /// A pinned release only installs after the backend has checked that exact tag.
     SelectedVersion {
@@ -107,8 +108,8 @@ impl UpdateLabels {
     /// The labels when `primary` installs an update or retries one; `None` otherwise.
     fn of(primary: Primary) -> Option<Self> {
         match primary {
-            Primary::Retry(label, shorter) => {
-                Some(Self { label, shorter, tip: Some(tl!("The download is still here. It's checked again, then installed.")) })
+            Primary::Retry(label, shorter, kept) => {
+                Some(Self { label, shorter, tip: kept.then_some(tl!("The download is still here. It's checked again, then installed.")) })
             }
             Primary::Update(v) => Some(Self { label: fmt(tl!("Update to {v}"), &[("v", &v)]), shorter: vec![tl!("Update")], tip: None }),
             _ => None,
@@ -653,6 +654,13 @@ impl LauncherUi {
             });
             ui.add_space(8.0);
         }
+        // What stopped the last try takes the place of the blurb until the next try.
+        let blocked = entry.blocked.as_ref().filter(|_| entry.job.is_none());
+        if let Some(failure) = blocked {
+            crate::card_parts::blurb(ui, &model::blocker_text(failure.blocker, app.name), t.ink, 3);
+            ui.add_space(4.0);
+            ui.add(egui::Label::new(RichText::new(model::blocker_details(failure)).size(12.0).color(t.muted)).truncate());
+        }
         // Until a version is known, the sentence that says why (no release yet, installed…) stays.
         if version.is_empty() {
             let line = version_line(&entry, &status);
@@ -661,7 +669,9 @@ impl LauncherUi {
                 ui.add_space(8.0);
             }
         }
-        if let Some(details) = AppDetails::by_id(id) {
+        if blocked.is_none()
+            && let Some(details) = AppDetails::by_id(id)
+        {
             crate::card_parts::blurb(ui, details.headline, t.muted, 4);
         }
         if let Some(line) = crate::card_parts::last_updated(&entry) {
@@ -888,7 +898,9 @@ impl LauncherUi {
             model::entry_status_text(entry, status, self.caps.manage_apps)
         };
         let r = widgets::badge(ui, &text, widgets::tone_color(t, tone));
-        if let Some(f) = entry.failure() {
+        if let Some(failure) = entry.blocked.as_ref().filter(|_| entry.job.is_none()) {
+            r.on_hover_text(format!("{}\n{}", model::blocker_text(failure.blocker, entry.app.name), model::blocker_details(failure)));
+        } else if let Some(f) = entry.failure() {
             r.on_hover_text(fmt(tl!("Couldn't check for updates: {f}"), &[("f", f)]));
         }
     }
@@ -956,11 +968,14 @@ impl LauncherUi {
                 && !matches!(status, AppStatus::Checking | AppStatus::NoRelease | AppStatus::Unavailable);
             return Primary::SelectedVersion { tag: tag.clone(), checked };
         }
+        // A kept download, or a named cause of the last failure, makes the next try a retry.
+        let retry = entry.ready || entry.blocked.is_some();
         match status {
-            AppStatus::Available if entry.ready => Primary::Retry(tl!("Retry install").into(), vec![tl!("Install")]),
-            AppStatus::UpdateAvailable if entry.ready => Primary::Retry(
+            AppStatus::Available if retry => Primary::Retry(tl!("Retry install").into(), vec![tl!("Install")], entry.ready),
+            AppStatus::UpdateAvailable if retry => Primary::Retry(
                 fmt(tl!("Retry update to {version}"), &[("version", &entry.latest_label().unwrap_or_default())]),
                 vec![tl!("Retry update"), tl!("Update")],
+                entry.ready,
             ),
             AppStatus::Available => Primary::Install,
             AppStatus::UpdateAvailable => Primary::Update(entry.latest_label().unwrap_or_default()),

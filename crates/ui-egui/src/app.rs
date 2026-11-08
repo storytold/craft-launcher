@@ -610,6 +610,12 @@ impl LauncherUi {
                 self.dialog = Some(Dialog::Replace { app, path });
                 false
             }
+            Event::Blocked { app, failure } => {
+                if let Some(e) = self.entry_mut(&app) {
+                    e.blocked = failure;
+                }
+                false
+            }
             Event::JobFinished { app, result } => {
                 self.on_job_finished(app, result);
                 true
@@ -648,6 +654,8 @@ impl LauncherUi {
             }
         } else if let Some(e) = self.entry_mut(&app) {
             e.job = Some(phase);
+            // A new try has started, so the cause of the last one is cleared.
+            e.blocked = None;
         }
     }
 

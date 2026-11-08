@@ -9,7 +9,8 @@ use std::sync::OnceLock;
 
 use artcraft_launcher_core::details::AppDetails;
 use artcraft_launcher_core::protocol::{
-    Backend, CANCELLED, Capabilities, Command, Event, INSTALL_CANCELLED, JobPhase, LatestRelease, Origin, PausedDownload, Source,
+    Backend, Blocker, CANCELLED, Capabilities, Command, Event, INSTALL_CANCELLED, InstallFailure, JobPhase, LatestRelease, Origin, PausedDownload,
+    Source,
 };
 use artcraft_launcher_core::release::{Asset, Release};
 use artcraft_launcher_core::status::InstallSource;
@@ -1418,6 +1419,44 @@ fn only_a_waiting_update_splits_the_main_button() {
     h.get_by_label("Retry update to 0.6.0").click();
     h.run_steps(2);
     assert_eq!(launches_and_installs(&sent, "effectcraft"), (0, 1), "{:?}", sent.borrow());
+}
+
+#[test]
+/// An update stopped by a running app says why on its card, with the details, until the next
+/// try. Retry is offered even though no download was kept, and it starts the update again.
+fn a_blocked_update_says_why_and_can_be_retried() {
+    let blocked = |failure| Event::Blocked { app: "photocraft".into(), failure };
+    let open = InstallFailure { blocker: Blocker::AppOpen, details: r"C:\Apps\PhotoCraft\photocraft-cli.exe".into() };
+    let mut ev = events();
+    ev.push(blocked(Some(open.clone())));
+    ev.push(Event::JobFinished {
+        app: "photocraft".into(),
+        result: Err("PhotoCraft's command-line tool is running. Quit it, then try again.".into()),
+    });
+    for view in [ViewMode::Grid, ViewMode::Table] {
+        let (mut h, sent) = harness_with(ev.clone(), view, egui::Theme::Dark, true, 1.0);
+        h.run_steps(8);
+        assert!(h.query_by_label("Update stopped").is_some(), "{view:?}: the status names the stop");
+        if view == ViewMode::Grid {
+            h.get_by_label("PhotoCraft or its command-line tool is open. Close it, then press Retry.");
+            h.get_by_label(r"Details: C:\Apps\PhotoCraft\photocraft-cli.exe");
+        }
+        assert!(h.query_by_label("Update to 0.5.0").is_none(), "{view:?}: the update is a retry");
+        sent.borrow_mut().clear();
+        h.get_by_label("Retry update to 0.5.0").click();
+        h.run_steps(2);
+        assert_eq!(launches_and_installs(&sent, "photocraft"), (0, 1), "{view:?}: {:?}", sent.borrow());
+    }
+
+    // A later try that finishes clears it.
+    let mut ev = events();
+    ev.push(blocked(Some(open)));
+    ev.push(blocked(None));
+    let (mut h, _) = harness_with(ev, ViewMode::Grid, egui::Theme::Dark, true, 1.0);
+    h.run_steps(8);
+    assert!(h.query_by_label("Update stopped").is_none());
+    assert!(h.query_by_label_contains("command-line tool is open").is_none());
+    h.get_by_label("Update to 0.5.0");
 }
 
 #[test]

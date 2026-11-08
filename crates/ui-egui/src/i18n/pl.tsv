@@ -232,6 +232,15 @@ month	Dec	gru
 	Not available here	Niedostępna w tym systemie
 	Updating…	Aktualizowanie…
 	Update paused	Aktualizacja wstrzymana
+	Update stopped	Aktualizacja zatrzymana
+	Install stopped	Instalacja zatrzymana
+	{name} or its command-line tool is open. Close it, then press Retry.	{name} lub narzędzie wiersza poleceń tej aplikacji jest otwarte. Zamknij je i spróbuj ponownie.
+	A program with the same name as {name} is running. If it is this copy, close it, then press Retry.	Działa program o tej samej nazwie co {name}. Jeśli to ta kopia, zamknij go i spróbuj ponownie.
+	Another installation is in progress. Wait for it to finish, then press Retry.	Trwa inna instalacja. Poczekaj, aż się zakończy, i spróbuj ponownie.
+	Another program is using a file of {name}. Close that program, then press Retry.	Inny program używa pliku aplikacji {name}. Zamknij ten program i spróbuj ponownie.
+	Windows denied access to a file of {name}. Check the folder's permissions, then press Retry.	Windows odmówił dostępu do pliku aplikacji {name}. Sprawdź uprawnienia folderu i spróbuj ponownie.
+	The Windows Installer couldn't finish. The details below give its error code and log.	Instalator Windows nie mógł dokończyć pracy. Poniższe szczegóły podają kod błędu i dziennik.
+	Details: {details}	Szczegóły: {details}
 	Download paused	Pobieranie wstrzymane
 	{version} installed → {latest} released	{version} zainstalowana → {latest} wydana
 	Version {version}	Wersja {version}
@@ -321,6 +330,10 @@ filter	Installed	Zainstalowane
 @msg	{name} installed: {version} (this release publishes no checksum, so only its size was checked)	Zainstalowano {name} w wersji {version} (to wydanie nie zawiera sumy kontrolnej, więc sprawdzono tylko rozmiar)
 @msg	{name} was removed	Usunięto {name}
 @msg	{name} is running. Quit it, then try again.	{name} jest uruchomiona. Zamknij ją i spróbuj ponownie.
+@msg	{name}'s command-line tool is running. Quit it, then try again.	Narzędzie wiersza poleceń aplikacji {name} jest uruchomione. Zamknij je i spróbuj ponownie.
+@msg	A program named {program} is running. If it is {name}, quit it, then try again.	Działa program o nazwie {program}. Jeśli to {name}, zamknij go i spróbuj ponownie.
+@msg	Another program is using {file}. Close it, then try again.	Inny program używa pliku {file}. Zamknij go i spróbuj ponownie.
+@msg	Windows denied access to {file}.	Windows odmówił dostępu do {file}.
 @msg	{name} was installed from the {repo} repository or the AUR ({pkg}). Update it with {cmd} or sudo pacman -Syu	{name} została zainstalowana z repozytorium {repo} lub AUR ({pkg}). Zaktualizuj ją poleceniem {cmd} lub sudo pacman -Syu
 @msg	{name} was installed from the {repo} repository or the AUR ({pkg}). Update it with your AUR helper (for example: yay -S {pkg}) or sudo pacman -Syu	{name} została zainstalowana z repozytorium {repo} lub AUR ({pkg}). Zaktualizuj ją za pomocą swojego pomocnika AUR (na przykład: yay -S {pkg}) lub poleceniem sudo pacman -Syu
 @msg	{name} was installed from the AUR ({pkg}). Update it with {cmd}	{name} została zainstalowana z AUR ({pkg}). Zaktualizuj ją poleceniem {cmd}

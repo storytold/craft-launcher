@@ -192,6 +192,25 @@ fn recorded_files<'a>(app: &CraftApp, record: &'a Record) -> Result<(&'a Path, V
     Ok((root, files))
 }
 
+/// A file operation of a portable replacement that Windows refused, with its raw error code: 5
+/// (access denied) or 32 (another program has the file open).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Refused {
+    pub code: i32,
+    pub path: PathBuf,
+}
+
+/// `error` as text, kept in `refused` when it is Windows error 5 or 32 on `path` and nothing was
+/// kept before.
+fn noted(error: std::io::Error, path: &Path, refused: &mut Option<Refused>) -> String {
+    if refused.is_none()
+        && let Some(code @ (5 | 32)) = error.raw_os_error()
+    {
+        *refused = Some(Refused { code, path: dunce::simplified(path).to_path_buf() });
+    }
+    error.to_string()
+}
+
 /// Keeps existing portable installations at their location and preserves unrecorded user files,
 /// unless `replace` allows writing over them.
 #[allow(clippy::too_many_arguments)]
@@ -204,6 +223,23 @@ pub fn install(
     directory: Option<&Path>,
     replace: bool,
     commit: &mut dyn FnMut(&Record) -> Result<(), String>,
+) -> Result<Record, String> {
+    install_noting(app, file, version, previous, paths, directory, replace, commit, &mut None)
+}
+
+/// [`install`], which also sets `refused` when Windows refuses to remove or write a program file
+/// with error 5 or 32 (see [`Refused`]).
+#[allow(clippy::too_many_arguments)]
+pub fn install_noting(
+    app: &CraftApp,
+    file: &Path,
+    version: &str,
+    previous: Option<&Record>,
+    paths: &Paths,
+    directory: Option<&Path>,
+    replace: bool,
+    commit: &mut dyn FnMut(&Record) -> Result<(), String>,
+    refused: &mut Option<Refused>,
 ) -> Result<Record, String> {
     let (destination, mut old_files) = match previous {
         Some(record) => {
@@ -271,16 +307,16 @@ pub fn install(
             std::fs::create_dir_all(saved.parent().ok_or("no backup folder")?).map_err(|e| e.to_string())?;
             // Copy the rollback copy: cache and custom installation can be on different drives.
             std::fs::copy(&old, &saved).map_err(|e| e.to_string())?;
-            std::fs::remove_file(&old).map_err(|e| e.to_string())?;
+            std::fs::remove_file(&old).map_err(|e| noted(e, &old, refused))?;
             moved.push(relative.clone());
         }
         for relative in &files {
             let target = destination.join(relative);
             std::fs::create_dir_all(target.parent().ok_or("no destination folder")?).map_err(|e| e.to_string())?;
             let mut input = std::fs::File::open(unpacked.join(relative)).map_err(|e| e.to_string())?;
-            let mut output = std::fs::OpenOptions::new().write(true).create_new(true).open(&target).map_err(|e| e.to_string())?;
+            let mut output = std::fs::OpenOptions::new().write(true).create_new(true).open(&target).map_err(|e| noted(e, &target, refused))?;
             copied.push(relative.clone());
-            std::io::copy(&mut input, &mut output).map_err(|e| e.to_string())?;
+            std::io::copy(&mut input, &mut output).map_err(|e| noted(e, &target, refused))?;
         }
         commit(&record)?;
         Ok::<(), String>(())
@@ -765,6 +801,46 @@ mod tests {
         assert_eq!(std::fs::read(record.path).unwrap(), b"old");
         assert_eq!(std::fs::read(paths.apps().join("photocraft/lib.dll")).unwrap(), b"library");
         assert!(!paths.apps().join("photocraft/new.dll").exists());
+    }
+
+    #[test]
+    fn a_refused_file_operation_keeps_its_raw_code_and_file() {
+        let path = Path::new(r"C:\Apps\photocraft\photocraft.exe");
+        let mut refused = None;
+        assert_eq!(noted(std::io::Error::from_raw_os_error(5), path, &mut refused), std::io::Error::from_raw_os_error(5).to_string());
+        assert_eq!(refused, Some(Refused { code: 5, path: path.to_path_buf() }));
+        // The first refusal is the one that stopped the replacement.
+        noted(std::io::Error::from_raw_os_error(32), Path::new(r"C:\Apps\photocraft\lib.dll"), &mut refused);
+        assert_eq!(refused, Some(Refused { code: 5, path: path.to_path_buf() }));
+        let mut in_use = None;
+        noted(std::io::Error::from_raw_os_error(32), path, &mut in_use);
+        assert_eq!(in_use, Some(Refused { code: 32, path: path.to_path_buf() }));
+        let mut other = None;
+        noted(std::io::Error::from_raw_os_error(2), path, &mut other);
+        assert_eq!(other, None);
+    }
+
+    #[test]
+    fn a_file_another_program_holds_is_named_and_the_previous_program_stays() {
+        use std::os::windows::fs::OpenOptionsExt;
+        let dir = tempfile::tempdir().unwrap();
+        let app = CraftApp::by_id("photocraft").unwrap();
+        let paths = Paths::under(dir.path());
+        let old = archive(dir.path(), "old.zip", &[("photocraft.exe", b"old"), ("lib.dll", b"library")]);
+        let record = install(app, &old, "0.5.0", None, &paths, None, false, &mut |_| Ok(())).unwrap();
+        let held = paths.apps().join("photocraft/lib.dll");
+        // Shared for reading only, as a running program holds its libraries: it can't be removed.
+        let _holder = std::fs::OpenOptions::new().read(true).share_mode(1).open(&held).unwrap();
+        let next = archive(dir.path(), "next.zip", &[("photocraft.exe", b"new"), ("lib.dll", b"new library")]);
+        let mut refused = None;
+        let result = install_noting(app, &next, "0.6.0", Some(&record), &paths, None, false, &mut |_| Ok(()), &mut refused);
+        assert!(result.is_err());
+        let refused = refused.unwrap();
+        assert_eq!(refused.code, 32);
+        assert!(same_windows_path(&refused.path, Path::new(&held.to_string_lossy().replace('/', "\\"))), "{}", refused.path.display());
+        assert!(!refused.path.to_string_lossy().starts_with(r"\\?\"), "shown as a plain path: {}", refused.path.display());
+        assert_eq!(std::fs::read(&record.path).unwrap(), b"old");
+        assert_eq!(std::fs::read(&held).unwrap(), b"library");
     }
 
     #[test]

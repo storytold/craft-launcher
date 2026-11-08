@@ -229,6 +229,15 @@ month	Dec	дек.
 	Not available here	Недоступно здесь
 	Updating…	Обновление…
 	Update paused	Обновление приостановлено
+	Update stopped	Обновление остановлено
+	Install stopped	Установка остановлена
+	{name} or its command-line tool is open. Close it, then press Retry.	{name} или его инструмент командной строки открыт. Закройте его и повторите попытку.
+	A program with the same name as {name} is running. If it is this copy, close it, then press Retry.	Запущена программа с тем же именем, что и {name}. Если это именно эта копия, закройте её и повторите попытку.
+	Another installation is in progress. Wait for it to finish, then press Retry.	Выполняется другая установка. Дождитесь её завершения и повторите попытку.
+	Another program is using a file of {name}. Close that program, then press Retry.	Другая программа использует файл {name}. Закройте эту программу и повторите попытку.
+	Windows denied access to a file of {name}. Check the folder's permissions, then press Retry.	Windows запретила доступ к файлу {name}. Проверьте права доступа к папке и повторите попытку.
+	The Windows Installer couldn't finish. The details below give its error code and log.	Установщику Windows не удалось завершить работу. Ниже указаны код ошибки и журнал.
+	Details: {details}	Подробности: {details}
 	Download paused	Скачивание приостановлено
 	{version} installed → {latest} released	{version} установлено → {latest} выпущено
 	Version {version}	Версия {version}
@@ -302,6 +311,10 @@ filter	Installed	Установлены
 @msg	{name} installed: {version} (this release publishes no checksum, so only its size was checked)	Приложение {name} установлено: {version} (в этом релизе нет контрольных сумм, поэтому проверен только размер)
 @msg	{name} was removed	Приложение {name} удалено
 @msg	{name} is running. Quit it, then try again.	Приложение {name} запущено. Закройте его и попробуйте снова.
+@msg	{name}'s command-line tool is running. Quit it, then try again.	Инструмент командной строки {name} запущен. Закройте его и попробуйте снова.
+@msg	A program named {program} is running. If it is {name}, quit it, then try again.	Запущена программа {program}. Если это {name}, закройте её и попробуйте снова.
+@msg	Another program is using {file}. Close it, then try again.	Другая программа использует {file}. Закройте её и попробуйте снова.
+@msg	Windows denied access to {file}.	Windows запретила доступ к {file}.
 @msg	{name} was installed from the {repo} repository or the AUR ({pkg}). Update it with {cmd} or sudo pacman -Syu	Приложение {name} установлено из репозитория {repo} или из AUR ({pkg}). Обновите его командой {cmd} или sudo pacman -Syu
 @msg	{name} was installed from the {repo} repository or the AUR ({pkg}). Update it with your AUR helper (for example: yay -S {pkg}) or sudo pacman -Syu	Приложение {name} установлено из репозитория {repo} или из AUR ({pkg}). Обновите его с помощью вашего помощника AUR (например: yay -S {pkg}) или командой sudo pacman -Syu
 @msg	{name} was installed from the AUR ({pkg}). Update it with {cmd}	Приложение {name} установлено из AUR ({pkg}). Обновите его командой {cmd}

@@ -1,12 +1,12 @@
 //! What the UI knows about each app.
 
 use artcraft_launcher_core::platform::{Platform, pick_asset};
-use artcraft_launcher_core::protocol::{JobPhase, LatestRelease, PausedDownload};
+use artcraft_launcher_core::protocol::{Blocker, InstallFailure, JobPhase, LatestRelease, PausedDownload};
 use artcraft_launcher_core::release::Release;
 use artcraft_launcher_core::status::{self, AppStatus, Latest};
 use artcraft_launcher_core::{CraftApp, Installed};
 
-use crate::i18n::t;
+use crate::i18n::{fmt, t};
 
 #[derive(Clone, Debug)]
 pub struct AppEntry {
@@ -27,11 +27,25 @@ pub struct AppEntry {
     /// `None` where it gives none (the web build), and then [`Self::has_download`] decides. Only
     /// read while a copy is installed.
     pub installable: Option<bool>,
+    /// What stopped the last install or update, shown until the next try
+    /// ([`Event::Blocked`](artcraft_launcher_core::protocol::Event::Blocked)).
+    pub blocked: Option<InstallFailure>,
 }
 
 impl AppEntry {
     pub fn new(app: &'static CraftApp) -> Self {
-        Self { app, latest: None, installed: None, detected: false, job: None, origin: None, paused: None, ready: false, installable: None }
+        Self {
+            app,
+            latest: None,
+            installed: None,
+            detected: false,
+            job: None,
+            origin: None,
+            paused: None,
+            ready: false,
+            installable: None,
+            blocked: None,
+        }
     }
 
     pub fn release(&self) -> Option<&Release> {
@@ -130,8 +144,28 @@ pub fn entry_status_text(e: &AppEntry, status: &AppStatus, manage_apps: bool) ->
         (Some(JobPhase::Downloading { .. }), _) => (t("Downloading…").to_string(), Tone::Info),
         (None, Some(_)) if status.is_installed() => (t("Update paused").to_string(), Tone::Warn),
         (None, Some(_)) => (t("Download paused").to_string(), Tone::Warn),
+        (None, None) if e.blocked.is_some() && status.is_installed() => (t("Update stopped").to_string(), Tone::Warn),
+        (None, None) if e.blocked.is_some() => (t("Install stopped").to_string(), Tone::Warn),
         _ => status_text(status, manage_apps),
     }
+}
+
+/// What stopped `name`'s last install or update, and what to do before trying again.
+pub fn blocker_text(blocker: Blocker, name: &str) -> String {
+    let text = match blocker {
+        Blocker::AppOpen => t("{name} or its command-line tool is open. Close it, then press Retry."),
+        Blocker::MaybeAppOpen => t("A program with the same name as {name} is running. If it is this copy, close it, then press Retry."),
+        Blocker::InstallerBusy => t("Another installation is in progress. Wait for it to finish, then press Retry."),
+        Blocker::FileInUse => t("Another program is using a file of {name}. Close that program, then press Retry."),
+        Blocker::AccessDenied => t("Windows denied access to a file of {name}. Check the folder's permissions, then press Retry."),
+        Blocker::InstallerFailed => t("The Windows Installer couldn't finish. The details below give its error code and log."),
+    };
+    fmt(text, &[("name", name)])
+}
+
+/// The card's line with the raw details of what stopped an install (error code, file, log).
+pub fn blocker_details(failure: &InstallFailure) -> String {
+    fmt(t("Details: {details}"), &[("details", &failure.details)])
 }
 
 /// Sort rank for "by status": things needing attention first.

@@ -211,6 +211,15 @@ month	Dec	12.
 	Not available here	Zde není k dispozici
 	Updating…	Aktualizuje se…
 	Update paused	Aktualizace pozastavena
+	Update stopped	Aktualizace zastavena
+	Install stopped	Instalace zastavena
+	{name} or its command-line tool is open. Close it, then press Retry.	Aplikace {name} nebo její nástroj příkazového řádku je otevřený. Zavřete ho a zkuste to znovu.
+	A program with the same name as {name} is running. If it is this copy, close it, then press Retry.	Běží program se stejným názvem jako {name}. Pokud jde o tuto kopii, zavřete ho a zkuste to znovu.
+	Another installation is in progress. Wait for it to finish, then press Retry.	Probíhá jiná instalace. Počkejte, až skončí, a zkuste to znovu.
+	Another program is using a file of {name}. Close that program, then press Retry.	Jiný program používá soubor aplikace {name}. Zavřete tento program a zkuste to znovu.
+	Windows denied access to a file of {name}. Check the folder's permissions, then press Retry.	Windows odepřel přístup k souboru aplikace {name}. Zkontrolujte oprávnění složky a zkuste to znovu.
+	The Windows Installer couldn't finish. The details below give its error code and log.	Instalační služba systému Windows nemohla dokončit práci. Podrobnosti níže uvádějí kód chyby a protokol.
+	Details: {details}	Podrobnosti: {details}
 	Download paused	Stahování pozastaveno
 	{version} installed → {latest} released	Nainstalována verze {version} → vydána {latest}
 	Version {version}	Verze {version}
@@ -292,6 +301,10 @@ filter	Installed	Nainstalováno
 @msg	{name} installed: {version} (this release publishes no checksum, so only its size was checked)	Aplikace {name} byla nainstalována ve verzi {version} (toto vydání neobsahuje kontrolní součet, ověřena byla pouze velikost)
 @msg	{name} was removed	Aplikace {name} byla odebrána
 @msg	{name} is running. Quit it, then try again.	Aplikace {name} je spuštěná. Ukončete ji a zkuste to znovu.
+@msg	{name}'s command-line tool is running. Quit it, then try again.	Nástroj příkazového řádku aplikace {name} je spuštěný. Ukončete ho a zkuste to znovu.
+@msg	A program named {program} is running. If it is {name}, quit it, then try again.	Běží program s názvem {program}. Pokud jde o {name}, ukončete ho a zkuste to znovu.
+@msg	Another program is using {file}. Close it, then try again.	Jiný program používá {file}. Zavřete ho a zkuste to znovu.
+@msg	Windows denied access to {file}.	Windows odepřel přístup k {file}.
 @msg	{name} was installed from the {repo} repository or the AUR ({pkg}). Update it with {cmd} or sudo pacman -Syu	Aplikace {name} byla nainstalována z repozitáře {repo} nebo z AUR ({pkg}). Aktualizujte ji příkazem {cmd} nebo sudo pacman -Syu
 @msg	{name} was installed from the {repo} repository or the AUR ({pkg}). Update it with your AUR helper (for example: yay -S {pkg}) or sudo pacman -Syu	Aplikace {name} byla nainstalována z repozitáře {repo} nebo z AUR ({pkg}). Aktualizujte ji pomocí pomocníka AUR (například: yay -S {pkg}) nebo příkazem sudo pacman -Syu
 @msg	{name} was installed from the AUR ({pkg}). Update it with {cmd}	Aplikace {name} byla nainstalována z AUR ({pkg}). Aktualizujte ji příkazem {cmd}
