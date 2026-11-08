@@ -1647,6 +1647,14 @@ impl Backend for NativeBackend {
                     shared.emit(Event::Notice { app: app_id, result });
                 });
             }
+            Command::SetDefault { app } => {
+                let Some(def) = CraftApp::by_id(&app) else { return };
+                let result = match self.installed(&app) {
+                    Some(_) => crate::default_apps::set_default(def),
+                    None => Err(format!("{} isn't installed", def.name)),
+                };
+                self.shared.emit(Event::JobFinished { app, result });
+            }
             Command::UpdateLauncher => self.update_launcher(),
             Command::FetchScreenshots { app } => self.fetch_screenshots(&app),
             Command::DownloadOrder(order) => install::DOWNLOADS.set_order(order),

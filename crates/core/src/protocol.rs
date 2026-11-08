@@ -58,6 +58,10 @@ pub enum Command {
     CreateDesktopShortcut {
         app: String,
     },
+    /// Make the installed app the default for the file types its menu entry lists (Linux).
+    SetDefault {
+        app: String,
+    },
     /// Pause a running download, keeping what's downloaded so far (`Install` resumes it).
     Pause {
         app: String,
