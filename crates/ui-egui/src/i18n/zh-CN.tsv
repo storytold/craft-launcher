@@ -340,6 +340,10 @@ figcraft	Interface design and prototyping	界面设计与原型制作
 @msg	{name} installed: {version} (this release publishes no checksum, so only its size was checked)	{name} 已安装：{version}（此版本未发布校验和，因此只检查了文件大小）
 @msg	{name} was removed	{name} 已卸载
 @msg	{name} is running. Quit it, then try again.	{name} 正在运行。请先退出，然后重试。
+@msg	Couldn't save language for {name}: {e}	无法保存 {name} 的语言设置：{e}
+	Options…	选项…
+	Options	选项
+	Choose the interface language for this app. If the app is open, it updates immediately.	选择此应用的界面语言。如果应用已打开，语言将立即更新。
 @msg	{name} was installed from the {repo} repository or the AUR ({pkg}). Update it with {cmd} or sudo pacman -Syu	{name} 是从 {repo} 软件仓库或 AUR 安装的（{pkg}）。请使用 {cmd} 或 sudo pacman -Syu 更新。
 @msg	{name} was installed from the {repo} repository or the AUR ({pkg}). Update it with your AUR helper (for example: yay -S {pkg}) or sudo pacman -Syu	{name} 是从 {repo} 软件仓库或 AUR 安装的（{pkg}）。请使用您的 AUR 助手（例如：yay -S {pkg}）或 sudo pacman -Syu 更新。
 @msg	{name} was installed from the AUR ({pkg}). Update it with {cmd}	{name} 是从 AUR 安装的（{pkg}）。请使用 {cmd} 更新。
@@ -401,3 +405,4 @@ materialcraft	Preview materials in 2D and on 3D models.	在二维视图和三维
 	Migrate Flatpak bundles to ArtCraft OCI (experimental)	将 Flatpak 软件包迁移到 ArtCraft OCI（实验性）
 	On update, switch first party apps when the matching package is available. Otherwise, keep using bundles.	更新时，如果有对应的软件包，则迁移 ArtCraft 官方应用；否则继续使用独立软件包。
 	The OCI repository is a preview with GPG verification disabled.	OCI 仓库目前处于预览阶段，GPG 验证已禁用。
+

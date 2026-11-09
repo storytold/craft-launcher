@@ -111,12 +111,23 @@ pub(crate) enum UiAction {
 pub(crate) enum Dialog {
     Notes(String),
     ConfirmUninstall(String),
-    Install { app: String, folder: String },
-    Replace { app: String, path: String },
+    /// Options dialog for choosing an app's language.
+    AppOptions(String),
+    Install {
+        app: String,
+        folder: String,
+    },
+    Replace {
+        app: String,
+        path: String,
+    },
     Settings,
     LauncherUpdate(artcraft_launcher_core::Release),
     Versions(String),
-    LaunchFlags { app: String, flags: String },
+    LaunchFlags {
+        app: String,
+        flags: String,
+    },
 }
 
 impl Dialog {
@@ -126,6 +137,7 @@ impl Dialog {
         match self {
             Dialog::Notes(id) => ("notes", id),
             Dialog::ConfirmUninstall(id) => ("uninstall", id),
+            Dialog::AppOptions(id) => ("app-options", id),
             Dialog::Install { app, .. } => ("install", app),
             Dialog::Replace { app, .. } => ("replace", app),
             Dialog::Settings => ("settings", ""),
@@ -461,6 +473,7 @@ impl LauncherUi {
             versions: self.settings.versions.clone(),
             launcher_version: self.settings.launcher_version.clone(),
             install_locations: self.settings.install_locations.clone(),
+            app_languages: self.settings.app_languages.clone(),
         };
         if self.sent_options.as_ref() != Some(&options) {
             self.backend.send(Command::Configure(options.clone()));
@@ -573,6 +586,16 @@ impl LauncherUi {
                     e.detected = true;
                 }
                 true
+            }
+            Event::AppLanguages(langs) => {
+                for (app, lang) in langs {
+                    if lang == Settings::LANGUAGE_AUTO || lang.is_empty() {
+                        self.settings.app_languages.remove(&app);
+                    } else {
+                        self.settings.app_languages.insert(app, lang);
+                    }
+                }
+                false
             }
             Event::Progress { app, phase } => {
                 self.on_progress(app, phase);

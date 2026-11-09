@@ -123,6 +123,10 @@ pub struct Settings {
     pub hide_community_apps: bool,
     /// Catalog ids of apps hidden from the main lists (`photocraft`, …).
     pub hidden: std::collections::BTreeSet<String>,
+    /// Per-app interface language overrides (`photocraft` → `pt-BR`, …). Empty or omitted entries
+    /// follow the system language (`auto`).
+    #[serde(default)]
+    pub app_languages: BTreeMap<String, String>,
     /// The one-time notice that closing the window keeps the launcher in the tray has been shown.
     pub tray_hint_shown: bool,
     /// How many times each app was opened from the launcher (catalog id → count), for "Frequently used".
@@ -263,6 +267,7 @@ impl Default for Settings {
             last_check: None,
             hide_community_apps: false,
             hidden: std::collections::BTreeSet::new(),
+            app_languages: BTreeMap::new(),
             tray_hint_shown: false,
             launches: BTreeMap::new(),
             pinned: Vec::new(),
