@@ -174,6 +174,10 @@
 	Unpin	დამაგრების მოხსნა
 	The download is still here. It's checked again, then installed.	ჩამოტვირთული ფაილი ისევ აქ არის. ჯერ ხელახლა შემოწმდება, შემდეგ დაინსტალირდება.
 	Waiting for another app…	სხვა აპლიკაციის მოლოდინი…
+	Waiting for another download…	სხვა ჩამოტვირთვის მოლოდინი…
+	Simultaneous downloads	ერთდროული ჩამოტვირთვები
+	No limit	შეზღუდვის გარეშე
+	Downloads running together share your connection, so each one is slower.	ერთად მიმდინარე ჩამოტვირთვები კავშირს იზიარებენ, ამიტომ თითოეული უფრო ნელია.
 	Waiting for other installs…	სხვა ინსტალაციების მოლოდინი…
 
 # Package formats offered for download (PackageKind::label)

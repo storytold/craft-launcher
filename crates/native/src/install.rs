@@ -3809,7 +3809,9 @@ mod tests {
             phase,
             install_locations: &locations,
             replace: false,
+            approved_path: None,
             downgrade: Some(Downgrade::Reinstall { previous: &previous, asset: &installed }),
+            batch: None,
             place: None,
         };
         let have = |asset: &Asset| {
