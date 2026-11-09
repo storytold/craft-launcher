@@ -240,6 +240,10 @@ impl LauncherUi {
             ui.add_space(14.0);
             self.release_section(ui, entry, details, t, 2);
         }
+        #[cfg(feature = "craftlink-status")]
+        if self.caps.manage_apps {
+            self.craftlink_section(ui, entry.app.id);
+        }
     }
 
     /// The apps before and after `id` in the order the grid shows them (wrapping round), among

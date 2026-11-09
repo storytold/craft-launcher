@@ -434,3 +434,19 @@ materialcraft	Preview materials in 2D and on 3D models.	Tekintsd meg az anyagoka
 	Migrate Flatpak bundles to ArtCraft OCI (experimental)	Flatpak-csomagok átállítása ArtCraft OCI-ra (kísérleti)
 	On update, switch first party apps when the matching package is available. Otherwise, keep using bundles.	Frissítéskor állítsa át az ArtCraft alkalmazásait, ha elérhető a megfelelő csomag. Egyébként továbbra is önálló csomagokat használjon.
 	The OCI repository is a preview with GPG verification disabled.	Az OCI-tároló előzetes verzió, kikapcsolt GPG-ellenőrzéssel.
+
+# Optional CraftLink binding status (source-only integration).
+	Broker port	Közvetítő portja
+	Credential file	Hitelesítési fájl
+	Inspect links	Hivatkozások vizsgálata
+	No linked objects	Nincsenek csatolt objektumok
+	CraftLink is unavailable	A CraftLink nem érhető el
+	Waiting for CraftLink	Várakozás a CraftLinkre
+	Current	Naprakész
+	Stale	Elavult
+	Conflicted	Ütközés
+	Missing	Hiányzik
+	Applying	Alkalmazás folyamatban
+	Local changes	Helyi változtatások
+	Frozen	Befagyasztva
+	Unknown	Ismeretlen

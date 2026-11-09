@@ -8,6 +8,7 @@ use std::collections::BTreeMap;
 
 use serde::{Deserialize, Serialize};
 
+use crate::craftlink::Binding as CraftLinkBinding;
 use crate::platform::{PackageKind, Platform};
 use crate::release::Release;
 use crate::status::Installed;
@@ -15,6 +16,12 @@ use crate::status::Installed;
 /// Asks the backend to do something. Results arrive later as [`Event`]s.
 #[derive(Clone, Debug, PartialEq)]
 pub enum Command {
+    /// Explicit read-only connection; credential contents never enter the command.
+    InspectCraftLinks {
+        request: u64,
+        port: u16,
+        credential_file: String,
+    },
     /// Look up the latest releases. `force` skips the freshness window (the user pressed Refresh).
     CheckForUpdates {
         force: bool,
@@ -198,6 +205,10 @@ impl Source {
 /// Something the backend wants the UI to know.
 #[derive(Clone, Debug, PartialEq)]
 pub enum Event {
+    CraftLinks {
+        request: u64,
+        result: Result<Vec<CraftLinkBinding>, String>,
+    },
     Latest {
         app: String,
         latest: LatestRelease,

@@ -197,6 +197,18 @@ artcraft-launcher
 
 ## Build from source
 
+Optional source-only experiment: `cargo build -p artcraft-launcher --features craftlink-status`
+adds a collapsed CraftLink section to installed-app details. Supply a running
+broker's loopback port and a user-selected credential file, then inspect only that
+app's binding revisions/status. Connection inputs stay in memory; no automatic
+broker discovery, launch, installation, native edits or credential persistence.
+The protocol is experimental ([craft-libs #600](https://github.com/storytold/craft-libs/issues/600)).
+The feature is off by default. An unavailable/rejecting broker leaves existing
+launcher workflows intact. Do not start an ordinary candidate beside an existing
+production launcher for testing: its singleton handoff is shared. The native
+`craftlink_status` example and isolated egui tests exercise this feature without
+starting that shell.
+
 You need a recent stable Rust (1.90 or newer). On Linux, install the windowing headers first
 (Debian/Ubuntu: `sudo apt install libxkbcommon-dev libwayland-dev libx11-dev libxrandr-dev libxi-dev libgl1-mesa-dev`).
 

@@ -10,6 +10,9 @@ publish = false
 [lints]
 workspace = true
 
+[features]
+craftlink-status = []
+
 [dependencies]
 artcraft-launcher-core = { workspace = true }
 egui = { workspace = true }
