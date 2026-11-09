@@ -19,6 +19,7 @@ pub const MARKER: &str = "X-ArtCraft-Launcher=true";
 /// The menu categories and the window class each app's own `.desktop` file declares.
 pub fn meta(app: &CraftApp) -> (&'static str, Option<&'static str>) {
     match app.id {
+        "artcraft" => ("Graphics;AudioVideo;2DGraphics;", Some("artcraft")),
         "photocraft" => ("Graphics;2DGraphics;RasterGraphics;Photography;", Some("photocraft")),
         "pdfcraft" => ("Office;Viewer;", Some("pdfcraft")),
         "lightcraft" => ("Graphics;2DGraphics;RasterGraphics;Photography;", None),
@@ -32,6 +33,9 @@ pub fn meta(app: &CraftApp) -> (&'static str, Option<&'static str>) {
         "cadcraft" => ("Graphics;Engineering;VectorGraphics;", None),
         "soundcraft" => ("AudioVideo;Audio;Midi;Mixer;Sequencer;Recorder;", None),
         "figcraft" => ("Graphics;2DGraphics;VectorGraphics;X-Design;", Some("figcraft")),
+        "texturecraft" => ("Graphics;3DGraphics;", Some("texturecraft")),
+        "materialcraft" => ("Graphics;3DGraphics;", Some("materialcraft")),
+        "craft-anything" => ("Development;Debugger;", None),
         _ => ("Graphics;", None),
     }
 }

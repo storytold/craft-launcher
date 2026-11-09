@@ -27,11 +27,22 @@ fn uncertain_msi_updates_do_not_download_or_start_an_installer() {
             source: InstallSource::Msi,
             location: root.path().join("not-running-context-regression.exe").display().to_string(),
             package: code.map(str::to_owned),
+            externally_managed: false,
+            origin: None,
+            installation: None,
         };
         let mut phases = Vec::new();
         let mut phase = |phase| phases.push(phase);
-        let mut job =
-            Job { http: &http, paths: &paths, stop: &stop, phase: &mut phase, install_locations: &locations, replace: false, downgrade: None };
+        let mut job = Job {
+            http: &http,
+            paths: &paths,
+            stop: &stop,
+            phase: &mut phase,
+            install_locations: &locations,
+            replace: false,
+            approved_path: None,
+            downgrade: None,
+        };
         let result = install::install(app, &release, &asset, PackageKind::Msi, Some(&existing), None, &mut job);
         assert!(matches!(&result, Err(error) if error.contains("could not confirm who this app is installed for")), "{result:?}");
         assert!(phases.is_empty(), "an uncertain update must not enter download or installation phases");
