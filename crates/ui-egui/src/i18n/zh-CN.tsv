@@ -81,6 +81,7 @@
 	ArtCraft Launcher {version}	ArtCraft Launcher {version}
 	Only when I ask	仅手动检查
 	Automatically download and install updates	自动下载并安装更新
+	Ask for permission once when updating all apps	更新所有应用时仅请求一次授权
 	Notify me when an installed app has an update	已安装应用有更新时通知我
 	Include pre-releases (betas and release candidates)	包含预发布版本（测试版和候选版）
 	Installing on Linux	Linux 安装设置
