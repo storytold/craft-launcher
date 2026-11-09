@@ -4,8 +4,8 @@
 //!
 //! - macOS: the signed `.app` from the release DMG into `/Applications`.
 //! - Windows: the release MSI (Windows Installer), for the current user into
-//!   `%LOCALAPPDATA%\Programs\ArtCraft\<App>` by default. An update keeps the installed copy's folder
-//!   and scope (per-machine copies stay in `C:\Program Files\ArtCraft\<App>`).
+//!   `%LOCALAPPDATA%\Programs\ArtCraft\<App>` by default (per-machine copies stay in `C:\Program Files\ArtCraft\<App>`),
+//!   or the release portable `.zip` unpacked into `<data>/apps/<app>` (preferred when the launcher itself is portable).
 //! - Linux: the distro's own package (`.deb` through apt on the Debian family, `.rpm` through
 //!   dnf/zypper/rpm on the Fedora, Red Hat and SUSE families, read from `os-release`) with the
 //!   system's polkit password prompt; otherwise a Flatpak, otherwise an AppImage in
@@ -99,6 +99,7 @@ pub fn install(
 type RecordCommit<'a> = Option<&'a mut dyn FnMut(&Record) -> Result<(), String>>;
 
 #[allow(clippy::too_many_arguments)]
+/// Installs or updates `app` from `asset` of format `kind`, optionally targeting `destination`.
 pub fn install_at(
     app: &CraftApp,
     release: &Release,
@@ -191,10 +192,14 @@ pub fn install_at(
         .map(|path| Some(record(&version, kind, path, Vec::new(), false))),
         #[cfg(windows)]
         PackageKind::Msi => {
+            let previous_portable = previous
+                .cloned()
+                .or_else(|| crate::manifest::Manifest::load(&job.paths.manifest()).apps.get(app.id).cloned())
+                .filter(|r| r.kind == PackageKind::PortableZip);
             // An update lands in the same Windows Installer context as the copy being replaced:
             // per-machine needs elevation, per-user must not duplicate itself per-machine. A
             // fresh install passes no context and takes the package's own default.
-            match &rollback {
+            let result = match &rollback {
                 Some((previous, previous_sha256, previous_version)) => windows::downgrade_msi(
                     app,
                     windows::Package { file: &file, sha256: &sha256, version: &version },
@@ -205,14 +210,22 @@ pub fn install_at(
                     &mut *job.phase,
                 ),
                 None => windows::run_msi(&file, destination.as_deref(), msi_scope, job.stop, &mut *job.phase),
+            };
+            result?;
+            if let Some(ref r) = previous_portable {
+                crate::portable::remove(app, r)?;
             }
-            .map(|_| None)
+            Ok(None)
         }
         #[cfg(windows)]
         PackageKind::PortableZip => {
-            crate::portable::install(app, &file, &version, previous, job.paths, destination.as_deref(), job.replace, &mut |record| {
+            let expected_sha = asset.sha256.as_deref();
+            crate::portable::install(app, &file, &version, expected_sha, previous, job.paths, destination.as_deref(), job.replace, &mut |record| {
                 if release.version.is_some() && crate::detect::windows::executable_version(&record.path).as_ref() != release.version.as_ref() {
                     return Err("The portable executable does not match the selected version. The installation was rolled back.".into());
+                }
+                if existing.is_some_and(|i| i.source == InstallSource::Msi) {
+                    windows::uninstall_msi(app, job.stop, &mut *job.phase)?;
                 }
                 match commit.as_deref_mut() {
                     Some(commit) => commit(record),
@@ -514,7 +527,20 @@ fn record(version: &str, kind: PackageKind, path: PathBuf, files: Vec<PathBuf>, 
 /// Returns an empty `Vec` when `app` is already installed outside the launcher (such as an AUR
 /// or repository Arch package) and must not be updated or replaced by the launcher.
 pub fn choose_kinds(app: &CraftApp, existing: Option<&Installed>, record: Option<&Record>, preferred: &[PackageKind]) -> Vec<PackageKind> {
-    choose_kinds_on(app, existing, record, preferred, &SystemKinds::now())
+    choose_kinds_for(app, existing, record, preferred, None)
+}
+
+/// Like [`choose_kinds`], with an optional per-app format override `app_override` (used when the
+/// user explicitly chooses a format for an app or switches an installed app between `.msi` and
+/// portable `.zip`).
+pub fn choose_kinds_for(
+    app: &CraftApp,
+    existing: Option<&Installed>,
+    record: Option<&Record>,
+    preferred: &[PackageKind],
+    app_override: Option<PackageKind>,
+) -> Vec<PackageKind> {
+    choose_kinds_for_on(app, existing, record, preferred, &SystemKinds::now(), app_override)
 }
 
 /// What this system can install: its package formats ([`available_kinds`]) and whether pacman can
@@ -543,9 +569,25 @@ pub fn choose_kinds_on(
     preferred: &[PackageKind],
     system: &SystemKinds,
 ) -> Vec<PackageKind> {
+    choose_kinds_for_on(app, existing, record, preferred, system, None)
+}
+
+/// [`choose_kinds_for`] on what `system` can install, without asking it again.
+pub fn choose_kinds_for_on(
+    app: &CraftApp,
+    existing: Option<&Installed>,
+    record: Option<&Record>,
+    preferred: &[PackageKind],
+    system: &SystemKinds,
+    app_override: Option<PackageKind>,
+) -> Vec<PackageKind> {
+    if let Some(k) = app_override {
+        return if system.available.contains(&k) && app.installs(k) { vec![k] } else { Vec::new() };
+    }
     choose_kinds_with(app, existing, record, preferred, &system.available, system.can_pacman)
 }
 
+/// Picks candidate package formats for `app` based on existing installation, preferences, and system capabilities.
 pub(crate) fn choose_kinds_with(
     app: &CraftApp,
     existing: Option<&Installed>,
@@ -559,7 +601,16 @@ pub(crate) fn choose_kinds_with(
     let available = available.as_slice();
     if let Some(inst) = existing {
         let kind = match inst.source {
-            InstallSource::Launcher => record.map(|r| r.kind),
+            InstallSource::Launcher => record.map(|r| r.kind).or({
+                #[cfg(windows)]
+                {
+                    Some(PackageKind::PortableZip)
+                }
+                #[cfg(not(windows))]
+                {
+                    None
+                }
+            }),
             InstallSource::MacApp => Some(PackageKind::Dmg),
             InstallSource::Msi => Some(PackageKind::Msi),
             InstallSource::Deb => Some(PackageKind::Deb),
@@ -610,7 +661,7 @@ pub fn available_kinds() -> Vec<PackageKind> {
     #[cfg(target_os = "macos")]
     return vec![PackageKind::Dmg];
     #[cfg(windows)]
-    return vec![PackageKind::Msi, PackageKind::PortableZip];
+    return windows::available_kinds();
     #[cfg(target_os = "linux")]
     return linux::available_kinds();
     #[cfg(target_os = "freebsd")]
@@ -759,6 +810,11 @@ pub fn uninstall(
         }
         #[cfg(windows)]
         InstallSource::Msi => windows::uninstall_msi(app, stop, phase),
+        #[cfg(windows)]
+        InstallSource::Launcher => match record.filter(|r| r.kind == PackageKind::PortableZip) {
+            Some(rec) => crate::portable::remove(app, rec),
+            None => Err("the launcher has no record of these files".into()),
+        },
         #[cfg(target_os = "macos")]
         InstallSource::MacApp | InstallSource::Launcher => macos::move_to_trash(&path),
         #[cfg(target_os = "linux")]
@@ -1849,6 +1905,25 @@ pub mod macos {
     }
 }
 
+/// Every file under `root`, relative to it.
+#[allow(dead_code)]
+fn files(root: &Path) -> Vec<PathBuf> {
+    let mut out = Vec::new();
+    let mut stack = vec![root.to_path_buf()];
+    while let Some(dir) = stack.pop() {
+        for entry in std::fs::read_dir(&dir).into_iter().flatten().flatten() {
+            let p = entry.path();
+            if p.is_dir() {
+                stack.push(p);
+            } else if let Ok(rel) = p.strip_prefix(root) {
+                out.push(rel.to_path_buf());
+            }
+        }
+    }
+    out.sort();
+    out
+}
+
 /// FreeBSD: the release tarball holds a `/usr/local`-style tree (`bin/<app>`,
 /// `share/applications`, icons). Older releases had the files flat in one folder; those are laid
 /// out the same way first.
@@ -1894,7 +1969,6 @@ mod tree {
         }
         Ok(tree)
     }
-
     /// Extracts the archive's entries into `staging`; directories last, so restrictive modes don't
     /// stop their children from being written.
     fn unpack_entries<R: std::io::Read>(archive: &mut tar::Archive<R>, staging: &Path) -> Result<(), String> {
@@ -2131,10 +2205,22 @@ pub mod windows {
     use artcraft_launcher_core::protocol::CANCELLED;
 
     use super::{
-        CraftApp, INSTALLER, JobPhase, MsiScope, Path, PathBuf, Stop, cancelled, explain, msi_batch, msi_command, msi_downgrade, msi_folder_argument,
-        msi_log, msi_scope_arguments, process, turn,
+        CraftApp, INSTALLER, JobPhase, MsiScope, PackageKind, Path, PathBuf, Stop, cancelled, explain, msi_batch, msi_command, msi_downgrade,
+        msi_folder_argument, msi_log, msi_scope_arguments, process, turn,
     };
 
+    /// What this Windows machine can install, ordered with the best default first:
+    /// a portable launcher prefers `Portable (.zip)`, while an installed launcher prefers `Installer (.msi)`.
+    pub fn available_kinds() -> Vec<PackageKind> {
+        order_windows_kinds(crate::paths::portable_root().is_some())
+    }
+
+    /// Orders supported Windows package formats based on whether the launcher runs in portable mode.
+    pub(crate) fn order_windows_kinds(is_portable: bool) -> Vec<PackageKind> {
+        if is_portable { vec![PackageKind::PortableZip, PackageKind::Msi] } else { vec![PackageKind::Msi, PackageKind::PortableZip] }
+    }
+
+    /// Resolves the absolute path to `msiexec.exe` on Windows.
     fn msiexec() -> PathBuf {
         std::env::var_os("SystemRoot").map_or_else(|| PathBuf::from(r"C:\Windows"), PathBuf::from).join(r"System32\msiexec.exe")
     }
@@ -3363,6 +3449,7 @@ mod tests {
     }
 
     #[test]
+    /// Verifies that updating an existing installation keeps its established package format.
     fn updates_keep_the_installed_format() {
         let inst = |source| Installed {
             version: None,
@@ -3381,13 +3468,35 @@ mod tests {
         #[cfg(target_os = "macos")]
         assert_eq!(choose_kinds(app, Some(&inst(InstallSource::MacApp)), None, &[]), [PackageKind::Dmg]);
         #[cfg(windows)]
-        assert_eq!(choose_kinds(app, Some(&inst(InstallSource::Msi)), None, &[]), [PackageKind::Msi]);
+        {
+            assert_eq!(choose_kinds(app, Some(&inst(InstallSource::Msi)), None, &[]), [PackageKind::Msi]);
+            assert_eq!(choose_kinds(app, Some(&inst(InstallSource::Launcher)), None, &[]), [PackageKind::PortableZip]);
+        }
         #[cfg(target_os = "linux")]
         assert_eq!(choose_kinds(app, Some(&inst(InstallSource::AppImage)), None, &[]), [PackageKind::AppImage]);
         let _ = inst;
     }
 
+    #[cfg(windows)]
     #[test]
+    /// Checks that Windows package format preferences match the launcher's portable or installed state.
+    fn windows_package_kinds_order_matches_launcher_format() {
+        assert_eq!(windows::order_windows_kinds(false), [PackageKind::Msi, PackageKind::PortableZip]);
+        assert_eq!(windows::order_windows_kinds(true), [PackageKind::PortableZip, PackageKind::Msi]);
+    }
+
+    #[test]
+    /// Tests that an explicit app override strictly returns only the requested kind when supported.
+    fn app_override_returns_only_requested_kind_when_available() {
+        let app = artcraft_launcher_core::CraftApp::by_id("photocraft").unwrap();
+        let system = SystemKinds { available: vec![PackageKind::Msi, PackageKind::PortableZip], can_pacman: false };
+        assert_eq!(choose_kinds_for_on(app, None, None, &[], &system, Some(PackageKind::PortableZip)), [PackageKind::PortableZip]);
+        assert_eq!(choose_kinds_for_on(app, None, None, &[], &system, Some(PackageKind::Msi)), [PackageKind::Msi]);
+        assert_eq!(choose_kinds_for_on(app, None, None, &[], &system, Some(PackageKind::Dmg)), Vec::<PackageKind>::new());
+    }
+
+    #[test]
+    /// Ensures that only official release Arch packages are managed and updated by the launcher.
     fn only_the_release_arch_package_is_updated_by_the_launcher() {
         let pacman = |name: &str| Installed {
             version: None,

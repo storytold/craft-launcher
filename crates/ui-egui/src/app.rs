@@ -111,7 +111,7 @@ pub(crate) enum UiAction {
 pub(crate) enum Dialog {
     Notes(String),
     ConfirmUninstall(String),
-    Install { app: String, folder: String },
+    Install { app: String, folder: String, kind: Option<artcraft_launcher_core::PackageKind> },
     Replace { app: String, path: String },
     Settings,
     LauncherUpdate(artcraft_launcher_core::Release),
@@ -348,7 +348,11 @@ impl LauncherUi {
         self.last_detect = self.backend.now();
     }
 
+    /// Sends a command to the backend, configuring options first when installing or uninstalling.
     pub(crate) fn send(&mut self, command: Command) {
+        if matches!(command, Command::Install { .. } | Command::Uninstall { .. }) {
+            self.configure();
+        }
         self.backend.send(command);
     }
 
@@ -454,9 +458,11 @@ impl LauncherUi {
         self.entries.iter_mut().find(|e| e.app.id == id)
     }
 
+    /// Synchronizes the latest user settings and package preferences with the backend if they changed.
     pub(crate) fn configure(&mut self) {
         let options = BackendOptions {
             kinds: self.settings.preferred_kinds.clone(),
+            app_kinds: self.settings.app_kinds.clone(),
             prereleases: self.settings.prereleases,
             versions: self.settings.versions.clone(),
             launcher_version: self.settings.launcher_version.clone(),
@@ -498,8 +504,11 @@ impl LauncherUi {
             self.act_command(Command::Install { app: id.to_string() });
             return;
         }
-        self.dialog =
-            Some(Dialog::Install { app: id.to_string(), folder: self.settings.install_locations.per_app.get(id).cloned().unwrap_or_default() });
+        self.dialog = Some(Dialog::Install {
+            app: id.to_string(),
+            folder: self.settings.install_locations.per_app.get(id).cloned().unwrap_or_default(),
+            kind: None,
+        });
     }
 
     /// Non-drawing work: runs every frame and also while the window is hidden in the tray.

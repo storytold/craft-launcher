@@ -1249,6 +1249,7 @@ impl LauncherUi {
         let id = entry.app.id.to_string();
         let manage = self.caps.manage_apps;
         let reveal = self.caps.reveal_label;
+        let is_windows = manage && self.platform.is_some_and(|p| p.os == artcraft_launcher_core::Os::Windows);
         widgets::more_menu(ui, entry.app.name, |ui| {
             if ui.button(tl!("Choose version")).clicked() {
                 self.open_versions(&id);
@@ -1257,6 +1258,19 @@ impl LauncherUi {
             if entry.release().is_some() && ui.button(tl!("Release notes")).clicked() {
                 self.dialog = Some(Dialog::Notes(id.clone()));
                 ui.close();
+            }
+            if is_windows && !status.is_installed() && entry.release().is_some() {
+                let default_kind = self.settings.effective_windows_kind(&id);
+                let (alt_kind, label) = match default_kind {
+                    artcraft_launcher_core::PackageKind::Msi => (artcraft_launcher_core::PackageKind::PortableZip, tl!("Install as Portable (.zip)")),
+                    _ => (artcraft_launcher_core::PackageKind::Msi, tl!("Install as Windows Installer (.msi)")),
+                };
+                if ui.button(label).clicked() {
+                    self.settings.app_kinds.insert(id.clone(), alt_kind);
+                    self.configure();
+                    self.act_command(Command::Install { app: id.clone() });
+                    ui.close();
+                }
             }
             // Only where Install would download: an up-to-date app would be reinstalled.
             let can_download_again =
@@ -1340,8 +1354,43 @@ impl LauncherUi {
             ui.close();
         }
         if *status == AppStatus::UpToDate && entry.installs_here(self.platform) && ui.button(tl!("Reinstall")).clicked() {
+            if let Some(inst) = &entry.installed {
+                match inst.source {
+                    artcraft_launcher_core::InstallSource::Msi => {
+                        self.settings.app_kinds.insert(id.to_string(), artcraft_launcher_core::PackageKind::Msi);
+                    }
+                    artcraft_launcher_core::InstallSource::Launcher => {
+                        self.settings.app_kinds.insert(id.to_string(), artcraft_launcher_core::PackageKind::PortableZip);
+                    }
+                    _ => {}
+                }
+            }
+            self.configure();
             self.install_app(id);
             ui.close();
+        }
+        let is_windows = self.caps.manage_apps && self.platform.is_some_and(|p| p.os == artcraft_launcher_core::Os::Windows);
+        if is_windows
+            && entry.release().is_some()
+            && let Some(inst) = &entry.installed
+        {
+            let switch_to = match inst.source {
+                artcraft_launcher_core::InstallSource::Msi => {
+                    Some((artcraft_launcher_core::PackageKind::PortableZip, tl!("Switch to Portable (.zip)")))
+                }
+                artcraft_launcher_core::InstallSource::Launcher => {
+                    Some((artcraft_launcher_core::PackageKind::Msi, tl!("Switch to Windows Installer (.msi)")))
+                }
+                _ => None,
+            };
+            if let Some((target_kind, label)) = switch_to
+                && ui.button(label).clicked()
+            {
+                self.settings.app_kinds.insert(id.to_string(), target_kind);
+                self.configure();
+                self.act_command(Command::Install { app: id.to_string() });
+                ui.close();
+            }
         }
         ui.separator();
         if ui.button(RichText::new(tl!("Uninstall…")).color(Tokens::get(ui.ctx()).bad)).clicked() {

@@ -98,6 +98,11 @@ pub struct BackendOptions {
     pub install_locations: InstallLocations,
     /// Package formats to install, best first (empty: the platform default).
     pub kinds: Vec<PackageKind>,
+    /// Per-app preferred package format (`app_id -> PackageKind`). When set for an app, overrides
+    /// both `kinds` and the format of an existing installation so the user can install or switch
+    /// an individual app to a specific format (e.g. Portable `.zip` vs `.msi` on Windows).
+    #[serde(default)]
+    pub app_kinds: BTreeMap<String, PackageKind>,
     /// Per-app version choices; an absent entry follows stable releases.
     pub versions: BTreeMap<String, VersionTrack>,
     /// The launcher's own version choice.

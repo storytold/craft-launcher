@@ -111,8 +111,11 @@ pub struct Settings {
     /// Version track per app. Missing entries follow stable releases.
     pub versions: BTreeMap<String, artcraft_launcher_core::protocol::VersionTrack>,
     pub launcher_version: artcraft_launcher_core::protocol::VersionTrack,
-    /// Linux: the package format to prefer for new installs (empty: the system's own).
+    /// Linux and Windows: the package format to prefer for new installs (empty: the system's own).
     pub preferred_kinds: Vec<PackageKind>,
+    /// Per-app package format overrides (`photocraft` → `PortableZip`, …).
+    #[serde(default)]
+    pub app_kinds: BTreeMap<String, PackageKind>,
     /// Announcements and alerts from the release feed the user dismissed (by notice id).
     pub dismissed_notices: std::collections::BTreeSet<String>,
     /// Updates already announced, so each version is announced once: app id → version.
@@ -206,6 +209,17 @@ impl Settings {
             None => t("Auto").to_string(),
         }
     }
+
+    /// The Windows package format (`Msi` or `PortableZip`) preferred for `app_id`: an explicit
+    /// per-app override if set, else the global preference, else the launcher's own format.
+    pub fn effective_windows_kind(&self, app_id: &str) -> PackageKind {
+        self.app_kinds
+            .get(app_id)
+            .copied()
+            .or_else(|| self.preferred_kinds.first().copied())
+            .filter(|k| matches!(k, PackageKind::Msi | PackageKind::PortableZip))
+            .unwrap_or_else(|| if is_portable_launcher() { PackageKind::PortableZip } else { PackageKind::Msi })
+    }
 }
 
 /// Whether this process is running inside a Flatpak container sandbox.
@@ -228,12 +242,19 @@ pub fn is_appimage() -> bool {
     false
 }
 
-/// Default package kinds preferred on Linux based on how the launcher itself was installed.
+/// Whether this launcher is running in portable mode (`portable.txt` sits next to its executable).
+pub fn is_portable_launcher() -> bool {
+    std::env::current_exe().ok().and_then(|exe| exe.parent().map(|dir| dir.join("portable.txt").is_file())).unwrap_or(false)
+}
+
+/// Default package kinds preferred based on how the launcher itself was installed.
 pub fn default_preferred_kinds() -> Vec<PackageKind> {
     if is_flatpak_sandbox() {
         vec![PackageKind::Flatpak]
     } else if is_appimage() {
         vec![PackageKind::AppImage]
+    } else if cfg!(windows) && is_portable_launcher() {
+        vec![PackageKind::PortableZip]
     } else {
         Vec::new()
     }
@@ -258,6 +279,7 @@ impl Default for Settings {
             versions: BTreeMap::new(),
             launcher_version: Default::default(),
             preferred_kinds: default_preferred_kinds(),
+            app_kinds: BTreeMap::new(),
             dismissed_notices: std::collections::BTreeSet::new(),
             notified: BTreeMap::new(),
             last_check: None,

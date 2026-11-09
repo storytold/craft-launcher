@@ -323,6 +323,10 @@ filter	Installed	დაინსტალირებული
 @msg	{name} installed: {version} (this release publishes no checksum, so only its size was checked)	{name} დაინსტალირდა: {version} (ეს გამოშვება საკონტროლო ჯამს არ აქვეყნებს, ამიტომ მხოლოდ ზომა შემოწმდა)
 @msg	{name} was removed	{name} წაიშალა
 @msg	{name} is running. Quit it, then try again.	{name} გაშვებულია. დახურეთ და კვლავ სცადეთ.
+	Install as Portable (.zip)	პორტატულ ვერსიად ინსტალაცია (.zip)
+	Install as Windows Installer (.msi)	Windows Installer-ად ინსტალაცია (.msi)
+	Switch to Portable (.zip)	პორტატულ ვერსიაზე გადართვა (.zip)
+	Switch to Windows Installer (.msi)	Windows Installer-ზე გადართვა (.msi)
 @msg	{name} was installed from the {repo} repository or the AUR ({pkg}). Update it with {cmd} or sudo pacman -Syu	{name} დაინსტალირდა {repo} რეპოზიტორიიდან ან AUR-იდან ({pkg}). განაახლეთ ბრძანებით {cmd} ან sudo pacman -Syu
 @msg	{name} was installed from the {repo} repository or the AUR ({pkg}). Update it with your AUR helper (for example: yay -S {pkg}) or sudo pacman -Syu	{name} დაინსტალირდა {repo} რეპოზიტორიიდან ან AUR-იდან ({pkg}). განაახლეთ AUR-ის დამხმარე პროგრამით (მაგალითად: yay -S {pkg}) ან sudo pacman -Syu
 @msg	{name} was installed from the AUR ({pkg}). Update it with {cmd}	{name} დაინსტალირდა AUR-იდან ({pkg}). განაახლეთ ბრძანებით {cmd}
