@@ -50,6 +50,30 @@ pub struct Job<'a> {
     /// the app or its command-line tool is running, another installation is in progress, a file
     /// is in use or access to it is denied, or the Windows Installer failed.
     pub failure: Option<InstallFailure>,
+    /// The batch of installs this one belongs to (an "update all"): where the platform needs a
+    /// permission prompt, the whole batch shares one. `None` for a job on its own.
+    pub batch: Option<crate::queue::Gather>,
+}
+
+/// A job's place in its batch (see [`Job::batch`]): the installer queue takes it where the batch
+/// shares one call ([`crate::queue::Queue::batched_when`]); a job that ends before that — failed,
+/// cancelled, or needing no prompt at all — gives the place back on its way out, so the rest of
+/// the batch never waits for it. [`install_at`](fn@install_at) takes it for the installer routes;
+/// the backend holds it the same way for every earlier way out of a job.
+pub(crate) struct BatchPlace(pub(crate) Option<crate::queue::Gather>);
+
+impl BatchPlace {
+    pub(crate) fn take(&mut self) -> Option<crate::queue::Gather> {
+        self.0.take()
+    }
+}
+
+impl Drop for BatchPlace {
+    fn drop(&mut self) {
+        if let Some(gather) = self.0.take() {
+            gather.leave();
+        }
+    }
 }
 
 /// How a downgrade the person chose is undone if it fails.
@@ -137,6 +161,9 @@ fn install_checking(
     let mut commit = commit;
     #[cfg(not(windows))]
     let _ = commit;
+    // Every early way out below gives the job's place in its batch back (see [`BatchPlace`]).
+    #[cfg_attr(not(any(target_os = "linux", windows)), allow(unused_mut, unused_variables))]
+    let mut batch = BatchPlace(job.batch.take());
     #[allow(unused_variables)]
     let destination = destination(app, kind, existing, previous, job.install_locations)?;
     #[cfg(windows)]
@@ -242,7 +269,16 @@ fn install_checking(
                     &mut *job.phase,
                     &mut msi_exit,
                 ),
-                None => windows::run_msi(&file, destination.as_deref(), msi_scope, job.stop, &mut *job.phase, &mut msi_exit),
+                None => windows::run_msi(
+                    app,
+                    windows::Package { file: &file, sha256: &sha256, version: &version },
+                    destination.as_deref(),
+                    msi_scope,
+                    batch.take(),
+                    job.stop,
+                    &mut *job.phase,
+                    &mut msi_exit,
+                ),
             }
             .map(|_| None)
         }
@@ -268,17 +304,21 @@ fn install_checking(
         )
         .map(Some),
         #[cfg(target_os = "linux")]
-        PackageKind::Deb | PackageKind::Rpm | PackageKind::ArchPkg | PackageKind::Flatpak => {
-            linux::install_package(kind, &file, existing.and_then(|installed| installed.installation.as_deref()), job.stop, &mut *job.phase).map(
-                |_| {
-                    if kind == PackageKind::Flatpak {
-                        linux::configure_bundle_lookaside(app, existing.and_then(|installed| installed.installation.as_deref()));
-                        linux::retire_former_flatpak(app, existing);
-                    }
-                    None
-                },
-            )
-        }
+        PackageKind::Deb | PackageKind::Rpm | PackageKind::ArchPkg | PackageKind::Flatpak => linux::install_package(
+            kind,
+            &file,
+            existing.and_then(|installed| installed.installation.as_deref()),
+            batch.take(),
+            job.stop,
+            &mut *job.phase,
+        )
+        .map(|_| {
+            if kind == PackageKind::Flatpak {
+                linux::configure_bundle_lookaside(app, existing.and_then(|installed| installed.installation.as_deref()));
+                linux::retire_former_flatpak(app, existing);
+            }
+            None
+        }),
         #[cfg(target_os = "linux")]
         PackageKind::AppImage => {
             linux::install_appimage(&file, &asset.name, destination.as_deref(), previous, job.replace).map(|(path, replaced)| {
@@ -646,7 +686,7 @@ fn msi_folder_argument(path: &Path) -> Result<String, String> {
 /// HKLM registrations; a per-user one must not silently become a second, per-machine copy (or
 /// the other way round). A fresh install is always `PerMachine`.
 #[cfg(any(windows, test))]
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum MsiScope {
     PerUser,
     PerMachine,
@@ -1223,9 +1263,10 @@ pub fn failed_in_shared_call(error: &str) -> bool {
     cfg!(target_os = "linux") && error.ends_with(SHARED_CALL)
 }
 
-/// The system's installer runs one job at a time; the others wait their turn here.
+/// The system's installer runs one job at a time; the others wait their turn here. The backend
+/// starts each batch of installs (an "update all") with [`Queue::gather`] on it.
 #[cfg(any(target_os = "linux", windows))]
-static INSTALLER: crate::queue::Queue = crate::queue::Queue::new();
+pub(crate) static INSTALLER: crate::queue::Queue = crate::queue::Queue::new();
 
 /// For [`INSTALLER`]: reports [`JobPhase::Waiting`] while a job waits, then `working` again.
 #[cfg(any(target_os = "linux", windows))]
@@ -1270,19 +1311,22 @@ pub(crate) mod linux {
     const SYSTEM: Root<'static> = Root { queue: &INSTALLER, run: &run_as_root };
 
     /// Runs `command target` as root. Jobs waiting for the same command go into one call
-    /// (`apt-get install a.deb b.deb`), so the password is asked for once.
+    /// (`apt-get install a.deb b.deb`), so the password is asked for once; a job with a `batch`
+    /// also waits for the rest of that batch first, so the call covers all of them.
     fn as_root(
         root: &Root<'_>,
         command: &[&str],
         target: &OsStr,
+        batch: Option<crate::queue::Gather>,
         stop: &Stop,
         phase: &mut dyn FnMut(JobPhase),
         working: JobPhase,
     ) -> Result<(), String> {
         let command = command.iter().map(OsString::from).collect();
-        root.queue.batched(command, target.to_os_string(), &cancelled(stop), &mut turn(phase, working), &|command, targets| {
+        root.queue.batched_when(batch, command, target.to_os_string(), &cancelled(stop), &mut turn(phase, working), &|command, targets| {
             let args: Vec<&OsStr> = command.iter().chain(targets).map(OsString::as_os_str).collect();
-            shared_outcome((root.run)(&args), targets.len())
+            let outcome = shared_outcome((root.run)(&args), targets.len());
+            vec![outcome; targets.len()]
         })
     }
 
@@ -1386,16 +1430,26 @@ pub(crate) mod linux {
         kind: PackageKind,
         file: &Path,
         installation: Option<&str>,
+        batch: Option<crate::queue::Gather>,
         stop: &Stop,
         phase: &mut dyn FnMut(JobPhase),
     ) -> Result<(), String> {
-        if kind == PackageKind::Deb && system_tool("apt-get").is_none() {
-            return Err("this system has no apt-get to install a Debian package with".into());
+        let missing = if kind == PackageKind::Deb && system_tool("apt-get").is_none() {
+            Some("this system has no apt-get to install a Debian package with")
+        } else if kind == PackageKind::ArchPkg && system_tool("pacman").is_none() {
+            Some("this system has no pacman to install an Arch package with")
+        } else {
+            None
+        };
+        if let Some(error) = missing {
+            // This member never reaches the shared prompt: its place in the batch goes back at
+            // once, so the rest don't wait for it (see [`Gather::leave`]).
+            if let Some(gather) = batch {
+                gather.leave();
+            }
+            return Err(error.into());
         }
-        if kind == PackageKind::ArchPkg && system_tool("pacman").is_none() {
-            return Err("this system has no pacman to install an Arch package with".into());
-        }
-        install_package_via(&SYSTEM, kind, file, installation, stop, phase)
+        install_package_via(&SYSTEM, kind, file, installation, batch, stop, phase)
     }
 
     pub fn install_package_via(
@@ -1403,12 +1457,18 @@ pub(crate) mod linux {
         kind: PackageKind,
         file: &Path,
         installation: Option<&str>,
+        batch: Option<crate::queue::Gather>,
         stop: &Stop,
         phase: &mut dyn FnMut(JobPhase),
     ) -> Result<(), String> {
         let f = file.as_os_str();
         if let Some(command) = install_command(kind) {
-            return as_root(root, command, f, stop, phase, JobPhase::Installing);
+            return as_root(root, command, f, batch, stop, phase, JobPhase::Installing);
+        }
+        // This kind runs without the batch's shared prompt (Flatpak asks for itself, or not at
+        // all): its place in the batch is given back right away.
+        if let Some(gather) = batch {
+            gather.leave();
         }
         match kind {
             PackageKind::Flatpak => {
@@ -1442,7 +1502,7 @@ pub(crate) mod linux {
     }
 
     pub fn remove_package(app: &CraftApp, installed: &Installed, stop: &Stop, phase: &mut dyn FnMut(JobPhase)) -> Result<(), String> {
-        let mut remove = |command: &[&str], package: &str| as_root(&SYSTEM, command, OsStr::new(package), stop, phase, JobPhase::Removing);
+        let mut remove = |command: &[&str], package: &str| as_root(&SYSTEM, command, OsStr::new(package), None, stop, phase, JobPhase::Removing);
         let package = installed.package.as_deref().unwrap_or(app.id);
         match installed.source {
             // The package detected (photocraft, or ai.storyteller.photocraft).
@@ -2281,6 +2341,10 @@ mod msi_downgrade;
 /// Helpers for Windows Installer PowerShell scripts running under elevation.
 #[cfg(any(windows, test))]
 mod msi_batch;
+/// One permission prompt for a batch of per-machine packages: the launcher's own exe, elevated
+/// once, running Windows Installer on each checked package.
+#[cfg(any(windows, test))]
+pub mod msi_session;
 /// Builds the Windows Installer command separately so its package argument can be checked
 /// without starting an installer.
 #[cfg_attr(not(windows), allow(dead_code))]
@@ -2318,26 +2382,81 @@ pub mod windows {
 
     use super::{
         CraftApp, INSTALLER, JobPhase, MsiScope, Path, PathBuf, Stop, cancelled, explain, msi_batch, msi_command, msi_downgrade, msi_folder_argument,
-        msi_log, msi_scope_arguments, process, turn,
+        msi_log, msi_scope_arguments, msi_session, process, turn,
     };
 
-    fn msiexec() -> PathBuf {
+    pub(super) fn msiexec() -> PathBuf {
         std::env::var_os("SystemRoot").map_or_else(|| PathBuf::from(r"C:\Windows"), PathBuf::from).join(r"System32\msiexec.exe")
     }
 
     /// Runs an MSI with a progress window and no restart. Windows asks for permission itself.
     /// `scope`, from the copy being replaced's registration, keeps the update in the same
-    /// Windows Installer context (see [`MsiScope`]). `exit` gets the installer's exit code and
-    /// the path of its log once it has run.
-    pub fn run_msi(
-        msi: &Path,
+    /// Windows Installer context (see [`MsiScope`]). A per-machine package with a `batch` joins
+    /// it instead: the whole batch shares one permission prompt ([`run_batched`]). `exit` gets
+    /// the installer's exit code and the path of its log once it has run. Only
+    /// [`install_at`](super::install_at) calls it, so it stays as private as its [`Package`].
+    #[allow(clippy::too_many_arguments)]
+    pub(super) fn run_msi(
+        app: &CraftApp,
+        package: Package<'_>,
         destination: Option<&Path>,
         scope: Option<MsiScope>,
+        batch: Option<crate::queue::Gather>,
         stop: &Stop,
         phase: &mut dyn FnMut(JobPhase),
         exit: &mut msi_downgrade::Exit,
     ) -> Result<(), String> {
-        in_turn(stop, phase, JobPhase::Installing, || run_direct(msi, destination, scope, exit))
+        if let Some(gather) = batch {
+            if scope == Some(MsiScope::PerMachine) {
+                return run_batched(Batched { app, package, destination, scope }, gather, stop, phase, exit, &msi_session::call);
+            }
+            // A per-user install asks Windows for nothing: its place in the batch goes back at
+            // once, so the per-machine members don't wait for it.
+            gather.leave();
+        }
+        in_turn(stop, phase, JobPhase::Installing, || run_direct(package.file, destination, scope, exit))
+    }
+
+    /// One app's install, as the batch session runs it.
+    pub(super) struct Batched<'a> {
+        pub app: &'a CraftApp,
+        pub package: Package<'a>,
+        pub destination: Option<&'a Path>,
+        pub scope: Option<MsiScope>,
+    }
+
+    /// One permission prompt for a batch of per-machine packages: the members meet in one call
+    /// of the installer queue, the one whose call it is starts the elevated session
+    /// ([`msi_session`] through `exec`), and every member hears its own installer's exit code,
+    /// which `exit` gets with the path of that member's log. A declined prompt cancels the whole
+    /// batch; a session that cannot start sends the members back to installing one by one, the
+    /// way a single app always installs.
+    pub(super) fn run_batched(
+        job: Batched<'_>,
+        gather: crate::queue::Gather,
+        stop: &Stop,
+        phase: &mut dyn FnMut(JobPhase),
+        exit: &mut msi_downgrade::Exit,
+        exec: &crate::queue::Exec<'_>,
+    ) -> Result<(), String> {
+        let Batched { app, package, destination, scope } = job;
+        let target = match msi_session::entry(app, &package, destination, scope) {
+            Ok(target) => target,
+            Err(e) => {
+                log::warn!("{}: {e}; installing it by itself", app.name);
+                gather.leave();
+                return in_turn(stop, phase, JobPhase::Installing, || run_direct(package.file, destination, scope, exit));
+            }
+        };
+        let outcome =
+            INSTALLER.batched_when(Some(gather), msi_session::command(), target, &cancelled(stop), &mut turn(phase, JobPhase::Installing), exec);
+        if outcome.as_ref().err().is_some_and(|e| e == msi_session::NO_SESSION) {
+            log::warn!("{}: the batch session could not start; installing it by itself", app.name);
+            return in_turn(stop, phase, JobPhase::Installing, || run_direct(package.file, destination, scope, exit));
+        }
+        let (outcome, reported) = msi_session::heard(outcome, package.file);
+        *exit = reported;
+        outcome
     }
 
     /// Runs one MSI by itself: `msiexec` asks for permission itself, and the prompt names the package's
@@ -2526,6 +2645,33 @@ mod tests {
         assert_eq!(open_failure(app, &exe, &process::Running::No, None), None);
     }
 
+    /// A member of a shared install session reports its own installer's exit code and log, and
+    /// the card is built from them as for an app installed by itself.
+    #[cfg(windows)]
+    #[test]
+    fn a_shared_session_member_keeps_its_own_exit_code_and_log() {
+        let app = CraftApp::by_id("photocraft").unwrap();
+        let dir = tempfile::tempdir().unwrap();
+        let msi = dir.path().join("photocraft-0.6.0-windows-x64.msi");
+        std::fs::write(&msi, b"package").unwrap();
+        let log = msi_log(&msi);
+        let job = windows::Batched {
+            app,
+            package: windows::Package { file: &msi, sha256: "abc123", version: "0.6.0" },
+            destination: None,
+            scope: Some(MsiScope::PerMachine),
+        };
+        let mut exit = None;
+        let outcome = windows::run_batched(job, INSTALLER.gather(1), &Stop::default(), &mut |_| {}, &mut exit, &|_, targets| {
+            vec![msi_session::reported(&msi, 1603); targets.len()]
+        });
+        assert_eq!(outcome, Err(format!("the Windows Installer stopped with error 1603. Its log is at {}", log.display())));
+        assert_eq!(exit, Some((1603, Some(log.clone()))));
+        let (message, failure) = msi_failure(app, None, 1603, Some(&log), None, || panic!("no installed copy to look for")).unwrap();
+        assert_eq!(message, None);
+        assert_eq!(failure, InstallFailure { blocker: Blocker::InstallerFailed, details: format!("MSI 1603 · {}", log.display()) });
+    }
+
     /// Windows Installer 1618 is another installation; 1603 is the app being open only when the
     /// app or its command-line tool is found running afterwards.
     #[test]
@@ -2655,6 +2801,7 @@ mod tests {
             approved_path: None,
             downgrade: None,
             failure: None,
+            batch: None,
         };
         let error = install_checking(app, &release, &asset, PackageKind::Dmg, Some(&installed), None, &mut job, None, find_running).unwrap_err();
         let failure = job.failure.take();
@@ -3197,6 +3344,7 @@ mod tests {
                 approved_path: None,
                 downgrade: Some(Downgrade::Reinstall { previous: &newer, asset: &newer_msi }),
                 failure: None,
+                batch: None,
             };
             install(app, &older, &older_msi, PackageKind::Msi, Some(&portable), None, &mut job).unwrap_err()
         };
@@ -3312,6 +3460,7 @@ mod tests {
                     approved_path: None,
                     downgrade,
                     failure: None,
+                    batch: None,
                 };
                 install(app, &release, &asset, kind, Some(&installed), previous, &mut job).unwrap_err()
             };
@@ -3352,6 +3501,7 @@ mod tests {
                 approved_path: None,
                 downgrade: None,
                 failure: None,
+                batch: None,
             };
             let err = install(app, &release, &asset, kind, None, None, &mut job).unwrap_err();
             assert!(err.contains("isn't supported"), "{err}");
@@ -3386,6 +3536,7 @@ mod tests {
             approved_path: None,
             downgrade: None,
             failure: None,
+            batch: None,
         };
         let error = install(app, &release, &asset, PackageKind::AppImage, None, None, &mut job).unwrap_err();
         assert!(error.contains("folder is unavailable") || (process::in_sandbox() && error.contains("aren't supported")), "{error}");
@@ -3419,6 +3570,7 @@ mod tests {
             approved_path: None,
             downgrade: None,
             failure: None,
+            batch: None,
         };
         let err = install(app, &release, &asset, kind, None, None, &mut job).unwrap_err();
         assert!(err.contains("publishes no checksum"), "{err}");
@@ -3698,7 +3850,7 @@ mod tests {
                             waiting.send(()).unwrap();
                         }
                     };
-                    linux::install_package_via(root, PackageKind::Deb, Path::new(file), None, &Stop::default(), &mut phase)
+                    linux::install_package_via(root, PackageKind::Deb, Path::new(file), None, None, &Stop::default(), &mut phase)
                 })
             });
             waits.recv().unwrap();
@@ -3739,6 +3891,45 @@ mod tests {
         assert_eq!(results, vec![Err(error.to_string()); 2]);
     }
 
+    /// An "update all" of two `.deb` apps whose downloads finish one after the other, on an idle
+    /// system: with a batch, the first to finish holds back from the installer until the second
+    /// arrives, so the password is asked for once — without the batch, each gets its own call.
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn two_gathered_debs_share_one_password_prompt_without_a_busy_installer() {
+        use std::sync::Mutex;
+
+        let queue = crate::queue::Queue::new();
+        let ran = Mutex::new(Vec::new());
+        let run = |args: &[&std::ffi::OsStr]| {
+            ran.lock().unwrap().push(args.iter().map(|a| a.to_string_lossy().into_owned()).collect::<Vec<_>>());
+            root_outcome(Some(0))
+        };
+        let root = linux::Root { queue: &queue, run: &run };
+        let gather = queue.gather(2);
+        let results = std::thread::scope(|scope| {
+            let root = &root;
+            let jobs: Vec<_> = ["/downloads/a.deb", "/downloads/b.deb"]
+                .iter()
+                .enumerate()
+                .map(|(at, file)| {
+                    let gather = gather.clone();
+                    scope.spawn(move || {
+                        std::thread::sleep(std::time::Duration::from_millis(30 * at as u64));
+                        linux::install_package_via(root, PackageKind::Deb, Path::new(file), None, Some(gather), &Stop::default(), &mut |_| ())
+                    })
+                })
+                .collect();
+            jobs.into_iter().map(|job| job.join().unwrap()).collect::<Vec<_>>()
+        });
+        let calls = ran.into_inner().unwrap();
+        assert_eq!(calls.len(), 1, "one call for the whole batch: {calls:?}");
+        let mut files = calls[0].split_at(6).1.to_vec();
+        files.sort();
+        assert_eq!(files, ["/downloads/a.deb", "/downloads/b.deb"]);
+        assert_eq!(results, vec![Ok(()), Ok(())]);
+    }
+
     #[cfg(target_os = "linux")]
     #[test]
     fn flatpak_bundle_install_failure_reports_clean_error() {
@@ -3747,8 +3938,15 @@ mod tests {
         }
         let queue = crate::queue::Queue::new();
         let root = linux::Root { queue: &queue, run: &|_| Ok(()) };
-        let result =
-            linux::install_package_via(&root, PackageKind::Flatpak, Path::new("/nonexistent/file.flatpak"), None, &Stop::default(), &mut |_| ());
+        let result = linux::install_package_via(
+            &root,
+            PackageKind::Flatpak,
+            Path::new("/nonexistent/file.flatpak"),
+            None,
+            None,
+            &Stop::default(),
+            &mut |_| (),
+        );
         assert!(result.is_err());
         let err = result.unwrap_err();
         assert!(err.starts_with("Flatpak couldn't install the bundle: "), "unexpected error: {err}");
@@ -4055,6 +4253,7 @@ mod tests {
             approved_path: None,
             downgrade: None,
             failure: None,
+            batch: None,
         };
         let result = install_at(app, &release, &asset, PackageKind::AppImage, Some(&installed), None, &mut job, None);
         assert!(result.is_err());
@@ -4088,6 +4287,7 @@ mod tests {
             approved_path: None,
             downgrade: None,
             failure: None,
+            batch: None,
         };
         let result = install_at(app, &release, &asset, PackageKind::AppImage, None, None, &mut job, None);
         assert!(result.is_err(), "mismatched artifact version must be rejected");

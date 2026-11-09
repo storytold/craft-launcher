@@ -97,6 +97,7 @@
 	ArtCraft Launcher {version}	ArtCraft Launcher {version}
 	Only when I ask	Только по запросу
 	Automatically download and install updates	Автоматически скачивать и устанавливать обновления
+	Ask for permission once when updating all apps	Запрашивать разрешение один раз при обновлении всех приложений
 	Notify me when an installed app has an update	Уведомлять, когда у установленного приложения есть обновление
 	Include pre-releases (betas and release candidates)	Включать предварительные релизы (бета и RC)
 	Installing on Linux	Установка в Linux
