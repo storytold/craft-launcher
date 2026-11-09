@@ -16,7 +16,7 @@
 <p align="center">
   <b>One place to install, update and open every app in the Craft App Suite, rebuilt in pure Rust.</b><br>
   PhotoCraft, LightCraft, FilmCraft, DesignCraft, VectorCraft, PdfCraft, EffectCraft, WordCraft,<br>
-  DeckCraft, GridCraft, CADCraft, SoundCraft, FigCraft, Craft Anything, TextureCraft, MaterialCraft and the community app SolidCraft: the right build for your computer, kept up to date.
+  DeckCraft, GridCraft, CADCraft, SoundCraft, FigCraft, Craft Anything, TextureCraft, MaterialCraft and the community apps SolidCraft and MailCraft: the right build for your computer, kept up to date.
 </p>
 
 <p align="center">
@@ -283,6 +283,7 @@ stand on its own.
 | <img src="https://raw.githubusercontent.com/storytold/materialcraft/main/assets/app-icon/hicolor/64x64/apps/ai.storyteller.materialcraft.png" alt="" width="32" height="32">               | **MaterialCraft**   | Procedural material design                            | [GitHub](https://github.com/storytold/materialcraft)  | [Project page](https://github.com/storytold/materialcraft) |
 | <img src="https://raw.githubusercontent.com/storytold/craft-anything/main/assets/app-icon/hicolor/64x64/apps/ai.storyteller.craft-anything.png" alt="" width="32" height="32">             | **Craft Anything**  | See how any software works, then build your own       | [GitHub](https://github.com/storytold/craft-anything) | [Website](https://getartcraft.com/apps/craft-anything)     |
 | <img src="https://raw.githubusercontent.com/tangency-labs/solidcraft/main/assets/icons/app/linux/exports/hicolor/64x64/apps/io.tangencylabs.solidcraft.png" alt="" width="32" height="32"> | **SolidCraft**      | Parametric 3D CAD by Tangency Labs (community app)    | [GitHub](https://github.com/tangency-labs/solidcraft) |                                                            |
+| <img src="https://raw.githubusercontent.com/UCS-Care-Group/mailcraft/main/assets/app-icon/hicolor/64x64/apps/io.github.billsecond.mailcraft.png" alt="" width="32" height="32"> | **MailCraft** | Mail, calendar and contacts by UCS Care Group (community app) | [GitHub](https://github.com/UCS-Care-Group/mailcraft) | [Website](https://mailcraft.work) |
 
 <br>
 

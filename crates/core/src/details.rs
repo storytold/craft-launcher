@@ -139,7 +139,7 @@ pub fn screenshot_within_budget(bytes: &[u8]) -> bool {
 /// Where every Craft App runs (getartcraft.com lists the same for each of them).
 const PLATFORMS: &str = "macOS, Windows, Linux, FreeBSD, web";
 
-pub const DETAILS: [AppDetails; 17] = [
+pub const DETAILS: [AppDetails; 18] = [
     AppDetails {
         id: "photocraft",
         headline: "The image editor you already know how to use.",
@@ -528,6 +528,24 @@ pub const DETAILS: [AppDetails; 17] = [
             feature("Features", "Extrude, revolve, sweep, loft, fillet, chamfer, shell, holes, threads and patterns on a parametric timeline."),
             feature("Files", "STEP, IGES, 3MF, STL, OBJ and glTF in and out where supported, and .sc designs."),
             feature("Desktop, web and agents", "A desktop app, a browser app, a headless CLI and an MCP server, all running the same commands."),
+        ],
+        shots: &[],
+        platforms: PLATFORMS,
+    },
+    AppDetails {
+        id: "mailcraft",
+        headline: "Mail, calendar, contacts and tasks, in one native app.",
+        about: "An open-source mail program by UCS Care Group, written from scratch in Rust: the folder pane, message \
+                list and reading pane people already know, with a calendar, people and to-dos. Works with Microsoft 365, \
+                Outlook.com and IMAP. In public beta, and it can be driven by AI agents through its MCP server.",
+        features: &[
+            feature(
+                "Mail",
+                "Conversations, flags, categories, rules, search with a query language, and HTML mail shown without running anything in it.",
+            ),
+            feature("Calendar", "Day, week and month views, recurring meetings, invitations and reminders, kept in step with Microsoft 365."),
+            feature("Files", ".eml, .mbox, .ics and .vcf in and out, and the mail and contacts of an Outlook .pst file in."),
+            feature("Desktop, web and agents", "A desktop app, a browser app, a CLI and an MCP server, all running the same commands."),
         ],
         shots: &[],
         platforms: PLATFORMS,
