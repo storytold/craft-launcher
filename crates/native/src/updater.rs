@@ -288,7 +288,16 @@ impl Engine {
     /// An install job of this engine's. It only ever updates what's there, to a newer release, so it
     /// never writes over a folder's contents and never goes back to an older version.
     fn job<'a>(&'a self, stop: &'a Stop, phase: &'a mut dyn FnMut(JobPhase)) -> Job<'a> {
-        Job { http: &self.http, paths: &self.paths, stop, phase, install_locations: &self.options.install_locations, replace: false, downgrade: None }
+        Job {
+            http: &self.http,
+            paths: &self.paths,
+            stop,
+            phase,
+            install_locations: &self.options.install_locations,
+            replace: false,
+            approved_path: None,
+            downgrade: None,
+        }
     }
 
     /// The update service's install: download and check, then run the package quietly into the
