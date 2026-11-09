@@ -436,3 +436,17 @@ materialcraft	Preview materials in 2D and on 3D models.	マテリアルを2Dと3
 	Migrate Flatpak bundles to ArtCraft OCI (experimental)	Flatpak バンドルを ArtCraft OCI に移行する（実験的）
 	On update, switch first party apps when the matching package is available. Otherwise, keep using bundles.	更新時に対応するパッケージがあれば ArtCraft 公式アプリを移行します。なければ引き続きバンドルを使用します。
 	The OCI repository is a preview with GPG verification disabled.	OCI リポジトリはプレビュー版で、GPG 検証は無効になっています。
+
+# Update installation scope
+	Choose how to update {name}	{name} の更新方法を選択
+	Keep the current location	現在の場所を維持
+	Administrator permission is required for each update.	更新のたびに管理者の許可が必要です。
+	Install only for me	自分専用にインストール
+	Windows will ask once more for administrator permission to uninstall the old shared copy. After migration, updates and uninstalling for this account normally need no administrator permission. Other Windows users will lose access.	古い共有コピーをアンインストールするため、Windows がもう一度管理者の許可を求めます。移行後、このアカウントでの更新やアンインストールには通常、管理者の許可は不要になります。他の Windows ユーザーは利用できなくなります。
+	Profile settings and presets stay where they are. Add-ons beside the program may need reinstalling; back them up first.	プロファイルの設定とプリセットはそのまま残ります。プログラムのフォルダー内のアドオンは再インストールが必要になる場合があるため、先にバックアップしてください。
+	I accept removal of the shared copy and the risk to add-ons beside it.	共有インストールの削除と、そのフォルダー内のアドオンへのリスクを了承します。
+
+@msg	The installation or selected version changed. Check for updates and choose again; nothing was removed.	インストール状態または選択したバージョンが変更されました。更新を確認し、もう一度選択してください。何も削除されていません。
+@msg	Migration is unavailable for this version. Keep the current location; nothing was removed.	このバージョンは移行できません。現在の場所を維持してください。何も削除されていません。
+@msg	The installation folders could not be verified or the destination is occupied. Keep the current location; nothing was removed.	インストール先フォルダーを確認できないか、移行先が使用中です。現在の場所を維持してください。何も削除されていません。
+@msg	Portable data was found beside the program. Keep the current location and move that data manually first.	プログラムの隣にポータブル版のデータが見つかりました。現在の場所を維持し、まずそのデータを手動で移動してください。

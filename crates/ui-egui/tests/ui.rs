@@ -4033,3 +4033,72 @@ fn an_apps_page_is_a_card_in_the_middle_with_next_and_previous_arrows_and_closes
     h.run_steps(30);
     assert!(!showing(&h, "photocraft"), "a click outside did not close it");
 }
+
+fn migration_offer(id: &str) -> Event {
+    Event::MsiUpdateChoice {
+        app: id.into(),
+        plan: artcraft_launcher_core::protocol::MsiUpdatePlan {
+            installed: Installed {
+                version: version::parse("1.0.0"),
+                source: InstallSource::Msi,
+                location: format!(r"C:\Program Files\ArtCraft\{id}\{id}.exe"),
+                package: Some("{TEST-PRODUCT}".into()),
+                installation: None,
+                externally_managed: false,
+                origin: None,
+            },
+            release_tag: "v1.1.0".into(),
+            user_folder: format!(r"C:\Users\tester\AppData\Local\Programs\ArtCraft\{id}"),
+        },
+    }
+}
+
+#[test]
+fn msi_migration_requires_consent_and_queues_other_apps() {
+    let mut ev = events();
+    ev.extend([migration_offer("photocraft"), migration_offer("gridcraft")]);
+    let (mut h, sent) = harness_with(ev, ViewMode::Grid, egui::Theme::Dark, true, 1.0);
+    h.run();
+    snapshot(&mut h, "msi-update-keep");
+    h.get_by_label("Install only for me").click();
+    h.run();
+    snapshot(&mut h, "msi-update-migrate");
+    // Clicking a disabled Update must never send a command.
+    h.get_by_label("Update").click();
+    h.run();
+    assert!(!sent.borrow().iter().any(|c| matches!(c, Command::ConfirmMsiUpdate { .. })));
+    h.get_by_label("I accept removal of the shared copy and the risk to add-ons beside it.").click();
+    h.run();
+    h.get_by_label("Keep the current location").click();
+    h.run();
+    h.get_by_label("Install only for me").click();
+    h.run();
+    h.get_by_label("Update").click();
+    h.run();
+    assert!(!sent.borrow().iter().any(|c| matches!(c, Command::ConfirmMsiUpdate { .. })));
+    h.get_by_label("I accept removal of the shared copy and the risk to add-ons beside it.").click();
+    h.run();
+    h.get_by_label("Update").click();
+    h.run();
+    assert!(
+        sent.borrow()
+            .iter()
+            .any(|c| matches!(c, Command::ConfirmMsiUpdate { app, migrate: true, plan } if app == "photocraft" && plan.release_tag == "v1.1.0"))
+    );
+    h.get_by_label("Choose how to update GridCraft");
+    h.get_by_label("Cancel").click();
+    h.run();
+    assert_eq!(sent.borrow().iter().filter(|c| matches!(c, Command::ConfirmMsiUpdate { .. })).count(), 1);
+}
+
+#[test]
+fn msi_update_keeps_location_by_default() {
+    let mut ev = events();
+    ev.push(migration_offer("photocraft"));
+    let (mut h, sent) = harness_with(ev, ViewMode::Grid, egui::Theme::Light, true, 1.0);
+    h.run();
+    snapshot(&mut h, "msi-update-light");
+    h.get_by_label("Update").click();
+    h.run();
+    assert!(sent.borrow().iter().any(|c| matches!(c, Command::ConfirmMsiUpdate { migrate: false, .. })));
+}
