@@ -50,11 +50,10 @@ pub(super) const NO_SESSION: &str = "no batch session";
 #[cfg(windows)]
 const STARTED_WITHIN: std::time::Duration = std::time::Duration::from_secs(300);
 
-/// How long a process id that cannot be opened is given the benefit of the doubt: opening a
-/// just-started elevated process can fail for a moment, and "cannot open" must never be read as
-/// "not running" while it keeps failing.
+/// How long the installer queue is kept for a session that has started but cannot be opened or
+/// waited for ([`Seen::Unwatched`]). It ends sooner when the session reports.
 #[cfg(windows)]
-const OPEN_GRACE: std::time::Duration = std::time::Duration::from_secs(10);
+const UNWATCHED_LIMIT: std::time::Duration = std::time::Duration::from_secs(4 * 60 * 60);
 
 /// One package of the batch, as both sides of the session see it. It carries no command line:
 /// the elevated side builds the installer's arguments from the held package itself
@@ -304,20 +303,28 @@ enum SessionEnd {
     /// It is definitely over (its process is gone) but said nothing: the members may safely
     /// install one by one, because nothing of the session is running any more.
     OverWithoutReport,
-    /// It was launched and cannot be shown to be over. Falling back here would race whatever it
-    /// may still install, so the members hear an error instead.
+    /// It was launched and cannot be shown to be over within the limits above, so the members
+    /// hear an error instead of falling back.
     Unknown,
+}
+
+/// What a look at the elevated copy's process found.
+#[cfg(windows)]
+enum Seen {
+    /// The process ended, or its id no longer exists.
+    Over,
+    /// The process could not be opened or waited for, so it may still be running.
+    Unwatched,
 }
 
 /// Waits for the elevated copy: it writes its process id as its first act and its results as its
 /// last, so waiting for the process to end is waiting for the results. Only a session that is
 /// *shown* to be over (its process waited out, or its process id gone) lets the members fall
 /// back to installing one by one; one that merely cannot be seen is never fallen back from.
+/// The installer queue stays taken until then: a session that cannot be watched keeps it until
+/// it reports, its process ends, or [`UNWATCHED_LIMIT`] passes.
 #[cfg(windows)]
 fn wait_until_done(pid_file: &Path, results: &Path, token: &str) -> SessionEnd {
-    use winsafe::HPROCESS;
-    use winsafe::co;
-
     let deadline = std::time::Instant::now() + STARTED_WITHIN;
     let pid = loop {
         if let Ok(text) = std::fs::read_to_string(pid_file)
@@ -333,28 +340,64 @@ fn wait_until_done(pid_file: &Path, results: &Path, token: &str) -> SessionEnd {
         }
         std::thread::sleep(std::time::Duration::from_millis(500));
     };
-    // The copy exists; its handle may not be ours at once. "Cannot open" that keeps failing past
-    // the grace means the session is there but cannot be watched — never that it is gone.
-    let opened_by = std::time::Instant::now() + OPEN_GRACE;
-    loop {
-        match HPROCESS::OpenProcess(co::PROCESS::SYNCHRONIZE, false, pid) {
-            Ok(process) => {
-                // None is INFINITE: the session ends when its last progress window closes.
-                if !process.WaitForSingleObject(None).is_ok_and(|wait| wait == co::WAIT::OBJECT_0) {
-                    log::warn!("waiting for the elevated session failed");
-                    return SessionEnd::Unknown;
-                }
-                break;
+    let watching_until = std::time::Instant::now() + UNWATCHED_LIMIT;
+    let mut pause = || {
+        std::thread::sleep(std::time::Duration::from_millis(500));
+        std::time::Instant::now() <= watching_until
+    };
+    watch(&mut || look_at_process(pid), pid_file, results, token, &mut pause)
+}
+
+/// Waits for process `pid` when it can be opened.
+#[cfg(windows)]
+fn look_at_process(pid: u32) -> Seen {
+    use winsafe::HPROCESS;
+    use winsafe::co;
+
+    match HPROCESS::OpenProcess(co::PROCESS::SYNCHRONIZE, false, pid) {
+        Ok(process) => {
+            // None is INFINITE: the session ends when its last progress window closes.
+            if process.WaitForSingleObject(None).is_ok_and(|wait| wait == co::WAIT::OBJECT_0) {
+                Seen::Over
+            } else {
+                log::warn!("waiting for the elevated session failed");
+                Seen::Unwatched
             }
-            // ERROR_INVALID_PARAMETER is what a process id that no longer exists answers.
-            Err(e) if e == co::ERROR::INVALID_PARAMETER => break,
-            Err(e) if std::time::Instant::now() > opened_by => {
-                log::warn!("the elevated session could not be opened to be waited for ({e})");
-                return SessionEnd::Unknown;
-            }
-            Err(_) => std::thread::sleep(std::time::Duration::from_millis(500)),
+        }
+        // ERROR_INVALID_PARAMETER is what a process id that no longer exists answers.
+        Err(e) if e == co::ERROR::INVALID_PARAMETER => Seen::Over,
+        Err(e) => {
+            log::debug!("the elevated session could not be opened to be waited for ({e})");
+            Seen::Unwatched
         }
     }
+}
+
+/// Keeps looking until the session is over. The copy writes its results and then removes its
+/// process id, so a session that cannot be watched is over once its id is gone and its results
+/// are this session's. `pause` waits before the next look; `false` gives up.
+#[cfg(windows)]
+fn watch(look: &mut dyn FnMut() -> Seen, pid_file: &Path, results: &Path, token: &str, pause: &mut dyn FnMut() -> bool) -> SessionEnd {
+    loop {
+        match look() {
+            Seen::Over => return report(results, token),
+            Seen::Unwatched => {
+                if !pid_file.exists()
+                    && let end @ SessionEnd::Done(_) = report(results, token)
+                {
+                    return end;
+                }
+            }
+        }
+        if !pause() {
+            return SessionEnd::Unknown;
+        }
+    }
+}
+
+/// What a finished session's results file says.
+#[cfg(windows)]
+fn report(results: &Path, token: &str) -> SessionEnd {
     match std::fs::read_to_string(results) {
         Ok(reported) => match parse_results(&reported, token) {
             codes if codes.is_empty() => SessionEnd::OverWithoutReport,
@@ -517,6 +560,69 @@ mod tests {
             parse_results(&format!("{token}\nphotocraft\t0\n\njunk\nlightcraft\t3010\n"), token),
             vec![(String::from("photocraft"), 0), (String::from("lightcraft"), 3010)]
         );
+    }
+
+    #[cfg(windows)]
+    mod waiting {
+        use super::*;
+
+        const TOKEN: &str = "0123456789abcdef";
+
+        fn session_files(dir: &Path) -> (PathBuf, PathBuf) {
+            let pid_file = dir.join("batch.pid");
+            std::fs::write(&pid_file, "4242").unwrap();
+            (pid_file, dir.join("batch.results"))
+        }
+
+        /// The queue stays taken while the session cannot be watched, and frees once it reports.
+        #[test]
+        fn a_session_that_cannot_be_watched_keeps_the_queue_until_it_reports() {
+            let dir = tempfile::tempdir().unwrap();
+            let (pid_file, results) = session_files(dir.path());
+            let codes = vec![(String::from("photocraft"), 0)];
+            let mut pauses = 0;
+            let mut pause = || {
+                pauses += 1;
+                if pauses == 3 {
+                    write_results(&results, TOKEN, &codes).unwrap();
+                    std::fs::remove_file(&pid_file).unwrap();
+                }
+                true
+            };
+            let end = watch(&mut || Seen::Unwatched, &pid_file, &results, TOKEN, &mut pause);
+            assert!(matches!(&end, SessionEnd::Done(reported) if *reported == codes), "the session's report was not read");
+            assert_eq!(pauses, 3, "the queue was freed before the session reported");
+        }
+
+        /// A report whose process id is still there is not read: the copy removes the id last.
+        #[test]
+        fn results_are_not_read_while_the_process_id_is_there() {
+            let dir = tempfile::tempdir().unwrap();
+            let (pid_file, results) = session_files(dir.path());
+            write_results(&results, TOKEN, &[(String::from("photocraft"), 0)]).unwrap();
+            let end = watch(&mut || Seen::Unwatched, &pid_file, &results, TOKEN, &mut || false);
+            assert!(matches!(end, SessionEnd::Unknown));
+        }
+
+        #[test]
+        fn a_session_that_is_over_is_read_at_once() {
+            let dir = tempfile::tempdir().unwrap();
+            let (pid_file, results) = session_files(dir.path());
+            let end = watch(&mut || Seen::Over, &pid_file, &results, TOKEN, &mut || panic!("no wait is needed"));
+            assert!(matches!(end, SessionEnd::OverWithoutReport));
+        }
+
+        #[test]
+        fn a_session_that_stays_unwatched_past_the_limit_is_unknown() {
+            let dir = tempfile::tempdir().unwrap();
+            let (pid_file, results) = session_files(dir.path());
+            let mut left = 2;
+            let mut pause = || {
+                left -= 1;
+                left > 0
+            };
+            assert!(matches!(watch(&mut || Seen::Unwatched, &pid_file, &results, TOKEN, &mut pause), SessionEnd::Unknown));
+        }
     }
 
     #[test]
