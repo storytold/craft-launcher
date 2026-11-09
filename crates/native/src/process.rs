@@ -60,6 +60,9 @@ pub fn run(program: &str, args: &[&str], timeout: Duration) -> Result<String, St
 #[derive(Debug)]
 pub(crate) struct RunOutput {
     pub success: bool,
+    /// Read only by the macOS Gatekeeper verifier; other targets keep the field for the shared
+    /// command runner and its tests.
+    #[cfg_attr(not(target_os = "macos"), allow(dead_code))]
     pub code: Option<i32>,
     pub status: String,
     pub stdout: String,
@@ -68,11 +71,13 @@ pub(crate) struct RunOutput {
 
 impl RunOutput {
     #[cfg(test)]
+    #[cfg_attr(not(target_os = "macos"), allow(dead_code))]
     pub(crate) fn success(stdout: impl Into<String>) -> Self {
         Self { success: true, code: Some(0), status: "exit status: 0".into(), stdout: stdout.into(), stderr: String::new() }
     }
 
     #[cfg(test)]
+    #[cfg_attr(not(target_os = "macos"), allow(dead_code))]
     pub(crate) fn exit(code: i32, stdout: impl Into<String>, stderr: impl Into<String>) -> Self {
         Self { success: false, code: Some(code), status: format!("exit status: {code}"), stdout: stdout.into(), stderr: stderr.into() }
     }
