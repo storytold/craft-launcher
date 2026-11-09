@@ -6,6 +6,13 @@ Launcher's own code and original assets are MIT OR Apache-2.0 (see [`LICENSE-MIT
 in the same change; third-party assets must be permissively licensed and keep their license file
 next to them.
 
+## Offline suite documentation screenshots
+
+| Path | Title | Author | Source | License |
+|---|---|---|---|---|
+| `docs/screenshots/offline-suite-export.png` | Offline suite app selection, English UI | ArtCraft Team and contributors | Local egui integration-test capture, `offline_export_selects_apps_sends_destination_and_can_cancel_after_reopening` | MIT OR Apache-2.0; included ArtCraft marks retain their trademark terms in `docs/brand/LICENSE-brand.txt` |
+| `docs/screenshots/offline-suite-export-small.png` | Offline suite export at 720 × 500, English UI | ArtCraft Team and contributors | Local egui integration-test capture, `offline_export_selects_apps_sends_destination_and_can_cancel_after_reopening` | MIT OR Apache-2.0; included ArtCraft marks retain their trademark terms in `docs/brand/LICENSE-brand.txt` |
+
 ## Bundled in the app
 
 | Path | Title | Author | Source | License |

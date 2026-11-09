@@ -12,6 +12,7 @@ mod motion;
 mod settings_file;
 #[cfg(target_os = "macos")]
 mod spaces;
+mod suite_cli;
 #[cfg(target_os = "linux")]
 mod system_theme;
 mod tray;
@@ -68,6 +69,9 @@ fn main() -> ExitCode {
         return ExitCode::SUCCESS;
     }
     let mut hidden = args.iter().any(|a| a == login::HIDDEN_FLAG);
+    if let Some(code) = suite_cli::run(&args) {
+        return code;
+    }
 
     let wake: Wake = Arc::new(OnceLock::new());
     let starts = match single_instance::claim(wake.clone()) {
