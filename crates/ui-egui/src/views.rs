@@ -667,7 +667,7 @@ impl LauncherUi {
         if let Some((failure, again)) = blocked {
             crate::card_parts::blurb(ui, &model::blocker_text(failure.blocker, app.name, again), t.ink, 3);
             ui.add_space(4.0);
-            ui.add(egui::Label::new(RichText::new(model::blocker_details(failure)).size(12.0).color(t.muted)).truncate());
+            blocker_details_label(ui, model::blocker_details(failure), t.muted);
         }
         // Until a version is known, the sentence that says why (no release yet, installed…) stays.
         if version.is_empty() {
@@ -1585,6 +1585,12 @@ fn lines_height(ui: &Ui, fonts: &[&FontId], gap: f32) -> f32 {
     (fonts.iter().map(|font| line(font) + gap).sum::<f32>() - gap).max(0.0)
 }
 
+/// The one-line details of what stopped an update. The line is cut to the card's width, so the
+/// full text is in the tooltip.
+fn blocker_details_label(ui: &mut egui::Ui, details: String, color: egui::Color32) -> egui::Response {
+    ui.add(egui::Label::new(RichText::new(&details).size(12.0).color(color)).truncate()).on_hover_text(details)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1611,6 +1617,26 @@ mod tests {
 
     fn platform() -> Platform {
         Platform { os: artcraft_launcher_core::Os::Linux, arch: Arch::X64 }
+    }
+
+    #[test]
+    fn the_blocker_details_line_shows_its_full_text_on_hover() {
+        let ctx = egui::Context::default();
+        ctx.all_styles_mut(|style| style.interaction.tooltip_delay = 0.0);
+        let details = "1603 \u{b7} C:\\Temp\\installer.log".to_string();
+        let mut open = false;
+        for frame in 0..4 {
+            let mut input = egui::RawInput::default();
+            input.events.push(egui::Event::PointerMoved(egui::pos2(20.0, 10.0)));
+            ctx.run_ui(input, |ui| {
+                let response = blocker_details_label(ui, details.clone(), egui::Color32::GRAY);
+                if frame == 3 {
+                    open = response.is_tooltip_open();
+                }
+            })
+            .drop_without_applying_deltas();
+        }
+        assert!(open, "hovering the details line must open a tooltip");
     }
 
     #[test]
