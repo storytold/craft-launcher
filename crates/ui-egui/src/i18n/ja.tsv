@@ -103,6 +103,7 @@
 	Automatically download and install updates	更新を自動でダウンロードしてインストール
 	For everyone on this computer. Changing it asks for administrator permission.	このコンピューターのすべてのユーザーに適用されます。変更するには管理者の許可が必要です。
 	Set by your administrator.	管理者が設定しています。
+	Ask for permission once when updating all apps	すべてのアプリを更新するときは権限を一度だけ求める
 	Notify me when an installed app has an update	インストール済みアプリに更新があるときに通知する
 	Include pre-releases (betas and release candidates)	プレリリース（ベータ版とリリース候補）を含める
 	Installing on Linux	Linux へのインストール
@@ -381,6 +382,8 @@ filter	Installed	インストール済み
 	ArtCraft on GitHub	GitHub の ArtCraft
 	Join the ArtCraft Discord	ArtCraft Discord に参加
 @plural	ArtCraft Launcher · {n} update available|ArtCraft Launcher · {n} updates available	ArtCraft Launcher · {n} 件の更新があります
+
+	Download size: {size}	ダウンロードサイズ: {size}
 	Install folder	インストール先フォルダー
 	Default install folder	既定のインストール先フォルダー
 	System default	システムの既定

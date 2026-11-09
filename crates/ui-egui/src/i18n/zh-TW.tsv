@@ -77,6 +77,7 @@
 	Automatically download and install updates	自動下載並安裝更新
 	For everyone on this computer. Changing it asks for administrator permission.	對這台電腦上的所有使用者生效。變更需要系統管理員權限。
 	Set by your administrator.	由系統管理員設定。
+	Ask for permission once when updating all apps	更新所有應用程式時僅請求一次權限
 	Notify me when an installed app has an update	已安裝的應用程式有更新時通知我
 	Include pre-releases (betas and release candidates)	包含預先發行版（Beta 版與候選發行版）
 	Installing on Linux	在 Linux 上安裝
@@ -395,3 +396,4 @@ materialcraft	Node graphs	節點圖
 materialcraft	Combine noises, patterns and filters.	組合雜訊、圖樣與濾鏡。
 materialcraft	Live previews	即時預覽
 materialcraft	Preview materials in 2D and on 3D models.	在 2D 與 3D 模型上預覽材質。
+	Download size: {size}	下載大小：{size}

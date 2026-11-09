@@ -97,6 +97,7 @@
 	Automatically download and install updates	განახლებების ავტომატური ჩამოტვირთვა და ინსტალაცია
 	For everyone on this computer. Changing it asks for administrator permission.	მოქმედებს ამ კომპიუტერის ყველა მომხმარებლისთვის. შესაცვლელად საჭიროა ადმინისტრატორის ნებართვა.
 	Set by your administrator.	დაყენებულია ადმინისტრატორის მიერ.
+	Ask for permission once when updating all apps	ყველა აპლიკაციის განახლებისას ნებართვის მოთხოვნა მხოლოდ ერთხელ
 	Notify me when an installed app has an update	შეტყობინება, როცა დაინსტალირებულ აპლიკაციას განახლება აქვს
 	Include pre-releases (betas and release candidates)	წინასწარი ვერსიების ჩართვა (ბეტა-ვერსიები და გამოშვების კანდიდატები)
 	Installing on Linux	ინსტალაცია Linux-ზე
@@ -435,3 +436,4 @@ materialcraft	Node graphs	კვანძების გრაფები
 materialcraft	Combine noises, patterns and filters.	ხმაურების, პატერნებისა და ფილტრების კომბინირება.
 materialcraft	Live previews	ცოცხალი წინასწარი ნახვა
 materialcraft	Preview materials in 2D and on 3D models.	მასალების წინასწარი ნახვა 2D-ში და 3D მოდელებზე.
+	Download size: {size}	ჩამოტვირთვის ზომა: {size}

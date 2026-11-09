@@ -89,6 +89,7 @@
 	Automatically download and install updates	Baixar e instalar atualizações automaticamente
 	For everyone on this computer. Changing it asks for administrator permission.	Vale para todos neste computador. Para alterar, é preciso permissão de administrador.
 	Set by your administrator.	Definido pelo administrador.
+	Ask for permission once when updating all apps	Pedir permissão uma única vez ao atualizar todos os aplicativos
 	Notify me when an installed app has an update	Notificar quando um aplicativo instalado tiver atualização
 	Include pre-releases (betas and release candidates)	Incluir versões de pré-lançamento (betas e RC)
 	Installing on Linux	Instalação no Linux
@@ -366,6 +367,8 @@ filter	Installed	Instalados
 	Loading pictures…	Carregando imagens…
 	Pictures couldn't be loaded. Reopen this page to try again.	Não foi possível carregar as imagens. Abra a página novamente para tentar de novo.
 @plural	ArtCraft Launcher · {n} update available|ArtCraft Launcher · {n} updates available	ArtCraft Launcher · {n} atualização disponível|ArtCraft Launcher · {n} atualizações disponíveis
+
+	Download size: {size}	Tamanho do download: {size}
 	Install folder	Pasta de instalação
 	Default install folder	Pasta de instalação padrão
 	System default	Padrão do sistema
