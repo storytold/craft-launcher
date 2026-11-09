@@ -101,6 +101,7 @@
 	ArtCraft Launcher {version}	ArtCraft Launcher {version}
 	Only when I ask	手動で確認したときのみ
 	Automatically download and install updates	更新を自動でダウンロードしてインストール
+	Ask for permission once when updating all apps	すべてのアプリを更新するときは権限を一度だけ求める
 	Notify me when an installed app has an update	インストール済みアプリに更新があるときに通知する
 	Include pre-releases (betas and release candidates)	プレリリース（ベータ版とリリース候補）を含める
 	Installing on Linux	Linux へのインストール
@@ -390,6 +391,9 @@ filter	Installed	インストール済み
 @msg	Couldn't update shortcuts for {name}: {e}	{name} のショートカットを更新できませんでした: {e}
 	A system-wide desktop shortcut exists (not controlled by launcher)	システム全体のデスクトップショートカットが存在します (ランチャーで管理されていません)
 	A system-wide Start menu entry exists (not controlled by launcher)	システム全体のスタートメニュー項目が存在します (ランチャーで管理されていません)
+
+	Download size: {size}	ダウンロードサイズ: {size}
+
 	Install folder	インストール先フォルダー
 	Default install folder	既定のインストール先フォルダー
 	System default	システムの既定

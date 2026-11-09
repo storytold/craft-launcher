@@ -87,6 +87,7 @@
 	ArtCraft Launcher {version}	ArtCraft Launcher {version}
 	Only when I ask	Apenas quando eu pedir
 	Automatically download and install updates	Baixar e instalar atualizações automaticamente
+	Ask for permission once when updating all apps	Pedir permissão uma única vez ao atualizar todos os aplicativos
 	Notify me when an installed app has an update	Notificar quando um aplicativo instalado tiver atualização
 	Include pre-releases (betas and release candidates)	Incluir versões de pré-lançamento (betas e RC)
 	Installing on Linux	Instalação no Linux
@@ -375,6 +376,9 @@ filter	Installed	Instalados
 @msg	Couldn't update shortcuts for {name}: {e}	Não foi possível atualizar os atalhos de {name}: {e}
 	A system-wide desktop shortcut exists (not controlled by launcher)	Existe um atalho na área de trabalho em nível de sistema (não controlado pelo launcher)
 	A system-wide Start menu entry exists (not controlled by launcher)	Existe uma entrada no menu Iniciar em nível de sistema (não controlada pelo launcher)
+
+	Download size: {size}	Tamanho do download: {size}
+
 	Install folder	Pasta de instalação
 	Default install folder	Pasta de instalação padrão
 	System default	Padrão do sistema

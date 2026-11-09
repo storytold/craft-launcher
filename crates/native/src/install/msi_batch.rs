@@ -115,6 +115,16 @@ pub(super) fn hold(msi: &Path, sha256: &str) -> Result<Held, String> {
     Ok(Held { _file: file })
 }
 
+#[cfg(windows)]
+impl Held {
+    /// A file already opened for reading only (no re-check): the batch session's manifest, held
+    /// the same way its packages are (see [`hold`]).
+    #[cfg(windows)]
+    pub(super) fn keep(file: std::fs::File) -> Held {
+        Held { _file: file }
+    }
+}
+
 /// The base64 form of `script` that `-EncodedCommand` takes: UTF-16 little-endian, so no quoting
 /// can go wrong however odd a path is.
 pub(super) fn encoded(script: &str) -> String {

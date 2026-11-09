@@ -192,6 +192,9 @@ impl LauncherUi {
             {
                 self.trigger_auto_updates();
             }
+            if self.caps.manage_apps {
+                ui.checkbox(&mut self.settings.batch_updates, tl!("Ask for permission once when updating all apps"));
+            }
             ui.checkbox(&mut self.settings.notify, tl!("Notify me when an installed app has an update"));
             ui.checkbox(&mut self.settings.prereleases, tl!("Include pre-releases (betas and release candidates)"));
             row(ui, tl!("Launcher version"), 200.0, &mut |ui, label| {

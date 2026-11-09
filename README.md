@@ -15,7 +15,7 @@
 
 <p align="center">
   <b>One place to install, update and open every app in the Craft App Suite, rebuilt in pure Rust.</b><br>
-  ArtCraft Studio, PhotoCraft, LightCraft, FilmCraft, DesignCraft, VectorCraft, PdfCraft, EffectCraft, WordCraft,<br>
+  PhotoCraft, LightCraft, FilmCraft, DesignCraft, VectorCraft, PdfCraft, EffectCraft, WordCraft,<br>
   DeckCraft, GridCraft, CADCraft, SoundCraft, FigCraft, Craft Anything, TextureCraft, MaterialCraft and the community app SolidCraft: the right build for your computer, kept up to date.
 </p>
 
@@ -266,7 +266,6 @@ stand on its own.
 
 |                                                                                                                                                                                            | App                 | What it's for                                         | Code                                                  | Learn more                                                 |
 |:------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------:|:--------------------|:------------------------------------------------------|:------------------------------------------------------|:-----------------------------------------------------------|
-| <img src="https://raw.githubusercontent.com/storytold/artcraft/main/crates/desktop/artcraft/icons/64x64.png" alt="" width="32" height="32">                                                | **ArtCraft Studio** | AI image and video creation                           | [GitHub](https://github.com/storytold/artcraft)       | [Website](https://getartcraft.com)                         |
 | <img src="https://raw.githubusercontent.com/storytold/photocraft/main/assets/app-icon/hicolor/64x64/apps/ai.storyteller.photocraft.png" alt="" width="32" height="32">                     | **PhotoCraft**      | Image editing: layers, masks, type and real PSD files | [GitHub](https://github.com/storytold/photocraft)     | [Website](https://getartcraft.com/apps/photocraft)         |
 | <img src="https://raw.githubusercontent.com/storytold/vectorcraft/main/assets/app-icon/hicolor/64x64/apps/ai.storyteller.vectorcraft.png" alt="" width="32" height="32">                   | **VectorCraft**     | Vector illustration                                   | [GitHub](https://github.com/storytold/vectorcraft)    | [Website](https://getartcraft.com/apps/vectorcraft)        |
 | <img src="https://raw.githubusercontent.com/storytold/filmcraft/main/assets/app-icon/hicolor/64x64/apps/ai.storyteller.filmcraft.png" alt="" width="32" height="32">                       | **FilmCraft**       | Video editing, color and sound                        | [GitHub](https://github.com/storytold/filmcraft)      | [Website](https://getartcraft.com/apps/filmcraft)          |

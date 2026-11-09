@@ -97,6 +97,7 @@
 	ArtCraft Launcher {version}	ArtCraft Launcher {version}
 	Only when I ask	Только по запросу
 	Automatically download and install updates	Автоматически скачивать и устанавливать обновления
+	Ask for permission once when updating all apps	Запрашивать разрешение один раз при обновлении всех приложений
 	Notify me when an installed app has an update	Уведомлять, когда у установленного приложения есть обновление
 	Include pre-releases (betas and release candidates)	Включать предварительные релизы (бета и RC)
 	Installing on Linux	Установка в Linux
@@ -383,6 +384,9 @@ filter	Installed	Установлены
 @msg	Couldn't update shortcuts for {name}: {e}	Не удалось обновить ярлыки для {name}: {e}
 	A system-wide desktop shortcut exists (not controlled by launcher)	Существует общесистемный ярлык на рабочем столе (не управляется лаунчером)
 	A system-wide Start menu entry exists (not controlled by launcher)	Существует общесистемный пункт в меню «Пуск» (не управляется лаунчером)
+
+	Download size: {size}	Размер загрузки: {size}
+
 	Install folder	Папка установки
 	Default install folder	Папка установки по умолчанию
 	System default	По умолчанию в системе
