@@ -462,9 +462,9 @@ impl LauncherUi {
 
         let mut eligible = Vec::new();
         for app in apps {
-            let still_needs_update = self.entry(&app).is_some_and(|entry| {
-                self.in_filter(entry, Filter::Updates) && entry.job.is_none() && !entry.ready
-            }) && !self.pending_app_operations.contains(&app);
+            let still_needs_update =
+                self.entry(&app).is_some_and(|entry| self.in_filter(entry, Filter::Updates) && entry.job.is_none() && !entry.ready)
+                    && !self.pending_app_operations.contains(&app);
 
             if still_needs_update {
                 eligible.push(app);
@@ -1621,8 +1621,7 @@ mod tests {
         let (mut launcher, sent) = windows_updates();
         launcher.trigger_auto_updates();
         let apps = launcher.pending_windows_auto_update_notice.take().unwrap();
-        launcher.entry_mut("photocraft").unwrap().installed.as_mut().unwrap().version =
-            Some(artcraft_launcher_core::version::Version::new(0, 2, 0));
+        launcher.entry_mut("photocraft").unwrap().installed.as_mut().unwrap().version = Some(artcraft_launcher_core::version::Version::new(0, 2, 0));
 
         launcher.start_acknowledged_windows_auto_updates(apps);
 
@@ -1632,8 +1631,7 @@ mod tests {
         assert!(!launcher.auto_update_attempted.iter().any(|(app, _)| app == "photocraft"));
 
         // If the installed copy later becomes outdated again, the skipped version is offerable.
-        launcher.entry_mut("photocraft").unwrap().installed.as_mut().unwrap().version =
-            Some(artcraft_launcher_core::version::Version::new(0, 1, 0));
+        launcher.entry_mut("photocraft").unwrap().installed.as_mut().unwrap().version = Some(artcraft_launcher_core::version::Version::new(0, 1, 0));
         launcher.handle(Event::CheckStarted);
         launcher.handle(Event::CheckFinished { at: 1, source: Source::GitHubApi, rate_limited_until: None });
         launcher.trigger_auto_updates();
@@ -1647,8 +1645,7 @@ mod tests {
         launcher.trigger_auto_updates();
         let apps = launcher.pending_windows_auto_update_notice.take().unwrap();
         for app in &apps {
-            launcher.entry_mut(app).unwrap().installed.as_mut().unwrap().version =
-                Some(artcraft_launcher_core::version::Version::new(0, 2, 0));
+            launcher.entry_mut(app).unwrap().installed.as_mut().unwrap().version = Some(artcraft_launcher_core::version::Version::new(0, 2, 0));
         }
 
         launcher.start_acknowledged_windows_auto_updates(apps);
