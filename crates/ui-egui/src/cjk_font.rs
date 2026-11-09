@@ -252,17 +252,18 @@ fn arabic_candidates() -> Vec<Candidate> {
     {
         // Debian/Ubuntu, Arch, Fedora and FreeBSD's ports: Noto Sans Arabic (static and
         // variable), then DejaVu Sans.
-        const AR_DIRS: [&str; 8] = [
+        const AR_DIRS: [&str; 9] = [
             "/usr/share/fonts/truetype/noto",
             "/usr/share/fonts/opentype/noto",
             "/usr/share/fonts/noto",
             "/usr/share/fonts/google-noto",
+            "/usr/share/fonts/google-noto-vf",
             "/usr/share/fonts/noto-sans-arabic",
             "/usr/share/fonts/truetype/dejavu",
             "/usr/share/fonts/dejavu",
             "/usr/local/share/fonts/dejavu",
         ];
-        for file in ["NotoSansArabic-Regular.ttf", "NotoSansArabic-VF.ttf", "DejaVuSans.ttf"] {
+        for file in ["NotoSansArabic-Regular.ttf", "NotoSansArabic-VF.ttf", "NotoSansArabic[wght].ttf", "DejaVuSans.ttf"] {
             for dir in AR_DIRS {
                 add(Path::new(dir).join(file), if file.starts_with("Noto") { "Noto Sans Arabic" } else { "DejaVu Sans" });
             }
