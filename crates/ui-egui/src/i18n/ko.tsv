@@ -315,3 +315,92 @@ filter	Installed	설치됨
 	ArtCraft on GitHub	GitHub의 ArtCraft
 	Join the ArtCraft Discord	ArtCraft Discord 참여
 @plural	ArtCraft Launcher · {n} update available|ArtCraft Launcher · {n} updates available	ArtCraft Launcher · 업데이트 {n}개 사용 가능
+	by {name}	{name} 제작
+	Open {version}	{version} 열기
+	Open {installed} without updating. {latest} stays available.	업데이트하지 않고 {installed} 버전을 엽니다. {latest} 버전은 나중에도 설치할 수 있습니다.
+	{latest} is out, but ArtCraft Launcher can't install it over this copy.	{latest} 버전이 출시되었지만 ArtCraft Launcher가 이 사본 위에 설치할 수 없습니다.
+	ArtCraft Launcher can't install version {version} over this copy.	ArtCraft Launcher가 이 사본 위에 {version} 버전을 설치할 수 없습니다.
+	Launch options…	실행 옵션…
+	{name} launch options	{name} 실행 옵션
+	Flags added each time the app is opened	앱을 열 때마다 추가되는 플래그
+	Separate flags with spaces. Quote a value that has spaces in it.	플래그는 공백으로 구분하세요. 공백이 포함된 값은 따옴표로 묶으세요.
+	A quote isn't closed.	따옴표가 닫히지 않았습니다.
+	{name} wasn't opened: a quote in its launch options isn't closed.	{name} 앱을 열지 못했습니다. 실행 옵션의 따옴표가 닫히지 않았습니다.
+	Save	저장
+	A new version is available. Download it to replace this version?	새 버전을 사용할 수 있습니다. 다운로드하여 현재 버전을 교체하시겠습니까?
+	Installing on Windows	Windows에서 설치
+	ArtCraft Launcher is still running	ArtCraft Launcher가 계속 실행 중입니다
+	It's in the tray: open it or quit it from the tray icon, or turn this off in the settings.	트레이에서 실행 중입니다. 트레이 아이콘에서 열거나 종료할 수 있으며, 설정에서 이 동작을 끌 수 있습니다.
+	Pin to top	맨 위에 고정
+	Unpin	고정 해제
+	Pinned	고정됨
+	Reorder {name}	{name} 순서 변경
+	Move up	위로 이동
+	Move down	아래로 이동
+	Retry update	업데이트 재시도
+	Arch package (.pkg.tar.zst)	Arch 패키지(.pkg.tar.zst)
+artcraft	AI image and video creation	AI 이미지 및 영상 생성
+craft-anything	Find out how any software works, then craft your own	소프트웨어의 작동 방식을 알아보고 나만의 소프트웨어 만들기
+solidcraft	Parametric 3D CAD	파라메트릭 3D CAD
+	More actions for {name}	{name} 추가 작업
+@msg	{name} was installed from the {repo} repository or the AUR ({pkg}). Update it with {cmd} or sudo pacman -Syu	{name} 앱은 {repo} 저장소 또는 AUR({pkg})에서 설치되었습니다. {cmd} 또는 sudo pacman -Syu 명령으로 업데이트하세요.
+@msg	{name} was installed from the {repo} repository or the AUR ({pkg}). Update it with your AUR helper (for example: yay -S {pkg}) or sudo pacman -Syu	{name} 앱은 {repo} 저장소 또는 AUR({pkg})에서 설치되었습니다. AUR 도우미(예: yay -S {pkg}) 또는 sudo pacman -Syu 명령으로 업데이트하세요.
+@msg	{name} was installed from the AUR ({pkg}). Update it with {cmd}	{name} 앱은 AUR({pkg})에서 설치되었습니다. {cmd} 명령으로 업데이트하세요.
+@msg	{name} was installed from the AUR ({pkg}). Update it with your AUR helper (for example: yay -S {pkg})	{name} 앱은 AUR({pkg})에서 설치되었습니다. AUR 도우미(예: yay -S {pkg})로 업데이트하세요.
+	Install folder	설치 폴더
+	Default install folder	기본 설치 폴더
+	System default	시스템 기본값
+	Browse…	찾아보기…
+	Use default	기본값 사용
+	New installs use this folder. Updates stay in their current location.	새로 설치하는 앱은 이 폴더를 사용합니다. 업데이트는 현재 위치에서 진행됩니다.
+	Custom folders use AppImage on Linux.	Linux에서 사용자 지정 폴더에는 AppImage를 사용합니다.
+	On Linux, custom folders use AppImage format.	Linux에서 사용자 지정 폴더를 사용하면 AppImage 형식으로 설치합니다.
+	The system manages install locations here.	이 환경에서는 시스템이 설치 위치를 관리합니다.
+@msg	couldn't use install folder {path}: {reason}	설치 폴더 {path}을(를) 사용할 수 없습니다: {reason}
+@msg	this release has no AppImage for a custom install folder	이 릴리스에는 사용자 지정 설치 폴더용 AppImage가 없습니다
+@msg	custom install folders aren't supported on this system	이 시스템에서는 사용자 지정 설치 폴더를 지원하지 않습니다
+@msg	{path} already exists and wasn't installed by ArtCraft Launcher	{path}이(가) 이미 있으며 ArtCraft Launcher로 설치한 항목이 아닙니다
+@msg	couldn't move {path} to Trash ({reason}). Remove it in Finder instead.	{path}을(를) 휴지통으로 이동할 수 없습니다({reason}). Finder에서 직접 삭제하세요.
+	Apps are placed inside this folder.	앱은 이 폴더 안에 설치됩니다.
+	Replace what's there?	기존 항목을 바꾸시겠습니까?
+	{path} already exists. Installing {name} will overwrite it.	{path}이(가) 이미 있습니다. {name}을(를) 설치하면 덮어씁니다.
+	Replace	바꾸기
+	Recently updated	최근 업데이트순
+	Name (A–Z)	이름(A–Z)
+	Name (Z–A)	이름(Z–A)
+	Frequently used	자주 사용하는 순
+	Next app	다음 앱
+	Previous app	이전 앱
+	Show {n} more changes	변경 사항 {n}개 더 보기
+	Last updated: {date}	최종 업데이트: {date}
+column	Version	버전
+column	Author	제작자
+	Choose version	버전 선택
+	latest {version}	최신 {version}
+	{version} (latest release)	{version}(최신 릴리스)
+	Launcher version	런처 버전
+	Nightly	나이틀리
+	Nightly (none published yet)	나이틀리(아직 게시되지 않음)
+	Install version {version}	{version} 버전 설치
+	Download selected version	선택한 버전 다운로드
+	Older launcher versions require a manual reinstall.	이전 런처 버전으로 돌아가려면 직접 다시 설치해야 합니다.
+	Your files may not open in older versions.	이전 버전에서는 파일이 열리지 않을 수 있습니다.
+	Enable automatic installs in Settings to follow new nightly builds.	새 나이틀리 빌드를 계속 받으려면 설정에서 자동 설치를 켜세요.
+texturecraft	3D texture painting	3D 텍스처 페인팅
+texturecraft	Paint materials on 3D models and export textures.	3D 모델에 머티리얼을 칠하고 텍스처를 내보냅니다.
+texturecraft	Materials	머티리얼
+texturecraft	Mesh maps	메시 맵
+texturecraft	Bake mesh maps and use smart materials.	메시 맵을 베이크하고 스마트 머티리얼을 사용합니다.
+texturecraft	Paint textures on 3D models.	3D 모델에 텍스처를 그립니다.
+	Hide community apps	커뮤니티 앱 숨기기
+materialcraft	Procedural material design	절차적 머티리얼 디자인
+materialcraft	Build materials with node graphs.	노드 그래프로 머티리얼을 만듭니다.
+materialcraft	Create tileable PBR materials and export texture maps.	타일링 가능한 PBR 머티리얼을 만들고 텍스처 맵을 내보냅니다.
+materialcraft	Node graphs	노드 그래프
+materialcraft	Combine noises, patterns and filters.	노이즈, 패턴, 필터를 조합합니다.
+materialcraft	Live previews	실시간 미리보기
+materialcraft	Preview materials in 2D and on 3D models.	머티리얼을 2D 화면과 3D 모델에서 미리 봅니다.
+	Advanced	고급
+	Migrate Flatpak bundles to ArtCraft OCI (experimental)	Flatpak 번들을 ArtCraft OCI로 전환(실험적)
+	On update, switch first party apps when the matching package is available. Otherwise, keep using bundles.	업데이트할 때 해당 패키지가 있으면 ArtCraft 공식 앱을 전환합니다. 없으면 계속 번들을 사용합니다.
+	The OCI repository is a preview with GPG verification disabled.	OCI 저장소는 미리보기 버전이며 GPG 검증이 꺼져 있습니다.
