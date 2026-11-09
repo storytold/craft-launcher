@@ -288,7 +288,7 @@ impl LauncherUi {
         Self {
             backend,
             settings,
-            entries: SUITE.iter().map(AppEntry::new).collect(),
+            entries: SUITE.iter().filter(|a| platform.is_none_or(|p| a.runs_on(p.os))).map(AppEntry::new).collect(),
             caps,
             platform,
             checking: false,
@@ -495,14 +495,15 @@ impl LauncherUi {
             .collect()
     }
 
-    /// Queues the toolbar's full update action using the Windows batch coordinator where
-    /// available. Other operating systems retain one Install command per app.
+    /// Queues the toolbar's full update action through the Windows MSI batch coordinator. On
+    /// Linux, the optional batch setting uses the package manager's shared installer call;
+    /// systems without a shared installer retain one Install command per app.
     pub(crate) fn request_update_all(&mut self) {
         let apps = self.update_apps();
         if apps.is_empty() {
             return;
         }
-        if self.windows_update_platform() {
+        if self.windows_update_platform() || self.settings.batch_updates {
             self.act_command(Command::InstallAll { apps });
         } else {
             for app in apps {
@@ -974,6 +975,12 @@ impl LauncherUi {
                 self.auto_update_attempted.insert((id.clone(), version.clone()));
             }
             self.queue_windows_auto_update_notice(apps);
+        } else if self.settings.batch_updates && !to_update.is_empty() {
+            log::info!("auto-update: queuing {} updates together behind one prompt", to_update.len());
+            for (id, version) in &to_update {
+                self.auto_update_attempted.insert((id.clone(), version.clone()));
+            }
+            self.send(Command::InstallAll { apps: to_update.into_iter().map(|(id, _)| id).collect() });
         } else {
             for (id, version) in to_update {
                 log::info!("auto-update: queuing update for {id} to {version}");
@@ -1161,6 +1168,7 @@ impl LauncherUi {
             .filter(|(_, e)| {
                 self.in_filter(e, self.settings.filter)
                     && !(self.settings.hide_community_apps && e.app.kind == artcraft_launcher_core::catalog::AppKind::Community)
+                    && self.platform.is_none_or(|p| e.app.runs_on(p.os))
                     && (needle.is_empty() || e.app.name.to_lowercase().contains(&needle) || e.app.tagline.to_lowercase().contains(&needle))
             })
             .collect();

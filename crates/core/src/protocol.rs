@@ -29,8 +29,9 @@ pub enum Command {
     Install {
         app: String,
     },
-    /// Install every app selected by one Update all action. Windows reserves the full set before
-    /// starting workers so eligible machine-wide MSIs share one consent session.
+    /// Install or update every app in `apps` together: their downloads run as for [`Command::Install`],
+    /// but where the platform needs a permission prompt (polkit on Linux, elevation on Windows)
+    /// the batch shares one prompt instead of one per app. Apps already running a job are left out.
     InstallAll {
         apps: Vec<String>,
     },
@@ -330,6 +331,11 @@ pub trait Backend {
     fn capabilities(&self) -> Capabilities;
     /// The machine apps would be installed on (on the web: the visitor's, best guess).
     fn platform(&self) -> Option<Platform>;
+    /// The cached package format and published bytes the next install would download.
+    /// Unknown until the backend has planned it; this must never perform installer discovery.
+    fn download_size(&self, _app: &str) -> Option<(PackageKind, u64)> {
+        None
+    }
     /// Unix seconds now.
     fn now(&self) -> i64;
 }

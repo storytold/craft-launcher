@@ -75,6 +75,7 @@
 	ArtCraft Launcher {version}	ArtCraft Launcher {version}
 	Only when I ask	僅在我要求時
 	Automatically download and install updates	自動下載並安裝更新
+	Ask for permission once when updating all apps	更新所有應用程式時僅請求一次權限
 	Notify me when an installed app has an update	已安裝的應用程式有更新時通知我
 	Include pre-releases (betas and release candidates)	包含預先發行版（Beta 版與候選發行版）
 	Installing on Linux	在 Linux 上安裝
@@ -252,6 +253,7 @@ filter	Installed	已安裝
 	Join the ArtCraft Discord	加入 ArtCraft Discord
 @plural	ArtCraft Launcher · {n} update available|ArtCraft Launcher · {n} updates available	ArtCraft Launcher · {n} 個更新可用
 @plural	{n} app|{n} apps	{n} 個應用程式
+artcraft	AI image and video creation	AI 影像與影片創作
 photocraft	Image editing	影像編輯
 vectorcraft	Vector illustration	向量插畫
 filmcraft	Video editing, color and sound	影片剪輯、調色與音效
@@ -396,3 +398,4 @@ materialcraft	Preview materials in 2D and on 3D models.	在 2D 與 3D 模型上�
 	Automatic Windows updates	Windows 自動更新
 	Some automatic Windows updates install apps for everyone on this PC and may require administrator permission. Your system may handle permission without showing a prompt.	部分 Windows 自動更新會為這台電腦上的所有使用者安裝應用程式，可能需要管理員權限。系統也可能在不顯示提示的情況下處理權限。
 	Install updates	安裝更新
+	Download size: {size}	下載大小：{size}

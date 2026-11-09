@@ -95,6 +95,7 @@
 	ArtCraft Launcher {version}	ArtCraft Launcher {version}
 	Only when I ask	მხოლოდ მოთხოვნისას
 	Automatically download and install updates	განახლებების ავტომატური ჩამოტვირთვა და ინსტალაცია
+	Ask for permission once when updating all apps	ყველა აპლიკაციის განახლებისას ნებართვის მოთხოვნა მხოლოდ ერთხელ
 	Notify me when an installed app has an update	შეტყობინება, როცა დაინსტალირებულ აპლიკაციას განახლება აქვს
 	Include pre-releases (betas and release candidates)	წინასწარი ვერსიების ჩართვა (ბეტა-ვერსიები და გამოშვების კანდიდატები)
 	Installing on Linux	ინსტალაცია Linux-ზე
@@ -187,6 +188,7 @@
 	Tarball (.tar.gz)	tar-არქივი (.tar.gz)
 
 # Contextual: each app's tagline, keyed by app id
+artcraft	AI image and video creation	სურათებისა და ვიდეოების შექმნა ხელოვნური ინტელექტით
 photocraft	Image editing	გამოსახულებების რედაქტირება
 vectorcraft	Vector illustration	ვექტორული ილუსტრაცია
 filmcraft	Video editing, color and sound	ვიდეოს მონტაჟი, ფერი და ხმა
@@ -436,3 +438,4 @@ materialcraft	Preview materials in 2D and on 3D models.	მასალები
 	Automatic Windows updates	Windows-ის ავტომატური განახლებები
 	Some automatic Windows updates install apps for everyone on this PC and may require administrator permission. Your system may handle permission without showing a prompt.	Windows-ის ზოგიერთი ავტომატური განახლება ამ კომპიუტერის ყველა მომხმარებლისთვის აყენებს აპებს და შეიძლება ადმინისტრატორის ნებართვა დასჭირდეს. სისტემამ შეიძლება ნებართვა მოთხოვნის ჩვენების გარეშეც დაამუშაოს.
 	Install updates	განახლებების დაყენება
+	Download size: {size}	ჩამოტვირთვის ზომა: {size}
