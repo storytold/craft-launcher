@@ -80,8 +80,20 @@ if [[ "$TEST" = 1 ]]; then
   # reaches the metadata has changed more than once between flatpak versions since. Rather
   # than trust any one version, the finished bundle is checked: the manifest's promise —
   # X11 only when there is no Wayland compositor — must survive the build.
-  sockets=";$(sed -n 's/^sockets=//p' "$HOME/.local/share/flatpak/app/$APP_ID/current/active/metadata")"
-  if [[ "$sockets" == *";x11;"* ]] || [[ "$sockets" != *";fallback-x11;"* && "$sockets" != *"if:"*"x11"* ]]; then
+  sockets=";$(flatpak info --user --show-metadata "$APP_ID" | sed -n 's/^sockets=//p')"
+  has_fallback=0
+  unsafe_x11=0
+  IFS=';' read -r -a socket_entries <<< "$sockets"
+  for socket in "${socket_entries[@]}"; do
+    case "$socket" in
+      # The two spellings of "X11 only when there is no Wayland compositor".
+      fallback-x11 | 'if:x11:!has-wayland') has_fallback=1 ;;
+      # Any other X11 grant — plain, or conditional on something that can hold in a Wayland
+      # session — is the standing grant the manifest does not promise.
+      x11 | if:x11:*) unsafe_x11=1 ;;
+    esac
+  done
+  if [[ "$unsafe_x11" == 1 || "$has_fallback" == 0 ]]; then
     echo "::error::the bundle's sockets ($sockets) grant X11 unconditionally or lost the fallback; this flatpak's build-finish serializes fallback-x11 unexpectedly (#1129)" >&2
     exit 1
   fi
