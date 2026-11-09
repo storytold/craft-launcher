@@ -37,6 +37,7 @@ impl LauncherUi {
             Dialog::Replace { app, path } => modal.show(ctx, |ui| close = self.replace_dialog(ui, app, path)),
             Dialog::Settings => modal.show(ctx, |ui| close = self.settings_dialog(ui, host)),
             Dialog::LauncherUpdate(r) => modal.show(ctx, |ui| close = self.launcher_update_dialog(ui, r)),
+            Dialog::ImportPlugin { app, path } => modal.show(ctx, |ui| close = self.import_plugin_dialog(ui, app, path)),
             Dialog::Versions(id) => modal.show(ctx, |ui| close = self.version_dialog(ui, id)),
             Dialog::LaunchFlags { app, flags } => modal.show(ctx, |ui| close = self.launch_flags_dialog(ui, app, flags)),
         };
@@ -346,5 +347,82 @@ impl LauncherUi {
                 folder.clear();
             }
         });
+    }
+    fn import_plugin_dialog(&mut self, ui: &mut egui::Ui, app_id: &mut String, path_str: &mut String) -> bool {
+        let t = Tokens::get(ui.ctx());
+        ui.set_width(520.0f32.min(ui.ctx().content_rect().width() - 80.0));
+
+        let is_wasm = std::path::Path::new(path_str.trim()).extension().is_some_and(|ext| ext.eq_ignore_ascii_case("wasm"));
+        let auto_detected =
+            if is_wasm { None } else { artcraft_launcher_core::plugins::detect_app_from_path(std::path::Path::new(path_str.trim()), None) };
+
+        let app_name = artcraft_launcher_core::CraftApp::by_id(app_id).map_or("PhotoCraft", |a| a.name);
+        Self::title(ui, crate::icons::app(app_id), tl!("Import plugin"), app_name);
+        ui.label(
+            RichText::new(tl!("Supports native WebAssembly (.wasm ABI v1) plugins and preset packs (.abr, .grd, .aco, .ase, .kys, .cube)."))
+                .color(t.muted),
+        );
+        ui.add_space(14.0);
+
+        widgets::hud(ui, tl!("Plugin file path (.wasm, .abr, .grd, .aco, .ase, .kys, .cube)"), t.faint);
+        ui.add_space(4.0);
+        let prev_path = path_str.clone();
+        ui.horizontal(|ui| {
+            ui.spacing_mut().item_spacing.x = 6.0;
+            let browse_w = 104.0;
+            let edit_w = (ui.available_width() - browse_w - 6.0).max(160.0);
+            ui.add(
+                egui::TextEdit::singleline(path_str)
+                    .desired_width(edit_w)
+                    .min_size(vec2(edit_w, theme::CONTROL_H))
+                    .align(egui::Align2::LEFT_CENTER)
+                    .margin(vec2(10.0, 0.0)),
+            );
+            if widgets::button(ui, tl!("Browse…"), Kind::Secondary, browse_w).on_hover_text(tl!("Choose a plugin file from your computer")).clicked()
+            {
+                self.send(Command::PickPluginFile);
+            }
+        });
+
+        if *path_str != prev_path
+            && !std::path::Path::new(path_str.trim()).extension().is_some_and(|ext| ext.eq_ignore_ascii_case("wasm"))
+            && let Some(det) = artcraft_launcher_core::plugins::detect_app_from_path(std::path::Path::new(path_str.trim()), None)
+        {
+            *app_id = det.to_string();
+        }
+
+        ui.add_space(12.0);
+        ui.horizontal(|ui| {
+            ui.label(tl!("App"));
+            if let Some(det) = auto_detected
+                && let Some(det_app) = artcraft_launcher_core::CraftApp::by_id(det)
+            {
+                ui.add_space(6.0);
+                widgets::badge(ui, &fmt(tl!("Auto-detected: {app}"), &[("app", det_app.name)]), t.good);
+            }
+            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                craft_ui::ComboBox::from_id_salt("import_plugin_app").selected_text(app_name).width(200.0).show_ui(ui, |ui| {
+                    for a in &artcraft_launcher_core::SUITE {
+                        ui.selectable_value(app_id, a.id.to_string(), a.name);
+                    }
+                });
+            });
+        });
+
+        ui.add_space(20.0);
+        let mut close = false;
+        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+            let can_import = !path_str.trim().is_empty();
+            ui.add_enabled_ui(can_import, |ui| {
+                if widgets::button(ui, tl!("Import plugin"), Kind::Primary, 130.0).clicked() {
+                    self.send(Command::ImportPlugin { app: app_id.clone(), path: path_str.trim().to_string() });
+                    close = true;
+                }
+            });
+            if widgets::button(ui, tl!("Cancel"), Kind::Secondary, 90.0).clicked() {
+                close = true;
+            }
+        });
+        close
     }
 }

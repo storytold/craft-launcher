@@ -30,6 +30,7 @@ mod local_time;
 pub mod model;
 mod motion;
 mod notes;
+mod plugins_view;
 pub mod settings;
 mod settings_dialog;
 mod sheet;

@@ -73,6 +73,8 @@ struct Shared {
     checking: AtomicBool,
     /// A detection pass is running; another request waits for the next one.
     detecting: AtomicBool,
+    /// An OS file-picker dialog is currently open.
+    picking_plugin: AtomicBool,
     last_check: Mutex<Option<i64>>,
     /// The newer ArtCraft Launcher release, once a check has found one.
     launcher_release: Mutex<Option<Release>>,
@@ -218,6 +220,7 @@ impl NativeBackend {
             options: Mutex::new(BackendOptions::default()),
             checking: AtomicBool::new(false),
             detecting: AtomicBool::new(false),
+            picking_plugin: AtomicBool::new(false),
             launcher_release: Mutex::new(None),
             self_install: OnceLock::new(),
             github_asked: Mutex::new(HashMap::new()),
@@ -302,6 +305,8 @@ impl NativeBackend {
             for app in SUITE.iter().filter(|a| platform.is_none_or(|p| a.runs_on(p.os))) {
                 report_partial(app, &shared, &paths, platform);
             }
+            shared.emit(Event::PluginsDetected(crate::plugins::detect_plugins(&paths)));
+            shared.detecting.store(false, Ordering::SeqCst);
             drop(busy);
         });
     }
@@ -1467,6 +1472,81 @@ impl Backend for NativeBackend {
                     self.check(true);
                 }
             }
+            Command::DetectPlugins => {
+                let shared = self.shared.clone();
+                let paths = self.paths.clone();
+                std::thread::spawn(move || {
+                    let plugins = crate::plugins::detect_plugins(&paths);
+                    shared.emit(Event::PluginsDetected(plugins));
+                });
+            }
+            Command::RepairPlugin { id } => {
+                let shared = self.shared.clone();
+                let paths = self.paths.clone();
+                std::thread::spawn(move || {
+                    let res = crate::plugins::repair_plugin(&paths, &id).map(|p| format!("Repaired {} {}", p.name, p.version));
+                    shared.emit(Event::PluginsDetected(crate::plugins::detect_plugins(&paths)));
+                    shared.emit(Event::PluginJobFinished { id, result: res });
+                });
+            }
+            Command::UninstallPlugin { id } => {
+                let shared = self.shared.clone();
+                let paths = self.paths.clone();
+                std::thread::spawn(move || {
+                    let res = crate::plugins::uninstall_plugin(&paths, &id).map(|()| "Removed plugin".into());
+                    shared.emit(Event::PluginsDetected(crate::plugins::detect_plugins(&paths)));
+                    shared.emit(Event::PluginJobFinished { id, result: res });
+                });
+            }
+            Command::ImportPlugin { app, path } => {
+                let shared = self.shared.clone();
+                let paths = self.paths.clone();
+                std::thread::spawn(move || {
+                    let res = crate::plugins::import_plugin_file(&paths, &app, std::path::Path::new(&path))
+                        .map(|p| format!("Imported {} ({})", p.name, p.format.label()));
+                    shared.emit(Event::PluginsDetected(crate::plugins::detect_plugins(&paths)));
+                    shared.emit(Event::PluginJobFinished { id: app, result: res });
+                });
+            }
+            Command::RevealPlugin { id } => {
+                let shared = self.shared.clone();
+                let paths = self.paths.clone();
+                std::thread::spawn(move || {
+                    let plugins = crate::plugins::detect_plugins(&paths);
+                    if let Some(inst) = plugins.iter().find(|p| p.id == id) {
+                        let path = std::path::PathBuf::from(&inst.location);
+                        let result = if path.exists() { crate::process::reveal(&path) } else { Err("it isn't a file on this computer".into()) };
+                        if let Err(e) = result {
+                            shared.emit(Event::PluginJobFinished { id, result: Err(format!("Couldn't show it: {e}")) });
+                        }
+                    }
+                });
+            }
+            Command::PickPluginFile => {
+                if self.shared.picking_plugin.swap(true, Ordering::SeqCst) {
+                    return;
+                }
+                let shared = self.shared.clone();
+                std::thread::spawn(move || {
+                    struct FlagGuard(Arc<Shared>);
+                    impl Drop for FlagGuard {
+                        fn drop(&mut self) {
+                            self.0.picking_plugin.store(false, Ordering::SeqCst);
+                        }
+                    }
+                    let _guard = FlagGuard(shared.clone());
+                    match crate::plugins::pick_plugin_file() {
+                        Ok(Some(picked)) => {
+                            let detected_app = crate::plugins::detect_plugin_file_app(&picked).map(str::to_string);
+                            shared.emit(Event::PluginFilePicked { path: picked.to_string_lossy().into_owned(), detected_app });
+                        }
+                        Ok(None) => {}
+                        Err(e) => {
+                            shared.emit(Event::PluginJobFinished { id: "picker".into(), result: Err(e) });
+                        }
+                    }
+                });
+            }
         }
     }
 
@@ -1676,6 +1756,7 @@ mod tests {
             options: Mutex::new(BackendOptions::default()),
             checking: AtomicBool::new(false),
             detecting: AtomicBool::new(false),
+            picking_plugin: AtomicBool::new(false),
             last_check: Mutex::new(None),
             launcher_release: Mutex::new(None),
             self_install: OnceLock::new(),

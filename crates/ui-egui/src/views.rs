@@ -9,7 +9,7 @@ use artcraft_launcher_core::status::AppStatus;
 use artcraft_launcher_core::time;
 use egui::{Color32, CornerRadius, FontId, Rect, RichText, Sense, Stroke, Ui, vec2};
 
-use crate::app::{Dialog, LauncherUi, TitleBar};
+use crate::app::{Dialog, LauncherUi, Page, TitleBar};
 use crate::i18n::{current, fmt, t, tn, tr_ctx};
 use crate::model::{self, AppEntry};
 use crate::settings::{Filter, SortKey, ViewMode};
@@ -186,6 +186,18 @@ impl LauncherUi {
                 if widgets::nav_icon(ui, widgets::Glyph::Settings, tl!("Settings"), h, false).clicked() {
                     self.dialog = Some(Dialog::Settings);
                 }
+                ui.add_space(6.0);
+                widgets::rule(ui, h);
+                ui.add_space(6.0);
+                // Right to left: Plugins, then Apps, so they read Apps · Plugins.
+                if widgets::nav_link(ui, tl!("Plugins"), tl!("Browse and manage plugins"), h, self.page == Page::Plugins).clicked() {
+                    self.page = Page::Plugins;
+                }
+                if widgets::nav_link(ui, tl!("Apps"), tl!("Every Craft app"), h, self.page == Page::Apps).clicked() {
+                    self.page = Page::Apps;
+                }
+                ui.add_space(6.0);
+                widgets::rule(ui, h);
                 // The controls reserve their actual widths before the secondary text gets space.
                 ui.with_layout(egui::Layout::left_to_right(egui::Align::Center), |ui| {
                     if ui.available_width() >= 17.0 + widgets::hud_galley(ui, tl!("Craft App Suite"), t.muted).size().x {
@@ -391,7 +403,7 @@ impl LauncherUi {
     }
 
     /// News from ArtCraft's release feed (and app renames), until the user dismisses each.
-    fn announcements(&mut self, ui: &mut Ui) {
+    pub(crate) fn announcements(&mut self, ui: &mut Ui) {
         let t = Tokens::get(ui.ctx());
         let shown: Vec<artcraft_launcher_core::feed::Notice> =
             self.announcements.iter().filter(|n| !self.settings.dismissed_notices.contains(&n.id)).take(3).cloned().collect();
@@ -1250,6 +1262,10 @@ impl LauncherUi {
         let manage = self.caps.manage_apps;
         let reveal = self.caps.reveal_label;
         widgets::more_menu(ui, entry.app.name, |ui| {
+            if ui.button(tl!("Plugins")).clicked() {
+                self.open_plugins_for(&id);
+                ui.close();
+            }
             if ui.button(tl!("Choose version")).clicked() {
                 self.open_versions(&id);
                 ui.close();

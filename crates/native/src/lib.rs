@@ -20,6 +20,7 @@ mod msi_context;
 pub mod packages;
 pub mod paths;
 pub mod pins;
+pub mod plugins;
 #[cfg(windows)]
 pub mod portable;
 pub mod process;

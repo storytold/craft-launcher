@@ -138,6 +138,20 @@ pub fn rule(ui: &mut Ui, height: f32) {
     ui.painter().vline(rect.center().x, rect.y_range(), t.hairline());
 }
 
+pub fn nav_link(ui: &mut Ui, text: &str, tip: &str, height: f32, active: bool) -> Response {
+    let t = Tokens::get(ui.ctx());
+    let galley = hud_galley(ui, text, t.muted);
+    let (rect, resp) = ui.allocate_exact_size(vec2(galley.size().x + 20.0, height), Sense::click());
+    let on = active || resp.hovered();
+    let span = Rect::from_center_size(rect.center(), galley.size() + vec2(12.0, 6.0));
+    if on {
+        ui.painter().rect_filled(span, CornerRadius::ZERO, t.invert_bg);
+    }
+    paint_centred(ui, rect, galley, if on { t.invert_fg } else { t.muted });
+    resp.widget_info(|| egui::WidgetInfo::selected(egui::Role::Button, true, active, text));
+    resp.on_hover_text(tip).on_hover_cursor(egui::CursorIcon::PointingHand)
+}
+
 /// A square header cell with a drawn glyph and a hairline on its left; inverts on hover. While
 /// `busy` it shows a spinner and can't be clicked.
 pub fn nav_icon(ui: &mut Ui, glyph: Glyph, tip: &str, height: f32, busy: bool) -> Response {
