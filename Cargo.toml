@@ -9,6 +9,8 @@ license = "MIT OR Apache-2.0"
 rust-version = "1.95"
 repository = "https://github.com/storytold/craft-launcher"
 
+# apps/artcraft-launcher-helper copies these (it needs `unsafe_code = "deny"`), and a test there
+# fails when the two drift apart: change both.
 [workspace.lints.rust]
 unsafe_code = "forbid"
 
