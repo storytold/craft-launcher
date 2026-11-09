@@ -1588,7 +1588,7 @@ fn lines_height(ui: &Ui, fonts: &[&FontId], gap: f32) -> f32 {
 /// The one-line details of what stopped an update. The line is cut to the card's width, so the
 /// full text is in the tooltip.
 fn blocker_details_label(ui: &mut egui::Ui, details: String, color: egui::Color32) -> egui::Response {
-    ui.add(egui::Label::new(RichText::new(&details).size(12.0).color(color)).truncate()).on_hover_text(details)
+    ui.add(egui::Label::new(RichText::new(&details).size(12.0).color(color)).truncate().show_tooltip_when_elided(false)).on_hover_text(details)
 }
 
 #[cfg(test)]
@@ -1637,6 +1637,31 @@ mod tests {
             .drop_without_applying_deltas();
         }
         assert!(open, "hovering the details line must open a tooltip");
+    }
+
+    #[test]
+    fn a_cut_off_details_line_shows_its_full_text_once() {
+        let ctx = egui::Context::default();
+        ctx.all_styles_mut(|style| style.interaction.tooltip_delay = 0.0);
+        let details = format!("1603 \u{b7} {}", "C:\\Temp\\installer\\".repeat(20));
+        let mut copies = 0;
+        for frame in 0..4 {
+            let mut input = egui::RawInput::default();
+            input.events.push(egui::Event::PointerMoved(egui::pos2(20.0, 10.0)));
+            let output = ctx.run_ui(input, |ui| {
+                ui.set_max_width(120.0);
+                blocker_details_label(ui, details.clone(), egui::Color32::GRAY);
+            });
+            if frame == 3 {
+                copies = output
+                    .shapes
+                    .iter()
+                    .filter(|clipped| matches!(&clipped.shape, egui::Shape::Text(text) if !text.galley.elided && text.galley.job.text == details))
+                    .count();
+            }
+            output.drop_without_applying_deltas();
+        }
+        assert_eq!(copies, 1, "the tooltip of a cut-off line must hold one copy of the text");
     }
 
     #[test]
