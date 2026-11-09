@@ -94,6 +94,16 @@ pub fn flatpak_scope(installation: Option<&str>) -> String {
     }
 }
 
+/// The scope to try when `flatpak uninstall --user` didn't own the copy: the recorded system or
+/// named installation. `--system` is the old fallback for a user copy or an older record with no
+/// installation.
+pub fn flatpak_uninstall_scope(installation: Option<&str>) -> String {
+    match installation {
+        Some("user" | "system" | "") | None => "--system".into(),
+        Some(name) => format!("--installation={name}"),
+    }
+}
+
 /// The `Version:` line of `flatpak info <id>`.
 pub fn parse_flatpak_info(text: &str) -> Option<String> {
     text.lines().find_map(|l| l.trim().strip_prefix("Version:").map(|v| v.trim().to_string())).filter(|v| !v.is_empty())
@@ -257,6 +267,18 @@ mod tests {
         assert!(!is_flatpark_origin("cadcraft-origin"));
         assert!(!is_flatpark_origin("flathub"));
         assert!(!is_flatpark_origin(""));
+    }
+
+    /// An app detected in a named installation (`system (extra)`) is removed with that scope, not
+    /// only the default system one; user copies and older records with no installation keep the
+    /// old `--system` fallback.
+    #[test]
+    fn flatpak_uninstall_uses_the_recorded_installation() {
+        assert_eq!(flatpak_uninstall_scope(Some("extra")), "--installation=extra");
+        assert_eq!(flatpak_uninstall_scope(Some("system")), "--system");
+        assert_eq!(flatpak_uninstall_scope(Some("user")), "--system");
+        assert_eq!(flatpak_uninstall_scope(Some("")), "--system");
+        assert_eq!(flatpak_uninstall_scope(None), "--system");
     }
 }
 
