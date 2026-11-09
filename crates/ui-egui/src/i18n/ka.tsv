@@ -174,6 +174,7 @@
 	Unpin	დამაგრების მოხსნა
 	The download is still here. It's checked again, then installed.	ჩამოტვირთული ფაილი ისევ აქ არის. ჯერ ხელახლა შემოწმდება, შემდეგ დაინსტალირდება.
 	Waiting for another app…	სხვა აპლიკაციის მოლოდინი…
+	Waiting for permission…	ნებართვის მოლოდინი…
 	Waiting for other installs…	სხვა ინსტალაციების მოლოდინი…
 
 # Package formats offered for download (PackageKind::label)
@@ -434,4 +435,7 @@ materialcraft	Node graphs	კვანძების გრაფები
 materialcraft	Combine noises, patterns and filters.	ხმაურების, პატერნებისა და ფილტრების კომბინირება.
 materialcraft	Live previews	ცოცხალი წინასწარი ნახვა
 materialcraft	Preview materials in 2D and on 3D models.	მასალების წინასწარი ნახვა 2D-ში და 3D მოდელებზე.
+	Automatic Windows updates	Windows-ის ავტომატური განახლებები
+	Some automatic Windows updates install apps for everyone on this PC and may require administrator permission. Your system may handle permission without showing a prompt.	Windows-ის ზოგიერთი ავტომატური განახლება ამ კომპიუტერის ყველა მომხმარებლისთვის აყენებს აპებს და შეიძლება ადმინისტრატორის ნებართვა დასჭირდეს. სისტემამ შეიძლება ნებართვა მოთხოვნის ჩვენების გარეშეც დაამუშაოს.
+	Install updates	განახლებების დაყენება
 	Download size: {size}	ჩამოტვირთვის ზომა: {size}

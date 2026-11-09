@@ -10,13 +10,19 @@
 pub mod backend;
 pub mod desktop_entry;
 pub mod detect;
+#[cfg(any(windows, test))]
+mod elevated;
 pub mod feed_throttle;
 pub mod http;
 pub mod install;
 pub mod login;
 pub mod manifest;
 #[cfg(any(windows, test))]
+mod msi_batch;
+#[cfg(any(windows, test))]
 mod msi_context;
+#[cfg(any(windows, test))]
+mod msi_source;
 pub mod packages;
 pub mod paths;
 pub mod pins;

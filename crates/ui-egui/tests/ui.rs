@@ -218,6 +218,44 @@ fn events() -> Vec<Event> {
     ev
 }
 
+/// Two installed Windows MSI apps with independently published x64 MSI update assets.
+fn windows_update_events() -> Vec<Event> {
+    let mut out = Vec::new();
+    for (id, display, installed, latest) in [("photocraft", "PhotoCraft", "0.4.1", "0.5.0"), ("effectcraft", "EffectCraft", "0.5.0", "0.6.0")] {
+        let name = format!("{id}-{latest}-windows-x64.msi");
+        out.push(Event::Latest {
+            app: id.into(),
+            latest: LatestRelease::Found(Release {
+                tag: format!("v{latest}"),
+                version: version::parse(latest),
+                name: format!("{display} {latest}"),
+                assets: vec![Asset {
+                    name: name.clone(),
+                    size: 20 << 20,
+                    url: format!("https://github.com/storytold/{id}/releases/download/v{latest}/{name}"),
+                    sha256: None,
+                }],
+                ..Default::default()
+            }),
+            from: Origin::GitHub,
+        });
+        out.push(Event::Detected {
+            app: id.into(),
+            installed: Some(Installed {
+                version: version::parse(installed),
+                source: InstallSource::Msi,
+                location: format!(r"C:\Program Files\ArtCraft\{display}"),
+                package: None,
+                externally_managed: false,
+                origin: None,
+                installation: None,
+            }),
+        });
+    }
+    out.push(Event::CheckFinished { at: NOW, source: Source::GitHubApi, rate_limited_until: None });
+    out
+}
+
 fn harness(view: ViewMode, theme: egui::Theme, manage: bool) -> (Harness<'static, Option<LauncherUi>>, Rc<RefCell<Vec<Command>>>) {
     harness_at(view, theme, manage, 1.0)
 }
@@ -288,6 +326,25 @@ fn harness_full(
     platform: Option<Platform>,
     discord_url: Option<&'static str>,
 ) -> (Harness<'static, Option<LauncherUi>>, Rc<RefCell<Vec<Command>>>) {
+    let settings = Settings { view, notify: false, ..Settings::default() };
+    harness_full_with_settings(events, view, theme, manage, scale, bar, pictures, platform, discord_url, settings)
+}
+
+#[allow(clippy::too_many_arguments)]
+/// Builds a UI harness with caller-selected settings for platform and automatic-update scenarios.
+fn harness_full_with_settings(
+    events: Vec<Event>,
+    view: ViewMode,
+    theme: egui::Theme,
+    manage: bool,
+    scale: f32,
+    bar: artcraft_launcher_ui_egui::TitleBar,
+    pictures: Rc<Cell<Pictures>>,
+    platform: Option<Platform>,
+    discord_url: Option<&'static str>,
+    settings: Settings,
+) -> (Harness<'static, Option<LauncherUi>>, Rc<RefCell<Vec<Command>>>) {
+    let settings = Settings { view, ..settings };
     struct HeaderHost(artcraft_launcher_ui_egui::TitleBar, Option<&'static str>);
     impl Host for HeaderHost {
         fn title_bar(&self) -> artcraft_launcher_ui_egui::TitleBar {
@@ -307,7 +364,6 @@ fn harness_full(
         Some(platform) => Box::new(PlatformFake { inner: fake, platform }),
         None => Box::new(fake),
     });
-    let settings = Settings { view, notify: false, ..Settings::default() };
     // No `.wgpu()`: it gives every test its own GPU device, and those segfault on parallel test threads (see above).
     // The default renderer creates one only when a test renders.
     let harness = test_harness_builder(theme).with_size(egui::vec2(1180.0, 1200.0)).with_pixels_per_point(scale).with_theme(theme).build_ui_state(
@@ -1299,7 +1355,7 @@ fn drive_accesskit_click(
 /// bypasses the action boundary. The AccessKit-click tests below re-deliver the same semantic click
 /// on every pass and therefore exercise the actual UI call sites twice in one visible frame.
 #[test]
-fn the_same_download_is_sent_once_across_discarded_passes_but_again_next_frame() {
+fn the_same_download_is_sent_once_and_not_requeued_while_its_job_is_pending() {
     let (mut h, sent) = harness(ViewMode::Grid, egui::Theme::Dark, true);
     h.run_steps(8);
     let at = h.get_by_label("Update to 0.5.0").rect().center();
@@ -1310,10 +1366,11 @@ fn the_same_download_is_sent_once_across_discarded_passes_but_again_next_frame()
     click_steps(&mut launcher, &ctx, at, 100.0, true);
     assert_eq!(install_count(&sent), 1, "one visible frame must send one install, not one per pass: {:?}", sent.borrow());
 
-    // A new frame is a new user gesture: the guard from the previous frame must not swallow it.
+    // A new frame is a new gesture, but the same app's operation is still running. Do not ask the
+    // backend to start a competing install until JobFinished clears the pending operation.
     sent.borrow_mut().clear();
     click_steps(&mut launcher, &ctx, at, 200.0, false);
-    assert_eq!(install_count(&sent), 1, "the next frame must accept the same action again: {:?}", sent.borrow());
+    assert_eq!(install_count(&sent), 0, "a pending install must not be queued twice: {:?}", sent.borrow());
 }
 
 #[test]
@@ -1333,7 +1390,7 @@ fn opening_an_app_counts_once_across_discarded_passes() {
 
 #[test]
 /// The real Update button, clicked through AccessKit on every pass, crosses the action boundary
-/// once per frame and again on the next frame.
+/// once per frame and remains suppressed while that app's operation is pending.
 fn the_actual_update_button_queues_once_across_a_discarded_pass() {
     let (mut h, sent) = harness(ViewMode::Grid, egui::Theme::Dark, true);
     h.run_steps(8);
@@ -1343,10 +1400,10 @@ fn the_actual_update_button_queues_once_across_a_discarded_pass() {
     sent.borrow_mut().clear();
     drive_accesskit_click(&mut launcher, &ctx, target, 100.0, true);
     assert_eq!(install_count(&sent), 1, "the real Update button must cross the action boundary once: {:?}", sent.borrow());
-    // The next visible frame is a new gesture, not a repeated pass.
+    // The next visible frame is a new gesture, but cannot queue a second install before completion.
     sent.borrow_mut().clear();
     drive_accesskit_click(&mut launcher, &ctx, target, 200.0, false);
-    assert_eq!(install_count(&sent), 1, "the next frame must accept the same action again: {:?}", sent.borrow());
+    assert_eq!(install_count(&sent), 0, "a pending update must not start a competing install: {:?}", sent.borrow());
 }
 
 #[test]
@@ -1738,8 +1795,19 @@ fn keeps_working_with_no_window_then_draws_in_a_new_one() {
 }
 
 #[test]
+/// A fixed non-Windows host keeps the ordinary Update all path deterministic on every runner OS.
 fn grid_shows_every_status_and_installs_on_click() {
-    let (mut h, sent) = harness(ViewMode::Grid, egui::Theme::Dark, true);
+    let (mut h, sent) = harness_full(
+        events(),
+        ViewMode::Grid,
+        egui::Theme::Dark,
+        true,
+        1.0,
+        artcraft_launcher_ui_egui::TitleBar::Native,
+        Rc::default(),
+        Some(Platform { os: Os::MacOs, arch: Arch::Arm64 }),
+        None,
+    );
     h.run_steps(8);
     snapshot(&mut h, "grid-dark");
     // Statuses the user asked for: available, installed and up to date, update with version.
@@ -1765,6 +1833,86 @@ fn grid_shows_every_status_and_installs_on_click() {
     let installs: Vec<_> = sent.borrow().iter().filter_map(|c| if let Command::Install { app } = c { Some(app.clone()) } else { None }).collect();
     assert_eq!(installs.len(), 2, "{installs:?}");
     assert!(installs.contains(&"photocraft".to_string()) && installs.contains(&"effectcraft".to_string()));
+    assert!(!sent.borrow().iter().any(|command| matches!(command, Command::InstallAll { .. })));
+}
+
+#[test]
+/// The Windows platform fixture routes two x64 MSI updates through one `InstallAll` command.
+fn windows_update_all_uses_one_batch_with_an_explicit_windows_fixture() {
+    let (mut h, sent) = harness_full(
+        windows_update_events(),
+        ViewMode::Grid,
+        egui::Theme::Dark,
+        true,
+        1.0,
+        artcraft_launcher_ui_egui::TitleBar::Native,
+        Rc::default(),
+        Some(Platform { os: Os::Windows, arch: Arch::X64 }),
+        None,
+    );
+    h.run_steps(8);
+    h.get_by_label("Update all (2)").click();
+    h.run_steps(3);
+    assert!(sent.borrow().contains(&Command::InstallAll { apps: vec!["photocraft".into(), "effectcraft".into()] }));
+    assert!(!sent.borrow().iter().any(|command| matches!(command, Command::Install { .. })));
+}
+
+#[test]
+/// The required notice appears before any permission phase, even with optional notifications off.
+fn automatic_windows_batch_shows_permission_notice_before_any_uac_phase() {
+    let settings = Settings { view: ViewMode::Grid, notify: false, auto_update: true, ..Settings::default() };
+    let (mut h, sent) = harness_full_with_settings(
+        windows_update_events(),
+        ViewMode::Grid,
+        egui::Theme::Dark,
+        true,
+        1.0,
+        artcraft_launcher_ui_egui::TitleBar::Native,
+        Rc::default(),
+        Some(Platform { os: Os::Windows, arch: Arch::X64 }),
+        None,
+        settings,
+    );
+    h.run_steps(5);
+    h.get_by_label("Automatic Windows updates");
+    h.get_by_label("Some automatic Windows updates install apps for everyone on this PC and may require administrator permission. Your system may handle permission without showing a prompt.");
+    assert!(!sent.borrow().iter().any(|command| matches!(command, Command::InstallAll { .. })), "the batch must wait for acknowledgement");
+    // The fixture sends no Permission phase, so the accessible notice does not depend on Windows
+    // displaying a UAC prompt or on the install job having started.
+    h.get_by_label("Install updates").click();
+    h.run_steps(3);
+    assert_eq!(
+        sent.borrow()
+            .iter()
+            .filter(|command| matches!(command, Command::InstallAll { apps } if apps == &["photocraft".to_string(), "effectcraft".to_string()]))
+            .count(),
+        1
+    );
+}
+
+#[test]
+/// Deferring the automatic batch closes its notice without starting installation or reopening it.
+fn automatic_windows_notice_later_defers_without_installing() {
+    let settings = Settings { view: ViewMode::Grid, notify: false, auto_update: true, ..Settings::default() };
+    let (mut h, sent) = harness_full_with_settings(
+        windows_update_events(),
+        ViewMode::Grid,
+        egui::Theme::Dark,
+        true,
+        1.0,
+        artcraft_launcher_ui_egui::TitleBar::Native,
+        Rc::default(),
+        Some(Platform { os: Os::Windows, arch: Arch::X64 }),
+        None,
+        settings,
+    );
+    h.run_steps(5);
+    h.get_by_label("Automatic Windows updates");
+    h.get_by_label("Later").click();
+    h.run_steps(3);
+
+    assert!(h.query_by_label("Automatic Windows updates").is_none(), "Later must dismiss the current notice");
+    assert!(!sent.borrow().iter().any(|command| matches!(command, Command::InstallAll { .. })), "Later must not start an update batch");
 }
 
 #[test]
@@ -1826,7 +1974,7 @@ fn a_kept_download_offers_retry_install_and_download_again() {
     assert_eq!(*sent.borrow(), [Command::Cancel { app: "cadcraft".into() }]);
     h.get_all_by_role_and_label(egui::accesskit::Role::Button, "Install").last().unwrap().click();
     h.run_steps(2);
-    assert_eq!(*sent.borrow(), [Command::Cancel { app: "cadcraft".into() }, Command::Install { app: "cadcraft".into() }]);
+    assert_eq!(*sent.borrow(), [Command::Cancel { app: "cadcraft".into() }], "wait for the cancelled job to finish before retrying");
     // Apps without a kept download don't offer it.
     assert_eq!(h.query_all_by_label("Retry install").count(), 1);
 }
@@ -4186,6 +4334,7 @@ fn command_m_minimizes_the_mac_window_only() {
 }
 
 #[test]
+/// Replacement consent still queues `Replace` only after the user confirms the path.
 fn an_occupied_folder_asks_before_replacing_it() {
     let path = "/Volumes/Craft Apps/PhotoCraft.app";
     let mut ev = events();
@@ -4195,11 +4344,31 @@ fn an_occupied_folder_asks_before_replacing_it() {
     h.run_steps(6);
     h.get_by_label(&format!("{path} already exists. Installing PhotoCraft will overwrite it."));
     assert!(h.query_by_label(&format!("{path} already exists")).is_none());
+    assert!(!sent.borrow().iter().any(|command| matches!(command, Command::Replace { .. })), "showing consent must not start replacement");
     sent.borrow_mut().clear();
     h.get_by_label("Replace").click();
     h.run_steps(2);
     assert_eq!(*sent.borrow(), [Command::Replace { app: "photocraft".into(), path: path.into() }]);
     assert!(h.query_by_label("Replace").is_none());
+}
+
+#[test]
+/// Canceling replacement consent leaves the occupied path untouched.
+fn cancelling_an_occupied_folder_replacement_sends_no_replace_command() {
+    let path = "/Volumes/Craft Apps/PhotoCraft.app";
+    let mut ev = events();
+    ev.push(Event::Occupied { app: "photocraft".into(), path: path.into() });
+    ev.push(Event::JobFinished { app: "photocraft".into(), result: Err(format!("{path} already exists")) });
+    let (mut h, sent) = harness_with(ev, ViewMode::Grid, egui::Theme::Dark, true, 1.0);
+    h.run_steps(6);
+    h.get_by_label(&format!("{path} already exists. Installing PhotoCraft will overwrite it."));
+    sent.borrow_mut().clear();
+
+    h.get_by_label("Cancel").click();
+    h.run_steps(2);
+
+    assert!(sent.borrow().is_empty(), "cancel closes the consent prompt without starting replacement");
+    assert!(h.query_by_label("Replace").is_none(), "the replacement prompt is dismissed");
 }
 
 #[test]

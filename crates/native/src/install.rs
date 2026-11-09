@@ -134,6 +134,46 @@ pub fn install_at(
     commit: RecordCommit<'_>,
 ) -> Result<Option<Record>, String> {
     #[cfg(windows)]
+    {
+        install_at_inner(app, release, asset, kind, existing, previous, job, commit, None)
+    }
+    #[cfg(not(windows))]
+    {
+        install_at_inner(app, release, asset, kind, existing, previous, job, commit)
+    }
+}
+
+/// Install through a slot reserved synchronously for one explicit Windows Update all batch.
+#[cfg(windows)]
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn install_at_with_batch(
+    app: &CraftApp,
+    release: &Release,
+    asset: &Asset,
+    kind: PackageKind,
+    existing: Option<&Installed>,
+    previous: Option<&Record>,
+    job: &mut Job<'_>,
+    commit: RecordCommit<'_>,
+    batch_slot: Option<crate::msi_batch::Slot<'static>>,
+) -> Result<Option<Record>, String> {
+    install_at_inner(app, release, asset, kind, existing, previous, job, commit, batch_slot)
+}
+
+#[allow(clippy::too_many_arguments)]
+/// Downloads and installs the selected release, then commits its record only after success.
+fn install_at_inner(
+    app: &CraftApp,
+    release: &Release,
+    asset: &Asset,
+    kind: PackageKind,
+    existing: Option<&Installed>,
+    previous: Option<&Record>,
+    job: &mut Job<'_>,
+    commit: RecordCommit<'_>,
+    #[cfg(windows)] batch_slot: Option<crate::msi_batch::Slot<'static>>,
+) -> Result<Option<Record>, String> {
+    #[cfg(windows)]
     let mut commit = commit;
     #[cfg(not(windows))]
     let _ = commit;
@@ -172,15 +212,81 @@ pub fn install_at(
     log::info!("{}: starting {} to {} ({})", app.name, if existing.is_some() { "update" } else { "install" }, release.version_label(), kind.label());
     #[cfg(windows)]
     let msi_scope = if kind == PackageKind::Msi {
-        let updated = crate::msi_context::update_scope(
+        let updated = match crate::msi_context::update_scope(
             existing.is_some_and(|inst| inst.source == InstallSource::Msi),
             existing.and_then(|inst| inst.package.as_deref()),
             crate::msi_context::probe,
             |code| crate::detect::windows::record_scope(app, code),
-        )?;
+        ) {
+            Ok(scope) => scope,
+            Err(error) => {
+                let app_kind = if app.kind == artcraft_launcher_core::catalog::AppKind::Official { "official" } else { "community" };
+                log::info!(
+                    "install routing: app={} package_format={} msi_scope=unknown app_kind={} official_msi_eligible={} batch_participation=no fallback_reason=scope-detection-failed",
+                    app.id,
+                    kind.label(),
+                    app_kind,
+                    false
+                );
+                return Err(error);
+            }
+        };
         // A fresh install is machine-wide (Program Files); an update keeps the context of the copy it replaces.
         crate::msi_context::install_scope(updated, existing.is_none())
     } else {
+        None
+    };
+    #[cfg(windows)]
+    let batch_eligible = kind == PackageKind::Msi
+        && msi_scope == Some(MsiScope::PerMachine)
+        && app.kind == artcraft_launcher_core::catalog::AppKind::Official
+        && job.downgrade.is_none();
+    #[cfg(windows)]
+    let fallback_reason = if batch_eligible && batch_slot.is_some() {
+        "none"
+    } else if kind != PackageKind::Msi {
+        "package-format-not-msi"
+    } else if msi_scope == Some(MsiScope::PerUser) {
+        "per-user-scope"
+    } else if msi_scope.is_none() {
+        "scope-not-authorized"
+    } else if app.kind != artcraft_launcher_core::catalog::AppKind::Official {
+        "community-package-restriction"
+    } else if job.downgrade.is_some() {
+        "downgrade-flow"
+    } else if batch_slot.is_none() {
+        "no-update-all-slot"
+    } else {
+        "not-eligible"
+    };
+    #[cfg(windows)]
+    {
+        let app_kind = if app.kind == artcraft_launcher_core::catalog::AppKind::Official { "official" } else { "community" };
+        let scope = match msi_scope {
+            Some(MsiScope::PerMachine) => "per-machine",
+            Some(MsiScope::PerUser) => "per-user",
+            None if kind == PackageKind::Msi => "unknown",
+            None => "not-applicable",
+        };
+        let participating = batch_eligible && batch_slot.is_some();
+        log::info!(
+            "install routing: app={} package_format={} msi_scope={} app_kind={} official_msi_eligible={} batch_participation={} fallback_reason={}",
+            app.id,
+            kind.label(),
+            scope,
+            app_kind,
+            batch_eligible,
+            participating,
+            fallback_reason
+        );
+    }
+    #[cfg(windows)]
+    let msi_ticket = if batch_eligible && batch_slot.is_some() {
+        batch_slot.map(crate::msi_batch::Slot::join)
+    } else {
+        // Non-eligible installs retain their existing single-package route. In particular,
+        // per-user and community packages do not enter the privileged ArtCraft-only trust policy.
+        drop(batch_slot);
         None
     };
     // The package to put back comes first: without it, nothing is removed.
@@ -231,17 +337,20 @@ pub fn install_at(
                     job.stop,
                     &mut *job.phase,
                 ),
-                None => windows::run_msi(
-                    app,
-                    windows::Package { file: &file, sha256: &sha256, version: &version },
-                    destination.as_deref(),
-                    msi_scope,
-                    batch.take(),
-                    job.stop,
-                    &mut *job.phase,
-                ),
+                None => match msi_ticket {
+                    Some(ticket) => {
+                        let release = crate::elevated::release_identity(app, asset)?;
+                        ticket.install(
+                            crate::msi_batch::Item { msi: file.clone(), sha256: sha256.clone(), destination: destination.clone(), release },
+                            &cancelled(job.stop),
+                            &mut *job.phase,
+                            &|items, report| crate::elevated::install(items, report),
+                        )
+                    }
+                    None => windows::run_msi(&file, destination.as_deref(), msi_scope, job.stop, &mut *job.phase),
+                },
             }
-            .map(|_| None)
+            .map(|()| None)
         }
         #[cfg(windows)]
         PackageKind::PortableZip => {
@@ -519,22 +628,33 @@ pub enum MsiScope {
     PerMachine,
 }
 
-/// The `msiexec` properties that ask a dual-scope package for `scope`. Passing the context
-/// explicitly on every update also keeps a per-machine update working when the package's own
-/// default has since changed.
+/// The `msiexec` properties that select `scope`. The direct route does not inspect the incoming
+/// MSI's authored mode, so it requests the documented per-machine context with `ALLUSERS=1` and
+/// also quotes the empty selector value. The validated elevated batch can preserve the exact
+/// package mode and uses `ALLUSERS=2 MSIINSTALLPERUSER=""` for dual-scope packages.
 ///
-/// `ALLUSERS=1` is what the current per-machine-only packages already set themselves, so it
-/// changes nothing for them; `ALLUSERS=2` with `MSIINSTALLPERUSER=1` is the documented
-/// single-package way to request a per-user install of a dual-scope package. A per-user
-/// registered copy can only come from a dual-scope package, so its updates can safely ask for
-/// one.
+/// A per-user registered copy can only come from a dual-scope package, so its updates pass
+/// `ALLUSERS=2 MSIINSTALLPERUSER=1` without elevation.
 #[cfg(any(windows, test))]
 fn msi_scope_arguments(scope: Option<MsiScope>) -> Vec<&'static str> {
     match scope {
         Some(MsiScope::PerUser) => vec!["ALLUSERS=2", "MSIINSTALLPERUSER=1"],
-        Some(MsiScope::PerMachine) => vec!["ALLUSERS=1"],
+        Some(MsiScope::PerMachine) => vec!["ALLUSERS=1", "MSIINSTALLPERUSER=\"\""],
         None => Vec::new(),
     }
+}
+
+/// The raw Windows Installer properties appended after the quoted package and log arguments.
+/// This exact string is shared by the direct installer path and the elevated/downgrade command
+/// builders so that empty public-property values keep their required quotes in both paths.
+#[cfg(any(windows, test))]
+fn msi_extra_arguments(destination: Option<&Path>, scope: Option<MsiScope>) -> Result<String, String> {
+    let mut arguments = Vec::new();
+    if let Some(folder) = destination {
+        arguments.push(msi_folder_argument(folder)?);
+    }
+    arguments.extend(msi_scope_arguments(scope).into_iter().map(str::to_owned));
+    Ok(arguments.join(" "))
 }
 
 /// Where `asset` is downloaded to (and its partial file kept while unfinished).
@@ -1077,10 +1197,11 @@ pub fn failed_in_shared_call(error: &str) -> bool {
     cfg!(target_os = "linux") && error.ends_with(SHARED_CALL)
 }
 
-/// The system's installer runs one job at a time; the others wait their turn here. The backend
-/// starts each batch of installs (an "update all") with [`Queue::gather`] on it.
-#[cfg(any(target_os = "linux", windows))]
+/// The system's installer runs one job at a time; the others wait their turn here.
+#[cfg(target_os = "linux")]
 pub(crate) static INSTALLER: crate::queue::Queue = crate::queue::Queue::new();
+#[cfg(windows)]
+static INSTALLER: &crate::queue::Queue = &crate::queue::WINDOWS_INSTALLER;
 
 /// For [`INSTALLER`]: reports [`JobPhase::Waiting`] while a job waits, then `working` again.
 #[cfg(any(target_os = "linux", windows))]
@@ -2155,10 +2276,6 @@ mod msi_downgrade;
 /// Helpers for Windows Installer PowerShell scripts running under elevation.
 #[cfg(any(windows, test))]
 mod msi_batch;
-/// One permission prompt for a batch of per-machine packages: the launcher's own exe, elevated
-/// once, running Windows Installer on each checked package.
-#[cfg(any(windows, test))]
-pub mod msi_session;
 /// Builds the Windows Installer command separately so its package argument can be checked
 /// without starting an installer.
 #[cfg_attr(not(windows), allow(dead_code))]
@@ -2194,8 +2311,8 @@ pub mod windows {
     use artcraft_launcher_core::protocol::CANCELLED;
 
     use super::{
-        CraftApp, INSTALLER, JobPhase, MsiScope, Path, PathBuf, Stop, cancelled, explain, msi_batch, msi_command, msi_downgrade, msi_folder_argument,
-        msi_log, msi_scope_arguments, msi_session, process, turn,
+        CraftApp, INSTALLER, JobPhase, MsiScope, Path, PathBuf, Stop, cancelled, explain, msi_batch, msi_command, msi_downgrade, msi_extra_arguments,
+        msi_log, process, turn,
     };
 
     pub(super) fn msiexec() -> PathBuf {
@@ -2204,65 +2321,16 @@ pub mod windows {
 
     /// Runs an MSI with a progress window and no restart. Windows asks for permission itself.
     /// `scope`, from the copy being replaced's registration, keeps the update in the same
-    /// Windows Installer context (see [`MsiScope`]). A per-machine package with a `batch` joins
-    /// it instead: the whole batch shares one permission prompt ([`run_batched`]). Only
-    /// [`install_at`](super::install_at) calls it, so it stays as private as its [`Package`].
-    pub(super) fn run_msi(
-        app: &CraftApp,
-        package: Package<'_>,
+    /// Windows Installer context (see [`MsiScope`]). Eligible official per-machine MSIs join the
+    /// checked batch coordinator; other packages retain the ordinary single-package route.
+    pub fn run_msi(
+        msi: &Path,
         destination: Option<&Path>,
         scope: Option<MsiScope>,
-        batch: Option<crate::queue::Gather>,
         stop: &Stop,
         phase: &mut dyn FnMut(JobPhase),
     ) -> Result<(), String> {
-        if let Some(gather) = batch {
-            if scope == Some(MsiScope::PerMachine) {
-                return run_batched(Batched { app, package, destination, scope }, gather, stop, phase);
-            }
-            // A per-user install asks Windows for nothing: its place in the batch goes back at
-            // once, so the per-machine members don't wait for it.
-            gather.leave();
-        }
-        in_turn(stop, phase, JobPhase::Installing, || run_direct(package.file, destination, scope))
-    }
-
-    /// One app's install, as the batch session runs it.
-    struct Batched<'a> {
-        app: &'a CraftApp,
-        package: Package<'a>,
-        destination: Option<&'a Path>,
-        scope: Option<MsiScope>,
-    }
-
-    /// One permission prompt for a batch of per-machine packages: the members meet in one call
-    /// of the installer queue, the one whose call it is starts the elevated session
-    /// ([`msi_session`]), and every member hears its own installer's exit code. A declined
-    /// prompt cancels the whole batch; a session that cannot start sends the members back to
-    /// installing one by one, the way a single app always installs.
-    fn run_batched(job: Batched<'_>, gather: crate::queue::Gather, stop: &Stop, phase: &mut dyn FnMut(JobPhase)) -> Result<(), String> {
-        let Batched { app, package, destination, scope } = job;
-        let target = match msi_session::entry(app, &package, destination, scope) {
-            Ok(target) => target,
-            Err(e) => {
-                log::warn!("{}: {e}; installing it by itself", app.name);
-                gather.leave();
-                return in_turn(stop, phase, JobPhase::Installing, || run_direct(package.file, destination, scope));
-            }
-        };
-        let outcome = INSTALLER.batched_when(
-            Some(gather),
-            msi_session::command(),
-            target,
-            &cancelled(stop),
-            &mut turn(phase, JobPhase::Installing),
-            &msi_session::call,
-        );
-        if outcome.as_ref().err().is_some_and(|e| e == msi_session::NO_SESSION) {
-            log::warn!("{}: the batch session could not start; installing it by itself", app.name);
-            return in_turn(stop, phase, JobPhase::Installing, || run_direct(package.file, destination, scope));
-        }
-        outcome
+        in_turn(stop, phase, JobPhase::Installing, || run_direct(msi, destination, scope))
     }
 
     /// Runs one MSI by itself: `msiexec` asks for permission itself, and the prompt names the package's
@@ -2270,11 +2338,9 @@ pub mod windows {
     fn run_direct(msi: &Path, destination: Option<&Path>, scope: Option<MsiScope>) -> Result<(), String> {
         use std::os::windows::process::CommandExt;
         let mut command = msi_command(&msiexec(), msi)?;
-        if let Some(dir) = destination {
-            command.raw_arg(msi_folder_argument(dir)?);
-        }
-        for argument in msi_scope_arguments(scope) {
-            command.raw_arg(argument);
+        let arguments = msi_extra_arguments(destination, scope)?;
+        if !arguments.is_empty() {
+            command.raw_arg(arguments);
         }
         let status = command.status().map_err(|e| format!("couldn't start the Windows Installer ({e})"))?;
         explain(status.code()).map_err(|e| match status.code() {
@@ -2414,6 +2480,13 @@ pub mod windows {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[cfg(windows)]
+    #[test]
+    /// Keeps individual Windows MSI operations on the same queue reserved by Update all.
+    fn windows_msi_operations_use_the_queue_reserved_by_update_all() {
+        assert!(std::ptr::eq(INSTALLER, &crate::queue::WINDOWS_INSTALLER));
+    }
 
     /// A folder found only by the launch fallback, in another scope, never reaches the installer.
     #[cfg(windows)]
@@ -2631,9 +2704,9 @@ mod tests {
         assert_eq!(msi_scope_arguments(None), Vec::<&str>::new());
         // A per-user update asks for the documented single-package per-user install...
         assert_eq!(msi_scope_arguments(Some(MsiScope::PerUser)), vec!["ALLUSERS=2", "MSIINSTALLPERUSER=1"]);
-        // ...and a per-machine update asks for what per-machine-only packages already set
-        // themselves, so it changes nothing for the current releases.
-        assert_eq!(msi_scope_arguments(Some(MsiScope::PerMachine)), vec!["ALLUSERS=1"]);
+        // ...and a direct per-machine update uses the documented machine context with an
+        // explicitly quoted empty selector. The verified batch uses its MSI-table-aware mode.
+        assert_eq!(msi_scope_arguments(Some(MsiScope::PerMachine)), vec!["ALLUSERS=1", "MSIINSTALLPERUSER=\"\""]);
     }
 
     #[cfg(target_os = "linux")]

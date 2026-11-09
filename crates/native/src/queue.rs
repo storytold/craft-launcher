@@ -98,6 +98,11 @@ pub struct Queue {
     changed: Condvar,
 }
 
+/// The Windows Installer queue shared by MSI installs, uninstalls, downgrade sessions and the
+/// explicit Update all coordinator.
+#[cfg(windows)]
+pub(crate) static WINDOWS_INSTALLER: Queue = Queue::new();
+
 /// Frees the installer when a call ends (even by unwinding) and hands each of the other jobs of
 /// the call its outcome.
 struct Turn<'a> {
@@ -129,6 +134,17 @@ impl Queue {
     pub const fn new() -> Self {
         let state = State { busy: false, next_id: 0, waiting: Vec::new(), running: Vec::new(), finished: Vec::new() };
         Self { state: Mutex::new(state), changed: Condvar::new() }
+    }
+
+    /// Tries to reserve the installer without blocking. Dropping the permit releases it and wakes
+    /// queued installs and removals. MSI batches use this while they hold a set of downloads.
+    pub fn try_claim(&self) -> Option<impl Drop + '_> {
+        let mut state = self.lock();
+        if state.busy {
+            return None;
+        }
+        state.busy = true;
+        Some(Turn { queue: self, others: Vec::new() })
     }
 
     /// A batch of `members` jobs that will install behind one permission prompt (see

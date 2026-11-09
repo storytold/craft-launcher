@@ -1,0 +1,34 @@
+{
+  "checked": "2026-11-05",
+  "architecture": "windows-x64",
+  "packages": [
+    {
+      "app": "photocraft",
+      "tag": "v0.20.2",
+      "asset": "photocraft-0.20.2-windows-x64.msi",
+      "sha256": "37bf876ca7c172e39e099af168235b31e54809c182c5adf75f7e65bb7f53b55a",
+      "properties": { "ALLUSERS": "2", "MSIINSTALLPERUSER": "1", "ProductName": "PhotoCraft", "ProductVersion": "0.20.2" }
+    },
+    {
+      "app": "vectorcraft",
+      "tag": "v0.21.1",
+      "asset": "vectorcraft-0.21.1-windows-x64.msi",
+      "sha256": "6c639490afc96de0d0a726f5daf8cc412bae51158e4914da91f92ca7c6bdf285",
+      "properties": { "ALLUSERS": "2", "MSIINSTALLPERUSER": "1", "ProductName": "VectorCraft", "ProductVersion": "0.21.1" }
+    },
+    { "app": "filmcraft", "tag": "v0.17.1", "asset": "filmcraft-0.17.1-windows-x64.msi", "sha256": "d0181054dd8e5f438f475a37c2b9d8443cb75e3adbd4d90b41690b0e5cc74be8" },
+    { "app": "lightcraft", "tag": "v0.18.1", "asset": "lightcraft-0.18.1-windows-x64.msi", "sha256": "205c9d60f635c769ac49b6f9e347a5fd622596a36a38170ddd033d69e8cc20d5" },
+    { "app": "pdfcraft", "tag": "v0.18.2", "asset": "pdfcraft-0.18.2-windows-x64.msi", "sha256": "40acbc69509080e280eb92d3e2aeeb9ce66cd6eb44b87e69aa2943e865f45d51" },
+    { "app": "effectcraft", "tag": "v0.21.1", "asset": "effectcraft-0.21.1-windows-x64.msi", "sha256": "5e499653dd189ed37b78ce0cc579d89f03ab7cdd076f4364fdc86437d96f6df8" },
+    { "app": "designcraft", "tag": "v0.17.2", "asset": "designcraft-0.17.2-windows-x64.msi", "sha256": "e95fe78b426ae634d05190b0b27834d1cebf268c25b0e8dbd26950dab0810557" },
+    { "app": "figcraft", "tag": "v0.15.1", "asset": "figcraft-0.15.1-windows-x64.msi", "sha256": "d5acb5217da71682030393b1c99964fd3c90d7a50191b14fbf4824257c00fe66" },
+    { "app": "wordcraft", "tag": "v0.15.2", "asset": "wordcraft-0.15.2-windows-x64.msi", "sha256": "2b3af30f3613bedb130fc982f52f7d327f4e7244739834dbc5890d19c063a37e" },
+    { "app": "soundcraft", "tag": "v0.17.1", "asset": "soundcraft-0.17.1-windows-x64.msi", "sha256": "5e9bad4c442e33261b9ca659024970f12c516efd8839247228dccbcab605b55a" },
+    { "app": "deckcraft", "tag": "v0.15.1", "asset": "deckcraft-0.15.1-windows-x64.msi", "sha256": "5cfe8f5b63ec03645b542081efd6315c25a17ab63ca75da4049003f6c776e0d1" },
+    { "app": "cadcraft", "tag": "v0.17.1", "asset": "cadcraft-0.17.1-windows-x64.msi", "sha256": "642fc4f25a413896fd3fdd074459676ec8bfb3218127e1540e23769ad9ae2b48" },
+    { "app": "gridcraft", "tag": "v0.16.1", "asset": "gridcraft-0.16.1-windows-x64.msi", "sha256": "291bff6b4f156f872e159ef47762efcb642b221e2326221c8d37b9add86f0d2a" },
+    { "app": "texturecraft", "tag": "v0.3.2", "asset": "texturecraft-0.3.2-windows-x64.msi", "sha256": "6461c9bae53e8d03a1fc595d4713f25753eb75079ad2b0ea085db4f25cc3c58c" },
+    { "app": "materialcraft", "tag": "v0.1.2", "asset": "materialcraft-0.1.2-windows-x64.msi", "sha256": "f52a2c3a83761570e0de6345f2623547f038c0ab337f7ac94b1a7096009a1ee2" },
+    { "app": "craft-anything", "tag": "v0.3.0", "asset": "craft-anything-0.3.0-windows-x64.msi", "sha256": "9d44510c081c539a0d742a31842b7ac9d9545a7c458c020613492b322647f8e8" }
+  ]
+}
