@@ -75,6 +75,16 @@ fi
 if [[ "$TEST" = 1 ]]; then
   flatpak install --user -y --noninteractive --reinstall "$OUT"
   flatpak info --user "$APP_ID"
+  # The bundle must not grant X11 unconditionally: flatpak's build-finish turned
+  # --socket=fallback-x11 into a standing x11 socket for years (#1129), and how fallback-x11
+  # reaches the metadata has changed more than once between flatpak versions since. Rather
+  # than trust any one version, the finished bundle is checked: the manifest's promise —
+  # X11 only when there is no Wayland compositor — must survive the build.
+  sockets=";$(sed -n 's/^sockets=//p' "$HOME/.local/share/flatpak/app/$APP_ID/current/active/metadata")"
+  if [[ "$sockets" == *";x11;"* ]] || [[ "$sockets" != *";fallback-x11;"* && "$sockets" != *"if:"*"x11"* ]]; then
+    echo "::error::the bundle's sockets ($sockets) grant X11 unconditionally or lost the fallback; this flatpak's build-finish serializes fallback-x11 unexpectedly (#1129)" >&2
+    exit 1
+  fi
   flatpak run --command=sh "$APP_ID" -c 'test -x /app/bin/artcraft-launcher && ls /app/share/applications /app/share/metainfo /app/share/icons/hicolor/scalable/apps'
 fi
 echo "==> done"
