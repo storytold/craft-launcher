@@ -92,7 +92,8 @@ pub(super) struct Held {
 }
 
 /// Opens `msi` so that it cannot be changed, moved or deleted while held, and checks that it still
-/// has the `sha256` it was downloaded against.
+/// has the `sha256` it was downloaded against. A symbolic link is refused: a held link can still
+/// be pointed at another file.
 #[cfg(windows)]
 pub(super) fn hold(msi: &Path, sha256: &str) -> Result<Held, String> {
     use std::os::windows::fs::OpenOptionsExt;
@@ -101,11 +102,17 @@ pub(super) fn hold(msi: &Path, sha256: &str) -> Result<Held, String> {
 
     /// Others may read the file, but not write, rename or delete it.
     const FILE_SHARE_READ: u32 = 0x1;
+    /// Opens a link itself instead of the file it points at.
+    const FILE_FLAG_OPEN_REPARSE_POINT: u32 = 0x0020_0000;
     let mut file = std::fs::File::options()
         .read(true)
         .share_mode(FILE_SHARE_READ)
+        .custom_flags(FILE_FLAG_OPEN_REPARSE_POINT)
         .open(msi)
         .map_err(|e| format!("couldn't keep the checked package {} safe until it is installed ({e})", msi.display()))?;
+    if file.metadata().map_err(|e| format!("couldn't read {} ({e})", msi.display()))?.file_type().is_symlink() {
+        return Err(format!("{} is a link, so it wasn't installed.", msi.display()));
+    }
     let mut hasher = Sha256::new();
     std::io::copy(&mut file, &mut hasher).map_err(|e| format!("couldn't read {} ({e})", msi.display()))?;
     let digest: String = hasher.finalize().iter().map(|byte| format!("{byte:02x}")).collect();
