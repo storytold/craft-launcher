@@ -248,7 +248,9 @@ fn show_lines(ui: &mut Ui, notes: &str, scale: f32) {
 /// A short list has SHOWN + 1 or fewer relevant bullets; a long list folds at the (SHOWN + 1)th.
 fn fold_at(lines: &[Line<'_>]) -> Option<usize> {
     // Find the index of the first "What's Changed" or "Whats Changed" heading (case-insensitive, any # level).
-    let whats_changed_idx = lines.iter().position(|l| matches!(l, Line::Heading(h) if h.eq_ignore_ascii_case("What's Changed") || h.eq_ignore_ascii_case("Whats Changed")));
+    let whats_changed_idx = lines
+        .iter()
+        .position(|l| matches!(l, Line::Heading(h) if h.eq_ignore_ascii_case("What's Changed") || h.eq_ignore_ascii_case("Whats Changed")));
     let start = whats_changed_idx.map_or(0, |i| i + 1);
     let bullets = lines[start..].iter().filter(|l| matches!(l, Line::Bullet(..))).count();
     if bullets <= SHOWN + 1 {
