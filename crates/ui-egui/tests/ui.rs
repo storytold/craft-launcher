@@ -307,7 +307,10 @@ fn harness_full(
         Some(platform) => Box::new(PlatformFake { inner: fake, platform }),
         None => Box::new(fake),
     });
-    let settings = Settings { view, notify: false, ..Settings::default() };
+    // Legacy grid tests assert the flat Name order; the table keeps suite order so every row
+    // stays reachable. The Job-type default is covered separately.
+    let sort = if view == ViewMode::Table { SortKey::Suite } else { SortKey::Name };
+    let settings = Settings { view, notify: false, sort, ..Settings::default() };
     // No `.wgpu()`: it gives every test its own GPU device, and those segfault on parallel test threads (see above).
     // The default renderer creates one only when a test renders.
     let harness = test_harness_builder(theme).with_size(egui::vec2(1180.0, 1200.0)).with_pixels_per_point(scale).with_theme(theme).build_ui_state(
@@ -4414,4 +4417,15 @@ fn sort_picker_offers_job_type() {
     h.run_steps(2);
     assert_eq!(h.state().as_ref().unwrap().settings.sort, SortKey::JobType);
     h.get_by_label("Photo & Image (2)");
+}
+
+#[test]
+/// An untouched sort setting draws the Job type groups (production default).
+fn grid_defaults_to_job_type_groups() {
+    let (mut h, _) = harness(ViewMode::Grid, egui::Theme::Dark, true);
+    h.run_steps(6);
+    h.state_mut().as_mut().unwrap().settings.sort = SortKey::Suite;
+    h.run_steps(4);
+    h.get_by_label("Photo & Image (2)");
+    h.get_by_label("Documents & Productivity (5)");
 }

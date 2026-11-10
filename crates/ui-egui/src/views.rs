@@ -506,7 +506,10 @@ impl LauncherUi {
     /// Pinned apps first (user order), then installed, then the rest under a "Not installed" header.
     /// A manual tile order replaces those groups with one block in the user's order.
     pub(crate) fn grid(&mut self, ui: &mut Ui, ids: &[&'static str]) {
-        if self.settings.sort == SortKey::JobType {
+        // Job type is the grid's default order. A manual tile order (unless the user explicitly
+        // chose Job type) takes over as the flat, freely reorderable block.
+        let job_groups = self.settings.sort == SortKey::JobType || (self.settings.sort == SortKey::Suite && self.settings.tile_order.is_empty());
+        if job_groups {
             self.grid_jobs(ui, ids);
             ui.add_space(24.0);
             return;
@@ -553,16 +556,48 @@ impl LauncherUi {
                 let order = &self.settings.tile_order;
                 group.sort_by_key(|id| order.iter().position(|p| p == id).unwrap_or(usize::MAX));
             }
-            let label = format!("{} ({})", job_label(job), group.len());
-            egui::CollapsingHeader::new(RichText::new(label).size(13.0).color(t.faint)).id_salt(("job-type", job.key())).default_open(true).show(
-                ui,
-                |ui| {
-                    ui.add_space(6.0);
-                    self.grid_block(ui, &group);
-                },
-            );
+            let open = self.job_header(ui, job, group.len(), &t);
+            if open {
+                ui.add_space(6.0);
+                self.grid_block(ui, &group);
+            }
             ui.add_space(12.0);
         }
+    }
+
+    /// A solid bar in the primary button's inverted colours, like a card's Open box. Clicking it
+    /// minimizes or restores the job group; the state is saved with the settings.
+    fn job_header(&mut self, ui: &mut Ui, job: JobType, count: usize, t: &Tokens) -> bool {
+        let open = !self.settings.collapsed_job_groups.contains(job.key());
+        let (rect, resp) = ui.allocate_exact_size(vec2(ui.available_width(), theme::CONTROL_H), Sense::click());
+        let bg = if resp.hovered() { t.invert_bg.lerp_to_gamma(t.invert_fg, 0.16) } else { t.invert_bg };
+        ui.painter().rect_filled(rect, CornerRadius::ZERO, bg);
+        // Painted chevron: the mono faces do not carry the Unicode triangles.
+        let c = egui::pos2(rect.left() + 10.0, rect.center().y);
+        let arrow = if open {
+            vec![c + vec2(-4.0, -2.0), c + vec2(4.0, -2.0), c + vec2(0.0, 3.0)]
+        } else {
+            vec![c + vec2(-2.0, -4.0), c + vec2(-2.0, 4.0), c + vec2(3.0, 0.0)]
+        };
+        ui.painter().add(egui::Shape::convex_polygon(arrow, t.invert_fg, Stroke::NONE));
+        let text = format!("{} ({})", job_label(job), count);
+        ui.painter().text(
+            egui::pos2(rect.left() + 22.0, rect.center().y),
+            egui::Align2::LEFT_CENTER,
+            text.clone(),
+            FontId::new(theme::HUD_SIZE, theme::mono_bold()),
+            t.invert_fg,
+        );
+        resp.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, true, text.clone()));
+        let resp = resp.on_hover_cursor(egui::CursorIcon::PointingHand);
+        if resp.clicked() {
+            if open {
+                self.settings.collapsed_job_groups.insert(job.key().to_string());
+            } else {
+                self.settings.collapsed_job_groups.remove(job.key());
+            }
+        }
+        open
     }
 
     fn grid_block(&mut self, ui: &mut Ui, ids: &[&'static str]) {
@@ -1566,7 +1601,7 @@ pub(crate) fn grid_sort_now(s: &crate::settings::Settings) -> (SortKey, bool) {
         SortKey::Released => (SortKey::Released, true),
         SortKey::Frequent => (SortKey::Frequent, true),
         SortKey::JobType => (SortKey::JobType, false),
-        _ => (SortKey::Name, false),
+        _ => (SortKey::JobType, false),
     }
 }
 

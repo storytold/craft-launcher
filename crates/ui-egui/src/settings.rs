@@ -138,6 +138,9 @@ pub struct Settings {
     /// The manual grid order, when the user has dragged tiles. Empty keeps the automatic order.
     #[serde(default)]
     pub tile_order: Vec<String>,
+    /// Job-type sections the user minimized in the grid (`JobType::key`).
+    #[serde(default)]
+    pub collapsed_job_groups: std::collections::BTreeSet<String>,
     /// Extra command-line flags each app is opened with (catalog id → the text as typed, split
     /// by [`args::split`](artcraft_launcher_core::args::split) at launch).
     pub launch_flags: BTreeMap<String, String>,
@@ -294,6 +297,7 @@ impl Default for Settings {
             launches: BTreeMap::new(),
             pinned: Vec::new(),
             tile_order: Vec::new(),
+            collapsed_job_groups: std::collections::BTreeSet::new(),
             launch_flags: BTreeMap::new(),
         }
     }
