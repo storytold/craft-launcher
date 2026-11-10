@@ -353,6 +353,13 @@ pub fn app_icon_png(id: &str) -> Option<&'static [u8]> {
 mod tests {
     use super::*;
 
+    // AniCraft is intentionally excluded from this release.
+    #[test]
+    fn anicraft_is_excluded_from_this_release() {
+        assert!(CraftApp::by_id("anicraft").is_none());
+        assert!(app_icon_png("anicraft").is_none());
+    }
+
     #[test]
     fn every_app_has_its_icon() {
         for app in &SUITE {

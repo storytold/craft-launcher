@@ -597,7 +597,8 @@ pub mod linux {
     }
 
     /// How the app is installed, in this order: an AppImage the launcher put down, a package
-    /// (deb, rpm, pacman or Flatpak), else a binary found on disk.
+    /// (deb, rpm, pacman or Flatpak), a package the launcher knows no name for but which owns the
+    /// app's binary ([`owned_install`]), else a binary found on disk.
     pub fn detect(app: &CraftApp, snapshot: &Snapshot) -> Option<Installed> {
         if let Some((path, version)) = appimages(app).into_iter().next() {
             return Some(Installed {
@@ -633,7 +634,55 @@ pub mod linux {
                 installation: p.installation.clone(),
             });
         }
+        // Before any binary is run to learn a version, the package database is asked whether a
+        // package owns it (see [`owned_install`]).
+        if let Some(installed) = owned_install(app) {
+            return Some(installed);
+        }
         detect_system_install(app)
+    }
+
+    /// A package the launcher knows no name for may still own the app's binary: a release may
+    /// name its deb `art-craft` while the app's own names are `artcraft` and its bundle id. When
+    /// that happens the binary is never run to learn a version — `--version` starts apps that
+    /// don't support the flag (#1298) — so the package database is asked which package owns the
+    /// file, and the install is reported under that manager with the package's own version.
+    fn owned_install(app: &CraftApp) -> Option<Installed> {
+        let bin = find_binary(app.id)?;
+        let owned =
+            [owned_by_dpkg(&bin), owned_by_rpm(&bin), has_pacman_db().then(|| owned_by_pacman(&bin)).flatten()].into_iter().flatten().next()?;
+        Some(Installed {
+            version: packages::version_of(&owned),
+            source: owned.manager,
+            location: bin.display().to_string(),
+            package: Some(owned.name),
+            externally_managed: false,
+            origin: None,
+            installation: None,
+        })
+    }
+
+    /// The dpkg package owning `bin`: `dpkg-query -S` names it, and one `-W` reads its version.
+    fn owned_by_dpkg(bin: &Path) -> Option<Package> {
+        let bin = bin.to_str()?;
+        let t = Duration::from_secs(5);
+        let name = packages::parse_dpkg_search(&capture("dpkg-query", &["-S", bin], t)?, bin)?;
+        let version = capture("dpkg-query", &["-W", "-f", "${Version}\n", &name], t).filter(|v| !v.trim().is_empty())?;
+        Some(Package { manager: InstallSource::Deb, name, version, user: false, origin: None, installation: None })
+    }
+
+    /// The rpm package owning `bin`: `rpm -qf` names it and its version in one query.
+    fn owned_by_rpm(bin: &Path) -> Option<Package> {
+        let bin = bin.to_str()?;
+        let (name, version) = packages::parse_rpm_owner(&capture("rpm", &["-qf", bin, "--qf", "%{NAME}|%{VERSION}\n"], Duration::from_secs(5))?)?;
+        Some(Package { manager: InstallSource::Rpm, name, version, user: false, origin: None, installation: None })
+    }
+
+    /// The pacman package owning `bin`: `pacman -Qo` names it and its version in one line.
+    fn owned_by_pacman(bin: &Path) -> Option<Package> {
+        let bin = bin.to_str()?;
+        let (name, version) = packages::parse_pacman_owner(&capture("pacman", &["-Qo", bin], Duration::from_secs(5))?)?;
+        Some(Package { manager: InstallSource::Pacman, name, version, user: false, origin: None, installation: None })
     }
 
     /// When the package managers don't report the app (a query timed out or was locked, an
