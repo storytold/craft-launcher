@@ -27,6 +27,7 @@ pub fn meta(app: &CraftApp) -> (&'static str, Option<&'static str>) {
         "designcraft" => ("Graphics;Publishing;", None),
         "vectorcraft" => ("Graphics;2DGraphics;VectorGraphics;", None),
         "effectcraft" => ("AudioVideo;Video;Graphics;2DGraphics;", None),
+        "anicraft" => ("Graphics;2DGraphics;VectorGraphics;AudioVideo;", Some("anicraft")),
         "wordcraft" => ("Office;WordProcessor;", None),
         "deckcraft" => ("Office;Presentation;", None),
         "gridcraft" => ("Office;Spreadsheet;", None),

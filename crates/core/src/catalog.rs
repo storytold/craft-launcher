@@ -147,7 +147,7 @@ const fn app(
 }
 
 /// The Craft App Suite, in display order matching getartcraft.com, then the community apps:
-pub const SUITE: [CraftApp; 18] = [
+pub const SUITE: [CraftApp; 19] = [
     app("photocraft", "PhotoCraft", "Image editing", [[0x2f, 0x7b, 0xf5], [0x1a, 0x5b, 0xc4], [0x7f, 0xb0, 0xff]], "storytold/photocraft"),
     app("vectorcraft", "VectorCraft", "Vector illustration", [[0xe8, 0x57, 0x3f], [0xb8, 0x3a, 0x24], [0xff, 0x8a, 0x70]], "storytold/vectorcraft"),
     app(
@@ -182,6 +182,11 @@ pub const SUITE: [CraftApp; 18] = [
         [[0xe0, 0x36, 0x8f], [0xb0, 0x20, 0x6c], [0xff, 0x7a, 0xb8]],
         "storytold/effectcraft",
     ),
+    CraftApp {
+        // Use the project repository until its getartcraft.com page is published.
+        site: Some("https://github.com/storytold/anicraft"),
+        ..app("anicraft", "AniCraft", "2D vector animation", [[0xda, 0xc6, 0x04], [0x70, 0x65, 0x00], [0xe8, 0xd8, 0x4a]], "storytold/anicraft")
+    },
     app(
         "designcraft",
         "DesignCraft",
@@ -333,6 +338,7 @@ pub fn app_icon_png(id: &str) -> Option<&'static [u8]> {
         "lightcraft" => include_bytes!("../../../assets/app-icons/lightcraft.png"),
         "pdfcraft" => include_bytes!("../../../assets/app-icons/pdfcraft.png"),
         "effectcraft" => include_bytes!("../../../assets/app-icons/effectcraft.png"),
+        "anicraft" => include_bytes!("../../../assets/app-icons/anicraft.png"),
         "designcraft" => include_bytes!("../../../assets/app-icons/designcraft.png"),
         "wordcraft" => include_bytes!("../../../assets/app-icons/wordcraft.png"),
         "deckcraft" => include_bytes!("../../../assets/app-icons/deckcraft.png"),
@@ -364,8 +370,8 @@ mod tests {
 
     /// Every catalog entry must have a distinct lookup key.
     #[test]
-    fn suite_has_eighteen_apps_with_unique_ids() {
-        assert_eq!(SUITE.len(), 18);
+    fn suite_has_nineteen_apps_with_unique_ids() {
+        assert_eq!(SUITE.len(), 19);
         let mut ids: Vec<_> = SUITE.iter().map(|a| a.id).collect();
         ids.sort_unstable();
         ids.dedup();
@@ -424,6 +430,16 @@ mod tests {
         assert_eq!(app.bundle_id(), "ai.storyteller.materialcraft");
         assert_eq!(app.website(), "https://github.com/storytold/materialcraft");
         assert_eq!(app.mac_team, Some(ARTCRAFT_TEAM_ID));
+    }
+
+    #[test]
+    fn anicraft_is_an_official_app() {
+        let app = CraftApp::by_id("anicraft").expect("anicraft");
+        assert_eq!(
+            (app.kind, app.repo, app.bundle_id(), app.mac_team),
+            (AppKind::Official, "storytold/anicraft", "ai.storyteller.anicraft".into(), Some(ARTCRAFT_TEAM_ID))
+        );
+        assert_eq!(app.website(), "https://github.com/storytold/anicraft");
     }
 
     #[test]

@@ -437,3 +437,10 @@ materialcraft	Preview materials in 2D and on 3D models.	Materialien in 2D und au
 	Migrate Flatpak bundles to ArtCraft OCI (experimental)	Flatpak-Bundles zu ArtCraft OCI migrieren (experimentell)
 	On update, switch first party apps when the matching package is available. Otherwise, keep using bundles.	ArtCraft-Apps beim Aktualisieren umstellen, wenn das passende Paket verfügbar ist. Andernfalls weiterhin Bundles verwenden.
 	The OCI repository is a preview with GPG verification disabled.	Das OCI-Repository ist eine Vorschau mit deaktivierter GPG-Prüfung.
+anicraft	2D vector animation	2D-Vektoranimation
+anicraft	Vector animation on a timeline you know.	Vektoranimation auf einer vertrauten Zeitleiste.
+anicraft	Open-source 2D vector animation, built in pure Rust.	Open-Source-2D-Vektoranimation, entwickelt in reinem Rust.
+anicraft	Familiar by design	Gewohnt aufgebaut
+anicraft	Stage, tools, timeline, layers, keyframes, Properties and Library sit where animators expect them, with onion skinning for in-betweening.	Bühne, Werkzeuge, Zeitleiste, Ebenen, Keyframes, Eigenschaften und Bibliothek genau dort, wo Animatoren sie erwarten, inklusive Zwiebelhaut.
+anicraft	Tweens that ease	Fließende Tweens
+anicraft	Classic tweens with eight easing presets and custom ease curves, plus shape tweens that morph one vector contour into another.	Klassische Tweens mit acht Easing-Voreinstellungen und Kurven sowie Form-Tweens für Vektor-Morphing.
