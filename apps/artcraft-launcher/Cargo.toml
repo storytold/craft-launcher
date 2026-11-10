@@ -51,7 +51,7 @@ objc2-app-kit = { version = "=0.3.2", default-features = false, features = ["std
 # Windows only: the "Animation effects" setting (motion.rs). Already in Cargo.lock through
 # artcraft-launcher-native.
 [target.'cfg(target_os = "windows")'.dependencies]
-winreg = "0.55"
+winreg = "0.56"
 
 # Linux and the BSDs: the desktop's animations setting, from its settings portal (motion.rs).
 # Already in Cargo.lock through tray-icon and notify-rust.
