@@ -445,3 +445,4 @@ anicraft	Stage, tools, timeline, layers, keyframes, Properties and Library sit w
 anicraft	Tweens that ease	Fließende Tweens
 anicraft	Classic tweens with eight easing presets and custom ease curves, plus shape tweens that morph one vector contour into another.	Klassische Tweens mit acht Easing-Voreinstellungen und Kurven sowie Form-Tweens für Vektor-Morphing.
 	ArtCraft Launcher's window could not start or stopped with an error: {e}\n\nIf this keeps happening, updating the graphics driver often fixes it.	Das Fenster von ArtCraft Launcher konnte nicht starten oder wurde wegen eines Fehlers beendet: {e}\n\nWenn das wieder passiert, hilft oft ein Update des Grafiktreibers.
+	ArtCraft Launcher's window could not start or stopped with an error: {e}	Das Fenster von ArtCraft Launcher konnte nicht starten oder wurde wegen eines Fehlers beendet: {e}

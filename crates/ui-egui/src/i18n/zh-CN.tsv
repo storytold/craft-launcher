@@ -413,3 +413,4 @@ anicraft	Stage, tools, timeline, layers, keyframes, Properties and Library sit w
 anicraft	Tweens that ease	流畅补间缓动
 anicraft	Classic tweens with eight easing presets and custom ease curves, plus shape tweens that morph one vector contour into another.	经典补间具备八种缓动预设与自定义曲线，外加将一种矢量轮廓变换为另一种的形状补间。
 	ArtCraft Launcher's window could not start or stopped with an error: {e}\n\nIf this keeps happening, updating the graphics driver often fixes it.	ArtCraft Launcher 的窗口无法启动，或因错误而停止：{e}\n\n如果问题反复出现，更新显卡驱动程序通常可以解决。
+	ArtCraft Launcher's window could not start or stopped with an error: {e}	ArtCraft Launcher 的窗口无法启动，或因错误而停止：{e}

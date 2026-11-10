@@ -16,10 +16,18 @@ use artcraft_launcher_ui_egui::i18n;
 /// `complete_menus` has a row for it (`every_complete_catalog_translates_the_dialog`).
 const TEMPLATE: &str = "ArtCraft Launcher's window could not start or stopped with an error: {e}\n\nIf this keeps happening, updating the graphics driver often fixes it.";
 
+/// The same without the driver advice, for an error from winit, the windowing layer (on Linux, for
+/// example, no display session): a driver update can't help there. Also a catalog key.
+const WINDOWING_TEMPLATE: &str = "ArtCraft Launcher's window could not start or stopped with an error: {e}";
+
 /// What the dialog and the log say, in `lang`. Any error `run_native` returns lands here, also one
 /// after the window was up, so graphics is only the likely cause, not the certain one.
 pub(crate) fn message(lang: i18n::Lang, error: &eframe::Error) -> String {
-    i18n::fmt(i18n::tr(lang, TEMPLATE), &[("e", &error.to_string())])
+    let template = match error {
+        eframe::Error::Winit(_) | eframe::Error::WinitEventLoop(_) => WINDOWING_TEMPLATE,
+        _ => TEMPLATE,
+    };
+    i18n::fmt(i18n::tr(lang, template), &[("e", &error.to_string())])
 }
 
 /// Logs the failure in English and shows it in a dialog in the system language, which stays until
@@ -47,17 +55,34 @@ mod tests {
         assert!(text.contains("graphics driver"), "{text}");
     }
 
-    /// The i18n coverage test only finds `tl!`/`t` literals in the UI crate, so this string is
-    /// checked here: every complete catalog translates it, keeps the product name in English and
+    fn windowing_failure() -> eframe::Error {
+        eframe::Error::WinitEventLoop(winit::error::EventLoopError::RecreationAttempt)
+    }
+
+    #[test]
+    fn a_windowing_error_does_not_advise_a_driver_update() {
+        let text = message(i18n::Lang::EN, &windowing_failure());
+        assert!(text.starts_with("ArtCraft Launcher's window could not start or stopped"), "{text}");
+        assert!(text.contains("EventLoop can't be recreated"), "{text}");
+        assert!(!text.contains("graphics"), "{text}");
+    }
+
+    /// The i18n coverage test only finds `tl!`/`t` literals in the UI crate, so these strings are
+    /// checked here: every complete catalog translates both, keeps the product name in English and
     /// fills in the error.
     #[test]
     fn every_complete_catalog_translates_the_dialog() {
         for lang in i18n::Lang::all().filter(|l| l.complete_menus()) {
-            assert!(i18n::has(lang, TEMPLATE), "{} has no row for the start-failure dialog", lang.code());
-            let text = message(lang, &failure());
-            assert_ne!(text, message(i18n::Lang::EN, &failure()), "{} isn't translated", lang.code());
-            assert!(text.contains("ArtCraft Launcher"), "{}: {text}", lang.code());
-            assert!(text.contains("no adapter") && !text.contains("{e}"), "{}: {text}", lang.code());
+            for (template, error) in [(TEMPLATE, failure()), (WINDOWING_TEMPLATE, windowing_failure())] {
+                assert!(i18n::has(lang, template), "{} has no row for the start-failure dialog: {template}", lang.code());
+                let text = message(lang, &error);
+                assert_ne!(text, message(i18n::Lang::EN, &error), "{} isn't translated", lang.code());
+                assert!(text.contains("ArtCraft Launcher"), "{}: {text}", lang.code());
+                assert!(text.contains(&error.to_string()) && !text.contains("{e}"), "{}: {text}", lang.code());
+            }
+            // The shorter text is the longer one's first sentence, in every language.
+            let (with_advice, without) = (i18n::tr(lang, TEMPLATE), i18n::tr(lang, WINDOWING_TEMPLATE));
+            assert!(with_advice.starts_with(without) && with_advice.len() > without.len(), "{}: {without}", lang.code());
         }
     }
 }

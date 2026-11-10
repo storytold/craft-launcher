@@ -448,3 +448,4 @@ anicraft	Stage, tools, timeline, layers, keyframes, Properties and Library sit w
 anicraft	Tweens that ease	滑らかなトゥイーン
 anicraft	Classic tweens with eight easing presets and custom ease curves, plus shape tweens that morph one vector contour into another.	8つのイージングプリセットとカスタム曲線を持つクラシックトゥイーン、そしてシェイプトゥイーンに対応。
 	ArtCraft Launcher's window could not start or stopped with an error: {e}\n\nIf this keeps happening, updating the graphics driver often fixes it.	ArtCraft Launcher のウィンドウを開けなかったか、エラーで停止しました: {e}\n\nこの問題が続く場合は、グラフィックドライバーを更新すると解決することがよくあります。
+	ArtCraft Launcher's window could not start or stopped with an error: {e}	ArtCraft Launcher のウィンドウを開けなかったか、エラーで停止しました: {e}

@@ -291,6 +291,7 @@ dependencies = [
  "ron",
  "serde",
  "tray-icon",
+ "winit",
  "winreg",
  "winresource",
  "zbus",

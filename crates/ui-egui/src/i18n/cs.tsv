@@ -413,3 +413,4 @@ anicraft	Stage, tools, timeline, layers, keyframes, Properties and Library sit w
 anicraft	Tweens that ease	Plynulé mezilehlé pohyby (tweens)
 anicraft	Classic tweens with eight easing presets and custom ease curves, plus shape tweens that morph one vector contour into another.	Klasické mezilehlé pohyby s osmi předvolbami zpomalení a vlastními křivkami, plus tvarové mezilehlé pohyby pro morphing.
 	ArtCraft Launcher's window could not start or stopped with an error: {e}\n\nIf this keeps happening, updating the graphics driver often fixes it.	Okno aplikace ArtCraft Launcher se nepodařilo spustit nebo se kvůli chybě zavřelo: {e}\n\nPokud se to opakuje, často pomůže aktualizace grafického ovladače.
+	ArtCraft Launcher's window could not start or stopped with an error: {e}	Okno aplikace ArtCraft Launcher se nepodařilo spustit nebo se kvůli chybě zavřelo: {e}
