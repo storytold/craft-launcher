@@ -48,7 +48,8 @@ dunce = "1"
 # Pure-Rust MS-SHLINK (.lnk) writer — no PowerShell (see antivirus incident notes).
 mslnk = "0.1.8"
 zip = { version = "9", default-features = false, features = ["deflate"] }
-# Safe wrappers for waiting for another process, reading a file's VERSIONINFO and this account's SID.
-winsafe = { version = "0.0.29", features = ["kernel", "version", "advapi"] }
+# Safe wrappers for waiting for another process, reading a file's VERSIONINFO, this account's
+# SID and the one elevation prompt a batch of installs shares (ShellExecuteEx).
+winsafe = { version = "0.0.29", features = ["kernel", "version", "advapi", "shell"] }
 # Authenticode checks through WinTrust: the update helper installs only files from the launcher's publisher.
 verifysign = "1"

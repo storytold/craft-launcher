@@ -260,7 +260,7 @@ impl LauncherUi {
         Self {
             backend,
             settings,
-            entries: SUITE.iter().map(AppEntry::new).collect(),
+            entries: SUITE.iter().filter(|a| platform.is_none_or(|p| a.runs_on(p.os))).map(AppEntry::new).collect(),
             caps,
             platform,
             checking: false,
@@ -767,10 +767,18 @@ impl LauncherUi {
                 if self.auto_update_attempted.contains(&(e.app.id.to_string(), v.clone())) { None } else { Some((e.app.id.to_string(), v)) }
             })
             .collect();
-        for (id, version) in to_update {
-            log::info!("auto-update: queuing update for {id} to {version}");
-            self.auto_update_attempted.insert((id.clone(), version));
-            self.send(Command::Install { app: id });
+        if self.settings.batch_updates && !to_update.is_empty() {
+            log::info!("auto-update: queuing {} updates together behind one prompt", to_update.len());
+            for (id, version) in &to_update {
+                self.auto_update_attempted.insert((id.clone(), version.clone()));
+            }
+            self.send(Command::InstallAll { apps: to_update.into_iter().map(|(id, _)| id).collect() });
+        } else {
+            for (id, version) in to_update {
+                log::info!("auto-update: queuing update for {id} to {version}");
+                self.auto_update_attempted.insert((id.clone(), version));
+                self.send(Command::Install { app: id });
+            }
         }
         if self.caps.self_update
             && let Some(r) = &self.launcher_update
@@ -938,6 +946,7 @@ impl LauncherUi {
             .filter(|(_, e)| {
                 self.in_filter(e, self.settings.filter)
                     && !(self.settings.hide_community_apps && e.app.kind == artcraft_launcher_core::catalog::AppKind::Community)
+                    && self.platform.is_none_or(|p| e.app.runs_on(p.os))
                     && (needle.is_empty() || e.app.name.to_lowercase().contains(&needle) || e.app.tagline.to_lowercase().contains(&needle))
             })
             .collect();

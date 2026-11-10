@@ -6,7 +6,7 @@ use artcraft_launcher_core::details::AppDetails;
 use artcraft_launcher_core::platform::pick_asset;
 use artcraft_launcher_core::protocol::{Command, JobPhase};
 use artcraft_launcher_core::status::AppStatus;
-use artcraft_launcher_core::time;
+use artcraft_launcher_core::{PackageKind, time};
 use egui::{Color32, CornerRadius, FontId, Rect, RichText, Sense, Stroke, Ui, vec2};
 
 use crate::app::{Dialog, LauncherUi, TitleBar};
@@ -379,13 +379,20 @@ impl LauncherUi {
             .accessible_name(tl!("Sort"));
     }
 
-    /// Update every eligible app; used in the compact and full-width toolbars.
+    /// Update every eligible app; used in the compact and full-width toolbars. With batched
+    /// updates on, one command installs them together: behind one permission prompt where the
+    /// platform asks for one, instead of one prompt per app.
     fn update_all_button(&mut self, ui: &mut Ui, updates: usize) {
         let label = if updates == 1 { tl!("Update 1 app").to_string() } else { fmt(tl!("Update all ({count})"), &[("count", &updates.to_string())]) };
         if widgets::button(ui, &label, Kind::Primary, 0.0).clicked() {
-            let ids: Vec<&str> = self.entries.iter().filter(|e| self.in_filter(e, Filter::Updates) && e.job.is_none()).map(|e| e.app.id).collect();
-            for id in ids {
-                self.act_command(Command::Install { app: id.to_string() });
+            let ids: Vec<String> =
+                self.entries.iter().filter(|e| self.in_filter(e, Filter::Updates) && e.job.is_none()).map(|e| e.app.id.to_string()).collect();
+            if self.settings.batch_updates {
+                self.act_command(Command::InstallAll { apps: ids });
+            } else {
+                for id in ids {
+                    self.act_command(Command::Install { app: id });
+                }
             }
         }
     }
@@ -656,6 +663,21 @@ impl LauncherUi {
             if !line.trim().is_empty() {
                 ui.label(RichText::new(line).size(12.5).color(t.muted));
                 ui.add_space(8.0);
+            }
+        }
+        if entry.job.is_none()
+            && entry.paused.is_none()
+            && matches!(self.primary_action(&entry, &status), Primary::Install | Primary::Update(_) | Primary::Download(_))
+        {
+            let sizes = self.download_sizes(&entry);
+            if !sizes.iter().any(|(_, size)| *size == 0)
+                && let Some((_, bytes)) = sizes.first()
+            {
+                let (min, max) = sizes.iter().fold((*bytes, *bytes), |(min, max), (_, size)| (min.min(*size), max.max(*size)));
+                let size =
+                    if min == max { widgets::human_bytes(min) } else { format!("{} – {}", widgets::human_bytes(min), widgets::human_bytes(max)) };
+                ui.add(egui::Label::new(RichText::new(fmt(tl!("Download size: {size}"), &[("size", &size)])).size(12.5).color(t.muted)).truncate())
+                    .on_hover_text(Self::sizes_text(&sizes));
             }
         }
         if let Some(details) = AppDetails::by_id(id) {
@@ -930,6 +952,36 @@ impl LauncherUi {
 
     // ---- actions -------------------------------------------------------------------------
 
+    /// The managed download's planned size, or all manual formats for the visitor's platform.
+    /// Zero means the source didn't publish a size, not a one-kilobyte download.
+    fn download_sizes(&self, entry: &AppEntry) -> Vec<(PackageKind, u64)> {
+        if self.caps.manage_apps {
+            return self.backend.download_size(entry.app.id).into_iter().collect();
+        }
+        let Some(platform) = self.platform else { return Vec::new() };
+        let Some(release) = entry.release() else { return Vec::new() };
+        let stems: Vec<_> = entry.app.stems().collect();
+        platform
+            .download_kinds()
+            .iter()
+            .filter_map(|kind| pick_asset(release, &stems, platform, &[*kind]).map(|(asset, kind)| (kind, asset.size)))
+            .collect()
+    }
+
+    fn sizes_text(sizes: &[(PackageKind, u64)]) -> String {
+        sizes
+            .iter()
+            .filter(|(_, size)| *size > 0)
+            .map(|(kind, size)| format!("{} · {}", t(kind.label()), widgets::human_bytes(*size)))
+            .collect::<Vec<_>>()
+            .join("\n")
+    }
+
+    fn size_hint(&self, response: egui::Response, entry: &AppEntry) -> egui::Response {
+        let text = Self::sizes_text(&self.download_sizes(entry));
+        if text.is_empty() { response } else { response.on_hover_text(text) }
+    }
+
     fn primary_action(&self, entry: &AppEntry, status: &AppStatus) -> Primary {
         if !self.caps.manage_apps {
             let platform = self.platform;
@@ -1162,7 +1214,7 @@ impl LauncherUi {
     fn primary_button(&mut self, ui: &mut Ui, entry: &AppEntry, id: &str, status: &AppStatus, main_w: f32, place: Place) {
         match self.primary_action(entry, status) {
             Primary::Install => {
-                if widgets::button(ui, tl!("Install"), Kind::Primary, main_w).clicked() {
+                if self.size_hint(widgets::button(ui, tl!("Install"), Kind::Primary, main_w), entry).clicked() {
                     self.install_app(id);
                 }
             }
@@ -1178,6 +1230,7 @@ impl LauncherUi {
                     Some(why) => resp.on_disabled_hover_text(why),
                     None => resp,
                 };
+                let resp = if checked { self.size_hint(resp, entry) } else { resp };
                 if resp.clicked() {
                     self.install_app(id);
                 }
@@ -1192,7 +1245,7 @@ impl LauncherUi {
                     Some(p) => fmt(tl!("Download for {os}"), &[("os", p.os.label())]),
                     None => tl!("Download").into(),
                 };
-                if widgets::button(ui, &label, Kind::Primary, main_w).clicked() {
+                if self.size_hint(widgets::button(ui, &label, Kind::Primary, main_w), entry).clicked() {
                     widgets::open_external_link(ui.ctx(), &url);
                 }
             }
@@ -1224,7 +1277,7 @@ impl LauncherUi {
                 Some(tip) => install.on_hover_text(tip),
                 None => install,
             };
-            if install.clicked() {
+            if self.size_hint(install, entry).clicked() {
                 self.install_app(id);
             }
             return;
@@ -1235,7 +1288,7 @@ impl LauncherUi {
             Some(tip) => resp.on_hover_text(tip),
             None => resp,
         };
-        if resp.clicked() {
+        if self.size_hint(resp, entry).clicked() {
             self.install_app(id);
         }
     }
