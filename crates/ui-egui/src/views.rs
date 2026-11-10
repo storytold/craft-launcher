@@ -310,6 +310,10 @@ impl LauncherUi {
                 // Right to left: the view switch at the far right, then the search.
                 crate::bar::view_toggle(ui, &mut self.settings.view, [tl!("Show apps as cards"), tl!("Show apps as a table")]);
                 ui.add_space(4.0);
+                if self.settings.view == ViewMode::Grid && !compact {
+                    self.tile_size_picker(ui);
+                    ui.add_space(4.0);
+                }
                 ui.add(
                     egui::TextEdit::singleline(&mut self.search)
                         .hint_text(tl!("Search apps"))
@@ -340,6 +344,8 @@ impl LauncherUi {
         ui.add_space(6.0);
         ui.horizontal(|ui| {
             if self.settings.view == ViewMode::Grid {
+                self.tile_size_picker(ui);
+                ui.add_space(6.0);
                 // "Sort" before the picker, as in the full-width row.
                 widgets::hud(ui, tl!("Sort"), t.faint);
                 self.sort_picker(ui);
@@ -567,6 +573,20 @@ impl LauncherUi {
 
     /// A solid bar in the primary button's inverted colours, like a card's Open box. Clicking it
     /// minimizes or restores the job group; the state is saved with the settings.
+    /// Three compact buttons for the grid's card density: small, medium, large.
+    fn tile_size_picker(&mut self, ui: &mut Ui) {
+        for (size, letter, tip) in [
+            (crate::settings::TileSize::Small, "S", tl!("Small")),
+            (crate::settings::TileSize::Medium, "M", tl!("Medium")),
+            (crate::settings::TileSize::Large, "L", tl!("Large")),
+        ] {
+            let kind = if self.settings.tile_size == size { Kind::Primary } else { Kind::Secondary };
+            if widgets::button(ui, letter, kind, 28.0).on_hover_text(tip).clicked() {
+                self.settings.tile_size = size;
+            }
+        }
+    }
+
     fn job_header(&mut self, ui: &mut Ui, job: JobType, count: usize, t: &Tokens) -> bool {
         let open = !self.settings.collapsed_job_groups.contains(job.key());
         let (rect, resp) = ui.allocate_exact_size(vec2(ui.available_width(), theme::CONTROL_H), Sense::click());
@@ -611,7 +631,7 @@ impl LauncherUi {
         }
         let width = ui.available_width();
         // Neighbouring cards share their 1 px hairline, like the site's `gap-px` grid.
-        let cols = ((width / CARD_MIN_W).floor() as usize).max(1);
+        let cols = ((width / self.settings.tile_size.card_min_width()).floor() as usize).max(1);
         let card_w = (width + (cols as f32 - 1.0)) / cols as f32;
         let rows = ids.len().div_ceil(cols);
         let height = rows as f32 * (CARD_H - 1.0) + 1.0;

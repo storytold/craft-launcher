@@ -8,6 +8,31 @@ use serde::{Deserialize, Serialize};
 use crate::i18n::t;
 use crate::theme::ThemeChoice;
 
+/// How large the grid's cards are drawn.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum TileSize {
+    /// More columns, smaller cards.
+    Small,
+    /// The middle density.
+    Medium,
+    /// The original card size.
+    #[default]
+    Large,
+}
+
+impl TileSize {
+    /// The minimum card width for this density. The card height stays the same; the extra room
+    /// of a large card becomes another column in the smaller sizes.
+    pub fn card_min_width(self) -> f32 {
+        match self {
+            Self::Small => 228.0,
+            Self::Medium => 280.0,
+            Self::Large => 320.0,
+        }
+    }
+}
+
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub enum ViewMode {
     #[default]
@@ -135,6 +160,9 @@ pub struct Settings {
     pub launches: BTreeMap<String, u32>,
     /// Catalog ids pinned to the top of the grid/table, in the order the user chose.
     pub pinned: Vec<String>,
+    /// How large the grid cards are.
+    #[serde(default)]
+    pub tile_size: TileSize,
     /// The manual grid order, when the user has dragged tiles. Empty keeps the automatic order.
     #[serde(default)]
     pub tile_order: Vec<String>,
@@ -296,6 +324,7 @@ impl Default for Settings {
             tray_hint_shown: false,
             launches: BTreeMap::new(),
             pinned: Vec::new(),
+            tile_size: TileSize::Large,
             tile_order: Vec::new(),
             collapsed_job_groups: std::collections::BTreeSet::new(),
             launch_flags: BTreeMap::new(),

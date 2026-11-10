@@ -4429,3 +4429,20 @@ fn grid_defaults_to_job_type_groups() {
     h.get_by_label("Photo & Image (2)");
     h.get_by_label("Documents & Productivity (5)");
 }
+
+#[test]
+/// Smaller tile sizes fit narrower cards (more columns) than the default large size.
+fn grid_tile_sizes_shrink_the_cards() {
+    let (mut h, _) = harness(ViewMode::Grid, egui::Theme::Dark, true);
+    h.run_steps(6);
+    let large = h.get_by_label("PhotoCraft details").rect().width();
+    h.state_mut().as_mut().unwrap().settings.tile_size = artcraft_launcher_ui_egui::settings::TileSize::Small;
+    h.run_steps(4);
+    let small = h.get_by_label("PhotoCraft details").rect().width();
+    assert!(small < large - 20.0, "small cards are narrower: {small} vs {large}");
+
+    h.state_mut().as_mut().unwrap().settings.tile_size = artcraft_launcher_ui_egui::settings::TileSize::Medium;
+    h.run_steps(4);
+    let medium = h.get_by_label("PhotoCraft details").rect().width();
+    assert!(medium > small && medium < large, "medium sits between: {medium}");
+}
