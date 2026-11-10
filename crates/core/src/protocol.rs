@@ -304,6 +304,11 @@ pub enum Event {
         services: Vec<McpService>,
         bridge: McpBridge,
     },
+    /// A local MCP operation failed (e.g. writing `ng-mcp.json`). Carries a short, user-facing
+    /// message; the UI shows it as an error toast so a failed toggle is never silent.
+    McpError {
+        message: String,
+    },
 }
 
 /// One installed app that can be exposed as a stdio MCP server. `command` is the CLI path the

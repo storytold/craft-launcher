@@ -96,7 +96,16 @@ pub fn load_servers(path: &Path) -> Vec<ServerEntry> {
 /// Save `servers` back to the config file, preserving any top-level keys other than `servers`.
 /// Writes atomically (temp file + rename) so a crash never leaves a half-written config.
 pub fn save_servers(path: &Path, servers: &[ServerEntry]) -> Result<(), String> {
-    let existing: Option<serde_json::Value> = std::fs::read(path).ok().and_then(|b| serde_json::from_slice(&b).ok());
+    // Distinguish "no config yet" (safe to create) from "a config exists but is not valid JSON"
+    // (refuse rather than clobber it). A file we cannot read as JSON may hold content the user
+    // cares about; overwriting it would be a lossy write.
+    let existing: Option<serde_json::Value> = match std::fs::read(path) {
+        Ok(b) => match serde_json::from_slice(&b) {
+            Ok(v) => Some(v),
+            Err(e) => return Err(format!("existing MCP config at {} is not valid JSON; refusing to overwrite it: {}", path.display(), e,)),
+        },
+        Err(_) => None, // missing (or unreadable): start fresh
+    };
     let array = match servers.iter().map(serde_json::to_value).collect::<Result<Vec<serde_json::Value>, _>>() {
         Ok(a) => a,
         Err(e) => return Err(e.to_string()),
@@ -176,12 +185,21 @@ fn find_by_name(servers: &[ServerEntry], name: &str) -> Option<usize> {
     servers.iter().position(|e| e.name == name)
 }
 
+/// Whether an entry is one of ours — a stdio CLI server — as opposed to the streamableHttp bridge
+/// or some other tool's entry that happens to share a display name. We only manage entries we
+/// created; matching by name must never flip, drop or rewrite an unrelated entry.
+fn is_stdio(entry: &ServerEntry) -> bool {
+    matches!(&entry.connection, Connection::Stdio { .. })
+}
+
 /// Add or update the entry for `service`, enabling it. Manages any existing entry with the same
 /// display name in place (keeping its id, refreshing the command); otherwise creates one under
 /// the deterministic id. Returns false when there was no usable CLI.
 pub fn enable_service(servers: &mut Vec<ServerEntry>, service: &LocalService) -> bool {
     let Some(cli) = service.cli_path.as_deref() else { return false };
-    match find_by_name(servers, &service.name) {
+    // Manage an existing same-named entry only when it is one of ours (stdio); a same-named
+    // entry of another connection type is left alone and we create our own under the deterministic id.
+    match find_by_name(servers, &service.name).filter(|&i| is_stdio(&servers[i])) {
         Some(i) => {
             servers[i].enabled = true;
             if let Connection::Stdio { command: c, .. } = &mut servers[i].connection {
@@ -202,7 +220,9 @@ pub fn enable_service(servers: &mut Vec<ServerEntry>, service: &LocalService) ->
 /// Disable the entry for `service`, leaving it in the list (Bionic keeps a disabled row). Matches
 /// by display name first, then the deterministic id. Returns false when there was nothing to disable.
 pub fn disable_service(servers: &mut Vec<ServerEntry>, service: &LocalService) -> bool {
-    if let Some(i) = find_by_name(servers, &service.name) {
+    // Only disable an entry that is one of ours (stdio); a same-named entry of another connection
+    // type is left alone and we fall back to the deterministic id.
+    if let Some(i) = find_by_name(servers, &service.name).filter(|&i| is_stdio(&servers[i])) {
         if servers[i].enabled {
             servers[i].enabled = false;
             return true;
@@ -226,7 +246,9 @@ pub fn disable_service(servers: &mut Vec<ServerEntry>, service: &LocalService) -
 /// Remove the entry for `service`. Matches by display name first, then the deterministic id.
 /// Returns false when there was nothing to remove.
 pub fn remove_service(servers: &mut Vec<ServerEntry>, service: &LocalService) -> bool {
-    if let Some(i) = find_by_name(servers, &service.name) {
+    // Only remove an entry that is one of ours (stdio); a same-named entry of another connection
+    // type is left alone and we fall back to the deterministic id.
+    if let Some(i) = find_by_name(servers, &service.name).filter(|&i| is_stdio(&servers[i])) {
         servers.remove(i);
         return true;
     }
@@ -508,6 +530,61 @@ mod tests {
         let path = dir.path().join("ng-mcp.json");
         assert!(save_servers(&path, &[]).is_ok());
         assert_eq!(load_servers(&path), vec![]);
+    }
+
+    #[test]
+    fn save_refuses_to_overwrite_a_malformed_config() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("ng-mcp.json");
+        // A present but malformed file must not be clobbered.
+        std::fs::write(&path, b"{ this is not json").unwrap();
+
+        let servers = vec![ServerEntry {
+            id: entry_id("wordcraft"),
+            name: "WordCraft".into(),
+            description: "WordCraft built-in tools over MCP.".into(),
+            enabled: true,
+            connection: Connection::Stdio { command: "/x/wordcraft-cli.exe".into(), args: vec!["mcp".into()], env: HashMap::new() },
+        }];
+        let err = save_servers(&path, &servers).unwrap_err();
+        assert!(err.contains("not valid JSON"), "{err}");
+
+        // The original bytes are still on disk.
+        assert_eq!(std::fs::read(&path).unwrap(), b"{ this is not json");
+    }
+
+    #[test]
+    fn enable_service_leaves_a_same_named_non_stdio_entry_alone() {
+        // A same-named streamableHttp entry (e.g. the bridge or another tool) must not be flipped
+        // or rewritten; we create our own stdio entry instead.
+        let mut servers = vec![ServerEntry {
+            id: "some-uuid".into(),
+            name: "WordCraft".into(),
+            description: "unrelated".into(),
+            enabled: false,
+            connection: Connection::StreamableHttp { url: "http://127.0.0.1:9999/mcp".into(), headers: HashMap::new(), auth: Some(Auth::None) },
+        }];
+
+        let service = LocalService {
+            id: "wordcraft".into(),
+            name: "WordCraft".into(),
+            location: "/x/wordcraft.exe".into(),
+            cli_path: Some("/x/wordcraft-cli.exe".into()),
+        };
+        assert!(enable_service(&mut servers, &service));
+
+        // The unrelated entry is untouched (still disabled, still streamableHttp).
+        let first = &servers[0];
+        assert_eq!(first.id, "some-uuid");
+        assert!(!first.enabled);
+        assert!(matches!(&first.connection, Connection::StreamableHttp { .. }));
+
+        // Our stdio entry was added under the deterministic id.
+        assert_eq!(servers.len(), 2);
+        let ours = &servers[1];
+        assert_eq!(ours.id, entry_id("wordcraft"));
+        assert!(ours.enabled);
+        assert!(matches!(&ours.connection, Connection::Stdio { .. }));
     }
 
     #[test]

@@ -1610,7 +1610,9 @@ impl Backend for NativeBackend {
                             local_mcp::disable_service(&mut servers, &s);
                         }
                     }
-                    let _ = local_mcp::save_servers(&p, &servers);
+                    if let Err(e) = local_mcp::save_servers(&p, &servers) {
+                        self.shared.emit(Event::McpError { message: e });
+                    }
                 }
                 self.shared.emit(mcp_state(&self.shared));
             }
@@ -1622,7 +1624,9 @@ impl Backend for NativeBackend {
                     } else {
                         local_mcp::disable_bridge(&mut servers);
                     }
-                    let _ = local_mcp::save_servers(&p, &servers);
+                    if let Err(e) = local_mcp::save_servers(&p, &servers) {
+                        self.shared.emit(Event::McpError { message: e });
+                    }
                 }
                 self.shared.emit(mcp_state(&self.shared));
             }

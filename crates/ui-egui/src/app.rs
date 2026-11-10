@@ -652,6 +652,12 @@ impl LauncherUi {
                 }
                 false
             }
+            Event::McpError { message } => {
+                // A failed MCP write (e.g. a full disk or an unreadable config) is surfaced so the
+                // user knows their toggle did not take effect.
+                self.toast(message, true);
+                false
+            }
         }
     }
 

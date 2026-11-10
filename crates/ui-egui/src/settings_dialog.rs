@@ -417,6 +417,9 @@ impl LauncherUi {
         // The port field needs an accessible name for screen readers (kittest).
         let port_label = ui.label(tl!("Port"));
         ui.add(egui::TextEdit::singleline(&mut self.bridge_port).id_salt("mcp-bridge-port").desired_width(72.0)).labelled_by(port_label.id);
+        // The port is only written when the toggle flips, so say so plainly rather than
+        // implying a live edit.
+        ui.label(RichText::new(tl!("Port applies when you toggle the bridge.")).size(12.0).color(t.muted));
         ui.label(RichText::new(self.bridge_status()).size(12.0).color(t.muted));
     }
 
