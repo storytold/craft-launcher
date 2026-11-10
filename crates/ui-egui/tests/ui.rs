@@ -4456,7 +4456,7 @@ fn medium_density_button_changes_the_grid() {
     let (mut h, _) = harness(ViewMode::Grid, egui::Theme::Dark, true);
     h.run_steps(6);
     let large = h.get_by_label("PhotoCraft details").rect().width();
-    h.get_by_label("M").click();
+    h.get_by_label("Medium").click();
     h.run_steps(4);
     assert_eq!(h.state().as_ref().unwrap().settings.tile_size, artcraft_launcher_ui_egui::settings::TileSize::Medium);
     let card = h.get_by_label("PhotoCraft details").rect();
@@ -4464,7 +4464,7 @@ fn medium_density_button_changes_the_grid() {
     let by = h.get_all_by_label("by ArtCraft").find(|n| card.contains(n.rect().center())).expect("the byline").rect();
     assert!(by.right() <= card.right(), "the byline stays inside the medium card: {by:?} in {card:?}");
     assert!(medium < large - 20.0, "medium is narrower than large: {medium} vs {large}");
-    h.get_by_label("S").click();
+    h.get_by_label("Small").click();
     h.run_steps(4);
     let small = h.get_by_label("PhotoCraft details").rect().width();
     assert!(small < medium - 20.0, "small is narrower than medium: {small} vs {medium}");
@@ -4580,4 +4580,19 @@ fn card_actions_menu_fits_inside_the_card() {
         assert!(menu.right() <= card.right(), "{size:?}: menu {menu:?} inside card {card:?}");
         assert!(menu.width() > 30.0, "{size:?}: the full menu is visible, width {}", menu.width());
     }
+}
+
+#[test]
+/// A table sort that maps to Job type still draws job sections when the grid opens.
+fn mapped_table_sort_shows_job_sections_in_the_grid() {
+    let (mut h, _) = harness(ViewMode::Grid, egui::Theme::Dark, true);
+    h.run_steps(6);
+    {
+        let ui = h.state_mut().as_mut().unwrap();
+        ui.settings.sort = SortKey::Status;
+        ui.settings.tile_order.clear();
+    }
+    h.run_steps(4);
+    h.get_by_label("Photo & Image (2)");
+    h.get_by_label("Documents & Productivity (5)");
 }

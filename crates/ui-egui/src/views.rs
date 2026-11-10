@@ -519,7 +519,10 @@ impl LauncherUi {
     pub(crate) fn grid(&mut self, ui: &mut Ui, ids: &[&'static str]) {
         // Job type is the grid's default order. A manual tile order (unless the user explicitly
         // chose Job type) takes over as the flat, freely reorderable block.
-        let job_groups = self.settings.sort == SortKey::JobType || (self.settings.sort == SortKey::Suite && self.settings.tile_order.is_empty());
+        // Follow the effective sort (table-mapped keys such as Status read as Job type too), while
+        // an explicit Job type always groups and any other sort needs an empty manual order.
+        let (effective, _) = grid_sort_now(&self.settings);
+        let job_groups = effective == SortKey::JobType && (self.settings.sort == SortKey::JobType || self.settings.tile_order.is_empty());
         if job_groups {
             self.grid_jobs(ui, ids);
             ui.add_space(24.0);
@@ -607,7 +610,7 @@ impl LauncherUi {
             (crate::settings::TileSize::Large, "L", tl!("Large")),
         ] {
             let kind = if self.settings.tile_size == size { Kind::Primary } else { Kind::Secondary };
-            if widgets::button(ui, letter, kind, 28.0).on_hover_text(tip).clicked() {
+            if widgets::labelled_button(ui, letter, tip, kind, 28.0).on_hover_text(tip).clicked() {
                 self.settings.tile_size = size;
             }
         }
@@ -1368,8 +1371,14 @@ impl LauncherUi {
         if !hit.contains(pos) || !ui.clip_rect().contains(pos) {
             return;
         }
-        if self.settings.tile_order.is_empty() {
-            self.settings.tile_order = self.visible_ids().into_iter().map(str::to_owned).collect();
+        // Keep every shown tile in the manual order: a drag started under a filter must leave the
+        // hidden tiles movable when the filter is cleared. Existing order wins; new tiles append.
+        let visible = self.visible_ids();
+        let order = &mut self.settings.tile_order;
+        for v in visible {
+            if !order.iter().any(|p| p == v) {
+                order.push(v.to_string());
+            }
         }
         // In job-type grouping an app only moves within its own group.
         if self.settings.sort == SortKey::JobType && job_type(&from) != job_type(id) {
