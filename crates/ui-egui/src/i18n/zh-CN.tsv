@@ -412,3 +412,4 @@ anicraft	Familiar by design	布局熟悉自然
 anicraft	Stage, tools, timeline, layers, keyframes, Properties and Library sit where animators expect them, with onion skinning for in-betweening.	舞台、工具、时间线、图层、关键帧、“属性”和“库”均位于动画师熟悉的直观位置，并配有洋葱皮功能。
 anicraft	Tweens that ease	流畅补间缓动
 anicraft	Classic tweens with eight easing presets and custom ease curves, plus shape tweens that morph one vector contour into another.	经典补间具备八种缓动预设与自定义曲线，外加将一种矢量轮廓变换为另一种的形状补间。
+notecraft	Local-first notes with canvas pages and OneNote import	本地优先的笔记，支持画布页面和 OneNote 导入
