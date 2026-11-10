@@ -821,6 +821,14 @@ pub fn uninstall(
     }
 }
 
+/// The end of a `flatpak run` command: the installation detection found the app in (with copies
+/// in more than one, a bare `flatpak run` picks the user's, which may not be the copy shown), then
+/// the id it was found under, which may be one of the app's older ones.
+fn flatpak_run_target(app: &CraftApp, installed: &Installed) -> Vec<String> {
+    let scope = installed.installation.as_deref().map(|name| crate::packages::flatpak_scope(Some(name)));
+    scope.into_iter().chain([installed.package.clone().unwrap_or_else(|| app.bundle_id())]).collect()
+}
+
 /// Deletes an AppImage, the menu entry and icon the launcher wrote for it, and the menu entry
 /// the app may have written for itself on first run.
 #[cfg(target_os = "linux")]
@@ -854,8 +862,7 @@ pub fn launch(app: &CraftApp, installed: &Installed, paths: &Paths, args: &[Stri
             let mut cmd = process::flatpak_command();
             cmd.arg("run");
             cmd.args(process::env_args(&env));
-            // The id detection found it under, which may be one of the app's older ones.
-            cmd.arg(installed.package.clone().unwrap_or_else(|| app.bundle_id()));
+            cmd.args(flatpak_run_target(app, installed));
             // After the app's id: flags before it would go to `flatpak run` itself.
             cmd.args(args);
             process::spawn_detached(cmd)
@@ -1438,14 +1445,23 @@ pub(crate) mod linux {
     /// folder (`~/.var/app/<old id>`) stays: the new app copies its settings from there on its
     /// first launch.
     pub fn retire_former_flatpak(app: &CraftApp, existing: Option<&Installed>) {
-        let Some(old) = former_flatpak(app, existing) else { return };
-        for scope in ["--user", "--system"] {
-            if process::flatpak_command().args(["uninstall", scope, "-y", "--noninteractive", old]).status().is_ok_and(|s| s.success()) {
-                log::info!("{}: removed the old Flatpak {old}; its data stays for the new app", app.name);
-                return;
-            }
+        let Some(args) = former_flatpak_removal(app, existing) else { return };
+        let old = args.last().map_or("", String::as_str);
+        if process::flatpak_command().args(&args).status().is_ok_and(|s| s.success()) {
+            log::info!("{}: removed the old Flatpak {old}; its data stays for the new app", app.name);
+        } else {
+            log::warn!("{}: couldn't remove the old Flatpak {old}; `flatpak uninstall {old}` removes it", app.name);
         }
-        log::warn!("{}: couldn't remove the old Flatpak {old}; `flatpak uninstall {old}` removes it", app.name);
+    }
+
+    /// The `flatpak uninstall` arguments that remove the former-id copy from the one installation
+    /// it was detected in. No installation known, no removal: trying the user's and then the
+    /// system's could remove another copy of that old id than the one just updated.
+    pub(crate) fn former_flatpak_removal(app: &CraftApp, existing: Option<&Installed>) -> Option<Vec<String>> {
+        let old = former_flatpak(app, existing)?;
+        let installation = existing?.installation.as_deref()?;
+        let scope = crate::packages::flatpak_scope(Some(installation));
+        Some(vec!["uninstall".into(), scope, "-y".into(), "--noninteractive".into(), old.into()])
     }
 
     pub fn install_appimage(
@@ -3636,6 +3652,47 @@ mod tests {
         assert_eq!(former_flatpak(sc, None), None);
         let deb = Installed { source: InstallSource::Deb, ..old.clone() };
         assert_eq!(former_flatpak(sc, Some(&deb)), None);
+    }
+
+    #[test]
+    fn a_flatpak_runs_from_the_installation_it_was_found_in() {
+        let app = CraftApp::by_id("photocraft").unwrap();
+        let found = |installation: Option<&str>| Installed {
+            version: None,
+            source: InstallSource::Flatpak,
+            location: "ai.storyteller.photocraft".into(),
+            package: Some("ai.storyteller.photocraft".into()),
+            externally_managed: false,
+            origin: None,
+            installation: installation.map(String::from),
+        };
+        assert_eq!(flatpak_run_target(app, &found(Some("studio"))), ["--installation=studio", "ai.storyteller.photocraft"]);
+        assert_eq!(flatpak_run_target(app, &found(Some("system"))), ["--system", "ai.storyteller.photocraft"]);
+        assert_eq!(flatpak_run_target(app, &found(None)), ["ai.storyteller.photocraft"]);
+    }
+
+    /// The old-id copy is removed from the installation it was detected in, never from another
+    /// one that may hold a different copy of that id, and not at all when none is known.
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn a_former_flatpak_id_is_retired_only_from_its_own_installation() {
+        use super::linux::former_flatpak_removal;
+        let sc = artcraft_launcher_core::CraftApp::by_id("solidcraft").unwrap();
+        let old = |installation: Option<&str>| Installed {
+            version: None,
+            source: InstallSource::Flatpak,
+            location: "ai.storyteller.solvecraft".into(),
+            package: Some("ai.storyteller.solvecraft".into()),
+            externally_managed: false,
+            origin: None,
+            installation: installation.map(String::from),
+        };
+        let args = |installation| former_flatpak_removal(sc, Some(&old(installation)));
+        let expected = |scope: &str| Some(["uninstall", scope, "-y", "--noninteractive", "ai.storyteller.solvecraft"].map(String::from).to_vec());
+        assert_eq!(args(Some("studio")), expected("--installation=studio"));
+        assert_eq!(args(Some("system")), expected("--system"));
+        assert_eq!(args(Some("user")), expected("--user"));
+        assert_eq!(args(None), None);
     }
 
     #[test]
