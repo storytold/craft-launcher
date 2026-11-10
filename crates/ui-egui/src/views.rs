@@ -570,8 +570,13 @@ impl LauncherUi {
     fn job_header(&mut self, ui: &mut Ui, job: JobType, count: usize, t: &Tokens) -> bool {
         let open = !self.settings.collapsed_job_groups.contains(job.key());
         let (rect, resp) = ui.allocate_exact_size(vec2(ui.available_width(), theme::CONTROL_H), Sense::click());
-        let bg = if resp.hovered() { t.invert_bg.lerp_to_gamma(t.invert_fg, 0.16) } else { t.invert_bg };
+        // Outlined box (the secondary button's resting state), not the filled primary bar: the
+        // header is a section label, not a pressed Open button. It inverts only under the pointer.
+        let hovered = resp.hovered();
+        let bg = if hovered { t.invert_bg } else { t.bg };
+        let ink = if hovered { t.invert_fg } else { t.muted };
         ui.painter().rect_filled(rect, CornerRadius::ZERO, bg);
+        ui.painter().rect_stroke(rect, CornerRadius::ZERO, t.hairline(), egui::StrokeKind::Inside);
         // Painted chevron: the mono faces do not carry the Unicode triangles.
         let c = egui::pos2(rect.left() + 10.0, rect.center().y);
         let arrow = if open {
@@ -579,14 +584,14 @@ impl LauncherUi {
         } else {
             vec![c + vec2(-2.0, -4.0), c + vec2(-2.0, 4.0), c + vec2(3.0, 0.0)]
         };
-        ui.painter().add(egui::Shape::convex_polygon(arrow, t.invert_fg, Stroke::NONE));
+        ui.painter().add(egui::Shape::convex_polygon(arrow, ink, Stroke::NONE));
         let text = format!("{} ({})", job_label(job), count);
         ui.painter().text(
             egui::pos2(rect.left() + 22.0, rect.center().y),
             egui::Align2::LEFT_CENTER,
             text.clone(),
             FontId::new(theme::HUD_SIZE, theme::mono_bold()),
-            t.invert_fg,
+            ink,
         );
         resp.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, true, text.clone()));
         let resp = resp.on_hover_cursor(egui::CursorIcon::PointingHand);
