@@ -218,6 +218,10 @@ pub fn claim(wake: Wake) -> Instance {
 /// A launcher showing its start-failure dialog hangs up on the start that asked and frees the
 /// port ([`Answering::stop`]): without this the newcomer would run without a listener, and the
 /// next start would become a second launcher next to it.
+///
+/// Two starts can be hung up on together, and only one of them binds the freed port. The other
+/// asks the new holder for its proof once more and steps aside for it, instead of becoming a
+/// second launcher beside it. An unrelated or older holder proves nothing, so we start anyway.
 fn listen_if_freed(addr: SocketAddr, ours: Option<Version>, token: Option<String>, wake: Wake) -> Instance {
     let deadline = Instant::now() + Duration::from_millis(500);
     loop {
@@ -225,6 +229,9 @@ fn listen_if_freed(addr: SocketAddr, ours: Option<Version>, token: Option<String
             return listen(listener, ours, token, wake);
         }
         if Instant::now() >= deadline {
+            if holder_proves_itself(addr, ours.as_ref(), token.as_deref()) {
+                return Instance::Secondary;
+            }
             return Instance::Primary(channel().1, Answering::default());
         }
         std::thread::sleep(Duration::from_millis(50));
@@ -655,6 +662,20 @@ mod tests {
         };
         assert_eq!(ask(addr, Some(&v("0.1.2")), Some(TOK)).ok(), Some(Answer::Defer));
         assert_eq!(next(&next_rx), Request::Show);
+    }
+
+    #[test]
+    fn a_start_that_lost_the_freed_port_steps_aside_for_the_one_that_took_it() {
+        // Two starts were hung up on by a stopped launcher; the other one bound the port first.
+        let (addr, rx) = primary("0.1.2");
+        assert!(matches!(listen_if_freed(addr, Some(v("0.1.2")), Some(TOK.to_string()), Wake::default()), Instance::Secondary));
+        assert_eq!(next(&rx), Request::Show, "the launcher that took the port shows its window");
+        // A holder that can't prove it is this account's launcher doesn't keep us from starting.
+        let (addr, _rx) = primary("0.1.2");
+        assert!(matches!(
+            listen_if_freed(addr, Some(v("0.1.2")), Some("another-accounts-token".to_string()), Wake::default()),
+            Instance::Primary(..)
+        ));
     }
 
     #[test]
