@@ -59,6 +59,7 @@
 	Discard download	捨棄下載
 	Release notes	更新說明
 	Reinstall	重新安裝
+	Add desktop shortcut	新增桌面捷徑
 	Uninstall…	解除安裝…
 	All releases	所有版本
 	ArtCraft Launcher {version} is available.	ArtCraft Launcher {version} 已推出。
@@ -357,6 +358,9 @@ figcraft	Interface design and prototyping	介面設計與原型製作
 @msg	custom install folders aren't supported on this system	此系統不支援自訂安裝資料夾
 @msg	{path} already exists and wasn't installed by ArtCraft Launcher	{path} 已存在，且不是由 ArtCraft Launcher 安裝的
 @msg	couldn't move {path} to Trash ({reason}). Remove it in Finder instead.	無法將 {path} 移至垃圾桶（{reason}）。請改在 Finder 中將其移除。
+@msg	Desktop shortcut created for {name}	已為 {name} 建立桌面捷徑
+@msg	Couldn't create the desktop shortcut: {e}	無法建立桌面捷徑：{e}
+@msg	A desktop shortcut named {name} already exists	名為 {name} 的桌面捷徑已存在
 	Apps are placed inside this folder.	應用程式會放在此資料夾內。
 	Replace what's there?	要取代現有內容嗎？
 	{path} already exists. Installing {name} will overwrite it.	{path} 已存在。安裝 {name} 將會覆寫它。
