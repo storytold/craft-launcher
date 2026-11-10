@@ -42,6 +42,32 @@ pub fn parse_rpm(text: &str) -> Vec<(String, String)> {
     text.lines().filter_map(|line| line.split_once('|').map(|(n, v)| (n.to_string(), v.to_string()))).collect()
 }
 
+/// `dpkg-query -S <path>`: the package that owns `path`, from the line that names `path` itself.
+/// An owning line starts with the package (a multiarch arch qualifier like `art-craft:amd64`
+/// included, stripped here), while `diversion by … from:`/`to:` lines name the path without owning
+/// it — and a package name never contains a space or a colon beyond that qualifier.
+pub fn parse_dpkg_search(text: &str, path: &str) -> Option<String> {
+    text.lines().find_map(|line| {
+        let (package, file) = line.split_once(": ")?;
+        let package = package.split(':').next().filter(|p| !p.is_empty() && !p.contains(char::is_whitespace))?;
+        (file == path).then(|| package.to_string())
+    })
+}
+
+/// `rpm -qf <path> --qf '%{NAME}|%{VERSION}\n'`: the package that owns the path, with its
+/// version. A path no package owns makes `rpm` exit with an error, so no line ever arrives.
+pub fn parse_rpm_owner(text: &str) -> Option<(String, String)> {
+    let (name, version) = text.lines().next()?.split_once('|')?;
+    (!name.is_empty() && !version.is_empty()).then(|| (name.to_string(), version.to_string()))
+}
+
+/// `pacman -Qo <path>`: `<path> is owned by <package> <version>`. A path no package owns makes
+/// `pacman` exit with an error, so no line ever arrives.
+pub fn parse_pacman_owner(text: &str) -> Option<(String, String)> {
+    let (name, version) = text.lines().next()?.split_once(" is owned by ")?.1.split_once(' ')?;
+    (!name.is_empty() && !version.is_empty()).then(|| (name.to_string(), version.to_string()))
+}
+
 /// `pacman -Q`: `name version` per line.
 pub fn parse_pacman(text: &str) -> Vec<(String, String)> {
     text.lines()
@@ -153,6 +179,26 @@ mod tests {
         let info = "\nWordCraft - Word processor\n\n          ID: ai.storyteller.wordcraft\n     Version: 0.3.0\n      Branch: master\n";
         assert_eq!(parse_flatpak_info(info).as_deref(), Some("0.3.0"));
         assert_eq!(parse_flatpak_info("Version: \n"), None);
+    }
+
+    #[test]
+    fn an_ownership_search_names_only_a_line_that_owns_the_path() {
+        assert_eq!(parse_dpkg_search("art-craft: /usr/bin/artcraft\n", "/usr/bin/artcraft").as_deref(), Some("art-craft"));
+        assert_eq!(parse_dpkg_search("art-craft:amd64: /usr/bin/artcraft\n", "/usr/bin/artcraft").as_deref(), Some("art-craft"));
+        // A diversion names the path without owning it — a package diversion says who, a local
+        // one doesn't (dpkg 1.22.6 wording, as observed on Ubuntu 24.04).
+        assert_eq!(parse_dpkg_search("diversion by art-craft from: /usr/bin/artcraft\n", "/usr/bin/artcraft"), None);
+        assert_eq!(
+            parse_dpkg_search("local diversion from: /usr/bin/artcraft\nlocal diversion to: /usr/bin/artcraft.real\n", "/usr/bin/artcraft.real"),
+            None
+        );
+        assert_eq!(parse_dpkg_search("other: /usr/bin/other\n", "/usr/bin/artcraft"), None);
+        assert_eq!(parse_dpkg_search("", "/usr/bin/artcraft"), None);
+        assert_eq!(parse_rpm_owner("art-craft|0.41.1-1.fc44\n"), Some(("art-craft".into(), "0.41.1-1.fc44".into())));
+        assert_eq!(parse_rpm_owner("art-craft|\n"), None);
+        assert_eq!(parse_rpm_owner(""), None);
+        assert_eq!(parse_pacman_owner("/usr/bin/artcraft is owned by art-craft 0.41.1-1\n"), Some(("art-craft".into(), "0.41.1-1".into())));
+        assert_eq!(parse_pacman_owner("error: No package owns /usr/bin/artcraft\n"), None);
     }
 
     #[test]
