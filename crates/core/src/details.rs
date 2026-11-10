@@ -139,7 +139,7 @@ pub fn screenshot_within_budget(bytes: &[u8]) -> bool {
 /// Where every Craft App runs (getartcraft.com lists the same for each of them).
 const PLATFORMS: &str = "macOS, Windows, Linux, FreeBSD, web";
 
-pub const DETAILS: [AppDetails; 19] = [
+pub const DETAILS: [AppDetails; 18] = [
     AppDetails {
         id: "photocraft",
         headline: "The image editor you already know how to use.",
@@ -275,39 +275,6 @@ pub const DETAILS: [AppDetails; 19] = [
             shot("effects", "Particles and Effect Controls"),
             shot("3d", "3D layers with cameras and lights"),
         ],
-        platforms: PLATFORMS,
-    },
-    AppDetails {
-        id: "anicraft",
-        headline: "Vector animation on a timeline you know.",
-        about: "Open-source 2D vector animation, built in pure Rust.",
-        features: &[
-            feature(
-                "Familiar by design",
-                "Stage, tools, timeline, layers, keyframes, Properties and Library sit where animators expect them, with onion skinning for in-betweening.",
-            ),
-            feature(
-                "Tweens that ease",
-                "Classic tweens with eight easing presets and custom ease curves, plus shape tweens that morph one vector contour into another.",
-            ),
-            feature(
-                "Symbols and scenes",
-                "Graphic symbols and movie clips with nested timelines and loop modes, mask and guide layers, filters, blend modes and scenes.",
-            ),
-            feature(
-                "Real vector tools",
-                "Pen, Pencil with curve fitting, shapes, text, Paint Bucket and Ink Bottle, with Bézier anchors and handles you edit point by point.",
-            ),
-            feature(
-                "Open formats",
-                "Opens .fla and .xfl documents and imports SVG. Exports PNG sequences, GIF, SVG frames, sprite sheets, Lottie, and WebM or MP4 through your own FFmpeg.",
-            ),
-            feature(
-                "Agent-ready",
-                "Every action is an engine command, so the CLI, a JSON-lines channel and an MCP server can draw, animate and export the way a person does.",
-            ),
-        ],
-        shots: &[],
         platforms: PLATFORMS,
     },
     AppDetails {

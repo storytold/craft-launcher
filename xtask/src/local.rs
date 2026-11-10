@@ -35,7 +35,6 @@ const APPS: &[(&str, &str)] = &[
     ("craft-anything", "Craft Anything"),
     ("texturecraft", "TextureCraft"),
     ("materialcraft", "MaterialCraft"),
-    ("anicraft", "AniCraft"),
 ];
 
 const DEFAULT_PORT: u16 = 8787;
@@ -273,32 +272,20 @@ fn sync_one(o: &Opts, id: &str, name: &str) -> Result<Outcome, String> {
 
 /// This OS's packaging script for the checkout at `repo`.
 fn package_command(repo: &Path, o: &Opts) -> Result<Command, String> {
-    let script = if cfg!(target_os = "macos") {
-        repo.join("packaging/macos/package.sh")
-    } else if cfg!(target_os = "linux") || cfg!(target_os = "freebsd") {
-        let os = if cfg!(target_os = "linux") { "linux" } else { "freebsd" };
-        repo.join(format!("packaging/{os}/package.sh"))
-    } else if cfg!(windows) {
-        repo.join("packaging/windows/package.ps1")
-    } else {
-        return Err("no packaging script for this OS".into());
-    };
-    if !script.is_file() {
-        return Err(format!("no packaging script found at {}", script.display()));
-    }
     let mut cmd = if cfg!(target_os = "macos") {
         let mut c = Command::new("bash");
-        c.arg(&script);
+        c.arg(repo.join("packaging/macos/package.sh"));
         let arch = o.arch.clone().unwrap_or_else(|| if cfg!(target_arch = "aarch64") { "aarch64".into() } else { "x86_64".into() });
         c.args(["--arch", &arch]);
         c
     } else if cfg!(target_os = "linux") || cfg!(target_os = "freebsd") {
+        let os = if cfg!(target_os = "linux") { "linux" } else { "freebsd" };
         let mut c = Command::new("bash");
-        c.arg(&script);
+        c.arg(repo.join(format!("packaging/{os}/package.sh")));
         c
     } else if cfg!(windows) {
         let mut c = Command::new("powershell");
-        c.args(["-NoProfile", "-ExecutionPolicy", "Bypass", "-File"]).arg(&script);
+        c.args(["-NoProfile", "-ExecutionPolicy", "Bypass", "-File"]).arg(repo.join("packaging/windows/package.ps1"));
         c
     } else {
         return Err("no packaging script for this OS".into());
