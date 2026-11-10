@@ -316,6 +316,7 @@ filter	Installed	Zainstalowane
 
 # Message templates (@msg): toasts from the backend. {placeholders} match any text.
 @msg	Couldn't open {name}: {e}	Nie udało się otworzyć {name}: {e}
+@msg	ArtCraft Launcher couldn't start its window on {backend}: {e}	Nie udało się uruchomić okna ArtCraft Launcher na {backend}: {e}
 @msg	Download cancelled	Anulowano pobieranie
 @msg	{name} updated to {version}	Zaktualizowano {name} do wersji {version}
 @msg	{name} installed: {version}	Zainstalowano {name} w wersji {version}

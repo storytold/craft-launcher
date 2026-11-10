@@ -335,6 +335,7 @@ figcraft	Interface design and prototyping	界面设计与原型制作
 
 # Message templates (@msg): toasts from the backend. {placeholders} match any text.
 @msg	Couldn't open {name}: {e}	无法打开 {name}：{e}
+@msg	ArtCraft Launcher couldn't start its window on {backend}: {e}	无法在 {backend} 上启动 ArtCraft Launcher 的窗口：{e}
 @msg	Download cancelled	下载已取消
 @msg	{name} updated to {version}	{name} 已更新至 {version}
 @msg	{name} installed: {version}	{name} 已安装：{version}

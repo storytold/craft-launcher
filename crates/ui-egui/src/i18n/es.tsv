@@ -300,6 +300,7 @@ filter	Installed	Instaladas
 @plural	{n} h ago|{n} h ago	hace {n} h|hace {n} h
 @plural	{n} day ago|{n} days ago	hace {n} día|hace {n} días
 @msg	Couldn't open {name}: {e}	No se pudo abrir {name}: {e}
+@msg	ArtCraft Launcher couldn't start its window on {backend}: {e}	No se pudo iniciar la ventana de ArtCraft Launcher con {backend}: {e}
 @msg	Download cancelled	Descarga cancelada
 @msg	{name} updated to {version}	{name} actualizada a {version}
 @msg	{name} installed: {version}	{name} instalada: {version}

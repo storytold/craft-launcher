@@ -300,6 +300,7 @@ filter	Installed	Installiert
 
 # Message templates (@msg): toasts from the backend. {placeholders} match any text.
 @msg	Couldn't open {name}: {e}	{name} konnte nicht geöffnet werden: {e}
+@msg	ArtCraft Launcher couldn't start its window on {backend}: {e}	ArtCraft Launcher konnte sein Fenster auf {backend} nicht starten: {e}
 @msg	Download cancelled	Download abgebrochen
 @msg	{name} updated to {version}	{name} auf {version} aktualisiert
 @msg	{name} installed: {version}	{name} installiert: {version}
