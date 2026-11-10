@@ -277,6 +277,27 @@ pub fn pick_asset<'a>(release: &'a Release, stems: &[&str], platform: Platform, 
     None
 }
 
+/// The command-line tool's zip of `release` for `platform`: `<stem>-cli-<version>-<os>-<arch>.zip`, as the
+/// macOS releases publish it beside the disk image (the disk image holds only the app). `None` when the
+/// release has none for this platform; checksums, signatures and the app's own packages never match.
+pub fn pick_cli_asset<'a>(release: &'a Release, stems: &[&str], platform: Platform) -> Option<&'a Asset> {
+    let parsed: Vec<(&Asset, String)> = release
+        .assets
+        .iter()
+        .filter_map(|a| {
+            let base = a.name.strip_suffix(".zip")?;
+            stems.iter().find_map(|stem| {
+                let rest = strip_stem_prefix(base, &format!("{stem}-cli"), '-')?;
+                // rest = <version>-<os>-<arch>; os and arch never contain '-', versions may.
+                let mut parts = rest.rsplitn(3, '-');
+                let (arch, os, version) = (parts.next()?, parts.next()?, parts.next()?);
+                (crate::version::parse(version).is_some() && version.starts_with(|c: char| c.is_ascii_digit())).then(|| (a, format!("{os}-{arch}")))
+            })
+        })
+        .collect();
+    platform.tokens().iter().find_map(|token| parsed.iter().find(|(_, t)| t == token).map(|(a, _)| *a))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -527,5 +548,60 @@ mod tests {
         for kind in [PackageKind::AppImage, PackageKind::Deb, PackageKind::Rpm, PackageKind::ArchPkg, PackageKind::Flatpak, PackageKind::TarGz] {
             assert_eq!(pick_asset(&arm_only_release, &["photocraft"], p_x64, &[kind]), None, "x86_64 must never match an aarch64 asset for {kind:?}");
         }
+    }
+    const PDF_CLI: &[&str] = &[
+        "pdfcraft-0.20.0-macos-universal.dmg",
+        "pdfcraft-0.20.0-windows-x64-portable.zip",
+        "pdfcraft-cli-0.20.0-linux-aarch64.tar.gz",
+        "pdfcraft-cli-0.20.0-linux-aarch64.tar.gz.asc",
+        "pdfcraft-cli-0.20.0-linux-x86_64.tar.gz",
+        "pdfcraft-cli-0.20.0-macos-universal.zip",
+        "pdfcraft-web-0.20.0.zip",
+        "SHA256SUMS.txt",
+    ];
+
+    #[test]
+    fn macos_gets_the_command_line_tools_universal_zip_on_either_processor() {
+        let r = release(PDF_CLI);
+        for arch in [Arch::X64, Arch::Arm64] {
+            let asset = pick_cli_asset(&r, &["pdfcraft"], Platform { os: Os::MacOs, arch }).unwrap();
+            assert_eq!(asset.name, "pdfcraft-cli-0.20.0-macos-universal.zip");
+        }
+    }
+
+    #[test]
+    fn the_command_line_picker_never_takes_the_app_another_apps_tool_or_a_checksum() {
+        let mac = Platform { os: Os::MacOs, arch: Arch::Arm64 };
+        assert_eq!(pick_cli_asset(&release(PDF_CLI), &["gridcraft"], mac), None, "another app's tool");
+        assert_eq!(pick_cli_asset(&release(&["pdfcraft-0.20.0-macos-universal.dmg", "SHA256SUMS.txt"]), &["pdfcraft"], mac), None, "the app alone");
+        assert_eq!(
+            pick_cli_asset(
+                &release(&["pdfcraft-cli-0.20.0-macos-universal.zip.sha256", "pdfcraft-cli-0.20.0-macos-universal.zip.asc"]),
+                &["pdfcraft"],
+                mac
+            ),
+            None,
+            "a checksum or signature is not the zip"
+        );
+        assert_eq!(
+            pick_cli_asset(&release(&["pdfcraft-cli-next-macos-universal.zip", "pdfcraft-cli-universal.zip"]), &["pdfcraft"], mac),
+            None,
+            "no version"
+        );
+    }
+
+    #[test]
+    fn the_command_line_picker_follows_the_platform_and_prefers_universal() {
+        let split = release(&["soundcraft-cli-0.9.0-macos-aarch64.zip", "soundcraft-cli-0.9.0-macos-x86_64.zip"]);
+        let pick = |arch| pick_cli_asset(&split, &["soundcraft"], Platform { os: Os::MacOs, arch }).map(|a| a.name.as_str());
+        assert_eq!(pick(Arch::Arm64), Some("soundcraft-cli-0.9.0-macos-aarch64.zip"));
+        assert_eq!(pick(Arch::X64), Some("soundcraft-cli-0.9.0-macos-x86_64.zip"));
+        let both = release(&["soundcraft-cli-0.9.0-macos-aarch64.zip", "soundcraft-cli-0.9.0-macos-universal.zip"]);
+        assert_eq!(
+            pick_cli_asset(&both, &["soundcraft"], Platform { os: Os::MacOs, arch: Arch::Arm64 }).unwrap().name,
+            "soundcraft-cli-0.9.0-macos-universal.zip"
+        );
+        // Another OS never gets the macOS zip.
+        assert_eq!(pick_cli_asset(&both, &["soundcraft"], Platform { os: Os::Linux, arch: Arch::X64 }), None);
     }
 }
