@@ -181,11 +181,13 @@ impl Catalog {
     }
 
     /// Translate a message: an exact `@msg` row, else the most specific template it fits.
-    pub fn message(&self, s: &str) -> Option<String> {
+    /// `reorder` applies the rtl display order to a template's filled-in output (kept logical
+    /// for the placeholders, see `LangInfo::catalog`) and to an exact row that still holds one.
+    pub fn message(&self, s: &str, reorder: bool) -> Option<String> {
         if let Some(t) = self.messages.get(s) {
-            return Some(t.clone());
+            return Some(if reorder && t.contains('{') { crate::bidi::display_rtl(t) } else { t.clone() });
         }
-        self.templates.iter().find_map(|t| t.apply(s))
+        self.templates.iter().find_map(|t| t.apply(s)).map(|out| if reorder { crate::bidi::display_rtl(&out) } else { out })
     }
 }
 

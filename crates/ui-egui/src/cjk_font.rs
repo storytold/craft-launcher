@@ -48,7 +48,6 @@ fn script_name(script: Script) -> &'static str {
         Script::Japanese => "Japanese",
         Script::Georgian => "Georgian",
         Script::Arabic => "Arabic",
-
     }
 }
 
@@ -60,7 +59,6 @@ fn script_families(script: Script) -> &'static str {
         Script::Japanese => "Hiragino Sans, Yu Gothic, Meiryo, MS Gothic, Noto Sans CJK JP, Noto Sans JP, IPAGothic and TakaoGothic",
         Script::Georgian => "SF Georgian, Arial Unicode MS, Sylfaen, Noto Sans Georgian and DejaVu Sans",
         Script::Arabic => "SF Arabic, Geeza Pro, Segoe UI, Tahoma, Arial, Noto Sans Arabic and DejaVu Sans",
-
     }
 }
 
@@ -158,6 +156,7 @@ fn candidates(script: Script) -> Vec<Candidate> {
         Script::TraditionalChinese => traditional_chinese_candidates(),
         Script::Japanese => japanese_candidates(),
         Script::Georgian => georgian_candidates(),
+        Script::Arabic => arabic_candidates(),
     };
     let mut out = Vec::with_capacity(found.len() * 2);
     for candidate in found {
@@ -165,8 +164,6 @@ fn candidates(script: Script) -> Vec<Candidate> {
         let host = flatpak_host_path(&candidate.path).map(|path| Candidate { path, family: candidate.family });
         out.push(candidate);
         out.extend(host);
-        Script::Arabic => arabic_candidates(),
-
     }
     out
 }
@@ -252,7 +249,7 @@ fn arabic_candidates() -> Vec<Candidate> {
     {
         // Debian/Ubuntu, Arch, Fedora and FreeBSD's ports: Noto Sans Arabic (static and
         // variable), then DejaVu Sans.
-        const AR_DIRS: [&str; 9] = [
+        const AR_DIRS: [&str; 10] = [
             "/usr/share/fonts/truetype/noto",
             "/usr/share/fonts/opentype/noto",
             "/usr/share/fonts/noto",
@@ -260,6 +257,7 @@ fn arabic_candidates() -> Vec<Candidate> {
             "/usr/share/fonts/google-noto-vf",
             "/usr/share/fonts/noto-sans-arabic",
             "/usr/share/fonts/truetype/dejavu",
+            "/usr/share/fonts/dejavu-sans-fonts",
             "/usr/share/fonts/dejavu",
             "/usr/local/share/fonts/dejavu",
         ];

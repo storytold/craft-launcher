@@ -346,3 +346,70 @@ filter	Installed	المثبَّتة
 	Loading pictures…	جارٍ تحميل الصور…
 	Pictures couldn't be loaded. Reopen this page to try again.	تعذّر تحميل الصور. أعد فتح هذه الصفحة للمحاولة مجددًا.
 @plural	ArtCraft Launcher · {n} update available|ArtCraft Launcher · {n} updates available	ArtCraft Launcher · يتوفر {n} تحديثات|ArtCraft Launcher · يتوفر {n} تحديث|ArtCraft Launcher · يتوفر {n} تحديثان|ArtCraft Launcher · يتوفر {n} تحديثات|ArtCraft Launcher · يتوفر {n} تحديثًا|ArtCraft Launcher · يتوفر {n} تحديث
+	A new version is available. Download it to replace this version?	يتوفر إصدار جديد. هل تريد تنزيله ليحل محل هذا الإصدار؟
+	A quote isn't closed.	علامة اقتباس غير مغلقة.
+	Apps are placed inside this folder.	تُوضع التطبيقات داخل هذا المجلد.
+	ArtCraft Launcher is still running	ArtCraft Launcher ما زال يعمل
+	Browse…	استعراض…
+	Choose version	اختر الإصدار
+	Custom folders use AppImage on Linux.	تستخدم المجلدات المخصصة تنسيق AppImage على لينكس.
+	Default install folder	مجلد التثبيت الافتراضي
+	Flags added each time the app is opened	وسائط تُضاف في كل مرة يُفتَح فيها التطبيق
+	Frequently used	الأكثر استخدامًا
+	Hide community apps	إخفاء تطبيقات المجتمع
+	Install folder	مجلد التثبيت
+	Install version {version}	تثبيت الإصدار {version}
+	Installing on Windows	التثبيت على ويندوز
+	It's in the tray: open it or quit it from the tray icon, or turn this off in the settings.	إنه في منطقة الإشعارات: افتحه أو أغلقه من أيقونتها، أو أوقف ذلك في الإعدادات.
+	Last updated: {date}	آخر تحديث: {date}
+	Launch options…	خيارات التشغيل…
+	Launcher version	إصدار المشغِّل
+	More actions for {name}	مزيد من الإجراءات لـ {name}
+	Move down	نقل لأسفل
+	Move up	نقل لأعلى
+	Name (A–Z)	الاسم (أ–ي)
+	Name (Z–A)	الاسم (ي–أ)
+	New installs use this folder. Updates stay in their current location.	تستخدم التثبيتات الجديدة هذا المجلد. وتبقى التحديثات في مواقعها الحالية.
+	Next app	التطبيق التالي
+	On Linux, custom folders use AppImage format.	على لينكس، تستخدم المجلدات المخصصة تنسيق AppImage.
+	Open {installed} without updating. {latest} stays available.	افتح {installed} دون تحديث. يبقى {latest} متاحًا.
+	Open {version}	افتح {version}
+	Pin to top	تعليق في الأعلى
+	Pinned	معلَّق
+	Previous app	التطبيق السابق
+	Recently updated	حُدِّثت مؤخرًا
+	Reorder {name}	إعادة ترتيب {name}
+	Replace	استبدال
+	Replace what's there?	استبدال الموجود؟
+	Retry update	إعادة التحديث
+	Save	حفظ
+	Separate flags with spaces. Quote a value that has spaces in it.	افصل الوسائط بمسافات. وضَع القيمة التي تحوي مسافات بين علامتي اقتباس.
+	Show {n} more changes	أظهر {n} تغييرات إضافية
+	System default	افتراضي النظام
+	The system manages install locations here.	يدير النظام مواقع التثبيت هنا.
+	Unpin	إلغاء التعليق
+	Use default	استخدام الافتراضي
+	by {name}	من قِبَل {name}
+	latest {version}	الأحدث {version}
+	{latest} is out, but ArtCraft Launcher can't install it over this copy.	صدر {latest}، لكن لا يمكن لـ ArtCraft Launcher تثبيته فوق هذه النسخة.
+	{name} launch options	خيارات تشغيل {name}
+	{name} wasn't opened: a quote in its launch options isn't closed.	لم يُفتَح {name}: علامة اقتباس في خيارات تشغيله غير مغلقة.
+	{path} already exists. Installing {name} will overwrite it.	{path} موجود بالفعل. سيؤدي تثبيت {name} إلى الكتابة فوقه.
+figcraft	Interface design and prototyping	تصميم الواجهات والنماذج الأولية
+	Arch package (.pkg.tar.zst)	حزمة Arch (.pkg.tar.zst)
+solidcraft	Parametric 3D CAD	تصميم ثلاثي الأبعاد برامتري
+column	Author	المؤلف
+texturecraft	3D texture painting	طلاء الخامات ثلاثي الأبعاد
+texturecraft	Paint materials on 3D models and export textures.	طلِ خامات على نماذج ثلاثية الأبعاد وصدِّر الخامات.
+texturecraft	Materials	الخامات
+texturecraft	Mesh maps	خرائط الشبكة
+texturecraft	Bake mesh maps and use smart materials.	اخبز خرائط الشبكة واستخدم خامات ذكية.
+texturecraft	Paint textures on 3D models.	طلِ خامات على نماذج ثلاثية الأبعاد.
+materialcraft	Procedural material design	تصميم خامات إجرائية
+materialcraft	Build materials with node graphs.	ابنِ خامات بمخططات العقد.
+materialcraft	Create tileable PBR materials and export texture maps.	أنشئ خامات PBR قابلة للتبليط وصدِّر خرائط الخامات.
+materialcraft	Node graphs	مخططات العقد
+materialcraft	Combine noises, patterns and filters.	ادمج ضوضاء وأنماطًا ومرشّحات.
+materialcraft	Live previews	معاينات حية
+materialcraft	Preview materials in 2D and on 3D models.	عاين الخامات في ثنائي الأبعاد وعلى نماذج ثلاثية الأبعاد.
+craft-anything	Find out how any software works, then craft your own	اكتشف كيف يعمل أي برنامج، ثم اصنع برنامجك الخاص

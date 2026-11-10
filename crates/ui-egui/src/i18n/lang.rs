@@ -21,7 +21,6 @@ pub enum Script {
 impl Script {
     /// Every script a language can be written in.
     pub const ALL: [Script; 5] = [Script::Chinese, Script::TraditionalChinese, Script::Japanese, Script::Georgian, Script::Arabic];
-
 }
 
 /// One supported UI language.
@@ -115,9 +114,7 @@ pub(super) fn plural_polish(n: u64) -> usize {
 }
 
 /// The registry. English first: it is the fallback and the source language.
-pub static LANGUAGES: [LangInfo; 13] = [
-pub static LANGUAGES: [LangInfo; 12] = [
-
+pub static LANGUAGES: [LangInfo; 14] = [
     LangInfo {
         code: "en",
         name: "English",
@@ -163,6 +160,7 @@ pub static LANGUAGES: [LangInfo; 12] = [
         plural: plural_none,
         plural_forms: 1,
         complete_menus: true,
+        rtl: false,
         catalog: OnceLock::new(),
     },
     LangInfo {
@@ -261,8 +259,6 @@ pub static LANGUAGES: [LangInfo; 12] = [
         rtl: false,
         catalog: OnceLock::new(),
     },
-    // Arabic (Modern Standard, Western digits); every `ar-*` locale (`ar-MA`, `ar-EG`, `ar-SA`…)
-    // resolves here. Drawn with the system's Arabic font and right to left (see `LangInfo::rtl`).
     LangInfo {
         code: "ka",
         name: "ქართული",
@@ -272,8 +268,11 @@ pub static LANGUAGES: [LangInfo; 12] = [
         plural: plural_one_other,
         plural_forms: 2,
         complete_menus: true,
+        rtl: false,
         catalog: OnceLock::new(),
     },
+    // Arabic (Modern Standard, Western digits); every `ar-*` locale (`ar-MA`, `ar-EG`, `ar-SA`…)
+    // resolves here. Drawn with the system's Arabic font and right to left (see `LangInfo::rtl`).
     LangInfo {
         code: "ar",
         name: "العربية",
@@ -293,7 +292,9 @@ impl LangInfo {
         self.catalog.get_or_init(|| {
             let mut catalog = Catalog::parse(self.source);
             if self.rtl {
-                catalog.map_translations(crate::bidi::display_rtl);
+                // Text with a `{name}` placeholder stays logical: `fmt`/`Template::apply` fills
+                // the value and orders the finished string, or the value lands in the wrong spot.
+                catalog.map_translations(|text| if text.contains('{') { text.to_string() } else { crate::bidi::display_rtl(text) });
             }
             catalog
         })
@@ -333,7 +334,6 @@ impl Lang {
     pub const JA: Lang = Lang(&LANGUAGES[11]);
     pub const KA: Lang = Lang(&LANGUAGES[12]);
     pub const AR: Lang = Lang(&LANGUAGES[13]);
-
 
     pub fn code(self) -> &'static str {
         self.0.code

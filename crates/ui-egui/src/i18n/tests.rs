@@ -4,7 +4,7 @@
 use std::collections::{BTreeSet, HashSet};
 
 use super::catalog::{Catalog, unescape};
-use super::lang::{name_sort_key, plural_czech, plural_east_slavic, plural_polish};
+use super::lang::{name_sort_key, plural_arabic, plural_czech, plural_east_slavic, plural_polish};
 use super::{LANGUAGES, Lang, LangInfo, fmt, lang_from_tag, message, tr, trn};
 
 #[test]
@@ -13,12 +13,11 @@ fn a_filled_in_value_is_never_read_as_a_placeholder() {
     assert_eq!(fmt("{a} and {a}", &[("a", "{a}")]), "{a} and {a}");
 }
 
+#[test]
 fn placeholders_nobody_filled_stay_as_written() {
     assert_eq!(fmt("{a} {b} { {} }{", &[("a", "1")]), "1 {b} { {} }{");
     assert_eq!(fmt("{{a}", &[("a", "1")]), "{1");
-use super::lang::{plural_arabic, plural_czech, plural_east_slavic, plural_polish};
-use super::{LANGUAGES, Lang, LangInfo, lang_from_tag, message, tr, trn};
-
+}
 
 /// Each catalog's rows as (line number, context, source, translation), split exactly as the
 /// parser does: `trim_end` only, since a plain row *starts* with a TAB.
@@ -113,7 +112,7 @@ fn every_msg_row_translates_its_own_text() {
         let cat = Catalog::parse(lang.source);
         for (line, context, source, translation) in rows(lang) {
             if context == "@msg" {
-                assert_eq!(cat.message(&unescape(source)).as_deref(), Some(unescape(translation).as_str()), "{} line {line}", lang.code);
+                assert_eq!(cat.message(&unescape(source), false).as_deref(), Some(unescape(translation).as_str()), "{} line {line}", lang.code);
             }
         }
     }
@@ -450,6 +449,7 @@ fn georgian_locales_and_counts_work() {
     for n in [0, 1, 2, 21, 100] {
         assert_eq!(trn(Lang::KA, n, "{n} app", "{n} apps"), format!("{n} აპლიკაცია"));
         assert_eq!(trn(Lang::KA, n, "{n} day ago", "{n} days ago"), format!("{n} დღის წინ"));
+    }
     assert_eq!(trn(Lang::KA, 2, "{n} unknown item", "{n} unknown items"), "2 unknown items");
     assert_eq!(tr(Lang::KA, "Untranslated diagnostic"), "Untranslated diagnostic");
     assert_eq!(super::tr_ctx(Lang::KA, "month", "Mar"), "მარ");
@@ -457,13 +457,13 @@ fn georgian_locales_and_counts_work() {
     assert_eq!(message(Lang::KA, "PhotoCraft updated to 0.5.0"), "PhotoCraft განახლდა ვერსიამდე 0.5.0");
     // Georgian has no letter case: no Mtavruli (U+1C90–U+1CBF) in the interface.
     assert!(!Lang::KA.0.source.chars().any(|c| ('\u{1c90}'..='\u{1cbf}').contains(&c)));
+}
 
-/// With the system's Chinese font installed, every UI family can draw the whole Simplified and
-/// Traditional Chinese catalogs. Machines without one (CI, the web) skip this; the UI then stays
-/// in English.
+#[test]
 fn arabic_locales_and_plurals_work() {
     for tag in ["ar", "ar-MA", "ar_EG.UTF-8", "AR-sa", "ar_DZ@variant"] {
         assert_eq!(lang_from_tag(tag), Some(Lang::AR), "{tag}");
+    }
     assert_eq!(super::detect::first_supported(["xx-XX", "ar-EG", "en-US"]), Some(Lang::AR));
     // Arabic is the only right-to-left language.
     assert!(Lang::all().filter(|l| l.rtl()).eq([Lang::AR]));
@@ -481,11 +481,12 @@ fn arabic_locales_and_plurals_work() {
     assert_eq!(trn(Lang::AR, 11, "{n} app", "{n} apps"), "تطبيقًا 11");
     assert_eq!(trn(Lang::AR, 100, "{n} app", "{n} apps"), "تطبيق 100");
     assert_eq!(trn(Lang::AR, 3, "{n} unknown item", "{n} unknown items"), "3 unknown items");
-    assert_eq!(tr(Lang::AR, "Update to {v}"), "{v} إلى التحديث");
-    assert_eq!(super::fmt(tr(Lang::AR, "Update to {v}"), &[("v", "0.5.0")]), "0.5.0 إلى التحديث");
+    // A `{name}` row stays in logical order from the catalog and orders when `fmt` fills it.
+    assert_eq!(tr(Lang::AR, "Update to {v}"), "التحديث إلى {v}");
     assert_eq!(tr(Lang::AR, "Settings"), "الإعدادات");
     assert_eq!(message(Lang::AR, "PhotoCraft updated to 0.5.0"), "0.5.0 إلى حُدِّث PhotoCraft");
     assert_eq!(tr(Lang::AR, "Untranslated diagnostic"), "Untranslated diagnostic");
+}
 
 /// With a system Arabic font installed, every UI family can draw the whole Arabic catalog.
 /// Machines without one (CI, the web) skip this; the UI then stays in English.
@@ -494,6 +495,7 @@ fn system_font_covers_arabic_in_every_ui_family() {
     use egui::{FontFamily, FontId};
     if !crate::theme::cjk_font_available(Lang::AR) {
         return;
+    }
     let ctx = egui::Context::default();
     crate::theme::install_fonts(&ctx, Some(Lang::AR));
     let mut output = ctx.run_ui(egui::RawInput::default(), |_| {});
@@ -516,10 +518,15 @@ fn system_font_covers_arabic_in_every_ui_family() {
         crate::theme::mono(),
         crate::theme::mono_bold(),
     ] {
-        ctx.fonts_mut(|fonts| assert!(fonts.has_glyphs(&FontId::new(14.0, family.clone()), &text), "missing glyph in {family:?}"));
+        ctx.fonts_mut(|fonts| {
+            assert!(fonts.has_glyphs(&FontId::new(14.0, family.clone()), &text), "missing glyph in {family:?}");
+        });
+    }
+}
 
-/// With the system's Chinese font installed, every UI family can draw the whole Chinese catalog.
-
+/// With the system's Chinese font installed, every UI family can draw the whole Simplified and
+/// Traditional Chinese catalogs. Machines without one (CI, the web) skip this; the UI then stays
+/// in English.
 #[test]
 fn system_font_covers_chinese_in_every_ui_family() {
     use egui::{FontFamily, FontId};
@@ -638,11 +645,10 @@ fn language_labels_come_from_the_registry() {
     assert_eq!(Settings::language_label(Lang::ZH_TW.code(), Some(Lang::ZH_TW)), "Traditional Chinese (Taiwan) (繁體中文)");
     assert_eq!(Settings::language_label(Lang::JA.code(), Some(Lang::ZH_CN)), "Japanese");
     assert_eq!(Settings::language_label(Lang::JA.code(), Some(Lang::JA)), "Japanese (日本語)");
-    assert_eq!(Settings::language_label(Lang::KA.code(), None), "Georgian");
-    assert_eq!(Settings::language_label(Lang::KA.code(), Some(Lang::KA)), "Georgian (ქართული)");
     assert_eq!(Settings::language_label(Lang::AR.code(), Some(Lang::ZH_CN)), "Arabic");
     assert_eq!(Settings::language_label(Lang::AR.code(), Some(Lang::AR)), "Arabic (العربية)");
-
+    assert_eq!(Settings::language_label(Lang::KA.code(), None), "Georgian");
+    assert_eq!(Settings::language_label(Lang::KA.code(), Some(Lang::KA)), "Georgian (ქართული)");
     assert_eq!(Settings::language_label(Settings::LANGUAGE_AUTO, None), "Auto");
     assert_eq!(Settings::language_label("xx", None), "Auto");
 }
@@ -680,14 +686,14 @@ fn message_templates_match_real_messages() {
          @msg\t{name} updated to {version} (no checksum)\t{name} обновлено до {version} (без суммы)\n\
          @msg\t{a}{b}\tnever\n",
     );
-    assert_eq!(cat.message("Download cancelled").as_deref(), Some("Скачивание отменено"));
-    assert_eq!(cat.message("Couldn't open PhotoCraft: no such file: x").as_deref(), Some("Не удалось открыть PhotoCraft: no such file: x"));
-    assert_eq!(cat.message("PhotoCraft updated to 0.5.0").as_deref(), Some("PhotoCraft обновлено до 0.5.0"));
+    assert_eq!(cat.message("Download cancelled", false).as_deref(), Some("Скачивание отменено"));
+    assert_eq!(cat.message("Couldn't open PhotoCraft: no such file: x", false).as_deref(), Some("Не удалось открыть PhotoCraft: no such file: x"));
+    assert_eq!(cat.message("PhotoCraft updated to 0.5.0", false).as_deref(), Some("PhotoCraft обновлено до 0.5.0"));
     // The template that spells out more of the message wins.
-    assert_eq!(cat.message("PhotoCraft updated to 0.5.0 (no checksum)").as_deref(), Some("PhotoCraft обновлено до 0.5.0 (без суммы)"));
+    assert_eq!(cat.message("PhotoCraft updated to 0.5.0 (no checksum)", false).as_deref(), Some("PhotoCraft обновлено до 0.5.0 (без суммы)"));
     // Placeholders never match nothing, and unknown messages aren't touched.
-    assert_eq!(cat.message("Couldn't open : x"), None);
-    assert_eq!(cat.message("Something else"), None);
+    assert_eq!(cat.message("Couldn't open : x", false), None);
+    assert_eq!(cat.message("Something else", false), None);
     assert_eq!(message(Lang::EN, "Something else"), "Something else");
 }
 
