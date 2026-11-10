@@ -440,3 +440,5 @@ anicraft	Familiar by design	Привычный интерфейс
 anicraft	Stage, tools, timeline, layers, keyframes, Properties and Library sit where animators expect them, with onion skinning for in-betweening.	Сцена, инструменты, шкала времени, слои, ключевые кадры, Свойства и Библиотека там, где их ждут аниматоры, со шлейфом калькирования.
 anicraft	Tweens that ease	Плавные твины
 anicraft	Classic tweens with eight easing presets and custom ease curves, plus shape tweens that morph one vector contour into another.	Классические твины с восемью пресетами замедления и кривыми, а также твины формы.
+	ArtCraft Launcher's window could not start or stopped with an error: {e}\n\nIf this keeps happening, updating the graphics driver often fixes it.	Окно ArtCraft Launcher не удалось открыть, или оно закрылось из-за ошибки: {e}\n\nЕсли это повторяется, обычно помогает обновление драйвера видеокарты.
+	ArtCraft Launcher's window could not start or stopped with an error: {e}	Окно ArtCraft Launcher не удалось открыть, или оно закрылось из-за ошибки: {e}

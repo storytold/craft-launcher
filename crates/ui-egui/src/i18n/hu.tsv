@@ -445,3 +445,5 @@ anicraft	Familiar by design	Ismerős kialakítás
 anicraft	Stage, tools, timeline, layers, keyframes, Properties and Library sit where animators expect them, with onion skinning for in-betweening.	Színpad, eszközök, idővonal, rétegek, kulcsképkockák, Tulajdonságok és Könyvtár a megszokott helyen, hagymabőr funkcióval.
 anicraft	Tweens that ease	Finom mozgásinterpolációk
 anicraft	Classic tweens with eight easing presets and custom ease curves, plus shape tweens that morph one vector contour into another.	Klasszikus mozgásinterpolációk nyolc görbe-előbeállítással és egyéni görbékkel, valamint alakos interpolációk.
+	ArtCraft Launcher's window could not start or stopped with an error: {e}\n\nIf this keeps happening, updating the graphics driver often fixes it.	Az ArtCraft Launcher ablaka nem tudott elindulni, vagy hiba miatt bezárult: {e}\n\nHa ez ismét előfordul, gyakran segít a grafikus illesztőprogram frissítése.
+	ArtCraft Launcher's window could not start or stopped with an error: {e}	Az ArtCraft Launcher ablaka nem tudott elindulni, vagy hiba miatt bezárult: {e}

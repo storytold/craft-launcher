@@ -12,6 +12,7 @@ mod motion;
 mod settings_file;
 #[cfg(target_os = "macos")]
 mod spaces;
+mod start_failure;
 #[cfg(target_os = "linux")]
 mod system_theme;
 mod tray;
@@ -81,9 +82,9 @@ fn main() -> ExitCode {
     let mut hidden = args.iter().any(|a| a == login::HIDDEN_FLAG);
 
     let wake: Wake = Arc::new(OnceLock::new());
-    let starts = match single_instance::claim(wake.clone()) {
+    let (starts, answering) = match single_instance::claim(wake.clone()) {
         Instance::Secondary => return ExitCode::SUCCESS,
-        Instance::Primary(rx) => rx,
+        Instance::Primary(rx, answering) => (rx, answering),
     };
     // The log file lives in the launcher's data folder (beside the executable in portable mode);
     // opened after the arguments (so `--version` leaves no file behind) and once this is the only
@@ -153,7 +154,20 @@ fn main() -> ExitCode {
             };
             waker.set_window(None);
             if let Err(e) = result {
-                log::error!("{e}");
+                // Stop answering other starts first: while the dialog is open, a second start
+                // would otherwise defer to this launcher and exit with nothing on screen. Now it
+                // gets no answer and starts on its own (`Answering::stop`).
+                // Not while something is installing: those workers go on during the dialog, and a
+                // second launcher beside them could start the same install or overwrite the
+                // record of installed apps. That start defers to this one instead, as a newer
+                // start does to a busy launcher (`single_instance`).
+                if !launcher.ui.busy() {
+                    answering.stop();
+                    // The tray icon and the rest go before the dialog, not after it.
+                    drop(launcher);
+                }
+                // Say why instead of exiting silently; also logs it (`start_failure`).
+                start_failure::report(&e);
                 return ExitCode::FAILURE;
             }
             if !std::mem::take(&mut launcher.closed_to_tray) {

@@ -64,6 +64,12 @@ tray-icon = { version = "0.26", default-features = false, features = ["ksni"] }
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 rfd = { version = "=0.17.2", default-features = false, features = ["xdg-portal", "wayland"] }
 
+# Tests only: name winit's error type, to check what the start-failure dialog says for it
+# (start_failure.rs). The same winit eframe uses (the storytold fork, patched in the workspace);
+# already in Cargo.lock through eframe.
+[dev-dependencies]
+winit = { version = "0.30", default-features = false }
+
 [build-dependencies]
 # Icon + VERSIONINFO for artcraft-launcher.exe; build.rs only uses it when targeting Windows.
 winresource = "0.1"
