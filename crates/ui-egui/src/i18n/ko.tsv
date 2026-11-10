@@ -404,3 +404,48 @@ soundcraft	Record, edit and mix your audio.	오디오 녹음, 편집, 믹싱 도
 figcraft	Interface design and prototyping.	화면 디자인, 컴포넌트 편집, 프로토타입 제작.
 craft-anything	See how any website, app or game works, then build your own.	기존 웹사이트·앱·게임을 분석하고 AI로 새 프로젝트를 만드는 도구.
 solidcraft	Parametric 3D CAD, with editable sketches and solids.	치수와 조건을 바꿔 3D 형상을 조정하는 CAD.
+
+# Launch options, update actions and download details.
+	Open {version}	{version} 실행
+	Open {installed} without updating. {latest} stays available.	업데이트하지 않고 {installed} 버전을 실행합니다. {latest} 업데이트는 나중에도 설치할 수 있습니다.
+	{latest} is out, but ArtCraft Launcher can't install it over this copy.	{latest} 버전이 출시되었지만, ArtCraft Launcher에서 현재 설치된 앱을 이 버전으로 업데이트할 수 없습니다.
+	ArtCraft Launcher can't install version {version} over this copy.	ArtCraft Launcher에서 현재 설치된 앱을 {version} 버전으로 교체할 수 없습니다.
+	Launch options…	실행 옵션…
+	{name} launch options	{name} 실행 옵션
+	Flags added each time the app is opened	앱을 실행할 때마다 추가할 실행 인수
+	Separate flags with spaces. Quote a value that has spaces in it.	실행 인수는 공백으로 구분하세요. 공백이 포함된 값은 따옴표로 감싸세요.
+	A quote isn't closed.	닫히지 않은 따옴표가 있습니다.
+	{name} wasn't opened: a quote in its launch options isn't closed.	{name} 앱을 실행하지 못했습니다. 실행 옵션에 닫히지 않은 따옴표가 있습니다.
+	Save	저장
+	Download size: {size}	다운로드 크기: {size}
+	Ask for permission once when updating all apps	모든 앱을 업데이트할 때 권한을 한 번만 요청
+
+# AniCraft: translate from the English catalog and details page.
+anicraft	2D vector animation	2D 벡터 애니메이션
+anicraft	Vector animation on a timeline you know.	타임라인과 키프레임으로 만드는 2D 벡터 애니메이션.
+anicraft	Open-source 2D vector animation, built in pure Rust.	Rust로 만든 오픈 소스 2D 벡터 애니메이션 도구.
+anicraft	Familiar by design	애니메이션 작업 화면
+anicraft	Stage, tools, timeline, layers, keyframes, Properties and Library sit where animators expect them, with onion skinning for in-betweening.	작업 영역, 도구, 타임라인, 레이어, 키프레임, 속성, 라이브러리를 갖추고, 앞뒤 프레임을 겹쳐 보여 주는 어니언 스킨으로 중간 동작 작업을 돕습니다.
+anicraft	Tweens that ease	속도 조절과 형태 변형
+anicraft	Classic tweens with eight easing presets and custom ease curves, plus shape tweens that morph one vector contour into another.	8가지 가속·감속 프리셋과 사용자 지정 곡선으로 중간 프레임을 보간하고, 한 벡터 윤곽을 다른 형태로 변형할 수 있습니다.
+anicraft	Symbols and scenes	심볼과 장면
+anicraft	Graphic symbols and movie clips with nested timelines and loop modes, mask and guide layers, filters, blend modes and scenes.	그래픽 심볼과 무비 클립에 중첩 타임라인과 반복 모드를 적용하고, 마스크·가이드 레이어, 필터, 혼합 모드, 장면을 사용할 수 있습니다.
+anicraft	Real vector tools	벡터 편집 도구
+anicraft	Pen, Pencil with curve fitting, shapes, text, Paint Bucket and Ink Bottle, with Bézier anchors and handles you edit point by point.	펜, 곡선을 다듬는 연필, 도형, 텍스트, 채우기, 윤곽선 도구를 제공하며 베지어 기준점과 핸들을 하나씩 편집할 수 있습니다.
+anicraft	Open formats	파일 가져오기와 내보내기
+anicraft	Opens .fla and .xfl documents and imports SVG. Exports PNG sequences, GIF, SVG frames, sprite sheets, Lottie, and WebM or MP4 through your own FFmpeg.	.fla와 .xfl 문서를 열고 SVG를 가져옵니다. PNG 시퀀스, GIF, SVG 프레임, 스프라이트 시트, Lottie로 내보내며, 별도로 설치한 FFmpeg로 WebM이나 MP4를 만들 수 있습니다.
+anicraft	Agent-ready	에이전트 연동
+anicraft	Every action is an engine command, so the CLI, a JSON-lines channel and an MCP server can draw, animate and export the way a person does.	모든 작업이 엔진 명령으로 제공되어 CLI, JSON-lines 채널, MCP 서버에서도 그리기, 애니메이션 제작, 내보내기를 수행할 수 있습니다.
+
+# MailCraft: translate from the English catalog and details page.
+mailcraft	Mail, calendar and contacts	메일, 일정, 연락처
+mailcraft	Mail, calendar, contacts and tasks, in one native app.	메일, 일정, 연락처, 할 일을 한곳에서 관리하는 앱.
+mailcraft	An open-source mail program by UCS Care Group, written from scratch in Rust: the folder pane, message list and reading pane people already know, with a calendar, people and to-dos. Works with Microsoft 365, Outlook.com and IMAP. In public beta, and it can be driven by AI agents through its MCP server.	UCS Care Group이 Rust로 새로 만든 오픈 소스 메일 프로그램입니다. 폴더 창, 메시지 목록, 읽기 창과 함께 일정, 연락처, 할 일을 제공합니다. Microsoft 365, Outlook.com, IMAP을 지원합니다. 공개 베타 버전이며, MCP 서버를 통해 AI 에이전트로 조작할 수도 있습니다.
+mailcraft	Mail	메일
+mailcraft	Conversations, flags, categories, rules, search with a query language, and HTML mail shown without running anything in it.	대화별 보기, 플래그, 범주, 규칙, 검색식을 지원하며, HTML 메일의 코드를 실행하지 않고 내용을 표시합니다.
+mailcraft	Calendar	일정
+mailcraft	Day, week and month views, recurring meetings, invitations and reminders, kept in step with Microsoft 365.	일·주·월별 보기, 반복 회의, 초대, 알림을 제공하고 Microsoft 365와 동기화합니다.
+mailcraft	Files	파일
+mailcraft	.eml, .mbox, .ics and .vcf in and out, and the mail and contacts of an Outlook .pst file in.	.eml, .mbox, .ics, .vcf 파일을 가져오고 내보내며, Outlook .pst 파일의 메일과 연락처를 가져옵니다.
+mailcraft	Desktop, web and agents	데스크톱, 웹, 에이전트
+mailcraft	A desktop app, a browser app, a CLI and an MCP server, all running the same commands.	데스크톱 앱, 브라우저 앱, CLI, MCP 서버가 모두 같은 명령을 실행합니다.
