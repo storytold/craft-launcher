@@ -48,18 +48,10 @@ pub struct ServerEntry {
 pub enum Connection {
     /// A local process the host spawns. `command` is the CLI path; `args` are its arguments.
     #[serde(rename = "stdio")]
-    Stdio {
-        command: String,
-        args: Vec<String>,
-        env: HashMap<String, String>,
-    },
+    Stdio { command: String, args: Vec<String>, env: HashMap<String, String> },
     /// A network endpoint the host connects to (reserved for HTTP-based services like the bridge).
     #[serde(rename = "streamableHttp")]
-    StreamableHttp {
-        url: String,
-        headers: HashMap<String, String>,
-        auth: Option<Auth>,
-    },
+    StreamableHttp { url: String, headers: HashMap<String, String>, auth: Option<Auth> },
 }
 
 /// Credentials a streamable-HTTP host sends. `None` means no auth; Bionic writes this field only
@@ -81,14 +73,7 @@ pub fn mcp_config_path() -> Option<PathBuf> {
     if let Ok(p) = std::env::var("ARTCRAFT_LAUNCHER_MCP_CONFIG") {
         return Some(PathBuf::from(&p));
     }
-    Some(
-        dirs::home_dir()?
-            .join(".lmstudio")
-            .join("apps")
-            .join("bionic")
-            .join(".internal")
-            .join("ng-mcp.json"),
-    )
+    Some(dirs::home_dir()?.join(".lmstudio").join("apps").join("bionic").join(".internal").join("ng-mcp.json"))
 }
 
 /// Load the `servers` array from a config file. A missing, unreadable, or malformed file yields an
@@ -103,10 +88,7 @@ pub fn load_servers(path: &Path) -> Vec<ServerEntry> {
         Err(_) => return vec![],
     };
     match value.get("servers").and_then(|s| s.as_array()) {
-        Some(arr) => arr
-            .iter()
-            .filter_map(|e| serde_json::from_value(e.clone()).ok())
-            .collect(),
+        Some(arr) => arr.iter().filter_map(|e| serde_json::from_value(e.clone()).ok()).collect(),
         None => vec![],
     }
 }
@@ -114,9 +96,7 @@ pub fn load_servers(path: &Path) -> Vec<ServerEntry> {
 /// Save `servers` back to the config file, preserving any top-level keys other than `servers`.
 /// Writes atomically (temp file + rename) so a crash never leaves a half-written config.
 pub fn save_servers(path: &Path, servers: &[ServerEntry]) -> Result<(), String> {
-    let existing: Option<serde_json::Value> = std::fs::read(path)
-        .ok()
-        .and_then(|b| serde_json::from_slice(&b).ok());
+    let existing: Option<serde_json::Value> = std::fs::read(path).ok().and_then(|b| serde_json::from_slice(&b).ok());
     let array = match servers.iter().map(serde_json::to_value).collect::<Result<Vec<serde_json::Value>, _>>() {
         Ok(a) => a,
         Err(e) => return Err(e.to_string()),
@@ -134,8 +114,7 @@ pub fn save_servers(path: &Path, servers: &[ServerEntry]) -> Result<(), String> 
         }
     }
     map.insert("servers".to_string(), serde_json::json!(array));
-    let out = serde_json::to_string_pretty(&serde_json::Value::Object(map))
-        .map_err(|e| e.to_string())?;
+    let out = serde_json::to_string_pretty(&serde_json::Value::Object(map)).map_err(|e| e.to_string())?;
     crate::paths::write_atomic(path, out.as_bytes())
 }
 
@@ -186,11 +165,7 @@ pub fn entry_for(service: &LocalService) -> Option<ServerEntry> {
         name: service.name.clone(),
         description: format!("{} built-in tools over MCP.", service.name),
         enabled: true,
-        connection: Connection::Stdio {
-            command: cli.display().to_string(),
-            args: vec!["mcp".into()],
-            env: HashMap::new(),
-        },
+        connection: Connection::Stdio { command: cli.display().to_string(), args: vec!["mcp".into()], env: HashMap::new() },
     })
 }
 
@@ -218,11 +193,7 @@ pub fn enable_service(servers: &mut Vec<ServerEntry>, service: &LocalService) ->
             name: service.name.clone(),
             description: format!("{} built-in tools over MCP.", service.name),
             enabled: true,
-            connection: Connection::Stdio {
-                command: cli.display().to_string(),
-                args: vec!["mcp".into()],
-                env: HashMap::new(),
-            },
+            connection: Connection::Stdio { command: cli.display().to_string(), args: vec!["mcp".into()], env: HashMap::new() },
         }),
     }
     true
@@ -300,7 +271,8 @@ fn first_existing(override_path: Option<&Path>, candidates: &[PathBuf]) -> Optio
 fn candidate_bridge_paths() -> Vec<PathBuf> {
     let mut out = Vec::new();
     if let Some(exe) = std::env::current_exe().ok()
-        && let Some(dir) = exe.parent() {
+        && let Some(dir) = exe.parent()
+    {
         for name in ["craft-ai-mcp.exe", "craft-ai-mcp"] {
             out.push(dir.join(name));
         }
@@ -328,23 +300,17 @@ pub fn bridge_entry(port: u16) -> ServerEntry {
         name: "Craft AI".to_string(),
         description: "All Craft AI tools over one MCP endpoint.".to_string(),
         enabled: true,
-        connection: Connection::StreamableHttp {
-            url: format!("http://127.0.0.1:{port}/mcp"),
-            headers: HashMap::new(),
-            auth: Some(Auth::None),
-        },
+        connection: Connection::StreamableHttp { url: format!("http://127.0.0.1:{port}/mcp"), headers: HashMap::new(), auth: Some(Auth::None) },
     }
 }
 
 /// Index of the unified-bridge entry, or None: one whose id is the deterministic bridge id, or a
 /// `streamableHttp` entry named "Craft AI" (created by an earlier launcher version under a UUID).
 fn find_bridge(servers: &[ServerEntry]) -> Option<usize> {
-    servers.iter().position(|e| e.id == BRIDGE_ID)
-        .or_else(|| {
-            servers.iter().position(|e| {
-                matches!(&e.connection, Connection::StreamableHttp { .. }) && e.name == "Craft AI"
-            })
-        })
+    servers
+        .iter()
+        .position(|e| e.id == BRIDGE_ID)
+        .or_else(|| servers.iter().position(|e| matches!(&e.connection, Connection::StreamableHttp { .. }) && e.name == "Craft AI"))
 }
 
 /// The current port of the unified-bridge entry (parsed from its `streamableHttp` URL), or None
@@ -437,6 +403,7 @@ mod tests {
             repo: "storyteller/example",
             former_ids,
             former_names: &[],
+            mac_bundle_name: None,
             kind: AppKind::Official,
             publisher: "ArtCraft",
             msi_publisher: None,
@@ -454,10 +421,7 @@ mod tests {
         std::fs::write(dir.path().join("wordcraft.exe"), b"").unwrap();
         std::fs::write(dir.path().join("wordcraft-cli.exe"), b"cli").unwrap();
         let app = fake_app("wordcraft", &[]);
-        assert_eq!(
-            cli_path_for(&dir.path().join("wordcraft.exe").display().to_string(), &app),
-            Some(dir.path().join("wordcraft-cli.exe"))
-        );
+        assert_eq!(cli_path_for(&dir.path().join("wordcraft.exe").display().to_string(), &app), Some(dir.path().join("wordcraft-cli.exe")));
     }
 
     #[test]
@@ -467,10 +431,7 @@ mod tests {
         // Only the former stem's CLI exists (e.g. an older install renamed to printcraft).
         std::fs::write(dir.path().join("printcraft-cli.exe"), b"cli").unwrap();
         let app = fake_app("pdfcraft", &["printcraft"]);
-        assert_eq!(
-            cli_path_for(&dir.path().join("pdfcraft.exe").display().to_string(), &app),
-            Some(dir.path().join("printcraft-cli.exe"))
-        );
+        assert_eq!(cli_path_for(&dir.path().join("pdfcraft.exe").display().to_string(), &app), Some(dir.path().join("printcraft-cli.exe")));
     }
 
     #[test]
@@ -495,19 +456,17 @@ mod tests {
         // Seed a top-level key that is not `servers` to prove it survives.
         std::fs::write(&path, r#"{"meta":{"note":"keep me"},"servers":[]}"#).unwrap();
 
-        let servers = vec![
-            ServerEntry {
-                id: entry_id("wordcraft"),
-                name: "WordCraft".into(),
-                description: "WordCraft built-in tools over MCP.".into(),
-                enabled: true,
-                connection: Connection::Stdio {
-                    command: dir.path().join("wordcraft-cli.exe").display().to_string(),
-                    args: vec!["mcp".into()],
-                    env: HashMap::new(),
-                },
+        let servers = vec![ServerEntry {
+            id: entry_id("wordcraft"),
+            name: "WordCraft".into(),
+            description: "WordCraft built-in tools over MCP.".into(),
+            enabled: true,
+            connection: Connection::Stdio {
+                command: dir.path().join("wordcraft-cli.exe").display().to_string(),
+                args: vec!["mcp".into()],
+                env: HashMap::new(),
             },
-        ];
+        }];
         assert!(save_servers(&path, &servers).is_ok());
 
         let loaded = load_servers(&path);
@@ -523,8 +482,7 @@ mod tests {
         };
 
         // The non-`servers` top-level key must survive the round trip.
-        let raw: serde_json::Value =
-        serde_json::from_slice(&std::fs::read(path).unwrap()).unwrap();
+        let raw: serde_json::Value = serde_json::from_slice(&std::fs::read(path).unwrap()).unwrap();
         assert_eq!(raw["meta"]["note"], serde_json::json!("keep me"));
     }
 
@@ -589,12 +547,7 @@ mod tests {
 
     #[test]
     fn entry_for_is_none_without_a_cli() {
-        let service = LocalService {
-            id: "wordcraft".into(),
-            name: "WordCraft".into(),
-            location: "/x/wordcraft.exe".into(),
-            cli_path: None,
-        };
+        let service = LocalService { id: "wordcraft".into(), name: "WordCraft".into(), location: "/x/wordcraft.exe".into(), cli_path: None };
         assert!(entry_for(&service).is_none());
     }
 
@@ -675,10 +628,7 @@ mod tests {
         std::fs::write(&present, b"").unwrap();
         let missing = dir.path().join("nope.exe");
         // Override wins even when a candidate also exists.
-        assert_eq!(
-            first_existing(Some(present.as_ref()), &[missing.clone(), present.clone()]),
-            Some(present),
-        );
+        assert_eq!(first_existing(Some(present.as_ref()), &[missing.clone(), present.clone()]), Some(present),);
     }
 
     #[test]
@@ -702,11 +652,7 @@ mod tests {
             name: "WordCraft".into(),
             description: "old".into(),
             enabled: false,
-            connection: Connection::Stdio {
-                command: "/old/wordcraft-cli.exe".into(),
-                args: vec!["mcp".into()],
-                env: HashMap::new(),
-            },
+            connection: Connection::Stdio { command: "/old/wordcraft-cli.exe".into(), args: vec!["mcp".into()], env: HashMap::new() },
         }];
         let service = LocalService {
             id: "wordcraft".into(),
@@ -733,11 +679,7 @@ mod tests {
             name: "WordCraft".into(),
             description: String::new(),
             enabled: true,
-            connection: Connection::Stdio {
-                command: "/x/wordcraft-cli.exe".into(),
-                args: vec!["mcp".into()],
-                env: HashMap::new(),
-            },
+            connection: Connection::Stdio { command: "/x/wordcraft-cli.exe".into(), args: vec!["mcp".into()], env: HashMap::new() },
         }];
         let service = LocalService {
             id: "wordcraft".into(),
@@ -759,11 +701,7 @@ mod tests {
             name: "WordCraft".into(),
             description: String::new(),
             enabled: true,
-            connection: Connection::Stdio {
-                command: "/x/wordcraft-cli.exe".into(),
-                args: vec!["mcp".into()],
-                env: HashMap::new(),
-            },
+            connection: Connection::Stdio { command: "/x/wordcraft-cli.exe".into(), args: vec!["mcp".into()], env: HashMap::new() },
         }];
         let service = LocalService {
             id: "wordcraft".into(),
@@ -784,11 +722,7 @@ mod tests {
             name: "Craft AI".into(),
             description: String::new(),
             enabled: false,
-            connection: Connection::StreamableHttp {
-                url: "http://127.0.0.1:9999/mcp".into(),
-                headers: HashMap::new(),
-                auth: Some(Auth::None),
-            },
+            connection: Connection::StreamableHttp { url: "http://127.0.0.1:9999/mcp".into(), headers: HashMap::new(), auth: Some(Auth::None) },
         }];
         assert!(enable_bridge(&mut servers, BRIDGE_PORT));
         assert_eq!(servers.len(), 1);
@@ -808,11 +742,7 @@ mod tests {
             name: "Craft AI".into(),
             description: String::new(),
             enabled: true,
-            connection: Connection::StreamableHttp {
-                url: "http://127.0.0.1:9876/mcp".into(),
-                headers: HashMap::new(),
-                auth: Some(Auth::None),
-            },
+            connection: Connection::StreamableHttp { url: "http://127.0.0.1:9876/mcp".into(), headers: HashMap::new(), auth: Some(Auth::None) },
         }];
         assert_eq!(bridge_port_current(&servers), Some(9876));
     }
@@ -825,11 +755,7 @@ mod tests {
             name: "Craft AI".into(),
             description: String::new(),
             enabled: true,
-            connection: Connection::StreamableHttp {
-                url: "http://127.0.0.1:12345/mcp".into(),
-                headers: HashMap::new(),
-                auth: Some(Auth::None),
-            },
+            connection: Connection::StreamableHttp { url: "http://127.0.0.1:12345/mcp".into(), headers: HashMap::new(), auth: Some(Auth::None) },
         }];
         assert!(bridge_enabled(&servers));
         servers[0].enabled = false;
@@ -848,10 +774,8 @@ mod tests {
         let Some(path) = mcp_config_path() else { return };
         let servers = load_servers(&path);
         // WordCraft and PdfCraft are installed here and already present as enabled stdio entries.
-        assert!(service_enabled(&servers, "WordCraft"),
-            "WordCraft entry not recognized (by name) or disabled");
-        assert!(service_enabled(&servers, "PdfCraft"),
-            "PdfCraft entry not recognized (by name) or disabled");
+        assert!(service_enabled(&servers, "WordCraft"), "WordCraft entry not recognized (by name) or disabled");
+        assert!(service_enabled(&servers, "PdfCraft"), "PdfCraft entry not recognized (by name) or disabled");
         // The unified bridge is present at the default port and enabled.
         assert_eq!(bridge_port_current(&servers), Some(BRIDGE_PORT));
         assert!(bridge_enabled(&servers), "bridge entry not recognized (by name) or disabled");

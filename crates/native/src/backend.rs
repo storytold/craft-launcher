@@ -9,8 +9,8 @@ use artcraft_launcher_core::catalog::{LAUNCHER, LAUNCHER_ID};
 use artcraft_launcher_core::feed::{Feed, FeedAnswer};
 use artcraft_launcher_core::platform::{Arch, Os, Platform, pick_asset};
 use artcraft_launcher_core::protocol::{
-    Backend, BackendOptions, CANCELLED, Capabilities, Command, Event, INSTALL_CANCELLED, JobPhase, LatestRelease, McpBridge, McpService, Origin, PAUSED, PausedDownload,
-    Source, VersionTrack,
+    Backend, BackendOptions, CANCELLED, Capabilities, Command, Event, INSTALL_CANCELLED, JobPhase, LatestRelease, McpBridge, McpService, Origin,
+    PAUSED, PausedDownload, Source, VersionTrack,
 };
 use artcraft_launcher_core::release::{Asset, Release};
 use artcraft_launcher_core::{CraftApp, Installed, PackageKind, SUITE, version};
@@ -1675,16 +1675,14 @@ fn mcp_state(shared: &Shared) -> Event {
         None => vec![],
     };
 
-    let services = detected.into_iter().map(|s| {
-        // Read the current on/off state before moving `name` into the struct.
-        let enabled = local_mcp::service_enabled(&existing, &s.name);
-        McpService {
-            id: s.id,
-            name: s.name,
-            command: s.cli_path.map(|c| c.display().to_string()).unwrap_or_default(),
-            enabled,
-        }
-    }).collect();
+    let services = detected
+        .into_iter()
+        .map(|s| {
+            // Read the current on/off state before moving `name` into the struct.
+            let enabled = local_mcp::service_enabled(&existing, &s.name);
+            McpService { id: s.id, name: s.name, command: s.cli_path.map(|c| c.display().to_string()).unwrap_or_default(), enabled }
+        })
+        .collect();
 
     let bridge_path = local_mcp::locate_bridge();
     Event::Mcp {

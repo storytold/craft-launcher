@@ -1,8 +1,8 @@
 //! The Settings dialog: a large card in the shape of the app page (see `sheet.rs`), with the
 //! groups of settings in boxes, two columns once the window is wide enough.
 
-use artcraft_launcher_core::{Os, PackageKind};
 use artcraft_launcher_core::protocol::{Command, McpService};
+use artcraft_launcher_core::{Os, PackageKind};
 use egui::{RichText, Ui, vec2};
 
 use crate::app::{Host, LauncherUi};
@@ -416,10 +416,7 @@ impl LauncherUi {
         ui.add_space(8.0);
         // The port field needs an accessible name for screen readers (kittest).
         let port_label = ui.label(tl!("Port"));
-        ui.add(egui::TextEdit::singleline(&mut self.bridge_port)
-            .id_salt("mcp-bridge-port")
-            .desired_width(72.0))
-            .labelled_by(port_label.id);
+        ui.add(egui::TextEdit::singleline(&mut self.bridge_port).id_salt("mcp-bridge-port").desired_width(72.0)).labelled_by(port_label.id);
         ui.label(RichText::new(self.bridge_status()).size(12.0).color(t.muted));
     }
 
