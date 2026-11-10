@@ -575,11 +575,7 @@ mod desktop_shortcut_tests {
         let file_name = target.file_name().and_then(|n| n.to_str()).expect("utf-8 file name");
         let work_dir = target.parent().and_then(|p| p.to_str()).expect("utf-8 parent");
 
-        assert!(
-            lnk_contains_utf16(&data, file_name),
-            "shortcut missing target file name {file_name:?} as UTF-16 ({} bytes)",
-            data.len()
-        );
+        assert!(lnk_contains_utf16(&data, file_name), "shortcut missing target file name {file_name:?} as UTF-16 ({} bytes)", data.len());
         assert!(
             lnk_contains_utf16(&data, work_dir) || lnk_contains_utf16(&data, &work_dir.replace('/', "\\")),
             "shortcut missing working directory {work_dir:?} as UTF-16 ({} bytes)",

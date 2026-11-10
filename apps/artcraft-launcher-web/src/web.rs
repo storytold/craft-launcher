@@ -320,12 +320,7 @@ impl Backend for WebBackend {
     }
 
     fn capabilities(&self) -> Capabilities {
-        Capabilities {
-            manage_apps: false,
-            reveal_label: "",
-            self_update: false,
-            desktop_shortcuts: false,
-        }
+        Capabilities { manage_apps: false, reveal_label: "", self_update: false, desktop_shortcuts: false }
     }
 
     fn platform(&self) -> Option<Platform> {
