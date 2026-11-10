@@ -105,6 +105,10 @@ pub struct Settings {
     /// Automatically download and install updates when found.
     #[serde(default)]
     pub auto_update: bool,
+    /// Update all apps together behind one permission prompt where the platform asks for one
+    /// (Linux and Windows); off, each app's update asks on its own.
+    #[serde(default)]
+    pub batch_updates: bool,
     /// Show a system notification when an installed app has an update.
     pub notify: bool,
     pub prereleases: bool,
@@ -253,6 +257,7 @@ impl Default for Settings {
             show_on_current_desktop: true,
             check_every: CheckEvery::Hour,
             auto_update: false,
+            batch_updates: false,
             notify: true,
             prereleases: false,
             versions: BTreeMap::new(),

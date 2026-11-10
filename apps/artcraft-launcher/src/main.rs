@@ -67,6 +67,17 @@ fn main() -> ExitCode {
         println!("artcraft-launcher {}", env!("CARGO_PKG_VERSION"));
         return ExitCode::SUCCESS;
     }
+    // An elevated copy running one batch of MSI installs ("update all" behind one permission
+    // prompt): no window, log file or single-instance claim, like the self-update helper above.
+    #[cfg(windows)]
+    if let Some(at) = args.iter().position(|a| a == "--install-msis")
+        && let Some(manifest) = args.get(at + 1)
+    {
+        return match artcraft_launcher_native::install::msi_session::run_elevated(std::path::Path::new(manifest)) {
+            Ok(()) => ExitCode::SUCCESS,
+            Err(_) => ExitCode::FAILURE,
+        };
+    }
     let mut hidden = args.iter().any(|a| a == login::HIDDEN_FLAG);
 
     let wake: Wake = Arc::new(OnceLock::new());
