@@ -4444,5 +4444,5 @@ fn grid_tile_sizes_shrink_the_cards() {
     h.state_mut().as_mut().unwrap().settings.tile_size = artcraft_launcher_ui_egui::settings::TileSize::Medium;
     h.run_steps(4);
     let medium = h.get_by_label("PhotoCraft details").rect().width();
-    assert!(medium > small && medium < large, "medium sits between: {medium}");
+    assert!(medium > small && medium < large, "small={small} medium={medium} large={large}");
 }

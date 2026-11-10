@@ -151,7 +151,6 @@ pub(crate) const HEADER_H: f32 = 48.0;
 /// Height of the footer bar.
 pub(crate) const FOOTER_H: f32 = 34.0;
 
-const CARD_MIN_W: f32 = 320.0;
 const CARD_H: f32 = 314.0;
 /// The app column's name and tagline sizes, to centre them on the icon.
 const TITLE_SIZE: f32 = 16.0;
