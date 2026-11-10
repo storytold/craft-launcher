@@ -1,4 +1,4 @@
-//! The Craft App Suite: the seventeen apps the launcher knows about.
+//! The Craft App Suite: the eighteen apps the launcher knows about.
 //!
 //! The list is data so a later version can fetch it from an API; [`SUITE`] is the built-in copy.
 //!
@@ -147,7 +147,7 @@ const fn app(
 }
 
 /// The Craft App Suite, in display order matching getartcraft.com, then the community apps:
-pub const SUITE: [CraftApp; 17] = [
+pub const SUITE: [CraftApp; 18] = [
     app("photocraft", "PhotoCraft", "Image editing", [[0x2f, 0x7b, 0xf5], [0x1a, 0x5b, 0xc4], [0x7f, 0xb0, 0xff]], "storytold/photocraft"),
     app("vectorcraft", "VectorCraft", "Vector illustration", [[0xe8, 0x57, 0x3f], [0xb8, 0x3a, 0x24], [0xff, 0x8a, 0x70]], "storytold/vectorcraft"),
     app(
@@ -262,6 +262,23 @@ pub const SUITE: [CraftApp; 17] = [
             "tangency-labs/solidcraft",
         )
     },
+    CraftApp {
+        kind: AppKind::Community,
+        publisher: "UCS Care Group",
+        msi_publisher: Some("MailCraft contributors"),
+        bundle: Some("io.github.billsecond.mailcraft"),
+        site: Some("https://mailcraft.work"),
+        // ponytail: its macOS builds are unsigned (per its README), so the launcher opens a copy
+        // that's there but installs nothing; set its Developer ID team here once it signs them.
+        mac_team: None,
+        ..app(
+            "mailcraft",
+            "MailCraft",
+            "Mail, calendar and contacts",
+            [[0x0f, 0x68, 0xf0], [0x06, 0x34, 0xc4], [0x8f, 0xbf, 0xff]],
+            "UCS-Care-Group/mailcraft",
+        )
+    },
 ];
 
 /// The Apple Developer team that signs every official Craft App and ArtCraft Launcher (Learning
@@ -324,6 +341,7 @@ pub fn app_icon_png(id: &str) -> Option<&'static [u8]> {
         "materialcraft" => include_bytes!("../../../assets/app-icons/materialcraft.png"),
         "craft-anything" => include_bytes!("../../../assets/app-icons/craft-anything.png"),
         "solidcraft" => include_bytes!("../../../assets/app-icons/solidcraft.png"),
+        "mailcraft" => include_bytes!("../../../assets/app-icons/mailcraft.png"),
         "cadcraft" => include_bytes!("../../../assets/app-icons/cadcraft.png"),
         "soundcraft" => include_bytes!("../../../assets/app-icons/soundcraft.png"),
         "figcraft" => include_bytes!("../../../assets/app-icons/figcraft.png"),
@@ -346,8 +364,8 @@ mod tests {
 
     /// Every catalog entry must have a distinct lookup key.
     #[test]
-    fn suite_has_seventeen_apps_with_unique_ids() {
-        assert_eq!(SUITE.len(), 17);
+    fn suite_has_eighteen_apps_with_unique_ids() {
+        assert_eq!(SUITE.len(), 18);
         let mut ids: Vec<_> = SUITE.iter().map(|a| a.id).collect();
         ids.sort_unstable();
         ids.dedup();
@@ -375,6 +393,17 @@ mod tests {
         assert!(sc.installs(crate::PackageKind::Dmg) && sc.installs(crate::PackageKind::Msi) && sc.installs(crate::PackageKind::Flatpak));
         assert_eq!(sc.mac_team, Some("G5QA5U5X2S"));
         assert_eq!(CraftApp::by_id("gridcraft").unwrap().mac_team, Some(ARTCRAFT_TEAM_ID));
+    }
+
+    #[test]
+    fn mailcraft_is_a_community_app_not_installed_on_mac() {
+        let mc = CraftApp::by_id("mailcraft").unwrap();
+        assert_eq!(mc.kind, AppKind::Community);
+        assert_eq!(mc.repo, "UCS-Care-Group/mailcraft");
+        assert_eq!(mc.bundle_id(), "io.github.billsecond.mailcraft");
+        assert_eq!(mc.website(), "https://mailcraft.work");
+        assert!(!mc.installs(crate::PackageKind::Dmg));
+        assert!(mc.installs(crate::PackageKind::Msi) && mc.installs(crate::PackageKind::Flatpak));
     }
 
     #[test]
