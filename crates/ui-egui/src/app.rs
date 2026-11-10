@@ -1002,6 +1002,7 @@ impl LauncherUi {
                     dir(artcraft_launcher_core::catalog::job_type(a.app.id).cmp(&artcraft_launcher_core::catalog::job_type(b.app.id)))
                         .then(a.app.name.cmp(b.app.name))
                 }
+                SortKey::InstalledFirst | SortKey::InstallFirst => a.app.name.cmp(b.app.name),
                 SortKey::Released => {
                     let at = |e: &AppEntry| e.release().and_then(|r| r.published_at);
                     let (x, y) = (at(a), at(b));
@@ -1014,7 +1015,12 @@ impl LauncherUi {
         // The grid shows installed apps first among the unpinned set, then the rest under
         // "Not installed" (the sort holds within each group; the sort is stable).
         if grid {
-            rest.sort_by_key(|(_, e)| !e.status(platform, manage).is_installed());
+            // The status sorts put the requested group first; the rest keep installed first.
+            let install_first = sort == SortKey::InstallFirst;
+            rest.sort_by_key(|(_, e)| {
+                let installed = e.status(platform, manage).is_installed();
+                if install_first { installed } else { !installed }
+            });
         }
         list = pinned;
         list.append(&mut rest);

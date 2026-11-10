@@ -366,10 +366,15 @@ pub fn hud_link(ui: &mut Ui, text: &str, url: &str) -> Response {
 
 /// A small square status badge: 10 px mono on the sunken surface, in `color`.
 pub fn badge(ui: &mut Ui, text: &str, color: Color32) -> Response {
+    badge_sized(ui, text, color, 10.0)
+}
+
+/// [`badge`] at a smaller font: for a card footer that must share its line with the date.
+pub fn badge_sized(ui: &mut Ui, text: &str, color: Color32, size: f32) -> Response {
     let t = Tokens::get(ui.ctx());
-    let galley = caps(ui, text, 10.0, theme::mono(), 1.0, color);
-    let (rect, resp) = ui.allocate_exact_size(vec2(galley.size().x + 12.0, 20.0), Sense::hover());
-    ui.painter().rect(rect, CornerRadius::ZERO, t.sunken, t.hairline(), egui::StrokeKind::Inside);
+    let galley = caps(ui, text, size, theme::mono(), 1.0, color);
+    let (rect, resp) = ui.allocate_exact_size(vec2(galley.size().x + 10.0, 19.0), Sense::hover());
+    ui.painter().rect(rect, CornerRadius::same(5), t.sunken, t.hairline(), egui::StrokeKind::Inside);
     paint_centred(ui, rect, galley, color);
     resp.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Label, true, text));
     resp
@@ -422,7 +427,7 @@ pub fn labelled_button(ui: &mut Ui, text: &str, label: &str, kind: Kind, width: 
     };
     // Disabled: the whole button at half strength, like the site's `opacity-50`.
     let fade = |c: Color32| if enabled { c } else { c.gamma_multiply(0.5) };
-    ui.painter().rect(rect, CornerRadius::ZERO, fade(fill), Stroke::new(stroke.width, fade(stroke.color)), egui::StrokeKind::Inside);
+    ui.painter().rect(rect, CornerRadius::same(CONTROL_RADIUS), fade(fill), Stroke::new(stroke.width, fade(stroke.color)), egui::StrokeKind::Inside);
     paint_centred(ui, rect, galley, fade(color));
     resp.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, enabled, label));
     if enabled { resp.on_hover_cursor(egui::CursorIcon::PointingHand) } else { resp }
@@ -457,6 +462,9 @@ pub enum Split<'a> {
     /// language with long words in a narrow slot), where the place has the height to spare.
     Stacked { top: &'a str, bottom: &'a str, width: f32 },
 }
+
+/// The corner radius shared by buttons, badges and other boxed controls.
+pub const CONTROL_RADIUS: u8 = 7;
 
 /// The height of a [`Split::Stacked`] button: two buttons and the seam between them.
 pub const STACKED_H: f32 = 2.0 * theme::CONTROL_H + SPLIT_SEAM;
@@ -763,10 +771,9 @@ pub fn glyph_button(ui: &mut Ui, glyph: Glyph, tip: &str) -> Response {
 
 /// The "…" button that opens an app's menu: an outlined square like [`glyph_button`]. The visible
 /// dots are not a name a screen reader can use, so the button is named after the app.
-pub fn more_menu<R>(ui: &mut Ui, app_name: &str, add_contents: impl FnOnce(&mut Ui) -> R) {
+pub fn more_menu<R>(ui: &mut Ui, app_name: &str, width: f32, add_contents: impl FnOnce(&mut Ui) -> R) {
     let t = Tokens::get(ui.ctx());
-    let btn =
-        egui::Button::new(RichText::new("…").size(15.0).color(t.muted)).fill(Color32::TRANSPARENT).min_size(vec2(theme::CONTROL_H, theme::CONTROL_H));
+    let btn = egui::Button::new(RichText::new("…").size(15.0).color(t.muted)).fill(Color32::TRANSPARENT).min_size(vec2(width, theme::CONTROL_H));
     let (response, _) = egui::containers::menu::MenuButton::from_button(btn).ui(ui, |ui| {
         ui.set_min_width(200.0);
         add_contents(ui)

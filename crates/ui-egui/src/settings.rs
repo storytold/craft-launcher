@@ -31,6 +31,15 @@ impl TileSize {
             Self::Large => 320.0,
         }
     }
+
+    /// Height of a card at this density: stacked identity plus four body lines and the footer.
+    pub fn card_height(self) -> f32 {
+        match self {
+            Self::Small => 384.0,
+            Self::Medium => 372.0,
+            Self::Large => 384.0,
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -70,6 +79,10 @@ pub enum SortKey {
     Frequent,
     /// The app's primary job type (photo, design, motion, audio, 3D, documents, learning).
     JobType,
+    /// Installed apps first, then the ones that still need an Install.
+    InstalledFirst,
+    /// Apps that still need an Install first, then the installed ones.
+    InstallFirst,
 }
 
 impl SortKey {
