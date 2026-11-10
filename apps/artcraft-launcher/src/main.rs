@@ -157,9 +157,15 @@ fn main() -> ExitCode {
                 // Stop answering other starts first: while the dialog is open, a second start
                 // would otherwise defer to this launcher and exit with nothing on screen. Now it
                 // gets no answer and starts on its own (`Answering::stop`).
-                answering.stop();
-                // The tray icon and the rest go before the dialog, not after it.
-                drop(launcher);
+                // Not while something is installing: those workers go on during the dialog, and a
+                // second launcher beside them could start the same install or overwrite the
+                // record of installed apps. That start defers to this one instead, as a newer
+                // start does to a busy launcher (`single_instance`).
+                if !launcher.ui.busy() {
+                    answering.stop();
+                    // The tray icon and the rest go before the dialog, not after it.
+                    drop(launcher);
+                }
                 // Say why instead of exiting silently; also logs it (`start_failure`).
                 start_failure::report(&e);
                 return ExitCode::FAILURE;
