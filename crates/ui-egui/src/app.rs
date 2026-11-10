@@ -622,6 +622,9 @@ impl LauncherUi {
             Event::CheckFinished { at, source, rate_limited_until } => {
                 self.checking = false;
                 self.settings.last_check = Some(at);
+                if source != Source::Cache {
+                    self.settings.last_fresh_check = Some(at);
+                }
                 self.last_source = Some(source);
                 self.rate_limited_until = rate_limited_until;
                 true

@@ -123,6 +123,8 @@ pub struct Settings {
     pub notified: BTreeMap<String, String>,
     /// Unix seconds of the last finished check.
     pub last_check: Option<i64>,
+    /// Unix seconds of the last check that reached a server (not just saved answers).
+    pub last_fresh_check: Option<i64>,
     /// Hide community apps from the catalog without changing their installation or update settings.
     pub hide_community_apps: bool,
     /// Catalog ids of apps hidden from the main lists (`photocraft`, …).
@@ -266,6 +268,7 @@ impl Default for Settings {
             dismissed_notices: std::collections::BTreeSet::new(),
             notified: BTreeMap::new(),
             last_check: None,
+            last_fresh_check: None,
             hide_community_apps: false,
             hidden: std::collections::BTreeSet::new(),
             tray_hint_shown: false,
