@@ -320,6 +320,11 @@ pub trait Backend {
     }
     /// Unix seconds now.
     fn now(&self) -> i64;
+    /// Where `app` is already served as a web app (a self-hosted instance), if anywhere. Where
+    /// there is one, the main button opens it instead of offering a download.
+    fn web_url(&self, _app: &str) -> Option<String> {
+        None
+    }
 }
 
 #[cfg(test)]
