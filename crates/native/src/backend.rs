@@ -2109,6 +2109,7 @@ mod tests {
             installed_at: 1,
             files: vec![],
             needs_root: false,
+            sha256: None,
         };
         let msi_options = BackendOptions { kinds: vec![PackageKind::Msi], ..Default::default() };
         assert_eq!(planned_asset(app, &release, platform, &msi_options, Some(&launcher), Some(&record)).unwrap().1, PackageKind::PortableZip);

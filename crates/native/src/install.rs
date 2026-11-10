@@ -276,7 +276,7 @@ pub fn install_at(
         PackageKind::AppImage => {
             linux::install_appimage(&file, &asset.name, destination.as_deref(), previous, job.replace).map(|(path, replaced)| {
                 let files = linux::integrate(app, &path, &replaced, previous);
-                Some(record(&version, kind, path, files, false))
+                Some(Record { sha256: Some(sha256.clone()), ..record(&version, kind, path, files, false) })
             })
         }
         #[cfg(target_os = "freebsd")]
@@ -544,7 +544,7 @@ pub fn download_path(paths: &Paths, asset: &Asset) -> PathBuf {
 
 #[allow(dead_code)]
 fn record(version: &str, kind: PackageKind, path: PathBuf, files: Vec<PathBuf>, needs_root: bool) -> Record {
-    Record { version: version.to_string(), kind, path, installed_at: crate::now(), files, needs_root }
+    Record { version: version.to_string(), kind, path, installed_at: crate::now(), files, needs_root, sha256: None }
 }
 
 /// The package format to install `app` with: the format of the copy that's there (an update
@@ -1477,11 +1477,32 @@ pub(crate) mod linux {
         std::fs::rename(&partial, &dest).map_err(|e| format!("couldn't put the AppImage in place ({e})"))?;
         let mut removed = Vec::new();
         if let Some(old) = previous.filter(|r| r.kind == PackageKind::AppImage && r.path != dest)
+            && still_installed_copy(old)
             && std::fs::remove_file(&old.path).is_ok()
         {
             removed.push(old.path.clone());
         }
         Ok((dest, removed))
+    }
+
+    /// Whether the file at an earlier AppImage record's path is still the copy the launcher put
+    /// there. The user may have moved it and put something else at that path since, and that
+    /// file isn't the launcher's to delete. A record that kept the AppImage's SHA-256 must match
+    /// it; an older record without one accepts a file no newer than the record.
+    fn still_installed_copy(old: &Record) -> bool {
+        let Ok(meta) = std::fs::symlink_metadata(&old.path) else { return false };
+        if !meta.is_file() {
+            return false;
+        }
+        match &old.sha256 {
+            Some(expected) => crate::http::sha256_file(&old.path).is_ok_and(|actual| actual.eq_ignore_ascii_case(expected)),
+            None => meta
+                .modified()
+                .ok()
+                .and_then(|time| time.duration_since(std::time::UNIX_EPOCH).ok())
+                .and_then(|age| i64::try_from(age.as_secs()).ok())
+                .is_some_and(|modified| modified <= old.installed_at),
+        }
     }
 
     /// Unpacks a release tarball (`bin/<app>`, `share/…`) into `<data>/apps/<app>`, a folder
@@ -2669,6 +2690,40 @@ mod tests {
         assert_eq!(std::fs::read(&unrelated).unwrap(), b"user copy");
     }
 
+    /// The user moved the old AppImage away and something else now sits at its recorded path:
+    /// the update must leave that file alone, whether the record kept a checksum or predates it.
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn appimage_update_keeps_a_different_file_now_at_the_old_recorded_path() {
+        let dir = tempfile::tempdir().unwrap();
+        let old_path = dir.path().join("old/photocraft-1.0.0-linux-x86_64.AppImage");
+        let new_dir = dir.path().join("new");
+        std::fs::create_dir_all(old_path.parent().unwrap()).unwrap();
+        std::fs::create_dir_all(&new_dir).unwrap();
+        let download = dir.path().join("download");
+        std::fs::write(&download, b"new program").unwrap();
+        let original_sha256 = crate::http::sha256_file(&download).unwrap();
+        std::fs::write(&old_path, b"unrelated replacement").unwrap();
+        let legacy = Record { installed_at: 0, ..record("1.0.0", PackageKind::AppImage, old_path.clone(), vec![], false) };
+        let hashed = Record { sha256: Some(original_sha256.clone()), ..record("1.0.0", PackageKind::AppImage, old_path.clone(), vec![], false) };
+        for (n, previous) in [legacy, hashed].iter().enumerate() {
+            let name = format!("photocraft-2.0.{n}-linux-x86_64.AppImage");
+            let (_, removed) = linux::install_appimage(&download, &name, Some(&new_dir), Some(previous), false).unwrap();
+            assert!(removed.is_empty());
+            assert_eq!(std::fs::read(&old_path).unwrap(), b"unrelated replacement");
+        }
+        // The launcher's own copy, still byte-for-byte what it installed, is retired as before.
+        std::fs::write(&old_path, b"new program").unwrap();
+        let ours = Record {
+            sha256: Some(original_sha256.to_uppercase()),
+            installed_at: 0,
+            ..record("1.0.0", PackageKind::AppImage, old_path.clone(), vec![], false)
+        };
+        let (_, removed) = linux::install_appimage(&download, "photocraft-2.1.0-linux-x86_64.AppImage", Some(&new_dir), Some(&ours), false).unwrap();
+        assert_eq!(removed, vec![old_path.clone()]);
+        assert!(!old_path.exists());
+    }
+
     #[cfg(target_os = "linux")]
     #[test]
     fn an_appimage_writes_over_a_users_file_only_when_asked_to() {
@@ -2875,7 +2930,15 @@ mod tests {
         let (release, asset) = (Release::default(), Asset::default());
         let reinstall = Some(Downgrade::Reinstall { previous: &release, asset: &asset });
         let keep = Some(Downgrade::KeepOldCopy);
-        let record = |kind| Record { version: "0.5.0".into(), kind, path: PathBuf::new(), installed_at: 0, files: Vec::new(), needs_root: false };
+        let record = |kind| Record {
+            version: "0.5.0".into(),
+            kind,
+            path: PathBuf::new(),
+            installed_at: 0,
+            files: Vec::new(),
+            needs_root: false,
+            sha256: None,
+        };
         let (appimage, tarball) = (record(PackageKind::AppImage), record(PackageKind::TarGz));
         // A macOS bundle over a Mac app, or an AppImage over one the launcher installed, keeps its
         // old copy until the new one is in place.
@@ -2917,6 +2980,7 @@ mod tests {
             installed_at: 0,
             files: Vec::new(),
             needs_root: false,
+            sha256: None,
         };
         let cases = [
             (
