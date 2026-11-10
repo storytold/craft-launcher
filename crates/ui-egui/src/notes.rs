@@ -229,7 +229,7 @@ fn show_lines(ui: &mut Ui, notes: &str, scale: f32) {
     if !rest.is_empty() {
         let hidden = rest.iter().filter(|l| matches!(l, Line::Bullet(..))).count();
         let label = crate::i18n::fmt(tl!("Show {n} more changes"), &[("n", &hidden.to_string())]);
-        egui::CollapsingHeader::new(label).id_salt(ui.id().with(("more-notes", notes.len()))).show(ui, |ui| {
+        egui::CollapsingHeader::new(label).id_salt(ui.scope_id().with(("more-notes", notes.len()))).show(ui, |ui| {
             for line in rest {
                 draw(ui, line, &t, scale);
             }
@@ -297,7 +297,7 @@ fn draw(ui: &mut Ui, line: &Line<'_>, t: &Tokens, scale: f32) {
                 return;
             }
             ui.add_space(4.0);
-            egui::Grid::new(ui.id().with("notes-table")).striped(true).spacing([8.0 * scale, 2.0 * scale]).show(ui, |ui| {
+            egui::Grid::new(ui.scope_id().with("notes-table")).striped(true).spacing([8.0 * scale, 2.0 * scale]).show(ui, |ui| {
                 for (i, cell) in cells.iter().enumerate() {
                     let text = if marked_up(cell) { without_markup(cell) } else { (*cell).to_string() };
                     let color = if i == 0 { t.ink } else { t.muted };
