@@ -15,8 +15,8 @@
 
 <p align="center">
   <b>One place to install, update and open every app in the Craft App Suite, rebuilt in pure Rust.</b><br>
-  PhotoCraft, LightCraft, FilmCraft, DesignCraft, VectorCraft, PdfCraft, EffectCraft, WordCraft,<br>
-  DeckCraft, GridCraft, CADCraft, SoundCraft, FigCraft, Craft Anything, TextureCraft, MaterialCraft and the community app SolidCraft: the right build for your computer, kept up to date.
+  PhotoCraft, LightCraft, FilmCraft, DesignCraft, VectorCraft, PdfCraft, EffectCraft, AniCraft, WordCraft,<br>
+  DeckCraft, GridCraft, CADCraft, SoundCraft, FigCraft, Craft Anything, TextureCraft, MaterialCraft and the community apps SolidCraft and MailCraft: the right build for your computer, kept up to date.
 </p>
 
 <p align="center">
@@ -272,6 +272,7 @@ stand on its own.
 | <img src="https://raw.githubusercontent.com/storytold/lightcraft/main/assets/app-icon/hicolor/64x64/apps/ai.storyteller.lightcraft.png" alt="" width="32" height="32">                     | **LightCraft**      | Photo library and raw development                     | [GitHub](https://github.com/storytold/lightcraft)     | [Website](https://getartcraft.com/apps/lightcraft)         |
 | <img src="https://raw.githubusercontent.com/storytold/pdfcraft/main/assets/app-icon/hicolor/64x64/apps/ai.storyteller.pdfcraft.png" alt="" width="32" height="32">                         | **PdfCraft**        | Reading, organizing and protecting PDFs               | [GitHub](https://github.com/storytold/pdfcraft)       | [Website](https://getartcraft.com/apps/pdfcraft)           |
 | <img src="https://raw.githubusercontent.com/storytold/effectcraft/main/assets/app-icon/hicolor/64x64/apps/ai.storyteller.effectcraft.png" alt="" width="32" height="32">                   | **EffectCraft**     | Motion graphics and visual effects                    | [GitHub](https://github.com/storytold/effectcraft)    | [Website](https://getartcraft.com/apps/effectcraft)        |
+| <img src="https://raw.githubusercontent.com/storytold/AniCraft/main/assets/app-icon/hicolor/64x64/apps/ai.storyteller.anicraft.png" alt="" width="32" height="32">                         | **AniCraft**        | 2D vector animation                                   | [GitHub](https://github.com/storytold/AniCraft)       | [Project page](https://github.com/storytold/anicraft)     |
 | <img src="https://raw.githubusercontent.com/storytold/designcraft/main/assets/app-icon/hicolor/64x64/apps/ai.storyteller.designcraft.png" alt="" width="32" height="32">                   | **DesignCraft**     | Page layout and publishing                            | [GitHub](https://github.com/storytold/designcraft)    | [Website](https://getartcraft.com/apps/designcraft)        |
 | <img src="https://raw.githubusercontent.com/storytold/figcraft/main/assets/app-icon/hicolor/64x64/apps/ai.storyteller.figcraft.png" alt="" width="32" height="32">                         | **FigCraft**        | Interface design and prototyping                      | [GitHub](https://github.com/storytold/figcraft)       | [Website](https://getartcraft.com/apps/figcraft)           |
 | <img src="https://raw.githubusercontent.com/storytold/wordcraft/main/assets/app-icon/hicolor/64x64/apps/ai.storyteller.wordcraft.png" alt="" width="32" height="32">                       | **WordCraft**       | Word processing and documents                         | [GitHub](https://github.com/storytold/wordcraft)      | [Website](https://getartcraft.com/apps/wordcraft)          |
@@ -283,6 +284,7 @@ stand on its own.
 | <img src="https://raw.githubusercontent.com/storytold/materialcraft/main/assets/app-icon/hicolor/64x64/apps/ai.storyteller.materialcraft.png" alt="" width="32" height="32">               | **MaterialCraft**   | Procedural material design                            | [GitHub](https://github.com/storytold/materialcraft)  | [Project page](https://github.com/storytold/materialcraft) |
 | <img src="https://raw.githubusercontent.com/storytold/craft-anything/main/assets/app-icon/hicolor/64x64/apps/ai.storyteller.craft-anything.png" alt="" width="32" height="32">             | **Craft Anything**  | See how any software works, then build your own       | [GitHub](https://github.com/storytold/craft-anything) | [Website](https://getartcraft.com/apps/craft-anything)     |
 | <img src="https://raw.githubusercontent.com/tangency-labs/solidcraft/main/assets/icons/app/linux/exports/hicolor/64x64/apps/io.tangencylabs.solidcraft.png" alt="" width="32" height="32"> | **SolidCraft**      | Parametric 3D CAD by Tangency Labs (community app)    | [GitHub](https://github.com/tangency-labs/solidcraft) |                                                            |
+| <img src="https://raw.githubusercontent.com/UCS-Care-Group/mailcraft/main/assets/app-icon/hicolor/64x64/apps/io.github.billsecond.mailcraft.png" alt="" width="32" height="32"> | **MailCraft** | Mail, calendar and contacts by UCS Care Group (community app) | [GitHub](https://github.com/UCS-Care-Group/mailcraft) | [Website](https://mailcraft.work) |
 
 <br>
 

@@ -81,6 +81,7 @@
 	ArtCraft Launcher {version}	ArtCraft Launcher {version}
 	Only when I ask	仅手动检查
 	Automatically download and install updates	自动下载并安装更新
+	Ask for permission once when updating all apps	更新所有应用时仅请求一次授权
 	Notify me when an installed app has an update	已安装应用有更新时通知我
 	Include pre-releases (betas and release candidates)	包含预发布版本（测试版和候选版）
 	Installing on Linux	Linux 安装设置
@@ -264,6 +265,7 @@ deckcraft	Presentations and slide shows	演示文稿与幻灯片
 gridcraft	Spreadsheets and data	电子表格与数据处理
 craft-anything	Find out how any software works, then craft your own	了解任何软件的工作原理，然后打造你自己的版本
 solidcraft	Parametric 3D CAD	参数化三维 CAD
+mailcraft	Mail, calendar and contacts	邮件、日历和联系人
 cadcraft	Computer-aided design and drafting	计算机辅助设计与制图
 soundcraft	Recording, editing and mixing audio	音频录制、编辑与混音
 figcraft	Interface design and prototyping	界面设计与原型制作
@@ -340,6 +342,8 @@ figcraft	Interface design and prototyping	界面设计与原型制作
 @msg	{name} installed: {version} (this release publishes no checksum, so only its size was checked)	{name} 已安装：{version}（此版本未发布校验和，因此只检查了文件大小）
 @msg	{name} was removed	{name} 已卸载
 @msg	{name} is running. Quit it, then try again.	{name} 正在运行。请先退出，然后重试。
+
+	Download size: {size}	下载大小：{size}
 @msg	{name} was installed from the {repo} repository or the AUR ({pkg}). Update it with {cmd} or sudo pacman -Syu	{name} 是从 {repo} 软件仓库或 AUR 安装的（{pkg}）。请使用 {cmd} 或 sudo pacman -Syu 更新。
 @msg	{name} was installed from the {repo} repository or the AUR ({pkg}). Update it with your AUR helper (for example: yay -S {pkg}) or sudo pacman -Syu	{name} 是从 {repo} 软件仓库或 AUR 安装的（{pkg}）。请使用您的 AUR 助手（例如：yay -S {pkg}）或 sudo pacman -Syu 更新。
 @msg	{name} was installed from the AUR ({pkg}). Update it with {cmd}	{name} 是从 AUR 安装的（{pkg}）。请使用 {cmd} 更新。
@@ -401,3 +405,10 @@ materialcraft	Preview materials in 2D and on 3D models.	在二维视图和三维
 	Migrate Flatpak bundles to ArtCraft OCI (experimental)	将 Flatpak 软件包迁移到 ArtCraft OCI（实验性）
 	On update, switch first party apps when the matching package is available. Otherwise, keep using bundles.	更新时，如果有对应的软件包，则迁移 ArtCraft 官方应用；否则继续使用独立软件包。
 	The OCI repository is a preview with GPG verification disabled.	OCI 仓库目前处于预览阶段，GPG 验证已禁用。
+anicraft	2D vector animation	二维矢量动画
+anicraft	Vector animation on a timeline you know.	在你熟悉的时间线上制作矢量动画。
+anicraft	Open-source 2D vector animation, built in pure Rust.	纯 Rust 构建的开源二维矢量动画。
+anicraft	Familiar by design	布局熟悉自然
+anicraft	Stage, tools, timeline, layers, keyframes, Properties and Library sit where animators expect them, with onion skinning for in-betweening.	舞台、工具、时间线、图层、关键帧、“属性”和“库”均位于动画师熟悉的直观位置，并配有洋葱皮功能。
+anicraft	Tweens that ease	流畅补间缓动
+anicraft	Classic tweens with eight easing presets and custom ease curves, plus shape tweens that morph one vector contour into another.	经典补间具备八种缓动预设与自定义曲线，外加将一种矢量轮廓变换为另一种的形状补间。

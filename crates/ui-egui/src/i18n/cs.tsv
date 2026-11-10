@@ -86,6 +86,7 @@
 	ArtCraft Launcher {version}	ArtCraft Launcher {version}
 	Only when I ask	Pouze na vyžádání
 	Automatically download and install updates	Automaticky stahovat a instalovat aktualizace
+	Ask for permission once when updating all apps	Při aktualizaci všech aplikací požádat o oprávnění pouze jednou
 	Notify me when an installed app has an update	Upozornit, když má nainstalovaná aplikace aktualizaci
 	Include pre-releases (betas and release candidates)	Zahrnout předběžná vydání (beta verze a kandidáty na vydání)
 	Installing on Linux	Instalace v Linuxu
@@ -177,6 +178,7 @@ deckcraft	Presentations and slide shows	Prezentace a promítání snímků
 gridcraft	Spreadsheets and data	Tabulky a data
 craft-anything	Find out how any software works, then craft your own	Zjistěte, jak funguje jakýkoli software, a vytvořte si vlastní
 solidcraft	Parametric 3D CAD	Parametrické 3D CAD
+mailcraft	Mail, calendar and contacts	Pošta, kalendář a kontakty
 cadcraft	Computer-aided design and drafting	Počítačem podporované navrhování a kreslení
 soundcraft	Recording, editing and mixing audio	Nahrávání, úpravy a mixování zvuku
 figcraft	Interface design and prototyping	Návrh rozhraní a prototypování
@@ -344,6 +346,8 @@ filter	Installed	Nainstalováno
 	ArtCraft on GitHub	ArtCraft na GitHubu
 	Join the ArtCraft Discord	Připojit se na ArtCraft Discord
 @plural	ArtCraft Launcher · {n} update available|ArtCraft Launcher · {n} updates available	ArtCraft Launcher · {n} dostupná aktualizace|ArtCraft Launcher · {n} dostupné aktualizace|ArtCraft Launcher · {n} dostupných aktualizací
+
+	Download size: {size}	Velikost ke stažení: {size}
 	Install folder	Instalační složka
 	Default install folder	Výchozí instalační složka
 	System default	Výchozí nastavení systému
@@ -401,3 +405,10 @@ materialcraft	Preview materials in 2D and on 3D models.	Prohlížejte materiály
 	Migrate Flatpak bundles to ArtCraft OCI (experimental)	Převést balíčky Flatpak na ArtCraft OCI (experimentální)
 	On update, switch first party apps when the matching package is available. Otherwise, keep using bundles.	Při aktualizaci převést aplikace ArtCraft, pokud je dostupný odpovídající balíček. Jinak nadále používat samostatné balíčky.
 	The OCI repository is a preview with GPG verification disabled.	Repozitář OCI je předběžná verze s vypnutým ověřováním GPG.
+anicraft	2D vector animation	2D vektorová animace
+anicraft	Vector animation on a timeline you know.	Vektorová animace na známé časové ose.
+anicraft	Open-source 2D vector animation, built in pure Rust.	Open-source 2D vektorová animace vytvořená v čistém Rustu.
+anicraft	Familiar by design	Navrženo tak, jak jste zvyklí
+anicraft	Stage, tools, timeline, layers, keyframes, Properties and Library sit where animators expect them, with onion skinning for in-betweening.	Scéna, nástroje, časová osa, vrstvy, klíčové snímky, Vlastnosti i Knihovna jsou tam, kde je animátoři čekají, včetně cibulového pauzáku.
+anicraft	Tweens that ease	Plynulé mezilehlé pohyby (tweens)
+anicraft	Classic tweens with eight easing presets and custom ease curves, plus shape tweens that morph one vector contour into another.	Klasické mezilehlé pohyby s osmi předvolbami zpomalení a vlastními křivkami, plus tvarové mezilehlé pohyby pro morphing.

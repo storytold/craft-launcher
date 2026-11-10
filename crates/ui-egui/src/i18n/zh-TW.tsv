@@ -75,6 +75,7 @@
 	ArtCraft Launcher {version}	ArtCraft Launcher {version}
 	Only when I ask	僅在我要求時
 	Automatically download and install updates	自動下載並安裝更新
+	Ask for permission once when updating all apps	更新所有應用程式時僅請求一次權限
 	Notify me when an installed app has an update	已安裝的應用程式有更新時通知我
 	Include pre-releases (betas and release candidates)	包含預先發行版（Beta 版與候選發行版）
 	Installing on Linux	在 Linux 上安裝
@@ -265,6 +266,7 @@ deckcraft	Presentations and slide shows	簡報與幻燈片放映
 gridcraft	Spreadsheets and data	試算表與資料
 craft-anything	Find out how any software works, then craft your own	了解任何軟體如何運作，然後打造屬於你自己的版本
 solidcraft	Parametric 3D CAD	參數式 3D CAD
+mailcraft	Mail, calendar and contacts	郵件、行事曆與聯絡人
 cadcraft	Computer-aided design and drafting	電腦輔助設計與製圖
 soundcraft	Recording, editing and mixing audio	錄音、剪輯與混音
 figcraft	Interface design and prototyping	介面設計與原型製作
@@ -393,3 +395,11 @@ materialcraft	Node graphs	節點圖
 materialcraft	Combine noises, patterns and filters.	組合雜訊、圖樣與濾鏡。
 materialcraft	Live previews	即時預覽
 materialcraft	Preview materials in 2D and on 3D models.	在 2D 與 3D 模型上預覽材質。
+	Download size: {size}	下載大小：{size}
+anicraft	2D vector animation	二維向量動畫
+anicraft	Vector animation on a timeline you know.	在您熟悉的時間軸上製作向量動畫。
+anicraft	Open-source 2D vector animation, built in pure Rust.	純 Rust 建構的開源二維向量動畫。
+anicraft	Familiar by design	設計直觀熟悉
+anicraft	Stage, tools, timeline, layers, keyframes, Properties and Library sit where animators expect them, with onion skinning for in-betweening.	舞台、工具、時間軸、圖層、關鍵影格、「屬性」與「元件庫」皆位於動畫師熟悉的位置，並具備洋蔥皮功能。
+anicraft	Tweens that ease	平滑補間緩動
+anicraft	Classic tweens with eight easing presets and custom ease curves, plus shape tweens that morph one vector contour into another.	傳統補間具備八種緩動預設與自訂曲線，並支援變換向量外框的形狀補間。

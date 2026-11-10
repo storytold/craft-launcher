@@ -101,6 +101,7 @@
 	ArtCraft Launcher {version}	ArtCraft Launcher {version}
 	Only when I ask	手動で確認したときのみ
 	Automatically download and install updates	更新を自動でダウンロードしてインストール
+	Ask for permission once when updating all apps	すべてのアプリを更新するときは権限を一度だけ求める
 	Notify me when an installed app has an update	インストール済みアプリに更新があるときに通知する
 	Include pre-releases (betas and release candidates)	プレリリース（ベータ版とリリース候補）を含める
 	Installing on Linux	Linux へのインストール
@@ -197,6 +198,7 @@ deckcraft	Presentations and slide shows	プレゼンテーションとスライ�
 gridcraft	Spreadsheets and data	表計算とデータ
 craft-anything	Find out how any software works, then craft your own	あらゆるソフトウェアの仕組みを知り、自分だけのものを作る
 solidcraft	Parametric 3D CAD	パラメトリック3D CAD
+mailcraft	Mail, calendar and contacts	メール、カレンダー、連絡先
 cadcraft	Computer-aided design and drafting	コンピューター支援設計と製図
 soundcraft	Recording, editing and mixing audio	オーディオの録音、編集、ミックス
 figcraft	Interface design and prototyping	インターフェースデザインとプロトタイピング
@@ -379,6 +381,8 @@ filter	Installed	インストール済み
 	ArtCraft on GitHub	GitHub の ArtCraft
 	Join the ArtCraft Discord	ArtCraft Discord に参加
 @plural	ArtCraft Launcher · {n} update available|ArtCraft Launcher · {n} updates available	ArtCraft Launcher · {n} 件の更新があります
+
+	Download size: {size}	ダウンロードサイズ: {size}
 	Install folder	インストール先フォルダー
 	Default install folder	既定のインストール先フォルダー
 	System default	システムの既定
@@ -436,3 +440,10 @@ materialcraft	Preview materials in 2D and on 3D models.	マテリアルを2Dと3
 	Migrate Flatpak bundles to ArtCraft OCI (experimental)	Flatpak バンドルを ArtCraft OCI に移行する（実験的）
 	On update, switch first party apps when the matching package is available. Otherwise, keep using bundles.	更新時に対応するパッケージがあれば ArtCraft 公式アプリを移行します。なければ引き続きバンドルを使用します。
 	The OCI repository is a preview with GPG verification disabled.	OCI リポジトリはプレビュー版で、GPG 検証は無効になっています。
+anicraft	2D vector animation	2Dベクターアニメーション
+anicraft	Vector animation on a timeline you know.	慣れ親しんだタイムラインでのベクターアニメーション。
+anicraft	Open-source 2D vector animation, built in pure Rust.	ピュアRustで構築されたオープンソースの2Dベクターアニメーション。
+anicraft	Familiar by design	直感的なデザイン
+anicraft	Stage, tools, timeline, layers, keyframes, Properties and Library sit where animators expect them, with onion skinning for in-betweening.	ステージ、ツール、タイムライン、レイヤー、キーフレーム、プロパティ、ライブラリが期待通りの場所に配置され、オニオンスキンも備えています。
+anicraft	Tweens that ease	滑らかなトゥイーン
+anicraft	Classic tweens with eight easing presets and custom ease curves, plus shape tweens that morph one vector contour into another.	8つのイージングプリセットとカスタム曲線を持つクラシックトゥイーン、そしてシェイプトゥイーンに対応。

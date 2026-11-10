@@ -87,6 +87,7 @@
 	ArtCraft Launcher {version}	ArtCraft Launcher {version}
 	Only when I ask	Apenas quando eu pedir
 	Automatically download and install updates	Baixar e instalar atualizações automaticamente
+	Ask for permission once when updating all apps	Pedir permissão uma única vez ao atualizar todos os aplicativos
 	Notify me when an installed app has an update	Notificar quando um aplicativo instalado tiver atualização
 	Include pre-releases (betas and release candidates)	Incluir versões de pré-lançamento (betas e RC)
 	Installing on Linux	Instalação no Linux
@@ -183,6 +184,7 @@ deckcraft	Presentations and slide shows	Apresentações e slides
 gridcraft	Spreadsheets and data	Planilhas e dados
 craft-anything	Find out how any software works, then craft your own	Descubra como qualquer software funciona e crie o seu
 solidcraft	Parametric 3D CAD	CAD 3D paramétrico
+mailcraft	Mail, calendar and contacts	E-mail, agenda e contatos
 cadcraft	Computer-aided design and drafting	Desenho técnico e projeto assistido por computador (CAD)
 soundcraft	Recording, editing and mixing audio	Gravação, edição e mixagem de áudio
 figcraft	Interface design and prototyping	Design de interfaces e prototipagem
@@ -364,6 +366,8 @@ filter	Installed	Instalados
 	Loading pictures…	Carregando imagens…
 	Pictures couldn't be loaded. Reopen this page to try again.	Não foi possível carregar as imagens. Abra a página novamente para tentar de novo.
 @plural	ArtCraft Launcher · {n} update available|ArtCraft Launcher · {n} updates available	ArtCraft Launcher · {n} atualização disponível|ArtCraft Launcher · {n} atualizações disponíveis
+
+	Download size: {size}	Tamanho do download: {size}
 	Install folder	Pasta de instalação
 	Default install folder	Pasta de instalação padrão
 	System default	Padrão do sistema
@@ -421,3 +425,10 @@ materialcraft	Preview materials in 2D and on 3D models.	Visualize materiais em 2
 	Migrate Flatpak bundles to ArtCraft OCI (experimental)	Migrar pacotes Flatpak para ArtCraft OCI (experimental)
 	On update, switch first party apps when the matching package is available. Otherwise, keep using bundles.	Ao atualizar, migrar os aplicativos da ArtCraft quando o pacote correspondente estiver disponível. Caso contrário, continuar usando pacotes independentes.
 	The OCI repository is a preview with GPG verification disabled.	O repositório OCI é uma prévia com a verificação GPG desativada.
+anicraft	2D vector animation	Animação vetorial 2D
+anicraft	Vector animation on a timeline you know.	Animação vetorial em uma linha do tempo familiar.
+anicraft	Open-source 2D vector animation, built in pure Rust.	Animação vetorial 2D de código aberto, criada em Rust puro.
+anicraft	Familiar by design	Design familiar
+anicraft	Stage, tools, timeline, layers, keyframes, Properties and Library sit where animators expect them, with onion skinning for in-betweening.	Palco, ferramentas, linha do tempo, camadas, quadros-chave, Propriedades e Biblioteca onde os animadores esperam, com papel vegetal.
+anicraft	Tweens that ease	Interpolações suaves
+anicraft	Classic tweens with eight easing presets and custom ease curves, plus shape tweens that morph one vector contour into another.	Interpolações clássicas com oito predefinições de suavização e curvas personalizadas, além de interpolação de forma.

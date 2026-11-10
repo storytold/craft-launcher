@@ -99,6 +99,7 @@
 	ArtCraft Launcher {version}	ArtCraft Launcher {version}
 	Only when I ask	Csak kézi kereséskor
 	Automatically download and install updates	Frissítések automatikus letöltése és telepítése
+	Ask for permission once when updating all apps	Engedély kérése csak egyszer az összes alkalmazás frissítésekor
 	Notify me when an installed app has an update	Értesítés a telepített alkalmazásokhoz elérhető frissítésekről
 	Include pre-releases (betas and release candidates)	Előzetes kiadások engedélyezése (béta- és kiadásra jelölt verziók)
 	Installing on Linux	Telepítés Linuxon
@@ -195,6 +196,7 @@ deckcraft	Presentations and slide shows	Prezentációk és diavetítések
 gridcraft	Spreadsheets and data	Táblázatok és adatok
 craft-anything	Find out how any software works, then craft your own	Ismerd meg, hogyan működik bármely szoftver, majd készítsd el a sajátodat
 solidcraft	Parametric 3D CAD	Paraméteres 3D CAD
+mailcraft	Mail, calendar and contacts	Levelezés, naptár és névjegyek
 cadcraft	Computer-aided design and drafting	Számítógépes tervezés és műszaki rajz
 soundcraft	Recording, editing and mixing audio	Hangrögzítés, hangszerkesztés és keverés
 figcraft	Interface design and prototyping	Felülettervezés és prototípus-készítés
@@ -377,6 +379,8 @@ filter	Installed	Telepítve
 	ArtCraft on GitHub	ArtCraft a GitHubon
 	Join the ArtCraft Discord	Csatlakozás az ArtCraft Discord-közösségéhez
 @plural	ArtCraft Launcher · {n} update available|ArtCraft Launcher · {n} updates available	ArtCraft Launcher · {n} frissítés elérhető|ArtCraft Launcher · {n} frissítés elérhető
+
+	Download size: {size}	Letöltési méret: {size}
 	Install folder	Telepítési mappa
 	Default install folder	Alapértelmezett telepítési mappa
 	System default	Rendszer alapértelmezése
@@ -434,3 +438,10 @@ materialcraft	Preview materials in 2D and on 3D models.	Tekintsd meg az anyagoka
 	Migrate Flatpak bundles to ArtCraft OCI (experimental)	Flatpak-csomagok átállítása ArtCraft OCI-ra (kísérleti)
 	On update, switch first party apps when the matching package is available. Otherwise, keep using bundles.	Frissítéskor állítsa át az ArtCraft alkalmazásait, ha elérhető a megfelelő csomag. Egyébként továbbra is önálló csomagokat használjon.
 	The OCI repository is a preview with GPG verification disabled.	Az OCI-tároló előzetes verzió, kikapcsolt GPG-ellenőrzéssel.
+anicraft	2D vector animation	2D vektoros animáció
+anicraft	Vector animation on a timeline you know.	Vektoranimáció egy ismerős idővonalon.
+anicraft	Open-source 2D vector animation, built in pure Rust.	Nyílt forráskódú 2D vektoranimáció, tiszta Rustban írva.
+anicraft	Familiar by design	Ismerős kialakítás
+anicraft	Stage, tools, timeline, layers, keyframes, Properties and Library sit where animators expect them, with onion skinning for in-betweening.	Színpad, eszközök, idővonal, rétegek, kulcsképkockák, Tulajdonságok és Könyvtár a megszokott helyen, hagymabőr funkcióval.
+anicraft	Tweens that ease	Finom mozgásinterpolációk
+anicraft	Classic tweens with eight easing presets and custom ease curves, plus shape tweens that morph one vector contour into another.	Klasszikus mozgásinterpolációk nyolc görbe-előbeállítással és egyéni görbékkel, valamint alakos interpolációk.

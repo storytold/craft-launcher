@@ -96,6 +96,7 @@
 	ArtCraft Launcher {version}	ArtCraft Launcher {version}
 	Only when I ask	მხოლოდ მოთხოვნისას
 	Automatically download and install updates	განახლებების ავტომატური ჩამოტვირთვა და ინსტალაცია
+	Ask for permission once when updating all apps	ყველა აპლიკაციის განახლებისას ნებართვის მოთხოვნა მხოლოდ ერთხელ
 	Notify me when an installed app has an update	შეტყობინება, როცა დაინსტალირებულ აპლიკაციას განახლება აქვს
 	Include pre-releases (betas and release candidates)	წინასწარი ვერსიების ჩართვა (ბეტა-ვერსიები და გამოშვების კანდიდატები)
 	Installing on Linux	ინსტალაცია Linux-ზე
@@ -203,6 +204,7 @@ cadcraft	Computer-aided design and drafting	დაპროექტება �
 soundcraft	Recording, editing and mixing audio	აუდიოს ჩაწერა, რედაქტირება და მიქსირება
 figcraft	Interface design and prototyping	ინტერფეისის დიზაინი და პროტოტიპირება
 solidcraft	Parametric 3D CAD	პარამეტრული 3D დაპროექტება
+mailcraft	Mail, calendar and contacts	ფოსტა, კალენდარი და კონტაქტები
 
 # Contextual: month abbreviations for date rendering
 month	Jan	იან
@@ -439,3 +441,11 @@ materialcraft	Preview materials in 2D and on 3D models.	მასალები
 	Migrate Flatpak bundles to ArtCraft OCI (experimental)	Flatpak პაკეტების გადატანა ArtCraft OCI-ზე (ექსპერიმენტული)
 	On update, switch first party apps when the matching package is available. Otherwise, keep using bundles.	განახლებისას ArtCraft-ის საკუთარი აპლიკაციები OCI-ზე გადადის, თუ შესაბამისი პაკეტი ხელმისაწვდომია. სხვა შემთხვევაში კვლავ Flatpak პაკეტები გამოიყენება.
 	The OCI repository is a preview with GPG verification disabled.	OCI რეპოზიტორია წინასწარი ვერსიაა და მასში GPG-ით შემოწმება გამორთულია.
+	Download size: {size}	ჩამოტვირთვის ზომა: {size}
+anicraft	2D vector animation	2D ვექტორული ანიმაცია
+anicraft	Vector animation on a timeline you know.	ვექტორული ანიმაცია ნაცნობ ქრონოლოგიაზე.
+anicraft	Open-source 2D vector animation, built in pure Rust.	ღია კოდის 2D ვექტორული ანიმაცია, შექმნილი სუფთა Rust-ში.
+anicraft	Familiar by design	ნაცნობი დიზაინი
+anicraft	Stage, tools, timeline, layers, keyframes, Properties and Library sit where animators expect them, with onion skinning for in-betweening.	სცენა, ხელსაწყოები, დროის ხაზი, ფენები, საკვანძო კადრები, თვისებები და ბიბლიოთეკა იქ, სადაც ანიმატორები ელიან.
+anicraft	Tweens that ease	გლუვი ანიმაცია
+anicraft	Classic tweens with eight easing presets and custom ease curves, plus shape tweens that morph one vector contour into another.	კლასიკური ანიმაციური გადასვლები რვა წინასწარ დაყენებული პარამეტრით და ფორმის გარდაქმნით.
