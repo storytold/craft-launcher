@@ -98,6 +98,7 @@
 	ArtCraft Launcher {version}	ArtCraft Launcher {version}
 	Only when I ask	Лише за моїм запитом
 	Automatically download and install updates	Автоматично завантажувати й встановлювати оновлення
+	Ask for permission once when updating all apps	Запитувати дозвіл один раз під час оновлення всіх застосунків
 	Notify me when an installed app has an update	Повідомляти, коли для встановленого застосунку з’являється оновлення
 	Include pre-releases (betas and release candidates)	Включати передвипуски (бета-версії та реліз-кандидати)
 	Installing on Linux	Встановлення в Linux
@@ -193,6 +194,7 @@ deckcraft	Presentations and slide shows	Презентації та слайд-�
 gridcraft	Spreadsheets and data	Електронні таблиці та дані
 craft-anything	Find out how any software works, then craft your own	Дізнайтеся, як працює будь-яка програма, і створіть свою
 solidcraft	Parametric 3D CAD	Параметричний 3D CAD
+mailcraft	Mail, calendar and contacts	Пошта, календар і контакти
 cadcraft	Computer-aided design and drafting	Комп’ютерне проєктування та креслення
 soundcraft	Recording, editing and mixing audio	Запис, редагування та зведення звуку
 figcraft	Interface design and prototyping	Дизайн інтерфейсів та прототипування
@@ -374,6 +376,7 @@ filter	Installed	Встановлені
 	Loading pictures…	Завантаження зображень…
 	Pictures couldn't be loaded. Reopen this page to try again.	Не вдалося завантажити зображення. Відкрийте цю сторінку ще раз.
 @plural	ArtCraft Launcher · {n} update available|ArtCraft Launcher · {n} updates available	ArtCraft Launcher · {n} оновлення|ArtCraft Launcher · {n} оновлення|ArtCraft Launcher · {n} оновлень
+	Download size: {size}	Розмір завантаження: {size}
 	Install folder	Папка встановлення
 	Default install folder	Папка встановлення за замовчуванням
 	System default	Системне значення за замовчуванням
@@ -425,3 +428,10 @@ materialcraft	Combine noises, patterns and filters.	Поєднуйте шуми,
 materialcraft	Live previews	Перегляд у реальному часі
 materialcraft	Preview materials in 2D and on 3D models.	Переглядайте матеріали у 2D та на 3D-моделях.
 	Hide community apps	Приховати застосунки спільноти
+anicraft	2D vector animation	2D-векторна анімація
+anicraft	Vector animation on a timeline you know.	Векторна анімація на звичній шкалі часу.
+anicraft	Open-source 2D vector animation, built in pure Rust.	2D-векторна анімація з відкритим кодом, написана на чистому Rust.
+anicraft	Familiar by design	Звичний інтерфейс
+anicraft	Stage, tools, timeline, layers, keyframes, Properties and Library sit where animators expect them, with onion skinning for in-betweening.	Сцена, інструменти, шкала часу, шари, ключові кадри, Властивості та Бібліотека розташовані там, де їх очікують аніматори, а шлейф кальки полегшує роботу з проміжними кадрами.
+anicraft	Tweens that ease	Плавні переходи
+anicraft	Classic tweens with eight easing presets and custom ease curves, plus shape tweens that morph one vector contour into another.	Класичні переходи з вісьмома пресетами плавності та власними кривими, а також переходи, що перетворюють один векторний контур на інший.
