@@ -26,8 +26,8 @@ impl TileSize {
     /// of a large card becomes another column in the smaller sizes.
     pub fn card_min_width(self) -> f32 {
         match self {
-            Self::Small => 210.0,
-            Self::Medium => 280.0,
+            Self::Small => 200.0,
+            Self::Medium => 250.0,
             Self::Large => 320.0,
         }
     }

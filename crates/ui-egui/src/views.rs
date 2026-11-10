@@ -732,34 +732,57 @@ impl LauncherUi {
         let mut child = ui.new_child(egui::UiBuilder::new().max_rect(inner).layout(egui::Layout::top_down(egui::Align::Min)));
         child.set_clip_rect(rect.intersect(ui.clip_rect()));
         let ui = &mut child;
-        ui.horizontal(|ui| {
-            const ICON: f32 = 56.0;
-            let [name, tagline] = [FontId::new(22.0, theme::display()), FontId::proportional(13.5)];
-            const GAP: f32 = 4.0;
-            // The slot is as tall as the text beside it when that is taller, so the two share a centre.
-            let block = lines_height(ui, &[&name, &tagline], GAP);
-            let (slot, icon_response) = ui.allocate_exact_size(vec2(ICON, block.max(ICON)), Sense::hover());
-            icon_response.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Image, true, fmt(tl!("{name} icon"), &[("name", app.name)])));
-            // The icon rises a little on hover, over a soft drop shadow (the site's only shadow).
-            let icon_rect = Rect::from_center_size(slot.center(), vec2(ICON, ICON)).translate(vec2(0.0, -4.0 * lift));
-            ui.painter().add(
-                egui::epaint::Shadow { offset: [0, 6], blur: 14, spread: 0, color: Color32::from_black_alpha(71) }
-                    .as_shape(icon_rect.shrink(4.0), CornerRadius::same(12)),
-            );
-            if let Some(icon) = crate::icons::app_image(ui.ctx(), app.id, in_colour) {
-                icon.paint_at(ui, icon_rect);
-            }
-            ui.add_space(6.0);
-            centered_lines(ui, &[&name, &tagline], GAP, |ui| {
-                // The name's row is as tall as its text, not as a button.
+        if self.settings.tile_size == crate::settings::TileSize::Small {
+            // Small cards stack: icon, the name with its "by Publisher" badge, then the one-liner.
+            ui.vertical_centered(|ui| {
+                const ICON: f32 = 40.0;
+                let (slot, icon_response) = ui.allocate_exact_size(vec2(ICON, ICON), Sense::hover());
+                icon_response.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Image, true, fmt(tl!("{name} icon"), &[("name", app.name)])));
+                let icon_rect = Rect::from_center_size(slot.center(), vec2(ICON, ICON)).translate(vec2(0.0, -3.0 * lift));
+                ui.painter().add(
+                    egui::epaint::Shadow { offset: [0, 5], blur: 12, spread: 0, color: Color32::from_black_alpha(71) }
+                        .as_shape(icon_rect.shrink(3.0), CornerRadius::same(9)),
+                );
+                if let Some(icon) = crate::icons::app_image(ui.ctx(), app.id, in_colour) {
+                    icon.paint_at(ui, icon_rect);
+                }
+                ui.add_space(3.0);
                 ui.spacing_mut().interact_size.y = 0.0;
-                ui.horizontal(|ui| {
-                    widgets::wordmark_in(ui, app, 22.0, in_colour);
-                    kind_badge(ui, app, &t);
-                });
-                ui.add(egui::Label::new(RichText::new(tr_ctx(current(), app.id, app.tagline)).font(tagline.clone()).color(t.muted)).truncate());
+                widgets::wordmark_in(ui, app, 18.0, in_colour);
+                kind_badge(ui, app, &t);
+                let tagline = FontId::proportional(12.0);
+                ui.add(egui::Label::new(RichText::new(tr_ctx(current(), app.id, app.tagline)).font(tagline).color(t.muted)).truncate());
             });
-        });
+        } else {
+            ui.horizontal(|ui| {
+                const ICON: f32 = 56.0;
+                let [name, tagline] = [FontId::new(22.0, theme::display()), FontId::proportional(13.5)];
+                const GAP: f32 = 4.0;
+                // The slot is as tall as the text beside it when that is taller, so the two share a centre.
+                let block = lines_height(ui, &[&name, &tagline], GAP);
+                let (slot, icon_response) = ui.allocate_exact_size(vec2(ICON, block.max(ICON)), Sense::hover());
+                icon_response.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Image, true, fmt(tl!("{name} icon"), &[("name", app.name)])));
+                // The icon rises a little on hover, over a soft drop shadow (the site's only shadow).
+                let icon_rect = Rect::from_center_size(slot.center(), vec2(ICON, ICON)).translate(vec2(0.0, -4.0 * lift));
+                ui.painter().add(
+                    egui::epaint::Shadow { offset: [0, 6], blur: 14, spread: 0, color: Color32::from_black_alpha(71) }
+                        .as_shape(icon_rect.shrink(4.0), CornerRadius::same(12)),
+                );
+                if let Some(icon) = crate::icons::app_image(ui.ctx(), app.id, in_colour) {
+                    icon.paint_at(ui, icon_rect);
+                }
+                ui.add_space(6.0);
+                centered_lines(ui, &[&name, &tagline], GAP, |ui| {
+                    // The name's row is as tall as its text, not as a button.
+                    ui.spacing_mut().interact_size.y = 0.0;
+                    ui.horizontal(|ui| {
+                        widgets::wordmark_in(ui, app, 22.0, in_colour);
+                        kind_badge(ui, app, &t);
+                    });
+                    ui.add(egui::Label::new(RichText::new(tr_ctx(current(), app.id, app.tagline)).font(tagline.clone()).color(t.muted)).truncate());
+                });
+            });
+        }
         ui.add_space(14.0);
         // Installed and up to date needs no badge: the strip has the version, and the group says the rest.
         if !matches!(status, AppStatus::UpToDate | AppStatus::Installed) {

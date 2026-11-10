@@ -4446,3 +4446,35 @@ fn grid_tile_sizes_shrink_the_cards() {
     let medium = h.get_by_label("PhotoCraft details").rect().width();
     assert!(medium > small && medium < large, "small={small} medium={medium} large={large}");
 }
+
+#[test]
+/// The medium density button is distinct from large and actually changes the card width.
+fn medium_density_button_changes_the_grid() {
+    let (mut h, _) = harness(ViewMode::Grid, egui::Theme::Dark, true);
+    h.run_steps(6);
+    let large = h.get_by_label("PhotoCraft details").rect().width();
+    h.get_by_label("M").click();
+    h.run_steps(4);
+    assert_eq!(h.state().as_ref().unwrap().settings.tile_size, artcraft_launcher_ui_egui::settings::TileSize::Medium);
+    let medium = h.get_by_label("PhotoCraft details").rect().width();
+    assert!(medium < large - 20.0, "medium is narrower than large: {medium} vs {large}");
+    h.get_by_label("S").click();
+    h.run_steps(4);
+    let small = h.get_by_label("PhotoCraft details").rect().width();
+    assert!(small < medium - 20.0, "small is narrower than medium: {small} vs {medium}");
+}
+
+#[test]
+/// Small cards stack the icon, name/badge and one-liner vertically.
+fn small_cards_stack_identity_below_the_icon() {
+    let (mut h, _) = harness(ViewMode::Grid, egui::Theme::Dark, true);
+    h.run_steps(6);
+    h.state_mut().as_mut().unwrap().settings.tile_size = artcraft_launcher_ui_egui::settings::TileSize::Small;
+    h.run_steps(4);
+    let card = h.get_by_label("PhotoCraft details").rect();
+    let icon = h.get_by_label("PhotoCraft icon").rect();
+    let by = h.get_all_by_label("by ArtCraft").find(|n| card.contains(n.rect().center())).expect("the byline").rect();
+    let tagline = h.get_all_by_label_contains("Image editing").find(|n| card.contains(n.rect().center())).expect("the one-liner").rect();
+    assert!(icon.bottom() <= by.top() + 1.0, "icon {icon:?} sits above the byline {by:?}");
+    assert!(by.bottom() <= tagline.top() + 1.0, "byline {by:?} sits above the one-liner {tagline:?}");
+}
