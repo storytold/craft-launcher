@@ -4456,7 +4456,10 @@ fn medium_density_button_changes_the_grid() {
     h.get_by_label("M").click();
     h.run_steps(4);
     assert_eq!(h.state().as_ref().unwrap().settings.tile_size, artcraft_launcher_ui_egui::settings::TileSize::Medium);
-    let medium = h.get_by_label("PhotoCraft details").rect().width();
+    let card = h.get_by_label("PhotoCraft details").rect();
+    let medium = card.width();
+    let by = h.get_all_by_label("by ArtCraft").find(|n| card.contains(n.rect().center())).expect("the byline").rect();
+    assert!(by.right() <= card.right(), "the byline stays inside the medium card: {by:?} in {card:?}");
     assert!(medium < large - 20.0, "medium is narrower than large: {medium} vs {large}");
     h.get_by_label("S").click();
     h.run_steps(4);

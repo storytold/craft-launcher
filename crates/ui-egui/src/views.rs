@@ -652,6 +652,8 @@ impl LauncherUi {
         self.pin_drop_target(ui, id, rect, ui.clip_rect(), PinDropAxis::Horizontal);
         let t = Tokens::get(ui.ctx());
         let app = entry.app;
+        // Medium cards trade a little margin for the room the byline needs.
+        let pad = if self.settings.tile_size == crate::settings::TileSize::Medium { 16.0 } else { CARD_PAD };
         let hovered = ui.rect_contains_pointer(rect);
         let wipe = if self.reduce_motion { 0.0 } else { 0.3 };
         let lift = ui.ctx().animate_bool_with_time(ui.scope_id().with(("card-hover", id)), hovered, wipe);
@@ -699,9 +701,8 @@ impl LauncherUi {
         let strip = Rect::from_min_size(rect.min, vec2(rect.width(), STRIP_H));
         painter.hline(strip.x_range(), strip.bottom() - 0.5, t.hairline());
         {
-            let mut strip_ui = ui.new_child(
-                egui::UiBuilder::new().max_rect(strip.shrink2(vec2(CARD_PAD, 0.0))).layout(egui::Layout::left_to_right(egui::Align::Center)),
-            );
+            let mut strip_ui =
+                ui.new_child(egui::UiBuilder::new().max_rect(strip.shrink2(vec2(pad, 0.0))).layout(egui::Layout::left_to_right(egui::Align::Center)));
             // Pinned apps already have a pin grip in their action row; the tile grip takes over
             // only for unpinned apps, or when a manual order is in use. One grip, one label.
             if !self.settings.is_pinned(id) || !self.settings.tile_order.is_empty() {
@@ -727,7 +728,7 @@ impl LauncherUi {
             });
         }
 
-        let inner = Rect::from_min_max(egui::pos2(rect.left() + CARD_PAD, strip.bottom() + 18.0), rect.max - vec2(CARD_PAD, CARD_PAD));
+        let inner = Rect::from_min_max(egui::pos2(rect.left() + pad, strip.bottom() + 18.0), rect.max - vec2(pad, pad));
         // A detached child: the card's contents never move the next card along.
         let mut child = ui.new_child(egui::UiBuilder::new().max_rect(inner).layout(egui::Layout::top_down(egui::Align::Min)));
         child.set_clip_rect(rect.intersect(ui.clip_rect()));
@@ -755,15 +756,19 @@ impl LauncherUi {
             });
         } else {
             ui.horizontal(|ui| {
-                const ICON: f32 = 56.0;
-                let [name, tagline] = [FontId::new(22.0, theme::display()), FontId::proportional(13.5)];
+                // Medium cards are narrower than the design's 320: shrink the icon and the name
+                // with it, or the "by Publisher" badge is cut by the card border.
+                let medium = self.settings.tile_size == crate::settings::TileSize::Medium;
+                let icon_px = if medium { 48.0 } else { 56.0 };
+                let name_px = if medium { 18.0 } else { 22.0 };
+                let [name, tagline] = [FontId::new(name_px, theme::display()), FontId::proportional(if medium { 12.5 } else { 13.5 })];
                 const GAP: f32 = 4.0;
                 // The slot is as tall as the text beside it when that is taller, so the two share a centre.
                 let block = lines_height(ui, &[&name, &tagline], GAP);
-                let (slot, icon_response) = ui.allocate_exact_size(vec2(ICON, block.max(ICON)), Sense::hover());
+                let (slot, icon_response) = ui.allocate_exact_size(vec2(icon_px, block.max(icon_px)), Sense::hover());
                 icon_response.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Image, true, fmt(tl!("{name} icon"), &[("name", app.name)])));
                 // The icon rises a little on hover, over a soft drop shadow (the site's only shadow).
-                let icon_rect = Rect::from_center_size(slot.center(), vec2(ICON, ICON)).translate(vec2(0.0, -4.0 * lift));
+                let icon_rect = Rect::from_center_size(slot.center(), vec2(icon_px, icon_px)).translate(vec2(0.0, -4.0 * lift));
                 ui.painter().add(
                     egui::epaint::Shadow { offset: [0, 6], blur: 14, spread: 0, color: Color32::from_black_alpha(71) }
                         .as_shape(icon_rect.shrink(4.0), CornerRadius::same(12)),
@@ -771,12 +776,12 @@ impl LauncherUi {
                 if let Some(icon) = crate::icons::app_image(ui.ctx(), app.id, in_colour) {
                     icon.paint_at(ui, icon_rect);
                 }
-                ui.add_space(6.0);
+                ui.add_space(if medium { 4.0 } else { 6.0 });
                 centered_lines(ui, &[&name, &tagline], GAP, |ui| {
                     // The name's row is as tall as its text, not as a button.
                     ui.spacing_mut().interact_size.y = 0.0;
                     ui.horizontal(|ui| {
-                        widgets::wordmark_in(ui, app, 22.0, in_colour);
+                        widgets::wordmark_in(ui, app, name_px, in_colour);
                         kind_badge(ui, app, &t);
                     });
                     ui.add(egui::Label::new(RichText::new(tr_ctx(current(), app.id, app.tagline)).font(tagline.clone()).color(t.muted)).truncate());
