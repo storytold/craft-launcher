@@ -14,7 +14,7 @@ use artcraft_launcher_core::protocol::{
 use artcraft_launcher_core::release::{Asset, Release};
 use artcraft_launcher_core::status::InstallSource;
 use artcraft_launcher_core::{Arch, Installed, Os, Platform, SUITE, version};
-use artcraft_launcher_ui_egui::settings::ViewMode;
+use artcraft_launcher_ui_egui::settings::{SortKey, ViewMode};
 use artcraft_launcher_ui_egui::{Host, LauncherUi, Settings};
 use egui_kittest::Harness;
 use egui_kittest::kittest::{NodeT, Queryable};
@@ -4318,4 +4318,100 @@ fn an_apps_page_is_a_card_in_the_middle_with_next_and_previous_arrows_and_closes
     h.drop_at(egui::pos2(10.0, 450.0));
     h.run_steps(30);
     assert!(!showing(&h, "photocraft"), "a click outside did not close it");
+}
+
+#[test]
+/// A manual tile order replaces the pinned/installed groups and is what the grid shows.
+fn manual_tile_order_replaces_the_grid_groups() {
+    let (mut h, _) = harness(ViewMode::Grid, egui::Theme::Dark, true);
+    h.run_steps(6);
+    h.state_mut().as_mut().unwrap().settings.tile_order = vec!["wordcraft".into(), "photocraft".into(), "filmcraft".into()];
+    h.run_steps(4);
+    let ids = h.state().as_ref().unwrap().visible_ids_for_test();
+    assert_eq!(&ids[..3], ["wordcraft", "photocraft", "filmcraft"]);
+    assert!(h.query_by_label("Pinned").is_none(), "manual order draws one block, not the pinned header");
+    assert!(h.query_by_label("Not installed").is_none(), "manual order draws one block, not the installed split");
+}
+
+#[test]
+/// Dragging a card's grip moves the app after the card under the pointer and persists the order.
+fn dragging_a_tile_grip_reorders_the_manual_grid() {
+    let (mut h, _) = harness(ViewMode::Grid, egui::Theme::Dark, true);
+    h.run_steps(6);
+    h.state_mut().as_mut().unwrap().settings.tile_order = vec!["photocraft".into(), "filmcraft".into(), "wordcraft".into()];
+    h.run_steps(4);
+    let from = h.get_by_label("Reorder PhotoCraft").rect().center();
+    let target = h.get_by_label("WordCraft details").rect();
+    let after = egui::pos2(target.right() - 10.0, target.center().y);
+    h.hover_at(from);
+    h.run_steps(1);
+    h.drag_at(from);
+    h.run_steps(1);
+    h.hover_at(after);
+    h.run_steps(2);
+    assert!(h.state().as_ref().unwrap().tile_dragging_for_test(), "the grip starts a tile drag");
+    h.drop_at(after);
+    h.run_steps(3);
+    assert!(!h.state().as_ref().unwrap().tile_dragging_for_test());
+    let order = &h.state().as_ref().unwrap().settings.tile_order;
+    assert_eq!(&order[..3], ["filmcraft", "wordcraft", "photocraft"], "the dragged tile lands after the target");
+}
+
+#[test]
+/// Escape during a tile drag restores the order from drag start.
+fn escape_cancels_tile_drag_and_restores_order() {
+    let (mut h, _) = harness(ViewMode::Grid, egui::Theme::Dark, true);
+    h.run_steps(6);
+    {
+        let ui = h.state_mut().as_mut().unwrap();
+        ui.settings.tile_order = vec!["photocraft".into(), "filmcraft".into()];
+        ui.begin_tile_drag_for_test("photocraft");
+        ui.settings.tile_order = vec!["filmcraft".into(), "photocraft".into()];
+    }
+    h.key_press(egui::Key::Escape);
+    h.run_steps(2);
+    let ui = h.state().as_ref().unwrap();
+    assert!(!ui.tile_dragging_for_test());
+    assert_eq!(ui.settings.tile_order, ["photocraft", "filmcraft"]);
+}
+
+#[test]
+/// Job type sorts the grid into the app's primary work, with a collapsible section per type.
+fn job_type_groups_are_collapsible_sections() {
+    let (mut h, _) = harness(ViewMode::Grid, egui::Theme::Dark, true);
+    h.run_steps(6);
+    h.state_mut().as_mut().unwrap().settings.sort = SortKey::JobType;
+    h.run_steps(4);
+    for label in [
+        "Photo & Image (2)",
+        "Design & Illustration (3)",
+        "Video & Motion (3)",
+        "Audio (1)",
+        "3D, CAD & Textures (4)",
+        "Documents & Productivity (5)",
+        "Learn & Build (1)",
+    ] {
+        h.get_by_label(label);
+    }
+    // Collapsing a section hides its cards but leaves the other groups.
+    h.get_by_label("Photo & Image (2)").click();
+    h.run_steps(2);
+    assert!(h.query_by_label("PhotoCraft details").is_none(), "collapsed group hides PhotoCraft");
+    assert!(h.query_by_label("VectorCraft details").is_some(), "other groups stay open");
+    h.get_by_label("Photo & Image (2)").click();
+    h.run_steps(2);
+    h.get_by_label("PhotoCraft details");
+}
+
+#[test]
+/// The grid sort picker offers the job-type order.
+fn sort_picker_offers_job_type() {
+    let (mut h, _) = harness(ViewMode::Grid, egui::Theme::Dark, true);
+    h.run_steps(6);
+    h.get_by_role_and_label(egui::accesskit::Role::ComboBox, "Sort").click();
+    h.run_steps(2);
+    h.get_by_label("Job type").click();
+    h.run_steps(2);
+    assert_eq!(h.state().as_ref().unwrap().settings.sort, SortKey::JobType);
+    h.get_by_label("Photo & Image (2)");
 }

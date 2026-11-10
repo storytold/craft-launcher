@@ -43,6 +43,8 @@ pub enum SortKey {
     Released,
     /// How often the app has been opened from here, most first.
     Frequent,
+    /// The app's primary job type (photo, design, motion, audio, 3D, documents, learning).
+    JobType,
 }
 
 impl SortKey {
@@ -133,6 +135,9 @@ pub struct Settings {
     pub launches: BTreeMap<String, u32>,
     /// Catalog ids pinned to the top of the grid/table, in the order the user chose.
     pub pinned: Vec<String>,
+    /// The manual grid order, when the user has dragged tiles. Empty keeps the automatic order.
+    #[serde(default)]
+    pub tile_order: Vec<String>,
     /// Extra command-line flags each app is opened with (catalog id → the text as typed, split
     /// by [`args::split`](artcraft_launcher_core::args::split) at launch).
     pub launch_flags: BTreeMap<String, String>,
@@ -195,6 +200,23 @@ impl Settings {
             to_index -= 1;
         }
         self.pinned.insert(to_index, item);
+    }
+
+    /// Move the manual grid order's `from_id` into insertion slot `to_index` (the same slot
+    /// semantics as [`Self::reorder_pinned_to`]).
+    pub fn reorder_tile_to(&mut self, from_id: &str, mut to_index: usize) {
+        let Some(from) = self.tile_order.iter().position(|p| p == from_id) else {
+            return;
+        };
+        to_index = to_index.min(self.tile_order.len());
+        if to_index == from || to_index == from + 1 {
+            return;
+        }
+        let item = self.tile_order.remove(from);
+        if from < to_index {
+            to_index -= 1;
+        }
+        self.tile_order.insert(to_index, item);
     }
 
     /// Display name for a language `code`: a language's name in itself, from the registry
@@ -271,6 +293,7 @@ impl Default for Settings {
             tray_hint_shown: false,
             launches: BTreeMap::new(),
             pinned: Vec::new(),
+            tile_order: Vec::new(),
             launch_flags: BTreeMap::new(),
         }
     }
@@ -279,6 +302,22 @@ impl Default for Settings {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn reorder_tile_to_uses_insertion_slot() {
+        let mut s = Settings { tile_order: vec!["a".into(), "b".into(), "c".into()], ..Settings::default() };
+        s.reorder_tile_to("c", 0);
+        assert_eq!(s.tile_order, vec!["c", "a", "b"]);
+        s.reorder_tile_to("c", 3);
+        assert_eq!(s.tile_order, vec!["a", "b", "c"]);
+        s.reorder_tile_to("a", 2);
+        assert_eq!(s.tile_order, vec!["b", "a", "c"]);
+        s.reorder_tile_to("a", 2);
+        s.reorder_tile_to("missing", 0);
+        assert_eq!(s.tile_order, vec!["b", "a", "c"]);
+        s.reorder_tile_to("b", 99);
+        assert_eq!(s.tile_order, vec!["a", "c", "b"]);
+    }
 
     #[test]
     fn pin_appends_once_and_unpin_removes() {

@@ -1,7 +1,7 @@
 //! The header, toolbar, footer, the grid of cards and the table, laid out like the apps page on
 //! getartcraft.com: hairline cells, mono labels and square controls.
 
-use artcraft_launcher_core::catalog::AppKind;
+use artcraft_launcher_core::catalog::{AppKind, JobType, job_type};
 use artcraft_launcher_core::details::AppDetails;
 use artcraft_launcher_core::platform::pick_asset;
 use artcraft_launcher_core::protocol::{Command, JobPhase};
@@ -504,7 +504,18 @@ impl LauncherUi {
     // ---- grid ----------------------------------------------------------------------------
 
     /// Pinned apps first (user order), then installed, then the rest under a "Not installed" header.
+    /// A manual tile order replaces those groups with one block in the user's order.
     pub(crate) fn grid(&mut self, ui: &mut Ui, ids: &[&'static str]) {
+        if self.settings.sort == SortKey::JobType {
+            self.grid_jobs(ui, ids);
+            ui.add_space(24.0);
+            return;
+        }
+        if !self.settings.tile_order.is_empty() {
+            self.grid_block(ui, ids);
+            ui.add_space(24.0);
+            return;
+        }
         let pinned_n = ids.iter().take_while(|id| self.settings.is_pinned(id)).count();
         let (pinned, rest) = ids.split_at(pinned_n);
         if !pinned.is_empty() {
@@ -527,6 +538,31 @@ impl LauncherUi {
         }
         self.grid_block(ui, rest);
         ui.add_space(24.0);
+    }
+
+    /// The grid grouped by the apps' primary job, each group a collapsible section. A manual tile
+    /// order only reorders apps inside their own group; dragging across groups is ignored.
+    fn grid_jobs(&mut self, ui: &mut Ui, ids: &[&'static str]) {
+        let t = Tokens::get(ui.ctx());
+        for job in JobType::ALL {
+            let mut group: Vec<&'static str> = ids.iter().copied().filter(|id| job_type(id) == job).collect();
+            if group.is_empty() {
+                continue;
+            }
+            if !self.settings.tile_order.is_empty() {
+                let order = &self.settings.tile_order;
+                group.sort_by_key(|id| order.iter().position(|p| p == id).unwrap_or(usize::MAX));
+            }
+            let label = format!("{} ({})", job_label(job), group.len());
+            egui::CollapsingHeader::new(RichText::new(label).size(13.0).color(t.faint)).id_salt(("job-type", job.key())).default_open(true).show(
+                ui,
+                |ui| {
+                    ui.add_space(6.0);
+                    self.grid_block(ui, &group);
+                },
+            );
+            ui.add_space(12.0);
+        }
     }
 
     fn grid_block(&mut self, ui: &mut Ui, ids: &[&'static str]) {
@@ -553,6 +589,7 @@ impl LauncherUi {
     /// pointer is over it.
     fn card(&mut self, ui: &mut Ui, id: &str, rect: Rect) {
         let Some(entry) = self.entry(id).cloned() else { return };
+        self.tile_drop_target(ui, id, rect);
         self.pin_drop_target(ui, id, rect, ui.clip_rect(), PinDropAxis::Horizontal);
         let t = Tokens::get(ui.ctx());
         let app = entry.app;
@@ -573,6 +610,17 @@ impl LauncherUi {
             if open.on_hover_cursor(egui::CursorIcon::PointingHand).clicked() {
                 self.detail = Some(id.to_string());
             }
+        }
+        // The grip on every card builds the manual order; the drop target above reorders live.
+        let drop_pointer = ui.input(|i| i.pointer.interact_pos());
+        if let Some((from, _)) = self.tile_dragging.as_ref()
+            && from != id
+            && let Some(pos) = drop_pointer
+            && rect.contains(pos)
+            && ui.clip_rect().contains(pos)
+        {
+            let x = if pos.x < rect.center().x { rect.left() } else { rect.right() };
+            ui.painter().vline(x, rect.y_range(), egui::Stroke::new(2.0, t.accent));
         }
         let painter = ui.painter_at(rect.expand(16.0));
         // A faint wash in the app's colour fades in under the pointer.
@@ -595,6 +643,14 @@ impl LauncherUi {
             let mut strip_ui = ui.new_child(
                 egui::UiBuilder::new().max_rect(strip.shrink2(vec2(CARD_PAD, 0.0))).layout(egui::Layout::left_to_right(egui::Align::Center)),
             );
+            // Pinned apps already have a pin grip in their action row; the tile grip takes over
+            // only for unpinned apps, or when a manual order is in use. One grip, one label.
+            if !self.settings.is_pinned(id) || !self.settings.tile_order.is_empty() {
+                let grip_tip = fmt(tl!("Reorder {name}"), &[("name", app.name)]);
+                if widgets::grip_button(&mut strip_ui, &grip_tip).drag_started() {
+                    self.begin_tile_drag(id);
+                }
+            }
             if !version.is_empty() {
                 let github_w = widgets::hud_galley(&strip_ui, &format!("{} ↗", tl!("GitHub")), t.muted).size().x;
                 let room = (strip_ui.available_width() - github_w - 16.0).max(0.0);
@@ -1041,7 +1097,7 @@ impl LauncherUi {
         let id = entry.app.id.to_string();
         let gap = ui.spacing().item_spacing.x;
         let links_in_menu = place.links_in_menu();
-        if links_in_menu && self.settings.is_pinned(entry.app.id) {
+        if links_in_menu && self.settings.tile_order.is_empty() && self.settings.is_pinned(entry.app.id) {
             self.pin_grip(ui, entry);
             width -= theme::CONTROL_H + gap;
         }
@@ -1086,6 +1142,46 @@ impl LauncherUi {
         // `LauncherUi::ui` clears `pin_dragging` after the list once the pointer is up.
         if resp.drag_started() {
             self.pin_dragging = Some((entry.app.id.to_string(), self.settings.pinned.clone()));
+        }
+    }
+
+    /// Starts a tile drag, snapshotting the manual order for Escape.
+    fn begin_tile_drag(&mut self, id: &str) {
+        if self.tile_dragging.is_none() {
+            self.tile_dragging = Some((id.to_string(), self.settings.tile_order.clone()));
+        }
+    }
+
+    /// While a tile grip is dragged, hovering another card moves the dragged app before/after it.
+    /// The first target converts the automatic order into the manual one.
+    fn tile_drop_target(&mut self, ui: &Ui, id: &str, rect: Rect) {
+        let Some((from, _)) = self.tile_dragging.clone() else { return };
+        if from == id {
+            return;
+        }
+        let Some(pos) = ui.input(|i| i.pointer.interact_pos()) else { return };
+        if !rect.contains(pos) || !ui.clip_rect().contains(pos) {
+            return;
+        }
+        if self.settings.tile_order.is_empty() {
+            self.settings.tile_order = self.visible_ids().into_iter().map(str::to_owned).collect();
+        }
+        // In job-type grouping an app only moves within its own group.
+        if self.settings.sort == SortKey::JobType && job_type(&from) != job_type(id) {
+            return;
+        }
+        let Some(to) = self.settings.tile_order.iter().position(|p| p == id) else { return };
+        let insertion = if pos.x < rect.center().x { to } else { to.saturating_add(1) };
+        self.settings.reorder_tile_to(&from, insertion);
+    }
+
+    /// Escape restores the manual order from before the tile drag.
+    pub(crate) fn clear_tile_drag_on_escape(&mut self, ui: &Ui) {
+        if self.tile_dragging.is_some()
+            && ui.input(|i| i.key_pressed(egui::Key::Escape))
+            && let Some((_, original)) = self.tile_dragging.take()
+        {
+            self.settings.tile_order = original;
         }
     }
 
@@ -1459,7 +1555,8 @@ enum PinDropAxis {
 
 /// What the grid's sort dropdown offers: the order and, for names, which way. The installed apps
 /// always sit above the rest.
-const GRID_SORTS: [(SortKey, bool); 4] = [(SortKey::Name, false), (SortKey::Name, true), (SortKey::Released, true), (SortKey::Frequent, true)];
+const GRID_SORTS: [(SortKey, bool); 5] =
+    [(SortKey::Name, false), (SortKey::Name, true), (SortKey::Released, true), (SortKey::Frequent, true), (SortKey::JobType, false)];
 
 /// Which of [`GRID_SORTS`] the settings come to. Anything else (the old suite order, a table
 /// column) reads as Name, A to Z.
@@ -1468,6 +1565,7 @@ pub(crate) fn grid_sort_now(s: &crate::settings::Settings) -> (SortKey, bool) {
         SortKey::Name => (SortKey::Name, s.sort_descending),
         SortKey::Released => (SortKey::Released, true),
         SortKey::Frequent => (SortKey::Frequent, true),
+        SortKey::JobType => (SortKey::JobType, false),
         _ => (SortKey::Name, false),
     }
 }
@@ -1476,12 +1574,27 @@ fn grid_sort_label((key, descending): (SortKey, bool)) -> &'static str {
     match (key, descending) {
         (SortKey::Released, _) => tl!("Recently updated"),
         (SortKey::Frequent, _) => tl!("Frequently used"),
+        (SortKey::JobType, _) => tl!("Job type"),
         (_, true) => tl!("Name (Z–A)"),
         _ => tl!("Name (A–Z)"),
     }
 }
 
 /// "0.4.1 installed → 0.5.0 released · Oct 8, 2026" and friends.
+/// The English label for a job group, translated through the catalog.
+fn job_label(job: JobType) -> &'static str {
+    match job {
+        JobType::Image => tl!("Photo & Image"),
+        JobType::Design => tl!("Design & Illustration"),
+        JobType::Motion => tl!("Video & Motion"),
+        JobType::Audio => tl!("Audio"),
+        JobType::ThreeD => tl!("3D, CAD & Textures"),
+        JobType::Documents => tl!("Documents & Productivity"),
+        JobType::Learn => tl!("Learn & Build"),
+        JobType::Other => tl!("Other"),
+    }
+}
+
 pub(crate) fn version_line(e: &AppEntry, status: &AppStatus) -> String {
     let released = e.release().and_then(|r| r.published_at).map(|at| format!(" · {}", date_text(at))).unwrap_or_default();
     let inst_ver = e.installed.as_ref().and_then(|i| i.version.as_ref().map(ToString::to_string));
