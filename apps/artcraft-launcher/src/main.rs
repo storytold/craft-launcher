@@ -770,13 +770,13 @@ impl Launcher {
 struct Shell<'a> {
     launcher: &'a mut Launcher,
     window_hides: bool,
-    /// Whether the launcher last showed its window or put it away. On macOS the Dock, Finder and
-    /// ⌘Tab can bring the window back without the launcher knowing; that only matters for the
-    /// tray's left-click toggle, which macOS never sends, as a left click opens the tray menu.
+    /// Whether the shell considers its window shown or put away. On macOS, `logic` notices when
+    /// the Dock, Finder, or ⌘Tab externally unhides the app and updates this state for tray toggles.
     visible: bool,
     quitting: bool,
     #[cfg(target_os = "macos")]
-    put_away_hid_app: bool,
+    /// Whether this process hid the app and should show its window after a system reopen.
+    app_hidden_by_launcher: bool,
     #[cfg(target_os = "macos")]
     applied_tray_visibility: Option<bool>,
     /// The "show on the current desktop" setting last applied to the window (macOS).
@@ -797,13 +797,15 @@ impl<'a> Shell<'a> {
             launcher.tray.is_some(),
             launcher.ui.settings.close_to_tray,
         );
+        #[cfg(target_os = "macos")]
+        let hidden_start_needs_reopen = should_hide_app_for_hidden_start(hidden, launcher.ui.settings.close_to_tray);
         let mut shell = Self {
             launcher,
             window_hides,
             visible: true,
             quitting: false,
             #[cfg(target_os = "macos")]
-            put_away_hid_app: false,
+            app_hidden_by_launcher: false,
             #[cfg(target_os = "macos")]
             applied_tray_visibility: None,
             applied_follow: None,
@@ -816,6 +818,11 @@ impl<'a> Shell<'a> {
             // would unhide it, window and all.
             shell.visible = false;
             cc.egui_ctx.send_viewport_cmd(egui::ViewportCommand::Visible(false));
+            #[cfg(target_os = "macos")]
+            if hidden_start_needs_reopen {
+                hiding::hide();
+                shell.app_hidden_by_launcher = true;
+            }
         } else if !visible {
             shell.put_away(&cc.egui_ctx);
         } else if hidden {
@@ -832,7 +839,7 @@ impl<'a> Shell<'a> {
         #[cfg(target_os = "macos")]
         {
             self.sync_tray_visibility();
-            self.put_away_hid_app = false;
+            self.app_hidden_by_launcher = false;
             spaces::set_dock_visibility(
                 true,
                 self.launcher.ui.settings.hide_from_dock_when_hidden,
@@ -865,8 +872,8 @@ impl<'a> Shell<'a> {
         }
     }
 
-    /// Puts the window away in the tray: hidden where it can hide, closed where it can't. On macOS
-    /// the whole app hides, so its Dock icon brings the window back (`hiding`).
+    /// Puts the window away without quitting where hiding is supported, or closes it to the tray
+    /// otherwise. On macOS, the Dock or an enabled tray icon can bring the hidden app back.
     fn put_away(&mut self, ctx: &egui::Context) {
         if self.window_hides {
             self.visible = false;
@@ -879,7 +886,7 @@ impl<'a> Shell<'a> {
                     self.launcher.ui.settings.close_to_tray,
                 );
                 hiding::hide();
-                self.put_away_hid_app = true;
+                self.app_hidden_by_launcher = true;
             }
             #[cfg(not(target_os = "macos"))]
             ctx.send_viewport_cmd(egui::ViewportCommand::Visible(false));
@@ -903,15 +910,8 @@ impl eframe::App for Shell<'_> {
         #[cfg(target_os = "macos")]
         self.sync_tray_visibility();
         #[cfg(target_os = "macos")]
-        if should_restore_after_system_unhide(self.put_away_hid_app, hiding::is_hidden()) {
-            self.put_away_hid_app = false;
-            self.visible = true;
-            spaces::set_dock_visibility(
-                true,
-                self.launcher.ui.settings.hide_from_dock_when_hidden,
-                self.launcher.tray.is_some(),
-                self.launcher.ui.settings.close_to_tray,
-            );
+        if should_restore_after_system_unhide(self.app_hidden_by_launcher, hiding::is_hidden()) {
+            self.show(ctx);
         }
         #[cfg(target_os = "macos")]
         if self.applied_follow != Some(self.launcher.ui.settings.show_on_current_desktop) {
@@ -979,9 +979,15 @@ impl eframe::App for Shell<'_> {
 }
 
 #[cfg(target_os = "macos")]
-/// Returns whether macOS has externally unhidden an app that `put_away` hid.
-fn should_restore_after_system_unhide(put_away_hid_app: bool, app_hidden: Option<bool>) -> bool {
-    put_away_hid_app && app_hidden == Some(false)
+/// Returns whether macOS has externally unhidden an app this launcher hid for startup or put-away.
+fn should_restore_after_system_unhide(app_hidden_by_launcher: bool, app_hidden: Option<bool>) -> bool {
+    app_hidden_by_launcher && app_hidden == Some(false)
+}
+
+#[cfg(target_os = "macos")]
+/// Returns whether a hidden startup without tray mode must hide the app for Dock/Finder reopening.
+fn should_hide_app_for_hidden_start(hidden: bool, close_to_tray: bool) -> bool {
+    hidden && !close_to_tray
 }
 
 #[cfg(test)]
@@ -1026,6 +1032,14 @@ mod tests {
         assert!(!should_restore_after_system_unhide(true, Some(true)));
         assert!(!should_restore_after_system_unhide(true, None));
         assert!(should_restore_after_system_unhide(true, Some(false)));
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn only_hidden_start_without_tray_mode_hides_the_app_for_reopen() {
+        assert!(should_hide_app_for_hidden_start(true, false));
+        assert!(!should_hide_app_for_hidden_start(true, true));
+        assert!(!should_hide_app_for_hidden_start(false, false));
     }
 
     #[test]
@@ -1288,7 +1302,7 @@ mod tests {
             visible: true,
             quitting: false,
             #[cfg(target_os = "macos")]
-            put_away_hid_app: false,
+            app_hidden_by_launcher: false,
             #[cfg(target_os = "macos")]
             applied_tray_visibility: None,
             applied_follow: None,
@@ -1309,7 +1323,7 @@ mod tests {
             visible: true,
             quitting: false,
             #[cfg(target_os = "macos")]
-            put_away_hid_app: false,
+            app_hidden_by_launcher: false,
             #[cfg(target_os = "macos")]
             applied_tray_visibility: None,
             applied_follow: None,
