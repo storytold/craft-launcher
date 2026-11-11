@@ -44,10 +44,6 @@ fn main() -> ExitCode {
     if let Some(done) = artcraft_launcher_native::self_update::finish(&std::env::args_os().skip(1).collect::<Vec<_>>()) {
         return if done.is_ok() { ExitCode::SUCCESS } else { ExitCode::FAILURE };
     }
-    // Detect system language in the background so the first frame can use it.
-    artcraft_launcher_ui_egui::i18n::detect_system_lang_in_background();
-    // Detect Discord protocol handler in the background without blocking startup.
-    artcraft_launcher_native::process::ensure_discord_detection_started();
     // `std::env::args` panics on an argument that is not UTF-8, and the launcher is started with
     // whatever the desktop hands it: a login entry, a file manager, a terminal in a Latin-1
     // locale. It only ever looks for the two flags below, so an argument it cannot read is one it
@@ -68,6 +64,20 @@ fn main() -> ExitCode {
         return ExitCode::SUCCESS;
     }
     let mut hidden = args.iter().any(|a| a == login::HIDDEN_FLAG);
+    let settings_path = settings_file::path(APP_ID);
+    #[cfg(target_os = "macos")]
+    if hidden
+        && let Some(settings) = settings_path.as_deref().and_then(|path| settings_file::load::<Settings>(path, SETTINGS_KEY))
+        && settings.hide_from_dock_when_hidden
+        && settings.close_to_tray
+    {
+        // Set this before other startup work, or the Dock briefly shows the regular app during login.
+        spaces::set_dock_visibility(false, true, true, true);
+    }
+    // Detect system language in the background so the first frame can use it.
+    artcraft_launcher_ui_egui::i18n::detect_system_lang_in_background();
+    // Detect Discord protocol handler in the background without blocking startup.
+    artcraft_launcher_native::process::ensure_discord_detection_started();
 
     let wake: Wake = Arc::new(OnceLock::new());
     let starts = match single_instance::claim(wake.clone()) {
@@ -110,7 +120,6 @@ fn main() -> ExitCode {
     let _ = motion::reduced();
 
     let backend_waker = waker.clone();
-    let settings_path = settings_file::path(APP_ID);
     let mut launcher = Launcher::new(Box::new(NativeBackend::new(move || backend_waker.wake())), starts, settings_path.clone());
     #[cfg(target_os = "linux")]
     {
@@ -651,6 +660,16 @@ impl Launcher {
         self.ui.attach(&cc.egui_ctx);
     }
 
+    /// Shows or hides the menu-bar icon on macOS, logging platform errors without stopping the app.
+    #[cfg(target_os = "macos")]
+    fn set_tray_visible(&self, visible: bool) {
+        if let Some(tray) = &self.tray
+            && let Err(e) = tray.set_visible(visible)
+        {
+            log::warn!("couldn't change menu-bar icon visibility: {e}");
+        }
+    }
+
     /// Saves the settings with no window, where eframe would on a window's behalf.
     fn save_settings(&self) {
         let Some(path) = self.settings_path.as_deref() else { return };
@@ -758,6 +777,8 @@ struct Shell<'a> {
     quitting: bool,
     #[cfg(target_os = "macos")]
     put_away_hid_app: bool,
+    #[cfg(target_os = "macos")]
+    applied_tray_visibility: Option<bool>,
     /// The "show on the current desktop" setting last applied to the window (macOS).
     #[cfg_attr(not(target_os = "macos"), allow(dead_code))]
     applied_follow: Option<bool>,
@@ -783,8 +804,12 @@ impl<'a> Shell<'a> {
             quitting: false,
             #[cfg(target_os = "macos")]
             put_away_hid_app: false,
+            #[cfg(target_os = "macos")]
+            applied_tray_visibility: None,
             applied_follow: None,
         };
+        #[cfg(target_os = "macos")]
+        shell.sync_tray_visibility();
         if !visible && window_hides {
             // Started in the tray: the window stays out of sight. On macOS this doesn't hide the
             // app as `put_away` does, since the app is still being activated as it starts, which
@@ -806,6 +831,7 @@ impl<'a> Shell<'a> {
         // user to its own (macOS; the setting doesn't exist elsewhere).
         #[cfg(target_os = "macos")]
         {
+            self.sync_tray_visibility();
             self.put_away_hid_app = false;
             spaces::set_dock_visibility(
                 true,
@@ -826,6 +852,16 @@ impl<'a> Shell<'a> {
         } else {
             // The window is already open and can't be raised from here: ask the desktop to point it out.
             ctx.send_viewport_cmd(egui::ViewportCommand::RequestUserAttention(egui::UserAttentionType::Informational));
+        }
+    }
+
+    /// Keeps the macOS menu-bar icon in sync with the tray setting, independent of window visibility.
+    #[cfg(target_os = "macos")]
+    fn sync_tray_visibility(&mut self) {
+        let visible = self.launcher.ui.settings.close_to_tray;
+        if self.applied_tray_visibility != Some(visible) {
+            self.launcher.set_tray_visible(visible);
+            self.applied_tray_visibility = Some(visible);
         }
     }
 
@@ -864,6 +900,8 @@ impl eframe::App for Shell<'_> {
     /// Processes launcher requests, close requests, and macOS system-unhide state each frame.
     fn logic(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         let requests = self.launcher.tick(ctx);
+        #[cfg(target_os = "macos")]
+        self.sync_tray_visibility();
         #[cfg(target_os = "macos")]
         if should_restore_after_system_unhide(self.put_away_hid_app, hiding::is_hidden()) {
             self.put_away_hid_app = false;
@@ -1251,6 +1289,8 @@ mod tests {
             quitting: false,
             #[cfg(target_os = "macos")]
             put_away_hid_app: false,
+            #[cfg(target_os = "macos")]
+            applied_tray_visibility: None,
             applied_follow: None,
         };
         shell.put_away(&ctx);
@@ -1270,6 +1310,8 @@ mod tests {
             quitting: false,
             #[cfg(target_os = "macos")]
             put_away_hid_app: false,
+            #[cfg(target_os = "macos")]
+            applied_tray_visibility: None,
             applied_follow: None,
         };
         shell.put_away(&ctx);
