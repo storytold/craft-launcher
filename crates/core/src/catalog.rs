@@ -1,4 +1,4 @@
-//! The Craft App Suite: the eighteen apps the launcher knows about.
+//! The Craft App Suite: the twenty apps the launcher knows about.
 //!
 //! The list is data so a later version can fetch it from an API; [`SUITE`] is the built-in copy.
 //!
@@ -147,7 +147,7 @@ const fn app(
 }
 
 /// The Craft App Suite, in display order matching getartcraft.com, then the community apps:
-pub const SUITE: [CraftApp; 19] = [
+pub const SUITE: [CraftApp; 20] = [
     app("photocraft", "PhotoCraft", "Image editing", [[0x2f, 0x7b, 0xf5], [0x1a, 0x5b, 0xc4], [0x7f, 0xb0, 0xff]], "storytold/photocraft"),
     app("vectorcraft", "VectorCraft", "Vector illustration", [[0xe8, 0x57, 0x3f], [0xb8, 0x3a, 0x24], [0xff, 0x8a, 0x70]], "storytold/vectorcraft"),
     app(
@@ -284,6 +284,25 @@ pub const SUITE: [CraftApp; 19] = [
             "UCS-Care-Group/mailcraft",
         )
     },
+    CraftApp {
+        kind: AppKind::Community,
+        publisher: "Adnan Ali",
+        msi_publisher: Some("DrawCraft"),
+        former_ids: &["tracedraw"],
+        former_names: &["TraceDraw"],
+        former_bundles: &["dev.tracedraw.app"],
+        site: Some("https://github.com/Adnan10p/DrawCraft"),
+        // Its macOS builds carry no Developer ID signature yet, so the launcher opens a copy
+        // that's there without installing.
+        mac_team: None,
+        ..app(
+            "drawcraft",
+            "DrawCraft",
+            "Vector illustration and page layout",
+            [[0x18, 0xa8, 0x5c], [0x0f, 0x74, 0x3d], [0x58, 0xe0, 0x94]],
+            "Adnan10p/DrawCraft",
+        )
+    },
 ];
 
 /// The Apple Developer team that signs every official Craft App and ArtCraft Launcher (Learning
@@ -348,6 +367,7 @@ pub fn app_icon_png(id: &str) -> Option<&'static [u8]> {
         "craft-anything" => include_bytes!("../../../assets/app-icons/craft-anything.png"),
         "solidcraft" => include_bytes!("../../../assets/app-icons/solidcraft.png"),
         "mailcraft" => include_bytes!("../../../assets/app-icons/mailcraft.png"),
+        "drawcraft" => include_bytes!("../../../assets/app-icons/drawcraft.png"),
         "cadcraft" => include_bytes!("../../../assets/app-icons/cadcraft.png"),
         "soundcraft" => include_bytes!("../../../assets/app-icons/soundcraft.png"),
         "figcraft" => include_bytes!("../../../assets/app-icons/figcraft.png"),
@@ -370,8 +390,8 @@ mod tests {
 
     /// Every catalog entry must have a distinct lookup key.
     #[test]
-    fn suite_has_nineteen_apps_with_unique_ids() {
-        assert_eq!(SUITE.len(), 19);
+    fn suite_has_twenty_apps_with_unique_ids() {
+        assert_eq!(SUITE.len(), 20);
         let mut ids: Vec<_> = SUITE.iter().map(|a| a.id).collect();
         ids.sort_unstable();
         ids.dedup();
@@ -410,6 +430,21 @@ mod tests {
         assert_eq!(mc.website(), "https://mailcraft.work");
         assert!(!mc.installs(crate::PackageKind::Dmg));
         assert!(mc.installs(crate::PackageKind::Msi) && mc.installs(crate::PackageKind::Flatpak));
+    }
+
+    #[test]
+    fn drawcraft_is_a_community_app_not_installed_on_mac() {
+        let dc = CraftApp::by_id("drawcraft").unwrap();
+        assert_eq!(dc.kind, AppKind::Community);
+        assert_eq!(dc.repo, "Adnan10p/DrawCraft");
+        assert_eq!(dc.msi_publisher, Some("DrawCraft"));
+        assert_eq!(dc.stems().collect::<Vec<_>>(), ["drawcraft", "tracedraw"]);
+        assert_eq!(dc.bundle_id(), "ai.storyteller.drawcraft");
+        assert_eq!(dc.bundle_ids().collect::<Vec<_>>(), ["ai.storyteller.drawcraft", "dev.tracedraw.app"]);
+        assert_eq!(dc.mac_bundle_names().collect::<Vec<_>>(), ["DrawCraft", "TraceDraw"]);
+        assert_eq!(dc.website(), "https://github.com/Adnan10p/DrawCraft");
+        assert!(!dc.installs(crate::PackageKind::Dmg));
+        assert!(dc.installs(crate::PackageKind::Msi) && dc.installs(crate::PackageKind::Flatpak));
     }
 
     #[test]

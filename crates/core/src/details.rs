@@ -139,7 +139,7 @@ pub fn screenshot_within_budget(bytes: &[u8]) -> bool {
 /// Where every Craft App runs (getartcraft.com lists the same for each of them).
 const PLATFORMS: &str = "macOS, Windows, Linux, FreeBSD, web";
 
-pub const DETAILS: [AppDetails; 19] = [
+pub const DETAILS: [AppDetails; 20] = [
     AppDetails {
         id: "photocraft",
         headline: "The image editor you already know how to use.",
@@ -582,6 +582,25 @@ pub const DETAILS: [AppDetails; 19] = [
         ],
         shots: &[],
         platforms: PLATFORMS,
+    },
+    AppDetails {
+        id: "drawcraft",
+        headline: "Vector illustration, page layout and print in pure Rust.",
+        about: "A clean-room, open-source vector editor written from scratch in pure Rust. Pages and layers, \
+                curves and nodes, artistic and paragraph text, live effects, symbols, and PDF and .cdr support, \
+                in one native program for Windows, macOS and Linux, and in the browser.\n\n\
+                DrawCraft keeps the interface fast, responsive and lightweight with no Electron or web view bloat.",
+        features: &[
+            feature("Drawing and layout", "Pages, layers, curves, nodes, rectangles, ellipses, artistic text and paragraph text frames."),
+            feature(
+                "Color and effects",
+                "Uniform, fountain and bitmap fills, outlines, drop shadows, contours, blends and live non-destructive effects.",
+            ),
+            feature("File formats", "Native .tdraw documents, PDF export, SVG import and export, and reading .cdr drawings."),
+            feature("Desktop and browser", "Native desktop performance on Windows, macOS and Linux, and identical WebAssembly in the browser."),
+        ],
+        shots: &[],
+        platforms: "macOS, Windows, Linux, web",
     },
 ];
 

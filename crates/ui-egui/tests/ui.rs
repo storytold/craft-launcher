@@ -1991,6 +1991,8 @@ fn pinning_an_app_keeps_it_on_top_until_unpinned() {
     h.state_mut().as_mut().unwrap().settings.sort = artcraft_launcher_ui_egui::settings::SortKey::Name;
     h.state_mut().as_mut().unwrap().settings.sort_descending = false;
     h.run_steps(2);
+    h.get_by_label("More actions for PhotoCraft").scroll_to_me();
+    h.run_steps(2);
     h.get_by_label("More actions for PhotoCraft").click();
     h.run_steps(3);
     h.get_by_label("Pin to top").click();
