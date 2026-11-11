@@ -53,7 +53,7 @@ const fn feature(title: &'static str, text: &'static str) -> Feature {
 pub const SCREENSHOTS_BASE: &str = "https://raw.githubusercontent.com/storytold/craft-launcher-assets";
 
 /// The tag of the pictures repository the launcher reads. Also part of the saved copies' path.
-pub const SCREENSHOTS_REV: &str = "v1";
+pub const SCREENSHOTS_REV: &str = "v2";
 
 /// The largest picture the launcher accepts. The real ones are 60 to 150 KB.
 pub const MAX_SCREENSHOT_BYTES: usize = 2 << 20;
@@ -512,7 +512,12 @@ pub const DETAILS: [AppDetails; 19] = [
             feature("Materials", "Paint materials on 3D models and export textures."),
             feature("Mesh maps", "Bake mesh maps and use smart materials."),
         ],
-        shots: &[],
+        shots: &[
+            shot("workspace", "The TextureCraft workspace"),
+            shot("bake", "Baking mesh maps"),
+            shot("export", "Exporting textures"),
+            shot("rendering", "Rendering a material"),
+        ],
         platforms: PLATFORMS,
     },
     AppDetails {
@@ -629,7 +634,7 @@ mod tests {
         let page = AppDetails::by_id("photocraft").unwrap();
         assert_eq!(
             page.screenshot_url("demo").as_deref(),
-            Some("https://raw.githubusercontent.com/storytold/craft-launcher-assets/v1/photocraft/demo.jpg")
+            Some("https://raw.githubusercontent.com/storytold/craft-launcher-assets/v2/photocraft/demo.jpg")
         );
         for key in ["", "nope", "../vectorcraft/neon", "demo/../masks", "demo.jpg", "/etc/passwd", "demo?x=1", "demo#"] {
             assert_eq!(page.screenshot_url(key), None, "{key:?}");
