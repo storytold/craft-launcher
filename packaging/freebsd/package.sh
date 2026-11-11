@@ -57,7 +57,7 @@ echo "==> ArtCraft Launcher $VERSION for FreeBSD $ARCH"
 
 export CARGO_BUILD_JOBS="${CARGO_BUILD_JOBS:-4}"
 if [[ "$SKIP_BUILD" = 0 ]]; then
-  (cd "$ROOT" && cargo build --release --locked -p "$PKG")
+  (cd "$ROOT" && cargo build --release --locked -p "$PKG" ${CARGO_BUILD_TARGET:+--target "$CARGO_BUILD_TARGET"})
 fi
 WORK="$CARGO_TARGET_DIR/freebsd-package"
 STAGE="$WORK/$BASENAME"

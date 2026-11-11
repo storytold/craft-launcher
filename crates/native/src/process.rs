@@ -53,13 +53,57 @@ pub fn capture(program: &str, args: &[&str], timeout: Duration) -> Option<String
 /// Runs a helper and returns its standard output when it succeeds within `timeout`; otherwise
 /// the reason, in the helper's own words (its standard error) where it gave one.
 pub fn run(program: &str, args: &[&str], timeout: Duration) -> Result<String, String> {
+    output_result(program, run_with_output(program, args, timeout)?)
+}
+
+/// Output and exit status from a helper, including both streams on failure.
+#[derive(Debug)]
+pub(crate) struct RunOutput {
+    pub success: bool,
+    /// Read only by the macOS Gatekeeper verifier; other targets keep the field for the shared
+    /// command runner and its tests.
+    #[cfg_attr(not(target_os = "macos"), allow(dead_code))]
+    pub code: Option<i32>,
+    pub status: String,
+    pub stdout: String,
+    pub stderr: String,
+}
+
+impl RunOutput {
+    #[cfg(test)]
+    #[cfg_attr(not(target_os = "macos"), allow(dead_code))]
+    pub(crate) fn success(stdout: impl Into<String>) -> Self {
+        Self { success: true, code: Some(0), status: "exit status: 0".into(), stdout: stdout.into(), stderr: String::new() }
+    }
+
+    #[cfg(test)]
+    #[cfg_attr(not(target_os = "macos"), allow(dead_code))]
+    pub(crate) fn exit(code: i32, stdout: impl Into<String>, stderr: impl Into<String>) -> Self {
+        Self { success: false, code: Some(code), status: format!("exit status: {code}"), stdout: stdout.into(), stderr: stderr.into() }
+    }
+}
+
+/// Runs a helper and preserves its output streams and exit status when it fails.
+pub(crate) fn run_with_output(program: &str, args: &[&str], timeout: Duration) -> Result<RunOutput, String> {
     let mut cmd = command(program);
     cmd.args(args);
-    run_command(cmd, program, timeout)
+    run_command_with_output(cmd, program, timeout)
 }
 
 /// Runs a configured helper with bounded output and a timeout.
-pub fn run_command(mut cmd: Command, program: &str, timeout: Duration) -> Result<String, String> {
+pub fn run_command(cmd: Command, program: &str, timeout: Duration) -> Result<String, String> {
+    output_result(program, run_command_with_output(cmd, program, timeout)?)
+}
+
+fn output_result(program: &str, output: RunOutput) -> Result<String, String> {
+    if output.success {
+        return Ok(output.stdout);
+    }
+    let reason = output.stderr.trim();
+    Err(if reason.is_empty() { format!("{program} failed ({})", output.status) } else { reason.to_string() })
+}
+
+fn run_command_with_output(mut cmd: Command, program: &str, timeout: Duration) -> Result<RunOutput, String> {
     let mut child =
         cmd.stdin(Stdio::null()).stdout(Stdio::piped()).stderr(Stdio::piped()).spawn().map_err(|e| format!("couldn't start {program} ({e})"))?;
     // Read both pipes while it runs, so a chatty helper can't block on a full one.
@@ -86,11 +130,7 @@ pub fn run_command(mut cmd: Command, program: &str, timeout: Duration) -> Result
     }
     let text = |pipe: std::thread::JoinHandle<Vec<u8>>| String::from_utf8_lossy(&pipe.join().unwrap_or_default()).into_owned();
     let (out, err) = (text(stdout), text(stderr));
-    if status.success() {
-        return Ok(out);
-    }
-    let reason = err.trim();
-    Err(if reason.is_empty() { format!("{program} failed ({status})") } else { reason.to_string() })
+    Ok(RunOutput { success: status.success(), code: status.code(), status: status.to_string(), stdout: out, stderr: err })
 }
 
 /// Captures at most 8 MB of a child's pipe and drains the rest on its own thread.
@@ -159,7 +199,7 @@ pub fn is_flatpak_available() -> bool {
     if in_sandbox() {
         capture("flatpak-spawn", &["--host", "flatpak", "--version"], Duration::from_secs(3)).is_some()
     } else {
-        which_on_path("flatpak").is_some()
+        which("flatpak").is_some()
     }
 }
 
@@ -290,19 +330,31 @@ fn detect_discord_scheme_handler() -> bool {
     false
 }
 
-fn which_on_path(name: &str) -> Option<std::path::PathBuf> {
+/// Finds a program on `PATH`.
+pub(crate) fn which(name: &str) -> Option<std::path::PathBuf> {
     let path = std::env::var_os("PATH")?;
     std::env::split_paths(&path).map(|d| d.join(name)).find(|p| p.is_file())
 }
 
 /// Starts an app binary from its own folder.
-pub fn launch_binary(exe: &Path, args: &[&str]) -> Result<(), String> {
+pub fn launch_binary(exe: &Path, args: &[String]) -> Result<(), String> {
+    launch_binary_with_env(exe, args, &[])
+}
+
+/// Starts an app binary from its own folder with `env` added to its environment. Inside the
+/// sandbox `flatpak-spawn` does not pass the launcher's environment on, so each one becomes an
+/// `--env=` argument instead.
+pub fn launch_binary_with_env(exe: &Path, args: &[String], env: &[(&str, &std::ffi::OsStr)]) -> Result<(), String> {
     let mut cmd = if in_sandbox() {
         let mut c = command("flatpak-spawn");
-        c.arg("--host").arg(exe);
+        c.arg("--host");
+        c.args(env_args(env));
+        c.arg(exe);
         c
     } else {
-        command(exe)
+        let mut c = command(exe);
+        c.envs(env.iter().copied());
+        c
     };
     cmd.args(args);
     if let Some(dir) = exe.parent() {
@@ -311,9 +363,29 @@ pub fn launch_binary(exe: &Path, args: &[&str]) -> Result<(), String> {
     spawn_detached(cmd)
 }
 
+/// `--env=NAME=VALUE` for each of `env`, as `flatpak run` and `flatpak-spawn` take them.
+pub fn env_args(env: &[(&str, &std::ffi::OsStr)]) -> Vec<std::ffi::OsString> {
+    env.iter()
+        .map(|(name, value)| {
+            let mut arg = std::ffi::OsString::from(format!("--env={name}="));
+            arg.push(value);
+            arg
+        })
+        .collect()
+}
+
 /// Opens a file, folder or URL with the system's default handler.
 pub fn open(target: &std::ffi::OsStr) -> Result<(), String> {
     spawn_detached(opener(target)?)
+}
+
+/// macOS: opens an `.app` bundle with `open`, handing `args` to the app (`open … --args`).
+pub fn open_app(bundle: &Path, args: &[String]) -> Result<(), String> {
+    let mut cmd = opener(bundle.as_os_str())?;
+    if !args.is_empty() {
+        cmd.arg("--args").args(args);
+    }
+    spawn_detached(cmd)
 }
 
 /// The system's default opener for `target`: `explorer` on Windows, `open` on macOS, and
@@ -478,6 +550,19 @@ fn pgrep_pattern(path: &str) -> String {
 }
 
 #[cfg(test)]
+mod env_tests {
+    use super::*;
+
+    #[test]
+    fn each_variable_becomes_one_env_argument_with_its_value_intact() {
+        let path = std::ffi::OsStr::new("/home/ana/.local/share/artcraft-launcher/versions with space.json");
+        let args = env_args(&[("CRAFT_VERSIONS_FILE", path)]);
+        assert_eq!(args, [std::ffi::OsString::from("--env=CRAFT_VERSIONS_FILE=/home/ana/.local/share/artcraft-launcher/versions with space.json")]);
+        assert!(env_args(&[]).is_empty());
+    }
+}
+
+#[cfg(test)]
 #[cfg(unix)]
 mod tests {
     use std::io::{BufRead, BufReader};
@@ -585,6 +670,18 @@ mod run_tests {
         assert!(err.starts_with(&format!("{program} failed")), "{err}");
         let (program, args) = shell("echo hello");
         assert_eq!(run(program, &args, Duration::from_secs(30)).map(|out| out.trim().to_string()), Ok("hello".into()));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn run_with_output_keeps_both_streams_when_a_helper_exits_nonzero() {
+        let output =
+            run_with_output("/bin/sh", &["-c", "printf 'assessments disabled\\n'; printf 'diagnostic\\n' >&2; exit 1"], Duration::from_secs(30))
+                .unwrap();
+        assert!(!output.success);
+        assert_eq!(output.code, Some(1));
+        assert_eq!(output.stdout, "assessments disabled\n");
+        assert_eq!(output.stderr, "diagnostic\n");
     }
 }
 
@@ -752,5 +849,70 @@ mod inherited_pipe_tests {
             // The guard stops the finite descendant and waits for its completion marker on failures too.
             break;
         }
+    }
+}
+
+/// Runs a helper while polling cancellation and draining its bounded output.
+#[cfg(target_os = "linux")]
+pub(crate) fn cancellable_output(mut cmd: Command, check: impl Fn() -> Result<(), String>) -> Result<std::process::Output, String> {
+    check()?;
+    let mut child =
+        cmd.stdin(Stdio::null()).stdout(Stdio::piped()).stderr(Stdio::piped()).spawn().map_err(|e| format!("couldn't run flatpak ({e})"))?;
+    let (stdout, stderr) = (read_all(child.stdout.take()), read_all(child.stderr.take()));
+    let started = Instant::now();
+    let status = loop {
+        if started.elapsed() >= Duration::from_secs(60 * 60) {
+            let _ = child.kill();
+            let _ = child.wait();
+            return Err("Flatpak did not finish within one hour".into());
+        }
+        if let Err(e) = check() {
+            let _ = child.kill();
+            let _ = child.wait();
+            return Err(e);
+        }
+        match child.try_wait() {
+            Ok(Some(status)) => break status,
+            Ok(None) => std::thread::sleep(Duration::from_millis(25)),
+            Err(e) => {
+                let _ = child.kill();
+                let _ = child.wait();
+                return Err(format!("couldn't wait for flatpak ({e})"));
+            }
+        }
+    };
+    let deadline = Instant::now();
+    while !stdout.is_finished() || !stderr.is_finished() {
+        check()?;
+        if deadline.elapsed() > Duration::from_secs(5) {
+            return Err("Flatpak output did not close after completion".into());
+        }
+        std::thread::sleep(Duration::from_millis(25));
+    }
+    Ok(std::process::Output { status, stdout: stdout.join().unwrap_or_default(), stderr: stderr.join().unwrap_or_default() })
+}
+
+#[cfg(all(test, target_os = "linux"))]
+mod update_cancel_tests {
+    use super::*;
+
+    #[test]
+    fn cancels_a_running_helper_promptly() {
+        let mut cmd = command("sleep");
+        cmd.arg("30");
+        let start = Instant::now();
+        let result = cancellable_output(cmd, || if start.elapsed() >= Duration::from_millis(100) { Err("cancelled".into()) } else { Ok(()) });
+        assert_eq!(result.unwrap_err(), "cancelled");
+        assert!(start.elapsed() < Duration::from_secs(5));
+    }
+
+    #[test]
+    fn retains_both_output_streams_and_exit_status() {
+        let mut cmd = command("sh");
+        cmd.args(["-c", "printf output; printf error >&2; exit 7"]);
+        let output = cancellable_output(cmd, || Ok(())).unwrap();
+        assert_eq!(output.status.code(), Some(7));
+        assert_eq!(output.stdout, b"output");
+        assert_eq!(output.stderr, b"error");
     }
 }

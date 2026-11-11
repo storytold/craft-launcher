@@ -20,6 +20,7 @@
 
 	Launcher	Launcher
 	Craft App Suite	Craft App Suite
+	by {name}	от {name}
 	Open Source Tools for Creatives, Makers, and Builders	Инструменты с открытым кодом для творцов, мастеров и создателей
 	Settings	Настройки
 	Check for updates	Проверить обновления
@@ -47,6 +48,10 @@
 	Install	Установить
 	Update to {v}	Обновить до {v}
 	Open	Открыть
+	Open {version}	Открыть {version}
+	Open {installed} without updating. {latest} stays available.	Открыть {installed} без обновления. Версия {latest} останется доступной.
+	{latest} is out, but ArtCraft Launcher can't install it over this copy.	Вышла версия {latest}, но ArtCraft Launcher не может установить её поверх этой копии.
+	ArtCraft Launcher can't install version {version} over this copy.	ArtCraft Launcher не может установить версию {version} поверх этой копии.
 	Download for {os}	Скачать для {os}
 	Download	Скачать
 	Coming soon	Скоро
@@ -70,6 +75,13 @@
 	Show in Files	Показать в файловом менеджере
 	Reinstall	Переустановить
 	Uninstall…	Удалить…
+	Launch options…	Параметры запуска…
+	{name} launch options	Параметры запуска {name}
+	Flags added each time the app is opened	Флаги, добавляемые при каждом открытии приложения
+	Separate flags with spaces. Quote a value that has spaces in it.	Разделяйте флаги пробелами. Значение с пробелами заключите в кавычки.
+	A quote isn't closed.	Кавычка не закрыта.
+	{name} wasn't opened: a quote in its launch options isn't closed.	{name} не открыто: в параметрах запуска не закрыта кавычка.
+	Save	Сохранить
 	All releases	Все релизы
 	ArtCraft Launcher {version} is available.	Доступен ArtCraft Launcher {version}.
 	Dismiss	Закрыть
@@ -85,6 +97,7 @@
 	ArtCraft Launcher {version}	ArtCraft Launcher {version}
 	Only when I ask	Только по запросу
 	Automatically download and install updates	Автоматически скачивать и устанавливать обновления
+	Ask for permission once when updating all apps	Запрашивать разрешение один раз при обновлении всех приложений
 	Notify me when an installed app has an update	Уведомлять, когда у установленного приложения есть обновление
 	Include pre-releases (betas and release candidates)	Включать предварительные релизы (бета и RC)
 	Installing on Linux	Установка в Linux
@@ -121,6 +134,12 @@
 	Apps on this computer	Приложения на этом компьютере
 	Installed apps with a newer version	Установленные приложения, у которых есть новая версия
 	Apps you can install	Приложения, которые можно установить
+	Pin to top	Закрепить сверху
+	Unpin	Открепить
+	Pinned	Закреплённые
+	Reorder {name}	Изменить порядок: {name}
+	Move up	Выше
+	Move down	Ниже
 	Hide App	Скрыть приложение
 	Unhide App	Показать приложение
 	Hidden Apps	Скрытые приложения
@@ -146,6 +165,7 @@
 	Update cancelled	Обновление отменено
 	Uninstall cancelled	Удаление отменено
 	Retry install	Повторить установку
+	Retry update	Повторить обновление
 	Retry update to {version}	Повторить обновление до {version}
 	The download is still here. It's checked again, then installed.	Скачанный файл сохранён. Он будет проверен ещё раз, затем установлен.
 	Waiting for another app…	Ожидание другого приложения…
@@ -162,6 +182,7 @@
 	Tarball (.tar.gz)	Архив (.tar.gz)
 
 # Contextual: each app's tagline, keyed by app id
+artcraft	AI image and video creation	Создание изображений и видео с помощью ИИ
 photocraft	Image editing	Редактирование изображений
 vectorcraft	Vector illustration	Векторная иллюстрация
 filmcraft	Video editing, color and sound	Монтаж видео, цветокоррекция и звук
@@ -172,6 +193,9 @@ designcraft	Page layout and publishing	Вёрстка и издательско�
 wordcraft	Writing and document design	Тексты и оформление документов
 deckcraft	Presentations and slide shows	Презентации и слайд-шоу
 gridcraft	Spreadsheets and data	Электронные таблицы и данные
+craft-anything	Find out how any software works, then craft your own	Узнайте, как устроена любая программа, и создайте свою
+solidcraft	Parametric 3D CAD	Параметрический 3D CAD
+mailcraft	Mail, calendar and contacts	Почта, календарь и контакты
 cadcraft	Computer-aided design and drafting	Автоматизированное проектирование и черчение
 soundcraft	Recording, editing and mixing audio	Запись, редактирование и сведение звука
 figcraft	Interface design and prototyping	Дизайн интерфейсов и прототипирование
@@ -275,6 +299,7 @@ filter	Installed	Установлены
 
 # Message templates (@msg): toasts from the backend. {placeholders} match any text.
 @msg	Couldn't open {name}: {e}	Не удалось открыть {name}: {e}
+@msg	ArtCraft Launcher couldn't start its window on {backend}: {e}	Не удалось открыть окно ArtCraft Launcher на {backend}: {e}
 @msg	Download cancelled	Скачивание отменено
 @msg	{name} updated to {version}	Приложение {name} обновлено до {version}
 @msg	{name} installed: {version}	Приложение {name} установлено: {version}
@@ -352,6 +377,8 @@ filter	Installed	Установлены
 	Loading pictures…	Загрузка изображений…
 	Pictures couldn't be loaded. Reopen this page to try again.	Не удалось загрузить изображения. Откройте страницу снова, чтобы повторить попытку.
 @plural	ArtCraft Launcher · {n} update available|ArtCraft Launcher · {n} updates available	ArtCraft Launcher · {n} обновление|ArtCraft Launcher · {n} обновления|ArtCraft Launcher · {n} обновлений
+
+	Download size: {size}	Размер загрузки: {size}
 	Install folder	Папка установки
 	Default install folder	Папка установки по умолчанию
 	System default	По умолчанию в системе
@@ -379,3 +406,40 @@ filter	Installed	Установлены
 	Show {n} more changes	Показать ещё изменений: {n}
 	Last updated: {date}	Последнее обновление: {date}
 column	Version	Версия
+column	Author	Автор
+	Choose version	Выбрать версию
+	latest {version}	последняя {version}
+	{version} (latest release)	{version} (последний релиз)
+	Launcher version	Версия лаунчера
+	Nightly	Ночная сборка
+	Nightly (none published yet)	Ночная сборка (пока нет)
+	Install version {version}	Установить версию {version}
+	Download selected version	Скачать выбранную версию
+	Older launcher versions require a manual reinstall.	Для возврата к старой версии лаунчера нужна переустановка вручную.
+	Your files may not open in older versions.	В старой версии ваши файлы могут не открыться.
+	Enable automatic installs in Settings to follow new nightly builds.	Чтобы получать новые ночные сборки, включите автоматическую установку в настройках.
+texturecraft	3D texture painting	Рисование 3D-текстур
+texturecraft	Paint materials on 3D models and export textures.	Рисуйте материалы на 3D-моделях и экспортируйте текстуры.
+texturecraft	Materials	Материалы
+texturecraft	Mesh maps	Карты сетки
+texturecraft	Bake mesh maps and use smart materials.	Запекайте карты сетки и используйте умные материалы.
+texturecraft	Paint textures on 3D models.	Рисуйте текстуры на 3D-моделях.
+	Hide community apps	Скрыть приложения сообщества
+materialcraft	Procedural material design	Создание процедурных материалов
+materialcraft	Build materials with node graphs.	Создавайте материалы с помощью графов узлов.
+materialcraft	Create tileable PBR materials and export texture maps.	Создавайте бесшовные PBR-материалы и экспортируйте карты текстур.
+materialcraft	Node graphs	Графы узлов
+materialcraft	Combine noises, patterns and filters.	Комбинируйте шумы, узоры и фильтры.
+materialcraft	Live previews	Предпросмотр в реальном времени
+materialcraft	Preview materials in 2D and on 3D models.	Просматривайте материалы в 2D и на 3D-моделях.
+	Advanced	Дополнительно
+	Migrate Flatpak bundles to ArtCraft OCI (experimental)	Переводить пакеты Flatpak на ArtCraft OCI (экспериментально)
+	On update, switch first party apps when the matching package is available. Otherwise, keep using bundles.	При обновлении переводить приложения ArtCraft на репозиторий, если доступен соответствующий пакет. Иначе продолжать использовать отдельные пакеты.
+	The OCI repository is a preview with GPG verification disabled.	Репозиторий OCI работает в предварительном режиме с отключённой проверкой GPG.
+anicraft	2D vector animation	2D-векторная анимация
+anicraft	Vector animation on a timeline you know.	Векторная анимация на привычной временной шкале.
+anicraft	Open-source 2D vector animation, built in pure Rust.	2D-векторная анимация с открытым исходным кодом на чистом Rust.
+anicraft	Familiar by design	Привычный интерфейс
+anicraft	Stage, tools, timeline, layers, keyframes, Properties and Library sit where animators expect them, with onion skinning for in-betweening.	Сцена, инструменты, шкала времени, слои, ключевые кадры, Свойства и Библиотека там, где их ждут аниматоры, со шлейфом калькирования.
+anicraft	Tweens that ease	Плавные твины
+anicraft	Classic tweens with eight easing presets and custom ease curves, plus shape tweens that morph one vector contour into another.	Классические твины с восемью пресетами замедления и кривыми, а также твины формы.
