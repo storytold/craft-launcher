@@ -58,7 +58,8 @@ The storage identity comes from the verified issuer and subject.
 Run `artcraft-launcher-server --config /path/to/config.json` behind an HTTPS reverse proxy
 at the configured origin. Route that dedicated origin to the loopback listener. The proxy
 must support requests of at least 96 MiB for artifact uploads and 80 MiB plus framing for
-project saves. Keep the origin consistent across the launcher, API and editor frames.
+project saves. Set the proxy upload deadline to at least four minutes to match the
+server's body-read deadline. Keep the origin consistent across the launcher, API and editor frames.
 Restrict access to the loopback listener and never log OIDC callback query strings, session
 cookies or authorization headers. Keep user files and login/API responses out of shared caches.
 

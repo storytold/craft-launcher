@@ -22,7 +22,8 @@ use crate::store::{Project, Save, Store, StoreError, StoredFile};
 
 const MAX_UPLOAD_BYTES: usize = 80 * 1024 * 1024;
 const MAX_METADATA_BYTES: usize = 4096;
-const UPLOAD_TIMEOUT: Duration = Duration::from_secs(90);
+// Leave time for a large body on a slower connection while staying within the worker HTTP deadline.
+const UPLOAD_TIMEOUT: Duration = Duration::from_secs(4 * 60);
 const TRANSFER_CHUNK: usize = 64 * 1024;
 const MAX_TRANSFERS: usize = 4;
 
