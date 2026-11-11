@@ -420,6 +420,8 @@ enum OnClose {
     Quit,
 }
 
+/// Chooses how to handle a window close: macOS hides a hide-capable window, while other platforms
+/// require tray mode to keep the launcher running.
 fn on_close(has_tray: bool, close_to_tray: bool, window_hides: bool) -> OnClose {
     if cfg!(target_os = "macos") && window_hides {
         OnClose::Hide
@@ -936,6 +938,7 @@ impl eframe::App for Shell<'_> {
 }
 
 #[cfg(target_os = "macos")]
+/// Returns whether macOS has externally unhidden an app that `put_away` hid.
 fn should_restore_after_system_unhide(put_away_hid_app: bool, app_hidden: Option<bool>) -> bool {
     put_away_hid_app && app_hidden == Some(false)
 }
