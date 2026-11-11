@@ -524,6 +524,65 @@ text = "Plain .figcraft files on your own disk. SVG, PNG, JPEG, WebP and PDF in 
 title = "Your files"
 
 [[apps]]
+color = [31, 165, 201]
+former_bundles = []
+former_ids = []
+former_names = []
+id = "soundcraft"
+binary = "soundcraft"
+flatpak_id = "ai.storyteller.soundcraft"
+mac_bundle_id = "ai.storyteller.soundcraft"
+mac_bundle_name = "SoundCraft"
+website = "https://getartcraft.com/apps/soundcraft"
+windows_msi_publisher = "Learning Machines LLC"
+deb_package = "soundcraft"
+rpm_package = "soundcraft"
+desktop_categories = ["AudioVideo", "Audio", "Midi", "Mixer", "Sequencer", "Recorder"]
+startup_wm_class = "ai.storyteller.soundcraft"
+icon_url = "https://getartcraft.com/launcher-app-icons/soundcraft-0e7f4f83d82f5539530f62f85ccf8717dcc00c6d25a3dba57e2a65111e3b248b.png"
+icon_sha256 = "0e7f4f83d82f5539530f62f85ccf8717dcc00c6d25a3dba57e2a65111e3b248b"
+ink_dark = [95, 208, 238]
+ink_light = [14, 114, 144]
+kind = "official"
+mac_team = "DJ6XS33FX8"
+name = "SoundCraft"
+publisher = "ArtCraft"
+repo = "storytold/soundcraft"
+tagline = "Recording, editing and mixing audio"
+[apps.details]
+headline = "Record, edit and mix your audio."
+about = "A digital audio workstation that follows the workflow audio engineers already know: an Edit window for arranging and editing, and a Mix window for balancing. Pre-alpha."
+platforms = "macOS, Windows, Linux, FreeBSD, web"
+[[apps.details.features]]
+text = "Shuffle, Slip, Spot and Grid modes, Smart, Grabber, Trim and other tools, fades and crossfades, playlists with comping lanes and clip gain."
+title = "Editing"
+[[apps.details.features]]
+text = "Faders and pans with automation, sends, busses, aux inputs, VCA masters, routing folders and automatic plugin delay compensation."
+title = "Mixing"
+[[apps.details.features]]
+text = "Volume, pan, mute, send and every plugin parameter, with Write, Touch, Latch and Trim passes recorded live from the faders."
+title = "Automation"
+[[apps.details.features]]
+text = "EQ, dynamics, reverbs, modulation effects, a subtractive synth and a drum synth, all original, and CLAP plugins load too."
+title = "Plugins"
+[[apps.details.shots]]
+caption = "The Edit window with a nine-track session"
+key = "edit"
+url = "https://raw.githubusercontent.com/storytold/craft-launcher-assets/v1/soundcraft/edit.jpg"
+[[apps.details.shots]]
+caption = "The Mix window"
+key = "mix"
+url = "https://raw.githubusercontent.com/storytold/craft-launcher-assets/v1/soundcraft/mix.jpg"
+[[apps.details.shots]]
+caption = "Automation and memory locations"
+key = "automation"
+url = "https://raw.githubusercontent.com/storytold/craft-launcher-assets/v1/soundcraft/automation.jpg"
+[[apps.details.shots]]
+caption = "The Score Editor"
+key = "score"
+url = "https://raw.githubusercontent.com/storytold/craft-launcher-assets/v1/soundcraft/score.jpg"
+
+[[apps]]
 color = [63, 95, 224]
 former_bundles = []
 former_ids = []
@@ -587,65 +646,6 @@ url = "https://raw.githubusercontent.com/storytold/craft-launcher-assets/v1/word
 caption = "The Layout tab"
 key = "layout"
 url = "https://raw.githubusercontent.com/storytold/craft-launcher-assets/v1/wordcraft/layout.jpg"
-
-[[apps]]
-color = [31, 165, 201]
-former_bundles = []
-former_ids = []
-former_names = []
-id = "soundcraft"
-binary = "soundcraft"
-flatpak_id = "ai.storyteller.soundcraft"
-mac_bundle_id = "ai.storyteller.soundcraft"
-mac_bundle_name = "SoundCraft"
-website = "https://getartcraft.com/apps/soundcraft"
-windows_msi_publisher = "Learning Machines LLC"
-deb_package = "soundcraft"
-rpm_package = "soundcraft"
-desktop_categories = ["AudioVideo", "Audio", "Midi", "Mixer", "Sequencer", "Recorder"]
-startup_wm_class = "ai.storyteller.soundcraft"
-icon_url = "https://getartcraft.com/launcher-app-icons/soundcraft-0e7f4f83d82f5539530f62f85ccf8717dcc00c6d25a3dba57e2a65111e3b248b.png"
-icon_sha256 = "0e7f4f83d82f5539530f62f85ccf8717dcc00c6d25a3dba57e2a65111e3b248b"
-ink_dark = [95, 208, 238]
-ink_light = [14, 114, 144]
-kind = "official"
-mac_team = "DJ6XS33FX8"
-name = "SoundCraft"
-publisher = "ArtCraft"
-repo = "storytold/soundcraft"
-tagline = "Recording, editing and mixing audio"
-[apps.details]
-headline = "Record, edit and mix your audio."
-about = "A digital audio workstation that follows the workflow audio engineers already know: an Edit window for arranging and editing, and a Mix window for balancing. Pre-alpha."
-platforms = "macOS, Windows, Linux, FreeBSD, web"
-[[apps.details.features]]
-text = "Shuffle, Slip, Spot and Grid modes, Smart, Grabber, Trim and other tools, fades and crossfades, playlists with comping lanes and clip gain."
-title = "Editing"
-[[apps.details.features]]
-text = "Faders and pans with automation, sends, busses, aux inputs, VCA masters, routing folders and automatic plugin delay compensation."
-title = "Mixing"
-[[apps.details.features]]
-text = "Volume, pan, mute, send and every plugin parameter, with Write, Touch, Latch and Trim passes recorded live from the faders."
-title = "Automation"
-[[apps.details.features]]
-text = "EQ, dynamics, reverbs, modulation effects, a subtractive synth and a drum synth, all original, and CLAP plugins load too."
-title = "Plugins"
-[[apps.details.shots]]
-caption = "The Edit window with a nine-track session"
-key = "edit"
-url = "https://raw.githubusercontent.com/storytold/craft-launcher-assets/v1/soundcraft/edit.jpg"
-[[apps.details.shots]]
-caption = "The Mix window"
-key = "mix"
-url = "https://raw.githubusercontent.com/storytold/craft-launcher-assets/v1/soundcraft/mix.jpg"
-[[apps.details.shots]]
-caption = "Automation and memory locations"
-key = "automation"
-url = "https://raw.githubusercontent.com/storytold/craft-launcher-assets/v1/soundcraft/automation.jpg"
-[[apps.details.shots]]
-caption = "The Score Editor"
-key = "score"
-url = "https://raw.githubusercontent.com/storytold/craft-launcher-assets/v1/soundcraft/score.jpg"
 
 [[apps]]
 color = [240, 122, 30]

@@ -108,11 +108,30 @@ mod tests {
     use super::*;
 
     #[test]
+    #[ignore = "requires the live signed catalog at getartcraft.com"]
+    fn live_catalog_is_verified_cached_and_activated() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = Paths::under(dir.path());
+        let http = Http::new().unwrap();
+        load_once(Some(&http), &paths);
+        let cache = paths.feed_cache().with_file_name("launcher-catalog.json");
+        let verified = saved_catalog(&cache).expect("live catalog must be cached and verify with the pinned key");
+        assert_eq!(verified.rejected_entries, 0);
+        let icons: Vec<_> = verified.icons().collect();
+        assert!(!icons.is_empty());
+        for (id, _, digest) in icons {
+            assert!(artcraft_launcher_core::hosted_catalog::apps().iter().any(|app| app.id == id));
+            let icon = artcraft_launcher_core::catalog::app_icon_png(id).unwrap();
+            assert!(valid_icon(icon, digest), "invalid live icon for {id}");
+        }
+    }
+
+    #[test]
     fn cached_catalog_is_reverified_and_tampered_cache_is_ignored() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("catalog.json");
         let mut saved = Saved {
-            catalog: include_str!("../../core/catalog.toml").into(),
+            catalog: include_str!("../../core/tests/fixtures/hosted-catalog.toml").into(),
             signature: include_str!("../../core/tests/fixtures/hosted-catalog.toml.sig").into(),
         };
         write_atomic(&path, &serde_json::to_vec(&saved).unwrap()).unwrap();

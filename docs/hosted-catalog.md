@@ -1,7 +1,9 @@
 # Signed hosted catalog
 
-The launcher bundles `crates/core/catalog.toml`, matching the website's
-`launcher-catalog.toml` in storytold/artcraft-services#205. The core build script
+The launcher bundles `crates/core/catalog.toml`, containing the website's
+`launcher-catalog.toml` data from storytold/artcraft-services#205 with the latest
+compiled display order. The signed website fixture is kept separately under
+`crates/core/tests/fixtures/` with byte-preserving Git attributes for Windows. The core build script
 generates the existing static app/details types from it, keeping first launch
 and offline operation independent of the website.
 

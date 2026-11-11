@@ -20,10 +20,10 @@ pub async fn refresh_once() {
     let catalog = match remote {
         Ok((catalog, signature)) => match VerifiedCatalog::verify(&catalog, &signature) {
             Ok(verified) => {
-                if let (Some(storage), Ok(text), Ok(sig)) = (&storage, String::from_utf8(catalog), String::from_utf8(signature)) {
-                    if let Ok(json) = serde_json::to_string(&(text, sig)) {
-                        let _ = storage.set_item(CACHE_KEY, &json);
-                    }
+                if let (Some(storage), Ok(text), Ok(sig)) = (&storage, String::from_utf8(catalog), String::from_utf8(signature))
+                    && let Ok(json) = serde_json::to_string(&(text, sig))
+                {
+                    let _ = storage.set_item(CACHE_KEY, &json);
                 }
                 Some(verified)
             }

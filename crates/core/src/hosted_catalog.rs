@@ -343,6 +343,7 @@ mod tests {
     use ed25519_dalek::{Signer, SigningKey};
 
     const BUNDLED: &[u8] = include_bytes!("../catalog.toml");
+    const WEBSITE: &[u8] = include_bytes!("../tests/fixtures/hosted-catalog.toml");
     const SIGNATURE: &[u8] = include_bytes!("../tests/fixtures/hosted-catalog.toml.sig");
 
     fn signed(bytes: &[u8]) -> Result<VerifiedCatalog, String> {
@@ -358,26 +359,34 @@ mod tests {
 
     #[test]
     fn website_fixture_verifies_with_the_actual_pinned_public_key() {
-        let catalog = VerifiedCatalog::verify(BUNDLED, SIGNATURE).unwrap();
+        let catalog = VerifiedCatalog::verify(WEBSITE, SIGNATURE).unwrap();
         assert_eq!(catalog.records.len(), SUITE.len());
         assert_eq!(catalog.rejected_entries, 0);
-        for (record, bundled) in catalog.records.iter().zip(SUITE) {
-            assert_eq!(record.id, bundled.id);
+        for record in &catalog.records {
+            let bundled = SUITE.iter().find(|app| app.id == record.id).unwrap();
             assert_eq!(record.repo, bundled.repo);
         }
     }
 
     #[test]
     fn tampered_wrong_key_missing_and_oversized_signatures_are_rejected() {
-        let mut tampered = BUNDLED.to_vec();
+        let mut tampered = WEBSITE.to_vec();
         tampered.push(b'\n');
         assert!(VerifiedCatalog::verify(&tampered, SIGNATURE).is_err());
-        let wrong = STANDARD.encode(SigningKey::from_bytes(&[7; 32]).sign(BUNDLED).to_bytes());
-        assert!(VerifiedCatalog::verify(BUNDLED, wrong.as_bytes()).is_err());
+        let wrong = STANDARD.encode(SigningKey::from_bytes(&[7; 32]).sign(WEBSITE).to_bytes());
+        assert!(VerifiedCatalog::verify(WEBSITE, wrong.as_bytes()).is_err());
         for signature in [b"".as_slice(), b"not-base64", &[b'a'; MAX_SIGNATURE_BYTES + 1]] {
             assert!(VerifiedCatalog::verify(BUNDLED, signature).is_err());
         }
         assert!(VerifiedCatalog::verify(&vec![0; MAX_CATALOG_BYTES + 1], SIGNATURE).is_err());
+    }
+
+    #[test]
+    fn signed_fixture_keeps_lf_bytes_on_every_platform() {
+        assert!(!WEBSITE.contains(&b'\r'));
+        assert!(VerifiedCatalog::verify(WEBSITE, SIGNATURE).is_ok());
+        let crlf = std::str::from_utf8(WEBSITE).unwrap().replace("\n", "\r\n");
+        assert!(VerifiedCatalog::verify(crlf.as_bytes(), SIGNATURE).is_err());
     }
 
     #[test]
