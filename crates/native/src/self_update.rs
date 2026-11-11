@@ -29,8 +29,11 @@ fn to_update_paths(paths: &Paths) -> craft_update::Paths {
     craft_update::Paths { data: paths.data.clone(), cache: paths.cache.clone() }
 }
 
-fn to_update_release(release: &Release) -> craft_update::Release {
+/// craft-update's copy of `release`, read from `repo` (`""` for the launcher's own). craft-update
+/// downloads only assets whose links belong to that repository.
+fn to_update_release(release: &Release, repo: &str) -> craft_update::Release {
     craft_update::Release {
+        repo: repo.to_string(),
         tag: release.tag.clone(),
         version: release.version.clone(),
         name: release.name.clone(),
@@ -66,7 +69,7 @@ fn to_update_platform(platform: Platform) -> craft_update::Platform {
 /// Whether `release` is the version this launcher just updated itself to.
 pub fn just_updated_to(paths: &Paths, release: &Release) -> bool {
     let update_paths = to_update_paths(paths);
-    let update_release = to_update_release(release);
+    let update_release = to_update_release(release, "");
     craft_update::self_update::just_updated_to(&update_paths, &update_release)
 }
 
@@ -76,13 +79,15 @@ pub fn take_failure(paths: &Paths) -> Option<String> {
     craft_update::self_update::take_failure(&update_paths)
 }
 
-/// Downloads `release` for `platform`, puts it in place and starts the helper that relaunches
-/// it once this process has exited. On success the caller must quit promptly. `last` is called
-/// once the download is ready and returns when the launcher may replace itself and restart.
+/// Downloads `release`, read from `repo` (the launcher's, or the one the feed renamed it to), for
+/// `platform`, puts it in place and starts the helper that relaunches it once this process has
+/// exited. On success the caller must quit promptly. `last` is called once the download is ready
+/// and returns when the launcher may replace itself and restart.
 #[allow(clippy::too_many_arguments)]
 pub fn update(
     install: &Install,
     release: &Release,
+    repo: &str,
     platform: Platform,
     _http: &Http,
     paths: &Paths,
@@ -90,7 +95,7 @@ pub fn update(
     phase: &mut dyn FnMut(JobPhase),
     last: &dyn Fn() -> Result<(), String>,
 ) -> Result<(), String> {
-    let update_release = to_update_release(release);
+    let update_release = to_update_release(release, repo);
     let update_platform = to_update_platform(platform);
     let update_paths = to_update_paths(paths);
     let update_http = craft_update::Http::new("ArtCraft-Launcher/SelfUpdate")?;
@@ -151,6 +156,28 @@ pub fn finish(args: &[OsString]) -> Option<Result<(), String>> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// craft-update downloads only links in the repository the release was read from: a release
+    /// read from the repository the feed renamed the launcher's to passes when it carries that
+    /// repository, and is refused as the launcher's own.
+    #[test]
+    fn the_update_checks_links_against_the_repo_the_release_came_from() {
+        let app = &craft_update::suite::LAUNCHER;
+        let sums = |name: &str| [("a".repeat(64), name.to_string())];
+        let renamed = artcraft_launcher_core::release::release_from_sums(
+            "storytold/artcraft-launcher-next",
+            "v0.9.0",
+            &sums("artcraft-launcher-0.9.0-linux-x86_64.AppImage"),
+        );
+        let carried = to_update_release(&renamed, "storytold/artcraft-launcher-next");
+        assert!(craft_update::install::check_download_link(app, &carried, &carried.assets[0]).is_ok());
+        let own = to_update_release(&renamed, "");
+        assert!(craft_update::install::check_download_link(app, &own, &own.assets[0]).is_err());
+
+        let launcher = artcraft_launcher_core::release::release_from_sums(app.repo, "v0.9.0", &sums("artcraft-launcher-0.9.0-linux-x86_64.AppImage"));
+        let launcher = to_update_release(&launcher, app.repo);
+        assert!(craft_update::install::check_download_link(app, &launcher, &launcher.assets[0]).is_ok());
+    }
 
     #[test]
     fn a_development_build_does_not_update_itself() {
