@@ -421,7 +421,9 @@ enum OnClose {
 }
 
 fn on_close(has_tray: bool, close_to_tray: bool, window_hides: bool) -> OnClose {
-    if !(has_tray && close_to_tray) {
+    if cfg!(target_os = "macos") && window_hides {
+        OnClose::Hide
+    } else if !(has_tray && close_to_tray) {
         OnClose::Quit
     } else if window_hides {
         OnClose::Hide
@@ -1092,10 +1094,18 @@ mod tests {
     #[test]
     fn closing_quits_without_a_tray_or_when_the_user_turned_it_off() {
         for window_hides in [true, false] {
-            assert_eq!(on_close(false, true, window_hides), OnClose::Quit);
-            assert_eq!(on_close(true, false, window_hides), OnClose::Quit);
-            assert_eq!(on_close(false, false, window_hides), OnClose::Quit);
+            let expected = if cfg!(target_os = "macos") && window_hides { OnClose::Hide } else { OnClose::Quit };
+            assert_eq!(on_close(false, true, window_hides), expected);
+            assert_eq!(on_close(true, false, window_hides), expected);
+            assert_eq!(on_close(false, false, window_hides), expected);
         }
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn closing_without_run_in_tray_leaves_the_app_in_the_dock() {
+        assert_eq!(on_close(true, false, true), OnClose::Hide);
+        assert_eq!(on_close(false, false, true), OnClose::Hide);
     }
 
     #[test]
