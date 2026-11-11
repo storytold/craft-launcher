@@ -298,6 +298,7 @@ filter	Installed	Installées
 
 # Message templates (@msg): toasts from the backend. {placeholders} match any text.
 @msg	Couldn't open {name}: {e}	Impossible d'ouvrir {name} : {e}
+@msg	ArtCraft Launcher couldn't start its window on {backend}: {e}	Impossible de démarrer la fenêtre d'ArtCraft Launcher avec {backend} : {e}
 @msg	Download cancelled	Téléchargement annulé
 @msg	{name} updated to {version}	{name} mis à jour vers {version}
 @msg	{name} installed: {version}	{name} installé : {version}
@@ -435,3 +436,10 @@ materialcraft	Preview materials in 2D and on 3D models.	Visualisez les matériau
 	Migrate Flatpak bundles to ArtCraft OCI (experimental)	Migrer les paquets Flatpak vers ArtCraft OCI (expérimental)
 	On update, switch first party apps when the matching package is available. Otherwise, keep using bundles.	Lors des mises à jour, migrer les applications ArtCraft si le paquet correspondant est disponible. Sinon, continuer à utiliser les paquets autonomes.
 	The OCI repository is a preview with GPG verification disabled.	Le dépôt OCI est une version préliminaire avec la vérification GPG désactivée.
+anicraft	2D vector animation	Animation vectorielle 2D
+anicraft	Vector animation on a timeline you know.	Animation vectorielle sur une chronologie familière.
+anicraft	Open-source 2D vector animation, built in pure Rust.	Animation vectorielle 2D open source, conçue en pur Rust.
+anicraft	Familiar by design	Conception familière
+anicraft	Stage, tools, timeline, layers, keyframes, Properties and Library sit where animators expect them, with onion skinning for in-betweening.	Scène, outils, chronologie, calques, images clés, Propriétés et Bibliothèque là où les animateurs les attendent, avec pelure d'oignon.
+anicraft	Tweens that ease	Interpolations fluides
+anicraft	Classic tweens with eight easing presets and custom ease curves, plus shape tweens that morph one vector contour into another.	Interpolations classiques avec huit préréglages d'accélération et courbes personnalisées, plus interpolations de forme.

@@ -297,6 +297,7 @@ filter	Installed	Установлены
 
 # Message templates (@msg): toasts from the backend. {placeholders} match any text.
 @msg	Couldn't open {name}: {e}	Не удалось открыть {name}: {e}
+@msg	ArtCraft Launcher couldn't start its window on {backend}: {e}	Не удалось открыть окно ArtCraft Launcher на {backend}: {e}
 @msg	Download cancelled	Скачивание отменено
 @msg	{name} updated to {version}	Приложение {name} обновлено до {version}
 @msg	{name} installed: {version}	Приложение {name} установлено: {version}
@@ -433,3 +434,10 @@ materialcraft	Preview materials in 2D and on 3D models.	Просматривай
 	Migrate Flatpak bundles to ArtCraft OCI (experimental)	Переводить пакеты Flatpak на ArtCraft OCI (экспериментально)
 	On update, switch first party apps when the matching package is available. Otherwise, keep using bundles.	При обновлении переводить приложения ArtCraft на репозиторий, если доступен соответствующий пакет. Иначе продолжать использовать отдельные пакеты.
 	The OCI repository is a preview with GPG verification disabled.	Репозиторий OCI работает в предварительном режиме с отключённой проверкой GPG.
+anicraft	2D vector animation	2D-векторная анимация
+anicraft	Vector animation on a timeline you know.	Векторная анимация на привычной временной шкале.
+anicraft	Open-source 2D vector animation, built in pure Rust.	2D-векторная анимация с открытым исходным кодом на чистом Rust.
+anicraft	Familiar by design	Привычный интерфейс
+anicraft	Stage, tools, timeline, layers, keyframes, Properties and Library sit where animators expect them, with onion skinning for in-betweening.	Сцена, инструменты, шкала времени, слои, ключевые кадры, Свойства и Библиотека там, где их ждут аниматоры, со шлейфом калькирования.
+anicraft	Tweens that ease	Плавные твины
+anicraft	Classic tweens with eight easing presets and custom ease curves, plus shape tweens that morph one vector contour into another.	Классические твины с восемью пресетами замедления и кривыми, а также твины формы.
