@@ -383,6 +383,17 @@ filter	Installed	დაინსტალირებული
 	ArtCraft on GitHub	ArtCraft GitHub-ზე
 	Join the ArtCraft Discord	შემოუერთდით ArtCraft-ის Discord-ს
 @plural	ArtCraft Launcher · {n} update available|ArtCraft Launcher · {n} updates available	ArtCraft Launcher · ხელმისაწვდომია {n} განახლება|ArtCraft Launcher · ხელმისაწვდომია {n} განახლება
+	Shortcuts…	მალსახმობები…
+	Shortcuts	მალსახმობები
+	Choose which shortcuts to keep for this app. Changes apply immediately for installed apps and are preserved across updates.	აირჩიეთ, რომელი მალსახმობები შეინახოთ ამ აპლიკაციისთვის. ცვლილებები დაუყოვნებლივ ამოქმედდება დაინსტალებული აპლიკაციებისთვის და შენარჩუნდება განახლებების დროს.
+	Desktop shortcut	სამუშაო მაგიდის მალსახმობი
+	Start menu / application menu shortcut	Start მენიუს / აპლიკაციების მენიუს მალსახმობი
+	Use global defaults	გლობალური ნაგულისხმევის გამოყენება
+	Create a desktop shortcut when installing apps	აპლიკაციების ინსტალაციისას სამუშაო მაგიდის მალსახმობის შექმნა
+	Create a Start menu / application menu shortcut when installing apps	აპლიკაციების ინსტალაციისას Start მენიუს / აპლიკაციების მენიუს მალსახმობის შექმნა
+@msg	Couldn't update shortcuts for {name}: {e}	ვერ განახლდა მალსახმობები {name}-სთვის: {e}
+	A system-wide desktop shortcut exists (not controlled by launcher)	არსებობს სისტემური სამუშაო მაგიდის მალსახმობი (არ იმართება launcher-ის მიერ)
+	A system-wide Start menu entry exists (not controlled by launcher)	არსებობს სისტემური ჩანაწერი Start მენიუში (არ იმართება launcher-ის მიერ)
 	Install folder	ინსტალაციის საქაღალდე
 	Default install folder	ნაგულისხმევი ინსტალაციის საქაღალდე
 	System default	სისტემის ნაგულისხმევი

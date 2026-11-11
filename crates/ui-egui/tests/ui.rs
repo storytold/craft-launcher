@@ -4186,6 +4186,43 @@ fn command_m_minimizes_the_mac_window_only() {
 }
 
 #[test]
+/// Toggling desktop and Start menu shortcuts in the per-app dialog immediately sends `SyncShortcuts`
+/// and can be reset to global defaults.
+fn per_app_shortcuts_dialog_toggles_and_syncs_shortcuts() {
+    let (mut h, sent) = harness(ViewMode::Grid, egui::Theme::Dark, true);
+    h.run_steps(4);
+
+    h.get_by_label("More actions for PhotoCraft").click();
+    h.run_steps(2);
+
+    h.get_by_label("Shortcuts…").click();
+    h.run_steps(2);
+
+    // Toggle the Desktop shortcut checkbox (default false -> true).
+    h.get_by_label("Desktop shortcut").click();
+    h.run_steps(2);
+
+    let commands = sent.borrow().clone();
+    assert!(
+        commands.contains(&Command::SyncShortcuts { app: "photocraft".into(), desktop: true, start_menu: true }),
+        "expected SyncShortcuts command, got: {commands:?}"
+    );
+
+    // Reset to global defaults and verify it syncs back.
+    h.get_by_label("Use global defaults").click();
+    h.run_steps(2);
+
+    let commands = sent.borrow().clone();
+    assert!(
+        commands.contains(&Command::SyncShortcuts { app: "photocraft".into(), desktop: false, start_menu: true }),
+        "expected SyncShortcuts reset command, got: {commands:?}"
+    );
+
+    h.get_by_label("Done").click();
+    h.run_steps(2);
+}
+
+#[test]
 fn an_occupied_folder_asks_before_replacing_it() {
     let path = "/Volumes/Craft Apps/PhotoCraft.app";
     let mut ev = events();

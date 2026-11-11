@@ -343,6 +343,17 @@ figcraft	Interface design and prototyping	介面設計與原型製作
 @msg	{name} was installed from the {repo} repository or the AUR ({pkg}). Update it with your AUR helper (for example: yay -S {pkg}) or sudo pacman -Syu	{name} 是從 {repo} 儲存庫或 AUR 安裝的（{pkg}）。請使用你的 AUR 助手（例如：yay -S {pkg}）或 sudo pacman -Syu 更新。
 @msg	{name} was installed from the AUR ({pkg}). Update it with {cmd}	{name} 是從 AUR 安裝的（{pkg}）。請使用 {cmd} 更新。
 @msg	{name} was installed from the AUR ({pkg}). Update it with your AUR helper (for example: yay -S {pkg})	{name} 是從 AUR 安裝的（{pkg}）。請使用你的 AUR 助手（例如：yay -S {pkg}）更新。
+	Shortcuts…	捷徑…
+	Shortcuts	捷徑
+	Choose which shortcuts to keep for this app. Changes apply immediately for installed apps and are preserved across updates.	選擇要為此應用程式保留的捷徑。變更會立即套用於已安裝的應用程式，並在更新後保留。
+	Desktop shortcut	桌面捷徑
+	Start menu / application menu shortcut	開始功能表 / 應用程式功能表捷徑
+	Use global defaults	使用全域預設值
+	Create a desktop shortcut when installing apps	安裝應用程式時建立桌面捷徑
+	Create a Start menu / application menu shortcut when installing apps	安裝應用程式時建立開始功能表 / 應用程式功能表捷徑
+@msg	Couldn't update shortcuts for {name}: {e}	無法更新 {name} 的捷徑：{e}
+	A system-wide desktop shortcut exists (not controlled by launcher)	存在系統層級桌面捷徑（非啟動器管理）
+	A system-wide Start menu entry exists (not controlled by launcher)	存在系統層級開始功能表項目（非啟動器管理）
 	Install folder	安裝資料夾
 	Default install folder	預設安裝資料夾
 	System default	系統預設

@@ -209,6 +209,10 @@ impl LauncherUi {
         if !self.caps.manage_apps {
             return;
         }
+        sheet::panel(ui, tl!("Shortcuts"), |ui| {
+            ui.checkbox(&mut self.settings.create_desktop_shortcut, tl!("Create a desktop shortcut when installing apps"));
+            ui.checkbox(&mut self.settings.create_start_menu_shortcut, tl!("Create a Start menu / application menu shortcut when installing apps"));
+        });
         sheet::panel(ui, tl!("Default install folder"), |ui| {
             if self.custom_install_folders() {
                 let mut folder = self.settings.install_locations.root.clone().unwrap_or_default();

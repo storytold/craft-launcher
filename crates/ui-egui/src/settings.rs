@@ -136,6 +136,19 @@ pub struct Settings {
     /// Extra command-line flags each app is opened with (catalog id → the text as typed, split
     /// by [`args::split`](artcraft_launcher_core::args::split) at launch).
     pub launch_flags: BTreeMap<String, String>,
+    /// Global default: create a desktop shortcut when installing or updating an app.
+    #[serde(default)]
+    pub create_desktop_shortcut: bool,
+    /// Global default: create a Start menu / application menu shortcut when installing or updating an app.
+    #[serde(default = "default_true")]
+    pub create_start_menu_shortcut: bool,
+    /// Per-app shortcut overrides (`photocraft` → [`AppShortcutPrefs`]).
+    #[serde(default)]
+    pub app_shortcuts: BTreeMap<String, artcraft_launcher_core::protocol::AppShortcutPrefs>,
+}
+
+fn default_true() -> bool {
+    true
 }
 
 impl Settings {
@@ -210,6 +223,15 @@ impl Settings {
             None => t("Auto").to_string(),
         }
     }
+
+    /// Resolves `(desktop, start_menu)` shortcut state for `app_id`, preferring an explicit
+    /// per-app override, then global defaults, matching backend `resolve_prefs`.
+    pub fn effective_shortcuts(&self, app_id: &str) -> (bool, bool) {
+        let prefs = self.app_shortcuts.get(app_id).copied().unwrap_or_default();
+        let desktop = prefs.desktop.unwrap_or(self.create_desktop_shortcut);
+        let start_menu = prefs.start_menu.unwrap_or(self.create_start_menu_shortcut);
+        (desktop, start_menu)
+    }
 }
 
 /// Whether this process is running inside a Flatpak container sandbox.
@@ -272,6 +294,9 @@ impl Default for Settings {
             launches: BTreeMap::new(),
             pinned: Vec::new(),
             launch_flags: BTreeMap::new(),
+            create_desktop_shortcut: false,
+            create_start_menu_shortcut: true,
+            app_shortcuts: BTreeMap::new(),
         }
     }
 }

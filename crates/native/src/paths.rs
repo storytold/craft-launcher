@@ -57,6 +57,11 @@ impl Paths {
         self.data.join("installed.json")
     }
 
+    /// Persistent records of desktop and Start menu / application menu shortcuts created by the launcher.
+    pub fn shortcuts(&self) -> PathBuf {
+        self.data.join("shortcuts.json")
+    }
+
     /// The launcher's own log files (`artcraft-launcher.log` and the previous runs').
     pub fn logs(&self) -> PathBuf {
         self.data.join("logs")

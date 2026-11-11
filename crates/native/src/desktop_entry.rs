@@ -73,10 +73,8 @@ fn value(s: &str) -> String {
     s.replace('\\', "\\\\").replace('\n', "\\n").replace('\r', "\\r").replace('\t', "\\t")
 }
 
-/// The entry for `app` installed as the AppImage `appimage`; `icon` when its icon is installed
-/// under the app's id. `None` when the path can't be put in an `Exec=` line.
-pub fn render(app: &CraftApp, appimage: &Path, icon: bool) -> Option<String> {
-    let exec = exec_quote(appimage)?;
+/// Builds the full `.desktop` entry content for `app` given an executable or command line `exec`.
+pub fn render_exec(app: &CraftApp, exec: &str, icon: bool) -> String {
     let (categories, wm_class) = meta(app);
     let mut text = String::from("[Desktop Entry]\nType=Application\n");
     text.push_str(&format!("Name={}\n", value(app.name)));
@@ -90,7 +88,14 @@ pub fn render(app: &CraftApp, appimage: &Path, icon: bool) -> Option<String> {
     text.push_str(&format!("StartupWMClass={}\n", wm_class.map_or_else(|| app.bundle_id(), str::to_string)));
     text.push_str(MARKER);
     text.push('\n');
-    Some(text)
+    text
+}
+
+/// The entry for `app` installed as the AppImage `appimage`; `icon` when its icon is installed
+/// under the app's id. `None` when the path can't be put in an `Exec=` line.
+pub fn render(app: &CraftApp, appimage: &Path, icon: bool) -> Option<String> {
+    let exec = exec_quote(appimage)?;
+    Some(render_exec(app, &exec, icon))
 }
 
 /// Whether the launcher wrote this entry.
