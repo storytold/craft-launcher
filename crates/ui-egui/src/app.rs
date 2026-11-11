@@ -210,6 +210,9 @@ pub struct LauncherUi {
     /// While the user drags a pin handle: dragged catalog id and the pinned order at drag start
     /// (so Escape can restore it after live mid-drag reorders).
     pub(crate) pin_dragging: Option<(String, Vec<String>)>,
+    /// While the user drags a grid tile: dragged catalog id and the manual order at drag start
+    /// (so Escape can restore it after live mid-drag reorders).
+    pub(crate) tile_dragging: Option<(String, Vec<String>)>,
 }
 
 /// The language to draw in: the preference, or English where it needs a CJK font the system
@@ -300,6 +303,7 @@ impl LauncherUi {
             flushed: Vec::new(),
             pending_toasts: Vec::new(),
             pin_dragging: None,
+            tile_dragging: None,
         }
     }
 
@@ -876,6 +880,7 @@ impl LauncherUi {
                 scroll.auto_shrink(false).show(ui, |ui| {
                     // Escape must run even when search/filter leaves no rows (grid/table skipped).
                     self.clear_pin_drag_on_escape(ui);
+                    self.clear_tile_drag_on_escape(ui);
                     if ids.is_empty() {
                         ui.add_space(40.0);
                         ui.vertical_centered(|ui| {
@@ -891,6 +896,7 @@ impl LauncherUi {
                     // The drop targets have seen this frame's pointer: a released drag ends here.
                     if !ui.input(|i| i.pointer.primary_down()) {
                         self.pin_dragging = None;
+                        self.tile_dragging = None;
                     }
                 });
             });
@@ -918,6 +924,16 @@ impl LauncherUi {
         self.pin_dragging.is_some()
     }
 
+    /// Test hook: start a tile drag as if its grip had just been grabbed.
+    pub fn begin_tile_drag_for_test(&mut self, id: &str) {
+        self.tile_dragging = Some((id.to_string(), self.settings.tile_order.clone()));
+    }
+
+    /// Test hook: whether a tile reorder drag is in progress.
+    pub fn tile_dragging_for_test(&self) -> bool {
+        self.tile_dragging.is_some()
+    }
+
     /// Test hook: set the toolbar search string without driving the text field.
     pub fn set_search_for_test(&mut self, needle: &str) {
         self.search = needle.to_string();
@@ -942,6 +958,13 @@ impl LauncherUi {
         let manage = self.caps.manage_apps;
         // The grid offers its own few orders (`views::grid_sort_now`); the table sorts by its columns.
         let grid = self.settings.view == ViewMode::Grid;
+        // Dragging a tile builds a manual order that replaces the automatic grouping until it is
+        // cleared (settings reset / Escape). Unknown or stale ids sort after the known ones.
+        if grid && !self.settings.tile_order.is_empty() && self.settings.sort != SortKey::JobType {
+            let order = &self.settings.tile_order;
+            list.sort_by_key(|(index, entry)| (order.iter().position(|id| id == entry.app.id).unwrap_or(usize::MAX), *index));
+            return list.into_iter().map(|(_, entry)| entry.app.id).collect();
+        }
         let (sort, desc) = if grid { crate::views::grid_sort_now(&self.settings) } else { (self.settings.sort, self.settings.sort_descending) };
         let dir = |o: std::cmp::Ordering| if desc { o.reverse() } else { o };
         // Empty cells (not installed, no release) go last whichever way the column sorts.
@@ -975,6 +998,11 @@ impl LauncherUi {
                     let opened = |e: &AppEntry| self.settings.launches.get(e.app.id).copied().unwrap_or(0);
                     dir(opened(a).cmp(&opened(b)))
                 }
+                SortKey::JobType => {
+                    dir(artcraft_launcher_core::catalog::job_type(a.app.id).cmp(&artcraft_launcher_core::catalog::job_type(b.app.id)))
+                        .then(a.app.name.cmp(b.app.name))
+                }
+                SortKey::InstalledFirst | SortKey::InstallFirst => a.app.name.cmp(b.app.name),
                 SortKey::Released => {
                     let at = |e: &AppEntry| e.release().and_then(|r| r.published_at);
                     let (x, y) = (at(a), at(b));
@@ -987,7 +1015,12 @@ impl LauncherUi {
         // The grid shows installed apps first among the unpinned set, then the rest under
         // "Not installed" (the sort holds within each group; the sort is stable).
         if grid {
-            rest.sort_by_key(|(_, e)| !e.status(platform, manage).is_installed());
+            // The status sorts put the requested group first; the rest keep installed first.
+            let install_first = sort == SortKey::InstallFirst;
+            rest.sort_by_key(|(_, e)| {
+                let installed = e.status(platform, manage).is_installed();
+                if install_first { installed } else { !installed }
+            });
         }
         list = pinned;
         list.append(&mut rest);

@@ -14,7 +14,7 @@ use artcraft_launcher_core::protocol::{
 use artcraft_launcher_core::release::{Asset, Release};
 use artcraft_launcher_core::status::InstallSource;
 use artcraft_launcher_core::{Arch, Installed, Os, Platform, SUITE, version};
-use artcraft_launcher_ui_egui::settings::ViewMode;
+use artcraft_launcher_ui_egui::settings::{SortKey, ViewMode};
 use artcraft_launcher_ui_egui::{Host, LauncherUi, Settings};
 use egui_kittest::Harness;
 use egui_kittest::kittest::{NodeT, Queryable};
@@ -307,7 +307,10 @@ fn harness_full(
         Some(platform) => Box::new(PlatformFake { inner: fake, platform }),
         None => Box::new(fake),
     });
-    let settings = Settings { view, notify: false, ..Settings::default() };
+    // Legacy grid tests assert the flat Name order; the table keeps suite order so every row
+    // stays reachable. The Job-type default is covered separately.
+    let sort = if view == ViewMode::Table { SortKey::Suite } else { SortKey::Name };
+    let settings = Settings { view, notify: false, sort, ..Settings::default() };
     // No `.wgpu()`: it gives every test its own GPU device, and those segfault on parallel test threads (see above).
     // The default renderer creates one only when a test renders.
     let harness = test_harness_builder(theme).with_size(egui::vec2(1180.0, 1200.0)).with_pixels_per_point(scale).with_theme(theme).build_ui_state(
@@ -1787,7 +1790,10 @@ fn downloads_can_be_paused_resumed_and_discarded() {
     h.get_by_label("Discard download").click();
     h.run_steps(2);
     assert!(sent.borrow().contains(&Command::Cancel { app: "deckcraft".into() }));
-    h.get_all_by_label("Pause download").next().unwrap().click();
+    h.get_by_role(egui::accesskit::Role::TextInput).click();
+    h.get_by_role(egui::accesskit::Role::TextInput).type_text("FilmCraft");
+    h.run_steps(4);
+    h.get_by_role_and_label(egui::accesskit::Role::Button, "Pause download").click();
     h.run_steps(2);
     assert!(sent.borrow().iter().any(|c| matches!(c, Command::Pause { .. })));
 }
@@ -2295,13 +2301,14 @@ fn below_icon_centre(h: &Harness<'_, Option<LauncherUi>>, lines: &[&str]) -> f32
 }
 
 #[test]
-fn name_and_tagline_are_centred_on_the_icon() {
+fn name_and_tagline_are_under_the_icon_in_the_grid() {
     for (scale, suffix) in [(1.0, "-1x"), (1.5, "-1.5x"), (2.0, "-2x")] {
         let (mut h, _) = harness_at(ViewMode::Grid, egui::Theme::Dark, true, scale);
         h.run_steps(8);
         snapshot(&mut h, &format!("grid-dark{suffix}"));
-        let off = below_icon_centre(&h, &["PhotoCraft", "Image editing"]);
-        assert!(off.abs() < 0.25, "grid at {scale}x: {off}");
+        let icon = h.get_by_label("PhotoCraft icon").rect();
+        let tagline = h.get_by_role_and_label(egui::accesskit::Role::Label, "Image editing").rect();
+        assert!(icon.bottom() <= tagline.top(), "grid at {scale}x stacks the tagline below the icon: {icon:?} {tagline:?}");
         let (mut h, _) = harness_at(ViewMode::Table, egui::Theme::Light, true, scale);
         h.run_steps(8);
         snapshot(&mut h, &format!("table-light{suffix}"));
@@ -2467,7 +2474,7 @@ fn the_uninstall_prompt_keeps_its_own_size_after_a_taller_dialog() {
 }
 
 #[test]
-/// The footer links website and GitHub, cards link only GitHub, and the table menu adds the
+/// The footer links website and GitHub; cards carry no links, and the table menu adds the
 /// app's website and repository.
 fn links_to_the_website_github_and_each_apps_pages() {
     let (mut h, _) = harness(ViewMode::Grid, egui::Theme::Dark, true);
@@ -2476,11 +2483,9 @@ fn links_to_the_website_github_and_each_apps_pages() {
     for label in ["Website", "GitHub", "Discord"] {
         assert!(h.query_all_by_label(label).count() >= 1, "{label}");
     }
-    // Cards: every app links to its repo and to its own page on getartcraft.com (plus the footer's).
-    let shown_cards = h.query_all_by_label("GitHub").count() - 1;
-    let shown_sites = h.query_all_by_label("Website").count() - 1;
-    assert!(shown_cards >= 13, "{shown_cards}");
-    assert_eq!(shown_sites, 0, "the cards only link to GitHub; the website is the footer's icon");
+    // Cards carry no GitHub link now; the footer is the only one.
+    assert_eq!(h.query_all_by_label("GitHub").count(), 1, "only the footer's GitHub link");
+    assert_eq!(h.query_all_by_label("Website").count(), 1, "the footer's website icon");
     // The table's … menu has the app's website and GitHub repo.
     let (mut h, _) = harness(ViewMode::Table, egui::Theme::Dark, true);
     h.run_steps(6);
@@ -2524,10 +2529,9 @@ fn links_open_the_right_pages() {
     let (mut h, _) = harness(ViewMode::Grid, egui::Theme::Dark, true);
     h.run_steps(6);
     assert_eq!(click_opens(&mut h, "Discord").as_deref(), Some("https://discord.gg/artcraft"));
-    // The footer's ArtCraft links and each card's own pages.
+    // The footer's ArtCraft GitHub link (cards no longer carry one).
     let github = all_opened(&mut h, "GitHub");
-    assert!(github.contains(&"https://github.com/storytold".to_string()), "{github:?}");
-    assert!(github.contains(&"https://github.com/storytold/photocraft".to_string()), "{github:?}");
+    assert_eq!(github, vec!["https://github.com/storytold".to_string()], "{github:?}");
     let sites = all_opened(&mut h, "Website");
     assert!(sites.contains(&"https://getartcraft.com".to_string()), "{sites:?}");
     assert_eq!(sites, vec!["https://getartcraft.com".to_string()], "{sites:?}");
@@ -4207,6 +4211,8 @@ fn a_not_installed_card_is_grey_until_the_pointer_is_over_it() {
     let (mut h, _) = harness(ViewMode::Grid, egui::Theme::Dark, true);
     h.set_size(egui::vec2(1180.0, 1100.0));
     h.run_steps(8);
+    h.get_by_label("CADCraft details").scroll_to_me();
+    h.run_steps(4);
     let icon = h.get_by_label("CADCraft icon").rect();
     // The most colourful pixel in the icon: how far apart its red, green and blue are.
     let colour = |h: &mut Harness<'_, Option<LauncherUi>>| {
@@ -4318,4 +4324,275 @@ fn an_apps_page_is_a_card_in_the_middle_with_next_and_previous_arrows_and_closes
     h.drop_at(egui::pos2(10.0, 450.0));
     h.run_steps(30);
     assert!(!showing(&h, "photocraft"), "a click outside did not close it");
+}
+
+#[test]
+/// A manual tile order replaces the pinned/installed groups and is what the grid shows.
+fn manual_tile_order_replaces_the_grid_groups() {
+    let (mut h, _) = harness(ViewMode::Grid, egui::Theme::Dark, true);
+    h.run_steps(6);
+    h.state_mut().as_mut().unwrap().settings.tile_order = vec!["wordcraft".into(), "photocraft".into(), "filmcraft".into()];
+    h.run_steps(4);
+    let ids = h.state().as_ref().unwrap().visible_ids_for_test();
+    assert_eq!(&ids[..3], ["wordcraft", "photocraft", "filmcraft"]);
+    assert!(h.query_by_label("Pinned").is_none(), "manual order draws one block, not the pinned header");
+    assert!(h.query_by_label("Not installed").is_none(), "manual order draws one block, not the installed split");
+}
+
+#[test]
+/// Dragging a card's grip moves the app after the card under the pointer and persists the order.
+fn dragging_a_tile_grip_reorders_the_manual_grid() {
+    let (mut h, _) = harness(ViewMode::Grid, egui::Theme::Dark, true);
+    h.run_steps(6);
+    h.state_mut().as_mut().unwrap().settings.tile_order = vec!["photocraft".into(), "filmcraft".into(), "wordcraft".into()];
+    h.run_steps(4);
+    let from = h.get_by_label("Reorder PhotoCraft").rect().center();
+    let target = h.get_by_label("WordCraft details").rect();
+    let after = egui::pos2(target.right() - 10.0, target.center().y);
+    h.hover_at(from);
+    h.run_steps(1);
+    h.drag_at(from);
+    h.run_steps(1);
+    h.hover_at(after);
+    h.run_steps(2);
+    assert!(h.state().as_ref().unwrap().tile_dragging_for_test(), "the grip starts a tile drag");
+    h.drop_at(after);
+    h.run_steps(3);
+    assert!(!h.state().as_ref().unwrap().tile_dragging_for_test());
+    let order = &h.state().as_ref().unwrap().settings.tile_order;
+    assert_eq!(&order[..3], ["filmcraft", "wordcraft", "photocraft"], "the dragged tile lands after the target");
+}
+
+#[test]
+/// Escape during a tile drag restores the order from drag start.
+fn escape_cancels_tile_drag_and_restores_order() {
+    let (mut h, _) = harness(ViewMode::Grid, egui::Theme::Dark, true);
+    h.run_steps(6);
+    {
+        let ui = h.state_mut().as_mut().unwrap();
+        ui.settings.tile_order = vec!["photocraft".into(), "filmcraft".into()];
+        ui.begin_tile_drag_for_test("photocraft");
+        ui.settings.tile_order = vec!["filmcraft".into(), "photocraft".into()];
+    }
+    h.key_press(egui::Key::Escape);
+    h.run_steps(2);
+    let ui = h.state().as_ref().unwrap();
+    assert!(!ui.tile_dragging_for_test());
+    assert_eq!(ui.settings.tile_order, ["photocraft", "filmcraft"]);
+}
+
+#[test]
+/// Job type sorts the grid into the app's primary work, with a collapsible section per type.
+fn job_type_groups_are_collapsible_sections() {
+    let (mut h, _) = harness(ViewMode::Grid, egui::Theme::Dark, true);
+    h.run_steps(6);
+    h.state_mut().as_mut().unwrap().settings.sort = SortKey::JobType;
+    h.run_steps(4);
+    for label in [
+        "Photo & Image (2)",
+        "Design & Illustration (3)",
+        "Video & Motion (3)",
+        "Audio (1)",
+        "3D, CAD & Textures (4)",
+        "Documents & Productivity (5)",
+        "Learn & Build (1)",
+    ] {
+        h.get_by_label(label);
+    }
+    // Collapsing a section hides its cards but leaves the other groups.
+    h.get_by_label("Photo & Image (2)").click();
+    h.run_steps(2);
+    assert!(h.query_by_label("PhotoCraft details").is_none(), "collapsed group hides PhotoCraft");
+    assert!(h.query_by_label("VectorCraft details").is_some(), "other groups stay open");
+    h.get_by_label("Photo & Image (2)").click();
+    h.run_steps(2);
+    h.get_by_label("PhotoCraft details");
+}
+
+#[test]
+/// The grid sort picker offers the job-type order.
+fn sort_picker_offers_job_type() {
+    let (mut h, _) = harness(ViewMode::Grid, egui::Theme::Dark, true);
+    h.run_steps(6);
+    h.get_by_role_and_label(egui::accesskit::Role::ComboBox, "Sort").click();
+    h.run_steps(2);
+    h.get_by_label("Job type").click();
+    h.run_steps(2);
+    assert_eq!(h.state().as_ref().unwrap().settings.sort, SortKey::JobType);
+    h.get_by_label("Photo & Image (2)");
+}
+
+#[test]
+/// An untouched sort setting draws the Job type groups (production default).
+fn grid_defaults_to_job_type_groups() {
+    let (mut h, _) = harness(ViewMode::Grid, egui::Theme::Dark, true);
+    h.run_steps(6);
+    h.state_mut().as_mut().unwrap().settings.sort = SortKey::Suite;
+    h.run_steps(4);
+    h.get_by_label("Photo & Image (2)");
+    h.get_by_label("Documents & Productivity (5)");
+}
+
+#[test]
+/// Smaller tile sizes fit narrower cards (more columns) than the default large size.
+fn grid_tile_sizes_shrink_the_cards() {
+    let (mut h, _) = harness(ViewMode::Grid, egui::Theme::Dark, true);
+    h.run_steps(6);
+    let large = h.get_by_label("PhotoCraft details").rect().width();
+    h.state_mut().as_mut().unwrap().settings.tile_size = artcraft_launcher_ui_egui::settings::TileSize::Small;
+    h.run_steps(4);
+    let small = h.get_by_label("PhotoCraft details").rect().width();
+    assert!(small < large - 20.0, "small cards are narrower: {small} vs {large}");
+
+    h.state_mut().as_mut().unwrap().settings.tile_size = artcraft_launcher_ui_egui::settings::TileSize::Medium;
+    h.run_steps(4);
+    let medium = h.get_by_label("PhotoCraft details").rect().width();
+    assert!(medium > small && medium < large, "small={small} medium={medium} large={large}");
+}
+
+#[test]
+/// The medium density button is distinct from large and actually changes the card width.
+fn medium_density_button_changes_the_grid() {
+    let (mut h, _) = harness(ViewMode::Grid, egui::Theme::Dark, true);
+    h.run_steps(6);
+    let large = h.get_by_label("PhotoCraft details").rect().width();
+    h.get_by_label("Medium").click();
+    h.run_steps(4);
+    assert_eq!(h.state().as_ref().unwrap().settings.tile_size, artcraft_launcher_ui_egui::settings::TileSize::Medium);
+    let card = h.get_by_label("PhotoCraft details").rect();
+    let medium = card.width();
+    let by = h.get_all_by_label("by ArtCraft").find(|n| card.contains(n.rect().center())).expect("the byline").rect();
+    assert!(by.right() <= card.right(), "the byline stays inside the medium card: {by:?} in {card:?}");
+    assert!(medium < large - 20.0, "medium is narrower than large: {medium} vs {large}");
+    h.get_by_label("Small").click();
+    h.run_steps(4);
+    let small = h.get_by_label("PhotoCraft details").rect().width();
+    assert!(small < medium - 20.0, "small is narrower than medium: {small} vs {medium}");
+}
+
+#[test]
+/// Small cards stack the icon, name/badge and one-liner vertically.
+fn small_cards_stack_identity_below_the_icon() {
+    let (mut h, _) = harness(ViewMode::Grid, egui::Theme::Dark, true);
+    h.run_steps(6);
+    h.state_mut().as_mut().unwrap().settings.tile_size = artcraft_launcher_ui_egui::settings::TileSize::Small;
+    h.run_steps(4);
+    let card = h.get_by_label("PhotoCraft details").rect();
+    let icon = h.get_by_label("PhotoCraft icon").rect();
+    let by = h.get_all_by_label("by ArtCraft").find(|n| card.contains(n.rect().center())).expect("the byline").rect();
+    let tagline = h.get_all_by_label_contains("Image editing").find(|n| card.contains(n.rect().center())).expect("the one-liner").rect();
+    assert!(icon.bottom() <= by.top() + 1.0, "icon {icon:?} sits above the byline {by:?}");
+    assert!(by.bottom() <= tagline.top() + 1.0, "byline {by:?} sits above the one-liner {tagline:?}");
+}
+
+#[test]
+/// Hovering a card runs the diagonal shine without disturbing its hit targets.
+fn hovering_a_card_sweeps_the_shine() {
+    let (mut h, _) = harness(ViewMode::Grid, egui::Theme::Dark, true);
+    h.run_steps(6);
+    let card = h.get_by_label("PhotoCraft details").rect();
+    h.hover_at(card.center());
+    h.run_steps(2);
+    h.run_steps(12);
+    snapshot(&mut h, "card-shine-hover");
+    // The card remains clickable while the flare travels over it.
+    h.get_by_label("PhotoCraft").click();
+    h.run_steps(10);
+}
+
+#[test]
+/// The Installed and Install orders put their group first, each under its own section header.
+fn installed_and_install_sorts_group_the_grid() {
+    let (mut h, _) = harness(ViewMode::Grid, egui::Theme::Dark, true);
+    h.run_steps(6);
+    h.state_mut().as_mut().unwrap().settings.sort = SortKey::InstalledFirst;
+    h.run_steps(4);
+    let photo = h.get_by_label("PhotoCraft details").rect().top();
+    let ani = h.get_by_label("AniCraft details").rect().top();
+    assert!(photo < ani, "installed first: PhotoCraft {photo} above AniCraft {ani}");
+
+    h.state_mut().as_mut().unwrap().settings.sort = SortKey::InstallFirst;
+    h.run_steps(4);
+    let photo = h.get_by_label("PhotoCraft details").rect().top();
+    let ani = h.get_by_label("AniCraft details").rect().top();
+    assert!(photo < ani, "both status sorts keep Installed on top: PhotoCraft {photo}, AniCraft {ani}");
+
+    // The section bars collapse like the job groups.
+    h.get_all_by_label_contains("Installed (").next().expect("the Installed bar").click();
+    h.run_steps(2);
+    assert!(h.query_by_label("PhotoCraft details").is_none(), "collapsed Installed hides its cards");
+    assert!(h.query_by_label("AniCraft details").is_some(), "Install stays open");
+}
+
+#[test]
+/// A drag that only reaches a card's outer corner still targets that card.
+fn dragging_a_tile_to_a_card_corner_targets_it() {
+    let (mut h, _) = harness(ViewMode::Grid, egui::Theme::Dark, true);
+    h.run_steps(6);
+    h.state_mut().as_mut().unwrap().settings.tile_order = vec!["photocraft".into(), "filmcraft".into(), "wordcraft".into()];
+    h.run_steps(4);
+    let from = h.get_by_label("Reorder PhotoCraft").rect().center();
+    let target = h.get_by_label("WordCraft details").rect();
+    let corner = egui::pos2(target.left() - 4.0, target.bottom() + 4.0);
+    h.hover_at(from);
+    h.run_steps(1);
+    h.drag_at(from);
+    h.run_steps(1);
+    h.hover_at(corner);
+    h.run_steps(2);
+    assert!(h.state().as_ref().unwrap().tile_dragging_for_test(), "the grip starts a tile drag");
+    h.drop_at(corner);
+    h.run_steps(3);
+    let order = &h.state().as_ref().unwrap().settings.tile_order;
+    assert_eq!(&order[..3], ["filmcraft", "photocraft", "wordcraft"], "the corner targets WordCraft: {order:?}");
+}
+
+#[test]
+/// Renders each density for the text-fit check.
+fn card_text_sizes_snapshot() {
+    let (mut h, _) = harness(ViewMode::Grid, egui::Theme::Dark, true);
+    h.run_steps(6);
+    for (size, name) in [
+        (artcraft_launcher_ui_egui::settings::TileSize::Small, "text-small"),
+        (artcraft_launcher_ui_egui::settings::TileSize::Medium, "text-medium"),
+        (artcraft_launcher_ui_egui::settings::TileSize::Large, "text-large"),
+    ] {
+        h.state_mut().as_mut().unwrap().settings.tile_size = size;
+        h.run_steps(4);
+        snapshot(&mut h, name);
+    }
+}
+
+#[test]
+/// The three-dot card menu keeps its full width inside the card at every density.
+fn card_actions_menu_fits_inside_the_card() {
+    let (mut h, _) = harness(ViewMode::Grid, egui::Theme::Dark, true);
+    h.run_steps(6);
+    for size in [
+        artcraft_launcher_ui_egui::settings::TileSize::Small,
+        artcraft_launcher_ui_egui::settings::TileSize::Medium,
+        artcraft_launcher_ui_egui::settings::TileSize::Large,
+    ] {
+        h.state_mut().as_mut().unwrap().settings.tile_size = size;
+        h.run_steps(4);
+        let card = h.get_by_label("PhotoCraft details").rect();
+        let menu = h.get_by_label("More actions for PhotoCraft").rect();
+        assert!(menu.right() <= card.right(), "{size:?}: menu {menu:?} inside card {card:?}");
+        assert!(menu.width() > 30.0, "{size:?}: the full menu is visible, width {}", menu.width());
+    }
+}
+
+#[test]
+/// A table sort that maps to Job type still draws job sections when the grid opens.
+fn mapped_table_sort_shows_job_sections_in_the_grid() {
+    let (mut h, _) = harness(ViewMode::Grid, egui::Theme::Dark, true);
+    h.run_steps(6);
+    {
+        let ui = h.state_mut().as_mut().unwrap();
+        ui.settings.sort = SortKey::Status;
+        ui.settings.tile_order.clear();
+    }
+    h.run_steps(4);
+    h.get_by_label("Photo & Image (2)");
+    h.get_by_label("Documents & Productivity (5)");
 }

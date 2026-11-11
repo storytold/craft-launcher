@@ -19,7 +19,12 @@ pub(crate) fn size(ctx: &Context, max: Vec2) -> Vec2 {
 
 /// The modal's frame: no inner margin, so the header can run to the edges.
 pub(crate) fn frame(t: &Tokens) -> Frame {
-    Frame::new().fill(t.bg).stroke(egui::Stroke::new(1.0, t.line_strong)).shadow(crate::theme::shadow(t)).inner_margin(0)
+    Frame::new()
+        .fill(t.bg)
+        .stroke(egui::Stroke::new(1.0, t.line_strong))
+        .shadow(crate::theme::shadow(t))
+        .corner_radius(CornerRadius::same(16))
+        .inner_margin(0)
 }
 
 /// The header: an icon, the title and a small caption, with whatever `right` puts at the right
@@ -27,8 +32,11 @@ pub(crate) fn frame(t: &Tokens) -> Frame {
 pub(crate) fn hero(ui: &mut Ui, icon: Option<ImageSource<'static>>, title: &str, caption: &str, right: impl FnOnce(&mut Ui)) -> f32 {
     let t = Tokens::get(ui.ctx());
     let top = ui.cursor().top();
-    let shown =
-        Frame::new().fill(tint(t.accent, if t.dark { 0.09 } else { 0.07 })).inner_margin(Margin::symmetric(theme::PAD as i8, 18)).show(ui, |ui| {
+    let shown = Frame::new()
+        .fill(tint(t.accent, if t.dark { 0.09 } else { 0.07 }))
+        .corner_radius(CornerRadius { nw: 16, ne: 16, sw: 0, se: 0 })
+        .inner_margin(Margin::symmetric(theme::PAD as i8, 18))
+        .show(ui, |ui| {
             ui.set_width(ui.available_width());
             ui.horizontal(|ui| {
                 if let Some(icon) = icon {
@@ -47,7 +55,9 @@ pub(crate) fn hero(ui: &mut Ui, icon: Option<ImageSource<'static>>, title: &str,
             });
         });
     let r = shown.response.rect;
-    ui.painter().rect_filled(egui::Rect::from_min_size(r.min, vec2(r.width(), 2.0)), CornerRadius::ZERO, t.accent);
+    // The accent line keeps clear of the rounded top corners.
+    let straight = (r.width() - 32.0).max(0.0);
+    ui.painter().rect_filled(egui::Rect::from_min_size(r.min + vec2(16.0, 0.0), vec2(straight, 2.0)), CornerRadius::ZERO, t.accent);
     ui.painter().hline(r.x_range(), r.bottom() - 0.5, t.hairline());
     ui.cursor().top() - top
 }

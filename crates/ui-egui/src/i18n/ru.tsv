@@ -441,3 +441,15 @@ anicraft	Familiar by design	Привычный интерфейс
 anicraft	Stage, tools, timeline, layers, keyframes, Properties and Library sit where animators expect them, with onion skinning for in-betweening.	Сцена, инструменты, шкала времени, слои, ключевые кадры, Свойства и Библиотека там, где их ждут аниматоры, со шлейфом калькирования.
 anicraft	Tweens that ease	Плавные твины
 anicraft	Classic tweens with eight easing presets and custom ease curves, plus shape tweens that morph one vector contour into another.	Классические твины с восемью пресетами замедления и кривыми, а также твины формы.
+	Job type	Тип задачи
+	Photo & Image	Фото и изображения
+	Design & Illustration	Дизайн и иллюстрация
+	Video & Motion	Видео и анимация
+	Audio	Аудио
+	3D, CAD & Textures	3D, CAD и текстуры
+	Documents & Productivity	Документы и продуктивность
+	Learn & Build	Учёба и творчество
+	Other	Другое
+	Small	Маленький
+	Medium	Средний
+	Large	Большой

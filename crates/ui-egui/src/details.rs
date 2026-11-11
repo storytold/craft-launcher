@@ -150,23 +150,33 @@ impl LauncherUi {
             .show(ctx, |ui| {
                 ui.set_opacity(k.clamp(0.0, 1.0));
                 let painter = ui.painter();
-                painter.add(theme::shadow(t).as_shape(panel, CornerRadius::ZERO));
-                painter.rect_filled(panel, CornerRadius::ZERO, t.bg);
-                painter.rect_stroke(panel, CornerRadius::ZERO, Stroke::new(1.0, t.line_strong), egui::StrokeKind::Inside);
+                let radius = CornerRadius::same(16);
+                // A soft outer layer plus the theme's shadow, both following the rounded edge.
+                painter.add(
+                    egui::epaint::Shadow { offset: [0, 18], blur: 52, spread: 0, color: Color32::from_black_alpha(if t.dark { 90 } else { 24 }) }
+                        .as_shape(panel, radius),
+                );
+                painter.add(theme::shadow(t).as_shape(panel, radius));
+                painter.rect_filled(panel, radius, t.bg);
+                painter.rect_stroke(panel, radius, Stroke::new(1.0, t.line_strong), egui::StrokeKind::Inside);
 
                 ui.set_min_size(panel.size());
                 ui.set_max_size(panel.size());
                 // A bar that stays on screen says there is more below the fold; in the app's colour.
                 let page_visuals = crate::sheet::accent_scroll(ui, t, t.app_ink(entry.app));
-                // One scroll position per app, so the next app opens at its top.
-                egui::ScrollArea::vertical().id_salt(("details-scroll", id.to_string())).auto_shrink([false, false]).show(ui, |ui| {
-                    // The bar's colours are for the bar alone.
-                    *ui.visuals_mut() = page_visuals;
-                    ui.set_width(ui.available_width());
-                    ui.spacing_mut().item_spacing.y = 8.0;
-                    self.details_hero(ui, &entry, details, t, (previous.as_deref(), next.as_deref()), wide);
-                    egui::Frame::new().inner_margin(Margin::same(PAD as i8)).show(ui, |ui| {
-                        self.details_body(ui, &entry, details, wide, t);
+                // One scroll position per app, so the next app opens at its top. The vertical
+                // margins keep the bar on the panel's straight edge, clear of the rounded corners,
+                // matching the Settings sheet's body.
+                egui::Frame::new().inner_margin(Margin { left: 0, right: 0, top: 16, bottom: 16 }).show(ui, |ui| {
+                    egui::ScrollArea::vertical().id_salt(("details-scroll", id.to_string())).auto_shrink([false, false]).show(ui, |ui| {
+                        // The bar's colours are for the bar alone.
+                        *ui.visuals_mut() = page_visuals;
+                        ui.set_width(ui.available_width());
+                        ui.spacing_mut().item_spacing.y = 8.0;
+                        self.details_hero(ui, &entry, details, t, (previous.as_deref(), next.as_deref()), wide);
+                        egui::Frame::new().inner_margin(Margin::same(PAD as i8)).show(ui, |ui| {
+                            self.details_body(ui, &entry, details, wide, t);
+                        });
                     });
                 });
             });

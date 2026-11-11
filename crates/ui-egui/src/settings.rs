@@ -8,6 +8,40 @@ use serde::{Deserialize, Serialize};
 use crate::i18n::t;
 use crate::theme::ThemeChoice;
 
+/// How large the grid's cards are drawn.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum TileSize {
+    /// More columns, smaller cards.
+    Small,
+    /// The middle density.
+    Medium,
+    /// The original card size.
+    #[default]
+    Large,
+}
+
+impl TileSize {
+    /// The minimum card width for this density. The card height stays the same; the extra room
+    /// of a large card becomes another column in the smaller sizes.
+    pub fn card_min_width(self) -> f32 {
+        match self {
+            Self::Small => 200.0,
+            Self::Medium => 250.0,
+            Self::Large => 320.0,
+        }
+    }
+
+    /// Height of a card at this density: stacked identity plus four body lines and the footer.
+    pub fn card_height(self) -> f32 {
+        match self {
+            Self::Small => 384.0,
+            Self::Medium => 372.0,
+            Self::Large => 384.0,
+        }
+    }
+}
+
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub enum ViewMode {
     #[default]
@@ -43,6 +77,12 @@ pub enum SortKey {
     Released,
     /// How often the app has been opened from here, most first.
     Frequent,
+    /// The app's primary job type (photo, design, motion, audio, 3D, documents, learning).
+    JobType,
+    /// Installed apps first, then the ones that still need an Install.
+    InstalledFirst,
+    /// Apps that still need an Install first, then the installed ones.
+    InstallFirst,
 }
 
 impl SortKey {
@@ -133,6 +173,15 @@ pub struct Settings {
     pub launches: BTreeMap<String, u32>,
     /// Catalog ids pinned to the top of the grid/table, in the order the user chose.
     pub pinned: Vec<String>,
+    /// How large the grid cards are.
+    #[serde(default)]
+    pub tile_size: TileSize,
+    /// The manual grid order, when the user has dragged tiles. Empty keeps the automatic order.
+    #[serde(default)]
+    pub tile_order: Vec<String>,
+    /// Job-type sections the user minimized in the grid (`JobType::key`).
+    #[serde(default)]
+    pub collapsed_job_groups: std::collections::BTreeSet<String>,
     /// Extra command-line flags each app is opened with (catalog id → the text as typed, split
     /// by [`args::split`](artcraft_launcher_core::args::split) at launch).
     pub launch_flags: BTreeMap<String, String>,
@@ -195,6 +244,23 @@ impl Settings {
             to_index -= 1;
         }
         self.pinned.insert(to_index, item);
+    }
+
+    /// Move the manual grid order's `from_id` into insertion slot `to_index` (the same slot
+    /// semantics as [`Self::reorder_pinned_to`]).
+    pub fn reorder_tile_to(&mut self, from_id: &str, mut to_index: usize) {
+        let Some(from) = self.tile_order.iter().position(|p| p == from_id) else {
+            return;
+        };
+        to_index = to_index.min(self.tile_order.len());
+        if to_index == from || to_index == from + 1 {
+            return;
+        }
+        let item = self.tile_order.remove(from);
+        if from < to_index {
+            to_index -= 1;
+        }
+        self.tile_order.insert(to_index, item);
     }
 
     /// Display name for a language `code`: a language's name in itself, from the registry
@@ -271,6 +337,9 @@ impl Default for Settings {
             tray_hint_shown: false,
             launches: BTreeMap::new(),
             pinned: Vec::new(),
+            tile_size: TileSize::Large,
+            tile_order: Vec::new(),
+            collapsed_job_groups: std::collections::BTreeSet::new(),
             launch_flags: BTreeMap::new(),
         }
     }
@@ -279,6 +348,22 @@ impl Default for Settings {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn reorder_tile_to_uses_insertion_slot() {
+        let mut s = Settings { tile_order: vec!["a".into(), "b".into(), "c".into()], ..Settings::default() };
+        s.reorder_tile_to("c", 0);
+        assert_eq!(s.tile_order, vec!["c", "a", "b"]);
+        s.reorder_tile_to("c", 3);
+        assert_eq!(s.tile_order, vec!["a", "b", "c"]);
+        s.reorder_tile_to("a", 2);
+        assert_eq!(s.tile_order, vec!["b", "a", "c"]);
+        s.reorder_tile_to("a", 2);
+        s.reorder_tile_to("missing", 0);
+        assert_eq!(s.tile_order, vec!["b", "a", "c"]);
+        s.reorder_tile_to("b", 99);
+        assert_eq!(s.tile_order, vec!["a", "c", "b"]);
+    }
 
     #[test]
     fn pin_appends_once_and_unpin_removes() {

@@ -1,7 +1,7 @@
 //! The header, toolbar, footer, the grid of cards and the table, laid out like the apps page on
 //! getartcraft.com: hairline cells, mono labels and square controls.
 
-use artcraft_launcher_core::catalog::AppKind;
+use artcraft_launcher_core::catalog::{AppKind, JobType, job_type};
 use artcraft_launcher_core::details::AppDetails;
 use artcraft_launcher_core::platform::pick_asset;
 use artcraft_launcher_core::protocol::{Command, JobPhase};
@@ -138,7 +138,7 @@ fn out_of_reach_tip(newer: Option<String>) -> Option<String> {
 
 /// The width of the main button: what's left of `width` beside the square `⋯` menu.
 fn main_width(ui: &Ui, width: f32) -> f32 {
-    (width - theme::CONTROL_H - ui.spacing().item_spacing.x).max(120.0)
+    (width - MENU_W - ui.spacing().item_spacing.x).max(100.0)
 }
 
 /// The width of a table row's actions, after a pinned row's grip.
@@ -151,8 +151,13 @@ pub(crate) const HEADER_H: f32 = 48.0;
 /// Height of the footer bar.
 pub(crate) const FOOTER_H: f32 = 34.0;
 
-const CARD_MIN_W: f32 = 320.0;
-const CARD_H: f32 = 314.0;
+/// The width of the three-dot actions menu; narrower than a square so it fits a card's footer.
+const MENU_W: f32 = 39.0;
+/// The menu button's own minimum width; its padding makes the real button a little wider.
+const MENU_BTN_W: f32 = 28.0;
+/// The space between rounded cards, and the corner radius of their glass surface.
+const CARD_GAP: f32 = 12.0;
+const CARD_RADIUS: u8 = 14;
 /// The app column's name and tagline sizes, to centre them on the icon.
 const TITLE_SIZE: f32 = 16.0;
 const TAGLINE_SIZE: f32 = 12.0;
@@ -310,6 +315,10 @@ impl LauncherUi {
                 // Right to left: the view switch at the far right, then the search.
                 crate::bar::view_toggle(ui, &mut self.settings.view, [tl!("Show apps as cards"), tl!("Show apps as a table")]);
                 ui.add_space(4.0);
+                if self.settings.view == ViewMode::Grid && !compact {
+                    self.tile_size_picker(ui);
+                    ui.add_space(4.0);
+                }
                 ui.add(
                     egui::TextEdit::singleline(&mut self.search)
                         .hint_text(tl!("Search apps"))
@@ -340,6 +349,8 @@ impl LauncherUi {
         ui.add_space(6.0);
         ui.horizontal(|ui| {
             if self.settings.view == ViewMode::Grid {
+                self.tile_size_picker(ui);
+                ui.add_space(6.0);
                 // "Sort" before the picker, as in the full-width row.
                 widgets::hud(ui, tl!("Sort"), t.faint);
                 self.sort_picker(ui);
@@ -504,7 +515,25 @@ impl LauncherUi {
     // ---- grid ----------------------------------------------------------------------------
 
     /// Pinned apps first (user order), then installed, then the rest under a "Not installed" header.
+    /// A manual tile order replaces those groups with one block in the user's order.
     pub(crate) fn grid(&mut self, ui: &mut Ui, ids: &[&'static str]) {
+        // Job type is the grid's default order. A manual tile order (unless the user explicitly
+        // chose Job type) takes over as the flat, freely reorderable block.
+        // Follow the effective sort (table-mapped keys such as Status read as Job type too), while
+        // an explicit Job type always groups and any other sort needs an empty manual order.
+        let (effective, _) = grid_sort_now(&self.settings);
+        let job_groups = effective == SortKey::JobType && (self.settings.sort == SortKey::JobType || self.settings.tile_order.is_empty());
+        if job_groups {
+            self.grid_jobs(ui, ids);
+            ui.add_space(24.0);
+            return;
+        }
+        let status_sort = matches!(self.settings.sort, SortKey::InstalledFirst | SortKey::InstallFirst);
+        if !self.settings.tile_order.is_empty() && !status_sort {
+            self.grid_block(ui, ids);
+            ui.add_space(24.0);
+            return;
+        }
         let pinned_n = ids.iter().take_while(|id| self.settings.is_pinned(id)).count();
         let (pinned, rest) = ids.split_at(pinned_n);
         if !pinned.is_empty() {
@@ -515,6 +544,26 @@ impl LauncherUi {
             if !rest.is_empty() {
                 ui.add_space(28.0);
             }
+        }
+        if status_sort {
+            // Installed on top, Install below, both with the same collapsible bars as job groups.
+            let t = Tokens::get(ui.ctx());
+            let (installed, install): (Vec<&str>, Vec<&str>) = rest.iter().copied().partition(|id| self.is_installed(id));
+            if !installed.is_empty() && self.group_header(ui, "status-installed", tl!("Installed"), installed.len(), &t) {
+                ui.add_space(6.0);
+                self.grid_block(ui, &installed);
+            }
+            if !install.is_empty() {
+                if !installed.is_empty() {
+                    ui.add_space(12.0);
+                }
+                if self.group_header(ui, "status-install", tl!("Install"), install.len(), &t) {
+                    ui.add_space(6.0);
+                    self.grid_block(ui, &install);
+                }
+            }
+            ui.add_space(24.0);
+            return;
         }
         let installed = rest.iter().take_while(|id| self.is_installed(id)).count();
         let (top, rest) = rest.split_at(installed);
@@ -529,21 +578,99 @@ impl LauncherUi {
         ui.add_space(24.0);
     }
 
+    /// The grid grouped by the apps' primary job, each group a collapsible section. A manual tile
+    /// order only reorders apps inside their own group; dragging across groups is ignored.
+    fn grid_jobs(&mut self, ui: &mut Ui, ids: &[&'static str]) {
+        let t = Tokens::get(ui.ctx());
+        for job in JobType::ALL {
+            let mut group: Vec<&'static str> = ids.iter().copied().filter(|id| job_type(id) == job).collect();
+            if group.is_empty() {
+                continue;
+            }
+            if !self.settings.tile_order.is_empty() {
+                let order = &self.settings.tile_order;
+                group.sort_by_key(|id| order.iter().position(|p| p == id).unwrap_or(usize::MAX));
+            }
+            let open = self.group_header(ui, job.key(), job_label(job), group.len(), &t);
+            if open {
+                ui.add_space(6.0);
+                self.grid_block(ui, &group);
+            }
+            ui.add_space(12.0);
+        }
+    }
+
+    /// A solid bar in the primary button's inverted colours, like a card's Open box. Clicking it
+    /// minimizes or restores the job group; the state is saved with the settings.
+    /// Three compact buttons for the grid's card density: small, medium, large.
+    fn tile_size_picker(&mut self, ui: &mut Ui) {
+        for (size, letter, tip) in [
+            (crate::settings::TileSize::Small, "S", tl!("Small")),
+            (crate::settings::TileSize::Medium, "M", tl!("Medium")),
+            (crate::settings::TileSize::Large, "L", tl!("Large")),
+        ] {
+            let kind = if self.settings.tile_size == size { Kind::Primary } else { Kind::Secondary };
+            if widgets::labelled_button(ui, letter, tip, kind, 28.0).on_hover_text(tip).clicked() {
+                self.settings.tile_size = size;
+            }
+        }
+    }
+
+    fn group_header(&mut self, ui: &mut Ui, key: &str, label: &str, count: usize, t: &Tokens) -> bool {
+        let open = !self.settings.collapsed_job_groups.contains(key);
+        let (rect, resp) = ui.allocate_exact_size(vec2(ui.available_width(), theme::CONTROL_H), Sense::click());
+        // Outlined box (the secondary button's resting state), not the filled primary bar: the
+        // header is a section label, not a pressed Open button. It inverts only under the pointer.
+        let hovered = resp.hovered();
+        // Hover: the page's dark ink as the fill, with white text.
+        let bg = if hovered { Color32::from_rgb(0x12, 0x13, 0x16) } else { t.bg };
+        let ink = if hovered { Color32::WHITE } else { t.muted };
+        let radius = CornerRadius::same(10);
+        ui.painter().rect_filled(rect, radius, bg);
+        ui.painter().rect_stroke(rect, radius, t.hairline(), egui::StrokeKind::Inside);
+        // Painted chevron: the mono faces do not carry the Unicode triangles.
+        let c = egui::pos2(rect.left() + 10.0, rect.center().y);
+        let arrow = if open {
+            vec![c + vec2(-4.0, -2.0), c + vec2(4.0, -2.0), c + vec2(0.0, 3.0)]
+        } else {
+            vec![c + vec2(-2.0, -4.0), c + vec2(-2.0, 4.0), c + vec2(3.0, 0.0)]
+        };
+        ui.painter().add(egui::Shape::convex_polygon(arrow, ink, Stroke::NONE));
+        let text = format!("{label} ({count})");
+        ui.painter().text(
+            egui::pos2(rect.left() + 22.0, rect.center().y),
+            egui::Align2::LEFT_CENTER,
+            text.clone(),
+            FontId::new(theme::HUD_SIZE, theme::mono_bold()),
+            ink,
+        );
+        resp.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, true, text.clone()));
+        let resp = resp.on_hover_cursor(egui::CursorIcon::PointingHand);
+        if resp.clicked() {
+            if open {
+                self.settings.collapsed_job_groups.insert(key.to_string());
+            } else {
+                self.settings.collapsed_job_groups.remove(key);
+            }
+        }
+        open
+    }
+
     fn grid_block(&mut self, ui: &mut Ui, ids: &[&'static str]) {
         if ids.is_empty() {
             return;
         }
         let width = ui.available_width();
-        // Neighbouring cards share their 1 px hairline, like the site's `gap-px` grid.
-        let cols = ((width / CARD_MIN_W).floor() as usize).max(1);
-        let card_w = (width + (cols as f32 - 1.0)) / cols as f32;
+        // Rounded cards float in their own gaps rather than sharing hairlines.
+        let cols = (((width + CARD_GAP) / (self.settings.tile_size.card_min_width() + CARD_GAP)).floor() as usize).max(1);
+        let card_w = (width - CARD_GAP * (cols as f32 - 1.0)) / cols as f32;
         let rows = ids.len().div_ceil(cols);
-        let height = rows as f32 * (CARD_H - 1.0) + 1.0;
+        let height = rows as f32 * self.settings.tile_size.card_height() + rows.saturating_sub(1) as f32 * CARD_GAP;
         let (area, _) = ui.allocate_exact_size(vec2(width, height), Sense::hover());
         for (i, id) in ids.iter().enumerate() {
             let (row, col) = (i / cols, i % cols);
-            let min = area.min + vec2(col as f32 * (card_w - 1.0), row as f32 * (CARD_H - 1.0));
-            self.card(ui, id, Rect::from_min_size(min, vec2(card_w, CARD_H)));
+            let min = area.min + vec2(col as f32 * (card_w + CARD_GAP), row as f32 * (self.settings.tile_size.card_height() + CARD_GAP));
+            self.card(ui, id, Rect::from_min_size(min, vec2(card_w, self.settings.tile_size.card_height())));
         }
     }
 
@@ -553,9 +680,12 @@ impl LauncherUi {
     /// pointer is over it.
     fn card(&mut self, ui: &mut Ui, id: &str, rect: Rect) {
         let Some(entry) = self.entry(id).cloned() else { return };
+        self.tile_drop_target(ui, id, rect);
         self.pin_drop_target(ui, id, rect, ui.clip_rect(), PinDropAxis::Horizontal);
         let t = Tokens::get(ui.ctx());
         let app = entry.app;
+        // Medium cards trade a little margin for the room the byline needs.
+        let pad = if self.settings.tile_size == crate::settings::TileSize::Medium { 14.0 } else { CARD_PAD };
         let hovered = ui.rect_contains_pointer(rect);
         let wipe = if self.reduce_motion { 0.0 } else { 0.3 };
         let lift = ui.ctx().animate_bool_with_time(ui.scope_id().with(("card-hover", id)), hovered, wipe);
@@ -574,30 +704,67 @@ impl LauncherUi {
                 self.detail = Some(id.to_string());
             }
         }
-        let painter = ui.painter_at(rect.expand(16.0));
+        // The grip on every card builds the manual order; the drop target above reorders live.
+        let drop_pointer = ui.input(|i| i.pointer.interact_pos());
+        if let Some((from, _)) = self.tile_dragging.as_ref()
+            && from != id
+            && let Some(pos) = drop_pointer
+            && rect.contains(pos)
+            && ui.clip_rect().contains(pos)
+        {
+            let x = if pos.x < rect.center().x { rect.left() } else { rect.right() };
+            ui.painter().vline(x, rect.y_range(), egui::Stroke::new(2.0, t.accent));
+        }
+        let painter = ui.painter_at(rect.expand(20.0));
+        let radius = CornerRadius::same(CARD_RADIUS);
+        // Glass: the page keeps its colour while the card surface sits a few tints above it.
+        let glass = if t.dark { t.bg.lerp_to_gamma(Color32::WHITE, 0.085) } else { Color32::WHITE };
         // A faint wash in the app's colour fades in under the pointer.
-        let fill = t.bg.lerp_to_gamma(app_color, 0.05 * lift);
-        painter.rect(rect, CornerRadius::ZERO, fill, t.hairline(), egui::StrokeKind::Inside);
-        // On hover, a 2 px rule in the app's colour wipes in from the left along the top, inside the
-        // hairlines the card shares with its neighbours (the site's rule sits within its grid gaps).
+        let fill = glass.lerp_to_gamma(app_color, 0.05 * lift);
+        painter.add(
+            egui::epaint::Shadow { offset: [0, 8], blur: 24, spread: 0, color: Color32::from_black_alpha(if t.dark { 64 } else { 22 }) }
+                .as_shape(rect, radius),
+        );
+        painter.rect(rect, radius, fill, egui::Stroke::new(1.0, t.line), egui::StrokeKind::Inside);
+        // On hover, a 2 px rule in the app's colour wipes in from the left along the top, tucked
+        // inside the rounded corners.
         if lift > 0.0 {
-            let inside = rect.shrink(1.0);
-            painter.rect_filled(Rect::from_min_size(inside.min, vec2(inside.width() * lift, 2.0)), CornerRadius::ZERO, app_color);
+            // Only the straight top edge, between the two rounded corners. The width follows this
+            // card's rect, so it stays right when density or sorting changes the column width.
+            let corner = CARD_RADIUS as f32;
+            let straight = (rect.width() - 2.0 * corner).max(0.0);
+            let x = rect.left() + corner;
+            painter.rect_filled(Rect::from_min_size(egui::pos2(x, rect.top() + 1.0), vec2(straight * lift, 2.0)), CornerRadius::ZERO, app_color);
         }
 
-        // The top strip: the version in the app's colour, and its GitHub page.
+        // The top strip: the version in the app's colour, and the last-updated date at the right.
         let status = entry.status(self.platform, self.caps.manage_apps);
+        let last_updated = crate::card_parts::last_updated(&entry);
+        let date_size = match self.settings.tile_size {
+            crate::settings::TileSize::Small => 8.5,
+            crate::settings::TileSize::Medium => 9.0,
+            crate::settings::TileSize::Large => 9.5,
+        };
         let behind = self.behind_latest(&entry);
         let version = crate::card_parts::strip_version(&entry, &status, behind.as_deref());
         let strip = Rect::from_min_size(rect.min, vec2(rect.width(), STRIP_H));
         painter.hline(strip.x_range(), strip.bottom() - 0.5, t.hairline());
         {
-            let mut strip_ui = ui.new_child(
-                egui::UiBuilder::new().max_rect(strip.shrink2(vec2(CARD_PAD, 0.0))).layout(egui::Layout::left_to_right(egui::Align::Center)),
-            );
+            let mut strip_ui =
+                ui.new_child(egui::UiBuilder::new().max_rect(strip.shrink2(vec2(pad, 0.0))).layout(egui::Layout::left_to_right(egui::Align::Center)));
+            // Pinned apps already have a pin grip in their action row; the tile grip takes over
+            // only for unpinned apps, or when a manual order is in use. One grip, one label.
+            if !self.settings.is_pinned(id) || !self.settings.tile_order.is_empty() {
+                let grip_tip = fmt(tl!("Reorder {name}"), &[("name", app.name)]);
+                if widgets::grip_button(&mut strip_ui, &grip_tip).drag_started() {
+                    self.begin_tile_drag(id);
+                }
+            }
             if !version.is_empty() {
-                let github_w = widgets::hud_galley(&strip_ui, &format!("{} ↗", tl!("GitHub")), t.muted).size().x;
-                let room = (strip_ui.available_width() - github_w - 16.0).max(0.0);
+                let date_w = last_updated.as_ref().map_or(0.0, |line| {
+                    strip_ui.fonts_mut(|f| f.layout_no_wrap(line.clone(), FontId::proportional(date_size), Color32::PLACEHOLDER).size().x)
+                });
+                let room = (strip_ui.available_width() - date_w - 16.0).max(0.0);
                 let highlight = if in_colour { t.app_ink(app) } else { t.muted };
                 let spans: Vec<(&str, egui::Color32)> =
                     version.iter().map(|(text, lit)| (text.as_str(), if *lit { highlight } else { t.muted })).collect();
@@ -607,89 +774,183 @@ impl LauncherUi {
                 }
             }
             strip_ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                ui.spacing_mut().item_spacing.x = 16.0;
-                widgets::hud_link(ui, tl!("GitHub"), &app.repo_url());
+                if let Some(line) = last_updated.as_deref() {
+                    ui.add(
+                        egui::Label::new(RichText::new(line).size(date_size).color(Color32::from_rgb(0x4C, 0x4B, 0x4B))).selectable(false).truncate(),
+                    );
+                }
             });
         }
 
-        let inner = Rect::from_min_max(egui::pos2(rect.left() + CARD_PAD, strip.bottom() + 18.0), rect.max - vec2(CARD_PAD, CARD_PAD));
-        // A detached child: the card's contents never move the next card along.
-        let mut child = ui.new_child(egui::UiBuilder::new().max_rect(inner).layout(egui::Layout::top_down(egui::Align::Min)));
-        child.set_clip_rect(rect.intersect(ui.clip_rect()));
-        let ui = &mut child;
-        ui.horizontal(|ui| {
-            const ICON: f32 = 56.0;
-            let [name, tagline] = [FontId::new(22.0, theme::display()), FontId::proportional(13.5)];
-            const GAP: f32 = 4.0;
-            // The slot is as tall as the text beside it when that is taller, so the two share a centre.
-            let block = lines_height(ui, &[&name, &tagline], GAP);
-            let (slot, icon_response) = ui.allocate_exact_size(vec2(ICON, block.max(ICON)), Sense::hover());
+        let inner = Rect::from_min_max(egui::pos2(rect.left() + pad, strip.bottom() + 18.0), rect.max - vec2(pad, pad));
+        let body = match self.settings.tile_size {
+            crate::settings::TileSize::Small => 11.0,
+            crate::settings::TileSize::Medium => 11.8,
+            crate::settings::TileSize::Large => 12.5,
+        };
+        let status_note =
+            (!matches!(status, AppStatus::UpToDate | AppStatus::Installed)).then(|| model::entry_status_text(&entry, &status, self.caps.manage_apps));
+        let meta_h = if status_note.is_some() { 25.0 } else { 0.0 };
+        let footer_h = theme::CONTROL_H + meta_h;
+        let content = Rect::from_min_max(inner.min, egui::pos2(inner.right(), (inner.bottom() - footer_h).max(inner.top())));
+        // The body is a detached child clipped above the footer, so it can never run under the
+        // action row however much flavor text a card carries.
+        let mut child = ui.new_child(egui::UiBuilder::new().max_rect(content).layout(egui::Layout::top_down(egui::Align::Min)));
+        child.set_clip_rect(content.intersect(ui.clip_rect()));
+        {
+            let ui = &mut child;
+            Self::card_identity(ui, app, &t, self.settings.tile_size, in_colour, lift);
+            ui.add_space(12.0);
+            // Until a version is known, the sentence that says why (no release yet, installed…) stays.
+            if version.is_empty() {
+                let line = version_line(&entry, &status);
+                if !line.trim().is_empty() {
+                    ui.label(RichText::new(line).size(body).color(t.muted));
+                    ui.add_space(6.0);
+                }
+            }
+            if entry.job.is_none()
+                && entry.paused.is_none()
+                && matches!(self.primary_action(&entry, &status), Primary::Install | Primary::Update(_) | Primary::Download(_))
+            {
+                let sizes = self.download_sizes(&entry);
+                if !sizes.iter().any(|(_, size)| *size == 0)
+                    && let Some((_, bytes)) = sizes.first()
+                {
+                    let (min, max) = sizes.iter().fold((*bytes, *bytes), |(min, max), (_, size)| (min.min(*size), max.max(*size)));
+                    let size = if min == max {
+                        widgets::human_bytes(min)
+                    } else {
+                        format!("{} – {}", widgets::human_bytes(min), widgets::human_bytes(max))
+                    };
+                    ui.add(
+                        egui::Label::new(RichText::new(fmt(tl!("Download size: {size}"), &[("size", &size)])).size(body).color(t.muted)).truncate(),
+                    )
+                    .on_hover_text(Self::sizes_text(&sizes));
+                    ui.add_space(4.0);
+                }
+            }
+            if let Some(details) = AppDetails::by_id(id) {
+                crate::card_parts::blurb(ui, details.headline, t.muted, 4, body);
+            }
+        }
+        self.card_footer(ui, &entry, &status, inner, status_note);
+        self.card_shine(ui, id, rect, hovered);
+    }
+
+    /// The bottom edge: status badge at the right, last-updated date at the left, actions above.
+    #[allow(clippy::too_many_arguments)]
+    fn card_footer(&mut self, ui: &mut Ui, entry: &AppEntry, status: &AppStatus, inner: Rect, status_note: Option<(String, crate::model::Tone)>) {
+        let t = Tokens::get(ui.ctx());
+        let badge_size = match self.settings.tile_size {
+            crate::settings::TileSize::Small => 8.0,
+            crate::settings::TileSize::Medium => 8.5,
+            crate::settings::TileSize::Large => 9.0,
+        };
+        // Footer on the bottom edge: the status badge at the right, actions above it.
+        let mut footer = ui.new_child(egui::UiBuilder::new().max_rect(inner).layout(egui::Layout::bottom_up(egui::Align::Min)));
+        footer.set_clip_rect(inner.intersect(ui.clip_rect()));
+        let badge = |ui: &mut Ui, text: &str, tone: crate::model::Tone, failure: Option<&str>| {
+            let r = widgets::badge_sized(ui, text, widgets::tone_color(&t, tone), badge_size);
+            if let Some(f) = failure {
+                r.on_hover_text(fmt(tl!("Couldn't check for updates: {f}"), &[("f", f)]));
+            }
+        };
+        if let Some((text, tone)) = &status_note {
+            footer.horizontal(|ui| {
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    badge(ui, text, *tone, entry.failure());
+                });
+            });
+            footer.add_space(5.0);
+        }
+        footer.horizontal(|ui| self.actions_in(ui, entry, status, inner.width(), Place::Card));
+    }
+
+    /// The icon, name, byline and one-liner at the top of a card. Small and medium stack them;
+    /// large keeps the icon beside the text.
+    fn card_identity(
+        ui: &mut Ui,
+        app: &artcraft_launcher_core::catalog::CraftApp,
+        t: &Tokens,
+        tile: crate::settings::TileSize,
+        in_colour: bool,
+        lift: f32,
+    ) {
+        let (icon_px, name_px, tagline_px) = match tile {
+            crate::settings::TileSize::Small => (38.0, 17.0, 11.0),
+            crate::settings::TileSize::Medium => (44.0, 18.0, 11.8),
+            crate::settings::TileSize::Large => (52.0, 20.0, 12.5),
+        };
+        ui.vertical_centered(|ui| {
+            let (slot, icon_response) = ui.allocate_exact_size(vec2(icon_px, icon_px), Sense::hover());
             icon_response.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Image, true, fmt(tl!("{name} icon"), &[("name", app.name)])));
-            // The icon rises a little on hover, over a soft drop shadow (the site's only shadow).
-            let icon_rect = Rect::from_center_size(slot.center(), vec2(ICON, ICON)).translate(vec2(0.0, -4.0 * lift));
+            let icon_rect = Rect::from_center_size(slot.center(), vec2(icon_px, icon_px)).translate(vec2(0.0, -3.0 * lift));
             ui.painter().add(
-                egui::epaint::Shadow { offset: [0, 6], blur: 14, spread: 0, color: Color32::from_black_alpha(71) }
-                    .as_shape(icon_rect.shrink(4.0), CornerRadius::same(12)),
+                egui::epaint::Shadow { offset: [0, 5], blur: 12, spread: 0, color: Color32::from_black_alpha(71) }
+                    .as_shape(icon_rect.shrink(3.0), CornerRadius::same(9)),
             );
             if let Some(icon) = crate::icons::app_image(ui.ctx(), app.id, in_colour) {
                 icon.paint_at(ui, icon_rect);
             }
-            ui.add_space(6.0);
-            centered_lines(ui, &[&name, &tagline], GAP, |ui| {
-                // The name's row is as tall as its text, not as a button.
-                ui.spacing_mut().interact_size.y = 0.0;
-                ui.horizontal(|ui| {
-                    widgets::wordmark_in(ui, app, 22.0, in_colour);
-                    kind_badge(ui, app, &t);
-                });
-                ui.add(egui::Label::new(RichText::new(tr_ctx(current(), app.id, app.tagline)).font(tagline.clone()).color(t.muted)).truncate());
-            });
+            ui.add_space(3.0);
+            ui.spacing_mut().interact_size.y = 0.0;
+            widgets::wordmark_in(ui, app, name_px, in_colour);
+            kind_badge(ui, app, t);
+            let mut tagline = egui::text::LayoutJob::simple(
+                tr_ctx(current(), app.id, app.tagline).to_string(),
+                FontId::proportional(tagline_px),
+                t.muted,
+                ui.available_width(),
+            );
+            tagline.halign = egui::Align::Center;
+            ui.add(egui::Label::new(tagline).selectable(false));
         });
-        ui.add_space(14.0);
-        // Installed and up to date needs no badge: the strip has the version, and the group says the rest.
-        if !matches!(status, AppStatus::UpToDate | AppStatus::Installed) {
-            ui.horizontal(|ui| {
-                let (text, tone) = model::entry_status_text(&entry, &status, self.caps.manage_apps);
-                let r = widgets::badge(ui, &text, widgets::tone_color(&t, tone));
-                if let Some(f) = entry.failure() {
-                    r.on_hover_text(fmt(tl!("Couldn't check for updates: {f}"), &[("f", f)]));
-                }
-            });
-            ui.add_space(8.0);
+    }
+
+    /// A soft diagonal flare that sweeps from the card's top-left to its bottom-right while the
+    /// pointer is over it. Clipped to the card, and skipped when reduced motion is requested.
+    fn card_shine(&self, ui: &Ui, id: &str, rect: Rect, hovered: bool) {
+        if self.reduce_motion {
+            return;
         }
-        // Until a version is known, the sentence that says why (no release yet, installed…) stays.
-        if version.is_empty() {
-            let line = version_line(&entry, &status);
-            if !line.trim().is_empty() {
-                ui.label(RichText::new(line).size(12.5).color(t.muted));
-                ui.add_space(8.0);
-            }
+        let key = egui::Id::unique(("card-shine", id));
+        if !hovered {
+            ui.ctx().data_mut(|d| d.remove_temp::<u64>(key));
+            return;
         }
-        if entry.job.is_none()
-            && entry.paused.is_none()
-            && matches!(self.primary_action(&entry, &status), Primary::Install | Primary::Update(_) | Primary::Download(_))
-        {
-            let sizes = self.download_sizes(&entry);
-            if !sizes.iter().any(|(_, size)| *size == 0)
-                && let Some((_, bytes)) = sizes.first()
-            {
-                let (min, max) = sizes.iter().fold((*bytes, *bytes), |(min, max), (_, size)| (min.min(*size), max.max(*size)));
-                let size =
-                    if min == max { widgets::human_bytes(min) } else { format!("{} – {}", widgets::human_bytes(min), widgets::human_bytes(max)) };
-                ui.add(egui::Label::new(RichText::new(fmt(tl!("Download size: {size}"), &[("size", &size)])).size(12.5).color(t.muted)).truncate())
-                    .on_hover_text(Self::sizes_text(&sizes));
-            }
-        }
-        if let Some(details) = AppDetails::by_id(id) {
-            crate::card_parts::blurb(ui, details.headline, t.muted, 4);
-        }
-        if let Some(line) = crate::card_parts::last_updated(&entry) {
-            ui.add_space(6.0);
-            ui.add(egui::Label::new(RichText::new(line).size(12.5).color(t.faint)).selectable(false));
-        }
-        ui.with_layout(egui::Layout::bottom_up(egui::Align::Min), |ui| {
-            ui.horizontal(|ui| self.actions_in(ui, &entry, &status, inner.width(), Place::Card));
+        // Each hover starts its own pass. Frames rather than the wall clock, so the sweep also
+        // runs in the frame-driven test harness and on machines where time is quantized.
+        let frame = ui.ctx().cumulative_frame_nr();
+        let start = ui.ctx().data(|d| d.get_temp::<u64>(key)).unwrap_or_else(|| {
+            ui.ctx().data_mut(|d| d.insert_temp(key, frame));
+            frame
         });
+        let shine = (frame.saturating_sub(start) as f32 / 55.0).min(1.0);
+        let h = rect.height();
+        let half = (h * 0.16).clamp(28.0, 76.0);
+        let ink = Tokens::get(ui.ctx()).invert_fg;
+        let band = |centre: f32, peak: u8| {
+            let mut mesh = egui::Mesh::default();
+            for (offset, alpha) in [(-half, 0), (0.0, peak), (half, 0)] {
+                let colour = Color32::from_rgba_unmultiplied(ink.r(), ink.g(), ink.b(), alpha);
+                mesh.colored_vertex(egui::pos2(centre + offset, rect.top()), colour);
+                mesh.colored_vertex(egui::pos2(centre + h + offset, rect.bottom()), colour);
+            }
+            // Two rows of three vertices: transparent edge, bright centre, transparent edge.
+            mesh.indices.extend_from_slice(&[0, 1, 3, 1, 4, 3, 1, 2, 4, 2, 5, 4]);
+            egui::Shape::mesh(mesh)
+        };
+        // A resting diagonal sheen, plus the brighter pass that travels across it.
+        let resting = rect.left() + rect.width() * 0.5 - h * 0.5;
+        let moving = rect.left() - h * 0.5 + shine * (rect.width() + h * 1.5);
+        let peak = (58.0 * (std::f32::consts::PI * shine).sin()) as u8;
+        let painter = ui.painter_at(rect);
+        painter.add(band(resting, 12));
+        if shine < 1.0 {
+            ui.ctx().request_repaint();
+            painter.add(band(moving, peak));
+        }
     }
 
     // ---- table ---------------------------------------------------------------------------
@@ -1041,7 +1302,7 @@ impl LauncherUi {
         let id = entry.app.id.to_string();
         let gap = ui.spacing().item_spacing.x;
         let links_in_menu = place.links_in_menu();
-        if links_in_menu && self.settings.is_pinned(entry.app.id) {
+        if links_in_menu && self.settings.tile_order.is_empty() && self.settings.is_pinned(entry.app.id) {
             self.pin_grip(ui, entry);
             width -= theme::CONTROL_H + gap;
         }
@@ -1086,6 +1347,55 @@ impl LauncherUi {
         // `LauncherUi::ui` clears `pin_dragging` after the list once the pointer is up.
         if resp.drag_started() {
             self.pin_dragging = Some((entry.app.id.to_string(), self.settings.pinned.clone()));
+        }
+    }
+
+    /// Starts a tile drag, snapshotting the manual order for Escape.
+    fn begin_tile_drag(&mut self, id: &str) {
+        if self.tile_dragging.is_none() {
+            self.tile_dragging = Some((id.to_string(), self.settings.tile_order.clone()));
+        }
+    }
+
+    /// While a tile grip is dragged, hovering another card moves the dragged app before/after it.
+    /// The first target converts the automatic order into the manual one.
+    fn tile_drop_target(&mut self, ui: &Ui, id: &str, rect: Rect) {
+        let Some((from, _)) = self.tile_dragging.clone() else { return };
+        if from == id {
+            return;
+        }
+        let Some(pos) = ui.input(|i| i.pointer.interact_pos()) else { return };
+        // Reach into the gap on every side: touching a border or corner already switches the
+        // target, instead of having to land well inside the card.
+        let hit = rect.expand(CARD_GAP * 0.5);
+        if !hit.contains(pos) || !ui.clip_rect().contains(pos) {
+            return;
+        }
+        // Keep every shown tile in the manual order: a drag started under a filter must leave the
+        // hidden tiles movable when the filter is cleared. Existing order wins; new tiles append.
+        let visible = self.visible_ids();
+        let order = &mut self.settings.tile_order;
+        for v in visible {
+            if !order.iter().any(|p| p == v) {
+                order.push(v.to_string());
+            }
+        }
+        // In job-type grouping an app only moves within its own group.
+        if self.settings.sort == SortKey::JobType && job_type(&from) != job_type(id) {
+            return;
+        }
+        let Some(to) = self.settings.tile_order.iter().position(|p| p == id) else { return };
+        let insertion = if pos.x < rect.center().x { to } else { to.saturating_add(1) };
+        self.settings.reorder_tile_to(&from, insertion);
+    }
+
+    /// Escape restores the manual order from before the tile drag.
+    pub(crate) fn clear_tile_drag_on_escape(&mut self, ui: &Ui) {
+        if self.tile_dragging.is_some()
+            && ui.input(|i| i.key_pressed(egui::Key::Escape))
+            && let Some((_, original)) = self.tile_dragging.take()
+        {
+            self.settings.tile_order = original;
         }
     }
 
@@ -1187,7 +1497,7 @@ impl LauncherUi {
         }
         let pct = if p.total > 0 { format!(" · {:.0}%", p.done as f32 / p.total as f32 * 100.0) } else { String::new() };
         // Resume, then discard and the menu (two squares).
-        let resume_w = (width - 2.0 * (theme::CONTROL_H + gap)).max(90.0);
+        let resume_w = (width - theme::CONTROL_H - MENU_W - 2.0 * gap).max(72.0);
         // Narrow (the table): just tl!("Resume"); the tooltip says how far it got.
         let label = match resume_w {
             w if w < 150.0 => tl!("Resume").to_string(),
@@ -1302,7 +1612,7 @@ impl LauncherUi {
         let id = entry.app.id.to_string();
         let manage = self.caps.manage_apps;
         let reveal = self.caps.reveal_label;
-        widgets::more_menu(ui, entry.app.name, |ui| {
+        widgets::more_menu(ui, entry.app.name, MENU_BTN_W, |ui| {
             if ui.button(tl!("Choose version")).clicked() {
                 self.open_versions(&id);
                 ui.close();
@@ -1459,7 +1769,15 @@ enum PinDropAxis {
 
 /// What the grid's sort dropdown offers: the order and, for names, which way. The installed apps
 /// always sit above the rest.
-const GRID_SORTS: [(SortKey, bool); 4] = [(SortKey::Name, false), (SortKey::Name, true), (SortKey::Released, true), (SortKey::Frequent, true)];
+const GRID_SORTS: [(SortKey, bool); 7] = [
+    (SortKey::Name, false),
+    (SortKey::Name, true),
+    (SortKey::Released, true),
+    (SortKey::Frequent, true),
+    (SortKey::JobType, false),
+    (SortKey::InstalledFirst, false),
+    (SortKey::InstallFirst, false),
+];
 
 /// Which of [`GRID_SORTS`] the settings come to. Anything else (the old suite order, a table
 /// column) reads as Name, A to Z.
@@ -1468,7 +1786,10 @@ pub(crate) fn grid_sort_now(s: &crate::settings::Settings) -> (SortKey, bool) {
         SortKey::Name => (SortKey::Name, s.sort_descending),
         SortKey::Released => (SortKey::Released, true),
         SortKey::Frequent => (SortKey::Frequent, true),
-        _ => (SortKey::Name, false),
+        SortKey::JobType => (SortKey::JobType, false),
+        SortKey::InstalledFirst => (SortKey::InstalledFirst, false),
+        SortKey::InstallFirst => (SortKey::InstallFirst, false),
+        _ => (SortKey::JobType, false),
     }
 }
 
@@ -1476,12 +1797,29 @@ fn grid_sort_label((key, descending): (SortKey, bool)) -> &'static str {
     match (key, descending) {
         (SortKey::Released, _) => tl!("Recently updated"),
         (SortKey::Frequent, _) => tl!("Frequently used"),
+        (SortKey::JobType, _) => tl!("Job type"),
+        (SortKey::InstalledFirst, _) => tl!("Installed"),
+        (SortKey::InstallFirst, _) => tl!("Install"),
         (_, true) => tl!("Name (Z–A)"),
         _ => tl!("Name (A–Z)"),
     }
 }
 
 /// "0.4.1 installed → 0.5.0 released · Oct 8, 2026" and friends.
+/// The English label for a job group, translated through the catalog.
+fn job_label(job: JobType) -> &'static str {
+    match job {
+        JobType::Image => tl!("Photo & Image"),
+        JobType::Design => tl!("Design & Illustration"),
+        JobType::Motion => tl!("Video & Motion"),
+        JobType::Audio => tl!("Audio"),
+        JobType::ThreeD => tl!("3D, CAD & Textures"),
+        JobType::Documents => tl!("Documents & Productivity"),
+        JobType::Learn => tl!("Learn & Build"),
+        JobType::Other => tl!("Other"),
+    }
+}
+
 pub(crate) fn version_line(e: &AppEntry, status: &AppStatus) -> String {
     let released = e.release().and_then(|r| r.published_at).map(|at| format!(" · {}", date_text(at))).unwrap_or_default();
     let inst_ver = e.installed.as_ref().and_then(|i| i.version.as_ref().map(ToString::to_string));
@@ -1521,23 +1859,6 @@ pub(crate) fn launcher_asset(
         _ => p.default_kinds(),
     };
     pick_asset(r, &[artcraft_launcher_core::catalog::LAUNCHER_ID], p, kinds).map(|(a, _)| a)
-}
-
-/// A column of single-line texts, one per font and `gap` apart, centred across the row it is in.
-/// `ui.vertical` starts at the top of the row instead: a row only centres what it knows the height of.
-/// Each line is measured as an empty galley, which is rounded to the pixel like a label, unlike `Fonts::row_height`.
-fn centered_lines(ui: &mut Ui, fonts: &[&FontId], gap: f32, add_contents: impl FnOnce(&mut Ui)) {
-    let height = lines_height(ui, fonts, gap);
-    ui.allocate_ui_with_layout(vec2(ui.available_width(), height), egui::Layout::top_down(egui::Align::Min), |ui| {
-        ui.spacing_mut().item_spacing.y = gap;
-        add_contents(ui);
-    });
-}
-
-/// The height of [`centered_lines`] with these fonts.
-fn lines_height(ui: &Ui, fonts: &[&FontId], gap: f32) -> f32 {
-    let line = |font: &FontId| ui.fonts_mut(|f| f.layout_no_wrap(String::new(), font.clone(), Color32::PLACEHOLDER)).size().y;
-    (fonts.iter().map(|font| line(font) + gap).sum::<f32>() - gap).max(0.0)
 }
 
 #[cfg(test)]

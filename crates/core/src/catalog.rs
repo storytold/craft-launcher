@@ -147,6 +147,63 @@ const fn app(
 }
 
 /// The Craft App Suite, in display order matching getartcraft.com, then the community apps:
+/// The kind of work an app is for, used to group the launcher grid.
+///
+/// Each app belongs to one type: the primary job people open it for (a 3D app that paints
+/// textures stays with 3D, not with photo editing).
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub enum JobType {
+    /// Photo editing and photo libraries/raw development.
+    Image,
+    /// Illustration, layout, interface design.
+    Design,
+    /// Video, motion graphics, animation.
+    Motion,
+    /// Recording, editing and mixing sound.
+    Audio,
+    /// CAD, 3D modelling and the materials/textures painted for it.
+    ThreeD,
+    /// Writing, slides, PDFs, sheets and mail.
+    Documents,
+    /// Learning how software works and building your own.
+    Learn,
+    /// Catalog entries that do not name a type yet.
+    Other,
+}
+
+impl JobType {
+    /// The groups in the order the grid draws them.
+    pub const ALL: [Self; 8] = [Self::Image, Self::Design, Self::Motion, Self::Audio, Self::ThreeD, Self::Documents, Self::Learn, Self::Other];
+
+    /// A stable key for tests and saved UI state.
+    pub fn key(self) -> &'static str {
+        match self {
+            Self::Image => "image",
+            Self::Design => "design",
+            Self::Motion => "motion",
+            Self::Audio => "audio",
+            Self::ThreeD => "three-d",
+            Self::Documents => "documents",
+            Self::Learn => "learn",
+            Self::Other => "other",
+        }
+    }
+}
+
+/// The primary job type of a catalog app (unknown ids fall into [`JobType::Other`]).
+pub fn job_type(id: &str) -> JobType {
+    match id {
+        "photocraft" | "lightcraft" => JobType::Image,
+        "vectorcraft" | "designcraft" | "figcraft" => JobType::Design,
+        "filmcraft" | "effectcraft" | "anicraft" => JobType::Motion,
+        "soundcraft" => JobType::Audio,
+        "cadcraft" | "solidcraft" | "texturecraft" | "materialcraft" => JobType::ThreeD,
+        "wordcraft" | "deckcraft" | "pdfcraft" | "gridcraft" | "mailcraft" => JobType::Documents,
+        "craft-anything" => JobType::Learn,
+        _ => JobType::Other,
+    }
+}
+
 pub const SUITE: [CraftApp; 19] = [
     app("photocraft", "PhotoCraft", "Image editing", [[0x2f, 0x7b, 0xf5], [0x1a, 0x5b, 0xc4], [0x7f, 0xb0, 0xff]], "storytold/photocraft"),
     app("vectorcraft", "VectorCraft", "Vector illustration", [[0xe8, 0x57, 0x3f], [0xb8, 0x3a, 0x24], [0xff, 0x8a, 0x70]], "storytold/vectorcraft"),
