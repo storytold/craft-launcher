@@ -4319,3 +4319,64 @@ fn an_apps_page_is_a_card_in_the_middle_with_next_and_previous_arrows_and_closes
     h.run_steps(30);
     assert!(!showing(&h, "photocraft"), "a click outside did not close it");
 }
+
+/// Grid cards are all one height, so the text above a card's action row has to fit beside it: a
+/// description that wraps to two lines used to push "Last updated" under the Install button, and
+/// a long name with its byline ran past the card's edge, cutting the byline and the tagline.
+#[test]
+fn card_text_stays_above_the_actions_and_inside_the_card() {
+    let (mut h, _) = harness(ViewMode::Grid, egui::Theme::Light, true);
+    h.run_steps(8);
+    let buttons: Vec<egui::Rect> = h.query_all_by_role(egui::accesskit::Role::Button).map(|n| n.rect()).collect();
+    // The buttons of the card a text belongs to: in its column, and in the action row below it.
+    let actions_below = |r: egui::Rect| -> Vec<egui::Rect> {
+        buttons
+            .iter()
+            .copied()
+            .filter(|b| b.left() >= r.left() - 1.0 && b.left() < r.left() + 340.0 && b.top() > r.top() && b.top() - r.top() < 140.0)
+            .collect()
+    };
+    let dates: Vec<egui::Rect> = h.query_all_by_label_contains("Last updated").map(|n| n.rect()).collect();
+    let mut checked = 0;
+    for date in &dates {
+        let row = actions_below(*date);
+        if let Some(top) = row.iter().map(|b| b.top()).reduce(f32::min) {
+            // The text area ends 12 px above the actions; 1 px of rounding is allowed.
+            assert!(date.bottom() <= top - 11.0, "\"Last updated\" ends at {} but its card's actions start at {top}", date.bottom());
+            checked += 1;
+        }
+    }
+    assert!(checked >= 3, "checked {checked} of {} dates against their card's actions", dates.len());
+    // The "…" button ends at the right of the card's text column.
+    let column_ends: Vec<f32> = h.query_all_by_label_contains("More actions for").map(|n| n.rect().right()).collect();
+    let bylines: Vec<egui::Rect> = h.query_all_by_label_contains("by ").filter(|n| n.rect().height() <= 21.0).map(|n| n.rect()).collect();
+    assert!(!bylines.is_empty(), "cards show who makes the app");
+    for byline in bylines {
+        let end = column_ends.iter().copied().filter(|x| *x > byline.left()).reduce(f32::min).unwrap_or(f32::INFINITY);
+        assert!(byline.right() <= end + 0.5, "a byline ends at {} past its card's text column at {end}", byline.right());
+    }
+    snapshot(&mut h, "grid_cards_fit");
+}
+
+/// In a narrow window (cards at their minimum width) a long name and its byline still fit the
+/// card: the byline ends in "…" within the text column, so the tagline below keeps the column's
+/// width and ends in "…" there too, instead of being cut at the card's edge.
+#[test]
+fn a_long_name_and_byline_fit_a_narrow_card() {
+    let (mut h, _) = harness(ViewMode::Grid, egui::Theme::Light, true);
+    h.set_size(egui::vec2(1020.0, 1200.0));
+    h.run_steps(8);
+    let column_ends: Vec<f32> = h.query_all_by_label_contains("More actions for").map(|n| n.rect().right()).collect();
+    let end_of = |left: f32| column_ends.iter().copied().filter(|x| *x > left).reduce(f32::min).unwrap_or(f32::INFINITY);
+    let tagline = h.get_by_label_contains("Find out how any software works").rect();
+    assert!(
+        tagline.right() <= end_of(tagline.left()) + 0.5,
+        "Craft Anything's tagline ends at {} past its column at {}",
+        tagline.right(),
+        end_of(tagline.left())
+    );
+    for byline in h.query_all_by_label_contains("by ").filter(|n| n.rect().height() <= 21.0).map(|n| n.rect()) {
+        assert!(byline.right() <= end_of(byline.left()) + 0.5, "a byline ends at {} past its column at {}", byline.right(), end_of(byline.left()));
+    }
+    snapshot(&mut h, "grid_cards_narrow");
+}
