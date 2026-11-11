@@ -764,6 +764,7 @@ struct Shell<'a> {
 }
 
 impl<'a> Shell<'a> {
+    /// Creates the window shell and applies the startup visibility and Dock policy.
     fn new(cc: &eframe::CreationContext<'_>, launcher: &'a mut Launcher, hidden: bool) -> Self {
         let window_hides = window_can_hide(cc.display_handle().ok().map(|d| d.as_raw()));
         // Started hidden at login but there's no tray to come back from: show the window.
@@ -798,6 +799,7 @@ impl<'a> Shell<'a> {
         shell
     }
 
+    /// Shows and focuses the window, restoring macOS app and Dock visibility when needed.
     fn show(&mut self, ctx: &egui::Context) {
         self.visible = true;
         // Before the window is ordered front, so it comes to this desktop rather than taking the
@@ -859,6 +861,7 @@ impl<'a> Shell<'a> {
 }
 
 impl eframe::App for Shell<'_> {
+    /// Processes launcher requests, close requests, and macOS system-unhide state each frame.
     fn logic(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         let requests = self.launcher.tick(ctx);
         #[cfg(target_os = "macos")]

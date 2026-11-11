@@ -8,6 +8,7 @@
 use objc2::MainThreadMarker;
 use objc2_app_kit::{NSApplication, NSApplicationActivationPolicy, NSWindowCollectionBehavior};
 
+/// Selects whether the launcher has a Dock icon for the current visibility and tray preferences.
 pub(super) fn activation_policy(
     window_visible: bool,
     hide_when_hidden: bool,
