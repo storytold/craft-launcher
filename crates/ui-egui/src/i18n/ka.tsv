@@ -95,6 +95,8 @@
 	ArtCraft Launcher {version}	ArtCraft Launcher {version}
 	Only when I ask	მხოლოდ მოთხოვნისას
 	Automatically download and install updates	განახლებების ავტომატური ჩამოტვირთვა და ინსტალაცია
+	For everyone on this computer. Changing it asks for administrator permission.	მოქმედებს ამ კომპიუტერის ყველა მომხმარებლისთვის. შესაცვლელად საჭიროა ადმინისტრატორის ნებართვა.
+	Set by your administrator.	დაყენებულია ადმინისტრატორის მიერ.
 	Ask for permission once when updating all apps	ყველა აპლიკაციის განახლებისას ნებართვის მოთხოვნა მხოლოდ ერთხელ
 	Notify me when an installed app has an update	შეტყობინება, როცა დაინსტალირებულ აპლიკაციას განახლება აქვს
 	Include pre-releases (betas and release candidates)	წინასწარი ვერსიების ჩართვა (ბეტა-ვერსიები და გამოშვების კანდიდატები)

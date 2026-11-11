@@ -90,7 +90,8 @@ pub(crate) fn run_with_output(program: &str, args: &[&str], timeout: Duration) -
     run_command_with_output(cmd, program, timeout)
 }
 
-/// Runs a configured helper with bounded output and a timeout.
+/// Runs a configured helper (arguments, environment) with bounded output and a timeout, as [`run`]
+/// does; `program` names it in errors.
 pub fn run_command(cmd: Command, program: &str, timeout: Duration) -> Result<String, String> {
     output_result(program, run_command_with_output(cmd, program, timeout)?)
 }

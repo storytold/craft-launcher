@@ -20,7 +20,7 @@ fn main() {
         .set("OriginalFilename", "artcraft-launcher.exe")
         .set("InternalName", "artcraft-launcher");
     if let Err(e) = res.compile() {
-        if std::env::var_os("ARTCRAFT_LAUNCHER_REQUIRE_WINRES").is_some() {
+        if std::env::var("ARTCRAFT_LAUNCHER_REQUIRE_WINRES").as_deref() == Ok("1") {
             println!("cargo:warning=embedding Windows resources failed: {e}");
             std::process::exit(1);
         }
