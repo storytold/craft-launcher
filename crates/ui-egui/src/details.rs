@@ -247,7 +247,12 @@ impl LauncherUi {
     fn neighbour_apps(&self, id: &str) -> (Option<String>, Option<String>) {
         let mut ids: Vec<&str> = self.visible_ids().into_iter().filter(|i| AppDetails::by_id(i).is_some()).collect();
         if !ids.contains(&id) {
-            ids = artcraft_launcher_core::SUITE.iter().map(|a| a.id).filter(|i| AppDetails::by_id(i).is_some()).collect();
+            ids = artcraft_launcher_core::hosted_catalog::apps()
+                .iter()
+                .filter(|a| self.platform.is_none_or(|p| a.runs_on(p.os)))
+                .map(|a| a.id)
+                .filter(|i| AppDetails::by_id(i).is_some())
+                .collect();
         }
         let Some(at) = ids.iter().position(|i| *i == id) else { return (None, None) };
         if ids.len() < 2 {
@@ -319,7 +324,7 @@ impl LauncherUi {
             // The menu leaves out the links: they are the buttons right below.
             if !wide {
                 let row_w = ui.available_width();
-                ui.horizontal(|ui| self.actions_in(ui, entry, &status, row_w, false));
+                ui.horizontal(|ui| self.actions_in(ui, entry, &status, row_w, crate::views::Place::Details));
             }
             link_buttons(ui, app);
         });
@@ -376,7 +381,7 @@ impl LauncherUi {
                 // The main button and its menu, at the right, level with the name.
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     ui.allocate_ui_with_layout(vec2(ACTION_W, theme::CONTROL_H), egui::Layout::left_to_right(egui::Align::Center), |ui| {
-                        self.actions_in(ui, entry, status, ACTION_W, false);
+                        self.actions_in(ui, entry, status, ACTION_W, crate::views::Place::Details);
                     });
                 });
             }

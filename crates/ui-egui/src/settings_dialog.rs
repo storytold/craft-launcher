@@ -159,7 +159,7 @@ impl LauncherUi {
         if pref.needs_cjk_font() && !theme::cjk_font_available(pref) {
             // In English on purpose: the language asked for can't be drawn.
             let text = "No font for this language was found on this system, so the interface stays in English. \
-                        Installing one (for example Noto Sans CJK) and restarting fixes it.";
+                        Installing one (for example Noto Sans CJK or Noto Sans Georgian) and restarting fixes it.";
             ui.add(egui::Label::new(RichText::new(text).size(12.0).color(t.warn)).wrap());
             ui.add_space(14.0);
         }
@@ -191,6 +191,9 @@ impl LauncherUi {
                 && self.settings.auto_update
             {
                 self.trigger_auto_updates();
+            }
+            if self.caps.manage_apps {
+                ui.checkbox(&mut self.settings.batch_updates, tl!("Ask for permission once when updating all apps"));
             }
             ui.checkbox(&mut self.settings.notify, tl!("Notify me when an installed app has an update"));
             ui.checkbox(&mut self.settings.prereleases, tl!("Include pre-releases (betas and release candidates)"));

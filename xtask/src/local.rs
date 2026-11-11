@@ -35,6 +35,7 @@ const APPS: &[(&str, &str)] = &[
     ("craft-anything", "Craft Anything"),
     ("texturecraft", "TextureCraft"),
     ("materialcraft", "MaterialCraft"),
+    ("anicraft", "AniCraft"),
 ];
 
 const DEFAULT_PORT: u16 = 8787;
@@ -272,20 +273,32 @@ fn sync_one(o: &Opts, id: &str, name: &str) -> Result<Outcome, String> {
 
 /// This OS's packaging script for the checkout at `repo`.
 fn package_command(repo: &Path, o: &Opts) -> Result<Command, String> {
+    let script = if cfg!(target_os = "macos") {
+        repo.join("packaging/macos/package.sh")
+    } else if cfg!(target_os = "linux") || cfg!(target_os = "freebsd") {
+        let os = if cfg!(target_os = "linux") { "linux" } else { "freebsd" };
+        repo.join(format!("packaging/{os}/package.sh"))
+    } else if cfg!(windows) {
+        repo.join("packaging/windows/package.ps1")
+    } else {
+        return Err("no packaging script for this OS".into());
+    };
+    if !script.is_file() {
+        return Err(format!("no packaging script found at {}", script.display()));
+    }
     let mut cmd = if cfg!(target_os = "macos") {
         let mut c = Command::new("bash");
-        c.arg(repo.join("packaging/macos/package.sh"));
+        c.arg(&script);
         let arch = o.arch.clone().unwrap_or_else(|| if cfg!(target_arch = "aarch64") { "aarch64".into() } else { "x86_64".into() });
         c.args(["--arch", &arch]);
         c
     } else if cfg!(target_os = "linux") || cfg!(target_os = "freebsd") {
-        let os = if cfg!(target_os = "linux") { "linux" } else { "freebsd" };
         let mut c = Command::new("bash");
-        c.arg(repo.join(format!("packaging/{os}/package.sh")));
+        c.arg(&script);
         c
     } else if cfg!(windows) {
         let mut c = Command::new("powershell");
-        c.args(["-NoProfile", "-ExecutionPolicy", "Bypass", "-File"]).arg(repo.join("packaging/windows/package.ps1"));
+        c.args(["-NoProfile", "-ExecutionPolicy", "Bypass", "-File"]).arg(&script);
         c
     } else {
         return Err("no packaging script for this OS".into());
@@ -787,7 +800,10 @@ mod tests {
 
     #[test]
     fn writes_a_feed_the_launcher_reads() {
-        let mirror = std::env::temp_dir().join(format!("xtask-local-{}", std::process::id()));
+        // A fresh private directory with an unpredictable name: a predictable one in the shared
+        // temp root could be pre-created by another user, with symlinks where the fixture writes.
+        let tmp = tempfile::tempdir().unwrap();
+        let mirror = tmp.path().to_path_buf();
         let dir = mirror.join("photocraft").join("0.6.0");
         std::fs::create_dir_all(&dir).unwrap();
         std::fs::write(dir.join("photocraft-0.6.0-macos-aarch64.dmg"), b"dmg").unwrap();
@@ -797,7 +813,6 @@ mod tests {
         std::fs::create_dir_all(mirror.join("photocraft").join("0.7.0")).unwrap();
         std::fs::write(dir.join(COMPLETE), "").unwrap();
         let json = feed(&mirror, "http://127.0.0.1:8787/");
-        let _ = std::fs::remove_dir_all(&mirror);
         assert!(json.contains(r#""tag":"v0.6.0""#), "{json}");
         assert!(json.contains(r#""download_url":"http://127.0.0.1:8787/photocraft/0.6.0/photocraft-0.6.0-macos-aarch64.dmg""#));
         assert!(json.contains(r#""size_bytes":3"#) && json.contains(&"ab".repeat(32)));

@@ -52,6 +52,10 @@
 	Install	インストール
 	Update to {v}	{v} に更新
 	Open	開く
+	Open {version}	{version} を開く
+	Open {installed} without updating. {latest} stays available.	更新せずに {installed} を開きます。{latest} は後からでもインストールできます。
+	{latest} is out, but ArtCraft Launcher can't install it over this copy.	{latest} が公開されていますが、ArtCraft Launcher はこのコピーに上書きしてインストールできません。
+	ArtCraft Launcher can't install version {version} over this copy.	ArtCraft Launcher はバージョン {version} をこのコピーに上書きしてインストールできません。
 	Download for {os}	{os} 版をダウンロード
 	Download	ダウンロード
 	Coming soon	近日公開
@@ -62,7 +66,7 @@
 	Downloading…	ダウンロード中…
 	Reconnecting…	再接続中…
 	Verifying…	検証中…
-	Installing, then restarting…	インストール完了後再起動します…
+	Installing, then restarting…	インストールして再起動します…
 	Installing…	インストール中…
 	Removing…	アンインストール中…
 	Pause download	ダウンロードを一時停止
@@ -75,6 +79,13 @@
 	Show in Files	ファイルマネージャーで表示
 	Reinstall	再インストール
 	Uninstall…	アンインストール…
+	Launch options…	起動オプション…
+	{name} launch options	{name} の起動オプション
+	Flags added each time the app is opened	アプリを開くたびに追加されるフラグ
+	Separate flags with spaces. Quote a value that has spaces in it.	フラグはスペースで区切ってください。スペースを含む値は引用符で囲んでください。
+	A quote isn't closed.	引用符が閉じられていません。
+	{name} wasn't opened: a quote in its launch options isn't closed.	{name} を開けませんでした: 起動オプションの引用符が閉じられていません。
+	Save	保存
 	All releases	すべてのリリース
 	ArtCraft Launcher {version} is available.	ArtCraft Launcher {version} が利用可能です。
 	Dismiss	閉じる
@@ -90,6 +101,7 @@
 	ArtCraft Launcher {version}	ArtCraft Launcher {version}
 	Only when I ask	手動で確認したときのみ
 	Automatically download and install updates	更新を自動でダウンロードしてインストール
+	Ask for permission once when updating all apps	すべてのアプリを更新するときは権限を一度だけ求める
 	Notify me when an installed app has an update	インストール済みアプリに更新があるときに通知する
 	Include pre-releases (betas and release candidates)	プレリリース（ベータ版とリリース候補）を含める
 	Installing on Linux	Linux へのインストール
@@ -125,6 +137,12 @@
 	Apps on this computer	このコンピューターのアプリ
 	Installed apps with a newer version	新しいバージョンがあるインストール済みアプリ
 	Apps you can install	インストールできるアプリ
+	Pin to top	上部にピン留め
+	Unpin	ピン留めを外す
+	Pinned	ピン留め
+	Reorder {name}	{name}の順序を変更
+	Move up	上へ
+	Move down	下へ
 	Hide App	アプリを非表示
 	Unhide App	アプリを再表示
 	Hidden Apps	非表示のアプリ
@@ -150,6 +168,7 @@
 	Update cancelled	更新をキャンセルしました
 	Uninstall cancelled	アンインストールをキャンセルしました
 	Retry install	インストールを再試行
+	Retry update	更新を再試行
 	Retry update to {version}	{version} への更新を再試行
 	The download is still here. It's checked again, then installed.	ダウンロードしたファイルはそのまま残っています。もう一度検証してからインストールします。
 	Waiting for another app…	他のアプリを待機中…
@@ -166,6 +185,7 @@
 	Tarball (.tar.gz)	tarball (.tar.gz)
 
 # Contextual: each app's tagline, keyed by app id
+artcraft	AI image and video creation	AI画像・動画生成
 photocraft	Image editing	画像編集
 vectorcraft	Vector illustration	ベクターイラスト
 filmcraft	Video editing, color and sound	動画編集、カラー、サウンド
@@ -178,6 +198,7 @@ deckcraft	Presentations and slide shows	プレゼンテーションとスライ�
 gridcraft	Spreadsheets and data	表計算とデータ
 craft-anything	Find out how any software works, then craft your own	あらゆるソフトウェアの仕組みを知り、自分だけのものを作る
 solidcraft	Parametric 3D CAD	パラメトリック3D CAD
+mailcraft	Mail, calendar and contacts	メール、カレンダー、連絡先
 cadcraft	Computer-aided design and drafting	コンピューター支援設計と製図
 soundcraft	Recording, editing and mixing audio	オーディオの録音、編集、ミックス
 figcraft	Interface design and prototyping	インターフェースデザインとプロトタイピング
@@ -296,6 +317,7 @@ filter	Installed	インストール済み
 
 # Message templates (@msg): toasts from the backend. {placeholders} match any text.
 @msg	Couldn't open {name}: {e}	{name} を開けませんでした: {e}
+@msg	ArtCraft Launcher couldn't start its window on {backend}: {e}	ArtCraft Launcher のウィンドウを {backend} で起動できませんでした: {e}
 @msg	Download cancelled	ダウンロードをキャンセルしました
 @msg	{name} updated to {version}	{name} を {version} に更新しました
 @msg	{name} installed: {version}	{name} をインストールしました: {version}
@@ -360,20 +382,22 @@ filter	Installed	インストール済み
 	ArtCraft on GitHub	GitHub の ArtCraft
 	Join the ArtCraft Discord	ArtCraft Discord に参加
 @plural	ArtCraft Launcher · {n} update available|ArtCraft Launcher · {n} updates available	ArtCraft Launcher · {n} 件の更新があります
+
+	Download size: {size}	ダウンロードサイズ: {size}
 	Install folder	インストール先フォルダー
 	Default install folder	既定のインストール先フォルダー
 	System default	システムの既定
 	Browse…	参照…
 	Use default	既定を使用
 	New installs use this folder. Updates stay in their current location.	新しいインストールにはこのフォルダーを使用します。更新時は現在の場所を維持します。
-	Custom folders use AppImage on Linux.	Linuxで任意のフォルダーにインストールする場合はAppImageを使用します。
-	On Linux, custom folders use AppImage format.	Linuxで任意のフォルダーにインストールする場合はAppImageを使用します。
+	Custom folders use AppImage on Linux.	Linux では、任意のフォルダーにインストールする場合は AppImage を使用します。
+	On Linux, custom folders use AppImage format.	Linux で任意のフォルダーを指定した場合は、AppImage 形式を使用します。
 	The system manages install locations here.	この環境ではシステムがインストール先を管理します。
 @msg	couldn't use install folder {path}: {reason}	インストール先フォルダー {path} を使用できませんでした: {reason}
-@msg	this release has no AppImage for a custom install folder	このリリースには任意のインストール先フォルダーで使用できるAppImageがありません
+@msg	this release has no AppImage for a custom install folder	このリリースには任意のインストール先フォルダーで使用できる AppImage がありません
 @msg	custom install folders aren't supported on this system	このシステムではインストール先フォルダーの変更に対応していません
-@msg	{path} already exists and wasn't installed by ArtCraft Launcher	{path} は既に存在し、ArtCraft Launcherでインストールされたものではありません
-@msg	couldn't move {path} to Trash ({reason}). Remove it in Finder instead.	{path} をゴミ箱に移動できませんでした（{reason}）。Finderで削除してください。
+@msg	{path} already exists and wasn't installed by ArtCraft Launcher	{path} は既に存在し、ArtCraft Launcher でインストールされたものではありません
+@msg	couldn't move {path} to Trash ({reason}). Remove it in Finder instead.	{path} をゴミ箱に移動できませんでした（{reason}）。Finder で削除してください。
 	Apps are placed inside this folder.	アプリはこのフォルダー内に配置されます。
 	Replace what's there?	既存の項目を置き換えますか？
 	{path} already exists. Installing {name} will overwrite it.	{path} は既に存在します。{name} をインストールすると上書きされます。
@@ -384,7 +408,7 @@ filter	Installed	インストール済み
 	Frequently used	よく使う順
 	Next app	次のアプリ
 	Previous app	前のアプリ
-	Show {n} more changes	さらに{n}件の変更を表示
+	Show {n} more changes	さらに {n} 件の変更を表示
 	Last updated: {date}	最終更新: {date}
 column	Version	バージョン
 column	Author	作者
@@ -413,3 +437,14 @@ materialcraft	Node graphs	ノードグラフ
 materialcraft	Combine noises, patterns and filters.	ノイズ、パターン、フィルターを組み合わせます。
 materialcraft	Live previews	リアルタイムプレビュー
 materialcraft	Preview materials in 2D and on 3D models.	マテリアルを2Dと3Dモデル上でプレビューします。
+	Advanced	詳細設定
+	Migrate Flatpak bundles to ArtCraft OCI (experimental)	Flatpak バンドルを ArtCraft OCI に移行する（実験的）
+	On update, switch first party apps when the matching package is available. Otherwise, keep using bundles.	更新時に対応するパッケージがあれば ArtCraft 公式アプリを移行します。なければ引き続きバンドルを使用します。
+	The OCI repository is a preview with GPG verification disabled.	OCI リポジトリはプレビュー版で、GPG 検証は無効になっています。
+anicraft	2D vector animation	2Dベクターアニメーション
+anicraft	Vector animation on a timeline you know.	慣れ親しんだタイムラインでのベクターアニメーション。
+anicraft	Open-source 2D vector animation, built in pure Rust.	ピュアRustで構築されたオープンソースの2Dベクターアニメーション。
+anicraft	Familiar by design	直感的なデザイン
+anicraft	Stage, tools, timeline, layers, keyframes, Properties and Library sit where animators expect them, with onion skinning for in-betweening.	ステージ、ツール、タイムライン、レイヤー、キーフレーム、プロパティ、ライブラリが期待通りの場所に配置され、オニオンスキンも備えています。
+anicraft	Tweens that ease	滑らかなトゥイーン
+anicraft	Classic tweens with eight easing presets and custom ease curves, plus shape tweens that morph one vector contour into another.	8つのイージングプリセットとカスタム曲線を持つクラシックトゥイーン、そしてシェイプトゥイーンに対応。
