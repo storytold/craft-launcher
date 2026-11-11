@@ -14,7 +14,7 @@ use std::collections::HashSet;
 use std::ffi::OsStr;
 use std::io::Read;
 use std::os::unix::ffi::OsStrExt;
-use std::os::unix::fs::MetadataExt;
+use std::os::unix::fs::{MetadataExt, PermissionsExt};
 use std::path::{Component, Path, PathBuf};
 
 /// Largest list read back: an install holds at most 50,000 files (see `tree::files`).
@@ -99,6 +99,10 @@ pub(super) fn stage(tree: &Path, app_id: &str, files: &[PathBuf]) -> Result<Path
         text.extend_from_slice(bytes);
         text.push(b'\n');
     }
+    // Refused now, not at the uninstall that could not read it back (see `owned`).
+    if text.len() as u64 > MAX_BYTES {
+        return Err("the download has too many files for the launcher to track".into());
+    }
     let dest = tree.join(&rel);
     // The staging tree came from an archive: never write through a symlink it planted.
     let mut check = tree.to_path_buf();
@@ -108,10 +112,33 @@ pub(super) fn stage(tree: &Path, app_id: &str, files: &[PathBuf]) -> Result<Path
             return Err(format!("couldn't record the installed files: {} is a symlink", check.display()));
         }
     }
-    if let Some(dir) = dest.parent() {
-        std::fs::create_dir_all(dir).map_err(|e| format!("couldn't create {} ({e})", dir.display()))?;
+    // A folder the archive made read-only is opened for the write and put back as it was after,
+    // so the copy into the prefix still carries the archive's own modes.
+    let mut reopened: Vec<(PathBuf, std::fs::Permissions)> = Vec::new();
+    let mut dir = tree.to_path_buf();
+    let parents = rel.components().count() - 1;
+    for part in std::iter::once(None).chain(rel.components().take(parents).map(Some)) {
+        if let Some(part) = part {
+            dir.push(part);
+        }
+        let Ok(meta) = std::fs::symlink_metadata(&dir) else { break };
+        let mode = meta.mode();
+        if meta.is_dir() && mode & 0o300 != 0o300 {
+            std::fs::set_permissions(&dir, std::fs::Permissions::from_mode(mode | 0o300))
+                .map_err(|e| format!("couldn't record the installed files ({e})"))?;
+            reopened.push((dir.clone(), meta.permissions()));
+        }
     }
-    std::fs::write(&dest, text).map_err(|e| format!("couldn't record the installed files ({e})"))?;
+    let written = (|| {
+        if let Some(dir) = dest.parent() {
+            std::fs::create_dir_all(dir).map_err(|e| format!("couldn't create {} ({e})", dir.display()))?;
+        }
+        std::fs::write(&dest, text).map_err(|e| format!("couldn't record the installed files ({e})"))
+    })();
+    for (dir, permissions) in reopened.into_iter().rev() {
+        let _ = std::fs::set_permissions(dir, permissions);
+    }
+    written?;
     Ok(rel)
 }
 
@@ -159,6 +186,11 @@ pub(super) fn owned(prefix: &Path, app_id: &str, owner: u32) -> Result<HashSet<P
             return Err(unconfirmed());
         }
         out.insert(prefix.join(rel));
+    }
+    // An install's list names itself: one that does not (an empty or cut one) would remove nothing
+    // yet leave the uninstall looking done.
+    if !out.contains(&path) {
+        return Err(unconfirmed());
     }
     Ok(out)
 }
@@ -375,5 +407,44 @@ mod tests {
         let clean = dir.path().join("clean");
         assert!(stage(&clean, "wordcraft", &[PathBuf::from("bin/word\ncraft")]).is_err());
         assert!(stage(&clean, "wordcraft", &[PathBuf::from("../bin/wordcraft")]).is_err());
+    }
+
+    #[test]
+    fn staging_opens_read_only_folders_and_puts_their_modes_back() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = tempfile::tempdir().unwrap();
+        let tree = dir.path().join("tree");
+        std::fs::create_dir_all(tree.join("share")).unwrap();
+        std::fs::set_permissions(tree.join("share"), std::fs::Permissions::from_mode(0o555)).unwrap();
+        std::fs::set_permissions(&tree, std::fs::Permissions::from_mode(0o555)).unwrap();
+        let staged = stage(&tree, "wordcraft", &[PathBuf::from("bin/wordcraft")]);
+        let mode = |p: &Path| std::fs::metadata(p).unwrap().mode() & 0o777;
+        let (root_mode, share_mode) = (mode(&tree), mode(&tree.join("share")));
+        // So the temp dir can be removed.
+        std::fs::set_permissions(&tree, std::fs::Permissions::from_mode(0o755)).unwrap();
+        std::fs::set_permissions(tree.join("share"), std::fs::Permissions::from_mode(0o755)).unwrap();
+        staged.unwrap();
+        assert_eq!((root_mode, share_mode), (0o555, 0o555));
+        assert!(tree.join(relative("wordcraft")).is_file());
+    }
+
+    #[test]
+    fn a_list_the_uninstall_could_not_read_back_is_refused_when_staging() {
+        let dir = tempfile::tempdir().unwrap();
+        // 20,000 names of 1,000 bytes are 20 MB of list, past the 16 MiB the reader takes.
+        let name = "a".repeat(1000);
+        let files: Vec<PathBuf> = (0..20_000).map(|i| PathBuf::from(format!("{i}{name}"))).collect();
+        assert!(stage(dir.path(), "wordcraft", &files).is_err());
+        assert!(!dir.path().join(relative("wordcraft")).exists());
+    }
+
+    #[test]
+    fn a_list_that_leaves_itself_out_is_not_trusted() {
+        let (dir, prefix) = installed(&["bin/wordcraft"]);
+        let list = prefix.join(relative("wordcraft"));
+        std::fs::write(&list, b"").unwrap();
+        assert!(owned(&prefix, "wordcraft", me(dir.path())).is_err(), "an empty list");
+        std::fs::write(&list, b"bin/wordcraft\n").unwrap();
+        assert!(owned(&prefix, "wordcraft", me(dir.path())).is_err(), "a list without itself");
     }
 }
