@@ -89,12 +89,16 @@ struct Shared {
     detecting: AtomicBool,
     last_check: Mutex<Option<i64>>,
     /// The newer ArtCraft Launcher release, once a check has found one, with the repo that check
-    /// read it from (the feed's rename, if any): its download links must be that repo's.
-    launcher_release: Mutex<Option<(Release, String)>>,
+    /// read it from (the feed's rename, if any): its download links must be that repo's. The flag
+    /// says whether the release has a file the update can install this copy from.
+    launcher_release: Mutex<Option<(Release, String, bool)>>,
     /// How this launcher is installed, when it can replace itself. Worked out on the check thread
     /// just before a newer launcher is announced: finding out can ask the host's Flatpak, which
     /// mustn't hold up the first frame.
     self_install: OnceLock<Option<crate::self_update::Install>>,
+    /// Whether this copy can update itself ([`crate::self_update::is_self_updating`]: on Windows,
+    /// only a signed copy). Worked out with `self_install`.
+    self_updating: OnceLock<bool>,
     /// When GitHub was last asked about each app (Unix seconds), to keep the fallback rare.
     github_asked: Mutex<HashMap<String, i64>>,
     /// Apps with an answer (a release or "none yet") from either service.
@@ -147,6 +151,14 @@ impl Drop for JobGuard {
 const SYSTEM_KINDS_FOR: Duration = Duration::from_secs(60);
 
 impl Shared {
+    /// How this launcher is installed, when it can replace itself with the newer release a check
+    /// found: this copy can update itself and the release has a file to install it from.
+    fn self_update_install(&self) -> Option<crate::self_update::Install> {
+        let installs = self.launcher_release.lock().unwrap_or_else(PoisonError::into_inner).as_ref().is_some_and(|(_, _, installs)| *installs);
+        let updating = self.self_updating.get().copied().unwrap_or(false);
+        self.self_install.get().cloned().flatten().filter(|_| installs && updating)
+    }
+
     fn store_latest(&self, app: &str, release: &Release) {
         let mut latest = self.latest.lock().unwrap_or_else(PoisonError::into_inner);
         if latest.get(app) != Some(release) {
@@ -276,6 +288,7 @@ impl NativeBackend {
             detecting: AtomicBool::new(false),
             launcher_release: Mutex::new(None),
             self_install: OnceLock::new(),
+            self_updating: OnceLock::new(),
             github_asked: Mutex::new(HashMap::new()),
             answered: Mutex::new(std::collections::HashSet::new()),
             loaded: AtomicBool::new(false),
@@ -571,14 +584,14 @@ impl NativeBackend {
     /// Downloads the newer launcher, puts it in place and asks the UI to quit so it can start.
     fn update_launcher(&self) {
         let id = LAUNCHER_ID.to_string();
-        let (Some(install), Some(platform)) = (self.shared.self_install.get().cloned().flatten(), self.platform) else {
+        let (Some(install), Some(platform)) = (self.shared.self_update_install(), self.platform) else {
             self.shared.emit(Event::JobFinished {
                 app: id,
                 result: Err("this copy of ArtCraft Launcher can't update itself; download the new version instead".into()),
             });
             return;
         };
-        let Some((release, repo)) = self.shared.launcher_release.lock().unwrap_or_else(PoisonError::into_inner).clone() else { return };
+        let Some((release, repo, _)) = self.shared.launcher_release.lock().unwrap_or_else(PoisonError::into_inner).clone() else { return };
         let stop = Arc::new(Stop::default());
         {
             let mut jobs = self.shared.jobs.lock().unwrap_or_else(PoisonError::into_inner);
@@ -1193,7 +1206,9 @@ fn launcher_update(paths: &Paths, latest: Option<LatestRelease>, repo: &str, sha
     let (Some(newest), Some(current)) = (r.version.as_ref(), crate::self_update::current_version()) else { return };
     if version::is_newer(newest, &current) && !crate::self_update::just_updated_to(paths, &r) {
         shared.self_install.get_or_init(crate::self_update::current);
-        *shared.launcher_release.lock().unwrap_or_else(PoisonError::into_inner) = Some((r.clone(), repo.to_string()));
+        shared.self_updating.get_or_init(crate::self_update::is_self_updating);
+        let installs = crate::self_update::release_installs(&r, repo);
+        *shared.launcher_release.lock().unwrap_or_else(PoisonError::into_inner) = Some((r.clone(), repo.to_string(), installs));
         shared.emit(Event::LauncherUpdate(r));
     }
 }
@@ -1632,7 +1647,7 @@ impl Backend for NativeBackend {
             Some(Os::Windows) => "Show in Explorer",
             _ => "Show in Files",
         };
-        Capabilities { manage_apps: true, reveal_label, self_update: self.shared.self_install.get().is_some_and(Option::is_some) }
+        Capabilities { manage_apps: true, reveal_label, self_update: self.shared.self_update_install().is_some() }
     }
 
     fn platform(&self) -> Option<Platform> {
@@ -1845,6 +1860,7 @@ mod tests {
             last_check: Mutex::new(None),
             launcher_release: Mutex::new(None),
             self_install: OnceLock::new(),
+            self_updating: OnceLock::new(),
             github_asked: Mutex::new(HashMap::new()),
             answered: Mutex::new(std::collections::HashSet::new()),
             loaded: AtomicBool::new(false),
@@ -2245,6 +2261,26 @@ mod tests {
 
         publish_detected(app, None, &backend.shared, Some(platform));
         assert_eq!(told(backend.poll()), ["detected"], "removed: no answer");
+    }
+
+    /// The launcher offers to replace itself only when this copy can update itself and the newer
+    /// release has a file to install it from. Otherwise the UI offers the download, in the format
+    /// this copy was installed as.
+    #[test]
+    fn self_update_is_offered_only_when_the_copy_and_the_release_allow_it() {
+        let platform = Platform { os: Os::Windows, arch: Arch::X64 };
+        let offered = |updating: bool, installs: bool| {
+            let dir = tempfile::tempdir().unwrap();
+            let backend = backend(dir.path(), platform, None);
+            let install = crate::self_update::Install::Portable(dir.path().join("artcraft-launcher.exe"));
+            assert!(backend.shared.self_install.set(Some(install)).is_ok());
+            assert!(backend.shared.self_updating.set(updating).is_ok());
+            *backend.shared.launcher_release.lock().unwrap() = Some((stable("0.9.0"), String::new(), installs));
+            (backend.capabilities().self_update, backend.launcher_kind())
+        };
+        assert_eq!(offered(true, true), (true, Some(PackageKind::PortableZip)));
+        assert_eq!(offered(false, true), (false, Some(PackageKind::PortableZip)), "a copy that can't update itself (unsigned on Windows)");
+        assert_eq!(offered(true, false), (false, Some(PackageKind::PortableZip)), "a release without a file for this copy");
     }
 
     /// A report made when only the plan changed (a settings change, a check or an install ending)

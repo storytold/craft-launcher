@@ -13,7 +13,7 @@ use artcraft_launcher_core::version::Version;
 use crate::http::{Http, Stop};
 use crate::paths::Paths;
 
-pub use craft_update::self_update::{FINISH_FLAG, Install, PRETEND_VAR, is_self_updating};
+pub use craft_update::self_update::{FINISH_FLAG, Install, PRETEND_VAR};
 
 /// The version this launcher counts as (see [`PRETEND_VAR`]).
 pub fn current_version() -> Option<Version> {
@@ -23,6 +23,17 @@ pub fn current_version() -> Option<Version> {
 /// How this copy is installed, if it's one the launcher knows how to replace.
 pub fn current() -> Option<Install> {
     craft_update::self_update::current(&craft_update::suite::LAUNCHER)
+}
+
+/// Whether this copy can update itself: [`current`] finds it and, on Windows, it is signed.
+pub fn is_self_updating() -> bool {
+    craft_update::self_update::is_self_updating(&craft_update::suite::LAUNCHER)
+}
+
+/// Whether `release`, read from `repo`, has a file the update can install this copy from. A
+/// standalone copy on macOS needs the release's `.tar.gz`; every other copy passes.
+pub fn release_installs(release: &Release, repo: &str) -> bool {
+    craft_update::self_update::release_installs(&craft_update::suite::LAUNCHER, &to_update_release(release, repo))
 }
 
 fn to_update_paths(paths: &Paths) -> craft_update::Paths {
