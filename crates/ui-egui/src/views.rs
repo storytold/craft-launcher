@@ -17,14 +17,16 @@ use crate::theme::{self, Tokens, rgb, tint};
 use crate::widgets::{self, Kind};
 
 /// The byline that says who makes an app: "by ArtCraft" or "by <publisher>". Official apps take
-/// the accent colour, community apps the muted one.
+/// the accent colour, community apps the muted one. It takes no more than the room left in the
+/// row: a long name and publisher would push the row past the card, cutting the byline at its
+/// edge and leaving the tagline below no width to end in "…".
 fn kind_badge(ui: &mut Ui, app: &artcraft_launcher_core::CraftApp, t: &Tokens) {
     let text = fmt(tl!("by {name}"), &[("name", app.publisher)]);
     let color = match app.kind {
         AppKind::Official => t.accent_ink,
         AppKind::Community => t.muted,
     };
-    widgets::badge(ui, &text, color);
+    widgets::badge_within(ui, &text, color, ui.available_width());
 }
 
 /// Translate a relative timestamp ("just now", "5 min ago", …) into the current language.
@@ -158,6 +160,10 @@ const TITLE_SIZE: f32 = 16.0;
 const TAGLINE_SIZE: f32 = 12.0;
 /// The card's top strip: number tab and links.
 const STRIP_H: f32 = 40.0;
+/// Space between a card's text and its action row.
+const ACTIONS_GAP: f32 = 12.0;
+/// Space above a card's "Last updated" line.
+const DATE_GAP: f32 = 6.0;
 const CARD_PAD: f32 = 20.0;
 /// Room macOS's traffic lights take at the left of the header.
 const TRAFFIC_LIGHTS_W: f32 = 72.0;
@@ -613,10 +619,26 @@ impl LauncherUi {
         }
 
         let inner = Rect::from_min_max(egui::pos2(rect.left() + CARD_PAD, strip.bottom() + 18.0), rect.max - vec2(CARD_PAD, CARD_PAD));
-        // A detached child: the card's contents never move the next card along.
-        let mut child = ui.new_child(egui::UiBuilder::new().max_rect(inner).layout(egui::Layout::top_down(egui::Align::Min)));
-        child.set_clip_rect(rect.intersect(ui.clip_rect()));
-        let ui = &mut child;
+        // The action row keeps the bottom of the card; the text above it ends a gap higher, so a
+        // description that wraps never runs under the buttons (cards are all one height).
+        let actions = Rect::from_min_max(egui::pos2(inner.left(), inner.bottom() - theme::CONTROL_H), inner.max);
+        let text_area = Rect::from_min_max(inner.min, egui::pos2(inner.right(), actions.top() - ACTIONS_GAP));
+        // Detached children: the card's contents never move the next card along.
+        let mut text = ui.new_child(egui::UiBuilder::new().max_rect(text_area).layout(egui::Layout::top_down(egui::Align::Min)));
+        text.set_clip_rect(text_area.expand(1.0).intersect(rect).intersect(ui.clip_rect()));
+        self.card_text(&mut text, &entry, &status, &version, in_colour, lift, &t);
+        // After the text, so a screen reader reads the app before its actions.
+        let mut row = ui.new_child(egui::UiBuilder::new().max_rect(actions).layout(egui::Layout::left_to_right(egui::Align::Center)));
+        row.set_clip_rect(rect.intersect(ui.clip_rect()));
+        self.actions_in(&mut row, &entry, &status, inner.width(), Place::Card);
+    }
+
+    /// The text of a grid card above its action row: icon, name, byline and tagline, then the
+    /// status, download size, description and date, in the area `ui` is bounded to.
+    #[allow(clippy::too_many_arguments)]
+    fn card_text(&mut self, ui: &mut Ui, entry: &AppEntry, status: &AppStatus, version: &[(String, bool)], in_colour: bool, lift: f32, t: &Tokens) {
+        let app = entry.app;
+        let id = app.id;
         ui.horizontal(|ui| {
             const ICON: f32 = 56.0;
             let [name, tagline] = [FontId::new(22.0, theme::display()), FontId::proportional(13.5)];
@@ -640,7 +662,7 @@ impl LauncherUi {
                 ui.spacing_mut().interact_size.y = 0.0;
                 ui.horizontal(|ui| {
                     widgets::wordmark_in(ui, app, 22.0, in_colour);
-                    kind_badge(ui, app, &t);
+                    kind_badge(ui, app, t);
                 });
                 ui.add(egui::Label::new(RichText::new(tr_ctx(current(), app.id, app.tagline)).font(tagline.clone()).color(t.muted)).truncate());
             });
@@ -649,8 +671,8 @@ impl LauncherUi {
         // Installed and up to date needs no badge: the strip has the version, and the group says the rest.
         if !matches!(status, AppStatus::UpToDate | AppStatus::Installed) {
             ui.horizontal(|ui| {
-                let (text, tone) = model::entry_status_text(&entry, &status, self.caps.manage_apps);
-                let r = widgets::badge(ui, &text, widgets::tone_color(&t, tone));
+                let (text, tone) = model::entry_status_text(entry, status, self.caps.manage_apps);
+                let r = widgets::badge(ui, &text, widgets::tone_color(t, tone));
                 if let Some(f) = entry.failure() {
                     r.on_hover_text(fmt(tl!("Couldn't check for updates: {f}"), &[("f", f)]));
                 }
@@ -659,7 +681,7 @@ impl LauncherUi {
         }
         // Until a version is known, the sentence that says why (no release yet, installed…) stays.
         if version.is_empty() {
-            let line = version_line(&entry, &status);
+            let line = version_line(entry, status);
             if !line.trim().is_empty() {
                 ui.label(RichText::new(line).size(12.5).color(t.muted));
                 ui.add_space(8.0);
@@ -667,9 +689,9 @@ impl LauncherUi {
         }
         if entry.job.is_none()
             && entry.paused.is_none()
-            && matches!(self.primary_action(&entry, &status), Primary::Install | Primary::Update(_) | Primary::Download(_))
+            && matches!(self.primary_action(entry, status), Primary::Install | Primary::Update(_) | Primary::Download(_))
         {
-            let sizes = self.download_sizes(&entry);
+            let sizes = self.download_sizes(entry);
             if !sizes.iter().any(|(_, size)| *size == 0)
                 && let Some((_, bytes)) = sizes.first()
             {
@@ -680,16 +702,23 @@ impl LauncherUi {
                     .on_hover_text(Self::sizes_text(&sizes));
             }
         }
+        let updated = crate::card_parts::last_updated(entry);
         if let Some(details) = AppDetails::by_id(id) {
-            crate::card_parts::blurb(ui, details.headline, t.muted, 4);
+            // As many lines of the description as fit above the date (up to four), so the date
+            // always shows.
+            // The date below takes the item spacing after the description, its gap and its line.
+            let date_h =
+                if updated.is_some() { ui.spacing().item_spacing.y + DATE_GAP + lines_height(ui, &[&FontId::proportional(12.5)], 0.0) } else { 0.0 };
+            let row_h = lines_height(ui, &[&FontId::proportional(13.0)], 0.0);
+            let rows = ((ui.available_height() - date_h) / row_h).floor().clamp(0.0, 4.0) as usize;
+            if rows > 0 {
+                crate::card_parts::blurb(ui, details.headline, t.muted, rows);
+            }
         }
-        if let Some(line) = crate::card_parts::last_updated(&entry) {
-            ui.add_space(6.0);
+        if let Some(line) = updated {
+            ui.add_space(DATE_GAP);
             ui.add(egui::Label::new(RichText::new(line).size(12.5).color(t.faint)).selectable(false));
         }
-        ui.with_layout(egui::Layout::bottom_up(egui::Align::Min), |ui| {
-            ui.horizontal(|ui| self.actions_in(ui, &entry, &status, inner.width(), Place::Card));
-        });
     }
 
     // ---- table ---------------------------------------------------------------------------
