@@ -204,6 +204,8 @@ impl Source {
 /// Something the backend wants the UI to know.
 #[derive(Clone, Debug, PartialEq)]
 pub enum Event {
+    /// A signed startup catalog has replaced the bundled app list.
+    CatalogUpdated,
     Latest {
         app: String,
         latest: LatestRelease,
