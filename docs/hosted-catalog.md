@@ -65,3 +65,13 @@ Validation includes a real signed website-format fixture, wrong-key/tampering
 rejection, malformed rows, install-identity restrictions, new official app policy,
 icon hashes/dimensions, and reverified cache fallback. The private signing key is
 not required to run any test.
+
+To validate the published catalog through the desktop HTTP/cache/activation path
+without installing any app:
+
+```sh
+cargo test -p artcraft-launcher-native live_catalog_is_verified_cached_and_activated -- --ignored
+```
+
+This opt-in network test uses temporary storage and checks the pinned signature,
+all accepted entries, activation and icon hashes. Normal CI stays offline.
