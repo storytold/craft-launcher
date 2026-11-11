@@ -31,9 +31,10 @@ pub fn is_self_updating() -> bool {
 }
 
 /// Whether `release`, read from `repo`, has a file the update can install this copy from. A
-/// standalone copy on macOS needs the release's `.tar.gz`; every other copy passes.
+/// release with no files fails, since [`update`] picks its file from this release. A standalone
+/// copy on macOS needs the release's `.tar.gz`; every other copy passes.
 pub fn release_installs(release: &Release, repo: &str) -> bool {
-    craft_update::self_update::release_installs(&craft_update::suite::LAUNCHER, &to_update_release(release, repo))
+    !release.assets.is_empty() && craft_update::self_update::release_installs(&craft_update::suite::LAUNCHER, &to_update_release(release, repo))
 }
 
 fn to_update_paths(paths: &Paths) -> craft_update::Paths {
@@ -188,6 +189,18 @@ mod tests {
         let launcher = artcraft_launcher_core::release::release_from_sums(app.repo, "v0.9.0", &sums("artcraft-launcher-0.9.0-linux-x86_64.AppImage"));
         let launcher = to_update_release(&launcher, app.repo);
         assert!(craft_update::install::check_download_link(app, &launcher, &launcher.assets[0]).is_ok());
+    }
+
+    /// A release whose files were all dropped (from another tag, or links outside the repository)
+    /// has nothing for the update to download, so the launcher offers the download instead.
+    #[test]
+    fn a_release_without_files_does_not_install() {
+        let app = &craft_update::suite::LAUNCHER;
+        let sums = [("a".repeat(64), "artcraft-launcher-0.9.0-linux-x86_64.AppImage".to_string())];
+        let mut release = artcraft_launcher_core::release::release_from_sums(app.repo, "v0.9.0", &sums);
+        assert!(release_installs(&release, app.repo));
+        release.assets.clear();
+        assert!(!release_installs(&release, app.repo));
     }
 
     #[test]
