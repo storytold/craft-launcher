@@ -72,6 +72,30 @@ pub fn social(service: &str) -> Option<ImageSource<'static>> {
     })
 }
 
+/// The small icon a menu row starts with, white so the row can tint it. Lucide, ISC, on its own
+/// 24 px grid; `assets/icons/README.md` and `ATTRIBUTION.md` say where each one came from.
+pub fn menu(name: &str) -> Option<ImageSource<'static>> {
+    Some(match name {
+        "notes" => egui::include_image!("../../../assets/icons/file-text.svg"),
+        "download" => egui::include_image!("../../../assets/icons/download.svg"),
+        "open" => egui::include_image!("../../../assets/icons/play.svg"),
+        "reveal" => egui::include_image!("../../../assets/icons/folder-open.svg"),
+        "reinstall" => egui::include_image!("../../../assets/icons/rotate-ccw.svg"),
+        "uninstall" => egui::include_image!("../../../assets/icons/trash-2.svg"),
+        "releases" => egui::include_image!("../../../assets/icons/tag.svg"),
+        "hide" => egui::include_image!("../../../assets/icons/eye-off.svg"),
+        "unhide" => egui::include_image!("../../../assets/icons/eye.svg"),
+        "options" => egui::include_image!("../../../assets/icons/sliders-horizontal.svg"),
+        "pin" => egui::include_image!("../../../assets/icons/pin.svg"),
+        "unpin" => egui::include_image!("../../../assets/icons/pin-off.svg"),
+        "move-up" => egui::include_image!("../../../assets/icons/arrow-up.svg"),
+        "move-down" => egui::include_image!("../../../assets/icons/arrow-down.svg"),
+        "website" => egui::include_image!("../../../assets/social/globe.svg"),
+        "github" => egui::include_image!("../../../assets/social/github.svg"),
+        _ => return None,
+    })
+}
+
 /// The ArtCraft "A" mark in blue, as supplied: the launcher's app icon and getartcraft.com's favicon.
 pub fn artcraft_mark() -> ImageSource<'static> {
     egui::include_image!("../../../docs/brand/artcraft-mark.svg")
@@ -79,7 +103,7 @@ pub fn artcraft_mark() -> ImageSource<'static> {
 
 #[cfg(test)]
 mod tests {
-    use super::desaturate;
+    use super::{desaturate, menu};
 
     #[test]
     fn grey_pixels_have_no_colour_and_keep_their_alpha() {
@@ -91,5 +115,25 @@ mod tests {
         assert_eq!([px[3], px[7], px[11]], [200, 17, 255]);
         // Pure red is darker than pure white and pure grey stays put.
         assert!(px[0] < 255 && px[8] == 10);
+    }
+
+    /// A menu row with no picture loses its icon silently: nothing fails to compile. Every name
+    /// `views.rs` passes as a literal, and the few it picks at runtime, must resolve here.
+    #[test]
+    fn every_menu_icon_name_the_views_ask_for_resolves() {
+        let views = include_str!("views.rs");
+        let needle = "menu_item(ui, \"";
+        let mut literals = 0;
+        for (at, _) in views.match_indices(needle) {
+            let rest = &views[at + needle.len()..];
+            let name = &rest[..rest.find('"').expect("a closed icon name")];
+            assert!(menu(name).is_some(), "views.rs asks for a menu icon {name:?} that has no image");
+            literals += 1;
+        }
+        assert!(literals >= 9, "only {literals} literal icon names found: the scan broke");
+        // Picked at runtime, so the scan above cannot see them.
+        for name in ["hide", "unhide", "website", "github", "move-up", "move-down"] {
+            assert!(menu(name).is_some(), "{name}");
+        }
     }
 }

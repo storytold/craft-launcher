@@ -1303,18 +1303,18 @@ impl LauncherUi {
         let manage = self.caps.manage_apps;
         let reveal = self.caps.reveal_label;
         widgets::more_menu(ui, entry.app.name, |ui| {
-            if ui.button(tl!("Choose version")).clicked() {
+            if widgets::menu_item(ui, "releases", tl!("Choose version"), None).clicked() {
                 self.open_versions(&id);
                 ui.close();
             }
-            if entry.release().is_some() && ui.button(tl!("Release notes")).clicked() {
+            if entry.release().is_some() && widgets::menu_item(ui, "notes", tl!("Release notes"), None).clicked() {
                 self.dialog = Some(Dialog::Notes(id.clone()));
                 ui.close();
             }
             // Only where Install would download: an up-to-date app would be reinstalled.
             let can_download_again =
                 manage && entry.ready && entry.paused.is_none() && matches!(status, AppStatus::Available | AppStatus::UpdateAvailable);
-            if can_download_again && ui.button(tl!("Download again")).clicked() {
+            if can_download_again && widgets::menu_item(ui, "download", tl!("Download again"), None).clicked() {
                 self.act_command(Command::Cancel { app: id.clone() });
                 self.install_app(&id);
                 ui.close();
@@ -1328,15 +1328,15 @@ impl LauncherUi {
             // The drawer shows the links as buttons, so its menu leaves them out (but keeps Hide).
             if links {
                 ui.separator();
-                let link = |ui: &mut Ui, label: &str, url: String| {
-                    if ui.button(label).clicked() {
+                let link = |ui: &mut Ui, icon: &str, label: &str, url: String| {
+                    if widgets::menu_item(ui, icon, label, None).clicked() {
                         widgets::open_external_link(ui.ctx(), &url);
                         ui.close();
                     }
                 };
-                link(ui, tl!("Website"), entry.app.website());
-                link(ui, tl!("GitHub repository"), entry.app.repo_url());
-                link(ui, tl!("All releases"), entry.app.releases_url());
+                link(ui, "website", tl!("Website"), entry.app.website());
+                link(ui, "github", tl!("GitHub repository"), entry.app.repo_url());
+                link(ui, "releases", tl!("All releases"), entry.app.releases_url());
             }
             self.menu_pin(ui, entry, &id);
             self.menu_hide(ui, entry, &id);
@@ -1350,7 +1350,7 @@ impl LauncherUi {
         let pinned = self.settings.is_pinned(entry.app.id);
         let hidden = self.settings.hidden.contains(entry.app.id);
         if pinned {
-            if ui.button(tl!("Unpin")).clicked() {
+            if widgets::menu_item(ui, "unpin", tl!("Unpin"), None).clicked() {
                 self.settings.unpin_app(id);
                 ui.close();
             }
@@ -1361,15 +1361,15 @@ impl LauncherUi {
             // Up: into the slot before the neighbour above; down: into the slot after the one below.
             let up = self.settings.pinned_neighbor(id, -1, known);
             let down = self.settings.pinned_neighbor(id, 1, known).map(|j| j + 1);
-            for (slot, label) in [(up, tl!("Move up")), (down, tl!("Move down"))] {
+            for (slot, icon, label) in [(up, "move-up", tl!("Move up")), (down, "move-down", tl!("Move down"))] {
                 if let Some(slot) = slot
-                    && ui.button(label).clicked()
+                    && widgets::menu_item(ui, icon, label, None).clicked()
                 {
                     self.settings.reorder_pinned_to(id, slot);
                     ui.close();
                 }
             }
-        } else if !hidden && ui.button(tl!("Pin to top")).clicked() {
+        } else if !hidden && widgets::menu_item(ui, "pin", tl!("Pin to top"), None).clicked() {
             self.settings.pin_app(id);
             ui.close();
         }
@@ -1379,25 +1379,28 @@ impl LauncherUi {
     /// reinstall (where an install would go ahead), and uninstall (which asks first).
     fn menu_installed(&mut self, ui: &mut Ui, entry: &AppEntry, status: &AppStatus, reveal: &'static str) {
         let id = entry.app.id;
-        if ui.button(tl!("Open")).clicked() {
+        if widgets::menu_item(ui, "open", tl!("Open"), None).clicked() {
             self.launch_app(id);
             ui.close();
         }
-        if ui.button(tl!("Launch options…")).clicked() {
+        if widgets::menu_item(ui, "options", tl!("Launch options…"), None).clicked() {
             let flags = self.settings.launch_flags.get(id).cloned().unwrap_or_default();
             self.dialog = Some(Dialog::LaunchFlags { app: id.to_string(), flags });
             ui.close();
         }
-        if ui.button(t(reveal)).clicked() {
+        if widgets::menu_item(ui, "reveal", t(reveal), None).clicked() {
             self.act_command(Command::Reveal { app: id.to_string() });
             ui.close();
         }
-        if *status == AppStatus::UpToDate && entry.installs_here(self.platform) && ui.button(tl!("Reinstall")).clicked() {
+        if *status == AppStatus::UpToDate
+            && entry.installs_here(self.platform)
+            && widgets::menu_item(ui, "reinstall", tl!("Reinstall"), None).clicked()
+        {
             self.install_app(id);
             ui.close();
         }
         ui.separator();
-        if ui.button(RichText::new(tl!("Uninstall…")).color(Tokens::get(ui.ctx()).bad)).clicked() {
+        if widgets::menu_item(ui, "uninstall", tl!("Uninstall…"), Some(Tokens::get(ui.ctx()).bad)).clicked() {
             self.dialog = Some(Dialog::ConfirmUninstall(id.to_string()));
             ui.close();
         }
@@ -1420,7 +1423,7 @@ impl LauncherUi {
         if !options.is_empty() {
             ui.separator();
             for (label, url) in options {
-                if ui.button(label).clicked() {
+                if widgets::menu_item(ui, "download", &label, None).clicked() {
                     widgets::open_external_link(ui.ctx(), &url);
                     ui.close();
                 }
@@ -1433,7 +1436,7 @@ impl LauncherUi {
     fn menu_hide(&mut self, ui: &mut Ui, entry: &AppEntry, id: &str) {
         ui.separator();
         let hidden = self.settings.hidden.contains(entry.app.id);
-        if ui.button(if hidden { tl!("Unhide App") } else { tl!("Hide App") }).clicked() {
+        if widgets::menu_item(ui, if hidden { "unhide" } else { "hide" }, if hidden { tl!("Unhide App") } else { tl!("Hide App") }, None).clicked() {
             if hidden {
                 self.settings.hidden.remove(entry.app.id);
                 if self.settings.hidden.is_empty() && self.settings.filter == Filter::Hidden {
