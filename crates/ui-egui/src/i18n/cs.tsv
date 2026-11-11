@@ -417,3 +417,29 @@ anicraft	Classic tweens with eight easing presets and custom ease curves, plus s
 	Unlock version?	Odemknout verzi?
 	{app} is pinned to {version}. Follow the latest release instead?	Aplikace {app} je uzamčena na verzi {version}. Přejít na nejnovější vydání?
 	Unlock	Odemknout
+
+	Cloud	Cloud
+	Sign in	Přihlásit se
+	Sign out	Odhlásit se
+	Files	Soubory
+	Account	Účet
+	Save to cloud	Uložit do cloudu
+	Save to device	Uložit do zařízení
+	No files yet	Zatím žádné soubory
+	Save a copy to continue	Chcete-li pokračovat, uložte kopii
+	Could not save the file	Soubor se nepodařilo uložit
+	Could not confirm the save	Uložení se nepodařilo potvrdit
+	Saved	Uloženo
+	A newer version was saved	Byla uložena novější verze
+	Cloud storage is full	Cloudové úložiště je plné
+	Source commit	Commit zdrojového kódu
+	Source tree	Strom zdrojového kódu
+	Prepare version	Připravit verzi
+	Roll back	Vrátit se k předchozí verzi
+	Activate	Aktivovat
+	Queued	Ve frontě
+	Preparing	Probíhá příprava
+	Ready	Připraveno
+	Cancelled	Zrušeno
+	Failed	Selhalo
+	Interrupted	Přerušeno

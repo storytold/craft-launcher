@@ -1,0 +1,58 @@
+[package]
+name = "artcraft-launcher-server"
+description = "Opt-in self-hosted server for ArtCraft Launcher and Craft web editors"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+publish = false
+
+[lints]
+workspace = true
+
+[features]
+default = []
+server = [
+    "dep:axum",
+    "dep:futures-util",
+    "dep:jiff",
+    "dep:openidconnect",
+    "dep:rusqlite",
+    "dep:serde",
+    "dep:serde_json",
+    "dep:sha2",
+    "dep:subtle",
+    "dep:tokio",
+    "dep:tower",
+    "dep:tower-http",
+    "dep:ureq",
+    "dep:url",
+    "dep:uuid",
+]
+
+[[bin]]
+name = "artcraft-launcher-server"
+path = "src/main.rs"
+required-features = ["server"]
+
+[[bin]]
+name = "artcraft-launcher-pc-worker"
+path = "src/bin/pc-worker.rs"
+required-features = ["server"]
+
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+axum = { version = "0.8", default-features = false, features = ["http1", "json", "tokio"], optional = true }
+futures-util = { version = "0.3", optional = true }
+jiff = { workspace = true, optional = true }
+openidconnect = { version = "4.0.1", default-features = false, optional = true }
+rusqlite = { version = "0.38", features = ["bundled"], optional = true }
+serde = { workspace = true, optional = true }
+serde_json = { workspace = true, optional = true }
+sha2 = { version = "0.10", optional = true }
+subtle = { version = "2.6", optional = true }
+tokio = { version = "1", features = ["fs", "io-util", "macros", "net", "rt-multi-thread", "signal", "sync", "time"], optional = true }
+tower = { version = "0.5", features = ["util"], optional = true }
+tower-http = { version = "0.6", features = ["fs"], optional = true }
+ureq = { version = "3.5", default-features = false, features = ["rustls-no-provider", "_ring", "platform-verifier"], optional = true }
+url = { version = "2", optional = true }
+uuid = { version = "1", features = ["v4"], optional = true }

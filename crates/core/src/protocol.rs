@@ -312,6 +312,10 @@ pub trait Backend {
     fn launcher_kind(&self) -> Option<PackageKind> {
         None
     }
+    /// The same-origin hosted web editor, if this launcher has an active server build for it.
+    fn hosted_editor_url(&self, _app: &str) -> Option<String> {
+        None
+    }
     fn capabilities(&self) -> Capabilities;
     /// The machine apps would be installed on (on the web: the visitor's, best guess).
     fn platform(&self) -> Option<Platform>;

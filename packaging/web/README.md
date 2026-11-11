@@ -10,8 +10,9 @@ holds a static site in `artcraft-launcher-web-<version>/`:
 | `artcraft-launcher-web-<hash>_bg.wasm` | The app (egui, built with the `wasm-release` Cargo profile) |
 | `_headers`, `.htaccess` | Sample header rules for Netlify/Cloudflare Pages and Apache |
 
-There is no server-side code and no hand-written JavaScript. Upload the folder's contents anywhere
-that serves static files.
+The default package is a static site with no hand-written JavaScript. Upload the folder's
+contents anywhere that serves static files. For authenticated hosting with editor storage
+and updates, see the [optional server mode](../../docs/server-mode.md).
 
 ## What the web version does
 

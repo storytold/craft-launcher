@@ -71,6 +71,7 @@ enum Primary {
         checked: bool,
     },
     Open,
+    OpenHosted(String),
     Download(String),
     Unavailable(&'static str),
 }
@@ -994,6 +995,9 @@ impl LauncherUi {
     }
 
     fn primary_action(&self, entry: &AppEntry, status: &AppStatus) -> Primary {
+        if let Some(url) = self.backend.hosted_editor_url(entry.app.id) {
+            return Primary::OpenHosted(url);
+        }
         if !self.caps.manage_apps {
             let platform = self.platform;
             let url = entry.release().zip(platform).and_then(|(r, p)| {
@@ -1249,6 +1253,11 @@ impl LauncherUi {
             Primary::Open => {
                 if widgets::button(ui, tl!("Open"), Kind::Secondary, main_w).clicked() {
                     self.launch_app(id);
+                }
+            }
+            Primary::OpenHosted(url) => {
+                if widgets::button(ui, tl!("Open"), Kind::Primary, main_w).clicked() {
+                    widgets::open_external_link(ui.ctx(), &url);
                 }
             }
             Primary::Download(url) => {

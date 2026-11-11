@@ -62,6 +62,15 @@ pub fn start() {
     detect_language();
     wasm_bindgen_futures::spawn_local(async {
         let Some(document) = web_sys::window().and_then(|w| w.document()) else { return };
+        #[cfg(feature = "server")]
+        if crate::server::mount(&document).await {
+            for id in ["launcher_loading", "launcher_canvas"] {
+                if let Some(element) = document.get_element_by_id(id) {
+                    element.remove();
+                }
+            }
+            return;
+        }
         let Some(canvas) = document.get_element_by_id("launcher_canvas").and_then(|c| c.dyn_into::<web_sys::HtmlCanvasElement>().ok()) else {
             log::error!("no canvas");
             return;
@@ -320,6 +329,11 @@ impl Backend for WebBackend {
 
     fn poll(&mut self) -> Vec<Event> {
         std::mem::take(&mut *self.events.borrow_mut())
+    }
+
+    #[cfg(feature = "server")]
+    fn hosted_editor_url(&self, app: &str) -> Option<String> {
+        crate::server::editor_url(app)
     }
 
     fn capabilities(&self) -> Capabilities {
