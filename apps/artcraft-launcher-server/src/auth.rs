@@ -79,7 +79,7 @@ impl Auth {
     pub(crate) async fn initialize(origin: &Url, settings: AuthSettings) -> Result<Self, String> {
         let secret = read_secret(&settings.client_secret_file)?;
         let http = Https::new(Duration::from_secs(15));
-        let issuer = IssuerUrl::new(settings.issuer.to_string()).map_err(|_| String::from("Invalid OIDC issuer"))?;
+        let issuer = settings.issuer.clone();
         let metadata = CoreProviderMetadata::discover_async(issuer, &http).await.map_err(|_| String::from("OIDC discovery failed"))?;
         if metadata.authorization_endpoint().url().scheme() != "https" || !metadata.token_endpoint().is_some_and(|url| url.url().scheme() == "https")
         {
@@ -254,7 +254,7 @@ fn equal_secret(left: &str, right: &str) -> bool {
     left.as_bytes().ct_eq(right.as_bytes()).into()
 }
 
-fn account_id(issuer: &Url, subject: &str) -> String {
+fn account_id(issuer: &IssuerUrl, subject: &str) -> String {
     let mut digest = Sha256::new();
     digest.update(b"artcraft-server-account-v1\0");
     digest.update(issuer.as_str().as_bytes());
@@ -276,8 +276,8 @@ impl<'a> AsyncHttpClient<'a> for Https {
 mod tests {
     use super::{SESSION_COOKIE, Session, SessionEntry, account_id, clear_cookie, opaque_token, read_cookie};
     use axum::http::{HeaderMap, HeaderValue, header};
+    use openidconnect::IssuerUrl;
     use std::time::{Duration, Instant};
-    use url::Url;
 
     #[test]
     fn cookie_requires_one_well_formed_session_token() {
@@ -293,9 +293,11 @@ mod tests {
 
     #[test]
     fn account_identity_depends_on_issuer_and_subject() {
-        let a = Url::parse("https://a.example").expect("test issuer");
-        let b = Url::parse("https://b.example").expect("test issuer");
+        let a = IssuerUrl::new(String::from("https://a.example")).expect("test issuer");
+        let b = IssuerUrl::new(String::from("https://b.example")).expect("test issuer");
+        let slash = IssuerUrl::new(String::from("https://a.example/")).expect("test issuer");
         assert_ne!(account_id(&a, "user"), account_id(&b, "user"));
+        assert_ne!(account_id(&a, "user"), account_id(&slash, "user"));
         assert_ne!(account_id(&a, "user"), account_id(&a, "other"));
         assert_eq!(account_id(&a, "user"), account_id(&a, "user"));
     }

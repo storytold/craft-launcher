@@ -50,6 +50,7 @@ and use a dedicated service account. On Unix, restrict the data and editor relea
 to mode `0700` and secret files to `0600`. The worker token must be independently generated
 and have at least 32 URL-safe characters. Keep both secrets outside the served roots.
 The configured identity provider must support OIDC discovery and authorization code with PKCE.
+Use the exact `issuer` from its discovery document, including any trailing slash.
 Register exactly `https://craft.example.com/api/server/v1/auth/callback` with that provider.
 Allowlist the provider's stable subject IDs. A verified email may appear in the account panel.
 The storage identity comes from the verified issuer and subject.

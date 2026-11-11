@@ -4,6 +4,7 @@ use std::net::SocketAddr;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
+use openidconnect::IssuerUrl;
 use serde::Deserialize;
 use url::Url;
 
@@ -37,7 +38,7 @@ pub(crate) struct Settings {
 #[derive(Clone, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct AuthSettings {
-    pub(crate) issuer: Url,
+    pub(crate) issuer: IssuerUrl,
     pub(crate) client_id: String,
     pub(crate) client_secret_file: PathBuf,
     #[serde(default)]
@@ -99,7 +100,12 @@ impl Settings {
             return Err(String::from("Use separate secrets for OIDC and the PC update worker"));
         }
         validate_launcher_site(&self.launcher_root)?;
-        if !https_url(&self.auth.issuer) || !bounded_text(&self.auth.client_id, 512) || !(5..=60).contains(&self.auth.idle_minutes) {
+        if !https_url(self.auth.issuer.url())
+            || !bounded_text(self.auth.issuer.as_str(), 2048)
+            || self.auth.issuer.chars().any(char::is_whitespace)
+            || !bounded_text(&self.auth.client_id, 512)
+            || !(5..=60).contains(&self.auth.idle_minutes)
+        {
             return Err(String::from("Invalid OIDC issuer, client ID, or idle timeout"));
         }
         validate_subjects(&self.auth)?;
@@ -236,7 +242,7 @@ fn private_path(_path: &Path) -> Result<(), String> {
 
 #[cfg(test)]
 mod tests {
-    use super::{ConfigFile, https_url, validate_separate_roots};
+    use super::{AuthSettings, ConfigFile, https_url, validate_separate_roots};
     use std::path::Path;
     use url::Url;
 
@@ -254,6 +260,20 @@ mod tests {
         let data = Path::new("public/hidden");
         let artifacts = Path::new("artifacts");
         assert!(validate_separate_roots([root, data, artifacts]).is_err());
+    }
+
+    #[test]
+    fn identity_configuration_preserves_the_exact_issuer() {
+        for issuer in ["https://issuer.example", "https://issuer.example/", "https://issuer.example/tenant"] {
+            let settings: AuthSettings = serde_json::from_value(serde_json::json!({
+                "issuer": issuer,
+                "client_id": "launcher",
+                "client_secret_file": "oidc-secret",
+            }))
+            .expect("test identity settings");
+            assert_eq!(settings.issuer.as_str(), issuer);
+            assert!(https_url(settings.issuer.url()));
+        }
     }
 
     #[test]
