@@ -4319,3 +4319,95 @@ fn an_apps_page_is_a_card_in_the_middle_with_next_and_previous_arrows_and_closes
     h.run_steps(30);
     assert!(!showing(&h, "photocraft"), "a click outside did not close it");
 }
+
+/// A version pin is distinct from a favorite: the lock names the exact tag and requires confirmation.
+#[test]
+fn version_padlock_confirms_before_unlocking_in_grid_and_table() {
+    use artcraft_launcher_core::protocol::VersionTrack;
+    let tip = "Version pinned to v0.4.1. Click to unlock.";
+    for view in [ViewMode::Grid, ViewMode::Table] {
+        let (mut h, sent) = harness(view, egui::Theme::Dark, true);
+        h.run_steps(4);
+        h.state_mut().as_mut().unwrap().settings.versions.insert("photocraft".into(), VersionTrack::Pinned("v0.4.1".into()));
+        h.run_steps(4);
+        sent.borrow_mut().clear();
+        h.get_by_label(tip).hover();
+        h.run_steps(30);
+        snapshot(&mut h, if view == ViewMode::Grid { "version-lock-grid" } else { "version-lock-table" });
+        h.query_all_by_role_and_label(egui::accesskit::Role::Button, tip).next().unwrap().click();
+        h.run_steps(4);
+        h.get_by_label("Unlock version?");
+        h.get_by_label("PhotoCraft is pinned to v0.4.1. Follow the latest release instead?");
+        assert_eq!(h.state().as_ref().unwrap().settings.versions.get("photocraft"), Some(&VersionTrack::Pinned("v0.4.1".into())));
+        assert!(!sent.borrow().iter().any(|c| matches!(c, Command::CheckForUpdates { force: true })));
+        snapshot(&mut h, if view == ViewMode::Grid { "version-unlock-dialog" } else { "version-unlock-table-dialog" });
+        h.get_by_label("Cancel").click();
+        h.run_steps(4);
+        assert_eq!(h.state().as_ref().unwrap().settings.versions.get("photocraft"), Some(&VersionTrack::Pinned("v0.4.1".into())));
+        h.get_by_label(tip).click();
+        h.run_steps(4);
+        h.key_press(egui::Key::Escape);
+        h.run_steps(4);
+        assert_eq!(h.state().as_ref().unwrap().settings.versions.get("photocraft"), Some(&VersionTrack::Pinned("v0.4.1".into())));
+        h.get_by_label(tip).click();
+        h.run_steps(4);
+        h.get_by_label("Unlock").click();
+        h.run_steps(4);
+        assert!(!h.state().as_ref().unwrap().settings.versions.contains_key("photocraft"));
+        assert!(h.query_by_label(tip).is_none());
+        assert!(sent.borrow().iter().any(|c| matches!(c, Command::Configure(options) if !options.versions.contains_key("photocraft"))));
+        assert!(sent.borrow().iter().any(|c| matches!(c, Command::CheckForUpdates { force: true })));
+        assert!(!sent.borrow().iter().any(|c| matches!(c, Command::Install { .. })));
+    }
+}
+
+#[test]
+fn a_version_padlock_does_not_unlock_a_choice_changed_after_confirmation_opened() {
+    use artcraft_launcher_core::protocol::VersionTrack;
+    let (mut h, _) = harness(ViewMode::Grid, egui::Theme::Dark, true);
+    h.run_steps(4);
+    h.state_mut().as_mut().unwrap().settings.versions.insert("photocraft".into(), VersionTrack::Pinned("v0.4.1".into()));
+    h.run_steps(4);
+    h.get_by_label("Version pinned to v0.4.1. Click to unlock.").click();
+    h.run_steps(4);
+    h.state_mut().as_mut().unwrap().settings.versions.insert("photocraft".into(), VersionTrack::Pinned("v0.3.0".into()));
+    h.run_steps(4);
+    h.get_by_label("Unlock").click();
+    h.run_steps(4);
+    assert_eq!(h.state().as_ref().unwrap().settings.versions.get("photocraft"), Some(&VersionTrack::Pinned("v0.3.0".into())));
+}
+
+#[test]
+fn favorite_and_nightly_choices_do_not_show_a_version_padlock() {
+    use artcraft_launcher_core::protocol::VersionTrack;
+    let (mut h, _) = harness(ViewMode::Grid, egui::Theme::Dark, true);
+    h.run_steps(4);
+    h.state_mut().as_mut().unwrap().settings.pin_app("photocraft");
+    h.run_steps(4);
+    assert!(h.query_by_label("Version pinned to v0.4.1. Click to unlock.").is_none());
+    h.state_mut().as_mut().unwrap().settings.versions.insert("photocraft".into(), VersionTrack::Nightly);
+    h.run_steps(4);
+    assert!(h.query_by_label("Version pinned to v0.4.1. Click to unlock.").is_none());
+}
+
+#[test]
+fn launcher_version_padlock_confirms_and_returns_to_settings() {
+    use artcraft_launcher_core::protocol::VersionTrack;
+    let (mut h, sent) = harness(ViewMode::Grid, egui::Theme::Dark, true);
+    h.run_steps(4);
+    h.state_mut().as_mut().unwrap().settings.launcher_version = VersionTrack::Pinned("v0.19.0".into());
+    h.get_by_label("Settings").click();
+    h.run_steps(6);
+    h.get_by_label("Version pinned to v0.19.0. Click to unlock.").click();
+    h.run_steps(4);
+    h.get_by_label("Cancel").click();
+    h.run_steps(4);
+    assert_eq!(h.state().as_ref().unwrap().settings.launcher_version, VersionTrack::Pinned("v0.19.0".into()));
+    h.get_by_label("Version pinned to v0.19.0. Click to unlock.").click();
+    h.run_steps(4);
+    h.get_by_label("Unlock").click();
+    h.run_steps(4);
+    assert_eq!(h.state().as_ref().unwrap().settings.launcher_version, VersionTrack::Stable);
+    h.get_by_label("Launcher version");
+    assert!(sent.borrow().iter().any(|c| matches!(c, Command::Configure(options) if options.launcher_version == VersionTrack::Stable)));
+}
