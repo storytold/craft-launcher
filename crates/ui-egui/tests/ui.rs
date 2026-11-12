@@ -4411,3 +4411,30 @@ fn launcher_version_padlock_confirms_and_returns_to_settings() {
     h.get_by_label("Launcher version");
     assert!(sent.borrow().iter().any(|c| matches!(c, Command::Configure(options) if options.launcher_version == VersionTrack::Stable)));
 }
+
+/// At the minimum card width a long name and its byline ("by Tangency Labs", "by UCS Care Group")
+/// still fit the card's text column: the byline ends in "…" there, and the tagline below keeps the
+/// column's width, so it ends in "…" too instead of being cut at the card's edge.
+#[test]
+fn a_long_name_and_byline_stay_inside_a_narrow_card() {
+    let (mut h, _) = harness(ViewMode::Grid, egui::Theme::Light, true);
+    h.set_size(egui::vec2(1020.0, 1200.0));
+    h.run_steps(8);
+    // Every card's "…" button ends at the right of its text column.
+    let ends: Vec<f32> = h.query_all_by_label_contains("More actions for").map(|n| n.rect().right()).collect();
+    let end_of = |left: f32| ends.iter().copied().filter(|x| *x > left).reduce(f32::min).unwrap_or(f32::INFINITY);
+    let bylines: Vec<egui::Rect> = h.query_all_by_label_contains("by ").filter(|n| n.rect().height() <= 21.0).map(|n| n.rect()).collect();
+    assert!(bylines.len() >= 6, "only {} cards show who makes the app", bylines.len());
+    for b in &bylines {
+        assert!(b.right() <= end_of(b.left()) + 0.5, "a byline ends at {} past its column at {}", b.right(), end_of(b.left()));
+    }
+    // The cards with the longest name and byline; their descriptions start the same way, and fit too.
+    for tagline in ["Find out how any software works", "Parametric 3D CAD", "Mail, calendar and contacts"] {
+        let shown: Vec<egui::Rect> = h.query_all_by_label_contains(tagline).map(|n| n.rect()).collect();
+        assert!(!shown.is_empty(), "{tagline:?} is not on the grid");
+        for r in shown {
+            assert!(r.right() <= end_of(r.left()) + 0.5, "{tagline:?} ends at {} past its column at {}", r.right(), end_of(r.left()));
+        }
+    }
+    snapshot(&mut h, "grid_card_bylines_1020");
+}
