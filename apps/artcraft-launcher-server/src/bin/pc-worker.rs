@@ -717,6 +717,8 @@ mod native {
 
     #[cfg(all(test, any(windows, target_os = "linux", target_os = "macos", target_os = "freebsd")))]
     mod recipe_tests {
+        use std::fs::{File, TryLockError};
+        use std::io::Write as _;
         use std::path::{Path, PathBuf};
         use std::process::{Command, Stdio};
         use std::time::{Duration, Instant};
@@ -728,6 +730,7 @@ mod native {
 
         const FIXTURE_ROLE: &str = "ARTCRAFT_TEST_RECIPE_ROLE";
         const FIXTURE_ROOT: &str = "ARTCRAFT_TEST_RECIPE_ROOT";
+        const EXIT_WITNESS: &str = "exit-witness";
         const POLL: Duration = Duration::from_millis(10);
         const LIMIT: Duration = Duration::from_secs(5);
 
@@ -743,7 +746,7 @@ mod native {
 
         impl Drop for FixtureFiles {
             fn drop(&mut self) {
-                for name in ["ready", "release", "complete"] {
+                for name in ["ready", "release", "complete", EXIT_WITNESS] {
                     let _ = fs::remove_file(self.0.join(name));
                 }
                 let _ = fs::remove_dir(&self.0);
@@ -781,6 +784,25 @@ mod native {
 
         fn finish_redirected_fixture() -> io::Result<()> {
             let root = std::env::var_os(FIXTURE_ROOT).map(PathBuf::from).ok_or_else(|| io::Error::other("Missing recipe fixture root"))?;
+            let witness = File::options().read(true).write(true).open(root.join(EXIT_WITNESS));
+            let mut witness = match witness {
+                Ok(file) => {
+                    file.lock()?;
+                    Some(file)
+                }
+                Err(error) if error.kind() == io::ErrorKind::NotFound => None,
+                Err(error) => return Err(error),
+            };
+            let result = wait_for_fixture_release(&root);
+            // The descendant holds the lock from before readiness until process teardown or
+            // this marked return, including if it times out waiting for the fixture gate.
+            if let Some(file) = &mut witness {
+                file.write_all(b"returned")?;
+            }
+            result
+        }
+
+        fn wait_for_fixture_release(root: &Path) -> io::Result<()> {
             fs::write(root.join("ready"), b"ready")?;
             let deadline = Instant::now() + Duration::from_secs(15);
             let release = root.join("release");
@@ -872,18 +894,41 @@ mod native {
             result
         }
 
+        async fn wait_for_exit_witness(witness: &File) -> io::Result<()> {
+            let deadline = Instant::now() + LIMIT;
+            while Instant::now() < deadline {
+                match witness.try_lock() {
+                    Ok(()) => return Ok(()),
+                    Err(TryLockError::WouldBlock) => tokio::time::sleep(POLL).await,
+                    Err(TryLockError::Error(error)) => return Err(error),
+                }
+            }
+            Err(io::Error::new(io::ErrorKind::TimedOut, "The redirected descendant still holds its exit witness"))
+        }
+
         #[tokio::test]
         async fn redirected_descendant_past_recipe_grace_fails_and_is_stopped() -> io::Result<()> {
             let files = FixtureFiles::new()?;
+            let witness = File::create_new(files.0.join(EXIT_WITNESS))?;
             let (process, mut output) = start_fixture("redirected-leader", Some(&files.0)).await?;
+            let held = witness.try_lock();
+            if !matches!(&held, Err(TryLockError::WouldBlock)) {
+                let _ = process.stop();
+                return Err(io::Error::other(format!("The descendant did not hold its exit witness: {held:?}")));
+            }
             let mut log = Vec::new();
             let result = finish_recipe(process, Ok(()), &mut log, &mut output, Duration::from_millis(400)).await;
+            if let Err(error) = wait_for_exit_witness(&witness).await {
+                // Let this fixture exit if cancellation regresses. The test still fails.
+                let _ = fs::write(files.0.join("release"), b"release");
+                let _ = wait_for_exit_witness(&witness).await;
+                return Err(error);
+            }
             assert_eq!(
                 result.as_ref().map_err(String::as_str),
                 Err("The build recipe did not finish its process tree before the deadline; inspect build.log")
             );
-            fs::write(files.0.join("release"), b"release")?;
-            tokio::time::sleep(Duration::from_millis(250)).await;
+            assert_eq!(witness.metadata()?.len(), 0, "the descendant should not have returned through the fixture gate");
             assert!(!files.0.join("complete").try_exists()?);
             Ok(())
         }
