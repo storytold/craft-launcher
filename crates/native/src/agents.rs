@@ -10,6 +10,7 @@
 //! configuration that does not parse is never overwritten, and entries other than ours are kept.
 
 use std::path::{Path, PathBuf};
+use std::sync::{Mutex, MutexGuard, PoisonError};
 
 use artcraft_launcher_core::protocol::{McpAgents, McpClient, McpClientState};
 use serde_json::{Map, Value, json};
@@ -152,19 +153,75 @@ pub fn unregister(config: &Path) -> Result<(), String> {
     crate::paths::write_atomic(config, text.as_bytes())
 }
 
-/// The `craft-ai-mcp` gateway binary: beside the launcher, or `ARTCRAFT_LAUNCHER_BRIDGE_PATH`.
+/// The `craft-ai-mcp` gateway binary as shipped: beside the launcher, or
+/// `ARTCRAFT_LAUNCHER_BRIDGE_PATH`.
 pub fn locate_gateway() -> Option<PathBuf> {
     crate::local_mcp::locate_bridge()
 }
 
-/// What Settings shows. While agents are on, the app list is refreshed first, so an app
-/// installed since then is reachable too (a failed refresh keeps the previous list).
+/// The folder in [`mcp_dir`] that holds the gateway copy clients start.
+pub const GATEWAY_DIR: &str = "bin";
+
+/// Where the gateway copy lives in `dir`.
+pub fn gateway_copy(dir: &Path) -> PathBuf {
+    dir.join(GATEWAY_DIR).join(format!("craft-ai-mcp{}", std::env::consts::EXE_SUFFIX))
+}
+
+/// Copy the shipped gateway `src` into `dir`, so client configurations name a path that stays
+/// valid: not one inside an AppImage mount that goes away when the launcher quits, a Flatpak
+/// sandbox path host clients can't run, or a folder an update or a move replaces. An existing
+/// copy of the same size that is not older than `src` is kept. A copy a client is running can't
+/// be replaced on Windows; then the existing copy is used and refreshed later.
+pub fn install_gateway(src: &Path, dir: &Path) -> Result<PathBuf, String> {
+    let dest = gateway_copy(dir);
+    let current = match (std::fs::metadata(src), std::fs::metadata(&dest)) {
+        (Ok(a), Ok(b)) => a.len() == b.len() && matches!((a.modified(), b.modified()), (Ok(ma), Ok(mb)) if mb >= ma),
+        (Err(e), _) => return Err(format!("couldn't read the Craft gateway at {} ({e})", src.display())),
+        _ => false,
+    };
+    if current {
+        return Ok(dest);
+    }
+    let bytes = std::fs::read(src).map_err(|e| format!("couldn't read the Craft gateway at {} ({e})", src.display()))?;
+    match crate::paths::write_atomic(&dest, &bytes) {
+        Ok(()) => {}
+        Err(_) if dest.is_file() => return Ok(dest),
+        Err(e) => return Err(e),
+    }
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(&dest, std::fs::Permissions::from_mode(0o755))
+            .map_err(|e| format!("couldn't make {} executable ({e})", dest.display()))?;
+    }
+    Ok(dest)
+}
+
+/// Serialises every change to the app list and the gateway copy. Detection refreshes them on a
+/// background thread while Settings may be turning agents off; without this, a refresh that
+/// read "on" just before the switch could write the list back after it was removed.
+static LOCK: Mutex<()> = Mutex::new(());
+
+fn lock() -> MutexGuard<'static, ()> {
+    LOCK.lock().unwrap_or_else(PoisonError::into_inner)
+}
+
+/// What Settings shows. While agents are on, the app list and the gateway copy are refreshed
+/// first, so an app installed (or a gateway updated) since then is used too; a failed refresh
+/// keeps the previous ones.
 pub fn state(services: &[LocalService]) -> McpAgents {
     let dir = mcp_dir();
-    let on = dir.as_deref().is_some_and(enabled);
-    if on && let Some(d) = &dir {
-        let _ = write_apps(d, services);
-    }
+    let on = {
+        let _guard = lock();
+        let on = dir.as_deref().is_some_and(enabled);
+        if on && let Some(d) = &dir {
+            let _ = write_apps(d, services);
+            if let Some(src) = locate_gateway() {
+                let _ = install_gateway(&src, d);
+            }
+        }
+        on
+    };
     let clients = CLIENTS
         .iter()
         .map(|c| {
@@ -185,14 +242,16 @@ pub fn state(services: &[LocalService]) -> McpAgents {
     }
 }
 
-/// Turn agents on (write the app list) or off (remove it and every client entry this module
-/// added). All clients are tried; the first error is returned.
+const NO_GATEWAY: &str = "the Craft gateway (craft-ai-mcp) is not installed beside the launcher";
+
+/// Turn agents on (copy the gateway, write the app list) or off (remove the list, every client
+/// entry this module added, and the copy). All clients are tried; the first error is returned.
 pub fn set_enabled(on: bool, services: &[LocalService]) -> Result<(), String> {
     let dir = mcp_dir().ok_or("couldn't find the per-user configuration folder")?;
+    let _guard = lock();
     if on {
-        if locate_gateway().is_none() {
-            return Err("the Craft gateway (craft-ai-mcp) is not installed beside the launcher".into());
-        }
+        let src = locate_gateway().ok_or(NO_GATEWAY)?;
+        install_gateway(&src, &dir)?;
         return write_apps(&dir, services);
     }
     let mut first_error = remove_apps(&dir).err();
@@ -203,19 +262,29 @@ pub fn set_enabled(on: bool, services: &[LocalService]) -> Result<(), String> {
             first_error.get_or_insert(e);
         }
     }
+    // A client still running the copy keeps it busy on Windows; it goes next time.
+    let _ = std::fs::remove_file(gateway_copy(&dir));
     first_error.map_or(Ok(()), Err)
 }
 
-/// Add the gateway entry to `client`, or remove it. Adding needs agents on and the gateway found.
+/// Add the gateway entry to `client`, or remove it. Adding needs agents on; the entry names the
+/// gateway copy in [`mcp_dir`].
 pub fn set_client(client: McpClient, added: bool) -> Result<(), String> {
     let (config, _) = client_paths(client).ok_or("couldn't find the home folder")?;
     if !added {
         return unregister(&config);
     }
-    if !mcp_dir().as_deref().is_some_and(enabled) {
+    let dir = mcp_dir().ok_or("couldn't find the per-user configuration folder")?;
+    let _guard = lock();
+    if !enabled(&dir) {
         return Err("turn on \"Let AI agents use Craft apps\" first".into());
     }
-    let gateway = locate_gateway().ok_or("the Craft gateway (craft-ai-mcp) is not installed beside the launcher")?;
+    let copy = gateway_copy(&dir);
+    let gateway = match locate_gateway() {
+        Some(src) => install_gateway(&src, &dir)?,
+        None if copy.is_file() => copy,
+        None => return Err(NO_GATEWAY.into()),
+    };
     register(&config, &gateway)
 }
 

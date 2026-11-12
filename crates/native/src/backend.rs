@@ -1606,54 +1606,15 @@ impl Backend for NativeBackend {
                     self.check(true);
                 }
             }
-            Command::McpState => {
-                self.shared.emit(mcp_state(&self.shared));
-            }
-            Command::McpSetService { service_id, enabled } => {
-                let manifest = self.shared.manifest.lock().unwrap_or_else(PoisonError::into_inner).clone();
-                let snapshot = crate::detect::Snapshot::take();
-                if let Some(p) = local_mcp::mcp_config_path() {
-                    let mut servers = local_mcp::load_servers(&p);
-                    // Rebuild from detection so the command path is current, then flip the flag.
-                    if let Some(s) = local_mcp::installed_services(&manifest, &snapshot).into_iter().find(|s| s.id == service_id) {
-                        if enabled {
-                            local_mcp::enable_service(&mut servers, &s);
-                        } else {
-                            local_mcp::disable_service(&mut servers, &s);
-                        }
-                    }
-                    if let Err(e) = local_mcp::save_servers(&p, &servers) {
-                        self.shared.emit(Event::McpError { message: e });
-                    }
-                }
-                self.shared.emit(mcp_state(&self.shared));
-            }
-            Command::McpSetBridge { port, enabled } => {
-                if let Some(p) = local_mcp::mcp_config_path() {
-                    let mut servers = local_mcp::load_servers(&p);
-                    if enabled {
-                        local_mcp::enable_bridge(&mut servers, port);
-                    } else {
-                        local_mcp::disable_bridge(&mut servers);
-                    }
-                    if let Err(e) = local_mcp::save_servers(&p, &servers) {
-                        self.shared.emit(Event::McpError { message: e });
-                    }
-                }
-                self.shared.emit(mcp_state(&self.shared));
-            }
-            Command::McpSetAgents { enabled } => {
-                let services = detected_services(&self.shared);
-                if let Err(e) = crate::agents::set_enabled(enabled, &services) {
-                    self.shared.emit(Event::McpError { message: e });
-                }
-                self.shared.emit(mcp_state(&self.shared));
-            }
-            Command::McpSetClient { client, added } => {
-                if let Err(e) = crate::agents::set_client(client, added) {
-                    self.shared.emit(Event::McpError { message: e });
-                }
-                self.shared.emit(mcp_state(&self.shared));
+            cmd @ (Command::McpState
+            | Command::McpSetService { .. }
+            | Command::McpSetBridge { .. }
+            | Command::McpSetAgents { .. }
+            | Command::McpSetClient { .. }) => {
+                // Detection can run package-manager queries for seconds (flatpak on Linux):
+                // never on the UI thread that sends commands.
+                let shared = self.shared.clone();
+                std::thread::spawn(move || run_mcp(&shared, cmd));
             }
         }
     }
@@ -1695,8 +1656,12 @@ impl Backend for NativeBackend {
 /// name so those created under a different id (e.g. a UUID by an earlier launcher version) are
 /// recognized and reported as already present.
 fn mcp_state(shared: &Shared) -> Event {
-    let detected = detected_services(shared);
-    let agents = crate::agents::state(&detected);
+    mcp_state_for(&detected_services(shared))
+}
+
+/// [`mcp_state`] for apps already detected.
+fn mcp_state_for(detected: &[local_mcp::LocalService]) -> Event {
+    let agents = crate::agents::state(detected);
 
     let existing: Vec<local_mcp::ServerEntry> = match local_mcp::mcp_config_path() {
         Some(p) => local_mcp::load_servers(&p),
@@ -1704,11 +1669,12 @@ fn mcp_state(shared: &Shared) -> Event {
     };
 
     let services = detected
-        .into_iter()
-        .map(|s| {
-            // Read the current on/off state before moving `name` into the struct.
-            let enabled = local_mcp::service_enabled(&existing, &s.name);
-            McpService { id: s.id, name: s.name, command: s.cli_path.map(|c| c.display().to_string()).unwrap_or_default(), enabled }
+        .iter()
+        .map(|s| McpService {
+            id: s.id.clone(),
+            name: s.name.clone(),
+            command: s.cli_path.as_ref().map(|c| c.display().to_string()).unwrap_or_default(),
+            enabled: local_mcp::service_enabled(&existing, &s.name),
         })
         .collect();
 
@@ -1723,6 +1689,44 @@ fn mcp_state(shared: &Shared) -> Event {
         },
         agents,
     }
+}
+
+/// One MCP command, on a worker thread. Commands run one at a time, so a toggle and a refresh
+/// never write `ng-mcp.json` or the client configurations at once; detection runs once per
+/// command, and the new state is sent when it is done.
+fn run_mcp(shared: &Shared, cmd: Command) {
+    static MCP_WORK: Mutex<()> = Mutex::new(());
+    let _guard = MCP_WORK.lock().unwrap_or_else(PoisonError::into_inner);
+    let services = detected_services(shared);
+    let result = match cmd {
+        Command::McpSetService { service_id, enabled } => local_mcp::mcp_config_path().map_or(Ok(()), |p| {
+            let mut servers = local_mcp::load_servers(&p);
+            if let Some(s) = services.iter().find(|s| s.id == service_id) {
+                if enabled {
+                    local_mcp::enable_service(&mut servers, s);
+                } else {
+                    local_mcp::disable_service(&mut servers, s);
+                }
+            }
+            local_mcp::save_servers(&p, &servers)
+        }),
+        Command::McpSetBridge { port, enabled } => local_mcp::mcp_config_path().map_or(Ok(()), |p| {
+            let mut servers = local_mcp::load_servers(&p);
+            if enabled {
+                local_mcp::enable_bridge(&mut servers, port);
+            } else {
+                local_mcp::disable_bridge(&mut servers);
+            }
+            local_mcp::save_servers(&p, &servers)
+        }),
+        Command::McpSetAgents { enabled } => crate::agents::set_enabled(enabled, &services),
+        Command::McpSetClient { client, added } => crate::agents::set_client(client, added),
+        _ => Ok(()),
+    };
+    if let Err(message) = result {
+        shared.emit(Event::McpError { message });
+    }
+    shared.emit(mcp_state_for(&services));
 }
 
 /// The installed apps with their CLIs, from a fresh detection snapshot.

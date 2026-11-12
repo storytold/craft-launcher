@@ -386,7 +386,10 @@ impl LauncherUi {
             let agents = self.mcp_agents.clone();
             if !agents.gateway_found {
                 ui.label(RichText::new(tl!("The Craft gateway (craft-ai-mcp) is not installed beside the launcher.")).size(12.0).color(t.muted));
-                return;
+                // Turning on needs the gateway; turning off and removing entries never does.
+                if !agents.enabled {
+                    return;
+                }
             }
             let mut on = agents.enabled;
             if ui.checkbox(&mut on, tl!("Let AI agents use Craft apps")).changed() && on != agents.enabled {
@@ -398,13 +401,14 @@ impl LauncherUi {
             ui.label(RichText::new(tl!("Apps agents can reach: {count}").replace("{count}", &agents.apps.to_string())).size(12.0).color(t.muted));
             ui.add_space(8.0);
             for c in &agents.clients {
-                self.draw_client_row(ui, &t, c);
+                self.draw_client_row(ui, &t, c, agents.gateway_found);
             }
         });
     }
 
-    /// One MCP client: its name, and Add or Remove (or "Not installed" when it isn't).
-    fn draw_client_row(&mut self, ui: &mut Ui, t: &Tokens, c: &McpClientState) {
+    /// One MCP client: its name, and Add or Remove (or "Not installed" when it isn't). Add is
+    /// offered only while the gateway is there to add.
+    fn draw_client_row(&mut self, ui: &mut Ui, t: &Tokens, c: &McpClientState, can_add: bool) {
         ui.horizontal(|ui| {
             ui.label(c.name.as_str());
             if c.added {
@@ -412,11 +416,11 @@ impl LauncherUi {
                 if ui.button(tl!("Remove")).clicked() {
                     self.act_command(Command::McpSetClient { client: c.client, added: false });
                 }
-            } else if c.installed {
+            } else if c.installed && can_add {
                 if ui.button(tl!("Add")).clicked() {
                     self.act_command(Command::McpSetClient { client: c.client, added: true });
                 }
-            } else {
+            } else if !c.installed {
                 ui.label(RichText::new(tl!("Not installed")).size(12.0).color(t.muted));
             }
         });

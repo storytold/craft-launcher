@@ -4471,3 +4471,36 @@ fn ai_agents_without_the_gateway_offer_no_switch() {
     h.get_by_label("The Craft gateway (craft-ai-mcp) is not installed beside the launcher.");
     assert!(h.query_by_label("Let AI agents use Craft apps").is_none());
 }
+
+/// When the gateway went away while agents were on, they can still be turned off and the entries
+/// removed; only adding is gone.
+#[test]
+fn ai_agents_left_on_without_the_gateway_can_still_be_turned_off() {
+    use artcraft_launcher_core::protocol::{McpAgents, McpBridge, McpClient, McpClientState};
+    let client = |client, name: &str, added| McpClientState { client, name: name.into(), installed: true, added };
+    let mut evs = events();
+    evs.push(Event::Mcp {
+        services: vec![],
+        bridge: McpBridge::default(),
+        agents: McpAgents {
+            gateway_found: false,
+            enabled: true,
+            apps: 2,
+            clients: vec![client(McpClient::ClaudeDesktop, "Claude Desktop", false), client(McpClient::Cursor, "Cursor", true)],
+        },
+    });
+    let (mut h, sent) = harness_with(evs, ViewMode::Grid, egui::Theme::Dark, true, 1.0);
+    h.run_steps(6);
+    h.get_by_label("Settings").click();
+    h.run_steps(4);
+    h.get_by_label("Apps agents can reach: 2").scroll_to_me();
+    h.run_steps(6);
+    assert!(h.query_by_label("Add").is_none(), "nothing to add without the gateway");
+    h.get_by_label("Remove").click();
+    h.run_steps(3);
+    h.get_by_label("Let AI agents use Craft apps").click();
+    h.run_steps(3);
+    let sent = sent.borrow();
+    assert!(sent.iter().any(|c| matches!(c, Command::McpSetClient { client: McpClient::Cursor, added: false })));
+    assert!(sent.iter().any(|c| matches!(c, Command::McpSetAgents { enabled: false })));
+}

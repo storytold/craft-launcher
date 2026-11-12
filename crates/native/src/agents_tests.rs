@@ -118,3 +118,37 @@ fn every_client_has_a_name_and_paths() {
         }
     }
 }
+
+#[test]
+fn the_gateway_is_copied_once_and_refreshed_when_it_changes() {
+    let src_dir = tempfile::tempdir().unwrap();
+    let dir = tempfile::tempdir().unwrap();
+    let src = src_dir.path().join("craft-ai-mcp");
+    std::fs::write(&src, b"v1").unwrap();
+    let copy = install_gateway(&src, dir.path()).unwrap();
+    assert_eq!(copy, gateway_copy(dir.path()));
+    assert!(copy.starts_with(dir.path()), "clients get a path in the launcher's folder, not the shipped one");
+    assert_eq!(std::fs::read(&copy).unwrap(), b"v1");
+    // Unchanged: kept as is.
+    let before = std::fs::metadata(&copy).unwrap().modified().unwrap();
+    install_gateway(&src, dir.path()).unwrap();
+    assert_eq!(std::fs::metadata(&copy).unwrap().modified().unwrap(), before);
+    // An update of another size replaces it.
+    std::fs::write(&src, b"version 2").unwrap();
+    install_gateway(&src, dir.path()).unwrap();
+    assert_eq!(std::fs::read(&copy).unwrap(), b"version 2");
+    // No source: an error, not a panic.
+    assert!(install_gateway(&src_dir.path().join("missing"), dir.path()).is_err());
+}
+
+#[cfg(unix)]
+#[test]
+fn the_gateway_copy_is_executable() {
+    use std::os::unix::fs::PermissionsExt;
+    let src_dir = tempfile::tempdir().unwrap();
+    let dir = tempfile::tempdir().unwrap();
+    let src = src_dir.path().join("craft-ai-mcp");
+    std::fs::write(&src, b"#!/bin/sh\n").unwrap();
+    let copy = install_gateway(&src, dir.path()).unwrap();
+    assert_eq!(std::fs::metadata(copy).unwrap().permissions().mode() & 0o111, 0o111);
+}

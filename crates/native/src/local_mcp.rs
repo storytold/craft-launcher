@@ -106,10 +106,8 @@ pub fn save_servers(path: &Path, servers: &[ServerEntry]) -> Result<(), String> 
         },
         Err(_) => None, // missing (or unreadable): start fresh
     };
-    let array = match servers.iter().map(serde_json::to_value).collect::<Result<Vec<serde_json::Value>, _>>() {
-        Ok(a) => a,
-        Err(e) => return Err(e.to_string()),
-    };
+    let old = existing.as_ref().and_then(|v| v.get("servers")).and_then(serde_json::Value::as_array).map(Vec::as_slice).unwrap_or_default();
+    let array = merge_servers(old, servers)?;
     // Preserve any top-level keys other than `servers`; replace the array. If the file was not
     // a JSON object, it is not an `ng-mcp.json` shape and starts fresh.
     let mut map = serde_json::Map::new();
@@ -123,6 +121,53 @@ pub fn save_servers(path: &Path, servers: &[ServerEntry]) -> Result<(), String> 
     map.insert("servers".to_string(), serde_json::json!(array));
     let out = serde_json::to_string_pretty(&serde_json::Value::Object(map)).map_err(|e| e.to_string())?;
     crate::paths::write_atomic(path, out.as_bytes())
+}
+
+/// The new `servers` array: `servers` merged into the file's `old` entries. An entry this module
+/// cannot read (another connection type, a missing field, a shape Bionic adds later) is kept as
+/// it is and where it was; an entry it manages keeps any field it doesn't know; an entry it can
+/// read but that is no longer in `servers` was removed on purpose and is left out.
+fn merge_servers(old: &[serde_json::Value], servers: &[ServerEntry]) -> Result<Vec<serde_json::Value>, String> {
+    let mut used = vec![false; servers.len()];
+    let mut out = Vec::with_capacity(old.len().max(servers.len()));
+    for raw in old {
+        if serde_json::from_value::<ServerEntry>(raw.clone()).is_err() {
+            out.push(raw.clone());
+            continue;
+        }
+        let id = raw.get("id").and_then(serde_json::Value::as_str);
+        let Some(i) = servers.iter().enumerate().position(|(i, s)| Some(s.id.as_str()) == id && !used.get(i).copied().unwrap_or(true)) else {
+            continue;
+        };
+        if let (Some(flag), Some(entry)) = (used.get_mut(i), servers.get(i)) {
+            *flag = true;
+            out.push(overlay(raw, serde_json::to_value(entry).map_err(|e| e.to_string())?));
+        }
+    }
+    for (entry, was_used) in servers.iter().zip(used) {
+        if !was_used {
+            out.push(serde_json::to_value(entry).map_err(|e| e.to_string())?);
+        }
+    }
+    Ok(out)
+}
+
+/// `new` written over `raw`: fields only `raw` has are kept, one level into `connection` too
+/// while its `type` is unchanged.
+fn overlay(raw: &serde_json::Value, new: serde_json::Value) -> serde_json::Value {
+    let (Some(raw), serde_json::Value::Object(new)) = (raw.as_object(), new.clone()) else {
+        return new;
+    };
+    let mut merged = raw.clone();
+    for (k, v) in new {
+        let keep_inner = k == "connection" && raw.get("connection").and_then(|c| c.get("type")) == v.get("type");
+        let value = match (keep_inner, raw.get(&k)) {
+            (true, Some(old @ serde_json::Value::Object(_))) => overlay(old, v),
+            _ => v,
+        };
+        merged.insert(k, value);
+    }
+    serde_json::Value::Object(merged)
 }
 
 /// Every Craft App that has a usable CLI on this machine, in suite order. Detection is the single
@@ -521,6 +566,38 @@ mod tests {
         let path = dir.path().join("ng-mcp.json");
         assert!(save_servers(&path, &[]).is_ok());
         assert_eq!(load_servers(&path), vec![]);
+    }
+
+    #[test]
+    fn save_keeps_entries_and_fields_it_does_not_manage() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("ng-mcp.json");
+        std::fs::write(
+            &path,
+            r#"{"servers":[
+                {"id":"third","name":"Third","description":"","enabled":true,"connection":{"type":"stdio","command":"x","args":[]}},
+                {"id":"sse","name":"Sse","description":"","enabled":true,"connection":{"type":"sse","url":"http://h"}},
+                {"id":"craft-ai-mcp-wordcraft","name":"WordCraft","description":"","enabled":true,"note":"mine",
+                 "connection":{"type":"stdio","command":"/x/wordcraft-cli.exe","args":["mcp"],"env":{},"cwd":"/w"}},
+                {"id":"gone","name":"Gone","description":"","enabled":true,"connection":{"type":"stdio","command":"g","args":[],"env":{}}}
+            ]}"#,
+        )
+        .unwrap();
+        let mut servers = load_servers(&path);
+        assert_eq!(servers.len(), 2, "only the two complete stdio entries parse");
+        servers.retain(|s| s.id != "gone");
+        if let Some(w) = servers.iter_mut().find(|s| s.id == "craft-ai-mcp-wordcraft") {
+            w.enabled = false;
+        }
+        save_servers(&path, &servers).unwrap();
+        let v: serde_json::Value = serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
+        let ids: Vec<&str> = v["servers"].as_array().unwrap().iter().filter_map(|e| e["id"].as_str()).collect();
+        assert_eq!(ids, vec!["third", "sse", "craft-ai-mcp-wordcraft"], "unreadable entries stay in place; a removed one goes");
+        let w = &v["servers"][2];
+        assert_eq!(w["enabled"], false);
+        assert_eq!(w["note"], "mine", "an unknown field of a managed entry stays");
+        assert_eq!(w["connection"]["cwd"], "/w", "an unknown connection field stays");
+        assert!(v["servers"][0]["connection"].get("env").is_none(), "an entry without env is left as it was");
     }
 
     #[test]
