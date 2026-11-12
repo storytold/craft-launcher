@@ -175,7 +175,8 @@ pub fn gateway_copy(dir: &Path) -> PathBuf {
 pub fn install_gateway(src: &Path, dir: &Path) -> Result<PathBuf, String> {
     let dest = gateway_copy(dir);
     let current = match (std::fs::metadata(src), std::fs::metadata(&dest)) {
-        (Ok(a), Ok(b)) => a.len() == b.len() && matches!((a.modified(), b.modified()), (Ok(ma), Ok(mb)) if mb >= ma),
+        // Same size: compare the bytes (a shipped build can keep an older timestamp).
+        (Ok(a), Ok(b)) => a.len() == b.len() && matches!((std::fs::read(src), std::fs::read(&dest)), (Ok(x), Ok(y)) if x == y),
         (Err(e), _) => return Err(format!("couldn't read the Craft gateway at {} ({e})", src.display())),
         _ => false,
     };
@@ -270,11 +271,11 @@ pub fn flags_state() -> Vec<FlagState> {
 /// agents off, so no client keeps an entry for a feature that is switched off.
 pub fn set_flag(id: &str, on: bool, services: &[LocalService]) -> Result<(), String> {
     let path = craft_flags::default_path().ok_or("couldn't find the per-user configuration folder")?;
-    craft_flags::set(&path, id, on).map_err(|e| e.to_string())?;
+    // Clean up first: if that fails, the flag stays on and Settings keeps the controls to retry.
     if id == craft_flags::AI_MCP.id && !on {
         set_enabled(false, services)?;
     }
-    Ok(())
+    craft_flags::set(&path, id, on).map_err(|e| e.to_string())
 }
 
 const NO_GATEWAY: &str = "the Craft gateway (craft-ai-mcp) is not installed beside the launcher";

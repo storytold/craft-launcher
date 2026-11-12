@@ -359,8 +359,11 @@ impl NativeBackend {
                 report_partial(app, &shared, &paths, platform);
             }
             // Local MCP state: which installed apps can be exposed + the unified bridge.
-            shared.emit(Event::Flags { flags: crate::agents::flags_state() });
-            shared.emit(mcp_state(&shared));
+            {
+                let _mcp = MCP_WORK.lock().unwrap_or_else(PoisonError::into_inner);
+                shared.emit(Event::Flags { flags: crate::agents::flags_state() });
+                shared.emit(mcp_state(&shared));
+            }
             drop(busy);
         });
     }
@@ -1670,7 +1673,7 @@ fn mcp_state_for(detected: &[local_mcp::LocalService]) -> Event {
         None => vec![],
     };
 
-    let services = detected
+    let services: Vec<McpService> = detected
         .iter()
         .map(|s| McpService {
             id: s.id.clone(),
@@ -1678,6 +1681,12 @@ fn mcp_state_for(detected: &[local_mcp::LocalService]) -> Event {
             command: s.cli_path.as_ref().map(|c| c.display().to_string()).unwrap_or_default(),
             enabled: local_mcp::service_enabled(&existing, &s.name),
         })
+        .chain(local_mcp::orphaned_entries(&existing, detected).into_iter().map(|(id, name, enabled)| McpService {
+            id,
+            name,
+            command: String::new(),
+            enabled,
+        }))
         .collect();
 
     let bridge_path = local_mcp::locate_bridge();
@@ -1693,24 +1702,34 @@ fn mcp_state_for(detected: &[local_mcp::LocalService]) -> Event {
     }
 }
 
+/// Serialises MCP commands and every publication of the MCP state, so a state read before a
+/// command can't arrive after that command's own (newer) state.
+static MCP_WORK: Mutex<()> = Mutex::new(());
+
 /// One MCP command, on a worker thread. Commands run one at a time, so a toggle and a refresh
 /// never write `ng-mcp.json` or the client configurations at once; detection runs once per
 /// command, and the new state is sent when it is done.
 fn run_mcp(shared: &Shared, cmd: Command) {
-    static MCP_WORK: Mutex<()> = Mutex::new(());
     let _guard = MCP_WORK.lock().unwrap_or_else(PoisonError::into_inner);
     let services = detected_services(shared);
     let result = match cmd {
         Command::McpSetService { service_id, enabled } => local_mcp::mcp_config_path().map_or(Ok(()), |p| {
             let mut servers = local_mcp::load_servers(&p);
-            if let Some(s) = services.iter().find(|s| s.id == service_id) {
-                if enabled {
+            match services.iter().find(|s| s.id == service_id) {
+                Some(s) if enabled => {
                     local_mcp::enable_service(&mut servers, s);
-                } else {
+                }
+                Some(s) => {
                     local_mcp::disable_service(&mut servers, s);
                 }
+                // An app no longer installed: its saved entry can still be switched off.
+                None if !enabled => {
+                    let gone = local_mcp::LocalService { id: service_id, name: String::new(), location: String::new(), cli_path: None };
+                    local_mcp::disable_service(&mut servers, &gone);
+                }
+                None => {}
             }
-            local_mcp::save_servers(&p, &servers)
+            local_mcp::save_servers(&p, &servers, &[])
         }),
         Command::McpSetBridge { port, enabled } => local_mcp::mcp_config_path().map_or(Ok(()), |p| {
             let mut servers = local_mcp::load_servers(&p);
@@ -1719,7 +1738,7 @@ fn run_mcp(shared: &Shared, cmd: Command) {
             } else {
                 local_mcp::disable_bridge(&mut servers);
             }
-            local_mcp::save_servers(&p, &servers)
+            local_mcp::save_servers(&p, &servers, &[])
         }),
         Command::McpSetAgents { enabled } => crate::agents::set_enabled(enabled, &services),
         Command::McpSetClient { client, added } => crate::agents::set_client(client, added),

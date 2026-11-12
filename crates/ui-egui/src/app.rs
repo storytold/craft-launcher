@@ -147,6 +147,9 @@ pub struct LauncherUi {
     /// unified HTTP bridge. Empty until the first [`Event::Mcp`].
     pub(crate) mcp_services: Vec<McpService>,
     pub(crate) mcp_bridge: McpBridge,
+    /// The first MCP state arrived: until then the bridge's switch and port show defaults, not
+    /// the saved setup, and stay disabled.
+    pub(crate) mcp_state_known: bool,
     /// AI agents: the gateway switch and the MCP clients.
     pub(crate) mcp_agents: McpAgents,
     /// The feature flags (Settings › Experimental features).
@@ -283,6 +286,7 @@ impl LauncherUi {
                 .collect(),
             mcp_services: Vec::new(),
             mcp_bridge: McpBridge::default(),
+            mcp_state_known: false,
             mcp_agents: McpAgents::default(),
             flags: Vec::new(),
             bridge_port: String::new(),
@@ -667,6 +671,7 @@ impl LauncherUi {
             }
             Event::Mcp { services, bridge, agents } => {
                 self.mcp_agents = agents;
+                self.mcp_state_known = true;
                 let port = bridge.port;
                 self.mcp_services = services;
                 self.mcp_bridge = bridge;

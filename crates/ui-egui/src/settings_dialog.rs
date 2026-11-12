@@ -464,8 +464,10 @@ impl LauncherUi {
             note(ui, tl!("Expose Craft AI apps as MCP servers so LM Studio / Bionic can drive their tools."));
             ui.add_space(8.0);
 
-            // Unified bridge (HTTP): editable port + toggle; status shown below the row.
-            self.draw_bridge_row(ui, &t);
+            // Unified bridge (HTTP): editable port + toggle; status shown below the row. Disabled
+            // until the saved state is known, so a click can't overwrite a saved port.
+            let known = self.mcp_state_known;
+            ui.add_enabled_ui(known, |ui| self.draw_bridge_row(ui, &t));
             ui.add_space(12.0);
 
             // Per-app stdio services in a collapsible section.

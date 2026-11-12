@@ -152,3 +152,19 @@ fn the_gateway_copy_is_executable() {
     let copy = install_gateway(&src, dir.path()).unwrap();
     assert_eq!(std::fs::metadata(copy).unwrap().permissions().mode() & 0o111, 0o111);
 }
+
+#[test]
+fn a_gateway_of_the_same_size_but_other_bytes_replaces_the_copy() {
+    let src_dir = tempfile::tempdir().unwrap();
+    let dir = tempfile::tempdir().unwrap();
+    let src = src_dir.path().join("craft-ai-mcp");
+    std::fs::write(&src, b"aaaa").unwrap();
+    let copy = install_gateway(&src, dir.path()).unwrap();
+    // A new build of the same size whose timestamp is older than the copy.
+    std::fs::write(&src, b"bbbb").unwrap();
+    let old = std::fs::File::options().write(true).open(&src).unwrap();
+    old.set_modified(std::time::SystemTime::UNIX_EPOCH + std::time::Duration::from_secs(1_000_000)).unwrap();
+    drop(old);
+    install_gateway(&src, dir.path()).unwrap();
+    assert_eq!(std::fs::read(&copy).unwrap(), b"bbbb");
+}

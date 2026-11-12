@@ -95,7 +95,7 @@ pub fn load_servers(path: &Path) -> Vec<ServerEntry> {
 
 /// Save `servers` back to the config file, preserving any top-level keys other than `servers`.
 /// Writes atomically (temp file + rename) so a crash never leaves a half-written config.
-pub fn save_servers(path: &Path, servers: &[ServerEntry]) -> Result<(), String> {
+pub fn save_servers(path: &Path, servers: &[ServerEntry], removed: &[&str]) -> Result<(), String> {
     // Distinguish "no config yet" (safe to create) from "a config exists but is not valid JSON"
     // (refuse rather than clobber it). A file we cannot read as JSON may hold content the user
     // cares about; overwriting it would be a lossy write.
@@ -106,8 +106,13 @@ pub fn save_servers(path: &Path, servers: &[ServerEntry]) -> Result<(), String> 
         },
         Err(_) => None, // missing (or unreadable): start fresh
     };
-    let old = existing.as_ref().and_then(|v| v.get("servers")).and_then(serde_json::Value::as_array).map(Vec::as_slice).unwrap_or_default();
-    let array = merge_servers(old, servers)?;
+    // A `servers` that is not a list is not ours to replace.
+    let old = match existing.as_ref().and_then(|v| v.get("servers")) {
+        None => &[][..],
+        Some(serde_json::Value::Array(a)) => a.as_slice(),
+        Some(_) => return Err(format!("`servers` in {} is not a list; refusing to overwrite it", path.display())),
+    };
+    let array = merge_servers(old, servers, removed)?;
     // Preserve any top-level keys other than `servers`; replace the array. If the file was not
     // a JSON object, it is not an `ng-mcp.json` shape and starts fresh.
     let mut map = serde_json::Map::new();
@@ -126,8 +131,9 @@ pub fn save_servers(path: &Path, servers: &[ServerEntry]) -> Result<(), String> 
 /// The new `servers` array: `servers` merged into the file's `old` entries. An entry this module
 /// cannot read (another connection type, a missing field, a shape Bionic adds later) is kept as
 /// it is and where it was; an entry it manages keeps any field it doesn't know; an entry it can
-/// read but that is no longer in `servers` was removed on purpose and is left out.
-fn merge_servers(old: &[serde_json::Value], servers: &[ServerEntry]) -> Result<Vec<serde_json::Value>, String> {
+/// read but that is not in `servers` stays too (another program may have added it since `servers`
+/// was loaded), unless its id is in `removed`.
+fn merge_servers(old: &[serde_json::Value], servers: &[ServerEntry], removed: &[&str]) -> Result<Vec<serde_json::Value>, String> {
     let mut used = vec![false; servers.len()];
     let mut out = Vec::with_capacity(old.len().max(servers.len()));
     for raw in old {
@@ -137,6 +143,9 @@ fn merge_servers(old: &[serde_json::Value], servers: &[ServerEntry]) -> Result<V
         }
         let id = raw.get("id").and_then(serde_json::Value::as_str);
         let Some(i) = servers.iter().enumerate().position(|(i, s)| Some(s.id.as_str()) == id && !used.get(i).copied().unwrap_or(true)) else {
+            if !id.is_some_and(|id| removed.contains(&id)) {
+                out.push(raw.clone());
+            }
             continue;
         };
         if let (Some(flag), Some(entry)) = (used.get_mut(i), servers.get(i)) {
@@ -168,6 +177,19 @@ fn overlay(raw: &serde_json::Value, new: serde_json::Value) -> serde_json::Value
         merged.insert(k, value);
     }
     serde_json::Value::Object(merged)
+}
+
+/// Entries this module added (`craft-ai-mcp-<app>`) for apps that are no longer installed, as
+/// `(app id, name, enabled)`, so Settings can still switch them off.
+pub fn orphaned_entries(servers: &[ServerEntry], installed: &[LocalService]) -> Vec<(String, String, bool)> {
+    servers
+        .iter()
+        .filter_map(|e| {
+            let id = e.id.strip_prefix("craft-ai-mcp-")?;
+            let known = installed.iter().any(|s| s.id == id || s.name == e.name);
+            (!known && is_stdio(e)).then(|| (id.to_string(), e.name.clone(), e.enabled))
+        })
+        .collect()
 }
 
 /// Every Craft App that has a usable CLI on this machine, in suite order. Detection is the single
@@ -525,7 +547,7 @@ mod tests {
                 env: HashMap::new(),
             },
         }];
-        assert!(save_servers(&path, &servers).is_ok());
+        assert!(save_servers(&path, &servers, &[]).is_ok());
 
         let loaded = load_servers(&path);
         assert_eq!(loaded.len(), 1);
@@ -564,7 +586,7 @@ mod tests {
     fn save_creates_the_file_when_it_is_missing() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("ng-mcp.json");
-        assert!(save_servers(&path, &[]).is_ok());
+        assert!(save_servers(&path, &[], &[]).is_ok());
         assert_eq!(load_servers(&path), vec![]);
     }
 
@@ -589,7 +611,7 @@ mod tests {
         if let Some(w) = servers.iter_mut().find(|s| s.id == "craft-ai-mcp-wordcraft") {
             w.enabled = false;
         }
-        save_servers(&path, &servers).unwrap();
+        save_servers(&path, &servers, &["gone"]).unwrap();
         let v: serde_json::Value = serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
         let ids: Vec<&str> = v["servers"].as_array().unwrap().iter().filter_map(|e| e["id"].as_str()).collect();
         assert_eq!(ids, vec!["third", "sse", "craft-ai-mcp-wordcraft"], "unreadable entries stay in place; a removed one goes");
@@ -598,6 +620,52 @@ mod tests {
         assert_eq!(w["note"], "mine", "an unknown field of a managed entry stays");
         assert_eq!(w["connection"]["cwd"], "/w", "an unknown connection field stays");
         assert!(v["servers"][0]["connection"].get("env").is_none(), "an entry without env is left as it was");
+    }
+
+    #[test]
+    fn save_keeps_an_entry_added_since_the_load_and_refuses_a_servers_object() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("ng-mcp.json");
+        let entry = |id: &str| {
+            format!(
+                r#"{{"id":"{id}","name":"{id}","description":"","enabled":true,"connection":{{"type":"stdio","command":"x","args":[],"env":{{}}}}}}"#
+            )
+        };
+        std::fs::write(&path, format!(r#"{{"servers":[{}]}}"#, entry("mine"))).unwrap();
+        let mut servers = load_servers(&path);
+        // Another program adds an entry after the load.
+        std::fs::write(&path, format!(r#"{{"servers":[{},{}]}}"#, entry("mine"), entry("theirs"))).unwrap();
+        if let Some(s) = servers.first_mut() {
+            s.enabled = false;
+        }
+        save_servers(&path, &servers, &[]).unwrap();
+        let ids: Vec<String> = load_servers(&path).into_iter().map(|s| s.id).collect();
+        assert_eq!(ids, vec!["mine", "theirs"], "the entry added since is kept");
+
+        let obj = dir.path().join("obj.json");
+        let text = r#"{"servers":{"third-party":{"command":"x"}}}"#;
+        std::fs::write(&obj, text).unwrap();
+        assert!(save_servers(&obj, &[], &[]).is_err());
+        assert_eq!(std::fs::read_to_string(&obj).unwrap(), text, "left as it was");
+    }
+
+    #[test]
+    fn entries_of_apps_no_longer_installed_are_listed() {
+        let entry = |id: &str, name: &str| ServerEntry {
+            id: id.into(),
+            name: name.into(),
+            description: String::new(),
+            enabled: true,
+            connection: Connection::Stdio { command: "/x".into(), args: vec![], env: HashMap::new() },
+        };
+        let servers = vec![entry("craft-ai-mcp-wordcraft", "WordCraft"), entry("craft-ai-mcp-gone", "GoneCraft"), entry("other", "Other")];
+        let installed = vec![LocalService { id: "wordcraft".into(), name: "WordCraft".into(), location: String::new(), cli_path: None }];
+        assert_eq!(orphaned_entries(&servers, &installed), vec![("gone".to_string(), "GoneCraft".to_string(), true)]);
+        // Switching it off finds it by its id even without a name.
+        let mut servers = servers;
+        let gone = LocalService { id: "gone".into(), name: String::new(), location: String::new(), cli_path: None };
+        assert!(disable_service(&mut servers, &gone));
+        assert!(!servers.iter().any(|s| s.id == "craft-ai-mcp-gone" && s.enabled));
     }
 
     #[test]
@@ -614,7 +682,7 @@ mod tests {
             enabled: true,
             connection: Connection::Stdio { command: "/x/wordcraft-cli.exe".into(), args: vec!["mcp".into()], env: HashMap::new() },
         }];
-        let err = save_servers(&path, &servers).unwrap_err();
+        let err = save_servers(&path, &servers, &[]).unwrap_err();
         assert!(err.contains("not valid JSON"), "{err}");
 
         // The original bytes are still on disk.
