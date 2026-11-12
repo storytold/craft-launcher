@@ -185,6 +185,8 @@ pub struct NativeBackend {
     /// The version-choice file the apps read (see [`crate::pins`]); `None` when there is no
     /// per-user data folder.
     pins: Option<std::path::PathBuf>,
+    /// What `Command::SetDefault` runs: [`crate::default_apps::set_default`] (a test waits in it).
+    set_default: fn(&'static CraftApp) -> Result<String, String>,
 }
 
 impl NativeBackend {
@@ -233,7 +235,7 @@ impl NativeBackend {
         if let Some(path) = &pins {
             crate::pins::prepare_folder(path);
         }
-        let backend = Self { shared, paths, http, source, platform: native_platform(), pins };
+        let backend = Self { shared, paths, http, source, platform: native_platform(), pins, set_default: crate::default_apps::set_default };
         backend.replay_cache();
         backend.detect_all();
         backend
@@ -1450,8 +1452,9 @@ impl Backend for NativeBackend {
                 }
                 // In the Flatpak the menu-entry lookup can wait on `flatpak-spawn --host`, so it runs off the UI thread.
                 let shared = self.shared.clone();
+                let set_default = self.set_default;
                 std::thread::spawn(move || {
-                    let result = crate::default_apps::set_default(def);
+                    let result = set_default(def);
                     shared.emit(Event::DefaultSet { app, result });
                 });
             }
@@ -2023,7 +2026,15 @@ mod tests {
         let shared = shared();
         shared.latest.lock().unwrap().insert(APP.to_string(), release("0.5.0"));
         let shared = Arc::new(shared);
-        NativeBackend { shared, paths: Paths::under(root), http: None, source, platform: Some(platform), pins: Some(root.join("versions.json")) }
+        NativeBackend {
+            shared,
+            paths: Paths::under(root),
+            http: None,
+            source,
+            platform: Some(platform),
+            pins: Some(root.join("versions.json")),
+            set_default: crate::default_apps::set_default,
+        }
     }
 
     /// What the installability answers in `events` said about [`APP`], and which `Latest` and
@@ -2580,5 +2591,51 @@ mod tests {
         let events = backend.poll();
         assert!(events.iter().any(|e| matches!(e, Event::DefaultSet { app, result: Err(_) } if app == APP)), "{events:?}");
         assert!(!events.iter().any(|e| matches!(e, Event::JobFinished { .. })), "{events:?}");
+    }
+
+    /// Held by [`set_default_runs_off_the_callers_thread`] while its lookup should be waiting.
+    static LOOKUP_GATE: Mutex<()> = Mutex::new(());
+
+    /// A lookup that waits for [`LOOKUP_GATE`], as `flatpak-spawn --host` can; it gives up after 5 s
+    /// so that a caller holding the gate itself fails the test instead of hanging it.
+    fn gated_set_default(_: &'static CraftApp) -> Result<String, String> {
+        let start = std::time::Instant::now();
+        while start.elapsed() < Duration::from_secs(5) {
+            if LOOKUP_GATE.try_lock().is_ok() {
+                return Ok("set".into());
+            }
+            std::thread::sleep(Duration::from_millis(10));
+        }
+        Err("the lookup waited 5 s".into())
+    }
+
+    /// "Set as default" doesn't hold up the caller (the UI thread): `send` returns while the
+    /// lookup is still waiting, and the answer comes once it's done.
+    #[test]
+    fn set_default_runs_off_the_callers_thread() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut backend = backend(dir.path(), Platform { os: Os::Linux, arch: Arch::X64 }, None);
+        backend.set_default = gated_set_default;
+        backend.shared.installed.lock().unwrap().insert(APP.to_string(), copy_of("0.5.0", InstallSource::Launcher, "/opt/photocraft"));
+        let answer = |events: Vec<Event>| {
+            events.into_iter().find_map(|e| match e {
+                Event::DefaultSet { app, result } if app == APP => Some(result),
+                _ => None,
+            })
+        };
+        let gate = LOOKUP_GATE.lock().unwrap_or_else(PoisonError::into_inner);
+        backend.send(Command::SetDefault { app: APP.into() });
+        let early = answer(backend.poll());
+        drop(gate);
+        assert_eq!(early, None, "send waited for the lookup");
+        let start = std::time::Instant::now();
+        let result = loop {
+            if let Some(result) = answer(backend.poll()) {
+                break result;
+            }
+            assert!(start.elapsed() < Duration::from_secs(10), "no answer");
+            std::thread::sleep(Duration::from_millis(10));
+        };
+        assert_eq!(result, Ok("set".to_string()));
     }
 }

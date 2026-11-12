@@ -203,6 +203,16 @@ fn find_entry(dirs: &[PathBuf], file: &str) -> Option<(PathBuf, Vec<String>)> {
     })
 }
 
+/// The app's menu entry that lists file types, as `(file name, path, types)`: under its current
+/// bundle ID first, then a former one, which an older install is still named after.
+fn find_app_entry(app: &CraftApp, lookup: impl Fn(&str) -> Option<(PathBuf, Vec<String>)>) -> Option<(String, PathBuf, Vec<String>)> {
+    app.bundle_ids().find_map(|id| {
+        let file = format!("{id}.desktop");
+        let (path, types) = lookup(&file)?;
+        Some((file, path, types))
+    })
+}
+
 /// Makes `app` the default for the file types its installed menu entry lists. `Ok` says how many.
 #[cfg(not(target_os = "linux"))]
 pub fn set_default(app: &CraftApp) -> Result<String, String> {
@@ -212,10 +222,11 @@ pub fn set_default(app: &CraftApp) -> Result<String, String> {
 /// Makes `app` the default for the file types its installed menu entry lists. `Ok` says how many.
 #[cfg(target_os = "linux")]
 pub fn set_default(app: &CraftApp) -> Result<String, String> {
-    let desktop_id = format!("{}.desktop", app.bundle_id());
-    let found = find_entry(&entry_dirs(), &desktop_id).or_else(|| if crate::process::in_sandbox() { host_entry(&desktop_id) } else { None });
-    let Some((entry, types)) = found else {
-        return Err(format!("Couldn't set {} as the default: its menu entry ({desktop_id}) lists no file types", app.name));
+    let dirs = entry_dirs();
+    let sandbox = crate::process::in_sandbox();
+    let found = find_app_entry(app, |file| find_entry(&dirs, file).or_else(|| if sandbox { host_entry(file) } else { None }));
+    let Some((desktop_id, entry, types)) = found else {
+        return Err(format!("Couldn't set {} as the default: its menu entry ({}.desktop) lists no file types", app.name, app.bundle_id()));
     };
     let list = user_list_path().ok_or_else(|| format!("Couldn't set {} as the default: no home folder", app.name))?;
     write_defaults(&list, &desktop_id, &types).map_err(|e| format!("Couldn't set {} as the default: {e}", app.name))?;
@@ -324,6 +335,43 @@ mod tests {
         let (path, found) = find_entry(&[a, b.clone()], ID).unwrap();
         assert_eq!((path, found), (b.join(ID), types(&["text/csv"])));
         assert!(find_entry(&[root.path().join("none")], ID).is_none());
+    }
+
+    /// SolidCraft installed under a former bundle ID is still detected, so its entry is found by
+    /// that ID and named in the list; the current ID wins when both are there.
+    #[test]
+    fn finds_an_entry_under_a_former_bundle_id() {
+        let app = CraftApp::by_id("solidcraft").unwrap();
+        let dir = tempfile::tempdir().unwrap();
+        let dirs = [dir.path().to_path_buf()];
+        let lookup = |file: &str| find_entry(&dirs, file);
+        assert!(find_app_entry(app, lookup).is_none());
+        std::fs::write(dir.path().join("ai.storyteller.solvecraft.desktop"), "[Desktop Entry]\nMimeType=model/stl;\n").unwrap();
+        let (file, path, found) = find_app_entry(app, lookup).unwrap();
+        assert_eq!(
+            (file.as_str(), path, found),
+            ("ai.storyteller.solvecraft.desktop", dir.path().join("ai.storyteller.solvecraft.desktop"), types(&["model/stl"]))
+        );
+        std::fs::write(dir.path().join("io.tangencylabs.solidcraft.desktop"), "[Desktop Entry]\nMimeType=model/step;\n").unwrap();
+        assert_eq!(find_app_entry(app, lookup).unwrap().0, "io.tangencylabs.solidcraft.desktop");
+    }
+
+    /// A second write waits for one in progress instead of reading the list before it's replaced.
+    #[test]
+    fn a_write_waits_for_one_in_progress() {
+        let root = tempfile::tempdir().unwrap();
+        let list = root.path().join("mimeapps.list");
+        let held = WRITE_LOCK.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+        let writer = {
+            let list = list.clone();
+            std::thread::spawn(move || write_defaults(&list, ID, &types(&["text/csv"])))
+        };
+        std::thread::sleep(std::time::Duration::from_millis(300));
+        let early = list.exists();
+        drop(held);
+        writer.join().unwrap().unwrap();
+        assert!(!early, "the write went ahead while another one held the list");
+        assert!(std::fs::read_to_string(&list).unwrap().contains("text/csv="));
     }
 
     #[test]
