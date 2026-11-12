@@ -227,6 +227,16 @@ $suiteRow = '        <RemoveFolder Id="RemoveSuiteFolder" Directory="CraftSuiteF
 $appRow = '        <RemoveFolder Id="RemoveInstallFolder" Directory="INSTALLFOLDER" On="uninstall" />'
 $mutations = @(
   @{
+    Name = 'retargeted-cleanup-alias'
+    Why = 'an allowed cleanup alias must not be retargeted to the shared Programs folder by another property action'
+    Expect = 'may write the install folder'
+    Pairs = @(
+      @{ From = '        <Directory Id="CraftSuiteFolder" Name="ArtCraft">'; To = '        <Directory Id="CraftSuiteFolder" Name="ArtCraft">' + $nl + '          <Directory Id="CLEANUPALIAS" Name="Launcher" />' },
+      @{ From = $suiteRow; To = $suiteRow + $nl + '        <RemoveFolder Id="RemoveCleanupAlias" Directory="CLEANUPALIAS" On="uninstall" />' },
+      @{ From = '    <SetProperty Id="INSTALLFOLDER" Action="CraftRestoreLauncherFolder"'; To = '    <SetProperty Id="CLEANUPALIAS" Action="CraftRetargetCleanupAlias" Value="[LocalProgramsFolder]" Before="CostInitialize" Sequence="both" />' + $nl + '    <SetProperty Id="INSTALLFOLDER" Action="CraftRestoreLauncherFolder"' }
+    )
+  },
+  @{
     Name = 'same-relative-path-under-another-root'
     Why = 'a matching Programs/ArtCraft/Launcher suffix under DesktopFolder is not the owned LocalAppDataFolder path'
     Expect = 'not one of the folders this MSI creates'

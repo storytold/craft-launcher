@@ -142,6 +142,13 @@ function Assert-CleanupPolicy($Database, $Directories, [string] $InstallRoot) {
   $reserved = @{}
   foreach ($id in @($InstallRoot, $suiteRoot)) { $reserved[([string]$id).ToUpperInvariant()] = $true }
   foreach ($id in (Get-DirectoryAncestorIds $Directories $suiteRoot)) { $reserved[([string]$id).ToUpperInvariant()] = $true }
+  # A cleanup row may use another Directory ID for an owned path. Protect that alias and its
+  # parents too, or a setter could turn the allowed alias into a shared-folder removal.
+  foreach ($remove in $removeRows) {
+    $target = [string]$remove[2]
+    $reserved[$target.ToUpperInvariant()] = $true
+    foreach ($id in (Get-DirectoryAncestorIds $Directories $target)) { $reserved[([string]$id).ToUpperInvariant()] = $true }
+  }
   foreach ($action in (Read-Rows $Database 'SELECT `Action`, `Type`, `Source`, `Target` FROM `CustomAction`' 4)) {
     # For the property and directory setters (base types 51 and 35) the CustomAction row carries the
     # name of the property or directory being written in Source and the new value in Target (the
