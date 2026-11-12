@@ -113,12 +113,10 @@ pub fn save_servers(path: &Path, servers: &[ServerEntry]) -> Result<(), String> 
     // Preserve any top-level keys other than `servers`; replace the array. If the file was not
     // a JSON object, it is not an `ng-mcp.json` shape and starts fresh.
     let mut map = serde_json::Map::new();
-    if let Some(existing_value) = existing {
-        if let Some(obj) = existing_value.as_object() {
-            for (k, v) in obj {
-                if k != "servers" {
-                    map.insert(k.clone(), v.clone());
-                }
+    if let Some(obj) = existing.as_ref().and_then(serde_json::Value::as_object) {
+        for (k, v) in obj {
+            if k != "servers" {
+                map.insert(k.clone(), v.clone());
             }
         }
     }
@@ -219,7 +217,7 @@ pub fn enable_service(servers: &mut Vec<ServerEntry>, service: &LocalService) ->
 
 /// Disable the entry for `service`, leaving it in the list (Bionic keeps a disabled row). Matches
 /// by display name first, then the deterministic id. Returns false when there was nothing to disable.
-pub fn disable_service(servers: &mut Vec<ServerEntry>, service: &LocalService) -> bool {
+pub fn disable_service(servers: &mut [ServerEntry], service: &LocalService) -> bool {
     // Only disable an entry that is one of ours (stdio); a same-named entry of another connection
     // type is left alone and we fall back to the deterministic id.
     if let Some(i) = find_by_name(servers, &service.name).filter(|&i| is_stdio(&servers[i])) {
@@ -231,15 +229,11 @@ pub fn disable_service(servers: &mut Vec<ServerEntry>, service: &LocalService) -
     }
     let id = entry_id(&service.id);
     match servers.iter_mut().find(|e| e.id == id) {
-        Some(e) => {
-            if e.enabled {
-                e.enabled = false;
-                true
-            } else {
-                false
-            }
+        Some(e) if e.enabled => {
+            e.enabled = false;
+            true
         }
-        None => false,
+        _ => false,
     }
 }
 
@@ -260,7 +254,7 @@ pub fn remove_service(servers: &mut Vec<ServerEntry>, service: &LocalService) ->
 
 /// Whether an entry with display name `name` is currently enabled.
 pub fn service_enabled(servers: &[ServerEntry], name: &str) -> bool {
-    find_by_name(servers, name).map_or(false, |i| servers[i].enabled)
+    find_by_name(servers, name).is_some_and(|i| servers[i].enabled)
 }
 
 /// Port the unified `craft-ai-mcp` bridge listens on by default.
@@ -274,6 +268,7 @@ pub const BRIDGE_ID: &str = "craft-ai-mcp";
 /// Checks, in order:
 /// - `ARTCRAFT_LAUNCHER_BRIDGE_PATH` (dev/test override);
 /// - a small set of derived install locations.
+///
 /// Returns `None` when no bridge is found so callers can fall back to per-app stdio entries.
 pub fn locate_bridge() -> Option<PathBuf> {
     let override_path = std::env::var("ARTCRAFT_LAUNCHER_BRIDGE_PATH").ok().map(PathBuf::from);
@@ -346,7 +341,7 @@ pub fn bridge_port_current(servers: &[ServerEntry]) -> Option<u16> {
 
 /// Whether the unified-bridge entry is currently present and enabled.
 pub fn bridge_enabled(servers: &[ServerEntry]) -> bool {
-    find_bridge(servers).map_or(false, |i| servers[i].enabled)
+    find_bridge(servers).is_some_and(|i| servers[i].enabled)
 }
 
 /// Port from a `streamableHttp` URL like `http://127.0.0.1:12345/mcp`, or None when absent.
@@ -381,17 +376,13 @@ pub fn enable_bridge(servers: &mut Vec<ServerEntry>, port: u16) -> bool {
 }
 
 /// Disable the unified-bridge entry (leaving it in the list). Returns false when absent or already off.
-pub fn disable_bridge(servers: &mut Vec<ServerEntry>) -> bool {
+pub fn disable_bridge(servers: &mut [ServerEntry]) -> bool {
     match find_bridge(servers) {
-        Some(i) => {
-            if servers[i].enabled {
-                servers[i].enabled = false;
-                true
-            } else {
-                false
-            }
+        Some(i) if servers[i].enabled => {
+            servers[i].enabled = false;
+            true
         }
-        None => false,
+        _ => false,
     }
 }
 
