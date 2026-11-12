@@ -4,7 +4,7 @@
 use artcraft_launcher_core::{Os, PackageKind};
 use egui::{RichText, Ui, vec2};
 
-use crate::app::{Host, LauncherUi};
+use crate::app::{Host, LauncherUi, TitleBar};
 use crate::i18n::fmt;
 use crate::settings::{CheckEvery, Settings};
 use crate::sheet;
@@ -112,10 +112,10 @@ impl LauncherUi {
             theme::COLUMN_GAP,
             |ui| {
                 let Ok(mut state) = state.try_borrow_mut() else { return };
-                let (this, _) = &mut *state;
+                let (this, host) = &mut *state;
                 this.settings_language(ui);
                 this.settings_updates(ui);
-                this.settings_appearance(ui);
+                this.settings_appearance(ui, &**host);
             },
             |ui| {
                 let Ok(mut state) = state.try_borrow_mut() else { return };
@@ -359,13 +359,18 @@ impl LauncherUi {
         });
     }
 
-    fn settings_appearance(&mut self, ui: &mut Ui) {
+    /// The theme, community-app visibility and, where the launcher draws its own title bar, whether
+    /// that bar shows the window buttons.
+    fn settings_appearance(&mut self, ui: &mut Ui, host: &dyn Host) {
         let mut theme_choice = self.settings.theme;
         sheet::panel(ui, tl!("Appearance"), |ui| {
             ui.horizontal(|ui| {
                 widgets::cells(ui, &mut theme_choice, &ThemeChoice::ALL.map(|c| (c, Cell { label: c.label(), tip: c.label(), count: None })));
             });
             ui.checkbox(&mut self.settings.hide_community_apps, tl!("Hide community apps"));
+            if host.title_bar() == TitleBar::Custom {
+                ui.checkbox(&mut self.settings.hide_window_buttons, tl!("Hide the minimize, maximize and close buttons"));
+            }
         });
         self.settings.theme = theme_choice;
     }

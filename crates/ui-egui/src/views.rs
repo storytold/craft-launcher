@@ -180,7 +180,7 @@ impl LauncherUi {
             let (cell, _) = ui.allocate_exact_size(vec2(logo.x + 40.0, h), Sense::hover());
             egui::Image::new(crate::icons::artcraft_logo(t.dark)).alt_text(tl!("ArtCraft")).paint_at(ui, Rect::from_center_size(cell.center(), logo));
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                if bar == TitleBar::Custom {
+                if bar == TitleBar::Custom && !self.settings.hide_window_buttons {
                     widgets::window_buttons(ui, h);
                 }
                 if widgets::nav_icon(ui, widgets::Glyph::Settings, tl!("Settings"), h, false).clicked() {
