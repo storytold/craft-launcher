@@ -3572,9 +3572,15 @@ fn the_rate_limit_notice_never_runs_under_the_footer_links() {
         // Cut short in a narrow window, but enough of it left to read.
         assert!(notice.width() >= 120.0 && notice.right() <= width, "{width}: notice {notice:?}");
         // Everything on the footer's right: the website, GitHub and Discord icons and the social icons.
+        // They are square; a card scrolled under the footer can put its own (wide) "GitHub" link on
+        // the same row, hidden but still in the accessibility tree.
         let mut right = Vec::new();
         for label in ["Website", "GitHub", "Discord", "X", "YouTube", "TikTok", "Instagram", "LinkedIn"] {
-            right.extend(h.query_all_by_label(label).map(|n| n.rect()).filter(|r| (r.center().y - notice.center().y).abs() < 12.0));
+            right.extend(
+                h.query_all_by_label(label)
+                    .map(|n| n.rect())
+                    .filter(|r| (r.center().y - notice.center().y).abs() < 12.0 && (r.width() - r.height()).abs() < 1.0),
+            );
         }
         assert_eq!(right.len(), 8, "{width}: {right:?}");
         assert!(h.query_by_label_contains("Installing for").is_none(), "{width}: the footer no longer names the platform");
@@ -4410,6 +4416,42 @@ fn launcher_version_padlock_confirms_and_returns_to_settings() {
     assert_eq!(h.state().as_ref().unwrap().settings.launcher_version, VersionTrack::Stable);
     h.get_by_label("Launcher version");
     assert!(sent.borrow().iter().any(|c| matches!(c, Command::Configure(options) if options.launcher_version == VersionTrack::Stable)));
+}
+
+/// Grid cards are all one height, and "Last updated" sits the same distance above the action row
+/// in every one of them, so the dates line up along a row. It used to follow the description, so
+/// a description that wrapped pushed it lower than its neighbours and under the buttons.
+#[test]
+fn every_cards_date_sits_at_the_same_place_above_its_actions() {
+    for width in [1180.0, 1020.0, 1500.0] {
+        let (mut h, _) = harness(ViewMode::Grid, egui::Theme::Light, true);
+        h.set_size(egui::vec2(width, 1200.0));
+        h.run_steps(8);
+        let buttons: Vec<egui::Rect> = h.query_all_by_role(egui::accesskit::Role::Button).map(|n| n.rect()).collect();
+        // A date's action row: the nearest buttons below it that start in its card's text column
+        // (at least 280 px wide: a 320 px card less its padding; the next card starts further right).
+        let actions_top = |date: egui::Rect| {
+            buttons
+                .iter()
+                .filter(|b| b.top() > date.top() && b.left() >= date.left() - 1.0 && b.left() < date.left() + 280.0)
+                .map(|b| b.top())
+                .reduce(f32::min)
+        };
+        let dates: Vec<egui::Rect> = h.query_all_by_label_contains("Last updated").map(|n| n.rect()).collect();
+        assert!(dates.len() >= 6, "{width} px: only {} cards show a date", dates.len());
+        let gaps: Vec<f32> = dates.iter().filter_map(|d| actions_top(*d).map(|top| top - d.bottom())).collect();
+        assert_eq!(gaps.len(), dates.len(), "{width} px: a date has no action row below it");
+        let (low, high) = gaps.iter().fold((f32::INFINITY, f32::NEG_INFINITY), |(lo, hi), g| (lo.min(*g), hi.max(*g)));
+        assert!(low >= 8.0, "{width} px: a date ends {low} px above its card's actions (gaps {gaps:?})");
+        assert!(high - low <= 0.5, "{width} px: dates sit {low}–{high} px above their actions, not one place (gaps {gaps:?})");
+        // The fullest cards (a status badge and a download size above the description) still keep
+        // two lines of it: PhotoCraft's wraps at this width.
+        if width == 1020.0 {
+            let photo = h.get_by_label_contains("The image editor you already know").rect();
+            assert!(photo.height() >= 30.0, "PhotoCraft's description is cut to {} px", photo.height());
+        }
+        snapshot(&mut h, &format!("grid_card_dates_{width}"));
+    }
 }
 
 /// At the minimum card width a long name and its byline ("by Tangency Labs", "by UCS Care Group")

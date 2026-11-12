@@ -38,9 +38,12 @@ pub(crate) fn last_updated(e: &AppEntry) -> Option<String> {
     Some(fmt(tl!("Last updated: {date}"), &[("date", &crate::views::date_text(at))]))
 }
 
+/// The size of a card's description.
+pub(crate) const BLURB_SIZE: f32 = 13.0;
+
 /// `text` in at most `rows` lines, ending in "…" when it is cut.
 pub(crate) fn blurb(ui: &mut Ui, text: &str, color: Color32, rows: usize) {
-    let mut job = egui::text::LayoutJob::simple(text.to_string(), FontId::proportional(13.0), color, ui.available_width());
+    let mut job = egui::text::LayoutJob::simple(text.to_string(), FontId::proportional(BLURB_SIZE), color, ui.available_width());
     job.wrap.max_rows = rows;
     job.wrap.break_anywhere = false;
     job.wrap.overflow_character = Some('…');
