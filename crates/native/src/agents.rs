@@ -20,90 +20,46 @@ use artcraft_launcher_core::CraftApp;
 use crate::detect;
 use crate::manifest::Manifest;
 
-/// The app list the gateway reads.
-pub const APPS_FILE: &str = "apps.json";
-/// Same override the gateway honours (tests, portable installs).
-pub const DIR_ENV: &str = "CRAFT_MCP_DIR";
 /// The key our entry has in a client's `mcpServers`.
 pub use artcraft_launcher_core::mcp_config::SERVER_KEY;
+/// The app list and its folder override, from `craft-ai-agents` (the one place that reads and
+/// writes them, for the launcher, the gateway and every app).
+pub use craft_ai_agents::{APPS_FILE, DIR_ENV};
 /// Largest client configuration read; anything bigger is not a configuration file.
 const MAX_CONFIG_BYTES: u64 = 64 << 20;
 
-/// The gateway's folder: [`DIR_ENV`], otherwise `ArtCraft/mcp` in the per-user local
+/// The app list's folder: [`DIR_ENV`], otherwise `ArtCraft/mcp` in the per-user local
 /// configuration folder (beside the AI layer's `ArtCraft/ai`).
 pub fn mcp_dir() -> Option<PathBuf> {
-    match std::env::var_os(DIR_ENV) {
-        Some(d) if !d.is_empty() => Some(PathBuf::from(d)),
-        _ => dirs::config_local_dir().map(|b| b.join("ArtCraft").join("mcp")),
-    }
+    craft_ai_agents::agents_dir()
 }
 
-/// Arguments after `mcp` for apps whose plain `mcp` is not what agents should get:
-/// - PhotoCraft: `--live` reaches the open window through the connection the app publishes, and
-///   starts it when it is closed (storytold/photocraft#13396).
-/// - VectorCraft: plain `mcp` attaches to a control port that has no token yet whenever something
-///   listens on 7979; `--headless` keeps agents in their own session until it authenticates.
-///
-/// Each is used only when that install's CLI accepts it ([`cli_accepts`]), so an older release
-/// still gets plain `mcp` instead of an error.
-const MCP_EXTRA_ARGS: &[(&str, &[&str])] = &[("photocraft", &["--live"]), ("vectorcraft", &["--headless"])];
-
-/// Whether `cli mcp --help` names every argument of `extra` ([`help_names`]). Asking the CLI to
-/// parse them is no test: some CLIs print help and succeed whatever comes before `--help`. No
-/// console window, standard input closed, 5 s at most.
-fn cli_accepts(cli: &Path, extra: &[&str]) -> bool {
-    let Some(program) = cli.to_str() else { return false };
-    crate::process::capture(program, &["mcp", "--help"], std::time::Duration::from_secs(5)).is_some_and(|help| help_names(&help, extra))
-}
-
-/// Whether `help` has each of `args` as a word of its own (`--live`, not `--lively`).
-fn help_names(help: &str, args: &[&str]) -> bool {
-    let words: Vec<&str> = help.split(|c: char| c.is_whitespace() || "[]|,()=<>`'\"".contains(c)).collect();
-    args.iter().all(|a| words.contains(a))
-}
-
-/// The app list for `services`: each app with a CLI, started as `<cli> mcp` plus its
-/// [`MCP_EXTRA_ARGS`]. Apps without a CLI beside them are left out.
-pub fn apps_json(services: &[InstalledApp]) -> Value {
-    apps_json_with(services, &cli_accepts)
-}
-
-/// [`apps_json`], asking `accepts` whether a CLI takes an app's extra arguments.
-fn apps_json_with(services: &[InstalledApp], accepts: &dyn Fn(&Path, &[&str]) -> bool) -> Value {
-    let apps: Vec<Value> = services
+/// The app list for `services`: each app with a CLI, started as plain `<cli> mcp`. By the suite's
+/// rule that command works in the app's open window when the app runs and accepts agents, and
+/// headless otherwise, so no app needs other arguments. Apps without a CLI beside them are left out.
+pub fn app_entries(services: &[InstalledApp]) -> Vec<craft_ai_agents::AppEntry> {
+    services
         .iter()
         .filter_map(|s| {
             let cli = s.cli_path.as_ref().filter(|p| p.is_absolute())?;
-            let mut args = vec!["mcp".to_string()];
-            if let Some((_, extra)) = MCP_EXTRA_ARGS.iter().find(|(id, _)| *id == s.id)
-                && accepts(cli, extra)
-            {
-                args.extend(extra.iter().map(|a| (*a).to_string()));
-            }
-            Some(json!({"id": s.id, "name": s.name, "command": cli, "args": args}))
+            Some(craft_ai_agents::AppEntry { id: s.id.clone(), name: s.name.clone(), command: cli.clone(), args: vec!["mcp".to_string()] })
         })
-        .collect();
-    json!({"version": 1, "apps": apps})
+        .collect()
 }
 
 /// Whether agents are on: the app list exists in `dir`.
 pub fn enabled(dir: &Path) -> bool {
-    dir.join(APPS_FILE).is_file()
+    craft_ai_agents::switched_on_in(dir)
 }
 
 /// Write (or refresh) the app list in `dir`.
 pub fn write_apps(dir: &Path, services: &[InstalledApp]) -> Result<(), String> {
-    let text = serde_json::to_string_pretty(&apps_json(services)).map_err(|e| e.to_string())?;
-    crate::paths::write_atomic(&dir.join(APPS_FILE), text.as_bytes())
+    craft_ai_agents::write(dir, &app_entries(services))
 }
 
 /// Remove the app list in `dir`. A missing list is fine.
 pub fn remove_apps(dir: &Path) -> Result<(), String> {
-    match std::fs::remove_file(dir.join(APPS_FILE)) {
-        Ok(()) => Ok(()),
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
-        Err(e) => Err(format!("couldn't remove {} ({e})", dir.join(APPS_FILE).display())),
-    }
+    craft_ai_agents::remove(dir)
 }
 
 /// Every client the launcher can add the entry to.

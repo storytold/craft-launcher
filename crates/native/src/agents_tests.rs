@@ -13,51 +13,29 @@ fn read(p: &Path) -> Value {
 }
 
 #[test]
-fn the_app_list_has_every_app_with_a_cli_in_the_gateways_format() {
+fn the_app_list_has_every_app_with_a_cli_started_as_plain_mcp() {
     let dir = tempfile::tempdir().unwrap();
-    let cli = dir.path().join("photocraft-cli.exe");
-    let list = apps_json(&[
-        service("photocraft", "PhotoCraft", Some(cli.clone())),
+    let cli = |name: &str| dir.path().join(name);
+    let services = [
+        service("photocraft", "PhotoCraft", Some(cli("photocraft-cli.exe"))),
+        service("vectorcraft", "VectorCraft", Some(cli("vectorcraft-cli.exe"))),
         service("wordcraft", "WordCraft", None),
         service("relcraft", "RelCraft", Some(PathBuf::from("relative/cli"))),
-    ]);
-    assert_eq!(list["version"], 1);
-    let apps = list["apps"].as_array().unwrap();
-    assert_eq!(apps.len(), 1, "apps without an absolute CLI are left out");
-    assert_eq!(apps[0]["id"], "photocraft");
-    assert_eq!(apps[0]["name"], "PhotoCraft");
-    assert_eq!(apps[0]["command"], cli.to_string_lossy().as_ref());
-    assert_eq!(apps[0]["args"], json!(["mcp"]));
-}
-
-#[test]
-fn apps_get_their_extra_mcp_arguments_only_where_the_cli_takes_them() {
-    let dir = tempfile::tempdir().unwrap();
-    let at = |name: &str| dir.path().join(name);
-    let services = [
-        service("photocraft", "PhotoCraft", Some(at("photocraft-cli"))),
-        service("vectorcraft", "VectorCraft", Some(at("vectorcraft-cli"))),
-        service("filmcraft", "FilmCraft", Some(at("filmcraft-cli"))),
     ];
-    let asked = std::cell::RefCell::new(Vec::new());
-    let new = apps_json_with(&services, &|cli: &Path, extra: &[&str]| {
-        asked.borrow_mut().push((cli.file_name().unwrap().to_string_lossy().into_owned(), extra.join(" ")));
-        true
-    });
-    let args = |list: &Value, i: usize| list["apps"][i]["args"].clone();
-    assert_eq!(args(&new, 0), json!(["mcp", "--live"]), "PhotoCraft: the open window");
-    assert_eq!(args(&new, 1), json!(["mcp", "--headless"]), "VectorCraft: off its unauthenticated port");
-    assert_eq!(args(&new, 2), json!(["mcp"]), "other apps as they are");
-    assert_eq!(
-        *asked.borrow(),
-        [("photocraft-cli".into(), "--live".into()), ("vectorcraft-cli".into(), "--headless".into())],
-        "only apps with extras are asked"
-    );
-    // An older release that doesn't know the argument gets plain `mcp`, not a usage error.
-    let old = apps_json_with(&services, &|_: &Path, _: &[&str]| false);
-    for i in 0..3 {
-        assert_eq!(args(&old, i), json!(["mcp"]));
-    }
+    let apps = app_entries(&services);
+    assert_eq!(apps.len(), 2, "apps without an absolute CLI are left out");
+    assert_eq!((apps[0].id.as_str(), apps[0].name.as_str()), ("photocraft", "PhotoCraft"));
+    assert_eq!(apps[0].command, cli("photocraft-cli.exe"));
+    // Every app's plain `mcp` works in its open window when it may: no per-app arguments.
+    assert!(apps.iter().all(|a| a.args == ["mcp"]), "{apps:?}");
+    // Written in the gateway's format, which the gateway reads back the same.
+    let list = dir.path().join("list");
+    write_apps(&list, &services).unwrap();
+    let (back, skipped) = craft_ai_agents::load(&list).unwrap().unwrap();
+    assert!(skipped.is_empty(), "{skipped:?}");
+    assert_eq!(back, apps);
+    let v = read(&list.join(APPS_FILE));
+    assert_eq!(v["version"], 1);
 }
 
 #[test]
@@ -89,25 +67,6 @@ fn claude_desktop_data_moved_to_claude_data_is_used() {
     std::fs::create_dir_all(&data).unwrap();
     std::fs::write(local.join("Claude-Data").join("README.txt"), "x").unwrap();
     assert_eq!(claude_desktop_dir(config.clone(), Some(&local)), data, "Claude-Data wins, its README is no install");
-}
-
-#[test]
-fn the_help_text_must_name_the_argument_as_a_word() {
-    let help = "Usage: photocraft-cli mcp [OPTIONS]
-      --live
-          Reach the open window
-  vectorcraft-cli mcp [--connect ADDR | --headless]";
-    assert!(help_names(help, &["--live"]));
-    assert!(help_names(help, &["--headless"]), "inside brackets");
-    assert!(!help_names("      --lively", &["--live"]));
-    assert!(!help_names("bridge to a running app, or live", &["--live"]));
-    assert!(!help_names(help, &["--live", "--when-closed"]), "every argument");
-}
-
-#[test]
-fn a_cli_that_cannot_run_takes_no_extra_arguments() {
-    let dir = tempfile::tempdir().unwrap();
-    assert!(!cli_accepts(&dir.path().join("missing-cli"), &["--live"]));
 }
 
 #[test]

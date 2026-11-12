@@ -322,6 +322,7 @@ name = "artcraft-launcher-native"
 version = "0.19.2"
 dependencies = [
  "artcraft-launcher-core",
+ "craft-ai-agents",
  "craft-flags",
  "craft-update",
  "dirs 6.0.0",
@@ -988,10 +989,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "craft-ai-agents"
+version = "0.1.0"
+source = "git+https://github.com/storytold/craft-ai-integrations?rev=35e0352666a117407d62230a6c6c2366f3e21a3b#35e0352666a117407d62230a6c6c2366f3e21a3b"
+dependencies = [
+ "dirs 7.0.0",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "craft-ai-mcp"
 version = "0.1.0"
-source = "git+https://github.com/storytold/craft-ai-integrations?rev=08a639ae6fd36631f0ea18214387c020a94fc183#08a639ae6fd36631f0ea18214387c020a94fc183"
+source = "git+https://github.com/storytold/craft-ai-integrations?rev=35e0352666a117407d62230a6c6c2366f3e21a3b#35e0352666a117407d62230a6c6c2366f3e21a3b"
 dependencies = [
+ "craft-ai-agents",
  "dirs 7.0.0",
  "serde",
  "serde_json",
