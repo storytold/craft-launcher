@@ -22,7 +22,11 @@
   launcher reads the recorded folder to know it was installed by this MSI.
 
   Per-user packages can't use a file as a component's KeyPath (ICE38), so each component is
-  keyed on an HKCU value, and the folders we create are removed on uninstall (ICE64).
+  keyed on an HKCU value, and the folders we create are removed on uninstall (ICE64). Those are
+  only the Launcher folder and the ArtCraft suite folder: %LOCALAPPDATA%\Programs is shared with
+  the user and with every other per-user application, so the MSI deliberately does not remove it
+  (an acknowledged ICE64 exception, #584). check-install-policy.ps1 enforces the same rule on the
+  compiled RemoveFile table.
 -->
 <Wix xmlns="http://wixtoolset.org/schemas/v4/wxs"
      xmlns:ui="http://wixtoolset.org/schemas/v4/wxs/ui">
@@ -162,7 +166,6 @@
         <RegistryValue Root="HKCU" Key="Software\Microsoft\Windows\CurrentVersion\App Paths\artcraft-launcher.exe" Value="[#ArtCraftLauncherExe]" Type="string" />
         <RemoveFolder Id="RemoveInstallFolder" Directory="INSTALLFOLDER" On="uninstall" />
         <RemoveFolder Id="RemoveSuiteFolder" Directory="CraftSuiteFolder" On="uninstall" />
-        <RemoveFolder Id="RemoveLocalProgramsFolder" Directory="LocalProgramsFolder" On="uninstall" />
       </Component>
 
       <Component Id="ArtCraftLauncherShortcut" Directory="ProgramMenuFolder" Guid="870F3DFA-BC0F-497F-85D5-A361B04826AF">

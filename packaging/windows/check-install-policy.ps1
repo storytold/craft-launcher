@@ -32,6 +32,131 @@ function Set-SessionProperty($Session, [string] $Name, [string] $Value) {
 function Get-SessionProperty($Session, [string] $Name) {
   $Session.GetType().InvokeMember('Property', 'GetProperty', $null, $Session, @($Name))
 }
+function Get-DirectoryPath($Directories, [string] $Id) {
+  # A Directory row's path, built only from its DefaultDir chain, so two rows that resolve to the
+  # same Windows folder compare equal even when their ids differ (an alias, or the shared root
+  # spelled with another Directory row). No Windows API and no install: the compiled table only.
+  $segments = @()
+  $current = $Id
+  $steps = 0
+  while ($true) {
+    if (-not $Directories.ContainsKey($current)) {
+      throw "Cleanup policy: '$Id' walks into '$current', which the Directory table does not define."
+    }
+    $steps++
+    if ($steps -gt 256) { throw "Cleanup policy: the Directory table chain for '$Id' does not terminate." }
+    $parent = [string]$Directories[$current][0]
+    $name = [string]$Directories[$current][1]
+    # Directory.DefaultDir is a name, a 'short|long' pair, a 'target:source' pair, or '.' for the
+    # parent's folder; only the target name is part of the path, so drop the source name first.
+    $name = ($name.Trim() -split ':')[0]
+    $name = ($name -split '\|')[-1].Trim()
+    if ($name -ne '' -and $name -ne '.') { $segments = @($name) + $segments }
+    if ($parent -eq '' -or $parent -eq $current) { break }
+    $current = $parent
+  }
+  return ($segments -join '\').ToUpperInvariant()
+}
+function Get-DirectoryAncestorIds($Directories, [string] $Id) {
+  # Every Directory row above $Id, nearest first: the folders that must not be retargeted either.
+  $ids = @()
+  $current = $Id
+  $steps = 0
+  while ($true) {
+    if (-not $Directories.ContainsKey($current)) { break }
+    $steps++
+    if ($steps -gt 256) { break }
+    $parent = [string]$Directories[$current][0]
+    if ($parent -eq '' -or $parent -eq $current) { break }
+    $ids += $parent
+    $current = $parent
+  }
+  return $ids
+}
+function Assert-CleanupPolicy($Database, $Directories, [string] $InstallRoot) {
+  # #584: an uninstall may remove only the folders this MSI created. %LOCALAPPDATA%\Programs
+  # (LocalProgramsFolder) is shared with the user and with every other per-user application, so a
+  # RemoveFile row may not name it, and may not reach it through an equally-resolving Directory row.
+  # The compiled table is checked, not one .wxs: any source in the build can add a row. Failing
+  # closed is cheap (a package with an extra cleanup row is corrected in review); removing a
+  # shared folder is not.
+  if (-not $Directories.ContainsKey($InstallRoot)) {
+    throw "Cleanup policy: the package defines no '$InstallRoot' directory."
+  }
+  $suiteRoot = [string]$Directories[$InstallRoot][0]
+  if ($suiteRoot -eq '') { throw "Cleanup policy: '$InstallRoot' must not be a top-level folder." }
+  $installPath = Get-DirectoryPath $Directories $InstallRoot
+  $suitePath = Get-DirectoryPath $Directories $suiteRoot
+  if ($suitePath -eq '' -or $installPath -eq $suitePath) {
+    throw 'Cleanup policy: the install folder must be its own subfolder of the suite folder; otherwise removing the suite folder removes a folder other applications share.'
+  }
+  $owned = @($installPath, $suitePath)
+  $tables = @(Read-Rows $Database 'SELECT `Name` FROM `_Tables`' 1 | ForEach-Object { $_[0] })
+  $removeRows = @()
+  if ('RemoveFile' -in $tables) {
+    $removeRows = @(Read-Rows $Database 'SELECT `RemoveFile`, `Component_`, `DirProperty`, `FileName`, `InstallMode` FROM `RemoveFile`' 5)
+  }
+  $components = @{}
+  foreach ($row in (Read-Rows $Database 'SELECT `Component` FROM `Component`' 1)) { $components[[string]$row[0]] = $true }
+  $featured = @{}
+  foreach ($row in (Read-Rows $Database 'SELECT `Component_` FROM `FeatureComponents`' 1)) { $featured[[string]$row[0]] = $true }
+  $retained = @{}
+  foreach ($remove in $removeRows) {
+    $id = [string]$remove[0]
+    $component = [string]$remove[1]
+    $target = [string]$remove[2]
+    $name = [string]$remove[3]
+    $mode = [string]$remove[4]
+    if ($target -eq '') { throw "Cleanup policy: RemoveFile '$id' names no folder to remove." }
+    if (-not $Directories.ContainsKey($target)) {
+      throw "Cleanup policy: RemoveFile '$id' targets '$target', which is not a folder this package declares; only the folders it creates may be removed."
+    }
+    $path = Get-DirectoryPath $Directories $target
+    if ($path -notin $owned) {
+      throw "Cleanup policy: RemoveFile '$id' removes '$target' ($path), which is not one of the folders this MSI creates. The per-user Programs folder belongs to the user and to other applications."
+    }
+    if ($name -ne '') {
+      throw "Cleanup policy: RemoveFile '$id' deletes '$name' rather than an empty folder; this MSI may remove only the folders it created, never a file pattern inside them (portable mode keeps data beside the exe)."
+    }
+    if ($mode -ne '2') {
+      throw "Cleanup policy: RemoveFile '$id' has InstallMode '$mode'; cleanup must run on uninstall only (2), never during an install or update."
+    }
+    if (-not $components.ContainsKey($component)) {
+      throw "Cleanup policy: RemoveFile '$id' belongs to component '$component', which the Component table does not define."
+    }
+    if (-not $featured.ContainsKey($component)) {
+      throw "Cleanup policy: RemoveFile '$id' belongs to component '$component', which no feature installs, so its cleanup would never run."
+    }
+    if ($retained.ContainsKey($path)) { $retained[$path]++ } else { $retained[$path] = 1 }
+  }
+  # A property or directory action can retarget a folder after the table above was built, which would
+  # turn an allowed row into a shared-folder removal. Only the documented restore may write the
+  # install folder, from the folder recorded by the previous version, and nothing may write the suite
+  # folder or a parent of it.
+  $reserved = @{}
+  foreach ($id in @($InstallRoot, $suiteRoot)) { $reserved[([string]$id).ToUpperInvariant()] = $true }
+  foreach ($id in (Get-DirectoryAncestorIds $Directories $suiteRoot)) { $reserved[([string]$id).ToUpperInvariant()] = $true }
+  foreach ($action in (Read-Rows $Database 'SELECT `Action`, `Type`, `Source`, `Target` FROM `CustomAction`' 4)) {
+    # For the property and directory setters (base types 51 and 35) the CustomAction row carries the
+    # name of the property or directory being written in Source and the new value in Target (the
+    # reverse of the reading order here). Type also holds the base code plus scheduling flags
+    # (0x40 continue, 0x400 deferred, ...), so mask the flags before comparing.
+    $actionType = [int]([string]$action[1]) -band 0x3F
+    if ($actionType -ne 35 -and $actionType -ne 51) { continue }
+    $writes = ([string]$action[2]).ToUpperInvariant()
+    if (-not $reserved.ContainsKey($writes)) { continue }
+    $restore = $actionType -eq 51 -and [string]$action[0] -eq 'CraftRestoreLauncherFolder' -and
+      $writes -eq $InstallRoot.ToUpperInvariant() -and
+      ([string]$action[3]).ToUpperInvariant() -eq '[PREVIOUSINSTALLFOLDER]'
+    if ($restore) { continue }
+    throw "Cleanup policy: action '$($action[0])' writes '$($action[2])' (CustomAction type $($action[1])); only CraftRestoreLauncherFolder may write the install folder, and nothing may write the suite folder or a shared parent of it."
+  }
+  foreach ($required in $owned) {
+    if (-not $retained.ContainsKey($required)) {
+      throw "Cleanup policy: no uninstall row removes '$required'; the package must clean up its own install and suite folders, not only the shared ones it must not touch."
+    }
+  }
+}
 $installer = $null; $database = $null; $session = $null
 try {
   $installer = New-Object -ComObject WindowsInstaller.Installer
@@ -53,6 +178,8 @@ try {
         $dirs['CraftSuiteFolder'][0] -ne 'LocalProgramsFolder' -or $dirs['LocalProgramsFolder'][0] -ne 'LocalAppDataFolder') {
       throw 'Launcher new-install folder must be under the per-user ArtCraft suite root.'
     }
+    # #584: the folders left behind on uninstall are the launcher's own, and nothing else.
+    Assert-CleanupPolicy -Database $database -Directories $dirs -InstallRoot 'INSTALLFOLDER'
     foreach ($explicit in @('', 'F:\Chosen exact launcher')) {
       Set-SessionProperty $session 'PREVIOUSINSTALLFOLDER' 'E:\Existing exact launcher'
       Set-SessionProperty $session 'INSTALLFOLDER' $explicit
@@ -90,6 +217,9 @@ try {
   }
   if ($directories['INSTALLFOLDER'][0] -ne 'CraftSuiteFolder' -or
       $directories['CraftSuiteFolder'][1] -ne 'ArtCraft') { throw 'Expected the app under the ArtCraft suite folder.' }
+  # The same compiled-table rule guards a machine-scope policy: a shared folder removed there is a
+  # machine-wide data loss, and the guard applies to both paths so neither can drift back (#584).
+  Assert-CleanupPolicy -Database $database -Directories $directories -InstallRoot 'INSTALLFOLDER'
   $programs = $directories['CraftSuiteFolder'][0]
   if ($programs -eq 'ProgramFiles6432Folder') { $programs = $directories[$programs][0] }
   if ($programs -notin 'ProgramFilesFolder', 'ProgramFiles64Folder') {
