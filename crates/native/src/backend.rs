@@ -1189,7 +1189,7 @@ fn check_app(
     platform: Option<Platform>,
 ) {
     if app.id == LAUNCHER_ID {
-        launcher_update(paths, latest, repo, shared);
+        launcher_update(paths, latest, repo, shared, platform);
         return;
     }
     let Some(latest) = latest else { return };
@@ -1200,14 +1200,15 @@ fn check_app(
 }
 
 /// Offers the launcher's own update when its answer is a newer release than the running one,
-/// keeping `repo`, the repo it was read from, for the download's link check.
-fn launcher_update(paths: &Paths, latest: Option<LatestRelease>, repo: &str, shared: &Arc<Shared>) {
+/// keeping `repo`, the repo it was read from, for the download's link check. `platform` is the
+/// one the update picks its file for.
+fn launcher_update(paths: &Paths, latest: Option<LatestRelease>, repo: &str, shared: &Arc<Shared>, platform: Option<Platform>) {
     let Some(LatestRelease::Found(r)) = latest else { return };
     let (Some(newest), Some(current)) = (r.version.as_ref(), crate::self_update::current_version()) else { return };
     if version::is_newer(newest, &current) && !crate::self_update::just_updated_to(paths, &r) {
         shared.self_install.get_or_init(crate::self_update::current);
         shared.self_updating.get_or_init(crate::self_update::is_self_updating);
-        let installs = crate::self_update::release_installs(&r, repo);
+        let installs = crate::self_update::release_installs(&r, repo, platform);
         *shared.launcher_release.lock().unwrap_or_else(PoisonError::into_inner) = Some((r.clone(), repo.to_string(), installs));
         shared.emit(Event::LauncherUpdate(r));
     }

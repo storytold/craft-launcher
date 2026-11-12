@@ -30,11 +30,24 @@ pub fn is_self_updating() -> bool {
     craft_update::self_update::is_self_updating(&craft_update::suite::LAUNCHER)
 }
 
-/// Whether `release`, read from `repo`, has a file the update can install this copy from. A
-/// release with no files fails, since [`update`] picks its file from this release. A standalone
-/// copy on macOS needs the release's `.tar.gz`; every other copy passes.
-pub fn release_installs(release: &Release, repo: &str) -> bool {
-    !release.assets.is_empty() && craft_update::self_update::release_installs(&craft_update::suite::LAUNCHER, &to_update_release(release, repo))
+/// Whether `release`, read from `repo`, has a file the update can install this copy from: a file
+/// for `platform` (the one passed to [`update`]) in the format this copy was installed from,
+/// picked as [`update`] picks it. A release with no files fails, since [`update`] picks its file
+/// from this release. A copy that [`current`] doesn't find passes; [`is_self_updating`] answers
+/// for it.
+pub fn release_installs(release: &Release, repo: &str, platform: Option<Platform>) -> bool {
+    installs_from(current().as_ref(), platform, release, repo)
+}
+
+/// [`release_installs`] for a known installed copy and platform.
+fn installs_from(install: Option<&Install>, platform: Option<Platform>, release: &Release, repo: &str) -> bool {
+    if release.assets.is_empty() {
+        return false;
+    }
+    let (Some(install), Some(platform)) = (install, platform) else { return true };
+    let app = &craft_update::suite::LAUNCHER;
+    let update_release = to_update_release(release, repo);
+    craft_update::pick_asset(&update_release, &[app.id], to_update_platform(platform), &[to_update_kind(kind(install))]).is_some()
 }
 
 fn to_update_paths(paths: &Paths) -> craft_update::Paths {
@@ -75,6 +88,20 @@ fn to_update_platform(platform: Platform) -> craft_update::Platform {
             artcraft_launcher_core::Arch::X86 => craft_update::Arch::X86,
             artcraft_launcher_core::Arch::Riscv64 => craft_update::Arch::Riscv64,
         },
+    }
+}
+
+fn to_update_kind(kind: PackageKind) -> craft_update::PackageKind {
+    match kind {
+        PackageKind::Msi => craft_update::PackageKind::Msi,
+        PackageKind::PortableZip => craft_update::PackageKind::PortableZip,
+        PackageKind::Dmg => craft_update::PackageKind::Dmg,
+        PackageKind::AppImage => craft_update::PackageKind::AppImage,
+        PackageKind::Deb => craft_update::PackageKind::Deb,
+        PackageKind::Rpm => craft_update::PackageKind::Rpm,
+        PackageKind::ArchPkg => craft_update::PackageKind::ArchPkg,
+        PackageKind::Flatpak => craft_update::PackageKind::Flatpak,
+        PackageKind::TarGz => craft_update::PackageKind::TarGz,
     }
 }
 
@@ -198,9 +225,40 @@ mod tests {
         let app = &craft_update::suite::LAUNCHER;
         let sums = [("a".repeat(64), "artcraft-launcher-0.9.0-linux-x86_64.AppImage".to_string())];
         let mut release = artcraft_launcher_core::release::release_from_sums(app.repo, "v0.9.0", &sums);
-        assert!(release_installs(&release, app.repo));
+        assert!(release_installs(&release, app.repo, Platform::current()));
         release.assets.clear();
-        assert!(!release_installs(&release, app.repo));
+        assert!(!release_installs(&release, app.repo, Platform::current()));
+    }
+
+    /// The update downloads the file for this platform in the format the copy was installed from,
+    /// so a release without that file offers the download instead: an AppImage-only release for
+    /// an MSI copy, an MSI for another architecture, or an MSI for a portable copy.
+    #[test]
+    fn a_release_without_the_installed_format_for_this_platform_does_not_install() {
+        use artcraft_launcher_core::platform::{Arch, Os};
+        use std::path::PathBuf;
+        let app = &craft_update::suite::LAUNCHER;
+        let release = |names: &[&str]| {
+            let sums: Vec<(String, String)> = names.iter().map(|n| ("a".repeat(64), (*n).to_string())).collect();
+            artcraft_launcher_core::release::release_from_sums(app.repo, "v0.9.0", &sums)
+        };
+        let windows_x64 = Some(Platform { os: Os::Windows, arch: Arch::X64 });
+        let msi = Install::Msi(PathBuf::new());
+        let portable = Install::Portable(PathBuf::new());
+
+        let with_msi = release(&["artcraft-launcher-0.9.0-windows-x64.msi"]);
+        assert!(installs_from(Some(&msi), windows_x64, &with_msi, app.repo));
+        let appimage_only = release(&["artcraft-launcher-0.9.0-linux-x86_64.AppImage"]);
+        assert!(!installs_from(Some(&msi), windows_x64, &appimage_only, app.repo));
+        let other_arch = release(&["artcraft-launcher-0.9.0-windows-arm64.msi"]);
+        assert!(!installs_from(Some(&msi), windows_x64, &other_arch, app.repo));
+        assert!(installs_from(Some(&msi), Some(Platform { os: Os::Windows, arch: Arch::Arm64 }), &other_arch, app.repo));
+        assert!(!installs_from(Some(&portable), windows_x64, &with_msi, app.repo));
+
+        let linux_x64 = Some(Platform { os: Os::Linux, arch: Arch::X64 });
+        let deb = Install::Package(craft_update::PackageKind::Deb, PathBuf::new());
+        assert!(installs_from(Some(&Install::AppImage(PathBuf::new())), linux_x64, &appimage_only, app.repo));
+        assert!(!installs_from(Some(&deb), linux_x64, &appimage_only, app.repo));
     }
 
     #[test]
