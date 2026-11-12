@@ -43,6 +43,8 @@ fn to_update_release(release: &Release) -> craft_update::Release {
             .iter()
             .map(|a| craft_update::Asset { name: a.name.clone(), size: a.size, url: a.url.clone(), sha256: a.sha256.clone() })
             .collect(),
+        // Empty: the launcher's own repository (`suite::LAUNCHER`), the only one its releases are read from.
+        repo: String::new(),
     }
 }
 

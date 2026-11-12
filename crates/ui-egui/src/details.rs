@@ -434,7 +434,12 @@ impl LauncherUi {
     fn neighbour_apps(&self, id: &str) -> (Option<String>, Option<String>) {
         let mut ids: Vec<&str> = self.visible_ids().into_iter().filter(|i| AppDetails::by_id(i).is_some()).collect();
         if !ids.contains(&id) {
-            ids = artcraft_launcher_core::SUITE.iter().map(|a| a.id).filter(|i| AppDetails::by_id(i).is_some()).collect();
+            ids = artcraft_launcher_core::hosted_catalog::apps()
+                .iter()
+                .filter(|a| self.platform.is_none_or(|p| a.runs_on(p.os)))
+                .map(|a| a.id)
+                .filter(|i| AppDetails::by_id(i).is_some())
+                .collect();
         }
         let Some(at) = ids.iter().position(|i| *i == id) else { return (None, None) };
         if ids.len() < 2 {
@@ -506,7 +511,9 @@ impl LauncherUi {
         let headline_h = ui.painter().layout(headline.to_string(), egui::FontId::proportional(15.0), t.ink, text_w).size().y;
         let version = crate::views::version_line(entry, &status);
         let has_version = !version.trim().is_empty();
-        let version_h = if has_version { 5.0 + ui.fonts_mut(|f| f.row_height(&egui::FontId::proportional(12.5))) } else { 0.0 };
+        let version_row_h =
+            ui.fonts_mut(|f| f.row_height(&egui::FontId::proportional(12.5))).max(if self.pinned_version(app.id).is_some() { 20.0 } else { 0.0 });
+        let version_h = if has_version { 5.0 + version_row_h } else { 0.0 };
         let text_block_h = wordmark_exp_h + 5.0 + headline_h + version_h;
         let identity_h = if has_icon { ICON.max(text_block_h) } else { text_block_h };
 
@@ -681,7 +688,10 @@ impl LauncherUi {
                 ui.spacing_mut().item_spacing.y = 5.0;
                 ui.add(egui::Label::new(RichText::new(tr_ctx(current(), details.id, details.headline)).size(15.0).color(t.ink)).wrap());
                 if has_version {
-                    ui.label(RichText::new(&geom.version).size(12.5).color(t.muted));
+                    ui.horizontal(|ui| {
+                        ui.label(RichText::new(&geom.version).size(12.5).color(t.muted));
+                        self.version_lock(ui, app.id);
+                    });
                 }
             });
         }
