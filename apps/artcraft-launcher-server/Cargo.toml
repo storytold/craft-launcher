@@ -17,6 +17,7 @@ server = [
     "dep:futures-util",
     "dep:jiff",
     "dep:openidconnect",
+    "dep:process-wrap",
     "dep:rusqlite",
     "dep:rustix",
     "dep:serde",
@@ -60,3 +61,6 @@ uuid = { version = "1", features = ["v4"], optional = true }
 
 [target.'cfg(unix)'.dependencies]
 rustix = { version = "1", features = ["process"], optional = true }
+
+[target.'cfg(windows)'.dependencies]
+process-wrap = { version = "=10.0.1", default-features = false, features = ["creation-flags", "job-object", "std"], optional = true }

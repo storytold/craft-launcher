@@ -26,13 +26,17 @@ mod artifact_paths;
 mod https;
 
 #[cfg(not(target_arch = "wasm32"))]
+#[path = "../recipe_process.rs"]
+mod recipe_process;
+
+#[cfg(not(target_arch = "wasm32"))]
 mod native {
     use std::collections::{BTreeMap, HashSet};
     use std::ffi::{OsStr, OsString};
     use std::fs::{self, File, Metadata, OpenOptions};
     use std::io::{self, Read, Write};
     use std::path::{Path, PathBuf};
-    use std::process::{Child, Command, Stdio};
+    use std::process::{Command, Stdio};
     use std::time::{Duration, Instant, SystemTime};
 
     use jiff::Timestamp;
@@ -44,6 +48,7 @@ mod native {
 
     use crate::artifact_paths::{MAX_ARTIFACT_DEPTH, is_link, valid_path};
     use crate::https::Https;
+    use crate::recipe_process::{self, Process, Spawned};
 
     const API: &str = "/api/server/v1/worker";
     const MAX_CONFIG: u64 = 64 * 1024;
@@ -561,34 +566,25 @@ mod native {
             .stdin(Stdio::null())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped());
-        hide_window(&mut command);
-        #[cfg(unix)]
-        std::os::unix::process::CommandExt::process_group(&mut command, 0);
-        let mut child = command.spawn().map_err(|_| String::from("Cannot start the configured build recipe"))?;
-        let stdout = child.stdout.take().map(drain);
-        let stderr = child.stderr.take().map(drain);
-        let result = wait_for_recipe(&mut child, lease).await;
-        let logs = write_log(log, stdout, stderr, LOG_DRAIN_TIMEOUT).await;
-        result.and(logs)
+        let Spawned { mut process, stdout, stderr } =
+            recipe_process::spawn(command).map_err(|error| format!("Cannot start the configured build recipe: {error}"))?;
+        let mut output = [stdout.map(drain), stderr.map(drain)];
+        let result = wait_for_recipe(&mut process, lease).await;
+        finish_recipe(process, result, log, &mut output, LOG_DRAIN_TIMEOUT).await
     }
 
-    async fn wait_for_recipe(child: &mut Child, lease: &mut Lease<'_>) -> Result<()> {
+    async fn wait_for_recipe(process: &mut Process, lease: &mut Lease<'_>) -> Result<()> {
         let deadline = tokio::time::Instant::now() + MAX_RECIPE_DURATION;
-        let result = tokio::time::timeout_at(deadline, poll_recipe(child, lease))
+        tokio::time::timeout_at(deadline, poll_recipe(process, lease))
             .await
-            .unwrap_or_else(|_| Err(String::from("The configured build recipe exceeded its time limit")));
-        if let Err(reason) = result {
-            stop_recipe(child).map_err(|error| format!("{reason}. Cannot stop the recipe: {error}"))?;
-            return Err(reason);
-        }
-        Ok(())
+            .unwrap_or_else(|_| Err(String::from("The configured build recipe exceeded its time limit")))
     }
 
-    async fn poll_recipe(child: &mut Child, lease: &mut Lease<'_>) -> Result<()> {
+    async fn poll_recipe(process: &mut Process, lease: &mut Lease<'_>) -> Result<()> {
         loop {
-            match child.try_wait().map_err(|_| String::from("Cannot verify completion of the build recipe"))? {
-                Some(status) if status.success() => return Ok(()),
-                Some(_) => return Err("The configured build recipe failed; inspect build.log".into()),
+            match process.leader_success().map_err(|_| String::from("Cannot verify completion of the build recipe"))? {
+                Some(true) => return Ok(()),
+                Some(false) => return Err("The configured build recipe failed; inspect build.log".into()),
                 None => {}
             }
             lease.renew_if_due().await?;
@@ -596,53 +592,33 @@ mod native {
         }
     }
 
-    fn stop_recipe(child: &mut Child) -> io::Result<()> {
-        if child.try_wait()?.is_some() {
-            return Ok(());
+    async fn finish_recipe(process: Process, result: Result<()>, log: impl Write, output: &mut [Option<Reader>; 2], timeout: Duration) -> Result<()> {
+        let process = match result {
+            Ok(()) => Ok(process),
+            Err(reason) => Err(stop_recipe(process, reason)),
+        };
+        let logs = write_log(log, output, timeout).await;
+        let process = process?;
+        if let Err(reason) = logs {
+            return Err(stop_recipe(process, reason));
         }
-        // Signal before reaping the leader, while its ID cannot be reused.
-        let signalled = signal_recipe_tree(child);
-        if signalled.is_err() && child.try_wait()?.is_none() {
-            child.kill()?;
+        process.reap().map(|_| ()).map_err(|error| format!("Cannot reap the build recipe: {error}"))
+    }
+
+    fn stop_recipe(process: Process, reason: String) -> String {
+        match process.stop() {
+            Ok(_) => reason,
+            Err(error) => format!("{reason}. Cannot stop the recipe: {error}"),
         }
-        child.wait()?;
-        signalled
     }
 
-    #[cfg(unix)]
-    fn signal_recipe_tree(child: &Child) -> io::Result<()> {
-        use rustix::process::{Pid, Signal, kill_process_group};
-
-        kill_process_group(Pid::from_child(child), Signal::KILL).map_err(io::Error::from)
-    }
-
-    #[cfg(windows)]
-    fn signal_recipe_tree(child: &Child) -> io::Result<()> {
-        let root = std::env::var_os("SystemRoot").ok_or_else(|| io::Error::other("SystemRoot is missing"))?;
-        let mut terminate = Command::new(PathBuf::from(root).join("System32").join("taskkill.exe"));
-        terminate.args(["/PID", &child.id().to_string(), "/T", "/F"]).stdout(Stdio::null()).stderr(Stdio::null());
-        hide_window(&mut terminate);
-        let status = terminate.status()?;
-        if !status.success() {
-            return Err(io::Error::other(format!("taskkill failed: {status}")));
-        }
-        Ok(())
-    }
-
-    #[cfg(not(any(unix, windows)))]
-    fn signal_recipe_tree(_child: &Child) -> io::Result<()> {
-        Err(io::Error::new(io::ErrorKind::Unsupported, "Recipe tree cancellation is unavailable"))
-    }
-
-    #[cfg(all(test, unix))]
+    #[cfg(all(test, any(target_os = "linux", target_os = "macos", target_os = "freebsd")))]
     #[test]
     fn cancelling_a_recipe_reaps_the_owned_child() -> io::Result<()> {
         let mut command = Command::new("sleep");
         command.arg("30").stdout(Stdio::null()).stderr(Stdio::null());
-        std::os::unix::process::CommandExt::process_group(&mut command, 0);
-        let mut child = command.spawn()?;
-        stop_recipe(&mut child)?;
-        assert!(child.try_wait()?.is_some_and(|status| !status.success()));
+        let Spawned { process, .. } = recipe_process::spawn(command)?;
+        assert!(!process.stop()?.success());
         Ok(())
     }
 
@@ -663,26 +639,25 @@ mod native {
         })
     }
 
-    async fn write_log(mut file: impl Write, stdout: Option<Reader>, stderr: Option<Reader>, timeout: Duration) -> Result<()> {
+    async fn write_log(mut file: impl Write, output: &mut [Option<Reader>; 2], timeout: Duration) -> Result<()> {
         let deadline = Instant::now() + timeout;
         let mut complete = true;
-        for (name, reader) in [("stdout", stdout), ("stderr", stderr)] {
-            if let Some(reader) = reader {
-                while !reader.is_finished() && Instant::now() < deadline {
-                    tokio::time::sleep(Duration::from_millis(10)).await;
-                }
-                // A descendant can inherit the pipe. Never wait indefinitely to
-                // collect its output after the owned recipe has stopped.
-                let tail = if reader.is_finished() {
-                    reader.join().map_err(|_| "Cannot collect the build log")?.map_err(|_| "Cannot read the build log")?
-                } else {
-                    complete = false;
-                    b"Log collection timed out while the output pipe was still open.\n".to_vec()
-                };
-                writeln!(file, "Latest build {name}")
-                    .and_then(|()| file.write_all(&tail))
-                    .map_err(|_| String::from("Cannot write the local build log"))?;
+        for (name, reader) in ["stdout", "stderr"].into_iter().zip(output) {
+            let Some(handle) = reader.as_ref() else { continue };
+            while !handle.is_finished() && Instant::now() < deadline {
+                tokio::time::sleep(Duration::from_millis(10)).await;
             }
+            // A descendant can inherit the pipe. Keep the wait bounded and let the caller stop the owned tree.
+            let tail = if handle.is_finished() {
+                let reader = reader.take().ok_or("Cannot collect the build log")?;
+                reader.join().map_err(|_| "Cannot collect the build log")?.map_err(|_| "Cannot read the build log")?
+            } else {
+                complete = false;
+                b"Log collection timed out while the output pipe was still open.\n".to_vec()
+            };
+            writeln!(file, "Latest build {name}")
+                .and_then(|()| file.write_all(&tail))
+                .map_err(|_| String::from("Cannot write the local build log"))?;
         }
         if !complete {
             return Err("The build recipe did not close its output pipes; inspect build.log".into());
@@ -698,11 +673,78 @@ mod native {
             let _ = blocked.recv();
             Ok(Vec::new())
         });
+        let mut output = [Some(reader), None];
         let mut log = Vec::new();
-        let result = write_log(&mut log, Some(reader), None, Duration::ZERO).await;
+        let result = write_log(&mut log, &mut output, Duration::ZERO).await;
         drop(release);
         assert!(result.is_err());
         assert!(String::from_utf8_lossy(&log).contains("output pipe was still open"));
+    }
+
+    #[cfg(all(test, windows))]
+    const WINDOWS_RECIPE_FIXTURE: &str = "ARTCRAFT_TEST_RECIPE_PIPE_FIXTURE";
+
+    #[cfg(all(test, windows))]
+    fn windows_recipe_command(role: &str) -> io::Result<Command> {
+        let mut command = Command::new(std::env::current_exe()?);
+        command.args(["--exact", "native::windows_recipe_pipe_fixture", "--nocapture"]).env(WINDOWS_RECIPE_FIXTURE, role);
+        hide_window(&mut command);
+        Ok(command)
+    }
+
+    #[cfg(all(test, windows))]
+    #[allow(clippy::zombie_processes, reason = "the job-owned fixture intentionally leaves the descendant alive after its leader exits")]
+    #[test]
+    fn windows_recipe_pipe_fixture() -> io::Result<()> {
+        match std::env::var(WINDOWS_RECIPE_FIXTURE).as_deref() {
+            Ok("leader") => {
+                let descendant = windows_recipe_command("descendant")?.stdout(Stdio::inherit()).spawn()?;
+                // Simulate a successful recipe that deliberately leaves a process in its job.
+                drop(descendant);
+            }
+            Ok("descendant") => std::thread::sleep(Duration::from_secs(30)),
+            _ => {}
+        }
+        Ok(())
+    }
+
+    #[cfg(all(test, any(windows, target_os = "linux", target_os = "macos", target_os = "freebsd")))]
+    #[tokio::test]
+    async fn log_timeout_stops_the_owned_descendant_after_its_leader_exits() -> io::Result<()> {
+        #[cfg(windows)]
+        let mut command = windows_recipe_command("leader")?;
+        #[cfg(unix)]
+        let mut command = {
+            let mut command = Command::new("sh");
+            command.args(["-c", "sleep 30 & exit 0"]);
+            command
+        };
+        command.stdin(Stdio::null()).stdout(Stdio::piped()).stderr(Stdio::null());
+        let Spawned { mut process, stdout, .. } = recipe_process::spawn(command)?;
+        let mut output = [stdout.map(drain), None];
+        let deadline = Instant::now() + Duration::from_secs(5);
+        loop {
+            match process.leader_success() {
+                Ok(Some(true)) => break,
+                Ok(None) if Instant::now() < deadline => tokio::time::sleep(Duration::from_millis(10)).await,
+                _ => {
+                    process.stop()?;
+                    return Err(io::Error::other("Synthetic recipe leader did not exit successfully"));
+                }
+            }
+        }
+
+        let mut log = Vec::new();
+        let result = finish_recipe(process, Ok(()), &mut log, &mut output, Duration::ZERO).await;
+        let reader = output.first().and_then(Option::as_ref).ok_or_else(|| io::Error::other("The inherited pipe did not time out"))?;
+        let deadline = Instant::now() + Duration::from_secs(5);
+        while !reader.is_finished() && Instant::now() < deadline {
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+        assert!(reader.is_finished(), "the owned descendant should no longer hold the pipe open");
+        assert_eq!(result.as_ref().map_err(String::as_str), Err("The build recipe did not close its output pipes; inspect build.log"));
+        assert!(String::from_utf8_lossy(&log).contains("output pipe was still open"));
+        Ok(())
     }
 
     fn output_directory(checkout: &Path, path: &str) -> Result<PathBuf> {
@@ -799,7 +841,7 @@ mod native {
         #[cfg(windows)]
         {
             use std::os::windows::process::CommandExt as _;
-            command.creation_flags(0x08000000);
+            command.creation_flags(crate::recipe_process::CREATE_NO_WINDOW);
         }
         #[cfg(not(windows))]
         let _ = command;
