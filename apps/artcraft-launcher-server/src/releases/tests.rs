@@ -237,6 +237,36 @@ fn capacity_retirement_keeps_active_previous_and_recent_published() {
 }
 
 #[test]
+fn count_based_retirement_admits_the_next_manifest_and_preserves_rollback() {
+    let root = TestRoot::new();
+    let service = root.open();
+    let mut published = Vec::new();
+    for index in 0..MAX_BUILDS {
+        let release = service.queue(request("photocraft")).unwrap();
+        let claim = service.claim("worker").unwrap().unwrap();
+        stage(&service, "worker", &claim, b"small");
+        service.finalize(&release.id, "worker", &claim.claim_id).unwrap();
+        if index < 2 {
+            service.activate("photocraft", &release.id).unwrap();
+            published.push(release.id);
+        }
+    }
+
+    let next = service.queue(request("photocraft")).unwrap();
+    let claim = service.claim("worker").unwrap().unwrap();
+    stage(&service, "worker", &claim, b"next");
+    service.finalize(&next.id, "worker", &claim.claim_id).unwrap();
+    let releases = service.list().unwrap();
+    assert_eq!(releases.iter().filter(|release| release.state == "ready").count() as i64, MAX_BUILDS);
+    assert_eq!(releases.iter().filter(|release| release.state == "cancelled").count(), 1);
+    for id in &published {
+        assert!(service.asset_path("photocraft", id, "index.html", false).is_ok());
+    }
+    assert_eq!(service.active("photocraft").unwrap().unwrap().id, published[1]);
+    assert_eq!(service.rollback("photocraft", &published[1]).unwrap().id, published[0]);
+}
+
+#[test]
 fn a_failed_cleanup_keeps_capacity_reserved_without_blocking_writes() {
     let root = TestRoot::new();
     let service = root.open();

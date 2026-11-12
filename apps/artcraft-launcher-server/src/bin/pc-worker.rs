@@ -57,6 +57,7 @@ mod native {
     const RENEW_INTERVAL: Duration = Duration::from_secs(5 * 60);
     const MAX_RECIPE_DURATION: Duration = Duration::from_secs(6 * 60 * 60);
     const RECIPE_POLL: Duration = Duration::from_secs(2);
+    const LOG_DRAIN_TIMEOUT: Duration = Duration::from_secs(2);
 
     type Result<T> = std::result::Result<T, String>;
 
@@ -547,6 +548,7 @@ mod native {
     async fn run_recipe(recipe: &Recipe, job: &Path, checkout: &Path, lease: &mut Lease<'_>) -> Result<()> {
         let temp = job.join("temp");
         fs::create_dir(&temp).map_err(|_| String::from("Cannot create the job's temporary directory"))?;
+        let log = File::create(job.join("build.log")).map_err(|_| String::from("Cannot open the local build log"))?;
         let mut command = Command::new(&recipe.program);
         command
             .args(&recipe.args)
@@ -566,7 +568,7 @@ mod native {
         let stdout = child.stdout.take().map(drain);
         let stderr = child.stderr.take().map(drain);
         let result = wait_for_recipe(&mut child, lease).await;
-        let logs = write_log(job, stdout, stderr).await;
+        let logs = write_log(log, stdout, stderr, LOG_DRAIN_TIMEOUT).await;
         result.and(logs)
     }
 
@@ -598,29 +600,44 @@ mod native {
         if child.try_wait()?.is_some() {
             return Ok(());
         }
-        // The recipe owns a process group on Unix. On Windows, scope cancellation
-        // to the worker's child PID and its descendants.
-        #[cfg(unix)]
-        let _ =
-            Command::new("/bin/kill").args(["-s", "KILL", "--", &format!("-{}", child.id())]).stdout(Stdio::null()).stderr(Stdio::null()).status();
-        #[cfg(windows)]
-        if let Some(root) = std::env::var_os("SystemRoot") {
-            let mut terminate = Command::new(PathBuf::from(root).join("System32").join("taskkill.exe"));
-            terminate.args(["/PID", &child.id().to_string(), "/T", "/F"]).stdout(Stdio::null()).stderr(Stdio::null());
-            hide_window(&mut terminate);
-            let _ = terminate.status();
-        }
-        if child.try_wait()?.is_none() {
+        // Signal before reaping the leader, while its ID cannot be reused.
+        let signalled = signal_recipe_tree(child);
+        if signalled.is_err() && child.try_wait()?.is_none() {
             child.kill()?;
         }
         child.wait()?;
+        signalled
+    }
+
+    #[cfg(unix)]
+    fn signal_recipe_tree(child: &Child) -> io::Result<()> {
+        use rustix::process::{Pid, Signal, kill_process_group};
+
+        kill_process_group(Pid::from_child(child), Signal::KILL).map_err(io::Error::from)
+    }
+
+    #[cfg(windows)]
+    fn signal_recipe_tree(child: &Child) -> io::Result<()> {
+        let root = std::env::var_os("SystemRoot").ok_or_else(|| io::Error::other("SystemRoot is missing"))?;
+        let mut terminate = Command::new(PathBuf::from(root).join("System32").join("taskkill.exe"));
+        terminate.args(["/PID", &child.id().to_string(), "/T", "/F"]).stdout(Stdio::null()).stderr(Stdio::null());
+        hide_window(&mut terminate);
+        let status = terminate.status()?;
+        if !status.success() {
+            return Err(io::Error::other(format!("taskkill failed: {status}")));
+        }
         Ok(())
+    }
+
+    #[cfg(not(any(unix, windows)))]
+    fn signal_recipe_tree(_child: &Child) -> io::Result<()> {
+        Err(io::Error::new(io::ErrorKind::Unsupported, "Recipe tree cancellation is unavailable"))
     }
 
     #[cfg(all(test, unix))]
     #[test]
     fn cancelling_a_recipe_reaps_the_owned_child() -> io::Result<()> {
-        let mut command = Command::new("/bin/sleep");
+        let mut command = Command::new("sleep");
         command.arg("30").stdout(Stdio::null()).stderr(Stdio::null());
         std::os::unix::process::CommandExt::process_group(&mut command, 0);
         let mut child = command.spawn()?;
@@ -646,9 +663,9 @@ mod native {
         })
     }
 
-    async fn write_log(job: &Path, stdout: Option<Reader>, stderr: Option<Reader>) -> Result<()> {
-        let mut file = File::create(job.join("build.log")).map_err(|_| String::from("Cannot open the local build log"))?;
-        let deadline = Instant::now() + Duration::from_secs(2);
+    async fn write_log(mut file: impl Write, stdout: Option<Reader>, stderr: Option<Reader>, timeout: Duration) -> Result<()> {
+        let deadline = Instant::now() + timeout;
+        let mut complete = true;
         for (name, reader) in [("stdout", stdout), ("stderr", stderr)] {
             if let Some(reader) = reader {
                 while !reader.is_finished() && Instant::now() < deadline {
@@ -659,6 +676,7 @@ mod native {
                 let tail = if reader.is_finished() {
                     reader.join().map_err(|_| "Cannot collect the build log")?.map_err(|_| "Cannot read the build log")?
                 } else {
+                    complete = false;
                     b"Log collection timed out while the output pipe was still open.\n".to_vec()
                 };
                 writeln!(file, "Latest build {name}")
@@ -666,7 +684,25 @@ mod native {
                     .map_err(|_| String::from("Cannot write the local build log"))?;
             }
         }
+        if !complete {
+            return Err("The build recipe did not close its output pipes; inspect build.log".into());
+        }
         Ok(())
+    }
+
+    #[cfg(test)]
+    #[tokio::test]
+    async fn an_open_log_pipe_makes_the_recipe_incomplete() {
+        let (release, blocked) = std::sync::mpsc::channel::<()>();
+        let reader = std::thread::spawn(move || {
+            let _ = blocked.recv();
+            Ok(Vec::new())
+        });
+        let mut log = Vec::new();
+        let result = write_log(&mut log, Some(reader), None, Duration::ZERO).await;
+        drop(release);
+        assert!(result.is_err());
+        assert!(String::from_utf8_lossy(&log).contains("output pipe was still open"));
     }
 
     fn output_directory(checkout: &Path, path: &str) -> Result<PathBuf> {
