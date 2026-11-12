@@ -84,18 +84,27 @@ fn bind(app: &CraftApp, release: &Release, asset: &Asset) -> Result<(), String> 
 fn ensure_ours(paths: &Paths, app: &CraftApp, existing: Option<&CliRecord>) -> Result<(), String> {
     let conflict =
         |path: &Path| format!("{} already exists and wasn't made by ArtCraft Launcher, so the command-line tool wasn't installed", path.display());
+    // A link in place of either folder would lead the install (staging, the swap, the new link) out of them.
+    for dir in [paths.cli(), paths.cli_bin()] {
+        if std::fs::symlink_metadata(&dir).is_ok_and(|m| m.file_type().is_symlink()) {
+            return Err(format!("{} is a link, so the command-line tool wasn't installed", dir.display()));
+        }
+    }
     let folder = paths.cli().join(app.id);
     if std::fs::symlink_metadata(&folder).is_ok() && !existing.is_some_and(|record| record.folder == folder) {
         return Err(conflict(&folder));
     }
     let link = paths.cli_bin().join(binary_name(app));
-    if let Ok(meta) = std::fs::symlink_metadata(&link) {
-        let ours = meta.file_type().is_symlink() && std::fs::read_link(&link).is_ok_and(|to| to.starts_with(paths.cli()));
-        if !ours {
-            return Err(conflict(&link));
-        }
+    if link_is_ours(paths, &link) == Some(false) {
+        return Err(conflict(&link));
     }
     Ok(())
+}
+
+/// Whether what is at `link` is the launcher's: a link into its own `cli` folder. `None` when nothing is there.
+fn link_is_ours(paths: &Paths, link: &Path) -> Option<bool> {
+    let meta = std::fs::symlink_metadata(link).ok()?;
+    Some(meta.file_type().is_symlink() && std::fs::read_link(link).is_ok_and(|to| to.starts_with(paths.cli())))
 }
 
 /// Unpacks `zip`, checks the tool inside against `team`, and puts it in place with its link.
@@ -110,6 +119,8 @@ pub(super) fn place(
     existing: Option<&CliRecord>,
     run: Run<'_>,
 ) -> Result<CliRecord, String> {
+    // First of all: staging is created inside `cli`, so a link there must be found before it is.
+    ensure_ours(paths, app, existing)?;
     let root = paths.cli();
     std::fs::create_dir_all(&root).map_err(|e| format!("couldn't create {} ({e})", root.display()))?;
     // A folder of our own: a predictable name there may be the user's.
@@ -196,8 +207,14 @@ fn link(paths: &Paths, name: &str, target: &Path) -> Result<PathBuf, String> {
     let dir = paths.cli_bin();
     std::fs::create_dir_all(&dir).map_err(|e| format!("couldn't create {} ({e})", dir.display()))?;
     let link = dir.join(name);
-    if std::fs::symlink_metadata(&link).is_ok() {
-        std::fs::remove_file(&link).map_err(|e| format!("couldn't replace {} ({e})", link.display()))?;
+    // Decided here, at the removal, and not only before the swap: only a link of ours is taken away, and
+    // `symlink` below never overwrites, so a file that appears after this check stops the install instead.
+    match link_is_ours(paths, &link) {
+        Some(true) => std::fs::remove_file(&link).map_err(|e| format!("couldn't replace {} ({e})", link.display()))?,
+        Some(false) => {
+            return Err(format!("{} already exists and wasn't made by ArtCraft Launcher, so the command-line tool wasn't installed", link.display()));
+        }
+        None => {}
     }
     std::os::unix::fs::symlink(target, &link).map_err(|e| format!("couldn't link {} ({e})", link.display()))?;
     Ok(link)
@@ -429,6 +446,42 @@ mod tests {
         let err = remove(&paths, &record).unwrap_err();
         assert!(err.contains("isn't a real folder"), "{err}");
         assert!(real.join("pdfcraft").join("pdfcraft-cli").exists(), "the folder behind the link is untouched");
+    }
+
+    #[test]
+    fn a_linked_cli_or_bin_folder_is_refused_before_anything_is_placed() {
+        for linked in ["cli", "bin"] {
+            let dir = tempfile::tempdir().unwrap();
+            let paths = Paths::under(dir.path());
+            let elsewhere = dir.path().join("elsewhere");
+            std::fs::create_dir_all(&elsewhere).unwrap();
+            if linked == "cli" {
+                std::fs::create_dir_all(dir.path().join("data")).unwrap();
+                std::os::unix::fs::symlink(&elsewhere, paths.cli()).unwrap();
+            } else {
+                std::fs::create_dir_all(paths.cli()).unwrap();
+                std::os::unix::fs::symlink(&elsewhere, paths.cli_bin()).unwrap();
+            }
+            let calls = RefCell::new(Vec::new());
+            let err =
+                place(app(), "0.20.0", Path::new("/x/z.zip"), "DJ6XS33FX8", &paths, None, &mut runner(&calls, &[("pdfcraft-cli", "tool")], &[]))
+                    .unwrap_err();
+            assert!(err.contains("is a link"), "{linked}: {err}");
+            assert!(calls.borrow().is_empty(), "nothing was unpacked or checked");
+            assert_eq!(std::fs::read_dir(&elsewhere).unwrap().count(), 0, "nothing was written through the {linked} link");
+        }
+    }
+
+    #[test]
+    fn the_link_step_itself_refuses_a_file_that_is_not_the_launchers() {
+        // The check before the swap can be out of date by the time the link is made: link() decides again.
+        let dir = tempfile::tempdir().unwrap();
+        let paths = Paths::under(dir.path());
+        std::fs::create_dir_all(paths.cli_bin()).unwrap();
+        std::fs::write(paths.cli_bin().join("pdfcraft-cli"), "appeared late").unwrap();
+        let err = link(&paths, "pdfcraft-cli", &paths.cli().join("pdfcraft").join("pdfcraft-cli")).unwrap_err();
+        assert!(err.contains("wasn't made by ArtCraft Launcher"), "{err}");
+        assert_eq!(std::fs::read_to_string(paths.cli_bin().join("pdfcraft-cli")).unwrap(), "appeared late");
     }
 
     #[test]
