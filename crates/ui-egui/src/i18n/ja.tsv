@@ -477,3 +477,6 @@ anicraft	Classic tweens with eight easing presets and custom ease curves, plus s
 	Added	追加済み
 	Remove	削除
 	Add	追加
+	Experimental features	試験的な機能
+	Features that are still being built. Each is off until you turn it on here, for the launcher and every Craft app.	開発中の機能です。ここでオンにするまで、ランチャーとすべての Craft アプリでオフのままです。
+	Set by CRAFT_FLAGS for this run.	この起動では CRAFT_FLAGS で設定されています。

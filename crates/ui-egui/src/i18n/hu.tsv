@@ -475,3 +475,6 @@ anicraft	Classic tweens with eight easing presets and custom ease curves, plus s
 	Added	Hozzáadva
 	Remove	Eltávolítás
 	Add	Hozzáadás
+	Experimental features	Kísérleti funkciók
+	Features that are still being built. Each is off until you turn it on here, for the launcher and every Craft app.	Még fejlesztés alatt álló funkciók. Mindegyik ki van kapcsolva, amíg itt be nem kapcsolja, az indítóban és minden Craft alkalmazásban.
+	Set by CRAFT_FLAGS for this run.	Ehhez a futtatáshoz a CRAFT_FLAGS állítja be.

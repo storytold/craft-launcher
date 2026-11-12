@@ -3,8 +3,8 @@
 use std::time::Duration;
 
 use artcraft_launcher_core::protocol::{
-    Backend, BackendOptions, CANCELLED, Capabilities, Command, Event, INSTALL_CANCELLED, JobPhase, LatestRelease, McpAgents, McpBridge, McpService,
-    PAUSED, Source,
+    Backend, BackendOptions, CANCELLED, Capabilities, Command, Event, FlagState, INSTALL_CANCELLED, JobPhase, LatestRelease, McpAgents, McpBridge,
+    McpService, PAUSED, Source,
 };
 use artcraft_launcher_core::release::Release;
 use artcraft_launcher_core::status::AppStatus;
@@ -149,6 +149,8 @@ pub struct LauncherUi {
     pub(crate) mcp_bridge: McpBridge,
     /// AI agents: the gateway switch and the MCP clients.
     pub(crate) mcp_agents: McpAgents,
+    /// The feature flags (Settings › Experimental features).
+    pub(crate) flags: Vec<FlagState>,
     /// Editable port text for the unified bridge; synced from events only once so user edits stick.
     pub(crate) bridge_port: String,
     pub(crate) bridge_port_initialized: bool,
@@ -282,6 +284,7 @@ impl LauncherUi {
             mcp_services: Vec::new(),
             mcp_bridge: McpBridge::default(),
             mcp_agents: McpAgents::default(),
+            flags: Vec::new(),
             bridge_port: String::new(),
             bridge_port_initialized: false,
             mcp_requested: false,
@@ -672,6 +675,10 @@ impl LauncherUi {
                     self.bridge_port = port.to_string();
                     self.bridge_port_initialized = true;
                 }
+                false
+            }
+            Event::Flags { flags } => {
+                self.flags = flags;
                 false
             }
             Event::McpError { message } => {

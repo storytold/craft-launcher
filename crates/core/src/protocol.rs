@@ -95,6 +95,11 @@ pub enum Command {
         client: McpClient,
         added: bool,
     },
+    /// Turn a feature flag on or off for the launcher and every Craft app (`ArtCraft/flags.toml`).
+    SetFlag {
+        id: String,
+        on: bool,
+    },
 }
 
 /// Parent folders for new installs. Existing installations keep their recorded location.
@@ -322,6 +327,10 @@ pub enum Event {
     McpError {
         message: String,
     },
+    /// The feature flags and whether each is on. Sent with the MCP state and after a change.
+    Flags {
+        flags: Vec<FlagState>,
+    },
 }
 
 /// One installed app that can be exposed as a stdio MCP server. `command` is the CLI path the
@@ -341,6 +350,17 @@ pub struct McpBridge {
     pub version: Option<String>,
     pub port: u16,
     pub enabled: bool,
+}
+
+/// One feature flag as Settings shows it.
+#[derive(Clone, Debug, PartialEq)]
+pub struct FlagState {
+    pub id: String,
+    pub title: String,
+    pub description: String,
+    pub on: bool,
+    /// `CRAFT_FLAGS` decides it for this run, so the switch has no effect until that is gone.
+    pub forced: bool,
 }
 
 /// An MCP client the launcher can add the gateway entry to.
@@ -365,6 +385,8 @@ pub struct McpClientState {
 /// switch, and the MCP clients.
 #[derive(Clone, Debug, PartialEq, Default)]
 pub struct McpAgents {
+    /// The `AI-MCP` feature flag: without it Settings shows nothing about agents.
+    pub flag_on: bool,
     pub gateway_found: bool,
     pub enabled: bool,
     /// How many installed apps agents can reach (those with a CLI).

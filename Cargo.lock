@@ -315,6 +315,7 @@ name = "artcraft-launcher-native"
 version = "0.19.2"
 dependencies = [
  "artcraft-launcher-core",
+ "craft-flags",
  "craft-update",
  "dirs 6.0.0",
  "dunce",
@@ -977,6 +978,24 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "59ed5838eebb26a2bb2e58f6d5b5316989ae9d08bab10e0e6d103e656d1b0280"
 dependencies = [
  "libc",
+]
+
+[[package]]
+name = "craft-atomic"
+version = "0.1.0"
+source = "git+https://github.com/storytold/craft-libs?rev=d6d6835dc888a270a96a575fba58ab01abf6c122#d6d6835dc888a270a96a575fba58ab01abf6c122"
+dependencies = [
+ "rustix 1.1.5",
+]
+
+[[package]]
+name = "craft-flags"
+version = "0.1.0"
+source = "git+https://github.com/storytold/craft-libs?rev=d6d6835dc888a270a96a575fba58ab01abf6c122#d6d6835dc888a270a96a575fba58ab01abf6c122"
+dependencies = [
+ "craft-atomic",
+ "dirs 7.0.0",
+ "toml_edit 0.25.17+spec-1.1.0",
 ]
 
 [[package]]
@@ -5138,6 +5157,7 @@ dependencies = [
  "indexmap",
  "toml_datetime 1.1.2+spec-1.1.0",
  "toml_parser",
+ "toml_writer",
  "winnow 1.0.4",
 ]
 

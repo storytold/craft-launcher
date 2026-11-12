@@ -470,3 +470,6 @@ anicraft	Classic tweens with eight easing presets and custom ease curves, plus s
 	Added	Добавлено
 	Remove	Удалить
 	Add	Добавить
+	Experimental features	Экспериментальные функции
+	Features that are still being built. Each is off until you turn it on here, for the launcher and every Craft app.	Функции, которые ещё в разработке. Каждая выключена, пока вы не включите её здесь, для лаунчера и всех приложений Craft.
+	Set by CRAFT_FLAGS for this run.	Задано через CRAFT_FLAGS для этого запуска.

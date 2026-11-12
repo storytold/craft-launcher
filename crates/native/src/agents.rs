@@ -12,7 +12,7 @@
 use std::path::{Path, PathBuf};
 use std::sync::{Mutex, MutexGuard, PoisonError};
 
-use artcraft_launcher_core::protocol::{McpAgents, McpClient, McpClientState};
+use artcraft_launcher_core::protocol::{FlagState, McpAgents, McpClient, McpClientState};
 use serde_json::{Map, Value, json};
 
 use crate::local_mcp::LocalService;
@@ -210,10 +210,11 @@ fn lock() -> MutexGuard<'static, ()> {
 /// first, so an app installed (or a gateway updated) since then is used too; a failed refresh
 /// keeps the previous ones.
 pub fn state(services: &[LocalService]) -> McpAgents {
+    let flag_on = flag_on();
     let dir = mcp_dir();
     let on = {
         let _guard = lock();
-        let on = dir.as_deref().is_some_and(enabled);
+        let on = flag_on && dir.as_deref().is_some_and(enabled);
         if on && let Some(d) = &dir {
             let _ = write_apps(d, services);
             if let Some(src) = locate_gateway() {
@@ -235,11 +236,45 @@ pub fn state(services: &[LocalService]) -> McpAgents {
         })
         .collect();
     McpAgents {
+        flag_on,
         gateway_found: locate_gateway().is_some(),
         enabled: on,
         apps: services.iter().filter(|s| s.cli_path.as_ref().is_some_and(|p| p.is_absolute())).count(),
         clients,
     }
+}
+
+/// Whether the `AI-MCP` feature flag is on (`ArtCraft/flags.toml`, `CRAFT_FLAGS`).
+pub fn flag_on() -> bool {
+    craft_flags::load().enabled(&craft_flags::AI_MCP)
+}
+
+const NO_FLAG: &str = "turn on \"AI agents (MCP)\" under Experimental features first";
+
+/// Every feature flag, for Settings.
+pub fn flags_state() -> Vec<FlagState> {
+    let flags = craft_flags::load();
+    craft_flags::ALL
+        .iter()
+        .map(|f| FlagState {
+            id: f.id.to_string(),
+            title: f.title.to_string(),
+            description: f.description.to_string(),
+            on: flags.enabled(f),
+            forced: flags.forced(f.id).is_some(),
+        })
+        .collect()
+}
+
+/// Turn a feature flag on or off for the launcher and every app. Turning `AI-MCP` off also turns
+/// agents off, so no client keeps an entry for a feature that is switched off.
+pub fn set_flag(id: &str, on: bool, services: &[LocalService]) -> Result<(), String> {
+    let path = craft_flags::default_path().ok_or("couldn't find the per-user configuration folder")?;
+    craft_flags::set(&path, id, on).map_err(|e| e.to_string())?;
+    if id == craft_flags::AI_MCP.id && !on {
+        set_enabled(false, services)?;
+    }
+    Ok(())
 }
 
 const NO_GATEWAY: &str = "the Craft gateway (craft-ai-mcp) is not installed beside the launcher";
@@ -250,6 +285,9 @@ pub fn set_enabled(on: bool, services: &[LocalService]) -> Result<(), String> {
     let dir = mcp_dir().ok_or("couldn't find the per-user configuration folder")?;
     let _guard = lock();
     if on {
+        if !flag_on() {
+            return Err(NO_FLAG.into());
+        }
         let src = locate_gateway().ok_or(NO_GATEWAY)?;
         install_gateway(&src, &dir)?;
         return write_apps(&dir, services);
@@ -273,6 +311,9 @@ pub fn set_client(client: McpClient, added: bool) -> Result<(), String> {
     let (config, _) = client_paths(client).ok_or("couldn't find the home folder")?;
     if !added {
         return unregister(&config);
+    }
+    if !flag_on() {
+        return Err(NO_FLAG.into());
     }
     let dir = mcp_dir().ok_or("couldn't find the per-user configuration folder")?;
     let _guard = lock();
