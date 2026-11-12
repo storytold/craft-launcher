@@ -387,7 +387,7 @@ impl LauncherUi {
         if widgets::button(ui, &label, Kind::Primary, 0.0).clicked() {
             let ids: Vec<String> =
                 self.entries.iter().filter(|e| self.in_filter(e, Filter::Updates) && e.job.is_none()).map(|e| e.app.id.to_string()).collect();
-            if self.settings.batch_updates {
+            if self.settings.updates_batched() {
                 self.act_command(Command::InstallAll { apps: ids });
             } else {
                 for id in ids {

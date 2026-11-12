@@ -773,7 +773,7 @@ impl LauncherUi {
                 if self.auto_update_attempted.contains(&(e.app.id.to_string(), v.clone())) { None } else { Some((e.app.id.to_string(), v)) }
             })
             .collect();
-        if self.settings.batch_updates && !to_update.is_empty() {
+        if self.settings.updates_batched() && !to_update.is_empty() {
             log::info!("auto-update: queuing {} updates together behind one prompt", to_update.len());
             for (id, version) in &to_update {
                 self.auto_update_attempted.insert((id.clone(), version.clone()));
