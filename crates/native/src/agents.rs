@@ -25,7 +25,7 @@ pub const APPS_FILE: &str = "apps.json";
 /// Same override the gateway honours (tests, portable installs).
 pub const DIR_ENV: &str = "CRAFT_MCP_DIR";
 /// The key our entry has in a client's `mcpServers`.
-pub const SERVER_KEY: &str = "craft-apps";
+pub use artcraft_launcher_core::mcp_config::SERVER_KEY;
 /// Largest client configuration read; anything bigger is not a configuration file.
 const MAX_CONFIG_BYTES: u64 = 64 << 20;
 
@@ -366,10 +366,12 @@ pub fn state(services: &[InstalledApp]) -> McpAgents {
             }
         })
         .collect();
+    let gateway = dir.as_deref().filter(|_| on).map(gateway_copy).filter(|p| p.is_file()).map(|p| p.to_string_lossy().into_owned());
     McpAgents {
         flag_on,
         gateway_found: locate_gateway().is_some(),
         enabled: on,
+        gateway,
         apps: services.iter().filter(|s| s.cli_path.as_ref().is_some_and(|p| p.is_absolute())).count(),
         clients,
     }

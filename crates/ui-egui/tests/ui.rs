@@ -4429,6 +4429,7 @@ fn ai_agents_switch_and_client_buttons_send_their_commands() {
                 client(McpClient::Cursor, "Cursor", true, true),
                 client(McpClient::LmStudio, "LM Studio", false, false),
             ],
+            gateway: Some("C:/gw/craft-ai-mcp.exe".into()),
         },
     });
     let (mut h, sent) = harness_with(evs, ViewMode::Grid, egui::Theme::Dark, true, 1.0);
@@ -4438,6 +4439,14 @@ fn ai_agents_switch_and_client_buttons_send_their_commands() {
     h.get_by_label("Apps agents can reach: 3").scroll_to_me();
     h.run_steps(6);
     snapshot(&mut h, "settings-ai-agents");
+    // Other clients: the configuration in each format, copied with a note saying so.
+    for label in ["Copy JSON", "Copy for VS Code", "Copy for Codex (TOML)"] {
+        h.get_by_label(label).scroll_to_me();
+        h.run_steps(2);
+        h.get_by_label(label).click();
+        h.run_steps(3);
+        assert!(h.query_all_by_label("Configuration copied.").next().is_some(), "{label}");
+    }
     h.get_by_label("Add").click();
     h.run_steps(3);
     h.get_by_label("Remove").click();
@@ -4481,6 +4490,7 @@ fn ai_agents_left_on_without_the_gateway_can_still_be_turned_off() {
             enabled: true,
             apps: 2,
             clients: vec![client(McpClient::ClaudeDesktop, "Claude Desktop", false), client(McpClient::Cursor, "Cursor", true)],
+            gateway: None,
         },
     });
     let (mut h, sent) = harness_with(evs, ViewMode::Grid, egui::Theme::Dark, true, 1.0);
@@ -4505,7 +4515,7 @@ fn ai_agents_left_on_without_the_gateway_can_still_be_turned_off() {
 fn ai_agents_stay_hidden_until_their_flag_is_on() {
     use artcraft_launcher_core::protocol::McpAgents;
     let mut evs = events();
-    evs.push(Event::Mcp { agents: McpAgents { flag_on: false, gateway_found: true, enabled: true, apps: 3, clients: vec![] } });
+    evs.push(Event::Mcp { agents: McpAgents { flag_on: false, gateway_found: true, enabled: true, apps: 3, clients: vec![], gateway: None } });
     let (mut h, _sent) = harness_with(evs, ViewMode::Grid, egui::Theme::Dark, true, 1.0);
     h.run_steps(6);
     h.get_by_label("Settings").click();

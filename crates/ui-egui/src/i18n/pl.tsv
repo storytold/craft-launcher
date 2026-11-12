@@ -453,7 +453,15 @@ anicraft	Classic tweens with eight easing presets and custom ease curves, plus s
 	Unlock	Odblokuj
 
 	AI agents	Agenci AI
-	One entry in Claude, Cursor or LM Studio reaches every installed Craft app. Restart the client after adding it.	Jeden wpis w Claude, Cursorze lub LM Studio daje dostęp do każdej zainstalowanej aplikacji Craft. Po dodaniu uruchom klienta ponownie.
+	While this is on, AI apps that use MCP, such as Claude, Cursor or LM Studio, can work with every installed Craft app through one entry. While it is off, no agent can reach them, and the entries added here are removed.	Gdy ta opcja jest włączona, aplikacje AI korzystające z MCP, takie jak Claude, Cursor czy LM Studio, mogą przez jeden wpis pracować z każdą zainstalowaną aplikacją Craft. Gdy jest wyłączona, żaden agent nie ma do nich dostępu, a dodane tutaj wpisy są usuwane.
+	Quick install	Szybka instalacja
+	Adds the Craft apps to that client. Restart the client afterwards.	Dodaje aplikacje Craft do tego klienta. Potem uruchom klienta ponownie.
+	Other clients	Inni klienci
+	Copy the configuration and paste it into the client's MCP settings.	Skopiuj konfigurację i wklej ją w ustawieniach MCP klienta.
+	Copy JSON	Kopiuj JSON
+	Copy for VS Code	Kopiuj dla VS Code
+	Copy for Codex (TOML)	Kopiuj dla Codex (TOML)
+	Configuration copied.	Skopiowano konfigurację.
 	The Craft gateway (craft-ai-mcp) is not installed beside the launcher.	Brama Craft (craft-ai-mcp) nie jest zainstalowana obok launchera.
 	Let AI agents use Craft apps	Pozwól agentom AI używać aplikacji Craft
 	Apps agents can reach: {count}	Aplikacje dostępne dla agentów: {count}

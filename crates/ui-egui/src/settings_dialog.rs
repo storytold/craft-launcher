@@ -1,6 +1,7 @@
 //! The Settings dialog: a large card in the shape of the app page (see `sheet.rs`), with the
 //! groups of settings in boxes, two columns once the window is wide enough.
 
+use artcraft_launcher_core::mcp_config::{McpConfigFormat, mcp_config};
 use artcraft_launcher_core::protocol::{Command, McpClientState};
 use artcraft_launcher_core::{Os, PackageKind};
 use egui::{RichText, Ui, vec2};
@@ -373,7 +374,9 @@ impl LauncherUi {
     }
 
     /// AI agents: one switch that lets MCP clients reach every installed Craft app through the
-    /// `craft-ai-mcp` gateway, and one Add/Remove button per MCP client found on this machine.
+    /// `craft-ai-mcp` gateway (it is the person's consent: off, no agent reaches any app), then
+    /// quick install (Add/Remove per MCP client found here) and the configuration to copy for any
+    /// other client.
     fn settings_agents(&mut self, ui: &mut Ui) {
         // Behind the `AI-MCP` feature flag, set in `ArtCraft/flags.toml` or `CRAFT_FLAGS` only.
         if !self.caps.manage_apps || !self.mcp_agents.flag_on {
@@ -381,7 +384,12 @@ impl LauncherUi {
         }
         let t = Tokens::get(ui.ctx());
         sheet::panel(ui, tl!("AI agents"), |ui| {
-            note(ui, tl!("One entry in Claude, Cursor or LM Studio reaches every installed Craft app. Restart the client after adding it."));
+            note(
+                ui,
+                tl!(
+                    "While this is on, AI apps that use MCP, such as Claude, Cursor or LM Studio, can work with every installed Craft app through one entry. While it is off, no agent can reach them, and the entries added here are removed."
+                ),
+            );
             ui.add_space(8.0);
             let agents = self.mcp_agents.clone();
             if !agents.gateway_found {
@@ -399,9 +407,31 @@ impl LauncherUi {
                 return;
             }
             ui.label(RichText::new(tl!("Apps agents can reach: {count}").replace("{count}", &agents.apps.to_string())).size(12.0).color(t.muted));
-            ui.add_space(8.0);
+            ui.add_space(10.0);
+            ui.label(RichText::new(tl!("Quick install")).strong());
+            note(ui, tl!("Adds the Craft apps to that client. Restart the client afterwards."));
+            ui.add_space(4.0);
             for c in &agents.clients {
                 self.draw_client_row(ui, &t, c, agents.gateway_found);
+            }
+            if let Some(gateway) = agents.gateway.as_deref() {
+                ui.add_space(10.0);
+                ui.label(RichText::new(tl!("Other clients")).strong());
+                note(ui, tl!("Copy the configuration and paste it into the client's MCP settings."));
+                ui.add_space(4.0);
+                ui.horizontal_wrapped(|ui| {
+                    for format in McpConfigFormat::ALL {
+                        let label = match format {
+                            McpConfigFormat::Json => tl!("Copy JSON"),
+                            McpConfigFormat::VsCode => tl!("Copy for VS Code"),
+                            McpConfigFormat::CodexToml => tl!("Copy for Codex (TOML)"),
+                        };
+                        if ui.button(label).clicked() {
+                            ui.ctx().copy_text(mcp_config(format, gateway));
+                            self.toast(tl!("Configuration copied."), false);
+                        }
+                    }
+                });
             }
         });
     }

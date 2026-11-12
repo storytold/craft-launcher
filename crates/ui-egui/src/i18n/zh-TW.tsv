@@ -410,7 +410,15 @@ anicraft	Classic tweens with eight easing presets and custom ease curves, plus s
 	Unlock	解除鎖定
 
 	AI agents	AI 代理
-	One entry in Claude, Cursor or LM Studio reaches every installed Craft app. Restart the client after adding it.	在 Claude、Cursor 或 LM Studio 中加入一個項目，即可使用所有已安裝的 Craft 應用程式。加入後請重新啟動用戶端。
+	While this is on, AI apps that use MCP, such as Claude, Cursor or LM Studio, can work with every installed Craft app through one entry. While it is off, no agent can reach them, and the entries added here are removed.	開啟後，Claude、Cursor 或 LM Studio 等使用 MCP 的 AI 應用程式只需一個項目，即可使用所有已安裝的 Craft 應用程式。關閉後，任何代理都無法存取它們，並會移除在此加入的項目。
+	Quick install	快速安裝
+	Adds the Craft apps to that client. Restart the client afterwards.	將 Craft 應用程式加入該用戶端。之後請重新啟動用戶端。
+	Other clients	其他用戶端
+	Copy the configuration and paste it into the client's MCP settings.	複製設定，並將其貼到用戶端的 MCP 設定中。
+	Copy JSON	複製 JSON
+	Copy for VS Code	複製為 VS Code 格式
+	Copy for Codex (TOML)	複製為 Codex 格式 (TOML)
+	Configuration copied.	已複製設定。
 	The Craft gateway (craft-ai-mcp) is not installed beside the launcher.	啟動器旁未安裝 Craft 閘道 (craft-ai-mcp)。
 	Let AI agents use Craft apps	允許 AI 代理使用 Craft 應用程式
 	Apps agents can reach: {count}	代理可使用的應用程式：{count}

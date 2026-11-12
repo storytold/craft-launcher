@@ -454,7 +454,15 @@ anicraft	Classic tweens with eight easing presets and custom ease curves, plus s
 	Unlock	固定を解除
 
 	AI agents	AI エージェント
-	One entry in Claude, Cursor or LM Studio reaches every installed Craft app. Restart the client after adding it.	Claude、Cursor、LM Studio に 1 つ登録するだけで、インストール済みのすべての Craft アプリを使えます。追加したらクライアントを再起動してください。
+	While this is on, AI apps that use MCP, such as Claude, Cursor or LM Studio, can work with every installed Craft app through one entry. While it is off, no agent can reach them, and the entries added here are removed.	これをオンにしている間、Claude、Cursor、LM Studio など MCP を使う AI アプリは、1 つの登録でインストール済みのすべての Craft アプリを使えます。オフにすると、どのエージェントもアクセスできなくなり、ここで追加した登録は削除されます。
+	Quick install	クイックインストール
+	Adds the Craft apps to that client. Restart the client afterwards.	そのクライアントに Craft アプリを追加します。追加後にクライアントを再起動してください。
+	Other clients	その他のクライアント
+	Copy the configuration and paste it into the client's MCP settings.	設定をコピーして、クライアントの MCP 設定に貼り付けてください。
+	Copy JSON	JSON をコピー
+	Copy for VS Code	VS Code 用にコピー
+	Copy for Codex (TOML)	Codex 用にコピー (TOML)
+	Configuration copied.	設定をコピーしました。
 	The Craft gateway (craft-ai-mcp) is not installed beside the launcher.	Craft ゲートウェイ (craft-ai-mcp) がランチャーと同じ場所にインストールされていません。
 	Let AI agents use Craft apps	AI エージェントに Craft アプリの使用を許可
 	Apps agents can reach: {count}	エージェントが使えるアプリ: {count}

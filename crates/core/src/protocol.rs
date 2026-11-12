@@ -340,6 +340,8 @@ pub struct McpAgents {
     /// How many installed apps agents can reach (those with a CLI).
     pub apps: usize,
     pub clients: Vec<McpClientState>,
+    /// The gateway clients start, while agents are on: what Copy puts in a configuration.
+    pub gateway: Option<String>,
 }
 
 /// What a backend can do on this platform.

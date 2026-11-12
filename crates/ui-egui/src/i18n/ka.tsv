@@ -450,7 +450,15 @@ anicraft	Classic tweens with eight easing presets and custom ease curves, plus s
 	Unlock	განბლოკვა
 
 	AI agents	AI აგენტები
-	One entry in Claude, Cursor or LM Studio reaches every installed Craft app. Restart the client after adding it.	ერთი ჩანაწერი Claude-ში, Cursor-ში ან LM Studio-ში აღწევს ყველა დაინსტალირებულ Craft აპს. დამატების შემდეგ კლიენტი გადატვირთეთ.
+	While this is on, AI apps that use MCP, such as Claude, Cursor or LM Studio, can work with every installed Craft app through one entry. While it is off, no agent can reach them, and the entries added here are removed.	სანამ ეს ჩართულია, MCP-ის მქონე AI აპებს, მაგალითად Claude-ს, Cursor-ს ან LM Studio-ს, ერთი ჩანაწერით შეუძლიათ ყველა დაინსტალირებულ Craft აპთან მუშაობა. გამორთვისას ვერცერთი აგენტი ვერ მიაღწევს მათ და აქ დამატებული ჩანაწერები წაიშლება.
+	Quick install	სწრაფი დაყენება
+	Adds the Craft apps to that client. Restart the client afterwards.	ამატებს Craft აპებს ამ კლიენტში. შემდეგ კლიენტი გადატვირთეთ.
+	Other clients	სხვა კლიენტები
+	Copy the configuration and paste it into the client's MCP settings.	დააკოპირეთ კონფიგურაცია და ჩასვით კლიენტის MCP პარამეტრებში.
+	Copy JSON	JSON-ის კოპირება
+	Copy for VS Code	კოპირება VS Code-ისთვის
+	Copy for Codex (TOML)	კოპირება Codex-ისთვის (TOML)
+	Configuration copied.	კონფიგურაცია დაკოპირდა.
 	The Craft gateway (craft-ai-mcp) is not installed beside the launcher.	Craft კარიბჭე (craft-ai-mcp) გამშვების გვერდით არ არის დაინსტალირებული.
 	Let AI agents use Craft apps	AI აგენტებს Craft აპების გამოყენების ნება
 	Apps agents can reach: {count}	აგენტებისთვის ხელმისაწვდომი აპები: {count}
