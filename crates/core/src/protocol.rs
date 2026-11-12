@@ -73,18 +73,8 @@ pub enum Command {
     /// Change how the backend behaves.
     Configure(BackendOptions),
 
-    /// Ask for the current state of the local MCP services (installed apps + unified bridge).
+    /// Ask for the AI agents state (the gateway, the switch, the MCP clients).
     McpState,
-    /// Turn an installed app's stdio MCP entry on or off in LM Studio's config.
-    McpSetService {
-        service_id: String,
-        enabled: bool,
-    },
-    /// Turn the unified-bridge HTTP MCP entry on or off at `port`.
-    McpSetBridge {
-        port: u16,
-        enabled: bool,
-    },
     /// Let AI agents use the Craft apps (writes the gateway's app list), or stop them (removes the
     /// list and the client entries the launcher added).
     McpSetAgents {
@@ -314,15 +304,12 @@ pub enum Event {
         rate_limited_until: Option<i64>,
     },
 
-    /// The local MCP services: which installed apps can be exposed as stdio servers, their current
-    /// on/off state in LM Studio's config, plus the unified HTTP bridge (found? version? port?
-    /// enabled?). Sent after detection and after any change, so the settings panel is always in sync.
+    /// The AI agents state: the gateway, the switch and the MCP clients. Sent when Settings asks,
+    /// after detection and after any change.
     Mcp {
-        services: Vec<McpService>,
-        bridge: McpBridge,
         agents: McpAgents,
     },
-    /// A local MCP operation failed (e.g. writing `ng-mcp.json`). Carries a short, user-facing
+    /// An AI agents operation failed (e.g. writing a client configuration). Carries a short, user-facing
     /// message; the UI shows it as an error toast so a failed toggle is never silent.
     McpError {
         message: String,
@@ -331,25 +318,6 @@ pub enum Event {
     Flags {
         flags: Vec<FlagState>,
     },
-}
-
-/// One installed app that can be exposed as a stdio MCP server. `command` is the CLI path the
-/// host would spawn; `enabled` is its current state in LM Studio's config.
-#[derive(Clone, Debug, PartialEq)]
-pub struct McpService {
-    pub id: String,
-    pub name: String,
-    pub command: String,
-    pub enabled: bool,
-}
-
-/// The unified HTTP bridge. `found` when its binary exists on this machine; `version` when readable.
-#[derive(Clone, Debug, PartialEq, Default)]
-pub struct McpBridge {
-    pub found: bool,
-    pub version: Option<String>,
-    pub port: u16,
-    pub enabled: bool,
 }
 
 /// One feature flag as Settings shows it.

@@ -9,8 +9,8 @@ use artcraft_launcher_core::catalog::{LAUNCHER, LAUNCHER_ID};
 use artcraft_launcher_core::feed::{Feed, FeedAnswer};
 use artcraft_launcher_core::platform::{Arch, Os, Platform, pick_asset};
 use artcraft_launcher_core::protocol::{
-    Backend, BackendOptions, CANCELLED, Capabilities, Command, Event, INSTALL_CANCELLED, JobPhase, LatestRelease, McpBridge, McpService, Origin,
-    PAUSED, PausedDownload, Source, VersionTrack,
+    Backend, BackendOptions, CANCELLED, Capabilities, Command, Event, INSTALL_CANCELLED, JobPhase, LatestRelease, Origin, PAUSED, PausedDownload,
+    Source, VersionTrack,
 };
 use artcraft_launcher_core::release::{Asset, Release};
 use artcraft_launcher_core::{CraftApp, Installed, PackageKind, version};
@@ -18,7 +18,6 @@ use artcraft_launcher_core::{CraftApp, Installed, PackageKind, version};
 use crate::feed_throttle::{self, FeedThrottle, Outcome};
 use crate::http::{self, Http, Stop};
 use crate::install::{self, Job};
-use crate::local_mcp;
 use crate::manifest::Manifest;
 use crate::paths::Paths;
 use crate::process;
@@ -1610,12 +1609,7 @@ impl Backend for NativeBackend {
                     self.check(true);
                 }
             }
-            cmd @ (Command::McpState
-            | Command::McpSetService { .. }
-            | Command::McpSetBridge { .. }
-            | Command::McpSetAgents { .. }
-            | Command::McpSetClient { .. }
-            | Command::SetFlag { .. }) => {
+            cmd @ (Command::McpState | Command::McpSetAgents { .. } | Command::McpSetClient { .. } | Command::SetFlag { .. }) => {
                 // Detection can run package-manager queries for seconds (flatpak on Linux):
                 // never on the UI thread that sends commands.
                 let shared = self.shared.clone();
@@ -1655,108 +1649,43 @@ impl Backend for NativeBackend {
     }
 }
 
-/// The current local MCP state: installed apps with usable CLIs (with their on/off state in
-/// LM Studio's config) plus the unified HTTP bridge. Reads the manifest and ng-mcp.json, and takes
-/// a fresh detection snapshot so it reflects what's on disk now. Entries are matched by display
-/// name so those created under a different id (e.g. a UUID by an earlier launcher version) are
-/// recognized and reported as already present.
+/// The AI agents state, from a fresh detection of the installed apps.
 fn mcp_state(shared: &Shared) -> Event {
-    mcp_state_for(&detected_services(shared))
+    mcp_state_for(&detected_apps(shared))
 }
 
 /// [`mcp_state`] for apps already detected.
-fn mcp_state_for(detected: &[local_mcp::LocalService]) -> Event {
-    let agents = crate::agents::state(detected);
-
-    let existing: Vec<local_mcp::ServerEntry> = match local_mcp::mcp_config_path() {
-        Some(p) => local_mcp::load_servers(&p),
-        None => vec![],
-    };
-
-    let services: Vec<McpService> = detected
-        .iter()
-        .map(|s| McpService {
-            id: s.id.clone(),
-            name: s.name.clone(),
-            command: s.cli_path.as_ref().map(|c| c.display().to_string()).unwrap_or_default(),
-            enabled: local_mcp::service_enabled(&existing, &s.name),
-        })
-        .chain(local_mcp::orphaned_entries(&existing, detected).into_iter().map(|(id, name, enabled)| McpService {
-            id,
-            name,
-            command: String::new(),
-            enabled,
-        }))
-        .collect();
-
-    let bridge_path = local_mcp::locate_bridge();
-    Event::Mcp {
-        services,
-        bridge: McpBridge {
-            found: bridge_path.is_some(),
-            version: bridge_path.as_deref().and_then(local_mcp::bridge_version).map(|v| v.to_string()),
-            port: local_mcp::bridge_port_current(&existing).unwrap_or(local_mcp::BRIDGE_PORT),
-            enabled: local_mcp::bridge_enabled(&existing),
-        },
-        agents,
-    }
+fn mcp_state_for(detected: &[crate::agents::InstalledApp]) -> Event {
+    Event::Mcp { agents: crate::agents::state(detected) }
 }
 
 /// Serialises MCP commands and every publication of the MCP state, so a state read before a
 /// command can't arrive after that command's own (newer) state.
 static MCP_WORK: Mutex<()> = Mutex::new(());
 
-/// One MCP command, on a worker thread. Commands run one at a time, so a toggle and a refresh
-/// never write `ng-mcp.json` or the client configurations at once; detection runs once per
-/// command, and the new state is sent when it is done.
+/// One AI agents command, on a worker thread: detection can run package-manager queries for
+/// seconds (flatpak on Linux). Commands run one at a time; the new state is sent when done.
 fn run_mcp(shared: &Shared, cmd: Command) {
     let _guard = MCP_WORK.lock().unwrap_or_else(PoisonError::into_inner);
-    let services = detected_services(shared);
+    let apps = detected_apps(shared);
     let result = match cmd {
-        Command::McpSetService { service_id, enabled } => local_mcp::mcp_config_path().map_or(Ok(()), |p| {
-            let mut servers = local_mcp::load_servers(&p);
-            match services.iter().find(|s| s.id == service_id) {
-                Some(s) if enabled => {
-                    local_mcp::enable_service(&mut servers, s);
-                }
-                Some(s) => {
-                    local_mcp::disable_service(&mut servers, s);
-                }
-                // An app no longer installed: its saved entry can still be switched off.
-                None if !enabled => {
-                    let gone = local_mcp::LocalService { id: service_id, name: String::new(), location: String::new(), cli_path: None };
-                    local_mcp::disable_service(&mut servers, &gone);
-                }
-                None => {}
-            }
-            local_mcp::save_servers(&p, &servers, &[])
-        }),
-        Command::McpSetBridge { port, enabled } => local_mcp::mcp_config_path().map_or(Ok(()), |p| {
-            let mut servers = local_mcp::load_servers(&p);
-            if enabled {
-                local_mcp::enable_bridge(&mut servers, port);
-            } else {
-                local_mcp::disable_bridge(&mut servers);
-            }
-            local_mcp::save_servers(&p, &servers, &[])
-        }),
-        Command::McpSetAgents { enabled } => crate::agents::set_enabled(enabled, &services),
+        Command::McpSetAgents { enabled } => crate::agents::set_enabled(enabled, &apps),
         Command::McpSetClient { client, added } => crate::agents::set_client(client, added),
-        Command::SetFlag { id, on } => crate::agents::set_flag(&id, on, &services),
+        Command::SetFlag { id, on } => crate::agents::set_flag(&id, on, &apps),
         _ => Ok(()),
     };
     if let Err(message) = result {
         shared.emit(Event::McpError { message });
     }
     shared.emit(Event::Flags { flags: crate::agents::flags_state() });
-    shared.emit(mcp_state_for(&services));
+    shared.emit(mcp_state_for(&apps));
 }
 
 /// The installed apps with their CLIs, from a fresh detection snapshot.
-fn detected_services(shared: &Shared) -> Vec<local_mcp::LocalService> {
+fn detected_apps(shared: &Shared) -> Vec<crate::agents::InstalledApp> {
     let manifest = shared.manifest.lock().unwrap_or_else(PoisonError::into_inner).clone();
     let snapshot = crate::detect::Snapshot::take();
-    local_mcp::installed_services(&manifest, &snapshot)
+    crate::agents::installed_apps(&manifest, &snapshot)
 }
 
 #[cfg(test)]

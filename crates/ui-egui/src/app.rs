@@ -3,8 +3,8 @@
 use std::time::Duration;
 
 use artcraft_launcher_core::protocol::{
-    Backend, BackendOptions, CANCELLED, Capabilities, Command, Event, FlagState, INSTALL_CANCELLED, JobPhase, LatestRelease, McpAgents, McpBridge,
-    McpService, PAUSED, Source,
+    Backend, BackendOptions, CANCELLED, Capabilities, Command, Event, FlagState, INSTALL_CANCELLED, JobPhase, LatestRelease, McpAgents, PAUSED,
+    Source,
 };
 use artcraft_launcher_core::release::Release;
 use artcraft_launcher_core::status::AppStatus;
@@ -143,20 +143,10 @@ pub struct LauncherUi {
     pub(crate) backend: Box<dyn Backend>,
     pub settings: Settings,
     pub(crate) entries: Vec<AppEntry>,
-    /// Local MCP services from the backend: installed apps exposed as stdio servers, plus the
-    /// unified HTTP bridge. Empty until the first [`Event::Mcp`].
-    pub(crate) mcp_services: Vec<McpService>,
-    pub(crate) mcp_bridge: McpBridge,
-    /// The first MCP state arrived: until then the bridge's switch and port show defaults, not
-    /// the saved setup, and stay disabled.
-    pub(crate) mcp_state_known: bool,
     /// AI agents: the gateway switch and the MCP clients.
     pub(crate) mcp_agents: McpAgents,
     /// The feature flags (Settings › Experimental features).
     pub(crate) flags: Vec<FlagState>,
-    /// Editable port text for the unified bridge; synced from events only once so user edits stick.
-    pub(crate) bridge_port: String,
-    pub(crate) bridge_port_initialized: bool,
     /// Whether we've asked for MCP state since the settings dialog last opened (reset when it closes).
     pub(crate) mcp_requested: bool,
     pub(crate) caps: Capabilities,
@@ -284,13 +274,8 @@ impl LauncherUi {
                 .filter(|a| platform.is_none_or(|p| a.runs_on(p.os)))
                 .map(AppEntry::new)
                 .collect(),
-            mcp_services: Vec::new(),
-            mcp_bridge: McpBridge::default(),
-            mcp_state_known: false,
             mcp_agents: McpAgents::default(),
             flags: Vec::new(),
-            bridge_port: String::new(),
-            bridge_port_initialized: false,
             mcp_requested: false,
             caps,
             platform,
@@ -669,17 +654,8 @@ impl LauncherUi {
                 self.rate_limited_until = rate_limited_until;
                 true
             }
-            Event::Mcp { services, bridge, agents } => {
+            Event::Mcp { agents } => {
                 self.mcp_agents = agents;
-                self.mcp_state_known = true;
-                let port = bridge.port;
-                self.mcp_services = services;
-                self.mcp_bridge = bridge;
-                // Sync the editable port only once so a user's typed value isn't clobbered by later events.
-                if !self.bridge_port_initialized && port != 0 {
-                    self.bridge_port = port.to_string();
-                    self.bridge_port_initialized = true;
-                }
                 false
             }
             Event::Flags { flags } => {

@@ -4415,12 +4415,10 @@ fn launcher_version_padlock_confirms_and_returns_to_settings() {
 /// Settings › AI agents: the switch, and Add / Remove per MCP client, each sending one command.
 #[test]
 fn ai_agents_switch_and_client_buttons_send_their_commands() {
-    use artcraft_launcher_core::protocol::{McpAgents, McpBridge, McpClient, McpClientState};
+    use artcraft_launcher_core::protocol::{McpAgents, McpClient, McpClientState};
     let client = |client, name: &str, installed, added| McpClientState { client, name: name.into(), installed, added };
     let mut evs = events();
     evs.push(Event::Mcp {
-        services: vec![],
-        bridge: McpBridge::default(),
         agents: McpAgents {
             flag_on: true,
             gateway_found: true,
@@ -4460,11 +4458,7 @@ fn ai_agents_switch_and_client_buttons_send_their_commands() {
 #[test]
 fn ai_agents_without_the_gateway_offer_no_switch() {
     let mut evs = events();
-    evs.push(Event::Mcp {
-        services: vec![],
-        bridge: artcraft_launcher_core::protocol::McpBridge::default(),
-        agents: artcraft_launcher_core::protocol::McpAgents { flag_on: true, ..Default::default() },
-    });
+    evs.push(Event::Mcp { agents: artcraft_launcher_core::protocol::McpAgents { flag_on: true, ..Default::default() } });
     let (mut h, _sent) = harness_with(evs, ViewMode::Grid, egui::Theme::Dark, true, 1.0);
     h.run_steps(6);
     h.get_by_label("Settings").click();
@@ -4477,12 +4471,10 @@ fn ai_agents_without_the_gateway_offer_no_switch() {
 /// removed; only adding is gone.
 #[test]
 fn ai_agents_left_on_without_the_gateway_can_still_be_turned_off() {
-    use artcraft_launcher_core::protocol::{McpAgents, McpBridge, McpClient, McpClientState};
+    use artcraft_launcher_core::protocol::{McpAgents, McpClient, McpClientState};
     let client = |client, name: &str, added| McpClientState { client, name: name.into(), installed: true, added };
     let mut evs = events();
     evs.push(Event::Mcp {
-        services: vec![],
-        bridge: McpBridge::default(),
         agents: McpAgents {
             flag_on: true,
             gateway_found: false,
@@ -4510,15 +4502,11 @@ fn ai_agents_left_on_without_the_gateway_can_still_be_turned_off() {
 /// With the `AI-MCP` flag off, Settings shows nothing about agents, only the flag to turn on.
 #[test]
 fn ai_agents_stay_hidden_until_their_flag_is_on() {
-    use artcraft_launcher_core::protocol::{FlagState, McpAgents, McpBridge};
+    use artcraft_launcher_core::protocol::{FlagState, McpAgents};
     let flag = |id: &str, title: &str, on, forced| FlagState { id: id.into(), title: title.into(), description: "d".into(), on, forced };
     let mut evs = events();
     evs.push(Event::Flags { flags: vec![flag("AI-MCP", "AI agents (MCP)", false, false), flag("AI-MODELS", "AI models and services", false, true)] });
-    evs.push(Event::Mcp {
-        services: vec![],
-        bridge: McpBridge::default(),
-        agents: McpAgents { flag_on: false, gateway_found: true, enabled: true, apps: 3, clients: vec![] },
-    });
+    evs.push(Event::Mcp { agents: McpAgents { flag_on: false, gateway_found: true, enabled: true, apps: 3, clients: vec![] } });
     let (mut h, sent) = harness_with(evs, ViewMode::Grid, egui::Theme::Dark, true, 1.0);
     h.run_steps(6);
     h.get_by_label("Settings").click();

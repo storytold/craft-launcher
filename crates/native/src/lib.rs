@@ -15,7 +15,6 @@ pub mod feed_throttle;
 pub mod hosted_catalog;
 pub mod http;
 pub mod install;
-pub mod local_mcp;
 pub mod login;
 pub mod manifest;
 #[cfg(any(windows, test))]

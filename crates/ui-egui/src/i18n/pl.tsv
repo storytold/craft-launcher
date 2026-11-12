@@ -452,22 +452,6 @@ anicraft	Classic tweens with eight easing presets and custom ease curves, plus s
 	{app} is pinned to {version}. Follow the latest release instead?	Aplikacja {app} jest przypięta do wersji {version}. Zamiast tego śledzić najnowsze wydanie?
 	Unlock	Odblokuj
 
-	Local services	Lokalne usługi
-
-	Expose Craft AI apps as MCP servers so LM Studio / Bionic can drive their tools.	Odsłaniaj aplikacje Craft AI jako serwery MCP, aby LM Studio / Bionic mogło sterować ich narzędziami.
-
-	Craft apps	Aplikacje Craft
-
-	No installed Craft app has a usable CLI yet.	Żadna zainstalowana aplikacja Craft nie ma jeszcze używalnego CLI.
-
-	Unified bridge	Zjednoczony most
-
-	Not found on this machine	Nie znaleziono na tym komputerze
-
-	Found	Znaleziono
-
-	Port	Port
-	Port applies when you toggle the bridge.	Port jest stosowany, gdy przełączysz most.
 	AI agents	Agenci AI
 	One entry in Claude, Cursor or LM Studio reaches every installed Craft app. Restart the client after adding it.	Jeden wpis w Claude, Cursorze lub LM Studio daje dostęp do każdej zainstalowanej aplikacji Craft. Po dodaniu uruchom klienta ponownie.
 	The Craft gateway (craft-ai-mcp) is not installed beside the launcher.	Brama Craft (craft-ai-mcp) nie jest zainstalowana obok launchera.

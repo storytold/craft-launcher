@@ -4,8 +4,8 @@ use serde_json::{Value, json};
 
 use super::*;
 
-fn service(id: &str, name: &str, cli: Option<PathBuf>) -> LocalService {
-    LocalService { id: id.into(), name: name.into(), location: String::new(), cli_path: cli }
+fn service(id: &str, name: &str, cli: Option<PathBuf>) -> InstalledApp {
+    InstalledApp { id: id.into(), name: name.into(), location: String::new(), cli_path: cli }
 }
 
 fn read(p: &Path) -> Value {

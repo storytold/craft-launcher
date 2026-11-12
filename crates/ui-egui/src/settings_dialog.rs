@@ -1,7 +1,7 @@
 //! The Settings dialog: a large card in the shape of the app page (see `sheet.rs`), with the
 //! groups of settings in boxes, two columns once the window is wide enough.
 
-use artcraft_launcher_core::protocol::{Command, McpClientState, McpService};
+use artcraft_launcher_core::protocol::{Command, McpClientState};
 use artcraft_launcher_core::{Os, PackageKind};
 use egui::{RichText, Ui, vec2};
 
@@ -119,7 +119,6 @@ impl LauncherUi {
                 this.settings_appearance(ui);
                 this.settings_flags(ui);
                 this.settings_agents(ui);
-                this.settings_local_mcp(ui);
             },
             |ui| {
                 let Ok(mut state) = state.try_borrow_mut() else { return };
@@ -451,82 +450,5 @@ impl LauncherUi {
                 ui.label(RichText::new(tl!("Not installed")).size(12.0).color(t.muted));
             }
         });
-    }
-
-    /// Local MCP services: turn Craft AI apps on or off as MCP servers for LM Studio / Bionic, and
-    /// manage the unified HTTP bridge. Only shown where the backend can manage installs (desktop).
-    fn settings_local_mcp(&mut self, ui: &mut Ui) {
-        if !self.caps.manage_apps {
-            return;
-        }
-        let t = Tokens::get(ui.ctx());
-        sheet::panel(ui, tl!("Local services"), |ui| {
-            note(ui, tl!("Expose Craft AI apps as MCP servers so LM Studio / Bionic can drive their tools."));
-            ui.add_space(8.0);
-
-            // Unified bridge (HTTP): editable port + toggle; status shown below the row. Disabled
-            // until the saved state is known, so a click can't overwrite a saved port.
-            let known = self.mcp_state_known;
-            ui.add_enabled_ui(known, |ui| self.draw_bridge_row(ui, &t));
-            ui.add_space(12.0);
-
-            // Per-app stdio services in a collapsible section.
-            egui::CollapsingHeader::new(tl!("Craft apps")).id_salt("mcp-apps").default_open(true).show(ui, |ui| {
-                // Clone out of self so the per-row toggle (which needs &mut self) doesn't fight the list borrow.
-                let services = self.mcp_services.clone();
-                if services.is_empty() {
-                    note(ui, tl!("No installed Craft app has a usable CLI yet."));
-                } else {
-                    for (i, s) in services.iter().enumerate() {
-                        if i > 0 {
-                            ui.add_space(6.0);
-                        }
-                        self.draw_service_row(ui, &t, s);
-                    }
-                }
-            });
-        });
-    }
-
-    /// One row for the unified HTTP bridge: a toggle plus an editable port field; its status (found?
-    /// version?) is drawn beneath in muted text.
-    fn draw_bridge_row(&mut self, ui: &mut Ui, t: &Tokens) {
-        let mut enabled = self.mcp_bridge.enabled;
-        if ui.checkbox(&mut enabled, tl!("Unified bridge")).changed() && enabled != self.mcp_bridge.enabled {
-            // The port is applied when the toggle flips; a bad value falls back to the default.
-            let port: u16 = self.bridge_port.parse().unwrap_or(12345);
-            self.act_command(Command::McpSetBridge { port, enabled });
-        }
-        ui.add_space(8.0);
-        // The port field needs an accessible name for screen readers (kittest).
-        let port_label = ui.label(tl!("Port"));
-        ui.add(egui::TextEdit::singleline(&mut self.bridge_port).id_salt("mcp-bridge-port").desired_width(72.0)).labelled_by(port_label.id);
-        // The port is only written when the toggle flips, so say so plainly rather than
-        // implying a live edit.
-        ui.label(RichText::new(tl!("Port applies when you toggle the bridge.")).size(12.0).color(t.muted));
-        ui.label(RichText::new(self.bridge_status()).size(12.0).color(t.muted));
-    }
-
-    /// The bridge's one-line status: whether its binary is present and, when readable, its version.
-    fn bridge_status(&self) -> String {
-        if !self.mcp_bridge.found {
-            return tl!("Not found on this machine").to_string();
-        }
-        match &self.mcp_bridge.version {
-            Some(v) => format!("{} · v{}", tl!("Found"), v),
-            None => tl!("Found").to_string(),
-        }
-    }
-
-    /// One installed app exposed as a stdio MCP server: a toggle named after the app, with its CLI
-    /// path shown beneath in muted text.
-    fn draw_service_row(&mut self, ui: &mut Ui, t: &Tokens, s: &McpService) {
-        let mut enabled = s.enabled;
-        if ui.checkbox(&mut enabled, &s.name).changed() && enabled != s.enabled {
-            self.act_command(Command::McpSetService { service_id: s.id.clone(), enabled });
-        }
-        if !s.command.is_empty() {
-            ui.label(RichText::new(s.command.as_str()).size(12.0).color(t.muted));
-        }
     }
 }
