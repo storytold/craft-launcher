@@ -125,7 +125,7 @@ fn run_command_with_output(mut cmd: Command, program: &str, timeout: Duration) -
     // Say which deadline expired: the child's own, or the readers' after the child exited.
     while !stdout.is_finished() || !stderr.is_finished() {
         if start.elapsed() >= timeout {
-            return Err(format!("{program} exited, but its output pipes stayed open for {} seconds", timeout.as_secs()));
+            return Err(format!("{program} exited, but its output was still being captured at the {} second deadline", timeout.as_secs()));
         }
         std::thread::sleep(Duration::from_millis(15));
     }
@@ -844,7 +844,7 @@ mod inherited_pipe_tests {
                 continue;
             }
             assert!(parent_returned, "direct child did not exit its fixture within {deadline:?}");
-            let pipe_timeout = matches!(&result, Err(error) if error.contains("output pipes stayed open"));
+            let pipe_timeout = matches!(&result, Err(error) if error.contains("still being captured at the"));
             assert!(pipe_timeout, "expected the inherited-pipe deadline, not the child's; helper returned {result:?}, elapsed: {elapsed:?}");
             // The descendant would hold the pipes for HOLD, far past this bound.
             assert!(deadline * 2 < HOLD);
