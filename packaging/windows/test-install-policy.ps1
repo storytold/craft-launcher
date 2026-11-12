@@ -227,6 +227,15 @@ $suiteRow = '        <RemoveFolder Id="RemoveSuiteFolder" Directory="CraftSuiteF
 $appRow = '        <RemoveFolder Id="RemoveInstallFolder" Directory="INSTALLFOLDER" On="uninstall" />'
 $mutations = @(
   @{
+    Name = 'same-relative-path-under-another-root'
+    Why = 'a matching Programs/ArtCraft/Launcher suffix under DesktopFolder is not the owned LocalAppDataFolder path'
+    Expect = 'not one of the folders this MSI creates'
+    Pairs = @(
+      @{ From = '    <StandardDirectory Id="DesktopFolder" />'; To = '    <StandardDirectory Id="DesktopFolder"><Directory Id="OtherPrograms" Name="Programs"><Directory Id="OtherSuite" Name="ArtCraft"><Directory Id="OtherInstall" Name="Launcher" /></Directory></Directory></StandardDirectory>' },
+      @{ From = $suiteRow; To = $suiteRow + $nl + '        <RemoveFolder Id="RemoveOtherRoot" Directory="OtherInstall" On="uninstall" />' }
+    )
+  },
+  @{
     Name = 'shared-programs-row'
     Why = 'the #584 row returns, so uninstall would remove the shared %LOCALAPPDATA%\Programs folder'
     Expect = 'not one of the folders this MSI creates'

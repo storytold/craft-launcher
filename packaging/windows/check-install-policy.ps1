@@ -45,6 +45,12 @@ function Get-DirectoryPath($Directories, [string] $Id) {
     }
     $steps++
     if ($steps -gt 256) { throw "Cleanup policy: the Directory table chain for '$Id' does not terminate." }
+    # Standard directory rows often have DefaultDir='.'. Keep the owned known-folder root
+    # distinct from DesktopFolder and other roots that otherwise flatten to SourceDir.
+    if ($current -eq 'LocalAppDataFolder') {
+      $segments = @('[LocalAppDataFolder]') + $segments
+      break
+    }
     $parent = [string]$Directories[$current][0]
     $name = [string]$Directories[$current][1]
     # Directory.DefaultDir is a name, a 'short|long' pair, a 'target:source' pair, or '.' for the
@@ -94,7 +100,7 @@ function Assert-CleanupPolicy($Database, $Directories, [string] $InstallRoot) {
   $tables = @(Read-Rows $Database 'SELECT `Name` FROM `_Tables`' 1 | ForEach-Object { $_[0] })
   $removeRows = @()
   if ('RemoveFile' -in $tables) {
-    $removeRows = @(Read-Rows $Database 'SELECT `RemoveFile`, `Component_`, `DirProperty`, `FileName`, `InstallMode` FROM `RemoveFile`' 5)
+    $removeRows = @(Read-Rows $Database 'SELECT `FileKey`, `Component_`, `DirProperty`, `FileName`, `InstallMode` FROM `RemoveFile`' 5)
   }
   $components = @{}
   foreach ($row in (Read-Rows $Database 'SELECT `Component` FROM `Component`' 1)) { $components[[string]$row[0]] = $true }
