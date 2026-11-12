@@ -458,6 +458,9 @@ anicraft	Classic tweens with eight easing presets and custom ease curves, plus s
 	Copy for VS Code	Copier pour VS Code
 	Copy for Codex (TOML)	Copier pour Codex (TOML)
 	Configuration copied.	Configuration copiée.
+	{client} loads its MCP servers only when it starts, so the Craft apps appear after a restart. Restarting closes {client}, including a reply it is still writing.	{client} ne charge ses serveurs MCP qu'au démarrage : les apps Craft apparaissent après un redémarrage. Le redémarrage ferme {client}, y compris une réponse en cours de rédaction.
+	Restart {client}	Redémarrer {client}
+	Restarting {client}…	Redémarrage de {client}…
 	The Craft gateway (craft-ai-mcp) is not installed beside the launcher.	La passerelle Craft (craft-ai-mcp) n'est pas installée à côté du lanceur.
 	Let AI agents use Craft apps	Permettre aux agents IA d'utiliser les apps Craft
 	Apps agents can reach: {count}	Apps accessibles aux agents : {count}

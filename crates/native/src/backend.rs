@@ -1608,7 +1608,7 @@ impl Backend for NativeBackend {
                     self.check(true);
                 }
             }
-            cmd @ (Command::McpState | Command::McpSetAgents { .. } | Command::McpSetClient { .. }) => {
+            cmd @ (Command::McpState | Command::McpSetAgents { .. } | Command::McpSetClient { .. } | Command::McpRestartClient { .. }) => {
                 // Detection can run package-manager queries for seconds (flatpak on Linux):
                 // never on the UI thread that sends commands.
                 let shared = self.shared.clone();
@@ -1670,6 +1670,7 @@ fn run_mcp(shared: &Shared, cmd: Command) {
     let result = match cmd {
         Command::McpSetAgents { enabled } => crate::agents::set_enabled(enabled, &apps),
         Command::McpSetClient { client, added } => crate::agents::set_client(client, added),
+        Command::McpRestartClient { client } => crate::agents::restart_client(client),
         _ => Ok(()),
     };
     if let Err(message) = result {

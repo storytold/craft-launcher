@@ -3,8 +3,9 @@
 
 use serde_json::{Value, json};
 
-/// The name the gateway's entry has in a client's configuration.
-pub const SERVER_KEY: &str = "craft-apps";
+/// The name the gateway's entry has in a client's configuration. Clients show it as the
+/// integration's name, so it is the suite's name.
+pub const SERVER_KEY: &str = "ArtCraft";
 
 /// A configuration format MCP clients read.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -64,7 +65,7 @@ mod tests {
     #[test]
     fn codex_toml_escapes_the_path() {
         let t = mcp_config(McpConfigFormat::CodexToml, GW);
-        assert!(t.starts_with("[mcp_servers.craft-apps]\n"), "{t}");
+        assert!(t.starts_with("[mcp_servers.ArtCraft]\n"), "{t}");
         assert!(t.contains(r#"command = "C:\\Users\\a b\\AppData\\Local\\ArtCraft\\mcp\\bin\\craft-ai-mcp.exe""#), "{t}");
         assert!(t.contains("args = [\"--stdio\"]"), "{t}");
         let quoted = mcp_config(McpConfigFormat::CodexToml, "/opt/a\"b/craft-ai-mcp");

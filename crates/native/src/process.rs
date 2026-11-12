@@ -505,6 +505,44 @@ fn explorer_select_arg(path: &Path) -> Option<std::ffi::OsString> {
     Some(arg)
 }
 
+/// The PowerShell script that restarts Claude Desktop on Windows. Its processes are picked by
+/// install folder (the Microsoft Store package or the classic per-user install), never by name
+/// alone: `claude.exe` is also Claude Code's command-line program, whose sessions must keep running.
+/// It is started again through its Start menu entry, which works for both installs.
+pub const CLAUDE_DESKTOP_RESTART_PS: &str = r#"$ErrorActionPreference = 'Stop'
+$app = Get-StartApps | Where-Object { $_.Name -eq 'Claude' } | Select-Object -First 1
+if (-not $app) { throw 'Claude Desktop is not in the Start menu.' }
+$running = @(Get-Process -Name claude -ErrorAction SilentlyContinue | Where-Object { $_.Path -like '*\WindowsApps\Claude_*' -or $_.Path -like '*\AnthropicClaude\*' })
+$running | Stop-Process -Force -ErrorAction SilentlyContinue
+foreach ($p in $running) { $null = $p.WaitForExit(10000) }
+Start-Process ('shell:AppsFolder\' + $app.AppID)
+"#;
+
+/// The AppleScript that quits Claude Desktop on macOS (as Quit in its menu does, waiting up to
+/// 10 s), before `open -a Claude` starts it again.
+pub const CLAUDE_DESKTOP_QUIT_APPLESCRIPT: &str = r#"if application "Claude" is running then
+  tell application "Claude" to quit
+  repeat 50 times
+    if application "Claude" is not running then exit repeat
+    delay 0.2
+  end repeat
+end if"#;
+
+/// Quit Claude Desktop and start it again, so it loads the MCP servers in its configuration.
+pub fn restart_claude_desktop() -> Result<(), String> {
+    if cfg!(windows) {
+        let exe = windows_system_program(r"System32\WindowsPowerShell\v1.0\powershell.exe")?;
+        let mut cmd = command(exe);
+        cmd.args(["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command", CLAUDE_DESKTOP_RESTART_PS]);
+        run_command(cmd, "powershell", Duration::from_secs(30)).map(|_| ())
+    } else if cfg!(target_os = "macos") {
+        run("osascript", &["-e", CLAUDE_DESKTOP_QUIT_APPLESCRIPT], Duration::from_secs(20))?;
+        run("open", &["-a", "Claude"], Duration::from_secs(10)).map(|_| ())
+    } else {
+        Err("restarting Claude Desktop isn't supported on this system".into())
+    }
+}
+
 /// Whether a process started from inside `path` (an exe, an AppImage, or a `.app`) is running.
 pub fn is_running(path: &Path) -> bool {
     if cfg!(windows) {

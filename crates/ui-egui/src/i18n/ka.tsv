@@ -459,6 +459,9 @@ anicraft	Classic tweens with eight easing presets and custom ease curves, plus s
 	Copy for VS Code	კოპირება VS Code-ისთვის
 	Copy for Codex (TOML)	კოპირება Codex-ისთვის (TOML)
 	Configuration copied.	კონფიგურაცია დაკოპირდა.
+	{client} loads its MCP servers only when it starts, so the Craft apps appear after a restart. Restarting closes {client}, including a reply it is still writing.	{client} MCP სერვერებს მხოლოდ გაშვებისას ტვირთავს, ამიტომ Craft აპები გადატვირთვის შემდეგ გამოჩნდება. გადატვირთვა ხურავს {client}-ს, მათ შორის პასუხს, რომელსაც ახლა წერს.
+	Restart {client}	{client}-ის გადატვირთვა
+	Restarting {client}…	{client} გადაიტვირთება…
 	The Craft gateway (craft-ai-mcp) is not installed beside the launcher.	Craft კარიბჭე (craft-ai-mcp) გამშვების გვერდით არ არის დაინსტალირებული.
 	Let AI agents use Craft apps	AI აგენტებს Craft აპების გამოყენების ნება
 	Apps agents can reach: {count}	აგენტებისთვის ხელმისაწვდომი აპები: {count}

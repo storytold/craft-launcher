@@ -445,14 +445,38 @@ impl LauncherUi {
                 ui.label(RichText::new(tl!("Added")).size(12.0).color(t.muted));
                 if ui.button(tl!("Remove")).clicked() {
                     self.act_command(Command::McpSetClient { client: c.client, added: false });
+                    self.mcp_restart_offer = None;
                 }
             } else if c.installed && can_add {
                 if ui.button(tl!("Add")).clicked() {
                     self.act_command(Command::McpSetClient { client: c.client, added: true });
+                    if c.restartable {
+                        self.mcp_restart_offer = Some(c.client);
+                    }
                 }
             } else if !c.installed {
                 ui.label(RichText::new(tl!("Not installed")).size(12.0).color(t.muted));
             }
         });
+        // A client reads its MCP servers only when it starts: right after adding, say so and offer
+        // to do the restart, which people otherwise miss.
+        if c.added && c.restartable && self.mcp_restart_offer == Some(c.client) {
+            let name = [("client", c.name.as_str())];
+            note(
+                ui,
+                &fmt(
+                    tl!(
+                        "{client} loads its MCP servers only when it starts, so the Craft apps appear after a restart. Restarting closes {client}, including a reply it is still writing."
+                    ),
+                    &name,
+                ),
+            );
+            if ui.button(fmt(tl!("Restart {client}"), &name)).clicked() {
+                self.act_command(Command::McpRestartClient { client: c.client });
+                self.mcp_restart_offer = None;
+                self.toast(fmt(tl!("Restarting {client}…"), &name), false);
+            }
+            ui.add_space(4.0);
+        }
     }
 }

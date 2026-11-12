@@ -4416,7 +4416,7 @@ fn launcher_version_padlock_confirms_and_returns_to_settings() {
 #[test]
 fn ai_agents_switch_and_client_buttons_send_their_commands() {
     use artcraft_launcher_core::protocol::{McpAgents, McpClient, McpClientState};
-    let client = |client, name: &str, installed, added| McpClientState { client, name: name.into(), installed, added };
+    let client = |client, name: &str, installed, added| McpClientState { client, name: name.into(), installed, added, restartable: false };
     let mut evs = events();
     evs.push(Event::Mcp {
         agents: McpAgents {
@@ -4463,6 +4463,44 @@ fn ai_agents_switch_and_client_buttons_send_their_commands() {
     );
 }
 
+/// Adding Claude Desktop says why it must restart and offers to do it; the button sends the
+/// restart and goes away. Clients the launcher can't restart get no such offer.
+#[test]
+fn ai_agents_offer_to_restart_a_client_right_after_adding_it() {
+    use artcraft_launcher_core::protocol::{McpAgents, McpClient, McpClientState};
+    let agents = |added| McpAgents {
+        flag_on: true,
+        gateway_found: true,
+        enabled: true,
+        apps: 3,
+        clients: vec![
+            McpClientState { client: McpClient::ClaudeDesktop, name: "Claude Desktop".into(), installed: true, added, restartable: true },
+            McpClientState { client: McpClient::ClaudeCode, name: "Claude Code".into(), installed: true, added, restartable: false },
+        ],
+        gateway: Some("C:/gw/craft-ai-mcp.exe".into()),
+    };
+    let machine = Machine { more: vec![Event::Mcp { agents: agents(false) }], ..Default::default() };
+    let (mut h, sent, queue) = versions_harness(machine, None, vec![]);
+    h.get_by_label("Settings").click();
+    h.run_steps(4);
+    h.get_by_label("Quick install").scroll_to_me();
+    h.run_steps(4);
+    assert!(h.query_by_label("Restart Claude Desktop").is_none(), "nothing to restart before adding");
+    let adds: Vec<_> = h.get_all_by_label("Add").collect();
+    adds[0].click();
+    adds[1].click();
+    h.run_steps(2);
+    queue.borrow_mut().push(Event::Mcp { agents: agents(true) });
+    h.run_steps(4);
+    h.get_by_label_contains("loads its MCP servers only when it starts");
+    assert!(h.query_by_label("Restart Claude Code").is_none(), "the launcher can't restart Claude Code");
+    h.get_by_label("Restart Claude Desktop").click();
+    h.run_steps(4);
+    assert!(sent.borrow().iter().any(|c| matches!(c, Command::McpRestartClient { client: McpClient::ClaudeDesktop })));
+    assert!(h.query_by_label("Restart Claude Desktop").is_none(), "offered once");
+    assert!(h.query_all_by_label("Restarting Claude Desktop…").next().is_some(), "a note says it is happening");
+}
+
 /// Without the gateway beside the launcher, Settings says so and offers no switch.
 #[test]
 fn ai_agents_without_the_gateway_offer_no_switch() {
@@ -4481,7 +4519,7 @@ fn ai_agents_without_the_gateway_offer_no_switch() {
 #[test]
 fn ai_agents_left_on_without_the_gateway_can_still_be_turned_off() {
     use artcraft_launcher_core::protocol::{McpAgents, McpClient, McpClientState};
-    let client = |client, name: &str, added| McpClientState { client, name: name.into(), installed: true, added };
+    let client = |client, name: &str, added| McpClientState { client, name: name.into(), installed: true, added, restartable: false };
     let mut evs = events();
     evs.push(Event::Mcp {
         agents: McpAgents {

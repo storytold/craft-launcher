@@ -3,7 +3,7 @@
 //! With the switch on, the launcher writes the installed apps and their CLIs into
 //! `ArtCraft/mcp/apps.json` (the list the `craft-ai-mcp` gateway reads, see
 //! `docs/CRAFT-AI-MCP.md` in storytold/craft-ai-integrations), and can add one stdio entry,
-//! `craft-apps` → `craft-ai-mcp --stdio`, to Claude Desktop, Claude Code, Cursor and LM Studio.
+//! `ArtCraft` → `craft-ai-mcp --stdio`, to Claude Desktop, Claude Code, Cursor and LM Studio.
 //! Through that one entry an agent reaches every installed app, without one entry per app.
 //!
 //! Turning the switch off removes the list and the entries this module added. A client
@@ -363,6 +363,7 @@ pub fn state(services: &[InstalledApp]) -> McpAgents {
                 name: client_name(*c).to_string(),
                 installed: paths.as_ref().is_some_and(|(config, folder)| folder.is_dir() || config.is_file()),
                 added: paths.as_ref().is_some_and(|(config, _)| registered(config)),
+                restartable: restartable(*c),
             }
         })
         .collect();
@@ -434,6 +435,20 @@ pub fn set_client(client: McpClient, added: bool) -> Result<(), String> {
         None => return Err(NO_GATEWAY.into()),
     };
     register(&config, &gateway)
+}
+
+/// Whether the launcher can restart `client` here: Claude Desktop on Windows and macOS. The other
+/// clients are left to the person (Claude Code runs in their terminal sessions).
+pub fn restartable(client: McpClient) -> bool {
+    client == McpClient::ClaudeDesktop && (cfg!(windows) || cfg!(target_os = "macos"))
+}
+
+/// Quit `client` and start it again, so it loads the entry just added.
+pub fn restart_client(client: McpClient) -> Result<(), String> {
+    if !restartable(client) {
+        return Err(format!("the launcher can't restart {} here; restart it yourself", client_name(client)));
+    }
+    crate::process::restart_claude_desktop()
 }
 
 #[cfg(test)]

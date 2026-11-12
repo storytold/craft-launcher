@@ -146,6 +146,9 @@ pub struct LauncherUi {
     pub(crate) mcp_agents: McpAgents,
     /// Whether we've asked for MCP state since the settings dialog last opened (reset when it closes).
     pub(crate) mcp_requested: bool,
+    /// The MCP client just added here, which only loads the entry when it starts: Settings offers
+    /// to restart it until that is done or the entry is removed.
+    pub(crate) mcp_restart_offer: Option<artcraft_launcher_core::protocol::McpClient>,
     pub(crate) caps: Capabilities,
     pub(crate) platform: Option<Platform>,
     pub(crate) checking: bool,
@@ -273,6 +276,7 @@ impl LauncherUi {
                 .collect(),
             mcp_agents: McpAgents::default(),
             mcp_requested: false,
+            mcp_restart_offer: None,
             caps,
             platform,
             checking: false,

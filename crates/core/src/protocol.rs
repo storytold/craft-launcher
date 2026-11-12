@@ -85,6 +85,10 @@ pub enum Command {
         client: McpClient,
         added: bool,
     },
+    /// Quit an MCP client and start it again, so it loads the entry just added.
+    McpRestartClient {
+        client: McpClient,
+    },
 }
 
 /// Parent folders for new installs. Existing installations keep their recorded location.
@@ -327,6 +331,8 @@ pub struct McpClientState {
     pub name: String,
     pub installed: bool,
     pub added: bool,
+    /// The launcher can quit and start it again ([`Command::McpRestartClient`]).
+    pub restartable: bool,
 }
 
 /// AI agents and the Craft apps: the `craft-ai-mcp` gateway (found beside the launcher?), the
