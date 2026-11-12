@@ -45,14 +45,14 @@ function Get-DirectoryPath($Directories, [string] $Id) {
     }
     $steps++
     if ($steps -gt 256) { throw "Cleanup policy: the Directory table chain for '$Id' does not terminate." }
-    # Standard directory rows often have DefaultDir='.'. Keep the owned known-folder root
-    # distinct from DesktopFolder and other roots that otherwise flatten to SourceDir.
-    if ($current -eq 'LocalAppDataFolder') {
-      $segments = @('[LocalAppDataFolder]') + $segments
-      break
-    }
     $parent = [string]$Directories[$current][0]
     $name = [string]$Directories[$current][1]
+    # Standard folders with DefaultDir='.' are distinct Windows roots, not TARGETDIR aliases.
+    # Keep them distinct or a Desktop child can match an owned Program Files child.
+    if ($current -eq 'LocalAppDataFolder' -or ($parent -eq 'TARGETDIR' -and $name.Trim() -eq '.')) {
+      $segments = @("[$current]") + $segments
+      break
+    }
     # Directory.DefaultDir is a name, a 'short|long' pair, a 'target:source' pair, or '.' for the
     # parent's folder; only the target name is part of the path, so drop the source name first.
     $name = ($name.Trim() -split ':')[0]

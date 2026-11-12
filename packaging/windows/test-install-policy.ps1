@@ -110,6 +110,38 @@ function Assert-MutationCaught {
   }
 }
 function Invoke-HarnessSelfTest {
+  # Read only the pure path resolver; evaluating the checker itself would open Windows Installer.
+  $tokens = $null
+  $parseErrors = $null
+  $ast = [System.Management.Automation.Language.Parser]::ParseFile(
+    (Join-Path $PSScriptRoot 'check-install-policy.ps1'), [ref]$tokens, [ref]$parseErrors)
+  if ($parseErrors.Count -ne 0) { throw 'Harness self test: the policy checker does not parse.' }
+  $resolver = $ast.Find({ param($node)
+    $node -is [System.Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq 'Get-DirectoryPath'
+  }, $false)
+  if ($null -eq $resolver) { throw 'Harness self test: the directory resolver is missing.' }
+  . ([scriptblock]::Create($resolver.Extent.Text))
+  $directories = @{
+    TARGETDIR = @('', 'SourceDir')
+    ProgramFilesFolder = @('TARGETDIR', '.')
+    DesktopFolder = @('TARGETDIR', '.')
+    LocalAppDataFolder = @('TARGETDIR', '.')
+    MachineSuite = @('ProgramFilesFolder', 'ArtCraft')
+    DesktopSuite = @('DesktopFolder', 'ArtCraft')
+    UserSuite = @('LocalAppDataFolder', 'ArtCraft')
+    MachineAlias = @('ProgramFilesFolder', 'ArtCraft')
+  }
+  $machine = Get-DirectoryPath $directories 'MachineSuite'
+  $desktop = Get-DirectoryPath $directories 'DesktopSuite'
+  $user = Get-DirectoryPath $directories 'UserSuite'
+  if ($machine -eq $desktop -or $machine -eq $user -or $desktop -eq $user) {
+    throw 'Harness self test: different standard-folder roots compare as the same owned folder.'
+  }
+  if ($machine -ne (Get-DirectoryPath $directories 'MachineAlias')) {
+    throw 'Harness self test: aliases under the same standard-folder root must compare equal.'
+  }
+  Write-Output 'PASS standard-folder roots: distinct roots stay distinct; same-root aliases match.'
+
   # The harness's own rules, tested without WiX, an MSI, COM or an install: the child commands here
   # only write a line to stderr and choose an exit code. If any of this fails, no mutation result
   # may be believed, so it runs before anything is built.
@@ -226,6 +258,15 @@ $nl = if ($authoring.Contains("`r`n")) { "`r`n" } else { "`n" }
 $suiteRow = '        <RemoveFolder Id="RemoveSuiteFolder" Directory="CraftSuiteFolder" On="uninstall" />'
 $appRow = '        <RemoveFolder Id="RemoveInstallFolder" Directory="INSTALLFOLDER" On="uninstall" />'
 $mutations = @(
+  @{
+    Name = 'desktop-suite-child-cleanup'
+    Why = 'an ArtCraft child under DesktopFolder is not an owned suite folder under another standard root'
+    Expect = 'not one of the folders this MSI creates'
+    Pairs = @(
+      @{ From = '    <StandardDirectory Id="DesktopFolder" />'; To = '    <StandardDirectory Id="DesktopFolder"><Directory Id="DesktopSuite" Name="ArtCraft" /></StandardDirectory>' },
+      @{ From = $suiteRow; To = $suiteRow + $nl + '        <RemoveFolder Id="RemoveDesktopSuite" Directory="DesktopSuite" On="uninstall" />' }
+    )
+  },
   @{
     Name = 'retargeted-cleanup-alias'
     Why = 'an allowed cleanup alias must not be retargeted to the shared Programs folder by another property action'
