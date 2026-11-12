@@ -226,8 +226,12 @@ pub fn set_default(app: &CraftApp) -> Result<String, String> {
     })
 }
 
+/// Serializes the launcher's own read-modify-write of `mimeapps.list`, so two requests at once don't drop each other's types.
+static WRITE_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
 /// Rewrites `list` through a temporary file beside it, so a crash never leaves it half written.
 fn write_defaults(list: &Path, desktop_id: &str, types: &[String]) -> Result<(), String> {
+    let _guard = WRITE_LOCK.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
     let old = match std::fs::read_to_string(list) {
         Ok(text) => text,
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => String::new(),
@@ -332,7 +336,11 @@ mod tests {
         {
             use std::os::unix::fs::PermissionsExt;
             std::fs::set_permissions(&list, std::fs::Permissions::from_mode(0o644)).unwrap();
-            write_defaults(&list, ID, &types(&["text/csv", "text/tab-separated-values"])).unwrap();
+        }
+        write_defaults(&list, ID, &types(&["text/csv", "text/tab-separated-values"])).unwrap();
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
             assert_eq!(std::fs::metadata(&list).unwrap().permissions().mode() & 0o777, 0o644);
         }
         assert!(std::fs::read_to_string(&list).unwrap().contains("text/tab-separated-values="));
