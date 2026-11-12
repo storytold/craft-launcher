@@ -3,8 +3,8 @@
 use std::time::Duration;
 
 use artcraft_launcher_core::protocol::{
-    Backend, BackendOptions, CANCELLED, Capabilities, Command, Event, INSTALL_CANCELLED, JobPhase, LatestRelease, McpBridge, McpService, PAUSED,
-    Source,
+    Backend, BackendOptions, CANCELLED, Capabilities, Command, Event, INSTALL_CANCELLED, JobPhase, LatestRelease, McpAgents, McpBridge, McpService,
+    PAUSED, Source,
 };
 use artcraft_launcher_core::release::Release;
 use artcraft_launcher_core::status::AppStatus;
@@ -147,6 +147,8 @@ pub struct LauncherUi {
     /// unified HTTP bridge. Empty until the first [`Event::Mcp`].
     pub(crate) mcp_services: Vec<McpService>,
     pub(crate) mcp_bridge: McpBridge,
+    /// AI agents: the gateway switch and the MCP clients.
+    pub(crate) mcp_agents: McpAgents,
     /// Editable port text for the unified bridge; synced from events only once so user edits stick.
     pub(crate) bridge_port: String,
     pub(crate) bridge_port_initialized: bool,
@@ -279,6 +281,7 @@ impl LauncherUi {
                 .collect(),
             mcp_services: Vec::new(),
             mcp_bridge: McpBridge::default(),
+            mcp_agents: McpAgents::default(),
             bridge_port: String::new(),
             bridge_port_initialized: false,
             mcp_requested: false,
@@ -659,7 +662,8 @@ impl LauncherUi {
                 self.rate_limited_until = rate_limited_until;
                 true
             }
-            Event::Mcp { services, bridge } => {
+            Event::Mcp { services, bridge, agents } => {
+                self.mcp_agents = agents;
                 let port = bridge.port;
                 self.mcp_services = services;
                 self.mcp_bridge = bridge;

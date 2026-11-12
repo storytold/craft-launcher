@@ -465,3 +465,11 @@ anicraft	Classic tweens with eight easing presets and custom ease curves, plus s
 
 	Port	პორტი
 	Port applies when you toggle the bridge.	პორტის ცვლილება მხოლოდ გათიშვისას მოქმედება.
+	AI agents	AI აგენტები
+	One entry in Claude, Cursor or LM Studio reaches every installed Craft app. Restart the client after adding it.	ერთი ჩანაწერი Claude-ში, Cursor-ში ან LM Studio-ში აღწევს ყველა დაინსტალირებულ Craft აპს. დამატების შემდეგ კლიენტი გადატვირთეთ.
+	The Craft gateway (craft-ai-mcp) is not installed beside the launcher.	Craft კარიბჭე (craft-ai-mcp) გამშვების გვერდით არ არის დაინსტალირებული.
+	Let AI agents use Craft apps	AI აგენტებს Craft აპების გამოყენების ნება
+	Apps agents can reach: {count}	აგენტებისთვის ხელმისაწვდომი აპები: {count}
+	Added	დამატებულია
+	Remove	წაშლა
+	Add	დამატება

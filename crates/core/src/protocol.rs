@@ -85,6 +85,16 @@ pub enum Command {
         port: u16,
         enabled: bool,
     },
+    /// Let AI agents use the Craft apps (writes the gateway's app list), or stop them (removes the
+    /// list and the client entries the launcher added).
+    McpSetAgents {
+        enabled: bool,
+    },
+    /// Add the one gateway entry to an MCP client's configuration, or remove it.
+    McpSetClient {
+        client: McpClient,
+        added: bool,
+    },
 }
 
 /// Parent folders for new installs. Existing installations keep their recorded location.
@@ -305,6 +315,7 @@ pub enum Event {
     Mcp {
         services: Vec<McpService>,
         bridge: McpBridge,
+        agents: McpAgents,
     },
     /// A local MCP operation failed (e.g. writing `ng-mcp.json`). Carries a short, user-facing
     /// message; the UI shows it as an error toast so a failed toggle is never silent.
@@ -330,6 +341,35 @@ pub struct McpBridge {
     pub version: Option<String>,
     pub port: u16,
     pub enabled: bool,
+}
+
+/// An MCP client the launcher can add the gateway entry to.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum McpClient {
+    ClaudeDesktop,
+    ClaudeCode,
+    Cursor,
+    LmStudio,
+}
+
+/// One MCP client on this machine: whether it looks installed, and whether our entry is in it.
+#[derive(Clone, Debug, PartialEq)]
+pub struct McpClientState {
+    pub client: McpClient,
+    pub name: String,
+    pub installed: bool,
+    pub added: bool,
+}
+
+/// AI agents and the Craft apps: the `craft-ai-mcp` gateway (found beside the launcher?), the
+/// switch, and the MCP clients.
+#[derive(Clone, Debug, PartialEq, Default)]
+pub struct McpAgents {
+    pub gateway_found: bool,
+    pub enabled: bool,
+    /// How many installed apps agents can reach (those with a CLI).
+    pub apps: usize,
+    pub clients: Vec<McpClientState>,
 }
 
 /// What a backend can do on this platform.

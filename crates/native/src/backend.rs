@@ -1642,6 +1642,19 @@ impl Backend for NativeBackend {
                 }
                 self.shared.emit(mcp_state(&self.shared));
             }
+            Command::McpSetAgents { enabled } => {
+                let services = detected_services(&self.shared);
+                if let Err(e) = crate::agents::set_enabled(enabled, &services) {
+                    self.shared.emit(Event::McpError { message: e });
+                }
+                self.shared.emit(mcp_state(&self.shared));
+            }
+            Command::McpSetClient { client, added } => {
+                if let Err(e) = crate::agents::set_client(client, added) {
+                    self.shared.emit(Event::McpError { message: e });
+                }
+                self.shared.emit(mcp_state(&self.shared));
+            }
         }
     }
 
@@ -1682,9 +1695,8 @@ impl Backend for NativeBackend {
 /// name so those created under a different id (e.g. a UUID by an earlier launcher version) are
 /// recognized and reported as already present.
 fn mcp_state(shared: &Shared) -> Event {
-    let manifest = shared.manifest.lock().unwrap_or_else(PoisonError::into_inner).clone();
-    let snapshot = crate::detect::Snapshot::take();
-    let detected = local_mcp::installed_services(&manifest, &snapshot);
+    let detected = detected_services(shared);
+    let agents = crate::agents::state(&detected);
 
     let existing: Vec<local_mcp::ServerEntry> = match local_mcp::mcp_config_path() {
         Some(p) => local_mcp::load_servers(&p),
@@ -1709,7 +1721,15 @@ fn mcp_state(shared: &Shared) -> Event {
             port: local_mcp::bridge_port_current(&existing).unwrap_or(local_mcp::BRIDGE_PORT),
             enabled: local_mcp::bridge_enabled(&existing),
         },
+        agents,
     }
+}
+
+/// The installed apps with their CLIs, from a fresh detection snapshot.
+fn detected_services(shared: &Shared) -> Vec<local_mcp::LocalService> {
+    let manifest = shared.manifest.lock().unwrap_or_else(PoisonError::into_inner).clone();
+    let snapshot = crate::detect::Snapshot::take();
+    local_mcp::installed_services(&manifest, &snapshot)
 }
 
 #[cfg(test)]

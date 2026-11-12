@@ -434,3 +434,11 @@ anicraft	Classic tweens with eight easing presets and custom ease curves, plus s
 
 	Port	Port
 	Port applies when you toggle the bridge.	Port se uplatní, když přepněte most.
+	AI agents	AI agenti
+	One entry in Claude, Cursor or LM Studio reaches every installed Craft app. Restart the client after adding it.	Jedna položka v Claude, Cursoru nebo LM Studiu dosáhne na každou nainstalovanou aplikaci Craft. Po přidání klienta restartujte.
+	The Craft gateway (craft-ai-mcp) is not installed beside the launcher.	Brána Craft (craft-ai-mcp) není nainstalována vedle spouštěče.
+	Let AI agents use Craft apps	Povolit AI agentům používat aplikace Craft
+	Apps agents can reach: {count}	Aplikace dostupné agentům: {count}
+	Added	Přidáno
+	Remove	Odebrat
+	Add	Přidat

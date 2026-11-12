@@ -1,7 +1,7 @@
 //! The Settings dialog: a large card in the shape of the app page (see `sheet.rs`), with the
 //! groups of settings in boxes, two columns once the window is wide enough.
 
-use artcraft_launcher_core::protocol::{Command, McpService};
+use artcraft_launcher_core::protocol::{Command, McpClientState, McpService};
 use artcraft_launcher_core::{Os, PackageKind};
 use egui::{RichText, Ui, vec2};
 
@@ -117,6 +117,7 @@ impl LauncherUi {
                 this.settings_language(ui);
                 this.settings_updates(ui);
                 this.settings_appearance(ui);
+                this.settings_agents(ui);
                 this.settings_local_mcp(ui);
             },
             |ui| {
@@ -370,6 +371,55 @@ impl LauncherUi {
             ui.checkbox(&mut self.settings.hide_community_apps, tl!("Hide community apps"));
         });
         self.settings.theme = theme_choice;
+    }
+
+    /// AI agents: one switch that lets MCP clients reach every installed Craft app through the
+    /// `craft-ai-mcp` gateway, and one Add/Remove button per MCP client found on this machine.
+    fn settings_agents(&mut self, ui: &mut Ui) {
+        if !self.caps.manage_apps {
+            return;
+        }
+        let t = Tokens::get(ui.ctx());
+        sheet::panel(ui, tl!("AI agents"), |ui| {
+            note(ui, tl!("One entry in Claude, Cursor or LM Studio reaches every installed Craft app. Restart the client after adding it."));
+            ui.add_space(8.0);
+            let agents = self.mcp_agents.clone();
+            if !agents.gateway_found {
+                ui.label(RichText::new(tl!("The Craft gateway (craft-ai-mcp) is not installed beside the launcher.")).size(12.0).color(t.muted));
+                return;
+            }
+            let mut on = agents.enabled;
+            if ui.checkbox(&mut on, tl!("Let AI agents use Craft apps")).changed() && on != agents.enabled {
+                self.act_command(Command::McpSetAgents { enabled: on });
+            }
+            if !agents.enabled {
+                return;
+            }
+            ui.label(RichText::new(tl!("Apps agents can reach: {count}").replace("{count}", &agents.apps.to_string())).size(12.0).color(t.muted));
+            ui.add_space(8.0);
+            for c in &agents.clients {
+                self.draw_client_row(ui, &t, c);
+            }
+        });
+    }
+
+    /// One MCP client: its name, and Add or Remove (or "Not installed" when it isn't).
+    fn draw_client_row(&mut self, ui: &mut Ui, t: &Tokens, c: &McpClientState) {
+        ui.horizontal(|ui| {
+            ui.label(c.name.as_str());
+            if c.added {
+                ui.label(RichText::new(tl!("Added")).size(12.0).color(t.muted));
+                if ui.button(tl!("Remove")).clicked() {
+                    self.act_command(Command::McpSetClient { client: c.client, added: false });
+                }
+            } else if c.installed {
+                if ui.button(tl!("Add")).clicked() {
+                    self.act_command(Command::McpSetClient { client: c.client, added: true });
+                }
+            } else {
+                ui.label(RichText::new(tl!("Not installed")).size(12.0).color(t.muted));
+            }
+        });
     }
 
     /// Local MCP services: turn Craft AI apps on or off as MCP servers for LM Studio / Bionic, and
