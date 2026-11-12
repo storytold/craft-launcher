@@ -138,10 +138,15 @@ runs only the local program and arguments from the operator's configuration.
 
 Run `artcraft-launcher-pc-worker --config /path/to/worker.json` once for a queued job. One
 worker uses a given scratch directory at a time. Configure build caches and the toolchain
-on the build machine. The worker stops a recipe that loses its claim, runs for six hours, or
-leaves its output pipes open past the log collection deadline. Recipes run in a dedicated
-process group on Linux, macOS and FreeBSD, and in a job object on Windows. Unix recipes must
-keep their build processes in that group. The worker rejects recipe launch on other platforms.
+on the build machine. The worker stops a recipe that loses its claim or runs for six hours.
+After the recipe leader exits successfully, the worker gives its output pipes and owned
+processes two seconds to finish before it inventories any files. If either is still active,
+the worker stops the owned tree and fails the build. Recipes run in a dedicated process group
+on Linux, macOS and FreeBSD, and in a job object on Windows. Unix recipes must keep their build
+processes in that group and under an account the worker can signal. On macOS and FreeBSD,
+any orphaned process entries that the system leaves in the group count against the deadline.
+Recipe leaders remain responsible for reporting subprocess failures. The worker rejects recipe
+launch on other platforms.
 Diagnostic tails are kept in the job's local `build.log`. If the worker crashes, confirm its build is stopped before removing a stale `worker.lock` or starting
 another invocation. The server reports an expired claim as interrupted. A staged build
 requires operator activation even when the worker completed successfully.

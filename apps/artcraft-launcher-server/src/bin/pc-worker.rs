@@ -3,8 +3,23 @@
 #![deny(clippy::unwrap_used, clippy::expect_used, clippy::panic, clippy::unimplemented, clippy::todo, clippy::unreachable)]
 
 #[cfg(not(target_arch = "wasm32"))]
+fn main() -> std::process::ExitCode {
+    #[cfg(any(target_os = "linux", target_os = "macos", target_os = "freebsd"))]
+    if let Some(result) = recipe_process::run_group_anchor() {
+        return match result {
+            Ok(()) => std::process::ExitCode::SUCCESS,
+            Err(error) => {
+                eprintln!("ArtCraft Launcher recipe group anchor: {error}");
+                std::process::ExitCode::FAILURE
+            }
+        };
+    }
+    run_worker()
+}
+
+#[cfg(not(target_arch = "wasm32"))]
 #[tokio::main]
-async fn main() -> std::process::ExitCode {
+async fn run_worker() -> std::process::ExitCode {
     match native::run().await {
         Ok(()) => std::process::ExitCode::SUCCESS,
         Err(error) => {
@@ -62,7 +77,8 @@ mod native {
     const RENEW_INTERVAL: Duration = Duration::from_secs(5 * 60);
     const MAX_RECIPE_DURATION: Duration = Duration::from_secs(6 * 60 * 60);
     const RECIPE_POLL: Duration = Duration::from_secs(2);
-    const LOG_DRAIN_TIMEOUT: Duration = Duration::from_secs(2);
+    const RECIPE_FINISH_TIMEOUT: Duration = Duration::from_secs(2);
+    const RECIPE_FINISH_POLL: Duration = Duration::from_millis(10);
 
     type Result<T> = std::result::Result<T, String>;
 
@@ -570,7 +586,7 @@ mod native {
             recipe_process::spawn(command).map_err(|error| format!("Cannot start the configured build recipe: {error}"))?;
         let mut output = [stdout.map(drain), stderr.map(drain)];
         let result = wait_for_recipe(&mut process, lease).await;
-        finish_recipe(process, result, log, &mut output, LOG_DRAIN_TIMEOUT).await
+        finish_recipe(process, result, log, &mut output, RECIPE_FINISH_TIMEOUT).await
     }
 
     async fn wait_for_recipe(process: &mut Process, lease: &mut Lease<'_>) -> Result<()> {
@@ -597,12 +613,31 @@ mod native {
             Ok(()) => Ok(process),
             Err(reason) => Err(stop_recipe(process, reason)),
         };
-        let logs = write_log(log, output, timeout).await;
+        let deadline = Instant::now() + timeout;
+        let logs = write_log(log, output, deadline).await;
         let process = process?;
         if let Err(reason) = logs {
             return Err(stop_recipe(process, reason));
         }
+        if let Err(reason) = wait_for_recipe_tree(&process, deadline).await {
+            return Err(stop_recipe(process, reason));
+        }
         process.reap().map(|_| ()).map_err(|error| format!("Cannot reap the build recipe: {error}"))
+    }
+
+    async fn wait_for_recipe_tree(process: &Process, deadline: Instant) -> Result<()> {
+        while Instant::now() < deadline {
+            let empty = process.is_empty().map_err(|error| format!("Cannot verify that the build recipe tree finished: {error}"))?;
+            let remaining = deadline.saturating_duration_since(Instant::now());
+            if remaining.is_zero() {
+                break;
+            }
+            if empty {
+                return Ok(());
+            }
+            tokio::time::sleep(RECIPE_FINISH_POLL.min(remaining)).await;
+        }
+        Err("The build recipe did not finish its process tree before the deadline; inspect build.log".into())
     }
 
     fn stop_recipe(process: Process, reason: String) -> String {
@@ -639,13 +674,12 @@ mod native {
         })
     }
 
-    async fn write_log(mut file: impl Write, output: &mut [Option<Reader>; 2], timeout: Duration) -> Result<()> {
-        let deadline = Instant::now() + timeout;
+    async fn write_log(mut file: impl Write, output: &mut [Option<Reader>; 2], deadline: Instant) -> Result<()> {
         let mut complete = true;
         for (name, reader) in ["stdout", "stderr"].into_iter().zip(output) {
             let Some(handle) = reader.as_ref() else { continue };
             while !handle.is_finished() && Instant::now() < deadline {
-                tokio::time::sleep(Duration::from_millis(10)).await;
+                tokio::time::sleep(RECIPE_FINISH_POLL).await;
             }
             // A descendant can inherit the pipe. Keep the wait bounded and let the caller stop the owned tree.
             let tail = if handle.is_finished() {
@@ -675,76 +709,184 @@ mod native {
         });
         let mut output = [Some(reader), None];
         let mut log = Vec::new();
-        let result = write_log(&mut log, &mut output, Duration::ZERO).await;
+        let result = write_log(&mut log, &mut output, Instant::now()).await;
         drop(release);
         assert!(result.is_err());
         assert!(String::from_utf8_lossy(&log).contains("output pipe was still open"));
     }
 
-    #[cfg(all(test, windows))]
-    const WINDOWS_RECIPE_FIXTURE: &str = "ARTCRAFT_TEST_RECIPE_PIPE_FIXTURE";
-
-    #[cfg(all(test, windows))]
-    fn windows_recipe_command(role: &str) -> io::Result<Command> {
-        let mut command = Command::new(std::env::current_exe()?);
-        command.args(["--exact", "native::windows_recipe_pipe_fixture", "--nocapture"]).env(WINDOWS_RECIPE_FIXTURE, role);
-        hide_window(&mut command);
-        Ok(command)
-    }
-
-    #[cfg(all(test, windows))]
-    #[allow(clippy::zombie_processes, reason = "the job-owned fixture intentionally leaves the descendant alive after its leader exits")]
-    #[test]
-    fn windows_recipe_pipe_fixture() -> io::Result<()> {
-        match std::env::var(WINDOWS_RECIPE_FIXTURE).as_deref() {
-            Ok("leader") => {
-                let descendant = windows_recipe_command("descendant")?.stdout(Stdio::inherit()).spawn()?;
-                // Simulate a successful recipe that deliberately leaves a process in its job.
-                drop(descendant);
-            }
-            Ok("descendant") => std::thread::sleep(Duration::from_secs(30)),
-            _ => {}
-        }
-        Ok(())
-    }
-
     #[cfg(all(test, any(windows, target_os = "linux", target_os = "macos", target_os = "freebsd")))]
-    #[tokio::test]
-    async fn log_timeout_stops_the_owned_descendant_after_its_leader_exits() -> io::Result<()> {
-        #[cfg(windows)]
-        let mut command = windows_recipe_command("leader")?;
-        #[cfg(unix)]
-        let mut command = {
-            let mut command = Command::new("sh");
-            command.args(["-c", "sleep 30 & exit 0"]);
-            command
-        };
-        command.stdin(Stdio::null()).stdout(Stdio::piped()).stderr(Stdio::null());
-        let Spawned { mut process, stdout, .. } = recipe_process::spawn(command)?;
-        let mut output = [stdout.map(drain), None];
-        let deadline = Instant::now() + Duration::from_secs(5);
-        loop {
-            match process.leader_success() {
-                Ok(Some(true)) => break,
-                Ok(None) if Instant::now() < deadline => tokio::time::sleep(Duration::from_millis(10)).await,
-                _ => {
-                    process.stop()?;
-                    return Err(io::Error::other("Synthetic recipe leader did not exit successfully"));
+    mod recipe_tests {
+        use std::path::{Path, PathBuf};
+        use std::process::{Command, Stdio};
+        use std::time::{Duration, Instant};
+        use std::{fs, io};
+
+        use uuid::Uuid;
+
+        use super::{Process, Reader, Spawned, drain, finish_recipe, hide_window, recipe_process};
+
+        const FIXTURE_ROLE: &str = "ARTCRAFT_TEST_RECIPE_ROLE";
+        const FIXTURE_ROOT: &str = "ARTCRAFT_TEST_RECIPE_ROOT";
+        const POLL: Duration = Duration::from_millis(10);
+        const LIMIT: Duration = Duration::from_secs(5);
+
+        struct FixtureFiles(PathBuf);
+
+        impl FixtureFiles {
+            fn new() -> io::Result<Self> {
+                let root = std::env::temp_dir().join(format!("artcraft-recipe-tree-{}", Uuid::new_v4()));
+                fs::create_dir(&root)?;
+                Ok(Self(root))
+            }
+        }
+
+        impl Drop for FixtureFiles {
+            fn drop(&mut self) {
+                for name in ["ready", "release", "complete"] {
+                    let _ = fs::remove_file(self.0.join(name));
+                }
+                let _ = fs::remove_dir(&self.0);
+            }
+        }
+
+        fn fixture_command(role: &str, root: Option<&Path>) -> io::Result<Command> {
+            let mut command = Command::new(std::env::current_exe()?);
+            command.args(["--exact", "native::recipe_tests::owned_recipe_fixture", "--nocapture"]).env(FIXTURE_ROLE, role);
+            if let Some(root) = root {
+                command.env(FIXTURE_ROOT, root);
+            }
+            hide_window(&mut command);
+            Ok(command)
+        }
+
+        #[allow(clippy::zombie_processes, reason = "the fixture intentionally leaves an owned descendant alive after its recipe leader exits")]
+        #[test]
+        fn owned_recipe_fixture() -> io::Result<()> {
+            match std::env::var(FIXTURE_ROLE).as_deref() {
+                Ok("pipe-leader") => {
+                    let descendant = fixture_command("pipe-descendant", None)?.stdout(Stdio::inherit()).spawn()?;
+                    drop(descendant);
+                }
+                Ok("pipe-descendant") => std::thread::sleep(Duration::from_secs(15)),
+                Ok("redirected-leader") => {
+                    let descendant = fixture_command("redirected-descendant", None)?.stdout(Stdio::null()).stderr(Stdio::null()).spawn()?;
+                    drop(descendant);
+                }
+                Ok("redirected-descendant") => finish_redirected_fixture()?,
+                _ => {}
+            }
+            Ok(())
+        }
+
+        fn finish_redirected_fixture() -> io::Result<()> {
+            let root = std::env::var_os(FIXTURE_ROOT).map(PathBuf::from).ok_or_else(|| io::Error::other("Missing recipe fixture root"))?;
+            fs::write(root.join("ready"), b"ready")?;
+            let deadline = Instant::now() + Duration::from_secs(15);
+            let release = root.join("release");
+            while !release.try_exists()? {
+                if Instant::now() >= deadline {
+                    return Err(io::Error::other("Recipe fixture was not released"));
+                }
+                std::thread::sleep(POLL);
+            }
+            fs::write(root.join("complete"), b"complete")
+        }
+
+        async fn start_fixture(role: &str, root: Option<&Path>) -> io::Result<(Process, [Option<Reader>; 2])> {
+            let mut command = fixture_command(role, root)?;
+            command.stdin(Stdio::null()).stdout(Stdio::piped()).stderr(Stdio::piped());
+            let Spawned { mut process, stdout, stderr } = recipe_process::spawn(command)?;
+            let output = [stdout.map(drain), stderr.map(drain)];
+            let deadline = Instant::now() + LIMIT;
+            let result = wait_for_fixture_leader(&mut process, deadline).await;
+            if let Err(error) = result {
+                let _ = process.stop();
+                return Err(error);
+            }
+            if let Some(root) = root {
+                let result = wait_for_fixture_file(&root.join("ready"), deadline).await;
+                if let Err(error) = result {
+                    let _ = process.stop();
+                    return Err(error);
+                }
+            }
+            Ok((process, output))
+        }
+
+        async fn wait_for_fixture_leader(process: &mut Process, deadline: Instant) -> io::Result<()> {
+            loop {
+                match process.leader_success()? {
+                    Some(true) => return Ok(()),
+                    None if Instant::now() < deadline => tokio::time::sleep(POLL).await,
+                    _ => return Err(io::Error::other("Synthetic recipe leader did not exit successfully")),
                 }
             }
         }
 
-        let mut log = Vec::new();
-        let result = finish_recipe(process, Ok(()), &mut log, &mut output, Duration::ZERO).await;
-        let reader = output.first().and_then(Option::as_ref).ok_or_else(|| io::Error::other("The inherited pipe did not time out"))?;
-        let deadline = Instant::now() + Duration::from_secs(5);
-        while !reader.is_finished() && Instant::now() < deadline {
-            tokio::time::sleep(Duration::from_millis(10)).await;
+        async fn wait_for_fixture_file(path: &Path, deadline: Instant) -> io::Result<()> {
+            while !path.try_exists()? {
+                if Instant::now() >= deadline {
+                    return Err(io::Error::other("Synthetic recipe descendant did not become ready"));
+                }
+                tokio::time::sleep(POLL).await;
+            }
+            Ok(())
         }
-        assert!(reader.is_finished(), "the owned descendant should no longer hold the pipe open");
-        assert_eq!(result.as_ref().map_err(String::as_str), Err("The build recipe did not close its output pipes; inspect build.log"));
-        assert!(String::from_utf8_lossy(&log).contains("output pipe was still open"));
-        Ok(())
+
+        #[tokio::test]
+        async fn log_timeout_stops_the_owned_descendant_after_its_leader_exits() -> io::Result<()> {
+            let (process, mut output) = start_fixture("pipe-leader", None).await?;
+            let mut log = Vec::new();
+            let result = finish_recipe(process, Ok(()), &mut log, &mut output, Duration::ZERO).await;
+            let reader = output.first().and_then(Option::as_ref).ok_or_else(|| io::Error::other("The inherited pipe did not time out"))?;
+            let deadline = Instant::now() + LIMIT;
+            while !reader.is_finished() && Instant::now() < deadline {
+                tokio::time::sleep(POLL).await;
+            }
+            assert!(reader.is_finished(), "the owned descendant should no longer hold the pipe open");
+            assert_eq!(result.as_ref().map_err(String::as_str), Err("The build recipe did not close its output pipes; inspect build.log"));
+            assert!(String::from_utf8_lossy(&log).contains("output pipe was still open"));
+            Ok(())
+        }
+
+        #[tokio::test]
+        async fn redirected_descendant_finishes_within_recipe_grace() -> io::Result<()> {
+            let files = FixtureFiles::new()?;
+            let (process, mut output) = start_fixture("redirected-leader", Some(&files.0)).await?;
+            let release = files.0.join("release");
+            let release = async {
+                tokio::time::sleep(Duration::from_millis(150)).await;
+                fs::write(release, b"release")
+            };
+            let mut log = Vec::new();
+            let finish = async {
+                let result = finish_recipe(process, Ok(()), &mut log, &mut output, LIMIT).await;
+                result.map_err(io::Error::other)?;
+                // Observe the marker at the inventory boundary, before joining the gate writer.
+                assert_eq!(fs::read(files.0.join("complete"))?.as_slice(), b"complete");
+                Ok::<(), io::Error>(())
+            };
+            let (result, gate) = tokio::join!(finish, release);
+            gate?;
+            result
+        }
+
+        #[tokio::test]
+        async fn redirected_descendant_past_recipe_grace_fails_and_is_stopped() -> io::Result<()> {
+            let files = FixtureFiles::new()?;
+            let (process, mut output) = start_fixture("redirected-leader", Some(&files.0)).await?;
+            let mut log = Vec::new();
+            let result = finish_recipe(process, Ok(()), &mut log, &mut output, Duration::from_millis(400)).await;
+            assert_eq!(
+                result.as_ref().map_err(String::as_str),
+                Err("The build recipe did not finish its process tree before the deadline; inspect build.log")
+            );
+            fs::write(files.0.join("release"), b"release")?;
+            tokio::time::sleep(Duration::from_millis(250)).await;
+            assert!(!files.0.join("complete").try_exists()?);
+            Ok(())
+        }
     }
 
     fn output_directory(checkout: &Path, path: &str) -> Result<PathBuf> {

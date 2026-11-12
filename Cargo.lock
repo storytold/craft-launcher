@@ -342,12 +342,12 @@ dependencies = [
  "futures-util",
  "jiff",
  "openidconnect",
- "process-wrap",
  "rusqlite",
  "rustix 1.1.5",
  "serde",
  "serde_json",
  "sha2 0.10.9",
+ "subc-jobobject",
  "subtle",
  "tokio",
  "tower",
@@ -4778,17 +4778,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "process-wrap"
-version = "10.0.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1f21b97672d2dc848e7b25701ab4535618b92f4861c13cc3f7f7bed52ad3c8da"
-dependencies = [
- "indexmap 2.14.2",
- "nix",
- "windows",
-]
-
-[[package]]
 name = "profiling"
 version = "1.0.18"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5836,6 +5825,16 @@ name = "strsim"
 version = "0.11.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7da8b5736845d9f2fcb837ea5d9e2628564b3b043a70948a3f0b778838c5fb4f"
+
+[[package]]
+name = "subc-jobobject"
+version = "0.2.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8e3d7e6c5956a97be1ea73f11137aeb41835acb496ea637cf331efc581fe4667"
+dependencies = [
+ "tokio",
+ "windows-sys 0.61.2",
+]
 
 [[package]]
 name = "subtle"

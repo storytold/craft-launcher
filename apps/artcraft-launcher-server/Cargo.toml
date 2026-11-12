@@ -17,12 +17,12 @@ server = [
     "dep:futures-util",
     "dep:jiff",
     "dep:openidconnect",
-    "dep:process-wrap",
     "dep:rusqlite",
     "dep:rustix",
     "dep:serde",
     "dep:serde_json",
     "dep:sha2",
+    "dep:subc-jobobject",
     "dep:subtle",
     "dep:tokio",
     "dep:tower",
@@ -63,4 +63,4 @@ uuid = { version = "1", features = ["v4"], optional = true }
 rustix = { version = "1", features = ["process"], optional = true }
 
 [target.'cfg(windows)'.dependencies]
-process-wrap = { version = "=10.0.1", default-features = false, features = ["creation-flags", "job-object", "std"], optional = true }
+subc-jobobject = { version = "=0.2.4", optional = true }
