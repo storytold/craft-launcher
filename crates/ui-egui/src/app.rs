@@ -1228,7 +1228,7 @@ mod tests {
         launcher.configure();
         let order = last_order(&sent).expect("an order is sent");
         assert_eq!(order, launcher.visible_ids());
-        assert_eq!(order.len(), SUITE.len() - 2);
+        assert_eq!(order.len(), launcher.entries.len() - 2);
         assert!(!order.iter().any(|id| id == "wordcraft" || id == "filmcraft"), "{order:?}");
     }
 
@@ -1242,7 +1242,7 @@ mod tests {
         launcher.search.clear();
         launcher.configure();
         assert_eq!(last_order(&sent).expect("an order is sent"), launcher.visible_ids());
-        assert_eq!(launcher.visible_ids().len(), SUITE.len());
+        assert_eq!(launcher.visible_ids().len(), launcher.entries.len());
     }
 
     #[test]

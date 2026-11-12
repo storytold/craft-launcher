@@ -153,6 +153,12 @@ impl Downloads {
         Place { queue: self, id }
     }
 
+    /// The apps in line, in the order they joined.
+    #[cfg(test)]
+    pub(crate) fn waiting_apps(&self) -> Vec<String> {
+        self.lock().waiting.iter().map(|w| w.app.clone()).collect()
+    }
+
     /// Takes a place in line for `app` and waits for its turn: [`Place::turn`].
     pub fn turn(&self, app: &str, stop: &dyn Fn() -> Result<(), String>, waiting: &mut dyn FnMut()) -> Result<Turn<'_>, String> {
         self.join(app).turn(stop, waiting)
@@ -308,7 +314,9 @@ mod tests {
     #[test]
     fn waiting_downloads_go_in_suite_order_without_a_screen_order() {
         let queue = Downloads::new();
-        assert_eq!(finishing_order(&queue, &["soundcraft", "wordcraft", "lightcraft"], || {}), ["lightcraft", "wordcraft", "soundcraft"]);
+        let mut in_suite = ["soundcraft", "wordcraft", "lightcraft"];
+        in_suite.sort_by_key(|app| SUITE.iter().position(|a| a.id == *app));
+        assert_eq!(finishing_order(&queue, &["soundcraft", "wordcraft", "lightcraft"], || {}), in_suite);
     }
 
     /// Waiting downloads go in the order their apps are on screen.
