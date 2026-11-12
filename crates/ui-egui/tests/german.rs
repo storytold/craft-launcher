@@ -288,7 +288,7 @@ fn main_buttons_fit_the_narrowest_window(language: &str) {
             let menu = h.get_by_label(&fmt(t("More actions for {name}"), &[("name", app)])).rect();
             let main = main_button_in_line(&h, menu, &format!("{language} {view:?} {app}"));
             assert!(main.width() <= slot + 0.5, "{language} {view:?} {app}: {main:?} wider than Install ({slot})");
-            assert!(main.right() <= menu.left(), "{language} {view:?} {app}: {main:?} overlaps the menu {menu:?}");
+            assert!(!main.intersects(menu), "{language} {view:?} {app}: {main:?} overlaps the menu {menu:?}");
             // The table scrolls sideways, with a fixed slot; cards have to fit the window.
             assert!(view == ViewMode::Table || menu.right() <= 720.0, "{language} {view:?} {app}: the menu left the window: {menu:?}");
         }
