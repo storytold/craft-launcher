@@ -249,4 +249,35 @@ mod tests {
         };
         assert!(!installs_from(&Install::Msi(PathBuf::new()), &other, windows(Arch::X64)));
     }
+
+    #[test]
+    fn installs_from_looks_for_the_format_the_update_downloads() {
+        use std::path::PathBuf;
+
+        use artcraft_launcher_core::{Arch, Os};
+        // `update` names the format it looked for when the release has no file for it, so an
+        // empty release shows which format craft-update picks for each kind of copy.
+        let dir = tempfile::tempdir().unwrap();
+        let paths = Paths { data: dir.path().join("data"), cache: dir.path().join("cache") };
+        let http = Http::new().unwrap();
+        let platform = Platform { os: Os::Linux, arch: Arch::X64 };
+        let mut installs = vec![
+            Install::MacApp(PathBuf::new()),
+            Install::Msi(PathBuf::new()),
+            Install::Portable(PathBuf::new()),
+            Install::AppImage(PathBuf::new()),
+            Install::Flatpak,
+            Install::Standalone(PathBuf::new()),
+        ];
+        for kind in
+            [craft_update::PackageKind::Deb, craft_update::PackageKind::Rpm, craft_update::PackageKind::ArchPkg, craft_update::PackageKind::TarGz]
+        {
+            installs.push(Install::Package(kind, PathBuf::new()));
+        }
+        for install in installs {
+            let error = update(&install, &Release::default(), platform, &http, &paths, &Stop::default(), &mut |_| {}, &|| Ok(())).unwrap_err();
+            let looked_for = format!(" has no {} for ", update_kind(&install).label());
+            assert!(error.contains(&looked_for), "{install:?}: {error}");
+        }
+    }
 }
