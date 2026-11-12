@@ -310,22 +310,35 @@ pub fn install_gateway(src: &Path, dir: &Path) -> Result<PathBuf, String> {
         (Err(e), _) => return Err(format!("couldn't read the Craft gateway at {} ({e})", src.display())),
         _ => false,
     };
-    if current {
-        return Ok(dest);
+    if !current {
+        let bytes = std::fs::read(src).map_err(|e| format!("couldn't read the Craft gateway at {} ({e})", src.display()))?;
+        match crate::paths::write_atomic(&dest, &bytes) {
+            Ok(()) => {}
+            // A client still running the old copy keeps it busy on Windows: keep using it.
+            Err(_) if dest.is_file() => {}
+            Err(e) => return Err(e),
+        }
     }
-    let bytes = std::fs::read(src).map_err(|e| format!("couldn't read the Craft gateway at {} ({e})", src.display()))?;
-    match crate::paths::write_atomic(&dest, &bytes) {
-        Ok(()) => {}
-        Err(_) if dest.is_file() => return Ok(dest),
-        Err(e) => return Err(e),
-    }
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        std::fs::set_permissions(&dest, std::fs::Permissions::from_mode(0o755))
-            .map_err(|e| format!("couldn't make {} executable ({e})", dest.display()))?;
-    }
+    // Also for a copy with the right bytes: one that lost its execute bit couldn't be started.
+    make_executable(&dest)?;
     Ok(dest)
+}
+
+/// Make the gateway copy executable for everyone who may run it (`0755`) when it isn't already.
+#[cfg(unix)]
+fn make_executable(path: &Path) -> Result<(), String> {
+    use std::os::unix::fs::PermissionsExt;
+    let mode = std::fs::metadata(path).map_err(|e| format!("couldn't read {} ({e})", path.display()))?.permissions().mode();
+    if mode & 0o111 == 0o111 {
+        return Ok(());
+    }
+    std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o755)).map_err(|e| format!("couldn't make {} executable ({e})", path.display()))
+}
+
+/// Windows has no execute bit.
+#[cfg(not(unix))]
+fn make_executable(_path: &Path) -> Result<(), String> {
+    Ok(())
 }
 
 /// Serialises every change to the app list and the gateway copy. Detection refreshes them on a

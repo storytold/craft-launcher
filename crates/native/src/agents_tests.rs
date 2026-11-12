@@ -230,7 +230,12 @@ fn the_gateway_copy_is_executable() {
     let src = src_dir.path().join("craft-ai-mcp");
     std::fs::write(&src, b"#!/bin/sh\n").unwrap();
     let copy = install_gateway(&src, dir.path()).unwrap();
-    assert_eq!(std::fs::metadata(copy).unwrap().permissions().mode() & 0o111, 0o111);
+    assert_eq!(std::fs::metadata(&copy).unwrap().permissions().mode() & 0o111, 0o111);
+    // A copy with the right bytes that lost its execute bit gets it back instead of being reused
+    // as it is: clients couldn't start it.
+    std::fs::set_permissions(&copy, std::fs::Permissions::from_mode(0o644)).unwrap();
+    let again = install_gateway(&src, dir.path()).unwrap();
+    assert_eq!(std::fs::metadata(again).unwrap().permissions().mode() & 0o111, 0o111);
 }
 
 #[test]
