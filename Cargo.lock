@@ -983,7 +983,7 @@ dependencies = [
 [[package]]
 name = "craft-atomic"
 version = "0.1.0"
-source = "git+https://github.com/storytold/craft-libs?rev=d6d6835dc888a270a96a575fba58ab01abf6c122#d6d6835dc888a270a96a575fba58ab01abf6c122"
+source = "git+https://github.com/storytold/craft-libs?rev=86d6e8c5b05a4dadc35ff1c8e5d2f992c687ee97#86d6e8c5b05a4dadc35ff1c8e5d2f992c687ee97"
 dependencies = [
  "rustix 1.1.5",
 ]
@@ -991,7 +991,7 @@ dependencies = [
 [[package]]
 name = "craft-flags"
 version = "0.1.0"
-source = "git+https://github.com/storytold/craft-libs?rev=d6d6835dc888a270a96a575fba58ab01abf6c122#d6d6835dc888a270a96a575fba58ab01abf6c122"
+source = "git+https://github.com/storytold/craft-libs?rev=86d6e8c5b05a4dadc35ff1c8e5d2f992c687ee97#86d6e8c5b05a4dadc35ff1c8e5d2f992c687ee97"
 dependencies = [
  "craft-atomic",
  "dirs 7.0.0",
