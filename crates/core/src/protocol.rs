@@ -85,11 +85,6 @@ pub enum Command {
         client: McpClient,
         added: bool,
     },
-    /// Turn a feature flag on or off for the launcher and every Craft app (`ArtCraft/flags.toml`).
-    SetFlag {
-        id: String,
-        on: bool,
-    },
 }
 
 /// Parent folders for new installs. Existing installations keep their recorded location.
@@ -314,21 +309,6 @@ pub enum Event {
     McpError {
         message: String,
     },
-    /// The feature flags and whether each is on. Sent with the MCP state and after a change.
-    Flags {
-        flags: Vec<FlagState>,
-    },
-}
-
-/// One feature flag as Settings shows it.
-#[derive(Clone, Debug, PartialEq)]
-pub struct FlagState {
-    pub id: String,
-    pub title: String,
-    pub description: String,
-    pub on: bool,
-    /// `CRAFT_FLAGS` decides it for this run, so the switch has no effect until that is gone.
-    pub forced: bool,
 }
 
 /// An MCP client the launcher can add the gateway entry to.

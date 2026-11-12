@@ -360,7 +360,6 @@ impl NativeBackend {
             // Local MCP state: which installed apps can be exposed + the unified bridge.
             {
                 let _mcp = MCP_WORK.lock().unwrap_or_else(PoisonError::into_inner);
-                shared.emit(Event::Flags { flags: crate::agents::flags_state() });
                 shared.emit(mcp_state(&shared));
             }
             drop(busy);
@@ -1609,7 +1608,7 @@ impl Backend for NativeBackend {
                     self.check(true);
                 }
             }
-            cmd @ (Command::McpState | Command::McpSetAgents { .. } | Command::McpSetClient { .. } | Command::SetFlag { .. }) => {
+            cmd @ (Command::McpState | Command::McpSetAgents { .. } | Command::McpSetClient { .. }) => {
                 // Detection can run package-manager queries for seconds (flatpak on Linux):
                 // never on the UI thread that sends commands.
                 let shared = self.shared.clone();
@@ -1671,13 +1670,11 @@ fn run_mcp(shared: &Shared, cmd: Command) {
     let result = match cmd {
         Command::McpSetAgents { enabled } => crate::agents::set_enabled(enabled, &apps),
         Command::McpSetClient { client, added } => crate::agents::set_client(client, added),
-        Command::SetFlag { id, on } => crate::agents::set_flag(&id, on, &apps),
         _ => Ok(()),
     };
     if let Err(message) = result {
         shared.emit(Event::McpError { message });
     }
-    shared.emit(Event::Flags { flags: crate::agents::flags_state() });
     shared.emit(mcp_state_for(&apps));
 }
 

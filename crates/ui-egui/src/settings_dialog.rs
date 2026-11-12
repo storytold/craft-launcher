@@ -117,7 +117,6 @@ impl LauncherUi {
                 this.settings_language(ui);
                 this.settings_updates(ui);
                 this.settings_appearance(ui);
-                this.settings_flags(ui);
                 this.settings_agents(ui);
             },
             |ui| {
@@ -376,7 +375,7 @@ impl LauncherUi {
     /// AI agents: one switch that lets MCP clients reach every installed Craft app through the
     /// `craft-ai-mcp` gateway, and one Add/Remove button per MCP client found on this machine.
     fn settings_agents(&mut self, ui: &mut Ui) {
-        // Behind the `AI-MCP` feature flag (Experimental features).
+        // Behind the `AI-MCP` feature flag, set in `ArtCraft/flags.toml` or `CRAFT_FLAGS` only.
         if !self.caps.manage_apps || !self.mcp_agents.flag_on {
             return;
         }
@@ -403,31 +402,6 @@ impl LauncherUi {
             ui.add_space(8.0);
             for c in &agents.clients {
                 self.draw_client_row(ui, &t, c, agents.gateway_found);
-            }
-        });
-    }
-
-    /// Experimental features: a switch per feature flag, shared with every Craft app.
-    fn settings_flags(&mut self, ui: &mut Ui) {
-        if !self.caps.manage_apps || self.flags.is_empty() {
-            return;
-        }
-        let t = Tokens::get(ui.ctx());
-        let flags = self.flags.clone();
-        sheet::panel(ui, tl!("Experimental features"), |ui| {
-            note(ui, tl!("Features that are still being built. Each is off until you turn it on here, for the launcher and every Craft app."));
-            ui.add_space(8.0);
-            for f in &flags {
-                let mut on = f.on;
-                let toggle = ui.add_enabled(!f.forced, egui::Checkbox::new(&mut on, f.title.as_str()));
-                if toggle.changed() && on != f.on {
-                    self.act_command(Command::SetFlag { id: f.id.clone(), on });
-                }
-                ui.label(RichText::new(f.description.as_str()).size(12.0).color(t.muted));
-                if f.forced {
-                    ui.label(RichText::new(tl!("Set by CRAFT_FLAGS for this run.")).size(12.0).color(t.muted));
-                }
-                ui.add_space(6.0);
             }
         });
     }

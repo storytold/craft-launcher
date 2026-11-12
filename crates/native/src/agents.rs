@@ -12,7 +12,7 @@
 use std::path::{Path, PathBuf};
 use std::sync::{Mutex, MutexGuard, PoisonError};
 
-use artcraft_launcher_core::protocol::{FlagState, McpAgents, McpClient, McpClientState};
+use artcraft_launcher_core::protocol::{McpAgents, McpClient, McpClientState};
 use serde_json::{Map, Value, json};
 
 use artcraft_launcher_core::CraftApp;
@@ -115,13 +115,36 @@ pub fn client_paths(client: McpClient) -> Option<(PathBuf, PathBuf)> {
     let home = dirs::home_dir()?;
     Some(match client {
         McpClient::ClaudeDesktop => {
-            let dir = dirs::config_dir()?.join("Claude");
+            let dir = claude_desktop_dir(dirs::config_dir()?, std::env::var_os("LOCALAPPDATA").map(PathBuf::from).as_deref());
             (dir.join("claude_desktop_config.json"), dir)
         }
         McpClient::ClaudeCode => (home.join(".claude.json"), home.join(".claude")),
         McpClient::Cursor => (home.join(".cursor").join("mcp.json"), home.join(".cursor")),
         McpClient::LmStudio => (home.join(".lmstudio").join("mcp.json"), home.join(".lmstudio")),
     })
+}
+
+/// Claude Desktop's settings folder: `<config>/Claude`, unless only the Microsoft Store package is
+/// installed. Windows redirects a packaged app's `%APPDATA%` into its package, so that install
+/// reads `%LOCALAPPDATA%\Packages\Claude_<id>\LocalCache\Roaming\Claude` and never sees
+/// `%APPDATA%\Claude`. `local_appdata` is `None` outside Windows.
+fn claude_desktop_dir(config: PathBuf, local_appdata: Option<&Path>) -> PathBuf {
+    let classic = config.join("Claude");
+    if classic.is_dir() {
+        return classic;
+    }
+    let packaged = local_appdata.and_then(|local| {
+        let mut found: Vec<PathBuf> = std::fs::read_dir(local.join("Packages"))
+            .ok()?
+            .flatten()
+            .filter(|e| e.file_name().to_string_lossy().starts_with("Claude_"))
+            .map(|e| e.path().join("LocalCache").join("Roaming").join("Claude"))
+            .filter(|d| d.is_dir())
+            .collect();
+        found.sort();
+        found.into_iter().next()
+    });
+    packaged.unwrap_or(classic)
 }
 
 /// A client's display name.
@@ -340,33 +363,7 @@ pub fn flag_on() -> bool {
     craft_flags::load().enabled(&craft_flags::AI_MCP)
 }
 
-const NO_FLAG: &str = "turn on \"AI agents (MCP)\" under Experimental features first";
-
-/// Every feature flag, for Settings.
-pub fn flags_state() -> Vec<FlagState> {
-    let flags = craft_flags::load();
-    craft_flags::ALL
-        .iter()
-        .map(|f| FlagState {
-            id: f.id.to_string(),
-            title: f.title.to_string(),
-            description: f.description.to_string(),
-            on: flags.enabled(f),
-            forced: flags.forced(f.id).is_some(),
-        })
-        .collect()
-}
-
-/// Turn a feature flag on or off for the launcher and every app. Turning `AI-MCP` off also turns
-/// agents off, so no client keeps an entry for a feature that is switched off.
-pub fn set_flag(id: &str, on: bool, services: &[InstalledApp]) -> Result<(), String> {
-    let path = craft_flags::default_path().ok_or("couldn't find the per-user configuration folder")?;
-    // Clean up first: if that fails, the flag stays on and Settings keeps the controls to retry.
-    if id == craft_flags::AI_MCP.id && !on {
-        set_enabled(false, services)?;
-    }
-    craft_flags::set(&path, id, on).map_err(|e| e.to_string())
-}
+const NO_FLAG: &str = "the AI-MCP feature flag is off (ArtCraft/flags.toml or CRAFT_FLAGS)";
 
 const NO_GATEWAY: &str = "the Craft gateway (craft-ai-mcp) is not installed beside the launcher";
 

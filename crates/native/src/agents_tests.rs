@@ -61,6 +61,20 @@ fn apps_get_their_extra_mcp_arguments_only_where_the_cli_takes_them() {
 }
 
 #[test]
+fn claude_desktop_from_the_microsoft_store_is_found_in_its_package() {
+    let dir = tempfile::tempdir().unwrap();
+    let (config, local) = (dir.path().join("Roaming"), dir.path().join("Local"));
+    assert_eq!(claude_desktop_dir(config.clone(), Some(&local)), config.join("Claude"), "nothing installed: the usual place");
+    let packaged = local.join("Packages").join("Claude_pzs8sxrjxfjjc").join("LocalCache").join("Roaming").join("Claude");
+    std::fs::create_dir_all(&packaged).unwrap();
+    std::fs::create_dir_all(local.join("Packages").join("Other_123")).unwrap();
+    assert_eq!(claude_desktop_dir(config.clone(), Some(&local)), packaged, "only the Store package");
+    std::fs::create_dir_all(config.join("Claude")).unwrap();
+    assert_eq!(claude_desktop_dir(config.clone(), Some(&local)), config.join("Claude"), "the classic install wins");
+    assert_eq!(claude_desktop_dir(config.clone(), None), config.join("Claude"));
+}
+
+#[test]
 fn the_help_text_must_name_the_argument_as_a_word() {
     let help = "Usage: photocraft-cli mcp [OPTIONS]
       --live

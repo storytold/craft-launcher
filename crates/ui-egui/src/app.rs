@@ -3,8 +3,7 @@
 use std::time::Duration;
 
 use artcraft_launcher_core::protocol::{
-    Backend, BackendOptions, CANCELLED, Capabilities, Command, Event, FlagState, INSTALL_CANCELLED, JobPhase, LatestRelease, McpAgents, PAUSED,
-    Source,
+    Backend, BackendOptions, CANCELLED, Capabilities, Command, Event, INSTALL_CANCELLED, JobPhase, LatestRelease, McpAgents, PAUSED, Source,
 };
 use artcraft_launcher_core::release::Release;
 use artcraft_launcher_core::status::AppStatus;
@@ -145,8 +144,6 @@ pub struct LauncherUi {
     pub(crate) entries: Vec<AppEntry>,
     /// AI agents: the gateway switch and the MCP clients.
     pub(crate) mcp_agents: McpAgents,
-    /// The feature flags (Settings › Experimental features).
-    pub(crate) flags: Vec<FlagState>,
     /// Whether we've asked for MCP state since the settings dialog last opened (reset when it closes).
     pub(crate) mcp_requested: bool,
     pub(crate) caps: Capabilities,
@@ -275,7 +272,6 @@ impl LauncherUi {
                 .map(AppEntry::new)
                 .collect(),
             mcp_agents: McpAgents::default(),
-            flags: Vec::new(),
             mcp_requested: false,
             caps,
             platform,
@@ -656,10 +652,6 @@ impl LauncherUi {
             }
             Event::Mcp { agents } => {
                 self.mcp_agents = agents;
-                false
-            }
-            Event::Flags { flags } => {
-                self.flags = flags;
                 false
             }
             Event::McpError { message } => {
