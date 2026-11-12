@@ -266,6 +266,12 @@ pub enum Event {
         app: String,
         result: Result<String, String>,
     },
+    /// What `Command::SetDefault` did, as a short message. It isn't a job, so a download or
+    /// install running for the same app carries on as it was.
+    DefaultSet {
+        app: String,
+        result: Result<String, String>,
+    },
     /// One picture of an app's details page, or why it couldn't be had (offline, not published,
     /// not a JPEG). `key` is the [`crate::details::Shot::key`].
     Screenshot {

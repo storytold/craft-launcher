@@ -2227,6 +2227,26 @@ fn set_as_default_is_offered_for_installed_apps_on_linux_only() {
     }
 }
 
+/// What "Set as default" did is only a message: a download running for the same app goes on
+/// being shown.
+#[test]
+fn a_default_set_message_leaves_the_apps_running_download_alone() {
+    let downloads = |ev: Vec<Event>| {
+        let (mut h, _) = harness_with(ev, ViewMode::Grid, egui::Theme::Dark, true, 1.0);
+        h.run_steps(6);
+        let shown = h.query_all_by_label("Pause download").count();
+        (h, shown)
+    };
+    let (_, before) = downloads(events());
+    let message = "FilmCraft now opens its 3 file types by default";
+    let mut ev = events();
+    ev.push(Event::DefaultSet { app: "filmcraft".into(), result: Ok(message.into()) });
+    let (h, after) = downloads(ev);
+    assert!(before > 0);
+    assert_eq!(after, before);
+    h.get_by_label(message);
+}
+
 #[test]
 fn launch_options_with_an_unclosed_quote_are_not_saved_or_launched() {
     use egui::accesskit::Role;

@@ -1445,14 +1445,14 @@ impl Backend for NativeBackend {
             Command::SetDefault { app } => {
                 let Some(def) = CraftApp::by_id(&app) else { return };
                 if self.installed(&app).is_none() {
-                    self.shared.emit(Event::JobFinished { app, result: Err(format!("{} isn't installed", def.name)) });
+                    self.shared.emit(Event::DefaultSet { app, result: Err(format!("{} isn't installed", def.name)) });
                     return;
                 }
                 // In the Flatpak the menu-entry lookup can wait on `flatpak-spawn --host`, so it runs off the UI thread.
                 let shared = self.shared.clone();
                 std::thread::spawn(move || {
                     let result = crate::default_apps::set_default(def);
-                    shared.emit(Event::JobFinished { app, result });
+                    shared.emit(Event::DefaultSet { app, result });
                 });
             }
             Command::UpdateLauncher => self.update_launcher(),
@@ -2568,5 +2568,17 @@ mod tests {
             assert_eq!(claim.join().unwrap(), Err(CANCELLED.to_string()));
         });
         assert!(!restarting.load(Ordering::SeqCst));
+    }
+
+    /// "Set as default" answers with `DefaultSet`, never `JobFinished`, which would end the
+    /// display of a download or install the app has running.
+    #[test]
+    fn set_default_answers_without_ending_a_job() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut backend = backend(dir.path(), Platform { os: Os::Linux, arch: Arch::X64 }, None);
+        backend.send(Command::SetDefault { app: APP.into() });
+        let events = backend.poll();
+        assert!(events.iter().any(|e| matches!(e, Event::DefaultSet { app, result: Err(_) } if app == APP)), "{events:?}");
+        assert!(!events.iter().any(|e| matches!(e, Event::JobFinished { .. })), "{events:?}");
     }
 }
