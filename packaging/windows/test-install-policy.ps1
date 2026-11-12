@@ -347,3 +347,8 @@ foreach ($mutation in $mutations) {
   Assert-MutationCaught -Name $mutation.Name -Expect $mutation.Expect -Check $check
   Write-Output "CAUGHT (compiled-table check, $($mutation.Name)): $($mutation.Why)"
 }
+
+# Every negative control above must return nonzero. Those captured child codes are expected,
+# not this script's result; PowerShell CI otherwise inherits the final rejected mutant's code.
+Write-Output "PASS installer metadata: $($Architectures.Count) architectures; $($mutations.Count) negative controls."
+exit 0
