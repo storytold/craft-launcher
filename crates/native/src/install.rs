@@ -86,12 +86,16 @@ pub enum Downgrade<'a> {
 /// Whether going back over `existing` keeps the old copy until the new one is in place, the same
 /// way an update does. A macOS bundle is moved aside and moved back if the swap fails. An
 /// AppImage the launcher installed (`previous` records it) is renamed in whole, and the old file
-/// is removed only after that. A tarball is left out: its `bin` and `share` swap one at a time.
+/// is removed only after that. A Flatpak bundle over the launcher's own Flatpak (same bundle
+/// origin) deploys the new commit before undeploying the old one, as an update does; a Flatpak
+/// from a repository is left to that repository. A tarball is left out: its `bin` and `share`
+/// swap one at a time.
 pub fn keeps_old_copy(kind: PackageKind, existing: Option<&Installed>, previous: Option<&Record>) -> bool {
     let source = existing.map(|inst| inst.source);
     match kind {
         PackageKind::Dmg => source == Some(InstallSource::MacApp),
         PackageKind::AppImage => source == Some(InstallSource::Launcher) && previous.is_some_and(|r| r.kind == PackageKind::AppImage),
+        PackageKind::Flatpak => existing.is_some_and(|inst| inst.source == InstallSource::Flatpak && !inst.externally_managed),
         _ => false,
     }
 }
@@ -2889,6 +2893,14 @@ mod tests {
         assert!(!keeps_old_copy(PackageKind::AppImage, Some(&installed(InstallSource::AppImage)), Some(&appimage)));
         assert!(!keeps_old_copy(PackageKind::AppImage, Some(&portable), Some(&tarball)));
         assert!(!keeps_old_copy(PackageKind::TarGz, Some(&portable), Some(&tarball)));
+        // A Flatpak bundle over the launcher's own Flatpak keeps it; one from a repository doesn't.
+        let flatpak = installed(InstallSource::Flatpak);
+        let managed = Installed { externally_managed: true, ..installed(InstallSource::Flatpak) };
+        assert!(keeps_old_copy(PackageKind::Flatpak, Some(&flatpak), None));
+        assert!(downgrade_is_safe(keep, PackageKind::Flatpak, Some(&flatpak), None));
+        assert!(!keeps_old_copy(PackageKind::Flatpak, Some(&managed), None));
+        assert!(!keeps_old_copy(PackageKind::Flatpak, Some(&portable), None));
+        assert!(!keeps_old_copy(PackageKind::Flatpak, None, None));
         // Each way back fits one kind of install; anything else is refused.
         assert!(downgrade_is_safe(None, PackageKind::AppImage, Some(&portable), None));
         assert!(downgrade_is_safe(keep, PackageKind::Dmg, Some(&mac), None));

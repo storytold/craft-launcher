@@ -426,3 +426,7 @@ anicraft	Familiar by design	Diseño familiar
 anicraft	Stage, tools, timeline, layers, keyframes, Properties and Library sit where animators expect them, with onion skinning for in-betweening.	Escenario, herramientas, línea de tiempo, capas, fotogramas clave, Propiedades y Biblioteca donde los animadores esperan, con papel cebolla.
 anicraft	Tweens that ease	Interpolaciones suaves
 anicraft	Classic tweens with eight easing presets and custom ease curves, plus shape tweens that morph one vector contour into another.	Interpolaciones clásicas con ocho preajustes de aceleración y curvas personalizadas, además de interpolación de forma.
+	Version pinned to {version}. Click to unlock.	Versión fijada en {version}. Haz clic para desbloquear.
+	Unlock version?	¿Desbloquear la versión?
+	{app} is pinned to {version}. Follow the latest release instead?	{app} está fijado en la versión {version}. ¿Usar la versión más reciente?
+	Unlock	Desbloquear

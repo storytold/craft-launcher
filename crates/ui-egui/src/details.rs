@@ -374,7 +374,10 @@ impl LauncherUi {
                 // "Version 0.5.0 · Oct 8, 2026", or the installed-versus-latest line.
                 let version = crate::views::version_line(entry, status);
                 if !version.trim().is_empty() {
-                    ui.label(RichText::new(version).size(12.5).color(t.muted));
+                    ui.horizontal(|ui| {
+                        ui.label(RichText::new(version).size(12.5).color(t.muted));
+                        self.version_lock(ui, app.id);
+                    });
                 }
             });
             if wide {

@@ -817,7 +817,7 @@ fn run_install(
     let InstallPlan { release, platform, asset, kind } = install_plan(app, latest, platform, options, (existing, record), Asking::Install)?;
     let http = http.ok_or("secure connections aren't available on this system")?;
     let track = options.versions.get(app.id).unwrap_or(&VersionTrack::Stable);
-    // Going back to a version chosen by name. A macOS bundle or a launcher AppImage keeps the old
+    // Going back to a version chosen by name. A macOS bundle, a launcher AppImage or Flatpak keeps the old
     // copy until the new one is in place. Otherwise the installed version's own package is found
     // first, so a downgrade that fails can put it back. Without it nothing changes.
     let keeps_old_copy = install::keeps_old_copy(kind, existing, record);

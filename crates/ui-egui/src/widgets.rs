@@ -658,6 +658,8 @@ pub enum Glyph {
     Close,
     Settings,
     Refresh,
+    /// An exact version is locked until the user confirms unlocking it.
+    Lock,
     /// Six-dot grip for reordering pinned apps.
     Grip,
 }
@@ -716,6 +718,22 @@ fn glyph_shapes(rect: Rect, glyph: Glyph, color: Color32) -> Vec<egui::Shape> {
                 egui::Shape::convex_polygon(vec![tip + vec2(-2.4, -0.6), tip + vec2(1.6, -3.0), tip + vec2(1.2, 1.8)], color, Stroke::NONE),
             ]
         }
+        Glyph::Lock => {
+            let stroke = Stroke::new(1.4, color);
+            vec![
+                egui::Shape::line(
+                    vec![m + vec2(-3.0, -1.0), m + vec2(-3.0, -5.0), m + vec2(0.0, -6.0), m + vec2(3.0, -5.0), m + vec2(3.0, -1.0)],
+                    stroke,
+                ),
+                egui::Shape::rect_stroke(
+                    Rect::from_min_max(m + vec2(-5.0, -1.0), m + vec2(5.0, 6.0)),
+                    CornerRadius::ZERO,
+                    stroke,
+                    egui::StrokeKind::Inside,
+                ),
+                egui::Shape::line_segment([m + vec2(0.0, 1.0), m + vec2(0.0, 3.5)], stroke),
+            ]
+        }
         Glyph::Grip => {
             let mut shapes = Vec::with_capacity(6);
             for (dx, dy) in [(-3.0, -3.5), (3.0, -3.5), (-3.0, 0.0), (3.0, 0.0), (-3.0, 3.5), (3.0, 3.5)] {
@@ -757,6 +775,18 @@ pub fn glyph_button(ui: &mut Ui, glyph: Glyph, tip: &str) -> Response {
     }
     let c = if hovered { t.invert_fg } else { t.muted };
     paint_glyph(p, rect, glyph, c);
+    resp.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, true, tip));
+    resp.on_hover_text(tip).on_hover_cursor(egui::CursorIcon::PointingHand)
+}
+
+/// A small glyph beside inline text, with the same accessible name and hover help as a tool button.
+pub fn inline_glyph_button(ui: &mut Ui, glyph: Glyph, tip: &str) -> Response {
+    let t = Tokens::get(ui.ctx());
+    let (rect, resp) = ui.allocate_exact_size(vec2(20.0, 20.0), Sense::click());
+    if resp.hovered() || resp.has_focus() {
+        ui.painter().rect_filled(rect, CornerRadius::ZERO, t.sunken);
+    }
+    paint_glyph(ui.painter(), rect, glyph, t.muted);
     resp.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, true, tip));
     resp.on_hover_text(tip).on_hover_cursor(egui::CursorIcon::PointingHand)
 }
@@ -867,8 +897,8 @@ mod tests {
     /// the tool-button and header-cell sizes, or a click target would draw outside its hit rect.
     #[test]
     fn every_painter_glyph_stays_inside_its_control() {
-        for glyph in [Glyph::Pause, Glyph::Close, Glyph::Settings, Glyph::Refresh, Glyph::Grip] {
-            for side in [crate::theme::CONTROL_H, 48.0] {
+        for glyph in [Glyph::Pause, Glyph::Close, Glyph::Settings, Glyph::Refresh, Glyph::Grip, Glyph::Lock] {
+            for side in [20.0, crate::theme::CONTROL_H, 48.0] {
                 let rect = Rect::from_min_size(egui::pos2(100.0, 200.0), egui::vec2(side, side));
                 let shapes = glyph_shapes(rect, glyph, Color32::WHITE);
                 assert!(!shapes.is_empty(), "{glyph:?} draws nothing at {side} px");
@@ -974,7 +1004,7 @@ mod tests {
     #[test]
     fn each_glyph_has_its_own_shapes() {
         let rect = Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(crate::theme::CONTROL_H, crate::theme::CONTROL_H));
-        let bounds: Vec<[u32; 4]> = [Glyph::Pause, Glyph::Close, Glyph::Settings, Glyph::Refresh, Glyph::Grip]
+        let bounds: Vec<[u32; 4]> = [Glyph::Pause, Glyph::Close, Glyph::Settings, Glyph::Refresh, Glyph::Grip, Glyph::Lock]
             .into_iter()
             .map(|glyph| {
                 let union = glyph_shapes(rect, glyph, Color32::WHITE)
