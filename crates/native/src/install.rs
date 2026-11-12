@@ -327,6 +327,13 @@ pub(crate) fn bind_artifact_version(app: &CraftApp, release: &Release, asset: &A
         return Err(mismatch());
     }
 
+    bind_download_url(app, release, asset)
+}
+
+/// The release tag and filename embedded in a release download URL must be the release's and the asset's.
+pub(crate) fn bind_download_url(app: &CraftApp, release: &Release, asset: &Asset) -> Result<(), String> {
+    let mismatch = || format!("{}'s download does not match the advertised version {}.", app.name, release.version_label());
+    let release_version = release.version.as_ref();
     // The release tag and filename embedded in a release download URL (`.../releases/download/<tag>/<name>`).
     if let Some(rest) = asset.url.split("/releases/download/").nth(1) {
         let mut parts = rest.split('/');
@@ -1683,6 +1690,10 @@ pub(crate) mod linux {
 
 #[cfg(target_os = "macos")]
 mod macos_verify;
+
+#[cfg(unix)]
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
+pub mod cli_tool;
 
 #[cfg(target_os = "macos")]
 pub mod macos {

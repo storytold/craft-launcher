@@ -277,24 +277,26 @@ pub fn pick_asset<'a>(release: &'a Release, stems: &[&str], platform: Platform, 
     None
 }
 
+/// The version and `<os>-<arch>` in the file name of a command-line tool's zip
+/// (`<stem>-cli-<version>-<os>-<arch>.zip`), for an app named by one of `stems`.
+pub fn parse_cli_asset_name(name: &str, stems: &[&str]) -> Option<(String, String)> {
+    let base = name.strip_suffix(".zip")?;
+    stems.iter().find_map(|stem| {
+        let rest = strip_stem_prefix(base, &format!("{stem}-cli"), '-')?;
+        // rest = <version>-<os>-<arch>; os and arch never contain '-', versions may.
+        let mut parts = rest.rsplitn(3, '-');
+        let (arch, os, version) = (parts.next()?, parts.next()?, parts.next()?);
+        (crate::version::parse(version).is_some() && version.starts_with(|c: char| c.is_ascii_digit()))
+            .then(|| (version.to_string(), format!("{os}-{arch}")))
+    })
+}
+
 /// The command-line tool's zip of `release` for `platform`: `<stem>-cli-<version>-<os>-<arch>.zip`, as the
 /// macOS releases publish it beside the disk image (the disk image holds only the app). `None` when the
 /// release has none for this platform; checksums, signatures and the app's own packages never match.
 pub fn pick_cli_asset<'a>(release: &'a Release, stems: &[&str], platform: Platform) -> Option<&'a Asset> {
-    let parsed: Vec<(&Asset, String)> = release
-        .assets
-        .iter()
-        .filter_map(|a| {
-            let base = a.name.strip_suffix(".zip")?;
-            stems.iter().find_map(|stem| {
-                let rest = strip_stem_prefix(base, &format!("{stem}-cli"), '-')?;
-                // rest = <version>-<os>-<arch>; os and arch never contain '-', versions may.
-                let mut parts = rest.rsplitn(3, '-');
-                let (arch, os, version) = (parts.next()?, parts.next()?, parts.next()?);
-                (crate::version::parse(version).is_some() && version.starts_with(|c: char| c.is_ascii_digit())).then(|| (a, format!("{os}-{arch}")))
-            })
-        })
-        .collect();
+    let parsed: Vec<(&Asset, String)> =
+        release.assets.iter().filter_map(|a| parse_cli_asset_name(&a.name, stems).map(|(_, target)| (a, target))).collect();
     platform.tokens().iter().find_map(|token| parsed.iter().find(|(_, t)| t == token).map(|(a, _)| *a))
 }
 

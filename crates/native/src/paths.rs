@@ -62,6 +62,16 @@ impl Paths {
         self.data.join("logs")
     }
 
+    /// Where command-line tools are installed: `<data>/cli/<app>` (each replaced whole on an update).
+    pub fn cli(&self) -> PathBuf {
+        self.data.join("cli")
+    }
+
+    /// Links to every installed command-line tool: one folder to put on `PATH`.
+    pub fn cli_bin(&self) -> PathBuf {
+        self.cli().join("bin")
+    }
+
     /// Where tarball installs (FreeBSD, Linux without AppImage) are unpacked: `<data>/apps/<app>`.
     pub fn apps(&self) -> PathBuf {
         self.data.join("apps")

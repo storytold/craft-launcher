@@ -97,11 +97,16 @@ pub enum VersionTrack {
     Pinned(String),
 }
 
+/// macOS: the line that puts every installed command-line tool on `PATH`: the launcher's `cli/bin` folder.
+pub const MAC_CLI_PATH_LINE: &str = "export PATH=\"$HOME/Library/Application Support/ArtCraft Launcher/cli/bin:$PATH\"";
+
 /// Settings the backend needs.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct BackendOptions {
     pub install_locations: InstallLocations,
+    /// macOS: install each app's command-line tool with it, and keep it at the app's version (off by default).
+    pub install_cli: bool,
     /// Package formats to install, best first (empty: the platform default).
     pub kinds: Vec<PackageKind>,
     /// Per-app version choices; an absent entry follows stable releases.
