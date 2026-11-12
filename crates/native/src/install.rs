@@ -1139,7 +1139,6 @@ pub(crate) mod linux {
         command: &[&str],
         target: &OsStr,
         batch: Option<crate::queue::Gather>,
-        quiet: bool,
         stop: &Stop,
         phase: &mut dyn FnMut(JobPhase),
         working: JobPhase,
@@ -1253,7 +1252,6 @@ pub(crate) mod linux {
         file: &Path,
         installation: Option<&str>,
         batch: Option<crate::queue::Gather>,
-        quiet: bool,
         stop: &Stop,
         phase: &mut dyn FnMut(JobPhase),
     ) -> Result<(), String> {
@@ -1281,7 +1279,6 @@ pub(crate) mod linux {
         file: &Path,
         installation: Option<&str>,
         batch: Option<crate::queue::Gather>,
-        quiet: bool,
         stop: &Stop,
         phase: &mut dyn FnMut(JobPhase),
     ) -> Result<(), String> {
