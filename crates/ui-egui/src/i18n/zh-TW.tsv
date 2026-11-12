@@ -76,6 +76,8 @@
 	Only when I ask	僅在我要求時
 	Automatically download and install updates	自動下載並安裝更新
 	Ask for permission once when updating all apps	更新所有應用程式時僅請求一次權限
+	Install each app's command-line tool and keep it up to date	安裝每個應用程式的命令列工具並保持更新
+	To use the tools in Terminal, add this line to your shell's start-up file:	若要在終端機中使用這些工具，請將下面這一行加入 shell 的啟動檔：
 	Notify me when an installed app has an update	已安裝的應用程式有更新時通知我
 	Include pre-releases (betas and release candidates)	包含預先發行版（Beta 版與候選發行版）
 	Installing on Linux	在 Linux 上安裝

@@ -98,6 +98,8 @@
 	Only when I ask	Seulement à ma demande
 	Automatically download and install updates	Télécharger et installer les mises à jour automatiquement
 	Ask for permission once when updating all apps	Demander l'autorisation une seule fois lors de la mise à jour de toutes les applications
+	Install each app's command-line tool and keep it up to date	Installer l'outil en ligne de commande de chaque application et le garder à jour
+	To use the tools in Terminal, add this line to your shell's start-up file:	Pour utiliser les outils dans le Terminal, ajouter cette ligne au fichier de démarrage du shell :
 	Notify me when an installed app has an update	Me prévenir quand une application installée a une mise à jour
 	Include pre-releases (betas and release candidates)	Inclure les préversions (bêtas et versions candidates)
 	Installing on Linux	Installation sous Linux

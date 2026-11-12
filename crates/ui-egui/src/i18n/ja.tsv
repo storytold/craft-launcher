@@ -102,6 +102,8 @@
 	Only when I ask	手動で確認したときのみ
 	Automatically download and install updates	更新を自動でダウンロードしてインストール
 	Ask for permission once when updating all apps	すべてのアプリを更新するときは権限を一度だけ求める
+	Install each app's command-line tool and keep it up to date	各アプリのコマンドラインツールをインストールし、最新の状態に保つ
+	To use the tools in Terminal, add this line to your shell's start-up file:	ターミナルでツールを使うには、次の行をシェルの起動ファイルに追加してください:
 	Notify me when an installed app has an update	インストール済みアプリに更新があるときに通知する
 	Include pre-releases (betas and release candidates)	プレリリース（ベータ版とリリース候補）を含める
 	Installing on Linux	Linux へのインストール
