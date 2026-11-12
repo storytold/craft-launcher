@@ -31,6 +31,55 @@ fn the_app_list_has_every_app_with_a_cli_in_the_gateways_format() {
 }
 
 #[test]
+fn apps_get_their_extra_mcp_arguments_only_where_the_cli_takes_them() {
+    let dir = tempfile::tempdir().unwrap();
+    let at = |name: &str| dir.path().join(name);
+    let services = [
+        service("photocraft", "PhotoCraft", Some(at("photocraft-cli"))),
+        service("vectorcraft", "VectorCraft", Some(at("vectorcraft-cli"))),
+        service("filmcraft", "FilmCraft", Some(at("filmcraft-cli"))),
+    ];
+    let asked = std::cell::RefCell::new(Vec::new());
+    let new = apps_json_with(&services, &|cli: &Path, extra: &[&str]| {
+        asked.borrow_mut().push((cli.file_name().unwrap().to_string_lossy().into_owned(), extra.join(" ")));
+        true
+    });
+    let args = |list: &Value, i: usize| list["apps"][i]["args"].clone();
+    assert_eq!(args(&new, 0), json!(["mcp", "--live"]), "PhotoCraft: the open window");
+    assert_eq!(args(&new, 1), json!(["mcp", "--headless"]), "VectorCraft: off its unauthenticated port");
+    assert_eq!(args(&new, 2), json!(["mcp"]), "other apps as they are");
+    assert_eq!(
+        *asked.borrow(),
+        [("photocraft-cli".into(), "--live".into()), ("vectorcraft-cli".into(), "--headless".into())],
+        "only apps with extras are asked"
+    );
+    // An older release that doesn't know the argument gets plain `mcp`, not a usage error.
+    let old = apps_json_with(&services, &|_: &Path, _: &[&str]| false);
+    for i in 0..3 {
+        assert_eq!(args(&old, i), json!(["mcp"]));
+    }
+}
+
+#[test]
+fn the_help_text_must_name_the_argument_as_a_word() {
+    let help = "Usage: photocraft-cli mcp [OPTIONS]
+      --live
+          Reach the open window
+  vectorcraft-cli mcp [--connect ADDR | --headless]";
+    assert!(help_names(help, &["--live"]));
+    assert!(help_names(help, &["--headless"]), "inside brackets");
+    assert!(!help_names("      --lively", &["--live"]));
+    assert!(!help_names("bridge to a running app, or live", &["--live"]));
+    assert!(!help_names(help, &["--live", "--when-closed"]), "every argument");
+}
+
+#[test]
+fn a_cli_that_cannot_run_takes_no_extra_arguments() {
+    let dir = tempfile::tempdir().unwrap();
+    assert!(!cli_accepts(&dir.path().join("missing-cli"), &["--live"]));
+}
+
+#[test]
 fn switching_on_and_off() {
     let dir = tempfile::tempdir().unwrap();
     assert!(!enabled(dir.path()));

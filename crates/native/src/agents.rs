@@ -38,14 +38,49 @@ pub fn mcp_dir() -> Option<PathBuf> {
     }
 }
 
-/// The app list for `services`: each app with a CLI, started as `<cli> mcp`. Apps without a CLI
-/// beside them are left out.
+/// Arguments after `mcp` for apps whose plain `mcp` is not what agents should get:
+/// - PhotoCraft: `--live` reaches the open window through the connection the app publishes, and
+///   starts it when it is closed (storytold/photocraft#13396).
+/// - VectorCraft: plain `mcp` attaches to a control port that has no token yet whenever something
+///   listens on 7979; `--headless` keeps agents in their own session until it authenticates.
+///
+/// Each is used only when that install's CLI accepts it ([`cli_accepts`]), so an older release
+/// still gets plain `mcp` instead of an error.
+const MCP_EXTRA_ARGS: &[(&str, &[&str])] = &[("photocraft", &["--live"]), ("vectorcraft", &["--headless"])];
+
+/// Whether `cli mcp --help` names every argument of `extra` ([`help_names`]). Asking the CLI to
+/// parse them is no test: some CLIs print help and succeed whatever comes before `--help`. No
+/// console window, standard input closed, 5 s at most.
+fn cli_accepts(cli: &Path, extra: &[&str]) -> bool {
+    let Some(program) = cli.to_str() else { return false };
+    crate::process::capture(program, &["mcp", "--help"], std::time::Duration::from_secs(5)).is_some_and(|help| help_names(&help, extra))
+}
+
+/// Whether `help` has each of `args` as a word of its own (`--live`, not `--lively`).
+fn help_names(help: &str, args: &[&str]) -> bool {
+    let words: Vec<&str> = help.split(|c: char| c.is_whitespace() || "[]|,()=<>`'\"".contains(c)).collect();
+    args.iter().all(|a| words.contains(a))
+}
+
+/// The app list for `services`: each app with a CLI, started as `<cli> mcp` plus its
+/// [`MCP_EXTRA_ARGS`]. Apps without a CLI beside them are left out.
 pub fn apps_json(services: &[InstalledApp]) -> Value {
+    apps_json_with(services, &cli_accepts)
+}
+
+/// [`apps_json`], asking `accepts` whether a CLI takes an app's extra arguments.
+fn apps_json_with(services: &[InstalledApp], accepts: &dyn Fn(&Path, &[&str]) -> bool) -> Value {
     let apps: Vec<Value> = services
         .iter()
         .filter_map(|s| {
             let cli = s.cli_path.as_ref().filter(|p| p.is_absolute())?;
-            Some(json!({"id": s.id, "name": s.name, "command": cli, "args": ["mcp"]}))
+            let mut args = vec!["mcp".to_string()];
+            if let Some((_, extra)) = MCP_EXTRA_ARGS.iter().find(|(id, _)| *id == s.id)
+                && accepts(cli, extra)
+            {
+                args.extend(extra.iter().map(|a| (*a).to_string()));
+            }
+            Some(json!({"id": s.id, "name": s.name, "command": cli, "args": args}))
         })
         .collect();
     json!({"version": 1, "apps": apps})
