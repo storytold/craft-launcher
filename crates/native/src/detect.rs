@@ -465,7 +465,7 @@ pub mod linux {
     /// pacman, Flatpak). Read once per detection pass.
     pub fn packages() -> Vec<Package> {
         let ours = |name: &str| {
-            artcraft_launcher_core::SUITE.iter().any(|a| {
+            artcraft_launcher_core::hosted_catalog::apps().iter().any(|a| {
                 [InstallSource::Deb, InstallSource::Rpm, InstallSource::Pacman, InstallSource::Flatpak]
                     .iter()
                     .any(|m| crate::packages::candidate_names(a, *m).iter().any(|n| n == name))
@@ -511,10 +511,9 @@ pub mod linux {
                     user_ids.extend(flatpaks.iter().map(|(id, _, _, _)| id.clone()));
                 }
                 // Bundles built from a release tarball often list no version: ask Flatpak directly.
-                for (id, version, _, installation) in flatpaks
-                    .iter_mut()
-                    .filter(|(id, v, _, _)| v.is_empty() && artcraft_launcher_core::SUITE.iter().any(|a| a.bundle_ids().any(|b| b == *id)))
-                {
+                for (id, version, _, installation) in flatpaks.iter_mut().filter(|(id, v, _, _)| {
+                    v.is_empty() && artcraft_launcher_core::hosted_catalog::apps().iter().any(|a| a.bundle_ids().any(|b| b == *id))
+                }) {
                     let scope_arg = packages::flatpak_scope(if scope.is_empty() { installation.as_deref() } else { Some("user") });
                     let info_args = ["info", &scope_arg, &arch, id];
                     if let Some(v) = crate::process::capture_flatpak(&info_args, t).as_deref().and_then(packages::parse_flatpak_info) {
@@ -754,7 +753,7 @@ mod linux_tests {
     #[test]
     fn ours_filter_matches_rpm_packages() {
         let ours = |name: &str| {
-            artcraft_launcher_core::SUITE.iter().any(|a| {
+            artcraft_launcher_core::hosted_catalog::apps().iter().any(|a| {
                 [InstallSource::Deb, InstallSource::Rpm, InstallSource::Pacman, InstallSource::Flatpak]
                     .iter()
                     .any(|m| crate::packages::candidate_names(a, *m).iter().any(|n| n == name))
