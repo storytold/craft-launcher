@@ -124,27 +124,44 @@ pub fn client_paths(client: McpClient) -> Option<(PathBuf, PathBuf)> {
     })
 }
 
-/// Claude Desktop's settings folder: `<config>/Claude`, unless only the Microsoft Store package is
-/// installed. Windows redirects a packaged app's `%APPDATA%` into its package, so that install
-/// reads `%LOCALAPPDATA%\Packages\Claude_<id>\LocalCache\Roaming\Claude` and never sees
-/// `%APPDATA%\Claude`. `local_appdata` is `None` outside Windows.
+/// Claude Desktop's settings folder, where it reads `claude_desktop_config.json`, best first:
+/// 1. `%LOCALAPPDATA%\Claude-Data\<install>` (newest first): current Windows versions keep their
+///    data there, outside the Microsoft Store package, and say so in that folder's README.
+/// 2. `<config>/Claude` (`%APPDATA%\Claude`): the classic installer, and every other platform.
+/// 3. `%LOCALAPPDATA%\Packages\Claude_<id>\LocalCache\Roaming\Claude`: older Store versions, where
+///    Windows redirects the package's `%APPDATA%`. A folder whose data has moved on holds a
+///    `.user-data-left.*` marker and is skipped.
+///
+/// `local_appdata` is `None` outside Windows. With nothing found, the classic folder (not installed).
 fn claude_desktop_dir(config: PathBuf, local_appdata: Option<&Path>) -> PathBuf {
+    let subdirs = |dir: PathBuf| -> Vec<PathBuf> {
+        std::fs::read_dir(dir).map(|it| it.flatten().map(|e| e.path()).filter(|p| p.is_dir()).collect()).unwrap_or_default()
+    };
+    if let Some(local) = local_appdata {
+        let mut data = subdirs(local.join("Claude-Data"));
+        // Newest first; the name breaks ties so the choice is stable.
+        data.sort_by_key(|d| (std::cmp::Reverse(std::fs::metadata(d).and_then(|m| m.modified()).ok()), d.clone()));
+        if let Some(d) = data.into_iter().next() {
+            return d;
+        }
+    }
     let classic = config.join("Claude");
     if classic.is_dir() {
         return classic;
     }
-    let packaged = local_appdata.and_then(|local| {
-        let mut found: Vec<PathBuf> = std::fs::read_dir(local.join("Packages"))
-            .ok()?
-            .flatten()
-            .filter(|e| e.file_name().to_string_lossy().starts_with("Claude_"))
-            .map(|e| e.path().join("LocalCache").join("Roaming").join("Claude"))
-            .filter(|d| d.is_dir())
-            .collect();
-        found.sort();
-        found.into_iter().next()
-    });
-    packaged.unwrap_or(classic)
+    let moved = |d: &Path| {
+        std::fs::read_dir(d).map(|it| it.flatten().any(|e| e.file_name().to_string_lossy().starts_with(".user-data-left."))).unwrap_or(false)
+    };
+    let mut packaged: Vec<PathBuf> = local_appdata
+        .map(|local| subdirs(local.join("Packages")))
+        .unwrap_or_default()
+        .into_iter()
+        .filter(|p| p.file_name().is_some_and(|n| n.to_string_lossy().starts_with("Claude_")))
+        .map(|p| p.join("LocalCache").join("Roaming").join("Claude"))
+        .filter(|d| d.is_dir() && !moved(d))
+        .collect();
+    packaged.sort();
+    packaged.into_iter().next().unwrap_or(classic)
 }
 
 /// A client's display name.

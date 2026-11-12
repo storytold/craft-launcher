@@ -68,10 +68,27 @@ fn claude_desktop_from_the_microsoft_store_is_found_in_its_package() {
     let packaged = local.join("Packages").join("Claude_pzs8sxrjxfjjc").join("LocalCache").join("Roaming").join("Claude");
     std::fs::create_dir_all(&packaged).unwrap();
     std::fs::create_dir_all(local.join("Packages").join("Other_123")).unwrap();
-    assert_eq!(claude_desktop_dir(config.clone(), Some(&local)), packaged, "only the Store package");
+    assert_eq!(claude_desktop_dir(config.clone(), Some(&local)), packaged, "only an older Store package");
     std::fs::create_dir_all(config.join("Claude")).unwrap();
-    assert_eq!(claude_desktop_dir(config.clone(), Some(&local)), config.join("Claude"), "the classic install wins");
+    assert_eq!(claude_desktop_dir(config.clone(), Some(&local)), config.join("Claude"), "the classic install wins over the package");
     assert_eq!(claude_desktop_dir(config.clone(), None), config.join("Claude"));
+}
+
+/// Current Windows versions keep their data in `%LOCALAPPDATA%\Claude-Data\<install>` and leave a
+/// marker in the package folder they moved out of: the config there is no longer read.
+#[test]
+fn claude_desktop_data_moved_to_claude_data_is_used() {
+    let dir = tempfile::tempdir().unwrap();
+    let (config, local) = (dir.path().join("Roaming"), dir.path().join("Local"));
+    let packaged = local.join("Packages").join("Claude_pzs8sxrjxfjjc").join("LocalCache").join("Roaming").join("Claude");
+    std::fs::create_dir_all(&packaged).unwrap();
+    std::fs::write(packaged.join(".user-data-left.claude_pzs8sxrjxfjjc"), "{}").unwrap();
+    assert_eq!(claude_desktop_dir(config.clone(), Some(&local)), config.join("Claude"), "a package folder the data left is skipped");
+    std::fs::create_dir_all(config.join("Claude")).unwrap();
+    let data = local.join("Claude-Data").join("claude_pzs8sxrjxfjjc");
+    std::fs::create_dir_all(&data).unwrap();
+    std::fs::write(local.join("Claude-Data").join("README.txt"), "x").unwrap();
+    assert_eq!(claude_desktop_dir(config.clone(), Some(&local)), data, "Claude-Data wins, its README is no install");
 }
 
 #[test]
