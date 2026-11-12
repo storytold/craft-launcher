@@ -19,14 +19,20 @@ use crate::widgets::{self, Kind};
 /// The byline that says who makes an app: "by ArtCraft" or "by <publisher>". Official apps take
 /// the accent colour, community apps the muted one. It takes no more than the rest of its row: a
 /// long name and publisher in a narrow card end the byline in "…" rather than run past the card,
-/// which would also widen the column the tagline below is cut to.
+/// which would also widen the column the tagline below is cut to. An official app's byline is left
+/// out when there is no room for a word of it (a bare "BY…" says nothing); a community app's always
+/// shows, as community apps are labelled as such.
 fn kind_badge(ui: &mut Ui, app: &artcraft_launcher_core::CraftApp, t: &Tokens) {
+    /// The least room an official byline is drawn in: "BY A…" and the badge's padding.
+    const MIN_OFFICIAL: f32 = 60.0;
     let text = fmt(tl!("by {name}"), &[("name", app.publisher)]);
+    let room = ui.available_width();
     let color = match app.kind {
+        AppKind::Official if room < MIN_OFFICIAL => return,
         AppKind::Official => t.accent_ink,
         AppKind::Community => t.muted,
     };
-    widgets::badge_within(ui, &text, color, ui.available_width());
+    widgets::badge_within(ui, &text, color, room);
 }
 
 /// Translate a relative timestamp ("just now", "5 min ago", …) into the current language.

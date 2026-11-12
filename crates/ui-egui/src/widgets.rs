@@ -369,23 +369,19 @@ pub fn badge(ui: &mut Ui, text: &str, color: Color32) -> Response {
     badge_within(ui, text, color, f32::INFINITY)
 }
 
-/// A [`badge`] no wider than `max_width`: a longer text ends in "…" and shows in full on hover. With
-/// too little room for a word before the "…", it draws nothing: a bare "BY…" says nothing.
+/// A [`badge`] no wider than `max_width`: a longer text ends in "…" and shows in full on hover.
 pub fn badge_within(ui: &mut Ui, text: &str, color: Color32, max_width: f32) -> Response {
-    const PAD: f32 = 12.0;
-    const MIN_TEXT: f32 = 48.0;
+    // The room either side of the text.
+    const BADGE_PAD: f32 = 12.0;
     let t = Tokens::get(ui.ctx());
     let format = egui::TextFormat { font_id: egui::FontId::new(10.0, theme::mono()), color, extra_letter_spacing: 1.0, ..Default::default() };
     let mut job = egui::text::LayoutJob::single_section(upper(text), format);
     if max_width.is_finite() {
-        job.wrap = egui::text::TextWrapping::truncate_at_width((max_width - PAD).max(0.0));
+        job.wrap = egui::text::TextWrapping::truncate_at_width((max_width - BADGE_PAD).max(0.0));
     }
     let galley = ui.painter().layout_job(job);
-    if galley.elided && max_width - PAD < MIN_TEXT {
-        return ui.allocate_exact_size(egui::Vec2::ZERO, Sense::hover()).1;
-    }
     let elided = galley.elided;
-    let (rect, resp) = ui.allocate_exact_size(vec2(galley.size().x + PAD, 20.0), Sense::hover());
+    let (rect, resp) = ui.allocate_exact_size(vec2(galley.size().x + BADGE_PAD, 20.0), Sense::hover());
     ui.painter().rect(rect, CornerRadius::ZERO, t.sunken, t.hairline(), egui::StrokeKind::Inside);
     paint_centred(ui, rect, galley, color);
     resp.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Label, true, text));

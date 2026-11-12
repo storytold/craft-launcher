@@ -4467,6 +4467,10 @@ fn a_long_name_and_byline_stay_inside_a_narrow_card() {
     let end_of = |left: f32| ends.iter().copied().filter(|x| *x > left).reduce(f32::min).unwrap_or(f32::INFINITY);
     let bylines: Vec<egui::Rect> = h.query_all_by_label_contains("by ").filter(|n| n.rect().height() <= 21.0).map(|n| n.rect()).collect();
     assert!(bylines.len() >= 6, "only {} cards show who makes the app", bylines.len());
+    // A community app is always labelled as one, however narrow its card.
+    for publisher in ["by Tangency Labs", "by UCS Care Group"] {
+        assert!(h.query_by_label(publisher).is_some(), "{publisher:?} is missing from its card");
+    }
     for b in &bylines {
         assert!(b.right() <= end_of(b.left()) + 0.5, "a byline ends at {} past its column at {}", b.right(), end_of(b.left()));
     }
