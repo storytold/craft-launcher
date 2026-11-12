@@ -892,7 +892,8 @@ fn run_install(
 
 /// macOS, when the option is on: the app's command-line tool at the release's version, installed
 /// with the app and updated with it. A tool that can't be installed never fails the app's install:
-/// the note says what happened. Nothing is added for a release that publishes no tool.
+/// the note says what happened. A release that publishes no tool adds nothing, and leaves a tool
+/// installed earlier where it is, the note naming its version.
 #[cfg_attr(not(unix), allow(unused_variables))]
 fn install_cli_tool(
     app: &CraftApp,
@@ -909,16 +910,36 @@ fn install_cli_tool(
         if !(options.install_cli && platform.os == Os::MacOs) {
             return String::new();
         }
-        let Some(asset) = install::cli_tool::asset(app, release, platform) else { return String::new() };
+        // The portable folder moves with the executable, but the PATH line the settings show names the standard one.
+        if crate::paths::portable_root().is_some() {
+            return " (its command-line tool isn't installed in portable mode)".to_string();
+        }
+        let existing = shared.manifest.lock().unwrap_or_else(PoisonError::into_inner).cli.get(app.id).cloned();
+        let Some(asset) = install::cli_tool::asset(app, release, platform) else {
+            return match existing {
+                Some(old) if old.version != release.version_label() => {
+                    format!(" (its command-line tool stays at {}: this release has none)", old.version)
+                }
+                _ => String::new(),
+            };
+        };
         let mut run = crate::process::run_with_output;
-        match install::cli_tool::install(app, release, asset, job, &mut run) {
+        match install::cli_tool::install(app, release, asset, existing.as_ref(), job, &mut run) {
             Ok(record) => {
                 let mut m = shared.manifest.lock().unwrap_or_else(PoisonError::into_inner);
-                m.cli.insert(app.id.to_string(), record);
-                if let Err(e) = m.save(&paths.manifest()) {
-                    log::warn!("couldn't save the command-line tool's record: {e}");
+                m.cli.insert(app.id.to_string(), record.clone());
+                match m.save(&paths.manifest()) {
+                    Ok(()) => " and its command-line tool".to_string(),
+                    Err(e) => {
+                        // A tool that isn't recorded can't be removed later: take it away again.
+                        m.cli.remove(app.id);
+                        if let Err(removal) = install::cli_tool::remove(paths, &record) {
+                            log::warn!("{}: command-line tool: {removal}", app.name);
+                        }
+                        log::warn!("{}: couldn't save the command-line tool's record: {e}", app.name);
+                        format!(" (its command-line tool wasn't installed: couldn't save its record ({e}))")
+                    }
                 }
-                " and its command-line tool".to_string()
             }
             Err(e) => {
                 log::warn!("{}: command-line tool: {e}", app.name);
@@ -930,15 +951,17 @@ fn install_cli_tool(
     String::new()
 }
 
-/// Removes the command-line tool the launcher installed for `id`, and its record. Whether there was one.
+/// Removes the command-line tool the launcher installed for `id`, and its record. Whether the
+/// manifest changed. A tool that can't be removed keeps its record, so a later removal can try again.
 #[cfg_attr(not(unix), allow(unused_variables))]
 fn remove_cli_tool(paths: &Paths, manifest: &mut crate::manifest::Manifest, id: &str) -> bool {
-    let Some(record) = manifest.cli.remove(id) else { return false };
+    let Some(record) = manifest.cli.get(id) else { return false };
     #[cfg(unix)]
-    if let Err(e) = install::cli_tool::remove(paths, &record) {
+    if let Err(e) = install::cli_tool::remove(paths, record) {
         log::warn!("{id}: command-line tool: {e}");
+        return false;
     }
-    true
+    manifest.cli.remove(id).is_some()
 }
 
 /// Whether an install may write over what is at its destination.

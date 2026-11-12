@@ -43,12 +43,23 @@ pub(crate) fn binary_name(app: &CraftApp) -> String {
 }
 
 /// Downloads, checks and installs the tool of `release` for `app`.
-pub(crate) fn install(app: &CraftApp, release: &Release, asset: &Asset, job: &mut Job<'_>, run: Run<'_>) -> Result<CliRecord, String> {
+/// `existing` is the record of the tool the launcher installed earlier, if any: it alone says the
+/// folder and link at the destination are the launcher's to replace.
+pub(crate) fn install(
+    app: &CraftApp,
+    release: &Release,
+    asset: &Asset,
+    existing: Option<&CliRecord>,
+    job: &mut Job<'_>,
+    run: Run<'_>,
+) -> Result<CliRecord, String> {
     let team = app.mac_team.ok_or("ArtCraft Launcher has no macOS signing team recorded for this app, so its command-line tool wasn't installed")?;
     bind(app, release, asset)?;
+    // Before the download: nothing here is worth fetching if the destination isn't ours to replace.
+    ensure_ours(job.paths, app, existing)?;
     let (file, _) = download(release, asset, job)?;
     (job.phase)(JobPhase::Installing);
-    let record = place(app, &release.version_label(), &file, team, job.paths, run)?;
+    let record = place(app, &release.version_label(), &file, team, job.paths, existing, run)?;
     let _ = std::fs::remove_file(&file);
     Ok(record)
 }
@@ -67,8 +78,38 @@ fn bind(app: &CraftApp, release: &Release, asset: &Asset) -> Result<(), String> 
     bind_download_url(app, release, asset)
 }
 
+/// Whether the folder and the link the tool would go to are free or the launcher's own: a folder
+/// is the launcher's when `existing` names it, a link when it points into the launcher's `cli`
+/// folder. Anything else is a user's, and is left alone.
+fn ensure_ours(paths: &Paths, app: &CraftApp, existing: Option<&CliRecord>) -> Result<(), String> {
+    let conflict =
+        |path: &Path| format!("{} already exists and wasn't made by ArtCraft Launcher, so the command-line tool wasn't installed", path.display());
+    let folder = paths.cli().join(app.id);
+    if std::fs::symlink_metadata(&folder).is_ok() && !existing.is_some_and(|record| record.folder == folder) {
+        return Err(conflict(&folder));
+    }
+    let link = paths.cli_bin().join(binary_name(app));
+    if let Ok(meta) = std::fs::symlink_metadata(&link) {
+        let ours = meta.file_type().is_symlink() && std::fs::read_link(&link).is_ok_and(|to| to.starts_with(paths.cli()));
+        if !ours {
+            return Err(conflict(&link));
+        }
+    }
+    Ok(())
+}
+
 /// Unpacks `zip`, checks the tool inside against `team`, and puts it in place with its link.
-pub(super) fn place(app: &CraftApp, version: &str, zip: &Path, team: &str, paths: &Paths, run: Run<'_>) -> Result<CliRecord, String> {
+/// Nothing is replaced unless every check passed and the destination is free or the launcher's own
+/// (see [`ensure_ours`]), so a failure leaves the old tool as it was.
+pub(super) fn place(
+    app: &CraftApp,
+    version: &str,
+    zip: &Path,
+    team: &str,
+    paths: &Paths,
+    existing: Option<&CliRecord>,
+    run: Run<'_>,
+) -> Result<CliRecord, String> {
     let root = paths.cli();
     std::fs::create_dir_all(&root).map_err(|e| format!("couldn't create {} ({e})", root.display()))?;
     // A folder of our own: a predictable name there may be the user's.
@@ -93,6 +134,8 @@ pub(super) fn place(app: &CraftApp, version: &str, zip: &Path, team: &str, paths
         use std::os::unix::fs::PermissionsExt;
         std::fs::set_permissions(&bin, std::fs::Permissions::from_mode(0o755)).map_err(|e| format!("couldn't make {name} runnable ({e})"))?;
     }
+    // Checked again here, and before the swap: the link must be settled while the old tool is still there.
+    ensure_ours(paths, app, existing)?;
     let folder = root.join(app.id);
     swap_into_place(&top, &folder)?;
     let link = link(paths, &name, &folder.join(&name))?;
@@ -146,31 +189,45 @@ fn verify(team: &str, bin: &Path, run: Run<'_>) -> Result<(), String> {
     Ok(())
 }
 
-/// `<data>/cli/bin/<name>` pointing at the tool: replaced if it is a link, never over a file of the user's.
+/// `<data>/cli/bin/<name>` pointing at the tool: replaced only when it is a link into the launcher's
+/// own `cli` folder (see [`ensure_ours`]), never over anything of the user's.
 #[cfg(unix)]
 fn link(paths: &Paths, name: &str, target: &Path) -> Result<PathBuf, String> {
     let dir = paths.cli_bin();
     std::fs::create_dir_all(&dir).map_err(|e| format!("couldn't create {} ({e})", dir.display()))?;
     let link = dir.join(name);
-    match std::fs::symlink_metadata(&link) {
-        Ok(m) if m.file_type().is_symlink() => std::fs::remove_file(&link).map_err(|e| format!("couldn't replace {} ({e})", link.display()))?,
-        Ok(_) => return Err(format!("{} exists and isn't a link ArtCraft Launcher made, so it was left alone", link.display())),
-        Err(_) => {}
+    if std::fs::symlink_metadata(&link).is_ok() {
+        std::fs::remove_file(&link).map_err(|e| format!("couldn't replace {} ({e})", link.display()))?;
     }
     std::os::unix::fs::symlink(target, &link).map_err(|e| format!("couldn't link {} ({e})", link.display()))?;
     Ok(link)
 }
 
+/// A real folder: not a link, whatever it points at.
+fn is_plain_dir(path: &Path) -> bool {
+    std::fs::symlink_metadata(path).is_ok_and(|m| m.is_dir())
+}
+
 /// Takes away what `record` says the launcher installed: its link (when it still points at the
-/// tool) and its folder (when it is inside the launcher's own `cli` folder).
+/// tool) and its folder (when it is a folder directly inside the launcher's own `cli` folder).
+/// The `cli` and `cli/bin` folders themselves must be real folders: a link there could lead
+/// anywhere, and nothing is removed through it. An error leaves the record in place for a retry.
 pub(crate) fn remove(paths: &Paths, record: &CliRecord) -> Result<(), String> {
+    let (root, bin_dir) = (paths.cli(), paths.cli_bin());
     if std::fs::symlink_metadata(&record.link).is_ok_and(|m| m.file_type().is_symlink())
+        && record.link.parent() == Some(bin_dir.as_path())
         && std::fs::read_link(&record.link).is_ok_and(|to| to.starts_with(&record.folder))
     {
+        if !is_plain_dir(&root) || !is_plain_dir(&bin_dir) {
+            return Err(format!("{} isn't a real folder, so nothing was removed through it", bin_dir.display()));
+        }
         std::fs::remove_file(&record.link).map_err(|e| format!("couldn't remove {} ({e})", record.link.display()))?;
     }
-    let inside = record.folder.starts_with(paths.cli()) && record.folder != paths.cli() && record.folder != paths.cli_bin();
-    if inside && std::fs::symlink_metadata(&record.folder).is_ok_and(|m| m.is_dir()) {
+    let inside = record.folder.parent() == Some(root.as_path()) && record.folder != bin_dir;
+    if inside && std::fs::symlink_metadata(&record.folder).is_ok() {
+        if !is_plain_dir(&root) || !is_plain_dir(&record.folder) {
+            return Err(format!("{} isn't a real folder, so nothing was removed through it", record.folder.display()));
+        }
         std::fs::remove_dir_all(&record.folder).map_err(|e| format!("couldn't remove {} ({e})", record.folder.display()))?;
     }
     Ok(())
@@ -228,7 +285,7 @@ mod tests {
         let paths = Paths::under(dir.path());
         let calls = RefCell::new(Vec::new());
         let mut run = runner(&calls, &[("pdfcraft-cli", "tool"), ("LICENSE", "x")], &[]);
-        let record = place(app(), "0.20.0", Path::new("/x/pdfcraft-cli-0.20.0-macos-universal.zip"), "DJ6XS33FX8", &paths, &mut run).unwrap();
+        let record = place(app(), "0.20.0", Path::new("/x/pdfcraft-cli-0.20.0-macos-universal.zip"), "DJ6XS33FX8", &paths, None, &mut run).unwrap();
         assert_eq!(record.folder, paths.cli().join("pdfcraft"));
         assert_eq!(std::fs::read_to_string(record.folder.join("pdfcraft-cli")).unwrap(), "tool");
         assert_eq!(record.link, paths.cli_bin().join("pdfcraft-cli"));
@@ -249,8 +306,8 @@ mod tests {
         let calls = RefCell::new(Vec::new());
         let zip = Path::new("/x/z.zip");
         let first =
-            place(app(), "0.19.0", zip, "DJ6XS33FX8", &paths, &mut runner(&calls, &[("pdfcraft-cli", "old"), ("OLD-ONLY", "x")], &[])).unwrap();
-        let second = place(app(), "0.20.0", zip, "DJ6XS33FX8", &paths, &mut runner(&calls, &[("pdfcraft-cli", "new")], &[])).unwrap();
+            place(app(), "0.19.0", zip, "DJ6XS33FX8", &paths, None, &mut runner(&calls, &[("pdfcraft-cli", "old"), ("OLD-ONLY", "x")], &[])).unwrap();
+        let second = place(app(), "0.20.0", zip, "DJ6XS33FX8", &paths, Some(&first), &mut runner(&calls, &[("pdfcraft-cli", "new")], &[])).unwrap();
         assert_eq!((first.folder.clone(), first.link.clone()), (second.folder.clone(), second.link.clone()), "the path never carries a version");
         assert_eq!(std::fs::read_to_string(second.folder.join("pdfcraft-cli")).unwrap(), "new");
         assert!(!second.folder.join("OLD-ONLY").exists(), "the old folder went whole");
@@ -264,11 +321,12 @@ mod tests {
             let paths = Paths::under(dir.path());
             let calls = RefCell::new(Vec::new());
             let zip = Path::new("/x/z.zip");
-            let old = place(app(), "0.19.0", zip, "DJ6XS33FX8", &paths, &mut runner(&calls, &[("pdfcraft-cli", "old")], &[])).unwrap();
+            let old = place(app(), "0.19.0", zip, "DJ6XS33FX8", &paths, None, &mut runner(&calls, &[("pdfcraft-cli", "old")], &[])).unwrap();
             let mut verdicts = [true; 3];
             verdicts[failing] = false;
             let calls = RefCell::new(Vec::new());
-            let err = place(app(), "0.20.0", zip, "DJ6XS33FX8", &paths, &mut runner(&calls, &[("pdfcraft-cli", "new")], &verdicts)).unwrap_err();
+            let err = place(app(), "0.20.0", zip, "DJ6XS33FX8", &paths, Some(&old), &mut runner(&calls, &[("pdfcraft-cli", "new")], &verdicts))
+                .unwrap_err();
             assert!(err.contains(what) && err.contains("wasn't installed"), "{err}");
             assert_eq!(std::fs::read_to_string(old.folder.join("pdfcraft-cli")).unwrap(), "old", "the old tool stays after a failed {what}");
             assert!(std::fs::read_link(&old.link).is_ok());
@@ -280,7 +338,8 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let paths = Paths::under(dir.path());
         let calls = RefCell::new(Vec::new());
-        let err = place(app(), "0.20.0", Path::new("/x/z.zip"), "DJ6XS33FX8", &paths, &mut runner(&calls, &[("LICENSE", "x")], &[])).unwrap_err();
+        let err =
+            place(app(), "0.20.0", Path::new("/x/z.zip"), "DJ6XS33FX8", &paths, None, &mut runner(&calls, &[("LICENSE", "x")], &[])).unwrap_err();
         assert!(err.contains("doesn't contain pdfcraft-cli"), "{err}");
         assert!(!paths.cli().join("pdfcraft").exists());
 
@@ -292,7 +351,7 @@ mod tests {
             std::os::unix::fs::symlink("/etc/passwd", folder.join("evil")).unwrap();
             ok()
         };
-        let err = place(app(), "0.20.0", Path::new("/x/z.zip"), "DJ6XS33FX8", &paths, &mut with_link).unwrap_err();
+        let err = place(app(), "0.20.0", Path::new("/x/z.zip"), "DJ6XS33FX8", &paths, None, &mut with_link).unwrap_err();
         assert!(err.contains("contains a link"), "{err}");
     }
 
@@ -303,10 +362,73 @@ mod tests {
         std::fs::create_dir_all(paths.cli_bin()).unwrap();
         std::fs::write(paths.cli_bin().join("pdfcraft-cli"), "mine").unwrap();
         let calls = RefCell::new(Vec::new());
-        let err =
-            place(app(), "0.20.0", Path::new("/x/z.zip"), "DJ6XS33FX8", &paths, &mut runner(&calls, &[("pdfcraft-cli", "tool")], &[])).unwrap_err();
-        assert!(err.contains("isn't a link ArtCraft Launcher made"), "{err}");
+        let err = place(app(), "0.20.0", Path::new("/x/z.zip"), "DJ6XS33FX8", &paths, None, &mut runner(&calls, &[("pdfcraft-cli", "tool")], &[]))
+            .unwrap_err();
+        assert!(err.contains("wasn't made by ArtCraft Launcher"), "{err}");
         assert_eq!(std::fs::read_to_string(paths.cli_bin().join("pdfcraft-cli")).unwrap(), "mine");
+    }
+
+    #[test]
+    fn a_folder_of_the_users_at_the_destination_is_never_replaced() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = Paths::under(dir.path());
+        std::fs::create_dir_all(paths.cli().join("pdfcraft")).unwrap();
+        std::fs::write(paths.cli().join("pdfcraft").join("keep"), "mine").unwrap();
+        let calls = RefCell::new(Vec::new());
+        let zip = Path::new("/x/z.zip");
+        let err = place(app(), "0.20.0", zip, "DJ6XS33FX8", &paths, None, &mut runner(&calls, &[("pdfcraft-cli", "tool")], &[])).unwrap_err();
+        assert!(err.contains("wasn't made by ArtCraft Launcher"), "{err}");
+        assert_eq!(std::fs::read_to_string(paths.cli().join("pdfcraft").join("keep")).unwrap(), "mine");
+        // A record naming that very folder makes it the launcher's to replace.
+        let record =
+            CliRecord { version: "0.19.0".into(), folder: paths.cli().join("pdfcraft"), link: paths.cli_bin().join("pdfcraft-cli"), installed_at: 0 };
+        place(app(), "0.20.0", zip, "DJ6XS33FX8", &paths, Some(&record), &mut runner(&calls, &[("pdfcraft-cli", "tool")], &[])).unwrap();
+    }
+
+    #[test]
+    fn a_link_of_the_users_at_the_name_is_left_alone() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = Paths::under(dir.path());
+        std::fs::create_dir_all(paths.cli_bin()).unwrap();
+        std::os::unix::fs::symlink("/etc/hosts", paths.cli_bin().join("pdfcraft-cli")).unwrap();
+        let calls = RefCell::new(Vec::new());
+        let err = place(app(), "0.20.0", Path::new("/x/z.zip"), "DJ6XS33FX8", &paths, None, &mut runner(&calls, &[("pdfcraft-cli", "tool")], &[]))
+            .unwrap_err();
+        assert!(err.contains("wasn't made by ArtCraft Launcher"), "{err}");
+        assert_eq!(std::fs::read_link(paths.cli_bin().join("pdfcraft-cli")).unwrap(), Path::new("/etc/hosts"));
+        assert!(!paths.cli().join("pdfcraft").exists(), "nothing was put in place");
+    }
+
+    #[test]
+    fn an_update_blocked_at_the_link_keeps_the_old_tool() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = Paths::under(dir.path());
+        let calls = RefCell::new(Vec::new());
+        let zip = Path::new("/x/z.zip");
+        let old = place(app(), "0.19.0", zip, "DJ6XS33FX8", &paths, None, &mut runner(&calls, &[("pdfcraft-cli", "old")], &[])).unwrap();
+        // The user replaces the link with a file of their own.
+        std::fs::remove_file(&old.link).unwrap();
+        std::fs::write(&old.link, "mine").unwrap();
+        let err = place(app(), "0.20.0", zip, "DJ6XS33FX8", &paths, Some(&old), &mut runner(&calls, &[("pdfcraft-cli", "new")], &[])).unwrap_err();
+        assert!(err.contains("wasn't made by ArtCraft Launcher"), "{err}");
+        assert_eq!(std::fs::read_to_string(old.folder.join("pdfcraft-cli")).unwrap(), "old", "the old tool is still there");
+        assert_eq!(std::fs::read_to_string(&old.link).unwrap(), "mine");
+    }
+
+    #[test]
+    fn nothing_is_removed_through_a_linked_cli_folder() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = Paths::under(dir.path());
+        let calls = RefCell::new(Vec::new());
+        let record =
+            place(app(), "0.20.0", Path::new("/x/z.zip"), "DJ6XS33FX8", &paths, None, &mut runner(&calls, &[("pdfcraft-cli", "tool")], &[])).unwrap();
+        // The launcher's `cli` folder is later replaced by a link to a folder that holds a `pdfcraft` of its own.
+        let real = dir.path().join("data").join("real-cli");
+        std::fs::rename(paths.cli(), &real).unwrap();
+        std::os::unix::fs::symlink(&real, paths.cli()).unwrap();
+        let err = remove(&paths, &record).unwrap_err();
+        assert!(err.contains("isn't a real folder"), "{err}");
+        assert!(real.join("pdfcraft").join("pdfcraft-cli").exists(), "the folder behind the link is untouched");
     }
 
     #[test]
@@ -315,7 +437,7 @@ mod tests {
         let paths = Paths::under(dir.path());
         let calls = RefCell::new(Vec::new());
         let record =
-            place(app(), "0.20.0", Path::new("/x/z.zip"), "DJ6XS33FX8", &paths, &mut runner(&calls, &[("pdfcraft-cli", "tool")], &[])).unwrap();
+            place(app(), "0.20.0", Path::new("/x/z.zip"), "DJ6XS33FX8", &paths, None, &mut runner(&calls, &[("pdfcraft-cli", "tool")], &[])).unwrap();
         let other = paths.cli_bin().join("other-cli");
         std::fs::write(&other, "not ours").unwrap();
         remove(&paths, &record).unwrap();

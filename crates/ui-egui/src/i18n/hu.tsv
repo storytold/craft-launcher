@@ -101,6 +101,7 @@
 	Automatically download and install updates	Frissítések automatikus letöltése és telepítése
 	Ask for permission once when updating all apps	Engedély kérése csak egyszer az összes alkalmazás frissítésekor
 	Install each app's command-line tool and keep it up to date	Az egyes alkalmazások parancssori eszközének telepítése és naprakészen tartása
+	The tool is installed the next time an app is installed or updated, and only if its release has one.	Az eszköz az alkalmazás következő telepítésekor vagy frissítésekor települ, és csak akkor, ha a kiadás tartalmaz ilyet.
 	To use the tools in Terminal, add this line to your shell's start-up file:	Az eszközök Terminálban való használatához add hozzá ezt a sort a shell indítófájljához:
 	Notify me when an installed app has an update	Értesítés a telepített alkalmazásokhoz elérhető frissítésekről
 	Include pre-releases (betas and release candidates)	Előzetes kiadások engedélyezése (béta- és kiadásra jelölt verziók)

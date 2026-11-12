@@ -101,6 +101,7 @@
 	Automatically download and install updates	Descargar e instalar actualizaciones automáticamente
 	Ask for permission once when updating all apps	Pedir permiso una sola vez al actualizar todas las aplicaciones
 	Install each app's command-line tool and keep it up to date	Instalar la herramienta de línea de comandos de cada aplicación y mantenerla actualizada
+	The tool is installed the next time an app is installed or updated, and only if its release has one.	La herramienta se instala la próxima vez que se instale o actualice una aplicación, y solo si su versión incluye una.
 	To use the tools in Terminal, add this line to your shell's start-up file:	Para usar las herramientas en Terminal, añade esta línea al archivo de inicio de tu shell:
 	Notify me when an installed app has an update	Avisarme cuando una aplicación instalada tenga una actualización
 	Include pre-releases (betas and release candidates)	Incluir versiones preliminares (betas y versiones candidatas)

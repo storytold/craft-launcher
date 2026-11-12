@@ -99,6 +99,7 @@
 	Automatically download and install updates	Автоматически скачивать и устанавливать обновления
 	Ask for permission once when updating all apps	Запрашивать разрешение один раз при обновлении всех приложений
 	Install each app's command-line tool and keep it up to date	Устанавливать инструмент командной строки каждого приложения и поддерживать его актуальным
+	The tool is installed the next time an app is installed or updated, and only if its release has one.	Инструмент устанавливается при следующей установке или обновлении приложения и только если в его выпуске он есть.
 	To use the tools in Terminal, add this line to your shell's start-up file:	Чтобы использовать инструменты в Терминале, добавьте эту строку в файл запуска вашей оболочки:
 	Notify me when an installed app has an update	Уведомлять, когда у установленного приложения есть обновление
 	Include pre-releases (betas and release candidates)	Включать предварительные релизы (бета и RC)
