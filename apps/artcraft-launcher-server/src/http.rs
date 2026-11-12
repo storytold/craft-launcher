@@ -1,10 +1,11 @@
 mod release_routes;
 
+use std::net::IpAddr;
 use std::sync::Arc;
 use std::time::Duration;
 
 use axum::body::{Body, Bytes, to_bytes};
-use axum::extract::{Path, RawQuery, State};
+use axum::extract::{ConnectInfo, Path, RawQuery, State};
 use axum::http::{HeaderMap, HeaderValue, StatusCode, header};
 use axum::middleware::{Next, from_fn};
 use axum::response::{IntoResponse, Response};
@@ -17,6 +18,7 @@ use tower_http::services::ServeDir;
 
 use crate::auth::{Auth, AuthError, CallbackQuery, LOGIN_COOKIE, SESSION_COOKIE, Session, clear_cookie, read_cookie};
 use crate::config::Settings;
+use crate::connection::PeerAddr;
 use crate::releases::ReleaseService;
 use crate::store::{Project, Save, Store, StoreError, StoredFile};
 
@@ -31,6 +33,7 @@ const MAX_TRANSFERS: usize = 4;
 pub(crate) struct App {
     pub(crate) auth: Arc<Auth>,
     pub(crate) origin: String,
+    trust_proxy_client_ip: bool,
     store: Store,
     releases: ReleaseService,
     worker_secret: Arc<str>,
@@ -42,6 +45,7 @@ impl App {
         Self {
             auth: Arc::new(auth),
             origin: settings.origin.origin().ascii_serialization(),
+            trust_proxy_client_ip: settings.trust_proxy_client_ip,
             store,
             releases,
             worker_secret: Arc::from(worker_secret),
@@ -137,10 +141,23 @@ fn return_path(editor: Option<&str>, project: Option<&str>) -> String {
     path
 }
 
-async fn login(State(app): State<App>, headers: HeaderMap, RawQuery(raw): RawQuery) -> Result<Response, Error> {
+fn login_client(peer: IpAddr, trusted_proxy: bool, headers: &HeaderMap) -> Result<IpAddr, Error> {
+    if !trusted_proxy || !peer.is_loopback() {
+        return Ok(peer);
+    }
+    one_header(headers, "x-artcraft-client-ip").and_then(|value| value.parse().ok()).ok_or_else(Error::invalid)
+}
+
+async fn login(
+    State(app): State<App>,
+    ConnectInfo(PeerAddr(peer)): ConnectInfo<PeerAddr>,
+    headers: HeaderMap,
+    RawQuery(raw): RawQuery,
+) -> Result<Response, Error> {
     let [editor, project] = query_values(raw.as_deref(), ["editor", "project"], false)?;
     let binding = read_cookie(&headers, LOGIN_COOKIE);
-    let (url, cookie) = app.auth.begin(binding.as_deref(), return_path(editor.as_deref(), project.as_deref()))?;
+    let client = login_client(peer.ip(), app.trust_proxy_client_ip, &headers)?;
+    let (url, cookie) = app.auth.begin(client, binding.as_deref(), return_path(editor.as_deref(), project.as_deref()))?;
     let mut response = redirect(url.as_str())?;
     add_cookie(&mut response, cookie)?;
     Ok(response)
@@ -370,6 +387,7 @@ impl From<AuthError> for Error {
         match value {
             AuthError::Denied => Self::unauthorized(),
             AuthError::Invalid => Self::invalid(),
+            AuthError::LoginLimit => Self::new(StatusCode::TOO_MANY_REQUESTS, "login_busy"),
             AuthError::Unavailable => Self::new(StatusCode::SERVICE_UNAVAILABLE, "auth_unavailable"),
         }
     }
@@ -398,7 +416,7 @@ impl IntoResponse for Error {
 
 #[cfg(test)]
 mod tests {
-    use super::{MAX_METADATA_BYTES, attachment_header, one_header, parse_save};
+    use super::{MAX_METADATA_BYTES, attachment_header, login_client, one_header, parse_save};
     use axum::http::{HeaderMap, HeaderValue, header};
 
     #[test]
@@ -423,6 +441,24 @@ mod tests {
         assert_eq!(one_header(&headers, "origin"), Some("https://example.com"));
         headers.append(header::ORIGIN, value);
         assert_eq!(one_header(&headers, "origin"), None);
+    }
+
+    #[test]
+    fn login_identity_uses_only_the_explicitly_trusted_proxy_header() {
+        use std::net::{IpAddr, Ipv4Addr};
+
+        let loopback = IpAddr::V4(Ipv4Addr::LOCALHOST);
+        let client = IpAddr::V4(Ipv4Addr::new(192, 0, 2, 12));
+        let direct = IpAddr::V4(Ipv4Addr::new(192, 0, 2, 13));
+        let mut headers = HeaderMap::new();
+        let value = HeaderValue::from_static("192.0.2.12");
+        assert!(login_client(loopback, true, &headers).is_err());
+        headers.insert("x-artcraft-client-ip", value.clone());
+        assert_eq!(login_client(loopback, false, &headers).ok(), Some(loopback));
+        assert_eq!(login_client(direct, true, &headers).ok(), Some(direct));
+        assert_eq!(login_client(loopback, true, &headers).ok(), Some(client));
+        headers.append("x-artcraft-client-ip", value);
+        assert!(login_client(loopback, true, &headers).is_err());
     }
 
     #[test]

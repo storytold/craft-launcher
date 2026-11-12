@@ -11,6 +11,14 @@ const FILE_LIMIT: usize = 80 * 1024 * 1024;
 const JSON_LIMIT: usize = 256 * 1024;
 const REQUEST_TIMEOUT_MS: u32 = 20_000;
 const TRANSFER_TIMEOUT_MS: u32 = 100_000;
+const MAX_TRANSFER_TIMEOUT_MS: u32 = 260_000;
+const TRANSFER_OVERHEAD_MS: u32 = 20_000;
+
+fn transfer_timeout_ms(size: u32) -> u32 {
+    // Match the server's four-minute body budget at the file limit and leave time for its reply.
+    let scaled_ms = size.div_ceil(1024) * 3;
+    (TRANSFER_OVERHEAD_MS + scaled_ms).clamp(TRANSFER_TIMEOUT_MS, MAX_TRANSFER_TIMEOUT_MS)
+}
 
 #[derive(Clone, Debug, Deserialize)]
 pub(super) struct Session {
@@ -182,7 +190,7 @@ pub(super) async fn editors() -> Result<Vec<Editor>, Failure> {
 pub(super) async fn content(project: &Project) -> Result<Uint8Array, Failure> {
     project.validate()?;
     let path = format!("/files/{}/content?version={}", project.id, project.version);
-    let response = request("GET", &path, None, None, TRANSFER_TIMEOUT_MS).await?;
+    let response = request("GET", &path, None, None, transfer_timeout_ms(project.size as u32)).await?;
     let announced = response.headers().get("content-length").map_err(|_| Failure::InvalidResponse)?.and_then(|length| length.parse::<u64>().ok());
     if announced != Some(project.size) {
         return Err(Failure::InvalidResponse);
@@ -213,7 +221,8 @@ pub(super) async fn save(session: &Session, metadata: &Save<'_>, bytes: &Uint8Ar
     parts.push(&Uint8Array::from(json.as_slice()));
     parts.push(bytes);
     let body = Blob::new_with_u8_array_sequence(&parts).map_err(|_| Failure::InvalidRequest)?;
-    let response = request("POST", "/files", Some(session), Some(("application/octet-stream", body.as_ref())), TRANSFER_TIMEOUT_MS).await?;
+    let response =
+        request("POST", "/files", Some(session), Some(("application/octet-stream", body.as_ref())), transfer_timeout_ms(bytes.length())).await?;
     let project: Project = decode(response).await?;
     project.validate()?;
     if project.app != metadata.app

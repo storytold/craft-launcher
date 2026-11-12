@@ -207,3 +207,52 @@ fn queue_admission_stays_bounded() {
     service.queue(request("cadcraft")).unwrap();
     assert_eq!(service.list().unwrap().len() as i64, MAX_PENDING + 1);
 }
+
+#[test]
+fn capacity_retirement_keeps_active_previous_and_recent_published() {
+    let root = TestRoot::new();
+    let service = root.open();
+    let mut ids = Vec::new();
+    for _ in 0..4 {
+        let release = service.queue(request("photocraft")).unwrap();
+        let claim = service.claim("worker").unwrap().unwrap();
+        stage(&service, "worker", &claim, b"published");
+        service.finalize(&release.id, "worker", &claim.claim_id).unwrap();
+        service.activate("photocraft", &release.id).unwrap();
+        ids.push(release.id);
+    }
+
+    let connection = service.connect().unwrap();
+    // Trigger byte pressure without writing a multi-gigabyte fixture.
+    connection.execute("UPDATE release_jobs SET bytes = ?2, updated_at = 0 WHERE id = ?1", params![ids[0], MAX_STORE_BYTES as i64]).unwrap();
+    let release = service.queue(request("photocraft")).unwrap();
+    let claim = service.claim("worker").unwrap().unwrap();
+    service.submit_manifest(&release.id, "worker", &claim.claim_id, manifest(release.source, vec![file("index.html", b"new")])).unwrap();
+    assert!(!root.site(&ids[0]).exists());
+    assert!(matches!(service.asset_path("photocraft", &ids[0], "index.html", false), Err(ReleaseError::NotFound)));
+    for id in &ids[1..] {
+        assert!(service.asset_path("photocraft", id, "index.html", false).is_ok());
+    }
+    assert_eq!(service.rollback("photocraft", &ids[3]).unwrap().id, ids[2]);
+}
+
+#[test]
+fn a_failed_cleanup_keeps_capacity_reserved_without_blocking_writes() {
+    let root = TestRoot::new();
+    let service = root.open();
+    let release = service.queue(request("wordcraft")).unwrap();
+    service.cancel(&release.id).unwrap();
+    let build = root.0.join("builds").join(&release.id);
+    fs::write(&build, b"unexpected file instead of a build directory").unwrap();
+    let connection = service.connect().unwrap();
+    connection.execute("UPDATE release_jobs SET bytes = 123 WHERE id = ?1", [&release.id]).unwrap();
+    assert!(service.queue(request("wordcraft")).is_ok());
+    let reserved: (i64, i64) =
+        connection.query_row("SELECT garbage, bytes FROM release_jobs WHERE id = ?1", [&release.id], |row| Ok((row.get(0)?, row.get(1)?))).unwrap();
+    assert_eq!(reserved, (1, 123));
+    fs::remove_file(build).unwrap();
+    assert!(service.claim("worker").unwrap().is_some());
+    let reserved: (i64, i64) =
+        connection.query_row("SELECT garbage, bytes FROM release_jobs WHERE id = ?1", [&release.id], |row| Ok((row.get(0)?, row.get(1)?))).unwrap();
+    assert_eq!(reserved, (0, 0));
+}

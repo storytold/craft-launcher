@@ -1,15 +1,17 @@
 use std::collections::HashMap;
 use std::future::Future;
 use std::io;
+use std::net::IpAddr;
 use std::pin::Pin;
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex, RwLock};
 use std::time::{Duration, Instant};
 
 use axum::http::{HeaderMap, Request, Response, header};
 use openidconnect::core::{CoreAuthenticationFlow, CoreClient, CoreProviderMetadata};
 use openidconnect::{
-    AccessTokenHash, AsyncHttpClient, AuthorizationCode, ClientId, ClientSecret, CsrfToken, EndpointMaybeSet, EndpointNotSet, EndpointSet, IssuerUrl,
-    Nonce, OAuth2TokenResponse as _, PkceCodeChallenge, PkceCodeVerifier, RedirectUrl, Scope, TokenResponse as _,
+    AccessTokenHash, AsyncHttpClient, AuthorizationCode, ClaimsVerificationError, ClientId, ClientSecret, CsrfToken, EndpointMaybeSet,
+    EndpointNotSet, EndpointSet, IssuerUrl, Nonce, OAuth2TokenResponse as _, PkceCodeChallenge, PkceCodeVerifier, RedirectUrl, Scope,
+    SignatureVerificationError, TokenResponse as _,
 };
 use serde::Serialize;
 use sha2::{Digest as _, Sha256};
@@ -27,13 +29,18 @@ pub(crate) const CALLBACK: &str = "/api/server/v1/auth/callback";
 const LOGIN_TTL: Duration = Duration::from_secs(300);
 const SESSION_TTL: Duration = Duration::from_secs(24 * 60 * 60);
 const MAX_LOGINS: usize = 256;
+const MAX_CLIENT_LOGINS: usize = 16;
+const KEY_REFRESH_INTERVAL: Duration = Duration::from_secs(60);
 const MAX_SESSIONS: usize = 1024;
 const MAX_OIDC_RESPONSE: usize = 1024 * 1024;
 
 type DiscoveredClient = CoreClient<EndpointSet, EndpointNotSet, EndpointNotSet, EndpointNotSet, EndpointMaybeSet, EndpointMaybeSet>;
 
 pub(crate) struct Auth {
-    provider: DiscoveredClient,
+    provider: RwLock<Arc<DiscoveredClient>>,
+    next_key_refresh: tokio::sync::Mutex<Instant>,
+    client_secret: ClientSecret,
+    redirect: RedirectUrl,
     http: Https,
     settings: AuthSettings,
     logins: Mutex<HashMap<String, Login>>,
@@ -41,6 +48,7 @@ pub(crate) struct Auth {
 }
 
 struct Login {
+    client: IpAddr,
     expires: Instant,
     csrf: CsrfToken,
     nonce: Nonce,
@@ -72,45 +80,62 @@ pub(crate) struct CallbackQuery {
 pub(crate) enum AuthError {
     Denied,
     Invalid,
+    LoginLimit,
     Unavailable,
 }
 
 impl Auth {
     pub(crate) async fn initialize(origin: &Url, settings: AuthSettings) -> Result<Self, String> {
-        let secret = read_secret(&settings.client_secret_file)?;
+        let client_secret = ClientSecret::new(read_secret(&settings.client_secret_file)?);
         let http = Https::new(Duration::from_secs(15));
-        let issuer = settings.issuer.clone();
-        let metadata = CoreProviderMetadata::discover_async(issuer, &http).await.map_err(|_| String::from("OIDC discovery failed"))?;
-        if metadata.authorization_endpoint().url().scheme() != "https" || !metadata.token_endpoint().is_some_and(|url| url.url().scheme() == "https")
-        {
-            return Err(String::from("The OIDC endpoints must use HTTPS"));
-        }
         let callback = origin.join(CALLBACK).map_err(|_| String::from("Invalid OIDC redirect origin"))?;
         let redirect = RedirectUrl::new(callback.to_string()).map_err(|_| String::from("Invalid OIDC redirect URL"))?;
-        let provider = CoreClient::from_provider_metadata(metadata, ClientId::new(settings.client_id.clone()), Some(ClientSecret::new(secret)))
-            .set_redirect_uri(redirect);
-        Ok(Self { provider, http, settings, logins: Mutex::new(HashMap::new()), sessions: Mutex::new(HashMap::new()) })
+        let provider = discover(&settings, &client_secret, &redirect, &http).await?;
+        Ok(Self {
+            provider: RwLock::new(Arc::new(provider)),
+            next_key_refresh: tokio::sync::Mutex::new(Instant::now()),
+            client_secret,
+            redirect,
+            http,
+            settings,
+            logins: Mutex::new(HashMap::new()),
+            sessions: Mutex::new(HashMap::new()),
+        })
     }
 
-    pub(crate) fn begin(&self, previous: Option<&str>, return_path: String) -> Result<(Url, String), AuthError> {
+    fn provider(&self) -> Result<Arc<DiscoveredClient>, AuthError> {
+        self.provider.read().map(|provider| Arc::clone(&provider)).map_err(|_| AuthError::Unavailable)
+    }
+
+    async fn refresh_keys(&self, verified_with: &Arc<DiscoveredClient>) -> Result<Arc<DiscoveredClient>, AuthError> {
+        let mut next = self.next_key_refresh.lock().await;
+        let current = self.provider()?;
+        let now = Instant::now();
+        if !Arc::ptr_eq(verified_with, &current) || now < *next {
+            return Ok(current);
+        }
+        *next = now + KEY_REFRESH_INTERVAL;
+        let refreshed = discover(&self.settings, &self.client_secret, &self.redirect, &self.http).await.map_err(|_| AuthError::Unavailable)?;
+        let refreshed = Arc::new(refreshed);
+        *self.provider.write().map_err(|_| AuthError::Unavailable)? = Arc::clone(&refreshed);
+        Ok(refreshed)
+    }
+
+    pub(crate) fn begin(&self, client: IpAddr, previous: Option<&str>, return_path: String) -> Result<(Url, String), AuthError> {
+        let client = client.to_canonical();
+        let now = Instant::now();
+        let mut logins = self.logins.lock().map_err(|_| AuthError::Unavailable)?;
+        logins.retain(|_, entry| entry.expires > now);
+        admit_login(&mut logins, client, previous)?;
         let (challenge, verifier) = PkceCodeChallenge::new_random_sha256();
         let (url, csrf, nonce) = self
-            .provider
+            .provider()?
             .authorize_url(CoreAuthenticationFlow::AuthorizationCode, CsrfToken::new_random, Nonce::new_random)
             .add_scope(Scope::new(String::from("email")))
             .set_pkce_challenge(challenge)
             .url();
-        let now = Instant::now();
-        let mut logins = self.logins.lock().map_err(|_| AuthError::Unavailable)?;
-        logins.retain(|_, entry| entry.expires > now);
-        if let Some(previous) = previous {
-            logins.remove(previous);
-        }
-        if logins.len() >= MAX_LOGINS {
-            return Err(AuthError::Unavailable);
-        }
         let token = opaque_token();
-        logins.insert(token.clone(), Login { expires: now + LOGIN_TTL, csrf, nonce, verifier, return_path });
+        logins.insert(token.clone(), Login { client, expires: now + LOGIN_TTL, csrf, nonce, verifier, return_path });
         Ok((url, cookie(LOGIN_COOKIE, &token, LOGIN_TTL.as_secs())))
     }
 
@@ -144,8 +169,8 @@ impl Auth {
     }
 
     async fn verify_identity(&self, code: String, login: Login) -> Result<(String, String), AuthError> {
-        let token = self
-            .provider
+        let provider = self.provider()?;
+        let token = provider
             .exchange_code(AuthorizationCode::new(code))
             .map_err(|_| AuthError::Unavailable)?
             .set_pkce_verifier(login.verifier)
@@ -153,13 +178,24 @@ impl Auth {
             .await
             .map_err(|_| AuthError::Denied)?;
         let id = token.id_token().ok_or(AuthError::Denied)?;
-        let verifier = self.provider.id_token_verifier();
-        let claims = id.claims(&verifier, &login.nonce).map_err(|_| AuthError::Denied)?;
+        let original_verifier = provider.id_token_verifier();
+        let refreshed;
+        let refreshed_verifier;
+        let (claims, verifier) = match id.claims(&original_verifier, &login.nonce) {
+            Ok(claims) => (claims, &original_verifier),
+            Err(ClaimsVerificationError::SignatureVerification(SignatureVerificationError::NoMatchingKey)) => {
+                refreshed = self.refresh_keys(&provider).await?;
+                refreshed_verifier = refreshed.id_token_verifier();
+                let claims = id.claims(&refreshed_verifier, &login.nonce).map_err(|_| AuthError::Denied)?;
+                (claims, &refreshed_verifier)
+            }
+            Err(_) => return Err(AuthError::Denied),
+        };
         if let Some(hash) = claims.access_token_hash() {
             let actual = AccessTokenHash::from_token(
                 token.access_token(),
                 id.signing_alg().map_err(|_| AuthError::Denied)?,
-                id.signing_key(&verifier).map_err(|_| AuthError::Denied)?,
+                id.signing_key(verifier).map_err(|_| AuthError::Denied)?,
             )
             .map_err(|_| AuthError::Denied)?;
             if &actual != hash {
@@ -209,6 +245,25 @@ impl Auth {
         self.sessions.lock().map_err(|_| AuthError::Unavailable)?.remove(token);
         Ok(())
     }
+}
+
+async fn discover(settings: &AuthSettings, secret: &ClientSecret, redirect: &RedirectUrl, http: &Https) -> Result<DiscoveredClient, String> {
+    let metadata = CoreProviderMetadata::discover_async(settings.issuer.clone(), http).await.map_err(|_| String::from("OIDC discovery failed"))?;
+    if metadata.authorization_endpoint().url().scheme() != "https" || !metadata.token_endpoint().is_some_and(|url| url.url().scheme() == "https") {
+        return Err(String::from("The OIDC endpoints must use HTTPS"));
+    }
+    Ok(CoreClient::from_provider_metadata(metadata, ClientId::new(settings.client_id.clone()), Some(secret.clone()))
+        .set_redirect_uri(redirect.clone()))
+}
+
+fn admit_login(logins: &mut HashMap<String, Login>, client: IpAddr, previous: Option<&str>) -> Result<(), AuthError> {
+    if let Some(previous) = previous.filter(|key| logins.get(*key).is_some_and(|entry| entry.client == client)) {
+        logins.remove(previous);
+    }
+    if logins.len() >= MAX_LOGINS || logins.values().filter(|entry| entry.client == client).count() >= MAX_CLIENT_LOGINS {
+        return Err(AuthError::LoginLimit);
+    }
+    Ok(())
 }
 
 impl SessionEntry {
@@ -274,10 +329,42 @@ impl<'a> AsyncHttpClient<'a> for Https {
 
 #[cfg(test)]
 mod tests {
-    use super::{SESSION_COOKIE, Session, SessionEntry, account_id, clear_cookie, opaque_token, read_cookie};
+    use super::{
+        AuthError, LOGIN_TTL, Login, MAX_CLIENT_LOGINS, SESSION_COOKIE, Session, SessionEntry, account_id, admit_login, clear_cookie, opaque_token,
+        read_cookie,
+    };
     use axum::http::{HeaderMap, HeaderValue, header};
     use openidconnect::IssuerUrl;
+    use openidconnect::{CsrfToken, Nonce, PkceCodeChallenge};
+    use std::collections::HashMap;
+    use std::net::{IpAddr, Ipv4Addr};
     use std::time::{Duration, Instant};
+
+    #[test]
+    fn login_capacity_is_shared_and_allows_replacing_own_attempt() {
+        let first = IpAddr::V4(Ipv4Addr::new(192, 0, 2, 1));
+        let other = IpAddr::V4(Ipv4Addr::new(192, 0, 2, 2));
+        let mut logins = HashMap::new();
+        for index in 0..MAX_CLIENT_LOGINS {
+            let (_, verifier) = PkceCodeChallenge::new_random_sha256();
+            logins.insert(
+                index.to_string(),
+                Login {
+                    client: first,
+                    expires: Instant::now() + LOGIN_TTL,
+                    csrf: CsrfToken::new_random(),
+                    nonce: Nonce::new_random(),
+                    verifier,
+                    return_path: String::from("/"),
+                },
+            );
+        }
+        assert_eq!(admit_login(&mut logins, first, None), Err(AuthError::LoginLimit));
+        assert_eq!(admit_login(&mut logins, other, Some("0")), Ok(()));
+        assert_eq!(logins.len(), MAX_CLIENT_LOGINS);
+        assert_eq!(admit_login(&mut logins, first, Some("0")), Ok(()));
+        assert_eq!(logins.len(), MAX_CLIENT_LOGINS - 1);
+    }
 
     #[test]
     fn cookie_requires_one_well_formed_session_token() {

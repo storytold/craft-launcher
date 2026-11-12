@@ -59,9 +59,17 @@ Run `artcraft-launcher-server --config /path/to/config.json` behind an HTTPS rev
 at the configured origin. Route that dedicated origin to the loopback listener. The proxy
 must support requests of at least 96 MiB for artifact uploads and 80 MiB plus framing for
 project saves. Set the proxy upload deadline to at least four minutes to match the
-server's body-read deadline. Keep the origin consistent across the launcher, API and editor frames.
-Restrict access to the loopback listener and never log OIDC callback query strings, session
-cookies or authorization headers. Keep user files and login/API responses out of shared caches.
+server's body-read deadline. The server closes connections with no write progress for
+30 seconds. Configure a finite downstream response write timeout on the proxy too, so
+a slow client cannot hold a proxied download indefinitely. Keep the origin consistent
+across the launcher, API and editor frames.
+
+The server allows 16 pending sign-ins per client IP and 256 overall. Behind the proxy,
+set `server.trust_proxy_client_ip` to `true` only if the proxy overwrites
+`X-ArtCraft-Client-IP` with a single verified client IP and the proxy is the only
+untrusted traffic path to the loopback listener. With the default setting, all requests
+from the same proxy address share one allowance. Never log OIDC callback query strings,
+session cookies or authorization headers. Keep user files and login/API responses out of shared caches.
 
 ## Files and sessions
 
@@ -74,8 +82,9 @@ Each editor continues to show local Recents separately from the provider's Recen
 Provider saves write exact native bytes and an immutable version in one SQLite transaction.
 A document opened from the provider keeps that version as its basis for the next save.
 If another session saved a newer version, reopen it or use **Save As** for a separate copy.
-Project versions count toward both quotas. Files are limited to 80 MiB and each Recents
-list to 100 entries. CADCraft accepts single-file DXF. Drawings with modeled external
+Both quotas include file bytes and a 4 KiB allowance per retained version for metadata and
+save receipts. This also applies to existing history after upgrade. Files are limited to
+80 MiB and each Recents list to 100 entries. CADCraft accepts single-file DXF. Drawings with modeled external
 references require a different package contract.
 
 The server expires inactive sessions according to `idle_minutes`. Editing activity renews
@@ -91,7 +100,9 @@ A paired worker on the build machine claims one job and supplies a manifest and 
 editor files. The server checks the source identity against the queued request and verifies
 the size and SHA-256 of every file before the build becomes **Ready**. Use **Activate** to
 switch future launches, or **Roll back** on the active build to restore its predecessor.
-An already-open editor remains on its own build URL. The VM only verifies and serves
+An administrator can preview a ready build at `/editors/<app>/<build-id>/` before
+activation. An already-open editor stays on its build URL while that build is retained.
+The VM only verifies and serves
 artifacts. The desktop installer, updater and signed release catalog use their existing paths.
 
 Build the worker binary on the PC with `cargo build --locked --release
@@ -127,8 +138,8 @@ runs only the local program and arguments from the operator's configuration.
 
 Run `artcraft-launcher-pc-worker --config /path/to/worker.json` once for a queued job. One
 worker uses a given scratch directory at a time. Configure build caches and the toolchain
-on the build machine. Diagnostic tails are kept in the job's local `build.log`. If the worker
-crashes, confirm its build is stopped before removing a stale `worker.lock` or starting
+on the build machine. The worker stops a recipe that loses its claim or runs for six hours.
+Diagnostic tails are kept in the job's local `build.log`. If the worker crashes, confirm its build is stopped before removing a stale `worker.lock` or starting
 another invocation. The server reports an expired claim as interrupted. A staged build
 requires operator activation even when the worker completed successfully.
 
@@ -140,8 +151,10 @@ Verified checksums prove that the files received match the worker's manifest. So
 build authorization are enforced separately by the operator's worker configuration.
 
 Retained artifacts are limited to 64 manifests, 8 GiB total, 512 MiB per site and
-96 MiB per file. The server preserves published build URLs. Keep backups of the project
-database and artifact state. Stop the server or take a consistent SQLite backup before
+96 MiB per file. Under quota pressure the server retires unpublished builds first, then
+older published builds. It preserves the active and rollback builds and the newest other
+published build per editor. Refresh the editor to load a current build if an old pinned
+URL is retired. Keep backups of the project database and artifact state. Stop the server or take a consistent SQLite backup before
 copying databases. A restore needs the corresponding artifact files, not just the release index.
 
 ## Development validation

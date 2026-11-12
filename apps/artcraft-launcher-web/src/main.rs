@@ -8,6 +8,8 @@
 
 #[cfg(target_arch = "wasm32")]
 mod hosted_catalog;
+#[cfg(any(test, all(target_arch = "wasm32", feature = "server")))]
+mod provider_protocol;
 #[cfg(all(target_arch = "wasm32", feature = "server"))]
 mod server;
 #[cfg(target_arch = "wasm32")]

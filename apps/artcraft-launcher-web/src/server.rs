@@ -172,10 +172,10 @@ impl Workspace {
                     Ok(editors) => {
                         state.editors.replace(editors);
                         state.mount_editor()?;
-                        state.refresh();
                     }
                     Err(error) => state.on_error(error),
                 }
+                state.refresh();
             }
             Err(Failure::Http(401)) => {}
             Err(error) => state.on_error(error),
@@ -375,6 +375,7 @@ impl Workspace {
             ProviderEvent::Connected(connection) => {
                 self.refresh();
                 self.refresh_recents(connection);
+                self.render_safely();
             }
             ProviderEvent::ChooseSave(dialog) => self.enqueue_chooser(dialog),
             ProviderEvent::Open(open) => self.read_project(open),
@@ -737,10 +738,17 @@ impl Workspace {
             let app = self.node("span", "craft-cloud-file-app", Some(project.app.name()))?;
             row.append_child(title.as_ref())?;
             row.append_child(app.as_ref())?;
-            if self.route.as_ref().is_some_and(|route| route.app == project.app) {
+            if self.route.as_ref().is_some_and(|route| route.app == project.app)
+                && self.editor.borrow().provider.as_ref().and_then(ProviderSession::connection).is_some()
+            {
                 self.append_button(&row, "Open", "open-project", Some(&project.id))?;
-            } else {
+            } else if self.editors.borrow().iter().any(|entry| entry.app == project.app)
+                && self.route.as_ref().is_none_or(|route| route.app != project.app)
+            {
                 self.append_link(&row, "Open", &editor_link(project.app, Some(&project.id)), true)?;
+            } else {
+                let unavailable = self.node("span", "craft-cloud-file-app", Some(label("Not available")))?;
+                row.append_child(unavailable.as_ref())?;
             }
             self.append_link(&row, "Download", &project.download_url(), false)?;
             rows.append_child(row.as_ref())?;

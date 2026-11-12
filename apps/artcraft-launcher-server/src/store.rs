@@ -18,6 +18,8 @@ const MAX_ACCOUNT_BYTES: usize = 255;
 const MAX_OPERATION_BYTES: usize = 128;
 const MAX_ID_BYTES: usize = 64;
 const MAX_NAME_BYTES: usize = 255;
+// Charge metadata, indexes and the idempotency receipt for every retained version.
+const SAVE_OVERHEAD: u64 = 4096;
 
 // Project heads refer to an immutable row in the same account and project. The circular foreign
 // keys are deferred so a new project and its first version can be inserted atomically.
@@ -76,7 +78,7 @@ const SCHEMA: &str = "
         used INTEGER NOT NULL CHECK (used >= 0)
     ) STRICT;
     INSERT INTO store_bytes VALUES (1, 0);
-    PRAGMA user_version = 1;
+    PRAGMA user_version = 2;
 ";
 
 #[derive(Clone, Copy)]
@@ -186,7 +188,8 @@ impl Store {
         let tx = db.transaction_with_behavior(TransactionBehavior::Immediate)?;
         match tx.pragma_query_value(None, "user_version", |row| row.get::<_, i64>(0))? {
             0 => tx.execute_batch(SCHEMA)?,
-            1 => (),
+            1 => charge_existing_metadata(&tx)?,
+            2 => (),
             version => return Err(StoreError::UnsupportedSchema(version)),
         }
         tx.commit()?;
@@ -242,7 +245,7 @@ impl Store {
 
         let (id, version) = next_revision(&tx, account, &input, expected)?;
         let size = u64::try_from(input.bytes.len()).map_err(|_| StoreError::FileTooLarge)?;
-        reserve_bytes(&tx, account, size, self.limits)?;
+        reserve_bytes(&tx, account, size + SAVE_OVERHEAD, self.limits)?;
         let project = Project {
             id,
             app: input.app.to_owned(),
@@ -376,6 +379,18 @@ fn within_quota(used: i64, size: u64, limit: u64) -> Result<i64, StoreError> {
     i64::try_from(next).map_err(|_| StoreError::QuotaExceeded)
 }
 
+fn charge_existing_metadata(tx: &Transaction<'_>) -> Result<(), StoreError> {
+    tx.execute(
+        "UPDATE account_bytes SET used = used + ?1 * (
+            SELECT count(*) FROM project_versions v WHERE v.account = account_bytes.account
+        )",
+        [SAVE_OVERHEAD as i64],
+    )?;
+    tx.execute("UPDATE store_bytes SET used = used + ?1 * (SELECT count(*) FROM project_versions)", [SAVE_OVERHEAD as i64])?;
+    tx.pragma_update(None, "user_version", 2)?;
+    Ok(())
+}
+
 fn reserve_bytes(tx: &Transaction<'_>, account: &str, size: u64, limits: StoreLimits) -> Result<(), StoreError> {
     let used = tx.query_row("SELECT used FROM account_bytes WHERE account = ?1", [account], |row| row.get(0)).optional()?.unwrap_or_default();
     let total = tx.query_row("SELECT used FROM store_bytes WHERE id = 1", [], |row| row.get(0))?;
@@ -429,7 +444,7 @@ mod tests {
     use rusqlite::Connection;
     use uuid::Uuid;
 
-    use super::{Project, Save, Store, StoreError, StoreLimits};
+    use super::{Project, SAVE_OVERHEAD, Save, Store, StoreError, StoreLimits};
 
     struct TestDb(PathBuf);
 
@@ -466,7 +481,7 @@ mod tests {
     #[test]
     fn isolates_accounts_and_apps_and_preserves_version_bytes() -> Result<(), Box<dyn Error>> {
         let db = TestDb::new()?;
-        let store = db.store(100, 200)?;
+        let store = db.store(100 + 3 * SAVE_OVERHEAD, 200 + 3 * SAVE_OVERHEAD)?;
         let original = store.save("alice", create("request", b"\0\xffpsd"))?;
         assert_eq!(store.read("alice", &original.id, None)?.bytes, b"\0\xffpsd");
         assert_eq!(original.name, "Única.psd");
@@ -489,7 +504,7 @@ mod tests {
     #[test]
     fn replays_exact_operations_even_after_the_head_advances() -> Result<(), Box<dyn Error>> {
         let db = TestDb::new()?;
-        let store = db.store(20, 20)?;
+        let store = db.store(20 + 2 * SAVE_OVERHEAD, 20 + 2 * SAVE_OVERHEAD)?;
         let first = store.save("alice", create("initial", b"same"))?;
         let second = store.save("alice", update("second", &first, b"next"))?;
         assert_eq!(store.save("alice", create("initial", b"same"))?, first);
@@ -505,7 +520,7 @@ mod tests {
     #[test]
     fn enforces_both_quotas_across_retained_versions() -> Result<(), Box<dyn Error>> {
         let db = TestDb::new()?;
-        let store = db.store(6, 8)?;
+        let store = db.store(6 + 2 * SAVE_OVERHEAD, 8 + 3 * SAVE_OVERHEAD)?;
         let first = store.save("alice", create("one", b"123"))?;
         let second = store.save("alice", update("two", &first, b"456"))?;
         assert_eq!(store.save("alice", update("two", &first, b"456"))?, second);
@@ -517,9 +532,32 @@ mod tests {
     }
 
     #[test]
+    fn existing_versions_are_charged_once_and_replays_remain_available() -> Result<(), Box<dyn Error>> {
+        let db = TestDb::new()?;
+        let store = db.store(10 + SAVE_OVERHEAD, 10 + SAVE_OVERHEAD)?;
+        let first = store.save("alice", create("existing", b"x"))?;
+        drop(store);
+        let raw = Connection::open(db.file())?;
+        raw.execute("UPDATE account_bytes SET used = 1", [])?;
+        raw.execute("UPDATE store_bytes SET used = 1", [])?;
+        raw.pragma_update(None, "user_version", 1)?;
+        drop(raw);
+        for _ in 0..2 {
+            let reopened = db.store(1 + SAVE_OVERHEAD, 1 + SAVE_OVERHEAD)?;
+            assert_eq!(reopened.save("alice", create("existing", b"x"))?, first);
+            assert_eq!(reopened.read("alice", &first.id, None)?.bytes, b"x");
+            assert!(matches!(reopened.save("alice", update("new", &first, b"y")), Err(StoreError::QuotaExceeded)));
+        }
+        let raw = Connection::open(db.file())?;
+        let charged: i64 = raw.query_row("SELECT used FROM store_bytes", [], |row| row.get(0))?;
+        assert_eq!(u64::try_from(charged)?, 1 + SAVE_OVERHEAD);
+        Ok(())
+    }
+
+    #[test]
     fn a_failed_receipt_write_rolls_back_the_head_bytes_and_quota() -> Result<(), Box<dyn Error>> {
         let db = TestDb::new()?;
-        let store = db.store(6, 6)?;
+        let store = db.store(6 + 2 * SAVE_OVERHEAD, 6 + 2 * SAVE_OVERHEAD)?;
         let first = store.save("alice", create("one", b"one"))?;
         let raw = Connection::open(db.file())?;
         raw.execute_batch(
@@ -533,7 +571,7 @@ mod tests {
         drop(raw);
         drop(store);
 
-        let reopened = db.store(6, 6)?;
+        let reopened = db.store(6 + 2 * SAVE_OVERHEAD, 6 + 2 * SAVE_OVERHEAD)?;
         let second = reopened.save("alice", update("two", &first, b"two"))?;
         assert_eq!(reopened.save("alice", update("two", &first, b"two"))?, second);
         assert_eq!(reopened.read("alice", &first.id, Some(2))?.bytes, b"two");
@@ -544,8 +582,8 @@ mod tests {
     #[test]
     fn competing_connections_commit_only_one_revision() -> Result<(), Box<dyn Error>> {
         let db = TestDb::new()?;
-        let left = db.store(20, 20)?;
-        let right = db.store(20, 20)?;
+        let left = db.store(20 + 2 * SAVE_OVERHEAD, 20 + 2 * SAVE_OVERHEAD)?;
+        let right = db.store(20 + 2 * SAVE_OVERHEAD, 20 + 2 * SAVE_OVERHEAD)?;
         let base = left.save("alice", create("first", b"base"))?;
         let start = Arc::new(Barrier::new(2));
         let writer = |store: Store, operation: &'static str, bytes: &'static [u8]| {
@@ -570,7 +608,7 @@ mod tests {
     #[test]
     fn recents_are_bounded_and_follow_commit_order() -> Result<(), Box<dyn Error>> {
         let db = TestDb::new()?;
-        let store = db.store(1000, 1000)?;
+        let store = db.store(1000 + 102 * SAVE_OVERHEAD, 1000 + 102 * SAVE_OVERHEAD)?;
         let earliest = store.save("alice", create("old", b"old"))?;
         for number in 0..100 {
             store.save("alice", create(&format!("create-{number}"), b"a"))?;

@@ -9,6 +9,8 @@ mod auth;
 #[cfg(not(target_arch = "wasm32"))]
 mod config;
 #[cfg(not(target_arch = "wasm32"))]
+mod connection;
+#[cfg(not(target_arch = "wasm32"))]
 mod http;
 #[cfg(not(target_arch = "wasm32"))]
 mod https;
@@ -61,7 +63,10 @@ async fn run() -> Result<(), String> {
     let listener =
         tokio::net::TcpListener::bind(settings.listen).await.map_err(|error| format!("Cannot listen on the configured address: {error}"))?;
     println!("ArtCraft Launcher server listening on {}", settings.listen);
-    axum::serve(listener, server).with_graceful_shutdown(shutdown()).await.map_err(|error| format!("Server failed: {error}"))
+    axum::serve(connection::DeadlineListener(listener), server.into_make_service_with_connect_info::<connection::PeerAddr>())
+        .with_graceful_shutdown(shutdown())
+        .await
+        .map_err(|error| format!("Server failed: {error}"))
 }
 
 #[cfg(not(target_arch = "wasm32"))]

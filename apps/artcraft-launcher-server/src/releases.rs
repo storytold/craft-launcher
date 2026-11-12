@@ -21,6 +21,7 @@ pub(super) const MAX_FILE_BYTES: usize = 96 * 1024 * 1024;
 const MAX_PENDING: i64 = 16;
 const MAX_BUILDS: i64 = 64;
 const MAX_STORE_BYTES: u64 = 8 * 1024 * 1024 * 1024;
+const EXTRA_PUBLISHED_BUILDS: i64 = 1;
 const HISTORY: i64 = 128;
 const LEASE_SECONDS: i64 = 2 * 60 * 60;
 
@@ -246,30 +247,14 @@ impl ReleaseService {
     pub(super) fn submit_manifest(&self, id: &str, worker: &str, claim_id: &str, mut manifest: Manifest) -> Result<()> {
         let bytes = manifest.validate()?;
         let body = serde_json::to_string(&manifest)?;
-        self.write(|tx, now| {
-            require_claim(tx, id, worker, claim_id)?;
-            let source = record(tx, id)?.source;
-            if manifest.app != source.app || manifest.source_commit != source.source_commit || manifest.source_tree != source.source_tree {
-                return Err(ReleaseError::Conflict);
-            }
-            let previous = manifest_json(tx, id)?;
-            if let Some(previous) = previous {
-                return if previous == body { Ok(()) } else { Err(ReleaseError::Conflict) };
-            }
-            let (count, reserved): (i64, i64) = tx.query_row(
-                "SELECT count(*), coalesce(sum(bytes), 0) FROM release_jobs
-                 WHERE (manifest IS NOT NULL AND state IN ('claimed', 'ready')) OR garbage = 1",
-                [],
-                |row| Ok((row.get(0)?, row.get(1)?)),
-            )?;
-            let reserved = u64::try_from(reserved).map_err(|_| ReleaseError::Invalid)?;
-            if count >= MAX_BUILDS || bytes > MAX_STORE_BYTES.saturating_sub(reserved) {
-                return Err(ReleaseError::Limit);
-            }
-            let bytes = i64::try_from(bytes).map_err(|_| ReleaseError::Limit)?;
-            tx.execute("UPDATE release_jobs SET manifest = ?2, bytes = ?3, updated_at = ?4 WHERE id = ?1", params![id, body, bytes, now])?;
-            Ok(())
-        })
+        let submission = ManifestSubmission { id, worker, claim_id, manifest: &manifest, body: &body, bytes };
+        let admitted = self.write(|tx, now| submit(tx, &submission, now, true))?;
+        if !admitted {
+            // Commit retirement before touching its files. The next write collects it and
+            // recomputes available capacity, including any failed filesystem cleanup.
+            self.write(|tx, now| submit(tx, &submission, now, false))?;
+        }
+        Ok(())
     }
 
     pub(super) fn upload(&self, id: &str, worker: &str, claim_id: &str, path: &str, bytes: &[u8]) -> Result<()> {
@@ -342,9 +327,9 @@ impl ReleaseService {
 
     pub(super) fn activate(&self, app: &str, id: &str) -> Result<Release> {
         validate_app(app)?;
-        self.write(|tx, _| {
+        self.write(|tx, now| {
             ready(tx, app, id)?;
-            tx.execute("UPDATE release_jobs SET published = 1 WHERE id = ?1", [id])?;
+            tx.execute("UPDATE release_jobs SET published = 1, updated_at = ?2 WHERE id = ?1", params![id, now])?;
             // The active and rollback pointers change in the same SQLite transaction.
             tx.execute(
                 "INSERT INTO active_releases (app, active_id) VALUES (?1, ?2)
@@ -428,13 +413,14 @@ impl ReleaseService {
         for id in ids {
             validate_id(&id)?;
             let build = builds.join(&id);
-            match check_directory(&build) {
-                Ok(()) => {
-                    fs::remove_dir_all(&build)?;
-                    sync_directory(&builds)?;
-                }
-                Err(ReleaseError::Filesystem(error)) if error.kind() == io::ErrorKind::NotFound => {}
-                Err(error) => return Err(error),
+            let removed = match check_directory(&build) {
+                Ok(()) => fs::remove_dir_all(&build).map_err(ReleaseError::from),
+                Err(ReleaseError::Filesystem(error)) if error.kind() == io::ErrorKind::NotFound => Ok(()),
+                Err(error) => Err(error),
+            };
+            if let Err(error) = removed.and_then(|()| sync_directory(&builds).map_err(ReleaseError::from)) {
+                eprintln!("Editor build {id} cleanup will be retried: {error}");
+                continue;
             }
             tx.execute("UPDATE release_jobs SET garbage = 0, bytes = 0 WHERE id = ?1", [id])?;
         }
@@ -458,6 +444,77 @@ impl ReleaseService {
             result => result.map(|()| site),
         }
     }
+}
+
+struct ManifestSubmission<'a> {
+    id: &'a str,
+    worker: &'a str,
+    claim_id: &'a str,
+    manifest: &'a Manifest,
+    body: &'a str,
+    bytes: u64,
+}
+
+fn submit(tx: &Transaction<'_>, submission: &ManifestSubmission<'_>, now: i64, allow_retirement: bool) -> Result<bool> {
+    let ManifestSubmission { id, worker, claim_id, manifest, body, bytes } = *submission;
+    require_claim(tx, id, worker, claim_id)?;
+    let source = record(tx, id)?.source;
+    if manifest.app != source.app || manifest.source_commit != source.source_commit || manifest.source_tree != source.source_tree {
+        return Err(ReleaseError::Conflict);
+    }
+    if let Some(previous) = manifest_json(tx, id)? {
+        return if previous == body { Ok(true) } else { Err(ReleaseError::Conflict) };
+    }
+    let (count, reserved): (i64, i64) = tx.query_row(
+        "SELECT count(*), coalesce(sum(bytes), 0) FROM release_jobs
+         WHERE (manifest IS NOT NULL AND state IN ('claimed', 'ready')) OR garbage = 1",
+        [],
+        |row| Ok((row.get(0)?, row.get(1)?)),
+    )?;
+    let reserved = u64::try_from(reserved).map_err(|_| ReleaseError::Invalid)?;
+    if !has_capacity(count, reserved, bytes) {
+        if !allow_retirement {
+            return Err(ReleaseError::Limit);
+        }
+        retire_for_capacity(tx, count, reserved, bytes, now)?;
+        return Ok(false);
+    }
+    let bytes = i64::try_from(bytes).map_err(|_| ReleaseError::Limit)?;
+    tx.execute("UPDATE release_jobs SET manifest = ?2, bytes = ?3, updated_at = ?4 WHERE id = ?1", params![id, body, bytes, now])?;
+    Ok(true)
+}
+
+fn has_capacity(count: i64, reserved: u64, bytes: u64) -> bool {
+    count < MAX_BUILDS && bytes <= MAX_STORE_BYTES.saturating_sub(reserved)
+}
+
+fn retire_for_capacity(tx: &Transaction<'_>, mut count: i64, mut reserved: u64, bytes: u64, now: i64) -> Result<()> {
+    let mut query = tx.prepare(
+        "WITH unpinned AS (
+            SELECT id, bytes, published, updated_at,
+                row_number() OVER (PARTITION BY app, published ORDER BY updated_at DESC, rowid DESC) AS recency
+            FROM release_jobs j
+            WHERE state = 'ready' AND manifest IS NOT NULL AND NOT EXISTS (
+                SELECT 1 FROM active_releases a WHERE a.active_id = j.id OR a.previous_id = j.id
+            )
+        )
+        SELECT id, bytes FROM unpinned WHERE published = 0 OR recency > ?1
+        ORDER BY published, updated_at, recency DESC",
+    )?;
+    let mut rows = query.query([EXTRA_PUBLISHED_BUILDS])?;
+    let mut retired = Vec::new();
+    while !has_capacity(count, reserved, bytes) {
+        let row = rows.next()?.ok_or(ReleaseError::Limit)?;
+        retired.push(row.get::<_, String>(0)?);
+        count -= 1;
+        let reclaimed = u64::try_from(row.get::<_, i64>(1)?).map_err(|_| ReleaseError::Invalid)?;
+        reserved = reserved.saturating_sub(reclaimed);
+    }
+    drop(rows);
+    for id in retired {
+        terminal(tx, &id, "cancelled", "retired to reclaim editor build capacity", now)?;
+    }
+    Ok(())
 }
 
 fn release_row(row: &Row<'_>) -> rusqlite::Result<Release> {

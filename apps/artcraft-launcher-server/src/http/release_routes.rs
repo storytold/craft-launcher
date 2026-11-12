@@ -69,8 +69,8 @@ async fn editor_asset(
 }
 
 async fn serve_asset(app: App, editor: String, build: String, path: String, request: Request) -> Result<Response, Error> {
-    app.authenticate(request.headers())?;
-    let path = run(move || app.releases.asset_path(&editor, &build, &path, false)).await?;
+    let session = app.authenticate(request.headers())?;
+    let path = run(move || app.releases.asset_path(&editor, &build, &path, session.admin)).await?;
     let file = match ServeFile::new(path).oneshot(request).await {
         Ok(file) => file,
         Err(never) => match never {},

@@ -55,6 +55,8 @@ mod native {
     const MAX_FILES: usize = 4096;
     const MAX_ENTRIES: usize = 8192;
     const RENEW_INTERVAL: Duration = Duration::from_secs(5 * 60);
+    const MAX_RECIPE_DURATION: Duration = Duration::from_secs(6 * 60 * 60);
+    const RECIPE_POLL: Duration = Duration::from_secs(2);
 
     type Result<T> = std::result::Result<T, String>;
 
@@ -558,35 +560,73 @@ mod native {
             .stdout(Stdio::piped())
             .stderr(Stdio::piped());
         hide_window(&mut command);
+        #[cfg(unix)]
+        std::os::unix::process::CommandExt::process_group(&mut command, 0);
         let mut child = command.spawn().map_err(|_| String::from("Cannot start the configured build recipe"))?;
         let stdout = child.stdout.take().map(drain);
         let stderr = child.stderr.take().map(drain);
         let result = wait_for_recipe(&mut child, lease).await;
-        write_log(job, stdout, stderr)?;
-        result
+        let logs = write_log(job, stdout, stderr).await;
+        result.and(logs)
     }
 
     async fn wait_for_recipe(child: &mut Child, lease: &mut Lease<'_>) -> Result<()> {
-        let mut lease_error = None;
-        loop {
-            match child.try_wait() {
-                Ok(Some(status)) => {
-                    if let Some(error) = lease_error {
-                        return Err(error);
-                    }
-                    return if status.success() { Ok(()) } else { Err("The configured build recipe failed; inspect build.log".into()) };
-                }
-                Ok(None) => {}
-                Err(_) => {
-                    let _ = child.wait();
-                    return Err("Cannot verify completion of the build recipe".into());
-                }
-            }
-            if lease_error.is_none() {
-                lease_error = lease.renew_if_due().await.err();
-            }
-            tokio::time::sleep(Duration::from_secs(2)).await;
+        let deadline = tokio::time::Instant::now() + MAX_RECIPE_DURATION;
+        let result = tokio::time::timeout_at(deadline, poll_recipe(child, lease))
+            .await
+            .unwrap_or_else(|_| Err(String::from("The configured build recipe exceeded its time limit")));
+        if let Err(reason) = result {
+            stop_recipe(child).map_err(|error| format!("{reason}. Cannot stop the recipe: {error}"))?;
+            return Err(reason);
         }
+        Ok(())
+    }
+
+    async fn poll_recipe(child: &mut Child, lease: &mut Lease<'_>) -> Result<()> {
+        loop {
+            match child.try_wait().map_err(|_| String::from("Cannot verify completion of the build recipe"))? {
+                Some(status) if status.success() => return Ok(()),
+                Some(_) => return Err("The configured build recipe failed; inspect build.log".into()),
+                None => {}
+            }
+            lease.renew_if_due().await?;
+            tokio::time::sleep(RECIPE_POLL).await;
+        }
+    }
+
+    fn stop_recipe(child: &mut Child) -> io::Result<()> {
+        if child.try_wait()?.is_some() {
+            return Ok(());
+        }
+        // The recipe owns a process group on Unix. On Windows, scope cancellation
+        // to the worker's child PID and its descendants.
+        #[cfg(unix)]
+        let _ =
+            Command::new("/bin/kill").args(["-s", "KILL", "--", &format!("-{}", child.id())]).stdout(Stdio::null()).stderr(Stdio::null()).status();
+        #[cfg(windows)]
+        if let Some(root) = std::env::var_os("SystemRoot") {
+            let mut terminate = Command::new(PathBuf::from(root).join("System32").join("taskkill.exe"));
+            terminate.args(["/PID", &child.id().to_string(), "/T", "/F"]).stdout(Stdio::null()).stderr(Stdio::null());
+            hide_window(&mut terminate);
+            let _ = terminate.status();
+        }
+        if child.try_wait()?.is_none() {
+            child.kill()?;
+        }
+        child.wait()?;
+        Ok(())
+    }
+
+    #[cfg(all(test, unix))]
+    #[test]
+    fn cancelling_a_recipe_reaps_the_owned_child() -> io::Result<()> {
+        let mut command = Command::new("/bin/sleep");
+        command.arg("30").stdout(Stdio::null()).stderr(Stdio::null());
+        std::os::unix::process::CommandExt::process_group(&mut command, 0);
+        let mut child = command.spawn()?;
+        stop_recipe(&mut child)?;
+        assert!(child.try_wait()?.is_some_and(|status| !status.success()));
+        Ok(())
     }
 
     type Reader = std::thread::JoinHandle<io::Result<Vec<u8>>>;
@@ -606,11 +646,21 @@ mod native {
         })
     }
 
-    fn write_log(job: &Path, stdout: Option<Reader>, stderr: Option<Reader>) -> Result<()> {
+    async fn write_log(job: &Path, stdout: Option<Reader>, stderr: Option<Reader>) -> Result<()> {
         let mut file = File::create(job.join("build.log")).map_err(|_| String::from("Cannot open the local build log"))?;
+        let deadline = Instant::now() + Duration::from_secs(2);
         for (name, reader) in [("stdout", stdout), ("stderr", stderr)] {
             if let Some(reader) = reader {
-                let tail = reader.join().map_err(|_| "Cannot collect the build log")?.map_err(|_| "Cannot read the build log")?;
+                while !reader.is_finished() && Instant::now() < deadline {
+                    tokio::time::sleep(Duration::from_millis(10)).await;
+                }
+                // A descendant can inherit the pipe. Never wait indefinitely to
+                // collect its output after the owned recipe has stopped.
+                let tail = if reader.is_finished() {
+                    reader.join().map_err(|_| "Cannot collect the build log")?.map_err(|_| "Cannot read the build log")?
+                } else {
+                    b"Log collection timed out while the output pipe was still open.\n".to_vec()
+                };
                 writeln!(file, "Latest build {name}")
                     .and_then(|()| file.write_all(&tail))
                     .map_err(|_| String::from("Cannot write the local build log"))?;

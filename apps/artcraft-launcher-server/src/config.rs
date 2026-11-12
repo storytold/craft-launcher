@@ -25,6 +25,8 @@ struct ConfigFile {
 #[serde(deny_unknown_fields)]
 pub(crate) struct Settings {
     pub(crate) listen: SocketAddr,
+    #[serde(default)]
+    pub(crate) trust_proxy_client_ip: bool,
     pub(crate) origin: Url,
     pub(crate) launcher_root: PathBuf,
     pub(crate) data_root: PathBuf,
