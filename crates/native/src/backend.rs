@@ -1444,11 +1444,16 @@ impl Backend for NativeBackend {
             }
             Command::SetDefault { app } => {
                 let Some(def) = CraftApp::by_id(&app) else { return };
-                let result = match self.installed(&app) {
-                    Some(_) => crate::default_apps::set_default(def),
-                    None => Err(format!("{} isn't installed", def.name)),
-                };
-                self.shared.emit(Event::JobFinished { app, result });
+                if self.installed(&app).is_none() {
+                    self.shared.emit(Event::JobFinished { app, result: Err(format!("{} isn't installed", def.name)) });
+                    return;
+                }
+                // In the Flatpak the menu-entry lookup can wait on `flatpak-spawn --host`, so it runs off the UI thread.
+                let shared = self.shared.clone();
+                std::thread::spawn(move || {
+                    let result = crate::default_apps::set_default(def);
+                    shared.emit(Event::JobFinished { app, result });
+                });
             }
             Command::UpdateLauncher => self.update_launcher(),
             Command::FetchScreenshots { app } => self.fetch_screenshots(&app),
