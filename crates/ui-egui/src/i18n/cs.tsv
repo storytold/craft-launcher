@@ -395,6 +395,7 @@ texturecraft	Mesh maps	Mapy sítí
 texturecraft	Bake mesh maps and use smart materials.	Vypékejte mapy sítí a používejte inteligentní materiály.
 texturecraft	Paint textures on 3D models.	Malujte textury na 3D modely.
 	Hide community apps	Skrýt komunitní aplikace
+	Hide the minimize, maximize and close buttons	Skrýt tlačítka pro minimalizaci, maximalizaci a zavření
 materialcraft	Procedural material design	Návrh procedurálních materiálů
 materialcraft	Build materials with node graphs.	Vytvářejte materiály pomocí uzlových grafů.
 materialcraft	Create tileable PBR materials and export texture maps.	Vytvářejte bezešvé PBR materiály a exportujte texturové mapy.

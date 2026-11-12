@@ -429,6 +429,7 @@ texturecraft	Mesh maps	ბადის რუკები
 texturecraft	Bake mesh maps and use smart materials.	ბადის რუკების გამოცხობა და ჭკვიანი მასალების გამოყენება.
 texturecraft	Paint textures on 3D models.	3D მოდელებზე ტექსტურების ხატვა.
 	Hide community apps	საზოგადოების აპლიკაციების დამალვა
+	Hide the minimize, maximize and close buttons	ჩაკეცვის, გაშლისა და დახურვის ღილაკების დამალვა
 materialcraft	Procedural material design	პროცედურული მასალების დიზაინი
 materialcraft	Build materials with node graphs.	მასალების აწყობა კვანძების გრაფებით.
 materialcraft	Create tileable PBR materials and export texture maps.	უნაკერო PBR მასალების შექმნა და ტექსტურების რუკების ექსპორტი.

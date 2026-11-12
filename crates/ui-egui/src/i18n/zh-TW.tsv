@@ -389,6 +389,7 @@ texturecraft	Mesh maps	網格貼圖
 texturecraft	Bake mesh maps and use smart materials.	烘焙網格貼圖並使用智慧材質。
 texturecraft	Paint textures on 3D models.	在 3D 模型上繪製紋理。
 	Hide community apps	隱藏社群應用程式
+	Hide the minimize, maximize and close buttons	隱藏最小化、最大化和關閉按鈕
 materialcraft	Procedural material design	程序化材質設計
 materialcraft	Build materials with node graphs.	使用節點圖建構材質。
 materialcraft	Create tileable PBR materials and export texture maps.	建立可拼接的 PBR 材質並匯出紋理貼圖。

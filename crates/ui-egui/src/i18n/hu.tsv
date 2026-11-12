@@ -428,6 +428,7 @@ texturecraft	Mesh maps	Hálótérképek
 texturecraft	Bake mesh maps and use smart materials.	Süss ki hálótérképeket, és használj intelligens anyagokat.
 texturecraft	Paint textures on 3D models.	Fess textúrákat 3D modellekre.
 	Hide community apps	Közösségi alkalmazások elrejtése
+	Hide the minimize, maximize and close buttons	A Kis méret, Teljes méret és Bezárás gombok elrejtése
 materialcraft	Procedural material design	Procedurális anyagtervezés
 materialcraft	Build materials with node graphs.	Készíts anyagokat csomópontgráfokkal.
 materialcraft	Create tileable PBR materials and export texture maps.	Készíts hézagmentesen ismételhető PBR-anyagokat, és exportálj textúratérképeket.

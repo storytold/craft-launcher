@@ -427,6 +427,7 @@ texturecraft	Mesh maps	Mesh-Maps
 texturecraft	Bake mesh maps and use smart materials.	Mesh-Maps backen und intelligente Materialien verwenden.
 texturecraft	Paint textures on 3D models.	Texturen auf 3D-Modelle malen.
 	Hide community apps	Community-Apps ausblenden
+	Hide the minimize, maximize and close buttons	Schaltflächen zum Minimieren, Maximieren und Schließen ausblenden
 materialcraft	Procedural material design	Prozedurales Materialdesign
 materialcraft	Build materials with node graphs.	Materialien mit Knotengraphen erstellen.
 materialcraft	Create tileable PBR materials and export texture maps.	Nahtlos kachelbare PBR-Materialien erstellen und Textur-Maps exportieren.
