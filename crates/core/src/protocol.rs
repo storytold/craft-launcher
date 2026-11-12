@@ -101,6 +101,9 @@ pub enum VersionTrack {
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct BackendOptions {
+    /// Hide Windows Installer progress for updates when automatic installation is enabled.
+    /// Administrator permission prompts still appear when required.
+    pub quiet_installs: bool,
     pub install_locations: InstallLocations,
     /// Package formats to install, best first (empty: the platform default).
     pub kinds: Vec<PackageKind>,
@@ -344,6 +347,7 @@ mod tests {
     fn old_backend_options_keep_system_install_locations() {
         let options: BackendOptions = serde_json::from_str(r#"{"kinds":[],"prereleases":true}"#).unwrap();
         assert!(options.prereleases);
+        assert!(!options.quiet_installs);
         assert_eq!(options.install_locations, InstallLocations::default());
     }
 }

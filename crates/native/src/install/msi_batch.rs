@@ -26,9 +26,13 @@ pub(super) fn text(path: &Path) -> Result<&str, String> {
 /// The `msiexec` arguments for one package, the same ones `msi_command` and the folder and scope
 /// arguments give the single-app route, as one command line.
 pub(super) fn line(msi: &Path, destination: Option<&Path>, scope: Option<MsiScope>) -> Result<String, String> {
+    line_with_ui(msi, destination, scope, false)
+}
+
+pub(super) fn line_with_ui(msi: &Path, destination: Option<&Path>, scope: Option<MsiScope>, quiet: bool) -> Result<String, String> {
     let msi = super::msi_path(msi)?;
     let log = super::msi_log(&msi);
-    let mut line = format!("/i \"{}\" /passive /norestart /l*v \"{}\"", text(&msi)?, text(&log)?);
+    let mut line = format!("/i \"{}\" {} /norestart /l*v \"{}\"", text(&msi)?, if quiet { "/qn" } else { "/passive" }, text(&log)?);
     if let Some(folder) = destination {
         line.push(' ');
         line.push_str(&super::msi_folder_argument(folder)?);

@@ -462,6 +462,7 @@ impl LauncherUi {
 
     pub(crate) fn configure(&mut self) {
         let options = BackendOptions {
+            quiet_installs: self.settings.auto_update,
             kinds: self.settings.preferred_kinds.clone(),
             prereleases: self.settings.prereleases,
             versions: self.settings.versions.clone(),
@@ -764,6 +765,8 @@ impl LauncherUi {
         if !self.caps.manage_apps || !self.settings.auto_update {
             return;
         }
+        // Enabling automatic updates can queue work in this very frame.
+        self.configure();
         let to_update: Vec<(String, String)> = self
             .entries
             .iter()
@@ -1181,6 +1184,21 @@ mod tests {
     /// Counts the `Install` commands in `sent`, ignoring every other command.
     fn installs(sent: &RefCell<Vec<Command>>) -> usize {
         sent.borrow().iter().filter(|command| matches!(command, Command::Install { .. })).count()
+    }
+
+    #[test]
+    fn enabling_automatic_updates_configures_quiet_installs_immediately() {
+        let (mut ui, sent, _ctx) = launcher();
+        ui.caps.manage_apps = true;
+        ui.configure();
+        assert!(matches!(sent.borrow().last(), Some(Command::Configure(o)) if !o.quiet_installs));
+        sent.borrow_mut().clear();
+        ui.settings.auto_update = true;
+        ui.trigger_auto_updates();
+        assert!(matches!(sent.borrow().first(), Some(Command::Configure(o)) if o.quiet_installs));
+        ui.settings.auto_update = false;
+        ui.configure();
+        assert!(matches!(sent.borrow().last(), Some(Command::Configure(o)) if !o.quiet_installs));
     }
 
     #[test]

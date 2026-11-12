@@ -46,6 +46,8 @@ pub struct Job<'a> {
     pub approved_path: Option<&'a Path>,
     /// Set only when the person chose this older version by name over a newer installed copy.
     pub downgrade: Option<Downgrade<'a>>,
+    /// An automatic-update opt-in hides installer progress, never permission prompts.
+    pub quiet: bool,
     /// The batch of installs this one belongs to (an "update all"): where the platform needs a
     /// permission prompt, the whole batch shares one. `None` for a job on its own.
     pub batch: Option<crate::queue::Gather>,
@@ -241,6 +243,7 @@ pub fn install_at(
                     destination.as_deref(),
                     msi_scope,
                     batch.take(),
+                    job.quiet,
                     job.stop,
                     &mut *job.phase,
                 ),
@@ -1136,6 +1139,7 @@ pub(crate) mod linux {
         command: &[&str],
         target: &OsStr,
         batch: Option<crate::queue::Gather>,
+        quiet: bool,
         stop: &Stop,
         phase: &mut dyn FnMut(JobPhase),
         working: JobPhase,
@@ -1249,6 +1253,7 @@ pub(crate) mod linux {
         file: &Path,
         installation: Option<&str>,
         batch: Option<crate::queue::Gather>,
+        quiet: bool,
         stop: &Stop,
         phase: &mut dyn FnMut(JobPhase),
     ) -> Result<(), String> {
@@ -1276,6 +1281,7 @@ pub(crate) mod linux {
         file: &Path,
         installation: Option<&str>,
         batch: Option<crate::queue::Gather>,
+        quiet: bool,
         stop: &Stop,
         phase: &mut dyn FnMut(JobPhase),
     ) -> Result<(), String> {
@@ -2167,11 +2173,16 @@ pub mod msi_session;
 /// without starting an installer.
 #[cfg_attr(not(windows), allow(dead_code))]
 fn msi_command(program: &Path, msi: &Path) -> Result<std::process::Command, String> {
+    msi_command_ui(program, msi, false)
+}
+
+#[cfg_attr(not(windows), allow(dead_code))]
+fn msi_command_ui(program: &Path, msi: &Path, quiet: bool) -> Result<std::process::Command, String> {
     let msi = msi_path(msi)?;
     let mut command = process::command(program);
     // A verbose log beside the package: Windows Installer's own errors (1603 above all) say
     // nothing without it.
-    command.arg("/i").arg(&msi).args(["/passive", "/norestart", "/l*v"]).arg(msi_log(&msi));
+    command.arg("/i").arg(&msi).args([if quiet { "/qn" } else { "/passive" }, "/norestart", "/l*v"]).arg(msi_log(&msi));
     Ok(command)
 }
 
@@ -2206,29 +2217,43 @@ pub mod windows {
         std::env::var_os("SystemRoot").map_or_else(|| PathBuf::from(r"C:\Windows"), PathBuf::from).join(r"System32\msiexec.exe")
     }
 
-    /// Runs an MSI with a progress window and no restart. Windows asks for permission itself.
+    /// Runs an MSI with the chosen progress UI and no restart. Required permission is always asked.
     /// `scope`, from the copy being replaced's registration, keeps the update in the same
     /// Windows Installer context (see [`MsiScope`]). A per-machine package with a `batch` joins
     /// it instead: the whole batch shares one permission prompt ([`run_batched`]). Only
     /// [`install_at`](super::install_at) calls it, so it stays as private as its [`Package`].
+    #[allow(clippy::too_many_arguments)]
     pub(super) fn run_msi(
         app: &CraftApp,
         package: Package<'_>,
         destination: Option<&Path>,
         scope: Option<MsiScope>,
         batch: Option<crate::queue::Gather>,
+        quiet: bool,
         stop: &Stop,
         phase: &mut dyn FnMut(JobPhase),
     ) -> Result<(), String> {
         if let Some(gather) = batch {
             if scope == Some(MsiScope::PerMachine) {
-                return run_batched(Batched { app, package, destination, scope }, gather, stop, phase);
+                return run_batched(Batched { app, package, destination, scope, quiet }, gather, stop, phase);
             }
             // A per-user install asks Windows for nothing: its place in the batch goes back at
             // once, so the per-machine members don't wait for it.
             gather.leave();
         }
-        in_turn(stop, phase, JobPhase::Installing, || run_direct(package.file, destination, scope))
+        in_turn(stop, phase, JobPhase::Installing, || {
+            if quiet && scope == Some(MsiScope::PerMachine) {
+                // /qn cannot request elevation: use the checked session and its UAC prompt.
+                let target = msi_session::entry(app, &package, destination, scope, true)?;
+                let result =
+                    msi_session::call(&msi_session::command(), &[target]).into_iter().next().ok_or("the install session returned no result")?;
+                if result.as_ref().err().is_some_and(|e| e == msi_session::NO_SESSION) {
+                    return run_direct(package.file, destination, scope, false);
+                }
+                return result;
+            }
+            run_direct(package.file, destination, scope, quiet)
+        })
     }
 
     /// One app's install, as the batch session runs it.
@@ -2237,6 +2262,7 @@ pub mod windows {
         package: Package<'a>,
         destination: Option<&'a Path>,
         scope: Option<MsiScope>,
+        quiet: bool,
     }
 
     /// One permission prompt for a batch of per-machine packages: the members meet in one call
@@ -2245,13 +2271,13 @@ pub mod windows {
     /// prompt cancels the whole batch; a session that cannot start sends the members back to
     /// installing one by one, the way a single app always installs.
     fn run_batched(job: Batched<'_>, gather: crate::queue::Gather, stop: &Stop, phase: &mut dyn FnMut(JobPhase)) -> Result<(), String> {
-        let Batched { app, package, destination, scope } = job;
-        let target = match msi_session::entry(app, &package, destination, scope) {
+        let Batched { app, package, destination, scope, quiet } = job;
+        let target = match msi_session::entry(app, &package, destination, scope, quiet) {
             Ok(target) => target,
             Err(e) => {
                 log::warn!("{}: {e}; installing it by itself", app.name);
                 gather.leave();
-                return in_turn(stop, phase, JobPhase::Installing, || run_direct(package.file, destination, scope));
+                return in_turn(stop, phase, JobPhase::Installing, || run_direct(package.file, destination, scope, false));
             }
         };
         let outcome = INSTALLER.batched_when(
@@ -2264,16 +2290,16 @@ pub mod windows {
         );
         if outcome.as_ref().err().is_some_and(|e| e == msi_session::NO_SESSION) {
             log::warn!("{}: the batch session could not start; installing it by itself", app.name);
-            return in_turn(stop, phase, JobPhase::Installing, || run_direct(package.file, destination, scope));
+            return in_turn(stop, phase, JobPhase::Installing, || run_direct(package.file, destination, scope, false));
         }
         outcome
     }
 
     /// Runs one MSI by itself: `msiexec` asks for permission itself, and the prompt names the package's
     /// publisher.
-    fn run_direct(msi: &Path, destination: Option<&Path>, scope: Option<MsiScope>) -> Result<(), String> {
+    fn run_direct(msi: &Path, destination: Option<&Path>, scope: Option<MsiScope>, quiet: bool) -> Result<(), String> {
         use std::os::windows::process::CommandExt;
-        let mut command = msi_command(&msiexec(), msi)?;
+        let mut command = super::msi_command_ui(&msiexec(), msi, quiet)?;
         if let Some(dir) = destination {
             command.raw_arg(msi_folder_argument(dir)?);
         }
@@ -2344,8 +2370,8 @@ pub mod windows {
                 chosen: chosen.version,
                 previous: previous.version,
                 remove: &mut || remove_registrations(app),
-                install_chosen: &mut || run_direct(chosen.file, destination, scope),
-                reinstall_previous: &mut || run_direct(previous.file, destination, scope),
+                install_chosen: &mut || run_direct(chosen.file, destination, scope, false),
+                reinstall_previous: &mut || run_direct(previous.file, destination, scope, false),
             })
         })
     }
@@ -2855,6 +2881,7 @@ mod tests {
                 replace: false,
                 approved_path: None,
                 downgrade: Some(Downgrade::Reinstall { previous: &newer, asset: &newer_msi }),
+                quiet: false,
                 batch: None,
             };
             install(app, &older, &older_msi, PackageKind::Msi, Some(&portable), None, &mut job).unwrap_err()
@@ -2978,6 +3005,7 @@ mod tests {
                     replace: false,
                     approved_path: None,
                     downgrade,
+                    quiet: false,
                     batch: None,
                 };
                 install(app, &release, &asset, kind, Some(&installed), previous, &mut job).unwrap_err()
@@ -3018,6 +3046,7 @@ mod tests {
                 replace: false,
                 approved_path: None,
                 downgrade: None,
+                quiet: false,
                 batch: None,
             };
             let err = install(app, &release, &asset, kind, None, None, &mut job).unwrap_err();
@@ -3052,6 +3081,7 @@ mod tests {
             replace: false,
             approved_path: None,
             downgrade: None,
+            quiet: false,
             batch: None,
         };
         let error = install(app, &release, &asset, PackageKind::AppImage, None, None, &mut job).unwrap_err();
@@ -3085,6 +3115,7 @@ mod tests {
             replace: false,
             approved_path: None,
             downgrade: None,
+            quiet: false,
             batch: None,
         };
         let err = install(app, &release, &asset, kind, None, None, &mut job).unwrap_err();
@@ -3767,6 +3798,7 @@ mod tests {
             replace: false,
             approved_path: None,
             downgrade: None,
+            quiet: false,
             batch: None,
         };
         let result = install_at(app, &release, &asset, PackageKind::AppImage, Some(&installed), None, &mut job, None);
@@ -3800,6 +3832,7 @@ mod tests {
             replace: false,
             approved_path: None,
             downgrade: None,
+            quiet: false,
             batch: None,
         };
         let result = install_at(app, &release, &asset, PackageKind::AppImage, None, None, &mut job, None);

@@ -91,6 +91,7 @@ pub fn update(
     stop: &Stop,
     phase: &mut dyn FnMut(JobPhase),
     last: &dyn Fn() -> Result<(), String>,
+    quiet: bool,
 ) -> Result<(), String> {
     let update_release = to_update_release(release);
     let update_platform = to_update_platform(platform);
@@ -106,7 +107,7 @@ pub fn update(
             craft_update::JobPhase::Removing => JobPhase::Removing,
         });
     };
-    craft_update::self_update::update(
+    craft_update::self_update::prepare_update_with_options(
         &craft_update::suite::LAUNCHER,
         install,
         &update_release,
@@ -117,7 +118,9 @@ pub fn update(
         &mut update_phase,
         last,
         Some(env!("CARGO_PKG_VERSION")),
-    )
+        craft_update::self_update::UpdateOptions { quiet_msi: quiet },
+    )?
+    .start()
 }
 
 /// The package format updating `install` downloads: the one it was installed from. Mirrors the

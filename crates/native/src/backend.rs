@@ -587,6 +587,7 @@ impl NativeBackend {
             jobs.insert(id.clone(), stop.clone());
         }
         let job = JobGuard { shared: self.shared.clone(), app_id: id.clone() };
+        let quiet = self.options().quiet_installs;
         let (shared, paths, http) = (self.shared.clone(), self.paths.clone(), self.http.clone());
         std::thread::spawn(move || {
             let job = job;
@@ -604,7 +605,7 @@ impl NativeBackend {
                 claim_restart(&shared.jobs, &shared.restarting, &stop, RESTART_WAIT, &mut waiting)
             };
             let result = match http.as_ref() {
-                Some(http) => crate::self_update::update(&install, &release, platform, http, &paths, &stop, &mut phase, &last),
+                Some(http) => crate::self_update::update(&install, &release, platform, http, &paths, &stop, &mut phase, &last, quiet),
                 None => Err("secure connections aren't available on this system".into()),
             };
             drop(job);
@@ -858,6 +859,7 @@ fn run_install(
         replace,
         approved_path,
         downgrade,
+        quiet: options.quiet_installs && existing.is_some() && downgrade.is_none(),
         batch: batch.take(),
     };
     let mut commit_record = |record: &crate::manifest::Record| {

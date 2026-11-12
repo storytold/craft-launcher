@@ -4,8 +4,8 @@
 //! installer queue; the one whose call it is writes what the session is to do into a manifest
 //! beside the checked packages and starts the launcher's own exe elevated (`ShellExecuteEx`,
 //! verb `runas`). No PowerShell, nothing encoded, nothing hidden: the one prompt names ArtCraft
-//! Launcher and its signed publisher, and each package still shows its own installer progress
-//! window. A hidden, elevated, encoded PowerShell route did this before and was withdrawn after
+//! Launcher and its signed publisher. Installer progress stays visible unless automatic
+//! updates opted into quiet installation; the permission prompt is always shown. A hidden, elevated, encoded PowerShell route did this before and was withdrawn after
 //! behavioural antivirus flagged it (see `docs/incident-2026-10-windows-antivirus.md`).
 //!
 //! The elevated copy re-checks every package against the checksum its release published — with
@@ -72,6 +72,9 @@ pub(crate) struct Entry {
     destination: Option<PathBuf>,
     /// The Windows Installer context to keep; `None` takes the package's own default.
     scope: Option<MsiScope>,
+    /// Hide installer progress after the user grants the session permission.
+    #[serde(default)]
+    quiet: bool,
 }
 
 /// What the elevated copy is to do, written beside the packages and held unchanged while the
@@ -100,6 +103,7 @@ pub(super) fn entry(
     package: &super::windows::Package<'_>,
     destination: Option<&Path>,
     scope: Option<MsiScope>,
+    quiet: bool,
 ) -> Result<OsString, String> {
     let entry = Entry {
         app: app.id.to_string(),
@@ -107,6 +111,7 @@ pub(super) fn entry(
         sha256: package.sha256.to_string(),
         destination: destination.map(Path::to_path_buf),
         scope,
+        quiet,
     };
     serde_json::to_string(&entry).map(OsString::from).map_err(|e| format!("couldn't describe the package for a shared prompt ({e})"))
 }
@@ -434,7 +439,7 @@ fn install_one(entry: &Entry) -> i32 {
         // the checked bytes are the installed ones. Its name is never read — the file staying
         // open until the end of this closure is the whole job.
         let _held = super::msi_batch::hold(&entry.msi, &entry.sha256)?;
-        let line = super::msi_batch::line(&entry.msi, entry.destination.as_deref(), entry.scope)?;
+        let line = super::msi_batch::line_with_ui(&entry.msi, entry.destination.as_deref(), entry.scope, entry.quiet)?;
         log::info!("{}: installing under the shared prompt", entry.app);
         run_installer(&line)
     })();
@@ -447,7 +452,7 @@ fn install_one(entry: &Entry) -> i32 {
     }
 }
 
-/// Windows Installer on one package of the session: a progress window and no restart, the same
+/// Windows Installer on one package of the session: its chosen progress UI and no restart, the same
 /// arguments a single install runs. `Err` only when it couldn't be started at all.
 #[cfg(windows)]
 fn run_installer(line: &str) -> Result<i32, String> {
@@ -471,7 +476,20 @@ mod tests {
             sha256: "abc123".into(),
             destination: Some(Path::new(r"C:\Program Files\Photocraft").to_path_buf()),
             scope: Some(MsiScope::PerMachine),
+            quiet: false,
         }
+    }
+
+    #[test]
+    fn quiet_choice_survives_the_session_manifest_and_old_manifests_stay_visible() {
+        let mut package = entry("photocraft", Path::new("app.msi"));
+        package.quiet = true;
+        let text = serde_json::to_string(&package).unwrap();
+        assert!(parse(OsStr::new(&text)).unwrap().quiet);
+        let mut old: serde_json::Value = serde_json::from_str(&text).unwrap();
+        old.as_object_mut().unwrap().remove("quiet");
+        let old = serde_json::to_string(&old).unwrap();
+        assert!(!parse(OsStr::new(&old)).unwrap().quiet);
     }
 
     #[test]

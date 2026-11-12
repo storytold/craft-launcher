@@ -135,3 +135,23 @@ mod powershell {
         assert_eq!(run(2), Some(LAUNCH_FAILED));
     }
 }
+
+#[test]
+fn quiet_updates_keep_the_same_package_log_folder_scope_and_restart_policy() {
+    let dir = tempfile::tempdir().unwrap();
+    let msi = dir.path().join("Craft update.msi");
+    std::fs::write(&msi, b"checked elsewhere").unwrap();
+    let folder = Path::new(r"C:\Program Files\ArtCraft\PhotoCraft");
+    for scope in [Some(MsiScope::PerUser), Some(MsiScope::PerMachine)] {
+        let passive = line(&msi, Some(folder), scope).unwrap();
+        let quiet = line_with_ui(&msi, Some(folder), scope, true).unwrap();
+        assert_eq!(quiet, passive.replace("/passive", "/qn"));
+        assert!(!quiet.contains("/passive"));
+    }
+    let passive = crate::install::msi_command(Path::new("msiexec.exe"), &msi).unwrap();
+    let quiet = crate::install::msi_command_ui(Path::new("msiexec.exe"), &msi, true).unwrap();
+    let args = |cmd: &std::process::Command| cmd.get_args().map(|a| a.to_os_string()).collect::<Vec<_>>();
+    let mut expected = args(&passive);
+    expected[2] = "/qn".into();
+    assert_eq!(args(&quiet), expected);
+}

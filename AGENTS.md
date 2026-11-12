@@ -208,8 +208,8 @@ Packaging facts the code relies on:
 - The Windows MSI is **per-user** (no UAC prompt), by default into
   `%LOCALAPPDATA%\Programs\ArtCraft Launcher`. Double-clicked it opens a WixUI setup wizard
   (Welcome; a folder page with a "Create a desktop shortcut" box; Ready; progress; Finish with
-  "Launch"), whose art `package.ps1` draws at build time; self-update runs it with `/passive`, no
-  wizard. The folder and the shortcut choice are recorded under
+  "Launch"), whose art `package.ps1` draws at build time; self-update runs it with `/passive` normally and `/qn` when automatic updates are enabled,
+  with no wizard. Required administrator permission prompts are still shown. The folder and the shortcut choice are recorded under
   `HKCU\Software\Learning Machines LLC\ArtCraft Launcher` (`InstallDir`,
   `DesktopShortcutChoice`) and reused by the next version, and `self_update.rs` reads `InstallDir`
   to know the running copy came from the MSI. Its shortcuts set AppUserModelID
