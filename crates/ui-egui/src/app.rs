@@ -632,6 +632,10 @@ impl LauncherUi {
                 self.on_job_finished(app, result);
                 true
             }
+            Event::Notice { result, .. } => {
+                self.on_notice(result);
+                true
+            }
             Event::LauncherUpdate(r) => self.on_launcher_update(r),
             Event::CheckStarted => {
                 self.checking = true;
@@ -695,6 +699,14 @@ impl LauncherUi {
             Err(e) if e == INSTALL_CANCELLED => self.toast(tl!("Install cancelled"), false),
             // The Replace dialog says it all.
             Err(_) if matches!(&self.dialog, Some(Dialog::Replace { app: a, .. }) if *a == app) => {}
+            Err(e) => self.toast(e, true),
+        }
+    }
+
+    /// Toast for a side action that never owned the app's job phase (desktop shortcut, etc.).
+    fn on_notice(&mut self, result: Result<String, String>) {
+        match result {
+            Ok(msg) => self.toast(msg, false),
             Err(e) => self.toast(e, true),
         }
     }
@@ -1144,7 +1156,7 @@ mod tests {
         /// No install management, a neutral reveal label and no self-update, so UI paths needing them
         /// stay off.
         fn capabilities(&self) -> Capabilities {
-            Capabilities { manage_apps: false, reveal_label: "Show", self_update: false }
+            Capabilities { manage_apps: false, reveal_label: "Show", self_update: false, desktop_shortcuts: false }
         }
         /// Reports no platform, so the UI offers no OS-specific package format.
         fn platform(&self) -> Option<Platform> {

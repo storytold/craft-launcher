@@ -505,6 +505,213 @@ fn explorer_select_arg(path: &Path) -> Option<std::ffi::OsString> {
     Some(arg)
 }
 
+/// Creates a `.lnk` on the user's Desktop that opens `target`.
+///
+/// Windows only. Uses the shell Desktop folder (`dirs::desktop_dir`), which follows OneDrive
+/// redirection. Does not overwrite an existing desktop entry of the same name (file, directory,
+/// or symlink), including against races with another creator.
+#[cfg(windows)]
+pub fn create_desktop_shortcut(name: &str, target: &Path) -> Result<(), String> {
+    let desktop = dirs::desktop_dir().ok_or_else(|| "couldn't find the Desktop folder".to_string())?;
+    create_desktop_shortcut_in(&desktop, name, target)
+}
+
+/// Same as [`create_desktop_shortcut`], but writes into `desktop` (for tests and callers that
+/// already resolved the Desktop folder).
+#[cfg(windows)]
+pub(crate) fn create_desktop_shortcut_in(desktop: &Path, name: &str, target: &Path) -> Result<(), String> {
+    // Must be a real executable path (not a missing path or a directory).
+    if !target.is_file() {
+        return Err(format!("{} isn't where it was installed", target.display()));
+    }
+    let lnk = desktop.join(format!("{name}.lnk"));
+    // symlink_metadata does not follow links: a dangling symlink still counts as occupied.
+    if std::fs::symlink_metadata(&lnk).is_ok() {
+        return Err(format!("A desktop shortcut named {name} already exists"));
+    }
+    // Prefer a normal path without the `\\?\` prefix — .lnk targets work better that way.
+    let target = dunce::canonicalize(target).unwrap_or_else(|_| target.to_path_buf());
+
+    // Pure Rust MS-SHLINK writer (no PowerShell). See docs/incident-2026-10-windows-antivirus.md.
+    let mut link = mslnk::ShellLink::new(&target).map_err(|e| e.to_string())?;
+    if let Some(dir) = target.parent().and_then(|p| p.to_str()) {
+        link.set_working_dir(Some(dir.to_string()));
+    }
+
+    // Write to a sibling temp file, then publish with CREATE_NEW so we never truncate a
+    // destination that appeared after the metadata check (and never follow a symlink).
+    let temp = desktop.join(format!(".{name}.{}.lnk.tmp", std::process::id()));
+    let _ = std::fs::remove_file(&temp);
+    if let Err(e) = link.create_lnk(&temp) {
+        let _ = std::fs::remove_file(&temp);
+        return Err(e.to_string());
+    }
+    match publish_new_file(&temp, &lnk) {
+        Ok(()) => Ok(()),
+        Err(e) => {
+            let _ = std::fs::remove_file(&temp);
+            if e.kind() == std::io::ErrorKind::AlreadyExists {
+                Err(format!("A desktop shortcut named {name} already exists"))
+            } else {
+                Err(format!("couldn't publish the desktop shortcut: {e}"))
+            }
+        }
+    }
+}
+
+/// Copies `temp` onto `dest` only if `dest` does not already exist (no follow, no truncate).
+#[cfg(windows)]
+fn publish_new_file(temp: &Path, dest: &Path) -> std::io::Result<()> {
+    use std::io::{Read, Write};
+    let mut src = std::fs::File::open(temp)?;
+    let mut dest_file = std::fs::OpenOptions::new().write(true).create_new(true).open(dest)?;
+    let mut buf = Vec::new();
+    src.read_to_end(&mut buf)?;
+    dest_file.write_all(&buf)?;
+    dest_file.sync_all()?;
+    drop(dest_file);
+    let _ = std::fs::remove_file(temp);
+    Ok(())
+}
+
+#[cfg(not(windows))]
+pub fn create_desktop_shortcut(_name: &str, _target: &Path) -> Result<(), String> {
+    Err("desktop shortcuts are only supported on Windows".into())
+}
+
+#[cfg(all(test, windows))]
+mod desktop_shortcut_tests {
+    use super::*;
+    use std::fs;
+    use std::io::{Read, Write};
+
+    fn write_fake_exe(dir: &Path, file_name: &str) -> PathBuf {
+        let path = dir.join(file_name);
+        let mut f = fs::File::create(&path).unwrap();
+        f.write_all(b"MZ").unwrap();
+        path
+    }
+
+    fn read_all(path: &Path) -> Vec<u8> {
+        let mut data = Vec::new();
+        fs::File::open(path).unwrap().read_to_end(&mut data).unwrap();
+        data
+    }
+
+    /// MS-SHLINK stores string data as UTF-16 LE; search for `s` in that encoding.
+    fn lnk_contains_utf16(data: &[u8], s: &str) -> bool {
+        let needle: Vec<u8> = s.encode_utf16().flat_map(|u| u.to_le_bytes()).collect();
+        if needle.is_empty() {
+            return false;
+        }
+        data.windows(needle.len()).any(|w| w == needle.as_slice())
+    }
+
+    fn assert_lnk_points_at(lnk: &Path, target: &Path) {
+        let data = read_all(lnk);
+        assert!(data.len() >= 0x4c, "too small for a .lnk: {} bytes", data.len());
+        assert_eq!(&data[0..4], &0x4Cu32.to_le_bytes(), "bad ShellLink header size");
+
+        let file_name = target.file_name().and_then(|n| n.to_str()).expect("utf-8 file name");
+        let work_dir = target.parent().and_then(|p| p.to_str()).expect("utf-8 parent");
+
+        assert!(lnk_contains_utf16(&data, file_name), "shortcut missing target file name {file_name:?} as UTF-16 ({} bytes)", data.len());
+        assert!(
+            lnk_contains_utf16(&data, work_dir) || lnk_contains_utf16(&data, &work_dir.replace('/', "\\")),
+            "shortcut missing working directory {work_dir:?} as UTF-16 ({} bytes)",
+            data.len()
+        );
+    }
+
+    #[test]
+    fn rejects_missing_target() {
+        let desktop = tempfile::tempdir().unwrap();
+        let missing = desktop.path().join("gone.exe");
+        let err = create_desktop_shortcut_in(desktop.path(), "App", &missing).unwrap_err();
+        assert!(err.contains("isn't where it was installed"), "{err}");
+    }
+
+    #[test]
+    fn rejects_directory_as_target() {
+        let desktop = tempfile::tempdir().unwrap();
+        let dir = desktop.path().join("not-an-exe");
+        fs::create_dir(&dir).unwrap();
+        let err = create_desktop_shortcut_in(desktop.path(), "App", &dir).unwrap_err();
+        assert!(err.contains("isn't where it was installed"), "{err}");
+    }
+
+    #[test]
+    fn refuses_to_overwrite_existing_shortcut() {
+        let desktop = tempfile::tempdir().unwrap();
+        let target = write_fake_exe(desktop.path(), "app.exe");
+        let lnk = desktop.path().join("PhotoCraft.lnk");
+        fs::write(&lnk, b"existing-user-shortcut").unwrap();
+        let err = create_desktop_shortcut_in(desktop.path(), "PhotoCraft", &target).unwrap_err();
+        assert!(err.contains("already exists"), "{err}");
+        assert_eq!(fs::read(&lnk).unwrap(), b"existing-user-shortcut");
+    }
+
+    #[test]
+    fn refuses_to_overwrite_dangling_symlink() {
+        let desktop = tempfile::tempdir().unwrap();
+        let target = write_fake_exe(desktop.path(), "app.exe");
+        let lnk = desktop.path().join("Dangle.lnk");
+        // Creating symlinks on Windows needs SeCreateSymbolicLinkPrivilege or Developer Mode.
+        match std::os::windows::fs::symlink_file(desktop.path().join("missing-target.exe"), &lnk) {
+            Ok(()) => {}
+            Err(e) if e.raw_os_error() == Some(1314) => {
+                eprintln!("skipping dangling-symlink test: privilege not held ({e})");
+                return;
+            }
+            Err(e) => panic!("symlink_file failed: {e}"),
+        }
+        let err = create_desktop_shortcut_in(desktop.path(), "Dangle", &target).unwrap_err();
+        assert!(err.contains("already exists"), "{err}");
+        assert!(fs::symlink_metadata(&lnk).unwrap().file_type().is_symlink());
+        assert_eq!(fs::read(desktop.path().join("app.exe")).unwrap(), b"MZ");
+    }
+
+    #[test]
+    fn create_new_publish_fails_if_dest_appears() {
+        let desktop = tempfile::tempdir().unwrap();
+        let target = write_fake_exe(desktop.path(), "app.exe");
+        let lnk = desktop.path().join("Race.lnk");
+        fs::write(&lnk, b"racer").unwrap();
+        let err = create_desktop_shortcut_in(desktop.path(), "Race", &target).unwrap_err();
+        assert!(err.contains("already exists"), "{err}");
+        assert_eq!(fs::read(&lnk).unwrap(), b"racer");
+    }
+
+    #[test]
+    fn creates_shortcut_with_spaces_and_non_ascii_target_and_workdir() {
+        let desktop = tempfile::tempdir().unwrap();
+        // Non-ASCII folder + spaced exe name: both should show up in the .lnk string data.
+        let sub = desktop.path().join("приложения apps");
+        fs::create_dir(&sub).unwrap();
+        let target = write_fake_exe(&sub, "my app.exe");
+        create_desktop_shortcut_in(desktop.path(), "My App", &target).unwrap();
+        let lnk = desktop.path().join("My App.lnk");
+        assert_lnk_points_at(&lnk, &target);
+    }
+
+    #[test]
+    fn creates_shortcut_for_name_with_apostrophe() {
+        let desktop = tempfile::tempdir().unwrap();
+        let target = write_fake_exe(desktop.path(), "app.exe");
+        create_desktop_shortcut_in(desktop.path(), "App's Tool", &target).unwrap();
+        assert_lnk_points_at(&desktop.path().join("App's Tool.lnk"), &target);
+    }
+
+    #[test]
+    fn uses_provided_desktop_folder_not_a_hardcoded_path() {
+        let redirected = tempfile::tempdir().unwrap();
+        let target = write_fake_exe(redirected.path(), "app.exe");
+        create_desktop_shortcut_in(redirected.path(), "Redirected", &target).unwrap();
+        let lnk = redirected.path().join("Redirected.lnk");
+        assert_lnk_points_at(&lnk, &target);
+        assert!(!PathBuf::from("Redirected.lnk").exists());
+    }
+}
 /// Whether a process started from inside `path` (an exe, an AppImage, or a `.app`) is running.
 pub fn is_running(path: &Path) -> bool {
     if cfg!(windows) {

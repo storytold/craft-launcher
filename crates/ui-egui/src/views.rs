@@ -1403,6 +1403,10 @@ impl LauncherUi {
             self.act_command(Command::Reveal { app: id.to_string() });
             ui.close();
         }
+        if self.caps.desktop_shortcuts && ui.button(tl!("Add desktop shortcut")).clicked() {
+            self.act_command(Command::CreateDesktopShortcut { app: id.to_string() });
+            ui.close();
+        }
         if *status == AppStatus::UpToDate && entry.installs_here(self.platform) && ui.button(tl!("Reinstall")).clicked() {
             self.install_app(id);
             ui.close();

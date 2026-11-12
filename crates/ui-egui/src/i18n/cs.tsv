@@ -63,6 +63,7 @@
 	Show in Explorer	Zobrazit v Průzkumníku
 	Show in Files	Zobrazit v Souborech
 	Reinstall	Znovu nainstalovat
+	Add desktop shortcut	Přidat zástupce na plochu
 	Uninstall…	Odinstalovat…
 	Launch options…	Možnosti spuštění…
 	{name} launch options	Možnosti spuštění aplikace {name}
@@ -363,6 +364,9 @@ filter	Installed	Nainstalováno
 @msg	custom install folders aren't supported on this system	vlastní instalační složky nejsou v tomto systému podporovány
 @msg	{path} already exists and wasn't installed by ArtCraft Launcher	{path} již existuje a nebylo nainstalováno aplikací ArtCraft Launcher
 @msg	couldn't move {path} to Trash ({reason}). Remove it in Finder instead.	{path} nelze přesunout do koše ({reason}). Odstraňte položku ve Finderu.
+@msg	Desktop shortcut created for {name}	Zástupce na ploše pro {name} byl vytvořen
+@msg	Couldn't create the desktop shortcut: {e}	Nepodařilo se vytvořit zástupce na ploše: {e}
+@msg	A desktop shortcut named {name} already exists	Zástupce na ploše s názvem {name} již existuje
 	Apps are placed inside this folder.	Aplikace se umístí do této složky.
 	Replace what's there?	Nahradit, co tam je?
 	{path} already exists. Installing {name} will overwrite it.	{path} už existuje. Instalace aplikace {name} ho přepíše.

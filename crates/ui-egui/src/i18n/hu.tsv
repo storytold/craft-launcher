@@ -76,6 +76,7 @@
 	Show in Explorer	Megjelenítés a Fájlkezelőben
 	Show in Files	Megjelenítés a fájlkezelőben
 	Reinstall	Újratelepítés
+	Add desktop shortcut	Asztali parancsikon hozzáadása
 	Uninstall…	Eltávolítás…
 	Launch options…	Indítási beállítások…
 	{name} launch options	{name} indítási beállításai
@@ -396,6 +397,9 @@ filter	Installed	Telepítve
 @msg	custom install folders aren't supported on this system	ezen a rendszeren nem támogatottak az egyéni telepítési mappák
 @msg	{path} already exists and wasn't installed by ArtCraft Launcher	a(z) {path} már létezik, és nem az ArtCraft Launcher telepítette
 @msg	couldn't move {path} to Trash ({reason}). Remove it in Finder instead.	a(z) {path} nem helyezhető a Kukába ({reason}). Távolítsa el a Finderben.
+@msg	Desktop shortcut created for {name}	Asztali parancsikon létrehozva: {name}
+@msg	Couldn't create the desktop shortcut: {e}	Nem sikerült létrehozni az asztali parancsikont: {e}
+@msg	A desktop shortcut named {name} already exists	Már létezik egy {name} nevű asztali parancsikon
 	Apps are placed inside this folder.	Az alkalmazások ebbe a mappába kerülnek.
 	Replace what's there?	Lecseréli, ami ott van?
 	{path} already exists. Installing {name} will overwrite it.	{path} már létezik. A(z) {name} telepítése felülírja.

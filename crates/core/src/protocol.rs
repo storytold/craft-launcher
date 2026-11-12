@@ -54,6 +54,10 @@ pub enum Command {
     Reveal {
         app: String,
     },
+    /// Create a desktop shortcut for an installed app (Windows).
+    CreateDesktopShortcut {
+        app: String,
+    },
     /// Pause a running download, keeping what's downloaded so far (`Install` resumes it).
     Pause {
         app: String,
@@ -266,7 +270,14 @@ pub enum Event {
         path: String,
     },
     /// A job ended: `Ok` carries a short success message, `Err` what went wrong.
+    /// Clears the app's in-progress job phase in the UI.
     JobFinished {
+        app: String,
+        result: Result<String, String>,
+    },
+    /// A short status toast that is not tied to an install/uninstall job phase
+    /// (e.g. creating a desktop shortcut). Does not clear `Progress` state.
+    Notice {
         app: String,
         result: Result<String, String>,
     },
@@ -299,6 +310,8 @@ pub struct Capabilities {
     /// instead. A backend may only know this once it has found a newer launcher, so the UI reads
     /// it again on [`Event::LauncherUpdate`].
     pub self_update: bool,
+    /// Offer "Add desktop shortcut" for installed apps (Windows desktop only).
+    pub desktop_shortcuts: bool,
 }
 
 /// The UI's view of a backend.
