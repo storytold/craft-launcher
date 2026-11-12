@@ -2408,6 +2408,58 @@ fn community_apps_can_be_hidden_and_restored_in_settings() {
 }
 
 #[test]
+/// With a custom title bar, Settings can hide the header's Minimize, Maximize and Close buttons
+/// and bring them back; the Settings button stays.
+fn window_buttons_can_be_hidden_and_restored_in_settings() {
+    let toggle = "Hide the minimize, maximize and close buttons";
+    let (mut h, _) = harness_with_title_bar(events(), ViewMode::Grid, egui::Theme::Dark, true, 1.0, artcraft_launcher_ui_egui::TitleBar::Custom);
+    h.run_steps(6);
+    assert!(!h.state().as_ref().unwrap().settings.hide_window_buttons);
+    h.get_by_label("Settings").click();
+    h.run_steps(4);
+    h.get_by_label(toggle).click();
+    h.run_steps(2);
+    assert!(h.state().as_ref().unwrap().settings.hide_window_buttons);
+    h.get_by_label("Done").click();
+    h.run_steps(4);
+    for label in ["Minimize", "Maximize", "Close"] {
+        assert!(h.query_by_label(label).is_none(), "{label} is still shown");
+    }
+    h.get_by_label("Settings").click();
+    h.run_steps(4);
+    h.get_by_label(toggle).click();
+    h.run_steps(2);
+    h.get_by_label("Done").click();
+    h.run_steps(4);
+    for label in ["Minimize", "Maximize", "Close"] {
+        h.get_by_label(label);
+    }
+}
+
+#[test]
+/// The window-button setting is only offered where the launcher draws those buttons itself.
+fn window_buttons_setting_is_only_offered_with_a_custom_title_bar() {
+    use artcraft_launcher_ui_egui::TitleBar;
+    for bar in [TitleBar::Native, TitleBar::MacOs, TitleBar::Custom] {
+        let (mut h, _) = harness_with_title_bar(events(), ViewMode::Grid, egui::Theme::Dark, true, 1.0, bar);
+        h.run_steps(6);
+        h.get_by_label("Settings").click();
+        h.run_steps(4);
+        let offered = h.query_by_label("Hide the minimize, maximize and close buttons").is_some();
+        assert_eq!(offered, bar == TitleBar::Custom, "{bar:?}");
+    }
+}
+
+#[test]
+fn window_buttons_preference_round_trips_and_defaults_off_for_old_settings() {
+    let old: Settings = serde_json::from_str("{}").unwrap();
+    assert!(!old.hide_window_buttons);
+    let settings = Settings { hide_window_buttons: true, ..old };
+    let restored: Settings = serde_json::from_str(&serde_json::to_string(&settings).unwrap()).unwrap();
+    assert!(restored.hide_window_buttons);
+}
+
+#[test]
 fn community_visibility_preference_round_trips_and_defaults_off_for_old_settings() {
     let old: Settings = serde_json::from_str("{}").unwrap();
     assert!(!old.hide_community_apps);
