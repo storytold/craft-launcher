@@ -17,14 +17,22 @@ use crate::theme::{self, Tokens, rgb, tint};
 use crate::widgets::{self, Kind};
 
 /// The byline that says who makes an app: "by ArtCraft" or "by <publisher>". Official apps take
-/// the accent colour, community apps the muted one.
+/// the accent colour, community apps the muted one. It takes no more than the rest of its row: a
+/// long name and publisher in a narrow card end the byline in "…" rather than run past the card,
+/// which would also widen the column the tagline below is cut to. An official app's byline is left
+/// out when there is no room for a word of it (a bare "BY…" says nothing); a community app's always
+/// shows, as community apps are labelled as such.
 fn kind_badge(ui: &mut Ui, app: &artcraft_launcher_core::CraftApp, t: &Tokens) {
+    /// The least room an official byline is drawn in: "BY A…" and the badge's padding.
+    const MIN_OFFICIAL: f32 = 60.0;
     let text = fmt(tl!("by {name}"), &[("name", app.publisher)]);
+    let room = ui.available_width();
     let color = match app.kind {
+        AppKind::Official if room < MIN_OFFICIAL => return,
         AppKind::Official => t.accent_ink,
         AppKind::Community => t.muted,
     };
-    widgets::badge(ui, &text, color);
+    widgets::badge_within(ui, &text, color, room);
 }
 
 /// Translate a relative timestamp ("just now", "5 min ago", …) into the current language.
@@ -152,12 +160,22 @@ pub(crate) const HEADER_H: f32 = 48.0;
 pub(crate) const FOOTER_H: f32 = 34.0;
 
 const CARD_MIN_W: f32 = 320.0;
-const CARD_H: f32 = 314.0;
+/// Tall enough for the fullest card (a status badge and a download size) to keep two lines of its
+/// description above the date.
+const CARD_H: f32 = 330.0;
 /// The app column's name and tagline sizes, to centre them on the icon.
 const TITLE_SIZE: f32 = 16.0;
 const TAGLINE_SIZE: f32 = 12.0;
 /// The card's top strip: number tab and links.
 const STRIP_H: f32 = 40.0;
+/// Space between a card's "Last updated" line and its action row.
+const ACTIONS_GAP: f32 = 14.0;
+/// Space between a card's text and its "Last updated" line.
+const DATE_GAP: f32 = 12.0;
+/// The size of a card's "Last updated" line.
+const DATE_SIZE: f32 = 12.5;
+/// The most lines a card's description takes, room allowing.
+const BLURB_ROWS: usize = 4;
 const CARD_PAD: f32 = 20.0;
 /// Room macOS's traffic lights take at the left of the header.
 const TRAFFIC_LIGHTS_W: f32 = 72.0;
@@ -615,10 +633,33 @@ impl LauncherUi {
         }
 
         let inner = Rect::from_min_max(egui::pos2(rect.left() + CARD_PAD, strip.bottom() + 18.0), rect.max - vec2(CARD_PAD, CARD_PAD));
-        // A detached child: the card's contents never move the next card along.
-        let mut child = ui.new_child(egui::UiBuilder::new().max_rect(inner).layout(egui::Layout::top_down(egui::Align::Min)));
-        child.set_clip_rect(rect.intersect(ui.clip_rect()));
-        let ui = &mut child;
+        // The foot is placed first, from the bottom up: the action row, then "Last updated" a fixed
+        // gap above it. Cards are all one height, so the dates line up along a row whatever the text
+        // above them says, and that text gets only the room left above the date.
+        let actions = Rect::from_min_max(egui::pos2(inner.left(), inner.bottom() - theme::CONTROL_H), inner.max);
+        let updated = crate::card_parts::last_updated(&entry);
+        let date = updated.as_ref().map(|_| {
+            let bottom = actions.top() - ACTIONS_GAP;
+            Rect::from_x_y_ranges(inner.x_range(), bottom - lines_height(ui, &[&FontId::proportional(DATE_SIZE)], 0.0)..=bottom)
+        });
+        let text = Rect::from_min_max(inner.min, egui::pos2(inner.right(), date.map_or(actions.top() - ACTIONS_GAP, |d| d.top() - DATE_GAP)));
+        // Detached children: the card's contents never move the next card along. The text is clipped
+        // at its bottom, and at the card's sides rather than its own (the icon's shadow spreads into the
+        // padding), so a status line that wraps more than planned is cut rather than drawn over the
+        // date or the buttons.
+        let clip = rect.intersect(ui.clip_rect());
+        let child_at = |ui: &mut Ui, area: Rect, layout: egui::Layout, clip: Rect| {
+            let mut child = ui.new_child(egui::UiBuilder::new().max_rect(area).layout(layout));
+            child.set_clip_rect(clip);
+            child
+        };
+        let mut body = child_at(ui, text, egui::Layout::top_down(egui::Align::Min), clip.intersect(Rect::everything_above(text.bottom())));
+        // Made even with no date (then empty), so every card makes the same children and the widget ids
+        // of the cards after it (an open "…" menu) don't shift when this one's release arrives.
+        let mut date_row =
+            child_at(ui, date.unwrap_or(Rect::from_min_size(actions.min, egui::Vec2::ZERO)), egui::Layout::left_to_right(egui::Align::Center), clip);
+        let mut action_row = child_at(ui, actions, egui::Layout::left_to_right(egui::Align::Center), clip);
+        let ui = &mut body;
         ui.horizontal(|ui| {
             const ICON: f32 = 56.0;
             let [name, tagline] = [FontId::new(22.0, theme::display()), FontId::proportional(13.5)];
@@ -683,15 +724,18 @@ impl LauncherUi {
             }
         }
         if let Some(details) = AppDetails::by_id(id) {
-            crate::card_parts::blurb(ui, details.headline, t.muted, 4);
+            // As many lines of the description as fit above the date, up to BLURB_ROWS; a longer one
+            // ends in "…" and shows in full on hover.
+            let row = lines_height(ui, &[&FontId::proportional(crate::card_parts::BLURB_SIZE)], 0.0);
+            let rows = if row > 0.0 { ((ui.available_height() + 0.5) / row).floor().clamp(0.0, BLURB_ROWS as f32) as usize } else { 0 };
+            if rows > 0 {
+                crate::card_parts::blurb(ui, details.headline, t.muted, rows);
+            }
         }
-        if let Some(line) = crate::card_parts::last_updated(&entry) {
-            ui.add_space(6.0);
-            ui.add(egui::Label::new(RichText::new(line).size(12.5).color(t.faint)).selectable(false));
+        if let Some(line) = updated {
+            date_row.add(egui::Label::new(RichText::new(line).size(DATE_SIZE).color(t.faint)).selectable(false).truncate());
         }
-        ui.with_layout(egui::Layout::bottom_up(egui::Align::Min), |ui| {
-            ui.horizontal(|ui| self.actions_in(ui, &entry, &status, inner.width(), Place::Card));
-        });
+        self.actions_in(&mut action_row, &entry, &status, inner.width(), Place::Card);
     }
 
     // ---- table ---------------------------------------------------------------------------
