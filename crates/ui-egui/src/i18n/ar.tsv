@@ -104,6 +104,7 @@
 	ArtCraft Launcher {version}	ArtCraft Launcher {version}
 	Only when I ask	عندما أطلب فقط
 	Automatically download and install updates	تنزيل التحديثات وتثبيتها تلقائيًا
+	Ask for permission once when updating all apps	طلب الإذن مرة واحدة عند تحديث كل التطبيقات
 	Notify me when an installed app has an update	إعلامي عندما يتوفر تحديث لتطبيق مثبّت
 	Include pre-releases (betas and release candidates)	تضمين الإصدارات الأولية (التجريبية والمرشّحة)
 	Installing on Linux	التثبيت على Linux
@@ -200,6 +201,7 @@ deckcraft	Presentations and slide shows	العروض التقديمية وعرو
 gridcraft	Spreadsheets and data	الجداول الحسابية والبيانات
 craft-anything	Find out how any software works, then craft your own	اكتشف طريقة عمل أي برنامج، ثم اصنع برنامجك
 solidcraft	Parametric 3D CAD	التصميم البارامتري ثلاثي الأبعاد (CAD)
+mailcraft	Mail, calendar and contacts	البريد والتقويم وجهات الاتصال
 cadcraft	Computer-aided design and drafting	التصميم والرسم الهندسي بمساعدة الحاسوب
 soundcraft	Recording, editing and mixing audio	تسجيل الصوت وتحريره ومزجه
 figcraft	Interface design and prototyping	تصميم الواجهات والنماذج الأولية
@@ -318,6 +320,7 @@ filter	Installed	المثبّتة
 
 # Message templates (@msg): toasts from the backend. {placeholders} match any text.
 @msg	Couldn't open {name}: {e}	تعذّر فتح {name}: {e}
+@msg	ArtCraft Launcher couldn't start its window on {backend}: {e}	تعذّر على ArtCraft Launcher فتح نافذته باستخدام {backend}: {e}
 @msg	Download cancelled	أُلغي التنزيل
 @msg	{name} updated to {version}	تم تحديث {name} إلى {version}
 @msg	{name} installed: {version}	تم تثبيت {name}: {version}
@@ -382,6 +385,7 @@ filter	Installed	المثبّتة
 	ArtCraft on GitHub	حساب ArtCraft على GitHub
 	Join the ArtCraft Discord	الانضمام إلى مجتمع ArtCraft على Discord
 @plural	ArtCraft Launcher · {n} update available|ArtCraft Launcher · {n} updates available	ArtCraft Launcher · {n} تحديث متاح|ArtCraft Launcher · تحديث واحد متاح|ArtCraft Launcher · تحديثان متاحان|ArtCraft Launcher · {n} تحديثات متاحة|ArtCraft Launcher · {n} تحديثًا متاحًا|ArtCraft Launcher · {n} تحديث متاح
+	Download size: {size}	حجم التنزيل: {size}
 	Install folder	مجلد التثبيت
 	Default install folder	مجلد التثبيت الافتراضي
 	System default	الافتراضي في النظام
@@ -439,3 +443,14 @@ materialcraft	Preview materials in 2D and on 3D models.	عاين الخامات 
 	Migrate Flatpak bundles to ArtCraft OCI (experimental)	ترحيل ملفات Flatpak المجمّعة إلى ArtCraft OCI (تجريبي)
 	On update, switch first party apps when the matching package is available. Otherwise, keep using bundles.	عند التحديث، انقل تطبيقات ArtCraft الرسمية حين تتوفر حزمتها المطابقة، وإلا فاستمر في استخدام الملفات المجمّعة.
 	The OCI repository is a preview with GPG verification disabled.	مستودع OCI إصدار معاينة، والتحقق بتوقيع GPG فيه معطّل.
+anicraft	2D vector animation	الرسوم المتحركة المتجهية ثنائية الأبعاد
+anicraft	Vector animation on a timeline you know.	رسوم متحركة متجهية على مخطط زمني مألوف.
+anicraft	Open-source 2D vector animation, built in pure Rust.	رسوم متحركة متجهية ثنائية الأبعاد ومفتوحة المصدر، مبنية بلغة Rust بالكامل.
+anicraft	Familiar by design	تصميم مألوف
+anicraft	Stage, tools, timeline, layers, keyframes, Properties and Library sit where animators expect them, with onion skinning for in-betweening.	المسرح والأدوات والمخطط الزمني والطبقات والإطارات الرئيسية و«الخصائص» و«المكتبة» في الأماكن التي يتوقعها صانعو الرسوم المتحركة، مع قشرة البصل لرسم الإطارات البينية.
+anicraft	Tweens that ease	تحريك بيني سلس
+anicraft	Classic tweens with eight easing presets and custom ease curves, plus shape tweens that morph one vector contour into another.	تحريك بيني كلاسيكي مع ثمانية إعدادات مسبقة للتسارع والتباطؤ ومنحنيات مخصصة، إضافةً إلى تحريك بيني للشكل يحوّل محيطًا متجهيًا إلى آخر.
+	Version pinned to {version}. Click to unlock.	الإصدار مقفل على {version}. انقر لإلغاء القفل.
+	Unlock version?	هل تريد إلغاء قفل الإصدار؟
+	{app} is pinned to {version}. Follow the latest release instead?	التطبيق {app} مقفل على الإصدار {version}. هل تريد اتباع أحدث إصدار بدلًا منه؟
+	Unlock	إلغاء القفل
