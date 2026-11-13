@@ -804,7 +804,11 @@ impl LauncherUi {
         use egui::gui_zoom::kb_shortcuts;
         let notes_open = matches!(self.dialog, Some(Dialog::Notes(_)));
         let (delta, zoom_in, zoom_out, reset) = ctx.input_mut(|i| {
-            let delta = i.zoom_delta();
+            // `zoom_delta` combines Ctrl+wheel with native pinch gestures. Keep
+            // pinch zoom in the notes dialog, but don't let it resize the whole
+            // launcher UI.
+            let pinch_zoom = i.multi_touch().is_some() || i.events.iter().any(|event| matches!(event, egui::Event::Zoom(_)));
+            let delta = if !notes_open && pinch_zoom { 1.0 } else { i.zoom_delta() };
             let reset = notes_open && i.consume_shortcut(&kb_shortcuts::ZOOM_RESET);
             let zoom_in = notes_open && (i.consume_shortcut(&kb_shortcuts::ZOOM_IN) || i.consume_shortcut(&kb_shortcuts::ZOOM_IN_SECONDARY));
             let zoom_out = notes_open && i.consume_shortcut(&kb_shortcuts::ZOOM_OUT);

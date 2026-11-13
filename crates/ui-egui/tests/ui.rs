@@ -4039,6 +4039,18 @@ fn control_wheel_zooms_the_main_ui() {
 }
 
 #[test]
+/// A native pinch gesture must not resize the main UI.
+fn pinch_does_not_zoom_the_main_ui() {
+    let (mut h, _) = harness(ViewMode::Grid, egui::Theme::Dark, true);
+    h.run_steps(4);
+    let before = h.ctx.zoom_factor();
+    h.input_mut().events.push(egui::Event::Zoom(1.25));
+    h.step();
+    h.run_steps(2);
+    assert_eq!(h.ctx.zoom_factor(), before);
+}
+
+#[test]
 /// With release notes open, keyboard and wheel zoom change only the notes text (reset works)
 /// while the global zoom stays put and the release heading appears once.
 fn changelog_shortcuts_zoom_only_the_notes_text() {
