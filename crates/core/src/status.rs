@@ -22,7 +22,7 @@ pub enum InstallSource {
     Pacman,
     /// A Flatpak.
     Flatpak,
-    /// An AppImage file found on disk.
+    /// An `AppImage` file found on disk.
     AppImage,
     /// A binary found on `PATH` or in a system prefix.
     Binary,
@@ -56,7 +56,7 @@ pub struct Installed {
     /// `None` when the copy is there but its version couldn't be read.
     pub version: Option<Version>,
     pub source: InstallSource,
-    /// Where it lives: the `.app`, the exe, the AppImage, or the binary of a package.
+    /// Where it lives: the `.app`, the exe, the `AppImage`, or the binary of a package.
     pub location: String,
     /// The package that installed it, for package-manager installs (`photocraft-bin`).
     #[serde(default)]

@@ -45,7 +45,7 @@ fn unquote(v: &str) -> &str {
 
 /// The distro's own package format: `.deb` for the Debian family, `.rpm` for the Fedora, Red Hat
 /// and SUSE families, `.pkg.tar.zst` for the Arch Linux family, `None` for anything else
-/// (unknown distros), which gets AppImages.
+/// (unknown distros), which gets `AppImage` files.
 pub fn native_package(os: &OsRelease) -> Option<PackageKind> {
     std::iter::once(&os.id).chain(&os.id_like).find_map(|id| family(id))
 }

@@ -75,7 +75,7 @@ pub fn looks_like_jpeg(bytes: &[u8]) -> bool {
 /// Reads the pixel dimensions `(width, height)` declared in a JPEG's frame header, without
 /// decoding any pixels. `None` when the bytes aren't a JPEG we can read a frame size from.
 ///
-/// It walks the marker segments to the Start-Of-Frame (SOFn) marker, whose payload begins with
+/// It walks the marker segments to the Start-Of-Frame (`SOFn`) marker, whose payload begins with
 /// `precision (1) · height (2, big-endian) · width (2)`.
 pub fn jpeg_dimensions(bytes: &[u8]) -> Option<(u16, u16)> {
     if !looks_like_jpeg(bytes) {
