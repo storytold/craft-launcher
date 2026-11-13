@@ -16,3 +16,13 @@ serde_json = { workspace = true }
 semver = { workspace = true }
 # Calendar conversion (jiff); see AGENTS.md. Only civil-date math is used, no time zone.
 jiff = { workspace = true }
+
+# Signed website catalog (all dependencies are on the licence allowlist).
+base64 = "0.22"
+ed25519-dalek = { version = "2.2", default-features = false, features = ["std", "fast", "pem"] }
+sha2 = "0.10"
+toml = { version = "=1.1.8", default-features = false, features = ["parse", "serde", "std"] }
+
+[build-dependencies]
+serde = { workspace = true }
+toml = { version = "=1.1.8", default-features = false, features = ["parse", "serde", "std"] }

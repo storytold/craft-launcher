@@ -36,6 +36,10 @@
 	Install	安裝
 	Update to {v}	更新至 {v}
 	Open	開啟
+	Open {version}	開啟 {version}
+	Open {installed} without updating. {latest} stays available.	開啟 {installed}，不更新。{latest} 仍可稍後安裝。
+	{latest} is out, but ArtCraft Launcher can't install it over this copy.	{latest} 已發布，但 ArtCraft Launcher 無法用它取代此副本。
+	ArtCraft Launcher can't install version {version} over this copy.	ArtCraft Launcher 無法用版本 {version} 取代此副本。
 	Download for {os}	下載 {os} 版
 	Download	下載
 	Coming soon	即將推出
@@ -71,6 +75,7 @@
 	ArtCraft Launcher {version}	ArtCraft Launcher {version}
 	Only when I ask	僅在我要求時
 	Automatically download and install updates	自動下載並安裝更新
+	Ask for permission once when updating all apps	更新所有應用程式時僅請求一次權限
 	Notify me when an installed app has an update	已安裝的應用程式有更新時通知我
 	Include pre-releases (betas and release candidates)	包含預先發行版（Beta 版與候選發行版）
 	Installing on Linux	在 Linux 上安裝
@@ -248,6 +253,7 @@ filter	Installed	已安裝
 	Join the ArtCraft Discord	加入 ArtCraft Discord
 @plural	ArtCraft Launcher · {n} update available|ArtCraft Launcher · {n} updates available	ArtCraft Launcher · {n} 個更新可用
 @plural	{n} app|{n} apps	{n} 個應用程式
+artcraft	AI image and video creation	AI 影像與影片創作
 photocraft	Image editing	影像編輯
 vectorcraft	Vector illustration	向量插畫
 filmcraft	Video editing, color and sound	影片剪輯、調色與音效
@@ -260,6 +266,7 @@ deckcraft	Presentations and slide shows	簡報與幻燈片放映
 gridcraft	Spreadsheets and data	試算表與資料
 craft-anything	Find out how any software works, then craft your own	了解任何軟體如何運作，然後打造屬於你自己的版本
 solidcraft	Parametric 3D CAD	參數式 3D CAD
+mailcraft	Mail, calendar and contacts	郵件、行事曆與聯絡人
 cadcraft	Computer-aided design and drafting	電腦輔助設計與製圖
 soundcraft	Recording, editing and mixing audio	錄音、剪輯與混音
 figcraft	Interface design and prototyping	介面設計與原型製作
@@ -324,6 +331,7 @@ figcraft	Interface design and prototyping	介面設計與原型製作
 	Loading pictures…	正在載入圖片…
 	Pictures couldn't be loaded. Reopen this page to try again.	無法載入圖片。請重新開啟此頁面再試一次。
 @msg	Couldn't open {name}: {e}	無法開啟 {name}：{e}
+@msg	ArtCraft Launcher couldn't start its window on {backend}: {e}	無法在 {backend} 上啟動 ArtCraft Launcher 的視窗：{e}
 @msg	Download cancelled	已取消下載
 @msg	{name} updated to {version}	{name} 已更新至 {version}
 @msg	{name} installed: {version}	{name} 已安裝：{version}
@@ -388,3 +396,15 @@ materialcraft	Node graphs	節點圖
 materialcraft	Combine noises, patterns and filters.	組合雜訊、圖樣與濾鏡。
 materialcraft	Live previews	即時預覽
 materialcraft	Preview materials in 2D and on 3D models.	在 2D 與 3D 模型上預覽材質。
+	Download size: {size}	下載大小：{size}
+anicraft	2D vector animation	二維向量動畫
+anicraft	Vector animation on a timeline you know.	在您熟悉的時間軸上製作向量動畫。
+anicraft	Open-source 2D vector animation, built in pure Rust.	純 Rust 建構的開源二維向量動畫。
+anicraft	Familiar by design	設計直觀熟悉
+anicraft	Stage, tools, timeline, layers, keyframes, Properties and Library sit where animators expect them, with onion skinning for in-betweening.	舞台、工具、時間軸、圖層、關鍵影格、「屬性」與「元件庫」皆位於動畫師熟悉的位置，並具備洋蔥皮功能。
+anicraft	Tweens that ease	平滑補間緩動
+anicraft	Classic tweens with eight easing presets and custom ease curves, plus shape tweens that morph one vector contour into another.	傳統補間具備八種緩動預設與自訂曲線，並支援變換向量外框的形狀補間。
+	Version pinned to {version}. Click to unlock.	版本已鎖定為 {version}。按一下即可解除鎖定。
+	Unlock version?	解除版本鎖定？
+	{app} is pinned to {version}. Follow the latest release instead?	{app} 已鎖定為 {version}。是否改為使用最新版本？
+	Unlock	解除鎖定
