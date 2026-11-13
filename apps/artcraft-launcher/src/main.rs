@@ -6,6 +6,7 @@
 #![deny(clippy::unwrap_used, clippy::expect_used, clippy::panic, clippy::unimplemented, clippy::todo, clippy::unreachable)]
 
 #[cfg(target_os = "macos")]
+mod dock;
 mod hiding;
 mod logging;
 mod motion;
@@ -696,6 +697,10 @@ impl Host for DesktopHost {
         cfg!(target_os = "macos")
     }
 
+    fn has_dock(&self) -> bool {
+        cfg!(target_os = "macos")
+    }
+
     fn login_item(&self) -> Option<bool> {
         Some(login::is_enabled())
     }
@@ -955,6 +960,9 @@ impl<'a> Shell<'a> {
             let on = self.launcher.ui.settings.show_on_current_desktop;
             spaces::follow_current_desktop(on);
             self.applied_follow = Some(on);
+            // Back in the Dock before the window is ordered front, so it's a regular app again
+            // (app switcher, menu bar menus) while its window is open.
+            dock::show_in_dock(true);
             // Back from `put_away`, which hides the whole app here.
             hiding::unhide();
         }
@@ -977,6 +985,13 @@ impl<'a> Shell<'a> {
             hiding::hide();
             #[cfg(not(target_os = "macos"))]
             ctx.send_viewport_cmd(egui::ViewportCommand::Visible(false));
+            // Only the menu bar icon is left to bring the window back, so leave the Dock only
+            // where there is one. The setting is greyed out without close-to-tray but keeps its
+            // saved value, so a tray toggle mustn't act on it then.
+            #[cfg(target_os = "macos")]
+            if self.launcher.tray.is_some() && self.launcher.ui.settings.close_to_tray && self.launcher.ui.settings.hide_dock_icon_in_tray {
+                dock::show_in_dock(false);
+            }
         } else {
             self.launcher.closed_to_tray = true;
             ctx.send_viewport_cmd(egui::ViewportCommand::Close);
