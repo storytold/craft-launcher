@@ -331,6 +331,7 @@ figcraft	Interface design and prototyping	介面設計與原型製作
 	Loading pictures…	正在載入圖片…
 	Pictures couldn't be loaded. Reopen this page to try again.	無法載入圖片。請重新開啟此頁面再試一次。
 @msg	Couldn't open {name}: {e}	無法開啟 {name}：{e}
+@msg	ArtCraft Launcher couldn't start its window on {backend}: {e}	無法在 {backend} 上啟動 ArtCraft Launcher 的視窗：{e}
 @msg	Download cancelled	已取消下載
 @msg	{name} updated to {version}	{name} 已更新至 {version}
 @msg	{name} installed: {version}	{name} 已安裝：{version}
@@ -403,3 +404,7 @@ anicraft	Familiar by design	設計直觀熟悉
 anicraft	Stage, tools, timeline, layers, keyframes, Properties and Library sit where animators expect them, with onion skinning for in-betweening.	舞台、工具、時間軸、圖層、關鍵影格、「屬性」與「元件庫」皆位於動畫師熟悉的位置，並具備洋蔥皮功能。
 anicraft	Tweens that ease	平滑補間緩動
 anicraft	Classic tweens with eight easing presets and custom ease curves, plus shape tweens that morph one vector contour into another.	傳統補間具備八種緩動預設與自訂曲線，並支援變換向量外框的形狀補間。
+	Version pinned to {version}. Click to unlock.	版本已鎖定為 {version}。按一下即可解除鎖定。
+	Unlock version?	解除版本鎖定？
+	{app} is pinned to {version}. Follow the latest release instead?	{app} 已鎖定為 {version}。是否改為使用最新版本？
+	Unlock	解除鎖定

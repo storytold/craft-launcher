@@ -315,6 +315,7 @@ filter	Installed	Telepítve
 
 # Message templates (@msg): toasts from the backend. {placeholders} match any text.
 @msg	Couldn't open {name}: {e}	{name} nem nyitható meg: {e}
+@msg	ArtCraft Launcher couldn't start its window on {backend}: {e}	Nem sikerült elindítani az ArtCraft Launcher ablakát ({backend}): {e}
 @msg	Download cancelled	Letöltés megszakítva
 @msg	{name} updated to {version}	{name} frissítve. Verzió: {version}
 @msg	{name} installed: {version}	{name} telepítve: {version}
@@ -445,3 +446,7 @@ anicraft	Familiar by design	Ismerős kialakítás
 anicraft	Stage, tools, timeline, layers, keyframes, Properties and Library sit where animators expect them, with onion skinning for in-betweening.	Színpad, eszközök, idővonal, rétegek, kulcsképkockák, Tulajdonságok és Könyvtár a megszokott helyen, hagymabőr funkcióval.
 anicraft	Tweens that ease	Finom mozgásinterpolációk
 anicraft	Classic tweens with eight easing presets and custom ease curves, plus shape tweens that morph one vector contour into another.	Klasszikus mozgásinterpolációk nyolc görbe-előbeállítással és egyéni görbékkel, valamint alakos interpolációk.
+	Version pinned to {version}. Click to unlock.	A verzió rögzítve: {version}. Kattintson a feloldáshoz.
+	Unlock version?	Feloldja a verzió zárolását?
+	{app} is pinned to {version}. Follow the latest release instead?	A(z) {app} a(z) {version} verzióra van rögzítve. Inkább a legújabb kiadást kövesse?
+	Unlock	Feloldás

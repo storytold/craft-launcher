@@ -335,6 +335,7 @@ figcraft	Interface design and prototyping	界面设计与原型制作
 
 # Message templates (@msg): toasts from the backend. {placeholders} match any text.
 @msg	Couldn't open {name}: {e}	无法打开 {name}：{e}
+@msg	ArtCraft Launcher couldn't start its window on {backend}: {e}	无法在 {backend} 上启动 ArtCraft Launcher 的窗口：{e}
 @msg	Download cancelled	下载已取消
 @msg	{name} updated to {version}	{name} 已更新至 {version}
 @msg	{name} installed: {version}	{name} 已安装：{version}
@@ -412,3 +413,7 @@ anicraft	Familiar by design	布局熟悉自然
 anicraft	Stage, tools, timeline, layers, keyframes, Properties and Library sit where animators expect them, with onion skinning for in-betweening.	舞台、工具、时间线、图层、关键帧、“属性”和“库”均位于动画师熟悉的直观位置，并配有洋葱皮功能。
 anicraft	Tweens that ease	流畅补间缓动
 anicraft	Classic tweens with eight easing presets and custom ease curves, plus shape tweens that morph one vector contour into another.	经典补间具备八种缓动预设与自定义曲线，外加将一种矢量轮廓变换为另一种的形状补间。
+	Version pinned to {version}. Click to unlock.	版本已固定为 {version}。点击解锁。
+	Unlock version?	解锁版本？
+	{app} is pinned to {version}. Follow the latest release instead?	{app} 已固定为 {version}。是否改为跟随最新版本？
+	Unlock	解锁

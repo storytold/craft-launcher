@@ -288,6 +288,7 @@ filter	Installed	Instalados
 
 # Message templates (@msg): toasts from the backend. {placeholders} match any text.
 @msg	Couldn't open {name}: {e}	Não foi possível abrir {name}: {e}
+@msg	ArtCraft Launcher couldn't start its window on {backend}: {e}	Não foi possível iniciar a janela do ArtCraft Launcher em {backend}: {e}
 @msg	Download cancelled	Download cancelado
 @msg	{name} updated to {version}	{name} atualizado para {version}
 @msg	{name} installed: {version}	{name} instalado: {version}
@@ -432,3 +433,7 @@ anicraft	Familiar by design	Design familiar
 anicraft	Stage, tools, timeline, layers, keyframes, Properties and Library sit where animators expect them, with onion skinning for in-betweening.	Palco, ferramentas, linha do tempo, camadas, quadros-chave, Propriedades e Biblioteca onde os animadores esperam, com papel vegetal.
 anicraft	Tweens that ease	Interpolações suaves
 anicraft	Classic tweens with eight easing presets and custom ease curves, plus shape tweens that morph one vector contour into another.	Interpolações clássicas com oito predefinições de suavização e curvas personalizadas, além de interpolação de forma.
+	Version pinned to {version}. Click to unlock.	Versão fixada em {version}. Clique para desbloquear.
+	Unlock version?	Desbloquear versão?
+	{app} is pinned to {version}. Follow the latest release instead?	{app} está fixado na versão {version}. Usar a versão mais recente?
+	Unlock	Desbloquear

@@ -316,6 +316,7 @@ filter	Installed	Zainstalowane
 
 # Message templates (@msg): toasts from the backend. {placeholders} match any text.
 @msg	Couldn't open {name}: {e}	Nie udało się otworzyć {name}: {e}
+@msg	ArtCraft Launcher couldn't start its window on {backend}: {e}	Nie udało się uruchomić okna ArtCraft Launcher na {backend}: {e}
 @msg	Download cancelled	Anulowano pobieranie
 @msg	{name} updated to {version}	Zaktualizowano {name} do wersji {version}
 @msg	{name} installed: {version}	Zainstalowano {name} w wersji {version}
@@ -446,3 +447,7 @@ anicraft	Familiar by design	Znany i intuicyjny interfejs
 anicraft	Stage, tools, timeline, layers, keyframes, Properties and Library sit where animators expect them, with onion skinning for in-betweening.	Scena, narzędzia, oś czasu, warstwy, klatki kluczowe, Właściwości i Biblioteka znajdują się tam, gdzie oczekują animatorzy, wraz z łuskami cebuli.
 anicraft	Tweens that ease	Płynne klatki pośrednie (tweens)
 anicraft	Classic tweens with eight easing presets and custom ease curves, plus shape tweens that morph one vector contour into another.	Klasyczne animacje klatek pośrednich z ośmioma profilami dynamiki i własnymi krzywymi oraz przejścia kształtu.
+	Version pinned to {version}. Click to unlock.	Wersja jest zablokowana na {version}. Kliknij, aby odblokować.
+	Unlock version?	Odblokować wersję?
+	{app} is pinned to {version}. Follow the latest release instead?	Aplikacja {app} jest przypięta do wersji {version}. Zamiast tego śledzić najnowsze wydanie?
+	Unlock	Odblokuj
