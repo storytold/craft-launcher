@@ -111,8 +111,8 @@ settings file must produce an error the user can act on, never a panic.
   from an approved community app's own repo: today only
   `https://github.com/tangency-labs/solidcraft/releases` (SolidCraft, approved by the project
   owner on 2026-10-28) and `https://github.com/UCS-Care-Group/mailcraft/releases` (MailCraft,
-  approved on 2026-11-08) and `https://github.com/DrDMo/accountingcraft/releases` (AccountingCraft,
-  pending a maintainer's approval). A community app's repo is pinned in the catalog (`CraftApp::repo`,
+  approved on 2026-11-08). `https://github.com/DrDMo/accountingcraft/releases` (AccountingCraft)
+  is proposed, not approved, until a maintainer approves it. A community app's repo is pinned in the catalog (`CraftApp::repo`,
   `AppKind::Community`): the release feed can move an app within `storytold/`, never to another
   owner. The one other exception is a developer's own loopback mirror (`ARTCRAFT_LAUNCHER_DOWNLOAD_BASE`,
   `cargo xtask local`); keep it loopback-only and behind the `local-mirror` cargo feature, which
