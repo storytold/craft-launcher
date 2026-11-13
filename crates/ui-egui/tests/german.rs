@@ -94,6 +94,9 @@ fn events() -> Vec<Event> {
             source: InstallSource::MacApp,
             location: format!("/Applications/{}.app", app.name),
             package: None,
+            externally_managed: false,
+            origin: None,
+            installation: None,
         });
         ev.push(Event::Detected { app: app.id.into(), installed: inst });
     }
@@ -109,11 +112,14 @@ fn harness_language(
     theme: egui::Theme,
     manage: bool,
     language: &str,
+    extra: Vec<Event>,
 ) -> (Harness<'static, Option<LauncherUi>>, Rc<RefCell<Vec<Command>>>) {
     artcraft_launcher_ui_egui::i18n::set_test_lang(artcraft_launcher_ui_egui::i18n::Lang::EN);
     let sent = Rc::new(RefCell::new(Vec::new()));
     let sent2 = sent.clone();
-    let mut backend = Some(Fake { events: events(), sent: sent2, manage, clock: Rc::new(Cell::new(NOW)) });
+    let mut events = events();
+    events.extend(extra);
+    let mut backend = Some(Fake { events, sent: sent2, manage, clock: Rc::new(Cell::new(NOW)) });
     let settings = Settings { view, notify: false, language: language.into(), ..Settings::default() };
     let harness = Harness::builder().with_size(egui::vec2(1180.0, 900.0)).with_theme(theme).build_ui_state(
         move |ui, state: &mut Option<LauncherUi>| {
@@ -147,7 +153,7 @@ fn snapshot(h: &mut Harness<'_, Option<LauncherUi>>, name: &str) {
 // One test: the UI language is process-wide.
 #[test]
 fn german_switches_persists_and_keeps_install_actions() {
-    let (mut h, sent) = harness_language(ViewMode::Grid, egui::Theme::Dark, true, "en");
+    let (mut h, sent) = harness_language(ViewMode::Grid, egui::Theme::Dark, true, "en", Vec::new());
     h.run_steps(6);
     h.get_by_label("Settings").click();
     h.run_steps(3);
@@ -176,12 +182,23 @@ fn german_switches_persists_and_keeps_install_actions() {
     let installs: Vec<_> = sent.borrow().iter().filter_map(|c| if let Command::Install { app } = c { Some(app.clone()) } else { None }).collect();
     assert_eq!(installs, ["photocraft", "effectcraft"]);
 
-    let (mut table, _) = harness_language(ViewMode::Table, egui::Theme::Light, true, &restored.language);
+    let (mut table, _) = harness_language(ViewMode::Table, egui::Theme::Light, true, &restored.language, Vec::new());
     table.run_steps(6);
     table.get_by_label("Datum");
     assert!(table.query_all_by_label_contains(". Okt. 2026").count() >= 1);
     snapshot(&mut table, "table-de-light");
-    let (mut web, _) = harness_language(ViewMode::Grid, egui::Theme::Dark, false, &restored.language);
+    // Kept downloads: German retry labels are long, but a button never outgrows its slot (#956).
+    let kept = ["photocraft", "vectorcraft"].map(|app| Event::ReadyToInstall { app: app.into(), ready: true });
+    let (mut retry, _) = harness_language(ViewMode::Table, egui::Theme::Light, true, &restored.language, kept.into());
+    retry.run_steps(6);
+    let slot = retry.query_all_by_label("Installieren").next().unwrap().rect().width();
+    for app in ["PhotoCraft", "VectorCraft"] {
+        let menu = retry.get_by_label(&format!("Weitere Aktionen für {app}")).rect();
+        let main = main_button_in_line(&retry, menu, app);
+        assert!(main.right() > menu.left() - 20.0, "{app}: {main:?} isn't beside the menu {menu:?}");
+        assert!(main.width() <= slot + 0.5, "{app}: {main:?} wider than Installieren ({slot})");
+    }
+    let (mut web, _) = harness_language(ViewMode::Grid, egui::Theme::Dark, false, &restored.language, Vec::new());
     web.run_steps(6);
     assert!(web.query_all_by_label("Für macOS herunterladen").count() >= 3);
     for width in [720.0, 800.0, 1180.0] {
@@ -193,6 +210,87 @@ fn german_switches_persists_and_keeps_install_actions() {
             if let Some(text) = web.query_by_label("Craft App Suite") {
                 assert!(!rect.intersects(text.rect()), "{width}: Craft App Suite overlaps {label} {rect:?}");
             }
+        }
+    }
+    for language in &artcraft_launcher_ui_egui::i18n::LANGUAGES {
+        main_buttons_fit_the_narrowest_window(language.code);
+    }
+    a_table_update_too_narrow_to_sit_side_by_side_stacks();
+}
+
+/// German's "ÖFFNEN | AKTUALISIEREN" doesn't fit side by side in the table's action slot, so
+/// PhotoCraft's row stacks them: Open, naming its version, above Update, both clear of the `⋯`
+/// menu, in a row tall enough for both. Open only opens. Called from the one test above: the UI
+/// language is process-wide, so the German checks share a test.
+fn a_table_update_too_narrow_to_sit_side_by_side_stacks() {
+    let (mut h, sent) = harness_language(ViewMode::Table, egui::Theme::Dark, true, "de", Vec::new());
+    h.run_steps(8);
+    let keep = "0.4.1 ohne Aktualisierung öffnen. 0.5.0 bleibt verfügbar.";
+    let open = h.get_by_label(keep).rect();
+    let update = h.get_by_label("Auf 0.5.0 aktualisieren").rect();
+    let menu = h.get_by_label("Weitere Aktionen für PhotoCraft").rect();
+    assert!(open.bottom() <= update.top() && (open.left() - update.left()).abs() < 0.5, "Open above Update: {open:?} {update:?}");
+    assert!(open.right() <= menu.left() && update.right() <= menu.left(), "both clear of the menu {menu:?}: {open:?} {update:?}");
+    assert!(open.top() < menu.center().y && update.bottom() > menu.center().y, "the menu sits beside the pair: {menu:?}");
+    // Up-to-date LightCraft keeps a one-line row.
+    let light = h.get_by_label("Weitere Aktionen für LightCraft").rect();
+    assert!(update.bottom() - open.top() > light.height() * 1.5, "PhotoCraft's row grew for two buttons");
+    // The pair stays inside its own row: the next row's controls start below it.
+    let next = h
+        .query_all_by_label_contains("Weitere Aktionen für")
+        .map(|n| n.rect())
+        .filter(|r| r.top() > menu.top())
+        .min_by(|a, b| a.top().total_cmp(&b.top()))
+        .expect("a row below PhotoCraft's");
+    assert!(update.bottom() < next.top(), "Update {update:?} runs into the next row {next:?}");
+
+    sent.borrow_mut().clear();
+    h.get_by_label(keep).click();
+    h.run_steps(2);
+    let sent = sent.borrow();
+    assert!(sent.iter().any(|c| matches!(c, Command::Launch { app, .. } if app == "photocraft")), "{sent:?}");
+    assert!(!sent.iter().any(|c| matches!(c, Command::Install { .. })), "{sent:?}");
+}
+
+/// How far from the `⋯` menu's middle a row's main button can be: a stacked Open and Update sit
+/// half a button (and half the seam) above and below it. Rows are further apart than this.
+const STACKED_OFFSET: f32 = 20.0;
+
+/// The main button of the row whose `⋯` menu is `menu` (the one ending nearest the menu), after
+/// checking it is in line with the menu: centred on it, or, stacked over its twin (the button of
+/// the same width ending at the same place), the pair centred on it. Only a stacked pair may sit
+/// off the menu's middle.
+fn main_button_in_line(h: &Harness<'static, Option<LauncherUi>>, menu: egui::Rect, what: &str) -> egui::Rect {
+    let near: Vec<egui::Rect> = h
+        .query_all_by_role(egui::accesskit::Role::Button)
+        .map(|n| n.rect())
+        .filter(|r| (r.center().y - menu.center().y).abs() < STACKED_OFFSET && r.left() < menu.left() && r.height() < 40.0)
+        .collect();
+    let main = *near.iter().max_by(|a, b| a.right().total_cmp(&b.right())).unwrap_or_else(|| panic!("{what}: no main button by {menu:?}"));
+    let column: Vec<&egui::Rect> = near.iter().filter(|r| (r.right() - main.right()).abs() < 0.5 && (r.left() - main.left()).abs() < 0.5).collect();
+    let (top, bottom) = column.iter().fold((f32::INFINITY, f32::NEG_INFINITY), |(t, b), r| (t.min(r.top()), b.max(r.bottom())));
+    let middle = (top + bottom) / 2.0;
+    assert!((middle - menu.center().y).abs() < 1.0, "{what}: {column:?} not in line with the menu {menu:?}");
+    main
+}
+
+/// At the launcher's narrowest, no main button outgrows its slot or crowds out the `⋯` menu (#956):
+/// a kept update, a kept install and a plain update, in both views, whichever label `language` has.
+fn main_buttons_fit_the_narrowest_window(language: &str) {
+    use artcraft_launcher_ui_egui::i18n::{fmt, t};
+    for view in [ViewMode::Table, ViewMode::Grid] {
+        let kept = ["photocraft", "vectorcraft"].map(|app| Event::ReadyToInstall { app: app.into(), ready: true });
+        let (mut h, _) = harness_language(view, egui::Theme::Dark, true, language, kept.into());
+        h.set_size(egui::vec2(720.0, 1600.0));
+        h.run_steps(8);
+        let slot = h.query_all_by_label(t("Install")).next().unwrap().rect().width();
+        for app in ["PhotoCraft", "VectorCraft", "EffectCraft"] {
+            let menu = h.get_by_label(&fmt(t("More actions for {name}"), &[("name", app)])).rect();
+            let main = main_button_in_line(&h, menu, &format!("{language} {view:?} {app}"));
+            assert!(main.width() <= slot + 0.5, "{language} {view:?} {app}: {main:?} wider than Install ({slot})");
+            assert!(main.right() <= menu.left(), "{language} {view:?} {app}: {main:?} overlaps the menu {menu:?}");
+            // The table scrolls sideways, with a fixed slot; cards have to fit the window.
+            assert!(view == ViewMode::Table || menu.right() <= 720.0, "{language} {view:?} {app}: the menu left the window: {menu:?}");
         }
     }
 }

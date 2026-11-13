@@ -10,6 +10,7 @@ pub use semver::Version;
 /// some platforms report. Build metadata is kept but never affects ordering.
 pub fn parse(text: &str) -> Option<Version> {
     let t = text.trim();
+    let t = t.strip_prefix("artcraft-v").unwrap_or(t);
     let t = t.strip_prefix(['v', 'V']).unwrap_or(t);
     if t.is_empty() || t.len() > 64 {
         return None;
@@ -136,6 +137,7 @@ mod tests {
     #[test]
     fn reads_tags_and_platform_spellings() {
         assert_eq!(v("v0.5.0"), Version::new(0, 5, 0));
+        assert_eq!(v("artcraft-v0.42.0"), Version::new(0, 42, 0));
         assert_eq!(v(" 1.2.3\n"), Version::new(1, 2, 3));
         assert_eq!(v("0.5"), Version::new(0, 5, 0));
         assert_eq!(v("0.2.0~rc.1-1").to_string(), "0.2.0-rc.1");

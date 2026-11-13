@@ -48,6 +48,10 @@
 	Install	Installer
 	Update to {v}	Mettre à jour vers {v}
 	Open	Ouvrir
+	Open {version}	Ouvrir {version}
+	Open {installed} without updating. {latest} stays available.	Ouvrir {installed} sans mettre à jour. {latest} reste disponible.
+	{latest} is out, but ArtCraft Launcher can't install it over this copy.	{latest} est sortie, mais ArtCraft Launcher ne peut pas l’installer par-dessus cette copie.
+	ArtCraft Launcher can't install version {version} over this copy.	ArtCraft Launcher ne peut pas installer la version {version} par-dessus cette copie.
 	Download for {os}	Télécharger pour {os}
 	Download	Télécharger
 	Coming soon	Bientôt disponible
@@ -71,6 +75,13 @@
 	Show in Files	Afficher dans Fichiers
 	Reinstall	Réinstaller
 	Uninstall…	Désinstaller…
+	Launch options…	Options de lancement…
+	{name} launch options	Options de lancement de {name}
+	Flags added each time the app is opened	Options ajoutées à chaque ouverture de l'application
+	Separate flags with spaces. Quote a value that has spaces in it.	Séparez les options par des espaces. Mettez entre guillemets une valeur qui contient des espaces.
+	A quote isn't closed.	Un guillemet n'est pas fermé.
+	{name} wasn't opened: a quote in its launch options isn't closed.	{name} n'a pas été ouvert : un guillemet n'est pas fermé dans ses options de lancement.
+	Save	Enregistrer
 	All releases	Toutes les versions
 	ArtCraft Launcher {version} is available.	ArtCraft Launcher {version} est disponible.
 	Dismiss	Ignorer
@@ -86,6 +97,7 @@
 	ArtCraft Launcher {version}	ArtCraft Launcher {version}
 	Only when I ask	Seulement à ma demande
 	Automatically download and install updates	Télécharger et installer les mises à jour automatiquement
+	Ask for permission once when updating all apps	Demander l'autorisation une seule fois lors de la mise à jour de toutes les applications
 	Notify me when an installed app has an update	Me prévenir quand une application installée a une mise à jour
 	Include pre-releases (betas and release candidates)	Inclure les préversions (bêtas et versions candidates)
 	Installing on Linux	Installation sous Linux
@@ -121,6 +133,12 @@
 	Apps on this computer	Applications sur cet ordinateur
 	Installed apps with a newer version	Applications installées avec une version plus récente
 	Apps you can install	Applications que vous pouvez installer
+	Pin to top	Épingler en haut
+	Unpin	Désépingler
+	Pinned	Épinglés
+	Reorder {name}	Réordonner {name}
+	Move up	Monter
+	Move down	Descendre
 	Hide App	Masquer l'application
 	Unhide App	Afficher l'application
 	Hidden Apps	Applications masquées
@@ -146,6 +164,7 @@
 	Update cancelled	Mise à jour annulée
 	Uninstall cancelled	Désinstallation annulée
 	Retry install	Réessayer l'installation
+	Retry update	Réessayer la mise à jour
 	Retry update to {version}	Réessayer la mise à jour vers {version}
 	The download is still here. It's checked again, then installed.	Le téléchargement est toujours là. Il sera vérifié à nouveau, puis installé.
 	Waiting for another app…	En attente d'une autre application…
@@ -162,6 +181,7 @@
 	Tarball (.tar.gz)	Archive (.tar.gz)
 
 # Contextual: each app's tagline, keyed by app id
+artcraft	AI image and video creation	Création d'images et de vidéos par IA
 photocraft	Image editing	Retouche d'images
 vectorcraft	Vector illustration	Illustration vectorielle
 filmcraft	Video editing, color and sound	Montage vidéo, étalonnage et son
@@ -174,6 +194,7 @@ deckcraft	Presentations and slide shows	Présentations et diaporamas
 gridcraft	Spreadsheets and data	Tableurs et données
 craft-anything	Find out how any software works, then craft your own	Découvrez comment fonctionne n'importe quel logiciel, puis créez le vôtre
 solidcraft	Parametric 3D CAD	CAO paramétrique 3D
+mailcraft	Mail, calendar and contacts	Courrier, calendrier et contacts
 cadcraft	Computer-aided design and drafting	Conception et dessin assistés par ordinateur
 soundcraft	Recording, editing and mixing audio	Enregistrement, édition et mixage audio
 figcraft	Interface design and prototyping	Design d'interfaces et prototypage
@@ -277,6 +298,7 @@ filter	Installed	Installées
 
 # Message templates (@msg): toasts from the backend. {placeholders} match any text.
 @msg	Couldn't open {name}: {e}	Impossible d'ouvrir {name} : {e}
+@msg	ArtCraft Launcher couldn't start its window on {backend}: {e}	Impossible de démarrer la fenêtre d'ArtCraft Launcher avec {backend} : {e}
 @msg	Download cancelled	Téléchargement annulé
 @msg	{name} updated to {version}	{name} mis à jour vers {version}
 @msg	{name} installed: {version}	{name} installé : {version}
@@ -355,6 +377,8 @@ filter	Installed	Installées
 	Loading pictures…	Chargement des images…
 	Pictures couldn't be loaded. Reopen this page to try again.	Impossible de charger les images. Rouvrir la page permet de réessayer.
 @plural	ArtCraft Launcher · {n} update available|ArtCraft Launcher · {n} updates available	ArtCraft Launcher · {n} mise à jour disponible|ArtCraft Launcher · {n} mises à jour disponibles
+
+	Download size: {size}	Taille du téléchargement : {size}
 	Install folder	Dossier d’installation
 	Default install folder	Dossier d’installation par défaut
 	System default	Par défaut du système
@@ -401,3 +425,25 @@ texturecraft	Mesh maps	Cartes de maillage
 texturecraft	Bake mesh maps and use smart materials.	Calculez des cartes de maillage et utilisez des matériaux intelligents.
 texturecraft	Paint textures on 3D models.	Peignez des textures sur des modèles 3D.
 	Hide community apps	Masquer les applications communautaires
+materialcraft	Procedural material design	Conception de matériaux procéduraux
+materialcraft	Build materials with node graphs.	Créez des matériaux avec des graphes de nœuds.
+materialcraft	Create tileable PBR materials and export texture maps.	Créez des matériaux PBR répétables sans raccord et exportez des cartes de textures.
+materialcraft	Node graphs	Graphes de nœuds
+materialcraft	Combine noises, patterns and filters.	Combinez bruits, motifs et filtres.
+materialcraft	Live previews	Aperçus en direct
+materialcraft	Preview materials in 2D and on 3D models.	Visualisez les matériaux en 2D et sur des modèles 3D.
+	Advanced	Avancé
+	Migrate Flatpak bundles to ArtCraft OCI (experimental)	Migrer les paquets Flatpak vers ArtCraft OCI (expérimental)
+	On update, switch first party apps when the matching package is available. Otherwise, keep using bundles.	Lors des mises à jour, migrer les applications ArtCraft si le paquet correspondant est disponible. Sinon, continuer à utiliser les paquets autonomes.
+	The OCI repository is a preview with GPG verification disabled.	Le dépôt OCI est une version préliminaire avec la vérification GPG désactivée.
+anicraft	2D vector animation	Animation vectorielle 2D
+anicraft	Vector animation on a timeline you know.	Animation vectorielle sur une chronologie familière.
+anicraft	Open-source 2D vector animation, built in pure Rust.	Animation vectorielle 2D open source, conçue en pur Rust.
+anicraft	Familiar by design	Conception familière
+anicraft	Stage, tools, timeline, layers, keyframes, Properties and Library sit where animators expect them, with onion skinning for in-betweening.	Scène, outils, chronologie, calques, images clés, Propriétés et Bibliothèque là où les animateurs les attendent, avec pelure d'oignon.
+anicraft	Tweens that ease	Interpolations fluides
+anicraft	Classic tweens with eight easing presets and custom ease curves, plus shape tweens that morph one vector contour into another.	Interpolations classiques avec huit préréglages d'accélération et courbes personnalisées, plus interpolations de forme.
+	Version pinned to {version}. Click to unlock.	Version fixée à {version}. Cliquez pour la déverrouiller.
+	Unlock version?	Déverrouiller la version ?
+	{app} is pinned to {version}. Follow the latest release instead?	{app} est fixé à la version {version}. Suivre plutôt la dernière version ?
+	Unlock	Déverrouiller

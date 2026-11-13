@@ -7,7 +7,7 @@ use artcraft_launcher_core::protocol::{
 };
 use artcraft_launcher_core::release::Release;
 use artcraft_launcher_core::status::AppStatus;
-use artcraft_launcher_core::{Arch, PackageKind, Platform, SUITE};
+use artcraft_launcher_core::{Arch, PackageKind, Platform};
 
 use crate::i18n::set_current;
 use crate::model::AppEntry;
@@ -96,7 +96,7 @@ pub(crate) struct Toast {
 #[derive(Clone, Debug, PartialEq)]
 pub(crate) enum UiAction {
     Command(Command),
-    /// [`Command::Launch`] plus one launch-count increment.
+    /// [`Command::Launch`] with the app's launch flags, plus one launch-count increment.
     Launch(String),
     /// Re-run the manual update check, clearing the auto-update back-off.
     CheckNow,
@@ -111,11 +111,13 @@ pub(crate) enum UiAction {
 pub(crate) enum Dialog {
     Notes(String),
     ConfirmUninstall(String),
+    UnlockVersion { app: String, tag: String },
     Install { app: String, folder: String },
     Replace { app: String, path: String },
     Settings,
     LauncherUpdate(artcraft_launcher_core::Release),
     Versions(String),
+    LaunchFlags { app: String, flags: String },
 }
 
 impl Dialog {
@@ -125,11 +127,13 @@ impl Dialog {
         match self {
             Dialog::Notes(id) => ("notes", id),
             Dialog::ConfirmUninstall(id) => ("uninstall", id),
+            Dialog::UnlockVersion { app, .. } => ("unlock-version", app),
             Dialog::Install { app, .. } => ("install", app),
             Dialog::Replace { app, .. } => ("replace", app),
             Dialog::Settings => ("settings", ""),
             Dialog::LauncherUpdate(r) => ("launcher-update", &r.tag),
             Dialog::Versions(id) => ("versions", id),
+            Dialog::LaunchFlags { app, .. } => ("launch-flags", app),
         }
     }
 }
@@ -205,6 +209,9 @@ pub struct LauncherUi {
     /// Toasts created from logic (which may run with an old input time) or the UI. Their expiry is
     /// fixed when the next `ui` pass actually shows them.
     pending_toasts: Vec<(String, bool)>,
+    /// While the user drags a pin handle: dragged catalog id and the pinned order at drag start
+    /// (so Escape can restore it after live mid-drag reorders).
+    pub(crate) pin_dragging: Option<(String, Vec<String>)>,
 }
 
 /// The language to draw in: the preference, or English where it needs a CJK font the system
@@ -229,6 +236,13 @@ const RESCAN_EVERY: i64 = 5 * 60;
 /// Coming back to the window re-checks, but not more often than this.
 const RESCAN_ON_FOCUS_AFTER: i64 = 30;
 
+/// A periodic update check is due `every` seconds after the last one. The saved time is
+/// hostile (an edited `app.ron`, a clock that ran fast and was later corrected): a time in
+/// the future or a corrupted `i64::MIN` never postpones the check (#774).
+fn update_check_due(last: Option<i64>, now: i64, every: i64) -> bool {
+    last.is_none_or(|t| t > now || now.saturating_sub(t) >= every)
+}
+
 impl LauncherUi {
     /// Builds the UI shell around `backend`: installs the bundled fonts and an available system
     /// CJK face when the effective language needs it, plus image loaders; snapshots capabilities and
@@ -248,7 +262,11 @@ impl LauncherUi {
         Self {
             backend,
             settings,
-            entries: SUITE.iter().map(AppEntry::new).collect(),
+            entries: artcraft_launcher_core::hosted_catalog::apps()
+                .iter()
+                .filter(|a| platform.is_none_or(|p| a.runs_on(p.os)))
+                .map(AppEntry::new)
+                .collect(),
             caps,
             platform,
             checking: false,
@@ -287,6 +305,7 @@ impl LauncherUi {
             frame: None,
             flushed: Vec::new(),
             pending_toasts: Vec::new(),
+            pin_dragging: None,
         }
     }
 
@@ -385,9 +404,18 @@ impl LauncherUi {
             match action {
                 UiAction::Command(command) => self.backend.send(command.clone()),
                 UiAction::Launch(id) => {
+                    let flags = self.settings.launch_flags.get(id).map_or("", String::as_str);
+                    // The dialog only saves flags that split, but the settings file can be edited by hand.
+                    let Ok(args) = artcraft_launcher_core::args::split(flags) else {
+                        let name = self.entry(id).map_or(id.as_str(), |e| e.app.name).to_string();
+                        let text = crate::i18n::fmt(tl!("{name} wasn't opened: a quote in its launch options isn't closed."), &[("name", &name)]);
+                        self.queue_toast(text, true);
+                        self.flushed.push(action.clone());
+                        continue;
+                    };
                     let opened = self.settings.launches.entry(id.clone()).or_insert(0);
                     *opened = opened.saturating_add(1);
-                    self.backend.send(Command::Launch { app: id.clone() });
+                    self.backend.send(Command::Launch { app: id.clone(), args });
                 }
                 UiAction::CheckNow => {
                     self.auto_update_attempted.clear();
@@ -498,15 +526,15 @@ impl LauncherUi {
             self.last_detect = now;
         }
         let focused = ctx.input(|i| i.viewport().focused).unwrap_or(true);
-        let came_back = focused && !self.was_focused && now - self.last_detect >= RESCAN_ON_FOCUS_AFTER;
+        let came_back = focused && !self.was_focused && now.saturating_sub(self.last_detect) >= RESCAN_ON_FOCUS_AFTER;
         self.was_focused = focused;
-        if came_back || now - self.last_detect >= RESCAN_EVERY {
+        if came_back || now.saturating_sub(self.last_detect) >= RESCAN_EVERY {
             self.last_detect = now;
             self.backend.send(Command::Detect);
         }
         if let Some(every) = self.settings.check_every.seconds()
             && !self.checking
-            && self.settings.last_check.is_none_or(|t| now - t >= every)
+            && update_check_due(self.settings.last_check, now, every)
         {
             self.backend.send(Command::CheckForUpdates { force: false });
         }
@@ -532,6 +560,18 @@ impl LauncherUi {
     /// Returns whether app state changed.
     fn handle(&mut self, event: Event) -> bool {
         match event {
+            Event::CatalogUpdated => {
+                for app in artcraft_launcher_core::hosted_catalog::apps().iter().filter(|a| self.platform.is_none_or(|p| a.runs_on(p.os))) {
+                    if let Some(entry) = self.entries.iter_mut().find(|e| e.app.id == app.id) {
+                        entry.app = app;
+                    } else {
+                        self.entries.push(AppEntry::new(app));
+                    }
+                }
+                self.entries.sort_by_key(|entry| artcraft_launcher_core::hosted_catalog::apps().iter().position(|app| app.id == entry.app.id));
+                self.backend.send(Command::Detect);
+                true
+            }
             Event::Latest { app, latest, from } => {
                 self.on_latest(app, latest, from);
                 true
@@ -576,6 +616,13 @@ impl LauncherUi {
                     e.ready = ready;
                 }
                 false
+            }
+            // Can turn an update on or off, so updates are announced (or started) again.
+            Event::Installable { app, installable } => {
+                if let Some(e) = self.entry_mut(&app) {
+                    e.installable = Some(installable);
+                }
+                true
             }
             Event::Occupied { app, path } => {
                 self.dialog = Some(Dialog::Replace { app, path });
@@ -726,10 +773,18 @@ impl LauncherUi {
                 if self.auto_update_attempted.contains(&(e.app.id.to_string(), v.clone())) { None } else { Some((e.app.id.to_string(), v)) }
             })
             .collect();
-        for (id, version) in to_update {
-            log::info!("auto-update: queuing update for {id} to {version}");
-            self.auto_update_attempted.insert((id.clone(), version));
-            self.send(Command::Install { app: id });
+        if self.settings.batch_updates && !to_update.is_empty() {
+            log::info!("auto-update: queuing {} updates together behind one prompt", to_update.len());
+            for (id, version) in &to_update {
+                self.auto_update_attempted.insert((id.clone(), version.clone()));
+            }
+            self.send(Command::InstallAll { apps: to_update.into_iter().map(|(id, _)| id).collect() });
+        } else {
+            for (id, version) in to_update {
+                log::info!("auto-update: queuing update for {id} to {version}");
+                self.auto_update_attempted.insert((id.clone(), version));
+                self.send(Command::Install { app: id });
+            }
         }
         if self.caps.self_update
             && let Some(r) = &self.launcher_update
@@ -837,6 +892,8 @@ impl LauncherUi {
                     ViewMode::Table => egui::ScrollArea::both(),
                 };
                 scroll.auto_shrink(false).show(ui, |ui| {
+                    // Escape must run even when search/filter leaves no rows (grid/table skipped).
+                    self.clear_pin_drag_on_escape(ui);
                     if ids.is_empty() {
                         ui.add_space(40.0);
                         ui.vertical_centered(|ui| {
@@ -849,6 +906,10 @@ impl LauncherUi {
                         }
                     }
                     ui.add_space(16.0);
+                    // The drop targets have seen this frame's pointer: a released drag ends here.
+                    if !ui.input(|i| i.pointer.primary_down()) {
+                        self.pin_dragging = None;
+                    }
                 });
             });
         self.details_drawer(&ctx);
@@ -860,7 +921,28 @@ impl LauncherUi {
         }
     }
 
-    /// The ids to show, filtered and sorted.
+    /// Test hook for the filtered/sorted catalog ids currently shown.
+    pub fn visible_ids_for_test(&self) -> Vec<&'static str> {
+        self.visible_ids()
+    }
+
+    /// Test hook: start a pin drag as if the grip had just been grabbed (stores a restore snapshot).
+    pub fn begin_pin_drag_for_test(&mut self, id: &str) {
+        self.pin_dragging = Some((id.to_string(), self.settings.pinned.clone()));
+    }
+
+    /// Test hook: whether a pin reorder drag is in progress.
+    pub fn pin_dragging_for_test(&self) -> bool {
+        self.pin_dragging.is_some()
+    }
+
+    /// Test hook: set the toolbar search string without driving the text field.
+    pub fn set_search_for_test(&mut self, needle: &str) {
+        self.search = needle.to_string();
+    }
+
+    /// The ids to show, filtered and sorted. Pinned apps stay first in the user's pin order;
+    /// the active sort (and the grid's installed / not-installed split) applies only to the rest.
     pub(crate) fn visible_ids(&self) -> Vec<&'static str> {
         let needle = self.search.trim().to_lowercase();
         let mut list: Vec<(usize, &AppEntry)> = self
@@ -870,6 +952,7 @@ impl LauncherUi {
             .filter(|(_, e)| {
                 self.in_filter(e, self.settings.filter)
                     && !(self.settings.hide_community_apps && e.app.kind == artcraft_launcher_core::catalog::AppKind::Community)
+                    && self.platform.is_none_or(|p| e.app.runs_on(p.os))
                     && (needle.is_empty() || e.app.name.to_lowercase().contains(&needle) || e.app.tagline.to_lowercase().contains(&needle))
             })
             .collect();
@@ -888,7 +971,10 @@ impl LauncherUi {
         };
         let installed = |e: &AppEntry| e.installed.as_ref().and_then(|i| i.version.clone());
         let latest = |e: &AppEntry| e.release().and_then(|r| r.version.clone());
-        list.sort_by(|(ia, a), (ib, b)| {
+        let (mut pinned, mut rest) = list.into_iter().partition::<Vec<_>, _>(|(_, e)| self.settings.is_pinned(e.app.id));
+        // Keep the user's pin order, skipping ids that are not in the filtered set.
+        pinned.sort_by_key(|(_, e)| self.settings.pinned.iter().position(|p| p == e.app.id).unwrap_or(usize::MAX));
+        rest.sort_by(|(ia, a), (ib, b)| {
             let ord = match sort {
                 SortKey::Suite => dir(ia.cmp(ib)),
                 SortKey::Name => dir(a.app.name.cmp(b.app.name)),
@@ -916,15 +1002,17 @@ impl LauncherUi {
             // Ties keep suite order.
             ord.then(ia.cmp(ib))
         });
-        // The grid shows installed apps first, then the rest under "Not installed" (the sort holds
-        // within each group; the sort is stable). The table keeps the order its column gives.
+        // The grid shows installed apps first among the unpinned set, then the rest under
+        // "Not installed" (the sort holds within each group; the sort is stable).
         if grid {
-            list.sort_by_key(|(_, e)| !e.status(platform, manage).is_installed());
+            rest.sort_by_key(|(_, e)| !e.status(platform, manage).is_installed());
         }
+        list = pinned;
+        list.append(&mut rest);
         list.into_iter().map(|(_, e)| e.app.id).collect()
     }
 
-    /// Opens an app, and counts it for "Frequently used".
+    /// Opens an app with its launch flags, and counts it for "Frequently used".
     pub(crate) fn launch_app(&mut self, id: &str) {
         self.act(UiAction::Launch(id.to_string()));
     }
@@ -1093,6 +1181,22 @@ mod tests {
     /// Counts the `Install` commands in `sent`, ignoring every other command.
     fn installs(sent: &RefCell<Vec<Command>>) -> usize {
         sent.borrow().iter().filter(|command| matches!(command, Command::Install { .. })).count()
+    }
+
+    #[test]
+    fn catalog_event_adds_entries_in_suite_order_and_keeps_current_state() {
+        let (mut ui, sent, _) = launcher();
+        let id = ui.entries[0].app.id;
+        ui.entries[0].detected = true;
+        ui.entries.pop();
+        ui.entries.reverse();
+        assert!(ui.handle(Event::CatalogUpdated));
+        assert_eq!(
+            ui.entries.iter().map(|e| e.app.id).collect::<Vec<_>>(),
+            artcraft_launcher_core::hosted_catalog::apps().iter().map(|a| a.id).collect::<Vec<_>>()
+        );
+        assert!(ui.entry(id).unwrap().detected);
+        assert_eq!(sent.borrow().as_slice(), &[Command::Detect]);
     }
 
     /// A CJK preference is drawable only while that language's own face is installed: having the
@@ -1341,5 +1445,24 @@ mod tests {
         use crate::i18n::Lang;
         let _guard = crate::i18n::StrictCjkDrawing::on(None);
         let _ = crate::i18n::tr(Lang::ZH_CN, "Settings");
+    }
+
+    const NOW: i64 = 1_791_500_000;
+    const EVERY: i64 = 24 * 60 * 60;
+
+    #[test]
+    fn a_check_is_due_after_its_interval() {
+        assert!(update_check_due(None, NOW, EVERY));
+        assert!(!update_check_due(Some(NOW - EVERY + 1), NOW, EVERY));
+        assert!(update_check_due(Some(NOW - EVERY), NOW, EVERY));
+    }
+
+    #[test]
+    fn a_saved_time_in_the_future_or_at_i64_min_never_postpones_a_check() {
+        // A clock that ran fast and was later corrected, or an edited `app.ron` (#774): the
+        // launcher would sit in the tray for weeks; `i64::MIN` panicked the subtraction.
+        assert!(update_check_due(Some(NOW + 60), NOW, EVERY));
+        assert!(update_check_due(Some(i64::MAX), NOW, EVERY));
+        assert!(update_check_due(Some(i64::MIN), NOW, EVERY));
     }
 }

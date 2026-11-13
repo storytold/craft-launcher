@@ -50,6 +50,10 @@
 	Install	Telepítés
 	Update to {v}	Frissítés: {v}
 	Open	Megnyitás
+	Open {version}	{version} megnyitása
+	Open {installed} without updating. {latest} stays available.	{installed} megnyitása frissítés nélkül. A(z) {latest} továbbra is elérhető.
+	{latest} is out, but ArtCraft Launcher can't install it over this copy.	Megjelent a(z) {latest}, de az ArtCraft Launcher nem tudja ennek a példánynak a helyére telepíteni.
+	ArtCraft Launcher can't install version {version} over this copy.	Az ArtCraft Launcher nem tudja a(z) {version} verziót ennek a példánynak a helyére telepíteni.
 	Download for {os}	Letöltés {os} rendszerre
 	Download	Letöltés
 	Coming soon	Hamarosan
@@ -73,6 +77,13 @@
 	Show in Files	Megjelenítés a fájlkezelőben
 	Reinstall	Újratelepítés
 	Uninstall…	Eltávolítás…
+	Launch options…	Indítási beállítások…
+	{name} launch options	{name} indítási beállításai
+	Flags added each time the app is opened	Kapcsolók, amelyeket az alkalmazás minden megnyitásakor átad
+	Separate flags with spaces. Quote a value that has spaces in it.	A kapcsolókat szóközzel válassza el. A szóközt tartalmazó értéket tegye idézőjelbe.
+	A quote isn't closed.	Egy idézőjel nincs lezárva.
+	{name} wasn't opened: a quote in its launch options isn't closed.	A(z) {name} nem nyílt meg: az indítási beállításaiban egy idézőjel nincs lezárva.
+	Save	Mentés
 	All releases	Minden kiadás
 	ArtCraft Launcher {version} is available.	Elérhető az ArtCraft Launcher új verziója: {version}.
 	Dismiss	Elrejtés
@@ -88,6 +99,7 @@
 	ArtCraft Launcher {version}	ArtCraft Launcher {version}
 	Only when I ask	Csak kézi kereséskor
 	Automatically download and install updates	Frissítések automatikus letöltése és telepítése
+	Ask for permission once when updating all apps	Engedély kérése csak egyszer az összes alkalmazás frissítésekor
 	Notify me when an installed app has an update	Értesítés a telepített alkalmazásokhoz elérhető frissítésekről
 	Include pre-releases (betas and release candidates)	Előzetes kiadások engedélyezése (béta- és kiadásra jelölt verziók)
 	Installing on Linux	Telepítés Linuxon
@@ -123,6 +135,12 @@
 	Apps on this computer	Alkalmazások ezen a számítógépen
 	Installed apps with a newer version	Telepített alkalmazások, amelyekhez frissítés érhető el
 	Apps you can install	Telepíthető alkalmazások
+	Pin to top	Rögzítés felülre
+	Unpin	Rögzítés feloldása
+	Pinned	Rögzítettek
+	Reorder {name}	Átrendezés: {name}
+	Move up	Feljebb
+	Move down	Lejjebb
 	Hide App	Alkalmazás elrejtése
 	Unhide App	Alkalmazás megjelenítése
 	Hidden Apps	Rejtett alkalmazások
@@ -148,6 +166,7 @@
 	Update cancelled	Frissítés megszakítva
 	Uninstall cancelled	Eltávolítás megszakítva
 	Retry install	Telepítés újrapróbálása
+	Retry update	Frissítés újrapróbálása
 	Retry update to {version}	Frissítés újrapróbálása: {version}
 	The download is still here. It's checked again, then installed.	A letöltött fájl megmaradt. Újra ellenőrizzük, majd telepítjük.
 	Waiting for another app…	Várakozás egy másik alkalmazásra…
@@ -164,6 +183,7 @@
 	Tarball (.tar.gz)	Tömörített archívum (.tar.gz)
 
 # Contextual: each app's tagline, keyed by app id
+artcraft	AI image and video creation	Képek és videók készítése MI-vel
 photocraft	Image editing	Képszerkesztés
 vectorcraft	Vector illustration	Vektoros illusztráció
 filmcraft	Video editing, color and sound	Videószerkesztés, színkorrekció és hang
@@ -176,6 +196,7 @@ deckcraft	Presentations and slide shows	Prezentációk és diavetítések
 gridcraft	Spreadsheets and data	Táblázatok és adatok
 craft-anything	Find out how any software works, then craft your own	Ismerd meg, hogyan működik bármely szoftver, majd készítsd el a sajátodat
 solidcraft	Parametric 3D CAD	Paraméteres 3D CAD
+mailcraft	Mail, calendar and contacts	Levelezés, naptár és névjegyek
 cadcraft	Computer-aided design and drafting	Számítógépes tervezés és műszaki rajz
 soundcraft	Recording, editing and mixing audio	Hangrögzítés, hangszerkesztés és keverés
 figcraft	Interface design and prototyping	Felülettervezés és prototípus-készítés
@@ -294,6 +315,7 @@ filter	Installed	Telepítve
 
 # Message templates (@msg): toasts from the backend. {placeholders} match any text.
 @msg	Couldn't open {name}: {e}	{name} nem nyitható meg: {e}
+@msg	ArtCraft Launcher couldn't start its window on {backend}: {e}	Nem sikerült elindítani az ArtCraft Launcher ablakát ({backend}): {e}
 @msg	Download cancelled	Letöltés megszakítva
 @msg	{name} updated to {version}	{name} frissítve. Verzió: {version}
 @msg	{name} installed: {version}	{name} telepítve: {version}
@@ -358,6 +380,8 @@ filter	Installed	Telepítve
 	ArtCraft on GitHub	ArtCraft a GitHubon
 	Join the ArtCraft Discord	Csatlakozás az ArtCraft Discord-közösségéhez
 @plural	ArtCraft Launcher · {n} update available|ArtCraft Launcher · {n} updates available	ArtCraft Launcher · {n} frissítés elérhető|ArtCraft Launcher · {n} frissítés elérhető
+
+	Download size: {size}	Letöltési méret: {size}
 	Install folder	Telepítési mappa
 	Default install folder	Alapértelmezett telepítési mappa
 	System default	Rendszer alapértelmezése
@@ -404,3 +428,25 @@ texturecraft	Mesh maps	Hálótérképek
 texturecraft	Bake mesh maps and use smart materials.	Süss ki hálótérképeket, és használj intelligens anyagokat.
 texturecraft	Paint textures on 3D models.	Fess textúrákat 3D modellekre.
 	Hide community apps	Közösségi alkalmazások elrejtése
+materialcraft	Procedural material design	Procedurális anyagtervezés
+materialcraft	Build materials with node graphs.	Készíts anyagokat csomópontgráfokkal.
+materialcraft	Create tileable PBR materials and export texture maps.	Készíts hézagmentesen ismételhető PBR-anyagokat, és exportálj textúratérképeket.
+materialcraft	Node graphs	Csomópontgráfok
+materialcraft	Combine noises, patterns and filters.	Kombinálj zajokat, mintákat és szűrőket.
+materialcraft	Live previews	Élő előnézetek
+materialcraft	Preview materials in 2D and on 3D models.	Tekintsd meg az anyagokat 2D-ben és 3D modelleken.
+	Advanced	Haladó
+	Migrate Flatpak bundles to ArtCraft OCI (experimental)	Flatpak-csomagok átállítása ArtCraft OCI-ra (kísérleti)
+	On update, switch first party apps when the matching package is available. Otherwise, keep using bundles.	Frissítéskor állítsa át az ArtCraft alkalmazásait, ha elérhető a megfelelő csomag. Egyébként továbbra is önálló csomagokat használjon.
+	The OCI repository is a preview with GPG verification disabled.	Az OCI-tároló előzetes verzió, kikapcsolt GPG-ellenőrzéssel.
+anicraft	2D vector animation	2D vektoros animáció
+anicraft	Vector animation on a timeline you know.	Vektoranimáció egy ismerős idővonalon.
+anicraft	Open-source 2D vector animation, built in pure Rust.	Nyílt forráskódú 2D vektoranimáció, tiszta Rustban írva.
+anicraft	Familiar by design	Ismerős kialakítás
+anicraft	Stage, tools, timeline, layers, keyframes, Properties and Library sit where animators expect them, with onion skinning for in-betweening.	Színpad, eszközök, idővonal, rétegek, kulcsképkockák, Tulajdonságok és Könyvtár a megszokott helyen, hagymabőr funkcióval.
+anicraft	Tweens that ease	Finom mozgásinterpolációk
+anicraft	Classic tweens with eight easing presets and custom ease curves, plus shape tweens that morph one vector contour into another.	Klasszikus mozgásinterpolációk nyolc görbe-előbeállítással és egyéni görbékkel, valamint alakos interpolációk.
+	Version pinned to {version}. Click to unlock.	A verzió rögzítve: {version}. Kattintson a feloldáshoz.
+	Unlock version?	Feloldja a verzió zárolását?
+	{app} is pinned to {version}. Follow the latest release instead?	A(z) {app} a(z) {version} verzióra van rögzítve. Inkább a legújabb kiadást kövesse?
+	Unlock	Feloldás
