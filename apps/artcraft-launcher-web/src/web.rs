@@ -6,7 +6,7 @@ use std::rc::Rc;
 use artcraft_launcher_core::details::{AppDetails, MAX_SCREENSHOT_BYTES, looks_like_jpeg};
 use artcraft_launcher_core::protocol::{Backend, Capabilities, Command, Event, LatestRelease, Origin, Source};
 use artcraft_launcher_core::release::{self, Release};
-use artcraft_launcher_core::{Arch, Os, Platform, SUITE, catalog, version};
+use artcraft_launcher_core::{Arch, Os, Platform, catalog, version};
 use artcraft_launcher_ui_egui::{Host, LauncherUi, Settings, i18n};
 use wasm_bindgen::JsCast;
 use wasm_bindgen_futures::JsFuture;
@@ -173,8 +173,11 @@ impl WebBackend {
         let pre = self.prereleases;
         wasm_bindgen_futures::spawn_local(async move {
             events.borrow_mut().push(Event::CheckStarted);
+            crate::hosted_catalog::refresh_once().await;
+            events.borrow_mut().push(Event::CatalogUpdated);
+            ctx.request_repaint();
             let mut limited = None;
-            for app in &SUITE {
+            for app in artcraft_launcher_core::hosted_catalog::apps() {
                 let latest = latest(app.repo, pre).await;
                 if let Err(Some(reset)) = &latest {
                     limited = Some(*reset);

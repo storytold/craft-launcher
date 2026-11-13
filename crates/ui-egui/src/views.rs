@@ -6,7 +6,7 @@ use artcraft_launcher_core::details::AppDetails;
 use artcraft_launcher_core::platform::pick_asset;
 use artcraft_launcher_core::protocol::{Command, JobPhase};
 use artcraft_launcher_core::status::AppStatus;
-use artcraft_launcher_core::time;
+use artcraft_launcher_core::{PackageKind, time};
 use egui::{Color32, CornerRadius, FontId, Rect, RichText, Sense, Stroke, Ui, vec2};
 
 use crate::app::{Dialog, LauncherUi, TitleBar};
@@ -79,6 +79,77 @@ enum Primary {
     Download(String),
     Unavailable(&'static str),
 }
+
+/// Where an app's actions are drawn.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum Place {
+    /// A grid card, at a fixed height.
+    Card,
+    /// A table row, which grows to stack an update's split where it can't sit side by side.
+    Row,
+    /// The details page, which shows the website and repository links as buttons of its own.
+    Details,
+}
+
+impl Place {
+    /// Whether the `⋯` menu holds the website, repository and releases links.
+    fn links_in_menu(self) -> bool {
+        self != Self::Details
+    }
+}
+
+/// What an update's install half says: its full label, shorter ones for less room, and a tooltip.
+struct UpdateLabels {
+    label: String,
+    shorter: Vec<&'static str>,
+    tip: Option<&'static str>,
+}
+
+impl UpdateLabels {
+    /// The labels when `primary` installs an update or retries one; `None` otherwise.
+    fn of(primary: Primary) -> Option<Self> {
+        match primary {
+            Primary::Retry(label, shorter) => {
+                Some(Self { label, shorter, tip: Some(tl!("The download is still here. It's checked again, then installed.")) })
+            }
+            Primary::Update(v) => Some(Self { label: fmt(tl!("Update to {v}"), &[("v", &v)]), shorter: vec![tl!("Update")], tip: None }),
+            _ => None,
+        }
+    }
+}
+
+/// The Open half beside a waiting update: its label, naming the installed version, and what it
+/// does in full (its tooltip and accessible name). `None` unless an installed copy waits for an
+/// update.
+fn open_labels(entry: &AppEntry, status: &AppStatus) -> Option<(String, String)> {
+    let (installed, latest) = (*status == AppStatus::UpdateAvailable).then(|| entry.installed_label().zip(entry.latest_label())).flatten()?;
+    let open = fmt(tl!("Open {version}"), &[("version", &installed)]);
+    let about = fmt(tl!("Open {installed} without updating. {latest} stays available."), &[("installed", &installed), ("latest", &latest)]);
+    Some((open, about))
+}
+
+/// How Open (`open`, then plain "Open") and an update (`update`) share `main_w` in `place`: side
+/// by side, stacked in a table row, or `None` for the update alone.
+fn update_split<'a>(ui: &Ui, place: Place, main_w: f32, open: &'a str, update: &'a UpdateLabels) -> Option<widgets::Split<'a>> {
+    let rights: Vec<&str> = std::iter::once(update.label.as_str()).chain(update.shorter.iter().copied()).collect();
+    widgets::split_layout(ui, main_w, &[open, tl!("Open")], &rights, place == Place::Row)
+}
+
+/// Why a newer release noted beside an installed copy isn't offered as an update: `newer` from
+/// [`LauncherUi::out_of_reach`].
+fn out_of_reach_tip(newer: Option<String>) -> Option<String> {
+    Some(fmt(tl!("{latest} is out, but ArtCraft Launcher can't install it over this copy."), &[("latest", &newer?)]))
+}
+
+/// The width of the main button: what's left of `width` beside the square `⋯` menu.
+fn main_width(ui: &Ui, width: f32) -> f32 {
+    (width - theme::CONTROL_H - ui.spacing().item_spacing.x).max(120.0)
+}
+
+/// The width of a table row's actions, after a pinned row's grip.
+const TABLE_ACTIONS_W: f32 = 204.0;
+/// The height of a table row.
+const TABLE_ROW_H: f32 = 62.0;
 
 /// Height of the header bar (the site's nav).
 pub(crate) const HEADER_H: f32 = 48.0;
@@ -313,13 +384,20 @@ impl LauncherUi {
             .accessible_name(tl!("Sort"));
     }
 
-    /// Update every eligible app; used in the compact and full-width toolbars.
+    /// Update every eligible app; used in the compact and full-width toolbars. With batched
+    /// updates on, one command installs them together: behind one permission prompt where the
+    /// platform asks for one, instead of one prompt per app.
     fn update_all_button(&mut self, ui: &mut Ui, updates: usize) {
         let label = if updates == 1 { tl!("Update 1 app").to_string() } else { fmt(tl!("Update all ({count})"), &[("count", &updates.to_string())]) };
         if widgets::button(ui, &label, Kind::Primary, 0.0).clicked() {
-            let ids: Vec<&str> = self.entries.iter().filter(|e| self.in_filter(e, Filter::Updates) && e.job.is_none()).map(|e| e.app.id).collect();
-            for id in ids {
-                self.act_command(Command::Install { app: id.to_string() });
+            let ids: Vec<String> =
+                self.entries.iter().filter(|e| self.in_filter(e, Filter::Updates) && e.job.is_none()).map(|e| e.app.id.to_string()).collect();
+            if self.settings.batch_updates {
+                self.act_command(Command::InstallAll { apps: ids });
+            } else {
+                for id in ids {
+                    self.act_command(Command::Install { app: id });
+                }
             }
         }
     }
@@ -535,12 +613,17 @@ impl LauncherUi {
             );
             if !version.is_empty() {
                 let github_w = widgets::hud_galley(&strip_ui, &format!("{} ↗", tl!("GitHub")), t.muted).size().x;
-                let room = (strip_ui.available_width() - github_w - 16.0).max(0.0);
+                let lock_w = if self.pinned_version(id).is_some() { 20.0 + strip_ui.spacing().item_spacing.x } else { 0.0 };
+                let room = (strip_ui.available_width() - github_w - 16.0 - lock_w).max(0.0);
                 let highlight = if in_colour { t.app_ink(app) } else { t.muted };
                 let spans: Vec<(&str, egui::Color32)> =
                     version.iter().map(|(text, lit)| (text.as_str(), if *lit { highlight } else { t.muted })).collect();
-                widgets::hud_elided_spans(&mut strip_ui, &spans, room);
+                let r = widgets::hud_elided_spans(&mut strip_ui, &spans, room);
+                if let Some(tip) = out_of_reach_tip(self.out_of_reach(&entry)) {
+                    r.on_hover_text(tip);
+                }
             }
+            self.version_lock(&mut strip_ui, id);
             strip_ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 ui.spacing_mut().item_spacing.x = 16.0;
                 widgets::hud_link(ui, tl!("GitHub"), &app.repo_url());
@@ -600,6 +683,21 @@ impl LauncherUi {
                 ui.add_space(8.0);
             }
         }
+        if entry.job.is_none()
+            && entry.paused.is_none()
+            && matches!(self.primary_action(&entry, &status), Primary::Install | Primary::Update(_) | Primary::Download(_))
+        {
+            let sizes = self.download_sizes(&entry);
+            if !sizes.iter().any(|(_, size)| *size == 0)
+                && let Some((_, bytes)) = sizes.first()
+            {
+                let (min, max) = sizes.iter().fold((*bytes, *bytes), |(min, max), (_, size)| (min.min(*size), max.max(*size)));
+                let size =
+                    if min == max { widgets::human_bytes(min) } else { format!("{} – {}", widgets::human_bytes(min), widgets::human_bytes(max)) };
+                ui.add(egui::Label::new(RichText::new(fmt(tl!("Download size: {size}"), &[("size", &size)])).size(12.5).color(t.muted)).truncate())
+                    .on_hover_text(Self::sizes_text(&sizes));
+            }
+        }
         // A description that only repeats the tagline is left out: the card says it once.
         if let Some(details) = AppDetails::by_id(id)
             && !crate::card_parts::repeats_tagline(details.headline, app.tagline)
@@ -611,7 +709,7 @@ impl LauncherUi {
             ui.add(egui::Label::new(RichText::new(line).size(12.5).color(t.faint)).selectable(false));
         }
         ui.with_layout(egui::Layout::bottom_up(egui::Align::Min), |ui| {
-            ui.horizontal(|ui| self.actions(ui, &entry, &status, inner.width()));
+            ui.horizontal(|ui| self.actions_in(ui, &entry, &status, inner.width(), Place::Card));
         });
     }
 
@@ -753,7 +851,8 @@ impl LauncherUi {
         for (i, id) in ids.iter().enumerate() {
             let Some(entry) = self.entry(id).cloned() else { continue };
             let status = entry.status(self.platform, self.caps.manage_apps);
-            body.row(62.0, |mut row| {
+            let row_h = self.table_row_h(body.ui_mut(), &entry, &status);
+            body.row(row_h, |mut row| {
                 row.col(|ui| self.table_app_cell(ui, &entry, id, i < last, t, (fonts.0, fonts.1, rule.0, rule.1)));
                 row.col(|ui| self.table_status_cell(ui, &entry, &status, t));
                 row.col(|ui| self.table_version_cell(ui, &entry, &status, t));
@@ -765,10 +864,10 @@ impl LauncherUi {
                 // every row's buttons stay in line.
                 row.col(|ui| {
                     if self.settings.is_pinned(id) {
-                        self.actions(ui, &entry, &status, 204.0 + grip_w);
+                        self.actions_in(ui, &entry, &status, TABLE_ACTIONS_W + grip_w, Place::Row);
                     } else {
                         ui.add_space(grip_w);
-                        self.actions(ui, &entry, &status, 204.0);
+                        self.actions_in(ui, &entry, &status, TABLE_ACTIONS_W, Place::Row);
                     }
                 });
             });
@@ -837,7 +936,7 @@ impl LauncherUi {
     /// The version column: what is installed, with an arrow to the new one (only that in the app's
     /// colour) when an update waits, or a quiet note of the newer release for a version kept on
     /// purpose; the latest, for an app not installed yet.
-    fn table_version_cell(&self, ui: &mut Ui, entry: &AppEntry, status: &AppStatus, t: &Tokens) {
+    fn table_version_cell(&mut self, ui: &mut Ui, entry: &AppEntry, status: &AppStatus, t: &Tokens) {
         let mono = |text: String, color| RichText::new(text).family(egui::FontFamily::Monospace).color(color);
         let (first, second) = match (*status == AppStatus::UpdateAvailable).then(|| entry.installed_label().zip(entry.latest_label())).flatten() {
             Some((from, to)) => (mono(format!("{from} → "), t.ink), Some(mono(to, t.app_ink(entry.app)))),
@@ -857,7 +956,19 @@ impl LauncherUi {
         for part in std::iter::once(first).chain(second) {
             part.append_to(&mut job, &style, egui::FontSelection::Default, egui::Align::Center);
         }
-        ui.label(job);
+        if self.pinned_version(entry.app.id).is_some() {
+            job.wrap = egui::text::TextWrapping::truncate_at_width((ui.available_width() - 20.0 - ui.spacing().item_spacing.x).max(0.0));
+        }
+        let r = ui
+            .horizontal(|ui| {
+                let response = ui.label(job);
+                self.version_lock(ui, entry.app.id);
+                response
+            })
+            .inner;
+        if let Some(tip) = out_of_reach_tip(self.out_of_reach(entry)) {
+            r.on_hover_text(tip);
+        }
     }
 
     /// The released column: the release date, or an em dash, with "how long ago" in its tooltip.
@@ -870,6 +981,36 @@ impl LauncherUi {
     }
 
     // ---- actions -------------------------------------------------------------------------
+
+    /// The managed download's planned size, or all manual formats for the visitor's platform.
+    /// Zero means the source didn't publish a size, not a one-kilobyte download.
+    fn download_sizes(&self, entry: &AppEntry) -> Vec<(PackageKind, u64)> {
+        if self.caps.manage_apps {
+            return self.backend.download_size(entry.app.id).into_iter().collect();
+        }
+        let Some(platform) = self.platform else { return Vec::new() };
+        let Some(release) = entry.release() else { return Vec::new() };
+        let stems: Vec<_> = entry.app.stems().collect();
+        platform
+            .download_kinds()
+            .iter()
+            .filter_map(|kind| pick_asset(release, &stems, platform, &[*kind]).map(|(asset, kind)| (kind, asset.size)))
+            .collect()
+    }
+
+    fn sizes_text(sizes: &[(PackageKind, u64)]) -> String {
+        sizes
+            .iter()
+            .filter(|(_, size)| *size > 0)
+            .map(|(kind, size)| format!("{} · {}", t(kind.label()), widgets::human_bytes(*size)))
+            .collect::<Vec<_>>()
+            .join("\n")
+    }
+
+    fn size_hint(&self, response: egui::Response, entry: &AppEntry) -> egui::Response {
+        let text = Self::sizes_text(&self.download_sizes(entry));
+        if text.is_empty() { response } else { response.on_hover_text(text) }
+    }
 
     fn primary_action(&self, entry: &AppEntry, status: &AppStatus) -> Primary {
         if !self.caps.manage_apps {
@@ -889,7 +1030,8 @@ impl LauncherUi {
         if let Some(artcraft_launcher_core::protocol::VersionTrack::Pinned(tag)) = self.settings.versions.get(entry.app.id)
             && entry.installed.as_ref().and_then(|i| i.version.as_ref()) != artcraft_launcher_core::version::parse(tag).as_ref()
         {
-            let checked = entry.release().is_some_and(|r| &r.tag == tag)
+            // Checked by the backend, and an install of it would go ahead here.
+            let checked = self.version_installs(entry, tag) == Some(true)
                 && !matches!(status, AppStatus::Checking | AppStatus::NoRelease | AppStatus::Unavailable);
             return Primary::SelectedVersion { tag: tag.clone(), checked };
         }
@@ -908,24 +1050,33 @@ impl LauncherUi {
         }
     }
 
-    /// The main button (or progress) and the … menu, within `width`.
-    pub(crate) fn actions(&mut self, ui: &mut Ui, entry: &AppEntry, status: &AppStatus, width: f32) {
-        self.actions_in(ui, entry, status, width, true);
+    /// A table row's height: taller where its update's Open and Update stack because they don't
+    /// fit side by side (a language with long words). Mirrors [`Self::actions_in`]: a running or
+    /// paused download shows its own controls instead.
+    fn table_row_h(&self, ui: &Ui, entry: &AppEntry, status: &AppStatus) -> f32 {
+        let busy = entry.job.is_some() || (entry.paused.is_some() && self.caps.manage_apps);
+        let stacked = !busy
+            && UpdateLabels::of(self.primary_action(entry, status)).zip(open_labels(entry, status)).is_some_and(|(update, (open, _))| {
+                matches!(update_split(ui, Place::Row, main_width(ui, TABLE_ACTIONS_W), &open, &update), Some(widgets::Split::Stacked { .. }))
+            });
+        // The same space above and below as a row's single button has, halved.
+        if stacked { widgets::STACKED_H + (TABLE_ROW_H - theme::CONTROL_H) / 2.0 } else { TABLE_ROW_H }
     }
 
-    /// The main button and the `⋯` menu beside it. `links_in_menu` is false where the page shows
-    /// the website, GitHub and releases links as buttons of its own. In the grid and the table
-    /// (`links_in_menu`), a pinned app's actions start with the handle that reorders it, which takes
-    /// one square of `width` (the table widens its column by [`Self::grip_w`] for it).
-    pub(crate) fn actions_in(&mut self, ui: &mut Ui, entry: &AppEntry, status: &AppStatus, mut width: f32, links_in_menu: bool) {
+    /// The main button and the `⋯` menu beside it, within `width`, as `place` has them. On the
+    /// details page the website, GitHub and releases links are buttons of its own, not menu rows.
+    /// In the grid and the table, a pinned app's actions start with the handle that reorders it,
+    /// which takes one square of `width` (the table widens its column by [`Self::grip_w`] for it).
+    pub(crate) fn actions_in(&mut self, ui: &mut Ui, entry: &AppEntry, status: &AppStatus, mut width: f32, place: Place) {
         let id = entry.app.id.to_string();
         let gap = ui.spacing().item_spacing.x;
+        let links_in_menu = place.links_in_menu();
         if links_in_menu && self.settings.is_pinned(entry.app.id) {
             self.pin_grip(ui, entry);
             width -= theme::CONTROL_H + gap;
         }
         // One square button (the menu) beside the main one.
-        let main_w = (width - theme::CONTROL_H - gap).max(120.0);
+        let main_w = main_width(ui, width);
         if entry.job.is_some() {
             self.job_actions(ui, entry, &id, main_w, width);
             return;
@@ -933,7 +1084,7 @@ impl LauncherUi {
         if self.paused_actions(ui, entry, &id, status, width, links_in_menu) {
             return;
         }
-        self.primary_button(ui, entry, &id, status, main_w);
+        self.primary_button(ui, entry, &id, status, main_w, place);
         self.menu(ui, entry, status, links_in_menu);
     }
 
@@ -1090,28 +1241,27 @@ impl LauncherUi {
     }
 
     /// What the main button does: open, install/update, retry, plain download, or nothing.
-    fn primary_button(&mut self, ui: &mut Ui, entry: &AppEntry, id: &str, status: &AppStatus, main_w: f32) {
+    fn primary_button(&mut self, ui: &mut Ui, entry: &AppEntry, id: &str, status: &AppStatus, main_w: f32, place: Place) {
         match self.primary_action(entry, status) {
             Primary::Install => {
-                if widgets::button(ui, tl!("Install"), Kind::Primary, main_w).clicked() {
+                if self.size_hint(widgets::button(ui, tl!("Install"), Kind::Primary, main_w), entry).clicked() {
                     self.install_app(id);
                 }
             }
-            Primary::Retry(label, shorter) => {
-                let tip = tl!("The download is still here. It's checked again, then installed.");
-                if widgets::button(ui, fitted(ui, &label, &shorter, main_w), Kind::Primary, main_w).on_hover_text(tip).clicked() {
-                    self.install_app(id);
-                }
-            }
-            Primary::Update(v) => {
-                let label = fmt(tl!("Update to {v}"), &[("v", &v)]);
-                if widgets::button(ui, fitted(ui, &label, &[tl!("Update")], main_w), Kind::Primary, main_w).clicked() {
-                    self.install_app(id);
+            update @ (Primary::Retry(..) | Primary::Update(_)) => {
+                if let Some(labels) = UpdateLabels::of(update) {
+                    self.update_button(ui, entry, status, &labels, main_w, place);
                 }
             }
             Primary::SelectedVersion { tag, checked } => {
                 let label = fmt(tl!("Install version {version}"), &[("version", &tag)]);
-                if ui.add_enabled_ui(checked, |ui| widgets::button(ui, &label, Kind::Primary, main_w)).inner.clicked() {
+                let resp = ui.add_enabled_ui(checked, |ui| widgets::button(ui, &label, Kind::Primary, main_w)).inner;
+                let resp = match self.version_refusal(entry, &tag) {
+                    Some(why) => resp.on_disabled_hover_text(why),
+                    None => resp,
+                };
+                let resp = if checked { self.size_hint(resp, entry) } else { resp };
+                if resp.clicked() {
                     self.install_app(id);
                 }
             }
@@ -1125,13 +1275,51 @@ impl LauncherUi {
                     Some(p) => fmt(tl!("Download for {os}"), &[("os", p.os.label())]),
                     None => tl!("Download").into(),
                 };
-                if widgets::button(ui, &label, Kind::Primary, main_w).clicked() {
+                if self.size_hint(widgets::button(ui, &label, Kind::Primary, main_w), entry).clicked() {
                     widgets::open_external_link(ui.ctx(), &url);
                 }
             }
             Primary::Unavailable(label) => {
                 ui.add_enabled_ui(false, |ui| widgets::button(ui, label, Kind::Secondary, main_w));
             }
+        }
+    }
+
+    /// The button that installs an update (`update`). While the update waits, an installed copy
+    /// can still be opened as it is: an Open half, naming its version where there's room, sits
+    /// before the update half, or above it in a table row too narrow for both side by side. Where
+    /// they don't fit at all, the update button shows alone and Open stays in the `⋯` menu.
+    fn update_button(&mut self, ui: &mut Ui, entry: &AppEntry, status: &AppStatus, update: &UpdateLabels, main_w: f32, place: Place) {
+        let id = entry.app.id;
+        if let Some((open, about)) = open_labels(entry, status)
+            && let Some(split) = update_split(ui, place, main_w, &open, update)
+        {
+            let (open, install) = widgets::split_button(
+                ui,
+                widgets::Half { label: &about, kind: Kind::Secondary },
+                widgets::Half { label: &update.label, kind: Kind::Primary },
+                split,
+            );
+            if open.on_hover_text(&about).clicked() {
+                self.launch_app(id);
+            }
+            let install = match update.tip {
+                Some(tip) => install.on_hover_text(tip),
+                None => install,
+            };
+            if self.size_hint(install, entry).clicked() {
+                self.install_app(id);
+            }
+            return;
+        }
+        // Shortened to fit, it is still read out in full.
+        let resp = widgets::labelled_button(ui, fitted(ui, &update.label, &update.shorter, main_w), &update.label, Kind::Primary, main_w);
+        let resp = match update.tip {
+            Some(tip) => resp.on_hover_text(tip),
+            None => resp,
+        };
+        if self.size_hint(resp, entry).clicked() {
+            self.install_app(id);
         }
     }
 
@@ -1162,7 +1350,7 @@ impl LauncherUi {
                 ui.close();
             }
             if manage && status.is_installed() {
-                self.menu_installed(ui, status, &id, reveal);
+                self.menu_installed(ui, entry, status, reveal);
             }
             if !manage {
                 self.menu_downloads(ui, entry);
@@ -1218,8 +1406,9 @@ impl LauncherUi {
     }
 
     /// The menu items for an installed app: open, launch options, reveal in the file manager,
-    /// reinstall, and uninstall (which asks first).
-    fn menu_installed(&mut self, ui: &mut Ui, status: &AppStatus, id: &str, reveal: &'static str) {
+    /// reinstall (where an install would go ahead), and uninstall (which asks first).
+    fn menu_installed(&mut self, ui: &mut Ui, entry: &AppEntry, status: &AppStatus, reveal: &'static str) {
+        let id = entry.app.id;
         if ui.button(tl!("Open")).clicked() {
             self.launch_app(id);
             ui.close();
@@ -1233,7 +1422,7 @@ impl LauncherUi {
             self.act_command(Command::Reveal { app: id.to_string() });
             ui.close();
         }
-        if *status == AppStatus::UpToDate && ui.button(tl!("Reinstall")).clicked() {
+        if *status == AppStatus::UpToDate && entry.installs_here(self.platform) && ui.button(tl!("Reinstall")).clicked() {
             self.install_app(id);
             ui.close();
         }
@@ -1346,13 +1535,22 @@ pub(crate) fn version_line(e: &AppEntry, status: &AppStatus) -> String {
 /// Flatpak; such a copy's download stays the `.flatpak` bundle — offering it an AppImage (or a
 /// `.deb`) would point at replacing the sandboxed install with a different one.
 pub(crate) fn launcher_download(r: &artcraft_launcher_core::Release, p: artcraft_launcher_core::Platform, flatpak: bool) -> Option<String> {
+    launcher_asset(r, p, flatpak).map(|a| a.url.clone())
+}
+
+/// The asset behind [`launcher_download`].
+pub(crate) fn launcher_asset(
+    r: &artcraft_launcher_core::Release,
+    p: artcraft_launcher_core::Platform,
+    flatpak: bool,
+) -> Option<&artcraft_launcher_core::release::Asset> {
     use artcraft_launcher_core::PackageKind;
     let kinds: &[PackageKind] = match p.os {
         artcraft_launcher_core::Os::Linux if flatpak => &[PackageKind::Flatpak],
         artcraft_launcher_core::Os::Linux => &[PackageKind::AppImage, PackageKind::Deb],
         _ => p.default_kinds(),
     };
-    pick_asset(r, &[artcraft_launcher_core::catalog::LAUNCHER_ID], p, kinds).map(|(a, _)| a.url.clone())
+    pick_asset(r, &[artcraft_launcher_core::catalog::LAUNCHER_ID], p, kinds).map(|(a, _)| a)
 }
 
 /// A column of single-line texts, one per font and `gap` apart, centred across the row it is in.
