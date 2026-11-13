@@ -4185,6 +4185,88 @@ fn command_m_minimizes_the_mac_window_only() {
     }
 }
 
+/// The forced checks and the Detects sent so far: the refresh button (and Ctrl+R) sends one of each.
+fn checks_sent(sent: &RefCell<Vec<Command>>) -> (usize, usize) {
+    let sent = sent.borrow();
+    (sent.iter().filter(|c| matches!(c, Command::CheckForUpdates { force: true })).count(), sent.iter().filter(|c| **c == Command::Detect).count())
+}
+
+#[test]
+/// Ctrl+R (Command-R on macOS) checks for updates like the refresh button, with or without Shift; R
+/// alone, Control-R on a Mac, or AltGr+R does not.
+fn command_r_checks_for_updates() {
+    let (mut h, sent) = harness(ViewMode::Grid, egui::Theme::Dark, true);
+    h.run_steps(4);
+    // egui-winit reports Ctrl as `ctrl` + `command` on Windows and Linux; on a Mac, Command is
+    // `mac_cmd` + `command` and Control is `ctrl` alone. Windows reports AltGr as Ctrl+Alt.
+    let ctrl = egui::Modifiers::CTRL | egui::Modifiers::COMMAND;
+    for (modifiers, checks, keys) in [
+        (egui::Modifiers::NONE, 0, "R alone"),
+        (egui::Modifiers::CTRL, 0, "Control-R on a Mac"),
+        (ctrl | egui::Modifiers::ALT, 0, "AltGr+R on Windows"),
+        (egui::Modifiers::MAC_CMD | egui::Modifiers::COMMAND | egui::Modifiers::ALT, 0, "Command-Option-R on a Mac"),
+        (ctrl, 1, "Ctrl+R on Windows and Linux"),
+        (ctrl | egui::Modifiers::SHIFT, 1, "Ctrl+Shift+R"),
+        (egui::Modifiers::MAC_CMD | egui::Modifiers::COMMAND, 1, "Command-R on a Mac"),
+    ] {
+        sent.borrow_mut().clear();
+        h.key_press_modifiers(modifiers, egui::Key::R);
+        h.run_steps(2);
+        assert_eq!(checks_sent(&sent), (checks, checks), "{keys}");
+    }
+}
+
+#[test]
+/// Holding Ctrl+R checks once: the keyboard's auto-repeat must not start a new check each time the
+/// last one finishes. Pressing it again after letting go checks again.
+fn holding_command_r_checks_once() {
+    let (mut h, sent) = harness(ViewMode::Grid, egui::Theme::Dark, true);
+    h.run_steps(4);
+    sent.borrow_mut().clear();
+    for _ in 0..3 {
+        h.key_down_modifiers(egui::Modifiers::COMMAND, egui::Key::R);
+        h.run_steps(2);
+    }
+    h.key_up_modifiers(egui::Modifiers::COMMAND, egui::Key::R);
+    h.run_steps(2);
+    assert_eq!(checks_sent(&sent), (1, 1), "a held Ctrl+R checks once");
+    h.key_press_modifiers(egui::Modifiers::COMMAND, egui::Key::R);
+    h.run_steps(2);
+    assert_eq!(checks_sent(&sent), (2, 2), "a new press checks again");
+}
+
+#[test]
+/// Like the refresh button, which is disabled meanwhile, Ctrl+R does nothing while a check runs.
+fn command_r_is_ignored_while_checking() {
+    let mut ev = events();
+    ev.push(Event::CheckStarted);
+    let (mut h, sent) = harness_with(ev, ViewMode::Grid, egui::Theme::Dark, true, 1.0);
+    h.run_steps(4);
+    assert!(h.get_by_role_and_label(egui::accesskit::Role::Button, "Check for updates").accesskit_node().is_disabled());
+    sent.borrow_mut().clear();
+    h.key_press_modifiers(egui::Modifiers::COMMAND, egui::Key::R);
+    h.run_steps(2);
+    assert_eq!(checks_sent(&sent), (0, 0));
+}
+
+#[test]
+/// Ctrl+R checks while the search box has focus, and the search keeps its text and focus.
+fn command_r_checks_while_typing_a_search() {
+    let (mut h, sent) = harness(ViewMode::Grid, egui::Theme::Dark, true);
+    h.run_steps(4);
+    h.get_by_role_and_label(egui::accesskit::Role::TextInput, "Search apps").click();
+    h.run_steps(2);
+    h.get_by_role_and_label(egui::accesskit::Role::TextInput, "Search apps").type_text("photo");
+    h.run_steps(2);
+    sent.borrow_mut().clear();
+    h.key_press_modifiers(egui::Modifiers::COMMAND, egui::Key::R);
+    h.run_steps(2);
+    assert_eq!(checks_sent(&sent), (1, 1));
+    let search = h.get_by_role_and_label(egui::accesskit::Role::TextInput, "Search apps");
+    assert!(search.is_focused(), "the search keeps its focus");
+    assert_eq!(search.value().as_deref(), Some("photo"));
+}
+
 #[test]
 fn an_occupied_folder_asks_before_replacing_it() {
     let path = "/Volumes/Craft Apps/PhotoCraft.app";
