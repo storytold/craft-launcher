@@ -239,7 +239,13 @@ pub struct NativeBackend {
     /// The version-choice file the apps read (see [`crate::pins`]); `None` when there is no
     /// per-user data folder.
     pins: Option<std::path::PathBuf>,
+    /// Runs a job's worker. Each worker gets its own thread; a test swaps this to see what is in
+    /// the download line at the moment each one would start.
+    spawn: Spawn,
 }
+
+/// Runs a job's worker (see [`NativeBackend::spawn`]).
+type Spawn = Arc<dyn Fn(Box<dyn FnOnce() + Send>) + Send + Sync>;
 
 impl NativeBackend {
     /// `waker` is called (from any thread) whenever events are waiting; it should repaint the UI.
@@ -288,7 +294,10 @@ impl NativeBackend {
         if let Some(path) = &pins {
             crate::pins::prepare_folder(path);
         }
-        let backend = Self { shared, paths, http, source, platform: native_platform(), pins };
+        let spawn: Spawn = Arc::new(|work| {
+            std::thread::spawn(work);
+        });
+        let backend = Self { shared, paths, http, source, platform: native_platform(), pins, spawn };
         backend.replay_cache();
         backend.detect_all();
         backend
@@ -478,8 +487,9 @@ impl NativeBackend {
         // Taken now, before the job's thread runs, so apps started together (Update all) download
         // in screen order whichever job reaches its download first.
         let place = (!uninstall).then(|| install::DOWNLOADS.join(app.id));
+        let spawn = self.spawn.clone();
         Some(Box::new(move || {
-            std::thread::spawn(move || {
+            spawn(Box::new(move || {
                 let job = job;
                 let existing = shared.installed.lock().unwrap_or_else(PoisonError::into_inner).get(app.id).cloned();
                 let record = shared.manifest.lock().unwrap_or_else(PoisonError::into_inner).apps.get(app.id).cloned();
@@ -545,7 +555,7 @@ impl NativeBackend {
                 report_partial(app, &shared, &paths, platform);
                 drop(job);
                 shared.emit(Event::JobFinished { app: app.id.to_string(), result });
-            });
+            }));
         }))
     }
 
@@ -2203,7 +2213,17 @@ mod tests {
         let shared = shared();
         shared.latest.lock().unwrap().insert(APP.to_string(), release("0.5.0"));
         let shared = Arc::new(shared);
-        NativeBackend { shared, paths: Paths::under(root), http: None, source, platform: Some(platform), pins: Some(root.join("versions.json")) }
+        NativeBackend {
+            shared,
+            paths: Paths::under(root),
+            http: None,
+            source,
+            platform: Some(platform),
+            pins: Some(root.join("versions.json")),
+            spawn: Arc::new(|work| {
+                std::thread::spawn(work);
+            }),
+        }
     }
 
     /// What the installability answers in `events` said about [`APP`], and which `Latest` and
@@ -2501,21 +2521,37 @@ mod tests {
         wait_until(|| !backend.shared.jobs.lock().unwrap().contains_key(APP));
     }
 
-    /// A batch takes every place in the download line before any worker runs, so a worker
-    /// can't reach a free slot ahead of a row above it that hasn't joined yet. Dropping the
-    /// prepared jobs gives their places and entries back.
+    /// "Update all" takes every place in the download line before any worker starts, so a worker
+    /// can't reach a free slot ahead of a row above it that hasn't joined yet. The workers are
+    /// held, not run, so this checks the order of the steps and doesn't race threads: starting
+    /// each job as soon as it is prepared would find only the first app in line.
     #[test]
-    fn preparing_a_batch_takes_every_place_before_any_worker_starts() {
+    fn update_all_takes_every_place_before_any_worker_starts() {
         let Some(platform) = native_platform() else { return };
         let dir = tempfile::tempdir().unwrap();
-        let backend = backend(dir.path(), platform, None);
+        let mut backend = backend(dir.path(), platform, None);
         let ids: Vec<&str> = artcraft_launcher_core::SUITE.iter().filter(|app| app.runs_on(platform.os)).map(|app| app.id).take(3).collect();
         assert_eq!(ids.len(), 3);
-        let ready: Vec<_> = ids.iter().map(|id| backend.prepare_job(id, Work::Install(None)).expect("the job is ready")).collect();
-        let waiting = install::DOWNLOADS.waiting_apps();
-        assert!(ids.iter().all(|id| waiting.iter().any(|w| w == id)), "every member is in line before the first worker starts: {waiting:?}");
+        type Held = Vec<Box<dyn FnOnce() + Send>>;
+        let held: Arc<Mutex<Held>> = Arc::default();
+        let in_line_at_each_start: Arc<Mutex<Vec<Vec<String>>>> = Arc::default();
+        backend.spawn = {
+            let (held, seen) = (held.clone(), in_line_at_each_start.clone());
+            Arc::new(move |work| {
+                seen.lock().unwrap().push(install::DOWNLOADS.waiting_apps());
+                held.lock().unwrap().push(work);
+            })
+        };
+
+        backend.install_all(&ids.iter().map(|id| id.to_string()).collect::<Vec<_>>());
+
+        let seen = in_line_at_each_start.lock().unwrap().clone();
+        assert_eq!(seen.len(), 3, "one worker per app");
+        for waiting in &seen {
+            assert!(ids.iter().all(|id| waiting.iter().any(|w| w == id)), "every app is in line before any worker starts: {waiting:?}");
+        }
         assert!(ids.iter().all(|id| backend.shared.jobs.lock().unwrap().contains_key(*id)), "and each one is reserved");
-        drop(ready);
+        drop(held.lock().unwrap().drain(..).collect::<Vec<_>>());
         let waiting = install::DOWNLOADS.waiting_apps();
         assert!(!ids.iter().any(|id| waiting.iter().any(|w| w == id)), "dropped, they leave the line: {waiting:?}");
         assert!(!ids.iter().any(|id| backend.shared.jobs.lock().unwrap().contains_key(*id)), "and the jobs are free again");
