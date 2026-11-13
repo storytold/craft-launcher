@@ -767,11 +767,14 @@ fn run_install(
     source: Option<&dyn ReleaseSource>,
     batch: Option<crate::queue::Gather>,
 ) -> Result<String, String> {
-    // The ways out below that never reach the installer (a repository-managed Flatpak, a missing
-    // release, the overwrite question, a paused download) free the rest of the batch at once;
-    // from `install_at` on, the same guard does it there.
+    // The ways out below that never reach the installer (a missing release, the overwrite
+    // question, a paused download) free the rest of the batch at once; from `install_at` on, the
+    // same guard does it there.
     let mut batch = install::BatchPlace(batch);
     if let Some(update) = repository_update(app, existing, options) {
+        // A repository-managed Flatpak never joins the batch's installer call: leave before its
+        // own update (network, maybe a prompt) so the ready members don't wait for it.
+        drop(batch);
         let inst = update?;
         #[cfg(target_os = "linux")]
         {
@@ -1662,6 +1665,53 @@ mod tests {
             assert!(!gather.open(), "the place is held while the job is on its way");
         }
         assert!(gather.open(), "dropping the place on the way out opens the gate");
+    }
+
+    /// A repository-managed Flatpak in an "Update all" leaves the batch before its own update
+    /// runs, so a slow or blocked Flatpak never holds back the system packages waiting to share
+    /// the batch's prompt.
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn a_repository_flatpak_leaves_the_batch_before_updating() {
+        let gather = install::INSTALLER.gather(1);
+        let seen = Arc::new(Mutex::new(Vec::new()));
+        let mut shared = shared();
+        shared.waker = Arc::new({
+            let (gather, seen) = (gather.clone(), seen.clone());
+            move || seen.lock().unwrap().push(gather.open())
+        });
+        let app = CraftApp::by_id("photocraft").unwrap();
+        let installed = Installed {
+            version: version::parse("0.5.0"),
+            source: InstallSource::Flatpak,
+            location: String::new(),
+            package: None,
+            externally_managed: true,
+            origin: None,
+            installation: Some("user".into()),
+        };
+        let dir = tempfile::tempdir().unwrap();
+        let stop = Stop::default();
+        stop.cancel();
+        let options = BackendOptions::default();
+        let result = run_install(
+            app,
+            &shared,
+            &Paths::under(dir.path()),
+            None,
+            None,
+            &options,
+            Some(&installed),
+            None,
+            &stop,
+            None,
+            None,
+            Some(gather.clone()),
+        );
+        assert_eq!(result, Err(artcraft_launcher_core::protocol::CANCELLED.into()));
+        let seen = seen.lock().unwrap();
+        assert!(!seen.is_empty(), "the Flatpak update reports its progress");
+        assert!(seen.iter().all(|&open| open), "the batch was already free when the Flatpak update began");
     }
 
     fn tagged(v: &str) -> Release {

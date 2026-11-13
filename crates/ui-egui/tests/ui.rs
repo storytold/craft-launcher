@@ -1770,18 +1770,25 @@ fn grid_shows_every_status_and_installs_on_click() {
     h.get_by_label_contains("48 MB of 131 MB");
     h.get_by_label("Update all (2)").click();
     h.run_steps(2);
-    // One InstallAll where updates are batched (always on Linux), else one Install per app.
-    let installs: Vec<_> = sent
-        .borrow()
-        .iter()
-        .flat_map(|c| match c {
-            Command::Install { app } => vec![app.clone()],
-            Command::InstallAll { apps } => apps.clone(),
-            _ => vec![],
-        })
-        .collect();
-    assert_eq!(installs.len(), 2, "{installs:?}");
-    assert!(installs.contains(&"photocraft".to_string()) && installs.contains(&"effectcraft".to_string()));
+    assert_update_commands(&sent, &["photocraft", "effectcraft"]);
+}
+
+/// With `batch_updates` off (the default): one `InstallAll` for `apps` on Linux, where updates
+/// are always batched, and one `Install` per app elsewhere.
+fn assert_update_commands(sent: &RefCell<Vec<Command>>, apps: &[&str]) {
+    let mut installs: Vec<Command> =
+        sent.borrow().iter().filter(|c| matches!(c, Command::Install { .. } | Command::InstallAll { .. })).cloned().collect();
+    for c in &mut installs {
+        if let Command::InstallAll { apps } = c {
+            apps.sort();
+        }
+    }
+    installs.sort_by_key(|c| format!("{c:?}"));
+    let mut apps: Vec<String> = apps.iter().map(|a| a.to_string()).collect();
+    apps.sort();
+    let expected =
+        if cfg!(target_os = "linux") { vec![Command::InstallAll { apps }] } else { apps.into_iter().map(|app| Command::Install { app }).collect() };
+    assert_eq!(installs, expected);
 }
 
 #[test]
@@ -2864,8 +2871,7 @@ fn automatic_updates_queue_installs_for_outdated_apps_and_launcher() {
         None,
     );
     h.run_steps(4);
-    assert_eq!(launches_and_installs(&sent, "photocraft").1, 1, "outdated photocraft should be queued for install: {:?}", sent.borrow());
-    assert_eq!(launches_and_installs(&sent, "effectcraft").1, 1, "outdated effectcraft should be queued for install: {:?}", sent.borrow());
+    assert_update_commands(&sent, &["photocraft", "effectcraft"]);
     let commands = sent.borrow().clone();
     assert!(commands.contains(&Command::UpdateLauncher), "launcher update should be queued: {commands:?}");
 }
