@@ -450,3 +450,29 @@ anicraft	Classic tweens with eight easing presets and custom ease curves, plus s
 	Unlock version?	Feloldja a verzió zárolását?
 	{app} is pinned to {version}. Follow the latest release instead?	A(z) {app} a(z) {version} verzióra van rögzítve. Inkább a legújabb kiadást kövesse?
 	Unlock	Feloldás
+
+	Cloud	Felhő
+	Sign in	Bejelentkezés
+	Sign out	Kijelentkezés
+	Files	Fájlok
+	Account	Fiók
+	Save to cloud	Mentés a felhőbe
+	Save to device	Mentés az eszközre
+	No files yet	Még nincsenek fájlok
+	Save a copy to continue	A folytatáshoz ments egy másolatot
+	Could not save the file	Nem sikerült menteni a fájlt
+	Could not confirm the save	Nem sikerült megerősíteni a mentést
+	Saved	Mentve
+	A newer version was saved	Újabb verziót mentettek
+	Cloud storage is full	A felhőtárhely megtelt
+	Source commit	Forráskód-commit
+	Source tree	Forráskódfa
+	Prepare version	Verzió előkészítése
+	Roll back	Visszaállítás az előző verzióra
+	Activate	Aktiválás
+	Queued	Sorban áll
+	Preparing	Előkészítés alatt
+	Ready	Kész
+	Cancelled	Visszavonva
+	Failed	Sikertelen
+	Interrupted	Megszakadt

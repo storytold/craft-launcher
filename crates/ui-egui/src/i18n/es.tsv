@@ -430,3 +430,29 @@ anicraft	Classic tweens with eight easing presets and custom ease curves, plus s
 	Unlock version?	¿Desbloquear la versión?
 	{app} is pinned to {version}. Follow the latest release instead?	{app} está fijado en la versión {version}. ¿Usar la versión más reciente?
 	Unlock	Desbloquear
+
+	Cloud	Nube
+	Sign in	Iniciar sesión
+	Sign out	Cerrar sesión
+	Files	Archivos
+	Account	Cuenta
+	Save to cloud	Guardar en la nube
+	Save to device	Guardar en el dispositivo
+	No files yet	Aún no hay archivos
+	Save a copy to continue	Guarda una copia para continuar
+	Could not save the file	No se pudo guardar el archivo
+	Could not confirm the save	No se pudo confirmar el guardado
+	Saved	Guardado
+	A newer version was saved	Se guardó una versión más reciente
+	Cloud storage is full	El almacenamiento en la nube está lleno
+	Source commit	Commit del código fuente
+	Source tree	Árbol del código fuente
+	Prepare version	Preparar versión
+	Roll back	Volver a la versión anterior
+	Activate	Activar
+	Queued	En cola
+	Preparing	En preparación
+	Ready	Listo
+	Cancelled	Cancelado
+	Failed	Fallido
+	Interrupted	Interrumpido

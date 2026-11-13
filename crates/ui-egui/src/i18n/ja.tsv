@@ -452,3 +452,29 @@ anicraft	Classic tweens with eight easing presets and custom ease curves, plus s
 	Unlock version?	バージョンの固定を解除しますか？
 	{app} is pinned to {version}. Follow the latest release instead?	{app} は {version} に固定されています。代わりに最新リリースを使用しますか？
 	Unlock	固定を解除
+
+	Cloud	クラウド
+	Sign in	サインイン
+	Sign out	サインアウト
+	Files	ファイル
+	Account	アカウント
+	Save to cloud	クラウドに保存
+	Save to device	デバイスに保存
+	No files yet	まだファイルがありません
+	Save a copy to continue	続行するにはコピーを保存してください
+	Could not save the file	ファイルを保存できませんでした
+	Could not confirm the save	保存を確認できませんでした
+	Saved	保存済み
+	A newer version was saved	より新しいバージョンが保存されました
+	Cloud storage is full	クラウドストレージの空き容量がありません
+	Source commit	ソースのコミット
+	Source tree	ソースツリー
+	Prepare version	バージョンを準備
+	Roll back	以前のバージョンに戻す
+	Activate	有効化
+	Queued	待機中
+	Preparing	準備中
+	Ready	準備完了
+	Cancelled	キャンセル済み
+	Failed	失敗
+	Interrupted	中断

@@ -14,7 +14,39 @@ workspace = true
 name = "artcraft-launcher-web"
 path = "src/main.rs"
 
+[features]
+default = []
+server = [
+    "dep:jiff",
+    "dep:serde",
+    "web-sys/Blob",
+    "web-sys/CssStyleDeclaration",
+    "web-sys/CustomEvent",
+    "web-sys/DomRect",
+    "web-sys/Event",
+    "web-sys/EventTarget",
+    "web-sys/HtmlAnchorElement",
+    "web-sys/HtmlButtonElement",
+    "web-sys/HtmlElement",
+    "web-sys/HtmlHeadElement",
+    "web-sys/HtmlIFrameElement",
+    "web-sys/HtmlInputElement",
+    "web-sys/HtmlSelectElement",
+    "web-sys/KeyboardEvent",
+    "web-sys/Location",
+    "web-sys/MouseEvent",
+    "web-sys/Node",
+    "web-sys/PointerEvent",
+    "web-sys/RequestCache",
+    "web-sys/Url",
+    "web-sys/UiEvent",
+    "web-sys/UrlSearchParams",
+    "web-sys/VisualViewport",
+]
+
 [dependencies]
+jiff = { workspace = true, optional = true }
+serde = { workspace = true, optional = true }
 artcraft-launcher-core = { workspace = true }
 artcraft-launcher-ui-egui = { workspace = true }
 egui = { workspace = true }

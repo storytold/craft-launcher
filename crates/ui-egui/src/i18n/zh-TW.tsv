@@ -408,3 +408,29 @@ anicraft	Classic tweens with eight easing presets and custom ease curves, plus s
 	Unlock version?	解除版本鎖定？
 	{app} is pinned to {version}. Follow the latest release instead?	{app} 已鎖定為 {version}。是否改為使用最新版本？
 	Unlock	解除鎖定
+
+	Cloud	雲端
+	Sign in	登入
+	Sign out	登出
+	Files	檔案
+	Account	帳戶
+	Save to cloud	儲存到雲端
+	Save to device	儲存到裝置
+	No files yet	目前沒有檔案
+	Save a copy to continue	請儲存副本以繼續
+	Could not save the file	無法儲存檔案
+	Could not confirm the save	無法確認儲存結果
+	Saved	已儲存
+	A newer version was saved	已儲存較新的版本
+	Cloud storage is full	雲端儲存空間已滿
+	Source commit	原始碼提交
+	Source tree	原始碼樹
+	Prepare version	準備版本
+	Roll back	還原至上一版本
+	Activate	啟用
+	Queued	排隊中
+	Preparing	準備中
+	Ready	已就緒
+	Cancelled	已取消
+	Failed	失敗
+	Interrupted	已中斷

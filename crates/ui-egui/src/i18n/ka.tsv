@@ -448,3 +448,29 @@ anicraft	Classic tweens with eight easing presets and custom ease curves, plus s
 	Unlock version?	განიბლოკოს ვერსია?
 	{app} is pinned to {version}. Follow the latest release instead?	{app} ფიქსირებულია {version} ვერსიაზე. სანაცვლოდ გამოიყენოთ უახლესი გამოშვება?
 	Unlock	განბლოკვა
+
+	Cloud	ღრუბელი
+	Sign in	შესვლა
+	Sign out	გასვლა
+	Files	ფაილები
+	Account	ანგარიში
+	Save to cloud	ღრუბელში შენახვა
+	Save to device	მოწყობილობაზე შენახვა
+	No files yet	ფაილები ჯერ არ არის
+	Save a copy to continue	გასაგრძელებლად შეინახეთ ასლი
+	Could not save the file	ფაილის შენახვა ვერ მოხერხდა
+	Could not confirm the save	შენახვის დადასტურება ვერ მოხერხდა
+	Saved	შენახულია
+	A newer version was saved	უფრო ახალი ვერსია შენახულია
+	Cloud storage is full	ღრუბლოვანი საცავი სავსეა
+	Source commit	საწყისი კოდის კომიტი
+	Source tree	საწყისი კოდის ხე
+	Prepare version	ვერსიის მომზადება
+	Roll back	წინა ვერსიაზე დაბრუნება
+	Activate	გააქტიურება
+	Queued	რიგშია
+	Preparing	მზადდება
+	Ready	მზადაა
+	Cancelled	გაუქმებულია
+	Failed	ვერ შესრულდა
+	Interrupted	შეწყდა
