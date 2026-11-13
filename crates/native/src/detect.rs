@@ -10,6 +10,7 @@
 
 use std::path::{Path, PathBuf};
 
+use artcraft_launcher_core::protocol::InstallLocations;
 use artcraft_launcher_core::{CraftApp, InstallSource, Installed, version};
 
 use crate::manifest::Manifest;
@@ -19,18 +20,39 @@ use crate::manifest::Manifest;
 pub struct Snapshot {
     #[allow(dead_code)]
     packages: Vec<crate::packages::Package>,
+    /// The folders the person chose for installs (the shared one and each app's own); AppImages
+    /// moved or installed there are found too.
+    #[allow(dead_code)]
+    custom_dirs: Vec<PathBuf>,
 }
 
 impl Snapshot {
     pub fn take() -> Self {
         #[cfg(target_os = "linux")]
         {
-            Self { packages: linux::packages() }
+            Self { packages: linux::packages(), custom_dirs: Vec::new() }
         }
         #[cfg(not(target_os = "linux"))]
         {
             Self::default()
         }
+    }
+
+    /// Also look in the install folders chosen in the settings.
+    pub fn with_install_locations(mut self, locations: &InstallLocations) -> Self {
+        for folder in locations.root.iter().chain(locations.per_app.values()) {
+            let path = if folder == "~" {
+                dirs::home_dir()
+            } else if let Some(relative) = folder.strip_prefix("~/") {
+                dirs::home_dir().map(|home| home.join(relative))
+            } else {
+                Some(PathBuf::from(folder))
+            };
+            if let Some(path) = path.filter(|p| !self.custom_dirs.contains(p)) {
+                self.custom_dirs.push(path);
+            }
+        }
+        self
     }
 }
 
@@ -590,16 +612,19 @@ pub mod linux {
         out
     }
 
-    /// AppImages of `app` in any of the usual folders, newest first.
-    pub fn appimages(app: &CraftApp) -> Vec<(PathBuf, Option<version::Version>)> {
-        appimages_in(app, &appimage_dirs())
+    /// AppImages of `app` in the folders chosen for installs (first, as the launcher installs
+    /// there) and in the usual ones, newest first.
+    pub fn appimages(app: &CraftApp, custom_dirs: &[PathBuf]) -> Vec<(PathBuf, Option<version::Version>)> {
+        let mut dirs = custom_dirs.to_vec();
+        dirs.extend(appimage_dirs());
+        appimages_in(app, &dirs)
     }
 
     /// How the app is installed, in this order: an AppImage the launcher put down, a package
     /// (deb, rpm, pacman or Flatpak), a package the launcher knows no name for but which owns the
     /// app's binary ([`owned_install`]), else a binary found on disk.
     pub fn detect(app: &CraftApp, snapshot: &Snapshot) -> Option<Installed> {
-        if let Some((path, version)) = appimages(app).into_iter().next() {
+        if let Some((path, version)) = appimages(app, &snapshot.custom_dirs).into_iter().next() {
             return Some(Installed {
                 version,
                 source: InstallSource::AppImage,
@@ -1023,6 +1048,24 @@ mod tests {
                 (gear.join("photocraft.appimage"), None),
             ]
         );
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn finds_an_appimage_in_a_chosen_install_folder() {
+        let app = CraftApp::by_id("photocraft").unwrap();
+        let root = tempfile::tempdir().unwrap();
+        let moved = root.path().join("Craft Apps");
+        std::fs::create_dir_all(&moved).unwrap();
+        let file = moved.join("photocraft-99.0.0-linux-x86_64.AppImage");
+        std::fs::write(&file, b"").unwrap();
+        let manifest = Manifest::default();
+        let locations = InstallLocations { root: Some(moved.display().to_string()), ..Default::default() };
+        let found = detect(app, &manifest, &Snapshot::default().with_install_locations(&locations)).unwrap();
+        assert_eq!(found.source, InstallSource::AppImage);
+        assert_eq!(found.location, file.display().to_string());
+        let own = InstallLocations { per_app: [("photocraft".to_string(), moved.display().to_string())].into(), ..Default::default() };
+        assert_eq!(detect(app, &manifest, &Snapshot::default().with_install_locations(&own)).unwrap().location, file.display().to_string());
     }
 
     const LEARNING_MACHINES: &str = "Learning Machines LLC";
