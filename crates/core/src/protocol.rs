@@ -204,6 +204,8 @@ impl Source {
 /// Something the backend wants the UI to know.
 #[derive(Clone, Debug, PartialEq)]
 pub enum Event {
+    /// A signed startup catalog has replaced the bundled app list.
+    CatalogUpdated,
     Latest {
         app: String,
         latest: LatestRelease,
@@ -293,8 +295,9 @@ pub struct Capabilities {
     /// What "show in file manager" is called here (`Show in Finder`).
     pub reveal_label: &'static str,
     /// The launcher can update itself in place and restart (an installed build, not a dev build or
-    /// a Flatpak from anywhere but the release bundle). Without it the UI offers the download
-    /// instead. A backend may only know this once it has found a newer launcher, so the UI reads
+    /// a Flatpak from anywhere but the release bundle), and the newer release has the file this copy
+    /// updates from. Without it the UI offers the download instead. A backend may only know this
+    /// once it has found a newer launcher, so the UI reads
     /// it again on [`Event::LauncherUpdate`].
     pub self_update: bool,
 }

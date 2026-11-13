@@ -300,6 +300,7 @@ filter	Installed	Installiert
 
 # Message templates (@msg): toasts from the backend. {placeholders} match any text.
 @msg	Couldn't open {name}: {e}	{name} konnte nicht geöffnet werden: {e}
+@msg	ArtCraft Launcher couldn't start its window on {backend}: {e}	ArtCraft Launcher konnte sein Fenster auf {backend} nicht starten: {e}
 @msg	Download cancelled	Download abgebrochen
 @msg	{name} updated to {version}	{name} auf {version} aktualisiert
 @msg	{name} installed: {version}	{name} installiert: {version}
@@ -444,3 +445,7 @@ anicraft	Familiar by design	Gewohnt aufgebaut
 anicraft	Stage, tools, timeline, layers, keyframes, Properties and Library sit where animators expect them, with onion skinning for in-betweening.	Bühne, Werkzeuge, Zeitleiste, Ebenen, Keyframes, Eigenschaften und Bibliothek genau dort, wo Animatoren sie erwarten, inklusive Zwiebelhaut.
 anicraft	Tweens that ease	Fließende Tweens
 anicraft	Classic tweens with eight easing presets and custom ease curves, plus shape tweens that morph one vector contour into another.	Klassische Tweens mit acht Easing-Voreinstellungen und Kurven sowie Form-Tweens für Vektor-Morphing.
+	Version pinned to {version}. Click to unlock.	Version auf {version} festgelegt. Zum Entsperren klicken.
+	Unlock version?	Versionssperre aufheben?
+	{app} is pinned to {version}. Follow the latest release instead?	{app} ist auf {version} festgelegt. Stattdessen der neuesten Version folgen?
+	Unlock	Entsperren

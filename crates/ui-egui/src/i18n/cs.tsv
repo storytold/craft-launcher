@@ -287,6 +287,7 @@ filter	Installed	Nainstalováno
 @plural	{n} h ago|{n} h ago	před {n} h|před {n} h|před {n} h
 @plural	{n} day ago|{n} days ago	před {n} dnem|před {n} dny|před {n} dny
 @msg	Couldn't open {name}: {e}	{name} nelze otevřít: {e}
+@msg	ArtCraft Launcher couldn't start its window on {backend}: {e}	ArtCraft Launcher nemohl spustit své okno na {backend}: {e}
 @msg	Download cancelled	Stahování zrušeno
 @msg	{name} updated to {version}	Aplikace {name} byla aktualizována na verzi {version}
 @msg	{name} installed: {version}	Aplikace {name} byla nainstalována ve verzi {version}
@@ -412,3 +413,7 @@ anicraft	Familiar by design	Navrženo tak, jak jste zvyklí
 anicraft	Stage, tools, timeline, layers, keyframes, Properties and Library sit where animators expect them, with onion skinning for in-betweening.	Scéna, nástroje, časová osa, vrstvy, klíčové snímky, Vlastnosti i Knihovna jsou tam, kde je animátoři čekají, včetně cibulového pauzáku.
 anicraft	Tweens that ease	Plynulé mezilehlé pohyby (tweens)
 anicraft	Classic tweens with eight easing presets and custom ease curves, plus shape tweens that morph one vector contour into another.	Klasické mezilehlé pohyby s osmi předvolbami zpomalení a vlastními křivkami, plus tvarové mezilehlé pohyby pro morphing.
+	Version pinned to {version}. Click to unlock.	Verze je uzamčena na {version}. Kliknutím ji odemknete.
+	Unlock version?	Odemknout verzi?
+	{app} is pinned to {version}. Follow the latest release instead?	Aplikace {app} je uzamčena na verzi {version}. Přejít na nejnovější vydání?
+	Unlock	Odemknout

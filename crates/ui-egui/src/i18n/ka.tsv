@@ -320,6 +320,7 @@ filter	Installed	დაინსტალირებული
 
 # Message templates (@msg): toasts from the backend. {placeholders} match any text.
 @msg	Couldn't open {name}: {e}	{name} ვერ გაიხსნა: {e}
+@msg	ArtCraft Launcher couldn't start its window on {backend}: {e}	ArtCraft Launcher-ის ფანჯარა ვერ გაეშვა {backend}-ზე: {e}
 @msg	Download cancelled	ჩამოტვირთვა გაუქმდა
 @msg	{name} updated to {version}	{name} განახლდა ვერსიამდე {version}
 @msg	{name} installed: {version}	{name} დაინსტალირდა: {version}
@@ -449,3 +450,7 @@ anicraft	Familiar by design	ნაცნობი დიზაინი
 anicraft	Stage, tools, timeline, layers, keyframes, Properties and Library sit where animators expect them, with onion skinning for in-betweening.	სცენა, ხელსაწყოები, დროის ხაზი, ფენები, საკვანძო კადრები, თვისებები და ბიბლიოთეკა იქ, სადაც ანიმატორები ელიან.
 anicraft	Tweens that ease	გლუვი ანიმაცია
 anicraft	Classic tweens with eight easing presets and custom ease curves, plus shape tweens that morph one vector contour into another.	კლასიკური ანიმაციური გადასვლები რვა წინასწარ დაყენებული პარამეტრით და ფორმის გარდაქმნით.
+	Version pinned to {version}. Click to unlock.	ვერსია ფიქსირებულია {version}-ზე. განსაბლოკად დააწკაპუნეთ.
+	Unlock version?	განიბლოკოს ვერსია?
+	{app} is pinned to {version}. Follow the latest release instead?	{app} ფიქსირებულია {version} ვერსიაზე. სანაცვლოდ გამოიყენოთ უახლესი გამოშვება?
+	Unlock	განბლოკვა

@@ -11,6 +11,69 @@ use crate::theme::Tokens;
 use crate::widgets::{self, Kind};
 
 impl LauncherUi {
+    /// The exact selected version, as distinct from following stable or nightly releases.
+    pub(crate) fn pinned_version(&self, id: &str) -> Option<&str> {
+        let track = if id == LAUNCHER_ID { Some(&self.settings.launcher_version) } else { self.settings.versions.get(id) };
+        match track {
+            Some(VersionTrack::Pinned(tag)) => Some(tag),
+            _ => None,
+        }
+    }
+
+    /// A lock beside a version opens a confirmation; clicking it never changes the saved choice.
+    pub(crate) fn version_lock(&mut self, ui: &mut Ui, id: &str) {
+        let Some(tag) = self.pinned_version(id).map(str::to_string) else { return };
+        let tip = crate::fmt(tl!("Version pinned to {version}. Click to unlock."), &[("version", &tag)]);
+        if widgets::inline_glyph_button(ui, widgets::Glyph::Lock, &tip).clicked() {
+            self.dialog = Some(crate::app::Dialog::UnlockVersion { app: id.to_string(), tag });
+        }
+    }
+
+    /// Unlock only the choice the prompt showed: a newer choice made while it was open survives.
+    fn unlock_version(&mut self, id: &str, tag: &str) {
+        if self.pinned_version(id) != Some(tag) {
+            return;
+        }
+        if id == LAUNCHER_ID {
+            self.settings.launcher_version = VersionTrack::Stable;
+        } else {
+            self.settings.versions.remove(id);
+        }
+        self.configure();
+        self.check_now_from_ui();
+    }
+
+    /// Confirms returning to the latest stable release without directly installing anything.
+    pub(crate) fn unlock_version_dialog(&mut self, ui: &mut Ui, id: &str, tag: &str) -> bool {
+        let app = if id == LAUNCHER_ID {
+            &LAUNCHER
+        } else if let Some(app) = CraftApp::by_id(id) {
+            app
+        } else {
+            return true;
+        };
+        ui.set_width(440.0f32.min((ui.ctx().content_rect().width() - 80.0).max(240.0)));
+        ui.heading(tl!("Unlock version?"));
+        ui.add_space(8.0);
+        ui.add(
+            egui::Label::new(crate::fmt(
+                tl!("{app} is pinned to {version}. Follow the latest release instead?"),
+                &[("app", app.name), ("version", tag)],
+            ))
+            .wrap(),
+        );
+        ui.add_space(16.0);
+        let (mut cancel, mut unlock) = (false, false);
+        ui.horizontal(|ui| {
+            cancel = widgets::button(ui, tl!("Cancel"), Kind::Secondary, 100.0).clicked();
+            unlock = widgets::button(ui, tl!("Unlock"), Kind::Primary, 100.0).clicked();
+        });
+        if unlock {
+            self.unlock_version(id, tag);
+        }
+        cancel || unlock
+    }
+
     /// The per-app selector stays in its dialog. The launcher's selector is drawn in Settings.
     pub(crate) fn version_dialog(&mut self, ui: &mut Ui, id: &str) -> bool {
         let Some(app) = CraftApp::by_id(id) else { return true };
