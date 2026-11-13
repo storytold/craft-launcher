@@ -801,7 +801,7 @@ pub fn uninstall(
             crate::portable::remove(app, record.ok_or("the launcher has no record of these files")?)
         }
         #[cfg(windows)]
-        InstallSource::Msi => windows::uninstall_msi(app, stop, phase),
+        InstallSource::Msi => windows::uninstall_msi(app, installed.package.as_deref(), stop, phase),
         #[cfg(target_os = "macos")]
         InstallSource::MacApp | InstallSource::Launcher => macos::move_to_trash(&path),
         #[cfg(target_os = "linux")]
@@ -2389,8 +2389,33 @@ pub mod windows {
         Ok((ended != msi_downgrade::Ended::LaunchFailed).then_some(ended))
     }
 
-    pub fn uninstall_msi(app: &CraftApp, stop: &Stop, phase: &mut dyn FnMut(JobPhase)) -> Result<(), String> {
-        in_turn(stop, phase, JobPhase::Removing, || remove_registrations(app).map_err(|removal| removal.error))
+    /// Removes the one registration the user picked (`product_code`, the copy the UI shows and the
+    /// running check covered), never another copy of the app in another scope or version.
+    pub fn uninstall_msi(app: &CraftApp, product_code: Option<&str>, stop: &Stop, phase: &mut dyn FnMut(JobPhase)) -> Result<(), String> {
+        in_turn(stop, phase, JobPhase::Removing, || {
+            let installs = crate::detect::windows::msi_installs(app);
+            let code = selected_registration(app, &installs, product_code)?;
+            process::command(msiexec())
+                .args(["/x", code, "/passive", "/norestart"])
+                .status()
+                .map_err(|e| format!("couldn't start the Windows Installer ({e})"))
+                .and_then(|status| explain(status.code()))
+        })
+    }
+
+    /// The product code among `installs` that names the selected copy. A copy with no product
+    /// code, or one no longer registered, removes nothing rather than a guessed other copy.
+    pub(super) fn selected_registration<'a>(
+        app: &CraftApp,
+        installs: &'a [crate::detect::windows::MsiInstall],
+        product_code: Option<&str>,
+    ) -> Result<&'a str, String> {
+        let wanted = product_code.ok_or_else(|| format!("couldn't tell which {} installation to remove", app.name))?;
+        installs
+            .iter()
+            .find(|m| m.product_code.eq_ignore_ascii_case(wanted))
+            .map(|m| m.product_code.as_str())
+            .ok_or_else(|| format!("{} {wanted} isn't registered with the Windows Installer any more", app.name))
     }
 
     /// Removes every Windows Installer registration of `app` in turn, within the caller's queue
@@ -2418,6 +2443,30 @@ pub mod windows {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Two copies are registered (a per-user and a per-machine one): removing the selected copy
+    /// names only its product code, and an unknown selection names none.
+    #[cfg(windows)]
+    #[test]
+    fn msi_uninstall_names_only_the_selected_registration() {
+        use crate::detect::windows::MsiInstall;
+        let app = CraftApp::by_id("photocraft").unwrap();
+        let install = |code: &str, scope| MsiInstall { product_code: code.into(), version: None, exe: None, scope };
+        let installs = [
+            install("{AAAAAAAA-0000-0000-0000-000000000001}", MsiScope::PerUser),
+            install("{BBBBBBBB-0000-0000-0000-000000000002}", MsiScope::PerMachine),
+        ];
+        assert_eq!(
+            windows::selected_registration(app, &installs, Some("{bbbbbbbb-0000-0000-0000-000000000002}")),
+            Ok("{BBBBBBBB-0000-0000-0000-000000000002}")
+        );
+        assert_eq!(
+            windows::selected_registration(app, &installs, Some("{AAAAAAAA-0000-0000-0000-000000000001}")),
+            Ok("{AAAAAAAA-0000-0000-0000-000000000001}")
+        );
+        assert!(windows::selected_registration(app, &installs, Some("{CCCCCCCC-0000-0000-0000-000000000003}")).is_err());
+        assert!(windows::selected_registration(app, &installs, None).is_err());
+    }
 
     /// A folder found only by the launch fallback, in another scope, never reaches the installer.
     #[cfg(windows)]
