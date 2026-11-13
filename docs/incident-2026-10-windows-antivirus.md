@@ -92,6 +92,12 @@ the route.
 - **All-users downgrades:** `downgrade_elevated` still uses the same elevated PowerShell script,
   and the command strings are still in the binary. Anyone downgrading an all-users app could trigger
   the same detection.
+- **The one-prompt batch route returns, differently (#1083):** "Update all" again asks once for a
+  batch of all-users apps, but by elevating the launcher's own signed exe with `ShellExecuteEx`
+  (`runas` verb) — no PowerShell, nothing encoded, nothing hidden — and every package is still held
+  and re-hashed before `msiexec` runs it with its own visible progress window
+  (`crates/native/src/install/msi_session.rs`). It owes the same behavioural-antivirus confirmation
+  test below before it ships in a release.
 - **Release:** no release includes #1077 yet.
 - **Confirmation:** test on a Windows VM with Kaspersky and behaviour detection on. Run Update all
   with two or more outdated all-users apps on an affected build, then on a build with #1077. The

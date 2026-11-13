@@ -12,6 +12,7 @@ pub mod default_apps;
 pub mod desktop_entry;
 pub mod detect;
 pub mod feed_throttle;
+pub mod hosted_catalog;
 pub mod http;
 pub mod install;
 pub mod login;

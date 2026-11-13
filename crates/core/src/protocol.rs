@@ -29,6 +29,12 @@ pub enum Command {
     Install {
         app: String,
     },
+    /// Install or update every app in `apps` together: their downloads run as for [`Command::Install`],
+    /// but where the platform needs a permission prompt (polkit on Linux, elevation on Windows)
+    /// the batch shares one prompt instead of one per app. Apps already running a job are left out.
+    InstallAll {
+        apps: Vec<String>,
+    },
     /// `Install`, writing over what [`Event::Occupied`] reported. `path` is the path the user
     /// agreed to overwrite: if the install would now write somewhere else, nothing is replaced and
     /// the user is asked again.
@@ -202,6 +208,8 @@ impl Source {
 /// Something the backend wants the UI to know.
 #[derive(Clone, Debug, PartialEq)]
 pub enum Event {
+    /// A signed startup catalog has replaced the bundled app list.
+    CatalogUpdated,
     Latest {
         app: String,
         latest: LatestRelease,
@@ -297,8 +305,9 @@ pub struct Capabilities {
     /// What "show in file manager" is called here (`Show in Finder`).
     pub reveal_label: &'static str,
     /// The launcher can update itself in place and restart (an installed build, not a dev build or
-    /// a Flatpak from anywhere but the release bundle). Without it the UI offers the download
-    /// instead. A backend may only know this once it has found a newer launcher, so the UI reads
+    /// a Flatpak from anywhere but the release bundle), and the newer release has the file this copy
+    /// updates from. Without it the UI offers the download instead. A backend may only know this
+    /// once it has found a newer launcher, so the UI reads
     /// it again on [`Event::LauncherUpdate`].
     pub self_update: bool,
 }
@@ -317,6 +326,11 @@ pub trait Backend {
     fn capabilities(&self) -> Capabilities;
     /// The machine apps would be installed on (on the web: the visitor's, best guess).
     fn platform(&self) -> Option<Platform>;
+    /// The cached package format and published bytes the next install would download.
+    /// Unknown until the backend has planned it; this must never perform installer discovery.
+    fn download_size(&self, _app: &str) -> Option<(PackageKind, u64)> {
+        None
+    }
     /// Unix seconds now.
     fn now(&self) -> i64;
 }
