@@ -991,7 +991,7 @@ dependencies = [
 [[package]]
 name = "craft-ai-agents"
 version = "0.1.0"
-source = "git+https://github.com/storytold/craft-ai-integrations?rev=94a3fb570938614927debefbc660e5d8271d816a#94a3fb570938614927debefbc660e5d8271d816a"
+source = "git+https://github.com/storytold/craft-ai-integrations?rev=0d76ea02a06299a5a6eee1993863fbcafe9c2cc3#0d76ea02a06299a5a6eee1993863fbcafe9c2cc3"
 dependencies = [
  "dirs 7.0.0",
  "serde",
@@ -1001,7 +1001,7 @@ dependencies = [
 [[package]]
 name = "craft-ai-mcp"
 version = "0.1.0"
-source = "git+https://github.com/storytold/craft-ai-integrations?rev=94a3fb570938614927debefbc660e5d8271d816a#94a3fb570938614927debefbc660e5d8271d816a"
+source = "git+https://github.com/storytold/craft-ai-integrations?rev=0d76ea02a06299a5a6eee1993863fbcafe9c2cc3#0d76ea02a06299a5a6eee1993863fbcafe9c2cc3"
 dependencies = [
  "craft-ai-agents",
  "dirs 7.0.0",
@@ -1307,7 +1307,7 @@ dependencies = [
  "libc",
  "option-ext",
  "redox_users",
- "windows-sys 0.61.2",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]

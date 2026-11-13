@@ -15,6 +15,6 @@ name = "craft-ai-mcp"
 path = "src/main.rs"
 
 # The gateway from storytold/craft-ai-integrations (crates/ai-mcp), pinned like the craft-libs crates.
-# Pinned to the head of storytold/craft-ai-integrations#197 until it merges; re-pin then.
+# Pinned to the merge of storytold/craft-ai-integrations#197.
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
-craft-ai-mcp = { git = "https://github.com/storytold/craft-ai-integrations", rev = "94a3fb570938614927debefbc660e5d8271d816a" }
+craft-ai-mcp = { git = "https://github.com/storytold/craft-ai-integrations", rev = "0d76ea02a06299a5a6eee1993863fbcafe9c2cc3" }
