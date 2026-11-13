@@ -925,19 +925,14 @@ fn install_cli_tool(
         };
         let mut run = crate::process::run_with_output;
         match install::cli_tool::install(app, release, asset, existing.as_ref(), job, &mut run) {
-            Ok(record) => {
+            Ok(placed) => {
                 let mut m = shared.manifest.lock().unwrap_or_else(PoisonError::into_inner);
-                m.cli.insert(app.id.to_string(), record.clone());
-                match m.save(&paths.manifest()) {
+                // Final only once the record is saved; a failure puts the previous tool and record back.
+                match install::cli_tool::record(&mut m, app.id, placed, existing, paths, |m| m.save(&paths.manifest())) {
                     Ok(()) => " and its command-line tool".to_string(),
                     Err(e) => {
-                        // A tool that isn't recorded can't be removed later: take it away again.
-                        m.cli.remove(app.id);
-                        if let Err(removal) = install::cli_tool::remove(paths, &record) {
-                            log::warn!("{}: command-line tool: {removal}", app.name);
-                        }
-                        log::warn!("{}: couldn't save the command-line tool's record: {e}", app.name);
-                        format!(" (its command-line tool wasn't installed: couldn't save its record ({e}))")
+                        log::warn!("{}: command-line tool: {e}", app.name);
+                        format!(" (its command-line tool wasn't installed: {e})")
                     }
                 }
             }

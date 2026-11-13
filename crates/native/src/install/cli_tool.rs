@@ -8,6 +8,9 @@
 //! never carries a version, so a program that stored it (an MCP client's configuration) keeps
 //! working after an update. Only what the launcher put there is ever removed.
 //!
+//! An install is a transaction: the old folder is kept until the new link is made and the record is
+//! saved ([`Placed::commit`]), and any step that fails puts the old tool back ([`Placed::rollback`]).
+//!
 //! The tool must be signed by the app's own Developer ID team and notarized, the checks the app
 //! itself passes (`macos_verify`) apart from the Gatekeeper assessment, which only judges apps.
 
@@ -19,8 +22,8 @@ use artcraft_launcher_core::protocol::JobPhase;
 use artcraft_launcher_core::release::{Asset, Release};
 use artcraft_launcher_core::{CraftApp, version};
 
-use super::{Job, bind_download_url, download, swap_into_place};
-use crate::manifest::CliRecord;
+use super::{Job, bind_download_url, download, swap_into_place_keeping};
+use crate::manifest::{CliRecord, Manifest};
 use crate::paths::Paths;
 use crate::process::RunOutput;
 
@@ -42,7 +45,7 @@ pub(crate) fn binary_name(app: &CraftApp) -> String {
     format!("{}-cli", app.id)
 }
 
-/// Downloads, checks and installs the tool of `release` for `app`.
+/// Downloads, checks and installs the tool of `release` for `app`. The result is not final until [`record`] has saved it.
 /// `existing` is the record of the tool the launcher installed earlier, if any: it alone says the
 /// folder and link at the destination are the launcher's to replace.
 pub(crate) fn install(
@@ -52,16 +55,16 @@ pub(crate) fn install(
     existing: Option<&CliRecord>,
     job: &mut Job<'_>,
     run: Run<'_>,
-) -> Result<CliRecord, String> {
+) -> Result<Placed, String> {
     let team = app.mac_team.ok_or("ArtCraft Launcher has no macOS signing team recorded for this app, so its command-line tool wasn't installed")?;
     bind(app, release, asset)?;
     // Before the download: nothing here is worth fetching if the destination isn't ours to replace.
     ensure_ours(job.paths, app, existing)?;
     let (file, _) = download(release, asset, job)?;
     (job.phase)(JobPhase::Installing);
-    let record = place(app, &release.version_label(), &file, team, job.paths, existing, run)?;
+    let placed = place_keeping(app, &release.version_label(), &file, team, job.paths, existing, run, link)?;
     let _ = std::fs::remove_file(&file);
-    Ok(record)
+    Ok(placed)
 }
 
 /// The version in the file's name and the tag in its URL must be the release's: a feed can't
@@ -107,10 +110,96 @@ fn link_is_ours(paths: &Paths, link: &Path) -> Option<bool> {
     Some(meta.file_type().is_symlink() && std::fs::read_link(link).is_ok_and(|to| to.starts_with(paths.cli())))
 }
 
+/// A tool in place whose record isn't saved yet. [`Placed::commit`] lets the old copy go;
+/// [`Placed::rollback`] puts things back as they were.
+pub(crate) struct Placed {
+    record: CliRecord,
+    /// The folder the tool replaced, kept beside it until the install is final.
+    backup: Option<tempfile::TempDir>,
+    /// Whether the install made the link (a link of the launcher's own that it replaced already names the stable path).
+    link_is_new: bool,
+}
+
+impl Placed {
+    pub(crate) fn record(&self) -> &CliRecord {
+        &self.record
+    }
+
+    /// The install is final: the old copy goes.
+    pub(crate) fn commit(self) {
+        drop(self);
+    }
+
+    /// Puts the previous state back: the old folder (the link names the stable path, so it works again),
+    /// or nothing for a first install. A copy that can't be put back is kept and named in the error.
+    pub(crate) fn rollback(self, paths: &Paths) -> Result<(), String> {
+        let Placed { record, backup, link_is_new } = self;
+        let kept = |backup: Option<tempfile::TempDir>| backup.map(|b| format!("; the previous tool was kept at {}", b.keep().join("old").display()));
+        if !is_plain_dir(&paths.cli()) {
+            return Err(format!(
+                "{} isn't a real folder, so the previous command-line tool wasn't put back{}",
+                paths.cli().display(),
+                kept(backup).unwrap_or_default()
+            ));
+        }
+        if link_is_new && std::fs::symlink_metadata(&record.link).is_ok_and(|m| m.file_type().is_symlink()) && is_plain_dir(&paths.cli_bin()) {
+            let _ = std::fs::remove_file(&record.link);
+        }
+        if is_plain_dir(&record.folder)
+            && let Err(e) = std::fs::remove_dir_all(&record.folder)
+        {
+            return Err(format!(
+                "couldn't remove the new command-line tool at {} ({e}){}",
+                record.folder.display(),
+                kept(backup).unwrap_or_default()
+            ));
+        }
+        if let Some(backup) = backup
+            && let Err(e) = std::fs::rename(backup.path().join("old"), &record.folder)
+        {
+            let saved = backup.keep().join("old");
+            return Err(format!("couldn't put the previous command-line tool back ({e}); it was kept at {}", saved.display()));
+        }
+        Ok(())
+    }
+}
+
+/// Records `placed` in `manifest` and saves it with `save`. Saved: the install is final. Not saved:
+/// the manifest and the disk go back to the previous tool (`previous`), or to none, so the tool that
+/// worked before still does and is still recorded.
+pub(crate) fn record(
+    manifest: &mut Manifest,
+    id: &str,
+    placed: Placed,
+    previous: Option<CliRecord>,
+    paths: &Paths,
+    save: impl FnOnce(&Manifest) -> Result<(), String>,
+) -> Result<(), String> {
+    manifest.cli.insert(id.to_string(), placed.record().clone());
+    match save(manifest) {
+        Ok(()) => {
+            placed.commit();
+            Ok(())
+        }
+        Err(e) => {
+            match previous {
+                Some(previous) => manifest.cli.insert(id.to_string(), previous),
+                None => manifest.cli.remove(id),
+            };
+            match placed.rollback(paths) {
+                Ok(()) => Err(format!("couldn't save its record ({e})")),
+                Err(restore) => Err(format!("couldn't save its record ({e}); {restore}")),
+            }
+        }
+    }
+}
+
 /// Unpacks `zip`, checks the tool inside against `team`, and puts it in place with its link.
 /// Nothing is replaced unless every check passed and the destination is free or the launcher's own
-/// (see [`ensure_ours`]), so a failure leaves the old tool as it was.
-pub(super) fn place(
+/// (see [`ensure_ours`]). The old tool stays recoverable until the result is committed, and a
+/// failure at the link puts it back at once, so a failure leaves the old tool as it was.
+#[allow(clippy::too_many_arguments)] // The inputs are independent, and `make_link` is only swapped out by tests.
+pub(super) fn place_keeping(
     app: &CraftApp,
     version: &str,
     zip: &Path,
@@ -118,7 +207,8 @@ pub(super) fn place(
     paths: &Paths,
     existing: Option<&CliRecord>,
     run: Run<'_>,
-) -> Result<CliRecord, String> {
+    make_link: impl FnOnce(&Paths, &str, &Path) -> Result<(PathBuf, bool), String>,
+) -> Result<Placed, String> {
     // First of all: staging is created inside `cli`, so a link there must be found before it is.
     ensure_ours(paths, app, existing)?;
     let root = paths.cli();
@@ -147,10 +237,26 @@ pub(super) fn place(
     }
     // Checked again here, and before the swap: the link must be settled while the old tool is still there.
     ensure_ours(paths, app, existing)?;
+    // What the link needs is checked before the old tool is touched: a file where its folder should be stops the install here.
+    let bin_dir = paths.cli_bin();
+    std::fs::create_dir_all(&bin_dir).map_err(|e| format!("couldn't create {} ({e})", bin_dir.display()))?;
+    if !is_plain_dir(&bin_dir) {
+        return Err(format!("{} isn't a real folder, so the command-line tool wasn't installed", bin_dir.display()));
+    }
     let folder = root.join(app.id);
-    swap_into_place(&top, &folder)?;
-    let link = link(paths, &name, &folder.join(&name))?;
-    Ok(CliRecord { version: version.to_string(), folder, link, installed_at: crate::now() })
+    let backup = swap_into_place_keeping(&top, &folder)?;
+    let record = CliRecord { version: version.to_string(), folder: folder.clone(), link: bin_dir.join(&name), installed_at: crate::now() };
+    match make_link(paths, &name, &folder.join(&name)) {
+        Ok((_, link_is_new)) => Ok(Placed { record, backup, link_is_new }),
+        Err(e) => {
+            // The old folder goes back before anything is reported: a failed update must not cost the working tool.
+            let undo = Placed { record, backup, link_is_new: false }.rollback(paths);
+            Err(match undo {
+                Ok(()) => e,
+                Err(restore) => format!("{e}; {restore}"),
+            })
+        }
+    }
 }
 
 /// Nothing in the unpacked tool may be a link: it could lead out of the folder.
@@ -200,24 +306,35 @@ fn verify(team: &str, bin: &Path, run: Run<'_>) -> Result<(), String> {
     Ok(())
 }
 
-/// `<data>/cli/bin/<name>` pointing at the tool: replaced only when it is a link into the launcher's
-/// own `cli` folder (see [`ensure_ours`]), never over anything of the user's.
+/// `<data>/cli/bin/<name>` pointing at the tool, and whether the link is new. A link of the launcher's
+/// own is replaced in one step (the new link is made beside it and renamed over it), so the old one
+/// is never gone while the new one isn't there; anything else at the name is never touched (see [`ensure_ours`]).
 #[cfg(unix)]
-fn link(paths: &Paths, name: &str, target: &Path) -> Result<PathBuf, String> {
+fn link(paths: &Paths, name: &str, target: &Path) -> Result<(PathBuf, bool), String> {
     let dir = paths.cli_bin();
     std::fs::create_dir_all(&dir).map_err(|e| format!("couldn't create {} ({e})", dir.display()))?;
     let link = dir.join(name);
-    // Decided here, at the removal, and not only before the swap: only a link of ours is taken away, and
-    // `symlink` below never overwrites, so a file that appears after this check stops the install instead.
+    // Decided here, at the replacement, and not only before the swap: only a link of ours is replaced, and a
+    // new name is made with `symlink`, which never overwrites, so a file that appears after this check stops the install.
     match link_is_ours(paths, &link) {
-        Some(true) => std::fs::remove_file(&link).map_err(|e| format!("couldn't replace {} ({e})", link.display()))?,
-        Some(false) => {
-            return Err(format!("{} already exists and wasn't made by ArtCraft Launcher, so the command-line tool wasn't installed", link.display()));
+        Some(true) => {
+            let staged = dir.join(format!(".{name}.artcraft-launcher-new"));
+            let _ = std::fs::remove_file(&staged);
+            std::os::unix::fs::symlink(target, &staged).map_err(|e| format!("couldn't link {} ({e})", link.display()))?;
+            if let Err(e) = std::fs::rename(&staged, &link) {
+                let _ = std::fs::remove_file(&staged);
+                return Err(format!("couldn't replace {} ({e})", link.display()));
+            }
+            Ok((link, false))
         }
-        None => {}
+        Some(false) => {
+            Err(format!("{} already exists and wasn't made by ArtCraft Launcher, so the command-line tool wasn't installed", link.display()))
+        }
+        None => {
+            std::os::unix::fs::symlink(target, &link).map_err(|e| format!("couldn't link {} ({e})", link.display()))?;
+            Ok((link, true))
+        }
     }
-    std::os::unix::fs::symlink(target, &link).map_err(|e| format!("couldn't link {} ({e})", link.display()))?;
-    Ok(link)
 }
 
 /// A real folder: not a link, whatever it points at.
@@ -262,6 +379,33 @@ mod tests {
 
     fn app() -> &'static CraftApp {
         CraftApp::by_id("pdfcraft").unwrap()
+    }
+
+    /// An install that is final at once (what one is once its record is saved).
+    fn place(
+        app: &CraftApp,
+        version: &str,
+        zip: &Path,
+        team: &str,
+        paths: &Paths,
+        existing: Option<&CliRecord>,
+        run: Run<'_>,
+    ) -> Result<CliRecord, String> {
+        place_keeping(app, version, zip, team, paths, existing, run, link).map(|placed| {
+            let record = placed.record().clone();
+            placed.commit();
+            record
+        })
+    }
+
+    fn failing_link(_: &Paths, _: &str, _: &Path) -> Result<(PathBuf, bool), String> {
+        Err("couldn't link the tool (disk full)".into())
+    }
+
+    fn names(dir: &Path) -> Vec<String> {
+        let mut names: Vec<_> = std::fs::read_dir(dir).unwrap().flatten().map(|e| e.file_name().to_string_lossy().into_owned()).collect();
+        names.sort();
+        names
     }
 
     /// A fake `ditto` that lays out the zip's usual folder, and a `codesign` that answers `verdicts` in order.
@@ -505,6 +649,142 @@ mod tests {
         let wild = CliRecord { version: "1".into(), folder: outside.clone(), link: paths.cli_bin().join("nolink"), installed_at: 0 };
         remove(&paths, &wild).unwrap();
         assert!(outside.join("keep").exists());
+    }
+
+    #[test]
+    fn a_file_where_the_bin_folder_should_be_stops_the_install_before_the_swap() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = Paths::under(dir.path());
+        let calls = RefCell::new(Vec::new());
+        let zip = Path::new("/x/z.zip");
+        // A first install: nothing is left behind.
+        std::fs::create_dir_all(paths.cli()).unwrap();
+        std::fs::write(paths.cli_bin(), "a file of the user's").unwrap();
+        let err = place(app(), "0.20.0", zip, "DJ6XS33FX8", &paths, None, &mut runner(&calls, &[("pdfcraft-cli", "tool")], &[])).unwrap_err();
+        assert!(err.contains("couldn't create") || err.contains("isn't a real folder"), "{err}");
+        assert_eq!(names(&paths.cli()), ["bin"], "no folder, no staging, no backup left in cli");
+        assert_eq!(std::fs::read_to_string(paths.cli_bin()).unwrap(), "a file of the user's");
+        // An update: the old tool is still there when the install stops.
+        std::fs::remove_file(paths.cli_bin()).unwrap();
+        let old = place(app(), "0.19.0", zip, "DJ6XS33FX8", &paths, None, &mut runner(&calls, &[("pdfcraft-cli", "old")], &[])).unwrap();
+        std::fs::remove_file(&old.link).unwrap();
+        std::fs::remove_dir(paths.cli_bin()).unwrap();
+        std::fs::write(paths.cli_bin(), "a file of the user's").unwrap();
+        let err = place(app(), "0.20.0", zip, "DJ6XS33FX8", &paths, Some(&old), &mut runner(&calls, &[("pdfcraft-cli", "new")], &[])).unwrap_err();
+        assert!(err.contains("couldn't create") || err.contains("isn't a real folder"), "{err}");
+        assert_eq!(std::fs::read_to_string(old.folder.join("pdfcraft-cli")).unwrap(), "old", "the old tool wasn't touched");
+        assert_eq!(names(&paths.cli()), ["bin", "pdfcraft"]);
+    }
+
+    #[test]
+    fn a_first_install_that_fails_at_the_link_leaves_nothing() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = Paths::under(dir.path());
+        let calls = RefCell::new(Vec::new());
+        let err = place_keeping(
+            app(),
+            "0.20.0",
+            Path::new("/x/z.zip"),
+            "DJ6XS33FX8",
+            &paths,
+            None,
+            &mut runner(&calls, &[("pdfcraft-cli", "tool")], &[]),
+            failing_link,
+        )
+        .err()
+        .unwrap();
+        assert!(err.contains("disk full"), "{err}");
+        assert!(!paths.cli().join("pdfcraft").exists(), "the new folder was taken away again");
+        assert_eq!(names(&paths.cli()), ["bin"]);
+    }
+
+    #[test]
+    fn an_update_that_fails_at_the_link_keeps_the_old_tool_and_its_link() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = Paths::under(dir.path());
+        let calls = RefCell::new(Vec::new());
+        let zip = Path::new("/x/z.zip");
+        let old =
+            place(app(), "0.19.0", zip, "DJ6XS33FX8", &paths, None, &mut runner(&calls, &[("pdfcraft-cli", "old"), ("OLD-ONLY", "x")], &[])).unwrap();
+        let err =
+            place_keeping(app(), "0.20.0", zip, "DJ6XS33FX8", &paths, Some(&old), &mut runner(&calls, &[("pdfcraft-cli", "new")], &[]), failing_link)
+                .err()
+                .unwrap();
+        assert!(err.contains("disk full"), "{err}");
+        assert_eq!(std::fs::read_to_string(old.folder.join("pdfcraft-cli")).unwrap(), "old");
+        assert!(old.folder.join("OLD-ONLY").exists(), "the old folder came back whole");
+        assert_eq!(std::fs::read_link(&old.link).unwrap(), old.folder.join("pdfcraft-cli"), "the old link is untouched");
+        assert_eq!(names(&paths.cli()), ["bin", "pdfcraft"], "no backup or staging folder is left");
+        assert_eq!(names(&paths.cli_bin()), ["pdfcraft-cli"], "no half-made link is left");
+    }
+
+    #[test]
+    fn rolling_back_restores_the_previous_tool_and_a_first_install_leaves_nothing() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = Paths::under(dir.path());
+        let calls = RefCell::new(Vec::new());
+        let zip = Path::new("/x/z.zip");
+        // A first install, rolled back (its record couldn't be saved).
+        let first =
+            place_keeping(app(), "0.19.0", zip, "DJ6XS33FX8", &paths, None, &mut runner(&calls, &[("pdfcraft-cli", "old")], &[]), link).unwrap();
+        assert!(std::fs::symlink_metadata(&first.record().link).is_ok());
+        first.rollback(&paths).unwrap();
+        assert_eq!(names(&paths.cli()), ["bin"]);
+        assert!(names(&paths.cli_bin()).is_empty(), "the link the install made is gone");
+        // An update, rolled back: the old tool works again through the same link.
+        let old = place(app(), "0.19.0", zip, "DJ6XS33FX8", &paths, None, &mut runner(&calls, &[("pdfcraft-cli", "old")], &[])).unwrap();
+        let updated =
+            place_keeping(app(), "0.20.0", zip, "DJ6XS33FX8", &paths, Some(&old), &mut runner(&calls, &[("pdfcraft-cli", "new")], &[]), link)
+                .unwrap();
+        assert_eq!(std::fs::read_to_string(old.folder.join("pdfcraft-cli")).unwrap(), "new");
+        updated.rollback(&paths).unwrap();
+        assert_eq!(std::fs::read_to_string(old.link.clone()).unwrap(), "old", "the link reaches the old tool again");
+        assert_eq!(names(&paths.cli()), ["bin", "pdfcraft"]);
+    }
+
+    #[test]
+    fn a_record_that_cannot_be_saved_leaves_the_previous_tool_and_record() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = Paths::under(dir.path());
+        let calls = RefCell::new(Vec::new());
+        let zip = Path::new("/x/z.zip");
+        let mut manifest = Manifest::default();
+        // First install: no record, no tool.
+        let placed =
+            place_keeping(app(), "0.19.0", zip, "DJ6XS33FX8", &paths, None, &mut runner(&calls, &[("pdfcraft-cli", "old")], &[]), link).unwrap();
+        let err = record(&mut manifest, "pdfcraft", placed, None, &paths, |_| Err("disk full".into())).unwrap_err();
+        assert!(err.contains("couldn't save its record (disk full)"), "{err}");
+        assert!(manifest.cli.is_empty());
+        assert_eq!(names(&paths.cli()), ["bin"]);
+        // An update: the previous tool, its link and its record stay.
+        let placed =
+            place_keeping(app(), "0.19.0", zip, "DJ6XS33FX8", &paths, None, &mut runner(&calls, &[("pdfcraft-cli", "old")], &[]), link).unwrap();
+        let old = placed.record().clone();
+        record(&mut manifest, "pdfcraft", placed, None, &paths, |_| Ok(())).unwrap();
+        let placed =
+            place_keeping(app(), "0.20.0", zip, "DJ6XS33FX8", &paths, Some(&old), &mut runner(&calls, &[("pdfcraft-cli", "new")], &[]), link)
+                .unwrap();
+        let err = record(&mut manifest, "pdfcraft", placed, Some(old.clone()), &paths, |_| Err("disk full".into())).unwrap_err();
+        assert!(err.contains("disk full"), "{err}");
+        assert_eq!(manifest.cli.get("pdfcraft"), Some(&old), "the previous record is back");
+        assert_eq!(std::fs::read_to_string(&old.link).unwrap(), "old", "the previous tool works through its link");
+        assert_eq!(names(&paths.cli()), ["bin", "pdfcraft"]);
+    }
+
+    #[test]
+    fn a_saved_record_lets_the_old_copy_go() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = Paths::under(dir.path());
+        let calls = RefCell::new(Vec::new());
+        let zip = Path::new("/x/z.zip");
+        let old = place(app(), "0.19.0", zip, "DJ6XS33FX8", &paths, None, &mut runner(&calls, &[("pdfcraft-cli", "old")], &[])).unwrap();
+        let placed =
+            place_keeping(app(), "0.20.0", zip, "DJ6XS33FX8", &paths, Some(&old), &mut runner(&calls, &[("pdfcraft-cli", "new")], &[]), link)
+                .unwrap();
+        let mut manifest = Manifest::default();
+        record(&mut manifest, "pdfcraft", placed, Some(old), &paths, |_| Ok(())).unwrap();
+        assert_eq!(manifest.cli.get("pdfcraft").map(|r| r.version.as_str()), Some("0.20.0"));
+        assert_eq!(names(&paths.cli()), ["bin", "pdfcraft"], "no backup folder is left");
     }
 
     #[test]
