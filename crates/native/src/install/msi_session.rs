@@ -8,19 +8,23 @@
 //! window. A hidden, elevated, encoded PowerShell route did this before and was withdrawn after
 //! behavioural antivirus flagged it (see `docs/incident-2026-10-windows-antivirus.md`).
 //!
-//! The elevated copy re-checks every package against the checksum its release published — with
-//! the file held open, so the checked bytes are the installed ones (CWE-367) — builds each
-//! installer's arguments from that held package itself (the manifest says where and in which
-//! context a package installs, never *which* file installs), runs Windows Installer on each in
-//! turn, and writes each app's exit code to a results file beside the manifest. A declined
-//! prompt cancels the whole batch; a session that cannot start sends the members back to
-//! installing one by one, the way a single app always installs.
+//! The elevated copy re-checks every package against the manifest's checksum — with the file held
+//! open, so the checked bytes are the installed ones (CWE-367) — and installs it only when its
+//! Authenticode signature names the launcher's own publisher. It builds each installer's
+//! arguments from that held package itself (the manifest says where and in which context a
+//! package installs, never *which* file installs), runs Windows Installer on each in turn, and
+//! writes each app's exit code to a results file beside the manifest. A declined prompt cancels
+//! the whole batch; a session that cannot start sends the members back to installing one by one,
+//! the way a single app always installs, and so does a package from another publisher.
 //!
-//! The trust chain: the manifest is created anew (`create_new`) and then held open unmodified for
-//! the whole session, so its checksums are the launcher's own; the elevated side re-hashes every
-//! package through a held handle before Windows Installer touches it, and runs the installer on
-//! that same held file. The results file is bound to its session by a random token (written as
-//! the file's first line), so no leftover or planted file can pass for a session's report; the
+//! The trust chain: the manifest is in a folder every process of the user can write, and any of
+//! them can start the elevated copy on one, so the signature is the check the elevated side makes
+//! on its own. The manifest of a real session is created anew (`create_new`) and then held open
+//! unmodified for the whole session. The elevated side re-hashes every package through a held
+//! handle before Windows Installer touches it, and runs the installer on that same held file. It
+//! writes its process id and its results only to new files. The results file is bound to its
+//! session by a random token (written as the file's first line), so no leftover or planted file
+//! can pass for a session's report; the
 //! launcher's own re-detection after each job is the backstop against a report that lies. And
 //! the waiting side falls back to one-by-one installs only when the elevated session is *shown*
 //! to be over — its process waited out or its process id gone — never while it may still be
@@ -128,26 +132,7 @@ fn sibling(manifest: &Path, extension: &str) -> PathBuf {
 pub(super) fn call(_command: &[OsString], targets: &[OsString]) -> Vec<Result<(), String>> {
     use artcraft_launcher_core::protocol::CANCELLED;
 
-    use super::msi_batch;
-
-    // A member joins the session only if its package is held and checks out again; anything
-    // else falls back to installing by itself, or hears its own error.
-    let mut outcomes: Vec<Result<(), String>> = Vec::with_capacity(targets.len());
-    let mut joined: Vec<(usize, Entry)> = Vec::new();
-    let mut held: Vec<msi_batch::Held> = Vec::new();
-    for (at, target) in targets.iter().enumerate() {
-        match parse(target.as_os_str()) {
-            Some(entry) => match msi_batch::hold(&entry.msi, &entry.sha256) {
-                Ok(file) => {
-                    held.push(file);
-                    outcomes.push(Ok(()));
-                    joined.push((at, entry));
-                }
-                Err(e) => outcomes.push(Err(e)),
-            },
-            None => outcomes.push(Err(NO_SESSION.into())),
-        }
-    }
+    let (mut outcomes, joined, mut held) = join(targets, &signed_by_this_launcher);
     let Some((_, first)) = joined.first() else {
         return outcomes;
     };
@@ -209,6 +194,58 @@ pub(super) fn call(_command: &[OsString], targets: &[OsString]) -> Vec<Result<()
         let _ = std::fs::remove_file(file);
     }
     outcomes
+}
+
+/// Each target's outcome so far, the members in the session, and the files held for them.
+#[cfg(windows)]
+type Joined = (Vec<Result<(), String>>, Vec<(usize, Entry)>, Vec<super::msi_batch::Held>);
+
+/// A member joins the session only if its package is held, checks out again and passes `signed`,
+/// the check the elevated copy makes too. A package from another publisher installs by itself,
+/// under its own prompt; any other failure is that member's own error.
+#[cfg(windows)]
+fn join(targets: &[OsString], signed: &dyn Fn(&Path) -> Result<(), String>) -> Joined {
+    let mut outcomes: Vec<Result<(), String>> = Vec::with_capacity(targets.len());
+    let mut joined: Vec<(usize, Entry)> = Vec::new();
+    let mut held: Vec<super::msi_batch::Held> = Vec::new();
+    for (at, target) in targets.iter().enumerate() {
+        match parse(target.as_os_str()) {
+            Some(entry) => match super::msi_batch::hold(&entry.msi, &entry.sha256) {
+                Ok(file) => match signed(&entry.msi) {
+                    Ok(()) => {
+                        held.push(file);
+                        outcomes.push(Ok(()));
+                        joined.push((at, entry));
+                    }
+                    Err(e) => {
+                        log::info!("{}: {e}; installing it by itself", entry.app);
+                        outcomes.push(Err(NO_SESSION.into()));
+                    }
+                },
+                Err(e) => outcomes.push(Err(e)),
+            },
+            None => outcomes.push(Err(NO_SESSION.into())),
+        }
+    }
+    (outcomes, joined, held)
+}
+
+/// Accepts `file` when it carries a valid Authenticode signature from the same publisher as
+/// `reference`. Refuses an unsigned file, another publisher's, and every file when `reference`
+/// itself isn't signed.
+#[cfg(windows)]
+fn signed_like(reference: &Path, file: &Path) -> Result<(), String> {
+    let publisher = |path: &Path| verifysign::verify_file(path).map(|signature| signature.subject_name());
+    let ours = publisher(reference).map_err(|e| format!("this copy of the launcher isn't signed ({e})"))?;
+    let theirs = publisher(file).map_err(|e| format!("{} isn't signed ({e})", file.display()))?;
+    if ours == theirs { Ok(()) } else { Err(format!("{} isn't signed by the launcher's publisher", file.display())) }
+}
+
+/// [`signed_like`] with this running program as the reference.
+#[cfg(windows)]
+fn signed_by_this_launcher(file: &Path) -> Result<(), String> {
+    let me = std::env::current_exe().map_err(|e| format!("couldn't find this program ({e})"))?;
+    signed_like(&me, file)
 }
 
 /// Writes the manifest the elevated copy reads, holding it and every package unchanged for as
@@ -423,25 +460,31 @@ fn parse_results(text: &str, token: &str) -> Vec<(String, i32)> {
         .collect()
 }
 
-/// Writes the results file, never over anything that already exists.
-fn write_results(path: &Path, token: &str, codes: &[(String, i32)]) -> Result<(), String> {
+/// Writes `text` to a new file. Anything already at `path`, a link included, is an error and is
+/// left as it is.
+fn write_new(path: &Path, text: &str) -> std::io::Result<()> {
     use std::io::Write as _;
 
+    std::fs::File::options().write(true).create_new(true).open(path)?.write_all(text.as_bytes())
+}
+
+/// Writes the results file, never over anything that already exists.
+fn write_results(path: &Path, token: &str, codes: &[(String, i32)]) -> Result<(), String> {
     let mut text = String::from(token);
     for (app, code) in codes {
         text.push_str(&format!("\n{app}\t{code}"));
     }
-    let mut file = std::fs::File::options().write(true).create_new(true).open(path).map_err(|e| format!("couldn't write the batch results ({e})"))?;
-    file.write_all(text.as_bytes()).map_err(|e| format!("couldn't write the batch results ({e})"))
+    write_new(path, &text).map_err(|e| format!("couldn't write the batch results ({e})"))
 }
 
 /// The elevated half of the session: what the launcher runs as `--install-msis <manifest>`.
-/// Re-checks every package against its published checksum (held open, so the checked bytes are
-/// the installed ones), builds each installer's arguments from that held package, runs Windows
-/// Installer on each in turn, and writes each app's exit code to the results file beside the
-/// manifest — every app's, however the others went, so one failed member never sends the whole
-/// batch back to one-by-one installs and their prompts. `Ok` means the session ran, whatever the
-/// installers themselves decided: their outcomes are the codes in the file.
+/// Re-checks every package against the manifest's checksum and against this program's publisher
+/// (held open, so the checked bytes are the installed ones), builds each installer's arguments
+/// from that held package, runs Windows Installer on each in turn, and writes each app's exit code
+/// to the results file beside the manifest — every app's, however the others went, so one failed
+/// member never sends the whole batch back to one-by-one installs and their prompts. `Ok` means
+/// the session ran, whatever the installers themselves decided: their outcomes are the codes in
+/// the file.
 #[cfg(windows)]
 pub fn run_elevated(manifest: &Path) -> Result<(), String> {
     let text = std::fs::read_to_string(manifest).map_err(|e| format!("couldn't read the batch manifest ({e})"))?;
@@ -455,7 +498,7 @@ pub fn run_elevated(manifest: &Path) -> Result<(), String> {
         }
     }
     let pid_file = sibling(manifest, "pid");
-    std::fs::write(&pid_file, std::process::id().to_string()).map_err(|e| format!("couldn't say the batch session had started ({e})"))?;
+    write_new(&pid_file, &std::process::id().to_string()).map_err(|e| format!("couldn't say the batch session had started ({e})"))?;
     let mut codes = Vec::new();
     for entry in &session.msis {
         codes.push((entry.app.clone(), install_one(entry)));
@@ -465,21 +508,31 @@ pub fn run_elevated(manifest: &Path) -> Result<(), String> {
     Ok(())
 }
 
-/// One package of the session, held while its installer runs. The installer's arguments are
-/// built here, from the held package itself: a manifest can say where and in which context the
-/// checked file installs, never which file installs. A package that cannot be held, checked or
-/// described reports "no exit code" ([`run_installer`]'s `-1`); the rest of the session carries
-/// on under the one prompt.
+/// One package of the session, held while its installer runs.
 #[cfg(windows)]
 fn install_one(entry: &Entry) -> i32 {
+    checked_install(entry, &signed_by_this_launcher, &run_installer)
+}
+
+/// Holds `entry`'s package, checks its checksum and passes it to `signed`, and only then gives
+/// `run` its installer's arguments, built here from the held package itself: a manifest can say
+/// where and in which context the checked file installs, never which file installs. A package
+/// that cannot be held, checked or described reports "no exit code" ([`run_installer`]'s `-1`);
+/// the rest of the session carries on under the one prompt.
+#[cfg(windows)]
+fn checked_install(entry: &Entry, signed: &dyn Fn(&Path) -> Result<(), String>, run: &dyn Fn(&str) -> Result<i32, String>) -> i32 {
     let installed = (|| -> Result<i32, String> {
+        // Every link in the path is resolved first, so the name that is held and checked is the
+        // name the installer's arguments carry.
+        let msi = super::msi_path(&entry.msi)?;
         // The hold is the point: it keeps the package unchanged through the installer run, so
         // the checked bytes are the installed ones. Its name is never read — the file staying
         // open until the end of this closure is the whole job.
-        let _held = super::msi_batch::hold(&entry.msi, &entry.sha256)?;
-        let line = super::msi_batch::line(&entry.msi, entry.destination.as_deref(), entry.scope)?;
+        let _held = super::msi_batch::hold(&msi, &entry.sha256)?;
+        signed(&msi)?;
+        let line = super::msi_batch::line(&msi, entry.destination.as_deref(), entry.scope)?;
         log::info!("{}: installing under the shared prompt", entry.app);
-        run_installer(&line)
+        run(&line)
     })();
     match installed {
         Ok(status) => status,
@@ -636,5 +689,101 @@ mod tests {
         let manifest = Path::new(r"C:\Cache\downloads\batch-123-45.json");
         assert_eq!(sibling(manifest, "results"), Path::new(r"C:\Cache\downloads\batch-123-45.results"));
         assert_eq!(sibling(manifest, "pid"), Path::new(r"C:\Cache\downloads\batch-123-45.pid"));
+    }
+
+    #[cfg(windows)]
+    mod elevated_checks {
+        use super::*;
+
+        fn system_program(name: &str) -> PathBuf {
+            PathBuf::from(std::env::var_os("SystemRoot").unwrap()).join("System32").join(name)
+        }
+
+        /// A package with the checksum the entry names, in a folder of its own.
+        fn package(dir: &Path) -> Entry {
+            let msi = dir.join("app.msi");
+            std::fs::write(&msi, b"the checked package").unwrap();
+            Entry { sha256: crate::http::sha256_file(&msi).unwrap(), destination: None, ..entry("app", &msi) }
+        }
+
+        /// `cmd.exe` carries a Windows signature; `cargo test` binaries carry none.
+        #[test]
+        fn a_file_must_carry_the_reference_publishers_signature() {
+            let cmd = system_program("cmd.exe");
+            let unsigned = std::env::current_exe().unwrap();
+            assert_eq!(signed_like(&cmd, &cmd), Ok(()));
+            assert!(signed_like(&cmd, &unsigned).is_err_and(|e| e.contains("isn't signed")));
+            assert!(signed_like(&unsigned, &cmd).is_err_and(|e| e.contains("launcher isn't signed")));
+        }
+
+        /// Windows Installer and the signature check both open a package the session holds.
+        #[test]
+        fn the_signature_of_a_held_package_can_be_read() {
+            let cmd = system_program("cmd.exe");
+            let _held = crate::install::msi_batch::hold(&cmd, &crate::http::sha256_file(&cmd).unwrap()).unwrap();
+            assert_eq!(signed_like(&cmd, &cmd), Ok(()));
+        }
+
+        /// The elevated side's refusal: whatever the manifest says, an unsigned package is never
+        /// handed to the Windows Installer.
+        #[test]
+        fn the_elevated_side_refuses_a_package_it_cannot_verify() {
+            let dir = tempfile::tempdir().unwrap();
+            let entry = package(dir.path());
+            let run = std::cell::Cell::new(false);
+            let code = checked_install(&entry, &|_| Err("not signed".to_string()), &|_| {
+                run.set(true);
+                Ok(0)
+            });
+            assert_eq!(code, -1);
+            assert!(!run.get(), "the installer ran on a package with no publisher");
+        }
+
+        #[test]
+        fn a_verified_package_reaches_the_installer_by_its_resolved_path() {
+            let dir = tempfile::tempdir().unwrap();
+            let entry = package(dir.path());
+            let seen = std::cell::RefCell::new(String::new());
+            let code = checked_install(&entry, &|_| Ok(()), &|line| {
+                seen.replace(line.to_string());
+                Ok(0)
+            });
+            assert_eq!(code, 0);
+            let resolved = dunce::canonicalize(&entry.msi).unwrap();
+            assert!(seen.borrow().contains(&format!("\"{}\"", resolved.display())), "{}", seen.borrow());
+        }
+
+        /// The launcher's side keeps a package from another publisher out of the session.
+        #[test]
+        fn another_publishers_package_does_not_join_the_session() {
+            let dir = tempfile::tempdir().unwrap();
+            let target = OsString::from(serde_json::to_string(&package(dir.path())).unwrap());
+            let (outcomes, joined, held) = join(&[target], &|_| Err("another publisher".to_string()));
+            assert_eq!(outcomes, vec![Err(NO_SESSION.to_string())]);
+            assert!(joined.is_empty() && held.is_empty());
+        }
+
+        #[test]
+        fn a_verified_package_joins_the_session() {
+            let dir = tempfile::tempdir().unwrap();
+            let target = OsString::from(serde_json::to_string(&package(dir.path())).unwrap());
+            let (outcomes, joined, held) = join(&[target], &|_| Ok(()));
+            assert_eq!(outcomes, vec![Ok(())]);
+            assert_eq!(joined.len(), 1);
+            assert_eq!(held.len(), 1);
+        }
+
+        /// An elevated write goes only to a new file, so nothing planted at the process-id name
+        /// is written through.
+        #[test]
+        fn the_session_will_not_write_over_what_is_at_its_process_id_name() {
+            let dir = tempfile::tempdir().unwrap();
+            let manifest = dir.path().join("batch.json");
+            std::fs::write(&manifest, r#"{"token":"t","msis":[]}"#).unwrap();
+            let pid_file = sibling(&manifest, "pid");
+            std::fs::write(&pid_file, "keep").unwrap();
+            assert!(run_elevated(&manifest).is_err());
+            assert_eq!(std::fs::read_to_string(&pid_file).unwrap(), "keep");
+        }
     }
 }
