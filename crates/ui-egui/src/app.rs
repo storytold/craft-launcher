@@ -893,10 +893,11 @@ impl LauncherUi {
                     self.toolbar(ui);
                     ui.add_space(18.0);
                     let ids = self.visible_ids();
-                    // The table is wider than a narrow window: let it scroll sideways too.
+                    // The table is wider than a narrow window: let it scroll sideways too, starting
+                    // where its first column is (the right, when the UI reads right to left).
                     let scroll = match self.settings.view {
                         ViewMode::Grid => egui::ScrollArea::vertical(),
-                        ViewMode::Table => egui::ScrollArea::both(),
+                        ViewMode::Table => egui::ScrollArea::both().stick_to_right(rtl),
                     };
                     scroll.auto_shrink(false).show(ui, |ui| {
                         // Escape must run even when search/filter leaves no rows (grid/table skipped).

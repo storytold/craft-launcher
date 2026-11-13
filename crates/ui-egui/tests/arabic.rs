@@ -219,6 +219,12 @@ fn arabic_switches_persists_mirrors_and_keeps_install_actions() {
     assert!(app > table.query_all_by_label("الإصدار").map(|n| n.rect().center().x).fold(0.0, f32::max));
     assert!(table.query_all_by_label_contains("أكتوبر 2026").count() >= 1);
     snapshot(&mut table, "table-ar-light");
+    // A narrow window scrolls the table sideways, starting at its first column, at the right.
+    table.set_size(egui::vec2(720.0, 900.0));
+    table.run_steps(6);
+    let app = table.get_by_label("التطبيق").rect();
+    assert!(app.left() >= 0.0 && app.right() <= 720.0, "{app:?}");
+    snapshot(&mut table, "table-ar-narrow");
     let (mut web, _) = harness_language(ViewMode::Grid, egui::Theme::Dark, false, &restored.language);
     web.run_steps(6);
     assert!(web.query_all_by_label("تنزيل لنظام macOS").count() >= 3);
