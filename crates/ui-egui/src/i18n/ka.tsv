@@ -48,7 +48,6 @@
 	GitHub	GitHub
 	Website	ვებსაიტი
 	Classic apps	კლასიკური აპლიკაციები
-	Classic	კლასიკური
 	New apps	ახალი აპლიკაციები
 	NEW	ახალი
 	Install	ინსტალაცია
@@ -266,7 +265,6 @@ month	Dec	დეკ
 	Checking for updates…	განახლებების შემოწმება…
 	Downloads the new version, replaces this one and opens it again	ჩამოტვირთავს ახალ ვერსიას, ჩაანაცვლებს ამას და ხელახლა გახსნის
 	Couldn't check for updates: {f}	განახლებების შემოწმება ვერ მოხერხდა: {f}
-	Website (coming soon)	ვებსაიტი (მალე)
 	GitHub repository	GitHub-ის რეპოზიტორია
 	ArtCraft	ArtCraft
 	Update 1 app	1 აპლიკაციის განახლება
@@ -438,10 +436,6 @@ materialcraft	Node graphs	კვანძების გრაფები
 materialcraft	Combine noises, patterns and filters.	ხმაურების, პატერნებისა და ფილტრების კომბინირება.
 materialcraft	Live previews	ცოცხალი წინასწარი ნახვა
 materialcraft	Preview materials in 2D and on 3D models.	მასალების წინასწარი ნახვა 2D-ში და 3D მოდელებზე.
-	Advanced	დამატებითი
-	Migrate Flatpak bundles to ArtCraft OCI (experimental)	Flatpak პაკეტების გადატანა ArtCraft OCI-ზე (ექსპერიმენტული)
-	On update, switch first party apps when the matching package is available. Otherwise, keep using bundles.	განახლებისას ArtCraft-ის საკუთარი აპლიკაციები OCI-ზე გადადის, თუ შესაბამისი პაკეტი ხელმისაწვდომია. სხვა შემთხვევაში კვლავ Flatpak პაკეტები გამოიყენება.
-	The OCI repository is a preview with GPG verification disabled.	OCI რეპოზიტორია წინასწარი ვერსიაა და მასში GPG-ით შემოწმება გამორთულია.
 	Download size: {size}	ჩამოტვირთვის ზომა: {size}
 anicraft	2D vector animation	2D ვექტორული ანიმაცია
 anicraft	Vector animation on a timeline you know.	ვექტორული ანიმაცია ნაცნობ ქრონოლოგიაზე.
