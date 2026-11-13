@@ -22,10 +22,11 @@ finish-args:
   # Display: Wayland first; X11 only when no Wayland compositor is running.
   - --socket=wayland
   - --socket=fallback-x11
-  # flatpak's build-finish (1.14 and 1.16 both) serializes fallback-x11 together with an
-  # unconditional x11 socket, which mounts X11 in every session, Wayland included (#1129).
-  # Taking x11 back keeps the promise above; it must come after fallback-x11, or the
-  # expansion wins again.
+  # flatpak's build-finish (1.14 and 1.16 both) serializes fallback-x11 together with a plain
+  # x11 socket, so the built bundle's metadata declared an x11 grant this manifest never made
+  # (#1129). At runtime flatpak keeps X11 a fallback either way; the metadata is what
+  # `flatpak info`, Flatseal and permission audits read. Taking x11 back keeps the metadata to
+  # the promise above; it must come after fallback-x11, or the expansion wins again.
   - --nosocket=x11
   # X11 shared memory (MIT-SHM). Without it the X11 fallback is slow or fails.
   - --share=ipc
