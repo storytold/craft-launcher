@@ -5,7 +5,12 @@ use egui::ImageSource;
 /// The 128 px icon of a Craft App ([`catalog::app_icon_png`](artcraft_launcher_core::catalog::app_icon_png)).
 pub fn app(id: &str) -> Option<ImageSource<'static>> {
     let png = artcraft_launcher_core::catalog::app_icon_png(id)?;
-    Some(ImageSource::Bytes { uri: format!("bytes://app-icons/{id}.png").into(), bytes: png.into() })
+    let revision = icon_revision(id);
+    Some(ImageSource::Bytes { uri: format!("bytes://app-icons/{id}/{revision}.png").into(), bytes: png.into() })
+}
+
+fn icon_revision(id: &str) -> &'static str {
+    artcraft_launcher_core::hosted_catalog::metadata(id).map_or("bundled", |m| m.icon_sha256.as_str())
 }
 
 /// A Craft App's icon: in colour, or in greys for an app that is not installed. The grey copy is
@@ -20,7 +25,7 @@ pub fn app_image(ctx: &egui::Context, id: &str, in_colour: bool) -> Option<egui:
     if let Some(colour) = &colour {
         let _ = colour.load_for_size(ctx, egui::Vec2::splat(64.0));
     }
-    let key = egui::Id::unique(("grey-app-icon", id));
+    let key = egui::Id::unique(("grey-app-icon", id, icon_revision(id)));
     if let Some(texture) = ctx.data(|d| d.get_temp::<egui::TextureHandle>(key)) {
         return Some(egui::Image::new(&texture));
     }

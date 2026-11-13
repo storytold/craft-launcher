@@ -53,13 +53,57 @@ pub fn capture(program: &str, args: &[&str], timeout: Duration) -> Option<String
 /// Runs a helper and returns its standard output when it succeeds within `timeout`; otherwise
 /// the reason, in the helper's own words (its standard error) where it gave one.
 pub fn run(program: &str, args: &[&str], timeout: Duration) -> Result<String, String> {
+    output_result(program, run_with_output(program, args, timeout)?)
+}
+
+/// Output and exit status from a helper, including both streams on failure.
+#[derive(Debug)]
+pub(crate) struct RunOutput {
+    pub success: bool,
+    /// Read only by the macOS Gatekeeper verifier; other targets keep the field for the shared
+    /// command runner and its tests.
+    #[cfg_attr(not(target_os = "macos"), allow(dead_code))]
+    pub code: Option<i32>,
+    pub status: String,
+    pub stdout: String,
+    pub stderr: String,
+}
+
+impl RunOutput {
+    #[cfg(test)]
+    #[cfg_attr(not(target_os = "macos"), allow(dead_code))]
+    pub(crate) fn success(stdout: impl Into<String>) -> Self {
+        Self { success: true, code: Some(0), status: "exit status: 0".into(), stdout: stdout.into(), stderr: String::new() }
+    }
+
+    #[cfg(test)]
+    #[cfg_attr(not(target_os = "macos"), allow(dead_code))]
+    pub(crate) fn exit(code: i32, stdout: impl Into<String>, stderr: impl Into<String>) -> Self {
+        Self { success: false, code: Some(code), status: format!("exit status: {code}"), stdout: stdout.into(), stderr: stderr.into() }
+    }
+}
+
+/// Runs a helper and preserves its output streams and exit status when it fails.
+pub(crate) fn run_with_output(program: &str, args: &[&str], timeout: Duration) -> Result<RunOutput, String> {
     let mut cmd = command(program);
     cmd.args(args);
-    run_command(cmd, program, timeout)
+    run_command_with_output(cmd, program, timeout)
 }
 
 /// Runs a configured helper with bounded output and a timeout.
-pub fn run_command(mut cmd: Command, program: &str, timeout: Duration) -> Result<String, String> {
+pub fn run_command(cmd: Command, program: &str, timeout: Duration) -> Result<String, String> {
+    output_result(program, run_command_with_output(cmd, program, timeout)?)
+}
+
+fn output_result(program: &str, output: RunOutput) -> Result<String, String> {
+    if output.success {
+        return Ok(output.stdout);
+    }
+    let reason = output.stderr.trim();
+    Err(if reason.is_empty() { format!("{program} failed ({})", output.status) } else { reason.to_string() })
+}
+
+fn run_command_with_output(mut cmd: Command, program: &str, timeout: Duration) -> Result<RunOutput, String> {
     let mut child =
         cmd.stdin(Stdio::null()).stdout(Stdio::piped()).stderr(Stdio::piped()).spawn().map_err(|e| format!("couldn't start {program} ({e})"))?;
     // Read both pipes while it runs, so a chatty helper can't block on a full one.
@@ -86,11 +130,7 @@ pub fn run_command(mut cmd: Command, program: &str, timeout: Duration) -> Result
     }
     let text = |pipe: std::thread::JoinHandle<Vec<u8>>| String::from_utf8_lossy(&pipe.join().unwrap_or_default()).into_owned();
     let (out, err) = (text(stdout), text(stderr));
-    if status.success() {
-        return Ok(out);
-    }
-    let reason = err.trim();
-    Err(if reason.is_empty() { format!("{program} failed ({status})") } else { reason.to_string() })
+    Ok(RunOutput { success: status.success(), code: status.code(), status: status.to_string(), stdout: out, stderr: err })
 }
 
 /// Captures at most 8 MB of a child's pipe and drains the rest on its own thread.
@@ -290,10 +330,21 @@ fn detect_discord_scheme_handler() -> bool {
     false
 }
 
-/// Finds a program on `PATH`.
+/// Finds a program on `PATH`. The path returned is absolute: a relative `PATH` entry (`.`, `bin`)
+/// is taken from the working folder, as the shell does, so the result still names the same file
+/// after it is stored and used from elsewhere (launch accepts only absolute locations).
 pub(crate) fn which(name: &str) -> Option<std::path::PathBuf> {
     let path = std::env::var_os("PATH")?;
-    std::env::split_paths(&path).map(|d| d.join(name)).find(|p| p.is_file())
+    which_in(&path, std::env::current_dir().ok().as_deref(), name)
+}
+
+/// [`which`] over the given `PATH` value, with relative entries taken from `cwd`. Without a
+/// working folder, relative entries are skipped: what they name can't be said.
+fn which_in(path: &std::ffi::OsStr, cwd: Option<&Path>, name: &str) -> Option<std::path::PathBuf> {
+    std::env::split_paths(path)
+        .filter_map(|d| if d.is_absolute() { Some(d) } else { cwd.map(|c| c.join(d)) })
+        .map(|d| d.join(name))
+        .find(|p| p.is_file())
 }
 
 /// Starts an app binary from its own folder.
@@ -530,6 +581,24 @@ mod tests {
 
     use super::*;
 
+    /// A program found through a relative `PATH` entry comes back as an absolute path, so it is
+    /// still a launchable location once stored.
+    #[test]
+    fn which_makes_a_relative_path_entry_absolute() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::create_dir(dir.path().join("bin")).unwrap();
+        std::fs::write(dir.path().join("bin").join("wordcraft"), b"").unwrap();
+        let path = std::env::join_paths([Path::new("bin"), Path::new("other")]).unwrap();
+        let found = which_in(&path, Some(dir.path()), "wordcraft").unwrap();
+        assert!(found.is_absolute() && found.is_file(), "{found:?}");
+        assert_eq!(found, dir.path().join("bin").join("wordcraft"));
+        // An absolute entry is used as it is; without a working folder a relative one is skipped.
+        let abs = std::env::join_paths([dir.path().join("bin")]).unwrap();
+        assert_eq!(which_in(&abs, None, "wordcraft"), Some(dir.path().join("bin").join("wordcraft")));
+        assert_eq!(which_in(&path, None, "wordcraft"), None);
+        assert_eq!(which_in(&path, Some(dir.path()), "missing"), None);
+    }
+
     struct RunningProbe(Child);
 
     impl RunningProbe {
@@ -630,6 +699,18 @@ mod run_tests {
         assert!(err.starts_with(&format!("{program} failed")), "{err}");
         let (program, args) = shell("echo hello");
         assert_eq!(run(program, &args, Duration::from_secs(30)).map(|out| out.trim().to_string()), Ok("hello".into()));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn run_with_output_keeps_both_streams_when_a_helper_exits_nonzero() {
+        let output =
+            run_with_output("/bin/sh", &["-c", "printf 'assessments disabled\\n'; printf 'diagnostic\\n' >&2; exit 1"], Duration::from_secs(30))
+                .unwrap();
+        assert!(!output.success);
+        assert_eq!(output.code, Some(1));
+        assert_eq!(output.stdout, "assessments disabled\n");
+        assert_eq!(output.stderr, "diagnostic\n");
     }
 }
 

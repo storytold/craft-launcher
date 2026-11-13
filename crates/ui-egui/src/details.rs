@@ -247,7 +247,12 @@ impl LauncherUi {
     fn neighbour_apps(&self, id: &str) -> (Option<String>, Option<String>) {
         let mut ids: Vec<&str> = self.visible_ids().into_iter().filter(|i| AppDetails::by_id(i).is_some()).collect();
         if !ids.contains(&id) {
-            ids = artcraft_launcher_core::SUITE.iter().map(|a| a.id).filter(|i| AppDetails::by_id(i).is_some()).collect();
+            ids = artcraft_launcher_core::hosted_catalog::apps()
+                .iter()
+                .filter(|a| self.platform.is_none_or(|p| a.runs_on(p.os)))
+                .map(|a| a.id)
+                .filter(|i| AppDetails::by_id(i).is_some())
+                .collect();
         }
         let Some(at) = ids.iter().position(|i| *i == id) else { return (None, None) };
         if ids.len() < 2 {
@@ -369,7 +374,10 @@ impl LauncherUi {
                 // "Version 0.5.0 · Oct 8, 2026", or the installed-versus-latest line.
                 let version = crate::views::version_line(entry, status);
                 if !version.trim().is_empty() {
-                    ui.label(RichText::new(version).size(theme::TEXT_CAPTION).color(t.muted));
+                    ui.horizontal(|ui| {
+                        ui.label(RichText::new(version).size(theme::TEXT_CAPTION).color(t.muted));
+                        self.version_lock(ui, app.id);
+                    });
                 }
             });
             if wide {
