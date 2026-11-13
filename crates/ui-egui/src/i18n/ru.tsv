@@ -438,10 +438,223 @@ anicraft	2D vector animation	2D-векторная анимация
 anicraft	Vector animation on a timeline you know.	Векторная анимация на привычной временной шкале.
 anicraft	Open-source 2D vector animation, built in pure Rust.	2D-векторная анимация с открытым исходным кодом на чистом Rust.
 anicraft	Familiar by design	Привычный интерфейс
-anicraft	Stage, tools, timeline, layers, keyframes, Properties and Library sit where animators expect them, with onion skinning for in-betweening.	Сцена, инструменты, шкала времени, слои, ключевые кадры, Свойства и Библиотека там, где их ждут аниматоры, со шлейфом калькирования.
+anicraft	Stage, tools, timeline, layers, keyframes, Properties and Library sit where animators expect them, with onion skinning for in-betweening.	Сцена, инструменты, шкала времени, слои, ключевые кадры, Свойства и Библиотека там, где их ждут аниматоры, а калька помогает рисовать промежуточные фазы.
 anicraft	Tweens that ease	Плавные твины
-anicraft	Classic tweens with eight easing presets and custom ease curves, plus shape tweens that morph one vector contour into another.	Классические твины с восемью пресетами замедления и кривыми, а также твины формы.
+anicraft	Classic tweens with eight easing presets and custom ease curves, plus shape tweens that morph one vector contour into another.	Классические твины с восемью пресетами замедления и собственными кривыми замедления, а также твины формы, которые превращают один векторный контур в другой.
 	Version pinned to {version}. Click to unlock.	Версия закреплена на {version}. Нажмите, чтобы разблокировать.
 	Unlock version?	Разблокировать версию?
 	{app} is pinned to {version}. Follow the latest release instead?	Для {app} закреплена версия {version}. Перейти на последнюю версию?
 	Unlock	Разблокировать
+photocraft	The image editor you already know how to use.	Графический редактор, в котором вы уже умеете работать.
+photocraft	Layers, masks, adjustment layers, layer styles, type, vectors and brushes in a native app. Open source, offline, and yours.	Слои, маски, корректирующие слои, стили слоя, текст, векторы и кисти в нативном приложении. Открытый исходный код, работает без интернета и принадлежит вам.
+photocraft	PhotoCraft keeps the menus, shortcuts and panels your hands already know, so there is nothing to relearn.	В PhotoCraft меню, сочетания клавиш и панели такие, к каким уже привыкли ваши руки, поэтому переучиваться не придётся.
+photocraft	Native GPU canvas	Нативный холст на GPU
+photocraft	No Electron and no web view: a fast native compositor.	Без Electron и веб-оболочек: быстрый нативный компоновщик.
+photocraft	Real layered files	Настоящие многослойные файлы
+photocraft	Opens and saves layered PSD and PSB documents.	Открывает и сохраняет многослойные документы PSD и PSB.
+photocraft	Non-destructive editing	Неразрушающее редактирование
+photocraft	Adjustment layers, live-preview filters, smart objects and layer styles.	Корректирующие слои, фильтры с живым предпросмотром, смарт-объекты и стили слоя.
+photocraft	On-device selection	Выделение на устройстве
+photocraft	Subject and object selection and mask refinement run locally.	Выделение предмета и объектов, а также уточнение маски выполняются локально.
+photocraft	Serious color	Профессиональная работа с цветом
+photocraft	8-, 16- and 32-bit RGB, CMYK, Lab and Grayscale, with ICC color management and soft proofing.	8-, 16- и 32-битные RGB, CMYK, Lab и оттенки серого, с управлением цветом ICC и экранной цветопробой.
+vectorcraft	Vector illustration, with familiar tools and editable effects.	Векторная иллюстрация с привычными инструментами и редактируемыми эффектами.
+vectorcraft	A native vector illustration app with the pen, panels and shortcuts illustrators expect. Open source, and it also runs in a browser.	Нативное приложение для векторной иллюстрации с пером, панелями и сочетаниями клавиш, к которым привыкли иллюстраторы. Открытый исходный код, работает и в браузере.
+vectorcraft	The workflow you know	Привычный рабочий процесс
+vectorcraft	Pen, direct selection, shape booleans, snapping guides and an appearance panel, laid out the way you expect.	Перо, прямое выделение, логические операции с фигурами, направляющие с привязкой и панель «Оформление» там, где вы их ожидаете.
+vectorcraft	Genuinely fast	По-настоящему быстро
+vectorcraft	Drawings with thousands of shapes stay responsive on a retina display.	Рисунки из тысяч фигур остаются отзывчивыми даже на дисплее Retina.
+vectorcraft	Booleans that don't fail	Логические операции без сбоев
+vectorcraft	Shape booleans work on the exact curves, so there is no "cannot perform operation", and undo is unlimited.	Логические операции с фигурами работают с точными кривыми, поэтому ошибки «невозможно выполнить операцию» не бывает, а отмена действий не ограничена.
+vectorcraft	Live, editable effects	Живые редактируемые эффекты
+vectorcraft	Blends, envelope distort, gradient mesh, repeats, glows and drop shadows all stay editable.	Переходы, искажение с помощью оболочки, сетчатый градиент, повторения, свечения и тени остаются редактируемыми.
+vectorcraft	Image tracing	Трассировка изображений
+vectorcraft	Turn raster images into clean vector paths, with presets for the common cases.	Превращайте растровые изображения в аккуратные векторные контуры, со стилями для типичных случаев.
+vectorcraft	Open formats	Открытые форматы
+vectorcraft	Native JSON documents, SVG and PDF import and export, and PNG, JPEG and WebP output.	Собственный формат документов на JSON, импорт и экспорт SVG и PDF, а также вывод в PNG, JPEG и WebP.
+filmcraft	Professional video editing, rebuilt from scratch.	Профессиональный видеомонтаж, созданный с нуля.
+filmcraft	A native video editor with source and program monitors, a real timeline and every trim mode.	Нативный видеоредактор с мониторами исходника и программы, полноценной монтажной шкалой и всеми режимами подрезки.
+filmcraft	A timeline you already know	Таймлайн, к которому вы уже привыкли
+filmcraft	Source and program monitors, three-point editing, every trim mode and J/K/L trimming.	Мониторы исходника и программы, монтаж по трём точкам, все режимы подрезки и подрезка клавишами J/K/L.
+filmcraft	Frame-exact time	Точность до кадра
+filmcraft	An integer timebase keeps 23.976 and 29.97 drop-frame footage exact, with no drift.	Целочисленная временная база сохраняет точность материала 23,976 и 29,97 с пропуском кадров, без накопления расхождений.
+filmcraft	Its own codecs	Собственные кодеки
+filmcraft	No FFmpeg inside: native support for H.264, HEVC, ProRes, VP9, AAC and Opus.	Без FFmpeg внутри: встроенная поддержка H.264, HEVC, ProRes, VP9, AAC и Opus.
+filmcraft	Color grading	Цветокоррекция
+filmcraft	Curves, color wheels, HSL secondaries, LUTs and HDR and log workflows, with scopes to check the result.	Кривые, цветовые круги, вторичная коррекция по HSL, LUT, работа с HDR и log-материалом, а также видеоскопы для проверки результата.
+filmcraft	Effects and keyframes	Эффекты и ключевые кадры
+filmcraft	Video effects and transitions, keyframes with value and velocity graphs, and a linear-light GPU compositor.	Видеоэффекты и переходы, ключевые кадры с графиками значений и скорости, а также компоновщик на GPU в линейном цветовом пространстве.
+filmcraft	Broadcast-ready audio	Звук для эфира
+filmcraft	EBU R128 loudness meters, a mixer with automation and native audio effects.	Измерители громкости по EBU R128, микшер с автоматизацией и встроенные аудиоэффекты.
+lightcraft	Your photos. Your pixels. Your machine.	Ваши фото. Ваши пиксели. Ваш компьютер.
+lightcraft	A fast photo library and non-destructive raw developer. No account, no cloud, no telemetry and no subscription.	Быстрая фотобиблиотека и неразрушающая проявка RAW. Без учётной записи, облака, телеметрии и подписки.
+lightcraft	Non-destructive by design	Неразрушающая обработка в основе
+lightcraft	A wide-gamut, 32-bit float pipeline that never touches your originals.	Конвейер с широким цветовым охватом и 32-битными числами с плавающей точкой, который никогда не изменяет ваши оригиналы.
+lightcraft	Every control you reach for	Все нужные инструменты под рукой
+lightcraft	Light, color, effects, tone curve, a color mixer, color grading wheels and built-in presets.	Свет, цвет, эффекты, кривая тона, микширование цвета, круги цветокоррекции и встроенные пресеты.
+lightcraft	Precise masking	Точные маски
+lightcraft	Brush, gradient and range masks, plus sky, subject and background masks.	Маски кистью, градиентом и по диапазону, а также маски неба, объекта и фона.
+lightcraft	Native raw decoding	Собственное декодирование RAW
+lightcraft	Support for the main camera raw formats: DNG, CR2, ARW, NEF, RAF, RW2, PEF and ORF.	Поддержка основных RAW-форматов камер: DNG, CR2, ARW, NEF, RAF, RW2, PEF и ORF.
+lightcraft	A library that keeps up	Библиотека, которая не отстаёт
+lightcraft	Albums, ratings, flags and search, with grids that stay smooth on large catalogs.	Альбомы, рейтинги, флажки и поиск, и сетка миниатюр, которая остаётся плавной даже в больших каталогах.
+lightcraft	Instant feedback	Мгновенный отклик
+lightcraft	The GPU pipeline updates the preview as you move a slider, even on large raw files.	Конвейер на GPU обновляет превью прямо во время движения ползунка, даже на больших RAW-файлах.
+pdfcraft	The open-source PDF workbench.	Мастерская для PDF с открытым исходным кодом.
+pdfcraft	Read, organize, combine, split and secure PDFs in a fast, native app. No account, no telemetry and no cloud.	Читайте, упорядочивайте, объединяйте, разделяйте и защищайте PDF в быстром нативном приложении. Без учётной записи, телеметрии и облака.
+pdfcraft	Faithful rendering	Точное отображение
+pdfcraft	World scripts, vertical Japanese, color emoji and transparency.	Письменности всего мира, вертикальный японский текст, цветные эмодзи и прозрачность.
+pdfcraft	Search as you type	Поиск по мере ввода
+pdfcraft	Instant find, and text selection that follows the document's real reading order.	Мгновенный поиск и выделение текста в настоящем порядке чтения документа.
+pdfcraft	Organize like cards	Страницы как карточки
+pdfcraft	Rotate, delete, insert and reorder pages, with deep undo behind every change.	Поворачивайте, удаляйте, вставляйте и переставляйте страницы, а многоуровневая отмена позволит вернуть любое изменение.
+pdfcraft	Combine, extract, split	Объединение, извлечение, разделение
+pdfcraft	Assemble and break apart documents while keeping links, form fields, layers and bookmarks intact.	Собирайте и разбирайте документы, сохраняя ссылки, поля форм, слои и закладки.
+pdfcraft	Fearless saves	Надёжное сохранение
+pdfcraft	Incremental, atomic saves with autosave and crash recovery.	Инкрементное атомарное сохранение, автосохранение и восстановление после сбоя.
+pdfcraft	Built-in security	Встроенная защита
+pdfcraft	Opens files from RC4 to AES-256 encryption and honors the author's permissions.	Открывает файлы с шифрованием от RC4 до AES-256 и соблюдает ограничения, заданные автором.
+effectcraft	Motion graphics and visual effects.	Моушн-графика и визуальные эффекты.
+effectcraft	A native compositor with compositions, layers, keyframes, effects, expressions, 3D cameras and lights, and a render queue. Young, moving fast, and already usable.	Нативный композитинг с композициями, слоями, ключевыми кадрами, эффектами, выражениями, 3D-камерами и источниками света, а также очередью рендеринга. Молодой проект, который быстро развивается и уже пригоден к работе.
+effectcraft	Animate the way you know	Анимируйте так, как привыкли
+effectcraft	Familiar panels and keyframes (linear, bezier, hold and eased), with a graph editor for value and speed curves.	Привычные панели и ключевые кадры (линейные, Безье, с удержанием и сглаженные), а также редактор графиков для кривых значений и скорости.
+effectcraft	Layers of every kind	Слои любых типов
+effectcraft	Solids, shapes, text, footage, nested compositions, nulls and adjustment layers, with parenting, track mattes and blend modes.	Сплошные заливки, фигуры, текст, видеоматериал, вложенные композиции, нулевые объекты и корректирующие слои, с родительскими связями, трек-маттами и режимами наложения.
+effectcraft	A large effects library	Большая библиотека эффектов
+effectcraft	Blur, color correction, distortion, generators, keying, particles and simulation, stylize and time effects.	Размытие, цветокоррекция, искажение, генерация, кеинг, частицы и симуляция, стилизация и эффекты времени.
+effectcraft	Real 3D	Настоящее 3D
+effectcraft	3D layers with cameras, depth of field, and lights that cast soft ray-traced shadows.	3D-слои с камерами, глубиной резкости и источниками света, которые отбрасывают мягкие тени с трассировкой лучей.
+effectcraft	Expressions	Выражения
+effectcraft	JavaScript expressions with wiggle, loops and layer references, edited inline.	Выражения на JavaScript с wiggle, циклами и ссылками на слои, которые редактируются прямо на месте.
+effectcraft	Export anywhere	Экспорт куда угодно
+effectcraft	H.264 and ProRes with alpha, PNG, TIFF and EXR sequences, GIF, and Lottie import and export.	H.264 и ProRes с альфа-каналом, последовательности PNG, TIFF и EXR, GIF, а также импорт и экспорт Lottie.
+anicraft	Symbols and scenes	Символы и сцены
+anicraft	Graphic symbols and movie clips with nested timelines and loop modes, mask and guide layers, filters, blend modes and scenes.	Графические символы и фрагменты роликов с вложенными шкалами времени и режимами зацикливания, слои-маски и направляющие слои, фильтры, режимы наложения и сцены.
+anicraft	Real vector tools	Настоящие векторные инструменты
+anicraft	Pen, Pencil with curve fitting, shapes, text, Paint Bucket and Ink Bottle, with Bézier anchors and handles you edit point by point.	Перо, Карандаш со сглаживанием кривых, фигуры, текст, Заливка и Чернильница, с опорными точками и маркерами Безье, которые можно править по одной.
+anicraft	Open formats	Открытые форматы
+anicraft	Opens .fla and .xfl documents and imports SVG. Exports PNG sequences, GIF, SVG frames, sprite sheets, Lottie, and WebM or MP4 through your own FFmpeg.	Открывает документы .fla и .xfl и импортирует SVG. Экспортирует последовательности PNG, GIF, кадры SVG, спрайт-листы, Lottie, а также WebM или MP4 через ваш собственный FFmpeg.
+anicraft	Agent-ready	Поддержка агентов
+anicraft	Every action is an engine command, so the CLI, a JSON-lines channel and an MCP server can draw, animate and export the way a person does.	Каждое действие — это команда движка, поэтому CLI, канал JSON Lines и MCP-сервер могут рисовать, анимировать и экспортировать так же, как человек.
+designcraft	Page layout and publishing.	Вёрстка и издательское дело.
+designcraft	A native layout app with spreads, parent pages, threaded stories, styles, swatches, text wrap and a paragraph composer. No subscription, no license server and no telemetry.	Нативное приложение для вёрстки с разворотами, родительскими страницами, связанными текстовыми фреймами, стилями, образцами цвета, обтеканием текстом и компоновщиком абзацев. Без подписки, сервера лицензий и телеметрии.
+designcraft	The layout tools you know	Привычные инструменты вёрстки
+designcraft	Spreads and parent pages, frames and threaded stories, with paragraph and character styles.	Развороты и родительские страницы, фреймы и связанные текстовые фреймы, а также стили абзацев и символов.
+designcraft	Beautiful type	Красивая типографика
+designcraft	A Knuth–Plass paragraph composer, dictionary hyphenation, optical margin alignment and baseline grids, with line breaks that match on screen and in PDF.	Компоновщик абзацев по алгоритму Кнута–Пласса, словарные переносы, оптическое выравнивание полей и сетки базовых линий, а переносы строк на экране и в PDF совпадают.
+designcraft	Print-ready PDF	PDF, готовый к печати
+designcraft	Real selectable text with embedded fonts, CMYK and spot colors, bleed, crop marks and PDF/A output.	Настоящий выделяемый текст со встроенными шрифтами, CMYK и плашечные цвета, вылеты под обрез, метки обреза и вывод в PDF/A.
+designcraft	Fast	Быстрый
+designcraft	Multithreaded rendering, instant undo and cached text composition.	Многопоточная отрисовка, мгновенная отмена и кэширование компоновки текста.
+designcraft	Open formats	Открытые форматы
+designcraft	A documented native format, PNG export and layout interchange import and export.	Документированный собственный формат, экспорт в PNG, а также импорт и экспорт в формате обмена макетами.
+designcraft	Built for automation	Создано для автоматизации
+designcraft	Every menu item, tool, panel and dialog can be driven over a JSON control channel and an MCP server.	Любым пунктом меню, инструментом, панелью и диалогом можно управлять через управляющий канал JSON и MCP-сервер.
+figcraft	Interface design and prototyping.	Дизайн интерфейсов и прототипирование.
+figcraft	Design screens, components and prototypes in a native app that opens instantly and works offline, with no account and no telemetry. Early alpha.	Проектируйте экраны, компоненты и прототипы в нативном приложении, которое открывается мгновенно и работает без интернета, без учётной записи и телеметрии. Ранняя альфа-версия.
+figcraft	Auto layout	Автолейаут
+figcraft	Rows, columns, wrap and grids with padding, gaps and Hug, Fill or Fixed sizing, plus constraints and layout grids.	Строки, столбцы, перенос и сетки с внутренними отступами, промежутками и размерами Hug, Fill или Fixed, а также ограничения и модульные сетки.
+figcraft	Components	Компоненты
+figcraft	Instances with overrides, variants and properties, styles, and variables with modes bound to fills, strokes and effects.	Экземпляры с переопределениями, варианты и свойства, стили, а также переменные с режимами, привязанные к заливкам, обводкам и эффектам.
+figcraft	Vectors	Векторы
+figcraft	Real vector networks, the pen and pencil, the shape builder, editable booleans and variable width strokes.	Настоящие векторные сети, перо и карандаш, построитель фигур, редактируемые логические операции и обводки переменной ширины.
+figcraft	Prototypes	Прототипы
+figcraft	Connections, triggers and animated transitions, variables with conditionals, flows and a presentation view with device frames.	Связи, триггеры и анимированные переходы, переменные с условиями, флоу и режим презентации с фреймами устройств.
+figcraft	Hand off	Передача в разработку
+figcraft	Inspect mode with measurements, annotations, ready-for-dev status, and code for CSS, HTML, React, SwiftUI and Compose.	Режим инспектирования с замерами, аннотациями, статусом «готово к разработке» и кодом для CSS, HTML, React, SwiftUI и Compose.
+figcraft	Your files	Ваши файлы
+figcraft	Plain .figcraft files on your own disk. SVG, PNG, JPEG, WebP and PDF in and out, and .fig files open, best effort.	Обычные файлы .figcraft на вашем собственном диске. Импорт и экспорт SVG, PNG, JPEG, WebP и PDF, а также открытие файлов .fig, насколько это возможно.
+soundcraft	Record, edit and mix your audio.	Записывайте, редактируйте и сводите звук.
+soundcraft	A digital audio workstation that follows the workflow audio engineers already know: an Edit window for arranging and editing, and a Mix window for balancing. Pre-alpha.	Цифровая звуковая рабочая станция с привычным для звукорежиссёров рабочим процессом: окно Edit для аранжировки и редактирования и окно Mix для баланса. Пре-альфа-версия.
+soundcraft	Editing	Редактирование
+soundcraft	Shuffle, Slip, Spot and Grid modes, Smart, Grabber, Trim and other tools, fades and crossfades, playlists with comping lanes and clip gain.	Режимы Shuffle, Slip, Spot и Grid, инструменты Smart, Grabber, Trim и другие, фейды и кроссфейды, плейлисты с дорожками для компинга и громкость клипов.
+soundcraft	Mixing	Сведение
+soundcraft	Faders and pans with automation, sends, busses, aux inputs, VCA masters, routing folders and automatic plugin delay compensation.	Фейдеры и панорама с автоматизацией, посылы, шины, aux-входы, VCA-мастеры, папки маршрутизации и автоматическая компенсация задержки плагинов.
+soundcraft	Automation	Автоматизация
+soundcraft	Volume, pan, mute, send and every plugin parameter, with Write, Touch, Latch and Trim passes recorded live from the faders.	Громкость, панорама, мьют, посылы и любой параметр плагина, с проходами Write, Touch, Latch и Trim, которые записываются вживую с фейдеров.
+soundcraft	Plugins	Плагины
+soundcraft	EQ, dynamics, reverbs, modulation effects, a subtractive synth and a drum synth, all original, and CLAP plugins load too.	Эквалайзер, динамическая обработка, ревербераторы, эффекты модуляции, субтрактивный синтезатор и драм-синтезатор, все собственной разработки, а также поддержка плагинов CLAP.
+wordcraft	The familiar word processor, native and offline.	Привычный текстовый редактор — нативный и без интернета.
+wordcraft	A word processor with the ribbon, shortcuts and behavior you already know. Open source, and built from public specifications.	Текстовый редактор с лентой, сочетаниями клавиш и поведением, к которым вы уже привыкли. Открытый исходный код, создан по открытым спецификациям.
+wordcraft	Familiar	Привычный
+wordcraft	Ribbon tabs and groups, a live Styles gallery and the editing behavior you expect, from list continuation to Format Painter.	Вкладки и группы ленты, живая коллекция стилей и привычное поведение при редактировании — от продолжения списков до «Формата по образцу».
+wordcraft	Your files	Ваши файлы
+wordcraft	Opens and saves .docx, and also .odt, .rtf, .html, .md, .tex and .txt. Opens older .doc files and exports PDF with real, selectable text.	Открывает и сохраняет .docx, а также .odt, .rtf, .html, .md, .tex и .txt. Открывает старые файлы .doc и экспортирует PDF с настоящим выделяемым текстом.
+wordcraft	Fast	Быстрый
+wordcraft	Paragraph layout is cached, so typing stays responsive even in long documents.	Разметка абзацев кэшируется, поэтому набор текста остаётся отзывчивым даже в длинных документах.
+wordcraft	Private	Конфиденциальный
+wordcraft	Spelling, grammar and everything else work offline.	Проверка орфографии, грамматики и всё остальное работают без интернета.
+wordcraft	Everywhere	Везде
+wordcraft	Work on macOS, Windows, Linux, BSD and the web.	Работайте в macOS, Windows, Linux, BSD и в браузере.
+wordcraft	Built for agents	Поддержка агентов
+wordcraft	Every action is a command, driven from the ribbon, shortcuts, a command-line tool, a JSON control channel or an MCP server.	Каждое действие — это команда, которую можно вызвать с ленты, сочетанием клавиш, из командной строки, через управляющий канал JSON или MCP-сервер.
+deckcraft	Create slides, tell stories and present.	Создавайте слайды, рассказывайте истории и выступайте.
+deckcraft	A presentation app with slide masters, shapes, animations and a presenter view. In alpha, heading for beta.	Приложение для презентаций с образцами слайдов, фигурами, анимацией и режимом докладчика. Альфа-версия, близкая к бете.
+deckcraft	Make decks	Создавайте презентации
+deckcraft	Slide masters and layouts with placeholders that inherit formatting, themes, sections, notes and comments.	Образцы слайдов и макеты с заполнителями, которые наследуют форматирование, темы, разделы, заметки и примечания.
+deckcraft	Draw	Рисуйте
+deckcraft	Preset shapes with adjust handles, connectors that stay glued to shapes, freeform tools, merged shapes, gradients, shadows and glow.	Готовые фигуры с маркерами настройки, соединительные линии, которые остаются прикреплены к фигурам, инструменты произвольного рисования, объединение фигур, градиенты, тени и свечение.
+deckcraft	Write	Пишите
+deckcraft	In-place text editing with full font and paragraph formatting, bullets and numbering, columns and autofit.	Редактирование текста прямо на слайде с полным форматированием шрифта и абзацев, маркированные и нумерованные списки, колонки и автоподбор размера.
+deckcraft	Add content	Добавляйте содержимое
+deckcraft	Pictures with crop and corrections, styled tables, charts, audio and video.	Рисунки с обрезкой и коррекцией, таблицы со стилями, диаграммы, звук и видео.
+deckcraft	Present	Выступайте
+deckcraft	Transitions including Morph, animations and motion paths, a full-screen slide show, presenter view and rehearsed timings.	Переходы, включая «Трансформацию», анимация и пути перемещения, полноэкранный показ слайдов, режим докладчика и настройка времени показа.
+deckcraft	Exchange files	Обменивайтесь файлами
+deckcraft	Opens and saves .pptx presentation files and exports PDF (slides, notes pages and handouts), PNG and JPEG.	Открывает и сохраняет презентации .pptx и экспортирует PDF (слайды, страницы заметок и раздаточные материалы), PNG и JPEG.
+cadcraft	Computer-aided drafting, with a familiar workflow.	Автоматизированное черчение с привычным рабочим процессом.
+cadcraft	A drafting app with the command line, object snaps and workflow that drafters already know. Free, with no account and no subscription. In early, fast development.	Приложение для черчения с командной строкой, объектными привязками и рабочим процессом, к которым привыкли чертёжники. Бесплатно, без учётной записи и подписки. Ранняя стадия, активная разработка.
+cadcraft	The workflow you know	Привычный рабочий процесс
+cadcraft	Type L, click two points, type @5<45 and press Enter. Prompts with clickable keywords, polar tracking, direct distance entry and grips work the way drafting habit expects.	Введите L, укажите две точки, впишите @5<45 и нажмите Enter. Запросы с кликабельными опциями, полярное отслеживание, прямой ввод расстояния и ручки работают так, как подсказывает привычка чертёжника.
+cadcraft	Open files	Открытые форматы
+cadcraft	Reads and writes DXF natively (R12 through 2018) and opens and saves DWG (R13 through 2018). Exports SVG and PNG.	Читает и записывает DXF напрямую (от R12 до 2018) и открывает и сохраняет DWG (от R13 до 2018). Экспортирует SVG и PNG.
+cadcraft	Fast and native	Быстрый и нативный
+cadcraft	A responsive, native drafting workspace.	Отзывчивая нативная среда для черчения.
+cadcraft	A full drafting toolset	Полный набор инструментов черчения
+cadcraft	Draw, modify, dimension, hatch and block commands, layers with a properties manager, paper-space layouts and PDF plotting.	Команды рисования, редактирования, нанесения размеров, штриховки и блоков, слои с диспетчером свойств, компоновка листов и печать в PDF.
+cadcraft	Built for agents	Поддержка агентов
+cadcraft	Every menu item, tool and prompt is a command, available over MCP, a JSON control channel or the CLI.	Каждый пункт меню, инструмент и запрос — это команда, доступная через MCP, управляющий канал JSON или CLI.
+gridcraft	Spreadsheets you already know how to use.	Электронные таблицы, в которых вы уже умеете работать.
+gridcraft	A spreadsheet with the ribbon, formula bar, sheet tabs and shortcuts you know. No subscription, no license server and no telemetry.	Электронные таблицы с привычными лентой, строкой формул, ярлычками листов и сочетаниями клавиш. Без подписки, сервера лицензий и телеметрии.
+gridcraft	Familiar	Привычный
+gridcraft	The ribbon, formula bar, Name Box, fill handle, point-mode formulas, Format Cells, Paste Special, conditional formatting, tables and charts.	Лента, строка формул, поле «Имя», маркер заполнения, ввод ссылок в формулы щелчком, «Формат ячеек», «Специальная вставка», условное форматирование, таблицы и диаграммы.
+gridcraft	Compatible	Совместимый
+gridcraft	XLSX is the native format, with formulas, tables, conditional formats, charts, pivot tables and print settings round-tripping. CSV and TSV too.	XLSX — основной формат, а формулы, таблицы, условное форматирование, диаграммы, сводные таблицы и параметры печати сохраняются без потерь. Также поддерживаются CSV и TSV.
+gridcraft	Capable	Функциональный
+gridcraft	A dependency-graph calculation engine with dynamic arrays, LET and LAMBDA, structured table references, sort, AutoFilter and Flash Fill.	Движок вычислений на графе зависимостей с динамическими массивами, LET и LAMBDA, структурированными ссылками на таблицы, сортировкой, автофильтром и мгновенным заполнением.
+gridcraft	Fast	Быстрый
+gridcraft	Copy-on-write workbooks, incremental recalculation and a grid that only lays out what is on screen.	Книги с копированием при записи, инкрементный пересчёт и сетка, которая отрисовывает только то, что видно на экране.
+gridcraft	Agent-native	Поддержка агентов
+gridcraft	Every ribbon button, menu item, dialog and keystroke is a command, available over a JSON control channel, an MCP server or the CLI.	Каждая кнопка ленты, пункт меню, диалог и нажатие клавиши — это команда, доступная через управляющий канал JSON, MCP-сервер или CLI.
+gridcraft	Everywhere	Везде
+gridcraft	Work on the desktop and the web.	Работайте на компьютере и в браузере.
+craft-anything	See how any website, app or game works, then build your own.	Узнайте, как устроены любой сайт, приложение или игра, и создайте своё.
+craft-anything	Point it at a target and say what you want. It studies the original with real inspection tools, has a coding agent build a new project in the stack you ask for, checks the result against the original and refines it. Open source and clean-room.	Укажите цель и скажите, что вам нужно. Приложение изучит оригинал настоящими инструментами анализа, поручит ИИ-агенту собрать новый проект на выбранном вами стеке, сверит результат с оригиналом и доработает его. Открытый исходный код и принцип «чистой комнаты».
+craft-anything	Study anything	Изучайте что угодно
+craft-anything	Websites, desktop apps, phone apps, games and files: find out how they're built, with the evidence behind every answer.	Сайты, настольные и мобильные приложения, игры и файлы: узнайте, как они устроены, с доказательствами по каждому пункту.
+craft-anything	Build your own	Создавайте своё
+craft-anything	Say what you want and a coding agent builds a new project in the language or engine you name.	Скажите, что вам нужно, и ИИ-агент создаст новый проект на указанном вами языке или движке.
+craft-anything	Checked, not guessed	Проверено, а не угадано
+craft-anything	Every build is compared with the original, at three screen widths for a page, and refined until it's close.	Каждая сборка сравнивается с оригиналом (для веб-страниц — при трёх значениях ширины экрана) и дорабатывается, пока не станет близкой к нему.
+craft-anything	Agent-ready	Поддержка агентов
+craft-anything	Every tool is a CLI command and an MCP tool, and no AI is needed just to inspect.	Каждый инструмент — это команда CLI и инструмент MCP, а для простого анализа ИИ не нужен.
+solidcraft	Parametric 3D CAD, with editable sketches and solids.	Параметрический 3D CAD с редактируемыми эскизами и твёрдыми телами.
+solidcraft	A parametric solid modeller by Tangency Labs. Sketch, constrain and build solids on an editable feature timeline: change a dimension and the model rebuilds. Early, but usable for simple parts. Open source, and it can be driven by AI agents through its MCP server.	Параметрический твердотельный моделлер от Tangency Labs. Рисуйте эскизы, задавайте зависимости и стройте тела в редактируемой истории построения: измените размер, и модель перестроится. Ранняя версия, но для простых деталей уже подходит. Открытый исходный код, и ИИ-агенты могут управлять им через MCP-сервер.
+solidcraft	Sketches and constraints	Эскизы и зависимости
+solidcraft	Lines, arcs, splines and text, solved by SolidCraft's own constraint solver, with parameter-driven dimensions.	Отрезки, дуги, сплайны и текст, которые рассчитывает собственный решатель зависимостей SolidCraft, с размерами, управляемыми параметрами.
+solidcraft	Features	Элементы
+solidcraft	Extrude, revolve, sweep, loft, fillet, chamfer, shell, holes, threads and patterns on a parametric timeline.	Выдавливание, вращение, сдвиг по траектории, лофт по сечениям, скругления, фаски, оболочки, отверстия, резьба и массивы в параметрической истории построения.
+solidcraft	Files	Файлы
+solidcraft	STEP, IGES, 3MF, STL, OBJ and glTF in and out where supported, and .sc designs.	Импорт и экспорт STEP, IGES, 3MF, STL, OBJ и glTF, где это поддерживается, а также проекты .sc.
+solidcraft	Desktop, web and agents	Компьютер, браузер и агенты
+solidcraft	A desktop app, a browser app, a headless CLI and an MCP server, all running the same commands.	Настольное приложение, браузерное приложение, консольный CLI и MCP-сервер, выполняющие одни и те же команды.
+mailcraft	Mail, calendar, contacts and tasks, in one native app.	Почта, календарь, контакты и задачи в одном нативном приложении.
+mailcraft	An open-source mail program by UCS Care Group, written from scratch in Rust: the folder pane, message list and reading pane people already know, with a calendar, people and to-dos. Works with Microsoft 365, Outlook.com and IMAP. In public beta, and it can be driven by AI agents through its MCP server.	Почтовая программа с открытым исходным кодом от UCS Care Group, написанная с нуля на Rust: привычные область папок, список сообщений и область чтения, а также календарь, контакты и задачи. Работает с Microsoft 365, Outlook.com и IMAP. Открытая бета-версия, и ИИ-агенты могут управлять ею через MCP-сервер.
+mailcraft	Mail	Почта
+mailcraft	Conversations, flags, categories, rules, search with a query language, and HTML mail shown without running anything in it.	Беседы, флажки, категории, правила, поиск с языком запросов и HTML-письма, которые отображаются без запуска их содержимого.
+mailcraft	Calendar	Календарь
+mailcraft	Day, week and month views, recurring meetings, invitations and reminders, kept in step with Microsoft 365.	Представления «День», «Неделя» и «Месяц», повторяющиеся собрания, приглашения и напоминания, синхронизированные с Microsoft 365.
+mailcraft	Files	Файлы
+mailcraft	.eml, .mbox, .ics and .vcf in and out, and the mail and contacts of an Outlook .pst file in.	Импорт и экспорт .eml, .mbox, .ics и .vcf, а также импорт почты и контактов из файла Outlook .pst.
+mailcraft	Desktop, web and agents	Компьютер, браузер и агенты
+mailcraft	A desktop app, a browser app, a CLI and an MCP server, all running the same commands.	Настольное приложение, браузерное приложение, CLI и MCP-сервер, выполняющие одни и те же команды.
