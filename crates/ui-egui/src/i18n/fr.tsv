@@ -50,7 +50,7 @@
 	Open	Ouvrir
 	Open {version}	Ouvrir {version}
 	Open {installed} without updating. {latest} stays available.	Ouvrir {installed} sans mettre à jour. {latest} reste disponible.
-	{latest} is out, but ArtCraft Launcher can't install it over this copy.	{latest} est sortie, mais ArtCraft Launcher ne peut pas l’installer par-dessus cette copie.
+	{latest} is out, but ArtCraft Launcher can't install it over this copy.	{latest} est sortie, mais ArtCraft Launcher ne peut pas l'installer par-dessus cette copie.
 	ArtCraft Launcher can't install version {version} over this copy.	ArtCraft Launcher ne peut pas installer la version {version} par-dessus cette copie.
 	Download for {os}	Télécharger pour {os}
 	Download	Télécharger
@@ -107,8 +107,8 @@
 	Updates always use the format an app was installed with.	Les mises à jour utilisent toujours le format avec lequel l'application a été installée.
 	Running in the background	Exécution en arrière-plan
 	Keep running in the tray when the window is closed	Rester actif dans la zone de notification à la fermeture de la fenêtre
-	ArtCraft Launcher is still running	ArtCraft Launcher est toujours en cours
-	It's in the tray: open it or quit it from the tray icon, or turn this off in the settings.	Il est dans la zone de notification : ouvrez-le ou quittez-le depuis son icône, ou désactivez ceci dans les réglages.
+	ArtCraft Launcher is still running	ArtCraft Launcher est toujours en cours d'exécution
+	It's in the tray: open it or quit it from the tray icon, or turn this off in the settings.	Il est dans la zone de notification : ouvrez-le ou quittez-le depuis son icône, ou désactivez cette option dans les réglages.
 	Show the window on the current desktop	Afficher la fenêtre sur le bureau actuel
 	Start ArtCraft Launcher when I log in	Lancer ArtCraft Launcher à l'ouverture de session
 	Community	Communauté
@@ -213,7 +213,7 @@ month	Oct	oct.
 month	Nov	nov.
 month	Dec	déc.
 	Not checked yet	Pas encore vérifié
-	GitHub's hourly limit was reached; full details return in {min} min	La limite horaire de GitHub a été atteinte ; les détails complets reviennent dans {min} min
+	GitHub's hourly limit was reached; full details return in {min} min	La limite horaire de GitHub a été atteinte ; les détails complets seront de retour dans {min} min
 	GitHub limit hit; back in {min} min	Limite GitHub atteinte ; retour dans {min} min
 	Installing for {platform}	Installation pour {platform}
 	Downloads for {platform}	Téléchargements pour {platform}
@@ -224,9 +224,9 @@ month	Dec	déc.
 	Download cancelled	Téléchargement annulé
 	Available to install	Disponible à l'installation
 	Available	Disponible
-	Installed · up to date	Installé · à jour
+	Installed · up to date	Installée · à jour
 	Update available	Mise à jour disponible
-	Installed	Installé
+	Installed	Installée
 	installed	installé
 	Not available here	Indisponible ici
 	Updating…	Mise à jour…
@@ -364,38 +364,38 @@ filter	Installed	Installées
 	Join the ArtCraft Discord	Rejoindre le Discord d'ArtCraft
 	App details	Détails de l'application
 	More actions for {name}	Autres actions pour {name}
-	Close (Esc)	Fermer (Esc)
+	Close (Esc)	Fermer (Échap)
 	Features	Fonctionnalités
 	Latest release	Dernière version
 	Version	Version
 	Platforms	Plateformes
 	Releases	Versions
 	Enlarge picture	Agrandir l'image
-	Click to enlarge	Cliquer pour agrandir
+	Click to enlarge	Cliquez pour agrandir
 	Previous picture (←)	Image précédente (←)
 	Next picture (→)	Image suivante (→)
 	Loading pictures…	Chargement des images…
-	Pictures couldn't be loaded. Reopen this page to try again.	Impossible de charger les images. Rouvrir la page permet de réessayer.
+	Pictures couldn't be loaded. Reopen this page to try again.	Impossible de charger les images. Rouvrez cette page pour réessayer.
 @plural	ArtCraft Launcher · {n} update available|ArtCraft Launcher · {n} updates available	ArtCraft Launcher · {n} mise à jour disponible|ArtCraft Launcher · {n} mises à jour disponibles
 
 	Download size: {size}	Taille du téléchargement : {size}
-	Install folder	Dossier d’installation
-	Default install folder	Dossier d’installation par défaut
+	Install folder	Dossier d'installation
+	Default install folder	Dossier d'installation par défaut
 	System default	Par défaut du système
 	Browse…	Parcourir…
 	Use default	Par défaut
 	New installs use this folder. Updates stay in their current location.	Les nouvelles installations utilisent ce dossier. Les mises à jour conservent leur emplacement actuel.
 	Custom folders use AppImage on Linux.	Les dossiers personnalisés utilisent AppImage sous Linux.
 	On Linux, custom folders use AppImage format.	Les dossiers personnalisés utilisent AppImage sous Linux.
-	The system manages install locations here.	Le système gère les emplacements d’installation ici.
-@msg	couldn't use install folder {path}: {reason}	impossible d’utiliser le dossier d’installation {path} : {reason}
-@msg	this release has no AppImage for a custom install folder	cette version ne propose pas d’AppImage pour un dossier d’installation personnalisé
-@msg	custom install folders aren't supported on this system	les dossiers d’installation personnalisés ne sont pas pris en charge sur ce système
-@msg	{path} already exists and wasn't installed by ArtCraft Launcher	{path} existe déjà et n’a pas été installé par ArtCraft Launcher
+	The system manages install locations here.	Le système gère les emplacements d'installation ici.
+@msg	couldn't use install folder {path}: {reason}	impossible d'utiliser le dossier d'installation {path} : {reason}
+@msg	this release has no AppImage for a custom install folder	cette version ne propose pas d'AppImage pour un dossier d'installation personnalisé
+@msg	custom install folders aren't supported on this system	les dossiers d'installation personnalisés ne sont pas pris en charge sur ce système
+@msg	{path} already exists and wasn't installed by ArtCraft Launcher	{path} existe déjà et n'a pas été installé par ArtCraft Launcher
 @msg	couldn't move {path} to Trash ({reason}). Remove it in Finder instead.	impossible de déplacer {path} vers la Corbeille ({reason}). Supprimez-le dans le Finder.
 	Apps are placed inside this folder.	Les applications sont placées dans ce dossier.
-	Replace what's there?	Remplacer l’existant ?
-	{path} already exists. Installing {name} will overwrite it.	{path} existe déjà. L’installation de {name} l’écrasera.
+	Replace what's there?	Remplacer le contenu existant ?
+	{path} already exists. Installing {name} will overwrite it.	{path} existe déjà. L'installation de {name} l'écrasera.
 	Replace	Remplacer
 	Recently updated	Récemment mises à jour
 	Name (A–Z)	Nom (A–Z)
@@ -403,21 +403,21 @@ filter	Installed	Installées
 	Frequently used	Les plus utilisées
 	Next app	Application suivante
 	Previous app	Application précédente
-	Show {n} more changes	Afficher {n} modifications de plus
+	Show {n} more changes	Afficher {n} autres modifications
 	Last updated: {date}	Dernière mise à jour : {date}
 column	Version	Version
 column	Author	Auteur
 	Choose version	Choisir une version
 	latest {version}	dernière {version}
 	{version} (latest release)	{version} (dernière version)
-	Launcher version	Version du lanceur
+	Launcher version	Version du launcher
 	Nightly	Nocturne
 	Nightly (none published yet)	Nocturne (pas encore publiée)
 	Install version {version}	Installer la version {version}
 	Download selected version	Télécharger la version choisie
-	Older launcher versions require a manual reinstall.	Les anciennes versions du lanceur nécessitent une réinstallation manuelle.
-	Your files may not open in older versions.	Tes fichiers pourraient ne pas s’ouvrir avec une ancienne version.
-	Enable automatic installs in Settings to follow new nightly builds.	Active les installations automatiques dans les paramètres pour recevoir les nouvelles versions nocturnes.
+	Older launcher versions require a manual reinstall.	Les anciennes versions du launcher nécessitent une réinstallation manuelle.
+	Your files may not open in older versions.	Vos fichiers pourraient ne pas s'ouvrir dans une version antérieure.
+	Enable automatic installs in Settings to follow new nightly builds.	Activez les installations automatiques dans les réglages pour suivre les nouvelles versions nocturnes.
 texturecraft	3D texture painting	Peinture de textures 3D
 texturecraft	Paint materials on 3D models and export textures.	Peignez des matériaux sur des modèles 3D et exportez les textures.
 texturecraft	Materials	Matériaux
@@ -439,11 +439,225 @@ materialcraft	Preview materials in 2D and on 3D models.	Visualisez les matériau
 anicraft	2D vector animation	Animation vectorielle 2D
 anicraft	Vector animation on a timeline you know.	Animation vectorielle sur une chronologie familière.
 anicraft	Open-source 2D vector animation, built in pure Rust.	Animation vectorielle 2D open source, conçue en pur Rust.
-anicraft	Familiar by design	Conception familière
-anicraft	Stage, tools, timeline, layers, keyframes, Properties and Library sit where animators expect them, with onion skinning for in-betweening.	Scène, outils, chronologie, calques, images clés, Propriétés et Bibliothèque là où les animateurs les attendent, avec pelure d'oignon.
+anicraft	Familiar by design	Pensée pour être familière
+anicraft	Stage, tools, timeline, layers, keyframes, Properties and Library sit where animators expect them, with onion skinning for in-betweening.	Scène, outils, chronologie, calques, images clés, Propriétés et Bibliothèque sont là où les animateurs les attendent, avec la pelure d'oignon pour les intervalles.
 anicraft	Tweens that ease	Interpolations fluides
-anicraft	Classic tweens with eight easing presets and custom ease curves, plus shape tweens that morph one vector contour into another.	Interpolations classiques avec huit préréglages d'accélération et courbes personnalisées, plus interpolations de forme.
+anicraft	Classic tweens with eight easing presets and custom ease curves, plus shape tweens that morph one vector contour into another.	Interpolations classiques avec huit préréglages d'accélération et des courbes personnalisées, plus des interpolations de forme qui transforment un contour vectoriel en un autre.
 	Version pinned to {version}. Click to unlock.	Version fixée à {version}. Cliquez pour la déverrouiller.
 	Unlock version?	Déverrouiller la version ?
-	{app} is pinned to {version}. Follow the latest release instead?	{app} est fixé à la version {version}. Suivre plutôt la dernière version ?
+	{app} is pinned to {version}. Follow the latest release instead?	La version de {app} est fixée à {version}. Suivre plutôt la dernière version ?
 	Unlock	Déverrouiller
+
+# Contextual: app details pages (headline, about paragraphs, feature titles and texts), keyed by app id
+photocraft	The image editor you already know how to use.	L'éditeur d'images que vous savez déjà utiliser.
+photocraft	Layers, masks, adjustment layers, layer styles, type, vectors and brushes in a native app. Open source, offline, and yours.	Calques, masques, calques de réglage, styles de calque, texte, vecteurs et pinceaux dans une application native. Open source, hors ligne, et à vous.
+photocraft	PhotoCraft keeps the menus, shortcuts and panels your hands already know, so there is nothing to relearn.	PhotoCraft conserve les menus, raccourcis et panneaux que vos mains connaissent déjà : vous n'avez rien à réapprendre.
+photocraft	No Electron and no web view: a fast native compositor.	Ni Electron ni vue web : un moteur de composition natif et rapide.
+photocraft	Native GPU canvas	Canevas GPU natif
+photocraft	Opens and saves layered PSD and PSB documents.	Ouvre et enregistre les documents PSD et PSB avec leurs calques.
+photocraft	Real layered files	De vrais fichiers à calques
+photocraft	Adjustment layers, live-preview filters, smart objects and layer styles.	Calques de réglage, filtres avec aperçu en direct, objets dynamiques et styles de calque.
+photocraft	Non-destructive editing	Retouche non destructive
+photocraft	Subject and object selection and mask refinement run locally.	La sélection du sujet et des objets et l'affinage des masques s'exécutent en local.
+photocraft	On-device selection	Sélection sur l'appareil
+photocraft	8-, 16- and 32-bit RGB, CMYK, Lab and Grayscale, with ICC color management and soft proofing.	RVB, CMJN, Lab et niveaux de gris en 8, 16 et 32 bits, avec gestion des couleurs ICC et épreuvage à l'écran.
+photocraft	Serious color	Une couleur maîtrisée
+vectorcraft	Vector illustration, with familiar tools and editable effects.	L'illustration vectorielle, avec des outils familiers et des effets modifiables.
+vectorcraft	A native vector illustration app with the pen, panels and shortcuts illustrators expect. Open source, and it also runs in a browser.	Une application d'illustration vectorielle native, avec la plume, les panneaux et les raccourcis qu'attendent les illustrateurs. Open source, et elle fonctionne aussi dans un navigateur.
+vectorcraft	Pen, direct selection, shape booleans, snapping guides and an appearance panel, laid out the way you expect.	Plume, sélection directe, opérations booléennes, repères magnétiques et panneau Aspect, disposés là où vous les attendez.
+vectorcraft	The workflow you know	La méthode de travail que vous connaissez
+vectorcraft	Drawings with thousands of shapes stay responsive on a retina display.	Les dessins de milliers de formes restent fluides sur un écran Retina.
+vectorcraft	Genuinely fast	Vraiment rapide
+vectorcraft	Shape booleans work on the exact curves, so there is no "cannot perform operation", and undo is unlimited.	Les opérations booléennes travaillent sur les courbes exactes : plus de « impossible d'effectuer l'opération », et les annulations sont illimitées.
+vectorcraft	Booleans that don't fail	Des booléens qui n'échouent pas
+vectorcraft	Blends, envelope distort, gradient mesh, repeats, glows and drop shadows all stay editable.	Dégradés de formes, déformations par enveloppe, filets de dégradé, répétitions, lueurs et ombres portées restent tous modifiables.
+vectorcraft	Live, editable effects	Des effets dynamiques et modifiables
+vectorcraft	Turn raster images into clean vector paths, with presets for the common cases.	Transformez des images matricielles en tracés vectoriels propres, avec des préréglages pour les cas courants.
+vectorcraft	Image tracing	Vectorisation d'images
+vectorcraft	Native JSON documents, SVG and PDF import and export, and PNG, JPEG and WebP output.	Documents natifs en JSON, import et export SVG et PDF, et export PNG, JPEG et WebP.
+vectorcraft	Open formats	Formats ouverts
+filmcraft	Professional video editing, rebuilt from scratch.	Le montage vidéo professionnel, reconstruit de zéro.
+filmcraft	A native video editor with source and program monitors, a real timeline and every trim mode.	Un logiciel de montage vidéo natif, avec moniteurs source et programme, une vraie timeline et tous les modes de raccord.
+filmcraft	Source and program monitors, three-point editing, every trim mode and J/K/L trimming.	Moniteurs source et programme, montage en trois points, tous les modes de raccord et le raccord au clavier J/K/L.
+filmcraft	A timeline you already know	Une timeline que vous connaissez déjà
+filmcraft	An integer timebase keeps 23.976 and 29.97 drop-frame footage exact, with no drift.	Une base de temps entière garde les images 23,976 et 29,97 en drop-frame exactes, sans dérive.
+filmcraft	Frame-exact time	Un temps précis à l'image près
+filmcraft	No FFmpeg inside: native support for H.264, HEVC, ProRes, VP9, AAC and Opus.	Sans FFmpeg : prise en charge native de H.264, HEVC, ProRes, VP9, AAC et Opus.
+filmcraft	Its own codecs	Ses propres codecs
+filmcraft	Curves, color wheels, HSL secondaries, LUTs and HDR and log workflows, with scopes to check the result.	Courbes, roues chromatiques, corrections secondaires TSL, LUT et flux HDR et log, avec des oscilloscopes pour contrôler le résultat.
+filmcraft	Color grading	Étalonnage
+filmcraft	Video effects and transitions, keyframes with value and velocity graphs, and a linear-light GPU compositor.	Effets et transitions vidéo, images clés avec courbes de valeur et de vitesse, et un compositeur GPU en lumière linéaire.
+filmcraft	Effects and keyframes	Effets et images clés
+filmcraft	EBU R128 loudness meters, a mixer with automation and native audio effects.	Indicateurs de sonie EBU R128, une console de mixage avec automation et des effets audio natifs.
+filmcraft	Broadcast-ready audio	Un son prêt pour la diffusion
+lightcraft	Your photos. Your pixels. Your machine.	Vos photos. Vos pixels. Votre machine.
+lightcraft	A fast photo library and non-destructive raw developer. No account, no cloud, no telemetry and no subscription.	Une photothèque rapide et un développeur RAW non destructif. Sans compte, sans cloud, sans télémétrie et sans abonnement.
+lightcraft	A wide-gamut, 32-bit float pipeline that never touches your originals.	Une chaîne de traitement à gamut étendu en virgule flottante 32 bits, qui ne modifie jamais vos originaux.
+lightcraft	Non-destructive by design	Non destructif par conception
+lightcraft	Light, color, effects, tone curve, a color mixer, color grading wheels and built-in presets.	Lumière, couleur, effets, courbe des tonalités, mélangeur de couleurs, roues d'étalonnage et préréglages intégrés.
+lightcraft	Every control you reach for	Tous les réglages dont vous avez besoin
+lightcraft	Brush, gradient and range masks, plus sky, subject and background masks.	Masques au pinceau, en dégradé et par plage, ainsi que masques du ciel, du sujet et de l'arrière-plan.
+lightcraft	Precise masking	Des masques précis
+lightcraft	Support for the main camera raw formats: DNG, CR2, ARW, NEF, RAF, RW2, PEF and ORF.	Prise en charge des principaux formats RAW d'appareils photo : DNG, CR2, ARW, NEF, RAF, RW2, PEF et ORF.
+lightcraft	Native raw decoding	Décodage RAW natif
+lightcraft	Albums, ratings, flags and search, with grids that stay smooth on large catalogs.	Albums, notes, marqueurs et recherche, avec des grilles qui restent fluides sur les grands catalogues.
+lightcraft	A library that keeps up	Une photothèque qui suit le rythme
+lightcraft	The GPU pipeline updates the preview as you move a slider, even on large raw files.	La chaîne GPU met l'aperçu à jour pendant que vous déplacez un curseur, même sur de gros fichiers RAW.
+lightcraft	Instant feedback	Un retour instantané
+pdfcraft	The open-source PDF workbench.	L'atelier PDF open source.
+pdfcraft	Read, organize, combine, split and secure PDFs in a fast, native app. No account, no telemetry and no cloud.	Lisez, organisez, combinez, scindez et sécurisez vos PDF dans une application native et rapide. Sans compte, sans télémétrie et sans cloud.
+pdfcraft	World scripts, vertical Japanese, color emoji and transparency.	Écritures du monde entier, japonais vertical, émojis en couleur et transparence.
+pdfcraft	Faithful rendering	Un rendu fidèle
+pdfcraft	Instant find, and text selection that follows the document's real reading order.	Recherche instantanée, et sélection du texte qui suit l'ordre de lecture réel du document.
+pdfcraft	Search as you type	Recherche au fil de la frappe
+pdfcraft	Rotate, delete, insert and reorder pages, with deep undo behind every change.	Faites pivoter, supprimez, insérez et réordonnez les pages, avec un historique d'annulation complet pour chaque modification.
+pdfcraft	Organize like cards	Organisez comme des cartes
+pdfcraft	Assemble and break apart documents while keeping links, form fields, layers and bookmarks intact.	Assemblez et séparez des documents en conservant intacts les liens, les champs de formulaire, les calques et les signets.
+pdfcraft	Combine, extract, split	Combiner, extraire, scinder
+pdfcraft	Incremental, atomic saves with autosave and crash recovery.	Enregistrements incrémentiels et atomiques, avec enregistrement automatique et récupération après plantage.
+pdfcraft	Fearless saves	Des enregistrements sans crainte
+pdfcraft	Opens files from RC4 to AES-256 encryption and honors the author's permissions.	Ouvre les fichiers chiffrés, du RC4 à l'AES-256, et respecte les autorisations définies par l'auteur.
+pdfcraft	Built-in security	Sécurité intégrée
+effectcraft	Motion graphics and visual effects.	Motion design et effets visuels.
+effectcraft	A native compositor with compositions, layers, keyframes, effects, expressions, 3D cameras and lights, and a render queue. Young, moving fast, and already usable.	Un logiciel de compositing natif avec compositions, calques, images clés, effets, expressions, caméras et lumières 3D, et une file d'attente de rendu. Jeune, en évolution rapide, et déjà utilisable.
+effectcraft	Familiar panels and keyframes (linear, bezier, hold and eased), with a graph editor for value and speed curves.	Des panneaux et des images clés familiers (linéaires, Bézier, maintien et lissées), avec un éditeur de graphiques pour les courbes de valeur et de vitesse.
+effectcraft	Animate the way you know	Animez comme vous en avez l'habitude
+effectcraft	Solids, shapes, text, footage, nested compositions, nulls and adjustment layers, with parenting, track mattes and blend modes.	Solides, formes, texte, métrage, compositions imbriquées, objets nuls et calques de réglage, avec parentage, caches par piste et modes de fusion.
+effectcraft	Layers of every kind	Des calques de tous types
+effectcraft	Blur, color correction, distortion, generators, keying, particles and simulation, stylize and time effects.	Flou, correction colorimétrique, déformation, générateurs, incrustation, particules et simulation, effets de stylisation et temporels.
+effectcraft	A large effects library	Une large bibliothèque d'effets
+effectcraft	3D layers with cameras, depth of field, and lights that cast soft ray-traced shadows.	Calques 3D avec caméras, profondeur de champ et lumières projetant des ombres douces en lancer de rayons.
+effectcraft	Real 3D	Une vraie 3D
+effectcraft	JavaScript expressions with wiggle, loops and layer references, edited inline.	Expressions JavaScript avec wiggle, boucles et références de calques, modifiables directement.
+effectcraft	Expressions	Expressions
+effectcraft	H.264 and ProRes with alpha, PNG, TIFF and EXR sequences, GIF, and Lottie import and export.	H.264 et ProRes avec alpha, séquences PNG, TIFF et EXR, GIF, et import et export Lottie.
+effectcraft	Export anywhere	Exportez partout
+anicraft	Graphic symbols and movie clips with nested timelines and loop modes, mask and guide layers, filters, blend modes and scenes.	Symboles graphiques et clips avec chronologies imbriquées et modes de boucle, calques de masque et de guide, filtres, modes de fusion et scènes.
+anicraft	Symbols and scenes	Symboles et scènes
+anicraft	Pen, Pencil with curve fitting, shapes, text, Paint Bucket and Ink Bottle, with Bézier anchors and handles you edit point by point.	Plume, Crayon avec lissage des courbes, formes, texte, Pot de peinture et Encrier, avec des points d'ancrage et poignées de Bézier modifiables point par point.
+anicraft	Real vector tools	De vrais outils vectoriels
+anicraft	Opens .fla and .xfl documents and imports SVG. Exports PNG sequences, GIF, SVG frames, sprite sheets, Lottie, and WebM or MP4 through your own FFmpeg.	Ouvre les documents .fla et .xfl et importe le SVG. Exporte en séquences PNG, GIF, images SVG, feuilles de sprites, Lottie, et en WebM ou MP4 via votre propre FFmpeg.
+anicraft	Open formats	Formats ouverts
+anicraft	Every action is an engine command, so the CLI, a JSON-lines channel and an MCP server can draw, animate and export the way a person does.	Chaque action est une commande du moteur : la ligne de commande, un canal JSON Lines et un serveur MCP peuvent dessiner, animer et exporter comme le ferait une personne.
+anicraft	Agent-ready	Prête pour les agents
+designcraft	Page layout and publishing.	Mise en page et édition.
+designcraft	A native layout app with spreads, parent pages, threaded stories, styles, swatches, text wrap and a paragraph composer. No subscription, no license server and no telemetry.	Une application de mise en page native avec doubles pages, gabarits, textes chaînés, styles, nuancier, habillage du texte et compositeur de paragraphes. Sans abonnement, sans serveur de licences et sans télémétrie.
+designcraft	Spreads and parent pages, frames and threaded stories, with paragraph and character styles.	Doubles pages et gabarits, blocs et textes chaînés, avec styles de paragraphe et de caractère.
+designcraft	The layout tools you know	Les outils de mise en page que vous connaissez
+designcraft	A Knuth–Plass paragraph composer, dictionary hyphenation, optical margin alignment and baseline grids, with line breaks that match on screen and in PDF.	Un compositeur de paragraphes Knuth–Plass, la césure par dictionnaire, l'alignement optique des marges et les grilles de ligne de base, avec des retours à la ligne identiques à l'écran et dans le PDF.
+designcraft	Beautiful type	Une belle typographie
+designcraft	Real selectable text with embedded fonts, CMYK and spot colors, bleed, crop marks and PDF/A output.	Du vrai texte sélectionnable avec polices incorporées, couleurs CMJN et tons directs, fond perdu, traits de coupe et export PDF/A.
+designcraft	Print-ready PDF	Des PDF prêts pour l'impression
+designcraft	Multithreaded rendering, instant undo and cached text composition.	Rendu multithread, annulation instantanée et composition du texte mise en cache.
+designcraft	Fast	Rapide
+designcraft	A documented native format, PNG export and layout interchange import and export.	Un format natif documenté, l'export PNG, et l'import et l'export au format d'échange de mise en page.
+designcraft	Open formats	Formats ouverts
+designcraft	Every menu item, tool, panel and dialog can be driven over a JSON control channel and an MCP server.	Chaque élément de menu, outil, panneau et boîte de dialogue peut être piloté via un canal de contrôle JSON et un serveur MCP.
+designcraft	Built for automation	Conçue pour l'automatisation
+figcraft	Interface design and prototyping.	Design d'interfaces et prototypage.
+figcraft	Design screens, components and prototypes in a native app that opens instantly and works offline, with no account and no telemetry. Early alpha.	Concevez écrans, composants et prototypes dans une application native qui s'ouvre instantanément et fonctionne hors ligne, sans compte et sans télémétrie. En alpha précoce.
+figcraft	Rows, columns, wrap and grids with padding, gaps and Hug, Fill or Fixed sizing, plus constraints and layout grids.	Lignes, colonnes, retour à la ligne et grilles avec marges intérieures, espacements et dimensionnement Ajusté, Rempli ou Fixe, ainsi que contraintes et grilles de mise en page.
+figcraft	Auto layout	Mise en page automatique
+figcraft	Instances with overrides, variants and properties, styles, and variables with modes bound to fills, strokes and effects.	Instances avec remplacements, variantes et propriétés, styles, et variables à modes liées aux remplissages, contours et effets.
+figcraft	Components	Composants
+figcraft	Real vector networks, the pen and pencil, the shape builder, editable booleans and variable width strokes.	De vrais réseaux vectoriels, la plume et le crayon, l'outil de création de formes, des booléens modifiables et des contours à épaisseur variable.
+figcraft	Vectors	Vecteurs
+figcraft	Connections, triggers and animated transitions, variables with conditionals, flows and a presentation view with device frames.	Connexions, déclencheurs et transitions animées, variables avec conditions, parcours et un mode présentation avec cadres d'appareils.
+figcraft	Prototypes	Prototypes
+figcraft	Inspect mode with measurements, annotations, ready-for-dev status, and code for CSS, HTML, React, SwiftUI and Compose.	Mode Inspection avec mesures, annotations, statut « prêt pour le développement », et code CSS, HTML, React, SwiftUI et Compose.
+figcraft	Hand off	Transmission aux développeurs
+figcraft	Plain .figcraft files on your own disk. SVG, PNG, JPEG, WebP and PDF in and out, and .fig files open, best effort.	De simples fichiers .figcraft sur votre propre disque. Import et export SVG, PNG, JPEG, WebP et PDF, et ouverture des fichiers .fig au mieux.
+figcraft	Your files	Vos fichiers
+soundcraft	Record, edit and mix your audio.	Enregistrez, éditez et mixez votre audio.
+soundcraft	A digital audio workstation that follows the workflow audio engineers already know: an Edit window for arranging and editing, and a Mix window for balancing. Pre-alpha.	Une station audionumérique qui suit la méthode de travail que les ingénieurs du son connaissent déjà : une fenêtre Édition pour arranger et éditer, et une fenêtre Mixage pour équilibrer. En pré-alpha.
+soundcraft	Shuffle, Slip, Spot and Grid modes, Smart, Grabber, Trim and other tools, fades and crossfades, playlists with comping lanes and clip gain.	Modes Shuffle, Slip, Spot et Grid, outils Smart, Grabber, Trim et autres, fondus et fondus enchaînés, playlists avec pistes de comping et gain de clip.
+soundcraft	Editing	Édition
+soundcraft	Faders and pans with automation, sends, busses, aux inputs, VCA masters, routing folders and automatic plugin delay compensation.	Faders et panoramiques avec automation, départs, bus, entrées auxiliaires, masters VCA, dossiers de routage et compensation automatique de la latence des plug-ins.
+soundcraft	Mixing	Mixage
+soundcraft	Volume, pan, mute, send and every plugin parameter, with Write, Touch, Latch and Trim passes recorded live from the faders.	Volume, panoramique, mute, départs et chaque paramètre de plug-in, avec des passes Write, Touch, Latch et Trim enregistrées en direct depuis les faders.
+soundcraft	Automation	Automation
+soundcraft	EQ, dynamics, reverbs, modulation effects, a subtractive synth and a drum synth, all original, and CLAP plugins load too.	Égaliseurs, dynamique, réverbérations, effets de modulation, un synthé soustractif et un synthé de batterie, tous originaux, et les plug-ins CLAP se chargent aussi.
+soundcraft	Plugins	Plug-ins
+wordcraft	The familiar word processor, native and offline.	Le traitement de texte familier, natif et hors ligne.
+wordcraft	A word processor with the ribbon, shortcuts and behavior you already know. Open source, and built from public specifications.	Un traitement de texte avec le ruban, les raccourcis et le comportement que vous connaissez déjà. Open source, et conçu à partir de spécifications publiques.
+wordcraft	Ribbon tabs and groups, a live Styles gallery and the editing behavior you expect, from list continuation to Format Painter.	Onglets et groupes du ruban, galerie de styles avec aperçu en direct et le comportement d'édition que vous attendez, de la continuation des listes à la reproduction de la mise en forme.
+wordcraft	Familiar	Familier
+wordcraft	Opens and saves .docx, and also .odt, .rtf, .html, .md, .tex and .txt. Opens older .doc files and exports PDF with real, selectable text.	Ouvre et enregistre les fichiers .docx, ainsi que .odt, .rtf, .html, .md, .tex et .txt. Ouvre les anciens fichiers .doc et exporte en PDF avec du vrai texte sélectionnable.
+wordcraft	Your files	Vos fichiers
+wordcraft	Paragraph layout is cached, so typing stays responsive even in long documents.	La mise en page des paragraphes est mise en cache : la saisie reste fluide même dans les longs documents.
+wordcraft	Fast	Rapide
+wordcraft	Spelling, grammar and everything else work offline.	L'orthographe, la grammaire et tout le reste fonctionnent hors ligne.
+wordcraft	Private	Confidentiel
+wordcraft	Work on macOS, Windows, Linux, BSD and the web.	Travaillez sous macOS, Windows, Linux, BSD et sur le web.
+wordcraft	Everywhere	Partout
+wordcraft	Every action is a command, driven from the ribbon, shortcuts, a command-line tool, a JSON control channel or an MCP server.	Chaque action est une commande, pilotable depuis le ruban, les raccourcis, un outil en ligne de commande, un canal de contrôle JSON ou un serveur MCP.
+wordcraft	Built for agents	Conçu pour les agents
+deckcraft	Create slides, tell stories and present.	Créez des diapositives, racontez des histoires et présentez.
+deckcraft	A presentation app with slide masters, shapes, animations and a presenter view. In alpha, heading for beta.	Une application de présentation avec masques de diapositives, formes, animations et mode présentateur. En alpha, en route vers la bêta.
+deckcraft	Slide masters and layouts with placeholders that inherit formatting, themes, sections, notes and comments.	Masques et dispositions de diapositives avec espaces réservés qui héritent de la mise en forme, thèmes, sections, notes et commentaires.
+deckcraft	Make decks	Créez vos présentations
+deckcraft	Preset shapes with adjust handles, connectors that stay glued to shapes, freeform tools, merged shapes, gradients, shadows and glow.	Formes prédéfinies avec poignées d'ajustement, connecteurs qui restent attachés aux formes, outils de forme libre, fusion de formes, dégradés, ombres et lueurs.
+deckcraft	Draw	Dessinez
+deckcraft	In-place text editing with full font and paragraph formatting, bullets and numbering, columns and autofit.	Édition du texte sur place avec mise en forme complète des polices et des paragraphes, puces et numérotation, colonnes et ajustement automatique.
+deckcraft	Write	Écrivez
+deckcraft	Pictures with crop and corrections, styled tables, charts, audio and video.	Images avec rognage et corrections, tableaux mis en forme, graphiques, audio et vidéo.
+deckcraft	Add content	Ajoutez du contenu
+deckcraft	Transitions including Morph, animations and motion paths, a full-screen slide show, presenter view and rehearsed timings.	Transitions dont Morphose, animations et trajectoires, diaporama en plein écran, mode présentateur et minutage des répétitions.
+deckcraft	Present	Présentez
+deckcraft	Opens and saves .pptx presentation files and exports PDF (slides, notes pages and handouts), PNG and JPEG.	Ouvre et enregistre les présentations .pptx et exporte en PDF (diapositives, pages de notes et documents à distribuer), PNG et JPEG.
+deckcraft	Exchange files	Échangez vos fichiers
+cadcraft	Computer-aided drafting, with a familiar workflow.	Le dessin assisté par ordinateur, avec une méthode de travail familière.
+cadcraft	A drafting app with the command line, object snaps and workflow that drafters already know. Free, with no account and no subscription. In early, fast development.	Une application de dessin technique avec la ligne de commande, les accrochages aux objets et la méthode de travail que les dessinateurs connaissent déjà. Gratuite, sans compte et sans abonnement. Au début d'un développement rapide.
+cadcraft	Type L, click two points, type @5<45 and press Enter. Prompts with clickable keywords, polar tracking, direct distance entry and grips work the way drafting habit expects.	Tapez L, cliquez sur deux points, tapez @5<45 et appuyez sur Entrée. Invites avec mots-clés cliquables, repérage polaire, saisie directe de distance et poignées fonctionnent comme le veulent les habitudes du dessin technique.
+cadcraft	The workflow you know	La méthode de travail que vous connaissez
+cadcraft	Reads and writes DXF natively (R12 through 2018) and opens and saves DWG (R13 through 2018). Exports SVG and PNG.	Lit et écrit le DXF en natif (de R12 à 2018), et ouvre et enregistre le DWG (de R13 à 2018). Exporte en SVG et PNG.
+cadcraft	Open files	Des fichiers ouverts
+cadcraft	A responsive, native drafting workspace.	Un espace de dessin technique natif et réactif.
+cadcraft	Fast and native	Rapide et natif
+cadcraft	Draw, modify, dimension, hatch and block commands, layers with a properties manager, paper-space layouts and PDF plotting.	Commandes de dessin, de modification, de cotation, de hachures et de blocs, calques avec gestionnaire de propriétés, présentations dans l'espace papier et traçage en PDF.
+cadcraft	A full drafting toolset	Une panoplie complète de dessin technique
+cadcraft	Every menu item, tool and prompt is a command, available over MCP, a JSON control channel or the CLI.	Chaque élément de menu, outil et invite est une commande, disponible via MCP, un canal de contrôle JSON ou la ligne de commande.
+cadcraft	Built for agents	Conçue pour les agents
+gridcraft	Spreadsheets you already know how to use.	Le tableur que vous savez déjà utiliser.
+gridcraft	A spreadsheet with the ribbon, formula bar, sheet tabs and shortcuts you know. No subscription, no license server and no telemetry.	Un tableur avec le ruban, la barre de formule, les onglets de feuilles et les raccourcis que vous connaissez. Sans abonnement, sans serveur de licences et sans télémétrie.
+gridcraft	The ribbon, formula bar, Name Box, fill handle, point-mode formulas, Format Cells, Paste Special, conditional formatting, tables and charts.	Le ruban, la barre de formule, la zone Nom, la poignée de recopie, la saisie de formules par pointage, Format de cellule, Collage spécial, la mise en forme conditionnelle, les tableaux et les graphiques.
+gridcraft	Familiar	Familier
+gridcraft	XLSX is the native format, with formulas, tables, conditional formats, charts, pivot tables and print settings round-tripping. CSV and TSV too.	Le XLSX est le format natif : formules, tableaux, mises en forme conditionnelles, graphiques, tableaux croisés dynamiques et paramètres d'impression sont conservés à l'aller comme au retour. CSV et TSV aussi.
+gridcraft	Compatible	Compatible
+gridcraft	A dependency-graph calculation engine with dynamic arrays, LET and LAMBDA, structured table references, sort, AutoFilter and Flash Fill.	Un moteur de calcul à graphe de dépendances avec tableaux dynamiques, LET et LAMBDA, références structurées, tri, filtre automatique et remplissage instantané.
+gridcraft	Capable	Puissant
+gridcraft	Copy-on-write workbooks, incremental recalculation and a grid that only lays out what is on screen.	Classeurs en copie sur écriture, recalcul incrémentiel et une grille qui n'affiche que ce qui est à l'écran.
+gridcraft	Fast	Rapide
+gridcraft	Every ribbon button, menu item, dialog and keystroke is a command, available over a JSON control channel, an MCP server or the CLI.	Chaque bouton du ruban, élément de menu, boîte de dialogue et frappe au clavier est une commande, disponible via un canal de contrôle JSON, un serveur MCP ou la ligne de commande.
+gridcraft	Agent-native	Pensé pour les agents
+gridcraft	Work on the desktop and the web.	Travaillez sur ordinateur et sur le web.
+gridcraft	Everywhere	Partout
+craft-anything	See how any website, app or game works, then build your own.	Découvrez comment fonctionne n'importe quel site, application ou jeu, puis créez le vôtre.
+craft-anything	Point it at a target and say what you want. It studies the original with real inspection tools, has a coding agent build a new project in the stack you ask for, checks the result against the original and refines it. Open source and clean-room.	Indiquez-lui une cible et ce que vous voulez. Il étudie l'original avec de vrais outils d'inspection, fait construire par un agent de code un nouveau projet avec les technologies de votre choix, compare le résultat à l'original et l'affine. Open source et en salle blanche.
+craft-anything	Websites, desktop apps, phone apps, games and files: find out how they're built, with the evidence behind every answer.	Sites web, applications de bureau, applications mobiles, jeux et fichiers : découvrez comment ils sont construits, preuves à l'appui pour chaque réponse.
+craft-anything	Study anything	Étudiez n'importe quoi
+craft-anything	Say what you want and a coding agent builds a new project in the language or engine you name.	Dites ce que vous voulez, et un agent de code construit un nouveau projet dans le langage ou le moteur de votre choix.
+craft-anything	Build your own	Créez le vôtre
+craft-anything	Every build is compared with the original, at three screen widths for a page, and refined until it's close.	Chaque version est comparée à l'original, sur trois largeurs d'écran pour une page, et affinée jusqu'à s'en approcher.
+craft-anything	Checked, not guessed	Vérifié, pas deviné
+craft-anything	Every tool is a CLI command and an MCP tool, and no AI is needed just to inspect.	Chaque outil est une commande en ligne de commande et un outil MCP, et aucune IA n'est nécessaire pour simplement inspecter.
+craft-anything	Agent-ready	Prête pour les agents
+solidcraft	Parametric 3D CAD, with editable sketches and solids.	La CAO 3D paramétrique, avec esquisses et solides modifiables.
+solidcraft	A parametric solid modeller by Tangency Labs. Sketch, constrain and build solids on an editable feature timeline: change a dimension and the model rebuilds. Early, but usable for simple parts. Open source, and it can be driven by AI agents through its MCP server.	Un modeleur de solides paramétrique de Tangency Labs. Esquissez, contraignez et construisez des solides sur un historique de fonctions modifiable : changez une cote et le modèle se reconstruit. À ses débuts, mais utilisable pour des pièces simples. Open source, et pilotable par des agents IA via son serveur MCP.
+solidcraft	Lines, arcs, splines and text, solved by SolidCraft's own constraint solver, with parameter-driven dimensions.	Lignes, arcs, splines et texte, résolus par le solveur de contraintes propre à SolidCraft, avec des cotes pilotées par des paramètres.
+solidcraft	Sketches and constraints	Esquisses et contraintes
+solidcraft	Extrude, revolve, sweep, loft, fillet, chamfer, shell, holes, threads and patterns on a parametric timeline.	Extrusion, révolution, balayage, lissage, congé, chanfrein, coque, perçages, filetages et répétitions sur un historique paramétrique.
+solidcraft	STEP, IGES, 3MF, STL, OBJ and glTF in and out where supported, and .sc designs.	Import et export STEP, IGES, 3MF, STL, OBJ et glTF lorsque c'est pris en charge, et conceptions .sc.
+solidcraft	Files	Fichiers
+solidcraft	A desktop app, a browser app, a headless CLI and an MCP server, all running the same commands.	Une application de bureau, une application web, une ligne de commande sans interface et un serveur MCP, qui exécutent tous les mêmes commandes.
+solidcraft	Desktop, web and agents	Bureau, web et agents
+mailcraft	Mail, calendar, contacts and tasks, in one native app.	Courrier, calendrier, contacts et tâches, dans une seule application native.
+mailcraft	An open-source mail program by UCS Care Group, written from scratch in Rust: the folder pane, message list and reading pane people already know, with a calendar, people and to-dos. Works with Microsoft 365, Outlook.com and IMAP. In public beta, and it can be driven by AI agents through its MCP server.	Un logiciel de messagerie open source de UCS Care Group, écrit de zéro en Rust : le volet des dossiers, la liste des messages et le volet de lecture que tout le monde connaît déjà, avec un calendrier, des contacts et des tâches. Fonctionne avec Microsoft 365, Outlook.com et IMAP. En bêta publique, et pilotable par des agents IA via son serveur MCP.
+mailcraft	Conversations, flags, categories, rules, search with a query language, and HTML mail shown without running anything in it.	Conversations, indicateurs, catégories, règles, recherche avec un langage de requête, et courriers HTML affichés sans rien y exécuter.
+mailcraft	Mail	Courrier
+mailcraft	Day, week and month views, recurring meetings, invitations and reminders, kept in step with Microsoft 365.	Vues jour, semaine et mois, réunions périodiques, invitations et rappels, synchronisés avec Microsoft 365.
+mailcraft	Calendar	Calendrier
+mailcraft	.eml, .mbox, .ics and .vcf in and out, and the mail and contacts of an Outlook .pst file in.	Import et export .eml, .mbox, .ics et .vcf, et import du courrier et des contacts d'un fichier Outlook .pst.
+mailcraft	Files	Fichiers
+mailcraft	A desktop app, a browser app, a CLI and an MCP server, all running the same commands.	Une application de bureau, une application web, une ligne de commande et un serveur MCP, qui exécutent tous les mêmes commandes.
+mailcraft	Desktop, web and agents	Bureau, web et agents

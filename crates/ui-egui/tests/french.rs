@@ -119,6 +119,9 @@ fn french_ui_translates_labels_dates_and_messages() {
     assert!(h.query_by_label("Launcher").is_none());
     h.get_by_label("Craft App Suite");
     h.get_by_label("Retouche d'images");
+    // The card's headline is translated too, like on the app's page.
+    h.get_by_label_contains("L'éditeur d'images que vous savez déjà utiliser.");
+    assert_eq!(h.query_all_by_label_contains("The image editor you already know how to use.").count(), 0);
     h.get_by_label("Mettre à jour vers 0.5.0");
     h.get_by_label_contains("Vérification de la somme de contrôle…");
     h.get_by_label_contains("Vérifié il y a 3 min · via ArtCraft API");
