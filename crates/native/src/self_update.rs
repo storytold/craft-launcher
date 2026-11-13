@@ -43,6 +43,8 @@ fn to_update_release(release: &Release) -> craft_update::Release {
             .iter()
             .map(|a| craft_update::Asset { name: a.name.clone(), size: a.size, url: a.url.clone(), sha256: a.sha256.clone() })
             .collect(),
+        // Empty: the launcher's own repository (`suite::LAUNCHER`), the only one its releases are read from.
+        repo: String::new(),
     }
 }
 
@@ -121,26 +123,38 @@ pub fn update(
 /// The package format updating `install` downloads: the one it was installed from. Mirrors the
 /// private `Install::kind` in `craft_update::self_update`, which picks the update's asset by it.
 pub fn kind(install: &Install) -> PackageKind {
-    match install {
-        Install::MacApp(_) => PackageKind::Dmg,
-        Install::Msi(_) => PackageKind::Msi,
-        Install::Portable(_) => PackageKind::PortableZip,
-        Install::AppImage(_) => PackageKind::AppImage,
-        Install::Package(kind, _) => match kind {
-            craft_update::PackageKind::Msi => PackageKind::Msi,
-            craft_update::PackageKind::PortableZip => PackageKind::PortableZip,
-            craft_update::PackageKind::Dmg => PackageKind::Dmg,
-            craft_update::PackageKind::AppImage => PackageKind::AppImage,
-            craft_update::PackageKind::Deb => PackageKind::Deb,
-            craft_update::PackageKind::Rpm => PackageKind::Rpm,
-            craft_update::PackageKind::ArchPkg => PackageKind::ArchPkg,
-            craft_update::PackageKind::Flatpak => PackageKind::Flatpak,
-            craft_update::PackageKind::TarGz => PackageKind::TarGz,
-        },
-        Install::Flatpak => PackageKind::Flatpak,
-        Install::Standalone(_) if cfg!(windows) => PackageKind::PortableZip,
-        Install::Standalone(_) => PackageKind::TarGz,
+    match update_kind(install) {
+        craft_update::PackageKind::Msi => PackageKind::Msi,
+        craft_update::PackageKind::PortableZip => PackageKind::PortableZip,
+        craft_update::PackageKind::Dmg => PackageKind::Dmg,
+        craft_update::PackageKind::AppImage => PackageKind::AppImage,
+        craft_update::PackageKind::Deb => PackageKind::Deb,
+        craft_update::PackageKind::Rpm => PackageKind::Rpm,
+        craft_update::PackageKind::ArchPkg => PackageKind::ArchPkg,
+        craft_update::PackageKind::Flatpak => PackageKind::Flatpak,
+        craft_update::PackageKind::TarGz => PackageKind::TarGz,
     }
+}
+
+/// [`kind`] as `craft_update` names it.
+fn update_kind(install: &Install) -> craft_update::PackageKind {
+    match install {
+        Install::MacApp(_) => craft_update::PackageKind::Dmg,
+        Install::Msi(_) => craft_update::PackageKind::Msi,
+        Install::Portable(_) => craft_update::PackageKind::PortableZip,
+        Install::AppImage(_) => craft_update::PackageKind::AppImage,
+        Install::Package(kind, _) => *kind,
+        Install::Flatpak => craft_update::PackageKind::Flatpak,
+        Install::Standalone(_) if cfg!(windows) => craft_update::PackageKind::PortableZip,
+        Install::Standalone(_) => craft_update::PackageKind::TarGz,
+    }
+}
+
+/// Whether `release` has the file that updating `install` on `platform` downloads ([`kind`]),
+/// picked as [`update`] picks it.
+pub fn installs_from(install: &Install, release: &Release, platform: Platform) -> bool {
+    let app = &craft_update::suite::LAUNCHER;
+    craft_update::pick_asset(&to_update_release(release), &[app.id], to_update_platform(platform), &[update_kind(install)]).is_some()
 }
 
 /// Finishes an update when this program was started as the update helper.
@@ -168,5 +182,104 @@ mod tests {
         assert_eq!(kind(&Install::Flatpak), PackageKind::Flatpak);
         let standalone = if cfg!(windows) { PackageKind::PortableZip } else { PackageKind::TarGz };
         assert_eq!(kind(&Install::Standalone(PathBuf::new())), standalone);
+    }
+
+    #[test]
+    fn an_update_is_installable_only_when_the_release_has_its_file() {
+        use std::path::PathBuf;
+
+        use artcraft_launcher_core::release::Asset;
+        use artcraft_launcher_core::{Arch, Os};
+        // ArtCraft Launcher v0.19.0's files, without the signatures: macOS has only the disk
+        // image, and Windows has no x86 build.
+        let names = [
+            "artcraft-launcher-0.19.0-freebsd-aarch64.tar.gz",
+            "artcraft-launcher-0.19.0-freebsd-x86_64.tar.gz",
+            "artcraft-launcher-0.19.0-linux-aarch64.AppImage",
+            "artcraft-launcher-0.19.0-linux-aarch64.AppImage.zsync",
+            "artcraft-launcher-0.19.0-linux-aarch64.deb",
+            "artcraft-launcher-0.19.0-linux-aarch64.flatpak",
+            "artcraft-launcher-0.19.0-linux-aarch64.oci-manifest.json",
+            "artcraft-launcher-0.19.0-linux-aarch64.pkg.tar.zst",
+            "artcraft-launcher-0.19.0-linux-aarch64.rpm",
+            "artcraft-launcher-0.19.0-linux-aarch64.tar.gz",
+            "artcraft-launcher-0.19.0-linux-riscv64.deb",
+            "artcraft-launcher-0.19.0-linux-riscv64.rpm",
+            "artcraft-launcher-0.19.0-linux-riscv64.tar.gz",
+            "artcraft-launcher-0.19.0-linux-x86_64.AppImage",
+            "artcraft-launcher-0.19.0-linux-x86_64.AppImage.zsync",
+            "artcraft-launcher-0.19.0-linux-x86_64.deb",
+            "artcraft-launcher-0.19.0-linux-x86_64.flatpak",
+            "artcraft-launcher-0.19.0-linux-x86_64.oci-manifest.json",
+            "artcraft-launcher-0.19.0-linux-x86_64.pkg.tar.zst",
+            "artcraft-launcher-0.19.0-linux-x86_64.rpm",
+            "artcraft-launcher-0.19.0-linux-x86_64.tar.gz",
+            "artcraft-launcher-0.19.0-macos-universal.dmg",
+            "artcraft-launcher-0.19.0-windows-arm64-portable.zip",
+            "artcraft-launcher-0.19.0-windows-arm64.msi",
+            "artcraft-launcher-0.19.0-windows-x64-portable.zip",
+            "artcraft-launcher-0.19.0-windows-x64.msi",
+            "artcraft-launcher-web-0.19.0.zip",
+            "SHA256SUMS.txt",
+        ];
+        let release = Release {
+            assets: names.iter().map(|n| Asset { name: (*n).into(), size: 1, url: format!("https://example.invalid/{n}"), sha256: None }).collect(),
+            ..Release::default()
+        };
+        let mac = Platform { os: Os::MacOs, arch: Arch::Arm64 };
+        assert!(installs_from(&Install::MacApp(PathBuf::new()), &release, mac));
+        if !cfg!(windows) {
+            assert!(!installs_from(&Install::Standalone(PathBuf::new()), &release, mac));
+            let linux = Platform { os: Os::Linux, arch: Arch::X64 };
+            assert!(installs_from(&Install::Standalone(PathBuf::new()), &release, linux));
+            assert!(installs_from(&Install::AppImage(PathBuf::new()), &release, linux));
+            assert!(installs_from(&Install::Package(craft_update::PackageKind::Deb, PathBuf::new()), &release, linux));
+            let riscv = Platform { os: Os::Linux, arch: Arch::Riscv64 };
+            assert!(!installs_from(&Install::AppImage(PathBuf::new()), &release, riscv));
+        }
+        let windows = |arch| Platform { os: Os::Windows, arch };
+        assert!(installs_from(&Install::Msi(PathBuf::new()), &release, windows(Arch::X64)));
+        assert!(installs_from(&Install::Portable(PathBuf::new()), &release, windows(Arch::X64)));
+        assert!(!installs_from(&Install::Msi(PathBuf::new()), &release, windows(Arch::X86)));
+        assert!(!installs_from(&Install::Portable(PathBuf::new()), &release, windows(Arch::X86)));
+        assert!(!installs_from(&Install::MacApp(PathBuf::new()), &Release::default(), mac));
+        // The file is looked for by the update's own rules, which don't take this spelling.
+        let name = "artcraft-launcher_0.18.0_x86_64.msi";
+        let other = Release {
+            assets: vec![Asset { name: name.into(), size: 1, url: format!("https://example.invalid/{name}"), sha256: None }],
+            ..Release::default()
+        };
+        assert!(!installs_from(&Install::Msi(PathBuf::new()), &other, windows(Arch::X64)));
+    }
+
+    #[test]
+    fn installs_from_looks_for_the_format_the_update_downloads() {
+        use std::path::PathBuf;
+
+        use artcraft_launcher_core::{Arch, Os};
+        // `update` names the format it looked for when the release has no file for it, so an
+        // empty release shows which format craft-update picks for each kind of copy.
+        let dir = tempfile::tempdir().unwrap();
+        let paths = Paths { data: dir.path().join("data"), cache: dir.path().join("cache") };
+        let http = Http::new().unwrap();
+        let platform = Platform { os: Os::Linux, arch: Arch::X64 };
+        let mut installs = vec![
+            Install::MacApp(PathBuf::new()),
+            Install::Msi(PathBuf::new()),
+            Install::Portable(PathBuf::new()),
+            Install::AppImage(PathBuf::new()),
+            Install::Flatpak,
+            Install::Standalone(PathBuf::new()),
+        ];
+        for kind in
+            [craft_update::PackageKind::Deb, craft_update::PackageKind::Rpm, craft_update::PackageKind::ArchPkg, craft_update::PackageKind::TarGz]
+        {
+            installs.push(Install::Package(kind, PathBuf::new()));
+        }
+        for install in installs {
+            let error = update(&install, &Release::default(), platform, &http, &paths, &Stop::default(), &mut |_| {}, &|| Ok(())).unwrap_err();
+            let looked_for = format!(" has no {} for ", update_kind(&install).label());
+            assert!(error.contains(&looked_for), "{install:?}: {error}");
+        }
     }
 }
