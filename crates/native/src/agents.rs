@@ -152,32 +152,61 @@ fn read_config(path: &Path) -> Result<Option<Map<String, Value>>, String> {
     }
 }
 
-/// Whether `config` holds our entry.
+/// Whether `entry` is one the launcher wrote: it starts the gateway (`craft-ai-mcp`, wherever its
+/// copy is) with exactly `--stdio` and sets no environment. Anything else under [`SERVER_KEY`] was
+/// set up by the person or another tool, and the launcher never replaces or removes it.
+fn ours(entry: &Value) -> bool {
+    let Value::Object(e) = entry else {
+        return false;
+    };
+    let gateway = format!("craft-ai-mcp{}", std::env::consts::EXE_SUFFIX);
+    let command_is_gateway = e
+        .get("command")
+        .and_then(Value::as_str)
+        .and_then(|c| Path::new(c).file_name())
+        .and_then(|n| n.to_str())
+        .is_some_and(|n| if cfg!(windows) { n.eq_ignore_ascii_case(&gateway) } else { n == gateway });
+    let no_env = match e.get("env") {
+        None => true,
+        Some(Value::Object(env)) => env.is_empty(),
+        Some(_) => false,
+    };
+    command_is_gateway && e.get("args") == Some(&json!(["--stdio"])) && no_env
+}
+
+/// Whether `config` holds our entry (not merely some entry named [`SERVER_KEY`]).
 pub fn registered(config: &Path) -> bool {
-    matches!(read_config(config), Ok(Some(m)) if m.get("mcpServers").and_then(|s| s.get(SERVER_KEY)).is_some())
+    matches!(read_config(config), Ok(Some(m)) if m.get("mcpServers").and_then(|s| s.get(SERVER_KEY)).is_some_and(ours))
 }
 
 /// Add (or update) our entry in the client configuration at `config`, starting `gateway`.
-/// Everything else in the file is kept.
+/// Everything else in the file is kept. An entry named [`SERVER_KEY`] that the launcher did not
+/// write is an error, so a person's own configuration is never replaced.
 pub fn register(config: &Path, gateway: &Path) -> Result<(), String> {
     let mut root = read_config(config)?.unwrap_or_default();
     let servers = root.entry("mcpServers").or_insert_with(|| Value::Object(Map::new()));
     let Value::Object(servers) = servers else {
         return Err(format!("`mcpServers` in {} is not an object; the launcher leaves it unchanged", config.display()));
     };
+    if servers.get(SERVER_KEY).is_some_and(|e| !ours(e)) {
+        return Err(format!(
+            "{} already has its own `{SERVER_KEY}` entry; the launcher leaves it unchanged. Rename or remove it to add the launcher's",
+            config.display()
+        ));
+    }
     servers.insert(SERVER_KEY.to_string(), json!({"command": gateway.to_string_lossy(), "args": ["--stdio"]}));
     let text = serde_json::to_string_pretty(&Value::Object(root)).map_err(|e| e.to_string())?;
     crate::paths::write_atomic(config, text.as_bytes())
 }
 
 /// Remove our entry from the client configuration at `config`. Nothing to do when the file or
-/// the entry is missing.
+/// our entry is missing; an entry named [`SERVER_KEY`] the launcher did not write is kept.
 pub fn unregister(config: &Path) -> Result<(), String> {
     let Some(mut root) = read_config(config)? else {
         return Ok(());
     };
     let removed = match root.get_mut("mcpServers") {
-        Some(Value::Object(servers)) => servers.remove(SERVER_KEY).is_some(),
+        Some(Value::Object(servers)) if servers.get(SERVER_KEY).is_some_and(ours) => servers.remove(SERVER_KEY).is_some(),
         _ => false,
     };
     if !removed {

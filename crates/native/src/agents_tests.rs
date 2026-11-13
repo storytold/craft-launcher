@@ -84,7 +84,7 @@ fn switching_on_and_off() {
 fn register_creates_a_config_and_keeps_other_servers_and_keys() {
     let dir = tempfile::tempdir().unwrap();
     let fresh = dir.path().join("new").join("mcp.json");
-    let gw = dir.path().join("craft-ai-mcp.exe");
+    let gw = dir.path().join(format!("craft-ai-mcp{}", std::env::consts::EXE_SUFFIX));
     register(&fresh, &gw).unwrap();
     assert_eq!(read(&fresh)["mcpServers"][SERVER_KEY]["args"], json!(["--stdio"]));
     assert!(registered(&fresh));
@@ -124,7 +124,7 @@ fn an_empty_config_counts_as_fresh_and_a_missing_one_needs_no_unregister() {
     let dir = tempfile::tempdir().unwrap();
     let p = dir.path().join("empty.json");
     std::fs::write(&p, "  \n").unwrap();
-    register(&p, &dir.path().join("gw")).unwrap();
+    register(&p, &dir.path().join(format!("craft-ai-mcp{}", std::env::consts::EXE_SUFFIX))).unwrap();
     assert!(registered(&p));
     unregister(&dir.path().join("missing.json")).unwrap();
     assert!(!dir.path().join("missing.json").exists());
@@ -138,6 +138,41 @@ fn unregister_leaves_a_file_without_our_entry_untouched() {
     std::fs::write(&p, text).unwrap();
     unregister(&p).unwrap();
     assert_eq!(std::fs::read_to_string(&p).unwrap(), text);
+}
+
+/// A person's own `ArtCraft` entry (another command, other arguments, its own environment) is
+/// never replaced by Add, and neither Remove nor turning agents off deletes it.
+#[test]
+fn an_artcraft_entry_the_launcher_did_not_write_is_kept() {
+    let dir = tempfile::tempdir().unwrap();
+    let gw = dir.path().join(format!("craft-ai-mcp{}", std::env::consts::EXE_SUFFIX));
+    let theirs = [
+        json!({"command": "node", "args": ["my-artcraft.js"]}),
+        json!({"url": "http://localhost:9000/mcp"}),
+        json!({"command": gw.to_string_lossy(), "args": ["--stdio", "--verbose"]}),
+        json!({"command": gw.to_string_lossy(), "args": ["--stdio"], "env": {"TOKEN": "x"}}),
+        json!("not an object"),
+    ];
+    for (i, entry) in theirs.iter().enumerate() {
+        let p = dir.path().join(format!("c{i}.json"));
+        let text = serde_json::to_string_pretty(&json!({"mcpServers": {SERVER_KEY: entry}})).unwrap();
+        std::fs::write(&p, &text).unwrap();
+        assert!(!registered(&p), "{entry}");
+        assert!(register(&p, &gw).is_err(), "{entry}");
+        unregister(&p).unwrap();
+        assert_eq!(std::fs::read_to_string(&p).unwrap(), text, "{entry} changed");
+    }
+
+    // Our own entry, wherever its gateway copy is (and with an empty `env` a client may add), is ours.
+    let p = dir.path().join("ours.json");
+    let moved = dir.path().join("elsewhere").join(gw.file_name().unwrap());
+    std::fs::write(&p, json!({"mcpServers": {SERVER_KEY: {"command": moved.to_string_lossy(), "args": ["--stdio"], "env": {}}}}).to_string())
+        .unwrap();
+    assert!(registered(&p));
+    register(&p, &gw).unwrap();
+    assert_eq!(read(&p)["mcpServers"][SERVER_KEY]["command"], gw.to_string_lossy().as_ref());
+    unregister(&p).unwrap();
+    assert!(read(&p)["mcpServers"].get(SERVER_KEY).is_none());
 }
 
 #[test]
