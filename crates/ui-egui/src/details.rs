@@ -495,6 +495,7 @@ impl LauncherUi {
             Some(lead) => {
                 let image = ui.add(egui::Image::new(lead).fit_to_exact_size(vec2(w, w * SHOT_ASPECT)).sense(Sense::click()));
                 image.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, true, tl!("Enlarge picture")));
+                widgets::focus_ring(ui, &image);
                 let rect = image.rect;
                 // The arrows below are added after the picture, so they keep their own clicks.
                 if image.on_hover_cursor(egui::CursorIcon::ZoomIn).on_hover_text(tl!("Click to enlarge")).clicked() {
@@ -551,6 +552,7 @@ impl LauncherUi {
                 let stroke = if selected { Stroke::new(2.0, app_color) } else { t.hairline() };
                 ui.painter().rect_stroke(resp.rect, CornerRadius::ZERO, stroke, egui::StrokeKind::Inside);
                 resp.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, true, shot.caption));
+                widgets::focus_ring(ui, &resp);
                 if resp.on_hover_cursor(egui::CursorIcon::PointingHand).on_hover_text(shot.caption).clicked() {
                     self.detail_shot = i;
                 }
@@ -586,6 +588,7 @@ fn step_button(ui: &mut Ui, left: bool, tip: &str, t: &Tokens) -> bool {
         Stroke::new(1.75, ink),
     ));
     resp.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, true, tip));
+    widgets::focus_ring(ui, &resp);
     resp.on_hover_cursor(egui::CursorIcon::PointingHand).on_hover_text(tip).clicked()
 }
 
@@ -631,5 +634,6 @@ fn arrow_button(ui: &mut Ui, rect: Rect, id: Id, left: bool, tip: &str, t: &Toke
     let points = vec![pos2(c.x - s * 3.5, c.y - 6.0), pos2(c.x + s * 3.5, c.y), pos2(c.x - s * 3.5, c.y + 6.0)];
     painter.add(egui::Shape::line(points, Stroke::new(1.75, ink)));
     resp.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, true, tip));
+    widgets::focus_ring(ui, &resp);
     resp.on_hover_cursor(egui::CursorIcon::PointingHand).on_hover_text(tip).clicked()
 }
