@@ -1,0 +1,35 @@
+{
+  "tag_name": "v0.13.0",
+  "name": "PhotoCraft v0.13.0",
+  "published_at": "2026-10-22T21:37:17Z",
+  "html_url": "https://github.com/storytold/photocraft/releases/tag/v0.13.0",
+  "draft": false,
+  "prerelease": false,
+  "body": "",
+  "assets": [
+    {
+      "name": "photocraft-0.13.0-linux-x86_64.flatpak",
+      "size": 63814520,
+      "browser_download_url": "https://github.com/storytold/photocraft/releases/download/v0.13.0/photocraft-0.13.0-linux-x86_64.flatpak",
+      "digest": "sha256:15220b5acdd400d81377efd1df7a3f87fad01ee5afcf5639463e5fc44f8a670a"
+    },
+    {
+      "name": "photocraft-0.13.0-windows-x64-portable.zip",
+      "size": 87612081,
+      "browser_download_url": "https://github.com/storytold/photocraft/releases/download/v0.13.0/photocraft-0.13.0-windows-x64-portable.zip",
+      "digest": "sha256:c766bbab26665937f6f3340b4d4e09e19dfece5b8fd64cf6e580d6dd44303655"
+    },
+    {
+      "name": "photocraft-0.13.0-windows-x64.msi",
+      "size": 72855552,
+      "browser_download_url": "https://github.com/storytold/photocraft/releases/download/v0.13.0/photocraft-0.13.0-windows-x64.msi",
+      "digest": "sha256:394d59361459eb2ff5d7e0aaff4f121c1ae04c17a2d7fb41bc929cc737d5820b"
+    },
+    {
+      "name": "SHA256SUMS.txt",
+      "size": 2833,
+      "browser_download_url": "https://github.com/storytold/photocraft/releases/download/v0.13.0/SHA256SUMS.txt",
+      "digest": "sha256:764206f1143455041cf83e6342e5b02129537f805c459b468b7d68fd1aca28bf"
+    }
+  ]
+}

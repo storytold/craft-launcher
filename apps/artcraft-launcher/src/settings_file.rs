@@ -80,6 +80,26 @@ mod tests {
 
     use super::*;
 
+    #[test]
+    fn portable_preferences_are_isolated_and_move_with_the_folder() {
+        let dir = Scratch::new("portable-isolation");
+        let installed = dir.0.join("installed/app.ron");
+        let portable = dir.0.join("portable/ArtCraftLauncherData");
+        let file = portable_settings(&portable);
+        assert_eq!(file, portable.join("data/app.ron"));
+        let installed_settings = Settings { notify: false, ..Settings::default() };
+        let portable_preferences = Settings { auto_update: true, ..Settings::default() };
+        save(&installed, "settings", &installed_settings).unwrap();
+        assert_eq!(load::<Settings>(&file, "settings"), None);
+        save(&file, "settings", &portable_preferences).unwrap();
+        assert_eq!(load::<Settings>(&installed, "settings"), Some(installed_settings));
+        let moved = dir.0.join("moved/ArtCraftLauncherData");
+        std::fs::create_dir_all(moved.parent().unwrap()).unwrap();
+        std::fs::rename(&portable, &moved).unwrap();
+        let moved_file = portable_settings(&moved);
+        assert_eq!(load::<Settings>(&moved_file, "settings"), Some(portable_preferences));
+    }
+
     /// A file in a folder of its own, removed when the test ends.
     struct Scratch(PathBuf);
 
