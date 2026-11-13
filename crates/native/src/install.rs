@@ -803,7 +803,7 @@ pub fn uninstall(
         #[cfg(windows)]
         InstallSource::Msi => windows::uninstall_msi(app, stop, phase),
         #[cfg(target_os = "macos")]
-        InstallSource::MacApp | InstallSource::Launcher => macos::move_to_trash(&path),
+        InstallSource::MacApp | InstallSource::Launcher => macos::trash_app(app, &path, record),
         #[cfg(target_os = "linux")]
         InstallSource::Deb | InstallSource::Rpm | InstallSource::Pacman | InstallSource::Flatpak => {
             linux::remove_package(app, installed, stop, phase)
@@ -1690,7 +1690,7 @@ pub mod macos {
 
     use artcraft_launcher_core::version::Version;
 
-    use super::{CraftApp, InstallSource, Installed, Path, PathBuf, Paths, Release, process, swap_into_place};
+    use super::{CraftApp, InstallSource, Installed, Path, PathBuf, Paths, Record, Release, process, swap_into_place};
 
     const SYSTEM_APPLICATIONS: &str = "/Applications";
 
@@ -1898,6 +1898,30 @@ pub mod macos {
         }
         process::capture(HDIUTIL, &["detach", m, "-quiet"], Duration::from_secs(60))
             .or_else(|| process::capture(HDIUTIL, &["detach", m, "-force", "-quiet"], Duration::from_secs(60)))
+    }
+
+    /// Moves the app at `path` to the Trash when it's the copy the launcher installed (its record
+    /// names that bundle) or the app's own developer signed it. A bundle found only by its
+    /// Info.plist, unsigned or signed by someone else, isn't the launcher's to remove.
+    pub fn trash_app(app: &CraftApp, path: &Path, record: Option<&Record>) -> Result<(), String> {
+        trash_if_ours(app, path, record, signed_by, move_to_trash)
+    }
+
+    pub(super) fn trash_if_ours(
+        app: &CraftApp,
+        path: &Path,
+        record: Option<&Record>,
+        signed: impl FnOnce(&Path, &str) -> bool,
+        trash: impl FnOnce(&Path) -> Result<(), String>,
+    ) -> Result<(), String> {
+        if record.is_some_and(|r| r.path == path) || app.mac_team.is_some_and(|team| signed(path, team)) {
+            return trash(path);
+        }
+        Err(format!(
+            "{} wasn't installed by ArtCraft Launcher and isn't signed by {}'s developer, so it was left alone. Move it to the Trash in Finder if you don't need it.",
+            path.display(),
+            app.name
+        ))
     }
 
     /// Moves an app to the user's Trash (so it can be put back).
@@ -2418,6 +2442,34 @@ pub mod windows {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Uninstall moves a Mac app to the Trash only when the launcher's record names that bundle
+    /// or the app's developer signed it: a bundle found by its Info.plist alone stays put.
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn uninstall_trashes_only_a_recorded_or_developer_signed_mac_app() {
+        use std::cell::Cell;
+        let app = CraftApp::by_id("photocraft").unwrap();
+        let path = Path::new("/Applications/PhotoCraft.app");
+        let trashed = Cell::new(0);
+        let trash = |_: &Path| {
+            trashed.set(trashed.get() + 1);
+            Ok(())
+        };
+        let ours = record("0.5.0", PackageKind::Dmg, path.to_path_buf(), vec![], false);
+        let elsewhere = record("0.5.0", PackageKind::Dmg, PathBuf::from("/Volumes/Apps/PhotoCraft.app"), vec![], false);
+        assert!(macos::trash_if_ours(app, path, None, |_, _| false, trash).is_err());
+        assert!(macos::trash_if_ours(app, path, Some(&elsewhere), |_, _| false, trash).is_err());
+        assert_eq!(trashed.get(), 0);
+        assert!(macos::trash_if_ours(app, path, Some(&ours), |_, _| false, trash).is_ok());
+        assert!(macos::trash_if_ours(app, path, None, |_, team| Some(team) == app.mac_team, trash).is_ok());
+        assert_eq!(trashed.get(), 2);
+        // An app with no signing team in the catalog is only trashed from its own record.
+        let unsigned = CraftApp::by_id("mailcraft").unwrap();
+        assert!(unsigned.mac_team.is_none());
+        assert!(macos::trash_if_ours(unsigned, path, None, |_, _| true, trash).is_err());
+        assert_eq!(trashed.get(), 2);
+    }
 
     /// A folder found only by the launch fallback, in another scope, never reaches the installer.
     #[cfg(windows)]
