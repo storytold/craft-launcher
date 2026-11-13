@@ -125,6 +125,9 @@ pub struct Settings {
     pub last_check: Option<i64>,
     /// Hide community apps from the catalog without changing their installation or update settings.
     pub hide_community_apps: bool,
+    /// Custom title bars: leave out the minimize, maximize and close buttons. The header still
+    /// moves the window and its edges still resize it.
+    pub hide_window_buttons: bool,
     /// Catalog ids of apps hidden from the main lists (`photocraft`, …).
     pub hidden: std::collections::BTreeSet<String>,
     /// The one-time notice that closing the window keeps the launcher in the tray has been shown.
@@ -267,6 +270,7 @@ impl Default for Settings {
             notified: BTreeMap::new(),
             last_check: None,
             hide_community_apps: false,
+            hide_window_buttons: false,
             hidden: std::collections::BTreeSet::new(),
             tray_hint_shown: false,
             launches: BTreeMap::new(),
