@@ -731,8 +731,11 @@ impl LauncherUi {
                 let (min, max) = sizes.iter().fold((*bytes, *bytes), |(min, max), (_, size)| (min.min(*size), max.max(*size)));
                 let size =
                     if min == max { widgets::human_bytes(min) } else { format!("{} – {}", widgets::human_bytes(min), widgets::human_bytes(max)) };
-                ui.add(egui::Label::new(RichText::new(fmt(tl!("Download size: {size}"), &[("size", &size)])).size(12.5).color(t.muted)).truncate())
-                    .on_hover_text(Self::sizes_text(&sizes));
+                ui.add(
+                    egui::Label::new(RichText::new(fmt(tl!("Download size: {size}"), &[("size", &size)])).size(theme::TEXT_CAPTION).color(t.muted))
+                        .truncate(),
+                )
+                .on_hover_text(Self::sizes_text(&sizes));
             }
         }
         // A description that only repeats the tagline is left out: the card says it once.
@@ -753,7 +756,7 @@ impl LauncherUi {
         // Reached with the keyboard, the whole card (which opens the app's page) shows the focus,
         // drawn last so the card's own fill doesn't cover it.
         if card_focused {
-            painter.rect_stroke(rect, CornerRadius::ZERO, Stroke::new(2.0, t.accent_ink), egui::StrokeKind::Inside);
+            painter.rect_stroke(rect, CornerRadius::ZERO, Stroke::new(2.0, t.accent), egui::StrokeKind::Inside);
         }
         Some(needed)
     }

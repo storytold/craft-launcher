@@ -138,13 +138,14 @@ pub fn rule(ui: &mut Ui, height: f32) {
     ui.painter().vline(rect.center().x, rect.y_range(), t.hairline());
 }
 
-/// The keyboard focus, drawn round `resp`'s rect: a 2 px rule in the brand blue, inside the
-/// control so a neighbour or a clip never hides it. Only the keyboard (Tab, arrows) gives these
+/// The keyboard focus, drawn round `resp`'s rect: a 2 px rule in the brand blue (`accent`, which
+/// keeps 3:1 against the page, sunken and inverted fills alike), inside the control so a neighbour
+/// or a clip never hides it. Only the keyboard (Tab, arrows) gives these
 /// controls focus, so a mouse click never leaves a ring behind.
 pub fn focus_ring(ui: &Ui, resp: &Response) {
     if resp.has_focus() {
         let t = Tokens::get(ui.ctx());
-        ui.painter().rect_stroke(resp.rect, CornerRadius::ZERO, Stroke::new(2.0, t.accent_ink), egui::StrokeKind::Inside);
+        ui.painter().rect_stroke(resp.rect, CornerRadius::ZERO, Stroke::new(2.0, t.accent), egui::StrokeKind::Inside);
     }
 }
 
