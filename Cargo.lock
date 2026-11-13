@@ -341,6 +341,7 @@ dependencies = [
  "artcraft-launcher-core",
  "craft-ui",
  "egui",
+ "egui-wgpu",
  "egui_extras",
  "egui_kittest",
  "image",
