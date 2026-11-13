@@ -1,0 +1,370 @@
+# Persian (fa) catalog for ArtCraft Launcher — translation.
+# Format: context<TAB>source<TAB>translation
+# Translated from the English source.
+	Launcher	Launcher
+	Craft App Suite	Craft App Suite
+	by {name}	از {name}
+	Open Source Tools for Creatives, Makers, and Builders	ابزارهای متن‌باز برای طراحان، سازندگان و خلاقان
+	Settings	تنظیمات
+	Check for updates	بررسی به‌روزرسانی‌ها
+	Grid	شبکه‌ای
+	Table	جدول
+	Show apps as cards	نمایش برنامه‌ها به‌صورت کارت
+	Show apps as a table	نمایش برنامه‌ها به‌صورت جدول
+	All	همه
+	Updates	به‌روزرسانی‌ها
+	Not installed	نصب‌نشده
+	Search apps	جست‌وجوی برنامه‌ها
+	Sort	مرتب‌سازی
+	Suite order	ترتیب مجموعه
+	Name	نام
+	Status	وضعیت
+	Installed version	نسخه نصب‌شده
+	Latest version	آخرین نسخه
+	Newest release	جدیدترین انتشار
+	Discord	Discord
+	GitHub	GitHub
+	Website	وب‌سایت
+	Classic apps	برنامه‌های قدیمی
+	New apps	برنامه‌های جدید
+	NEW	جدید
+	Install	نصب
+	Update to {v}	به‌روزرسانی به {v}
+	Open	باز کردن
+	Download for {os}	دانلود برای {os}
+	Download	دانلود
+	Coming soon	به‌زودی
+	Checking…	در حال بررسی…
+	Not available	در دسترس نیست
+	Offline	آفلاین
+	Downloading {done} of {total}	در حال دانلود {done} از {total}
+	Downloading…	در حال دانلود…
+	Reconnecting…	در حال اتصال دوباره…
+	Verifying…	در حال تأیید…
+	Installing, then restarting…	در حال نصب و راه‌اندازی دوباره…
+	Installing…	در حال نصب…
+	Removing…	در حال حذف…
+	Pause download	توقف موقت دانلود
+	Cancel download	لغو دانلود
+	Resume download	ادامه دانلود
+	Discard download	حذف فایل دانلودشده
+	Release notes	یادداشت‌های انتشار
+	Show in Finder	نمایش در Finder
+	Show in Explorer	نمایش در Explorer
+	Show in Files	نمایش در مدیر فایل
+	Reinstall	نصب دوباره
+	Uninstall…	حذف نصب…
+	All releases	همه نسخه‌ها
+	ArtCraft Launcher {version} is available.	نسخه {version} از ArtCraft Launcher در دسترس است.
+	Dismiss	بستن
+	Update and restart	به‌روزرسانی و راه‌اندازی دوباره
+	Later	بعداً
+	What's new	تازه‌ها
+	No notes were published with this release.	برای این نسخه یادداشتی منتشر نشده است.
+	Released {date}	منتشرشده در {date}
+	Open on GitHub	باز کردن در GitHub
+	Close	بستن
+	Only when I ask	فقط به درخواست من
+	Automatically download and install updates	دانلود و نصب خودکار به‌روزرسانی‌ها
+	Notify me when an installed app has an update	وقتی به‌روزرسانی برنامه‌ای نصب‌شده در دسترس است، به من اطلاع بده
+	Appearance	ظاهر
+	Quit ArtCraft Launcher	خروج از ArtCraft Launcher
+	Done	تمام
+	Uninstall {name}?	{name} حذف نصب شود؟
+	The app will be removed. Your documents and settings stay.	برنامه حذف می‌شود. سندها و تنظیمات شما حفظ می‌شوند.
+	Uninstall	حذف نصب
+	Cancel	لغو
+	just now	همین حالا
+	yesterday	دیروز
+	Automatically	خودکار
+	Minimize	کوچک کردن
+	Maximize	بزرگ کردن
+	Restore	بازگرداندن
+	New	جدید
+	OK	تأیید
+	Open link	باز کردن پیوند
+	Update	به‌روزرسانی
+	Language	زبان
+	Installed	نصب‌شده
+	Update available	به‌روزرسانی موجود است
+	Not checked yet	هنوز بررسی نشده است
+	Retry install	تلاش دوباره برای نصب
+	Dark	تیره
+	Light	روشن
+	Match system	مطابق سیستم
+	No apps match	برنامه‌ای پیدا نشد
+	Full changelog	فهرست کامل تغییرات
+
+	A new version is available. Would you like to relaunch with the updated version?	نسخه جدیدی در دسترس است. می‌خواهید برنامه را با نسخه به‌روزشده دوباره اجرا کنید؟
+	A new version is available. Download it to replace this version?	نسخه جدیدی در دسترس است. آن را دانلود کنید تا جایگزین این نسخه شود؟
+	ArtCraft Launcher {version}	ArtCraft Launcher {version}
+	Include pre-releases (betas and release candidates)	شامل نسخه‌های پیش‌انتشار (بتا و نامزد انتشار)
+	Installing on Linux	نصب در لینوکس
+	Installing on Windows	نصب در ویندوز
+	Install new apps as	نصب برنامه‌های جدید به‌صورت
+	System package (recommended)	بسته سیستمی (پیشنهادی)
+	Updates always use the format an app was installed with.	به‌روزرسانی‌ها همیشه از همان قالبی استفاده می‌کنند که برنامه با آن نصب شده است.
+	Running in the background	اجرا در پس‌زمینه
+	Keep running in the tray when the window is closed	ادامه اجرا در سینی سیستم پس از بستن پنجره
+	ArtCraft Launcher is still running	ArtCraft Launcher همچنان در حال اجراست
+	It's in the tray: open it or quit it from the tray icon, or turn this off in the settings.	برنامه در سینی سیستم است: از طریق نماد آن را باز کنید یا ببندید، یا این قابلیت را در تنظیمات خاموش کنید.
+	Show the window on the current desktop	نمایش پنجره در دسکتاپ فعلی
+	Start ArtCraft Launcher when I log in	اجرای ArtCraft Launcher هنگام ورود به سیستم
+	Community	جامعه
+	Questions, ideas and news from the ArtCraft team	پرسش‌ها، ایده‌ها و اخبار تیم ArtCraft
+	The app will be moved to the Trash. Your documents and settings stay.	برنامه به سطل زباله منتقل می‌شود. سندها و تنظیمات شما حفظ می‌شوند.
+	Windows will remove it like any installed program. Your documents and settings stay.	ویندوز آن را مانند هر برنامه نصب‌شده دیگری حذف می‌کند. سندها و تنظیمات شما حفظ می‌شوند.
+	Your system's package manager will remove it, and may ask for your password. Your documents and settings stay.	مدیر بسته سیستم برنامه را حذف می‌کند و ممکن است رمز عبور شما را بخواهد. سندها و تنظیمات شما حفظ می‌شوند.
+	Checked {ago}	بررسی‌شده {ago}
+	{month} {day}, {year}	{day} {month} {year}
+	Every Craft app	همه برنامه‌های Craft
+	Apps on this computer	برنامه‌های این رایانه
+	Installed apps with a newer version	برنامه‌های نصب‌شده دارای نسخه جدید
+	Apps you can install	برنامه‌های قابل نصب
+	Hide App	پنهان کردن برنامه
+	Unhide App	نمایش دوباره برنامه
+	Hidden Apps	برنامه‌های پنهان
+	Apps you hid	برنامه‌هایی که پنهان کرده‌اید
+	Checked {ago} · using {sources}	بررسی‌شده {ago} · با استفاده از {sources}
+	{a} and {b}	{a} و {b}
+	Join the Discord	پیوستن به Discord
+	Learn more	اطلاعات بیشتر
+	{name} icon	نماد {name}
+	Loading ArtCraft Launcher…	در حال بارگذاری ArtCraft Launcher…
+	Cancel update	لغو به‌روزرسانی
+	Stop waiting; the update can be started again later	توقف انتظار؛ می‌توانید به‌روزرسانی را بعداً دوباره شروع کنید
+	Download again	دانلود دوباره
+	Install cancelled	نصب لغو شد
+	Install cancelled. The download is kept for the next try.	نصب لغو شد. فایل دانلودشده برای تلاش بعدی نگه داشته می‌شود.
+	Update cancelled	به‌روزرسانی لغو شد
+	Uninstall cancelled	حذف نصب لغو شد
+	Retry update to {version}	تلاش دوباره برای به‌روزرسانی به {version}
+	The download is still here. It's checked again, then installed.	فایل دانلودشده موجود است. دوباره بررسی و سپس نصب می‌شود.
+	Waiting for another app…	در انتظار برنامه‌ای دیگر…
+	Waiting for other installs…	در انتظار نصب‌های دیگر…
+	Installer (.msi)	نصب‌کننده (.msi)
+	Portable (.zip)	نسخه قابل‌حمل (.zip)
+	Disk image (.dmg)	تصویر دیسک (.dmg)
+	Debian package (.deb)	بسته Debian (.deb)
+	RPM package (.rpm)	بسته RPM (.rpm)
+	Arch package (.pkg.tar.zst)	بسته Arch (.pkg.tar.zst)
+	Flatpak bundle	بسته Flatpak
+	Tarball (.tar.gz)	بایگانی (.tar.gz)
+photocraft	Image editing	ویرایش تصویر
+vectorcraft	Vector illustration	تصویرسازی برداری
+filmcraft	Video editing, color and sound	تدوین ویدیو، رنگ و صدا
+lightcraft	Photo library and raw development	کتابخانه عکس و پردازش فایل خام
+pdfcraft	Reading, organizing and protecting PDFs	خواندن، سازمان‌دهی و محافظت از فایل‌های PDF
+effectcraft	Motion graphics and visual effects	موشن گرافیک و جلوه‌های بصری
+designcraft	Page layout and publishing	صفحه‌آرایی و نشر
+wordcraft	Writing and document design	نوشتن و طراحی سند
+deckcraft	Presentations and slide shows	ارائه‌ها و نمایش اسلاید
+gridcraft	Spreadsheets and data	صفحه‌گسترده و داده
+craft-anything	Find out how any software works, then craft your own	بفهمید هر نرم‌افزاری چگونه کار می‌کند، سپس نرم‌افزار خودتان را بسازید
+solidcraft	Parametric 3D CAD	طراحی سه‌بعدی پارامتریک
+cadcraft	Computer-aided design and drafting	طراحی و نقشه‌کشی به کمک رایانه
+soundcraft	Recording, editing and mixing audio	ضبط، ویرایش و میکس صدا
+figcraft	Interface design and prototyping	طراحی رابط و نمونه‌سازی
+month	Jan	ژانویه
+month	Feb	فوریه
+month	Mar	مارس
+month	Apr	آوریل
+month	May	مه
+month	Jun	ژوئن
+month	Jul	ژوئیه
+month	Aug	اوت
+month	Sep	سپتامبر
+month	Oct	اکتبر
+month	Nov	نوامبر
+month	Dec	دسامبر
+	GitHub's hourly limit was reached; full details return in {min} min	محدودیت ساعتی GitHub پر شده است؛ جزئیات کامل تا {min} دقیقه دیگر برمی‌گردد
+	GitHub limit hit; back in {min} min	محدودیت GitHub پر شده است؛ بازگشت تا {min} دقیقه دیگر
+	Installing for {platform}	نصب برای {platform}
+	Downloads for {platform}	دانلودها برای {platform}
+	No downloads for this system	دانلودی برای این سیستم وجود ندارد
+	Join the ArtCraft community on Discord	به جامعه ArtCraft در Discord بپیوندید
+	ArtCraft on {name}	ArtCraft در {name}
+	Couldn't open {name}: {e}	باز کردن {name} ممکن نشد: {e}
+	Download cancelled	دانلود لغو شد
+	Available to install	آماده نصب
+	Available	در دسترس
+	Installed · up to date	نصب‌شده · به‌روز
+	installed	نصب‌شده
+	Not available here	اینجا در دسترس نیست
+	Updating…	در حال به‌روزرسانی…
+	Update paused	به‌روزرسانی متوقف شده است
+	Download paused	دانلود متوقف شده است
+	{version} installed → {latest} released	نسخه نصب‌شده {version} ← نسخه منتشرشده {latest}
+	Version {version}	نسخه {version}
+	{installed} installed · latest {latest}	نسخه نصب‌شده {installed} · آخرین نسخه {latest}
+	Installed · latest {latest}	نصب‌شده · آخرین نسخه {latest}
+	Version {version} installed	نسخه {version} نصب شده است
+	Version {latest}	نسخه {latest}
+	No release published yet	هنوز نسخه‌ای منتشر نشده است
+	ArtCraft Launcher	ArtCraft Launcher
+	App	برنامه
+	Latest	آخرین نسخه
+	Released	تاریخ انتشار
+	Auto	خودکار
+	Ascending	صعودی
+	Descending	نزولی
+	Click to reverse the order	برای معکوس‌کردن ترتیب کلیک کنید
+	Click to sort by this column	برای مرتب‌سازی بر اساس این ستون کلیک کنید
+	{done} of {total}	{done} از {total}
+	Downloading	در حال دانلود
+	Verifying checksum…	در حال بررسی مجموع مقابله‌ای…
+	Resume	ادامه
+	{done} of {total} downloaded	{done} از {total} دانلود شده است
+	{done} downloaded	{done} دانلود شده است
+	Checking for updates…	در حال بررسی به‌روزرسانی‌ها…
+	Downloads the new version, replaces this one and opens it again	نسخه جدید را دانلود می‌کند، جایگزین این نسخه می‌کند و دوباره باز می‌کند
+	Couldn't check for updates: {f}	بررسی به‌روزرسانی‌ها ممکن نشد: {f}
+	GitHub repository	مخزن GitHub
+	ArtCraft	ArtCraft
+	Update 1 app	به‌روزرسانی ۱ برنامه
+	Update all ({count})	به‌روزرسانی همه ({count})
+	⊞  Grid	⊞  شبکه‌ای
+	☰  Table	☰  جدول
+	🔍  Search apps	🔍  جست‌وجوی برنامه‌ها
+	{name} {version}	{name} {version}
+	link	پیوند
+	Open ArtCraft Launcher to update.	برای به‌روزرسانی، ArtCraft Launcher را باز کنید.
+	{name} {v} is available	{name} {v} در دسترس است
+	{count} updates are available	{count} به‌روزرسانی در دسترس است
+	These notes weren't fetched (GitHub's request limit was reached). They're on the release page.	این یادداشت‌ها دریافت نشدند (محدودیت درخواست GitHub پر شده است). آن‌ها در صفحه انتشار موجودند.
+	When on, opening the launcher from the menu bar brings its window to the desktop you're on. When off, macOS switches you to the desktop the window was on.	وقتی روشن باشد، باز کردن لانچر از نوار منو پنجره آن را به دسکتاپ فعلی می‌آورد. وقتی خاموش باشد، macOS شما را به دسکتاپی می‌برد که پنجره در آن قرار داشت.
+	Couldn't change the login item: {e}	تغییر مورد ورود به سیستم ممکن نشد: {e}
+column	App	برنامه
+column	Installed	نصب‌شده
+column	Latest	آخرین نسخه
+column	Released	تاریخ انتشار
+filter	Installed	نصب‌شده‌ها
+	{name} details	جزئیات {name}
+@plural	{n} app|{n} apps	{n} برنامه
+@plural	{n} min ago|{n} min ago	{n} دقیقه پیش
+@plural	{n} h ago|{n} h ago	{n} ساعت پیش
+@plural	{n} day ago|{n} days ago	{n} روز پیش
+@msg	Couldn't open {name}: {e}	باز کردن {name} ممکن نشد: {e}
+@msg	Download cancelled	دانلود لغو شد
+@msg	{name} updated to {version}	{name} به نسخه {version} به‌روزرسانی شد
+@msg	{name} installed: {version}	{name} نصب شد: {version}
+@msg	{name} updated to {version} (this release publishes no checksum, so only its size was checked)	{name} به نسخه {version} به‌روزرسانی شد (این نسخه مجموع مقابله‌ای منتشر نکرده است، بنابراین فقط اندازه آن بررسی شد)
+@msg	{name} installed: {version} (this release publishes no checksum, so only its size was checked)	{name} نصب شد: {version} (این نسخه مجموع مقابله‌ای منتشر نکرده است، بنابراین فقط اندازه آن بررسی شد)
+@msg	{name} was removed	{name} حذف شد
+@msg	{name} is running. Quit it, then try again.	{name} در حال اجراست. آن را ببندید و دوباره تلاش کنید.
+@msg	{name} was installed from the {repo} repository or the AUR ({pkg}). Update it with {cmd} or sudo pacman -Syu	{name} از مخزن {repo} یا AUR ({pkg}) نصب شده است. آن را با {cmd} یا sudo pacman -Syu به‌روزرسانی کنید
+@msg	{name} was installed from the {repo} repository or the AUR ({pkg}). Update it with your AUR helper (for example: yay -S {pkg}) or sudo pacman -Syu	{name} از مخزن {repo} یا AUR ({pkg}) نصب شده است. آن را با ابزار کمکی AUR خود (برای مثال: yay -S {pkg}) یا sudo pacman -Syu به‌روزرسانی کنید
+@msg	{name} was installed from the AUR ({pkg}). Update it with {cmd}	{name} از AUR ({pkg}) نصب شده است. آن را با {cmd} به‌روزرسانی کنید
+@msg	{name} was installed from the AUR ({pkg}). Update it with your AUR helper (for example: yay -S {pkg})	{name} از AUR ({pkg}) نصب شده است. آن را با ابزار کمکی AUR خود (برای مثال: yay -S {pkg}) به‌روزرسانی کنید
+@id	app.install	نصب
+@id	app.update	به‌روزرسانی
+@id	app.open	باز کردن
+@id	app.download	دانلود
+@id	app.reveal	نمایش در مدیر فایل
+@id	app.reinstall	نصب دوباره
+@id	app.uninstall	حذف نصب
+@id	app.notes	یادداشت‌های انتشار
+@id	app.website	وب‌سایت
+@id	app.github	GitHub
+@id	app.releases	همه نسخه‌ها
+@id	launcher.update	به‌روزرسانی لانچر
+@id	launcher.download	دانلود لانچر
+@id	launcher.notes	یادداشت‌های انتشار لانچر
+@id	launcher.dismiss	بستن اعلان
+@id	settings.open	باز کردن تنظیمات
+@id	settings.quit	خروج
+@id	view.grid	نمای شبکه‌ای
+@id	view.table	نمای جدولی
+@id	filter.all	همه
+@id	filter.installed	نصب‌شده‌ها
+@id	filter.updates	به‌روزرسانی‌ها
+@id	filter.notinstalled	نصب‌نشده‌ها
+@id	sort.suite	ترتیب مجموعه
+@id	sort.name	نام
+@id	sort.status	وضعیت
+@id	sort.installed	نسخه نصب‌شده
+@id	sort.latest	آخرین نسخه
+@id	sort.released	تاریخ انتشار
+@id	help.discord	Discord
+@id	help.github	GitHub
+@id	help.website	وب‌سایت
+@id	update.check	بررسی به‌روزرسانی‌ها
+@id	update.check_auto	بررسی خودکار به‌روزرسانی‌ها
+@id	update.notify	اعلان به‌روزرسانی
+@id	update.prereleases	نسخه‌های پیش‌انتشار
+@id	linux.preferred_kind	قالب نصب ترجیحی
+@id	tray.close_to_tray	ادامه اجرا در سینی سیستم
+@id	tray.show_on_current_desktop	نمایش در دسکتاپ فعلی
+@id	tray.login_item	اجرا هنگام ورود به سیستم
+@id	appearance.theme	پوسته
+	Show ArtCraft Launcher	نمایش ArtCraft Launcher
+	Check for Updates	بررسی به‌روزرسانی‌ها
+	Visit getartcraft.com	بازدید از getartcraft.com
+	ArtCraft on GitHub	ArtCraft در GitHub
+	Join the ArtCraft Discord	پیوستن به Discord مربوط به ArtCraft
+	App details	جزئیات برنامه
+	More actions for {name}	عملیات بیشتر برای {name}
+	Close (Esc)	بستن (Esc)
+	Features	ویژگی‌ها
+	Latest release	آخرین انتشار
+	Version	نسخه
+	Platforms	پلتفرم‌ها
+	Releases	نسخه‌ها
+	Enlarge picture	بزرگ کردن تصویر
+	Click to enlarge	برای بزرگ کردن کلیک کنید
+	Previous picture (←)	تصویر قبلی (←)
+	Next picture (→)	تصویر بعدی (→)
+	Loading pictures…	در حال بارگذاری تصاویر…
+	Pictures couldn't be loaded. Reopen this page to try again.	تصاویر بارگذاری نشدند. برای تلاش دوباره این صفحه را باز کنید.
+@plural	ArtCraft Launcher · {n} update available|ArtCraft Launcher · {n} updates available	ArtCraft Launcher · {n} به‌روزرسانی در دسترس است
+	Install folder	پوشه نصب
+	Default install folder	پوشه پیش‌فرض نصب
+	System default	پیش‌فرض سیستم
+	Browse…	مرور…
+	Use default	استفاده از پیش‌فرض
+	New installs use this folder. Updates stay in their current location.	نصب‌های جدید از این پوشه استفاده می‌کنند. به‌روزرسانی‌ها در مکان فعلی خود باقی می‌مانند.
+	Custom folders use AppImage on Linux.	در لینوکس برای پوشه‌های سفارشی از AppImage استفاده می‌شود.
+	On Linux, custom folders use AppImage format.	در لینوکس برای پوشه‌های سفارشی از قالب AppImage استفاده می‌شود.
+	The system manages install locations here.	در اینجا سیستم محل نصب را مدیریت می‌کند.
+@msg	couldn't use install folder {path}: {reason}	استفاده از پوشه نصب {path} ممکن نشد: {reason}
+@msg	this release has no AppImage for a custom install folder	این نسخه برای پوشه نصب سفارشی فایل AppImage ندارد
+@msg	custom install folders aren't supported on this system	پوشه نصب سفارشی در این سیستم پشتیبانی نمی‌شود
+@msg	{path} already exists and wasn't installed by ArtCraft Launcher	{path} از قبل وجود دارد و توسط ArtCraft Launcher نصب نشده است
+@msg	couldn't move {path} to Trash ({reason}). Remove it in Finder instead.	انتقال {path} به سطل زباله ممکن نشد ({reason}). آن را در Finder حذف کنید.
+	Apps are placed inside this folder.	برنامه‌ها داخل این پوشه قرار می‌گیرند.
+	Replace what's there?	محتوای موجود جایگزین شود؟
+	{path} already exists. Installing {name} will overwrite it.	{path} از قبل وجود دارد. نصب {name} آن را بازنویسی می‌کند.
+	Replace	جایگزینی
+	Recently updated	تازه به‌روزشده
+	Name (A–Z)	نام (A–Z)
+	Name (Z–A)	نام (Z–A)
+	Frequently used	پراستفاده
+	Next app	برنامه بعدی
+	Previous app	برنامه قبلی
+	Show {n} more changes	نمایش {n} تغییر دیگر
+	Last updated: {date}	آخرین به‌روزرسانی: {date}
+column	Version	نسخه
+column	Author	نویسنده
+	Choose version	انتخاب نسخه
+	latest {version}	آخرین نسخه {version}
+	{version} (latest release)	{version} (آخرین انتشار)
+	Launcher version	نسخه لانچر
+	Nightly	نسخه شبانه
+	Nightly (none published yet)	نسخه شبانه (هنوز نسخه‌ای منتشر نشده است)
+	Install version {version}	نصب نسخه {version}
+	Download selected version	دانلود نسخه انتخاب‌شده
+	Older launcher versions require a manual reinstall.	نسخه‌های قدیمی‌تر لانچر به نصب دوباره دستی نیاز دارند.
+	Your files may not open in older versions.	ممکن است فایل‌های شما در نسخه‌های قدیمی‌تر باز نشوند.
+	Enable automatic installs in Settings to follow new nightly builds.	برای دریافت نسخه‌های شبانه جدید، نصب خودکار را در تنظیمات فعال کنید.
+texturecraft	3D texture painting	نقاشی بافت سه‌بعدی
+texturecraft	Paint materials on 3D models and export textures.	روی مدل‌های سه‌بعدی متریال بکشید و بافت‌ها را خروجی بگیرید.
+texturecraft	Materials	متریال‌ها
+texturecraft	Mesh maps	نقشه‌های مش
+texturecraft	Bake mesh maps and use smart materials.	نقشه‌های مش را بیک کنید و از متریال‌های هوشمند استفاده کنید.
+texturecraft	Paint textures on 3D models.	روی مدل‌های سه‌بعدی بافت بکشید.
+	Hide community apps	پنهان کردن برنامه‌های جامعه
+	Classic	کلاسیک
+	Inspired by	الهام‌گرفته از
+	Like {name}	مانند {name}
+@id	sort.inspired	الهام‌گرفته از
+	Website (coming soon)	وب‌سایت (به‌زودی)
