@@ -3,11 +3,11 @@
 use std::time::Duration;
 
 use artcraft_launcher_core::protocol::{
-    Backend, BackendOptions, CANCELLED, Capabilities, Command, Event, INSTALL_CANCELLED, JobPhase, LatestRelease, PAUSED, Source,
+    Backend, BackendOptions, CANCELLED, Capabilities, Command, Event, INSTALL_CANCELLED, JobPhase, LatestRelease, McpAgents, PAUSED, Source,
 };
 use artcraft_launcher_core::release::Release;
 use artcraft_launcher_core::status::AppStatus;
-use artcraft_launcher_core::{Arch, PackageKind, Platform, SUITE};
+use artcraft_launcher_core::{Arch, PackageKind, Platform};
 
 use crate::i18n::set_current;
 use crate::model::AppEntry;
@@ -111,6 +111,7 @@ pub(crate) enum UiAction {
 pub(crate) enum Dialog {
     Notes(String),
     ConfirmUninstall(String),
+    UnlockVersion { app: String, tag: String },
     Install { app: String, folder: String },
     Replace { app: String, path: String },
     Settings,
@@ -126,6 +127,7 @@ impl Dialog {
         match self {
             Dialog::Notes(id) => ("notes", id),
             Dialog::ConfirmUninstall(id) => ("uninstall", id),
+            Dialog::UnlockVersion { app, .. } => ("unlock-version", app),
             Dialog::Install { app, .. } => ("install", app),
             Dialog::Replace { app, .. } => ("replace", app),
             Dialog::Settings => ("settings", ""),
@@ -140,6 +142,13 @@ pub struct LauncherUi {
     pub(crate) backend: Box<dyn Backend>,
     pub settings: Settings,
     pub(crate) entries: Vec<AppEntry>,
+    /// AI agents: the gateway switch and the MCP clients.
+    pub(crate) mcp_agents: McpAgents,
+    /// Whether we've asked for MCP state since the settings dialog last opened (reset when it closes).
+    pub(crate) mcp_requested: bool,
+    /// The MCP client just added here, which only loads the entry when it starts: Settings offers
+    /// to restart it until that is done or the entry is removed.
+    pub(crate) mcp_restart_offer: Option<artcraft_launcher_core::protocol::McpClient>,
     pub(crate) caps: Capabilities,
     pub(crate) platform: Option<Platform>,
     pub(crate) checking: bool,
@@ -260,7 +269,14 @@ impl LauncherUi {
         Self {
             backend,
             settings,
-            entries: SUITE.iter().filter(|a| platform.is_none_or(|p| a.runs_on(p.os))).map(AppEntry::new).collect(),
+            entries: artcraft_launcher_core::hosted_catalog::apps()
+                .iter()
+                .filter(|a| platform.is_none_or(|p| a.runs_on(p.os)))
+                .map(AppEntry::new)
+                .collect(),
+            mcp_agents: McpAgents::default(),
+            mcp_requested: false,
+            mcp_restart_offer: None,
             caps,
             platform,
             checking: false,
@@ -554,6 +570,18 @@ impl LauncherUi {
     /// Returns whether app state changed.
     fn handle(&mut self, event: Event) -> bool {
         match event {
+            Event::CatalogUpdated => {
+                for app in artcraft_launcher_core::hosted_catalog::apps().iter().filter(|a| self.platform.is_none_or(|p| a.runs_on(p.os))) {
+                    if let Some(entry) = self.entries.iter_mut().find(|e| e.app.id == app.id) {
+                        entry.app = app;
+                    } else {
+                        self.entries.push(AppEntry::new(app));
+                    }
+                }
+                self.entries.sort_by_key(|entry| artcraft_launcher_core::hosted_catalog::apps().iter().position(|app| app.id == entry.app.id));
+                self.backend.send(Command::Detect);
+                true
+            }
             Event::Latest { app, latest, from } => {
                 self.on_latest(app, latest, from);
                 true
@@ -629,6 +657,16 @@ impl LauncherUi {
                 self.last_source = Some(source);
                 self.rate_limited_until = rate_limited_until;
                 true
+            }
+            Event::Mcp { agents } => {
+                self.mcp_agents = agents;
+                false
+            }
+            Event::McpError { message } => {
+                // A failed MCP write (e.g. a full disk or an unreadable config) is surfaced so the
+                // user knows their toggle did not take effect.
+                self.toast(message, true);
+                false
             }
         }
     }
@@ -1175,6 +1213,22 @@ mod tests {
     /// Counts the `Install` commands in `sent`, ignoring every other command.
     fn installs(sent: &RefCell<Vec<Command>>) -> usize {
         sent.borrow().iter().filter(|command| matches!(command, Command::Install { .. })).count()
+    }
+
+    #[test]
+    fn catalog_event_adds_entries_in_suite_order_and_keeps_current_state() {
+        let (mut ui, sent, _) = launcher();
+        let id = ui.entries[0].app.id;
+        ui.entries[0].detected = true;
+        ui.entries.pop();
+        ui.entries.reverse();
+        assert!(ui.handle(Event::CatalogUpdated));
+        assert_eq!(
+            ui.entries.iter().map(|e| e.app.id).collect::<Vec<_>>(),
+            artcraft_launcher_core::hosted_catalog::apps().iter().map(|a| a.id).collect::<Vec<_>>()
+        );
+        assert!(ui.entry(id).unwrap().detected);
+        assert_eq!(sent.borrow().as_slice(), &[Command::Detect]);
     }
 
     /// A CJK preference is drawable only while that language's own face is installed: having the

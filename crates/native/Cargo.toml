@@ -18,6 +18,8 @@ local-mirror = []
 
 [dependencies]
 artcraft-launcher-core = { workspace = true }
+craft-flags = { workspace = true }
+craft-ai-agents = { workspace = true }
 craft-update = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }

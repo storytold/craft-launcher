@@ -197,6 +197,18 @@ impl Http {
     /// on the body when the length wasn't announced or was wrong.
     pub fn get_bytes(&self, url: &str, max: usize) -> Result<Option<Vec<u8>>, String> {
         let agent = if is_loopback(url) { &self.direct } else { &self.small };
+        Self::get_bytes_with(agent, url, max)
+    }
+
+    /// Catalog resources remain on the pinned HTTPS website; redirect responses are refused.
+    pub fn get_catalog_bytes(&self, url: &str, max: usize) -> Result<Option<Vec<u8>>, String> {
+        if !url.starts_with("https://getartcraft.com/") {
+            return Err("catalog resources must use the pinned HTTPS website".into());
+        }
+        Self::get_bytes_with(&self.no_redirect, url, max)
+    }
+
+    fn get_bytes_with(agent: &ureq::Agent, url: &str, max: usize) -> Result<Option<Vec<u8>>, String> {
         let mut resp = agent.get(url).call().map_err(|e| format!("{UNREACHABLE} {} ({e})", host(url)))?;
         match resp.status().as_u16() {
             200 => {

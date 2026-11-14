@@ -4319,3 +4319,246 @@ fn an_apps_page_is_a_card_in_the_middle_with_next_and_previous_arrows_and_closes
     h.run_steps(30);
     assert!(!showing(&h, "photocraft"), "a click outside did not close it");
 }
+
+/// A version pin is distinct from a favorite: the lock names the exact tag and requires confirmation.
+#[test]
+fn version_padlock_confirms_before_unlocking_in_grid_and_table() {
+    use artcraft_launcher_core::protocol::VersionTrack;
+    let tip = "Version pinned to v0.4.1. Click to unlock.";
+    for view in [ViewMode::Grid, ViewMode::Table] {
+        let (mut h, sent) = harness(view, egui::Theme::Dark, true);
+        h.run_steps(4);
+        h.state_mut().as_mut().unwrap().settings.versions.insert("photocraft".into(), VersionTrack::Pinned("v0.4.1".into()));
+        h.run_steps(4);
+        sent.borrow_mut().clear();
+        h.get_by_label(tip).hover();
+        h.run_steps(30);
+        snapshot(&mut h, if view == ViewMode::Grid { "version-lock-grid" } else { "version-lock-table" });
+        h.query_all_by_role_and_label(egui::accesskit::Role::Button, tip).next().unwrap().click();
+        h.run_steps(4);
+        h.get_by_label("Unlock version?");
+        h.get_by_label("PhotoCraft is pinned to v0.4.1. Follow the latest release instead?");
+        assert_eq!(h.state().as_ref().unwrap().settings.versions.get("photocraft"), Some(&VersionTrack::Pinned("v0.4.1".into())));
+        assert!(!sent.borrow().iter().any(|c| matches!(c, Command::CheckForUpdates { force: true })));
+        snapshot(&mut h, if view == ViewMode::Grid { "version-unlock-dialog" } else { "version-unlock-table-dialog" });
+        h.get_by_label("Cancel").click();
+        h.run_steps(4);
+        assert_eq!(h.state().as_ref().unwrap().settings.versions.get("photocraft"), Some(&VersionTrack::Pinned("v0.4.1".into())));
+        h.get_by_label(tip).click();
+        h.run_steps(4);
+        h.key_press(egui::Key::Escape);
+        h.run_steps(4);
+        assert_eq!(h.state().as_ref().unwrap().settings.versions.get("photocraft"), Some(&VersionTrack::Pinned("v0.4.1".into())));
+        h.get_by_label(tip).click();
+        h.run_steps(4);
+        h.get_by_label("Unlock").click();
+        h.run_steps(4);
+        assert!(!h.state().as_ref().unwrap().settings.versions.contains_key("photocraft"));
+        assert!(h.query_by_label(tip).is_none());
+        assert!(sent.borrow().iter().any(|c| matches!(c, Command::Configure(options) if !options.versions.contains_key("photocraft"))));
+        assert!(sent.borrow().iter().any(|c| matches!(c, Command::CheckForUpdates { force: true })));
+        assert!(!sent.borrow().iter().any(|c| matches!(c, Command::Install { .. })));
+    }
+}
+
+#[test]
+fn a_version_padlock_does_not_unlock_a_choice_changed_after_confirmation_opened() {
+    use artcraft_launcher_core::protocol::VersionTrack;
+    let (mut h, _) = harness(ViewMode::Grid, egui::Theme::Dark, true);
+    h.run_steps(4);
+    h.state_mut().as_mut().unwrap().settings.versions.insert("photocraft".into(), VersionTrack::Pinned("v0.4.1".into()));
+    h.run_steps(4);
+    h.get_by_label("Version pinned to v0.4.1. Click to unlock.").click();
+    h.run_steps(4);
+    h.state_mut().as_mut().unwrap().settings.versions.insert("photocraft".into(), VersionTrack::Pinned("v0.3.0".into()));
+    h.run_steps(4);
+    h.get_by_label("Unlock").click();
+    h.run_steps(4);
+    assert_eq!(h.state().as_ref().unwrap().settings.versions.get("photocraft"), Some(&VersionTrack::Pinned("v0.3.0".into())));
+}
+
+#[test]
+fn favorite_and_nightly_choices_do_not_show_a_version_padlock() {
+    use artcraft_launcher_core::protocol::VersionTrack;
+    let (mut h, _) = harness(ViewMode::Grid, egui::Theme::Dark, true);
+    h.run_steps(4);
+    h.state_mut().as_mut().unwrap().settings.pin_app("photocraft");
+    h.run_steps(4);
+    assert!(h.query_by_label("Version pinned to v0.4.1. Click to unlock.").is_none());
+    h.state_mut().as_mut().unwrap().settings.versions.insert("photocraft".into(), VersionTrack::Nightly);
+    h.run_steps(4);
+    assert!(h.query_by_label("Version pinned to v0.4.1. Click to unlock.").is_none());
+}
+
+#[test]
+fn launcher_version_padlock_confirms_and_returns_to_settings() {
+    use artcraft_launcher_core::protocol::VersionTrack;
+    let (mut h, sent) = harness(ViewMode::Grid, egui::Theme::Dark, true);
+    h.run_steps(4);
+    h.state_mut().as_mut().unwrap().settings.launcher_version = VersionTrack::Pinned("v0.19.0".into());
+    h.get_by_label("Settings").click();
+    h.run_steps(6);
+    h.get_by_label("Version pinned to v0.19.0. Click to unlock.").click();
+    h.run_steps(4);
+    h.get_by_label("Cancel").click();
+    h.run_steps(4);
+    assert_eq!(h.state().as_ref().unwrap().settings.launcher_version, VersionTrack::Pinned("v0.19.0".into()));
+    h.get_by_label("Version pinned to v0.19.0. Click to unlock.").click();
+    h.run_steps(4);
+    h.get_by_label("Unlock").click();
+    h.run_steps(4);
+    assert_eq!(h.state().as_ref().unwrap().settings.launcher_version, VersionTrack::Stable);
+    h.get_by_label("Launcher version");
+    assert!(sent.borrow().iter().any(|c| matches!(c, Command::Configure(options) if options.launcher_version == VersionTrack::Stable)));
+}
+
+/// Settings › AI agents: the switch, and Add / Remove per MCP client, each sending one command.
+#[test]
+fn ai_agents_switch_and_client_buttons_send_their_commands() {
+    use artcraft_launcher_core::protocol::{McpAgents, McpClient, McpClientState};
+    let client = |client, name: &str, installed, added| McpClientState { client, name: name.into(), installed, added, restartable: false };
+    let mut evs = events();
+    evs.push(Event::Mcp {
+        agents: McpAgents {
+            flag_on: true,
+            gateway_found: true,
+            enabled: true,
+            apps: 3,
+            clients: vec![
+                client(McpClient::ClaudeDesktop, "Claude Desktop", true, false),
+                client(McpClient::Cursor, "Cursor", true, true),
+                client(McpClient::LmStudio, "LM Studio", false, false),
+            ],
+            gateway: Some("C:/gw/craft-ai-mcp.exe".into()),
+        },
+    });
+    let (mut h, sent) = harness_with(evs, ViewMode::Grid, egui::Theme::Dark, true, 1.0);
+    h.run_steps(6);
+    h.get_by_label("Settings").click();
+    h.run_steps(4);
+    h.get_by_label("Apps agents can reach: 3").scroll_to_me();
+    h.run_steps(6);
+    snapshot(&mut h, "settings-ai-agents");
+    // Other clients: the configuration in each format, copied with a note saying so.
+    for label in ["Copy JSON", "Copy for VS Code", "Copy for Codex (TOML)"] {
+        h.get_by_label(label).scroll_to_me();
+        h.run_steps(2);
+        h.get_by_label(label).click();
+        h.run_steps(3);
+        assert!(h.query_all_by_label("Configuration copied.").next().is_some(), "{label}");
+    }
+    h.get_by_label("Add").click();
+    h.run_steps(3);
+    h.get_by_label("Remove").click();
+    h.run_steps(3);
+    h.get_by_label("Let AI agents use Craft apps").click();
+    h.run_steps(2);
+    let sent = sent.borrow();
+    assert!(sent.iter().any(|c| matches!(c, Command::McpSetClient { client: McpClient::ClaudeDesktop, added: true })));
+    assert!(sent.iter().any(|c| matches!(c, Command::McpSetClient { client: McpClient::Cursor, added: false })));
+    assert!(sent.iter().any(|c| matches!(c, Command::McpSetAgents { enabled: false })));
+    assert!(
+        !sent.iter().any(|c| matches!(c, Command::McpSetClient { client: McpClient::LmStudio, .. })),
+        "a client that isn't installed has no button"
+    );
+}
+
+/// Adding Claude Desktop says why it must restart and offers to do it; the button sends the
+/// restart and goes away. Clients the launcher can't restart get no such offer.
+#[test]
+fn ai_agents_offer_to_restart_a_client_right_after_adding_it() {
+    use artcraft_launcher_core::protocol::{McpAgents, McpClient, McpClientState};
+    let agents = |added| McpAgents {
+        flag_on: true,
+        gateway_found: true,
+        enabled: true,
+        apps: 3,
+        clients: vec![
+            McpClientState { client: McpClient::ClaudeDesktop, name: "Claude Desktop".into(), installed: true, added, restartable: true },
+            McpClientState { client: McpClient::ClaudeCode, name: "Claude Code".into(), installed: true, added, restartable: false },
+        ],
+        gateway: Some("C:/gw/craft-ai-mcp.exe".into()),
+    };
+    let machine = Machine { more: vec![Event::Mcp { agents: agents(false) }], ..Default::default() };
+    let (mut h, sent, queue) = versions_harness(machine, None, vec![]);
+    h.get_by_label("Settings").click();
+    h.run_steps(4);
+    h.get_by_label("Quick install").scroll_to_me();
+    h.run_steps(4);
+    assert!(h.query_by_label("Restart Claude Desktop").is_none(), "nothing to restart before adding");
+    let adds: Vec<_> = h.get_all_by_label("Add").collect();
+    adds[0].click();
+    adds[1].click();
+    h.run_steps(2);
+    queue.borrow_mut().push(Event::Mcp { agents: agents(true) });
+    h.run_steps(4);
+    h.get_by_label_contains("loads its MCP servers only when it starts");
+    assert!(h.query_by_label("Restart Claude Code").is_none(), "the launcher can't restart Claude Code");
+    h.get_by_label("Restart Claude Desktop").click();
+    h.run_steps(4);
+    assert!(sent.borrow().iter().any(|c| matches!(c, Command::McpRestartClient { client: McpClient::ClaudeDesktop })));
+    assert!(h.query_by_label("Restart Claude Desktop").is_none(), "offered once");
+    assert!(h.query_all_by_label("Restarting Claude Desktop…").next().is_some(), "a note says it is happening");
+}
+
+/// Without the gateway beside the launcher, Settings says so and offers no switch.
+#[test]
+fn ai_agents_without_the_gateway_offer_no_switch() {
+    let mut evs = events();
+    evs.push(Event::Mcp { agents: artcraft_launcher_core::protocol::McpAgents { flag_on: true, ..Default::default() } });
+    let (mut h, _sent) = harness_with(evs, ViewMode::Grid, egui::Theme::Dark, true, 1.0);
+    h.run_steps(6);
+    h.get_by_label("Settings").click();
+    h.run_steps(4);
+    h.get_by_label("The Craft gateway (craft-ai-mcp) is not installed beside the launcher.");
+    assert!(h.query_by_label("Let AI agents use Craft apps").is_none());
+}
+
+/// When the gateway went away while agents were on, they can still be turned off and the entries
+/// removed; only adding is gone.
+#[test]
+fn ai_agents_left_on_without_the_gateway_can_still_be_turned_off() {
+    use artcraft_launcher_core::protocol::{McpAgents, McpClient, McpClientState};
+    let client = |client, name: &str, added| McpClientState { client, name: name.into(), installed: true, added, restartable: false };
+    let mut evs = events();
+    evs.push(Event::Mcp {
+        agents: McpAgents {
+            flag_on: true,
+            gateway_found: false,
+            enabled: true,
+            apps: 2,
+            clients: vec![client(McpClient::ClaudeDesktop, "Claude Desktop", false), client(McpClient::Cursor, "Cursor", true)],
+            gateway: None,
+        },
+    });
+    let (mut h, sent) = harness_with(evs, ViewMode::Grid, egui::Theme::Dark, true, 1.0);
+    h.run_steps(6);
+    h.get_by_label("Settings").click();
+    h.run_steps(4);
+    h.get_by_label("Apps agents can reach: 2").scroll_to_me();
+    h.run_steps(6);
+    assert!(h.query_by_label("Add").is_none(), "nothing to add without the gateway");
+    h.get_by_label("Remove").click();
+    h.run_steps(3);
+    h.get_by_label("Let AI agents use Craft apps").click();
+    h.run_steps(3);
+    let sent = sent.borrow();
+    assert!(sent.iter().any(|c| matches!(c, Command::McpSetClient { client: McpClient::Cursor, added: false })));
+    assert!(sent.iter().any(|c| matches!(c, Command::McpSetAgents { enabled: false })));
+}
+
+/// With the `AI-MCP` flag off, Settings shows nothing about agents, and nothing to switch flags:
+/// they are set in `ArtCraft/flags.toml` or `CRAFT_FLAGS` only.
+#[test]
+fn ai_agents_stay_hidden_until_their_flag_is_on() {
+    use artcraft_launcher_core::protocol::McpAgents;
+    let mut evs = events();
+    evs.push(Event::Mcp { agents: McpAgents { flag_on: false, gateway_found: true, enabled: true, apps: 3, clients: vec![], gateway: None } });
+    let (mut h, _sent) = harness_with(evs, ViewMode::Grid, egui::Theme::Dark, true, 1.0);
+    h.run_steps(6);
+    h.get_by_label("Settings").click();
+    h.run_steps(4);
+    assert!(h.query_by_label("Let AI agents use Craft apps").is_none(), "no agents box without the flag");
+    assert!(h.query_by_label("Experimental features").is_none(), "flags have no switches in Settings");
+    assert!(h.query_by_label("AI agents (MCP)").is_none());
+}
