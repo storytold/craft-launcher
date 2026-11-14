@@ -212,6 +212,7 @@ pub fn apply(ctx: &egui::Context, choice: ThemeChoice) {
         ThemeChoice::Light => egui::ThemePreference::Light,
     });
     ctx.all_styles_mut(|style| {
+        style.right_to_left = crate::i18n::current().rtl();
         style.spacing.item_spacing = egui::vec2(8.0, 6.0);
         // Between a checkbox (or radio button) and its label.
         style.spacing.icon_spacing = 10.0;
