@@ -193,15 +193,25 @@ impl GitHubSource {
             return Err("the latest-release redirect went somewhere that isn't github.com's".into());
         };
         if let Some(e) = self.entry(repo, false)
-            && let Some(r) = e.release.as_ref().filter(|r| r.tag == tag)
+            && let Some(r) = e.release.as_ref().filter(|r| r.tag == tag && !r.notes.is_empty())
         {
             return Ok(Answer { latest: LatestRelease::Found(r.clone()), source: Source::GitHubPages });
         }
+        let notes_url = format!("https://github.com/{repo}/releases.atom");
+        let notes = match self.http.get_text(&notes_url) {
+            Ok(Some(atom)) => release::notes_from_atom(&atom, repo, &tag),
+            Ok(None) => None,
+            Err(e) => {
+                log::debug!("{repo}: release notes feed: {e}");
+                None
+            }
+        };
         let sums_url = format!("{}{tag}/SHA256SUMS.txt", release::download_prefix(repo));
         // Not `note_pages_error`: this one redirects to GitHub's asset CDN, so its failure says
         // nothing about whether github.com itself can be reached for the next app.
         let sums = self.http.get_text(&sums_url)?.map(|t| release::parse_sha256sums(&t)).unwrap_or_default();
-        let r = release::release_from_sums(repo, &tag, &sums);
+        let mut r = release::release_from_sums(repo, &tag, &sums);
+        r.notes = notes.unwrap_or_default();
         self.store(repo, Entry { etag: None, release: Some(r.clone()), prereleases: false, fetched_at: crate::now() });
         Ok(Answer { latest: LatestRelease::Found(r), source: Source::GitHubPages })
     }
