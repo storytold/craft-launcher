@@ -71,6 +71,21 @@ pub fn exec_quote(path: &Path) -> Option<String> {
     Some(out)
 }
 
+/// The characters the Desktop Entry spec reserves in an `Exec=` argument, which only a quoted
+/// argument may hold, and `%`, which a field code would take.
+const EXEC_RESERVED: &[char] = &[' ', '\t', '\n', '"', '\'', '\\', '>', '<', '~', '|', '&', ';', '$', '*', '?', '#', '(', ')', '`', '%'];
+
+/// `path` as one argument of an `Exec=` key: as it is when it holds none of the reserved
+/// characters, otherwise quoted by [`exec_quote`]. xdg-utils' `xdg-open` takes an entry's
+/// program as the first word of `Exec=`, quotes included, and skips the entry when `command -v`
+/// can't find it, so a quoted path that didn't need quoting stops the app from opening files
+/// as their default (#1393). `None` for the paths [`exec_quote`] refuses.
+pub fn exec_arg(path: &Path) -> Option<String> {
+    let quoted = exec_quote(path)?;
+    let s = path.to_str()?;
+    if s.is_empty() || s.contains(EXEC_RESERVED) { Some(quoted) } else { Some(s.to_string()) }
+}
+
 /// A localestring/string value: backslashes and line breaks escaped.
 fn value(s: &str) -> String {
     s.replace('\\', "\\\\").replace('\n', "\\n").replace('\r', "\\r").replace('\t', "\\t")
@@ -79,7 +94,7 @@ fn value(s: &str) -> String {
 /// The entry for `app` installed as the AppImage `appimage`; `icon` when its icon is installed
 /// under the app's id. `None` when the path can't be put in an `Exec=` line.
 pub fn render(app: &CraftApp, appimage: &Path, icon: bool) -> Option<String> {
-    let exec = exec_quote(appimage)?;
+    let exec = exec_arg(appimage)?;
     let (categories, wm_class) = meta(app);
     let mut text = String::from("[Desktop Entry]\nType=Application\n");
     text.push_str(&format!("Name={}\n", value(app.name)));
@@ -154,7 +169,7 @@ mod tests {
         let text = render(app("photocraft"), Path::new("/home/ana/Applications/photocraft-0.6.0-linux-x86_64.AppImage"), true).unwrap();
         let expected = format!(
             "[Desktop Entry]\nType=Application\nName=PhotoCraft\nComment={}\n\
-             Exec=\"/home/ana/Applications/photocraft-0.6.0-linux-x86_64.AppImage\" %F\n\
+             Exec=/home/ana/Applications/photocraft-0.6.0-linux-x86_64.AppImage %F\n\
              Icon=ai.storyteller.photocraft\nTerminal=false\nCategories=Graphics;2DGraphics;RasterGraphics;Photography;\n\
              StartupWMClass=photocraft\nX-ArtCraft-Launcher=true\n",
             app("photocraft").tagline
@@ -176,6 +191,32 @@ mod tests {
         // The spec forbids `=` in the executable name or path, even quoted.
         assert_eq!(exec_quote(Path::new("/opt/artcraft=beta/app")), None);
         assert!(render(app("photocraft"), Path::new("/a/line\nbreak.AppImage"), true).is_none());
+    }
+
+    #[test]
+    fn quotes_an_exec_path_only_when_it_needs_it() {
+        // Bare, so xdg-open's `command -v` on the first word finds it (#1393).
+        for p in ["/home/ana/Applications/gridcraft-0.19.1-linux-x86_64.AppImage", "/home/zoë/Apps/w.AppImage"] {
+            assert_eq!(exec_arg(Path::new(p)).as_deref(), Some(p), "{p}");
+        }
+        // Any reserved character, or `%`, keeps the spec's quoting.
+        for p in [
+            "/home/ana/My Apps/p.AppImage",
+            "/a/\"q\".AppImage",
+            "/a/it's.AppImage",
+            "/a/$HOME.AppImage",
+            r"/a\b.AppImage",
+            "/a/100%.AppImage",
+            "/a/~x.AppImage",
+            "/a/#1.AppImage",
+            "/a/(1).AppImage",
+        ] {
+            let arg = exec_arg(Path::new(p));
+            assert_eq!(arg, exec_quote(Path::new(p)), "{p}");
+            assert!(arg.unwrap().starts_with('"'), "{p}");
+        }
+        assert_eq!(exec_arg(Path::new("/a/line\nbreak.AppImage")), None);
+        assert_eq!(exec_arg(Path::new("/opt/artcraft=beta/app")), None);
     }
 
     #[test]
