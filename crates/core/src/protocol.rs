@@ -101,6 +101,10 @@ pub enum VersionTrack {
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct BackendOptions {
+    /// Hide progress only for existing per-user MSI app updates. Read at installer preparation;
+    /// queued work follows setting changes, while an installer already started keeps its mode.
+    /// Machine-scope installs and launcher self-updates retain their visible UI.
+    pub quiet_installs: bool,
     pub install_locations: InstallLocations,
     /// Package formats to install, best first (empty: the platform default).
     pub kinds: Vec<PackageKind>,
@@ -345,6 +349,7 @@ mod tests {
     fn old_backend_options_keep_system_install_locations() {
         let options: BackendOptions = serde_json::from_str(r#"{"kinds":[],"prereleases":true}"#).unwrap();
         assert!(options.prereleases);
+        assert!(!options.quiet_installs);
         assert_eq!(options.install_locations, InstallLocations::default());
     }
 }

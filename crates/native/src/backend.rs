@@ -863,6 +863,7 @@ fn run_install(
         last_emit = Instant::now();
         shared.emit(Event::Progress { app: app.id.to_string(), phase: p });
     };
+    let quiet = || shared.options.lock().unwrap_or_else(PoisonError::into_inner).quiet_installs;
     let mut job = Job {
         http,
         paths,
@@ -872,6 +873,7 @@ fn run_install(
         replace,
         approved_path,
         downgrade,
+        quiet: &quiet,
         batch: batch.take(),
     };
     let mut commit_record = |record: &crate::manifest::Record| {

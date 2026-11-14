@@ -42,6 +42,7 @@ fn uncertain_msi_updates_do_not_download_or_start_an_installer() {
             replace: false,
             approved_path: None,
             downgrade: None,
+            quiet: &|| true,
             batch: None,
         };
         let result = install::install(app, &release, &asset, PackageKind::Msi, Some(&existing), None, &mut job);

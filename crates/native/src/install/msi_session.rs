@@ -740,6 +740,20 @@ mod tests {
         }
 
         #[test]
+        fn an_old_quiet_manifest_cannot_hide_elevated_installer_progress() {
+            let dir = tempfile::tempdir().unwrap();
+            let mut json = serde_json::to_value(package(dir.path())).unwrap();
+            json["quiet"] = serde_json::json!(true);
+            let entry = parse(OsStr::new(&serde_json::to_string(&json).unwrap())).unwrap();
+            let code = checked_install(&entry, &|_| Ok(()), &|line| {
+                assert!(line.contains(" /passive "), "{line}");
+                assert!(!line.contains(" /qn "), "{line}");
+                Ok(0)
+            });
+            assert_eq!(code, 0);
+        }
+
+        #[test]
         fn a_verified_package_reaches_the_installer_by_its_resolved_path() {
             let dir = tempfile::tempdir().unwrap();
             let entry = package(dir.path());
