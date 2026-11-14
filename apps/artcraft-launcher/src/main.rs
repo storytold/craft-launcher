@@ -45,10 +45,6 @@ fn main() -> ExitCode {
     if let Some(done) = artcraft_launcher_native::self_update::finish(&std::env::args_os().skip(1).collect::<Vec<_>>()) {
         return if done.is_ok() { ExitCode::SUCCESS } else { ExitCode::FAILURE };
     }
-    // Detect system language in the background so the first frame can use it.
-    artcraft_launcher_ui_egui::i18n::detect_system_lang_in_background();
-    // Detect Discord protocol handler in the background without blocking startup.
-    artcraft_launcher_native::process::ensure_discord_detection_started();
     // `std::env::args` panics on an argument that is not UTF-8, and the launcher is started with
     // whatever the desktop hands it: a login entry, a file manager, a terminal in a Latin-1
     // locale. It only ever looks for the two flags below, so an argument it cannot read is one it
@@ -80,6 +76,20 @@ fn main() -> ExitCode {
         };
     }
     let mut hidden = args.iter().any(|a| a == login::HIDDEN_FLAG);
+    let settings_path = settings_file::path(APP_ID);
+    #[cfg(target_os = "macos")]
+    if hidden
+        && let Some(settings) = settings_path.as_deref().and_then(|path| settings_file::load::<Settings>(path, SETTINGS_KEY))
+        && settings.hide_from_dock_when_hidden
+        && settings.close_to_tray
+    {
+        // Set this before other startup work, or the Dock briefly shows the regular app during login.
+        spaces::set_dock_visibility(false, true, true, true);
+    }
+    // Detect system language in the background so the first frame can use it.
+    artcraft_launcher_ui_egui::i18n::detect_system_lang_in_background();
+    // Detect Discord protocol handler in the background without blocking startup.
+    artcraft_launcher_native::process::ensure_discord_detection_started();
 
     let wake: Wake = Arc::new(OnceLock::new());
     let starts = match single_instance::claim(wake.clone()) {
@@ -122,7 +132,6 @@ fn main() -> ExitCode {
     let _ = motion::reduced();
 
     let backend_waker = waker.clone();
-    let settings_path = settings_file::path(APP_ID);
     let mut launcher = Launcher::new(Box::new(NativeBackend::new(move || backend_waker.wake())), starts, settings_path.clone());
     #[cfg(target_os = "linux")]
     {
@@ -589,8 +598,12 @@ enum OnClose {
     Quit,
 }
 
+/// Chooses how to handle a window close: macOS hides a hide-capable window, while other platforms
+/// require tray mode to keep the launcher running.
 fn on_close(has_tray: bool, close_to_tray: bool, window_hides: bool) -> OnClose {
-    if !(has_tray && close_to_tray) {
+    if cfg!(target_os = "macos") && window_hides {
+        OnClose::Hide
+    } else if !(has_tray && close_to_tray) {
         OnClose::Quit
     } else if window_hides {
         OnClose::Hide
@@ -816,6 +829,16 @@ impl Launcher {
         self.ui.attach(&cc.egui_ctx);
     }
 
+    /// Shows or hides the menu-bar icon on macOS, logging platform errors without stopping the app.
+    #[cfg(target_os = "macos")]
+    fn set_tray_visible(&self, visible: bool) {
+        if let Some(tray) = &self.tray
+            && let Err(e) = tray.set_visible(visible)
+        {
+            log::warn!("couldn't change menu-bar icon visibility: {e}");
+        }
+    }
+
     /// Saves the settings with no window, where eframe would on a window's behalf.
     fn save_settings(&self) {
         let Some(path) = self.settings_path.as_deref() else { return };
@@ -916,28 +939,59 @@ impl Launcher {
 struct Shell<'a> {
     launcher: &'a mut Launcher,
     window_hides: bool,
-    /// Whether the launcher last showed its window or put it away. On macOS the Dock, Finder and
-    /// ⌘Tab can bring the window back without the launcher knowing; that only matters for the
-    /// tray's left-click toggle, which macOS never sends, as a left click opens the tray menu.
+    /// Whether the shell considers its window shown or put away. On macOS, `logic` notices when
+    /// the Dock, Finder, or ⌘Tab externally unhides the app and updates this state for tray toggles.
     visible: bool,
     quitting: bool,
+    #[cfg(target_os = "macos")]
+    /// Whether this process hid the app and should show its window after a system reopen.
+    app_hidden_by_launcher: bool,
+    #[cfg(target_os = "macos")]
+    applied_tray_visibility: Option<bool>,
     /// The "show on the current desktop" setting last applied to the window (macOS).
     #[cfg_attr(not(target_os = "macos"), allow(dead_code))]
     applied_follow: Option<bool>,
 }
 
 impl<'a> Shell<'a> {
+    /// Creates the window shell and applies the startup visibility and Dock policy.
     fn new(cc: &eframe::CreationContext<'_>, launcher: &'a mut Launcher, hidden: bool) -> Self {
         let window_hides = window_can_hide(cc.display_handle().ok().map(|d| d.as_raw()));
         // Started hidden at login but there's no tray to come back from: show the window.
         let visible = !hidden || launcher.tray.is_none();
-        let mut shell = Self { launcher, window_hides, visible: true, quitting: false, applied_follow: None };
+        #[cfg(target_os = "macos")]
+        spaces::set_dock_visibility(
+            visible,
+            launcher.ui.settings.hide_from_dock_when_hidden,
+            launcher.tray.is_some(),
+            launcher.ui.settings.close_to_tray,
+        );
+        #[cfg(target_os = "macos")]
+        let hidden_start_needs_reopen = should_hide_app_for_hidden_start(hidden, launcher.ui.settings.close_to_tray);
+        let mut shell = Self {
+            launcher,
+            window_hides,
+            visible: true,
+            quitting: false,
+            #[cfg(target_os = "macos")]
+            app_hidden_by_launcher: false,
+            #[cfg(target_os = "macos")]
+            applied_tray_visibility: None,
+            applied_follow: None,
+        };
+        #[cfg(target_os = "macos")]
+        shell.sync_tray_visibility();
         if !visible && window_hides {
             // Started in the tray: the window stays out of sight. On macOS this doesn't hide the
             // app as `put_away` does, since the app is still being activated as it starts, which
             // would unhide it, window and all.
             shell.visible = false;
             cc.egui_ctx.send_viewport_cmd(egui::ViewportCommand::Visible(false));
+            #[cfg(target_os = "macos")]
+            if hidden_start_needs_reopen {
+                hiding::hide();
+                shell.app_hidden_by_launcher = true;
+            }
         } else if !visible {
             shell.put_away(&cc.egui_ctx);
         } else if hidden {
@@ -946,12 +1000,21 @@ impl<'a> Shell<'a> {
         shell
     }
 
+    /// Shows and focuses the window, restoring macOS app and Dock visibility when needed.
     fn show(&mut self, ctx: &egui::Context) {
         self.visible = true;
         // Before the window is ordered front, so it comes to this desktop rather than taking the
         // user to its own (macOS; the setting doesn't exist elsewhere).
         #[cfg(target_os = "macos")]
         {
+            self.sync_tray_visibility();
+            self.app_hidden_by_launcher = false;
+            spaces::set_dock_visibility(
+                true,
+                self.launcher.ui.settings.hide_from_dock_when_hidden,
+                self.launcher.tray.is_some(),
+                self.launcher.ui.settings.close_to_tray,
+            );
             let on = self.launcher.ui.settings.show_on_current_desktop;
             spaces::follow_current_desktop(on);
             self.applied_follow = Some(on);
@@ -968,13 +1031,32 @@ impl<'a> Shell<'a> {
         }
     }
 
-    /// Puts the window away in the tray: hidden where it can hide, closed where it can't. On macOS
-    /// the whole app hides, so its Dock icon brings the window back (`hiding`).
+    /// Keeps the macOS menu-bar icon in sync with the tray setting, independent of window visibility.
+    #[cfg(target_os = "macos")]
+    fn sync_tray_visibility(&mut self) {
+        let visible = self.launcher.ui.settings.close_to_tray;
+        if self.applied_tray_visibility != Some(visible) {
+            self.launcher.set_tray_visible(visible);
+            self.applied_tray_visibility = Some(visible);
+        }
+    }
+
+    /// Puts the window away without quitting where hiding is supported, or closes it to the tray
+    /// otherwise. On macOS, the Dock or an enabled tray icon can bring the hidden app back.
     fn put_away(&mut self, ctx: &egui::Context) {
         if self.window_hides {
             self.visible = false;
             #[cfg(target_os = "macos")]
-            hiding::hide();
+            {
+                spaces::set_dock_visibility(
+                    false,
+                    self.launcher.ui.settings.hide_from_dock_when_hidden,
+                    self.launcher.tray.is_some(),
+                    self.launcher.ui.settings.close_to_tray,
+                );
+                hiding::hide();
+                self.app_hidden_by_launcher = true;
+            }
             #[cfg(not(target_os = "macos"))]
             ctx.send_viewport_cmd(egui::ViewportCommand::Visible(false));
         } else {
@@ -991,8 +1073,15 @@ impl<'a> Shell<'a> {
 }
 
 impl eframe::App for Shell<'_> {
+    /// Processes launcher requests, close requests, and macOS system-unhide state each frame.
     fn logic(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         let requests = self.launcher.tick(ctx);
+        #[cfg(target_os = "macos")]
+        self.sync_tray_visibility();
+        #[cfg(target_os = "macos")]
+        if should_restore_after_system_unhide(self.app_hidden_by_launcher, hiding::is_hidden()) {
+            self.show(ctx);
+        }
         #[cfg(target_os = "macos")]
         if self.applied_follow != Some(self.launcher.ui.settings.show_on_current_desktop) {
             let on = self.launcher.ui.settings.show_on_current_desktop;
@@ -1058,6 +1147,18 @@ impl eframe::App for Shell<'_> {
     }
 }
 
+#[cfg(target_os = "macos")]
+/// Returns whether macOS has externally unhidden an app this launcher hid for startup or put-away.
+fn should_restore_after_system_unhide(app_hidden_by_launcher: bool, app_hidden: Option<bool>) -> bool {
+    app_hidden_by_launcher && app_hidden == Some(false)
+}
+
+#[cfg(target_os = "macos")]
+/// Returns whether a hidden startup without tray mode must hide the app for Dock/Finder reopening.
+fn should_hide_app_for_hidden_start(hidden: bool, close_to_tray: bool) -> bool {
+    hidden && !close_to_tray
+}
+
 #[cfg(test)]
 mod tests {
     use std::ptr::NonNull;
@@ -1079,6 +1180,40 @@ mod tests {
     fn notification_identity_is_claimed_once() {
         let first = claim_notification_identity();
         assert_eq!(claim_notification_identity(), first);
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn dock_icon_hides_only_when_hidden_opted_in_and_tray_mode_is_enabled() {
+        use objc2_app_kit::NSApplicationActivationPolicy;
+
+        assert_eq!(spaces::activation_policy(true, true, true, true), NSApplicationActivationPolicy::Regular);
+        assert_eq!(spaces::activation_policy(false, false, true, true), NSApplicationActivationPolicy::Regular);
+        assert_eq!(spaces::activation_policy(false, true, false, true), NSApplicationActivationPolicy::Regular);
+        assert_eq!(spaces::activation_policy(false, true, true, false), NSApplicationActivationPolicy::Regular);
+        assert_eq!(spaces::activation_policy(false, true, true, true), NSApplicationActivationPolicy::Accessory);
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn system_unhide_restores_only_an_app_hidden_by_put_away() {
+        assert!(!should_restore_after_system_unhide(false, Some(false)));
+        assert!(!should_restore_after_system_unhide(true, Some(true)));
+        assert!(!should_restore_after_system_unhide(true, None));
+        assert!(should_restore_after_system_unhide(true, Some(false)));
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn only_hidden_start_without_tray_mode_hides_the_app_for_reopen() {
+        assert!(should_hide_app_for_hidden_start(true, false));
+        assert!(!should_hide_app_for_hidden_start(true, true));
+        assert!(!should_hide_app_for_hidden_start(false, false));
+    }
+
+    #[test]
+    fn hiding_from_the_dock_is_disabled_by_default() {
+        assert!(!Settings::default().hide_from_dock_when_hidden);
     }
 
     /// What the tests can see of a [`Quiet`] backend, and its clock.
@@ -1186,10 +1321,18 @@ mod tests {
     #[test]
     fn closing_quits_without_a_tray_or_when_the_user_turned_it_off() {
         for window_hides in [true, false] {
-            assert_eq!(on_close(false, true, window_hides), OnClose::Quit);
-            assert_eq!(on_close(true, false, window_hides), OnClose::Quit);
-            assert_eq!(on_close(false, false, window_hides), OnClose::Quit);
+            let expected = if cfg!(target_os = "macos") && window_hides { OnClose::Hide } else { OnClose::Quit };
+            assert_eq!(on_close(false, true, window_hides), expected);
+            assert_eq!(on_close(true, false, window_hides), expected);
+            assert_eq!(on_close(false, false, window_hides), expected);
         }
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn closing_without_run_in_tray_leaves_the_app_in_the_dock() {
+        assert_eq!(on_close(true, false, true), OnClose::Hide);
+        assert_eq!(on_close(false, false, true), OnClose::Hide);
     }
 
     #[test]
@@ -1322,7 +1465,17 @@ mod tests {
     fn quitting_overrides_a_close_to_the_tray() {
         let (mut launcher, _show, _) = launcher();
         let ctx = launcher.windowless.clone();
-        let mut shell = Shell { launcher: &mut launcher, window_hides: false, visible: true, quitting: false, applied_follow: None };
+        let mut shell = Shell {
+            launcher: &mut launcher,
+            window_hides: false,
+            visible: true,
+            quitting: false,
+            #[cfg(target_os = "macos")]
+            app_hidden_by_launcher: false,
+            #[cfg(target_os = "macos")]
+            applied_tray_visibility: None,
+            applied_follow: None,
+        };
         shell.put_away(&ctx);
         assert!(shell.launcher.closed_to_tray);
         shell.quit(&ctx);
@@ -1333,7 +1486,17 @@ mod tests {
     fn a_window_that_hides_is_not_closed_to_the_tray() {
         let (mut launcher, _show, _) = launcher();
         let ctx = launcher.windowless.clone();
-        let mut shell = Shell { launcher: &mut launcher, window_hides: true, visible: true, quitting: false, applied_follow: None };
+        let mut shell = Shell {
+            launcher: &mut launcher,
+            window_hides: true,
+            visible: true,
+            quitting: false,
+            #[cfg(target_os = "macos")]
+            app_hidden_by_launcher: false,
+            #[cfg(target_os = "macos")]
+            applied_tray_visibility: None,
+            applied_follow: None,
+        };
         shell.put_away(&ctx);
         assert!(!shell.visible);
         assert!(!shell.launcher.closed_to_tray);
