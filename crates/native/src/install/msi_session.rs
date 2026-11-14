@@ -4,8 +4,8 @@
 //! installer queue; the one whose call it is writes what the session is to do into a manifest
 //! beside the checked packages and starts the launcher's own exe elevated (`ShellExecuteEx`,
 //! verb `runas`). No PowerShell, nothing encoded, nothing hidden: the one prompt names ArtCraft
-//! Launcher and its signed publisher. Installer progress stays visible unless automatic
-//! updates opted into quiet installation; the permission prompt is always shown. A hidden, elevated, encoded PowerShell route did this before and was withdrawn after
+//! Launcher and its signed publisher, and each package still shows its own installer progress
+//! window. A hidden, elevated, encoded PowerShell route did this before and was withdrawn after
 //! behavioural antivirus flagged it (see `docs/incident-2026-10-windows-antivirus.md`).
 //!
 //! The elevated copy re-checks every package against the manifest's checksum — with the file held
@@ -75,9 +75,6 @@ pub(crate) struct Entry {
     destination: Option<PathBuf>,
     /// The Windows Installer context to keep; `None` takes the package's own default.
     scope: Option<MsiScope>,
-    /// Hide installer progress after the user grants the session permission.
-    #[serde(default)]
-    quiet: bool,
 }
 
 /// What the elevated copy is to do, written beside the packages and held unchanged while the
@@ -106,7 +103,6 @@ pub(super) fn entry(
     package: &super::windows::Package<'_>,
     destination: Option<&Path>,
     scope: Option<MsiScope>,
-    quiet: bool,
 ) -> Result<OsString, String> {
     let entry = Entry {
         app: app.id.to_string(),
@@ -114,7 +110,6 @@ pub(super) fn entry(
         sha256: package.sha256.to_string(),
         destination: destination.map(Path::to_path_buf),
         scope,
-        quiet,
     };
     serde_json::to_string(&entry).map(OsString::from).map_err(|e| format!("couldn't describe the package for a shared prompt ({e})"))
 }
@@ -535,7 +530,7 @@ fn checked_install(entry: &Entry, signed: &dyn Fn(&Path) -> Result<(), String>, 
         // open until the end of this closure is the whole job.
         let _held = super::msi_batch::hold(&msi, &entry.sha256)?;
         signed(&msi)?;
-        let line = super::msi_batch::line_with_ui(&msi, entry.destination.as_deref(), entry.scope, entry.quiet)?;
+        let line = super::msi_batch::line(&msi, entry.destination.as_deref(), entry.scope)?;
         log::info!("{}: installing under the shared prompt", entry.app);
         run(&line)
     })();
@@ -548,7 +543,7 @@ fn checked_install(entry: &Entry, signed: &dyn Fn(&Path) -> Result<(), String>, 
     }
 }
 
-/// Windows Installer on one package of the session: its chosen progress UI and no restart, the same
+/// Windows Installer on one package of the session: a progress window and no restart, the same
 /// arguments a single install runs. `Err` only when it couldn't be started at all.
 #[cfg(windows)]
 fn run_installer(line: &str) -> Result<i32, String> {
@@ -572,20 +567,7 @@ mod tests {
             sha256: "abc123".into(),
             destination: Some(Path::new(r"C:\Program Files\Photocraft").to_path_buf()),
             scope: Some(MsiScope::PerMachine),
-            quiet: false,
         }
-    }
-
-    #[test]
-    fn quiet_choice_survives_the_session_manifest_and_old_manifests_stay_visible() {
-        let mut package = entry("photocraft", Path::new("app.msi"));
-        package.quiet = true;
-        let text = serde_json::to_string(&package).unwrap();
-        assert!(parse(OsStr::new(&text)).unwrap().quiet);
-        let mut old: serde_json::Value = serde_json::from_str(&text).unwrap();
-        old.as_object_mut().unwrap().remove("quiet");
-        let old = serde_json::to_string(&old).unwrap();
-        assert!(!parse(OsStr::new(&old)).unwrap().quiet);
     }
 
     #[test]
@@ -758,30 +740,31 @@ mod tests {
         }
 
         #[test]
+        fn an_old_quiet_manifest_cannot_hide_elevated_installer_progress() {
+            let dir = tempfile::tempdir().unwrap();
+            let mut json = serde_json::to_value(package(dir.path())).unwrap();
+            json["quiet"] = serde_json::json!(true);
+            let entry = parse(OsStr::new(&serde_json::to_string(&json).unwrap())).unwrap();
+            let code = checked_install(&entry, &|_| Ok(()), &|line| {
+                assert!(line.contains(" /passive "), "{line}");
+                assert!(!line.contains(" /qn "), "{line}");
+                Ok(0)
+            });
+            assert_eq!(code, 0);
+        }
+
+        #[test]
         fn a_verified_package_reaches_the_installer_by_its_resolved_path() {
             let dir = tempfile::tempdir().unwrap();
-            let mut entry = package(dir.path());
+            let entry = package(dir.path());
+            let seen = std::cell::RefCell::new(String::new());
+            let code = checked_install(&entry, &|_| Ok(()), &|line| {
+                seen.replace(line.to_string());
+                Ok(0)
+            });
+            assert_eq!(code, 0);
             let resolved = dunce::canonicalize(&entry.msi).unwrap();
-            for quiet in [false, true] {
-                entry.quiet = quiet;
-                let seen = std::cell::RefCell::new(String::new());
-                let code = checked_install(
-                    &entry,
-                    &|path| {
-                        assert_eq!(path, resolved);
-                        Ok(())
-                    },
-                    &|line| {
-                        seen.replace(line.to_string());
-                        Ok(0)
-                    },
-                );
-                assert_eq!(code, 0);
-                let line = seen.borrow();
-                assert!(line.contains(&format!("\"{}\"", resolved.display())), "{line}");
-                assert!(line.contains(if quiet { " /qn " } else { " /passive " }), "{line}");
-                assert!(line.contains(" /norestart "), "{line}");
-            }
+            assert!(seen.borrow().contains(&format!("\"{}\"", resolved.display())), "{}", seen.borrow());
         }
 
         /// The launcher's side keeps a package from another publisher out of the session.

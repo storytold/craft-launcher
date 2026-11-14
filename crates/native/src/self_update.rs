@@ -91,7 +91,6 @@ pub fn update(
     stop: &Stop,
     phase: &mut dyn FnMut(JobPhase),
     last: &dyn Fn() -> Result<(), String>,
-    quiet: bool,
 ) -> Result<(), String> {
     let update_release = to_update_release(release);
     let update_platform = to_update_platform(platform);
@@ -118,7 +117,7 @@ pub fn update(
         &mut update_phase,
         last,
         Some(env!("CARGO_PKG_VERSION")),
-        craft_update::self_update::UpdateOptions { quiet_msi: quiet },
+        craft_update::self_update::UpdateOptions::default(),
     )?
     .start()
 }
@@ -280,7 +279,7 @@ mod tests {
             installs.push(Install::Package(kind, PathBuf::new()));
         }
         for install in installs {
-            let error = update(&install, &Release::default(), platform, &http, &paths, &Stop::default(), &mut |_| {}, &|| Ok(()), false).unwrap_err();
+            let error = update(&install, &Release::default(), platform, &http, &paths, &Stop::default(), &mut |_| {}, &|| Ok(())).unwrap_err();
             let looked_for = format!(" has no {} for ", update_kind(&install).label());
             assert!(error.contains(&looked_for), "{install:?}: {error}");
         }

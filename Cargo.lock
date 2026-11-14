@@ -341,7 +341,6 @@ dependencies = [
  "artcraft-launcher-core",
  "craft-ui",
  "egui",
- "egui-wgpu",
  "egui_extras",
  "egui_kittest",
  "image",
@@ -1042,7 +1041,7 @@ dependencies = [
 [[package]]
 name = "craft-update"
 version = "0.1.0"
-source = "git+https://github.com/storytold/craft-libs?rev=a44920f6858b2daffa724fe4d140976a1a57001e#a44920f6858b2daffa724fe4d140976a1a57001e"
+source = "git+https://github.com/storytold/craft-libs?rev=47b6bbadf0e8e378486416de26712c8b4c836132#47b6bbadf0e8e378486416de26712c8b4c836132"
 dependencies = [
  "chrono",
  "dunce",

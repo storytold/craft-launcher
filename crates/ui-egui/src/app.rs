@@ -1187,18 +1187,46 @@ mod tests {
     }
 
     #[test]
-    fn enabling_automatic_updates_configures_quiet_installs_immediately() {
-        let (mut ui, sent, _ctx) = launcher();
-        ui.caps.manage_apps = true;
-        ui.configure();
-        assert!(matches!(sent.borrow().last(), Some(Command::Configure(o)) if !o.quiet_installs));
-        sent.borrow_mut().clear();
-        ui.settings.auto_update = true;
-        ui.trigger_auto_updates();
-        assert!(matches!(sent.borrow().first(), Some(Command::Configure(o)) if o.quiet_installs));
-        ui.settings.auto_update = false;
-        ui.configure();
-        assert!(matches!(sent.borrow().last(), Some(Command::Configure(o)) if !o.quiet_installs));
+    fn automatic_updates_send_configuration_before_single_and_batch_installs_without_repeating_it() {
+        use artcraft_launcher_core::{InstallSource, Installed, version};
+        for batch in [false, true] {
+            let (mut ui, sent, _ctx) = launcher();
+            ui.caps.manage_apps = true;
+            ui.settings.batch_updates = batch;
+            for entry in ui.entries.iter_mut().take(2) {
+                entry.detected = true;
+                entry.installed = Some(Installed {
+                    version: version::parse("1.0.0"),
+                    source: InstallSource::Msi,
+                    location: "unused.exe".into(),
+                    package: None,
+                    externally_managed: false,
+                    origin: None,
+                    installation: None,
+                });
+                entry.latest = Some(LatestRelease::Found(Release { tag: "2.0.0".into(), version: version::parse("2.0.0"), ..Default::default() }));
+                entry.installable = Some(true);
+            }
+            ui.configure();
+            sent.borrow_mut().clear();
+            ui.settings.auto_update = true;
+            ui.trigger_auto_updates();
+            let commands = sent.borrow().clone();
+            assert!(matches!(commands.first(), Some(Command::Configure(o)) if o.quiet_installs));
+            if batch {
+                assert!(matches!(commands.get(1), Some(Command::InstallAll { apps }) if apps.len() == 2), "{commands:?}");
+            } else {
+                assert_eq!(commands.iter().filter(|c| matches!(c, Command::Install { .. })).count(), 2);
+                assert!(matches!(commands.get(1), Some(Command::Install { .. })), "{commands:?}");
+            }
+            sent.borrow_mut().clear();
+            ui.trigger_auto_updates();
+            ui.configure();
+            assert!(sent.borrow().is_empty(), "unchanged event batches resend nothing");
+            ui.settings.auto_update = false;
+            ui.configure();
+            assert!(matches!(sent.borrow().as_slice(), [Command::Configure(o)] if !o.quiet_installs));
+        }
     }
 
     #[test]

@@ -141,7 +141,7 @@ fn test_harness_builder<State>(theme: egui::Theme) -> egui_kittest::HarnessBuild
     } else {
         artcraft_launcher_ui_egui::theme::ThemeChoice::Light
     };
-    let builder = egui_kittest::HarnessBuilder::default()
+    egui_kittest::HarnessBuilder::default()
         // 0.37 defaults: strict accessible names and a panic on a missing glyph. Neither is
         // relaxed here; fixed controls are painter-drawn and dynamic notes/feed text uses the
         // attributed monochrome emoji fonts.
@@ -151,33 +151,7 @@ fn test_harness_builder<State>(theme: egui::Theme) -> egui_kittest::HarnessBuild
             artcraft_launcher_ui_egui::theme::install_fonts(ctx, None);
             egui_extras::install_image_loaders(ctx);
             artcraft_launcher_ui_egui::theme::apply(ctx, choice);
-        });
-    #[cfg(windows)]
-    let builder = builder.renderer(egui_kittest::LazyRenderer::new(screenshot_renderer));
-    builder
-}
-
-#[cfg(windows)]
-fn screenshot_renderer() -> egui_kittest::wgpu::WgpuTestRenderer {
-    let mut setup = egui_kittest::wgpu::default_wgpu_setup();
-    if let egui_wgpu::WgpuSetup::CreateNew(setup) = &mut setup {
-        // kittest prefers WARP even when a GPU is available. Its DX12 readback can lose
-        // the device; prefer hardware for screenshots, retaining CPU-only runner support.
-        setup.native_adapter_selector = Some(std::sync::Arc::new(|adapters, _| {
-            adapters
-                .iter()
-                .min_by_key(|adapter| match adapter.get_info().device_type {
-                    egui_wgpu::wgpu::DeviceType::DiscreteGpu => 0,
-                    egui_wgpu::wgpu::DeviceType::IntegratedGpu => 1,
-                    egui_wgpu::wgpu::DeviceType::VirtualGpu => 2,
-                    egui_wgpu::wgpu::DeviceType::Other => 3,
-                    egui_wgpu::wgpu::DeviceType::Cpu => 4,
-                })
-                .cloned()
-                .ok_or_else(|| "No screenshot adapter found".to_owned())
-        }));
-    }
-    egui_kittest::wgpu::WgpuTestRenderer::from_setup(setup)
+        })
 }
 
 fn release(id: &str, v: &str, at: i64) -> Release {

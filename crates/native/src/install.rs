@@ -46,8 +46,9 @@ pub struct Job<'a> {
     pub approved_path: Option<&'a Path>,
     /// Set only when the person chose this older version by name over a newer installed copy.
     pub downgrade: Option<Downgrade<'a>>,
-    /// An automatic-update opt-in hides installer progress, never permission prompts.
-    pub quiet: bool,
+    /// Read the current automatic-update preference when the installer gets its turn.
+    /// Only existing per-user MSI updates may hide progress.
+    pub quiet: &'a dyn Fn() -> bool,
     /// The batch of installs this one belongs to (an "update all"): where the platform needs a
     /// permission prompt, the whole batch shares one. `None` for a job on its own.
     pub batch: Option<crate::queue::Gather>,
@@ -227,6 +228,8 @@ pub fn install_at(
             // An update lands in the same Windows Installer context as the copy being replaced:
             // per-machine needs elevation, per-user must not duplicate itself per-machine. A
             // fresh install passes no context and takes the package's own default.
+            let preference = job.quiet;
+            let downgrade = job.downgrade.is_some();
             match &rollback {
                 Some((previous, previous_sha256, previous_version)) => windows::downgrade_msi(
                     app,
@@ -243,7 +246,7 @@ pub fn install_at(
                     destination.as_deref(),
                     msi_scope,
                     batch.take(),
-                    job.quiet,
+                    &|| quiet_msi_update(msi_scope, existing.is_some(), downgrade, preference),
                     job.stop,
                     &mut *job.phase,
                 ),
@@ -2142,6 +2145,13 @@ mod freebsd {
     }
 }
 
+/// Quiet mode must never create an invisible elevated installation route. The preference reader
+/// is deliberately called at the installer turn, after downloads and queue waits.
+#[cfg(any(windows, test))]
+fn quiet_msi_update(scope: Option<MsiScope>, existing: bool, downgrade: bool, enabled: &dyn Fn() -> bool) -> bool {
+    existing && !downgrade && scope == Some(MsiScope::PerUser) && enabled()
+}
+
 /// What a Windows Installer exit code means for the job that ran it.
 #[cfg(any(windows, test))]
 fn explain(code: Option<i32>) -> Result<(), String> {
@@ -2226,31 +2236,29 @@ pub mod windows {
         destination: Option<&Path>,
         scope: Option<MsiScope>,
         batch: Option<crate::queue::Gather>,
-        quiet: bool,
+        quiet: &dyn Fn() -> bool,
         stop: &Stop,
         phase: &mut dyn FnMut(JobPhase),
     ) -> Result<(), String> {
         if let Some(gather) = batch {
             if scope == Some(MsiScope::PerMachine) {
-                return run_batched(Batched { app, package, destination, scope, quiet }, gather, stop, phase);
+                return run_batched(Batched { app, package, destination, scope }, gather, stop, phase);
             }
             // A per-user install asks Windows for nothing: its place in the batch goes back at
             // once, so the per-machine members don't wait for it.
             gather.leave();
         }
-        in_turn(stop, phase, JobPhase::Installing, || {
-            if quiet && scope == Some(MsiScope::PerMachine) {
-                // /qn cannot request elevation: use the checked session and its UAC prompt.
-                let target = msi_session::entry(app, &package, destination, scope, true)?;
-                let result =
-                    msi_session::call(&msi_session::command(), &[target]).into_iter().next().ok_or("the install session returned no result")?;
-                if result.as_ref().err().is_some_and(|e| e == msi_session::NO_SESSION) {
-                    return run_direct(package.file, destination, scope, false);
-                }
-                return result;
-            }
-            run_direct(package.file, destination, scope, quiet)
-        })
+        run_direct_in_turn(scope, quiet, stop, phase, &|quiet| run_direct(package.file, destination, scope, quiet))
+    }
+
+    fn run_direct_in_turn(
+        scope: Option<MsiScope>,
+        quiet: &dyn Fn() -> bool,
+        stop: &Stop,
+        phase: &mut dyn FnMut(JobPhase),
+        run: &dyn Fn(bool) -> Result<(), String>,
+    ) -> Result<(), String> {
+        in_turn(stop, phase, JobPhase::Installing, || run(scope == Some(MsiScope::PerUser) && quiet()))
     }
 
     /// One app's install, as the batch session runs it.
@@ -2259,7 +2267,6 @@ pub mod windows {
         package: Package<'a>,
         destination: Option<&'a Path>,
         scope: Option<MsiScope>,
-        quiet: bool,
     }
 
     /// One permission prompt for a batch of per-machine packages: the members meet in one call
@@ -2268,8 +2275,8 @@ pub mod windows {
     /// prompt cancels the whole batch; a session that cannot start sends the members back to
     /// installing one by one, the way a single app always installs.
     fn run_batched(job: Batched<'_>, gather: crate::queue::Gather, stop: &Stop, phase: &mut dyn FnMut(JobPhase)) -> Result<(), String> {
-        let Batched { app, package, destination, scope, quiet } = job;
-        let target = match msi_session::entry(app, &package, destination, scope, quiet) {
+        let Batched { app, package, destination, scope } = job;
+        let target = match msi_session::entry(app, &package, destination, scope) {
             Ok(target) => target,
             Err(e) => {
                 log::warn!("{}: {e}; installing it by itself", app.name);
@@ -2435,6 +2442,69 @@ pub mod windows {
             }
         }
         Ok(())
+    }
+    #[cfg(test)]
+    mod quiet_tests {
+        use super::*;
+        use std::sync::{
+            Arc,
+            atomic::{AtomicBool, Ordering},
+            mpsc,
+        };
+        use std::time::Duration;
+
+        #[test]
+        fn a_queued_installer_reads_the_preference_only_after_its_turn_arrives() {
+            let (held_tx, held_rx) = mpsc::channel();
+            let (release_tx, release_rx) = mpsc::channel();
+            let blocker = std::thread::spawn(move || {
+                in_turn(&Stop::default(), &mut |_| {}, JobPhase::Installing, || {
+                    held_tx.send(()).unwrap();
+                    release_rx.recv_timeout(Duration::from_secs(10)).unwrap();
+                    Ok(())
+                })
+                .unwrap();
+            });
+            held_rx.recv_timeout(Duration::from_secs(10)).unwrap();
+            let enabled = Arc::new(AtomicBool::new(true));
+            let worker_enabled = enabled.clone();
+            let (waiting_tx, waiting_rx) = mpsc::channel();
+            let (mode_tx, mode_rx) = mpsc::channel();
+            let worker = std::thread::spawn(move || {
+                run_direct_in_turn(
+                    Some(MsiScope::PerUser),
+                    &|| worker_enabled.load(Ordering::SeqCst),
+                    &Stop::default(),
+                    &mut |phase| {
+                        if phase == JobPhase::Waiting {
+                            waiting_tx.send(()).unwrap();
+                        }
+                    },
+                    &|quiet| {
+                        mode_tx.send(quiet).unwrap();
+                        Ok(())
+                    },
+                )
+                .unwrap();
+            });
+            waiting_rx.recv_timeout(Duration::from_secs(10)).unwrap();
+            enabled.store(false, Ordering::SeqCst);
+            release_tx.send(()).unwrap();
+            assert!(!mode_rx.recv_timeout(Duration::from_secs(10)).unwrap());
+            blocker.join().unwrap();
+            worker.join().unwrap();
+        }
+
+        #[test]
+        fn direct_dispatch_never_hides_machine_or_unknown_scope() {
+            for scope in [Some(MsiScope::PerUser), Some(MsiScope::PerMachine), None] {
+                run_direct_in_turn(scope, &|| true, &Stop::default(), &mut |_| {}, &|quiet| {
+                    assert_eq!(quiet, scope == Some(MsiScope::PerUser));
+                    Ok(())
+                })
+                .unwrap();
+            }
+        }
     }
 }
 
@@ -2648,6 +2718,37 @@ mod tests {
         }
         assert!(msi_folder_argument(Path::new("D:\\bad\" TRANSFORMS=evil")).is_err());
         assert!(msi_folder_argument(Path::new("D:\\bad\nfolder")).is_err());
+    }
+
+    #[test]
+    fn quiet_updates_require_current_opt_in_and_confirmed_per_user_update_scope() {
+        use std::cell::Cell;
+        let enabled = Cell::new(true);
+        let preference = || enabled.get();
+        for scope in [None, Some(MsiScope::PerMachine), Some(MsiScope::PerUser)] {
+            for existing in [false, true] {
+                for downgrade in [false, true] {
+                    let eligible = existing && !downgrade && scope == Some(MsiScope::PerUser);
+                    assert_eq!(quiet_msi_update(scope, existing, downgrade, &preference), eligible);
+                    enabled.set(false);
+                    assert!(!quiet_msi_update(scope, existing, downgrade, &preference));
+                    enabled.set(true);
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn quiet_update_arguments_keep_package_log_and_restart_policy() {
+        let dir = tempfile::tempdir().unwrap();
+        let msi = dir.path().join("Craft update.msi");
+        std::fs::write(&msi, b"not executed").unwrap();
+        let passive = msi_command(Path::new("msiexec.exe"), &msi).unwrap();
+        let quiet = msi_command_ui(Path::new("msiexec.exe"), &msi, true).unwrap();
+        let args = |cmd: &std::process::Command| cmd.get_args().map(|a| a.to_os_string()).collect::<Vec<_>>();
+        let mut expected = args(&passive);
+        expected[2] = "/qn".into();
+        assert_eq!(args(&quiet), expected);
     }
 
     #[test]
@@ -2878,7 +2979,7 @@ mod tests {
                 replace: false,
                 approved_path: None,
                 downgrade: Some(Downgrade::Reinstall { previous: &newer, asset: &newer_msi }),
-                quiet: false,
+                quiet: &|| false,
                 batch: None,
             };
             install(app, &older, &older_msi, PackageKind::Msi, Some(&portable), None, &mut job).unwrap_err()
@@ -3002,7 +3103,7 @@ mod tests {
                     replace: false,
                     approved_path: None,
                     downgrade,
-                    quiet: false,
+                    quiet: &|| false,
                     batch: None,
                 };
                 install(app, &release, &asset, kind, Some(&installed), previous, &mut job).unwrap_err()
@@ -3043,7 +3144,7 @@ mod tests {
                 replace: false,
                 approved_path: None,
                 downgrade: None,
-                quiet: false,
+                quiet: &|| false,
                 batch: None,
             };
             let err = install(app, &release, &asset, kind, None, None, &mut job).unwrap_err();
@@ -3078,7 +3179,7 @@ mod tests {
             replace: false,
             approved_path: None,
             downgrade: None,
-            quiet: false,
+            quiet: &|| false,
             batch: None,
         };
         let error = install(app, &release, &asset, PackageKind::AppImage, None, None, &mut job).unwrap_err();
@@ -3112,7 +3213,7 @@ mod tests {
             replace: false,
             approved_path: None,
             downgrade: None,
-            quiet: false,
+            quiet: &|| false,
             batch: None,
         };
         let err = install(app, &release, &asset, kind, None, None, &mut job).unwrap_err();
@@ -3795,7 +3896,7 @@ mod tests {
             replace: false,
             approved_path: None,
             downgrade: None,
-            quiet: false,
+            quiet: &|| false,
             batch: None,
         };
         let result = install_at(app, &release, &asset, PackageKind::AppImage, Some(&installed), None, &mut job, None);
@@ -3829,7 +3930,7 @@ mod tests {
             replace: false,
             approved_path: None,
             downgrade: None,
-            quiet: false,
+            quiet: &|| false,
             batch: None,
         };
         let result = install_at(app, &release, &asset, PackageKind::AppImage, None, None, &mut job, None);
