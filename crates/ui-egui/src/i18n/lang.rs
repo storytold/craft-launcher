@@ -7,7 +7,7 @@ use super::detect::system_lang;
 
 /// The writing system a language is drawn in, and so the system font it needs. Languages that
 /// share one can share a face; Simplified and Traditional Chinese do not (they want different
-/// faces), so each script is its own. The bundled faces have no CJK or Georgian glyphs, so a
+/// faces), so each script is its own. The bundled faces have no CJK, Georgian or Devanagari glyphs, so a
 /// language with a script borrows a system font for it (`crate::theme::cjk_font`).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Script {
@@ -15,17 +15,18 @@ pub enum Script {
     TraditionalChinese,
     Japanese,
     Georgian,
+    Devanagari,
 }
 
 impl Script {
     /// Every script a language can be written in.
-    pub const ALL: [Script; 4] = [Script::Chinese, Script::TraditionalChinese, Script::Japanese, Script::Georgian];
+    pub const ALL: [Script; 5] = [Script::Chinese, Script::TraditionalChinese, Script::Japanese, Script::Georgian, Script::Devanagari];
 }
 
 /// One supported UI language.
 pub struct LangInfo {
     /// Canonical BCP 47 code (`en`, `ru`, `zh-CN`, `zh-TW`, `de`, `fr`, `pt-BR`, `es`, `cs`, `pl`, `hu`, `ja`,
-    /// `ka`). Also the `interfaceLanguage` value.
+    /// `ka`, `hi`). Also the `interfaceLanguage` value.
     pub code: &'static str,
     /// The language's name in itself, shown in the Preferences dropdown.
     pub name: &'static str,
@@ -97,7 +98,7 @@ pub(super) fn plural_polish(n: u64) -> usize {
 }
 
 /// The registry. English first: it is the fallback and the source language.
-pub static LANGUAGES: [LangInfo; 13] = [
+pub static LANGUAGES: [LangInfo; 14] = [
     LangInfo {
         code: "en",
         name: "English",
@@ -236,6 +237,17 @@ pub static LANGUAGES: [LangInfo; 13] = [
         english_name: "Georgian",
         script: Some(Script::Georgian),
         source: include_str!("ka.tsv"),
+        plural: plural_one_other,
+        plural_forms: 2,
+        complete_menus: true,
+        catalog: OnceLock::new(),
+    },
+    LangInfo {
+        code: "hi",
+        name: "हिन्दी",
+        english_name: "Hindi",
+        script: Some(Script::Devanagari),
+        source: include_str!("hi.tsv"),
         plural: plural_one_other,
         plural_forms: 2,
         complete_menus: true,

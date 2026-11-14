@@ -1,0 +1,383 @@
+# Hindi (hi) catalog for ArtCraft Launcher.
+# Format: context<TAB>source<TAB>translation
+# Empty context = plain UI string (tl!, t).
+# @id = command-id keyed (tr_id).
+# @plural = plural forms: one|other (only 1 is "one" in Hindi).
+# @msg = status/error message template (message, msg).
+# Other context = disambiguation for tr_ctx.
+#
+# Clean-room: written from the meaning of ArtCraft Launcher's English labels, in standard Hindi
+# (Devanagari) with neutral imperative forms; common software terms (इंस्टॉल, अपडेट, डाउनलोड,
+# संस्करण) in their everyday Hindi-IT spellings.
+#
+# Coverage: the whole interface: every menu string and tl! literal (complete_menus = true).
+# Left in English on purpose: product name "ArtCraft Launcher" (and its "Launcher" tag), suite
+# name "Craft App Suite", app names (PhotoCraft, LightCraft, FilmCraft, DesignCraft,
+# VectorCraft, PdfCraft, EffectCraft, WordCraft, DeckCraft, GridCraft, CADCraft, SoundCraft,
+# FigCraft), "GitHub", "Discord", "Finder", "makers".
+# Trailing "…" (U+2026) must be preserved. Placeholders must appear in the translation.
+	Launcher	Launcher
+	Craft App Suite	Craft App Suite
+	by {name}	{name} द्वारा
+	Open Source Tools for Creatives, Makers, and Builders	रचनात्मक लोगों, makers और निर्माताओं के लिए ओपन-सोर्स टूल्स
+	Settings	सेटिंग्स
+	Check for updates	अपडेट के लिए जाँच करें
+	Grid	ग्रिड
+	Table	तालिका
+	Show apps as cards	ऐप्स को कार्ड के रूप में दिखाएँ
+	Show apps as a table	ऐप्स को तालिका के रूप में दिखाएँ
+	All	सभी
+	Updates	अपडेट
+	Not installed	इंस्टॉल नहीं हैं
+	Search apps	ऐप्स खोजें
+	Sort	क्रम
+	Suite order	सूट क्रम
+	Name	नाम
+	Inspired by	प्रेरणा
+	Status	स्थिति
+	Installed version	इंस्टॉल संस्करण
+	Latest version	नवीनतम संस्करण
+	Newest release	नई रिलीज़
+	Discord	Discord
+	GitHub	GitHub
+	Website	वेबसाइट
+	Classic apps	क्लासिक ऐप्स
+	New apps	नए ऐप्स
+	NEW	नया
+	Install	इंस्टॉल करें
+	Update to {v}	{v} में अपडेट करें
+	Open	खोलें
+	Download for {os}	{os} के लिए डाउनलोड करें
+	Download	डाउनलोड करें
+	Coming soon	जल्द आ रहा है
+	Checking…	जाँच हो रही है…
+	Not available	उपलब्ध नहीं
+	Offline	ऑफ़लाइन
+	Downloading {done} of {total}	{total} में से {done} डाउनलोड हो रहा है
+	Downloading…	डाउनलोड हो रहा है…
+	Reconnecting…	दोबारा कनेक्ट हो रहा है…
+	Verifying…	सत्यापित किया जा रहा है…
+	Installing, then restarting…	इंस्टॉल हो रहा है, फिर दोबारा शुरू होगा…
+	Installing…	इंस्टॉल हो रहा है…
+	Removing…	हटाया जा रहा है…
+	Pause download	डाउनलोड रोकें
+	Cancel download	डाउनलोड रद्द करें
+	Resume download	डाउनलोड जारी रखें
+	Discard download	डाउनलोड हटा दें
+	Release notes	रिलीज़ नोट्स
+	Show in Finder	Finder में दिखाएँ
+	Show in Explorer	Explorer में दिखाएँ
+	Show in Files	Files में दिखाएँ
+	Reinstall	दोबारा इंस्टॉल करें
+	Uninstall…	अनइंस्टॉल करें…
+	All releases	सभी रिलीज़
+	ArtCraft Launcher {version} is available.	ArtCraft Launcher {version} उपलब्ध है।
+	Dismiss	बंद करें
+	Update and restart	अपडेट करके दोबारा शुरू करें
+	A new version is available. Would you like to relaunch with the updated version?	नया संस्करण उपलब्ध है। क्या आप अपडेट किए संस्करण के साथ ऐप दोबारा खोलना चाहते हैं?
+	A new version is available. Download it to replace this version?	नया संस्करण उपलब्ध है। इसे डाउनलोड करके मौजूदा संस्करण बदलें?
+	Later	बाद में
+	What's new	नया क्या है
+	No notes were published with this release.	इस रिलीज़ के साथ कोई नोट्स प्रकाशित नहीं हुए।
+	Released {date}	प्रकाशित: {date}
+	Open on GitHub	GitHub पर खोलें
+	Close	बंद करें
+	ArtCraft Launcher {version}	ArtCraft Launcher {version}
+	Only when I ask	सिर्फ़ जब मैं कहूँ
+	Automatically download and install updates	अपडेट अपने आप डाउनलोड और इंस्टॉल करें
+	Notify me when an installed app has an update	इंस्टॉल किए ऐप का अपडेट आने पर सूचित करें
+	Include pre-releases (betas and release candidates)	प्री-रिलीज़ शामिल करें (बीटा और रिलीज़ कैंडिडेट)
+	Installing on Linux	Linux पर इंस्टॉल करना
+	Installing on Windows	Windows पर इंस्टॉल करना
+	Install new apps as	नए ऐप्स इस रूप में इंस्टॉल करें
+	System package (recommended)	सिस्टम पैकेज (अनुशंसित)
+	Updates always use the format an app was installed with.	अपडेट हमेशा उसी प्रारूप का इस्तेमाल करते हैं जिसमें ऐप इंस्टॉल किया गया था।
+	Running in the background	बैकग्राउंड में चल रहा है
+	Keep running in the tray when the window is closed	विंडो बंद होने पर ट्रे में चलता रहे
+	ArtCraft Launcher is still running	ArtCraft Launcher अब भी चल रहा है
+	It's in the tray: open it or quit it from the tray icon, or turn this off in the settings.	वह ट्रे में है: ट्रे आइकॉन से खोलें या बंद करें, या यह सेटिंग्स से बंद करें।
+	Show the window on the current desktop	विंडो मौजूदा डेस्कटॉप पर दिखाएँ
+	Start ArtCraft Launcher when I log in	लॉग इन करते समय ArtCraft Launcher शुरू करें
+	Community	कम्युनिटी
+	Questions, ideas and news from the ArtCraft team	ArtCraft टीम के सवाल, विचार और समाचार
+	Appearance	रूप
+	Quit ArtCraft Launcher	ArtCraft Launcher बंद करें
+	Done	पूर्ण
+	Uninstall {name}?	{name} अनइंस्टॉल करें?
+	The app will be moved to the Trash. Your documents and settings stay.	ऐप को Trash में भेज दिया जाएगा। आपके दस्तावेज़ और सेटिंग्स सुरक्षित रहेंगे।
+	Windows will remove it like any installed program. Your documents and settings stay.	Windows इसे किसी इंस्टॉल किए प्रोग्राम की तरह हटा देगा। आपके दस्तावेज़ और सेटिंग्स सुरक्षित रहेंगे।
+	Your system's package manager will remove it, and may ask for your password. Your documents and settings stay.	सिस्टम का पैकेज मैनेजर इसे हटा देगा और पासवर्ड माँग सकता है। आपके दस्तावेज़ और सेटिंग्स सुरक्षित रहेंगे।
+	The app will be removed. Your documents and settings stay.	ऐप हटा दिया जाएगा। आपके दस्तावेज़ और सेटिंग्स सुरक्षित रहेंगे।
+	Uninstall	अनइंस्टॉल करें
+	Cancel	रद्द करें
+	Checked {ago}	जाँच: {ago}
+	just now	अभी
+	yesterday	बीता कल
+	{month} {day}, {year}	{day} {month} {year}
+	Automatically	अपने आप
+	Every Craft app	हर Craft ऐप
+	Apps on this computer	इस कंप्यूटर पर मौजूद ऐप्स
+	Installed apps with a newer version	इंस्टॉल ऐप्स जिनका नया संस्करण उपलब्ध है
+	Apps you can install	ऐप्स जिन्हें इंस्टॉल किया जा सकता है
+	Hide App	ऐप छिपाएँ
+	Unhide App	ऐप दिखाएँ
+	Hidden Apps	छिपे हुए ऐप्स
+	Apps you hid	जो ऐप्स आपने छिपाए
+	Checked {ago} · using {sources}	जाँच: {ago} · {sources} से
+	{a} and {b}	{a} और {b}
+	Join the Discord	Discord से जुड़ें
+	Learn more	और जानें
+	Minimize	छोटा करें
+	Maximize	बड़ा करें
+	Restore	पुराना आकार
+	New	नया
+	OK	ठीक है
+	Open link	लिंक खोलें
+	Update	अपडेट करें
+	{name} icon	{name} आइकॉन
+	Loading ArtCraft Launcher…	ArtCraft Launcher लोड हो रहा है…
+	Cancel update	अपडेट रद्द करें
+	Stop waiting; the update can be started again later	इंतज़ार रोकें; अपडेट बाद में दोबारा शुरू किया जा सकता है
+	Download again	दोबारा डाउनलोड करें
+	Install cancelled	इंस्टॉल रद्द किया गया
+	Install cancelled. The download is kept for the next try.	इंस्टॉल रद्द किया गया। डाउनलोड अगली कोशिश के लिए रखा गया है।
+	Update cancelled	अपडेट रद्द किया गया
+	Uninstall cancelled	अनइंस्टॉल रद्द किया गया
+	Retry install	इंस्टॉल दोबारा कोशिश करें
+	Retry update to {version}	{version} में अपडेट दोबारा कोशिश करें
+	The download is still here. It's checked again, then installed.	डाउनलोड अब भी मौजूद है। दोबारा जाँच के बाद इंस्टॉल किया जाएगा।
+	Waiting for another app…	किसी और ऐप का इंतज़ार…
+	Waiting for other installs…	बाकी इंस्टॉल का इंतज़ार…
+	Installer (.msi)	इंस्टॉलर (.msi)
+	Portable (.zip)	पोर्टेबल (.zip)
+	Disk image (.dmg)	डिस्क इमेज (.dmg)
+	Debian package (.deb)	Debian पैकेज (.deb)
+	RPM package (.rpm)	RPM पैकेज (.rpm)
+	Arch package (.pkg.tar.zst)	Arch पैकेज (.pkg.tar.zst)
+	Flatpak bundle	Flatpak बंडल
+	Tarball (.tar.gz)	Tarball (.tar.gz)
+photocraft	Image editing	इमेज संपादन
+vectorcraft	Vector illustration	वेक्टर इलस्ट्रेशन
+filmcraft	Video editing, color and sound	वीडियो संपादन, रंग और ध्वनि
+lightcraft	Photo library and raw development	फ़ोटो लाइब्रेरी और RAW डेवलपमेंट
+pdfcraft	Reading, organizing and protecting PDFs	PDF पढ़ना, व्यवस्थित करना और सुरक्षित करना
+effectcraft	Motion graphics and visual effects	मोशन ग्राफ़िक्स और विज़ुअल इफ़ेक्ट
+designcraft	Page layout and publishing	पेज लेआउट और प्रकाशन
+wordcraft	Writing and document design	लेखन और दस्तावेज़ डिज़ाइन
+deckcraft	Presentations and slide shows	प्रेज़ेंटेशन और स्लाइड शो
+gridcraft	Spreadsheets and data	स्प्रेडशीट और डेटा
+craft-anything	Find out how any software works, then craft your own	जानें कोई भी सॉफ़्टवेयर कैसे काम करता है, फिर अपना ख़ुद का बनाएँ
+solidcraft	Parametric 3D CAD	पैरामीट्रिक 3D CAD
+cadcraft	Computer-aided design and drafting	कंप्यूटर-असिस्टेड डिज़ाइन और ड्राफ़्टिंग
+soundcraft	Recording, editing and mixing audio	ऑडियो रिकॉर्डिंग, संपादन और मिक्सिंग
+figcraft	Interface design and prototyping	इंटरफ़ेस डिज़ाइन और प्रोटोटाइपिंग
+month	Jan	जन॰
+month	Feb	फ़र॰
+month	Mar	मार्च
+month	Apr	अप्रैल
+month	May	मई
+month	Jun	जून
+month	Jul	जुल॰
+month	Aug	अग॰
+month	Sep	सित॰
+month	Oct	अक्तू॰
+month	Nov	नव॰
+month	Dec	दिस॰
+	Not checked yet	अभी जाँच नहीं हुई
+	GitHub's hourly limit was reached; full details return in {min} min	GitHub की प्रति घंटे सीमा पार हो गई; पूरे विवरण {min} मिनट में लौटेंगे
+	GitHub limit hit; back in {min} min	GitHub सीमा पार; {min} मिनट में वापस
+	Installing for {platform}	{platform} के लिए इंस्टॉल हो रहा है
+	Downloads for {platform}	{platform} के लिए डाउनलोड
+	No downloads for this system	इस सिस्टम के लिए डाउनलोड नहीं हैं
+	Join the ArtCraft community on Discord	Discord पर ArtCraft कम्युनिटी से जुड़ें
+	ArtCraft on {name}	{name} पर ArtCraft
+	Couldn't open {name}: {e}	{name} नहीं खोला जा सका: {e}
+	Download cancelled	डाउनलोड रद्द किया गया
+	Available to install	इंस्टॉल के लिए उपलब्ध
+	Available	उपलब्ध
+	Installed · up to date	इंस्टॉल · अद्यतन
+	Update available	अपडेट उपलब्ध
+	Installed	इंस्टॉल
+	installed	इंस्टॉल
+	Not available here	यहाँ उपलब्ध नहीं
+	Updating…	अपडेट हो रहा है…
+	Update paused	अपडेट रुका हुआ
+	Download paused	डाउनलोड रुका हुआ
+	{version} installed → {latest} released	{version} इंस्टॉल → {latest} प्रकाशित
+	Version {version}	संस्करण {version}
+	{installed} installed · latest {latest}	{installed} इंस्टॉल · नवीनतम {latest}
+	Installed · latest {latest}	इंस्टॉल · नवीनतम {latest}
+	Version {version} installed	संस्करण {version} इंस्टॉल
+	Version {latest}	संस्करण {latest}
+	No release published yet	अभी कोई रिलीज़ प्रकाशित नहीं हुई
+	ArtCraft Launcher	ArtCraft Launcher
+	App	ऐप
+	Latest	नवीनतम
+	Released	प्रकाशित
+	Auto	स्वतः
+	Language	भाषा
+	Ascending	आरोही
+	Descending	अवरोही
+	Click to reverse the order	क्रम उलटने के लिए क्लिक करें
+	Click to sort by this column	इस कॉलम से क्रमबद्ध करने के लिए क्लिक करें
+	Like {name}	{name} जैसा
+	{done} of {total}	{total} में से {done}
+	Downloading	डाउनलोड हो रहा है
+	Verifying checksum…	चेकसम जाँचा जा रहा है…
+	Resume	जारी रखें
+	{done} of {total} downloaded	{total} में से {done} डाउनलोड हुआ
+	{done} downloaded	{done} डाउनलोड हुआ
+	Checking for updates…	अपडेट जाँचे जा रहे हैं…
+	Downloads the new version, replaces this one and opens it again	नया संस्करण डाउनलोड करके इसे बदलता है और दोबारा खोलता है
+	Couldn't check for updates: {f}	अपडेट जाँचे नहीं जा सके: {f}
+	Website (coming soon)	वेबसाइट (जल्द आ रही है)
+	GitHub repository	GitHub रिपॉज़िटरी
+	ArtCraft	ArtCraft
+	Update 1 app	1 ऐप अपडेट करें
+	Update all ({count})	सभी अपडेट करें ({count})
+	⊞  Grid	⊞  ग्रिड
+	☰  Table	☰  तालिका
+	🔍  Search apps	🔍  ऐप्स खोजें
+	{name} {version}	{name} {version}
+	Match system	सिस्टम जैसा
+	Dark	गहरा
+	Light	हल्का
+	Full changelog	पूरा चेंजलॉग
+	link	लिंक
+	No apps match	कोई ऐप मेल नहीं खाता
+	Open ArtCraft Launcher to update.	अपडेट करने के लिए ArtCraft Launcher खोलें।
+	{name} {v} is available	{name} {v} उपलब्ध है
+	{count} updates are available	{count} अपडेट उपलब्ध हैं
+	These notes weren't fetched (GitHub's request limit was reached). They're on the release page.	ये नोट्स नहीं लाए जा सके (GitHub की अनुरोध सीमा पार हो गई)। वे रिलीज़ पेज पर हैं।
+	When on, opening the launcher from the menu bar brings its window to the desktop you're on. When off, macOS switches you to the desktop the window was on.	चालू होने पर मेन्यू बार से लॉन्चर खोलने पर उसकी विंडो आपके मौजूदा डेस्कटॉप पर आती है। बंद होने पर macOS आपको उस डेस्कटॉप पर ले जाता है जहाँ विंडो थी।
+	Couldn't change the login item: {e}	लॉग इन आइटम नहीं बदला जा सका: {e}
+column	App	ऐप
+column	Installed	इंस्टॉल
+column	Latest	नवीनतम
+column	Released	प्रकाशित
+filter	Installed	इंस्टॉल
+	App details	ऐप विवरण
+	More actions for {name}	{name} के लिए और क्रियाएँ
+	Close (Esc)	बंद करें (Esc)
+	Features	विशेषताएँ
+	Latest release	नवीनतम रिलीज़
+	Version	संस्करण
+	Platforms	प्लेटफ़ॉर्म
+	Releases	रिलीज़
+	Enlarge picture	चित्र बड़ा करें
+	Click to enlarge	बड़ा देखने के लिए क्लिक करें
+	Previous picture (←)	पिछला चित्र (←)
+	Next picture (→)	अगला चित्र (→)
+	Loading pictures…	चित्र लोड हो रहे हैं…
+	Pictures couldn't be loaded. Reopen this page to try again.	चित्र नहीं लोड हो सके। दोबारा कोशिश करने के लिए यह पेज दोबारा खोलें।
+	{name} details	{name} विवरण
+@plural	{n} app|{n} apps	{n} ऐप|{n} ऐप
+@plural	{n} min ago|{n} min ago	{n} मिनट पहले|{n} मिनट पहले
+@plural	{n} h ago|{n} h ago	{n} घंटा पहले|{n} घंटे पहले
+@plural	{n} day ago|{n} days ago	{n} दिन पहले|{n} दिन पहले
+@msg	Couldn't open {name}: {e}	{name} नहीं खोला जा सका: {e}
+@msg	Download cancelled	डाउनलोड रद्द किया गया
+@msg	{name} updated to {version}	{name} को {version} में अपडेट किया गया
+@msg	{name} installed: {version}	{name} इंस्टॉल हुआ: {version}
+@msg	{name} updated to {version} (this release publishes no checksum, so only its size was checked)	{name} को {version} में अपडेट किया गया (इस रिलीज़ में चेकसम प्रकाशित नहीं हुआ, इसलिए सिर्फ़ आकार जाँचा गया)
+@msg	{name} installed: {version} (this release publishes no checksum, so only its size was checked)	{name} इंस्टॉल हुआ: {version} (इस रिलीज़ में चेकसम प्रकाशित नहीं हुआ, इसलिए सिर्फ़ आकार जाँचा गया)
+@msg	{name} was removed	{name} हटा दिया गया
+@msg	{name} is running. Quit it, then try again.	{name} चल रहा है। पहले उसे बंद करें, फिर दोबारा कोशिश करें।
+@msg	{name} was installed from the {repo} repository or the AUR ({pkg}). Update it with {cmd} or sudo pacman -Syu	{name} को {repo} रिपॉज़िटरी या AUR ({pkg}) से इंस्टॉल किया गया था। इसे {cmd} या sudo pacman -Syu से अपडेट करें
+@msg	{name} was installed from the {repo} repository or the AUR ({pkg}). Update it with your AUR helper (for example: yay -S {pkg}) or sudo pacman -Syu	{name} को {repo} रिपॉज़िटरी या AUR ({pkg}) से इंस्टॉल किया गया था। इसे अपने AUR हेल्पर से अपडेट करें (जैसे: yay -S {pkg}) या sudo pacman -Syu
+@msg	{name} was installed from the AUR ({pkg}). Update it with {cmd}	{name} को AUR ({pkg}) से इंस्टॉल किया गया था। इसे {cmd} से अपडेट करें
+@msg	{name} was installed from the AUR ({pkg}). Update it with your AUR helper (for example: yay -S {pkg})	{name} को AUR ({pkg}) से इंस्टॉल किया गया था। इसे अपने AUR हेल्पर से अपडेट करें (जैसे: yay -S {pkg})
+@id	app.install	इंस्टॉल करें
+@id	app.update	{v} में अपडेट करें
+@id	app.open	खोलें
+@id	app.download	{os} के लिए डाउनलोड करें
+@id	app.reveal	Finder में दिखाएँ
+@id	app.reinstall	दोबारा इंस्टॉल करें
+@id	app.uninstall	अनइंस्टॉल करें…
+@id	app.notes	रिलीज़ नोट्स
+@id	app.website	वेबसाइट
+@id	app.github	GitHub रिपॉज़िटरी
+@id	app.releases	सभी रिलीज़
+@id	launcher.update	अपडेट करके दोबारा शुरू करें
+@id	launcher.download	डाउनलोड करें
+@id	launcher.notes	नया क्या है
+@id	launcher.dismiss	बंद करें
+@id	settings.open	सेटिंग्स
+@id	settings.quit	ArtCraft Launcher बंद करें
+@id	view.grid	ग्रिड
+@id	view.table	तालिका
+@id	filter.all	सभी
+@id	filter.installed	इंस्टॉल
+@id	filter.updates	अपडेट
+@id	filter.notinstalled	इंस्टॉल नहीं हैं
+@id	sort.suite	सूट क्रम
+@id	sort.name	नाम
+@id	sort.inspired	प्रेरणा
+@id	sort.status	स्थिति
+@id	sort.installed	इंस्टॉल संस्करण
+@id	sort.latest	नवीनतम संस्करण
+@id	sort.released	नई रिलीज़
+@id	help.discord	Discord
+@id	help.github	GitHub
+@id	help.website	वेबसाइट
+@id	update.check	अपडेट के लिए जाँच करें
+@id	update.check_auto	अपडेट अपने आप डाउनलोड और इंस्टॉल करें
+@id	update.notify	इंस्टॉल किए ऐप का अपडेट आने पर सूचित करें
+@id	update.prereleases	प्री-रिलीज़ शामिल करें (बीटा और रिलीज़ कैंडिडेट)
+@id	linux.preferred_kind	नए ऐप्स इस रूप में इंस्टॉल करें
+@id	tray.close_to_tray	विंडो बंद होने पर ट्रे में चलता रहे
+@id	tray.show_on_current_desktop	विंडो मौजूदा डेस्कटॉप पर दिखाएँ
+@id	tray.login_item	लॉग इन करते समय ArtCraft Launcher शुरू करें
+@id	appearance.theme	रूप
+	Show ArtCraft Launcher	ArtCraft Launcher दिखाएँ
+	Check for Updates	अपडेट के लिए जाँच करें
+	Visit getartcraft.com	getartcraft.com देखें
+	ArtCraft on GitHub	GitHub पर ArtCraft
+	Join the ArtCraft Discord	ArtCraft Discord से जुड़ें
+@plural	ArtCraft Launcher · {n} update available|ArtCraft Launcher · {n} updates available	ArtCraft Launcher · {n} अपडेट उपलब्ध|ArtCraft Launcher · {n} अपडेट उपलब्ध
+	Install folder	इंस्टॉल फ़ोल्डर
+	Default install folder	डिफ़ॉल्ट इंस्टॉल फ़ोल्डर
+	System default	सिस्टम डिफ़ॉल्ट
+	Browse…	ब्राउज़ करें…
+	Use default	डिफ़ॉल्ट इस्तेमाल करें
+	New installs use this folder. Updates stay in their current location.	नए इंस्टॉल इस फ़ोल्डर का इस्तेमाल करते हैं। अपडेट अपनी मौजूदा जगह पर रहते हैं।
+	Custom folders use AppImage on Linux.	Linux पर कस्टम फ़ोल्डर AppImage इस्तेमाल करते हैं।
+	On Linux, custom folders use AppImage format.	Linux पर कस्टम फ़ोल्डर AppImage प्रारूप इस्तेमाल करते हैं।
+	The system manages install locations here.	यहाँ सिस्टम इंस्टॉल की जगहें संभालता है।
+@msg	couldn't use install folder {path}: {reason}	इंस्टॉल फ़ोल्डर {path} इस्तेमाल नहीं किया जा सका: {reason}
+@msg	this release has no AppImage for a custom install folder	इस रिलीज़ में कस्टम इंस्टॉल फ़ोल्डर के लिए AppImage नहीं है
+@msg	custom install folders aren't supported on this system	इस सिस्टम पर कस्टम इंस्टॉल फ़ोल्डर समर्थित नहीं हैं
+@msg	{path} already exists and wasn't installed by ArtCraft Launcher	{path} पहले से मौजूद है और उसे ArtCraft Launcher ने इंस्टॉल नहीं किया
+@msg	couldn't move {path} to Trash ({reason}). Remove it in Finder instead.	{path} को Trash में नहीं भेजा जा सका ({reason})। इसे Finder से हटाएँ।
+	Apps are placed inside this folder.	ऐप्स इस फ़ोल्डर में रखे जाते हैं।
+	Replace what's there?	मौजूदा चीज़ बदलें?
+	{path} already exists. Installing {name} will overwrite it.	{path} पहले से मौजूद है। {name} इंस्टॉल करने पर वह बदल जाएगा।
+	Replace	बदलें
+	Recently updated	हाल में अपडेट किए
+	Name (A–Z)	नाम (A–Z)
+	Name (Z–A)	नाम (Z–A)
+	Frequently used	ज़्यादा इस्तेमाल होने वाले
+	Next app	अगला ऐप
+	Previous app	पिछला ऐप
+	Show {n} more changes	{n} और बदलाव दिखाएँ
+	Last updated: {date}	अंतिम अपडेट: {date}
+column	Version	संस्करण
+column	Author	लेखक
+	Choose version	संस्करण चुनें
+	latest {version}	नवीनतम {version}
+	{version} (latest release)	{version} (नवीनतम रिलीज़)
+	Launcher version	लॉन्चर संस्करण
+	Nightly	नाइटली
+	Nightly (none published yet)	नाइटली (अभी प्रकाशित नहीं)
+	Install version {version}	संस्करण {version} इंस्टॉल करें
+	Download selected version	चुना हुआ संस्करण डाउनलोड करें
+	Older launcher versions require a manual reinstall.	लॉन्चर के पुराने संस्करणों के लिए दोबारा मैनुअल इंस्टॉल करना पड़ता है।
+	Your files may not open in older versions.	पुराने संस्करणों में आपकी फ़ाइलें नहीं खुल सकतीं।
+	Enable automatic installs in Settings to follow new nightly builds.	नई नाइटली बिल्ड पाने के लिए सेटिंग्स में स्वचालित इंस्टॉल चालू करें।
+texturecraft	3D texture painting	3D टेक्सचर पेंटिंग
+texturecraft	Paint materials on 3D models and export textures.	3D मॉडल पर मटीरियल पेंट करें और टेक्सचर एक्सपोर्ट करें।
+texturecraft	Materials	मटीरियल
+texturecraft	Mesh maps	मेश मैप
+texturecraft	Bake mesh maps and use smart materials.	मेश मैप बेक करें और स्मार्ट मटीरियल इस्तेमाल करें।
+texturecraft	Paint textures on 3D models.	3D मॉडल पर टेक्सचर पेंट करें।
+	Hide community apps	कम्युनिटी ऐप्स छिपाएँ
