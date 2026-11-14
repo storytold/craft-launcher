@@ -49,6 +49,10 @@
 	Install	Yükle
 	Update to {v}	{v} sürümüne güncelle
 	Open	Aç
+	Open {version}	{version} sürümünü aç
+	Open {installed} without updating. {latest} stays available.	{installed} sürümünü güncellemeden aç. {latest} kullanılabilir kalır.
+	{latest} is out, but ArtCraft Launcher can't install it over this copy.	{latest} çıktı ancak ArtCraft Launcher bu kopyanın üzerine yükleyemiyor.
+	ArtCraft Launcher can't install version {version} over this copy.	ArtCraft Launcher, {version} sürümünü bu kopyanın üzerine yükleyemiyor.
 	Download for {os}	{os} için indir
 	Download	İndir
 	Coming soon	Yakında
@@ -72,6 +76,13 @@
 	Show in Files	Dosyalar'da göster
 	Reinstall	Yeniden yükle
 	Uninstall…	Kaldır…
+	Launch options…	Başlatma seçenekleri…
+	{name} launch options	{name} başlatma seçenekleri
+	Flags added each time the app is opened	Uygulama her açıldığında eklenen bayraklar
+	Separate flags with spaces. Quote a value that has spaces in it.	Bayrakları boşlukla ayırın. Boşluk içeren bir değeri tırnak içine alın.
+	A quote isn't closed.	Bir tırnak işareti kapatılmamış.
+	{name} wasn't opened: a quote in its launch options isn't closed.	{name} açılamadı: başlatma seçeneklerindeki bir tırnak işareti kapatılmamış.
+	Save	Kaydet
 	All releases	Tüm sürümler
 	ArtCraft Launcher {version} is available.	ArtCraft Launcher {version} mevcut.
 	Dismiss	Kapat
@@ -87,6 +98,7 @@
 	ArtCraft Launcher {version}	ArtCraft Launcher {version}
 	Only when I ask	Yalnızca ben istediğimde
 	Automatically download and install updates	Güncellemeleri otomatik olarak indir ve yükle
+	Ask for permission once when updating all apps	Tüm uygulamaları güncellerken izni yalnızca bir kez iste
 	Notify me when an installed app has an update	Yüklü bir uygulamanın güncellemesi olduğunda bana bildir
 	Include pre-releases (betas and release candidates)	Ön sürümleri (beta ve sürüm adayları) dahil et
 	Installing on Linux	Linux'ta yükleme
@@ -121,6 +133,12 @@
 	Apps on this computer	Bu bilgisayardaki uygulamalar
 	Installed apps with a newer version	Daha yeni sürümü bulunan yüklü uygulamalar
 	Apps you can install	Yükleyebileceğiniz uygulamalar
+	Pin to top	Başa sabitle
+	Unpin	Sabitlemeyi kaldır
+	Pinned	Sabitlendi
+	Reorder {name}	{name} uygulamasını yeniden sırala
+	Move up	Yukarı taşı
+	Move down	Aşağı taşı
 	Hide App	Uygulamayı Gizle
 	Unhide App	Uygulamayı Göster
 	Hidden Apps	Gizlenen Uygulamalar
@@ -146,6 +164,7 @@
 	Update cancelled	Güncelleme iptal edildi
 	Uninstall cancelled	Kaldırma iptal edildi
 	Retry install	Yüklemeyi yeniden dene
+	Retry update	Güncellemeyi yeniden dene
 	Retry update to {version}	{version} sürümüne güncellemeyi yeniden dene
 	The download is still here. It's checked again, then installed.	İndirilen dosya hâlâ burada. Tekrar kontrol edilip ardından yüklenecek.
 	Waiting for another app…	Başka bir uygulama bekleniyor…
@@ -158,6 +177,7 @@
 	Arch package (.pkg.tar.zst)	Arch paketi (.pkg.tar.zst)
 	Flatpak bundle	Flatpak paketi
 	Tarball (.tar.gz)	Tar arşivi (.tar.gz)
+artcraft	AI image and video creation	Yapay zeka ile görsel ve video oluşturma
 photocraft	Image editing	Görsel düzenleme
 vectorcraft	Vector illustration	Vektörel çizim
 filmcraft	Video editing, color and sound	Video düzenleme, renk ve ses
@@ -170,6 +190,7 @@ deckcraft	Presentations and slide shows	Sunumlar ve slayt gösterileri
 gridcraft	Spreadsheets and data	Elektronik tablolar ve veri
 craft-anything	Find out how any software works, then craft your own	Herhangi bir yazılımın nasıl çalıştığını keşfedin, ardından kendinizinkini üretin
 solidcraft	Parametric 3D CAD	Parametrik 3D CAD
+mailcraft	Mail, calendar and contacts	E-posta, takvim ve kişiler
 cadcraft	Computer-aided design and drafting	Bilgisayar destekli tasarım ve teknik çizim
 soundcraft	Recording, editing and mixing audio	Ses kaydı, düzenleme ve miksaj
 figcraft	Interface design and prototyping	Arayüz tasarımı ve prototipleme
@@ -232,6 +253,7 @@ month	Dec	Ara
 	Checking for updates…	Güncellemeler denetleniyor…
 	Downloads the new version, replaces this one and opens it again	Yeni sürümü indirir, mevcut sürümle değiştirir ve yeniden açar
 	Couldn't check for updates: {f}	Güncellemeler denetlenemedi: {f}
+	Website (coming soon)	Web sitesi (yakında)
 	GitHub repository	GitHub deposu
 	ArtCraft	ArtCraft
 	Update 1 app	1 uygulamayı güncelle
@@ -277,6 +299,7 @@ filter	Installed	Yüklü
 @plural	{n} h ago|{n} h ago	{n} sa. önce
 @plural	{n} day ago|{n} days ago	{n} gün önce
 @msg	Couldn't open {name}: {e}	{name} açılamadı: {e}
+@msg	ArtCraft Launcher couldn't start its window on {backend}: {e}	ArtCraft Launcher, penceresini {backend} üzerinde başlatamadı: {e}
 @msg	Download cancelled	İndirme iptal edildi
 @msg	{name} updated to {version}	{name}, {version} sürümüne güncellendi
 @msg	{name} installed: {version}	{name} kuruldu: {version}
@@ -336,6 +359,8 @@ filter	Installed	Yüklü
 	ArtCraft on GitHub	GitHub'da ArtCraft
 	Join the ArtCraft Discord	ArtCraft Discord'una Katılın
 @plural	ArtCraft Launcher · {n} update available|ArtCraft Launcher · {n} updates available	ArtCraft Launcher · {n} güncelleme mevcut
+
+	Download size: {size}	İndirme boyutu: {size}
 	Install folder	Kurulum klasörü
 	Default install folder	Varsayılan kurulum klasörü
 	System default	Sistem varsayılanı
@@ -375,3 +400,52 @@ column	Author	Yazar
 	Older launcher versions require a manual reinstall.	Eski başlatıcı sürümleri manuel olarak yeniden yükleme gerektirir.
 	Your files may not open in older versions.	Dosyalarınız daha eski sürümlerde açılmayabilir.
 	Enable automatic installs in Settings to follow new nightly builds.	Yeni nightly derlemelerini takip etmek için Ayarlar'da otomatik yüklemeleri etkinleştirin.
+texturecraft	3D texture painting	3D doku boyama
+texturecraft	Paint materials on 3D models and export textures.	3D modeller üzerine malzemeler boyayın ve dokuları dışa aktarın.
+texturecraft	Materials	Malzemeler
+texturecraft	Mesh maps	Ağ haritaları
+texturecraft	Bake mesh maps and use smart materials.	Ağ haritalarını pişirin ve akıllı malzemeler kullanın.
+texturecraft	Paint textures on 3D models.	3D modeller üzerine dokular boyayın.
+	Hide community apps	Topluluk uygulamalarını gizle
+materialcraft	Procedural material design	Yordamsal malzeme tasarımı
+materialcraft	Build materials with node graphs.	Düğüm grafikleriyle malzemeler oluşturun.
+materialcraft	Create tileable PBR materials and export texture maps.	Döşenebilir PBR malzemeleri oluşturun ve doku haritalarını dışa aktarın.
+materialcraft	Node graphs	Düğüm grafikleri
+materialcraft	Combine noises, patterns and filters.	Gürültüleri, desenleri ve filtreleri birleştirin.
+materialcraft	Live previews	Canlı önizlemeler
+materialcraft	Preview materials in 2D and on 3D models.	Malzemeleri 2D ve 3D modeller üzerinde önizleyin.
+	Advanced	Gelişmiş
+	Migrate Flatpak bundles to ArtCraft OCI (experimental)	Flatpak paketlerini ArtCraft OCI'ya taşı (deneysel)
+	On update, switch first party apps when the matching package is available. Otherwise, keep using bundles.	Güncelleme sırasında eşleşen paket mevcut olduğunda birinci taraf uygulamalara geçin. Aksi takdirde paketleri kullanmaya devam edin.
+	The OCI repository is a preview with GPG verification disabled.	OCI deposu, GPG doğrulaması devre dışı bırakılmış bir önizlemedir.
+anicraft	2D vector animation	2D vektör animasyonu
+anicraft	Vector animation on a timeline you know.	Bildiğiniz bir zaman çizelgesi üzerinde vektör animasyonu.
+anicraft	Open-source 2D vector animation, built in pure Rust.	Saf Rust ile geliştirilmiş açık kaynaklı 2D vektör animasyonu.
+anicraft	Familiar by design	Tasarımıyla tanıdık
+anicraft	Stage, tools, timeline, layers, keyframes, Properties and Library sit where animators expect them, with onion skinning for in-betweening.	Sahne, araçlar, zaman çizelgesi, katmanlar, anahtar kareler, Özellikler ve Kitaplık animasyoncuların beklediği yerde bulunur ve aralıklar için soğan zarı sunar.
+anicraft	Tweens that ease	Yumuşatmalı ara hareketler
+anicraft	Classic tweens with eight easing presets and custom ease curves, plus shape tweens that morph one vector contour into another.	Sekiz yumuşatma önayarı ve özel eğriler içeren klasik ara hareketlerin yanı sıra bir vektör konturunu diğerine dönüştüren şekil ara hareketleri.
+	Version pinned to {version}. Click to unlock.	Sürüm {version} olarak sabitlendi. Kilidi açmak için tıklayın.
+	Unlock version?	Sürüm kilidi açılsın mı?
+	{app} is pinned to {version}. Follow the latest release instead?	{app}, {version} sürümüne sabitlendi. Bunun yerine en son sürüm takip edilsin mi?
+	Unlock	Kilidi aç
+
+	AI agents	Yapay zeka ajanları
+	While this is on, AI apps that use MCP, such as Claude, Cursor or LM Studio, can work with every installed Craft app through one entry. While it is off, no agent can reach them, and the entries added here are removed.	Bu açıkken Claude, Cursor veya LM Studio gibi MCP kullanan yapay zeka uygulamaları, tek bir giriş üzerinden yüklü her Craft uygulamasıyla çalışabilir. Kapalıyken hiçbir ajan bunlara erişemez ve burada eklenen girişler kaldırılır.
+	Quick install	Hızlı yükleme
+	Adds the Craft apps to that client. Restart the client afterwards.	Craft uygulamalarını bu istemciye ekler. Sonrasında istemciyi yeniden başlatın.
+	Other clients	Diğer istemciler
+	Copy the configuration and paste it into the client's MCP settings.	Yapılandırmayı kopyalayın ve istemcinin MCP ayarlarına yapıştırın.
+	Copy JSON	JSON Kopyala
+	Copy for VS Code	VS Code için kopyala
+	Copy for Codex (TOML)	Codex için kopyala (TOML)
+	Configuration copied.	Yapılandırma kopyalandı.
+	{client} loads its MCP servers only when it starts, so the Craft apps appear after a restart. Restarting closes {client}, including a reply it is still writing.	{client}, MCP sunucularını yalnızca başlatıldığında yükler; bu nedenle Craft uygulamaları yeniden başlatmanın ardından görünür. Yeniden başlatma, henüz yazmakta olduğu bir yanıt da dahil olmak üzere {client} istemcisini kapatır.
+	Restart {client}	{client} istemcisini yeniden başlat
+	Restarting {client}…	{client} yeniden başlatılıyor…
+	The Craft gateway (craft-ai-mcp) is not installed beside the launcher.	Craft ağ geçidi (craft-ai-mcp) başlatıcının yanında yüklü değil.
+	Let AI agents use Craft apps	Yapay zeka ajanlarının Craft uygulamalarını kullanmasına izin ver
+	Apps agents can reach: {count}	Ajanların erişebildiği uygulamalar: {count}
+	Added	Eklendi
+	Remove	Kaldır
+	Add	Ekle

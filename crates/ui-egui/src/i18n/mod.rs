@@ -8,8 +8,8 @@
 //!    catalog, cover every UI literal and plural key; the tests enforce that claim. A translation
 //!    that isn't finished yet starts with `complete_menus: false`: it still shows in
 //!    Preferences, strings without a row fall back to English, and the completeness tests
-//!    skip it until every row is done. A CJK language also sets `script` and takes its system
-//!    font from `crate::cjk_font`.
+//!    skip it until every row is done. A CJK or Georgian language also sets `script` and takes
+//!    its system font from `crate::cjk_font`.
 //!
 //! That is all: the Preferences dropdown, the system-locale match and the catalog tests
 //! (parse, placeholders, plural forms, coverage of every `tl!` literal) pick it up from the
