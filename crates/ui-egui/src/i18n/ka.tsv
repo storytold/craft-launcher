@@ -63,8 +63,8 @@
 	Checking…	მოწმდება…
 	Not available	მიუწვდომელია
 	Offline	ოფლაინ
-	Downloading {done} of {total}	ჩამოიტვირთება: {done} / {total}
-	Downloading…	ჩამოიტვირთება…
+	Downloading {done} of {total}	ჩამოტვირთვა: {done} / {total}
+	Downloading…	ჩამოტვირთვა…
 	Reconnecting…	კავშირის აღდგენა…
 	Verifying…	გადამოწმება…
 	Installing, then restarting…	ინსტალაცია, შემდეგ გადატვირთვა…
@@ -154,7 +154,7 @@
 	Open link	ბმულის გახსნა
 	Update	განახლება
 	{name} icon	{name}-ის ხატულა
-	by {name}	ავტორი: {name}
+	by {name}	ავტ. {name}
 	Loading ArtCraft Launcher…	ArtCraft Launcher იტვირთება…
 	Cancel update	განახლების გაუქმება
 	Stop waiting; the update can be started again later	ლოდინის შეწყვეტა; განახლების დაწყება მოგვიანებითაც შეიძლება
@@ -166,8 +166,8 @@
 	Retry install	ინსტალაციის ხელახლა ცდა
 	Retry update	განახლების ხელახლა ცდა
 	Retry update to {version}	განახლების ხელახლა ცდა: {version}
-	Move down	ქვემოთ გადატანა
-	Move up	ზემოთ გადატანა
+	Move down	ჩამოწევა
+	Move up	აწევა
 	Pin to top	ზევით დამაგრება
 	Pinned	დამაგრებული
 	Reorder {name}	{name}-ის თანმიმდევრობის შეცვლა
