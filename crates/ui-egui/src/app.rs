@@ -3,7 +3,7 @@
 use std::time::Duration;
 
 use artcraft_launcher_core::protocol::{
-    Backend, BackendOptions, CANCELLED, Capabilities, Command, Event, INSTALL_CANCELLED, JobPhase, LatestRelease, PAUSED, Source,
+    Backend, BackendOptions, CANCELLED, Capabilities, Command, Event, INSTALL_CANCELLED, JobPhase, LatestRelease, McpAgents, PAUSED, Source,
 };
 use artcraft_launcher_core::release::Release;
 use artcraft_launcher_core::status::AppStatus;
@@ -142,6 +142,13 @@ pub struct LauncherUi {
     pub(crate) backend: Box<dyn Backend>,
     pub settings: Settings,
     pub(crate) entries: Vec<AppEntry>,
+    /// AI agents: the gateway switch and the MCP clients.
+    pub(crate) mcp_agents: McpAgents,
+    /// Whether we've asked for MCP state since the settings dialog last opened (reset when it closes).
+    pub(crate) mcp_requested: bool,
+    /// The MCP client just added here, which only loads the entry when it starts: Settings offers
+    /// to restart it until that is done or the entry is removed.
+    pub(crate) mcp_restart_offer: Option<artcraft_launcher_core::protocol::McpClient>,
     pub(crate) caps: Capabilities,
     pub(crate) platform: Option<Platform>,
     pub(crate) checking: bool,
@@ -267,6 +274,9 @@ impl LauncherUi {
                 .filter(|a| platform.is_none_or(|p| a.runs_on(p.os)))
                 .map(AppEntry::new)
                 .collect(),
+            mcp_agents: McpAgents::default(),
+            mcp_requested: false,
+            mcp_restart_offer: None,
             caps,
             platform,
             checking: false,
@@ -643,6 +653,16 @@ impl LauncherUi {
                 self.last_source = Some(source);
                 self.rate_limited_until = rate_limited_until;
                 true
+            }
+            Event::Mcp { agents } => {
+                self.mcp_agents = agents;
+                false
+            }
+            Event::McpError { message } => {
+                // A failed MCP write (e.g. a full disk or an unreadable config) is surfaced so the
+                // user knows their toggle did not take effect.
+                self.toast(message, true);
+                false
             }
         }
     }
