@@ -64,9 +64,9 @@ echo "==> ArtCraft Launcher $VERSION for Linux $ARCH ($FORMATS)"
 
 if [[ "$SKIP_BUILD" = 0 ]]; then
   if [[ -n "${CROSS_TARGET:-}" ]]; then
-    (cd "$ROOT" && cargo build --release --locked -p "$PKG" --target "$CROSS_TARGET")
+    (cd "$ROOT" && cargo build --release --locked -p "$PKG" -p artcraft-launcher-mcp --target "$CROSS_TARGET")
   else
-    (cd "$ROOT" && cargo build --release --locked -p "$PKG")
+    (cd "$ROOT" && cargo build --release --locked -p "$PKG" -p artcraft-launcher-mcp)
   fi
 fi
 BIN="$CARGO_TARGET_DIR/${CROSS_TARGET:+$CROSS_TARGET/}release"
@@ -77,6 +77,9 @@ rm -rf "$WORK"
 # ---- stage an FHS tree (shared by every format) -------------------------------------------------
 install -Dm755 "$BIN/$PKG" "$STAGE/usr/bin/$PKG"
 "${CROSS_COMPILE:-}strip" "$STAGE/usr/bin/$PKG" 2>/dev/null || true
+# The craft-ai-mcp gateway the launcher ships (Settings › AI agents), beside the launcher.
+install -Dm755 "$BIN/craft-ai-mcp" "$STAGE/usr/bin/craft-ai-mcp"
+"${CROSS_COMPILE:-}strip" "$STAGE/usr/bin/craft-ai-mcp" 2>/dev/null || true
 install -Dm644 "$HERE/$APP_ID.desktop" "$STAGE/usr/share/applications/$APP_ID.desktop"
 mkdir -p "$STAGE/usr/share/metainfo"
 sed -e "s/@VERSION@/$VERSION/g" -e "s/@DATE@/$ARTCRAFT_LAUNCHER_BUILD_DATE/g" \

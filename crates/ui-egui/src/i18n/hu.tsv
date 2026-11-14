@@ -450,3 +450,23 @@ anicraft	Classic tweens with eight easing presets and custom ease curves, plus s
 	Unlock version?	Feloldja a verzió zárolását?
 	{app} is pinned to {version}. Follow the latest release instead?	A(z) {app} a(z) {version} verzióra van rögzítve. Inkább a legújabb kiadást kövesse?
 	Unlock	Feloldás
+
+	AI agents	AI-ügynökök
+	While this is on, AI apps that use MCP, such as Claude, Cursor or LM Studio, can work with every installed Craft app through one entry. While it is off, no agent can reach them, and the entries added here are removed.	Amíg ez be van kapcsolva, az MCP-t használó AI-alkalmazások, például a Claude, a Cursor vagy az LM Studio, egyetlen bejegyzésen át dolgozhatnak minden telepített Craft alkalmazással. Kikapcsolva egyetlen ügynök sem éri el őket, és az itt hozzáadott bejegyzések törlődnek.
+	Quick install	Gyors telepítés
+	Adds the Craft apps to that client. Restart the client afterwards.	Hozzáadja a Craft alkalmazásokat ehhez a klienshez. Utána indítsa újra a klienst.
+	Other clients	Más kliensek
+	Copy the configuration and paste it into the client's MCP settings.	Másolja ki a konfigurációt, és illessze be a kliens MCP-beállításaiba.
+	Copy JSON	JSON másolása
+	Copy for VS Code	Másolás VS Code-hoz
+	Copy for Codex (TOML)	Másolás Codexhez (TOML)
+	Configuration copied.	Konfiguráció kimásolva.
+	{client} loads its MCP servers only when it starts, so the Craft apps appear after a restart. Restarting closes {client}, including a reply it is still writing.	A(z) {client} csak induláskor tölti be az MCP-kiszolgálóit, ezért a Craft alkalmazások újraindítás után jelennek meg. Az újraindítás bezárja a(z) {client} alkalmazást, a még íródó választ is.
+	Restart {client}	{client} újraindítása
+	Restarting {client}…	{client} újraindítása…
+	The Craft gateway (craft-ai-mcp) is not installed beside the launcher.	A Craft átjáró (craft-ai-mcp) nincs telepítve az indító mellé.
+	Let AI agents use Craft apps	AI-ügynökök használhatják a Craft alkalmazásokat
+	Apps agents can reach: {count}	Ügynökök által elérhető alkalmazások: {count}
+	Added	Hozzáadva
+	Remove	Eltávolítás
+	Add	Hozzáadás

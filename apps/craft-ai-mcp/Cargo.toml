@@ -1,0 +1,20 @@
+[package]
+name = "artcraft-launcher-mcp"
+description = "The craft-ai-mcp gateway, built and shipped with the ArtCraft Launcher (Settings › AI agents)"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+publish = false
+
+[lints]
+workspace = true
+
+[[bin]]
+name = "craft-ai-mcp"
+path = "src/main.rs"
+
+# The gateway from storytold/craft-ai-integrations (crates/ai-mcp), pinned like the craft-libs crates.
+# Pinned to the merge of storytold/craft-ai-integrations#197.
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+craft-ai-mcp = { git = "https://github.com/storytold/craft-ai-integrations", rev = "0d76ea02a06299a5a6eee1993863fbcafe9c2cc3" }

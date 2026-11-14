@@ -417,3 +417,23 @@ anicraft	Classic tweens with eight easing presets and custom ease curves, plus s
 	Unlock version?	Odemknout verzi?
 	{app} is pinned to {version}. Follow the latest release instead?	Aplikace {app} je uzamčena na verzi {version}. Přejít na nejnovější vydání?
 	Unlock	Odemknout
+
+	AI agents	AI agenti
+	While this is on, AI apps that use MCP, such as Claude, Cursor or LM Studio, can work with every installed Craft app through one entry. While it is off, no agent can reach them, and the entries added here are removed.	Když je tato volba zapnutá, mohou aplikace AI, které používají MCP, například Claude, Cursor nebo LM Studio, pracovat přes jednu položku s každou nainstalovanou aplikací Craft. Když je vypnutá, žádný agent se k nim nedostane a položky přidané zde se odeberou.
+	Quick install	Rychlá instalace
+	Adds the Craft apps to that client. Restart the client afterwards.	Přidá aplikace Craft do tohoto klienta. Potom klienta restartujte.
+	Other clients	Další klienti
+	Copy the configuration and paste it into the client's MCP settings.	Zkopírujte konfiguraci a vložte ji do nastavení MCP klienta.
+	Copy JSON	Kopírovat JSON
+	Copy for VS Code	Kopírovat pro VS Code
+	Copy for Codex (TOML)	Kopírovat pro Codex (TOML)
+	Configuration copied.	Konfigurace zkopírována.
+	{client} loads its MCP servers only when it starts, so the Craft apps appear after a restart. Restarting closes {client}, including a reply it is still writing.	{client} načítá své servery MCP jen při spuštění, takže aplikace Craft se objeví až po restartu. Restart zavře {client} včetně odpovědi, kterou právě píše.
+	Restart {client}	Restartovat {client}
+	Restarting {client}…	Restartuje se {client}…
+	The Craft gateway (craft-ai-mcp) is not installed beside the launcher.	Brána Craft (craft-ai-mcp) není nainstalována vedle spouštěče.
+	Let AI agents use Craft apps	Povolit AI agentům používat aplikace Craft
+	Apps agents can reach: {count}	Aplikace dostupné agentům: {count}
+	Added	Přidáno
+	Remove	Odebrat
+	Add	Přidat

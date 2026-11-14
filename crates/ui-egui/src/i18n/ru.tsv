@@ -445,3 +445,23 @@ anicraft	Classic tweens with eight easing presets and custom ease curves, plus s
 	Unlock version?	Разблокировать версию?
 	{app} is pinned to {version}. Follow the latest release instead?	Для {app} закреплена версия {version}. Перейти на последнюю версию?
 	Unlock	Разблокировать
+
+	AI agents	ИИ-агенты
+	While this is on, AI apps that use MCP, such as Claude, Cursor or LM Studio, can work with every installed Craft app through one entry. While it is off, no agent can reach them, and the entries added here are removed.	Пока этот параметр включён, ИИ-приложения с поддержкой MCP, например Claude, Cursor или LM Studio, могут работать со всеми установленными приложениями Craft через одну запись. Когда он выключен, ни один агент не получит к ним доступ, а добавленные здесь записи удаляются.
+	Quick install	Быстрая установка
+	Adds the Craft apps to that client. Restart the client afterwards.	Добавляет приложения Craft в этот клиент. Затем перезапустите клиент.
+	Other clients	Другие клиенты
+	Copy the configuration and paste it into the client's MCP settings.	Скопируйте конфигурацию и вставьте её в настройки MCP клиента.
+	Copy JSON	Копировать JSON
+	Copy for VS Code	Копировать для VS Code
+	Copy for Codex (TOML)	Копировать для Codex (TOML)
+	Configuration copied.	Конфигурация скопирована.
+	{client} loads its MCP servers only when it starts, so the Craft apps appear after a restart. Restarting closes {client}, including a reply it is still writing.	{client} загружает MCP-серверы только при запуске, поэтому приложения Craft появятся после перезапуска. Перезапуск закроет {client}, включая ответ, который он ещё пишет.
+	Restart {client}	Перезапустить {client}
+	Restarting {client}…	Перезапуск {client}…
+	The Craft gateway (craft-ai-mcp) is not installed beside the launcher.	Шлюз Craft (craft-ai-mcp) не установлен рядом с лаунчером.
+	Let AI agents use Craft apps	Разрешить ИИ-агентам использовать приложения Craft
+	Apps agents can reach: {count}	Приложения, доступные агентам: {count}
+	Added	Добавлено
+	Remove	Удалить
+	Add	Добавить

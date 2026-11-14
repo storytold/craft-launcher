@@ -890,7 +890,7 @@ pub fn launch(app: &CraftApp, installed: &Installed, paths: &Paths, args: &[Stri
         }
         _ if cfg!(target_os = "macos") && path.extension().is_some_and(|e| e == "app") => process::open_app(path, args),
         _ => {
-            if !path.exists() {
+            if !is_resolved_location(path) {
                 if cfg!(windows) && installed.source == InstallSource::Msi && path.components().count() < 2 {
                     return Err(format!(
                         "{} is registered with Windows, but the launcher can't find where it put the program. Reinstall it from here.",
@@ -903,6 +903,15 @@ pub fn launch(app: &CraftApp, installed: &Installed, paths: &Paths, args: &[Stri
         }
     }
     .map_err(|e| format!("Couldn't open {}: {e}", app.name))
+}
+
+/// Whether `location` names a program that is really there. Only a full path counts: detection
+/// stores the bare app name (`WordCraft`) when it can't find the exe, and `exists()` on that
+/// looks in the launcher's working folder, which is its own install folder. With the apps in a
+/// custom folder beside the launcher, a folder of that name is there, so the bare name would be
+/// passed to spawn and fail with "program not found" instead of asking for a reinstall.
+fn is_resolved_location(location: &Path) -> bool {
+    location.is_absolute() && location.exists()
 }
 
 /// The environment a Craft App unpacked by the launcher runs with: its own `HOME` and the XDG
@@ -2418,6 +2427,18 @@ pub mod windows {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A bare app name is never a launchable location, even when the working folder holds a
+    /// folder of that name (an app folder beside the launcher in a custom install folder).
+    #[test]
+    fn a_bare_name_location_is_not_found_even_when_the_working_folder_has_it() {
+        let dir = tempfile::Builder::new().prefix("WordCraft-").tempdir_in(".").unwrap();
+        let name = Path::new(dir.path().file_name().unwrap());
+        assert!(name.exists(), "the bare name resolves against the working folder");
+        assert!(!is_resolved_location(name));
+        assert!(is_resolved_location(&std::fs::canonicalize(dir.path()).unwrap()));
+        assert!(!is_resolved_location(&std::env::current_dir().unwrap().join("no-such-app")));
+    }
 
     /// A folder found only by the launch fallback, in another scope, never reaches the installer.
     #[cfg(windows)]

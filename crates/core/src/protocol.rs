@@ -72,6 +72,23 @@ pub enum Command {
     },
     /// Change how the backend behaves.
     Configure(BackendOptions),
+
+    /// Ask for the AI agents state (the gateway, the switch, the MCP clients).
+    McpState,
+    /// Let AI agents use the Craft apps (writes the gateway's app list), or stop them (removes the
+    /// list and the client entries the launcher added).
+    McpSetAgents {
+        enabled: bool,
+    },
+    /// Add the one gateway entry to an MCP client's configuration, or remove it.
+    McpSetClient {
+        client: McpClient,
+        added: bool,
+    },
+    /// Quit an MCP client and start it again, so it loads the entry just added.
+    McpRestartClient {
+        client: McpClient,
+    },
 }
 
 /// Parent folders for new installs. Existing installations keep their recorded location.
@@ -285,6 +302,52 @@ pub enum Event {
         /// GitHub refused more API calls until this time (Unix seconds).
         rate_limited_until: Option<i64>,
     },
+
+    /// The AI agents state: the gateway, the switch and the MCP clients. Sent when Settings asks,
+    /// after detection and after any change.
+    Mcp {
+        agents: McpAgents,
+    },
+    /// An AI agents operation failed (e.g. writing a client configuration). Carries a short, user-facing
+    /// message; the UI shows it as an error toast so a failed toggle is never silent.
+    McpError {
+        message: String,
+    },
+}
+
+/// An MCP client the launcher can add the gateway entry to.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum McpClient {
+    ClaudeDesktop,
+    ClaudeCode,
+    Cursor,
+    LmStudio,
+}
+
+/// One MCP client on this machine: whether it looks installed, and whether our entry is in it.
+#[derive(Clone, Debug, PartialEq)]
+pub struct McpClientState {
+    pub client: McpClient,
+    pub name: String,
+    pub installed: bool,
+    pub added: bool,
+    /// The launcher can quit and start it again ([`Command::McpRestartClient`]).
+    pub restartable: bool,
+}
+
+/// AI agents and the Craft apps: the `craft-ai-mcp` gateway (found beside the launcher?), the
+/// switch, and the MCP clients.
+#[derive(Clone, Debug, PartialEq, Default)]
+pub struct McpAgents {
+    /// The `AI-MCP` feature flag: without it Settings shows nothing about agents.
+    pub flag_on: bool,
+    pub gateway_found: bool,
+    pub enabled: bool,
+    /// How many installed apps agents can reach (those with a CLI).
+    pub apps: usize,
+    pub clients: Vec<McpClientState>,
+    /// The gateway clients start, while agents are on: what Copy puts in a configuration.
+    pub gateway: Option<String>,
 }
 
 /// What a backend can do on this platform.

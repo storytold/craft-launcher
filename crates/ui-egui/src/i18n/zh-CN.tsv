@@ -417,3 +417,23 @@ anicraft	Classic tweens with eight easing presets and custom ease curves, plus s
 	Unlock version?	解锁版本？
 	{app} is pinned to {version}. Follow the latest release instead?	{app} 已固定为 {version}。是否改为跟随最新版本？
 	Unlock	解锁
+
+	AI agents	AI 智能体
+	While this is on, AI apps that use MCP, such as Claude, Cursor or LM Studio, can work with every installed Craft app through one entry. While it is off, no agent can reach them, and the entries added here are removed.	开启后，Claude、Cursor 或 LM Studio 等使用 MCP 的 AI 应用只需一个条目，即可使用所有已安装的 Craft 应用。关闭后，任何智能体都无法访问它们，并会移除在此添加的条目。
+	Quick install	快速安装
+	Adds the Craft apps to that client. Restart the client afterwards.	将 Craft 应用添加到该客户端。之后请重启客户端。
+	Other clients	其他客户端
+	Copy the configuration and paste it into the client's MCP settings.	复制配置，并将其粘贴到客户端的 MCP 设置中。
+	Copy JSON	复制 JSON
+	Copy for VS Code	复制为 VS Code 格式
+	Copy for Codex (TOML)	复制为 Codex 格式 (TOML)
+	Configuration copied.	已复制配置。
+	{client} loads its MCP servers only when it starts, so the Craft apps appear after a restart. Restarting closes {client}, including a reply it is still writing.	{client} 只在启动时加载 MCP 服务器，因此 Craft 应用会在重启后出现。重启会关闭 {client}，包括正在生成的回复。
+	Restart {client}	重启 {client}
+	Restarting {client}…	正在重启 {client}…
+	The Craft gateway (craft-ai-mcp) is not installed beside the launcher.	启动器旁未安装 Craft 网关 (craft-ai-mcp)。
+	Let AI agents use Craft apps	允许 AI 智能体使用 Craft 应用
+	Apps agents can reach: {count}	智能体可用的应用：{count}
+	Added	已添加
+	Remove	移除
+	Add	添加
