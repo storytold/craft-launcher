@@ -1596,10 +1596,7 @@ impl Backend for NativeBackend {
             Command::CreateDesktopShortcut { app } => {
                 let Some(def) = CraftApp::by_id(&app) else { return };
                 let Some(inst) = self.installed(&app) else {
-                    self.shared.emit(Event::Notice {
-                        app,
-                        result: Err(format!("{} isn't installed", def.name)),
-                    });
+                    self.shared.emit(Event::Notice { app, result: Err(format!("{} isn't installed", def.name)) });
                     return;
                 };
                 let path = std::path::PathBuf::from(&inst.location);
@@ -1613,10 +1610,7 @@ impl Backend for NativeBackend {
                         Err(e) if e.starts_with("A desktop shortcut named ") => Err(e),
                         Err(e) => Err(format!("Couldn't create the desktop shortcut: {e}")),
                     };
-                    shared.emit(Event::Notice {
-                        app: app_id,
-                        result,
-                    });
+                    shared.emit(Event::Notice { app: app_id, result });
                 });
             }
             Command::UpdateLauncher => self.update_launcher(),
