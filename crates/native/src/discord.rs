@@ -34,10 +34,16 @@ const MAX_STATE: usize = 128;
 /// Discord's replies are a few hundred bytes; anything far larger is not Discord.
 const MAX_FRAME: usize = 64 * 1024;
 
-/// Discord IPC opcodes: the hello, a command or its answer, and Discord hanging up.
+/// Discord IPC opcodes: the hello, a command or its answer, Discord hanging up, and a ping and
+/// its pong (sent by either side).
 const OP_HANDSHAKE: u32 = 0;
 const OP_FRAME: u32 = 1;
 const OP_CLOSE: u32 = 2;
+const OP_PING: u32 = 3;
+const OP_PONG: u32 = 4;
+
+/// Frames to read past (pings, anything unrelated) before giving up on Discord's answer.
+const MAX_SKIPPED: usize = 8;
 
 /// What the backend tells the worker thread.
 enum Msg {
@@ -116,6 +122,8 @@ fn run(rx: &Receiver<Msg>) {
     let mut running: Vec<Running> = Vec::new();
     let mut conn: Option<Box<dyn Pipe>> = None;
     let mut shown: Option<Value> = None;
+    // Tells Discord's answer to each request apart from anything else it sends.
+    let mut nonce: u64 = 0;
     loop {
         let top = enabled.then(|| running.last()).flatten();
         let want = top.map(|r| activity(r.app, r.start, files.then(|| r.pid.and_then(|pid| open_file(pid, r.app.name))).flatten().as_deref()));
@@ -128,7 +136,8 @@ fn run(rx: &Receiver<Msg>) {
                 conn = connect();
             }
             if let Some(c) = conn.as_mut() {
-                match set_activity(c.as_mut(), want.as_ref()) {
+                nonce = nonce.wrapping_add(1);
+                match set_activity(c.as_mut(), want.as_ref(), &nonce.to_string()) {
                     Ok(()) => shown.clone_from(&want),
                     Err(e) => {
                         log::info!("Discord presence: {e}");
@@ -138,16 +147,31 @@ fn run(rx: &Receiver<Msg>) {
                 }
             }
         }
-        // Look again later: for Discord when it isn't reachable, for a new title when files show.
+        // Look again later: for Discord when it isn't reachable, for a new title when files show,
+        // and to check that Discord is still there while the status stays the same.
         let wait = match (&want, &conn) {
             (Some(_), None) => Some(RETRY),
             (Some(_), Some(_)) if files && cfg!(windows) => Some(TITLE_EVERY),
+            (Some(_), Some(_)) => Some(RETRY),
             _ => None,
         };
         let msg = if let Some(wait) = wait {
             match rx.recv_timeout(wait) {
                 Ok(m) => m,
-                Err(RecvTimeoutError::Timeout) => continue,
+                Err(RecvTimeoutError::Timeout) => {
+                    // Discord quitting or restarting closes the connection without a word; a ping
+                    // finds out, and the next pass connects again and shows the status anew.
+                    if want.is_some()
+                        && want == shown
+                        && let Some(c) = conn.as_mut()
+                        && let Err(e) = ping(c.as_mut())
+                    {
+                        log::info!("Discord presence: {e}");
+                        conn = None;
+                        shown = None;
+                    }
+                    continue;
+                }
                 Err(RecvTimeoutError::Disconnected) => return,
             }
         } else {
@@ -241,10 +265,20 @@ fn connect() -> Option<Box<dyn Pipe>> {
     }
 }
 
-/// Discord's pipe number `n` (Discord takes the first free one of 0 to 9).
+/// Discord's pipe number `n` (Discord takes the first free one of 0 to 9). Any program can serve
+/// a pipe by that name, so it is opened at identification level: the server can tell who
+/// connected but can never act as the launcher.
 #[cfg(windows)]
 fn open(n: u8) -> Option<Box<dyn Pipe>> {
-    let pipe = std::fs::OpenOptions::new().read(true).write(true).open(format!(r"\\.\pipe\discord-ipc-{n}")).ok()?;
+    use std::os::windows::fs::OpenOptionsExt;
+    // SECURITY_IDENTIFICATION (std adds SECURITY_SQOS_PRESENT).
+    const SECURITY_IDENTIFICATION: u32 = 0x0001_0000;
+    let pipe = std::fs::OpenOptions::new()
+        .read(true)
+        .write(true)
+        .security_qos_flags(SECURITY_IDENTIFICATION)
+        .open(format!(r"\\.\pipe\discord-ipc-{n}"))
+        .ok()?;
     Some(Box::new(pipe))
 }
 
@@ -270,19 +304,37 @@ fn open(_n: u8) -> Option<Box<dyn Pipe>> {
     None
 }
 
-/// Sets (or, with `None`, clears) the status and reads Discord's answer.
-fn set_activity(pipe: &mut dyn Pipe, activity: Option<&Value>) -> io::Result<()> {
-    let nonce = crate::now().to_string();
+/// Sets (or, with `None`, clears) the status, and waits for Discord's answer to this request (the
+/// one carrying `nonce`). An error answer is an error too: dropping the connection makes the
+/// worker try again.
+fn set_activity(pipe: &mut dyn Pipe, activity: Option<&Value>, nonce: &str) -> io::Result<()> {
     let body = json!({ "cmd": "SET_ACTIVITY", "args": { "pid": std::process::id(), "activity": activity }, "nonce": nonce });
-    write_frame(pipe, OP_FRAME, &body)?;
-    match read_frame(pipe)? {
-        (OP_CLOSE, reply) => Err(io::Error::other(format!("Discord closed the connection: {reply}"))),
-        // Dropping the connection makes the worker try again.
-        (_, reply) if reply.get("evt").and_then(Value::as_str) == Some("ERROR") => {
-            Err(io::Error::other(format!("Discord didn't take the presence: {reply}")))
-        }
-        _ => Ok(()),
+    let reply = exchange(pipe, OP_FRAME, &body, |op, reply| op == OP_FRAME && reply.get("nonce").and_then(Value::as_str) == Some(nonce))?;
+    if reply.get("evt").and_then(Value::as_str) == Some("ERROR") {
+        return Err(io::Error::other(format!("Discord didn't take the presence: {reply}")));
     }
+    Ok(())
+}
+
+/// Whether Discord still answers: a ping and its pong.
+fn ping(pipe: &mut dyn Pipe) -> io::Result<()> {
+    exchange(pipe, OP_PING, &json!({}), |op, _| op == OP_PONG).map(|_| ())
+}
+
+/// Sends a frame, then reads until the answer `is_answer` picks out. On the way it answers
+/// Discord's pings and skips anything else (up to [`MAX_SKIPPED`] frames); Discord hanging up is
+/// an error.
+fn exchange(pipe: &mut dyn Pipe, op: u32, body: &Value, is_answer: impl Fn(u32, &Value) -> bool) -> io::Result<Value> {
+    write_frame(pipe, op, body)?;
+    for _ in 0..MAX_SKIPPED {
+        match read_frame(pipe)? {
+            (OP_CLOSE, reply) => return Err(io::Error::other(format!("Discord closed the connection: {reply}"))),
+            (op, reply) if is_answer(op, &reply) => return Ok(reply),
+            (OP_PING, ping) => write_frame(pipe, OP_PONG, &ping)?,
+            _ => {}
+        }
+    }
+    Err(io::Error::other("Discord didn't answer"))
 }
 
 /// A frame: opcode and body length (little-endian `u32`s), then the JSON body.
@@ -325,6 +377,66 @@ mod tests {
         let (op, body) = read_frame(&mut buf.as_slice()).unwrap();
         assert_eq!(op, OP_FRAME);
         assert_eq!(body["cmd"], "SET_ACTIVITY");
+    }
+
+    /// A connection whose replies are `replies`, and which keeps what the launcher sent.
+    struct FakeDiscord {
+        replies: io::Cursor<Vec<u8>>,
+        sent: Vec<u8>,
+    }
+
+    impl FakeDiscord {
+        fn replying(frames: &[(u32, Value)]) -> Self {
+            let mut replies = Vec::new();
+            for (op, body) in frames {
+                write_frame(&mut replies, *op, body).unwrap();
+            }
+            Self { replies: io::Cursor::new(replies), sent: Vec::new() }
+        }
+
+        /// The opcodes of the frames the launcher sent.
+        fn sent_ops(&self) -> Vec<u32> {
+            let mut sent = self.sent.as_slice();
+            std::iter::from_fn(|| read_frame(&mut sent).ok().map(|(op, _)| op)).collect()
+        }
+    }
+
+    impl Read for FakeDiscord {
+        fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+            self.replies.read(buf)
+        }
+    }
+
+    impl Write for FakeDiscord {
+        fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+            self.sent.write(buf)
+        }
+        fn flush(&mut self) -> io::Result<()> {
+            Ok(())
+        }
+    }
+
+    #[test]
+    fn the_status_waits_for_its_own_answer_and_answers_pings() {
+        let mut discord = FakeDiscord::replying(&[
+            (OP_PING, json!({ "n": 1 })),
+            (OP_FRAME, json!({ "evt": "ERROR", "nonce": "6" })),
+            (OP_FRAME, json!({ "cmd": "SET_ACTIVITY", "nonce": "7" })),
+        ]);
+        set_activity(&mut discord, None, "7").unwrap();
+        assert_eq!(discord.sent_ops(), [OP_FRAME, OP_PONG], "the request, then a pong for the ping");
+    }
+
+    #[test]
+    fn an_error_answer_hanging_up_or_silence_is_an_error() {
+        let error = [(OP_FRAME, json!({ "evt": "ERROR", "nonce": "7" }))];
+        assert!(set_activity(&mut FakeDiscord::replying(&error), None, "7").is_err());
+        let close = [(OP_CLOSE, json!({ "code": 4000 }))];
+        assert!(set_activity(&mut FakeDiscord::replying(&close), None, "7").is_err());
+        let unrelated = vec![(OP_FRAME, json!({ "nonce": "other" })); MAX_SKIPPED];
+        assert!(set_activity(&mut FakeDiscord::replying(&unrelated), None, "7").is_err());
+        assert!(ping(&mut FakeDiscord::replying(&[])).is_err(), "no pong: Discord is gone");
+        assert!(ping(&mut FakeDiscord::replying(&[(OP_PONG, json!({}))])).is_ok());
     }
 
     #[test]
