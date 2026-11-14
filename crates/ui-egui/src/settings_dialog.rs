@@ -195,7 +195,8 @@ impl LauncherUi {
             {
                 self.trigger_auto_updates();
             }
-            if self.caps.manage_apps {
+            // Linux always batches (`Settings::updates_batched`), so there is nothing to choose.
+            if self.caps.manage_apps && !cfg!(target_os = "linux") {
                 ui.checkbox(&mut self.settings.batch_updates, tl!("Ask for permission once when updating all apps"));
             }
             ui.checkbox(&mut self.settings.notify, tl!("Notify me when an installed app has an update"));
