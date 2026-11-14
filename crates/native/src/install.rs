@@ -327,6 +327,13 @@ pub(crate) fn bind_artifact_version(app: &CraftApp, release: &Release, asset: &A
         return Err(mismatch());
     }
 
+    bind_download_url(app, release, asset)
+}
+
+/// The release tag and filename embedded in a release download URL must be the release's and the asset's.
+pub(crate) fn bind_download_url(app: &CraftApp, release: &Release, asset: &Asset) -> Result<(), String> {
+    let mismatch = || format!("{}'s download does not match the advertised version {}.", app.name, release.version_label());
+    let release_version = release.version.as_ref();
     // The release tag and filename embedded in a release download URL (`.../releases/download/<tag>/<name>`).
     if let Some(rest) = asset.url.split("/releases/download/").nth(1) {
         let mut parts = rest.split('/');
@@ -965,10 +972,20 @@ fn staging_dir(dir: &Path) -> Result<tempfile::TempDir, String> {
 /// Moves `staged` into place at `dest`, keeping the old copy until the new one is there.
 #[allow(dead_code)]
 fn swap_into_place(staged: &Path, dest: &Path) -> Result<(), String> {
+    swap_into_place_keeping(staged, dest).map(drop)
+}
+
+/// [`swap_into_place`], but the old copy stays in a folder of its own beside `dest` until the returned
+/// backup is dropped, so a caller with more steps to go can still put it back.
+fn swap_into_place_keeping(staged: &Path, dest: &Path) -> Result<Option<tempfile::TempDir>, String> {
     swap_into_place_via(staged, dest, |from, to| std::fs::rename(from, to))
 }
 
-fn swap_into_place_via(staged: &Path, dest: &Path, rename: impl Fn(&Path, &Path) -> std::io::Result<()>) -> Result<(), String> {
+fn swap_into_place_via(
+    staged: &Path,
+    dest: &Path,
+    rename: impl Fn(&Path, &Path) -> std::io::Result<()>,
+) -> Result<Option<tempfile::TempDir>, String> {
     // Reserve a directory of our own beside the destination. A predictable sibling such as
     // `app.old` may be a user's backup, and must never be removed or overwritten.
     let backup = if dest.exists() {
@@ -995,7 +1012,7 @@ fn swap_into_place_via(staged: &Path, dest: &Path, rename: impl Fn(&Path, &Path)
         }
         return Err(format!("couldn't put the new copy in place ({e})"));
     }
-    Ok(())
+    Ok(backup)
 }
 
 /// After unpacking an archive into `dir`: its single top-level folder, if it has one.
@@ -1692,6 +1709,10 @@ pub(crate) mod linux {
 
 #[cfg(target_os = "macos")]
 mod macos_verify;
+
+#[cfg(unix)]
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
+pub mod cli_tool;
 
 #[cfg(target_os = "macos")]
 pub mod macos {

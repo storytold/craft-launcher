@@ -87,6 +87,9 @@
 	Only when I ask	Pouze na vyžádání
 	Automatically download and install updates	Automaticky stahovat a instalovat aktualizace
 	Ask for permission once when updating all apps	Při aktualizaci všech aplikací požádat o oprávnění pouze jednou
+	Install each app's command-line tool and keep it up to date	Instalovat nástroj příkazového řádku každé aplikace a udržovat ho aktuální
+	The tool is installed the next time an app is installed or updated, and only if its release has one.	Nástroj se nainstaluje při příští instalaci nebo aktualizaci aplikace, a to jen tehdy, pokud ho její vydání obsahuje.
+	To use the tools in Terminal, add this line to your shell's start-up file:	Chcete-li nástroje používat v Terminálu, přidejte tento řádek do spouštěcího souboru svého shellu:
 	Notify me when an installed app has an update	Upozornit, když má nainstalovaná aplikace aktualizaci
 	Include pre-releases (betas and release candidates)	Zahrnout předběžná vydání (beta verze a kandidáty na vydání)
 	Installing on Linux	Instalace v Linuxu

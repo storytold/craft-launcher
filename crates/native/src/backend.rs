@@ -474,7 +474,9 @@ impl NativeBackend {
                 match &existing {
                     Some(inst) => install::uninstall(app, inst, record.as_ref(), &paths, &stop, &mut phase).map(|()| {
                         let mut m = shared.manifest.lock().unwrap_or_else(PoisonError::into_inner);
-                        if m.apps.remove(app.id).is_some() {
+                        let removed_app = m.apps.remove(app.id).is_some();
+                        let removed_cli = remove_cli_tool(&paths, &mut m, app.id);
+                        if removed_app || removed_cli {
                             let _ = m.save(&paths.manifest());
                         }
                         format!("{} was removed", app.name)
@@ -897,7 +899,78 @@ fn run_install(
             log::warn!("couldn't save the install record: {e}");
         }
     }
-    Ok(installed_text(app, existing.is_some(), &release))
+    let mut text = installed_text(app, existing.is_some(), &release);
+    text.push_str(&install_cli_tool(app, shared, paths, platform, options, &release, &mut job));
+    Ok(text)
+}
+
+/// macOS, when the option is on: the app's command-line tool at the release's version, installed
+/// with the app and updated with it. A tool that can't be installed never fails the app's install:
+/// the note says what happened. A release that publishes no tool adds nothing, and leaves a tool
+/// installed earlier where it is, the note naming its version.
+#[cfg_attr(not(unix), allow(unused_variables))]
+fn install_cli_tool(
+    app: &CraftApp,
+    shared: &Shared,
+    paths: &Paths,
+    platform: Platform,
+    options: &BackendOptions,
+    release: &Release,
+    job: &mut Job<'_>,
+) -> String {
+    #[cfg(unix)]
+    {
+        use artcraft_launcher_core::Os;
+        if !(options.install_cli && platform.os == Os::MacOs) {
+            return String::new();
+        }
+        // The portable folder moves with the executable, but the PATH line the settings show names the standard one.
+        if crate::paths::portable_root().is_some() {
+            return " (its command-line tool isn't installed in portable mode)".to_string();
+        }
+        let existing = shared.manifest.lock().unwrap_or_else(PoisonError::into_inner).cli.get(app.id).cloned();
+        let Some(asset) = install::cli_tool::asset(app, release, platform) else {
+            return match existing {
+                Some(old) if old.version != release.version_label() => {
+                    format!(" (its command-line tool stays at {}: this release has none)", old.version)
+                }
+                _ => String::new(),
+            };
+        };
+        let mut run = crate::process::run_with_output;
+        match install::cli_tool::install(app, release, asset, existing.as_ref(), job, &mut run) {
+            Ok(placed) => {
+                let mut m = shared.manifest.lock().unwrap_or_else(PoisonError::into_inner);
+                // Final only once the record is saved; a failure puts the previous tool and record back.
+                match install::cli_tool::record(&mut m, app.id, placed, existing, paths, |m| m.save(&paths.manifest())) {
+                    Ok(()) => " and its command-line tool".to_string(),
+                    Err(e) => {
+                        log::warn!("{}: command-line tool: {e}", app.name);
+                        format!(" (its command-line tool wasn't installed: {e})")
+                    }
+                }
+            }
+            Err(e) => {
+                log::warn!("{}: command-line tool: {e}", app.name);
+                format!(" (its command-line tool wasn't installed: {e})")
+            }
+        }
+    }
+    #[cfg(not(unix))]
+    String::new()
+}
+
+/// Removes the command-line tool the launcher installed for `id`, and its record. Whether the
+/// manifest changed. A tool that can't be removed keeps its record, so a later removal can try again.
+#[cfg_attr(not(unix), allow(unused_variables))]
+fn remove_cli_tool(paths: &Paths, manifest: &mut crate::manifest::Manifest, id: &str) -> bool {
+    let Some(record) = manifest.cli.get(id) else { return false };
+    #[cfg(unix)]
+    if let Err(e) = install::cli_tool::remove(paths, record) {
+        log::warn!("{id}: command-line tool: {e}");
+        return false;
+    }
+    manifest.cli.remove(id).is_some()
 }
 
 /// Whether an install may write over what is at its destination.

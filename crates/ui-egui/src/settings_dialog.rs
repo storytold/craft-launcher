@@ -195,6 +195,14 @@ impl LauncherUi {
             if self.caps.manage_apps {
                 ui.checkbox(&mut self.settings.batch_updates, tl!("Ask for permission once when updating all apps"));
             }
+            if self.caps.manage_apps && cfg!(target_os = "macos") {
+                ui.checkbox(&mut self.settings.install_cli, tl!("Install each app's command-line tool and keep it up to date"));
+                if self.settings.install_cli {
+                    ui.label(tl!("The tool is installed the next time an app is installed or updated, and only if its release has one."));
+                    ui.label(tl!("To use the tools in Terminal, add this line to your shell's start-up file:"));
+                    ui.add(egui::Label::new(egui::RichText::new(artcraft_launcher_core::protocol::MAC_CLI_PATH_LINE).monospace()).selectable(true));
+                }
+            }
             ui.checkbox(&mut self.settings.notify, tl!("Notify me when an installed app has an update"));
             ui.checkbox(&mut self.settings.prereleases, tl!("Include pre-releases (betas and release candidates)"));
             row(ui, tl!("Launcher version"), 200.0, &mut |ui, label| {

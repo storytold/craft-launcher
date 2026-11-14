@@ -82,6 +82,9 @@
 	Only when I ask	仅手动检查
 	Automatically download and install updates	自动下载并安装更新
 	Ask for permission once when updating all apps	更新所有应用时仅请求一次授权
+	Install each app's command-line tool and keep it up to date	安装每个应用的命令行工具并保持其为最新版本
+	The tool is installed the next time an app is installed or updated, and only if its release has one.	该工具会在下次安装或更新应用时安装，且仅当该版本包含此工具时才会安装。
+	To use the tools in Terminal, add this line to your shell's start-up file:	要在终端中使用这些工具，请将下面这一行添加到 shell 的启动文件中：
 	Notify me when an installed app has an update	已安装应用有更新时通知我
 	Include pre-releases (betas and release candidates)	包含预发布版本（测试版和候选版）
 	Installing on Linux	Linux 安装设置

@@ -464,6 +464,7 @@ impl LauncherUi {
         let options = BackendOptions {
             kinds: self.settings.preferred_kinds.clone(),
             prereleases: self.settings.prereleases,
+            install_cli: self.settings.install_cli,
             versions: self.settings.versions.clone(),
             launcher_version: self.settings.launcher_version.clone(),
             install_locations: self.settings.install_locations.clone(),
