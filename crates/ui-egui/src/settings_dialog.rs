@@ -27,13 +27,13 @@ fn row(ui: &mut Ui, label: &str, control_width: f32, add: &mut dyn FnMut(&mut Ui
     } else {
         ui.horizontal(|ui| {
             let label = ui.label(label);
-            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+            ui.with_layout(widgets::to_end(egui::Align::Center), |ui| {
                 // A ComboBox grows to the width its layout offers, so leaving it loose made it
                 // start at the label's last glyph and paint over the words at a narrow dialog
                 // width. A fixed-width allocation at the right keeps it clear of the label and
                 // still leaves the dialog itself as narrow as before.
                 let width = control_width.min(ui.available_width());
-                ui.allocate_ui_with_layout(vec2(width, theme::CONTROL_H), egui::Layout::left_to_right(egui::Align::Center), |ui| {
+                ui.allocate_ui_with_layout(vec2(width, theme::CONTROL_H), widgets::from_start(egui::Align::Center), |ui| {
                     add(ui, label.id);
                 });
             });
@@ -88,13 +88,13 @@ impl LauncherUi {
             };
             if stack_actions {
                 quit(ui, host);
-                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                ui.with_layout(widgets::to_end(egui::Align::Center), |ui| {
                     close = widgets::button(ui, tl!("Done"), Kind::Primary, 90.0).clicked();
                 });
             } else {
                 ui.horizontal(|ui| {
                     quit(ui, host);
-                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    ui.with_layout(widgets::to_end(egui::Align::Center), |ui| {
                         close = widgets::button(ui, tl!("Done"), Kind::Primary, 90.0).clicked();
                     });
                 });
@@ -162,7 +162,7 @@ impl LauncherUi {
         if pref.needs_cjk_font() && !theme::cjk_font_available(pref) {
             // In English on purpose: the language asked for can't be drawn.
             let text = "No font for this language was found on this system, so the interface stays in English. \
-                        Installing one (for example Noto Sans CJK or Noto Sans Georgian) and restarting fixes it.";
+                        Installing one (for example Noto Sans CJK, Noto Sans Georgian or Noto Sans Arabic) and restarting fixes it.";
             ui.add(egui::Label::new(RichText::new(text).size(12.0).color(t.warn)).wrap());
             ui.add_space(14.0);
         }
@@ -355,7 +355,7 @@ impl LauncherUi {
                 }
                 // Wrap the social links as a group so their icons stay together.
                 let width = widgets::icon_links_width(artcraft_launcher_core::catalog::SOCIAL.len(), 16.0);
-                ui.allocate_ui_with_layout(vec2(width, theme::CONTROL_H), egui::Layout::left_to_right(egui::Align::Center), |ui| {
+                ui.allocate_ui_with_layout(vec2(width, theme::CONTROL_H), widgets::from_start(egui::Align::Center), |ui| {
                     widgets::social_icons(ui, 16.0);
                 });
             });
