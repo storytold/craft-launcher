@@ -8,6 +8,7 @@
 
 	Launcher	Launcher
 	Craft App Suite	Craft App Suite
+	by {name}	por {name}
 	Open Source Tools for Creatives, Makers, and Builders	Ferramentas de código aberto para criadores, artistas e desenvolvedores
 	Settings	Configurações
 	Check for updates	Verificar atualizações
@@ -37,6 +38,10 @@
 	Install	Instalar
 	Update to {v}	Atualizar para {v}
 	Open	Abrir
+	Open {version}	Abrir {version}
+	Open {installed} without updating. {latest} stays available.	Abrir {installed} sem atualizar. A {latest} continua disponível.
+	{latest} is out, but ArtCraft Launcher can't install it over this copy.	A {latest} já saiu, mas o ArtCraft Launcher não consegue instalá-la sobre esta cópia.
+	ArtCraft Launcher can't install version {version} over this copy.	O ArtCraft Launcher não consegue instalar a versão {version} sobre esta cópia.
 	Download for {os}	Baixar para {os}
 	Download	Baixar
 	Coming soon	Em breve
@@ -60,11 +65,19 @@
 	Show in Files	Mostrar no gerenciador de arquivos
 	Reinstall	Reinstalar
 	Uninstall…	Desinstalar…
+	Launch options…	Opções de inicialização…
+	{name} launch options	Opções de inicialização do {name}
+	Flags added each time the app is opened	Parâmetros adicionados sempre que o aplicativo é aberto
+	Separate flags with spaces. Quote a value that has spaces in it.	Separe os parâmetros com espaços. Coloque entre aspas um valor que tenha espaços.
+	A quote isn't closed.	Há aspas que não foram fechadas.
+	{name} wasn't opened: a quote in its launch options isn't closed.	{name} não foi aberto: há aspas não fechadas nas opções de inicialização.
+	Save	Salvar
 	All releases	Todos os lançamentos
 	ArtCraft Launcher {version} is available.	ArtCraft Launcher {version} está disponível.
 	Dismiss	Dispensar
 	Update and restart	Atualizar e reiniciar
 	A new version is available. Would you like to relaunch with the updated version?	Uma nova versão está disponível. Reiniciar com a nova versão?
+	A new version is available. Download it to replace this version?	Uma nova versão está disponível. Baixar para substituir esta versão?
 	Later	Mais tarde
 	What's new	Novidades
 	No notes were published with this release.	Nenhuma nota foi publicada com este lançamento.
@@ -74,14 +87,18 @@
 	ArtCraft Launcher {version}	ArtCraft Launcher {version}
 	Only when I ask	Apenas quando eu pedir
 	Automatically download and install updates	Baixar e instalar atualizações automaticamente
+	Ask for permission once when updating all apps	Pedir permissão uma única vez ao atualizar todos os aplicativos
 	Notify me when an installed app has an update	Notificar quando um aplicativo instalado tiver atualização
 	Include pre-releases (betas and release candidates)	Incluir versões de pré-lançamento (betas e RC)
 	Installing on Linux	Instalação no Linux
+	Installing on Windows	Instalação no Windows
 	Install new apps as	Instalar novos aplicativos como
 	System package (recommended)	Pacote do sistema (recomendado)
 	Updates always use the format an app was installed with.	As atualizações sempre usam o formato com o qual o aplicativo foi instalado.
 	Running in the background	Execução em segundo plano
 	Keep running in the tray when the window is closed	Continuar na bandeja do sistema ao fechar a janela
+	ArtCraft Launcher is still running	O ArtCraft Launcher continua aberto
+	It's in the tray: open it or quit it from the tray icon, or turn this off in the settings.	Ele está na bandeja do sistema: abra-o ou encerre-o pelo ícone, ou desative isso nas configurações.
 	Show the window on the current desktop	Mostrar a janela na área de trabalho atual
 	Start ArtCraft Launcher when I log in	Iniciar o ArtCraft Launcher ao fazer login
 	Community	Comunidade
@@ -106,6 +123,12 @@
 	Apps on this computer	Aplicativos neste computador
 	Installed apps with a newer version	Aplicativos instalados com nova versão
 	Apps you can install	Aplicativos que você pode instalar
+	Pin to top	Fixar no topo
+	Unpin	Desafixar
+	Pinned	Fixados
+	Reorder {name}	Reordenar {name}
+	Move up	Mover para cima
+	Move down	Mover para baixo
 	Hide App	Ocultar aplicativo
 	Unhide App	Mostrar aplicativo
 	Hidden Apps	Aplicativos ocultos
@@ -131,6 +154,7 @@
 	Update cancelled	Atualização cancelada
 	Uninstall cancelled	Desinstalação cancelada
 	Retry install	Tentar instalar novamente
+	Retry update	Tentar atualizar novamente
 	Retry update to {version}	Tentar atualizar novamente para {version}
 	The download is still here. It's checked again, then installed.	O arquivo baixado ainda está aqui. Ele será verificado novamente e instalado.
 	Waiting for another app…	Aguardando outro aplicativo…
@@ -142,10 +166,12 @@
 	Disk image (.dmg)	Imagem de disco (.dmg)
 	Debian package (.deb)	Pacote Debian (.deb)
 	RPM package (.rpm)	Pacote RPM (.rpm)
+	Arch package (.pkg.tar.zst)	Pacote Arch (.pkg.tar.zst)
 	Flatpak bundle	Pacote Flatpak
 	Tarball (.tar.gz)	Arquivo (.tar.gz)
 
 # Contextual: each app's tagline, keyed by app id
+artcraft	AI image and video creation	Criação de imagens e vídeos com IA
 photocraft	Image editing	Edição de imagens
 vectorcraft	Vector illustration	Ilustração vetorial
 filmcraft	Video editing, color and sound	Edição de vídeo, cor e som
@@ -156,6 +182,9 @@ designcraft	Page layout and publishing	Diagramação de páginas e publicação
 wordcraft	Writing and document design	Escrita e design de documentos
 deckcraft	Presentations and slide shows	Apresentações e slides
 gridcraft	Spreadsheets and data	Planilhas e dados
+craft-anything	Find out how any software works, then craft your own	Descubra como qualquer software funciona e crie o seu
+solidcraft	Parametric 3D CAD	CAD 3D paramétrico
+mailcraft	Mail, calendar and contacts	E-mail, agenda e contatos
 cadcraft	Computer-aided design and drafting	Desenho técnico e projeto assistido por computador (CAD)
 soundcraft	Recording, editing and mixing audio	Gravação, edição e mixagem de áudio
 figcraft	Interface design and prototyping	Design de interfaces e prototipagem
@@ -259,6 +288,7 @@ filter	Installed	Instalados
 
 # Message templates (@msg): toasts from the backend. {placeholders} match any text.
 @msg	Couldn't open {name}: {e}	Não foi possível abrir {name}: {e}
+@msg	ArtCraft Launcher couldn't start its window on {backend}: {e}	Não foi possível iniciar a janela do ArtCraft Launcher em {backend}: {e}
 @msg	Download cancelled	Download cancelado
 @msg	{name} updated to {version}	{name} atualizado para {version}
 @msg	{name} installed: {version}	{name} instalado: {version}
@@ -266,6 +296,10 @@ filter	Installed	Instalados
 @msg	{name} installed: {version} (this release publishes no checksum, so only its size was checked)	{name} instalado: {version} (este lançamento não publica soma de verificação, então apenas o tamanho foi verificado)
 @msg	{name} was removed	{name} foi removido
 @msg	{name} is running. Quit it, then try again.	{name} está em execução. Feche-o e tente novamente.
+@msg	{name} was installed from the {repo} repository or the AUR ({pkg}). Update it with {cmd} or sudo pacman -Syu	{name} foi instalado pelo repositório {repo} ou pelo AUR ({pkg}). Atualize-o com {cmd} ou com sudo pacman -Syu
+@msg	{name} was installed from the {repo} repository or the AUR ({pkg}). Update it with your AUR helper (for example: yay -S {pkg}) or sudo pacman -Syu	{name} foi instalado pelo repositório {repo} ou pelo AUR ({pkg}). Atualize-o com seu assistente do AUR (por exemplo: yay -S {pkg}) ou com sudo pacman -Syu
+@msg	{name} was installed from the AUR ({pkg}). Update it with {cmd}	{name} foi instalado pelo AUR ({pkg}). Atualize-o com {cmd}
+@msg	{name} was installed from the AUR ({pkg}). Update it with your AUR helper (for example: yay -S {pkg})	{name} foi instalado pelo AUR ({pkg}). Atualize-o com seu assistente do AUR (por exemplo: yay -S {pkg})
 
 # Command IDs for menu items (@id)
 # Format: @id<TAB>command_id<TAB>translation
@@ -319,6 +353,7 @@ filter	Installed	Instalados
 	ArtCraft on GitHub	ArtCraft no GitHub
 	Join the ArtCraft Discord	Entrar no Discord da ArtCraft
 	App details	Detalhes do aplicativo
+	More actions for {name}	Mais ações para {name}
 	Close (Esc)	Fechar (Esc)
 	Features	Recursos
 	Latest release	Último lançamento
@@ -332,3 +367,93 @@ filter	Installed	Instalados
 	Loading pictures…	Carregando imagens…
 	Pictures couldn't be loaded. Reopen this page to try again.	Não foi possível carregar as imagens. Abra a página novamente para tentar de novo.
 @plural	ArtCraft Launcher · {n} update available|ArtCraft Launcher · {n} updates available	ArtCraft Launcher · {n} atualização disponível|ArtCraft Launcher · {n} atualizações disponíveis
+
+	Download size: {size}	Tamanho do download: {size}
+	Install folder	Pasta de instalação
+	Default install folder	Pasta de instalação padrão
+	System default	Padrão do sistema
+	Browse…	Procurar…
+	Use default	Usar padrão
+	New installs use this folder. Updates stay in their current location.	Novas instalações usam esta pasta. As atualizações mantêm o local atual.
+	Custom folders use AppImage on Linux.	Pastas personalizadas usam AppImage no Linux.
+	On Linux, custom folders use AppImage format.	Pastas personalizadas usam AppImage no Linux.
+	The system manages install locations here.	O sistema gerencia os locais de instalação neste ambiente.
+@msg	couldn't use install folder {path}: {reason}	não foi possível usar a pasta de instalação {path}: {reason}
+@msg	this release has no AppImage for a custom install folder	esta versão não tem um AppImage para uma pasta de instalação personalizada
+@msg	custom install folders aren't supported on this system	pastas de instalação personalizadas não são compatíveis com este sistema
+@msg	{path} already exists and wasn't installed by ArtCraft Launcher	{path} já existe e não foi instalado pelo ArtCraft Launcher
+@msg	couldn't move {path} to Trash ({reason}). Remove it in Finder instead.	não foi possível mover {path} para o Lixo ({reason}). Remova-o pelo Finder.
+	Apps are placed inside this folder.	Os aplicativos são colocados dentro desta pasta.
+	Replace what's there?	Substituir o que já existe?
+	{path} already exists. Installing {name} will overwrite it.	{path} já existe. Instalar o {name} vai substituí-lo.
+	Replace	Substituir
+	Recently updated	Atualizados recentemente
+	Name (A–Z)	Nome (A–Z)
+	Name (Z–A)	Nome (Z–A)
+	Frequently used	Mais usados
+	Next app	Próximo aplicativo
+	Previous app	Aplicativo anterior
+	Show {n} more changes	Mostrar mais {n} alterações
+	Last updated: {date}	Última atualização: {date}
+column	Version	Versão
+column	Author	Autor
+	Choose version	Escolher versão
+	latest {version}	mais recente {version}
+	{version} (latest release)	{version} (último lançamento)
+	Launcher version	Versão do inicializador
+	Nightly	Versão noturna
+	Nightly (none published yet)	Versão noturna (ainda não publicada)
+	Install version {version}	Instalar a versão {version}
+	Download selected version	Baixar a versão selecionada
+	Older launcher versions require a manual reinstall.	Versões antigas do inicializador exigem reinstalação manual.
+	Your files may not open in older versions.	Seus arquivos podem não abrir em versões antigas.
+	Enable automatic installs in Settings to follow new nightly builds.	Ative as instalações automáticas nas Configurações para receber as novas versões noturnas.
+texturecraft	3D texture painting	Pintura de texturas 3D
+texturecraft	Paint materials on 3D models and export textures.	Pinte materiais em modelos 3D e exporte texturas.
+texturecraft	Materials	Materiais
+texturecraft	Mesh maps	Mapas de malha
+texturecraft	Bake mesh maps and use smart materials.	Gere mapas de malha e use materiais inteligentes.
+texturecraft	Paint textures on 3D models.	Pinte texturas em modelos 3D.
+	Hide community apps	Ocultar aplicativos da comunidade
+materialcraft	Procedural material design	Design de materiais procedurais
+materialcraft	Build materials with node graphs.	Crie materiais com grafos de nós.
+materialcraft	Create tileable PBR materials and export texture maps.	Crie materiais PBR repetíveis sem emendas e exporte mapas de texturas.
+materialcraft	Node graphs	Grafos de nós
+materialcraft	Combine noises, patterns and filters.	Combine ruídos, padrões e filtros.
+materialcraft	Live previews	Pré-visualizações ao vivo
+materialcraft	Preview materials in 2D and on 3D models.	Visualize materiais em 2D e em modelos 3D.
+	Advanced	Avançado
+	Migrate Flatpak bundles to ArtCraft OCI (experimental)	Migrar pacotes Flatpak para ArtCraft OCI (experimental)
+	On update, switch first party apps when the matching package is available. Otherwise, keep using bundles.	Ao atualizar, migrar os aplicativos da ArtCraft quando o pacote correspondente estiver disponível. Caso contrário, continuar usando pacotes independentes.
+	The OCI repository is a preview with GPG verification disabled.	O repositório OCI é uma prévia com a verificação GPG desativada.
+anicraft	2D vector animation	Animação vetorial 2D
+anicraft	Vector animation on a timeline you know.	Animação vetorial em uma linha do tempo familiar.
+anicraft	Open-source 2D vector animation, built in pure Rust.	Animação vetorial 2D de código aberto, criada em Rust puro.
+anicraft	Familiar by design	Design familiar
+anicraft	Stage, tools, timeline, layers, keyframes, Properties and Library sit where animators expect them, with onion skinning for in-betweening.	Palco, ferramentas, linha do tempo, camadas, quadros-chave, Propriedades e Biblioteca onde os animadores esperam, com papel vegetal.
+anicraft	Tweens that ease	Interpolações suaves
+anicraft	Classic tweens with eight easing presets and custom ease curves, plus shape tweens that morph one vector contour into another.	Interpolações clássicas com oito predefinições de suavização e curvas personalizadas, além de interpolação de forma.
+	Version pinned to {version}. Click to unlock.	Versão fixada em {version}. Clique para desbloquear.
+	Unlock version?	Desbloquear versão?
+	{app} is pinned to {version}. Follow the latest release instead?	{app} está fixado na versão {version}. Usar a versão mais recente?
+	Unlock	Desbloquear
+
+	AI agents	Agentes de IA
+	While this is on, AI apps that use MCP, such as Claude, Cursor or LM Studio, can work with every installed Craft app through one entry. While it is off, no agent can reach them, and the entries added here are removed.	Enquanto isto estiver ativado, apps de IA que usam MCP, como Claude, Cursor ou LM Studio, podem trabalhar com todos os apps Craft instalados por meio de uma única entrada. Desativado, nenhum agente consegue alcançá-los, e as entradas adicionadas aqui são removidas.
+	Quick install	Instalação rápida
+	Adds the Craft apps to that client. Restart the client afterwards.	Adiciona os apps Craft a esse cliente. Reinicie o cliente depois.
+	Other clients	Outros clientes
+	Copy the configuration and paste it into the client's MCP settings.	Copie a configuração e cole-a nas configurações de MCP do cliente.
+	Copy JSON	Copiar JSON
+	Copy for VS Code	Copiar para o VS Code
+	Copy for Codex (TOML)	Copiar para o Codex (TOML)
+	Configuration copied.	Configuração copiada.
+	{client} loads its MCP servers only when it starts, so the Craft apps appear after a restart. Restarting closes {client}, including a reply it is still writing.	O {client} só carrega os servidores MCP ao iniciar, então os apps Craft aparecem depois de reiniciá-lo. Reiniciar fecha o {client}, inclusive uma resposta que ele ainda esteja escrevendo.
+	Restart {client}	Reiniciar {client}
+	Restarting {client}…	Reiniciando {client}…
+	The Craft gateway (craft-ai-mcp) is not installed beside the launcher.	O gateway Craft (craft-ai-mcp) não está instalado ao lado do inicializador.
+	Let AI agents use Craft apps	Permitir que agentes de IA usem os apps Craft
+	Apps agents can reach: {count}	Apps que os agentes alcançam: {count}
+	Added	Adicionado
+	Remove	Remover
+	Add	Adicionar

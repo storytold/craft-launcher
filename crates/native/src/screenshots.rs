@@ -4,7 +4,7 @@
 
 use std::path::Path;
 
-use artcraft_launcher_core::details::{AppDetails, MAX_SCREENSHOT_BYTES, looks_like_jpeg};
+use artcraft_launcher_core::details::{AppDetails, MAX_SCREENSHOT_BYTES, looks_like_jpeg, screenshot_within_budget};
 
 use crate::http::Http;
 use crate::paths::{Paths, write_atomic};
@@ -15,7 +15,7 @@ fn saved_copy(saved: &Path) -> Option<Vec<u8>> {
     if std::fs::metadata(saved).ok()?.len() > MAX_SCREENSHOT_BYTES as u64 {
         return None;
     }
-    std::fs::read(saved).ok().filter(|bytes| looks_like_jpeg(bytes))
+    std::fs::read(saved).ok().filter(|bytes| looks_like_jpeg(bytes) && screenshot_within_budget(bytes))
 }
 
 /// Why a picture couldn't be had.
@@ -38,6 +38,11 @@ fn download(http: &Http, url: &str, saved: &Path) -> Result<Vec<u8>, Failure> {
     // A captive portal's login page or a proxy's error page arrives as a 200: don't keep it.
     if !looks_like_jpeg(&bytes) {
         return Err(Failure::Picture("the answer isn't a JPEG picture".into()));
+    }
+    // A small JPEG can declare enormous dimensions; the image loader allocates from the header
+    // before decoding, so refuse anything outside the pixel budget before it is shown or saved.
+    if !screenshot_within_budget(&bytes) {
+        return Err(Failure::Picture("the picture's dimensions are too large".into()));
     }
     if let Err(e) = write_atomic(saved, &bytes) {
         log::warn!("couldn't keep {}: {e}", saved.display());
@@ -86,10 +91,25 @@ mod tests {
     use super::*;
     use crate::http::tests::{Reply, serve};
 
-    /// A body that starts like a JPEG, and its address on the test server.
+    /// A body that reads as a valid, in-budget JPEG (SOI · APP0 · SOF0 declaring 1200×750), padded
+    /// to a realistic size. Its address on the test server is returned alongside where used.
     fn jpeg() -> Vec<u8> {
-        let mut bytes = vec![0xFF, 0xD8, 0xFF, 0xE0];
+        let mut bytes = vec![0xFF, 0xD8]; // SOI
+        bytes.extend_from_slice(&[0xFF, 0xE0, 0x00, 0x04, 0x00, 0x00]); // APP0, length 4
+        bytes.extend_from_slice(&[0xFF, 0xC0, 0x00, 0x11, 0x08]); // SOF0, length 17, precision 8
+        bytes.extend_from_slice(&750u16.to_be_bytes()); // height
+        bytes.extend_from_slice(&1200u16.to_be_bytes()); // width
         bytes.extend((0..5_000u32).map(|i| (i % 251) as u8));
+        bytes
+    }
+
+    /// A tiny JPEG whose SOF0 declares a pathological 65535×65535, to exercise the pixel budget.
+    fn huge_jpeg() -> Vec<u8> {
+        let mut bytes = vec![0xFF, 0xD8];
+        bytes.extend_from_slice(&[0xFF, 0xC0, 0x00, 0x11, 0x08]);
+        bytes.extend_from_slice(&65535u16.to_be_bytes());
+        bytes.extend_from_slice(&65535u16.to_be_bytes());
+        bytes.extend_from_slice(&[0x03, 0x01, 0x11, 0x00]);
         bytes
     }
 
@@ -117,6 +137,20 @@ mod tests {
         // A server that can't be reached is the network's failure, not this picture's.
         let gone = std::net::TcpListener::bind("127.0.0.1:0").unwrap().local_addr().unwrap();
         assert!(matches!(download(&http, &format!("http://{gone}/pic.jpg"), &saved), Err(Failure::Network(_))));
+    }
+
+    #[test]
+    fn a_picture_declaring_enormous_dimensions_is_refused_and_not_saved() {
+        let dir = tempfile::tempdir().unwrap();
+        let saved = dir.path().join("pic.jpg");
+        let http = Http::new().unwrap();
+        let (url, _) = serve(huge_jpeg(), vec![Reply::Full]);
+        assert_eq!(download(&http, &url, &saved), Err(Failure::Picture("the picture's dimensions are too large".into())));
+        assert!(!saved.exists());
+        // Even if one is already on disk (e.g. from an older build), it is ignored.
+        std::fs::create_dir_all(saved.parent().unwrap()).unwrap();
+        std::fs::write(&saved, huge_jpeg()).unwrap();
+        assert_eq!(saved_copy(&saved), None, "an oversized saved copy is not trusted");
     }
 
     #[test]

@@ -1,0 +1,34 @@
+{
+  "assets": [
+    {
+      "browser_download_url": "https://github.com/storytold/texturecraft/releases/download/v0.1.0/SHA256SUMS.txt",
+      "digest": "sha256:cd6ef3c6ab6dc63a8bf3783635eb5861825e3ec20ee318373b3e50b791900aa3",
+      "name": "SHA256SUMS.txt",
+      "size": 2327
+    },
+    {
+      "browser_download_url": "https://github.com/storytold/texturecraft/releases/download/v0.1.0/texturecraft-0.1.0-linux-x86_64.flatpak",
+      "digest": "sha256:7e36e02205a9d44086cd76cce4b077e883bfb80caf19dcbdb7725faceb429cb9",
+      "name": "texturecraft-0.1.0-linux-x86_64.flatpak",
+      "size": 27105696
+    },
+    {
+      "browser_download_url": "https://github.com/storytold/texturecraft/releases/download/v0.1.0/texturecraft-0.1.0-macos-universal.dmg",
+      "digest": "sha256:12f7aff8904a80f9c86a16a8b10debfa863bee46ec9334c93582cd1caf3b3aa4",
+      "name": "texturecraft-0.1.0-macos-universal.dmg",
+      "size": 54396612
+    },
+    {
+      "browser_download_url": "https://github.com/storytold/texturecraft/releases/download/v0.1.0/texturecraft-0.1.0-windows-x64.msi",
+      "digest": "sha256:36b9bfd6db83bfef47f32f750d437cc67dc8ff0588f017682534ea5c58d4cf26",
+      "name": "texturecraft-0.1.0-windows-x64.msi",
+      "size": 29990912
+    }
+  ],
+  "draft": false,
+  "html_url": "https://github.com/storytold/texturecraft/releases/tag/v0.1.0",
+  "name": "TextureCraft v0.1.0",
+  "prerelease": false,
+  "published_at": "2026-10-24T17:22:30Z",
+  "tag_name": "v0.1.0"
+}

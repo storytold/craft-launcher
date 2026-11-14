@@ -56,8 +56,8 @@ if (-not $haveCert -and -not $haveAzure) {
 
 $script:SignTool = Find-SignTool
 $common = @('sign', '/v', '/fd', 'SHA256', '/td', 'SHA256', '/d', 'ArtCraft Launcher', '/du', 'https://github.com/storytold/craft-launcher')
-$tmp = Join-Path ([IO.Path]::GetTempPath()) "artcraft-launcher-sign-$PID"
-New-Item -ItemType Directory -Force -Path $tmp | Out-Null
+$tmp = Join-Path ([IO.Path]::GetTempPath()) "artcraft-launcher-sign-$([IO.Path]::GetRandomFileName())"
+New-Item -ItemType Directory -Path $tmp | Out-Null
 
 try {
   if ($haveCert) {
@@ -73,8 +73,15 @@ try {
     Write-Output "Signing with Azure Trusted Signing ($env:AZURE_SIGNING_ACCOUNT / $env:AZURE_CERT_PROFILE): $($Files -join ', ')"
     # The dlib authenticates with DefaultAzureCredential, which reads AZURE_TENANT_ID,
     # AZURE_CLIENT_ID and AZURE_CLIENT_SECRET from the environment.
+    $trustedSigningVersion = '1.0.95'
+    $trustedSigningSha256 = '3bfcf1e0a3cb42af1692f0a8ed45c15de070c2de86f28a59b2795d904d8a920f'
     $pkg = Join-Path $tmp 'trusted-signing.zip'
-    Invoke-WebRequest -Uri 'https://www.nuget.org/api/v2/package/Microsoft.Trusted.Signing.Client' -OutFile $pkg
+    $uri = "https://api.nuget.org/v3-flatcontainer/microsoft.trusted.signing.client/$trustedSigningVersion/microsoft.trusted.signing.client.$trustedSigningVersion.nupkg"
+    Invoke-WebRequest -Uri $uri -OutFile $pkg
+    $actualHash = (Get-FileHash -Path $pkg -Algorithm SHA256).Hash.ToLowerInvariant()
+    if ($actualHash -ne $trustedSigningSha256) {
+      throw "Microsoft.Trusted.Signing.Client $trustedSigningVersion checksum mismatch"
+    }
     Expand-Archive -Path $pkg -DestinationPath (Join-Path $tmp 'client') -Force
     $dlib = Get-ChildItem -Path (Join-Path $tmp 'client') -Recurse -Filter Azure.CodeSigning.Dlib.dll |
       Where-Object { $_.FullName -match '\\x64\\' } | Select-Object -First 1

@@ -44,7 +44,8 @@ fn unquote(v: &str) -> &str {
 }
 
 /// The distro's own package format: `.deb` for the Debian family, `.rpm` for the Fedora, Red Hat
-/// and SUSE families, `None` for anything else (Arch, unknown distros), which gets AppImages.
+/// and SUSE families, `.pkg.tar.zst` for the Arch Linux family, `None` for anything else
+/// (unknown distros), which gets AppImages.
 pub fn native_package(os: &OsRelease) -> Option<PackageKind> {
     std::iter::once(&os.id).chain(&os.id_like).find_map(|id| family(id))
 }
@@ -54,6 +55,7 @@ fn family(id: &str) -> Option<PackageKind> {
         "debian" | "ubuntu" => Some(PackageKind::Deb),
         "fedora" | "rhel" | "centos" | "suse" | "sles" => Some(PackageKind::Rpm),
         _ if id.starts_with("opensuse") => Some(PackageKind::Rpm),
+        "arch" | "manjaro" | "endeavouros" | "garuda" | "cachyos" | "artix" => Some(PackageKind::ArchPkg),
         _ => None,
     }
 }
@@ -99,7 +101,7 @@ ID_LIKE=debian
         assert_eq!(native(TUMBLEWEED), Some(PackageKind::Rpm));
         assert_eq!(native(UBUNTU), Some(PackageKind::Deb));
         assert_eq!(native(MINT), Some(PackageKind::Deb));
-        assert_eq!(native(ARCH), None);
+        assert_eq!(native(ARCH), Some(PackageKind::ArchPkg));
         assert_eq!(native(UNKNOWN), None);
         assert_eq!(native(""), None);
     }

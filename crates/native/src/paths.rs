@@ -1,5 +1,6 @@
 //! Where the launcher keeps its own files.
 
+use std::io::Write;
 use std::path::PathBuf;
 
 /// The launcher's folders.
@@ -80,9 +81,10 @@ impl Paths {
 pub fn write_atomic(path: &std::path::Path, bytes: &[u8]) -> Result<(), String> {
     let dir = path.parent().ok_or("no parent folder")?;
     std::fs::create_dir_all(dir).map_err(|e| format!("couldn't create {} ({e})", dir.display()))?;
-    let tmp = path.with_extension("tmp");
-    std::fs::write(&tmp, bytes).map_err(|e| format!("couldn't write {} ({e})", tmp.display()))?;
-    std::fs::rename(&tmp, path).map_err(|e| format!("couldn't replace {} ({e})", path.display()))
+    let mut tmp = tempfile::NamedTempFile::new_in(dir).map_err(|e| format!("couldn't create a temporary file in {} ({e})", dir.display()))?;
+    tmp.write_all(bytes).map_err(|e| format!("couldn't write {} ({e})", tmp.path().display()))?;
+    tmp.persist(path).map_err(|e| format!("couldn't replace {} ({e})", path.display()))?;
+    Ok(())
 }
 
 /// Portable mode: a `portable.txt` beside the executable keeps everything in
@@ -91,4 +93,50 @@ pub fn portable_root() -> Option<PathBuf> {
     let exe = std::env::current_exe().ok()?;
     let dir = exe.parent()?;
     dir.join("portable.txt").is_file().then(|| dir.join("ArtCraftLauncherData"))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn atomic_write_does_not_overwrite_an_unrelated_temporary_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("installed.json");
+        let unrelated = path.with_extension("tmp");
+        std::fs::write(&unrelated, b"another writer's data").unwrap();
+        write_atomic(&path, b"new manifest").unwrap();
+        assert_eq!(std::fs::read(&unrelated).unwrap(), b"another writer's data");
+        assert_eq!(std::fs::read(&path).unwrap(), b"new manifest");
+    }
+
+    #[test]
+    fn atomic_write_replaces_a_complete_file_and_cleans_up_on_failure() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("installed.json");
+        std::fs::write(&path, b"old manifest").unwrap();
+        write_atomic(&path, b"new manifest").unwrap();
+        assert_eq!(std::fs::read(&path).unwrap(), b"new manifest");
+        assert_eq!(std::fs::read_dir(dir.path()).unwrap().count(), 1);
+
+        let blocked = dir.path().join("directory.json");
+        std::fs::create_dir(&blocked).unwrap();
+        std::fs::write(blocked.join("keep.txt"), b"keep").unwrap();
+        assert!(write_atomic(&blocked, b"replacement").is_err());
+        assert_eq!(std::fs::read(blocked.join("keep.txt")).unwrap(), b"keep");
+        assert_eq!(std::fs::read_dir(dir.path()).unwrap().count(), 2);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn atomic_write_does_not_follow_a_temporary_file_symlink() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("installed.json");
+        let victim = dir.path().join("unrelated.txt");
+        std::fs::write(&victim, b"keep this file").unwrap();
+        std::os::unix::fs::symlink(&victim, path.with_extension("tmp")).unwrap();
+        write_atomic(&path, b"new manifest").unwrap();
+        assert_eq!(std::fs::read(&victim).unwrap(), b"keep this file");
+        assert_eq!(std::fs::read(&path).unwrap(), b"new manifest");
+    }
 }

@@ -8,6 +8,6 @@ TryExec=artcraft-launcher
 Icon=ai.storyteller.artcraft-launcher
 Terminal=false
 StartupNotify=true
-StartupWMClass=artcraft-launcher
+StartupWMClass=ai.storyteller.artcraft-launcher
 Categories=Utility;PackageManager;
 Keywords=artcraft;craft;launcher;installer;updater;photocraft;filmcraft;apps;

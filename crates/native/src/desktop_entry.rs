@@ -18,7 +18,11 @@ pub const MARKER: &str = "X-ArtCraft-Launcher=true";
 
 /// The menu categories and the window class each app's own `.desktop` file declares.
 pub fn meta(app: &CraftApp) -> (&'static str, Option<&'static str>) {
+    if let Some(meta) = artcraft_launcher_core::hosted_catalog::metadata(app.id) {
+        return (meta.desktop_categories.as_str(), Some(meta.startup_wm_class.as_str()));
+    }
     match app.id {
+        "artcraft" => ("Graphics;AudioVideo;2DGraphics;", Some("artcraft")),
         "photocraft" => ("Graphics;2DGraphics;RasterGraphics;Photography;", Some("photocraft")),
         "pdfcraft" => ("Office;Viewer;", Some("pdfcraft")),
         "lightcraft" => ("Graphics;2DGraphics;RasterGraphics;Photography;", None),
@@ -26,12 +30,16 @@ pub fn meta(app: &CraftApp) -> (&'static str, Option<&'static str>) {
         "designcraft" => ("Graphics;Publishing;", None),
         "vectorcraft" => ("Graphics;2DGraphics;VectorGraphics;", None),
         "effectcraft" => ("AudioVideo;Video;Graphics;2DGraphics;", None),
+        "anicraft" => ("Graphics;2DGraphics;VectorGraphics;AudioVideo;", Some("anicraft")),
         "wordcraft" => ("Office;WordProcessor;", None),
         "deckcraft" => ("Office;Presentation;", None),
         "gridcraft" => ("Office;Spreadsheet;", None),
         "cadcraft" => ("Graphics;Engineering;VectorGraphics;", None),
         "soundcraft" => ("AudioVideo;Audio;Midi;Mixer;Sequencer;Recorder;", None),
         "figcraft" => ("Graphics;2DGraphics;VectorGraphics;X-Design;", Some("figcraft")),
+        "texturecraft" => ("Graphics;3DGraphics;", Some("texturecraft")),
+        "materialcraft" => ("Graphics;3DGraphics;", Some("materialcraft")),
+        "craft-anything" => ("Development;Debugger;", None),
         _ => ("Graphics;", None),
     }
 }
@@ -39,10 +47,11 @@ pub fn meta(app: &CraftApp) -> (&'static str, Option<&'static str>) {
 /// `path` as one quoted argument of an `Exec=` key, per the Desktop Entry spec: inside double
 /// quotes `"`, `` ` ``, `$` and `\` take a backslash, then the string-value rule doubles every
 /// backslash, and `%` (field codes) is written `%%`. `None` for paths that can't be written
-/// safely (not UTF-8, or holding a control character such as a line break).
+/// safely (not UTF-8, holding a control character such as a line break, or holding `=`, which the
+/// spec forbids in the executable name or path even when quoted).
 pub fn exec_quote(path: &Path) -> Option<String> {
     let s = path.to_str()?;
-    if s.chars().any(char::is_control) {
+    if s.chars().any(|c| c.is_control() || c == '=') {
         return None;
     }
     let mut out = String::with_capacity(s.len() + 2);
@@ -164,6 +173,8 @@ mod tests {
         assert_eq!(exec_quote(Path::new("/a/\"q\" $HOME `x`.AppImage")).unwrap(), r#""/a/\\"q\\" \\$HOME \\`x\\`.AppImage""#);
         assert_eq!(exec_quote(Path::new(r"/a\b/100%.AppImage")).unwrap(), r#""/a\\\\b/100%%.AppImage""#);
         assert_eq!(exec_quote(Path::new("/a/line\nbreak.AppImage")), None);
+        // The spec forbids `=` in the executable name or path, even quoted.
+        assert_eq!(exec_quote(Path::new("/opt/artcraft=beta/app")), None);
         assert!(render(app("photocraft"), Path::new("/a/line\nbreak.AppImage"), true).is_none());
     }
 

@@ -17,17 +17,24 @@ macro_rules! tl {
 }
 
 mod app;
+mod bar;
+mod card_parts;
 #[cfg(not(target_arch = "wasm32"))]
 mod cjk_font;
 mod details;
 mod dialogs;
 pub mod i18n;
 pub mod icons;
+mod install_target;
+mod local_time;
 pub mod model;
 mod motion;
 mod notes;
 pub mod settings;
+mod settings_dialog;
+mod sheet;
 pub mod theme;
+mod versions;
 mod views;
 mod widgets;
 

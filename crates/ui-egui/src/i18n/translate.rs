@@ -30,6 +30,8 @@ pub fn t(s: &str) -> &str {
 
 /// Translate an English UI string; unknown strings come back unchanged.
 pub fn tr(lang: Lang, s: &str) -> &str {
+    #[cfg(test)]
+    strict::check(lang);
     lang.catalog().plain(s).unwrap_or(s)
 }
 
@@ -48,12 +50,25 @@ pub fn t_id<'a>(id: &str, label: &'a str) -> &'a str {
     tr_id(current(), id, label)
 }
 
-/// Fill `{name}` placeholders. Unknown placeholders are left as written.
+#[cfg(test)]
+pub(crate) use strict::{StrictCjkDrawing, drew_cjk};
+
+/// Fill `{name}` placeholders in one pass. Values and unknown placeholders stay as written.
 pub fn fmt(template: &str, args: &[(&str, &str)]) -> String {
-    let mut out = template.to_string();
-    for (k, v) in args {
-        out = out.replace(&format!("{{{k}}}"), v);
+    let mut out = String::with_capacity(template.len());
+    let mut rest = template;
+    while let Some((before, after)) = rest.split_once('{') {
+        out.push_str(before);
+        let filled = after.split_once('}').and_then(|(name, tail)| args.iter().find(|(k, _)| *k == name).map(|(_, v)| (*v, tail)));
+        if let Some((value, tail)) = filled {
+            out.push_str(value);
+            rest = tail;
+        } else {
+            out.push('{');
+            rest = after;
+        }
     }
+    out.push_str(rest);
     out
 }
 
@@ -82,7 +97,7 @@ pub fn message(lang: Lang, s: &str) -> String {
 /// [`message`] in the current language, remembering the last answer: the status bar asks for the
 /// same message every frame.
 pub fn msg(s: &str) -> String {
-    static LAST: std::sync::Mutex<Option<(&'static str, String, String)>> = std::sync::Mutex::new(None);
+    static LAST: std::sync::Mutex<Option<(&str, String, String)>> = std::sync::Mutex::new(None);
     let lang = current();
     let mut last = LAST.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
     if let Some((code, src, out)) = last.as_ref()
@@ -94,4 +109,66 @@ pub fn msg(s: &str) -> String {
     let out = message(lang, s);
     *last = Some((lang.code(), s.to_string(), out.clone()));
     out
+}
+
+/// A test-only strict drawing policy: while a [`StrictCjkDrawing`] guard is in scope, translating
+/// text into a CJK language whose own face is not the one installed in the drawing context panics,
+/// instead of quietly drawing tofu. It is how a unit test proves a frame cannot select Chinese
+/// before the next pass's font gate has installed the face.
+#[cfg(test)]
+mod strict {
+    use std::cell::Cell;
+
+    use super::Lang;
+
+    thread_local! {
+        /// `Some(installed)` while the policy is on, where `installed` is the CJK language whose
+        /// face the context has (`None` when it has no CJK face).
+        static POLICY: Cell<Option<Option<Lang>>> = const { Cell::new(None) };
+        /// Whether any CJK text was translated while the policy was on. Cleared by each guard.
+        static DREW_CJK: Cell<bool> = const { Cell::new(false) };
+    }
+
+    /// Turns the strict policy on for this thread and restores the previous policy on drop.
+    pub(crate) struct StrictCjkDrawing {
+        previous: Option<Option<Lang>>,
+    }
+
+    impl StrictCjkDrawing {
+        /// `installed` is the CJK language whose face the drawing context has, if any.
+        pub(crate) fn on(installed: Option<Lang>) -> Self {
+            DREW_CJK.with(|drawn| drawn.set(false));
+            let previous = POLICY.with(|policy| policy.replace(Some(installed)));
+            Self { previous }
+        }
+    }
+
+    impl Drop for StrictCjkDrawing {
+        fn drop(&mut self) {
+            POLICY.with(|policy| policy.set(self.previous.take()));
+        }
+    }
+
+    /// Called from [`super::tr`] before a string is drawn.
+    pub(crate) fn check(lang: Lang) {
+        let _ = POLICY.try_with(|policy| {
+            let Some(installed) = policy.get() else { return };
+            if !lang.needs_cjk_font() {
+                return;
+            }
+            DREW_CJK.with(|drawn| drawn.set(true));
+            assert_eq!(
+                installed,
+                Some(lang),
+                "strict CJK drawing policy: {} text was drawn while the context had {:?}; a CJK face is drawable only after the font gate's next pass",
+                lang.code(),
+                installed.map(Lang::code),
+            );
+        });
+    }
+
+    /// Whether CJK text was translated while the most recent guard was on.
+    pub(crate) fn drew_cjk() -> bool {
+        DREW_CJK.with(|drawn| drawn.get())
+    }
 }
