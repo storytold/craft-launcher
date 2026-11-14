@@ -84,7 +84,9 @@ impl Tokens {
         ink: hex(0xf2f1ee),
         ink_strong: hex(0xffffff),
         muted: ink_alpha(0xf2f1ee, 153),
-        faint: ink_alpha(0xf2f1ee, 97),
+        // Labels are text too: faint is the lightest ink that still reads at WCAG AA (4.5:1) on bg
+        // and on sunken (badges, wells, row hovers).
+        faint: ink_alpha(0xf2f1ee, 123),
         line: ink_alpha(0xf2f1ee, 38),
         line_strong: ink_alpha(0xf2f1ee, 102),
         accent: hex(0x2d81ff),
@@ -103,8 +105,10 @@ impl Tokens {
         sunken: hex(0xe9e8e4),
         ink: hex(0x101014),
         ink_strong: hex(0x000000),
-        muted: ink_alpha(0x101014, 158),
-        faint: ink_alpha(0x101014, 107),
+        // Muted and faint keep the dark appearance's contrast: about 6.4:1 and 4.5:1 (AA), on bg
+        // and on sunken.
+        muted: ink_alpha(0x101014, 175),
+        faint: ink_alpha(0x101014, 151),
         line: ink_alpha(0x101014, 41),
         line_strong: ink_alpha(0x101014, 102),
         accent: hex(0x2d81ff),
@@ -221,14 +225,35 @@ pub fn apply(ctx: &egui::Context, choice: ThemeChoice) {
         style.spacing.window_margin = egui::Margin::same(4);
         style.text_styles = [
             (TextStyle::Heading, FontId::new(24.0, display())),
+            // Plain labels stay at 14: the table's columns are sized to it (the longest dates fit).
             (TextStyle::Body, FontId::new(14.0, FontFamily::Proportional)),
-            (TextStyle::Button, FontId::new(13.5, medium())),
-            (TextStyle::Small, FontId::new(12.0, FontFamily::Proportional)),
+            (TextStyle::Button, FontId::new(TEXT_BODY, medium())),
+            (TextStyle::Small, FontId::new(TEXT_CAPTION, FontFamily::Proportional)),
             (TextStyle::Monospace, FontId::new(13.0, FontFamily::Monospace)),
         ]
         .into();
     });
 }
+
+// ---- type scale --------------------------------------------------------------------------------
+// Every text size the UI uses, largest first, about a tenth apart, so neighbouring steps read as
+// different sizes (no 14 next to 14.5). Within a step, weight and colour set text apart. The page,
+// sheet and dialog titles above these are `PAGE_TITLE`, `SHEET_TITLE` and `DIALOG_TITLE`.
+
+/// An app's name on its card (Archivo display).
+pub const TEXT_NAME: f32 = 22.0;
+/// A small dialog's title (Inter 600).
+pub const TEXT_TITLE: f32 = 18.0;
+/// An app page's headline and a feature's title.
+pub const TEXT_LEAD: f32 = 16.0;
+/// Long-form reading: an app page's paragraphs and facts.
+pub const TEXT_READING: f32 = 14.5;
+/// The tagline beside a name (Inter 500, ink), descriptions (Inter 400, muted), buttons' text style.
+pub const TEXT_BODY: f32 = 13.5;
+/// Dates, notes and captions (Inter 400, muted).
+pub const TEXT_CAPTION: f32 = 12.0;
+/// Line height of wrapped body text, as a multiple of its size.
+pub const BODY_LEADING: f32 = 1.45;
 
 /// Height of buttons, inputs and filter cells (the site's medium button).
 pub const CONTROL_H: f32 = 34.0;
@@ -236,8 +261,9 @@ pub const CONTROL_H: f32 = 34.0;
 /// The site's `.hud-label`: 11 px Geist Mono 500, upper case, 0.15 em apart.
 pub const HUD_SIZE: f32 = 11.0;
 pub const HUD_SPACING: f32 = HUD_SIZE * 0.15;
-/// Buttons: 11 px Geist Mono 700, upper case, 0.12 em apart.
-pub const BUTTON_SPACING: f32 = HUD_SIZE * 0.12;
+/// Buttons: 11 px Geist Mono 700, upper case, 0.10 em apart: a touch tighter than the labels, as
+/// bold capitals read wider than medium ones.
+pub const BUTTON_SPACING: f32 = HUD_SIZE * 0.10;
 
 // ---- layout ------------------------------------------------------------------------------------
 // The app page and the large dialogs (Settings, release notes) share these, so they read as one
@@ -499,6 +525,56 @@ mod tests {
                     "{family:?} lacks a glyph in the representative dynamic notes/feed fixture"
                 );
             });
+        }
+    }
+
+    /// WCAG relative luminance of an sRGB colour.
+    fn luminance(c: Color32) -> f64 {
+        let lin = |v: u8| {
+            let v = f64::from(v) / 255.0;
+            if v <= 0.040_45 { v / 12.92 } else { ((v + 0.055) / 1.055).powf(2.4) }
+        };
+        0.2126 * lin(c.r()) + 0.7152 * lin(c.g()) + 0.0722 * lin(c.b())
+    }
+
+    /// `ink` (possibly translucent) laid over the opaque `bg`, as drawn.
+    fn over(ink: Color32, bg: Color32) -> Color32 {
+        let [r, g, b, a] = ink.to_srgba_unmultiplied();
+        let a = f32::from(a) / 255.0;
+        let mix = |f: u8, b: u8| (f32::from(f) * a + f32::from(b) * (1.0 - a)).round() as u8;
+        Color32::from_rgb(mix(r, bg.r()), mix(g, bg.g()), mix(b, bg.b()))
+    }
+
+    fn contrast(ink: Color32, bg: Color32) -> f64 {
+        let (a, b) = (luminance(over(ink, bg)), luminance(bg));
+        (a.max(b) + 0.05) / (a.min(b) + 0.05)
+    }
+
+    /// Every ink that sets text (body, secondary, labels) reads at WCAG AA, 4.5:1, on the page and
+    /// on its sunken wells in both appearances; secondary text stays a clear step above labels.
+    #[test]
+    fn text_inks_meet_wcag_aa_on_the_page() {
+        for t in [Tokens::DARK, Tokens::LIGHT] {
+            for (surface, bg) in [("bg", t.bg), ("sunken", t.sunken)] {
+                for (name, ink) in [("ink", t.ink), ("muted", t.muted), ("faint", t.faint), ("accent_ink", t.accent_ink)] {
+                    let ratio = contrast(ink, bg);
+                    assert!(ratio >= 4.5, "{name} on {surface} (dark: {}) is {ratio:.2}:1", t.dark);
+                }
+            }
+            assert!(contrast(t.muted, t.bg) - contrast(t.faint, t.bg) >= 1.5, "muted and faint must stay apart (dark: {})", t.dark);
+        }
+    }
+
+    /// The keyboard focus ring (`widgets::focus_ring`, `t.accent`) stands out at WCAG's 3:1 for
+    /// non-text marks against every fill a focusable control has: the page, a hovered or sunken
+    /// control, and a selected or primary one in the inverted colours.
+    #[test]
+    fn the_focus_ring_reads_on_every_control_fill() {
+        for t in [Tokens::DARK, Tokens::LIGHT] {
+            for (fill, bg) in [("bg", t.bg), ("sunken", t.sunken), ("invert_bg", t.invert_bg)] {
+                let ratio = contrast(t.accent, bg);
+                assert!(ratio >= 3.0, "focus ring on {fill} (dark: {}) is {ratio:.2}:1", t.dark);
+            }
         }
     }
 }

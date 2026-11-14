@@ -43,7 +43,7 @@ fn row(ui: &mut Ui, label: &str, control_width: f32, add: &mut dyn FnMut(&mut Ui
 
 fn note(ui: &mut Ui, text: &str) {
     let t = Tokens::get(ui.ctx());
-    ui.label(RichText::new(text).size(12.0).color(t.muted));
+    ui.label(RichText::new(text).size(theme::TEXT_CAPTION).color(t.muted));
 }
 
 impl LauncherUi {
@@ -163,7 +163,7 @@ impl LauncherUi {
             // In English on purpose: the language asked for can't be drawn.
             let text = "No font for this language was found on this system, so the interface stays in English. \
                         Installing one (for example Noto Sans CJK or Noto Sans Georgian) and restarting fixes it.";
-            ui.add(egui::Label::new(RichText::new(text).size(12.0).color(t.warn)).wrap());
+            ui.add(egui::Label::new(RichText::new(text).size(theme::TEXT_CAPTION).color(t.warn)).wrap());
             ui.add_space(14.0);
         }
     }

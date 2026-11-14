@@ -292,12 +292,8 @@ impl LauncherUi {
         let facts = version_facts(r.published_at.map(crate::views::date_text), self.version_asset(app, r).map(|a| a.size));
         let mut button = egui::Button::selectable(selected, text).min_size(size);
         if !facts.is_empty() {
-            let galley = egui::WidgetText::from(RichText::new(&facts).size(12.5).color(egui::Color32::PLACEHOLDER)).into_galley(
-                ui,
-                Some(egui::TextWrapMode::Extend),
-                f32::INFINITY,
-                egui::TextStyle::Body,
-            );
+            let galley = egui::WidgetText::from(RichText::new(&facts).size(crate::theme::TEXT_CAPTION).color(egui::Color32::PLACEHOLDER))
+                .into_galley(ui, Some(egui::TextWrapMode::Extend), f32::INFINITY, egui::TextStyle::Body);
             let muted = Tokens::get(ui.ctx()).muted;
             // Painted, not a text atom: a text atom would join the row's name.
             button = button.right_text(egui::Atom::paint(galley.size(), move |ui, args| {
