@@ -477,6 +477,8 @@ impl LauncherUi {
             versions: self.settings.versions.clone(),
             launcher_version: self.settings.launcher_version.clone(),
             install_locations: self.settings.install_locations.clone(),
+            discord_presence: self.settings.discord_presence,
+            discord_file_names: self.settings.discord_file_names,
         };
         if self.sent_options.as_ref() != Some(&options) {
             self.backend.send(Command::Configure(options.clone()));

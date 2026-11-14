@@ -136,6 +136,10 @@ pub struct Settings {
     /// Extra command-line flags each app is opened with (catalog id → the text as typed, split
     /// by [`args::split`](artcraft_launcher_core::args::split) at launch).
     pub launch_flags: BTreeMap<String, String>,
+    /// Show the Craft App opened from the launcher on the person's Discord profile.
+    pub discord_presence: bool,
+    /// With it, the name of the file the app has open.
+    pub discord_file_names: bool,
 }
 
 impl Settings {
@@ -272,6 +276,8 @@ impl Default for Settings {
             launches: BTreeMap::new(),
             pinned: Vec::new(),
             launch_flags: BTreeMap::new(),
+            discord_presence: false,
+            discord_file_names: false,
         }
     }
 }

@@ -11,6 +11,7 @@ pub mod agents;
 pub mod backend;
 pub mod desktop_entry;
 pub mod detect;
+pub mod discord;
 pub mod feed_throttle;
 pub mod hosted_catalog;
 pub mod http;

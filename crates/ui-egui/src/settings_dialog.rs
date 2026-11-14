@@ -336,7 +336,8 @@ impl LauncherUi {
     }
 
     /// Community links (Discord, website, GitHub and the social icons) opened through the safe
-    /// external-link path; it queues no app actions.
+    /// external-link path, and on a desktop host the Discord status choices (the open file's name
+    /// only on Windows, where the backend can read it); it queues no app actions.
     fn settings_community(&mut self, ui: &mut Ui) {
         let t = Tokens::get(ui.ctx());
         sheet::panel(ui, tl!("Community"), |ui| {
@@ -359,6 +360,18 @@ impl LauncherUi {
                     widgets::social_icons(ui, 16.0);
                 });
             });
+            // Discord's status is set through its desktop app, which only the desktop launcher reaches.
+            if self.caps.manage_apps {
+                ui.add_space(6.0);
+                ui.checkbox(&mut self.settings.discord_presence, tl!("Show the app I'm using on my Discord profile"));
+                // Reading the open file's name from the app's window title is Windows only.
+                if self.platform.is_some_and(|p| p.os == Os::Windows) {
+                    ui.add_enabled_ui(self.settings.discord_presence, |ui| {
+                        ui.checkbox(&mut self.settings.discord_file_names, tl!("Also show the name of the open file"));
+                    });
+                }
+                note(ui, tl!("Discord shows the app's name and how long it has been open. Never a folder."));
+            }
         });
     }
 

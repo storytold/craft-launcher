@@ -428,3 +428,6 @@ anicraft	Classic tweens with eight easing presets and custom ease curves, plus s
 	Added	已加入
 	Remove	移除
 	Add	加入
+	Show the app I'm using on my Discord profile	在我的 Discord 個人檔案上顯示正在使用的應用程式
+	Also show the name of the open file	同時顯示開啟中的檔案名稱
+	Discord shows the app's name and how long it has been open. Never a folder.	Discord 會顯示應用程式名稱和已開啟的時間，絕不顯示資料夾。

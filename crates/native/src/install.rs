@@ -844,8 +844,10 @@ fn remove_appimage(app: &CraftApp, path: &Path, record: Option<&Record>) -> Resu
     Ok(())
 }
 
-/// Starts an installed app with `args` (the user's launch flags) on its command line.
-pub fn launch(app: &CraftApp, installed: &Installed, paths: &Paths, args: &[String]) -> Result<(), String> {
+/// Starts an installed app with `args` (the user's launch flags) on its command line, calling
+/// `on_exit` once it has quit. Gives the id of the process it started (the app itself, or what
+/// runs it: `flatpak`, macOS' `open`).
+pub fn launch(app: &CraftApp, installed: &Installed, paths: &Paths, args: &[String], on_exit: impl FnOnce() + Send + 'static) -> Result<u32, String> {
     let _ = paths;
     let path = Path::new(&installed.location);
     // Every app is told where the shared version-choice file is (see `craft_update::pins`), so
@@ -853,7 +855,7 @@ pub fn launch(app: &CraftApp, installed: &Installed, paths: &Paths, args: &[Stri
     // or a launcher whose data folder moved.
     let pins = craft_update::pins::Pins::default_path();
     let env: Vec<(&str, &std::ffi::OsStr)> = pins.iter().map(|p| (craft_update::pins::PATH_ENV, p.as_os_str())).collect();
-    match installed.source {
+    let cmd = match installed.source {
         InstallSource::Flatpak => {
             let mut cmd = process::flatpak_command();
             cmd.arg("run");
@@ -862,7 +864,7 @@ pub fn launch(app: &CraftApp, installed: &Installed, paths: &Paths, args: &[Stri
             cmd.arg(installed.package.clone().unwrap_or_else(|| app.bundle_id()));
             // After the app's id: flags before it would go to `flatpak run` itself.
             cmd.args(args);
-            process::spawn_detached(cmd)
+            cmd
         }
         // `open` starts the app through Launch Services, which gives it the user's real home, so
         // it finds the file at its default path; not every macOS `open` takes an environment.
@@ -886,7 +888,7 @@ pub fn launch(app: &CraftApp, installed: &Installed, paths: &Paths, args: &[Stri
             if let Some(dir) = path.parent() {
                 cmd.current_dir(dir);
             }
-            process::spawn_detached(cmd)
+            cmd
         }
         _ if cfg!(target_os = "macos") && path.extension().is_some_and(|e| e == "app") => process::open_app(path, args),
         _ => {
@@ -899,10 +901,10 @@ pub fn launch(app: &CraftApp, installed: &Installed, paths: &Paths, args: &[Stri
                 }
                 return Err(format!("{} isn't where it was installed ({})", app.name, path.display()));
             }
-            process::launch_binary_with_env(path, args, &env)
+            process::binary_command(path, args, &env)
         }
-    }
-    .map_err(|e| format!("Couldn't open {}: {e}", app.name))
+    };
+    process::spawn_watched(cmd, on_exit).map_err(|e| format!("Couldn't open {}: {e}", app.name))
 }
 
 /// Whether `location` names a program that is really there. Only a full path counts: detection

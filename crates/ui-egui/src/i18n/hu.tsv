@@ -470,3 +470,6 @@ anicraft	Classic tweens with eight easing presets and custom ease curves, plus s
 	Added	Hozzáadva
 	Remove	Eltávolítás
 	Add	Hozzáadás
+	Show the app I'm using on my Discord profile	A használt alkalmazás megjelenítése a Discord-profilomon
+	Discord shows the app's name and how long it has been open. Never a folder.	A Discord az alkalmazás nevét és azt mutatja, mióta van megnyitva. Mappát soha.
+	Also show the name of the open file	A megnyitott fájl nevének megjelenítése is

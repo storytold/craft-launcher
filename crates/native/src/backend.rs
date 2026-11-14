@@ -239,6 +239,8 @@ pub struct NativeBackend {
     /// The version-choice file the apps read (see [`crate::pins`]); `None` when there is no
     /// per-user data folder.
     pins: Option<std::path::PathBuf>,
+    /// Shows the running app on Discord, when the person has asked for it.
+    presence: crate::discord::Presence,
 }
 
 impl NativeBackend {
@@ -288,7 +290,7 @@ impl NativeBackend {
         if let Some(path) = &pins {
             crate::pins::prepare_folder(path);
         }
-        let backend = Self { shared, paths, http, source, platform: native_platform(), pins };
+        let backend = Self { shared, paths, http, source, platform: native_platform(), pins, presence: crate::discord::Presence::new() };
         backend.replay_cache();
         backend.detect_all();
         backend
@@ -1577,7 +1579,20 @@ impl Backend for NativeBackend {
             Command::Launch { app, args } => {
                 let Some(def) = CraftApp::by_id(&app) else { return };
                 let result = match self.installed(&app) {
-                    Some(inst) => install::launch(def, &inst, &self.paths, &args),
+                    Some(inst) => {
+                        let presence = self.presence.clone();
+                        let token = presence.started(def);
+                        match install::launch(def, &inst, &self.paths, &args, move || presence.exited(token)) {
+                            Ok(pid) => {
+                                self.presence.opened(token, pid);
+                                Ok(())
+                            }
+                            Err(e) => {
+                                self.presence.exited(token);
+                                Err(e)
+                            }
+                        }
+                    }
                     None => Err(format!("{} isn't installed", def.name)),
                 };
                 if let Err(e) = result {
@@ -1618,6 +1633,8 @@ impl Backend for NativeBackend {
                 }
                 // Another package format means another file to download.
                 self.replan();
+                let options = self.options();
+                self.presence.set_enabled(options.discord_presence, options.discord_file_names);
                 if changed_pre {
                     self.check(true);
                 }
@@ -2228,7 +2245,15 @@ mod tests {
         let shared = shared();
         shared.latest.lock().unwrap().insert(APP.to_string(), release("0.5.0"));
         let shared = Arc::new(shared);
-        NativeBackend { shared, paths: Paths::under(root), http: None, source, platform: Some(platform), pins: Some(root.join("versions.json")) }
+        NativeBackend {
+            shared,
+            paths: Paths::under(root),
+            http: None,
+            source,
+            platform: Some(platform),
+            pins: Some(root.join("versions.json")),
+            presence: crate::discord::Presence::new(),
+        }
     }
 
     /// What the installability answers in `events` said about [`APP`], and which `Latest` and

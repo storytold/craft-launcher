@@ -472,3 +472,6 @@ anicraft	Classic tweens with eight easing presets and custom ease curves, plus s
 	Added	追加済み
 	Remove	削除
 	Add	追加
+	Show the app I'm using on my Discord profile	使用中のアプリを Discord のプロフィールに表示する
+	Discord shows the app's name and how long it has been open. Never a folder.	Discord に表示されるのはアプリ名と開いてからの時間です。フォルダーは表示されません。
+	Also show the name of the open file	開いているファイルの名前も表示する
