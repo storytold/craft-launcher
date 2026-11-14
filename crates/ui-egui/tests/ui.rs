@@ -4320,6 +4320,239 @@ fn an_apps_page_is_a_card_in_the_middle_with_next_and_previous_arrows_and_closes
     assert!(!showing(&h, "photocraft"), "a click outside did not close it");
 }
 
+#[test]
+fn scrolling_an_apps_page_compacts_the_hero_and_keeps_navigation_and_actions_visible() {
+    use artcraft_launcher_core::details::AppDetails;
+    let mut h = short_window(Rc::new(Cell::new(false)));
+    h.set_size(egui::vec2(1180.0, 720.0));
+    h.run_steps(16);
+    h.get_by_label("PhotoCraft details").click();
+    h.run_steps(20);
+
+    let headline = AppDetails::by_id("photocraft").unwrap().headline;
+    assert!(h.query_all_by_label_contains(headline).count() >= 2, "expanded hero shows the headline");
+    assert!(h.query_by_label("Website ↗").is_some(), "expanded hero shows external links");
+    let close_before = h.get_by_label("Close (Esc)").rect();
+    let lead_before = h.get_by_label("Enlarge picture").rect();
+
+    let hero_action = |h: &Harness<'_, _>| {
+        h.query_all_by_label("More actions for PhotoCraft").map(|n| n.rect()).min_by(|a, b| a.top().total_cmp(&b.top())).expect("hero action button")
+    };
+    let action_before = hero_action(&h);
+
+    // First scroll minimizes the hero bar without scrolling the body content yet,
+    // smoothly gliding the primary action button from its expanded slot into the compact bar.
+    turn_wheel(&mut h, 8.0);
+    h.run_steps(4);
+    let action_mid = hero_action(&h);
+    h.run_steps(45);
+    let action_compact = hero_action(&h);
+    assert!(
+        action_mid.top() < action_before.top() - 2.0 && action_mid.top() > action_compact.top() + 2.0,
+        "primary action glides vertically instead of snapping: before={action_before:?} mid={action_mid:?} compact={action_compact:?}"
+    );
+    assert!(
+        action_mid.right() < action_before.right() - 2.0 && action_mid.right() > action_compact.right() + 2.0,
+        "primary action glides horizontally instead of snapping: before={action_before:?} mid={action_mid:?} compact={action_compact:?}"
+    );
+
+    // Navigation (< > ×), app name and primary action stay visible at the top of the card,
+    // while the headline, version and external links hide so the body gets more room.
+    let close_scrolled = h.get_by_label("Close (Esc)").rect();
+    let next_scrolled = h.get_by_label("Next app").rect();
+    let prev_scrolled = h.get_by_label("Previous app").rect();
+    let lead_after_minimize = h.get_by_label("Enlarge picture").rect();
+    assert!(close_scrolled.top() >= 0.0 && close_scrolled.bottom() <= 120.0, "{close_scrolled:?}");
+    assert!((close_scrolled.center().y - next_scrolled.center().y).abs() < 2.0);
+    assert!((close_scrolled.center().y - prev_scrolled.center().y).abs() < 2.0);
+    assert!((close_scrolled.top() - close_before.top()).abs() < 20.0, "controls stay near the top edge");
+    assert!(h.query_by_label("Website ↗").is_none(), "compact hero hides external links");
+    assert_eq!(h.query_all_by_label_contains(headline).count(), 1, "only the background card still has the headline");
+    assert!(lead_after_minimize.top() < lead_before.top(), "minimizing the bar rises the body into the freed space");
+    // The compact bar's bottom is 12 px below the close button, and the body starts 24 px (PAD) below that:
+    // no content has scrolled off under the bar yet.
+    let compact_bar_bottom = close_scrolled.bottom() + 12.0;
+    assert!((lead_after_minimize.top() - (compact_bar_bottom + 24.0)).abs() < 2.0, "body stays at offset 0 until minimized: {lead_after_minimize:?}");
+    h.check_accessibility();
+
+    // Second scroll (now that the bar is minimized) scrolls the body content itself.
+    turn_wheel(&mut h, 8.0);
+    h.run_steps(45);
+    let lead_after_scroll = h.get_by_label("Enlarge picture").rect();
+    assert!(lead_after_scroll.top() < lead_after_minimize.top() - 40.0, "subsequent scroll moves the body content: {lead_after_scroll:?}");
+
+    // Scrolling back to the top restores the full hero.
+    turn_wheel(&mut h, -16.0);
+    h.run_steps(45);
+    assert!(h.query_by_label("Website ↗").is_some(), "scrolling back to top restores external links");
+    assert!(h.query_all_by_label_contains(headline).count() >= 2, "scrolling back to top restores the headline");
+
+    // Dragging the scroll bar thumb down and back up with the mouse smoothly collapses the hero,
+    // scrolls the body, and restores the full hero at the top.
+    let bar_x = close_before.right() + 24.0 + 5.0;
+    let start_pos = egui::pos2(bar_x, 60.0);
+    h.hover_at(start_pos);
+    h.run_steps(2);
+    h.drag_at(start_pos);
+    h.run_steps(2);
+    for step in 1..=15 {
+        let y = 60.0 + (step as f32) * 20.0;
+        h.hover_at(egui::pos2(bar_x, y));
+        h.run_steps(2);
+        let action = hero_action(&h);
+        let prev = h.get_by_label("Previous app").rect();
+        assert!(!action.intersects(prev), "action button must never overlap previous button while dragging: action={action:?} prev={prev:?}");
+    }
+    let lead_dragged_down = h.get_by_label("Enlarge picture").rect();
+    assert!(h.query_by_label("Website ↗").is_none(), "dragging the scroll bar down compacts the hero");
+    assert!(lead_dragged_down.top() < lead_after_minimize.top() - 40.0, "dragging the scroll bar down scrolls the body: {lead_dragged_down:?}");
+
+    for step in (0..15).rev() {
+        let y = 60.0 + (step as f32) * 20.0;
+        h.hover_at(egui::pos2(bar_x, y));
+        h.run_steps(2);
+        let action = hero_action(&h);
+        let prev = h.get_by_label("Previous app").rect();
+        assert!(!action.intersects(prev), "action button must never overlap previous button while dragging up: action={action:?} prev={prev:?}");
+    }
+    h.drop_at(start_pos);
+    h.run_steps(4);
+    let lead_dragged_up = h.get_by_label("Enlarge picture").rect();
+    assert!(h.query_by_label("Website ↗").is_some(), "dragging the scroll bar back to the top restores external links");
+    assert!(h.query_all_by_label_contains(headline).count() >= 2, "dragging the scroll bar back to the top restores the headline");
+    assert!((lead_dragged_up.top() - lead_before.top()).abs() < 2.0, "body returns to the top after dragging the scroll bar up: {lead_dragged_up:?}");
+}
+
+#[test]
+fn details_hero_collapse_threshold_transitions_bar_before_body_scrolls() {
+    use artcraft_launcher_core::details::AppDetails;
+    let mut h = short_window(Rc::new(Cell::new(false)));
+    h.set_size(egui::vec2(1180.0, 720.0));
+    h.run_steps(16);
+    h.get_by_label("PhotoCraft details").click();
+    h.run_steps(45);
+
+    let headline = AppDetails::by_id("photocraft").unwrap().headline;
+    let close = h.get_by_label("Close (Esc)").rect();
+    let lead_before = h.get_by_label("Enlarge picture").rect();
+    let bar_x = close.right() + 24.0 + 5.0;
+    let start_pos = egui::pos2(bar_x, 60.0);
+
+    // Initial state: fully expanded hero shows headline and external links.
+    assert!(h.query_all_by_label_contains(headline).count() >= 2);
+    assert!(h.query_by_label("Website ↗").is_some());
+
+    // Drag slightly down, staying below the collapse threshold:
+    // the bar starts compacting, but external links remain visible.
+    h.hover_at(start_pos);
+    h.run_steps(2);
+    h.drag_at(start_pos);
+    h.run_steps(2);
+    h.hover_at(egui::pos2(bar_x, 100.0));
+    h.run_steps(4);
+    assert!(h.query_by_label("Website ↗").is_some(), "below collapse threshold, external links remain visible");
+    let lead_sub_threshold = h.get_by_label("Enlarge picture").rect();
+    assert!(lead_sub_threshold.top() > lead_before.top() - 80.0, "below collapse threshold, body stays near top: {lead_sub_threshold:?}");
+
+    // Drag past the collapse threshold: hero bar reaches compact height and hides external links.
+    h.hover_at(egui::pos2(bar_x, 160.0));
+    h.run_steps(4);
+    assert!(h.query_by_label("Website ↗").is_none(), "past collapse threshold, hero is compact");
+    let lead_past_threshold = h.get_by_label("Enlarge picture").rect();
+    assert!(lead_past_threshold.top() < lead_before.top() - 140.0, "past collapse threshold, body scrolls up: {lead_past_threshold:?}");
+
+    // Dragging back up across the threshold restores the full expanded hero.
+    h.hover_at(start_pos);
+    h.drop_at(start_pos);
+    h.run_steps(45);
+    assert!(h.query_by_label("Website ↗").is_some(), "returning above threshold restores external links");
+    assert!(h.query_all_by_label_contains(headline).count() >= 2, "returning above threshold restores headline");
+    let lead_restored = h.get_by_label("Enlarge picture").rect();
+    assert!((lead_restored.top() - lead_before.top()).abs() < 2.0, "body returns to top: {lead_restored:?}");
+}
+
+#[test]
+fn short_details_page_with_no_scroll_does_not_collapse() {
+    use artcraft_launcher_core::details::AppDetails;
+    let mut h = short_window(Rc::new(Cell::new(false)));
+    // Tall window where the details card (capped at 1000px) comfortably fits
+    // a short app's content (e.g. PdfCraft, with no screenshots) without scrolling.
+    h.set_size(egui::vec2(1280.0, 1040.0));
+    h.run_steps(16);
+    h.get_by_label("PdfCraft details").scroll_to_me();
+    h.run_steps(3);
+    h.get_by_label("PdfCraft details").click();
+    h.run_steps(45);
+
+    let headline = AppDetails::by_id("pdfcraft").unwrap().headline;
+    let count_before = h.query_all_by_label_contains(headline).count();
+    assert!(count_before >= 2, "expanded hero shows headline");
+    assert!(h.query_by_label("Website ↗").is_some(), "expanded hero shows external links");
+
+    // Mouse wheel turns on a page with no scroll range do not collapse the hero.
+    turn_wheel(&mut h, 8.0);
+    h.run_steps(45);
+    turn_wheel(&mut h, 8.0);
+    h.run_steps(45);
+
+    let count_after = h.query_all_by_label_contains(headline).count();
+    assert_eq!(count_after, count_before, "headline remains visible; no collapse occurred");
+    assert!(h.query_by_label("Website ↗").is_some(), "external links remain visible; no collapse occurred");
+}
+
+#[test]
+fn non_wide_non_stacked_panel_keeps_action_within_hero_bounds_and_clears_nav() {
+    let mut h = short_window(Rc::new(Cell::new(false)));
+    // Window width 760 produces panel width ~696, which is non-wide (< 880)
+    // and non-stacked (>= 572).
+    h.set_size(egui::vec2(760.0, 720.0));
+    h.run_steps(16);
+    h.get_by_label("PhotoCraft details").click();
+    h.run_steps(45);
+
+    let close_exp = h.get_by_label("Close (Esc)").rect();
+    let panel_top = close_exp.top() - 24.0;
+    let bar_x = close_exp.right() + 24.0 + 5.0;
+    let start_pos = egui::pos2(bar_x, 60.0);
+
+    let hero_action = |h: &Harness<'_, _>| {
+        h.query_all_by_label("More actions for PhotoCraft").map(|n| n.rect()).min_by(|a, b| a.top().total_cmp(&b.top())).expect("hero action button")
+    };
+
+    let expanded_h = 308.0;
+    let compact_h = 58.0;
+    let initial_action = hero_action(&h);
+    let initial_hero_bottom = panel_top + expanded_h;
+    assert!(initial_action.bottom() <= initial_hero_bottom, "initially action must stay within hero bounds");
+
+    h.hover_at(start_pos);
+    h.run_steps(2);
+    h.drag_at(start_pos);
+    h.run_steps(2);
+
+    for step in 1..=20 {
+        let y = 60.0 + (step as f32) * 12.0;
+        h.hover_at(egui::pos2(bar_x, y));
+        h.run_steps(2);
+
+        let action = hero_action(&h);
+        let prev = h.get_by_label("Previous app").rect();
+        let close = h.get_by_label("Close (Esc)").rect();
+        assert!(!action.intersects(prev), "step {step}: action button must never overlap previous button: action={action:?} prev={prev:?}");
+
+        // Derive collapse from close button y offset:
+        // close.top() moves from panel_top + 24.0 down to panel_top + 12.0.
+        let collapse = ((panel_top + 24.0 - close.top()) / 12.0).clamp(0.0, 1.0);
+        let hero_bottom = panel_top + egui::lerp(expanded_h..=compact_h, collapse);
+        assert!(
+            action.bottom() <= hero_bottom + 1.0,
+            "step {step} (collapse={collapse:.2}): action button must stay within hero bounds: action.bottom={} hero_bottom={}",
+            action.bottom(),
+            hero_bottom
+        );
+    }
+}
+
 /// A version pin is distinct from a favorite: the lock names the exact tag and requires confirmation.
 #[test]
 fn version_padlock_confirms_before_unlocking_in_grid_and_table() {
