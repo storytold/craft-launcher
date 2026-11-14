@@ -139,6 +139,21 @@ month	Dec	12月
 	Not available here	此平台不可用
 	Updating…	正在更新…
 	Update paused	更新已暂停
+	Update stopped	更新已停止
+	Install stopped	安装已停止
+	Reinstall stopped	重新安装已停止
+	{name} or its command-line tool is open. Close it, then press Retry.	{name} 或其命令行工具已打开。请将其关闭，然后重试。
+	A program with the same name as {name} is running. If it is this copy, close it, then press Retry.	正在运行与 {name} 同名的程序。如果它就是此副本，请将其关闭，然后重试。
+	Another installation is in progress. Wait for it to finish, then press Retry.	另一个安装正在进行。请等待其完成，然后重试。
+	Another program is using a file of {name}. Close that program, then press Retry.	另一个程序正在使用 {name} 的文件。请关闭该程序，然后重试。
+	Windows denied access to a file of {name}. Check the folder's permissions, then press Retry.	Windows 拒绝访问 {name} 的文件。请检查该文件夹的权限，然后重试。
+	{name} or its command-line tool is open. Close it, then press Resume.	{name} 或其命令行工具已打开。请将其关闭，然后继续下载。
+	A program with the same name as {name} is running. If it is this copy, close it, then press Resume.	正在运行与 {name} 同名的程序。如果它就是此副本，请将其关闭，然后继续下载。
+	Another installation is in progress. Wait for it to finish, then press Resume.	另一个安装正在进行。请等待其完成，然后继续下载。
+	Another program is using a file of {name}. Close that program, then press Resume.	另一个程序正在使用 {name} 的文件。请关闭该程序，然后继续下载。
+	Windows denied access to a file of {name}. Check the folder's permissions, then press Resume.	Windows 拒绝访问 {name} 的文件。请检查该文件夹的权限，然后继续下载。
+	The Windows Installer couldn't finish. The details below give its error code.	Windows Installer 无法完成。下方详细信息给出了错误代码。
+	Details: {details}	详细信息：{details}
 	Download paused	下载已暂停
 	{version} installed → {latest} released	已安装 {version} → 最新 {latest}
 	Version {version}	版本 {version}
@@ -303,6 +318,7 @@ figcraft	Interface design and prototyping	界面设计与原型制作
 	Update cancelled	更新已取消
 	Uninstall cancelled	卸载已取消
 	Retry install	重试安装
+	Retry reinstall	重试重新安装
 	Retry update	重试更新
 	Retry update to {version}	重试更新至 {version}
 	The download is still here. It's checked again, then installed.	已下载的文件仍在。会先重新校验，然后安装。
@@ -343,6 +359,10 @@ figcraft	Interface design and prototyping	界面设计与原型制作
 @msg	{name} installed: {version} (this release publishes no checksum, so only its size was checked)	{name} 已安装：{version}（此版本未发布校验和，因此只检查了文件大小）
 @msg	{name} was removed	{name} 已卸载
 @msg	{name} is running. Quit it, then try again.	{name} 正在运行。请先退出，然后重试。
+@msg	{name}'s command-line tool is running. Quit it, then try again.	{name} 的命令行工具正在运行。请先退出，然后重试。
+@msg	A program named {program} is running. If it is {name}, quit it, then try again.	名为 {program} 的程序正在运行。如果它是 {name}，请先退出，然后重试。
+@msg	Another program is using {file}. Close it, then try again.	另一个程序正在使用 {file}。请将其关闭，然后重试。
+@msg	Windows denied access to {file}.	Windows 拒绝访问 {file}。
 
 	Download size: {size}	下载大小：{size}
 @msg	{name} was installed from the {repo} repository or the AUR ({pkg}). Update it with {cmd} or sudo pacman -Syu	{name} 是从 {repo} 软件仓库或 AUR 安装的（{pkg}）。请使用 {cmd} 或 sudo pacman -Syu 更新。
@@ -384,6 +404,7 @@ column	Version	版本
 	Nightly	每日构建版
 	Nightly (none published yet)	每日构建版（尚未发布）
 	Install version {version}	安装版本 {version}
+	Retry install of version {version}	重试安装版本 {version}
 	Download selected version	下载所选版本
 	Older launcher versions require a manual reinstall.	旧版启动器需要手动重新安装。
 	Your files may not open in older versions.	旧版可能无法打开你的文件。

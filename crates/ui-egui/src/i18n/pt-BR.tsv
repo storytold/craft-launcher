@@ -154,6 +154,7 @@
 	Update cancelled	Atualização cancelada
 	Uninstall cancelled	Desinstalação cancelada
 	Retry install	Tentar instalar novamente
+	Retry reinstall	Tentar reinstalar novamente
 	Retry update	Tentar atualizar novamente
 	Retry update to {version}	Tentar atualizar novamente para {version}
 	The download is still here. It's checked again, then installed.	O arquivo baixado ainda está aqui. Ele será verificado novamente e instalado.
@@ -221,6 +222,21 @@ month	Dec	dez.
 	Not available here	Indisponível neste sistema
 	Updating…	Atualizando…
 	Update paused	Atualização pausada
+	Update stopped	Atualização interrompida
+	Install stopped	Instalação interrompida
+	Reinstall stopped	Reinstalação interrompida
+	{name} or its command-line tool is open. Close it, then press Retry.	{name} ou sua ferramenta de linha de comando está aberto. Feche-o e tente novamente.
+	A program with the same name as {name} is running. If it is this copy, close it, then press Retry.	Um programa com o mesmo nome de {name} está em execução. Se for esta cópia, feche-o e tente novamente.
+	Another installation is in progress. Wait for it to finish, then press Retry.	Outra instalação está em andamento. Aguarde até que ela termine e tente novamente.
+	Another program is using a file of {name}. Close that program, then press Retry.	Outro programa está usando um arquivo de {name}. Feche esse programa e tente novamente.
+	Windows denied access to a file of {name}. Check the folder's permissions, then press Retry.	O Windows negou o acesso a um arquivo de {name}. Verifique as permissões da pasta e tente novamente.
+	{name} or its command-line tool is open. Close it, then press Resume.	{name} ou sua ferramenta de linha de comando está aberto. Feche-o e retome o download.
+	A program with the same name as {name} is running. If it is this copy, close it, then press Resume.	Um programa com o mesmo nome de {name} está em execução. Se for esta cópia, feche-o e retome o download.
+	Another installation is in progress. Wait for it to finish, then press Resume.	Outra instalação está em andamento. Aguarde até que ela termine e retome o download.
+	Another program is using a file of {name}. Close that program, then press Resume.	Outro programa está usando um arquivo de {name}. Feche esse programa e retome o download.
+	Windows denied access to a file of {name}. Check the folder's permissions, then press Resume.	O Windows negou o acesso a um arquivo de {name}. Verifique as permissões da pasta e retome o download.
+	The Windows Installer couldn't finish. The details below give its error code.	O Windows Installer não conseguiu concluir. Os detalhes abaixo mostram o código de erro.
+	Details: {details}	Detalhes: {details}
 	Download paused	Download pausado
 	{version} installed → {latest} released	{version} instalado → {latest} lançado
 	Version {version}	Versão {version}
@@ -296,6 +312,10 @@ filter	Installed	Instalados
 @msg	{name} installed: {version} (this release publishes no checksum, so only its size was checked)	{name} instalado: {version} (este lançamento não publica soma de verificação, então apenas o tamanho foi verificado)
 @msg	{name} was removed	{name} foi removido
 @msg	{name} is running. Quit it, then try again.	{name} está em execução. Feche-o e tente novamente.
+@msg	{name}'s command-line tool is running. Quit it, then try again.	A ferramenta de linha de comando de {name} está em execução. Feche-a e tente novamente.
+@msg	A program named {program} is running. If it is {name}, quit it, then try again.	Um programa chamado {program} está em execução. Se for o {name}, feche-o e tente novamente.
+@msg	Another program is using {file}. Close it, then try again.	Outro programa está usando {file}. Feche-o e tente novamente.
+@msg	Windows denied access to {file}.	O Windows negou o acesso a {file}.
 @msg	{name} was installed from the {repo} repository or the AUR ({pkg}). Update it with {cmd} or sudo pacman -Syu	{name} foi instalado pelo repositório {repo} ou pelo AUR ({pkg}). Atualize-o com {cmd} ou com sudo pacman -Syu
 @msg	{name} was installed from the {repo} repository or the AUR ({pkg}). Update it with your AUR helper (for example: yay -S {pkg}) or sudo pacman -Syu	{name} foi instalado pelo repositório {repo} ou pelo AUR ({pkg}). Atualize-o com seu assistente do AUR (por exemplo: yay -S {pkg}) ou com sudo pacman -Syu
 @msg	{name} was installed from the AUR ({pkg}). Update it with {cmd}	{name} foi instalado pelo AUR ({pkg}). Atualize-o com {cmd}
@@ -404,6 +424,7 @@ column	Author	Autor
 	Nightly	Versão noturna
 	Nightly (none published yet)	Versão noturna (ainda não publicada)
 	Install version {version}	Instalar a versão {version}
+	Retry install of version {version}	Tentar instalar a versão {version} novamente
 	Download selected version	Baixar a versão selecionada
 	Older launcher versions require a manual reinstall.	Versões antigas do inicializador exigem reinstalação manual.
 	Your files may not open in older versions.	Seus arquivos podem não abrir em versões antigas.

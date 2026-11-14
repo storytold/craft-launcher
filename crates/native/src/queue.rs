@@ -26,7 +26,7 @@ type Outcome = Result<(), String>;
 
 /// What one installer call does with its command and the targets sharing it: one outcome per
 /// target, in their order.
-type Exec<'a> = dyn Fn(&[OsString], &[OsString]) -> Vec<Outcome> + 'a;
+pub(crate) type Exec<'a> = dyn Fn(&[OsString], &[OsString]) -> Vec<Outcome> + 'a;
 
 /// What a job of a call that never reported hears (the call's job died mid-call).
 const INTERRUPTED: &str = "the system installer was interrupted";

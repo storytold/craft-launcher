@@ -166,6 +166,7 @@
 	Update cancelled	Frissítés megszakítva
 	Uninstall cancelled	Eltávolítás megszakítva
 	Retry install	Telepítés újrapróbálása
+	Retry reinstall	Újratelepítés újrapróbálása
 	Retry update	Frissítés újrapróbálása
 	Retry update to {version}	Frissítés újrapróbálása: {version}
 	The download is still here. It's checked again, then installed.	A letöltött fájl megmaradt. Újra ellenőrizzük, majd telepítjük.
@@ -233,6 +234,21 @@ month	Dec	dec.
 	Not available here	Ezen a rendszeren nem érhető el
 	Updating…	Frissítés…
 	Update paused	Frissítés szüneteltetve
+	Update stopped	Frissítés leállt
+	Install stopped	Telepítés leállt
+	Reinstall stopped	Újratelepítés leállt
+	{name} or its command-line tool is open. Close it, then press Retry.	{name} vagy a parancssori eszköze meg van nyitva. Zárd be, majd próbáld újra.
+	A program with the same name as {name} is running. If it is this copy, close it, then press Retry.	Fut egy program, amelynek ugyanaz a neve, mint ennek: {name}. Ha ez az a példány, zárd be, majd próbáld újra.
+	Another installation is in progress. Wait for it to finish, then press Retry.	Egy másik telepítés van folyamatban. Várd meg, amíg befejeződik, majd próbáld újra.
+	Another program is using a file of {name}. Close that program, then press Retry.	Egy másik program használja ennek egyik fájlját: {name}. Zárd be azt a programot, majd próbáld újra.
+	Windows denied access to a file of {name}. Check the folder's permissions, then press Retry.	A Windows megtagadta a hozzáférést ennek egyik fájljához: {name}. Ellenőrizd a mappa engedélyeit, majd próbáld újra.
+	{name} or its command-line tool is open. Close it, then press Resume.	{name} vagy a parancssori eszköze meg van nyitva. Zárd be, majd folytasd a letöltést.
+	A program with the same name as {name} is running. If it is this copy, close it, then press Resume.	Fut egy program, amelynek ugyanaz a neve, mint ennek: {name}. Ha ez az a példány, zárd be, majd folytasd a letöltést.
+	Another installation is in progress. Wait for it to finish, then press Resume.	Egy másik telepítés van folyamatban. Várd meg, amíg befejeződik, majd folytasd a letöltést.
+	Another program is using a file of {name}. Close that program, then press Resume.	Egy másik program használja ennek egyik fájlját: {name}. Zárd be azt a programot, majd folytasd a letöltést.
+	Windows denied access to a file of {name}. Check the folder's permissions, then press Resume.	A Windows megtagadta a hozzáférést ennek egyik fájljához: {name}. Ellenőrizd a mappa engedélyeit, majd folytasd a letöltést.
+	The Windows Installer couldn't finish. The details below give its error code.	A Windows Installer nem tudta befejezni a műveletet. Az alábbi részletek megadják a hibakódot.
+	Details: {details}	Részletek: {details}
 	Download paused	Letöltés szüneteltetve
 	{version} installed → {latest} released	Telepítve: {version} → megjelent: {latest}
 	Version {version}	Verzió: {version}
@@ -323,6 +339,10 @@ filter	Installed	Telepítve
 @msg	{name} installed: {version} (this release publishes no checksum, so only its size was checked)	{name} telepítve: {version} (ehhez a kiadáshoz nem adtak meg ellenőrzőösszeget, ezért csak a fájl méretét ellenőriztük)
 @msg	{name} was removed	{name} eltávolítva
 @msg	{name} is running. Quit it, then try again.	{name} fut. Zárd be, majd próbáld újra.
+@msg	{name}'s command-line tool is running. Quit it, then try again.	Fut ennek a parancssori eszköze: {name}. Zárd be, majd próbáld újra.
+@msg	A program named {program} is running. If it is {name}, quit it, then try again.	Fut egy {program} nevű program. Ha ez a(z) {name}, zárd be, majd próbáld újra.
+@msg	Another program is using {file}. Close it, then try again.	Egy másik program használja ezt: {file}. Zárd be, majd próbáld újra.
+@msg	Windows denied access to {file}.	A Windows megtagadta a hozzáférést ehhez: {file}.
 @msg	{name} was installed from the {repo} repository or the AUR ({pkg}). Update it with {cmd} or sudo pacman -Syu	{name} a(z) {repo} tárolóból vagy az AUR-ból lett telepítve ({pkg}). Frissítsd ezzel: {cmd} vagy sudo pacman -Syu
 @msg	{name} was installed from the {repo} repository or the AUR ({pkg}). Update it with your AUR helper (for example: yay -S {pkg}) or sudo pacman -Syu	{name} a(z) {repo} tárolóból vagy az AUR-ból lett telepítve ({pkg}). Frissítsd az AUR-segédeddel (például: yay -S {pkg}) vagy ezzel: sudo pacman -Syu
 @msg	{name} was installed from the AUR ({pkg}). Update it with {cmd}	{name} az AUR-ból lett telepítve ({pkg}). Frissítsd ezzel: {cmd}
@@ -417,6 +437,7 @@ column	Author	Szerző
 	Nightly	Éjszakai kiadás
 	Nightly (none published yet)	Éjszakai kiadás (még nincs)
 	Install version {version}	A(z) {version} verzió telepítése
+	Retry install of version {version}	A(z) {version} verzió telepítésének újrapróbálása
 	Download selected version	Kiválasztott verzió letöltése
 	Older launcher versions require a manual reinstall.	Az indító régebbi verzióit kézzel kell újratelepíteni.
 	Your files may not open in older versions.	Előfordulhat, hogy a régebbi verziók nem tudják megnyitni a fájljaidat.

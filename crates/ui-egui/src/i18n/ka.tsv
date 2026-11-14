@@ -164,6 +164,7 @@
 	Update cancelled	განახლება გაუქმდა
 	Uninstall cancelled	დეინსტალაცია გაუქმდა
 	Retry install	ინსტალაციის ხელახლა ცდა
+	Retry reinstall	ხელახლა ინსტალაციის ხელახლა ცდა
 	Retry update	განახლების ხელახლა ცდა
 	Retry update to {version}	განახლების ხელახლა ცდა: {version}
 	Move down	ქვემოთ გადატანა
@@ -237,6 +238,21 @@ month	Dec	დეკ
 	Not available here	აქ მიუწვდომელია
 	Updating…	ახლდება…
 	Update paused	განახლება შეჩერებულია
+	Update stopped	განახლება შეწყდა
+	Install stopped	ინსტალაცია შეწყდა
+	Reinstall stopped	ხელახლა ინსტალაცია შეწყდა
+	{name} or its command-line tool is open. Close it, then press Retry.	{name} ან მისი ბრძანების ხაზის ხელსაწყო გახსნილია. დახურეთ და კვლავ სცადეთ.
+	A program with the same name as {name} is running. If it is this copy, close it, then press Retry.	გაშვებულია პროგრამა, რომელსაც იგივე სახელი აქვს, რაც {name}-ს. თუ ეს სწორედ ეს ასლია, დახურეთ და კვლავ სცადეთ.
+	Another installation is in progress. Wait for it to finish, then press Retry.	მიმდინარეობს სხვა ინსტალაცია. დაელოდეთ მის დასრულებას და კვლავ სცადეთ.
+	Another program is using a file of {name}. Close that program, then press Retry.	სხვა პროგრამა იყენებს {name}-ის ფაილს. დახურეთ ის პროგრამა და კვლავ სცადეთ.
+	Windows denied access to a file of {name}. Check the folder's permissions, then press Retry.	Windows-მა არ დაუშვა წვდომა {name}-ის ფაილზე. შეამოწმეთ საქაღალდის ნებართვები და კვლავ სცადეთ.
+	{name} or its command-line tool is open. Close it, then press Resume.	{name} ან მისი ბრძანების ხაზის ხელსაწყო გახსნილია. დახურეთ და განაგრძეთ ჩამოტვირთვა.
+	A program with the same name as {name} is running. If it is this copy, close it, then press Resume.	გაშვებულია პროგრამა, რომელსაც იგივე სახელი აქვს, რაც {name}-ს. თუ ეს სწორედ ეს ასლია, დახურეთ და განაგრძეთ ჩამოტვირთვა.
+	Another installation is in progress. Wait for it to finish, then press Resume.	მიმდინარეობს სხვა ინსტალაცია. დაელოდეთ მის დასრულებას და განაგრძეთ ჩამოტვირთვა.
+	Another program is using a file of {name}. Close that program, then press Resume.	სხვა პროგრამა იყენებს {name}-ის ფაილს. დახურეთ ის პროგრამა და განაგრძეთ ჩამოტვირთვა.
+	Windows denied access to a file of {name}. Check the folder's permissions, then press Resume.	Windows-მა არ დაუშვა წვდომა {name}-ის ფაილზე. შეამოწმეთ საქაღალდის ნებართვები და განაგრძეთ ჩამოტვირთვა.
+	The Windows Installer couldn't finish. The details below give its error code.	Windows Installer-მა ვერ დაასრულა მუშაობა. ქვემოთ მოცემულ დეტალებში მითითებულია შეცდომის კოდი.
+	Details: {details}	დეტალები: {details}
 	Download paused	ჩამოტვირთვა შეჩერებულია
 	{version} installed → {latest} released	დაინსტალირებულია {version} → გამოვიდა {latest}
 	Version {version}	ვერსია {version}
@@ -326,6 +342,10 @@ filter	Installed	დაინსტალირებული
 @msg	{name} installed: {version} (this release publishes no checksum, so only its size was checked)	{name} დაინსტალირდა: {version} (ეს გამოშვება საკონტროლო ჯამს არ აქვეყნებს, ამიტომ მხოლოდ ზომა შემოწმდა)
 @msg	{name} was removed	{name} წაიშალა
 @msg	{name} is running. Quit it, then try again.	{name} გაშვებულია. დახურეთ და კვლავ სცადეთ.
+@msg	{name}'s command-line tool is running. Quit it, then try again.	{name}-ის ბრძანების ხაზის ხელსაწყო გაშვებულია. დახურეთ და კვლავ სცადეთ.
+@msg	A program named {program} is running. If it is {name}, quit it, then try again.	გაშვებულია პროგრამა სახელით {program}. თუ ეს {name}-ია, დახურეთ და კვლავ სცადეთ.
+@msg	Another program is using {file}. Close it, then try again.	სხვა პროგრამა იყენებს ფაილს {file}. დახურეთ და კვლავ სცადეთ.
+@msg	Windows denied access to {file}.	Windows-მა არ დაუშვა წვდომა ფაილზე {file}.
 @msg	{name} was installed from the {repo} repository or the AUR ({pkg}). Update it with {cmd} or sudo pacman -Syu	{name} დაინსტალირდა {repo} რეპოზიტორიიდან ან AUR-იდან ({pkg}). განაახლეთ ბრძანებით {cmd} ან sudo pacman -Syu
 @msg	{name} was installed from the {repo} repository or the AUR ({pkg}). Update it with your AUR helper (for example: yay -S {pkg}) or sudo pacman -Syu	{name} დაინსტალირდა {repo} რეპოზიტორიიდან ან AUR-იდან ({pkg}). განაახლეთ AUR-ის დამხმარე პროგრამით (მაგალითად: yay -S {pkg}) ან sudo pacman -Syu
 @msg	{name} was installed from the AUR ({pkg}). Update it with {cmd}	{name} დაინსტალირდა AUR-იდან ({pkg}). განაახლეთ ბრძანებით {cmd}
@@ -418,6 +438,7 @@ column	Author	ავტორი
 	Nightly	ღამის ვერსია
 	Nightly (none published yet)	ღამის ვერსია (ჯერ არ გამოქვეყნებულა)
 	Install version {version}	{version} ვერსიის ინსტალაცია
+	Retry install of version {version}	{version} ვერსიის ინსტალაციის ხელახლა ცდა
 	Download selected version	არჩეული ვერსიის ჩამოტვირთვა
 	Older launcher versions require a manual reinstall.	Launcher-ის ძველ ვერსიებს ხელით ხელახალი ინსტალაცია სჭირდება.
 	Your files may not open in older versions.	თქვენი ფაილები შეიძლება ძველ ვერსიებში არ გაიხსნას.

@@ -4,7 +4,7 @@
 use artcraft_launcher_core::catalog::AppKind;
 use artcraft_launcher_core::details::AppDetails;
 use artcraft_launcher_core::platform::pick_asset;
-use artcraft_launcher_core::protocol::{Command, JobPhase};
+use artcraft_launcher_core::protocol::{Command, InstallFailure, JobPhase};
 use artcraft_launcher_core::status::AppStatus;
 use artcraft_launcher_core::{PackageKind, time};
 use egui::{Color32, CornerRadius, FontId, Rect, RichText, Sense, Stroke, Ui, vec2};
@@ -61,14 +61,17 @@ pub(crate) fn date_text(secs: i64) -> String {
 /// What the main button of an app does.
 enum Primary {
     Install,
-    /// The download is already here; only the install step is left. Carries the button's label
-    /// and shorter ones for when it doesn't fit.
-    Retry(String, Vec<&'static str>),
+    /// The download is already here and only the install step is left, or the last try was
+    /// stopped by a cause the card names. Carries the button's label, shorter ones for when it
+    /// doesn't fit, and whether the download is kept.
+    Retry(String, Vec<&'static str>, bool),
     Update(String),
-    /// A pinned release only installs after the backend has checked that exact tag.
+    /// A pinned release only installs after the backend has checked that exact tag. `retry` is set
+    /// when the last try was stopped by a cause the card names, and the button then says Retry.
     SelectedVersion {
         tag: String,
         checked: bool,
+        retry: bool,
     },
     Open,
     Download(String),
@@ -104,8 +107,8 @@ impl UpdateLabels {
     /// The labels when `primary` installs an update or retries one; `None` otherwise.
     fn of(primary: Primary) -> Option<Self> {
         match primary {
-            Primary::Retry(label, shorter) => {
-                Some(Self { label, shorter, tip: Some(tl!("The download is still here. It's checked again, then installed.")) })
+            Primary::Retry(label, shorter, kept) => {
+                Some(Self { label, shorter, tip: kept.then_some(tl!("The download is still here. It's checked again, then installed.")) })
             }
             Primary::Update(v) => Some(Self { label: fmt(tl!("Update to {v}"), &[("v", &v)]), shorter: vec![tl!("Update")], tip: None }),
             _ => None,
@@ -649,15 +652,24 @@ impl LauncherUi {
         });
         ui.add_space(14.0);
         // Installed and up to date needs no badge: the strip has the version, and the group says the rest.
-        if !matches!(status, AppStatus::UpToDate | AppStatus::Installed) {
+        // A stopped reinstall still gets one, so the status names the stop the card describes.
+        let blocked = self.shown_blocker(&entry, &status);
+        if blocked.is_some() || !matches!(status, AppStatus::UpToDate | AppStatus::Installed) {
             ui.horizontal(|ui| {
-                let (text, tone) = model::entry_status_text(&entry, &status, self.caps.manage_apps);
+                let (text, tone) = model::entry_status_text(&entry, &status, blocked.is_some(), self.caps.manage_apps);
                 let r = widgets::badge(ui, &text, widgets::tone_color(&t, tone));
                 if let Some(f) = entry.failure() {
                     r.on_hover_text(fmt(tl!("Couldn't check for updates: {f}"), &[("f", f)]));
                 }
             });
             ui.add_space(8.0);
+        }
+        // What stopped the last try takes the place of the blurb until the next try, while the
+        // main button retries it or a paused download's Resume tries it again.
+        if let Some((failure, again)) = blocked {
+            crate::card_parts::blurb(ui, &model::blocker_text(failure.blocker, app.name, again), t.ink, 3);
+            ui.add_space(4.0);
+            blocker_details_label(ui, model::blocker_details(failure), t.muted);
         }
         // Until a version is known, the sentence that says why (no release yet, installed…) stays.
         if version.is_empty() {
@@ -682,7 +694,9 @@ impl LauncherUi {
                     .on_hover_text(Self::sizes_text(&sizes));
             }
         }
-        if let Some(details) = AppDetails::by_id(id) {
+        if blocked.is_none()
+            && let Some(details) = AppDetails::by_id(id)
+        {
             crate::card_parts::blurb(ui, details.headline, t.muted, 4);
         }
         if let Some(line) = crate::card_parts::last_updated(&entry) {
@@ -902,14 +916,18 @@ impl LauncherUi {
 
     /// The status column: one badge, with the check failure (if any) in its tooltip.
     fn table_status_cell(&self, ui: &mut Ui, entry: &AppEntry, status: &AppStatus, t: &Tokens) {
-        // Installed is all it says: being up to date is the absence of an update.
-        let (text, tone) = if *status == AppStatus::UpToDate && entry.job.is_none() && entry.paused.is_none() {
+        // Installed is all it says: being up to date is the absence of an update. A stopped
+        // reinstall says so instead.
+        let blocked = self.shown_blocker(entry, status);
+        let (text, tone) = if *status == AppStatus::UpToDate && entry.job.is_none() && entry.paused.is_none() && blocked.is_none() {
             model::status_text(&AppStatus::Installed, self.caps.manage_apps)
         } else {
-            model::entry_status_text(entry, status, self.caps.manage_apps)
+            model::entry_status_text(entry, status, blocked.is_some(), self.caps.manage_apps)
         };
         let r = widgets::badge(ui, &text, widgets::tone_color(t, tone));
-        if let Some(f) = entry.failure() {
+        if let Some((failure, again)) = blocked {
+            r.on_hover_text(format!("{}\n{}", model::blocker_text(failure.blocker, entry.app.name, again), model::blocker_details(failure)));
+        } else if let Some(f) = entry.failure() {
             r.on_hover_text(fmt(tl!("Couldn't check for updates: {f}"), &[("f", f)]));
         }
     }
@@ -963,6 +981,23 @@ impl LauncherUi {
 
     // ---- actions -------------------------------------------------------------------------
 
+    /// What stopped the last try, and the button that tries it again, while no job runs: a paused
+    /// download's Resume, which shows in place of the main button ([`Self::paused_actions`]), or
+    /// else the main button when it retries. The card's text, the status badge and its tooltip
+    /// name the cause only then, since they say which button to press.
+    fn shown_blocker<'a>(&self, entry: &'a AppEntry, status: &AppStatus) -> Option<(&'a InstallFailure, model::TryAgain)> {
+        let failure = entry.blocked.as_ref().filter(|_| entry.job.is_none())?;
+        if entry.paused.is_some() && self.caps.manage_apps {
+            return Some((failure, model::TryAgain::Resume));
+        }
+        let retry = match self.primary_action(entry, status) {
+            Primary::Retry(..) => true,
+            Primary::SelectedVersion { retry, .. } => retry,
+            _ => false,
+        };
+        retry.then_some((failure, model::TryAgain::Retry))
+    }
+
     /// The managed download's planned size, or all manual formats for the visitor's platform.
     /// Zero means the source didn't publish a size, not a one-kilobyte download.
     fn download_sizes(&self, entry: &AppEntry) -> Vec<(PackageKind, u64)> {
@@ -1014,14 +1049,23 @@ impl LauncherUi {
             // Checked by the backend, and an install of it would go ahead here.
             let checked = self.version_installs(entry, tag) == Some(true)
                 && !matches!(status, AppStatus::Checking | AppStatus::NoRelease | AppStatus::Unavailable);
-            return Primary::SelectedVersion { tag: tag.clone(), checked };
+            // A named cause makes the install a retry only while that install can go ahead.
+            return Primary::SelectedVersion { tag: tag.clone(), checked, retry: checked && entry.blocked.is_some() };
         }
+        // A kept download, or a named cause of the last failure, makes the next try a retry.
+        let retry = entry.ready || entry.blocked.is_some();
         match status {
-            AppStatus::Available if entry.ready => Primary::Retry(tl!("Retry install").into(), vec![tl!("Install")]),
-            AppStatus::UpdateAvailable if entry.ready => Primary::Retry(
+            AppStatus::Available if retry => Primary::Retry(tl!("Retry install").into(), vec![tl!("Install")], entry.ready),
+            AppStatus::UpdateAvailable if retry => Primary::Retry(
                 fmt(tl!("Retry update to {version}"), &[("version", &entry.latest_label().unwrap_or_default())]),
                 vec![tl!("Retry update"), tl!("Update")],
+                entry.ready,
             ),
+            // A reinstall stopped by a named cause is retried from the main button, as the card says;
+            // Open stays in the menu.
+            AppStatus::UpToDate if entry.blocked.is_some() && entry.installs_here(self.platform) => {
+                Primary::Retry(tl!("Retry reinstall").into(), vec![tl!("Reinstall")], entry.ready)
+            }
             AppStatus::Available => Primary::Install,
             AppStatus::UpdateAvailable => Primary::Update(entry.latest_label().unwrap_or_default()),
             AppStatus::UpToDate | AppStatus::Installed => Primary::Open,
@@ -1234,8 +1278,9 @@ impl LauncherUi {
                     self.update_button(ui, entry, status, &labels, main_w, place);
                 }
             }
-            Primary::SelectedVersion { tag, checked } => {
-                let label = fmt(tl!("Install version {version}"), &[("version", &tag)]);
+            Primary::SelectedVersion { tag, checked, retry } => {
+                let label =
+                    fmt(if retry { tl!("Retry install of version {version}") } else { tl!("Install version {version}") }, &[("version", &tag)]);
                 let resp = ui.add_enabled_ui(checked, |ui| widgets::button(ui, &label, Kind::Primary, main_w)).inner;
                 let resp = match self.version_refusal(entry, &tag) {
                     Some(why) => resp.on_disabled_hover_text(why),
@@ -1551,6 +1596,12 @@ fn lines_height(ui: &Ui, fonts: &[&FontId], gap: f32) -> f32 {
     (fonts.iter().map(|font| line(font) + gap).sum::<f32>() - gap).max(0.0)
 }
 
+/// The one-line details of what stopped an update. The line is cut to the card's width, so the
+/// full text is in the tooltip.
+fn blocker_details_label(ui: &mut egui::Ui, details: String, color: egui::Color32) -> egui::Response {
+    ui.add(egui::Label::new(RichText::new(&details).size(12.0).color(color)).truncate().show_tooltip_when_elided(false)).on_hover_text(details)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1577,6 +1628,51 @@ mod tests {
 
     fn platform() -> Platform {
         Platform { os: artcraft_launcher_core::Os::Linux, arch: Arch::X64 }
+    }
+
+    #[test]
+    fn the_blocker_details_line_shows_its_full_text_on_hover() {
+        let ctx = egui::Context::default();
+        ctx.all_styles_mut(|style| style.interaction.tooltip_delay = 0.0);
+        let details = "1603 \u{b7} C:\\Temp\\installer.log".to_string();
+        let mut open = false;
+        for frame in 0..4 {
+            let mut input = egui::RawInput::default();
+            input.events.push(egui::Event::PointerMoved(egui::pos2(20.0, 10.0)));
+            ctx.run_ui(input, |ui| {
+                let response = blocker_details_label(ui, details.clone(), egui::Color32::GRAY);
+                if frame == 3 {
+                    open = response.is_tooltip_open();
+                }
+            })
+            .drop_without_applying_deltas();
+        }
+        assert!(open, "hovering the details line must open a tooltip");
+    }
+
+    #[test]
+    fn a_cut_off_details_line_shows_its_full_text_once() {
+        let ctx = egui::Context::default();
+        ctx.all_styles_mut(|style| style.interaction.tooltip_delay = 0.0);
+        let details = format!("1603 \u{b7} {}", "C:\\Temp\\installer\\".repeat(20));
+        let mut copies = 0;
+        for frame in 0..4 {
+            let mut input = egui::RawInput::default();
+            input.events.push(egui::Event::PointerMoved(egui::pos2(20.0, 10.0)));
+            let output = ctx.run_ui(input, |ui| {
+                ui.set_max_width(120.0);
+                blocker_details_label(ui, details.clone(), egui::Color32::GRAY);
+            });
+            if frame == 3 {
+                copies = output
+                    .shapes
+                    .iter()
+                    .filter(|clipped| matches!(&clipped.shape, egui::Shape::Text(text) if !text.galley.elided && text.galley.job.text == details))
+                    .count();
+            }
+            output.drop_without_applying_deltas();
+        }
+        assert_eq!(copies, 1, "the tooltip of a cut-off line must hold one copy of the text");
     }
 
     #[test]

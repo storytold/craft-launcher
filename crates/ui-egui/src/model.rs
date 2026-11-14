@@ -1,12 +1,12 @@
 //! What the UI knows about each app.
 
 use artcraft_launcher_core::platform::{Platform, pick_asset};
-use artcraft_launcher_core::protocol::{JobPhase, LatestRelease, PausedDownload};
+use artcraft_launcher_core::protocol::{Blocker, InstallFailure, JobPhase, LatestRelease, PausedDownload};
 use artcraft_launcher_core::release::Release;
 use artcraft_launcher_core::status::{self, AppStatus, Latest};
 use artcraft_launcher_core::{CraftApp, Installed};
 
-use crate::i18n::t;
+use crate::i18n::{fmt, t};
 
 #[derive(Clone, Debug)]
 pub struct AppEntry {
@@ -27,11 +27,25 @@ pub struct AppEntry {
     /// `None` where it gives none (the web build), and then [`Self::has_download`] decides. Only
     /// read while a copy is installed.
     pub installable: Option<bool>,
+    /// What stopped the last install or update, shown until the next try or until the installed
+    /// copy changes ([`Event::Blocked`](artcraft_launcher_core::protocol::Event::Blocked)).
+    pub blocked: Option<InstallFailure>,
 }
 
 impl AppEntry {
     pub fn new(app: &'static CraftApp) -> Self {
-        Self { app, latest: None, installed: None, detected: false, job: None, origin: None, paused: None, ready: false, installable: None }
+        Self {
+            app,
+            latest: None,
+            installed: None,
+            detected: false,
+            job: None,
+            origin: None,
+            paused: None,
+            ready: false,
+            installable: None,
+            blocked: None,
+        }
     }
 
     pub fn release(&self) -> Option<&Release> {
@@ -122,16 +136,60 @@ pub fn status_text(status: &AppStatus, manage_apps: bool) -> (String, Tone) {
     }
 }
 
-/// [`status_text`], but saying so when a download is paused or reconnecting.
-pub fn entry_status_text(e: &AppEntry, status: &AppStatus, manage_apps: bool) -> (String, Tone) {
+/// [`status_text`], but saying so when a download is paused or reconnecting, or, when `stopped`
+/// is set, that a cause the card names stopped the last try (a reinstall, for an app that is up
+/// to date).
+pub fn entry_status_text(e: &AppEntry, status: &AppStatus, stopped: bool, manage_apps: bool) -> (String, Tone) {
     match (e.job, e.paused) {
         (Some(JobPhase::Reconnecting { .. }), _) => (t("Reconnecting…").to_string(), Tone::Warn),
         (Some(JobPhase::Downloading { .. }), _) if status.is_installed() => (t("Updating…").to_string(), Tone::Info),
         (Some(JobPhase::Downloading { .. }), _) => (t("Downloading…").to_string(), Tone::Info),
         (None, Some(_)) if status.is_installed() => (t("Update paused").to_string(), Tone::Warn),
         (None, Some(_)) => (t("Download paused").to_string(), Tone::Warn),
+        (None, None) if stopped && *status == AppStatus::UpToDate => (t("Reinstall stopped").to_string(), Tone::Warn),
+        (None, None) if stopped && status.is_installed() => (t("Update stopped").to_string(), Tone::Warn),
+        (None, None) if stopped => (t("Install stopped").to_string(), Tone::Warn),
         _ => status_text(status, manage_apps),
     }
+}
+
+/// The button that tries a stopped install or update again.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum TryAgain {
+    /// The main button's Retry.
+    Retry,
+    /// A paused download's Resume, which shows in place of the main button.
+    Resume,
+}
+
+/// What stopped `name`'s last install or update, and what to do before trying again with `again`.
+pub fn blocker_text(blocker: Blocker, name: &str, again: TryAgain) -> String {
+    let text = match (blocker, again) {
+        (Blocker::AppOpen, TryAgain::Retry) => t("{name} or its command-line tool is open. Close it, then press Retry."),
+        (Blocker::AppOpen, TryAgain::Resume) => t("{name} or its command-line tool is open. Close it, then press Resume."),
+        (Blocker::MaybeAppOpen, TryAgain::Retry) => {
+            t("A program with the same name as {name} is running. If it is this copy, close it, then press Retry.")
+        }
+        (Blocker::MaybeAppOpen, TryAgain::Resume) => {
+            t("A program with the same name as {name} is running. If it is this copy, close it, then press Resume.")
+        }
+        (Blocker::InstallerBusy, TryAgain::Retry) => t("Another installation is in progress. Wait for it to finish, then press Retry."),
+        (Blocker::InstallerBusy, TryAgain::Resume) => t("Another installation is in progress. Wait for it to finish, then press Resume."),
+        (Blocker::FileInUse, TryAgain::Retry) => t("Another program is using a file of {name}. Close that program, then press Retry."),
+        (Blocker::FileInUse, TryAgain::Resume) => t("Another program is using a file of {name}. Close that program, then press Resume."),
+        (Blocker::AccessDenied, TryAgain::Retry) => t("Windows denied access to a file of {name}. Check the folder's permissions, then press Retry."),
+        (Blocker::AccessDenied, TryAgain::Resume) => {
+            t("Windows denied access to a file of {name}. Check the folder's permissions, then press Resume.")
+        }
+        (Blocker::InstallerFailed, _) => t("The Windows Installer couldn't finish. The details below give its error code."),
+    };
+    fmt(text, &[("name", name)])
+}
+
+/// The card's line with the raw details of what stopped an install (error code, file, log, and
+/// for a downgrade the error that says what is installed now).
+pub fn blocker_details(failure: &InstallFailure) -> String {
+    fmt(t("Details: {details}"), &[("details", &failure.details)])
 }
 
 /// Sort rank for "by status": things needing attention first.

@@ -9,7 +9,8 @@ use std::sync::OnceLock;
 
 use artcraft_launcher_core::details::AppDetails;
 use artcraft_launcher_core::protocol::{
-    Backend, CANCELLED, Capabilities, Command, Event, INSTALL_CANCELLED, JobPhase, LatestRelease, Origin, PausedDownload, Source,
+    Backend, Blocker, CANCELLED, Capabilities, Command, Event, INSTALL_CANCELLED, InstallFailure, JobPhase, LatestRelease, Origin, PausedDownload,
+    Source,
 };
 use artcraft_launcher_core::release::{Asset, Release};
 use artcraft_launcher_core::status::InstallSource;
@@ -1423,6 +1424,240 @@ fn only_a_waiting_update_splits_the_main_button() {
     h.get_by_label("Retry update to 0.6.0").click();
     h.run_steps(2);
     assert_eq!(launches_and_installs(&sent, "effectcraft"), (0, 1), "{:?}", sent.borrow());
+}
+
+#[test]
+/// An update stopped by a running app says why on its card, with the details, until the next
+/// try. Retry is offered even though no download was kept, and it starts the update again.
+fn a_blocked_update_says_why_and_can_be_retried() {
+    let blocked = |failure| Event::Blocked { app: "photocraft".into(), failure };
+    let open = InstallFailure { blocker: Blocker::AppOpen, details: r"C:\Apps\PhotoCraft\photocraft-cli.exe".into() };
+    let mut ev = events();
+    ev.push(blocked(Some(open.clone())));
+    ev.push(Event::JobFinished {
+        app: "photocraft".into(),
+        result: Err("PhotoCraft's command-line tool is running. Quit it, then try again.".into()),
+    });
+    for view in [ViewMode::Grid, ViewMode::Table] {
+        let (mut h, sent) = harness_with(ev.clone(), view, egui::Theme::Dark, true, 1.0);
+        h.run_steps(8);
+        assert!(h.query_by_label("Update stopped").is_some(), "{view:?}: the status names the stop");
+        if view == ViewMode::Grid {
+            h.get_by_label("PhotoCraft or its command-line tool is open. Close it, then press Retry.");
+            h.get_by_label(r"Details: C:\Apps\PhotoCraft\photocraft-cli.exe");
+        }
+        assert!(h.query_by_label("Update to 0.5.0").is_none(), "{view:?}: the update is a retry");
+        sent.borrow_mut().clear();
+        h.get_by_label("Retry update to 0.5.0").click();
+        h.run_steps(2);
+        assert_eq!(launches_and_installs(&sent, "photocraft"), (0, 1), "{view:?}: {:?}", sent.borrow());
+    }
+
+    // A later try that finishes clears it.
+    let mut ev = events();
+    ev.push(blocked(Some(open)));
+    ev.push(blocked(None));
+    let (mut h, _) = harness_with(ev, ViewMode::Grid, egui::Theme::Dark, true, 1.0);
+    h.run_steps(8);
+    assert!(h.query_by_label("Update stopped").is_none());
+    assert!(h.query_by_label_contains("command-line tool is open").is_none());
+    h.get_by_label("Update to 0.5.0");
+}
+
+#[test]
+/// A stop is forgotten once the installed copy changes outside the launcher (updated or removed
+/// elsewhere), so the card does not offer to retry a try that no longer applies. Another look at
+/// the same copy keeps it.
+fn a_stop_is_forgotten_when_the_installed_copy_changes() {
+    let copy = |v: &str| Installed {
+        version: version::parse(v),
+        source: InstallSource::MacApp,
+        location: "/Applications/PhotoCraft.app".into(),
+        package: None,
+        externally_managed: false,
+        origin: None,
+        installation: None,
+    };
+    let stopped_then = |installed: Option<Installed>| {
+        let mut ev = events();
+        ev.push(Event::Installable { app: "photocraft".into(), installable: true });
+        ev.push(Event::Blocked {
+            app: "photocraft".into(),
+            failure: Some(InstallFailure { blocker: Blocker::AppOpen, details: r"C:\Apps\PhotoCraft\photocraft-cli.exe".into() }),
+        });
+        ev.push(Event::Detected { app: "photocraft".into(), installed });
+        ev
+    };
+    for view in [ViewMode::Grid, ViewMode::Table] {
+        // The same copy, looked at again: the stop stays.
+        let (mut h, _) = harness_with(stopped_then(Some(copy("0.4.1"))), view, egui::Theme::Dark, true, 1.0);
+        h.run_steps(8);
+        assert!(h.query_by_label("Update stopped").is_some(), "{view:?}: the same copy keeps the stop");
+        h.get_by_label("Retry update to 0.5.0");
+
+        // Updated elsewhere: up to date, with no stopped reinstall to retry.
+        let (mut h, _) = harness_with(stopped_then(Some(copy("0.5.0"))), view, egui::Theme::Dark, true, 1.0);
+        h.run_steps(8);
+        assert!(h.query_by_label("Reinstall stopped").is_none(), "{view:?}: no reinstall was tried");
+        assert!(h.query_by_label("Retry reinstall").is_none(), "{view:?}: Open is the main button");
+        assert!(h.query_by_label_contains("press Retry").is_none(), "{view:?}");
+
+        // Removed elsewhere: a plain install, not a stopped one.
+        let (mut h, _) = harness_with(stopped_then(None), view, egui::Theme::Dark, true, 1.0);
+        h.run_steps(8);
+        assert!(h.query_by_label("Install stopped").is_none(), "{view:?}: no install was tried");
+        // CadCraft's kept download is the only install to retry.
+        assert_eq!(h.query_all_by_label("Retry install").count(), 1, "{view:?}: Install is PhotoCraft's main button");
+        assert!(h.query_by_label_contains("press Retry").is_none(), "{view:?}");
+    }
+}
+
+#[test]
+/// A resumed update stopped by a running app before its download goes on keeps the partial
+/// download, so Resume tries again: the card still says why, and says to press Resume.
+fn a_stop_with_a_paused_download_says_to_press_resume() {
+    let mut ev = events();
+    ev.push(Event::Paused { app: "photocraft".into(), download: Some(PausedDownload { done: 20 << 20, total: 80 << 20 }) });
+    ev.push(Event::Blocked {
+        app: "photocraft".into(),
+        failure: Some(InstallFailure { blocker: Blocker::AppOpen, details: r"C:\Apps\PhotoCraft\photocraft-cli.exe".into() }),
+    });
+    let (mut h, sent) = harness_with(ev, ViewMode::Grid, egui::Theme::Dark, true, 1.0);
+    h.run_steps(8);
+    h.get_by_label("PhotoCraft or its command-line tool is open. Close it, then press Resume.");
+    h.get_by_label(r"Details: C:\Apps\PhotoCraft\photocraft-cli.exe");
+    assert!(h.query_by_label_contains("press Retry").is_none(), "no Retry is offered");
+    assert!(h.query_by_label_contains("Retry update").is_none(), "the paused download's controls show");
+    assert!(h.query_by_label("Update paused").is_some(), "the status says the download is paused");
+    sent.borrow_mut().clear();
+    h.query_all_by_label_contains("Resume")
+        .find(|n| n.accesskit_node().label().is_some_and(|l| l.starts_with("Resume")))
+        .expect("the paused download's Resume button")
+        .click();
+    h.run_steps(2);
+    assert_eq!(launches_and_installs(&sent, "photocraft"), (0, 1), "Resume tries the update again: {:?}", sent.borrow());
+}
+
+#[test]
+/// A blocked install of a kept version offers Retry, as its card says, and the retry installs
+/// that version again.
+fn a_blocked_install_of_a_kept_version_offers_retry() {
+    let mut ev = events();
+    ev.push(Event::Blocked {
+        app: "photocraft".into(),
+        failure: Some(InstallFailure { blocker: Blocker::AppOpen, details: r"C:\Apps\PhotoCraft\photocraft-cli.exe".into() }),
+    });
+    let (mut h, sent) = harness_with(ev, ViewMode::Grid, egui::Theme::Dark, true, 1.0);
+    h.run_steps(8);
+    h.state_mut()
+        .as_mut()
+        .expect("the harness built the launcher")
+        .settings
+        .versions
+        .insert("photocraft".into(), artcraft_launcher_core::protocol::VersionTrack::Pinned("v0.5.0".into()));
+    h.run_steps(4);
+    h.get_by_label_contains("then press Retry");
+    assert!(h.query_by_label("Install version v0.5.0").is_none(), "the kept version's install is a retry");
+    sent.borrow_mut().clear();
+    h.get_by_label("Retry install of version v0.5.0").click();
+    h.run_steps(2);
+    assert_eq!(launches_and_installs(&sent, "photocraft"), (0, 1), "{:?}", sent.borrow());
+}
+
+#[test]
+/// A blocked app kept on a version that can't replace this copy offers a greyed-out Install of
+/// that version, not Retry, so neither the card nor the status says to press Retry.
+fn a_blocked_app_kept_on_a_version_it_cant_install_does_not_say_to_press_retry() {
+    let mut ev = events();
+    ev.push(Event::Installable { app: "photocraft".into(), installable: false });
+    ev.push(Event::Blocked {
+        app: "photocraft".into(),
+        failure: Some(InstallFailure { blocker: Blocker::AppOpen, details: r"C:\Apps\PhotoCraft\photocraft-cli.exe".into() }),
+    });
+    let (mut h, sent) = harness_with(ev, ViewMode::Grid, egui::Theme::Dark, true, 1.0);
+    h.run_steps(8);
+    h.state_mut()
+        .as_mut()
+        .expect("the harness built the launcher")
+        .settings
+        .versions
+        .insert("photocraft".into(), artcraft_launcher_core::protocol::VersionTrack::Pinned("v0.5.0".into()));
+    h.run_steps(4);
+    assert!(h.query_by_label_contains("then press Retry").is_none(), "no Retry is offered");
+    assert!(h.query_by_label("Update stopped").is_none(), "the status does not name a stop it can't retry");
+    assert!(h.query_by_label("Install stopped").is_none(), "the status does not name a stop it can't retry");
+    assert!(h.query_by_label("Retry install of version v0.5.0").is_none(), "the kept version can't install");
+    let install = h.get_by_label("Install version v0.5.0");
+    assert!(install.accesskit_node().is_disabled(), "it can't replace this copy");
+    sent.borrow_mut().clear();
+    install.click();
+    h.run_steps(2);
+    assert_eq!(launches_and_installs(&sent, "photocraft"), (0, 0), "a greyed-out Install sends nothing: {:?}", sent.borrow());
+}
+
+#[test]
+/// A reinstall of an up-to-date app stopped by another installation offers Retry, as its card
+/// says, in place of Open, and the retry installs again as Reinstall does. The status says the
+/// reinstall stopped in both views.
+fn a_blocked_reinstall_offers_retry() {
+    let mut ev = events();
+    ev.push(Event::Installable { app: "lightcraft".into(), installable: true });
+    ev.push(Event::Blocked {
+        app: "lightcraft".into(),
+        failure: Some(InstallFailure { blocker: Blocker::InstallerBusy, details: "MSI 1618".into() }),
+    });
+    for view in [ViewMode::Grid, ViewMode::Table] {
+        let (mut h, sent) = harness_with(ev.clone(), view, egui::Theme::Dark, true, 1.0);
+        h.run_steps(8);
+        assert!(h.query_by_label("Reinstall stopped").is_some(), "{view:?}: the status names the stop");
+        assert!(h.query_by_label("Update stopped").is_none(), "{view:?}: it was a reinstall, not an update");
+        if view == ViewMode::Grid {
+            h.get_by_label("Another installation is in progress. Wait for it to finish, then press Retry.");
+        }
+        sent.borrow_mut().clear();
+        h.get_by_label("Retry reinstall").click();
+        h.run_steps(2);
+        assert_eq!(launches_and_installs(&sent, "lightcraft"), (0, 1), "{view:?}: {:?}", sent.borrow());
+    }
+}
+
+#[test]
+/// A stopped update whose release can no longer be found, and a stopped reinstall of a copy the
+/// launcher can't install, offer Open instead of Retry, so neither the card nor the status says
+/// to press Retry.
+fn a_stop_with_no_retry_offered_does_not_say_to_press_retry() {
+    let blocked = |app: &str, blocker| Event::Blocked { app: app.into(), failure: Some(InstallFailure { blocker, details: "MSI 1618".into() }) };
+    let mut ev = events();
+    ev.push(blocked("photocraft", Blocker::AppOpen));
+    ev.push(Event::Latest { app: "photocraft".into(), latest: LatestRelease::None, from: Origin::ArtCraftApi });
+    ev.push(Event::Installable { app: "lightcraft".into(), installable: false });
+    ev.push(blocked("lightcraft", Blocker::InstallerBusy));
+    for view in [ViewMode::Grid, ViewMode::Table] {
+        let (mut h, _) = harness_with(ev.clone(), view, egui::Theme::Dark, true, 1.0);
+        h.run_steps(8);
+        assert!(h.query_by_label_contains("press Retry").is_none(), "{view:?}: no Retry is offered");
+        assert!(h.query_by_label("Update stopped").is_none(), "{view:?}");
+        assert!(h.query_by_label("Install stopped").is_none(), "{view:?}");
+        assert!(h.query_by_label_contains("Retry update").is_none(), "{view:?}: Open stays the main button");
+        assert!(h.query_by_label("Retry reinstall").is_none(), "{view:?}: Open stays the main button");
+    }
+}
+
+#[test]
+/// A Windows Installer step that stopped without writing a log, such as a downgrade's removal
+/// step, shows only its error code, and the card promises no log.
+fn a_failed_installer_step_without_a_log_promises_only_its_code() {
+    let mut ev = events();
+    ev.push(Event::Blocked {
+        app: "photocraft".into(),
+        failure: Some(InstallFailure { blocker: Blocker::InstallerFailed, details: "MSI 1603".into() }),
+    });
+    let (mut h, _) = harness_with(ev, ViewMode::Grid, egui::Theme::Dark, true, 1.0);
+    h.run_steps(8);
+    h.get_by_label("The Windows Installer couldn't finish. The details below give its error code.");
+    h.get_by_label("Details: MSI 1603");
+    assert!(h.query_by_label_contains("log").is_none(), "no log was written");
+    h.get_by_label("Retry update to 0.5.0");
 }
 
 #[test]

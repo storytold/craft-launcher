@@ -168,6 +168,7 @@
 	Update cancelled	更新をキャンセルしました
 	Uninstall cancelled	アンインストールをキャンセルしました
 	Retry install	インストールを再試行
+	Retry reinstall	再インストールを再試行
 	Retry update	更新を再試行
 	Retry update to {version}	{version} への更新を再試行
 	The download is still here. It's checked again, then installed.	ダウンロードしたファイルはそのまま残っています。もう一度検証してからインストールします。
@@ -235,6 +236,21 @@ month	Dec	12月
 	Not available here	このプラットフォームでは利用不可
 	Updating…	更新中…
 	Update paused	更新を一時停止
+	Update stopped	更新を停止しました
+	Install stopped	インストールを停止しました
+	Reinstall stopped	再インストールを停止しました
+	{name} or its command-line tool is open. Close it, then press Retry.	{name} またはそのコマンドラインツールが開いています。閉じてから再試行してください。
+	A program with the same name as {name} is running. If it is this copy, close it, then press Retry.	{name} と同じ名前のプログラムが実行中です。このコピーであれば、閉じてから再試行してください。
+	Another installation is in progress. Wait for it to finish, then press Retry.	別のインストールが進行中です。完了するまで待ってから再試行してください。
+	Another program is using a file of {name}. Close that program, then press Retry.	別のプログラムが {name} のファイルを使用しています。そのプログラムを閉じてから再試行してください。
+	Windows denied access to a file of {name}. Check the folder's permissions, then press Retry.	Windows が {name} のファイルへのアクセスを拒否しました。フォルダーのアクセス許可を確認してから再試行してください。
+	{name} or its command-line tool is open. Close it, then press Resume.	{name} またはそのコマンドラインツールが開いています。閉じてからダウンロードを再開してください。
+	A program with the same name as {name} is running. If it is this copy, close it, then press Resume.	{name} と同じ名前のプログラムが実行中です。このコピーであれば、閉じてからダウンロードを再開してください。
+	Another installation is in progress. Wait for it to finish, then press Resume.	別のインストールが進行中です。完了するまで待ってからダウンロードを再開してください。
+	Another program is using a file of {name}. Close that program, then press Resume.	別のプログラムが {name} のファイルを使用しています。そのプログラムを閉じてからダウンロードを再開してください。
+	Windows denied access to a file of {name}. Check the folder's permissions, then press Resume.	Windows が {name} のファイルへのアクセスを拒否しました。フォルダーのアクセス許可を確認してからダウンロードを再開してください。
+	The Windows Installer couldn't finish. The details below give its error code.	Windows インストーラーを完了できませんでした。下の詳細にエラーコードが表示されています。
+	Details: {details}	詳細: {details}
 	Download paused	ダウンロードを一時停止
 	{version} installed → {latest} released	{version} インストール済み → {latest} 公開
 	Version {version}	バージョン {version}
@@ -325,6 +341,10 @@ filter	Installed	インストール済み
 @msg	{name} installed: {version} (this release publishes no checksum, so only its size was checked)	{name} をインストールしました: {version}（このリリースはチェックサムを公開していないため、サイズのみ確認しました）
 @msg	{name} was removed	{name} をアンインストールしました
 @msg	{name} is running. Quit it, then try again.	{name} が実行中です。終了してから再試行してください。
+@msg	{name}'s command-line tool is running. Quit it, then try again.	{name} のコマンドラインツールが実行中です。終了してから再試行してください。
+@msg	A program named {program} is running. If it is {name}, quit it, then try again.	{program} という名前のプログラムが実行中です。{name} であれば、終了してから再試行してください。
+@msg	Another program is using {file}. Close it, then try again.	別のプログラムが {file} を使用しています。閉じてから再試行してください。
+@msg	Windows denied access to {file}.	Windows が {file} へのアクセスを拒否しました。
 @msg	{name} was installed from the {repo} repository or the AUR ({pkg}). Update it with {cmd} or sudo pacman -Syu	{name} は {repo} リポジトリまたは AUR からインストールされています ({pkg})。{cmd} または sudo pacman -Syu で更新してください。
 @msg	{name} was installed from the {repo} repository or the AUR ({pkg}). Update it with your AUR helper (for example: yay -S {pkg}) or sudo pacman -Syu	{name} は {repo} リポジトリまたは AUR からインストールされています ({pkg})。AUR ヘルパー (例: yay -S {pkg}) または sudo pacman -Syu で更新してください。
 @msg	{name} was installed from the AUR ({pkg}). Update it with {cmd}	{name} は AUR からインストールされています ({pkg})。{cmd} で更新してください。
@@ -419,6 +439,7 @@ column	Author	作者
 	Nightly	ナイトリービルド
 	Nightly (none published yet)	ナイトリービルド（未公開）
 	Install version {version}	バージョン {version} をインストール
+	Retry install of version {version}	バージョン {version} のインストールを再試行
 	Download selected version	選択したバージョンをダウンロード
 	Older launcher versions require a manual reinstall.	古いランチャーに戻すには手動で再インストールする必要があります。
 	Your files may not open in older versions.	古いバージョンではファイルを開けない場合があります。

@@ -597,6 +597,17 @@ impl LauncherUi {
             }
             Event::Detected { app, installed } => {
                 if let Some(e) = self.entry_mut(&app) {
+                    // A copy updated, moved or removed outside the launcher makes the last stop
+                    // stale. A job's own look comes before its `Blocked`, so this does not clear
+                    // the stop of the job that just ended.
+                    let same_copy = match (&e.installed, &installed) {
+                        (Some(was), Some(now)) => was.version == now.version && was.location == now.location,
+                        (None, None) => true,
+                        _ => false,
+                    };
+                    if !same_copy {
+                        e.blocked = None;
+                    }
                     e.installed = installed;
                     e.detected = true;
                 }
@@ -636,6 +647,12 @@ impl LauncherUi {
             }
             Event::Occupied { app, path } => {
                 self.dialog = Some(Dialog::Replace { app, path });
+                false
+            }
+            Event::Blocked { app, failure } => {
+                if let Some(e) = self.entry_mut(&app) {
+                    e.blocked = failure;
+                }
                 false
             }
             Event::JobFinished { app, result } => {
@@ -686,6 +703,8 @@ impl LauncherUi {
             }
         } else if let Some(e) = self.entry_mut(&app) {
             e.job = Some(phase);
+            // A new try has started, so the cause of the last one is cleared.
+            e.blocked = None;
         }
     }
 
