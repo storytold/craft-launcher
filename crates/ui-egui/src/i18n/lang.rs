@@ -97,7 +97,7 @@ pub(super) fn plural_polish(n: u64) -> usize {
 }
 
 /// The registry. English first: it is the fallback and the source language.
-pub static LANGUAGES: [LangInfo; 13] = [
+pub static LANGUAGES: [LangInfo; 14] = [
     LangInfo {
         code: "en",
         name: "English",
@@ -220,6 +220,17 @@ pub static LANGUAGES: [LangInfo; 13] = [
         catalog: OnceLock::new(),
     },
     LangInfo {
+        code: "sv",
+        name: "Svenska",
+        english_name: "Swedish",
+        script: None,
+        source: include_str!("sv.tsv"),
+        plural: plural_one_other,
+        plural_forms: 2,
+        complete_menus: true,
+        catalog: OnceLock::new(),
+    },
+    LangInfo {
         code: "ja",
         name: "日本語",
         english_name: "Japanese",
@@ -279,8 +290,9 @@ impl Lang {
     pub const CS: Lang = Lang(&LANGUAGES[8]);
     pub const PL: Lang = Lang(&LANGUAGES[9]);
     pub const HU: Lang = Lang(&LANGUAGES[10]);
-    pub const JA: Lang = Lang(&LANGUAGES[11]);
-    pub const KA: Lang = Lang(&LANGUAGES[12]);
+    pub const SV: Lang = Lang(&LANGUAGES[11]);
+    pub const JA: Lang = Lang(&LANGUAGES[12]);
+    pub const KA: Lang = Lang(&LANGUAGES[13]);
 
     pub fn code(self) -> &'static str {
         self.0.code
