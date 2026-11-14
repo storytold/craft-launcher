@@ -4,7 +4,7 @@
 use std::collections::{BTreeSet, HashSet};
 
 use super::catalog::{Catalog, unescape};
-use super::lang::{name_sort_key, plural_czech, plural_east_slavic, plural_polish};
+use super::lang::{name_sort_key, plural_arabic, plural_czech, plural_east_slavic, plural_polish};
 use super::{LANGUAGES, Lang, LangInfo, fmt, lang_from_tag, message, tr, trn};
 
 #[test]
@@ -112,7 +112,7 @@ fn every_msg_row_translates_its_own_text() {
         let cat = Catalog::parse(lang.source);
         for (line, context, source, translation) in rows(lang) {
             if context == "@msg" {
-                assert_eq!(cat.message(&unescape(source)).as_deref(), Some(unescape(translation).as_str()), "{} line {line}", lang.code);
+                assert_eq!(cat.message(&unescape(source), false).as_deref(), Some(unescape(translation).as_str()), "{} line {line}", lang.code);
             }
         }
     }
@@ -459,6 +459,71 @@ fn georgian_locales_and_counts_work() {
     assert!(!Lang::KA.0.source.chars().any(|c| ('\u{1c90}'..='\u{1cbf}').contains(&c)));
 }
 
+#[test]
+fn arabic_locales_and_plurals_work() {
+    for tag in ["ar", "ar-MA", "ar_EG.UTF-8", "AR-sa", "ar_DZ@variant"] {
+        assert_eq!(lang_from_tag(tag), Some(Lang::AR), "{tag}");
+    }
+    assert_eq!(super::detect::first_supported(["xx-XX", "ar-EG", "en-US"]), Some(Lang::AR));
+    // Arabic is the only right-to-left language.
+    assert!(Lang::all().filter(|l| l.rtl()).eq([Lang::AR]));
+    // The six CLDR forms: zero (0), one (1), two (2), few (3–10), many (11–99), other.
+    let form = |n: u64| plural_arabic(n);
+    assert_eq!([0, 1, 2].map(form), [0, 1, 2]);
+    assert_eq!([3, 10, 103, 110, 1003].map(form), [3; 5]);
+    assert_eq!([11, 99, 111, 199, 1011].map(form), [4; 5]);
+    assert_eq!([100, 101, 102, 200, 1000].map(form), [5; 5]);
+    // Lookups come back in display order; the count fills its placeholder in place.
+    assert_eq!(trn(Lang::AR, 0, "{n} app", "{n} apps"), "تطبيقات 0");
+    assert_eq!(trn(Lang::AR, 1, "{n} app", "{n} apps"), "تطبيق 1");
+    assert_eq!(trn(Lang::AR, 2, "{n} app", "{n} apps"), "تطبيقان 2");
+    assert_eq!(trn(Lang::AR, 5, "{n} app", "{n} apps"), "تطبيقات 5");
+    assert_eq!(trn(Lang::AR, 11, "{n} app", "{n} apps"), "تطبيقًا 11");
+    assert_eq!(trn(Lang::AR, 100, "{n} app", "{n} apps"), "تطبيق 100");
+    assert_eq!(trn(Lang::AR, 3, "{n} unknown item", "{n} unknown items"), "3 unknown items");
+    // A `{name}` row stays in logical order from the catalog and orders when `fmt` fills it.
+    assert_eq!(tr(Lang::AR, "Update to {v}"), "التحديث إلى {v}");
+    assert_eq!(tr(Lang::AR, "Settings"), "الإعدادات");
+    assert_eq!(message(Lang::AR, "PhotoCraft updated to 0.5.0"), "0.5.0 إلى حُدِّث PhotoCraft");
+    assert_eq!(tr(Lang::AR, "Untranslated diagnostic"), "Untranslated diagnostic");
+}
+
+/// With a system Arabic font installed, every UI family can draw the whole Arabic catalog.
+/// Machines without one (CI, the web) skip this; the UI then stays in English.
+#[test]
+fn system_font_covers_arabic_in_every_ui_family() {
+    use egui::{FontFamily, FontId};
+    if !crate::theme::cjk_font_available(Lang::AR) {
+        return;
+    }
+    let ctx = egui::Context::default();
+    crate::theme::install_fonts(&ctx, Some(Lang::AR));
+    let mut output = ctx.run_ui(egui::RawInput::default(), |_| {});
+    output.textures_delta.clear();
+    let text: String = Lang::AR
+        .0
+        .source
+        .lines()
+        .filter_map(|line| line.split('\t').nth(2))
+        .flat_map(str::chars)
+        .filter(|c| ('\u{0600}'..='\u{06ff}').contains(c) || ('\u{fb50}'..='\u{fdff}').contains(c))
+        .collect();
+    assert!(text.chars().count() > 500);
+    for family in [
+        FontFamily::Proportional,
+        FontFamily::Monospace,
+        crate::theme::medium(),
+        crate::theme::semibold(),
+        crate::theme::display(),
+        crate::theme::mono(),
+        crate::theme::mono_bold(),
+    ] {
+        ctx.fonts_mut(|fonts| {
+            assert!(fonts.has_glyphs(&FontId::new(14.0, family.clone()), &text), "missing glyph in {family:?}");
+        });
+    }
+}
+
 /// With the system's Chinese font installed, every UI family can draw the whole Simplified and
 /// Traditional Chinese catalogs. Machines without one (CI, the web) skip this; the UI then stays
 /// in English.
@@ -580,6 +645,8 @@ fn language_labels_come_from_the_registry() {
     assert_eq!(Settings::language_label(Lang::ZH_TW.code(), Some(Lang::ZH_TW)), "Traditional Chinese (Taiwan) (繁體中文)");
     assert_eq!(Settings::language_label(Lang::JA.code(), Some(Lang::ZH_CN)), "Japanese");
     assert_eq!(Settings::language_label(Lang::JA.code(), Some(Lang::JA)), "Japanese (日本語)");
+    assert_eq!(Settings::language_label(Lang::AR.code(), Some(Lang::ZH_CN)), "Arabic");
+    assert_eq!(Settings::language_label(Lang::AR.code(), Some(Lang::AR)), "Arabic (العربية)");
     assert_eq!(Settings::language_label(Lang::KA.code(), None), "Georgian");
     assert_eq!(Settings::language_label(Lang::KA.code(), Some(Lang::KA)), "Georgian (ქართული)");
     assert_eq!(Settings::language_label(Settings::LANGUAGE_AUTO, None), "Auto");
@@ -619,14 +686,14 @@ fn message_templates_match_real_messages() {
          @msg\t{name} updated to {version} (no checksum)\t{name} обновлено до {version} (без суммы)\n\
          @msg\t{a}{b}\tnever\n",
     );
-    assert_eq!(cat.message("Download cancelled").as_deref(), Some("Скачивание отменено"));
-    assert_eq!(cat.message("Couldn't open PhotoCraft: no such file: x").as_deref(), Some("Не удалось открыть PhotoCraft: no such file: x"));
-    assert_eq!(cat.message("PhotoCraft updated to 0.5.0").as_deref(), Some("PhotoCraft обновлено до 0.5.0"));
+    assert_eq!(cat.message("Download cancelled", false).as_deref(), Some("Скачивание отменено"));
+    assert_eq!(cat.message("Couldn't open PhotoCraft: no such file: x", false).as_deref(), Some("Не удалось открыть PhotoCraft: no such file: x"));
+    assert_eq!(cat.message("PhotoCraft updated to 0.5.0", false).as_deref(), Some("PhotoCraft обновлено до 0.5.0"));
     // The template that spells out more of the message wins.
-    assert_eq!(cat.message("PhotoCraft updated to 0.5.0 (no checksum)").as_deref(), Some("PhotoCraft обновлено до 0.5.0 (без суммы)"));
+    assert_eq!(cat.message("PhotoCraft updated to 0.5.0 (no checksum)", false).as_deref(), Some("PhotoCraft обновлено до 0.5.0 (без суммы)"));
     // Placeholders never match nothing, and unknown messages aren't touched.
-    assert_eq!(cat.message("Couldn't open : x"), None);
-    assert_eq!(cat.message("Something else"), None);
+    assert_eq!(cat.message("Couldn't open : x", false), None);
+    assert_eq!(cat.message("Something else", false), None);
     assert_eq!(message(Lang::EN, "Something else"), "Something else");
 }
 
