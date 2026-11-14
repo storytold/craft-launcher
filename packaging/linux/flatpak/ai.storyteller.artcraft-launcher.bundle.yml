@@ -61,6 +61,7 @@ modules:
     buildsystem: simple
     build-commands:
       - install -Dm755 bin/artcraft-launcher /app/bin/artcraft-launcher
+      - install -Dm755 bin/craft-ai-mcp /app/bin/craft-ai-mcp
       - install -Dm644 share/applications/ai.storyteller.artcraft-launcher.desktop /app/share/applications/ai.storyteller.artcraft-launcher.desktop
       # Already has the release's version and date substituted by package.sh.
       - install -Dm644 share/metainfo/ai.storyteller.artcraft-launcher.metainfo.xml /app/share/metainfo/ai.storyteller.artcraft-launcher.metainfo.xml

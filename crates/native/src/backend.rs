@@ -357,6 +357,11 @@ impl NativeBackend {
             for app in artcraft_launcher_core::hosted_catalog::apps().iter().filter(|a| platform.is_none_or(|p| a.runs_on(p.os))) {
                 report_partial(app, &shared, &paths, platform);
             }
+            // Local MCP state: which installed apps can be exposed + the unified bridge.
+            {
+                let _mcp = MCP_WORK.lock().unwrap_or_else(PoisonError::into_inner);
+                shared.emit(mcp_state(&shared));
+            }
             drop(busy);
         });
     }
@@ -1617,6 +1622,12 @@ impl Backend for NativeBackend {
                     self.check(true);
                 }
             }
+            cmd @ (Command::McpState | Command::McpSetAgents { .. } | Command::McpSetClient { .. } | Command::McpRestartClient { .. }) => {
+                // Detection can run package-manager queries for seconds (flatpak on Linux):
+                // never on the UI thread that sends commands.
+                let shared = self.shared.clone();
+                std::thread::spawn(move || run_mcp(&shared, cmd));
+            }
         }
     }
 
@@ -1649,6 +1660,44 @@ impl Backend for NativeBackend {
     fn now(&self) -> i64 {
         crate::now()
     }
+}
+
+/// The AI agents state, from a fresh detection of the installed apps.
+fn mcp_state(shared: &Shared) -> Event {
+    mcp_state_for(&detected_apps(shared))
+}
+
+/// [`mcp_state`] for apps already detected.
+fn mcp_state_for(detected: &[crate::agents::InstalledApp]) -> Event {
+    Event::Mcp { agents: crate::agents::state(detected) }
+}
+
+/// Serialises MCP commands and every publication of the MCP state, so a state read before a
+/// command can't arrive after that command's own (newer) state.
+static MCP_WORK: Mutex<()> = Mutex::new(());
+
+/// One AI agents command, on a worker thread: detection can run package-manager queries for
+/// seconds (flatpak on Linux). Commands run one at a time; the new state is sent when done.
+fn run_mcp(shared: &Shared, cmd: Command) {
+    let _guard = MCP_WORK.lock().unwrap_or_else(PoisonError::into_inner);
+    let apps = detected_apps(shared);
+    let result = match cmd {
+        Command::McpSetAgents { enabled } => crate::agents::set_enabled(enabled, &apps),
+        Command::McpSetClient { client, added } => crate::agents::set_client(client, added),
+        Command::McpRestartClient { client } => crate::agents::restart_client(client),
+        _ => Ok(()),
+    };
+    if let Err(message) = result {
+        shared.emit(Event::McpError { message });
+    }
+    shared.emit(mcp_state_for(&apps));
+}
+
+/// The installed apps with their CLIs, from a fresh detection snapshot.
+fn detected_apps(shared: &Shared) -> Vec<crate::agents::InstalledApp> {
+    let manifest = shared.manifest.lock().unwrap_or_else(PoisonError::into_inner).clone();
+    let snapshot = crate::detect::Snapshot::take();
+    crate::agents::installed_apps(&manifest, &snapshot)
 }
 
 #[cfg(test)]

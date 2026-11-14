@@ -16,7 +16,8 @@
   ],
   "payloads": [
     "NOTICE",
-    "artcraft-launcher.exe"
+    "artcraft-launcher.exe",
+    "craft-ai-mcp.exe"
   ],
   "registry": [
     [
