@@ -1997,7 +1997,7 @@ mod tree {
             } else {
                 // Symlinks and hardlinks could redirect a later write outside the staging folder,
                 // and device/FIFO entries have no place in an app package (audit: launcher #3).
-                return Err("archive contains a link or special file".into());
+                return Err("archive contains a symlink, hardlink or special file".into());
             }
         }
         // Delay directory entries until child entries are written so restrictive modes do not break child extraction.
