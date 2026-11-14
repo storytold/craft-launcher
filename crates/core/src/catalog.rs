@@ -214,6 +214,7 @@ pub fn app_icon_png(id: &str) -> Option<&'static [u8]> {
         "craft-anything" => include_bytes!("../../../assets/app-icons/craft-anything.png"),
         "solidcraft" => include_bytes!("../../../assets/app-icons/solidcraft.png"),
         "mailcraft" => include_bytes!("../../../assets/app-icons/mailcraft.png"),
+        "accountingcraft" => include_bytes!("../../../assets/app-icons/accountingcraft.png"),
         "cadcraft" => include_bytes!("../../../assets/app-icons/cadcraft.png"),
         "soundcraft" => include_bytes!("../../../assets/app-icons/soundcraft.png"),
         "figcraft" => include_bytes!("../../../assets/app-icons/figcraft.png"),
@@ -236,8 +237,8 @@ mod tests {
 
     /// Every catalog entry must have a distinct lookup key.
     #[test]
-    fn suite_has_nineteen_apps_with_unique_ids() {
-        assert_eq!(SUITE.len(), 19);
+    fn suite_has_twenty_apps_with_unique_ids() {
+        assert_eq!(SUITE.len(), 20);
         let mut ids: Vec<_> = SUITE.iter().map(|a| a.id).collect();
         ids.sort_unstable();
         ids.dedup();
@@ -276,6 +277,17 @@ mod tests {
         assert_eq!(mc.website(), "https://mailcraft.work");
         assert!(!mc.installs(crate::PackageKind::Dmg));
         assert!(mc.installs(crate::PackageKind::Msi) && mc.installs(crate::PackageKind::Flatpak));
+    }
+
+    #[test]
+    fn accountingcraft_is_a_community_app_not_installed_on_mac() {
+        let ac = CraftApp::by_id("accountingcraft").unwrap();
+        assert_eq!(ac.kind, AppKind::Community);
+        assert_eq!(ac.repo, "DrDMo/accountingcraft");
+        assert_eq!(ac.bundle_id(), "io.github.drdmo.accountingcraft");
+        assert_eq!(ac.website(), "https://github.com/DrDMo/accountingcraft");
+        assert!(!ac.installs(crate::PackageKind::Dmg));
+        assert!(ac.installs(crate::PackageKind::PortableZip) && ac.installs(crate::PackageKind::TarGz));
     }
 
     #[test]
