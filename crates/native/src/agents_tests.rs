@@ -81,13 +81,24 @@ fn switching_on_and_off() {
 }
 
 #[test]
+fn a_broken_app_list_does_not_grant_agents_access() {
+    let dir = tempfile::tempdir().unwrap();
+    write_apps(dir.path(), &[]).unwrap();
+    assert!(enabled(dir.path()));
+    std::fs::write(dir.path().join(APPS_FILE), b"not json").unwrap();
+    assert!(!enabled(dir.path()));
+    std::fs::write(dir.path().join(APPS_FILE), br#"{"version":999,"apps":[]}"#).unwrap();
+    assert!(!enabled(dir.path()));
+}
+
+#[test]
 fn register_creates_a_config_and_keeps_other_servers_and_keys() {
     let dir = tempfile::tempdir().unwrap();
     let fresh = dir.path().join("new").join("mcp.json");
     let gw = dir.path().join(format!("craft-ai-mcp{}", std::env::consts::EXE_SUFFIX));
     register(&fresh, &gw).unwrap();
     assert_eq!(read(&fresh)["mcpServers"][SERVER_KEY]["args"], json!(["--stdio"]));
-    assert!(registered(&fresh));
+    assert!(registered(&fresh, &gw));
 
     let existing = dir.path().join("claude.json");
     std::fs::write(&existing, r#"{"theme":"dark","mcpServers":{"other":{"command":"x"}}}"#).unwrap();
@@ -97,11 +108,11 @@ fn register_creates_a_config_and_keeps_other_servers_and_keys() {
     assert_eq!(v["mcpServers"]["other"]["command"], "x");
     assert_eq!(v["mcpServers"][SERVER_KEY]["command"], gw.to_string_lossy().as_ref());
 
-    unregister(&existing).unwrap();
+    unregister(&existing, &gw).unwrap();
     let v = read(&existing);
     assert!(v["mcpServers"].get(SERVER_KEY).is_none());
     assert_eq!(v["mcpServers"]["other"]["command"], "x");
-    assert!(!registered(&existing));
+    assert!(!registered(&existing, &gw));
 }
 
 #[test]
@@ -115,8 +126,8 @@ fn a_broken_config_is_never_overwritten() {
         assert_eq!(std::fs::read_to_string(&p).unwrap(), text, "{name} changed");
     }
     let bad = dir.path().join("bad.json");
-    assert!(unregister(&bad).is_err());
-    assert!(!registered(&bad));
+    assert!(unregister(&bad, &gw).is_err());
+    assert!(!registered(&bad, &gw));
 }
 
 #[test]
@@ -124,19 +135,21 @@ fn an_empty_config_counts_as_fresh_and_a_missing_one_needs_no_unregister() {
     let dir = tempfile::tempdir().unwrap();
     let p = dir.path().join("empty.json");
     std::fs::write(&p, "  \n").unwrap();
-    register(&p, &dir.path().join(format!("craft-ai-mcp{}", std::env::consts::EXE_SUFFIX))).unwrap();
-    assert!(registered(&p));
-    unregister(&dir.path().join("missing.json")).unwrap();
+    let gw = gateway_copy(dir.path());
+    register(&p, &gw).unwrap();
+    assert!(registered(&p, &gw));
+    unregister(&dir.path().join("missing.json"), &gw).unwrap();
     assert!(!dir.path().join("missing.json").exists());
 }
 
 #[test]
 fn unregister_leaves_a_file_without_our_entry_untouched() {
     let dir = tempfile::tempdir().unwrap();
+    let gw = gateway_copy(dir.path());
     let p = dir.path().join("c.json");
     let text = "{\"mcpServers\": {\"other\": {}}}";
     std::fs::write(&p, text).unwrap();
-    unregister(&p).unwrap();
+    unregister(&p, &gw).unwrap();
     assert_eq!(std::fs::read_to_string(&p).unwrap(), text);
 }
 
@@ -151,27 +164,29 @@ fn an_artcraft_entry_the_launcher_did_not_write_is_kept() {
         json!({"url": "http://localhost:9000/mcp"}),
         json!({"command": gw.to_string_lossy(), "args": ["--stdio", "--verbose"]}),
         json!({"command": gw.to_string_lossy(), "args": ["--stdio"], "env": {"TOKEN": "x"}}),
+        json!({"command": dir.path().join("elsewhere").join(gw.file_name().unwrap()), "args": ["--stdio"]}),
+        json!({"command": gw.to_string_lossy(), "args": ["--stdio"], "cwd": "/custom"}),
+        json!({"command": gw.to_string_lossy(), "args": ["--stdio"], "disabled": true}),
+        json!({"command": gw.to_string_lossy(), "args": ["--stdio"], "timeout": 42}),
         json!("not an object"),
     ];
     for (i, entry) in theirs.iter().enumerate() {
         let p = dir.path().join(format!("c{i}.json"));
         let text = serde_json::to_string_pretty(&json!({"mcpServers": {SERVER_KEY: entry}})).unwrap();
         std::fs::write(&p, &text).unwrap();
-        assert!(!registered(&p), "{entry}");
+        assert!(!registered(&p, &gw), "{entry}");
         assert!(register(&p, &gw).is_err(), "{entry}");
-        unregister(&p).unwrap();
+        unregister(&p, &gw).unwrap();
         assert_eq!(std::fs::read_to_string(&p).unwrap(), text, "{entry} changed");
     }
 
-    // Our own entry, wherever its gateway copy is (and with an empty `env` a client may add), is ours.
+    // The exact stable gateway entry, with an empty environment a client may add, is ours.
     let p = dir.path().join("ours.json");
-    let moved = dir.path().join("elsewhere").join(gw.file_name().unwrap());
-    std::fs::write(&p, json!({"mcpServers": {SERVER_KEY: {"command": moved.to_string_lossy(), "args": ["--stdio"], "env": {}}}}).to_string())
-        .unwrap();
-    assert!(registered(&p));
+    std::fs::write(&p, json!({"mcpServers": {SERVER_KEY: {"command": gw.to_string_lossy(), "args": ["--stdio"], "env": {}}}}).to_string()).unwrap();
+    assert!(registered(&p, &gw));
     register(&p, &gw).unwrap();
     assert_eq!(read(&p)["mcpServers"][SERVER_KEY]["command"], gw.to_string_lossy().as_ref());
-    unregister(&p).unwrap();
+    unregister(&p, &gw).unwrap();
     assert!(read(&p)["mcpServers"].get(SERVER_KEY).is_none());
 }
 
