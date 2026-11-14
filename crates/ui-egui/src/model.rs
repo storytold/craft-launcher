@@ -186,7 +186,8 @@ pub fn blocker_text(blocker: Blocker, name: &str, again: TryAgain) -> String {
     fmt(text, &[("name", name)])
 }
 
-/// The card's line with the raw details of what stopped an install (error code, file, log).
+/// The card's line with the raw details of what stopped an install (error code, file, log, and
+/// for a downgrade the error that says what is installed now).
 pub fn blocker_details(failure: &InstallFailure) -> String {
     fmt(t("Details: {details}"), &[("details", &failure.details)])
 }

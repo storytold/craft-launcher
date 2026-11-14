@@ -139,8 +139,9 @@ Updates use the same format an app was installed with. Every download is checked
 release's published SHA-256 before it is installed, and a running app is never replaced.
 When an update stops because the app or its command-line tool is open, another installation is
 in progress, or Windows refuses a file, the app's card names the cause and shows the error code
-in its details, with the installer log when there is one. **Retry** on the card tries the update
-again, or **Resume** when the card keeps a paused download.
+in its details, with the installer log when there is one. A failed downgrade's details also say
+what is installed now. **Retry** on the card tries the update again, or **Resume** when the card
+keeps a paused download.
 
 The launcher writes its log to `logs/artcraft-launcher.log` in its data folder
 (`~/.local/share/artcraft-launcher` on Linux, `~/Library/Application Support/ArtCraft Launcher`

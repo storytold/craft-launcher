@@ -426,23 +426,19 @@ fn msi_failure(
 ) -> Option<(Option<String>, InstallFailure)> {
     let raw = format!("MSI {code}");
     let log = log.map(|log| log.display().to_string());
-    let details = |first: String| std::iter::once(first).chain(log.clone()).collect::<Vec<_>>().join(" · ");
+    let details = |first: String| std::iter::once(first).chain(log.clone()).chain(downgrade.map(str::to_string)).collect::<Vec<_>>().join(" · ");
     let failure = |blocker| InstallFailure { blocker, details: details(raw.clone()) };
     match code {
         0 | 3010 | 1641 | 1602 => None,
         1618 => Some((None, failure(Blocker::InstallerBusy))),
         1603 => {
             let open = location.and_then(|location| open_failure(app, location, &running(), Some(&raw)));
-            Some(match (open, downgrade) {
-                (Some((_, mut open)), Some(error)) => {
-                    open.details = format!("{} · {error}", details(open.details));
-                    (None, open)
-                }
-                (Some((error, mut open)), None) => {
+            Some(match open {
+                Some((error, mut open)) => {
                     open.details = details(open.details);
-                    (Some(error), open)
+                    (downgrade.is_none().then_some(error), open)
                 }
-                (None, _) => (None, failure(Blocker::InstallerFailed)),
+                None => (None, failure(Blocker::InstallerFailed)),
             })
         }
         _ => Some((None, failure(Blocker::InstallerFailed))),
@@ -2722,7 +2718,7 @@ mod tests {
         let (exe, _) = photocraft_copy();
         let error = "PhotoCraft 0.6.0 couldn't be removed (another installation is in progress. Wait for it to finish, then try again.), so nothing was changed.";
         let busy = msi_failure(app, Some(&exe), 1618, None, Some(error), || panic!("1618 needs no process check")).unwrap();
-        assert_eq!(busy, (None, InstallFailure { blocker: Blocker::InstallerBusy, details: "MSI 1618".to_string() }));
+        assert_eq!(busy, (None, InstallFailure { blocker: Blocker::InstallerBusy, details: format!("MSI 1618 · {error}") }));
         let (message, open) = msi_failure(app, Some(&exe), 1603, None, Some(error), || process::Running::Confirmed(exe.clone())).unwrap();
         assert_eq!(message, None, "the downgrade's error stays the message");
         assert_eq!(open, InstallFailure { blocker: Blocker::AppOpen, details: format!("MSI 1603 · {} · {error}", exe.display()) });
@@ -2746,10 +2742,23 @@ mod tests {
                 InstallFailure { blocker: Blocker::AppOpen, details: format!("MSI 1603 · {} · {} · {error}", exe.display(), log.display()) }
             );
         }
-        // Without a running copy it is an installer failure, and the error stays the message too.
-        let (message, failed) =
-            msi_failure(app, Some(&exe), 1603, Some(log), Some("PhotoCraft 0.6.0 was put back."), || process::Running::No).unwrap();
-        assert_eq!((message, failed.blocker), (None, Blocker::InstallerFailed));
+        // Without a running copy it is an installer failure, and the error stays the message and
+        // ends the details too.
+        let error = "PhotoCraft 0.6.0 was put back.";
+        let failed = msi_failure(app, Some(&exe), 1603, Some(log), Some(error), || process::Running::No).unwrap();
+        assert_eq!(failed, (None, InstallFailure { blocker: Blocker::InstallerFailed, details: format!("MSI 1603 · {} · {error}", log.display()) }));
+    }
+
+    /// A downgrade whose chosen package stopped with a code the card has no cause for keeps its
+    /// own error, which says what is installed now, as the message and at the end of the details.
+    #[test]
+    fn a_downgrade_stopped_with_another_code_ends_the_details_with_its_own_error() {
+        let app = CraftApp::by_id("photocraft").unwrap();
+        let (exe, _) = photocraft_copy();
+        let log = Path::new(r"C:\Cache\photocraft-0.5.0-windows-x64.log");
+        let error = "PhotoCraft 0.5.0 couldn't be installed (error 1925). PhotoCraft 0.6.0 was put back.";
+        let failed = msi_failure(app, Some(&exe), 1925, Some(log), Some(error), || process::Running::No).unwrap();
+        assert_eq!(failed, (None, InstallFailure { blocker: Blocker::InstallerFailed, details: format!("MSI 1925 · {} · {error}", log.display()) }));
     }
 
     /// A portable replacement refused with Windows error 32 or 5 keeps the code and file, and calls
