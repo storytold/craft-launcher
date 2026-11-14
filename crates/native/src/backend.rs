@@ -1410,8 +1410,10 @@ fn feed_url() -> String {
         .unwrap_or_else(|| artcraft_launcher_core::feed::FEED_URL.to_string())
 }
 
-fn feed_url_override_allowed(url: &str, allow_https: bool) -> bool {
-    is_loopback(url) || (allow_https && url.starts_with("https://"))
+fn feed_url_override_allowed(url: &str, local_mirror: bool) -> bool {
+    // A loopback feed is a staging affordance, so it needs the same opt-in as the local mirror;
+    // release builds must not accept a plaintext feed chosen by the environment.
+    local_mirror && (is_loopback(url) || url.starts_with("https://"))
 }
 
 use crate::http::is_loopback;
@@ -1853,8 +1855,10 @@ mod tests {
 
     #[test]
     fn feed_url_overrides_are_loopback_only_outside_local_mirror_builds() {
-        assert!(feed_url_override_allowed("http://127.0.0.1:8787/release_info.json", false));
-        assert!(feed_url_override_allowed("http://localhost:8787/release_info.json", false));
+        assert!(!feed_url_override_allowed("http://127.0.0.1:8787/release_info.json", false));
+        assert!(!feed_url_override_allowed("http://localhost:8787/release_info.json", false));
+        assert!(feed_url_override_allowed("http://127.0.0.1:8787/release_info.json", true));
+        assert!(feed_url_override_allowed("http://localhost:8787/release_info.json", true));
         assert!(!feed_url_override_allowed("https://staging.example/release_info.json", false));
         assert!(feed_url_override_allowed("https://staging.example/release_info.json", true));
         assert!(!feed_url_override_allowed("http://attacker.example/release_info.json", true));
