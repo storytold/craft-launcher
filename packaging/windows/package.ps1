@@ -29,6 +29,8 @@ $Root = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
 
 # ---- app-specific values ----------------------------------------------------------------------
 $Pkg = 'artcraft-launcher'          # cargo package and binary
+$GatewayPkg = 'artcraft-launcher-mcp' # cargo package of the shipped craft-ai-mcp gateway
+$GatewayExe = 'craft-ai-mcp.exe'
 $AppName = 'ArtCraft Launcher'      # display name
 
 function Invoke-Native([string] $What, [scriptblock] $Block) {
@@ -67,7 +69,8 @@ if (-not $SkipBuild) {
   [Environment]::SetEnvironmentVariable($flagVar, '-C target-feature=+crt-static')
   # Fail the build (rather than warn) if the icon/VERSIONINFO can't be embedded.
   $env:ARTCRAFT_LAUNCHER_REQUIRE_WINRES = '1'
-  Invoke-Native "cargo build ($Target)" { cargo build --release --locked -p $Pkg --target $Target }
+  # The launcher and the craft-ai-mcp gateway it ships (Settings › AI agents).
+  Invoke-Native "cargo build ($Target)" { cargo build --release --locked -p $Pkg -p $GatewayPkg --target $Target }
 }
 
 $Bin = Join-Path $TargetDir "$Target\release"
@@ -86,6 +89,11 @@ $h = Get-PeHeader (Join-Path $Bin $Exe)
 if ($h.Machine -ne $Machine) { throw "$Exe is for machine 0x$('{0:X}' -f $h.Machine), expected 0x$('{0:X}' -f $Machine) ($Arch)" }
 if ($h.Subsystem -ne 2) { throw "$Exe has PE subsystem $($h.Subsystem), expected 2 (Windows GUI)" }
 Write-Output "ok ${Exe}: $Arch, PE subsystem $($h.Subsystem)"
+# The gateway talks to MCP clients over stdin and stdout, so it stays a console program (3).
+$g = Get-PeHeader (Join-Path $Bin $GatewayExe)
+if ($g.Machine -ne $Machine) { throw "$GatewayExe is for machine 0x$('{0:X}' -f $g.Machine), expected 0x$('{0:X}' -f $Machine) ($Arch)" }
+if ($g.Subsystem -ne 3) { throw "$GatewayExe has PE subsystem $($g.Subsystem), expected 3 (console)" }
+Write-Output "ok ${GatewayExe}: $Arch, PE subsystem $($g.Subsystem)"
 
 $Stage = Join-Path $TargetDir "windows-package\$Arch"
 Remove-Item -Recurse -Force $Stage -ErrorAction SilentlyContinue
@@ -93,8 +101,10 @@ New-Item -ItemType Directory -Force -Path $Stage | Out-Null
 # Dependency font notices are required even without optional craft-fonts.
 Copy-Item -LiteralPath (Join-Path $Root 'NOTICE') -Destination $Stage
 Copy-Item (Join-Path $Bin $Exe) $Stage
+Copy-Item (Join-Path $Bin $GatewayExe) $Stage
 
 & (Join-Path $PSScriptRoot 'sign.ps1') (Join-Path $Stage $Exe)
+& (Join-Path $PSScriptRoot 'sign.ps1') (Join-Path $Stage $GatewayExe)
 
 # ---- MSI ---------------------------------------------------------------------------------------
 # The setup wizard's art, drawn here (System.Drawing) in getartcraft.com's style so the MSI shows
@@ -113,7 +123,7 @@ function New-InstallerArt([string] $BannerOut, [string] $DialogOut) {
   $line = [System.Drawing.Color]::FromArgb(38, 242, 241, 238)
   # The Craft App Suite, in the launcher's order (crates/core/src/catalog.rs).
   $apps = 'photocraft', 'vectorcraft', 'filmcraft', 'lightcraft', 'pdfcraft', 'effectcraft',
-    'designcraft', 'figcraft', 'wordcraft', 'soundcraft', 'deckcraft', 'cadcraft', 'gridcraft', 'craft-anything', 'texturecraft', 'materialcraft'
+    'anicraft', 'designcraft', 'figcraft', 'wordcraft', 'soundcraft', 'deckcraft', 'cadcraft', 'gridcraft', 'craft-anything', 'texturecraft', 'materialcraft'
   $mark = [System.Drawing.Image]::FromFile((Join-Path $Root 'assets\app-icon\hicolor\256x256\apps\ai.storyteller.artcraft-launcher.png'))
   $wordmark = [System.Drawing.Image]::FromFile((Join-Path $Root 'docs\brand\artcraft-logo-white.png'))
   $icons = $apps | ForEach-Object { [System.Drawing.Image]::FromFile((Join-Path $Root "assets\app-icons\$_.png")) }
@@ -150,7 +160,7 @@ function New-InstallerArt([string] $BannerOut, [string] $DialogOut) {
             $x += $g.MeasureString([string]$ch, $labelFont, 100, [System.Drawing.StringFormat]::GenericTypographic).Width + 1.35
           }
           $brush.Dispose()
-          # The sixteen apps in four columns of 30 px cells: x=22..142, y=118..238.
+          # The seventeen apps in four columns of 30 px cells: x=22..142, y=118..268.
           $pen = New-Object System.Drawing.Pen $line, 1
           $left = 22; $top = 118; $cell = 30; $columns = 4
           for ($i = 0; $i -lt $icons.Count; $i++) {
@@ -197,6 +207,7 @@ $Portable = Join-Path $TargetDir "windows-package\$Pkg-$Version-windows-$Arch-po
 Remove-Item -Recurse -Force $Portable -ErrorAction SilentlyContinue
 New-Item -ItemType Directory -Force -Path $Portable | Out-Null
 Copy-Item (Join-Path $Stage $Exe) $Portable
+Copy-Item (Join-Path $Stage $GatewayExe) $Portable
 foreach ($f in 'README.md', 'LICENSE-MIT', 'LICENSE-APACHE', 'NOTICE', 'ATTRIBUTION.md') {
   $p = Join-Path $Root $f
   if (Test-Path $p) { Copy-Item $p $Portable }

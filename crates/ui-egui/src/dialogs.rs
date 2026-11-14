@@ -16,9 +16,16 @@ impl LauncherUi {
     /// a click outside) discards the dialog.
     pub(crate) fn dialogs(&mut self, ctx: &egui::Context, host: &mut dyn Host) {
         let Some(mut dialog) = self.dialog.clone() else {
+            // No dialog on screen: next time settings opens we want fresh MCP state.
+            self.mcp_requested = false;
             self.alert_popup(ctx);
             return;
         };
+        // Opening the settings dialog (fresh): ask for current local-service state.
+        if matches!(dialog, Dialog::Settings) && !self.mcp_requested {
+            self.act_command(Command::McpState);
+            self.mcp_requested = true;
+        }
         let t = Tokens::get(ctx);
         // An area is laid out in the size it had last frame, so dialogs can't share one id: the
         // uninstall prompt would open as tall as Settings and never shrink (#88).
@@ -33,18 +40,24 @@ impl LauncherUi {
         let response = match &mut dialog {
             Dialog::Notes(id) => modal.show(ctx, |ui| close = self.notes_dialog(ui, id)),
             Dialog::ConfirmUninstall(id) => modal.show(ctx, |ui| close = self.uninstall_dialog(ui, id)),
+            Dialog::UnlockVersion { app, tag } => modal.show(ctx, |ui| close = self.unlock_version_dialog(ui, app, tag)),
             Dialog::Install { app, folder } => modal.show(ctx, |ui| close = self.install_dialog(ui, app, folder, host)),
             Dialog::Replace { app, path } => modal.show(ctx, |ui| close = self.replace_dialog(ui, app, path)),
             Dialog::Settings => modal.show(ctx, |ui| close = self.settings_dialog(ui, host)),
             Dialog::LauncherUpdate(r) => modal.show(ctx, |ui| close = self.launcher_update_dialog(ui, r)),
             Dialog::Versions(id) => modal.show(ctx, |ui| close = self.version_dialog(ui, id)),
+            Dialog::LaunchFlags { app, flags } => modal.show(ctx, |ui| close = self.launch_flags_dialog(ui, app, flags)),
         };
         if self.dialog.as_ref().is_some_and(|active| active.key() != dialog.key()) {
             // A control inside a dialog opened a different one; don't restore the old dialog.
             return;
         }
         if close || response.should_close() {
-            self.dialog = None;
+            self.dialog = if matches!(&dialog, Dialog::UnlockVersion { app, .. } if app == artcraft_launcher_core::catalog::LAUNCHER_ID) {
+                Some(Dialog::Settings)
+            } else {
+                None
+            };
             if matches!(dialog, Dialog::Versions(_)) {
                 // Close, Escape or a click outside: a version chosen there is dropped.
                 self.revert_version_choice();
@@ -226,6 +239,41 @@ impl LauncherUi {
                 if widgets::button(ui, tl!("Cancel"), Kind::Secondary, 90.0).clicked() {
                     close = true;
                 }
+            });
+        });
+        close
+    }
+
+    /// The extra command-line flags an app is opened with. Saved only when they split cleanly.
+    fn launch_flags_dialog(&mut self, ui: &mut egui::Ui, id: &str, flags: &mut String) -> bool {
+        let Some(app) = self.entry(id).map(|e| e.app) else { return true };
+        let t = Tokens::get(ui.ctx());
+        ui.set_width(460.0f32.min(ui.ctx().content_rect().width() - 80.0));
+        Self::title(ui, crate::icons::app(id), &fmt(tl!("{name} launch options"), &[("name", app.name)]), "");
+        let label = ui.label(tl!("Flags added each time the app is opened"));
+        ui.add(egui::TextEdit::singleline(flags).id_salt("launch_flags").hint_text("--flag \"…\"").desired_width(f32::INFINITY))
+            .labelled_by(label.id);
+        let split = artcraft_launcher_core::args::split(flags);
+        let (note, color) = match split {
+            Ok(_) => (tl!("Separate flags with spaces. Quote a value that has spaces in it."), t.muted),
+            Err(_) => (tl!("A quote isn't closed."), t.bad),
+        };
+        ui.label(RichText::new(note).color(color));
+        ui.add_space(14.0);
+        let mut close = false;
+        ui.horizontal(|ui| {
+            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                let save = ui.add_enabled_ui(split.is_ok(), |ui| widgets::button(ui, tl!("Save"), Kind::Primary, 90.0)).inner;
+                if save.clicked() {
+                    let trimmed = flags.trim();
+                    if trimmed.is_empty() {
+                        self.settings.launch_flags.remove(id);
+                    } else {
+                        self.settings.launch_flags.insert(id.to_string(), trimmed.to_string());
+                    }
+                    close = true;
+                }
+                close |= widgets::button(ui, tl!("Cancel"), Kind::Secondary, 90.0).clicked();
             });
         });
         close

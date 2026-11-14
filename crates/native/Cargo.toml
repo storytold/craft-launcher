@@ -18,6 +18,8 @@ local-mirror = []
 
 [dependencies]
 artcraft-launcher-core = { workspace = true }
+craft-flags = { workspace = true }
+craft-ai-agents = { workspace = true }
 craft-update = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
@@ -46,8 +48,9 @@ winreg = "0.55"
 # Resolves junctions/symlinks without forcing short MSI paths into the verbatim namespace.
 dunce = "1"
 zip = { version = "9", default-features = false, features = ["deflate"] }
-# Safe wrappers for waiting for another process, reading a file's VERSIONINFO and this account's SID,
-# and reading a launched app's window title (the open file's name, for Discord).
-winsafe = { version = "0.0.29", features = ["kernel", "version", "advapi", "user"] }
+# Safe wrappers for waiting for another process, reading a file's VERSIONINFO, this account's
+# SID, the one elevation prompt a batch of installs shares (ShellExecuteEx), and a launched app's
+# window title (the open file's name, for Discord).
+winsafe = { version = "0.0.29", features = ["kernel", "version", "advapi", "shell", "user"] }
 # Authenticode checks through WinTrust: the update helper installs only files from the launcher's publisher.
 verifysign = "1"

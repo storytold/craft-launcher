@@ -28,6 +28,7 @@ const RETRY: Duration = Duration::from_secs(20);
 const TITLE_EVERY: Duration = Duration::from_secs(5);
 
 /// Discord's limit for the line under the app's name.
+#[cfg(any(windows, test))]
 const MAX_STATE: usize = 128;
 
 /// Discord's replies are a few hundred bytes; anything far larger is not Discord.
@@ -188,7 +189,9 @@ fn activity(app: &CraftApp, start: i64, file: Option<&str>) -> Value {
 
 /// The file a Craft App's window title names: `report.pdf — PdfCraft` (or with ` - `) gives
 /// `report.pdf`, without an unsaved-changes `*`. `None` for a title that is only the app's name,
-/// or not in that shape at all, so nothing else a window says reaches Discord.
+/// or not in that shape at all, so nothing else a window says reaches Discord. Only Windows reads
+/// window titles (see [`open_file`]).
+#[cfg(any(windows, test))]
 fn file_from_title(title: &str, app: &str) -> Option<String> {
     let file = [" — ", " – ", " - "].iter().find_map(|sep| title.strip_suffix(app)?.strip_suffix(sep))?;
     // Only the last part of a path, so a folder never reaches Discord.

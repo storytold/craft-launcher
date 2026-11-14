@@ -52,6 +52,10 @@
 	Install	インストール
 	Update to {v}	{v} に更新
 	Open	開く
+	Open {version}	{version} を開く
+	Open {installed} without updating. {latest} stays available.	更新せずに {installed} を開きます。{latest} は後からでもインストールできます。
+	{latest} is out, but ArtCraft Launcher can't install it over this copy.	{latest} が公開されていますが、ArtCraft Launcher はこのコピーに上書きしてインストールできません。
+	ArtCraft Launcher can't install version {version} over this copy.	ArtCraft Launcher はバージョン {version} をこのコピーに上書きしてインストールできません。
 	Download for {os}	{os} 版をダウンロード
 	Download	ダウンロード
 	Coming soon	近日公開
@@ -75,6 +79,13 @@
 	Show in Files	ファイルマネージャーで表示
 	Reinstall	再インストール
 	Uninstall…	アンインストール…
+	Launch options…	起動オプション…
+	{name} launch options	{name} の起動オプション
+	Flags added each time the app is opened	アプリを開くたびに追加されるフラグ
+	Separate flags with spaces. Quote a value that has spaces in it.	フラグはスペースで区切ってください。スペースを含む値は引用符で囲んでください。
+	A quote isn't closed.	引用符が閉じられていません。
+	{name} wasn't opened: a quote in its launch options isn't closed.	{name} を開けませんでした: 起動オプションの引用符が閉じられていません。
+	Save	保存
 	All releases	すべてのリリース
 	ArtCraft Launcher {version} is available.	ArtCraft Launcher {version} が利用可能です。
 	Dismiss	閉じる
@@ -90,6 +101,7 @@
 	ArtCraft Launcher {version}	ArtCraft Launcher {version}
 	Only when I ask	手動で確認したときのみ
 	Automatically download and install updates	更新を自動でダウンロードしてインストール
+	Ask for permission once when updating all apps	すべてのアプリを更新するときは権限を一度だけ求める
 	Notify me when an installed app has an update	インストール済みアプリに更新があるときに通知する
 	Include pre-releases (betas and release candidates)	プレリリース（ベータ版とリリース候補）を含める
 	Installing on Linux	Linux へのインストール
@@ -125,6 +137,12 @@
 	Apps on this computer	このコンピューターのアプリ
 	Installed apps with a newer version	新しいバージョンがあるインストール済みアプリ
 	Apps you can install	インストールできるアプリ
+	Pin to top	上部にピン留め
+	Unpin	ピン留めを外す
+	Pinned	ピン留め
+	Reorder {name}	{name}の順序を変更
+	Move up	上へ
+	Move down	下へ
 	Hide App	アプリを非表示
 	Unhide App	アプリを再表示
 	Hidden Apps	非表示のアプリ
@@ -167,6 +185,7 @@
 	Tarball (.tar.gz)	tarball (.tar.gz)
 
 # Contextual: each app's tagline, keyed by app id
+artcraft	AI image and video creation	AI画像・動画生成
 photocraft	Image editing	画像編集
 vectorcraft	Vector illustration	ベクターイラスト
 filmcraft	Video editing, color and sound	動画編集、カラー、サウンド
@@ -179,6 +198,7 @@ deckcraft	Presentations and slide shows	プレゼンテーションとスライ�
 gridcraft	Spreadsheets and data	表計算とデータ
 craft-anything	Find out how any software works, then craft your own	あらゆるソフトウェアの仕組みを知り、自分だけのものを作る
 solidcraft	Parametric 3D CAD	パラメトリック3D CAD
+mailcraft	Mail, calendar and contacts	メール、カレンダー、連絡先
 cadcraft	Computer-aided design and drafting	コンピューター支援設計と製図
 soundcraft	Recording, editing and mixing audio	オーディオの録音、編集、ミックス
 figcraft	Interface design and prototyping	インターフェースデザインとプロトタイピング
@@ -297,6 +317,7 @@ filter	Installed	インストール済み
 
 # Message templates (@msg): toasts from the backend. {placeholders} match any text.
 @msg	Couldn't open {name}: {e}	{name} を開けませんでした: {e}
+@msg	ArtCraft Launcher couldn't start its window on {backend}: {e}	ArtCraft Launcher のウィンドウを {backend} で起動できませんでした: {e}
 @msg	Download cancelled	ダウンロードをキャンセルしました
 @msg	{name} updated to {version}	{name} を {version} に更新しました
 @msg	{name} installed: {version}	{name} をインストールしました: {version}
@@ -361,6 +382,8 @@ filter	Installed	インストール済み
 	ArtCraft on GitHub	GitHub の ArtCraft
 	Join the ArtCraft Discord	ArtCraft Discord に参加
 @plural	ArtCraft Launcher · {n} update available|ArtCraft Launcher · {n} updates available	ArtCraft Launcher · {n} 件の更新があります
+
+	Download size: {size}	ダウンロードサイズ: {size}
 	Install folder	インストール先フォルダー
 	Default install folder	既定のインストール先フォルダー
 	System default	システムの既定
@@ -418,6 +441,37 @@ materialcraft	Preview materials in 2D and on 3D models.	マテリアルを2Dと3
 	Migrate Flatpak bundles to ArtCraft OCI (experimental)	Flatpak バンドルを ArtCraft OCI に移行する（実験的）
 	On update, switch first party apps when the matching package is available. Otherwise, keep using bundles.	更新時に対応するパッケージがあれば ArtCraft 公式アプリを移行します。なければ引き続きバンドルを使用します。
 	The OCI repository is a preview with GPG verification disabled.	OCI リポジトリはプレビュー版で、GPG 検証は無効になっています。
+anicraft	2D vector animation	2Dベクターアニメーション
+anicraft	Vector animation on a timeline you know.	慣れ親しんだタイムラインでのベクターアニメーション。
+anicraft	Open-source 2D vector animation, built in pure Rust.	ピュアRustで構築されたオープンソースの2Dベクターアニメーション。
+anicraft	Familiar by design	直感的なデザイン
+anicraft	Stage, tools, timeline, layers, keyframes, Properties and Library sit where animators expect them, with onion skinning for in-betweening.	ステージ、ツール、タイムライン、レイヤー、キーフレーム、プロパティ、ライブラリが期待通りの場所に配置され、オニオンスキンも備えています。
+anicraft	Tweens that ease	滑らかなトゥイーン
+anicraft	Classic tweens with eight easing presets and custom ease curves, plus shape tweens that morph one vector contour into another.	8つのイージングプリセットとカスタム曲線を持つクラシックトゥイーン、そしてシェイプトゥイーンに対応。
+	Version pinned to {version}. Click to unlock.	バージョンは {version} に固定されています。クリックすると固定を解除します。
+	Unlock version?	バージョンの固定を解除しますか？
+	{app} is pinned to {version}. Follow the latest release instead?	{app} は {version} に固定されています。代わりに最新リリースを使用しますか？
+	Unlock	固定を解除
+
+	AI agents	AI エージェント
+	While this is on, AI apps that use MCP, such as Claude, Cursor or LM Studio, can work with every installed Craft app through one entry. While it is off, no agent can reach them, and the entries added here are removed.	これをオンにしている間、Claude、Cursor、LM Studio など MCP を使う AI アプリは、1 つの登録でインストール済みのすべての Craft アプリを使えます。オフにすると、どのエージェントもアクセスできなくなり、ここで追加した登録は削除されます。
+	Quick install	クイックインストール
+	Adds the Craft apps to that client. Restart the client afterwards.	そのクライアントに Craft アプリを追加します。追加後にクライアントを再起動してください。
+	Other clients	その他のクライアント
+	Copy the configuration and paste it into the client's MCP settings.	設定をコピーして、クライアントの MCP 設定に貼り付けてください。
+	Copy JSON	JSON をコピー
+	Copy for VS Code	VS Code 用にコピー
+	Copy for Codex (TOML)	Codex 用にコピー (TOML)
+	Configuration copied.	設定をコピーしました。
+	{client} loads its MCP servers only when it starts, so the Craft apps appear after a restart. Restarting closes {client}, including a reply it is still writing.	{client} は起動時にのみ MCP サーバーを読み込むため、Craft アプリは再起動後に表示されます。再起動すると {client} が終了し、作成中の返信も中断されます。
+	Restart {client}	{client} を再起動
+	Restarting {client}…	{client} を再起動しています…
+	The Craft gateway (craft-ai-mcp) is not installed beside the launcher.	Craft ゲートウェイ (craft-ai-mcp) がランチャーと同じ場所にインストールされていません。
+	Let AI agents use Craft apps	AI エージェントに Craft アプリの使用を許可
+	Apps agents can reach: {count}	エージェントが使えるアプリ: {count}
+	Added	追加済み
+	Remove	削除
+	Add	追加
 	Show the app I'm using on my Discord profile	使用中のアプリを Discord のプロフィールに表示する
 	Discord shows the app's name and how long it has been open. Never a folder.	Discord に表示されるのはアプリ名と開いてからの時間です。フォルダーは表示されません。
 	Also show the name of the open file	開いているファイルの名前も表示する

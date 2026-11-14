@@ -29,6 +29,12 @@ pub enum Command {
     Install {
         app: String,
     },
+    /// Install or update every app in `apps` together: their downloads run as for [`Command::Install`],
+    /// but where the platform needs a permission prompt (polkit on Linux, elevation on Windows)
+    /// the batch shares one prompt instead of one per app. Apps already running a job are left out.
+    InstallAll {
+        apps: Vec<String>,
+    },
     /// `Install`, writing over what [`Event::Occupied`] reported. `path` is the path the user
     /// agreed to overwrite: if the install would now write somewhere else, nothing is replaced and
     /// the user is asked again.
@@ -39,8 +45,10 @@ pub enum Command {
     Uninstall {
         app: String,
     },
+    /// Start an installed app, passing `args` (the user's launch flags) on its command line.
     Launch {
         app: String,
+        args: Vec<String>,
     },
     /// Show the installed app in the file manager.
     Reveal {
@@ -64,6 +72,23 @@ pub enum Command {
     },
     /// Change how the backend behaves.
     Configure(BackendOptions),
+
+    /// Ask for the AI agents state (the gateway, the switch, the MCP clients).
+    McpState,
+    /// Let AI agents use the Craft apps (writes the gateway's app list), or stop them (removes the
+    /// list and the client entries the launcher added).
+    McpSetAgents {
+        enabled: bool,
+    },
+    /// Add the one gateway entry to an MCP client's configuration, or remove it.
+    McpSetClient {
+        client: McpClient,
+        added: bool,
+    },
+    /// Quit an MCP client and start it again, so it loads the entry just added.
+    McpRestartClient {
+        client: McpClient,
+    },
 }
 
 /// Parent folders for new installs. Existing installations keep their recorded location.
@@ -179,7 +204,8 @@ pub enum Source {
     Feed,
     /// The GitHub REST API.
     GitHubApi,
-    /// github.com release pages (no API quota; used when the API is rate-limited).
+    /// github.com release pages (no API quota; used whenever the API gave no answer, whether it
+    /// was out of quota or couldn't be reached).
     GitHubPages,
     /// Saved answers from an earlier check.
     Cache,
@@ -199,6 +225,8 @@ impl Source {
 /// Something the backend wants the UI to know.
 #[derive(Clone, Debug, PartialEq)]
 pub enum Event {
+    /// A signed startup catalog has replaced the bundled app list.
+    CatalogUpdated,
     Latest {
         app: String,
         latest: LatestRelease,
@@ -239,6 +267,19 @@ pub enum Event {
         app: String,
         ready: bool,
     },
+    /// Whether installing `app`'s latest release over the installed copy would go ahead: the copy
+    /// isn't one the launcher leaves to whatever installed it (a system binary, a repository
+    /// package), the release is on the chosen version track, and it has a package that can
+    /// replace the copy the way it was installed (an AppImage with an AppImage, an MSI with an
+    /// MSI), or the copy is a repository Flatpak that `flatpak update` refreshes. Only sent while
+    /// a copy is installed. When the release or the copy changes, it comes in the same batch as,
+    /// and before, the `Latest` or `Detected` that says so, so no update is offered, announced or
+    /// started automatically before this is known; when only the plan changes (a settings change,
+    /// a check or an install ending), it comes on its own.
+    Installable {
+        app: String,
+        installable: bool,
+    },
     /// A new install stopped before downloading because `path` already exists and the launcher
     /// didn't put it there. `Command::Replace` installs over it.
     Occupied {
@@ -265,6 +306,52 @@ pub enum Event {
         /// GitHub refused more API calls until this time (Unix seconds).
         rate_limited_until: Option<i64>,
     },
+
+    /// The AI agents state: the gateway, the switch and the MCP clients. Sent when Settings asks,
+    /// after detection and after any change.
+    Mcp {
+        agents: McpAgents,
+    },
+    /// An AI agents operation failed (e.g. writing a client configuration). Carries a short, user-facing
+    /// message; the UI shows it as an error toast so a failed toggle is never silent.
+    McpError {
+        message: String,
+    },
+}
+
+/// An MCP client the launcher can add the gateway entry to.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum McpClient {
+    ClaudeDesktop,
+    ClaudeCode,
+    Cursor,
+    LmStudio,
+}
+
+/// One MCP client on this machine: whether it looks installed, and whether our entry is in it.
+#[derive(Clone, Debug, PartialEq)]
+pub struct McpClientState {
+    pub client: McpClient,
+    pub name: String,
+    pub installed: bool,
+    pub added: bool,
+    /// The launcher can quit and start it again ([`Command::McpRestartClient`]).
+    pub restartable: bool,
+}
+
+/// AI agents and the Craft apps: the `craft-ai-mcp` gateway (found beside the launcher?), the
+/// switch, and the MCP clients.
+#[derive(Clone, Debug, PartialEq, Default)]
+pub struct McpAgents {
+    /// The `AI-MCP` feature flag: without it Settings shows nothing about agents.
+    pub flag_on: bool,
+    pub gateway_found: bool,
+    pub enabled: bool,
+    /// How many installed apps agents can reach (those with a CLI).
+    pub apps: usize,
+    pub clients: Vec<McpClientState>,
+    /// The gateway clients start, while agents are on: what Copy puts in a configuration.
+    pub gateway: Option<String>,
 }
 
 /// What a backend can do on this platform.
@@ -275,8 +362,9 @@ pub struct Capabilities {
     /// What "show in file manager" is called here (`Show in Finder`).
     pub reveal_label: &'static str,
     /// The launcher can update itself in place and restart (an installed build, not a dev build or
-    /// a Flatpak from anywhere but the release bundle). Without it the UI offers the download
-    /// instead. A backend may only know this once it has found a newer launcher, so the UI reads
+    /// a Flatpak from anywhere but the release bundle), and the newer release has the file this copy
+    /// updates from. Without it the UI offers the download instead. A backend may only know this
+    /// once it has found a newer launcher, so the UI reads
     /// it again on [`Event::LauncherUpdate`].
     pub self_update: bool,
 }
@@ -286,9 +374,20 @@ pub trait Backend {
     fn send(&mut self, command: Command);
     /// Events since the last call, oldest first.
     fn poll(&mut self) -> Vec<Event>;
+    /// The package format the running launcher was installed as, which updating itself
+    /// downloads. `None` while unknown (the desktop finds out once a newer launcher is out) or
+    /// where it doesn't update itself.
+    fn launcher_kind(&self) -> Option<PackageKind> {
+        None
+    }
     fn capabilities(&self) -> Capabilities;
     /// The machine apps would be installed on (on the web: the visitor's, best guess).
     fn platform(&self) -> Option<Platform>;
+    /// The cached package format and published bytes the next install would download.
+    /// Unknown until the backend has planned it; this must never perform installer discovery.
+    fn download_size(&self, _app: &str) -> Option<(PackageKind, u64)> {
+        None
+    }
     /// Unix seconds now.
     fn now(&self) -> i64;
 }

@@ -50,6 +50,10 @@
 	Install	Instalar
 	Update to {v}	Actualizar a {v}
 	Open	Abrir
+	Open {version}	Abrir {version}
+	Open {installed} without updating. {latest} stays available.	Abrir {installed} sin actualizar. {latest} sigue disponible.
+	{latest} is out, but ArtCraft Launcher can't install it over this copy.	{latest} ya está disponible, pero ArtCraft Launcher no puede instalarla sobre esta copia.
+	ArtCraft Launcher can't install version {version} over this copy.	ArtCraft Launcher no puede instalar la versión {version} sobre esta copia.
 	Download for {os}	Descargar para {os}
 	Download	Descargar
 	Coming soon	Próximamente
@@ -73,6 +77,13 @@
 	Show in Files	Mostrar en Archivos
 	Reinstall	Reinstalar
 	Uninstall…	Desinstalar…
+	Launch options…	Opciones de inicio…
+	{name} launch options	Opciones de inicio de {name}
+	Flags added each time the app is opened	Parámetros que se añaden cada vez que se abre la aplicación
+	Separate flags with spaces. Quote a value that has spaces in it.	Separa los parámetros con espacios. Pon entre comillas un valor que contenga espacios.
+	A quote isn't closed.	Hay unas comillas sin cerrar.
+	{name} wasn't opened: a quote in its launch options isn't closed.	{name} no se abrió: hay unas comillas sin cerrar en sus opciones de inicio.
+	Save	Guardar
 	All releases	Todas las versiones
 	ArtCraft Launcher {version} is available.	ArtCraft Launcher {version} está disponible.
 	Dismiss	Descartar
@@ -88,6 +99,7 @@
 	ArtCraft Launcher {version}	ArtCraft Launcher {version}
 	Only when I ask	Solo cuando lo pida
 	Automatically download and install updates	Descargar e instalar actualizaciones automáticamente
+	Ask for permission once when updating all apps	Pedir permiso una sola vez al actualizar todas las aplicaciones
 	Notify me when an installed app has an update	Avisarme cuando una aplicación instalada tenga una actualización
 	Include pre-releases (betas and release candidates)	Incluir versiones preliminares (betas y versiones candidatas)
 	Installing on Linux	Instalación en Linux
@@ -122,6 +134,12 @@
 	Apps on this computer	Aplicaciones en este equipo
 	Installed apps with a newer version	Aplicaciones instaladas con una versión más reciente
 	Apps you can install	Aplicaciones que puedes instalar
+	Pin to top	Fijar arriba
+	Unpin	Quitar fijación
+	Pinned	Fijadas
+	Reorder {name}	Reordenar {name}
+	Move up	Subir
+	Move down	Bajar
 	Hide App	Ocultar aplicación
 	Unhide App	Mostrar aplicación
 	Hidden Apps	Aplicaciones ocultas
@@ -160,6 +178,7 @@
 	Arch package (.pkg.tar.zst)	Paquete Arch (.pkg.tar.zst)
 	Flatpak bundle	Paquete Flatpak
 	Tarball (.tar.gz)	Archivo tar (.tar.gz)
+artcraft	AI image and video creation	Creación de imágenes y vídeos con IA
 photocraft	Image editing	Edición de imágenes
 vectorcraft	Vector illustration	Ilustración vectorial
 filmcraft	Video editing, color and sound	Edición de video, color y sonido
@@ -172,6 +191,7 @@ deckcraft	Presentations and slide shows	Presentaciones y diapositivas
 gridcraft	Spreadsheets and data	Hojas de cálculo y datos
 craft-anything	Find out how any software works, then craft your own	Descubre cómo funciona cualquier software y crea el tuyo
 solidcraft	Parametric 3D CAD	CAD 3D paramétrico
+mailcraft	Mail, calendar and contacts	Correo, calendario y contactos
 cadcraft	Computer-aided design and drafting	CAD: diseño y dibujo técnico
 soundcraft	Recording, editing and mixing audio	Grabación, edición y mezcla de audio
 figcraft	Interface design and prototyping	Diseño de interfaces y prototipos
@@ -280,6 +300,7 @@ filter	Installed	Instaladas
 @plural	{n} h ago|{n} h ago	hace {n} h|hace {n} h
 @plural	{n} day ago|{n} days ago	hace {n} día|hace {n} días
 @msg	Couldn't open {name}: {e}	No se pudo abrir {name}: {e}
+@msg	ArtCraft Launcher couldn't start its window on {backend}: {e}	No se pudo iniciar la ventana de ArtCraft Launcher con {backend}: {e}
 @msg	Download cancelled	Descarga cancelada
 @msg	{name} updated to {version}	{name} actualizada a {version}
 @msg	{name} installed: {version}	{name} instalada: {version}
@@ -339,6 +360,8 @@ filter	Installed	Instaladas
 	ArtCraft on GitHub	ArtCraft en GitHub
 	Join the ArtCraft Discord	Únete al Discord de ArtCraft
 @plural	ArtCraft Launcher · {n} update available|ArtCraft Launcher · {n} updates available	ArtCraft Launcher · {n} actualización disponible|ArtCraft Launcher · {n} actualizaciones disponibles
+
+	Download size: {size}	Tamaño de descarga: {size}
 	Install folder	Carpeta de instalación
 	Default install folder	Carpeta de instalación predeterminada
 	System default	Predeterminada del sistema
@@ -396,6 +419,37 @@ materialcraft	Preview materials in 2D and on 3D models.	Previsualiza materiales 
 	Migrate Flatpak bundles to ArtCraft OCI (experimental)	Migrar paquetes Flatpak a ArtCraft OCI (experimental)
 	On update, switch first party apps when the matching package is available. Otherwise, keep using bundles.	Al actualizar, migrar las aplicaciones de ArtCraft si está disponible el paquete correspondiente. De lo contrario, seguir usando paquetes independientes.
 	The OCI repository is a preview with GPG verification disabled.	El repositorio OCI es una versión preliminar con la verificación GPG desactivada.
+anicraft	2D vector animation	Animación vectorial 2D
+anicraft	Vector animation on a timeline you know.	Animación vectorial en una línea de tiempo familiar.
+anicraft	Open-source 2D vector animation, built in pure Rust.	Animación vectorial 2D de código abierto, creada en Rust puro.
+anicraft	Familiar by design	Diseño familiar
+anicraft	Stage, tools, timeline, layers, keyframes, Properties and Library sit where animators expect them, with onion skinning for in-betweening.	Escenario, herramientas, línea de tiempo, capas, fotogramas clave, Propiedades y Biblioteca donde los animadores esperan, con papel cebolla.
+anicraft	Tweens that ease	Interpolaciones suaves
+anicraft	Classic tweens with eight easing presets and custom ease curves, plus shape tweens that morph one vector contour into another.	Interpolaciones clásicas con ocho preajustes de aceleración y curvas personalizadas, además de interpolación de forma.
+	Version pinned to {version}. Click to unlock.	Versión fijada en {version}. Haz clic para desbloquear.
+	Unlock version?	¿Desbloquear la versión?
+	{app} is pinned to {version}. Follow the latest release instead?	{app} está fijado en la versión {version}. ¿Usar la versión más reciente?
+	Unlock	Desbloquear
+
+	AI agents	Agentes de IA
+	While this is on, AI apps that use MCP, such as Claude, Cursor or LM Studio, can work with every installed Craft app through one entry. While it is off, no agent can reach them, and the entries added here are removed.	Mientras esto esté activado, las apps de IA que usan MCP, como Claude, Cursor o LM Studio, pueden trabajar con todas las apps Craft instaladas mediante una sola entrada. Si está desactivado, ningún agente puede llegar a ellas y se quitan las entradas añadidas aquí.
+	Quick install	Instalación rápida
+	Adds the Craft apps to that client. Restart the client afterwards.	Añade las apps Craft a ese cliente. Reinicia el cliente después.
+	Other clients	Otros clientes
+	Copy the configuration and paste it into the client's MCP settings.	Copia la configuración y pégala en los ajustes de MCP del cliente.
+	Copy JSON	Copiar JSON
+	Copy for VS Code	Copiar para VS Code
+	Copy for Codex (TOML)	Copiar para Codex (TOML)
+	Configuration copied.	Configuración copiada.
+	{client} loads its MCP servers only when it starts, so the Craft apps appear after a restart. Restarting closes {client}, including a reply it is still writing.	{client} solo carga sus servidores MCP al iniciarse, así que las apps Craft aparecen después de reiniciarlo. Al reiniciar se cierra {client}, incluida una respuesta que esté escribiendo.
+	Restart {client}	Reiniciar {client}
+	Restarting {client}…	Reiniciando {client}…
+	The Craft gateway (craft-ai-mcp) is not installed beside the launcher.	La pasarela Craft (craft-ai-mcp) no está instalada junto al lanzador.
+	Let AI agents use Craft apps	Permitir que los agentes de IA usen las apps Craft
+	Apps agents can reach: {count}	Apps que los agentes pueden usar: {count}
+	Added	Añadida
+	Remove	Quitar
+	Add	Añadir
 	Show the app I'm using on my Discord profile	Mostrar en mi perfil de Discord la aplicación que estoy usando
 	Discord shows the app's name and how long it has been open. Never a folder.	Discord muestra el nombre de la aplicación y cuánto tiempo lleva abierta. Nunca una carpeta.
 	Also show the name of the open file	Mostrar también el nombre del archivo abierto
