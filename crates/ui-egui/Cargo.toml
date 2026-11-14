@@ -43,4 +43,4 @@ image = { version = "0.25", default-features = false, features = ["png", "jpeg"]
 
 [target.'cfg(windows)'.dev-dependencies]
 # Configure the existing screenshot renderer's adapter selection on Windows.
-egui-wgpu = { version = "0.37", default-features = false }
+egui-wgpu = { workspace = true, default-features = false }
