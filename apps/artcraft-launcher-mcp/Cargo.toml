@@ -1,0 +1,19 @@
+[package]
+name = "artcraft-launcher-mcp"
+description = "ArtCraft Launcher MCP gateway: discover installed Craft Apps and connect their native tools"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+publish = false
+
+[lints]
+workspace = true
+
+[dependencies]
+artcraft-launcher-core = { workspace = true }
+artcraft-launcher-native = { workspace = true }
+serde_json = { workspace = true }
+
+[dev-dependencies]
+tempfile = "3"
