@@ -51,7 +51,7 @@ objc2-app-kit = { version = "=0.3.2", default-features = false, features = ["std
 # Windows only: the "Animation effects" setting (motion.rs). Already in Cargo.lock through
 # artcraft-launcher-native.
 [target.'cfg(target_os = "windows")'.dependencies]
-winreg = "0.55"
+winreg = "0.56"
 
 # Linux and the BSDs: the desktop's animations setting, from its settings portal (motion.rs).
 # Already in Cargo.lock through tray-icon and notify-rust.
@@ -62,7 +62,7 @@ zbus = { version = "5", default-features = false, features = ["async-io", "block
 tray-icon = { version = "0.26", default-features = false, features = ["ksni"] }
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
-rfd = { version = "=0.17.2", default-features = false, features = ["xdg-portal", "wayland"] }
+rfd = { version = "=0.18.0", default-features = false, features = ["xdg-portal", "wayland"] }
 
 [build-dependencies]
 # Icon + VERSIONINFO for artcraft-launcher.exe; build.rs only uses it when targeting Windows.
