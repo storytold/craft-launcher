@@ -79,6 +79,7 @@
 	Reinstall	Przeinstaluj
 	Uninstall…	Odinstaluj…
 	Launch options…	Opcje uruchamiania…
+	Set as default for its file types	Ustaw jako domyślną dla jej typów plików
 	{name} launch options	Opcje uruchamiania aplikacji {name}
 	Flags added each time the app is opened	Flagi dodawane przy każdym otwarciu aplikacji
 	Separate flags with spaces. Quote a value that has spaces in it.	Oddziel flagi spacjami. Wartość ze spacjami umieść w cudzysłowie.

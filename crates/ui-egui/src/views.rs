@@ -1,6 +1,7 @@
 //! The header, toolbar, footer, the grid of cards and the table, laid out like the apps page on
 //! getartcraft.com: hairline cells, mono labels and square controls.
 
+use artcraft_launcher_core::Os;
 use artcraft_launcher_core::catalog::AppKind;
 use artcraft_launcher_core::details::AppDetails;
 use artcraft_launcher_core::platform::pick_asset;
@@ -1401,6 +1402,11 @@ impl LauncherUi {
         }
         if ui.button(t(reveal)).clicked() {
             self.act_command(Command::Reveal { app: id.to_string() });
+            ui.close();
+        }
+        // Linux only: Windows and macOS keep their own default-app settings.
+        if self.platform.is_some_and(|p| p.os == Os::Linux) && ui.button(tl!("Set as default for its file types")).clicked() {
+            self.act_command(Command::SetDefault { app: id.to_string() });
             ui.close();
         }
         if *status == AppStatus::UpToDate && entry.installs_here(self.platform) && ui.button(tl!("Reinstall")).clicked() {

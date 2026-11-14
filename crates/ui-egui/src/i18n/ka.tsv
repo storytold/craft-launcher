@@ -123,6 +123,7 @@
 	Cancel	გაუქმება
 	Save	შენახვა
 	Launch options…	გაშვების პარამეტრები…
+	Set as default for its file types	ნაგულისხმევად დაყენება მისი ფაილის ტიპებისთვის
 	{name} launch options	{name}-ის გაშვების პარამეტრები
 	Flags added each time the app is opened	ფლაგები, რომლებიც აპლიკაციის ყოველ გახსნისას ემატება
 	Separate flags with spaces. Quote a value that has spaces in it.	ფლაგები ჰარით გამოყავით. ჰარის შემცველი მნიშვნელობა ბრჭყალებში ჩასვით.

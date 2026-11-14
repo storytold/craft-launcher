@@ -76,6 +76,7 @@
 	Reinstall	Переустановить
 	Uninstall…	Удалить…
 	Launch options…	Параметры запуска…
+	Set as default for its file types	Сделать приложением по умолчанию для его типов файлов
 	{name} launch options	Параметры запуска {name}
 	Flags added each time the app is opened	Флаги, добавляемые при каждом открытии приложения
 	Separate flags with spaces. Quote a value that has spaces in it.	Разделяйте флаги пробелами. Значение с пробелами заключите в кавычки.

@@ -103,6 +103,7 @@
 	Cancel	取消
 	Save	儲存
 	Launch options…	啟動選項…
+	Set as default for its file types	設為其檔案類型的預設應用程式
 	{name} launch options	{name} 啟動選項
 	Flags added each time the app is opened	每次開啟應用程式時附加的參數
 	Separate flags with spaces. Quote a value that has spaces in it.	以空格分隔各個參數。含有空格的值請加上引號。

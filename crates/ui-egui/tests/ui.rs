@@ -2231,6 +2231,55 @@ fn launch_options_are_saved_per_app_and_passed_when_it_opens() {
     assert!(!h.state().as_ref().unwrap().settings.launch_flags.contains_key("lightcraft"));
 }
 
+/// Linux only: the installed app's menu makes it the default for its file types. Windows and
+/// macOS keep their own default-app settings, so the item isn't offered there.
+#[test]
+fn set_as_default_is_offered_for_installed_apps_on_linux_only() {
+    let item = "Set as default for its file types";
+    for (platform, offered) in [(Platform { os: Os::Linux, arch: Arch::X64 }, true), (Platform { os: Os::MacOs, arch: Arch::Arm64 }, false)] {
+        let (mut h, sent) = harness_full(
+            events(),
+            ViewMode::Table,
+            egui::Theme::Dark,
+            true,
+            1.0,
+            artcraft_launcher_ui_egui::TitleBar::Native,
+            Rc::default(),
+            Some(platform),
+            None,
+        );
+        h.run_steps(6);
+        h.get_by_label("More actions for WordCraft").click();
+        h.run_steps(3);
+        assert_eq!(h.query_by_label(item).is_some(), offered, "{:?}", platform.os);
+        if offered {
+            h.get_by_label(item).click();
+            h.run_steps(3);
+            assert!(sent.borrow().contains(&Command::SetDefault { app: "wordcraft".into() }));
+        }
+    }
+}
+
+/// What "Set as default" did is only a message: a download running for the same app goes on
+/// being shown.
+#[test]
+fn a_default_set_message_leaves_the_apps_running_download_alone() {
+    let downloads = |ev: Vec<Event>| {
+        let (mut h, _) = harness_with(ev, ViewMode::Grid, egui::Theme::Dark, true, 1.0);
+        h.run_steps(6);
+        let shown = h.query_all_by_label("Pause download").count();
+        (h, shown)
+    };
+    let (_, before) = downloads(events());
+    let message = "FilmCraft now opens its 3 file types by default";
+    let mut ev = events();
+    ev.push(Event::DefaultSet { app: "filmcraft".into(), result: Ok(message.into()) });
+    let (h, after) = downloads(ev);
+    assert!(before > 0);
+    assert_eq!(after, before);
+    h.get_by_label(message);
+}
+
 #[test]
 fn launch_options_with_an_unclosed_quote_are_not_saved_or_launched() {
     use egui::accesskit::Role;

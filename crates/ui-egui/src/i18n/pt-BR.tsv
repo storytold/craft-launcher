@@ -66,6 +66,7 @@
 	Reinstall	Reinstalar
 	Uninstall…	Desinstalar…
 	Launch options…	Opções de inicialização…
+	Set as default for its file types	Definir como padrão para seus tipos de arquivo
 	{name} launch options	Opções de inicialização do {name}
 	Flags added each time the app is opened	Parâmetros adicionados sempre que o aplicativo é aberto
 	Separate flags with spaces. Quote a value that has spaces in it.	Separe os parâmetros com espaços. Coloque entre aspas um valor que tenha espaços.
