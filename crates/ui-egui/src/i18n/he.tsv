@@ -52,7 +52,7 @@
 	Removing…	מסיר…
 	Pause download	השהה הורדה
 	Cancel download	בטל הורדה
-	Resume download	חדש הורדה
+	Resume download	המשך הורדה
 	Discard download	מחק הורדה
 	Release notes	הערות שחרור
 	Show in Finder	הצג ב-Finder
@@ -118,7 +118,7 @@
 	Join the Discord	הצטרפו ל-Discord
 	Learn more	מידע נוסף
 	Minimize	מזער
-	Maximize	הגדל למקסימום
+	Maximize	הגדל
 	Restore	שחזר
 	New	חדש
 	OK	אישור
@@ -140,7 +140,7 @@
 	Waiting for other installs…	ממתין להתקנות אחרות…
 	Installer (.msi)	תוכנית התקנה (.msi)
 	Portable (.zip)	נייד (.zip)
-	Disk image (.dmg)	דמות כונן (.dmg)
+	Disk image (.dmg)	תמונת דיסק (.dmg)
 	Debian package (.deb)	חבילת Debian (.deb)
 	RPM package (.rpm)	חבילת RPM (.rpm)
 	Arch package (.pkg.tar.zst)	חבילת Arch (.pkg.tar.zst)
@@ -262,9 +262,9 @@ filter	Installed	מותקנים
 	Pictures couldn't be loaded. Reopen this page to try again.	לא ניתן היה לטעון את התמונות. פתח עמוד זה מחדש כדי לנסות שוב.
 	{name} details	פרטי {name}
 @plural	{n} app|{n} apps	יישום {n}|{n} יישומים|{n} יישומים
-@plural	{n} min ago|{n} min ago	לפני דקה ({n})|לפני {n} דקות|לפני {n} דקות
+@plural	{n} min ago|{n} min ago	לפני {n} דקה|לפני {n} דקות|לפני {n} דקות
 @plural	{n} h ago|{n} h ago	לפני שעה ({n})|לפני {n} שעות|לפני {n} שעות
-@plural	{n} day ago|{n} days ago	לפני יום {n}|לפני {n} ימים|לפני {n} ימים
+@plural	{n} day ago|{n} days ago	לפני {n} יום|לפני {n} ימים|לפני {n} ימים
 @msg	Couldn't open {name}: {e}	לא ניתן לפתוח את {name}: {e}
 @msg	Download cancelled	ההורדה בוטלה
 @msg	{name} updated to {version}	{name} עודכן לגרסה {version}
