@@ -30,9 +30,9 @@ pub struct CraftApp {
     pub ink_dark: [u8; 3],
     /// GitHub `owner/repo`.
     pub repo: &'static str,
-    /// Older names its release assets may carry (PdfCraft shipped as PrintCraft until 0.2.1).
+    /// Older names its release assets may carry (`PdfCraft` shipped as `PrintCraft` until 0.2.1).
     pub former_ids: &'static [&'static str],
-    /// Older display names its installers registered (PdfCraft's MSI said PrintCraft until 0.2.1).
+    /// Older display names its installers registered (`PdfCraft`'s MSI said `PrintCraft` until 0.2.1).
     pub former_names: &'static [&'static str],
     /// The `.app` bundle stem on macOS when it differs from `name` (`ArtCraft` for `ArtCraft Studio`).
     pub mac_bundle_name: Option<&'static str>,
@@ -43,7 +43,7 @@ pub struct CraftApp {
     pub msi_publisher: Option<&'static str>,
     /// The bundle id when it isn't `ai.storyteller.<id>` (a community app brings its own).
     pub bundle: Option<&'static str>,
-    /// Older bundle ids its Flatpak shipped under (SolidCraft was `ai.storyteller.solidcraft`).
+    /// Older bundle ids its Flatpak shipped under (`SolidCraft` was `ai.storyteller.solidcraft`).
     pub former_bundles: &'static [&'static str],
     /// Its website, when it isn't a page on getartcraft.com (a community app has its own).
     pub site: Option<&'static str>,
@@ -87,7 +87,7 @@ impl CraftApp {
 
     /// Bundle ids this app may be installed under, current first.
     pub fn bundle_ids(&self) -> impl Iterator<Item = String> + '_ {
-        std::iter::once(self.bundle_id()).chain(self.former_bundles.iter().map(|b| b.to_string()))
+        std::iter::once(self.bundle_id()).chain(self.former_bundles.iter().map(ToString::to_string))
     }
 
     /// Asset stems this app's releases may use, current first.
