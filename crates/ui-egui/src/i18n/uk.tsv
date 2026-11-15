@@ -435,3 +435,26 @@ anicraft	Familiar by design	Звичний інтерфейс
 anicraft	Stage, tools, timeline, layers, keyframes, Properties and Library sit where animators expect them, with onion skinning for in-betweening.	Сцена, інструменти, шкала часу, шари, ключові кадри, Властивості та Бібліотека розташовані там, де їх очікують аніматори, а шлейф кальки полегшує роботу з проміжними кадрами.
 anicraft	Tweens that ease	Плавні переходи
 anicraft	Classic tweens with eight easing presets and custom ease curves, plus shape tweens that morph one vector contour into another.	Класичні переходи з вісьмома пресетами плавності та власними кривими, а також переходи, що перетворюють один векторний контур на інший.
+
+# Agent integration and download scheduling.
+	AI agents	ШІ-агенти
+	Add	Додати
+	Added	Додано
+	Adds the Craft apps to that client. Restart the client afterwards.	Додає застосунки Craft до цього клієнта. Після цього перезапустіть клієнт.
+	Apps agents can reach: {count}	Застосунків, доступних агентам: {count}
+	Configuration copied.	Конфігурацію скопійовано.
+	Copy JSON	Копіювати JSON
+	Copy for Codex (TOML)	Копіювати для Codex (TOML)
+	Copy for VS Code	Копіювати для VS Code
+	Copy the configuration and paste it into the client's MCP settings.	Скопіюйте конфігурацію та вставте її в налаштування MCP клієнта.
+	Downloads running together share your connection, so each one is slower.	Одночасні завантаження ділять пропускну здатність з’єднання, тому кожне з них повільніше.
+	Let AI agents use Craft apps	Дозволити ШІ-агентам використовувати застосунки Craft
+	No limit	Без обмежень
+	Other clients	Інші клієнти
+	Quick install	Швидке встановлення
+	Remove	Видалити
+	Restart {client}	Перезапустити {client}
+	Restarting {client}…	Перезапуск {client}…
+	Simultaneous downloads	Одночасні завантаження
+	The Craft gateway (craft-ai-mcp) is not installed beside the launcher.	Шлюз Craft (craft-ai-mcp) не встановлено поруч із лаунчером.
+	Waiting for another download…	Очікування іншого завантаження…
