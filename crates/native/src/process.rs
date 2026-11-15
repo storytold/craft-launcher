@@ -663,14 +663,15 @@ mod desktop_shortcut_tests {
         assert_eq!(&data[0..4], &0x4Cu32.to_le_bytes(), "bad ShellLink header size");
 
         let file_name = target.file_name().and_then(|n| n.to_str()).expect("utf-8 file name");
-        let work_dir = target.parent().and_then(|p| p.to_str()).expect("utf-8 parent");
-
         assert!(lnk_contains_utf16(&data, file_name), "shortcut missing target file name {file_name:?} as UTF-16 ({} bytes)", data.len());
-        assert!(
-            lnk_contains_utf16(&data, work_dir) || lnk_contains_utf16(&data, &work_dir.replace('/', "\\")),
-            "shortcut missing working directory {work_dir:?} as UTF-16 ({} bytes)",
-            data.len()
-        );
+
+        // mslnk writes "./{name}" when a working directory is set. Full parent paths can
+        // disagree with Path display on CI (8.3 short names like RUNNER~1 vs long paths).
+        let rel = format!("./{file_name}");
+        let parent = target.parent().and_then(|p| p.to_str()).unwrap_or("");
+        let work_ok = lnk_contains_utf16(&data, &rel)
+            || (!parent.is_empty() && (lnk_contains_utf16(&data, parent) || lnk_contains_utf16(&data, &parent.replace('/', "\\"))));
+        assert!(work_ok, "shortcut missing relative path or working directory evidence for {file_name:?} under {parent:?} ({} bytes)", data.len());
     }
 
     #[test]
