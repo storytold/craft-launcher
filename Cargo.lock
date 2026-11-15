@@ -360,6 +360,7 @@ dependencies = [
  "serde_json",
  "skrifa",
  "sys-locale",
+ "unicode-bidi",
  "wasm-bindgen",
 ]
 

@@ -69,7 +69,9 @@ pub fn fmt(template: &str, args: &[(&str, &str)]) -> String {
         }
     }
     out.push_str(rest);
-    out
+    // A template with `{…}` stays in logical order in an rtl catalog (`LangInfo::catalog`), and
+    // orders here only now that the values are in. One without `{` is already in display order.
+    if current().rtl() && template.contains('{') { crate::bidi::display_rtl(&out) } else { out }
 }
 
 /// A plural-aware string: `one`/`other` are the English forms (with `{n}` where the count goes),
@@ -79,7 +81,9 @@ pub fn trn(lang: Lang, n: u64, one: &str, other: &str) -> String {
     let idx = (lang.0.plural)(n);
     let english = if n == 1 { one } else { other };
     let text = lang.catalog().plural(&format!("{one}|{other}"), idx).unwrap_or(english);
-    fmt(text, &[("n", &n.to_string())])
+    let out = fmt(text, &[("n", &n.to_string())]);
+    // `fmt` orders by `current()`: cover a call for another language, where it didn't.
+    if lang.rtl() && !current().rtl() && text.contains('{') { crate::bidi::display_rtl(&out) } else { out }
 }
 
 /// [`trn`] in the current language.
@@ -91,7 +95,7 @@ pub fn tn(n: u64, one: &str, other: &str) -> String {
 /// the parts of a message a template's placeholders stand for (names, versions, reasons), stay
 /// as they are.
 pub fn message(lang: Lang, s: &str) -> String {
-    lang.catalog().message(s).unwrap_or_else(|| s.to_string())
+    lang.catalog().message(s, lang.rtl()).unwrap_or_else(|| s.to_string())
 }
 
 /// [`message`] in the current language, remembering the last answer: the status bar asks for the
