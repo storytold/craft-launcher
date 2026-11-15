@@ -39,10 +39,12 @@ reject any single file over 25 MiB).
 - **Compression:** turn on gzip or Brotli for `.wasm`, `.js` and `.html`.
 - **Caching:** `Cache-Control: public, max-age=31536000, immutable` on the hashed `.wasm` and
   `.js` files, and `no-cache` on `index.html`.
-- **Content Security Policy:** if you send one, allow `https://api.github.com` (releases),
-  `https://getartcraft.com` (the signed catalog and app icons), and
-  `https://raw.githubusercontent.com` (screenshots) in `connect-src`, plus
-  `'wasm-unsafe-eval'` in `script-src`.
+- **Content Security Policy:** if you send one, allow `'self'` (the WASM fetch),
+  `https://api.github.com` (releases), `https://getartcraft.com` (the signed catalog and app
+  icons), and `https://raw.githubusercontent.com` (screenshots) in `connect-src`. In `script-src`,
+  allow `'self'` and `'wasm-unsafe-eval'`. Authorize Trunk's default inline module bootstrap with
+  a matching hash (refresh it after rebuilding) or a per-response nonce on both its script element
+  and the policy; alternatively, serve that bootstrap as a same-origin external module script.
 - **No special isolation headers:** the app doesn't use `SharedArrayBuffer`, so it doesn't need
   `Cross-Origin-Opener-Policy` or `Cross-Origin-Embedder-Policy`.
 
