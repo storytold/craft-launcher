@@ -39,8 +39,10 @@ reject any single file over 25 MiB).
 - **Compression:** turn on gzip or Brotli for `.wasm`, `.js` and `.html`.
 - **Caching:** `Cache-Control: public, max-age=31536000, immutable` on the hashed `.wasm` and
   `.js` files, and `no-cache` on `index.html`.
-- **Content Security Policy:** if you send one, allow `connect-src https://api.github.com` (and
-  `https://raw.githubusercontent.com` for the app icons) plus `'wasm-unsafe-eval'` in `script-src`.
+- **Content Security Policy:** if you send one, allow `https://api.github.com` (releases),
+  `https://getartcraft.com` (the signed catalog and app icons), and
+  `https://raw.githubusercontent.com` (screenshots) in `connect-src`, plus
+  `'wasm-unsafe-eval'` in `script-src`.
 - **No special isolation headers:** the app doesn't use `SharedArrayBuffer`, so it doesn't need
   `Cross-Origin-Opener-Policy` or `Cross-Origin-Embedder-Policy`.
 
