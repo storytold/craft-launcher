@@ -2869,6 +2869,7 @@ mod tests {
             downgrade: None,
             failure: None,
             batch: None,
+            place: None,
         };
         let error = install_checking(app, &release, &asset, PackageKind::Dmg, Some(&installed), None, &mut job, None, find_running).unwrap_err();
         let failure = job.failure.take();
