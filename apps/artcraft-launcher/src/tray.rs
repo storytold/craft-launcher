@@ -65,14 +65,14 @@ impl Tray {
             .map_err(|e| e.to_string())?;
         let links = [(website.id().clone(), WEBSITE_URL), (github.id().clone(), GITHUB_URL)];
         let discord_id = discord.id().clone();
-        let icon = identity(TrayIconBuilder::new())
-            .with_menu(Box::new(menu))
-            .with_icon(load_icon()?)
-            .with_icon_as_template(cfg!(target_os = "macos"))
-            .with_menu_on_left_click(cfg!(target_os = "macos"))
-            .with_tooltip("ArtCraft Launcher")
-            .build()
-            .map_err(|e| e.to_string())?;
+        let image = load_icon()?;
+        let builder = identity(TrayIconBuilder::new()).with_menu(Box::new(menu));
+        // macOS draws the icon as a template image (recoloured for light and dark menu bars).
+        #[cfg(target_os = "macos")]
+        let builder = builder.with_icon_templated(image);
+        #[cfg(not(target_os = "macos"))]
+        let builder = builder.with_icon(image);
+        let icon = builder.with_menu_on_left_click(cfg!(target_os = "macos")).with_tooltip("ArtCraft Launcher").build().map_err(|e| e.to_string())?;
         let (tx, rx): (Sender<TrayAction>, Receiver<TrayAction>) = channel();
         let (show_id, check_id, quit_id) = (show.id().clone(), check.id().clone(), quit.id().clone());
         {

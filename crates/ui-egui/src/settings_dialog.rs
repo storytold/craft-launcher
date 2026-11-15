@@ -1,6 +1,8 @@
 //! The Settings dialog: a large card in the shape of the app page (see `sheet.rs`), with the
 //! groups of settings in boxes, two columns once the window is wide enough.
 
+use artcraft_launcher_core::mcp_config::{McpConfigFormat, mcp_config};
+use artcraft_launcher_core::protocol::{Command, McpClientState};
 use artcraft_launcher_core::{Os, PackageKind};
 use egui::{RichText, Ui, vec2};
 
@@ -12,17 +14,29 @@ use crate::theme::{self, ThemeChoice, Tokens};
 use crate::widgets::{self, Cell, Kind};
 
 /// A label with its control at the right; the control drops under the label when they don't fit.
-fn row(ui: &mut Ui, label: &str, control_width: f32, add: &mut dyn FnMut(&mut Ui)) {
+///
+/// The control receives the label's node id so it can be associated with the visible text for
+/// accessibility (0.37's kittest fails unnamed input widgets).
+fn row(ui: &mut Ui, label: &str, control_width: f32, add: &mut dyn FnMut(&mut Ui, egui::Id)) {
     let t = Tokens::get(ui.ctx());
     let font = egui::TextStyle::Body.resolve(ui.style());
     let label_width = ui.painter().layout_no_wrap(label.to_string(), font, t.ink).size().x;
     if label_width + control_width + ui.spacing().item_spacing.x > ui.available_width() {
-        ui.label(label);
-        add(ui);
+        let label = ui.label(label);
+        add(ui, label.id);
     } else {
         ui.horizontal(|ui| {
-            ui.label(label);
-            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| add(ui));
+            let label = ui.label(label);
+            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                // A ComboBox grows to the width its layout offers, so leaving it loose made it
+                // start at the label's last glyph and paint over the words at a narrow dialog
+                // width. A fixed-width allocation at the right keeps it clear of the label and
+                // still leaves the dialog itself as narrow as before.
+                let width = control_width.min(ui.available_width());
+                ui.allocate_ui_with_layout(vec2(width, theme::CONTROL_H), egui::Layout::left_to_right(egui::Align::Center), |ui| {
+                    add(ui, label.id);
+                });
+            });
         });
     }
 }
@@ -104,6 +118,7 @@ impl LauncherUi {
                 this.settings_language(ui);
                 this.settings_updates(ui);
                 this.settings_appearance(ui);
+                this.settings_agents(ui);
             },
             |ui| {
                 let Ok(mut state) = state.try_borrow_mut() else { return };
@@ -115,42 +130,63 @@ impl LauncherUi {
         );
     }
 
+    /// The language picker. It changes the preference immediately but keeps this pass on a language
+    /// that can be drawn now; a CJK face is installed by the next pass's font gate. When that face
+    /// is unavailable, an English-only notice explains why the interface stays English.
     fn settings_language(&mut self, ui: &mut Ui) {
         let t = Tokens::get(ui.ctx());
         let mut lang_code = self.settings.language.clone();
         let installed = self.cjk_font;
-        sheet::panel(ui, tl!("Language"), |ui| {
+        sheet::panel_with_heading(ui, tl!("Language"), |ui, heading| {
             let width = ui.available_width();
-            egui::ComboBox::from_id_salt("language").selected_text(Settings::language_label(&lang_code, installed)).width(width).show_ui(ui, |ui| {
-                ui.selectable_value(&mut lang_code, Settings::LANGUAGE_AUTO.to_string(), tl!("Auto"));
-                for lang in crate::i18n::Lang::all() {
-                    ui.selectable_value(&mut lang_code, lang.code().to_string(), Settings::language_label(lang.code(), installed));
-                }
-            });
+            craft_ui::ComboBox::from_id_salt("language")
+                .selected_text(Settings::language_label(&lang_code, installed))
+                .width(width)
+                .show_ui(ui, |ui| {
+                    ui.selectable_value(&mut lang_code, Settings::LANGUAGE_AUTO.to_string(), tl!("Auto"));
+                    for lang in crate::i18n::Lang::for_picker() {
+                        ui.selectable_value(&mut lang_code, lang.code().to_string(), Settings::language_label(lang.code(), installed));
+                    }
+                })
+                .response
+                .labelled_by(heading);
         });
         if lang_code != self.settings.language {
             self.settings.language = lang_code;
-            crate::i18n::set_current(crate::app::effective_lang(&self.settings.language));
+            // A CJK face selected here is installed at the next pass's font gate; keep this pass on
+            // a language that can be drawn now rather than asking for missing glyphs.
+            crate::i18n::set_current(crate::app::drawable_lang(&self.settings.language, self.cjk_font));
+            ui.ctx().request_repaint();
         }
         let pref = crate::i18n::Lang::from_pref(&self.settings.language);
         if pref.needs_cjk_font() && !theme::cjk_font_available(pref) {
             // In English on purpose: the language asked for can't be drawn.
             let text = "No font for this language was found on this system, so the interface stays in English. \
-                        Installing one (for example Noto Sans CJK) and restarting fixes it.";
+                        Installing one (for example Noto Sans CJK or Noto Sans Georgian) and restarting fixes it.";
             ui.add(egui::Label::new(RichText::new(text).size(12.0).color(t.warn)).wrap());
             ui.add_space(14.0);
         }
     }
 
+    /// Update scheduling and opt-ins. Values are written live; enabling automatic updates while the
+    /// backend manages apps runs a pass over pending updates at once. The automatic-update checkbox
+    /// is hidden on hosts that cannot manage apps.
     fn settings_updates(&mut self, ui: &mut Ui) {
+        let launcher_id = artcraft_launcher_core::catalog::LAUNCHER_ID;
+        self.request_versions(launcher_id);
         sheet::panel(ui, tl!("Updates"), |ui| {
             let mut every = self.settings.check_every;
-            row(ui, tl!("Check for updates"), 150.0, &mut |ui| {
-                egui::ComboBox::from_id_salt("every").selected_text(every.label()).width(150.0).show_ui(ui, |ui| {
-                    for e in CheckEvery::ALL {
-                        ui.selectable_value(&mut every, e, e.label());
-                    }
-                });
+            row(ui, tl!("Check for updates"), 150.0, &mut |ui, label| {
+                craft_ui::ComboBox::from_id_salt("every")
+                    .selected_text(every.label())
+                    .width(150.0)
+                    .show_ui(ui, |ui| {
+                        for e in CheckEvery::ALL {
+                            ui.selectable_value(&mut every, e, e.label());
+                        }
+                    })
+                    .response
+                    .labelled_by(label);
             });
             self.settings.check_every = every;
             if self.caps.manage_apps
@@ -159,8 +195,16 @@ impl LauncherUi {
             {
                 self.trigger_auto_updates();
             }
+            if self.caps.manage_apps {
+                ui.checkbox(&mut self.settings.batch_updates, tl!("Ask for permission once when updating all apps"));
+            }
             ui.checkbox(&mut self.settings.notify, tl!("Notify me when an installed app has an update"));
             ui.checkbox(&mut self.settings.prereleases, tl!("Include pre-releases (betas and release candidates)"));
+            row(ui, tl!("Launcher version"), 200.0, &mut |ui, label| {
+                self.version_combo(ui, launcher_id, &artcraft_launcher_core::catalog::LAUNCHER, 200.0, label);
+                self.version_lock(ui, launcher_id);
+            });
+            self.launcher_version_notes(ui);
         });
     }
 
@@ -172,7 +216,8 @@ impl LauncherUi {
         sheet::panel(ui, tl!("Default install folder"), |ui| {
             if self.custom_install_folders() {
                 let mut folder = self.settings.install_locations.root.clone().unwrap_or_default();
-                Self::folder_field(ui, &mut folder, None, host);
+                let default = self.suite_default_folder(host);
+                Self::folder_field(ui, &mut folder, default.as_deref(), host);
                 self.settings.install_locations.root = (!folder.is_empty()).then_some(folder);
                 note(ui, tl!("New installs use this folder. Updates stay in their current location."));
                 if self.platform.is_some_and(|p| p.os == Os::Linux) {
@@ -184,46 +229,66 @@ impl LauncherUi {
         });
 
         if self.platform.is_some_and(|p| p.os == Os::Windows) {
-            sheet::panel(ui, tl!("Installing on Windows"), |ui| {
-                let mut choice = self
-                    .settings
-                    .preferred_kinds
-                    .first()
-                    .copied()
-                    .filter(|kind| matches!(kind, PackageKind::Msi | PackageKind::PortableZip))
-                    .or(Some(PackageKind::Msi));
-                row(ui, tl!("Install new apps as"), 210.0, &mut |ui| {
-                    let label = choice.map_or_else(|| crate::i18n::t(PackageKind::Msi.label()), |kind| crate::i18n::t(kind.label()));
-                    egui::ComboBox::from_id_salt("windows-kind").selected_text(label).width(210.0).show_ui(ui, |ui| {
-                        for kind in [PackageKind::Msi, PackageKind::PortableZip] {
-                            ui.selectable_value(&mut choice, Some(kind), crate::i18n::t(kind.label()));
-                        }
-                    });
-                });
-                self.settings.preferred_kinds = choice.into_iter().collect();
-                note(ui, tl!("Updates always use the format an app was installed with."));
-            });
+            self.windows_kinds(ui);
         }
 
         if self.platform.is_some_and(|p| p.os == Os::Linux) {
-            sheet::panel(ui, tl!("Installing on Linux"), |ui| {
-                let is_flatpak = crate::settings::is_flatpak_sandbox();
-                let is_appimage = crate::settings::is_appimage();
-                let default_kind = if is_flatpak {
-                    Some(PackageKind::Flatpak)
-                } else if is_appimage {
-                    Some(PackageKind::AppImage)
-                } else {
-                    None
+            self.linux_kinds(ui);
+        }
+    }
+
+    /// The Windows install-format chooser: an MSI or a portable ZIP.
+    fn windows_kinds(&mut self, ui: &mut Ui) {
+        sheet::panel(ui, tl!("Installing on Windows"), |ui| {
+            let mut choice = self
+                .settings
+                .preferred_kinds
+                .first()
+                .copied()
+                .filter(|kind| matches!(kind, PackageKind::Msi | PackageKind::PortableZip))
+                .or(Some(PackageKind::Msi));
+            row(ui, tl!("Install new apps as"), 210.0, &mut |ui, label| {
+                let shown = choice.map_or_else(|| crate::i18n::t(PackageKind::Msi.label()), |kind| crate::i18n::t(kind.label()));
+                craft_ui::ComboBox::from_id_salt("windows-kind")
+                    .selected_text(shown)
+                    .width(210.0)
+                    .show_ui(ui, |ui| {
+                        for kind in [PackageKind::Msi, PackageKind::PortableZip] {
+                            ui.selectable_value(&mut choice, Some(kind), crate::i18n::t(kind.label()));
+                        }
+                    })
+                    .response
+                    .labelled_by(label);
+            });
+            self.settings.preferred_kinds = choice.into_iter().collect();
+            note(ui, tl!("Updates always use the format an app was installed with."));
+        });
+    }
+
+    /// The Linux install-format chooser: system packages, Flatpak, AppImage, and the sandbox-only
+    /// tarball, with the format the launcher itself runs with as the default suggestion.
+    fn linux_kinds(&mut self, ui: &mut Ui) {
+        sheet::panel(ui, tl!("Installing on Linux"), |ui| {
+            let is_flatpak = crate::settings::is_flatpak_sandbox();
+            let is_appimage = crate::settings::is_appimage();
+            let default_kind = if is_flatpak {
+                Some(PackageKind::Flatpak)
+            } else if is_appimage {
+                Some(PackageKind::AppImage)
+            } else {
+                None
+            };
+            let mut choice = self.settings.preferred_kinds.first().copied().or(default_kind);
+            row(ui, tl!("Install new apps as"), 210.0, &mut |ui, label| {
+                let default_label = match default_kind {
+                    Some(k) => crate::i18n::t(k.label()),
+                    None => tl!("System package (recommended)"),
                 };
-                let mut choice = self.settings.preferred_kinds.first().copied().or(default_kind);
-                row(ui, tl!("Install new apps as"), 210.0, &mut |ui| {
-                    let default_label = match default_kind {
-                        Some(k) => crate::i18n::t(k.label()),
-                        None => tl!("System package (recommended)"),
-                    };
-                    let label = choice.map_or(default_label, |k| crate::i18n::t(k.label()));
-                    egui::ComboBox::from_id_salt("kind").selected_text(label).width(210.0).show_ui(ui, |ui| {
+                let shown = choice.map_or(default_label, |k| crate::i18n::t(k.label()));
+                craft_ui::ComboBox::from_id_salt("kind")
+                    .selected_text(shown)
+                    .width(210.0)
+                    .show_ui(ui, |ui| {
                         if !is_flatpak && !is_appimage {
                             ui.selectable_value(&mut choice, None, tl!("System package (recommended)"));
                         }
@@ -235,14 +300,18 @@ impl LauncherUi {
                         if is_flatpak {
                             ui.selectable_value(&mut choice, Some(PackageKind::TarGz), crate::i18n::t(PackageKind::TarGz.label()));
                         }
-                    });
-                });
-                self.settings.preferred_kinds = choice.into_iter().collect();
-                note(ui, tl!("Updates always use the format an app was installed with."));
+                    })
+                    .response
+                    .labelled_by(label);
             });
-        }
+            self.settings.preferred_kinds = choice.into_iter().collect();
+            note(ui, tl!("Updates always use the format an app was installed with."));
+        });
     }
 
+    /// Tray, desktop and login-item choices. The whole panel is omitted when the host cannot manage
+    /// apps or has no tray, desktops and login item; a failed login-item change becomes a UI toast
+    /// instead of being ignored.
     fn settings_background(&mut self, ui: &mut Ui, host: &mut dyn Host) {
         // Nothing to show on a host with no tray, desktops or login item: no empty box.
         if !self.caps.manage_apps || !(host.has_tray() || host.has_desktops() || host.login_item().is_some()) {
@@ -261,12 +330,13 @@ impl LauncherUi {
                 && ui.checkbox(&mut on, tl!("Start ArtCraft Launcher when I log in")).changed()
                 && let Err(e) = host.set_login_item(on)
             {
-                let ctx = ui.ctx().clone();
-                self.toast(&ctx, fmt(tl!("Couldn't change the login item: {e}"), &[("e", &e)]), true);
+                self.toast_from_ui(fmt(tl!("Couldn't change the login item: {e}"), &[("e", &e)]), true);
             }
         });
     }
 
+    /// Community links (Discord, website, GitHub and the social icons) opened through the safe
+    /// external-link path; it queues no app actions.
     fn settings_community(&mut self, ui: &mut Ui) {
         let t = Tokens::get(ui.ctx());
         sheet::panel(ui, tl!("Community"), |ui| {
@@ -275,13 +345,13 @@ impl LauncherUi {
             ui.horizontal_wrapped(|ui| {
                 use artcraft_launcher_core::catalog::{GITHUB_URL, WEBSITE_URL};
                 if widgets::button(ui, tl!("Join the Discord"), Kind::Primary, 0.0).on_hover_text(self.discord_url).clicked() {
-                    ui.ctx().open_url(egui::OpenUrl::new_tab(self.discord_url));
+                    widgets::open_external_link(ui.ctx(), self.discord_url);
                 }
                 if widgets::button(ui, tl!("Website"), Kind::Secondary, 0.0).on_hover_text(WEBSITE_URL).clicked() {
-                    ui.ctx().open_url(egui::OpenUrl::new_tab(WEBSITE_URL));
+                    widgets::open_external_link(ui.ctx(), WEBSITE_URL);
                 }
                 if widgets::button(ui, tl!("GitHub"), Kind::Secondary, 0.0).on_hover_text(GITHUB_URL).clicked() {
-                    ui.ctx().open_url(egui::OpenUrl::new_tab(GITHUB_URL));
+                    widgets::open_external_link(ui.ctx(), GITHUB_URL);
                 }
                 // Wrap the social links as a group so their icons stay together.
                 let width = widgets::icon_links_width(artcraft_launcher_core::catalog::SOCIAL.len(), 16.0);
@@ -298,7 +368,115 @@ impl LauncherUi {
             ui.horizontal(|ui| {
                 widgets::cells(ui, &mut theme_choice, &ThemeChoice::ALL.map(|c| (c, Cell { label: c.label(), tip: c.label(), count: None })));
             });
+            ui.checkbox(&mut self.settings.hide_community_apps, tl!("Hide community apps"));
         });
         self.settings.theme = theme_choice;
+    }
+
+    /// AI agents: one switch that lets MCP clients reach every installed Craft app through the
+    /// `craft-ai-mcp` gateway (it is the person's consent: off, no agent reaches any app), then
+    /// quick install (Add/Remove per MCP client found here) and the configuration to copy for any
+    /// other client.
+    fn settings_agents(&mut self, ui: &mut Ui) {
+        // Behind the `AI-MCP` feature flag, set in `ArtCraft/flags.toml` or `CRAFT_FLAGS` only.
+        if !self.caps.manage_apps || !self.mcp_agents.flag_on {
+            return;
+        }
+        let t = Tokens::get(ui.ctx());
+        sheet::panel(ui, tl!("AI agents"), |ui| {
+            note(
+                ui,
+                tl!(
+                    "While this is on, AI apps that use MCP, such as Claude, Cursor or LM Studio, can work with every installed Craft app through one entry. While it is off, no agent can reach them, and the entries added here are removed."
+                ),
+            );
+            ui.add_space(8.0);
+            let agents = self.mcp_agents.clone();
+            if !agents.gateway_found {
+                ui.label(RichText::new(tl!("The Craft gateway (craft-ai-mcp) is not installed beside the launcher.")).size(12.0).color(t.muted));
+                // Turning on needs the gateway; turning off and removing entries never does.
+                if !agents.enabled {
+                    return;
+                }
+            }
+            let mut on = agents.enabled;
+            if ui.checkbox(&mut on, tl!("Let AI agents use Craft apps")).changed() && on != agents.enabled {
+                self.act_command(Command::McpSetAgents { enabled: on });
+            }
+            if !agents.enabled {
+                return;
+            }
+            ui.label(RichText::new(tl!("Apps agents can reach: {count}").replace("{count}", &agents.apps.to_string())).size(12.0).color(t.muted));
+            ui.add_space(10.0);
+            ui.label(RichText::new(tl!("Quick install")).strong());
+            note(ui, tl!("Adds the Craft apps to that client. Restart the client afterwards."));
+            ui.add_space(4.0);
+            for c in &agents.clients {
+                self.draw_client_row(ui, &t, c, agents.gateway_found);
+            }
+            if let Some(gateway) = agents.gateway.as_deref() {
+                ui.add_space(10.0);
+                ui.label(RichText::new(tl!("Other clients")).strong());
+                note(ui, tl!("Copy the configuration and paste it into the client's MCP settings."));
+                ui.add_space(4.0);
+                ui.horizontal_wrapped(|ui| {
+                    for format in McpConfigFormat::ALL {
+                        let label = match format {
+                            McpConfigFormat::Json => tl!("Copy JSON"),
+                            McpConfigFormat::VsCode => tl!("Copy for VS Code"),
+                            McpConfigFormat::CodexToml => tl!("Copy for Codex (TOML)"),
+                        };
+                        if ui.button(label).clicked() {
+                            ui.ctx().copy_text(mcp_config(format, gateway));
+                            self.toast(tl!("Configuration copied."), false);
+                        }
+                    }
+                });
+            }
+        });
+    }
+
+    /// One MCP client: its name, and Add or Remove (or "Not installed" when it isn't). Add is
+    /// offered only while the gateway is there to add.
+    fn draw_client_row(&mut self, ui: &mut Ui, t: &Tokens, c: &McpClientState, can_add: bool) {
+        ui.horizontal(|ui| {
+            ui.label(c.name.as_str());
+            if c.added {
+                ui.label(RichText::new(tl!("Added")).size(12.0).color(t.muted));
+                if ui.button(tl!("Remove")).clicked() {
+                    self.act_command(Command::McpSetClient { client: c.client, added: false });
+                    self.mcp_restart_offer = None;
+                }
+            } else if c.installed && can_add {
+                if ui.button(tl!("Add")).clicked() {
+                    self.act_command(Command::McpSetClient { client: c.client, added: true });
+                    if c.restartable {
+                        self.mcp_restart_offer = Some(c.client);
+                    }
+                }
+            } else if !c.installed {
+                ui.label(RichText::new(tl!("Not installed")).size(12.0).color(t.muted));
+            }
+        });
+        // A client reads its MCP servers only when it starts: right after adding, say so and offer
+        // to do the restart, which people otherwise miss.
+        if c.added && c.restartable && self.mcp_restart_offer == Some(c.client) {
+            let name = [("client", c.name.as_str())];
+            note(
+                ui,
+                &fmt(
+                    tl!(
+                        "{client} loads its MCP servers only when it starts, so the Craft apps appear after a restart. Restarting closes {client}, including a reply it is still writing."
+                    ),
+                    &name,
+                ),
+            );
+            if ui.button(fmt(tl!("Restart {client}"), &name)).clicked() {
+                self.act_command(Command::McpRestartClient { client: c.client });
+                self.mcp_restart_offer = None;
+                self.toast(fmt(tl!("Restarting {client}…"), &name), false);
+            }
+            ui.add_space(4.0);
+        }
     }
 }

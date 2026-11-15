@@ -32,6 +32,7 @@ pub(crate) fn hero(ui: &mut Ui, icon: Option<ImageSource<'static>>, title: &str,
             ui.set_width(ui.available_width());
             ui.horizontal(|ui| {
                 if let Some(icon) = icon {
+                    // Decorative: the heading beside it carries the title.
                     ui.add(egui::Image::new(icon).fit_to_exact_size(vec2(44.0, 44.0)));
                     ui.add_space(6.0);
                 }
@@ -96,6 +97,19 @@ pub(crate) fn panel(ui: &mut Ui, title: &str, body: impl FnOnce(&mut Ui)) {
         widgets::hud(ui, title, t.faint);
         ui.add_space(8.0);
         body(ui);
+    });
+    ui.add_space(14.0);
+}
+
+/// [`panel`], but the body also receives the heading's id so its control can be named by that
+/// visible heading (egui 0.37's `Response::labelled_by`), without adding a second identical label.
+pub(crate) fn panel_with_heading(ui: &mut Ui, title: &str, body: impl FnOnce(&mut Ui, egui::Id)) {
+    let t = Tokens::get(ui.ctx());
+    Frame::new().stroke(t.hairline()).inner_margin(theme::BOX_MARGIN).show(ui, |ui| {
+        ui.set_width(ui.available_width());
+        let heading = widgets::hud(ui, title, t.faint);
+        ui.add_space(8.0);
+        body(ui, heading.id);
     });
     ui.add_space(14.0);
 }

@@ -19,6 +19,28 @@ pub struct SystemProxy {
 /// without any user name or password.
 pub fn pick() -> Option<Proxy> {
     if let Some(proxy) = Proxy::try_from_env() {
+        let mut builder = Proxy::builder(proxy.protocol()).host(proxy.host()).port(proxy.port());
+        if let Some(user) = proxy.username() {
+            builder = builder.username(user);
+        }
+        if let Some(pass) = proxy.password() {
+            builder = builder.password(pass);
+        }
+        if let Ok(no_proxy_env) = std::env::var("NO_PROXY").or_else(|_| std::env::var("no_proxy")) {
+            for entry in no_proxy_env.split(',') {
+                let entry = entry.trim();
+                if !entry.is_empty() {
+                    builder = builder.no_proxy(entry);
+                }
+            }
+        }
+        for entry in ["localhost", "127.0.0.1", "[::1]"] {
+            builder = builder.no_proxy(entry);
+        }
+        if let Ok(p) = builder.build() {
+            log::info!("HTTP proxy: {} {}:{} (from environment variables)", p.protocol(), p.host(), p.port());
+            return Some(p);
+        }
         log::info!("HTTP proxy: {} {}:{} (from environment variables)", proxy.protocol(), proxy.host(), proxy.port());
         return Some(proxy);
     }

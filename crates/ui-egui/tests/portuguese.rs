@@ -67,6 +67,9 @@ fn events() -> Vec<Event> {
             source: InstallSource::Msi,
             location: format!("C:\\Program Files\\{}\\{}.exe", app.name, app.id),
             package: None,
+            externally_managed: false,
+            origin: None,
+            installation: None,
         });
         ev.push(Event::Detected { app: app.id.into(), installed });
     }
@@ -113,4 +116,18 @@ fn portuguese_ui_translates_labels_dates_and_messages() {
     table.run_steps(8);
     table.get_by_label("Versão");
     assert!(table.query_all_by_label_contains("de ago. de 2026").count() >= 1);
+}
+
+/// Brazilian Portuguese writes the launcher's longest dates ("29 de set. de 2026"): the table's
+/// released column must show one whole, not cut to "29 de set...".
+#[test]
+fn the_table_shows_the_longest_dates_whole() {
+    let mut h = harness(ViewMode::Table);
+    h.run_steps(4);
+    let text = "29 de ago. de 2026";
+    let font = egui::TextStyle::Body.resolve(&h.ctx.global_style());
+    let whole = h.ctx.fonts_mut(|f| f.layout_no_wrap(text.into(), font, egui::Color32::WHITE).size().x);
+    let date = h.get_all_by_label_contains(text).next().expect("a release date in the table");
+    // A label cut with an ellipsis keeps its full text, so only its width tells.
+    assert!(date.rect().width() >= whole - 0.5, "{:?} of {whole}", date.rect());
 }
