@@ -294,7 +294,7 @@ mod tests {
         assert_eq!(app.kind, AppKind::Official);
         assert_eq!(app.repo, "storytold/materialcraft");
         assert_eq!(app.bundle_id(), "ai.storyteller.materialcraft");
-        assert_eq!(app.website(), "https://github.com/storytold/materialcraft");
+        assert_eq!(app.website(), "https://getartcraft.com/apps/materialcraft");
         assert_eq!(app.mac_team, Some(ARTCRAFT_TEAM_ID));
     }
 

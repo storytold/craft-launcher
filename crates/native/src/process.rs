@@ -122,9 +122,10 @@ fn run_command_with_output(mut cmd: Command, program: &str, timeout: Duration) -
     };
     // A descendant may retain a pipe after the direct child exits. Keep reader completion
     // under the same deadline; on timeout the readers detach, as in the child timeout path.
+    // Say which deadline expired: the child's own, or the readers' after the child exited.
     while !stdout.is_finished() || !stderr.is_finished() {
         if start.elapsed() >= timeout {
-            return Err(format!("{program} didn't finish within {} seconds", timeout.as_secs()));
+            return Err(format!("{program} exited, but its output was still being captured at the {} second deadline", timeout.as_secs()));
         }
         std::thread::sleep(Duration::from_millis(15));
     }
@@ -330,10 +331,21 @@ fn detect_discord_scheme_handler() -> bool {
     false
 }
 
-/// Finds a program on `PATH`.
+/// Finds a program on `PATH`. The path returned is absolute: a relative `PATH` entry (`.`, `bin`)
+/// is taken from the working folder, as the shell does, so the result still names the same file
+/// after it is stored and used from elsewhere (launch accepts only absolute locations).
 pub(crate) fn which(name: &str) -> Option<std::path::PathBuf> {
     let path = std::env::var_os("PATH")?;
-    std::env::split_paths(&path).map(|d| d.join(name)).find(|p| p.is_file())
+    which_in(&path, std::env::current_dir().ok().as_deref(), name)
+}
+
+/// [`which`] over the given `PATH` value, with relative entries taken from `cwd`. Without a
+/// working folder, relative entries are skipped: what they name can't be said.
+fn which_in(path: &std::ffi::OsStr, cwd: Option<&Path>, name: &str) -> Option<std::path::PathBuf> {
+    std::env::split_paths(path)
+        .filter_map(|d| if d.is_absolute() { Some(d) } else { cwd.map(|c| c.join(d)) })
+        .map(|d| d.join(name))
+        .find(|p| p.is_file())
 }
 
 /// Starts an app binary from its own folder.
@@ -505,6 +517,44 @@ fn explorer_select_arg(path: &Path) -> Option<std::ffi::OsString> {
     Some(arg)
 }
 
+/// The PowerShell script that restarts Claude Desktop on Windows. Its processes are picked by
+/// install folder (the Microsoft Store package or the classic per-user install), never by name
+/// alone: `claude.exe` is also Claude Code's command-line program, whose sessions must keep running.
+/// It is started again through its Start menu entry, which works for both installs.
+pub const CLAUDE_DESKTOP_RESTART_PS: &str = r#"$ErrorActionPreference = 'Stop'
+$app = Get-StartApps | Where-Object { $_.Name -eq 'Claude' } | Select-Object -First 1
+if (-not $app) { throw 'Claude Desktop is not in the Start menu.' }
+$running = @(Get-Process -Name claude -ErrorAction SilentlyContinue | Where-Object { $_.Path -like '*\WindowsApps\Claude_*' -or $_.Path -like '*\AnthropicClaude\*' })
+$running | Stop-Process -Force -ErrorAction SilentlyContinue
+foreach ($p in $running) { $null = $p.WaitForExit(10000) }
+Start-Process ('shell:AppsFolder\' + $app.AppID)
+"#;
+
+/// The AppleScript that quits Claude Desktop on macOS (as Quit in its menu does, waiting up to
+/// 10 s), before `open -a Claude` starts it again.
+pub const CLAUDE_DESKTOP_QUIT_APPLESCRIPT: &str = r#"if application "Claude" is running then
+  tell application "Claude" to quit
+  repeat 50 times
+    if application "Claude" is not running then exit repeat
+    delay 0.2
+  end repeat
+end if"#;
+
+/// Quit Claude Desktop and start it again, so it loads the MCP servers in its configuration.
+pub fn restart_claude_desktop() -> Result<(), String> {
+    if cfg!(windows) {
+        let exe = windows_system_program(r"System32\WindowsPowerShell\v1.0\powershell.exe")?;
+        let mut cmd = command(exe);
+        cmd.args(["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command", CLAUDE_DESKTOP_RESTART_PS]);
+        run_command(cmd, "powershell", Duration::from_secs(30)).map(|_| ())
+    } else if cfg!(target_os = "macos") {
+        run("osascript", &["-e", CLAUDE_DESKTOP_QUIT_APPLESCRIPT], Duration::from_secs(20))?;
+        run("open", &["-a", "Claude"], Duration::from_secs(10)).map(|_| ())
+    } else {
+        Err("restarting Claude Desktop isn't supported on this system".into())
+    }
+}
+
 /// Whether a process started from inside `path` (an exe, an AppImage, or a `.app`) is running.
 pub fn is_running(path: &Path) -> bool {
     if cfg!(windows) {
@@ -569,6 +619,24 @@ mod tests {
     use std::process::Child;
 
     use super::*;
+
+    /// A program found through a relative `PATH` entry comes back as an absolute path, so it is
+    /// still a launchable location once stored.
+    #[test]
+    fn which_makes_a_relative_path_entry_absolute() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::create_dir(dir.path().join("bin")).unwrap();
+        std::fs::write(dir.path().join("bin").join("wordcraft"), b"").unwrap();
+        let path = std::env::join_paths([Path::new("bin"), Path::new("other")]).unwrap();
+        let found = which_in(&path, Some(dir.path()), "wordcraft").unwrap();
+        assert!(found.is_absolute() && found.is_file(), "{found:?}");
+        assert_eq!(found, dir.path().join("bin").join("wordcraft"));
+        // An absolute entry is used as it is; without a working folder a relative one is skipped.
+        let abs = std::env::join_paths([dir.path().join("bin")]).unwrap();
+        assert_eq!(which_in(&abs, None, "wordcraft"), Some(dir.path().join("bin").join("wordcraft")));
+        assert_eq!(which_in(&path, None, "wordcraft"), None);
+        assert_eq!(which_in(&path, Some(dir.path()), "missing"), None);
+    }
 
     struct RunningProbe(Child);
 
@@ -825,6 +893,7 @@ mod inherited_pipe_tests {
         // The direct child has to start a second test process and fill both pipes before the
         // deadline, which can take seconds on a slow or emulated machine. An attempt where it
         // didn't get that far says nothing about inherited pipes: retry with a longer deadline.
+        const MAX_DEADLINE: Duration = Duration::from_secs(16);
         let mut deadline = Duration::from_secs(1);
         loop {
             let holder = StopHolder(tempfile::tempdir().unwrap());
@@ -833,16 +902,17 @@ mod inherited_pipe_tests {
             let start = Instant::now();
             let result = run(exe.to_str().unwrap(), &args, deadline);
             let elapsed = start.elapsed();
-            if !holder.0.path().join("parent-returning").exists() && deadline < Duration::from_secs(16) {
+            let parent_returned = holder.0.path().join("parent-returning").exists();
+            // The child timing out says nothing about the inherited pipes; its own deadline
+            // expired first, as does an attempt that never reached the marker.
+            let child_timeout = matches!(&result, Err(error) if error.contains("didn't finish within"));
+            if (!parent_returned || child_timeout) && deadline < MAX_DEADLINE {
                 deadline *= 4;
                 continue;
             }
-            assert!(holder.0.path().join("parent-returning").exists(), "direct child did not exit its fixture within {deadline:?}");
-            assert!(
-                matches!(&result, Err(error) if error.contains("didn't finish within")),
-                "expected a pipe deadline error; helper returned success: {}, elapsed: {elapsed:?}",
-                result.is_ok()
-            );
+            assert!(parent_returned, "direct child did not exit its fixture within {deadline:?}");
+            let pipe_timeout = matches!(&result, Err(error) if error.contains("still being captured at the"));
+            assert!(pipe_timeout, "expected the inherited-pipe deadline, not the child's; helper returned {result:?}, elapsed: {elapsed:?}");
             // The descendant would hold the pipes for HOLD, far past this bound.
             assert!(deadline * 2 < HOLD);
             assert!(elapsed < deadline * 2, "capture exceeded its caller deadline {deadline:?}: {elapsed:?}");
