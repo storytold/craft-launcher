@@ -93,18 +93,19 @@ The web version shows the same catalog in the browser, with the latest download 
 
 The interface is in English, Brazilian Portuguese (Português (Brasil)), Czech (Čeština), French
 (Français), Georgian (ქართული), German (Deutsch), Hungarian (Magyar), Japanese (日本語), Polish
-(Polski), Russian (Русский), Simplified Chinese (简体中文), Traditional Chinese (繁體中文) or Spanish
-(Español). **Auto**, the default, follows the system or browser language; **Settings → Language**
-picks one and switches at once, and the choice is kept between runs. Czech locales (`cs-CZ`,
-`cs_CZ.UTF-8`…) select Czech, Georgian ones (`ka`, `ka-GE`, `ka_GE.UTF-8`…) Georgian, German ones
-(`de-DE`, `de-AT`, `de-CH`, `de_DE.UTF-8`…) German, French ones (`fr-FR`, `fr-CA`…) French, Hungarian
-ones (`hu`, `hu-HU`, `hu_HU.UTF-8`…) Hungarian, Japanese ones (`ja`, `ja-JP`, `ja_JP.UTF-8`…)
-Japanese, Polish ones (`pl`, `pl-PL`, `pl_PL.UTF-8`) Polish, Spanish ones (`es-ES`, `es-MX`,
-`es-419`…) Spanish, and Portuguese ones (`pt-BR`, and `pt-PT` too, for now) Brazilian Portuguese.
-Simplified Chinese locales (`zh-CN`, `zh-SG`, `zh-Hans`, and POSIX forms such as `zh_CN.UTF-8`)
-select Simplified Chinese; Traditional Chinese ones (`zh-TW`, `zh-HK`, `zh-MO`, `zh-Hant`, and POSIX
-forms such as `zh_TW.UTF-8`) select Traditional Chinese, with an explicit script winning over the
-region. To try a language without changing the setting, start the desktop app with
+(Polski), Russian (Русский), Simplified Chinese (简体中文), Traditional Chinese (繁體中文), Spanish
+(Español) or Ukrainian (Українська). **Auto**, the default, follows the system or browser language;
+**Settings → Language** picks one and switches at once, and the choice is kept between runs. Czech
+locales (`cs-CZ`, `cs_CZ.UTF-8`…) select Czech, Georgian ones (`ka`, `ka-GE`, `ka_GE.UTF-8`…)
+Georgian, German ones (`de-DE`, `de-AT`, `de-CH`, `de_DE.UTF-8`…) German, French ones (`fr-FR`,
+`fr-CA`…) French, Hungarian ones (`hu`, `hu-HU`, `hu_HU.UTF-8`…) Hungarian, Japanese ones (`ja`,
+`ja-JP`, `ja_JP.UTF-8`…) Japanese, Polish ones (`pl`, `pl-PL`, `pl_PL.UTF-8`) Polish, Ukrainian ones
+(`uk`, `uk-UA`, `uk_UA.UTF-8`…) Ukrainian, Spanish ones (`es-ES`, `es-MX`, `es-419`…) Spanish, and
+Portuguese ones (`pt-BR`, and `pt-PT` too, for now) Brazilian Portuguese. Simplified Chinese locales
+(`zh-CN`, `zh-SG`, `zh-Hans`, and POSIX forms such as `zh_CN.UTF-8`) select Simplified Chinese;
+Traditional Chinese ones (`zh-TW`, `zh-HK`, `zh-MO`, `zh-Hant`, and POSIX forms such as
+`zh_TW.UTF-8`) select Traditional Chinese, with an explicit script winning over the region. To try
+a language without changing the setting, start the desktop app with
 `ARTCRAFT_LAUNCHER_LOCALE=pt-BR`, or add `?lang=ru` to the web address.
 
 The CJK languages are drawn with the system's own CJK font (Hiragino Sans or PingFang on macOS,
