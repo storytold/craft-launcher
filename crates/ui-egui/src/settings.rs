@@ -144,10 +144,13 @@ impl Settings {
     /// Machine-readable code for "follow the system language".
     pub const LANGUAGE_AUTO: &str = "auto";
 
-    /// Clear saved catalog filters whose controls were removed from the toolbar.
+    /// Normalize saved choices whose controls were removed from the interface.
     pub fn migrate(&mut self) {
         if !matches!(self.filter, Filter::All | Filter::Hidden) {
             self.filter = Filter::All;
+        }
+        if matches!(self.check_every, CheckEvery::FourHours | CheckEvery::Day) {
+            self.check_every = CheckEvery::Hour;
         }
     }
 
@@ -283,6 +286,26 @@ impl Default for Settings {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn legacy_automatic_check_choices_migrate_to_the_current_picker_option() {
+        for saved in ["FourHours", "Day"] {
+            let mut settings: Settings = serde_json::from_value(serde_json::json!({"check_every": saved})).unwrap();
+            let interval = settings.check_every.seconds();
+            settings.migrate();
+            assert_eq!(settings.check_every, CheckEvery::Hour, "{saved}");
+            assert!(CheckEvery::ALL.contains(&settings.check_every), "{saved}");
+            assert_eq!(settings.check_every.seconds(), interval, "{saved}");
+            assert_eq!(serde_json::to_value(&settings).unwrap()["check_every"], "Hour", "{saved}");
+        }
+        for saved in ["Hour", "Never"] {
+            let mut settings: Settings = serde_json::from_value(serde_json::json!({"check_every": saved})).unwrap();
+            let before = settings.check_every;
+            settings.migrate();
+            assert_eq!(settings.check_every, before, "{saved}");
+            assert_eq!(settings.check_every.seconds(), before.seconds(), "{saved}");
+        }
+    }
 
     #[test]
     fn pin_appends_once_and_unpin_removes() {
