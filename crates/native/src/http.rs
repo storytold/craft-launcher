@@ -359,6 +359,10 @@ impl Http {
             401 | 403 => return Err(retry(format!("the server refused the download (HTTP {status})"), false)),
             s => return Err(retry(format!("HTTP {s}"), false)),
         };
+        if status == 206 && start != have {
+            // A mismatched range must not overwrite the bytes already saved.
+            return Err(retry(format!("the server resumed at byte {start}, but byte {have} was requested"), false));
+        }
         if size > 0 && total != size {
             return Err(AttemptError::Fatal(format!("the server offered {total} bytes, but the release lists {size}")));
         }
@@ -749,6 +753,8 @@ pub(crate) mod tests {
         DropAfter(usize),
         /// Honour `Range` with a 206.
         Ranged,
+        /// A partial response starting somewhere other than the requested byte.
+        WrongStart(usize),
         /// The right length, wrong bytes.
         Corrupt,
         /// 404.
@@ -793,6 +799,13 @@ pub(crate) mod tests {
                         write!(stream, "HTTP/1.1 200 OK\r\nContent-Length: {len}\r\nContent-Encoding: gzip\r\nConnection: close\r\n\r\n")
                             .and_then(|()| stream.write_all(&body))
                     }
+                    Reply::WrongStart(from) => write!(
+                        stream,
+                        "HTTP/1.1 206 Partial Content\r\nContent-Length: {}\r\nContent-Range: bytes {from}-{}/{len}\r\nConnection: close\r\n\r\n",
+                        len - from,
+                        len - 1
+                    )
+                    .and_then(|()| stream.write_all(&body[from..])),
                     Reply::Ranged => {
                         let from = range.unwrap_or(0);
                         write!(
@@ -866,6 +879,26 @@ pub(crate) mod tests {
         let (result, ranges) = run(vec![Reply::DropAfter(300_000), Reply::Ranged]);
         assert_eq!(result.unwrap(), body().0);
         assert_eq!(ranges, [None, Some("300000".to_string())]);
+    }
+
+    #[test]
+    fn a_partial_response_at_the_wrong_offset_keeps_existing_bytes() {
+        let body = b"abcdefgh".to_vec();
+        let have = 4;
+        for from in [0, 2, 5] {
+            let (url, ranges) = serve(body.clone(), vec![Reply::WrongStart(from)]);
+            let dir = tempfile::tempdir().unwrap();
+            let part = dir.path().join("file.part");
+            std::fs::write(&part, &body[..have]).unwrap();
+            let mut progress_called = false;
+            let result = Http::new().unwrap().attempt(&url, &part, have as u64, body.len() as u64, &Stop::default(), &mut |_| {
+                progress_called = true;
+            });
+            assert!(matches!(result, Err(AttemptError::Retry { progressed: false, .. })), "wrong start {from}");
+            assert_eq!(std::fs::read(&part).unwrap(), &body[..have], "wrong start {from}");
+            assert!(!progress_called, "wrong start {from}");
+            assert_eq!(*ranges.lock().unwrap(), [Some(have.to_string())]);
+        }
     }
 
     #[test]
