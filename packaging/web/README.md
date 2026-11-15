@@ -45,6 +45,9 @@ reject any single file over 25 MiB).
   allow `'self'` and `'wasm-unsafe-eval'`. Authorize Trunk's default inline module bootstrap with
   a matching hash (refresh it after rebuilding) or a per-response nonce on both its script element
   and the policy; alternatively, serve that bootstrap as a same-origin external module script.
+  If `style-src` (or its `default-src` fallback) restricts inline styles, authorize the inline
+  stylesheet in `index.html` with a matching hash or a per-response nonce on its `<style>` element
+  and in the policy, or serve it as a same-origin external stylesheet allowed by that directive.
 - **No special isolation headers:** the app doesn't use `SharedArrayBuffer`, so it doesn't need
   `Cross-Origin-Opener-Policy` or `Cross-Origin-Embedder-Policy`.
 
