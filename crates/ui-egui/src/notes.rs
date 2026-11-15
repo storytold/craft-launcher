@@ -19,8 +19,11 @@ pub(crate) fn classify(line: &str) -> Line<'_> {
     if l.is_empty() {
         return Line::Blank;
     }
-    if let Some(h) = l.strip_prefix('#') {
-        return Line::Heading(h.trim_start_matches('#').trim());
+    // GitHub headings need separated markers; issue references such as #123 stay literal.
+    let h = l.trim_start_matches('#');
+    let hashes = l.len() - h.len();
+    if (1..=6).contains(&hashes) && (h.is_empty() || h.starts_with(' ') || h.starts_with('\t')) {
+        return Line::Heading(h.trim());
     }
     if let Some(b) = l.strip_prefix("* ").or_else(|| l.strip_prefix("- ")) {
         if let Some((text, url)) = b.rsplit_once(" in https://")
@@ -138,6 +141,25 @@ mod tests {
         assert_eq!(classify("- plain bullet"), Line::Bullet("plain bullet", None));
         assert_eq!(classify("   "), Line::Blank);
         assert_eq!(classify("hello"), Line::Text("hello"));
+    }
+
+    #[test]
+    fn atx_headings_accept_one_to_six_hashes_with_a_separator_or_end() {
+        for count in 1..=6 {
+            let marks = "#".repeat(count);
+            assert_eq!(classify(&format!("{marks} Heading")), Line::Heading("Heading"));
+            assert_eq!(classify(&format!("{marks}\tTabbed")), Line::Heading("Tabbed"));
+            assert_eq!(classify(&marks), Line::Heading(""));
+        }
+        assert_eq!(classify("  ## Heading \t"), Line::Heading("Heading"));
+        assert_eq!(classify("## \t"), Line::Heading(""));
+    }
+
+    #[test]
+    fn non_heading_hash_prefixes_remain_literal_text() {
+        for text in ["#123 fixed", "#hashtag", "######not a heading", "####### Heading", "#######", "#\u{a0}Heading"] {
+            assert_eq!(classify(text), Line::Text(text), "{text:?}");
+        }
     }
 
     #[test]
