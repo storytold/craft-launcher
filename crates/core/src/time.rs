@@ -40,6 +40,9 @@ pub fn parse_rfc3339(text: &str) -> Option<i64> {
     if b.len() < 19 || b.get(4) != Some(&b'-') || b.get(7) != Some(&b'-') || !matches!(b.get(10), Some(b'T' | b't' | b' ')) {
         return None;
     }
+    if b.get(13) != Some(&b':') || b.get(16) != Some(&b':') {
+        return None;
+    }
     let num = |from: usize, to: usize| -> Option<i64> {
         let s = std::str::from_utf8(b.get(from..to)?).ok()?;
         if !s.bytes().all(|c| c.is_ascii_digit()) {
@@ -59,8 +62,15 @@ pub fn parse_rfc3339(text: &str) -> Option<i64> {
         "" | "Z" | "z" => 0,
         t if t.len() == 6 && (t.starts_with('+') || t.starts_with('-')) => {
             let sign = if t.starts_with('-') { -1 } else { 1 };
-            let oh: i64 = t.get(1..3)?.parse().ok()?;
-            let om: i64 = t.get(4..6)?.parse().ok()?;
+            let (hours, minutes) = (t.get(1..3)?, t.get(4..6)?);
+            if t.as_bytes().get(3) != Some(&b':') || !hours.bytes().chain(minutes.bytes()).all(|c| c.is_ascii_digit()) {
+                return None;
+            }
+            let oh: i64 = hours.parse().ok()?;
+            let om: i64 = minutes.parse().ok()?;
+            if oh > 23 || om > 59 {
+                return None;
+            }
             sign * (oh * 3600 + om * 60)
         }
         _ => return None,
@@ -159,6 +169,40 @@ mod tests {
         for bad in ["", "2026-10-08", "2026-13-08T00:00:00Z", "2026-10-08T14:52:50Q", "20x6-10-08T14:52:50Z"] {
             assert_eq!(parse_rfc3339(bad), None, "{bad}");
         }
+    }
+
+    #[test]
+    fn timestamp_syntax_requires_colons_and_unsigned_offset_fields() {
+        for bad in [
+            "1970-01-01T00x00:00Z",
+            "1970-01-01T00:00x00Z",
+            "1970-01-01T00:00:00+01x30",
+            "1970-01-01T00:00:00+24:00",
+            "1970-01-01T00:00:00+01:60",
+            "1970-01-01T00:00:00++1:00",
+            "1970-01-01T00:00:00+-1:00",
+            "1970-01-01T00:00:00+01:+1",
+            "1970-01-01T00:00:00+01:-1",
+            "1970-01-01T00:00:00+0é00",
+        ] {
+            assert_eq!(parse_rfc3339(bad), None, "{bad}");
+        }
+    }
+
+    #[test]
+    fn timestamp_syntax_keeps_the_existing_tolerant_forms() {
+        for text in [
+            "1970-01-01T00:00:00",
+            "1970-01-01t00:00:00z",
+            " 1970-01-01 00:00:00Z ",
+            "1970-01-01T00:00:00.123Z",
+            "1970-01-01T23:59:00.123+23:59",
+            "1969-12-31T00:01:00-23:59",
+        ] {
+            assert_eq!(parse_rfc3339(text), Some(0), "{text}");
+        }
+        assert_eq!(parse_rfc3339("1970-01-01T00:00:60Z"), Some(60));
+        assert_eq!(parse_rfc3339("2026-02-30T00:00:00Z"), parse_rfc3339("2026-03-02T00:00:00Z"));
     }
 
     #[test]
