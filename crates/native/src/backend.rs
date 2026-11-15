@@ -2138,6 +2138,75 @@ mod tests {
         assert_eq!(github.calls.load(Ordering::SeqCst), 0);
     }
 
+    /// GitHub's saved answer is rewritten on every answer it gives, so a release it stops
+    /// publishing stops winning over the feed: keeping the newer cached release is not a pin.
+    #[test]
+    fn a_release_github_stops_naming_is_dropped_again() {
+        /// GitHub, whose saved answer changes as later answers arrive — a release taken down, or
+        /// the repository left with none.
+        struct Retractable(Mutex<Option<LatestRelease>>);
+
+        impl ReleaseSource for Retractable {
+            fn latest(&self, _: &str, _: bool) -> Answer {
+                let latest = self.0.lock().unwrap().clone().unwrap_or(LatestRelease::None);
+                Answer { latest, source: Source::GitHubApi }
+            }
+            fn cached(&self, _: &str, _: bool) -> Option<LatestRelease> {
+                self.0.lock().unwrap().clone()
+            }
+            fn rate_limited_until(&self) -> Option<i64> {
+                None
+            }
+            fn save(&self) {}
+        }
+
+        let release = |v: &str| Release { tag: format!("v{v}"), version: version::parse(v), ..Release::default() };
+        let github = Retractable(Mutex::new(Some(LatestRelease::Found(release("0.13.0")))));
+        let app = CraftApp::by_id("photocraft").unwrap();
+        let state = shared();
+        let poll = |github: &Retractable| {
+            let (latest, origin, used) = latest_for(app, Some(&feed()), LOADED, github, &state, false, false, NOW);
+            let Some(LatestRelease::Found(release)) = latest else { panic!("no release: {latest:?}") };
+            (release.tag, origin, used)
+        };
+
+        // While GitHub still names it, the newer release it found outlives the lagging feed.
+        assert_eq!(poll(&github), ("v0.13.0".into(), Origin::GitHub, Some(Source::Cache)));
+        // GitHub stops naming it, and now names what the feed has: the feed's answer stands.
+        *github.0.lock().unwrap() = Some(LatestRelease::Found(release("0.6.0")));
+        assert_eq!(poll(&github), ("v0.6.0".into(), Origin::ArtCraftApi, Some(Source::Feed)));
+        // Or names nothing at all: the same, so a withdrawn release is never shown for good.
+        *github.0.lock().unwrap() = Some(LatestRelease::None);
+        assert_eq!(poll(&github), ("v0.6.0".into(), Origin::ArtCraftApi, Some(Source::Feed)));
+
+        // The first paint after a restart follows the same rule: the saved feed answer while
+        // GitHub's saved answer is the newer one, and the feed once GitHub no longer is.
+        let dir = tempfile::tempdir().unwrap();
+        let (year, month, day) = artcraft_launcher_core::time::civil_from_unix(crate::now());
+        let fetched = format!("{year:04}-{month:02}-{day:02}T00:00:00Z");
+        let saved = serde_json::json!({"release_info":{"apps":{"photocraft":{
+            "repo":"storytold/photocraft", "latest_release":{"tag":"v0.6.0"}, "app_last_fetched":fetched
+        }}}});
+        crate::paths::write_atomic(&Paths::under(dir.path()).feed_cache(), saved.to_string().as_bytes()).unwrap();
+        let painted = |cached: LatestRelease| {
+            let github = Arc::new(Retractable(Mutex::new(Some(cached))));
+            let mut restarted = backend(dir.path(), Platform { os: Os::Windows, arch: Arch::X64 }, Some(github));
+            restarted.replay_cache();
+            let shown: Vec<(String, Origin)> = restarted
+                .poll()
+                .into_iter()
+                .filter_map(|event| match event {
+                    Event::Latest { app, latest: LatestRelease::Found(r), from } if app == "photocraft" => Some((r.tag, from)),
+                    _ => None,
+                })
+                .collect();
+            shown
+        };
+        assert_eq!(painted(LatestRelease::Found(release("0.13.0"))), [("v0.13.0".to_string(), Origin::GitHub)]);
+        assert_eq!(painted(LatestRelease::Found(release("0.6.0"))), [("v0.6.0".to_string(), Origin::ArtCraftApi)]);
+        assert_eq!(painted(LatestRelease::None), [("v0.6.0".to_string(), Origin::ArtCraftApi)]);
+    }
+
     #[test]
     fn github_is_only_the_fallback_and_is_asked_rarely() {
         let github = CountingGitHub::default();

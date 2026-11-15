@@ -1063,7 +1063,7 @@ mod tests {
     #[test]
     fn eframe_and_tray_use_the_same_settings_file() {
         let file = super::settings_file::path(super::APP_ID).unwrap();
-        assert_eq!(super::native_options(false).persistence_path.as_deref(), Some(file.as_path()));
+        assert_eq!(super::native_options(false, None).persistence_path.as_deref(), Some(file.as_path()));
     }
 
     use std::ptr::NonNull;
