@@ -629,6 +629,7 @@ pub fn create_desktop_shortcut(_name: &str, _target: &Path) -> Result<(), String
 }
 
 #[cfg(all(test, windows))]
+#[allow(clippy::unwrap_used, clippy::expect_used)]
 mod desktop_shortcut_tests {
     use super::*;
     use std::fs;
