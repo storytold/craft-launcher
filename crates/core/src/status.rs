@@ -91,7 +91,9 @@ pub enum AppStatus {
     UpToDate,
     /// Installed, and a newer version is out.
     UpdateAvailable,
-    /// Installed, but the latest release couldn't be checked (offline, rate-limited).
+    /// Installed, but the launcher has no update to offer: the latest release couldn't be checked
+    /// (offline, rate-limited), a version is unknown, the copy is updated by its own repository, or
+    /// an install of the newer release wouldn't go ahead here.
     Installed,
     /// Not installed and nothing is published for this platform.
     Unavailable,
@@ -127,9 +129,12 @@ pub fn status(installed: Option<&Installed>, latest: Latest<'_>) -> AppStatus {
             }
         }
         (Some(_), Latest::Pending | Latest::Failed | Latest::NoRelease) => AppStatus::Installed,
-        (Some(inst), Latest::Found { version: latest, .. }) => match (latest, inst.version.as_ref()) {
+        (Some(inst), Latest::Found { version: latest, has_asset }) => match (latest, inst.version.as_ref()) {
             // A repository-managed copy updates to what its repository has, which GitHub doesn't say.
             (Some(l), Some(i)) if version::is_update(l, i) && inst.externally_managed => AppStatus::Installed,
+            // A newer release an install can't put here (no package for this copy, a copy left to
+            // what installed it) is no update: installing it would fail.
+            (Some(l), Some(i)) if version::is_update(l, i) && !has_asset => AppStatus::Installed,
             (Some(l), Some(i)) if version::is_update(l, i) => AppStatus::UpdateAvailable,
             (Some(_), Some(_)) => AppStatus::UpToDate,
             // Version unknown on one side: we can't promise "up to date".
@@ -171,6 +176,9 @@ mod tests {
         let repo = Installed { externally_managed: true, ..inst("0.4.0") };
         assert_eq!(status(Some(&repo), found(true)), AppStatus::Installed);
         assert_eq!(status(Some(&Installed { externally_managed: true, ..inst("0.5.0") }), found(true)), AppStatus::UpToDate);
+        // A newer release with nothing for this platform: no update to offer, the copy stays usable.
+        assert_eq!(status(Some(&inst("0.4.0")), found(false)), AppStatus::Installed);
+        assert_eq!(status(Some(&inst("0.5.0")), found(false)), AppStatus::UpToDate);
         assert!(AppStatus::UpdateAvailable.is_installed() && !AppStatus::Available.is_installed());
     }
 }

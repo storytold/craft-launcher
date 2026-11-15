@@ -3,11 +3,11 @@
 use std::time::Duration;
 
 use artcraft_launcher_core::protocol::{
-    Backend, BackendOptions, CANCELLED, Capabilities, Command, Event, INSTALL_CANCELLED, JobPhase, LatestRelease, PAUSED, Source,
+    Backend, BackendOptions, CANCELLED, Capabilities, Command, Event, INSTALL_CANCELLED, JobPhase, LatestRelease, McpAgents, PAUSED, Source,
 };
 use artcraft_launcher_core::release::Release;
 use artcraft_launcher_core::status::AppStatus;
-use artcraft_launcher_core::{Arch, PackageKind, Platform, SUITE};
+use artcraft_launcher_core::{Arch, PackageKind, Platform};
 
 use crate::i18n::set_current;
 use crate::model::AppEntry;
@@ -96,7 +96,7 @@ pub(crate) struct Toast {
 #[derive(Clone, Debug, PartialEq)]
 pub(crate) enum UiAction {
     Command(Command),
-    /// [`Command::Launch`] plus one launch-count increment.
+    /// [`Command::Launch`] with the app's launch flags, plus one launch-count increment.
     Launch(String),
     /// Re-run the manual update check, clearing the auto-update back-off.
     CheckNow,
@@ -111,11 +111,13 @@ pub(crate) enum UiAction {
 pub(crate) enum Dialog {
     Notes(String),
     ConfirmUninstall(String),
+    UnlockVersion { app: String, tag: String },
     Install { app: String, folder: String },
     Replace { app: String, path: String },
     Settings,
     LauncherUpdate(artcraft_launcher_core::Release),
     Versions(String),
+    LaunchFlags { app: String, flags: String },
 }
 
 impl Dialog {
@@ -125,11 +127,13 @@ impl Dialog {
         match self {
             Dialog::Notes(id) => ("notes", id),
             Dialog::ConfirmUninstall(id) => ("uninstall", id),
+            Dialog::UnlockVersion { app, .. } => ("unlock-version", app),
             Dialog::Install { app, .. } => ("install", app),
             Dialog::Replace { app, .. } => ("replace", app),
             Dialog::Settings => ("settings", ""),
             Dialog::LauncherUpdate(r) => ("launcher-update", &r.tag),
             Dialog::Versions(id) => ("versions", id),
+            Dialog::LaunchFlags { app, .. } => ("launch-flags", app),
         }
     }
 }
@@ -138,6 +142,13 @@ pub struct LauncherUi {
     pub(crate) backend: Box<dyn Backend>,
     pub settings: Settings,
     pub(crate) entries: Vec<AppEntry>,
+    /// AI agents: the gateway switch and the MCP clients.
+    pub(crate) mcp_agents: McpAgents,
+    /// Whether we've asked for MCP state since the settings dialog last opened (reset when it closes).
+    pub(crate) mcp_requested: bool,
+    /// The MCP client just added here, which only loads the entry when it starts: Settings offers
+    /// to restart it until that is done or the entry is removed.
+    pub(crate) mcp_restart_offer: Option<artcraft_launcher_core::protocol::McpClient>,
     pub(crate) caps: Capabilities,
     pub(crate) platform: Option<Platform>,
     pub(crate) checking: bool,
@@ -258,7 +269,14 @@ impl LauncherUi {
         Self {
             backend,
             settings,
-            entries: SUITE.iter().map(AppEntry::new).collect(),
+            entries: artcraft_launcher_core::hosted_catalog::apps()
+                .iter()
+                .filter(|a| platform.is_none_or(|p| a.runs_on(p.os)))
+                .map(AppEntry::new)
+                .collect(),
+            mcp_agents: McpAgents::default(),
+            mcp_requested: false,
+            mcp_restart_offer: None,
             caps,
             platform,
             checking: false,
@@ -396,9 +414,18 @@ impl LauncherUi {
             match action {
                 UiAction::Command(command) => self.backend.send(command.clone()),
                 UiAction::Launch(id) => {
+                    let flags = self.settings.launch_flags.get(id).map_or("", String::as_str);
+                    // The dialog only saves flags that split, but the settings file can be edited by hand.
+                    let Ok(args) = artcraft_launcher_core::args::split(flags) else {
+                        let name = self.entry(id).map_or(id.as_str(), |e| e.app.name).to_string();
+                        let text = crate::i18n::fmt(tl!("{name} wasn't opened: a quote in its launch options isn't closed."), &[("name", &name)]);
+                        self.queue_toast(text, true);
+                        self.flushed.push(action.clone());
+                        continue;
+                    };
                     let opened = self.settings.launches.entry(id.clone()).or_insert(0);
                     *opened = opened.saturating_add(1);
-                    self.backend.send(Command::Launch { app: id.clone() });
+                    self.backend.send(Command::Launch { app: id.clone(), args });
                 }
                 UiAction::CheckNow => {
                     self.auto_update_attempted.clear();
@@ -543,6 +570,18 @@ impl LauncherUi {
     /// Returns whether app state changed.
     fn handle(&mut self, event: Event) -> bool {
         match event {
+            Event::CatalogUpdated => {
+                for app in artcraft_launcher_core::hosted_catalog::apps().iter().filter(|a| self.platform.is_none_or(|p| a.runs_on(p.os))) {
+                    if let Some(entry) = self.entries.iter_mut().find(|e| e.app.id == app.id) {
+                        entry.app = app;
+                    } else {
+                        self.entries.push(AppEntry::new(app));
+                    }
+                }
+                self.entries.sort_by_key(|entry| artcraft_launcher_core::hosted_catalog::apps().iter().position(|app| app.id == entry.app.id));
+                self.backend.send(Command::Detect);
+                true
+            }
             Event::Latest { app, latest, from } => {
                 self.on_latest(app, latest, from);
                 true
@@ -588,6 +627,13 @@ impl LauncherUi {
                 }
                 false
             }
+            // Can turn an update on or off, so updates are announced (or started) again.
+            Event::Installable { app, installable } => {
+                if let Some(e) = self.entry_mut(&app) {
+                    e.installable = Some(installable);
+                }
+                true
+            }
             Event::Occupied { app, path } => {
                 self.dialog = Some(Dialog::Replace { app, path });
                 false
@@ -607,6 +653,16 @@ impl LauncherUi {
                 self.last_source = Some(source);
                 self.rate_limited_until = rate_limited_until;
                 true
+            }
+            Event::Mcp { agents } => {
+                self.mcp_agents = agents;
+                false
+            }
+            Event::McpError { message } => {
+                // A failed MCP write (e.g. a full disk or an unreadable config) is surfaced so the
+                // user knows their toggle did not take effect.
+                self.toast(message, true);
+                false
             }
         }
     }
@@ -737,10 +793,18 @@ impl LauncherUi {
                 if self.auto_update_attempted.contains(&(e.app.id.to_string(), v.clone())) { None } else { Some((e.app.id.to_string(), v)) }
             })
             .collect();
-        for (id, version) in to_update {
-            log::info!("auto-update: queuing update for {id} to {version}");
-            self.auto_update_attempted.insert((id.clone(), version));
-            self.send(Command::Install { app: id });
+        if self.settings.batch_updates && !to_update.is_empty() {
+            log::info!("auto-update: queuing {} updates together behind one prompt", to_update.len());
+            for (id, version) in &to_update {
+                self.auto_update_attempted.insert((id.clone(), version.clone()));
+            }
+            self.send(Command::InstallAll { apps: to_update.into_iter().map(|(id, _)| id).collect() });
+        } else {
+            for (id, version) in to_update {
+                log::info!("auto-update: queuing update for {id} to {version}");
+                self.auto_update_attempted.insert((id.clone(), version));
+                self.send(Command::Install { app: id });
+            }
         }
         if self.caps.self_update
             && let Some(r) = &self.launcher_update
@@ -908,6 +972,7 @@ impl LauncherUi {
             .filter(|(_, e)| {
                 self.in_filter(e, self.settings.filter)
                     && !(self.settings.hide_community_apps && e.app.kind == artcraft_launcher_core::catalog::AppKind::Community)
+                    && self.platform.is_none_or(|p| e.app.runs_on(p.os))
                     && (needle.is_empty() || e.app.name.to_lowercase().contains(&needle) || e.app.tagline.to_lowercase().contains(&needle))
             })
             .collect();
@@ -967,7 +1032,7 @@ impl LauncherUi {
         list.into_iter().map(|(_, e)| e.app.id).collect()
     }
 
-    /// Opens an app, and counts it for "Frequently used".
+    /// Opens an app with its launch flags, and counts it for "Frequently used".
     pub(crate) fn launch_app(&mut self, id: &str) {
         self.act(UiAction::Launch(id.to_string()));
     }
@@ -1136,6 +1201,22 @@ mod tests {
     /// Counts the `Install` commands in `sent`, ignoring every other command.
     fn installs(sent: &RefCell<Vec<Command>>) -> usize {
         sent.borrow().iter().filter(|command| matches!(command, Command::Install { .. })).count()
+    }
+
+    #[test]
+    fn catalog_event_adds_entries_in_suite_order_and_keeps_current_state() {
+        let (mut ui, sent, _) = launcher();
+        let id = ui.entries[0].app.id;
+        ui.entries[0].detected = true;
+        ui.entries.pop();
+        ui.entries.reverse();
+        assert!(ui.handle(Event::CatalogUpdated));
+        assert_eq!(
+            ui.entries.iter().map(|e| e.app.id).collect::<Vec<_>>(),
+            artcraft_launcher_core::hosted_catalog::apps().iter().map(|a| a.id).collect::<Vec<_>>()
+        );
+        assert!(ui.entry(id).unwrap().detected);
+        assert_eq!(sent.borrow().as_slice(), &[Command::Detect]);
     }
 
     /// A CJK preference is drawable only while that language's own face is installed: having the
