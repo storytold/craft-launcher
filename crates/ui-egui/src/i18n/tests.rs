@@ -664,3 +664,19 @@ fn picker_lists_english_first_then_names_alphabetically() {
     assert!(pos("ru") < pos("ja"), "Cyrillic names come before CJK");
     assert_eq!(name_sort_key("Čeština"), "cestina");
 }
+
+#[test]
+fn italian_locales_counts_and_messages_work() {
+    for tag in ["it", "it-IT", "it-CH", "it_IT.UTF-8", "IT_ch"] {
+        assert_eq!(lang_from_tag(tag), Some(Lang::IT), "{tag}");
+    }
+    assert_eq!(super::detect::first_supported(["xx-XX", "it-IT", "en-US"]), Some(Lang::IT));
+    assert_eq!(Lang::from_pref("it"), Lang::IT);
+    assert_eq!(Lang::IT.name(), "Italiano");
+    assert_eq!(trn(Lang::IT, 0, "{n} day ago", "{n} days ago"), "0 giorni fa");
+    assert_eq!(trn(Lang::IT, 1, "{n} day ago", "{n} days ago"), "1 giorno fa");
+    assert_eq!(trn(Lang::IT, 2, "{n} day ago", "{n} days ago"), "2 giorni fa");
+    assert_eq!(tr(Lang::IT, "{month} {day}, {year}"), "{day} {month} {year}");
+    assert_eq!(message(Lang::IT, "PhotoCraft updated to 0.5.0"), "PhotoCraft aggiornata alla 0.5.0");
+    assert_eq!(message(Lang::IT, "Couldn't open PhotoCraft: file missing"), "Impossibile aprire PhotoCraft: file missing");
+}
