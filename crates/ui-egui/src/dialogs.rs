@@ -16,9 +16,16 @@ impl LauncherUi {
     /// a click outside) discards the dialog.
     pub(crate) fn dialogs(&mut self, ctx: &egui::Context, host: &mut dyn Host) {
         let Some(mut dialog) = self.dialog.clone() else {
+            // No dialog on screen: next time settings opens we want fresh MCP state.
+            self.mcp_requested = false;
             self.alert_popup(ctx);
             return;
         };
+        // Opening the settings dialog (fresh): ask for current local-service state.
+        if matches!(dialog, Dialog::Settings) && !self.mcp_requested {
+            self.act_command(Command::McpState);
+            self.mcp_requested = true;
+        }
         let t = Tokens::get(ctx);
         // An area is laid out in the size it had last frame, so dialogs can't share one id: the
         // uninstall prompt would open as tall as Settings and never shrink (#88).

@@ -175,6 +175,10 @@
 	Retry update to {version}	إعادة محاولة التحديث إلى {version}
 	The download is still here. It's checked again, then installed.	الملف المنزَّل لا يزال موجودًا. سيُتحقق منه مجددًا، ثم يُثبَّت.
 	Waiting for another app…	في انتظار تطبيق آخر…
+	Waiting for another download…	في انتظار تنزيل آخر…
+	Simultaneous downloads	التنزيلات المتزامنة
+	No limit	بلا حد
+	Downloads running together share your connection, so each one is slower.	تتقاسم التنزيلات الجارية معًا اتصالك، فيصبح كلٌّ منها أبطأ.
 	Waiting for other installs…	في انتظار عمليات تثبيت أخرى…
 
 # Package formats offered for download (PackageKind::label)
@@ -454,3 +458,22 @@ anicraft	Classic tweens with eight easing presets and custom ease curves, plus s
 	Unlock version?	هل تريد إلغاء قفل الإصدار؟
 	{app} is pinned to {version}. Follow the latest release instead?	التطبيق {app} مقفل على الإصدار {version}. هل تريد اتباع أحدث إصدار بدلًا منه؟
 	Unlock	إلغاء القفل
+	AI agents	وكلاء الذكاء الاصطناعي
+	While this is on, AI apps that use MCP, such as Claude, Cursor or LM Studio, can work with every installed Craft app through one entry. While it is off, no agent can reach them, and the entries added here are removed.	عند تفعيل هذا الخيار، يمكن لتطبيقات الذكاء الاصطناعي التي تستخدم MCP، مثل Claude وCursor وLM Studio، العمل مع كل تطبيقات Craft المثبّتة عبر إدخال واحد. وعند إيقافه، لا يمكن لأي وكيل الوصول إليها، وتُزال الإدخالات المضافة هنا.
+	Quick install	تثبيت سريع
+	Adds the Craft apps to that client. Restart the client afterwards.	يضيف تطبيقات Craft إلى ذلك العميل. أعد تشغيل العميل بعد ذلك.
+	Other clients	عملاء آخرون
+	Copy the configuration and paste it into the client's MCP settings.	انسخ التكوين والصقه في إعدادات MCP الخاصة بالعميل.
+	Copy JSON	نسخ JSON
+	Copy for VS Code	نسخ لـ VS Code
+	Copy for Codex (TOML)	نسخ لـ Codex (TOML)
+	Configuration copied.	تم نسخ التكوين.
+	{client} loads its MCP servers only when it starts, so the Craft apps appear after a restart. Restarting closes {client}, including a reply it is still writing.	لا يحمّل {client} خوادم MCP إلا عند بدء تشغيله، لذا تظهر تطبيقات Craft بعد إعادة تشغيله. تؤدي إعادة التشغيل إلى إغلاق {client}، بما في ذلك أي رد لا يزال يكتبه.
+	Restart {client}	إعادة تشغيل {client}
+	Restarting {client}…	جارٍ إعادة تشغيل {client}…
+	The Craft gateway (craft-ai-mcp) is not installed beside the launcher.	بوابة Craft (craft-ai-mcp) غير مثبّتة بجانب ArtCraft Launcher.
+	Let AI agents use Craft apps	السماح لوكلاء الذكاء الاصطناعي باستخدام تطبيقات Craft
+	Apps agents can reach: {count}	التطبيقات التي يمكن للوكلاء الوصول إليها: {count}
+	Added	تمت الإضافة
+	Remove	إزالة
+	Add	إضافة
