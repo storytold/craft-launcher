@@ -97,7 +97,7 @@ pub(super) fn plural_polish(n: u64) -> usize {
 }
 
 /// The registry. English first: it is the fallback and the source language.
-pub static LANGUAGES: [LangInfo; 14] = [
+pub static LANGUAGES: [LangInfo; 15] = [
     LangInfo {
         code: "en",
         name: "English",
@@ -252,6 +252,17 @@ pub static LANGUAGES: [LangInfo; 14] = [
         complete_menus: true,
         catalog: OnceLock::new(),
     },
+	LangInfo {
+        code: "bg",
+        name: "Български",
+        english_name: "Bulgarian",
+        script: None,
+        source: include_str!("bg.tsv"),
+        plural: plural_one_other,
+        plural_forms: 2,
+        complete_menus: true,
+        catalog: OnceLock::new(),
+    },
 ];
 
 impl LangInfo {
@@ -294,6 +305,7 @@ impl Lang {
     pub const KA: Lang = Lang(&LANGUAGES[12]);
     /// The canonical `uk` code, so call sites can name Ukrainian without a lookup.
     pub const UK: Lang = Lang(&LANGUAGES[13]);
+	pub const BG: Lang = Lang(&LANGUAGES[14]);
 
     pub fn code(self) -> &'static str {
         self.0.code
