@@ -389,3 +389,48 @@ materialcraft	Preview materials in 2D and on 3D models.	Pregledajte materijale u
 	Migrate Flatpak bundles to ArtCraft OCI (experimental)	Premjesti Flatpak pakete u ArtCraft OCI (eksperimentalno)
 	On update, switch first party apps when the matching package is available. Otherwise, keep using bundles.	Pri ažuriranju prebaci vlastite aplikacije kada je odgovarajući paket dostupan. U suprotnom nastavi koristiti pakete.
 	The OCI repository is a preview with GPG verification disabled.	OCI repozitorij je pretpregled s isključenom GPG provjerom.
+
+# Agent integration, launch options and download scheduling.
+	A quote isn't closed.	Navodnik nije zatvoren.
+	AI agents	AI agenti
+	Add	Dodaj
+	Added	Dodano
+	Adds the Craft apps to that client. Restart the client afterwards.	Dodaje Craft aplikacije u taj klijent. Nakon toga ponovo pokrenite klijent.
+	Apps agents can reach: {count}	Aplikacije dostupne agentima: {count}
+	Ask for permission once when updating all apps	Traži dozvolu jednom pri ažuriranju svih aplikacija
+	Configuration copied.	Konfiguracija je kopirana.
+	Copy JSON	Kopiraj JSON
+	Copy for Codex (TOML)	Kopiraj za Codex (TOML)
+	Copy for VS Code	Kopiraj za VS Code
+	Copy the configuration and paste it into the client's MCP settings.	Kopirajte konfiguraciju i zalijepite je u MCP postavke klijenta.
+	Download size: {size}	Veličina preuzimanja: {size}
+	Downloads running together share your connection, so each one is slower.	Istovremena preuzimanja dijele vašu vezu, pa je svako od njih sporije.
+	Flags added each time the app is opened	Opcije koje se dodaju pri svakom otvaranju aplikacije
+	Launch options…	Opcije pokretanja…
+	Let AI agents use Craft apps	Dozvoli AI agentima da koriste Craft aplikacije
+	No limit	Bez ograničenja
+	Open {installed} without updating. {latest} stays available.	Otvori {installed} bez ažuriranja. {latest} ostaje dostupna.
+	Open {version}	Otvori {version}
+	Other clients	Drugi klijenti
+	Quick install	Brza instalacija
+	Remove	Ukloni
+	Restart {client}	Ponovo pokreni {client}
+	Restarting {client}…	Ponovno pokretanje: {client}…
+	Save	Sačuvaj
+	Separate flags with spaces. Quote a value that has spaces in it.	Odvojite opcije razmacima. Vrijednost koja sadrži razmake stavite pod navodnike.
+	Simultaneous downloads	Istovremena preuzimanja
+	The Craft gateway (craft-ai-mcp) is not installed beside the launcher.	Craft gateway (craft-ai-mcp) nije instaliran pored pokretača.
+	Waiting for another download…	Čeka se drugo preuzimanje…
+	{latest} is out, but ArtCraft Launcher can't install it over this copy.	Izašla je verzija {latest}, ali ArtCraft Launcher je ne može instalirati preko ove kopije.
+	{name} launch options	{name}: opcije pokretanja
+	{name} wasn't opened: a quote in its launch options isn't closed.	{name} nije otvoren: navodnik u opcijama pokretanja nije zatvoren.
+
+# Taglines for apps added on main.
+anicraft	2D vector animation	2D vektorska animacija
+anicraft	Classic tweens with eight easing presets and custom ease curves, plus shape tweens that morph one vector contour into another.	Klasični tweenovi s osam unaprijed zadanih ublažavanja i vlastitim krivuljama, te tweenovi oblika koji jednu vektorsku konturu pretvaraju u drugu.
+anicraft	Familiar by design	Poznato po dizajnu
+anicraft	Open-source 2D vector animation, built in pure Rust.	2D vektorska animacija otvorenog koda, napisana u čistom Rustu.
+anicraft	Stage, tools, timeline, layers, keyframes, Properties and Library sit where animators expect them, with onion skinning for in-betweening.	Scena, alati, vremenska linija, slojevi, ključni kadrovi, Svojstva i Biblioteka su tamo gdje ih animatori očekuju, uz onion skinning za međufaze.
+anicraft	Tweens that ease	Tweenovi s ublažavanjem
+anicraft	Vector animation on a timeline you know.	Vektorska animacija na vremenskoj liniji koju poznajete.
+mailcraft	Mail, calendar and contacts	Pošta, kalendar i kontakti
