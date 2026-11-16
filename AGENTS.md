@@ -246,3 +246,7 @@ Packaging facts the code relies on:
 - Some workflow files here still run their own jobs. Don't add to them. Moving a job into craft-common-actions is its own task, never part of another PR, and the job stays here until a shared workflow runs it.
 
 New workspace crates include `[lints] workspace = true` in `Cargo.toml`. Production crate roots declare the crate-level lint attributes before modules; crate-level `//!` documentation may precede them.
+
+## Shared Craft libraries
+
+Before adding or changing reusable file-format, codec, protocol or UI code, check [craft-libs](https://github.com/storytold/craft-libs) and existing contributor work; reuse its public APIs or extend the appropriate shared library instead of adding an app-local duplicate, keeping app-specific policy and model mapping local and preserving compatibility, security limits and regression coverage.
