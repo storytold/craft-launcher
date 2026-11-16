@@ -307,6 +307,10 @@ figcraft	Interface design and prototyping	介面設計與原型製作
 	Retry update to {version}	重試更新至 {version}
 	The download is still here. It's checked again, then installed.	下載的檔案仍在。會再次檢查，然後安裝。
 	Waiting for another app…	正在等待另一個應用程式…
+	Waiting for another download…	正在等待其他下載…
+	Simultaneous downloads	同時下載數
+	No limit	不限制
+	Downloads running together share your connection, so each one is slower.	同時進行的下載會共用網路連線，因此每個下載都會變慢。
 	Waiting for other installs…	正在等待其他安裝…
 	Installer (.msi)	安裝程式（.msi）
 	Portable (.zip)	免安裝版（.zip）
@@ -408,3 +412,23 @@ anicraft	Classic tweens with eight easing presets and custom ease curves, plus s
 	Unlock version?	解除版本鎖定？
 	{app} is pinned to {version}. Follow the latest release instead?	{app} 已鎖定為 {version}。是否改為使用最新版本？
 	Unlock	解除鎖定
+
+	AI agents	AI 代理
+	While this is on, AI apps that use MCP, such as Claude, Cursor or LM Studio, can work with every installed Craft app through one entry. While it is off, no agent can reach them, and the entries added here are removed.	開啟後，Claude、Cursor 或 LM Studio 等使用 MCP 的 AI 應用程式只需一個項目，即可使用所有已安裝的 Craft 應用程式。關閉後，任何代理都無法存取它們，並會移除在此加入的項目。
+	Quick install	快速安裝
+	Adds the Craft apps to that client. Restart the client afterwards.	將 Craft 應用程式加入該用戶端。之後請重新啟動用戶端。
+	Other clients	其他用戶端
+	Copy the configuration and paste it into the client's MCP settings.	複製設定，並將其貼到用戶端的 MCP 設定中。
+	Copy JSON	複製 JSON
+	Copy for VS Code	複製為 VS Code 格式
+	Copy for Codex (TOML)	複製為 Codex 格式 (TOML)
+	Configuration copied.	已複製設定。
+	{client} loads its MCP servers only when it starts, so the Craft apps appear after a restart. Restarting closes {client}, including a reply it is still writing.	{client} 只在啟動時載入 MCP 伺服器，因此 Craft 應用程式會在重新啟動後出現。重新啟動會關閉 {client}，包括正在產生的回覆。
+	Restart {client}	重新啟動 {client}
+	Restarting {client}…	正在重新啟動 {client}…
+	The Craft gateway (craft-ai-mcp) is not installed beside the launcher.	啟動器旁未安裝 Craft 閘道 (craft-ai-mcp)。
+	Let AI agents use Craft apps	允許 AI 代理使用 Craft 應用程式
+	Apps agents can reach: {count}	代理可使用的應用程式：{count}
+	Added	已加入
+	Remove	移除
+	Add	加入

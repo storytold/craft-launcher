@@ -385,3 +385,43 @@ materialcraft	Node graphs	גרפי צמתים
 materialcraft	Combine noises, patterns and filters.	שלב רעשים, דוגמאות ומסננים.
 materialcraft	Live previews	תצוגות מקדימות חיות
 materialcraft	Preview materials in 2D and on 3D models.	הצג תצוגה מקדימה של חומרים בדו-ממד ועל גבי מודלים בתלת-ממד.
+
+	A quote isn't closed.	מרכאות לא נסגרו.
+	AI agents	סוכני AI
+	Add	הוסף
+	Added	נוסף
+	Adds the Craft apps to that client. Restart the client afterwards.	מוסיף את אפליקציות Craft ללקוח זה. הפעל מחדש את הלקוח לאחר מכן.
+	Apps agents can reach: {count}	אפליקציות שסוכנים יכולים לגשת אליהן: {count}
+	Ask for permission once when updating all apps	בקש הרשאה פעם אחת בעת עדכון כל האפליקציות
+	Configuration copied.	ההגדרה הועתקה.
+	Copy JSON	העתק JSON
+	Copy for Codex (TOML)	העתק עבור Codex (TOML)
+	Copy for VS Code	העתק עבור VS Code
+	Copy the configuration and paste it into the client's MCP settings.	העתק את ההגדרות והדבק אותן בהגדרות ה-MCP של הלקוח.
+	Download size: {size}	גודל הורדה: {size}
+	Downloads running together share your connection, so each one is slower.	הורדות מקבילות חולקות את החיבור שלך, ולכן כל אחת מהן איטית יותר.
+	Flags added each time the app is opened	דגלים שמתווספים בכל פעם שהאפליקציה נפתחת
+	Launch options…	אפשרויות הפעלה…
+	Let AI agents use Craft apps	אפשר לסוכני AI להשתמש באפליקציות Craft
+	No limit	ללא הגבלה
+	Open {installed} without updating. {latest} stays available.	פתח את {installed} ללא עדכון. {latest} נשאר זמין.
+	Open {version}	פתח את {version}
+	Other clients	לקוחות אחרים
+	Quick install	התקנה מהירה
+	Remove	הסר
+	Restart {client}	הפעל מחדש את {client}
+	Restarting {client}…	מפעיל מחדש את {client}…
+	Save	שמור
+	Separate flags with spaces. Quote a value that has spaces in it.	הפרד דגלים ברווחים. עטוף במרכאות ערך שמכיל רווחים.
+	Simultaneous downloads	הורדות מקבילות
+	The Craft gateway (craft-ai-mcp) is not installed beside the launcher.	שער Craft (craft-ai-mcp) אינו מותקן לצד ה-Launcher.
+	Waiting for another download…	ממתין להורדה נוספת…
+	{latest} is out, but ArtCraft Launcher can't install it over this copy.	{latest} זמין, אך ArtCraft Launcher אינו יכול להתקין אותו על גבי עותק זה.
+	{name} launch options	אפשרויות הפעלה עבור {name}
+	{name} wasn't opened: a quote in its launch options isn't closed.	{name} לא נפתח: מרכאות באפשרויות ההפעלה לא נסגרו.
+
+anicraft	2D vector animation	אנימציה וקטורית ב-2D
+anicraft	Vector animation on a timeline you know.	אנימציה וקטורית על גבי ציר זמן מוכר.
+anicraft	Open-source 2D vector animation, built in pure Rust.	אנימציה וקטורית ב-2D בקוד פתוח, בנויה ב-Rust טהור.
+
+mailcraft	Mail, calendar and contacts	דואר, לוח שנה ואנשי קשר
