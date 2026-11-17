@@ -568,11 +568,6 @@ impl LauncherUi {
         if !matches!(self.dialog, Some(Dialog::Settings)) {
             self.commit_account_address();
         }
-        // The sign-in page the account worker asked for, through the same guard as every other
-        // external link.
-        if let Some(url) = self.pending_verify_url.take() {
-            crate::widgets::open_external_link(ctx, &url);
-        }
         self.configure();
         // A kept version's card notes a newer release; that needs the app's published list.
         self.request_pinned_lists();
@@ -601,6 +596,11 @@ impl LauncherUi {
         let mut changed = false;
         for event in self.backend.poll() {
             changed |= self.handle(event);
+        }
+        // The sign-in page a Waiting event asked for, opened by the pass that heard it, through
+        // the same guard as every other external link.
+        if let Some(url) = self.pending_verify_url.take() {
+            crate::widgets::open_external_link(ctx, &url);
         }
         if changed {
             self.announce_updates(host);

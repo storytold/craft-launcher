@@ -393,6 +393,10 @@ impl LauncherUi {
                 SuiteAccount::SignedOut => {
                     ui.add_space(8.0);
                     if sign_in(ui) {
+                        // The address may have been typed in this pass. Commit it and send the
+                        // configuration first, or the sign-in starts against the address before it.
+                        self.commit_account_address();
+                        self.configure();
                         self.send(Command::AccountSignIn);
                     }
                 }
@@ -407,6 +411,10 @@ impl LauncherUi {
                     ui.label(RichText::new(why.as_str()).size(12.0).color(t.muted));
                     ui.add_space(6.0);
                     if sign_in(ui) {
+                        // The address may have been typed in this pass. Commit it and send the
+                        // configuration first, or the sign-in starts against the address before it.
+                        self.commit_account_address();
+                        self.configure();
                         self.send(Command::AccountSignIn);
                     }
                 }
@@ -428,7 +436,7 @@ impl LauncherUi {
                     if let Some(conv) = &who.conversation {
                         let label = fmt(tl!("Open {name}"), &[("name", conv.name.as_str())]);
                         if widgets::button(ui, &label, Kind::Secondary, 0.0).clicked() {
-                            ui.ctx().open_url(egui::OpenUrl::new_tab(conv.url.clone()));
+                            widgets::open_external_link(ui.ctx(), &conv.url);
                         }
                         ui.add_space(4.0);
                     }

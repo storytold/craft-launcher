@@ -13,12 +13,12 @@
 //! No token value is ever logged, formatted into a message, or put on a command line. The one place
 //! it goes is an `Authorization` header.
 
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, PoisonError};
 use std::time::{Duration, Instant};
 
 use artcraft_launcher_core::protocol::{SuiteAccount, SuiteIdentity};
-use craft_suite_account::{Account, NewAccount, Secret, Shared, Store};
+use craft_suite_account::{Account, NewAccount, Secret, Shared, Store, TokenStore};
 
 use crate::suite_service::{self, ConversationHome, Flow, Identity, Polled, Service, SignedOut};
 
@@ -169,6 +169,11 @@ pub struct Accounts {
     base: Mutex<String>,
     /// A sign-in or sign-out is in flight. A second request is then ignored. Nothing queues.
     busy: Arc<AtomicBool>,
+    /// Counts the changes of what this window's session is about: the configured deployment, a
+    /// sign-in, a sign-out. A worker reads it when it starts and again before it acts. A worker
+    /// holding a stale number is answering about a session that has been replaced, so its answer
+    /// is dropped rather than applied to the one that took its place.
+    generation: Arc<AtomicU64>,
     emit: Arc<dyn Fn(SuiteAccount) + Send + Sync>,
 }
 
@@ -186,6 +191,7 @@ impl Accounts {
             service: Arc::new(CollabCraft::new(http)),
             base: Mutex::new(String::new()),
             busy: Arc::new(AtomicBool::new(false)),
+            generation: Arc::new(AtomicU64::new(0)),
             emit: Arc::new(emit),
         }
     }
@@ -209,6 +215,9 @@ impl Accounts {
         }
         *held = base;
         drop(held);
+        // A sign-in still waiting on a browser was started against the deployment configured
+        // then. It must not store a session for that one, nor report one.
+        self.generation.fetch_add(1, Ordering::SeqCst);
         self.refresh();
     }
 
@@ -226,6 +235,7 @@ impl Accounts {
             return;
         }
         let (store, service, emit) = (self.store.clone(), self.service.clone(), self.emit.clone());
+        let (generation, issued) = (self.generation.clone(), self.generation.load(Ordering::SeqCst));
         std::thread::spawn(move || {
             let state = match store.shared() {
                 Shared::None => SuiteAccount::SignedOut,
@@ -252,6 +262,11 @@ impl Accounts {
                     }
                 },
             };
+            // A sign-out or a sign-in that landed while this was asking has already said what is
+            // true. This answer is about the session before it.
+            if generation.load(Ordering::SeqCst) != issued {
+                return;
+            }
             emit(state);
         });
     }
@@ -267,10 +282,16 @@ impl Accounts {
             return;
         }
         let (store, service, emit, busy) = (self.store.clone(), self.service.clone(), self.emit.clone(), self.busy.clone());
+        let (generation, issued) = (self.generation.clone(), self.generation.load(Ordering::SeqCst));
         std::thread::spawn(move || {
             let mut guard = BusyGuard::new(busy);
-            let state = run_sign_in(&store, service.as_ref(), &base, emit.as_ref());
+            let state = run_sign_in(&store, service.as_ref(), &base, emit.as_ref(), &generation, issued);
             guard.clear();
+            if generation.load(Ordering::SeqCst) != issued {
+                return;
+            }
+            // This window's session is now whatever this sign-in made of it.
+            generation.fetch_add(1, Ordering::SeqCst);
             emit(state);
         });
     }
@@ -281,6 +302,10 @@ impl Accounts {
             return;
         }
         let (store, service, emit, busy) = (self.store.clone(), self.service.clone(), self.emit.clone(), self.busy.clone());
+        let generation = self.generation.clone();
+        // A sign-out is the end of this window's session whatever else was in flight, so the
+        // number moves before the work starts: every worker older than this is now stale.
+        generation.fetch_add(1, Ordering::SeqCst);
         std::thread::spawn(move || {
             let mut guard = BusyGuard::new(busy);
             let current = store.accounts().map(|list| list.current().map(|a| a.id.clone()));
@@ -306,7 +331,14 @@ impl Accounts {
 }
 
 /// A sign-in, start to finish. It blocks. It therefore runs on a worker.
-fn run_sign_in(store: &Store, service: &(dyn Service + Send + Sync), base: &str, emit: &(dyn Fn(SuiteAccount) + Send + Sync)) -> SuiteAccount {
+fn run_sign_in<S: TokenStore>(
+    store: &Store<S>,
+    service: &(dyn Service + Send + Sync),
+    base: &str,
+    emit: &(dyn Fn(SuiteAccount) + Send + Sync),
+    generation: &AtomicU64,
+    issued: u64,
+) -> SuiteAccount {
     // Refuse before anything is minted. A machine with no keychain then never ends up holding a
     // session it cannot keep.
     if let Err(e) = store.usable() {
@@ -328,7 +360,16 @@ fn run_sign_in(store: &Store, service: &(dyn Service + Send + Sync), base: &str,
         match service.poll(base, &flow.device_code) {
             Ok(Polled::Pending) => {}
             Ok(Polled::Expired) => return SuiteAccount::Failed("that sign-in expired".to_owned()),
-            Ok(Polled::Done(token)) => return keep(store, service, base, &token),
+            Ok(Polled::Done(token)) => {
+                // The deployment this flow started against may no longer be the configured one.
+                // Storing the session would sign the person in to the address they just left. The
+                // token is not revoked here, for the reason given on `keep`.
+                if generation.load(Ordering::SeqCst) != issued {
+                    log::info!("a finished sign-in was dropped: the configured service changed while it waited");
+                    return SuiteAccount::Failed("the suite service changed while that sign-in was waiting".to_owned());
+                }
+                return keep(store, service, base, &token);
+            }
             Err(why) => return SuiteAccount::Failed(why),
         }
     }
@@ -337,16 +378,22 @@ fn run_sign_in(store: &Store, service: &(dyn Service + Send + Sync), base: &str,
 
 /// Stores a collected session, after asking the deployment who it belongs to.
 ///
-/// A session whose owner cannot be read is given straight back. Keeping it would mean an account
-/// with no subject behind it. Leaving it alone would mean a live session nobody holds.
-fn keep(store: &Store, service: &(dyn Service + Send + Sync), base: &str, token: &Secret) -> SuiteAccount {
+/// A session whose owner cannot be read is not kept: an account with no subject behind it is
+/// worse than no account.
+///
+/// It is not given back either, and that is deliberate. [`Service::revoke`] is the deployment's
+/// logout, and the deployment drops every session it holds for that user, on every machine. Using
+/// it to tidy up one failed sign-in would sign the person out of the laptop they are sitting at.
+/// The contract offers no way to end one session, so the token is left to expire where it was
+/// minted and the gap is logged. `revoke` stays for the sign-out somebody asked for.
+fn keep<S: TokenStore>(store: &Store<S>, service: &(dyn Service + Send + Sync), base: &str, token: &Secret) -> SuiteAccount {
     let who = match service.identity(base, token) {
         Ok(Some(who)) => who,
         Ok(None) => return SuiteAccount::Failed("the service did not accept the new session".to_owned()),
         Err(why) => {
-            if let Err(e) = service.revoke(base, token) {
-                log::warn!("a session was minted and could not be given back: {e}");
-            }
+            // Not revoked: that call is the deployment's global logout (see above). This token is
+            // never stored, so nothing here can use it, and it expires at the deployment.
+            log::warn!("a session was minted and then abandoned, since its owner could not be read: {why}");
             return SuiteAccount::Failed(why);
         }
     };
@@ -355,9 +402,9 @@ fn keep(store: &Store, service: &(dyn Service + Send + Sync), base: &str, token:
     match store.sign_in(&new, token, crate::now()) {
         Ok(account) => signed_in(&account, Some(&who)),
         Err(e) => {
-            if let Err(e) = service.revoke(base, token) {
-                log::warn!("a session could not be stored and could not be given back: {e}");
-            }
+            // Not revoked, for the same reason: a failed store must not end this person's sessions
+            // everywhere else.
+            log::warn!("a session was minted and then abandoned, since it could not be stored: {e}");
             SuiteAccount::Failed(e.to_string())
         }
     }
@@ -374,4 +421,89 @@ fn signed_in(account: &Account, who: Option<&Identity>) -> SuiteAccount {
             w.conversation.as_ref().map(|c| artcraft_launcher_core::protocol::ConversationHome { name: c.name.clone(), url: c.url.clone() })
         }),
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
+
+    use craft_suite_account::{Memory, Store};
+
+    use super::*;
+
+    /// A deployment that hands out a session at once, and counts what it was asked to revoke.
+    struct Immediate {
+        /// Bumped by `poll`, so a test can move the generation while a flow is in flight.
+        polled: AtomicUsize,
+        revoked: AtomicUsize,
+        identity: Option<Identity>,
+    }
+
+    impl Immediate {
+        fn new(identity: Option<Identity>) -> Immediate {
+            Immediate { polled: AtomicUsize::new(0), revoked: AtomicUsize::new(0), identity }
+        }
+    }
+
+    impl Service for Immediate {
+        fn start(&self, _base: &str) -> Result<Flow, String> {
+            Ok(Flow { device_code: "device".to_owned(), verify_url: "https://example.test/device".to_owned(), expires_in: 60, interval: 0 })
+        }
+
+        fn poll(&self, _base: &str, _device_code: &str) -> Result<Polled, String> {
+            self.polled.fetch_add(1, Ordering::SeqCst);
+            Ok(Polled::Done(Secret::new("a-session-token")))
+        }
+
+        fn identity(&self, _base: &str, _token: &Secret) -> Result<Option<Identity>, String> {
+            match &self.identity {
+                Some(who) => Ok(Some(who.clone())),
+                None => Err("the deployment could not say who holds it".to_owned()),
+            }
+        }
+
+        fn revoke(&self, _base: &str, _token: &Secret) -> Result<(), String> {
+            self.revoked.fetch_add(1, Ordering::SeqCst);
+            Ok(())
+        }
+    }
+
+    fn store(dir: &std::path::Path) -> Store<Memory> {
+        Store::at(Some(dir.to_path_buf()), Memory::default())
+    }
+
+    /// Changing the configured deployment while a browser flow is still open must not store the
+    /// session the old deployment then hands over, and must not report a sign-in for it. Without
+    /// the generation check, `keep` stores it and the window says SignedIn for the address the
+    /// person just left.
+    #[test]
+    fn a_sign_in_that_finishes_after_the_service_changed_is_dropped() {
+        let dir = tempfile::tempdir().expect("a temporary folder");
+        let store = store(dir.path());
+        let service = Immediate::new(Some(Identity { user: "u".to_owned(), display: "Someone".to_owned(), ..Identity::default() }));
+        let generation = AtomicU64::new(7);
+        // The flow was issued at 7; the configured address changed while the browser was open.
+        generation.store(8, Ordering::SeqCst);
+
+        let state = run_sign_in(&store, &service, "https://old.example.test", &|_| {}, &generation, 7);
+
+        assert!(matches!(state, SuiteAccount::Failed(_)), "{state:?}");
+        assert!(store.accounts().expect("the account list").current().is_none(), "no account is stored for the address that was left");
+    }
+
+    /// A sign-in whose owner cannot be read is abandoned, and the token is left alone. Revoking it
+    /// would be the deployment's global logout, which ends the person's sessions on every machine
+    /// they are signed in on, including the one in front of them.
+    #[test]
+    fn an_unreadable_owner_abandons_the_session_without_a_global_logout() {
+        let dir = tempfile::tempdir().expect("a temporary folder");
+        let store = store(dir.path());
+        let service = Immediate::new(None);
+
+        let state = keep(&store, &service, "https://example.test", &Secret::new("a-session-token"));
+
+        assert!(matches!(state, SuiteAccount::Failed(_)), "{state:?}");
+        assert_eq!(service.revoked.load(Ordering::SeqCst), 0, "a failed sign-in must not log the person out everywhere");
+        assert!(store.accounts().expect("the account list").current().is_none());
+    }
 }

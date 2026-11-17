@@ -107,9 +107,10 @@ pub fn sign_out(store: &Store, service: &dyn Service, id: &str) -> Result<Signed
     // handle, so this is the entry `store.discard` is about to remove.
     let told = match Keychain.get(id) {
         Ok(Some(token)) => service.revoke(&account.service, &token).err(),
-        // No token to present. There is nothing the deployment would accept. Clearing the row is
-        // the whole of the job.
-        Ok(None) => None,
+        // No token to present, so the deployment cannot be told. Its session may still be live
+        // there, and `Everywhere` would claim otherwise. Clearing the row is still the right half
+        // to do.
+        Ok(None) => Some("there was no stored token to present".to_owned()),
         Err(why) => Some(why),
     };
     store.discard(id)?;
