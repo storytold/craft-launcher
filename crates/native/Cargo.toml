@@ -21,6 +21,7 @@ artcraft-launcher-core = { workspace = true }
 craft-flags = { workspace = true }
 craft-ai-agents = { workspace = true }
 craft-update = { workspace = true }
+craft-suite-account = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 log = { workspace = true }
