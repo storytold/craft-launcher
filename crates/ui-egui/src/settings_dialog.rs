@@ -426,7 +426,7 @@ impl LauncherUi {
                     // Chat with nothing open: the provider's lobby URL from /me. Absent where the
                     // deployment has no conversation app, so we draw no button rather than a dead one.
                     if let Some(conv) = &who.conversation {
-                        let label = fmt(&tl!("Open {name}"), &[("name", conv.name.as_str())]);
+                        let label = fmt(tl!("Open {name}"), &[("name", conv.name.as_str())]);
                         if widgets::button(ui, &label, Kind::Secondary, 0.0).clicked() {
                             ui.ctx().open_url(egui::OpenUrl::new_tab(conv.url.clone()));
                         }

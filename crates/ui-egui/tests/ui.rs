@@ -1193,6 +1193,7 @@ fn a_narrow_settings_row_keeps_its_control_clear_of_its_label() {
         Rc::default(),
         Some(Platform { os: Os::Windows, arch: Arch::X64 }),
         None,
+        None,
     );
     h.set_size(egui::vec2(1000.0, 700.0));
     h.run_steps(6);

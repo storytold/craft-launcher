@@ -3,7 +3,8 @@
 use std::time::Duration;
 
 use artcraft_launcher_core::protocol::{
-    Backend, BackendOptions, CANCELLED, Capabilities, Command, Event, INSTALL_CANCELLED, JobPhase, LatestRelease, McpAgents, PAUSED, Source, SuiteAccount,
+    Backend, BackendOptions, CANCELLED, Capabilities, Command, Event, INSTALL_CANCELLED, JobPhase, LatestRelease, McpAgents, PAUSED, Source,
+    SuiteAccount,
 };
 use artcraft_launcher_core::release::Release;
 use artcraft_launcher_core::status::AppStatus;
@@ -213,6 +214,8 @@ pub struct LauncherUi {
     /// The sign-in page already opened in a browser. Coming back to the window then does not open
     /// a second tab.
     opened_verify_url: Option<String>,
+    /// A sign-in page to open once a pass with a context runs. `handle` has none (see `logic`).
+    pending_verify_url: Option<String>,
     /// What is being typed into the deployment address, before it is committed.
     ///
     /// Held here because committing on every keystroke would ask the backend about an account at
@@ -327,6 +330,7 @@ impl LauncherUi {
             auto_update_attempted: std::collections::BTreeSet::new(),
             account: SuiteAccount::Unconfigured,
             opened_verify_url: None,
+            pending_verify_url: None,
             account_edit: None,
             discord_url: artcraft_launcher_core::catalog::DISCORD_URL,
             pending: Vec::new(),
@@ -411,6 +415,9 @@ impl LauncherUi {
         if self.frame != Some(frame) {
             self.frame = Some(frame);
             self.flushed.clear();
+        }
+    }
+
     /// Takes whatever was typed into the deployment address as the setting.
     pub(crate) fn commit_account_address(&mut self) {
         if let Some(typed) = self.account_edit.take() {
@@ -418,14 +425,6 @@ impl LauncherUi {
             if typed != self.settings.account_service {
                 self.settings.account_service = typed.to_owned();
             }
-        }
-    }
-
-    pub(crate) fn toast(&mut self, ctx: &egui::Context, text: impl Into<String>, error: bool) {
-        let now = ctx.input(|i| i.time);
-        self.toasts.push(Toast { text: text.into(), error, until: now + if error { 8.0 } else { 4.5 } });
-        if self.toasts.len() > 4 {
-            self.toasts.remove(0);
         }
     }
 
@@ -569,6 +568,11 @@ impl LauncherUi {
         if !matches!(self.dialog, Some(Dialog::Settings)) {
             self.commit_account_address();
         }
+        // The sign-in page the account worker asked for, through the same guard as every other
+        // external link.
+        if let Some(url) = self.pending_verify_url.take() {
+            crate::widgets::open_external_link(ctx, &url);
+        }
         self.configure();
         // A kept version's card notes a newer release; that needs the app's published list.
         self.request_pinned_lists();
@@ -697,19 +701,21 @@ impl LauncherUi {
                 // A failure is a passing state: report it, then ask again what is true.
                 if let SuiteAccount::Failed(why) = &state {
                     let why = crate::i18n::msg(why);
-                    self.toast(ctx, why, true);
+                    self.toast(why, true);
                     self.backend.send(Command::AccountRefresh);
                     return false;
                 }
-                // Nothing happens at the service until the user has been to the sign-in page. Open
-                // it as soon as it is known. Open it only once.
+                // Nothing happens at the service until the user has been to the sign-in page, so it
+                // is opened as soon as it is known, and only once. This runs with no context in
+                // hand, so the next pass that holds one opens it (see `logic`).
                 if let SuiteAccount::Waiting { verify_url } = &state {
                     if self.opened_verify_url.as_deref() != Some(verify_url.as_str()) {
                         self.opened_verify_url = Some(verify_url.clone());
-                        ctx.open_url(egui::OpenUrl::new_tab(verify_url));
+                        self.pending_verify_url = Some(verify_url.clone());
                     }
                 } else {
                     self.opened_verify_url = None;
+                    self.pending_verify_url = None;
                 }
                 self.account = state;
                 false

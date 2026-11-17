@@ -1663,6 +1663,9 @@ impl Backend for NativeBackend {
             Command::FetchScreenshots { app } => self.fetch_screenshots(&app),
             Command::DownloadOrder(order) => install::DOWNLOADS.set_order(order),
             Command::Configure(options) => {
+                // The account worker is told after the shared store takes `options`, so the base
+                // it needs is kept here first.
+                let account_service = options.account_service.clone();
                 let changed_pre = {
                     let mut o = self.shared.options.lock().unwrap_or_else(PoisonError::into_inner);
                     let changed =
@@ -1690,7 +1693,7 @@ impl Backend for NativeBackend {
                     self.check(true);
                 }
                 if let Some(accounts) = &self.accounts {
-                    accounts.set_base(&options.account_service);
+                    accounts.set_base(&account_service);
                 }
             }
             Command::AccountSignIn => {
@@ -2122,10 +2125,7 @@ mod tests {
         assert!(matches!(mirror_latest(photo, None, NOW).0, Some(LatestRelease::Failed(_))));
         use crate::service_base;
         assert!(service_base::loopback_http("http://localhost:8787/") && service_base::loopback_http("http://[::1]:8787/"));
-        assert!(
-            !service_base::loopback_http("http://192.168.1.2:8787/")
-                && !service_base::loopback_http("http://localhost.evil.example/")
-        );
+        assert!(!service_base::loopback_http("http://192.168.1.2:8787/") && !service_base::loopback_http("http://localhost.evil.example/"));
         assert!(
             !service_base::loopback_http("http://127.0.0.1:1@evil.example/")
                 && !service_base::loopback_http("http://127.0.0.1:8787@evil.example:80/")
@@ -2135,10 +2135,7 @@ mod tests {
                 && !service_base::loopback_http("http://127.0.0.1:x/")
                 && !service_base::loopback_http("https://127.0.0.1:8787/")
         );
-        assert!(
-            service_base::loopback_http("http://127.0.0.1:8787")
-                && service_base::loopback_http("http://127.0.0.1:8787/release_info.json")
-        );
+        assert!(service_base::loopback_http("http://127.0.0.1:8787") && service_base::loopback_http("http://127.0.0.1:8787/release_info.json"));
     }
 
     #[test]
