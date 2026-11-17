@@ -2,8 +2,8 @@
 //!
 //! The launcher is the one place somebody signs in to the Craft App Suite. The account list and
 //! the keychain entry are [`craft_suite_account`]'s. This module is the half that talks to a
-//! CollabCraft deployment. It runs the waiting about on a worker thread. The window therefore never
-//! blocks on it.
+//! CollabCraft deployment, against the contract in [`crate::suite_service`]. It runs the waiting
+//! about on a worker thread, so the window never blocks on it.
 //!
 //! Nothing here is mandatory. With no deployment configured, [`Accounts`] reports
 //! [`SuiteAccount::Unconfigured`] and makes no request at all. An application started on a machine
@@ -18,8 +18,9 @@ use std::sync::{Arc, Mutex, PoisonError};
 use std::time::{Duration, Instant};
 
 use artcraft_launcher_core::protocol::{SuiteAccount, SuiteIdentity};
-use craft_suite_account::service::{ConversationHome, Flow, Identity, Polled, Service};
-use craft_suite_account::{Account, NewAccount, Secret, Shared, SignedOut, Store};
+use craft_suite_account::{Account, NewAccount, Secret, Shared, Store};
+
+use crate::suite_service::{self, ConversationHome, Flow, Identity, Polled, Service, SignedOut};
 
 use crate::http::Http;
 use crate::service_base;
@@ -284,14 +285,13 @@ impl Accounts {
             let mut guard = BusyGuard::new(busy);
             let current = store.accounts().map(|list| list.current().map(|a| a.id.clone()));
             let states: Vec<SuiteAccount> = match current {
-                Ok(Some(id)) => match store.sign_out(service.as_ref(), &id) {
+                Ok(Some(id)) => match suite_service::sign_out(&store, service.as_ref(), &id) {
                     Ok(SignedOut::Everywhere) => vec![SuiteAccount::SignedOut],
                     // The local half is done either way. The session may still be live at the
                     // deployment. The user therefore needs to hear that it was not told.
-                    Ok(SignedOut::LocalOnly { why }) => vec![
-                        SuiteAccount::SignedOut,
-                        SuiteAccount::Failed(format!("Signed out here. The service could not be told ({why}).")),
-                    ],
+                    Ok(SignedOut::LocalOnly { why }) => {
+                        vec![SuiteAccount::SignedOut, SuiteAccount::Failed(format!("Signed out here. The service could not be told ({why})."))]
+                    }
                     Err(e) => vec![SuiteAccount::Failed(e.to_string())],
                 },
                 Ok(None) => vec![SuiteAccount::SignedOut],
@@ -321,9 +321,7 @@ fn run_sign_in(store: &Store, service: &(dyn Service + Send + Sync), base: &str,
     emit(SuiteAccount::Waiting { verify_url: flow.verify_url.clone() });
     // The deadline is the deployment's, capped so a bad value cannot overflow time math.
     let secs = flow.expires_in.min(MAX_FLOW_SECS);
-    let deadline = Instant::now()
-        .checked_add(Duration::from_secs(secs))
-        .unwrap_or_else(|| Instant::now() + Duration::from_secs(MAX_FLOW_SECS));
+    let deadline = Instant::now().checked_add(Duration::from_secs(secs)).unwrap_or_else(|| Instant::now() + Duration::from_secs(MAX_FLOW_SECS));
     let gap = Duration::from_secs(flow.interval.clamp(MIN_POLL, MAX_POLL));
     while Instant::now() < deadline {
         std::thread::sleep(gap);
@@ -373,10 +371,7 @@ fn signed_in(account: &Account, who: Option<&Identity>) -> SuiteAccount {
         service: account.service.clone(),
         linked: who.map(|w| w.linked),
         conversation: who.and_then(|w| {
-            w.conversation.as_ref().map(|c| artcraft_launcher_core::protocol::ConversationHome {
-                name: c.name.clone(),
-                url: c.url.clone(),
-            })
+            w.conversation.as_ref().map(|c| artcraft_launcher_core::protocol::ConversationHome { name: c.name.clone(), url: c.url.clone() })
         }),
     })
 }
