@@ -1182,14 +1182,10 @@ fn a_narrow_settings_row_keeps_its_control_clear_of_its_label() {
     h.get_by_role_and_label(egui::accesskit::Role::Label, "Install new apps as").scroll_to_me();
     h.run_steps(3);
     let label = h.get_by_role_and_label(egui::accesskit::Role::Label, "Install new apps as").rect();
-    // Several combo boxes are on the settings page; the format chooser is the one nearest the
-    // label, whichever column the dialog's size puts it in.
+    // Several combo boxes are on the settings page; the format chooser is the one with this label.
     let combo = h
         .query_all_by_role(egui::accesskit::Role::ComboBox)
-        .min_by_key(|node| {
-            let r = node.rect();
-            ((r.center().x - label.center().x).abs() + (r.center().y - label.center().y).abs()) as i32
-        })
+        .find(|node| node.accesskit_node().label().as_deref() == Some("Install new apps as"))
         .expect("the install-format chooser is on screen")
         .rect();
     assert!(!label.intersects(combo), "the label {label:?} overlaps its combo box {combo:?}");
