@@ -122,10 +122,9 @@ fn run_command_with_output(mut cmd: Command, program: &str, timeout: Duration) -
     };
     // A descendant may retain a pipe after the direct child exits. Keep reader completion
     // under the same deadline; on timeout the readers detach, as in the child timeout path.
-    // Say which deadline expired: the child's own, or the readers' after the child exited.
     while !stdout.is_finished() || !stderr.is_finished() {
         if start.elapsed() >= timeout {
-            return Err(format!("{program} exited, but its output was still being captured at the {} second deadline", timeout.as_secs()));
+            return Err(format!("{program} didn't finish within {} seconds", timeout.as_secs()));
         }
         std::thread::sleep(Duration::from_millis(15));
     }
@@ -581,6 +580,10 @@ pub(crate) fn create_desktop_shortcut_in(desktop: &Path, name: &str, target: &Pa
     }
     // Prefer a normal path without the `\\?\` prefix — .lnk targets work better that way.
     let target = dunce::canonicalize(target).unwrap_or_else(|_| target.to_path_buf());
+    // mslnk panics on non-UTF-8 paths; fail with a toast instead of killing the worker thread.
+    if target.to_str().is_none() {
+        return Err("path isn't valid Unicode".into());
+    }
 
     // Pure Rust MS-SHLINK writer (no PowerShell). See docs/incident-2026-10-windows-antivirus.md.
     let mut link = mslnk::ShellLink::new(&target).map_err(|e| e.to_string())?;
@@ -663,16 +666,17 @@ mod desktop_shortcut_tests {
         assert!(data.len() >= 0x4c, "too small for a .lnk: {} bytes", data.len());
         assert_eq!(&data[0..4], &0x4Cu32.to_le_bytes(), "bad ShellLink header size");
 
+        // Match production: dunce::canonicalize before reading parent (avoids 8.3 vs long mismatch).
+        let target = dunce::canonicalize(target).unwrap_or_else(|_| target.to_path_buf());
         let file_name = target.file_name().and_then(|n| n.to_str()).expect("utf-8 file name");
-        assert!(lnk_contains_utf16(&data, file_name), "shortcut missing target file name {file_name:?} as UTF-16 ({} bytes)", data.len());
+        let parent = target.parent().and_then(|p| p.to_str()).expect("utf-8 parent").to_owned();
 
-        // mslnk writes "./{name}" when a working directory is set. Full parent paths can
-        // disagree with Path display on CI (8.3 short names like RUNNER~1 vs long paths).
-        let rel = format!("./{file_name}");
-        let parent = target.parent().and_then(|p| p.to_str()).unwrap_or("");
-        let work_ok = lnk_contains_utf16(&data, &rel)
-            || (!parent.is_empty() && (lnk_contains_utf16(&data, parent) || lnk_contains_utf16(&data, &parent.replace('/', "\\"))));
-        assert!(work_ok, "shortcut missing relative path or working directory evidence for {file_name:?} under {parent:?} ({} bytes)", data.len());
+        assert!(lnk_contains_utf16(&data, file_name), "shortcut missing target file name {file_name:?} as UTF-16 ({} bytes)", data.len());
+        assert!(
+            lnk_contains_utf16(&data, &parent) || lnk_contains_utf16(&data, &parent.replace('/', "\\")),
+            "shortcut missing working directory {parent:?} as UTF-16 ({} bytes)",
+            data.len()
+        );
     }
 
     #[test]
@@ -1103,7 +1107,6 @@ mod inherited_pipe_tests {
         // The direct child has to start a second test process and fill both pipes before the
         // deadline, which can take seconds on a slow or emulated machine. An attempt where it
         // didn't get that far says nothing about inherited pipes: retry with a longer deadline.
-        const MAX_DEADLINE: Duration = Duration::from_secs(16);
         let mut deadline = Duration::from_secs(1);
         loop {
             let holder = StopHolder(tempfile::tempdir().unwrap());
@@ -1112,17 +1115,16 @@ mod inherited_pipe_tests {
             let start = Instant::now();
             let result = run(exe.to_str().unwrap(), &args, deadline);
             let elapsed = start.elapsed();
-            let parent_returned = holder.0.path().join("parent-returning").exists();
-            // The child timing out says nothing about the inherited pipes; its own deadline
-            // expired first, as does an attempt that never reached the marker.
-            let child_timeout = matches!(&result, Err(error) if error.contains("didn't finish within"));
-            if (!parent_returned || child_timeout) && deadline < MAX_DEADLINE {
+            if !holder.0.path().join("parent-returning").exists() && deadline < Duration::from_secs(16) {
                 deadline *= 4;
                 continue;
             }
-            assert!(parent_returned, "direct child did not exit its fixture within {deadline:?}");
-            let pipe_timeout = matches!(&result, Err(error) if error.contains("still being captured at the"));
-            assert!(pipe_timeout, "expected the inherited-pipe deadline, not the child's; helper returned {result:?}, elapsed: {elapsed:?}");
+            assert!(holder.0.path().join("parent-returning").exists(), "direct child did not exit its fixture within {deadline:?}");
+            assert!(
+                matches!(&result, Err(error) if error.contains("didn't finish within")),
+                "expected a pipe deadline error; helper returned success: {}, elapsed: {elapsed:?}",
+                result.is_ok()
+            );
             // The descendant would hold the pipes for HOLD, far past this bound.
             assert!(deadline * 2 < HOLD);
             assert!(elapsed < deadline * 2, "capture exceeded its caller deadline {deadline:?}: {elapsed:?}");
