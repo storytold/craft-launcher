@@ -356,7 +356,8 @@ mod tests {
         assert_eq!(find_app_entry(app, lookup).unwrap().0, "io.tangencylabs.solidcraft.desktop");
     }
 
-    /// A second write waits for one in progress instead of reading the list before it's replaced.
+    /// A second write waits while another one holds the list. That it waits before reading the
+    /// list is [`two_writes_at_once_keep_both_types`]'s job.
     #[test]
     fn a_write_waits_for_one_in_progress() {
         let root = tempfile::tempdir().unwrap();
@@ -372,6 +373,30 @@ mod tests {
         writer.join().unwrap().unwrap();
         assert!(!early, "the write went ahead while another one held the list");
         assert!(std::fs::read_to_string(&list).unwrap().contains("text/csv="));
+    }
+
+    /// Two writes at once for different types both land, so the lock covers the read as well as
+    /// the write: with only the write locked, both read the empty list while the test holds the
+    /// lock, and the second to write drops the first one's type.
+    #[test]
+    fn two_writes_at_once_keep_both_types() {
+        let root = tempfile::tempdir().unwrap();
+        let list = root.path().join("mimeapps.list");
+        let held = WRITE_LOCK.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+        let writers: Vec<_> = ["text/csv", "text/tab-separated-values"]
+            .into_iter()
+            .map(|t| {
+                let list = list.clone();
+                std::thread::spawn(move || write_defaults(&list, ID, &types(&[t])))
+            })
+            .collect();
+        std::thread::sleep(std::time::Duration::from_millis(300));
+        drop(held);
+        for w in writers {
+            w.join().unwrap().unwrap();
+        }
+        let text = std::fs::read_to_string(&list).unwrap();
+        assert!(text.contains("text/csv=") && text.contains("text/tab-separated-values="), "{text}");
     }
 
     #[test]
