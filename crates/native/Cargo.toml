@@ -14,7 +14,7 @@ workspace = true
 # Lets ARTCRAFT_LAUNCHER_DOWNLOAD_BASE point the launcher at a developer's own loopback mirror
 # (`cargo xtask local serve`). Development only: release builds never enable it, so a shipped
 # launcher can't be steered away from GitHub's releases by an environment variable.
-local-mirror = []
+local-mirror = ["craft-update/local-mirror"]
 
 [dependencies]
 artcraft-launcher-core = { workspace = true }
@@ -47,6 +47,8 @@ plist = "1"
 winreg = "0.55"
 # Resolves junctions/symlinks without forcing short MSI paths into the verbatim namespace.
 dunce = "1"
+# Pure-Rust MS-SHLINK (.lnk) writer — no PowerShell (see antivirus incident notes).
+mslnk = "0.1.8"
 zip = { version = "9", default-features = false, features = ["deflate"] }
 # Safe wrappers for waiting for another process, reading a file's VERSIONINFO, this account's
 # SID and the one elevation prompt a batch of installs shares (ShellExecuteEx).

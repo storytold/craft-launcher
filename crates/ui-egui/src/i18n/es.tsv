@@ -76,6 +76,7 @@
 	Show in Explorer	Mostrar en el Explorador
 	Show in Files	Mostrar en Archivos
 	Reinstall	Reinstalar
+	Add desktop shortcut	Añadir acceso directo al escritorio
 	Uninstall…	Desinstalar…
 	Launch options…	Opciones de inicio…
 	{name} launch options	Opciones de inicio de {name}
@@ -169,6 +170,10 @@
 	Retry update to {version}	Reintentar la actualización a {version}
 	The download is still here. It's checked again, then installed.	La descarga sigue aquí. Se vuelve a comprobar y luego se instala.
 	Waiting for another app…	Esperando a otra aplicación…
+	Waiting for another download…	Esperando a otra descarga…
+	Simultaneous downloads	Descargas simultáneas
+	No limit	Sin límite
+	Downloads running together share your connection, so each one is slower.	Las descargas simultáneas comparten tu conexión, así que cada una es más lenta.
 	Waiting for other installs…	Esperando a otras instalaciones…
 	Installer (.msi)	Instalador (.msi)
 	Portable (.zip)	Portátil (.zip)
@@ -376,6 +381,9 @@ filter	Installed	Instaladas
 @msg	custom install folders aren't supported on this system	este sistema no admite carpetas de instalación personalizadas
 @msg	{path} already exists and wasn't installed by ArtCraft Launcher	{path} ya existe y no fue instalado por ArtCraft Launcher
 @msg	couldn't move {path} to Trash ({reason}). Remove it in Finder instead.	no se pudo mover {path} a la Papelera ({reason}). Elimínalo desde Finder.
+@msg	Desktop shortcut created for {name}	Acceso directo al escritorio creado para {name}
+@msg	Couldn't create the desktop shortcut: {e}	No se pudo crear el acceso directo al escritorio: {e}
+@msg	A desktop shortcut named {name} already exists	Ya existe un acceso directo al escritorio llamado {name}
 	Apps are placed inside this folder.	Las aplicaciones se guardan dentro de esta carpeta.
 	Replace what's there?	¿Reemplazar lo que hay?
 	{path} already exists. Installing {name} will overwrite it.	{path} ya existe. Instalar {name} lo sobrescribirá.

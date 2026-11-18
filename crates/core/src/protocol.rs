@@ -54,6 +54,10 @@ pub enum Command {
     Reveal {
         app: String,
     },
+    /// Create a desktop shortcut for an installed app (Windows).
+    CreateDesktopShortcut {
+        app: String,
+    },
     /// Pause a running download, keeping what's downloaded so far (`Install` resumes it).
     Pause {
         app: String,
@@ -72,6 +76,9 @@ pub enum Command {
     },
     /// Change how the backend behaves.
     Configure(BackendOptions),
+    /// The app ids in the order they are on screen. Downloads run one at a time, and those
+    /// waiting go in this order.
+    DownloadOrder(Vec<String>),
 
     /// Ask for the AI agents state (the gateway, the switch, the MCP clients).
     McpState,
@@ -127,6 +134,8 @@ pub struct BackendOptions {
     pub launcher_version: VersionTrack,
     /// Offer pre-releases (`0.6.0-rc.1`) as updates.
     pub prereleases: bool,
+    /// Downloads that may run at once (1 to 4; 0 for no limit).
+    pub simultaneous_downloads: u8,
 }
 
 /// The answer to "what's the latest release of this app?".
@@ -152,6 +161,8 @@ pub enum JobPhase {
         total: u64,
     },
     Verifying,
+    /// Another app is downloading; this one's download starts when its turn comes.
+    Queued,
     /// The system's installer is busy with another app; this one goes next.
     Waiting,
     /// Waiting on the OS installer (MSI) or copying files.
@@ -283,7 +294,14 @@ pub enum Event {
         path: String,
     },
     /// A job ended: `Ok` carries a short success message, `Err` what went wrong.
+    /// Clears the app's in-progress job phase in the UI.
     JobFinished {
+        app: String,
+        result: Result<String, String>,
+    },
+    /// A short status toast that is not tied to an install/uninstall job phase
+    /// (e.g. creating a desktop shortcut). Does not clear `Progress` state.
+    Notice {
         app: String,
         result: Result<String, String>,
     },
@@ -363,6 +381,8 @@ pub struct Capabilities {
     /// once it has found a newer launcher, so the UI reads
     /// it again on [`Event::LauncherUpdate`].
     pub self_update: bool,
+    /// Offer "Add desktop shortcut" for installed apps (Windows desktop only).
+    pub desktop_shortcuts: bool,
 }
 
 /// The UI's view of a backend.

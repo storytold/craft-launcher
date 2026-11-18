@@ -78,6 +78,7 @@
 	Show in Explorer	エクスプローラーで表示
 	Show in Files	ファイルマネージャーで表示
 	Reinstall	再インストール
+	Add desktop shortcut	デスクトップにショートカットを追加
 	Uninstall…	アンインストール…
 	Launch options…	起動オプション…
 	{name} launch options	{name} の起動オプション
@@ -172,6 +173,10 @@
 	Retry update to {version}	{version} への更新を再試行
 	The download is still here. It's checked again, then installed.	ダウンロードしたファイルはそのまま残っています。もう一度検証してからインストールします。
 	Waiting for another app…	他のアプリを待機中…
+	Waiting for another download…	他のダウンロードを待機中…
+	Simultaneous downloads	同時ダウンロード数
+	No limit	無制限
+	Downloads running together share your connection, so each one is slower.	同時に行うダウンロードは接続を共有するため、それぞれが遅くなります。
 	Waiting for other installs…	他のインストールを待機中…
 
 # Package formats offered for download (PackageKind::label)
@@ -398,6 +403,9 @@ filter	Installed	インストール済み
 @msg	custom install folders aren't supported on this system	このシステムではインストール先フォルダーの変更に対応していません
 @msg	{path} already exists and wasn't installed by ArtCraft Launcher	{path} は既に存在し、ArtCraft Launcher でインストールされたものではありません
 @msg	couldn't move {path} to Trash ({reason}). Remove it in Finder instead.	{path} をゴミ箱に移動できませんでした（{reason}）。Finder で削除してください。
+@msg	Desktop shortcut created for {name}	{name} のデスクトップショートカットを作成しました
+@msg	Couldn't create the desktop shortcut: {e}	デスクトップショートカットを作成できませんでした: {e}
+@msg	A desktop shortcut named {name} already exists	「{name}」というデスクトップショートカットは既に存在します
 	Apps are placed inside this folder.	アプリはこのフォルダー内に配置されます。
 	Replace what's there?	既存の項目を置き換えますか？
 	{path} already exists. Installing {name} will overwrite it.	{path} は既に存在します。{name} をインストールすると上書きされます。

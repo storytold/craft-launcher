@@ -198,6 +198,8 @@ pub struct LauncherUi {
     /// Set when such a language comes into use, then kept for the session.
     pub(crate) cjk_font: Option<crate::i18n::Lang>,
     sent_options: Option<BackendOptions>,
+    /// The apps on screen in their order, as last told to the backend (queued downloads go in it).
+    sent_order: Vec<&'static str>,
     /// Unix seconds of the last look at what's installed (startup counts).
     last_detect: i64,
     /// Whether the window had focus last frame, to re-check when the user comes back to it.
@@ -307,6 +309,7 @@ impl LauncherUi {
             fonts_ready: false,
             cjk_font,
             sent_options: None,
+            sent_order: Vec::new(),
             last_detect: 0,
             was_focused: true,
             auto_update_attempted: std::collections::BTreeSet::new(),
@@ -470,17 +473,26 @@ impl LauncherUi {
         self.entries.iter_mut().find(|e| e.app.id == id)
     }
 
+    /// Sends the backend the settings it needs and, when it changed, the order of the apps on
+    /// screen. Runs every frame; only changes are sent.
     pub(crate) fn configure(&mut self) {
         let options = BackendOptions {
             kinds: self.settings.preferred_kinds.clone(),
             prereleases: self.settings.prereleases,
             versions: self.settings.versions.clone(),
             launcher_version: self.settings.launcher_version.clone(),
+            simultaneous_downloads: self.settings.simultaneous_downloads,
             install_locations: self.settings.install_locations.clone(),
         };
         if self.sent_options.as_ref() != Some(&options) {
             self.backend.send(Command::Configure(options.clone()));
             self.sent_options = Some(options);
+        }
+        // Only the apps on screen: the backend puts any other app after them, in suite order.
+        let order = self.visible_ids();
+        if order != self.sent_order {
+            self.backend.send(Command::DownloadOrder(order.iter().map(|id| id.to_string()).collect()));
+            self.sent_order = order;
         }
     }
 
@@ -642,6 +654,10 @@ impl LauncherUi {
                 self.on_job_finished(app, result);
                 true
             }
+            Event::Notice { result, .. } => {
+                self.on_notice(result);
+                true
+            }
             Event::LauncherUpdate(r) => self.on_launcher_update(r),
             Event::CheckStarted => {
                 self.checking = true;
@@ -715,6 +731,14 @@ impl LauncherUi {
             Err(e) if e == INSTALL_CANCELLED => self.toast(tl!("Install cancelled"), false),
             // The Replace dialog says it all.
             Err(_) if matches!(&self.dialog, Some(Dialog::Replace { app: a, .. }) if *a == app) => {}
+            Err(e) => self.toast(e, true),
+        }
+    }
+
+    /// Toast for a side action that never owned the app's job phase (desktop shortcut, etc.).
+    fn on_notice(&mut self, result: Result<String, String>) {
+        match result {
+            Ok(msg) => self.toast(msg, false),
             Err(e) => self.toast(e, true),
         }
     }
@@ -793,7 +817,7 @@ impl LauncherUi {
                 if self.auto_update_attempted.contains(&(e.app.id.to_string(), v.clone())) { None } else { Some((e.app.id.to_string(), v)) }
             })
             .collect();
-        if self.settings.batch_updates && !to_update.is_empty() {
+        if self.settings.updates_batched() && !to_update.is_empty() {
             log::info!("auto-update: queuing {} updates together behind one prompt", to_update.len());
             for (id, version) in &to_update {
                 self.auto_update_attempted.insert((id.clone(), version.clone()));
@@ -1164,7 +1188,7 @@ mod tests {
         /// No install management, a neutral reveal label and no self-update, so UI paths needing them
         /// stay off.
         fn capabilities(&self) -> Capabilities {
-            Capabilities { manage_apps: false, reveal_label: "Show", self_update: false }
+            Capabilities { manage_apps: false, reveal_label: "Show", self_update: false, desktop_shortcuts: false }
         }
         /// Reports no platform, so the UI offers no OS-specific package format.
         fn platform(&self) -> Option<Platform> {
@@ -1217,6 +1241,63 @@ mod tests {
         );
         assert!(ui.entry(id).unwrap().detected);
         assert_eq!(sent.borrow().as_slice(), &[Command::Detect]);
+    }
+
+    /// The last screen order sent to the backend for its download queue.
+    fn last_order(sent: &RefCell<Vec<Command>>) -> Option<Vec<String>> {
+        sent.borrow().iter().rev().find_map(|command| match command {
+            Command::DownloadOrder(order) => Some(order.clone()),
+            _ => None,
+        })
+    }
+
+    #[test]
+    /// Hidden apps are left out of the download order, so the backend puts them after the apps on
+    /// screen, in suite order.
+    fn the_download_order_leaves_out_hidden_apps() {
+        let (mut launcher, sent, _ctx) = launcher();
+        launcher.settings.hidden.extend(["wordcraft".to_string(), "filmcraft".to_string()]);
+        launcher.configure();
+        let order = last_order(&sent).expect("an order is sent");
+        assert_eq!(order, launcher.visible_ids());
+        assert_eq!(order.len(), launcher.entries.len() - 2);
+        assert!(!order.iter().any(|id| id == "wordcraft" || id == "filmcraft"), "{order:?}");
+    }
+
+    #[test]
+    /// Apps a search hides are left out of the download order, and come back once it is cleared.
+    fn the_download_order_follows_the_search() {
+        let (mut launcher, sent, _ctx) = launcher();
+        launcher.search = "photocraft".into();
+        launcher.configure();
+        assert_eq!(last_order(&sent).expect("an order is sent"), ["photocraft"]);
+        launcher.search.clear();
+        launcher.configure();
+        assert_eq!(last_order(&sent).expect("an order is sent"), launcher.visible_ids());
+        assert_eq!(launcher.visible_ids().len(), launcher.entries.len());
+    }
+
+    #[test]
+    /// The number of downloads allowed at once reaches the backend, and settings saved before it
+    /// existed allow one.
+    fn simultaneous_downloads_reach_the_backend() {
+        let old: Settings = serde_json::from_str(r#"{"prereleases":true}"#).unwrap();
+        assert_eq!(old.simultaneous_downloads, 1);
+        let (mut launcher, sent, _ctx) = launcher();
+        launcher.settings.simultaneous_downloads = 3;
+        launcher.configure();
+        let configured = sent.borrow().iter().rev().find_map(|command| match command {
+            Command::Configure(options) => Some(options.simultaneous_downloads),
+            _ => None,
+        });
+        assert_eq!(configured, Some(3));
+        launcher.settings.simultaneous_downloads = 0;
+        launcher.configure();
+        let configured = sent.borrow().iter().rev().find_map(|command| match command {
+            Command::Configure(options) => Some(options.simultaneous_downloads),
+            _ => None,
+        });
+        assert_eq!(configured, Some(0), "no limit is sent as 0");
     }
 
     /// A CJK preference is drawable only while that language's own face is installed: having the
